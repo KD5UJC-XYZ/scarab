@@ -1763,7 +1763,8 @@ object Main extends IOApp:
         opened.immutable,
         anchor,
         ChainServer.headerOfBlock(genesis.geometry.byron.epochSlots),
-        fatalSink
+        fatalSink,
+        ChainServer.Held(opened.received, setup.origin)
       )
       _ <- resumed.traverse_(r =>
         server

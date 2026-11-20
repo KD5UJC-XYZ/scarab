@@ -67,6 +67,16 @@ final case class ServedChain(
       .flatMap(s => blocks.lift((s - first).toInt))
       .collect { case served if served.ref.hash == hash => served.raw }
 
+  /** The volatile block `hash` and the hash of the block before it: the anchor's before the first
+    * block, none when the whole chain is volatile.
+    */
+  def predecessorOf(hash: Bytes): Option[(BlockRef, Option[Bytes])] =
+    seqs.get(hash).map(s => (s - first).toInt).flatMap { i =>
+      blocks.lift(i).filter(_.ref.hash == hash).map { served =>
+        served.ref -> (if i == 0 then anchor else blocks.lift(i - 1).map(_.ref)).map(_.hash)
+      }
+    }
+
   /** Append a block; `dropped` oldest blocks became immutable and `newAnchor` is the new boundary.
     */
   def extend(block: Served, dropped: Int, newAnchor: Option[BlockRef]): ServedChain =

@@ -44,7 +44,8 @@ class SourceScopeSuite extends FailsOnUncaught:
           Some(store(_ => error.raise[IO, Option[Bytes]], Stream.empty)),
           None,
           headerOf,
-          failure => reported.complete(failure).void
+          failure => reported.complete(failure).void,
+          ChainServer.Held.none
         )
       }
       _ <- server.source.use { source =>
@@ -80,7 +81,8 @@ class SourceScopeSuite extends FailsOnUncaught:
         ),
         None,
         headerOf,
-        failure => reported.complete(failure).void
+        failure => reported.complete(failure).void,
+        ChainServer.Held.none
       )
       range <- server.blocks.range(ref(1).point, ref(3).point)
       _ <- range match

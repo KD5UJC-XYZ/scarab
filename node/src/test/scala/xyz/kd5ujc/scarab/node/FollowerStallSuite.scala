@@ -78,7 +78,8 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         None,
         None,
         ChainServer.headerOfBlock(ForgedChain.geometry.byron.epochSlots),
-        failure => IO.raiseError(new AssertionError(failure.message))
+        failure => IO.raiseError(new AssertionError(failure.message)),
+        ChainServer.Held.none
       )
       _ <- Handle
         .allow[xyz.kd5ujc.scarab.ledger.NodeError] {

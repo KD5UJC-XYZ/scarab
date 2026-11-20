@@ -1,16 +1,35 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.relay
 
-import cats.effect.{IO, Ref}
+import cats.effect.{Deferred, IO, Ref}
 import cats.syntax.all.*
+import fs2.Pull
+import fs2.concurrent.SignallingRef
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.protocol.{Era, NtNHeader}
-import xyz.kd5ujc.scarab.protocol.ChainSync.Point
+import xyz.kd5ujc.scarab.protocol.{BlockFetch, CardanoBlockFetch, Era, NtNHeader}
+import xyz.kd5ujc.scarab.protocol.ChainSync.{Point, UInt64}
 import xyz.kd5ujc.scarab.network.ChainSyncServer.Update
-import xyz.kd5ujc.scarab.network.{BlockFetchServer, Settled}
+import xyz.kd5ujc.scarab.network.{
+  Bearer,
+  BlockFetchServer,
+  Mux,
+  NodeToNodeServer,
+  Peers,
+  Protocols,
+  ServerHandlers,
+  Settled,
+  TxSubmissionServer,
+  recvPrefix
+}
 import xyz.kd5ujc.scarab.protocol.NetworkError
 import xyz.kd5ujc.scarab.consensus.{Anchor, BlockRef}
-import xyz.kd5ujc.scarab.storage.{CountedReads, FileImmutableStore, ImmutableStore, StorageTestKit}
+import xyz.kd5ujc.scarab.storage.{
+  CountedReads,
+  FileImmutableStore,
+  ImmutableStore,
+  ReceivedBlocks,
+  StorageTestKit
+}
 import munit.ScalaCheckSuite
 import cats.mtl.Handle
 import xyz.kd5ujc.scarab.ledger.NodeError
@@ -153,6 +172,9 @@ class ChainServerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
 
   private def raws(ns: Range): Vector[Bytes] = ns.toVector.map(raw(_))
 
+  private def invalid(from: Point, to: Point): NetworkError.RangeRefusal =
+    NetworkError.RangeRefusal.InvalidRange(from, to)
+
   /** `blocks`, with `act` run once a batch has read its first `after` blocks and before it reads
     * the next: a batch reads each held block when it is pulled.
     */
@@ -187,7 +209,7 @@ class ChainServerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         FileImmutableStore.open[IO](dir, 30L).use { (store, _) =>
           for
             server <- ChainServer
-              .open[IO](Some(store), None, headerOf, fatal)
+              .open[IO](Some(store), None, headerOf, fatal, ChainServer.Held.none)
             persistence = server.persistence[Unit]
             _ <- (1 to 10).toList.traverse_ { i =>
               val immutable = if i > k then Vector(ref(i - k)) else Vector.empty
@@ -227,7 +249,7 @@ class ChainServerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         FileImmutableStore.open[IO](dir, 30L).use { (store, _) =>
           for
             server <- ChainServer
-              .open[IO](Some(store), None, headerOf, fatal)
+              .open[IO](Some(store), None, headerOf, fatal, ChainServer.Held.none)
             persistence = server.persistence[Unit]
             _ <- (1 to 8).toList.traverse_ { i =>
               val immutable = if i > k then Vector(ref(i - k)) else Vector.empty
@@ -261,7 +283,7 @@ class ChainServerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         FileImmutableStore.open[IO](dir, 30L).use { (store, _) =>
           for
             server <- ChainServer
-              .open[IO](Some(store), None, headerOf, fatal)
+              .open[IO](Some(store), None, headerOf, fatal, ChainServer.Held.none)
             persistence = server.persistence[Unit]
             _ <- (1 to 4).toList.traverse_(i =>
               persistence.extended(ref(i), raw(i), Vector.empty, Anchor[Unit](None, ()))
@@ -294,7 +316,7 @@ class ChainServerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   private def withoutStore(blocks: Int): IO[ChainServer[IO]] =
     ok {
       for
-        server <- ChainServer.open[IO](None, None, headerOf, fatal)
+        server <- ChainServer.open[IO](None, None, headerOf, fatal, ChainServer.Held.none)
         persistence = server.persistence[Unit]
         _ <- (1 to blocks).toList.traverse_ { i =>
           val immutable = if i > k then Vector(ref(i - k)) else Vector.empty
@@ -353,7 +375,7 @@ class ChainServerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           FileImmutableStore.open[IO](dir, 30L).use { (store, _) =>
             for
               server <- ChainServer
-                .open[IO](Some(store), None, headerOf, fatal)
+                .open[IO](Some(store), None, headerOf, fatal, ChainServer.Held.none)
               persistence = server.persistence[Unit]
               _ <- (1 to 2).toList.traverse_(i =>
                 persistence.extended(ref(i), raw(i), Vector.empty, Anchor[Unit](None, ()))
@@ -392,7 +414,7 @@ class ChainServerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         FileImmutableStore.open[IO](dir, 30L).use { (store, _) =>
           for
             server <- ChainServer
-              .open[IO](Some(store), None, headerOf, fatal)
+              .open[IO](Some(store), None, headerOf, fatal, ChainServer.Held.none)
             persistence = server.persistence[Unit]
             _ <- (1 to 10).toList.traverse_ { i =>
               val immutable = if i > k then Vector(ref(i - k)) else Vector.empty
@@ -418,7 +440,9 @@ class ChainServerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
             assertEquals(single, Got.Blocks(raws(4 to 4)))
             assertEquals(across, Got.Blocks(raws(5 to 9)))
             assertEquals(volatile, Got.Blocks(raws(8 to 10)))
-            assertEquals(backwards, Got.NoBlocks)
+            // a lower bound in a later slot than the upper: the reference's ChainDB iterator raises
+            // `InvalidIteratorRange` (`Iterator.hs` 254-257), which ends the connection
+            assertEquals(backwards, Got.Refused(invalid(ref(5).point, ref(2).point), Vector.empty))
             assertEquals(unknown, Got.NoBlocks)
             assertEquals(whole, Got.Blocks(raws(1 to 10)))
         }
@@ -432,7 +456,7 @@ class ChainServerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         FileImmutableStore.open[IO](dir, 30L).use { (store, _) =>
           for
             server <- ChainServer
-              .open[IO](Some(store), None, headerOf, fatal)
+              .open[IO](Some(store), None, headerOf, fatal, ChainServer.Held.none)
             persistence = server.persistence[Unit]
             extend = (i: Int) =>
               val immutable = if i > k then Vector(ref(i - k)) else Vector.empty
@@ -517,7 +541,7 @@ class ChainServerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         FileImmutableStore.open[IO](dir, 30L).use { (store, _) =>
           for
             server <- ChainServer
-              .open[IO](Some(store), None, headerOf, fatal)
+              .open[IO](Some(store), None, headerOf, fatal, ChainServer.Held.none)
             _ <- grow(store, server, chain)
             starts = Vector(
               Point.Origin,
@@ -575,7 +599,7 @@ class ChainServerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     ok {
       CountedReads.open(dir, 30L, 1000).use { (store, log) =>
         for
-          server <- ChainServer.open[IO](Some(store), None, headerOf, fatal)
+          server <- ChainServer.open[IO](Some(store), None, headerOf, fatal, ChainServer.Held.none)
           _ <- grow(store, server, (1 to 40).toVector.map(i => (ref(i), raw(i))))
           _ <- log.set(Vector.empty)
           result <- body(server, log)
@@ -664,7 +688,10 @@ class ChainServerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           assertEquals(
             answers.map(_._1),
             Vector(12 to 16, 17 to 23, 14 to 14, 35 to 39).map(ns => Got.Blocks(raws(ns))) ++
-              Vector(Got.NoBlocks, Got.NoBlocks)
+              Vector(
+                Got.Refused(invalid(ref(16).point, ref(12).point), Vector.empty),
+                Got.NoBlocks
+              )
           )
           // each stored block of the range once, in order, and nothing after it
           assertEquals(
@@ -706,7 +733,7 @@ class ChainServerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         FileImmutableStore.open[IO](dir, 30L).use { (store, _) =>
           for
             server <- ChainServer
-              .open[IO](Some(store), None, headerOf, fatal)
+              .open[IO](Some(store), None, headerOf, fatal, ChainServer.Held.none)
             _ <- grow(store, server, chain)
             range = (from: BlockRef, to: BlockRef) =>
               server.blocks.range(from.point, to.point).flatMap(got)
@@ -717,17 +744,430 @@ class ChainServerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
             toBoundary <- range(ref(19), boundary(20))
             volatileFirst <- range(boundary(40), ref(40))
           yield
-            assertEquals(storedBack, Got.NoBlocks, "stored, from a boundary block back")
-            assertEquals(volatileBack, Got.NoBlocks, "volatile, from a boundary block back")
+            // a lower bound in a later slot (`InvalidIteratorRange`, `Iterator.hs` 254-257), and
+            // the main block of a slot before its boundary block in the immutable chain (the
+            // ImmutableDB's `InvalidIteratorRangeError`, `ImmutableDB/Impl/Iterator.hs` 151-159)
+            // end the connection
+            def refused(from: BlockRef, to: BlockRef) =
+              Got.Refused(invalid(from.point, to.point), Vector.empty)
+            assertEquals(storedBack, refused(boundary(20), ref(19)), "stored, from a boundary back")
+            assertEquals(volatileBack, refused(boundary(40), ref(39)), "volatile, boundary back")
             assertEquals(boundaryFirst, Got.Blocks(Vector(raw(19, 9), raw(20))))
-            assertEquals(
-              boundaryLast,
-              Got.NoBlocks,
-              "from the main block of a slot to its boundary block"
-            )
+            assertEquals(boundaryLast, refused(ref(20), boundary(20)), "main block, then boundary")
             assertEquals(toBoundary, Got.Blocks(Vector(raw(19), raw(19, 9))))
             assertEquals(volatileFirst, Got.Blocks(Vector(raw(39, 9), raw(40))))
         }
       }
+    }
+  }
+
+  // BlockFetch serves the forks the node holds, as the reference's ChainDB iterator does (#1237):
+  // ouroboros-consensus 82ecba32 (the same at 808e40054), `Storage/ChainDB/Impl/Iterator.hs`,
+  // `Paths.hs` and `MiniProtocol/BlockFetch/Server.hs` 87-146
+
+  /** The predecessor the header of `raw(n, salt)` names: block `n - 1` of its salt, and for the
+    * first block of a fork (salt `s`) the block `forks(s)` it follows.
+    */
+  private def predecessors(forks: Map[Int, BlockRef])(
+      raw: Bytes
+  ): Option[ReceivedBlocks.Predecessor] =
+    raw.value.map(_ & 0xff).toList match
+      case List(1, 0) => Some(ReceivedBlocks.Predecessor.Genesis)
+      case List(n, 0) => Some(ReceivedBlocks.Predecessor.Block(ref(n - 1).hash))
+      case List(n, salt) =>
+        forks.get(salt).map { base =>
+          ReceivedBlocks.Predecessor.Block(
+            if base.blockNo == n - 1 then base.hash else ref(n - 1, salt).hash
+          )
+        }
+      case _ => None
+
+  /** Fork 1 follows main block 8; fork 3 follows a block the node does not hold. */
+  private val forks = Map(1 -> ref(8), 3 -> BlockRef(BigInt(24), hash(777777), BigInt(8)))
+
+  /** A node over a store and a received log: main blocks are received and then adopted as the node
+    * adopts a fetched block, each storing the block `k` before it; other blocks only received.
+    */
+  private final class Node(
+      val server: ChainServer[IO],
+      val store: ImmutableStore[IO],
+      val received: ReceivedBlocks[IO]
+  ):
+    def adopt(n: Int, salt: Int = 0)(using Handle[IO, NodeError]): IO[Unit] =
+      val immutable = if salt == 0 && n > k then Vector(ref(n - k)) else Vector.empty
+      received.put(ref(n, salt), raw(n, salt)) *>
+        immutable.traverse_(r => store.append(r, raw(r.blockNo.toInt))) *>
+        server
+          .persistence[Unit]
+          .extended(ref(n, salt), raw(n, salt), immutable, Anchor[Unit](immutable.headOption, ()))
+
+    def receive(n: Int, salt: Int)(using Handle[IO, NodeError]): IO[Unit] =
+      received.put(ref(n, salt), raw(n, salt))
+
+  /** A node over the store and received log in `dir`, its log `blocksPerFile` blocks to a file,
+    * that adopted main blocks 1 to 10 (1 to 7 stored) and received fork 1's blocks 9 and 10.
+    */
+  private def node[A](dir: fs2.io.file.Path, blocksPerFile: Int = 512)(
+      body: Handle[IO, NodeError] ?=> Node => IO[A]
+  ): IO[A] =
+    ok {
+      FileImmutableStore.open[IO](dir / "immutable", 30L).use { (store, _) =>
+        ReceivedBlocks.open[IO](dir / "received", blocksPerFile)(predecessors(forks)).use {
+          received =>
+            for
+              server <- ChainServer.open[IO](
+                Some(store),
+                None,
+                headerOf,
+                fatal,
+                ChainServer.Held(Some(received), None)
+              )
+              node = Node(server, store, received)
+              _ <- (1 to 10).toList.traverse_(node.adopt(_))
+              _ <- node.receive(9, 1) *> node.receive(10, 1)
+              result <- body(node)
+            yield result
+        }
+      }
+    }
+
+  /** A BlockFetch message as the client decodes it. */
+  private enum Wire:
+    case StartBatch, NoBlocks, BatchDone
+    case Block(raw: Bytes)
+
+  /** What a client is sent for one range: the messages, and the reason the server's connection
+    * ended with, none when the range ended in `NoBlocks` or `BatchDone` and the connection stayed.
+    * `seen` is what the client's channel raised at that end.
+    */
+  private final case class Exchange(
+      sent: Vector[Wire],
+      ended: Option[NetworkError],
+      seen: Option[NetworkError]
+  )
+
+  private val codec = CardanoBlockFetch.payloadCodec()
+
+  private def encoded(message: BlockFetch.Message[CardanoBlockFetch.RawNtNBlock]): Bytes =
+    BlockFetch
+      .encode(BlockFetch.State.Idle, BlockFetch.Role.Client, message, codec)
+      .fold(e => fail(e.message), identity)
+
+  private val noTransactions: TxSubmissionServer.Sink[IO] = new TxSubmissionServer.Sink[IO]:
+    def reader = xyz.kd5ujc.scarab.node.mempool.RelayedTransactions
+    def known(id: Bytes) = IO.pure(false)
+    def submit(originals: Vector[xyz.kd5ujc.scarab.protocol.TxSubmission2.EraTx])(using
+        cats.mtl.Raise[IO, NetworkError]
+    ) = IO.unit
+
+  /** `blocks`, with `act` run once a batch has sent its first `after` blocks, before it reads the
+    * next.
+    */
+  private def afterSent(
+      blocks: BlockFetchServer.Blocks[IO],
+      after: Int,
+      act: IO[Unit]
+  ): BlockFetchServer.Blocks[IO] = (from, to) =>
+    blocks.range(from, to).map {
+      case BlockFetchServer.Answer.Batch(sent) =>
+        BlockFetchServer.Answer.Batch(
+          sent.pull
+            .take(after.toLong)
+            .flatMap(_.fold(Pull.done)(rest => Pull.eval(act) >> rest.pull.echo))
+            .stream
+        )
+      case other => other
+    }
+
+  /** The range `from` to `to` asked of `server` over a connection served as the node serves one
+    * (`NodeToNodeServer.start`, whose failed server ends the connection, after which its owner
+    * closes the bearer). With `during`, once the client has `n` blocks the server runs `act` before
+    * it reads the next.
+    */
+  private def overWire(
+      server: ChainServer[IO],
+      from: Point,
+      to: Point,
+      during: Option[(Int, IO[Unit])] = None
+  ): IO[Exchange] =
+    Peers
+      .typed {
+        for
+          bearers <- Bearer.inMemory[IO](64)
+          (local, remote) = bearers
+          blocksSeen <- SignallingRef[IO, Int](0)
+          blocks = during.fold(server.blocks)((n, act) =>
+            afterSent(server.blocks, n, blocksSeen.waitUntil(_ >= n) *> act)
+          )
+          handlers = ServerHandlers[IO, NtNHeader](
+            NtNHeader.codec,
+            server.source,
+            blocks,
+            noTransactions
+          )
+          exchange <- Mux.resource(local, NodeToNodeServer.Protocol).use { client =>
+            for
+              ended <- Deferred[IO, NetworkError]
+              serving <- Peers
+                .typed(
+                  Mux
+                    .resource(
+                      remote,
+                      NodeToNodeServer.Protocol,
+                      Mux.Config(role = Mux.Role.Responder)
+                    )
+                    .use(mux => NodeToNodeServer.start(mux, handlers).use(_ => mux.closed))
+                )
+                .flatMap(reason => ended.complete(reason.merge).void)
+                .guarantee(remote.close)
+                .start
+              c <- client.channel(Protocols.BlockFetch)
+              _ <- c.send(encoded(BlockFetch.Message.RequestRange(from, to)))
+              read <- {
+                def next(
+                    state: BlockFetch.State,
+                    sent: Vector[Wire]
+                ): IO[(Vector[Wire], Option[NetworkError])] =
+                  Peers
+                    .typed(
+                      c.recvPrefix(2500000)(
+                        BlockFetch.decodePrefix(state, BlockFetch.Role.Server, _, codec)
+                      )
+                    )
+                    .flatMap {
+                      case Left(closed) => IO.pure(sent -> Some(closed))
+                      case Right(BlockFetch.Message.StartBatch) =>
+                        next(BlockFetch.State.Streaming, sent :+ Wire.StartBatch)
+                      case Right(BlockFetch.Message.Block(block)) =>
+                        blocksSeen.update(_ + 1) *>
+                          next(BlockFetch.State.Streaming, sent :+ Wire.Block(block.bytes))
+                      case Right(BlockFetch.Message.NoBlocks) =>
+                        IO.pure((sent :+ Wire.NoBlocks) -> None)
+                      case Right(BlockFetch.Message.BatchDone) =>
+                        IO.pure((sent :+ Wire.BatchDone) -> None)
+                      case Right(other) => IO(fail(s"the server sent $other"))
+                    }
+                next(BlockFetch.State.Busy, Vector.empty)
+              }
+              (sent, seen) = read
+              _ <- seen.fold(
+                c.send(encoded(BlockFetch.Message.ClientDone)) *> serving.cancel
+              )(_ => serving.joinWithNever)
+              reason <- ended.tryGet
+            yield Exchange(sent, reason, seen)
+          }
+        yield exchange
+      }
+      .map(_.fold(e => fail(e.message), identity))
+
+  private def served(raws: Vector[Bytes]): Exchange =
+    Exchange(
+      (Wire.StartBatch +: raws.map(Wire.Block(_))) :+ Wire.BatchDone,
+      None,
+      None
+    )
+
+  private val noBlocks: Exchange = Exchange(Vector(Wire.NoBlocks), None, None)
+
+  /** The connection ended by the server for `refusal`, after `raws` were sent in a batch. */
+  private def refused(refusal: NetworkError.RangeRefusal, raws: Vector[Bytes] = Vector.empty) =
+    Exchange(
+      if raws.isEmpty then Vector.empty else Wire.StartBatch +: raws.map(Wire.Block(_)),
+      Some(NetworkError.RangeRefused(refusal)),
+      Some(NetworkError.BearerClosed(NetworkError.Closure.PeerClosed))
+    )
+
+  private val fork1 = Vector(raw(9, 1), raw(10, 1))
+
+  /** Blocks 11 to 14 adopted, making block 11 immutable, and the received log collected to its
+    * slot: with one block to a file every file but block 14's goes.
+    */
+  private def collected(node: Node): IO[Unit] =
+    ok((11 to 14).toList.traverse_(node.adopt(_)) *> node.received.collect(ref(11).slot))
+
+  test("a fork the node holds and never selected is served, alone or joined to its chain") {
+    tempDir.use { dir =>
+      node(dir) { node =>
+        for
+          alone <- overWire(node.server, ref(9, 1).point, ref(10, 1).point)
+          fromSelected <- overWire(node.server, ref(8).point, ref(10, 1).point)
+          fromStored <- overWire(node.server, ref(5).point, ref(10, 1).point)
+          single <- overWire(node.server, ref(10, 1).point, ref(10, 1).point)
+          // ChainSync follows the selected chain alone, as the reference's follower does
+          intersection <- node.server.source.use(_.intersect(Vector(ref(10, 1).point)))
+        yield
+          assertEquals(alone, served(fork1))
+          assertEquals(fromSelected, served(raw(8) +: fork1))
+          assertEquals(fromStored, served(raws(5 to 8) ++ fork1))
+          assertEquals(single, served(Vector(raw(10, 1))))
+          assert(intersection.isLeft, s"a fork's point is not on the chain followed: $intersection")
+      }
+    }
+  }
+
+  test("a block rolled back off the selected chain is still served, as is one held invalid") {
+    tempDir.use { dir =>
+      node(dir) { node =>
+        for
+          _ <- node.server.persistence[Unit].rolledBack(ref(8).point)
+          _ <- node.adopt(9, 2) *> node.adopt(10, 2)
+          rolledBack <- overWire(node.server, ref(9).point, ref(10).point)
+          selected <- overWire(node.server, ref(8).point, ref(10, 2).point)
+          // a validation refusal leaves the original held, as the reference's VolatileDB keeps an
+          // invalid block beside its invalid-block set
+          _ <- node.received.invalidate(ref(10, 1).hash)
+          invalid <- overWire(node.server, ref(9, 1).point, ref(10, 1).point)
+        yield
+          assertEquals(rolledBack, served(raws(9 to 10)))
+          assertEquals(selected, served(Vector(raw(8), raw(9, 2), raw(10, 2))))
+          assertEquals(invalid, served(fork1))
+      }
+    }
+  }
+
+  test("a range the node cannot connect, or whose upper end it does not hold, gets NoBlocks") {
+    tempDir.use { dir =>
+      node(dir) { node =>
+        for
+          _ <- node.receive(9, 3) *> node.receive(10, 3)
+          // fork 3's blocks are held, but its ancestry is not, so it cannot reach the immutable
+          // tip (`ForkTooOld`)
+          detached <- overWire(node.server, ref(7).point, ref(10, 3).point)
+          // a path held whole is served however it began (`CompletelyInVolatileDB`)
+          whole <- overWire(node.server, ref(9, 3).point, ref(10, 3).point)
+          unknown <- overWire(node.server, ref(5).point, ref(77).point)
+          tooOld <- overWire(node.server, ref(2).point, ref(6, 1).point)
+        yield
+          assertEquals(detached, noBlocks)
+          assertEquals(whole, served(Vector(raw(9, 3), raw(10, 3))))
+          assertEquals(unknown, noBlocks)
+          assertEquals(tooOld, noBlocks)
+      }
+    }
+  }
+
+  test("bounds that are not a range end the connection, before anything is sent") {
+    tempDir.use { dir =>
+      node(dir) { node =>
+        for
+          origin <- overWire(node.server, Point.Origin, ref(5).point)
+          reversed <- overWire(node.server, ref(5).point, ref(2).point)
+          // the walk back from block 10 meets the start of the chain, never fork 1's block 9
+          offPath <- overWire(node.server, ref(9, 1).point, ref(10).point)
+        yield
+          assertEquals(origin, refused(NetworkError.RangeRefusal.NoGenesisBlock))
+          assertEquals(reversed, refused(invalid(ref(5).point, ref(2).point)))
+          assertEquals(offPath, refused(invalid(ref(9, 1).point, ref(10).point)))
+      }
+    }
+  }
+
+  test("off the path, a walk that joins the immutable tip asks the store for a range it refuses") {
+    // one block to a file: collection takes blocks 1 to 4 from the received log, so the walk back
+    // from block 10 stops at block 5, and the range from fork 1's block 9 to the immutable tip is
+    // refused by the immutable chain (`InvalidIteratorRangeError`)
+    tempDir.use { dir =>
+      node(dir, blocksPerFile = 1) { node =>
+        for
+          _ <- node.received.collect(ref(5).slot)
+          offPath <- overWire(node.server, ref(9, 1).point, ref(10).point)
+          // the walk stops at block 5, and its path joins the immutable chain at its tip, block 7
+          joined <- overWire(node.server, ref(3).point, ref(10).point)
+        yield
+          assertEquals(offPath, refused(invalid(ref(9, 1).point, ref(7).point)))
+          assertEquals(joined, served(raws(3 to 10)))
+      }
+    }
+  }
+
+  test("a held block collected during its batch ends the connection without BatchDone") {
+    // one block to a file; once block 9 of fork 1 is sent, blocks 11 to 14 make block 11
+    // immutable and the log is collected to its slot: block 10 of fork 1 is gone, and the
+    // immutable chain does not hold it (`IteratorBlockGCed`, raised as `BlockGCed`)
+    tempDir.use { dir =>
+      node(dir, blocksPerFile = 1) { node =>
+        overWire(node.server, ref(9, 1).point, ref(10, 1).point, Some(1 -> collected(node))).map(
+          got =>
+            assertEquals(
+              got,
+              refused(NetworkError.RangeRefusal.Collected(ref(10, 1).point), Vector(raw(9, 1)))
+            )
+        )
+      }
+    }
+  }
+
+  test("held blocks collected during a batch come from the immutable chain, their points checked") {
+    // as above, once the first block is sent: the selected chain's blocks 6 to 10 reach the
+    // immutable chain and leave the log, and are read from there; fork 1's block 9 is not the
+    // immutable chain's block of its slot, so it is collected for good
+    for
+      recovered <- tempDir.use(dir =>
+        node(dir, blocksPerFile = 1)(node =>
+          overWire(node.server, ref(5).point, ref(10).point, Some(1 -> collected(node)))
+        )
+      )
+      lost <- tempDir.use(dir =>
+        node(dir, blocksPerFile = 1)(node =>
+          overWire(node.server, ref(8).point, ref(10, 1).point, Some(1 -> collected(node)))
+        )
+      )
+    yield
+      assertEquals(recovered, served(raws(5 to 10)))
+      assertEquals(
+        lost,
+        refused(NetworkError.RangeRefusal.Collected(ref(9, 1).point), Vector(raw(8)))
+      )
+  }
+
+  test("a fork held in the received log is served after a restart") {
+    tempDir.use { dir =>
+      for
+        _ <- node(dir)(_ => IO.unit)
+        restarted <- ok {
+          FileImmutableStore.open[IO](dir / "immutable", 30L).use { (store, _) =>
+            ReceivedBlocks.open[IO](dir / "received")(predecessors(forks)).use { received =>
+              for
+                anchor <- store.tip
+                server <- ChainServer.open[IO](
+                  Some(store),
+                  anchor,
+                  headerOf,
+                  fatal,
+                  ChainServer.Held(Some(received), None)
+                )
+                alone <- overWire(server, ref(9, 1).point, ref(10, 1).point)
+                fromStored <- overWire(server, ref(5).point, ref(10, 1).point)
+              yield (alone, fromStored)
+            }
+          }
+        }
+      yield
+        assertEquals(restarted._1, served(fork1))
+        assertEquals(restarted._2, served(raws(5 to 8) ++ fork1))
+    }
+  }
+
+  test("the walk back through the held blocks is stack safe on a 256 KiB thread") {
+    // a held chain of 30,000 blocks, the first after the start of the chain: the walk from the
+    // last meets the first, and a lower bound off the chain walks back to the start
+    val chain = Vector.tabulate(30000)(i => BlockRef(BigInt(i + 1), hash(i + 1), BigInt(i + 1)))
+    val held = chain.zipWithIndex.map { (ref, i) =>
+      ref.hash -> HeldRange.Held(ref, chain.lift(i - 1).map(_.hash))
+    }.toMap
+    def point(ref: BlockRef): Point.Block = Point.Block(UInt64.saturating(ref.slot), ref.hash)
+    xyz.kd5ujc.scarab.ledger.PreprodDeepTx.onSmallStack {
+      val whole = HeldRange.path(held.get, point(chain.head), point(chain.last))
+      val offChain =
+        HeldRange.path(
+          held.get,
+          point(BlockRef(BigInt(7), hash(777777), BigInt(7))),
+          point(chain.last)
+        )
+      assertEquals(
+        whole.collect { case HeldRange.Path.Complete(points) => points.toVector },
+        Some(chain)
+      )
+      assertEquals(offChain, None)
     }
   }
