@@ -51,9 +51,9 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellState, LeiosStateCodecs}
   * from each: its smallest pool P retiring at the next epoch, with its current parameters as its
   * future ones (`stakePoolStateToStakePoolParams Testnet`, the networks of the captures). Here the
   * same state is built. On the testnet's state P holds a voting key, which its future parameters
-  * would carry (`StakePool.hs:701-740`) and which a pool's parameters do not hold here yet
-  * (`DijkstraNotYet.PoolParamsBlsKey`, #826 comment 6967015840), so that case is compared on the
-  * two devnet states only.
+  * would carry (`StakePool.hs:701-740`) and which the answer does not write yet: the state's
+  * parameters hold it, but their writer has no place for it (`DijkstraNotYet.PoolParamsBlsKey`,
+  * #826 comment 6967015840), so that case is compared on the two devnet states only.
   */
 class LeiosQueryAnswersSuite extends FunSuite:
   private val setup: NodeSetup = NtcGolden.setup

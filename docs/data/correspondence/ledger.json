@@ -285,7 +285,7 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "PoolBlsKeyLayoutSuite",
+    "LeiosEpochReferenceSuite",
     "TickRulesSuite"
    ],
    "note": "mkStakePoolState e SNothing gives the parameters' key; here the pool's layout's no key, which is the same: a certificate before Dijkstra registers parameters without one (PoolParamsBlsKey.certified)",

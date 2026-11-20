@@ -23,9 +23,11 @@ enum DijkstraNotYet extends DomainError:
   case Rules
 
   /** A pool's BLS key in a `StakePoolParams` of a Dijkstra state in the Leios build's layout, the
-    * third of its ten items from version 12 (cardano-ledger 9df9f98c `State/StakePool.hs:744-771`):
-    * the pool parameters this build holds have no place for it yet; ten items whose third is `null`
-    * are no key, and read. Persisted formats.
+    * third of its ten items from version 12 (cardano-ledger 9df9f98c `State/StakePool.hs:716-771`):
+    * the state's parameters hold it, but the codec of the state's parameters neither reads nor
+    * writes it yet, nor does a query answer that writes them; ten items whose third is `null` are
+    * no key, and read. Reading and writing it changes what a native snapshot holds, a storage
+    * format change. Persisted formats.
     */
   case PoolParamsBlsKey
 
