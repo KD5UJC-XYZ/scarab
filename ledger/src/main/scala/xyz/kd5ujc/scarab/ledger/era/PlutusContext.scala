@@ -244,6 +244,20 @@ object LedgerTxInfo:
     b.levelOf(lti.ltiLevelTxInfo) match
       case TopOnly.Top => f(lti)
 
+  /** `withBothTxLevels` of a transaction's information (`Core/TxLevel.hs:123-130`, cardano-ledger
+    * 9df9f98c), for an era with both levels: `fTop` of the information at the top level, `fSub` of
+    * it at a sub-transaction's, its level read from the level's information where the reference's
+    * reads the transaction's.
+    */
+  def withBothTxLevels[T <: TxLevel, E <: EraTag, A](lti: LedgerTxInfo[T, E])(
+      fTop: LedgerTxInfo[TxLevel.Top, E] => A
+  )(fSub: LedgerTxInfo[TxLevel.Sub, E] => A)(using
+      b: EraTxBody[E] { type Level[L <: TxLevel] = BothLevels[L] }
+  ): A =
+    b.levelOf(lti.ltiLevelTxInfo) match
+      case BothLevels.Top => fTop(lti)
+      case BothLevels.Sub => fSub(lti)
+
 /** The transaction information of language `L` for a transaction of era `E` (`newtype
   * PlutusTxInfoResult l era`, `Context.hs:193-196`, cardano-ledger 9df9f98c, the same at 29a7d656):
   * the information or its failure. f649f975's (`Context.hs:156-164`) is a function of the purpose,
@@ -294,7 +308,9 @@ trait EraPlutusTxInfo[L <: Language, E <: EraTag]:
   def lookupTxInfoResult(result: TxInfoResult[E]): PlutusTxInfoResult[L, E]
 
 /** The instances of each era and language, the one place that lists them: Conway's for Plutus V1 to
-  * V3 (`Conway/TxInfo.hs:420-547`, cardano-ledger 9df9f98c).
+  * V3 (`Conway/TxInfo.hs:420-547`, cardano-ledger 9df9f98c) and Dijkstra's for Plutus V1 to V3
+  * (`eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxInfo.hs:333-484, 568-569`, cardano-ledger
+  * 9df9f98c).
   */
 object EraPlutusTxInfo:
   given conwayPlutusV1: EraPlutusTxInfo[Language.PlutusV1, Conway] =
@@ -303,6 +319,12 @@ object EraPlutusTxInfo:
     conway.ConwayTxInfo.plutusV2
   given conwayPlutusV3: conway.ConwayEraPlutusTxInfo[Language.PlutusV3, Conway] =
     conway.ConwayTxInfo.plutusV3
+  given dijkstraPlutusV1: EraPlutusTxInfo[Language.PlutusV1, Dijkstra] =
+    dijkstra.DijkstraTxInfo.plutusV1
+  given dijkstraPlutusV2: EraPlutusTxInfo[Language.PlutusV2, Dijkstra] =
+    dijkstra.DijkstraTxInfo.plutusV2
+  given dijkstraPlutusV3: conway.ConwayEraPlutusTxInfo[Language.PlutusV3, Dijkstra] =
+    dijkstra.DijkstraTxInfo.plutusV3
 
 /** The memoised transaction information of every language era `E` supports (`data TxInfoResult
   * era`, `Context.hs:234`, cardano-ledger 9df9f98c): Conway's of Plutus V1 to V3
