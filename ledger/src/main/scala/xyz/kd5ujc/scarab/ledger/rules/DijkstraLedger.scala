@@ -224,7 +224,10 @@ object DijkstraBbody
   private val ledger: monocle.Lens[DijkstraBbodyState, DijkstraLedger] =
     monocle.Lens[DijkstraBbodyState, DijkstraLedger](_.ledger)(l => s => s.copy(ledger = l))
 
-  /** `totalRefScriptSizeInBlock` (`Conway/Rules/Bbody.hs:371-384`). */
+  /** `totalRefScriptSizeInBlock` (`Conway/Rules/Bbody.hs:371-384`, cardano-ledger 9df9f98c): the
+    * outputs created are `txouts` 's ([[TxIn.txouts]]) and the collateral return `collOuts` 's
+    * ([[TxIn.collOuts]]).
+    */
   def refScriptsSize(pp: ProtocolParams, utxo: NodeUtxo, txs: Vector[DijkstraTx]): Long =
     if pp.protocolMajor <= 10 then
       txs.map(tx => DijkstraTxMeasures.refScriptsSize(DijkstraTxMeasures.inUtxo(utxo), tx.body)).sum
@@ -233,12 +236,8 @@ object DijkstraBbody
         .foldLeft((Map.empty[TxIn, Long], 0L)) { case ((added, sum), tx) =>
           val body = tx.body
           val created =
-            if tx.isValid then
-              body.outputs.zipWithIndex.map((o, i) => TxIn(body.id, BigInt(i)) -> o)
-            else
-              body.collateralReturn
-                .map(r => TxIn(body.id, BigInt(body.outputs.size)) -> r)
-                .toVector
+            if tx.isValid then TxIn.txouts(body.id, body.outputs)
+            else TxIn.collOuts(body.id, body.outputs.size, body.collateralReturn).toVector
           val size = DijkstraTxMeasures.refScriptsSize(
             in => DijkstraTxMeasures.inUtxo(utxo)(in).orElse(added.get(in)),
             body

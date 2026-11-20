@@ -122,7 +122,7 @@ object ApplyBenchMain:
       b.transactions.flatMap(t => Tx.fromBlock(t, b.era).toOption.map(b.header.slot -> _))
     )
     val produced: Map[TxIn, TxOut] = txs.flatMap { case (_, t) =>
-      t.body.outputs.zipWithIndex.map((o, i) => TxIn(t.body.id, i) -> o)
+      TxIn.txouts(t.body.id, t.body.outputs)
     }.toMap
     val pp = TestLedger
       .params(6)

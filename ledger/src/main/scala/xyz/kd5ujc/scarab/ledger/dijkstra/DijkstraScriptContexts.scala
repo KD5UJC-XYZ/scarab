@@ -5,6 +5,7 @@ import cats.data.NonEmptyVector
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
 import xyz.kd5ujc.scarab.ledger.{Address, Credential, DRep, RewardAccount, Vote}
+import xyz.kd5ujc.scarab.ledger.state.TxIx
 import xyz.kd5ujc.scarab.plutus.PlutusData
 import xyz.kd5ujc.scarab.plutus.PlutusData.{B, I}
 
@@ -392,9 +393,11 @@ object DijkstraScriptContexts:
       _ <- overlap.fold(Right(()))(o =>
         Left(DijkstraContextError.ReferenceInputsNotDisjointFromInputs(o))
       )
-      outs <- body.outputs.zipWithIndex.traverse((o, ix) =>
-        output(DijkstraTxOutSource.FromOutput(ix), o)
-      )
+      // zipped with `[minBound ..] :: [TxIx]` (`TxInfo.hs:591-595`, cardano-ledger 9df9f98c), so
+      // none past index 65,535
+      outs <- TxIx
+        .enumerate(body.outputs)
+        .traverse((o, ix) => output(DijkstraTxOutSource.FromOutput(ix.index), o))
       rdmrs <- redeemers(tx, used)
       rdmrData <- rdmrs.traverse((p, h, r) => data(r.data).map(d => scriptPurpose(p, h) -> d))
       datums <- datumMap(tx)

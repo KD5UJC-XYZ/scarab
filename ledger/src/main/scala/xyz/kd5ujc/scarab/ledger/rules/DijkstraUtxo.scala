@@ -354,7 +354,10 @@ object DijkstraUtxo
 
   /** `updateUTxOState` (`Babbage/Rules/Utxo.hs`) and `updateTreasuryDonation`
     * (`Conway/Rules/Utxo.hs`): a valid transaction's inputs spent, its outputs created, the
-    * deposits, fees and donation counted; an invalid one's collateral collected.
+    * deposits, fees and donation counted; an invalid one's collateral collected. The outputs
+    * created and staked are `txouts` 's (`Shelley/Rules/Utxo.hs:613-628`, cardano-ledger f649f975),
+    * none past index 65,535 ([[TxIn.txouts]]); a collateral return's input is `mkCollateralTxIn` 's
+    * ([[TxIn.collOuts]], `Babbage/Rules/Utxo.hs:474-486`).
     */
   def update(
       s: UTxOState[Dijkstra],
@@ -368,9 +371,9 @@ object DijkstraUtxo
     val id = body.id
     val utxo = s.utxo.utxo
     if tx.isValid then
-      val created = body.outputs.zipWithIndex.map((out, i) => TxIn(id, i) -> out)
+      val created = TxIn.txouts(id, body.outputs)
       InstantStakeOps
-        .update(s.instantStake, body.outputs, body.inputs.distinct.sorted.flatMap(utxo.get))
+        .update(s.instantStake, created.map(_._2), body.inputs.distinct.sorted.flatMap(utxo.get))
         .map(stake =>
           s.copy[Dijkstra](
             utxo = UtxoTables(utxo -- body.inputs ++ created),
@@ -381,7 +384,7 @@ object DijkstraUtxo
           )
         )
     else
-      val returned = body.collateralReturn.map(r => TxIn(id, body.outputs.size) -> r)
+      val returned = TxIn.collOuts(id, body.outputs.size, body.collateralReturn)
       InstantStakeOps
         .update(s.instantStake, returned.map(_._2), collateral.outputs)
         .map(stake =>

@@ -226,7 +226,9 @@ object Utxo
     UtxoTests.babbage[Conway](pp, env.ctx, ann, minFee, consumed, produced)
 
   /** `updateUTxOState` and `updateTreasuryDonation` (`Babbage/Rules/Utxo.hs:449` (cardano-ledger
-    * f649f975), `Conway/Rules/Utxo.hs:201`).
+    * f649f975), `Conway/Rules/Utxo.hs:201`). The outputs created and staked are `txouts` 's
+    * (`Shelley/Rules/Utxo.hs:613-628`), none past index 65,535 ([[TxIn.txouts]]); a collateral
+    * return's input is `mkCollateralTxIn` 's ([[TxIn.collOuts]], `Babbage/Rules/Utxo.hs:474-486`).
     */
   def update(
       s: UTxOState[Conway],
@@ -240,11 +242,11 @@ object Utxo
     val id = ann.id
     val utxo = s.utxo.utxo
     if tx.isValid then
-      val created = body.outputs.zipWithIndex.map { (out, i) => TxIn(id, i) -> out }
+      val created = TxIn.txouts(id, body.outputs)
       for
         stake <- InstantStakeOps.update(
           s.instantStake,
-          body.outputs,
+          created.map(_._2),
           body.inputs.distinct.sorted.flatMap(utxo.get)
         )
         deposited = Coin(s.deposited.value + deposits - refunds)
@@ -258,7 +260,7 @@ object Utxo
         donation = donation
       )
     else
-      val returned = body.collateralReturn.map(r => TxIn(id, body.outputs.size) -> r)
+      val returned = TxIn.collOuts(id, body.outputs.size, body.collateralReturn)
       for
         stake <- InstantStakeOps.update(
           s.instantStake,

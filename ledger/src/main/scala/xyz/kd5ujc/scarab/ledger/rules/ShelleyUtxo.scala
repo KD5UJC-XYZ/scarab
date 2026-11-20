@@ -337,7 +337,10 @@ object ShelleyUtxo:
   /** `updateUTxOState` (`Shelley/Rules/Utxo.hs:584`, `Alonzo/Rules/Utxos.hs`): a valid transaction
     * spends its inputs and creates its outputs, pays its fee and the deposits less the refunds; one
     * that failed phase 2 spends its collateral and returns what the collateral return says, and its
-    * fee is the collateral's.
+    * fee is the collateral's. The outputs created and staked are `txouts` 's
+    * (`Shelley/Rules/Utxo.hs:613-628`, cardano-ledger f649f975), none past index 65,535
+    * ([[TxIn.txouts]]); a collateral return's input is `mkCollateralTxIn` 's ([[TxIn.collOuts]],
+    * `Babbage/Rules/Utxo.hs:474-486`).
     */
   def update[E <: EraTag](
       s: UTxOState[E],
@@ -354,9 +357,9 @@ object ShelleyUtxo:
     // `extractKeys` deletes in `TxIn` map order, whatever the order the body lists its inputs in.
     def inOrder(inputs: Vector[TxIn]): Vector[TxOut] = inputs.distinct.sorted.flatMap(utxo.get)
     if tx.isValid then
-      val created = body.outputs.zipWithIndex.map { (out, i) => TxIn(id, i) -> out }
+      val created = TxIn.txouts(id, body.outputs)
       for
-        next <- ShelleyInstantStakeOps.update(stake, body.outputs, inOrder(body.inputs))
+        next <- ShelleyInstantStakeOps.update(stake, created.map(_._2), inOrder(body.inputs))
         deposited = Coin(s.deposited.value + deposits - refunds)
         fees = Coin(s.fees.value + body.fee)
       yield pre.instantStake.replace(next)(
@@ -367,7 +370,7 @@ object ShelleyUtxo:
         )
       )
     else
-      val returned = body.collateralReturn.map(r => TxIn(id, body.outputs.size) -> r)
+      val returned = TxIn.collOuts(id, body.outputs.size, body.collateralReturn)
       for
         next <- ShelleyInstantStakeOps.update(
           stake,
