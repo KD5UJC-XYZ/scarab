@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
-import cats.effect.{Deferred, IO, Ref}
+import cats.effect.{Deferred, IO, Outcome, Ref}
 import cats.effect.std.Queue
 import cats.effect.testkit.TestControl
 import cats.syntax.all.*
@@ -23,12 +23,13 @@ class GcScheduleSuite extends FailsOnUncaught with ScalaCheckSuite:
     */
   private final class Driven(
       control: TestControl[?],
-      actions: Queue[IO, IO[Unit]],
+      actions: Queue[IO, Option[IO[Unit]]],
       val schedule: GcSchedule[IO],
       val collected: Ref[IO, Vector[(FiniteDuration, BigInt)]]
   ):
     /** `slot` scheduled now, in the program. */
-    def copy(slot: Int): IO[Unit] = actions.offer(schedule.schedule(BigInt(slot))) *> control.tick
+    def copy(slot: Int): IO[Unit] =
+      actions.offer(Some(schedule.schedule(BigInt(slot)))) *> control.tick
     def advance(by: FiniteDuration): IO[Unit] = forward(control, by)
     def ended: IO[Boolean] = control.results.map(_.isDefined)
 
@@ -40,27 +41,46 @@ class GcScheduleSuite extends FailsOnUncaught with ScalaCheckSuite:
       else control.advanceAndTick(by)
     }
 
+  /** The program's actions, run in order until the end (none). */
+  private def performed(actions: Queue[IO, Option[IO[Unit]]]): IO[Unit] =
+    actions.take.flatMap(_.traverse(identity)).iterateWhile(_.isDefined).void
+
+  /** `body` with the program under `control`, which is ended and run to completion afterwards,
+    * however `body` ends: the runner beside it is cancelled when the program ends.
+    */
+  private def controlled[A](
+      control: TestControl[Unit],
+      actions: Queue[IO, Option[IO[Unit]]]
+  )(body: IO[A]): IO[A] =
+    for
+      result <- body.guarantee(actions.offer(None) *> control.tickAll)
+      ended <- control.results
+      _ <- IO(assertEquals(ended, Some(Outcome.succeeded[cats.Id, Throwable, Unit](()))))
+    yield result
+
   private def driven[A](body: Driven => IO[A]): IO[A] =
     for
-      actions <- Queue.unbounded[IO, IO[Unit]]
+      actions <- Queue.unbounded[IO, Option[IO[Unit]]]
       schedule <- GcSchedule[IO](reference)
       collected <- Ref.of[IO, Vector[(FiniteDuration, BigInt)]](Vector.empty)
       program = schedule
-        .run[Nothing](slot =>
-          IO.monotonic.flatMap(now => collected.update(_ :+ (now -> slot))).as(Right(()))
+        .run[Refused](
+          slot => IO.monotonic.flatMap(now => collected.update(_ :+ (now -> slot))).as(Right(())),
+          Refused.Defect(_)
         )
         .background
-        .use(_ => actions.take.flatMap(identity).foreverM)
+        .use(_ => performed(actions))
       control <- TestControl.execute(program)
       _ <- control.tick
-      result <- body(Driven(control, actions, schedule, collected))
+      result <- controlled(control, actions)(body(Driven(control, actions, schedule, collected)))
     yield result
 
   private def at(seconds: Int, slot: Int) = GcSchedule.Scheduled(seconds.seconds, BigInt(slot))
 
-  /** A collection refused, for the runner's failure. */
+  /** A collection refused, for the runner's failure, or an exception in the runner. */
   private enum Refused:
     case At(slot: BigInt)
+    case Defect(cause: Throwable)
 
   test("a collection runs 60 s after the copy that scheduled it, at the 10 s mark, not before") {
     driven { d =>
@@ -147,32 +167,76 @@ class GcScheduleSuite extends FailsOnUncaught with ScalaCheckSuite:
 
   test("the runner ends with the first collection that fails, and runs no other") {
     for
-      actions <- Queue.unbounded[IO, IO[Unit]]
+      actions <- Queue.unbounded[IO, Option[IO[Unit]]]
       schedule <- GcSchedule[IO](reference)
       tried <- Ref.of[IO, Vector[BigInt]](Vector.empty)
       ended <- Deferred[IO, Refused]
       program = schedule
-        .run[Refused](slot =>
-          tried.update(_ :+ slot).as(Either.cond(slot != BigInt(2), (), Refused.At(slot)))
+        .run[Refused](
+          slot => tried.update(_ :+ slot).as(Either.cond(slot != BigInt(2), (), Refused.At(slot))),
+          Refused.Defect(_)
         )
         .flatMap(ended.complete)
         .background
-        .use(_ => actions.take.flatMap(identity).foreverM)
+        .use(_ => performed(actions))
       control <- TestControl.execute(program)
       _ <- control.tick
-      _ <- actions.offer(schedule.schedule(BigInt(1))) *> control.tick
-      _ <- forward(control, 20.seconds)
-      _ <- actions.offer(schedule.schedule(BigInt(2))) *> control.tick
-      _ <- forward(control, 20.seconds)
-      _ <- actions.offer(schedule.schedule(BigInt(3))) *> control.tick
-      _ <- forward(control, 200.seconds)
-      result <- ended.tryGet
-      attempts <- tried.get
-      left <- schedule.pending
+      observed <- controlled(control, actions) {
+        for
+          _ <- actions.offer(Some(schedule.schedule(BigInt(1)))) *> control.tick
+          _ <- forward(control, 20.seconds)
+          _ <- actions.offer(Some(schedule.schedule(BigInt(2)))) *> control.tick
+          _ <- forward(control, 20.seconds)
+          _ <- actions.offer(Some(schedule.schedule(BigInt(3)))) *> control.tick
+          _ <- forward(control, 200.seconds)
+          result <- ended.tryGet
+          attempts <- tried.get
+          left <- schedule.pending
+        yield (result, attempts, left)
+      }
+      (result, attempts, left) = observed
     yield
       assertEquals(result, Some(Refused.At(BigInt(2))), "the failure is the runner's result")
       assertEquals(attempts, Vector(BigInt(1), BigInt(2)), "no collection after the failure")
       assertEquals(left, Vector(at(100, 3)), "what was scheduled after it stays queued")
+  }
+
+  test("an exception in the runner ends it with a value, and nothing runs after it") {
+    // the exception is raised by the collection here; the boundary is around the whole runner, its
+    // waits for an entry's time included, so the fiber that runs it always ends with a value
+    for
+      actions <- Queue.unbounded[IO, Option[IO[Unit]]]
+      schedule <- GcSchedule[IO](reference)
+      tried <- Ref.of[IO, Vector[BigInt]](Vector.empty)
+      ended <- Deferred[IO, Refused]
+      program = schedule
+        .run[Refused](
+          slot =>
+            tried.update(_ :+ slot) *>
+              IO.raiseError[Either[Refused, Unit]](new IllegalStateException("collection")),
+          Refused.Defect(_)
+        )
+        .flatMap(ended.complete)
+        .background
+        .use(_ => performed(actions))
+      control <- TestControl.execute(program)
+      _ <- control.tick
+      observed <- controlled(control, actions) {
+        for
+          _ <- actions.offer(Some(schedule.schedule(BigInt(1)))) *> control.tick
+          _ <- forward(control, 20.seconds)
+          _ <- actions.offer(Some(schedule.schedule(BigInt(2)))) *> control.tick
+          _ <- forward(control, 100.seconds)
+          result <- ended.tryGet
+          attempts <- tried.get
+        yield (result, attempts)
+      }
+      (result, attempts) = observed
+    yield
+      result match
+        case Some(Refused.Defect(_: IllegalStateException)) => ()
+        case other => fail(s"the runner ends with the exception as its value, got $other")
+      assertEquals(attempts, Vector(BigInt(1)), "no collection after it")
   }
 
   // ---- the pure parts: the time of a collection and the queue ----
@@ -189,8 +253,10 @@ class GcScheduleSuite extends FailsOnUncaught with ScalaCheckSuite:
     }
   }
 
-  property("the queue is in time order and never longer than ⌈60 s / 10 s⌉ + 1 entries") {
-    // copies 0 to 30 s apart, the runner taking off each entry whose time has come before a copy
+  property("collections in time keep the queue ordered and at most ⌈60 s / 10 s⌉ + 1 long") {
+    // copies 0 to 30 s apart, the runner taking off each entry whose time has come before a copy:
+    // each collection ends before the next entry's time. A collection that runs longer leaves the
+    // entries due meanwhile queued, one to a 10 s mark, and the bound does not hold then
     val gaps = Gen.listOf(Gen.choose(0L, 30_000_000_000L))
     Prop.forAll(gaps) { steps =>
       val (_, _, worst, ordered) =

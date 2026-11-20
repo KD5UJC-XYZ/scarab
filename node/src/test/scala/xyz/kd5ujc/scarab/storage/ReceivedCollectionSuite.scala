@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
-import cats.effect.{IO, Outcome, Ref}
+import cats.effect.{Deferred, IO, Outcome, Ref}
 import cats.effect.std.Queue
 import cats.effect.testkit.TestControl
-import cats.mtl.Handle
+import cats.mtl.{Handle, Raise}
 import cats.syntax.all.*
 import fs2.io.file.Path
 import java.nio.file.{Files as JFiles, NoSuchFileException}
@@ -89,6 +89,9 @@ class ReceivedCollectionSuite extends FailsOnUncaught:
       steps.offer(Step.Act(body)) *> control.tick
     def restart: IO[Unit] = steps.offer(Step.Restart) *> control.tick
 
+    /** What can run now, run, with the clock where it is. */
+    def tick: IO[Unit] = control.tick
+
     /** The clock moved on by `by`, each timer due on the way run at its own time. */
     def advance(by: FiniteDuration): IO[Unit] =
       control.tick *> control.nextInterval.flatMap { next =>
@@ -113,6 +116,27 @@ class ReceivedCollectionSuite extends FailsOnUncaught:
     }
 
   private def node[A](body: (Path, Node) => IO[A]): IO[A] =
+    nodeWith(StateBacking.none[IO, Int])(body)
+
+  /** A backing store whose `advance` waits for `gate` the first time, as backing-store work that
+    * takes time while the clock moves on.
+    */
+  private def gated(gate: Deferred[IO, Unit]): StateBacking[IO, Int] =
+    new StateBacking[IO, Int]:
+      private val none = StateBacking.none[IO, Int]
+      def advance(state: Int)(using Raise[IO, StorageError]) = gate.get
+      def settled(state: Int)(using Raise[IO, StorageError]) = none.settled(state)
+      def checkpoint(anchor: BlockRef)(using Raise[IO, StorageError]) = none.checkpoint(anchor)
+      def admit(anchor: Option[BlockRef], binding: CheckpointBinding)(using
+          Raise[IO, StorageError]
+      ) = none.admit(anchor, binding)
+      def restore(anchor: Option[BlockRef])(using Raise[IO, StorageError]) = none.restore(anchor)
+      def reset(using Raise[IO, StorageError]) = none.reset
+      def retain(stems: Set[String])(using Raise[IO, StorageError]) = none.retain(stems)
+      def trim(stems: Set[String])(using Raise[IO, StorageError]) = none.trim(stems)
+
+  /** The storage with `backing`, the program stopped and run to completion however `body` ends. */
+  private def nodeWith[A](backing: StateBacking[IO, Int])(body: (Path, Node) => IO[A]): IO[A] =
     StorageTestKit.tempDir.use { dir =>
       for
         steps <- Queue.unbounded[IO, Step]
@@ -128,7 +152,7 @@ class ReceivedCollectionSuite extends FailsOnUncaught:
               rules,
               0,
               _ => IO.unit,
-              StateBacking.none[IO, Int],
+              backing,
               _ => IO.unit
             )(ReceivedBlockRecovery.startUp(epochSlots))
             .use(recovered => held.set(Some(recovered.received)) *> run(steps, recovered))
@@ -137,8 +161,7 @@ class ReceivedCollectionSuite extends FailsOnUncaught:
         control <- TestControl.execute(session.iterateWhile(identity).void)
         _ <- control.tick
         n = Node(control, steps, held)
-        result <- body(dir, n)
-        _ <- n.stop
+        result <- body(dir, n).guarantee(n.stop)
         ended <- n.results
         _ <- IO(assertEquals(ended, Some(Outcome.succeeded[cats.Id, Throwable, Unit](()))))
       yield result
@@ -172,6 +195,41 @@ class ReceivedCollectionSuite extends FailsOnUncaught:
         assertEquals(start, hashesOf(1, 2, 3))
         assertEquals(early, hashesOf(1, 2, 3), "nothing is collected before 60 s")
         assertEquals(due, hashesOf(2, 3), "block 1's file, wholly below block 2's slot, at 60 s")
+    }
+  }
+
+  test("a collection is timed from the copy, not from the backing-store work after it") {
+    // blocks 1 and 2 are copied in one batch at 0 s; the backing store, brought to block 2 after
+    // the copy, takes 7 s. The collection is due 60 s after the copy, as the reference's copy runner
+    // schedules it once the copy returns (`copyToImmutableDBRunner`, `Background.hs` 257-296,
+    // ouroboros-consensus 82ecba329), not at 70 s, 60 s after the backing store is done
+    Deferred[IO, Unit].flatMap { gate =>
+      nodeWith(gated(gate)) { (_, n) =>
+        val (ref1, raw1) = block(1)
+        val (ref2, raw2) = block(2)
+        val release = gate.complete(()).void
+        (for
+          _ <- n.act(put(1, 2, 3))
+          _ <- n.act(recovered =>
+            typed(recovered.persistence.extended(ref1, raw1, Vector.empty, Anchor(None, 0)))
+          )
+          _ <- n.act(recovered =>
+            typed(
+              recovered.persistence.extended(ref2, raw2, Vector(ref1, ref2), Anchor(Some(ref2), 2))
+            )
+          )
+          // the copy is done and the backing store is at work: 7 s pass
+          _ <- n.advance(7.seconds)
+          _ <- release *> n.tick
+          _ <- n.advance(53.seconds - 1.nanosecond)
+          early <- n.hashes
+          _ <- n.advance(1.nanosecond)
+          due <- n.hashes
+        yield
+          assertEquals(early, hashesOf(1, 2, 3), "nothing is collected before 60 s")
+          assertEquals(due, hashesOf(2, 3), "block 1's file at 60 s, 60 s after the copy")
+        ).guarantee(release)
+      }
     }
   }
 

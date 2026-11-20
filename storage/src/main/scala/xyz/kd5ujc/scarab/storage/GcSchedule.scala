@@ -5,19 +5,24 @@ import cats.effect.{Clock, Temporal}
 import cats.syntax.all.*
 import fs2.concurrent.SignallingRef
 import scala.concurrent.duration.*
+import scala.util.control.NonFatal
 
 /** When the received log is collected, as the reference's ChainDB schedules the collection of its
   * VolatileDB (`GcSchedule`, `scheduleGC`, `computeTimeForGC`, `roundUpToInterval` and
   * `gcScheduleRunner`, `Storage/ChainDB/Impl/Background.hs` 466-652, ouroboros-consensus 82ecba329;
   * 476-662 at 808e40054). Each copy of blocks to the immutable store schedules a collection for the
   * slot of the immutable tip ([[schedule]]), at the monotonic time now plus the delay, rounded up
-  * to the interval. A schedule for the same time as the last one queued replaces it, so at most one
-  * collection runs in an interval, of the newest slot scheduled for it; the queue holds at most
-  * ⌈delay / interval⌉ + 1 entries. The runner ([[run]]) waits for the time of the oldest entry,
-  * takes it off the queue and collects its slot. Nothing of the schedule is kept on disk: after a
-  * restart, the collection the next copy schedules covers the earlier ones, since a collection
-  * takes every file below its slot (`copyToImmutableDBRunner`'s comment, `Background.hs` 253-256;
-  * 254-257 at 808e40054).
+  * to the interval. A schedule for the same time as the last one queued replaces it: the entries
+  * are coalesced by their time, one to an interval, of the newest slot scheduled for it. The runner
+  * ([[run]]) waits for the time of the oldest entry, takes it off the queue and collects its slot,
+  * one collection at a time. The aim, in the reference's words a goal "when possible", is at most
+  * one collection an interval (`Background.hs` 486-492): while each collection ends before the next
+  * entry's time, the queue holds at most ⌈delay / interval⌉ + 1 entries and the collections are an
+  * interval apart or more. A collection that runs longer delays the ones after it: the entries that
+  * fall due meanwhile stay queued, one to an interval, and run back to back once it ends. Nothing
+  * of the schedule is kept on disk: after a restart, the collection the next copy schedules covers
+  * the earlier ones, since a collection takes every file below its slot
+  * (`copyToImmutableDBRunner`'s comment, `Background.hs` 253-256; 254-257 at 808e40054).
   */
 trait GcSchedule[F[_]]:
   /** Schedule a collection for `slot`, the immutable tip's after a copy. */
@@ -27,9 +32,11 @@ trait GcSchedule[F[_]]:
   def pending: F[Vector[GcSchedule.Scheduled]]
 
   /** Run each scheduled collection at its time, one at a time and in order, until one fails: its
-    * failure is the result. Only this runner takes entries off the queue.
+    * failure is the result. An exception anywhere in the runner, while it waits for an entry's time
+    * or while it collects, ends it too, with `defect` of the exception as the result, so the runner
+    * always ends with a value. Only this runner takes entries off the queue.
     */
-  def run[E](collect: BigInt => F[Either[E, Unit]]): F[E]
+  def run[E](collect: BigInt => F[Either[E, Unit]], defect: Throwable => E): F[E]
 
 object GcSchedule:
   /** A collection of the blocks below `slot`, due at monotonic time `at`. */
@@ -99,6 +106,9 @@ object GcSchedule:
               .map(_.flatten.toRight(()))
           )
 
-        def run[E](collect: BigInt => F[Either[E, Unit]]): F[E] =
-          F.tailRecM(())(_ => due.flatMap(collect).map(_.swap))
+        def run[E](collect: BigInt => F[Either[E, Unit]], defect: Throwable => E): F[E] =
+          F.tailRecM(())(_ => due.flatMap(collect).map(_.swap)).handleErrorWith {
+            case NonFatal(cause) => F.pure(defect(cause))
+            case fatal           => F.raiseError(fatal)
+          }
     }

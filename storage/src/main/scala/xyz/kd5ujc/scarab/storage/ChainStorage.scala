@@ -11,7 +11,6 @@ import cats.syntax.all.*
 import fs2.concurrent.SignallingRef
 import fs2.io.file.Path
 import java.nio.file.Files
-import scala.util.control.NonFatal
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.ChainSync
 import xyz.kd5ujc.scarab.consensus.{
@@ -511,8 +510,12 @@ object ChainStorage:
       // Released before the stores: a graceful stop leaves a snapshot at the immutable tip.
       _ <- Resource.onFinalize(persistence.shutdownSnapshot)
       // the received log's collections, run on their schedule until one fails: the failure is
-      // raised by the next block the persistence stores, in the follower's own fiber
-      _ <- collections.run(collected(store, received)).flatMap(stopped.complete(_).void).background
+      // raised by the next block the persistence stores, in the follower's own fiber. Whatever ends
+      // the runner, a collection's failure or an exception anywhere in it, ends it with a value
+      _ <- collections
+        .run(collected(store, received), CollectionStopped.Defect(_))
+        .flatMap(stopped.complete(_).void)
+        .background
       end <- Resource.eval(store.tip)
       _ <- Resource.eval(events.emit(StorageEvent.ReplayStarted(start._1, end)))
       began <- Resource.eval(Clock[F].monotonic)
@@ -643,8 +646,8 @@ object ChainStorage:
       _ <- events.emit(StorageEvent.VolatileResumed(resumed.size, dropped, (done - began).toMillis))
     yield resumed
 
-  /** Why the received log's collections stopped: a collection failed with a storage error, or with
-    * an exception that is not ours.
+  /** Why the received log's collections stopped: a collection failed with a storage error, or the
+    * runner, waiting for a collection's time or running one, with an exception that is not ours.
     */
   enum CollectionStopped:
     case Failed(error: StorageError)
@@ -659,18 +662,13 @@ object ChainStorage:
   private def collected[F[_]: Async](store: ImmutableStore[F], received: ReceivedBlocks[F])(
       slot: BigInt
   ): F[Either[CollectionStopped, Unit]] =
-    Async[F]
-      .defer(
-        Handle
-          .allow[StorageError](
-            (store.sync *> received.collect(slot)).map(_.asRight[CollectionStopped])
-          )
-          .rescue(e => Async[F].pure(CollectionStopped.Failed(e).asLeft[Unit]))
-      )
-      .handleErrorWith {
-        case NonFatal(cause) => Async[F].pure(CollectionStopped.Defect(cause).asLeft[Unit])
-        case fatal           => Async[F].raiseError(fatal)
-      }
+    Async[F].defer(
+      Handle
+        .allow[StorageError](
+          (store.sync *> received.collect(slot)).map(_.asRight[CollectionStopped])
+        )
+        .rescue(e => Async[F].pure(CollectionStopped.Failed(e).asLeft[Unit]))
+    )
 
   /** Re-apply the stored blocks after `from`, with no network. */
   private def replay[F[_]: Async, S](
@@ -796,12 +794,14 @@ object ChainStorage:
                   .raise[F, Unit]
               )
               _ <- batch.traverse_((r, b) => store.append(r, b))
+              // the copy is done: the received log is collected below the new immutable tip on the
+              // reference's schedule, timed from now, before the backing store and the selected-chain
+              // log are brought forward, as the reference's copy runner schedules its collection
+              // once the copy returns and leaves the ledger's work to another thread
+              // (`copyToImmutableDBRunner`, `Background.hs` 257-296, ouroboros-consensus 82ecba329)
+              _ <- anchor.block.traverse_(tip => collections.schedule(tip.slot))
               _ <- anchor.block.traverse_(advanced(_, anchor.state))
               _ <- collect(batch.size, anchor.block)
-              // the copy is done: the received log is collected below the new immutable tip on the
-              // reference's schedule (`copyToImmutableDBRunner`, `Background.hs` 257-296,
-              // ouroboros-consensus 82ecba329)
-              _ <- anchor.block.traverse_(tip => collections.schedule(tip.slot))
             yield ()
           }
       }
