@@ -19,34 +19,57 @@ points to FMT-1 (docs/design-rules.md). The surface is:
 - `format_sources`: a code digest of each source that is nothing but persisted-format code: the readers and writers
   of the snapshot versions (`SnapshotV<n>.scala`), the sidecar schema, the checkpoint binding and its digest, the
   snapshot migration, the generic migration and atomic replacement, the storage codec and its instances, the
-  network identity record and its file;
+  network identity record and its file, and the codecs of the Haskell ledger state that a V10 snapshot's body holds
+  (`HASKELL_STATE_SOURCES`, in `haskell/state`: the codec traits from `VocabularyCodecs` to `LedgerFileCodecs`, the
+  objects they write with, `Envelope`, `Wire`, `Record`, `Params`, `ConwayCodecs` and `NodeOrders`, and the choice of
+  those codecs by layout, `HaskellStateCodecs`, `HaskellLedgerFile`, `HaskellState`, `ReferenceLayout` and
+  `ProposalsReading`), with the CBOR writer and the codec base they write through (`RUNTIME_SOURCES`,
+  `models.runtime`'s `Writer` and `Codec`). The state codecs also write node-to-client answers and a Haskell node's
+  `state` file for import and export, and the writer and the codec base write every codec of the models runtime; an
+  edit made for those is a storage format change too;
 - `format_members`: a code digest of each persisted-format definition in a file that also holds other code: the
   UTxO store's key and value coding (`UtxoStore.Coding`), the memory store's `utxo.bin` (`MemoryUtxoStore`'s
   `checkpoint` and `restore`), the RocksDB store's stamp key, its writes and stamp read and its companion (key
   layouts and their conversion), the immutable store's index and `format` file (`FileImmutableStore`'s magic,
   sizes, entry codec and migrations), the volatile log's records (`VolatileRecord`, `VolatileStore`'s sizes,
   kinds, flags, codec and file names), the snapshot file's checksum and name (`FileLedgerSnapshots`) and the
-  checkpoint directory's name (`StateBacking.stem`). A definition is its header line and what follows while a
-  bracket it opened is open or the lines are indented under it;
+  checkpoint directory's name (`StateBacking.stem`), and the definitions of other packages on the write and read
+  path of a V10 snapshot's Haskell state: the pool relays' reading and writing (`object PoolRelays`, the octets of
+  a relay's addresses, its port), the conversions of a pool's future parameters both ways (`Convert`) and the
+  reading of their metadata at the state's decoder version (`PoolMetadata.read`, `PoolParams.metadataAt` and the
+  URL's limit, the `CborRead` and `ByteStrings` readers they use, the hashes' sizes and the margin's bound), the
+  keys and readers of a stored parameter update (`ConwayParam`, `ConwayParamUpdate.decodeStored`), the orders its
+  maps and sets are written in (`Sorted`, the hash, coin, credential, `DRep`, `WithOrigin`, `Word64`, `Ptr` and
+  `Voter` orders, `Bytes.compareTo`), the era indices (`enum Era`), the layout of each reference build
+  (`StateLayout.of`) and the CBOR decoder the body is read with (`Cbor`'s limits and decoder, the `Document` an
+  item's value is read from). A definition is its header line and what follows while a bracket it opened is open or
+  the lines are indented under it;
 - `frozen_schemas`: a code digest of each frozen schema (`SnapshotSidecarV<n>.scala`, `Frozen*.scala`);
-- `goldens`: for `CodecSuite`, `FormatGoldenSuite` and `SnapshotGoldenSuite`, every string literal (the golden
-  bytes, fingerprints, magics and file hashes, and the test names) and a code digest;
+- `goldens`: for `CodecSuite`, `FormatGoldenSuite`, `SnapshotGoldenSuite`, and `V10BodyGoldenSuite` with its cases
+  (`V10BodyCases`), every string literal (the golden bytes, fingerprints, magics and file hashes, and the test
+  names) and a code digest;
 - `previous_version_suites`: a code digest of each suite that reads a previous version (`*Migration*Suite`,
   `NetworkIdentity*Suite` in the storage test packages);
 - `fixtures`: the SHA-256 of every file under `fixtures/snapshot-*` and `fixtures/network-identity-*` but their
-  Markdown (the READMEs that record provenance).
+  Markdown (the READMEs that record provenance), the golden V10 bodies of `fixtures/snapshot-v10-bodies` among
+  them.
 
-A code digest is of the source without its comments, with trailing white space and empty lines dropped outside
-string literals; literals and indentation are kept as written, so a comment edit does not fire and a change of
-meaning does. A
-missing anchor (a file, a definition, a parse that finds nothing) is a STORAGE FORMAT CHANGE too, never a smaller
-surface. Whatever the surface is, the snapshot kind must stay readable from V8 with a registered migration path
-from V8 to its current version: deployed stores are V8 (FMT-1).
+A code digest is of the source without its comments, each removed at the token boundary it stands on (`lex`), with
+trailing white space and empty lines dropped outside string literals; literals, indentation and the separation of
+tokens are kept as written, so a comment edit, inline or on a line of its own, does not fire and a change of meaning
+does. A missing anchor (a file, a definition, a parse that finds nothing) is a STORAGE FORMAT CHANGE too, never a
+smaller surface. Whatever the surface is, the snapshot kind must stay readable from V8 with a registered migration
+path from V8 to its current version: deployed stores are V8 (FMT-1).
 
 The guard does not see a persisted byte that none of these pins: a layout written inline in the rest of a file it
 reads in part (the immutable store's chunk and index file names in its `open` and preflight code, the RocksDB
-options in the store's class), or an encoding defined in a file not listed here. Its docstring is the list of what
-it sees.
+options in the store's class), or an encoding defined in a file not listed here. Of the Haskell state, it does not
+see the codecs no V10 snapshot reaches (`UtxoCodecs`, `DijkstraCodecs`, the tables, `meta` file and checksum of a
+Haskell node's snapshot directory, the ancillary manifest), the definitions of other packages it does not list
+(the decoders the state codecs use for transactions and node-to-client answers, a script's kind and its tag, the
+ledger's types themselves) and the reference build's name in a V10 header (`ReferenceBuild`). The golden V10 bodies
+of `fixtures/snapshot-v10-bodies`, which `fixtures` pins and `V10BodyGoldenSuite` reads and writes again, catch a
+change of those bytes from code no definition here holds. Its docstring is the list of what it sees.
 
 The manifest holds the surface and the record of the approval that admitted it. Its `approval` entry holds
 `question`, `asked_at`, `decision` and `decided_at` (UTC ISO 8601 with seconds and `Z`, decided after asked, not
@@ -93,6 +116,8 @@ GOLDEN_SUITES = (
     'node/src/test/scala/xyz/kd5ujc/scarab/storage/CodecSuite.scala',
     'storage/src/test/scala/xyz/kd5ujc/scarab/storage/FormatGoldenSuite.scala',
     'node/src/test/scala/xyz/kd5ujc/scarab/storage/SnapshotGoldenSuite.scala',
+    'storage/src/test/scala/xyz/kd5ujc/scarab/storage/V10BodyGoldenSuite.scala',
+    'storage/src/test/scala/xyz/kd5ujc/scarab/storage/V10BodyCases.scala',
 )
 STORAGE_TESTS = ('node/src/test/scala/xyz/kd5ujc/scarab/storage', 'storage/src/test/scala/xyz/kd5ujc/scarab/storage')
 PREVIOUS_VERSION_SUITE = re.compile(r'(?:\w*Migration\w*|NetworkIdentity\w*)Suite\.scala')
@@ -110,6 +135,26 @@ FORMAT_SOURCES = (
     f'{STORAGE_MAIN}/NodeCodecs.scala',
     f'{STORAGE_MAIN}/ProductFields.scala',
 )
+HASKELL_STATE = f'{STORAGE_MAIN}/haskell/state'
+# The codecs of the Haskell ledger state that a V10 snapshot's body holds (`SnapshotV5.parts` and `decodeBody`, through
+# `ReferenceLayout`), and nothing else: the files of `haskell/state` that no snapshot reaches are not here. Added under
+# the owner's approval of 2026-11-20 (asked 03:23:52Z, answered 03:23:56Z).
+HASKELL_STATE_SOURCES = tuple(f'{HASKELL_STATE}/{name}.scala' for name in (
+    'ReferenceLayout', 'HaskellLedgerFile', 'HaskellState', 'HaskellStateCodecs', 'ProposalsReading',
+    'LedgerFileCodecs', 'ConsensusCodecs', 'EpochStateCodecs', 'RewardCodecs', 'SnapshotCodecs', 'GovStateCodecs',
+    'CertStateCodecs', 'NodeTypeCodecs', 'VocabularyCodecs',
+    'Envelope', 'Wire', 'Record', 'Params', 'ConwayCodecs', 'NodeOrders',
+))
+# The CBOR writer and the codec base of the models runtime, which every one of those codecs writes through (the same
+# approval).
+MODELS_RUNTIME = 'models/src/main/scala/xyz/kd5ujc/scarab/models/runtime'
+RUNTIME_SOURCES = (f'{MODELS_RUNTIME}/Writer.scala', f'{MODELS_RUNTIME}/Codec.scala')
+LEDGER_MAIN = 'ledger/src/main/scala/xyz/kd5ujc/scarab/ledger'
+LEDGER_STATE = f'{LEDGER_MAIN}/state'
+PROTOCOL_MAIN = 'protocol/src/main/scala/xyz/kd5ujc/scarab/protocol'
+CODEC_MAIN = 'codec/src/main/scala/xyz/kd5ujc/scarab/codec'
+POOL_RELAYS = f'{LEDGER_MAIN}/PoolRelays.scala'
+CONWAY_PARAM_UPDATE = f'{LEDGER_MAIN}/ConwayParamUpdate.scala'
 # The persisted-format definitions in files that also hold other code: (name, file, enclosing definition or None,
 # the definition), each a header the code holds once; a definition is its header line and the lines indented under it.
 FORMAT_MEMBERS = (
@@ -144,7 +189,73 @@ FORMAT_MEMBERS = (
     ('StateBacking.stem', f'{STORAGE_MAIN}/StateBacking.scala', r'object StateBacking:', r'def stem\('),
     ('StateBacking.Stem', f'{STORAGE_MAIN}/StateBacking.scala', r'object StateBacking:', r'private val Stem\b'),
     ('StateBacking.isStem', f'{STORAGE_MAIN}/StateBacking.scala', r'object StateBacking:', r'def isStem\('),
+    # The definitions of other packages on the V10 body's write and read path (2026-11-20): what the Haskell state
+    # codecs call to write or read its bytes, and the orders its maps and sets are written in.
+    # The relays of a pool, which `ConwayCodecs.poolRelays` reads (`decodeState`) and writes again (`encode`).
+    ('object PoolRelays', POOL_RELAYS, None, r'object PoolRelays:'),
+    ('Ipv4', POOL_RELAYS, None, r'final case class Ipv4\b'),
+    ('Ipv6', POOL_RELAYS, None, r'final case class Ipv6\b'),
+    ('object Ipv6', POOL_RELAYS, None, r'object Ipv6:'),
+    ('RelayIp.be', POOL_RELAYS, r'object RelayIp:', r'private\[ledger\] def be\('),
+    ('RelayIp.fromOctets', POOL_RELAYS, r'object RelayIp:', r'def fromOctets\('),
+    ('RelayPort', POOL_RELAYS, None, r'object RelayPort:'),
+    # the future parameters of a pool, written as the node's `PoolParams` and read back from them: the conversions,
+    # the reading of their metadata at the state's decoder version (the URL's limit) and of the hashes' sizes
+    *(('Convert.' + name, f'{LEDGER_MAIN}/rules/Convert.scala', r'object Convert:', header)
+      for name, header in (('poolParamsBack', r'def poolParamsBack\('),
+                           ('rewardAccountBack', r'def rewardAccountBack\('),
+                           ('stakePoolParams', r'def stakePoolParams\('), ('keyHash', r'def keyHash\['),
+                           ('credential', r'def credential\['), ('back', r'def back\['),
+                           ('accountAddress', r'def accountAddress\('))),
+    ('PoolMetadata.read', f'{LEDGER_STATE}/StakePool.scala', r'object PoolMetadata:', r'def read\('),
+    *(('PoolParams.' + name, f'{LEDGER_MAIN}/Tx.scala', r'object PoolParams:', header)
+      for name, header in (('metadataAt', r'private\[ledger\] def metadataAt\('), ('urlAt', r'private def urlAt\('),
+                           ('metadata', r'private def metadata\('))),
+    *(('CborRead.' + name, f'{LEDGER_MAIN}/CborRead.scala', r'private\[ledger\] object CborRead:', header)
+      for name, header in (('decode', r'def decode\('), ('bytes', r'def bytes\('), ('indefinite', r'def indefinite\('),
+                           ('text', r'def text\('), ('arrayN', r'def arrayN\('))),
+    ('ByteStrings.of', f'{LEDGER_MAIN}/ByteStrings.scala', r'object ByteStrings:', r'def of\('),
+    ('checked', f'{LEDGER_STATE}/Vocabulary.scala', None, r'private def checked\('),
+    ('UnitInterval.boundRational', f'{LEDGER_STATE}/Vocabulary.scala', r'object UnitInterval:',
+     r'def boundRational\('),
+    # a stored parameter update: its keys, the reading of each value (indefinite `Prices` and `ExUnits` among them)
+    ('enum ConwayParam', CONWAY_PARAM_UPDATE, None, r'enum ConwayParam\('),
+    ('object ConwayParam', CONWAY_PARAM_UPDATE, None, r'object ConwayParam:'),
+    *(('ConwayParamUpdate.' + name, CONWAY_PARAM_UPDATE, r'object ConwayParamUpdate:', header)
+      for name, header in (('decodeStored', r'def decodeStored\('), ('read', r'private def read\('),
+                           ('fromEncoded', r'def fromEncoded\('), ('add', r'extension \(u: ConwayParamUpdate\)'))),
+    # the orders the maps and sets of the state are written in
+    *(('Sorted.' + name, f'{LEDGER_STATE}/Shared.scala', r'object Sorted:', header)
+      for name, header in (('orderingOf', r'private def orderingOf\['), ('map', r'def map\['), ('set', r'def set\['))),
+    ('SortOrder', f'{LEDGER_STATE}/Shared.scala', None, r'abstract class SortOrder\['),
+    ('Order[Ptr]', f'{LEDGER_STATE}/Shared.scala', None, r'given Order\[Ptr\]'),
+    ('hashOrder', f'{LEDGER_STATE}/Vocabulary.scala', None, r'private val hashOrder\b'),
+    ('bigOrder', f'{LEDGER_STATE}/Vocabulary.scala', None, r'private val bigOrder\b'),
+    ('Credential.CredentialOrder', f'{LEDGER_STATE}/Vocabulary.scala', r'object Credential:',
+     r'private final class CredentialOrder\['),
+    ('Order[DRep]', f'{LEDGER_STATE}/Vocabulary.scala', r'object DRep:', r'given Order\[DRep\]'),
+    ('Order[WithOrigin]', f'{LEDGER_STATE}/Vocabulary.scala', r'object WithOrigin:', r'given \[A: Order\]: Order\['),
+    ('Word64.order', f'{LEDGER_STATE}/Word64.scala', r'object Word64:', r'val order\b'),
+    ('Ordering[Ptr]', f'{LEDGER_MAIN}/Address.scala', r'object Ptr:', r'given Ordering\[Ptr\]'),
+    ('Ordering[Credential]', f'{LEDGER_MAIN}/Address.scala', r'object Credential:', r'given Ordering\[Credential\]'),
+    ('Voter.order', f'{LEDGER_MAIN}/Governance.scala', r'object Voter:', r'given order\b'),
+    ('Voter.credential', f'{LEDGER_MAIN}/Governance.scala', r'object Voter:', r'private def credential\('),
+    ('Bytes.compareTo', 'codec/src/main/scala/xyz/kd5ujc/scarab/codec/Bytes.scala', r'final class Bytes private\b',
+     r'def compareTo\('),
+    # the era indices of the telescope and the tip, and the layout each reference build writes
+    ('enum Era', f'{PROTOCOL_MAIN}/Era.scala', None, r'enum Era\('),
+    ('enum StateLayout', f'{PROTOCOL_MAIN}/StateLayout.scala', None, r'enum StateLayout\b'),
+    ('StateLayout.of', f'{PROTOCOL_MAIN}/StateLayout.scala', r'object StateLayout:', r'def of\('),
+    # the CBOR decoder the body is read with: its limits (floats, simple values) and what it accepts, indefinite
+    # lengths among them, and the reading of an item's value
+    *(('Cbor.' + name, f'{CODEC_MAIN}/Cbor.scala', r'object Cbor:', header)
+      for name, header in (('Limits', r'final case class Limits\('),
+                           ('decode', r'def decode\(bytes: Bytes, limits: Limits = '),
+                           ('decoded', r'private def decoded\('), ('Decoder', r'private final class Decoder\('))),
+    ('Document', f'{CODEC_MAIN}/Document.scala', None, r'private\[codec\] final class Document\('),
 )
+# The files outside the storage module that hold pinned definitions: a storage format change may touch them.
+MEMBER_FILES_ELSEWHERE = tuple(sorted({path for _, path, _, _ in FORMAT_MEMBERS if not path.startswith('storage/')}))
 FIXTURE_DIRS = ('fixtures/snapshot-*', 'fixtures/network-identity-*')
 MAGIC = re.compile(r'(?:SCRB|CSL)[A-Z0-9]{4,5}')
 DEPLOYED = 'V8'
@@ -162,6 +273,9 @@ OWNER_NAMED_PATHS = (
     REGISTRY,
     'ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/NetworkIdentity.scala',
     f'{STORAGE_MAIN}/*.scala',
+    *HASKELL_STATE_SOURCES,
+    *RUNTIME_SOURCES,
+    *MEMBER_FILES_ELSEWHERE,
     'storage/src/test/scala/xyz/kd5ujc/scarab/storage/*.scala',
     'node/src/test/scala/xyz/kd5ujc/scarab/storage/*.scala',
     'node/src/test/scala/xyz/kd5ujc/scarab/node/NativeSnapshots.scala',
@@ -193,11 +307,13 @@ REQUIRED_BY_OTHER_GATES = (
 FORMAT_CHANGE_PATHS = OWNER_NAMED_PATHS + REQUIRED_BY_OTHER_GATES
 # Paths one storage format change may touch beyond FORMAT_CHANGE_PATHS, by the number of its pull request: an
 # exception the owner approved for that pull request only, which no other pull request gets. The number is read
-# from the event of the policy check (`GITHUB_EVENT_PATH`), which GitHub writes and the trusted policy reads.
+# from the event of the policy check (`GITHUB_EVENT_PATH`), which GitHub writes and the trusted policy reads. A path
+# that FORMAT_CHANGE_PATHS came to hold later is dropped from its exception: the codecs of the Haskell state
+# (`HASKELL_STATE_SOURCES`), which #1127 and #1173 touched.
 ONE_OFF_PATHS = {
     # #1127: PlutusV4 among the kinds of a stored script, V10 changed in place (#85, #54; approved
     # 2026-11-17T01:35:35Z). `ScriptKind` is declared in `Scripts.scala`, and the other files match on it
-    # exhaustively.
+    # exhaustively (`ConwayCodecs.scala`, one of them, is now on the general list).
     1127: (
         'ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/Scripts.scala',
         'ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/Phase2.scala',
@@ -205,12 +321,12 @@ ONE_OFF_PATHS = {
         'ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/babbage/BabbageTypes.scala',
         'ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/conway/ConwayTypes.scala',
         'ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/mempack/TxOutMemPack.scala',
-        'storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/ConwayCodecs.scala',
     ),
     # #1173: Praos2 among the chain-dependent states, V10 changed in place (#826; approved 2026-11-17T21:13:31Z,
     # these paths 2026-11-17T21:53:53Z). `ChainDepState` is declared in `ChainDepState.scala`; seven files match on it
-    # exhaustively, `Praos2.scala` gives its state the equality and rendering the enum derives, and the rest are the
-    # case's generator, its evidence and tests, and a sentence of `docs/leios.md` the change makes false.
+    # exhaustively (`ConsensusCodecs.scala`, one of them, is now on the general list), `Praos2.scala` gives its state
+    # the equality and rendering the enum derives, and the rest are the case's generator, its evidence and tests, and a
+    # sentence of `docs/leios.md` the change makes false.
     1173: (
         'consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/Praos.scala',
         'consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/Praos2.scala',
@@ -222,9 +338,19 @@ ONE_OFF_PATHS = {
         'node/src/main/scala/xyz/kd5ujc/scarab/node/NodeHeaderRules.scala',
         'node/src/main/scala/xyz/kd5ujc/scarab/node/ntc/QueryAnswers.scala',
         'node/src/test/scala/xyz/kd5ujc/scarab/consensus/DijkstraCrossingSuite.scala',
-        'storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/ConsensusCodecs.scala',
         'storage/src/test/scala/xyz/kd5ujc/scarab/storage/haskell/state/LeiosLayoutSuite.scala',
         'tools/src/main/scala/xyz/kd5ujc/scarab/node/HaskellScalaCompareMain.scala',
+    ),
+    # #1244: the BLS-key format change of the Leios build's future pool parameters (#54; approved
+    # 2026-11-20T04:09:53Z): its tests of the state codecs and the epoch state, the refusal it narrows, and the two
+    # documents that describe the layout. Its codec files are on the general list.
+    1244: (
+        'docs/compatibility/dijkstra.md',
+        'docs/design/haskell-snapshots.md',
+        'node/src/test/scala/xyz/kd5ujc/scarab/node/DijkstraEpochReferenceSuite.scala',
+        'protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/DijkstraNotYet.scala',
+        'storage/src/test/scala/xyz/kd5ujc/scarab/storage/haskell/state/DijkstraEpochStateSuite.scala',
+        'storage/src/test/scala/xyz/kd5ujc/scarab/storage/haskell/state/FuturePoolParamsCodecSuite.scala',
     ),
 }
 # A pull request that changes one of these is a storage format change (scripts/pr_policy.py): the manifest, and the
@@ -404,9 +530,20 @@ def expression_end(source: str, i: int) -> int:
     return n
 
 
+SPACE = ' \t'
+# Characters next to which a removed comment leaves no space: white space and the delimiters, beside which no two
+# tokens fuse.
+DELIMITERS = SPACE + '\n()[]{},;.'
+
+
 def lex(source: str) -> list[tuple[str, str]]:
-    """`source` as code and literal pieces, comments removed (a comment becomes a space, and keeps its line breaks):
-    (`code`, text) and (`literal`, the string or character literal as written, quotes included)."""
+    """`source` as code and literal pieces, comments removed: (`code`, text) and (`literal`, the string or character
+    literal as written, quotes included). A comment is removed at the token boundary it stands on, so that the code
+    reads as it would without it: it leaves a space only between two tokens that would otherwise fuse (`a/**/b` is
+    `a b`); the white space after it goes when white space, an opening bracket or the start of a line comes before
+    it, and the white space before it when a delimiter follows it, so that a comment between two tokens, or before
+    the first token of a line, leaves the spacing and the indentation the line has without it. A comment that spans
+    lines is a line break, as Scala reads it: the code after it keeps its own indentation."""
     out: list[tuple[str, str]] = []
     i, n, start = 0, len(source), 0
 
@@ -414,18 +551,48 @@ def lex(source: str) -> list[tuple[str, str]]:
         if j > start:
             out.append(('code', source[start:j]))
 
+    def line_so_far() -> str:
+        """The text of the line the output is on, up to here."""
+        parts = []
+        for _, text in reversed(out):
+            parts.append(text)
+            if '\n' in text:
+                break
+        return ''.join(reversed(parts)).rpartition('\n')[2]
+
+    def removed(begin: int, end: int) -> int:
+        """Replace the comment from `begin` to `end` and return where the code goes on."""
+        if '\n' in source[begin:end]:
+            # a line break in a comment still ends the line: the comment is one, and what follows keeps its indentation
+            out.append(('code', '\n'))
+            return end
+        line = line_so_far()
+        before = line[-1] if line else '\n'
+        after = source[end] if end < n else '\n'
+        if before in SPACE + '\n' or before in '([{':
+            if not line.strip(SPACE) or after in SPACE or before in '([{':
+                # indentation, white space on both sides or an opening bracket before: the white space after the
+                # comment goes
+                while end < n and source[end] in SPACE:
+                    end += 1
+            elif after in DELIMITERS:
+                # white space between a token and a delimiter: the white space before the comment goes
+                kind, text = out[-1]
+                out[-1] = (kind, text.rstrip(SPACE))
+        elif before not in DELIMITERS and after not in DELIMITERS:
+            out.append(('code', ' '))
+        return end
+
     while i < n:
         if source.startswith('/*', i):
             end = comment_end(source, i)
             code_to(i)
-            out.append(('code', ' ' + '\n' * source.count('\n', i, end)))
-            i = start = end
+            i = start = removed(i, end)
         elif source.startswith('//', i):
             end = source.find('\n', i)
             end = n if end < 0 else end
             code_to(i)
-            out.append(('code', ' '))
-            i = start = end
+            i = start = removed(i, end)
         elif source[i] == '"':
             interpolated = i > 0 and (source[i - 1].isalnum() or source[i - 1] == '_')
             triple = source.startswith('"""', i)
@@ -666,7 +833,8 @@ def digests_of(root: Path, directories, name: re.Pattern[str], what: str) -> dic
 
 
 def format_sources(root: Path) -> dict:
-    paths = [*FORMAT_SOURCES, *(p.relative_to(root).as_posix() for p in snapshot_readers(root).values())]
+    paths = [*FORMAT_SOURCES, *HASKELL_STATE_SOURCES, *RUNTIME_SOURCES,
+             *(p.relative_to(root).as_posix() for p in snapshot_readers(root).values())]
     return {path: code_digest(read(root, path)) for path in sorted(set(paths))}
 
 

@@ -136,6 +136,81 @@ class SurfaceTest(TreeTest):
         self.edit(fmt.MIGRATION, 'SnapshotV10.fromV9(content)', 'SnapshotV10.fromV9(content.clone())')
         self.assertLoud(self.check(), 'format_sources.' + fmt.MIGRATION)
 
+    def test_a_codec_of_the_haskell_state_a_v10_snapshot_holds_that_changes_is_a_change(self):
+        conway, ledger_file = f'{fmt.HASKELL_STATE}/ConwayCodecs.scala', f'{fmt.HASKELL_STATE}/LedgerFileCodecs.scala'
+        self.edit(conway, 'alternative(out, 2, s.kind.tag)', 'alternative(out, 2, s.kind.tag + 1)')
+        self.assertLoud(self.check(), 'format_sources.' + conway)
+        self.setUp()
+        self.edit(ledger_file, '      out.arrayHead(2)', '      out.arrayHead(3)')
+        self.assertLoud(self.check(), 'format_sources.' + ledger_file)
+        self.setUp()
+        self.edit(ledger_file, '  /** `AnnTip` of the Cardano chain', '  /** The `AnnTip` of the Cardano chain')
+        self.assertEqual(self.check(), [])
+        # an inline comment is no change either
+        self.setUp()
+        self.edit(ledger_file, '      out.arrayHead(2)', '      out.arrayHead(/* the era and its tip */ 2)')
+        self.assertEqual(self.check(), [])
+        self.setUp()
+        (self.root / conway).unlink()
+        self.assertLoud(self.check(), 'cannot be read', conway)
+        # the codecs no V10 snapshot reaches are not on the surface
+        self.assertNotIn(f'{fmt.HASKELL_STATE}/UtxoCodecs.scala', fmt.surface_paths(ROOT))
+
+    def test_the_writer_and_the_relay_encoding_the_haskell_state_writes_with_are_pinned(self):
+        writer = f'{fmt.MODELS_RUNTIME}/Writer.scala'
+        self.edit(writer, 'put(if b then 0xf5 else 0xf4)', 'put(if b then 0xf4 else 0xf5)')
+        self.assertLoud(self.check(), 'format_sources.' + writer)
+        self.setUp()
+        self.edit(fmt.POOL_RELAYS, 'private inline val LengthThreshold = 23', 'private inline val LengthThreshold = 24')
+        self.assertLoud(self.check(), 'format_members.' + fmt.POOL_RELAYS + '#object PoolRelays')
+        self.setUp()
+        self.edit(fmt.POOL_RELAYS, 'def wire: Bytes = Bytes.fromArray(Ipv6.swapWords(octets.toArray))',
+                  'def wire: Bytes = octets')
+        self.assertLoud(self.check(), 'format_members.' + fmt.POOL_RELAYS + '#Ipv6')
+        # how an address is shown is not how it is written
+        self.setUp()
+        self.edit(fmt.POOL_RELAYS, 'case None => groups.map(_.toHexString).mkString(":")',
+                  'case None => groups.map(_.toHexString).mkString("-")')
+        self.assertEqual(self.check(), [])
+
+    def test_the_definitions_of_other_packages_on_the_v10_body_path_are_pinned(self):
+        # the edits an independent review made to show that the guard did not see them (#1241)
+        convert, shared = f'{fmt.LEDGER_MAIN}/rules/Convert.scala', f'{fmt.LEDGER_STATE}/Shared.scala'
+        era, layout = f'{fmt.PROTOCOL_MAIN}/Era.scala', f'{fmt.PROTOCOL_MAIN}/StateLayout.scala'
+        cbor = f'{fmt.CODEC_MAIN}/Cbor.scala'
+        for path, old, new, key in [
+            # the relay decoder strips the dot that ends an SRV name
+            (fmt.POOL_RELAYS, 'dns(f(1), index, reading).map(PoolRelay.MultiHostName(_))',
+             'dns(f(1), index, reading).map(n => PoolRelay.MultiHostName(n.stripSuffix(".")))', '#object PoolRelays'),
+            # a pool's future pledge is written from its cost
+            (convert, '      p.pledge.value,', '      p.cost.value,', '#Convert.poolParamsBack'),
+            # a set of two or more elements is written in reverse
+            (shared, 'SortedSet.from(keys)(using orderingOf(Order[K]))',
+             'SortedSet.from(keys)(using orderingOf(Order[K]).reverse)', '#Sorted.set'),
+            # Conway's era index
+            (era, 'case Conway extends Era(6, 7)', 'case Conway extends Era(9, 7)', '#enum Era'),
+            # the decoder reads a single-precision float only when simple values are allowed too
+            (cbor, 'case 26 if limits.allowFloats => floatBits(4)',
+             'case 26 if limits.allowFloats && limits.allowSimpleValues => floatBits(4)', '#Cbor.Decoder'),
+            # a stored update is read with the transaction's stricter readers
+            (fmt.CONWAY_PARAM_UPDATE, 'read(n, ConwayParam.stored)', 'read(n, ConwayParam.decoders)',
+             '#ConwayParamUpdate.decodeStored'),
+            # a metadata URL of more than 64 bytes no longer reads at version 9 or later (#1241, confirmation review)
+            (f'{fmt.LEDGER_MAIN}/Tx.scala', 'val limit = if version.atLeast(9) then 128 else 64', 'val limit = 64',
+             '#PoolParams.urlAt'),
+            # the 11.1 build is said to write the Leios layout
+            (layout, 'case ReferenceBuild.Release11_1   => Right(Node11_1)',
+             'case ReferenceBuild.Release11_1   => Right(Leios)', '#StateLayout.of'),
+        ]:
+            with self.subTest(key=key):
+                self.setUp()
+                self.edit(path, old, new)
+                self.assertLoud(self.check(), 'format_members.' + path + key)
+        # the rest of those files is not pinned: an era's block tag reading, an address's rendering
+        self.setUp()
+        self.edit(era, 'if tag == 0 then Some(Byron)', 'if tag == 0 then Option(Byron)')
+        self.assertEqual(self.check(), [])
+
     def test_a_format_definition_in_a_mixed_file_is_pinned_and_the_rest_of_the_file_is_not(self):
         self.edit(UTXO, 'a(0) = 1', 'a(0) = 2')
         self.assertLoud(self.check(), 'format_members.' + UTXO + '#UtxoStore.Coding')
@@ -287,6 +362,28 @@ class DigestTest(unittest.TestCase):
     def test_comments_trailing_space_and_empty_lines_do_not_count(self):
         self.assertEqual(fmt.code_digest('val a = 1\n\n// note\nval b = 2   \n'),
                          fmt.code_digest('/** doc */\nval a = 1 // why\nval b = 2\n'))
+
+    def test_a_comment_is_read_as_absent_at_the_token_boundary_it_stands_on(self):
+        for with_comment, without in [
+            ('f(a, /*c*/ b)', 'f(a, b)'), ('f(a,/*c*/b)', 'f(a,b)'), ('out.arrayHead(/* x */2)', 'out.arrayHead(2)'),
+            ('out.arrayHead(2 /* x */)', 'out.arrayHead(2)'), ('a /* x */ + b', 'a + b'), ('a/*x*/ b', 'a b'),
+            ('x(1, /* a */ /* b */ 2)', 'x(1, 2)'), ('  /** a\n    * b\n    */\n  def x = 1', '  def x = 1'),
+            ('val a = 1 /* a\n b */\nval b = 2', 'val a = 1\nval b = 2'),
+            ('  /** doc */\n  def x = 1', '  def x = 1'), ('  /* a */  def x = 1', '  def x = 1'),
+            ('if c then\n  /* x */ f()\ng()', 'if c then\n  f()\ng()'),
+            ('val a = 1 // why\nval b = 2', 'val a = 1\nval b = 2'),
+        ]:
+            with self.subTest(code=with_comment):
+                self.assertEqual(fmt.code_digest(with_comment), fmt.code_digest(without))
+        # a comment that separates two tokens still does: removing it would fuse them
+        for with_comment, fused in [('a/**/b', 'ab'), ('s/**/"x"', 's"x"'), ('+/**/-', '+-'), ('1/**/2', '12'),
+                                    # a line break inside a comment still ends the line: `g` is no longer applied
+                                    ('g /* c\n */ (1)', 'g (1)'), ('foo /* a\n b */ bar', 'foo bar')]:
+            with self.subTest(code=with_comment):
+                self.assertNotEqual(fmt.code_digest(with_comment), fmt.code_digest(fused))
+        # and indentation still counts
+        self.assertNotEqual(fmt.code_digest('if c then\n  f()\n/* x */  g()'),
+                            fmt.code_digest('if c then\n  f()\n  g()'))
 
     def test_literals_and_indentation_count(self):
         self.assertNotEqual(fmt.code_digest('val a = "x y"'), fmt.code_digest('val a = "x  y"'))
