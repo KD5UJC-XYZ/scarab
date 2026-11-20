@@ -102,6 +102,32 @@ enum StorageEvent:
     */
   case ReceivedTruncated(cut: VolatileStore.Cut)
 
+  /** The files of the received-block log's directory whose names the open does not read, which it
+    * leaves alone, as the reference's VolatileDB traces `InvalidFileNames`
+    * (`Storage/VolatileDB/Impl/Types.hs` 100; `mkOpenState`, `Storage/VolatileDB/Impl/State.hs`
+    * 319-339, ouroboros-consensus 82ecba329, the same at 808e40054).
+    */
+  case ReceivedInvalidFileNames(names: Vector[String])
+
+  /** A block put in the received-block log that it holds already, and is not logged again, as the
+    * reference's VolatileDB traces `BlockAlreadyHere` (`Storage/VolatileDB/Impl/Types.hs` 98;
+    * `putBlockImpl`, `Storage/VolatileDB/Impl.hs` 387-399, ouroboros-consensus 82ecba329).
+    */
+  case ReceivedBlockAlreadyHere(hash: Bytes)
+
+  /** A collection of the received-block log scheduled for `slot`, due at monotonic time `at`, as
+    * the reference's ChainDB traces `ScheduledGC` (`Storage/ChainDB/Impl/Types.hs` 1049-1054 at
+    * ouroboros-consensus 82ecba329, 1082-1087 at 808e40054; `scheduleGC`,
+    * `Storage/ChainDB/Impl/Background.hs` 567-580).
+    */
+  case ScheduledGC(slot: BigInt, at: scala.concurrent.duration.FiniteDuration)
+
+  /** A collection of the received-block log for `slot` done, as the reference's ChainDB traces
+    * `PerformedGC` (`garbageCollectBlocks`, `Storage/ChainDB/Impl/Background.hs` 443-448,
+    * ouroboros-consensus 82ecba329).
+    */
+  case PerformedGC(slot: BigInt)
+
   /** The volatile chain was rebuilt from the log: `resumed` blocks applied on top of the immutable
     * state, `dropped` logged blocks after the immutable tip that were not (they do not apply, or
     * there were more than `k`) and will be fetched again.
@@ -433,7 +459,14 @@ object ChainStorage:
       )(
         ChainStorage.predecessorOf(config.byronEpochSlots),
         receivedCheck,
-        cut => events.emit(StorageEvent.ReceivedTruncated(cut))
+        {
+          case VolatileStore.Trace.Truncated(cut) =>
+            events.emit(StorageEvent.ReceivedTruncated(cut))
+          case VolatileStore.Trace.InvalidFileNames(names) =>
+            events.emit(StorageEvent.ReceivedInvalidFileNames(names))
+          case VolatileStore.Trace.BlockAlreadyHere(hash) =>
+            events.emit(StorageEvent.ReceivedBlockAlreadyHere(hash))
+        }
       )
       (received, recovery) = receivedOpened
       _ <- Resource.eval(events.emit(StorageEvent.ReceivedOpened(recovery.report)))
@@ -532,7 +565,7 @@ object ChainStorage:
       // raised by the next block the persistence stores, in the follower's own fiber. Whatever ends
       // the runner, a collection's failure or an exception anywhere in it, ends it with a value
       _ <- collections
-        .run(collected(store, received), CollectionStopped.Defect(_))
+        .run(collected(store, received, events), CollectionStopped.Defect(_))
         .flatMap(stopped.complete(_).void)
         .background
       end <- Resource.eval(store.tip)
@@ -681,13 +714,16 @@ object ChainStorage:
     * `Storage/ChainDB/Impl/Background.hs` 431-448, ouroboros-consensus 82ecba329; 441-458 at
     * 808e40054).
     */
-  private def collected[F[_]: Async](store: ImmutableStore[F], received: ReceivedBlocks[F])(
-      slot: BigInt
-  ): F[Either[CollectionStopped, Unit]] =
+  private def collected[F[_]: Async](
+      store: ImmutableStore[F],
+      received: ReceivedBlocks[F],
+      events: StorageEvents[F]
+  )(slot: BigInt): F[Either[CollectionStopped, Unit]] =
     Async[F].defer(
       Handle
         .allow[StorageError](
-          (store.sync *> received.collect(slot)).map(_.asRight[CollectionStopped])
+          (store.sync *> received.collect(slot) *> events.emit(StorageEvent.PerformedGC(slot)))
+            .map(_.asRight[CollectionStopped])
         )
         .rescue(e => Async[F].pure(CollectionStopped.Failed(e).asLeft[Unit]))
     )
@@ -820,8 +856,14 @@ object ChainStorage:
               // reference's schedule, timed from now, before the backing store and the selected-chain
               // log are brought forward, as the reference's copy runner schedules its collection
               // once the copy returns and leaves the ledger's work to another thread
-              // (`copyToImmutableDBRunner`, `Background.hs` 257-296, ouroboros-consensus 82ecba329)
-              _ <- anchor.block.traverse_(tip => collections.schedule(tip.slot))
+              // (`copyToImmutableDBRunner`, `Background.hs` 257-296, ouroboros-consensus 82ecba329).
+              // The copy here is of the blocks this extension ages past `k`, where the reference's
+              // runner copies the whole prefix then eligible, a Gap (#1262)
+              _ <- anchor.block.traverse_(tip =>
+                collections
+                  .schedule(tip.slot)
+                  .flatMap(entry => events.emit(StorageEvent.ScheduledGC(entry.slot, entry.at)))
+              )
               _ <- anchor.block.traverse_(advanced(_, anchor.state))
               _ <- collect(batch.size, anchor.block)
             yield ()

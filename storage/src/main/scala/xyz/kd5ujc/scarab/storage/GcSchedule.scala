@@ -25,8 +25,10 @@ import scala.util.control.NonFatal
   * 254-257 at 808e40054).
   */
 trait GcSchedule[F[_]]:
-  /** Schedule a collection for `slot`, the immutable tip's after a copy. */
-  def schedule(slot: BigInt): F[Unit]
+  /** Schedule a collection for `slot`, the immutable tip's after a copy; the entry scheduled, as
+    * the reference traces it (`ScheduledGC`).
+    */
+  def schedule(slot: BigInt): F[GcSchedule.Scheduled]
 
   /** The collections scheduled and not yet run, oldest first (the reference's `dumpGcSchedule`). */
   def pending: F[Vector[GcSchedule.Scheduled]]
@@ -86,10 +88,11 @@ object GcSchedule:
   def apply[F[_]](params: Params)(using F: Temporal[F]): F[GcSchedule[F]] =
     SignallingRef[F, Vector[Scheduled]](Vector.empty).map { queue =>
       new GcSchedule[F]:
-        def schedule(slot: BigInt): F[Unit] =
-          Clock[F].monotonic.flatMap(now =>
-            queue.update(scheduled(_, Scheduled(timeFor(params, now), slot)))
-          )
+        def schedule(slot: BigInt): F[Scheduled] =
+          Clock[F].monotonic.flatMap { now =>
+            val entry = Scheduled(timeFor(params, now), slot)
+            queue.update(scheduled(_, entry)).as(entry)
+          }
 
         def pending: F[Vector[Scheduled]] = queue.get
 

@@ -11,12 +11,12 @@ import java.nio.file.{Files as JFiles, NoSuchFileException}
 import scala.concurrent.duration.*
 import scala.jdk.CollectionConverters.*
 import scala.util.Using
-import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node as CborNode, Value}
 import xyz.kd5ujc.scarab.consensus.{Anchor, BlockRef, BlockRules}
 import xyz.kd5ujc.scarab.ledger.{Block, ChainError, NodeError, StorageError}
 import xyz.kd5ujc.scarab.network.FailsOnUncaught
 import xyz.kd5ujc.scarab.node.{NodeSetup, ReceivedBlockRecovery}
-import xyz.kd5ujc.scarab.protocol.ReferenceBuild
+import xyz.kd5ujc.scarab.protocol.{Era, ReferenceBuild}
 
 /** The received log is collected on the reference's schedule: 60 s after each copy of blocks to the
   * immutable store, rounded up to a 10 s mark, for the slot of the immutable tip
@@ -61,6 +61,42 @@ class ReceivedCollectionSuite extends FailsOnUncaught:
         if kept.lastOption.forall(_._1.slot < b._1.slot) then kept :+ b else kept
       )
 
+  private def array(node: CborNode): Vector[CborNode] = node.value match
+    case Value.Arr(items) => items
+    case other            => fail(s"expected an array, got $other")
+
+  /** A recorded Shelley block whose empty witness container is written the other way (a definite
+    * empty array for an indefinite one, or the reverse): it decodes and its header is unchanged, so
+    * the record's reference is its header's, but its body no longer hashes to what its header
+    * commits to (`BlockTransportError.WrongBodyHash`).
+    */
+  private lazy val wrongBody: (BlockRef, Bytes) =
+    JFiles
+      .readAllLines(fixtures.resolve("blocks.hex"))
+      .asScala
+      .toVector
+      .reverse
+      .filter(_.nonEmpty)
+      .map(line => Bytes.fromHex(line).fold(e => fail(e.message), identity))
+      .flatMap { raw =>
+        Block.decode(raw, epochSlots).toOption.filter(_.era == Era.Shelley).flatMap { block =>
+          val parts = array(array(Cbor.decode(raw).fold(e => fail(e.message), identity))(1))
+          val witnesses = parts(2)
+          Option.when(array(witnesses).isEmpty) {
+            val other =
+              if witnesses.original == Bytes(Vector(0x80.toByte)) then
+                Bytes(Vector(0x9f.toByte, 0xff.toByte))
+              else Bytes(Vector(0x80.toByte))
+            val header = block.header
+            BlockRef(header.slot, header.hash, header.blockNo, header.isBoundary) ->
+              (raw.take(witnesses.offset) ++ other ++
+                raw.drop(witnesses.offset + witnesses.original.size))
+          }
+        }
+      }
+      .find((ref, _) => !blocks.exists(_._1.hash == ref.hash))
+      .getOrElse(fail("no recorded Shelley block with an empty witness container"))
+
   // one block to a file of the received log, so that each block's file goes on its own
   private val config = ChainStorage.Config(
     SnapshotPolicy.EverySlots(1_000_000),
@@ -83,8 +119,13 @@ class ReceivedCollectionSuite extends FailsOnUncaught:
   private final class Node(
       control: TestControl[Unit],
       steps: Queue[IO, Step],
-      held: Ref[IO, Option[ReceivedBlocks[IO]]]
+      held: Ref[IO, Option[ReceivedBlocks[IO]]],
+      events: Ref[IO, Vector[StorageEvent]]
   ):
+    /** The collection events the storage has emitted, in order. */
+    def collections: IO[Vector[StorageEvent]] = events.get.map(_.collect {
+      case e @ (StorageEvent.ScheduledGC(_, _) | StorageEvent.PerformedGC(_)) => e
+    })
     def act(body: ChainStorage.Recovered[IO, Int] => IO[Unit]): IO[Unit] =
       steps.offer(Step.Act(body)) *> control.tick
     def restart: IO[Unit] = steps.offer(Step.Restart) *> control.tick
@@ -141,6 +182,7 @@ class ReceivedCollectionSuite extends FailsOnUncaught:
       for
         steps <- Queue.unbounded[IO, Step]
         held <- Ref.of[IO, Option[ReceivedBlocks[IO]]](None)
+        events <- Ref.of[IO, Vector[StorageEvent]](Vector.empty)
         // one start of the storage, until a restart (true) or the end (false). The snapshot the
         // stop writes goes before a restart: this suite's states are not in a snapshot format the
         // start's checks read, and the restart replays the immutable blocks instead
@@ -151,7 +193,7 @@ class ReceivedCollectionSuite extends FailsOnUncaught:
               config,
               rules,
               0,
-              _ => IO.unit,
+              event => events.update(_ :+ event),
               backing,
               _ => IO.unit
             )(ReceivedBlockRecovery.startUp(epochSlots))
@@ -160,7 +202,7 @@ class ReceivedCollectionSuite extends FailsOnUncaught:
         _ <- IO(assert(blocks.size >= 4, s"four blocks to copy, found ${blocks.size}"))
         control <- TestControl.execute(session.iterateWhile(identity).void)
         _ <- control.tick
-        n = Node(control, steps, held)
+        n = Node(control, steps, held, events)
         result <- body(dir, n).guarantee(n.stop)
         ended <- n.results
         _ <- IO(assertEquals(ended, Some(Outcome.succeeded[cats.Id, Throwable, Unit](()))))
@@ -191,10 +233,23 @@ class ReceivedCollectionSuite extends FailsOnUncaught:
         early <- n.hashes
         _ <- n.advance(1.nanosecond)
         due <- n.hashes
+        traced <- n.collections
       yield
         assertEquals(start, hashesOf(1, 2, 3))
         assertEquals(early, hashesOf(1, 2, 3), "nothing is collected before 60 s")
         assertEquals(due, hashesOf(2, 3), "block 1's file, wholly below block 2's slot, at 60 s")
+        // as the reference's ChainDB traces `ScheduledGC` for each copy and `PerformedGC` for each
+        // collection (`scheduleGC`, `garbageCollectBlocks`, `Storage/ChainDB/Impl/Background.hs`
+        // 443-448 and 567-580, ouroboros-consensus 82ecba329)
+        assertEquals(
+          traced,
+          Vector(
+            StorageEvent.ScheduledGC(block(1)._1.slot, 60.seconds),
+            StorageEvent.ScheduledGC(block(2)._1.slot, 60.seconds),
+            StorageEvent.PerformedGC(block(2)._1.slot)
+          ),
+          "each copy's schedule, then the one collection"
+        )
     }
   }
 
@@ -323,11 +378,23 @@ class ReceivedCollectionSuite extends FailsOnUncaught:
     // check of the reference Scarab's record keeps beside the block, which the reference reads
     // from the block itself. Each file is cut there and the third is read all the same, at this
     // open and the next
+    // The third file is [7 W 8], W a recorded block whose body no longer matches its header
+    // ([[wrongBody]]): it decodes, and the check finds it corrupt, as the reference's
+    // `BlockCorruptedErr`
     StorageTestKit.tempDir.use { dir =>
       val mismatched = block(2)._1 -> block(3)._2
       val undecodable = block(6)._1 -> Bytes(Vector(0xff.toByte, 0x00.toByte))
-      val written =
-        Vector(block(1), mismatched, block(4), block(5), undecodable, block(6), block(7))
+      val written = Vector(
+        block(1),
+        mismatched,
+        block(4),
+        block(5),
+        undecodable,
+        block(6),
+        block(7),
+        wrongBody,
+        block(8)
+      )
       def opened: IO[(Set[Bytes], Vector[StorageEvent])] =
         Ref.of[IO, Vector[StorageEvent]](Vector.empty).flatMap { events =>
           typed(
@@ -345,7 +412,7 @@ class ReceivedCollectionSuite extends FailsOnUncaught:
           ).product(events.get)
         }
       for
-        _ <- IO(assert(blocks.size >= 7, s"seven blocks, found ${blocks.size}"))
+        _ <- IO(assert(blocks.size >= 8, s"eight blocks, found ${blocks.size}"))
         _ <- StorageTestKit.ok(
           VolatileStore
             .open[IO](dir / "received", 3)
@@ -378,37 +445,37 @@ class ReceivedCollectionSuite extends FailsOnUncaught:
           case Vector(
                 StorageEvent.VolatileOpened(_),
                 StorageEvent.ReceivedTruncated(
-                  VolatileStore.Cut(
-                    "00000000.log",
-                    mAt,
-                    VolatileStore.CutCause.Refused(
-                      m,
-                      StorageError.Corrupt(_, _: ReceivedBlockRecovery.Problem.MetadataMismatch)
-                    )
-                  )
+                  VolatileStore.Cut("00000000.log", mAt, VolatileStore.CutCause.Corrupted(m))
                 ),
                 StorageEvent.ReceivedTruncated(
                   VolatileStore.Cut(
                     "00000001.log",
                     uAt,
-                    VolatileStore.CutCause.Refused(u, StorageError.Corrupt(_, _: ChainError))
+                    VolatileStore.CutCause.ReadFailed(
+                      VolatileStore.ReadFailure.Undecodable(StorageError.Corrupt(_, _: ChainError))
+                    )
                   )
+                ),
+                StorageEvent.ReceivedTruncated(
+                  VolatileStore.Cut("00000002.log", wAt, VolatileStore.CutCause.Corrupted(w))
                 ),
                 StorageEvent.ReceivedOpened(report)
               ) =>
             assertEquals(m, mismatched._1.hash, "the block whose header is not its record's")
             assertEquals(mAt, size(block(1)), "cut after block 1")
-            assertEquals(u, undecodable._1.hash, "the block that does not decode")
             assertEquals(uAt, size(block(5)), "cut after block 5")
+            assertEquals(w, wrongBody._1.hash, "the block whose body is not its header's")
+            assertEquals(wAt, size(block(7)), "cut after block 7")
             assertEquals(
               report,
               VolatileStore.OpenReport(
                 3,
-                3,
-                size(mismatched) + size(block(4)) + size(undecodable) + size(block(6)),
+                4,
+                size(mismatched) + size(block(4)) + size(undecodable) + size(block(6)) +
+                  size(wrongBody) + size(block(8)),
                 0
               ),
-              "three blocks in three files, and the bytes cut"
+              "three blocks in four files (the last, empty, started when the third filled), and the bytes cut"
             )
           case other =>
             fail(

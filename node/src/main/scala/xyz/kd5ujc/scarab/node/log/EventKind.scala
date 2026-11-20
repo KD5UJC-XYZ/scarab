@@ -266,6 +266,20 @@ enum EventKind(val area: Area, val severity: Severity):
     * `tracing/Ouroboros/Consensus/Tracing/ChainDB.hs` 3288).
     */
   case ReceivedTruncated extends EventKind(Area.Storage, Severity.Debug)
+
+  /** Debug, as the reference's VolatileDB traces `InvalidFileNames` and `BlockAlreadyHere`
+    * (cardano-node 11.1.3 `cardano-node/src/Cardano/Node/Tracing/Tracers/ChainDB.hs` 2713 and 2715;
+    * ouroboros-consensus 808e40054 `tracing/Ouroboros/Consensus/Tracing/ChainDB.hs` 3287 and 3289).
+    */
+  case ReceivedInvalidFileNames extends EventKind(Area.Storage, Severity.Debug)
+  case ReceivedBlockAlreadyHere extends EventKind(Area.Storage, Severity.Debug)
+
+  /** Debug, as the reference's ChainDB traces `ScheduledGC` and `PerformedGC` (cardano-node 11.1.3
+    * `cardano-node/src/Cardano/Node/Tracing/Tracers/ChainDB.hs` 1183-1184; ouroboros-consensus
+    * 808e40054 `tracing/Ouroboros/Consensus/Tracing/ChainDB.hs` 1349-1350).
+    */
+  case ScheduledGC extends EventKind(Area.Storage, Severity.Debug)
+  case PerformedGC extends EventKind(Area.Storage, Severity.Debug)
   case ReceivedBlockDiscarded extends EventKind(Area.Storage, Severity.Warning)
   case VolatileResumed extends EventKind(Area.Storage, Severity.Info)
   case NetworkRecorded extends EventKind(Area.Storage, Severity.Info)

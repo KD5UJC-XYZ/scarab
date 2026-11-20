@@ -104,13 +104,15 @@ trait ReceivedBlocks[F[_]]:
 
 object ReceivedBlocks:
   /** The start-up check of a recovered record, run on each record as the open reads it: its block
-    * decodes and its header names the record's point, the typed reason when it does not. The open
-    * cuts the record's file at the first record refused, as the reference's VolatileDB cuts a file
-    * at the first block it cannot decode (`BlockReadErr`, `parseBlockFile`,
+    * decodes and its header names the record's point, the typed reason when it does not, told apart
+    * as a block that does not decode or one that decodes and is corrupt
+    * ([[VolatileStore.Refusal]]). The open cuts the record's file at the first record refused, as
+    * the reference's VolatileDB cuts a file at the first block it cannot decode (`BlockReadErr`)
+    * or, validating, finds corrupt (`BlockCorruptedErr`) (`parseBlockFile`,
     * `Storage/VolatileDB/Impl/Parser.hs` 70-107, and `truncateError`,
     * `Storage/VolatileDB/Impl/State.hs` 412-450, ouroboros-consensus 82ecba329).
     */
-  type Check = (BlockRef, Bytes) => Either[StorageError, Unit]
+  type Check = (BlockRef, Bytes) => Either[VolatileStore.Refusal, Unit]
 
   /** The default bound of the body cache: 20,000,000 bytes.
     *
@@ -243,9 +245,10 @@ object ReceivedBlocks:
     *   body as it is logged, and to each record the open indexes.
     * @param check
     *   The start-up check of each record the open reads: the file is cut at the first one refused.
-    * @param cut
-    *   Told of each cut the open makes, just before it is made, as the reference traces each
-    *   truncation before it truncates.
+    * @param trace
+    *   Told what the log reports as it works ([[VolatileStore.Trace]]): at the open, the names it
+    *   does not read and each cut just before it is made; after it, each block put or restored that
+    *   the log holds already.
     */
   def recovering[F[_]: Async](
       dir: Path,
@@ -254,7 +257,7 @@ object ReceivedBlocks:
   )(
       predecessorOf: Bytes => Option[Predecessor],
       check: Check,
-      cut: VolatileStore.Cut => F[Unit]
+      trace: VolatileStore.Trace => F[Unit]
   )(using
       Raise[F, StorageError]
   ): Resource[F, (ReceivedBlocks[F], Recovery)] =
@@ -264,7 +267,7 @@ object ReceivedBlocks:
       // once.
       opened <- VolatileStore.openIndexWith[F, Option[Predecessor]](dir, blocksPerFile)(
         (ref, raw) => check(ref, raw).map(_ => predecessorOf(raw)),
-        cut
+        trace
       )
       (log, recovered) = opened
       index <- Resource.eval(
@@ -314,9 +317,15 @@ object ReceivedBlocks:
               }
           }
 
-        /** `ref` logged unless the index holds it; the caller holds `lock`. */
+        /** `ref` logged unless the index holds it, which is traced instead; the caller holds `lock`
+          * (`BlockAlreadyHere`, `putBlockImpl`, `Storage/VolatileDB/Impl.hs` 387-399,
+          * ouroboros-consensus 82ecba329).
+          */
         private def added(ref: BlockRef, raw: Bytes)(using Raise[F, StorageError]): F[Unit] =
-          index.get.flatMap(known => F.unlessA(known.contains(ref.hash))(stored(ref, raw)))
+          index.get.flatMap(known =>
+            if known.contains(ref.hash) then trace(VolatileStore.Trace.BlockAlreadyHere(ref.hash))
+            else stored(ref, raw)
+          )
 
         def put(ref: BlockRef, raw: Bytes)(using Raise[F, StorageError]): F[Unit] =
           lock.lock.surround(F.uncancelable(_ => added(ref, raw)))

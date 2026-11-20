@@ -254,21 +254,32 @@ object Traced:
         "offset" -> cut.offset.asJson
       )
       val fields = cut.cause match
-        case VolatileStore.CutCause.Unreadable =>
-          where :+ ("cause" -> "unreadable".asJson)
-        case VolatileStore.CutCause.Refused(hash, error) =>
+        case VolatileStore.CutCause.ReadFailed(VolatileStore.ReadFailure.Unreadable) =>
+          where ++ List("cause" -> "readFailed".asJson, "failure" -> "unreadable".asJson)
+        case VolatileStore.CutCause.ReadFailed(VolatileStore.ReadFailure.Undecodable(error)) =>
           where ++ List(
-            "cause" -> "refused".asJson,
-            "hash" -> hash.hex.asJson,
+            "cause" -> "readFailed".asJson,
+            "failure" -> "undecodable".asJson,
             "reason" -> error.message.asJson
           )
-        case VolatileStore.CutCause.Repeated(hash, heldIn) =>
+        case VolatileStore.CutCause.Corrupted(hash) =>
+          where ++ List("cause" -> "corrupted".asJson, "hash" -> hash.hex.asJson)
+        case VolatileStore.CutCause.Duplicated(hash, first, second) =>
           where ++ List(
-            "cause" -> "repeated".asJson,
+            "cause" -> "duplicated".asJson,
             "hash" -> hash.hex.asJson,
-            "heldIn" -> heldIn.asJson
+            "first" -> first.asJson,
+            "second" -> second.asJson
           )
       EventKind.ReceivedTruncated.line(fields*)
+    case StorageEvent.ReceivedInvalidFileNames(names) =>
+      EventKind.ReceivedInvalidFileNames.line("files" -> names.asJson)
+    case StorageEvent.ReceivedBlockAlreadyHere(hash) =>
+      EventKind.ReceivedBlockAlreadyHere.line("hash" -> hash.hex.asJson)
+    case StorageEvent.ScheduledGC(slot, at) =>
+      EventKind.ScheduledGC.line("slot" -> slot.asJson, "dueMillis" -> at.toMillis.asJson)
+    case StorageEvent.PerformedGC(slot) =>
+      EventKind.PerformedGC.line("slot" -> slot.asJson)
     case StorageEvent.VolatileResumed(resumed, dropped, millis) =>
       EventKind.VolatileResumed.line(
         "resumed" -> resumed.asJson,

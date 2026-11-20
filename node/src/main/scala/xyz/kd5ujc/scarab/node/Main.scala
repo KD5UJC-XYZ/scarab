@@ -737,6 +737,8 @@ object Main extends IOApp:
           StorageEvent.ReplayProgress(_, _, _) | StorageEvent.ReplayFinished(_, _, _) |
           StorageEvent.NetworkRecorded(_, _, _) | StorageEvent.VolatileOpened(_) |
           StorageEvent.ReceivedOpened(_) | StorageEvent.ReceivedTruncated(_) |
+          StorageEvent.ReceivedInvalidFileNames(_) | StorageEvent.ReceivedBlockAlreadyHere(_) |
+          StorageEvent.ScheduledGC(_, _) | StorageEvent.PerformedGC(_) |
           StorageEvent.VolatileResumed(_, _, _) | StorageEvent.ShutdownSnapshot(_, _) |
           StorageEvent.SnapshotDeleted(_) | StorageEvent.SnapshotNotDeleted(_, _) |
           StorageEvent.CheckpointNotDeleted(_, _) =>

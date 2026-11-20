@@ -50,3 +50,9 @@ enum FileNameProblem extends DomainError:
     * No number is read from it: the store is refused before any of its files changes.
     */
   case LocaleDigits(name: String)
+
+  /** `names` are the names of more than one file the store reads as file `number` (`1.log` and
+    * `00000001.log`): a store finds a file by its number, so it could not tell which of them holds
+    * what it read. The store is refused before any of its files changes.
+    */
+  case SameNumber(number: Int, names: Vector[String])

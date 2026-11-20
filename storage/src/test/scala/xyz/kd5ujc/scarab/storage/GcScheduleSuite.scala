@@ -30,7 +30,7 @@ class GcScheduleSuite extends FailsOnUncaught with ScalaCheckSuite:
   ):
     /** `slot` scheduled now, in the program. */
     def copy(slot: Int): IO[Unit] =
-      actions.offer(Some(schedule.schedule(BigInt(slot)))) *> control.tick
+      actions.offer(Some(schedule.schedule(BigInt(slot)).void)) *> control.tick
     def advance(by: FiniteDuration): IO[Unit] = forward(control, by)
     def ended: IO[Boolean] = control.results.map(_.isDefined)
 
@@ -184,11 +184,11 @@ class GcScheduleSuite extends FailsOnUncaught with ScalaCheckSuite:
       _ <- control.tick
       observed <- controlled(control, actions) {
         for
-          _ <- actions.offer(Some(schedule.schedule(BigInt(1)))) *> control.tick
+          _ <- actions.offer(Some(schedule.schedule(BigInt(1)).void)) *> control.tick
           _ <- forward(control, 20.seconds)
-          _ <- actions.offer(Some(schedule.schedule(BigInt(2)))) *> control.tick
+          _ <- actions.offer(Some(schedule.schedule(BigInt(2)).void)) *> control.tick
           _ <- forward(control, 20.seconds)
-          _ <- actions.offer(Some(schedule.schedule(BigInt(3)))) *> control.tick
+          _ <- actions.offer(Some(schedule.schedule(BigInt(3)).void)) *> control.tick
           _ <- forward(control, 200.seconds)
           result <- ended.tryGet
           attempts <- tried.get
@@ -224,9 +224,9 @@ class GcScheduleSuite extends FailsOnUncaught with ScalaCheckSuite:
       _ <- control.tick
       observed <- controlled(control, actions) {
         for
-          _ <- actions.offer(Some(schedule.schedule(BigInt(1)))) *> control.tick
+          _ <- actions.offer(Some(schedule.schedule(BigInt(1)).void)) *> control.tick
           _ <- forward(control, 20.seconds)
-          _ <- actions.offer(Some(schedule.schedule(BigInt(2)))) *> control.tick
+          _ <- actions.offer(Some(schedule.schedule(BigInt(2)).void)) *> control.tick
           _ <- forward(control, 100.seconds)
           result <- ended.tryGet
           attempts <- tried.get
@@ -288,7 +288,7 @@ class GcScheduleSuite extends FailsOnUncaught with ScalaCheckSuite:
       _ <- control.tick
       observed <- controlled(control, actions) {
         for
-          _ <- actions.offer(Some(schedule.schedule(BigInt(1)))) *> control.tick
+          _ <- actions.offer(Some(schedule.schedule(BigInt(1)).void)) *> control.tick
           _ <- forward(control, 100.seconds)
           result <- ended.tryGet
           attempts <- tried.get

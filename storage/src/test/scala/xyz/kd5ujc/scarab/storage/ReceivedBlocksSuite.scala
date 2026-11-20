@@ -656,8 +656,9 @@ class ReceivedBlocksSuite extends FailsOnUncaught:
     }
   }
 
-  test("a record longer than a checksum chunk is read whole, and so are the records after it") {
-    // a body of 1.5 MiB: its checksum is checked in two chunks before it is read
+  test("a record longer than a checksum chunk reads back, and so do the records after it") {
+    // a body of 1.5 MiB, its checksum checked in two chunks before it is read: a positive check
+    // that the chunked checksum accepts a sound record; reading the record whole would pass it too
     tempDir.use { dir =>
       ok {
         val large = block(1)._1 -> Bytes(Vector.tabulate(3 << 19)(i => (i * 7).toByte))
@@ -706,17 +707,22 @@ class ReceivedBlocksSuite extends FailsOnUncaught:
               VolatileStore.Cut(
                 "00000001.log",
                 size(bs(3)),
-                VolatileStore.CutCause.Refused(
-                  bs(4)._1.hash,
-                  StorageError.Corrupt("synthetic block", Undecodable.Body)
+                VolatileStore.CutCause.ReadFailed(
+                  VolatileStore.ReadFailure.Undecodable(
+                    StorageError.Corrupt("synthetic block", Undecodable.Body)
+                  )
                 )
               ),
               VolatileStore.Cut(
                 "00000002.log",
                 size(bs(6)),
-                VolatileStore.CutCause.Repeated(bs(0)._1.hash, "00000000.log")
+                VolatileStore.CutCause.Duplicated(bs(0)._1.hash, "00000000.log", "00000002.log")
               ),
-              VolatileStore.Cut("00000003.log", size(bs(8)), VolatileStore.CutCause.Unreadable)
+              VolatileStore.Cut(
+                "00000003.log",
+                size(bs(8)),
+                VolatileStore.CutCause.ReadFailed(VolatileStore.ReadFailure.Unreadable)
+              )
             ),
             "one cut per file, at its offset, with its cause"
           )
@@ -754,7 +760,11 @@ class ReceivedBlocksSuite extends FailsOnUncaught:
             .recovering[IO](dir, 4)(
               unread,
               decodes,
-              c => IO(JFiles.size(second)).flatMap(length => told.update(_ :+ (c -> length)))
+              {
+                case VolatileStore.Trace.Truncated(c) =>
+                  IO(JFiles.size(second)).flatMap(length => told.update(_ :+ (c -> length)))
+                case _ => IO.unit
+              }
             )
             .use((_, r) => IO.pure(r))
           toldWith <- told.get
@@ -765,15 +775,16 @@ class ReceivedBlocksSuite extends FailsOnUncaught:
             VolatileStore.Cut(
               "00000001.log",
               size(b) + size(a),
-              VolatileStore.CutCause.Refused(
-                u._1.hash,
-                StorageError.Corrupt("synthetic block", Undecodable.Body)
+              VolatileStore.CutCause.ReadFailed(
+                VolatileStore.ReadFailure.Undecodable(
+                  StorageError.Corrupt("synthetic block", Undecodable.Body)
+                )
               )
             ),
             VolatileStore.Cut(
               "00000001.log",
               size(b),
-              VolatileStore.CutCause.Repeated(a._1.hash, "00000000.log")
+              VolatileStore.CutCause.Duplicated(a._1.hash, "00000000.log", "00000001.log")
             )
           )
           assertEquals(cuts, expected, "both cuts told, the parse's first")
@@ -808,7 +819,11 @@ class ReceivedBlocksSuite extends FailsOnUncaught:
               .recovering[IO](dir, 1)(
                 unread,
                 decodes,
-                c => told.update(_ :+ c) *> IO.blocking(JFiles.deleteIfExists(second)).void
+                {
+                  case VolatileStore.Trace.Truncated(c) =>
+                    told.update(_ :+ c) *> IO.blocking(JFiles.deleteIfExists(second)).void
+                  case _ => IO.unit
+                }
               )
               .use_
           yield ()
@@ -825,7 +840,7 @@ class ReceivedBlocksSuite extends FailsOnUncaught:
             VolatileStore.Cut(
               "00000000.log",
               VolatileStore.encode(VolatileRecord.Block(block(1)._1, block(1)._2)).length.toLong,
-              VolatileStore.CutCause.Unreadable
+              VolatileStore.CutCause.ReadFailed(VolatileStore.ReadFailure.Unreadable)
             )
           ),
           "the first file's cut was told"
@@ -833,38 +848,128 @@ class ReceivedBlocksSuite extends FailsOnUncaught:
     }
   }
 
-  test("a repeat names the file it was read from when two listed names share a number") {
-    // `1.log` holding A and `00000001.log` holding B are both file number 1; `00000002.log` repeats
-    // A and `00000003.log` repeats B. Each repeat names the file its block was read from, whichever
-    // of the two names is listed first
+  test("two listed names of one file number refuse the log before any file changes") {
+    // `1.log` and `00000001.log` are both file number 1: the log finds a block's file by its
+    // number, so it could not tell them apart, and the open refuses the log as it is, as it refuses
+    // a name in a locale's digits (FileNameProblem)
+    tempDir.use { dir =>
+      val (a, b) = (block(1), block(2))
+      def record(x: (BlockRef, Bytes)) = VolatileStore.encode(VolatileRecord.Block(x._1, x._2))
+      for
+        _ <- IO {
+          JFiles.write(dir.toNioPath.resolve("1.log"), record(a))
+          JFiles.write(dir.toNioPath.resolve("00000001.log"), record(b) ++ record(b))
+        }
+        result <- attempt(ReceivedBlocks.open[IO](dir, 4)(unread, decodes).use_)
+        sizes <- IO(Vector("1.log", "00000001.log").map(n => JFiles.size(dir.toNioPath.resolve(n))))
+      yield
+        result match
+          case Left(StorageError.Corrupt(what, FileNameProblem.SameNumber(1, names))) =>
+            assertEquals(what, dir.toNioPath.toString, "the log's directory")
+            assertEquals(names, Vector("00000001.log", "1.log"), "both names")
+          case other => fail(s"the log is refused for the two names, got $other")
+        assertEquals(
+          sizes,
+          Vector(record(a).length.toLong, 2L * record(b).length),
+          "no file is changed"
+        )
+    }
+  }
+
+  test("the names the open does not read are traced first, and a held block put again too") {
+    // `notes.txt` and `x.log` are not log files: the reference traces such names
+    // (`InvalidFileNames`, `mkOpenState`, `Storage/VolatileDB/Impl/State.hs` 319-339) and a block
+    // put that it holds (`BlockAlreadyHere`, `putBlockImpl`, `Storage/VolatileDB/Impl.hs` 387-399,
+    // ouroboros-consensus 82ecba329)
+    tempDir.use { dir =>
+      ok {
+        val (a, c) = (block(1), block(3))
+        for
+          _ <- IO {
+            JFiles.write(dir.toNioPath.resolve("notes.txt"), Array[Byte](1))
+            JFiles.write(dir.toNioPath.resolve("x.log"), Array[Byte](1))
+          }
+          traced <- cats.effect.Ref.of[IO, Vector[VolatileStore.Trace]](Vector.empty)
+          _ <- ReceivedBlocks
+            .recovering[IO](dir, 4)(unread, decodes, t => traced.update(_ :+ t))
+            .use((store, _) =>
+              store.put(a._1, a._2) *> store.put(a._1, a._2) *> store.restoreSelected(a._1, a._2) *>
+                store.put(c._1, c._2)
+            )
+          seen <- traced.get
+          left <- IO(JFiles.exists(dir.toNioPath.resolve("x.log")))
+        yield
+          assertEquals(
+            seen,
+            Vector(
+              VolatileStore.Trace.InvalidFileNames(Vector("notes.txt", "x.log")),
+              VolatileStore.Trace.BlockAlreadyHere(a._1.hash),
+              VolatileStore.Trace.BlockAlreadyHere(a._1.hash)
+            ),
+            "the names first, then each put of the held block"
+          )
+          assert(left, "a file the open does not read is left alone")
+      }
+    }
+  }
+
+  test("a record whose block decodes and is corrupt cuts its file there, as BlockCorruptedErr") {
     tempDir.use { dir =>
       ok {
         val (a, b) = (block(1), block(2))
-        def record(x: (BlockRef, Bytes)) = VolatileStore.encode(VolatileRecord.Block(x._1, x._2))
+        val bad = block(3)._1 -> corrupt
         for
-          _ <- IO {
-            JFiles.write(dir.toNioPath.resolve("1.log"), record(a))
-            JFiles.write(dir.toNioPath.resolve("00000001.log"), record(b))
-            JFiles.write(dir.toNioPath.resolve("00000002.log"), record(a))
-            JFiles.write(dir.toNioPath.resolve("00000003.log"), record(b))
-          }
+          _ <- VolatileStore
+            .open[IO](dir, 4)
+            .use((log, _) => Vector(a, bad, b).traverse_((r, raw) => log.append(r, raw)))
           recovery <- ReceivedBlocks
             .recovering[IO](dir, 4)(unread, decodes, _ => IO.unit)
             .use((_, r) => IO.pure(r))
         yield assertEquals(
           recovery.cuts,
           Vector(
-            VolatileStore
-              .Cut("00000002.log", 0L, VolatileStore.CutCause.Repeated(a._1.hash, "1.log")),
             VolatileStore.Cut(
-              "00000003.log",
-              0L,
-              VolatileStore.CutCause.Repeated(b._1.hash, "00000001.log")
+              "00000000.log",
+              VolatileStore.encode(VolatileRecord.Block(a._1, a._2)).length.toLong,
+              VolatileStore.CutCause.Corrupted(bad._1.hash)
             )
           ),
-          "A is held in 1.log and B in 00000001.log"
+          "cut at the corrupt block, which is named by its hash"
         )
       }
+    }
+  }
+
+  test("the scan and the repeat walk of a file of many records run on a small stack") {
+    // STK-3: 20,000 records in one file, the last a repeat of the first, parsed and indexed on a
+    // thread of 256 KiB of stack
+    tempDir.use { dir =>
+      val records = (1 to 20000).toVector.map(block(_, 1))
+      val path = dir.toNioPath.resolve("00000000.log")
+      IO.blocking {
+        JFiles.write(
+          path,
+          (records :+ records.head)
+            .flatMap((r, raw) => VolatileStore.encode(VolatileRecord.Block(r, raw)))
+            .toArray
+        )
+      } *> IO
+        .blocking {
+          xyz.kd5ujc.scarab.ledger.PreprodDeepTx.onSmallStack {
+            scala.util.Using.resource(java.nio.channels.FileChannel.open(path)) { ch =>
+              val (parsed, _, stopped) =
+                VolatileStore.parsedBlocks(ch, 0)((_, _) => Right[VolatileStore.Refusal, Unit](()))
+              val (index, accepted, repeated) = VolatileStore.addedToIndex(Map.empty, parsed)
+              (parsed.size, stopped, index.size, accepted.size, repeated.map(_._2))
+            }
+          }
+        }
+        .map((parsed, stopped, indexed, accepted, repeated) =>
+          assertEquals(parsed, 20001, "every record parsed")
+          assertEquals(stopped, None, "to the end of the file")
+          assertEquals((indexed, accepted), (20000, 20000), "every block indexed once")
+          assertEquals(repeated, Some(records.head._1.hash), "and the repeat found")
+        )
     }
   }
 
