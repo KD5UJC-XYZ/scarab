@@ -27,7 +27,7 @@ import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.ledger.{EbAnnouncement, LeiosHeader, PeerError}
 import xyz.kd5ujc.scarab.ledger.state.{BlockIssuer, KeyHash, SlotNo, WithOrigin}
 import xyz.kd5ujc.scarab.network.FailsOnUncaught
-import xyz.kd5ujc.scarab.protocol.{EbHash, EbPoint, Era, HfcHeader, ReferenceBuild}
+import xyz.kd5ujc.scarab.protocol.{ChainSync, EbHash, EbPoint, Era, HfcHeader, ReferenceBuild}
 import xyz.kd5ujc.scarab.protocol.LeiosWord.Word64
 import xyz.kd5ujc.scarab.storage.{LeiosStoreLocks, LeiosStoreSuite, RocksLeiosStore}
 
@@ -239,18 +239,65 @@ class LeiosChainSyncSuite extends FailsOnUncaught:
       }
   }
 
+  /** A point at `slot` of a chain the notable headers are not on. */
+  private def elsewhere(slot: BigInt): ChainSync.Point =
+    ChainSync.Point.Block(
+      ChainSync.UInt64.saturating(slot),
+      Bytes.wrap(Array.fill(32)(0x5a.toByte))
+    )
+
+  private val jumpHeaders = Vector(
+    announcing.dijkstraView -> Some(after(certifying)),
+    certifying.dijkstraView -> Some(after(announcing))
+  )
+  private val jumpAnchor = elsewhere(announcing.slot - 1)
+
+  // `past` of `headersWithPredecessorStates` (`NodeToNode.hs` 2128-2144 at 2416493b): split after
+  // the anchor or the newest header at the accepted slot, or not at all where neither is there
+  test("a jump's fragment is split at the accepted slot, after its anchor, or kept whole") {
+    def past(through: Option[BigInt]) =
+      LeiosChainSync
+        .pastAccepted(through.map(Word64.clamped), jumpAnchor, jumpHeaders)
+        .map((h, _) => h.slot)
+    val all = Vector(announcing.slot, certifying.slot)
+    assertEquals(past(None), all)
+    assertEquals(past(Some(announcing.slot - 1)), all)
+    assertEquals(past(Some(announcing.slot)), Vector(certifying.slot))
+    assertEquals(past(Some(certifying.slot)), Vector.empty)
+    // no header and not the anchor at the accepted slot: another chain than the last jump's
+    assertEquals(past(Some(certifying.slot + 1)), all)
+    assertEquals(past(Some(announcing.slot - 2)), all)
+  }
+
+  dirs.test("a jump onto a fork without the last jump's tip slot offers its older headers") { dir =>
+    fixture(dir).use { f =>
+      for
+        // a first jump, accepted through a slot past the certifying header's on another chain
+        _ <- peer(f.handling.jumped(elsewhere(certifying.slot + 1), Vector.empty))
+        first <- f.vars.maxAcceptedJumpSlot.get
+        // then a jump onto a fork that has no header at that slot
+        second <- peer(f.handling.jumped(jumpAnchor, jumpHeaders))
+        offers <- f.vars.offerings.get
+        through <- f.vars.maxAcceptedJumpSlot.get
+      yield
+        assertEquals(first, Some(Word64.clamped(certifying.slot + 1)))
+        assertEquals(second, Right(()))
+        // the whole fragment is walked: the certifying header's offer is recorded
+        assertEquals(offers.keySet, Set(point))
+        // the accepted slot never decreases
+        assertEquals(through, first)
+    }
+  }
+
   dirs.test("an accepted jump offers what its headers past the last jump would have, once") { dir =>
     fixture(dir).use { f =>
-      val headers = Vector(
-        announcing.dijkstraView -> after(certifying),
-        certifying.dijkstraView -> after(announcing)
-      )
+      val headers = jumpHeaders
       for
-        _ <- peer(f.handling.jumped(headers))
+        _ <- peer(f.handling.jumped(jumpAnchor, headers))
         offers <- f.vars.offerings.get
         through <- f.vars.maxAcceptedJumpSlot.get
         _ <- f.vars.offerings.set(SortedMap.empty(using LeiosOrdersPoint))
-        _ <- peer(f.handling.jumped(headers))
+        _ <- peer(f.handling.jumped(jumpAnchor, headers))
         again <- f.vars.offerings.get
         outstanding <- f.shared.outstanding.get
       yield

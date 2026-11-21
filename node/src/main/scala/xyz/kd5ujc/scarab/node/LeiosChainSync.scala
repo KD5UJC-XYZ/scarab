@@ -16,8 +16,8 @@ import xyz.kd5ujc.scarab.consensus.leios.{
 }
 import xyz.kd5ujc.scarab.consensus.state.ChainDepState
 import xyz.kd5ujc.scarab.ledger.{Header, LeiosHeader, PeerError}
-import xyz.kd5ujc.scarab.protocol.Era
-import xyz.kd5ujc.scarab.protocol.LeiosWord.Word32
+import xyz.kd5ujc.scarab.protocol.{ChainSync, Era}
+import xyz.kd5ujc.scarab.protocol.LeiosWord.{Word32, Word64}
 import xyz.kd5ujc.scarab.storage.{LeiosStore, LeiosStoreError}
 
 /** What a ChainSync client of the Leios build does with the headers it accepts, for one connection:
@@ -40,12 +40,16 @@ trait LeiosChainSync[F[_]](using F: cats.Monad[F]):
       Raise[F, PeerError]
   ): F[Unit]
 
-  /** `leiosJumpAcceptedCallback` (`NodeToNode.hs` 512-526 at 2416493b): the headers of the dynamo's
-    * candidate an accepted jump carries, oldest first, each with the header state as of its
-    * predecessor; those past the newest slot this peer accepted a jump through are counted as its
-    * offers, as their roll-forwards would have been, and announce nothing.
+  /** `leiosJumpAcceptedCallback` (`NodeToNode.hs` 510-526 at 2416493b): the dynamo's candidate
+    * fragment an accepted jump offered, its `anchor` and its headers oldest first, each with the
+    * header state as of its predecessor where it is known. The headers past the newest slot this
+    * peer accepted a jump through ([[LeiosChainSync.pastAccepted]]) are counted as its offers, as
+    * their roll-forwards would have been, and announce nothing; then that slot becomes the
+    * fragment's head slot where it is newer.
     */
-  def jumped(headers: Vector[(Header, NodeHeaderState)])(using Raise[F, PeerError]): F[Unit]
+  def jumped(anchor: ChainSync.Point, headers: Vector[(Header, Option[NodeHeaderState])])(using
+      Raise[F, PeerError]
+  ): F[Unit]
 
 object LeiosChainSync:
   /** The central state of the announcements the node has counted, shared by every connection
@@ -70,13 +74,16 @@ object LeiosChainSync:
     ): F[Unit] =
       offers(header, predecessor) *> AnnouncingHeader.of(header).traverse_(announced(header, _))
 
-    def jumped(headers: Vector[(Header, NodeHeaderState)])(using Raise[F, PeerError]): F[Unit] =
+    def jumped(anchor: ChainSync.Point, headers: Vector[(Header, Option[NodeHeaderState])])(using
+        Raise[F, PeerError]
+    ): F[Unit] =
       vars.maxAcceptedJumpSlot.get.flatMap { acceptedThrough =>
-        val past = headers.filter((h, _) => acceptedThrough.forall(h.slot > _.toBigInt))
-        past.traverse_((h, predecessor) => leiosHeader(h).traverse_(offers(_, predecessor))) *>
-          headers.lastOption.traverse_((newest, _) =>
+        pastAccepted(acceptedThrough, anchor, headers)
+          .collect { case (h, Some(predecessor)) => h -> predecessor }
+          .traverse_((h, predecessor) => leiosHeader(h).traverse_(offers(_, predecessor))) *>
+          // `max (AF.headSlot (jTheirFragment jumpInfo))`, Origin below every slot
+          headSlot(anchor, headers).traverse_(slot =>
             vars.maxAcceptedJumpSlot.update(old =>
-              val slot = xyz.kd5ujc.scarab.protocol.LeiosWord.Word64.clamped(newest.slot)
               Some(old.fold(slot)(o => if o.toBigInt > slot.toBigInt then o else slot))
             )
           )
@@ -162,6 +169,38 @@ object LeiosChainSync:
         )
         .rescue(e => F.pure(e.asLeft[Unit]))
         .flatMap(_.fold(fatal, F.pure))
+
+  /** `past` of `headersWithPredecessorStates` (`NodeToNode.hs` 2128-2144 at 2416493b): the headers
+    * of a fragment from `anchor` after the slot `acceptedThrough` (none: Origin), split with
+    * `splitAfterMeasure`. The fragment is split after its anchor where the anchor is at that slot,
+    * which keeps every header, or after its newest header at that slot; where neither is, the whole
+    * fragment is kept, as a jump onto another chain than the last one's needs.
+    */
+  def pastAccepted[A](
+      acceptedThrough: Option[Word64],
+      anchor: ChainSync.Point,
+      headers: Vector[(Header, A)]
+  ): Vector[(Header, A)] =
+    val through = acceptedThrough.map(_.toBigInt)
+    if anchorSlot(anchor) == through then headers
+    else
+      through.fold(headers) { slot =>
+        val newest = headers.lastIndexWhere((h, _) => h.slot == slot)
+        if newest >= 0 then headers.drop(newest + 1) else headers
+      }
+
+  /** `AF.headSlot` of a fragment from `anchor` with `headers`: its newest header's slot, or its
+    * anchor's where it has none; none at Origin.
+    */
+  private def headSlot[A](anchor: ChainSync.Point, headers: Vector[(Header, A)]): Option[Word64] =
+    headers.lastOption
+      .map((h, _) => h.slot)
+      .orElse(anchorSlot(anchor))
+      .map(Word64.clamped)
+
+  private def anchorSlot(anchor: ChainSync.Point): Option[BigInt] = anchor match
+    case ChainSync.Point.Origin         => None
+    case ChainSync.Point.Block(slot, _) => Some(slot.value)
 
   /** The Leios header of a Dijkstra header the gate validated, which decoded it as this does; none
     * for a header of another era, which neither offers nor announces.

@@ -131,9 +131,10 @@ class GenesisHeaderGateSuite extends FailsOnUncaught:
         override def rolledForward(header: Header, predecessor: NodeHeaderState)(using
             cats.mtl.Raise[IO, xyz.kd5ujc.scarab.ledger.PeerError]
         ): IO[Unit] = seen.update(_ :+ (header.blockNo -> predecessor))
-        def jumped(batch: Vector[(Header, NodeHeaderState)])(using
-            cats.mtl.Raise[IO, xyz.kd5ujc.scarab.ledger.PeerError]
-        ): IO[Unit] = IO.unit
+        def jumped(
+            anchor: ChainSync.Point,
+            batch: Vector[(Header, Option[NodeHeaderState])]
+        )(using cats.mtl.Raise[IO, xyz.kd5ujc.scarab.ledger.PeerError]): IO[Unit] = IO.unit
       clock = new SlotClock[IO]:
         def now = IO.pure(java.time.Instant.parse("2100-01-01T00:00:00Z"))
         def geometry = IO.raiseError(new AssertionError("canonical timing reads no geometry"))

@@ -251,10 +251,11 @@ final class GenesisRuntime[F[_]: Async] private (
             case Point.Origin         => LatestSlot.Origin
             case Point.Block(slot, _) => LatestSlot.At(slot.value)) *> publish
 
-        /** `leiosJumpAcceptedCallback` (`NodeToNode.hs` 512-526 at ouroboros-consensus 2416493b):
-          * the headers of the dynamo's candidate up to the jump's tip, each with the header state
-          * as of its predecessor, handed to the Leios build's handling of this connection; a peer
-          * it charges is disconnected, as the reference's client thread dies.
+        /** `leiosJumpAcceptedCallback` (`NodeToNode.hs` 510-526 at ouroboros-consensus 2416493b):
+          * the dynamo's candidate fragment up to the jump's tip, its anchor and its headers, each
+          * with the header state as of its predecessor where it is known, handed to the Leios
+          * build's handling of this connection; a peer it charges is disconnected, as the
+          * reference's client thread dies.
           */
         def jumpAccepted(history: HeaderChain[NodeHeaderState], tip: Point): F[Unit] =
           leios.traverse_ { handling =>
@@ -262,9 +263,10 @@ final class GenesisRuntime[F[_]: Async] private (
               val headers = candidate.entries
                 .map(_.header)
                 .zip(candidate.baseState +: candidate.entries.map(_.state))
-                .collect { case (header, Some(predecessor)) => header -> predecessor }
               Handle
-                .allow[PeerError](handling.jumped(headers).map(_.asRight[PeerError]))
+                .allow[PeerError](
+                  handling.jumped(candidate.base, headers).map(_.asRight[PeerError])
+                )
                 .rescue(e => F.pure(e.asLeft[Unit]))
                 .flatMap(_.fold(e => disconnect(e) *> F.never[Unit], F.pure))
             }
@@ -279,20 +281,24 @@ final class GenesisRuntime[F[_]: Async] private (
             case Some(actual) if actual != info.tip =>
               refused(PeerError.GenesisProblem.InvalidJumpResponse(info.tip, Some(actual)))
             case _ =>
-              jumper.processJump(info, goodPoint, found.contains(info.tip)).flatMap {
-                case None => F.pure(GenesisPeer.Applied.Retained)
-                case Some(accepted) =>
-                  gate
-                    .graft(accepted.payload.history, accepted.tip, accepted.payload.selection)
-                    .flatMap {
-                      case Left(HeaderCheck.GraftError.MissingPoint(point)) =>
-                        invariant(GenesisInternalProblem.GraftMissingPoint(point))
-                      case Left(HeaderCheck.GraftError.MissingSelection(point)) =>
-                        invariant(GenesisInternalProblem.HeaderSelectionUnavailable(point))
-                      case Left(HeaderCheck.GraftError.MissingState(point)) =>
-                        invariant(GenesisInternalProblem.HeaderStateUnavailable(point))
-                      case Right(_) =>
-                        jumpAccepted(accepted.payload.history, accepted.tip) *>
+              // Client.hs:1378-1383 at ouroboros-consensus 2416493b: a jump the peer found is
+              // processed, then handed to the Leios build's handling as it was offered, whatever
+              // the jumper's role has become
+              (jumper.processJump(info, goodPoint, found.contains(info.tip)) <*
+                jumpAccepted(info.payload.history, info.tip).whenA(found.contains(info.tip)))
+                .flatMap {
+                  case None => F.pure(GenesisPeer.Applied.Retained)
+                  case Some(accepted) =>
+                    gate
+                      .graft(accepted.payload.history, accepted.tip, accepted.payload.selection)
+                      .flatMap {
+                        case Left(HeaderCheck.GraftError.MissingPoint(point)) =>
+                          invariant(GenesisInternalProblem.GraftMissingPoint(point))
+                        case Left(HeaderCheck.GraftError.MissingSelection(point)) =>
+                          invariant(GenesisInternalProblem.HeaderSelectionUnavailable(point))
+                        case Left(HeaderCheck.GraftError.MissingState(point)) =>
+                          invariant(GenesisInternalProblem.HeaderStateUnavailable(point))
+                        case Right(_) =>
                           publishedBy(gate).flatMap {
                             case None =>
                               invariant(GenesisInternalProblem.GraftMissingPoint(accepted.tip))
@@ -329,8 +335,8 @@ final class GenesisRuntime[F[_]: Async] private (
                                     )
                                   )
                           }
-                    }
-              }
+                      }
+                }
       val received: SyncEvent => F[Unit] = {
         case SyncEvent.RollForward(header, _) =>
           jumper.onRollForward(header.point) *> raw.set(LatestSlot.At(header.slot)) *> publish

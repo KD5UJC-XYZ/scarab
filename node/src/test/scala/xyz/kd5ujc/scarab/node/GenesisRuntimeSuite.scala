@@ -398,78 +398,118 @@ class GenesisRuntimeSuite extends FailsOnUncaught:
     }
   }
 
-  // #54: an accepted jump hands the Leios build's handling of the connection the headers it carries,
-  // each with the header state as of its predecessor (`leiosJumpAcceptedCallback`, ouroboros-consensus
-  // 2416493b `MiniProtocol/ChainSync/Client.hs` 1381-1382)
+  /** The header state at the base of the jumped fragment. */
+  private val jumpBase: Option[NodeHeaderState] = Some(
+    NodeHeaderState.Shelley(
+      xyz.kd5ujc.scarab.consensus.state.ProtocolState.initial(Era.Babbage, Bytes.empty),
+      None,
+      Some(BigInt(0)),
+      None
+    )
+  )
+
+  /** What the Leios handling of a jumper is handed when its jump of the first header is found: each
+    * fragment's anchor and its headers with their predecessors' states, and whether the jump was
+    * grafted. With `dynamoLeaves`, the dynamo's session ends between the jump's instruction and its
+    * reply, so the jumper is no longer a jumper when the reply comes.
+    */
+  private def handedOnJump(dynamoLeaves: Boolean): IO[
+    (Vector[(ChainSync.Point, Vector[(Header, Option[NodeHeaderState])])], Boolean)
+  ] =
+    val one = header(1)
+    val history = HeaderChain[NodeHeaderState](
+      ChainSync.Point.Origin,
+      jumpBase,
+      Vector(HeaderChain.Entry(one, None))
+    )
+    val tip = ChainSync.Tip(one.point, ChainSync.UInt64.saturating(1))
+    for
+      handed <- Ref.of[IO, Vector[(ChainSync.Point, Vector[(Header, Option[NodeHeaderState])])]](
+        Vector.empty
+      )
+      leios = new LeiosChainSync[IO]:
+        def rolledForwardLeios(
+            header: xyz.kd5ujc.scarab.ledger.LeiosHeader,
+            predecessor: NodeHeaderState
+        )(using Raise[IO, PeerError]): IO[Unit] = IO.unit
+        def jumped(
+            anchor: ChainSync.Point,
+            headers: Vector[(Header, Option[NodeHeaderState])]
+        )(using Raise[IO, PeerError]): IO[Unit] = handed.update(_ :+ (anchor -> headers))
+      installed <- Ref.of[IO, HeaderChain[NodeHeaderState]](
+        HeaderChain(ChainSync.Point.Origin, None, Vector.empty)
+      )
+      target = new HeaderGate.Grafting[IO]:
+        def accept(batch: Vector[SyncEvent])(using Raise[IO, PeerError]): IO[Unit] = IO.unit
+        def counts: IO[HeaderGate.Counts] = IO.pure(HeaderGate.Counts(0, 0, 0))
+        override def snapshot(using Applicative[IO]): IO[Option[HeaderChain[NodeHeaderState]]] =
+          installed.get.map(Some(_))
+        override def intersectionSelection(using
+            Applicative[IO]
+        ): IO[Option[ChainSelection.Local]] = IO.pure(Some(local))
+        def graft(
+            source: HeaderChain[NodeHeaderState],
+            point: ChainSync.Point,
+            @scala.annotation.unused selected: ChainSelection.Local
+        ): IO[Either[HeaderCheck.GraftError, Unit]] =
+          if source.tipPoint == point then installed.set(source).as(Right(()))
+          else IO.pure(Left(HeaderCheck.GraftError.MissingPoint(point)))
+      runtime <- setup(
+        GenesisSettings(
+          jumpSlots = 0,
+          bucketCapacity = 10,
+          bucketRate = xyz.kd5ujc.scarab.codec.Rational.one
+        )
+      )
+      grafted <- runtime
+        .session(1, ChainSync.Point.Origin, _ => IO.unit, _ => IO.unit)
+        .allocated
+        .flatMap { (first, leave) =>
+          runtime
+            .session(2, ChainSync.Point.Origin, _ => IO.unit, _ => IO.unit, None, Some(leios))
+            .use { second =>
+              for
+                _ <- runtime.governor.setPhase(Gsm.Phase.Syncing)
+                _ <- first.control.observed(gate(history), SyncEvent.RollForward(one, tip))
+                _ <- first.received(SyncEvent.RollForward(header(2), tip))
+                instruction <- second.control.next
+                _ <- leave.whenA(dynamoLeaves)
+                applied <- instruction match
+                  case ChainSyncJumping.Instruction.Jump(info, false) =>
+                    second.control.processJump(target, info, false, Some(info.tip))
+                  case other => IO(fail(s"expected ordinary jump, got $other"))
+                _ <- leave.unlessA(dynamoLeaves)
+              yield applied match
+                case GenesisPeer.Applied.Grafted(_)                             => true
+                case GenesisPeer.Applied.Retained | GenesisPeer.Applied.Restart => false
+            }
+        }
+      seen <- handed.get
+    yield (seen, grafted)
+
+  // #54: an accepted jump hands the Leios build's handling of the connection the fragment it
+  // offered, each header with the header state as of its predecessor (`leiosJumpAcceptedCallback`,
+  // ouroboros-consensus 2416493b `MiniProtocol/ChainSync/Client.hs` 1378-1383), once
   test(
     "an accepted jump hands its headers, with their predecessors' states, to the Leios handling"
   ) {
     TestControl.executeEmbed {
-      val one = header(1)
-      val before = NodeHeaderState.Shelley(
-        xyz.kd5ujc.scarab.consensus.state.ProtocolState.initial(Era.Babbage, Bytes.empty),
-        None,
-        Some(BigInt(0)),
-        None
-      )
-      val history = HeaderChain[NodeHeaderState](
-        ChainSync.Point.Origin,
-        Some(before),
-        Vector(HeaderChain.Entry(one, None))
-      )
-      val tip = ChainSync.Tip(one.point, ChainSync.UInt64.saturating(1))
-      for
-        handed <- Ref.of[IO, Vector[Vector[(Header, NodeHeaderState)]]](Vector.empty)
-        leios = new LeiosChainSync[IO]:
-          def rolledForwardLeios(
-              header: xyz.kd5ujc.scarab.ledger.LeiosHeader,
-              predecessor: NodeHeaderState
-          )(using Raise[IO, PeerError]): IO[Unit] = IO.unit
-          def jumped(headers: Vector[(Header, NodeHeaderState)])(using
-              Raise[IO, PeerError]
-          ): IO[Unit] = handed.update(_ :+ headers)
-        installed <- Ref.of[IO, HeaderChain[NodeHeaderState]](
-          HeaderChain(ChainSync.Point.Origin, None, Vector.empty)
-        )
-        target = new HeaderGate.Grafting[IO]:
-          def accept(batch: Vector[SyncEvent])(using Raise[IO, PeerError]): IO[Unit] = IO.unit
-          def counts: IO[HeaderGate.Counts] = IO.pure(HeaderGate.Counts(0, 0, 0))
-          override def snapshot(using Applicative[IO]): IO[Option[HeaderChain[NodeHeaderState]]] =
-            installed.get.map(Some(_))
-          override def intersectionSelection(using
-              Applicative[IO]
-          ): IO[Option[ChainSelection.Local]] = IO.pure(Some(local))
-          def graft(
-              source: HeaderChain[NodeHeaderState],
-              point: ChainSync.Point,
-              @scala.annotation.unused selected: ChainSelection.Local
-          ): IO[Either[HeaderCheck.GraftError, Unit]] =
-            if source.tipPoint == point then installed.set(source).as(Right(()))
-            else IO.pure(Left(HeaderCheck.GraftError.MissingPoint(point)))
-        runtime <- setup(
-          GenesisSettings(
-            jumpSlots = 0,
-            bucketCapacity = 10,
-            bucketRate = xyz.kd5ujc.scarab.codec.Rational.one
-          )
-        )
-        _ <- (
-          runtime.session(1, ChainSync.Point.Origin, _ => IO.unit, _ => IO.unit),
-          runtime.session(2, ChainSync.Point.Origin, _ => IO.unit, _ => IO.unit, None, Some(leios))
-        ).tupled.use { (first, second) =>
-          for
-            _ <- runtime.governor.setPhase(Gsm.Phase.Syncing)
-            _ <- first.control.observed(gate(history), SyncEvent.RollForward(one, tip))
-            _ <- first.received(SyncEvent.RollForward(header(2), tip))
-            instruction <- second.control.next
-            _ <- instruction match
-              case ChainSyncJumping.Instruction.Jump(info, false) =>
-                second.control.processJump(target, info, false, Some(info.tip)).void
-              case other => IO(fail(s"expected ordinary jump, got $other"))
-            seen <- handed.get
-          yield assertEquals(seen, Vector(Vector(one -> before)))
-        }
-      yield ()
+      handedOnJump(dynamoLeaves = false).map { (seen, grafted) =>
+        assert(grafted)
+        assertEquals(seen, Vector(ChainSync.Point.Origin -> Vector(header(1) -> jumpBase)))
+      }
+    }
+  }
+
+  // `recvMsgIntersectFound` calls the callback after `jgProcessJumpResult` whatever the jump result
+  // did to the peer's role (`Client.hs` 1378-1383): a jumper promoted to dynamo while its jump was
+  // in flight still hands over the offered fragment, though the jump is not grafted
+  test("a jump found after its jumper was promoted still hands its headers to the Leios handling") {
+    TestControl.executeEmbed {
+      handedOnJump(dynamoLeaves = true).map { (seen, grafted) =>
+        assert(!grafted)
+        assertEquals(seen, Vector(ChainSync.Point.Origin -> Vector(header(1) -> jumpBase)))
+      }
     }
   }
 
