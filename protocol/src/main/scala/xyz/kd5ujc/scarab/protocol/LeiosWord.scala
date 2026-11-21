@@ -28,6 +28,9 @@ object LeiosWord:
     val Max: BigInt = (BigInt(1) << 64) - 1
     def from(value: BigInt): Either[LeiosWireError, Word64] =
       checked(value, Max, LeiosField.Word64)
+
+    /** The value bounded into the word's range: a slot past every `Word64` is its greatest. */
+    def clamped(value: BigInt): Word64 = value.max(0).min(Max)
     extension (value: Word64) def toBigInt: BigInt = value
 
   private def checked(

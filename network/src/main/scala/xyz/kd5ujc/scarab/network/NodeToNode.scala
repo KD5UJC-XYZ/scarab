@@ -3,6 +3,7 @@ package xyz.kd5ujc.scarab.network
 
 import cats.{Applicative, Monad}
 import cats.effect.{Async, Ref, Resource}
+import cats.effect.syntax.all.*
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
@@ -117,6 +118,40 @@ final class WarmConnection[F[_], P, A] private[network] (
       .eval(applications.activateHot *> applications.startHot(transactions.nonEmpty))
       .flatMap(startHotProtocols(_, transactions, blockFetchEnded, peerTrust, chainSyncResult))
 
+  /** The Leios build's LeiosFetch client of this activation, its result `result`, told to stop with
+    * the other hot protocols (`aLeiosFetchClient`, `NodeToNode.hs` 1911-1935 at ouroboros-consensus
+    * 2416493b): it ends with the activation's resource, and a failure of it ends the connection as
+    * the other hot clients' do.
+    */
+  private def leiosFetchClient(
+      initiator: LeiosFetchInitiator[F],
+      result: ProtocolResults.Run[F, A]
+  )(using Async[F], Raise[F, NetworkError]): Resource[F, Unit] =
+    Resource.eval(mux.channel(Protocols.LeiosFetch, role)).flatMap { channel =>
+      val client = Fibers
+        .scoped[F, NetworkError, Unit](NetworkError.fromThrowable("leios-fetch", _))(
+          initiator.run(channel, applications.onHotStop)
+        )
+        .flatMap {
+          case Right(_) => result.complete(Right(noInitiatorResult))
+          case Left(error) =>
+            NodeToNode
+              .protocolEnd(mux, error)
+              .flatMap(cause => result.complete(Left(cause))) *> mux.abort(error)
+        }
+      // told to stop, the client is let finish: it collects its answers and sends `MsgDone`, so its
+      // result is in before the activation is gone; otherwise it ends with the activation
+      Resource
+        .make(client.start)(fiber =>
+          applications.control(ProtocolResults.Temperature.Hot).flatMap {
+            case ProtocolResults.Control.Terminate => fiber.join.void
+            case ProtocolResults.Control.Continue | ProtocolResults.Control.Quiesce =>
+              fiber.cancel
+          }
+        )
+        .void
+    }
+
   /** Start an activation whose control and result handles were installed by its status owner.
     * @param served
     *   Told the bytes of the transactions of each TxSubmission2 reply this side sends.
@@ -127,10 +162,12 @@ final class WarmConnection[F[_], P, A] private[network] (
       blockFetchEnded: Option[F[Unit]],
       peerTrust: ChainSyncTimeouts.PeerTrust,
       chainSyncResult: Option[ProtocolResults.Run[F, A] => F[Unit]],
-      served: Option[Long => F[Unit]] = None
+      served: Option[Long => F[Unit]] = None,
+      leiosFetch: Option[LeiosFetchInitiator[F]] = None
   )(using Async[F], Raise[F, NetworkError]): Resource[F, NodeToNodeConnection[F, P]] =
     for
       _ <- Resource.eval(chainSyncResult.traverse_(_(results.chainSync)))
+      _ <- (leiosFetch, results.leiosFetch).tupled.traverse_(leiosFetchClient.tupled)
       running <- (transactions, results.transactions).tupled.traverse { (source, result) =>
         TxSubmissionClient.backgroundFinishing(
           mux,
@@ -199,6 +236,8 @@ object NodeToNode:
     * @param maxVersion
     *   The highest version offered: the latest release (15, as cardano-node 11.1.3) unless the
     *   configuration enables experimental protocols (then 16, which adds the Peras flag).
+    * @param bundle
+    *   The hot mini-protocols the build adds ([[HotBundle]]), on every connection of ours.
     */
   final case class Settings(
       connectTimeout: FiniteDuration = 10.seconds,
@@ -209,7 +248,8 @@ object NodeToNode:
       keepAlive: KeepAliveClient.Settings = KeepAliveClient.Settings(),
       offerPeerSharing: Boolean = false,
       maxVersion: NtnVersion = NtnVersion.LatestReleased,
-      peerSharing: PeerSharingClient.Settings = PeerSharingClient.Settings()
+      peerSharing: PeerSharingClient.Settings = PeerSharingClient.Settings(),
+      bundle: HotBundle = HotBundle.Release
   ):
     /** The ingress limits for a ChainSync client that pipelines `requests` requests at once: the
       * reference's high mark of 300 (`chainSyncPipeliningHighMark`) is the least, since the limit
@@ -299,7 +339,7 @@ object NodeToNode:
     for
       mux <- Mux.handshakeResource(
         bearer,
-        NodeToNodeServer.Protocol,
+        NodeToNodeServer.protocols(settings.bundle),
         settings.mux.copy(duplex = serve.isDefined)
       )
       agreed <- Resource.eval(
@@ -312,7 +352,7 @@ object NodeToNode:
         .fold(
           Resource.eval(
             mux.installApplication(
-              NodeToNodeServer.applicationProtocols(agreed.data.peerSharing),
+              NodeToNodeServer.applicationProtocols(agreed.data.peerSharing, settings.bundle),
               Set.empty
             )
           )
@@ -320,6 +360,7 @@ object NodeToNode:
           NodeToNodeServer.start(
             mux,
             handlers,
+            NodeToNodeServer.Settings(bundle = settings.bundle),
             peerSharing = agreed.data.peerSharing,
             initiators = true
           )
@@ -368,7 +409,7 @@ object NodeToNode:
     for
       mux <- Mux.handshakeResource(
         bearer,
-        NodeToNodeServer.Protocol,
+        NodeToNodeServer.protocols(settings.bundle),
         settings.mux.copy(duplex = serve.isDefined)
       )
       agreed <- Resource.eval(
@@ -387,7 +428,7 @@ object NodeToNode:
         .fold(
           Resource.eval(
             mux.installApplication(
-              NodeToNodeServer.applicationProtocols(agreed.data.peerSharing),
+              NodeToNodeServer.applicationProtocols(agreed.data.peerSharing, settings.bundle),
               Set.empty
             )
           ) *> NodeToNodeServer.published(connection, handle).void
@@ -396,7 +437,7 @@ object NodeToNode:
             NodeToNodeServer.start(
               mux,
               handlers,
-              server,
+              server.copy(bundle = settings.bundle),
               peerSharing = agreed.data.peerSharing,
               initiators = true,
               responders = Some(responders)

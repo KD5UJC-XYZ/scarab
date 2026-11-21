@@ -123,7 +123,7 @@ import xyz.kd5ujc.scarab.network.ConnectionEvent
 import xyz.kd5ujc.scarab.node.ntc.{EraHistory, LedgerConfig, QueryEnv, StateQuerySource}
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.node.read.TxClock
-import xyz.kd5ujc.scarab.network.NodeToNode
+import xyz.kd5ujc.scarab.network.{HotBundle, NodeToNode}
 import xyz.kd5ujc.scarab.network.selection.{
   Churn,
   FetchMode,
@@ -1459,12 +1459,13 @@ object Main extends IOApp:
 
   /** The blocks fetched ahead, shared by every session, the Genesis runtime when it runs, and the
     * endorser-block store whose completions chain selection reads ([[LeiosAcquired.notifying]]):
-    * the store its writers use.
+    * the store its writers use, and the Leios build's endorser-block fetch over it.
     */
   private final case class Supply(
       blockPool: BlockPool[IO],
       genesisRuntime: Option[GenesisRuntime[IO]],
-      leios: Option[LeiosStore[IO]]
+      leios: Option[LeiosStore[IO]],
+      leiosFetch: Option[LeiosFetchNode[IO]]
   )
 
   /** The connections: the manager, the inbound governor, the outbound network and the listener. */
@@ -2124,7 +2125,25 @@ object Main extends IOApp:
         chain.ref.get.map(_.state.geometry(genesis.geometry)),
         headers.nodeChain
       )
-    yield Supply(blockPool, genesisRuntime, run.leios.map(blockPool.leios.notifying))
+      leios = run.leios.map(blockPool.leios.notifying)
+      // the fetch logic's state from the store's complete closures at or after the immutable tip,
+      // its generator a draw of the node's (`initInternalState`, `NodeKernel.hs:938-951` at
+      // ouroboros-consensus 2416493b)
+      leiosFetch <- leios.traverse { store =>
+        (
+          cats.effect.std.Random.scalaUtilRandom[IO].flatMap(_.nextLong),
+          chain.ref.get.map(_.anchor.block.map(_.slot).getOrElse(BigInt(0)))
+        ).flatMapN { (seed, tip) =>
+          // a slot past every `Word64` has no endorser block at or after it, and prunes all
+          LeiosFetchNode.create[IO](
+            store,
+            xyz.kd5ujc.scarab.consensus.leios.StdGen.mk(seed),
+            xyz.kd5ujc.scarab.protocol.LeiosWord.Word64.clamped(tip),
+            e => fatalSink(Fatal.Storage(StorageError.LeiosStore(e)))
+          )(using summon, LeiosStorage.lifted[IO])
+        }
+      }
+    yield Supply(blockPool, genesisRuntime, leios, leiosFetch)
 
   /** The node's connections: the manager, the inbound governor, the outbound peer network and the
     * relay's listener.
@@ -2145,10 +2164,13 @@ object Main extends IOApp:
     import run.{genesis, options, scheduling, setup}
     import instruments.{collectors, fatalSink, measured}
     import chain.{follower, mempool, ref, server}
-    import supply.{blockPool, genesisRuntime}
+    import supply.{blockPool, genesisRuntime, leiosFetch}
     def fail[A](e: NodeError): IO[A] = Handle[IO, NodeError].raise(e)
     def logged(event: NodeEvent): IO[Unit] = Log[IO].emit(event)
     val genesisGovernor = genesisRuntime.map(_.governor)
+    // the Leios build adds LeiosNotify and LeiosFetch to every connection's hot protocols, where it
+    // has an endorser-block store; a release build's connections are as they were
+    val bundle = leiosFetch.fold(HotBundle.Release)(_ => HotBundle.Leios)
     val peerSharing = setup.config.settings.peerSharingEnabled(options.forge.isDefined)
     // the connection manager (G2): one connection per peer address, limits, accounting
     val accepted = options.accepted(setup.config.settings)
@@ -2162,7 +2184,8 @@ object Main extends IOApp:
         server.source,
         server.blocks,
         mempool.sink(fatalSink),
-        peerSharing = Some(sharing.source)
+        peerSharing = Some(sharing.source),
+        leiosFetch = leiosFetch.map(_.responder)
       )
       manager <- ConnectionManager.create[IO](
         ConnectionManager.Limits(
@@ -2196,7 +2219,8 @@ object Main extends IOApp:
           genesis.networkMagic,
           NodeToNodeServer.Settings(
             offerPeerSharing = peerSharing,
-            maxVersion = setup.config.settings.maxNtnVersion
+            maxVersion = setup.config.settings.maxNtnVersion,
+            bundle = bundle
           )
         ),
         handlers,
@@ -2224,7 +2248,8 @@ object Main extends IOApp:
         network = NodeToNode
           .Settings(
             offerPeerSharing = peerSharing,
-            maxVersion = setup.config.settings.maxNtnVersion
+            maxVersion = setup.config.settings.maxNtnVersion,
+            bundle = bundle
           )
           .pipelining(options.chainSyncWindow.high),
         peer = Peer.Settings(
@@ -2246,7 +2271,8 @@ object Main extends IOApp:
         fatal = fatalSink,
         serve = Some(handlers),
         genesis = genesisRuntime,
-        inboundGovernor = inboundGovernor
+        inboundGovernor = inboundGovernor,
+        leios = leiosFetch
       )
       val emitOutput = (out: Output[PeerNetwork.Addr]) =>
         measured.peerSelection(out) *> (out match
@@ -2261,7 +2287,17 @@ object Main extends IOApp:
       // the network starts from the configuration in force, which a SIGHUP during start-up may
       // have read again, as the reference's diffusion reads the variables its initial handler
       // wrote (`Run.hs` 412-435)
-      val network = Resource
+      // the Leios fetch decision loop runs as long as the peer network does; what makes an endorser
+      // block fetchable (offers, the closure's bound, the clock's slot) is not wired yet (#54)
+      val leiosKernel = leiosFetch.traverse_(
+        _.kernel[LeiosFetchNode.Unforecast](
+          IO.pure(None),
+          IO.pure(_ => Left(LeiosFetchNode.Unforecast.NotWired)),
+          blockPool.leios.immutableSlots,
+          cause => fatalSink(Fatal.Defect(cause))
+        )
+      )
+      val network = leiosKernel *> Resource
         .eval(run.hangup.pending.set(None) *> run.hangup.network.get)
         .flatMap(inForce =>
           PeerNetwork.resource[IO](
