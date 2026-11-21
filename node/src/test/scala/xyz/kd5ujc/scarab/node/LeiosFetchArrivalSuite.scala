@@ -2,8 +2,9 @@
 package xyz.kd5ujc.scarab.node
 
 import cats.data.NonEmptyVector
-import cats.effect.{Deferred, IO, Resource}
-import cats.effect.std.Queue
+import cats.effect.{Deferred, IO, Ref, Resource}
+import cats.effect.std.{Queue, Semaphore}
+import cats.effect.testkit.TestControl
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
@@ -135,9 +136,14 @@ class LeiosFetchArrivalSuite extends FailsOnUncaught:
       settled: Queue[IO, Unit]
   )
 
-  private def rig(store: LeiosStore[IO], initial: LeiosOutstanding[Int]): IO[Rig] =
+  private def rig(
+      store: LeiosStore[IO],
+      initial: LeiosOutstanding[Int],
+      depth: Long = LeiosFetchArrival.WriterQueueDepth
+  ): IO[Rig] =
     for
       shared <- LeiosFetchShared.create[IO, Int](initial)
+      slots <- Semaphore[IO](depth)
       acquired <- LeiosAcquired.create[IO]
       fatal <- Deferred[IO, LeiosStoreError]
       // each write and its claim on a fiber of its own, as the node's supervisor runs it; its end
@@ -149,7 +155,8 @@ class LeiosFetchArrivalSuite extends FailsOnUncaught:
         acquired.notifying(store),
         env,
         e => fatal.complete(e).void,
-        settling => settling.guarantee(settled.offer(())).start.void
+        settling => settling.guarantee(settled.offer(())).start.void,
+        slots
       ),
       shared,
       acquired,
@@ -517,6 +524,38 @@ class LeiosFetchArrivalSuite extends FailsOnUncaught:
           assert(this.held(after, request.point).exists(_ != EbFetchState.NoBody))
           assertEquals(body, Some(eb.encoded))
       }
+    }
+  }
+
+  dirs.test("a stalled write stops the arrival admitting answers until a slot is free") { dir =>
+    // two slots: the first body takes both, its point's lands and frees one, and its body's waits
+    // at the gate; a second body, which needs two, waits for a slot (`submitJob`'s backpressure)
+    val eb = body(Vector.tabulate(3)(tx))
+    val (asking, request) = asked(eb, size(eb), closure(eb))
+    stored(dir / "leios").use { store =>
+      for
+        gate <- Deferred[IO, Unit]
+        r <- rig(new Gated(store, gate), asking, depth = 2)
+        returned <- Ref.of[IO, Vector[Either[NetworkError, Unit]]](Vector.empty)
+        control <- TestControl.execute(
+          typed(r.arrival.block(peer, request, eb.transactions.toVector))
+            .flatMap(result => returned.update(_ :+ result))
+            .replicateA_(2)
+        )
+        _ <- control.tick
+        stalled <- returned.get
+        waiting <- control.results
+        _ <- gate.complete(())
+        _ <- control.tick
+        admitted <- returned.get
+        ended <- control.results
+        body <- ok(store.lookupEbBody(request.point.hash))
+      yield
+        assertEquals(stalled, Vector(Right(())), "the second answer waits for a slot")
+        assertEquals(waiting, None)
+        assertEquals(admitted, Vector(Right(()), Right(())), "admitted once the write lands")
+        assert(ended.exists(_.isSuccess), s"the answers are taken: $ended")
+        assertEquals(body, Some(eb.encoded))
     }
   }
 

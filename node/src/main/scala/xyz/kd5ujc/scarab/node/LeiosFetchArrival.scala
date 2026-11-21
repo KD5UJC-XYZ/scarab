@@ -3,6 +3,7 @@ package xyz.kd5ujc.scarab.node
 
 import cats.data.NonEmptyVector
 import cats.effect.Async
+import cats.effect.std.Semaphore
 import cats.mtl.{Handle, Raise}
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
@@ -40,6 +41,13 @@ import xyz.kd5ujc.scarab.storage.{LeiosEb, LeiosStore, LeiosStoreError}
   * once its write is queued, and a write that lands is claimed even when the peer is gone, the
   * write and its claim being one uncancelable step.
   *
+  * A write is queued only on a free slot of the writer's queue, `slots`, which the node's answers
+  * share, and an answer waits for one (`submitJob`, `Impl/SQLite/WriteQueue.hs` 129-178 at
+  * 2416493b): while the store is slow the connection's receiver waits, so no more answers are
+  * admitted, and at most [[LeiosFetchArrival.WriterQueueDepth]] writes are held. A write's slot is
+  * free again once it lands. A body's write is two (its point and its body), the transactions' one.
+  * The wait is cancelable and takes nothing; once a write has its slot it is the node's.
+  *
   * Not mirrored (#54): no cross-EB fills (the `LeiosTxCache`), no transactions pulled from the
   * mempool, no egress credit refilled at a claim (`LeiosFreshBytes`), and no arrival telemetry.
   */
@@ -48,7 +56,8 @@ final class LeiosFetchArrival[F[_], P](
     store: LeiosStore[F],
     env: LeiosFetchStaticEnv,
     fatal: LeiosStoreError => F[Unit],
-    settle: F[Unit] => F[Unit]
+    settle: F[Unit] => F[Unit],
+    slots: Semaphore[F]
 )(using F: Async[F]):
   /** `processLeiosBlock` of a body `peer` sent for `request`. */
   def block(peer: P, request: LeiosFetchRequest.Block, txs: Vector[(LeiosTxHash, Word32)])(using
@@ -90,7 +99,9 @@ final class LeiosFetchArrival[F[_], P](
         else (cleaned, true)
       }
       _ <- shared.wake
-      _ <- settle(written(acquire(point, eb, sent))).whenA(persist)
+      // the state is cleaned before the write is queued, as the reference's is (`LeiosDemoLogic.hs`
+      // 1063-1098): the peer's bytes for the body are released even while the queue is full
+      _ <- submitted(2)(landed => written(acquire(point, eb, sent, landed))).whenA(persist)
       // the body is accounted for: now the peer answers for what it offered
       _ <- fault(
         LeiosFetchFault.BlockWrongSize(point, word32(request.offeredSize), word32(sent))
@@ -142,10 +153,9 @@ final class LeiosFetchArrival[F[_], P](
       // 287-297 at 2416493b), and `onDurable` (`LeiosDemoLogic.hs` 1575) retires the request's
       // jobs whatever was dropped. A reply that passes the checks above holds at each offset the
       // bytes of the hash the body lists there, so only the body's own declarations make a drop
-      _ <- settle(
+      _ <- submitted(1)(landed =>
         written(
-          store
-            .writeTxs(point, ingested.map((off, _, bytes) => off -> bytes))
+          (store.writeTxs(point, ingested.map((off, _, bytes) => off -> bytes)) *> landed)
             .flatMap(_ =>
               shared.outstanding.update(LeiosFetchLogic.completeTxRequest(peer, request, _))
             )
@@ -158,12 +168,12 @@ final class LeiosFetchArrival[F[_], P](
   /** The body's write and its claim: the point at the size the body was sent at, the body with no
     * fills, and then the body held with the jobs of the transactions the write still misses.
     */
-  private def acquire(point: EbPoint, eb: LeiosEb, sent: BytesSize)(using
+  private def acquire(point: EbPoint, eb: LeiosEb, sent: BytesSize, landed: F[Unit])(using
       Raise[F, LeiosStoreError]
   ): F[Unit] =
     for
-      _ <- store.writeEbPoint(point, word32(sent))
-      body <- store.writeEbBody(point, eb, Vector.empty)
+      _ <- store.writeEbPoint(point, word32(sent)) *> landed
+      body <- store.writeEbBody(point, eb, Vector.empty) <* landed
       filled = body.filled.toSet
       misses = SortedMap.from(
         eb.transactions.toVector.zipWithIndex.collect {
@@ -175,6 +185,13 @@ final class LeiosFetchArrival[F[_], P](
       _ <- shared.outstanding.update(_.acquireEbBody(point.hash, pool))
       _ <- shared.wake
     yield ()
+
+  /** `jobs` writes queued, each on a slot of the writer's queue, waiting while it is full
+    * (`submitJob`): a cancelled wait takes no slot. Once queued, `settle` runs on the node's fiber,
+    * given what frees one slot, which it runs as each write lands.
+    */
+  private def submitted(jobs: Long)(settling: F[Unit] => F[Unit]): F[Unit] =
+    F.uncancelable(poll => poll(slots.acquireN(jobs)) *> settle(settling(slots.release)))
 
   /** A write and its claim as one uncancelable step; the store's failure stops the node, outside
     * the mask, and this fiber ends with it.
@@ -190,3 +207,10 @@ final class LeiosFetchArrival[F[_], P](
     NetworkError.LeiosFetchInvalidReply(f).raise[F, A]
 
   private def word32(size: BytesSize): Word32 = Word32.wrap(size.toLong)
+
+object LeiosFetchArrival:
+  /** `writerQueueDepth` (`Impl/SQLite/WriteQueue.hs` 214-231 at ouroboros-consensus 2416493b): a
+    * slot for each of 20 upstream peers' fetch clients, the forge and 4 maintenance schedulers, and
+    * 2 to spare.
+    */
+  val WriterQueueDepth: Long = 27

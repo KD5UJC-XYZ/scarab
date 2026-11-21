@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.node
 
 import cats.effect.{Async, Resource}
-import cats.effect.std.Supervisor
+import cats.effect.std.{Semaphore, Supervisor}
 import cats.mtl.Raise
 import cats.syntax.all.*
 import fs2.Stream
@@ -85,7 +85,8 @@ object LeiosFetchNode:
 
   /** The node's fetch over `store`, the notifying store its writes go through, from the store's
     * complete closures at or after `immutableTip` ([[LeiosFetchKernel.initialized]]). The writes of
-    * answers and their claims run under `supervisor`, the node's; the store's failure goes to
+    * answers and their claims run under `supervisor`, the node's, each on a slot of one writer's
+    * queue its peers share ([[LeiosFetchArrival.WriterQueueDepth]]); the store's failure goes to
     * `fatal`, and an exception in one of them to `defect`, each of which stops the node.
     */
   def create[F[_]: Async](
@@ -96,19 +97,22 @@ object LeiosFetchNode:
       fatal: LeiosStoreError => F[Unit],
       defect: Throwable => F[Unit]
   )(using Raise[F, LeiosStoreError]): F[LeiosFetchNode[F]] =
-    LeiosFetchKernel
-      .initialized[F, Long](store, prng, immutableTip)
-      .flatMap(LeiosFetchShared.create[F, Long])
-      .map(shared =>
-        new LeiosFetchNode(
+    (
+      LeiosFetchKernel
+        .initialized[F, Long](store, prng, immutableTip)
+        .flatMap(LeiosFetchShared.create[F, Long]),
+      Semaphore[F](LeiosFetchArrival.WriterQueueDepth)
+    ).mapN((shared, slots) =>
+      new LeiosFetchNode(
+        shared,
+        LeiosFetchArrival(
           shared,
-          LeiosFetchArrival(
-            shared,
-            store,
-            LeiosFetchStaticEnv.demo,
-            fatal,
-            settling => supervisor.supervise(settling.handleErrorWith(defect)).void
-          ),
-          store
-        )
+          store,
+          LeiosFetchStaticEnv.demo,
+          fatal,
+          settling => supervisor.supervise(settling.handleErrorWith(defect)).void,
+          slots
+        ),
+        store
       )
+    )
