@@ -890,12 +890,6 @@
   {
    "kind": "missing-symbol",
    "path": "docs/design/ledger-mirror-step2.md",
-   "key": "Stage.Block",
-   "count": 1
-  },
-  {
-   "kind": "missing-symbol",
-   "path": "docs/design/ledger-mirror-step2.md",
    "key": "Stage.Tick",
    "count": 4
   },
