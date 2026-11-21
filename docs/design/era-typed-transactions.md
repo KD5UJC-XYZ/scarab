@@ -1848,8 +1848,80 @@ Conway's rules on the classes follow as the rest of stage 2.
       refusal at the top level (D7a), and SUBUTXOW collects nothing; no case of `fixtures/reference/dijkstra-rules`
       has a sub-transaction; the flat rules halt on one;
     - the failures are not compared with the reference's bytes: the era failures have no encoder yet (#796).
-  - Not yet (#85): SUBENTITIES, the sub-transactions' certificate rules, SUBGOV, SUBLEDGER and SUBLEDGERS (D7c's next
-    parts), and LEDGER (D7e).
+  - Not yet (#85): SUBGOV, SUBLEDGER and SUBLEDGERS (D7c's last part), and LEDGER (D7e); SUBENTITIES and the
+    sub-transactions' certificate rules are the next bullet's.
+- **Dijkstra's sub-transaction certificate rules and SUBENTITIES** (`era/rules/DijkstraSubCerts.scala`,
+  `era/rules/DijkstraSubEntities.scala`; `Rules/{SubDeleg,SubPool,SubGovCert,SubCert,SubCerts,SubEntities}.hs` of
+  `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/`, cardano-ledger 9df9f98c):
+  - SUBDELEG, SUBPOOL and SUBGOVCERT have failures that are newtypes over DELEG's, POOL's and GOVCERT's
+    (`DijkstraSubDelegPredFailure` and the others; SUBPOOL's event too), and run the top-level rules' transitions
+    (`transitionRules = [Conway.conwayDelegTransition]` and the others). Each of their injections is the newtype after
+    the top-level rule's injection (`SubDeleg.hs:57-63`, `SubPool.hs:56-67`, `SubGovCert.hs:61-67`; SUBDELEG's of
+    Shelley's `AccountAlreadyRegistered` is `DelegAccountAlreadyRegistered`, DELEG's own at Dijkstra, `Deleg.hs:19-20`),
+    so each transition here is D7b's with its judge and events contramapped by the newtype (decided 2026-11-21, #85),
+    not a transition made generic in its rule.
+  - SUBCERT (tags 1 to 3) and SUBCERTS are Dijkstra's own. SUBCERT sends a certificate to the sub-rule of its kind, as
+    Dijkstra's CERT does; SUBCERTS recurses on the prefix as CERTS does, written as the same fold, and its empty
+    sequence leaves the state as it is. `conwayToDijkstraSubCertPredFailure` and `conwayToDijkstraSubCertsPredFailure`
+    are total (the 11.1 build's withdrawals' case of CERTS has no value at Dijkstra). `SubCertsEnv` holds the
+    sub-transaction, which no rule reads, and the committee and its proposals as the node's records, as `CertsEnv`.
+  - SUBENTITIES (`SubEntitiesPredFailure`, tags 0 to 8) runs, in the reference's order: the withdrawals' network, the
+    direct deposits' network, the balance intervals against the current accounts, the withdrawals of an account the
+    original and then the current accounts lack (`withdrawalsMissingAccounts`); the DReps' expiries for the
+    sub-transaction and its withdrawals applied, whatever failed; SUBCERTS; the direct deposits against the accounts
+    after it, then added. It checks no withdrawal's amount and has no `whenFailureFree`, unlike ENTITIES.
+    `updateDormantDRepExpiries` and `updateVotingDRepExpiries` are now of a transaction of either level, as the
+    reference's are.
+  - **The injections the reference leaves partial**, by D7a's decision. `entitiesToSubEntitiesPredFailure`
+    (`SubEntities.hs:317-338`) calls 8 of ENTITIES' constructors impossible, and `conwayToDijkstraSubEntitiesPredFailure`
+    (`:302-315`) every one of Conway's LEDGER failure. ENTITIES' predicates SUBENTITIES runs now declare the
+    constructors they report, `InjectSubEntitiesFailure` is contravariant, and its instance is over the 6 constructors
+    the reference maps; Conway's LEDGER failure has no instance. Shelley's `WrongNetworkWithdrawal` goes through D7b's
+    function, which now declares its constructor, so SUBENTITIES' is a function too.
+  - Evidence:
+    - `DijkstraRulesOracleSuite`: on the reference's 20 `certs` cases (`fixtures/reference/dijkstra-rules`), from the
+      same state, SUBCERTS's failures are CERTS's, which are the reference's bytes, through
+      `conwayToDijkstraSubCertsPredFailure`, in the same order, and its state is CERTS's on each case both admit. A
+      component check: the reference applied CERTS, not SUBCERTS, to them.
+    - `DijkstraCertsSuite`, SUBCERTS against CERTS in the same way on a pool and an account registered twice, the
+      certificates of the chain's 8 transactions that hold them at the top level and of its 2 sub-transactions that
+      hold them, which SUBCERTS admits from the empty state; the second registration of an account is DELEG's refusal
+      in SUBDELEG's newtype, as SUBDELEG's injection of `AccountAlreadyRegistered` gives it.
+    - `DijkstraCertsSuite`, SUBENTITIES on the chain's 38 sub-transactions from the empty state: the 3 that withdraw are
+      refused for the accounts the current and the original accounts lack, in the reference's order at the root; the 2
+      that register an account leave SUBCERTS's state; the other 33 leave the state as it was. On crafted accounts a
+      withdrawal that drains an account registered in both is admitted, and one of an account the original accounts
+      lack gives `SubWithdrawalAccountsMissingFromOriginal` alone. A component check: the reference judged them on the
+      chain's state.
+    - `DijkstraCertsSuite`, SUBENTITIES' steps on crafted sub-transactions (a chain sub-transaction given the fields
+      of a case, encoded again): the withdrawal and unregistrations of a chain transaction, from an account holding
+      more than the withdrawal and missing from the original accounts, give that failure and SUBDELEG's of the balance
+      the withdrawal leaves, so the withdrawal is applied whatever failed and before SUBCERTS; a direct deposit to the
+      account a chain sub-transaction registers is admitted and added, so it is checked after SUBCERTS; a DRep's vote
+      sets its expiry, the others' left as they were; a proposal with three dormant epochs moves every DRep's expiry
+      up by them but one it would leave before the current epoch, and resets the count; the script-context fixture's
+      sub-transaction (`fixtures/reference/leios-testnet-contexts`, "sub-transaction scripts"), with withdrawals,
+      deposits and intervals of both networks, gives the seven failures of the reference's order at the root.
+    - `DijkstraCertsSuite`, SUBCERTS's fold on a small stack (STK-3, `PreprodDeepTx.onSmallStack`), with its
+      judgment's interpretation and the flattening of its failures: an account registered 5000 times, refused 4999
+      times, and registered and unregistered 2500 times, admitted.
+    - `DijkstraCertsSuite`, on built values: each injection is the newtype after the top-level rule's; CERT's, CERTS's
+      and ENTITIES' failures map as the reference's functions do, written out in the suite; the impossible
+      constructors, ENTITIES' whole type, Conway's LEDGER failure and Shelley's have no SUBENTITIES instance
+      (`compileErrors`, beside a reachable one that has).
+    - D7a's, D7b's and D7d's Dijkstra suites, Conway's era suites and the node's Conway and upstream suites keep their
+      expected values.
+  - Incomplete (CNF-2):
+    - the chain's sub-transactions as the reference judged them: that needs the chain's certificate state, which the
+      fixture does not record, and SUBLEDGER (D7c's next part);
+    - refusals that no recording holds: any of SUBCERTS's, SUBENTITIES' or the newtyped rules' by the reference itself;
+      a sub-transaction's direct deposit, balance interval, vote, proposal or pool certificate, which none of the
+      chain's 38 has, so those cases are crafted, their verdicts the rules';
+    - the 9 sub-transactions of the context refusals (`fixtures/reference/leios-testnet-context-refusals`), some of
+      which vote or name the current treasury: they record each level's collection, not a verdict of the rules, so
+      SUBENTITIES is not run on them;
+    - the failures are not compared with the reference's bytes: the era failures have no encoder yet (#796).
+  - Not yet (#85): SUBGOV, SUBLEDGER and SUBLEDGERS (D7c's last part), and LEDGER (D7e).
 - **Next, Conway's rules.** The first rule ported is one that needs no parameters, the second one that
   does, each under a differential against the flat rule on the recorded blocks and the refusal corpus.
 - The body is read through the flat decoder for now. What only the projection refuses (an update, genesis

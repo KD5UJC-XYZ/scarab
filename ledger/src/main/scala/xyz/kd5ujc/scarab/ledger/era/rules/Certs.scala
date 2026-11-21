@@ -966,50 +966,64 @@ object CERTS:
         )
       )
       voted <- vocab[F, CertState[E]](
-        updateVotingDRepExpiries[E](
+        updateVotingDRepExpiries[E, TxLevel.Top](
           env.tx,
           env.currentEpoch,
           field[E, EpochInterval](env.pp)(p.hkdDRepActivityL[Identity]),
-          updateDormantDRepExpiries[E](env.tx, env.currentEpoch, certState)
-        )
+          updateDormantDRepExpiries[E, TxLevel.Top](env.tx, env.currentEpoch, certState)(using
+            t,
+            b,
+            c,
+            t.bodyOf.top,
+            b.top
+          )
+        )(using t, b, c, t.bodyOf.top, b.top)
       )
       _ <- st.set(accountsL.modify(EraAccounts.drainAccounts[E](withdrawals, _))(voted))
     yield ()
 
   /** `updateDormantDRepExpiries` (`Conway/Rules/Certs.hs:257-268`, cardano-ledger f649f975): with a
-    * proposal in the transaction, the dormant epochs are added to every DRep's expiry.
+    * proposal in the transaction, the dormant epochs are added to every DRep's expiry. Of a
+    * transaction of either level, as the reference's is (`Tx l era`), so that Dijkstra's
+    * SUBENTITIES runs it on a sub-transaction (`Dijkstra/Rules/SubEntities.hs:267`, cardano-ledger
+    * 9df9f98c).
     */
-  def updateDormantDRepExpiries[E <: EraTag](
-      tx: Tx[TxLevel.Top, E],
+  def updateDormantDRepExpiries[E <: EraTag, L <: TxLevel](
+      tx: Tx[L, E],
       currentEpoch: EpochNo,
       certState: CertState[E]
   )(using
       t: EraTx[E],
       b: ConwayEraTxBody[E],
-      c: ConwayEraCertState[E]
+      c: ConwayEraCertState[E],
+      lt: t.bodyOf.Level[L],
+      lb: b.Level[L]
   ): CertState[E] =
-    val body = t.body[TxLevel.Top](tx)(using t.bodyOf.top)
-    val hasProposals = b.proposalProcedures[TxLevel.Top](body)(using b.top).size > 0
+    val body = t.body[L](tx)
+    val hasProposals = b.proposalProcedures[L](body).size > 0
     if hasProposals then c.certVStateL.modify(updateDormantDRepExpiry(currentEpoch, _))(certState)
     else certState
 
   /** `updateVotingDRepExpiries` (`Conway/Rules/Certs.hs:272-292`, cardano-ledger f649f975): each
-    * registered DRep that votes in the transaction is active until `computeDRepExpiry` 's epoch.
+    * registered DRep that votes in the transaction is active until `computeDRepExpiry` 's epoch. Of
+    * a transaction of either level, as [[updateDormantDRepExpiries]].
     */
-  def updateVotingDRepExpiries[E <: EraTag](
-      tx: Tx[TxLevel.Top, E],
+  def updateVotingDRepExpiries[E <: EraTag, L <: TxLevel](
+      tx: Tx[L, E],
       currentEpoch: EpochNo,
       drepActivity: EpochInterval,
       certState: CertState[E]
   )(using
       t: EraTx[E],
       b: ConwayEraTxBody[E],
-      c: ConwayEraCertState[E]
+      c: ConwayEraCertState[E],
+      lt: t.bodyOf.Level[L],
+      lb: b.Level[L]
   ): Either[VocabError, CertState[E]] =
-    val body = t.body[TxLevel.Top](tx)(using t.bodyOf.top)
+    val body = t.body[L](tx)
     val numDormantEpochs = c.certVStateL.get(certState).numDormantEpochs
     val dRepsL = c.certVStateL.andThen(VState.dreps)
-    b.votingProcedures[TxLevel.Top](body)(using b.top)
+    b.votingProcedures[L](body)
       .unVotingProcedures
       .keysIterator
       .toVector

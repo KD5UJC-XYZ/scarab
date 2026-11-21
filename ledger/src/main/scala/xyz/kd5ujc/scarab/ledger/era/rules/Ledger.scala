@@ -370,12 +370,18 @@ object ConwayLedger:
                 judge
               )
               voted <- vocabDefect[F, CertState[E]](
-                CERTS.updateVotingDRepExpiries[E](
+                CERTS.updateVotingDRepExpiries[E, TxLevel.Top](
                   tx,
                   curEpochNo,
                   PParams.lensHKD[E].andThen(pc.hkdDRepActivityL[Identity]).get(pp),
-                  CERTS.updateDormantDRepExpiries[E](tx, curEpochNo, certState)
-                )
+                  CERTS.updateDormantDRepExpiries[E, TxLevel.Top](tx, curEpochNo, certState)(using
+                    t,
+                    b,
+                    c,
+                    top,
+                    b.top
+                  )
+                )(using t, b, c, top, b.top)
               )
               _ <- state.modify(
                 certL.modify(_ =>

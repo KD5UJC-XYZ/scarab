@@ -22,6 +22,8 @@ import xyz.kd5ujc.scarab.ledger.era.rules.{
   DELEG,
   DelegPredFailure,
   DijkstraPOOL,
+  DijkstraSUBCERTS,
+  DijkstraSubEntities,
   ENTITIES,
   EntitiesEnv,
   EntitiesRuleEvent,
@@ -32,7 +34,13 @@ import xyz.kd5ujc.scarab.ledger.era.rules.{
   PoolDefect,
   PoolEnv,
   PoolPredFailure,
-  PoolRuleEvent
+  PoolRuleEvent,
+  SubCertsEnv,
+  SubCertsEvent,
+  SubCertsPredFailure,
+  SubEntitiesEnv,
+  SubEntitiesRuleEvent,
+  SubEntitiesRuleFailure
 }
 import xyz.kd5ujc.scarab.ledger.rules.{Globals, Judge, Judgment, RuleT, contramap, focus}
 import xyz.kd5ujc.scarab.ledger.state.{CertState, Conway, Dijkstra, PState}
@@ -40,8 +48,9 @@ import xyz.kd5ujc.scarab.ledger.state.{CertState, Conway, Dijkstra, PState}
 /** Conway's certificate rules on the era types (`CERTS.conwayCertsTransition`, and CERT, DELEG,
   * POOL and GOVCERT alone) run in one judgment, and the flat form their failures are compared in
   * with the flat rules', for the suites that compare the two (`ConwayCertsChecksSuite` in the node,
-  * `CertsEpochWrapSuite` and `PoolParamsLayoutSuite`); and Dijkstra's CERTS, POOL and ENTITIES
-  * (`DijkstraCertsSuite`, and `DijkstraRulesOracleSuite` in the node).
+  * `CertsEpochWrapSuite` and `PoolParamsLayoutSuite`); and Dijkstra's CERTS, POOL and ENTITIES, and
+  * a sub-transaction's SUBCERTS and SUBENTITIES (`DijkstraCertsSuite`, and
+  * `DijkstraRulesOracleSuite` in the node).
   */
 object EraCertsRun:
   /** A judgment of the flat rules' kind: a defect, the failures in the flat form, or the state. */
@@ -90,6 +99,16 @@ object EraCertsRun:
     Run[
       EntitiesRuleFailure[Dijkstra],
       EntitiesRuleEvent[Dijkstra],
+      CertState[Dijkstra],
+      DijkstraDefect
+    ]
+
+  private val dijkstraSubCertsRun =
+    Run[SubCertsPredFailure[Dijkstra], SubCertsEvent[Dijkstra], CertState[Dijkstra], DijkstraDefect]
+  private val subEntitiesRun =
+    Run[
+      SubEntitiesRuleFailure[Dijkstra],
+      SubEntitiesRuleEvent[Dijkstra],
       CertState[Dijkstra],
       DijkstraDefect
     ]
@@ -245,4 +264,50 @@ object EraCertsRun:
       summon[Raise[entitiesRun.F, DijkstraDefect]].contramap(Right(_))
     entitiesRun.run(globals, state, depth)(
       ENTITIES.dijkstraEntitiesTransition[entitiesRun.F](env, stAnnTx, validation)
+    )
+
+  /** Dijkstra's SUBCERTS on a sub-transaction's `certificates` from `state`, under `validation`,
+    * `depth` levels below the root.
+    */
+  def dijkstraSubCerts(
+      globals: Globals,
+      env: SubCertsEnv,
+      state: CertState[Dijkstra],
+      certificates: Vector[xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraTxCert],
+      validation: TxEnv.Validation = TxEnv.Validation.All,
+      depth: Int = 0
+  ): DijkstraJudged[SubCertsPredFailure[Dijkstra], CertState[Dijkstra], SubCertsEvent[Dijkstra]] =
+    import dijkstraSubCertsRun.given
+    import RuleT.given
+    given Raise[dijkstraSubCertsRun.F, PoolDefect] =
+      summon[Raise[dijkstraSubCertsRun.F, DijkstraDefect]].contramap(Left(_))
+    given Raise[dijkstraSubCertsRun.F, LedgerDefect] =
+      summon[Raise[dijkstraSubCertsRun.F, DijkstraDefect]].contramap(Right(_))
+    dijkstraSubCertsRun.run(globals, state, depth)(
+      DijkstraSUBCERTS.subCertsTransition[dijkstraSubCertsRun.F](env, certificates, validation)
+    )
+
+  /** SUBENTITIES on the sub-transaction `tx` from `state`, under `validation`, `depth` levels below
+    * the root.
+    */
+  def subEntities(
+      globals: Globals,
+      env: SubEntitiesEnv[Dijkstra],
+      state: CertState[Dijkstra],
+      tx: Tx[TxLevel.Sub, Dijkstra],
+      validation: TxEnv.Validation = TxEnv.Validation.All,
+      depth: Int = 0
+  ): DijkstraJudged[
+    SubEntitiesRuleFailure[Dijkstra],
+    CertState[Dijkstra],
+    SubEntitiesRuleEvent[Dijkstra]
+  ] =
+    import subEntitiesRun.given
+    import RuleT.given
+    given Raise[subEntitiesRun.F, PoolDefect] =
+      summon[Raise[subEntitiesRun.F, DijkstraDefect]].contramap(Left(_))
+    given Raise[subEntitiesRun.F, LedgerDefect] =
+      summon[Raise[subEntitiesRun.F, DijkstraDefect]].contramap(Right(_))
+    subEntitiesRun.run(globals, state, depth)(
+      DijkstraSubEntities.dijkstraSubEntitiesTransition[subEntitiesRun.F](env, tx, validation)
     )

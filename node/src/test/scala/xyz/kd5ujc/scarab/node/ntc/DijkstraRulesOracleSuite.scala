@@ -665,6 +665,52 @@ class DijkstraRulesOracleSuite extends FunSuite:
     assertEquals(admitted.size, certsCases.count(c => reference(c) == Verdict.Accepted))
   }
 
+  test("SUBCERTS gives on every certs case CERTS's refusal through the reference's injection") {
+    // a component check, as the reference applied CERTS, not SUBCERTS, to these certificates: on
+    // the same state, SUBCERTS's failures are CERTS's, which equal the reference's bytes (above),
+    // through `conwayToDijkstraSubCertsPredFailure` (`Dijkstra/Rules/SubCerts.hs:183-190`,
+    // cardano-ledger 9df9f98c), in the same order, and on each case both admit its state is
+    // CERTS's. SUBCERTS reads no sub-transaction; the environment holds the chain's first.
+    import xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraCorpus
+    import xyz.kd5ujc.scarab.ledger.era.rules.{DijkstraSUBCERTS, SubCertsEnv}
+    val subTx = DijkstraCorpus.chainContextCases.iterator
+      .map(j =>
+        ok(
+          xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraTx
+            .inBlock(node(hex(str(j.hcursor.downField("bytes")))))
+        )
+      )
+      .flatMap(t =>
+        xyz.kd5ujc.scarab.ledger.era.EraTxBody.dijkstra.subTransactions(t.body).toVector
+      )
+      .nextOption()
+      .getOrElse(fail("no sub-transaction"))
+    val agreed = certsCases.map { c =>
+      val name = str(c.hcursor.downField("name"))
+      val pp = params(c)
+      val sub = xyz.kd5ujc.scarab.ledger.era.EraCertsRun.dijkstraSubCerts(
+        leiosGlobals,
+        SubCertsEnv(subTx, DijkstraCorpus.era(pp), epochOf(c), None, Map.empty),
+        ledger(pp, num(c.hcursor.downField("epoch"))).state.cert,
+        strings(c.hcursor.downField("certs")).map(h => DijkstraCorpus.eraCert(hex(h)))
+      )
+      (sub, eraCertsRun(c, "certs")) match
+        case (Right(Left(subFs)), Right(Left(fs))) =>
+          assertEquals(
+            subFs.toChain.toVector,
+            fs.toChain.toVector.map(DijkstraSUBCERTS.conwayToDijkstraSubCertsPredFailure),
+            name
+          )
+          false
+        case (Right(Right((subState, _))), Right(Right((state, _)))) =>
+          assertEquals(subState, state, name)
+          true
+        case other => fail(s"$name: $other")
+    }
+    assertEquals(agreed.size, 20)
+    assertEquals(agreed.count(identity), certsCases.count(c => reference(c) == Verdict.Accepted))
+  }
+
   test("the era-typed CERTS leaves the flat rule's state after every gov and utxow case's setup") {
     val withSetup = cases.filter(c => strings(c.hcursor.downField("setup")).nonEmpty)
     assertEquals(withSetup.size, 18)
