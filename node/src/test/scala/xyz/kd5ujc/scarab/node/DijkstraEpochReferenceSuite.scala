@@ -40,7 +40,9 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellState, LeiosStateCodecs}
   * where the fixture holds them): Dijkstra's EPOCH, its POOLREAP and its SNAP, with the Leios
   * committee the mark seats and the key age the KES constants give, and the reward update. The
   * globals are the node's for each network's configuration, checked against those the native tick
-  * ran with. No case is excluded.
+  * ran with. No case is excluded. Each case also runs with Dijkstra's EPOCH on the era types in the
+  * node's EPOCH's place ([[EraDijkstraTick]]), its governance state read into the era's record and
+  * written back, with the same result.
   *
   * Neither state retires or re-registers a pool, so the oracle also derives states from each with
   * the ledger's own lenses (`cases.json`'s `derivation.changes`): a pool retiring at the next
@@ -266,6 +268,18 @@ class DijkstraEpochReferenceSuite extends FunSuite:
     }
   }
 
+  cases.foreach { c =>
+    val name = text(c, "name")
+    val path = text(c, "path")
+    val derivation = c.downField("derivation").get[String]("name").getOrElse("none")
+    test(
+      s"$name, $derivation, $path: the era's EPOCH agrees with the native tick after every slot"
+    ) {
+      val read = input(name, text(c, "stateSha256"))
+      eraTickAll(c, globalsOf(configOf(text(c, "genesis"))), startOf(c, read))
+    }
+  }
+
   test(
     "the testnet's re-registrations carry a voting key, which the boundary keeps with its epoch"
   ) {
@@ -286,6 +300,29 @@ class DijkstraEpochReferenceSuite extends FunSuite:
       }
     }
   }
+
+  /** Each tick of the case from `start` with the era's EPOCH ([[EraDijkstraTick]]), its governance
+    * state read into the era's record and written back over the start's records, the state after it
+    * equal to the native one.
+    */
+  private def eraTickAll(c: HCursor, globals: Globals, start: NewEpochState[Dijkstra]): Unit =
+    val ticks = right(c.downField("ticks").values.toRight("no ticks")).toVector
+    val bases = EraDijkstraTick.bases(start)
+    ticks.foldLeft(right(EraDijkstraTick.read(start))) { (before, tickJson) =>
+      val tick = tickJson.hcursor
+      val slot = right(SlotNo.fromBigInt(number(tick, "slot")))
+      val at = s"at slot ${number(tick, "slot")}"
+      val after = right(EraDijkstraTick.tick(globals, before, slot).leftMap(_.show))
+      val written = right(EraDijkstraTick.stored(after, bases).leftMap(_.toString))
+      val encoded = right(state.write(written).left.map(_.toString))
+      tick.get[String]("file").toOption.foreach { file =>
+        val expected = Bytes.wrap(Files.readAllBytes(fixture.resolve(file)))
+        assertEquals(encoded.hex, expected.hex, at)
+      }
+      assertEquals(sha256(encoded), text(tick, "stateSha256"), at)
+      after
+    }
+    ()
 
   /** Each tick of the case from `start`, the state after it equal to the native one. */
   private def tickAll(c: HCursor, globals: Globals, start: NewEpochState[Dijkstra]): Unit =

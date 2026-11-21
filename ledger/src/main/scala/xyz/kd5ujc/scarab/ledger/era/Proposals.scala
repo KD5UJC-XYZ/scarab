@@ -13,13 +13,16 @@ import xyz.kd5ujc.scarab.ledger.{
 import xyz.kd5ujc.scarab.ledger.rules.Convert
 import xyz.kd5ujc.scarab.ledger.state.{
   Coin,
+  CompactCoin,
   Credential,
   DRepRole,
   EpochNo,
   EraTag,
   HotCommittee,
   KeyHash,
+  Sorted,
   StakePool,
+  Staking,
   VocabError
 }
 
@@ -344,6 +347,176 @@ object Proposals:
           ProposalsReadError.Malformed(omap.map(_.gasId), ps.pProps.keys)
         )
       )
+
+  /** `proposalsActions` (`Proposals.hs:557-562`, cardano-ledger 9df9f98c): the actions' states in
+    * their order.
+    */
+  def proposalsActions[E <: EraTag](ps: Proposals[E]): Vector[GovActionState[E]] =
+    ps.pProps.toVector
+
+  /** `proposalsDeposits` (`Proposals.hs:564-580`, cardano-ledger 9df9f98c): the deposits of the
+    * actions by the credential of their return accounts, a deposit that is not compact counted as
+    * zero and the sums `addCompactCoin` 's, which wraps. A return account's credential of another
+    * length than a stake credential's is refused, which the decoder of an account address refused.
+    */
+  def proposalsDeposits[E <: EraTag](
+      ps: Proposals[E]
+  ): Either[VocabError, SortedMap[Credential[Staking], CompactCoin]] =
+    proposalsActions(ps).foldLeft[Either[VocabError, SortedMap[Credential[Staking], CompactCoin]]](
+      Right(Sorted.empty)
+    ) { (acc, gas) =>
+      for
+        gasMap <- acc
+        credential <- Convert.credential[Staking](gas.gasReturnAddr.credential)
+        deposit = CompactCoin.fromCoin(gas.gasDeposit).getOrElse(CompactCoin.zero)
+      yield gasMap.updatedWith(credential)(old => Some(old.fold(deposit)(_.add(deposit))))
+    }
+
+  /** `proposalsRemoveIds` (`Proposals.hs:431-461`, cardano-ledger 9df9f98c): the actions of `gais`
+    * taken out of the ordered map, and out of their trees, each as a child of its parent, in the
+    * order of their ids (`Map`'s `foldl'`); and the actions taken out. The reference asserts that
+    * an action whose parent is not its tree's root names one (`assert False id`); the assertion is
+    * compiled out of the node, so such an action is only taken out of the graph, as there.
+    */
+  def proposalsRemoveIds[E <: EraTag](
+      gais: Set[GovActionId],
+      ps: Proposals[E]
+  ): (Proposals[E], SortedMap[GovActionId, GovActionState[E]]) =
+    val (retainedOMap, removedFromOMap) = ps.pProps.extractKeys(gais)
+    type Forest = (GovRelation[PRoot], GovRelation[PGraph])
+    val (roots, graph) =
+      removedFromOMap.valuesIterator.foldLeft[Forest]((ps.pRoots, ps.pGraph)) {
+        case (accum @ (roots, graph), gas) =>
+          GovActionState.withGovActionParent(gas, accum)(
+            new GovActionParent[Forest]:
+              def apply[P <: GovActionPurpose](
+                  field: GovRelationL[P],
+                  parent: Option[GovPurposeId[P]],
+                  gpi: GovPurposeId[P]
+              ): Forest =
+                if parent == field.get(roots).prRoot then
+                  (
+                    field.modify(roots)(r => r.copy(prChildren = r.prChildren - gpi)),
+                    field.modify(graph)(g => PGraph(g.unPGraph - gpi))
+                  )
+                else
+                  (
+                    roots,
+                    field.modify(graph) { g =>
+                      val nodes = g.unPGraph - gpi
+                      PGraph(parent match
+                        case None => nodes
+                        case Some(parentGpi) =>
+                          nodes.updatedWith(parentGpi)(
+                            _.map(e => e.copy(peChildren = e.peChildren - gpi))
+                          ))
+                    }
+                  )
+          )
+      }
+    (ps.copy(pProps = retainedOMap, pRoots = roots, pGraph = graph), removedFromOMap)
+
+  /** `getAllDescendants` of `proposalsRemoveWithDescendants` (`Proposals.hs:474-483`,
+    * cardano-ledger 9df9f98c): every action below `gai` in its tree. The reference recurses over
+    * the graph; this walks it with a work list (STK-1), the same set, as the graph is a forest
+    * ([[proposalsAddAction]] adds each action as a leaf). An id the ordered map does not hold, or a
+    * node the graph does not, has none (`assert False mempty`, compiled out).
+    */
+  private def getAllDescendants[E <: EraTag](
+      gai: GovActionId,
+      ps: Proposals[E]
+  ): Set[GovActionId] =
+    ps.pProps.get(gai).fold(Set.empty[GovActionId]) { gas =>
+      GovActionState.withGovActionParent(gas, Set.empty[GovActionId])(
+        new GovActionParent[Set[GovActionId]]:
+          def apply[P <: GovActionPurpose](
+              field: GovRelationL[P],
+              parent: Option[GovPurposeId[P]],
+              self: GovPurposeId[P]
+          ): Set[GovActionId] =
+            val nodes = field.get(ps.pGraph).unPGraph
+            @scala.annotation.tailrec
+            def go(acc: Set[GovActionId], pending: List[GovPurposeId[P]]): Set[GovActionId] =
+              pending match
+                case Nil => acc
+                case gpi :: rest =>
+                  nodes.get(gpi) match
+                    case None => go(acc, rest)
+                    case Some(PEdges(_, children)) =>
+                      val fresh = children.filterNot(c => acc.contains(c.unGovPurposeId))
+                      go(acc ++ fresh.iterator.map(_.unGovPurposeId), fresh.toList ++ rest)
+            go(Set.empty, List(self))
+      )
+    }
+
+  /** `proposalsRemoveWithDescendants` (`Proposals.hs:463-483`, cardano-ledger 9df9f98c): the
+    * actions of `gais` and every action below them taken out ([[proposalsRemoveIds]]).
+    */
+  def proposalsRemoveWithDescendants[E <: EraTag](
+      gais: Set[GovActionId],
+      ps: Proposals[E]
+  ): (Proposals[E], SortedMap[GovActionId, GovActionState[E]]) =
+    proposalsRemoveIds(gais ++ gais.flatMap(getAllDescendants(_, ps)), ps)
+
+  /** `proposalsApplyEnactment` (`Proposals.hs:485-556`, cardano-ledger 9df9f98c), for EPOCH: the
+    * expired actions and every action below them taken out, then each enacted action in order made
+    * the root of its tree, its siblings and every action below them taken out, its children the
+    * root's; an action of no tree only taken out. The proposals after, the actions enacted, those
+    * taken out by the enactments and those taken out by expiry, each by id. Of an id in two maps
+    * the union keeps the first's (`Map.union`). The reference's assertions are compiled out of the
+    * node: an enacted action the proposals do not hold is enacted all the same, as there.
+    */
+  def proposalsApplyEnactment[E <: EraTag](
+      enactedGass: Vector[GovActionState[E]],
+      expiredGais: Set[GovActionId],
+      props: Proposals[E]
+  ): (
+      Proposals[E],
+      SortedMap[GovActionId, GovActionState[E]],
+      SortedMap[GovActionId, GovActionState[E]],
+      SortedMap[GovActionId, GovActionState[E]]
+  ) =
+    type Step = (
+        Proposals[E],
+        SortedMap[GovActionId, GovActionState[E]],
+        SortedMap[GovActionId, GovActionState[E]]
+    )
+    def enact(step: Step, gas: GovActionState[E]): Step =
+      val (ps, enacted, removed) = step
+      val gai = gas.gasId
+      def enactWithoutRoot: Step =
+        val (newOMap, enactedAction) = ps.pProps.extractKeys(Set(gai))
+        (ps.copy(pProps = newOMap), enactedAction ++ enacted, removed)
+      GovActionState.withGovActionParent(gas, enactWithoutRoot)(
+        new GovActionParent[Step]:
+          def apply[P <: GovActionPurpose](
+              field: GovRelationL[P],
+              parent: Option[GovPurposeId[P]],
+              gpi: GovPurposeId[P]
+          ): Step =
+            val siblings = field.get(ps.pRoots).prChildren.map(_.unGovPurposeId) - gai
+            val newRootChildren =
+              field
+                .get(ps.pGraph)
+                .unPGraph
+                .get(gpi)
+                .fold(SortedSet.empty[GovPurposeId[P]])(
+                  _.peChildren
+                )
+            val (withoutSiblings, removedActions) = proposalsRemoveWithDescendants(siblings, ps)
+            val newGraph = field.get(withoutSiblings.pGraph).unPGraph - gpi
+            val (newOMap, enactedAction) = withoutSiblings.pProps.extractKeys(Set(gai))
+            val newProposals = withoutSiblings.copy(
+              pProps = newOMap,
+              pRoots = field.set(withoutSiblings.pRoots, PRoot(Some(gpi), newRootChildren)),
+              pGraph = field.set(withoutSiblings.pGraph, PGraph(newGraph))
+            )
+            (newProposals, enactedAction ++ enacted, removedActions ++ removed)
+      )
+    val (unexpiredProposals, expiredRemoved) = proposalsRemoveWithDescendants(expiredGais, props)
+    val (enactedProposalsState, enacted, removedDueToEnactment) =
+      enactedGass.foldLeft[Step]((unexpiredProposals, SortedMap.empty, SortedMap.empty))(enact)
+    (enactedProposalsState, enacted, removedDueToEnactment, expiredRemoved)
 
 /** Why the node's record of the proposals cannot be read into an era's [[Proposals]]: what only a
   * damaged record gives, where the reference decodes its own state with `mkProposals`. None is a

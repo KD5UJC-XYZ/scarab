@@ -109,6 +109,12 @@ enum DRepPulsingState[E <: EraTag]:
 object DRepPulsingState:
   given [E <: EraTag]: CanEqual[DRepPulsingState[E], DRepPulsingState[E]] = CanEqual.derived
 
+  /** `extractDRepPulsingState` (`DRepPulser.hs:512-517`, cardano-ledger 9df9f98c): the ratification
+    * the pulser reached, which a complete pulser holds.
+    */
+  def extractDRepPulsingState[E <: EraTag](p: DRepPulsingState[E]): RatifyState[E] = p match
+    case DRComplete(_, ratifyState) => ratifyState
+
 /** `data FuturePParams era`
   * (`libs/cardano-ledger-core/src/Cardano/Ledger/State/Governance.hs:90-102`, cardano-ledger
   * f649f975): the prediction of the parameters at the next boundary. The reference's lazy `Maybe`
@@ -126,6 +132,15 @@ object FuturePParams:
   def knownFuturePParams[E <: EraTag](f: FuturePParams[E]): Option[PParams[E]] = f match
     case DefinitePParamsUpdate(pp)                     => Some(pp)
     case NoPParamsUpdate() | PotentialPParamsUpdate(_) => None
+
+  /** `solidifyFuturePParams` (`State/Governance.hs:135-140`, cardano-ledger 9df9f98c), which TICK
+    * applies from the slot of no return (`Shelley/Rules/Tick.hs:158`): a potential update becomes
+    * definite, or none.
+    */
+  def solidifyFuturePParams[E <: EraTag](f: FuturePParams[E]): FuturePParams[E] = f match
+    case PotentialPParamsUpdate(None)                         => NoPParamsUpdate()
+    case PotentialPParamsUpdate(Some(pp))                     => DefinitePParamsUpdate(pp)
+    case fpp @ (NoPParamsUpdate() | DefinitePParamsUpdate(_)) => fpp
 
 /** `data ConwayGovState era` (`Conway/Governance.hs:243-259`, cardano-ledger f649f975): the
   * proposals, the committee, the constitution, the current, previous and future parameters, and the
@@ -174,6 +189,42 @@ object ConwayGovState:
   /** `cgsFuturePParamsL` (`Governance.hs:281-283`, cardano-ledger f649f975). */
   def cgsFuturePParamsL[E <: EraTag]: Lens[ConwayGovState[E], FuturePParams[E]] =
     Lens[ConwayGovState[E], FuturePParams[E]](_.cgsFuturePParams)(v => _.copy(cgsFuturePParams = v))
+
+  /** `predictFuturePParams` (`Conway/Governance.hs:300-327`, cardano-ledger 9df9f98c): while the
+    * future parameters are only potential, they become the parameters the pulser's ratification
+    * enacts, if it enacts a parameter change or a hard fork, else none. The reference leaves them a
+    * thunk TICK forces at the slot of no return; the pulser is complete here, so they are a value.
+    */
+  def predictFuturePParams[E <: EraTag](govState: ConwayGovState[E]): ConwayGovState[E] =
+    govState.cgsFuturePParams match
+      case FuturePParams.NoPParamsUpdate() | FuturePParams.DefinitePParamsUpdate(_) => govState
+      case FuturePParams.PotentialPParamsUpdate(_) =>
+        val ratifyState = DRepPulsingState.extractDRepPulsingState(govState.cgsDRepPulsingState)
+        def hasChangesToPParams(gas: GovActionState[E]): Boolean = gas.gasAction match
+          case GovAction.ParameterChange(_, _, _) | GovAction.HardForkInitiation(_, _) => true
+          case GovAction.TreasuryWithdrawals(_, _) | GovAction.NoConfidence(_) |
+              GovAction.UpdateCommittee(_, _, _, _) | GovAction.NewConstitution(_, _) |
+              GovAction.InfoAction() =>
+            false
+        val newFuturePParams = Option.when(ratifyState.rsEnacted.exists(hasChangesToPParams))(
+          ratifyState.rsEnactState.ensCurPParams
+        )
+        govState.copy(cgsFuturePParams = FuturePParams.PotentialPParamsUpdate(newFuturePParams))
+
+  /** `mkEnactState` (`Conway/Governance.hs:329-339`, cardano-ledger 9df9f98c): the enact state a
+    * ratification starts from, of the governance state's committee, constitution, parameters and
+    * the roots of its proposals, with no treasury and no withdrawals.
+    */
+  def mkEnactState[E <: EraTag](gs: ConwayGovState[E]): EnactState[E] =
+    EnactState[E](
+      gs.cgsCommittee,
+      gs.cgsConstitution,
+      gs.cgsCurPParams,
+      gs.cgsPrevPParams,
+      Coin.zero,
+      Sorted.empty,
+      Proposals.toPrevGovActionIds(gs.cgsProposals.pRoots)
+    )
 
   /** `instance Default (ConwayGovState era)` (`Governance.hs:377-378`, cardano-ledger f649f975): no
     * proposal over no root, no committee, the default constitution (an anchor of the empty URL and
@@ -248,6 +299,14 @@ trait ConwayEraGov[E <: EraTag] extends EraGov[E]:
 
 /** The instances of each era, the one place that lists the eras having each governance class. */
 object EraGov:
+  /** `nextEpochPParams` (`State/Governance.hs:116-123`, cardano-ledger 9df9f98c): the future
+    * parameters where they are known (`knownFuturePParams`), else the current ones.
+    */
+  def nextEpochPParams[E <: EraTag](govState: GovState[E])(using g: EraGov[E]): PParams[E] =
+    FuturePParams
+      .knownFuturePParams(g.futurePParamsGovStateL.get(govState))
+      .getOrElse(g.curPParamsGovStateL.get(govState))
+
   /** The instances over [[ConwayGovState]], the record of every era from Conway: `instance EraGov
     * ConwayEra` (`Conway/Governance.hs:405-420`) and `instance ConwayEraGov ConwayEra` (`:428-432`,
     * cardano-ledger f649f975), and Dijkstra's, the same (`Dijkstra/Governance.hs:28-49`,

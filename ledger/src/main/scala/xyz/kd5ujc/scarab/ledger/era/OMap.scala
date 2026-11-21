@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.era
 
+import scala.collection.immutable.SortedMap
+
 /** A map that keeps the order its values were read in (`data OMap k v`, cardano-data at
   * cardano-ledger 9df9f98c `libs/cardano-data/src/Data/OMap/Strict.hs:92-95`): a top-level Dijkstra
   * body's sub-transactions, by id. Only the era decoders make one, from values their decoder has
@@ -67,6 +69,13 @@ object OMap:
       * `f`, the keys kept, as the reference's callers keep each value's key.
       */
     def mapUnsafe[W](f: V => W): OMap[K, W] = m.map((k, v) => k -> f(v))
+
+    /** `extractKeys` (`Data/OMap/Strict.hs:274-285`, cardano-ledger 9df9f98c): the map without the
+      * values of `ks`, in its order, and those values by key.
+      */
+    def extractKeys(ks: Set[K])(using Ordering[K]): (OMap[K, V], SortedMap[K, V]) =
+      val (removed, retained) = m.partition((k, _) => ks.contains(k))
+      (retained, SortedMap.from(removed))
 
   given [K, V](using CanEqual[K, K], CanEqual[V, V]): CanEqual[OMap[K, V], OMap[K, V]] =
     CanEqual.derived
