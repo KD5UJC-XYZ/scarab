@@ -65,26 +65,6 @@
    ],
    "digest": "ccc1de7e505d2fe9"
   },
-  "def ledger.LeiosHeader.encode": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "file": "libs/cardano-protocol/src/Cardano/Protocol/Leios/BlockHeader.hs",
-     "symbol": "HeaderRaw",
-     "lines": [
-      335,
-      337
-     ]
-    }
-   ],
-   "class": "Mirror",
-   "structure": "same",
-   "evidence": [
-    "LeiosEncodingSuite"
-   ],
-   "digest": "d862be1ad4932e46"
-  },
   "def ledger.LeiosHeader.signed": {
    "upstream": [
     {

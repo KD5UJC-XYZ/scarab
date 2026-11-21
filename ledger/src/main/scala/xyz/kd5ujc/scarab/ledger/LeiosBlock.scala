@@ -33,7 +33,9 @@ final case class LeiosHeaderFields(
 
 /** The twelve fields of a Leios header body, decoded or to be signed: `HeaderBodyRaw`
   * (`libs/cardano-protocol/src/Cardano/Protocol/Leios/BlockHeader.hs`, cardano-ledger 9df9f98c).
-  * [[encode]] is the encoding the reference forges and signs ([[HeaderBodyEncoding.leios]]).
+  * [[encode]] is the encoding the reference forges and signs ([[HeaderBodyEncoding.leios]]): the
+  * bytes a forger gives the KES key. It is not the signed bytes of a header that was read, whose
+  * body may have been written otherwise ([[LeiosHeader.signable]], [[LeiosHeader.signed]]).
   */
 final case class LeiosHeaderBody(
     blockNo: BigInt,
@@ -129,16 +131,16 @@ final case class LeiosHeader(
 
 object LeiosHeader:
   /** `encCBOR (HeaderRaw body sig)` (`libs/cardano-protocol/src/Cardano/Protocol/Leios/
-    * BlockHeader.hs:335-337`, cardano-ledger 9df9f98c): `[header_body, body_signature]`, the body
-    * encoded as [[LeiosHeaderBody.encode]] encodes it, the bytes `kesSignature` signs, and the
-    * signature written whole (`encodeFixedSized`, a byte string of its 448 bytes). The reference
-    * memoizes the header so (`mkHeader`, `:251-258`): these are its bytes, and their Blake2b-256
-    * digest the block hash.
-    */
-  def encode(body: LeiosHeaderBody, kesSignature: Bytes): Bytes = signed(body.encode, kesSignature)
-
-  /** [[encode]] of a header body already encoded, `signable`: the bytes the KES key signed, held as
-    * they are, as the reference holds the memoized bytes of the body it signed.
+    * BlockHeader.hs:335-337`, cardano-ledger 9df9f98c): `[header_body, body_signature]`, the header
+    * body written as the bytes `kesSignature` signs, and the signature whole (`encodeFixedSized`, a
+    * byte string of its 448 bytes). The body is memoized, its encoding its bytes
+    * (`encodePreEncoded`), and the KES signature is over them (`getSignableRepresentation =
+    * originalBytes`, `:164-165`): `signable` is the bytes the KES key was given, never a body
+    * encoded again. For a header that was read, they are its [[LeiosHeader.signable]], which a
+    * header body with a non-minimal head or an indefinite list holds as it came and an encoding of
+    * its fields would not; for a block being forged, the [[LeiosHeaderBody.encode]] that was
+    * signed. The reference memoizes the header so (`mkHeader`, `:251-258`): these are its bytes,
+    * and their Blake2b-256 digest the block hash.
     */
   def signed(signable: Bytes, kesSignature: Bytes): Bytes =
     import HeaderBodyEncoding.{bytes as bstr, join, list}
@@ -318,7 +320,7 @@ object LeiosBlock:
     * 9df9f98c), each written as the bytes it memoizes, after Dijkstra's tag (`prependTag 8`,
     * `encodeDiskHfcBlock`, ouroboros-consensus 2416493b
     * `ouroboros-consensus-cardano/src/ouroboros-consensus-cardano/Ouroboros/Consensus/Cardano/Node.hs:173`).
-    * `header` is [[LeiosHeader.encode]]'s, `body` [[LeiosBlockBody.encode]]'s.
+    * `header` is [[LeiosHeader.signed]]'s, `body` [[LeiosBlockBody.encode]]'s.
     */
   def encode(header: Bytes, body: Bytes): Bytes =
     import HeaderBodyEncoding.{join, list as listOf, uint as word}

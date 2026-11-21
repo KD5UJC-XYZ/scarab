@@ -7,13 +7,16 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.protocol.HfcHeader
 
-/** The encoders of a Dijkstra block ([[LeiosHeaderBody.encode]], [[LeiosHeader.encode]],
+/** The encoders of a Dijkstra block ([[LeiosHeaderBody.encode]], [[LeiosHeader.signed]],
   * [[LeiosBlockBody.encode]], [[LeiosBlock.encode]]) against every Dijkstra header and block the
   * fixtures hold, all of them written by the reference (provenance in `fixtures/leios/README.md`
-  * and `fixtures/dijkstra-devnet/README.md`): each is decoded, its fields alone are encoded again,
-  * and the bytes must be the recorded ones, byte for byte. The header body must also be the bytes
-  * the KES signature is over ([[LeiosHeader.signable]]), and the block body's digest and length the
-  * header's body hash and body size.
+  * and `fixtures/dijkstra-devnet/README.md`): each is decoded, its header body's fields and its
+  * block body's contents are encoded again, and the bytes must be the recorded ones, byte for byte:
+  * the header body encoded from its fields is the bytes its KES signature is over
+  * ([[LeiosHeader.signable]]), the header assembled from those bytes and the signature is the
+  * recorded header, and the block body's digest and length are the header's body hash and size. A
+  * header whose body was written with non-minimal heads, which the reference accepts, keeps its
+  * signed bytes ([[LeiosHeader.signed]]), which an encoding of its fields does not reproduce.
   */
 class LeiosEncodingSuite extends munit.FunSuite:
   private def rows(path: Path): Vector[Array[String]] =
@@ -70,15 +73,43 @@ class LeiosEncodingSuite extends munit.FunSuite:
     assertEquals(blocks.size, 1 + 5 + 8)
   }
 
-  test("a Leios header encoded from its fields is the recorded header, its body the signed bytes") {
+  test(
+    "a Leios header body encoded from its fields is the signed bytes, and the header the recorded"
+  ) {
     headers.foreach { (label, raw) =>
       val header = LeiosHeader.decode(raw).fold(e => fail(s"$label: ${e.message}"), identity)
-      val body = header.body.encode
-      assertEquals(body, header.signable, s"$label: header body")
-      val encoded = LeiosHeader.encode(header.body, header.kesSignature)
+      assertEquals(header.body.encode, header.signable, s"$label: header body")
+      val encoded = LeiosHeader.signed(header.signable, header.kesSignature)
       assertEquals(encoded, raw, s"$label: header")
       assertEquals(Blake2b.hash256.hash(encoded), header.hash, label)
     }
+  }
+
+  test(
+    "a header body with non-minimal heads keeps its signed bytes, which its fields do not give"
+  ) {
+    // `header-non-minimal-heads` of the Leios reference cases: a header the testnet's build
+    // accepts (`fixtures/reference/leios-testnet-blocks/cases.jsonl`), whose body starts `980c`
+    val row = Files
+      .readAllLines(Path.of("fixtures", "reference", "leios-testnet-blocks", "cases.jsonl"))
+      .asScala
+      .find(_.contains("\"id\":\"header-non-minimal-heads\""))
+      .getOrElse(fail("no non-minimal header case"))
+    def field(name: String): Bytes =
+      hex(s""""$name":"([0-9a-f]+)"""".r.findFirstMatchIn(row).getOrElse(fail(name)).group(1))
+    val header = LeiosHeader.decode(field("bytes")).fold(e => fail(e.message), identity)
+    assertEquals(header.signable, field("signable"))
+    assertEquals(header.signable.hex.take(4), "980c")
+    // its fields encoded again are another, minimal, body: the signature is not over them
+    assertNotEquals(header.body.encode, header.signable)
+    assertEquals(header.body.encode.hex.take(2), "8c")
+    // the header assembled again holds the body as it was signed, with its signature
+    val again = LeiosHeader
+      .decode(LeiosHeader.signed(header.signable, header.kesSignature))
+      .fold(e => fail(e.message), identity)
+    assertEquals(again.signable, header.signable)
+    assertEquals(again.kesSignature, header.kesSignature)
+    assertEquals(again.body, header.body)
   }
 
   test("the headers cover each Leios field: an announcement, the certificate flag, neither") {
@@ -101,7 +132,7 @@ class LeiosEncodingSuite extends munit.FunSuite:
       assertEquals(body.hash, block.header.bodyHash, s"$label: body hash")
       assertEquals(BigInt(body.size), block.header.bodySize, s"$label: body size")
       assertEquals(body.hash, block.bodyHash, label)
-      val header = LeiosHeader.encode(block.header.body, block.header.kesSignature)
+      val header = LeiosHeader.signed(block.header.signable, block.header.kesSignature)
       assertEquals(LeiosBlock.encode(header, body.encode), raw, s"$label: block")
     }
   }
