@@ -26,7 +26,7 @@ object BlsBenchmark:
       (Weight(Rational(1, seats)), Some((vk, pop)))
     }
     val (committee, tBuild) = time(right(Committee.fromSeats(registered)))
-    val (sigs, tSign) = time(keys.map(k => right(MinSig.sign(k._1, h.bytes))))
+    val (sigs, tSign) = time(keys.map(k => right(MinSig.sign(k._1, h.signable))))
     def cert(n: Int) =
       right(
         Certificate.aggregate(

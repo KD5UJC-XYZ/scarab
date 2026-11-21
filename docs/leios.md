@@ -412,8 +412,12 @@ confined to `MinSig.guard`). Roadmap item N2 / issue 71. Not audited; research s
   `aggregateKeys`, `verifyAggregate`; the tags are `BLS_SIG_BLS12381G1_XMD:SHA-256_SSWU_RO_POP_`
   and `BLS_POP_BLS12381G1_XMD:SHA-256_SSWU_RO_POP_` (the `BLS12381MinSigDSIGN` choice in
   `cardano-base` `Cardano.Crypto.DSIGN.BLS12381.Internal`: no augmentation, tags fixed per curve).
-  The signed message of a vote is the 32 raw bytes of the announcing RB hash; the message of a
-  proof of possession is the 96 compressed bytes of the key.
+  The signed message of a vote and of a certificate is the announcing RB hash's
+  `getSignableRepresentation`, its CBOR encoding `58 20 || hash` (34 bytes, ouroboros-consensus
+  2416493b `Leios/Types.hs:138-141`; `RbHash.signable`). Until 2026-11-21 Scarab signed the 32 raw
+  bytes, under which the testnet's certificate of block 97,276 does not verify; corrected with #73,
+  and that certificate verifies (`LeiosCertificateFixtureSuite`). The message of a proof of possession is the
+  96 compressed bytes of the key.
 - Typed values with private constructors and strict decoders: `Seed` (32 bytes), `SecretKey`
   (non-zero scalar below the group order; `generate(seed)` is `blst_keygen` as `genKeyDSIGN`),
   `VerificationKey` (96-byte compressed G2), `Signature` and `ProofOfPossession` (48-byte

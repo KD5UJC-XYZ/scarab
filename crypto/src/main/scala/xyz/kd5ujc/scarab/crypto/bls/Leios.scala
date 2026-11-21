@@ -79,7 +79,7 @@ final case class Vote(announcingRbHash: RbHash, voter: SeatId, signature: Signat
 
 object Vote:
   def sign(sk: SecretKey, voter: SeatId, announcingRbHash: RbHash): Either[BlsError, Vote] =
-    MinSig.sign(sk, announcingRbHash.bytes).map(Vote(announcingRbHash, voter, _))
+    MinSig.sign(sk, announcingRbHash.signable).map(Vote(announcingRbHash, voter, _))
 
   /** The seat's key must exist; the signature must verify over the announcing hash. Returns the
     * voter's weight (the committee-relative meaning of a valid vote).
@@ -89,7 +89,7 @@ object Vote:
       case None                => Left(BlsError.SignerNotInCommittee(vote.voter))
       case Some(Seat(_, None)) => Left(BlsError.SeatHasNoKey(vote.voter))
       case Some(Seat(w, Some(vk))) =>
-        MinSig.verify(vk, vote.announcingRbHash.bytes, vote.signature).map(_ => w)
+        MinSig.verify(vk, vote.announcingRbHash.signable, vote.signature).map(_ => w)
 
   /** Strict decode: canonical (shortest-form, definite-length) CBOR, exactly three fields. */
   def decode(bytes: Bytes): Either[BlsError, Vote] =
@@ -149,9 +149,9 @@ object Certificate:
     * Leios.hs:289-340`): the certificate over `message` (the announcing RB hash) against a
     * committee and the weight its signers must reach, in the reference's order: a committee a
     * `Word16` seat id can address, a bitfield of `ceil(seats / 8)` bytes (bits at or beyond the
-    * committee size ignored), no signer on a keyless seat, the signers' exact summed weight at least
-    * `required`, then one pairing check against the sum of the signers' keys. Returns that weight.
-    * No signer is no special case: the weight is zero, and the empty key sum fails as
+    * committee size ignored), no signer on a keyless seat, the signers' exact summed weight at
+    * least `required`, then one pairing check against the sum of the signers' keys. Returns that
+    * weight. No signer is no special case: the weight is zero, and the empty key sum fails as
     * `InvalidSignature` when nothing is required. A failure of the native library is
     * [[BlsError.Backend]], no verdict on the certificate.
     */
@@ -181,7 +181,7 @@ object Certificate:
         VerificationError.InsufficientWeight(weight)
       )
       _ <- MinSig
-        .verifyAggregate(seats.flatMap(_._2.key), message.bytes, cert.signature)
+        .verifyAggregate(seats.flatMap(_._2.key), message.signable, cert.signature)
         .left
         .map(signatureVerdict)
     yield weight
