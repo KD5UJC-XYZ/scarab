@@ -1,0 +1,170 @@
+// SPDX-License-Identifier: Apache-2.0
+package xyz.kd5ujc.scarab.network
+
+import cats.effect.IO
+import cats.effect.std.Queue
+import cats.syntax.all.*
+import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.protocol.{
+  ChainSync,
+  EbHash,
+  EbPoint,
+  HfcHeader,
+  IncrementalDecoder,
+  LeiosNotify,
+  LeiosWireError,
+  ProtocolError
+}
+import xyz.kd5ujc.scarab.protocol.LeiosWord.{Word32, Word64}
+
+import LeiosNotifyServer.{Replies, Reply, Requested}
+import Peers.*
+
+/** The LeiosNotify server's state machine against `leiosNotifyServerPeerLookahead`
+  * (`LeiosDemoOnlyTestNotify.hs` 636-722 at ouroboros-consensus 2416493b) and the queue of
+  * `hLeiosNotifyServer` (`NodeToNode.hs` 769-936): held requests answered in order with the queue's
+  * replies, the quit making each one left a `MsgCanceled` before `MsgDone`, a request past the
+  * credits refused, and the pump's failure ending the server.
+  */
+class LeiosNotifyServerSuite extends FailsOnUncaught:
+  private given LeiosNotify.AnnouncementReader = _ => Right(())
+
+  private val point = EbPoint(Word64.fromUnsigned(40L), EbHash.fromBytes(Bytes(Vector.fill(32)(3))))
+
+  /** Replies taken from `queued`, counting requests up to `depth`, with `pump` alongside. */
+  private def scripted(
+      queued: Queue[IO, Reply],
+      depth: Int = LeiosNotifyServer.PipelineDepth,
+      pumping: IO[Unit] = IO.never
+  ): IO[Replies[IO]] =
+    LeiosNotifyServer
+      .silent[IO](depth)
+      .map(counted =>
+        new Replies[IO]:
+          def requested: IO[Requested] = counted.requested
+          def next: IO[Reply] = queued.take
+          def pump: IO[Unit] = pumping
+      )
+
+  private def send(channel: MuxChannel[IO], message: LeiosNotify.Message)(using Net): IO[Unit] =
+    LeiosNotify
+      .encode(message)
+      .fold(e => IO.raiseError(new AssertionError(e.toString)), channel.send)
+
+  private def receive(channel: MuxChannel[IO], state: LeiosNotify.State)(using
+      Net
+  ): IO[LeiosNotify.Message] =
+    channel.recv(LeiosNotify.SmallByteLimit)(new IncrementalDecoder[LeiosNotify.Message]:
+      type Cursor = Unit
+      def initial: Cursor = ()
+      def resume(cursor: Cursor, input: Bytes) =
+        (
+          (),
+          LeiosNotify.decodePrefix(state, input) match
+            case Right((m, n))                   => ChainSync.DecodeResult.Decoded(m, n)
+            case Left(LeiosWireError.Incomplete) => ChainSync.DecodeResult.NeedMore
+            case Left(e) => ChainSync.DecodeResult.Failed(ProtocolError.Leios(e))
+        ))
+
+  /** The server over `replies` on one end, and `client` on the other, with how the server ended. */
+  private def conversing[A](replies: Replies[IO])(
+      client: MuxChannel[IO] => IO[A]
+  )(using Net): IO[(Either[Throwable, Unit], A)] =
+    linked(protocols = Set(Protocols.LeiosNotify)).use { (clientMux, serverMux) =>
+      for
+        ours <- clientMux.channel(Protocols.LeiosNotify)
+        theirs <- serverMux.channel(Protocols.LeiosNotify)
+        server <- LeiosNotifyServer.run(theirs, replies).attempt.start
+        result <- client(ours)
+        ended <- server.joinWithNever
+      yield (ended, result)
+    }
+
+  test("held requests are answered in order with the queue's replies; the quit cancels the rest") {
+    typed(for
+      queued <- Queue.unbounded[IO, Reply]
+      replies <- scripted(queued)
+      _ <- queued.offer(Reply.BlockOffer(point, Word32.wrap(11))) *>
+        queued.offer(Reply.BlockTxsOffer(point))
+      outcome <- conversing(replies)(c =>
+        send(c, LeiosNotify.Message.RequestNext).replicateA_(3) *>
+          receive(c, LeiosNotify.State.Busy)
+            .replicateA(2)
+            .flatMap(answered =>
+              send(c, LeiosNotify.Message.Quit) *>
+                (receive(c, LeiosNotify.State.Busy), receive(c, LeiosNotify.State.Quit)).tupled
+                  .map((canceled, done) => (answered, canceled, done))
+            )
+      )
+    yield outcome).map(result =>
+      assertEquals(
+        result,
+        Right(
+          (
+            Right(()),
+            (
+              List(
+                LeiosNotify.Message.BlockOffer(point, Word32.wrap(11)),
+                LeiosNotify.Message.BlockTxsOffer(point)
+              ),
+              LeiosNotify.Message.Canceled,
+              LeiosNotify.Message.Done
+            )
+          )
+        )
+      )
+    )
+  }
+
+  test("an announcement goes out as MsgLeiosBlockAnnouncement with its header's envelope") {
+    val header = HfcHeader.Dijkstra(Bytes(Vector(0x80.toByte)))
+    val envelope = HfcHeader.encode(header).fold(e => fail(e.toString), identity)
+    typed(for
+      queued <- Queue.unbounded[IO, Reply]
+      replies <- scripted(queued)
+      _ <- queued.offer(Reply.Announcement(header))
+      outcome <- conversing(replies)(c =>
+        send(c, LeiosNotify.Message.RequestNext) *> receive(c, LeiosNotify.State.Busy) <*
+          send(c, LeiosNotify.Message.Quit) <* receive(c, LeiosNotify.State.Quit)
+      )
+    yield outcome).map(result =>
+      assertEquals(result, Right((Right(()), LeiosNotify.Message.BlockAnnouncement(envelope))))
+    )
+  }
+
+  test("a quit with nothing held is answered with MsgDone at once") {
+    typed(for
+      queued <- Queue.unbounded[IO, Reply]
+      replies <- scripted(queued)
+      outcome <- conversing(replies)(c =>
+        send(c, LeiosNotify.Message.Quit) *> receive(c, LeiosNotify.State.Quit)
+      )
+    yield outcome).map(result => assertEquals(result, Right((Right(()), LeiosNotify.Message.Done))))
+  }
+
+  test("a request that finds the connection at its credits ends it") {
+    typed(
+      for
+        queued <- Queue.unbounded[IO, Reply]
+        replies <- scripted(queued, depth = 2)
+        ended <- linked(protocols = Set(Protocols.LeiosNotify)).use { (clientMux, serverMux) =>
+          for
+            ours <- clientMux.channel(Protocols.LeiosNotify)
+            theirs <- serverMux.channel(Protocols.LeiosNotify)
+            server <- typed(LeiosNotifyServer.run(theirs, replies)).start
+            _ <- send(ours, LeiosNotify.Message.RequestNext).replicateA_(3)
+            ended <- server.joinWithNever
+          yield ended
+        }
+      yield ended
+    ).map(result => assertEquals(result, Right(Left(NetworkError.LeiosNotifyExcessiveRequests(2)))))
+  }
+
+  test("the pump's failure ends the server") {
+    val boom = new IllegalStateException("pump")
+    typed(for
+      queued <- Queue.unbounded[IO, Reply]
+      replies <- scripted(queued, pumping = IO.raiseError(boom))
+      outcome <- conversing(replies)(_ => IO.unit)
+    yield outcome._1).map(result => assertEquals(result, Right(Left(boom))))
+  }
