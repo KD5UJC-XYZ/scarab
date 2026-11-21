@@ -154,7 +154,7 @@ object LeiosFetch:
     */
   def incremental(state: State): IncrementalDecoder[Message] =
     new IncrementalDecoder[Message]:
-      type Cursor = (LeiosFetchDecoder.Stage, Int)
+      type Cursor = (LeiosFetchDecoder.Checkpoint, Int)
       val initial: Cursor = LeiosFetchDecoder.start
       def resume(cursor: Cursor, input: Bytes): (Cursor, ChainSync.DecodeResult[Message]) =
         LeiosFetchDecoder.resumed(state, cursor, input) match

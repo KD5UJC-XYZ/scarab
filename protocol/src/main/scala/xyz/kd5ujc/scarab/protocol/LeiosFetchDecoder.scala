@@ -25,20 +25,20 @@ private[protocol] object LeiosFetchDecoder:
   import LeiosStream.*
 
   /** Where the decoding of a message stands between its steps. */
-  enum Stage:
+  enum Checkpoint:
     case Frame
 
     /** The bitmaps of `MsgLeiosBlockTxsRequest` for `point`, after the entries `read`. */
     case Bitmaps(point: EbPoint, size: Option[BigInt], read: Entries[(Word16, Word64)])
 
     /** The `size` entries of an endorser block, after the entries `read`. */
-    case Block(size: BigInt, read: Entries[(LeiosTxHash, Word32)])
+    case EndorserBlock(size: BigInt, read: Entries[(LeiosTxHash, Word32)])
 
     /** The transactions of `MsgLeiosBlockTxs`, after the transactions `read`. */
     case Transactions(size: Option[BigInt], read: Entries[Bytes])
 
   /** A message read from its start, before any step. */
-  val start: (Stage, Int) = (Stage.Frame, 0)
+  val start: (Checkpoint, Int) = (Checkpoint.Frame, 0)
 
   private def bitmap(tag: Int)(previous: Option[(Word16, Word64)]): Decoder[(Word16, Word64)] =
     for
@@ -88,7 +88,7 @@ private[protocol] object LeiosFetchDecoder:
     * is read, so a list of another length is refused before its fields. The point, and the head of
     * the collection that follows, are read in the same step.
     */
-  private def frame(state: State): Decoder[Either[Stage, Message]] =
+  private def frame(state: State): Decoder[Either[Checkpoint, Message]] =
     for
       size <- definite(4, LeiosWireError.NotAnArray)
       tag <- unsigned(0, Word64.Max, LeiosWireError.BadField(-1, LeiosField.Word64))
@@ -101,36 +101,39 @@ private[protocol] object LeiosFetchDecoder:
             (
               point(3),
               collectionHead(3, LeiosField.Bitmaps, 5, LeiosFetch.MaxBitmapEntries)
-            ).mapN((p, n) => Left(Stage.Bitmaps(p, n, Entries.none)))
+            ).mapN((p, n) => Left(Checkpoint.Bitmaps(p, n, Entries.none)))
           )
         case (State.Block, t) if t == 2 =>
-          fields(2, size, 2)(blockHead.map(n => Left(Stage.Block(n, Entries.none))))
+          fields(2, size, 2)(blockHead.map(n => Left(Checkpoint.EndorserBlock(n, Entries.none))))
         case (State.BlockTxs, t) if t == 4 =>
           fields(4, size, 2)(
             collectionHead(4, LeiosField.Transactions, 4, LeiosFetch.MaxTxsPerEb)
-              .map(n => Left(Stage.Transactions(n, Entries.none)))
+              .map(n => Left(Checkpoint.Transactions(n, Entries.none)))
           )
         case (_, t) if t <= 4 => fail(LeiosWireError.NotAdmitted(t.toInt))
         case (_, t)           => fail(LeiosWireError.UnknownTag(t))
     yield next
 
   /** One step of a message of `state` from `stage`: the frame, or one entry of its collection. */
-  private def step(state: State)(stage: Stage): Decoder[Either[Stage, Message]] = stage match
-    case Stage.Frame => frame(state)
-    case Stage.Bitmaps(p, size, read) =>
-      collectionStep(3, LeiosField.Bitmaps, LeiosFetch.MaxBitmapEntries, size, read)(
-        (_, previous) => bitmap(3)(previous)
-      ).map(_.bimap(Stage.Bitmaps(p, size, _), b => Message.BlockTxsRequest(p, TxBitmaps(b))))
-    case Stage.Block(size, read) =>
-      if BigInt(read.count) >= size then pure(Right(Message.Block(read.inOrder)))
-      else blockEntry.map(entry => Left(Stage.Block(size, read.added(entry))))
-    case Stage.Transactions(size, read) =>
-      collectionStep(4, LeiosField.Transactions, LeiosFetch.MaxTxsPerEb, size, read)((index, _) =>
-        transaction(index)
-      ).map(_.bimap(Stage.Transactions(size, _), Message.BlockTxs(_)))
+  private def step(state: State)(stage: Checkpoint): Decoder[Either[Checkpoint, Message]] =
+    stage match
+      case Checkpoint.Frame => frame(state)
+      case Checkpoint.Bitmaps(p, size, read) =>
+        collectionStep(3, LeiosField.Bitmaps, LeiosFetch.MaxBitmapEntries, size, read)(
+          (_, previous) => bitmap(3)(previous)
+        ).map(
+          _.bimap(Checkpoint.Bitmaps(p, size, _), b => Message.BlockTxsRequest(p, TxBitmaps(b)))
+        )
+      case Checkpoint.EndorserBlock(size, read) =>
+        if BigInt(read.count) >= size then pure(Right(Message.Block(read.inOrder)))
+        else blockEntry.map(entry => Left(Checkpoint.EndorserBlock(size, read.added(entry))))
+      case Checkpoint.Transactions(size, read) =>
+        collectionStep(4, LeiosField.Transactions, LeiosFetch.MaxTxsPerEb, size, read)((index, _) =>
+          transaction(index)
+        ).map(_.bimap(Checkpoint.Transactions(size, _), Message.BlockTxs(_)))
 
   /** A message of `state` read on from the checkpoint `at` of a shorter prefix of `input`. */
-  def resumed(state: State, at: (Stage, Int), input: Bytes): Resumed[Stage, Message] =
+  def resumed(state: State, at: (Checkpoint, Int), input: Bytes): Resumed[Checkpoint, Message] =
     resume(at._1, at._2, input)(step(state))
 
   /** A message of `state` read from the start of `input`. */
