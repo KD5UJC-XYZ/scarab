@@ -260,6 +260,22 @@ object Proposals:
   def proposalsActionsMap[E <: EraTag](ps: Proposals[E]): Map[GovActionId, GovActionState[E]] =
     ps.pProps.toMap
 
+  /** `proposalsWithPurpose` (`Proposals.hs:274-291`, cardano-ledger f649f975): the actions of the
+    * tree of purpose `P`, by the ids its graph holds, each looked up in the ordered map. The
+    * reference falls back on a filter of the map by purpose if a lookup fails (`assert False`),
+    * which the store's construction rules out ([[Proposals]]), so no lookup fails here.
+    */
+  def proposalsWithPurpose[E <: EraTag, P <: GovActionPurpose](
+      propL: GovRelationL[P],
+      ps: Proposals[E]
+  ): Map[GovPurposeId[P], GovActionState[E]] =
+    propL
+      .get(ps.pGraph)
+      .unPGraph
+      .keysIterator
+      .flatMap(id => ps.pProps.get(id.unGovPurposeId).map(id -> _))
+      .toMap
+
   /** `proposalsLookupId` (`Proposals.hs:596-600`, cardano-ledger f649f975). */
   def proposalsLookupId[E <: EraTag](
       gai: GovActionId,

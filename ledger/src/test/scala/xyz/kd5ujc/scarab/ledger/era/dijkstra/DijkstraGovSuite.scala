@@ -384,6 +384,51 @@ class DijkstraGovSuite extends FunSuite:
     )
   }
 
+  test("SUBGOV is GOV in its newtype: each injection the newtype after GOV's, and its verdicts") {
+    // `Dijkstra/Rules/SubGov.hs:50-56` (cardano-ledger 9df9f98c): Conway's failure is SUBGOV's
+    // newtype after `conwayToDijkstraGovPredFailure`, Dijkstra's the newtype, on each of the 19
+    pairs.foreach { (conway, dijkstra) =>
+      assertEquals(
+        InjectSubGovFailure.dijkstraConway.injectFailure(conway),
+        DijkstraSubGovPredFailure(DijkstraGovPredFailure.conwayToDijkstraGovPredFailure(conway))
+      )
+      assertEquals(
+        InjectSubGovFailure.dijkstraGov.injectFailure(dijkstra),
+        DijkstraSubGovPredFailure(dijkstra)
+      )
+    }
+    val identity = DijkstraSubGovPredFailure(pairs.head._2)
+    assertEquals(InjectSubGovFailure.dijkstra.injectFailure(identity), identity)
+    // GOV's transition at SUBGOV (`SubGov.hs:86`, cardano-ledger 9df9f98c): on the chain's proposals,
+    // admitted with GOV's proposals and its events in SUBGOV's, and refused with GOV's failures in
+    // SUBGOV's
+    val (tx1, slot1) = first
+    val (tx2, slot2) = second
+    def compare(env: GovEnv[Dijkstra], signal: GovSignal[Dijkstra], state: Proposals[Dijkstra]) =
+      (ok(EraGovRun.subGov(env, signal, Network.Testnet, state)), run(env, signal, state)) match
+        case (Right((subAfter, subEvents)), Right((after, events))) =>
+          assertEquals(subAfter, after)
+          assertEquals(subEvents.toVector, events.toVector.map(DijkstraSubGovEvent(_)))
+          true
+        case (Left(subFs), Left(fs)) =>
+          assertEquals(
+            subFs.toChain.toVector,
+            fs.toChain.toVector.map(DijkstraSubGovPredFailure(_))
+          )
+          false
+        case other => fail(s"$other")
+    val after1 = admitted(envOf(tx1, slot1, cert), signalOf(tx1), EraGovRun.dijkstraEmpty)
+    assertEquals(
+      Vector(
+        compare(envOf(tx1, slot1, cert), signalOf(tx1), EraGovRun.dijkstraEmpty),
+        compare(envOf(tx2, slot2, cert), signalOf(tx2), after1),
+        compare(envOf(tx2, slot2, cert), signalOf(tx2), EraGovRun.dijkstraEmpty),
+        compare(envOf(tx1, slot1, cert, guardrails = None), signalOf(tx1), EraGovRun.dijkstraEmpty)
+      ),
+      Vector(true, true, false, false)
+    )
+  }
+
   test("a stake pool and a DRep vote on the chain's first proposal, of the security group") {
     val (tx1, slot1) = first
     val after1 = admitted(envOf(tx1, slot1, cert), signalOf(tx1), EraGovRun.dijkstraEmpty)
