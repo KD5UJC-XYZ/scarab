@@ -1759,6 +1759,8 @@
           "ForgeSuite",
           "DijkstraForgeSuite",
           "DijkstraSelectionSuite",
+          "DijkstraEndorserBlockSuite",
+          "LeiosForgedEbSuite",
           "SystemStartSuite",
           "LeadershipSuite",
           "Draft03ProverSuite",

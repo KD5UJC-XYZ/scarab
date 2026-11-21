@@ -26,14 +26,19 @@ object AnnouncingHeader:
     * `Shelley/Ledger/Leios.hs` 268-286); none where the header announces nothing.
     */
   def of(header: LeiosHeader): Option[AnnouncingHeader] =
-    header.leios.announcement.map(a =>
-      AnnouncingHeader(
-        header.hash,
-        AnnouncementFields(
-          ElId(Word64.clamped(header.slot), Blake2b.hash224.hash(header.issuerVkey)),
-          a.hash,
-          BytesSize.wrap(a.size)
-        )
+    header.leios.announcement.map(a => forged(header, a.hash, BytesSize.wrap(a.size)))
+
+  /** `mkForgedAnnouncingHeader` (`LeiosDemoLogic.hs` 1768-1772): the header of a block the node
+    * forged, announcing the endorser block it forged with it, whose hash and body size are given,
+    * not read from the header.
+    */
+  def forged(header: LeiosHeader, ebHash: EbHash, ebBodySize: BytesSize): AnnouncingHeader =
+    AnnouncingHeader(
+      header.hash,
+      AnnouncementFields(
+        ElId(Word64.clamped(header.slot), Blake2b.hash224.hash(header.issuerVkey)),
+        ebHash,
+        ebBodySize
       )
     )
 

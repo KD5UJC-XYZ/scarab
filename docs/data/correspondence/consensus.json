@@ -5,6 +5,26 @@
   "consensus/src/main/scala"
  ],
  "entries": {
+  "def consensus.leios.AnnouncingHeader.forged": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic.hs",
+     "symbol": "mkForgedAnnouncingHeader",
+     "lines": [
+      1768,
+      1772
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraForgeSuite"
+   ],
+   "digest": "b121dc7662a681e0"
+  },
   "def consensus.leios.LeiosCertification.check": {
    "upstream": [
     {
@@ -2398,7 +2418,7 @@
     "LeiosRollForwardSuite"
    ],
    "note": "the election of the header's slot and its issuer key's hash",
-   "digest": "3c953cc86d2e9537"
+   "digest": "eb5bc99584529c1b"
   },
   "enum consensus.leios.ElState": {
    "upstream": [

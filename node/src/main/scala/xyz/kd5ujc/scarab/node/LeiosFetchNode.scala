@@ -22,7 +22,8 @@ import xyz.kd5ujc.scarab.network.{
   MuxChannel,
   NetworkError
 }
-import xyz.kd5ujc.scarab.protocol.LeiosWord.Word64
+import xyz.kd5ujc.scarab.node.forge.{ForgedLeiosEb, OnForgedLeiosEb}
+import xyz.kd5ujc.scarab.protocol.LeiosWord.{Word32, Word64}
 import xyz.kd5ujc.scarab.storage.{LeiosStore, LeiosStoreError}
 
 /** The Leios build's endorser-block fetch of a node: the fetch logic's state shared by its peers,
@@ -75,6 +76,39 @@ final class LeiosFetchNode[F[_]] private (
           )
         )
       }
+
+  /** `onForgedLeiosEb` (`LeiosDemoLogic.hs` 2389-2460 at ouroboros-consensus 2416493b): an endorser
+    * block the node forged, handed to the handlers a peer's announcement, body and closure go
+    * through, with no peer, so that the fetch logic's state is what receiving it would make it.
+    * First the announcement ([[announcedLocally]]), then the body
+    * ([[LeiosFetchArrival.forgedBlock]]) and the closure ([[LeiosFetchArrival.forgedTxs]]), each
+    * written before the next. Not mirrored (#54): no relay of the announcement, for the LeiosNotify
+    * server is not run; no transaction cache; no egress credit; no traces of the forged and stored
+    * endorser block.
+    */
+  val onForged: OnForgedLeiosEb[F] = new OnForgedLeiosEb[F]:
+    def forged(announcing: AnnouncingHeader, eb: ForgedLeiosEb)(using
+        Raise[F, LeiosStoreError]
+    ): F[Unit] =
+      announcedLocally(announcing) *> arrival.forgedBlock(eb.point, eb.body) *>
+        arrival.forgedTxs(eb.point, eb.closure)
+
+  /** `processAnnouncementCentrally` of an announcement the node forged (`ForgedLocally`,
+    * `LeiosDemoLogic.hs` 1784-1853): counted once per election as a peer's is
+    * (`onAnnouncementCentral`); a new one marks its endorser block as imminent in the fetch logic's
+    * state (`markForged`, `markBodyImminent`), so that it is never fetched, even when a peer relays
+    * the announcement back, and records its point in the store (`writeEbPoint`). It records no
+    * onset, as the age of a forged block is not diffusion's.
+    */
+  private def announcedLocally(anc: AnnouncingHeader)(using Raise[F, LeiosStoreError]): F[Unit] =
+    val fields = anc.fields
+    central.evalUpdate(counted =>
+      counted.extendLive(fields.election, anc) match
+        case Left(_) => F.pure(counted)
+        case Right((_, next)) =>
+          shared.outstanding.update(_.markBodyImminent(fields.ebHash, fields.election.slot)) *>
+            store.writeEbPoint(fields.point, Word32.wrap(fields.ebBodySize.toLong)).as(next)
+    )
 
   /** The LeiosFetch server's answers (`hLeiosFetchServer`, `NodeToNode.hs` 957-961 at
     * ouroboros-consensus 2416493b).

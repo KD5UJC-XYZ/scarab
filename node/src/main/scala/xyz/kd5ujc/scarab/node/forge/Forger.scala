@@ -32,7 +32,10 @@ import xyz.kd5ujc.scarab.ledger.state.{Conway, Dijkstra, NewEpochState, ShelleyB
 import xyz.kd5ujc.scarab.node.read.{ChainRead, ConwayView, InEra, TxClock}
 import xyz.kd5ujc.scarab.node.read.MirrorEraRead
 import xyz.kd5ujc.scarab.node.mempool.{Capacity, Entry, Mempool, MempoolLedger, MempoolState}
-import xyz.kd5ujc.scarab.node.mempool.Rejection
+import xyz.kd5ujc.scarab.node.mempool.{EbCapacityScale, EbMeasure, Rejection}
+import xyz.kd5ujc.scarab.consensus.leios.{AnnouncingHeader, BytesSize}
+import xyz.kd5ujc.scarab.ledger.StorageError
+import xyz.kd5ujc.scarab.storage.LeiosStoreError
 import xyz.kd5ujc.scarab.protocol.{ChainSync, ReferenceBuild}
 import xyz.kd5ujc.scarab.storage.UtxoStore
 import scala.concurrent.duration.*
@@ -273,9 +276,16 @@ trait ForgeEvents[F[_]]:
   *   ledger itself, but in a test that needs one no chain state holds (a parameter beyond the
   *   state's range, so that the selection withholds a transaction).
   * @param dijkstraSnapshots
-  *   The pool's snapshot of a slot a Dijkstra ranking block takes its transactions from
-  *   ([[BlockBuilder.ranking]]): none, while the pool admits no Dijkstra transaction
-  *   ([[DijkstraSnapshots.unadmitted]]).
+  *   The pool's snapshot of a slot a Dijkstra ranking block takes its transactions from, with the
+  *   endorser block of those after them ([[BlockBuilder.partition]]): none, while the pool admits
+  *   no Dijkstra transaction ([[DijkstraSnapshots.unadmitted]]).
+  * @param onForgedEb
+  *   What is done with an endorser block forged with a ranking block, before the block goes to
+  *   chain selection ([[OnForgedLeiosEb]]); none where the node has no endorser-block store, and
+  *   then no endorser block is forged, for none could be served.
+  * @param ebCapacityScale
+  *   The share of an endorser block's capacity the forger forges with, read at each slot
+  *   (`readEbCapacityScale`, [[EbCapacityScale]]).
   */
 final class Forger[F[_]: Async, S](
     config: PraosConfig,
@@ -302,7 +312,9 @@ final class Forger[F[_]: Async, S](
     shared: Forger.Shared[F],
     pause: Forger.Point => F[Unit],
     selectionLedger: (BigInt, ChainSync.Point, MempoolLedger) => MempoolLedger,
-    dijkstraSnapshots: DijkstraSnapshots[F]
+    dijkstraSnapshots: DijkstraSnapshots[F],
+    onForgedEb: Option[OnForgedLeiosEb[F]],
+    ebCapacityScale: F[EbCapacityScale]
 )(using
     chain: Stateful[F, VolatileChain[S]],
     read: ChainRead[S],
@@ -1421,18 +1433,25 @@ final class Forger[F[_]: Async, S](
           perform(select(context.base, slot, epoch, ledger, snapshot)).map((chosen, withheld) =>
             (BlockBuilder.Assembly.InConway(BlockBuilder.body(chosen.map(_._2))), withheld)
           )
-        // the pool's snapshot of the slot, partitioned for the ranking block; this forger
-        // certifies no endorser block yet, so the block takes its transactions (#54)
+        // the pool's snapshot of the slot, partitioned for the ranking block and the endorser
+        // block it announces (`partitionMempool`, `NodeKernel/Forge.hs:784-803` at
+        // ouroboros-consensus 2416493b); this forger certifies no endorser block yet, so the block
+        // takes its transactions (#54)
         case Forger.Ticked.InDijkstra(nes) =>
-          perform(dijkstraSnapshots.forSlot(nes, slot)).map(held =>
+          for
+            ebLimit <- perform(endorserLimit(ticked.params))
+            held <- perform(dijkstraSnapshots.forSlot(nes, slot))
+          yield
+            val split =
+              BlockBuilder.partition(held, Capacity.dijkstraBlockUnit(ticked.params), ebLimit)
             (
               BlockBuilder.Assembly.dijkstra(
-                BlockBuilder.ranking(held, Capacity.dijkstraBlockUnit(ticked.params)).transactions,
-                None
+                split.ranking.transactions,
+                None,
+                split.endorsing(slot)
               ),
               Map.empty[Bytes, Rejection]
             )
-          )
       (body, withheld) = selected
       _ <- perform(hold.withdrawal(withheld))
       _ <- hold.say(
@@ -1443,7 +1462,10 @@ final class Forger[F[_]: Async, S](
           snapshot.tipSlot + 1
         )
       )
-      ids = body.ids
+      // the ranking block's transactions and its endorser block's: both leave the pool when the
+      // block is refused (`addBlockToChainDB`, `NodeKernel/Forge.hs:543-592` at
+      // ouroboros-consensus 2416493b)
+      ids = body.ids ++ body.endorsedIds
       _ <- perform(pause(Forger.Point.Signing(slot)))
       signed <- perform(assemble(context, forecastable, ticked.params, cert, vrf, body, admitted))
         .flatMap(_.fold(disabled)(proceed))
@@ -1521,17 +1543,36 @@ final class Forger[F[_]: Async, S](
         }
     }
 
+  /** The block's endorser block kept ([[stored]]), then the block handed to chain selection, as the
+    * forge runs `onForgedLeiosEb` before `addBlockToChainDB` (`NodeKernel/Forge.hs:283-305` at
+    * ouroboros-consensus 2416493b).
+    */
   private def adopted(slot: BigInt, prepared: Prepared[S], hold: Holding)(using
       Handle[F, NodeError]
   ): F[Unit] =
     val block = prepared.block
     val epoch = geometry.epochOf(slot)
-    follower.submitForged(block.header, block.raw).flatMap { submitted =>
-      adoption(slot, epoch, prepared, hold, submitted.adoption) *>
-        Forger
-          .notKept(slot, block.header.hash, submitted.retention)
-          .traverse_(event => hold.line(event))
+    block.endorsed.traverse_(stored) *> follower.submitForged(block.header, block.raw).flatMap {
+      submitted =>
+        adoption(slot, epoch, prepared, hold, submitted.adoption) *>
+          Forger
+            .notKept(slot, block.header.hash, submitted.retention)
+            .traverse_(event => hold.line(event))
     }
+
+  /** `onForgedLeiosEb` of the endorser block forged with a block: its announcement, body and
+    * closure through the handlers a peer's are taken by ([[OnForgedLeiosEb]]), all written before
+    * the block is handed over, as the forge must not announce what it has not stored. The store's
+    * failure is the node's storage error: it comes back from the handover as a value, outside the
+    * key's lock, and stops the node ([[Forger.scoped]]), as a failed write of the reference's
+    * single writer does.
+    */
+  private def stored(e: AnnouncedEb)(using Handle[F, NodeError]): F[Unit] =
+    onForgedEb.traverse_(on =>
+      Handle
+        .allow[LeiosStoreError](on.forged(e.announcing, e.forged))
+        .rescue(error => (StorageError.LeiosStore(error): NodeError).raise[F, Unit])
+    )
 
   /** What the forger does with what chain selection made of its block. */
   private def adoption(
@@ -1669,6 +1710,27 @@ final class Forger[F[_]: Async, S](
       selection.withheld.map((entry, failure) => entry.id -> Rejection.Ledger(failure)).toMap
     )
 
+  /** The capacity of the endorser block forged in a slot: `leiosEndorserBlockCapacity` scaled by
+    * the share read for the slot (`scaleEbCapacity` of `readEbCapacityScale`,
+    * `NodeKernel/Forge.hs:784-789` at ouroboros-consensus 2416493b), or none where the node keeps
+    * no endorser block ([[onForgedEb]]). Parameters whose endorser block the LeiosFetch codec
+    * cannot carry stop the node, as `guardLeiosWireLimit` 's `error` stops the reference's
+    * (`Shelley/Ledger/Mempool.hs:915-939`).
+    */
+  private def endorserLimit(params: ProtocolParams)(using Raise[F, Fatal]): F[EbMeasure] =
+    Capacity
+      .endorserBlockCapacity(params)
+      .fold(
+        over =>
+          (Fatal.Internal(
+            ForgeError.UnsupportedProtocol(
+              ForgeProtocolProblem.EndorserBlockReferencesOverWire(over.parameter, over.wire)
+            )
+          ): Fatal).raise[F, EbMeasure],
+        capacity =>
+          onForgedEb.fold(F.pure(EbMeasure.zero))(_ => ebCapacityScale.map(_.apply(capacity)))
+      )
+
   /** Build and sign the block (`forgeBlock`). The checks here are Scarab's own and never refuse a
     * block the steps before let through: the key's window, and the body size and the decoding of
     * the block just built, which only a bug of ours can fail ([[ForgeDefect]]; the body is checked
@@ -1735,9 +1797,12 @@ final class Forger[F[_]: Async, S](
           else signedWith(c).map(signed => Some(signed -> generation))
         }
         .map(_.flatten)
-    if body.size > params.maxBlockBodySize then
-      F.pure(Some(Right(Left(ForgeDefect.BodySize(body.size, params.maxBlockBodySize)))))
-    else
+    val oversized = Option
+      .when(body.size > params.maxBlockBodySize)(
+        ForgeDefect.BodySize(body.size, params.maxBlockBodySize)
+      )
+      .orElse(body.endorserBlockOverWire)
+    oversized.fold(
       assembled.flatMap(
         _.traverse((signed, generation) =>
           signed.traverse(made =>
@@ -1748,12 +1813,20 @@ final class Forger[F[_]: Async, S](
                 .left
                 .map(ForgeDefect.BlockDecode(_))
                 .map(decoded =>
-                  Forger.Built(decoded.header, raw, body, relative, counter) -> generation
+                  Forger.Built(
+                    decoded.header,
+                    raw,
+                    body,
+                    relative,
+                    counter,
+                    Forger.announced(decoded, body)
+                  ) -> generation
                 )
             }
           )
         )
       )
+    )(defect => F.pure(Some(Right(Left(defect)))))
 
   /** The ledger state at `slot` from the state at the tip, in its era ([[Forger.tickedTo]]): a
     * Conway state as the mempool's ledger, a Dijkstra state (the Leios build only) as it is.
@@ -2309,6 +2382,23 @@ object Forger:
       )
     )
 
+  /** The endorser block of `body` with the header of `decoded`, the block built of it, that
+    * announces it (`mkForgedAnnouncingHeader`, [[AnnouncingHeader.forged]]): its hash and the
+    * length of its body come from the block forged, not from the header. A body of Dijkstra is
+    * built into a Dijkstra block, which decodes as one; none where no endorser block was forged.
+    */
+  private[forge] def announced(decoded: Block, body: BlockBuilder.Assembly): Option[AnnouncedEb] =
+    (decoded, body) match
+      case (Block.Dijkstra(block), BlockBuilder.Assembly.InDijkstra(_, Some(e))) =>
+        Some(
+          AnnouncedEb(
+            AnnouncingHeader
+              .forged(block.header, e.forged.point.hash, BytesSize.wrap(e.forged.body.encodedSize)),
+            e.forged
+          )
+        )
+      case _ => None
+
   /** What the assertion of a forge defect reports. */
   private final case class Defective(slot: BigInt, defect: ForgeDefect)
 
@@ -2317,6 +2407,8 @@ object Forger:
       val detail = d.defect match
         case ForgeDefect.BodySize(actual, maximum) =>
           List("bodySize" -> actual.asJson, "maxBodySize" -> maximum.asJson)
+        case ForgeDefect.EndorserBlockSize(actual, maximum) =>
+          List("endorserBlockSize" -> actual.asJson, "maxEndorserBlockSize" -> maximum.asJson)
         case ForgeDefect.BlockDecode(cause) => List("cause" -> cause.message.asJson)
       JsonObject.fromIterable(
         List("slot" -> d.slot.asJson, "kind" -> d.defect.productPrefix.asJson) ++ detail
@@ -2581,13 +2673,19 @@ object Forger:
       */
     def blockNo: BigInt = base.tipRef.fold(BigInt(0))(_.blockNo + 1)
 
-  /** A block built and signed, not yet adopted. */
+  /** A block built and signed, not yet adopted.
+    *
+    * @param endorsed
+    *   The endorser block forged with the block and the header that announces it, which the node
+    *   keeps before the block goes to chain selection ([[OnForgedLeiosEb]]).
+    */
   final case class Built(
       header: Header,
       raw: Bytes,
       body: BlockBuilder.Assembly,
       relativeKesPeriod: Int,
-      counter: BigInt
+      counter: BigInt,
+      endorsed: Option[AnnouncedEb]
   ):
     /** `estimateBlockSize` of the header (see [[ForgeTrace.AdoptedBlock]]). */
     def estimatedSize: Long = header.raw.size.toLong + body.size + 10
@@ -2601,6 +2699,12 @@ object Forger:
     * @param dijkstraSnapshots
     *   Where a Dijkstra ranking block's transactions come from; none: the node's,
     *   [[DijkstraSnapshots.unadmitted]].
+    * @param onForgedEb
+    *   What is done with a forged endorser block ([[OnForgedLeiosEb]]); none: no endorser block is
+    *   forged.
+    * @param ebCapacityScale
+    *   The share of an endorser block's capacity to forge with; none: the whole, as a node without
+    *   adaptive endorsements forges (`NodeKernel.hs:497-512` at ouroboros-consensus 2416493b).
     */
   def create[F[_]: Async, S](
       config: PraosConfig,
@@ -2622,7 +2726,9 @@ object Forger:
       chains: Option[Signal[F, VolatileChain[S]]] = None,
       pause: Option[Point => F[Unit]] = None,
       selectionLedger: Option[(BigInt, ChainSync.Point, MempoolLedger) => MempoolLedger] = None,
-      dijkstraSnapshots: Option[DijkstraSnapshots[F]] = None
+      dijkstraSnapshots: Option[DijkstraSnapshots[F]] = None,
+      onForgedEb: Option[OnForgedLeiosEb[F]] = None,
+      ebCapacityScale: Option[F[EbCapacityScale]] = None
   )(using
       Stateful[F, VolatileChain[S]],
       ChainRead[S],
@@ -2665,6 +2771,8 @@ object Forger:
         shared,
         pause.getOrElse(_ => Async[F].unit),
         selectionLedger.getOrElse((_, _, ticked) => ticked),
-        dijkstraSnapshots.getOrElse(DijkstraSnapshots.unadmitted[F])
+        dijkstraSnapshots.getOrElse(DijkstraSnapshots.unadmitted[F]),
+        onForgedEb,
+        ebCapacityScale.getOrElse(Async[F].pure(EbCapacityScale.full))
       )
     }

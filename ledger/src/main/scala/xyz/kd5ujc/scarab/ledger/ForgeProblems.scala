@@ -61,6 +61,12 @@ enum ForgeDefect:
   /** The block just built does not decode. */
   case BlockDecode(cause: ChainError)
 
+  /** The endorser block forged with the block encodes to more bytes than a LeiosFetch message
+    * carries (`maxLeiosEbBytesSize`), though its capacity plans within them: the reference's
+    * `assert` in `mkEb` (ouroboros-consensus 2416493b `Shelley/Ledger/Forge.hs:189-197`).
+    */
+  case EndorserBlockSize(actual: Long, maximum: Int)
+
 enum ForgeLedgerProblem:
   case Vocabulary(cause: VocabError)
   case Tick(cause: TickFailure)
@@ -75,6 +81,12 @@ enum ForgeProtocolProblem:
   case InByron
   case Earlier(era: Era)
   case Mirror(cause: MirrorError)
+
+  /** The parameters' `maxEndorserBlockReferencesSize` is more than a LeiosFetch message carries
+    * (`wire`, `maxLeiosEbBytesSize`): `guardLeiosWireLimit` (ouroboros-consensus 2416493b
+    * `Shelley/Ledger/Mempool.hs:915-939`) fails hard on it, and the node stops.
+    */
+  case EndorserBlockReferencesOverWire(parameter: BigInt, wire: Int)
 
 /** Describe malformed key fields without retaining their contents. */
 enum KeyShape:

@@ -17,6 +17,7 @@ import xyz.kd5ujc.scarab.ledger.rules.DijkstraTxMeasures
 import xyz.kd5ujc.scarab.network.Word32
 import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.TxMeasure
 import xyz.kd5ujc.scarab.protocol.{Era, LeiosFetch}
+import xyz.kd5ujc.scarab.storage.LeiosEb
 
 /** What a transaction counts for in the mempool, and how much the mempool may hold: the measures of
   * `ouroboros-consensus-cardano` `Shelley/Ledger/Mempool.hs` (`txInBlockSize`, `txMeasureAlonzo`,
@@ -94,28 +95,43 @@ object Capacity:
     */
   final case class EndorserBlockReferencesOverWire(parameter: BigInt, wire: Int) extends DomainError
 
-  /** `mempoolEbReservation` of `ebCapacityTxMeasure` under Dijkstra: the closure part of
-    * `leiosEndorserBlockCapacity` (ouroboros-consensus 2416493b `Shelley/Ledger/Mempool.hs:886-913,
-    * 994-995`), the transaction bytes, the execution units and the reference-script bytes one
-    * endorser block may hold (`maxEndorserBlockTxsSize`, `maxEndorserBlockExUnits`,
-    * `maxRefScriptSizePerEndorserBlock`), unscaled: the scale of the forger's share applies to an
-    * endorser block it forges, not to the pool (`computeMempoolCapacity`,
-    * `Mempool/Capacity.hs:69-82`). The capacity passes `guardLeiosWireLimit` first, as the
-    * reference's pattern on the record forces it ([[EndorserBlockReferencesOverWire]]).
+  /** `leiosEndorserBlockCapacity` (ouroboros-consensus 2416493b
+    * `Shelley/Ledger/Mempool.hs:884-913`), `ebCapacityTxMeasure` under Dijkstra (`:994`): what one
+    * endorser block may hold, from the parameters. The closure takes the transaction bytes, the
+    * execution units and the reference-script bytes of `maxEndorserBlockTxsSize`,
+    * `maxEndorserBlockExUnits` and `maxRefScriptSizePerEndorserBlock`; the references take
+    * `maxEndorserBlockReferencesSize` less the widest head of a body
+    * ([[LeiosEb.referencesCapacity]]), as a transaction is charged its reference only. The capacity
+    * passes `guardLeiosWireLimit` first, as the reference's pattern on the record forces it
+    * ([[EndorserBlockReferencesOverWire]]), so the references' bytes are a `Word32` 's.
+    */
+  def endorserBlockCapacity(
+      params: ProtocolParams
+  ): Either[EndorserBlockReferencesOverWire, EbMeasure] =
+    Either.cond(
+      params.maxEndorserBlockReferencesSize <= LeiosFetch.MaxEbBytes,
+      EbMeasure(
+        TxMeasure(
+          params.maxEndorserBlockTxsSize.toLong,
+          params.maxEndorserBlockExUnits.mem,
+          params.maxEndorserBlockExUnits.steps,
+          params.maxRefScriptSizePerEndorserBlock.toLong
+        ),
+        LeiosEb.referencesCapacity(params.maxEndorserBlockReferencesSize.toLong)
+      ),
+      EndorserBlockReferencesOverWire(params.maxEndorserBlockReferencesSize, LeiosFetch.MaxEbBytes)
+    )
+
+  /** `mempoolEbReservation` of `ebCapacityTxMeasure` under Dijkstra (ouroboros-consensus 2416493b
+    * `Shelley/Ledger/Mempool.hs:994-995`): the closure part of [[endorserBlockCapacity]], the
+    * transaction bytes, the execution units and the reference-script bytes one endorser block may
+    * hold, unscaled: the scale of the forger's share applies to an endorser block it forges, not to
+    * the pool (`computeMempoolCapacity`, `Mempool/Capacity.hs:69-82`).
     */
   def endorserBlockReservation(
       params: ProtocolParams
   ): Either[EndorserBlockReferencesOverWire, TxMeasure] =
-    Either.cond(
-      params.maxEndorserBlockReferencesSize <= LeiosFetch.MaxEbBytes,
-      TxMeasure(
-        params.maxEndorserBlockTxsSize.toLong,
-        params.maxEndorserBlockExUnits.mem,
-        params.maxEndorserBlockExUnits.steps,
-        params.maxRefScriptSizePerEndorserBlock.toLong
-      ),
-      EndorserBlockReferencesOverWire(params.maxEndorserBlockReferencesSize, LeiosFetch.MaxEbBytes)
-    )
+    endorserBlockCapacity(params).map(_.closure)
 
   /** `computeMempoolCapacity` under Dijkstra (ouroboros-consensus 2416493b
     * `ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Mempool/Capacity.hs:69-95`):

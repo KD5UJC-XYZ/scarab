@@ -1814,7 +1814,8 @@ object Main extends IOApp:
           instruments,
           chain,
           globals,
-          opened.state.geometry(genesis.geometry)
+          opened.state.geometry(genesis.geometry),
+          supply.leiosFetch
         )
         ended <- ran(run, instruments, rules, chain, supply, connections, services, opened.received)
       yield ended
@@ -2412,7 +2413,8 @@ object Main extends IOApp:
       instruments: Instruments,
       chain: Chain,
       globals: xyz.kd5ujc.scarab.ledger.LedgerGlobals,
-      geometry: xyz.kd5ujc.scarab.ledger.EpochGeometry
+      geometry: xyz.kd5ujc.scarab.ledger.EpochGeometry,
+      leiosFetch: Option[LeiosFetchNode[IO]]
   )(using
       Log[IO],
       Metrics[IO],
@@ -2475,6 +2477,8 @@ object Main extends IOApp:
           source <- HotKeySource.files[IO](files.vrfSkey, files.kesSkey, files.opCert)
           forger <- {
             given TxClock[MirrorState] = chain.txClock
+            // the endorser blocks it forges go to the fetch's handlers and store; the node does not
+            // adapt their capacity (`LeiosAdaptiveEndorsements`, #54)
             Forger.create[IO, MirrorState](
               setup.praos.copy(geometry = geometry),
               globals,
@@ -2486,7 +2490,8 @@ object Main extends IOApp:
               forgeEvents(measured),
               utxoStore = Some(store),
               source = Some(source),
-              enabled = !options.startsNonProducing(setup.config.settings)
+              enabled = !options.startsNonProducing(setup.config.settings),
+              onForgedEb = leiosFetch.map(_.onForged)
             )
           }
         yield forger

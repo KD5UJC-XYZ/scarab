@@ -18,13 +18,16 @@ import cats.Id
 import xyz.kd5ujc.scarab.protocol.Era
 import scala.annotation.tailrec
 import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.TxMeasure
-import xyz.kd5ujc.scarab.node.mempool.{Capacity, Entry, MempoolLedger}
+import xyz.kd5ujc.scarab.node.mempool.{Capacity, EbMeasure, Entry, MempoolLedger}
+import xyz.kd5ujc.scarab.ledger.{EbAnnouncement, ForgeDefect}
+import xyz.kd5ujc.scarab.protocol.LeiosFetch
+import cats.data.NonEmptyVector
 
 /** Block assembly, pure: choose the transactions that fit the protocol limits, encode the body, the
   * header body and the block. Conway's as below; in the Leios build also Dijkstra's ranking block,
-  * its transactions taken from the pool's snapshot ([[ranking]], [[Assembly]],
-  * [[leiosHeaderBody]]). Every function is deterministic in its arguments; the effects (clock,
-  * mempool, KES evolution, adoption) live in [[Forger]].
+  * its transactions taken from the pool's snapshot with the endorser block of those after them
+  * ([[partition]], [[Assembly]], [[leiosHeaderBody]]). Every function is deterministic in its
+  * arguments; the effects (clock, mempool, KES evolution, adoption) live in [[Forger]].
   *
   * The encodings are the reference's: the block is `[7, [header, [tx_body], [witness_set], {index:
   * auxiliary_data}, [invalid_index]]]`, the header `[header_body, kes_sig]` and `header_body` the
@@ -310,9 +313,9 @@ object BlockBuilder:
     * `ouroboros-consensus-cardano/src/shelley/Ouroboros/Consensus/Shelley/Protocol/Praos.hs:275-300`,
     * from `mkHeaderPolyPraos`, `:162-185`): the Praos fields, the version info of the node's own
     * protocol version (`BlockHeaderVersionInfo (getVersion32 major) minor`), the certificate flag
-    * of the body (`isJust fbMayLeiosCert`, `Shelley/Ledger/Forge.hs:104-105`) and no announcement:
-    * the reference announces an endorser block only when it forges one, from transactions it has
-    * for it (`mkEb`, `Forge.hs:172-178`), and this forger forges none yet (#54).
+    * of the body (`isJust fbMayLeiosCert`, `Shelley/Ledger/Forge.hs:104-105`) and the announcement
+    * of the endorser block forged with it, if one is (`mkEb`, `Forge.hs:172-212`): none when no
+    * transaction is left for one.
     */
   def leiosHeaderBody(
       blockNo: BigInt,
@@ -322,6 +325,7 @@ object BlockBuilder:
       vrfVkey: Bytes,
       vrf: VrfCert,
       body: LeiosBlockBody,
+      announcement: Option[EbAnnouncement],
       opCert: Header.OpCert,
       protocolVersion: (BigInt, BigInt)
   ): LeiosHeaderBody =
@@ -338,7 +342,7 @@ object BlockBuilder:
       LeiosHeaderFields(
         HeaderVersionInfo(protocolVersion._1, protocolVersion._2),
         body.leiosCertificate.isDefined,
-        None
+        announcement
       )
     )
 
@@ -349,17 +353,41 @@ object BlockBuilder:
     */
   enum Assembly:
     case InConway(body: Body)
-    case InDijkstra(body: LeiosBlockBody)
+
+    /** A Dijkstra ranking block's body, and the endorser block its header announces, if one is
+      * forged with it.
+      */
+    case InDijkstra(body: LeiosBlockBody, endorsing: Option[Endorsing])
 
     /** The ids of the block's transactions, in order. */
     def ids: Vector[Bytes] = this match
-      case InConway(b)   => b.ids
-      case InDijkstra(b) => b.transactions.map(_.id)
+      case InConway(b)      => b.ids
+      case InDijkstra(b, _) => b.transactions.map(_.id)
+
+    /** The ids of the transactions of the endorser block forged with the block, in order: the
+      * block's `fbEbTxs`, which leave the pool with its own when the block is refused
+      * (`addBlockToChainDB`, `NodeKernel/Forge.hs:543-592` of ouroboros-consensus-diffusion at
+      * 2416493b).
+      */
+    def endorsedIds: Vector[Bytes] = this match
+      case InConway(_)      => Vector.empty
+      case InDijkstra(_, e) => e.fold(Vector.empty[Bytes])(_.transactions.toVector.map(_.id))
+
+    /** `encodeLeiosEbSize` of the endorser block forged with the block within `maxLeiosEbBytesSize`
+      * ([[LeiosFetch.MaxEbBytes]]), the reference's `assert` in `mkEb`
+      * (`Shelley/Ledger/Forge.hs:189-197` of ouroboros-consensus-cardano at 2416493b): the capacity
+      * plans within it ([[Capacity.endorserBlockCapacity]]), so only a defect of the measure or of
+      * the encoder breaks it, a defect of the block just built ([[ForgeDefect.EndorserBlockSize]]).
+      */
+    def endorserBlockOverWire: Option[ForgeDefect] = this match
+      case InDijkstra(_, Some(e)) if e.forged.body.encodedSize > LeiosFetch.MaxEbBytes =>
+        Some(ForgeDefect.EndorserBlockSize(e.forged.body.encodedSize, LeiosFetch.MaxEbBytes))
+      case InDijkstra(_, _) | InConway(_) => None
 
     /** The body size the header commits to. */
     def size: Long = this match
-      case InConway(b)   => b.size
-      case InDijkstra(b) => b.size
+      case InConway(b)      => b.size
+      case InDijkstra(b, _) => b.size
 
     /** The header body the KES key signs, as the block holds it. */
     def headerBody(
@@ -385,7 +413,7 @@ object BlockBuilder:
           opCert,
           protocolVersion
         )
-      case InDijkstra(b) =>
+      case InDijkstra(b, e) =>
         leiosHeaderBody(
           blockNo,
           slot,
@@ -394,6 +422,7 @@ object BlockBuilder:
           vrfVkey,
           vrf,
           b,
+          e.map(_.forged.announcement),
           opCert,
           protocolVersion
         ).encode
@@ -404,7 +433,7 @@ object BlockBuilder:
       */
     def block(headerBody: Bytes, kesSignature: Bytes): Bytes = this match
       case InConway(b) => BlockBuilder.block(headerBody, kesSignature, b)
-      case InDijkstra(b) =>
+      case InDijkstra(b, _) =>
         LeiosBlock.encode(LeiosHeader.signed(headerBody, kesSignature), b.encode)
 
   object Assembly:
@@ -417,14 +446,16 @@ object BlockBuilder:
       */
     def dijkstra(
         transactions: Vector[DijkstraTx],
-        leiosCertificate: Option[Certificate]
+        leiosCertificate: Option[Certificate],
+        endorsing: Option[Endorsing] = None
     ): Assembly =
       InDijkstra(
         LeiosBlockBody(
           leiosCertificate.fold(transactions)(_ => Vector.empty),
           leiosCertificate,
           None
-        )
+        ),
+        endorsing
       )
 
     /** The body of the minimal Dijkstra block: no transactions and neither certificate, as the
@@ -448,6 +479,12 @@ object BlockBuilder:
       def zero: TxMeasure = TxMeasure.zero
       def plus(a: TxMeasure, b: TxMeasure): TxMeasure = a + b
       def within(m: TxMeasure, limit: TxMeasure): Boolean = Capacity.fits(m)(limit)
+
+    /** `DijkstraEbMeasure` 's, pointwise (`Measure via InstantiatedAt Generic`). */
+    given Measure[EbMeasure] with
+      def zero: EbMeasure = EbMeasure.zero
+      def plus(a: EbMeasure, b: EbMeasure): EbMeasure = a + b
+      def within(m: EbMeasure, limit: EbMeasure): Boolean = m.within(limit)
 
   /** `splitAfterTxSize` (ouroboros-consensus 2416493b
     * `ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Mempool/TxSeq.hs:211-231`, by
@@ -483,3 +520,48 @@ object BlockBuilder:
   def ranking(snapshot: DijkstraSnapshot, capacity: TxMeasure): Ranking =
     val (chosen, _, used) = splitAfterSize(snapshot.held, capacity)(_.measure)
     Ranking(chosen, used)
+
+  /** The transactions of the endorser block forged with a ranking block, and the block made of them
+    * ([[ForgedLeiosEb.forge]]).
+    */
+  final case class Endorsing private (
+      transactions: NonEmptyVector[DijkstraTx],
+      forged: ForgedLeiosEb
+  )
+
+  object Endorsing:
+    /** The endorser block of `transactions`, forged in `slot`. */
+    def apply(slot: BigInt, transactions: NonEmptyVector[DijkstraTx]): Endorsing =
+      new Endorsing(transactions, ForgedLeiosEb.forge(slot, transactions))
+
+  /** What a Dijkstra snapshot is partitioned into: the ranking block's transactions, and the run
+    * after them an endorser block takes, oldest first, with what it counts for.
+    */
+  final case class Partition(
+      ranking: Ranking,
+      endorsed: Vector[DijkstraHeld],
+      endorsedUsed: EbMeasure
+  ):
+    def endorsedTransactions: Vector[DijkstraTx] = endorsed.map(_.tx)
+
+    /** `mkEb` 's endorser block of the run, forged in `slot` (`Shelley/Ledger/Forge.hs:172-212` of
+      * ouroboros-consensus-cardano at 2416493b): none when the run is empty, so that a block with
+      * nothing left for an endorser block announces none.
+      */
+    def endorsing(slot: BigInt): Option[Endorsing] =
+      NonEmptyVector.fromVector(endorsedTransactions).map(Endorsing(slot, _))
+
+  /** `snapshotPartition` (`implSnapshotPartition`, ouroboros-consensus 2416493b
+    * `ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Mempool/Impl/Common.hs:760-773`):
+    * the longest prefix of the snapshot whose measures fit `blockLimit` ([[ranking]]), then the
+    * longest run after it whose endorser-block measures ([[EbMeasure.of]]) fit `ebLimit`. Each
+    * split ends at the first transaction that does not fit (`splitAfterTxSizeOn`), so the run is
+    * empty when the first transaction after the prefix does not fit `ebLimit`, however many follow
+    * it. The forge loop partitions with the block's capacity and the scaled endorser-block capacity
+    * when it certifies nothing, and with a zero block limit when it certifies (`partitionMempool`,
+    * `NodeKernel/Forge.hs:784-803, 805-858`).
+    */
+  def partition(snapshot: DijkstraSnapshot, blockLimit: TxMeasure, ebLimit: EbMeasure): Partition =
+    val (inBlock, afterBlock, used) = splitAfterSize(snapshot.held, blockLimit)(_.measure)
+    val (inEb, _, ebUsed) = splitAfterSize(afterBlock, ebLimit)(h => EbMeasure.of(h.measure))
+    Partition(Ranking(inBlock, used), inEb, ebUsed)
