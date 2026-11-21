@@ -281,13 +281,19 @@ private[selection] object Events:
         val st = st0.updated(peer)(_.copy(status = Status.Cold(None)))
         Decision(st, Nil, List(Trace.DemoteDone(Temperature.Warm, peer, established(st, peer))))
 
+      // The connection was not seen cold within the demotion timeout: the peer keeps its place,
+      // hot or established, and is no longer being demoted (the handlers' `timeoutFault`,
+      // ouroboros-network c45735a5 `Governor/ActivePeers.hs` 1007-1017 and
+      // `Governor/EstablishedPeers.hs` 940-946). What its connection does next is the monitor's
+      // (`Governor/Monitor.hs` 292-308): the effect layer reads the connection at once and reports
+      // it cooling or gone.
       case Outcome.CloseTimedOut(peer)
           if status(peer).exists(s => s == Status.Closing || s == Status.Deactivating) =>
-        // the connection manager has not released it: it lingers, and cannot be promoted or demoted
-        val from =
-          if status(peer).contains(Status.Closing) then Temperature.Warm else Temperature.Hot
+        val (from, kept) =
+          if status(peer).contains(Status.Closing) then (Temperature.Warm, Status.Warm(now))
+          else (Temperature.Hot, Status.Hot)
         Decision(
-          st0.withStatus(peer, Status.Cooling),
+          st0.withStatus(peer, kept),
           Nil,
           List(Trace.DemoteFailed(from, peer, timedOut = true))
         )
