@@ -69,6 +69,9 @@ enum ForgeLedgerProblem:
 enum ForgeProtocolProblem:
   case Version(actual: BigInt)
   case LeftConway
+
+  /** A Dijkstra state ticked out of Dijkstra, the last era of the Leios build: a defect. */
+  case LeftDijkstra
   case InByron
   case Earlier(era: Era)
   case Mirror(cause: MirrorError)

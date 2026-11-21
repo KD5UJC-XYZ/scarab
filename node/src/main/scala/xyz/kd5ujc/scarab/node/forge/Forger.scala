@@ -26,13 +26,13 @@ import xyz.kd5ujc.scarab.node.{Fatal, Follower, SessionEnd}
 import xyz.kd5ujc.scarab.consensus.{Praos, PraosConfig}
 import xyz.kd5ujc.scarab.consensus.state.ProtocolState
 import xyz.kd5ujc.scarab.protocol.Era
-import xyz.kd5ujc.scarab.ledger.{EpochGeometry, LedgerGlobals, PoolDistribution}
+import xyz.kd5ujc.scarab.ledger.{EpochGeometry, LedgerGlobals, PoolDistribution, ProtocolParams}
 import xyz.kd5ujc.scarab.ledger.rules.{EraNes, Globals, Hfc}
-import xyz.kd5ujc.scarab.ledger.state.{Conway, NewEpochState, ShelleyBasedEra, SlotNo}
-import xyz.kd5ujc.scarab.node.read.{ChainRead, ConwayView, TxClock}
+import xyz.kd5ujc.scarab.ledger.state.{Conway, Dijkstra, NewEpochState, ShelleyBasedEra, SlotNo}
+import xyz.kd5ujc.scarab.node.read.{ChainRead, ConwayView, InEra, TxClock}
 import xyz.kd5ujc.scarab.node.read.MirrorEraRead
 import xyz.kd5ujc.scarab.node.mempool.{Entry, Mempool, MempoolLedger, MempoolState, Rejection}
-import xyz.kd5ujc.scarab.protocol.ChainSync
+import xyz.kd5ujc.scarab.protocol.{ChainSync, ReferenceBuild}
 import xyz.kd5ujc.scarab.storage.UtxoStore
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.network.Fibers
@@ -1396,7 +1396,7 @@ final class Forger[F[_]: Async, S](
           )
         else proceed(())
       _ <- hold.say(ForgeTrace.NodeIsLeader(slot))
-      ticked <- perform(lift(tick(crossed.nes, slot)))
+      ticked <- perform(lift(tick(crossed.ledger, slot)))
       _ <- hold.say(ForgeTrace.ForgeTickedLedgerState(slot, context.prev))
       _ <- perform(
         lift(
@@ -1410,7 +1410,13 @@ final class Forger[F[_]: Async, S](
         )
       )
       snapshot <- perform(mempool.snapshot)
-      selected <- perform(select(context.base, slot, epoch, ticked, snapshot))
+      selected <- ticked match
+        case Forger.Ticked.InConway(ledger) =>
+          perform(select(context.base, slot, epoch, ledger, snapshot))
+        // Dijkstra's transaction selection is not built yet: its block is the minimal one, with
+        // no transactions, and the pool keeps them (#54)
+        case Forger.Ticked.InDijkstra(_) =>
+          proceed((Vector.empty[(Entry, BlockBuilder.Piece)], Map.empty[Bytes, Rejection]))
       (chosen, withheld) = selected
       _ <- perform(hold.withdrawal(withheld))
       _ <- hold.say(
@@ -1659,7 +1665,7 @@ final class Forger[F[_]: Async, S](
   private def assemble(
       context: Forger.Context[S],
       forecastable: Forecastable,
-      ticked: MempoolLedger,
+      ticked: Forger.Ticked,
       cert: VrfCert,
       vrf: Draft03Prover.SigningKey,
       pieces: Vector[BlockBuilder.Piece],
@@ -1669,7 +1675,9 @@ final class Forger[F[_]: Async, S](
       Raise[F, Fatal]
   ): F[Option[Either[NotAdmitted, Either[ForgeDefect, (Forger.Built, Long)]]]] =
     val slot = forecastable.slot
-    val body = BlockBuilder.body(pieces)
+    val body = ticked match
+      case Forger.Ticked.InConway(_)   => BlockBuilder.Assembly.InConway(BlockBuilder.body(pieces))
+      case Forger.Ticked.InDijkstra(_) => BlockBuilder.Assembly.minimalDijkstra
     val kesPeriod = kesPeriodOf(slot)
     def signedWith(c: PoolCredentials)(using
         Raise[F, Fatal]
@@ -1681,15 +1689,13 @@ final class Forger[F[_]: Async, S](
             (),
             ForgeError.KeyPeriodOutOfRange(kesPeriod, start, config.maxKesEvolutions)
           )
-        yield BlockBuilder.headerBody(
+        yield body.headerBody(
           context.blockNo,
           slot,
           context.base.tipRef.map(_.hash),
           c.coldVkey,
           c.vrf.publicKey,
           cert,
-          body.size,
-          body.hash,
           c.opCert,
           protocolVersion
         )
@@ -1725,7 +1731,7 @@ final class Forger[F[_]: Async, S](
         _.traverse((signed, generation) =>
           signed.traverse(made =>
             lift(made).map { (headerBody, signature, relative, counter) =>
-              val raw = BlockBuilder.block(headerBody, signature, body)
+              val raw = body.block(headerBody, signature)
               Block
                 .decode(raw, geometry.byron.epochSlots)
                 .left
@@ -1738,44 +1744,31 @@ final class Forger[F[_]: Async, S](
         )
       )
 
-  /** The Conway ledger state at `slot` from the state at the tip: the combinator's tick
-    * ([[Hfc.tick]]: the translation into the slot's era, then the slot's own work), as the block
-    * rules would make it for a block in that slot.
+  /** The ledger state at `slot` from the state at the tip, in its era ([[Forger.tickedTo]]): a
+    * Conway state as the mempool's ledger, a Dijkstra state (the Leios build only) as it is.
     */
-  private def tick(
-      nes: NewEpochState[Conway],
-      slot: BigInt
-  ): Either[NodeError, MempoolLedger] =
-    ticked(nes, slot).map(MempoolLedger.of)
+  private def tick(ledger: Forger.TipLedger, slot: BigInt): Either[NodeError, Forger.Ticked] =
+    ticked(ledger, slot).map {
+      case Forger.TipLedger.InConway(nes)   => Forger.Ticked.InConway(MempoolLedger.of(nes))
+      case Forger.TipLedger.InDijkstra(nes) => Forger.Ticked.InDijkstra(nes)
+    }
 
-  private def ticked(
-      nes: NewEpochState[Conway],
+  private def ticked(ledger: Forger.TipLedger, slot: BigInt): Either[NodeError, Forger.TipLedger] =
+    Forger.tickedTo(Globals(globals, geometry), config.forks.transition(geometry.k), ledger, slot)
+
+  /** The tip's ledger state in the node's reference build ([[Forger.ledgerAt]]). */
+  private def ledgerAt(
+      current: VolatileChain[S],
+      epoch: BigInt,
       slot: BigInt
-  ): Either[NodeError, NewEpochState[Conway]] =
-    for
-      target <- SlotNo
-        .fromBigInt(slot)
-        .left
-        .map(e => ForgeError.LedgerViewUnavailable(slot, ForgeLedgerProblem.Vocabulary(e)))
-      // Conway is the last era, so no transition reads the blocks after the voting deadline
-      state <- Hfc
-        .tick(Globals(globals, geometry), config.forks.transition(geometry.k))(
-          EraNes.InEra(ShelleyBasedEra.SConway, nes),
-          0L,
-          target
-        )
-        .left
-        .map(Forger.tickFault(slot, _))
-      conway <- ConwayView
-        .of(state)
-        .toRight(ForgeError.UnsupportedProtocol(ForgeProtocolProblem.LeftConway))
-    yield conway
+  ): Either[NodeError, Forger.TipLedger] =
+    Forger.ledgerAt(current.state, current.tipRef, epoch, slot, globals.referenceBuild)
 
   /** The ledger and Praos state of the tip carried to `epoch` (cached per tip and epoch: the epoch
     * boundary is the expensive part and every slot of a new epoch needs it; a chain at its origin,
     * whose tip names no state, is not cached). This is where the ledger view of the slot comes
-    * from; the refusals here are Scarab's own (only Praos with Conway transactions is forged, on a
-    * fully validated ledger).
+    * from; the refusals here are Scarab's own (only Praos with Conway transactions is forged, and
+    * in the Leios build Praos2 on Dijkstra, on a fully validated ledger: [[Forger.ledgerAt]]).
     */
   private def crossedTo(
       current: VolatileChain[S],
@@ -1787,15 +1780,15 @@ final class Forger[F[_]: Async, S](
       case Some(c) if c.key == key && key._1.nonEmpty => F.pure(c)
       case _ =>
         for
-          nes <- lift(Forger.conwayAt(current, epoch, slot))
+          ledger <- lift(ledgerAt(current, epoch, slot))
           c <- F
             .blocking {
-              val view = Forger.leaderView(nes, current.state.protocol, epoch)
+              val view = Forger.leaderView(ledger, current.state.protocol, epoch)
               // the boundaries between the tip's epoch and the slot's, for the block's own ledger
               // (`applyChainTick`); the slot's own work is done per attempt
               val start =
-                if epoch > nes.epoch.toBigInt then ticked(nes, geometry.firstSlot(epoch))
-                else Right(nes)
+                if epoch > ledger.epoch then ticked(ledger, geometry.firstSlot(epoch))
+                else Right(ledger)
               start.map(Forger.Crossed(key, _, view))
             }
             .flatMap(lift)
@@ -1805,7 +1798,7 @@ final class Forger[F[_]: Async, S](
 
   /** The inputs of the leader check of `slot` forecast from the tip of `base`, with the VRF key
     * `vrf`: those [[attempt]] checks the slot with when `base` is the chain it builds on, by the
-    * same derivation ([[Forger.conwayAt]], [[Forger.leaderView]], [[Forger.inputsOf]]) without the
+    * same derivation ([[Forger.ledgerAt]], [[Forger.leaderView]], [[Forger.inputsOf]]) without the
     * cache and the tick of the block's own ledger.
     */
   private[forge] def inputsAt(
@@ -1814,13 +1807,12 @@ final class Forger[F[_]: Async, S](
       vrf: Draft03Prover.SigningKey
   ): Either[NodeError, EpochInputs] =
     val epoch = geometry.epochOf(slot)
-    Forger
-      .conwayAt(base, epoch, slot)
-      .map(nes =>
+    ledgerAt(base, epoch, slot)
+      .map(ledger =>
         Forger.inputsOf(
           geometry,
           epoch,
-          Forger.leaderView(nes, base.state.protocol, epoch),
+          Forger.leaderView(ledger, base.state.protocol, epoch),
           credentials.poolId,
           config.activeSlotsCoeff,
           vrf
@@ -1841,9 +1833,8 @@ final class Forger[F[_]: Async, S](
     viewed.get.flatMap(
       _.collectFirst { case (k, v) if k == key && key._1.nonEmpty => v }.fold(
         F.delay(
-          Forger
-            .conwayAt(base, epoch, slot)
-            .map(nes => Forger.leaderView(nes, base.state.protocol, epoch))
+          ledgerAt(base, epoch, slot)
+            .map(ledger => Forger.leaderView(ledger, base.state.protocol, epoch))
         ).flatTap(
           _.traverse_(v =>
             viewed.update(kept => ((key -> v) +: kept.filterNot(_._1 == key)).take(Forger.Viewed))
@@ -2384,55 +2375,164 @@ object Forger:
     */
   final case class Crossed(
       key: (Option[Bytes], BigInt),
-      nes: NewEpochState[Conway],
+      ledger: TipLedger,
       view: LeaderView
   )
+
+  /** The ledger state the forger builds on, by era: Conway's, or in the Leios build Dijkstra's,
+    * whose blocks the testnet's build forges with Praos2 (`ShelleyProtocolHeader (Praos2 c) =
+    * Leios.Header c`, ouroboros-consensus 2416493b `Ouroboros/Consensus/Protocol/Praos2.hs:57`).
+    * The release builds forge Conway's only, as before.
+    */
+  enum TipLedger:
+    case InConway(nes: NewEpochState[Conway])
+    case InDijkstra(nes: NewEpochState[Dijkstra])
+
+    def epoch: BigInt = this match
+      case InConway(nes)   => nes.epoch.toBigInt
+      case InDijkstra(nes) => nes.epoch.toBigInt
+
+    def era: Era = this match
+      case InConway(_)   => Era.Conway
+      case InDijkstra(_) => Era.Dijkstra
+
+    /** The state as the combinator's tick takes it. */
+    def inEra: EraNes = this match
+      case InConway(nes)   => EraNes.InEra(ShelleyBasedEra.SConway, nes)
+      case InDijkstra(nes) => EraNes.InEra(ShelleyBasedEra.SDijkstra, nes)
+
+    /** The pool distribution of the leader check ([[leaderView]]). */
+    def leaderPools(nextEpoch: Boolean): PoolDistribution = this match
+      case InConway(nes) =>
+        MirrorEraRead(nes)(using ShelleyBasedEra.SConway).leaderPools(nextEpoch)
+      case InDijkstra(nes) =>
+        MirrorEraRead(nes)(using ShelleyBasedEra.SDijkstra).leaderPools(nextEpoch)
+
+  /** The ledger state at a slot, ticked into it, by era: what the block's transactions are applied
+    * on and its limits read from ([[Forger.tickedTo]]).
+    */
+  enum Ticked:
+    case InConway(ledger: MempoolLedger)
+    case InDijkstra(nes: NewEpochState[Dijkstra])
+
+    def params: ProtocolParams = this match
+      case InConway(ledger) => ledger.params
+      case InDijkstra(nes)  => MirrorEraRead(nes)(using ShelleyBasedEra.SDijkstra).params
+
+  /** Whether `build` forges Dijkstra blocks: the Leios build does, as the testnet's node does
+    * (`forgeShelleyBlock` of the Dijkstra era under Praos2, ouroboros-consensus 2416493b
+    * `Shelley/Ledger/Forge.hs:79-142`); the release builds, whose Dijkstra this node never enters,
+    * do not, and keep the refusal of a Dijkstra tip.
+    */
+  private[forge] def forgesDijkstra(build: ReferenceBuild): Boolean = build match
+    case ReferenceBuild.LeiosB004fe0c                            => true
+    case ReferenceBuild.Release11_1 | ReferenceBuild.Release11_2 => false
 
   /** What the leader check of a slot reads from the tip's state: the pool distribution of its
     * forecast ledger view, and the chain-dependent state ticked into the slot's epoch.
     */
   final case class LeaderView(pools: PoolDistribution, protocol: ProtocolState)
 
-  /** The Conway ledger state at the tip of `current`, from which the ledger view of `slot`, in
-    * `epoch`, is forecast. The refusals are Scarab's own: only Praos with Conway transactions is
-    * forged, on a fully validated ledger, and an epoch before the tip's has no forecast.
+  /** The ledger state at the tip `tip` of the chain whose state is `state`, from which the ledger
+    * view of `slot`, in `epoch`, is forecast. The refusals are Scarab's own: only Praos with Conway
+    * transactions is forged, and in the Leios build ([[forgesDijkstra]]) also Praos2 on a Dijkstra
+    * state, on a fully validated ledger, and an epoch before the tip's has no forecast. A release
+    * build refuses a Dijkstra state as of an era it does not forge (`Earlier(Dijkstra)`), as it
+    * always has.
     */
-  private[forge] def conwayAt[S](current: VolatileChain[S], epoch: BigInt, slot: BigInt)(using
-      ChainRead[S]
-  ): Either[NodeError, NewEpochState[Conway]] =
+  private[forge] def ledgerAt[S](
+      state: S,
+      tip: Option[BlockRef],
+      epoch: BigInt,
+      slot: BigInt,
+      build: ReferenceBuild
+  )(using ChainRead[S]): Either[NodeError, TipLedger] =
     for
-      nes <- ConwayView(current.state, current.tipRef).left.map(why =>
-        ForgeError.UnsupportedProtocol(why match
-          case ConwayView.Unavailable.InByron        => ForgeProtocolProblem.InByron
-          case ConwayView.Unavailable.InEarlier(era) => ForgeProtocolProblem.Earlier(era)
-          case ConwayView.Unavailable.Refused(e)     => ForgeProtocolProblem.Mirror(e))
-      )
-      _ <- Either.cond(
-        epoch >= nes.epoch.toBigInt,
-        (),
-        ForgeError.LedgerViewUnavailable(
-          slot,
-          ForgeLedgerProblem.EpochPrecedes(epoch, nes.epoch.toBigInt)
-        )
-      )
-    yield nes
+      ledger <- ConwayView(state, tip) match
+        case Right(nes) => Right(TipLedger.InConway(nes))
+        case Left(ConwayView.Unavailable.InEarlier(Era.Dijkstra)) if forgesDijkstra(build) =>
+          dijkstraAt(state, tip).map(TipLedger.InDijkstra(_))
+        case Left(why) => Left(unsupported(why))
+      _ <- inEpoch(ledger.epoch, epoch, slot)
+    yield ledger
 
-  /** The ledger view of the leader check of `epoch` from the tip's Conway state `nes` and its
-    * chain-dependent state `protocol`. The pool distribution is the forecast of the tip's ledger
-    * (`futureForecast`, which ticks with TICKF: cardano-ledger f649f975 `Shelley/Rules/Tick.hs`
-    * 201-242, `Conway/Rules/Tickf.hs` 42-66): into the next epoch the mark distribution, in the
-    * tip's epoch and two or more epochs on the current one, as the header rules take it
-    * (`ShelleyHeaderForecast`). The epoch nonce is that of the state ticked into `epoch`.
+  /** The Dijkstra state of the chain at `tip`, which [[ConwayView]] found to be in Dijkstra. */
+  private def dijkstraAt[S](state: S, tip: Option[BlockRef])(using
+      read: ChainRead[S]
+  ): Either[NodeError, NewEpochState[Dijkstra]] =
+    state.ledger(tip) match
+      case Left(error) => Left(unsupported(ConwayView.Unavailable.Refused(error)))
+      case Right(None) => Left(unsupported(ConwayView.Unavailable.InByron))
+      case Right(Some(InEra.Of(era, read))) =>
+        era match
+          case ShelleyBasedEra.SDijkstra =>
+            read.nes.left.map(e => unsupported(ConwayView.Unavailable.Refused(e)))
+          case other => Left(unsupported(ConwayView.Unavailable.InEarlier(EraNes.eraOf(other))))
+
+  private def unsupported(why: ConwayView.Unavailable): NodeError =
+    ForgeError.UnsupportedProtocol(why match
+      case ConwayView.Unavailable.InByron        => ForgeProtocolProblem.InByron
+      case ConwayView.Unavailable.InEarlier(era) => ForgeProtocolProblem.Earlier(era)
+      case ConwayView.Unavailable.Refused(e)     => ForgeProtocolProblem.Mirror(e))
+
+  private def inEpoch(stateEpoch: BigInt, epoch: BigInt, slot: BigInt): Either[NodeError, Unit] =
+    Either.cond(
+      epoch >= stateEpoch,
+      (),
+      ForgeError.LedgerViewUnavailable(slot, ForgeLedgerProblem.EpochPrecedes(epoch, stateEpoch))
+    )
+
+  /** The state `ledger` at `slot`: the combinator's tick ([[Hfc.tick]]: the translation into the
+    * slot's era, then the slot's own work), as the block rules would make it for a block in that
+    * slot. The state stays in its era: a Conway state is not carried into Dijkstra, nor a Dijkstra
+    * state out of it, so no transition reads the blocks after the voting deadline (zero here).
+    */
+  private[forge] def tickedTo(
+      globals: Globals,
+      transition: Hfc.Transition,
+      ledger: TipLedger,
+      slot: BigInt
+  ): Either[NodeError, TipLedger] =
+    for
+      target <- SlotNo
+        .fromBigInt(slot)
+        .left
+        .map(e => ForgeError.LedgerViewUnavailable(slot, ForgeLedgerProblem.Vocabulary(e)))
+      state <- Hfc
+        .tick(globals, transition)(ledger.inEra, 0L, target)
+        .left
+        .map(Forger.tickFault(slot, _))
+      next <- (ledger, state) match
+        case (TipLedger.InConway(_), _) =>
+          ConwayView
+            .of(state)
+            .map(TipLedger.InConway(_))
+            .toRight(ForgeError.UnsupportedProtocol(ForgeProtocolProblem.LeftConway))
+        case (TipLedger.InDijkstra(_), i: EraNes.InEra[e]) =>
+          i.era match
+            case ShelleyBasedEra.SDijkstra => Right(TipLedger.InDijkstra(i.nes))
+            case _ => Left(ForgeError.UnsupportedProtocol(ForgeProtocolProblem.LeftDijkstra))
+    yield next
+
+  /** The ledger view of the leader check of `epoch` from the tip's state `ledger` and its
+    * chain-dependent state `protocol`. Praos2 checks the leader as Praos does (`checkIsLeader =
+    * checkIsLeaderPolyPraos`, and its tick is `tickChainDepStatePolyPraos`, which also clears the
+    * announcement at an epoch boundary: ouroboros-consensus 2416493b
+    * `Ouroboros/Consensus/Protocol/Praos2.hs:127-129`; [[Praos.tick]] of a Praos2 state). The pool
+    * distribution is the forecast of the tip's ledger (`futureForecast`, which ticks with TICKF:
+    * cardano-ledger f649f975 `Shelley/Rules/Tick.hs` 201-242, `Conway/Rules/Tickf.hs` 42-66): into
+    * the next epoch the mark distribution, in the tip's epoch and two or more epochs on the current
+    * one, as the header rules take it (`ShelleyHeaderForecast`). The epoch nonce is that of the
+    * state ticked into `epoch`.
     */
   private[forge] def leaderView(
-      nes: NewEpochState[Conway],
+      ledger: TipLedger,
       protocol: ProtocolState,
       epoch: BigInt
   ): LeaderView =
     LeaderView(
-      MirrorEraRead(nes)(using ShelleyBasedEra.SConway)
-        .leaderPools(nextEpoch = epoch == nes.epoch.toBigInt + 1),
-      Praos.tick(protocol, Era.Conway, epoch)
+      ledger.leaderPools(nextEpoch = epoch == ledger.epoch + 1),
+      Praos.tick(protocol, ledger.era, epoch)
     )
 
   /** The inputs of the leader check of `epoch` from its ledger view: the epoch nonce, the stake of
@@ -2474,7 +2574,7 @@ object Forger:
   final case class Built(
       header: Header,
       raw: Bytes,
-      body: BlockBuilder.Body,
+      body: BlockBuilder.Assembly,
       relativeKesPeriod: Int,
       counter: BigInt
   ):
