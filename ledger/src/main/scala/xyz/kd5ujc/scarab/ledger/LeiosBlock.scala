@@ -31,6 +31,26 @@ final case class LeiosHeaderFields(
     announcement: Option[EbAnnouncement]
 )
 
+/** The twelve fields of a Leios header body, decoded or to be signed: `HeaderBodyRaw`
+  * (`libs/cardano-protocol/src/Cardano/Protocol/Leios/BlockHeader.hs`, cardano-ledger 9df9f98c).
+  * [[encode]] is the encoding the reference forges and signs ([[HeaderBodyEncoding.leios]]): the
+  * bytes a forger gives the KES key. It is not the signed bytes of a header that was read, whose
+  * body may have been written otherwise ([[LeiosHeader.signable]], [[LeiosHeader.signed]]).
+  */
+final case class LeiosHeaderBody(
+    blockNo: BigInt,
+    slot: BigInt,
+    prevHash: Option[Bytes],
+    issuerVkey: Bytes,
+    vrfVkey: Bytes,
+    vrf: VrfCert,
+    bodySize: BigInt,
+    bodyHash: Bytes,
+    opCert: Header.OpCert,
+    leios: LeiosHeaderFields
+):
+  def encode: Bytes = HeaderBodyEncoding.leios(this)
+
 /** A Leios block header: the Praos header body with `protocol_version` replaced by
   * `header_version_info` and the two Leios fields appended, 12 elements (`dijkstra.cddl` 56-71).
   * The reference is the build of the public Leios testnet (cardano-node b004fe0c, cardano-ledger
@@ -94,7 +114,38 @@ final case class LeiosHeader(
   def point: ChainSync.Point =
     ChainSync.Point.Block(ChainSync.UInt64.saturating(slot), hash)
 
+  /** The fields of the header body, without its bytes. */
+  def body: LeiosHeaderBody =
+    LeiosHeaderBody(
+      blockNo,
+      slot,
+      prevHash,
+      issuerVkey,
+      vrfVkey,
+      vrf,
+      bodySize,
+      bodyHash,
+      opCert,
+      leios
+    )
+
 object LeiosHeader:
+  /** `encCBOR (HeaderRaw body sig)` (`libs/cardano-protocol/src/Cardano/Protocol/Leios/
+    * BlockHeader.hs:335-337`, cardano-ledger 9df9f98c): `[header_body, body_signature]`, the header
+    * body written as the bytes `kesSignature` signs, and the signature whole (`encodeFixedSized`, a
+    * byte string of its 448 bytes). The body is memoized, its encoding its bytes
+    * (`encodePreEncoded`), and the KES signature is over them (`getSignableRepresentation =
+    * originalBytes`, `:164-165`): `signable` is the bytes the KES key was given, never a body
+    * encoded again. For a header that was read, they are its [[LeiosHeader.signable]], which a
+    * header body with a non-minimal head or an indefinite list holds as it came and an encoding of
+    * its fields would not; for a block being forged, the [[LeiosHeaderBody.encode]] that was
+    * signed. The reference memoizes the header so (`mkHeader`, `:251-258`): these are its bytes,
+    * and their Blake2b-256 digest the block hash.
+    */
+  def signed(signable: Bytes, kesSignature: Bytes): Bytes =
+    import HeaderBodyEncoding.{bytes as bstr, join, list}
+    join(Vector(list(2), signable.toArray, bstr(kesSignature)))
+
   /** Decode `[header_body, body_signature]` with the 12-element body, as the Leios header of the
     * testnet's build reads it at decoder version 12 (`libs/cardano-protocol/src/Cardano/Protocol/
     * Leios/BlockHeader.hs:308-344`, cardano-ledger 9df9f98c): the header and its body are read by
@@ -258,7 +309,31 @@ final case class LeiosBlock(
       )
     ).flatten
 
+  /** The contents of the body, without its bytes. */
+  def body: LeiosBlockBody =
+    LeiosBlockBody(transactions, leiosCertificate.map(_.certificate), perasCertificate)
+
 object LeiosBlock:
+  /** `[8, [header, block_body]]`, the block in the hard-fork envelope as BlockFetch carries it and
+    * [[decode]] reads it: `encCBOR (Block h body)` of Dijkstra, `encodeListLen 2` of the header and
+    * the body (`eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Block.hs:27-29`, cardano-ledger
+    * 9df9f98c), each written as the bytes it memoizes, after Dijkstra's tag (`prependTag 8`,
+    * `encodeDiskHfcBlock`, ouroboros-consensus 2416493b
+    * `ouroboros-consensus-cardano/src/ouroboros-consensus-cardano/Ouroboros/Consensus/Cardano/Node.hs:173`).
+    * `header` is [[LeiosHeader.signed]]'s, `body` [[LeiosBlockBody.encode]]'s.
+    */
+  def encode(header: Bytes, body: Bytes): Bytes =
+    import HeaderBodyEncoding.{join, list as listOf, uint as word}
+    join(
+      Vector(
+        listOf(2),
+        word(BigInt(HfcHeader.DijkstraBlockTag)),
+        listOf(2),
+        header.toArray,
+        body.toArray
+      )
+    )
+
   /** The certificate of a block body, decoded, with the bytes it arrived as. */
   final case class CertificateBytes(certificate: Certificate, raw: Bytes)
 
@@ -367,3 +442,56 @@ object LeiosBlock:
         )
       )
 end LeiosBlock
+
+/** The body of a Dijkstra block, `DijkstraBlockBodyRaw` (`eras/dijkstra/impl/src/Cardano/Ledger/
+  * Dijkstra/BlockBody/Internal.hs:100-106`, cardano-ledger 9df9f98c): the transactions, and the
+  * Leios and the Peras certificates, each optional. The reference builds the body of a block it
+  * forges from these and memoizes its encoding at Dijkstra's version (`mkBasicBlockBodyDijkstra`
+  * and the lenses of `lensMemoRawType`, `:119, 123-127, 138`, `MemoBytes/Internal.hs:299-300,
+  * 337-344`; `mkBody`, ouroboros-consensus 2416493b
+  * `ouroboros-consensus-cardano/src/shelley/Ouroboros/Consensus/Shelley/Ledger/Forge.hs:152-160`):
+  * [[encode]], whose digest is the header's body hash and whose length its body size.
+  */
+final case class LeiosBlockBody(
+    transactions: Vector[DijkstraTx],
+    leiosCertificate: Option[Certificate],
+    perasCertificate: Option[Bytes]
+):
+  /** `encCBOR` of `DijkstraBlockBodyRaw` (`Internal.hs:184-189`, cardano-ledger 9df9f98c):
+    * `encodeListLen 3`, the transactions each in its block form ([[DijkstraTx.forBlockInclusion]])
+    * in a list that is definite up to 23 of them and indefinite above (`encodeFoldableEncoder`,
+    * `libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Encoding/Encoder.hs:363-367, 463-466`),
+    * then the Leios certificate (`[signers, signature]`, `Encoding/EncCBOR.hs:481-485`) and the
+    * Peras certificate (a byte string: `newtype PerasCert = PerasCert ByteArray`,
+    * `Internal.hs:224`), each or null (`encodeNullStrictMaybe`).
+    */
+  lazy val encode: Bytes =
+    import HeaderBodyEncoding.{bytes as bstr, join, list, Null}
+    val txs = transactions.map(_.forBlockInclusion.toArray)
+    val seq =
+      if txs.sizeIs <= LeiosBlockBody.LengthThreshold then list(txs.size) +: txs
+      else (Array(LeiosBlockBody.IndefiniteList) +: txs) :+ Array(LeiosBlockBody.Break)
+    join(
+      Vector(list(3)) ++ seq ++ Vector(
+        leiosCertificate.fold(Null)(_.encode.toArray),
+        perasCertificate.fold(Null)(bstr)
+      )
+    )
+
+  /** `hashBlockBody`: the Blake2b-256 digest of the memoized bytes (`Internal.hs:120`, 9df9f98c).
+    */
+  def hash: Bytes = Blake2b.hash256.hash(encode)
+
+  /** `blockBodySize (ProtVer v _) = BS.length . serialize' v . encCBOR` (`Internal.hs:121`,
+    * 9df9f98c): the encoding of a memoized body is its bytes (`encodePreEncoded`,
+    * `MemoBytes/Internal.hs:167-168`), whatever the version.
+    */
+  def size: Long = encode.size.toLong
+
+object LeiosBlockBody:
+  /** `lengthThreshold` (`Encoder.hs:442-443`, cardano-ledger 9df9f98c): the most items a list is
+    * written with a definite length.
+    */
+  private val LengthThreshold = 23
+  private val IndefiniteList: Byte = 0x9f.toByte
+  private val Break: Byte = 0xff.toByte
