@@ -463,7 +463,7 @@ class HaskellImportSuite extends CatsEffectSuite:
     }
   }
 
-  test("a Dijkstra block is refused before it is stored: no build yet has its rules") {
+  test("a Dijkstra block is refused before it is stored under a release build") {
     val row = JFiles
       .readAllLines(JPath.of("fixtures/dijkstra-devnet/blocks.tsv"))
       .asScala
@@ -496,6 +496,69 @@ class HaskellImportSuite extends CatsEffectSuite:
           stored(db).map(blocks => assertEquals(blocks, Vector.empty))
         }
     }
+  }
+
+  private val dijkstraSetup =
+    NodeSetup
+      .fromDirectory(ReferenceBuild.LeiosB004fe0c)(JPath.of("fixtures/dijkstra-devnet/genesis"))
+      .fold(e => fail(e.message), identity)
+  private val dijkstraChunk = ChunkSlots
+    .fromSecurityParam(dijkstraSetup.geometry.k.toLong)
+    .getOrElse(fail("chunk size"))
+
+  /** The devnet chain of `fixtures/dijkstra-devnet`: Conway blocks, then Dijkstra blocks. */
+  private val dijkstraRaw: Vector[Bytes] =
+    JFiles
+      .readAllLines(JPath.of("fixtures/dijkstra-devnet/blocks.tsv"))
+      .asScala
+      .toVector
+      .drop(1)
+      .map(_.split('\t')(4))
+      .map(hex => Bytes.fromHex(hex).fold(e => fail(e.message), identity))
+
+  test(
+    "under leios-b004fe0c a chain into Dijkstra is stored whole, its Dijkstra blocks checked and kept as they are"
+  ) {
+    val items = dijkstraRaw.map { raw =>
+      val h = Block
+        .decode(raw, dijkstraSetup.geometry.byron.epochSlots)
+        .fold(e => fail(e.message), identity)
+        .header
+      Item(
+        BlockPosition.Regular(h.slot.toLong),
+        raw.toArray,
+        h.hash,
+        raw.toArray.indexOfSlice(h.raw.toArray),
+        h.raw.size
+      )
+    }
+    val dijkstra = dijkstraRaw.count(raw =>
+      Block
+        .decode(raw, dijkstraSetup.geometry.byron.epochSlots)
+        .exists(_.isInstanceOf[Block.Dijkstra])
+    )
+    tempDir.use { dir =>
+      val haskell = dir.toNioPath.resolve("haskell")
+      write(haskell, dijkstraSetup.identity.magic, dijkstraChunk, items)
+      val db = dir.toNioPath.resolve("scala-db")
+      val leios = config(haskell, db, dijkstraSetup, dijkstraChunk)
+        .copy(build = ReferenceBuild.LeiosB004fe0c)
+      for
+        r <- attempt(importing(leios, _ => IO.unit))
+        report = r.fold(e => fail(e.message), identity)
+        out <- stored(db)
+      yield
+        assert(dijkstra > 1, "the devnet chain enters Dijkstra")
+        assertEquals(report.appended, dijkstraRaw.size.toLong)
+        assertEquals(out.map(_.raw), dijkstraRaw)
+    }
+  }
+
+  test("only the Leios testnet's build stores Dijkstra blocks") {
+    assertEquals(
+      ReferenceBuild.values.toVector.filter(HaskellImport.storesDijkstra),
+      Vector(ReferenceBuild.LeiosB004fe0c)
+    )
   }
 
   test("a block missing from the source breaks the chain link, typed") {

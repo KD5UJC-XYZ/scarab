@@ -2540,6 +2540,12 @@
  },
  "glue": [
   {
+   "reason": "The import of a reference node's ImmutableDB is Scarab's own command, with no counterpart in the reference: which reference builds' Dijkstra blocks it stores (the Leios testnet's, whose chain is in Dijkstra from its first block), as bytes and with every other block's checks; no rule is applied by storing a block.",
+   "definitions": [
+    "def storage.haskell.HaskellImport.storesDijkstra"
+   ]
+  },
+  {
    "reason": "Groups Dijkstra wire codecs and validates constructed values by decoding their serialization with the production ledger decoder and comparing values. The encoded forms are mapped separately; these codecs are not persisted-state formats.",
    "definitions": [
     "object storage.haskell.state.DijkstraCodecs"
