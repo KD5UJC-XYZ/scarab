@@ -300,6 +300,63 @@ class HaskellImportSuite extends CatsEffectSuite:
     }
   }
 
+  test(
+    "a retry from an older backup is refused before the target's endorser-block store is replaced"
+  ) {
+    import xyz.kd5ujc.scarab.storage.LeiosStoreSuite.{body, hash, ok as leiosOk, point, tx, word32}
+    import xyz.kd5ujc.scarab.storage.leios.LeiosReferenceDbSuite.exported
+    def eb(n: Int)(s: RocksLeiosStore[IO]) =
+      leiosOk(
+        s.writeEbPoint(point(7, n), word32(1)) *>
+          s.writeEbBody(point(7, n), body(2), Vector.empty) *>
+          s.writeTxs(point(7, n), Vector(0 -> tx(0), 1 -> tx(1)))
+      )
+    tempDir.use { dir =>
+      val newer = dir.toNioPath.resolve("newer")
+      val older = dir.toNioPath.resolve("older")
+      val db = dir.toNioPath.resolve("scala-db")
+      copyDir(previewRoot, newer)
+      for
+        _ <- leiosStore(dir / "newer-leios").use(s => eb(1)(s) *> exported(s, fsPath(newer)))
+        first <- attempt(importing(config(newer, db, previewSetup, previewChunk), _ => IO.unit))
+        // the backup: the first ten blocks of the same chain, and a Leios database of its own
+        blocks <- stored(db)
+        _ <- IO.blocking {
+          val items = blocks.take(10).map { b =>
+            val h = Block
+              .decode(b.raw, previewSetup.geometry.byron.epochSlots)
+              .fold(e => fail(e.message), identity)
+              .header
+            val position =
+              if h.isBoundary then
+                BlockPosition.Ebb((h.slot / previewSetup.geometry.byron.epochSlots).toLong)
+              else BlockPosition.Regular(h.slot.toLong)
+            val at = b.raw.toArray.indexOfSlice(h.raw.toArray)
+            val (offset, size) =
+              if at >= 0 && h.hash == xyz.kd5ujc.scarab.crypto.Blake2b.hash256.hash(h.raw) then
+                (at, h.raw.size)
+              else (0, 0)
+            Item(position, b.raw.toArray, h.hash, offset, size)
+          }
+          write(older, previewSetup.identity.magic, previewChunk, items)
+        }
+        _ <- leiosStore(dir / "older-leios").use(s => eb(5)(s) *> exported(s, fsPath(older)))
+        retry <- attempt(importing(config(older, db, previewSetup, previewChunk), _ => IO.unit))
+        kept <- leiosStore(fsPath(db.resolve("leios"))).use(s =>
+          (leiosOk(s.lookupEbClosure(hash(1))), leiosOk(s.lookupEbClosure(hash(5)))).tupled
+        )
+      yield
+        assertEquals(first.map(_.appended), Right(golden.size.toLong))
+        retry match
+          case Left(HaskellImportError.TargetNotInSource(_, _)) => ()
+          case other => fail(s"expected TargetNotInSource, got $other")
+        // the target's endorser blocks as they were, the backup's not published
+        assertEquals(kept._1.map(_.map(_._2)), Some(Vector(tx(0), tx(1))))
+        assertEquals(kept._2, None)
+        assert(!JFiles.exists(db.resolve("leios.import")), "no stage left")
+    }
+  }
+
   test("a database of another protocol magic is refused before anything is written") {
     tempDir.use { dir =>
       val haskell = dir.toNioPath.resolve("haskell")
@@ -463,7 +520,7 @@ class HaskellImportSuite extends CatsEffectSuite:
     }
   }
 
-  test("a Dijkstra block is refused before it is stored: no build yet has its rules") {
+  test("a Dijkstra block is refused before it is stored under a release build") {
     val row = JFiles
       .readAllLines(JPath.of("fixtures/dijkstra-devnet/blocks.tsv"))
       .asScala
@@ -496,6 +553,69 @@ class HaskellImportSuite extends CatsEffectSuite:
           stored(db).map(blocks => assertEquals(blocks, Vector.empty))
         }
     }
+  }
+
+  private val dijkstraSetup =
+    NodeSetup
+      .fromDirectory(ReferenceBuild.LeiosB004fe0c)(JPath.of("fixtures/dijkstra-devnet/genesis"))
+      .fold(e => fail(e.message), identity)
+  private val dijkstraChunk = ChunkSlots
+    .fromSecurityParam(dijkstraSetup.geometry.k.toLong)
+    .getOrElse(fail("chunk size"))
+
+  /** The devnet chain of `fixtures/dijkstra-devnet`: Conway blocks, then Dijkstra blocks. */
+  private val dijkstraRaw: Vector[Bytes] =
+    JFiles
+      .readAllLines(JPath.of("fixtures/dijkstra-devnet/blocks.tsv"))
+      .asScala
+      .toVector
+      .drop(1)
+      .map(_.split('\t')(4))
+      .map(hex => Bytes.fromHex(hex).fold(e => fail(e.message), identity))
+
+  test(
+    "under leios-b004fe0c a chain into Dijkstra is stored whole, its Dijkstra blocks checked and kept as they are"
+  ) {
+    val items = dijkstraRaw.map { raw =>
+      val h = Block
+        .decode(raw, dijkstraSetup.geometry.byron.epochSlots)
+        .fold(e => fail(e.message), identity)
+        .header
+      Item(
+        BlockPosition.Regular(h.slot.toLong),
+        raw.toArray,
+        h.hash,
+        raw.toArray.indexOfSlice(h.raw.toArray),
+        h.raw.size
+      )
+    }
+    val dijkstra = dijkstraRaw.count(raw =>
+      Block
+        .decode(raw, dijkstraSetup.geometry.byron.epochSlots)
+        .exists(_.isInstanceOf[Block.Dijkstra])
+    )
+    tempDir.use { dir =>
+      val haskell = dir.toNioPath.resolve("haskell")
+      write(haskell, dijkstraSetup.identity.magic, dijkstraChunk, items)
+      val db = dir.toNioPath.resolve("scala-db")
+      val leios = config(haskell, db, dijkstraSetup, dijkstraChunk)
+        .copy(build = ReferenceBuild.LeiosB004fe0c)
+      for
+        r <- attempt(importing(leios, _ => IO.unit))
+        report = r.fold(e => fail(e.message), identity)
+        out <- stored(db)
+      yield
+        assert(dijkstra > 1, "the devnet chain enters Dijkstra")
+        assertEquals(report.appended, dijkstraRaw.size.toLong)
+        assertEquals(out.map(_.raw), dijkstraRaw)
+    }
+  }
+
+  test("only the Leios testnet's build stores Dijkstra blocks") {
+    assertEquals(
+      ReferenceBuild.values.toVector.filter(HaskellImport.storesDijkstra),
+      Vector(ReferenceBuild.LeiosB004fe0c)
+    )
   }
 
   test("a block missing from the source breaks the chain link, typed") {

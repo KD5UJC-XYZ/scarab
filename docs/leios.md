@@ -957,3 +957,107 @@ the Dijkstra ledger view forecast from a Conway ledger state
 (`crossEraForecastConwayToDijkstraWrapper`, `Cardano/CanHardFork.hs:767-808`). `DijkstraCrossingSuite`
 validates the eight Dijkstra headers of [the devnet chain](../fixtures/dijkstra-devnet/README.md) with
 them from its Conway blocks; neither is wired into the node, which does not enter Dijkstra.
+
+## 13. Offline replay against the reference's ledger states (G1, #54)
+
+`LeiosReplayMain` (`tools`, `xyz.kd5ujc.scarab.node.tools`) replays one window of the public testnet
+offline and compares the state it reaches with the reference's. It adds no rule: every step is the shipped
+path under `--reference-build leios-b004fe0c`.
+
+1. **Stage the chain.** The reference node's ImmutableDB, up to the end state's slot, and its LeiosDB
+   (`leios.vol.db`, `leios.imm.db`) go into a fresh database, as `import-haskell-db` stores them
+   ([snapshots](running/snapshots.md)).
+2. **Import the start state**, as `import-ledger-snapshot` imports it.
+3. **Apply the blocks** after the start state, as the node's start applies its stored blocks
+   (`ChainStorage.open`). The rules are the node's own, built as `follow` builds them (`MirrorRules`), with
+   the endorser-block store open beside them as `follow` opens it. The replay must start from the imported
+   state: a snapshot skipped or refused, or a start from genesis, is an error.
+4. **Export and compare.** The state at the end slot is exported as `export-ledger-snapshot` exports it.
+   Its `state`, `tables` and `meta` are compared byte for byte with the end state's. The report gives the
+   first differing byte of each file that differs. For `state` it also gives where the decoded states first
+   differ (`Diff`), or that they decode to the same state, or which side does not decode.
+
+A reference ledger directory is the `ledger/<slot>` that the reference node, or its `db-analyser
+--store-ledger`, writes: `state`, `tables` and `meta`, named after its tip's slot. `--end-slot` gives the
+end's slot where the directory is not named after it. The end directory's files are recorded before anything is written; one that is not there, or
+holds none of the three, is refused (`error`), and so is an exported file that is the end's own. The program prints JSON lines (`leiosReplay`). Its
+last line and exit code are the outcome:
+
+| Outcome | Exit | Meaning |
+|---|---|---|
+| `matched` | 0 | every file of the end directory is the exported one, byte for byte, and it holds all three |
+| `matched`, `notCompared` not empty | 6 | the files it holds match, but some are missing: not a pass (CNF-2) |
+| `differs` | 4 | the first difference, located |
+| `halted` | 3 | the rules do not apply the block at this slot yet (`BlockFailure.NotYet`, with its part); not a pass |
+| `withheld` | 3 | the node has no verdict on the block of this slot for a part it does not hold yet, and withholds it as the follower does (`LeiosReplayMain.noVerdictNotYet`, with its `BlockNoVerdict`: after #85 D8, a proposal of a parameter Dijkstra adds, until #826's format change); not a pass |
+| `refused` | 5 | the rules refuse a block that the reference applied, with the typed failure |
+| `error` | 1 | no verdict: the inputs, the staging, the start state or the export failed (typed) |
+
+A halted or refused window exports nothing.
+
+### Running a window
+
+Each window runs in a fresh database of its own. The reference database and the states are mounted
+read-only and are never written. In the checkout, with `$scarab_cache` and `$scarab_git_metadata` set as
+[CONTRIBUTING.md](../CONTRIBUTING.md#build-docker-only) sets them, build `tools` and write its classpath in
+the JDK image, then run the program in a container capped like any other run, with no network:
+
+```sh
+docker run --rm -v "$PWD":/work -v "$scarab_cache":/work/.cache \
+  -v "$scarab_git_metadata:$scarab_git_metadata:ro" -w /work --user "$(id -u):$(id -g)" \
+  -e HOME=/work/.cache/home scarab-jdk:local bash -c \
+  'bash scripts/sbtw tools/compile "export tools/Runtime/fullClasspath" | grep -v "^\[" | tail -1 > .cache/tools-classpath.txt'
+docker run --rm --network none --cpus 8 --memory 24g --user "$(id -u):$(id -g)" -e HOME=/tmp \
+  -v "$PWD":/work:ro -v "$scarab_cache":/work/.cache:ro \
+  -v <reference node directory>:/ref:ro -v <reference ledger states>:/states:ro -v <scratch>:/scratch \
+  -w /work scarab-jdk:local java -Xmx16g --enable-native-access=ALL-UNNAMED \
+  --sun-misc-unsafe-memory-access=allow -cp "$(cat "$scarab_cache/tools-classpath.txt")" \
+  xyz.kd5ujc.scarab.node.tools.LeiosReplayMain --config /ref/config.json --haskell-db /ref/db \
+  --start /states/<start slot> --end /states/<end slot> --db /scratch/<window>/db --out /scratch/<window>/out
+```
+
+The classpath names the checkout's compiled classes, so do not build in the checkout while a window runs.
+
+`<reference node directory>` holds the testnet configuration (`config.json` and its genesis files) and the
+node's `db/` (`immutable/`, `protocolMagicId`, `leios.vol.db` and `leios.imm.db`). The LeiosDB is imported
+in full for every window, so each window's database holds a copy of it, and staging takes most of a
+window's time ([the evidence log](compatibility/evidence-log-6.md) has G1's). A database without the two
+LeiosDB files has no closures, so its certifying blocks cannot be applied.
+
+The windows, each run hop by hop from the reference's own start state:
+
+| Window | Epochs | Hops (start slot → end slot) | What it exercises |
+|---|---|---|---|
+| G1 | 89 → 100 | 1,943,999 → 2,168,639 | the gate: 10,245 ranking blocks, 4,259 closures (6.07 million transactions), a re-registration with a voting key, sub-transactions, a direct deposit |
+| P | 46 → 49 | 1,015,165 → 1,036,794 → 1,058,391 → 1,079,994 | Plutus |
+| G | 69 → 74 | 1,511,985 → 1,533,582 → 1,555,188 → 1,576,750 → 1,598,375 → 1,619,990 | a parameter change of the endorser-block limits, proposed, ratified and enacted |
+
+G1's end state is `fixtures/leios/state/testnet-2168639` (`--end /work/fixtures/leios/state/testnet-2168639
+--end-slot 2168639`). It holds `state` only, so a G1 run against it is at best `matched` with `tables` and
+`meta` not compared (exit 6). A pass needs a directory that also holds the reference's `tables` and `meta`
+of slot 2,168,639. The states are private local data and are not published; the provenance of windows P and
+G (the testnet build's `db-analyser`, replaying the recorded database) is recorded with them.
+
+### What runs before the Dijkstra rules, and what they must provide
+
+Until the rules apply a Dijkstra block (#85 D8), every window halts at the first block after its start
+(`halted`, `notYet` `Rules`, exit 3), and a window whose start and end are the same state is the
+import–export round trip of that state. The runs on the recorded database are in the
+[evidence log](compatibility/evidence-log-6.md). Two states of window G are not imported: they hold the
+proposal that updates the endorser-block limits, a parameter Dijkstra adds (`DijkstraNotYet.ParameterUpdate`,
+#826), so the hops that start there end with a typed `error` before any block, and the hop that ends at
+the first of them cannot be compared.
+
+For a window to pass, the node's block application has to apply what the reference applies, all through
+`MirrorRules`, which the program builds as `follow` does:
+
+- a Dijkstra block through Dijkstra's BBODY, the refusal `BlockFailure.NotYet(DijkstraNotYet.Rules)` lifted;
+- before a certifying block, the closure of the endorser block its predecessor announced, applied to the
+  unticked parent's state (`applyLeiosClosure`), read from the endorser-block store that the program opens
+  and gives the chain database as `follow` does. Where the rules take that store, the program gives it the
+  same one;
+- the parts of Dijkstra's LEDGER the window's transactions reach (for G1: sub-transactions, a direct
+  deposit, a pool re-registration with a voting key, account certificates), and EPOCH and SNAP at each
+  boundary, with the Leios committee;
+- a state that the build's layout writes back as the reference does, which the round trips above show for
+  every state the replay starts from.

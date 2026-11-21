@@ -9,14 +9,13 @@ import java.nio.file.{Files as JFiles, Path as JPath}
 import munit.CatsEffectSuite
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.BlockRef
-import xyz.kd5ujc.scarab.consensus.state.{AnnTip, ConsensusMirrorEnv, EraLedgerState, TipInfo}
+import xyz.kd5ujc.scarab.consensus.state.{ConsensusMirrorEnv, EraLedgerState}
 import xyz.kd5ujc.scarab.ledger.Block
 import xyz.kd5ujc.scarab.ledger.rules.EraLedger
-import xyz.kd5ujc.scarab.ledger.state.{BlockNo, Hash32, ShelleyBasedEra, SlotNo, WithOrigin}
+import xyz.kd5ujc.scarab.ledger.state.ShelleyBasedEra
 import xyz.kd5ujc.scarab.models.runtime.DecodeError
-import xyz.kd5ujc.scarab.node.NodeSetup
 import xyz.kd5ujc.scarab.protocol.{Era, ReferenceBuild}
-import xyz.kd5ujc.scarab.storage.haskell.state.{ReferenceLayout, SnapshotCrc, SnapshotMeta}
+import xyz.kd5ujc.scarab.storage.haskell.state.ReferenceLayout
 
 import DecodeError.{Arity, Kind}
 
@@ -30,10 +29,7 @@ import DecodeError.{Arity, Kind}
 class LeiosLayoutImportSuite extends CatsEffectSuite:
   import StorageTestKit.{ok, tempDir}
   private val fixture = JPath.of("fixtures/leios/state")
-  private val setup =
-    NodeSetup
-      .fromDirectory(ReferenceBuild.LeiosB004fe0c)(fixture.resolve("genesis"))
-      .fold(e => fail(e.message), identity)
+  private val setup = LeiosStateFixture.setup
   private given Ask[IO, ConsensusMirrorEnv] = Ask.const(setup.mirrorEnv())
   // the devnet starts in Conway: the parameters are its genesis state's, as the import command
   // takes them (`LedgerSnapshotImportCommand.inputs`)
@@ -42,8 +38,7 @@ class LeiosLayoutImportSuite extends CatsEffectSuite:
       given ShelleyBasedEra[e] = i.era
       EraLedger.curPParams(i.state.nes.es.ls.utxo.gov)
     case _ => fail("expected a Shelley-based genesis state")
-  private val leios =
-    ReferenceLayout.of(ReferenceBuild.LeiosB004fe0c).fold(e => fail(e.message), identity)
+  private val leios = LeiosStateFixture.layout
 
   private def read(name: String): Bytes =
     Bytes.wrap(JFiles.readAllBytes(fixture.resolve(s"conway-195/$name")))
@@ -91,54 +86,11 @@ class LeiosLayoutImportSuite extends CatsEffectSuite:
       rawBlock
     )
 
-  private def readDijkstra(name: String): Bytes =
-    Bytes.wrap(JFiles.readAllBytes(fixture.resolve(s"dijkstra-203/$name")))
+  private def readDijkstra(name: String): Bytes = LeiosStateFixture.read("dijkstra-203", name)
 
-  /** The first Dijkstra block of `fixtures/dijkstra-devnet` (`[8, block]`) and its point. */
-  private val (dijkstraBlock, dijkstraPoint) =
-    val raw = JFiles
-      .readAllLines(JPath.of("fixtures/dijkstra-devnet/blocks.tsv"))
-      .toArray(Array.empty[String])
-      .toVector
-      .drop(1)
-      .map(_.split('\t'))
-      .collectFirst { case row if row(0) == "8" => row(4) }
-      .flatMap(Bytes.fromHex(_).toOption)
-      .getOrElse(fail("no Dijkstra block in fixtures/dijkstra-devnet/blocks.tsv"))
-    val h =
-      Block.decode(raw, setup.geometry.byron.epochSlots).fold(e => fail(e.message), identity).header
-    (raw, BlockRef(h.slot, h.hash, h.blockNo, h.isBoundary))
-
-  /** Slot 203's `state` with its header's tip at [[dijkstraPoint]], written in the Leios layout,
-    * and its `meta` with the checksum of that state and the captured tables (`crcOfConcat`,
-    * [[SnapshotCrc.combined]]).
-    */
-  private val (movedState, movedMeta) =
-    val file = leios.decode(readDijkstra("state")).fold(e => fail(e.render), identity)
-    val tip = AnnTip(
-      SlotNo.fromUnsigned(dijkstraPoint.slot.toLong),
-      BlockNo.fromUnsigned(dijkstraPoint.blockNo.toLong),
-      TipInfo.ShelleyBasedTip(
-        ShelleyBasedEra.SDijkstra,
-        Hash32.fromBytes(dijkstraPoint.hash).fold(e => fail(e.toString), identity)
-      )
-    )
-    val state = leios
-      .encode(file.copy(header = file.header.copy(tip = WithOrigin.At(tip))))
-      .fold(e => fail(e.violation.render), identity)
-    val meta = SnapshotMeta
-      .parse(new String(readDijkstra("meta").toArray, "UTF-8"))
-      .flatMap(m =>
-        SnapshotMeta.encode(
-          m.copy(checksum =
-            SnapshotCrc
-              .combined(SnapshotCrc.of(state), SnapshotCrc.of(readDijkstra("tables")))
-              .value
-          )
-        )
-      )
-      .fold(e => fail(e.toString), identity)
-    (state, Bytes.wrap(meta.getBytes("UTF-8")))
+  private val dijkstraBlock = LeiosStateFixture.first.raw
+  private val dijkstraPoint = LeiosStateFixture.first.point
+  private val movedState = LeiosStateFixture.movedState
 
   private def config(ledger: Path, db: Path, layout: ReferenceLayout) =
     LedgerSnapshotImport.Config(
@@ -243,8 +195,7 @@ class LeiosLayoutImportSuite extends CatsEffectSuite:
   test(
     "slot 203, a Dijkstra state with its tip moved, imports under leios-b004fe0c and exports byte for byte"
   ) {
-    val files =
-      Vector("state" -> movedState, "tables" -> readDijkstra("tables"), "meta" -> movedMeta)
+    val files = LeiosStateFixture.movedFiles
     tempDir.use { root =>
       for
         input <- sourceOf(root, dijkstraPoint.slot, files, dijkstraPoint, dijkstraBlock)
