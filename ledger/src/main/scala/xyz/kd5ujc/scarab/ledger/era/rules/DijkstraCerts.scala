@@ -355,11 +355,11 @@ object ENTITIES:
     */
   def shelleyUtxoToDijkstraEntitiesPredFailure(
       failure: ShelleyUtxoPredFailure.WrongNetworkWithdrawal[Dijkstra]
-  ): Either[VocabError, EntitiesPredFailure[Dijkstra]] =
+  ): Either[VocabError, EntitiesPredFailure.WithdrawalAddressesWithWrongNetwork[Dijkstra]] =
     failure.accounts.toNonEmptyList
       .traverse(Convert.accountAddress)
       .map(accounts =>
-        EntitiesPredFailure.WithdrawalAddressesWithWrongNetwork(
+        new EntitiesPredFailure.WithdrawalAddressesWithWrongNetwork[Dijkstra](
           failure.expected,
           accounts.toNes
         )
@@ -407,6 +407,17 @@ object ENTITIES:
 
   private def balance(account: AccountState[Dijkstra]): Coin =
     a.balanceAccountStateL.get(account).toCoin
+
+  /** `withdrawalsMissingAccounts` (`State/Account.hs:359-366`, cardano-ledger 9df9f98c): none if
+    * every withdrawal is of a registered account on `network`, otherwise those that are not, which
+    * Dijkstra's SUBENTITIES reports.
+    */
+  def withdrawalsMissingAccounts(
+      withdrawals: SortedMap[AccountAddress, Coin],
+      network: Network,
+      accounts: Accounts[Dijkstra]
+  ): Option[SortedMap[AccountAddress, Coin]] =
+    categorizeWithdrawals((_, _) => true)(withdrawals, network, accounts).map(_._1)
 
   /** `withdrawalsThatDoNotDrainAccounts` (`State/Account.hs:203-217`, cardano-ledger 9df9f98c). */
   def withdrawalsThatDoNotDrainAccounts(
@@ -484,10 +495,10 @@ object ENTITIES:
   def validateWrongNetworkInDirectDeposit(
       netId: Network,
       deposits: SortedMap[AccountAddress, Coin]
-  ): Test[EntitiesPredFailure[Dijkstra]] =
+  ): Test[EntitiesPredFailure.DirectDepositAddressesWithWrongNetwork[Dijkstra]] =
     Test.failureOnJust(
       NonEmptySet.fromSet(SortedSet.from(deposits.keysIterator.filter(_.networkId != netId)))
-    )(EntitiesPredFailure.DirectDepositAddressesWithWrongNetwork[Dijkstra](netId, _))
+    )(new EntitiesPredFailure.DirectDepositAddressesWithWrongNetwork[Dijkstra](netId, _))
 
   /** `validateMissingAccountsInDirectDeposits` (`Dijkstra/Rules/Entities.hs:330-339`,
     * cardano-ledger 9df9f98c).
@@ -496,9 +507,9 @@ object ENTITIES:
       deposits: SortedMap[AccountAddress, Coin],
       network: Network,
       accounts: Accounts[Dijkstra]
-  ): Test[EntitiesPredFailure[Dijkstra]] =
+  ): Test[EntitiesPredFailure.DirectDepositAccountsMissing[Dijkstra]] =
     Test.failureOnJust(directDepositsMissingAccounts(deposits, network, accounts))(missing =>
-      EntitiesPredFailure.DirectDepositAccountsMissing[Dijkstra](missing)
+      new EntitiesPredFailure.DirectDepositAccountsMissing[Dijkstra](missing)
     )
 
   /** The withdrawals of a level, keyed by `AccountAddress`, as the reference's `Withdrawals`. */
@@ -633,22 +644,15 @@ object ENTITIES:
     * three tests over `intervals`, against the accounts given, each reported by its own
     * constructors.
     */
-  private def validateIntervals(
+  private def validateIntervals[R](
       network: Network,
       accounts: Accounts[Dijkstra],
       intervals: SortedMap[AccountAddress, AccountBalanceInterval]
   )(
-      wrongNetworkFailure: NonEmptySet[AccountAddress] => EntitiesPredFailure[Dijkstra],
-      missingFailure: NonEmptyMap[AccountAddress, AccountBalanceInterval] => EntitiesPredFailure[
-        Dijkstra
-      ],
-      outsideFailure: NonEmptyMap[
-        AccountAddress,
-        (Coin, AccountBalanceInterval)
-      ] => EntitiesPredFailure[
-        Dijkstra
-      ]
-  ): Test[EntitiesPredFailure[Dijkstra]] =
+      wrongNetworkFailure: NonEmptySet[AccountAddress] => R,
+      missingFailure: NonEmptyMap[AccountAddress, AccountBalanceInterval] => R,
+      outsideFailure: NonEmptyMap[AccountAddress, (Coin, AccountBalanceInterval)] => R
+  ): Test[R] =
     val (wrongNetwork, missing, outside) =
       categorizeAccountBalanceIntervals(network, accounts, intervals)
     Test.all(
@@ -664,12 +668,19 @@ object ENTITIES:
       network: Network,
       accounts: Accounts[Dijkstra],
       intervals: SortedMap[AccountAddress, AccountBalanceInterval]
-  ): Test[EntitiesPredFailure[Dijkstra]] =
-    validateIntervals(network, accounts, intervals)(
-      EntitiesPredFailure.WrongNetworkInAccountBalanceIntervals[Dijkstra](network, _),
-      EntitiesPredFailure.MissingAccountsInAccountBalanceIntervals[Dijkstra](_),
-      EntitiesPredFailure.BalancesOutsideAccountBalanceIntervals[Dijkstra](_)
+  ): Test[IntervalsFailure] =
+    validateIntervals[IntervalsFailure](network, accounts, intervals)(
+      new EntitiesPredFailure.WrongNetworkInAccountBalanceIntervals[Dijkstra](network, _),
+      new EntitiesPredFailure.MissingAccountsInAccountBalanceIntervals[Dijkstra](_),
+      new EntitiesPredFailure.BalancesOutsideAccountBalanceIntervals[Dijkstra](_)
     )
+
+  /** The failures [[validateAccountBalanceIntervals]] reports, the domain of an injection it asks
+    * for (SUBENTITIES').
+    */
+  type IntervalsFailure = EntitiesPredFailure.WrongNetworkInAccountBalanceIntervals[Dijkstra] |
+    EntitiesPredFailure.MissingAccountsInAccountBalanceIntervals[Dijkstra] |
+    EntitiesPredFailure.BalancesOutsideAccountBalanceIntervals[Dijkstra]
 
   /** `validateStartingAccountBalanceIntervals` (`Dijkstra/Rules/Entities.hs:502-517`,
     * cardano-ledger 9df9f98c): against the original accounts.
@@ -679,7 +690,7 @@ object ENTITIES:
       accounts: Accounts[Dijkstra],
       intervals: SortedMap[AccountAddress, AccountBalanceInterval]
   ): Test[EntitiesPredFailure[Dijkstra]] =
-    validateIntervals(network, accounts, intervals)(
+    validateIntervals[EntitiesPredFailure[Dijkstra]](network, accounts, intervals)(
       EntitiesPredFailure.WrongNetworkInStartingAccountBalanceIntervals[Dijkstra](network, _),
       EntitiesPredFailure.MissingAccountsInStartingAccountBalanceIntervals[Dijkstra](_),
       EntitiesPredFailure.BalancesOutsideStartingAccountBalanceIntervals[Dijkstra](_)
@@ -759,7 +770,7 @@ object ENTITIES:
       )
       _ <- wrongNetworkWithdrawals.traverse_(fs => judge.tell(fs.toChain))
       _ <- Sts.runTest[F, EntitiesPredFailure[Dijkstra]](
-        Test.all(
+        Test.all[EntitiesPredFailure[Dijkstra]](
           validateWrongNetworkInDirectDeposit(network, directDeposits),
           validateAccountBalanceIntervals(network, accounts, intervals),
           validateStartingAccountBalanceIntervals(network, env.originalAccounts, startingIntervals),
@@ -778,13 +789,13 @@ object ENTITIES:
         )
       )
       voted <- vocab[F, CertState[Dijkstra]](
-        CERTS.updateVotingDRepExpiries[Dijkstra](
+        CERTS.updateVotingDRepExpiries[Dijkstra, TxLevel.Top](
           tx,
           curEpoch,
           field[Dijkstra, EpochInterval](pp)(
             EraPParams.dijkstra.hkdDRepActivityL[Identity]
           ),
-          CERTS.updateDormantDRepExpiries[Dijkstra](tx, curEpoch, certState)
+          CERTS.updateDormantDRepExpiries[Dijkstra, TxLevel.Top](tx, curEpoch, certState)
         )
       )
       withdrawn <- vocab[F, Accounts[Dijkstra]](
