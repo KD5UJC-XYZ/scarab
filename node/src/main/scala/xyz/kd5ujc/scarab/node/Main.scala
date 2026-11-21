@@ -2479,7 +2479,7 @@ object Main extends IOApp:
               setup.praos.copy(geometry = geometry),
               globals,
               run.plutus,
-              setup.config.settings.protocolVersion,
+              setup.forgedProtocolVersion,
               pool,
               follower,
               mempool,

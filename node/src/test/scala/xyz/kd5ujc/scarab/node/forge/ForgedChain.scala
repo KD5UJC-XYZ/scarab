@@ -372,7 +372,7 @@ class ForgedChainSetup(val geometry: EpochGeometry):
             config,
             globals,
             xyz.kd5ujc.scarab.plutus.PlutusBackend.default,
-            ConfigSettings().protocolVersion,
+            ConfigSettings().protocolVersion(xyz.kd5ujc.scarab.protocol.ReferenceBuild.Release11_1),
             p.creds,
             follower,
             mempool,
