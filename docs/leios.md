@@ -412,36 +412,50 @@ confined to `MinSig.guard`). Roadmap item N2 / issue 71. Not audited; research s
   `aggregateKeys`, `verifyAggregate`; the tags are `BLS_SIG_BLS12381G1_XMD:SHA-256_SSWU_RO_POP_`
   and `BLS_POP_BLS12381G1_XMD:SHA-256_SSWU_RO_POP_` (the `BLS12381MinSigDSIGN` choice in
   `cardano-base` `Cardano.Crypto.DSIGN.BLS12381.Internal`: no augmentation, tags fixed per curve).
-  The signed message of a vote is the 32 raw bytes of the announcing RB hash; the message of a
-  proof of possession is the 96 compressed bytes of the key.
+  The signed message of a vote and of a certificate is the announcing RB hash's
+  `getSignableRepresentation`, its CBOR encoding `58 20 || hash` (34 bytes, ouroboros-consensus
+  2416493b `Leios/Types.hs:138-141`; `RbHash.signable`). Until 2026-11-21 Scarab signed the 32 raw
+  bytes, under which the testnet's certificate of block 97,276 does not verify; corrected with #73,
+  and that certificate verifies (`LeiosCertificateFixtureSuite`). The message of a proof of possession is the
+  96 compressed bytes of the key.
 - Typed values with private constructors and strict decoders: `Seed` (32 bytes), `SecretKey`
   (non-zero scalar below the group order; `generate(seed)` is `blst_keygen` as `genKeyDSIGN`),
   `VerificationKey` (96-byte compressed G2), `Signature` and `ProofOfPossession` (48-byte
   compressed G1). Decoding requires the exact length, the compression flag, a valid point, the
   prime-order subgroup check, and rejects the identity. Opaque types: `Seed`, `SeatId` (16 bits),
-  `RbHash`, `Signers` (bitfield, at most 8192 bytes), `Weight` (non-negative stake).
+  `RbHash`, `Signers` (bitfield, at most 8192 bytes), `Weight` (an exact `Rational`, the
+  reference's `type Weight = Rational`).
 - `Committee.fromSeats` (checks each proof of possession once; a failing proof makes a keyless seat,
-  as `mkLeiosCommittee`), `Committee.select(candidates, N_c)` (stake descending, pool id ascending,
-  truncated), `Weight.fractionCeil(totalActiveStake, num, den)` (exact `tau`), `Vote` (`sign`,
-  `verify`, `encode`, `decode`), `Certificate` (`aggregate`, `verify`, `encode`, `decode`).
-  `Certificate.verify` follows `verifyLeiosCert`: committee size, bitfield length, keyless signers,
-  weight against `required`, then one pairing check against the sum of the signers' keys.
-- Every failure is a `BlsError` case (closed ADT; no strings, no exceptions). The CBOR codecs are
-  strict (shortest form, definite length, no trailing bytes) and fail with `CborFault`.
+  as `mkLeiosCommittee`), `Committee.honoured` (seats whose keys the ledger already admitted),
+  `Committee.select(candidates, N_c)` (stake descending, pool id ascending, truncated), `Vote`
+  (`sign`, `verify`, `encode`, `decode`), `Certificate` (`aggregate`, `verify`, `encode`, `decode`).
+  `Certificate.verify` is `verifyLeiosCert` of cardano-base `c1e1ed8d` (`Leios.hs:289-340`): committee
+  size, bitfield length (bits at or beyond the committee size ignored), keyless signers, the exact
+  summed weight against `required`, then one pairing check against the sum of the signers' keys,
+  failing with the reference's five `VerificationError` cases.
+- Every other failure is a `BlsError` case (closed ADT; no strings, no exceptions); a failure of the
+  native library during verification stays `BlsError.Backend`, no verdict on the certificate. The
+  CBOR codecs are strict (shortest form, definite length, no trailing bytes) and fail with `CborFault`.
 
 ### Decisions where the sources are silent or differ (all recorded here, none silent)
 
 - **Proof of possession is 48 bytes** (one G1 signature), not the 96-byte pair of the older Rust
   specification in `ouroboros-leios/crypto-benchmarks.rs`: the proofs in the proto-devnet genesis
   are 48 bytes and verify, and regenerate byte for byte from the secret keys.
-- **Padding bits of the signer bitfield must be clear** (`SignersPaddingSet`). `cardano-base`
-  ignores bits at or beyond the committee size. No honest producer sets them, so valid certificates
-  are the same set; a node that wants the reference's exact acceptance can drop the check in
-  `Signers.members`. Flag for N4.
-- **A signature or proof that is the identity is rejected at decode**; `cardano-base` rejects it
-  later (at verification and aggregation). Same accepted set.
-- **Quorum is `tau` of total active stake** (`leios-committee.md` in the Blueprint), not of the
-  stake seated on the committee: the caller passes `required`.
+- **Padding bits of the signer bitfield are ignored**, as `verifyLeiosCert` ignores them
+  (`globalIx < n`). Until 2026-11-21 Scarab refused a certificate with one set (`SignersPaddingSet`), a
+  difference never approved that refused certificates the reference accepts; it was corrected to the
+  reference (#73).
+- **No signer is no case of its own**: the weight is zero, so `InsufficientWeight` against any positive
+  threshold, and `InvalidSignature` (the empty key sum) when nothing is required, as in the reference.
+  Until 2026-11-21 Scarab refused it as `NoSigners`; corrected with the padding rule.
+- **A vote's signature or a proof that is the identity is rejected at decode**; `cardano-base`
+  rejects it later (at verification and aggregation). Same accepted set. A certificate's signature
+  is decoded as the reference decodes it, the identity included (`Signature.decoded`), and
+  verification refuses it.
+- **Quorum is a fraction of total active stake**: each seat weighs its pool's stake ratio and the
+  threshold is `ppLeiosQuorumStakeThreshold` (`getLeiosCommitteeFromView`, ouroboros-consensus
+  2416493b `Shelley/Ledger/Ledger.hs:990-993`), both exact; the caller passes `required`.
 - Not modelled here (ledger-side, N3/L1): expiry of a registered key after
   `ceil(slotsPerKESPeriod * maxKESEvolutions / epochLength) + 2` epochs (Blueprint), activation at
   the epoch boundary, the choice of the announcing RB.
@@ -618,7 +632,7 @@ uses `Peer.nodeToNode`) ends with `protocol: decode header: expected 10-element 
 | Leader threshold against the genesis stake | 2,112 headers (epochs 0 and 1, led by the one genesis pool, relative stake 1) |
 | Leader threshold, epochs 2 on | **152,586 headers `Unchecked`**: the stake comes from the chain's transactions (pool registrations, delegations), which this follower does not apply; an issuer's VRF key is taken on trust at first sight |
 | Block bodies | the six blocks then kept as fixtures (replaced by #743; two of tag 7, four of tag 8: empty, with transactions, announcing, certifying) decode, and in every one the body hash and the body size equal the header's, the certificate flag equals the presence of the certificate, and a certificate does not come with transactions (`LeiosBlock.faults`; consensus `Shelley/Ledger/Block.hs` 224 to 231); the body hash of two 88 kB tip blocks was checked by hand as well |
-| Leios certificate | decoded strictly (`Certificate.decode`: bitfield up to 8,192 bytes, a signature that is a valid G1 point); **not verified**: no committee |
+| Leios certificate | decoded strictly (`Certificate.decode`: bitfield up to 8,192 bytes, a signature that is a valid G1 point); **not verified** in this check (2026-10-16); verified since #73 against the committee of a captured state (X5) |
 
 Nothing was applied to a ledger: 0 blocks are ledger-validated, because the Dijkstra era has no
 ledger rules in this node and the Conway-indexed blocks carry a header the Conway rules do not read.
@@ -688,7 +702,7 @@ these). "Cited" is the source read, at the revisions of sections 1 and 11.2 and,
 | **X2** | `Era` has no `Dijkstra`: the era history, `HardForkConfig` (no trigger at protocol version 12, `eraProtVerLow` 12), `ShelleyBasedEra`, the state mirror and the Haskell state-file telescope know seven eras. The chain enters Dijkstra at epoch 4 with no `TestDijkstraHardForkAtEpoch`, so a governance hard fork to protocol version 12 the node would have to derive from its own ledger. Adding the case breaks exhaustive matches in `consensus` (`HardFork.scala`, `SomeEra.scala`), `storage` (`ConsensusCodecs.scala`, `LedgerFileCodecs.scala`) and the era generators of `consensus` tests; this stage did not touch them | consensus, storage | cardano-ledger-core `Internal/Definition/Era.hs` 140 (pinned) |
 | **X3** | No Dijkstra ledger: `LEDGER`, `BBODY` with the Leios signal (`LeiosBbodySignal`), the transaction body (key 14 `guards` in place of `required_signers`, sub-transactions, the inline `is_valid` flag, Plutus V4 as `language 3` with the cost model of `dijkstra-genesis.json`), certificates, `pool_params.bls_key`, the rules that use the protocol parameters Dijkstra adds (update keys 34 to 56, which `ProtocolParams` holds; the translation from Conway is implemented, `Translate.conwayToDijkstra`, except for the outputs in the backing store, whose native reference scripts it does not re-encode; the node does not enter Dijkstra) | the rules | `dijkstra.cddl` 3 to 54, 116 and following, 719 to 733 (pinned); the Dijkstra changelog (section 3) |
 | **X4** | No stake distribution without a ledger: from epoch 2 the leader threshold of every header (152,586 of 154,698) is unchecked, and a pool's registered VRF key is not compared | header-first validation | 11.4 |
-| **X5** | The Leios certificate is decoded, not verified: no committee (the BLS keys are in pool registrations, `PoolParams` has no `bls_key`), no quorum from the stake, no lookup of the announcing ranking block | `LeiosBlock`, `Certificate.verify` | `dijkstra.cddl` 937 to 942; section 9 |
+| **X5** | The checks block application runs on a certifying block before the certified endorser block's closure (`Forker.applyBlock`, ouroboros-consensus 2416493b `Storage/LedgerDB/Forker.hs:631-666`) are mirrored as a pure function (`LeiosCertification.check`, #73; tracked before as #102): the parent's announcement, its hash, the committee of its tip (the set snapshot's, with `ppLeiosQuorumStakeThreshold`, `leiosCommitteeOfTip`) and `verifyLeiosCert`, failing with the reference's four `LeiosExtValidationError` cases. The testnet's certifying block 97,276 passes them from its parent's state (`LeiosCertificateFixtureSuite`). What remains: the node does not apply a Dijkstra block yet, so nothing calls the check (X1, X3), and chain selection's forecast check of a certificate (`LeiosCertificateForecastRejected`) is not mirrored | `LeiosBlock`, `Certificate.verify`, `consensus.leios` | `dijkstra.cddl` 937 to 942; section 9 |
 | **X6** | `peras_certificate` is carried as bytes; the ledger's `validatePerasCert` is a placeholder that returns `False` | Peras | cardano-ledger `BlockBody/Internal.hs` 235 to 246 (pinned) |
 | **X7** | Endorser blocks: an announcement is recognised in a header (65,469 on this chain) but no EB is fetched, stored, hashed against the announced hash or applied; the EB store (`<db>/leios`, #830), with an import and export of a reference node's LeiosDB (`import-haskell-db`, `LeiosReferenceDb`), is wired to open at the start of a node of the Leios build with `LeiosDbConfig.Backend: SQLite` (`LeiosStorage`, #54), which runs once `follow` admits that build (it refuses it at start, `ReferenceBuildNotYet.Rules`); the chain database promotes and collects the store as the immutable tip moves (#830), and fetching is what fills it; chain selection parks a ranking block whose certified endorser block's closure the store has not completed and reconsiders it when the closure completes (`LeiosCertGate`, #54), which on a Leios network parks every certifying block until something writes the store; the reference's fetch decision is mirrored as pure code (`consensus.leios`: the fetch state, the decision over the peers' offers and the closure's jobs, drawn with the reference's `StdGen`); the node runs it (#54): the decision loop paced at half a second, the state started from the store's complete closures and pruned at the immutable tip (`LeiosFetchKernel`), and each answer checked, written through the store chain selection reads and claimed as `processLeiosBlock` and `processLeiosBlockTxs` do, a body hashed against the point asked for (`LeiosFetchArrival`; `LeiosFetchArrivalSuite`, `LeiosFetchRegistrationSuite`). What makes an endorser block fetchable is ChainSync's (#54): each header the gate validates goes, with the header state as of its predecessor and the ledger view it carries (`hswtLedgerView`), to the connection's handling inside the peer's bracket (`LeiosChainSync`): a certifying header's claim is counted, a second endorser block claimed certified for one election costing the peer the connection (`noteCertificationClaim`), and the endorser block its predecessor announced recorded as offered at that view's `plvMaxEbTxsSize`; an announcement, counted once per election by the node's own dedup (`LeiosAnnouncements`, `onAnnouncementCentral`'s `selfPeer`), focuses its endorser block and writes its point; an accepted Genesis jump records the offers of its headers past the last jump; the decision reads the slot the node's blockchain time publishes (`BlockchainTime`, `hardForkBlockchainTime`) and the closure's bound forecast from the immutable tip (`LeiosChainSyncSuite`, `LeiosFetchForecastSuite`, `BlockchainTimeSuite`, and `LeiosFetchEndToEndSuite`, after the first case of `RecoveryPath.hs` up to the certificate's verification). No LeiosNotify client runs, and its server notifies nothing (no announcements or offers from LeiosNotify, none relayed); no transaction cache, cross-EB fills or mempool pull; and there is no inlining for node-to-client | storage, consensus, `ntc` | sections 4.4 and 5; `dijkstra.cddl` 105 to 108 |
 | **X8** | Mini-protocols 18 and 19 were never answered by the relay (11.7). Under `--reference-build leios-b004fe0c`, with an endorser-block store, every node-to-node connection carries protocols 18 and 19, hot and started on demand (`HotBundle.Leios`, `withHot` of the reference's `NodeToNode.hs`; #54); a release build's connections are unchanged. LeiosFetch's runtime is the reference's (#54): the pipelined client of depth 150 (`LeiosFetchPipelined`), which each hot activation runs inside the per-peer bracket (`LeiosFetchShared.bracketPeer`, `LeiosFetchNode.initiator`), the server answering from the endorser-block store as a hot responder (`LeiosFetchServer`, `LeiosFetchStoreHandler`), their decoder resumed across SDUs, and the ingress limits of 1 MiB and 60 MiB with the margin; one node fetches a body and its closure from another's store through them (`LeiosFetchRegistrationSuite`). LeiosNotify's server runs as the reference's with nothing to notify: it holds a peer's requests and answers its quit with one `MsgCanceled` for each, then `MsgDone`, so the peer can demote the connection and promote it again on the same bearer, and a request beyond 1,000 held ends the connection (`LeiosNotifyServer`, `leiosNotifyServerPeerLookahead`); the node notifies nothing yet, and runs no LeiosNotify client | network | consensus `NodeToNode.hs` of the release |

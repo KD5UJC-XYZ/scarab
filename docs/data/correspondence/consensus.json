@@ -5,6 +5,133 @@
   "consensus/src/main/scala"
  ],
  "entries": {
+  "def consensus.leios.LeiosCertification.check": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LedgerDB/Forker.hs",
+     "symbol": "blockLeiosCert",
+     "lines": [
+      624,
+      666
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "LeiosCertificateFixtureSuite",
+    "LeiosCertificationSuite"
+   ],
+   "note": "the CertRB path of applyBlock's ApplyVal up to the closure: the parent's announcement, announcingRbHash, leiosCommitteeOfTip and verifyLeiosCert in that order, each failing with its LeiosExtValidationError, all on the unticked parent; a pure function of those inputs returning the verdict, where the reference runs it inside its ExceptT before resolveAndApplyLeiosClosure, and a typed defect for what the reference cannot hold; the two FIXME checks are not run, as there. The fixture suite runs it on the testnet's certifying block 97,276 from its parent's state",
+   "digest": "acc25b1034fc8e51"
+  },
+  "def consensus.leios.LeiosCertification.announcement": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus-cardano/src/ouroboros-consensus-cardano/Ouroboros/Consensus/Cardano/Block.hs",
+     "symbol": "protocolStateLeiosAnnouncement",
+     "lines": [
+      1650,
+      1653
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus-cardano/src/shelley/Ouroboros/Consensus/Shelley/Ledger/Leios.hs",
+     "symbol": "protocolStateLeiosAnnouncement",
+     "lines": [
+      327,
+      339
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoTypes.hs",
+     "symbol": "announcementLeiosPoint",
+     "lines": [
+      1768,
+      1771
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "LeiosCertificateFixtureSuite",
+    "LeiosCertificationSuite"
+   ],
+   "note": "announcementLeiosPoint of protocolStateLeiosAnnouncement, composed: a Praos2 state's announcement at fromWithOrigin (SlotNo 0) praosStateLastSlot, none for the states of the other protocols; the election's issuer and the body size, which the point does not carry, are not kept",
+   "digest": "3f82dbf1bce281a3"
+  },
+  "def consensus.leios.LeiosCertification.leiosCommitteeOfTip": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Ledger/SupportsProtocol.hs",
+     "symbol": "leiosCommitteeOfTip",
+     "lines": [
+      51,
+      59
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus-cardano/src/shelley/Ouroboros/Consensus/Shelley/Ledger/Ledger.hs",
+     "symbol": "getLeiosCommitteeFromView",
+     "lines": [
+      990,
+      993
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Forecast.hs",
+     "symbol": "mkDijkstraForecast",
+     "lines": [
+      128,
+      139
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "LeiosCertificateFixtureSuite",
+    "LeiosCertificationSuite"
+   ],
+   "note": "the ledger view at the state's own tip reduced to the two fields getLeiosCommitteeFromView reads: the set snapshot's committee and unboundRational of the current ppLeiosQuorumStakeThreshold in Dijkstra, none in the eras before it; read from the NewEpochState directly rather than through ledgerViewOfTip's forecast, which at its own anchor projects the same state; a Dijkstra state of the 11.1 layout, which the Leios build cannot hold, is a defect. The fixture suite reads the testnet's committee of epoch 100 with it, under which block 97,276's certificate verifies",
+   "digest": "0c95d0bd5dc18156"
+  },
+  "enum consensus.leios.LeiosExtValidationError": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoTypes.hs",
+     "symbol": "LeiosExtValidationError",
+     "lines": [
+      1436,
+      1459
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "LeiosCertificationSuite"
+   ],
+   "note": "the four constructors applyBlock raises, with their fields in the reference's order (LeiosPoint as EbPoint, LeiosCert as the BLS layer's Certificate); LeiosCertificateForecastRejected, chain selection's verdict, is not a case of block application and is not here",
+   "digest": "90875d862bf717b6"
+  },
   "def consensus.ByronRulesConfig#windowThreshold": {
    "upstream": [
     {
@@ -2520,6 +2647,16 @@
   }
  },
  "glue": [
+ {
+  "reason": "the Leios certification check's Scala plumbing with no counterpart of its own: its companion, the committee of the tip decoded once into the BLS layer's (the reference's LeiosCommittee holds decoded keys, and leiosCommitteeOfTip returns it with the threshold as a pair), the value a passing certificate yields (the reference continues in place with the announced point), and the defects, states the reference cannot hold or failures of the native library (#73)",
+  "definitions": [
+   "object consensus.leios.LeiosCertification",
+   "class consensus.leios.TipCommittee",
+   "def consensus.leios.LeiosCertification.tipCommittee",
+   "class consensus.leios.Certified",
+   "enum consensus.leios.LeiosCertificationDefect"
+  ]
+ },
   {
    "reason": "the instances of Praos2's state types that the chain-dependent state derives its equality, rendering and difference from, and the companions that hold them: Scala plumbing with no counterpart (#826)",
    "definitions": [

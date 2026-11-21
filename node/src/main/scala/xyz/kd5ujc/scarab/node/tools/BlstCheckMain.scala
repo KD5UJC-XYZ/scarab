@@ -181,7 +181,7 @@ object BlstCheckMain extends IOApp:
       votes <- keys.zipWithIndex.traverse { case ((sk, _, _), i) =>
         for
           seat <- SeatId.fromInt(i)
-          sig <- MinSig.sign(sk, hash.bytes)
+          sig <- MinSig.sign(sk, hash.signable)
         yield seat -> sig
       }
       cert <- Certificate.aggregate(members, votes.toMap)

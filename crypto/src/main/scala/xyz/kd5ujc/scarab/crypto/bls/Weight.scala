@@ -1,23 +1,24 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.crypto.bls
 
-/** A non-negative stake weight (lovelace). Exact integer arithmetic: the quorum test is an integer
-  * cross-multiplication, no rationals or floating point.
+import xyz.kd5ujc.scarab.codec.Rational
+
+/** The weight of a committee seat, of the signers of a certificate, or of the threshold they must
+  * reach: `type Weight = Rational` (cardano-base c1e1ed8d `cardano-crypto-leios/src/Cardano/Crypto/
+  * Leios.hs:118-120`), exact. The ledger seats each pool with its stake ratio and the quorum is
+  * `ppLeiosQuorumStakeThreshold`, so a weight is a fraction of the total active stake.
   */
-opaque type Weight = BigInt
+opaque type Weight = Rational
 
 object Weight:
-  val zero: Weight = BigInt(0)
-  def fromNatural(n: BigInt): Option[Weight] = if n.signum >= 0 then Some(n) else None
-  given Ordering[Weight] = Ordering.BigInt
+  val zero: Weight = Rational.zero
 
-  /** The CIP's quorum `tau` of `total` (the *total active stake*, not the stake seated on the
-    * committee), kept exact: the smallest integer weight W with `W * denominator >= total *
-    * numerator`. `None` when the denominator is not positive or the numerator is negative.
-    */
-  def fractionCeil(total: Weight, numerator: BigInt, denominator: BigInt): Option[Weight] =
-    if denominator.signum <= 0 || numerator.signum < 0 then None
-    else fromNatural((total * numerator + denominator - 1) / denominator)
+  def fromNatural(n: BigInt): Option[Weight] = if n.signum >= 0 then Some(Rational(n)) else None
+
+  def apply(r: Rational): Weight = r
+
+  given Ordering[Weight] = (a, b) => if a < b then -1 else if b < a then 1 else 0
+
   extension (w: Weight)
     def +(o: Weight): Weight = w + o
-    def value: BigInt = w
+    def value: Rational = w

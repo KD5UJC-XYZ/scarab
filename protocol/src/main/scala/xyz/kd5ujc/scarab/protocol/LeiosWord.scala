@@ -31,6 +31,11 @@ object LeiosWord:
 
     /** The value bounded into the word's range: a slot past every `Word64` is its greatest. */
     def clamped(value: BigInt): Word64 = value.max(0).min(Max)
+
+    /** The word whose two's-complement bits are `bits` (so `-1` is 2^64 - 1): total, for a word
+      * read from another `Word64` such as a slot.
+      */
+    def fromUnsigned(bits: Long): Word64 = BigInt(bits) & Max
     extension (value: Word64) def toBigInt: BigInt = value
 
   private def checked(

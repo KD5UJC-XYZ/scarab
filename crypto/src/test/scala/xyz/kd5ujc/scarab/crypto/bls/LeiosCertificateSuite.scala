@@ -2,7 +2,8 @@
 package xyz.kd5ujc.scarab.crypto.bls
 
 import xyz.kd5ujc.scarab.crypto.bls.BlsFixtures.*
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor}
+import cats.data.NonEmptyVector
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Rational, Value}
 import munit.ScalaCheckSuite
 import org.scalacheck.Prop.forAll
 import org.scalacheck.{Gen, Test}
@@ -32,7 +33,7 @@ class LeiosCertificateSuite extends ScalaCheckSuite:
   private val genHash: Gen[RbHash] = Gen.choose(0, Int.MaxValue).map(rbHash)
 
   private def votes(hash: RbHash, seats: Set[Int]): Map[SeatId, Signature] =
-    seats.map(i => seatId(i) -> right(MinSig.sign(keys(i)._1, hash.bytes))).toMap
+    seats.map(i => seatId(i) -> right(MinSig.sign(keys(i)._1, hash.signable))).toMap
 
   private def totalOf(seats: Set[Int]): Weight =
     seats.foldLeft(Weight.zero)((a, i) => a + weightOf(i))
@@ -137,7 +138,7 @@ class LeiosCertificateSuite extends ScalaCheckSuite:
 
   property("flipping any one bit of a verification key fails (decode or verify)") {
     forAll(genSeat, genHash, Gen.choose(0, 96 * 8 - 1)) { (i, h, bit) =>
-      val sig = right(MinSig.sign(keys(i)._1, h.bytes))
+      val sig = right(MinSig.sign(keys(i)._1, h.signable))
       VerificationKey.fromBytes(flip(keys(i)._2.bytes, bit)).foreach { vk =>
         assert(MinSig.verify(vk, h.bytes, sig).isLeft)
       }
@@ -190,16 +191,30 @@ class LeiosCertificateSuite extends ScalaCheckSuite:
 
   property("the signature of a single vote is not a certificate for a different seat") {
     forAll(genSeat, genSeat, genHash) { (i, j, h) =>
-      val sig = right(MinSig.sign(keys(i)._1, h.bytes))
+      val sig = right(MinSig.sign(keys(i)._1, h.signable))
       val cert = Certificate(right(Signers.of(seatCount, Set(seatId(j)))), sig)
       assertEquals(Certificate.verify(committee, Weight.zero, h, cert).isRight, i == j)
+    }
+  }
+
+  property("votes and certificates sign the hash's CBOR encoding, not its 32 bytes alone") {
+    forAll(genHash) { h =>
+      val encoded = Cbor.encode(Value.ByteString(h.bytes)).fold(e => fail(e.toString), identity)
+      assertEquals(h.signable, encoded)
+      assertEquals(h.signable.take(2), Bytes.wrap(Array[Byte](0x58, 0x20)))
+      val vote = right(Vote.sign(keys(0)._1, seatId(0), h))
+      assertEquals(MinSig.verify(keys(0)._2, h.signable, vote.signature), Right(()))
+      assertEquals(
+        MinSig.verify(keys(0)._2, h.bytes, vote.signature),
+        Left(BlsError.SignatureInvalid)
+      )
     }
   }
 
   property("certificate wire size is ceil(N/8) + 48 + a fixed CBOR overhead") {
     forAll(Gen.choose(1, 2000)) { n =>
       val signers = right(Signers.of(n, Set(seatId(0), seatId(n - 1))))
-      val sig = right(MinSig.sign(keys(0)._1, rbHash(0).bytes))
+      val sig = right(MinSig.sign(keys(0)._1, rbHash(0).signable))
       val len = (n + 7) / 8
       val hdr = if len < 24 then 1 else if len < 256 then 2 else 3
       assertEquals(Certificate(signers, sig).encode.size, 1 + hdr + len + 2 + 48)
@@ -209,7 +224,7 @@ class LeiosCertificateSuite extends ScalaCheckSuite:
   test("900 seats: the bitfield is 113 bytes and the certificate 166 bytes") {
     val signers = right(Signers.of(900, Set(seatId(0), seatId(899))))
     assertEquals(signers.bytes.size, 113)
-    val sig = right(MinSig.sign(keys(0)._1, rbHash(0).bytes))
+    val sig = right(MinSig.sign(keys(0)._1, rbHash(0).signable))
     assertEquals(Certificate(signers, sig).encode.size, 166)
   }
 
@@ -221,9 +236,9 @@ class LeiosCertificateSuite extends ScalaCheckSuite:
     val rogueP = new P2(rogueSk.blst).add(victim.point.to_jacobian().neg())
     val rogueKey = right(VerificationKey.fromBytes(Bytes.wrap(rogueP.compress())))
     assertNotEquals(rogueKey, rogueBase)
-    val forged = right(MinSig.sign(rogueSk, h.bytes))
+    val forged = right(MinSig.sign(rogueSk, h.signable))
     // Without proofs of possession the pair "victim + rogue" verifies a signature the victim never made.
-    assertEquals(MinSig.verifyAggregate(Vector(victim, rogueKey), h.bytes, forged), Right(()))
+    assertEquals(MinSig.verifyAggregate(Vector(victim, rogueKey), h.signable, forged), Right(()))
     // The attacker cannot produce a proof for the rogue key; the committee seats it keyless.
     val bogusPop = right(MinSig.provePossession(rogueSk))
     val seats = Vector(
@@ -235,11 +250,11 @@ class LeiosCertificateSuite extends ScalaCheckSuite:
     val cert = Certificate(right(Signers.of(2, Set(seatId(0), seatId(1)))), forged)
     assertEquals(
       Certificate.verify(c, Weight.zero, h, cert),
-      Left(BlsError.SignerWithoutKey(Vector(seatId(1))))
+      Left(VerificationError.SignerWithoutKey(NonEmptyVector.one(seatId(1))))
     )
   }
 
-  test("structural rejections: keyless signer, quorum, bitfield shape, empty") {
+  test("structural rejections as verifyLeiosCert: keyless signer, quorum, bitfield shape") {
     val h = rbHash(11)
     val ks = keys.take(3)
     val pops = ks.map(k => right(MinSig.provePossession(k._1)))
@@ -252,8 +267,8 @@ class LeiosCertificateSuite extends ScalaCheckSuite:
         )
       )
     )
-    val sig0 = right(MinSig.sign(ks(0)._1, h.bytes))
-    val sig2 = right(MinSig.sign(ks(2)._1, h.bytes))
+    val sig0 = right(MinSig.sign(ks(0)._1, h.signable))
+    val sig2 = right(MinSig.sign(ks(2)._1, h.signable))
     val good = right(Certificate.aggregate(c, Map(seatId(0) -> sig0, seatId(2) -> sig2)))
     val weight = weightOf(0) + weightOf(2)
     assertEquals(Certificate.verify(c, weight, h, good), Right(weight))
@@ -261,7 +276,7 @@ class LeiosCertificateSuite extends ScalaCheckSuite:
     val tooMuch = weight + Weight.fromNatural(BigInt(1)).get
     assertEquals(
       Certificate.verify(c, tooMuch, h, good),
-      Left(BlsError.InsufficientWeight(weight, tooMuch))
+      Left(VerificationError.InsufficientWeight(weight))
     )
     // keyless seat named by a bit
     assertEquals(
@@ -272,25 +287,34 @@ class LeiosCertificateSuite extends ScalaCheckSuite:
       good.copy(signers = right(Signers.of(3, Set(seatId(0), seatId(1), seatId(2)))))
     assertEquals(
       Certificate.verify(c, Weight.zero, h, withKeyless),
-      Left(BlsError.SignerWithoutKey(Vector(seatId(1))))
+      Left(VerificationError.SignerWithoutKey(NonEmptyVector.one(seatId(1))))
     )
-    // bitfield shape: too long, too short, padding bit set, nothing set
+    // bitfield shape: too long and too short are malformed (Leios.hs:305-307, cardano-base c1e1ed8d)
     def withBits(raw: Array[Byte]) = good.copy(signers = Signers.fromBytes(Bytes.wrap(raw)).get)
     assertEquals(
       Certificate.verify(c, Weight.zero, h, withBits(Array(0xa0.toByte, 0))),
-      Left(BlsError.SignersWrongLength(1, 2))
+      Left(VerificationError.MalformedSigners)
     )
     assertEquals(
       Certificate.verify(c, Weight.zero, h, withBits(Array.empty)),
-      Left(BlsError.SignersWrongLength(1, 0))
+      Left(VerificationError.MalformedSigners)
     )
+    // a bit at or beyond the committee size names no seat and is ignored (`globalIx < n`, :338)
+    assertEquals(Certificate.verify(c, weight, h, withBits(Array(0xa1.toByte))), Right(weight))
+    assertEquals(Certificate.verify(c, weight, h, withBits(Array(0xbf.toByte))), Right(weight))
+    // no signer is no case of its own: a zero weight, below any positive threshold, and an empty
+    // key sum, which fails as the signature when nothing is required (:316-321)
     assertEquals(
-      Certificate.verify(c, Weight.zero, h, withBits(Array(0xa1.toByte))),
-      Left(BlsError.SignersPaddingSet)
+      Certificate.verify(c, weight, h, withBits(Array(0x00))),
+      Left(VerificationError.InsufficientWeight(Weight.zero))
     )
     assertEquals(
       Certificate.verify(c, Weight.zero, h, withBits(Array(0x00))),
-      Left(BlsError.NoSigners)
+      Left(VerificationError.InvalidSignature)
+    )
+    assertEquals(
+      Certificate.verify(c, Weight.zero, h, withBits(Array(0x01))),
+      Left(VerificationError.InvalidSignature)
     )
     assertEquals(Certificate.aggregate(c, Map.empty), Left(BlsError.NoSigners))
     assertEquals(
@@ -388,20 +412,31 @@ class LeiosCertificateSuite extends ScalaCheckSuite:
     }
     forAll(genCand, Gen.choose(0, 14)) { (cands, n) =>
       val c = right(Committee.select(cands, n))
-      val expected = cands.sortBy(x => (-x.stake.value.toInt, x.poolId.hex)).take(n).map(_.stake)
+      val expected =
+        cands.sortBy(x => (-x.stake.value.numerator.toInt, x.poolId.hex)).take(n).map(_.stake)
       assertEquals(c.seats.map(_.weight), expected)
       // the order of the input does not matter
       assertEquals(right(Committee.select(cands.reverse, n)).seats.map(_.weight), expected)
     }
   }
 
-  test("quorum threshold is an exact ceiling") {
-    val c = right(Committee.fromSeats(Vector.fill(3)((Weight.fromNatural(BigInt(10)).get, None))))
-    assertEquals(c.totalWeight.value, BigInt(30))
-    val total = c.totalWeight
-    assertEquals(Weight.fractionCeil(total, 2, 3).map(_.value), Some(BigInt(20)))
-    assertEquals(Weight.fractionCeil(total, 1, 7).map(_.value), Some(BigInt(5)))
-    assertEquals(Weight.fractionCeil(total, 1, 0), None)
-    assertEquals(Weight.fractionCeil(total, -1, 2), None)
+  test("weights are exact fractions: a threshold met exactly passes, one just above fails") {
+    val h = rbHash(13)
+    val ks = keys.take(3)
+    def frac(n: Int, d: Int): Weight = Weight(Rational(n, d))
+    val c = right(
+      Committee.fromSeats(Vector(frac(1, 3), frac(1, 6), frac(1, 2)).zip(ks).map {
+        case (w, (sk, vk)) =>
+          (w, Some((vk, right(MinSig.provePossession(sk)))))
+      })
+    )
+    val cert = right(Certificate.aggregate(c, votes(h, Set(0, 1))))
+    val half = frac(1, 2)
+    assertEquals(Certificate.verify(c, half, h, cert), Right(half))
+    val above = Weight(Rational(1, 2) + Rational(1, BigInt(10).pow(30)))
+    assertEquals(
+      Certificate.verify(c, above, h, cert),
+      Left(VerificationError.InsufficientWeight(half))
+    )
   }
 end LeiosCertificateSuite

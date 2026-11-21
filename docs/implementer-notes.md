@@ -797,11 +797,11 @@ are the ones most in need of a second reading.
 
 - **Era:** Dijkstra (Leios, proposed)
 - **Specification or CDDL says:** The certificate carries a signer bitfield of `ceil(N/8)` bytes.
-- **Implementation does:** `cardano-base` ignores bits at or beyond the committee size, and rejects an identity signature or proof later (at verification and aggregation). We reject set padding bits and an identity point at decode. The accepted set of valid certificates is the same, because no honest producer sets padding bits, but the verdict on a crafted certificate differs in kind.
+- **Implementation does:** `cardano-base` (`c1e1ed8d`, `verifyLeiosCert`) ignores bits at or beyond the committee size, and rejects an identity signature or proof later (at verification and aggregation). Scarab ignores the padding bits as the reference does (it refused them until 2026-11-21, #73), and rejects an identity point at decode for votes and proofs only, which leaves the accepted set the same; a certificate's signature decodes as the reference's, the identity included.
 - **Evidence:** [leios.md](leios.md) section 9, 'Decisions where the sources are silent or differ'. No chain data.
-- **Pinned by:** `SignersPaddingSet` in the Leios certificate decoder (see the design note).
-- **Suggested upstream action:** ouroboros-leios / Blueprint: state whether padding bits and identity points are a decode failure or only a verification failure.
-- **Status:** observed
+- **Pinned by:** `LeiosCertificateSuite` (the bitfield's padding cases).
+- **Suggested upstream action:** ouroboros-leios / Blueprint: state whether padding bits are meaningful, since a certificate with them set is valid.
+- **Status:** confirmed in source
 
 ### IN-80 Mempool: a transaction from a peer is held with the `is_valid` flag its scripts call for
 
