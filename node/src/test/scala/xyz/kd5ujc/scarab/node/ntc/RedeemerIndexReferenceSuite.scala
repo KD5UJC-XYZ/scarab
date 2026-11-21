@@ -16,15 +16,20 @@ import xyz.kd5ujc.scarab.ledger.state.{
   Conway,
   ConwayLedgerState,
   ConwayNewEpochState,
+  EpochNo,
   EraTag,
   LedgerState,
-  ShelleyBasedEra
+  ShelleyBasedEra,
+  TxIx
 }
 import xyz.kd5ujc.scarab.ledger.era.{
   AlonzoStAnnTx,
+  EraLedgerRun,
   EraTx,
+  EraTxBody,
   EraUTxO,
   EraUtxoRun,
+  IsPhase2Valid,
   Network,
   PParams,
   TxLevel
@@ -270,6 +275,112 @@ class RedeemerIndexReferenceSuite extends FunSuite:
           assertEquals(
             PredicateFailureCbor
               .applyTxError(r.era, flat)
+              .fold(error => fail(error.message), identity)
+              .map(_.hex),
+            Some(reason.hex),
+            s"${r.label}: $failures"
+          )
+        case other => fail(s"${r.label}: $other, the reference's ${r.reason.map(_.hex)}")
+    }
+  }
+
+  // the era-typed LEDGER whole on the Conway cases, from the same chain: the case the reference
+  // accepted is admitted and leaves the flat LEDGER's state and counters, and a refused one's failures, one level
+  // below the root as under MEMPOOL, encode to the reference's refusal byte for byte
+  records.filter(_.era == Era.Conway).foreach { r =>
+    test(s"${r.era} ${r.kind}: the era-typed LEDGER's verdict is the reference's") {
+      val flatTx = r.tx
+      val credential = flatTx.body.certificates.collect {
+        case Certificate.Delegate(credential, Some(_), _, _) => credential
+      }.distinct match
+        case Vector(one) => one
+        case other       => fail(s"${r.label}: the certificates delegate $other")
+      val pools = flatTx.body.certificates.collect {
+        case Certificate.Delegate(_, Some(pool), _, _) => pool
+      }.distinct
+      val flatPp = TestLedger.params(r.major).copy(costModels = Map(0 -> r.costModel))
+      val nes = RedeemerIndexCases.chain[Conway](flatPp, r.spent, credential, pools)(using
+        ShelleyBasedEra.SConway
+      )
+      val ls = ConwayNewEpochState.ls.get(nes)
+      val pp = PParams[Conway](ConwayPParams.fromStored(flatPp).fold(e => fail(s"$e"), identity))
+      val tx = ConwayTx
+        .fromEnvelope(r.raw, StateLayout.Node11_1)
+        .fold(e => fail(s"${r.label}: $e"), identity)
+      val utxo = ConwayUTxO.fromStored(r.spent.toMap).fold(e => fail(s"${r.label}: $e"), identity)
+      val env = TestLedger.env
+      val globals = xyz.kd5ujc.scarab.ledger.rules.NativeRules.globalsOf(env)
+      val clock = env.clock.getOrElse(fail("the environment has no clock"))
+      val params = Horizon.Params(100, 1000, 30, 30)
+      val history = Horizon
+        .History(Vector.empty, Horizon.Edge(0, 0, 0), params, Some(params))
+        .at(Horizon.Transition.Unknown(Some(env.slot)))
+      val u = EraUTxO.conway
+      val t = EraTx.conway
+      val body = t.body[TxLevel.Top](tx)(using t.bodyOf.top)
+      val purposes = ConwayUtxowPredFailure.storedPurposes(
+        u.getScriptsNeeded[TxLevel.Top](utxo, body)(using u.txOf.bodyOf.top),
+        utxo
+      )
+      val read = xyz.kd5ujc.scarab.ledger.era.rules.ConwayGovPredFailure.readOf(
+        EraTxBody.conway.proposalProcedures[TxLevel.Top](body)(using EraTxBody.conway.top).toVector
+      )
+      def judged(depth: Int) = EraLedgerRun.ledger(
+        globals,
+        xyz.kd5ujc.scarab.ledger.era.rules.LedgerEnv[Conway](
+          env.slot,
+          Some(EpochNo.fromBigInt(env.epoch).fold(e => fail(s"$e"), identity)),
+          TxIx.txIxFromIntegral(0).getOrElse(fail("index 0")),
+          pp,
+          nes.es.chainAccount
+        ),
+        AlonzoStAnnTx.mkAlonzoStAnnTx[Conway](clock.posix, pp, utxo, Map.empty, tx),
+        UtxoContext(
+          Network.of(BigInt(env.network)).getOrElse(fail(s"network ${env.network}")),
+          0,
+          history,
+          TxEnv.Validation.All,
+          ConwayUtxo.injectShelleyFailure(ReferenceBuild.Release11_1)
+        ),
+        ls,
+        env.evaluator,
+        env.verdicts,
+        env.decoder,
+        depth
+      )
+      (judged(0), r.reason) match
+        case (Right(Right((state, events))), None) =>
+          assert(r.accepted, r.label)
+          val flat = xyz.kd5ujc.scarab.ledger.rules.Judgment
+            .run(
+              xyz.kd5ujc.scarab.ledger.rules.Ledger,
+              xyz.kd5ujc.scarab.ledger.rules.Judgment.Policy.Accumulate
+            )(
+              globals,
+              xyz.kd5ujc.scarab.ledger.rules.LedgerEnv(env, nes.es.chainAccount.treasury),
+              xyz.kd5ujc.scarab.ledger.rules.Counted(ls, PlutusStats.zero),
+              flatTx
+            )
+            .fold(e => fail(s"${r.label}: flat defect $e"), identity)
+            .fold(fs => fail(s"${r.label}: the flat LEDGER refused $fs"), identity)
+          assert(cats.Eq[LedgerState[Conway]].eqv(state, flat.state), r.label)
+          // the counters the scripts' events give through LEDGER's embedding are the flat rule's
+          assertEquals(
+            EraLedgerRun.counters(t.isValid(tx) == IsPhase2Valid.Phase2Valid, events),
+            Some((flat.plutus.succeeded, flat.plutus.failed, flat.plutus.scripts)),
+            r.label
+          )
+          assert(flat.plutus.scripts > 0, r.label)
+        case (Right(Left(_)), Some(reason)) =>
+          val failures = judged(1) match
+            case Right(Left(fs)) =>
+              fs.toChain.toVector.map(f =>
+                EraLedgerRun.flat(f, purposes, read).fold(e => fail(s"${r.label}: $e"), identity)
+              )
+            case other => fail(s"${r.label}: one level down, $other")
+          assertEquals(
+            PredicateFailureCbor
+              .applyTxError(r.era, failures)
               .fold(error => fail(error.message), identity)
               .map(_.hex),
             Some(reason.hex),

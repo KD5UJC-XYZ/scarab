@@ -36,6 +36,14 @@ import xyz.kd5ujc.scarab.ledger.state.{
 // `StakeKeyRegisteredDELEG` is named `DelegAccountAlreadyRegistered`, over Shelley's
 // `AccountAlreadyRegistered`, a newtype of the same credential with the same tag and bytes.
 
+/** `newtype AccountAlreadyRegistered era` (`Shelley/Rules/Deleg.hs:84-87`, cardano-ledger 29a7d656
+  * and 9df9f98c): an account registered again, the credential that Conway's DELEG reports as
+  * `DelegAccountAlreadyRegistered` (`StakeKeyRegisteredDELEG` here). The 11.1 line's pin has no
+  * such type; the builds that do inject it into LEDGER
+  * ([[InjectLedgerFailure.conwayAccountAlreadyRegistered]]).
+  */
+final case class AccountAlreadyRegistered[E <: EraTag](credential: Credential[Staking])
+
 /** `data ConwayDelegPredFailure era` (`Conway/Rules/Deleg.hs:105-114`, cardano-ledger f649f975),
   * its constructors in the order of their tags (1 to 8, `:126-142`).
   */

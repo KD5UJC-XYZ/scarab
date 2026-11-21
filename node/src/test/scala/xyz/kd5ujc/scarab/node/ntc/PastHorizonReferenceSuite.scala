@@ -17,7 +17,10 @@ import xyz.kd5ujc.scarab.ledger.era.{
   AlonzoStAnnTx,
   BabbageContextError,
   CollectError,
+  EraLedgerRun,
   EraTx,
+  EraTxBody,
+  EraUTxO,
   EraUtxoRun,
   Network,
   PParams,
@@ -26,9 +29,12 @@ import xyz.kd5ujc.scarab.ledger.era.{
 import xyz.kd5ujc.scarab.ledger.era.conway.{ConwayContextError, ConwayPParams, ConwayTx, ConwayUTxO}
 import xyz.kd5ujc.scarab.ledger.era.rules.{
   AlonzoUtxo,
+  ConwayGovPredFailure,
   ConwayUtxo,
   ConwayUtxoPredFailure,
   ConwayUtxosPredFailure,
+  ConwayUtxowPredFailure,
+  LedgerEnv,
   UtxoContext,
   UtxoEnv
 }
@@ -44,14 +50,18 @@ import xyz.kd5ujc.scarab.ledger.rules.{
 import xyz.kd5ujc.scarab.ledger.state.{
   Alonzo,
   Babbage,
+  ChainAccountState,
+  Coin,
   Conway,
   ConwayLedgerState,
   ConwayNewEpochState,
   LedgerState,
+  EpochNo,
   EraTag,
   NewEpochState,
   ShelleyBasedEra,
   SlotNo,
+  TxIx,
   UtxoTables
 }
 import xyz.kd5ujc.scarab.node.NodeSetup
@@ -451,5 +461,90 @@ class PastHorizonReferenceSuite extends FunSuite:
               assertEquals(errors.toList, expected, r.label)
             case other => fail(s"${r.label}: $other")
         case other => fail(s"${r.label}: $other")
+    }
+  }
+
+  // the era-typed LEDGER whole, on what the reference judged, from the state the mempool judges it
+  // in, one level below the root as under MEMPOOL: the reference's verdict, and a refusal's failures,
+  // the collection's translation past the horizon among them, encode to its bytes
+  recorded.filter(_.era == Era.Conway).foreach { r =>
+    test(
+      s"${r.label}: the era-typed LEDGER gives the reference's verdict, a refusal byte for byte"
+    ) {
+      val setup = setupOf(r)
+      val nes = stateOf[Conway](r)(using ShelleyBasedEra.SConway)
+      val clock = clockAt(setup, Era.Conway, nes.epoch.toBigInt, r.tip)
+      val (sysSt, ei) = clock match
+        case PosixClock.Forecast(start, horizon) => (start, horizon)
+        case other                               => fail(s"${r.label}: $other")
+      val env = MempoolEnv(
+        setup.globals,
+        setup.geometry,
+        xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default,
+        xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder,
+        clock = Some(_ => clock)
+      )
+      val ledger = MempoolLedger.tick(nes, Some(r.tip), env).fold(e => fail(e.show), identity)
+      val pp = PParams[Conway](
+        ConwayPParams.fromStored(ledger.params).fold(e => fail(s"${r.label}: $e"), identity)
+      )
+      val raw = LocalSubmission.unwrap(r.item).fold(e => fail(s"$e"), identity).raw
+      val tx = ConwayTx
+        .fromEnvelope(raw, StateLayout.Node11_1)
+        .fold(e => fail(s"${r.label}: $e"), identity)
+      val utxo = ConwayUTxO
+        .fromStored(ledger.ls.utxo.utxo.utxo.toMap)
+        .fold(e => fail(s"${r.label}: $e"), identity)
+      val network = Network
+        .of(BigInt(setup.globals.network))
+        .getOrElse(fail(s"${r.label}: network ${setup.globals.network}"))
+      val judged = EraLedgerRun.ledger(
+        env.rules,
+        LedgerEnv[Conway](
+          r.tip + 1,
+          Some(EpochNo.fromBigInt(ledger.epoch).fold(e => fail(s"$e"), identity)),
+          TxIx.txIxFromIntegral(0).getOrElse(fail("index 0")),
+          pp,
+          ChainAccountState(ledger.treasury, Coin.zero)
+        ),
+        AlonzoStAnnTx.mkAlonzoStAnnTx[Conway](clock.posix, pp, utxo, Map.empty, tx),
+        UtxoContext(
+          network,
+          sysSt,
+          ei,
+          TxEnv.Validation.All,
+          ConwayUtxo.injectShelleyFailure(ReferenceBuild.Release11_1)
+        ),
+        ledger.ls,
+        xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default,
+        xyz.kd5ujc.scarab.ledger.Verdicts.Direct,
+        xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder,
+        depth = 1
+      )
+      val t = EraTx.conway
+      val body = t.body[TxLevel.Top](tx)(using t.bodyOf.top)
+      val purposes = ConwayUtxowPredFailure.storedPurposes(
+        EraUTxO.conway.getScriptsNeeded[TxLevel.Top](utxo, body)(using
+          EraUTxO.conway.txOf.bodyOf.top
+        ),
+        utxo
+      )
+      val read = ConwayGovPredFailure.readOf(
+        EraTxBody.conway.proposalProcedures[TxLevel.Top](body)(using EraTxBody.conway.top).toVector
+      )
+      val ours = judged match
+        case Right(Left(fs)) =>
+          Some(
+            PredicateFailureCbor
+              .applyTxError(
+                fs.toChain.toVector.map(f =>
+                  EraLedgerRun.flat(f, purposes, read).fold(e => fail(s"${r.label}: $e"), identity)
+                )
+              )
+              .fold(error => fail(error.message), identity)
+          )
+        case Right(Right(_)) => None
+        case Left(defect)    => fail(s"${r.label}: defect $defect")
+      assertEquals(ours.map(_.hex), r.reason.map(_.hex))
     }
   }
