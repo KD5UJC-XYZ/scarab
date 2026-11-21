@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.era
 
+import cats.syntax.all.*
 import scala.collection.immutable.SortedMap
 import xyz.kd5ujc.scarab.ledger.{
   Anchor,
+  Committee as StoredCommittee,
   Constitution,
   GovActionId,
   Proposal,
@@ -19,8 +21,11 @@ import xyz.kd5ujc.scarab.ledger.state.{
   Dijkstra,
   EpochNo,
   EraTag,
-  ScriptHash
+  ScriptHash,
+  Sorted,
+  VocabError
 }
+import xyz.kd5ujc.scarab.ledger.rules.Convert
 
 // The governance procedures (cardano-ledger f649f975
 // `eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Procedures.hs`): data types parameterised
@@ -141,3 +146,40 @@ final class VotingProcedures[E <: EraTag] private[era] (
 
 object VotingProcedures:
   given [E <: EraTag]: CanEqual[VotingProcedures[E], VotingProcedures[E]] = CanEqual.derived
+
+/** `data Committee era` (`Procedures.hs:560-566`, cardano-ledger f649f975): the constitutional
+  * committee's members, each with the last epoch of its term, and the share of their votes an
+  * action needs. RATIFY and ENACT read the committee the governance state holds, the node's record
+  * of it, into this one where they use it ([[Committee.fromStored]]), until the governance state
+  * holds the reference's committee (#85).
+  */
+final case class Committee[E <: EraTag](
+    committeeMembers: SortedMap[Credential[ColdCommittee], EpochNo],
+    committeeThreshold: UnitInterval
+)
+
+object Committee:
+  given [E <: EraTag]: CanEqual[Committee[E], Committee[E]] = CanEqual.derived
+
+  /** The node's record of a committee at the reference's types: a member's credential of another
+    * length than a cold key's, an epoch outside `EpochNo` or a threshold outside `[0, 1]` refused,
+    * which no committee the node's decoder read or ENACT wrote holds.
+    */
+  def fromStored[E <: EraTag](c: StoredCommittee): Either[VocabError, Committee[E]] =
+    (
+      c.members.toVector.traverse((member, expiry) =>
+        (Convert.credential[ColdCommittee](member), EpochNo.fromBigInt(expiry)).tupled
+      ),
+      UnitInterval
+        .boundRational(c.threshold)
+        .toRight(VocabError.NotUnitInterval(c.threshold))
+    ).mapN((members, threshold) => Committee[E](Sorted.map(members), threshold))
+
+  /** The node's record of a committee, the inverse of [[fromStored]]. */
+  def toStored[E <: EraTag](c: Committee[E]): StoredCommittee =
+    StoredCommittee(
+      c.committeeMembers.iterator
+        .map((member, expiry) => Convert.back(member) -> expiry.toBigInt)
+        .toMap,
+      c.committeeThreshold.rational
+    )

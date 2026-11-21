@@ -212,8 +212,7 @@ object GovStateRecord:
       cur <- params[E](GovStateParams.Current, g.curPParams)
       prev <- params[E](GovStateParams.Previous, g.prevPParams)
       future <- futurePParams[E](g.futurePParams)
-      enact <- enactState[E](ratify.enact)
-      enacted <- actions[E](ratify.enacted)
+      ratifyState <- ratifyStateFromStored[E](ratify)
       snapshotActions <- actions[E](snapshot.proposals)
     yield ConwayGovState[E](
       proposals,
@@ -229,9 +228,47 @@ object GovStateRecord:
           snapshot.drepState,
           snapshot.poolDistr
         ),
-        RatifyState[E](enact, enacted, SortedSet.from(ratify.expired), ratify.delayed)
+        ratifyState
       )
     )
+
+  /** The node's record of a ratification as era `E` 's [[RatifyState]]: its enact state's
+    * parameters at the era's types and its enacted actions each read as one of the proposals is.
+    */
+  def ratifyStateFromStored[E <: EraTag](ratify: StoredRatifyState)(using
+      GovStateRecord[E]
+  ): Either[GovStateReadError, RatifyState[E]] =
+    for
+      enact <- enactState[E](ratify.enact)
+      enacted <- actions[E](ratify.enacted)
+    yield RatifyState[E](enact, enacted, SortedSet.from(ratify.expired), ratify.delayed)
+
+  /** Era `E` 's ratification as the node records it, the inverse of [[ratifyStateFromStored]]: its
+    * enact state's parameter records written over their positions' records of `bases`, or the first
+    * enacted action the record cannot hold.
+    */
+  def ratifyStateToStored[E <: EraTag](ratify: RatifyState[E], bases: GovStateBases)(using
+      r: GovStateRecord[E]
+  ): Either[ProposalsWriteError, StoredRatifyState] =
+    val enact = ratify.rsEnactState
+    ratify.rsEnacted
+      .traverse(r.storedAction)
+      .map(enacted =>
+        StoredRatifyState(
+          StoredEnactState(
+            enact.ensCommittee,
+            enact.ensConstitution,
+            r.storedPParams(enact.ensCurPParams, bases.at(GovStateParams.EnactCurrent)),
+            r.storedPParams(enact.ensPrevPParams, bases.at(GovStateParams.EnactPrevious)),
+            enact.ensTreasury.value,
+            enact.ensWithdrawals.iterator.map((c, v) => Convert.back(c) -> v.value).toMap,
+            ConwayProposals.prevIds(enact.ensPrevGovActionIds)
+          ),
+          enacted,
+          ratify.rsExpired,
+          ratify.rsDelayed
+        )
+      )
 
   /** Era `E` 's governance state as the node records it, the inverse of [[fromStored]]: each
     * parameter record written over its position's record of `bases`
@@ -253,10 +290,9 @@ object GovStateRecord:
         StoredFuturePParams.PotentialPParamsUpdate(pp.map(stored(GovStateParams.Future)))
     g.cgsDRepPulsingState match
       case DRepPulsingState.DRComplete(snapshot, ratify) =>
-        val enact = ratify.rsEnactState
         for
           proposals <- r.storedProposals(g.cgsProposals)
-          enacted <- ratify.rsEnacted.traverse(r.storedAction)
+          storedRatify <- ratifyStateToStored(ratify, bases)
           snapshotActions <- snapshot.psProposals.traverse(r.storedAction)
         yield StoredConwayGovState(
           proposals,
@@ -272,19 +308,6 @@ object GovStateRecord:
               snapshot.psDRepState,
               snapshot.psPoolDistr
             ),
-            StoredRatifyState(
-              StoredEnactState(
-                enact.ensCommittee,
-                enact.ensConstitution,
-                stored(GovStateParams.EnactCurrent)(enact.ensCurPParams),
-                stored(GovStateParams.EnactPrevious)(enact.ensPrevPParams),
-                enact.ensTreasury.value,
-                enact.ensWithdrawals.iterator.map((c, v) => Convert.back(c) -> v.value).toMap,
-                ConwayProposals.prevIds(enact.ensPrevGovActionIds)
-              ),
-              enacted,
-              ratify.rsExpired,
-              ratify.rsDelayed
-            )
+            storedRatify
           )
         )
