@@ -276,9 +276,11 @@ whose promotion failed, leaves a certifying block immutable and its endorser blo
 reference leaves it so, and its next collection can delete that endorser block. Scarab's open closes
 the window, an Improvement ([decisions register](../decisions.md#genesis-storage-and-keys),
 2026-11-21): before any collection can run it promotes what the immutable blocks certify, walking
-those at or after the slot of the oldest point of the volatile partition, with the predecessor of the
-first, since a collection takes only hashes of that partition and a certified endorser block is at its
-announcing predecessor's slot (`LeiosBackgroundSuite`).
+those at or after the slot of the oldest block of the selected-chain log, with the predecessor of the
+first. Each block is logged by the extension that applies it, before its copy, and the log is
+collected only below the tip of a copy whose promotion returned, so every block of a copy whose
+promotion did not return is still logged, whatever slot its endorser block is held at
+(`LeiosBackgroundSuite`).
 
 `import-haskell-db` reads a Leios node's `leios.imm.db` and `leios.vol.db`, when the database has
 them, into this store before it imports the blocks (`leiosPoints`, `leiosBodies` and

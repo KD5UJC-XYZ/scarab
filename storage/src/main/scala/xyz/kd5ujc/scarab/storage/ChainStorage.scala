@@ -572,7 +572,11 @@ object ChainStorage:
       _ <- Resource.onFinalize(persistence.shutdownSnapshot)
       // the endorser blocks that immutable blocks certify are promoted before any collection can
       // run, so that one whose promotion an earlier run did not reach is not collected
-      _ <- Resource.eval(leios.traverse_(reconciled(store, _, config.byronEpochSlots)))
+      _ <- Resource.eval(
+        leios.traverse_(
+          reconciled(store, _, config.byronEpochSlots, logged.chain.headOption.map(_._1.slot))
+        )
+      )
       // the received log's collections, run on their schedule until one fails: the failure is
       // raised by the next block the persistence stores, in the follower's own fiber. Whatever ends
       // the runner, a collection's failure or an exception anywhere in it, ends it with a value
@@ -610,18 +614,21 @@ object ChainStorage:
     * 157-161), so its next collection can delete the endorser block; this open closes it, an
     * Improvement (the decisions register, docs/decisions.md, 2026-11-21, #830).
     *
-    * The blocks walked are the immutable blocks at or after the slot of the oldest point the
-    * store's volatile partition holds, with the predecessor of the first: a collection only takes a
-    * hash from the volatile partition, a certifying block's endorser block is at the slot of its
-    * announcing predecessor, and that predecessor comes before the certifying block, so every
-    * endorser block a collection could take that an immutable block certifies is found, however
-    * many blocks the interrupted copy held. Promotion changes nothing for an endorser block already
-    * promoted or copied. A store with no volatile point walks nothing.
+    * The blocks walked are the immutable blocks at or after the slot of the oldest block the
+    * selected-chain log holds (`floor`), with the predecessor of the first. Each block is logged by
+    * the extension that applies it, before any copy of it ([[Persistence]]), and the log is
+    * collected only below the immutable tip of a copy whose promotion returned, after it returned.
+    * Every block of a copy whose promotion did not return is above the tip before that copy, so it
+    * is still logged, and walked, however many blocks the copy held and whatever slot its endorser
+    * block is held at: the walk is bounded by what an interrupted copy could have appended, not by
+    * the slots of the store's points. Promotion changes nothing for an endorser block already
+    * promoted or copied. An empty log walks nothing.
     */
   private def reconciled[F[_]: Async](
       store: ImmutableStore[F],
       eb: LeiosStore[F],
-      byronEpochSlots: BigInt
+      byronEpochSlots: BigInt,
+      floor: Option[BigInt]
   )(using Raise[F, StorageError], Raise[F, ChainError]): F[Unit] =
     val F = Async[F]
     def info(raw: Bytes): F[LeiosBackground.Info] =
@@ -632,10 +639,7 @@ object ChainStorage:
         (previous.toVector :+ next).map(i => i.hash -> i).toMap.get
       )(next.hash)
     for
-      oldest <- eb
-        .scanEbPoints(using LeiosBackground.lifted[F])
-        .map(_.map(_.slot.toBigInt).minOption)
-      first <- oldest.flatTraverse(store.pointAtOrAfterSlot)
+      first <- floor.flatTraverse(store.pointAtOrAfterSlot)
       found <- first.traverse { ref =>
         val walked = fs2.Stream.evalSeq(store.get(ref.point).map(_.toVector)) ++
           store.stream(ref.point).map(_.raw)

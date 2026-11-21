@@ -292,70 +292,88 @@ class LeiosBackgroundSuite extends FailsOnUncaught:
         .foreach(JFiles.delete)
     )
 
-  test(
-    "an endorser block whose promotion failed after its certifier's copy is promoted at the next " +
-      "open, so a collection past the certifier keeps it"
-  ) {
-    StorageTestKit.tempDir.use { dir =>
-      val leiosStore = LeiosStoreLocks
-        .resource[IO]
-        .flatMap(locks =>
-          LeiosStoreSuite.allowing(RocksLeiosStore.resource[IO](dir / "leios", locks))
-        )
-      def opened(leios: LeiosStore[IO])(using Handle[IO, NodeError]) =
-        ChainStorage.open[IO, Int](
-          dir,
-          config,
-          rules,
-          0,
-          _ => IO.unit,
-          StateBacking.none[IO, Int],
-          _ => IO.unit,
-          leios = Some(leios)
-        )(ReceivedBlockRecovery.startUp(epochSlots))
-      for
-        // the first run: both blocks are copied, and the certifier's promotion fails after its
-        // append, which stops the storage
-        failed <- leiosStore.use { leios =>
-          stored(Vector(certified, unvetoed, later).traverse_ { p =>
-            leios.writeEbPoint(p, word32(1)) *> leios.writeEbBody(p, body(1), Vector.empty) *>
-              leios.writeTxs(p, Vector(0 -> tx(0)))
-          }) *> Handle
-            .allow[NodeError](
-              opened(failing(leios))
-                .use(recovered =>
-                  recovered.persistence.extended(
-                    announcerRef,
-                    announcing,
-                    Vector(announcerRef),
-                    Anchor(Some(announcerRef), 0)
-                  ) *> recovered.persistence.extended(
-                    certifierRef,
-                    certifying,
-                    Vector(certifierRef),
-                    Anchor(Some(certifierRef), 1)
-                  )
-                )
-                .as(Option.empty[NodeError])
-            )
-            .rescue(e => IO.pure(Some(e)))
-        }
-        _ <- snapshotsDropped(dir)
-        // the next run opens both stores again, then the store is collected past the certifier
-        reopened <- leiosStore.use { leios =>
-          typed(opened(leios).use(_.store.tip)).flatMap(tip =>
-            stored(leios.garbageCollect(word64(certifierRef.slot + 1))) *> held(leios).map(tip -> _)
+  /** The certified endorser block held only under a later announcement, after its certifier's slot:
+    * no point of the store is at or before the certifier's slot.
+    */
+  private val reannounced = EbPoint(word64(certifierRef.slot + 5), certified.hash)
+
+  Vector(
+    (
+      "held at its announcer's slot",
+      Vector(certified, unvetoed, later),
+      certifierRef.slot + 1,
+      // the one nothing certifies is collected, and the one at the collection's slot stays
+      Held(Vector(later), Vector(true, false, true), Vector(true, false, true))
+    ),
+    (
+      "held only under a later announcement, after its certifier's slot",
+      Vector(reannounced, later),
+      reannounced.slot.toBigInt + 1,
+      // every point is older than the collection's slot: the later endorser block goes too
+      Held(Vector.empty, Vector(true, false, false), Vector(true, false, false))
+    )
+  ).foreach { (how, seeds, collectedAt, expected) =>
+    test(
+      s"an endorser block $how, whose promotion failed after its certifier's copy, is promoted " +
+        "at the next open, so a collection past it keeps it"
+    ) {
+      StorageTestKit.tempDir.use { dir =>
+        val leiosStore = LeiosStoreLocks
+          .resource[IO]
+          .flatMap(locks =>
+            LeiosStoreSuite.allowing(RocksLeiosStore.resource[IO](dir / "leios", locks))
           )
-        }
-      yield
-        assertEquals(failed, Some(StorageError.LeiosStore(LeiosStoreError.Io(boom))))
-        assertEquals(reopened._1, Some(certifierRef), "the certifier was copied before it failed")
-        // the certified endorser block's body and closure are in the immutable partition; the one
-        // nothing certifies is collected, and the one at the collection's slot stays
-        assertEquals(
-          reopened._2,
-          Held(Vector(later), Vector(true, false, true), Vector(true, false, true))
-        )
+        def opened(leios: LeiosStore[IO])(using Handle[IO, NodeError]) =
+          ChainStorage.open[IO, Int](
+            dir,
+            config,
+            rules,
+            0,
+            _ => IO.unit,
+            StateBacking.none[IO, Int],
+            _ => IO.unit,
+            leios = Some(leios)
+          )(ReceivedBlockRecovery.startUp(epochSlots))
+        for
+          // the first run: both blocks are copied, and the certifier's promotion fails after its
+          // append, which stops the storage
+          failed <- leiosStore.use { leios =>
+            stored(seeds.traverse_ { p =>
+              leios.writeEbPoint(p, word32(1)) *> leios.writeEbBody(p, body(1), Vector.empty) *>
+                leios.writeTxs(p, Vector(0 -> tx(0)))
+            }) *> Handle
+              .allow[NodeError](
+                opened(failing(leios))
+                  .use(recovered =>
+                    recovered.persistence.extended(
+                      announcerRef,
+                      announcing,
+                      Vector(announcerRef),
+                      Anchor(Some(announcerRef), 0)
+                    ) *> recovered.persistence.extended(
+                      certifierRef,
+                      certifying,
+                      Vector(certifierRef),
+                      Anchor(Some(certifierRef), 1)
+                    )
+                  )
+                  .as(Option.empty[NodeError])
+              )
+              .rescue(e => IO.pure(Some(e)))
+          }
+          _ <- snapshotsDropped(dir)
+          // the next run opens both stores again, then the store is collected past the certifier
+          reopened <- leiosStore.use { leios =>
+            typed(opened(leios).use(_.store.tip)).flatMap(tip =>
+              stored(leios.garbageCollect(word64(collectedAt))) *> held(leios).map(tip -> _)
+            )
+          }
+        yield
+          assertEquals(failed, Some(StorageError.LeiosStore(LeiosStoreError.Io(boom))))
+          assertEquals(reopened._1, Some(certifierRef), "the certifier was copied before it failed")
+          // the certified endorser block's body and closure are in the immutable partition
+          assertEquals(reopened._2, expected)
+      }
     }
   }
 
