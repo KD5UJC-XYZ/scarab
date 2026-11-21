@@ -16,6 +16,7 @@ import xyz.kd5ujc.scarab.ledger.{
   Voter
 }
 import xyz.kd5ujc.scarab.ledger.era.*
+import xyz.kd5ujc.scarab.ledger.era.Voter as TypedVoter
 import xyz.kd5ujc.scarab.ledger.rules.{Convert, Judge, Sts, Test}
 import xyz.kd5ujc.scarab.ledger.state.{
   AccountAddress,
@@ -32,6 +33,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
   HotCommittee,
   KeyHash,
   ScriptHash,
+  Sorted,
   StakePool,
   VocabError,
   addInterval
@@ -234,9 +236,9 @@ object ConwayGov:
   ): GovActionState[E] =
     GovActionState[E](
       actionId,
-      Map.empty,
-      Map.empty,
-      Map.empty,
+      Sorted.empty,
+      Sorted.empty,
+      Sorted.empty,
       proposal,
       curEpoch,
       curEpoch.addInterval(expiryInterval)
@@ -560,11 +562,13 @@ object ConwayGov:
       knownVotesWithCast = votesInOrder.flatMap((voter, gaId, vp) =>
         curGovActionIds.get(gaId).map(gas => (voter, vp.vote, gas))
       )
-      replacedVotes = SortedSet.from(knownVotesWithCast.collect {
-        case (voter, _, gas) if (voter match
-              case Voter.CommitteeHot(hotCred) => gas.gasCommitteeVotes.contains(hotCred)
-              case Voter.DRepVoter(cred)       => gas.gasDRepVotes.contains(cred)
-              case Voter.Pool(poolId)          => gas.gasStakePoolVotes.contains(poolId)
+      // each cast vote's voter at the reference's types, the key its action's state holds it under
+      castVoters <- knownVotesWithCast.traverse((voter, _, _) => vocab(TypedVoter.fromFlat(voter)))
+      replacedVotes = SortedSet.from(knownVotesWithCast.zip(castVoters).collect {
+        case ((voter, _, gas), typed) if (typed match
+              case TypedVoter.CommitteeVoter(hotCred) => gas.gasCommitteeVotes.contains(hotCred)
+              case TypedVoter.DRepVoter(cred)         => gas.gasDRepVotes.contains(cred)
+              case TypedVoter.StakePoolVoter(poolId)  => gas.gasStakePoolVotes.contains(poolId)
             ) =>
           (voter, gas.gasId)
       })
@@ -584,12 +588,14 @@ object ConwayGov:
       cleanupProposalVotes = (ps: Proposals[E]) =>
         if unregisteredDReps.isEmpty then ps
         else
-          val removed = unregisteredDReps.map(Convert.back(_))
-          Proposals.mapProposals[E](gas => gas.copy(gasDRepVotes = gas.gasDRepVotes -- removed))(ps)
+          Proposals.mapProposals[E](gas =>
+            gas.copy(gasDRepVotes = gas.gasDRepVotes -- unregisteredDReps)
+          )(ps)
       updatedProposalStates = cleanupProposalVotes(
-        knownVotesWithCast.foldLeft(proposals)((ps, cast) =>
-          Proposals.proposalsAddVote(cast._1, cast._2, cast._3.gasId, ps)
-        )
+        knownVotesWithCast.zip(castVoters).foldLeft(proposals) {
+          case (ps, ((_, vote, gas), typed)) =>
+            Proposals.proposalsAddVote(typed, vote, gas.gasId, ps)
+        }
       )
       _ <- events.tell(
         Chain(

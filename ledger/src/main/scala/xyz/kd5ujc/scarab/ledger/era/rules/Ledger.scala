@@ -19,6 +19,7 @@ import xyz.kd5ujc.scarab.ledger.{
 import xyz.kd5ujc.scarab.plutus.{ScriptDecoder, ScriptEvaluator}
 import xyz.kd5ujc.scarab.ledger.era.*
 import xyz.kd5ujc.scarab.ledger.era.conway.{ConwayProposals, ConwayTxCert, ConwayUTxO}
+import xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraProposals
 import xyz.kd5ujc.scarab.ledger.rules.{Convert, Globals, Judge, Sts, Test, focus}
 import xyz.kd5ujc.scarab.ledger.state.{
   AccountAddress,
@@ -27,6 +28,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
   Coin,
   Conway,
   ConwayGovState,
+  Dijkstra,
   EpochNo,
   EraTag,
   GovState,
@@ -77,17 +79,63 @@ final case class LedgersEnv[E <: EraTag](
 
 /** How era `E` reads the node's record of the proposals into its [[Proposals]] and writes them
   * back, until the governance state holds the reference's `Proposals era` itself (#85): glue, the
-  * reference's `proposalsGovStateL`. Only this package makes one.
+  * reference's `proposalsGovStateL`. A write is refused only where the record cannot hold an action
+  * (Dijkstra's update of a key Dijkstra adds, [[ProposalsWriteError]]). Only this package makes
+  * one.
   */
 sealed trait ProposalsRecord[E <: EraTag]:
   def read(stored: StoredProposals): Either[ProposalsReadError, Proposals[E]]
-  def write(proposals: Proposals[E]): StoredProposals
+  def write(proposals: Proposals[E]): Either[ProposalsWriteError, StoredProposals]
 
 object ProposalsRecord:
   given conway: ProposalsRecord[Conway] with
     def read(stored: StoredProposals): Either[ProposalsReadError, Proposals[Conway]] =
       ConwayProposals.fromStored(stored)
-    def write(proposals: Proposals[Conway]): StoredProposals = ConwayProposals.toStored(proposals)
+    def write(proposals: Proposals[Conway]): Either[ProposalsWriteError, StoredProposals] =
+      Right(ConwayProposals.toStored(proposals))
+
+  /** Dijkstra's ([[DijkstraProposals]]). Dijkstra's LEDGER does not read its proposals through it
+    * yet ([[DijkstraLedger]] keeps them in their own capability): the testnet chain's proposals
+    * update parameters Dijkstra adds, which the flat record cannot hold, so its suites' chain
+    * transactions would be refused at the write. It reads them so once the ledger state holds the
+    * era's governance record.
+    */
+  given dijkstra: ProposalsRecord[Dijkstra] with
+    def read(stored: StoredProposals): Either[ProposalsReadError, Proposals[Dijkstra]] =
+      DijkstraProposals.fromStored(stored)
+    def write(proposals: Proposals[Dijkstra]): Either[ProposalsWriteError, StoredProposals] =
+      DijkstraProposals.toStored(proposals)
+
+  /** The proposals of the ledger state's governance record, read into the era's on every `get` and
+    * written back on every `set`: a record the era cannot read is raised (`readError`), and
+    * proposals it cannot hold (`writeError`).
+    */
+  def stateful[F[_]: Monad, E <: EraTag](using
+      state: Stateful[F, LedgerState[E]],
+      gs: GovState[E] =:= ConwayGovState,
+      record: ProposalsRecord[E],
+      readError: Raise[F, ProposalsReadError],
+      writeError: Raise[F, ProposalsWriteError]
+  ): Stateful[F, Proposals[E]] = new Stateful[F, Proposals[E]]:
+    val monad: Monad[F] = Monad[F]
+    def get: F[Proposals[E]] = state.get.flatMap(ls =>
+      record
+        .read(gs(ls.utxo.gov).proposals)
+        .fold(readError.raise[ProposalsReadError, Proposals[E]], Monad[F].pure)
+    )
+    def set(ps: Proposals[E]): F[Unit] =
+      record
+        .write(ps)
+        .fold(
+          writeError.raise[ProposalsWriteError, Unit],
+          stored =>
+            state.modify(
+              LedgerState
+                .utxo[E]
+                .andThen(UTxOState.gov[E])
+                .modify(g => gs.flip(gs(g).copy(proposals = stored)))
+            )
+        )
 
 /** Shelley's functions of LEDGER that Conway's runs (`Shelley/Rules/Ledger.hs`, cardano-ledger
   * f649f975).
@@ -295,7 +343,8 @@ object ConwayLedger:
       stateDefect: Raise[F, UtxoStateDefect],
       defect: Raise[F, LedgerDefect],
       govDefect: Raise[F, GovDefect],
-      readError: Raise[F, ProposalsReadError]
+      readError: Raise[F, ProposalsReadError],
+      writeError: Raise[F, ProposalsWriteError]
   ): F[Unit] =
     given acc: ConwayEraAccounts[E] = c.accountsOf
     val top = t.bodyOf.top
@@ -315,18 +364,7 @@ object ConwayLedger:
       Sts.runTest[F, LedgerPredFailure[E]](t.leftMap(_.map(injectLedger.injectFailure)))
     // the proposals GOV judges and leaves: the node's record in the governance state, read into
     // the era's and written back
-    val proposals: Stateful[F, Proposals[E]] = new Stateful[F, Proposals[E]]:
-      val monad: Monad[F] = Monad[F]
-      def get: F[Proposals[E]] = state.get.flatMap(ls =>
-        record
-          .read(gs(ls.utxo.gov).proposals)
-          .fold(readError.raise[ProposalsReadError, Proposals[E]], Monad[F].pure)
-      )
-      def set(ps: Proposals[E]): F[Unit] = state.modify(
-        utxoL
-          .andThen(UTxOState.gov[E])
-          .modify(g => gs.flip(gs(g).copy(proposals = record.write(ps))))
-      )
+    val proposals: Stateful[F, Proposals[E]] = ProposalsRecord.stateful[F, E]
     def valid(certState: CertState[E], utxoState: UTxOState[E], curEpochNo: EpochNo): F[Unit] =
       val govState = gs(utxoState.gov)
       val committee = govState.committee
@@ -618,6 +656,7 @@ object ShelleyLedgers:
       defect: Raise[F, LedgerDefect],
       govDefect: Raise[F, GovDefect],
       readError: Raise[F, ProposalsReadError],
+      writeError: Raise[F, ProposalsWriteError],
       scripts: ConwayEraScript[E],
       plutusContext: EraPlutusContext[E],
       annotated: AlonzoStAnnTx[E] =:= StAnnTx[TxLevel.Top, E],

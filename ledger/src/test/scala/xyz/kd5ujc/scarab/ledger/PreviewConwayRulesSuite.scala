@@ -258,9 +258,9 @@ class PreviewConwayRulesSuite extends FunSuite:
         events.collect {
           case era.rules.ConwayLedgerEvent
                 .GovEvent(era.rules.ConwayGovEvent.GovNewProposals(id, proposals)) =>
-            (id.bytes, era.rules.ProposalsRecord.conway.write(proposals))
+            (id.bytes, era.rules.ProposalsRecord.conway.write(proposals).toOption)
         },
-        Vector((body.id, gov(after.state).proposals))
+        Vector((body.id, Some(gov(after.state).proposals)))
       )
       assertEquals(fees(after.state), body.fee)
       assertEquals(gov(after.state).proposals.actions.size, body.proposals.size)

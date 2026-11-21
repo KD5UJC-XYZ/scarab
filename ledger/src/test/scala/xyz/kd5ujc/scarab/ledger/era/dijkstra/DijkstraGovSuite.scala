@@ -496,9 +496,9 @@ class DijkstraGovSuite extends FunSuite:
     val gas = Proposals
       .proposalsActionsMap(after)
       .getOrElse(GovActionId(id1.bytes, 0), fail("not stored"))
-    assertEquals(gas.gasStakePoolVotes.keySet, Set(operator))
+    assertEquals(gas.gasStakePoolVotes.keySet.map(_.bytes), Set(operator))
     assertEquals(
-      gas.gasDRepVotes.keySet,
+      gas.gasDRepVotes.keySet.map(Convert.back(_)),
       Set(flat.Credential.Key(Bytes(Vector.fill(28)(2.toByte))))
     )
   }
