@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.ledger.era.dijkstra
 
 import cats.syntax.all.*
+import scala.annotation.unused
 import xyz.kd5ujc.scarab.codec.{Bytes, Node}
 import xyz.kd5ujc.scarab.ledger.{DecodeField, LedgerDecodeError}
 import xyz.kd5ujc.scarab.ledger.dijkstra.{
@@ -110,8 +111,9 @@ object DijkstraTx:
   /** A top-level transaction the Leios build's block decoder read
     * ([[xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraTx]], which decides what is refused), in
     * Dijkstra's types, its sub-transactions at the sub-transaction level. Only [[inBlock]] and
-    * [[fromSubmission]] call it, each on what the flat decoder read from bytes, so each body is of
-    * the level read at and its bytes are the ones read.
+    * [[fromSubmission]] (and [[ofBlock]], on a transaction the block decoder read) call it, each on
+    * what the flat decoder read from bytes, so each body is of the level read at and its bytes are
+    * the ones read.
     */
   private def decode(flat: FlatDijkstraTx): Either[EraTxError, DijkstraTx[TxLevel.Top]] =
     for
@@ -134,6 +136,17 @@ object DijkstraTx:
     */
   def inBlock(n: Node): Either[EraTxError, DijkstraTx[TxLevel.Top]] =
     FlatDijkstraTx.inBlock(n).leftMap(EraTxError.Decode(_)).flatMap(decode)
+
+  /** A transaction of a block the flat block decoder read (`LeiosBlock.decode`, which reads each
+    * transaction with `decodeDijkstraTopTxInBlock` as [[inBlock]] does): what [[inBlock]] reads,
+    * from the transaction that decoder already read. Only [[DijkstraBlock.decode]] holds the
+    * evidence ([[DijkstraBlock.Decoded]]), on the block it decoded, so no copied flat transaction
+    * reaches the era's types this way.
+    */
+  private[dijkstra] def ofBlock(flat: FlatDijkstraTx)(using
+      @unused decoded: DijkstraBlock.Decoded
+  ): Either[EraTxError, DijkstraTx[TxLevel.Top]] =
+    decode(flat)
 
   /** `decodeDijkstraTopTx` (`Tx.hs:152-169`, cardano-ledger 9df9f98c): a transaction as a client or
     * a peer submits it, valid.

@@ -238,6 +238,10 @@ object AlonzoEraPParams:
   def ppMaxTxExUnitsL[E <: EraTag](using p: AlonzoEraPParams[E]): Lens[PParams[E], ExUnits] =
     PParams.lensHKD[E].andThen(p.hkdMaxTxExUnitsL[Identity])
 
+  /** `ppMaxBlockExUnitsL` (`Alonzo/PParams.hs:164-165`, cardano-ledger 9df9f98c). */
+  def ppMaxBlockExUnitsL[E <: EraTag](using p: AlonzoEraPParams[E]): Lens[PParams[E], ExUnits] =
+    PParams.lensHKD[E].andThen(p.hkdMaxBlockExUnitsL[Identity])
+
   /** `ppMaxValSizeL` (`Alonzo/PParams.hs:169-170`, cardano-ledger f649f975). */
   def ppMaxValSizeL[E <: EraTag](using p: AlonzoEraPParams[E]): Lens[PParams[E], Unsigned[W32]] =
     PParams.lensHKD[E].andThen(p.hkdMaxValSizeL[Identity])
