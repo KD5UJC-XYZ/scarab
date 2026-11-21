@@ -1163,12 +1163,13 @@ Conway's rules on the classes follow as the rest of stage 2.
     reference's order is its source. Tracked as #85's
     [item](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7054122427).
   - Incomplete (CNF-2):
-    - the environment's certificate state is the recorded state's, not the state after CERTS, which LEDGER gives;
+    - the environment's certificate state is the recorded state's here; LEDGER gives GOV the state after CERTS
+      (LEDGER whole, below);
     - every refusal GOV alone gave holds one failure, so the byte-for-byte comparison does not tell the depth's
       order of several; the cases GOV refused with other rules (`certs-gov-utxow`, `gov-proposal-wrong-deposit`)
-      come with LEDGER;
+      are compared through LEDGER (below);
     - the scenarios of `ConwayGovernanceSuite`, `PreviewConwayRulesSuite` and the mempool suites run GOV through
-      LEDGER, and come with LEDGER;
+      the flat LEDGER (LEDGER whole, below, says why);
     - `ProposalsReadError` is reached by crafted stores only (`EraProposalsSuite`): the node's record is written
       by the flat rule.
   - Not yet (#85): the governance state's classes (`EraGov`, `ConwayEraGov`) over typed parameters; the committee in
@@ -1177,6 +1178,91 @@ Conway's rules on the classes follow as the rest of stage 2.
     flat rule's single pass over the votes is (#94). The flat rule numbers proposals with an unbounded index
     (`zipWithIndex`), where the reference's is a `Word16`; only a 65,537th proposal tells them apart, and stage 3
     deletes the flat rule.
+- **LEDGER and LEDGERS whole, with the reference's failures** (`era/rules/Ledger.scala`,
+  `era/rules/LedgerFailures.scala`; `Conway/Rules/Ledger.hs`, `Conway/Rules/Ledgers.hs` and Shelley's
+  `Rules/Ledger.hs` and `Rules/Ledgers.hs`, cardano-ledger f649f975, where 29a7d656 and 9df9f98c differ in derived
+  `Ord` instances, the withdrawals' move below and Shelley's `AccountAlreadyRegistered` injected through DELEG,
+  below):
+  - Conway's `conwayLedgerTransition`, generic in its era over the reference's classes: for a transaction whose
+    scripts pass, the treasury value, the reference scripts' size, the delegation of the key accounts withdrawn
+    from after the bootstrap phase (from the certificate state before the certificates), the withdrawals' test,
+    the DReps' expiries and the accounts drained where the build moves them to LEDGER (`WithdrawalsRule`, from the
+    judgment's `Globals`), CERTS, then GOV with the certificate state after CERTS; for every transaction UTXOW, with
+    the certificate state before the transaction in its environment. Each sub-rule is nested, its failures and
+    events embedded (`EmbedInLedger`). GOV's proposals are the node's record read into the era's and written back
+    (`ProposalsRecord`), a record the era cannot read a raised `ProposalsReadError`. `ShelleyLedgers.ledgersTransition`
+    annotates each transaction against the UTxO set it is judged on and nests LEDGER with its `TxIx`. Where the
+    environment has no epoch, it is the slot's by the total `epochOf` of `Globals`' geometry, where the reference's
+    `epochFromSlot` (`Slot.hs:66-69`) reads its `Globals`' epoch information and fails outside a bounded history.
+  - The failures are `ConwayLedgerPredFailure`, its nine constructors in tag order, Shelley's
+    `ShelleyLedgerPredFailure` with DELEGS's failure having no value at Conway (`DelegsPredFailure`), where the
+    reference's injection calls it impossible, and `ShelleyLedgersPredFailure`; the events `ConwayLedgerEvent` and
+    `ShelleyLedgersEvent`. The withdrawals are the reference's `Withdrawals` and `NonEmptyMap AccountAddress`.
+    `ConwayMempoolFailure` holds the node's typed cause (`MempoolProblem`) where the reference holds its `Text`, as
+    the flat failure does: LEDGER never gives it. `InjectLedgerFailure` is the reference's
+    instances of every rule below LEDGER, Shelley's UTXO failure's by the build's injection
+    (`conwayShelleyUtxo`), and `ConwayLedgerPredFailure.toStored` the flat form the comparisons read.
+    `InjectLedgersFailure` is the reference's instances into LEDGERS (`Conway/Rules/Ledgers.hs:28-82`), each
+    `LedgerFailure` over LEDGER's, Shelley's LEDGER failure without one as in the reference; `LedgerInjectionSuite`
+    summons each injection into LEDGER and LEDGERS and finds the failure the embeddings wrap it in. Under
+    29a7d656 and 9df9f98c Shelley's `AccountAlreadyRegistered` goes into LEDGER as `ConwayCertsFailure .
+    CertFailure . DelegFailure` (`Conway/Rules/Ledger.hs:137-138` at both), a function of the build
+    (`InjectLedgerFailure.conwayAccountAlreadyRegistered`, none under the 11.1 line, whose f649f975 has neither the
+    type nor the instance), and into LEDGERS under none; the suite checks its wrapping under each build.
+  - `ConwayLedgerChecksSuite` runs the era LEDGER and the flat `rules.Ledger` from the state the mempool judges a
+    transaction in, on every Conway case of the refusal corpora, at the recorded version and at 9, 10 and 11, under
+    each build and policy: the same failures in the same order, cases of three and more among them, or the same
+    ledger state. The one named difference is the flat rules' withdrawals under 11.2 and Leios below version 11
+    (CERTS's bullet below), where the era rule gives the reference's LEDGER failure: on
+    `withdrawal-more-than-balance`, `withdrawal-unregistered-account` and `withdrawal-network-flag-true`, at each
+    version below 11 under those builds and each policy, and on no other case, the flat failures in their order with CERTS's refusal of the withdrawal
+    replaced in its place by LEDGER's, the account and amount withdrawn, an incomplete one's against the chain's
+    balance. Where the reference refused a
+    transaction, every Conway case but the four MEMPOOL refuses itself or by its measure, named, the era LEDGER's
+    failures, one level below MEMPOOL, encode to the reference's refusal byte for byte: the order of failures across
+    LEDGER's, CERTS's, GOV's, UTXOW's and UTXO's depths, `certs-gov-utxow` and `gov-proposal-wrong-deposit` among
+    them. LEDGERS of one transaction is its LEDGER embedded, on every case. A crafted DRep that unregisters and votes
+    in one transaction is refused by GOV as a voter that does not exist, the state after CERTS, which GOV alone on
+    the state before admits.
+  - The upstream LEDGER and LEDGERS judgments (`UpstreamNativeLedgerConformanceSuite`,
+    `UpstreamMultiLedgerConformanceSuite`, `UpstreamFreshLedgerConformanceSuite`) run the era LEDGER and LEDGERS on
+    the fixtures' inputs too, each transaction read by Conway's decoder from its original parts, the root of its
+    judgment, under an epoch information of one era without an end, as the fixtures record no era history: the 4
+    native LEDGER and LEDGERS judgments, the 4 multi-transaction batches and the 46 generated LEDGER and LEDGERS
+    judgments, the original generated-cache refusals among them, leave the reference's full post-state, or
+    refuse with failures that encode to the reference's bytes in their order, a collection's translation
+    failures among them (`EraLedgerRun.flat`). On two generated transactions LEDGER tells the pool its CERTS
+    registers and the DRep whose votes its GOV removes, those the reference's post-state registers and drops,
+    wrapped as LEDGER embeds them.
+  - The reference-accepted submissions run through the era LEDGER too, from the chain each suite builds:
+    `EraUtxoSuite`'s 70 Conway submissions, as submitted with the reference's verdict, and each with its flag
+    flipped under each build and policy, give the flat LEDGER's failures in order or its state;
+    `RedeemerIndexReferenceSuite`'s accepted Conway case leaves the flat LEDGER's state, and its refused ones, one
+    level below the root, encode to the reference's refusal; `PastHorizonReferenceSuite`'s Conway case, from the
+    state the mempool judges it in and the clock of the cluster's era history, refuses with the reference's bytes,
+    the translation past the horizon among them. The counters the scripts' events give through LEDGER's
+    embedding (`EraLedgerRun.counters`: the passing and failing transactions and the scripts run) are the flat
+    rule's `Counted.plutus` on every admitted case there and in `ConwayLedgerChecksSuite`, a passing and a failing
+    run of scripts among them; the integrity checks the flat rules count are not compared, as no event tells
+    them. `ContextRefusalReasonSuite`'s 12 refused context submissions, one level below the root, encode through
+    the era LEDGER to the reasons the reference recorded byte for byte, each translation failure with its contents,
+    and `EraUtxoSuite` compares each collection's failures with the flat rule's with their contents too
+    (`EraLedgerRun.flat`, which projects only the translation failures it encodes faithfully, a time past the
+    horizon only by the clock's own failure).
+  - `PreviewConwayRulesSuite` runs its recorded Preview Conway transactions through the era LEDGERS too, each read
+    by Conway's decoder from the bytes the flat transaction keeps, from the state built for the flat rules: every
+    proposal, spending and committee vote transaction is admitted with the flat rules' ledger state and counters
+    (the integrity checks the flat rules count aside, which no event tells), GOV's `GovNewProposals`, wrapped by
+    LEDGER and LEDGERS, tells the proposals the state then holds, and another guardrails script is refused by
+    GOV alone, as the flat rules refuse it.
+  - Incomplete (CNF-2): `ConwayGovernanceSuite` and the mempool suites build flat transactions without bytes, which
+    the era types cannot read until the test builders move to per-era kits (§4), so they run the flat LEDGER only
+    (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7056445357); LEDGERS is compared on one
+    transaction per case and on the upstream batches, not yet on a recorded block's transactions in sequence
+    (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7056445970); the epoch from the slot is compared
+    within an era history only, as every suite's slot is in its history, not where the reference's
+    `epochFromSlot` fails.
+  - Not yet (#85): the node's mempool, block body and phase-2 counters run the flat LEDGER until the Conway switch.
 - **Conway's certificate rules** (`ledger/.../era/rules/Certs.scala`, `era/rules/CertsFailures.scala`): CERTS,
   CERT, DELEG, GOVCERT and Shelley's POOL, each the reference's transition under its name, generic in its era
   over the state classes `EraAccounts`, `ConwayEraAccounts`, `EraCertState` and `ConwayEraCertState` (Conway's
