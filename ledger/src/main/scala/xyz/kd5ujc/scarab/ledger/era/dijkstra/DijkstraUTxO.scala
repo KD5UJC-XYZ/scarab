@@ -131,6 +131,45 @@ object DijkstraUTxO:
       ops.inject(b.certsOf.getTotalDepositsTxCerts(pp, isRegPoolId, batchTxCerts))
     ).foldLeft(ops.zero)(ops.plus)
 
+  /** [[dijkstraConsumed]] of a top-level body with its sub-transactions taken out (`txBody &
+    * subTransactionsTxBodyL .~ mempty`, as Dijkstra's UTXO and UTXOW read it in the legacy mode,
+    * `Dijkstra/Rules/Utxo.hs:380-387` and `Utxow.hs:281-285`, cardano-ledger 9df9f98c): Mary's
+    * consumed value of the top level alone. The value reads no id and no bytes of the body, so the
+    * body is not made again.
+    */
+  def dijkstraConsumedWithoutSubTransactions(
+      pp: PParams[Dijkstra],
+      utxo: UTxO[Dijkstra],
+      body: TxBody[TxLevel.Top, Dijkstra]
+  ): MultiAssetValue =
+    MaryUTxO.getConsumedMaryValue[Dijkstra, TxLevel.Top](pp, _ => None, utxo, body)(using b)
+
+  /** [[dijkstraProducedValue]] of a top-level body with its sub-transactions taken out, as
+    * [[dijkstraConsumedWithoutSubTransactions]]: the top level's own produced value, the fee and
+    * its certificates' deposits.
+    */
+  def dijkstraProducedValueWithoutSubTransactions(
+      pp: PParams[Dijkstra],
+      isRegPoolId: KeyHash[StakePool] => Boolean,
+      topTxBody: TxBody[TxLevel.Top, Dijkstra]
+  ): MultiAssetValue =
+    Vector(
+      localProducedValue[TxLevel.Top](pp, topTxBody),
+      ops.inject(b.fee(topTxBody)),
+      ops.inject(
+        b.certsOf.getTotalDepositsTxCerts(pp, isRegPoolId, b.certs[TxLevel.Top](topTxBody))
+      )
+    ).foldLeft(ops.zero)(ops.plus)
+
+  /** [[getDijkstraSupplementalDataHashes]] of a top-level body with its sub-transactions taken out,
+    * as [[dijkstraConsumedWithoutSubTransactions]]: Babbage's of the top level alone.
+    */
+  def getDijkstraSupplementalDataHashesWithoutSubTransactions(
+      utxo: UTxO[Dijkstra],
+      txBody: TxBody[TxLevel.Top, Dijkstra]
+  ): Set[Bytes] =
+    BabbageUTxO.getBabbageSupplementalDataHashes[Dijkstra, TxLevel.Top](utxo, txBody)(using b)
+
   /** `getDijkstraScriptsProvided` (`UTxO.hs:165-186`, cardano-ledger 9df9f98c): Babbage's scripts
     * provided, and at the top level each sub-transaction's too, the top level's kept where both
     * have a hash (`Map.unions`).

@@ -17,7 +17,6 @@ import xyz.kd5ujc.scarab.ledger.{
 }
 import xyz.kd5ujc.scarab.plutus.{EvalFailure, ScriptDecoder, ScriptEvaluator}
 import xyz.kd5ujc.scarab.ledger.era.*
-import xyz.kd5ujc.scarab.ledger.era.conway.ConwayPlutusPurpose
 import xyz.kd5ujc.scarab.ledger.rules.{Judge, Sts, Test}
 import xyz.kd5ujc.scarab.ledger.state.{CertState, EraTag, UTxOState}
 
@@ -161,6 +160,26 @@ object AlonzoUtxow:
       u: AlonzoEraUTxO[E],
       lu: u.txOf.bodyOf.Level[L]
   ): Test[AlonzoUtxowPredFailure[E]] =
+    missingRequiredDatumsAllowing[E, L](
+      scriptsProvided,
+      utxo,
+      tx,
+      u.getSupplementalDataHashes[L](utxo, t.body[L](tx))
+    )
+
+  /** [[missingRequiredDatums]] with the supplemental datums allowed given: those
+    * `getSupplementalDataHashes` gives of the body, or, for Dijkstra's UTXOW in the legacy mode,
+    * those of the body with its sub-transactions taken out (`Dijkstra/Rules/Utxow.hs:281-285`,
+    * cardano-ledger 9df9f98c,
+    * [[xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraUTxO.getDijkstraSupplementalDataHashesWithoutSubTransactions]]),
+    * the only part of the transaction the sub-transactions change here.
+    */
+  def missingRequiredDatumsAllowing[E <: EraTag, L <: TxLevel](
+      scriptsProvided: ScriptsProvided[E],
+      utxo: UTxO[E],
+      tx: Tx[L, E],
+      allowedSupplementalDataHashes: Set[Bytes]
+  )(using t: AlonzoEraTx[E], l: t.bodyOf.Level[L]): Test[AlonzoUtxowPredFailure[E]] =
     val txBody = t.body[L](tx)
     val (inputHashes, txInsNoDataHash) = AlonzoUTxO.getInputDataHashesTxBody[E, L](
       utxo,
@@ -169,7 +188,6 @@ object AlonzoUtxow:
     )(using t.bodyOf, l, t.bodyOf.outputsOf, t.witsOf.scriptsOf)
     val txHashes: Set[Bytes] = t.witsOf.datsTxWits(t.wits[L](tx)).datums.keySet
     val unmatchedDatumHashes = inputHashes -- txHashes
-    val allowedSupplementalDataHashes = u.getSupplementalDataHashes[L](utxo, txBody)
     val supplimentalDatumHashes = txHashes -- inputHashes
     val (okSupplimentalDHs, notOkSupplimentalDHs) =
       supplimentalDatumHashes.partition(allowedSupplementalDataHashes.contains)
@@ -191,9 +209,9 @@ object AlonzoUtxow:
     * redeemers are exactly those of the purposes needed whose script provided is a Plutus script.
     * The redeemers no such purpose names, in their map's order (`ExtraRedeemers`), then the
     * purposes needed that no redeemer names, as items (`toAsItem`), in the order of the scripts
-    * needed with their scripts' hashes (`MissingRedeemers`). A purpose is Conway's (the evidence),
-    * as the purpose builders and `hoistPlutusPurpose` are not members of `AlonzoEraScript` yet
-    * (#85).
+    * needed with their scripts' hashes (`MissingRedeemers`). The purposes change form through the
+    * script class's `hoistPlutusPurpose`, a member of `ConwayEraScript` here as the purpose
+    * builders are not members of `AlonzoEraScript` yet (#85), so it serves Conway and Dijkstra.
     */
   def hasExactSetOfRedeemers[E <: EraTag, L <: TxLevel](
       tx: Tx[L, E],
@@ -202,27 +220,25 @@ object AlonzoUtxow:
   )(using
       t: AlonzoEraTx[E],
       l: t.bodyOf.Level[L],
-      ev: PlutusPurpose[AsIxItem, E] =:= ConwayPlutusPurpose[AsIxItem],
-      evIx: PlutusPurpose[AsIx, E] =:= ConwayPlutusPurpose[AsIx],
-      evItem: PlutusPurpose[AsItem, E] =:= ConwayPlutusPurpose[AsItem]
+      s: ConwayEraScript[E]
   ): Test[AlonzoUtxowPredFailure[E]] =
     given EraScript[E] = t.witsOf.scriptsOf
-    val toAsIx = ConwayPlutusPurpose.hoistPlutusPurpose[AsIxItem, AsIx](
+    val toAsIx = s.hoistPlutusPurpose[AsIxItem, AsIx](
       [ix, it] => (asIxItem: AsIxItem[ix, it]) => AsIxItem.toAsIx(asIxItem)
     )
-    val toAsItem = ConwayPlutusPurpose.hoistPlutusPurpose[AsIxItem, AsItem](
+    val toAsItem = s.hoistPlutusPurpose[AsIxItem, AsItem](
       [ix, it] => (asIxItem: AsIxItem[ix, it]) => AsIxItem.toAsItem(asIxItem)
     )
     val redeemersNeeded = scriptsNeeded.unAlonzoScriptsNeeded.flatMap { (sp, sh) =>
       scriptsProvided.unScriptsProvided
         .get(sh)
         .filterNot(EraScript.isNativeScript[E](_))
-        .map(_ => (toAsIx(ev(sp)), (sp, sh)))
+        .map(_ => (toAsIx(sp), (sp, sh)))
     }
     val (extraRdmrs, missingRdmrs) =
       extSymmetricDifference(
         t.witsOf.rdmrsTxWits(t.wits[L](tx)).entries.keys.toVector,
-        p => evIx(p),
+        identity,
         redeemersNeeded,
         _._1
       )
@@ -232,7 +248,7 @@ object AlonzoUtxow:
       ),
       Test.failureOnJust(
         NonEmptyList.fromList(
-          missingRdmrs.toList.map((_, needed) => (evItem.flip(toAsItem(ev(needed._1))), needed._2))
+          missingRdmrs.toList.map((_, needed) => (toAsItem(needed._1), needed._2))
         )
       )(AlonzoUtxowPredFailure.MissingRedeemers(_))
     )
@@ -434,13 +450,10 @@ object BabbageUtxow:
       s: StoredTxOut[E],
       v: Value[E] =:= MultiAssetValue,
       u: AlonzoEraUTxO[E],
-      sc: AlonzoEraScript[E],
+      sc: ConwayEraScript[E],
       era: Era[E],
       needed: ScriptsNeeded[E] =:= AlonzoScriptsNeeded[E],
       cached: StAnnTxCache[E] =:= Map[Bytes, SupportedPlutusRunnable[E]],
-      ev: PlutusPurpose[AsIxItem, E] =:= ConwayPlutusPurpose[AsIxItem],
-      evIx: PlutusPurpose[AsIx, E] =:= ConwayPlutusPurpose[AsIx],
-      evItem: PlutusPurpose[AsItem, E] =:= ConwayPlutusPurpose[AsItem],
       allegra: InjectUtxoFailure[AllegraUtxoPredFailure[E], E],
       alonzo: InjectUtxoFailure[AlonzoUtxoPredFailure[E], E],
       babbage: InjectUtxoFailure[BabbageUtxoPredFailure[E], E],
@@ -514,7 +527,7 @@ object BabbageUtxow:
           tx,
           scriptsProvided,
           needed(scriptsNeeded)
-        )(using t, top)
+        )(using t, top, sc)
       )
       _ <- onSignal(
         checked(ShelleyUtxow.validateVerifiedWits[E, TxLevel.Top](tx, verdicts)(using t, top))

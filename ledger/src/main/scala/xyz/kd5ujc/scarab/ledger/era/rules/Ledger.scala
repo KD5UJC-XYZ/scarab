@@ -18,12 +18,7 @@ import xyz.kd5ujc.scarab.ledger.{
 }
 import xyz.kd5ujc.scarab.plutus.{ScriptDecoder, ScriptEvaluator}
 import xyz.kd5ujc.scarab.ledger.era.*
-import xyz.kd5ujc.scarab.ledger.era.conway.{
-  ConwayPlutusPurpose,
-  ConwayProposals,
-  ConwayTxCert,
-  ConwayUTxO
-}
+import xyz.kd5ujc.scarab.ledger.era.conway.{ConwayProposals, ConwayTxCert, ConwayUTxO}
 import xyz.kd5ujc.scarab.ledger.rules.{Convert, Globals, Judge, Sts, Test, focus}
 import xyz.kd5ujc.scarab.ledger.state.{
   AccountAddress,
@@ -260,13 +255,10 @@ object ConwayLedger:
       s: StoredTxOut[E],
       v: Value[E] =:= MultiAssetValue,
       u: AlonzoEraUTxO[E],
-      sc: AlonzoEraScript[E],
+      sc: ConwayEraScript[E],
       era: Era[E],
       needed: ScriptsNeeded[E] =:= AlonzoScriptsNeeded[E],
       cached: StAnnTxCache[E] =:= Map[xyz.kd5ujc.scarab.codec.Bytes, SupportedPlutusRunnable[E]],
-      ev: PlutusPurpose[AsIxItem, E] =:= ConwayPlutusPurpose[AsIxItem],
-      evIx: PlutusPurpose[AsIx, E] =:= ConwayPlutusPurpose[AsIx],
-      evItem: PlutusPurpose[AsItem, E] =:= ConwayPlutusPurpose[AsItem],
       cert: TxCert[E] =:= ConwayTxCert,
       gs: GovState[E] =:= ConwayGovState,
       record: ProposalsRecord[E],
@@ -476,9 +468,6 @@ object ConwayLedger:
           era,
           needed,
           cached,
-          ev,
-          evIx,
-          evItem,
           allegra,
           alonzo,
           babbage,
@@ -533,13 +522,9 @@ object ShelleyLedgers:
       s: StoredTxOut[E],
       v: Value[E] =:= MultiAssetValue,
       u: AlonzoEraUTxO[E],
-      sc: AlonzoEraScript[E],
       era: Era[E],
       needed: ScriptsNeeded[E] =:= AlonzoScriptsNeeded[E],
       cached: StAnnTxCache[E] =:= Map[xyz.kd5ujc.scarab.codec.Bytes, SupportedPlutusRunnable[E]],
-      ev: PlutusPurpose[AsIxItem, E] =:= ConwayPlutusPurpose[AsIxItem],
-      evIx: PlutusPurpose[AsIx, E] =:= ConwayPlutusPurpose[AsIx],
-      evItem: PlutusPurpose[AsItem, E] =:= ConwayPlutusPurpose[AsItem],
       cert: TxCert[E] =:= ConwayTxCert,
       gs: GovState[E] =:= ConwayGovState,
       record: ProposalsRecord[E],

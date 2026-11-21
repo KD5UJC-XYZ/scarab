@@ -46,6 +46,12 @@ import xyz.kd5ujc.scarab.protocol.{DijkstraNotYet, Era}
   *
   * A case that reaches a rule this build does not have halts (`DijkstraNotYet.Rules`), and is an
   * incomplete gate, not agreement: the devnet's block with a transaction reaches ENTITIES.
+  *
+  * The era-typed UTXOW (`era.rules.DijkstraUtxow`, with its UTXO and Conway's UTXOS, #85) is run on
+  * every `utxow` case too, from the same parameters, certificate state, UTxO set and slot, the
+  * transaction read by the era decoder and annotated as `mkDijkstraStAnnTopTx` does: its failures,
+  * in their flat form (`DijkstraUtxowPredFailure.toStored`) and written by this suite's encoder,
+  * are the reference's bytes in its order, and the flat rule's.
   */
 class DijkstraRulesOracleSuite extends FunSuite:
   private val fixture = Path.of("fixtures", "reference", "dijkstra-rules", "cases.jsonl")
@@ -377,30 +383,40 @@ class DijkstraRulesOracleSuite extends FunSuite:
             DijkstraGovSignal(votes, proposals, Vector.empty)
           )
         )(g => dijkstra(conway(PredicateFailure.Gov(g))))
-      case "utxow" =>
-        val raw = hex(str(h.downField("tx")))
-        val tx = ok(DijkstraTx.inBlock(node(raw)))
-        val utxo = utxoOf(c)
-        val start = ledger(pp, epoch, utxo)
-        val setup = decoded(strings(h.downField("setup")))(DijkstraCert.decode)
-        val cert = runCerts(pp, epoch, setup) match
-          case Right(Right(s)) => s
-          case other           => fail(s"the setup does not pass: $other")
-        judged(
-          DijkstraSts.judge(DijkstraUtxow, Judgment.Policy.Accumulate)(
-            globals,
-            DijkstraUtxoEnv(
-              TestLedger.env.copy(slot = num(h.downField("slot")), epoch = epoch),
-              pp,
-              cert.pState,
-              cert,
-              utxo
-            ),
-            Counted(start.state.utxo, xyz.kd5ujc.scarab.ledger.PlutusStats.zero),
-            tx
-          )
-        )(f => utxow(f))
-      case other => fail(s"kind $other")
+      case "utxow" => judged(flatUtxow(c, xyz.kd5ujc.scarab.ledger.TxEnv.Validation.All))(utxow)
+      case other   => fail(s"kind $other")
+
+  /** The flat UTXOW on a `utxow` case under `validation`. */
+  private def flatUtxow(c: Json, validation: xyz.kd5ujc.scarab.ledger.TxEnv.Validation) =
+    val h = c.hcursor
+    val pp = params(c)
+    val epoch = num(h.downField("epoch"))
+    val tx = ok(DijkstraTx.inBlock(node(hex(str(h.downField("tx"))))))
+    val utxo = utxoOf(c)
+    val start = ledger(pp, epoch, utxo)
+    DijkstraSts.judge(DijkstraUtxow, Judgment.Policy.Accumulate)(
+      globals,
+      DijkstraUtxoEnv(
+        TestLedger.env
+          .copy(slot = num(h.downField("slot")), epoch = epoch, validation = validation),
+        pp,
+        setupCerts(c).pState,
+        setupCerts(c),
+        utxo
+      ),
+      Counted(start.state.utxo, xyz.kd5ujc.scarab.ledger.PlutusStats.zero),
+      tx
+    )
+
+  /** The certificate state a `utxow` case's setup certificates leave. */
+  private def setupCerts(c: Json): ConwayCertState =
+    val h = c.hcursor
+    val pp = params(c)
+    val epoch = num(h.downField("epoch"))
+    val setup = decoded(strings(h.downField("setup")))(DijkstraCert.decode)
+    runCerts(pp, epoch, setup) match
+      case Right(Right(s)) => s
+      case other           => fail(s"the setup does not pass: $other")
 
   private lazy val observations: Vector[(String, Verdict, Verdict)] = cases.map { c =>
     (str(c.hcursor.downField("name")), scarab(c), reference(c))
@@ -435,4 +451,109 @@ class DijkstraRulesOracleSuite extends FunSuite:
         s"$name remains incomplete; the unchanged reference verdict is $expected"
       )
     }
+  }
+
+  // ---- the era-typed UTXOW ------------------------------------------------------------------------
+
+  /** An era of history that ends far after every case's slot: no case has a redeemer, so the
+    * forecast is not read.
+    */
+  private val history: xyz.kd5ujc.scarab.ledger.Horizon =
+    val params = xyz.kd5ujc.scarab.ledger.Horizon.Params(100, 1000, 30, 30)
+    xyz.kd5ujc.scarab.ledger.Horizon
+      .History(Vector.empty, xyz.kd5ujc.scarab.ledger.Horizon.Edge(0, 0, 0), params, Some(params))
+      .at(xyz.kd5ujc.scarab.ledger.Horizon.Transition.Unknown(Some(BigInt(1000))))
+
+  private def eraUtxow(c: Json): Verdict =
+    eraUtxowRun(c, xyz.kd5ujc.scarab.ledger.TxEnv.Validation.All) match
+      case Left(defect)    => fail(s"${str(c.hcursor.downField("name"))}: $defect")
+      case Right(Right(_)) => Verdict.Accepted
+      case Right(Left(fs)) => Verdict.Refused(fs.toChain.toVector.map(eraBytes))
+
+  private def eraBytes(f: xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraUtxoRun.Rec): Bytes =
+    utxow(
+      xyz.kd5ujc.scarab.ledger.era.rules.DijkstraUtxowPredFailure
+        .toStored(f, _ => None)
+        .fold(u => fail(s"no flat form of $u"), identity)
+    )
+
+  private def eraUtxowRun(c: Json, validation: xyz.kd5ujc.scarab.ledger.TxEnv.Validation) =
+    import xyz.kd5ujc.scarab.ledger.era.dijkstra.{DijkstraCorpus, DijkstraUtxoRun}
+    import xyz.kd5ujc.scarab.ledger.era.rules.{DijkstraUtxoContext, DijkstraUtxoEnv as EraUtxoEnv}
+    val h = c.hcursor
+    val pp = params(c)
+    val epoch = num(h.downField("epoch"))
+    val tx = ok(
+      xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraTx.inBlock(node(hex(str(h.downField("tx")))))
+    )
+    val utxo = utxoOf(c)
+    val cert = setupCerts(c)
+    val env = EraUtxoEnv[Dijkstra](
+      num(h.downField("slot")),
+      DijkstraCorpus.era(pp),
+      cert.pState,
+      cert,
+      DijkstraUtxoRun.originalUtxo(utxo, tx)
+    )
+    DijkstraUtxoRun.run(
+      env,
+      DijkstraUtxoRun.annotate(s => fail(s"the clock was read at $s"), env, tx),
+      DijkstraUtxoContext(Network.Testnet, 0, history, validation),
+      ledger(pp, epoch, utxo).state.utxo,
+      xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default,
+      xyz.kd5ujc.scarab.ledger.Verdicts.Direct,
+      xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder
+    )
+
+  private lazy val utxowCases: Vector[Json] =
+    cases.filter(c => str(c.hcursor.downField("kind")) == "utxow")
+
+  test("the era-typed UTXOW gives the reference's verdict on every utxow case, byte for byte") {
+    assertEquals(utxowCases.size, 17)
+    val differing = utxowCases.flatMap { c =>
+      val name = str(c.hcursor.downField("name"))
+      val ours = eraUtxow(c)
+      val expected = reference(c)
+      Option.when(ours != expected)(s"$name: $ours, the reference $expected")
+    }
+    assertEquals(differing, Vector.empty[String])
+  }
+
+  test("the era-typed UTXOW gives the flat rule's verdict on every utxow case") {
+    val differing = utxowCases.flatMap { c =>
+      val name = str(c.hcursor.downField("name"))
+      val (ours, flat) = (eraUtxow(c), scarab(c))
+      Option.when(ours != flat)(s"$name: $ours, the flat rule $flat")
+    }
+    assertEquals(differing, Vector.empty[String])
+  }
+
+  test("the era-typed UTXOW leaves the flat rule's state on every utxow case both admit") {
+    val all = xyz.kd5ujc.scarab.ledger.TxEnv.Validation.All
+    val admitted = utxowCases.flatMap { c =>
+      val name = str(c.hcursor.downField("name"))
+      (eraUtxowRun(c, all), flatUtxow(c, all)) match
+        case (Right(Right((era, _))), Right(Right(flat))) =>
+          assertEquals(era, flat.state, name)
+          Some(name)
+        case (Right(Left(_)), Right(Left(_))) => None
+        case other                            => fail(s"$name: $other")
+    }
+    assertEquals(admitted.size, 4)
+  }
+
+  test(
+    "under the policy that skips the signal's checks, the era-typed UTXOW gives the flat rule's"
+  ) {
+    val nonStatic = xyz.kd5ujc.scarab.ledger.TxEnv.Validation.NonStatic
+    val differing = utxowCases.flatMap { c =>
+      val name = str(c.hcursor.downField("name"))
+      val era = eraUtxowRun(c, nonStatic) match
+        case Left(defect)    => fail(s"$name: $defect")
+        case Right(Right(_)) => Verdict.Accepted
+        case Right(Left(fs)) => Verdict.Refused(fs.toChain.toVector.map(eraBytes))
+      val flat = judged(flatUtxow(c, nonStatic))(utxow)
+      Option.when(era != flat)(s"$name: $era, the flat rule $flat")
+    }
+    assertEquals(differing, Vector.empty[String])
   }
