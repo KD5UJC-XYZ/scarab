@@ -8,7 +8,7 @@ import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
 import xyz.kd5ujc.scarab.ledger.{Block, BlockTransport, BlockTransportError, Header}
 import xyz.kd5ujc.scarab.ledger.byron.ByronError
 import xyz.kd5ujc.scarab.protocol.Era
-import xyz.kd5ujc.scarab.consensus.{BlockRef, LeiosBlockInfo}
+import xyz.kd5ujc.scarab.consensus.{BlockRef, LeiosBlockInfo, LeiosCert}
 import xyz.kd5ujc.scarab.ledger.{ChainError, StorageError}
 
 class FetchedBlockIntegritySuite extends FunSuite:
@@ -99,6 +99,31 @@ class FetchedBlockIntegritySuite extends FunSuite:
         "a Dijkstra block's Leios fields are read from its decoded body"
       )
     }
+    // the devnet's Dijkstra blocks carry no certificate: block 64,850 of the public Leios testnet
+    // (`certifying`, fixtures/leios/README.md) carries one, so the seeded certificate is checked
+    // when it is not `Absent` too
+    val certifying = Files
+      .readAllLines(Path.of("fixtures/leios/testnet/blocks-rc-2026w44.tsv"))
+      .asScala
+      .toVector
+      .map(_.split('\t'))
+      .find(_(0) == "certifying")
+      .map(row => Bytes.fromHex(row(5)).fold(e => fail(e.message), identity))
+      .getOrElse(fail("no certifying block in the Leios testnet's blocks"))
+    val certified = Block.decode(certifying, epochSlots).fold(e => fail(e.message), identity)
+    val seededCertified =
+      ReceivedBlockRecovery.seeded(certifying, epochSlots).fold(e => fail(e.message), identity)
+    assertEquals(seededCertified.header, certified.header)
+    assertEquals(
+      seededCertified.leios.cert,
+      LeiosCert.Carried,
+      "a Dijkstra block that carries a certificate is seeded as carrying one"
+    )
+    assertEquals(
+      seededCertified.leios,
+      LeiosBlockInfo.of(certified),
+      "and with the announcement its header makes"
+    )
   }
 
   test("restart recovery verifies original bytes and every persisted reference field") {
