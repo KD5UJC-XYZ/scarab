@@ -2285,8 +2285,72 @@ Conway's rules on the classes follow as the rest of stage 2.
       reference's verdicts on them are its cases' expectations on built blocks, not its bytes;
     - the failures are compared through the flat form and the suite's encoder: the era failures have no encoder yet
       (#796).
-  - Not yet (#54): BBODY on the node's running path, the application of an endorser block's closure before the certifying
-    block, and the certificate's checks at application (D8b, D8c).
+  - Not yet (#54): BBODY on the node's running path, and the certificate's checks at application (D8c); the closure's
+    application is below.
+- **The application of an endorser block's closure** (`era/rules/DijkstraClosure.scala`; ouroboros-consensus 2416493b,
+  `ouroboros-consensus-cardano/src/shelley/Ouroboros/Consensus/Shelley/Ledger/Leios.hs:167-252`, through
+  `resolveAndApplyLeiosClosure`, `Storage/LedgerDB/Forker.hs:1066-1104`):
+  - A certifying ranking block's closure is applied to the state before that block, unticked, before the block is
+    ticked and its BBODY run, on the apply, reapply and replay paths alike (`Forker.hs:579-687`,
+    `LedgerDB/V2/LedgerSeq.hs:267-310`). `applyLeiosClosure` (`Leios.hs:210-252`) applies each transaction in the
+    closure's order by Dijkstra's LEDGER under `ValidateNone`, with one environment for all of them, `mkMempoolEnv` at
+    the slot of that state's tip, zero at the origin (`fromWithOrigin (SlotNo 0) (getTipSlot lst)`, `:237`): no epoch
+    (LEDGER takes the slot's) and the least index. Each transaction is annotated by `mkStAnnTx` with an empty cache
+    against the UTxO set the transactions before it left (`applyOne`, `:241-252`). The closure's bytes (the sum of its
+    transactions' `sizeTxF`, a `Word64`, `:223-230`) are what the state's cumulative transaction bytes gain with it;
+    adding them is the node's, as the counter is consensus's. The function takes the state and the environment it is
+    given and ticks nothing: the caller gives it the certifying block's parent, unticked, and that state's parameters
+    and account, as `applyBlock` hands `resolveAndApplyLeiosClosure` the parent's state and ticks the block only
+    after (`Forker.hs:674-685`); that is the running path's obligation (D8c).
+  - `ValidateNone` (small-steps `Extended.hs:714-742`) skips every predicate and every labelled step; every labelled
+    step of the rules carries `lblStatic`, the static checks and the scripts' evaluation (`when2Phase`, labelled
+    `lblStatic` and `lbl2Phase`, `Alonzo/Rules/Utxos.hs:418`, cardano-ledger 9df9f98c). So the transition runs
+    the era LEDGER with the policy that skips those (`TxEnv.Validation.NonStatic`, which also makes UTXOS evaluate no
+    script and take the validity flag as it is) and a judgment that records nothing and never fails, its events
+    discarded (`EPDiscard`). The reference's checks are lazy, so a skipped one is never evaluated; the node computes
+    some predicates before the judgment drops them, so a defect raised while computing one is raised where the
+    reference meets none. A closure the committee certified passes them; this is a Gap
+    ([#54](https://github.com/KD5UJC-XYZ/scarab/issues/54#issuecomment-7063435066)).
+  - `resolveLeiosClosure` (`:167-177`) reads what the store's `lookupEbClosure` gives: none is
+    `LeiosClosureDefect.Missing`, and the first transaction that does not decode as an endorser block holds it
+    (`deserializeTxForLeios`, the block form with its flag, one whole item) is `TxUndecodable` with its hash and the
+    decoder's typed cause, the rest not decoded. Both are the reference's `LeiosClosureError`
+    (`LeiosDemoTypes.hs:1828-1835`), which it meets with `error` (`Forker.hs:1048-1052, 1084-1087`): a defect of the
+    node's own that stops it, never a refusal of the block, since chain selection applies a certifying block only once
+    its closure is acquired (`isUnacquiredCertRB`, `ChainSel.hs:1778-1805`). Never a closure applied as empty.
+  - Evidence (`DijkstraClosureSuite`, on the endorser blocks' transactions of
+    `fixtures/reference/leios-testnet-chain-contexts`):
+    - the lookup: none is `Missing`, an empty complete closure is one; a closure's transactions read in order with
+      their hashes; a transaction cut short or followed by another item is `TxUndecodable` with its hash and its
+      decoder's cause (`UnexpectedEnd`, `TrailingBytes`), the first such stopping the rest; a transaction read alone gives the build's verdict on every transaction case of
+      `fixtures/reference/leios-testnet-blocks`, and an accepted one, as each of the chain's 200, the value the era's
+      reader of a block's transaction gives;
+    - the environment: the tip's slot, zero at the origin, no epoch, the least index, the chain's account;
+    - each of the 111 endorser-block transactions applied as a closure to a state holding only the outputs it spends,
+      with a context that validates every check and an evaluator that fails the test if called: no failure and no
+      script evaluated (LEDGER with every check reaches that evaluator on some of them), its inputs spent and its
+      outputs created; the sample's five transactions of the endorser block at slot 300692, a prefix of its closure,
+      applied as one closure equal them applied in turn, the ledger state and the proposals each leaves handed to the
+      next, and their bytes are the sum of their sizes;
+    - the order, on built transactions from a state holding only the outputs from outside the closure: a chain
+      transaction that makes a proposal, one that pays an output and one that spends it, the output created and then
+      spent and the proposal kept, the same as each applied in turn; in the reverse order the output is left;
+    - a transaction flagged invalid (crafted, as every recorded one is flagged valid) spends its collateral and
+      creates its collateral return, not its body's outputs, its body's input left;
+    - the four transactions whose validity interval ends before the slot of the ranking block that certifies their
+      endorser block apply at the endorser block's slot, the tip of the state before that block; the control: LEDGER
+      with every check refuses each at the ranking block's slot as outside its validity interval, and not at the
+      endorser block's, so validating at the ranking block's slot would split from the chain;
+    - the slot's epoch: a proposal applied with the tip in an epoch's last slot expires by that epoch, and one slot
+      later by the next, so the closure's epoch is the tip's, not the certifying block's.
+  - Incomplete (CNF-2): no recording holds a whole closure with the state before its certifying block, so the state
+    after one is checked against its parts, not against the reference's; that is the offline replay's (#54). Nor
+    is a whole closure applied on recorded data: the fixture is a sample of transactions with redeemers and records no
+    endorser block's transaction list; its five of the endorser block at slot 300692 are the first five of that block's
+    39, as the recorded endorser block (which no fixture holds) lists them. The closure's bytes are checked against its transactions' `sizeTxF`, the function the reference sums, not against a
+    recorded counter.
+  - Not yet (#54): the store's lookup, the closure applied before the tick, its bytes added to the state's counter and
+    the defect stopping the node, on the node's running path (D8c).
 - **Next, Conway's rules.** The first rule ported is one that needs no parameters, the second one that
   does, each under a differential against the flat rule on the recorded blocks and the refusal corpus.
 - The body is read through the flat decoder for now. What only the projection refuses (an update, genesis
