@@ -1,13 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import cats.Functor
 import cats.effect.{Async, Resource}
 import cats.mtl.Raise
 import fs2.io.file.Path
 import xyz.kd5ujc.scarab.ledger.StorageError
 import xyz.kd5ujc.scarab.protocol.ReferenceBuild
-import xyz.kd5ujc.scarab.storage.{LeiosStore, LeiosStoreError, LeiosStoreLocks, RocksLeiosStore}
+import xyz.kd5ujc.scarab.storage.{
+  LeiosBackground,
+  LeiosStore,
+  LeiosStoreError,
+  LeiosStoreLocks,
+  RocksLeiosStore
+}
 
 /** The endorser-block store of a run. The node opens it, as cardano-node b004fe0c opens its LeiosDB
   * in `handleSimpleNode` once the database's marker is checked and closes it after the run
@@ -48,8 +53,6 @@ private[node] object LeiosStorage:
           case (LeiosDbBackend.InMemory, _) | (LeiosDbBackend.SQLite, None) =>
             Resource.pure(None)
 
-  /** The store's errors as the node's ([[StorageError.LeiosStore]]). */
-  def lifted[F[_]](using outer: Raise[F, StorageError]): Raise[F, LeiosStoreError] =
-    new Raise[F, LeiosStoreError]:
-      def functor: Functor[F] = outer.functor
-      def raise[E2 <: LeiosStoreError, A](e: E2): F[A] = outer.raise(StorageError.LeiosStore(e))
+  /** The store's errors as the node's ([[StorageError.LeiosStore]], [[LeiosBackground.lifted]]). */
+  def lifted[F[_]](using Raise[F, StorageError]): Raise[F, LeiosStoreError] =
+    LeiosBackground.lifted[F]

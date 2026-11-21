@@ -262,6 +262,26 @@ build opens none, nor does the backend `InMemory` (the reference's in-memory Lei
 no store for) or a run without `--db`. A failed open stops the start with `StorageError.LeiosStore`
 and the store's typed cause.
 
+The chain database drives the open store as the reference's ChainDB background drives its LeiosDB
+(`ChainDB/Impl/Background.hs` at ouroboros-consensus 2416493b). Each copy of blocks to the immutable
+store promotes, in one `promoteToImmutable` call once the blocks are appended and before the copy's
+collection is scheduled, the endorser block each copied ranking block certifies: the one its
+predecessor announced, at the predecessor's slot, read from the copied blocks and the immutable tip
+before the copy, where the reference reads its VolatileDB (`copyToImmutableDB` and `certifiedEb`,
+230-310). Each collection of the received log then collects the store at its slot
+(`garbageCollectBlocks`, 547-559; both `LeiosBackgroundSuite`); the reference prunes its in-memory
+LeiosTxCache just before, which Scarab does not have. A failure of either stops the node, as the
+collection's failure does. A copy appends before it promotes, so a run that stopped in between, or
+whose promotion failed, leaves a certifying block immutable and its endorser block unpinned; the
+reference leaves it so, and its next collection can delete that endorser block. Scarab's open closes
+the window, an Improvement ([decisions register](../decisions.md#genesis-storage-and-keys),
+2026-11-21): before any collection can run it promotes what the immutable blocks certify, walking
+those at or after the slot of the oldest block of the selected-chain log, with the predecessor of the
+first. Each block is logged by the extension that applies it, before its copy, and the log is
+collected only below the tip of a copy whose promotion returned, so every block of a copy whose
+promotion did not return is still logged, whatever slot its endorser block is held at
+(`LeiosBackgroundSuite`).
+
 `import-haskell-db` reads a Leios node's `leios.imm.db` and `leios.vol.db`, when the database has
 them, into this store before it imports the blocks (`leiosPoints`, `leiosBodies` and
 `leiosTransactions` on its `done` line), into a new store at `leios.import/` beside it that replaces
