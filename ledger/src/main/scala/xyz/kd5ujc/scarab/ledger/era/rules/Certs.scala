@@ -14,6 +14,7 @@ import xyz.kd5ujc.scarab.ledger.{
   LedgerDefect,
   LedgerFailure,
   Mismatch,
+  TxEnv,
   Voter
 }
 import xyz.kd5ujc.scarab.ledger.era.{
@@ -47,11 +48,13 @@ import xyz.kd5ujc.scarab.ledger.state.{
   CommitteeAuthorization,
   CommitteeState,
   CompactCoin,
+  Conway,
   Credential,
   DRep,
   DRepRole,
   DRepState,
   DState,
+  Dijkstra,
   ColdCommittee,
   EpochInterval,
   EpochNo,
@@ -84,7 +87,7 @@ import xyz.kd5ujc.scarab.protocol.{ReferenceBuild, StateLayout}
 // certificate holds one.
 
 /** The protocol parameters' field `l` (`ppLensHKD . l`). */
-private def field[E <: EraTag, A](pp: PParams[E])(
+private[rules] def field[E <: EraTag, A](pp: PParams[E])(
     l: monocle.Lens[xyz.kd5ujc.scarab.ledger.era.PParamsHKD[Identity, E], A]
 ): A = PParams.lensHKD[E].andThen(l).get(pp)
 
@@ -96,7 +99,7 @@ private def major[E <: EraTag](pp: PParams[E])(using p: EraPParams[E]): Int =
   * another build is refused ([[LedgerFailure.PoolParamsLayout]]), as the reference, one build,
   * never meets one.
   */
-private def sameLayout[F[_]: Monad](params: StakePoolParams, layout: StateLayout)(using
+private[rules] def sameLayout[F[_]: Monad](params: StakePoolParams, layout: StateLayout)(using
     Raise[F, LedgerDefect]
 ): F[Unit] =
   val found = params.blsKey.stateLayout
@@ -108,16 +111,16 @@ private def sameLayout[F[_]: Monad](params: StakePoolParams, layout: StateLayout
     )
   )
 
-private def vocab[F[_]: Monad, A](result: Either[VocabError, A])(using
+private[rules] def vocab[F[_]: Monad, A](result: Either[VocabError, A])(using
     Raise[F, LedgerDefect]
 ): F[A] = Sts.lift[F, LedgerDefect, A](result.leftMap(LedgerFailure.Vocab(_)))
 
 /** The judgment of a sub-rule, whose failures `wrap` puts in the rule's (`wrapFailed`). */
-private def wrapped[F[_], G, H](judge: Judge[F, H])(wrap: G => H): Judge[F, G] =
+private[rules] def wrapped[F[_], G, H](judge: Judge[F, H])(wrap: G => H): Judge[F, G] =
   judge.contramap(wrap)
 
 /** The events of a sub-rule, which `wrap` puts in the rule's (`wrapEvent`). */
-private def told[F[_], G, H](events: Tell[F, Chain[H]])(wrap: G => H): Tell[F, Chain[G]] =
+private[rules] def told[F[_], G, H](events: Tell[F, Chain[H]])(wrap: G => H): Tell[F, Chain[G]] =
   new Tell[F, Chain[G]]:
     val functor: Functor[F] = events.functor
     def tell(l: Chain[G]): F[Unit] = events.tell(l.map(wrap))
@@ -775,60 +778,142 @@ object WithdrawalsRule:
     case ReferenceBuild.Release11_1                                => LedgerAboveVersion10
     case ReferenceBuild.Release11_2 | ReferenceBuild.LeiosB004fe0c => Ledger
 
+/** `EraRule "CERT" era`: the CERT transition of era `E`, which CERTS runs on each certificate
+  * (`trans @(EraRule "CERT" era)`, `Conway/Rules/Certs.hs:224-225`, cardano-ledger 9df9f98c):
+  * Conway's own ([[CERT]], [[CertRule.conway]]), and Dijkstra's ([[DijkstraCERT]],
+  * [[CertRule.dijkstra]]), whose POOL reads the validation policy the judgment runs under. `D` is
+  * what the era's CERT raises where it reaches no verdict, beyond the defects of every rule
+  * (`LedgerDefect`): nothing at Conway, POOL's [[PoolDefect]] at Dijkstra.
+  */
+trait CertRule[E <: EraTag, D]:
+  def certTransition[F[_]: Monad](env: CertEnv[E], txCert: TxCert[E])(using
+      ask: Ask[F, Globals],
+      st: Stateful[F, CertState[E]],
+      defect: Raise[F, LedgerDefect],
+      certDefect: Raise[F, D],
+      judge: Judge[F, CertPredFailure[E]],
+      events: Tell[F, Chain[CertEvent[E]]]
+  ): F[Unit]
+
+object CertRule:
+  /** Conway's CERT for an era whose certificate is Conway's ([[CERT.certTransition]]), which raises
+    * nothing of its own.
+    */
+  def conway[E <: EraTag](using
+      ev: TxCert[E] =:= ConwayTxCert,
+      p: ConwayEraPParams[E],
+      c: ConwayEraCertState[E],
+      embed: EmbedInCert[E],
+      deleg: InjectDeleg[E],
+      pool: InjectPool[E],
+      govCert: InjectGovCert[E]
+  ): CertRule[E, Nothing] = new CertRule[E, Nothing]:
+    override def certTransition[F[_]: Monad](env: CertEnv[E], txCert: TxCert[E])(using
+        ask: Ask[F, Globals],
+        st: Stateful[F, CertState[E]],
+        defect: Raise[F, LedgerDefect],
+        certDefect: Raise[F, Nothing],
+        judge: Judge[F, CertPredFailure[E]],
+        events: Tell[F, Chain[CertEvent[E]]]
+    ): F[Unit] = CERT.certTransition[E, F](env, txCert)
+
+  /** `type instance EraRule "CERT" ConwayEra = CERT ConwayEra`. */
+  given conwayEra: CertRule[Conway, Nothing] = conway[Conway]
+
+  /** Dijkstra's CERT ([[DijkstraCERT.certTransition]]) under the validation policy `validation`,
+    * which its POOL's static check reads (`checkFailOnJustStatic`, `Dijkstra/Rules/Pool.hs:248`,
+    * cardano-ledger 9df9f98c): a value of the judgment, as the reference's is of its options. A
+    * voting key its POOL cannot check is raised ([[PoolDefect]]).
+    */
+  def dijkstra(validation: TxEnv.Validation): CertRule[Dijkstra, PoolDefect] =
+    new CertRule[Dijkstra, PoolDefect]:
+      override def certTransition[F[_]: Monad](
+          env: CertEnv[Dijkstra],
+          txCert: TxCert[Dijkstra]
+      )(using
+          ask: Ask[F, Globals],
+          st: Stateful[F, CertState[Dijkstra]],
+          defect: Raise[F, LedgerDefect],
+          certDefect: Raise[F, PoolDefect],
+          judge: Judge[F, CertPredFailure[Dijkstra]],
+          events: Tell[F, Chain[CertEvent[Dijkstra]]]
+      ): F[Unit] = DijkstraCERT.certTransition[Dijkstra, F](env, txCert, validation)
+
+/** CERTS's base case in era `E`, on the empty sequence of certificates: the 11.1 build's
+  * (`Conway/Rules/Certs.hs:223-244`, cardano-ledger f649f975), where the withdrawals are CERTS's
+  * below version 11, or the later builds' (`Empty -> pure certState`, `:220`, cardano-ledger
+  * 9df9f98c), which leaves the state as it is. Conway's era types follow the 11.1 build's ledger;
+  * Dijkstra's CERTS has no withdrawals' case to report ([[CertsWithdrawals]]), so its base case is
+  * the later one by its type, not by its protocol version.
+  */
+enum CertsBaseCase[E <: EraTag]:
+  /** The 11.1 build's, `withdrawals` the evidence that the era's CERTS reports the withdrawals that
+    * do not drain their accounts (`WithdrawalsNotInRewardsCERTS`).
+    */
+  case Withdrawals(withdrawals: Map[AccountAddress, Coin] =:= CertsWithdrawals[E])
+
+  /** The state as it is. */
+  case Unchanged()
+
+object CertsBaseCase:
+  given conway: CertsBaseCase[Conway] = Withdrawals(summon)
+  given dijkstra: CertsBaseCase[Dijkstra] = Unchanged()
+
 /** CERTS (`Conway/Rules/Certs.hs`, cardano-ledger f649f975): a transaction's certificates. */
 object CERTS:
   /** `conwayCertsTransition` (`Conway/Rules/Certs.hs:203-246`, cardano-ledger f649f975): by
     * recursion on the prefix (`gamma :|> txCert`), CERTS of all but the last certificate as a
     * sub-rule, then CERT of the last, so the first certificate is the deepest. The empty sequence
-    * is the base case: where the build the judgment follows (`Globals`) leaves them to CERTS, the
-    * withdrawals must drain their accounts, the DReps' expiries are updated and the accounts
-    * drained; otherwise that is LEDGER's ([[WithdrawalsRule]]). The recursion is a fold, each step
-    * a program over the previous, which the interpreter runs in constant stack. CERT's failures and
-    * events are embedded in CERTS's ([[EmbedCertInCerts]]).
+    * is the era's base case ([[CertsBaseCase]]): in the 11.1 build's, where the build the judgment
+    * follows (`Globals`) leaves them to CERTS, the withdrawals must drain their accounts, the
+    * DReps' expiries are updated and the accounts drained; otherwise that is LEDGER's
+    * ([[WithdrawalsRule]]). The recursion is a fold, each step a program over the previous, which
+    * the interpreter runs in constant stack. Each certificate is judged by the era's CERT
+    * ([[CertRule]]), whose failures and events are embedded in CERTS's ([[EmbedCertInCerts]]), and
+    * whose own defects `certDefect` raises. Dijkstra's CERTS is this transition
+    * (`Dijkstra/Rules/Certs.hs:20-22`, cardano-ledger 9df9f98c), with Dijkstra's CERT and the later
+    * builds' base case.
     */
-  def conwayCertsTransition[E <: EraTag, F[_]: Monad](
+  def conwayCertsTransition[E <: EraTag, D, F[_]: Monad](
       env: CertsEnv[E],
       certificates: Vector[TxCert[E]]
   )(using
       t: EraTx[E],
       b: ConwayEraTxBody[E],
-      ev: TxCert[E] =:= ConwayTxCert,
       p: ConwayEraPParams[E],
       c: ConwayEraCertState[E],
       embed: EmbedCertInCerts[E],
-      embedCert: EmbedInCert[E],
+      cert: CertRule[E, D],
+      baseCase: CertsBaseCase[E],
       inject: InjectCertsFailure[ConwayCertsPredFailure[E], E],
-      deleg: InjectDeleg[E],
-      pool: InjectPool[E],
-      govCert: InjectGovCert[E],
       ask: Ask[F, Globals],
       st: Stateful[F, CertState[E]],
       defect: Raise[F, LedgerDefect],
+      certDefect: Raise[F, D],
       judge: Judge[F, CertsPredFailure[E]],
       events: Tell[F, Chain[CertsEvent[E]]]
   ): F[Unit] =
     val pp = env.pp
-    val base = ask.ask[Globals].flatMap { globals =>
-      if WithdrawalsRule.of(globals.ledger.referenceBuild).inLedger(p.ppProtocolVersionL.get(pp))
-      then Monad[F].unit
-      else empty[E, F](env)
-    }
+    val base = baseCase match
+      case CertsBaseCase.Withdrawals(withdrawals) =>
+        ask.ask[Globals].flatMap { globals =>
+          if WithdrawalsRule
+              .of(globals.ledger.referenceBuild)
+              .inLedger(p.ppProtocolVersionL.get(pp))
+          then Monad[F].unit
+          else empty[E, F](env, withdrawals)
+        }
+      case CertsBaseCase.Unchanged() => Monad[F].unit
     val certEnv = CertEnv[E](pp, env.currentEpoch, env.currentCommittee, env.committeeProposals)
     certificates.foldLeft(base)((gamma, txCert) =>
       judge.nest(gamma) *>
         judge.nest(
-          CERT.certTransition[E, F](certEnv, txCert)(using
+          cert.certTransition[F](certEnv, txCert)(using
             summon[Monad[F]],
-            ev,
-            p,
-            c,
-            embedCert,
-            deleg,
-            pool,
-            govCert,
             ask,
             st,
             defect,
+            certDefect,
             wrapped(judge)(embed.wrapFailed),
             told(events)(embed.wrapEvent)
           )
@@ -836,9 +921,12 @@ object CERTS:
     )
 
   /** The base case of the 11.1 build below version 11 (`Conway/Rules/Certs.hs:228-244`,
-    * cardano-ledger f649f975).
+    * cardano-ledger f649f975), in an era whose CERTS reports the withdrawals (`withdrawals`).
     */
-  private def empty[E <: EraTag, F[_]: Monad](env: CertsEnv[E])(using
+  private def empty[E <: EraTag, F[_]: Monad](
+      env: CertsEnv[E],
+      withdrawalsNotInRewards: Map[AccountAddress, Coin] =:= CertsWithdrawals[E]
+  )(using
       t: EraTx[E],
       b: ConwayEraTxBody[E],
       p: ConwayEraPParams[E],
@@ -873,7 +961,9 @@ object CERTS:
         )
       )
       _ <- Sts.failOnJust[F, Map[AccountAddress, Coin], CertsPredFailure[E]](notInRewards)(ws =>
-        inject.injectFailure(ConwayCertsPredFailure.WithdrawalsNotInRewardsCERTS(ws))
+        inject.injectFailure(
+          ConwayCertsPredFailure.WithdrawalsNotInRewardsCERTS(withdrawalsNotInRewards(ws))
+        )
       )
       voted <- vocab[F, CertState[E]](
         updateVotingDRepExpiries[E](

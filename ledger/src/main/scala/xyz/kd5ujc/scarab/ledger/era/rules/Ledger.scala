@@ -274,6 +274,7 @@ object ConwayLedger:
       embedCerts: EmbedCertInCerts[E],
       embedCert: EmbedInCert[E],
       injectCerts: InjectCertsFailure[ConwayCertsPredFailure[E], E],
+      certsBase: CertsBaseCase[E],
       deleg: InjectDeleg[E],
       pool: InjectPool[E],
       govCert: InjectGovCert[E],
@@ -382,25 +383,25 @@ object ConwayLedger:
                 )
               )
             yield ()
+        // Conway's CERT raises nothing of its own: `Raise` is contravariant in its error, so the
+        // defects' capability is also one of `Nothing`
         _ <- judge.nest(
-          CERTS.conwayCertsTransition[E, F](
+          CERTS.conwayCertsTransition[E, Nothing, F](
             CertsEnv[E](tx, pp, curEpochNo, committee, committeeProposals),
             b.certs[TxLevel.Top](txBody)(using b.top)
           )(using
             Monad[F],
             t,
             b,
-            cert,
             pc,
             c,
             embedCerts,
-            embedCert,
+            CertRule.conway[E](using cert, pc, c, embedCert, deleg, pool, govCert),
+            certsBase,
             injectCerts,
-            deleg,
-            pool,
-            govCert,
             ask,
             state.focus(certL),
+            defect,
             defect,
             judge.contramap(embed.wrapCertsFailed),
             toldIn(events)(embed.wrapCertsEvent)
@@ -540,6 +541,7 @@ object ShelleyLedgers:
       embedCerts: EmbedCertInCerts[E],
       embedCert: EmbedInCert[E],
       injectCerts: InjectCertsFailure[ConwayCertsPredFailure[E], E],
+      certsBase: CertsBaseCase[E],
       deleg: InjectDeleg[E],
       pool: InjectPool[E],
       govCert: InjectGovCert[E],

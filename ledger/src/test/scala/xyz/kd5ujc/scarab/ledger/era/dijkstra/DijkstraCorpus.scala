@@ -255,6 +255,14 @@ object DijkstraCorpus extends Assertions:
         Recorded.ExtraneousScriptWitnesses(items(scripts).map(bytes).toSet)
       case _ => Recorded.Other
 
+  /** A certificate as the era reads it from the bytes `raw`: the flat decoder's, at the reference's
+    * types ([[DijkstraProcedures.cert]]), as Dijkstra's body reads each.
+    */
+  def eraCert(raw: Bytes): DijkstraTxCert =
+    val n = node(raw)
+    val flat = DijkstraCert.decode(n).fold(e => fail(e.toString), identity)
+    DijkstraProcedures.cert(flat, Right(n)).fold(e => fail(e.toString), identity)
+
   // ---- a purpose's item as both resolutions can say it, the flat rules' and the era types'
 
   def txIn(i: DijkstraTxIn): TxIn = TxIn(i.id, BigInt(i.index))
