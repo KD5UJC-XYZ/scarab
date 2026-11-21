@@ -134,8 +134,17 @@ class GenesisHeaderGateSuite extends FailsOnUncaught:
         def jumped(batch: Vector[(Header, NodeHeaderState)])(using
             cats.mtl.Raise[IO, xyz.kd5ujc.scarab.ledger.PeerError]
         ): IO[Unit] = IO.unit
-      gate <- HeaderCheck
-        .forNodeChain[IO, BigInt](model(100), Compute.inline[IO], 100)
+      clock = new SlotClock[IO]:
+        def now = IO.pure(java.time.Instant.parse("2100-01-01T00:00:00Z"))
+        def geometry = IO.raiseError(new AssertionError("canonical timing reads no geometry"))
+      // composed as the node composes it: the clock's wrapper, the connection's invariant, then the
+      // connection's Leios handling (`Main`, `OutboundPeers`)
+      gate <- HeaderClock
+        .grafting[IO](
+          clock,
+          HeaderCheck.forNodeChain[IO, BigInt](model(100), Compute.inline[IO], 100)
+        )
+        .withInvariant(problem => IO.raiseError(new AssertionError(problem.message)))
         .withLeios(leios)
         .start(applied.tip)
       accepted <- Fault.fiber(

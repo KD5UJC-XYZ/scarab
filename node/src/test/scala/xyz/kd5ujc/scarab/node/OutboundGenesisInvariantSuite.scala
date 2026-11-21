@@ -100,6 +100,7 @@ class OutboundGenesisInvariantSuite extends FailsOnUncaught:
         .onCancel(cancelled.complete(()).void)
     def start(intersection: ChainSync.Point): IO[HeaderGate[IO]] = startGrafting(intersection).widen
     def captureGrafting(using cats.Applicative[IO]) = IO.pure(None)
+    def withLeios(leios: LeiosChainSync[IO]): HeaderCheck.Grafting[IO] = this
     override def withInvariant(told: GenesisInternalProblem => IO[Unit]): HeaderCheck.Grafting[IO] =
       Breaking(problem, told, cancelled)
 

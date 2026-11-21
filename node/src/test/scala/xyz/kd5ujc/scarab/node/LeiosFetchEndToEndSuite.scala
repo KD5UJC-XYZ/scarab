@@ -34,7 +34,7 @@ import xyz.kd5ujc.scarab.ledger.state.{BlockIssuer, KeyHash, SlotNo, Sorted, Wit
 import xyz.kd5ujc.scarab.network.{FailsOnUncaught, LeiosFetchServer, Protocols}
 import xyz.kd5ujc.scarab.network.Peers.*
 import xyz.kd5ujc.scarab.protocol.{EbHash, EbPoint}
-import xyz.kd5ujc.scarab.protocol.LeiosWord.{Word16, Word32}
+import xyz.kd5ujc.scarab.protocol.LeiosWord.Word32
 import xyz.kd5ujc.scarab.storage.{LeiosEb, LeiosStoreLocks, LeiosStoreSuite, RocksLeiosStore}
 
 /** The endorser block a node learns of over ChainSync, fetched and selected, after the first case
@@ -104,21 +104,6 @@ class LeiosFetchEndToEndSuite extends FailsOnUncaught:
       )
   private val point = EbPoint(slot(100), ebHash)
 
-  private def word32Of(n: Long): Word32 = Word32.wrap(n)
-  private val view = Praos2.LedgerView(
-    Map.empty,
-    Word16.from(1100).fold(e => fail(e.toString), identity),
-    word32Of(90112),
-    xyz.kd5ujc.scarab.ledger.state.ProtVer(
-      xyz.kd5ujc.scarab.ledger.state.Word64.fromUnsigned(12),
-      xyz.kd5ujc.scarab.ledger.state.Word64.zero
-    ),
-    word32Of(1000),
-    word32Of(4000),
-    word32Of(7000),
-    word32Of(40000),
-    word32Of(260000)
-  )
   private val praos = PraosState(
     WithOrigin.Origin,
     Sorted.empty,
@@ -164,7 +149,7 @@ class LeiosFetchEndToEndSuite extends FailsOnUncaught:
       None,
       None,
       None,
-      Some(view)
+      LeiosBound.Of(Word32.wrap(260000))
     )
 
   /** B's store, holding the endorser block whole. */

@@ -21,14 +21,10 @@ import xyz.kd5ujc.scarab.node.read.{ChainRead, EraRead}
 import xyz.kd5ujc.scarab.protocol.{Era, ReferenceBuild}
 import xyz.kd5ujc.scarab.protocol.LeiosWord.Word32
 
-/** The header state after a Shelley-based header: the protocol's, and the ledger view it was
-  * validated against where that is Praos2's (`hswtLedgerView`, `HeaderStateHistory.hs:161-170` at
-  * ouroboros-consensus 2416493b), none in an era without Leios.
+/** The header state after a Shelley-based header: the protocol's, and the closure bound of the
+  * ledger view it was validated against ([[LeiosBound]]).
   */
-private[node] final case class ShelleyValidated(
-    protocol: ProtocolState,
-    leiosView: Option[Praos2.LedgerView]
-)
+private[node] final case class ShelleyValidated(protocol: ProtocolState, leiosBound: LeiosBound)
 
 /** The Shelley ledger forecast shared by every header-validation mode. Parameters and envelope
   * checks come from the same forecast ledger view, including at an epoch boundary. The native
@@ -78,22 +74,19 @@ private[node] final class ShelleyHeaderForecast[S](config: PraosConfig, globals:
       )
       .getOrElse(
         prepareInEra(ledger, afterVoting, tip, prev, h, forecastLimit, genericEnvelope, cfg, glob)
-          .map(ShelleyValidated(_, None))
+          .map(ShelleyValidated(_, LeiosBound.WithoutLeios))
       )
 
-  /** The Leios view at the tip of `anchor` 's ledger ([[Praos2Headers.viewOfTip]]), in the geometry
-    * [[prepareShelley]] validates with; none in a build without Praos2.
+  /** The closure bound of the view at the tip of `anchor` 's ledger ([[Praos2Headers.boundOfTip]]),
+    * in the geometry [[prepareShelley]] validates with; a build without Praos2 has no Leios.
     */
-  private[node] def viewOfTip[E <: EraTag](
-      anchor: S,
-      ledger: EraRead[E]
-  ): Option[Praos2.LedgerView] =
+  private[node] def boundOfTip[E <: EraTag](anchor: S, ledger: EraRead[E]): LeiosBound =
     val firstShelley = anchor.consensus.byron.firstShelleyEpoch
     val geometry = firstShelley.fold(config.geometry)(config.geometry.resolved(_))
     val glob = firstShelley.fold(globals)(first => globals.copy(firstEpoch = first))
     Praos2Headers
       .of(glob.referenceBuild)
-      .flatMap(_.viewOfTip(Globals(glob, geometry), ledger, anchor.tipSlot))
+      .fold(LeiosBound.WithoutLeios)(_.boundOfTip(Globals(glob, geometry), ledger, anchor.tipSlot))
 
   /** The bound on an endorser block's transactions forecast from the anchor for `slot`
     * ([[Praos2Headers.maxEbTxsSize]]), in the geometry [[prepareShelley]] validates with.
@@ -389,24 +382,26 @@ private[node] final class Praos2Headers private ():
         )
     }
 
-  /** `ledgerViewOfTip` (`HeaderStateHistory.hs:250-262` at 2416493b) where the ledger is
-    * Dijkstra's: the view at its own tip ([[DijkstraCrossing.forecastInEra]] at the tip); none for
-    * another era's ledger, whose view has no Leios fields, or one it cannot make.
+  /** The closure bound of `ledgerViewOfTip` (`HeaderStateHistory.hs:250-262` at 2416493b): of a
+    * Dijkstra ledger, its view at its own tip ([[DijkstraCrossing.forecastInEra]] at the tip), or
+    * unknown where the node cannot make it; another era's view has no Leios fields.
     */
-  def viewOfTip[E <: EraTag](
+  def boundOfTip[E <: EraTag](
       globals: Globals,
       ledger: EraRead[E],
       tip: WithOrigin[SlotNo]
-  ): Option[Praos2.LedgerView] =
+  ): LeiosBound =
     ledger.era match
       case ShelleyBasedEra.SDijkstra =>
         val slot = tip match
           case WithOrigin.At(s)  => s
           case WithOrigin.Origin => SlotNo.fromUnsigned(0)
-        ledger.nes.toOption.flatMap(DijkstraCrossing.forecastInEra(globals, slot, tip, _).toOption)
+        ledger.nes.toOption
+          .flatMap(DijkstraCrossing.forecastInEra(globals, slot, tip, _).toOption)
+          .fold(LeiosBound.Unknown)(view => LeiosBound.Of(view.maxEbTxsSize))
       case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
           ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage | ShelleyBasedEra.SConway =>
-        None
+        LeiosBound.WithoutLeios
 
   /** The era of the view a Byron anchor forecasts for `slot`, the exclusive bound of its range, the
     * slot's epoch, and the Shelley boundary once `slot` is past it ([[fromByron]]).
@@ -599,7 +594,7 @@ private[node] final class Praos2Headers private ():
           }
         yield ShelleyValidated(
           ProtocolState(ChainDepState.Praos2(next.protocol), translated.extras.copy(epoch = epoch)),
-          Some(view)
+          LeiosBound.Of(view.maxEbTxsSize)
         )
       checked.fold(identity, Outcome.Valid(_))
     )

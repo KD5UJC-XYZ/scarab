@@ -7,7 +7,6 @@ import cats.mtl.{Handle, Raise}
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
 import scala.concurrent.duration.FiniteDuration
-import xyz.kd5ujc.scarab.consensus.Praos2
 import xyz.kd5ujc.scarab.consensus.leios.{
   AnnouncementFields,
   AnnouncingHeader,
@@ -27,9 +26,9 @@ import xyz.kd5ujc.scarab.storage.{LeiosStore, LeiosStoreError}
 trait LeiosChainSync[F[_]](using F: cats.Monad[F]):
   /** `leiosMsgRollForwardCallback` (`Ouroboros/Consensus/Network/NodeToNode.hs` 484-510 at
     * ouroboros-consensus 2416493b), with the validated `header` and the header state as of its
-    * predecessor, `predecessor`, which carries the ledger view of the predecessor's slot. A peer
-    * whose roll-forward claims a second endorser block certified for an election raises
-    * [[PeerError.LeiosTwoCertificationClaims]].
+    * predecessor, `predecessor`, which carries the closure bound of the ledger view of the
+    * predecessor's slot. A peer whose roll-forward claims a second endorser block certified for an
+    * election raises [[PeerError.LeiosTwoCertificationClaims]].
     */
   def rolledForward(header: Header, predecessor: NodeHeaderState)(using
       Raise[F, PeerError]
@@ -91,25 +90,24 @@ object LeiosChainSync:
         Raise[F, PeerError]
     ): F[Unit] =
       val (state, bound) = predecessor match
-        case NodeHeaderState.Shelley(protocol, _, _, _, view) =>
+        case NodeHeaderState.Shelley(protocol, _, _, _, leiosBound) =>
           (
             protocol.dep match
               case ChainDepState.Praos2(p) => Some(p)
               case ChainDepState.Praos(_) | ChainDepState.TPraos(_) | ChainDepState.PBft(_) =>
                 None
             ,
-            maxEbTxsSize(view)
+            maxEbTxsSize(leiosBound)
           )
-        case _: NodeHeaderState.Byron => (None, BytesSize.zero)
+        case _: NodeHeaderState.Byron => (None, Some(BytesSize.zero))
       state.flatMap(LeiosRollForward.certifiedAnnouncement(header, _)).traverse_ { fields =>
-        claim(fields) *>
+        // a bound the node could not forecast is its own defect: the claim is counted, and no
+        // offer is recorded against a bound that is not the reference's
+        claim(fields) *> bound.traverse_(b =>
           vars.offerings.update(
-            LeiosRollForward.recordOffer(
-              _,
-              fields.point,
-              LeiosRollForward.certRbOffer(fields, bound)
-            )
+            LeiosRollForward.recordOffer(_, fields.point, LeiosRollForward.certRbOffer(fields, b))
           ) *> shared.wake
+        )
       }
 
     /** `noteCertificationClaim` (`LeiosDemoLogic.hs` 1696-1731). */
@@ -174,7 +172,9 @@ object LeiosChainSync:
 
   /** `getLeiosMaxEbTxsSizeFromView` (`Shelley/Ledger/Leios.hs` 161-163 at 2416493b): a Praos2
     * view's bound, and 0 for the view of an era without Leios (`Storage/LedgerDB/Forker.hs`
-    * 975-987).
+    * 975-987); none where the node could not make the view.
     */
-  def maxEbTxsSize(view: Option[Praos2.LedgerView]): BytesSize =
-    view.fold(BytesSize.zero)(v => BytesSize.wrap(v.maxEbTxsSize.toLong))
+  def maxEbTxsSize(bound: LeiosBound): Option[BytesSize] = bound match
+    case LeiosBound.Of(b)        => Some(BytesSize.wrap(b.toLong))
+    case LeiosBound.WithoutLeios => Some(BytesSize.zero)
+    case LeiosBound.Unknown      => None

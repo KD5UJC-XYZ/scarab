@@ -29,12 +29,30 @@ enum NodeHeaderState:
       previous: Option[BlockRef],
       firstEpoch: Option[BigInt],
       translated: Option[InEra],
-      leiosView: Option[Praos2.LedgerView] = None
+      leiosBound: LeiosBound = LeiosBound.WithoutLeios
   )
 
   def protocol: Option[ProtocolState] = this match
     case Shelley(state, _, _, _, _) => Some(state)
     case _: Byron                   => None
+
+/** The bound on the bytes of an endorser block's transactions in the ledger view a header state's
+  * tip was validated against, or that its applied ledger has at its tip: the one field of
+  * `hswtLedgerView` (`HeaderStateHistory.hs:161-170` at ouroboros-consensus 2416493b) the Leios
+  * fetch reads, through `getLeiosMaxEbTxsSizeFromView`, of the view a certifying header's
+  * predecessor carries.
+  */
+enum LeiosBound:
+  /** A Praos2 view's `plvMaxEbTxsSize`. */
+  case Of(maxEbTxsSize: xyz.kd5ujc.scarab.protocol.LeiosWord.Word32)
+
+  /** The view of an era without Leios, whose bound is 0 (`Storage/LedgerDB/Forker.hs` 975-987). */
+  case WithoutLeios
+
+  /** A Dijkstra view the node could not make: a defect of its own, on which no offer is recorded,
+    * so that no peer is asked for a closure against a bound that is not the reference's.
+    */
+  case Unknown
 
 /** Header validation never counts an unchecked header. Its Byron ledger forecast is the native
   * exclusive NOW+1+2k bound (Byron/Ledger/Ledger.hs:268–320), and its first Shelley view uses the
@@ -65,16 +83,18 @@ final class NodeHeaderRules[S](
       val old = state.consensus.byron
       NodeHeaderState.Byron(old.pbft, state.protocol, old.tip, None)
     else
-      // the view at the tip of the ledger, as the reference's header state of an applied block
-      // records it (`ledgerViewOfTip`, `HeaderStateHistory.hs:250-262` at 2416493b)
+      // the bound of the view at the tip of the ledger, as the reference's header state of an
+      // applied block records the view (`ledgerViewOfTip`, `HeaderStateHistory.hs:250-262` at
+      // 2416493b); a ledger that cannot be read leaves it unknown
       NodeHeaderState.Shelley(
         state.protocol,
         None,
         state.consensus.byron.firstShelleyEpoch,
         None,
-        state.ledger(None).toOption.flatten.flatMap { case InEra.Of(_, ledger) =>
-          shelleyRules.viewOfTip(state, ledger)
-        }
+        state.ledger(None) match
+          case Left(_)                          => LeiosBound.Unknown
+          case Right(None)                      => LeiosBound.WithoutLeios
+          case Right(Some(InEra.Of(_, ledger))) => shelleyRules.boundOfTip(state, ledger)
       )
 
   def validate(
@@ -179,7 +199,7 @@ final class NodeHeaderRules[S](
       Some(BlockRef(header.slot, header.hash, header.blockNo)),
       first,
       translated,
-      next.leiosView
+      next.leiosBound
     )
   )
 

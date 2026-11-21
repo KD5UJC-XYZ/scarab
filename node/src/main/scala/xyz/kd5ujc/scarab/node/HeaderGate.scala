@@ -129,9 +129,9 @@ trait HeaderCheck[F[_]]:
 
   /** This check, its gates handing each header they validate, and each jump they graft, to `leios`
     * ([[LeiosChainSync]]), as the Leios build's ChainSync client does; a check without header-first
-    * validation hands nothing.
+    * validation hands nothing. Every check says what it does with it, so that no wrapper drops it.
     */
-  def withLeios(leios: LeiosChainSync[F]): HeaderCheck[F] = this
+  def withLeios(leios: LeiosChainSync[F]): HeaderCheck[F]
 
 object HeaderCheck:
   /** Version and wait share the selected-chain publication cell; changes between sampling and
@@ -170,6 +170,7 @@ object HeaderCheck:
   /** No header-first validation: every block is checked when it is applied (tests, tools). */
   def none[F[_]: Applicative]: HeaderCheck[F] = new HeaderCheck[F]:
     def start(intersection: ChainSync.Point) = Applicative[F].pure(HeaderGate.none[F])
+    def withLeios(leios: LeiosChainSync[F]): HeaderCheck[F] = this
 
   /** Every production header-first session uses the same canonical all-era state. Genesis also
     * shares these states across accepted CSJ jumps. The equality witness is supplied by the
@@ -286,7 +287,7 @@ object HeaderCheck:
     override def withPatience(patience: LimitOnPatience[F]): Grafting[F] = this
     override def withInvariant(invariant: GenesisInternalProblem => F[Unit]): Grafting[F] = this
     override def observed(observer: Event => F[Unit]): Grafting[F] = this
-    override def withLeios(leios: LeiosChainSync[F]): Grafting[F] = this
+    def withLeios(leios: LeiosChainSync[F]): Grafting[F]
 
   /** [[Captured]], whose gates graft. */
   final case class GraftingCaptured[F[_]](

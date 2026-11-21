@@ -65,26 +65,15 @@ class LeiosChainSyncSuite extends FailsOnUncaught:
   private val announcement: EbAnnouncement =
     announcing.leios.announcement.getOrElse(fail("the announcing header announces nothing"))
   private val bound = BytesSize.wrap(260000)
-  private val view = Praos2.LedgerView(
-    Map.empty,
-    xyz.kd5ujc.scarab.protocol.LeiosWord.Word16.from(1100).fold(e => fail(e.toString), identity),
-    xyz.kd5ujc.scarab.protocol.LeiosWord.Word32.wrap(90112),
-    xyz.kd5ujc.scarab.ledger.state.ProtVer(
-      xyz.kd5ujc.scarab.ledger.state.Word64.fromUnsigned(12),
-      xyz.kd5ujc.scarab.ledger.state.Word64.zero
-    ),
-    xyz.kd5ujc.scarab.protocol.LeiosWord.Word32.wrap(1000),
-    xyz.kd5ujc.scarab.protocol.LeiosWord.Word32.wrap(4000),
-    xyz.kd5ujc.scarab.protocol.LeiosWord.Word32.wrap(7000),
-    xyz.kd5ujc.scarab.protocol.LeiosWord.Word32.wrap(40000),
-    xyz.kd5ujc.scarab.protocol.LeiosWord.Word32.wrap(260000)
-  )
 
   /** The header state after `header`, as the gate leaves it: Praos2's state with the header's slot
     * last and its announcement, if it has one, by the hash of its issuer's key (`Praos2.reupdate`),
     * and the view it was validated against.
     */
-  private def after(header: LeiosHeader): NodeHeaderState =
+  private def after(
+      header: LeiosHeader,
+      bound: LeiosBound = LeiosBound.Of(xyz.kd5ujc.scarab.protocol.LeiosWord.Word32.wrap(260000))
+  ): NodeHeaderState =
     val initial = ProtocolState.initial(Era.Conway, setup.identity.shelleyGenesis)
     val praos = initial.dep match
       case ChainDepState.Praos(p) => p
@@ -104,7 +93,7 @@ class LeiosChainSyncSuite extends FailsOnUncaught:
       None,
       None,
       None,
-      Some(view)
+      bound
     )
 
   private val election =
@@ -184,6 +173,21 @@ class LeiosChainSyncSuite extends FailsOnUncaught:
             certifying.leios.announcement.map(_.hash).toSet
           )
       }
+  }
+
+  dirs.test("a bound the node could not forecast counts the claim and offers nothing") { dir =>
+    fixture(dir).use { f =>
+      for
+        result <- peer(
+          f.handling.rolledForward(certifying.dijkstraView, after(announcing, LeiosBound.Unknown))
+        )
+        offers <- f.vars.offerings.get
+        claims <- f.vars.certificationClaims.get
+      yield
+        assertEquals(result, Right(()))
+        assertEquals(offers.size, 0)
+        assertEquals(claims, SortedMap(election -> announcement.hash))
+    }
   }
 
   dirs.test("a second endorser block claimed certified for the election costs the connection") {
