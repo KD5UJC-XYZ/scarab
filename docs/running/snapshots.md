@@ -170,7 +170,8 @@ than repairing it in a migration step or at the hard fork, is the owner's decisi
 
 ```sh
 java -cp "$(cat node/target/runtime-classpath.txt)" xyz.kd5ujc.scarab.node.Main import-haskell-db \
-  --haskell-db <haskell db dir> (--genesis-dir <dir> | --config <config.json>) --db <dir> [--stop-slot N]
+  --haskell-db <haskell db dir> (--genesis-dir <dir> | --config <config.json>) --db <dir> [--stop-slot N] \
+  [--reference-build <build>]
 ```
 
 Reads `<haskell db dir>/immutable` (a Haskell node's ImmutableDB; never written, so a running
@@ -182,8 +183,15 @@ not link or whose header hash or slot differ from the index, and a corrupt chunk
 the chunk and the fault); the newest chunk, which the node may be writing, is cut back to its valid
 blocks and the number ignored is printed. `--stop-slot N` stops after the last block at or before slot
 `N`. A second run continues after the blocks already stored. It prints JSON lines
-(`importHaskellDb`: `progress`, `done` or `error`). The Haskell node's ledger snapshots are not read:
-the ledger state is rebuilt by the replay.
+(`importHaskellDb`: `referenceBuild` first, then `progress`, `done` or `error`). The Haskell node's
+ledger snapshots are not read: the ledger state is rebuilt by the replay.
+
+`--reference-build` names the build that wrote the database (`11.1` without it; see [flags](flags.md)):
+the network setup is that build's. Under `leios-b004fe0c` the chain's Dijkstra blocks are stored as
+they are, with the same checks as every other block, and the Leios node's `leios.vol.db` and
+`leios.imm.db` are read into the endorser-block store first; applying a Dijkstra block stays refused
+by the rules (`BlockFailure.NotYet`), as following that build does (#54). Under a release build a
+Dijkstra block is refused before it is stored (`EraNotYet`): those networks have none.
 
 Measured (2026-10-15, 3 CPUs, 200 Preview chunks copied from the Haskell node's database): 40,357
 blocks (slots 0 to 863,996, 46 MB) imported in 2 s; `follow` then replayed them in 42.7 s, connected
@@ -270,8 +278,10 @@ build recorded beside them. Nothing is converted between builds. The command fir
 `referenceBuild` line with the build and its pins. Under `leios-b004fe0c` the state is read in the
 Leios build's layout (every Shelley-based era, Dijkstra among them), and `11.1` refuses that
 layout's three-part extended state; a database imported so is not followed yet (#826). A Dijkstra
-snapshot needs its point's block in the database, which `import-haskell-db` does not store yet: it
-refuses a Dijkstra block (#54).
+snapshot needs its point's block in the database: import the blocks with
+`import-haskell-db --reference-build leios-b004fe0c` first. The offline replay of the Leios testnet
+against the reference's states is in
+[the Leios note](../leios.md#13-offline-replay-against-the-references-ledger-states-g1-54).
 
 First import the immutable blocks with `import-haskell-db` (above). The destination must contain the
 configured network identity and the exact snapshot point in its current-format immutable chunks,

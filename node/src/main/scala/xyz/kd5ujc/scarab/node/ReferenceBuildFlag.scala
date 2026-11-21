@@ -6,9 +6,9 @@ import xyz.kd5ujc.scarab.ledger.{ConfigError, ConfigProblem}
 import xyz.kd5ujc.scarab.protocol.{ReferenceBuild, ReferenceBuildNotYet}
 import xyz.kd5ujc.scarab.storage.haskell.state.ReferenceLayout
 
-/** `--reference-build <build>` of `follow`, `import-ledger-snapshot` and `export-ledger-snapshot`
-  * (#826): the build of `cardano-node` the network runs ([[ReferenceBuild]]), `11.1` without the
-  * flag.
+/** `--reference-build <build>` of `follow`, `import-haskell-db`, `import-ledger-snapshot` and
+  * `export-ledger-snapshot` (#826): the build of `cardano-node` the network runs
+  * ([[ReferenceBuild]]), `11.1` without the flag.
   */
 object ReferenceBuildFlag:
   /** What the flag means, after a command's usage line: the value must be the build the network
