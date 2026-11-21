@@ -37,6 +37,9 @@
     devnet.py up-dijkstra          REFERENCE ONLY: a cluster of the Leios testnet build (rc-2026w44) that starts in
                                    Conway, forks into Dijkstra and includes one Dijkstra transaction; no Scala node
     devnet.py capture-dijkstra     REFERENCE ONLY: capture the up-dijkstra chain as fixtures (fixtures/dijkstra-devnet)
+    devnet.py leios-traffic        REFERENCE ONLY: the up-dijkstra cluster with BLS-registered pools and a load past the
+                                   ranking block; requires an endorser block announced, votes and a certifying block
+                                   on every node's chain
     devnet.py e2e [--keep]         up-eras + Scala follower from Origin; assert every era and
                                    era transition was followed with no validation error
     devnet.py refusal-corpus       the reference-refusal corpus (#401): each transaction of `refusalcases` submitted to the
@@ -78,6 +81,7 @@ from .scenarios.governor import governor
 from .scenarios.ntc import ntc
 from .scenarios.peercut import peercut
 from .scenarios.inbound_flood import inbound_flood
+from .scenarios.leios_traffic import leios_traffic
 from .scenarios.pool import dynamic_forging_scenario, kes_rotate_scenario, pool
 from .scenarios.relay import relay
 from .scenarios.peer_sharing import peer_sharing
@@ -87,7 +91,7 @@ from .scenarios.soak import soak
 from .util import GIB, REPO, data_root, free_space_shortfall, human_bytes, tree_size
 
 # the subcommands that start containers and fill a run directory: the free-space check and the size report apply
-RUNS = frozenset({"up", "up-eras", "capture-eras", "up-dijkstra", "capture-dijkstra", "e2e", "follow", "soak", "relay", "peer-sharing", "peercut",
+RUNS = frozenset({"up", "up-eras", "capture-eras", "up-dijkstra", "capture-dijkstra", "leios-traffic", "e2e", "follow", "soak", "relay", "peer-sharing", "peercut",
                   "inbound-flood", "governor", "ntc", "pool", "kes-rotate", "dynamic-forging", "faults", "restart",
                   "v1-context"})
 DEFAULT_MIN_FREE_GIB = 5.0
@@ -186,6 +190,31 @@ def main():
     cd.add_argument("--out", default=str(DIJKSTRA_OUT), help="fixture directory")
     cd.add_argument("--blocks-after", type=int, default=3, help="blocks kept past the Dijkstra transaction's")
     cd.set_defaults(run=capture_dijkstra)
+    lt = sub.add_parser("leios-traffic", help="REFERENCE ONLY: a Leios-build cluster whose BLS-registered pools "
+                        "announce, vote on and certify endorser blocks under a load past the ranking block")
+    lt.add_argument("--pools", type=int, default=5, help="block-producing reference pools, each with a BLS key "
+                    "(any four of five equal pools reach the 0.75 quorum)")
+    lt.add_argument("--epoch-length", type=int, default=800, help="slots per epoch (twice 4k/f)")
+    lt.add_argument("--slot-length", type=float, default=0.1,
+                    help="slot length in seconds; the Leios periods are the testnet's scaled by it")
+    lt.add_argument("--active-slots-coeff", type=float, default=0.05, help="Praos active slot coefficient f (the testnet's)")
+    lt.add_argument("--security-param", type=int, default=5, help="security parameter k")
+    lt.add_argument("--dijkstra-epoch", type=int, default=1, help="TestDijkstraHardForkAtEpoch (at least 1)")
+    lt.add_argument("--genesis-protocol-major", type=int, default=12, help="protocol major of the Shelley genesis")
+    lt.add_argument("--min-offer-lead", type=int, default=2,
+                    help="LeiosMinOfferLead in slots: below the immutable tip's lag of about k/f slots")
+    lt.add_argument("--load-txs", type=int, default=400, help="padded load transactions built before the load")
+    lt.add_argument("--load-tx-bytes", type=int, default=14000, help="the size of a load transaction, about")
+    lt.add_argument("--overflow", type=float, default=1.5,
+                    help="the mempool the load keeps, as a multiple of the ranking block's transaction bytes")
+    lt.add_argument("--certificates", type=int, default=1,
+                    help="certifying blocks the nodes' logs must show forged before the load stops")
+    lt.add_argument("--check-seconds", type=float, default=10, help="seconds between looks at the nodes' logs")
+    lt.add_argument("--timeout", type=int, default=1500, help="overall time limit in seconds")
+    lt.add_argument("--cpus", type=int, default=6, help="CPUs of the reference container")
+    lt.add_argument("--memory", default="12g", help="memory of the reference container")
+    lt.add_argument("--work-size", default="4g", help="size of the reference container's /work tmpfs")
+    lt.set_defaults(run=leios_traffic)
     sc = sub.add_parser("sample-chain-dep", help="next to up-eras: record the reference's DebugChainDepState answers at chosen tips")
     sc.add_argument("--out", required=True, help="JSON file of the recorded points")
     sc.add_argument("--interval", type=float, default=0.8, help="seconds between acquires")
@@ -451,5 +480,5 @@ def main():
         scenario.add_argument("--consensus-mode", choices=["PraosMode", "GenesisMode"],
                               help="Scala consensus mode; reference pools retain their original configuration")
     args = p.parse_args()
-    args.name = args.name or ("scarab-dijkstra" if args.command in ("up-dijkstra", "capture-dijkstra") else "scarab-eras" if args.command in ("up-eras", "capture-eras", "e2e", "sample-chain-dep", "assemble-chain-dep") else "scarab-pool" if args.command == "pool" else "scarab-kes-rotate" if args.command == "kes-rotate" else "scarab-dynamic-forging" if args.command == "dynamic-forging" else "scarab-devnet")
+    args.name = args.name or ("scarab-dijkstra" if args.command in ("up-dijkstra", "capture-dijkstra") else "scarab-leios" if args.command == "leios-traffic" else "scarab-eras" if args.command in ("up-eras", "capture-eras", "e2e", "sample-chain-dep", "assemble-chain-dep") else "scarab-pool" if args.command == "pool" else "scarab-kes-rotate" if args.command == "kes-rotate" else "scarab-dynamic-forging" if args.command == "dynamic-forging" else "scarab-devnet")
     run(args)

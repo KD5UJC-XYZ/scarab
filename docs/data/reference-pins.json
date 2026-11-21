@@ -81,7 +81,8 @@
     "scripts/devnet/dijkstra.py",
     "scripts/oracle/leios-testnet/cabal.project",
     "scripts/oracle/leios-testnet/README.md",
-    "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/ReferenceBuild.scala"
+    "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/ReferenceBuild.scala",
+    "scripts/devnet/scenarios/leios_traffic.py"
    ]
   },
   {
@@ -152,7 +153,8 @@
     "consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/Praos2.scala",
     "crypto/src/main/scala/xyz/kd5ujc/scarab/crypto/vrf/PraosLeaderThreshold.scala",
     "scripts/oracle/leios-praos2/README.md",
-    "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/ReferenceBuild.scala"
+    "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/ReferenceBuild.scala",
+    "scripts/devnet/scenarios/leios_traffic.py"
    ]
   },
   {
@@ -331,7 +333,8 @@
     "scripts/oracle/leios-testnet/README.md",
     "consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/Praos2.scala",
     "scripts/oracle/leios-praos2/README.md",
-    "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/ReferenceBuild.scala"
+    "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/ReferenceBuild.scala",
+    "scripts/devnet/scenarios/leios_traffic.py"
    ]
   },
   {

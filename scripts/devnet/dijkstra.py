@@ -100,10 +100,10 @@ def topology(node, pools):
             "useLedgerAfterSlot": -1}
 
 
-def create_testnet_data_command(pools, start_time):
+def create_testnet_data_command(pools, start_time, spec_dijkstra=f"{IMAGE_CONFIG}/dijkstra-genesis.json"):
     return (f"cardano-cli dijkstra genesis create-testnet-data --spec-shelley {ENV}-spec/shelley.json "
             f"--spec-alonzo {IMAGE_CONFIG}/alonzo-genesis.json --spec-conway {IMAGE_CONFIG}/conway-genesis.json "
-            f"--spec-dijkstra {IMAGE_CONFIG}/dijkstra-genesis.json --pools {pools} --stake-delegators {pools} "
+            f"--spec-dijkstra {spec_dijkstra} --pools {pools} --stake-delegators {pools} "
             f"--utxo-keys 1 --total-supply 2000000000000000 --delegated-supply 1000000000000000 "
             f"--testnet-magic {MAGIC} --start-time {start_time} --out-dir {ENV}")
 
@@ -112,23 +112,27 @@ def socket(node=1):
     return f"{ENV}/socket/node{node}/sock"
 
 
-def node_command(node):
-    """`cardano-node run` of pool `node`, in its own directory (the Leios database is opened relative to it)."""
+def node_command(node, bls_key=None):
+    """`cardano-node run` of pool `node`, in its own directory (the Leios database is opened relative to it).
+    With `bls_key`, the node is given that BLS (Leios) signing key to vote with (`--shelley-bls-key`, cardano-node
+    b004fe0c `Cardano/Node/Protocol/Shelley.hs:190-192`)."""
     data, pool = f"{ENV}/node-data/node{node}", f"{ENV}/pools-keys/pool{node}"
+    bls = f"--shelley-bls-key {bls_key} " if bls_key else ""
     return (f"cd {data} && cardano-node run --config {ENV}/config.json --topology {data}/topology.json "
             f"--database-path {data}/db --socket-path {socket(node)} --host-addr 127.0.0.1 "
             f"--port {BASE_PORT + node - 1} --shelley-kes-key {pool}/kes.skey --shelley-vrf-key {pool}/vrf.skey "
-            f"--shelley-operational-certificate {pool}/opcert.cert > /work/node{node}.log 2>&1")
+            f"--shelley-operational-certificate {pool}/opcert.cert {bls}> /work/node{node}.log 2>&1")
 
 
-def start_reference(name):
-    """The reference container, from the pinned digest; the nodes and the CLI run inside it."""
+def start_reference(name, cpus=3, memory="6g", work="2g"):
+    """The reference container, from the pinned digest; the nodes and the CLI run inside it, their files in a
+    `work`-sized tmpfs."""
     inspected = docker("image", "inspect", "--format", "{{json .RepoDigests}}", LEIOS_TAG, check=False)
     if inspected.returncode != 0 or not image_digest_ok(json.loads(inspected.stdout or "[]")):
         raise SystemExit(f"{LEIOS_TAG} with digest {LEIOS_DIGEST} is not present; `docker pull {LEIOS_IMAGE}`")
     docker("run", "-d", "--name", ref(name), "--pull=never", *container_labels("devnet", name),
-           "--cpus=3", "--memory=6g", "--user", USER, "-e", "HOME=/work",
-           "--tmpfs", f"/work:rw,exec,size=2g,uid={os.getuid()},gid={os.getgid()}",
+           f"--cpus={cpus}", f"--memory={memory}", "--user", USER, "-e", "HOME=/work",
+           "--tmpfs", f"/work:rw,exec,size={work},uid={os.getuid()},gid={os.getgid()}",
            "--entrypoint", "/bin/sh", LEIOS_IMAGE, "-c", "sleep infinity")
 
 
@@ -202,6 +206,43 @@ def finished(transaction, tip_now, blocks_after, security_param):
     return included is not None and tip_now["block"] > included["block"] + blocks_after + security_param
 
 
+def make_network(args, spec_dijkstra=None, config_extra=None):
+    """In the running reference container: the genesis files (`create-testnet-data` from the devnet's Shelley spec
+    and `spec_dijkstra`, the image's Dijkstra genesis by default) and the node configuration, with `config_extra`
+    merged into it."""
+    image_shelley = read_json(args.name, f"{IMAGE_CONFIG}/shelley-genesis.json")
+    in_ref(args.name, f"mkdir -p {ENV}-spec")
+    put_file(args.name, f"{ENV}-spec/shelley.json", json.dumps(shelley_spec(
+        image_shelley, args.epoch_length, args.slot_length, args.active_slots_coeff, args.security_param,
+        args.genesis_protocol_major), indent=2))
+    start = (datetime.now(timezone.utc) + timedelta(seconds=20)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    command = (create_testnet_data_command(args.pools, start) if spec_dijkstra is None
+               else create_testnet_data_command(args.pools, start, spec_dijkstra))
+    r = in_ref(args.name, command + " > /work/create-testnet-data.log 2>&1", check=False)
+    if r.returncode != 0:
+        raise SystemExit("create-testnet-data failed; see /work/create-testnet-data.log in the reference container")
+    hashes = genesis_hashes(args.name)
+    config = without_resource_statistics(
+        args.name, node_config(read_json(args.name, f"{IMAGE_CONFIG}/config.json"), hashes, args.dijkstra_epoch))
+    put_file(args.name, f"{ENV}/config.json", json.dumps({**config, **(config_extra or {})}, indent=2))
+
+
+def start_nodes(args, root, bls_key=None):
+    """Start every pool's node, each with its topology, and copy the genesis and configuration files into `root`.
+    `bls_key(n)` names pool `n`'s BLS signing key, if it votes. Returns {pool: port}."""
+    for n in range(1, args.pools + 1):
+        in_ref(args.name, f"mkdir -p {ENV}/node-data/node{n} {ENV}/socket/node{n}")
+        put_file(args.name, f"{ENV}/node-data/node{n}/topology.json", json.dumps(topology(n, args.pools), indent=2))
+        docker("exec", "-d", ref(args.name), "/bin/sh", "-c", node_command(n, bls_key(n) if bls_key else None))
+    ports = {n: BASE_PORT + n - 1 for n in range(1, args.pools + 1)}
+    (root / "ports.json").write_text(json.dumps(ports))
+    for file in (*GENESIS_FILES, "config.json"):
+        raw = subprocess.run(["docker", "exec", ref(args.name), "cat", f"{ENV}/{file}"],
+                             capture_output=True, check=True).stdout
+        (root / "genesis" / file).write_bytes(raw)
+    return ports
+
+
 def up_dijkstra(args):
     """Start the cluster and wait until it is in Dijkstra, a Dijkstra transaction is in a block and the chain is
     `--blocks-after` blocks past it plus the security parameter (so that block is in the ImmutableDB). With
@@ -213,30 +254,8 @@ def up_dijkstra(args):
     plan = dijkstra_plan(args.dijkstra_epoch, args.genesis_protocol_major)
     (root / "genesis").mkdir(parents=True)
     start_reference(args.name)
-    image_shelley = read_json(args.name, f"{IMAGE_CONFIG}/shelley-genesis.json")
-    in_ref(args.name, f"mkdir -p {ENV}-spec")
-    put_file(args.name, f"{ENV}-spec/shelley.json", json.dumps(shelley_spec(
-        image_shelley, args.epoch_length, args.slot_length, args.active_slots_coeff, args.security_param,
-        args.genesis_protocol_major), indent=2))
-    start = (datetime.now(timezone.utc) + timedelta(seconds=20)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    r = in_ref(args.name, create_testnet_data_command(args.pools, start) + " > /work/create-testnet-data.log 2>&1",
-               check=False)
-    if r.returncode != 0:
-        raise SystemExit("create-testnet-data failed; see /work/create-testnet-data.log in the reference container")
-    hashes = genesis_hashes(args.name)
-    config = without_resource_statistics(
-        args.name, node_config(read_json(args.name, f"{IMAGE_CONFIG}/config.json"), hashes, args.dijkstra_epoch))
-    put_file(args.name, f"{ENV}/config.json", json.dumps(config, indent=2))
-    for n in range(1, args.pools + 1):
-        in_ref(args.name, f"mkdir -p {ENV}/node-data/node{n} {ENV}/socket/node{n}")
-        put_file(args.name, f"{ENV}/node-data/node{n}/topology.json", json.dumps(topology(n, args.pools), indent=2))
-        docker("exec", "-d", ref(args.name), "/bin/sh", "-c", node_command(n))
-    ports = {n: BASE_PORT + n - 1 for n in range(1, args.pools + 1)}
-    (root / "ports.json").write_text(json.dumps(ports))
-    for file in (*GENESIS_FILES, "config.json"):
-        raw = subprocess.run(["docker", "exec", ref(args.name), "cat", f"{ENV}/{file}"],
-                             capture_output=True, check=True).stdout
-        (root / "genesis" / file).write_bytes(raw)
+    make_network(args)
+    ports = start_nodes(args, root)
     timeline, majors, transaction = [], {}, None
     last, moved = None, time.monotonic()
     deadline = time.monotonic() + args.timeout

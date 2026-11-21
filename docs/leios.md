@@ -761,7 +761,9 @@ request 1,000, then 100 more per 100 received). Settling it needs the relay's tr
    announcements, EBs, vote bundles, certificates and the committee with the reference's (hash and bytes), and
    the ledger at epoch boundaries (the K1 comparator extended to Dijkstra). Throughput with the conventions of
    [performance.md](performance.md). Stop at the defined scenario and the divergence list if the reference is
-   not stable enough.
+   not stable enough. The Haskell half is `devnet.py leios-traffic` (#73): BLS-registered reference pools that
+   announce, vote on and certify endorser blocks under a load past the ranking block, judged on every node's
+   chain ([running/devnet.md](running/devnet.md)); the Scala relay is still to join it.
 7. **Regression**: the header rules stay a test (`LeiosHeaderChainSuite` runs the first 1,100 headers from
    the genesis; `LeiosCheckMain` runs any capture), and a new capture is taken when the testnet respins: the
    restart of 2026-10-18 was one, and #743 replaced the captures of this section with the restarted
