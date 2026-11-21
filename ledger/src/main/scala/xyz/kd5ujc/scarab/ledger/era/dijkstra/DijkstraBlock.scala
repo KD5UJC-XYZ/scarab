@@ -140,13 +140,28 @@ object DijkstraBlockHeader:
           block: Block[DijkstraBlockHeader, Dijkstra]
       ): BlockHeaderVersionInfo = block.blockHeader.versionInfo
 
-/** Why a Dijkstra block's bytes are not a block in the era's types: the block decoder refused them,
-  * or a field it read is not a value of its type in the era's ([[EraTxError]]), which the decoder's
-  * own bounds rule out.
+/** Why a Dijkstra block's bytes are not a block in the era's types, by whose the failure is: the
+  * block decoder refused them ([[Decode]]); the era's types refuse what it read, a field the era
+  * does not have or bytes they do not decode ([[Era]]); or the node's own two readings of the same
+  * bytes disagree, or a value the decoder's own bounds rule out came of them ([[Projection]]),
+  * which is no fault of the bytes.
   */
 enum DijkstraBlockError:
   case Decode(cause: ChainError)
   case Era(cause: EraTxError)
+  case Projection(cause: EraTxError)
+
+object DijkstraBlockError:
+  /** Whose a failure of the era's types on what the block decoder read is: the bytes' where the
+    * era's types refuse them, the node's own where its readings disagree or a bound of its decoder
+    * did not hold. A total match, so a new case of [[EraTxError]] must be placed here.
+    */
+  def of(cause: EraTxError): DijkstraBlockError = cause match
+    case EraTxError.Decode(_) | EraTxError.NotInEra(_) => Era(cause)
+    case EraTxError.ScriptsReadAgain | EraTxError.WitnessDataReadAgain | EraTxError.OtherLevel |
+        EraTxError.NoDelegatee | EraTxError.Vocab(_) | EraTxError.PParams(_) |
+        EraTxError.StoredOutputDiffers | EraTxError.TranslationReadBack(_) =>
+      Projection(cause)
 
 /** A Dijkstra block in the era's types. */
 object DijkstraBlock:
@@ -168,5 +183,5 @@ object DijkstraBlock:
       .flatMap(block =>
         (DijkstraBlockHeader.fromHeader(block.header), DijkstraBlockBody.ofDecoded(block))
           .mapN(Block[DijkstraBlockHeader, Dijkstra](_, _))
-          .leftMap(DijkstraBlockError.Era(_))
+          .leftMap(DijkstraBlockError.of)
       )

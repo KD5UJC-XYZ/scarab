@@ -27,17 +27,24 @@ object MirrorSteps:
       praos: Option[PraosConfig] = None,
       byron: Option[ByronRules.Config] = None
   ): Either[BlockFailure, MirrorState] =
-    MirrorRules.applyBlock(
-      state,
-      header,
-      raw,
-      praos.getOrElse(setup.praos),
-      setup.globals,
-      byron.orElse(setup.byronRules),
-      setup.handOver,
-      setup.byronHistory,
-      xyz.kd5ujc.scarab.plutus.PlutusBackend.default
-    )
+    MirrorRules
+      .applyBlock(
+        state,
+        header,
+        raw,
+        praos.getOrElse(setup.praos),
+        setup.globals,
+        byron.orElse(setup.byronRules),
+        setup.handOver,
+        setup.byronHistory,
+        xyz.kd5ujc.scarab.plutus.PlutusBackend.default
+      )
+      .verdict
+
+  extension (applied: MirrorDijkstra.Applied)
+    /** The verdict of an application: a test that meets the node's stop instead fails. */
+    def verdict: Either[BlockFailure, MirrorState] =
+      applied.fold(e => munit.Assertions.fail(s"the node stops: ${e.message}"), identity)
 
   /** The ledger state of the Shelley-based era a mirror is in, read as a test reads it. */
   def ledger(s: MirrorState): Option[InEra] = s.ledger(None).toOption.flatten

@@ -155,6 +155,15 @@ enum ConfigProblem:
     */
   case HeaderFirstRequired(build: xyz.kd5ujc.scarab.protocol.ReferenceBuild)
 
+  /** `follow` under a build whose certifying ranking blocks are applied from its endorser-block
+    * store, with no store to open (#54): this build has the on-disk store only, so chain selection
+    * would park a certifying block for a closure nothing can acquire.
+    */
+  case LeiosStoreRequired(
+      build: xyz.kd5ujc.scarab.protocol.ReferenceBuild,
+      missing: LeiosStoreMissing
+  )
+
   def message: String = this match
     case ActiveSlotsCoefficient(e)   => e.message
     case GenesisNumber(field, cause) => s"genesis ${field.key}: ${cause.message}"
@@ -202,6 +211,13 @@ enum ConfigProblem:
       s"byron genesis avvmDistr: $value is $n bytes, a redeem key is 32"
     case ReferenceBuildUnknown(cause) => s"--reference-build: ${cause.message}"
     case ReferenceBuildNotYet(cause)  => s"--reference-build: ${cause.message}"
+    case LeiosStoreRequired(build, LeiosStoreMissing.InMemoryBackend) =>
+      s"LeiosDbConfig.Backend InMemory: the build ${build.name} applies a certifying block from " +
+        "its endorser-block store, and this build has no in-memory store; use SQLite, with --db"
+    case LeiosStoreRequired(build, LeiosStoreMissing.NoDatabase) =>
+      s"--db: the build ${build.name} applies a certifying block from its endorser-block store, " +
+        "which this build keeps in the database directory; give one with --db or the " +
+        "configuration's DatabasePath"
     case HeaderFirstRequired(build) =>
       s"--header-first off: the build ${build.name} fetches endorser blocks from the headers it " +
         "validates, and has no block-only mode"
@@ -293,3 +309,15 @@ enum GenesisNumberField:
     case SecurityParam     => "securityParam"
     case SlotsPerKESPeriod => "slotsPerKESPeriod"
     case MaxKESEvolutions  => "maxKESEvolutions"
+
+/** Why a build that needs an endorser-block store has none to open
+  * ([[ConfigProblem.LeiosStoreRequired]]).
+  */
+enum LeiosStoreMissing:
+  /** `LeiosDbConfig.Backend` is `InMemory`, a store this build does not have. */
+  case InMemoryBackend
+
+  /** The store is on disk (`SQLite`, the default) and the run has no database directory: no `--db`,
+    * and no `DatabasePath` in its configuration.
+    */
+  case NoDatabase

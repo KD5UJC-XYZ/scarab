@@ -129,28 +129,7 @@
     "LeiosCertificationSuite"
    ],
    "note": "the ledger view at the state's own tip reduced to the two fields getLeiosCommitteeFromView reads: the set snapshot's committee and unboundRational of the current ppLeiosQuorumStakeThreshold in Dijkstra, none in the eras before it; read from the NewEpochState directly rather than through ledgerViewOfTip's forecast, which at its own anchor projects the same state; a Dijkstra state of the 11.1 layout, which the Leios build cannot hold, is a defect. The fixture suite reads the testnet's committee of epoch 100 with it, under which block 97,276's certificate verifies",
-   "digest": "0c95d0bd5dc18156"
-  },
-  "enum consensus.leios.LeiosExtValidationError": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/ouroboros-consensus",
-     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
-     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoTypes.hs",
-     "symbol": "LeiosExtValidationError",
-     "lines": [
-      1436,
-      1459
-     ]
-    }
-   ],
-   "class": "Mirror",
-   "structure": "differs",
-   "evidence": [
-    "LeiosCertificationSuite"
-   ],
-   "note": "the four constructors applyBlock raises, with their fields in the reference's order (LeiosPoint as EbPoint, LeiosCert as the BLS layer's Certificate); LeiosCertificateForecastRejected, chain selection's verdict, is not a case of block application and is not here",
-   "digest": "90875d862bf717b6"
+   "digest": "f6bb26f4f5af9a3c"
   },
   "def consensus.ByronRulesConfig#windowThreshold": {
    "upstream": [
@@ -2664,19 +2643,50 @@
    ],
    "note": "the update of the offerings; the wake is the caller's",
    "digest": "2323ec8b7a3ab18a"
+  },
+  "def consensus.state.ShelleyLedgerState.Layout#afterBytes": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus-cardano/src/shelley/Ouroboros/Consensus/Shelley/Ledger/Ledger.hs",
+     "symbol": "applyHelper",
+     "lines": [
+      749,
+      756
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus-cardano/src/shelley/Ouroboros/Consensus/Shelley/Ledger/Leios.hs",
+     "symbol": "applyLeiosClosure",
+     "lines": [
+      223,
+      230
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "MirrorDijkstraSuite"
+   ],
+   "note": "shelleyCumulativeTxBytes after a Dijkstra block: the closure's bytes, which applyLeiosClosure adds to the unticked state, and the block's, which applyHelper adds, given as one sum modulo 2^64",
+   "digest": "cccc217e11d452ee"
   }
  },
  "glue": [
- {
-  "reason": "the Leios certification check's Scala plumbing with no counterpart of its own: its companion, the committee of the tip decoded once into the BLS layer's (the reference's LeiosCommittee holds decoded keys, and leiosCommitteeOfTip returns it with the threshold as a pair), the value a passing certificate yields (the reference continues in place with the announced point), and the defects, states the reference cannot hold or failures of the native library (#73)",
-  "definitions": [
-   "object consensus.leios.LeiosCertification",
-   "class consensus.leios.TipCommittee",
-   "def consensus.leios.LeiosCertification.tipCommittee",
-   "class consensus.leios.Certified",
-   "enum consensus.leios.LeiosCertificationDefect"
-  ]
- },
+  {
+   "reason": "the Leios certification check's Scala plumbing with no counterpart of its own: its companion, the committee of the tip decoded once into the BLS layer's (the reference's LeiosCommittee holds decoded keys, and leiosCommitteeOfTip returns it with the threshold as a pair), the value a passing certificate yields (the reference continues in place with the announced point), and what the committee is made of, by which the node keeps the committee it decoded for an equal basis (#73, #54)",
+   "definitions": [
+    "object consensus.leios.LeiosCertification",
+    "class consensus.leios.TipCommittee",
+    "def consensus.leios.LeiosCertification.tipCommittee",
+    "class consensus.leios.Certified",
+    "def consensus.leios.LeiosCertification.committeeBasis"
+   ]
+  },
   {
    "reason": "the instances of Praos2's state types that the chain-dependent state derives its equality, rendering and difference from, and the companions that hold them: Scala plumbing with no counterpart (#826)",
    "definitions": [
@@ -2743,6 +2753,19 @@
     "given consensus.leios.AnnouncingHeader.given_Eq_AnnouncingHeader",
     "object consensus.leios.LeiosAnnouncements",
     "object consensus.leios.LeiosRollForward"
+   ]
+  },
+  {
+   "reason": "the mirror's plumbing for a Dijkstra block on the era types, which holds no flat block: the step of MirrorStep.block with the transaction bytes given, and the era history's horizon at the tip that the era rules' UTxO context reads as its EpochInfo (#54)",
+   "definitions": [
+    "def consensus.state.MirrorStep.dijkstraBlock",
+    "def consensus.state.MirrorClock.horizon"
+   ]
+  },
+  {
+   "reason": "the routing of a Dijkstra block's defects to the follower's no verdict, where valid peer input can meet a limit of this build, or to a stop (BlockNoVerdict.ofDijkstra, #54): the node's own, as BlockNoVerdict is (issue 567); the reference has no path without a verdict",
+   "definitions": [
+    "def consensus.BlockNoVerdict.ofDijkstra"
    ]
   }
  ]

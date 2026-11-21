@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.node.MirrorSteps.verdict
 import xyz.kd5ujc.scarab.consensus.{BlockRef, VolatileChain}
 import xyz.kd5ujc.scarab.ledger.{Header, HeaderVrf}
 import cats.effect.unsafe.implicits.global
@@ -140,17 +141,19 @@ class HeaderRulesSuite extends ScalaCheckSuite:
       header: Header.Shelley,
       config: PraosConfig
   ): Either[BlockFailure, MirrorState] =
-    MirrorRules.applyBlock(
-      if i == 0 then forged.genesis else forged.states(i - 1),
-      header,
-      forged.raws(i),
-      config,
-      forged.globals,
-      None,
-      None,
-      ForgedChain.mirrorEnv.byron,
-      xyz.kd5ujc.scarab.plutus.PlutusBackend.default
-    )
+    MirrorRules
+      .applyBlock(
+        if i == 0 then forged.genesis else forged.states(i - 1),
+        header,
+        forged.raws(i),
+        config,
+        forged.globals,
+        None,
+        None,
+        ForgedChain.mirrorEnv.byron,
+        xyz.kd5ujc.scarab.plutus.PlutusBackend.default
+      )
+      .verdict
 
   /** Header-first validation of block `i` 's `header` under `config`, from the state after its
     * parent: the refusal, if it is one.

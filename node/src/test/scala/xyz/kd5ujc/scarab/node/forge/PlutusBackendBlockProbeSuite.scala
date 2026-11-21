@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.forge
 
+import xyz.kd5ujc.scarab.node.MirrorSteps.verdict
 import cats.syntax.all.*
 import java.util.concurrent.atomic.AtomicInteger
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -66,17 +67,19 @@ class PlutusBackendBlockProbeSuite
           .decodeShelley(block)
           .fold(e => fail(e.toString), _.header)
         def apply(backend: PlutusBackend) =
-          MirrorRules.applyBlock(
-            mirrorState(start),
-            header,
-            block,
-            config,
-            globals,
-            None,
-            None,
-            mirrorEnv.byron,
-            backend
-          )
+          MirrorRules
+            .applyBlock(
+              mirrorState(start),
+              header,
+              block,
+              config,
+              globals,
+              None,
+              None,
+              mirrorEnv.byron,
+              backend
+            )
+            .verdict
         assert(apply(PlutusBackend.default).isRight, s"${apply(PlutusBackend.default)}")
         val probe = Probe()
         apply(probe.backend) match

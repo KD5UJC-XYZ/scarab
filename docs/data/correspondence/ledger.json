@@ -42600,7 +42600,7 @@
     "DijkstraRulesOracleSuite"
    ],
    "note": "a block's bytes as the flat block decoder reads them, its header and body in the era's types, the body made from the same bytes as its size and hash",
-   "digest": "335b4ade566db200"
+   "digest": "fc4c752247db37f9"
   },
   "val ledger.era.dijkstra.DijkstraBlockHeader.instance": {
    "upstream": [
@@ -46341,6 +46341,27 @@
    ],
    "note": "the state is the node's epoch state with the era's governance state beside it (EpochGovState), until the ledger state holds the era's record (#85); POOLREAP, HARDFORK and SNAP are the node's rules, SNAP reading the era's current parameters through the node's parameter record; no event is kept, as the node's EPOCH keeps none; a succ or compactCoinOrError the reference calls error on is a VocabError",
    "digest": "4149729d66dd8de7"
+  },
+  "enum ledger.LeiosExtValidationError": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoTypes.hs",
+     "symbol": "LeiosExtValidationError",
+     "lines": [
+      1436,
+      1459
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "LeiosCertificationSuite"
+   ],
+   "note": "the four constructors applyBlock raises, with their fields in the reference's order (LeiosPoint as EbPoint, LeiosCert as the BLS layer's Certificate); LeiosCertificateForecastRejected, chain selection's verdict, is not a case of block application and is not here",
+   "digest": "90875d862bf717b6"
   }
  },
  "glue": [
@@ -47284,48 +47305,6 @@
    ]
   },
   {
-   "reason": "the companions of BBODY's era types and failures (their CanEqual givens), the header's fields read once in the classes' types (DijkstraBlockHeader), the evidence that a flat block or transaction is one the block decoder read (DijkstraBlock.Decoded, which only DijkstraBlock.decode makes), why a block's bytes are not a block in the era's types (DijkstraBlockError: the block decoder's refusal or a field outside its era type), a body's rendering, the BBODY state's lens, and the adapter of Dijkstra's BBODY failures to the node's flat Dijkstra failure (DijkstraBbody.toStored), one-way glue the comparisons read until the era failures have their own encoders (#796)",
-   "definitions": [
-    "class ledger.era.dijkstra.DijkstraBlock.Decoded",
-    "class ledger.era.dijkstra.DijkstraBlockHeader",
-    "def ledger.era.dijkstra.DijkstraBlockBody#toString",
-    "def ledger.era.dijkstra.DijkstraBlockHeader.fromHeader",
-    "def ledger.era.rules.DijkstraBbody.toStored",
-    "def ledger.era.rules.ShelleyBbodyState.ls",
-    "enum ledger.era.dijkstra.DijkstraBlockError",
-    "given ledger.era.BlockHeaderVersionInfo.given_CanEqual_BlockHeaderVersionInfo_BlockHeaderVersionInfo",
-    "given ledger.era.PerasCert.given_CanEqual_PerasCert_PerasCert",
-    "given ledger.era.rules.AlonzoBbodyEvent.given_CanEqual_AlonzoBbodyEvent_E_AlonzoBbodyEvent_E",
-    "given ledger.era.rules.AlonzoBbodyPredFailure.given_CanEqual_AlonzoBbodyPredFailure_E_AlonzoBbodyPredFailure_E",
-    "given ledger.era.rules.ConwayBbodyPredFailure.given_CanEqual_ConwayBbodyPredFailure_E_ConwayBbodyPredFailure_E",
-    "given ledger.era.rules.DijkstraBbodyPredFailure.given_CanEqual_DijkstraBbodyPredFailure_E_DijkstraBbodyPredFailure_E",
-    "given ledger.era.rules.ShelleyBbodyEvent.given_CanEqual_ShelleyBbodyEvent_E_ShelleyBbodyEvent_E",
-    "given ledger.era.rules.ShelleyBbodyPredFailure.given_CanEqual_ShelleyBbodyPredFailure_E_ShelleyBbodyPredFailure_E",
-    "object ledger.era.BlockHeaderVersionInfo",
-    "object ledger.era.DijkstraEraBlockBody",
-    "object ledger.era.EraBlockBody",
-    "object ledger.era.EraBlockHeader",
-    "object ledger.era.LeiosEraBlockHeader",
-    "object ledger.era.PerasCert",
-    "object ledger.era.dijkstra.DijkstraBlock",
-    "object ledger.era.dijkstra.DijkstraBlockBody",
-    "object ledger.era.dijkstra.DijkstraBlockHeader",
-    "object ledger.era.rules.AlonzoBbody",
-    "object ledger.era.rules.AlonzoBbodyEvent",
-    "object ledger.era.rules.AlonzoBbodyPredFailure",
-    "object ledger.era.rules.ConwayBbody",
-    "object ledger.era.rules.ConwayBbodyPredFailure",
-    "object ledger.era.rules.DijkstraBbody",
-    "object ledger.era.rules.DijkstraBbodyPredFailure",
-    "object ledger.era.rules.EmbedLedgersInBbody",
-    "object ledger.era.rules.InjectBbodyFailure",
-    "object ledger.era.rules.ShelleyBbody",
-    "object ledger.era.rules.ShelleyBbodyEvent",
-    "object ledger.era.rules.ShelleyBbodyPredFailure",
-    "object ledger.era.rules.ShelleyBbodyState"
-   ]
-  },
-  {
    "reason": "the companions of the closure's application and of its defect (the defect's CanEqual given)",
    "definitions": [
     "object ledger.era.rules.DijkstraClosure",
@@ -47455,6 +47434,76 @@
     "object ledger.era.DRepPulser",
     "object ledger.era.rules.ConwayEpoch",
     "object ledger.era.rules.DijkstraEpoch"
+   ]
+  },
+  {
+   "reason": "the companions of BBODY's era types and failures (their CanEqual givens), the header's fields read once in the classes' types (DijkstraBlockHeader), the evidence that a flat block or transaction is one the block decoder read (DijkstraBlock.Decoded, which only DijkstraBlock.decode makes), why a block's bytes are not a block in the era's types, by whose the failure is (DijkstraBlockError and its total classification DijkstraBlockError.of: the block decoder's refusal, the era types' refusal of what it read, or the node's own readings that disagree), a body's rendering, the BBODY state's lens, and the adapter of Dijkstra's BBODY failures to the node's flat Dijkstra failure (DijkstraBbody.toStored), one-way glue the comparisons read until the era failures have their own encoders (#796)",
+   "definitions": [
+    "class ledger.era.dijkstra.DijkstraBlock.Decoded",
+    "class ledger.era.dijkstra.DijkstraBlockHeader",
+    "def ledger.era.dijkstra.DijkstraBlockBody#toString",
+    "def ledger.era.dijkstra.DijkstraBlockError.of",
+    "def ledger.era.dijkstra.DijkstraBlockHeader.fromHeader",
+    "def ledger.era.rules.DijkstraBbody.toStored",
+    "def ledger.era.rules.ShelleyBbodyState.ls",
+    "enum ledger.era.dijkstra.DijkstraBlockError",
+    "given ledger.era.BlockHeaderVersionInfo.given_CanEqual_BlockHeaderVersionInfo_BlockHeaderVersionInfo",
+    "given ledger.era.PerasCert.given_CanEqual_PerasCert_PerasCert",
+    "given ledger.era.rules.AlonzoBbodyEvent.given_CanEqual_AlonzoBbodyEvent_E_AlonzoBbodyEvent_E",
+    "given ledger.era.rules.AlonzoBbodyPredFailure.given_CanEqual_AlonzoBbodyPredFailure_E_AlonzoBbodyPredFailure_E",
+    "given ledger.era.rules.ConwayBbodyPredFailure.given_CanEqual_ConwayBbodyPredFailure_E_ConwayBbodyPredFailure_E",
+    "given ledger.era.rules.DijkstraBbodyPredFailure.given_CanEqual_DijkstraBbodyPredFailure_E_DijkstraBbodyPredFailure_E",
+    "given ledger.era.rules.ShelleyBbodyEvent.given_CanEqual_ShelleyBbodyEvent_E_ShelleyBbodyEvent_E",
+    "given ledger.era.rules.ShelleyBbodyPredFailure.given_CanEqual_ShelleyBbodyPredFailure_E_ShelleyBbodyPredFailure_E",
+    "object ledger.era.BlockHeaderVersionInfo",
+    "object ledger.era.DijkstraEraBlockBody",
+    "object ledger.era.EraBlockBody",
+    "object ledger.era.EraBlockHeader",
+    "object ledger.era.LeiosEraBlockHeader",
+    "object ledger.era.PerasCert",
+    "object ledger.era.dijkstra.DijkstraBlock",
+    "object ledger.era.dijkstra.DijkstraBlockBody",
+    "object ledger.era.dijkstra.DijkstraBlockError",
+    "object ledger.era.dijkstra.DijkstraBlockHeader",
+    "object ledger.era.rules.AlonzoBbody",
+    "object ledger.era.rules.AlonzoBbodyEvent",
+    "object ledger.era.rules.AlonzoBbodyPredFailure",
+    "object ledger.era.rules.ConwayBbody",
+    "object ledger.era.rules.ConwayBbodyPredFailure",
+    "object ledger.era.rules.DijkstraBbody",
+    "object ledger.era.rules.DijkstraBbodyPredFailure",
+    "object ledger.era.rules.EmbedLedgersInBbody",
+    "object ledger.era.rules.InjectBbodyFailure",
+    "object ledger.era.rules.ShelleyBbody",
+    "object ledger.era.rules.ShelleyBbodyEvent",
+    "object ledger.era.rules.ShelleyBbodyPredFailure",
+    "object ledger.era.rules.ShelleyBbodyState"
+   ]
+  },
+  {
+   "reason": "the node's stop for a Dijkstra block it cannot judge, typed where the reference meets a missing or undecodable closure with error (Forker.hs:1048-1052, 1084-1087, ouroboros-consensus 2416493b) or cannot hold the state; the Leios certification's defects, moved from consensus so that a refusal and a stop hold them typed; the renderings of both for the log (#54, #73)",
+   "definitions": [
+    "def ledger.DijkstraBlockDefect#message",
+    "def ledger.LeiosCertificationDefect#message",
+    "def ledger.LeiosExtValidationError#message",
+    "enum ledger.DijkstraBlockDefect",
+    "enum ledger.LeiosCertificationDefect"
+   ]
+  },
+  {
+   "reason": "the run of Dijkstra's era rules on a block as the node applies it, BBODY with every failure accumulated and the closure's application, on the fused interpreter with the proposals as their own state and the events discarded (applyBlockEither with ValidateAll, ComputeLedgerEvents off), and its defects; and the tick of a block given by its era and header hash, which a block on the era types gives (#54)",
+   "definitions": [
+    "def ledger.era.rules.DijkstraBlockRun.bbody",
+    "def ledger.era.rules.DijkstraBlockRun.closure",
+    "def ledger.rules.EraBlock.tickedTo",
+    "enum ledger.era.rules.DijkstraRuleDefect",
+    "object ledger.era.rules.DijkstraBlockRun"
+   ]
+  },
+  {
+   "reason": "why the Leios build's follow has no endorser-block store to open, which the configuration's refusal names (ConfigProblem.LeiosStoreRequired, #54): the reference has an in-memory LeiosDB this build does not, so it has no such refusal",
+   "definitions": [
+    "enum ledger.LeiosStoreMissing"
    ]
   }
  ]

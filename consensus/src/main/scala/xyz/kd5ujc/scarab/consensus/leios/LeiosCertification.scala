@@ -26,61 +26,14 @@ import xyz.kd5ujc.scarab.ledger.state.{
 import xyz.kd5ujc.scarab.protocol.EbPoint
 import xyz.kd5ujc.scarab.protocol.LeiosWord.Word64
 
+export xyz.kd5ujc.scarab.ledger.{LeiosCertificationDefect, LeiosExtValidationError}
+
 /** The Leios committee of a ledger state's tip and the weight a certificate's signers must reach:
   * the result of `leiosCommitteeOfTip` (ouroboros-consensus 2416493b
   * `Ouroboros/Consensus/Ledger/SupportsProtocol.hs:51-59`), with each seat's key decoded once so
   * that a caller can keep it for the epoch.
   */
 final case class TipCommittee(committee: Committee, threshold: Weight)
-
-/** Why the Leios checks of a certifying block reach no verdict: each a state the reference cannot
-  * hold or a failure of the native BLS library. None is a [[LeiosExtValidationError]], and none may
-  * be read as one.
-  */
-enum LeiosCertificationDefect:
-  /** A Dijkstra state of the 11.1 layout, whose snapshots hold no committee; the Leios build holds
-    * none such ([[xyz.kd5ujc.scarab.protocol.DijkstraNotYet.LedgerState]]).
-    */
-  case CommitteeOfNode11_1
-
-  /** A seated key the ledger stored that does not decode; the selection decoded each key it seated
-    * ([[xyz.kd5ujc.scarab.ledger.state.LeiosCommitteeSelection.select]]).
-    */
-  case UndecodableSeatKey(seat: Int, cause: BlsError)
-
-  /** A committee of more seats than a `Word16` seat id names; the committee size is a `Word16`. */
-  case Unaddressable(cause: BlsError)
-
-  /** The previous-block hash is not the 32 bytes of a header hash. */
-  case PreviousHashWidth(size: Int)
-
-  /** The native library failed during the aggregate verification. */
-  case Native(cause: BlsError.Backend)
-
-/** `LeiosExtValidationError` (ouroboros-consensus 2416493b `LeiosDemoTypes.hs:1436-1447`): why a
-  * certifying ranking block is invalid before its endorser block's closure is applied, the four
-  * cases `Forker.applyBlock` raises. The fifth, `LeiosCertificateForecastRejected`, is the verdict
-  * of chain selection's forecast check (`ChainDB/Impl/ChainSel.hs`), not of block application.
-  */
-enum LeiosExtValidationError:
-  /** The parent's chain-dependent state holds no announcement: there is no endorser block to
-    * certify.
-    */
-  case LeiosCertificateWithoutAnnouncement(cert: Certificate)
-
-  /** The parent's ledger state is of an era without a Leios committee. */
-  case LeiosMissingCommittee(point: EbPoint, cert: Certificate)
-
-  /** The block has no parent, so it would certify at genesis. */
-  case LeiosCertificateAfterGenesis(cert: Certificate, point: EbPoint)
-
-  /** The certificate fails `verifyLeiosCert` over the announcing block's hash. */
-  case LeiosInvalidCertificate(
-      cert: Certificate,
-      point: EbPoint,
-      rbHash: RbHash,
-      error: VerificationError
-  )
 
 /** A certificate that passed the checks: the announced endorser block it certifies (its hash is the
   * closure to apply), the announcing block's hash it was verified over, and its signers' weight.
@@ -173,12 +126,20 @@ object LeiosCertification:
   def leiosCommitteeOfTip[E <: EraTag](nes: NewEpochState[E])(using
       era: ShelleyBasedEra[E]
   ): Either[LeiosCertificationDefect, Option[TipCommittee]] =
+    committeeBasis(nes).flatMap(_.traverse(tipCommittee.tupled))
+
+  /** What [[leiosCommitteeOfTip]] makes its committee of: the seated committee of the set snapshot
+    * and the quorum parameter, none before Dijkstra. Equal bases give equal committees, so a caller
+    * may keep the committee of a basis and use it again for an equal one.
+    */
+  def committeeBasis[E <: EraTag](nes: NewEpochState[E])(using
+      era: ShelleyBasedEra[E]
+  ): Either[LeiosCertificationDefect, Option[(LeiosCommittee, Rational)]] =
     era match
       case ShelleyBasedEra.SDijkstra =>
         nes.es.snapshots.layout match
           case SnapShots.Layout.Leios(_, _, _, set) =>
-            tipCommittee(set, EraLedger.curPParams(nes.es.ls.utxo.gov).leiosQuorumStakeThreshold)
-              .map(Some(_))
+            Right(Some((set, EraLedger.curPParams(nes.es.ls.utxo.gov).leiosQuorumStakeThreshold)))
           case SnapShots.Layout.Node11_1 => Left(LeiosCertificationDefect.CommitteeOfNode11_1)
       case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
           ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage | ShelleyBasedEra.SConway =>

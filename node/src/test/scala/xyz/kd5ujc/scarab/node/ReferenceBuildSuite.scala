@@ -157,7 +157,7 @@ class ReferenceBuildSuite extends FunSuite:
   }
 
   test(
-    "11.1's and the Leios layouts are read and written, 11.2's not yet; follow refuses all but 11.1"
+    "11.1's and the Leios layouts are read and written, 11.2's not yet; follow refuses 11.2 alone"
   ) {
     assertEquals(StateLayout.of(ReferenceBuild.Release11_1), Right(StateLayout.Node11_1))
     assertEquals(StateLayout.of(ReferenceBuild.LeiosB004fe0c), Right(StateLayout.Leios))
@@ -180,15 +180,10 @@ class ReferenceBuildSuite extends FunSuite:
       ReferenceBuildFlag.follows(ReferenceBuild.Release11_1).map(_.build),
       Right(ReferenceBuild.Release11_1)
     )
+    // the Leios build's Dijkstra runs on the era rules (#54)
     assertEquals(
       ReferenceBuildFlag.follows(ReferenceBuild.LeiosB004fe0c).map(_.build),
-      Left(
-        ConfigError(
-          ConfigProblem.ReferenceBuildNotYet(
-            ReferenceBuildNotYet.Rules(ReferenceBuild.LeiosB004fe0c)
-          )
-        )
-      )
+      Right(ReferenceBuild.LeiosB004fe0c)
     )
     assert(ReferenceLayout.Release11_1.reads(ReferenceBuild.Release11_1))
     assert(!ReferenceLayout.Release11_1.reads(ReferenceBuild.LeiosB004fe0c))

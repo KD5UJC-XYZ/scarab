@@ -43,11 +43,11 @@ object ReferenceBuildFlag:
 
   /** The codec of `build` 's layout for `follow`, or the refusal of a build whose layout or rules
     * this build does not run yet ([[ReferenceBuildNotYet.Layout]]; [[ReferenceBuildNotYet.Rules]],
-    * #826 step c).
+    * #826 step c). The Leios build's Dijkstra runs on the era rules (#54).
     */
   def follows(build: ReferenceBuild): Either[ConfigError, ReferenceLayout] = build match
-    case ReferenceBuild.Release11_1 => layout(build)
-    case ReferenceBuild.Release11_2 | ReferenceBuild.LeiosB004fe0c =>
+    case ReferenceBuild.Release11_1 | ReferenceBuild.LeiosB004fe0c => layout(build)
+    case ReferenceBuild.Release11_2 =>
       layout(build).flatMap(_ =>
         Left(ConfigError(ConfigProblem.ReferenceBuildNotYet(ReferenceBuildNotYet.Rules(build))))
       )

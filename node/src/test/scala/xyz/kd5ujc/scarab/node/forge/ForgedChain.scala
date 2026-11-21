@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.forge
 
+import xyz.kd5ujc.scarab.node.MirrorSteps.verdict
 import xyz.kd5ujc.scarab.node.assertions.Assertions
 import xyz.kd5ujc.scarab.node.ConfigSettings
 import xyz.kd5ujc.scarab.ledger.TestGeometry
@@ -400,6 +401,7 @@ class ForgedChainSetup(val geometry: EpochGeometry):
                   mirrorEnv.byron,
                   xyz.kd5ujc.scarab.plutus.PlutusBackend.default
                 )
+                .verdict
                 .toOption
                 .get
             )

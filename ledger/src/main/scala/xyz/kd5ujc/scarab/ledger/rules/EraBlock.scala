@@ -157,15 +157,22 @@ object EraBlock:
       header: Header.Shelley,
       block: Block.Shelley
   ): Either[BlockFailure, EraNes] =
+    tickedTo(ctx)(from, header, block.era, block.header.hash)
+
+  /** [[ticked]] for a block of `era` whose header's hash is `hash`: a Dijkstra block read into the
+    * era's types holds no flat block.
+    */
+  def tickedTo(ctx: Context)(
+      from: EraNes,
+      header: Header.Shelley,
+      era: Era,
+      hash: xyz.kd5ujc.scarab.codec.Bytes
+  ): Either[BlockFailure, EraNes] =
     val globals = ctx.globals
     val epoch = globals.epochOf(header.slot)
     for
-      _ <- Either.cond(
-        block.era == header.era,
-        (),
-        BlockFailure.EraAnnounced(block.era, header.era)
-      )
-      _ <- Either.cond(block.header.hash == header.hash, (), BlockFailure.HeaderDiffers)
+      _ <- Either.cond(era == header.era, (), BlockFailure.EraAnnounced(era, header.era))
+      _ <- Either.cond(hash == header.hash, (), BlockFailure.HeaderDiffers)
       _ <- Either.cond(epoch >= from.epoch.toBigInt, (), BlockFailure.EpochPrecedesLedger(epoch))
       slot <- SlotNo.fromBigInt(header.slot).leftMap(e => BlockFailure.Tick(TickFailure.Input(e)))
       ticked <- Hfc

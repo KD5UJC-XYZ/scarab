@@ -32,7 +32,8 @@ class ReferenceBuildStartSuite extends CatsEffectSuite:
     try assertEquals(listing.toArray.toVector, Vector.empty)
     finally listing.close()
 
-  List("leios-b004fe0c", "11.2").foreach { build =>
+  // the Leios build runs (#54); 11.2 is the one build not implemented yet
+  List("11.2").foreach { build =>
     test(s"$build is refused at start, before any store, lease or file of the database") {
       StorageTestKit.tempDir.use { dir =>
         Main.run(follow((dir / "db").toString, build)).map { code =>

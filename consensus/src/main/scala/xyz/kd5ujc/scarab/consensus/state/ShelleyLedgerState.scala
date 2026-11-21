@@ -104,6 +104,16 @@ object ShelleyLedgerState:
       case Node11_1(_) => Node11_1(None)
       case Leios(b)    => Leios(block.addTxBytes(b))
 
+    /** The field after a Dijkstra block whose transactions, its own and its certified endorser
+      * block's closure's, take `txBytes` (`applyHelper`, ouroboros-consensus 2416493b
+      * `Shelley/Ledger/Ledger.hs:749-756`, and the closure's `shelleyCumulativeTxBytes`,
+      * `Shelley/Ledger/Leios.hs:223-230`), added modulo 2^64 as `Word64` 's `+` is.
+      */
+    def afterBytes(txBytes: Word64): Layout = this match
+      case Node11_1(_) => Node11_1(None)
+      // the sum of two words' bits as a `Long` is their sum modulo 2^64
+      case Leios(b) => Leios(Word64.fromUnsigned(b.bits + txBytes.bits))
+
   object Layout:
     /** The field as a chain's first Shelley-based state holds it: no certificate round, or no
       * transaction bytes yet (`shelleyCumulativeTxBytes = 0`, the Byron to Shelley translation's,

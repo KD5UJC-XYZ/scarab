@@ -4,7 +4,7 @@ package xyz.kd5ujc.scarab.node
 import cats.effect.{Async, Resource}
 import cats.mtl.Raise
 import fs2.io.file.Path
-import xyz.kd5ujc.scarab.ledger.StorageError
+import xyz.kd5ujc.scarab.ledger.{ConfigError, ConfigProblem, LeiosStoreMissing, StorageError}
 import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import xyz.kd5ujc.scarab.storage.{
   LeiosBackground,
@@ -26,32 +26,59 @@ private[node] object LeiosStorage:
     */
   def directory(db: Path): Path = db / "leios"
 
-  /** The store of `build` 's run, opened for the resource's life, or none:
+  /** The endorser-block store a run opens ([[follows]]): none, a release build's; or the one on
+    * disk at [[directory]] of the database directory `db`.
+    */
+  enum Plan:
+    case NoStore
+    case OnDisk(db: Path)
+
+  /** What store `follow` under `build` opens, from the database directory the store would be opened
+    * in, the run's own (its `--db`, or the configuration's `DatabasePath`):
     *
     *   - only the Leios testnet's build has a LeiosDB; a release build's node has none;
     *   - the reference's `LeiosDbConfig` backend `SQLite` (its default) keeps the store on disk, at
     *     [[directory]] of `db`; `InMemory` keeps it in memory (`newLeiosDBInMemory`), which this
-    *     build has no store for, so it opens none, and nor does a run without a database directory.
+    *     build has no store for.
     *
-    * `locks` is the process's instance ([[LeiosStoreLocks]]); a failed open raises
-    * [[StorageError.LeiosStore]] with the store's typed cause.
+    * The Leios build applies a certifying ranking block from the closure the store holds, and the
+    * store is fetched into, so a run without one could never pass a certifying block (chain
+    * selection parks it until its closure is acquired): the `InMemory` backend and an on-disk store
+    * with no database directory are refused before any store opens
+    * ([[ConfigProblem.LeiosStoreRequired]]).
     */
-  def resource[F[_]: Async](
+  def follows(
       build: ReferenceBuild,
       backend: LeiosDbBackend,
-      db: Option[Path],
-      locks: LeiosStoreLocks[F]
-  )(using Raise[F, StorageError]): Resource[F, Option[LeiosStore[F]]] =
+      db: Option[Path]
+  ): Either[ConfigError, Plan] =
     build match
-      case ReferenceBuild.Release11_1 | ReferenceBuild.Release11_2 => Resource.pure(None)
+      case ReferenceBuild.Release11_1 | ReferenceBuild.Release11_2 => Right(Plan.NoStore)
       case ReferenceBuild.LeiosB004fe0c =>
         (backend, db) match
-          case (LeiosDbBackend.SQLite, Some(dir)) =>
-            RocksLeiosStore
-              .resource[F](directory(dir), locks)(using Async[F], lifted[F])
-              .map(Some(_))
-          case (LeiosDbBackend.InMemory, _) | (LeiosDbBackend.SQLite, None) =>
-            Resource.pure(None)
+          case (LeiosDbBackend.SQLite, Some(dir)) => Right(Plan.OnDisk(dir))
+          case (LeiosDbBackend.InMemory, _) =>
+            Left(
+              ConfigError(
+                ConfigProblem.LeiosStoreRequired(build, LeiosStoreMissing.InMemoryBackend)
+              )
+            )
+          case (LeiosDbBackend.SQLite, None) =>
+            Left(ConfigError(ConfigProblem.LeiosStoreRequired(build, LeiosStoreMissing.NoDatabase)))
+
+  /** The store `plan` names ([[follows]]), opened for the resource's life, or none. `locks` is the
+    * process's instance ([[LeiosStoreLocks]]); a failed open raises [[StorageError.LeiosStore]]
+    * with the store's typed cause.
+    */
+  def resource[F[_]: Async](plan: Plan, locks: LeiosStoreLocks[F])(using
+      Raise[F, StorageError]
+  ): Resource[F, Option[LeiosStore[F]]] =
+    plan match
+      case Plan.NoStore => Resource.pure(None)
+      case Plan.OnDisk(db) =>
+        RocksLeiosStore
+          .resource[F](directory(db), locks)(using Async[F], lifted[F])
+          .map(Some(_))
 
   /** The store's errors as the node's ([[StorageError.LeiosStore]], [[LeiosBackground.lifted]]). */
   def lifted[F[_]](using Raise[F, StorageError]): Raise[F, LeiosStoreError] =
