@@ -988,6 +988,7 @@ last line and exit code are the outcome:
 | `matched`, `notCompared` not empty | 6 | the files it holds match, but some are missing: not a pass (CNF-2) |
 | `differs` | 4 | the first difference, located |
 | `halted` | 3 | the rules do not apply the block at this slot yet (`BlockFailure.NotYet`, with its part); not a pass |
+| `withheld` | 3 | the node has no verdict on the block of this slot for a part it does not hold yet, and withholds it as the follower does (`LeiosReplayMain.noVerdictNotYet`, with its `BlockNoVerdict`: after #85 D8, a proposal of a parameter Dijkstra adds, until #826's format change); not a pass |
 | `refused` | 5 | the rules refuse a block that the reference applied, with the typed failure |
 | `error` | 1 | no verdict: the inputs, the staging, the start state or the export failed (typed) |
 
