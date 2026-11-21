@@ -2556,8 +2556,7 @@ Conway's rules on the classes follow as the rest of stage 2.
       reference's verdicts on them are its cases' expectations on built blocks, not its bytes;
     - the failures are compared through the flat form and the suite's encoder: the era failures have no encoder yet
       (#796).
-  - Not yet (#54): BBODY on the node's running path, and the certificate's checks at application (D8c); the closure's
-    application is below.
+  - On the node's running path: the next bullet but one (D8c).
 - **The application of an endorser block's closure** (`era/rules/DijkstraClosure.scala`; ouroboros-consensus 2416493b,
   `ouroboros-consensus-cardano/src/shelley/Ouroboros/Consensus/Shelley/Ledger/Leios.hs:167-252`, through
   `resolveAndApplyLeiosClosure`, `Storage/LedgerDB/Forker.hs:1066-1104`):
@@ -2572,7 +2571,7 @@ Conway's rules on the classes follow as the rest of stage 2.
     adding them is the node's, as the counter is consensus's. The function takes the state and the environment it is
     given and ticks nothing: the caller gives it the certifying block's parent, unticked, and that state's parameters
     and account, as `applyBlock` hands `resolveAndApplyLeiosClosure` the parent's state and ticks the block only
-    after (`Forker.hs:674-685`); that is the running path's obligation (D8c).
+    after (`Forker.hs:674-685`); the running path does so (D8c, below).
   - `ValidateNone` (small-steps `Extended.hs:714-742`) skips every predicate and every labelled step; every labelled
     step of the rules carries `lblStatic`, the static checks and the scripts' evaluation (`when2Phase`, labelled
     `lblStatic` and `lbl2Phase`, `Alonzo/Rules/Utxos.hs:418`, cardano-ledger 9df9f98c). So the transition runs
@@ -2620,8 +2619,79 @@ Conway's rules on the classes follow as the rest of stage 2.
     endorser block's transaction list; its five of the endorser block at slot 300692 are the first five of that block's
     39, as the recorded endorser block (which no fixture holds) lists them. The closure's bytes are checked against its transactions' `sizeTxF`, the function the reference sums, not against a
     recorded counter.
-  - Not yet (#54): the store's lookup, the closure applied before the tick, its bytes added to the state's counter and
-    the defect stopping the node, on the node's running path (D8c).
+  - On the node's running path: the next bullet (D8c).
+- **Dijkstra blocks applied by the node** (D8c; `node/src/main/scala/xyz/kd5ujc/scarab/node/MirrorDijkstra.scala`, through `MirrorRules`; the rules' run,
+  `era/rules/DijkstraBlockRun.scala`): under `--reference-build leios-b004fe0c` a Dijkstra block is applied on the era
+  types in the order of `Forker.applyBlock` (ouroboros-consensus 2416493b `Storage/LedgerDB/Forker.hs:624-687`); the
+  release builds keep refusing it (`BlockFailure.NotYet(DijkstraNotYet.Rules)`), and `follow` now runs the Leios build.
+  - The order: the block in the era's types (`DijkstraBlock.decode`), its header and body hash against the announced
+    header (what BlockFetch's `blockMatchesHeader` checks, `Shelley/Ledger/Block.hs:224-231`; the declared size is
+    BBODY's, `Dijkstra/Rules/Bbody.hs:362`); for a certifying block, the Leios checks against the parent's unticked
+    chain-dependent state and its committee (`MirrorDijkstra.certify`, through `LeiosCertification.check`, the committee
+    kept for an equal basis, `committeeBasis`), a refusal being the block's (`BlockFailure.LeiosCertificate`) and the
+    native library's failure a provider defect; only once they hold (`Forker.hs:660-682`), the certified endorser
+    block's closure read from the store (`lookupEbClosure`) before the pure rules run, resolved once, its inputs fetched
+    with the block's (the block's own less those its transactions create, `neededTxInsForBlock`,
+    `Cardano/Ledger/Block.hs:104-110`; the closure's each transaction's, `Shelley/Ledger/Leios.hs:198`), and applied to
+    the parent, unticked and stamped with the block's number, with that state's parameters, account and proposals; then
+    the tick, BBODY on the era types with every failure accumulated, Praos2's header rules, checkpoints included, with
+    the ledger view of the state ticked before BBODY (`applyHelper`, `Ledger/Extended.hs:297-311`; `protocolLedgerView`,
+    `currentForecast`), and the state's cumulative transaction bytes gaining the closure's and the block's
+    (`Layout.afterBytes`, the Leios layout's existing field). The proposals are read from the state's record before the
+    closure and BBODY and written back after each.
+  - The header gate and the block path share Praos2's configuration, the chain-dependent state's translation and the
+    tip (`Praos2Headers.config`, `translated`, `chainDep`, `tipOf`), and report differently where the reference's two
+    checks do: the gate validates a header against the view forecast from its anchor, the envelope checks of every era
+    first (`validateHeader` in the ChainSync client), and the block path against the view of the block's own ticked
+    state, after BBODY (`applyHelper`), where Praos2's envelope checks the checkpoints, block number, slot and previous
+    hash.
+  - Every path is the same: the node has no reapplication of its own, and block application, the received log's
+    replay and the immutable store's replay all run `MirrorRules`, so the closure is applied before the tick wherever
+    the reference applies or reapplies the block (`ReapplyVal`, `Forker.hs:580-622`; `LedgerDB/V2/LedgerSeq.hs:279-310`).
+  - No verdict (`ChainError.DijkstraBlock`, `DijkstraBlockDefect`), routed by `BlockNoVerdict.ofDijkstra`, a total
+    match. What valid peer input can meet withholds the block, blaming no peer and recording nothing invalid, as the
+    follower withholds the other eras' (issue 567): a script the evaluator cannot judge (`ScriptUnavailable`); an
+    update of a key Dijkstra adds (34-56), which the public testnet's ledger admitted and the record cannot hold yet, so
+    the node does not follow the chain past it until it can
+    ([#85](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7065232490); `UnstorableProposals`); and the
+    node's two readings of the block's bytes that disagree, or a value its decoder's bounds rule out
+    (`DijkstraBlockError.Projection`, `Projection`). What stops the node: a missing or undecodable closure, as the
+    reference's `error` (`Forker.hs:1048-1052, 1084-1087`); a parameter record or proposals the era does not read;
+    Praos2's defects and a view outside its words; a stored output the era does not read and GOV's index overflow. A
+    quantity of the state out of range keeps the other eras' routing (`StateOutOfRange`); a transaction's defect is its
+    `BlockFailure.Tx`; a BLS library's failure a provider defect.
+  - The received log's replay (`ChainStorage.resume`) cuts the chain only at a refusal by the rules; a failure of the
+    node's own there (storage, the closure's read, a Dijkstra block's defect, an evaluator or provider that cannot
+    judge a block an earlier run adopted) stops the start before the chain is adopted, and nothing is rolled back.
+  - `follow` under the Leios build refuses at start a configuration with no endorser-block store to open
+    (`LeiosDbConfig.Backend: InMemory`, which this build has no store for, or no database directory, neither `--db` nor the configuration's
+    `DatabasePath`), which no certifying block
+    could pass (`LeiosStorage.follows`, `ConfigProblem.LeiosStoreRequired`); the in-memory store is #54's.
+  - Evidence (`MirrorDijkstraSuite`, `SessionFailureSuite`): the devnet chain from Origin (33 Conway blocks, the
+    crossing, 8 Dijkstra blocks, one with a transaction) and the public testnet's first two blocks from its genesis are
+    adopted, the crossing at block 33 alone; the release builds refuse block 33 as before; on crafted certifying blocks
+    over the devnet's states, a closure the store lacks stops the node, an empty one held goes on to the header, an
+    invalid certificate and one without an announcement are refusals, and the closure applied to the unticked parent
+    of a block of the next epoch stays in the parent's epoch and leaves block 37's transaction's outputs as block 37
+    left them, and the same closure applied after the tick (a ticked-parent mutant, across Dijkstra's epoch boundary)
+    leaves the fees SNAP took without it; a closure holding the testnet's first proposal (keys 45 and 46) is no
+    verdict; a wrong declared size is BBODY's refusal, before the header's; a devnet Dijkstra block that misses a
+    configured checkpoint is Praos2's envelope's refusal, after BBODY; an invalid certificate reads nothing from a
+    recording store through the block rules, and a valid one reads the closure once; a block's read set leaves out an
+    input its own transaction creates (testnet block 59,559); the cumulative transaction bytes gain each block's
+    transactions' sizes and a certifying block's closure's at the final assembly; a stop raised by the rules stops the
+    node through the follower, and a no verdict withholds the block, each with no invalid record and no blame
+    (`SessionFailureSuite`); a local failure on the received log stops the start and cuts nothing
+    (`ChainStorageSuite`); `follow` refuses the Leios build without a store (`LeiosStorageSuite`,
+    `ReferenceBuildStartSuite`).
+  - Incomplete (CNF-2): the testnet's other captured blocks have no reachable recorded state (the state at 97,273 is
+    recorded, 97,274 and 97,275 only as headers), and no recording holds a certifying block with its closure and the
+    state before it, so a certifying block's application is checked on crafted blocks, not against the reference's
+    states; that is the offline replay's (#54).
+  - Gaps ([#85](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7067709618)): a Dijkstra block's scripts
+    run serially, outside the parallel plan (`EraBlock.Body`, over the flat transactions); a script the evaluator
+    cannot judge is withheld without the transaction and redeemer the other eras' no-verdict names; its evaluations
+    are neither observed nor counted.
 - **Next, Conway's rules.** The first rule ported is one that needs no parameters, the second one that
   does, each under a differential against the flat rule on the recorded blocks and the refusal corpus.
 - The body is read through the flat decoder for now. What only the projection refuses (an update, genesis

@@ -1934,7 +1934,7 @@
       "id": "dijkstra",
       "component": "Dijkstra (next era)",
       "status": "partial",
-      "summary": "Named and refused (OD-4); decoding, genesis, the Conway translation and the crossing pieces as the Leios testnet build, including stored-output upgrades; transactions on the era types, pool registrations with their voting key; the header gate's Praos2 rules under the Leios build; ledger rules as test-only entry points",
+      "summary": "Named; refused by the release builds (OD-4); decoding, genesis, the Conway translation and the crossing pieces as the Leios testnet build, including stored-output upgrades; transactions on the era types, pool registrations with their voting key; the header gate's Praos2 rules under the Leios build; Dijkstra blocks applied by the node under the Leios build, the certified closure before the tick",
       "evidence": {
         "suites": [
           "DijkstraNotYetSuite",
@@ -1951,6 +1951,7 @@
           "DijkstraTxSuite",
           "DijkstraTxCertSuite",
           "DijkstraHeaderRulesSuite",
+          "MirrorDijkstraSuite",
           "DijkstraHeaderGateSuite"
         ],
         "paths": [

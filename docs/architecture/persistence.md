@@ -253,13 +253,14 @@ volatile partition holds the body and not its whole closure), the transactions b
 scans read the volatile partition alone.
 
 The node's start opens the store under `--reference-build leios-b004fe0c` with a database directory
-and `LeiosDbConfig.Backend: SQLite` (the default), once `follow` admits that build, which it refuses
-at start for now (`ReferenceBuildNotYet.Rules`): after the database's ownership and network identity
+and `LeiosDbConfig.Backend: SQLite` (the default): after the database's ownership and network identity
 are checked and before the other stores, and releases it after them (`LeiosStorage`), as cardano-node
 b004fe0c opens its LeiosDB once the database's marker is checked and closes it after the run
 (`Run.hs:372-402`); the run's consumers receive it, as consensus receives `rnLeiosDb`. A release
-build opens none, nor does the backend `InMemory` (the reference's in-memory LeiosDB, which Scarab has
-no store for) or a run without `--db`. A failed open stops the start with `StorageError.LeiosStore`
+build opens none. The backend `InMemory` (the reference's in-memory LeiosDB, which Scarab has no store
+for) and a run with no database directory (neither `--db` nor the configuration's `DatabasePath`) would open none, so `follow` refuses both at start under the Leios build,
+before any store opens (`LeiosStorage.follows`, `ConfigProblem.LeiosStoreRequired`): a certifying
+ranking block is applied from the closure the store holds. A failed open stops the start with `StorageError.LeiosStore`
 and the store's typed cause.
 
 The chain database drives the open store as the reference's ChainDB background drives its LeiosDB

@@ -801,7 +801,7 @@
     {
       "module": "ledger",
       "path": "ledger/era/rules",
-      "responsibility": "The reference's rule predicates on the era types, each generic in its era over the reference's classes, in objects named after the reference's Rules modules (among them RATIFY, ENACT and Dijkstra's EPOCH, not yet the node's); their verdicts are compared with the flat rules' (#85, stage 2)",
+      "responsibility": "The reference's rule predicates on the era types, each generic in its era over the reference's classes, in objects named after the reference's Rules modules (among them RATIFY, ENACT and Dijkstra's EPOCH, not yet the node's); their verdicts are compared with the flat rules' (#85, stage 2); Dijkstra's BBODY and closure application, run by the node on a block",
       "entryPoints": [
         "ShelleyUtxo",
         "AllegraUtxo",
@@ -813,7 +813,8 @@
         "ConwayRatify",
         "ConwayEnact",
         "DijkstraEpoch",
-        "EpochGovState"
+        "EpochGovState",
+        "DijkstraBlockRun"
       ],
       "suites": [
         "ConwayUtxoChecksSuite",
@@ -1190,7 +1191,7 @@
     {
       "module": "node",
       "path": "node",
-      "responsibility": "Node wiring: config, setup, follower, block pool, fetch coordination, governors, header gate, Main",
+      "responsibility": "Node wiring: config, setup, follower, block pool, fetch coordination, governors, header gate, the block rules (Dijkstra's on the era types under the Leios build), Main",
       "entryPoints": [
         "Main",
         "NodeConfig",
@@ -1201,10 +1202,13 @@
         "InboundGovernor",
         "HeaderGate",
         "OutboundPeers",
-        "PeerGovernor"
+        "PeerGovernor",
+        "MirrorRules",
+        "MirrorDijkstra"
       ],
       "suites": [
         "FollowerSuite",
+        "MirrorDijkstraSuite",
         "BlockPoolSuite",
         "FetchCoordinatorSuite",
         "ConfigSuite",
