@@ -24,7 +24,7 @@ import xyz.kd5ujc.scarab.storage.{LeiosStore, LeiosStoreError}
 /** What a ChainSync client of the Leios build does with the headers it accepts, for one connection:
   * the roll-forward of a validated header and the headers of an accepted jump.
   */
-trait LeiosChainSync[F[_]]:
+trait LeiosChainSync[F[_]](using F: cats.Monad[F]):
   /** `leiosMsgRollForwardCallback` (`Ouroboros/Consensus/Network/NodeToNode.hs` 484-510 at
     * ouroboros-consensus 2416493b), with the validated `header` and the header state as of its
     * predecessor, `predecessor`, which carries the ledger view of the predecessor's slot. A peer
@@ -32,6 +32,12 @@ trait LeiosChainSync[F[_]]:
     * [[PeerError.LeiosTwoCertificationClaims]].
     */
   def rolledForward(header: Header, predecessor: NodeHeaderState)(using
+      Raise[F, PeerError]
+  ): F[Unit] =
+    LeiosChainSync.leiosHeader(header).traverse_(rolledForwardLeios(_, predecessor))
+
+  /** [[rolledForward]] of a Dijkstra header, read as the Leios header it is. */
+  def rolledForwardLeios(header: LeiosHeader, predecessor: NodeHeaderState)(using
       Raise[F, PeerError]
   ): F[Unit]
 
@@ -60,12 +66,10 @@ object LeiosChainSync:
       onset: BigInt => F[Option[FiniteDuration]],
       fatal: LeiosStoreError => F[Unit]
   )(using F: Async[F]): LeiosChainSync[F] = new LeiosChainSync[F]:
-    def rolledForward(header: Header, predecessor: NodeHeaderState)(using
+    def rolledForwardLeios(header: LeiosHeader, predecessor: NodeHeaderState)(using
         Raise[F, PeerError]
     ): F[Unit] =
-      leiosHeader(header).traverse_ { h =>
-        offers(h, predecessor) *> AnnouncingHeader.of(h).traverse_(announced(h, _))
-      }
+      offers(header, predecessor) *> AnnouncingHeader.of(header).traverse_(announced(header, _))
 
     def jumped(headers: Vector[(Header, NodeHeaderState)])(using Raise[F, PeerError]): F[Unit] =
       vars.maxAcceptedJumpSlot.get.flatMap { acceptedThrough =>
@@ -78,13 +82,6 @@ object LeiosChainSync:
             )
           )
       }
-
-    /** The Leios header of a Dijkstra header the gate validated, which decoded it as this does;
-      * none for a header of another era, which neither offers nor announces.
-      */
-    private def leiosHeader(header: Header): Option[LeiosHeader] = header match
-      case h: Header.Shelley if h.era == Era.Dijkstra => LeiosHeader.decode(h.raw).toOption
-      case _: Header.Shelley | _: Header.Byron        => None
 
     /** `checkMsgRollForwardForLeiosOffers` (`LeiosDemoLogic.hs` 1671-1696 at 2416493b): a
       * certifying header's claim is counted, then the endorser block its predecessor announced is
@@ -167,6 +164,13 @@ object LeiosChainSync:
         )
         .rescue(e => F.pure(e.asLeft[Unit]))
         .flatMap(_.fold(fatal, F.pure))
+
+  /** The Leios header of a Dijkstra header the gate validated, which decoded it as this does; none
+    * for a header of another era, which neither offers nor announces.
+    */
+  def leiosHeader(header: Header): Option[LeiosHeader] = header match
+    case h: Header.Shelley if h.era == Era.Dijkstra => LeiosHeader.decode(h.raw).toOption
+    case _: Header.Shelley | _: Header.Byron        => None
 
   /** `getLeiosMaxEbTxsSizeFromView` (`Shelley/Ledger/Leios.hs` 161-163 at 2416493b): a Praos2
     * view's bound, and 0 for the view of an era without Leios (`Storage/LedgerDB/Forker.hs`

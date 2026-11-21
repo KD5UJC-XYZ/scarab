@@ -112,6 +112,47 @@ class GenesisHeaderGateSuite extends FailsOnUncaught:
     yield assertEquals(problem, GenesisInternalProblem.HeaderSelectionUnavailable(off))
   }
 
+  // #54: the Leios build's ChainSync handling is given each validated header with the header
+  // state as of its predecessor (`leiosMsgRollForwardCallback`, ouroboros-consensus 2416493b
+  // `MiniProtocol/ChainSync/Client.hs` 1576-1586)
+  test("each validated header goes to the Leios handling with its predecessor's header state") {
+    val headers = Fixtures.chain(4)
+    for
+      applied <- chain(headers.take(2), 50)
+      state <- Ref.of[IO, VolatileChain[BigInt]](applied)
+      given Stateful[IO, VolatileChain[BigInt]] = RefStateful(state)
+      given Ask[IO, ChainSelection.Local] = selected(state, headers)
+      seen <- Ref.of[IO, Vector[(BigInt, NodeHeaderState)]](Vector.empty)
+      leios = new LeiosChainSync[IO]:
+        def rolledForwardLeios(
+            header: xyz.kd5ujc.scarab.ledger.LeiosHeader,
+            predecessor: NodeHeaderState
+        )(using cats.mtl.Raise[IO, xyz.kd5ujc.scarab.ledger.PeerError]): IO[Unit] = IO.unit
+        override def rolledForward(header: Header, predecessor: NodeHeaderState)(using
+            cats.mtl.Raise[IO, xyz.kd5ujc.scarab.ledger.PeerError]
+        ): IO[Unit] = seen.update(_ :+ (header.blockNo -> predecessor))
+        def jumped(batch: Vector[(Header, NodeHeaderState)])(using
+            cats.mtl.Raise[IO, xyz.kd5ujc.scarab.ledger.PeerError]
+        ): IO[Unit] = IO.unit
+      gate <- HeaderCheck
+        .forNodeChain[IO, BigInt](model(100), Compute.inline[IO], 100)
+        .withLeios(leios)
+        .start(applied.tip)
+      accepted <- Fault.fiber(
+        gate.accept(headers.drop(2).map(SyncEvent.RollForward(_, ChainSync.Tip.Origin)))
+      )
+      calls <- seen.get
+    yield
+      assertEquals(accepted, Right(()))
+      assertEquals(
+        calls,
+        Vector(
+          headers(2).blockNo -> at(headers(1).blockNo),
+          headers(3).blockNo -> at(headers(2).blockNo)
+        )
+      )
+  }
+
   test("canonical snapshots include and can graft the local immutable-to-intersection prefix") {
     val headers = Fixtures.chain(5)
     for
