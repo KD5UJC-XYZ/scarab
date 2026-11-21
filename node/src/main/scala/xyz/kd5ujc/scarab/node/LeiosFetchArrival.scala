@@ -136,7 +136,12 @@ final class LeiosFetchArrival[F[_], P](
         LeiosFetchLogic.ingestJob(aligned, LeiosJobId(i), j).fold(e => fault(job(e)), F.pure)
       )
       // the jobs are retired once the write is durable (`onDurable`); the peer's bytes are
-      // released once the write is queued
+      // released once the write is queued. A job is retired even where the store dropped some of
+      // its transactions, as the reference's is: its writer drops one whose bytes are not the size
+      // the body declares, or that start with a zero byte (`sqlInsertTxs`, `Impl/SQLite/Insert.hs`
+      // 287-297 at 2416493b), and `onDurable` (`LeiosDemoLogic.hs` 1575) retires the request's
+      // jobs whatever was dropped. A reply that passes the checks above holds at each offset the
+      // bytes of the hash the body lists there, so only the body's own declarations make a drop
       _ <- settle(
         written(
           store

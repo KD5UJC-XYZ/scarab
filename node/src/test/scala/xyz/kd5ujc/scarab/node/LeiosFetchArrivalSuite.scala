@@ -428,6 +428,44 @@ class LeiosFetchArrivalSuite extends FailsOnUncaught:
       }
   }
 
+  dirs.test("a job whose transactions the store drops is retired, its closure left incomplete") {
+    dir =>
+      // the body declares the first two sizes swapped, their sum the same, and lists a third
+      // transaction whose bytes start with a zero byte: the job's size and root hash are the
+      // body's, so the honest reply passes every check, and the store drops all three
+      // (`sqlInsertTxs`, `Impl/SQLite/Insert.hs` 287-297 at 2416493b); the job is retired all the
+      // same (`onDurable`, `LeiosDemoLogic.hs` 1532-1536 and 1575), as the reference retires it
+      val txs = Vector(tx(0), tx(1), LeiosStoreSuite.zeroLed(tx(2)))
+      val declared = Vector(txs(1).size, txs(0).size, txs(2).size)
+      val eb = LeiosStoreSuite.eb(
+        NonEmptyVector.fromVectorUnsafe(
+          txs.zip(declared).map((t, n) => LeiosEb.hashTx(t) -> word32(n.toLong))
+        )
+      )
+      val (asking, request) = asked(eb, size(eb), closure(eb))
+      stored(dir / "leios").use { store =>
+        for
+          r <- rig(store, asking)
+          requests <- acquired(r, eb, request)
+          results <- requests.traverse(req =>
+            typed(r.arrival.blockTxs(peer, req, offsetsOf(req).map(txs))) <* r.settled.take
+          )
+          after <- r.shared.outstanding.get
+          held <- ok(store.batchRetrieveTxs(request.point.hash, txs.indices.toVector))
+          whole <- ok(store.lookupEbClosure(request.point.hash))
+        yield
+          assert(requests.nonEmpty)
+          assertEquals(results, requests.map(_ => Right(())), "the peer is not at fault")
+          this.held(after, request.point) match
+            case Some(EbFetchState.BodyAcquired(pool)) => assert(pool.isEmpty, "jobs retired")
+            case other                                 => fail(s"not acquired: $other")
+          assert(after.requestedJobsPerPeer.isEmpty)
+          assert(!after.requestedBytesSizePerPeer.contains(peer))
+          assert(held.forall((_, t) => !LeiosEb.written(t)), "nothing written")
+          assertEquals(whole, None, "the closure is incomplete")
+      }
+  }
+
   dirs.test("the store's failure stops the node and is never the peer's fault") { dir =>
     val eb = body(Vector.tabulate(3)(tx))
     val (asking, request) = asked(eb, size(eb), closure(eb))
