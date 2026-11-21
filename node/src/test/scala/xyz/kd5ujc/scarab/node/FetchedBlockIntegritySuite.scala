@@ -2,13 +2,14 @@
 package xyz.kd5ujc.scarab.node
 
 import java.nio.file.{Files, Path}
+import scala.jdk.CollectionConverters.*
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
 import xyz.kd5ujc.scarab.ledger.{Block, BlockTransport, BlockTransportError, Header}
 import xyz.kd5ujc.scarab.ledger.byron.ByronError
 import xyz.kd5ujc.scarab.protocol.Era
-import xyz.kd5ujc.scarab.consensus.BlockRef
-import xyz.kd5ujc.scarab.ledger.StorageError
+import xyz.kd5ujc.scarab.consensus.{BlockRef, LeiosBlockInfo, LeiosCert}
+import xyz.kd5ujc.scarab.ledger.{ChainError, StorageError}
 
 class FetchedBlockIntegritySuite extends FunSuite:
   private val epochSlots = BigInt(50)
@@ -61,6 +62,70 @@ class FetchedBlockIntegritySuite extends FunSuite:
     }
   }
 
+  test(
+    "seeding gives the check's metadata for every reference block, decoding a body only in Dijkstra"
+  ) {
+    originals.foreach { (block, raw) =>
+      val header = block.header
+      val ref = BlockRef(header.slot, header.hash, header.blockNo, header.isBoundary)
+      val recovered = ReceivedBlockRecovery
+        .checked(ref, raw, epochSlots)
+        .fold(error => fail(error.message), identity)
+      assertEquals(
+        ReceivedBlockRecovery.seeded(raw, epochSlots),
+        Right(recovered.metadata),
+        s"a ${header.era} block is seeded from its header with what the check builds"
+      )
+    }
+    val devnet = Files
+      .readAllLines(Path.of("fixtures/dijkstra-devnet/blocks.tsv"))
+      .asScala
+      .toVector
+      .drop(1)
+      .filter(_.trim.nonEmpty)
+      .map(_.split('\t'))
+    val dijkstra = devnet
+      .filter(_(0) == "8")
+      .map(row => Bytes.fromHex(row(4)).fold(e => fail(e.message), identity))
+    assert(dijkstra.nonEmpty, "the devnet chain reaches Dijkstra")
+    dijkstra.foreach { raw =>
+      val block = Block.decode(raw, epochSlots).fold(e => fail(e.message), identity)
+      val seeded =
+        ReceivedBlockRecovery.seeded(raw, epochSlots).fold(e => fail(e.message), identity)
+      assertEquals(seeded.header, block.header)
+      assertEquals(
+        seeded.leios,
+        LeiosBlockInfo.of(block),
+        "a Dijkstra block's Leios fields are read from its decoded body"
+      )
+    }
+    // the devnet's Dijkstra blocks carry no certificate: block 64,850 of the public Leios testnet
+    // (`certifying`, fixtures/leios/README.md) carries one, so the seeded certificate is checked
+    // when it is not `Absent` too
+    val certifying = Files
+      .readAllLines(Path.of("fixtures/leios/testnet/blocks-rc-2026w44.tsv"))
+      .asScala
+      .toVector
+      .map(_.split('\t'))
+      .find(_(0) == "certifying")
+      .map(row => Bytes.fromHex(row(5)).fold(e => fail(e.message), identity))
+      .getOrElse(fail("no certifying block in the Leios testnet's blocks"))
+    val certified = Block.decode(certifying, epochSlots).fold(e => fail(e.message), identity)
+    val seededCertified =
+      ReceivedBlockRecovery.seeded(certifying, epochSlots).fold(e => fail(e.message), identity)
+    assertEquals(seededCertified.header, certified.header)
+    assertEquals(
+      seededCertified.leios.cert,
+      LeiosCert.Carried,
+      "a Dijkstra block that carries a certificate is seeded as carrying one"
+    )
+    assertEquals(
+      seededCertified.leios,
+      LeiosBlockInfo.of(certified),
+      "and with the announcement its header makes"
+    )
+  }
+
   test("restart recovery verifies original bytes and every persisted reference field") {
     val (block, raw) = originals.find(_._1.header.isBoundary).getOrElse(fail("no Byron EBB"))
     val header = block.header
@@ -70,6 +135,11 @@ class FetchedBlockIntegritySuite extends FunSuite:
       .fold(error => fail(error.message), identity)
     assertEquals(recovered.header, header)
     assertEquals(recovered.block, raw)
+    assertEquals(
+      ReceivedBlockRecovery.seeded(raw, epochSlots),
+      Right(recovered.metadata),
+      "seeding builds from the header alone what the check builds"
+    )
     val changed = Vector(
       ref.copy(slot = ref.slot + 1),
       ref.copy(hash = Bytes(Vector.fill(32)(0.toByte))),
@@ -88,6 +158,10 @@ class FetchedBlockIntegritySuite extends FunSuite:
       )
     }
     assert(ReceivedBlockRecovery.checked(ref, Bytes(Vector(0xff.toByte)), epochSlots).isLeft)
+    ReceivedBlockRecovery.seeded(Bytes(Vector(0xff.toByte)), epochSlots) match
+      case Left(StorageError.Corrupt(_, _: ChainError)) => ()
+      case other =>
+        fail(s"bytes that are no block are not refused as a block that does not decode: $other")
   }
 
   for era <- Era.values.filterNot(e => e == Era.Byron || e == Era.Dijkstra) do

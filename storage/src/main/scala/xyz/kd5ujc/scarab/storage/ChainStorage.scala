@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
-import cats.effect.{Async, Clock, Ref, Resource}
+import cats.effect.{Async, Clock, Deferred, Ref, Resource}
 import scala.util.Using
 import cats.effect.std.{Mutex, Supervisor}
 import cats.effect.syntax.all.*
@@ -90,6 +90,44 @@ enum StorageEvent:
   case NetworkRecorded(identity: NetworkIdentity, adopted: Boolean, dijkstraAdopted: Boolean)
   case VolatileOpened(report: VolatileStore.OpenReport)
 
+  /** The received-block log was opened ([[ReceivedBlocks]]), as [[VolatileOpened]] reports the
+    * selected-chain log.
+    */
+  case ReceivedOpened(report: VolatileStore.OpenReport)
+
+  /** A file of the received-block log was cut when the log was opened, where and why, as the
+    * reference's VolatileDB traces `Truncate` for each file it cuts
+    * (`Storage/VolatileDB/Impl/Types.hs` 99; `truncateError`, `Storage/VolatileDB/Impl/State.hs`
+    * 438-450, ouroboros-consensus 82ecba329, the same at 808e40054).
+    */
+  case ReceivedTruncated(cut: VolatileStore.Cut)
+
+  /** The files of the received-block log's directory whose names the open does not read, which it
+    * leaves alone, as the reference's VolatileDB traces `InvalidFileNames`
+    * (`Storage/VolatileDB/Impl/Types.hs` 100; `mkOpenState`, `Storage/VolatileDB/Impl/State.hs`
+    * 319-339, ouroboros-consensus 82ecba329, the same at 808e40054).
+    */
+  case ReceivedInvalidFileNames(names: Vector[String])
+
+  /** A block put in the received-block log that it holds already, and is not logged again, as the
+    * reference's VolatileDB traces `BlockAlreadyHere` (`Storage/VolatileDB/Impl/Types.hs` 98;
+    * `putBlockImpl`, `Storage/VolatileDB/Impl.hs` 387-399, ouroboros-consensus 82ecba329).
+    */
+  case ReceivedBlockAlreadyHere(hash: Bytes)
+
+  /** A collection of the received-block log scheduled for `slot`, due at monotonic time `at`, as
+    * the reference's ChainDB traces `ScheduledGC` (`Storage/ChainDB/Impl/Types.hs` 1049-1054 at
+    * ouroboros-consensus 82ecba329, 1082-1087 at 808e40054; `scheduleGC`,
+    * `Storage/ChainDB/Impl/Background.hs` 567-580).
+    */
+  case ScheduledGC(slot: BigInt, at: scala.concurrent.duration.FiniteDuration)
+
+  /** A collection of the received-block log for `slot` done, as the reference's ChainDB traces
+    * `PerformedGC` (`garbageCollectBlocks`, `Storage/ChainDB/Impl/Background.hs` 443-448,
+    * ouroboros-consensus 82ecba329).
+    */
+  case PerformedGC(slot: BigInt)
+
   /** The volatile chain was rebuilt from the log: `resumed` blocks applied on top of the immutable
     * state, `dropped` logged blocks after the immutable tip that were not (they do not apply, or
     * there were more than `k`) and will be fetched again.
@@ -152,7 +190,8 @@ object ChainPersistence:
   * the immutable tip when the state is writable. The next start restores it and replays the
   * retained volatile suffix; without a usable snapshot it also replays immutable blocks.
   *
-  * Layout: `<dir>/network-identity`, `<dir>/immutable/`, `<dir>/snapshots/`, `<dir>/volatile/`.
+  * Layout: `<dir>/network-identity`, `<dir>/immutable/`, `<dir>/snapshots/`, `<dir>/volatile/`,
+  * `<dir>/received/` ([[ReceivedBlocks]]).
   */
 object ChainStorage:
   /** What is done to a restored snapshot's state, with the immutable store at hand, before the
@@ -203,7 +242,8 @@ object ChainStorage:
   private val AdvanceEvery = 128
 
   /** The predecessor a received block's header names, its contents not decoded; none when the
-    * header cannot be read (the start discards such a record, `ReceivedBlocks.discardRecovered`).
+    * header cannot be read (the open of the received log cuts a record whose block does not decode,
+    * [[ReceivedBlocks.Check]]).
     */
   def predecessorOf(byronEpochSlots: BigInt)(raw: Bytes): Option[ReceivedBlocks.Predecessor] =
     Block
@@ -224,15 +264,20 @@ object ChainStorage:
     * @param adoptLegacyNetworkIdentity
     *   Explicit operator acknowledgement for adopting incomplete or missing identity.
     * @param volatileFileBlocks
-    *   Blocks per volatile log file.
+    *   Blocks per file of the selected-chain log.
     * @param volatileCollectBlocks
     *   Blocks that become immutable between two forced syncs of the immutable store, each followed
-    *   by a collection of the log files wholly below the immutable tip. The sync is what makes
-    *   collecting safe, and it is a disk flush on the apply path, so it is rare: the log keeps up
-    *   to this many blocks beyond the `k` it needs.
+    *   by a collection of the selected-chain log's files wholly below the immutable tip. The sync
+    *   is what makes collecting safe, and it is a disk flush on the apply path, so it is rare: the
+    *   log keeps up to this many blocks beyond the `k` it needs.
     * @param receivedCacheBytes
     *   Bytes of received bodies kept in memory in front of the received-block log
     *   ([[ReceivedBlocks.DefaultCacheBytes]] says how the default is chosen).
+    * @param receivedFileBlocks
+    *   Blocks per file of the received-block log ([[ReceivedBlocks.DefaultBlocksPerFile]]).
+    * @param receivedCollection
+    *   When the received-block log is collected after a copy of blocks to the immutable store
+    *   ([[GcSchedule]]; the default is the reference's).
     */
   final case class Config(
       snapshotPolicy: SnapshotPolicy,
@@ -244,7 +289,9 @@ object ChainStorage:
       adoptLegacyNetworkIdentity: Boolean = false,
       volatileFileBlocks: Int = 512,
       volatileCollectBlocks: Int = 4096,
-      receivedCacheBytes: Long = ReceivedBlocks.DefaultCacheBytes
+      receivedCacheBytes: Long = ReceivedBlocks.DefaultCacheBytes,
+      receivedFileBlocks: Int = ReceivedBlocks.DefaultBlocksPerFile,
+      receivedCollection: GcSchedule.Params = GcSchedule.Params.Reference
   )
 
   /** The node state recovered from disk, ready to anchor a
@@ -257,6 +304,9 @@ object ChainStorage:
     *   blocks, and cut the log back to them.
     * @param snapshotsWritten
     *   Completes once no snapshot is being written in the background.
+    * @param collectionsStopped
+    *   Completes when a collection of the received log has failed: no other runs after it, and the
+    *   persistence refuses the next block with the failure. The node stops on it.
     */
   final case class Recovered[F[_], S](
       anchor: Option[BlockRef],
@@ -266,7 +316,8 @@ object ChainStorage:
       volatile: Vector[(BlockRef, Bytes)],
       adopt: Vector[(BlockRef, Bytes)] => F[Unit],
       received: ReceivedBlocks[F],
-      snapshotsWritten: F[Unit]
+      snapshotsWritten: F[Unit],
+      collectionsStopped: F[CollectionStopped]
   )
 
   /** A volatile block rebuilt by [[resume]]. */
@@ -326,6 +377,9 @@ object ChainStorage:
     * @param snapshotMigration
     *   Brings the snapshot files of an older format to the current one, before they are opened
     *   (once the identity of the database is checked): [[SnapshotMigration.toCurrent]].
+    * @param receivedCheck
+    *   The start-up check of each record of the received log as it is opened: its file is cut at
+    *   the first one refused ([[ReceivedBlocks.Check]]).
     */
   def open[F[_]: Async, S](
       dir: Path,
@@ -338,7 +392,7 @@ object ChainStorage:
       compute: Option[Compute[F]] = None,
       snapshotMigration: Option[SnapshotMigration[F]] = None,
       reopen: Option[Reopen[F, S]] = None
-  )(using
+  )(receivedCheck: ReceivedBlocks.Check)(using
       SnapshotFormat[F, S],
       Raise[F, StorageError],
       Raise[F, ChainError],
@@ -396,12 +450,26 @@ object ChainStorage:
       )
       volatileOpened <- VolatileStore.open[F](dir / "volatile", config.volatileFileBlocks)
       (volatile, logged) = volatileOpened
-      received <- ReceivedBlocks.open[F](
-        dir / "received",
-        config.volatileFileBlocks,
-        config.receivedCacheBytes
-      )(ChainStorage.predecessorOf(config.byronEpochSlots))
       _ <- Resource.eval(events.emit(StorageEvent.VolatileOpened(logged.report)))
+      // each cut of the received log is reported just before it is made, as the reference traces it
+      receivedOpened <- ReceivedBlocks.recovering[F](
+        dir / "received",
+        config.receivedFileBlocks,
+        config.receivedCacheBytes
+      )(
+        ChainStorage.predecessorOf(config.byronEpochSlots),
+        receivedCheck,
+        {
+          case VolatileStore.Trace.Truncated(cut) =>
+            events.emit(StorageEvent.ReceivedTruncated(cut))
+          case VolatileStore.Trace.InvalidFileNames(names) =>
+            events.emit(StorageEvent.ReceivedInvalidFileNames(names))
+          case VolatileStore.Trace.BlockAlreadyHere(hash) =>
+            events.emit(StorageEvent.ReceivedBlockAlreadyHere(hash))
+        }
+      )
+      (received, recovery) = receivedOpened
+      _ <- Resource.eval(events.emit(StorageEvent.ReceivedOpened(recovery.report)))
       migratedSnapshots <- Resource.eval(
         snapshotMigration.fold(F.pure(SnapshotMigration.Report.empty))(_.run(dir / "snapshots"))
       )
@@ -468,11 +536,12 @@ object ChainStorage:
       sinceCollect <- Resource.eval(Ref.of[F, Int](0))
       snapshotLock <- Resource.eval(Mutex[F])
       advancedAt <- Resource.eval(Ref.of[F, BigInt](BigInt(-1)))
+      collections <- Resource.eval(GcSchedule[F](config.receivedCollection))
+      stopped <- Resource.eval(Deferred[F, CollectionStopped])
       persistence = new Persistence[F, S](
         store,
         snapshots,
         volatile,
-        received,
         supervisor,
         events,
         config,
@@ -486,10 +555,19 @@ object ChainStorage:
         sinceCollect,
         snapshotLock,
         backing,
-        advancedAt
+        advancedAt,
+        collections,
+        stopped
       )
       // Released before the stores: a graceful stop leaves a snapshot at the immutable tip.
       _ <- Resource.onFinalize(persistence.shutdownSnapshot)
+      // the received log's collections, run on their schedule until one fails: the failure is
+      // raised by the next block the persistence stores, in the follower's own fiber. Whatever ends
+      // the runner, a collection's failure or an exception anywhere in it, ends it with a value
+      _ <- collections
+        .run(collected(store, received, events), CollectionStopped.Defect(_))
+        .flatMap(stopped.complete(_).void)
+        .background
       end <- Resource.eval(store.tip)
       _ <- Resource.eval(events.emit(StorageEvent.ReplayStarted(start._1, end)))
       began <- Resource.eval(Clock[F].monotonic)
@@ -506,7 +584,8 @@ object ChainStorage:
       logged.chain,
       persistence.adopt,
       received,
-      persistence.snapshotsWritten
+      persistence.snapshotsWritten,
+      stopped.get
     )
 
   /** Rebuild the volatile chain from the log: apply the logged blocks after the immutable tip, in
@@ -619,6 +698,36 @@ object ChainStorage:
       _ <- events.emit(StorageEvent.VolatileResumed(resumed.size, dropped, (done - began).toMillis))
     yield resumed
 
+  /** Why the received log's collections stopped: a collection failed with a storage error, or the
+    * runner, waiting for a collection's time or running one, with an exception that is not ours.
+    */
+  enum CollectionStopped:
+    case Failed(error: StorageError)
+    case Defect(cause: Throwable)
+
+  /** One scheduled collection of the received log, in an error scope of its own: the immutable
+    * store is forced to disk first, so that every block below `slot` it holds is durable, then the
+    * files wholly below `slot` are deleted. The force is an approved Deviation (the decisions
+    * register, docs/decisions.md, "Genesis, storage and keys", 2026-11-20, #1247): the reference
+    * collects its VolatileDB without forcing its ImmutableDB, after a delay meant to let the writes
+    * reach the disk (`cdbsGcDelay`, `Storage/ChainDB/Impl/Args.hs` 80-82; `garbageCollectBlocks`,
+    * `Storage/ChainDB/Impl/Background.hs` 431-448, ouroboros-consensus 82ecba329; 441-458 at
+    * 808e40054).
+    */
+  private def collected[F[_]: Async](
+      store: ImmutableStore[F],
+      received: ReceivedBlocks[F],
+      events: StorageEvents[F]
+  )(slot: BigInt): F[Either[CollectionStopped, Unit]] =
+    Async[F].defer(
+      Handle
+        .allow[StorageError](
+          (store.sync *> received.collect(slot) *> events.emit(StorageEvent.PerformedGC(slot)))
+            .map(_.asRight[CollectionStopped])
+        )
+        .rescue(e => Async[F].pure(CollectionStopped.Failed(e).asLeft[Unit]))
+    )
+
   /** Re-apply the stored blocks after `from`, with no network. */
   private def replay[F[_]: Async, S](
       store: ImmutableStore[F],
@@ -681,12 +790,15 @@ object ChainStorage:
     *   Blocks that became immutable since the volatile log was last collected.
     * @param advancedAt
     *   Block number of the immutable tip the backing store was last brought to.
+    * @param collections
+    *   The received log's collections, one scheduled after each copy to the immutable store.
+    * @param stopped
+    *   Completed when the received log's collections stopped on a failure.
     */
   private final class Persistence[F[_]: Async, S](
       store: ImmutableStore[F],
       snapshots: LedgerSnapshots[F, S],
       volatile: VolatileStore[F],
-      received: ReceivedBlocks[F],
       supervisor: Supervisor[F],
       events: StorageEvents[F],
       config: Config,
@@ -700,9 +812,23 @@ object ChainStorage:
       sinceCollect: Ref[F, Int],
       snapshotLock: Mutex[F],
       backing: StateBacking[F, S],
-      advancedAt: Ref[F, BigInt]
+      advancedAt: Ref[F, BigInt],
+      collections: GcSchedule[F],
+      stopped: Deferred[F, CollectionStopped]
   ) extends ChainPersistence[F, S]:
     private val F = Async[F]
+
+    /** A failed collection of the received log, raised here, in the caller's fiber: the storage
+      * stops at the next block, as the failure of the reference's collection ends the thread it is
+      * linked to (`launch`, `Storage/ChainDB/Impl/Background.hs` 116-121 and 140-142,
+      * ouroboros-consensus 82ecba329).
+      */
+    private def collectionsGoing(using cats.mtl.Raise[F, StorageError]): F[Unit] =
+      stopped.tryGet.flatMap {
+        case None                                  => F.unit
+        case Some(CollectionStopped.Failed(error)) => error.raise[F, Unit]
+        case Some(CollectionStopped.Defect(cause)) => F.raiseError(cause)
+      }
 
     /** Log the block, keep it pending, and move aged blocks into the immutable and backing stores.
       * Cancellation is masked across this sequence so a graceful stop cannot interrupt a block's
@@ -715,7 +841,7 @@ object ChainStorage:
         anchor: Anchor[S]
     )(using cats.mtl.Raise[F, StorageError], cats.mtl.Raise[F, ChainError]): F[Unit] =
       F.uncancelable { _ =>
-        volatile.append(ref, raw) *>
+        collectionsGoing *> volatile.append(ref, raw) *>
           pending.update(_ :+ (ref -> raw)) *>
           F.whenA(immutable.nonEmpty) {
             for
@@ -726,23 +852,34 @@ object ChainStorage:
                   .raise[F, Unit]
               )
               _ <- batch.traverse_((r, b) => store.append(r, b))
+              // the copy is done: the received log is collected below the new immutable tip on the
+              // reference's schedule, timed from now, before the backing store and the selected-chain
+              // log are brought forward, as the reference's copy runner schedules its collection
+              // once the copy returns and leaves the ledger's work to another thread
+              // (`copyToImmutableDBRunner`, `Background.hs` 257-296, ouroboros-consensus 82ecba329).
+              // The copy here is of the blocks this extension ages past `k`, where the reference's
+              // runner copies the whole prefix then eligible, a Gap (#1262)
+              _ <- anchor.block.traverse_(tip =>
+                collections
+                  .schedule(tip.slot)
+                  .flatMap(entry => events.emit(StorageEvent.ScheduledGC(entry.slot, entry.at)))
+              )
               _ <- anchor.block.traverse_(advanced(_, anchor.state))
               _ <- collect(batch.size, anchor.block)
             yield ()
           }
       }
 
-    /** The volatile log keeps blocks that are already immutable until a file is wholly below the
-      * immutable tip. Collecting forces the immutable store first: the log is what protects a block
-      * the immutable store has not yet made durable.
+    /** The selected-chain log keeps blocks that are already immutable until a file is wholly below
+      * the immutable tip. Collecting forces the immutable store first: the log is what protects a
+      * block the immutable store has not yet made durable.
       */
     private def collect(added: Int, tip: Option[BlockRef])(using
         cats.mtl.Raise[F, StorageError]
     ): F[Unit] =
       sinceCollect.updateAndGet(_ + added).flatMap { n =>
         F.whenA(n >= config.volatileCollectBlocks) {
-          tip.traverse_(t => store.sync *> volatile.gc(t.slot) *> received.collect(t.slot)) *>
-            sinceCollect.set(0)
+          tip.traverse_(t => store.sync *> volatile.gc(t.slot)) *> sinceCollect.set(0)
         }
       }
 
@@ -750,7 +887,7 @@ object ChainStorage:
         to: ChainSync.Point
     )(using cats.mtl.Raise[F, StorageError], cats.mtl.Raise[F, ChainError]): F[Unit] =
       F.uncancelable { _ =>
-        volatile.rollback(to) *> pending.update { p =>
+        collectionsGoing *> volatile.rollback(to) *> pending.update { p =>
           val index = p.indexWhere(_._1.point == to)
           if index >= 0 then p.take(index + 1) else Vector.empty
         }

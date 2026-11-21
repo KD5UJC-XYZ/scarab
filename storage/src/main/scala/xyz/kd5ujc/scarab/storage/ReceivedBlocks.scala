@@ -18,33 +18,41 @@ import xyz.kd5ujc.scarab.ledger.StorageError
   * the chain recovered on restart. This separate log uses the existing VolatileStore record format
   * unchanged and never writes rollback records. Collection is driven by a durable immutable slot,
   * rather than the adoption of an individual receipt. As in native VolatileDB, an LoE stall can
-  * retain a growing fork forest on disk until immutable progress permits collection.
+  * retain a growing fork forest on disk until immutable progress permits collection. A file holds
+  * [[ReceivedBlocks.DefaultBlocksPerFile]] blocks, and the next one is started when it fills.
   *
   * In memory, as in the reference's VolatileDB, there is an index of every block (its reference and
   * where its record is, [[VolatileStore.Location]]) and a body is read back from its log file when
-  * asked for. Opening rebuilds the index from the files a record at a time and keeps no body
-  * ([[VolatileStore.openIndex]]). In front of the log is a cache of the bodies received since,
-  * bounded in bytes ([[ReceivedBlocks.DefaultCacheBytes]]): the oldest bodies leave it first, and
-  * its residency is reported ([[residency]]). The bound covers this index's own bodies; the block
-  * pool holds a body only until its admission is processed, when it is in this log.
+  * asked for. Opening rebuilds the index from the files a record at a time and keeps no body; each
+  * record's block is checked as it is read ([[ReceivedBlocks.Check]]), and each file is validated
+  * on its own, a damaged one cut at its last good record or at its first block that is refused or
+  * already indexed, and the others kept ([[VolatileStore.openIndexWith]]). A block is logged once:
+  * neither a receipt nor a repair writes a block the index holds. In front of the log is a cache of
+  * the bodies received since, bounded in bytes ([[ReceivedBlocks.DefaultCacheBytes]]): the oldest
+  * bodies leave it first, and its residency is reported ([[residency]]). The bound covers this
+  * index's own bodies; the block pool holds a body only until its admission is processed, when it
+  * is in this log.
   */
 trait ReceivedBlocks[F[_]]:
   def put(ref: BlockRef, raw: Bytes)(using Raise[F, StorageError]): F[Unit]
 
-  /** Repair this cache from originals already validated by selected-chain resume. Unlike put, this
-    * may replace an inconsistent record; network receipts must continue to use put.
+  /** Add a block of the selected chain, already validated by its resume, that the log lacks, and
+    * lift a refusal of it ([[invalidate]]). A block the index holds is not written again, whatever
+    * the bytes of its record: as the reference's VolatileDB, which skips a block whose hash it
+    * holds (`putBlockImpl`, `Storage/VolatileDB/Impl.hs` 387-399, ouroboros-consensus 82ecba329),
+    * the log keeps the first record of each block. A record the open indexed has passed the
+    * start-up check ([[ReceivedBlocks.Check]]): its block decodes and its header names the record's
+    * point, so a held record whose bytes differ from `raw` is still a record of this block, by its
+    * header's hash, and it is kept.
     */
   def restoreSelected(ref: BlockRef, raw: Bytes)(using Raise[F, StorageError]): F[Unit]
-
-  /** Exclude a structurally malformed recovered record before live admissions begin. Removing its
-    * lookup entry permits a subsequent genuine receipt to append a replacement. On-disk bytes
-    * remain subject to validation at reopen until replaced or collected at the durable boundary.
-    */
-  def discardRecovered(hash: Bytes): F[Unit]
 
   /** The block, from the cache or read back from the log. A record that no longer passes its
     * checksum is dropped from the index (it is fetched again, as anything the log loses is) and
     * counted in [[ReceivedBlocks.Residency.unreadable]]; a failure of the file system is raised.
+    * The dropped record stays on disk, so a later receipt or repair of the block writes a second
+    * record of its hash. The next open settles it as the reference's would: the damaged record cuts
+    * its file there, or, read whole again, it is indexed and the later record cuts its own file.
     */
   def get(hash: Bytes)(using Raise[F, StorageError]): F[Option[(BlockRef, Bytes)]]
 
@@ -80,13 +88,14 @@ trait ReceivedBlocks[F[_]]:
     */
   def invalidate(hash: Bytes): F[Unit]
 
-  /** Only call after the immutable store has made this boundary durable. Keep the cutoff slot:
-    * Byron EBBs and regular blocks may share it (native VolatileDB/Impl/FileInfo.hs:94–97,
-    * ouroboros-consensus 82ecba32). The log's files whose blocks are all below it are deleted, but
-    * the one being written ([[VolatileStore.collect]]), and the blocks of those files leave the
-    * index with them: a block below the cutoff in a file that is kept stays held, as the
-    * reference's VolatileDB removes the index entries of the files it deletes and no other
-    * (`garbageCollectFile`, `Storage/VolatileDB/Impl.hs` 518-543).
+  /** Only call after the immutable store has made this boundary durable: [[ChainStorage]] calls it
+    * on the reference's schedule ([[GcSchedule]]). Keep the cutoff slot: Byron EBBs and regular
+    * blocks may share it (native VolatileDB/Impl/FileInfo.hs:94–97, ouroboros-consensus 82ecba32).
+    * The log's files whose blocks are all below it are deleted, but the one being written
+    * ([[VolatileStore.collect]]), and the blocks of those files leave the index with them: a block
+    * below the cutoff in a file that is kept stays held, as the reference's VolatileDB removes the
+    * index entries of the files it deletes and no other (`garbageCollectFile`,
+    * `Storage/VolatileDB/Impl.hs` 518-543).
     */
   def collect(durableSlot: BigInt)(using Raise[F, StorageError]): F[Unit]
 
@@ -94,6 +103,17 @@ trait ReceivedBlocks[F[_]]:
   def residency: F[ReceivedBlocks.Residency]
 
 object ReceivedBlocks:
+  /** The start-up check of a recovered record, run on each record as the open reads it: its block
+    * decodes and its header names the record's point, the typed reason when it does not, told apart
+    * as a block that does not decode or one that decodes and is corrupt, named by the decoded
+    * block's hash ([[VolatileStore.Refusal]]). The open cuts the record's file at the first record
+    * refused, as the reference's VolatileDB cuts a file at the first block it cannot decode
+    * (`BlockReadErr`) or, validating, finds corrupt (`BlockCorruptedErr`) (`parseBlockFile`,
+    * `Storage/VolatileDB/Impl/Parser.hs` 70-107, and `truncateError`,
+    * `Storage/VolatileDB/Impl/State.hs` 412-450, ouroboros-consensus 82ecba329).
+    */
+  type Check = (BlockRef, Bytes) => Either[VolatileStore.Refusal, Unit]
+
   /** The default bound of the body cache: 20,000,000 bytes.
     *
     * The reference keeps a received block in memory only while it waits in the queue of blocks to
@@ -105,6 +125,12 @@ object ReceivedBlocks:
     * 2,000,000 = 20,000,000.
     */
   val DefaultCacheBytes: Long = 10L * 2_000_000L
+
+  /** The blocks a file of the log holds: 1,000, the reference's VolatileDB's `volMaxBlocksPerFile`
+    * (`defaultArgs`, `Storage/VolatileDB/Impl.hs` 180-189, ouroboros-consensus 82ecba329, the same
+    * at 808e40054).
+    */
+  val DefaultBlocksPerFile: Int = 1000
 
   /** The block a header names as its predecessor: none for the first block of a chain, as the
     * reference's `ChainHash` (`GenesisHash` or `BlockHash`) in a block's `BlockInfo` (`biPrevHash`,
@@ -196,23 +222,52 @@ object ReceivedBlocks:
 
   private final case class Counters(reads: Long, unreadable: Long)
 
-  /** @param predecessorOf
-    *   The predecessor a block's header names, none when the header cannot be read: applied to each
-    *   body as it is logged, and to each record as the open reads it.
+  /** What opening the log found: its blocks and files, the bytes cut
+    * ([[VolatileStore.OpenReport]]), and each file cut, where and why ([[VolatileStore.Cut]]).
     */
+  final case class Recovery(report: VolatileStore.OpenReport, cuts: Vector[VolatileStore.Cut])
+
+  /** [[recovering]], without what the open found. */
   def open[F[_]: Async](
       dir: Path,
-      blocksPerFile: Int = 512,
+      blocksPerFile: Int = DefaultBlocksPerFile,
       cacheBytes: Long = DefaultCacheBytes
-  )(predecessorOf: Bytes => Option[Predecessor])(using
+  )(predecessorOf: Bytes => Option[Predecessor], check: Check)(using
       Raise[F, StorageError]
   ): Resource[F, ReceivedBlocks[F]] =
+    recovering[F](dir, blocksPerFile, cacheBytes)(predecessorOf, check, _ => Async[F].unit)
+      .map(_._1)
+
+  /** Open the log in `dir`, and what the open found.
+    *
+    * @param predecessorOf
+    *   The predecessor a block's header names, none when the header cannot be read: applied to each
+    *   body as it is logged, and to each record the open indexes.
+    * @param check
+    *   The start-up check of each record the open reads: the file is cut at the first one refused.
+    * @param trace
+    *   Told what the log reports as it works ([[VolatileStore.Trace]]): at the open, the names it
+    *   does not read and each cut just before it is made; after it, each block put or restored that
+    *   the log holds already.
+    */
+  def recovering[F[_]: Async](
+      dir: Path,
+      blocksPerFile: Int = DefaultBlocksPerFile,
+      cacheBytes: Long = DefaultCacheBytes
+  )(
+      predecessorOf: Bytes => Option[Predecessor],
+      check: Check,
+      trace: VolatileStore.Trace => F[Unit]
+  )(using
+      Raise[F, StorageError]
+  ): Resource[F, (ReceivedBlocks[F], Recovery)] =
     for
       // the open rebuilds the index and keeps no body, but the predecessor each header names; the
-      // cache fills with the bodies received after it. The log holds no rollback record, so its
-      // recovered chain is every block record in log order.
+      // cache fills with the bodies received after it. The recovered chain is the index, a block
+      // once.
       opened <- VolatileStore.openIndexWith[F, Option[Predecessor]](dir, blocksPerFile)(
-        predecessorOf
+        (ref, raw) => check(ref, raw).map(_ => predecessorOf(raw)),
+        trace
       )
       (log, recovered) = opened
       index <- Resource.eval(
@@ -226,124 +281,116 @@ object ReceivedBlocks:
       counters <- Resource.eval(Ref.of[F, Counters](Counters(0L, 0L)))
       lock <- Resource.eval(Mutex[F])
       invalid <- Resource.eval(Ref.of[F, Set[Bytes]](Set.empty))
-    yield new ReceivedBlocks[F]:
-      private val F = Async[F]
+    yield
+      val store = new ReceivedBlocks[F]:
+        private val F = Async[F]
 
-      private def stored(ref: BlockRef, raw: Bytes)(using Raise[F, StorageError]): F[Unit] =
-        log
-          .append(ref, raw)
-          .flatMap(at =>
-            index.update(_.updated(ref.hash, Entry(ref, at, predecessorOf(raw)))) *>
-              cache.update(_.added(ref.hash, raw, cacheBytes))
-          )
+        private def stored(ref: BlockRef, raw: Bytes)(using Raise[F, StorageError]): F[Unit] =
+          log
+            .append(ref, raw)
+            .flatMap(at =>
+              index.update(_.updated(ref.hash, Entry(ref, at, predecessorOf(raw)))) *>
+                cache.update(_.added(ref.hash, raw, cacheBytes))
+            )
 
-      /** The body of an indexed block, from the cache or the log; the caller holds `lock`, so the
-        * file cannot be collected under the read.
-        */
-      private def body(hash: Bytes)(using
-          Raise[F, StorageError]
-      ): F[Option[(BlockRef, Bytes)]] =
-        index.get.map(_.get(hash)).flatMap {
-          case None => F.pure(None)
-          case Some(Entry(ref, at, _)) =>
-            cache.get.map(_.bodies.get(hash)).flatMap {
-              case Some(raw) => F.pure(Some(ref -> raw))
-              case None =>
-                log.read(at).flatMap {
-                  case Some((found, raw)) if found == ref =>
-                    counters.update(c => c.copy(reads = c.reads + 1)).as(Some(ref -> raw))
-                  case _ =>
-                    F.uncancelable(_ =>
-                      index.update(_ - hash) *>
-                        counters.update(c => c.copy(unreadable = c.unreadable + 1))
-                    ).as(None)
-                }
-            }
-        }
-
-      def put(ref: BlockRef, raw: Bytes)(using Raise[F, StorageError]): F[Unit] =
-        lock.lock.surround {
-          index.get.flatMap { known =>
-            F.unlessA(known.contains(ref.hash))(F.uncancelable(_ => stored(ref, raw)))
+        /** The body of an indexed block, from the cache or the log; the caller holds `lock`, so the
+          * file cannot be collected under the read.
+          */
+        private def body(hash: Bytes)(using
+            Raise[F, StorageError]
+        ): F[Option[(BlockRef, Bytes)]] =
+          index.get.map(_.get(hash)).flatMap {
+            case None => F.pure(None)
+            case Some(Entry(ref, at, _)) =>
+              cache.get.map(_.bodies.get(hash)).flatMap {
+                case Some(raw) => F.pure(Some(ref -> raw))
+                case None =>
+                  log.read(at).flatMap {
+                    case Some((found, raw)) if found == ref =>
+                      counters.update(c => c.copy(reads = c.reads + 1)).as(Some(ref -> raw))
+                    case _ =>
+                      F.uncancelable(_ =>
+                        index.update(_ - hash) *>
+                          counters.update(c => c.copy(unreadable = c.unreadable + 1))
+                      ).as(None)
+                  }
+              }
           }
-        }
 
-      def restoreSelected(ref: BlockRef, raw: Bytes)(using Raise[F, StorageError]): F[Unit] =
-        lock.lock.surround {
-          body(ref.hash).flatMap { found =>
-            F.uncancelable { _ =>
-              F.unlessA(found.contains(ref -> raw))(stored(ref, raw)) *>
-                invalid.update(_ - ref.hash)
-            }
+        /** `ref` logged unless the index holds it, which is traced instead; the caller holds `lock`
+          * (`BlockAlreadyHere`, `putBlockImpl`, `Storage/VolatileDB/Impl.hs` 387-399,
+          * ouroboros-consensus 82ecba329).
+          */
+        private def added(ref: BlockRef, raw: Bytes)(using Raise[F, StorageError]): F[Unit] =
+          index.get.flatMap(known =>
+            if known.contains(ref.hash) then trace(VolatileStore.Trace.BlockAlreadyHere(ref.hash))
+            else stored(ref, raw)
+          )
+
+        def put(ref: BlockRef, raw: Bytes)(using Raise[F, StorageError]): F[Unit] =
+          lock.lock.surround(F.uncancelable(_ => added(ref, raw)))
+
+        def restoreSelected(ref: BlockRef, raw: Bytes)(using Raise[F, StorageError]): F[Unit] =
+          lock.lock.surround(F.uncancelable(_ => added(ref, raw) *> invalid.update(_ - ref.hash)))
+
+        def get(hash: Bytes)(using Raise[F, StorageError]): F[Option[(BlockRef, Bytes)]] =
+          invalid.get.flatMap(refused =>
+            if refused(hash) then F.pure(None) else lock.lock.surround(body(hash))
+          )
+
+        def original(hash: Bytes)(using Raise[F, StorageError]): F[Option[(BlockRef, Bytes)]] =
+          lock.lock.surround(body(hash))
+
+        def links: F[Bytes => Option[Linked]] =
+          index.get.map(known =>
+            hash => known.get(hash).flatMap(entry => entry.predecessor.map(Linked(entry.ref, _)))
+          )
+
+        def refs: F[Vector[BlockRef]] =
+          (index.get, invalid.get).mapN { (known, refused) =>
+            known.valuesIterator
+              .map(_.ref)
+              .filterNot(ref => refused(ref.hash))
+              .toVector
+              .sortBy(ref => (ref.slot, ref.hash.hex))
           }
-        }
 
-      def discardRecovered(hash: Bytes): F[Unit] = lock.lock.surround {
-        F.uncancelable(_ =>
-          index.update(_ - hash) *> cache.update(c =>
-            if c.bodies.contains(hash) then c.without(_ == hash) else c
-          ) *>
-            invalid.update(_ - hash)
-        )
-      }
+        def hashes: F[Set[Bytes]] =
+          (index.get, invalid.get).mapN((known, refused) => known.keySet -- refused)
 
-      def get(hash: Bytes)(using Raise[F, StorageError]): F[Option[(BlockRef, Bytes)]] =
-        invalid.get.flatMap(refused =>
-          if refused(hash) then F.pure(None) else lock.lock.surround(body(hash))
-        )
-
-      def original(hash: Bytes)(using Raise[F, StorageError]): F[Option[(BlockRef, Bytes)]] =
-        lock.lock.surround(body(hash))
-
-      def links: F[Bytes => Option[Linked]] =
-        index.get.map(known =>
-          hash => known.get(hash).flatMap(entry => entry.predecessor.map(Linked(entry.ref, _)))
-        )
-
-      def refs: F[Vector[BlockRef]] =
-        (index.get, invalid.get).mapN { (known, refused) =>
-          known.valuesIterator
-            .map(_.ref)
-            .filterNot(ref => refused(ref.hash))
-            .toVector
-            .sortBy(ref => (ref.slot, ref.hash.hex))
-        }
-
-      def hashes: F[Set[Bytes]] =
-        (index.get, invalid.get).mapN((known, refused) => known.keySet -- refused)
-
-      def holds: F[Bytes => Boolean] =
-        (index.get, invalid.get).mapN((known, refused) =>
-          hash => known.contains(hash) && !refused(hash)
-        )
-
-      def invalidate(hash: Bytes): F[Unit] = invalid.update(_ + hash)
-
-      def collect(durableSlot: BigInt)(using Raise[F, StorageError]): F[Unit] =
-        lock.lock.surround {
-          F.uncancelable(_ =>
-            log
-              .collect(durableSlot)
-              .flatMap(gone =>
-                index
-                  .updateAndGet(_.filter((_, entry) => !gone(entry.at.seq)))
-                  .flatMap(remaining =>
-                    cache.update(_.without(hash => !remaining.contains(hash))) *>
-                      invalid.update(_ intersect remaining.keySet)
-                  )
-              )
+        def holds: F[Bytes => Boolean] =
+          (index.get, invalid.get).mapN((known, refused) =>
+            hash => known.contains(hash) && !refused(hash)
           )
-        }
 
-      def residency: F[Residency] =
-        (index.get, cache.get, counters.get).mapN { (known, c, n) =>
-          Residency(
-            known.size,
-            c.bodies.size,
-            c.bytes,
-            cacheBytes,
-            c.evictions,
-            n.reads,
-            n.unreadable
-          )
-        }
+        def invalidate(hash: Bytes): F[Unit] = invalid.update(_ + hash)
+
+        def collect(durableSlot: BigInt)(using Raise[F, StorageError]): F[Unit] =
+          lock.lock.surround {
+            F.uncancelable(_ =>
+              log
+                .collect(durableSlot)
+                .flatMap(gone =>
+                  index
+                    .updateAndGet(_.filter((_, entry) => !gone(entry.at.seq)))
+                    .flatMap(remaining =>
+                      cache.update(_.without(hash => !remaining.contains(hash))) *>
+                        invalid.update(_ intersect remaining.keySet)
+                    )
+                )
+            )
+          }
+
+        def residency: F[Residency] =
+          (index.get, cache.get, counters.get).mapN { (known, c, n) =>
+            Residency(
+              known.size,
+              c.bodies.size,
+              c.bytes,
+              cacheBytes,
+              c.evictions,
+              n.reads,
+              n.unreadable
+            )
+          }
+      (store, Recovery(recovered.report, recovered.cuts))

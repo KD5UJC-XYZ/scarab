@@ -7,7 +7,7 @@ import cats.syntax.all.*
 import fs2.io.file.{Files, Path}
 import java.util.Locale
 import xyz.kd5ujc.scarab.crypto.Blake2b
-import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.codec.{Bytes, DomainError}
 import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.ledger.{StorageError, UtxoKeyLayout}
 
@@ -54,6 +54,36 @@ object StorageTestKit:
       .void
 
   def hash(i: Int): Bytes = Blake2b.hash256.hash(Bytes(s"block-$i".getBytes.toVector))
+
+  /** Why a synthetic block's body does not decode. */
+  enum Undecodable extends DomainError:
+    case Body
+
+  /** The body of a synthetic block that does not decode: [[decodes]] refuses it. */
+  val undecodable: Bytes = Bytes("undecodable".getBytes.toVector)
+
+  /** The body of a synthetic block that decodes and is corrupt: [[decodes]] refuses it. */
+  val corrupt: Bytes = Bytes("corrupt".getBytes.toVector)
+
+  /** The start-up check of a log of synthetic blocks ([[ReceivedBlocks.Check]]): every body decodes
+    * but [[undecodable]], as the block its record names, and every body that decodes is sound but
+    * [[corrupt]].
+    */
+  val decodes: ReceivedBlocks.Check = (ref, raw) =>
+    if raw == undecodable then
+      Left(
+        VolatileStore.Refusal.Undecodable(
+          StorageError.Corrupt("synthetic block", Undecodable.Body)
+        )
+      )
+    else if raw == corrupt then
+      Left(
+        VolatileStore.Refusal.Corrupt(
+          ref.hash,
+          StorageError.Corrupt("synthetic block", Undecodable.Body)
+        )
+      )
+    else Right(())
 
   /** A synthetic block `i`: slot `i * gap`, number `i`, payload of varying size. */
   def block(i: Int, gap: Int = 3): (BlockRef, Bytes) =

@@ -21,7 +21,7 @@ import xyz.kd5ujc.scarab.node.forge.{
 }
 import xyz.kd5ujc.scarab.node.mempool.{MempoolEvent, Rejection}
 import xyz.kd5ujc.scarab.protocol.ChainSync
-import xyz.kd5ujc.scarab.storage.StorageEvent
+import xyz.kd5ujc.scarab.storage.{StorageEvent, VolatileStore}
 
 /** How an event of type `E` is logged: its [[Line]], that is its kind (and so its namespace), its
   * severity and its JSON fields. The node's `LogFormatting` and `MetaTrace` in one (hermod-tracing
@@ -242,6 +242,44 @@ object Traced:
         "truncatedBytes" -> r.truncatedBytes.asJson,
         "removedFiles" -> r.removedFiles.asJson
       )
+    case StorageEvent.ReceivedOpened(r) =>
+      EventKind.ReceivedOpened.line(
+        "blocks" -> r.blocks.asJson,
+        "files" -> r.files.asJson,
+        "truncatedBytes" -> r.truncatedBytes.asJson
+      )
+    case StorageEvent.ReceivedTruncated(cut) =>
+      val where = List(
+        "file" -> cut.file.asJson,
+        "offset" -> cut.offset.asJson
+      )
+      val fields = cut.cause match
+        case VolatileStore.CutCause.ReadFailed(VolatileStore.ReadFailure.Unreadable) =>
+          where ++ List("cause" -> "readFailed".asJson, "failure" -> "unreadable".asJson)
+        case VolatileStore.CutCause.ReadFailed(VolatileStore.ReadFailure.Undecodable(error)) =>
+          where ++ List(
+            "cause" -> "readFailed".asJson,
+            "failure" -> "undecodable".asJson,
+            "reason" -> error.message.asJson
+          )
+        case VolatileStore.CutCause.Corrupted(hash) =>
+          where ++ List("cause" -> "corrupted".asJson, "hash" -> hash.hex.asJson)
+        case VolatileStore.CutCause.Duplicated(hash, first, second) =>
+          where ++ List(
+            "cause" -> "duplicated".asJson,
+            "hash" -> hash.hex.asJson,
+            "first" -> first.asJson,
+            "second" -> second.asJson
+          )
+      EventKind.ReceivedTruncated.line(fields*)
+    case StorageEvent.ReceivedInvalidFileNames(names) =>
+      EventKind.ReceivedInvalidFileNames.line("files" -> names.asJson)
+    case StorageEvent.ReceivedBlockAlreadyHere(hash) =>
+      EventKind.ReceivedBlockAlreadyHere.line("hash" -> hash.hex.asJson)
+    case StorageEvent.ScheduledGC(slot, at) =>
+      EventKind.ScheduledGC.line("slot" -> slot.asJson, "dueMillis" -> at.toMillis.asJson)
+    case StorageEvent.PerformedGC(slot) =>
+      EventKind.PerformedGC.line("slot" -> slot.asJson)
     case StorageEvent.VolatileResumed(resumed, dropped, millis) =>
       EventKind.VolatileResumed.line(
         "resumed" -> resumed.asJson,

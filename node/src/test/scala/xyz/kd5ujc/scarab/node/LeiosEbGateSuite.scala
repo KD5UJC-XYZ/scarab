@@ -30,7 +30,8 @@ import xyz.kd5ujc.scarab.storage.{
   LeiosStoreLocks,
   LeiosStoreSuite,
   ReceivedBlocks,
-  RocksLeiosStore
+  RocksLeiosStore,
+  StorageTestKit
 }
 
 /** The acquired-endorser-block gate of the node's chain selection (ouroboros-consensus 2416493b
@@ -194,7 +195,7 @@ class LeiosEbGateSuite extends FailsOnUncaught:
               allowingStorage(
                 (
                   FileImmutableStore.open[IO](dir / "immutable").map(_._1),
-                  ReceivedBlocks.open[IO](dir / "received")(_ => None)
+                  ReceivedBlocks.open[IO](dir / "received")(_ => None, StorageTestKit.decodes)
                 ).tupled
               ).map { case (immutable, received) =>
                 ChainStorage.Recovered[IO, BigInt](
@@ -216,7 +217,8 @@ class LeiosEbGateSuite extends FailsOnUncaught:
                   Vector(announcing, certifying).map(d => ref(d) -> d.block),
                   _ => IO.unit,
                   received,
-                  IO.unit
+                  IO.unit,
+                  IO.never[ChainStorage.CollectionStopped]
                 ) -> cuts
               }
             )

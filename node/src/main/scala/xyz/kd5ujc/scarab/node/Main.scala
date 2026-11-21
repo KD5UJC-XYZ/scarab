@@ -281,6 +281,33 @@ object Main extends IOApp:
             yield Some(Mempool.Target(ledger, tipSlot, adopted, tipHash))
         }
 
+  /** Each block of the selected chain that the start resumed, given to the received log
+    * ([[ReceivedBlocks.restoreSelected]]): a block the log lacks only if it passes the log's
+    * start-up check ([[ReceivedBlockRecovery.startUp]]), which every record the open indexed has
+    * passed, so that the pool is seeded from the log without checking a body again
+    * ([[seedReceived]]). A resume does not check all of a block (a Byron boundary block's body is
+    * not decoded). A block the check refuses is logged ([[NodeEvent.ReceivedBlockDiscarded]]) and
+    * not added.
+    */
+  private[node] def restoreReceived(
+      received: ReceivedBlocks[IO],
+      resumed: Vector[(BlockRef, xyz.kd5ujc.scarab.codec.Bytes)],
+      epochSlots: BigInt
+  )(using Raise[IO, NodeError], Log[IO]): IO[Unit] =
+    received.holds.flatMap(held =>
+      resumed.traverse_ { (ref, raw) =>
+        val restore = received.restoreSelected(ref, raw)
+        if held(ref.hash) then restore
+        else
+          ReceivedBlockRecovery
+            .checked(ref, raw, epochSlots)
+            .fold(
+              error => Log[IO].emit(NodeEvent.ReceivedBlockDiscarded(ref.hash, error)),
+              _ => restore
+            )
+      }
+    )
+
   private[node] def seedReceived(
       pool: BlockPool[IO],
       received: Option[ReceivedBlocks[IO]],
@@ -290,16 +317,19 @@ object Main extends IOApp:
       cache.refs.flatMap { refs =>
         refs
           .traverse { ref =>
-            // each body is checked and dropped at once: the forest keeps the metadata and reads
-            // the body back from the log, so the start does not hold every recovered body
+            // each body is read and dropped at once: the forest keeps the metadata and reads the
+            // body back from the log, so the start does not hold every recovered body. Each block
+            // has passed the log's start-up check (ReceivedBlockRecovery.startUp): the open ran it
+            // on every record it indexed, and the start on each block of the selected chain it
+            // added after it, nothing else written since; so only its header is read here, and a
+            // refusal, not expected, is of a block the log keeps but the pool is not seeded with
             cache.get(ref.hash).flatMap {
               case None => IO.pure(None)
               case Some((_, raw)) =>
-                ReceivedBlockRecovery.checked(ref, raw, epochSlots) match
-                  case Right(delivered) => IO.pure(Some(delivered.metadata))
+                ReceivedBlockRecovery.seeded(raw, epochSlots) match
+                  case Right(metadata) => IO.pure(Some(metadata))
                   case Left(error) =>
-                    Log[IO].emit(NodeEvent.ReceivedBlockDiscarded(ref.hash, error)) *>
-                      cache.discardRecovered(ref.hash).as(None)
+                    Log[IO].emit(NodeEvent.ReceivedBlockDiscarded(ref.hash, error)).as(None)
             }
           }
           .flatMap(items => pool.seedRecoveredMetadata(items.flatten))
@@ -734,6 +764,9 @@ object Main extends IOApp:
           StorageEvent.SnapshotRefused(_, _, _) | StorageEvent.ReplayStarted(_, _) |
           StorageEvent.ReplayProgress(_, _, _) | StorageEvent.ReplayFinished(_, _, _) |
           StorageEvent.NetworkRecorded(_, _, _) | StorageEvent.VolatileOpened(_) |
+          StorageEvent.ReceivedOpened(_) | StorageEvent.ReceivedTruncated(_) |
+          StorageEvent.ReceivedInvalidFileNames(_) | StorageEvent.ReceivedBlockAlreadyHere(_) |
+          StorageEvent.ScheduledGC(_, _) | StorageEvent.PerformedGC(_) |
           StorageEvent.VolatileResumed(_, _, _) | StorageEvent.ShutdownSnapshot(_, _) |
           StorageEvent.SnapshotDeleted(_) | StorageEvent.SnapshotNotDeleted(_, _) |
           StorageEvent.CheckpointNotDeleted(_, _) =>
@@ -1679,6 +1712,17 @@ object Main extends IOApp:
           Some(scheduling.compute),
           Some(SnapshotMigration.toCurrent[IO]),
           Some(TransitionRecount.reopen[IO](genesis.geometry))
+        )(ReceivedBlockRecovery.startUp(genesis.geometry.byron.epochSlots))
+        // a failed collection of the received log stops the node, as the failure of the
+        // reference's collection ends the thread it is linked to (consensus 82ecba329
+        // Storage/ChainDB/Impl/Background.hs:116-121,140-142)
+        .flatTap(r =>
+          r.collectionsStopped.flatMap {
+            case ChainStorage.CollectionStopped.Failed(error) =>
+              instruments.fatalSink(Fatal.Storage(error))
+            case ChainStorage.CollectionStopped.Defect(cause) =>
+              instruments.fatalSink(Fatal.Defect(cause))
+          }.background
         )
         .evalMap { r =>
           // the acquired endorser blocks at the open, before the volatile chain is replayed, as the
@@ -1780,7 +1824,11 @@ object Main extends IOApp:
       // Older databases have only the selected-chain log. Preserve those known originals
       // without inventing downloaded fork history that the old writer never recorded.
       _ <- opened.received.traverse_(received =>
-        resumed.traverse_(block => received.restoreSelected(block.ref, block.raw))
+        restoreReceived(
+          received,
+          resumed.map(block => block.ref -> block.raw),
+          genesis.geometry.byron.epochSlots
+        )
       )
       // the stores are open and the stored blocks applied
       _ <- measured.phase(PhaseLabel.Following)

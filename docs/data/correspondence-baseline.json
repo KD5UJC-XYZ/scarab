@@ -7822,7 +7822,6 @@
    "def storage.Out#varint": null,
    "def storage.ProductFields.named": null,
    "def storage.ReceivedBlocks#collect": null,
-   "def storage.ReceivedBlocks#discardRecovered": null,
    "def storage.ReceivedBlocks#get": null,
    "def storage.ReceivedBlocks#hashes": null,
    "def storage.ReceivedBlocks#holds": null,

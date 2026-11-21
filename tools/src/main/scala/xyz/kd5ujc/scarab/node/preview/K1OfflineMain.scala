@@ -16,7 +16,13 @@ import xyz.kd5ujc.scarab.codec.{Bytes, DomainError}
 import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.consensus.state.{ConsensusMirrorEnv, MirrorState}
 import xyz.kd5ujc.scarab.ledger.{Header, NodeError, PlutusStats, StorageError}
-import xyz.kd5ujc.scarab.node.{MirrorRules, NodeSetup, ParallelPlutus, VerificationCache}
+import xyz.kd5ujc.scarab.node.{
+  MirrorRules,
+  NodeSetup,
+  ParallelPlutus,
+  ReceivedBlockRecovery,
+  VerificationCache
+}
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.storage.*
 
@@ -222,7 +228,7 @@ object K1OfflineMain extends IOApp:
                       events,
                       backing,
                       raw => cache.warm[IO](raw, setup.praos)
-                    )
+                    )(ReceivedBlockRecovery.startUp(setup.geometry.byron.epochSlots))
                     .use(_ => IO.unit)
                 }
             )

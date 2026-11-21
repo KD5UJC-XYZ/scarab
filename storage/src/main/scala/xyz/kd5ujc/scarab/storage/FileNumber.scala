@@ -50,3 +50,10 @@ enum FileNameProblem extends DomainError:
     * No number is read from it: the store is refused before any of its files changes.
     */
   case LocaleDigits(name: String)
+
+  /** `name` reads as a file number but is not the name the store writes for that number,
+    * `canonical` (`1.log` for `00000001.log`): a store finds a file by the name it writes for its
+    * number, so it would read and write another file than the one it found. The store is refused
+    * before any of its files changes.
+    */
+  case NotCanonical(name: String, canonical: String)

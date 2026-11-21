@@ -1921,11 +1921,21 @@
     {
      "repository": "IntersectMBO/ouroboros-consensus",
      "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/VolatileDB/Impl/State.hs",
+     "symbol": "mkOpenStateHelper",
+     "lines": [
+      372,
+      436
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
      "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/VolatileDB/Impl/Parser.hs",
      "symbol": "parseBlockFile",
      "lines": [
       52,
-      104
+      107
      ]
     },
     {
@@ -1942,22 +1952,191 @@
      "repository": "IntersectMBO/ouroboros-consensus",
      "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
      "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/VolatileDB/Impl/State.hs",
-     "symbol": "mkOpenStateHelper",
+     "symbol": "addToReverseIndex",
      "lines": [
-      372,
-      436
+      464,
+      492
      ]
     }
    ],
    "class": "Gap",
-   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1247",
    "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1261",
+   "note": "as mkOpenStateHelper and its validateFile, each file in order of number is parsed (parsedBlocks, as parseBlockFile: each block read in turn with its location and what is read from it, here the predecessor, as extractBlockInfo; the parse stops at the first record it cannot read, BlockReadErr), then its blocks are added to the index up to the first one already held, in an earlier file or earlier in the same one, whatever its bytes (addedToIndex, as addToReverseIndex, DuplicatedBlock); the file is cut at the earlier of the two, the files after it are read all the same, and the file being written is chosen as mkOpenStateHelper chooses it. What reading a record means is the format's: a record that is incomplete, fails its checksum, is not understood or is not a block (the received log writes no rollback record) cannot be read, and neither can one whose block the given check refuses (ReceivedBlocks.Check: the block decodes and its header names the point the record stores, which the reference reads from the block itself). Where the reference builds a successor index during the open, Scarab's index keeps each block's predecessor, from which ReceivedBlocks.links answers. The selected-chain journal's open (open, openIndex) keeps its in-order recovery, which replays rollback records in order (#1247) Where it differs, by the approved Deviations of the decisions register's two 2026-11-21 rows (#1247), which apply to the selected-chain journal too, since both logs open and write through the same code: the open refuses a name that reads as a file number but is not the writer's zero-padded spelling of it (1.log for 00000001.log), before any file changes, where the reference admits any name its file-number parser reads and recovers that file under the name it is listed under (parseFd, Storage/VolatileDB/Impl/Util.hs 45-74; mkOpenState and validateFile, Storage/VolatileDB/Impl/State.hs 319-330 and 412-417); and, in the append of the block that fills a file, the store it hands back forces the full file to disk and closes it, creates the next file and forces the directory to disk before it writes to the next file, a force whose failure fails the append, where the reference's nextFile closes the full file and opens the next without forcing either (Storage/VolatileDB/Impl.hs 574-603). The check the node gives it verifies a block's body against its header at every open, the approved Deviation of the 2026-11-20 row (ReceivedBlocks.Check). Two of its differences are approved Deviations (the 2026-11-21 rows of docs/decisions.md#genesis-storage-and-keys: the refusal of a name that is not the writer's, and the forces at rollover); ReceivedBlocksSuite checks part of that behaviour: the refusal of a name that is not the writer's, which changes no file, in both logs, and the roll at the block that fills a file; no test observes the forces themselves, their order or a failed force, and no suite compares any of it with the reference, which it departs from by decision. It also indexes each block's predecessor where the reference builds a successor index, an internal difference that no differential comparison covers, a Gap (#1261).",
+   "digest": "5620fad80a18589a"
+  },
+  "def storage.VolatileStore.parsedBlocks": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/VolatileDB/Impl/Parser.hs",
+     "symbol": "parseBlockFile",
+     "lines": [
+      52,
+      107
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/VolatileDB/Impl/Parser.hs",
+     "symbol": "extractBlockInfo",
+     "lines": [
+      113,
+      128
+     ]
+    }
+   ],
+   "class": "Gap",
+   "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1261",
+   "note": "the blocks of a file read in turn, each with where its record is and what is read from it, up to the first record that cannot be read (BlockReadErr, here also a record that is not a block, which the received log never writes) or whose block the given check refuses as undecodable (BlockReadErr) or corrupt (BlockCorruptedErr, with the hash of the block as decoded, which the check's refusal carries, as parseBlockFile gives blockHash blk, Parser.hs 102-107; not the hash the record names), and the offset where they end (#1247) Where it differs: one pass reads Scarab's framed records, decodes and applies the given check, and keeps no header context (the reference's pbiNestedCtxt); no differential comparison covers it (#1261).",
+   "digest": "d087f13bd3322091"
+  },
+  "def storage.VolatileStore.addedToIndex": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/VolatileDB/Impl/State.hs",
+     "symbol": "addToReverseIndex",
+     "lines": [
+      464,
+      492
+     ]
+    }
+   ],
+   "class": "Gap",
+   "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1261",
+   "note": "the parsed blocks added to the index in order up to the first one it holds, from an earlier file or earlier in the same one, whatever its bytes: the index after, the blocks added, and where the first such block is with its hash (DuplicatedBlock), the file that holds it filled in by the caller from the files the index's blocks were read from (#1247) Where it differs: it answers the repeat's offset and hash, and its caller names the file that holds the block, where the reference returns the DuplicatedBlock error with both files; no differential comparison covers it (#1261).",
+   "digest": "d8e51a9732249952"
+  },
+  "enum storage.VolatileStore.Trace": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/VolatileDB/Impl/Types.hs",
+     "symbol": "TraceEvent",
+     "lines": [
+      96,
+      102
+     ]
+    }
+   ],
+   "class": "Gap",
+   "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1261",
+   "note": "three of TraceEvent's constructors, Truncate, InvalidFileNames and BlockAlreadyHere, with their fields; the reference's DBAlreadyClosed and DBClosed trace closing its handle, which Scarab's store closes through its Resource without a trace (#1247); each is emitted where the reference emits it, BlockAlreadyHere inside the put (putBlockImpl, Impl.hs 394), so a tracer that fails fails the put in both; the reference then closes its VolatileDB, poisoning its state (modifyOpenState, Impl/State.hs 157-197), where Scarab's log stays open (#1258)",
+   "digest": "0be3440d5789bb78"
+  },
+  "type storage.ReceivedBlocks.Check": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/VolatileDB/Impl.hs",
+     "symbol": "VolatileDbArgs",
+     "lines": [
+      159,
+      174
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/VolatileDB/Impl/Parser.hs",
+     "symbol": "parseBlockFile",
+     "lines": [
+      69,
+      107
+     ]
+    }
+   ],
+   "class": "Deviation",
+   "structure": "differs",
+   "record": "docs/decisions.md#genesis-storage-and-keys",
    "evidence": [
     "ReceivedBlocksSuite",
-    "VolatileStoreSuite"
+    "FetchedBlockIntegritySuite"
    ],
-   "note": "as parseBlockFile and extractBlockInfo, each block is read in turn and its location kept with what is read from its body (here the predecessor). It differs in the recovery it shares with openIndex: the first damaged file is cut and every file after it removed, where the reference's open (mkOpenStateHelper) truncates each damaged file and keeps the others, and truncates a later file at a block already indexed: a Gap (#1247), to be aligned for the received log; the selected-chain journal keeps its in-order recovery",
-   "digest": "666577b18901c140"
+   "note": "the block decoder and integrity predicate the reference gives its VolatileDB (volCodecConfig, volCheckIntegrity, volValidationPolicy), as one function the node passes to the received log's open (ReceivedBlockRecovery.startUp), given the point the record stores as well: a record it refuses cannot be read and cuts its file, as parseBlockFile cuts at BlockReadErr or BlockCorruptedErr. Where it differs, by the approved Deviation of the decisions register's 2026-11-20 row (#1247): the node's check decodes the block, checks the record's point and checks the body against the header at every open, where the reference only decodes by default (NoValidation, VolatileDB/Impl.hs 188) and checks integrity (the header's own and the body against the header) only with ValidateAll, after an unclean shutdown or when the operator asks for it (ensureValidateAll, ChainDB/Impl/Args.hs 154-167); the header's own integrity is not checked here. ReceivedBlocksSuite and FetchedBlockIntegritySuite check the approved check; no suite compares it with the reference's validation policy, which it departs from by decision",
+   "digest": "2474ddc71d47f1e6"
+  },
+  "enum storage.VolatileStore.CutCause": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/VolatileDB/Impl/Types.hs",
+     "symbol": "ParseError",
+     "lines": [
+      77,
+      87
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ReceivedBlocksSuite",
+    "ReceivedCollectionSuite"
+   ],
+   "note": "why the open of the received log cut a file, with ParseError's constructors: ReadFailed for a record that cannot be read or whose block does not decode (BlockReadErr, its reason Scarab's reader's, ReadFailure, where the reference's ReadIncrementalErr is its CBOR reader's), Corrupted with the hash of a block that decodes and that the check finds corrupt, the decoded block's hash as BlockCorruptedErr's is (blockHash blk, Parser.hs 102-107), not the hash the record names when the two differ, and Duplicated with the hash, the file that holds the block and the file cut (DuplicatedBlock) (#1247)",
+   "digest": "f37a972fd554fb68"
+  },
+  "class storage.VolatileStore.Cut": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/VolatileDB/Impl/Types.hs",
+     "symbol": "Truncate",
+     "lines": [
+      99,
+      99
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/VolatileDB/Impl/State.hs",
+     "symbol": "truncateError",
+     "lines": [
+      438,
+      450
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ReceivedBlocksSuite",
+    "ReceivedCollectionSuite"
+   ],
+   "note": "the Truncate trace: why, which file (by the name it is listed under, as the reference's FsPath) and the offset the file is cut at, one per truncation, told just before it is attempted (a truncation that then fails fails the open), two for a file cut at a parse error and then at an earlier repeat, as validateFile truncates and traces them; ChainStorage emits each as StorageEvent.ReceivedTruncated, at Debug as cardano-node 11.1.3 and ouroboros-consensus 808e40054's tracing give Truncate (#1247)",
+   "digest": "ba4152545ee4e417"
+  },
+  "def storage.ReceivedBlocks.recovering": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/VolatileDB/Impl.hs",
+     "symbol": "openDB",
+     "lines": [
+      200,
+      239
+     ]
+    }
+   ],
+   "class": "Gap",
+   "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1261",
+   "note": "the open of the received log, as openDB opens the VolatileDB from its files (VolatileStore.openIndexWith): the names it does not read traced, each file validated in order and each cut traced just before it is made, the index built; the store answers a put of a held block with BlockAlreadyHere. Beside the reference's state it keeps Scarab-only state, a cache of recent bodies and the set of blocks refused since the open, and hands back the open's report (#1247) Where it differs: besides openDB's work it keeps a cache and the set of blocks refused since the open, and hands back the open's report; no differential comparison covers it (#1261).",
+   "digest": "2bd1d2d54713a70b"
   },
   "def storage.ChainStorage.predecessorOf": {
    "upstream": [
@@ -2009,6 +2188,241 @@
     "LeiosStoreSuite"
    ],
    "digest": "4113e0bd95e63f72"
+  },
+  "trait storage.GcSchedule": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ChainDB/Impl/Background.hs",
+     "symbol": "GcSchedule",
+     "lines": [
+      532,
+      532
+     ]
+    }
+   ],
+   "class": "Gap",
+   "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1261",
+   "note": "the schedule of the received log's collections, as the reference's GcSchedule, which is a newtype over its queue (a StrictTVar of a StrictSeq of ScheduledGc) that scheduleGC, dumpGcSchedule and gcScheduleRunner take; here an algebra of those three operations (#schedule, #pending and #run, each mapped on its own), its queue a SignallingRef of a Vector of Scheduled that GcSchedule.apply allocates, as newGcSchedule allocates the queue (#1247) Where it differs: the queue is held behind the operations, not as the type's field; no differential comparison covers it (#1261).",
+   "digest": "b69de4796ddef554"
+  },
+  "class storage.GcSchedule.Scheduled": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ChainDB/Impl/Background.hs",
+     "symbol": "ScheduledGc",
+     "lines": [
+      534,
+      540
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "GcScheduleSuite",
+    "ReceivedCollectionSuite"
+   ],
+   "digest": "f74adaf3dfd40a34"
+  },
+  "class storage.GcSchedule.Params": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ChainDB/Impl/Background.hs",
+     "symbol": "GcParams",
+     "lines": [
+      545,
+      552
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "GcScheduleSuite",
+    "ReceivedCollectionSuite"
+   ],
+   "digest": "90576c9de77b5bb7"
+  },
+  "val storage.GcSchedule.Params.Reference": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ChainDB/Impl/Args.hs",
+     "symbol": "defaultSpecificArgs",
+     "lines": [
+      119,
+      124
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "GcScheduleSuite",
+    "ReceivedCollectionSuite"
+   ],
+   "digest": "753343c565a66f32"
+  },
+  "def storage.GcSchedule.apply": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ChainDB/Impl/Background.hs",
+     "symbol": "newGcSchedule",
+     "lines": [
+      554,
+      555
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "GcScheduleSuite",
+    "ReceivedCollectionSuite"
+   ],
+   "digest": "68241cf5c149e621",
+   "note": "the queue's allocation only, as newGcSchedule allocates its queue; the schedule's methods are mapped on their own (#schedule, #pending, #run)"
+  },
+  "def storage.GcSchedule#schedule": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ChainDB/Impl/Background.hs",
+     "symbol": "scheduleGC",
+     "lines": [
+      557,
+      576
+     ]
+    }
+   ],
+   "class": "Gap",
+   "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1261",
+   "note": "as scheduleGC: the entry at the time now plus the delay rounded up to the interval, in place of the last entry for the same time, else after it. Where it differs: it hands the entry back and its caller emits the ScheduledGC trace, where scheduleGC traces it itself; no differential comparison covers it (#1261). Both trace right after their enqueue (scheduleGC, Background.hs 576, ouroboros-consensus 82ecba329), so a tracer that fails propagates out of the step that copied the blocks in both; the reference has signalled its ledger maintenance by then, where Scarab brings its backing store forward after the trace. It is called once for each persisted extension that copies blocks to the immutable store, where the reference's copy runner copies the whole prefix then eligible and schedules once: a Gap, #1262",
+   "digest": "81173512dc7f0c7d"
+  },
+  "def storage.GcSchedule.scheduled": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ChainDB/Impl/Background.hs",
+     "symbol": "scheduleGC",
+     "lines": [
+      566,
+      576
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "GcScheduleSuite",
+    "ReceivedCollectionSuite"
+   ],
+   "digest": "3adce5962596d846"
+  },
+  "def storage.GcSchedule.timeFor": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ChainDB/Impl/Background.hs",
+     "symbol": "computeTimeForGC",
+     "lines": [
+      578,
+      591
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ChainDB/Impl/Background.hs",
+     "symbol": "roundUpToInterval",
+     "lines": [
+      593,
+      609
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "GcScheduleSuite",
+    "ReceivedCollectionSuite"
+   ],
+   "note": "the time is rounded on the monotonic clock in nanoseconds, the reference's in picoseconds; a time past the clock's range is its largest value",
+   "digest": "84fb5cd844b176f8"
+  },
+  "def storage.GcSchedule#pending": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ChainDB/Impl/Background.hs",
+     "symbol": "dumpGcSchedule",
+     "lines": [
+      647,
+      652
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "GcScheduleSuite"
+   ],
+   "digest": "1071d7fe349efff5"
+  },
+  "def storage.GcSchedule#run": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ChainDB/Impl/Background.hs",
+     "symbol": "gcScheduleRunner",
+     "lines": [
+      611,
+      645
+     ]
+    }
+   ],
+   "class": "Gap",
+   "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1261",
+   "note": "waits for the time of the oldest entry, reads its slot after the wait, takes it off the queue and collects it, one at a time, as gcScheduleRunner; where the reference's runner throws in its linked thread, a collection that fails, or an exception anywhere in the runner, ends it with a value (ADR 0017), which ChainStorage hands to the node to stop on (#1247) Where it differs: it ends with a value where the reference's runner throws, and waits again when the queue is empty after its wait; no differential comparison covers it (#1261). Both trace PerformedGC right after the collection (garbageCollectBlocks, Background.hs 448), so a tracer that fails ends the collection's runner in both.",
+   "digest": "ca238d24ec8b8bfa"
+  },
+  "val storage.ReceivedBlocks.DefaultBlocksPerFile": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/VolatileDB/Impl.hs",
+     "symbol": "volMaxBlocksPerFile",
+     "lines": [
+      180,
+      189
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ReceivedBlocksSuite"
+   ],
+   "digest": "15e24a747a226ee0"
   }
  },
  "glue": [
@@ -2026,7 +2440,7 @@
    ]
   },
   {
-   "reason": "the numbers of Scarab's own storage file names read back from ASCII digits only, and a name in a locale's digits refused as a typed error; the reference reads the numbers of its own file names with readMaybe, which takes ASCII digits only, and passes over a name it cannot read",
+   "reason": "the numbers of Scarab's own storage file names read back from ASCII digits only, and a name in a locale's digits, or a volatile log's name that reads as a number but is not the name the log writes for it, refused as a typed error; the reference reads the numbers of its own file names with readMaybe, which takes ASCII digits only, and passes over a name it cannot read, which its VolatileDB traces (InvalidFileNames) and Scarab's received log logs too",
    "definitions": [
     "def storage.FileNumber.numberOf",
     "enum storage.FileNameProblem"
@@ -2231,6 +2645,33 @@
    "definitions": [
     "enum storage.leios.LeiosReferenceDb.Error",
     "def storage.leios.LeiosReferenceDb.Error#message"
+   ]
+  },
+  {
+   "reason": "the companions of the received log's collection schedule, and its parameters' constructor, which refuses an interval that is not positive (a precondition the reference states in a comment, roundUpToInterval, Storage/ChainDB/Impl/Background.hs 593-609 at ouroboros-consensus 82ecba329) and a negative delay",
+   "definitions": [
+    "object storage.GcSchedule",
+    "object storage.GcSchedule.Params",
+    "def storage.GcSchedule.Params.of"
+   ]
+  },
+  {
+   "reason": "why the received log's collections stopped, carried as a value across the runner fiber's boundary (ADR 0017) for the node to stop on; the reference's runner throws in a thread linked to the ChainDB's (launch, Storage/ChainDB/Impl/Background.hs 116-121 and 140-142 at ouroboros-consensus 82ecba329)",
+   "definitions": [
+    "enum storage.ChainStorage.CollectionStopped"
+   ]
+  },
+  {
+   "reason": "what the received log's open found, its report and the cuts it made, handed back by ReceivedBlocks.recovering: ChainStorage emits the report as StorageEvent.ReceivedOpened, and each cut as it is told of it, through the open's callback; the reference's ChainDB traces the end of its VolatileDB's open with its newest slot (OpenedVolatileDB, Storage/ChainDB/Impl/Types.hs 829 at ouroboros-consensus 82ecba329)",
+   "definitions": [
+    "class storage.ReceivedBlocks.Recovery"
+   ]
+  },
+  {
+   "reason": "the verdict of the check the received log's open is given, a block that does not decode or one that decodes and is corrupt, as the reference's parser tells a decoding failure (BlockReadErr) from its integrity predicate's refusal (BlockCorruptedErr): the reference passes a decoder and a predicate where Scarab passes one check; and Scarab's reader's reasons a record cannot be read, the payload of CutCause.ReadFailed, where the reference's BlockReadErr carries its CBOR reader's ReadIncrementalErr: Scarab's records are framed and checksummed, the reference's are bare CBOR blocks",
+   "definitions": [
+    "enum storage.VolatileStore.Refusal",
+    "enum storage.VolatileStore.ReadFailure"
    ]
   }
  ]

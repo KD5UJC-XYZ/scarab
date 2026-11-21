@@ -687,6 +687,39 @@ object LogSamples:
       dijkstraAdopted = false
     ),
     StorageEvent.VolatileOpened(VolatileStore.OpenReport(10, 2, 0L, 0)),
+    StorageEvent.ReceivedInvalidFileNames(Vector("notes.txt")),
+    StorageEvent.ReceivedTruncated(
+      VolatileStore.Cut(
+        "00000003.log",
+        4096L,
+        VolatileStore.CutCause.ReadFailed(VolatileStore.ReadFailure.Unreadable)
+      )
+    ),
+    StorageEvent.ReceivedTruncated(
+      VolatileStore.Cut(
+        "00000004.log",
+        0L,
+        VolatileStore.CutCause.ReadFailed(
+          VolatileStore.ReadFailure.Undecodable(
+            StorageError.Corrupt("received block", xyz.kd5ujc.scarab.codec.Cbor.Error.UnexpectedEnd)
+          )
+        )
+      )
+    ),
+    StorageEvent.ReceivedTruncated(
+      VolatileStore.Cut("00000004.log", 64L, VolatileStore.CutCause.Corrupted(hash))
+    ),
+    StorageEvent.ReceivedTruncated(
+      VolatileStore.Cut(
+        "00000005.log",
+        120L,
+        VolatileStore.CutCause.Duplicated(hash, "00000002.log", "00000005.log")
+      )
+    ),
+    StorageEvent.ReceivedOpened(VolatileStore.OpenReport(12, 6, 4216L, 0)),
+    StorageEvent.ReceivedBlockAlreadyHere(hash),
+    StorageEvent.ScheduledGC(BigInt(1234), scala.concurrent.duration.FiniteDuration(70, "s")),
+    StorageEvent.PerformedGC(BigInt(1234)),
     StorageEvent.VolatileResumed(10, 1, 300L),
     StorageEvent.ShutdownSnapshot(anchor, written = true)
   )

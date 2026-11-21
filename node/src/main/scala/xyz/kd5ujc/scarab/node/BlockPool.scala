@@ -6,7 +6,13 @@ import cats.effect.syntax.all.*
 import cats.Functor
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.{BlockPoolProblem, Header, PeerError, ValidationError}
+import xyz.kd5ujc.scarab.ledger.{
+  BlockPoolProblem,
+  Header,
+  PeerError,
+  TentativeHeaderError,
+  ValidationError
+}
 import xyz.kd5ujc.scarab.protocol.ChainSync
 import xyz.kd5ujc.scarab.consensus.genesis.DiffusionPunishment
 import xyz.kd5ujc.scarab.consensus.{ChainSelection, LeiosBlockInfo}
@@ -749,14 +755,32 @@ object BlockPool:
 
   /** A delivered block's header, what diffusion punishment reads of it, and its Leios fields, which
     * the acquired-endorser-block gate reads ([[LeiosBlockInfo]], the reference's VolatileDB
-    * `BlockInfo` takes them from the block when it is put).
+    * `BlockInfo` takes them from the block when it is put). It is built as a block is delivered
+    * ([[Delivered.checked]]), or for a block the received log holds at the node's start
+    * ([[DeliveredHeader.checkedAtOpen]]).
     */
-  final case class DeliveredHeader(
+  final case class DeliveredHeader private[BlockPool] (
       header: Header,
       view: DiffusionPunishment.View,
       leios: LeiosBlockInfo,
       admission: BigInt = 0
   )
+  object DeliveredHeader:
+    /** The metadata of a block the received log holds at the node's start, its body not checked
+      * against its header again: each block has passed the log's start-up check
+      * ([[ReceivedBlockRecovery.startUp]]: the block decodes, its header names the record's point
+      * and its body is its header's, as [[Delivered.checked]] checks it), the open's of each record
+      * it indexed and the start's of each block of the selected chain it adds to the log after it
+      * ([[xyz.kd5ujc.scarab.storage.ReceivedBlocks.restoreSelected]]). The header's punishment view
+      * is built again, as that check built it, with the block's Leios fields as
+      * [[ReceivedBlockRecovery.seeded]] reads them.
+      */
+    def checkedAtOpen(
+        header: Header,
+        leios: LeiosBlockInfo
+    ): Either[TentativeHeaderError, DeliveredHeader] =
+      DiffusionPunishment.view(header).map(DeliveredHeader(header, _, leios))
+
   private[node] final case class Admission private[BlockPool] (
       taken: Taken,
       delivered: DeliveredHeader

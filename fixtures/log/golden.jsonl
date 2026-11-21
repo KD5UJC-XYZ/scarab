@@ -234,6 +234,15 @@
 {"event":"networkRecorded","at":"2026-10-16T12:00:00Z","magic":42,"shelleyGenesis":"abababababababababababababababababababababababababababababababab","byronGenesis":"abababababababababababababababababababababababababababababababab","alonzoGenesis":"file:abababababababababababababababababababababababababababababababab","conwayGenesis":"file:abababababababababababababababababababababababababababababababab","dijkstraGenesis":"file:abababababababababababababababababababababababababababababababab","adoptedExisting":false,"adoptedDijkstraGenesis":true}
 {"event":"networkRecorded","at":"2026-10-16T12:00:00Z","magic":1,"shelleyGenesis":"abababababababababababababababababababababababababababababababab","byronGenesis":null,"alonzoGenesis":"file:abababababababababababababababababababababababababababababababab","conwayGenesis":"file:abababababababababababababababababababababababababababababababab","dijkstraGenesis":null,"adoptedExisting":true,"adoptedDijkstraGenesis":false}
 {"event":"volatileOpened","at":"2026-10-16T12:00:00Z","blocks":10,"files":2,"truncatedBytes":0,"removedFiles":0}
+{"event":"receivedInvalidFileNames","at":"2026-10-16T12:00:00Z","files":["notes.txt"]}
+{"event":"receivedTruncated","at":"2026-10-16T12:00:00Z","file":"00000003.log","offset":4096,"cause":"readFailed","failure":"unreadable"}
+{"event":"receivedTruncated","at":"2026-10-16T12:00:00Z","file":"00000004.log","offset":0,"cause":"readFailed","failure":"undecodable","reason":"corrupt received block: UnexpectedEnd"}
+{"event":"receivedTruncated","at":"2026-10-16T12:00:00Z","file":"00000004.log","offset":64,"cause":"corrupted","hash":"abababababababababababababababababababababababababababababababab"}
+{"event":"receivedTruncated","at":"2026-10-16T12:00:00Z","file":"00000005.log","offset":120,"cause":"duplicated","hash":"abababababababababababababababababababababababababababababababab","first":"00000002.log","second":"00000005.log"}
+{"event":"receivedOpened","at":"2026-10-16T12:00:00Z","blocks":12,"files":6,"truncatedBytes":4216}
+{"event":"receivedBlockAlreadyHere","at":"2026-10-16T12:00:00Z","hash":"abababababababababababababababababababababababababababababababab"}
+{"event":"scheduledGC","at":"2026-10-16T12:00:00Z","slot":1234,"dueMillis":70000}
+{"event":"performedGC","at":"2026-10-16T12:00:00Z","slot":1234}
 {"event":"volatileResumed","at":"2026-10-16T12:00:00Z","resumed":10,"dropped":1,"millis":300}
 {"event":"shutdownSnapshot","at":"2026-10-16T12:00:00Z","anchor":{"slot":4200,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab"},"written":true}
 {"event":"finished","at":"2026-10-16T12:00:00Z","tip":{"origin":true},"retained":0}

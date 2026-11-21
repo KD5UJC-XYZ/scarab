@@ -1,15 +1,30 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import cats.Applicative
 import cats.effect.{IO, Ref, Resource}
+import cats.mtl.{Handle, Raise, Tell}
 import cats.syntax.all.*
-import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.consensus.ChainSelection
+import fs2.io.file.{Files, Path}
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node as CborNode, Value}
+import xyz.kd5ujc.scarab.consensus.{BlockRef, ChainSelection}
 import xyz.kd5ujc.scarab.consensus.SelectView
-import xyz.kd5ujc.scarab.ledger.{Block, BlockFailure, Header, HeaderVrf, ValidationError}
+import xyz.kd5ujc.scarab.ledger.{
+  Block,
+  BlockFailure,
+  BlockTransportError,
+  Header,
+  HeaderVrf,
+  NodeError,
+  PeerError,
+  StorageError,
+  ValidationError
+}
 import xyz.kd5ujc.scarab.network.FailsOnUncaught
 import xyz.kd5ujc.scarab.node.forge.{BlockBuilder, ForgedChain}
+import xyz.kd5ujc.scarab.node.log.{EventKind, Line, Log}
 import xyz.kd5ujc.scarab.protocol.ChainSync.Point
+import xyz.kd5ujc.scarab.storage.{ChainStorage, ReceivedBlocks}
 
 /** The processed forest keeps what the reference's VolatileDB keeps in memory of a block, its index
   * entry, and reads the body back from the received log (#416). Without a log the body stays in
@@ -271,6 +286,159 @@ class ProcessedBodiesSuite extends FailsOnUncaught:
     yield
       assert(processed.values.forall(p => p.held.isEmpty && p.origin == BlockPool.Source.Recovered))
       assertEquals(bodies, delivered.map(d => Some(d.block)))
+  }
+
+  /** `raw` with its empty witness container written the other way (a definite empty array for an
+    * indefinite one, or the reverse): the block decodes and its header is unchanged, but its body
+    * no longer hashes to what its header commits to (`BlockTransportError.WrongBodyHash`).
+    */
+  private def bodyNotItsHeaders(raw: Bytes): Bytes =
+    def array(node: CborNode): Vector[CborNode] = node.value match
+      case Value.Arr(items) => items
+      case other            => fail(s"expected an array, got $other")
+    val witnesses = array(array(Cbor.decode(raw).fold(e => fail(e.message), identity))(1))(2)
+    assertEquals(array(witnesses), Vector.empty, "a forged block without transactions")
+    val other =
+      if witnesses.original == Bytes(Vector(0x80.toByte)) then
+        Bytes(Vector(0x9f.toByte, 0xff.toByte))
+      else Bytes(Vector(0x80.toByte))
+    raw.take(witnesses.offset) ++ other ++ raw.drop(witnesses.offset + witnesses.original.size)
+
+  private def ref(header: Header): BlockRef =
+    BlockRef(header.slot, header.hash, header.blockNo, header.isBoundary)
+
+  /** A `Log` that keeps every line. */
+  private def collecting(lines: Ref[IO, Vector[Line]]): Log[IO] = new Tell[IO, Line]:
+    def functor = Applicative[IO]
+    def tell(line: Line) = lines.update(_ :+ line)
+
+  private val epochSlots = ForgedChain.geometry.byron.epochSlots
+
+  /** A check that accepts every record: it stands in for the start-up check
+    * ([[ReceivedBlockRecovery.startUp]]), so that the log can hold what that check refuses.
+    */
+  private val acceptAll: ReceivedBlocks.Check = (_, _) => Right(())
+
+  private def opened(dir: Path, check: ReceivedBlocks.Check)(using
+      Raise[IO, StorageError]
+  ): Resource[IO, ReceivedBlocks[IO]] =
+    ReceivedBlocks.open[IO](dir)(ChainStorage.predecessorOf(epochSlots), check)
+
+  private def recovered(log: ReceivedBlocks[IO])(using Raise[IO, StorageError]) =
+    BlockPool.Recovered[IO](
+      log.holds,
+      hash => log.get(hash).map(_.map(_._2)),
+      hash => log.original(hash).map(_.map(_._2)),
+      log.invalidate
+    )
+
+  test(
+    "seeding from the received log reads each block's header and does not check its body again"
+  ) {
+    // the log holds what the start-up check refuses (acceptAll): a block whose body is not its
+    // header's, and bytes that are no block. Seeding checks neither body again.
+    Files.forAsync[IO].tempDirectory.use { dir =>
+      Handle
+        .allow[NodeError] {
+          for
+            delivered <- blocks(2)
+            (sound, other) = (delivered(0), delivered(1))
+            wrong = bodyNotItsHeaders(other.block)
+            noBlock = BlockRef(
+              other.header.slot + 1,
+              Bytes(Vector.fill(32)(7.toByte)),
+              other.header.blockNo + 1,
+              false
+            )
+            _ <- IO(BlockPool.Delivered.checked(other.header, wrong) match
+              case Left(
+                    PeerError.ProtocolProblem.FetchedBlockIntegrity(
+                      BlockTransportError.WrongBodyHash(_, _)
+                    )
+                  ) =>
+                ()
+              case result => fail(s"the integrity check takes the changed body: $result"))
+            _ <- opened(dir, acceptAll).use(log =>
+              log.put(ref(sound.header), sound.block) *> log.put(ref(other.header), wrong) *>
+                log.put(noBlock, Bytes(Vector(0xff.toByte)))
+            )
+            lines <- Ref.of[IO, Vector[Line]](Vector.empty)
+            seeded <- opened(dir, acceptAll).use { log =>
+              given Log[IO] = collecting(lines)
+              for
+                pool <- BlockPool
+                  .create[IO](BlockPool.FetchPolicy(), IO.pure(local), recovered(log))
+                _ <- Main.seedReceived(pool, Some(log), epochSlots)
+                processed <- pool.processedSnapshot
+              yield processed
+            }
+            logged <- lines.get
+          yield
+            assertEquals(
+              seeded.keySet,
+              Set(sound.header.hash, other.header.hash),
+              "the blocks the open accepted are seeded, the one whose body is not its header's too"
+            )
+            assertEquals(
+              seeded.get(other.header.hash).map(_.delivered.view),
+              Some(other.metadata.view),
+              "from its header"
+            )
+            assertEquals(
+              logged.map(line => line.kind -> line.fields.toMap.get("hash").flatMap(_.asString)),
+              Vector(EventKind.ReceivedBlockDiscarded -> Some(noBlock.hash.hex)),
+              "only the record whose header does not decode is discarded, and logged"
+            )
+        }
+        .rescue(error => IO(fail(error.message)))
+    }
+  }
+
+  test(
+    "the start adds a block of the selected chain to the received log only once it passes the check"
+  ) {
+    // a resume does not check all of a block (a Byron boundary block's body is not decoded): a
+    // resumed block whose body is not its header's stands in for one, so that seeding, which does
+    // not check a body again, never meets a block the log's start-up check did not pass
+    Files.forAsync[IO].tempDirectory.use { dir =>
+      Handle
+        .allow[NodeError] {
+          for
+            delivered <- blocks(3)
+            (held, sound, other) = (delivered(0), delivered(1), delivered(2))
+            wrong = bodyNotItsHeaders(other.block)
+            _ <- opened(dir, acceptAll).use(_.put(ref(held.header), held.block))
+            lines <- Ref.of[IO, Vector[Line]](Vector.empty)
+            found <- opened(dir, ReceivedBlockRecovery.startUp(epochSlots)).use { log =>
+              given Log[IO] = collecting(lines)
+              val resumed = Vector(
+                ref(held.header) -> held.block,
+                ref(sound.header) -> sound.block,
+                ref(other.header) -> wrong
+              )
+              for
+                _ <- Main.restoreReceived(log, resumed, epochSlots)
+                pool <- BlockPool
+                  .create[IO](BlockPool.FetchPolicy(), IO.pure(local), recovered(log))
+                _ <- Main.seedReceived(pool, Some(log), epochSlots)
+                kept <- log.refs
+                processed <- pool.processedSnapshot
+              yield (kept.map(_.hash).toSet, processed.keySet)
+            }
+            (kept, seeded) = found
+            logged <- lines.get
+          yield
+            val accepted = Set(held.header.hash, sound.header.hash)
+            assertEquals(kept, accepted, "the block whose body is not its header's is not added")
+            assertEquals(seeded, accepted, "and the pool is not seeded with it")
+            assertEquals(
+              logged.map(line => line.kind -> line.fields.toMap.get("hash").flatMap(_.asString)),
+              Vector(EventKind.ReceivedBlockDiscarded -> Some(other.header.hash.hex)),
+              "its refusal is logged"
+            )
+        }
+        .rescue(error => IO(fail(error.message)))
+    }
   }
 
   test("a processed block the log can no longer read leaves the forest and can be fetched again") {

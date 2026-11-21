@@ -122,7 +122,10 @@ enum NodeEvent:
   /** The verification verdicts found ahead of the rules so far (every 20,000 blocks). */
   case VerificationCache(summary: String)
 
-  /** A malformed unselected cached original was discarded during startup recovery. */
+  /** A block the start leaves out: one of the selected chain that the received log lacks and that
+    * fails the log's start-up check, not added to it, or one of the log whose header does not
+    * decode when the block pool is seeded, not seeded.
+    */
   case ReceivedBlockDiscarded(hash: Bytes, cause: StorageError)
 
   /** The run stops on an error. */
