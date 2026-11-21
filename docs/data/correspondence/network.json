@@ -1451,12 +1451,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
-   "evidence": [
-    "LeiosFetchProtocolSuite",
-    "MuxSuite"
-   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1263#issuecomment-7067526517",
    "note": "LeiosFetch's messages are sent whatever their size, as muxChannel's send bounds none; the other protocols keep the node's ceiling of maxMessageBytes",
    "digest": "43e19df212e76fc6"
   },
