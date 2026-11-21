@@ -803,6 +803,45 @@ class EraConwaySuite extends munit.FunSuite:
     assertEquals(kinds, (0 to 6).toSet)
   }
 
+  test("who may vote on each recorded action, as the flat rule decides it") {
+    // `isCommitteeVotingAllowed`, `isDRepVotingAllowed` and `isStakePoolVotingAllowed`
+    // (`Conway/Governance/Internal.hs:350-532`, cardano-ledger f649f975) on the era types, against
+    // the flat rule's, on the recorded proposals of each of the seven actions
+    given ConwayEraPParams[Conway] = ConwayEraPParams.conway
+    val read = bodies.map(raw => ConwayTxBody.decode(raw, StateLayout.Node11_1).toOption.get)
+    // and two crafted parameter changes: of the maximum block body size, of the security group,
+    // and of the DReps' activity, of none
+    val crafted = Vector("8400f6a1021903e8f6", "8400f6a1182005f6").map(action =>
+      proposal(action)._2.fold(e => fail(s"$action: $e"), identity)
+    )
+    val proposals = read.flatMap(body.proposalProcedures[TxLevel.Top](_).toVector) ++ crafted
+    proposals.foreach { p =>
+      val (typed, flat) = (p.pProcGovAction, p.read.action)
+      assertEquals(
+        (
+          xyz.kd5ujc.scarab.ledger.era.rules.ConwayVoting.isCommitteeVotingAllowed(typed),
+          xyz.kd5ujc.scarab.ledger.era.rules.ConwayVoting.isDRepVotingAllowed(typed),
+          xyz.kd5ujc.scarab.ledger.era.rules.ConwayVoting.isStakePoolVotingAllowed(typed)
+        ),
+        (
+          xyz.kd5ujc.scarab.ledger.Ratify.isCommitteeVotingAllowed(flat),
+          xyz.kd5ujc.scarab.ledger.Ratify.isDRepVotingAllowed(flat),
+          xyz.kd5ujc.scarab.ledger.Ratify.isPoolVotingAllowed(flat)
+        ),
+        s"$typed"
+      )
+    }
+    val poolOnChanges = proposals.collect {
+      case p if p.pProcGovAction.ordinal == 0 =>
+        xyz.kd5ujc.scarab.ledger.era.rules.ConwayVoting.isStakePoolVotingAllowed(p.pProcGovAction)
+    }.toSet
+    assertEquals(
+      poolOnChanges,
+      Set(true, false),
+      "parameter changes with and without the security group"
+    )
+  }
+
   // `[deposit, return account, action, anchor]`, the account a Shelley reward account
   private val (r1, r2) = (s"581de0${"a1" * 28}", s"581de0${"a2" * 28}")
   private val anchor = "826161" + "5820" + "cc" * 32

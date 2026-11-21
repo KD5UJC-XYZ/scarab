@@ -40,5 +40,33 @@ object OMap:
     /** `size` (`Data/OMap/Strict.hs:127-128`, cardano-ledger 9df9f98c). */
     def size: Int = m.size
 
+    /** `member` (`Data/OMap/Strict.hs:267-268`, cardano-ledger f649f975). */
+    def member(key: K)(using CanEqual[K, K]): Boolean = m.exists((k, _) => k == key)
+
+    /** `toMap` (`Data/OMap/Strict.hs:251-252`, cardano-ledger f649f975): the values by key. */
+    def toMap: Map[K, V] = m.toMap
+
+    /** `(||>)` (`snoc'`, `Data/OMap/Strict.hs:192-205`, cardano-ledger f649f975): `value` at the
+      * end under `key`, or in the place of the value `key` already has.
+      */
+    def ||>(key: K, value: V)(using CanEqual[K, K]): OMap[K, V] =
+      m.indexWhere((k, _) => k == key) match
+        case -1    => m :+ (key -> value)
+        case index => m.updated(index, key -> value)
+
+    /** `adjust` (`Data/OMap/Strict.hs:317-335`, cardano-ledger f649f975) for a change that keeps
+      * the key, as every caller's does: the value of `key` changed by `f` in its place, nothing
+      * changed without one.
+      */
+    def adjust(f: V => V, key: K)(using CanEqual[K, K]): OMap[K, V] =
+      m.indexWhere((k, _) => k == key) match
+        case -1    => m
+        case index => m.updated(index, key -> f(m(index)._2))
+
+    /** `mapUnsafe` (`Data/OMap/Strict.hs:337-338`, cardano-ledger f649f975): every value changed by
+      * `f`, the keys kept, as the reference's callers keep each value's key.
+      */
+    def mapUnsafe[W](f: V => W): OMap[K, W] = m.map((k, v) => k -> f(v))
+
   given [K, V](using CanEqual[K, K], CanEqual[V, V]): CanEqual[OMap[K, V], OMap[K, V]] =
     CanEqual.derived
