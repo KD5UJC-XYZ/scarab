@@ -167,7 +167,8 @@ trait ForgeFixture:
       unbounded: Boolean = false,
       known: Option[BigInt => Boolean] = None,
       enabled: Boolean = true,
-      protocolVersion: (BigInt, BigInt) = ConfigSettings().protocolVersion,
+      protocolVersion: (BigInt, BigInt) =
+        ConfigSettings().protocolVersion(xyz.kd5ujc.scarab.protocol.ReferenceBuild.Release11_1),
       network: Int = globals.network,
       assertions: Assertions[IO] = Assertions.noop[IO],
       pause: Option[Forger.Point => IO[Unit]] = None,

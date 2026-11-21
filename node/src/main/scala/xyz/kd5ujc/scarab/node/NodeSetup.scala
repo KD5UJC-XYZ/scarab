@@ -97,6 +97,14 @@ final case class NodeSetup(
 
   def retainedHeaders: Int = GenesisRuntime.retainedHeaders(geometry, BigInt(chainStoreK.blocks))
 
+  /** The protocol version the node's forged headers carry: the configured one of the build whose
+    * rules the ledger follows ([[ConfigSettings.protocolVersion]]), as `forgeShelleyBlock` takes
+    * `shelleyProtocolVersion` of the block config (ouroboros-consensus 2416493b
+    * `Shelley/Ledger/Forge.hs:144`).
+    */
+  def forgedProtocolVersion: (BigInt, BigInt) =
+    config.settings.protocolVersion(globals.referenceBuild)
+
   /** This setup with its ledger following the rules of `build` ([[LedgerGlobals.referenceBuild]]).
     */
   def mirroring(build: ReferenceBuild): NodeSetup =
@@ -420,7 +428,7 @@ object NodeSetup:
       // `ExperimentalHardForksEnabled`, so its chain enters Dijkstra (owner decision on #54,
       // 2026-11-19); the 11.1 line's stays 11, with #788.
       maxMajor = build match
-        case ReferenceBuild.LeiosB004fe0c => config.settings.protocolVersion._1.toInt
+        case ReferenceBuild.LeiosB004fe0c => config.settings.protocolVersion(build)._1.toInt
         case ReferenceBuild.Release11_1 | ReferenceBuild.Release11_2 =>
           HardForkConfig.MaxMajorProtVer
       forks = HardForkConfig.fromEpochs(

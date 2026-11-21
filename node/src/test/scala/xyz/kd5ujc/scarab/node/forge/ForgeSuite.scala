@@ -82,12 +82,14 @@ class ForgeSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ForgeFix
   test("a forged header carries the node's protocol version, not the ledger's (Forge.hs:83)") {
     val p = pool(kesStart = 50)
     val ledger = ledgerWith(p, 0)
-    val configured = ConfigSettings().protocolVersion
+    val configured =
+      ConfigSettings().protocolVersion(xyz.kd5ujc.scarab.protocol.ReferenceBuild.Release11_1)
     // the node's version is one major above the ledger's: a node ready for the next version
     assertEquals(ledger.es.ls.utxo.gov.curPParams.protocolMajor, BigInt(10))
     assertEquals(configured, (BigInt(11), BigInt(2)))
     assertEquals(
-      ConfigSettings(experimentalHardForksEnabled = true).protocolVersion,
+      ConfigSettings(experimentalHardForksEnabled = true)
+        .protocolVersion(xyz.kd5ujc.scarab.protocol.ReferenceBuild.Release11_1),
       (BigInt(12), BigInt(0))
     )
     // on a testnet, and on mainnet where `checkHeaderProtVerTooHigh` allows the ledger's major + 1
