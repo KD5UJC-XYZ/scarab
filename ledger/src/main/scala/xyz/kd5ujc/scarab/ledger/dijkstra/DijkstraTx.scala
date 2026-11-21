@@ -81,6 +81,24 @@ final case class DijkstraTx(
 ):
   def id: Bytes = body.id
 
+  /** `toCBORForBlockInclusion` (`eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Tx.hs:527-533`,
+    * cardano-ledger 9df9f98c): `[body, witnesses, auxiliary_data / null, is_valid]`, the body, the
+    * witness set and the auxiliary data each written as the bytes it memoizes, the flag last. The
+    * reference keeps no bytes of the whole transaction (`Tx.hs:483-489`): a block holds this
+    * encoding, whatever form the transaction arrived in.
+    */
+  def forBlockInclusion: Bytes =
+    import xyz.kd5ujc.scarab.ledger.HeaderBodyEncoding.{False, Null, True, join, list}
+    join(
+      Vector(
+        list(4),
+        body.raw.toArray,
+        witnesses.raw.toArray,
+        auxiliary.fold(Null)(_.raw.toArray),
+        if isValid then True else False
+      )
+    )
+
 object DijkstraTx:
   /** `decodeDijkstraTopTxInBlock` (`eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Tx.hs:175-182`,
     * cardano-ledger 9df9f98c): `decodeRecordNamed "DijkstraTx" (const 4)` of the body, the witness
