@@ -6,7 +6,9 @@ import cats.syntax.all.*
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node}
 import xyz.kd5ujc.scarab.ledger.{EpochGeometry, ForgeError, Header, LedgerFailure, VrfCert}
-import xyz.kd5ujc.scarab.ledger.{HeaderBodyEncoding, HeaderVrf}
+import xyz.kd5ujc.scarab.ledger.{HeaderBodyEncoding, HeaderVersionInfo, HeaderVrf}
+import xyz.kd5ujc.scarab.ledger.{LeiosBlock, LeiosBlockBody, LeiosHeader}
+import xyz.kd5ujc.scarab.ledger.{LeiosHeaderBody, LeiosHeaderFields}
 import xyz.kd5ujc.scarab.ledger.{LedgerGlobals, PosixClock, ProtocolParams, RefScripts, TxEnv}
 import xyz.kd5ujc.scarab.ledger.rules.Globals
 import xyz.kd5ujc.scarab.plutus.{ExUnits, ScriptDecoder, ScriptEvaluator}
@@ -16,8 +18,9 @@ import scala.annotation.tailrec
 import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.TxMeasure
 import xyz.kd5ujc.scarab.node.mempool.{Capacity, Entry, MempoolLedger}
 
-/** Conway block assembly, pure: choose the transactions that fit the protocol limits, encode the
-  * body, the header body and the block. Every function is deterministic in its arguments; the
+/** Block assembly, pure: choose the transactions that fit the protocol limits, encode the body, the
+  * header body and the block. Conway's as below; in the Leios build also Dijkstra's minimal block
+  * ([[Assembly]], [[leiosHeaderBody]]). Every function is deterministic in its arguments; the
   * effects (clock, mempool, KES evolution, adoption) live in [[Forger]].
   *
   * The encodings are the reference's: the block is `[7, [header, [tx_body], [witness_set], {index:
@@ -298,3 +301,113 @@ object BlockBuilder:
       arr(2) ++ uint(ConwayEra) ++ arr(5) ++ arr(2) ++ headerBody.toArray ++ bstr(kesSignature) ++
         body.bodies.toArray ++ body.witnesses.toArray ++ body.aux.toArray ++ body.invalid.toArray
     )
+
+  /** The Leios header body of a Dijkstra block on `body`, as Praos2's `mkHeader` fills it
+    * (`extendHeaderBodyWithLeios`, ouroboros-consensus 2416493b
+    * `ouroboros-consensus-cardano/src/shelley/Ouroboros/Consensus/Shelley/Protocol/Praos.hs:275-300`,
+    * from `mkHeaderPolyPraos`, `:162-185`): the Praos fields, the version info of the node's own
+    * protocol version (`BlockHeaderVersionInfo (getVersion32 major) minor`), the certificate flag
+    * of the body (`isJust fbMayLeiosCert`, `Shelley/Ledger/Forge.hs:104-105`) and no announcement:
+    * the reference announces an endorser block only when it forges one, from transactions it has
+    * for it (`mkEb`, `Forge.hs:172-178`), and this forger forges none yet (#54).
+    */
+  def leiosHeaderBody(
+      blockNo: BigInt,
+      slot: BigInt,
+      prevHash: Option[Bytes],
+      issuerVkey: Bytes,
+      vrfVkey: Bytes,
+      vrf: VrfCert,
+      body: LeiosBlockBody,
+      opCert: Header.OpCert,
+      protocolVersion: (BigInt, BigInt)
+  ): LeiosHeaderBody =
+    LeiosHeaderBody(
+      blockNo,
+      slot,
+      prevHash,
+      issuerVkey,
+      vrfVkey,
+      vrf,
+      BigInt(body.size),
+      body.hash,
+      opCert,
+      LeiosHeaderFields(
+        HeaderVersionInfo(protocolVersion._1, protocolVersion._2),
+        body.leiosCertificate.isDefined,
+        None
+      )
+    )
+
+  /** What a block is assembled of, by the era of the ledger of its slot: Conway's four-part body
+    * under the ten-element Praos header, or, in the Leios build only, Dijkstra's body under the
+    * Leios header of Praos2 (`forgeShelleyBlock`, ouroboros-consensus 2416493b
+    * `ouroboros-consensus-cardano/src/shelley/Ouroboros/Consensus/Shelley/Ledger/Forge.hs:90-142`).
+    */
+  enum Assembly:
+    case InConway(body: Body)
+    case InDijkstra(body: LeiosBlockBody)
+
+    /** The ids of the block's transactions, in order. */
+    def ids: Vector[Bytes] = this match
+      case InConway(b)   => b.ids
+      case InDijkstra(b) => b.transactions.map(_.id)
+
+    /** The body size the header commits to. */
+    def size: Long = this match
+      case InConway(b)   => b.size
+      case InDijkstra(b) => b.size
+
+    /** The header body the KES key signs, as the block holds it. */
+    def headerBody(
+        blockNo: BigInt,
+        slot: BigInt,
+        prevHash: Option[Bytes],
+        issuerVkey: Bytes,
+        vrfVkey: Bytes,
+        vrf: VrfCert,
+        opCert: Header.OpCert,
+        protocolVersion: (BigInt, BigInt)
+    ): Bytes = this match
+      case InConway(b) =>
+        BlockBuilder.headerBody(
+          blockNo,
+          slot,
+          prevHash,
+          issuerVkey,
+          vrfVkey,
+          vrf,
+          b.size,
+          b.hash,
+          opCert,
+          protocolVersion
+        )
+      case InDijkstra(b) =>
+        leiosHeaderBody(
+          blockNo,
+          slot,
+          prevHash,
+          issuerVkey,
+          vrfVkey,
+          vrf,
+          b,
+          opCert,
+          protocolVersion
+        ).encode
+
+    /** The block of `headerBody`, signed with `kesSignature`: Conway's [[BlockBuilder.block]], or
+      * the Dijkstra block `[8, [[header_body, kes_sig], body]]` ([[LeiosHeader.signed]],
+      * [[LeiosBlock.encode]]).
+      */
+    def block(headerBody: Bytes, kesSignature: Bytes): Bytes = this match
+      case InConway(b) => BlockBuilder.block(headerBody, kesSignature, b)
+      case InDijkstra(b) =>
+        LeiosBlock.encode(LeiosHeader.signed(headerBody, kesSignature), b.encode)
+
+  object Assembly:
+    /** The body of the minimal Dijkstra block: no transactions and neither certificate, as the
+      * reference forges it with an empty mempool and nothing to certify (`mkBody`,
+      * ouroboros-consensus 2416493b `Shelley/Ledger/Forge.hs:152-160`). Dijkstra's transaction
+      * selection is not built yet (#54).
+      */
+    val minimalDijkstra: Assembly = InDijkstra(LeiosBlockBody(Vector.empty, None, None))
