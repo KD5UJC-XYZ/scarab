@@ -5,9 +5,9 @@ import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
 import xyz.kd5ujc.scarab.ledger as node
 import xyz.kd5ujc.scarab.ledger.{LedgerFailure, TestLedger}
-import xyz.kd5ujc.scarab.ledger.era.{PParams, PoolCert}
+import xyz.kd5ujc.scarab.ledger.era.{EraCertsRun, PParams, PoolCert}
 import xyz.kd5ujc.scarab.ledger.era.conway.ConwayPParams
-import xyz.kd5ujc.scarab.ledger.rules.{Convert, Judgment}
+import xyz.kd5ujc.scarab.ledger.rules.Convert
 import xyz.kd5ujc.scarab.ledger.state.{
   Build,
   CompactCoin,
@@ -65,12 +65,14 @@ class PoolParamsLayoutSuite extends FunSuite:
     Empty.pState.copy(stakePools = Sorted.map(Vector(params(layout).id -> state)))
 
   private def run(state: PState, p: StakePoolParams) =
-    Judgment.run(POOL[Conway], Judgment.Policy.Accumulate)(
-      TestLedger.globals,
-      PoolEnv[Conway](EpochNo.fromUnsigned(5), pp),
-      state,
-      PoolCert.RegPool(p)
-    )
+    EraCertsRun
+      .pool(
+        TestLedger.globals,
+        PoolEnv[Conway](EpochNo.fromUnsigned(5), pp),
+        state,
+        PoolCert.RegPool(p)
+      )
+      .map(_.map(_._1))
 
   test("a new pool's parameters of the other build's layout are refused") {
     // the test globals follow the 11.1 build

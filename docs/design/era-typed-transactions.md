@@ -1177,10 +1177,49 @@ Conway's rules on the classes follow as the rest of stage 2.
     flat rule's single pass over the votes is (#94). The flat rule numbers proposals with an unbounded index
     (`zipWithIndex`), where the reference's is a `Word16`; only a 65,537th proposal tells them apart, and stage 3
     deletes the flat rule.
-- **Conway's certificate rules** (`ledger/.../era/rules/Certs.scala`): CERTS, CERT, DELEG, GOVCERT and
-  Shelley's POOL, each the reference's transition under its name, generic in its era over the state classes
-  `EraAccounts`, `ConwayEraAccounts`, `EraCertState` and `ConwayEraCertState` (Conway's instances over the
-  records the node keeps), and run on the same judgment as the flat rules.
+- **Conway's certificate rules** (`ledger/.../era/rules/Certs.scala`, `era/rules/CertsFailures.scala`): CERTS,
+  CERT, DELEG, GOVCERT and Shelley's POOL, each the reference's transition under its name, generic in its era
+  over the state classes `EraAccounts`, `ConwayEraAccounts`, `EraCertState` and `ConwayEraCertState` (Conway's
+  instances over the records the node keeps).
+  - Their failures are the reference's own types (`ConwayCertsPredFailure`, `ConwayCertPredFailure`,
+    `ConwayDelegPredFailure`, `ShelleyPoolPredFailure` and `ConwayGovCertPredFailure`, cardano-ledger f649f975,
+    each in tag order), and their events `ConwayCertsEvent`, `ConwayCertEvent` and POOL's `PoolEvent`, DELEG's
+    and GOVCERT's void. `EraRuleFailure` and `EraRuleEvent` of each rule are match types with Conway's case,
+    POOL's Shelley's. Each rule reports its failures through the reference's injection (`InjectDeleg`,
+    `InjectPool`, `InjectGovCert`, the identities at Conway; `InjectCertFailure` and `InjectCertsFailure` for
+    the failures below CERT and CERTS), and a sub-rule's failures and events are embedded as the reference's
+    `Embed` instances do (`EmbedInCert`, `EmbedCertInCerts`). POOL tells `RegisterPool` and `ReregisterPool`
+    where the reference does. A value outside the state's vocabulary, and a pool's parameters of another layout,
+    stay raised defects (`LedgerDefect`). `ConwayCertsPredFailure.toStored` gives a failure's flat form, one-way
+    glue the comparisons read. At 29a7d656 and 9df9f98c `StakeKeyRegisteredDELEG` is
+    `DelegAccountAlreadyRegistered`, a newtype of the same credential with the same tag and bytes, so one
+    constructor serves both.
+  - Which rule checks a transaction's withdrawals, and updates its DReps' expiries, depends on the build
+    (`WithdrawalsRule`, derived from the build the judgment's `Globals` name, the source POOL reads its layout
+    from, so no caller pairs one build's globals with another's rule): at 11.1 CERTS's base case
+    below protocol version 11 (`WithdrawalsNotInRewardsCERTS`) and LEDGER from 11
+    (`hardforkConwayMoveWithdrawalsAndDRepChecksToLedgerRule`, `Conway/Era.hs:283-284`); at 29a7d656 and 9df9f98c
+    LEDGER at every version, the base case gone (`Conway/Rules/Certs.hs:220` at both) and the constructor with
+    it. Crafted withdrawals at 9, 10 and 11, under each of the three builds through CERTS's entry point, show the
+    base case running only under 11.1 below 11 (`ConwayCertsChecksSuite`). The failure's withdrawals are the
+    reference's `Withdrawals`, keyed by `AccountAddress` (`Address.hs:980`), each body account read into it.
+  - On the 33 upstream judgments of the 11.1 conformance export (1 CERT, 1 CERTS, 5 DELEG, 5 POOL and 21
+    GOVCERT), the era rules, from the same inputs, leave the reference's full post-state
+    (`UpstreamCertConformanceSuite`, `UpstreamCertsCoverageSuite`, `UpstreamDelegConformanceSuite`,
+    `UpstreamPoolConformanceSuite`, `UpstreamGovCertConformanceSuite`).
+  - Where the reference refused a transaction for the certificate rules alone (19 cases, three of them with two or three
+    failures), CERTS's failures, run two levels down as under MEMPOOL and LEDGER, encode to the reference's
+    refusal byte for byte, the order of failures across the recursion's depths among them
+    (`ConwayCertsChecksSuite`). A crafted registration and re-registration of one pool tell `RegisterPool` and
+    `ReregisterPool` in order, embedded in CERT's and CERTS's events.
+  - Not yet (#85): the flat rules gate the withdrawals at version 11 under every build, so under the 11.2 and
+    Leios builds at versions 9 and 10 they refuse a withdrawal that does not drain its account with
+    `WithdrawalsNotInRewardsCERTS` in CERTS, where the reference refuses it with
+    `ConwayWithdrawalsMissingAccounts` or `ConwayIncompleteWithdrawals` in LEDGER: the same verdict and state,
+    other refusal bytes ([item](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7055304484); a test
+    shows the flat rule's form). None of the 19 certificate-only refusals above was recorded by 11.2.1 or the
+    Leios build; the one Leios recording is a refusal of UTXO's. LEDGER's embedding of CERTS comes with
+    LEDGER.
   - From the same ticked state they judge every transaction of the recorded Conway refusal corpora, at its
     protocol version and at 9, 10 and 11, as the flat rules do: the failures in order, or the certificate
     state (`ConwayCertsChecksSuite`); so do the transactions of the recorded Preview Conway blocks, judged

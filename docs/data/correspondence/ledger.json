@@ -8399,68 +8399,6 @@
    "note": "Conway's two certificate-state instances in one value, given in the root class's companion; its members are compared with the flat path's (ConwayCertsChecksSuite, ConwayUtxoChecksSuite), not yet with the reference's own results",
    "digest": "9f34ba24178e879e"
   },
-  "class ledger.era.rules.CERT": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Era.hs",
-     "symbol": "CERT",
-     "lines": [
-      178,
-      178
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Cert.hs",
-     "symbol": "STS (CERT era)",
-     "lines": [
-      163,
-      190
-     ]
-    }
-   ],
-   "class": "Mirror",
-   "structure": "same",
-   "evidence": [
-    "ConwayCertsChecksSuite"
-   ],
-   "note": "the rule over its era, with the reference's TxCert era ~ ConwayTxCert era as evidence of type equality",
-   "digest": "dfd6c1db8763d4eb"
-  },
-  "class ledger.era.rules.CERTS": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Era.hs",
-     "symbol": "CERTS",
-     "lines": [
-      170,
-      170
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Certs.hs",
-     "symbol": "STS (CERTS era)",
-     "lines": [
-      180,
-      201
-     ]
-    }
-   ],
-   "class": "Mirror",
-   "structure": "same",
-   "evidence": [
-    "ConwayCertsChecksSuite"
-   ],
-   "note": "the rule over its era, its STS instance's transition the companion's conwayCertsTransition",
-   "digest": "ba603ab528f1b1e4"
-  },
   "class ledger.era.rules.CertEnv": {
    "upstream": [
     {
@@ -8546,99 +8484,6 @@
    ],
    "note": "the current committee and the committee proposals are the node's flat records (Committee, a map by GovActionId), which the flat rules read too",
    "digest": "ccab48b008dc12ed"
-  },
-  "class ledger.era.rules.DELEG": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Era.hs",
-     "symbol": "DELEG",
-     "lines": [
-      186,
-      186
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Deleg.hs",
-     "symbol": "STS (DELEG era)",
-     "lines": [
-      156,
-      175
-     ]
-    }
-   ],
-   "class": "Mirror",
-   "structure": "same",
-   "evidence": [
-    "ConwayCertsChecksSuite"
-   ],
-   "note": "the rule over its era, its STS instance's transition the companion's conwayDelegTransition",
-   "digest": "c7d9da83ee998d3f"
-  },
-  "class ledger.era.rules.GOVCERT": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Era.hs",
-     "symbol": "GOVCERT",
-     "lines": [
-      194,
-      194
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/GovCert.hs",
-     "symbol": "STS (GOVCERT era)",
-     "lines": [
-      148,
-      168
-     ]
-    }
-   ],
-   "class": "Mirror",
-   "structure": "same",
-   "evidence": [
-    "ConwayCertsChecksSuite"
-   ],
-   "note": "the rule over its era, its STS instance's transition the companion's conwayGovCertTransition",
-   "digest": "e6a090e29d7e6360"
-  },
-  "class ledger.era.rules.POOL": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Era.hs",
-     "symbol": "POOL",
-     "lines": [
-      131,
-      131
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Pool.hs",
-     "symbol": "STS (POOL era)",
-     "lines": [
-      126,
-      144
-     ]
-    }
-   ],
-   "class": "Mirror",
-   "structure": "same",
-   "evidence": [
-    "ConwayCertsChecksSuite"
-   ],
-   "note": "the rule over its era, its STS instance's transition the companion's poolTransition",
-   "digest": "5661684c5512c02a"
   },
   "class ledger.era.rules.PoolEnv": {
    "upstream": [
@@ -8781,26 +8626,6 @@
    ],
    "digest": "2b2c25871a259d12"
   },
-  "def ledger.era.rules.CERT#transition": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Cert.hs",
-     "symbol": "transitionRules",
-     "lines": [
-      190,
-      190
-     ]
-    }
-   ],
-   "class": "Mirror",
-   "structure": "same",
-   "evidence": [
-    "ConwayCertsChecksSuite"
-   ],
-   "digest": "76fe01d6ee3016a7"
-  },
   "def ledger.era.rules.CERT.certTransition": {
    "upstream": [
     {
@@ -8815,32 +8640,13 @@
     }
    ],
    "class": "Mirror",
-   "structure": "same",
+   "structure": "differs",
    "evidence": [
-    "ConwayCertsChecksSuite"
+    "ConwayCertsChecksSuite",
+    "UpstreamCertConformanceSuite"
    ],
-   "note": "DELEG and GOVCERT on the certificate state, POOL on the pool state through certPStateL, each a sub-rule; it records the node's flat failures, so its judgment is compared with the flat rule's",
-   "digest": "8aad62abeaaa26e5"
-  },
-  "def ledger.era.rules.CERTS#transition": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Certs.hs",
-     "symbol": "transitionRules",
-     "lines": [
-      201,
-      201
-     ]
-    }
-   ],
-   "class": "Mirror",
-   "structure": "same",
-   "evidence": [
-    "ConwayCertsChecksSuite"
-   ],
-   "digest": "6b9cdc5aa3d1bf04"
+   "note": "DELEG and GOVCERT on the certificate state, POOL on the pool state through certPStateL, each a sub-rule whose failures and events are embedded in CERT's (EmbedInCert); the sub-rules' injections and the defect raise are capabilities",
+   "digest": "7e61b9e3b5ab679d"
   },
   "def ledger.era.rules.CERTS.conwayCertsTransition": {
    "upstream": [
@@ -8853,16 +8659,37 @@
       203,
       246
      ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Certs.hs",
+     "symbol": "conwayCertsTransition",
+     "lines": [
+      200,
+      225
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Certs.hs",
+     "symbol": "conwayCertsTransition",
+     "lines": [
+      200,
+      225
+     ]
     }
    ],
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
     "ConwayCertsChecksSuite",
-    "CertsEpochWrapSuite"
+    "CertsEpochWrapSuite",
+    "UpstreamCertsCoverageSuite"
    ],
-   "note": "the recursion on the prefix as a fold, each step a sub-rule over the previous, which the interpreter runs in constant stack; the withdrawals' and votes' credentials are read into the state's vocabulary, refused as a Vocab defect as the flat rule does, which no decoded transaction holds; the DReps' expiries are computed in Word64 arithmetic that wraps, as the reference's addEpochInterval and binOpEpochNo do; the flat rules sum as integers and refuse a result outside EpochNo, which differs only past epoch 2^64 (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923332031); it records the node's flat failures, so its judgment is compared with the flat rule's",
-   "digest": "fd50dfc2781becd5"
+   "note": "the recursion on the prefix as a fold, each step a sub-rule over the previous, which the interpreter runs in constant stack; the base case runs where the build the judgment's Globals name leaves the withdrawals to CERTS (WithdrawalsRule: 11.1 below version 11), its failure WithdrawalsNotInRewardsCERTS over the reference's Withdrawals; the withdrawals' and votes' credentials are read into the state's vocabulary, refused as a Vocab defect as the flat rule does, which no decoded body is",
+   "digest": "1298380705a7ba4a"
   },
   "def ledger.era.rules.CERTS.updateDormantDRepExpiries": {
    "upstream": [
@@ -8930,26 +8757,6 @@
    "note": "each voting DRep's credential is read into the state's vocabulary first, refused as a Vocab defect as the flat rule does, which no decoded vote is; the expiry is computed in Word64 arithmetic that wraps, as the reference's addEpochInterval and binOpEpochNo do; the flat rules sum as integers and refuse a result outside EpochNo, which differs only past epoch 2^64 (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923332031)",
    "digest": "e3ca58a8201a9a71"
   },
-  "def ledger.era.rules.DELEG#transition": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Deleg.hs",
-     "symbol": "transitionRules",
-     "lines": [
-      175,
-      175
-     ]
-    }
-   ],
-   "class": "Mirror",
-   "structure": "same",
-   "evidence": [
-    "ConwayCertsChecksSuite"
-   ],
-   "digest": "51239d477e9c91d5"
-  },
   "def ledger.era.rules.DELEG.conwayDelegTransition": {
    "upstream": [
     {
@@ -8966,10 +8773,11 @@
    "class": "Mirror",
    "structure": "same",
    "evidence": [
-    "ConwayCertsChecksSuite"
+    "ConwayCertsChecksSuite",
+    "UpstreamDelegConformanceSuite"
    ],
-   "note": "the reference's transition generic in its era over EraPParams and ConwayEraCertState; it records the node's flat failures, so its judgment is compared with the flat rule's",
-   "digest": "921a73f164978a8d"
+   "note": "the reference's failures through its injection (InjectDeleg); StakeKeyRegisteredDELEG is DelegAccountAlreadyRegistered at 29a7d656 and 9df9f98c, over Shelley's AccountAlreadyRegistered, the same credential with the same tag and bytes (Conway/Rules/Deleg.hs:108, :133-134 at 29a7d656)",
+   "digest": "491c6ba1b88a9f3d"
   },
   "def ledger.era.rules.DELEG.processDelegationInternal": {
    "upstream": [
@@ -8990,26 +8798,6 @@
     "ConwayCertsChecksSuite"
    ],
    "digest": "19eaa3051f1ca882"
-  },
-  "def ledger.era.rules.GOVCERT#transition": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/GovCert.hs",
-     "symbol": "transitionRules",
-     "lines": [
-      168,
-      168
-     ]
-    }
-   ],
-   "class": "Mirror",
-   "structure": "same",
-   "evidence": [
-    "ConwayCertsChecksSuite"
-   ],
-   "digest": "56217e01543a8f6f"
   },
   "def ledger.era.rules.GOVCERT.computeDRepExpiry": {
    "upstream": [
@@ -9072,30 +8860,11 @@
    "structure": "same",
    "evidence": [
     "ConwayCertsChecksSuite",
-    "CertsEpochWrapSuite"
+    "CertsEpochWrapSuite",
+    "UpstreamGovCertConformanceSuite"
    ],
-   "note": "the reference's transition generic in its era over ConwayEraPParams and ConwayEraCertState; a DRep's expiry is computed in Word64 arithmetic that wraps, as the reference's addEpochInterval and binOpEpochNo do; the flat rules sum as integers and refuse a result outside EpochNo, which differs only past epoch 2^64 (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923332031); it records the node's flat failures, so its judgment is compared with the flat rule's",
-   "digest": "8d0d8975709c0ac6"
-  },
-  "def ledger.era.rules.POOL#transition": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Pool.hs",
-     "symbol": "transitionRules",
-     "lines": [
-      144,
-      144
-     ]
-    }
-   ],
-   "class": "Mirror",
-   "structure": "same",
-   "evidence": [
-    "ConwayCertsChecksSuite"
-   ],
-   "digest": "0c717d9c0b844df5"
+   "note": "the reference's failures through its injection (InjectGovCert)",
+   "digest": "190ead1ad7f3d277"
   },
   "def ledger.era.rules.POOL.poolTransition": {
    "upstream": [
@@ -9104,14 +8873,22 @@
      "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
      "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Pool.hs",
      "symbol": "poolTransition",
-     "lines": [209, 324]
+     "lines": [
+      209,
+      324
+     ]
     }
    ],
    "class": "Mirror",
    "structure": "differs",
-   "evidence": ["ConwayCertsChecksSuite", "CertsEpochWrapSuite", "PoolParamsLayoutSuite"],
-   "note": "the parameters are the state's (StakePoolParams), used as they are, and refused when of another layout than the state they go into (LedgerFailure.PoolParamsLayout: a certificate decoded for the other build, which the reference, one build, never meets); a new pool is made in the layout of the build the node follows (its voting key in the Leios layout), as the flat rule does, its voting key from that layout (the parameters' key is not yet kept, which the Leios session's mkStakePoolState follow-up does); the retirement limit is summed in Word64 arithmetic that wraps, as the reference's addEpochInterval and binOpEpochNo do; the flat rule compares the retirement epoch with an unbounded integer sum, which differs only past epoch 2^64 (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923332031); it records the node's flat failures, so its judgment is compared with the flat rule's",
-   "digest": "31090259acd316ac"
+   "evidence": [
+    "ConwayCertsChecksSuite",
+    "CertsEpochWrapSuite",
+    "PoolParamsLayoutSuite",
+    "UpstreamPoolConformanceSuite"
+   ],
+   "note": "the reward account's network compared as the state's Network, the node's read into it; RegisterPool and ReregisterPool told where the reference tells them; a pool registers in the layout of the build the node follows, parameters of another refused as a defect the reference, one build, never meets",
+   "digest": "5b139b5de57ac9b4"
   },
   "type ledger.era.EraAccounts.Undrained": {
    "upstream": [
@@ -30549,6 +30326,1232 @@
    ],
    "note": "the succ of maxBound that throws is a Left (GovDefect.ProposalIndexOverflow)",
    "digest": "273ea6782a466c11"
+  },
+  "enum ledger.era.rules.ConwayDelegPredFailure": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Deleg.hs",
+     "symbol": "ConwayDelegPredFailure",
+     "lines": [
+      105,
+      114
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayCertsChecksSuite"
+   ],
+   "note": "its constructors in the order of their tags (:126-142); StakeKeyRegisteredDELEG is DelegAccountAlreadyRegistered at 29a7d656 and 9df9f98c, a newtype over the same credential with the same tag and bytes (Conway/Rules/Deleg.hs:108 at 29a7d656); no encoder of its own yet: its refusals are compared with the reference's bytes through ConwayCertsPredFailure.toStored and the node's encoder",
+   "digest": "81685bc4ead2ab20"
+  },
+  "enum ledger.era.rules.ShelleyPoolPredFailure": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Pool.hs",
+     "symbol": "ShelleyPoolPredFailure",
+     "lines": [
+      91,
+      114
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayCertsChecksSuite"
+   ],
+   "note": "its constructors in the order of their tags (0, 1, then 3 to 6, :154-170); the network mismatch is the state's Network",
+   "digest": "2d49306b14c353eb"
+  },
+  "enum ledger.era.rules.ConwayGovCertPredFailure": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/GovCert.hs",
+     "symbol": "ConwayGovCertPredFailure",
+     "lines": [
+      108,
+      118
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayCertsChecksSuite"
+   ],
+   "note": "its constructors in the order of their tags (:131-136)",
+   "digest": "2f0745f20ca202c6"
+  },
+  "enum ledger.era.rules.ConwayCertPredFailure": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Cert.hs",
+     "symbol": "ConwayCertPredFailure",
+     "lines": [
+      101,
+      105
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayCertsChecksSuite"
+   ],
+   "note": "its constructors in the order of their tags (:267-269)",
+   "digest": "a16881e10c7de2a4"
+  },
+  "enum ledger.era.rules.ConwayCertsPredFailure": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Certs.hs",
+     "symbol": "ConwayCertsPredFailure",
+     "lines": [
+      114,
+      119
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Certs.hs",
+     "symbol": "ConwayCertsPredFailure",
+     "lines": [
+      111,
+      113
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Address.hs",
+     "symbol": "Withdrawals",
+     "lines": [
+      979,
+      982
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "ConwayCertsChecksSuite"
+   ],
+   "note": "its constructors in the order of their tags (:166-167); WithdrawalsNotInRewardsCERTS is the 11.1 build's, which 29a7d656 and 9df9f98c remove with the base case (WithdrawalsRule); its withdrawals are the reference's Withdrawals, Map AccountAddress Coin (Address.hs:980), each body account read into the state's AccountAddress, an account outside it a Vocab defect",
+   "digest": "cd81db0ec9227ff3"
+  },
+  "enum ledger.era.rules.PoolEvent": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Pool.hs",
+     "symbol": "PoolEvent",
+     "lines": [
+      146,
+      149
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayCertsChecksSuite"
+   ],
+   "digest": "d0f79abf5f4c4428"
+  },
+  "enum ledger.era.rules.ConwayCertEvent": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Cert.hs",
+     "symbol": "ConwayCertEvent",
+     "lines": [
+      143,
+      147
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayCertsChecksSuite"
+   ],
+   "digest": "2af67209b42a713a"
+  },
+  "enum ledger.era.rules.ConwayCertsEvent": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Certs.hs",
+     "symbol": "ConwayCertsEvent",
+     "lines": [
+      151,
+      151
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayCertsChecksSuite"
+   ],
+   "digest": "99a3b1692eb87968"
+  },
+  "type ledger.era.rules.DelegPredFailure": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/Era.hs",
+     "symbol": "EraRuleFailure",
+     "lines": [
+      76,
+      76
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Deleg.hs",
+     "symbol": "EraRuleFailure \"DELEG\" ConwayEra",
+     "lines": [
+      116,
+      116
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "ConwayCertsChecksSuite"
+   ],
+   "note": "the type family EraRuleFailure at the rule DELEG as a match type with the eras whose DELEG is typed",
+   "digest": "0ae870285b12ae4e"
+  },
+  "type ledger.era.rules.PoolPredFailure": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/Era.hs",
+     "symbol": "EraRuleFailure",
+     "lines": [
+      76,
+      76
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Era.hs",
+     "symbol": "EraRule \"POOL\" ConwayEra",
+     "lines": [
+      254,
+      254
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "ConwayCertsChecksSuite"
+   ],
+   "note": "the type family EraRuleFailure at the rule POOL, Conway's Shelley's POOL, as a match type",
+   "digest": "3d805ec1cd7437ee"
+  },
+  "type ledger.era.rules.GovCertPredFailure": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/Era.hs",
+     "symbol": "EraRuleFailure",
+     "lines": [
+      76,
+      76
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/GovCert.hs",
+     "symbol": "EraRuleFailure \"GOVCERT\" ConwayEra",
+     "lines": [
+      120,
+      120
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "ConwayCertsChecksSuite"
+   ],
+   "note": "the type family EraRuleFailure at the rule GOVCERT as a match type",
+   "digest": "3a56ae44a10a5f28"
+  },
+  "type ledger.era.rules.CertPredFailure": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/Era.hs",
+     "symbol": "EraRuleFailure",
+     "lines": [
+      76,
+      76
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Cert.hs",
+     "symbol": "EraRuleFailure \"CERT\" ConwayEra",
+     "lines": [
+      107,
+      107
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "ConwayCertsChecksSuite"
+   ],
+   "note": "the type family EraRuleFailure at the rule CERT as a match type",
+   "digest": "39dff9953a26e543"
+  },
+  "type ledger.era.rules.CertsPredFailure": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/Era.hs",
+     "symbol": "EraRuleFailure",
+     "lines": [
+      76,
+      76
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Certs.hs",
+     "symbol": "EraRuleFailure \"CERTS\" ConwayEra",
+     "lines": [
+      121,
+      121
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "ConwayCertsChecksSuite"
+   ],
+   "note": "the type family EraRuleFailure at the rule CERTS as a match type",
+   "digest": "5558d9576fb46e22"
+  },
+  "type ledger.era.rules.PoolRuleEvent": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/Era.hs",
+     "symbol": "EraRuleEvent",
+     "lines": [
+      78,
+      78
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Pool.hs",
+     "symbol": "EraRuleEvent \"POOL\" ShelleyEra",
+     "lines": [
+      120,
+      120
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "ConwayCertsChecksSuite"
+   ],
+   "note": "the type family EraRuleEvent at the rule POOL as a match type, named apart from the data type PoolEvent it reduces to",
+   "digest": "ef8b4f045de4ea4d"
+  },
+  "type ledger.era.rules.DelegEvent": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/Era.hs",
+     "symbol": "EraRuleEvent",
+     "lines": [
+      78,
+      78
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Deleg.hs",
+     "symbol": "EraRuleEvent \"DELEG\" ConwayEra",
+     "lines": [
+      118,
+      118
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "ConwayCertsChecksSuite"
+   ],
+   "note": "the type family EraRuleEvent at the rule DELEG as a match type, Nothing at Conway for the reference's VoidEraRule",
+   "digest": "849d7db58cb942d0"
+  },
+  "type ledger.era.rules.GovCertEvent": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/Era.hs",
+     "symbol": "EraRuleEvent",
+     "lines": [
+      78,
+      78
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/GovCert.hs",
+     "symbol": "EraRuleEvent \"GOVCERT\" ConwayEra",
+     "lines": [
+      122,
+      122
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "ConwayCertsChecksSuite"
+   ],
+   "note": "the type family EraRuleEvent at the rule GOVCERT as a match type, Nothing at Conway for the reference's VoidEraRule",
+   "digest": "c23257ff8ed30443"
+  },
+  "type ledger.era.rules.CertEvent": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/Era.hs",
+     "symbol": "EraRuleEvent",
+     "lines": [
+      78,
+      78
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Cert.hs",
+     "symbol": "EraRuleEvent \"CERT\" ConwayEra",
+     "lines": [
+      109,
+      109
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "ConwayCertsChecksSuite"
+   ],
+   "note": "the type family EraRuleEvent at the rule CERT as a match type",
+   "digest": "6b77120c797e3361"
+  },
+  "type ledger.era.rules.CertsEvent": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/Era.hs",
+     "symbol": "EraRuleEvent",
+     "lines": [
+      78,
+      78
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Certs.hs",
+     "symbol": "EraRuleEvent \"CERTS\" ConwayEra",
+     "lines": [
+      123,
+      123
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "ConwayCertsChecksSuite"
+   ],
+   "note": "the type family EraRuleEvent at the rule CERTS as a match type",
+   "digest": "b1c6d6ce562cf4cb"
+  },
+  "trait ledger.era.rules.InjectDeleg": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/Era.hs",
+     "symbol": "InjectRuleFailure",
+     "lines": [
+      122,
+      125
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "ConwayCertsChecksSuite"
+   ],
+   "note": "the class InjectRuleFailure at the rule DELEG for Conway's failure, one instance per era",
+   "digest": "f54fa092fa965693"
+  },
+  "def ledger.era.rules.InjectDeleg#injectFailure": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/Era.hs",
+     "symbol": "injectFailure",
+     "lines": [
+      124,
+      124
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayCertsChecksSuite"
+   ],
+   "digest": "94ad63c896f3131e"
+  },
+  "given ledger.era.rules.InjectDeleg.conway": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Deleg.hs",
+     "symbol": "InjectRuleFailure \"DELEG\" ConwayDelegPredFailure ConwayEra",
+     "lines": [
+      120,
+      120
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayCertsChecksSuite"
+   ],
+   "digest": "a6dd2ac8151db5e7"
+  },
+  "trait ledger.era.rules.InjectGovCert": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/Era.hs",
+     "symbol": "InjectRuleFailure",
+     "lines": [
+      122,
+      125
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "ConwayCertsChecksSuite"
+   ],
+   "note": "the class InjectRuleFailure at the rule GOVCERT for Conway's failure, one instance per era",
+   "digest": "16ed3eeae4eb54ba"
+  },
+  "def ledger.era.rules.InjectGovCert#injectFailure": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/Era.hs",
+     "symbol": "injectFailure",
+     "lines": [
+      124,
+      124
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayCertsChecksSuite"
+   ],
+   "digest": "22d64a133aa89ce9"
+  },
+  "given ledger.era.rules.InjectGovCert.conway": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/GovCert.hs",
+     "symbol": "InjectRuleFailure \"GOVCERT\" ConwayGovCertPredFailure ConwayEra",
+     "lines": [
+      124,
+      124
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayCertsChecksSuite"
+   ],
+   "digest": "58446a7e942e2202"
+  },
+  "trait ledger.era.rules.InjectPool": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/Era.hs",
+     "symbol": "InjectRuleFailure",
+     "lines": [
+      122,
+      125
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/Era.hs",
+     "symbol": "InjectRuleEvent",
+     "lines": [
+      130,
+      133
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "ConwayCertsChecksSuite"
+   ],
+   "note": "the classes InjectRuleFailure and InjectRuleEvent at the rule POOL for Shelley's failure and event, one instance per era",
+   "digest": "e8be172d58837f1c"
+  },
+  "def ledger.era.rules.InjectPool#injectFailure": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/Era.hs",
+     "symbol": "injectFailure",
+     "lines": [
+      124,
+      124
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayCertsChecksSuite"
+   ],
+   "digest": "f452868998906a42"
+  },
+  "def ledger.era.rules.InjectPool#injectEvent": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/Era.hs",
+     "symbol": "injectEvent",
+     "lines": [
+      132,
+      132
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayCertsChecksSuite"
+   ],
+   "digest": "5b8ae39b09d09726"
+  },
+  "given ledger.era.rules.InjectPool.conway": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Pool.hs",
+     "symbol": "InjectRuleFailure \"POOL\" ShelleyPoolPredFailure ShelleyEra",
+     "lines": [
+      118,
+      118
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Pool.hs",
+     "symbol": "InjectRuleEvent \"POOL\" PoolEvent ShelleyEra",
+     "lines": [
+      122,
+      122
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "ConwayCertsChecksSuite"
+   ],
+   "note": "the reference's identities, at Conway through its EraRule \"POOL\", Shelley's",
+   "digest": "fe30c398a2a43106"
+  },
+  "trait ledger.era.rules.InjectCertFailure": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/Era.hs",
+     "symbol": "InjectRuleFailure",
+     "lines": [
+      122,
+      125
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "ConwayCertsChecksSuite"
+   ],
+   "note": "the class InjectRuleFailure at the rule CERT, one instance per era and failure type",
+   "digest": "9de53e7af1b63374"
+  },
+  "def ledger.era.rules.InjectCertFailure#injectFailure": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/Era.hs",
+     "symbol": "injectFailure",
+     "lines": [
+      124,
+      124
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayCertsChecksSuite"
+   ],
+   "digest": "7459babbb9d2064e"
+  },
+  "given ledger.era.rules.InjectCertFailure.conway": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Cert.hs",
+     "symbol": "InjectRuleFailure \"CERT\" ConwayCertPredFailure ConwayEra",
+     "lines": [
+      111,
+      111
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayCertsChecksSuite"
+   ],
+   "digest": "bd43661a8f053977"
+  },
+  "given ledger.era.rules.InjectCertFailure.conwayDeleg": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Cert.hs",
+     "symbol": "InjectRuleFailure \"CERT\" ConwayDelegPredFailure ConwayEra",
+     "lines": [
+      113,
+      114
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayCertsChecksSuite"
+   ],
+   "digest": "3fbf01d13c96b1d4"
+  },
+  "given ledger.era.rules.InjectCertFailure.conwayPool": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Cert.hs",
+     "symbol": "InjectRuleFailure \"CERT\" Shelley.ShelleyPoolPredFailure ConwayEra",
+     "lines": [
+      116,
+      117
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayCertsChecksSuite"
+   ],
+   "digest": "ae79c1ba2f1a6d17"
+  },
+  "given ledger.era.rules.InjectCertFailure.conwayGovCert": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Cert.hs",
+     "symbol": "InjectRuleFailure \"CERT\" ConwayGovCertPredFailure ConwayEra",
+     "lines": [
+      119,
+      120
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayCertsChecksSuite"
+   ],
+   "digest": "73d1b09278072270"
+  },
+  "trait ledger.era.rules.InjectCertsFailure": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/Era.hs",
+     "symbol": "InjectRuleFailure",
+     "lines": [
+      122,
+      125
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "ConwayCertsChecksSuite"
+   ],
+   "note": "the class InjectRuleFailure at the rule CERTS, one instance per era and failure type",
+   "digest": "f65f10d3af9b760e"
+  },
+  "def ledger.era.rules.InjectCertsFailure#injectFailure": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/Era.hs",
+     "symbol": "injectFailure",
+     "lines": [
+      124,
+      124
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayCertsChecksSuite"
+   ],
+   "digest": "85da8f597e2de2a1"
+  },
+  "given ledger.era.rules.InjectCertsFailure.conway": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Certs.hs",
+     "symbol": "InjectRuleFailure \"CERTS\" ConwayCertsPredFailure ConwayEra",
+     "lines": [
+      125,
+      125
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayCertsChecksSuite"
+   ],
+   "digest": "b5f2f6c7eb0ecacb"
+  },
+  "given ledger.era.rules.InjectCertsFailure.conwayCert": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Certs.hs",
+     "symbol": "InjectRuleFailure \"CERTS\" ConwayCertPredFailure ConwayEra",
+     "lines": [
+      127,
+      137
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "ConwayCertsChecksSuite"
+   ],
+   "note": "the reference's four instances, CERT's failure and those of the rules below it, each CertFailure . injectFailure, as one over CERT's injection",
+   "digest": "7cb5917d8286c5fd"
+  },
+  "def ledger.era.rules.InjectCertsFailure.injectFailure": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Certs.hs",
+     "symbol": "injectFailure = CertFailure . injectFailure",
+     "lines": [
+      130,
+      137
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayCertsChecksSuite"
+   ],
+   "digest": "9f1b04b6a13fe4a1"
+  },
+  "trait ledger.era.rules.EmbedInCert": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Cert.hs",
+     "symbol": "Embed (DELEG era) (CERT era)",
+     "lines": [
+      225,
+      233
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Cert.hs",
+     "symbol": "Embed (Shelley.POOL era) (CERT era)",
+     "lines": [
+      235,
+      246
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Cert.hs",
+     "symbol": "Embed (GOVCERT era) (CERT era)",
+     "lines": [
+      248,
+      256
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "ConwayCertsChecksSuite"
+   ],
+   "note": "the three Embed instances into CERT as one class of the era, their wrapFailed and POOL's wrapEvent as members; DELEG's and GOVCERT's events are void (absurd)",
+   "digest": "22c07a8c792f4a93"
+  },
+  "def ledger.era.rules.EmbedInCert#wrapDelegFailed": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Cert.hs",
+     "symbol": "wrapFailed = DelegFailure",
+     "lines": [
+      232,
+      232
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayCertsChecksSuite"
+   ],
+   "digest": "e1b6729e1a1760fc"
+  },
+  "def ledger.era.rules.EmbedInCert#wrapPoolFailed": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Cert.hs",
+     "symbol": "wrapFailed = PoolFailure",
+     "lines": [
+      245,
+      245
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayCertsChecksSuite"
+   ],
+   "digest": "367bc4ee269032cc"
+  },
+  "def ledger.era.rules.EmbedInCert#wrapPoolEvent": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Cert.hs",
+     "symbol": "wrapEvent = PoolEvent",
+     "lines": [
+      246,
+      246
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayCertsChecksSuite"
+   ],
+   "digest": "e6da6c6c3026ef7f"
+  },
+  "def ledger.era.rules.EmbedInCert#wrapGovCertFailed": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Cert.hs",
+     "symbol": "wrapFailed = GovCertFailure",
+     "lines": [
+      255,
+      255
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayCertsChecksSuite"
+   ],
+   "digest": "e32ffc69dbc0bb47"
+  },
+  "given ledger.era.rules.EmbedInCert.conway": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Cert.hs",
+     "symbol": "Embed (DELEG era) (CERT era)",
+     "lines": [
+      225,
+      256
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayCertsChecksSuite"
+   ],
+   "digest": "e4228500a2bfbf83"
+  },
+  "trait ledger.era.rules.EmbedCertInCerts": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Certs.hs",
+     "symbol": "Embed (CERT era) (CERTS era)",
+     "lines": [
+      294,
+      304
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "ConwayCertsChecksSuite"
+   ],
+   "note": "the Embed instance as a class of the era, its wrapFailed and wrapEvent as members",
+   "digest": "c8c88684699b4169"
+  },
+  "def ledger.era.rules.EmbedCertInCerts#wrapFailed": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Certs.hs",
+     "symbol": "wrapFailed = CertFailure",
+     "lines": [
+      303,
+      303
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayCertsChecksSuite"
+   ],
+   "digest": "6fcf352f961a8263"
+  },
+  "def ledger.era.rules.EmbedCertInCerts#wrapEvent": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Certs.hs",
+     "symbol": "wrapEvent = CertEvent",
+     "lines": [
+      304,
+      304
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayCertsChecksSuite"
+   ],
+   "digest": "12b3e1cf01f81d27"
+  },
+  "given ledger.era.rules.EmbedCertInCerts.conway": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Certs.hs",
+     "symbol": "Embed (CERT era) (CERTS era)",
+     "lines": [
+      294,
+      304
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayCertsChecksSuite"
+   ],
+   "digest": "62506090dc947ccf"
+  },
+  "enum ledger.era.rules.WithdrawalsRule": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Era.hs",
+     "symbol": "hardforkConwayMoveWithdrawalsAndDRepChecksToLedgerRule",
+     "lines": [
+      283,
+      284
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Ledger.hs",
+     "symbol": "testIncompleteAndMissingWithdrawals",
+     "lines": [
+      397,
+      403
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Certs.hs",
+     "symbol": "Empty -> pure certState",
+     "lines": [
+      220,
+      220
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "ConwayCertsChecksSuite"
+   ],
+   "note": "the 11.1 build's protocol-version gate and the 11.2 and Leios builds' unconditional move, derived by CERTS from the build the judgment's Globals name, the source POOL reads its layout from, until the builds are types (#1063); the flat rules gate at version 11 under every build (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7055304484)",
+   "digest": "c30d3cdb3f8e550c"
+  },
+  "def ledger.era.rules.WithdrawalsRule#inLedger": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Era.hs",
+     "symbol": "hardforkConwayMoveWithdrawalsAndDRepChecksToLedgerRule",
+     "lines": [
+      283,
+      284
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "ConwayCertsChecksSuite"
+   ],
+   "note": "true at every version for the 11.2 and Leios builds, where the gate is gone",
+   "digest": "fa2f169277b5bf7d"
   }
  },
  "glue": [
@@ -31256,6 +32259,39 @@
     "given ledger.era.rules.coldCommitteeOrdering",
     "given ledger.era.rules.drepCredentialOrdering",
     "given ledger.era.rules.voterVoteOrdering"
+   ]
+  },
+  {
+   "reason": "the era-typed certificate rules' failures' adapter to the node's flat failure type (ConwayCertsPredFailure.toStored and the toStored of each rule below CERTS, with the two mismatch conversions), which the comparisons with the flat rules and the node's encoders read until the era's failures have their encoders (§3.4 of docs/design/era-typed-transactions.md); the companions of the failure types, their injections and embeddings, with each failure's equality with itself only; the sub-rules' judgment and events wrapped into the rule's (wrapped, told), the contramap of a Judge and of a Tell, which the reference's trans does with Embed; and the build's withdrawals rule's constructor from the build",
+   "definitions": [
+    "def ledger.era.rules.ConwayCertPredFailure.toStored",
+    "def ledger.era.rules.ConwayCertsPredFailure.toStored",
+    "def ledger.era.rules.ConwayDelegPredFailure.toStored",
+    "def ledger.era.rules.ConwayGovCertPredFailure.toStored",
+    "def ledger.era.rules.ShelleyPoolPredFailure.toStored",
+    "def ledger.era.rules.WithdrawalsRule.of",
+    "def ledger.era.rules.coins",
+    "def ledger.era.rules.epochs",
+    "def ledger.era.rules.told",
+    "def ledger.era.rules.wrapped",
+    "given ledger.era.rules.ConwayCertPredFailure.given_CanEqual_ConwayCertPredFailure_E_ConwayCertPredFailure_E",
+    "given ledger.era.rules.ConwayCertsPredFailure.given_CanEqual_ConwayCertsPredFailure_E_ConwayCertsPredFailure_E",
+    "given ledger.era.rules.ConwayDelegPredFailure.given_CanEqual_ConwayDelegPredFailure_E_ConwayDelegPredFailure_E",
+    "given ledger.era.rules.ConwayGovCertPredFailure.given_CanEqual_ConwayGovCertPredFailure_E_ConwayGovCertPredFailure_E",
+    "given ledger.era.rules.ShelleyPoolPredFailure.given_CanEqual_ShelleyPoolPredFailure_E_ShelleyPoolPredFailure_E",
+    "object ledger.era.rules.ConwayCertPredFailure",
+    "object ledger.era.rules.ConwayCertsPredFailure",
+    "object ledger.era.rules.ConwayDelegPredFailure",
+    "object ledger.era.rules.ConwayGovCertPredFailure",
+    "object ledger.era.rules.EmbedCertInCerts",
+    "object ledger.era.rules.EmbedInCert",
+    "object ledger.era.rules.InjectCertFailure",
+    "object ledger.era.rules.InjectCertsFailure",
+    "object ledger.era.rules.InjectDeleg",
+    "object ledger.era.rules.InjectGovCert",
+    "object ledger.era.rules.InjectPool",
+    "object ledger.era.rules.ShelleyPoolPredFailure",
+    "object ledger.era.rules.WithdrawalsRule"
    ]
   }
  ]

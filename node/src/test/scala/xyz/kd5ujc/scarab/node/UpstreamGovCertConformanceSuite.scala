@@ -257,3 +257,56 @@ class UpstreamGovCertConformanceSuite extends FunSuite:
     }
     assertEquals(matched, 21)
   }
+
+  test(
+    "the era-typed GOVCERT gives the full Haskell certificate state on every upstream judgment"
+  ) {
+    // the same fixture inputs, judged by the era GOVCERT and compared with the reference's
+    // post-states, not with the flat rule
+    given ProtVer = protVer
+    seeds.foreach { seed =>
+      val dir = base.resolve(s"cases/$seed")
+      val envItems = node(dir.resolve("environment.cbor")).value match
+        case Value.Arr(xs) if xs.size == 4 => xs
+        case other => fail(s"seed $seed has unexpected full GOVCERT environment $other")
+      val flatPp = Params.conwayCodec.decode(envItems(0)).fold(e => fail(e.render), identity)
+      val pp = xyz.kd5ujc.scarab.ledger.era.PParams[Conway](
+        xyz.kd5ujc.scarab.ledger.era.conway.ConwayPParams
+          .fromStored(flatPp)
+          .fold(e => fail(s"seed $seed parameters: $e"), identity)
+      )
+      val epoch = summon[Codec[EpochNo]].decode(envItems(1)).fold(e => fail(e.render), identity)
+      val committee = Wire
+        .strictMaybe(summon[Codec[Committee]])
+        .decode(envItems(2))
+        .fold(e => fail(e.render), identity)
+      val proposals = envItems(3).value match
+        case Value.Map(entries) =>
+          entries
+            .traverse((key, proposal) =>
+              (
+                summon[Codec[GovActionId]].decode(key),
+                summon[Codec[GovActionState]].decode(proposal)
+              ).mapN((id, state) => id -> state)
+            )
+            .fold(e => fail(s"seed $seed committee proposal map: ${e.render}"), _.toMap)
+        case other => fail(s"seed $seed has malformed committee proposal map $other")
+      val cert = xyz.kd5ujc.scarab.ledger.era.conway.ConwayTxCert
+        .decode(node(dir.resolve("signal.cbor")), xyz.kd5ujc.scarab.protocol.StateLayout.Node11_1)
+        .fold(e => fail(s"seed $seed era certificate: $e"), identity)
+      val govCert = cert match
+        case xyz.kd5ujc.scarab.ledger.era.conway.ConwayTxCert.ConwayTxCertGov(g) => g
+        case other => fail(s"seed $seed is not an upstream GOVCERT signal: $other")
+      val actual = xyz.kd5ujc.scarab.ledger.era.EraCertsRun
+        .govCert(
+          globals,
+          xyz.kd5ujc.scarab.ledger.era.rules
+            .ConwayGovCertEnv[Conway](pp, epoch, committee, proposals),
+          state(dir.resolve("state.cbor")),
+          govCert
+        )
+        .fold(e => fail(s"seed $seed defect: $e"), identity)
+        .fold(fs => fail(s"seed $seed refused upstream-accepted GOVCERT: $fs"), _._1)
+      assertEquals(actual, state(dir.resolve("implementation-state.cbor")), s"seed $seed")
+    }
+  }

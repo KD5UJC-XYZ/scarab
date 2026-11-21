@@ -27,9 +27,24 @@ import xyz.kd5ujc.scarab.ledger.{
   Utxo,
   Credential as FlatCredential
 }
-import xyz.kd5ujc.scarab.ledger.era.{EraCertState, EraTx, EraTxBody, Obligations, PParams, TxLevel}
+import xyz.kd5ujc.scarab.ledger.era.{
+  EraCertState,
+  EraCertsRun,
+  EraTx,
+  EraTxBody,
+  Obligations,
+  PParams,
+  TxLevel
+}
 import xyz.kd5ujc.scarab.ledger.era.conway.{ConwayPParams, ConwayTx, ConwayTxCert}
-import xyz.kd5ujc.scarab.ledger.era.rules.{CERTS, CertsEnv as TypedCertsEnv}
+import xyz.kd5ujc.scarab.ledger.era.rules.{
+  CertsEnv as TypedCertsEnv,
+  ConwayCertEvent,
+  ConwayCertsEvent,
+  ConwayCertsPredFailure,
+  PoolEvent,
+  WithdrawalsRule
+}
 import xyz.kd5ujc.scarab.ledger.rules.{CertEnv, Certs, CertsEnv, Globals, Judgment}
 import xyz.kd5ujc.scarab.ledger.state.{
   CompactCoin,
@@ -38,11 +53,12 @@ import xyz.kd5ujc.scarab.ledger.state.{
   ConwayGovState,
   EpochNo,
   NewEpochState,
+  StakePool,
   UtxoTables
 }
 import xyz.kd5ujc.scarab.node.NodeSetup
 import xyz.kd5ujc.scarab.node.mempool.{LocalSubmission, MempoolEnv, MempoolLedger}
-import xyz.kd5ujc.scarab.protocol.Era
+import xyz.kd5ujc.scarab.protocol.{Era, ReferenceBuild}
 import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellState, UtxoCodecs}
 
 /** Conway's certificate rules on the era types (`era.rules.CERTS` and the rules under it) against
@@ -72,7 +88,9 @@ class ConwayCertsChecksSuite extends FunSuite:
       epoch: BigInt,
       cert: ConwayCertState,
       committee: Option[Committee],
-      proposals: Map[GovActionId, GovActionState]
+      proposals: Map[GovActionId, GovActionState],
+      families: Vector[Family],
+      reason: Bytes
   )
 
   private def right[E, A](what: String)(e: Either[E, A]): A =
@@ -120,7 +138,9 @@ class ConwayCertsChecksSuite extends FunSuite:
           ledger.epoch,
           ledger.ls.cert,
           gov.committee,
-          gov.proposals.actions.map(g => g.id -> g).toMap
+          gov.proposals.actions.map(g => g.id -> g).toMap,
+          rc.families,
+          rc.reason
         )
       }
     }
@@ -149,8 +169,21 @@ class ConwayCertsChecksSuite extends FunSuite:
     )
 
   private def typedOf(s: Seen, certs: Vector[ConwayTxCert]): Verdict =
-    Judgment.run(CERTS[Conway], Judgment.Policy.Accumulate)(
-      s.globals,
+    EraCertsRun.flat(typedRun(s, certs))
+
+  /** The era-typed CERTS on `certs` from `s`, under the build of `s` 's globals or `build`, `depth`
+    * levels below the root.
+    */
+  private def typedRun(
+      s: Seen,
+      certs: Vector[ConwayTxCert],
+      build: Option[ReferenceBuild] = None,
+      depth: Int = 0
+  ) =
+    EraCertsRun.certs(
+      build.fold(s.globals)(b =>
+        s.globals.copy(ledger = s.globals.ledger.copy(referenceBuild = b))
+      ),
       TypedCertsEnv[Conway](
         s.typed,
         s.pp,
@@ -159,8 +192,15 @@ class ConwayCertsChecksSuite extends FunSuite:
         s.proposals
       ),
       s.cert,
-      certs
+      certs,
+      depth
     )
+
+  /** The transaction's own certificates, as the era types read them. */
+  private def typedCerts(s: Seen): Vector[ConwayTxCert] =
+    val tx = EraTx.conway
+    val body = EraTxBody.conway
+    body.certs[TxLevel.Top](tx.body[TxLevel.Top](s.typed)(using tx.bodyOf.top))(using body.top)
 
   /** Both judgments of the transaction's own certificates. */
   private def recorded(s: Seen): (Verdict, Verdict) =
@@ -854,6 +894,110 @@ class ConwayCertsChecksSuite extends FunSuite:
 
   test("the base case and a funded account are judged by both paths alike"):
     assert(baseCases.nonEmpty && funded.nonEmpty)
+
+  // ---- the reference's failure types: refusals, builds and events
+
+  /** The rules whose refusals CERTS's are: CERTS and the rules below it. */
+  private val CertsFamilies: Set[Family] =
+    Set(Family.CERTS, Family.DELEG, Family.POOL, Family.GOVCERT)
+
+  test(
+    "where only the certificate rules refused, the era-typed CERTS's refusal is the reference's"
+  ):
+    // CERTS two levels down, under MEMPOOL and LEDGER, its failures in the node's flat form,
+    // encoded as the node sends a refusal
+    val certsOnly = seen.filter(s => s.families.nonEmpty && s.families.forall(CertsFamilies))
+    assert(clue(certsOnly.size) >= 15, "too few cases only the certificate rules refuse")
+    assert(certsOnly.exists(_.families.size >= 3), "no case with three failures")
+    assert(certsOnly.exists(_.families.contains(Family.CERTS)), "no withdrawal case")
+    certsOnly.foreach { s =>
+      val failures = typedRun(s, typedCerts(s), depth = 2) match
+        case Right(Left(fs)) => fs.toChain.toVector.map(ConwayCertsPredFailure.toStored)
+        case other           => fail(s"${s.label}: $other")
+      assertEquals(
+        PredicateFailureCbor.applyTxError(failures).fold(e => fail(s"${s.label}: $e"), _.hex),
+        s.reason.hex,
+        s.label
+      )
+    }
+
+  /** [[base]] with withdrawals of more than an account holds, of an unregistered account and of
+    * another network, at `version`.
+    */
+  private def withdrawing(version: Int): Seen =
+    val s = atVersion(base, version)
+    val (registered, held) = s.cert.dState.accounts.states.head
+    val back = xyz.kd5ujc.scarab.ledger.rules.Convert.back(registered)
+    edited(s)(fields =>
+      fields.filterNot(f => isKey(5)(f._1)) :+ (uint(5) -> node(
+        Value.Map(
+          Vector(
+            bytesN(accountOf(s.network, back)) -> uint(held.balance.toBigInt + 1),
+            bytesN(rewardAccount(s.network, 60)) -> uint(5)
+          )
+        )
+      ))
+    )
+
+  test("CERTS's base case checks the withdrawals only under the 11.1 build below version 11"):
+    // `hardforkConwayMoveWithdrawalsAndDRepChecksToLedgerRule`: at 11.1 LEDGER's from version 11,
+    // at 29a7d656 and 9df9f98c LEDGER's at every version, so CERTS's base case never runs there
+    // and leaves the state as it was
+    // the judgment's build is the globals', so each build is run through the entry point
+    for
+      v <- Vector(9, 10, 11)
+      build <- ReferenceBuild.values.toVector
+    do
+      val s = withdrawing(v)
+      val label = s"${s.label}: v$v under ${build.name}"
+      val judged = typedRun(s, Vector.empty, Some(build))
+      if v < 11 && build == ReferenceBuild.Release11_1 then
+        assert(
+          judged.exists(_.left.exists(_.toChain.toVector match
+            case Vector(ConwayCertsPredFailure.WithdrawalsNotInRewardsCERTS(ws)) => ws.size == 2
+            case _                                                               => false)),
+          s"$label: $judged"
+        )
+      else assertEquals(judged.map(_.map(_._1)), Right(Right(s.cert)), label)
+    assertEquals(
+      ReferenceBuild.values.toVector.map(WithdrawalsRule.of),
+      Vector(WithdrawalsRule.LedgerAboveVersion10, WithdrawalsRule.Ledger, WithdrawalsRule.Ledger)
+    )
+
+  test("the flat CERTS refuses withdrawals in its base case below 11 under every build (#85 gap)"):
+    // the flat rules gate at version 11 alone: under the 11.2 and Leios builds at 9 and 10 they
+    // refuse in CERTS what the reference refuses in LEDGER, the same verdict and state
+    // (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7055304484)
+    val s = withdrawing(10)
+    val flat = flatOf(s, s.flat.body.certificates)
+    assert(
+      flat.exists(_.left.exists(_.toChain.toVector match
+        case Vector(PredicateFailure.Certs(CertsFailure.WithdrawalsNotInRewards(_))) => true
+        case _                                                                       => false)),
+      s"flat: $flat"
+    )
+
+  test("POOL tells a registration and a re-registration, embedded in CERT's and CERTS's events"):
+    val s = withParams(base, "")(pp => pp.copy(minPoolCost = BigInt(0)))
+    val operator = hash(950, 28)
+    val account = rewardAccount(s.network, 951)
+    val certs = Vector(
+      C.reg(952),
+      C.regPool(operator, hash(953, 32), 0, account),
+      C.regPool(operator, hash(953, 32), 0, account)
+    )
+    val (_, typed) = both(certs)
+    val pool =
+      right("operator")(xyz.kd5ujc.scarab.ledger.state.KeyHash.fromBytes[StakePool](operator))
+    val events = typedRun(s, typed) match
+      case Right(Right((_, es))) => es.toVector
+      case other                 => fail(s"refused: $other")
+    def embedded(e: PoolEvent[Conway]): ConwayCertsEvent[Conway] =
+      ConwayCertsEvent.CertEvent(ConwayCertEvent.PoolEvent(e))
+    assertEquals(
+      events,
+      Vector(embedded(PoolEvent.RegisterPool(pool)), embedded(PoolEvent.ReregisterPool(pool)))
+    )
 
   test("every predicate failure of CERTS is reached by the corpus or a crafted case"):
     val all = corpusReach.keySet ++ craftedVerdicts.flatMap(reached)
