@@ -160,3 +160,52 @@ class UpstreamDelegConformanceSuite extends FunSuite:
       assertEquals(Cbor.decode(envBytes).toOption.get.original, envBytes)
     }
   }
+
+  test("the era-typed DELEG gives the full Haskell certificate state on every upstream judgment") {
+    // the same fixture inputs, judged by the era DELEG and compared with the reference's
+    // post-states, not with the flat rule
+    given ProtVer = protVer
+    seeds.foreach { seed =>
+      val dir = base.resolve(s"cases/$seed")
+      val envItems = arrayItems(
+        Cbor
+          .decode(bytes(dir.resolve("environment.cbor")))
+          .fold(e => fail(s"seed $seed environment: $e"), identity),
+        2
+      )
+      val flatPp = Params.conwayCodec.decode(envItems(0)).fold(e => fail(e.render), identity)
+      val pp = xyz.kd5ujc.scarab.ledger.era.PParams[Conway](
+        xyz.kd5ujc.scarab.ledger.era.conway.ConwayPParams
+          .fromStored(flatPp)
+          .fold(e => fail(s"seed $seed parameters: $e"), identity)
+      )
+      val pools = Wire
+        .mapOf(summon[Codec[KeyHash[StakePool]]], summon[Codec[StakePoolState]])
+        .decode(envItems(1))
+        .fold(e => fail(e.render), identity)
+      val cert = xyz.kd5ujc.scarab.ledger.era.conway.ConwayTxCert
+        .decode(
+          Cbor
+            .decode(bytes(dir.resolve("signal.cbor")))
+            .fold(e => fail(s"seed $seed signal: $e"), identity),
+          xyz.kd5ujc.scarab.protocol.StateLayout.Node11_1
+        )
+        .fold(e => fail(s"seed $seed era certificate: $e"), identity)
+      val delegCert = cert match
+        case xyz.kd5ujc.scarab.ledger.era.conway.ConwayTxCert.ConwayTxCertDeleg(d) => d
+        case other => fail(s"seed $seed is not an upstream DELEG signal: $other")
+      val before = state(dir.resolve("state.cbor"))
+      assertEquals(pools, before.pState.stakePools, s"seed $seed complete env pool map")
+      val actual = xyz.kd5ujc.scarab.ledger.era.EraCertsRun
+        .deleg(
+          globals,
+          xyz.kd5ujc.scarab.ledger.era.rules
+            .ConwayDelegEnv[Conway](pp, before.pState.stakePools),
+          before,
+          delegCert
+        )
+        .fold(e => fail(s"seed $seed defect: $e"), identity)
+        .fold(fs => fail(s"seed $seed refused upstream-accepted DELEG: $fs"), _._1)
+      assertEquals(actual, state(dir.resolve("implementation-state.cbor")), s"seed $seed")
+    }
+  }

@@ -184,3 +184,38 @@ class UpstreamPoolConformanceSuite extends FunSuite:
       assertEquals(actual, expected, s"seed $seed full PState")
     }
   }
+
+  test("the era-typed POOL gives the full Haskell PState on every upstream judgment") {
+    // the same fixture inputs as the flat adapter's, judged by the era rule; the expectation is
+    // the reference's post-state, not the flat rule's
+    given ProtVer = protVer
+    seeds.foreach { seed =>
+      val dir = base.resolve(s"cases/$seed")
+      val env = items(node(dir.resolve("environment.cbor")), 2)
+      val epoch = summon[Codec[EpochNo]].decode(env(0)).fold(e => fail(e.render), identity)
+      val flatPp = Params.conwayCodec.decode(env(1)).fold(e => fail(e.render), identity)
+      val pp = xyz.kd5ujc.scarab.ledger.era.PParams[Conway](
+        xyz.kd5ujc.scarab.ledger.era.conway.ConwayPParams
+          .fromStored(flatPp)
+          .fold(e => fail(s"seed $seed parameters: $e"), identity)
+      )
+      val cert = poolCertificate(node(dir.resolve("signal.cbor"))) match
+        case PoolCert.RegPool(params) =>
+          xyz.kd5ujc.scarab.ledger.era.PoolCert.RegPool(Build.stakePoolParams(params))
+        case PoolCert.RetirePool(pool, when) =>
+          xyz.kd5ujc.scarab.ledger.era.PoolCert.RetirePool(
+            pool,
+            EpochNo.fromBigInt(when).fold(e => fail(e.toString), identity)
+          )
+      val actual = xyz.kd5ujc.scarab.ledger.era.EraCertsRun
+        .pool(
+          globals,
+          xyz.kd5ujc.scarab.ledger.era.rules.PoolEnv[Conway](epoch, pp),
+          state(dir.resolve("state.cbor")),
+          cert
+        )
+        .fold(e => fail(s"seed $seed defect: $e"), identity)
+        .fold(fs => fail(s"seed $seed refused upstream-accepted POOL: $fs"), _._1)
+      assertEquals(actual, state(dir.resolve("implementation-state.cbor")), s"seed $seed")
+    }
+  }

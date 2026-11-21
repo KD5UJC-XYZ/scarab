@@ -165,3 +165,50 @@ class UpstreamCertsCoverageSuite extends FunSuite:
       .fold(e => fail(s"Scarab CERTS rejected upstream-accepted trace: $e"), identity)
     assertEquals(actual, expected, "full ConwayCertState")
   }
+
+  test("the era-typed CERTS gives the full Haskell certificate state on the upstream judgment") {
+    // the same fixture inputs, the transaction read by Conway's decoder from its original bytes,
+    // judged by the era CERTS and compared with the reference's post-state, not the flat rule
+    given ProtVer = protVer
+    val dir = base.resolve(s"cases/$seed")
+    val env = node(dir.resolve("environment.cbor")).value match
+      case Value.Arr(xs) if xs.size == 5 => xs
+      case other => fail(s"expected all five actual CERTS environment fields, got $other")
+    val tx = xyz.kd5ujc.scarab.ledger.era.conway.ConwayTx
+      .fromEnvelope(env(0).original, xyz.kd5ujc.scarab.protocol.StateLayout.Node11_1)
+      .fold(e => fail(s"the era transaction: $e"), identity)
+    val flatPp = Params.conwayCodec.decode(env(1)).fold(e => fail(e.render), identity)
+    val pp = xyz.kd5ujc.scarab.ledger.era.PParams[Conway](
+      xyz.kd5ujc.scarab.ledger.era.conway.ConwayPParams
+        .fromStored(flatPp)
+        .fold(e => fail(s"CERTS parameters: $e"), identity)
+    )
+    val epoch = summon[Codec[EpochNo]].decode(env(2)).fold(e => fail(e.render), identity)
+    val committee = Wire
+      .strictMaybe(summon[Codec[Committee]])
+      .decode(env(3))
+      .fold(e => fail(e.render), identity)
+    val committeeProposals = Wire
+      .mapOf(summon[Codec[GovActionId]], summon[Codec[GovActionState]])
+      .decode(env(4))
+      .fold(e => fail(s"full committee proposal map: ${e.render}"), identity)
+    val certs = node(dir.resolve("signal.cbor")).value match
+      case Value.Arr(xs) =>
+        xs.map(n =>
+          xyz.kd5ujc.scarab.ledger.era.conway.ConwayTxCert
+            .decode(n, xyz.kd5ujc.scarab.protocol.StateLayout.Node11_1)
+            .fold(e => fail(s"era certificate: $e"), identity)
+        )
+      case other => fail(s"expected CERTS certificate sequence, got $other")
+    val actual = xyz.kd5ujc.scarab.ledger.era.EraCertsRun
+      .certs(
+        globals,
+        xyz.kd5ujc.scarab.ledger.era.rules
+          .CertsEnv[Conway](tx, pp, epoch, committee, committeeProposals),
+        state(dir.resolve("state.cbor")),
+        certs
+      )
+      .fold(e => fail(s"defect: $e"), identity)
+      .fold(fs => fail(s"refused upstream-accepted CERTS: $fs"), _._1)
+    assertEquals(actual, state(dir.resolve("implementation-state.cbor")), "full ConwayCertState")
+  }

@@ -1,22 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.era.rules
 
-import cats.{Monad, Order}
-import cats.mtl.{Ask, Raise, Stateful}
+import cats.{Functor, Monad, Order}
+import cats.data.Chain
+import cats.mtl.{Ask, Raise, Stateful, Tell}
 import cats.syntax.all.*
 import scala.collection.immutable.SortedMap
 import xyz.kd5ujc.scarab.ledger.{
-  CertsFailure,
   Committee,
-  DelegFailure,
   GovAction,
   GovActionId,
   GovActionState,
-  GovCertFailure,
+  LedgerDefect,
   LedgerFailure,
   Mismatch,
-  PoolFailure,
-  PredicateFailure,
   Voter
 }
 import xyz.kd5ujc.scarab.ledger.era.{
@@ -34,16 +31,19 @@ import xyz.kd5ujc.scarab.ledger.era.{
   Identity,
   PParams,
   PoolCert,
+  ProtVer,
   Tx,
   TxCert,
   TxLevel
 }
 import xyz.kd5ujc.scarab.ledger.era.AccountState
 import xyz.kd5ujc.scarab.ledger.era.conway.ConwayTxCert
-import xyz.kd5ujc.scarab.ledger.rules.{Convert, Embed, Globals, Judge, JudgedSts, Sts}
+import xyz.kd5ujc.scarab.ledger.rules.{Convert, Globals, Judge, Sts, focus}
 import xyz.kd5ujc.scarab.ledger.state.{
+  AccountAddress,
   Accounts,
   CertState,
+  Coin,
   CommitteeAuthorization,
   CommitteeState,
   CompactCoin,
@@ -57,6 +57,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
   EpochNo,
   EraTag,
   KeyHash,
+  Network,
   NonZero,
   PState,
   PoolBlsKey,
@@ -65,22 +66,22 @@ import xyz.kd5ujc.scarab.ledger.state.{
   StakePool,
   StakePoolState,
   Staking,
-  VRFVerKeyHash,
   VState,
   VocabError,
   Word64,
   addInterval
 }
-import xyz.kd5ujc.scarab.protocol.StateLayout
+import xyz.kd5ujc.scarab.protocol.{ReferenceBuild, StateLayout}
 
 // Conway's certificate rules as the reference writes them (cardano-ledger f649f975
 // `eras/conway/impl/src/Cardano/Ledger/Conway/Rules/{Certs,Cert,Deleg,GovCert}.hs`, and Shelley's
 // POOL, which Conway runs, `eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Pool.hs`), each
-// transition generic in its era over the reference's classes. Each rule is a class over its era
-// (the reference's `STS (DELEG era)`), and its companion holds the reference's functions of that
-// module under their names. The predicates record the node's flat failures, so a judgment is the
-// one the flat rules give; a value outside the state's vocabulary is raised as the flat rules raise
-// it, and no decoded certificate holds one.
+// transition generic in its era over the reference's classes. Each rule's companion holds the
+// reference's functions of that module under their names, and its transition records the
+// reference's own failures (`CertsFailures.scala`), each rule's injected and a sub-rule's embedded
+// as the reference's `InjectRuleFailure` and `Embed` instances do. A value outside the state's
+// vocabulary is raised as a defect (`LedgerDefect`), as the flat rules raise it, and no decoded
+// certificate holds one.
 
 /** The protocol parameters' field `l` (`ppLensHKD . l`). */
 private def field[E <: EraTag, A](pp: PParams[E])(
@@ -96,10 +97,10 @@ private def major[E <: EraTag](pp: PParams[E])(using p: EraPParams[E]): Int =
   * never meets one.
   */
 private def sameLayout[F[_]: Monad](params: StakePoolParams, layout: StateLayout)(using
-    Raise[F, LedgerFailure]
+    Raise[F, LedgerDefect]
 ): F[Unit] =
   val found = params.blsKey.stateLayout
-  Sts.lift[F, LedgerFailure, Unit](
+  Sts.lift[F, LedgerDefect, Unit](
     Either.cond(
       found == layout,
       (),
@@ -108,8 +109,18 @@ private def sameLayout[F[_]: Monad](params: StakePoolParams, layout: StateLayout
   )
 
 private def vocab[F[_]: Monad, A](result: Either[VocabError, A])(using
-    Raise[F, LedgerFailure]
-): F[A] = Sts.lift[F, LedgerFailure, A](result.leftMap(LedgerFailure.Vocab(_)))
+    Raise[F, LedgerDefect]
+): F[A] = Sts.lift[F, LedgerDefect, A](result.leftMap(LedgerFailure.Vocab(_)))
+
+/** The judgment of a sub-rule, whose failures `wrap` puts in the rule's (`wrapFailed`). */
+private def wrapped[F[_], G, H](judge: Judge[F, H])(wrap: G => H): Judge[F, G] =
+  judge.contramap(wrap)
+
+/** The events of a sub-rule, which `wrap` puts in the rule's (`wrapEvent`). */
+private def told[F[_], G, H](events: Tell[F, Chain[H]])(wrap: G => H): Tell[F, Chain[G]] =
+  new Tell[F, Chain[G]]:
+    val functor: Functor[F] = events.functor
+    def tell(l: Chain[G]): F[Unit] = events.tell(l.map(wrap))
 
 /** `binOpEpochNo` (`cardano-slotting/src/Cardano/Slotting/Slot.hs:153-154`, cardano-base c1e1ed8d):
   * `op` on the epochs' `Word64` s, as `+` and `-` wrap.
@@ -123,50 +134,48 @@ final case class PoolEnv[E <: EraTag](epoch: EpochNo, pp: PParams[E])
 /** POOL (`Shelley/Rules/Pool.hs`, cardano-ledger f649f975): the registration and retirement of
   * stake pools, over the pool state.
   */
-final class POOL[E <: EraTag](using p: EraPParams[E])
-    extends JudgedSts[PoolEnv[E], PState, PoolCert, PredicateFailure, LedgerFailure]:
-  def transition[F[_]: Monad](env: PoolEnv[E], signal: PoolCert)(using
-      Ask[F, Globals],
-      Stateful[F, PState],
-      Raise[F, LedgerFailure],
-      Judge[F, PredicateFailure]
-  ): F[Unit] = POOL.poolTransition[E, F](env, signal)
-
 object POOL:
   /** `poolTransition` (`Shelley/Rules/Pool.hs:209-324`, cardano-ledger f649f975). A registration
     * checks the network of the reward account (from version 5), the size of the metadata hash, and
     * the cost; a new pool's VRF key must be unused from version 11, where the rule keeps the map of
-    * VRF keys. A pool registers in the layout of the build the node follows.
+    * VRF keys. A pool registers in the layout of the build the node follows, and the rule tells
+    * that it registered or registered again.
     */
   def poolTransition[E <: EraTag, F[_]: Monad](env: PoolEnv[E], poolCert: PoolCert)(using
       p: EraPParams[E],
+      inject: InjectPool[E],
       ask: Ask[F, Globals],
       st: Stateful[F, PState],
-      raise: Raise[F, LedgerFailure],
-      judge: Judge[F, PredicateFailure]
+      defect: Raise[F, LedgerDefect],
+      judge: Judge[F, PoolPredFailure[E]],
+      events: Tell[F, Chain[PoolRuleEvent[E]]]
   ): F[Unit] =
     val pp = env.pp
     val pv = p.ppProtocolVersionL.get(pp)
     // `hardforkConwayDisallowDuplicatedVRFKeys` (`Shelley/Era.hs:259-262`, cardano-ledger f649f975)
     val disallowDuplicatedVRFKeys = pv.pvMajor.value > 10
-    def fail(f: PoolFailure): PredicateFailure = PredicateFailure.pool(f)
+    def fail(f: ShelleyPoolPredFailure[E]): PoolPredFailure[E] = inject.injectFailure(f)
+    def tell(e: PoolEvent[E]): F[Unit] = events.tell(Chain.one(inject.injectEvent(e)))
     poolCert match
       case PoolCert.RegPool(stakePoolParams) =>
         val sppId = stakePoolParams.id
-        val network = stakePoolParams.accountAddress.networkId.wire
+        val network = stakePoolParams.accountAddress.networkId
         val vrf = stakePoolParams.vrf
-        val cost = stakePoolParams.cost.value
+        val cost = stakePoolParams.cost
         for
           globals <- ask.ask[Globals]
+          netId <- vocab[F, Network](
+            Network
+              .of(BigInt(globals.networkId))
+              .toRight(VocabError.OutOfRange(VocabError.Kind.Network, BigInt(globals.networkId)))
+          )
           // `hardforkAlonzoValidatePoolAccountAddressNetID` (`Shelley/Era.hs:248-251`,
           // cardano-ledger f649f975)
           _ <-
             if pv.pvMajor.value > 4 then
-              Sts.predicate[F, PredicateFailure](
-                globals.networkId == network,
-                fail(
-                  PoolFailure.WrongNetworkPool(Mismatch(network, globals.networkId), sppId.bytes)
-                )
+              Sts.predicate[F, PoolPredFailure[E]](
+                netId == network,
+                fail(ShelleyPoolPredFailure.WrongNetworkPOOL(Mismatch(network, netId), sppId))
               )
             else Monad[F].unit
           // `restrictPoolMetadataHash` (`Shelley/SoftForks.hs:11-14`, cardano-ledger f649f975):
@@ -174,16 +183,16 @@ object POOL:
           _ <-
             if pv.pvMajor.value > 4 || (pv.pvMajor.value == 4 && pv.pvMinor.value > 0) then
               stakePoolParams.metadata.traverse_(metadata =>
-                Sts.predicate[F, PredicateFailure](
+                Sts.predicate[F, PoolPredFailure[E]](
                   metadata.hash.size <= 32,
-                  fail(PoolFailure.PoolMedataHashTooBig(sppId.bytes, metadata.hash.size))
+                  fail(ShelleyPoolPredFailure.PoolMedataHashTooBig(sppId, metadata.hash.size))
                 )
               )
             else Monad[F].unit
-          minPoolCost = field[E, CompactCoin](pp)(p.hkdMinPoolCostCompactL[Identity]).toBigInt
-          _ <- Sts.predicate[F, PredicateFailure](
-            cost >= minPoolCost,
-            fail(PoolFailure.StakePoolCostTooLow(Mismatch(cost, minPoolCost)))
+          minPoolCost = field[E, CompactCoin](pp)(p.hkdMinPoolCostCompactL[Identity]).toCoin
+          _ <- Sts.predicate[F, PoolPredFailure[E]](
+            Order[Coin].gteqv(cost, minPoolCost),
+            fail(ShelleyPoolPredFailure.StakePoolCostTooLowPOOL(Mismatch(cost, minPoolCost)))
           )
           ps <- st.get
           next <- ps.stakePools.get(sppId) match
@@ -191,12 +200,13 @@ object POOL:
               for
                 _ <-
                   if disallowDuplicatedVRFKeys then
-                    Sts.predicate[F, PredicateFailure](
+                    Sts.predicate[F, PoolPredFailure[E]](
                       !ps.vrfKeyHashes.contains(vrf),
-                      fail(PoolFailure.VRFKeyHashAlreadyRegistered(sppId.bytes, vrf.bytes))
+                      fail(ShelleyPoolPredFailure.VRFKeyHashAlreadyRegistered(sppId, vrf))
                     )
                   else Monad[F].unit
-                layout <- Sts.lift[F, LedgerFailure, StateLayout](
+                _ <- tell(PoolEvent.RegisterPool(sppId))
+                layout <- Sts.lift[F, LedgerDefect, StateLayout](
                   StateLayout
                     .of(globals.ledger.referenceBuild)
                     .leftMap(LedgerFailure.LayoutNotYet(_))
@@ -222,11 +232,12 @@ object POOL:
               for
                 _ <-
                   if disallowDuplicatedVRFKeys then
-                    Sts.predicate[F, PredicateFailure](
+                    Sts.predicate[F, PoolPredFailure[E]](
                       stakePoolState.vrf == vrf || !ps.vrfKeyHashes.contains(vrf),
-                      fail(PoolFailure.VRFKeyHashAlreadyRegistered(sppId.bytes, vrf.bytes))
+                      fail(ShelleyPoolPredFailure.VRFKeyHashAlreadyRegistered(sppId, vrf))
                     )
                   else Monad[F].unit
+                _ <- tell(PoolEvent.ReregisterPool(sppId))
                 // the parameters wait in the layout of the pool's state
                 _ <- sameLayout[F](stakePoolParams, stakePoolState.blsKey.stateLayout)
               yield
@@ -253,17 +264,15 @@ object POOL:
         val limitEpoch = cEpoch.addInterval(field[E, EpochInterval](pp)(p.hkdEMaxL[Identity]))
         for
           ps <- st.get
-          _ <- Sts.predicate[F, PredicateFailure](
+          _ <- Sts.predicate[F, PoolPredFailure[E]](
             ps.stakePools.contains(sppId),
-            fail(PoolFailure.StakePoolNotRegisteredOnKey(sppId.bytes))
+            fail(ShelleyPoolPredFailure.StakePoolNotRegisteredOnKeyPOOL(sppId))
           )
-          _ <- Sts.predicate[F, PredicateFailure](
+          _ <- Sts.predicate[F, PoolPredFailure[E]](
             Order[EpochNo].lt(cEpoch, e) && Order[EpochNo].lteqv(e, limitEpoch),
             fail(
-              PoolFailure.StakePoolRetirementWrongEpoch(
-                Mismatch(e.toBigInt, cEpoch.toBigInt),
-                Mismatch(e.toBigInt, limitEpoch.toBigInt)
-              )
+              ShelleyPoolPredFailure
+                .StakePoolRetirementWrongEpochPOOL(Mismatch(e, cEpoch), Mismatch(e, limitEpoch))
             )
           )
           _ <- st.set(ps.copy(retiring = ps.retiring.updated(sppId, e)))
@@ -280,17 +289,6 @@ final case class ConwayDelegEnv[E <: EraTag](
 /** DELEG (`Conway/Rules/Deleg.hs`, cardano-ledger f649f975): the registration, unregistration and
   * delegation of stake credentials, and the delegators of each pool and DRep.
   */
-final class DELEG[E <: EraTag](using p: EraPParams[E], c: ConwayEraCertState[E])
-    extends JudgedSts[ConwayDelegEnv[E], CertState[
-      E
-    ], ConwayDelegCert, PredicateFailure, LedgerFailure]:
-  def transition[F[_]: Monad](env: ConwayDelegEnv[E], signal: ConwayDelegCert)(using
-      Ask[F, Globals],
-      Stateful[F, CertState[E]],
-      Raise[F, LedgerFailure],
-      Judge[F, PredicateFailure]
-  ): F[Unit] = DELEG.conwayDelegTransition[E, F](env, signal)
-
 object DELEG:
   /** `conwayDelegTransition` (`Conway/Rules/Deleg.hs:177-301`, cardano-ledger f649f975): each check
     * records its failure and the rule goes on to the state the reference makes, so a later
@@ -302,38 +300,39 @@ object DELEG:
   )(using
       p: EraPParams[E],
       c: ConwayEraCertState[E],
+      inject: InjectDeleg[E],
       st: Stateful[F, CertState[E]],
-      judge: Judge[F, PredicateFailure]
+      judge: Judge[F, DelegPredFailure[E]]
   ): F[Unit] =
     given a: ConwayEraAccounts[E] = c.accountsOf
     val pp = env.pp
     val ppKeyDepositCompact = field[E, CompactCoin](pp)(p.hkdKeyDepositCompactL[Identity])
-    val ppKeyDeposit = ppKeyDepositCompact.toBigInt
+    val ppKeyDeposit = ppKeyDepositCompact.toCoin
     val pvMajor = major[E](pp)
     // `hardforkConwayDELEGIncorrectDepositsAndRefunds` (`Conway/Era.hs:266-267`, cardano-ledger
     // f649f975)
     val incorrectDepositsAndRefunds = pvMajor > 10
-    def fail(f: DelegFailure): PredicateFailure = PredicateFailure.deleg(f)
+    def fail(f: ConwayDelegPredFailure[E]): DelegPredFailure[E] = inject.injectFailure(f)
     def accountsOf(certState: CertState[E]): Accounts[E] = c.certDStateL.get(certState).accounts
     def withAccounts(f: Accounts[E] => Accounts[E])(certState: CertState[E]): CertState[E] =
       c.certDStateL.andThen(DState.accounts[Accounts[E]]).modify(f)(certState)
-    def checkDepositAgainstPParams(deposit: BigInt): F[Unit] =
-      Sts.predicate[F, PredicateFailure](
-        deposit == ppKeyDeposit,
+    def checkDepositAgainstPParams(deposit: Coin): F[Unit] =
+      Sts.predicate[F, DelegPredFailure[E]](
+        Order[Coin].eqv(deposit, ppKeyDeposit),
         if incorrectDepositsAndRefunds then
-          fail(DelegFailure.DepositIncorrect(Mismatch(deposit, ppKeyDeposit)))
-        else fail(DelegFailure.IncorrectDeposit(deposit))
+          fail(ConwayDelegPredFailure.DepositIncorrectDELEG(Mismatch(deposit, ppKeyDeposit)))
+        else fail(ConwayDelegPredFailure.IncorrectDepositDELEG(deposit))
       )
     def checkStakeKeyNotRegistered(certState: CertState[E], stakeCred: Credential[Staking]) =
-      Sts.predicate[F, PredicateFailure](
+      Sts.predicate[F, DelegPredFailure[E]](
         !EraAccounts.isAccountRegistered[E](stakeCred, accountsOf(certState)),
-        fail(DelegFailure.StakeKeyRegistered(Convert.back(stakeCred)))
+        fail(ConwayDelegPredFailure.StakeKeyRegisteredDELEG(stakeCred))
       )
     def checkStakeDelegateeRegistered(certState: CertState[E], delegatee: Delegatee): F[Unit] =
       def checkPoolRegistered(targetPool: KeyHash[StakePool]) =
-        Sts.predicate[F, PredicateFailure](
+        Sts.predicate[F, DelegPredFailure[E]](
           env.pools.contains(targetPool),
-          fail(DelegFailure.DelegateeStakePoolNotRegistered(targetPool.bytes))
+          fail(ConwayDelegPredFailure.DelegateeStakePoolNotRegisteredDELEG(targetPool))
         )
       def checkDRepRegistered(targetDRep: DRep) =
         ConwayEraCertState.dRepToCred(targetDRep).traverse_ { dRepCred =>
@@ -341,9 +340,9 @@ object DELEG:
           // f649f975)
           if pvMajor == 9 then Monad[F].unit
           else
-            Sts.predicate[F, PredicateFailure](
+            Sts.predicate[F, DelegPredFailure[E]](
               c.certVStateL.get(certState).dreps.contains(dRepCred),
-              fail(DelegFailure.DelegateeDRepNotRegistered(Convert.back(dRepCred)))
+              fail(ConwayDelegPredFailure.DelegateeDRepNotRegisteredDELEG(dRepCred))
             )
         }
       delegatee match
@@ -352,13 +351,13 @@ object DELEG:
           checkPoolRegistered(targetPool) *> checkDRepRegistered(targetDRep)
         case Delegatee.DelegVote(targetDRep) => checkDRepRegistered(targetDRep)
     def notRegistered(stakeCred: Credential[Staking]): F[Unit] =
-      Sts.failBecause[F, PredicateFailure](
-        fail(DelegFailure.StakeKeyNotRegistered(Convert.back(stakeCred)))
+      Sts.failBecause[F, DelegPredFailure[E]](
+        fail(ConwayDelegPredFailure.StakeKeyNotRegisteredDELEG(stakeCred))
       )
     st.get.flatMap { certState =>
       cert match
         case ConwayDelegCert.ConwayRegCert(stakeCred, sMayDeposit) =>
-          sMayDeposit.traverse_(d => checkDepositAgainstPParams(d.value)) *>
+          sMayDeposit.traverse_(checkDepositAgainstPParams) *>
             checkStakeKeyNotRegistered(certState, stakeCred) *>
             st.set(
               withAccounts(
@@ -371,20 +370,25 @@ object DELEG:
           val checkInvalidRefund = for
             suppliedRefund <- sMayRefund
             accountState <- mAccountState
-            expectedRefund = a.depositAccountStateL.get(accountState).toBigInt
-            if suppliedRefund.value != expectedRefund
+            expectedRefund = a.depositAccountStateL.get(accountState).toCoin
+            if Order[Coin].neqv(suppliedRefund, expectedRefund)
           yield
             if incorrectDepositsAndRefunds then
-              fail(DelegFailure.RefundIncorrect(Mismatch(suppliedRefund.value, expectedRefund)))
-            else fail(DelegFailure.IncorrectDeposit(suppliedRefund.value))
+              fail(
+                ConwayDelegPredFailure
+                  .RefundIncorrectDELEG(Mismatch(suppliedRefund, expectedRefund))
+              )
+            else fail(ConwayDelegPredFailure.IncorrectDepositDELEG(suppliedRefund))
           val checkStakeKeyHasZeroRewardBalance = for
             accountState <- mAccountState
             balanceCompact = a.balanceAccountStateL.get(accountState)
             if !balanceCompact.word.isZero
-          yield balanceCompact.toBigInt
-          Sts.failOnJust[F, PredicateFailure, PredicateFailure](checkInvalidRefund)(identity) *>
-            Sts.failOnJust[F, BigInt, PredicateFailure](checkStakeKeyHasZeroRewardBalance)(b =>
-              fail(DelegFailure.StakeKeyHasNonZeroAccountBalance(b))
+          yield balanceCompact.toCoin
+          Sts.failOnJust[F, DelegPredFailure[E], DelegPredFailure[E]](checkInvalidRefund)(
+            identity
+          ) *>
+            Sts.failOnJust[F, Coin, DelegPredFailure[E]](checkStakeKeyHasZeroRewardBalance)(b =>
+              fail(ConwayDelegPredFailure.StakeKeyHasNonZeroAccountBalanceDELEG(b))
             ) *>
             mAccountState.fold(notRegistered(stakeCred)) { accountState =>
               val unregistered = withAccounts(_ => newAccounts)(certState)
@@ -413,7 +417,7 @@ object DELEG:
                 )
               )
         case ConwayDelegCert.ConwayRegDelegCert(stakeCred, delegatee, deposit) =>
-          checkDepositAgainstPParams(deposit.value) *>
+          checkDepositAgainstPParams(deposit) *>
             checkStakeKeyNotRegistered(certState, stakeCred) *>
             checkStakeDelegateeRegistered(certState, delegatee) *>
             st.set(
@@ -501,17 +505,6 @@ final case class ConwayGovCertEnv[E <: EraTag](
 /** GOVCERT (`Conway/Rules/GovCert.hs`, cardano-ledger f649f975): the DReps' and the committee
   * members' certificates.
   */
-final class GOVCERT[E <: EraTag](using p: ConwayEraPParams[E], c: ConwayEraCertState[E])
-    extends JudgedSts[ConwayGovCertEnv[E], CertState[
-      E
-    ], ConwayGovCert, PredicateFailure, LedgerFailure]:
-  def transition[F[_]: Monad](env: ConwayGovCertEnv[E], signal: ConwayGovCert)(using
-      Ask[F, Globals],
-      Stateful[F, CertState[E]],
-      Raise[F, LedgerFailure],
-      Judge[F, PredicateFailure]
-  ): F[Unit] = GOVCERT.conwayGovCertTransition[E, F](env, signal)
-
 object GOVCERT:
   /** `conwayGovCertTransition` (`Conway/Rules/GovCert.hs:170-276`, cardano-ledger f649f975): a DRep
     * is registered, unregistered or updated, and a committee member authorizes a hot key or
@@ -523,15 +516,16 @@ object GOVCERT:
   )(using
       p: ConwayEraPParams[E],
       c: ConwayEraCertState[E],
+      inject: InjectGovCert[E],
       st: Stateful[F, CertState[E]],
-      judge: Judge[F, PredicateFailure]
+      judge: Judge[F, GovCertPredFailure[E]]
   ): F[Unit] =
     given a: ConwayEraAccounts[E] = c.accountsOf
     val pp = env.pp
     val ppDRepDepositCompact = field[E, CompactCoin](pp)(p.hkdDRepDepositCompactL[Identity])
-    val ppDRepDeposit = ppDRepDepositCompact.toBigInt
+    val ppDRepDeposit = ppDRepDepositCompact.toCoin
     val ppDRepActivity = field[E, EpochInterval](pp)(p.hkdDRepActivityL[Identity])
-    def fail(f: GovCertFailure): PredicateFailure = PredicateFailure.govCert(f)
+    def fail(f: ConwayGovCertPredFailure[E]): GovCertPredFailure[E] = inject.injectFailure(f)
     val dRepsL = c.certVStateL.andThen(VState.dreps)
     def checkAndOverwriteCommitteeMemberState(
         certState: CertState[E],
@@ -550,12 +544,12 @@ object GOVCERT:
           case GovAction.UpdateCommittee(_, _, newMembers, _) => newMembers.contains(back)
           case _                                              => false
       )
-      Sts.failOnJust[F, Credential[ColdCommittee], PredicateFailure](coldCredResigned)(cold =>
-        fail(GovCertFailure.CommitteeHasPreviouslyResigned(Convert.back(cold)))
+      Sts.failOnJust[F, Credential[ColdCommittee], GovCertPredFailure[E]](coldCredResigned)(cold =>
+        fail(ConwayGovCertPredFailure.ConwayCommitteeHasPreviouslyResigned(cold))
       ) *>
-        Sts.predicate[F, PredicateFailure](
+        Sts.predicate[F, GovCertPredFailure[E]](
           isCurrentMember || isPotentialFutureMember,
-          fail(GovCertFailure.CommitteeIsUnknown(back))
+          fail(ConwayGovCertPredFailure.ConwayCommitteeIsUnknown(coldCred))
         ) *>
         st.set(committeeCredsL.modify(_.updated(coldCred, newMemberState))(certState))
     st.get.flatMap { certState =>
@@ -563,13 +557,17 @@ object GOVCERT:
       cert match
         case ConwayGovCert.ConwayRegDRep(cred, deposit, mAnchor) =>
           for
-            _ <- Sts.predicate[F, PredicateFailure](
+            _ <- Sts.predicate[F, GovCertPredFailure[E]](
               !dRepsL.get(certState).contains(cred),
-              fail(GovCertFailure.DRepAlreadyRegistered(Convert.back(cred)))
+              fail(ConwayGovCertPredFailure.ConwayDRepAlreadyRegistered(cred))
             )
-            _ <- Sts.predicate[F, PredicateFailure](
-              deposit.value == ppDRepDeposit,
-              fail(GovCertFailure.DRepIncorrectDeposit(Mismatch(deposit.value, ppDRepDeposit)))
+            _ <- Sts.predicate[F, GovCertPredFailure[E]](
+              Order[Coin].eqv(deposit, ppDRepDeposit),
+              fail(
+                ConwayGovCertPredFailure.ConwayDRepIncorrectDeposit(
+                  Mismatch(deposit, ppDRepDeposit)
+                )
+              )
             )
             drepState = DRepState(
               computeDRepExpiryVersioned[E](pp, env.currentEpoch, dormant),
@@ -582,15 +580,15 @@ object GOVCERT:
         case ConwayGovCert.ConwayUnRegDRep(cred, refund) =>
           val mDRepState = dRepsL.get(certState).get(cred)
           val drepRefundMismatch =
-            mDRepState.map(_.deposit.toBigInt).filter(_ != refund.value)
+            mDRepState.map(_.deposit.toCoin).filter(Order[Coin].neqv(_, refund))
           val certState1 = dRepsL.modify(_ - cred)(certState)
           for
-            _ <- Sts.predicate[F, PredicateFailure](
+            _ <- Sts.predicate[F, GovCertPredFailure[E]](
               mDRepState.isDefined,
-              fail(GovCertFailure.DRepNotRegistered(Convert.back(cred)))
+              fail(ConwayGovCertPredFailure.ConwayDRepNotRegistered(cred))
             )
-            _ <- Sts.failOnJust[F, BigInt, PredicateFailure](drepRefundMismatch)(paid =>
-              fail(GovCertFailure.DRepIncorrectRefund(Mismatch(refund.value, paid)))
+            _ <- Sts.failOnJust[F, Coin, GovCertPredFailure[E]](drepRefundMismatch)(paid =>
+              fail(ConwayGovCertPredFailure.ConwayDRepIncorrectRefund(Mismatch(refund, paid)))
             )
             _ <- st.set(mDRepState.fold(certState1) { dRepState =>
               // `clearDRepDelegations`: each delegator's account forgets the DRep
@@ -605,9 +603,9 @@ object GOVCERT:
             })
           yield ()
         case ConwayGovCert.ConwayUpdateDRep(cred, mAnchor) =>
-          Sts.predicate[F, PredicateFailure](
+          Sts.predicate[F, GovCertPredFailure[E]](
             dRepsL.get(certState).contains(cred),
-            fail(GovCertFailure.DRepNotRegistered(Convert.back(cred)))
+            fail(ConwayGovCertPredFailure.ConwayDRepNotRegistered(cred))
           ) *>
             st.set(
               dRepsL.modify(
@@ -672,82 +670,70 @@ final case class CertEnv[E <: EraTag](
 /** CERT (`Conway/Rules/Cert.hs`, cardano-ledger f649f975): one certificate, to the rule of its
   * kind. The era's certificate is Conway's (`TxCert era ~ ConwayTxCert era`).
   */
-final class CERT[E <: EraTag](using
-    ev: TxCert[E] =:= ConwayTxCert,
-    p: ConwayEraPParams[E],
-    c: ConwayEraCertState[E]
-) extends JudgedSts[CertEnv[E], CertState[E], TxCert[E], PredicateFailure, LedgerFailure]:
-  def transition[F[_]: Monad](env: CertEnv[E], signal: TxCert[E])(using
-      Ask[F, Globals],
-      Stateful[F, CertState[E]],
-      Raise[F, LedgerFailure],
-      Judge[F, PredicateFailure]
-  ): F[Unit] = CERT.certTransition[E, F](env, signal)
-
 object CERT:
   /** `certTransition` (`Conway/Rules/Cert.hs:192-223`, cardano-ledger f649f975): DELEG and GOVCERT
-    * on the certificate state, POOL on the pool state alone (`certPStateL`), each a sub-rule.
+    * on the certificate state, POOL on the pool state alone (`certPStateL`), each a sub-rule whose
+    * failures and events CERT's embed ([[EmbedInCert]]).
     */
   def certTransition[E <: EraTag, F[_]: Monad](env: CertEnv[E], txCert: TxCert[E])(using
       ev: TxCert[E] =:= ConwayTxCert,
       p: ConwayEraPParams[E],
       c: ConwayEraCertState[E],
+      embed: EmbedInCert[E],
+      deleg: InjectDeleg[E],
+      pool: InjectPool[E],
+      govCert: InjectGovCert[E],
       ask: Ask[F, Globals],
       st: Stateful[F, CertState[E]],
-      raise: Raise[F, LedgerFailure],
-      judge: Judge[F, PredicateFailure]
+      defect: Raise[F, LedgerDefect],
+      judge: Judge[F, CertPredFailure[E]],
+      events: Tell[F, Chain[CertEvent[E]]]
   ): F[Unit] =
     st.get.flatMap { certState =>
       val pools = c.certPStateL.get(certState).stakePools
       ev(txCert) match
         case ConwayTxCert.ConwayTxCertDeleg(delegCert) =>
-          JudgedSts.trans[
-            F,
-            ConwayDelegEnv[E],
-            CertState[E],
-            CertState[E],
-            ConwayDelegCert,
-            PredicateFailure,
-            LedgerFailure,
-            LedgerFailure
-          ](DELEG[E], ConwayDelegEnv[E](env.pp, pools), delegCert)
-        case ConwayTxCert.ConwayTxCertPool(poolCert) =>
-          JudgedSts.trans[
-            F,
-            PoolEnv[E],
-            PState,
-            CertState[E],
-            PoolCert,
-            PredicateFailure,
-            LedgerFailure,
-            LedgerFailure
-          ](POOL[E], PoolEnv[E](env.currentEpoch, env.pp), poolCert)(using
-            Monad[F],
-            Embed(c.certPStateL, identity)
+          judge.nest(
+            DELEG.conwayDelegTransition[E, F](ConwayDelegEnv[E](env.pp, pools), delegCert)(using
+              summon[Monad[F]],
+              p,
+              c,
+              deleg,
+              st,
+              wrapped(judge)(embed.wrapDelegFailed)
+            )
           )
-        case ConwayTxCert.ConwayTxCertGov(govCert) =>
-          JudgedSts.trans[
-            F,
-            ConwayGovCertEnv[E],
-            CertState[E],
-            CertState[E],
-            ConwayGovCert,
-            PredicateFailure,
-            LedgerFailure,
-            LedgerFailure
-          ](
-            GOVCERT[E],
-            ConwayGovCertEnv[E](
-              env.pp,
-              env.currentEpoch,
-              env.currentCommittee,
-              env.committeeProposals
-            ),
-            govCert
+        case ConwayTxCert.ConwayTxCertPool(poolCert) =>
+          judge.nest(
+            POOL.poolTransition[E, F](PoolEnv[E](env.currentEpoch, env.pp), poolCert)(using
+              summon[Monad[F]],
+              p,
+              pool,
+              ask,
+              st.focus(c.certPStateL),
+              defect,
+              wrapped(judge)(embed.wrapPoolFailed),
+              told(events)(embed.wrapPoolEvent)
+            )
+          )
+        case ConwayTxCert.ConwayTxCertGov(govCertificate) =>
+          judge.nest(
+            GOVCERT.conwayGovCertTransition[E, F](
+              ConwayGovCertEnv[E](
+                env.pp,
+                env.currentEpoch,
+                env.currentCommittee,
+                env.committeeProposals
+              ),
+              govCertificate
+            )(using summon[Monad[F]], p, c, govCert, st, wrapped(judge)(embed.wrapGovCertFailed))
           )
     }
 
-/** `CertsEnv` (`Conway/Rules/Certs.hs:87-95`, cardano-ledger f649f975). */
+/** `CertsEnv` (`Conway/Rules/Certs.hs:87-95`, cardano-ledger f649f975). The transaction is the 11.1
+  * build's: its base case reads the withdrawals and the votes. At 29a7d656 and 9df9f98c the
+  * environment has no transaction, and nothing reads it there ([[WithdrawalsRule]]).
+  */
 final case class CertsEnv[E <: EraTag](
     tx: Tx[TxLevel.Top, E],
     pp: PParams[E],
@@ -756,30 +742,49 @@ final case class CertsEnv[E <: EraTag](
     committeeProposals: Map[GovActionId, GovActionState]
 )
 
-/** CERTS (`Conway/Rules/Certs.hs`, cardano-ledger f649f975): a transaction's certificates. */
-final class CERTS[E <: EraTag](using
-    t: EraTx[E],
-    b: ConwayEraTxBody[E],
-    ev: TxCert[E] =:= ConwayTxCert,
-    p: ConwayEraPParams[E],
-    c: ConwayEraCertState[E]
-) extends JudgedSts[CertsEnv[E], CertState[E], Vector[TxCert[E]], PredicateFailure, LedgerFailure]:
-  def transition[F[_]: Monad](env: CertsEnv[E], signal: Vector[TxCert[E]])(using
-      Ask[F, Globals],
-      Stateful[F, CertState[E]],
-      Raise[F, LedgerFailure],
-      Judge[F, PredicateFailure]
-  ): F[Unit] = CERTS.conwayCertsTransition[E, F](env, signal)
+/** Which rule checks a transaction's withdrawals and updates its DReps' expiries, by the reference
+  * build: `hardforkConwayMoveWithdrawalsAndDRepChecksToLedgerRule` (`Conway/Era.hs:283-284`,
+  * cardano-ledger f649f975) at 11.1, where CERTS's base case does it below protocol version 11 and
+  * LEDGER from 11; LEDGER at every version at 29a7d656 (the 11.2 build) and 9df9f98c (the Leios
+  * build), where the gate is gone (`Conway/Rules/Ledger.hs:397-403` and `Conway/Rules/Certs.hs:220`
+  * at 29a7d656, `Conway/Rules/Certs.hs:220` at 9df9f98c). The rules derive it from the build the
+  * judgment's `Globals` name ([[of]]), as POOL reads its layout, so a judgment cannot pair one
+  * build with another's rule, until the builds are types (#1063). The flat rules gate at version 11
+  * under every build, so under the 11.2 and Leios builds at versions 9 and 10 they refuse a
+  * withdrawal that does not drain its account in CERTS where the reference refuses it in LEDGER,
+  * with the same verdict and state
+  * (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7055304484).
+  */
+enum WithdrawalsRule derives CanEqual:
+  /** 11.1: LEDGER's above version 10, CERTS's base case's below. */
+  case LedgerAboveVersion10
 
+  /** 11.2 and Leios: LEDGER's at every version. */
+  case Ledger
+
+  /** `hardforkConwayMoveWithdrawalsAndDRepChecksToLedgerRule` of the build: whether LEDGER checks
+    * the withdrawals at `pv`, and CERTS's base case does not.
+    */
+  def inLedger(pv: ProtVer): Boolean = this match
+    case LedgerAboveVersion10 => pv.pvMajor.value > 10
+    case Ledger               => true
+
+object WithdrawalsRule:
+  /** The rule of the build `build`. */
+  def of(build: ReferenceBuild): WithdrawalsRule = build match
+    case ReferenceBuild.Release11_1                                => LedgerAboveVersion10
+    case ReferenceBuild.Release11_2 | ReferenceBuild.LeiosB004fe0c => Ledger
+
+/** CERTS (`Conway/Rules/Certs.hs`, cardano-ledger f649f975): a transaction's certificates. */
 object CERTS:
   /** `conwayCertsTransition` (`Conway/Rules/Certs.hs:203-246`, cardano-ledger f649f975): by
     * recursion on the prefix (`gamma :|> txCert`), CERTS of all but the last certificate as a
     * sub-rule, then CERT of the last, so the first certificate is the deepest. The empty sequence
-    * is the base case: before version 11 the withdrawals must drain their accounts, the DReps'
-    * expiries are updated and the accounts drained; from 11 that is LEDGER's
-    * (`hardforkConwayMoveWithdrawalsAndDRepChecksToLedgerRule`, `Conway/Era.hs:283-284`). The
-    * recursion is a fold, each step a program over the previous, which the interpreter runs in
-    * constant stack.
+    * is the base case: where the build the judgment follows (`Globals`) leaves them to CERTS, the
+    * withdrawals must drain their accounts, the DReps' expiries are updated and the accounts
+    * drained; otherwise that is LEDGER's ([[WithdrawalsRule]]). The recursion is a fold, each step
+    * a program over the previous, which the interpreter runs in constant stack. CERT's failures and
+    * events are embedded in CERTS's ([[EmbedCertInCerts]]).
     */
   def conwayCertsTransition[E <: EraTag, F[_]: Monad](
       env: CertsEnv[E],
@@ -790,38 +795,59 @@ object CERTS:
       ev: TxCert[E] =:= ConwayTxCert,
       p: ConwayEraPParams[E],
       c: ConwayEraCertState[E],
+      embed: EmbedCertInCerts[E],
+      embedCert: EmbedInCert[E],
+      inject: InjectCertsFailure[ConwayCertsPredFailure[E], E],
+      deleg: InjectDeleg[E],
+      pool: InjectPool[E],
+      govCert: InjectGovCert[E],
       ask: Ask[F, Globals],
       st: Stateful[F, CertState[E]],
-      raise: Raise[F, LedgerFailure],
-      judge: Judge[F, PredicateFailure]
+      defect: Raise[F, LedgerDefect],
+      judge: Judge[F, CertsPredFailure[E]],
+      events: Tell[F, Chain[CertsEvent[E]]]
   ): F[Unit] =
     val pp = env.pp
-    val base = if major[E](pp) > 10 then Monad[F].unit else empty[E, F](env)
+    val base = ask.ask[Globals].flatMap { globals =>
+      if WithdrawalsRule.of(globals.ledger.referenceBuild).inLedger(p.ppProtocolVersionL.get(pp))
+      then Monad[F].unit
+      else empty[E, F](env)
+    }
     val certEnv = CertEnv[E](pp, env.currentEpoch, env.currentCommittee, env.committeeProposals)
     certificates.foldLeft(base)((gamma, txCert) =>
       judge.nest(gamma) *>
-        JudgedSts.trans[
-          F,
-          CertEnv[E],
-          CertState[E],
-          CertState[E],
-          TxCert[E],
-          PredicateFailure,
-          LedgerFailure,
-          LedgerFailure
-        ](CERT[E], certEnv, txCert)
+        judge.nest(
+          CERT.certTransition[E, F](certEnv, txCert)(using
+            summon[Monad[F]],
+            ev,
+            p,
+            c,
+            embedCert,
+            deleg,
+            pool,
+            govCert,
+            ask,
+            st,
+            defect,
+            wrapped(judge)(embed.wrapFailed),
+            told(events)(embed.wrapEvent)
+          )
+        )
     )
 
-  /** The base case before version 11 (`Conway/Rules/Certs.hs:228-244`, cardano-ledger f649f975). */
+  /** The base case of the 11.1 build below version 11 (`Conway/Rules/Certs.hs:228-244`,
+    * cardano-ledger f649f975).
+    */
   private def empty[E <: EraTag, F[_]: Monad](env: CertsEnv[E])(using
       t: EraTx[E],
       b: ConwayEraTxBody[E],
       p: ConwayEraPParams[E],
       c: ConwayEraCertState[E],
+      inject: InjectCertsFailure[ConwayCertsPredFailure[E], E],
       ask: Ask[F, Globals],
       st: Stateful[F, CertState[E]],
-      raise: Raise[F, LedgerFailure],
-      judge: Judge[F, PredicateFailure]
+      defect: Raise[F, LedgerDefect],
+      judge: Judge[F, CertsPredFailure[E]]
   ): F[Unit] =
     given a: ConwayEraAccounts[E] = c.accountsOf
     val body = t.body[TxLevel.Top](env.tx)(using t.bodyOf.top)
@@ -837,14 +863,18 @@ object CERTS:
           accountsL.get(certState)
         )
       )
-      _ <- Sts.failOnJust[F, EraAccounts.Undrained, PredicateFailure](bad) {
-        (invalid, incomplete) =>
-          PredicateFailure.Certs(
-            CertsFailure.WithdrawalsNotInRewards(
-              invalid.view.mapValues(_.value).toMap ++ incomplete.view.mapValues(_.supplied.value)
-            )
-          )
-      }
+      // the reference's `Withdrawals`, keyed by `AccountAddress`, which every decoded reward
+      // account is
+      notInRewards <- bad.traverse((invalid, incomplete) =>
+        vocab[F, Map[AccountAddress, Coin]](
+          (invalid ++ incomplete.view.mapValues(_.supplied)).toVector
+            .traverse((account, coin) => Convert.accountAddress(account).map(_ -> coin))
+            .map(_.toMap)
+        )
+      )
+      _ <- Sts.failOnJust[F, Map[AccountAddress, Coin], CertsPredFailure[E]](notInRewards)(ws =>
+        inject.injectFailure(ConwayCertsPredFailure.WithdrawalsNotInRewardsCERTS(ws))
+      )
       voted <- vocab[F, CertState[E]](
         updateVotingDRepExpiries[E](
           env.tx,

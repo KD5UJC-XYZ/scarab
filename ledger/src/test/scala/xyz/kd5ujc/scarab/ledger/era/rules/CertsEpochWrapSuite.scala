@@ -5,9 +5,8 @@ import cats.data.NonEmptyChain
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{Mismatch, PoolFailure, PredicateFailure, TestLedger}
-import xyz.kd5ujc.scarab.ledger.era.{PParams, PoolCert}
+import xyz.kd5ujc.scarab.ledger.era.{EraCertsRun, PParams, PoolCert}
 import xyz.kd5ujc.scarab.ledger.era.conway.ConwayPParams
-import xyz.kd5ujc.scarab.ledger.rules.Judgment
 import xyz.kd5ujc.scarab.ledger.state.{
   Conway,
   Credential,
@@ -94,12 +93,14 @@ class CertsEpochWrapSuite extends FunSuite:
         .fold(e => fail(e.toString), identity)
     )
     val pool = keyHash[StakePool](9)
-    val verdict = Judgment.run(POOL[Conway], Judgment.Policy.Accumulate)(
-      TestLedger.globals,
-      PoolEnv[Conway](epoch(top - 1), pp),
-      Empty.pState,
-      PoolCert.RetirePool(pool, epoch(top))
-    )
+    val verdict = EraCertsRun
+      .pool(
+        TestLedger.globals,
+        PoolEnv[Conway](epoch(top - 1), pp),
+        Empty.pState,
+        PoolCert.RetirePool(pool, epoch(top))
+      )
+      .map(_.left.map(_.map(f => PredicateFailure.pool(ShelleyPoolPredFailure.toStored(f)))))
     // the limit is (2^64 - 2) + 2, which wraps to 0, so no retirement epoch is within it; the
     // failures are in the order the reference reports them, the last recorded first
     assertEquals(
