@@ -263,7 +263,7 @@
      "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
      "symbol": "Globals",
      "lines": [
-      770,
+      768,
       782
      ]
     }
@@ -445,7 +445,7 @@
      "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/PoolReap.hs",
      "symbol": "poolReapTransition",
      "lines": [
-      122,
+      104,
       141
      ]
     }
@@ -527,7 +527,7 @@
      "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/PoolReap.hs",
      "symbol": "poolReapTransition",
      "lines": [
-      137,
+      118,
       155
      ]
     }

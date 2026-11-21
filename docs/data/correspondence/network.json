@@ -1468,7 +1468,7 @@
      "file": "ouroboros-consensus-diffusion/src/ouroboros-consensus-diffusion/Ouroboros/Consensus/Network/NodeToNode.hs",
      "symbol": "initiator",
      "lines": [
-      2000,
+      1963,
       2020
      ]
     },
@@ -1478,7 +1478,7 @@
      "file": "ouroboros-consensus-diffusion/src/ouroboros-consensus-diffusion/Ouroboros/Consensus/Network/NodeToNode.hs",
      "symbol": "initiatorAndResponder",
      "lines": [
-      2079,
+      2027,
       2100
      ]
     }
@@ -1499,7 +1499,7 @@
      "file": "ouroboros-consensus-diffusion/src/ouroboros-consensus-diffusion/Ouroboros/Consensus/Network/NodeToNode.hs",
      "symbol": "initiator",
      "lines": [
-      2000,
+      1963,
       2020
      ]
     }
@@ -1520,7 +1520,7 @@
      "file": "ouroboros-consensus-diffusion/src/ouroboros-consensus-diffusion/Ouroboros/Consensus/Network/NodeToNode.hs",
      "symbol": "initiatorAndResponder",
      "lines": [
-      2079,
+      2027,
       2100
      ]
     }
