@@ -1324,25 +1324,30 @@ object Main extends IOApp:
         utxoBacking(options),
         VerificationCache.resource[IO](),
         Scheduling.resource[IO](options.cpuThreads),
+        Supervisor[IO](await = false),
+        // the node's own fibers that write endorser-block answers and claim them: released before
+        // the store, a write in progress ends first, as it cannot be cancelled
         Supervisor[IO](await = false)
       ).tupled
-    ).tupled.use { case (hup, (leiosStore, (store, checkpoints), cache, scheduling, supervisor)) =>
-      followWith(
-        options,
-        cliPeers,
-        setup,
-        topology,
-        store,
-        leiosStore,
-        backing(store, checkpoints),
-        cache,
-        scheduling,
-        StallDiagnostics.abandoning(supervisor),
-        credentials,
-        layout,
-        listening,
-        hup
-      )
+    ).tupled.use {
+      case (hup, (leiosStore, (store, checkpoints), cache, scheduling, supervisor, settling)) =>
+        followWith(
+          options,
+          cliPeers,
+          setup,
+          topology,
+          store,
+          leiosStore,
+          backing(store, checkpoints),
+          cache,
+          scheduling,
+          StallDiagnostics.abandoning(supervisor),
+          settling,
+          credentials,
+          layout,
+          listening,
+          hup
+        )
     }
 
   /** What every phase of a run reads: the completed options and setup, and what was opened before
@@ -1358,6 +1363,7 @@ object Main extends IOApp:
       leios: Option[LeiosStore[IO]],
       cache: VerificationCache,
       scheduling: Scheduling[IO],
+      settling: Supervisor[IO],
       credentials: Option[PoolCredentials],
       listening: Option[Listening],
       hangup: StartupHangup,
@@ -1496,6 +1502,7 @@ object Main extends IOApp:
       cache: VerificationCache,
       scheduling: Scheduling[IO],
       background: IO[Unit] => IO[Unit],
+      settling: Supervisor[IO],
       credentials: Option[PoolCredentials],
       layout: ReferenceLayout,
       listening: Option[Listening],
@@ -1517,6 +1524,7 @@ object Main extends IOApp:
         leios,
         cache,
         scheduling,
+        settling,
         credentials,
         listening,
         hangup,
@@ -2139,7 +2147,9 @@ object Main extends IOApp:
             store,
             xyz.kd5ujc.scarab.consensus.leios.StdGen.mk(seed),
             xyz.kd5ujc.scarab.protocol.LeiosWord.Word64.clamped(tip),
-            e => fatalSink(Fatal.Storage(StorageError.LeiosStore(e)))
+            run.settling,
+            e => fatalSink(Fatal.Storage(StorageError.LeiosStore(e))),
+            cause => fatalSink(Fatal.Defect(cause))
           )(using summon, LeiosStorage.lifted[IO])
         }
       }

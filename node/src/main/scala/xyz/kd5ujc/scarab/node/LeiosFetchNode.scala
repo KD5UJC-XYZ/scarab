@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.node
 
 import cats.effect.{Async, Resource}
+import cats.effect.std.Supervisor
 import cats.mtl.Raise
 import cats.syntax.all.*
 import fs2.Stream
@@ -83,14 +84,17 @@ object LeiosFetchNode:
     case NotWired
 
   /** The node's fetch over `store`, the notifying store its writes go through, from the store's
-    * complete closures at or after `immutableTip` ([[LeiosFetchKernel.initialized]]); the store's
-    * failure in an arrival goes to `fatal`.
+    * complete closures at or after `immutableTip` ([[LeiosFetchKernel.initialized]]). The writes of
+    * answers and their claims run under `supervisor`, the node's; the store's failure goes to
+    * `fatal`, and an exception in one of them to `defect`, each of which stops the node.
     */
   def create[F[_]: Async](
       store: LeiosStore[F],
       prng: StdGen,
       immutableTip: Word64,
-      fatal: LeiosStoreError => F[Unit]
+      supervisor: Supervisor[F],
+      fatal: LeiosStoreError => F[Unit],
+      defect: Throwable => F[Unit]
   )(using Raise[F, LeiosStoreError]): F[LeiosFetchNode[F]] =
     LeiosFetchKernel
       .initialized[F, Long](store, prng, immutableTip)
@@ -98,7 +102,13 @@ object LeiosFetchNode:
       .map(shared =>
         new LeiosFetchNode(
           shared,
-          LeiosFetchArrival(shared, store, LeiosFetchStaticEnv.demo, fatal),
+          LeiosFetchArrival(
+            shared,
+            store,
+            LeiosFetchStaticEnv.demo,
+            fatal,
+            settling => supervisor.supervise(settling.handleErrorWith(defect)).void
+          ),
           store
         )
       )

@@ -3,6 +3,7 @@ package xyz.kd5ujc.scarab.node
 
 import cats.data.NonEmptyVector
 import cats.effect.{IO, Resource}
+import cats.effect.std.Supervisor
 import cats.mtl.Raise
 import cats.syntax.all.*
 import fs2.Stream
@@ -140,80 +141,36 @@ class LeiosFetchRegistrationSuite extends FailsOnUncaught:
     val p = EbPoint(slot(10), LeiosEb.hashOf(eb.transactions.toVector))
     val size = BytesSize.wrap(eb.encoded.size.toLong)
     val closure = BytesSize.wrap(txs.map(_.size.toLong).sum)
-    (store(dir / "a"), store(dir / "b")).tupled.use { (ours, theirs) =>
-      for
-        _ <- ok(
-          theirs.writeEbPoint(p, word32(size.toLong)) *> theirs.writeEbBody(p, eb, Vector.empty) *>
-            theirs.writeTxs(p, txs.zipWithIndex.map((t, i) => i -> t))
-        )
-        acquired <- LeiosAcquired.create[IO]
-        node <- ok(
-          LeiosFetchNode.create[IO](
-            acquired.notifying(ours),
-            StdGen.mk(4),
-            slot(0),
-            e => IO.raiseError(new AssertionError(e.toString))
-          )
-        )
-        // the endorser block is focused, and the peer offers its body and its closure
-        _ <- node.shared.outstanding.update(
-          _.announced(AnnouncementFields(ElId(p.slot, issuer), p.hash, size), None)._1
-        )
-        vars <- LeiosPeerVars.create[IO](IsBigLedgerPeer.NotBigLedgerPeer)
-        _ <- vars.offerings.set(
-          SortedMap(p -> PeerOffer(Some(closure), Some(size), WhetherTxsClosureOffered.Offered))
-        )
-        _ <- node.shared.peers.update(_.updated(connection, vars))
-        (a, b) <- Bearer.inMemory[IO](64)
-        completed <- typed(
-          Served
-            .accept(
-              b,
-              magic,
-              handlers(Some(LeiosFetchStoreHandler(theirs))),
-              NodeToNodeServer.Settings(bundle = HotBundle.Leios)
-            )
-            .background
-            .surround(
-              activated(a, HotBundle.Leios, node.initiator(connection))(
-                node
-                  .kernel[Unit](
-                    IO.pure(Some(p.slot)),
-                    IO.pure(_ => Left(())),
-                    Stream.empty,
-                    IO.raiseError
-                  )
-                  .surround(node.shared.wake *> acquired.next)
-                  .timeout(30.seconds)
-              )
-            )
-        )
-        whole <- ok(ours.lookupEbClosure(p.hash))
-      yield
-        assertEquals(completed, Right(p))
-        assertEquals(whole.map(_.map(_._2)), Some(txs))
-    }
-  }
-
-  dirs.test("the hot protocols' Terminate lets the LeiosFetch client finish before the release") {
-    dir =>
-      (store(dir / "a"), store(dir / "b")).tupled.use { (ours, theirs) =>
+    (store(dir / "a"), store(dir / "b"), Supervisor[IO](await = true)).tupled.use {
+      (ours, theirs, settling) =>
         for
+          _ <- ok(
+            theirs
+              .writeEbPoint(p, word32(size.toLong)) *> theirs.writeEbBody(p, eb, Vector.empty) *>
+              theirs.writeTxs(p, txs.zipWithIndex.map((t, i) => i -> t))
+          )
+          acquired <- LeiosAcquired.create[IO]
           node <- ok(
             LeiosFetchNode.create[IO](
-              ours,
+              acquired.notifying(ours),
               StdGen.mk(4),
               slot(0),
-              e => IO.raiseError(new AssertionError(e.toString))
+              settling,
+              e => IO.raiseError(new AssertionError(e.toString)),
+              IO.raiseError
             )
           )
+          // the endorser block is focused, and the peer offers its body and its closure
+          _ <- node.shared.outstanding.update(
+            _.announced(AnnouncementFields(ElId(p.slot, issuer), p.hash, size), None)._1
+          )
+          vars <- LeiosPeerVars.create[IO](IsBigLedgerPeer.NotBigLedgerPeer)
+          _ <- vars.offerings.set(
+            SortedMap(p -> PeerOffer(Some(closure), Some(size), WhetherTxsClosureOffered.Offered))
+          )
+          _ <- node.shared.peers.update(_.updated(connection, vars))
           (a, b) <- Bearer.inMemory[IO](64)
-          // the activation is released as soon as the hot protocols are told to stop
-          stoppedAtOnce = (net: Net) ?=>
-            activatedWith(a, HotBundle.Leios, node.initiator(connection))(results =>
-              results.terminateHot.as(results)
-            ).flatMap(_.snapshot.map(_.entries.get(Protocols.LeiosFetch).map(_.result)))
-          ended <- typed(
+          completed <- typed(
             Served
               .accept(
                 b,
@@ -222,13 +179,64 @@ class LeiosFetchRegistrationSuite extends FailsOnUncaught:
                 NodeToNodeServer.Settings(bundle = HotBundle.Leios)
               )
               .background
-              .surround(stoppedAtOnce)
+              .surround(
+                activated(a, HotBundle.Leios, node.initiator(connection))(
+                  node
+                    .kernel[Unit](
+                      IO.pure(Some(p.slot)),
+                      IO.pure(_ => Left(())),
+                      Stream.empty,
+                      IO.raiseError
+                    )
+                    .surround(node.shared.wake *> acquired.next)
+                    .timeout(30.seconds)
+                )
+              )
           )
-          left <- node.shared.peers.get
+          whole <- ok(ours.lookupEbClosure(p.hash))
         yield
-          assertEquals(ended, Right(Some(ProtocolResults.Result.Returned(()))))
-          // the client's bracket is released: the peer is no longer live
-          assert(left.isEmpty)
+          assertEquals(completed, Right(p))
+          assertEquals(whole.map(_.map(_._2)), Some(txs))
+    }
+  }
+
+  dirs.test("the hot protocols' Terminate lets the LeiosFetch client finish before the release") {
+    dir =>
+      (store(dir / "a"), store(dir / "b"), Supervisor[IO](await = true)).tupled.use {
+        (ours, theirs, settling) =>
+          for
+            node <- ok(
+              LeiosFetchNode.create[IO](
+                ours,
+                StdGen.mk(4),
+                slot(0),
+                settling,
+                e => IO.raiseError(new AssertionError(e.toString)),
+                IO.raiseError
+              )
+            )
+            (a, b) <- Bearer.inMemory[IO](64)
+            // the activation is released as soon as the hot protocols are told to stop
+            stoppedAtOnce = (net: Net) ?=>
+              activatedWith(a, HotBundle.Leios, node.initiator(connection))(results =>
+                results.terminateHot.as(results)
+              ).flatMap(_.snapshot.map(_.entries.get(Protocols.LeiosFetch).map(_.result)))
+            ended <- typed(
+              Served
+                .accept(
+                  b,
+                  magic,
+                  handlers(Some(LeiosFetchStoreHandler(theirs))),
+                  NodeToNodeServer.Settings(bundle = HotBundle.Leios)
+                )
+                .background
+                .surround(stoppedAtOnce)
+            )
+            left <- node.shared.peers.get
+          yield
+            assertEquals(ended, Right(Some(ProtocolResults.Result.Returned(()))))
+            // the client's bracket is released: the peer is no longer live
+            assert(left.isEmpty)
       }
   }
 

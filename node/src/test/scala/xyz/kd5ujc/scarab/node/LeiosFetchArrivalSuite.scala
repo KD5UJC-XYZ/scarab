@@ -3,6 +3,7 @@ package xyz.kd5ujc.scarab.node
 
 import cats.data.NonEmptyVector
 import cats.effect.{Deferred, IO, Resource}
+import cats.effect.std.Queue
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
@@ -130,7 +131,8 @@ class LeiosFetchArrivalSuite extends FailsOnUncaught:
       arrival: LeiosFetchArrival[IO, Int],
       shared: LeiosFetchShared[IO, Int],
       acquired: LeiosAcquired[IO],
-      fatal: Deferred[IO, LeiosStoreError]
+      fatal: Deferred[IO, LeiosStoreError],
+      settled: Queue[IO, Unit]
   )
 
   private def rig(store: LeiosStore[IO], initial: LeiosOutstanding[Int]): IO[Rig] =
@@ -138,11 +140,21 @@ class LeiosFetchArrivalSuite extends FailsOnUncaught:
       shared <- LeiosFetchShared.create[IO, Int](initial)
       acquired <- LeiosAcquired.create[IO]
       fatal <- Deferred[IO, LeiosStoreError]
+      // each write and its claim on a fiber of its own, as the node's supervisor runs it; its end
+      // is what a test waits for
+      settled <- Queue.unbounded[IO, Unit]
     yield Rig(
-      LeiosFetchArrival(shared, acquired.notifying(store), env, e => fatal.complete(e).void),
+      LeiosFetchArrival(
+        shared,
+        acquired.notifying(store),
+        env,
+        e => fatal.complete(e).void,
+        settling => settling.guarantee(settled.offer(())).start.void
+      ),
       shared,
       acquired,
-      fatal
+      fatal,
+      settled
     )
 
   private def fault(f: LeiosFetchFault): Either[NetworkError, Unit] =
@@ -161,12 +173,13 @@ class LeiosFetchArrivalSuite extends FailsOnUncaught:
         for
           r <- rig(store, asking)
           bodyResult <- typed(r.arrival.block(peer, request, eb.transactions.toVector))
+          _ <- r.settled.take
           afterBody <- r.shared.outstanding.get
           body <- ok(store.lookupEbBody(p.hash))
           (deciding, requests) = closureRequests(afterBody, p)
           _ <- r.shared.outstanding.set(deciding)
           txsResults <- requests.traverse(req =>
-            typed(r.arrival.blockTxs(peer, req, offsetsOf(req).map(txs)))
+            typed(r.arrival.blockTxs(peer, req, offsetsOf(req).map(txs))) <* r.settled.take
           )
           after <- r.shared.outstanding.get
           completed <- r.acquired.next
@@ -246,6 +259,7 @@ class LeiosFetchArrivalSuite extends FailsOnUncaught:
       for
         r <- rig(store, asking)
         result <- typed(r.arrival.block(peer, request, eb.transactions.toVector))
+        _ <- r.settled.take
         after <- r.shared.outstanding.get
         body <- ok(store.lookupEbBody(request.point.hash))
       yield
@@ -321,12 +335,13 @@ class LeiosFetchArrivalSuite extends FailsOnUncaught:
       eb: LeiosEb,
       request: LeiosFetchRequest.Block
   ): IO[Vector[LeiosFetchRequest.BlockTxs]] =
-    typed(r.arrival.block(peer, request, eb.transactions.toVector)).flatMap { result =>
-      assertEquals(result, Right(()))
-      r.shared.outstanding.get.flatMap { o =>
-        val (deciding, requests) = closureRequests(o, request.point)
-        r.shared.outstanding.set(deciding).as(requests)
-      }
+    (typed(r.arrival.block(peer, request, eb.transactions.toVector)) <* r.settled.take).flatMap {
+      result =>
+        assertEquals(result, Right(()))
+        r.shared.outstanding.get.flatMap { o =>
+          val (deciding, requests) = closureRequests(o, request.point)
+          r.shared.outstanding.set(deciding).as(requests)
+        }
     }
 
   private def offsetsOf(req: LeiosFetchRequest.BlockTxs): Vector[Int] =
@@ -373,7 +388,7 @@ class LeiosFetchArrivalSuite extends FailsOnUncaught:
       stored(dir / "leios").use { store =>
         for
           r <- rig(store, asking)
-          _ <- typed(r.arrival.block(peer, request, eb.transactions.toVector))
+          _ <- typed(r.arrival.block(peer, request, eb.transactions.toVector)) <* r.settled.take
           o <- r.shared.outstanding.get
           // both peers offer the closure: each is asked for the same jobs
           decision = LeiosFetchLogic.iteration[Int, Unit](
@@ -395,11 +410,11 @@ class LeiosFetchArrivalSuite extends FailsOnUncaught:
               case t: LeiosFetchRequest.BlockTxs => t
             }
           first <- reqs(peer).traverse(t =>
-            typed(r.arrival.blockTxs(peer, t, offsetsOf(t).map(txs)))
+            typed(r.arrival.blockTxs(peer, t, offsetsOf(t).map(txs))) <* r.settled.take
           )
           between <- r.shared.outstanding.get
           again <- reqs(second).traverse(t =>
-            typed(r.arrival.blockTxs(second, t, offsetsOf(t).map(txs)))
+            typed(r.arrival.blockTxs(second, t, offsetsOf(t).map(txs))) <* r.settled.take
           )
           after <- r.shared.outstanding.get
         yield
@@ -420,15 +435,50 @@ class LeiosFetchArrivalSuite extends FailsOnUncaught:
       val failing = new Failing(store, LeiosStoreError.Closed)
       for
         r <- rig(failing, asking)
-        // the arrival waits for the node to stop; what reaches the node's sink is the store's error
-        result <- IO.race(
-          typed(r.arrival.block(peer, request, eb.transactions.toVector)),
-          r.fatal.get
-        )
+        // the answer is the peer's to give and it gave it; the write fails on the node's fiber,
+        // and what reaches the node's sink is the store's error
+        result <- typed(r.arrival.block(peer, request, eb.transactions.toVector))
+        error <- r.fatal.get
+        _ <- r.settled.take
         after <- r.shared.outstanding.get
       yield
-        assertEquals(result, Right(LeiosStoreError.Closed))
+        assertEquals(result, Right(()))
+        assertEquals(error, LeiosStoreError.Closed)
         assertEquals(held(after, request.point), Some(EbFetchState.NoBody))
+    }
+  }
+
+  dirs.test("a body is refused once its write is queued, and claimed once it lands") { dir =>
+    val eb = body(Vector.tabulate(3)(tx))
+    val offered = size(eb) + BytesSize.wrap(1)
+    val (asking, request) = asked(eb, offered, closure(eb))
+    stored(dir / "leios").use { store =>
+      Deferred[IO, Unit].flatMap { gate =>
+        val held = new Gated(store, gate)
+        for
+          r <- rig(held, asking)
+          // the write waits at the gate: the peer answers for the size meanwhile
+          result <- typed(r.arrival.block(peer, request, eb.transactions.toVector))
+          before <- r.shared.outstanding.get
+          _ <- gate.complete(())
+          _ <- r.settled.take
+          after <- r.shared.outstanding.get
+          body <- ok(store.lookupEbBody(request.point.hash))
+        yield
+          assertEquals(
+            result,
+            fault(
+              LeiosFetchFault.BlockWrongSize(
+                request.point,
+                Word32.wrap(offered.toLong),
+                Word32.wrap(size(eb).toLong)
+              )
+            )
+          )
+          assertEquals(this.held(before, request.point), Some(EbFetchState.NoBody))
+          assert(this.held(after, request.point).exists(_ != EbFetchState.NoBody))
+          assertEquals(body, Some(eb.encoded))
+      }
     }
   }
 
@@ -466,7 +516,7 @@ class LeiosFetchArrivalSuite extends FailsOnUncaught:
                 sc <- s.channel(Protocols.LeiosFetch)
                 job = LeiosFetchJob
                   .Block[IO](request.point, txs => r.arrival.block(peer, request, txs))
-                jobs <- cats.effect.std.Queue.unbounded[IO, LeiosFetchJob[IO]]
+                jobs <- Queue.unbounded[IO, LeiosFetchJob[IO]]
                 _ <- jobs.offer(job)
                 result <- Fibers
                   .scoped[IO, NetworkError, Unit](NetworkError.Defect(_))(
@@ -509,3 +559,13 @@ class LeiosFetchArrivalSuite extends FailsOnUncaught:
     def writeEbBody(point: EbPoint, body: LeiosEb, fills: Vector[LocalFill])(using
         Raise[IO, LeiosStoreError]
     ): IO[BodyWritten] = error.raise[IO, BodyWritten]
+
+  /** A store whose writes of a body wait for `gate`. */
+  private final class Gated(underlying: LeiosStore[IO], gate: Deferred[IO, Unit])
+      extends LeiosStore[IO]:
+    export underlying.{writeEbPoint, writeTxs, lookupEbBody, lookupEbClosure, batchRetrieveTxs}
+    export underlying.{scanEbPoints, scanCompleteEbClosuresNotOlderThanSlot, garbageCollect}
+    export underlying.promoteToImmutable
+    def writeEbBody(point: EbPoint, body: LeiosEb, fills: Vector[LocalFill])(using
+        Raise[IO, LeiosStoreError]
+    ): IO[BodyWritten] = gate.get *> underlying.writeEbBody(point, body, fills)

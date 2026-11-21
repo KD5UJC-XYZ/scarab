@@ -34,8 +34,11 @@ import xyz.kd5ujc.scarab.storage.{LeiosEb, LeiosStore, LeiosStoreError}
   * An answer that is not what was asked for raises [[NetworkError.LeiosFetchInvalidReply]], which
   * ends the connection. The store's failure is the node's own: it goes to `fatal`, which stops the
   * node, as the reference's single writer is `link` ed to it, and the answer is never charged to
-  * the peer. Each write and its claim are one uncancelable step, as the reference's settling thread
-  * is the node's and not the peer's: a write that lands is claimed even when the peer is gone.
+  * the peer. Each write and what is claimed once it is durable run on a fiber the node owns,
+  * `settle`, as the reference settles on a thread `link` ed to the node (`link =<< async settle`):
+  * the answers after it on the connection do not wait for the write, the peer answers for a body
+  * once its write is queued, and a write that lands is claimed even when the peer is gone, the
+  * write and its claim being one uncancelable step.
   *
   * Not mirrored (#54): no cross-EB fills (the `LeiosTxCache`), no transactions pulled from the
   * mempool, no egress credit refilled at a claim (`LeiosFreshBytes`), and no arrival telemetry.
@@ -44,7 +47,8 @@ final class LeiosFetchArrival[F[_], P](
     shared: LeiosFetchShared[F, P],
     store: LeiosStore[F],
     env: LeiosFetchStaticEnv,
-    fatal: LeiosStoreError => F[Unit]
+    fatal: LeiosStoreError => F[Unit],
+    settle: F[Unit] => F[Unit]
 )(using F: Async[F]):
   /** `processLeiosBlock` of a body `peer` sent for `request`. */
   def block(peer: P, request: LeiosFetchRequest.Block, txs: Vector[(LeiosTxHash, Word32)])(using
@@ -86,7 +90,7 @@ final class LeiosFetchArrival[F[_], P](
         else (cleaned, true)
       }
       _ <- shared.wake
-      _ <- written(acquire(point, eb, sent)).whenA(persist)
+      _ <- settle(written(acquire(point, eb, sent))).whenA(persist)
       // the body is accounted for: now the peer answers for what it offered
       _ <- fault(
         LeiosFetchFault.BlockWrongSize(point, word32(request.offeredSize), word32(sent))
@@ -131,20 +135,18 @@ final class LeiosFetchArrival[F[_], P](
       ingested <- pending.toVector.flatTraverse((i, j) =>
         LeiosFetchLogic.ingestJob(aligned, LeiosJobId(i), j).fold(e => fault(job(e)), F.pure)
       )
-      // the jobs are retired once the write is durable, and the peer's bytes released
-      _ <- written(
-        store
-          .writeTxs(point, ingested.map((off, _, bytes) => off -> bytes))
-          .flatMap(_ =>
-            shared.outstanding.update(o =>
-              LeiosFetchLogic.refundTxRequest(
-                peer,
-                batchBytes,
-                LeiosFetchLogic.completeTxRequest(peer, request, o)
-              )
+      // the jobs are retired once the write is durable (`onDurable`); the peer's bytes are
+      // released once the write is queued
+      _ <- settle(
+        written(
+          store
+            .writeTxs(point, ingested.map((off, _, bytes) => off -> bytes))
+            .flatMap(_ =>
+              shared.outstanding.update(LeiosFetchLogic.completeTxRequest(peer, request, _))
             )
-          )
+        )
       )
+      _ <- shared.outstanding.update(LeiosFetchLogic.refundTxRequest(peer, batchBytes, _))
       _ <- shared.wake
     yield ()
 
@@ -170,14 +172,14 @@ final class LeiosFetchArrival[F[_], P](
     yield ()
 
   /** A write and its claim as one uncancelable step; the store's failure stops the node, outside
-    * the mask, so that the node's shutdown can end this fiber.
+    * the mask, and this fiber ends with it.
     */
   private def written(write: Raise[F, LeiosStoreError] ?=> F[Unit]): F[Unit] =
     F.uncancelable(_ =>
       Handle
         .allow[LeiosStoreError](write.map(_.asRight[LeiosStoreError]))
         .rescue(e => F.pure(e.asLeft[Unit]))
-    ).flatMap(_.fold(e => fatal(e) *> F.never[Unit], F.pure))
+    ).flatMap(_.fold(fatal, F.pure))
 
   private def fault[A](f: LeiosFetchFault)(using Raise[F, NetworkError]): F[A] =
     NetworkError.LeiosFetchInvalidReply(f).raise[F, A]

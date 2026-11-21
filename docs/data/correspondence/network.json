@@ -1633,7 +1633,7 @@
    "evidence": [
     "LeiosFetchArrivalSuite"
    ],
-   "note": "invalidReply's errors a case each, beside ExnLeiosWellHashedBodyRejected's two",
+   "note": "invalidReply's errors a case each, beside ExnLeiosWellHashedBodyRejected's two; BodyNotStorable has no counterpart: unreachable, it keeps LeiosEb's construction total",
    "digest": "576f0fd2ff881034"
   }
  },
