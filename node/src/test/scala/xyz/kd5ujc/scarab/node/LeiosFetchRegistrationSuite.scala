@@ -51,7 +51,7 @@ import xyz.kd5ujc.scarab.consensus.leios.LeiosOrders.given
 import Peers.*
 
 /** LeiosFetch on the Leios build's node-to-node connections (`withHot`, ouroboros-consensus
-  * 2416493b `Ouroboros/Consensus/Network/NodeToNode.hs` 1995-2030 and 2069-2097): one node's
+  * 2416493b `Ouroboros/Consensus/Network/NodeToNode.hs` 2000-2020 and 2079-2100): one node's
   * client, run by its hot activation, fetches an endorser block and its closure from another's
   * store server through the registered protocols, so the first node's store completes the closure;
   * and a release build's connection carries no Leios protocol.

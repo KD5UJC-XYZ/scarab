@@ -25,7 +25,7 @@ import xyz.kd5ujc.scarab.protocol.LeiosWord.Word32
 import xyz.kd5ujc.scarab.storage.{LeiosEb, LeiosStore, LeiosStoreError}
 
 /** What the node does with a LeiosFetch answer (`processLeiosBlock` and `processLeiosBlockTxs`,
-  * `LeiosDemoLogic.hs` 849-1172 and 1395-1590 of ouroboros-consensus 2416493b), for the answers of
+  * `LeiosDemoLogic.hs` 849-1172 and 1395-1588 of ouroboros-consensus 2416493b), for the answers of
   * a peer, `ReceivedBlockFrom` and `ReceivedTxsFrom`: checked, accounted for in the fetch logic's
   * state, written to `store` and claimed once written. `store` is the node's notifying store
   * ([[LeiosAcquired.notifying]]), so a write that completes a closure grows the endorser blocks

@@ -1198,8 +1198,8 @@
    "evidence": [
     "LeiosFetchProtocolSuite"
    ],
-   "note": "the request and its answer's continuation, a constructor per request",
-   "digest": "bf58e5874e139b4c"
+   "note": "the request and its answer's continuation, a constructor per request; the continuation raises through the receiver's capability, as the reference's collector thread dies of its exception",
+   "digest": "e67149971ae95ef8"
   },
   "def network.LeiosFetchPipelined.run": {
    "upstream": [
@@ -1459,6 +1459,182 @@
    ],
    "note": "LeiosFetch's messages are sent whatever their size, as muxChannel's send bounds none; the other protocols keep the node's ceiling of maxMessageBytes",
    "digest": "43e19df212e76fc6"
+  },
+  "enum network.HotBundle": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus-diffusion/src/ouroboros-consensus-diffusion/Ouroboros/Consensus/Network/NodeToNode.hs",
+     "symbol": "initiator",
+     "lines": [
+      2000,
+      2020
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus-diffusion/src/ouroboros-consensus-diffusion/Ouroboros/Consensus/Network/NodeToNode.hs",
+     "symbol": "initiatorAndResponder",
+     "lines": [
+      2079,
+      2100
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "LeiosFetchRegistrationSuite"
+   ],
+   "note": "withHot's two mini-protocols as the Leios build's bundle; a release build's adds none",
+   "digest": "7d2efb5fc5c4b7d8"
+  },
+  "def network.HotBundle#protocols": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus-diffusion/src/ouroboros-consensus-diffusion/Ouroboros/Consensus/Network/NodeToNode.hs",
+     "symbol": "initiator",
+     "lines": [
+      2000,
+      2020
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "LeiosFetchRegistrationSuite"
+   ],
+   "note": "leiosNotifyMiniProtocolNum and leiosFetchMiniProtocolNum",
+   "digest": "ee683a40aa113d67"
+  },
+  "def network.NodeToNodeServer.protocols": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus-diffusion/src/ouroboros-consensus-diffusion/Ouroboros/Consensus/Network/NodeToNode.hs",
+     "symbol": "initiatorAndResponder",
+     "lines": [
+      2079,
+      2100
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "LeiosFetchRegistrationSuite"
+   ],
+   "note": "the multiplexer's mini-protocols with withHot's",
+   "digest": "ce9aecfa61578f97"
+  },
+  "trait network.LeiosFetchInitiator": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus-diffusion/src/ouroboros-consensus-diffusion/Ouroboros/Consensus/Network/NodeToNode.hs",
+     "symbol": "aLeiosFetchClient",
+     "lines": [
+      1911,
+      1935
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "LeiosFetchRegistrationSuite"
+   ],
+   "note": "the client a hot activation runs, given the stop signals its ExpandedInitiatorContext's control message gives",
+   "digest": "a4ba8f7002a7d0d0"
+  },
+  "def network.LeiosFetchInitiator#run": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus-diffusion/src/ouroboros-consensus-diffusion/Ouroboros/Consensus/Network/NodeToNode.hs",
+     "symbol": "aLeiosFetchClient",
+     "lines": [
+      1911,
+      1935
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "LeiosFetchRegistrationSuite"
+   ],
+   "digest": "78a65585928a7abc"
+  },
+  "val network.ServerHandlers#leiosFetch": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus-diffusion/src/ouroboros-consensus-diffusion/Ouroboros/Consensus/Network/NodeToNode.hs",
+     "symbol": "aLeiosFetchServer",
+     "lines": [
+      1937,
+      1951
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "LeiosFetchRegistrationSuite"
+   ],
+   "note": "the handler the LeiosFetch responder answers with",
+   "digest": "c599756c61f3d2f4"
+  },
+  "enum protocol.LeiosFetchFault": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic.hs",
+     "symbol": "processLeiosBlock",
+     "lines": [
+      849,
+      1172
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic.hs",
+     "symbol": "processLeiosBlockTxs",
+     "lines": [
+      1395,
+      1588
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic.hs",
+     "symbol": "ExnLeiosWellHashedBodyRejected",
+     "lines": [
+      1972,
+      1986
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "LeiosFetchArrivalSuite"
+   ],
+   "note": "invalidReply's errors a case each, beside ExnLeiosWellHashedBodyRejected's two",
+   "digest": "576f0fd2ff881034"
   }
  },
  "glue": [
@@ -1781,6 +1957,16 @@
     "def protocol.LeiosStream.Entries.none",
     "def protocol.LeiosStream.collectionHead",
     "def protocol.LeiosStream.collectionStep"
+   ]
+  },
+  {
+   "reason": "the Leios answers' Scala plumbing with no counterpart of its own: the fault's rendering and companion, the total constructors of the wire's words, a Word32 by fromIntegral and a slot bounded into a Word64, and the hot stop a client registers so that it reads the governor's Terminate first, which the reference's client reads from controlMessageSTM in the same transaction as its next request (#54)",
+   "definitions": [
+    "def network.ProtocolResults#onHotStop",
+    "def protocol.LeiosFetchFault#message",
+    "object protocol.LeiosFetchFault",
+    "def protocol.LeiosWord.Word32.wrap",
+    "def protocol.LeiosWord.Word64.clamped"
    ]
   }
  ]

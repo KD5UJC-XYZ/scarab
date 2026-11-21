@@ -30,8 +30,8 @@ import xyz.kd5ujc.scarab.protocol.{EbHash, EbPoint}
 import xyz.kd5ujc.scarab.protocol.LeiosWord.Word64
 import xyz.kd5ujc.scarab.storage.{LeiosEb, LeiosStoreLocks, LeiosStoreSuite, RocksLeiosStore}
 
-/** The node's Leios fetch logic (ouroboros-consensus 2416493b `NodeKernel.hs` 543-650, 715-735 and
-  * 925-955): one decision queues each live peer's requests and drops its dead offers, the loop
+/** The node's Leios fetch logic (ouroboros-consensus 2416493b `NodeKernel.hs` 543-653, 711-736 and
+  * 938-951): one decision queues each live peer's requests and drops its dead offers, the loop
   * decides once per wake at most every half second, the state and the peers' offers and claims are
   * pruned at the immutable tip, and the state starts from the store's complete closures.
   */

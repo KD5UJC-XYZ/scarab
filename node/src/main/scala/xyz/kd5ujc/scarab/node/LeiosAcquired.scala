@@ -58,7 +58,7 @@ private[node] final class LeiosAcquired[F[_]] private (
 
   /** The immutable tip's slot each time the collection is scheduled at another one: what the fetch
     * logic is pruned at (`NodeKernel.leiosImmTipPrune`, a `Watcher` whose fingerprint is the slot,
-    * `NodeKernel.hs:715-735` at ouroboros-consensus 2416493b).
+    * `NodeKernel.hs:711-736` at ouroboros-consensus 2416493b).
     */
   def immutableSlots: Stream[F, BigInt] = immutable.discrete.unNone.changes
 

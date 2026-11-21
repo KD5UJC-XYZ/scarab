@@ -67,7 +67,7 @@ object FailurePolicy:
     case PeerError.LeiosFetchRefused(cause) => leiosFetchRefused(cause.refusal)
     // Our LeiosFetch client ended the connection over the peer's answer: the reference's handler of
     // the answer throws with `error` or `ExnLeiosWellHashedBodyRejected` (ouroboros-consensus
-    // 2416493b LeiosDemoLogic.hs:849-1172, 1395-1515 and 1960-1985), which no rethrow policy names
+    // 2416493b LeiosDemoLogic.hs:849-1172, 1395-1588 and 1972-1986), which no rethrow policy names
     // (Node/RethrowPolicy.hs), so each is `ShutdownPeer`, the default
     case _: PeerError.LeiosFetchInvalidReply => FailureClass.Transient
     // Consensus 82ecba329 Node/RethrowPolicy.hs maps every ChainSyncClientException,

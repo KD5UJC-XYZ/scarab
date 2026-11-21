@@ -194,7 +194,7 @@ object NodeToNodeServer:
         )
       ).background
       // the Leios build's LeiosFetch server, hot and started on demand (`aLeiosFetchServer`,
-      // `NodeToNode.hs` 1938-1952 and 2084-2096 at ouroboros-consensus 2416493b); LeiosNotify's
+      // `NodeToNode.hs` 1937-1951 and 2090-2098 at ouroboros-consensus 2416493b); LeiosNotify's
       // number is registered and nothing serves it yet (#54)
       _ <- handlers.leiosFetch
         .filter(_ => settings.bundle == HotBundle.Leios)

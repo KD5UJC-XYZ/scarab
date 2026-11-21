@@ -49,7 +49,7 @@ import Peers.*
 
 /** What the node does with a peer's LeiosFetch answers (`processLeiosBlock` and
   * `processLeiosBlockTxs`, ouroboros-consensus 2416493b `LeiosDemoLogic.hs` 849-1172 and
-  * 1395-1590): a body checked, accounted for, written and held with its closure's jobs; the
+  * 1395-1588): a body checked, accounted for, written and held with its closure's jobs; the
   * closure's transactions checked against their jobs, written and retired; each refusal of the peer
   * in the reference's order, with what the state and the store hold after it; and the store's
   * failure as the node's own.

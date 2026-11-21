@@ -27,7 +27,7 @@ final class LeiosFetchNode[F[_]] private (
     store: LeiosStore[F]
 )(using F: Async[F]):
   /** The LeiosFetch client of `connection` 's hot activation (`aLeiosFetchClient` and
-    * `hLeiosFetchClient`, `NodeToNode.hs` 937-956 and 1912-1936 at ouroboros-consensus 2416493b):
+    * `hLeiosFetchClient`, `NodeToNode.hs` 937-956 and 1911-1935 at ouroboros-consensus 2416493b):
     * the pipelined client over the requests the decision queues for the peer, each answer handed to
     * the arrival, inside the peer's bracket. Every peer is taken for one that is not a big-ledger
     * peer: the hot connection is not told (#54).
@@ -53,7 +53,9 @@ final class LeiosFetchNode[F[_]] private (
         )
       }
 
-  /** The LeiosFetch server's answers (`hLeiosFetchServer`, `NodeToNode.hs` 957-961). */
+  /** The LeiosFetch server's answers (`hLeiosFetchServer`, `NodeToNode.hs` 957-961 at
+    * ouroboros-consensus 2416493b).
+    */
   def responder: LeiosFetchRequestHandler[F] = LeiosFetchStoreHandler(store)
 
   /** The decision loop and its pruning for the life of the resource ([[LeiosFetchKernel.run]]). */

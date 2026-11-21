@@ -18,7 +18,7 @@ import xyz.kd5ujc.scarab.consensus.leios.{
 import xyz.kd5ujc.scarab.protocol.LeiosWord.Word64
 import xyz.kd5ujc.scarab.storage.{LeiosStore, LeiosStoreError}
 
-/** The node's Leios fetch logic (`NodeKernel.hs` 543-650 and 715-735, `initInternalState` 925-955
+/** The node's Leios fetch logic (`NodeKernel.hs` 543-653 and 711-736, `initInternalState` 938-951
   * of ouroboros-consensus 2416493b): the decision loop, which assigns the peers' offers to requests
   * whenever it is woken, and its pruning at the immutable tip.
   */
@@ -26,10 +26,10 @@ object LeiosFetchKernel:
   /** The loop's pace: at most one decision per half second (`loopInterval`). */
   val LoopInterval: FiniteDuration = 500.millis
 
-  /** The fetch logic's state at the start (`initializeLeiosOutstanding`, `NodeKernel.hs:938-951`):
-    * every endorser block whose whole closure the store holds, announced no earlier than the
-    * immutable tip (the origin's is slot 0), held with nothing to fetch; everything pruned below
-    * the tip. It reads the store and writes nothing.
+  /** The fetch logic's state at the start (`initializeLeiosOutstanding`, `NodeKernel.hs:938-951` at
+    * 2416493b): every endorser block whose whole closure the store holds, announced no earlier than
+    * the immutable tip (the origin's is slot 0), held with nothing to fetch; everything pruned
+    * below the tip. It reads the store and writes nothing.
     */
   def initialized[F[_]: Async, P: Order](
       store: LeiosStore[F],

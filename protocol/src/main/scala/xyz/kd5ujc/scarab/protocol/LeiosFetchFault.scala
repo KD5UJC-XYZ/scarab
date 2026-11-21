@@ -5,11 +5,11 @@ import xyz.kd5ujc.scarab.codec.DomainError
 import xyz.kd5ujc.scarab.protocol.LeiosWord.Word32
 
 /** Why the LeiosFetch client ends the connection over a peer's answer (`processLeiosBlock` and
-  * `processLeiosBlockTxs`, `LeiosDemoLogic.hs` 849-1172 and 1395-1515 of ouroboros-consensus
+  * `processLeiosBlockTxs`, `LeiosDemoLogic.hs` 849-1172 and 1395-1588 of ouroboros-consensus
   * 2416493b, whose thread death disconnects the peer). The reference raises the answers that are
   * not what was asked for with `error` (`invalidReply`), and the two bodies that hash to the
   * endorser block asked for and are still refused with `ExnLeiosWellHashedBodyRejected`
-  * (`:1960-1985`), once the body is accounted for.
+  * (`:1972-1986`), once the body is accounted for.
   */
 enum LeiosFetchFault:
   /** `MsgLeiosBlock hash mismatch`: the body does not hash to the endorser block asked for. */

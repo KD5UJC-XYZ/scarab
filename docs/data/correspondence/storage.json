@@ -883,7 +883,7 @@
    "evidence": [
     "LeiosStoreSuite"
    ],
-   "digest": "986cff600c4b089b"
+   "digest": "3ae7f35a5f108b0a"
   },
   "def storage.LeiosEb#bounds": {
    "upstream": [
@@ -2495,6 +2495,47 @@
     "ReceivedBlocksSuite"
    ],
    "digest": "15e24a747a226ee0"
+  },
+  "def storage.LeiosEb.encode": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Leios/Types.hs",
+     "symbol": "encodeLeiosEb",
+     "lines": [
+      247,
+      252
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "LeiosFetchArrivalSuite"
+   ],
+   "note": "of any listed transactions, so that a body sent is hashed before it is taken for a body",
+   "digest": "494d211e3fdda7ac"
+  },
+  "def storage.LeiosEb.hashOf": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoTypes.hs",
+     "symbol": "hashLeiosEb",
+     "lines": [
+      1297,
+      1299
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "LeiosFetchArrivalSuite"
+   ],
+   "digest": "2893819e7048f29a"
   }
  },
  "glue": [
