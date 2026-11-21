@@ -173,16 +173,18 @@ object ShelleyUtxo:
       xyz.kd5ujc.scarab.ledger.byron.ByronAddress.decode(a.raw).toOption.map(_.network)
 
   /** `validateWrongNetworkWithdrawal` (`Shelley/Rules/Utxo.hs:490-501`, cardano-ledger f649f975):
-    * the withdrawals from accounts on another network than `netId`.
+    * the withdrawals from accounts on another network than `netId`. It reports one constructor,
+    * which its result type declares, so that Dijkstra's ENTITIES injects it alone
+    * ([[ENTITIES.shelleyUtxoToDijkstraEntitiesPredFailure]]).
     */
   def validateWrongNetworkWithdrawal[E <: EraTag, L <: TxLevel](netId: Network, body: TxBody[L, E])(
       using
       b: EraTxBody[E],
       l: b.Level[L]
-  ): Test[ShelleyUtxoPredFailure[E]] =
+  ): Test[ShelleyUtxoPredFailure.WrongNetworkWithdrawal[E]] =
     val wrong = b.withdrawals(body).keySet.filter(_.network != wire(netId)).to(SortedSet)
     Test.failureOnJust(NonEmptySet.fromSet(wrong))(
-      ShelleyUtxoPredFailure.WrongNetworkWithdrawal(netId, _)
+      new ShelleyUtxoPredFailure.WrongNetworkWithdrawal[E](netId, _)
     )
 
   /** `validateMaxTxSizeUTxO` (`Shelley/Rules/Utxo.hs:563-577`, cardano-ledger f649f975): the

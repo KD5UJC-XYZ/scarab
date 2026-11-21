@@ -52,6 +52,12 @@ import xyz.kd5ujc.scarab.protocol.{DijkstraNotYet, Era}
   * transaction read by the era decoder and annotated as `mkDijkstraStAnnTopTx` does: its failures,
   * in their flat form (`DijkstraUtxowPredFailure.toStored`) and written by this suite's encoder,
   * are the reference's bytes in its order, and the flat rule's.
+  *
+  * The era-typed CERTS (Conway's transition with Dijkstra's CERT, `CertRule.dijkstra`, #85) is run
+  * on every `certs` case and on every case's setup: its failures, in the flat Dijkstra form
+  * (`DijkstraCertsStored.toStored`) and written by this suite's encoder, are the reference's bytes
+  * in its order, and its verdicts and states the flat rule's. ENTITIES is run on the transaction of
+  * the devnet block the reference accepted, where the flat rules halt.
   */
 class DijkstraRulesOracleSuite extends FunSuite:
   private val fixture = Path.of("fixtures", "reference", "dijkstra-rules", "cases.jsonl")
@@ -556,4 +562,142 @@ class DijkstraRulesOracleSuite extends FunSuite:
       Option.when(era != flat)(s"$name: $era, the flat rule $flat")
     }
     assertEquals(differing, Vector.empty[String])
+  }
+
+  // ---- the era-typed CERTS and ENTITIES -----------------------------------------------------------
+
+  /** The globals of the Leios build, whose layout Dijkstra's POOL registers pools in. */
+  private val leiosGlobals =
+    globals.copy(ledger =
+      globals.ledger.copy(referenceBuild = xyz.kd5ujc.scarab.protocol.ReferenceBuild.LeiosB004fe0c)
+    )
+
+  private def epochOf(c: Json): EpochNo =
+    ok(EpochNo.fromBigInt(num(c.hcursor.downField("epoch"))))
+
+  private lazy val devnetCase: Json =
+    utxowCases
+      .find(c => str(c.hcursor.downField("name")) == "utxow/devnet")
+      .getOrElse(fail("no devnet case"))
+
+  private def eraTx(c: Json): xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraTx[
+    xyz.kd5ujc.scarab.ledger.era.TxLevel.Top
+  ] =
+    ok(
+      xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraTx
+        .inBlock(node(hex(str(c.hcursor.downField("tx")))))
+    )
+
+  /** Dijkstra's CERTS from the case's state on the certificates of `field`, read by the era's
+    * decoder. The environment's transaction is the 11.1 build's field, read only by that build's
+    * base case, which Dijkstra's CERTS does not have (`CertsBaseCase`): the devnet's transaction.
+    */
+  private def eraCertsRun(c: Json, field: String) =
+    import xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraCorpus
+    val pp = params(c)
+    xyz.kd5ujc.scarab.ledger.era.EraCertsRun.dijkstraCerts(
+      leiosGlobals,
+      xyz.kd5ujc.scarab.ledger.era.rules
+        .CertsEnv[Dijkstra](eraTx(devnetCase), DijkstraCorpus.era(pp), epochOf(c), None, Map.empty),
+      ledger(pp, num(c.hcursor.downField("epoch"))).state.cert,
+      strings(c.hcursor.downField(field)).map(h => DijkstraCorpus.eraCert(hex(h)))
+    )
+
+  private def eraCerts(c: Json): Verdict = eraCertsRun(c, "certs") match
+    case Left(defect)    => fail(s"${str(c.hcursor.downField("name"))}: $defect")
+    case Right(Right(_)) => Verdict.Accepted
+    case Right(Left(fs)) =>
+      Verdict.Refused(
+        fs.toChain.toVector.map(f =>
+          dijkstra(certs(xyz.kd5ujc.scarab.ledger.era.rules.DijkstraCertsStored.toStored(f)))
+        )
+      )
+
+  private lazy val certsCases: Vector[Json] =
+    cases.filter(c => str(c.hcursor.downField("kind")) == "certs")
+
+  test("the era-typed CERTS gives the reference's verdict on every certs case, byte for byte") {
+    assertEquals(certsCases.size, 20)
+    val differing = certsCases.flatMap { c =>
+      val name = str(c.hcursor.downField("name"))
+      val (ours, expected) = (eraCerts(c), reference(c))
+      Option.when(ours != expected)(s"$name: $ours, the reference $expected")
+    }
+    assertEquals(differing, Vector.empty[String])
+  }
+
+  test("the era-typed CERTS gives the flat rule's verdict on every certs case, and its state") {
+    val admitted = certsCases.flatMap { c =>
+      val name = str(c.hcursor.downField("name"))
+      assertEquals(eraCerts(c), scarab(c), name)
+      (
+        eraCertsRun(c, "certs"),
+        runCerts(
+          params(c),
+          num(c.hcursor.downField("epoch")),
+          decoded(strings(c.hcursor.downField("certs")))(DijkstraCert.decode)
+        )
+      ) match
+        case (Right(Right((era, _))), Right(Right(flat))) =>
+          assertEquals(era, flat, name)
+          Some(name)
+        case _ => None
+    }
+    assertEquals(admitted.size, certsCases.count(c => reference(c) == Verdict.Accepted))
+  }
+
+  test("the era-typed CERTS leaves the flat rule's state after every gov and utxow case's setup") {
+    val withSetup = cases.filter(c => strings(c.hcursor.downField("setup")).nonEmpty)
+    assertEquals(withSetup.size, 18)
+    withSetup.foreach { c =>
+      val name = str(c.hcursor.downField("name"))
+      val flat = runCerts(
+        params(c),
+        num(c.hcursor.downField("epoch")),
+        decoded(strings(c.hcursor.downField("setup")))(DijkstraCert.decode)
+      )
+      (eraCertsRun(c, "setup"), flat) match
+        case (Right(Right((era, _))), Right(Right(flat))) => assertEquals(era, flat, name)
+        case other                                        => fail(s"$name: $other")
+    }
+  }
+
+  test("ENTITIES admits the transaction of the devnet block the reference accepted") {
+    import xyz.kd5ujc.scarab.ledger.era.dijkstra.{DijkstraCorpus, DijkstraStAnnTx, DijkstraUtxoRun}
+    val block = cases
+      .find(c => str(c.hcursor.downField("name")) == "bbody/devnet-37-genesis-utxo")
+      .getOrElse(fail("no block case"))
+    assertEquals(reference(block), Verdict.Accepted)
+    val txs = Block.decodeShelley(hex(str(block.hcursor.downField("block")))) match
+      case Right(Block.Dijkstra(b)) => b.transactions
+      case other                    => fail(s"not a Dijkstra block: $other")
+    val tx = eraTx(devnetCase)
+    // the block's one transaction is the devnet case's
+    assertEquals(
+      txs.map(_.id),
+      Vector(ok(DijkstraTx.inBlock(node(hex(str(devnetCase.hcursor.downField("tx")))))).id)
+    )
+    val pp = params(block)
+    val start = ledger(pp, num(block.hcursor.downField("epoch")), utxoOf(block)).state.cert
+    val era = DijkstraCorpus.era(pp)
+    val stAnnTx = DijkstraStAnnTx.mkDijkstraStAnnTopTx(
+      s => fail(s"the clock was read at $s"),
+      era,
+      DijkstraUtxoRun.originalUtxo(utxoOf(block), tx),
+      Map.empty,
+      tx
+    )
+    val judged = xyz.kd5ujc.scarab.ledger.era.EraCertsRun.entities(
+      leiosGlobals,
+      xyz.kd5ujc.scarab.ledger.era.rules.EntitiesEnv[Dijkstra](
+        epochOf(block),
+        era,
+        None,
+        Map.empty,
+        xyz.kd5ujc.scarab.ledger.era.EraCertState.dijkstra.certDStateL.get(start).accounts
+      ),
+      start,
+      stAnnTx
+    )
+    assertEquals(judged.map(_.map(_._1)), Right(Right(start)))
   }
