@@ -369,16 +369,27 @@ class LeiosFetchProtocolSuite extends FailsOnUncaught:
           next = LeiosFetchJobs
             .next(requests, job)
             .flatTap(_.fold(_ => waiting.complete(()).void, _ => IO.unit))
-          client <- LeiosFetchPipelined.run[IO, Unit](cc, next).start
-          _ <- waiting.get
-          _ <- requests.terminate *> requests.offer(NonEmptyVector.one(blockRequest))
-          first <- sc.recv(LeiosFetchServer.IdleByteLimit)(
-            LeiosFetch.incremental(LeiosFetch.State.Idle)
+          // the client's failure is a value of its own scope, and it is cancelled when the test
+          // ends, whatever the first message was
+          client = Fibers.scoped[IO, NetworkError, Unit](NetworkError.Defect(_))(
+            LeiosFetchPipelined.run[IO, Unit](cc, next)
           )
-          ended <- client.joinWithNever
-        yield (first, ended)
+          seen <- client.background.use { joined =>
+            for
+              _ <- waiting.get
+              _ <- requests.terminate *> requests.offer(NonEmptyVector.one(blockRequest))
+              first <- sc.recv(LeiosFetchServer.IdleByteLimit)(
+                LeiosFetch.incremental(LeiosFetch.State.Idle)
+              )
+              // the client ends only once it has sent MsgDone: anything else is not waited for
+              ended <- first match
+                case LeiosFetch.Message.Done => joined.flatMap(_.embedNever).map(Some(_))
+                case _                       => IO.pure(None)
+            yield (first, ended)
+          }
+        yield seen
       }
-    ).map(r => assertEquals(r, Right((LeiosFetch.Message.Done, ()))))
+    ).map(r => assertEquals(r, Right((LeiosFetch.Message.Done, Some(Right(()))))))
   }
 
   test("the ingress limits are the reference's, with the margin") {

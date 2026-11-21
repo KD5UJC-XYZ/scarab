@@ -93,7 +93,9 @@ final class LeiosRequestsToSend[F[_]] private (cell: Ref[F, LeiosRequestsToSend.
     }
 
   /** The control message's `Terminate`, written here by whoever runs the client: its next
-    * instruction, polled or awaited, is the stop.
+    * instruction, polled or awaited, is the stop. The stop is decided here, so it is written no
+    * later than the client is told to stop anywhere else: a request queued between a stop recorded
+    * elsewhere and this write would still be sent. It holds for the life of these vars.
     */
   def terminate: F[Unit] =
     F.uncancelable(_ =>
