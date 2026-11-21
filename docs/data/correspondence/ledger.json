@@ -400,7 +400,6 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "ValueSumSuite",
     "ConwayUtxoChecksSuite"
    ],
    "digest": "441774dbc8bcea32"
@@ -4510,7 +4509,6 @@
    "structure": "differs",
    "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6896116597",
    "evidence": [
-    "EraPParamsSuite",
     "ConwayPParamsStateSuite"
    ],
    "note": "Conway's four instances in one object, given in each class's companion; the instances' upgradePParamsHKD, downgradePParamsHKD, emptyUpgradePParamsUpdate and eraPParams are not here yet, nor the update's Plutus data (#85), and the members the reference confines to a range of eras are classes of their own",
@@ -4595,7 +4593,6 @@
    "structure": "differs",
    "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6895880261",
    "evidence": [
-    "EraPParamsSuite",
     "ConwayPParamsStateSuite"
    ],
    "note": "hkdCoinsPerUTxOWordL, Alonzo's alone, is a class of its own with Alonzo's record",
@@ -4652,7 +4649,6 @@
    "structure": "differs",
    "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6895880261",
    "evidence": [
-    "EraPParamsSuite",
     "ConwayPParamsStateSuite"
    ],
    "note": "the members the reference confines to a range of eras (hkdDL, hkdExtraEntropyL, hkdProtocolVersionL, ppuProtocolVersionL, hkdMinUTxOValueCompactL) are classes of their own with their eras' records; upgradePParamsHKD, downgradePParamsHKD and emptyUpgradePParamsUpdate, with the type families UpgradePParams and DowngradePParams, are not here yet (#85)",
@@ -6840,7 +6836,6 @@
    "structure": "differs",
    "evidence": [
     "ConwayUtxowChecksSuite",
-    "EraUtxowSuite",
     "DijkstraSubUtxowSuite"
    ],
    "note": "the reference's predicate generic in its era over the reference's classes, the failing key witnesses' keys in their set's order as the reference lists them, the bootstrap witnesses' in the order of bootAddrTxWits, a sequence the decoder keeps in the reference's set order (Ord BootstrapWitness, by address root); the signature checks are the node's Verdicts, given as an argument, and a check that gives no verdict is a provider defect (Left), as in the flat check. It reports Shelley's failure type (ShelleyUtxowPredFailure), which the rule injects into its own; its verdict is compared with the flat rule's through ConwayUtxowPredFailure.toStored; its failures the constructors it reports, declared as its result type, so that an injection over the constructors a rule reaches serves it (Dijkstra's SUBUTXOW, whose reference injections are partial, #85)",
@@ -6863,7 +6858,6 @@
    "structure": "differs",
    "evidence": [
     "ConwayUtxowChecksSuite",
-    "EraUtxowSuite",
     "DijkstraSubUtxowSuite"
    ],
    "note": "the reference's predicate generic in its era over the reference's classes; it reports its era's own failure type (AlonzoUtxowPredFailure), which the rule injects into its own; its verdict is compared with the flat rule's through ConwayUtxowPredFailure.toStored; its failures the constructors it reports, declared as its result type, so that an injection over the constructors a rule reaches serves it (Dijkstra's SUBUTXOW, whose reference injections are partial, #85)",
@@ -6928,7 +6922,6 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "EraUtxowSuite",
     "ConwayUtxowChecksSuite"
    ],
    "note": "the reference's empty redeemers carry the bytes mkMemoizedEra gave them at the era's eraProtVerLow; the era's witness set keeps none for a set without redeemers, so their encoding at the era's lowest version (Era) is written here; compared byte for byte with the flat preimage",
@@ -7052,11 +7045,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
-   "evidence": [
-    "EraUtxowSuite"
-   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1263#issuecomment-7067525815",
    "note": "the class's protocol versions only, as values (the type families ProtVerLow and ProtVerHigh as the members eraProtVerLow and eraProtVerHigh); the era's name and its previous era are not here",
    "digest": "d8a15eea4cc264a3"
   },
@@ -7115,11 +7106,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
-   "evidence": [
-    "EraUtxowSuite"
-   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1263#issuecomment-7067525815",
    "note": "the era's versions as values, compared with the flat decoders' range of the era; the reference's instance also names the era (EraName) and its previous era (PreviousEra), which are not here",
    "digest": "55a3691663f3bf59"
   },
@@ -7136,11 +7125,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
-   "evidence": [
-    "EraUtxowSuite"
-   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1263#issuecomment-7067525815",
    "note": "the era's versions as values, compared with the flat decoders' range of the era; the reference's instance also names the era (EraName) and its previous era (PreviousEra), which are not here",
    "digest": "5f89b5884a70de0d"
   },
@@ -7157,11 +7144,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
-   "evidence": [
-    "EraUtxowSuite"
-   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1263#issuecomment-7067525815",
    "note": "the era's versions as values, compared with the flat decoders' range of the era; the reference's instance also names the era (EraName) and its previous era (PreviousEra), which are not here",
    "digest": "bd261914d88bd764"
   },
@@ -7178,11 +7163,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
-   "evidence": [
-    "EraUtxowSuite"
-   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1263#issuecomment-7067525815",
    "note": "the era's versions as values, compared with the flat decoders' range of the era; the reference's instance also names the era (EraName) and its previous era (PreviousEra), which are not here",
    "digest": "2aec1287f877a3ef"
   },
@@ -7199,11 +7182,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
-   "evidence": [
-    "EraUtxowSuite"
-   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1263#issuecomment-7067525815",
    "note": "the era's versions as values, compared with the flat decoders' range of the era, at the Leios testnet's build; the reference's instance also names the era (EraName) and its previous era (PreviousEra), which are not here",
    "digest": "4490ac8f7a690eb5"
   },
@@ -7303,9 +7284,6 @@
    "class": "Gap",
    "structure": "differs",
    "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6896247213",
-   "evidence": [
-    "EraConwaySuite"
-   ],
    "note": "no Ord until an update's order is the reference's; the constitution is the node's, its guardrails hash as bytes (#85)",
    "digest": "a3498495bea06bee"
   },
@@ -7325,9 +7303,6 @@
    "class": "Gap",
    "structure": "differs",
    "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6896247213",
-   "evidence": [
-    "EraConwaySuite"
-   ],
    "note": "keeps the flat proposal it was read as, which the flat failures carry; no Ord until an update's order is the reference's",
    "digest": "f1af56f54804e122"
   },
@@ -7448,9 +7423,6 @@
    "class": "Gap",
    "structure": "differs",
    "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923023870",
-   "evidence": [
-    "EraConwaySuite"
-   ],
    "note": "the voter, action id and procedure are the node's flat ones",
    "digest": "9d9982c834381f88"
   },
@@ -8749,9 +8721,7 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "CertsEpochWrapSuite",
     "ConwayCertsChecksSuite",
-    "DijkstraCertsSuite",
     "DijkstraRulesOracleSuite",
     "UpstreamCertsCoverageSuite"
    ],
@@ -8818,8 +8788,7 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "ConwayCertsChecksSuite",
-    "CertsEpochWrapSuite"
+    "ConwayCertsChecksSuite"
    ],
    "note": "each voting DRep's credential is read into the state's vocabulary first, refused as a Vocab defect as the flat rule does, which no decoded vote is; the expiry is computed in Word64 arithmetic that wraps, as the reference's addEpochInterval and binOpEpochNo do; the flat rules sum as integers and refuse a result outside EpochNo, which differs only past epoch 2^64 (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923332031)",
    "digest": "e3ca58a8201a9a71"
@@ -8950,8 +8919,6 @@
    "structure": "differs",
    "evidence": [
     "ConwayCertsChecksSuite",
-    "CertsEpochWrapSuite",
-    "PoolParamsLayoutSuite",
     "UpstreamPoolConformanceSuite"
    ],
    "note": "the reward account's network compared as the state's Network, the node's read into it; RegisterPool and ReregisterPool told where the reference tells them; a pool registers in the layout of the build the node follows, parameters of another refused as a defect the reference, one build, never meets",
@@ -9331,9 +9298,6 @@
    "class": "Gap",
    "structure": "differs",
    "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6888273413",
-   "evidence": [
-    "DijkstraPlutusPurposeSuite"
-   ],
    "note": "the minting purpose's policy is the node's bytes, as Conway's purpose holds it, not the reference's PolicyID",
    "digest": "8ea08de46860e0d6"
   },
@@ -9413,9 +9377,6 @@
    "class": "Gap",
    "structure": "differs",
    "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6888255792",
-   "evidence": [
-    "DijkstraPlutusPurposeSuite"
-   ],
    "note": "mkRequireGuard is not here, as no native-script builder is",
    "digest": "9deb25aac7613ce5"
   },
@@ -9475,9 +9436,6 @@
    "class": "Gap",
    "structure": "differs",
    "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6888273413",
-   "evidence": [
-    "DijkstraPlutusPurposeSuite"
-   ],
    "note": "the node's credential, as the native script reads it, where the reference's is a Credential Guard",
    "digest": "781ca37aa88255d1"
   },
@@ -10985,8 +10943,7 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "TxOutMemPackSuite",
-    "EraValueSuite"
+    "TxOutMemPackSuite"
    ],
    "note": "the representation is written by `MultiAssetRep.build`, whose bytes TxOutMemPackSuite compares with outputs the Haskell node wrote. Three branches no decoded value reaches have no compact form here: assets too many to compact, which the reference only asserts against (588; the assertion is off in the node's build, cardano-ledger-mary's `asserts` flag defaulting to False) and its decoder refuses (329); a representation too long for its Word16 offsets, which only asset names longer than the 32 bytes the reference's decoder allows can make; and a policy id that is not 28 bytes, which the reference's `PolicyID` cannot hold",
    "digest": "317b3b003b424309"
@@ -11007,8 +10964,7 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "TxOutMemPackSuite",
-    "EraValueSuite"
+    "TxOutMemPackSuite"
    ],
    "note": "the representation is read by `MultiAssetRep.read`, which TxOutMemPackSuite runs on outputs the Haskell node wrote; its refusals of a malformed representation never come, since only `to` builds one and `modifyCoin` keeps it (an ERR-5 kept site)",
    "digest": "d417746b8c2f68b2"
@@ -11082,9 +11038,6 @@
    "structure": "differs",
    "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6969689140",
    "evidence": [
-    "EraPParamsSuite",
-    "EraConwaySuite",
-    "ConwayUpdatePlutusDataSuite",
     "RecordedScriptContextsSuite",
     "DijkstraPParamsSuite",
     "DijkstraScriptContextsSuite"
@@ -11655,9 +11608,6 @@
    "structure": "differs",
    "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6969689140",
    "evidence": [
-    "EraPParamsSuite",
-    "EraConwaySuite",
-    "ConwayUpdatePlutusDataSuite",
     "RecordedScriptContextsSuite",
     "DijkstraPParamsSuite",
     "DijkstraScriptContextsSuite"
@@ -13274,8 +13224,7 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "EraPlutusContextSuite",
-    "ConwayPlutusContextRefusalsSuite"
+    "EraPlutusContextSuite"
    ],
    "note": "the shape of 9df9f98c and 29a7d656 (decided 2026-11-20, #85), with no change of behaviour: the level, the scripts used and the level's information, which f649f975's `LedgerTxInfo era` (`Context.hs:92-103`) lacks; the epoch information and the system start as one clock, the flat translation's, whose failure is typed where the reference's is Text",
    "digest": "bd45a975b56fbe1b"
@@ -13546,8 +13495,7 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "EraPlutusContextSuite",
-    "ConwayPlutusContextRefusalsSuite"
+    "EraPlutusContextSuite"
    ],
    "note": "the superclass `PlutusLanguage l` as a member, and the language's selection among the era's memoised information (`lookupTxInfoResult`) as one",
    "digest": "b6c0c376f337199b"
@@ -13991,7 +13939,6 @@
    "structure": "differs",
    "evidence": [
     "EraPlutusContextSuite",
-    "ConwayPlutusContextRefusalsSuite",
     "PlutusLedgerApiV4Suite"
    ],
    "note": "every case but Alonzo's for Plutus V1 (`Maybe PV1.TxInInfo`): Alonzo is not among the era types yet, and no later era has the case; the Plutus V4 case is V4's type, as at 9df9f98c and 29a7d656, where f649f975's is V3's",
@@ -14531,8 +14478,7 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "EraPlutusContextSuite",
-    "EraConwaySuite"
+    "EraPlutusContextSuite"
    ],
    "note": "the datum read as data, its failure returned where the reference raises `error`: only an inline datum taken unread (`BabbageTxOutRep.fromStored`) can reach it",
    "digest": "9fe3c07551a3f586"
@@ -14553,8 +14499,7 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "EraPlutusContextSuite",
-    "EraConwaySuite"
+    "EraPlutusContextSuite"
    ],
    "note": "the spending purpose read through the script class's `toSpendingPurpose`, a member of ConwayEraScript here (#85's item on AlonzoEraScript's purposes); the output's inline datum is read as data first, as the reference's `<|>` forces its strict `SJust`, and its failure returned where the reference raises `error`: only an inline datum taken unread (`BabbageTxOutRep.fromStored`) can reach it",
    "digest": "b953a80d417fe89e"
@@ -14961,7 +14906,6 @@
    "structure": "differs",
    "evidence": [
     "EraPlutusContextSuite",
-    "ConwayPlutusContextRefusalsSuite",
     "ContextMatrixSuite",
     "DijkstraPlutusContextSuite"
    ],
@@ -15186,8 +15130,7 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "EraPlutusContextSuite",
-    "EraConwaySuite"
+    "EraPlutusContextSuite"
    ],
    "note": "the inline datum through `binaryDataToData`, whose failure, which only an inline datum taken unread (`BabbageTxOutRep.fromStored`) can reach, is the node's own `Undecodable` where the reference raises `error`; it is read only for an address that is not Byron, where the reference forces its lazy `datum`, so a Byron address is refused first, as in the flat path",
    "digest": "3abd995d16208179"
@@ -15290,8 +15233,7 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "EraPlutusContextSuite",
-    "EraConwaySuite"
+    "EraPlutusContextSuite"
    ],
    "note": "decoded Plutus data with the bytes it arrived as, made only by decoding them; not indexed by the era, as the era types' TxDats and Redeemers that hold it are not",
    "digest": "7f405de25b251c07"
@@ -19398,8 +19340,7 @@
    "structure": "differs",
    "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6971062751",
    "evidence": [
-    "EraPlutusContextSuite",
-    "ConwayPlutusContextRefusalsSuite"
+    "EraPlutusContextSuite"
    ],
    "note": "`mkSupportedLanguage`, `mkSupportedPlutusRunnable`, `mkTxInfoResult` and `lookupTxInfoResult`; the superclass `AlonzoEraScript era` and the error's Eq, Show, NFData, CBOR and JSON constraints are not members; the context error and the memoised information are the families `ContextError` and `TxInfoResult`",
    "digest": "f372f9e86c17bc50"
@@ -19492,8 +19433,7 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "EraPlutusContextSuite",
-    "ConwayPlutusContextRefusalsSuite"
+    "EraPlutusContextSuite"
    ],
    "note": "each language's instance selects its own result (`EraPlutusTxInfo#lookupTxInfoResult`), so the reference's impossible lookup of an unsupported language (`lookupTxInfoResultImpossible`) has no counterpart",
    "digest": "aa93a73d3822740f"
@@ -19534,8 +19474,7 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "EraPlutusContextSuite",
-    "ConwayPlutusContextRefusalsSuite"
+    "EraPlutusContextSuite"
    ],
    "note": "the language's own selection among the era's memoised information, which the reference writes in the era's `EraPlutusContext` instance by the language's singleton; the unsupported languages' `lookupTxInfoResultImpossible` has no counterpart",
    "digest": "a8fef918aef9341c"
@@ -20295,9 +20234,7 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "EraPlutusContextSuite",
-    "ConwayPlutusContextRefusalsSuite",
-    "EraConwaySuite"
+    "EraPlutusContextSuite"
    ],
    "digest": "836966eea907511c",
    "note": "whether there is an inline datum asked through `dataTxOutF`, which reads it as data, as the reference's strict `SJust` forces `binaryDataToData`: an inline datum taken unread (`BabbageTxOutRep.fromStored`) that does not read as data is the node's own `Undecodable` where the reference raises `error`"
@@ -20995,7 +20932,6 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "EraConwaySuite",
     "EraPlutusContextSuite"
    ],
    "note": "the bytes of an inline datum, its constructor hidden (an opaque type); not indexed by the era, as the era's `Datum` that holds it is not",
@@ -21039,7 +20975,6 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "EraConwaySuite",
     "EraPlutusContextSuite"
    ],
    "note": "its failure returned where the reference raises `error`: only an inline datum taken unread (`BabbageTxOutRep.fromStored`, through `BinaryData.stored`) can reach it",
@@ -21083,7 +21018,6 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "EraConwaySuite",
     "EraPlutusContextSuite"
    ],
    "note": "not indexed by the era, as the era types' outputs that hold it name their era by their own type",
@@ -21105,7 +21039,6 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "EraConwaySuite",
     "EraPlutusContextSuite",
     "ConwayUtxowChecksSuite"
    ],
@@ -21128,7 +21061,6 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "EraConwaySuite",
     "EraPlutusContextSuite"
    ],
    "note": "over the output's datum where the reference's matches the compact output's cases, which give the same; `binaryDataToData`'s failure returned where the reference raises `error`",
@@ -24682,7 +24614,6 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "EraConwaySuite",
     "DijkstraTxSuite"
    ],
    "note": "the term kept as the bytes it was read from, as StakePoolState and the state codecs keep it, with its hash (pmHash) read once by `read`; decoding it into the reference's Url and ByteString is tracked in https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6999387793",
@@ -24701,11 +24632,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
-   "evidence": [
-    "EraConwaySuite"
-   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1263#issuecomment-7067525815",
    "note": "the derived Eq, by what the kept bytes mean",
    "digest": "fe3900e4786e0a9e"
   },
@@ -24722,11 +24651,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
-   "evidence": [
-    "EraConwaySuite"
-   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1263#issuecomment-7067525815",
    "note": "consistent with equals, by what the kept bytes mean",
    "digest": "ceffcc1bc2f89af4"
   },
@@ -24773,13 +24700,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
-   "evidence": [
-    "FuturePoolParamsCodecSuite",
-    "DijkstraTxCertSuite",
-    "EraConwaySuite"
-   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1263#issuecomment-7067525815",
    "note": "DecCBOR PoolMetadata at the given decoder version, over the term's kept bytes: a record of two items (definite or indefinite), a Url of at most 64 bytes of UTF-8 below version 9 and 128 from it, its text definite at every version in the 11.1 build's layout (f649f975 decodeString) and definite or chunked from version 12 in the Leios build's (9df9f98c), and the hash, a byte string definite below 12 and definite or chunked from it in both builds. The state's future parameters and the era decoders (Conway at 9, Dijkstra at 12) read with it; the owner decided on 2026-11-19 (asked 19:18:13Z, decided 20:18:03Z, #85 item 38) that the state read matches the reference here.",
    "digest": "87fd51241fe6eba8"
   },
@@ -24809,9 +24732,7 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "EraConwaySuite",
-    "DijkstraTxSuite",
-    "FuturePoolParamsCodecSuite"
+    "DijkstraTxSuite"
    ],
    "note": "era-independent in the state package, as the reference keeps it in its core library; 9df9f98c's phantom era (used only by `Era era => DecCBOR`) is not kept. sppBlsKey, the Leios build's third field, is PoolParamsBlsKey, by the state's layout: #1063's per-layout typing applied to one field, so a value of the 11.1 layout holds no key. The relays (StrictSeq StakePoolRelay) are the bytes they were read from and the metadata a PoolMetadata over its bytes, as StakePoolState and the state codecs keep them; decoding them into the reference's types is tracked in https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6999387793",
    "digest": "6989abcae4fffb78"
@@ -24829,11 +24750,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
-   "evidence": [
-    "EraConwaySuite"
-   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1263#issuecomment-7067525815",
    "note": "the derived Eq: the relays and the metadata by what their bytes mean (80 and 9800 are one empty list)",
    "digest": "23885b28d2373547"
   },
@@ -24850,11 +24769,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
-   "evidence": [
-    "EraConwaySuite"
-   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1263#issuecomment-7067525815",
    "note": "consistent with equals",
    "digest": "419b6df0ea6a0ccf"
   },
@@ -24881,11 +24798,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
-   "evidence": [
-    "FuturePoolParamsCodecSuite"
-   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1263#issuecomment-7067525815",
    "note": "the relays of a pool's parameters in a ledger state, read for the validation the reference's decoder makes: tags 0 to 2 of their lengths, a 16-bit port, an address in the version's byte-string form, a DNS name of at most 64 or 128 bytes, its text chunked only in the Leios layout from version 12 (decodeString, Decoding/Decoder.hs:1564-1598); the parameters keep the bytes",
    "digest": "fb87394681268175"
   },
@@ -25091,8 +25006,6 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "EraConwaySuite",
-    "DijkstraPlutusPurposeSuite",
     "DijkstraTxSuite"
    ],
    "note": "the reference's `AlonzoEraScript` member, here a member from Conway, as hoistPlutusPurpose is, since Babbage's purposes are not among the era types (#85's item on AlonzoEraScript's purposes, https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6888255792); Conway's and Dijkstra's instances are the reference's (`Conway/Scripts.hs:119-137` at f649f975, `Dijkstra/Scripts.hs:508-526` at 9df9f98c)",
@@ -25124,8 +25037,6 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "EraConwaySuite",
-    "DijkstraPlutusPurposeSuite",
     "DijkstraTxSuite"
    ],
    "note": "the reference's `AlonzoEraScript` member, here a member from Conway, as hoistPlutusPurpose is, since Babbage's purposes are not among the era types (#85's item on AlonzoEraScript's purposes, https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6888255792); Conway's and Dijkstra's instances are the reference's (`Conway/Scripts.hs:119-137` at f649f975, `Dijkstra/Scripts.hs:508-526` at 9df9f98c)",
@@ -25157,8 +25068,6 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "EraConwaySuite",
-    "DijkstraPlutusPurposeSuite",
     "DijkstraTxSuite"
    ],
    "note": "the reference's `AlonzoEraScript` member, here a member from Conway, as hoistPlutusPurpose is, since Babbage's purposes are not among the era types (#85's item on AlonzoEraScript's purposes, https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6888255792); Conway's and Dijkstra's instances are the reference's (`Conway/Scripts.hs:119-137` at f649f975, `Dijkstra/Scripts.hs:508-526` at 9df9f98c); the policy is its script hash's `Bytes` where the reference's is a `PolicyID`, as the minting purpose holds it, a difference of representation (#85's item on the reference's nominal types, https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6888273413)",
@@ -25190,8 +25099,6 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "EraConwaySuite",
-    "DijkstraPlutusPurposeSuite",
     "DijkstraTxSuite"
    ],
    "note": "the reference's `AlonzoEraScript` member, here a member from Conway, as hoistPlutusPurpose is, since Babbage's purposes are not among the era types (#85's item on AlonzoEraScript's purposes, https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6888255792); Conway's and Dijkstra's instances are the reference's (`Conway/Scripts.hs:119-137` at f649f975, `Dijkstra/Scripts.hs:508-526` at 9df9f98c); the policy is its script hash's `Bytes` where the reference's is a `PolicyID`, as the minting purpose holds it, a difference of representation (#85's item on the reference's nominal types, https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6888273413)",
@@ -25223,8 +25130,6 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "EraConwaySuite",
-    "DijkstraPlutusPurposeSuite",
     "DijkstraTxSuite"
    ],
    "note": "the reference's `AlonzoEraScript` member, here a member from Conway, as hoistPlutusPurpose is, since Babbage's purposes are not among the era types (#85's item on AlonzoEraScript's purposes, https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6888255792); Conway's and Dijkstra's instances are the reference's (`Conway/Scripts.hs:119-137` at f649f975, `Dijkstra/Scripts.hs:508-526` at 9df9f98c)",
@@ -25256,8 +25161,6 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "EraConwaySuite",
-    "DijkstraPlutusPurposeSuite",
     "DijkstraTxSuite"
    ],
    "note": "the reference's `AlonzoEraScript` member, here a member from Conway, as hoistPlutusPurpose is, since Babbage's purposes are not among the era types (#85's item on AlonzoEraScript's purposes, https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6888255792); Conway's and Dijkstra's instances are the reference's (`Conway/Scripts.hs:119-137` at f649f975, `Dijkstra/Scripts.hs:508-526` at 9df9f98c)",
@@ -25289,8 +25192,6 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "EraConwaySuite",
-    "DijkstraPlutusPurposeSuite",
     "DijkstraTxSuite"
    ],
    "note": "the reference's `AlonzoEraScript` member, here a member from Conway, as hoistPlutusPurpose is, since Babbage's purposes are not among the era types (#85's item on AlonzoEraScript's purposes, https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6888255792); Conway's and Dijkstra's instances are the reference's (`Conway/Scripts.hs:119-137` at f649f975, `Dijkstra/Scripts.hs:508-526` at 9df9f98c); the account is the node's flat `RewardAccount` where the reference's is an `AccountAddress`, as the withdrawing purpose holds it, a difference of representation (#85's item on the reference's nominal types, https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6888273413)",
@@ -25322,8 +25223,6 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "EraConwaySuite",
-    "DijkstraPlutusPurposeSuite",
     "DijkstraTxSuite"
    ],
    "note": "the reference's `AlonzoEraScript` member, here a member from Conway, as hoistPlutusPurpose is, since Babbage's purposes are not among the era types (#85's item on AlonzoEraScript's purposes, https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6888255792); Conway's and Dijkstra's instances are the reference's (`Conway/Scripts.hs:119-137` at f649f975, `Dijkstra/Scripts.hs:508-526` at 9df9f98c); the account is the node's flat `RewardAccount` where the reference's is an `AccountAddress`, as the withdrawing purpose holds it, a difference of representation (#85's item on the reference's nominal types, https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6888273413)",
@@ -26786,8 +26685,7 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "DijkstraUTxOSuite",
-    "DijkstraNativeScriptEvalSuite"
+    "DijkstraUTxOSuite"
    ],
    "note": "every member the class has here: `mkBasicTx` is no member of it for any era, `validateNativeScript` is `validateDijkstraNativeScript` (Tx.hs:427-438), and `allInputsTxBodyF` is `EraTxBody.allInputs`; `getTotalExUnits` adds each sub-transaction's units to the top level's, equal to the flat rules' (`DijkstraTxMeasures.totalExUnits`) on every Dijkstra transaction the repository holds, and each sub-transaction's to its redeemers' units as the flat decoder read them. `DijkstraEraTx`'s `hashTx` (`Tx.hs:445-472`) is not here (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7024127184)",
    "digest": "960fbb65d3599e5d"
@@ -27375,8 +27273,7 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "EraUtxosSuite",
-    "TxOutsBoundSuite"
+    "EraUtxosSuite"
    ],
    "digest": "5374840996203027",
    "note": "the body's id, outputs and collateral return taken to the function of the same name in TxIn's companion, the one home of the outputs' numbering, which the flat rules use too"
@@ -27418,8 +27315,7 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "EraUtxosSuite",
-    "TxOutsBoundSuite"
+    "EraUtxosSuite"
    ],
    "digest": "dfe6be767a7c873c",
    "note": "the body's id, outputs and collateral return taken to the function of the same name in TxIn's companion, the one home of the outputs' numbering, which the flat rules use too"
@@ -27440,8 +27336,7 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "EraUtxosSuite",
-    "TxOutsBoundSuite"
+    "EraUtxosSuite"
    ],
    "digest": "7089e4621bf5828d",
    "note": "the body's id, outputs and collateral return taken to the function of the same name in TxIn's companion, the one home of the outputs' numbering, which the flat rules use too"
@@ -28622,11 +28517,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
-   "evidence": [
-    "AllegraTimelockSuite"
-   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1263#issuecomment-7067525815",
    "note": "over the representation every era from Allegra to Conway shares (Timelock), as the reference's over `Timelock era`; deferred and run as a trampoline (cats Eval, its lists by the short-circuiting forallM and existsM) where the reference recurses, stack safe for a script as deep as a transaction (STK-1); it evaluates the scripts the reference evaluates, in its order, and stops where it stops: all of a list at the first that fails, any at the first that holds, m of a list once m hold, none for a non-positive m (`isValidMOf`, Allegra/Scripts.hs:487-495); AllegraTimelockSuite checks the verdicts against the flat evaluation, the scripts asked about against those the reference asks about, and, on a small stack, a script nesting each kind of list in turn 6,000 levels deep and the preprod script of 5,383 levels",
    "digest": "2bb0efcff707b7d5"
   },
@@ -28643,11 +28536,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
-   "evidence": [
-    "AllegraTimelockSuite"
-   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1263#issuecomment-7067525815",
    "note": "the era's native script given as the representation by its validateNativeScript (`NativeScript era ~ Timelock era`)",
    "digest": "7283334622da9e2a"
   },
@@ -28712,7 +28603,6 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "AllegraTimelockSuite",
     "EraUtxoSuite",
     "ConwayUtxoChecksSuite",
     "DijkstraSubUtxowSuite"
@@ -30431,8 +30321,7 @@
    "class": "Gap",
    "structure": "differs",
    "evidence": [
-    "DijkstraRulesOracleSuite",
-    "DijkstraGovSuite"
+    "DijkstraRulesOracleSuite"
    ],
    "note": "a type of its own with Conway's constructors under their names, in tag order (0 to 18, :135-155), with ConwayGovPredFailure's fields: a voter and a voter's hot credential are the flat voter's until the votes carry the reference's typed voter; an account is AccountAddress; a mismatch is the node's Mismatch without the reference's relation marker (RelEQ, RelGT); compared with the reference's bytes through DijkstraGovPredFailure.toStored and the oracle suite's encoder, which writes a Mismatch as one item (To mm)",
    "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923023870",
@@ -30738,11 +30627,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
-   "evidence": [
-    "EraProposalsSuite"
-   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1263#issuecomment-7067525815",
    "note": "the succ of maxBound that throws is a Left (GovDefect.ProposalIndexOverflow)",
    "digest": "273ea6782a466c11"
   },
@@ -30876,8 +30763,7 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "ConwayCertsChecksSuite",
-    "DijkstraCertsSuite"
+    "ConwayCertsChecksSuite"
    ],
    "note": "its constructors in the order of their tags (:166-167); WithdrawalsNotInRewardsCERTS is the 11.1 build's, which 29a7d656 and 9df9f98c remove with the base case (WithdrawalsRule), and has no value at Dijkstra (CertsWithdrawals), whose CERTS at 9df9f98c has CertFailure alone; its withdrawals are the reference's Withdrawals, Map AccountAddress Coin (Address.hs:980), each body account read into the state's AccountAddress, an account outside it a Vocab defect",
    "digest": "7dfbc1ac7aed6279"
@@ -31188,8 +31074,7 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "ConwayCertsChecksSuite",
-    "DijkstraCertsSuite"
+    "ConwayCertsChecksSuite"
    ],
    "note": "the type family EraRuleEvent at the rule POOL as a match type, named apart from the data type PoolEvent it reduces to, with Dijkstra's case",
    "digest": "3319754248ec0eb1"
@@ -31230,8 +31115,7 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "ConwayCertsChecksSuite",
-    "DijkstraCertsSuite"
+    "ConwayCertsChecksSuite"
    ],
    "note": "the type family EraRuleEvent at the rule DELEG as a match type, Nothing at Conway for the reference's VoidEraRule, with Dijkstra's case",
    "digest": "c52d273283fbdfa5"
@@ -31272,8 +31156,7 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "ConwayCertsChecksSuite",
-    "DijkstraCertsSuite"
+    "ConwayCertsChecksSuite"
    ],
    "note": "the type family EraRuleEvent at the rule GOVCERT as a match type, Nothing at Conway for the reference's VoidEraRule, with Dijkstra's case",
    "digest": "41c4a2a3bdf7ccdd"
@@ -31314,8 +31197,7 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "ConwayCertsChecksSuite",
-    "DijkstraCertsSuite"
+    "ConwayCertsChecksSuite"
    ],
    "note": "the type family EraRuleEvent at the rule CERT as a match type, with Dijkstra's case",
    "digest": "3dc01363e3c27c4a"
@@ -31356,8 +31238,7 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "ConwayCertsChecksSuite",
-    "DijkstraCertsSuite"
+    "ConwayCertsChecksSuite"
    ],
    "note": "the type family EraRuleEvent at the rule CERTS as a match type, with Dijkstra's case",
    "digest": "996ebe8806cc188e"
@@ -33091,11 +32972,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
-   "evidence": [
-    "LedgerInjectionSuite"
-   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1263#issuecomment-7067525815",
    "note": "the class InjectRuleFailure at the rule LEDGERS, one instance per era and failure type",
    "digest": "8ae3268fa22a0269"
   },
@@ -33183,11 +33062,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
-   "evidence": [
-    "LedgerInjectionSuite"
-   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1263#issuecomment-7067525815",
    "note": "ten of the reference's instances of UTXOW's failure and those below it, each Shelley.LedgerFailure . injectFailure, as one over UTXOW's injection through LEDGER's; Shelley's UTXO failure's is conwayShelleyUtxo",
    "digest": "7d01d1fc55b9fd99"
   },
@@ -33204,11 +33081,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
-   "evidence": [
-    "LedgerInjectionSuite"
-   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1263#issuecomment-7067525815",
    "note": "a function of the build's injection of Shelley's UTXO failures into UTXO's, as LEDGER's conwayShelleyUtxo is",
    "digest": "8511cf5cdfa96d25"
   },
@@ -33225,11 +33100,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
-   "evidence": [
-    "LedgerInjectionSuite"
-   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1263#issuecomment-7067525815",
    "note": "the reference's five instances of CERTS's failure and those below it, each Shelley.LedgerFailure . injectFailure, as one over CERTS's injection through LEDGER's",
    "digest": "7326b667e60f54be"
   },
@@ -33307,11 +33180,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
-   "evidence": [
-    "LedgerInjectionSuite"
-   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1263#issuecomment-7067525815",
    "note": "a function of the build: the instance of 29a7d656 and 9df9f98c (the same lines at both), none under the 11.1 line, whose f649f975 has no such instance",
    "digest": "f1c682bb2495ef60"
   },
@@ -34142,8 +34013,7 @@
    "structure": "differs",
    "evidence": [
     "ConwayCertsChecksSuite",
-    "DijkstraRulesOracleSuite",
-    "DijkstraCertsSuite"
+    "DijkstraRulesOracleSuite"
    ],
    "note": "the type family EraRule at the rule CERT as a class of the era's CERT transition, which CERTS runs on each certificate; its second parameter is what the era's CERT raises short of a verdict, Nothing at Conway and POOL's PoolDefect at Dijkstra, which the reference's rules do not have",
    "digest": "14cca181602917e2"
@@ -34227,8 +34097,7 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "DijkstraRulesOracleSuite",
-    "DijkstraCertsSuite"
+    "DijkstraRulesOracleSuite"
    ],
    "note": "Dijkstra's CERT under the validation policy the judgment runs under, a value here where the reference's is of its STS options, which POOL's static check (checkFailOnJustStatic) reads; a voting key POOL cannot check raised as POOL's defect (PoolDefect)",
    "digest": "e7f67aa367cfa19c"
@@ -34249,8 +34118,7 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "DijkstraRulesOracleSuite",
-    "DijkstraCertsSuite"
+    "DijkstraRulesOracleSuite"
    ],
    "note": "DELEG, POOL and GOVCERT each a sub-rule (Judge.nest) whose failures and events are embedded (EmbedInCert); POOL on the pool state alone through a focus of the certificate state; the validation policy, which POOL reads, a parameter (CertRule.dijkstra); POOL's defects raised as they are (PoolDefect)",
    "digest": "e7a01801656bc607"
@@ -34313,8 +34181,7 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "DijkstraRulesOracleSuite",
-    "DijkstraCertsSuite"
+    "DijkstraRulesOracleSuite"
    ],
    "note": "generic in its era, where the reference is generic in its rule too (SUBPOOL reuses it, D7c); the reward account's network compared as the state's Network, the node's read into it; RegisterPool and ReregisterPool told where the reference tells them; the proof of possession checked only under a policy that runs the static checks, a parameter (CertRule.dijkstra), a key it cannot check POOL's own defect raised through its own capability (PoolDefect); a new pool registers in the layout of the build the node follows and a re-registration waits in its pool state's, parameters of another layout refused as a defect the reference, one build, never meets (LedgerFailure.PoolParamsLayout)",
    "digest": "f3e92eb5a7ce13a2"
@@ -34332,11 +34199,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
-   "evidence": [
-    "DijkstraCertsSuite"
-   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1263#issuecomment-7067525815",
    "note": "verifyPossessionProofDSIGN through the node's BLS12-381 library: a proof that does not verify is the key, a failure of the library or a key or proof the decoder would not admit POOL's own defect (PoolDefect.BlsKeyUnverifiable, with the pool's KeyHash StakePool and the library's BlsError), which the reference's verifier has no counterpart of, as the Leios committee's selection treats them. A decoded certificate cannot reach it through its point encoding, as the decoder refuses a point it would not admit before POOL; an exception of the native verifier on points it holds can",
    "digest": "4268ce3c3ac23d89"
   },
@@ -34393,11 +34258,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
-   "evidence": [
-    "DijkstraCertsSuite"
-   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1263#issuecomment-7067525815",
    "note": "the classes InjectRuleFailure and InjectRuleEvent at the rule POOL for Dijkstra's failure and Shelley's event, one instance per era",
    "digest": "e653d4d9ad2c1dd4"
   },
@@ -34778,9 +34641,6 @@
    ],
    "class": "Gap",
    "structure": "differs",
-   "evidence": [
-    "DijkstraCertsSuite"
-   ],
    "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923349468",
    "note": "the current committee and the committee proposals are the node's flat records, as CertsEnv's",
    "digest": "2481566e63552df0"
@@ -34849,11 +34709,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
-   "evidence": [
-    "DijkstraCertsSuite"
-   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1263#issuecomment-7067525815",
    "note": "the type family EraRuleFailure at the rule ENTITIES as a match type with Dijkstra, its first era",
    "digest": "e5d2b174ae943728"
   },
@@ -34880,11 +34738,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
-   "evidence": [
-    "DijkstraCertsSuite"
-   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1263#issuecomment-7067525815",
    "note": "the type family EraRuleEvent at the rule ENTITIES as a match type with Dijkstra, its first era",
    "digest": "ab2a59aee216dde0"
   },
@@ -34901,11 +34757,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
-   "evidence": [
-    "DijkstraCertsSuite"
-   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1263#issuecomment-7067525815",
    "note": "the class InjectRuleFailure at the rule ENTITIES, one instance per era and failure type; Conway's LEDGER failure, impossible on every constructor (Entities.hs:413-426), has none, and Shelley's UTXO failure's one reachable constructor is injected by a function of the rule (ENTITIES.shelleyUtxoToDijkstraEntitiesPredFailure)",
    "digest": "2adc7fd529c5748a"
   },
@@ -35144,11 +34998,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
-   "evidence": [
-    "DijkstraCertsSuite"
-   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1263#issuecomment-7067525815",
    "note": "over the direct deposits read into AccountAddress keys, not the body",
    "digest": "37e6a87d8b54887f"
   },
@@ -35185,11 +35037,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
-   "evidence": [
-    "DijkstraCertsSuite"
-   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1263#issuecomment-7067525815",
    "note": "over the levels' withdrawals read into AccountAddress keys and the legacy mode, which the rule reads from the annotated transaction, not the annotated transaction itself",
    "digest": "b4dc85bc4b57749e"
   },
@@ -35206,11 +35056,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
-   "evidence": [
-    "DijkstraCertsSuite"
-   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1263#issuecomment-7067525815",
    "note": "over the top level's withdrawals read into AccountAddress keys and the legacy mode, not the annotated transaction",
    "digest": "c2a5ecc025d6dd8f"
   },
@@ -35334,8 +35182,7 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "DijkstraRulesOracleSuite",
-    "DijkstraCertsSuite"
+    "DijkstraRulesOracleSuite"
    ],
    "note": "written at Dijkstra, the one era with the rule, as Dijkstra's UTXO is; each map of the body read into the reference's AccountAddress keys, a value outside the vocabulary raised (LedgerFailure.Vocab), which no decoded body gives; the tests run in the reference's order, the check against the current accounts only when nothing failed (whenFailureFree); CERTS a sub-rule (Judge.nest) whose failures and events are embedded (EmbedCertsInEntities), with Dijkstra's CERT under the judgment's validation policy (CertRule.dijkstra); POOL's defects raised as they are (PoolDefect); CERTS's environment holds the 11.1 build's transaction field, which only the 11.1 build's base case reads and Dijkstra's CERTS does not have (CertsBaseCase). The evidence is a component check, not the reference's verdicts: the oracle's one accepted devnet transaction, from its block's state; DijkstraCertsSuite's 200 chain transactions from the empty state, whose complete ordered failures and certificate state equal those that CERTS alone and ENTITIES' predicates derive (the reference judged them on the chain's state, which the fixture does not record, CNF-2), crafted states for the withdrawals' order and whenFailureFree, and a direct deposit to an account the same body registers, checked and added after CERTS",
    "digest": "282f77ac02535931"
@@ -35353,11 +35200,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
-   "evidence": [
-    "DijkstraCertsSuite"
-   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1263#issuecomment-7067525815",
    "note": "the reference's injection calls `error \"Impossible\"` on every constructor of Shelley's UTXO failure but WrongNetworkWithdrawal, which ENTITIES never reaches; here it is over the one constructor the predicate declares (validateWrongNetworkWithdrawal), so the impossible ones do not compile; the accounts are read into AccountAddress, a conversion total on decoded bodies but not by type, as the era bodies hold withdrawals keyed by the node's reward account (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7058657335); a value outside the vocabulary is the rule's raised defect",
    "digest": "3d3970ed66f94fca"
   },
@@ -35387,8 +35232,7 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "ConwayCertsChecksSuite",
-    "DijkstraCertsSuite"
+    "ConwayCertsChecksSuite"
    ],
    "note": "the withdrawals of CERTS's WithdrawalsNotInRewardsCERTS by era: the reference's Withdrawals at Conway, whose era types follow the 11.1 build's ledger, and Nothing at Dijkstra, whose CERTS at 9df9f98c has CertFailure alone. Its observable behaviour is the reference's: Dijkstra's CERTS reports no such failure in either, and the compiler refuses the constructor there, as MirSigners does at Conway.",
    "digest": "fe9fcf6a62fb0960"
@@ -35420,7 +35264,6 @@
    "structure": "differs",
    "evidence": [
     "ConwayCertsChecksSuite",
-    "DijkstraCertsSuite",
     "DijkstraRulesOracleSuite"
    ],
    "note": "CERTS's case on the empty sequence of certificates by era, a closed choice of the shared transition: the 11.1 build's, with the evidence that the era's CERTS reports the withdrawals, or the later builds', which leaves the state as it is",
@@ -35481,11 +35324,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
-   "evidence": [
-    "DijkstraCertsSuite"
-   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1263#issuecomment-7067525815",
    "note": "the class InjectRuleFailure at the rule DELEG for a failure other than Conway's own (InjectDeleg), one instance per era and failure type",
    "digest": "f87d1ebafb3e86b5"
   },
