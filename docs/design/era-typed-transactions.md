@@ -1585,7 +1585,138 @@ Conway's rules on the classes follow as the rest of stage 2.
       an input a sub-transaction spent, a batch's collateral, and a Plutus refusal;
     - the refusals are compared through the flat form and the suite's encoder: the era failures have no encoder
       yet (#796).
-  - Not yet (#85): ENTITIES, the certificate rules, GOV, the sub-transactions' rules and LEDGER (D7b to D7e).
+  - Not yet (#85): GOV, the sub-transactions' rules and LEDGER (D7c to D7e); ENTITIES and the certificate rules
+    are the next bullet's.
+- **Dijkstra's certificate rules and ENTITIES** (`era/rules/DijkstraCerts.scala`,
+  `era/rules/DijkstraCertsFailures.scala`; `Rules/{Entities,Cert,Certs,Deleg,Pool,GovCert}.hs` of
+  `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/`, cardano-ledger 9df9f98c):
+  - CERTS, DELEG and GOVCERT are Conway's transitions at Dijkstra, with Dijkstra's cases of the failure and event
+    families. CERTS's, CERT's and DELEG's failures are Conway's types; GOVCERT's is `DijkstraGovCertPredFailure`,
+    Conway's renamed, with `conwayToDijkstraGovCertPredFailure`. The reference's injections and embeddings come
+    with them (`InjectCertFailure.dijkstra` and the others), as Conway's do. Shelley's `AccountAlreadyRegistered`
+    goes into Dijkstra's DELEG as `StakeKeyRegisteredDELEG`, tag 2 (`Deleg.hs:19-20`,
+    `InjectDelegFailure.dijkstra`). LEDGER composes it through CERT, CERTS and ENTITIES (`Ledger.hs:113-119`),
+    which have no instance of their own. Conway's era types follow the 11.1 build's ledger, which has no such
+    instance.
+  - CERTS runs the era's CERT through `CertRule`, the type family `EraRule "CERT"` as a class of the era's
+    transition: Conway's CERT at Conway (LEDGER passes `CertRule.conway`), Dijkstra's at Dijkstra. Its second
+    parameter is what the era's CERT raises short of a verdict: nothing at Conway, POOL's `PoolDefect` at Dijkstra.
+  - CERTS's base case is the era's (`CertsBaseCase`). Conway's is the 11.1 build's below version 11. Dijkstra's
+    leaves the state as it is (`Empty -> pure certState`, `Conway/Rules/Certs.hs:220`), by its type and not by
+    its protocol version. At 9df9f98c CERTS's failure has `CertFailure` alone (`Conway/Rules/Certs.hs:111-114`).
+    So the 11.1 build's `WithdrawalsNotInRewardsCERTS` has no value at Dijkstra (`CertsWithdrawals`, as
+    `MirSigners` has none at Conway), and `DijkstraCertsStored.toStored` is total. The environment's
+    transaction, which only the 11.1 build's case reads, stays Conway's field.
+  - CERT and POOL are Dijkstra's own. CERT makes a delegation certificate Conway's (`dijkstraToConwayDelegCert`)
+    for Conway's DELEG and runs Dijkstra's POOL on the pool state. POOL (`DijkstraPoolPredFailure`, tags 0, 1 and
+    3 to 7) has no version gate. It keeps the count of each VRF key hash's holders as the reference's invariant on
+    `psVRFKeyHashes` says (`Pool.hs:176-186`), and a new pool holds its voting key from the current epoch
+    (`mkStakePoolState cEpoch SNothing`). It checks the key's proof of possession only under a policy that runs the
+    static checks (`checkFailOnJustStatic`); the policy is a value of the judgment (`CertRule.dijkstra`), as the
+    reference's is of its options. A proof that does not verify is `BlsKeyInvalidProofOfPossession`. A failure of
+    the library, or a key or proof the decoder would not admit, is POOL's own defect
+    (`PoolDefect.BlsKeyUnverifiable`, with the pool's `KeyHash[StakePool]` and the `BlsError`), as the Leios
+    committee's selection treats them. POOL raises it through a capability of its own, as GOV raises `GovDefect`
+    and UTXO `UtxoStateDefect`, and CERT and ENTITIES raise it as it is; the node's flat `LedgerFailure` has no such
+    case. A decoded certificate cannot reach it through its point encoding, as the decoder refuses such a point
+    before POOL; an exception of the native verifier can. POOL is generic in its era, where the reference's is
+    generic in its rule too, for SUBPOOL (D7c).
+  - ENTITIES (`EntitiesPredFailure`, tags 0 to 13, and `EntitiesEvent`) is written at Dijkstra, the one era with
+    the rule, as Dijkstra's UTXO is. `dijkstraEntitiesTransition` runs, in the reference's order:
+    - the withdrawals' network, the direct deposits' network, the balance intervals against the current accounts
+      and the starting ones against the original accounts;
+    - the withdrawals against the original accounts: in the normal mode the top level's missing accounts and the
+      batch's sums past a balance, in the legacy mode the sub-transactions' sums;
+    - only when nothing has failed (`whenFailureFree`), the top level's withdrawals against the current accounts;
+    - the DReps' expiries, the top level's withdrawals applied, then CERTS as a sub-rule;
+    - the direct deposits against the accounts after CERTS, then added to them.
+  - A withdrawal or deposit applied changes a balance in `Word64` arithmetic that wraps, as `subtractCompactCoin`
+    and `addCompactCoin` do (`CompactCoin.subtract` and `add`), a Mirror recorded in the
+    [Dijkstra compatibility page](../compatibility/dijkstra.md) under ADR 0001's arithmetic procedure. A
+    withdrawal wraps a balance only on a transaction ENTITIES already refuses, as the reference's own comment says
+    (`Entities.hs:291-296`), and a later failure of that refusal reports it. ENTITIES alone does not stop a deposit
+    from wrapping one; the ledger's value conservation does, as no transaction deposits more than it consumes. Each map of the body is read into the
+    reference's `AccountAddress` keys, which every decoded one is; a value outside the vocabulary is raised
+    (`LedgerFailure.Vocab`).
+  - **The injections the reference leaves partial**, by D7a's decision (above). Conway's LEDGER failure is
+    impossible for ENTITIES on every constructor (`conwayToDijkstraEntitiesPredFailure`, `Entities.hs:413-426`),
+    and no predicate ENTITIES runs reports one, so it has no injection. Shelley's UTXO failure is impossible on
+    every constructor but `WrongNetworkWithdrawal` (`Entities.hs:428-443`). `validateWrongNetworkWithdrawal` now
+    declares that constructor as its result, and ENTITIES injects it alone. That injection reads the accounts into
+    `AccountAddress`, a conversion total on decoded bodies but not by type, as the era bodies hold withdrawals
+    keyed by the node's reward account
+    ([#85's item](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7058657335)). So it is a function of
+    the rule whose `Left` the rule raises, not an instance. `InjectEntitiesFailure` is invariant: with that
+    constructor a function, no instance is over a narrowed type.
+  - Evidence:
+    - `DijkstraRulesOracleSuite`: on the reference's 20 `certs` cases (`fixtures/reference/dijkstra-rules`), CERTS
+      on the era types, from the same parameters and state, gives the reference's refusal byte for byte, through
+      `DijkstraCertsStored.toStored` and the suite's encoder, the failures of `mixed-failures` across the
+      recursion's depths among them. It gives the flat rule's verdicts on all 20 and the flat rule's certificate
+      state on each case both admit. It leaves the flat rule's state after the setup of each of the 16 `gov` and 2
+      `utxow` cases that have one. ENTITIES admits the transaction of the devnet block the reference accepted
+      (`bbody/devnet-37-genesis-utxo`) from that block's state and leaves the state as it was; the flat rules halt
+      there at ENTITIES. That transaction has no withdrawal, certificate, deposit or interval, so the case shows
+      only that ENTITIES admits a plain transaction.
+    - `DijkstraCertsSuite`, POOL:
+      - the voting key and proof of a pool of the Leios devnet (`fixtures/reference/leios-genesis`) register, the
+        key held from the current epoch;
+      - that key with the proof of another key is refused with `BlsKeyInvalidProofOfPossession`, and admitted
+        under `NonStatic`; a key the decoder would not admit is POOL's defect `PoolDefect.BlsKeyUnverifiable`, not
+        read under `NonStatic`;
+      - the 16 pool registrations of the Leios build's decoding corpus (`fixtures/reference/leios-testnet-blocks`),
+        each registration certificate at the top level of a transaction the decoder accepted, found by its decoded
+        constructor. The one whose metadata hash is 70 bytes, which the decoder admits, is refused with
+        `PoolMedataHashTooBig` of 70 and nothing else. The other 15 are admitted, the 4 with a voting key holding it
+        from the current epoch. A component check, as the reference's POOL did not judge them;
+      - the VRF counts equal the reference's own recomputation (`populateVRFKeyHashes`) after each of a sequence
+        of registrations and re-registrations, and a key hash another pool holds is refused;
+      - CERTS tells `RegisterPool` then `ReregisterPool`, embedded in CERT's and CERTS's events.
+    - `DijkstraCertsSuite`, the testnet chain (`fixtures/reference/leios-testnet-chain-contexts`):
+      - CERTS on the certificates of the 8 transactions that hold them at the top level gives the flat rule's
+        failures or state, from the same empty state;
+      - ENTITIES runs on all 200 transactions from the empty state with no defect. On each, its complete ordered
+        failures, or the certificate state it leaves, equal those derived without its transition: ENTITIES'
+        predicates on the body's maps, CERTS alone one level down, and the direct deposits added by hand, in the
+        order the reference reports them. It refuses 23. This is a component check: the reference judged them on
+        the chain's state.
+      - On the chain's first transaction that registers an account at the top level, encoded again with a direct
+        deposit to that account (body field 25), ENTITIES admits it and the account holds the deposit. So the
+        deposits are checked and added after CERTS.
+      - On the transaction that withdraws from an account and unregisters it with another (crafted accounts):
+        drained, it is admitted with both unregistered, so the withdrawal is applied before CERTS; withdrawing past
+        the balance gives `WithdrawalAmountsExceedingOriginalBalance`, no check of the current accounts, and DELEG's
+        `StakeKeyHasNonZeroAccountBalanceDELEG` of the wrapped balance; an account the current accounts lack gives
+        `WithdrawalAccountsMissing`, and is not reported when the original balance is short (`whenFailureFree`).
+    - `DijkstraCertsSuite`, the rest:
+      - on built values, each injection into CERT, CERTS and ENTITIES equals the reference's composition;
+      - DELEG's injection of Shelley's `AccountAlreadyRegistered` is `StakeKeyRegisteredDELEG`, which equals DELEG's
+        own refusal of a second registration, through CERT and CERTS;
+      - CERTS's 11.1 withdrawals' case does not compile at Dijkstra (`compileErrors`, beside Conway's, which does);
+      - the constructors the reference calls impossible for ENTITIES have no injection (`compileErrors`, beside a
+        reachable one that has);
+      - ENTITIES' predicates on crafted accounts: the balance intervals, the direct deposits and the withdrawals in
+        each mode.
+    - Conway's era suites (`ConwayCertsChecksSuite`, `CertsEpochWrapSuite`, `PoolParamsLayoutSuite`,
+      `ConwayLedgerChecksSuite`, `LedgerInjectionSuite`, the upstream certificate and LEDGER conformance suites)
+      keep their expected values.
+  - Incomplete (CNF-2):
+    - the chain's transactions as the reference judged them: that needs the chain's certificate state, which the
+      fixture does not record; here they are a component check from the empty state;
+    - the certificates of the 2 chain transactions that hold them in a sub-transaction: SUBCERTS's (D7c); and
+      ENTITIES on the chain's 28 batches as the reference judged them, which reads the state after SUBLEDGERS;
+    - the `gov` cases' own verdicts, which are GOV's (D7d); only their setups are compared here;
+    - a pool registration against the flat rules, which halt on one (`DijkstraPending.PoolRegistration`): POOL's
+      registrations are compared with the reference's invariant and recorded parameters, not with a flat rule;
+    - refusals that no recording holds: any of ENTITIES' own failures, and a pool registration with a voting key,
+      which the oracle's cases do not reach (its scope excludes ENTITIES and pool registrations);
+    - the refusals are compared through the flat Dijkstra form and the suite's encoder: the era failures have no
+      encoder yet (#796).
+  - Not yet (#85): the committee and its proposals in `EntitiesEnv` are the node's records, as in `CertsEnv` (the
+    Gap of [#85's item](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923349468)); the era bodies'
+    withdrawals and deposits keyed by `AccountAddress`
+    ([item](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7058657335)); the sub-transactions' rules,
+    which reuse POOL and ENTITIES' checks (D7c).
 - **Next, Conway's rules.** The first rule ported is one that needs no parameters, the second one that
   does, each under a differential against the flat rule on the recorded blocks and the refusal corpus.
 - The body is read through the flat decoder for now. What only the projection refuses (an update, genesis
