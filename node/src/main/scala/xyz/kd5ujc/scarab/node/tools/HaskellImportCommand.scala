@@ -11,10 +11,10 @@ import fs2.io.file.Path as FsPath
 import io.circe.Json
 import java.nio.file.Path
 import xyz.kd5ujc.scarab.ledger.{ConfigError, ConfigProblem}
-import xyz.kd5ujc.scarab.node.NodeSetup
+import xyz.kd5ujc.scarab.node.{NodeSetup, ReferenceBuildFlag}
 
 /** `import-haskell-db --haskell-db <dir> (--genesis-dir <dir> | --config <config.json>) --db <dir>
-  * [--stop-slot N]`
+  * [--stop-slot N] [--reference-build <build>]`
   *
   * Reads the ImmutableDB of a Haskell node (`<haskell-db>/immutable`, never written) and appends
   * its blocks to our immutable store under `--db`, so that `follow --db <dir>` replays them locally
@@ -22,20 +22,27 @@ import xyz.kd5ujc.scarab.node.NodeSetup
   * protocol magic are checked; a database of another network is refused. Re-running it continues
   * after the blocks already stored. A Leios node's endorser-block database (`leios.vol.db` and
   * `leios.imm.db`, never written) is read into the Leios store at `<db>/leios` first.
+  *
+  * `--reference-build` names the build that wrote the database ([[ReferenceBuildFlag]]): the
+  * network setup is that build's, and under the Leios testnet's build the chain's Dijkstra blocks
+  * are stored ([[HaskellImport.storesDijkstra]]).
   */
 object HaskellImportCommand:
   val Usage: String =
-    "usage: import-haskell-db --haskell-db <dir> (--genesis-dir <dir> | --config <config.json>) --db <dir> [--stop-slot N]"
+    "usage: import-haskell-db --haskell-db <dir> (--genesis-dir <dir> | --config <config.json>) --db <dir> [--stop-slot N] [--reference-build <build>]\n" +
+      "--reference-build names the build that wrote the input database. " + ReferenceBuildFlag.Help
 
   final case class Options(
       haskellDb: Path,
       db: Path,
       genesisDir: Option[Path],
       config: Option[Path],
-      stopSlot: Option[Long]
+      stopSlot: Option[Long],
+      build: ReferenceBuild = ReferenceBuild.Default
   )
 
-  private val Flags = Set("haskell-db", "genesis-dir", "config", "db", "stop-slot")
+  private val Flags =
+    Set("haskell-db", "genesis-dir", "config", "db", "stop-slot", "reference-build")
 
   def parse(args: List[String]): Either[ConfigError, Options] =
     def bad[A](problem: ConfigProblem): Either[ConfigError, A] = Left(
@@ -79,74 +86,93 @@ object HaskellImportCommand:
             ConfigError(ConfigProblem.WithUsage(ConfigProblem.FlagValue("--stop-slot", t), Usage))
           )
       }
+      build <- ReferenceBuildFlag.parse(flags.get("reference-build"), Usage)
     yield Options(
       Path.of(haskell),
       Path.of(db),
       flags.get("genesis-dir").map(Path.of(_)),
       flags.get("config").map(Path.of(_)),
-      stop
+      stop,
+      build
     )
 
   def run(args: List[String]): IO[ExitCode] =
     parse(args) match
       case Left(e) => IO.println(e.message).as(ExitCode(2))
       case Right(options) =>
-        IO.blocking(setupOf(options)).flatMap {
-          case Left(e) => IO.println(e.message).as(ExitCode(2))
-          case Right((setup, chunkSlots)) =>
-            val config = HaskellImport.Config(
-              FsPath.fromNioPath(options.haskellDb),
-              FsPath.fromNioPath(options.db),
-              setup.identity,
-              setup.geometry.byron.epochSlots,
-              chunkSlots,
-              options.stopSlot
-            )
-            Handle
-              .allow[HaskellImportError] {
-                // the process's one instance: the command opens a Leios store nowhere else
-                LeiosStoreLocks
-                  .make[IO]
-                  .flatMap(HaskellImport.run[IO](config, _, progress))
-                  .map(Some(_))
-              }
-              .rescue(e => log("error", "message" -> Json.fromString(e.message)).as(None))
-              .flatMap {
-                case Some(r) =>
-                  log(
-                    "done",
-                    "appended" -> Json.fromLong(r.appended),
-                    "skipped" -> Json.fromLong(r.skipped),
-                    "chunks" -> Json.fromInt(r.chunks),
-                    "tipSlot" -> r.tip.fold(Json.Null)(t => Json.fromBigInt(t.slot)),
-                    "tipHash" -> r.tip.fold(Json.Null)(t => Json.fromString(t.hash.hex)),
-                    "tipBlockNo" -> r.tip.fold(Json.Null)(t => Json.fromBigInt(t.blockNo)),
-                    "stoppedAtSlot" -> Json.fromBoolean(r.stoppedAtSlot),
-                    "ignoredEntries" -> Json.fromInt(r.truncation.fold(0)(_._2.entries)),
-                    "ignoredBytes" -> Json.fromLong(r.truncation.fold(0L)(_._2.bytes)),
-                    "ignoredReason" -> r.truncation
-                      .flatMap(_._2.cause)
-                      .fold(Json.Null)(c => Json.fromString(c.message)),
-                    "leiosPoints" -> r.leios.fold(Json.Null)(c => Json.fromLong(c.points)),
-                    "leiosBodies" -> r.leios.fold(Json.Null)(c => Json.fromLong(c.bodies)),
-                    "leiosTransactions" -> r.leios
-                      .fold(Json.Null)(c => Json.fromLong(c.transactions)),
-                    "seconds" -> Json.fromLong(r.elapsed.toSeconds)
-                  ).as(ExitCode.Success)
-                case None => IO.pure(ExitCode(1))
-              }
-        }
+        log("referenceBuild", ReferenceBuildFlag.fields(options.build)*) *>
+          IO.blocking(setupOf(options)).flatMap {
+            case Left(e) => IO.println(e.message).as(ExitCode(2))
+            case Right((setup, chunkSlots)) =>
+              val experimental = setup.config.settings.experimentalHardForksEnabled
+              log("unstableReferenceBuild", "build" -> Json.fromString(options.build.name))
+                .whenA(ReferenceBuildFlag.warns(options.build, experimental)) *>
+                imported(config(options, setup, chunkSlots))
+          }
 
-  /** The network setup and the chunk size (10 * Byron's k, even when Byron is skipped). */
-  private def setupOf(options: Options): Either[ConfigError, (NodeSetup, ChunkSlots)] =
+  /** What the import reads and writes, with the setup of the build that wrote the source. */
+  private[tools] def config(
+      options: Options,
+      setup: NodeSetup,
+      chunkSlots: ChunkSlots
+  ): HaskellImport.Config =
+    HaskellImport.Config(
+      FsPath.fromNioPath(options.haskellDb),
+      FsPath.fromNioPath(options.db),
+      setup.identity,
+      setup.geometry.byron.epochSlots,
+      chunkSlots,
+      options.stopSlot,
+      build = options.build
+    )
+
+  private def imported(config: HaskellImport.Config): IO[ExitCode] =
+    Handle
+      .allow[HaskellImportError] {
+        // the process's one instance: the command opens a Leios store nowhere else
+        LeiosStoreLocks
+          .make[IO]
+          .flatMap(HaskellImport.run[IO](config, _, progress))
+          .map(Some(_))
+      }
+      .rescue(e => log("error", "message" -> Json.fromString(e.message)).as(None))
+      .flatMap {
+        case Some(r) =>
+          log(
+            "done",
+            "appended" -> Json.fromLong(r.appended),
+            "skipped" -> Json.fromLong(r.skipped),
+            "chunks" -> Json.fromInt(r.chunks),
+            "tipSlot" -> r.tip.fold(Json.Null)(t => Json.fromBigInt(t.slot)),
+            "tipHash" -> r.tip.fold(Json.Null)(t => Json.fromString(t.hash.hex)),
+            "tipBlockNo" -> r.tip.fold(Json.Null)(t => Json.fromBigInt(t.blockNo)),
+            "stoppedAtSlot" -> Json.fromBoolean(r.stoppedAtSlot),
+            "ignoredEntries" -> Json.fromInt(r.truncation.fold(0)(_._2.entries)),
+            "ignoredBytes" -> Json.fromLong(r.truncation.fold(0L)(_._2.bytes)),
+            "ignoredReason" -> r.truncation
+              .flatMap(_._2.cause)
+              .fold(Json.Null)(c => Json.fromString(c.message)),
+            "leiosPoints" -> r.leios.fold(Json.Null)(c => Json.fromLong(c.points)),
+            "leiosBodies" -> r.leios.fold(Json.Null)(c => Json.fromLong(c.bodies)),
+            "leiosTransactions" -> r.leios
+              .fold(Json.Null)(c => Json.fromLong(c.transactions)),
+            "seconds" -> Json.fromLong(r.elapsed.toSeconds)
+          ).as(ExitCode.Success)
+        case None => IO.pure(ExitCode(1))
+      }
+
+  /** The network setup of the build that wrote the source and the chunk size (10 * Byron's k, even
+    * when Byron is skipped).
+    */
+  private[tools] def setupOf(options: Options): Either[ConfigError, (NodeSetup, ChunkSlots)] =
     for
       setup <- options.config match
         case Some(file) =>
-          NodeSetup.fromConfigFile(ReferenceBuild.Default)(file, options.genesisDir)
+          NodeSetup.fromConfigFile(options.build)(file, options.genesisDir)
         case None =>
           options.genesisDir
             .toRight(ConfigError(ConfigProblem.MissingGenesis))
-            .flatMap(NodeSetup.fromDirectory(ReferenceBuild.Default))
+            .flatMap(NodeSetup.fromDirectory(options.build))
       chunkSlots <- setup.immutableChunkSlots
         .toRight(ConfigError(ConfigProblem.MissingChunkSize))
     yield (setup, chunkSlots)

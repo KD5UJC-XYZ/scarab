@@ -11,7 +11,7 @@ import fs2.io.file.{Files, Path}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{Block, ChainError, NetworkIdentity, StorageError}
 import xyz.kd5ujc.scarab.consensus.BlockRef
-import xyz.kd5ujc.scarab.protocol.DijkstraNotYet
+import xyz.kd5ujc.scarab.protocol.{DijkstraNotYet, ReferenceBuild}
 import xyz.kd5ujc.scarab.storage.{
   DatabaseOwnership,
   ChainStorage,
@@ -39,8 +39,9 @@ enum HaskellImportError:
   /** A block that does not decode. */
   case Undecodable(slot: Long, cause: ChainError)
 
-  /** A block of an era whose rules this build does not have yet: it decodes, but a node replaying
-    * it would refuse it, so it is not stored.
+  /** A block of an era that the selected reference build's network has no blocks of: a Dijkstra
+    * block under a release build ([[HaskellImport.storesDijkstra]]). It decodes, but it is not
+    * stored.
     */
   case EraNotYet(slot: Long, part: DijkstraNotYet)
 
@@ -92,6 +93,9 @@ object HaskellImport:
     *   Stop after the last block at or before this slot.
     * @param batch
     *   Blocks between two forced syncs and two progress reports.
+    * @param build
+    *   The reference build that wrote the source (`--reference-build`): whether its Dijkstra blocks
+    *   are stored ([[storesDijkstra]]).
     */
   final case class Config(
       haskellDb: Path,
@@ -100,8 +104,20 @@ object HaskellImport:
       byronEpochSlots: BigInt,
       chunkSlots: ChunkSlots,
       stopSlot: Option[Long] = None,
-      batch: Int = 10000
+      batch: Int = 10000,
+      build: ReferenceBuild = ReferenceBuild.Default
   )
+
+  /** Whether the import stores the Dijkstra blocks of a source that `build` wrote, or refuses them
+    * ([[HaskellImportError.EraNotYet]] with [[DijkstraNotYet.Rules]]). The Leios testnet's build
+    * runs a chain that is in Dijkstra from its first block, and its blocks are stored as they are:
+    * storing a block applies no rule, and applying one stays refused where the rules are
+    * (`MirrorRules`, `BlockFailure.NotYet`), as following that build is
+    * (`ReferenceBuildNotYet.Rules`). A release build's network has no Dijkstra block.
+    */
+  def storesDijkstra(build: ReferenceBuild): Boolean = build match
+    case ReferenceBuild.LeiosB004fe0c                            => true
+    case ReferenceBuild.Release11_1 | ReferenceBuild.Release11_2 => false
 
   final case class Progress(appended: Long, skipped: Long, chunks: Int, slot: Long)
 
@@ -176,9 +192,9 @@ object HaskellImport:
     def decode(b: HaskellBlock): F[(Block, BlockRef)] =
       Block.decode(b.bytes, config.byronEpochSlots) match
         case Left(e) => fail(HaskellImportError.Undecodable(b.slot, e))
-        // the ledger rules refuse a Dijkstra block (`MirrorRules`), so the import does not store one
-        case Right(_: Block.Dijkstra) =>
+        case Right(_: Block.Dijkstra) if !storesDijkstra(config.build) =>
           fail(HaskellImportError.EraNotYet(b.slot, DijkstraNotYet.Rules))
+        // a Dijkstra block's header is checked as every other's (`LeiosHeader.dijkstraView`)
         case Right(block) =>
           val h = block.header
           for
@@ -228,8 +244,7 @@ object HaskellImport:
           chunkSlots = config.chunkSlots.value
         )
         _ <- NetworkIdentityFile.admit[F](config.db, config.identity, admission)
-        // before the blocks: a Leios database's chain holds Dijkstra blocks, which the block
-        // import below refuses (`EraNotYet`)
+        // the Leios database first, then the blocks
         leios <- importLeios
         reader = HaskellImmutableReader[F](config.haskellDb / "immutable", config.chunkSlots)
         truncation <- cats.effect.Ref.of[F, Option[(ChunkNo, Truncation)]](None)
