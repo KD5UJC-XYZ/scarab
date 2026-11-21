@@ -1097,11 +1097,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
-   "evidence": [
-    "LeiosStoreSuite"
-   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/830#issuecomment-7068381715",
    "digest": "4507844636b94302"
   },
   "def storage.LeiosStore#writeEbPoint": {
@@ -1317,11 +1315,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
-   "evidence": [
-    "LeiosStoreSuite"
-   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/830#issuecomment-7068381715",
    "digest": "d6acf998818f92db"
   },
   "def storage.RocksLeiosStore#writeEbBody": {
@@ -1347,11 +1343,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
-   "evidence": [
-    "LeiosStoreSuite"
-   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/830#issuecomment-7068381715",
    "digest": "3862bb8dc450ca03"
   },
   "def storage.RocksLeiosStore#writeTxs": {
@@ -1367,11 +1361,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
-   "evidence": [
-    "LeiosStoreSuite"
-   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/830#issuecomment-7068381715",
    "digest": "0720ba4dda146437"
   },
   "def storage.RocksLeiosStore#lookupEbBody": {
@@ -1387,11 +1379,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
-   "evidence": [
-    "LeiosStoreSuite"
-   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/830#issuecomment-7068381715",
    "digest": "a2e87b8b6953a80b"
   },
   "def storage.RocksLeiosStore#lookupEbClosure": {
@@ -1417,11 +1407,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
-   "evidence": [
-    "LeiosStoreSuite"
-   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/830#issuecomment-7068381715",
    "digest": "e93525bf8047fa05"
   },
   "def storage.RocksLeiosStore#batchRetrieveTxs": {
@@ -1437,11 +1425,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
-   "evidence": [
-    "LeiosStoreSuite"
-   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/830#issuecomment-7068381715",
    "digest": "5a42be479215dd77"
   },
   "def storage.RocksLeiosStore#scanEbPoints": {
@@ -1457,11 +1443,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
-   "evidence": [
-    "LeiosStoreSuite"
-   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/830#issuecomment-7068381715",
    "digest": "cbbc77fc2c8e5833"
   },
   "def storage.RocksLeiosStore#scanCompleteEbClosuresNotOlderThanSlot": {
@@ -1487,11 +1471,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
-   "evidence": [
-    "LeiosStoreSuite"
-   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/830#issuecomment-7068381715",
    "digest": "27f67257bc5ec477"
   },
   "def storage.RocksLeiosStore#garbageCollect": {
@@ -1517,11 +1499,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
-   "evidence": [
-    "LeiosStoreSuite"
-   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/830#issuecomment-7068381715",
    "digest": "7b1ae947226f38f2"
   },
   "def storage.RocksLeiosStore#promoteToImmutable": {
@@ -1557,11 +1537,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
-   "evidence": [
-    "LeiosStoreSuite"
-   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/830#issuecomment-7068381715",
    "digest": "cff378bfd3569170"
   },
   "def storage.LeiosEb.from": {
@@ -1597,11 +1575,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
-   "evidence": [
-    "LeiosStoreSuite"
-   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/830#issuecomment-7068381715",
    "digest": "da45810a84254a76"
   },
   "def storage.RocksLeiosStore#lookupEbClosureIn": {
@@ -1627,11 +1603,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
-   "evidence": [
-    "LeiosStoreSuite"
-   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/830#issuecomment-7068381715",
    "digest": "ca56f715392d777a"
   },
   "def storage.RocksLeiosStore#scanCompleteIn": {
@@ -1657,11 +1631,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
-   "evidence": [
-    "LeiosStoreSuite"
-   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/830#issuecomment-7068381715",
    "digest": "a0130ade9bda4361"
   },
   "def storage.RocksLeiosStore#collectBatch": {
@@ -1687,11 +1659,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
-   "evidence": [
-    "LeiosStoreSuite"
-   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/830#issuecomment-7068381715",
    "digest": "8d5dba64d92bf085"
   },
   "val storage.leios.LeiosReferenceDb.Pragmas": {
@@ -1807,11 +1777,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
-   "evidence": [
-    "LeiosReferenceDbSuite"
-   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/830#issuecomment-7068381715",
    "digest": "dbae726f6b1c7ae2"
   },
   "def storage.VolatileStore#collect": {
@@ -2239,11 +2207,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
-   "evidence": [
-    "LeiosStoreSuite"
-   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/830#issuecomment-7068381715",
    "digest": "4113e0bd95e63f72"
   },
   "trait storage.GcSchedule": {
