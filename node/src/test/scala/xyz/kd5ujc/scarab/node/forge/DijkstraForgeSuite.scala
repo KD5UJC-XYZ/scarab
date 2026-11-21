@@ -156,15 +156,18 @@ class DijkstraForgeSuite extends munit.FunSuite:
   /** The first slot after the tip the test pool leads, by the forger's leader check, and the
     * minimal block forged in it.
     */
-  private lazy val forged: Forged =
-    val epoch = geometry.epochOf(tip.slot + 1)
-    val ledger =
-      Forger
-        .ledgerAt(injected, Some(tip), epoch, tip.slot + 1, build)
-        .fold(e => fail(e.message), identity)
+  private lazy val epoch = geometry.epochOf(tip.slot + 1)
+  private lazy val ledger =
+    Forger
+      .ledgerAt(injected, Some(tip), epoch, tip.slot + 1, build)
+      .fold(e => fail(e.message), identity)
+
+  /** The inputs of the test pool's leader check in the tip's epoch, as the forger derives them. */
+  private lazy val inputs: EpochInputs =
     val view = Forger.leaderView(ledger, injected.protocol, epoch)
-    val inputs =
-      Forger.inputsOf(geometry, epoch, view, poolId, setup.praos.activeSlotsCoeff, vrf)
+    Forger.inputsOf(geometry, epoch, view, poolId, setup.praos.activeSlotsCoeff, vrf)
+
+  private lazy val forged: Forged =
     val window = (tip.slot + 1) until (tip.slot + 1 + geometry.stabilityWindow.toBigInt)
     val (slot, cert) = window.iterator
       .filter(s => geometry.epochOf(s) == epoch)
@@ -217,6 +220,17 @@ class DijkstraForgeSuite extends munit.FunSuite:
       .flatMap(NtNHeader.codec.decode(_).left.map(_.toString))
       .flatMap(Header.fromNtN(_, geometry.byron.epochSlots).left.map(_.message))
       .fold(e => fail(e), identity)
+
+  test("the test pool leads some slots after the tip and not others: the leader check decides") {
+    val led = ((tip.slot + 1) to (tip.slot + 400)).map(s => Leadership.check(s, inputs).isRight)
+    val count = led.count(identity)
+    // a third of the stake, and at the testnet's active slot coefficient about one slot in 120:
+    // the three of these 400 slots its VRF key wins, the first of them the forged block's
+    val share = Rational(inputs.stake, inputs.total)
+    assert(share > Rational(3, 10) && share < Rational(35, 100), share)
+    assertEquals(count, 3)
+    assertEquals(forged.slot, tip.slot + 1 + led.indexWhere(identity))
+  }
 
   test("the forger reads the same share of every pool as Praos2's ledger view") {
     // the forger's stake over the distribution's total, and the rational share Praos2 reads

@@ -1757,6 +1757,7 @@
           "KesRotationSuite",
           "ForgerFailureSuite",
           "ForgeSuite",
+          "DijkstraForgeSuite",
           "SystemStartSuite",
           "LeadershipSuite",
           "Draft03ProverSuite",
