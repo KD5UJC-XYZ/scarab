@@ -26,9 +26,9 @@ Everything here is of the network as restarted on 2026-10-18 (`systemStart` 2026
 `TestDijkstraHardForkAtEpoch` 0, so every header is of era index 7 and every block of tag 8), read
 from the relay `leios-node.play.dev.cardano.org:3001` (network magic 164) as a client that submits
 nothing, on 2026-11-03, while the live `config.json` named `MinNodeVersion` `11.2.0.164-rc-2026w44`
-(cardano-node `b004fe0c`, `docs/leios.md` section 12), except `headers-after-2168639.tsv`, read from a
-following node's database as its row says. The fixtures of the network before the restart were
-replaced on that day (#743); its chain no longer exists.
+(cardano-node `b004fe0c`, `docs/leios.md` section 12), except `headers-after-2168639.tsv` and
+`blocks-after-2168639.tsv`, read from a following node's database as their rows say. The fixtures of
+the network before the restart were replaced on that day (#743); its chain no longer exists.
 
 | File | Provenance | Used by |
 |---|---|---|
@@ -37,14 +37,15 @@ replaced on that day (#743); its chain no longer exists.
 | `testnet/headers-from-origin.tsv` | The first 1,100 ChainSync headers of the chain, from Origin (blocks 0 to 1,099, slots 16 to 21,870: epoch 0 and the start of epoch 1), as the relay sent them to an initiator-only client (version 14). Columns: HFC era index, block number, slot, header hash (Blake2b-256 of the header), the envelope `[era, tag24(header)]` in hex | `HfcHeaderSuite`, `LeiosHeaderChainSuite`, `LeiosTestnetHeaderSuite`, the fuzz corpus |
 | `testnet/headers-notable.tsv` | Four headers: block 0 (`first`), and three of a ChainSync from the relay's tip: block 64,849 (`announcing`, an endorser block announcement and no certificate) and blocks 64,850 and 64,854 (`certifying`, `certifying-2`, the certificate flag and an announcement). Columns: label, then as above | the same, `LeiosBlockSuite`, `LeiosNotifyCddlSuite` |
 | `testnet/headers-after-2168639.tsv` | The eight headers after block 97,273 (slot 2,168,639, the tip of `state/testnet-2168639`): blocks 97,274 to 97,281, slots 2,168,662 to 2,168,776, each with an endorser block announcement, block 97,276 also with the certificate flag. Read on 2026-11-18 from the ImmutableDB of the same following node (cardano-node `b004fe0c`, the testnet release's image), whose block 97,273 is the state's tip, hash for hash: each header is the bytes the chunk's secondary index places in its block, its Blake2b-256 the index's hash, put in the envelope `[7, tag24(header)]` a ChainSync server sends. The rest of that database is not published. Columns as in `headers-from-origin.tsv` | `DijkstraHeaderRulesSuite` |
+| `testnet/blocks-after-2168639.tsv` | Block 97,276 (slot 2,168,714, epoch 100, the epoch of `state/testnet-2168639`), a certifying block: a Leios certificate of 154 seats and no transactions, certifying the endorser block its parent 97,275 (`headers-after-2168639.tsv`) announced. Read on 2026-11-21 from the ImmutableDB of the same following node as `headers-after-2168639.tsv`: the 975 bytes chunk `02008`'s secondary index places at offset 177,400, the CRC-32 `be769dab` recorded there, and a header whose Blake2b-256 is the index's hash, as the block `[tag, block]` the chunk holds (the BlockFetch form). Columns as in `blocks-rc-2026w44.tsv`. Added with the owner's approval of 2026-11-21 (#73) | `LeiosCertificateFixtureSuite` (node): the certificate against the committee of `state/testnet-2168639` |
 | `testnet/blocks-rc-2026w44.tsv` | Five blocks fetched one at a time over BlockFetch: blocks 0, 1 and 8,562 (slot 174,310, after the peer snapshot's point), empty; block 64,850 (`certifying`, a Leios certificate and no transactions) and block 64,853 (`announcing-with-txs`, 83,896 bytes). Columns: label, block tag, block number, slot, header hash, the block `[tag, block]` in hex | `LeiosBlockSuite`, `LeiosTestnetBlockReferenceSuite` (through the corpus of `fixtures/reference/leios-testnet-blocks`), the fuzz corpus |
 
 Not captured: any LeiosNotify or LeiosFetch message. On 2026-10-14 and again on 2026-10-16 (a
 LeiosNotify pull and a LeiosFetch request, after ChainSync from a known point to the tip, versions 14
 and 16) the relay closed the connection on the first message on protocol 18 or 19
 (docs/leios.md sections 10 and 11.7), so there are no raw announcement, offer, vote or endorser-block
-fixtures; the Leios certificate fixture is the one in block 64,850, and the vote fixture is the
-golden `LeiosVote` above.
+fixtures; the Leios certificates are the ones in blocks 64,850 and 97,276, and the vote fixture is
+the golden `LeiosVote` above.
 
 The test files are plain TSV so that a diff shows a changed byte. The headers and blocks are public
 chain data of a test network.

@@ -293,6 +293,7 @@
     "fixtures/leios/state/genesis/dijkstra-genesis.json": "9417f82cc2405de8e834222818f45c23759d6ac6c6c6f515f68c689eaa597fc0",
     "fixtures/leios/state/genesis/shelley-genesis.json": "b6418c18967dcc1f168437238ba9f467c0a875937b5d11e5104d338753721a6c",
     "fixtures/leios/state/testnet-2168639/state": "4149eda8281fa5e91caf52291eafd1aed7b6104e3684831faaff27069c55ee26",
+    "fixtures/leios/testnet/blocks-after-2168639.tsv": "f0a377d5f76b5453bafdae43e43cbb19eadf5e33b03695b11c0a7fe2a5a8d7c8",
     "fixtures/leios/testnet/blocks-rc-2026w44.tsv": "d95b2739ab6bda22c8a106c8a2e5f067421b406ae33f95cbc0731e64625cdfcf",
     "fixtures/leios/testnet/config/alonzo-genesis.json": "5e5b1f0776c6d84bcd15bc7df4f9368884b7c433296657e54722175ce71f1318",
     "fixtures/leios/testnet/config/byron-genesis.json": "e446be2aa24aa327b0cbbff57b3ab3f8dfe793959809f3b31973c7945bc64e4b",
