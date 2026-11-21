@@ -10,9 +10,9 @@ node here; the run is the private judge its Leios follower and forger will be ch
   the signing key (`--shelley-bls-key`, cardano-node b004fe0c `Cardano/Node/Protocol/Shelley.hs:190-192`). Once the
   chain is in Dijkstra, one transaction re-registers every pool with a Dijkstra registration certificate built from
   that key (`stake-pool registration-certificate --bls-signing-key-file`, as cardano-node's
-  `LeiosStakePoolRegistration` test does, lines 134-152). A re-registration is a future parameter set, made active by
+  `LeiosStakePoolRegistration` test does, lines 106-152). A re-registration is a future parameter set, made active by
   POOLREAP at the next boundary, before SNAP (cardano-ledger 9df9f98c `Dijkstra/Rules/Pool.hs:292-303`,
-  `Dijkstra/Rules/Epoch.hs:169-171, 234-239`); SNAP seats the committee in the fresh mark snapshot, which governs the
+  `Dijkstra/Rules/PoolReap.hs:122-140`, `Dijkstra/Rules/Epoch.hs:169-171, 234-239`); SNAP seats the committee in the fresh mark snapshot, which governs the
   epoch after (`Dijkstra/Rules/Snap.hs:124-146`). So the committee holds the keys two boundaries after the
   registration's epoch (`committee_epoch`), and the load starts then.
 - **Overflow.** A forger puts the oldest mempool transactions that fit the RB in the RB and announces an EB for the
@@ -41,7 +41,8 @@ The judge (`judge`) reads each node's ImmutableDB after the nodes stop, and requ
 an RB that announces an EB, and a certifying RB whose parent is the announcing RB; every node applied that block
 (it is in its immutable chain), and every node's LeiosDB holds the certified EB's closure. The votes come from the
 nodes' logs (`LeiosVoted`) and from the certificate's signer bits. Adaptive endorsements stay on as on the testnet:
-while every seat votes the margin is kept and the EB capacity is not scaled (`LeiosAdaptiveEndorsements.hs:113-138`).
+while every seat votes the margin is kept and the EB capacity is not scaled
+(`LeiosAdaptiveEndorsements.hs:129-152, 252-279`).
 """
 import json
 import math
