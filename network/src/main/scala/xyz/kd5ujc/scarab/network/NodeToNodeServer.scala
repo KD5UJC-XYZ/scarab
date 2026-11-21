@@ -193,9 +193,22 @@ object NodeToNodeServer:
           )
         )
       ).background
+      // the Leios build's LeiosNotify server, hot and started on demand (`aLeiosNotifyServer`,
+      // `NodeToNode.hs` 1891-1909 and 2081-2089 at ouroboros-consensus 2416493b), with nothing to
+      // notify (#54)
+      _ <- Option
+        .when(settings.bundle == HotBundle.Leios)(())
+        .traverse_ { _ =>
+          channel(Protocols.LeiosNotify).flatMap { notify =>
+            guarded("leios-notify")(
+              episode(Temperature.Hot, onDemand(started)(Protocols.LeiosNotify))(
+                LeiosNotifyServer.run(notify)
+              ).foreverM[Unit]
+            ).background
+          }
+        }
       // the Leios build's LeiosFetch server, hot and started on demand (`aLeiosFetchServer`,
-      // `NodeToNode.hs` 1937-1951 and 2090-2098 at ouroboros-consensus 2416493b); LeiosNotify's
-      // number is registered and nothing serves it yet (#54)
+      // `NodeToNode.hs` 1937-1951 and 2090-2098 at ouroboros-consensus 2416493b)
       _ <- handlers.leiosFetch
         .filter(_ => settings.bundle == HotBundle.Leios)
         .traverse_ { handler =>

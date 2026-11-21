@@ -70,6 +70,11 @@ object FailurePolicy:
     // 2416493b LeiosDemoLogic.hs:849-1172, 1395-1588 and 1972-1986), which no rethrow policy names
     // (Node/RethrowPolicy.hs), so each is `ShutdownPeer`, the default
     case _: PeerError.LeiosFetchInvalidReply => FailureClass.Transient
+    // Our LeiosNotify server ended the connection over a request beyond `leiosNotifyPipelineDepth`
+    // held: the reference's server throws `ExnLeiosNotifyExcessiveRequests`
+    // (ouroboros-consensus 2416493b LeiosDemoOnlyTestNotify.hs:675-678 and 700-703), which no rethrow policy
+    // names (Node/RethrowPolicy.hs), so it is `ShutdownPeer`, the default
+    case _: PeerError.LeiosNotifyExcessiveRequests => FailureClass.Transient
     // Consensus 82ecba329 Node/RethrowPolicy.hs maps every ChainSyncClientException,
     // including EmptyBucket, DensityTooLow and HistoricityError, to ShutdownPeer.
     // Network c45735a5 PeerStateActions.hs uses epErrorDelay (10s default), preserving

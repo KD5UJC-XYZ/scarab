@@ -108,3 +108,22 @@ object LeiosNotify:
       reader: AnnouncementReader
   ): Either[LeiosWireError, (Message, Int)] =
     LeiosNotifyDecoder.decode(state, bytes)
+
+  /** The decoder the server receives the client's next message with, from Idle: `RequestNext` or
+    * `Quit` (`codecLeiosNotify`'s `decode`, `LeiosDemoOnlyTestNotify.hs:353-396`). A server that
+    * holds requests reads ahead from Idle, as the reference's lookahead server does
+    * (`leiosNotifyServerPeerLookahead`, `:636-722`). These messages are two bytes, so each longer
+    * prefix is read from its start.
+    */
+  val idleIncremental: IncrementalDecoder[Message] =
+    new IncrementalDecoder[Message]:
+      type Cursor = Unit
+      def initial: Cursor = ()
+      def resume(cursor: Cursor, input: Bytes): (Cursor, ChainSync.DecodeResult[Message]) =
+        (
+          (),
+          LeiosNotifyDecoder.decodeIdle(input) match
+            case Right((message, consumed))      => ChainSync.DecodeResult.Decoded(message, consumed)
+            case Left(LeiosWireError.Incomplete) => ChainSync.DecodeResult.NeedMore
+            case Left(error)                     => ChainSync.DecodeResult.Failed(ProtocolError.Leios(error))
+        )

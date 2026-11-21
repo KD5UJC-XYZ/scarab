@@ -10,7 +10,7 @@ import fs2.Stream
 import fs2.io.file.{Files, Path}
 import scala.collection.immutable.SortedMap
 import scala.concurrent.duration.*
-import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.codec.{Bytes, DomainError}
 import xyz.kd5ujc.scarab.consensus.leios.{
   AnnouncementFields,
   BytesSize,
@@ -28,6 +28,8 @@ import xyz.kd5ujc.scarab.network.{
   FailsOnUncaught,
   HotBundle,
   LeiosFetchInitiator,
+  LeiosNotifyServer,
+  Mux,
   MuxChannel,
   NetworkError,
   NodeToNode,
@@ -43,7 +45,12 @@ import xyz.kd5ujc.scarab.protocol.{
   ChainSync,
   ChainSyncFixtures,
   EbPoint,
+  HfcHeader,
+  IncrementalDecoder,
   LeiosFetch,
+  LeiosNotify,
+  LeiosWireError,
+  ProtocolError,
   TxSubmission2Fixtures
 }
 import xyz.kd5ujc.scarab.storage.{LeiosEb, LeiosStoreLocks, LeiosStoreSuite, RocksLeiosStore}
@@ -51,11 +58,13 @@ import xyz.kd5ujc.scarab.consensus.leios.LeiosOrders.given
 
 import Peers.*
 
-/** LeiosFetch on the Leios build's node-to-node connections (`withHot`, ouroboros-consensus
-  * 2416493b `Ouroboros/Consensus/Network/NodeToNode.hs` 2000-2020 and 2079-2100): one node's
-  * client, run by its hot activation, fetches an endorser block and its closure from another's
-  * store server through the registered protocols, so the first node's store completes the closure;
-  * and a release build's connection carries no Leios protocol.
+/** LeiosFetch and LeiosNotify on the Leios build's node-to-node connections (`withHot`,
+  * ouroboros-consensus 2416493b `Ouroboros/Consensus/Network/NodeToNode.hs` 2000-2020 and
+  * 2079-2100): one node's client, run by its hot activation, fetches an endorser block and its
+  * closure from another's store server through the registered protocols, so the first node's store
+  * completes the closure; the LeiosNotify server, with nothing to notify, holds a peer's requests
+  * and answers its quit, so the peer can demote the connection and promote it again; and a release
+  * build's connection carries no Leios protocol.
   */
 class LeiosFetchRegistrationSuite extends FailsOnUncaught:
   import LeiosStoreSuite.{ok, allowing, word32, slot, tx}
@@ -238,6 +247,103 @@ class LeiosFetchRegistrationSuite extends FailsOnUncaught:
             // the client's bracket is released: the peer is no longer live
             assert(left.isEmpty)
       }
+  }
+
+  /** The client's side of LeiosNotify on `channel`: messages sent, and replies read in `state`. */
+  private final class NotifyClient(channel: MuxChannel[IO])(using Net):
+    // the server's replies here carry no header: nothing is read by an era's decoder
+    private given LeiosNotify.AnnouncementReader = new LeiosNotify.AnnouncementReader:
+      def read(header: HfcHeader): Either[DomainError, Unit] = Right(())
+    def send(message: LeiosNotify.Message): IO[Unit] =
+      LeiosNotify
+        .encode(message)
+        .fold(e => IO.raiseError(new AssertionError(e.toString)), channel.send)
+    def receive(state: LeiosNotify.State): IO[LeiosNotify.Message] =
+      channel.recv(LeiosNotify.SmallByteLimit)(new IncrementalDecoder[LeiosNotify.Message]:
+        type Cursor = Unit
+        def initial: Cursor = ()
+        def resume(cursor: Cursor, input: Bytes) =
+          (
+            (),
+            LeiosNotify.decodePrefix(state, input) match
+              case Right((m, n)) => ChainSync.DecodeResult.Decoded(m, n)
+              case Left(LeiosWireError.Incomplete) => ChainSync.DecodeResult.NeedMore
+              case Left(e)                         => ChainSync.DecodeResult.Failed(ProtocolError.Leios(e))
+          ))
+
+    /** A conversation as the reference's pipelined client has one (`leiosNotifyClientPeerPipelined`,
+      * `LeiosDemoOnlyTestNotify.hs` 523-634): `requests` requests, then the quit, then the replies
+      * to what it left outstanding and the server's `MsgDone`.
+      */
+    def conversation(requests: Int): IO[(Vector[LeiosNotify.Message], LeiosNotify.Message)] =
+      send(LeiosNotify.Message.RequestNext).replicateA_(requests) *>
+        send(LeiosNotify.Message.Quit) *>
+        (
+          receive(LeiosNotify.State.Busy).replicateA(requests).map(_.toVector),
+          receive(LeiosNotify.State.Quit)
+        ).tupled
+
+  /** A Leios build's server over `b`, and our side over `a`, its LeiosNotify channel given to
+    * `use`, with how the server's side of the connection ended.
+    */
+  private def notifying[A](a: Bearer[IO], b: Bearer[IO])(
+      use: (NotifyClient, IO[ConnectionEnd]) => IO[A]
+  )(using Net): IO[A] =
+    Served
+      .accept(b, magic, handlers(None), NodeToNodeServer.Settings(bundle = HotBundle.Leios))
+      .background
+      .use(end =>
+        NodeToNode
+          .warmOverWithResults[IO, Bytes, Unit](
+            a,
+            magic,
+            ChainSyncFixtures.rawItem,
+            (),
+            NodeToNode.Settings(bundle = HotBundle.Leios)
+          )
+          .use(warm =>
+            warm.mux
+              .channel(Protocols.LeiosNotify, Mux.Role.Initiator)
+              .flatMap(c => use(NotifyClient(c), end.flatMap(_.embedNever)))
+          )
+      )
+
+  test("the LeiosNotify server holds the requests, answers the quit, and starts again after it") {
+    for
+      (a, b) <- Bearer.inMemory[IO](64)
+      // a demotion with three requests held, a promotion on the same bearer, and a demotion with
+      // none held (`start`'s `MsgQuit`)
+      conversations <- typed(
+        notifying(a, b)((client, _) =>
+          (client.conversation(3), client.conversation(1), client.conversation(0)).tupled
+        )
+      )
+    yield
+      val canceled = LeiosNotify.Message.Canceled
+      val done = LeiosNotify.Message.Done
+      assertEquals(
+        conversations,
+        Right(((Vector.fill(3)(canceled), done), (Vector(canceled), done), (Vector.empty, done)))
+      )
+  }
+
+  test("a LeiosNotify request beyond the pipelining depth ends the connection") {
+    for
+      (a, b) <- Bearer.inMemory[IO](64)
+      ended <- typed(
+        notifying(a, b)((client, end) =>
+          client.send(LeiosNotify.Message.RequestNext).replicateA_(LeiosNotifyServer.PipelineDepth) *>
+            client.send(LeiosNotify.Message.RequestNext) *> end
+        )
+      )
+    yield assertEquals(
+      ended,
+      Right(
+        ConnectionEnd.Failed(
+          NetworkError.LeiosNotifyExcessiveRequests(LeiosNotifyServer.PipelineDepth)
+        )
+      )
+    )
   }
 
   dirs.test("a release build's connection carries no Leios protocol: a LeiosFetch SDU ends it") {

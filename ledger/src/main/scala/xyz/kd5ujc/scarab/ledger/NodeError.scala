@@ -125,6 +125,11 @@ enum PeerError extends NodeError:
     */
   case LeiosFetchInvalidReply(cause: NetworkError.LeiosFetchInvalidReply)
 
+  /** Our LeiosNotify server ended the connection over a request beyond the pipelining bound
+    * ([[NetworkError.LeiosNotifyExcessiveRequests]]).
+    */
+  case LeiosNotifyExcessiveRequests(cause: NetworkError.LeiosNotifyExcessiveRequests)
+
   def message: String = this match
     case Handshake(r)   => s"handshake: ${r.message}"
     case Protocol(r)    => s"protocol: ${PeerError.protocolMessage(r)}"
@@ -152,6 +157,7 @@ enum PeerError extends NodeError:
     case RangeRefused(cause)           => cause.message
     case LeiosFetchRefused(cause)      => cause.message
     case LeiosFetchInvalidReply(cause) => cause.message
+    case LeiosNotifyExcessiveRequests(cause) => cause.message
 
 object PeerError:
   enum GenesisProblem:

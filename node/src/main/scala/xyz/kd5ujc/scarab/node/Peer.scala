@@ -450,6 +450,10 @@ object Peer:
     // handler of the answer throws (`FailurePolicy`)
     case cause: NetworkError.LeiosFetchInvalidReply =>
       Fault.Failed(PeerError.LeiosFetchInvalidReply(cause))
+    // our own LeiosNotify server ended the connection over a request beyond the pipelining bound,
+    // as the reference's server throws (`FailurePolicy`)
+    case cause: NetworkError.LeiosNotifyExcessiveRequests =>
+      Fault.Failed(PeerError.LeiosNotifyExcessiveRequests(cause))
     case cause: (NetworkError.HandshakeRefused | NetworkError.VersionMismatch) =>
       Fault.Failed(PeerError.Handshake(cause))
     case cause: (NetworkError.IngressLimit | NetworkError.Decode | NetworkError.IllegalTransition |

@@ -26,6 +26,11 @@ enum NetworkError extends DomainError:
 
   /** The LeiosFetch client ends the connection over the peer's answer. */
   case LeiosFetchInvalidReply(fault: LeiosFetchFault)
+
+  /** The LeiosNotify server ends the connection over a request beyond the `maximum` the client may
+    * leave outstanding (`ExnLeiosNotifyExcessiveRequests`).
+    */
+  case LeiosNotifyExcessiveRequests(maximum: Int)
   case QueryRefused(refusal: QueryRefusal[?])
 
   /** The selected ledger view and its backing UTxO generation did not have a provable relation. */
@@ -115,6 +120,8 @@ enum NetworkError extends DomainError:
       s"${Protocols.name(Protocols.LeiosFetch)} request refused: ${r.message}"
     case LeiosFetchInvalidReply(f) =>
       s"${Protocols.name(Protocols.LeiosFetch)} answer refused: ${f.message}"
+    case LeiosNotifyExcessiveRequests(maximum) =>
+      s"${Protocols.name(Protocols.LeiosNotify)}: more than $maximum requests outstanding"
     case QueryRefused(r) =>
       s"${Protocols.name(Protocols.LocalStateQuery)} query not answered: ${r.message}"
     case StateAcquireFailure(point, flushed, pinned, selected) =>

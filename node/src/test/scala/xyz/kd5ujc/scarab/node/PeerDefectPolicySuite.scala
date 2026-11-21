@@ -158,6 +158,19 @@ class PeerDefectPolicySuite extends FailsOnUncaught:
     }
   }
 
+  test("a LeiosNotify request beyond the pipelining depth ends the connection, retried later") {
+    // the reference's server throws `ExnLeiosNotifyExcessiveRequests`, which no rethrow policy
+    // names: `ShutdownPeer` (ouroboros-consensus 2416493b LeiosDemoOnlyTestNotify.hs:675-678 and
+    // 700-703)
+    val excessive = NetworkError.LeiosNotifyExcessiveRequests(1000)
+    Peer.networkFault(excessive) match
+      case Fault.Failed(error @ PeerError.LeiosNotifyExcessiveRequests(seen)) =>
+        assertEquals(seen, excessive)
+        assertEquals(FailurePolicy.classify(error), FailureClass.Transient)
+        assertEquals(FailurePolicy.disposition(SessionEnd.Failed(error)), Disposition.Backoff)
+      case other => fail(s"unexpected $other")
+  }
+
   // issue 567: of unknown origin on a connection, the connection's: it ends, uncharged
   test("a defect of unknown origin on a connection ends that connection, not the node") {
     Peer.networkFault(NetworkError.Defect(cause)) match
