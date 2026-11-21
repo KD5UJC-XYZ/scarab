@@ -172,14 +172,36 @@ from a capture says so.
 ### Independent review
 
 Every pull request gets an independent review of its final diff before it is marked ready, whatever its level: by
-someone other than its author, and for agent work by a read-only Codex review. The reviewer makes no edits; the
-review is posted on the pull request as a comment, with the disposition of each finding (fixed in which commit, or
-rejected and why). A review by the agent that wrote the change does not replace it, and a failed, cancelled or
-empty run is no review. The body's "Independent review" section links that comment and summarises the verdict and
-the disposition of each finding. Fixes that change more than wording get a second review, scoped to the fix
-commits. The recipe is [Get an independent review](docs/playbooks/review-a-change.md). `scripts/pr_policy.py`
-refuses a pull request that is not a draft unless the section is there with a link in it; a draft passes, so a pull
-request stays a draft until its review is posted.
+someone other than its author, and for agent work by a read-only Codex review. The reviewer makes no edits. An
+agent's review is posted on the pull request as a comment, with the disposition of each finding (fixed in which
+commit, or rejected and why); a person submits theirs as a GitHub review of the pull request. A review by the agent
+that wrote the change does not replace it, and a failed, cancelled or empty run is no review. The body's
+"Independent review" section links that review and summarises the verdict and the disposition of each finding. Fixes that change more than wording get a second review, scoped to the fix
+commits. The recipe is [Get an independent review](docs/playbooks/review-a-change.md).
+
+An agent's review runs through `scripts/codex_review.py`, which pins the reviewer's model and gives it the network
+in a read-only sandbox, with live web search requested. The review's reasoning effort follows the risk of the
+change; the script holds the model and these floors, and refuses an effort below them:
+
+| Change | Lowest effort |
+|---|---|
+| Level 0: wording, notes, comments | `medium` |
+| Level 0 that touches a design document or an ADR (`docs/design/`, `docs/adr/`) | `high` |
+| Levels 1 and 2 | `high` |
+| Levels 3 and 4: consensus-critical, a persisted format, a stage boundary | `xhigh` |
+
+A higher effort is always allowed; use it where a change could split the chain from the reference. The script
+stamps the review with the model and effort its session file records, and the stamp is posted with the review.
+`scripts/pr_policy.py` refuses a pull request that is not a draft unless the section links a review on the pull
+request: a comment that starts with that stamp, at or above the floor for the stated level and the changed files,
+or a GitHub review submitted by a person other than the author. The links include a review of the whole pull
+request, and the linked reviews must reach the head: after commits that change more than wording, a second review
+that starts at the head the last one covered, linked beside it; when the commits since the last review need none (a rebase that leaves the diff
+as reviewed, a wording fix), a line `Since the review: <head commit> <what changed>` in the section says so for that
+commit, and a later push needs a review of the commits after it (starting there) or a new line. A draft
+passes, so a pull request stays a draft until its review is posted; the check runs on a push or a body edit, so
+after correcting a linked comment, edit the body or re-run the check. The stamp guards against a mistaken run (a
+forgotten effort, a default model, a review of an older head); it is not a signature.
 
 ### The one scenario per area
 
