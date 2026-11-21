@@ -6243,7 +6243,6 @@
    "val network.IngressLimits.BlockFetchByronBytes": null,
    "val network.IngressLimits.ChainSyncHeaderBytes": null,
    "val network.IngressLimits.KeepAliveBytes": null,
-   "val network.IngressLimits.LeiosBytes": null,
    "val network.IngressLimits.NodeToClientBytes": null,
    "val network.IngressLimits.TxBytes": null,
    "val network.IngressLimits.TxIdReplyBytes": null,

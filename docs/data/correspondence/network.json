@@ -1179,6 +1179,264 @@
    ],
    "note": "IteratorExhausted, IteratorResult and IteratorBlockGCed as Exhausted, Block and BlockGCed; a range's stream is the results of its iteratorNext calls up to the first Exhausted or BlockGCed",
    "digest": "92f1ddb1ec343c6d"
+  },
+  "enum network.LeiosFetchJob": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoOnlyTestFetch.hs",
+     "symbol": "SomeLeiosFetchJob",
+     "lines": [
+      494,
+      499
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "LeiosFetchProtocolSuite"
+   ],
+   "note": "the request and its answer's continuation, a constructor per request",
+   "digest": "bf58e5874e139b4c"
+  },
+  "def network.LeiosFetchPipelined.run": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoOnlyTestFetch.hs",
+     "symbol": "leiosFetchClientPeerPipelined",
+     "lines": [
+      587,
+      683
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "LeiosFetchProtocolSuite"
+   ],
+   "note": "the receiver queue of the pipelined driver as a receiver fiber of its own that hands each answer on and counts it arrived; Collect (Just k) as a take of an answer that has arrived, if one has",
+   "digest": "ac70fd2bc802285b"
+  },
+  "val network.LeiosFetchPipelined.PipelineDepth": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus-diffusion/src/ouroboros-consensus-diffusion/Ouroboros/Consensus/Network/NodeToNode.hs",
+     "symbol": "leiosFetchPipelineDepth",
+     "lines": [
+      2167,
+      2168
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "LeiosFetchProtocolSuite"
+   ],
+   "digest": "ef87e4be9e6e20ef"
+  },
+  "val network.LeiosFetchPipelined.BusyTimeout": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoOnlyTestFetch.hs",
+     "symbol": "timeLimitsLeiosFetch",
+     "lines": [
+      245,
+      251
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "LeiosFetchProtocolSuite"
+   ],
+   "note": "longWait, the limit of Block and BlockTxs; Idle waits forever",
+   "digest": "d3701dd904b28b74"
+  },
+  "trait network.LeiosFetchRequestHandler": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoOnlyTestFetch.hs",
+     "symbol": "LeiosFetchRequestHandler",
+     "lines": [
+      538,
+      543
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "LeiosFetchProtocolSuite"
+   ],
+   "note": "one method per request where the reference's is one function over the request",
+   "digest": "f3c579a491ddd7e8"
+  },
+  "def network.LeiosFetchRequestHandler#block": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoOnlyTestFetch.hs",
+     "symbol": "LeiosFetchRequestHandler",
+     "lines": [
+      538,
+      543
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "LeiosFetchProtocolSuite"
+   ],
+   "digest": "d2e4a09da6fc5403"
+  },
+  "def network.LeiosFetchRequestHandler#blockTxs": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoOnlyTestFetch.hs",
+     "symbol": "LeiosFetchRequestHandler",
+     "lines": [
+      538,
+      543
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "LeiosFetchProtocolSuite"
+   ],
+   "digest": "dcc44012938c97c3"
+  },
+  "def network.LeiosFetchServer.run": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoOnlyTestFetch.hs",
+     "symbol": "leiosFetchServerPeer",
+     "lines": [
+      545,
+      568
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "LeiosFetchProtocolSuite"
+   ],
+   "digest": "50d7d19dd24c4944"
+  },
+  "val network.LeiosFetchServer.IdleByteLimit": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoOnlyTestFetch.hs",
+     "symbol": "byteLimitsLeiosFetch",
+     "lines": [
+      231,
+      243
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "LeiosFetchProtocolSuite"
+   ],
+   "note": "smallByteLimit, the limit of Idle",
+   "digest": "5966ee26078cd7a1"
+  },
+  "enum protocol.LeiosFetchRefusal": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic.hs",
+     "symbol": "ExnLeiosInvalidRequest",
+     "lines": [
+      1950,
+      1956
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic.hs",
+     "symbol": "msgLeiosBlockRequest",
+     "lines": [
+      263,
+      282
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "LeiosFetchProtocolSuite"
+   ],
+   "note": "ExnLeiosInvalidRequest's two cases, and the throwLeiosDbException and LeiosDbException of the handler split by cause",
+   "digest": "888f51ec44fbf225"
+  },
+  "val network.IngressLimits.LeiosNotifyBytes": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus-diffusion/src/ouroboros-consensus-diffusion/Ouroboros/Consensus/Network/NodeToNode.hs",
+     "symbol": "leiosNotifyProtocolLimits",
+     "lines": [
+      2170,
+      2177
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "LeiosFetchProtocolSuite"
+   ],
+   "note": "maxLeiosNotifyIngressQueue, the margin added where nodeToNode reads it",
+   "digest": "440989109568cbc6"
+  },
+  "val network.IngressLimits.LeiosFetchBytes": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus-diffusion/src/ouroboros-consensus-diffusion/Ouroboros/Consensus/Network/NodeToNode.hs",
+     "symbol": "leiosFetchProtocolLimits",
+     "lines": [
+      2179,
+      2186
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "LeiosFetchProtocolSuite"
+   ],
+   "note": "maxLeiosFetchIngressQueue, the margin added where nodeToNode reads it",
+   "digest": "96f8b83d41b8ddd3"
   }
  },
  "glue": [
@@ -1471,6 +1729,19 @@
    "reason": "the text of a BlockFetch range refusal, for presentation only; the reference shows its exceptions with derived Show instances",
    "definitions": [
     "def protocol.NetworkError.RangeRefusal#message"
+   ]
+  },
+  {
+   "reason": "the LeiosFetch runtime's Scala plumbing with no counterpart of its own: the client's settings record and instruction alias, the message tag a refusal names, the companions, the refusal's rendering, and the decoder the multiplexer receives a LeiosFetch message with, the codec run once its CBOR item has arrived (#54)",
+   "definitions": [
+    "class network.LeiosFetchPipelined.Settings",
+    "type network.LeiosFetchPipelined.Instruction",
+    "def network.LeiosFetchPipelined.tag",
+    "object network.LeiosFetchPipelined",
+    "object network.LeiosFetchServer",
+    "object protocol.LeiosFetchRefusal",
+    "def protocol.LeiosFetchRefusal#message",
+    "def protocol.LeiosFetch.incremental"
    ]
   }
  ]

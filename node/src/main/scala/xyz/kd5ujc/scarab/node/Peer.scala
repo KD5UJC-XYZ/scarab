@@ -443,6 +443,9 @@ object Peer:
     // our own BlockFetch server ended the connection over the peer's range, as the reference's
     // server throws for it (`FailurePolicy`)
     case cause: NetworkError.RangeRefused => Fault.Failed(PeerError.RangeRefused(cause))
+    // our own LeiosFetch server ended the connection over the peer's request, as the reference's
+    // handler throws for it (`FailurePolicy`)
+    case cause: NetworkError.LeiosFetchRefused => Fault.Failed(PeerError.LeiosFetchRefused(cause))
     case cause: (NetworkError.HandshakeRefused | NetworkError.VersionMismatch) =>
       Fault.Failed(PeerError.Handshake(cause))
     case cause: (NetworkError.IngressLimit | NetworkError.Decode | NetworkError.IllegalTransition |

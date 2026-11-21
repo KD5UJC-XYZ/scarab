@@ -145,3 +145,18 @@ object LeiosFetch:
 
   def decodePrefix(state: State, bytes: Bytes): Either[LeiosWireError, (Message, Int)] =
     LeiosFetchDecoder.decode(state, bytes)
+
+  /** The decoder the node receives a message of `state` with: [[decodePrefix]] run once the
+    * message's CBOR item has arrived whole, the item's framing scanned once across the SDUs it
+    * comes in, as the reference's driver feeds each chunk to its decoder's continuation
+    * (`runDecoderWithLimit`).
+    */
+  def incremental(state: State): IncrementalDecoder[Message] =
+    CborMessageDecoder(
+      _ => ChainSync.DecodeResult.Decoded(Some(0), 0),
+      bytes =>
+        decodePrefix(state, bytes) match
+          case Right((message, consumed))      => ChainSync.DecodeResult.Decoded(message, consumed)
+          case Left(LeiosWireError.Incomplete) => ChainSync.DecodeResult.NeedMore
+          case Left(error) => ChainSync.DecodeResult.Failed(ProtocolError.Leios(error))
+    )

@@ -20,6 +20,9 @@ enum NetworkError extends DomainError:
   case IngressLimit(protocol: Int, bytes: Long)
   case Decode(protocol: Int, cause: ProtocolError)
   case IllegalTransition(protocol: Int, cause: NetworkError.Violation)
+
+  /** The LeiosFetch server ends the connection rather than answer a request. */
+  case LeiosFetchRefused(refusal: LeiosFetchRefusal)
   case QueryRefused(refusal: QueryRefusal[?])
 
   /** The selected ledger view and its backing UTxO generation did not have a provable relation. */
@@ -105,6 +108,8 @@ enum NetworkError extends DomainError:
     case Decode(p, r)       => s"${Protocols.name(p)} decode: ${r.message}"
     case IllegalTransition(p, d) =>
       s"${Protocols.name(p)} protocol violation: ${NetworkError.violationMessage(d)}"
+    case LeiosFetchRefused(r) =>
+      s"${Protocols.name(Protocols.LeiosFetch)} request refused: ${r.message}"
     case QueryRefused(r) =>
       s"${Protocols.name(Protocols.LocalStateQuery)} query not answered: ${r.message}"
     case StateAcquireFailure(point, flushed, pinned, selected) =>
