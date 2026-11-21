@@ -1,0 +1,3 @@
+### Added (era types, #85)
+
+- Dijkstra's BBODY runs on the era types, as the Leios testnet's build (cardano-ledger 9df9f98c) has it, with the reference's block and header classes, failure types, events and injections, total on what the rule reaches. Every captured Dijkstra block of the testnet and the devnet reads into the era's types as the block decoder reads it, and on the reference's 15 recorded block cases BBODY gives the reference's verdict, each refusal byte for byte, and counts each admitted block for its issuer; the reference's own BBODY cases that run for Dijkstra give their expected verdicts on blocks built as its tests build them. The node still judges with the existing rules, so nothing changes in behaviour.

@@ -40938,6 +40938,1576 @@
     "DijkstraLedgerSuite"
    ],
    "digest": "126e2f5c80862afe"
+  },
+  "type ledger.era.BlockBody": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs",
+     "symbol": "BlockBody",
+     "lines": [
+      654,
+      654
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/BlockBody/Internal.hs",
+     "symbol": "BlockBody DijkstraEra",
+     "lines": [
+      116,
+      116
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "note": "the type family BlockBody as a match type, with Dijkstra's case",
+   "digest": "e1310fbd1b531cf9"
+  },
+  "class ledger.era.Block": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Block.hs",
+     "symbol": "Block",
+     "lines": [
+      51,
+      55
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "digest": "34454e6744595a63"
+  },
+  "class ledger.era.BlockHeaderVersionInfo": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Block.hs",
+     "symbol": "BlockHeaderVersionInfo",
+     "lines": [
+      151,
+      158
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraBbodySuite",
+    "DijkstraRulesOracleSuite"
+   ],
+   "note": "each Word32 a Long, bounded by the constructor of",
+   "digest": "71548a2c0ca91a25"
+  },
+  "def ledger.era.BlockHeaderVersionInfo.of": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Block.hs",
+     "symbol": "BlockHeaderVersionInfo",
+     "lines": [
+      151,
+      158
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "note": "the record's constructor over the decoder's two words, none outside Word32, which the header decoder never gives",
+   "digest": "a67933f03178d3ae"
+  },
+  "class ledger.era.PerasCert": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/BlockBody/Internal.hs",
+     "symbol": "PerasCert",
+     "lines": [
+      224,
+      226
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "note": "the build's placeholder newtype over a byte array, as the bytes of the byte string the block decoder reads",
+   "digest": "2d9ae391bdae2bc9"
+  },
+  "trait ledger.era.EraBlockBody": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs",
+     "symbol": "EraBlockBody",
+     "lines": [
+      644,
+      669
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "note": "the members BBODY reads, the lens a getter; the superclass EraTx a member (txOf); mkBasicBlockBody and ProtocolEraBlockHeader come with their readers",
+   "digest": "e0e4342f3c696790"
+  },
+  "def ledger.era.EraBlockBody#txOf": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs",
+     "symbol": "EraBlockBody",
+     "lines": [
+      644,
+      652
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "note": "the superclass EraTx era as a member",
+   "digest": "9a461304cb475c4d"
+  },
+  "def ledger.era.EraBlockBody#txSeqBlockBody": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs",
+     "symbol": "txSeqBlockBodyL",
+     "lines": [
+      660,
+      660
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "note": "the lens's getter, a Vector for the StrictSeq",
+   "digest": "918b01dc55119328"
+  },
+  "def ledger.era.EraBlockBody#hashBlockBody": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs",
+     "symbol": "hashBlockBody",
+     "lines": [
+      665,
+      665
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "digest": "03ebffa231476008"
+  },
+  "def ledger.era.EraBlockBody#blockBodySize": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs",
+     "symbol": "blockBodySize",
+     "lines": [
+      667,
+      669
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "note": "the reference's Int a Long",
+   "digest": "9774fe11eabe78af"
+  },
+  "trait ledger.era.DijkstraEraBlockBody": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/BlockBody/Internal.hs",
+     "symbol": "DijkstraEraBlockBody",
+     "lines": [
+      130,
+      135
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "note": "the lenses' getters",
+   "digest": "4f2b6a86e6d16da8"
+  },
+  "def ledger.era.DijkstraEraBlockBody#leiosCertBlockBody": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/BlockBody/Internal.hs",
+     "symbol": "leiosCertBlockBodyL",
+     "lines": [
+      131,
+      131
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "note": "the lens's getter; the certificate the decoded LeiosCert with its bytes",
+   "digest": "8421d31dc501f65b"
+  },
+  "def ledger.era.DijkstraEraBlockBody#perasCertBlockBody": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/BlockBody/Internal.hs",
+     "symbol": "perasCertBlockBodyL",
+     "lines": [
+      134,
+      134
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "note": "the lens's getter",
+   "digest": "c0379e83e2672cdb"
+  },
+  "given ledger.era.EraBlockBody.dijkstra": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/BlockBody/Internal.hs",
+     "symbol": "EraBlockBody DijkstraEra",
+     "lines": [
+      115,
+      121
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/BlockBody/Internal.hs",
+     "symbol": "DijkstraEraBlockBody DijkstraEra",
+     "lines": [
+      137,
+      140
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "digest": "67ddb9e2cd781847"
+  },
+  "given ledger.era.DijkstraEraBlockBody.dijkstra": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/BlockBody/Internal.hs",
+     "symbol": "DijkstraEraBlockBody DijkstraEra",
+     "lines": [
+      137,
+      140
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "digest": "2561fd4679554e3c"
+  },
+  "trait ledger.era.EraBlockHeader": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Block.hs",
+     "symbol": "EraBlockHeader",
+     "lines": [
+      120,
+      125
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "note": "the members BBODY reads, the lenses getters; blockHeaderSizeBlockHeaderG comes with its reader; the declared body size a Long bounded to Word32",
+   "digest": "6e2613d0df93a1bf"
+  },
+  "def ledger.era.EraBlockHeader#blockIssuerBlockHeader": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Block.hs",
+     "symbol": "blockIssuerBlockHeaderG",
+     "lines": [
+      121,
+      121
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "digest": "6f5bf9db7f6924b0"
+  },
+  "def ledger.era.EraBlockHeader#blockBodySizeBlockHeader": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Block.hs",
+     "symbol": "blockBodySizeBlockHeaderL",
+     "lines": [
+      123,
+      123
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "note": "the lens's getter, the Word32 a Long",
+   "digest": "7540a0d2ebcc573e"
+  },
+  "def ledger.era.EraBlockHeader#blockBodyHashBlockHeader": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Block.hs",
+     "symbol": "blockBodyHashBlockHeaderL",
+     "lines": [
+      124,
+      124
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "note": "the lens's getter",
+   "digest": "71674a32eb8ad0a8"
+  },
+  "def ledger.era.EraBlockHeader#slotNoBlockHeader": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Block.hs",
+     "symbol": "slotNoBlockHeaderL",
+     "lines": [
+      125,
+      125
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "note": "the lens's getter",
+   "digest": "463ddd81c6d3a2a4"
+  },
+  "trait ledger.era.LeiosEraBlockHeader": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Block.hs",
+     "symbol": "LeiosEraBlockHeader",
+     "lines": [
+      132,
+      147
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "note": "the members BBODY reads, the lenses getters; ebReferencesAnnouncementBlockHeaderL comes with its reader",
+   "digest": "34690620dd5d7ae0"
+  },
+  "def ledger.era.LeiosEraBlockHeader#prevNonceBlockHeader": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Block.hs",
+     "symbol": "prevNonceBlockHeaderL",
+     "lines": [
+      140,
+      141
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "note": "the lens's getter with the class's default, the neutral nonce",
+   "digest": "916977259b91387c"
+  },
+  "def ledger.era.LeiosEraBlockHeader#versionInfoBlockHeader": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Block.hs",
+     "symbol": "versionInfoBlockHeaderL",
+     "lines": [
+      143,
+      143
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "note": "the lens's getter",
+   "digest": "1360a90ba7a8aa50"
+  },
+  "given ledger.era.EraBlockHeader.dijkstra": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-protocol/src/Cardano/Protocol/Leios/BlockHeader.hs",
+     "symbol": "EraBlockHeader (Header c) era",
+     "lines": [
+      363,
+      379
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "note": "the build's Praos2 header's instance, over the header the block decoder read with its fields read once in the classes' types (DijkstraBlockHeader); the lenses getters",
+   "digest": "63241b05156d1050"
+  },
+  "given ledger.era.LeiosEraBlockHeader.dijkstra": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-protocol/src/Cardano/Protocol/Leios/BlockHeader.hs",
+     "symbol": "LeiosEraBlockHeader (Header c) era",
+     "lines": [
+      363,
+      379
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "note": "the build's Praos2 header's instance, over the header the block decoder read with its fields read once in the classes' types (DijkstraBlockHeader); the lenses getters",
+   "digest": "57caef6d76eca8d1"
+  },
+  "class ledger.era.dijkstra.DijkstraBlockBody": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/BlockBody/Internal.hs",
+     "symbol": "DijkstraBlockBody",
+     "lines": [
+      148,
+      148
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/BlockBody/Internal.hs",
+     "symbol": "DijkstraBlockBodyRaw",
+     "lines": [
+      100,
+      107
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraBbodySuite",
+    "DijkstraRulesOracleSuite"
+   ],
+   "note": "the memoized body as its fields and the size and hash of the bytes it was read from, made only from a body the block decoder read",
+   "digest": "0ce110bba9526ae4"
+  },
+  "val ledger.era.dijkstra.DijkstraBlockBody#txs": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/BlockBody/Internal.hs",
+     "symbol": "dbbrTxs",
+     "lines": [
+      101,
+      101
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "note": "a field of the memoized body",
+   "digest": "e3ef3db20b1fffba"
+  },
+  "val ledger.era.dijkstra.DijkstraBlockBody#leiosCert": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/BlockBody/Internal.hs",
+     "symbol": "dbbrLeiosCert",
+     "lines": [
+      102,
+      102
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "note": "a field of the memoized body",
+   "digest": "da45b1a2de114d34"
+  },
+  "val ledger.era.dijkstra.DijkstraBlockBody#perasCert": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/BlockBody/Internal.hs",
+     "symbol": "dbbrPerasCert",
+     "lines": [
+      104,
+      104
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "note": "a field of the memoized body",
+   "digest": "1f46e63e0b8a0207"
+  },
+  "val ledger.era.dijkstra.DijkstraBlockBody#size": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/BlockBody/Internal.hs",
+     "symbol": "DijkstraBlockBody",
+     "lines": [
+      148,
+      148
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "note": "what the memoized bytes give",
+   "digest": "58deea0c4eb5df25"
+  },
+  "val ledger.era.dijkstra.DijkstraBlockBody#hash": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/BlockBody/Internal.hs",
+     "symbol": "hashBlockBody",
+     "lines": [
+      120,
+      120
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "note": "what the memoized bytes give",
+   "digest": "4b38bdf25f8d6f74"
+  },
+  "val ledger.era.dijkstra.DijkstraBlockBody.instance": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/BlockBody/Internal.hs",
+     "symbol": "EraBlockBody DijkstraEra",
+     "lines": [
+      115,
+      121
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/BlockBody/Internal.hs",
+     "symbol": "DijkstraEraBlockBody DijkstraEra",
+     "lines": [
+      137,
+      140
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraBbodySuite",
+    "DijkstraRulesOracleSuite"
+   ],
+   "note": "blockBodySize the length of the memoized bytes, which encCBOR writes again at every version",
+   "digest": "d73cd65771a7b46f"
+  },
+  "def ledger.era.dijkstra.DijkstraTx.ofBlock": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Tx.hs",
+     "symbol": "decodeDijkstraTopTxInBlock",
+     "lines": [
+      175,
+      182
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraBbodySuite",
+    "DijkstraRulesOracleSuite"
+   ],
+   "note": "on a transaction the block decoder read with it, given evidence only DijkstraBlock.decode makes (DijkstraBlock.Decoded)",
+   "digest": "b92eeed156c96f7b"
+  },
+  "def ledger.state.KeyHash.coerceKeyRole": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Keys/Internal.hs",
+     "symbol": "coerceKeyRole",
+     "lines": [
+      89,
+      95
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "digest": "9c7017402cb2a6d4"
+  },
+  "def ledger.era.AlonzoEraPParams.ppMaxBlockExUnitsL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/PParams.hs",
+     "symbol": "ppMaxBlockExUnitsL",
+     "lines": [
+      164,
+      165
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "digest": "d9a9c686cb568efc"
+  },
+  "enum ledger.era.rules.ShelleyBbodyPredFailure": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Bbody.hs",
+     "symbol": "ShelleyBbodyPredFailure",
+     "lines": [
+      99,
+      107
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "note": "the size the reference's Int, a Long",
+   "digest": "8f6e3ab299bcc2ba"
+  },
+  "enum ledger.era.rules.AlonzoBbodyPredFailure": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Bbody.hs",
+     "symbol": "AlonzoBbodyPredFailure",
+     "lines": [
+      65,
+      68
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "note": "the units the node's, as UTXO's failures hold OrdExUnits",
+   "digest": "38a77d96a0b25e3c"
+  },
+  "enum ledger.era.rules.ConwayBbodyPredFailure": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Bbody.hs",
+     "symbol": "ConwayBbodyPredFailure",
+     "lines": [
+      106,
+      114
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "note": "in the order of its tags; the sizes Longs, the units the node's; its rule comes with the Conway switch; HeaderProtVerTooHigh, which Dijkstra's injection calls impossible, has no injection into Dijkstra's",
+   "digest": "9ebda0142e68a196"
+  },
+  "enum ledger.era.rules.DijkstraBbodyPredFailure": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Bbody.hs",
+     "symbol": "DijkstraBbodyPredFailure",
+     "lines": [
+      88,
+      97
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraBbodySuite",
+    "DijkstraRulesOracleSuite"
+   ],
+   "note": "its constructors in the order of their tags (0 to 6, :119-127); the sizes and the Word32 Longs, the units the node's; no encoder of its own yet: its refusals are compared with the reference's bytes through DijkstraBbody.toStored and the oracle suite's encoder (#796)",
+   "digest": "c6a016ae93adb568"
+  },
+  "type ledger.era.rules.BbodyPredFailure": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Bbody.hs",
+     "symbol": "EraRuleFailure \"BBODY\" ConwayEra",
+     "lines": [
+      162,
+      162
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Bbody.hs",
+     "symbol": "EraRuleFailure \"BBODY\" DijkstraEra",
+     "lines": [
+      146,
+      146
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "note": "the type family EraRuleFailure at the rule BBODY as a match type, with Conway's and Dijkstra's cases",
+   "digest": "f4e8eb99d89fead0"
+  },
+  "type ledger.era.rules.BbodyEvent": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Bbody.hs",
+     "symbol": "EraRuleEvent \"BBODY\" ConwayEra",
+     "lines": [
+      164,
+      164
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Bbody.hs",
+     "symbol": "EraRuleEvent \"BBODY\" DijkstraEra",
+     "lines": [
+      148,
+      148
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "note": "the type family EraRuleEvent at the rule BBODY as a match type, Alonzo's at both",
+   "digest": "947730927cea294b"
+  },
+  "enum ledger.era.rules.ShelleyBbodyEvent": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Bbody.hs",
+     "symbol": "ShelleyBbodyEvent",
+     "lines": [
+      166,
+      168
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "digest": "4e745a0504ae2310"
+  },
+  "enum ledger.era.rules.AlonzoBbodyEvent": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Bbody.hs",
+     "symbol": "AlonzoBbodyEvent",
+     "lines": [
+      72,
+      73
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "digest": "f92752db7202c930"
+  },
+  "def ledger.era.rules.ConwayBbodyPredFailure.shelleyToConwayBbodyPredFailure": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Bbody.hs",
+     "symbol": "shelleyToConwayBbodyPredFailure",
+     "lines": [
+      231,
+      241
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "digest": "826d930ed40fc37b"
+  },
+  "def ledger.era.rules.ConwayBbodyPredFailure.alonzoToConwayBbodyPredFailure": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Bbody.hs",
+     "symbol": "alonzoToConwayBbodyPredFailure",
+     "lines": [
+      243,
+      248
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "digest": "99e8581dbcc1ecb7"
+  },
+  "type ledger.era.rules.ConwayBbodyFailureInDijkstra": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Bbody.hs",
+     "symbol": "conwayToDijkstraBbodyPredFailure",
+     "lines": [
+      405,
+      413
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "note": "the constructors the reference's partial injection maps, HeaderProtVerTooHigh, which it calls impossible, left out (D7a's decision, 2026-11-20, #85)",
+   "digest": "7fdb46ee940de0b8"
+  },
+  "def ledger.era.rules.conwayToDijkstraBbodyPredFailure": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Bbody.hs",
+     "symbol": "conwayToDijkstraBbodyPredFailure",
+     "lines": [
+      405,
+      413
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "note": "total on the constructors it maps (ConwayBbodyFailureInDijkstra); HeaderProtVerTooHigh has no injection and does not compile",
+   "digest": "3eb99b3d663b5ab6"
+  },
+  "trait ledger.era.rules.InjectBbodyFailure": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Bbody.hs",
+     "symbol": "InjectRuleFailure \"BBODY\"",
+     "lines": [
+      150,
+      296
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "note": "InjectRuleFailure at the rule BBODY as a class per rule, contravariant in the failure so that an instance over a whole type or a union of constructors serves a predicate declaring one of them",
+   "digest": "2ac67c094268eaae"
+  },
+  "def ledger.era.rules.InjectBbodyFailure#injectFailure": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Bbody.hs",
+     "symbol": "InjectRuleFailure \"BBODY\"",
+     "lines": [
+      150,
+      150
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "digest": "9311515abd75a414"
+  },
+  "given ledger.era.rules.InjectBbodyFailure.dijkstra": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Bbody.hs",
+     "symbol": "InjectRuleFailure \"BBODY\" DijkstraBbodyPredFailure DijkstraEra",
+     "lines": [
+      150,
+      150
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "digest": "c58a9d83976d04bd"
+  },
+  "given ledger.era.rules.InjectBbodyFailure.dijkstraConway": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Bbody.hs",
+     "symbol": "InjectRuleFailure \"BBODY\" Conway.ConwayBbodyPredFailure DijkstraEra",
+     "lines": [
+      152,
+      153
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "note": "over the constructors conwayToDijkstraBbodyPredFailure maps",
+   "digest": "dc78f70b80c5a730"
+  },
+  "given ledger.era.rules.InjectBbodyFailure.dijkstraAlonzo": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Bbody.hs",
+     "symbol": "InjectRuleFailure \"BBODY\" Alonzo.AlonzoBbodyPredFailure DijkstraEra",
+     "lines": [
+      155,
+      156
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "note": "the composition written as its map, which reaches no HeaderProtVerTooHigh",
+   "digest": "722b49a3bac90f82"
+  },
+  "given ledger.era.rules.InjectBbodyFailure.dijkstraShelley": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Bbody.hs",
+     "symbol": "InjectRuleFailure \"BBODY\" Shelley.ShelleyBbodyPredFailure DijkstraEra",
+     "lines": [
+      158,
+      159
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "note": "the composition written as its map onto the three constructors that keep their names",
+   "digest": "77a751746de0cfef"
+  },
+  "given ledger.era.rules.InjectBbodyFailure.given_dijkstraLedgers_F_using": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Bbody.hs",
+     "symbol": "InjectRuleFailure \"BBODY\" Shelley.ShelleyLedgersPredFailure DijkstraEra",
+     "lines": [
+      161,
+      296
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "note": "the twenty instances of LEDGERS's failure and the failures below it as one over LEDGERS's injection (InjectLedgersFailure), whose instances are the same twenty",
+   "digest": "6edb74e6fccf7908"
+  },
+  "trait ledger.era.rules.EmbedLedgersInBbody": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Bbody.hs",
+     "symbol": "Embed ledgers (BBODY era)",
+     "lines": [
+      415,
+      423
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "digest": "e45bb976b3704aca"
+  },
+  "def ledger.era.rules.EmbedLedgersInBbody#wrapFailed": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Bbody.hs",
+     "symbol": "wrapFailed",
+     "lines": [
+      422,
+      422
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "digest": "3020644bfbe894ef"
+  },
+  "def ledger.era.rules.EmbedLedgersInBbody#wrapEvent": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Bbody.hs",
+     "symbol": "wrapEvent",
+     "lines": [
+      423,
+      423
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "digest": "4ebabf7c1edd082b"
+  },
+  "given ledger.era.rules.EmbedLedgersInBbody.dijkstra": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Bbody.hs",
+     "symbol": "Embed ledgers (BBODY era)",
+     "lines": [
+      415,
+      423
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "digest": "8ccd5e69955007b9"
+  },
+  "class ledger.era.rules.BbodyEnv": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Bbody.hs",
+     "symbol": "BbodyEnv",
+     "lines": [
+      94,
+      97
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "digest": "a57df6b8fffd152e"
+  },
+  "class ledger.era.rules.ShelleyBbodyState": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Bbody.hs",
+     "symbol": "ShelleyBbodyState",
+     "lines": [
+      86,
+      88
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "digest": "61fed20f8a326c1f"
+  },
+  "def ledger.era.rules.ShelleyBbody.validateBlockBodySize": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Bbody.hs",
+     "symbol": "validateBlockBodySize",
+     "lines": [
+      251,
+      272
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraBbodySuite",
+    "DijkstraRulesOracleSuite"
+   ],
+   "digest": "b68c9ce19a86fc6c"
+  },
+  "def ledger.era.rules.ShelleyBbody.validateBlockBodyHash": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Bbody.hs",
+     "symbol": "validateBlockBodyHash",
+     "lines": [
+      274,
+      295
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraBbodySuite",
+    "DijkstraRulesOracleSuite"
+   ],
+   "digest": "740a8842c6ef55f7"
+  },
+  "def ledger.era.rules.ShelleyBbody.incrBlocks": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/BlockBody/Internal.hs",
+     "symbol": "incrBlocks",
+     "lines": [
+      296,
+      314
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraBbodySuite",
+    "DijkstraRulesOracleSuite"
+   ],
+   "note": "the count of a pool a Word64, which a count of one epoch's blocks never wraps (BlocksMade)",
+   "digest": "32df67be24f393e1"
+  },
+  "def ledger.era.rules.AlonzoBbody.validateExUnits": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Bbody.hs",
+     "symbol": "validateExUnits",
+     "lines": [
+      157,
+      175
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "digest": "ba2644803105813e"
+  },
+  "def ledger.era.rules.ConwayBbody.totalRefScriptSizeInBlock": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Bbody.hs",
+     "symbol": "totalRefScriptSizeInBlock",
+     "lines": [
+      371,
+      384
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "note": "the reference's Int a Long; the UTxO set the stored outputs of the block's inputs and reference inputs, the only ones it looks up",
+   "digest": "c80519ac4206fee4"
+  },
+  "def ledger.era.rules.ConwayBbody.validateBodyRefScriptsSizeTooBig": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Bbody.hs",
+     "symbol": "validateBodyRefScriptsSizeTooBig",
+     "lines": [
+      344,
+      369
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "note": "the block's transactions in place of the body, which it reads them from",
+   "digest": "ed514e9d619f49a8"
+  },
+  "def ledger.era.rules.DijkstraBbody.validatePerasCert": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/BlockBody/Internal.hs",
+     "symbol": "validatePerasCert",
+     "lines": [
+      245,
+      246
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "digest": "7027e3060310d44c"
+  },
+  "def ledger.era.rules.DijkstraBbody.dijkstraBbodyTransition": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Bbody.hs",
+     "symbol": "dijkstraBbodyTransition",
+     "lines": [
+      333,
+      402
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraBbodySuite",
+    "DijkstraRulesOracleSuite"
+   ],
+   "note": "the signal the block with its header's two classes as using clauses (LeiosBbodySignal); the proposals in their own capability beside the ledger state, as LEDGER's are; the UTxO set the reference scripts are measured against the stored outputs of the block's inputs and reference inputs before LEDGERS, read into the era",
+   "digest": "a5e21cc604b4e3ef"
+  },
+  "def ledger.era.dijkstra.DijkstraBlockBody.ofDecoded": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/BlockBody/Internal.hs",
+     "symbol": "DecCBOR (Annotator (DijkstraBlockBody era))",
+     "lines": [
+      210,
+      219
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraBbodySuite",
+    "DijkstraRulesOracleSuite"
+   ],
+   "note": "the body in Dijkstra's types from the body the flat block decoder read from a block's bytes, each transaction by DijkstraTx.ofBlock, its size and hash those bytes': it takes evidence only DijkstraBlock.decode makes (DijkstraBlock.Decoded), so no body has a commitment its contents do not have, as MemoBytes ties them",
+   "digest": "ee2045c0551c512f"
+  },
+  "def ledger.era.dijkstra.DijkstraBlock.decode": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Block.hs",
+     "symbol": "Block",
+     "lines": [
+      51,
+      55
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/BlockBody/Internal.hs",
+     "symbol": "DecCBOR (Annotator (DijkstraBlockBody era))",
+     "lines": [
+      210,
+      219
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraBbodySuite",
+    "DijkstraRulesOracleSuite"
+   ],
+   "note": "a block's bytes as the flat block decoder reads them, its header and body in the era's types, the body made from the same bytes as its size and hash",
+   "digest": "335b4ade566db200"
+  },
+  "val ledger.era.dijkstra.DijkstraBlockHeader.instance": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-protocol/src/Cardano/Protocol/Leios/BlockHeader.hs",
+     "symbol": "EraBlockHeader (Header c) era",
+     "lines": [
+      363,
+      379
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "note": "the two instances of the build's Praos2 header (EraBlockHeader and LeiosEraBlockHeader of Header c), over the header the block decoder read with its fields read once in the classes' types",
+   "digest": "0e48de8f30d6c6b8"
+  },
+  "val ledger.state.TxIx.minBound": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "symbol": "TxIx",
+     "lines": [
+      925,
+      928
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraBbodyImpSuite"
+   ],
+   "note": "minBound of the derived Bounded instance",
+   "digest": "779d7edb6f9f68d1"
   }
  },
  "glue": [
@@ -41892,6 +43462,48 @@
     "given ledger.era.rules.DijkstraMempoolPredFailure.given_CanEqual_DijkstraMempoolPredFailure_E_DijkstraMempoolPredFailure_E",
     "def ledger.era.rules.DijkstraLedgerPredFailure.toStored",
     "enum ledger.era.rules.DijkstraLedgerUnprojected"
+   ]
+  },
+  {
+   "reason": "the companions of BBODY's era types and failures (their CanEqual givens), the header's fields read once in the classes' types (DijkstraBlockHeader), the evidence that a flat block or transaction is one the block decoder read (DijkstraBlock.Decoded, which only DijkstraBlock.decode makes), why a block's bytes are not a block in the era's types (DijkstraBlockError: the block decoder's refusal or a field outside its era type), a body's rendering, the BBODY state's lens, and the adapter of Dijkstra's BBODY failures to the node's flat Dijkstra failure (DijkstraBbody.toStored), one-way glue the comparisons read until the era failures have their own encoders (#796)",
+   "definitions": [
+    "class ledger.era.dijkstra.DijkstraBlock.Decoded",
+    "class ledger.era.dijkstra.DijkstraBlockHeader",
+    "def ledger.era.dijkstra.DijkstraBlockBody#toString",
+    "def ledger.era.dijkstra.DijkstraBlockHeader.fromHeader",
+    "def ledger.era.rules.DijkstraBbody.toStored",
+    "def ledger.era.rules.ShelleyBbodyState.ls",
+    "enum ledger.era.dijkstra.DijkstraBlockError",
+    "given ledger.era.BlockHeaderVersionInfo.given_CanEqual_BlockHeaderVersionInfo_BlockHeaderVersionInfo",
+    "given ledger.era.PerasCert.given_CanEqual_PerasCert_PerasCert",
+    "given ledger.era.rules.AlonzoBbodyEvent.given_CanEqual_AlonzoBbodyEvent_E_AlonzoBbodyEvent_E",
+    "given ledger.era.rules.AlonzoBbodyPredFailure.given_CanEqual_AlonzoBbodyPredFailure_E_AlonzoBbodyPredFailure_E",
+    "given ledger.era.rules.ConwayBbodyPredFailure.given_CanEqual_ConwayBbodyPredFailure_E_ConwayBbodyPredFailure_E",
+    "given ledger.era.rules.DijkstraBbodyPredFailure.given_CanEqual_DijkstraBbodyPredFailure_E_DijkstraBbodyPredFailure_E",
+    "given ledger.era.rules.ShelleyBbodyEvent.given_CanEqual_ShelleyBbodyEvent_E_ShelleyBbodyEvent_E",
+    "given ledger.era.rules.ShelleyBbodyPredFailure.given_CanEqual_ShelleyBbodyPredFailure_E_ShelleyBbodyPredFailure_E",
+    "object ledger.era.BlockHeaderVersionInfo",
+    "object ledger.era.DijkstraEraBlockBody",
+    "object ledger.era.EraBlockBody",
+    "object ledger.era.EraBlockHeader",
+    "object ledger.era.LeiosEraBlockHeader",
+    "object ledger.era.PerasCert",
+    "object ledger.era.dijkstra.DijkstraBlock",
+    "object ledger.era.dijkstra.DijkstraBlockBody",
+    "object ledger.era.dijkstra.DijkstraBlockHeader",
+    "object ledger.era.rules.AlonzoBbody",
+    "object ledger.era.rules.AlonzoBbodyEvent",
+    "object ledger.era.rules.AlonzoBbodyPredFailure",
+    "object ledger.era.rules.ConwayBbody",
+    "object ledger.era.rules.ConwayBbodyPredFailure",
+    "object ledger.era.rules.DijkstraBbody",
+    "object ledger.era.rules.DijkstraBbodyPredFailure",
+    "object ledger.era.rules.EmbedLedgersInBbody",
+    "object ledger.era.rules.InjectBbodyFailure",
+    "object ledger.era.rules.ShelleyBbody",
+    "object ledger.era.rules.ShelleyBbodyEvent",
+    "object ledger.era.rules.ShelleyBbodyPredFailure",
+    "object ledger.era.rules.ShelleyBbodyState"
    ]
   }
  ]

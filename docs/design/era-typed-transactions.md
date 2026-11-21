@@ -2162,6 +2162,131 @@ Conway's rules on the classes follow as the rest of stage 2.
     - the failures are compared through the flat form and the suite's encoder: the era failures have no encoder yet
       (#796).
   - Not yet (#85): the node's mempool and block body run the flat rules until the era rules are wired in (D8).
+- **Dijkstra's BBODY** (`era/EraBlock.scala`, `era/dijkstra/DijkstraBlock.scala`, `era/rules/BbodyFailures.scala`,
+  `era/rules/DijkstraBbody.scala`; `Rules/Bbody.hs` of `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/`, cardano-ledger
+  9df9f98c, with the predicates of Shelley's, Alonzo's and Conway's BBODY it runs):
+  - The block is the reference's `Block h era` over the era's body (`BlockBody`, a match type with Dijkstra's case). The
+    classes are the reference's, with the members BBODY reads, the lenses as getters: `EraBlockBody` (the transactions,
+    the hash, the size at a version, `Core.hs:644-669`) and `DijkstraEraBlockBody` (the Leios and Peras certificates,
+    `Dijkstra/BlockBody/Internal.hs:130-140`), `EraBlockHeader` (the issuer, the declared body size and hash, the slot)
+    and `LeiosEraBlockHeader` (the previous nonce, the class's default, and the version info, `Block.hs:120-147`). The
+    members no rule reads yet (`mkBasicBlockBody`, `blockHeaderSizeBlockHeaderG`, the announcement's lens) come with
+    their readers. A Dijkstra block in the era's types is made only from its bytes (`DijkstraBlock.decode`): its body
+    from the body the flat block decoder read from them, each transaction in Dijkstra's types from the one that decoder
+    read (`DijkstraTx.ofBlock`), its size and hash those of the same bytes, so no body has a commitment its contents do
+    not have, as the reference's `MemoBytes` ties them (`Dijkstra/BlockBody/Internal.hs:115-121`); the header's instance
+    is that of the build's Praos2 header (`EraBlockHeader (Header c) era` and `LeiosEraBlockHeader (Header c) era`,
+    `libs/cardano-protocol/src/Cardano/Protocol/Leios/BlockHeader.hs:363-379`), over the decoded header with the classes'
+    fields read once in their types (`DijkstraBlockHeader`).
+  - The failure types are Shelley's, Alonzo's, Conway's and Dijkstra's BBODY failures (`Dijkstra/Rules/Bbody.hs:88-97`,
+    tags 0 to 6), with Shelley's and Alonzo's events, `EraRuleFailure "BBODY"` and `EraRuleEvent "BBODY"` with Conway's
+    and Dijkstra's cases, Conway's two conversions, and LEDGERS's embedding. The reference's 24 injections (`:150-296`)
+    are `InjectBbodyFailure`, contravariant in the failure: Dijkstra's own, Shelley's and Alonzo's each as the
+    composition's map, and LEDGERS's twenty as one instance over LEDGERS's injection. `conwayToDijkstraBbodyPredFailure`
+    calls `HeaderProtVerTooHigh` impossible (`:413`), so by D7a's decision on the reference's partial injections its
+    instance is over the five constructors it maps (`ConwayBbodyFailureInDijkstra`), and that constructor has no
+    injection. A size is the reference's `Int` as a `Long`, a header's `Word32` a `Long` its reader bounds, and the units
+    the node's, as UTXO's failures hold them. `DijkstraBbody.toStored` gives the flat form (`DijkstraBbodyFailure`),
+    one-way glue the comparisons read.
+  - `dijkstraBbodyTransition` (`:333-402`) runs, every failure recorded, in the reference's order: the body's size and
+    hash against its header's (`validateBlockBodySize`, `validateBlockBodyHash`); the header's highest supported major
+    version at least the parameters' (`HeaderProtVerTooLow`); LEDGERS at the header's slot and its epoch
+    (`slotToEpochBoundary`), with the parameters and the chain's account, on the ledger state and the proposals, D7e's
+    `DijkstraLedgers`; the block's units (`validateExUnits`, every level's redeemers); the block's reference scripts
+    against the UTxO set before LEDGERS (`validateBodyRefScriptsSizeTooBig`, `totalRefScriptSizeInBlock`, accumulating
+    the outputs of the block's transactions from version 11, the set's own entry kept); a Peras certificate, which the
+    build's `validatePerasCert` refuses whatever it is, with the header's previous nonce; then the block counted for its
+    issuer as a pool (`incrBlocks`, `coerceKeyRole`). The signal is `LeiosBbodySignal`'s: a block whose header has the two
+    header classes, as using clauses. The UTxO set the reference scripts are measured against is the stored outputs of
+    the block's inputs and reference inputs, the only ones the function looks up, read into the era.
+  - Evidence:
+    - `DijkstraRulesOracleSuite` (`fixtures/reference/dijkstra-rules`): on the 15 `bbody` cases at the root, as the oracle
+      applies BBODY (epochs of 100 slots), the era BBODY gives the reference's verdict on each: the five refusals
+      (`devnet-37` on the default state and flagged invalid, `major-13`, `other-body-hash`, `other-body-size-and-hash`)
+      byte for byte through the flat form and the suite's encoder, in the reference's order, and on the ten admitted
+      blocks the reference's `blocksMade`;
+    - `DijkstraBbodySuite`: every captured Dijkstra block (the testnet's five, a certifying one among them, and the
+      devnet's eight) reads into the era's types with the flat decoder's transactions, flags, size, hash, certificates
+      and header fields, and its body and header agree; BBODY admits the devnet's block without transactions and counts
+      it once for its issuer; blocks crafted as bytes, each item but the changed ones the bytes it was read as, refuse
+      in each of BBODY's header checks (another declared size and hash, recorded hash first as the reference returns
+      them; a parameters' major one past the header's, which equal to it admits, and a highest major with its high bit
+      set admitted as the word it is; a Peras certificate in a body its header commits to, with the neutral nonce); on
+      the testnet chain's 200 recorded transactions (`fixtures/reference/leios-testnet-chain-contexts`), the block's
+      units are the flat rules' sum, refused one step below it in either component, and each sampled block's reference
+      scripts the flat rules' at versions 10 and 12, with the recorded outputs and without those its own transactions
+      create, admitted at the limit and refused one byte below; the sampled block with the most reference-script bytes,
+      in a body of the devnet block its header commits to, on a state holding the outputs it spends, is refused by BBODY
+      past both limits: the whole refusal is the reference-script failure, the units' and LEDGERS's failures, in the
+      order the reference returns them; a block counted twice is two, and none on an overlay slot; the injections equal
+      the reference's compositions on built values, Shelley's, Alonzo's and Conway's constructor by constructor,
+      Dijkstra's identity on one constructor and the one over LEDGERS's injection on representative values; the 24 the
+      reference lists resolve, and `HeaderProtVerTooHigh`, Conway's whole type and Shelley's LEDGER failure have none
+      (`compileErrors`, beside a mapped constructor that has); the era body and its transactions are made only by the
+      block decoder, the entry points that take a flat block or transaction needing evidence only it makes
+      (`compileErrors` in the same package, beside the decoder that compiles).
+    - `DijkstraBbodyImpSuite`: the reference's BBODY cases that run for Dijkstra (`Dijkstra/Imp.hs` runs Conway's driver
+      and so Alonzo's and Shelley's, each at Dijkstra's one version, 12), each with its exact expectation, on blocks made
+      by `DijkstraBlock.decode` of bytes whose header commits to the body as the Imp's does, the transactions built as
+      the fixups leave them (real signatures, the reference's script binaries checked by hash), every check run and
+      every script evaluated: Shelley's `WrongBlockBodySizeBBODY`, `InvalidBodyHashBBODY` and `LedgersFailure` (at least
+      the doubled transaction's inputs as bad, `Shelley/Imp/BbodySpec.hs:28, 43, 58`); Alonzo's `succeeds with eight
+      Plutus scripts` for each of V1 to V4 (`Alonzo/Imp/BbodySpec.hs:49`, which runs for Dijkstra:
+      `disableInConformanceIt` is an `it`): after the script stake credential's registration, a block of the eighteen
+      transactions the Imp records, a phase-2-invalid and a valid one of each purpose (spending, minting, withdrawing,
+      certifying) with the producing and collateral ones before them, each admitted by LEDGER in turn, each invalid one
+      first refused flagged valid with exactly its script's failure, and the block admitted; at the Imp's units
+      (`Alonzo/ImpTest.hs:436-445`), since at the testnet's the same block is refused for them alone; and `enforces
+      ppMaxBlockExUnits` for each language (`:96`, five script spends at the parameters' units, each after the
+      transaction producing its collateral as the block records them, each admitted by LEDGER in turn); Conway's
+      `BodyRefScriptsSizeTooBig` with the scripts held before the block and created in it (`Conway/Imp/BbodySpec.hs:43,
+      86`, 24 transactions of 100 references to the 443-byte V2 script, 1,063,200 bytes against 1,048,576),
+      `totalRefScriptSizeInBlock` on five transactions as LEDGER applies them and a sixth that spends and references
+      the same output, balanced and not applied, and on each prefix before them (`:122`), and the collateral return of
+      an invalid transaction holding the script, first refused flagged valid with exactly its script's failure
+      (`:195`); Dijkstra's
+      `PerasCertValidationFailed` and `HeaderProtVerTooLow` (supplied 11, expected 12, `Dijkstra/Imp/BbodySpec.hs:25,
+      38`). The accumulation of a block's outputs from version 11, a valid transaction's outputs and an invalid one's
+      collateral return, is bound on the function: a mutant without it, or with the two kinds swapped, fails `:122` and
+      `:195`. Through BBODY, `:86` refuses only the set before LEDGERS without the accumulation, and a crafted case, the
+      rule's reading of the pinned source and not a reference recording, binds the set before LEDGERS (`ls ^. utxoL`,
+      `Dijkstra/Rules/Bbody.hs:394`): an output holding the V2 script before the block, spent by the block's first
+      transaction and read as a reference input by its second, at a limit one byte below the two counts, is refused with
+      the reference scripts' failure (886 bytes against 885) and LEDGERS's refusal of the spent reference input, the
+      whole refusal in the reference's order; a mutant reading the set after LEDGERS refuses it for LEDGERS's failure
+      alone, without the reference scripts'.
+    - What the function does that Dijkstra cannot show: the version boundary, since Dijkstra's version is never below 12
+      (`ProtVerLow DijkstraEra = 12`,
+      `libs/cardano-ledger-core/internal/Cardano/Ledger/Internal/Definition/Era.hs:137-141`, and a version only follows
+      its own, `pvCanFollow`, `Shelley/PParams.hs:332-340`), so the branch to 10 is unreachable in the era: it is to be
+      bound by Conway's BBODY on the era types (#85), which runs at 10 and 11, and the function at those versions is
+      checked here as `:122` and `:195` give it; the union's bias, but for the edge listed below, since an output's key
+      is its body's id with an index, below the outputs' count for `txouts` and at it for `collOuts`
+      (`mkCollateralTxIn`, `Babbage/Collateral.hs:52-60`), so a key both in the set and among a transaction's outputs,
+      of a transaction the block repeats or the chain applied before, holds the output that body gives it either way.
+  - Incomplete (CNF-2):
+    - the union's bias at the edge of `mkCollateralTxIn`: a body of 65,536 outputs or more puts its collateral return at
+      `maxBound`, the key of its 65,536th output, so the same body applied valid and then invalid shows the bias. Its
+      outputs' encoding alone is past the testnet's transactions (16,384 bytes) and block bodies (90,112: `chainChecks`
+      bounds the size a header declares, `eras/shelley/impl/src/Cardano/Ledger/Chain.hs:65-80`, and BBODY holds the body
+      to it), and no case builds one;
+    - the draws, each fixed ([item](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7064531535)): of `:49`,
+      the valid transactions at the top level, not nested in a sub-transaction, the other of V4's two
+      (`dijkstraTopTxFromAnyLevel`, `Dijkstra/ImpTest.hs:118-131`), which is not run, and the minted token's name and
+      one token; of the transactions without scripts that Shelley's `:28` and `:43` and Dijkstra's `:25` and `:38`
+      submit (`submitAnyTx_`), the top level, where the pin, with no script context, also draws the transaction nested
+      in a sub-transaction, which is not run; the payer's address where the Imp draws a fresh key's (`freshKeyAddr_`,
+      `freshKeyAddrNoPtr_`); the fees and amounts, fixed and not the fixups' (`fixupTxOuts` draws an amount before
+      `ensureMinCoinTxOut`, and `fixupFees` derives the change from the root's balance): what the suite shows is that
+      its fixed fees and outputs satisfy the ledger's minima where LEDGER applies them. The refusals flagged valid
+      (`:49`, `:195`) are compared by each failing script's machine error and trace and the request it ran, as
+      `EraUtxosSuite` compares them: the machine's failure holds terms, equal only as the same object;
+    - no recording holds a refusal of the block's units, its reference scripts or a Peras certificate, so the
+      reference's verdicts on them are its cases' expectations on built blocks, not its bytes;
+    - the failures are compared through the flat form and the suite's encoder: the era failures have no encoder yet
+      (#796).
+  - Not yet (#54): BBODY on the node's running path, the application of an endorser block's closure before the certifying
+    block, and the certificate's checks at application (D8b, D8c).
 - **Next, Conway's rules.** The first rule ported is one that needs no parameters, the second one that
   does, each under a differential against the flat rule on the recorded blocks and the refusal corpus.
 - The body is read through the flat decoder for now. What only the projection refuses (an update, genesis
