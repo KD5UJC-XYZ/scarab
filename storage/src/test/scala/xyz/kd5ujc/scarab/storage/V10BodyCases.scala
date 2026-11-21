@@ -8,11 +8,13 @@ import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
 import xyz.kd5ujc.scarab.consensus.state.EraLedgerState
 import xyz.kd5ujc.scarab.ledger.{
   ConwayParamUpdate,
+  DijkstraKeysUpdate,
   GovAction,
   GovActionId,
   GovActionState,
   Ipv4,
   Ipv6,
+  ParamChangeUpdate,
   PoolRelay,
   PoolRelays,
   Proposal,
@@ -23,7 +25,12 @@ import xyz.kd5ujc.scarab.ledger.{
 import xyz.kd5ujc.scarab.ledger.Credential as NodeCredential
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.protocol.ReferenceBuild
-import xyz.kd5ujc.scarab.storage.haskell.state.{ConwayCodecs, LedgerFileEra, ReferenceLayout}
+import xyz.kd5ujc.scarab.storage.haskell.state.{
+  ConwayCodecs,
+  HaskellStateCodecs,
+  LedgerFileEra,
+  ReferenceLayout
+}
 
 /** The golden bodies of the V10 snapshot (`fixtures/snapshot-v10-bodies`): the Haskell state
   * section a V10 file holds after its sidecar, as [[SnapshotV5.parts]] writes it
@@ -40,13 +47,17 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{ConwayCodecs, LedgerFileEra, Ref
   *   - in the 11.1 layout, the future parameters of a pool (`psFutureStakePoolParams`), with that
   *     metadata URL, which the state writes through
   *     [[xyz.kd5ujc.scarab.ledger.rules.Convert.poolParamsBack]] and reads with the URL's limit of
-  *     its decoder version ([[PoolMetadata.read]]).
+  *     its decoder version ([[PoolMetadata.read]]);
+  *   - in Dijkstra, the Leios build's `dijkstra-203` capture, a parameter-change proposal whose
+  *     update sets parameters Dijkstra adds beside one of Conway's
+  *     ([[xyz.kd5ujc.scarab.ledger.DijkstraKeysUpdate]]): a number, a `NonZero`, a positive ratio,
+  *     a `MaxPledgeLeverage`, an `ExUnits` and a null Peras round, in the three places a state
+  *     holds a proposal: the proposals, the DRep pulser's snapshot and the actions its ratification
+  *     enacted. The capture itself is written back byte for byte, so it is not a case of its own.
   *
   * The Leios layout's future parameters are left out: their voting key's layout is not settled yet.
-  * A Dijkstra state is not a case: the Leios build's `dijkstra-203` capture is written back byte
-  * for byte, so its body would repeat that file. The hashes are made up, and no case holds a key.
-  * `V10BodyGoldenSuite` reads every file back and writes it to the same bytes, and
-  * `V10BodyFixtureMain` writes them.
+  * The hashes are made up, and no case holds a key. `V10BodyGoldenSuite` reads every file back and
+  * writes it to the same bytes, and `V10BodyFixtureMain` writes them.
   */
 object V10BodyCases extends Assertions:
   /** A body and how it is made: `source` is a reference `state` file, `edits` what is put into it.
@@ -57,19 +68,33 @@ object V10BodyCases extends Assertions:
           "node11_1-conway.cbor",
           "fixtures/haskell-state/conway-4593/state",
           ReferenceBuild.Release11_1,
-          Edits.ConwayWithFuture
+          Edits.Conway(FutureParams.Added)
         )
     case LeiosConway
         extends Case(
           "leios-conway.cbor",
           "fixtures/leios/state/conway-195/state",
           ReferenceBuild.LeiosB004fe0c,
-          Edits.Conway
+          Edits.Conway(FutureParams.Absent)
+        )
+    case LeiosDijkstraParamProposal
+        extends Case(
+          "leios-dijkstra-param-proposal.cbor",
+          "fixtures/leios/state/dijkstra-203/state",
+          ReferenceBuild.LeiosB004fe0c,
+          Edits.DijkstraParamProposal
         )
 
-  /** What a case puts into its source state. */
+  /** What a case puts into its source state: in Conway, the values above, with a pool's future
+    * parameters or without; in Dijkstra, the proposal of Dijkstra's keys.
+    */
   enum Edits:
-    case ConwayWithFuture, Conway
+    case Conway(future: FutureParams)
+    case DijkstraParamProposal
+
+  /** Whether a Conway case puts in a pool's future parameters. */
+  enum FutureParams:
+    case Added, Absent
 
   /** The body of [[Case.Node11_1Conway]] as an earlier writer may have stored it: the `Prices` and
     * `ExUnits` of its proposal indefinite lists, which the stored-update reader keeps accepting
@@ -143,23 +168,53 @@ object V10BodyCases extends Assertions:
   private val proposalId = GovActionId(hex("5d" * 32), BigInt(0))
 
   private def proposal(voters: Vector[Bytes]): GovActionState =
+    stored(proposalId, update, voters, BigInt(9))
+
+  private def stored(
+      id: GovActionId,
+      u: ParamChangeUpdate,
+      voters: Vector[Bytes],
+      proposedIn: BigInt
+  ): GovActionState =
     GovActionState(
-      proposalId,
+      id,
       Map.empty,
       Map.empty,
       voters.map(_ -> Vote.Yes).toMap,
       Proposal(
         BigInt(100_000_000_000L),
         RewardAccount(0, NodeCredential.Key(hex("0d" * 28))),
-        GovAction.ParameterChange(None, update, None)
+        GovAction.ParameterChange(None, u, None)
       ),
-      BigInt(9),
-      BigInt(15)
+      proposedIn,
+      proposedIn + 6
     )
+
+  /** `{0: 44, 34: 1048576, 36: 3, 37: 3/2, 38: 5/1, 47: [2160000000, 600000000000], 53: null}`:
+    * Conway's `txFeePerByte` and Dijkstra's `maxRefScriptSizePerBlock`, `refScriptCostStride` (a
+    * `NonZero Word32`), `refScriptCostMultiplier` (a `PositiveInterval`), `maxPledgeLeverage`, the
+    * `ExUnits` of key 47 and a null Peras bootstrap round (cardano-ledger 9df9f98c
+    * `Dijkstra/PParams.hs:798-1123`), as the reference writes them.
+    */
+  val dijkstraUpdate: Bytes = hex(
+    "a7 00 182c 1822 1a00100000 1824 03 1825 d81e820302 1826 d81e820501" +
+      " 182f 82 1a80befc00 1b0000008bb2c97000 1835 f6"
+  )
+
+  val dijkstraKeysUpdate: DijkstraKeysUpdate =
+    HaskellStateCodecs.dijkstraParamUpdate
+      .decodeBytes(dijkstraUpdate)
+      .toOption
+      .flatMap(DijkstraKeysUpdate.from)
+      .getOrElse(fail("not an update of Dijkstra's keys"))
+
+  /** The ids of the Dijkstra case's proposal, pending and enacted. */
+  val pendingId: GovActionId = GovActionId(hex("6e" * 32), BigInt(0))
+  val enactedId: GovActionId = GovActionId(hex("6f" * 32), BigInt(1))
 
   // ---- making the bodies
 
-  private def edited(state: NewEpochState[Conway], edits: Edits): NewEpochState[Conway] =
+  private def edited(state: NewEpochState[Conway], future: FutureParams): NewEpochState[Conway] =
     val pools = ConwayNewEpochState.pools.get(state)
     val (first, pool) = pools.headOption.getOrElse(fail("a state with a pool"))
     val voters = pools.keys.take(2).map(KeyHash.bytes(_)).toVector
@@ -180,8 +235,8 @@ object V10BodyCases extends Assertions:
     val withProposal = ConwayNewEpochState.ls
       .andThen(ConwayLedgerState.proposals)
       .modify(p => p.copy(actions = p.actions :+ proposal(voters)))(withLikelihood)
-    edits match
-      case Edits.ConwayWithFuture =>
+    future match
+      case FutureParams.Added =>
         val future = StakePoolParams(
           first,
           shaped.vrf,
@@ -198,7 +253,26 @@ object V10BodyCases extends Assertions:
           .andThen(ConwayLedgerState.pState)
           .andThen(PState.future)
           .modify(_.updated(first, future))(withProposal)
-      case Edits.Conway => withProposal
+      case FutureParams.Absent => withProposal
+
+  /** The Dijkstra state with the proposal of [[dijkstraKeysUpdate]]: pending in the proposals and
+    * the DRep pulser's snapshot, and, under another id, among the actions its ratification enacted.
+    */
+  private def withDijkstraProposal(nes: NewEpochState[Dijkstra]): NewEpochState[Dijkstra] =
+    val ls = nes.es.ls
+    val gov: ConwayGovState = ls.utxo.gov
+    val epoch = nes.epoch.toBigInt
+    val pending = stored(pendingId, dijkstraKeysUpdate, Vector.empty, epoch)
+    val enacted = stored(enactedId, dijkstraKeysUpdate, Vector.empty, epoch - 1)
+    val pulser = gov.drepPulsing
+    val next = gov.copy(
+      proposals = gov.proposals.copy(actions = gov.proposals.actions :+ pending),
+      drepPulsing = pulser.copy(
+        snapshot = pulser.snapshot.copy(proposals = pulser.snapshot.proposals :+ pending),
+        ratify = pulser.ratify.copy(enacted = pulser.ratify.enacted :+ enacted)
+      )
+    )
+    nes.copy(es = nes.es.copy(ls = ls.copy[Dijkstra](utxo = ls.utxo.copy[Dijkstra](gov = next))))
 
   /** The canonical body of `c`. */
   def body(c: Case): Bytes =
@@ -206,16 +280,27 @@ object V10BodyCases extends Assertions:
     val source = codec
       .decode(Bytes.wrap(Files.readAllBytes(Path.of(c.source))))
       .fold(e => fail(s"${c.source}: $e"), identity)
-    val file = source.ledger.state match
-      case LedgerFileEra.Mirrored(EraLedgerState.InShelleyEra(ShelleyBasedEra.SConway, s)) =>
-        val next = s.copy(nes = edited(s.nes, c.edits))
-        source.copy(ledger =
-          source.ledger.withState(
-            LedgerFileEra.Mirrored(EraLedgerState.InShelleyEra(ShelleyBasedEra.SConway, next))
-          )
+    val state = (source.ledger.state, c.edits) match
+      case (
+            LedgerFileEra.Mirrored(EraLedgerState.InShelleyEra(ShelleyBasedEra.SConway, s)),
+            Edits.Conway(future)
+          ) =>
+        EraLedgerState.InShelleyEra(ShelleyBasedEra.SConway, s.copy(nes = edited(s.nes, future)))
+      case (
+            LedgerFileEra.Mirrored(EraLedgerState.InShelleyEra(ShelleyBasedEra.SDijkstra, s)),
+            Edits.DijkstraParamProposal
+          ) =>
+        EraLedgerState.InShelleyEra(
+          ShelleyBasedEra.SDijkstra,
+          s.copy(nes = withDijkstraProposal(s.nes))
         )
-      case _ => fail(s"${c.source}: not a Conway state")
+      case _ => fail(s"${c.source}: not a state of its case's era")
+    val file = source.copy(ledger = source.ledger.withState(LedgerFileEra.Mirrored(state)))
     assertEquals(ConwayCodecs.parameterUpdate.write(update), Right(canonicalUpdate))
+    assertEquals(
+      HaskellStateCodecs.dijkstraParamUpdate.write(dijkstraKeysUpdate.update),
+      Right(dijkstraUpdate)
+    )
     codec.encode(file).fold(e => fail(s"${c.file}: $e"), identity)
 
   /** [[IndefiniteFile]]: the canonical body of [[Case.Node11_1Conway]], its update's three records
