@@ -14435,9 +14435,7 @@
    "class": "Deviation",
    "structure": "differs",
    "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6895880261",
-   "evidence": [
-    "EraTxSuite"
-   ],
+   "gap": "https://github.com/KD5UJC-XYZ/scarab/issues/1263#issuecomment-7068379387",
    "note": "the reference's `reqSignerHashesTxBodyL`, a member of `AlonzoEraTxBody` constrained by `AtMostEra \"Conway\"` and filled with `notSupportedInThisEraL` in Dijkstra (`Dijkstra/TxBody.hs:1416`, 9df9f98c), is a class of its own with instances at the eras up to Conway (Conway's alone among the era types), so Dijkstra's body has none; the getter of every era stays on `AlonzoEraTxBody`",
    "digest": "1dd21f303b866b5d"
   },

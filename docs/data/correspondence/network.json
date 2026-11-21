@@ -191,9 +191,7 @@
    "class": "Deviation",
    "structure": "differs",
    "record": "docs/decisions.md#networking-and-local-clients",
-   "evidence": [
-    "KeepAliveCookieSuite"
-   ],
+   "gap": "https://github.com/KD5UJC-XYZ/scarab/issues/1263#issuecomment-7068380080",
    "note": "Fresh, the default, seeds each client's generator from the platform's secure generator when the client is made, an approved deviation: the reference gives the client of every connection the node's one keepAliveRng. Shared starts every client from one generator, as the reference does, for tests and tools. The generator is Scarab's Rng (SplitMix64 with a fixed gamma), not splitmix's SMGen; no peer can observe which uniform generator drew the cookies, since only the node's own client compares them, the seed is random and each cookie is a uniform Word16 (the low 16 bits of the next 64, as random's Word16 draw truncates)",
    "digest": "c8b719993d68de53"
   },
@@ -819,13 +817,9 @@
    "class": "Deviation",
    "structure": "differs",
    "record": "docs/decisions.md#networking-and-local-clients",
+   "gap": "https://github.com/KD5UJC-XYZ/scarab/issues/1263#issuecomment-7068380080",
    "note": "the inbound governor State's matureDuplexPeers (a Map) and freshDuplexPeers (an OrdPSQ keyed by address, ordered by registration time), and the timing of the inbound governor's steps that drive them (inboundGovernorStep). The fresh peers are a Map of each peer's registration time and data in place of the OrdPSQ: a different internal structure with the same observable behaviour (the maturation boundary, and what a registration and an unregistration do, each mapped below as a Mirror), which following the reference does not require (decisions register, reference fidelity, 2026-10-27: following the reference means following its observable behaviour; internal algorithms may differ). Registrations come from accepted duplex connections and, while the node listens, from dialled duplex ones that this side announces (OutboundPeers, Announcement), as the connection manager announces both (Core.hs 982-995, 1594-1630); the end of an accepted connection of either data flow unregisters its address. The class is that of the steps' timing, an approved deviation (decisions register, networking, 2026-11-19): the steps run in the node, outside this map's roots (PeerSharingRuntime.maturing, InboundGovernor.run), on each registration and unregistration and on inactionTimeout, where the reference's inbound governor also steps on its connections' other events, which Scarab's handles per connection; and a registration is stamped with the time the step handles it, where the reference stamps it with its step's time read before the wait. So an address becomes mature only once some registration of it still in force was handled at least 900 s earlier, and a single unreplaced registration matures within one more inactionTimeout when the steps run promptly; the reference can mature the same address earlier or later (docs/compatibility/network-peersharing.md, Inbound peers)",
-   "digest": "e3b1fbd8ec16f5fc",
-   "evidence": [
-    "DuplexPeersSuite",
-    "PeerSharingRuntimeSuite",
-    "OutboundDuplexPeerSuite"
-   ]
+   "digest": "e3b1fbd8ec16f5fc"
   },
   "def network.DuplexPeers#registered": {
    "upstream": [
