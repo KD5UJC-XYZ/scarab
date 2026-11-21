@@ -308,7 +308,7 @@ object PeerGovernor:
           actions,
           roots,
           events,
-          JobPool[F, Event[A]](supervisor, events.offer),
+          JobPool[F, Event[A]](supervisor, JobPool.Handoff.queue(events)),
           scheduled,
           paired,
           held,
@@ -372,8 +372,8 @@ object PeerGovernor:
     ): F[Unit] = connections match
       case None =>
         jobs
-          .completingTo[Option[Outcome[A]]](
-            _.traverse_(value => events.offer(Event.Completed(value)))
+          .completingTo(
+            JobPool.Handoff.queue(events).contramap[Outcome[A]](Event.Completed(_)).optional
           )
           .forkJob(legacy)
           .void
@@ -448,7 +448,7 @@ object PeerGovernor:
                   F.pure[PeerShare.Result[A]](PeerShare.Result.NotRegistered())
                 )(_.request(peer, amount))
                 jobs
-                  .completingTo[PeerShare.Result[A]](result.complete(_).void)
+                  .completingTo(JobPool.Handoff.deferred(result))
                   .forkJob(
                     JobPool.Job.pure(
                       F.onCancel(request, result.complete(PeerShare.Result.Cancelled()).void),
@@ -495,12 +495,15 @@ object PeerGovernor:
             yield (shared(done), Option.when(rest.nonEmpty)(jobs.forkJob(second(rest)).void)),
             cause => (raised(peers)(cause), None)
           )
-          // the second phase is registered before the completion that starts it is offered, and
-          // withdrawn if the offer raises, so that a fallback cannot be followed by it
+          // the second phase is registered as the completion that starts it is offered
           jobs
-            .completingTo[(Event[A], Option[F[Unit]])]((completion, next) =>
-              next.traverse_(start => phases.update(_.updated(batch, start))) *>
-                events.offer(completion).onError(_ => phases.update(_ - batch))
+            .completingTo(
+              JobPool.Handoff
+                .queue(events)
+                .contramap[(Event[A], Option[F[Unit]])](_._1)
+                .updating(phases)((m, completion) =>
+                  completion._2.fold(m)(start => m.updated(batch, start))
+                )
             )
             .forkJob(first)
             .void
@@ -572,7 +575,17 @@ object PeerGovernor:
         ): F[PeerStateActions.Release] =
           poll(close)
             .flatMap {
-              case Right(result) => F.pure(result.release)
+              case Right(result) =>
+                report(
+                  Output.Traced(
+                    Trace.PeerActionFailed(
+                      peer,
+                      PeerOperation.Close,
+                      PeerActionError.TimedOut(PeerOperation.Close)
+                    )
+                  )
+                ).whenA(result.completion == PeerStateActions.CloseCompletion.TimedOut)
+                  .as(result.release)
               case Left(failure) =>
                 report(
                   Output.Traced(Trace.PeerActionFailed(peer, PeerOperation.Close, failure.cause))
@@ -747,7 +760,10 @@ object PeerGovernor:
       // fiber with nothing to report.
       case Job.Exempt(peer) =>
         def exempt(action: F[Unit]): F[Unit] =
-          jobs.completingTo[Unit](_ => F.unit).forkJob(JobPool.Job.pure(action, _ => ())).void
+          jobs
+            .completingTo(JobPool.Handoff.none[F, Unit])
+            .forkJob(JobPool.Job.pure(action, _ => ()))
+            .void
         connections match
           case None => exempt(actions.exempt(peer))
           case Some(source) =>

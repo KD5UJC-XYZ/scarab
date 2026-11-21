@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import cats.{Applicative, Functor}
-import cats.effect.{Fiber, MonadCancelThrow, Poll}
-import cats.effect.std.Supervisor
+import cats.{Applicative, FlatMap, Functor}
+import cats.effect.{Deferred, Fiber, MonadCancelThrow, Poll, Ref}
+import cats.effect.std.{Queue, Supervisor}
 import cats.syntax.all.*
 
 /** The governor's jobs, each run in a fiber of a supervisor, and each ending by handing its
@@ -19,20 +19,20 @@ import cats.syntax.all.*
   */
 final class JobPool[F[_]: MonadCancelThrow, C] private (
     supervisor: Supervisor[F],
-    complete: C => F[Unit]
+    handoff: JobPool.Handoff[F, C]
 ):
   /** Fork `job`: its action under its handler, and the result to the completion (`forkJob'`,
     * `JobPool.hs` 85-113 at c45735a5: `handleJust notAsyncExceptions handler` 111-112, then
     * `writeTQueue completionQueue` 113). The fiber is returned for an owner that cancels it.
     */
   def forkJob(job: JobPool.Job[F, C]): F[Fiber[F, Throwable, Unit]] =
-    supervisor.supervise(job.run(complete))
+    supervisor.supervise(job.run(handoff))
 
   /** The same supervisor, for jobs whose completion goes to `to`: a job's own requests hand their
     * results to the job that waits for them, as the reference's requests, each an `async`, hand
     * theirs to `waitAllCatchOrTimeout`.
     */
-  def completingTo[D](to: D => F[Unit]): JobPool[F, D] = new JobPool(supervisor, to)
+  def completingTo[D](to: JobPool.Handoff[F, D]): JobPool[F, D] = new JobPool(supervisor, to)
 
 object JobPool:
   /** A job, the handler of what it raises, and the completion it ends with if the handler raises
@@ -56,22 +56,15 @@ object JobPool:
         cause => f(fallback(cause))
       )
 
-    /** Run the job in the fiber at hand, and give its completion to `complete` (`io`, `JobPool.hs`
-      * 104-113 at c45735a5). As there, the action can be cancelled (it runs under `restore`), the
-      * handler only where it waits, and the handoff not at all. The governor's sinks, an unbounded
-      * queue and `Deferred` s, do not raise, as `writeTQueue` does not; a handoff that raises all
-      * the same is tried once more, then gives way to the fallback for its exception, so that the
-      * job's owner hears of it.
+    /** Run the job in the fiber at hand, and give its completion to `handoff`, once (`io`,
+      * `JobPool.hs` 104-113 at c45735a5). As there, the action can be cancelled (it runs under
+      * `restore`), the handler only where it waits, and the handoff not at all.
       */
-    def run(complete: C => F[Unit])(using F: MonadCancelThrow[F]): F[Unit] =
+    def run(handoff: Handoff[F, C])(using F: MonadCancelThrow[F]): F[Unit] =
       F.uncancelable(poll =>
         poll(action)
           .handleErrorWith(cause => handler(cause, poll).handleError(_ => fallback(cause)))
-          .flatMap(completion =>
-            complete(completion)
-              .handleErrorWith(_ => complete(completion))
-              .handleErrorWith(cause => complete(fallback(cause)))
-          )
+          .flatMap(handoff.give)
       )
 
   object Job:
@@ -79,8 +72,35 @@ object JobPool:
     def pure[F[_]: Applicative, C](action: F[C], handler: Throwable => C): Job[F, C] =
       Job(action, (cause, _) => handler(cause).pure[F], handler)
 
+  /** Where a job's completion goes: the offer to an unbounded queue or the completion of a
+    * `Deferred`, neither of which raises, as the reference's `writeTQueue` does not (`JobPool.hs`
+    * 113 at c45735a5), so a completion is written once and a job never ends without one. A queue
+    * given here must be unbounded.
+    */
+  final class Handoff[F[_], C] private (private[JobPool] val give: C => F[Unit]):
+    /** The same place, for a value `f` makes into its completion. */
+    def contramap[D](f: D => C): Handoff[F, D] = new Handoff(value => give(f(value)))
+
+    /** The same place for a completion that may be none, when nothing is given. */
+    def optional(using Applicative[F]): Handoff[F, Option[C]] = new Handoff(_.traverse_(give))
+
+    /** The same place, with `ref` updated from the completion first, as one STM transaction would
+      * write both.
+      */
+    def updating[S](ref: Ref[F, S])(f: (S, C) => S)(using FlatMap[F]): Handoff[F, C] =
+      new Handoff(value => ref.update(f(_, value)) *> give(value))
+
+  object Handoff:
+    def queue[F[_], C](queue: Queue[F, C]): Handoff[F, C] = new Handoff(queue.offer)
+
+    def deferred[F[_]: Functor, C](deferred: Deferred[F, C]): Handoff[F, C] =
+      new Handoff(deferred.complete(_).void)
+
+    /** For a job that reports nothing. */
+    def none[F[_]: Applicative, C]: Handoff[F, C] = new Handoff(_ => Applicative[F].unit)
+
   def apply[F[_]: MonadCancelThrow, C](
       supervisor: Supervisor[F],
-      complete: C => F[Unit]
+      handoff: Handoff[F, C]
   ): JobPool[F, C] =
-    new JobPool(supervisor, complete)
+    new JobPool(supervisor, handoff)

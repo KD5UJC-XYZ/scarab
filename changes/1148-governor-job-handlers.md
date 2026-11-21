@@ -25,3 +25,6 @@
 - A peer-share request that is cancelled is reported, as cancelled, when it ends, not at the
   batch's deadline as timed out; and a batch's second phase now starts once its first phase's
   answers are applied, so a late reply has the whole of its time.
+- The outbound connection monitor now reports a connection that goes cold after a close or cleanup
+  of the node's, where it went cold without telling the governor, so a peer left cooling or kept
+  after a timed-out demotion is moved to cold when its connection is released.

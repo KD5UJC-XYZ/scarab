@@ -3,7 +3,6 @@ package xyz.kd5ujc.scarab.node
 
 import cats.effect.{Deferred, IO, Ref}
 import cats.effect.std.{Queue, Supervisor}
-import cats.syntax.all.*
 import xyz.kd5ujc.scarab.network.FailsOnUncaught
 
 /** A job of the pool ends by handing over exactly one value: its action's, or its handler's when
@@ -30,7 +29,7 @@ class JobPoolSuite extends FailsOnUncaught:
       for
         completions <- Queue.unbounded[IO, Completion]
         handled <- Ref.of[IO, List[Throwable]](Nil)
-        pool = JobPool[IO, Completion](supervisor, completions.offer)
+        pool = JobPool[IO, Completion](supervisor, JobPool.Handoff.queue(completions))
         fiber <- pool.forkJob(
           JobPool.Job(
             action,
@@ -77,7 +76,7 @@ class JobPoolSuite extends FailsOnUncaught:
         for
           completions <- Queue.unbounded[IO, Completion]
           handled <- Ref.of[IO, List[Throwable]](Nil)
-          fiber <- JobPool[IO, Completion](supervisor, completions.offer).forkJob(
+          fiber <- JobPool[IO, Completion](supervisor, JobPool.Handoff.queue(completions)).forkJob(
             JobPool.Job(
               entered.complete(()) *> IO.never[Completion],
               (cause, _) => handled.update(cause :: _).as(Completion.Handled(cause)),
@@ -106,64 +105,15 @@ class JobPoolSuite extends FailsOnUncaught:
     }
   }
 
-  /** Hand `job`'s completion to a sink that runs `handing` first, and give everything handed. */
-  private def handedBy(
-      handing: Ref[IO, Int] => IO[Unit],
-      action: IO[Completion]
-  ): IO[List[Completion]] =
-    Supervisor[IO](await = false).use { supervisor =>
-      for
-        completions <- Queue.unbounded[IO, Completion]
-        attempts <- Ref.of[IO, Int](0)
-        sink = (value: Completion) => handing(attempts) *> completions.offer(value)
-        fiber <- JobPool[IO, Completion](supervisor, sink).forkJob(
-          JobPool.Job.pure(action, cause => Completion.Handled(cause))
-        )
-        _ <- fiber.join
-        handed <- completions.tryTakeN(None)
-      yield handed
-    }
-
-  // the handoff after the action returns is masked, as `forkJob'` writes the completion queue: a
-  // cancellation the handoff itself asks for waits until it is done
-  test("a job cancelled during its handoff still hands over its value") {
-    handedBy(_ => IO.canceled, IO.pure(Completion.Returned)).map(handed =>
-      assertEquals(handed, List(Completion.Returned))
-    )
-  }
-
-  test("a handoff that raises once is tried again, and hands over the value once") {
-    handedBy(
-      attempts =>
-        attempts.getAndUpdate(_ + 1).flatMap(n => IO.raiseError(new Raised).whenA(n == 0)),
-      IO.pure(Completion.Returned)
-    ).map(handed => assertEquals(handed, List(Completion.Returned)))
-  }
-
-  test("a handoff that raises twice hands over the fallback for its exception instead") {
-    handedBy(
-      attempts => attempts.getAndUpdate(_ + 1).flatMap(n => IO.raiseError(new Raised).whenA(n < 2)),
-      IO.pure(Completion.Returned)
-    ).map(handed =>
-      assert(
-        handed match
-          case List(Completion.Handled(_: Raised)) => true
-          case _                                   => false
-        ,
-        s"the fallback should be handed over alone, was $handed"
-      )
-    )
-  }
-
   test("a pool completing elsewhere hands its jobs' values there, its handler's included") {
     val raised = new Raised
     Supervisor[IO](await = false).use { supervisor =>
       for
         first <- Queue.unbounded[IO, Completion]
         other <- Queue.unbounded[IO, Int]
-        pool = JobPool[IO, Completion](supervisor, first.offer)
+        pool = JobPool[IO, Completion](supervisor, JobPool.Handoff.queue(first))
         fiber <- pool
-          .completingTo[Int](other.offer)
+          .completingTo(JobPool.Handoff.queue(other))
           .forkJob(JobPool.Job.pure(IO.raiseError[Int](raised), _ => 7))
         _ <- fiber.join
         values <- other.tryTakeN(None)
