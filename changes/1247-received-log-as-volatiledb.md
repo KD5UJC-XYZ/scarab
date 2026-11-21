@@ -24,17 +24,24 @@
   Debug (`receivedBlockAlreadyHere`). Each cut the open makes is logged just before it is made
   (`receivedTruncated`, at Debug, as the reference traces `Truncate`) with its file, offset and cause,
   as the reference's `ParseError` splits it: a record that cannot be read or a block that does not
-  decode, a block that decodes and is corrupt, or a block already held in a named file; the open's
+  decode, a block that decodes and is corrupt (named by the hash it decodes to, as the reference
+  names it), or a block already held in a named file; the open's
   totals are logged as `receivedOpened`. The names of the directory's files the open does not read are
   logged at Debug (`receivedInvalidFileNames`), and in either log a name that reads as a file number
   but is not the name the log writes for it (`1.log` for `00000001.log`) refuses the log before any
   file changes. The selected-chain log still recovers its files in order.
 - The start-up check runs at every open, where the reference checks a block's integrity only after an
   unclean shutdown or on request, and it does not check a header's signature again: an approved
-  Deviation (decisions register, 2026-11-20). The start seeds the block pool from the log by decoding
-  each block's header (and a Dijkstra block's body, for its Leios fields), where it ran the whole check a second time on every block the open had
-  checked, and adds a block of the selected chain that the log lacks only once it passes the start-up
-  check (`receivedBlockDiscarded` when it does not).
+  Deviation (decisions register, 2026-11-20). The full block check used to run once, while the start
+  seeded the block pool, on each block the log's record-level recovery had kept; it now runs in the
+  open, and the start seeds the block pool by decoding each block's header (and a Dijkstra block's
+  body, for its Leios fields). The start adds a block of the selected chain that the log lacks only
+  once it passes the start-up check (`receivedBlockDiscarded` when it does not).
+- In either log, a full file and the log's directory are forced to disk in the append of the block
+  that fills the file, before the next file is started, where they were forced at the next write; a
+  failure of that force fails the append and stops the node. The reference forces neither when it
+  starts its next file. The refusal of a name that is not the writer's own and this force are approved
+  Deviations (decisions register, 2026-11-21).
 - In either log, a record header whose length runs past the file's end or what an Int holds, or
   whose record fails its checksum, ends the file's readable part without the record being read
   whole, where a damaged length near the largest an Int holds failed the open or asked for an array

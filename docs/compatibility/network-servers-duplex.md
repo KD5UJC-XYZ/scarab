@@ -83,24 +83,26 @@ the copy that schedules it, below its slot (`garbageCollectBlocks`, `Background.
 `Cardano/Node/Tracing/Tracers/ChainDB.hs` 1183-1184). Collections run one
 at a time, so one an interval is a goal, as the reference calls it (`Background.hs` 486-492): a
 collection that runs past the next entry's time leaves the entries due meanwhile queued, one to a 10 s
-mark, and they run back to back after it. Scarab forces its immutable store to disk before each
-collection, an approved Deviation ([decisions register](../decisions.md#genesis-storage-and-keys),
-2026-11-20): the reference forces nothing and relies on the 60 s delay to let the copy reach the disk
-(`Storage/ChainDB/Impl/Args.hs` 80-82; `garbageCollectBlocks`, `Background.hs` 431-448). A collection
-that fails, the force included, or an exception in the fiber that runs them, stops the node. A file
-holds 1,000 blocks, and the next one is started as soon as one fills, so a full file can be collected
-before another block arrives (`volMaxBlocksPerFile`, `putBlockImpl`, `Storage/VolatileDB/Impl.hs` 186 and
-387-399); files an earlier build wrote keep their 512-block boundaries, but the newest file of such a
-log, if it holds fewer than 1,000 blocks (a full 512-block one included), is the one written to and is
+mark, and they run back to back after it. Before each collection Scarab forces its immutable store to
+disk, an approved Deviation (listed below). A collection that fails, the force included, or an
+exception in the fiber that runs them, stops the node. A file holds 1,000 blocks, and the next one is
+started as soon as one fills, so a full file can be collected before another block arrives
+(`volMaxBlocksPerFile`, `putBlockImpl`, `Storage/VolatileDB/Impl.hs` 186 and 387-399); Scarab first
+forces the full file and the directory to disk, an approved Deviation (listed below). Files an earlier
+build wrote keep their 512-block boundaries, but the newest file of such a log, if it holds fewer than
+1,000 blocks (a full 512-block one included), is the one written to and is
 filled to 1,000. The selected-chain log shares the
 writer: its files of 512 blocks are now rolled at the block that fills them too, so a full one can be
 collected at the next 4,096-block trigger before another record is written. When the log is opened, the
 files of its directory whose names it does not read are logged and left alone, as the reference traces
-`InvalidFileNames` (`receivedInvalidFileNames`; `mkOpenState`, `State.hs` 319-339), and a name that
-reads as a file number but is not the name the log writes for it (`1.log` for `00000001.log`) refuses
-the log before any file changes, in either log, since a block's file is found by the name written for
-its number: a simple rule for an operational edge, as a name in a locale's digits is refused
-(`FileNameProblem`). Then each file is validated on its own (`mkOpenStateHelper`,
+`InvalidFileNames` (`receivedInvalidFileNames`; `mkOpenState`, `State.hs` 319-339). Scarab and the
+reference read different names as log files. The reference reads a file number from any name, the text after its last
+`-` and before its first `.` (`parseFd`, `Storage/VolatileDB/Impl/Util.hs` 45-74), so it also reads
+`blocks-01.dat` as file 1, and recovers such a file under the name it is listed under. Scarab reads a
+number only from a name `<number>.log`. A name that does so but is not the writer's 8-digit spelling of
+its number (`1.log` for `00000001.log`) refuses the log, in either log, before any file changes, an
+approved Deviation (listed below), as does a name that holds a locale's digits (`FileNameProblem`).
+Then each file is validated on its own (`mkOpenStateHelper`,
 `validateFile`, `Storage/VolatileDB/Impl/State.hs` 372-436): it is read up to its first record that is
 damaged or whose block the start-up check refuses, as the reference stops at the first block it cannot
 read (`BlockReadErr`: here a damaged record or a block that does not decode) or, validating, finds
@@ -108,13 +110,12 @@ corrupt (`BlockCorruptedErr`: here a block that decodes and fails the check) (`p
 `Storage/VolatileDB/Impl/Parser.hs` 52-107), its blocks are
 indexed up to the first one already indexed, in an earlier file or earlier in the same one, whatever the
 bytes of its record (`addToReverseIndex`, `DuplicatedBlock`, `State.hs` 464-492), the file is cut at the
-earlier of the two, and the files after it are read all the same. Each cut is logged just before it is
-made, before the next file is read, with its file, offset and cause, as the reference traces `Truncate` with
-its `ParseError` (`receivedTruncated`; `Storage/VolatileDB/Impl/Types.hs` 77-99; `validateFile` and
-`truncateError`, `State.hs` 412-450): a file cut where its parse stopped and then at an earlier repeat
-is logged twice, in that order. The severity is Debug, the one cardano-node 11.1.3 gives `Truncate`
-(`Cardano/Node/Tracing/Tracers/ChainDB.hs` 2714; the same in ouroboros-consensus `808e40054`'s tracing,
-`tracing/Ouroboros/Consensus/Tracing/ChainDB.hs` 3288). The open's totals are logged as
+earlier of the two, and the files after it are read all the same. Each cut is logged as the reference
+traces `Truncate` with its `ParseError` (`Storage/VolatileDB/Impl/Types.hs` 77-99; `validateFile` and
+`truncateError`, `State.hs` 412-450), at the severity cardano-node 11.1.3 gives it
+(`Cardano/Node/Tracing/Tracers/ChainDB.hs` 2714; ouroboros-consensus `808e40054`'s tracing,
+`tracing/Ouroboros/Consensus/Tracing/ChainDB.hs` 3288): the [logging catalogue](../running/logging.md#log-events)
+says what `receivedTruncated` holds and when it is written, and the open's totals are logged as
 `receivedOpened`. No path writes a second record of a
 block the log holds: a receipt and the start's repair of the selected chain's blocks
 (`ReceivedBlocks.restoreSelected`) write only a block the log lacks, as `putBlockImpl` skips a block
@@ -124,27 +125,26 @@ can be written again; the next open cuts the damaged record's file there, or, re
 the later record's. The selected-chain log keeps its in-order recovery, since it replays rollback
 records in order.
 
-The start-up check is an approved Deviation from the reference's validation policy
-([decisions register](../decisions.md#genesis-storage-and-keys), 2026-11-20). It decodes the block,
-checks that its header names the point the record stores and checks the body against the header, at
-every open. The reference only decodes by default (`NoValidation`, `Storage/VolatileDB/Impl.hs` 188) and
-checks a block's integrity, its header's own and its body against its header, only after an unclean
-shutdown or when the operator asks for it (`ensureValidateAll`, `Storage/ChainDB/Impl/Args.hs` 154-167;
-`Ouroboros/Consensus/Node.hs` 515-521 and 1118-1128 in ouroboros-consensus-diffusion; `Args.hs` 162-175,
-`Node.hs` 517-523 and 1151-1161 at `808e40054`). Scarab keeps no clean-shutdown marker, so it checks at
-every open; it does not check a header's own integrity again. With header-first validation, the default,
-that was checked when the header arrived; with `--header-first off` in Praos mode a block is fetched
-before its header is checked, and an epoch boundary block carries no signature. The start seeds the block
-pool from the log by decoding each block's header, and a Dijkstra block's body for its Leios fields,
-without checking its body against its header a second time, and adds a block of the selected chain that the log lacks only once it passes
-the start-up check, which a resume does not run in full (a Byron boundary block's body is not decoded)
+Four differences here are approved Deviations. Each is a row of the
+[decisions register](../decisions.md#genesis-storage-and-keys), which says what the reference does at
+both pins:
+- the start-up check, run on each record at every open, and the seeding of the block pool from the log
+  that relies on it (2026-11-20);
+- the force of the immutable store before each collection (2026-11-20);
+- the refusal of a log file name that reads as a file number but is not the writer's 8-digit spelling of
+  it (2026-11-21);
+- the force of a full file and the directory before the next file is started (2026-11-21).
+
+The start adds a block of the selected chain that the log lacks only once it passes the start-up check,
+which a resume does not run in full (a Byron boundary block's body is not decoded)
 (`ProcessedBodiesSuite`: after an open whose check accepts every record, a block whose body is not its
 header's is seeded and a record whose header does not decode is logged and skipped; such a block is
 not added by the start, and is logged).
 
 Evidence: `GcScheduleSuite` and `ReceivedCollectionSuite` (the schedule and its traces, the storage's
 collections, a copy whose backing-store work moves the clock, a restart, under TestControl; the start-up
-check through the storage's open, on a block whose header is not its record's, bytes that do not decode
+check through the storage's open, on a block whose header is not its record's (its cut named by the
+hash it decodes to), bytes that do not decode
 and a block whose body does not match its header), `ReceivedBlocksSuite` (the files, a damaged file, a
 block that does not decode or is corrupt, repeats in the same and a later file with the same and other
 bytes, the cuts and other traces, a name that is not the log's own, the repair, and the scan on a small stack) and
