@@ -38,6 +38,8 @@ data KeepAlive where
     StDone   :: KeepAlive
 '''
 UPSTREAM_FILE = 'protocols/lib/Ouroboros/Network/Protocol/KeepAlive/Type.hs'
+SUITE_FILE = 'net/src/test/scala/KeepAliveSuite.scala'
+CORPUS_FILE = 'fixtures/reference/keep-alive/cases.jsonl'
 
 
 def git(cwd: Path, *args: str) -> str:
@@ -47,7 +49,8 @@ def git(cwd: Path, *args: str) -> str:
 
 
 class Fixture:
-    """A repository with one area (`net`), one source, the pins and a test suite."""
+    """A repository with one area (`net`), one source, the pins, a test suite, a reference corpus and a register of
+    comparison contracts that holds none yet."""
 
     def __init__(self, tmp: Path, revision: str = 'a' * 40):
         self.root = tmp / 'repo'
@@ -55,14 +58,30 @@ class Fixture:
         (self.root / 'net/src/main/scala/xyz/kd5ujc/scarab/net').mkdir(parents=True)
         (self.root / 'net/src/test/scala').mkdir(parents=True)
         (self.root / 'docs/data/correspondence').mkdir(parents=True)
-        (self.root / 'net/src/test/scala/KeepAliveSuite.scala').write_text('class KeepAliveSuite extends munit.FunSuite\n')
+        (self.root / SUITE_FILE).write_text('class KeepAliveSuite extends munit.FunSuite\n')
+        (self.root / CORPUS_FILE).parent.mkdir(parents=True)
+        (self.root / CORPUS_FILE).write_text('{}\n')
+        (self.root / CORPUS_FILE).with_name('README.md').write_text('Recorded from the reference node.\n')
         self.write_pins([revision])
+        self.register([])
         self.source(CODE)
         self.area({}, [])
 
     def write_pins(self, revisions):
         pins = [{'name': 'ouroboros-network', 'repository': REPOSITORY, 'revision': r, 'role': 'x'} for r in revisions]
         (self.root / guard.PINS).write_text(json.dumps({'schemaVersion': 1, 'pins': pins}))
+
+    def register(self, rows: list[dict]) -> None:
+        (self.root / guard.REGISTER).write_text(json.dumps({'schemaVersion': 1, 'entries': rows}))
+
+    @staticmethod
+    def contract(evidence: list[str], **fields) -> dict:
+        """A register entry: a covered native-parity comparison, unless `fields` says otherwise."""
+        row = {'id': 'keep-alive', 'classification': 'native-parity', 'status': 'covered', 'scope': 's',
+               'assertion': 'a', 'rationale': 'r', 'owner': 'o', 'tracking': 't', 'resolution': 'r',
+               'evidence': evidence, 'candidateRequired': False}
+        row.update(fields)
+        return row
 
     def source(self, text: str) -> None:
         (self.root / SOURCE).write_text(text)
@@ -200,7 +219,7 @@ class GuardTest(unittest.TestCase):
                 status, out = self.fixture.run()
                 self.assertEqual(status, 1, out)
                 self.assertIn(message, out)
-        for fields in ({'structure': 'differs', 'evidence': ['KeepAliveSuite']},
+        for fields in ({'structure': 'same', 'evidence': ['KeepAliveSuite']},
                        {'class': 'Gap', 'record': 'https://github.com/KD5UJC-XYZ/scarab/issues/932'},
                        {'class': 'Gap', 'structure': 'differs', 'record': 'https://github.com/KD5UJC-XYZ/scarab/issues/9'},
                        {'class': 'Deviation', 'record': 'docs/data/reference-pins.json'}):
@@ -208,6 +227,88 @@ class GuardTest(unittest.TestCase):
                 self.fixture.area({key: self.fixture.entry(key, **fields)}, [])
                 status, out = self.fixture.run()
                 self.assertEqual(status, 0, out)
+
+    def test_a_differs_entrys_evidence_suite_needs_a_comparison_contract_against_the_reference(self):
+        key = 'enum net.KeepAlive.State'
+        self.fixture.area({key: self.fixture.entry(key)}, [])
+        self.assertEqual(self.fixture.run('--write-baseline')[0], 0)
+        self.fixture.area({key: self.fixture.entry(key, structure='differs', evidence=['KeepAliveSuite'])}, [])
+        status, out = self.fixture.run()
+        self.assertEqual(status, 1, out)
+        self.assertIn(f'{key}: evidence suite KeepAliveSuite has no comparison contract in {guard.REGISTER}', out)
+        self.assertIn(SUITE_FILE, out, 'the refusal names the file to register')
+        contract = self.fixture.contract
+        passing = [
+            ('a corpus', [contract([SUITE_FILE, CORPUS_FILE])]),
+            ('an oracle', [contract([SUITE_FILE, 'scripts/oracle/keep-alive/Main.hs'])]),
+            ('a running node', [contract([SUITE_FILE, 'scripts/devnet/scenarios/keepalive.py'])]),
+            ('an acceptance receipt', [contract([SUITE_FILE, 'docs/data/external-acceptance-294.json'])]),
+            ('a bounded contract', [contract([SUITE_FILE, CORPUS_FILE], status='bounded')]),
+            ('a reference non-result', [contract([SUITE_FILE, CORPUS_FILE], classification='reference-non-result')]),
+            ('a known divergence', [contract([SUITE_FILE, CORPUS_FILE], classification='known-divergence')]),
+            ('one of two entries', [contract([SUITE_FILE], id='plain', classification='regression'),
+                                    contract([SUITE_FILE, CORPUS_FILE])]),
+        ]
+        for name, rows in passing:
+            with self.subTest(contract=name):
+                self.fixture.register(rows)
+                status, out = self.fixture.run()
+                self.assertEqual(status, 0, out)
+        failing = [
+            ('no reference source', [contract([SUITE_FILE])]),
+            ('a file outside any corpus', [contract([SUITE_FILE, 'docs/notes.md'])]),
+            ('an undocumented corpus', [contract([SUITE_FILE, 'fixtures/reference/keep-alive-undocumented/a.json'])]),
+            ('another suite\'s contract', [contract(['net/src/test/scala/OtherSuite.scala', CORPUS_FILE])]),
+            ('an open contract', [contract([SUITE_FILE, CORPUS_FILE], status='open')]),
+            ('a pending contract', [contract([SUITE_FILE, CORPUS_FILE], status='pending-integration')]),
+            ('a regression contract', [contract([SUITE_FILE, CORPUS_FILE], classification='regression')]),
+            ('an input-boundary contract', [contract([SUITE_FILE, CORPUS_FILE], classification='input-boundary')]),
+        ]
+        undocumented = self.fixture.root / 'fixtures/reference/keep-alive-undocumented/a.json'
+        undocumented.parent.mkdir(parents=True)
+        undocumented.write_text('{}\n')
+        for name, rows in failing:
+            with self.subTest(contract=name):
+                self.fixture.register(rows)
+                status, out = self.fixture.run()
+                self.assertEqual(status, 1, out)
+                self.assertIn('KeepAliveSuite has no comparison contract', out)
+
+    def test_the_contract_rule_binds_every_class_of_differs_entry_and_no_same_one(self):
+        key = 'enum net.KeepAlive.State'
+        issue = 'https://github.com/KD5UJC-XYZ/scarab/issues/9'
+        self.fixture.area({key: self.fixture.entry(key, structure='same', evidence=['KeepAliveSuite'])}, [])
+        self.assertEqual(self.fixture.run('--write-baseline')[0], 0)
+        for fields in ({'class': 'Gap', 'record': issue}, {'class': 'Deviation', 'record': issue},
+                       {'class': 'Improvement', 'record': issue}):
+            with self.subTest(fields=fields):
+                entry = self.fixture.entry(key, structure='differs', evidence=['KeepAliveSuite'], **fields)
+                self.fixture.area({key: entry}, [])
+                status, out = self.fixture.run()
+                self.assertEqual(status, 1, out)
+                self.assertIn('KeepAliveSuite has no comparison contract', out)
+        self.fixture.area({key: self.fixture.entry(key, structure='differs', **{'class': 'Gap', 'record': issue})}, [])
+        self.assertEqual(self.fixture.run()[0], 0, 'a Gap that names no evidence needs no contract')
+
+    def test_a_suite_defined_twice_needs_one_of_its_files_registered(self):
+        key = 'enum net.KeepAlive.State'
+        other = 'net/src/test/scala/more/KeepAliveSuite.scala'
+        (self.fixture.root / other).parent.mkdir(parents=True)
+        (self.fixture.root / other).write_text('class KeepAliveSuite extends munit.FunSuite\n')
+        self.fixture.area({key: self.fixture.entry(key)}, [])
+        self.fixture.run('--write-baseline')
+        self.fixture.area({key: self.fixture.entry(key, structure='differs', evidence=['KeepAliveSuite'])}, [])
+        status, out = self.fixture.run()
+        self.assertEqual(status, 1, out)
+        self.assertIn(f'names {SUITE_FILE} or {other}', out)
+        self.fixture.register([self.fixture.contract([other, CORPUS_FILE])])
+        self.assertEqual(self.fixture.run()[0], 0)
+
+    def test_a_missing_register_fails_the_check(self):
+        (self.fixture.root / guard.REGISTER).unlink()
+        status, out = self.fixture.run()
+        self.assertEqual(status, 1, out)
+        self.assertIn(f'{guard.REGISTER} is missing', out)
 
     def test_upstream_symbols_are_checked_in_a_clone_at_the_revision(self):
         sources = Path(self.tmp.name) / 'sources'

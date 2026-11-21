@@ -19,6 +19,12 @@ shrinks. The guard refuses:
     `differs`; an Improvement, Deviation or Gap without a `record` link (a Gap's is its issue); a `differs` entry
     without `evidence`, the test suites that compare that behaviour with the reference, unless it is a Gap (a
     structure that differs with no such evidence is one); an evidence suite that no test source defines;
+  * an evidence suite of a `differs` entry with no comparison contract in `docs/data/test-coverage-register.json`:
+    a register entry whose `evidence` names a file that defines the suite and a reference source, whose
+    classification compares with the reference (COMPARISON_KINDS) and whose assertion is enforced (`covered` or
+    `bounded`). A reference source is a file of a documented corpus (`check_test_coverage.discover_corpora`; its
+    README, identities and provenance record are that script's to check), an oracle under `scripts/oracle/`, a
+    running-node harness under `scripts/devnet/` or an external acceptance receipt (REFERENCE_SOURCES);
   * an upstream counterpart (an entry's, or a baseline hint) whose repository and revision are not a pin of
     `docs/data/reference-pins.json`, or whose file, symbol and lines are malformed; and, where a clone of its
     repository is given (`--sources DIR` or SCARAB_REFERENCE_SOURCES: a directory holding one clone per
@@ -32,7 +38,8 @@ shrinks. The guard refuses:
     baseline at all is the first one, which this check admits.
 
 What an entry asserts beyond its counterpart (its class, and whether its structure is the reference's) is the
-reviewer's to check: the guard checks only that the claim is complete.
+reviewer's to check: the guard checks only that the claim is complete. So is whether a registered suite compares
+what its contract says: the guard checks that the contract exists and names its reference source.
 
     python3 scripts/check_correspondence.py                      check (the default)
     python3 scripts/check_correspondence.py --sources DIR        check, and the upstream symbols in DIR's clones
@@ -54,18 +61,28 @@ import subprocess
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import check_test_coverage  # noqa: E402
 import scala_definitions  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 MAP = 'docs/data/correspondence'
 BASELINE = 'docs/data/correspondence-baseline.json'
 PINS = 'docs/data/reference-pins.json'
+REGISTER = check_test_coverage.REGISTER
 RULE = 'docs/design-rules.md#ref-6'
 DESIGN = 'docs/design/correspondence-map.md'
 SOURCES_ENV = 'SCARAB_REFERENCE_SOURCES'
 CLASSES = ('Mirror', 'Improvement', 'Deviation', 'Gap')
 NEEDS_RECORD = frozenset(('Improvement', 'Deviation', 'Gap'))
 STRUCTURES = ('same', 'differs')
+# The register's classifications whose contract is a comparison with the reference's results, and the statuses
+# whose assertion is enforced (check_test_coverage.KINDS and STATES hold every one).
+COMPARISON_KINDS = ('native-parity', 'reference-non-result', 'known-divergence')
+ENFORCED = ('covered', 'bounded')
+# Where a comparison's reference results come from, besides a documented corpus: an oracle, or a running reference
+# node (a devnet harness, or the receipt of an external acceptance run against one).
+REFERENCE_SOURCES = (re.compile(r'scripts/oracle/.+'), re.compile(r'scripts/devnet/.+'),
+                     re.compile(r'docs/data/external-acceptance-[\w-]+\.json'))
 ENTRY_FIELDS = frozenset(('upstream', 'class', 'structure', 'digest', 'record', 'evidence', 'note'))
 UPSTREAM_FIELDS = frozenset(('repository', 'revision', 'file', 'symbol', 'lines'))
 REVISION = re.compile(r'[0-9a-f]{40}')
@@ -169,11 +186,45 @@ def root_problems(root: Path, all_areas: list[Area]) -> list[str]:
     return out
 
 
-def test_suites(root: Path) -> set[str]:
-    names: set[str] = set()
+def test_suites(root: Path) -> dict[str, set[str]]:
+    """Each suite name, with the test sources (repository-relative) that define it."""
+    names: dict[str, set[str]] = {}
     for path in root.glob('*/src/test/**/*.scala'):
-        names.update(SUITE.findall(path.read_text(encoding='utf-8')))
+        for name in SUITE.findall(path.read_text(encoding='utf-8')):
+            names.setdefault(name, set()).add(path.relative_to(root).as_posix())
     return names
+
+
+def compared_files(root: Path) -> tuple[dict[str, list[str]], list[str]]:
+    """The files that the register's comparison contracts name, each with the ids of its contracts, and what kept
+    the register from being read."""
+    path = root / REGISTER
+    if not path.is_file():
+        return {}, [f'{REGISTER} is missing: the comparison contracts of evidence suites are read from it']
+    try:
+        rows = load_json(path).get('entries', [])
+        corpora = [c for c in check_test_coverage.discover_corpora(root) if (root / c / 'README.md').is_file()]
+    except (ValueError, OSError, AttributeError) as error:
+        return {}, [f'{REGISTER}: cannot read the comparison contracts ({error})']
+    out: dict[str, list[str]] = {}
+    for row in rows if isinstance(rows, list) else []:
+        if not isinstance(row, dict) or not isinstance(row.get('evidence'), list):
+            continue
+        if row.get('classification') not in COMPARISON_KINDS or row.get('status') not in ENFORCED:
+            continue
+        paths = [p for p in row['evidence'] if isinstance(p, str)]
+        if not any(reference_source(p, corpora) for p in paths):
+            continue
+        for file in paths:
+            out.setdefault(file, []).append(str(row.get('id')))
+    return out, []
+
+
+def reference_source(path: str, corpora: list[str]) -> bool:
+    """A file the reference's results come from: one of a documented corpus (one with its README), an oracle or a
+    running node."""
+    return (any(path.startswith(corpus + '/') for corpus in corpora)
+            or any(source.fullmatch(path) for source in REFERENCE_SOURCES))
 
 
 def pins(root: Path) -> set[tuple[str, str]]:
@@ -271,7 +322,7 @@ def record_problems(root: Path, what: str, kind: str, record) -> list[str]:
 
 
 def entry_problems(root: Path, key: str, entry, digest: str, registered, clones: Clones,
-                   suites: set[str]) -> list[str]:
+                   suites: dict[str, set[str]], compared: dict[str, list[str]]) -> list[str]:
     if not isinstance(entry, dict):
         return [f'{key}: an entry is an object']
     out = []
@@ -294,6 +345,12 @@ def entry_problems(root: Path, key: str, entry, digest: str, registered, clones:
         out.append(f'{key}: its structure differs from the reference\'s, so it names the suites that compare that '
                    'behaviour with the reference ("evidence")')
     out += [f'{key}: evidence suite {s} is not defined by any test source' for s in evidence if s not in suites]
+    if structure == 'differs':
+        out += [f'{key}: evidence suite {s} has no comparison contract in {REGISTER}: an entry, '
+                f'{" or ".join(ENFORCED)} and classed {", ".join(COMPARISON_KINDS[:-1])} or {COMPARISON_KINDS[-1]}, '
+                f'whose evidence names {" or ".join(sorted(suites[s]))} and the corpus, oracle or running node it '
+                'compares with'
+                for s in evidence if s in suites and not any(f in compared for f in suites[s])]
     if entry.get('digest') != digest:
         out.append(f'{key}: its code changed and its entry did not (digest {entry.get("digest")} -> {digest}): '
                    'compare it with its upstream counterpart at the pin again, correct the entry, then record '
@@ -357,6 +414,8 @@ def check(root: Path, sources: Path | None, write: bool, environment: dict[str, 
     registered = pins(root)
     clones = Clones(sources)
     suites = test_suites(root)
+    compared, unread = compared_files(root)
+    outcome.problems += unread
     baseline = read_baseline(root)
     outcome.problems += root_problems(root, all_areas)
     by_key: dict[str, Found] = {}
@@ -381,7 +440,7 @@ def check(root: Path, sources: Path | None, write: bool, environment: dict[str, 
         for key, entry in sorted(area.entries.items()):
             if key in mine:
                 outcome.problems += entry_problems(root, key, entry, mine[key].definition.digest, registered, clones,
-                                                   suites)
+                                                   suites, compared)
         for key, hint in sorted(was.items()):
             if hint is not None:
                 outcome.problems += upstream_problems(f'{key} (baseline hint)', hint, registered, clones)

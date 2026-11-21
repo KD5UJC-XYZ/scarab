@@ -116,7 +116,22 @@ An entry may also have `evidence` (suite names) and `record` (a link).
   It is `differs` when the definition merges or splits counterparts, or uses another algorithm or representation.
   A `differs` entry names in `evidence` the suites that compare that behaviour with the reference: an exported
   reference corpus, an oracle, or a comparison with a running reference node. A suite that only restates what
-  the source says is not such evidence. Without it the entry is a Gap, which links its issue instead.
+  the source says is not such evidence, and nor is one that reads fixtures of unknown origin. Without it the
+  entry is a Gap, which links its issue instead.
+
+  Each suite a `differs` entry names has its comparison contract in the
+  [comparison register](../data/test-coverage-register.json), whatever the entry's class. The contract is a
+  register entry with all of these:
+  - its `evidence` names the file that defines the suite;
+  - its `evidence` also names where the reference's results come from: a file of a documented corpus (one that
+    `scripts/check_test_coverage.py` finds, with its README), an oracle under `scripts/oracle/`, or a
+    running-node harness under `scripts/devnet/` or an external acceptance receipt;
+  - its `classification` is `native-parity`, `reference-non-result` or `known-divergence`;
+  - its `status` is `covered` or `bounded`, so its assertion is enforced.
+
+  One contract may cover several suites that read the same reference source. Its `scope`, `assertion` and
+  `resolution` say what the suites compare and on which cases; `scripts/check_test_coverage.py` validates the
+  corpus itself (identities, README and provenance record).
 - `digest`: the definition's code digest when the entry was last checked.
 
 **Glue** is a group with a `reason` and its `definitions`. It holds the code that has no counterpart: Scala
@@ -193,6 +208,9 @@ fails. Without clones, as in CI, the guard prints that the check did not run, an
   run `--write-baseline`. `--unmapped AREA` lists the baselined definitions by file.
 - **A real difference found while mapping**: a Gap entry with its issue, or an Improvement or Deviation with its
   record, as [REF-7](../design-rules.md#ref-7) says. It is fixed in a change of its own.
+- **A `differs` entry**: name in `evidence` only suites that compare with the reference, and add or extend the
+  register entry that is each one's comparison contract. A suite that compares nothing with the reference stays
+  out of `evidence`; with no suite left, the entry is a Gap.
 
 ## What the guard does not check
 
@@ -200,7 +218,9 @@ fails. Without clones, as in CI, the guard prints that the check did not run, an
   the whole definition: a definition that also does what its counterpart does not, or only part of it, is
   `differs`.
 - Changes to a baselined or glue definition: neither has a digest.
-- Whether an evidence suite compares with the reference. The guard checks only that the suite exists.
+- Whether an evidence suite compares what its register contract says. The guard checks that the suite exists
+  and, for a `differs` entry, that a comparison contract names it and its reference source. Whether the suite
+  reads that source and asserts the reference's results is the reviewer's to check.
 - Whether a glue reason is honest.
 - Code outside the roots, including `node`.
 - A persisted format: storage entries are data only, and the storage code is under [FMT-1](../design-rules.md#fmt-1).
