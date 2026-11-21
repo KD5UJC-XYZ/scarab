@@ -67,6 +67,17 @@ import xyz.kd5ujc.scarab.protocol.{DijkstraNotYet, Era}
   * Conway's transition tells (`GovNewProposals`, then `GovRemovedVotes`), which the oracle does not
   * record. The flat form restores an action from the proposal it was read as, so
   * `gov/treasury-zero` 's failure is checked on the era type too.
+  *
+  * The era-typed LEDGER (`era.rules.DijkstraLedger`, #85) is run on every `utxow` case at the root,
+  * from the certificate state the era CERTS leaves after its setup: where the refusal is LEDGER's
+  * whole, its failures, in the flat Dijkstra form (`DijkstraLedgerPredFailure.toStored`) and
+  * written by this suite's encoder, are the reference's bytes in its order, `utxow/no-utxo` 's
+  * order against BBODY's recording of the same refusal one level down; the two whose deregistration
+  * ENTITIES refuses are compared on their UTXOW part. The era-typed LEDGERS is run on every `bbody`
+  * case one level below the root: its refusals are the reference's LEDGERS refusals byte for byte,
+  * and it admits every other block, the one the flat rules halt on among them. On the two cases
+  * flagged invalid, which the flat LEDGER judges, the era LEDGER and LEDGERS give the flat
+  * failures.
   */
 class DijkstraRulesOracleSuite extends FunSuite:
   private val fixture = Path.of("fixtures", "reference", "dijkstra-rules", "cases.jsonl")
@@ -893,4 +904,275 @@ class DijkstraRulesOracleSuite extends FunSuite:
     }
     assertEquals(admitted.size, govCases.count(c => reference(c) == Verdict.Accepted))
     assertEquals(admitted.size, 6)
+  }
+
+  // ---- the era-typed LEDGER and LEDGERS -----------------------------------------------------------
+
+  private lazy val bbodyCases: Vector[Json] =
+    cases.filter(c => str(c.hcursor.downField("kind")) == "bbody")
+
+  private def caseNamed(name: String): Json =
+    cases.find(c => str(c.hcursor.downField("name")) == name).getOrElse(fail(s"no case $name"))
+
+  /** A LEDGER failure in the flat form, as the flat Dijkstra rules give it. */
+  private def eraLedgerStored(
+      f: xyz.kd5ujc.scarab.ledger.era.rules.DijkstraLedgerPredFailure[Dijkstra]
+  ): DijkstraLedgerFailure =
+    xyz.kd5ujc.scarab.ledger.era.rules.DijkstraLedgerPredFailure
+      .toStored(f, _ => None, _ => None)
+      .fold(u => fail(s"no flat form of $u"), identity)
+
+  /** A LEDGER failure as the reference's `EncCBOR` writes it, for the cases the oracle reaches:
+    * `DijkstraUtxowFailure`, tag 1, of UTXOW's failure.
+    */
+  private def ledgerBytes(f: DijkstraLedgerFailure): Bytes = f match
+    case DijkstraLedgerFailure.UtxowFailure(u) =>
+      CborOut.build(w => w.array(2).uint(f.tag).raw(utxow(u)))
+    case other => fail(s"no case of the oracle reaches $other")
+
+  /** The item after BBODY's tag of a `LedgersFailure`, which is LEDGER's failure itself. */
+  private def inLedgers(bytes: Bytes): Option[Bytes] = node(bytes).value match
+    case Value.Arr(Vector(tag, item)) if tag.value == Value.UInt(2) => Some(item.original)
+    case _                                                          => None
+
+  /** Dijkstra's LEDGER on the era types (`era.rules.DijkstraLedger`, #85) on a `utxow` case at the
+    * root: from the certificate state the era CERTS leaves after the case's setup, the case's UTxO
+    * set and the default store of proposals, the transaction annotated as `mkDijkstraStAnnTopTx`
+    * does, at the case's slot and epoch, with a treasury of zero.
+    */
+  private def eraLedgerRun(c: Json) =
+    import xyz.kd5ujc.scarab.ledger.era.dijkstra.{
+      DijkstraCorpus,
+      DijkstraLedgerRun,
+      DijkstraStAnnTx,
+      DijkstraUtxoRun
+    }
+    val h = c.hcursor
+    val pp = params(c)
+    val era = DijkstraCorpus.era(pp)
+    val tx = eraTx(c)
+    val utxo = utxoOf(c)
+    val cert = eraCertsRun(c, "setup") match
+      case Right(Right((s, _))) => s
+      case other                => fail(s"the setup does not pass: $other")
+    val start = ledger(pp, num(h.downField("epoch")), utxo).state
+    DijkstraLedgerRun.ledger(
+      leiosGlobals,
+      xyz.kd5ujc.scarab.ledger.era.rules.LedgerEnv[Dijkstra](
+        num(h.downField("slot")),
+        Some(epochOf(c)),
+        TxIx.txIxFromIntegral(0).getOrElse(fail("index 0")),
+        era,
+        ChainAccountState(Coin(0), Coin(0))
+      ),
+      DijkstraStAnnTx.mkDijkstraStAnnTopTx(
+        s => fail(s"the clock was read at $s"),
+        era,
+        DijkstraUtxoRun.originalUtxo(utxo, tx),
+        Map.empty,
+        tx
+      ),
+      xyz.kd5ujc.scarab.ledger.era.rules
+        .DijkstraUtxoContext(
+          Network.Testnet,
+          0,
+          history,
+          xyz.kd5ujc.scarab.ledger.TxEnv.Validation.All
+        ),
+      LedgerState(cert, start.utxo),
+      xyz.kd5ujc.scarab.ledger.era.EraGovRun.dijkstraEmpty,
+      xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default,
+      xyz.kd5ujc.scarab.ledger.Verdicts.Direct,
+      xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder
+    )
+
+  private def eraLedgerFailures(c: Json) = eraLedgerRun(c) match
+    case Left(defect)    => fail(s"${str(c.hcursor.downField("name"))}: $defect")
+    case Right(Right(_)) => Vector.empty
+    case Right(Left(fs)) => fs.toChain.toVector
+
+  test(
+    "the era-typed LEDGER gives each utxow case's refusal byte for byte where it is LEDGER's whole"
+  ) {
+    import xyz.kd5ujc.scarab.ledger.era.rules.DijkstraLedgerPredFailure as L
+    // the refusals the oracle recorded are UTXOW's at the root; LEDGER runs UTXOW one level down,
+    // so its failures are UTXOW's wrapped (`DijkstraUtxowFailure`), and the whole refusal is
+    // LEDGER's where nothing else refuses the transaction
+    val judged = utxowCases.map(c => str(c.hcursor.downField("name")) -> eraLedgerFailures(c))
+    val (whole, more) = judged.partition((_, fs) =>
+      fs.forall {
+        case L.DijkstraUtxowFailure(_) => true
+        case _                         => false
+      }
+    )
+    // the two deregistrations whose declared refund is not the deposit held: ENTITIES' CERTS
+    // refuses that, which the oracle's UTXOW alone does not judge (CNF-2)
+    assertEquals(
+      more.map(_._1),
+      Vector("utxow/refund-declared-balanced", "utxow/refund-held-balanced")
+    )
+    // each case registers the account with 2 ada (`setup`) and declares a refund of 3 ada
+    // (`scripts/oracle/dijkstra-rules/run.py`): DELEG refuses the refund once, through CERT, CERTS
+    // and ENTITIES (`Conway/Rules/Deleg.hs:245-261`, cardano-ledger 9df9f98c);
+    // ENTITIES runs before UTXOW, and LEDGER at the root reports its blocks last first, so UTXOW's
+    // block comes before ENTITIES' one failure
+    val refund = {
+      import xyz.kd5ujc.scarab.ledger.era.rules.*
+      L.DijkstraEntitiesFailure[Dijkstra](
+        EntitiesPredFailure.CertsFailure(
+          ConwayCertsPredFailure.CertFailure(
+            ConwayCertPredFailure.DelegFailure(
+              ConwayDelegPredFailure.RefundIncorrectDELEG(Mismatch(Coin(3000000), Coin(2000000)))
+            )
+          )
+        )
+      )
+    }
+    more.foreach { (name, fs) =>
+      val utxowPart = fs.filter {
+        case L.DijkstraUtxowFailure(_) => true
+        case _                         => false
+      }
+      assertEquals(fs, utxowPart :+ refund, name)
+      val expected = reference(caseNamed(name))
+      assertEquals(
+        if utxowPart.isEmpty then Verdict.Accepted
+        else Verdict.Refused(utxowPart.map(f => ledgerBytes(eraLedgerStored(f))).map(payload)),
+        expected,
+        name
+      )
+    }
+    // the order of a refusal of several failures: the oracle applied UTXOW at the root, whose
+    // failures the reference reports last first; one level down, LEDGER's block keeps the order
+    // they were recorded in, which BBODY's recorded refusal of the same transaction holds
+    // (`bbody/devnet-37`, through LEDGERS and LEDGER)
+    val severalAtRoot = "utxow/no-utxo"
+    val differing = whole.flatMap { (name, fs) =>
+      val ours: Verdict =
+        if fs.isEmpty then Verdict.Accepted
+        else Verdict.Refused(fs.map(f => payload(ledgerBytes(eraLedgerStored(f)))))
+      val expected =
+        if name == severalAtRoot then
+          reference(caseNamed("bbody/devnet-37")) match
+            case Verdict.Refused(bs) =>
+              Verdict.Refused(bs.map(b => payload(inLedgers(b).getOrElse(fail(s"$b")))))
+            case other => fail(s"$other")
+        else reference(caseNamed(name))
+      Option.when(ours != expected)(s"$name: $ours, the reference $expected")
+    }
+    assertEquals(whole.size, 15)
+    assertEquals(differing, Vector.empty[String])
+  }
+
+  /** Dijkstra's LEDGERS on the era types on a `bbody` case's transactions, one level below the root
+    * as BBODY runs it, from the default ledger state with the case's UTxO set, at the header's slot
+    * and the case's epoch.
+    */
+  private def eraLedgersRun(c: Json) =
+    import xyz.kd5ujc.scarab.ledger.era.dijkstra.{DijkstraCorpus, DijkstraLedgerRun}
+    val h = c.hcursor
+    val pp = params(c)
+    val block = Block.decodeShelley(hex(str(h.downField("block")))) match
+      case Right(Block.Dijkstra(b)) => b
+      case other                    => fail(s"not a Dijkstra block: $other")
+    val txs = block.transactions.map(t =>
+      ok(xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraTx.inBlock(node(t.raw)))
+    )
+    DijkstraLedgerRun.ledgers(
+      leiosGlobals,
+      xyz.kd5ujc.scarab.ledger.era.rules
+        .LedgersEnv[Dijkstra](
+          block.header.slot,
+          epochOf(c),
+          DijkstraCorpus.era(pp),
+          ChainAccountState(Coin(0), Coin(0))
+        ),
+      txs,
+      xyz.kd5ujc.scarab.ledger.era.rules
+        .DijkstraUtxoContext(
+          Network.Testnet,
+          0,
+          history,
+          xyz.kd5ujc.scarab.ledger.TxEnv.Validation.All
+        ),
+      ledger(pp, num(h.downField("epoch")), utxoOf(c)).state,
+      xyz.kd5ujc.scarab.ledger.era.EraGovRun.dijkstraEmpty,
+      xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default,
+      xyz.kd5ujc.scarab.ledger.Verdicts.Direct,
+      xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder,
+      s => fail(s"the clock was read at $s"),
+      depth = 1
+    )
+
+  test("the era-typed LEDGERS gives each bbody case's LEDGERS refusal byte for byte") {
+    // BBODY's own failures are its header's and body's (`bbody/major-13`, `other-body-*`), whose
+    // blocks LEDGERS admits; the refusals that are LEDGERS' whole are those of the devnet's block
+    // with a transaction, on the default state (`bbody/devnet-37`) and flagged invalid; on the
+    // genesis output it spends, the reference and LEDGERS admit it, where the flat rules halt
+    assertEquals(bbodyCases.size, 15)
+    val judged = bbodyCases.map { c =>
+      val name = str(c.hcursor.downField("name"))
+      val ours = eraLedgersRun(c) match
+        case Left(defect)    => fail(s"$name: $defect")
+        case Right(Right(_)) => Vector.empty
+        case Right(Left(fs)) =>
+          fs.toChain.toVector.map {
+            case xyz.kd5ujc.scarab.ledger.era.rules.ShelleyLedgersPredFailure.LedgerFailure(l) =>
+              ledgerBytes(eraLedgerStored(l))
+          }
+      val recorded = reference(c) match
+        case Verdict.Accepted    => Vector.empty
+        case Verdict.Refused(bs) => bs.flatMap(inLedgers)
+        case other               => fail(s"$name: $other")
+      assertEquals(ours, recorded, name)
+      name -> ours.nonEmpty
+    }
+    assertEquals(
+      judged.filter(_._2).map(_._1),
+      Vector("bbody/devnet-37", "bbody/devnet-37-invalid-flag")
+    )
+  }
+
+  test("the era-typed LEDGER and LEDGERS give the flat rules' failures where those judge") {
+    // the flat LEDGER judges a transaction flagged invalid without sub-transactions, and halts
+    // on any other at ENTITIES or SUBLEDGERS (`DijkstraPending`): of the oracle's cases, the
+    // `utxow` and `bbody` cases flagged invalid
+    val c = caseNamed("utxow/invalid-flag")
+    val h = c.hcursor
+    val pp = params(c)
+    val epoch = num(h.downField("epoch"))
+    val flatTx = ok(DijkstraTx.inBlock(node(hex(str(h.downField("tx"))))))
+    val flat = DijkstraSts.judge(DijkstraLedgerRule, Judgment.Policy.Accumulate)(
+      globals,
+      LedgerEnv(TestLedger.env.copy(slot = num(h.downField("slot")), epoch = epoch), Coin(0)),
+      ledger(pp, epoch, utxoOf(c)),
+      flatTx
+    ) match
+      case Right(Left(fs)) => fs.toChain.toVector
+      case other           => fail(s"the flat LEDGER: $other")
+    assertEquals(eraLedgerFailures(c).map(eraLedgerStored), flat)
+    val b = caseNamed("bbody/devnet-37-invalid-flag")
+    val flatBlock = Block.decodeShelley(hex(str(b.hcursor.downField("block")))) match
+      case Right(Block.Dijkstra(block)) => block
+      case other                        => fail(s"not a Dijkstra block: $other")
+    val flatLedgers = DijkstraSts.judge(DijkstraLedgers, Judgment.Policy.Accumulate)(
+      globals,
+      LedgersEnv(
+        TestLedger.env
+          .copy(slot = flatBlock.header.slot, epoch = num(b.hcursor.downField("epoch"))),
+        Coin(0)
+      ),
+      ledger(params(b), num(b.hcursor.downField("epoch")), utxoOf(b)),
+      flatBlock.transactions
+    ) match
+      case Right(Left(fs)) => fs.toChain.toVector
+      case other           => fail(s"the flat LEDGERS: $other")
+    val era = eraLedgersRun(b) match
+      case Right(Left(fs)) =>
+        fs.toChain.toVector.map {
+          case xyz.kd5ujc.scarab.ledger.era.rules.ShelleyLedgersPredFailure.LedgerFailure(l) =>
+            eraLedgerStored(l)
+        }
+      case other => fail(s"the era LEDGERS: $other")
+    assertEquals(era, flatLedgers)
   }

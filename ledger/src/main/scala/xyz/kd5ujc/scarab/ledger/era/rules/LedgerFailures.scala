@@ -14,7 +14,15 @@ import xyz.kd5ujc.scarab.ledger.era.GovAction
 import xyz.kd5ujc.scarab.ledger.era.conway.ConwayPlutusPurpose
 import xyz.kd5ujc.scarab.ledger.era.AsItem
 import xyz.kd5ujc.scarab.ledger.rules.Convert
-import xyz.kd5ujc.scarab.ledger.state.{AccountAddress, Coin, Conway, EraTag, KeyHash, Staking}
+import xyz.kd5ujc.scarab.ledger.state.{
+  AccountAddress,
+  Coin,
+  Conway,
+  Dijkstra,
+  EraTag,
+  KeyHash,
+  Staking
+}
 import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 
 // The failures and events of LEDGER and LEDGERS as the reference declares them (cardano-ledger
@@ -28,11 +36,13 @@ import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 
 /** The failure of DELEGS, the rule Conway's LEDGER no longer runs: none at Conway, where the
   * reference's injection calls it impossible (`shelleyToConwayLedgerPredFailure`,
-  * `Conway/Rules/Ledger.hs:189-196`, cardano-ledger f649f975), which this type makes so. The eras
-  * before Conway add their case.
+  * `Conway/Rules/Ledger.hs:189-196`, cardano-ledger f649f975), which this type makes so; none at
+  * Dijkstra either (`shelleyToDijkstraLedgerPredFailure`, `Dijkstra/Rules/Ledger.hs:551`,
+  * cardano-ledger 9df9f98c, cardano-ledger 9df9f98c). The eras before Conway add their case.
   */
 type DelegsPredFailure[E <: EraTag] = E match
-  case Conway => Nothing
+  case Conway   => Nothing
+  case Dijkstra => Nothing
 
 /** `data ShelleyLedgerPredFailure era` (`Shelley/Rules/Ledger.hs:123-128`, cardano-ledger
   * f649f975), its constructors in the order of their tags (0 to 3). The withdrawals are the
@@ -75,10 +85,11 @@ enum ConwayLedgerPredFailure[E <: EraTag]:
   case ConwayIncompleteWithdrawals(mismatches: NonEmptyMap[AccountAddress, Mismatch[Coin]])
 
 /** `EraRuleFailure "LEDGER" era`: Conway's is its own (`Conway/Rules/Ledger.hs:129`, cardano-ledger
-  * f649f975).
+  * f649f975), and Dijkstra's its own (`Dijkstra/Rules/Ledger.hs:107`, cardano-ledger 9df9f98c).
   */
 type LedgerPredFailure[E <: EraTag] = E match
-  case Conway => ConwayLedgerPredFailure[Conway]
+  case Conway   => ConwayLedgerPredFailure[Conway]
+  case Dijkstra => DijkstraLedgerPredFailure[Dijkstra]
 
 /** `data ConwayLedgerEvent era` (`Conway/Rules/Ledger.hs:262-266`, cardano-ledger f649f975). */
 enum ConwayLedgerEvent[E <: EraTag]:
@@ -87,10 +98,11 @@ enum ConwayLedgerEvent[E <: EraTag]:
   case GovEvent(event: xyz.kd5ujc.scarab.ledger.era.rules.GovEvent[E])
 
 /** `EraRuleEvent "LEDGER" era`: Conway's is its own (`Conway/Rules/Ledger.hs:131`, cardano-ledger
-  * f649f975).
+  * f649f975), and Dijkstra's its own (`Dijkstra/Rules/Ledger.hs:109`, cardano-ledger 9df9f98c).
   */
 type LedgerEvent[E <: EraTag] = E match
-  case Conway => ConwayLedgerEvent[Conway]
+  case Conway   => ConwayLedgerEvent[Conway]
+  case Dijkstra => DijkstraLedgerEvent[Dijkstra]
 
 /** `newtype ShelleyLedgersPredFailure era` (`Shelley/Rules/Ledgers.hs:89-91`, cardano-ledger
   * f649f975), Conway's LEDGERS failure (`Conway/Rules/Ledgers.hs`).
@@ -99,10 +111,12 @@ enum ShelleyLedgersPredFailure[E <: EraTag]:
   case LedgerFailure(failure: LedgerPredFailure[E])
 
 /** `EraRuleFailure "LEDGERS" era`: Conway's is Shelley's (`Conway/Rules/Ledgers.hs:24`,
-  * cardano-ledger f649f975).
+  * cardano-ledger f649f975), and Dijkstra's (`Dijkstra/Rules/Ledgers.hs:21`, cardano-ledger
+  * 9df9f98c).
   */
 type LedgersPredFailure[E <: EraTag] = E match
-  case Conway => ShelleyLedgersPredFailure[Conway]
+  case Conway   => ShelleyLedgersPredFailure[Conway]
+  case Dijkstra => ShelleyLedgersPredFailure[Dijkstra]
 
 /** `newtype ShelleyLedgersEvent era` (`Shelley/Rules/Ledgers.hs:127-129`, cardano-ledger f649f975).
   */
@@ -110,16 +124,20 @@ enum ShelleyLedgersEvent[E <: EraTag]:
   case LedgerEvent(event: xyz.kd5ujc.scarab.ledger.era.rules.LedgerEvent[E])
 
 /** `EraRuleEvent "LEDGERS" era`: Conway's is Shelley's (`Conway/Rules/Ledgers.hs:26`,
-  * cardano-ledger f649f975).
+  * cardano-ledger f649f975), and Dijkstra's (`Dijkstra/Rules/Ledgers.hs:23`, cardano-ledger
+  * 9df9f98c).
   */
 type LedgersEvent[E <: EraTag] = E match
-  case Conway => ShelleyLedgersEvent[Conway]
+  case Conway   => ShelleyLedgersEvent[Conway]
+  case Dijkstra => ShelleyLedgersEvent[Dijkstra]
 
 /** `InjectRuleFailure "LEDGER" f era` (`Conway/Rules/Ledger.hs:133-187`, cardano-ledger f649f975):
   * how era `E` 's LEDGER reports a failure `F` of its own or of a rule below it. One instance per
-  * era and failure type, in the companion.
+  * era and failure type, in the companion. It is contravariant in `F`, as [[InjectUtxowFailure]]
+  * is, so that Dijkstra's instance over the constructors of Conway's LEDGER failure its injection
+  * maps ([[DijkstraLedger.ConwayFailure]]) serves a predicate declaring one of them.
   */
-trait InjectLedgerFailure[F, E <: EraTag]:
+trait InjectLedgerFailure[-F, E <: EraTag]:
   def injectFailure(failure: F): LedgerPredFailure[E]
 
 object InjectLedgerFailure:
@@ -193,6 +211,103 @@ object InjectLedgerFailure:
             )
       )
 
+  /** `Dijkstra/Rules/Ledger.hs:113-119`, cardano-ledger 9df9f98c: Shelley's
+    * `AccountAlreadyRegistered` through DELEG's injection ([[InjectDelegFailure.dijkstra]]), then
+    * CERT's, CERTS's and ENTITIES' constructors, which have no instance of their own for it.
+    */
+  given dijkstraAccountAlreadyRegistered
+      : InjectLedgerFailure[AccountAlreadyRegistered[Dijkstra], Dijkstra] with
+    def injectFailure(failure: AccountAlreadyRegistered[Dijkstra]): LedgerPredFailure[Dijkstra] =
+      DijkstraLedgerPredFailure.DijkstraEntitiesFailure(
+        EntitiesPredFailure.CertsFailure(
+          ConwayCertsPredFailure.CertFailure(
+            ConwayCertPredFailure.DelegFailure(
+              InjectDelegFailure.dijkstra.injectFailure(failure)
+            )
+          )
+        )
+      )
+
+  /** `Dijkstra/Rules/Ledger.hs:121`, cardano-ledger 9df9f98c: the identity. */
+  given dijkstra: InjectLedgerFailure[DijkstraLedgerPredFailure[Dijkstra], Dijkstra] with
+    def injectFailure(failure: DijkstraLedgerPredFailure[Dijkstra]): LedgerPredFailure[Dijkstra] =
+      failure
+
+  /** `Dijkstra/Rules/Ledger.hs:123-124`, cardano-ledger 9df9f98c:
+    * `conwayToDijkstraLedgerPredFailure`, on the constructors it maps
+    * ([[DijkstraLedger.ConwayFailure]]).
+    */
+  given dijkstraConway: InjectLedgerFailure[DijkstraLedger.ConwayFailure[Dijkstra], Dijkstra] with
+    def injectFailure(
+        failure: DijkstraLedger.ConwayFailure[Dijkstra]
+    ): LedgerPredFailure[Dijkstra] =
+      DijkstraLedger.conwayToDijkstraLedgerPredFailure(failure)
+
+  /** `Dijkstra/Rules/Ledger.hs:126-127`, cardano-ledger 9df9f98c:
+    * `shelleyToDijkstraLedgerPredFailure`.
+    */
+  given dijkstraShelley: InjectLedgerFailure[ShelleyLedgerPredFailure[Dijkstra], Dijkstra] with
+    def injectFailure(failure: ShelleyLedgerPredFailure[Dijkstra]): LedgerPredFailure[Dijkstra] =
+      DijkstraLedger.shelleyToDijkstraLedgerPredFailure(failure)
+
+  /** `Dijkstra/Rules/Ledger.hs:129-166`, cardano-ledger 9df9f98c: UTXOW's failure and each failure
+    * below it, `DijkstraUtxowFailure . injectFailure`, as one instance over UTXOW's injection
+    * ([[InjectUtxowFailure]]), whose instances at Dijkstra are those failures, Shelley's, Alonzo's,
+    * Babbage's and Conway's UTXO failures over the constructors Dijkstra's UTXO reaches.
+    */
+  given dijkstraUtxow[F](using
+      inject: InjectUtxowFailure[F, Dijkstra]
+  ): InjectLedgerFailure[F, Dijkstra] with
+    def injectFailure(failure: F): LedgerPredFailure[Dijkstra] =
+      DijkstraLedgerPredFailure.DijkstraUtxowFailure(inject.injectFailure(failure))
+
+  /** `Dijkstra/Rules/Ledger.hs:168-187`, cardano-ledger 9df9f98c and `:192-193`: ENTITIES' failure
+    * and each failure below it, `DijkstraEntitiesFailure . injectFailure`, as one instance over
+    * ENTITIES' injection ([[InjectEntitiesFailure]]): CERTS's, CERT's, DELEG's, Shelley's and
+    * Dijkstra's POOL's, and Dijkstra's and Conway's GOVCERT's.
+    */
+  given dijkstraEntities[F](using
+      inject: InjectEntitiesFailure[F, Dijkstra]
+  ): InjectLedgerFailure[F, Dijkstra] with
+    def injectFailure(failure: F): LedgerPredFailure[Dijkstra] =
+      DijkstraLedgerPredFailure.DijkstraEntitiesFailure(inject.injectFailure(failure))
+
+  /** `Dijkstra/Rules/Ledger.hs:189-190`, cardano-ledger 9df9f98c: `DijkstraGovFailure`, after GOV's
+    * identity.
+    */
+  given dijkstraGov: InjectLedgerFailure[DijkstraGovPredFailure[Dijkstra], Dijkstra] with
+    def injectFailure(failure: DijkstraGovPredFailure[Dijkstra]): LedgerPredFailure[Dijkstra] =
+      DijkstraLedgerPredFailure.DijkstraGovFailure(failure)
+
+  /** `Dijkstra/Rules/Ledger.hs:195-196`, cardano-ledger 9df9f98c: `DijkstraGovFailure`, after GOV's
+    * injection ([[InjectGov.dijkstra]]).
+    */
+  given dijkstraConwayGov: InjectLedgerFailure[ConwayGovPredFailure[Dijkstra], Dijkstra] with
+    def injectFailure(failure: ConwayGovPredFailure[Dijkstra]): LedgerPredFailure[Dijkstra] =
+      DijkstraLedgerPredFailure.DijkstraGovFailure(InjectGov.dijkstra.injectFailure(failure))
+
+  /** `Dijkstra/Rules/Ledger.hs:198-199`, cardano-ledger 9df9f98c: `DijkstraSubLedgersFailure`,
+    * after SUBLEDGERS' identity.
+    */
+  given dijkstraSubLedgers: InjectLedgerFailure[DijkstraSubLedgersPredFailure[Dijkstra], Dijkstra]
+  with
+    def injectFailure(
+        failure: DijkstraSubLedgersPredFailure[Dijkstra]
+    ): LedgerPredFailure[Dijkstra] = DijkstraLedgerPredFailure.DijkstraSubLedgersFailure(
+      InjectSubLedgersFailure.dijkstra.injectFailure(failure)
+    )
+
+  /** `Dijkstra/Rules/Ledger.hs:201-205`, cardano-ledger 9df9f98c: SUBENTITIES' failure,
+    * `SubEntitiesFailure`, then `SubLedgerFailure`, then the injection of SUBLEDGERS' failure.
+    */
+  given dijkstraSubEntities: InjectLedgerFailure[SubEntitiesPredFailure[Dijkstra], Dijkstra] with
+    def injectFailure(failure: SubEntitiesPredFailure[Dijkstra]): LedgerPredFailure[Dijkstra] =
+      dijkstraSubLedgers.injectFailure(
+        DijkstraSubLedgersPredFailure.SubLedgerFailure(
+          DijkstraSubLedgerPredFailure.SubEntitiesFailure(failure)
+        )
+      )
+
 /** `Embed (UTXOW era) (LEDGER era)`, `Embed (CERTS era) (LEDGER era)` and `Embed (GOV era) (LEDGER
   * era)` (`Conway/Rules/Ledger.hs:521-601`, cardano-ledger f649f975): how the failures and events
   * of the rules LEDGER runs sit in LEDGER's.
@@ -237,11 +352,22 @@ object EmbedLedgerInLedgers:
     def wrapEvent(event: LedgerEvent[Conway]): LedgersEvent[Conway] =
       ShelleyLedgersEvent.LedgerEvent(event)
 
+  /** `Embed (LEDGER era) (Babbage.LEDGERS era)` (`Dijkstra/Rules/Ledger.hs:510-518`, cardano-ledger
+    * 9df9f98c): Shelley's `LedgerFailure` and `LedgerEvent`.
+    */
+  given dijkstra: EmbedLedgerInLedgers[Dijkstra] with
+    def wrapFailed(failure: LedgerPredFailure[Dijkstra]): LedgersPredFailure[Dijkstra] =
+      ShelleyLedgersPredFailure.LedgerFailure(failure)
+    def wrapEvent(event: LedgerEvent[Dijkstra]): LedgersEvent[Dijkstra] =
+      ShelleyLedgersEvent.LedgerEvent(event)
+
 /** `InjectRuleFailure "LEDGERS" f era` (`Conway/Rules/Ledgers.hs:28-82`, cardano-ledger f649f975):
   * how era `E` 's LEDGERS reports a failure `F` of its own or of a rule below it. One instance per
   * era and failure type, in the companion. Shelley's LEDGER failure has none, as in the reference.
+  * Contravariant like LEDGER's ([[InjectLedgerFailure]]): an instance for a failure type, or for
+  * the union of the constructors an era reaches, injects each of its constructors.
   */
-trait InjectLedgersFailure[F, E <: EraTag]:
+trait InjectLedgersFailure[-F, E <: EraTag]:
   def injectFailure(failure: F): LedgersPredFailure[E]
 
 object InjectLedgersFailure:
@@ -294,6 +420,126 @@ object InjectLedgersFailure:
   given conwayGov: InjectLedgersFailure[ConwayGovPredFailure[Conway], Conway] with
     def injectFailure(failure: ConwayGovPredFailure[Conway]): LedgersPredFailure[Conway] =
       ShelleyLedgersPredFailure.LedgerFailure(InjectLedgerFailure.conwayGov.injectFailure(failure))
+
+  private def through[F](using
+      inject: InjectLedgerFailure[F, Dijkstra]
+  ): InjectLedgersFailure[F, Dijkstra] =
+    new InjectLedgersFailure[F, Dijkstra]:
+      def injectFailure(failure: F): LedgersPredFailure[Dijkstra] =
+        ShelleyLedgersPredFailure.LedgerFailure(inject.injectFailure(failure))
+
+  /** `Dijkstra/Rules/Ledgers.hs:25`, cardano-ledger 9df9f98c: the identity. */
+  given dijkstra: InjectLedgersFailure[ShelleyLedgersPredFailure[Dijkstra], Dijkstra] with
+    def injectFailure(failure: ShelleyLedgersPredFailure[Dijkstra]): LedgersPredFailure[Dijkstra] =
+      failure
+
+  /** `Dijkstra/Rules/Ledgers.hs:27-28`, cardano-ledger 9df9f98c: `LedgerFailure`. */
+  given dijkstraLedger: InjectLedgersFailure[DijkstraLedgerPredFailure[Dijkstra], Dijkstra] =
+    through(using InjectLedgerFailure.dijkstra)
+
+  /** `Dijkstra/Rules/Ledgers.hs:30-31`, cardano-ledger 9df9f98c. */
+  given dijkstraUtxow: InjectLedgersFailure[DijkstraUtxowPredFailure[Dijkstra], Dijkstra] =
+    through[DijkstraUtxowPredFailure[Dijkstra]]
+
+  /** `Dijkstra/Rules/Ledgers.hs:33-34`, cardano-ledger 9df9f98c. */
+  given dijkstraBabbageUtxow: InjectLedgersFailure[BabbageUtxowPredFailure[Dijkstra], Dijkstra] =
+    through[BabbageUtxowPredFailure[Dijkstra]]
+
+  /** `Dijkstra/Rules/Ledgers.hs:36-37`, cardano-ledger 9df9f98c. */
+  given dijkstraAlonzoUtxow: InjectLedgersFailure[AlonzoUtxowPredFailure[Dijkstra], Dijkstra] =
+    through[AlonzoUtxowPredFailure[Dijkstra]]
+
+  /** `Dijkstra/Rules/Ledgers.hs:39-40`, cardano-ledger 9df9f98c. */
+  given dijkstraShelleyUtxow: InjectLedgersFailure[ShelleyUtxowPredFailure[Dijkstra], Dijkstra] =
+    through[ShelleyUtxowPredFailure[Dijkstra]]
+
+  /** `Dijkstra/Rules/Ledgers.hs:42-43`, cardano-ledger 9df9f98c. */
+  given dijkstraUtxo: InjectLedgersFailure[DijkstraUtxoPredFailure[Dijkstra], Dijkstra] =
+    through[DijkstraUtxoPredFailure[Dijkstra]]
+
+  /** `Dijkstra/Rules/Ledgers.hs:45-46`, cardano-ledger 9df9f98c, on the constructors Dijkstra's
+    * UTXO reaches.
+    */
+  given dijkstraBabbageUtxo: InjectLedgersFailure[DijkstraUtxo.BabbageFailure[Dijkstra], Dijkstra] =
+    through[DijkstraUtxo.BabbageFailure[Dijkstra]](using
+      InjectLedgerFailure.dijkstraUtxow[DijkstraUtxo.BabbageFailure[Dijkstra]](using
+        InjectUtxowFailure.dijkstraUtxo[DijkstraUtxo.BabbageFailure[Dijkstra]](using
+          InjectUtxoFailure.dijkstraBabbage
+        )
+      )
+    )
+
+  /** `Dijkstra/Rules/Ledgers.hs:48-49`, cardano-ledger 9df9f98c, on the constructors Dijkstra's
+    * UTXO reaches.
+    */
+  given dijkstraAlonzoUtxo: InjectLedgersFailure[DijkstraUtxo.AlonzoFailure[Dijkstra], Dijkstra] =
+    through[DijkstraUtxo.AlonzoFailure[Dijkstra]](using
+      InjectLedgerFailure.dijkstraUtxow[DijkstraUtxo.AlonzoFailure[Dijkstra]](using
+        InjectUtxowFailure.dijkstraUtxo[DijkstraUtxo.AlonzoFailure[Dijkstra]](using
+          InjectUtxoFailure.dijkstraAlonzo
+        )
+      )
+    )
+
+  /** `Dijkstra/Rules/Ledgers.hs:51-52`, cardano-ledger 9df9f98c. */
+  given dijkstraAlonzoUtxos: InjectLedgersFailure[AlonzoUtxosPredFailure[Dijkstra], Dijkstra] =
+    through[AlonzoUtxosPredFailure[Dijkstra]]
+
+  /** `Dijkstra/Rules/Ledgers.hs:54-55`, cardano-ledger 9df9f98c. */
+  given dijkstraUtxos: InjectLedgersFailure[ConwayUtxosPredFailure[Dijkstra], Dijkstra] =
+    through[ConwayUtxosPredFailure[Dijkstra]]
+
+  /** `Dijkstra/Rules/Ledgers.hs:57-58`, cardano-ledger 9df9f98c, on the constructors Dijkstra's
+    * UTXO reaches.
+    */
+  given dijkstraShelleyUtxo: InjectLedgersFailure[DijkstraUtxo.ShelleyFailure[Dijkstra], Dijkstra] =
+    through[DijkstraUtxo.ShelleyFailure[Dijkstra]](using
+      InjectLedgerFailure.dijkstraUtxow[DijkstraUtxo.ShelleyFailure[Dijkstra]](using
+        InjectUtxowFailure.dijkstraUtxo[DijkstraUtxo.ShelleyFailure[Dijkstra]](using
+          InjectUtxoFailure.dijkstraShelley
+        )
+      )
+    )
+
+  /** `Dijkstra/Rules/Ledgers.hs:60-61`, cardano-ledger 9df9f98c, on the constructors Dijkstra's
+    * UTXO reaches.
+    */
+  given dijkstraAllegraUtxo: InjectLedgersFailure[DijkstraUtxo.AllegraFailure[Dijkstra], Dijkstra] =
+    through[DijkstraUtxo.AllegraFailure[Dijkstra]](using
+      InjectLedgerFailure.dijkstraUtxow[DijkstraUtxo.AllegraFailure[Dijkstra]](using
+        InjectUtxowFailure.dijkstraUtxo[DijkstraUtxo.AllegraFailure[Dijkstra]](using
+          InjectUtxoFailure.dijkstraAllegra
+        )
+      )
+    )
+
+  /** `Dijkstra/Rules/Ledgers.hs:63-64`, cardano-ledger 9df9f98c. */
+  given dijkstraCerts: InjectLedgersFailure[ConwayCertsPredFailure[Dijkstra], Dijkstra] =
+    through[ConwayCertsPredFailure[Dijkstra]]
+
+  /** `Dijkstra/Rules/Ledgers.hs:66-67`, cardano-ledger 9df9f98c. */
+  given dijkstraCert: InjectLedgersFailure[ConwayCertPredFailure[Dijkstra], Dijkstra] =
+    through[ConwayCertPredFailure[Dijkstra]]
+
+  /** `Dijkstra/Rules/Ledgers.hs:69-70`, cardano-ledger 9df9f98c. */
+  given dijkstraDeleg: InjectLedgersFailure[ConwayDelegPredFailure[Dijkstra], Dijkstra] =
+    through[ConwayDelegPredFailure[Dijkstra]]
+
+  /** `Dijkstra/Rules/Ledgers.hs:72-73`, cardano-ledger 9df9f98c. */
+  given dijkstraShelleyPool: InjectLedgersFailure[ShelleyPoolPredFailure[Dijkstra], Dijkstra] =
+    through[ShelleyPoolPredFailure[Dijkstra]]
+
+  /** `Dijkstra/Rules/Ledgers.hs:75-76`, cardano-ledger 9df9f98c. */
+  given dijkstraGovCert: InjectLedgersFailure[DijkstraGovCertPredFailure[Dijkstra], Dijkstra] =
+    through[DijkstraGovCertPredFailure[Dijkstra]]
+
+  /** `Dijkstra/Rules/Ledgers.hs:78-79`, cardano-ledger 9df9f98c. */
+  given dijkstraConwayGov: InjectLedgersFailure[ConwayGovPredFailure[Dijkstra], Dijkstra] =
+    through[ConwayGovPredFailure[Dijkstra]]
+
+  /** `Dijkstra/Rules/Ledgers.hs:81-82`, cardano-ledger 9df9f98c. */
+  given dijkstraGov: InjectLedgersFailure[DijkstraGovPredFailure[Dijkstra], Dijkstra] =
+    through[DijkstraGovPredFailure[Dijkstra]]
 
 /** What a LEDGER failure's flat form cannot hold without what the transaction gives: UTXOW's
   * ([[UtxowUnprojected]]), and an action of GOV's failure that none of the transaction's proposals
