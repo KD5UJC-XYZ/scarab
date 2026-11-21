@@ -1635,6 +1635,68 @@
    ],
    "note": "invalidReply's errors a case each, beside ExnLeiosWellHashedBodyRejected's two; BodyNotStorable has no counterpart: unreachable, it keeps LeiosEb's construction total",
    "digest": "576f0fd2ff881034"
+  },
+  "def network.LeiosNotifyServer.run": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoOnlyTestNotify.hs",
+     "symbol": "leiosNotifyServerPeerLookahead",
+     "lines": [
+      636,
+      722
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "LeiosFetchRegistrationSuite"
+   ],
+   "note": "with an empty next: each request held and counted, the client's next message read ahead, MsgQuit answered by drain's MsgCanceled for each held request and MsgDone; incr's ExcessiveRequests a typed end",
+   "digest": "057648efa5ff2d33"
+  },
+  "val network.LeiosNotifyServer.PipelineDepth": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus-diffusion/src/ouroboros-consensus-diffusion/Ouroboros/Consensus/Network/NodeToNode.hs",
+     "symbol": "leiosNotifyPipelineDepth",
+     "lines": [
+      2146,
+      2146
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "LeiosFetchRegistrationSuite"
+   ],
+   "digest": "63fd2045d6098d48"
+  },
+  "def protocol.LeiosNotifyDecoder.decodeIdle": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoOnlyTestNotify.hs",
+     "symbol": "codecLeiosNotify",
+     "lines": [
+      259,
+      396
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "LeiosFetchRegistrationSuite"
+   ],
+   "note": "decode from StIdle, the client's messages, which carry no header",
+   "digest": "0d2a5100090188a9"
   }
  },
  "glue": [
@@ -1967,6 +2029,23 @@
     "object protocol.LeiosFetchFault",
     "def protocol.LeiosWord.Word32.wrap",
     "def protocol.LeiosWord.Word64.clamped"
+   ]
+  },
+  {
+   "reason": "the LeiosNotify server's Scala plumbing with no counterpart of its own: its companion, and the decoder the multiplexer receives the client's two-byte messages with, read from the start of each longer prefix (#54)",
+   "definitions": [
+    "object network.LeiosNotifyServer",
+    "val protocol.LeiosNotify.idleIncremental"
+   ]
+  },
+  {
+   "reason": "the latch by which a hot activation's clean end stops its LeiosFetch client, standing for the Terminate of the control message the reference's client reads in STM (nextLeiosFetchClientCommand), its stop reached even when registered after it fires (#54)",
+   "definitions": [
+    "class network.StopLatch",
+    "def network.StopLatch#register",
+    "def network.StopLatch#fire",
+    "def network.StopLatch.create",
+    "object network.StopLatch"
    ]
   }
  ]

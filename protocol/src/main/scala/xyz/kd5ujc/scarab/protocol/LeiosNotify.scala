@@ -110,8 +110,8 @@ object LeiosNotify:
     LeiosNotifyDecoder.decode(state, bytes)
 
   /** The decoder the server receives the client's next message with, from Idle: `RequestNext` or
-    * `Quit` (`codecLeiosNotify`'s `decode`, `LeiosDemoOnlyTestNotify.hs:353-396`). A server that
-    * holds requests reads ahead from Idle, as the reference's lookahead server does
+    * `Quit` (`codecLeiosNotify`'s `decode`, `LeiosDemoOnlyTestNotify.hs:353-396` at 2416493b). A
+    * server that holds requests reads ahead from Idle, as the reference's lookahead server does
     * (`leiosNotifyServerPeerLookahead`, `:636-722`). These messages are two bytes, so each longer
     * prefix is read from its start.
     */

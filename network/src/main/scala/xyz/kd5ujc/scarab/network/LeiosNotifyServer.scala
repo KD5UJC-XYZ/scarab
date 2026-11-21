@@ -56,7 +56,9 @@ object LeiosNotifyServer:
       }
     loop(0)
 
-  /** A message's key on the wire (`codecLeiosNotify`, `LeiosDemoOnlyTestNotify.hs:259-352`). */
+  /** A message's key on the wire (`codecLeiosNotify`, `LeiosDemoOnlyTestNotify.hs:259-352` at
+    * ouroboros-consensus 2416493b).
+    */
   private def tag(message: LeiosNotify.Message): Int = message match
     case LeiosNotify.Message.Done                 => 0
     case LeiosNotify.Message.Quit                 => 1
