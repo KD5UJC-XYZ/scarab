@@ -2245,7 +2245,7 @@ object Forger:
   /** How far back the wall clock may move without stopping the node (`hfbtMaxClockRewind`,
     * consensus 82ecba329 `Node.hs` 560).
     */
-  private[forge] val MaxClockRewind: Duration = Duration.ofSeconds(20)
+  private[node] val MaxClockRewind: Duration = Duration.ofSeconds(20)
 
   /** A reading traced as the clock moved back that is a wake before the slot the loop waited for,
     * not a clock that moved back (#629, #1032): later than the previous reading (the time moves

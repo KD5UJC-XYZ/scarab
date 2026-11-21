@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import cats.{Monad, Order}
+import cats.Order
 import cats.effect.{Async, Resource}
 import cats.effect.syntax.all.*
 import cats.mtl.Raise
@@ -15,7 +15,6 @@ import xyz.kd5ujc.scarab.consensus.leios.{
   LeiosOutstanding,
   StdGen
 }
-import xyz.kd5ujc.scarab.consensus.VolatileChain
 import xyz.kd5ujc.scarab.protocol.LeiosWord.Word64
 import xyz.kd5ujc.scarab.storage.{LeiosStore, LeiosStoreError}
 
@@ -88,23 +87,6 @@ object LeiosFetchKernel:
         peers.get(p).traverse_(_.requestsToSend.offer(requests))
       )
     yield ()
-
-  /** `getCurrentSlot` of the node's blockchain time, as the decision reads it
-    * (`NodeKernel.hs:580-583` at 2416493b): the slot of the wall clock now
-    * ([[forge.Forger.reading]]), unknown before the system start and where the era history at the
-    * chain's tip does not translate it (`translates`), and a slot past every `Word64` taken as the
-    * greatest.
-    */
-  def currentSlot[F[_]: Monad, S](
-      clock: SlotClock[F],
-      chain: F[VolatileChain[S]],
-      translates: (VolatileChain[S], BigInt) => Boolean
-  ): F[Option[Word64]] =
-    (clock.now, clock.geometry, chain).mapN { (instant, geometry, current) =>
-      forge.Forger.reading(geometry, instant, translates(current, _)) match
-        case forge.Forger.Reading.Known(slot) => Some(Word64.clamped(slot))
-        case forge.Forger.Reading.BeforeStart(_) | forge.Forger.Reading.Unknown => None
-    }
 
   /** The central announcements' dedup (`pruneCentralState`, `Announcements.hs` 286-293 at
     * 2416493b), then `pruneOutstandingToImmTip`, and the peers' offers and certification claims

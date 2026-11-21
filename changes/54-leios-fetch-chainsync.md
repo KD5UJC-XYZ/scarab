@@ -11,5 +11,5 @@
     track its endorser block and writes the announced point to the store. It is not relayed, because
     LeiosNotify does not run yet.
   - **Forecast and clock.** The Praos2 ledger view carries `maxEndorserBlockTxsSize`. The decision
-    loop reads the closure bound forecast from the immutable tip, and the current slot from the
-    node's clock.
+    loop reads the closure bound forecast from the immutable tip, and the current slot that the
+    node's blockchain time publishes from a fiber of its own.

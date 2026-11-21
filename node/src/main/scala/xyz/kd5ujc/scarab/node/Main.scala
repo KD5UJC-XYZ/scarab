@@ -2306,22 +2306,28 @@ object Main extends IOApp:
       // the network starts from the configuration in force, which a SIGHUP during start-up may
       // have read again, as the reference's diffusion reads the variables its initial handler
       // wrote (`Run.hs` 412-435)
-      // the Leios fetch decision loop runs as long as the peer network does, reading the slot of
-      // the node's clock and the closure's bound forecast from the immutable tip
+      // the Leios fetch decision loop runs as long as the peer network does, reading the slot the
+      // node's blockchain time publishes and the closure's bound forecast from the immutable tip
       // (`NodeKernel.hs:580-593` at ouroboros-consensus 2416493b)
-      val leiosKernel = leiosFetch.traverse_(
-        _.kernel[LeiosFetchNode.Unforecast](
-          LeiosFetchKernel.currentSlot(
+      val leiosKernel = leiosFetch.traverse_(node =>
+        BlockchainTime
+          .resource[IO, MirrorState](
             headers.slotClock,
             ref.get,
-            forge.Forger.withinHorizon[MirrorState](using chain.txClock)
-          ),
-          ref.get.map(current =>
-            slot => LeiosFetchNode.forecast(headers.rules, current.anchor, slot)
-          ),
-          blockPool.leios.immutableSlots,
-          cause => fatalSink(Fatal.Defect(cause))
-        )
+            forge.Forger.withinHorizon[MirrorState](using chain.txClock),
+            problem => fatalSink(Fatal.Internal(problem)),
+            cause => fatalSink(Fatal.Defect(cause))
+          )
+          .flatMap(time =>
+            node.kernel[LeiosFetchNode.Unforecast](
+              time.currentSlot.map(_.map(xyz.kd5ujc.scarab.protocol.LeiosWord.Word64.clamped)),
+              ref.get.map(current =>
+                slot => LeiosFetchNode.forecast(headers.rules, current.anchor, slot)
+              ),
+              blockPool.leios.immutableSlots,
+              cause => fatalSink(Fatal.Defect(cause))
+            )
+          )
       )
       val network = leiosKernel *> Resource
         .eval(run.hangup.pending.set(None) *> run.hangup.network.get)

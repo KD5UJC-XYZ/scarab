@@ -1,25 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import cats.effect.IO
 import java.nio.file.{Files, Path}
-import java.time.Instant
 import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.consensus.{Anchor, BlockRef, VolatileChain}
+import xyz.kd5ujc.scarab.consensus.{Anchor, BlockRef}
 import xyz.kd5ujc.scarab.consensus.leios.BytesSize
 import xyz.kd5ujc.scarab.consensus.state.MirrorState
-import xyz.kd5ujc.scarab.ledger.{Block, EpochGeometry}
+import xyz.kd5ujc.scarab.ledger.Block
 import xyz.kd5ujc.scarab.network.FailsOnUncaught
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import xyz.kd5ujc.scarab.protocol.LeiosWord.Word64
 
-/** What the Leios build's fetch decision reads each pass besides the offers: the slot of the node's
-  * clock (`getCurrentSlot`) and the closure's bound forecast from the immutable tip
-  * (`forecastMaxEbTxsSize`, `NodeKernel.hs:580-593` at ouroboros-consensus 2416493b), the second on
-  * the reference cluster's chain of `fixtures/dijkstra-devnet`, which forks into Dijkstra at slot
-  * 200 (provenance in its README).
+/** The closure's bound the Leios build's fetch decision reads from the immutable tip each pass
+  * (`forecastMaxEbTxsSize`, `NodeKernel.hs:586-593` at ouroboros-consensus 2416493b), on the
+  * reference cluster's chain of `fixtures/dijkstra-devnet`, which forks into Dijkstra at slot 200
+  * (provenance in its README).
   */
 class LeiosFetchForecastSuite extends FailsOnUncaught:
   private val devnet = Path.of("fixtures", "dijkstra-devnet")
@@ -77,28 +74,6 @@ class LeiosFetchForecastSuite extends FailsOnUncaught:
     forecast(202, ReferenceBuild.Release11_2) match
       case Left(LeiosFetchNode.Unforecast.NoPraos2) => ()
       case other                                    => fail(s"expected no Praos2, got $other")
-  }
-
-  private val start = Instant.parse("2026-01-01T00:00:00Z")
-  private def clock(at: Instant): SlotClock[IO] = new SlotClock[IO]:
-    def now = IO.pure(at)
-    def geometry = IO.pure(setup.geometry.copy(systemStart = start))
-  private val chain = VolatileChain.genesis[Int](2160, 0)
-
-  private def slotAt(at: Instant, translates: Boolean): IO[Option[Word64]] =
-    LeiosFetchKernel.currentSlot[IO, Int](clock(at), IO.pure(chain), (_, _) => translates)
-
-  test("the current slot is the wall clock's, unknown before the start or past the horizon") {
-    val geometry: EpochGeometry = setup.geometry.copy(systemStart = start)
-    val later = start.plusSeconds(500)
-    for
-      before <- slotAt(start.minusSeconds(1), translates = true)
-      known <- slotAt(later, translates = true)
-      past <- slotAt(later, translates = false)
-    yield
-      assertEquals(before, None)
-      assertEquals(known, Some(Word64.clamped(geometry.slotAt(later))))
-      assertEquals(past, None)
   }
 
   test("the forecast's bound is a byte size as the fetch logic reads it") {
