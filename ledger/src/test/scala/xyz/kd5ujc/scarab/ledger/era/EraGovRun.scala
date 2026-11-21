@@ -30,13 +30,16 @@ import xyz.kd5ujc.scarab.ledger.era.rules.{
   ConwayGov,
   ConwayGovPredFailure,
   DijkstraGovPredFailure,
+  DijkstraSUBGOV,
   GovActionNotRead,
   GovEnv,
   GovEvent,
   GovPredFailure,
   GovSignal,
   GovDefect,
-  InjectGov
+  InjectGov,
+  SubGovEvent,
+  SubGovPredFailure
 }
 import xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraPending
 import xyz.kd5ujc.scarab.ledger.rules.{DijkstraConway, Judge, Judgment, RuleT, focus}
@@ -172,6 +175,35 @@ object EraGovRun:
     )
   ]] =
     dijkstraRun.run(env, signal, netId, state, depth)
+
+  /** Dijkstra's SUBGOV (`DijkstraSUBGOV.subGovTransition`) from `state` at the root, every failure
+    * accumulated, as [[dijkstra]] runs GOV.
+    */
+  def subGov(
+      env: GovEnv[Dijkstra],
+      signal: GovSignal[Dijkstra],
+      netId: Network,
+      state: Proposals[Dijkstra]
+  ): Either[GovDefect, Either[
+    NonEmptyChain[SubGovPredFailure[Dijkstra]],
+    (Proposals[Dijkstra], Chain[SubGovEvent[Dijkstra]])
+  ]] =
+    type Events = Chain[SubGovEvent[Dijkstra]]
+    type F[A] = RuleT[SubGovPredFailure[Dijkstra], GovDefect, (Proposals[Dijkstra], Events), A]
+    import RuleT.given
+    given Stateful[F, Proposals[Dijkstra]] =
+      summon[Stateful[F, (Proposals[Dijkstra], Events)]]
+        .focus(Lens[(Proposals[Dijkstra], Events), Proposals[Dijkstra]](_._1)(p => s => (p, s._2)))
+    given Tell[F, Events] = new Tell[F, Events]:
+      val functor: Functor[F] = summon[Monad[F]]
+      def tell(events: Events): F[Unit] =
+        summon[Stateful[F, (Proposals[Dijkstra], Events)]].modify((p, e) => (p, e ++ events))
+    Judgment
+      .judge(DijkstraSUBGOV.subGovTransition[F](env, signal, netId), RuleT.Policy.Accumulate)(
+        TestLedger.globals,
+        (state, Chain.empty)
+      )
+      .map(_.map(_._1))
 
   /** A Dijkstra failure in the flat form the flat Dijkstra GOV gives, its action read from the
     * signal's proposals.
