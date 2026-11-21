@@ -8,6 +8,7 @@ import java.nio.file.{Files as JFiles, Path as JPath}
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{Block, BlockFailure, ChainError, DecodeSite, LedgerDecodeError}
+import xyz.kd5ujc.scarab.consensus.BlockNoVerdict
 import xyz.kd5ujc.scarab.network.FailsOnUncaught
 import xyz.kd5ujc.scarab.protocol.{ChainSync, DijkstraNotYet}
 import xyz.kd5ujc.scarab.storage.LeiosStateFixture
@@ -238,6 +239,14 @@ class LeiosReplayMainSuite extends FailsOnUncaught:
     refusals.foreach(f =>
       assertEquals(LeiosReplayMain.verdict(point, f, 3), Outcome.Refused(point, f, 3))
     )
+  }
+
+  test(
+    "a block withheld for a part the node does not hold yet is not a pass; other errors stay errors"
+  ) {
+    val cause = BlockNoVerdict.StateOutOfRange(ChainError.NoIntersection)
+    assertEquals(LeiosReplayMain.exitCode(Outcome.Withheld(204, cause, 1)), ExitCode(3))
+    assert(!LeiosReplayMain.noVerdictNotYet.isDefinedAt(ChainError.NoIntersection))
   }
 
   test("the slot of a reference ledger directory is its name") {

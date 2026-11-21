@@ -9,7 +9,7 @@ import fs2.io.file.{Files, Path as FsPath}
 import io.circe.Json
 import java.nio.file.{Files as JFiles, Path}
 import xyz.kd5ujc.scarab.codec.{Bytes, DomainError}
-import xyz.kd5ujc.scarab.consensus.BlockRef
+import xyz.kd5ujc.scarab.consensus.{BlockNoVerdict, BlockRef}
 import xyz.kd5ujc.scarab.consensus.state.{ConsensusMirrorEnv, ExtLedgerState, MirrorState}
 import xyz.kd5ujc.scarab.ledger.{
   BlockFailure,
@@ -156,6 +156,11 @@ object LeiosReplayMain extends IOApp:
     /** The rules do not apply the block at `point` yet ([[BlockFailure.NotYet]]). */
     case Halted(point: ChainSync.Point, part: DijkstraNotYet, applied: Long)
 
+    /** The node has no verdict on the block of `slot` for a part it does not hold yet
+      * ([[noVerdictNotYet]]): the block withheld, as the follower withholds it, and not a pass.
+      */
+    case Withheld(slot: BigInt, cause: BlockNoVerdict, applied: Long)
+
     /** The rules refuse the block at `point`, which the reference applied. */
     case Refused(point: ChainSync.Point, failure: BlockFailure, applied: Long)
 
@@ -163,9 +168,10 @@ object LeiosReplayMain extends IOApp:
   def exitCode(outcome: Outcome): ExitCode = outcome match
     case Outcome.Matched(_, _, _, absent) =>
       if absent.isEmpty then ExitCode.Success else ExitCode(6)
-    case _: Outcome.Halted  => ExitCode(3)
-    case _: Outcome.Differs => ExitCode(4)
-    case _: Outcome.Refused => ExitCode(5)
+    case _: Outcome.Halted   => ExitCode(3)
+    case _: Outcome.Withheld => ExitCode(3)
+    case _: Outcome.Differs  => ExitCode(4)
+    case _: Outcome.Refused  => ExitCode(5)
 
   def parse(args: List[String]): Either[Error, Window] =
     val names = Set("config", "haskell-db", "start", "end", "db", "out", "end-slot")
@@ -394,6 +400,9 @@ object LeiosReplayMain extends IOApp:
           opened(dir, setup, codec, events, applied, locks).map(Replayed.Reached(_, 0L))
         )
         .rescue {
+          case stop if noVerdictNotYet.isDefinedAt(stop) =>
+            val (slot, cause) = noVerdictNotYet(stop)
+            applied.get.map(a => Replayed.Stopped(Outcome.Withheld(slot, cause, a._1)))
           case ValidationError(point, failure) =>
             applied.get.map(a => Replayed.Stopped(verdict(point, failure, a._1)))
           case other => Error.Replay(other).raise[IO, Replayed]
@@ -450,6 +459,17 @@ object LeiosReplayMain extends IOApp:
       case BlockFailure.Decode(ChainError.Decode(_, e)) => decoded(e)
       case BlockFailure.TxDecode(_, e)                  => decoded(e)
       case _                                            => None
+
+  /** The errors the rules raise for a block they have no verdict on because the node does not hold
+    * a part of Dijkstra yet, with the block's slot and the no-verdict the follower withholds the
+    * block for ([[BlockNoVerdict]]): none on main. Once #85 D8(c) lands, a proposal that updates a
+    * parameter Dijkstra adds (keys 34 to 56, which the state's record holds only once #826's format
+    * change lands) is such a no-verdict, and this becomes the one case that maps the error (c)
+    * raises for it to (c)'s `BlockNoVerdict`. Any other error stays an error of the run, with no
+    * verdict.
+    */
+  val noVerdictNotYet: PartialFunction[NodeError, (BigInt, BlockNoVerdict)] =
+    PartialFunction.empty
 
   /** The outcome of a block the rules did not apply: a halt where they name a part not implemented
     * yet, else their refusal of a block the reference applied.
@@ -616,6 +636,13 @@ object LeiosReplayMain extends IOApp:
           "notYet" -> Json.fromString(part.toString),
           "applied" -> Json.fromLong(applied)
         ))*
+      )
+    case Outcome.Withheld(slot, cause, applied) =>
+      log(
+        "withheld",
+        "slot" -> Json.fromBigInt(slot),
+        "cause" -> Json.fromString(cause.toString),
+        "applied" -> Json.fromLong(applied)
       )
     case Outcome.Refused(point, failure, applied) =>
       log(
