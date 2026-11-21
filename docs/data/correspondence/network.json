@@ -2047,6 +2047,12 @@
     "def network.StopLatch.create",
     "object network.StopLatch"
    ]
+  },
+  {
+   "reason": "construction of a Leios wire Word64 from the bits of another Word64, such as a slot; the reference's LeiosPoint holds the SlotNo itself (#73)",
+   "definitions": [
+    "def protocol.LeiosWord.Word64.fromUnsigned"
+   ]
   }
  ]
 }
