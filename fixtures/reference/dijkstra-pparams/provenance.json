@@ -1,8 +1,8 @@
 {
-  "cases": 113,
-  "casesSha256": "ebfe307c71ea178bf42a020b83b2c3a713930cbda9068af656a4ea3777a927fa",
+  "cases": 167,
+  "casesSha256": "2b9054d7555276812b41e839d6b321ce8bbc21b0e2918ebfc05e2e0e1dfc9d83",
   "image": "scarab-dijkstra-pparams-oracle:local",
-  "imageId": "sha256:920c6fbb403236a861fec44c2f6076842673ccb2ed48c5a098902a2089e6ab39",
+  "imageId": "sha256:7fd613bab4aeb47efeee99c93cf6c943d5ea440dad755ed64a4a797cb5400b82",
   "ledger": {
     "packages": [
       "cardano-ledger-dijkstra 0.5.0.0"
@@ -10,9 +10,9 @@
     "repository": "IntersectMBO/cardano-ledger",
     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c"
   },
-  "measuredAt": "2026-11-15",
+  "measuredAt": "2026-11-21",
   "program": "scripts/oracle/dijkstra-pparams/Main.hs",
-  "programSha256": "f0c17fa9588838b6a5aac7a8e2e5b7d77b7120a40363c943e33038fecaac9df6",
+  "programSha256": "4e6bc7f11ebb2f09d17c964a4f5c6c85df7ce0d3550d48218f91790618211be8",
   "schemaVersion": 1,
-  "scope": "Dijkstra protocol-parameter updates of the Leios testnet build: the update decoded at version 12, ppuWellFormed at versions 12.0 and 10.0 and modifiedPPGroups"
+  "scope": "Dijkstra protocol-parameter updates of the Leios testnet build: the update decoded at version 12, ppuWellFormed at versions 12.0 and 10.0, modifiedPPGroups and the decoded update serialized at version 12"
 }

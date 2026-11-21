@@ -482,7 +482,54 @@ Conway's rules on the classes follow as the rest of stage 2.
     `downgradePParamsHKD`, `emptyUpgradePParamsUpdate`), which need Babbage's record and its class
     instances, and the reference's comparison of parameter records and updates (`Ord (PParamsHKD …)`, not the
     descriptions' order above), each on #85's checklist;
-    `fromPlutusData`, and the CBOR and JSON instances and the era decoder a description also packs (#85).
+    `fromPlutusData`, and the JSON instances a description also packs (#85).
+  - **The CBOR** (`ledger/.../era/EraCBOR.scala`): the reference's `EncCBOR` and `DecCBOR` of every value
+    type of the parameters, the decoder given the version a `Decoder s` carries in the reference, and the
+    reference's generic codecs folded over the descriptions (`Core/PParams.hs:204-301`, cardano-ledger
+    9df9f98c): the parameters a positional list, an update a definite map in the descriptions' order, read
+    by `decodeSparseKeyed` from version 12 and by the pre-12 `SparseKeyed` below it. Each is one named
+    function (`encodePParams`, `decodePParams`, `encodePParamsUpdate`, `decodePParamsUpdate`), for the
+    stored governance state's codec to call. Each description packs its value's CBOR, and an update's
+    description the era codec the Leios build's pin gives it (`ppuEraCodec`): only Dijkstra's Peras
+    bootstrap round has one, `null` or the round in an update where the parameters hold `[]` or `[round]`.
+    f649f975 packs an era decoder on the description instead (`ppEraDecoder`), which no Conway description
+    has. `DijkstraPParams.toUpdate` is `fromUpdate`'s inverse.
+    - Refusals come in the reference's order. A record is read as `decodeRecordNamed` reads it, its fields
+      before its length (`Decoding/Decoder.hs:645-700`, cardano-ledger 9df9f98c): the parameters, the
+      protocol version and both threshold records at every version, the prices and execution units from 12
+      only, being `RecD` records below it, whose length comes first (`Plutus/ExUnits.hs:208-243`). A field an
+      indefinite record lacks is refused by the field, whose reader meets the list's break
+      (`PParamsDecodeError.Break`); after a definite list the reference reads the enclosing item's next token,
+      which a decoded item does not hold, so the record's length is refused there. A ratio's items are read
+      before its length at every version (`decodeIntegralRational`, `Decoding/DecCBOR.hs:271-280`, from 12;
+      `decodeRationalWithTag`, `Plain.hs:159-168`, below it), and a cost-model map's entries before a repeated
+      language (`decodeMapByKey`, `Decoder.hs:801-832`). An indefinite `StrictMaybe` reads its item before its
+      break, a definite one its length first (`decodeMaybeVarLen`). A repeated key of an update is refused with
+      the key (`PParamsDecodeError.DuplicateKey`), as both pins name it.
+    - Below version 12 an update's prices and execution units (keys 19 to 21) are `RecD` records, which the
+      reference also reads detached, an empty indefinite list with the fields after it (`a1 14 9f ff 01 02`,
+      #687). A plain decode refuses the items after the empty list, so a caller that reads an update from
+      bytes below 12 reads them through `DetachedRecords.read` with the update's shape
+      (`Shapes.parameterUpdate`) and hands the codec the node it gives; the stored governance state's codec
+      takes on that requirement when it reads these types.
+    - Against the reference: the 167 updates of `fixtures/reference/dijkstra-pparams` are its generator's bytes
+      (`scripts/oracle/dijkstra-pparams/run.py`), which the Leios build's decoder at its pin accepts or refuses,
+      and the build writes each it accepts back (`serialize'` at version 12, `EncCBOR (PParamsUpdate era)`).
+      Each of the 136 it accepts, cost models past 23 languages or parameters and non-canonical updates among
+      them, reads as the flat decoder's typed value and is written as the build writes it, byte for byte; each
+      of its 31 refusals, most of two faults, is refused with the typed cause of the fault the build names; the
+      testnet's two updates (keys 45 and 46, 47 and 48) read and write their bytes. The orders below version 12,
+      and of the parameters and the protocol version, rest on the pinned sources: the oracle decodes Dijkstra
+      updates at 12 only.
+    - Against the node's codecs: the 14 parameter changes of the Conway refusal corpora and the 2 of the
+      recorded Preview blocks read, at versions 9 to 11, as the flat decoder's typed value and are written as
+      the flat writer writes them; each of the 4 parameter records of `fixtures/leios/state/conway-195`,
+      `dijkstra-203` and `testnet-2168639` and of `fixtures/haskell-state/conway-4593` (the current and
+      previous parameters, and the DRep pulser's enact state's) reads as `fromStored` of the state codec's
+      value and is written back to its bytes (`EraPParamsCborSuite`, `EraPParamsStoredSuite`).
+    - Properties round-trip both eras' parameters and updates, with cost models long enough to be written
+      indefinite. The stored state still reads and writes its parameters with its own codec; the governance
+      state's codec on these types is the Leios session's.
 - **Conway's rules, first predicates** (`ledger/.../era/rules/`): eight of the predicates Babbage's UTXO runs,
   as Conway's runs it (`babbageUtxoValidation`, `Babbage/Rules/Utxo.hs:325-411`), each the reference's function
   generic in its era over its classes: `disjointRefInputs`, `validateOutsideValidityIntervalUTxO`,

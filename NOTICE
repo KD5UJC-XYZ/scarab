@@ -113,6 +113,10 @@ chain data, and are set in the public Leios testnet's environment (its public pr
 start and slot length, as fixtures/reference/leios-testnet-chain-contexts records them); the results are the verdicts
 the unchanged cardano-ledger (Apache-2.0) of the pinned Leios testnet build gives on them, run in an image built from
 it that is not redistributed (provenance in fixtures/reference/leios-testnet-context-refusals/README.md).
+fixtures/reference/dijkstra-pparams holds, under the project's licence (Apache-2.0), synthetic Dijkstra
+protocol-parameter updates Scarab generates and what the unchanged cardano-ledger (Apache-2.0) of the pinned Leios
+testnet build makes of them, run in an image built from it that is not redistributed (provenance in
+fixtures/reference/dijkstra-pparams/README.md).
 The files in fixtures/licenses and the licence files of the
 individual fixture directories cover the upstream-derived test vectors.
 

@@ -580,6 +580,82 @@ object DijkstraPParams:
   def fromUpdate(u: DijkstraParamUpdate): Either[PParamsError, DijkstraPParams[StrictMaybe]] =
     u.fields.toVector.sortBy(_._1).foldLeftM(emptyUpdate)((acc, kv) => set(acc, kv._1, kv._2))
 
+  /** The decoded update an update of the record is (`DijkstraPParams StrictMaybe`): the inverse of
+    * [[fromUpdate]], each field set under its update key, at the value form the decoder reads it
+    * in. Total: every field's type is within the form of its key.
+    */
+  def toUpdate(u: DijkstraPParams[StrictMaybe]): DijkstraParamUpdate =
+    import DijkstraParamValue.{CostModels as Models, ExUnits as Units, *}
+    def number[G, A](key: Int, f: THKD[G, StrictMaybe, A])(value: A => BigInt) =
+      f.unTHKD.map(a => key -> Number(value(a)))
+    def ratio[G, A](key: Int, f: THKD[G, StrictMaybe, A])(value: A => Rational) =
+      f.unTHKD.map(a => key -> Ratio(value(a)))
+    def units[G](key: Int, f: THKD[G, StrictMaybe, OrdExUnits]) =
+      f.unTHKD.map(x => key -> Units(x.unOrdExUnits.units.mem, x.unOrdExUnits.units.steps))
+    val coin = (c: CompactCoin) => c.toBigInt
+    val perByte = (c: CoinPerByte) => c.unCoinPerByte.toBigInt
+    def word[W <: Unsigned.Width](w: Unsigned[W]): BigInt = w.value
+    val epochs = (e: EpochInterval) => BigInt(e.toLong)
+    DijkstraParamUpdate(
+      Vector(
+        number(0, u.txFeePerByte)(perByte),
+        number(1, u.txFeeFixed)(coin),
+        number(2, u.maxBBSize)(word),
+        number(3, u.maxTxSize)(word),
+        number(4, u.maxBHSize)(word),
+        number(5, u.keyDeposit)(coin),
+        number(6, u.poolDeposit)(coin),
+        number(7, u.eMax)(epochs),
+        number(8, u.nOpt)(word),
+        ratio(9, u.a0)(_.rational),
+        ratio(10, u.rho)(_.rational),
+        ratio(11, u.tau)(_.rational),
+        number(16, u.minPoolCost)(coin),
+        number(17, u.coinsPerUTxOByte)(perByte),
+        u.costModels.unTHKD.map(c => 18 -> Models(c.models.map((k, ps) => k -> ps.map(_.toLong)))),
+        u.prices.unTHKD.map(p => 19 -> Pair(p.prMem.rational, p.prSteps.rational)),
+        units(20, u.maxTxExUnits),
+        units(21, u.maxBlockExUnits),
+        number(22, u.maxValSize)(word),
+        number(23, u.collateralPercentage)(word),
+        number(24, u.maxCollateralInputs)(word),
+        u.poolVotingThresholds.unTHKD.map(t => 25 -> Thresholds(t.toStored.toVector)),
+        u.drepVotingThresholds.unTHKD.map(t => 26 -> Thresholds(t.toStored.toVector)),
+        number(27, u.committeeMinSize)(word),
+        number(28, u.committeeMaxTermLength)(epochs),
+        number(29, u.govActionLifetime)(epochs),
+        number(30, u.govActionDeposit)(coin),
+        number(31, u.drepDeposit)(coin),
+        number(32, u.drepActivity)(epochs),
+        ratio(33, u.minFeeRefScriptCostPerByte)(_.rational),
+        number(34, u.maxRefScriptSizePerBlock)(word),
+        number(35, u.maxRefScriptSizePerTx)(word),
+        number(36, u.refScriptCostStride)(s => s.value.value),
+        ratio(37, u.refScriptCostMultiplier)(_.rational),
+        u.maxPledgeLeverage.unTHKD.map(l =>
+          38 -> OptionalRatio(l.unMaxPledgeLeverage.map(_.rational))
+        ),
+        ratio(39, u.minPoolMargin)(_.rational),
+        number(40, u.leiosAnnouncementPeriodLength)(m => m.unMilliseconds32.value),
+        number(41, u.leiosVotePeriodLength)(m => m.unMilliseconds32.value),
+        number(42, u.leiosDiffusionPeriodLength)(m => m.unMilliseconds32.value),
+        number(43, u.leiosCommitteeSize)(word),
+        ratio(44, u.leiosQuorumStakeThreshold)(_.rational),
+        number(45, u.maxEndorserBlockReferencesSize)(word),
+        number(46, u.maxEndorserBlockTxsSize)(word),
+        units(47, u.maxEndorserBlockExUnits),
+        number(48, u.maxRefScriptSizePerEndorserBlock)(word),
+        number(49, u.perasMinCandidateBlockAge)(a => a.unSlotInterval.value),
+        ratio(50, u.perasHealingFactor)(_.rational),
+        number(51, u.perasCertBoost)(word),
+        number(52, u.perasTargetCommitteeSize)(word),
+        u.perasBootstrapRound.unTHKD.map(r => 53 -> OptionalNumber(r.map(_.value.toLong))),
+        ratio(54, u.perasQuorumThresholdSafetyMargin)(_.rational),
+        number(55, u.refInputsCostPerMultiAssetPolicy)(c => c.value),
+        number(56, u.refInputsCostPerDatumByte)(perByte)
+      ).flatten.toMap
+    )
+
   private def set(
       acc: DijkstraPParams[StrictMaybe],
       key: Int,
