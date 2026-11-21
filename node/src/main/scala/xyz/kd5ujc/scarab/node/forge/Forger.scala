@@ -512,17 +512,7 @@ final class Forger[F[_]: Async, S](
     * (`wallclockToSlot` failing); otherwise the slot.
     */
   private def read(instant: Instant): F[Forger.Reading] =
-    if instant.isBefore(geometry.systemStart) then
-      F.pure(
-        Forger.Reading.BeforeStart(
-          Duration.between(instant, geometry.systemStart).toMillis.max(1L).millis
-        )
-      )
-    else
-      chain.get.map { current =>
-        val slot = geometry.slotAt(instant)
-        if horizon(current, slot) then Forger.Reading.Known(slot) else Forger.Reading.Unknown
-      }
+    chain.get.map(current => Forger.reading(geometry, instant, horizon(current, _)))
 
   private def clockTrace(t: ClockTrace): F[Unit] = events.emit(ForgeEvent.Clock(t))
 
@@ -2231,10 +2221,26 @@ object Forger:
 
   /** What the blockchain time reads: the wait for the system start, an unknown slot, or the slot.
     */
-  private[forge] enum Reading:
+  private[node] enum Reading:
     case BeforeStart(remaining: FiniteDuration)
     case Unknown
     case Known(slot: BigInt)
+
+  /** What the blockchain time reads at `instant` (`hardForkBlockchainTime`, consensus 82ecba329
+    * `BlockchainTime/WallClock/HardFork.hs`): before the system start, how long to wait for it
+    * (`systemTimeWait`); a slot the era history at the chain's tip does not translate
+    * (`translates`), unknown (`wallclockToSlot` failing); otherwise the slot.
+    */
+  private[node] def reading(
+      geometry: EpochGeometry,
+      instant: Instant,
+      translates: BigInt => Boolean
+  ): Reading =
+    if instant.isBefore(geometry.systemStart) then
+      Reading.BeforeStart(Duration.between(instant, geometry.systemStart).toMillis.max(1L).millis)
+    else
+      val slot = geometry.slotAt(instant)
+      if translates(slot) then Reading.Known(slot) else Reading.Unknown
 
   /** How far back the wall clock may move without stopping the node (`hfbtMaxClockRewind`,
     * consensus 82ecba329 `Node.hs` 560).

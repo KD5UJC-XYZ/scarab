@@ -76,12 +76,31 @@ final class LeiosFetchNode[F[_]] private (
     )
 
 object LeiosFetchNode:
-  /** Why the closure's bound of an offer that brought none cannot be forecast: the forecast of
-    * `plvMaxEbTxsSize` from the immutable tip's ledger view is not wired yet (#54), so such an
-    * offer's body is not asked for.
+  /** Why the closure's bound of an offer that brought none cannot be forecast from the immutable
+    * tip for its slot, so that such an offer's body is not asked for this pass (`forecastFor`
+    * failing, `NodeKernel.hs:586-593` at ouroboros-consensus 2416493b).
     */
-  enum Unforecast derives CanEqual:
-    case NotWired
+  enum Unforecast:
+    /** The view of the slot is not forecast from the immutable tip ([[Praos2Headers.Unforecast]]).
+      */
+    case View(cause: Praos2Headers.Unforecast)
+
+    /** The build runs no Praos2, and so has no Leios view ([[Praos2Headers.of]]). */
+    case NoPraos2
+
+  /** `forecastMaxEbTxsSize` (`NodeKernel.hs:586-593` at 2416493b): the bound on the closure of an
+    * endorser block of `slot`, read from the ledger view forecast from `immutable`, the immutable
+    * tip's state.
+    */
+  def forecast[S](
+      rules: NodeHeaderRules[S],
+      immutable: xyz.kd5ujc.scarab.consensus.Anchor[S],
+      slot: Word64
+  ): Either[Unforecast, BytesSize] =
+    rules
+      .leiosMaxEbTxsSize(immutable.state, immutable.block, slot.toBigInt)
+      .toRight(Unforecast.NoPraos2)
+      .flatMap(_.leftMap(Unforecast.View(_)).map(bound => BytesSize.wrap(bound.toLong)))
 
   /** The node's fetch over `store`, the notifying store its writes go through, from the store's
     * complete closures at or after `immutableTip` ([[LeiosFetchKernel.initialized]]). The writes of

@@ -1460,7 +1460,9 @@ object Main extends IOApp:
   private final case class Headers(
       nodeChain: HeaderCheck.Grafting[IO],
       check: Option[HeaderCheck[IO]],
-      observePeer: Peer.Observation => IO[Unit]
+      observePeer: Peer.Observation => IO[Unit],
+      slotClock: SlotClock[IO],
+      rules: NodeHeaderRules[MirrorState]
   )
 
   /** The blocks fetched ahead, shared by every session, the Genesis runtime when it runs, and the
@@ -1987,19 +1989,20 @@ object Main extends IOApp:
     // view, so the block's own validation does not repeat them. Every live session also
     // holds its headers to the node's clock (AUD-01, #153), with or without header-first.
     val slotClock = SlotClock.system[IO](chain.ref.get.map(_.state.geometry(genesis.geometry)))
+    val headerRules = {
+      given HeaderTimeRead[MirrorState] = HeaderTimeRead.mirror(setup.byronHistory)
+      NodeHeaderRules(
+        setup.praos.copy(verdicts = cache.forHeaders),
+        setup.globals,
+        setup.byronRules,
+        setup.handOver
+      )
+    }
     // the node's own check: a Genesis node is built with it, as its gates can graft
     val nodeChain = HeaderClock.grafting[IO](
       slotClock,
       HeaderCheck.forNodeChain[IO, MirrorState](
-        {
-          given HeaderTimeRead[MirrorState] = HeaderTimeRead.mirror(setup.byronHistory)
-          NodeHeaderRules(
-            setup.praos.copy(verdicts = cache.forHeaders),
-            setup.globals,
-            setup.byronRules,
-            setup.handOver
-          )
-        },
+        headerRules,
         scheduling.compute,
         setup.retainedHeaders,
         warm = Some((headers, state) =>
@@ -2057,7 +2060,7 @@ object Main extends IOApp:
         case Peer.Observation.HeaderReceived | Peer.Observation.HeadersArrived(_, _) |
             Peer.Observation.BlocksArrived(_, _) | Peer.Observation.Intersected(_) =>
           IO.unit)
-    Headers(nodeChain, headerCheck, observePeer)
+    Headers(nodeChain, headerCheck, observePeer, slotClock, headerRules)
 
   /** The blocks fetched ahead, shared by the sessions of all peers (one peer fetches each block),
     * seeded from the received log, and the Genesis runtime in Genesis mode.
@@ -2297,12 +2300,19 @@ object Main extends IOApp:
       // the network starts from the configuration in force, which a SIGHUP during start-up may
       // have read again, as the reference's diffusion reads the variables its initial handler
       // wrote (`Run.hs` 412-435)
-      // the Leios fetch decision loop runs as long as the peer network does; what makes an endorser
-      // block fetchable (offers, the closure's bound, the clock's slot) is not wired yet (#54)
+      // the Leios fetch decision loop runs as long as the peer network does, reading the slot of
+      // the node's clock and the closure's bound forecast from the immutable tip
+      // (`NodeKernel.hs:580-593` at ouroboros-consensus 2416493b)
       val leiosKernel = leiosFetch.traverse_(
         _.kernel[LeiosFetchNode.Unforecast](
-          IO.pure(None),
-          IO.pure(_ => Left(LeiosFetchNode.Unforecast.NotWired)),
+          LeiosFetchKernel.currentSlot(
+            headers.slotClock,
+            ref.get,
+            forge.Forger.withinHorizon[MirrorState](using chain.txClock)
+          ),
+          ref.get.map(current =>
+            slot => LeiosFetchNode.forecast(headers.rules, current.anchor, slot)
+          ),
           blockPool.leios.immutableSlots,
           cause => fatalSink(Fatal.Defect(cause))
         )

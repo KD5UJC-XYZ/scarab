@@ -11,6 +11,7 @@ import xyz.kd5ujc.scarab.ledger.rules.{FromByron, Handover}
 import xyz.kd5ujc.scarab.ledger.state.{EpochNo, ShelleyBasedEra, WithOrigin}
 import xyz.kd5ujc.scarab.node.read.{ChainRead, InEra, MirrorEraRead}
 import xyz.kd5ujc.scarab.protocol.Era
+import xyz.kd5ujc.scarab.protocol.LeiosWord.Word32
 
 /** Header-first state across the Byron/Shelley boundary. The pending Shelley state is distinct from
   * the active PBFT state; a translated ledger forecast is shared until a real Shelley anchor
@@ -132,6 +133,29 @@ final class NodeHeaderRules[S](
                   old.translated
                 )
               case None => Prepared.Unknown(ForecastReason.ShelleyLedgerNotReady))
+
+  /** The bound on an endorser block's transactions in the ledger view forecast from `anchor`, at
+    * `tip`, for `slot`, as the Leios fetch reads it from the immutable tip (`forecastMaxEbTxsSize`,
+    * `NodeKernel.hs:586-593` at ouroboros-consensus 2416493b): none in a build without Praos2
+    * ([[Praos2Headers.of]]), which has no Leios fetch.
+    */
+  def leiosMaxEbTxsSize(
+      anchor: S,
+      tip: Option[BlockRef],
+      slot: BigInt
+  ): Option[Either[Praos2Headers.Unforecast, Word32]] =
+    Praos2Headers.of(globals.referenceBuild).map { rules =>
+      anchor.ledger(tip) match
+        case Left(error) =>
+          Left(Praos2Headers.Unforecast.Unread(HeaderStructureProblem.LedgerRead(error)))
+        case Right(Some(InEra.Of(_, ledger))) =>
+          shelleyRules.maxEbTxsSize(rules, anchor, ledger, anchor.afterVoting, tip, slot)
+        case Right(None) =>
+          (byron, anchor.consensus.byron.ledger) match
+            case (Some(cfg), Some(ledger)) => rules.maxEbTxsSizeFromByron(config, cfg, ledger, slot)
+            case _ =>
+              Left(Praos2Headers.Unforecast.Unread(HeaderStructureProblem.MissingByronLedger))
+    }
 
   private def wrap(
       outcome: Prepared[ProtocolState],
