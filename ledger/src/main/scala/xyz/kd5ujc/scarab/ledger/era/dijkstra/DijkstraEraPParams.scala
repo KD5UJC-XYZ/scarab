@@ -221,13 +221,23 @@ object DijkstraEraPParams:
       dijkstra.hkdPerasTargetCommitteeSizeL[StrictMaybe]
     )
 
-  /** `ppPerasBootstrapRound` (`Dijkstra/PParams.hs:1064-1081`, cardano-ledger 9df9f98c). */
+  /** `ppPerasBootstrapRound` (`Dijkstra/PParams.hs:1064-1081`, cardano-ledger 9df9f98c): in an
+    * update its era codec writes and reads the round `null` or the `Word32`
+    * (`encodeNullStrictMaybe`, `decodeNullStrictMaybe`), where the parameters hold the value's own,
+    * `[]` or `[round]`.
+    */
   def ppPerasBootstrapRound: PParam[Dijkstra] =
     PParam.field(
       "perasBootstrapRound",
       53,
       dijkstra.hkdPerasBootstrapRoundL[Identity],
-      dijkstra.hkdPerasBootstrapRoundL[StrictMaybe]
+      dijkstra.hkdPerasBootstrapRoundL[StrictMaybe],
+      Some(
+        EraCodec[Dijkstra, Option[Unsigned[W32]]](
+          Encoding.encodeNullStrictMaybe(EncCBOR[Unsigned[W32]].encCBOR),
+          DecCBOR.nullStrictMaybe(DecCBOR[Unsigned[W32]])
+        )
+      )
     )
 
   /** `ppPerasQuorumThresholdSafetyMargin` (`Dijkstra/PParams.hs:1083-1095`, cardano-ledger

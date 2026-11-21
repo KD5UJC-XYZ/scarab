@@ -609,7 +609,7 @@ object DetachedRecords:
     /** A `PParamsUpdate` (`SparseKeyed`, `Core/PParams.hs:257-293`, cardano-ledger f649f975): from
       * Alonzo its prices (19) and execution units (20, 21) are `RecD` records.
       */
-    private def parameterUpdate(era: Era): Shape =
+    private[ledger] def parameterUpdate(era: Era): Shape =
       if since(era, Era.Alonzo) then Keyed(key => if key >= 19 && key <= 21 then pair else Item)
       else Item
 
