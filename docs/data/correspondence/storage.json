@@ -2159,6 +2159,78 @@
    ],
    "digest": "2f5fd2f6a029cfb2"
   },
+  "class storage.LeiosBackground.Info": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/VolatileDB/API.hs",
+     "symbol": "BlockInfo",
+     "lines": [
+      189,
+      218
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "LeiosBackgroundSuite"
+   ],
+   "note": "the fields of the VolatileDB's BlockInfo that copyToImmutableDB's certifiedEb reads (biHash, biSlotNo, biPrevHash, biHasLeiosCert, biLeiosAnnouncedEb); the announcement is its hash alone, its point's slot the block's own slot (announcementLeiosPoint, headerElId), and the other fields are not read (#830)",
+   "digest": "bbd877ecaee2b285"
+  },
+  "def storage.LeiosBackground.Info.of": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/VolatileDB/Impl/Parser.hs",
+     "symbol": "extractBlockInfo",
+     "lines": [
+      119,
+      140
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "LeiosBackgroundSuite"
+   ],
+   "digest": "41e98b57f3be78e1"
+  },
+  "def storage.LeiosBackground.certifiedEb": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ChainDB/Impl/Background.hs",
+     "symbol": "certifiedEb",
+     "lines": [
+      291,
+      310
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoTypes.hs",
+     "symbol": "announcementLeiosPoint",
+     "lines": [
+      1768,
+      1770
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "LeiosBackgroundSuite"
+   ],
+   "note": "ChainStorage's copy promotes, in one promoteToImmutable call after the blocks are appended and before the copy's collection is scheduled, what each copied block certifies (copyToImmutableDB, Background.hs 230-292), its lookup the copied blocks and the immutable tip before the copy where the reference reads its VolatileDB, which holds the same blocks then (#830)",
+   "digest": "3e578735028bcf95"
+  },
   "def storage.RocksLeiosStore#resume": {
    "upstream": [
     {
@@ -2672,6 +2744,14 @@
    "definitions": [
     "enum storage.VolatileStore.Refusal",
     "enum storage.VolatileStore.ReadFailure"
+   ]
+  },
+  {
+   "reason": "where the chain database's background reads what it drives the Leios store with: the object that holds the promotion's block fields and their reading, and the Leios store's typed errors raised as the chain database's StorageError.LeiosStore, which the node's open of the store raises too; the reference's background calls its LeiosDB handle in IO, whose failures are exceptions (#830)",
+   "definitions": [
+    "object storage.LeiosBackground",
+    "object storage.LeiosBackground.Info",
+    "def storage.LeiosBackground.lifted"
    ]
   }
  ]

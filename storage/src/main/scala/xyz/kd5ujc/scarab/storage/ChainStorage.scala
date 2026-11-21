@@ -13,12 +13,14 @@ import fs2.io.file.Path
 import java.nio.file.Files
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.ChainSync
+import xyz.kd5ujc.scarab.protocol.LeiosWord.Word64
 import xyz.kd5ujc.scarab.consensus.{
   AcquiredLeiosEbs,
   Anchor,
   BlockRef,
   BlockRules,
   LeiosBlockInfo,
+  LeiosCert,
   LeiosCertGate,
   LeiosForestBlock,
   VolatileChain
@@ -377,6 +379,11 @@ object ChainStorage:
     * @param snapshotMigration
     *   Brings the snapshot files of an older format to the current one, before they are opened
     *   (once the identity of the database is checked): [[SnapshotMigration.toCurrent]].
+    * @param leios
+    *   The endorser-block store of the run, which the Leios build's node opens ([[LeiosStore]]):
+    *   the endorser blocks that each copy to the immutable store certifies are promoted in it, and
+    *   it is collected after each collection of the received log ([[LeiosBackground]]). None:
+    *   neither.
     * @param receivedCheck
     *   The start-up check of each record of the received log as it is opened: its file is cut at
     *   the first one refused ([[ReceivedBlocks.Check]]).
@@ -391,7 +398,8 @@ object ChainStorage:
       prepare: Vector[Bytes] => F[Unit],
       compute: Option[Compute[F]] = None,
       snapshotMigration: Option[SnapshotMigration[F]] = None,
-      reopen: Option[Reopen[F, S]] = None
+      reopen: Option[Reopen[F, S]] = None,
+      leios: Option[LeiosStore[F]] = None
   )(receivedCheck: ReceivedBlocks.Check)(using
       SnapshotFormat[F, S],
       Raise[F, StorageError],
@@ -557,7 +565,8 @@ object ChainStorage:
         backing,
         advancedAt,
         collections,
-        stopped
+        stopped,
+        leios
       )
       // Released before the stores: a graceful stop leaves a snapshot at the immutable tip.
       _ <- Resource.onFinalize(persistence.shutdownSnapshot)
@@ -565,7 +574,7 @@ object ChainStorage:
       // raised by the next block the persistence stores, in the follower's own fiber. Whatever ends
       // the runner, a collection's failure or an exception anywhere in it, ends it with a value
       _ <- collections
-        .run(collected(store, received, events), CollectionStopped.Defect(_))
+        .run(collected(store, received, leios, events), CollectionStopped.Defect(_))
         .flatMap(stopped.complete(_).void)
         .background
       end <- Resource.eval(store.tip)
@@ -707,22 +716,33 @@ object ChainStorage:
 
   /** One scheduled collection of the received log, in an error scope of its own: the immutable
     * store is forced to disk first, so that every block below `slot` it holds is durable, then the
-    * files wholly below `slot` are deleted. The force is an approved Deviation (the decisions
-    * register, docs/decisions.md, "Genesis, storage and keys", 2026-11-20, #1247): the reference
-    * collects its VolatileDB without forcing its ImmutableDB, after a delay meant to let the writes
-    * reach the disk (`cdbsGcDelay`, `Storage/ChainDB/Impl/Args.hs` 80-82; `garbageCollectBlocks`,
+    * files wholly below `slot` are deleted, then the Leios store, if the run has one, is collected
+    * at the same slot, as the reference collects its LeiosDB after its VolatileDB
+    * (`leiosDbGarbageCollect`, `garbageCollectBlocks`, `Storage/ChainDB/Impl/Background.hs` 547-559
+    * at ouroboros-consensus 2416493b; the reference prunes its LeiosTxCache first, which this build
+    * does not have). A slot outside a `Word64` is no block's, and collects nothing of the Leios
+    * store. The force is an approved Deviation (the decisions register, docs/decisions.md,
+    * "Genesis, storage and keys", 2026-11-20, #1247): the reference collects its VolatileDB without
+    * forcing its ImmutableDB, after a delay meant to let the writes reach the disk (`cdbsGcDelay`,
+    * `Storage/ChainDB/Impl/Args.hs` 80-82; `garbageCollectBlocks`,
     * `Storage/ChainDB/Impl/Background.hs` 431-448, ouroboros-consensus 82ecba329; 441-458 at
     * 808e40054).
     */
   private def collected[F[_]: Async](
       store: ImmutableStore[F],
       received: ReceivedBlocks[F],
+      leios: Option[LeiosStore[F]],
       events: StorageEvents[F]
   )(slot: BigInt): F[Either[CollectionStopped, Unit]] =
     Async[F].defer(
       Handle
         .allow[StorageError](
-          (store.sync *> received.collect(slot) *> events.emit(StorageEvent.PerformedGC(slot)))
+          (store.sync *> received.collect(slot) *>
+            leios.traverse_(eb =>
+              Word64
+                .from(slot)
+                .fold(_ => Async[F].unit, eb.garbageCollect(_)(using LeiosBackground.lifted[F]))
+            ) *> events.emit(StorageEvent.PerformedGC(slot)))
             .map(_.asRight[CollectionStopped])
         )
         .rescue(e => Async[F].pure(CollectionStopped.Failed(e).asLeft[Unit]))
@@ -794,6 +814,8 @@ object ChainStorage:
     *   The received log's collections, one scheduled after each copy to the immutable store.
     * @param stopped
     *   Completed when the received log's collections stopped on a failure.
+    * @param leios
+    *   The run's endorser-block store, in which each copy promotes what it certifies.
     */
   private final class Persistence[F[_]: Async, S](
       store: ImmutableStore[F],
@@ -814,7 +836,8 @@ object ChainStorage:
       backing: StateBacking[F, S],
       advancedAt: Ref[F, BigInt],
       collections: GcSchedule[F],
-      stopped: Deferred[F, CollectionStopped]
+      stopped: Deferred[F, CollectionStopped],
+      leios: Option[LeiosStore[F]]
   ) extends ChainPersistence[F, S]:
     private val F = Async[F]
 
@@ -851,7 +874,10 @@ object ChainStorage:
                   .OutOfOrder(StorageStructureError.VolatileImmutableMismatch)
                   .raise[F, Unit]
               )
+              // the immutable tip before the copy, the predecessor of its first block
+              previous <- leios.flatTraverse(_ => store.tip)
               _ <- batch.traverse_((r, b) => store.append(r, b))
+              _ <- leios.traverse_(promoted(_, previous, batch))
               // the copy is done: the received log is collected below the new immutable tip on the
               // reference's schedule, timed from now, before the backing store and the selected-chain
               // log are brought forward, as the reference's copy runner schedules its collection
@@ -869,6 +895,38 @@ object ChainStorage:
             yield ()
           }
       }
+
+    /** Promote in `eb` the endorser blocks that the copied `batch` certifies, in one call, once the
+      * blocks are appended and before the copy's collection is scheduled, as the reference's copy
+      * does before it returns (`copyToImmutableDB`, `Storage/ChainDB/Impl/Background.hs` 230-292,
+      * and `copyToImmutableDBRunner`, 364-389, at ouroboros-consensus 2416493b). A copied block's
+      * predecessor is another copied block or `previous`, the immutable tip before the copy, whose
+      * fields are read from the immutable store only when a copied block carries a certificate; the
+      * reference reads both from its VolatileDB ([[LeiosBackground.certifiedEb]]).
+      */
+    private def promoted(
+        eb: LeiosStore[F],
+        previous: Option[BlockRef],
+        batch: Vector[(BlockRef, Bytes)]
+    )(using cats.mtl.Raise[F, StorageError], cats.mtl.Raise[F, ChainError]): F[Unit] =
+      def info(raw: Bytes): F[LeiosBackground.Info] =
+        LeiosBackground.Info
+          .of(config.byronEpochSlots)(raw)
+          .fold(_.raise[F, LeiosBackground.Info], F.pure)
+      for
+        copied <- batch.traverse((_, raw) => info(raw))
+        certifying = copied.exists(_.leios.cert == LeiosCert.Carried)
+        before <- previous
+          .filter(_ => certifying)
+          .flatTraverse(tip => store.get(tip.point))
+          .flatMap(_.traverse(info))
+        held = (before.toVector ++ copied).map(i => i.hash -> i).toMap
+        _ <- eb.promoteToImmutable(
+          copied.flatMap(i => LeiosBackground.certifiedEb(held.get)(i.hash))
+        )(using
+          LeiosBackground.lifted[F]
+        )
+      yield ()
 
     /** The selected-chain log keeps blocks that are already immutable until a file is wholly below
       * the immutable tip. Collecting forces the immutable store first: the log is what protects a
