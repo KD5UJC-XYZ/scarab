@@ -17,15 +17,19 @@ import xyz.kd5ujc.scarab.ledger.era.{
   GovActionState,
   GovPurposeId,
   GovStateBases,
-  Proposals
+  Proposals,
+  ProposalsWriteError,
+  StoredGov,
+  StoredGovError
 }
 import xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraProposals
 import xyz.kd5ujc.scarab.ledger.era.rules.{CERTS, ConwayEpoch}
-import xyz.kd5ujc.scarab.ledger.rules.Globals
+import xyz.kd5ujc.scarab.ledger.rules.{Globals, Sts, Tick}
+import scala.util.chaining.*
 import xyz.kd5ujc.scarab.ledger.state.{Coin, ConwayCertState, Dijkstra, EpochNo, SlotNo}
 import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import xyz.kd5ujc.scarab.storage.{ExternalInputs, LeiosReferenceStates}
-import xyz.kd5ujc.scarab.storage.haskell.state.HaskellState
+import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellState, LeiosStateCodecs}
 
 /** Dijkstra's EPOCH on the era types ([[xyz.kd5ujc.scarab.ledger.era.rules.DijkstraEpoch]]) where
   * the governance state holds an action that updates keys Dijkstra adds, which the node's record
@@ -199,6 +203,24 @@ class DijkstraEraEpochGovSuite extends FunSuite with ExternalInputs:
       )
     }
   }
+
+  // the node's path reads and writes the governance record at every tick (`StoredGov`): a state
+  // with the ratify case's action, an update of keys 47 and 48, is one the record cannot hold
+  test("the ratify case's state is refused by the node's record with the action and its keys") {
+    val derived = right("derived")(
+      DijkstraGovStateBytes.read(
+        file(fixture.resolve(text(record.downField("derivation"), "file")))
+      )
+    )
+    val id = govActionId(text(record.downField("derivation").downField("changes").downN(0), "id"))
+    StoredGov.dijkstra.write(derived.gov, derived.gov, derived.nes.es.ls.utxo.gov) match
+      case Left(StoredGovError.Write(ProposalsWriteError.UnstorableUpdate(refused, keys))) =>
+        assertEquals(refused, id)
+        assertEquals(keys.toSortedSet.toSet, Set(BigInt(47), BigInt(48)))
+      case other => fail(s"not the record's refusal: $other")
+  }
+
+  private val nodeCodec = LeiosStateCodecs.newEpochState[Dijkstra]
 
   // the governance cases of the Leios build
 
@@ -530,6 +552,30 @@ class DijkstraEraEpochGovSuite extends FunSuite with ExternalInputs:
           pulserBytes(written).hex,
           pulserBytes(right("later")(DijkstraGovStateBytes.newEpochStateOfFile(file(toPath)))).hex
         )
+        // a state the node's record holds (none of its actions updates keys 34 to 56) runs the
+        // node's tick too, the governance record read and written back, to the same bytes: of the
+        // three, only the state before proposal 2 is proposed
+        val nodeRead = right("CBOR")(
+          Cbor.decode(
+            right("from")(DijkstraGovStateBytes.newEpochStateOfFile(file(fromPath))),
+            HaskellState.limits
+          )
+        ).pipe(nodeCodec.decode)
+        assertEquals(nodeRead.isRight, from == 1533582, "read by the node's codec")
+        nodeRead.toOption.foreach { nes =>
+          val ticked = right("the node's tick")(
+            Sts(Tick.sts[Dijkstra])(
+              globals,
+              (),
+              nes,
+              right("slot")(SlotNo.fromBigInt(BigInt(slot)))
+            ).leftMap(_.toString)
+          )
+          assertEquals(
+            right("the node's write")(nodeCodec.write(ticked).left.map(_.toString)).hex,
+            written.hex
+          )
+        }
         // what the boundary's pulser ratifies, and what the boundary enacts
         g.cgsDRepPulsingState match
           case DRepPulsingState.DRComplete(_, ratify) =>
