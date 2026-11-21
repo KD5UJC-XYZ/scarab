@@ -1,0 +1,3 @@
+### Added (era types, #85)
+
+- Conway's certificate rules on the era types (CERTS, CERT, DELEG, POOL and GOVCERT) report the reference's own failure types and events, with the reference's injections and embeddings between them, and leave the withdrawal checks of their base case to the LEDGER rule as each reference build does. On every Conway case of the refusal corpora they give the existing rules' failures in the same order and leave the same state; where the reference refused a transaction for the certificate rules alone, their failures encode to the reference's refusal byte for byte. The node still judges with the existing rules, so nothing changes in behaviour.
