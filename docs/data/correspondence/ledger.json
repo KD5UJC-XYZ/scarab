@@ -27606,7 +27606,7 @@
    "evidence": [
     "EraUtxosSuite"
    ],
-   "digest": "5eb9a0bb631259ae"
+   "digest": "4ada48e55585beda"
   },
   "def ledger.era.EraStake.addConwayInstantStake": {
    "upstream": [
@@ -30140,7 +30140,7 @@
     "ConwayGovChecksSuite",
     "UpstreamGovernanceFunctionalSuite"
    ],
-   "digest": "18f09e0d99a5d8a8"
+   "digest": "d1953140ab7a9764"
   },
   "def ledger.era.Proposals.empty": {
    "upstream": [
@@ -34150,7 +34150,7 @@
    ],
    "class": "Mirror",
    "structure": "same",
-   "digest": "aecc429a9b30a87c"
+   "digest": "61d6609784f4d18f"
   },
   "def ledger.era.rules.ShelleyUtxo.validateFeeTooSmallUTxO": {
    "upstream": [
@@ -45872,6 +45872,475 @@
    "class": "Mirror",
    "structure": "same",
    "digest": "cc38e79934943e66"
+  },
+  "def ledger.era.ConwayGovState.mkEnactState": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance.hs",
+     "symbol": "mkEnactState",
+     "lines": [
+      329,
+      339
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraEpochReferenceSuite",
+    "DijkstraEraEpochGovSuite"
+   ],
+   "digest": "63a5fe092edcf0fb"
+  },
+  "def ledger.era.ConwayGovState.predictFuturePParams": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance.hs",
+     "symbol": "predictFuturePParams",
+     "lines": [
+      300,
+      327
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "EraEpochGovSuite",
+    "DijkstraEpochReferenceSuite",
+    "DijkstraEraEpochGovSuite"
+   ],
+   "note": "the predicted parameters are a value where the reference's are a thunk forced at the slot of no return: the node holds the pulser complete, so the value is the one forcing it gives",
+   "digest": "c03bf8e0870dc32d"
+  },
+  "def ledger.era.DRepPulser.computeDRepDistr": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/DRepPulser.hs",
+     "symbol": "computeDRepDistr",
+     "lines": [
+      200,
+      242
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraEpochReferenceSuite",
+    "DijkstraEraEpochGovSuite"
+   ],
+   "digest": "9830f68f9746d07a"
+  },
+  "def ledger.era.DRepPulser.setFreshDRepPulsingState": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance.hs",
+     "symbol": "setFreshDRepPulsingState",
+     "lines": [
+      460,
+      520
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraEpochReferenceSuite",
+    "DijkstraEraEpochGovSuite"
+   ],
+   "note": "the pulser is computed to completion where it starts (finishDRepPulser of the fresh DRPulsing, DRepPulser.hs:388-430: every account in one pulse, then RATIFY over the reordered actions), as the node holds only DRComplete; the epoch state's governance record is not read, the era's governance state is an argument",
+   "digest": "66559475ac3c80c0"
+  },
+  "def ledger.era.DRepPulser.toVotingStakePoolDistr": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Internal.hs",
+     "symbol": "toVotingStakePoolDistr",
+     "lines": [
+      741,
+      746
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraEpochReferenceSuite",
+    "DijkstraEraEpochGovSuite"
+   ],
+   "digest": "2ce6333117e8e7e5"
+  },
+  "def ledger.era.DRepPulsingState.extractDRepPulsingState": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/DRepPulser.hs",
+     "symbol": "extractDRepPulsingState",
+     "lines": [
+      512,
+      517
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraEpochReferenceSuite",
+    "DijkstraEraEpochGovSuite"
+   ],
+   "note": "one case: the node holds the pulser only complete (DRComplete)",
+   "digest": "cb1d0484e4cd4aff"
+  },
+  "def ledger.era.EraAccounts.addToBalanceAccounts": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/Account.hs",
+     "symbol": "addToBalanceAccounts",
+     "lines": [
+      132,
+      149
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraEpochGovSuite"
+   ],
+   "digest": "60a85d73b8844c0a"
+  },
+  "def ledger.era.EraAccounts.updateLookupAccountState": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/Account.hs",
+     "symbol": "updateLookupAccountState",
+     "lines": [
+      168,
+      176
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraEpochGovSuite"
+   ],
+   "digest": "ce0d65ef23c83b23"
+  },
+  "def ledger.era.EraGov.nextEpochPParams": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/Governance.hs",
+     "symbol": "nextEpochPParams",
+     "lines": [
+      121,
+      123
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraEpochGovSuite",
+    "DijkstraEpochReferenceSuite",
+    "DijkstraEraEpochGovSuite"
+   ],
+   "digest": "c8bb075fc82b5f84"
+  },
+  "def ledger.era.EraStake#instantStakeCredentialsL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/Stake.hs",
+     "symbol": "instantStakeCredentialsL",
+     "lines": [
+      191,
+      191
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraEpochReferenceSuite",
+    "DijkstraEraEpochGovSuite"
+   ],
+   "digest": "abe8a30ab3d9d94d"
+  },
+  "def ledger.era.FuturePParams.solidifyFuturePParams": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/Governance.hs",
+     "symbol": "solidifyFuturePParams",
+     "lines": [
+      135,
+      140
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraEpochGovSuite",
+    "DijkstraEpochReferenceSuite",
+    "DijkstraEraEpochGovSuite"
+   ],
+   "digest": "e6f8cb90ea3e2f32"
+  },
+  "def ledger.era.OMap.extractKeys": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-data/src/Data/OMap/Strict.hs",
+     "symbol": "extractKeys",
+     "lines": [
+      277,
+      285
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraEpochGovSuite"
+   ],
+   "digest": "a4fe6384def82942"
+  },
+  "def ledger.era.Proposals.proposalsActions": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Proposals.hs",
+     "symbol": "proposalsActions",
+     "lines": [
+      559,
+      562
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraEpochReferenceSuite",
+    "DijkstraEraEpochGovSuite"
+   ],
+   "digest": "f61f08ec76b1f15a"
+  },
+  "def ledger.era.Proposals.proposalsApplyEnactment": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Proposals.hs",
+     "symbol": "proposalsApplyEnactment",
+     "lines": [
+      492,
+      556
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraEpochGovSuite",
+    "DijkstraEpochReferenceSuite",
+    "DijkstraEraEpochGovSuite"
+   ],
+   "digest": "9a77ce01c4da2254"
+  },
+  "def ledger.era.Proposals.proposalsDeposits": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Proposals.hs",
+     "symbol": "proposalsDeposits",
+     "lines": [
+      566,
+      580
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraEpochReferenceSuite",
+    "DijkstraEraEpochGovSuite"
+   ],
+   "note": "a return account's credential is read at the stake credential's type, its refusal a VocabError, which the decoder of an account address refused",
+   "digest": "9514f8feea5f3274"
+  },
+  "def ledger.era.Proposals.proposalsRemoveIds": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Proposals.hs",
+     "symbol": "proposalsRemoveIds",
+     "lines": [
+      435,
+      461
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraEpochGovSuite"
+   ],
+   "digest": "a09e921f512b9e0e"
+  },
+  "def ledger.era.Proposals.proposalsRemoveWithDescendants": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Proposals.hs",
+     "symbol": "proposalsRemoveWithDescendants",
+     "lines": [
+      465,
+      483
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "EraEpochGovSuite",
+    "DijkstraEraEpochGovSuite"
+   ],
+   "note": "getAllDescendants walks the graph with a work list where the reference recurses (STK-1), the same set over the forest proposalsAddAction builds; on the Leios build's remove-branches case (fixtures/reference/dijkstra-epoch/governance.json) the enacted action's competing sibling with its descendant and an expired action with its descendant are removed, and the surviving ordered proposals, the roots and the removed action maps are the build's",
+   "digest": "6cf7c5fee0145a82"
+  },
+  "def ledger.era.rules.ConwayEpoch.applyEnactedWithdrawals": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Epoch.hs",
+     "symbol": "applyEnactedWithdrawals",
+     "lines": [
+      213,
+      246
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraEpochGovSuite"
+   ],
+   "digest": "24ec4ac0339749b0"
+  },
+  "def ledger.era.rules.ConwayEpoch.returnProposalDeposits": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Epoch.hs",
+     "symbol": "returnProposalDeposits",
+     "lines": [
+      183,
+      197
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraEpochGovSuite",
+    "DijkstraEpochReferenceSuite",
+    "DijkstraEraEpochGovSuite"
+   ],
+   "digest": "1dd3a43a6b59ebce"
+  },
+  "def ledger.era.rules.ConwayEpoch.updateCommitteeState": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Epoch.hs",
+     "symbol": "updateCommitteeState",
+     "lines": [
+      423,
+      427
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraEpochReferenceSuite",
+    "DijkstraEraEpochGovSuite"
+   ],
+   "digest": "019bf179864f71b4"
+  },
+  "def ledger.era.rules.ConwayEpoch.updateNumDormantEpochs": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Epoch.hs",
+     "symbol": "updateNumDormantEpochs",
+     "lines": [
+      201,
+      205
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraEpochGovSuite",
+    "DijkstraEpochReferenceSuite",
+    "DijkstraEraEpochGovSuite"
+   ],
+   "digest": "536e6a1e682eed11"
+  },
+  "val ledger.era.rules.DijkstraEpoch.sts": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Epoch.hs",
+     "symbol": "epochTransition",
+     "lines": [
+      128,
+      244
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraEpochReferenceSuite",
+    "DijkstraEraEpochGovSuite"
+   ],
+   "note": "the state is the node's epoch state with the era's governance state beside it (EpochGovState), until the ledger state holds the era's record (#85); POOLREAP, HARDFORK and SNAP are the node's rules, SNAP reading the era's current parameters through the node's parameter record; no event is kept, as the node's EPOCH keeps none; a succ or compactCoinOrError the reference calls error on is a VocabError",
+   "digest": "4149729d66dd8de7"
   }
  },
  "glue": [
@@ -46975,6 +47444,17 @@
     "given ledger.era.DefaultVote.given_CanEqual_DefaultVote_DefaultVote",
     "object ledger.era.rules.ConwayEnact",
     "object ledger.era.rules.ConwayRatify"
+   ]
+  },
+  {
+   "reason": "Dijkstra's EPOCH on the era types (#85): the epoch state it works on, the node's epoch state with the era's governance state beside it until the ledger state holds the era's record, its lens, and the module objects of EPOCH and of the DRep pulser, whose functions are each mapped by themselves",
+   "definitions": [
+    "class ledger.era.rules.EpochGovState",
+    "object ledger.era.rules.EpochGovState",
+    "def ledger.era.rules.EpochGovState.es",
+    "object ledger.era.DRepPulser",
+    "object ledger.era.rules.ConwayEpoch",
+    "object ledger.era.rules.DijkstraEpoch"
    ]
   }
  ]

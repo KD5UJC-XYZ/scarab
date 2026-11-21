@@ -82,6 +82,59 @@ than the uncapped one at the same slot (the base case's), the rest staying in th
 the same; and, at every boundary, that the new mark's committee size is the parameter in force after it, with no
 more seats than that size.
 
+### A ratified parameter change
+
+`Main.hs ... ratify ...` derives one more state, from the testnet's input only (the devnet's has no committee member):
+an action proposed with the ledger's `proposalsAddAction` (`eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Proposals.hs:297-336`),
+a change of keys 47 and 48 (`eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs:980-1006`) whose parent is the
+root of the parameter changes, under the constitution's guardrails script and anchor, with the current parameters'
+action deposit and lifetime, returned to the first registered account; the yes votes of every authorized hot committee
+credential, registered DRep and registered pool; its deposit added to the pot; and the DReps' dormant epochs added to
+their expiries as the CERTS of a transaction with a proposal adds them (`updateDormantDRepExpiry`,
+`eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Certs.hs:285-307`), without which both of the testnet's DReps would
+have expired. Like the other derived states, no transaction made it. It is ticked along both full paths, and each state
+also reports its governance with the ledger's accessors: the proposals' ids, the actions the pulser's ratification
+enacts (`extractDRepPulsingState`), the root of the parameter changes and keys 47 and 48. `run.py` checks that the
+fresh pulser of the first boundary ratifies the action (Conway's RATIFY and ENACT, which Dijkstra's are,
+`Dijkstra/Era.hs:208, 226`), that the tick past the slot of no return on `rewards` makes the future parameters
+definite (`solidifyFuturePParams`, `Shelley/Rules/Tick.hs:144-160`), and that the second boundary enacts them there
+(`Dijkstra/Rules/Epoch.hs:153-244`) while on `boundaries`, with no such tick, it removes the action and moves the root
+to it but keeps the parameters (`nextEpochPParams`). The record is `ratification.json`, beside `cases.json`, which it
+leaves unchanged; the ledger sources of RATIFY, ENACT, Conway's EPOCH and CERTS, the governance state, the proposals and
+the DRep pulser are among the pinned ones.
+
+### Branched removals and a deposit's credit
+
+`Main.hs ... remove-branches ...` and `Main.hs ... deposit-credit ...` derive two more states from the testnet's
+input, built as `ratify`'s is (`actionState`, the same `Propose` change for each action), and tick each along both
+full paths:
+
+- `remove-branches` proposes seven actions in order, each returned to the first registered account: `ratify`'s (A),
+  voted yes by everyone; its competing sibling B, the same change with the same parent; B's child C; D, the
+  constitution proposed anew (`NewConstitution`) under the root of the constitutions, expiring after the input's
+  epoch, so the next epoch's pulser finds it expired (`gasExpiresAfter < reCurrentEpoch`,
+  `eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Ratify.hs:336-358`); D's child E; A's child F; and an
+  information action G. None but A has a vote. The second boundary's `proposalsApplyEnactment`
+  (`Governance/Proposals.hs:485-556`) removes D with E as expired, enacts A and removes B with C as competing, and
+  keeps F, now the root's child, and G.
+- `deposit-credit` proposes `ratify`'s action with its deposit returned to the first registered account delegated to
+  a registered pool and to a registered DRep of a credential (`Main.hs` refuses an input without one, or where it is
+  the first registered account), so `computeDRepDistr` (`Governance/DRepPulser.hs:200-242`) credits the deposit to
+  that account's DRep and to its pool. For comparison, `Main.hs` also ticks `ratify`'s derived state, whose deposit
+  returns to an account with no delegation, to the first boundary (the control).
+
+Each state reports, with the ledger's accessors, the proposals' ids in order, the actions the pulser's ratification
+enacts and finds expired (`finishDRepPulser`), the root of each purpose, and the delegated account's DRep's and
+pool's entries in the pulser's distributions (`psDRepDistr`, `psPoolDistr`). Each tick also reports what Dijkstra's
+EPOCH removed (`GovInfoEvent`, `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Epoch.hs:197-202`): `Main.hs`
+runs the same TICK with its events returned (`applyTick`, of which `applyTickNoEvents` is the state,
+`Shelley/API/Validation.hs:55-76, 186-193`) and refuses to go on unless its state is the one reached. `run.py`
+checks that the forest is the one asked and that the second boundary removes exactly B and C as competing and D
+and E as expired, keeping F and G in that order, the root of the parameter changes A; and that at the first
+boundary of `boundaries` the delegated DRep's and pool's entries are the control's plus the deposit, both
+ratifying the action. The record is `governance.json`, beside `cases.json` and `ratification.json`, which it leaves
+unchanged.
+
 ### Dijkstra's genesis injection
 
 `Main.hs genesis` makes the initial state of a chain that is in Dijkstra from its genesis, on the [Leios testnet's

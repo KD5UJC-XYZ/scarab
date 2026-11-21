@@ -14,6 +14,15 @@ before reached:
               stabilisation window), where RUPD starts the reward pulser; the next epoch's first slot; the same
               point of that epoch; and the first slot of the epoch after: two boundaries, each with a pulser.
 
+It also derives, from the testnet's state only, one in which a parameter change is proposed (`ratify`: keys 47 and
+48, with the yes votes of every hot committee credential, DRep and pool) and ticks it along both full paths, so that
+the pulser started at the first boundary ratifies it and the second boundary enacts it (`ratification.json`); the
+devnet's state has no committee member to ratify one. Two more derivations of the testnet's state propose actions
+(`governance.json`): `remove-branches`, a forest in which the second boundary removes an enacted action's competing
+sibling with its descendant and an expired action with its descendant, keeping two; and `deposit-credit`, `ratify`'s
+action with its deposit returned to an account delegated to both a pool and a DRep, whose entries in the pulser's
+distributions the first boundary credits with it.
+
 It also derives four states from each input with the ledger's own lenses and functions (`retire`,
 `reregister-new-vrf`, `both`, `both-sharer`: a pool retiring, a pool re-registering with another VRF key hash while a
 second pool shares its active one, and both), which exercise Dijkstra's POOLREAP, and ticks each along both paths up
@@ -69,6 +78,8 @@ CBOR = CHAIN.CBOR
 
 FIXTURE = ROOT / "fixtures/reference/dijkstra-epoch"
 CASES_FILE = FIXTURE / "cases.json"
+RATIFICATION_FILE = FIXTURE / "ratification.json"
+GOVERNANCE_FILE = FIXTURE / "governance.json"
 PROVENANCE = FIXTURE / "provenance.json"
 INPUTS = "fixtures/leios/state"
 # Each state file: the Shelley genesis file of its network, whether the states a tick reaches inside an epoch are
@@ -94,6 +105,31 @@ PLEDGE_CAP = [1, 1]
 FUTURE_COMMITTEE_SIZE = 2
 # The facts other than the pool state's that a derivation changes, with their derived values.
 CHANGED_FACTS = {"pledge-cap": {"maxPledgeLeverage": PLEDGE_CAP}, "committee-size": {"futurePParams": "definite"}}
+# The `ratify` derivation (`Main.hs`'s `ratifyAction`): its input, the id of its action (a transaction of 32 bytes of
+# 0xaa, index 0), and the values its change gives keys 47 and 48 (`ratifyEndorserLimits`: the memory and steps of an
+# endorser block's scripts, its reference scripts' size).
+RATIFY = "ratify"
+RATIFY_STATE = "testnet-2168639"
+RATIFY_ID = "aa" * 32 + "#0"
+RATIFY_LIMITS = {"maxEndorserBlockExUnits": [140000000, 100000000000], "maxRefScriptSizePerEndorserBlock": 2097152}
+# The derivations of the testnet's state that propose actions and report their proposals (`Main.hs`'s
+# `removeBranchesActions` and `depositCreditAction`), each ticked along both full paths, and the ids of their actions
+# (a transaction of 32 bytes of 0xaa, indices 0 to 6).
+BRANCHES = "remove-branches"
+CREDIT = "deposit-credit"
+GOVERNANCE = (BRANCHES, CREDIT)
+ACTION = {name: "aa" * 32 + f"#{ix}" for ix, name in enumerate("ABCDEFG")}
+# The governance action tags of a proposal's action (`ParameterChange`, `NewConstitution`, `InfoAction`) and the shape
+# of `remove-branches`: each action's tag and parent, the parent `None` for the root of its purpose and an action's
+# letter otherwise, and whether everyone votes yes on it.
+PARAMETER_CHANGE, NEW_CONSTITUTION, INFO_ACTION = 0, 5, 6
+BRANCH_SHAPE = {"A": (PARAMETER_CHANGE, None, True), "B": (PARAMETER_CHANGE, None, False),
+                "C": (PARAMETER_CHANGE, "B", False), "D": (NEW_CONSTITUTION, None, False),
+                "E": (NEW_CONSTITUTION, "D", False), "F": (PARAMETER_CHANGE, "A", False),
+                "G": (INFO_ACTION, None, False)}
+# What the second boundary of `remove-branches` removes (Dijkstra's EPOCH's `GovInfoEvent`) and keeps.
+BRANCH_REMOVALS = {"enacted": ["A"], "removedDueToEnactment": ["B", "C"], "expired": ["D", "E"], "unclaimed": {}}
+BRANCH_SURVIVORS = ["F", "G"]
 # The genesis files of the Dijkstra genesis case: the public Leios testnet's, which start every era at epoch 0.
 GENESIS_DIR = "fixtures/leios/testnet/config"
 GENESIS_FILES = ("shelley-genesis.json", "alonzo-genesis.json", "conway-genesis.json", "dijkstra-genesis.json")
@@ -192,6 +228,24 @@ PINNED = {
         "3bde7cd55f6c79459938c3cc5d5a96fcf39132b8464a4f87597f15628ecf8608",
     "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rewards.hs":
         "e2b8b93438e1abc39ef521f99ef50313ad45de161bca73c703cf123da4eb5a39",
+    "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Ratify.hs":
+        "715376c04ae980e884d219f86f1ada893c98b84dedcea58f1a93085cefbd045a",
+    "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Enact.hs":
+        "b3b5fd8d8d82372af7e1d0ebaa3c3b000f96ce77d87364342fc117b702123d05",
+    "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Epoch.hs":
+        "619d9553cc57d6d62e46343e90ee2ceb0c85a3f86d7fa16a937f10057a33ca1e",
+    "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Certs.hs":
+        "d52be44293f43b62525450042eeacb3b3e4b146736aff77b56d5e9e6e743b82f",
+    "eras/conway/impl/src/Cardano/Ledger/Conway/Governance.hs":
+        "331a4e5d54382b2ad6c266dcc058c0d683c4ecd488bb7f6b673c101d1e8ac86e",
+    "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Proposals.hs":
+        "a7b56cacf6fb38a13291cde2914fb06e12549e82b52002e43e2d24e6fdfe4ebe",
+    "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/DRepPulser.hs":
+        "4842168df798e28ae859504dc8de2bb287b74cceb125b745ff004e99a811ddee",
+    "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Internal.hs":
+        "c64a2a425cb7691304dd191a276b15fd100f4804f6ce2a6f415cae4a814d2ec4",
+    "libs/cardano-ledger-core/src/Cardano/Ledger/State/Governance.hs":
+        "abcdf3895abb73eaaf5ee17b7f764e7415f946ae67456e0fa11be4f694216cd9",
 }
 
 
@@ -607,6 +661,302 @@ def check(case, rows):
         refuse("pledge-cap: the capped reward update is not smaller than the uncapped one")
 
 
+def ratification_record(case, result):
+    """The fixture's record of the `ratify` derivation and the bytes of its derived state by file name: the input's
+    governance, the derived state (its change, digest, size, file, facts and governance), and each tick of both
+    paths with its state's digest and size (no file: the states are 0.8 MB each), facts and governance."""
+    source = result["derivation"]
+    state = bytes.fromhex(source["state"])
+    name = f"{case['name']}-{RATIFY}.cbor"
+    record = {"name": case["name"], "inputGovernance": result["inputGovernance"],
+              "inputDeposited": result["input"]["deposited"],
+              "derivation": {"name": source["name"], "changes": source["changes"], "stateSha256": sha256(state),
+                             "bytes": len(state), "file": name, "facts": source["facts"],
+                             "governance": source["governance"]},
+              "paths": [{"path": path["name"],
+                         "ticks": [{"slot": t["slot"], "stateSha256": sha256(bytes.fromhex(t["state"])),
+                                    "bytes": len(bytes.fromhex(t["state"])), "file": None,
+                                    **{k: t[k] for k in ("facts", "governance", "crossedBoundary",
+                                                         "rewardUpdateApplied")}}
+                                   for t in path["ticks"]]}
+                        for path in result["paths"]]}
+    return record, {name: state}
+
+
+def check_ratification(case, record):
+    """The `ratify` derivation is what was asked and what the reference's rules make of it: the testnet's state with
+    one action proposed, a change of keys 47 and 48 to RATIFY_LIMITS whose parent is the input's root, with every
+    hot committee credential's, DRep's and pool's yes vote, its deposit in the pot, and nothing else of the facts
+    changed; at the first boundary the fresh pulser's ratification enacts it, the action still proposed; on the
+    rewards path the tick past the slot of no return makes the future parameters definite (`solidifyFuturePParams`),
+    and the second boundary enacts it: the action gone, the root of the parameter changes it, keys 47 and 48 the
+    change's values and its deposit back out of the pot; on the boundaries path, with no tick past that slot, the
+    future parameters stay potential, so the second boundary removes the action and moves the root to it, and the
+    parameters stay the input's (`nextEpochPParams`)."""
+    def refuse(why):
+        raise SystemExit(f"{RATIFY}: {why}")
+
+    derivation, before = record["derivation"], record["inputGovernance"]
+    length = genesis(case["genesis"])["epochLength"]
+    changes = derivation["changes"]
+    if (record["name"] != RATIFY_STATE or derivation["name"] != RATIFY or len(changes) != 1
+            or changes[0]["change"] != "propose" or changes[0]["id"] != RATIFY_ID
+            or changes[0]["proposedIn"] != case["epoch"]
+            or [p["path"] for p in record["paths"]] != list(PATHS)
+            or [[t["slot"] for t in p["ticks"]] for p in record["paths"]] != [case["slots"][p] for p in PATHS]):
+        refuse("not the derivation asked")
+    if (set(record) != {"name", "inputGovernance", "inputDeposited", "derivation", "paths"}
+            or derivation["file"] != f"{RATIFY_STATE}-{RATIFY}.cbor"
+            or derivation["facts"]["deposited"] <= record["inputDeposited"]
+            or before["proposals"] != [] or before["enacted"] != []
+            or derivation["governance"] != {**before, "proposals": [RATIFY_ID]}
+            or any(before[k] == v for k, v in RATIFY_LIMITS.items())
+            or min(changes[0][k] for k in ("committeeVotes", "drepVotes", "stakePoolVotes")) < 1):
+        refuse("the derived state's governance is not the input's with the action proposed")
+    for path in record["paths"]:
+        state, governance = derivation["facts"], derivation["governance"]
+        for tick in path["ticks"]:
+            after, gov = tick["facts"], tick["governance"]
+            where = f"{path['path']} at {tick['slot']}"
+            crossed = after["epoch"] != state["epoch"]
+            if tick["crossedBoundary"] != crossed or after["epoch"] != tick["slot"] // length:
+                refuse(f"{where}: the tick's facts do not follow from the states")
+            if crossed and after["epoch"] == case["epoch"] + 1:
+                if gov != {**governance, "enacted": [RATIFY_ID]} or after["futurePParams"] != "potential":
+                    refuse(f"{where}: the fresh pulser does not ratify the action")
+            elif crossed:
+                solid = state["futurePParams"] == "definite"
+                limits = RATIFY_LIMITS if solid else {k: before[k] for k in RATIFY_LIMITS}
+                if (gov != {**limits, "proposals": [], "enacted": [], "pparamUpdateRoot": RATIFY_ID}
+                        or after["deposited"] != record["inputDeposited"]):
+                    refuse(f"{where}: the boundary does not enact the action as the future parameters say")
+            elif gov != governance or after["futurePParams"] != (
+                    "definite" if state["epoch"] == case["epoch"] + 1 else "none"):
+                refuse(f"{where}: the governance changed inside an epoch, or the parameters were not solidified")
+            state, governance = after, gov
+    if not any(p["ticks"][-2]["facts"]["futurePParams"] == "definite" for p in record["paths"]):
+        refuse("no path solidifies the future parameters")
+
+
+def run_ratification(image_id, name, states):
+    case, nes = next((c, n) for c, n in states if c["name"] == RATIFY_STATE)
+    with tempfile.TemporaryDirectory(prefix="scarab-dijkstra-epoch-") as scratch:
+        Path(scratch).chmod(0o755)
+        target = Path(scratch) / f"{case['name']}.cbor"
+        target.write_bytes(nes)
+        target.chmod(0o644)
+        done = subprocess.run(
+            [*container(name, "-v", f"{scratch}:/in:ro", "-v", f"{ROOT / case['genesis']}:/genesis.json:ro"),
+             image_id, "/genesis.json", f"/in/{case['name']}.cbor", RATIFY,
+             *(f"{path}={','.join(map(str, case['slots'][path]))}" for path in PATHS)],
+            capture_output=True, text=True)
+    if done.returncode:
+        raise SystemExit(f"the oracle failed on {case['name']} ({RATIFY}): {done.stderr}")
+    result = json.loads(done.stdout)
+    record, kept = ratification_record(case, result)
+    check_ratification(case, record)
+    return record, kept
+
+
+def recorded_ratification():
+    return json.loads(RATIFICATION_FILE.read_text())
+
+
+def governance_record(case, result):
+    """The fixture's record of a derivation that proposes actions (GOVERNANCE): as the `ratify` derivation's, with
+    the account delegated to a pool and a DRep whose entries the governance reports (`delegated`), each tick's
+    removals, and for `deposit-credit` the control (`ratify`'s derived state at the first boundary); no state file,
+    the derived state and those of the ticks being kept by digest only (0.5 MB and more each)."""
+    source = result["derivation"]
+    state = bytes.fromhex(source["state"])
+    record = {"name": case["name"], "inputGovernance": result["inputGovernance"],
+              "inputDeposited": result["input"]["deposited"], "delegated": result["delegated"],
+              "derivation": {"name": source["name"], "changes": source["changes"], "stateSha256": sha256(state),
+                             "bytes": len(state), "file": None, "facts": source["facts"],
+                             "governance": source["governance"]},
+              "paths": [{"path": path["name"],
+                         "ticks": [{"slot": t["slot"], "stateSha256": sha256(bytes.fromhex(t["state"])),
+                                    "bytes": len(bytes.fromhex(t["state"])), "file": None,
+                                    **{k: t[k] for k in ("facts", "governance", "removals", "crossedBoundary",
+                                                         "rewardUpdateApplied")}}
+                                   for t in path["ticks"]]}
+                        for path in result["paths"]]}
+    if "control" in result:
+        record["control"] = result["control"]
+    return record
+
+
+def proposal_shape(proposal):
+    """A proposal procedure's deposit, return account (its credential's bytes), action tag and parent id
+    (`txid#index`, or None), read from its CBOR: `[deposit, account, action, anchor]`, the action
+    `[tag, parent, ...]` but for an information action's `[6]`."""
+    data = bytes.fromhex(proposal)
+    deposit, account, action, _ = CBOR.value(data, 0)
+    if action[0] == INFO_ACTION:
+        return deposit, account[1:].hex(), INFO_ACTION, None
+    parent = action[1]
+    return deposit, account[1:].hex(), action[0], None if parent is None else f"{parent[0].hex()}#{parent[1]}"
+
+
+def check_governance_ticks(case, record, at_boundary):
+    """The ticks of a GOVERNANCE derivation's paths follow from the states: the facts' epochs and boundaries, no
+    removals and no change of the governance inside an epoch, and `at_boundary(where, path, epoch, before, tick)` at
+    each boundary, which refuses what the rules do not make there."""
+    length = genesis(case["genesis"])["epochLength"]
+    for path in record["paths"]:
+        state, governance = record["derivation"]["facts"], record["derivation"]["governance"]
+        for tick in path["ticks"]:
+            after, gov = tick["facts"], tick["governance"]
+            where = f"{record['derivation']['name']}, {path['path']} at {tick['slot']}"
+            crossed = after["epoch"] != state["epoch"]
+            if tick["crossedBoundary"] != crossed or after["epoch"] != tick["slot"] // length:
+                raise SystemExit(f"{where}: the tick's facts do not follow from the states")
+            if crossed:
+                at_boundary(where, path["path"], after["epoch"], governance, tick)
+            elif (tick["removals"] is not None or gov["proposals"] != governance["proposals"]
+                  or gov["roots"] != governance["roots"]):
+                raise SystemExit(f"{where}: the governance changed inside an epoch")
+            state, governance = after, gov
+
+
+def check_governance_derivation(case, record, name, changes):
+    """A GOVERNANCE record is of the derivation asked, on the testnet's state, along both full paths, with only
+    actions proposed in the input's epoch, ids ACTION's in order, and the derived governance the input's with them
+    proposed."""
+    derivation, before = record["derivation"], record["inputGovernance"]
+    expected = {"name", "inputGovernance", "inputDeposited", "delegated", "derivation", "paths",
+                *(["control"] if name == CREDIT else [])}
+    if (set(record) != expected or record["name"] != RATIFY_STATE or derivation["name"] != name
+            or derivation["file"] is not None
+            or [p["path"] for p in record["paths"]] != list(PATHS)
+            or [[t["slot"] for t in p["ticks"]] for p in record["paths"]] != [case["slots"][p] for p in PATHS]
+            or any(t["file"] is not None for p in record["paths"] for t in p["ticks"])
+            or [c["change"] for c in derivation["changes"]] != ["propose"] * changes
+            or [c["id"] for c in derivation["changes"]] != list(ACTION.values())[:changes]
+            or any(c["proposedIn"] != case["epoch"] for c in derivation["changes"])
+            or before["proposals"] != [] or before["enacted"] != [] or before["expired"] != []
+            or derivation["governance"] != {**before, "proposals": list(ACTION.values())[:changes]}):
+        raise SystemExit(f"{name}: not the derivation asked")
+    deposits = [proposal_shape(c["proposal"])[0] for c in derivation["changes"]]
+    if min(deposits) <= 0 or derivation["facts"]["deposited"] != record["inputDeposited"] + sum(deposits):
+        raise SystemExit(f"{name}: the deposits are not in the pot")
+
+
+def check_branches(case, record):
+    """`remove-branches` is the forest asked (BRANCH_SHAPE, every action returned to one account, D expiring after the
+    input's epoch and the others voted on to the epoch after next at least), and the reference's rules make of it
+    what `Main.hs` says: the first boundary's fresh pulser enacts A and finds D expired, removing nothing yet; the
+    second removes D and its descendant E as expired, makes A the root of the parameter changes and removes its
+    competing sibling B with B's descendant C, keeping F, now the root's child, and G, in order (BRANCH_REMOVALS,
+    BRANCH_SURVIVORS), the other roots the input's and the deposit pot the input's with the survivors' deposits."""
+    check_governance_derivation(case, record, BRANCHES, len(ACTION))
+    before = record["inputGovernance"]
+    roots = {PARAMETER_CHANGE: before["roots"]["pparamUpdate"], NEW_CONSTITUTION: before["roots"]["constitution"],
+             INFO_ACTION: None}
+    accounts, deposits = set(), {}
+    for letter, change in zip(ACTION, record["derivation"]["changes"]):
+        tag, parent, voted = BRANCH_SHAPE[letter]
+        deposits[letter], account, shape_tag, shape_parent = proposal_shape(change["proposal"])
+        accounts.add(account)
+        votes = [change[k] for k in ("committeeVotes", "drepVotes", "stakePoolVotes")]
+        expiry = case["epoch"] if letter == "D" else case["epoch"] + 2
+        if (shape_tag != tag or shape_parent != (roots[tag] if parent is None else ACTION[parent])
+                or (min(votes) < 1 if voted else max(votes) != 0)
+                or (change["expiresAfter"] != expiry if letter == "D" else change["expiresAfter"] < expiry)):
+            raise SystemExit(f"{BRANCHES}: action {letter} is not the one asked")
+    if len(accounts) != 1:
+        raise SystemExit(f"{BRANCHES}: the deposits do not return to one account")
+
+    def ids(letters):
+        return [ACTION[x] for x in letters]
+
+    def at_boundary(where, path, epoch, governance, tick):
+        gov = tick["governance"]
+        if epoch == case["epoch"] + 1:
+            if (tick["removals"] != {"enacted": [], "removedDueToEnactment": [], "expired": [], "unclaimed": {}}
+                    or gov["proposals"] != governance["proposals"] or gov["roots"] != governance["roots"]
+                    or gov["enacted"] != ids("A") or gov["expired"] != ids("D")):
+                raise SystemExit(f"{where}: the fresh pulser does not enact A and expire D, or something was removed")
+        elif (tick["removals"] != {k: (v if k == "unclaimed" else ids(v)) for k, v in BRANCH_REMOVALS.items()}
+              or gov["proposals"] != ids(BRANCH_SURVIVORS)
+              or gov["roots"] != {**before["roots"], "pparamUpdate": ACTION["A"]}
+              or tick["facts"]["deposited"] != record["inputDeposited"] + sum(deposits[x] for x in BRANCH_SURVIVORS)):
+            raise SystemExit(f"{where}: the boundary does not remove the branches as the reference's rules do")
+    check_governance_ticks(case, record, at_boundary)
+
+
+def check_credit(case, record):
+    """`deposit-credit` is `ratify`'s action returned to the delegated account (a registered account delegated to a
+    registered pool and a registered DRep of a credential, not the first account, to which the control's action
+    returns its deposit), and at the first boundary of `boundaries`, the control's slot with no tick before it, the
+    fresh pulser's DRep and pool distributions hold the delegated DRep's and pool's entries the control's holds plus the deposit, both
+    ratifying the action; the second boundary enacts it and removes it, as `ratify`'s."""
+    check_governance_derivation(case, record, CREDIT, 1)
+    change = record["derivation"]["changes"][0]
+    deposit, account, tag, parent = proposal_shape(change["proposal"])
+    delegated, control = record["delegated"], record["control"]
+    if (set(delegated) != {"account", "pool", "drep"} or delegated["account"] != {"keyHash": account}
+            or tag != PARAMETER_CHANGE or parent != record["inputGovernance"]["roots"]["pparamUpdate"]
+            or min(change[k] for k in ("committeeVotes", "drepVotes", "stakePoolVotes")) < 1):
+        raise SystemExit(f"{CREDIT}: not ratify's action returned to the delegated account")
+    if control["slot"] != case["slots"]["boundaries"][0] or control["governance"]["enacted"] != [ACTION["A"]]:
+        raise SystemExit(f"{CREDIT}: the control is not ratify's state at the first boundary")
+
+    def at_boundary(where, path, epoch, governance, tick):
+        gov = tick["governance"]
+        if epoch == case["epoch"] + 1:
+            same = {k: v for k, v in gov.items() if k not in ("drepStake", "poolStake")}
+            if (tick["removals"] != {"enacted": [], "removedDueToEnactment": [], "expired": [], "unclaimed": {}}
+                    or gov["enacted"] != [ACTION["A"]] or gov["proposals"] != governance["proposals"]):
+                raise SystemExit(f"{where}: the fresh pulser does not ratify the action")
+            if path == "boundaries" and (
+                    same != {k: v for k, v in control["governance"].items() if k not in ("drepStake", "poolStake")}
+                    or gov["drepStake"] != control["governance"]["drepStake"] + deposit
+                    or gov["poolStake"] != control["governance"]["poolStake"] + deposit):
+                raise SystemExit(f"{where}: the distributions are not the control's with the deposit credited")
+        elif (tick["removals"] != {"enacted": [ACTION["A"]], "removedDueToEnactment": [], "expired": [],
+                                   "unclaimed": {}}
+              or gov["proposals"] != [] or gov["roots"]["pparamUpdate"] != ACTION["A"]):
+            raise SystemExit(f"{where}: the boundary does not enact the action")
+    check_governance_ticks(case, record, at_boundary)
+
+
+GOVERNANCE_CHECKS = {BRANCHES: check_branches, CREDIT: check_credit}
+
+
+def check_governance(case, records):
+    """Each GOVERNANCE derivation's record, by name, and no other."""
+    if not isinstance(records, dict) or set(records) != set(GOVERNANCE):
+        raise SystemExit(f"{GOVERNANCE_FILE.name}: not the records of {', '.join(GOVERNANCE)}")
+    for name in GOVERNANCE:
+        GOVERNANCE_CHECKS[name](case, records[name])
+
+
+def run_governance(image_id, name, states):
+    case, nes = next((c, n) for c, n in states if c["name"] == RATIFY_STATE)
+    records = {}
+    with tempfile.TemporaryDirectory(prefix="scarab-dijkstra-epoch-") as scratch:
+        Path(scratch).chmod(0o755)
+        target = Path(scratch) / f"{case['name']}.cbor"
+        target.write_bytes(nes)
+        target.chmod(0o644)
+        for derivation in GOVERNANCE:
+            done = subprocess.run(
+                [*container(name, "-v", f"{scratch}:/in:ro", "-v", f"{ROOT / case['genesis']}:/genesis.json:ro"),
+                 image_id, "/genesis.json", f"/in/{case['name']}.cbor", derivation,
+                 *(f"{path}={','.join(map(str, case['slots'][path]))}" for path in PATHS)],
+                capture_output=True, text=True)
+            if done.returncode:
+                raise SystemExit(f"the oracle failed on {case['name']} ({derivation}): {done.stderr}")
+            records[derivation] = governance_record(case, json.loads(done.stdout))
+    check_governance(case, records)
+    return records
+
+
+def recorded_governance():
+    return json.loads(GOVERNANCE_FILE.read_text())
+
+
 GENESIS_STATE_FILES = {"translated": f"genesis-{GENESIS_NAME}-translated.cbor",
                        "fromByron": f"genesis-{GENESIS_NAME}.cbor",
                        "createInitialState": f"genesis-{GENESIS_NAME}-create-initial-state.cbor"}
@@ -726,8 +1076,9 @@ def state_files():
 
 
 PROVENANCE_FIELDS = {"cases", "casesSha256", "consensusSourceCommit", "image", "imageId", "inputs", "ledger",
-                     "measuredAt", "oracle", "packageSha256", "program", "programSha256", "schemaVersion", "scope",
-                     "sourceSha256", "stateFiles"}
+                     "governanceSha256", "measuredAt", "oracle", "packageSha256", "program", "programSha256",
+                     "ratificationSha256",
+                     "schemaVersion", "scope", "sourceSha256", "stateFiles"}
 ORACLE_FIELDS = {"imageFilesSha256", "network", "oracleBinarySha256", "pinnedSources"}
 LEDGER_RECORD = {"repository": "IntersectMBO/cardano-ledger", "revision": LEDGER,
                  "packages": ["cardano-ledger-dijkstra 0.5.0.0", "cardano-ledger-shelley 1.21.0.0",
@@ -744,16 +1095,27 @@ SCOPE = ("Dijkstra's unchanged TICK (applyTickNoEvents) of the Leios testnet bui
          "current and previous parameters; and definite future parameters with another Leios committee size. No "
          "ledger rule makes the derived states. Also Dijkstra's genesis injection (injectIntoTestState) on the "
          "Leios testnet's genesis files, applied to the state the era translations reach from the empty Byron UTxO, "
-         "as the node starts a chain in Dijkstra, and to createInitialState for comparison. Each "
-         "state reached is written with toCBOR at version 12, as a ledger snapshot "
+         "as the node starts a chain in Dijkstra, and to createInitialState for comparison. And, from the testnet's "
+         "state, one derived with a parameter change of keys 47 and 48 proposed (proposalsAddAction) with the yes "
+         "votes of every hot committee credential, DRep and pool, the DReps' dormant epochs added as a "
+         "transaction with a proposal adds them, ticked along both full paths: the pulser started at the first "
+         "boundary ratifies it, and the second boundary enacts it. And two more such states, ticked alike: one with "
+         "seven actions proposed, the first ratify's, so that the second boundary removes its competing sibling with "
+         "the sibling's descendant, and an expired action with its descendant, keeping two (the removals as EPOCH's "
+         "GovInfoEvent reports them); and ratify's action with its deposit returned to an account delegated to both "
+         "a pool and a DRep, whose entries in the fresh pulser's distributions the first boundary credits with it. "
+         "Each state reached is written with toCBOR at version 12, as a ledger snapshot "
          "holds it. The ledger's NewEpochState only: not the consensus layer's ledger state around it (tip, "
          "transition, cumulative transaction bytes), nor the header state")
 
 
-def validate(provenance, rows, cases_sha256, cases, files, genesis_case):
+def validate(provenance, rows, cases_sha256, cases, files, genesis_case, ratification, ratification_sha256,
+             governance, governance_sha256):
     """What is wrong with a retained fixture: its provenance (`provenance.json`, parsed), its rows (`cases.json`'s
-    cases), the digest of its case file, the names and digests of its state files (None to skip them) and its
-    genesis case (`cases.json`'s `genesis`), against the inputs and against the repository. Each field of the
+    cases), the digest of its case file, the names and digests of its state files (None to skip them), its genesis
+    case (`cases.json`'s `genesis`), its ratification case (`ratification.json`) and the digest of that file, and its
+    governance cases (`governance.json`) and the digest of that file, against the inputs and against the
+    repository. Each field of the
     provenance is checked: its schema exactly, the pins, the ledger sources, and the oracle build it accepted (no
     network, the image's ID, every build file the repository determines, the executable's digest and the pinned
     checkouts)."""
@@ -787,6 +1149,9 @@ def validate(provenance, rows, cases_sha256, cases, files, genesis_case):
     count = len(STATES) * (1 + len(DERIVATIONS)) * len(PATHS)
     require(provenance["cases"] == len(rows) == count, f"the fixture does not hold its {count} cases")
     require(provenance["casesSha256"] == cases_sha256, f"{CASES_FILE.name} differs from its provenance")
+    require(provenance["ratificationSha256"] == ratification_sha256,
+            f"{RATIFICATION_FILE.name} differs from its provenance")
+    require(provenance["governanceSha256"] == governance_sha256, f"{GOVERNANCE_FILE.name} differs from its provenance")
     named = {t["file"]: t["stateSha256"] for row in rows for t in row.get("ticks", []) if t.get("file")}
     named.update({row["derivation"]["file"]: row["derivation"]["stateSha256"] for row in rows
                   if isinstance(row.get("derivation"), dict) and row["derivation"].get("file")})
@@ -799,6 +1164,18 @@ def validate(provenance, rows, cases_sha256, cases, files, genesis_case):
             problems.append(str(refused))
     else:
         problems.append("no genesis case")
+    if isinstance(ratification, dict) and isinstance(ratification.get("derivation"), dict):
+        named[ratification["derivation"]["file"]] = ratification["derivation"]["stateSha256"]
+        try:
+            check_ratification(next(c for c in cases if c["name"] == RATIFY_STATE), ratification)
+        except SystemExit as refused:
+            problems.append(str(refused))
+    else:
+        problems.append("no ratification case")
+    try:
+        check_governance(next(c for c in cases if c["name"] == RATIFY_STATE), governance)
+    except (SystemExit, KeyError, TypeError, ValueError, IndexError) as refused:
+        problems.append(f"{GOVERNANCE_FILE.name}: {refused}")
     require(provenance["stateFiles"] == dict(sorted(named.items())),
             "the state files of the provenance are not those the cases name")
     if files is not None:
@@ -844,7 +1221,9 @@ def offline(cases):
     """What is wrong with the retained fixture against its inputs and the repository."""
     files = {name: sha256((FIXTURE / name).read_bytes()) for name in state_files()}
     return validate(json.loads(PROVENANCE.read_text()), recorded(), file_sha256(CASES_FILE.relative_to(ROOT)), cases,
-                    files, recorded_genesis())
+                    files, recorded_genesis(), recorded_ratification(),
+                    file_sha256(RATIFICATION_FILE.relative_to(ROOT)), recorded_governance(),
+                    file_sha256(GOVERNANCE_FILE.relative_to(ROOT)))
 
 
 def main():
@@ -865,15 +1244,20 @@ def main():
         image_id, binding, sources = measured_image(args.name, args.accept_build)
         results = run_image(image_id, args.name, states)
         genesis_case, genesis_kept = run_genesis(image_id, args.name)
+        ratification, ratification_kept = run_ratification(image_id, args.name, states)
+        governance = run_governance(image_id, args.name, states)
         rows = [row for case_rows_, _ in results for row in case_rows_]
         kept = {name: data for _, files in results for name, data in files.items()}
         kept.update(genesis_kept)
+        kept.update(ratification_kept)
         FIXTURE.mkdir(parents=True, exist_ok=True)
         for stale in set(state_files()) - set(kept):
             (FIXTURE / stale).unlink()
         for name, data in kept.items():
             (FIXTURE / name).write_bytes(data)
         CASES_FILE.write_text(json.dumps({"cases": rows, "genesis": genesis_case}, indent=1, sort_keys=True) + "\n")
+        RATIFICATION_FILE.write_text(json.dumps(ratification, indent=1, sort_keys=True) + "\n")
+        GOVERNANCE_FILE.write_text(json.dumps(governance, indent=1, sort_keys=True) + "\n")
         PROVENANCE.write_text(json.dumps({
             "schemaVersion": 1,
             "scope": SCOPE,
@@ -891,6 +1275,8 @@ def main():
             "packageSha256": file_sha256(f"scripts/oracle/dijkstra-epoch/{PACKAGE}.cabal"),
             "cases": len(rows),
             "casesSha256": file_sha256(CASES_FILE.relative_to(ROOT)),
+            "ratificationSha256": file_sha256(RATIFICATION_FILE.relative_to(ROOT)),
+            "governanceSha256": file_sha256(GOVERNANCE_FILE.relative_to(ROOT)),
             "stateFiles": {name: sha256(data) for name, data in sorted(kept.items())},
             "measuredAt": datetime.date.today().isoformat(),
         }, indent=2, sort_keys=True) + "\n")
@@ -908,10 +1294,14 @@ def main():
         image_id, _, _ = measured_image(args.name, False)
         fresh = run_image(image_id, args.name, states)
         genesis_case, genesis_kept = run_genesis(image_id, args.name)
+        ratification, ratification_kept = run_ratification(image_id, args.name, states)
+        governance = run_governance(image_id, args.name, states)
         rows = [row for case_rows_, _ in fresh for row in case_rows_]
         kept = {name: data for _, files in fresh for name, data in files.items()}
         kept.update(genesis_kept)
-        if (rows != recorded() or genesis_case != recorded_genesis()
+        kept.update(ratification_kept)
+        if (rows != recorded() or genesis_case != recorded_genesis() or ratification != recorded_ratification()
+                or governance != recorded_governance()
                 or any((FIXTURE / name).read_bytes() != data for name, data in kept.items())):
             print("the oracle's states differ from the fixture", file=sys.stderr)
             return 1

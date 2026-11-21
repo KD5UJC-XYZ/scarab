@@ -1,0 +1,367 @@
+{
+ "derivation": {
+  "bytes": 515197,
+  "changes": [
+   {
+    "change": "propose",
+    "committeeVotes": 3,
+    "drepVotes": 2,
+    "expiresAfter": 220,
+    "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#0",
+    "proposal": "841b000000174876e800581df00123590c8fde63afbb62263be348f6da916ff9dab6edb656cde043038400825820e57ccb64f3777d09cb0a86217d0c02577904f00d4873af705f7bdd585e89682100a2182f821a08583b001b000000174876e80018301a00200000581ce3172285605e502bde008a7efe2b2eec516958b7bae911947a5c9373827842697066733a2f2f6261666b726569617a686861776537736a777574686366676c336d6d7632737765633773756b76636c75336f6c69377164797a3475686875766d7958202a61e2f4b63442978140c77a70daab3961b22b12b63b13949a390c097214d1c5",
+    "proposedIn": 100,
+    "stakePoolVotes": 154
+   }
+  ],
+  "facts": {
+   "accountBalances": 14679476326893,
+   "deposited": 179756000000,
+   "epoch": 100,
+   "fees": 271372435560,
+   "futurePParams": "potential",
+   "futurePools": 0,
+   "leiosCommitteeSize": 900,
+   "mark": {
+    "committeeSize": 900,
+    "epoch": 100,
+    "keyedSeats": 154,
+    "maxKeyAge": 374,
+    "seats": 154
+   },
+   "maxPledgeLeverage": null,
+   "pools": 154,
+   "poolsRetiring": 0,
+   "reserves": 14231792686148440,
+   "rewardUpdate": "absent",
+   "set": {
+    "keyedSeats": 154,
+    "seats": 154
+   },
+   "treasury": 785393358810844,
+   "vrfKeyHashes": 154
+  },
+  "file": "testnet-2168639-ratify.cbor",
+  "governance": {
+   "enacted": [],
+   "maxEndorserBlockExUnits": [
+    2160000000,
+    600000000000
+   ],
+   "maxRefScriptSizePerEndorserBlock": 12000000,
+   "pparamUpdateRoot": "e57ccb64f3777d09cb0a86217d0c02577904f00d4873af705f7bdd585e896821#0",
+   "proposals": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#0"
+   ]
+  },
+  "name": "ratify",
+  "stateSha256": "a0281fd1ec365f8354c87f095e0a31bcb0cdbbd251faef8626e0c5ef4d25fdd7"
+ },
+ "inputDeposited": 79756000000,
+ "inputGovernance": {
+  "enacted": [],
+  "maxEndorserBlockExUnits": [
+   2160000000,
+   600000000000
+  ],
+  "maxRefScriptSizePerEndorserBlock": 12000000,
+  "pparamUpdateRoot": "e57ccb64f3777d09cb0a86217d0c02577904f00d4873af705f7bdd585e896821#0",
+  "proposals": []
+ },
+ "name": "testnet-2168639",
+ "paths": [
+  {
+   "path": "boundaries",
+   "ticks": [
+    {
+     "bytes": 525066,
+     "crossedBoundary": true,
+     "facts": {
+      "accountBalances": 14679476326893,
+      "deposited": 179756000000,
+      "epoch": 101,
+      "fees": 374107671341,
+      "futurePParams": "potential",
+      "futurePools": 0,
+      "leiosCommitteeSize": 900,
+      "mark": {
+       "committeeSize": 900,
+       "epoch": 101,
+       "keyedSeats": 154,
+       "maxKeyAge": 374,
+       "seats": 154
+      },
+      "maxPledgeLeverage": null,
+      "pools": 154,
+      "poolsRetiring": 0,
+      "reserves": 14231792686148440,
+      "rewardUpdate": "absent",
+      "set": {
+       "keyedSeats": 154,
+       "seats": 154
+      },
+      "treasury": 785393358810844,
+      "vrfKeyHashes": 154
+     },
+     "file": null,
+     "governance": {
+      "enacted": [
+       "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#0"
+      ],
+      "maxEndorserBlockExUnits": [
+       2160000000,
+       600000000000
+      ],
+      "maxRefScriptSizePerEndorserBlock": 12000000,
+      "pparamUpdateRoot": "e57ccb64f3777d09cb0a86217d0c02577904f00d4873af705f7bdd585e896821#0",
+      "proposals": [
+       "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#0"
+      ]
+     },
+     "rewardUpdateApplied": false,
+     "slot": 2181600,
+     "stateSha256": "6fc05d07977de25a028a3b711ea117b5147b04f441fe989a005b98a124eb10ed"
+    },
+    {
+     "bytes": 502162,
+     "crossedBoundary": true,
+     "facts": {
+      "accountBalances": 14779476326893,
+      "deposited": 79756000000,
+      "epoch": 102,
+      "fees": 374107671341,
+      "futurePParams": "potential",
+      "futurePools": 0,
+      "leiosCommitteeSize": 900,
+      "mark": {
+       "committeeSize": 900,
+       "epoch": 102,
+       "keyedSeats": 154,
+       "maxKeyAge": 374,
+       "seats": 154
+      },
+      "maxPledgeLeverage": null,
+      "pools": 154,
+      "poolsRetiring": 0,
+      "reserves": 14231792686148440,
+      "rewardUpdate": "absent",
+      "set": {
+       "keyedSeats": 154,
+       "seats": 154
+      },
+      "treasury": 785393358810844,
+      "vrfKeyHashes": 154
+     },
+     "file": null,
+     "governance": {
+      "enacted": [],
+      "maxEndorserBlockExUnits": [
+       2160000000,
+       600000000000
+      ],
+      "maxRefScriptSizePerEndorserBlock": 12000000,
+      "pparamUpdateRoot": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#0",
+      "proposals": []
+     },
+     "rewardUpdateApplied": false,
+     "slot": 2203200,
+     "stateSha256": "15c39cd31d1d39368bc8104db54e99843377366be64d8f9bc5d21230f1e7a42b"
+    }
+   ]
+  },
+  {
+   "path": "rewards",
+   "ticks": [
+    {
+     "bytes": 794826,
+     "crossedBoundary": false,
+     "facts": {
+      "accountBalances": 14679476326893,
+      "deposited": 179756000000,
+      "epoch": 100,
+      "fees": 271372435560,
+      "futurePParams": "none",
+      "futurePools": 0,
+      "leiosCommitteeSize": 900,
+      "mark": {
+       "committeeSize": 900,
+       "epoch": 100,
+       "keyedSeats": 154,
+       "maxKeyAge": 374,
+       "seats": 154
+      },
+      "maxPledgeLeverage": null,
+      "pools": 154,
+      "poolsRetiring": 0,
+      "reserves": 14231792686148440,
+      "rewardUpdate": "pulsing",
+      "set": {
+       "keyedSeats": 154,
+       "seats": 154
+      },
+      "treasury": 785393358810844,
+      "vrfKeyHashes": 154
+     },
+     "file": null,
+     "governance": {
+      "enacted": [],
+      "maxEndorserBlockExUnits": [
+       2160000000,
+       600000000000
+      ],
+      "maxRefScriptSizePerEndorserBlock": 12000000,
+      "pparamUpdateRoot": "e57ccb64f3777d09cb0a86217d0c02577904f00d4873af705f7bdd585e896821#0",
+      "proposals": [
+       "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#0"
+      ]
+     },
+     "rewardUpdateApplied": false,
+     "slot": 2168641,
+     "stateSha256": "c855a40525ba9c07be257e72c3270d411db2c029eb10d765acd0b253a9967bae"
+    },
+    {
+     "bytes": 525058,
+     "crossedBoundary": true,
+     "facts": {
+      "accountBalances": 14844238231823,
+      "deposited": 179756000000,
+      "epoch": 101,
+      "fees": 102735235781,
+      "futurePParams": "potential",
+      "futurePools": 0,
+      "leiosCommitteeSize": 900,
+      "mark": {
+       "committeeSize": 900,
+       "epoch": 101,
+       "keyedSeats": 154,
+       "maxKeyAge": 374,
+       "seats": 154
+      },
+      "maxPledgeLeverage": null,
+      "pools": 154,
+      "poolsRetiring": 0,
+      "reserves": 14224294265516808,
+      "rewardUpdate": "absent",
+      "set": {
+       "keyedSeats": 154,
+       "seats": 154
+      },
+      "treasury": 792998389973106,
+      "vrfKeyHashes": 154
+     },
+     "file": null,
+     "governance": {
+      "enacted": [
+       "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#0"
+      ],
+      "maxEndorserBlockExUnits": [
+       2160000000,
+       600000000000
+      ],
+      "maxRefScriptSizePerEndorserBlock": 12000000,
+      "pparamUpdateRoot": "e57ccb64f3777d09cb0a86217d0c02577904f00d4873af705f7bdd585e896821#0",
+      "proposals": [
+       "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#0"
+      ]
+     },
+     "rewardUpdateApplied": true,
+     "slot": 2181600,
+     "stateSha256": "088804d0ce261cd0d4446de01669fc6b5ced6ec2bdeee462af2b253431034885"
+    },
+    {
+     "bytes": 791609,
+     "crossedBoundary": false,
+     "facts": {
+      "accountBalances": 14844238231823,
+      "deposited": 179756000000,
+      "epoch": 101,
+      "fees": 102735235781,
+      "futurePParams": "definite",
+      "futurePools": 0,
+      "leiosCommitteeSize": 900,
+      "mark": {
+       "committeeSize": 900,
+       "epoch": 101,
+       "keyedSeats": 154,
+       "maxKeyAge": 374,
+       "seats": 154
+      },
+      "maxPledgeLeverage": null,
+      "pools": 154,
+      "poolsRetiring": 0,
+      "reserves": 14224294265516808,
+      "rewardUpdate": "pulsing",
+      "set": {
+       "keyedSeats": 154,
+       "seats": 154
+      },
+      "treasury": 792998389973106,
+      "vrfKeyHashes": 154
+     },
+     "file": null,
+     "governance": {
+      "enacted": [
+       "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#0"
+      ],
+      "maxEndorserBlockExUnits": [
+       2160000000,
+       600000000000
+      ],
+      "maxRefScriptSizePerEndorserBlock": 12000000,
+      "pparamUpdateRoot": "e57ccb64f3777d09cb0a86217d0c02577904f00d4873af705f7bdd585e896821#0",
+      "proposals": [
+       "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#0"
+      ]
+     },
+     "rewardUpdateApplied": false,
+     "slot": 2190241,
+     "stateSha256": "abb1533dd8d8ae1bc8bfca907ba2be7eb9861215162c436281465c098eb7639e"
+    },
+    {
+     "bytes": 502126,
+     "crossedBoundary": true,
+     "facts": {
+      "accountBalances": 15005257903441,
+      "deposited": 79756000000,
+      "epoch": 102,
+      "fees": 0,
+      "futurePParams": "potential",
+      "futurePools": 0,
+      "leiosCommitteeSize": 900,
+      "mark": {
+       "committeeSize": 900,
+       "epoch": 102,
+       "keyedSeats": 154,
+       "maxKeyAge": 374,
+       "seats": 154
+      },
+      "maxPledgeLeverage": null,
+      "pools": 154,
+      "poolsRetiring": 0,
+      "reserves": 14221533794266336,
+      "rewardUpdate": "absent",
+      "set": {
+       "keyedSeats": 154,
+       "seats": 154
+      },
+      "treasury": 795800576787741,
+      "vrfKeyHashes": 154
+     },
+     "file": null,
+     "governance": {
+      "enacted": [],
+      "maxEndorserBlockExUnits": [
+       140000000,
+       100000000000
+      ],
+      "maxRefScriptSizePerEndorserBlock": 2097152,
+      "pparamUpdateRoot": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#0",
+      "proposals": []
+     },
+     "rewardUpdateApplied": true,
+     "slot": 2203200,
+     "stateSha256": "3cbee5ce3a462e1ac39ddd1c79ca1e6008efadcdfd463426c37a9f89bde8e820"
+    }
+   ]
+  }
+ ]
+}

@@ -29,14 +29,39 @@ CASES = [case for case, _ in run.inputs()]
 PROVENANCE = json.loads(run.PROVENANCE.read_text())
 ROWS = run.recorded()
 GENESIS = run.recorded_genesis()
+RATIFICATION = run.recorded_ratification()
+GOVERNANCE = run.recorded_governance()
 CASES_SHA256 = hashlib.sha256(run.CASES_FILE.read_bytes()).hexdigest()
+RATIFICATION_SHA256 = hashlib.sha256(run.RATIFICATION_FILE.read_bytes()).hexdigest()
+GOVERNANCE_SHA256 = hashlib.sha256(run.GOVERNANCE_FILE.read_bytes()).hexdigest()
 FILES = {name: hashlib.sha256((run.FIXTURE / name).read_bytes()).hexdigest() for name in run.state_files()}
 ZERO = "0" * 64
 BINARY = run.IMAGE_BINARY
 
 
-def problems(provenance, rows=ROWS, cases_sha256=CASES_SHA256, files=FILES, genesis=GENESIS):
-    return run.validate(provenance, rows, cases_sha256, CASES, files, genesis)
+def problems(provenance, rows=ROWS, cases_sha256=CASES_SHA256, files=FILES, genesis=GENESIS,
+             ratification=RATIFICATION, ratification_sha256=RATIFICATION_SHA256, governance=GOVERNANCE,
+             governance_sha256=GOVERNANCE_SHA256):
+    return run.validate(provenance, rows, cases_sha256, CASES, files, genesis, ratification, ratification_sha256,
+                        governance, governance_sha256)
+
+
+def edited(record, edit):
+    record = copy.deepcopy(record)
+    edit(record)
+    return record
+
+
+def governance_tick(name, path, index, edit):
+    """GOVERNANCE with one tick of a derivation's path edited."""
+    def at(records):
+        edit(next(p for p in records[name]["paths"] if p["path"] == path)["ticks"][index])
+    return edited(GOVERNANCE, at)
+
+
+def refused_with(test, found, why):
+    """`found` refuses the fixture, with a problem that says `why`."""
+    test.assertTrue(any(why in problem for problem in found), f"{why!r} not in {found}")
 
 
 def with_genesis(edit):
@@ -148,6 +173,86 @@ MUTATIONS = {
 class RetainedFixtureTest(unittest.TestCase):
     def test_the_committed_fixture_is_valid(self):
         self.assertEqual(problems(PROVENANCE), [])
+
+    def test_the_ratification_case_is_bound(self):
+        refused_with(self, problems(PROVENANCE, ratification_sha256=ZERO), "ratification.json differs")
+        for name, (record, why) in {
+            "no record": (None, "no ratification case"),
+            "the action never enacted": (
+                edited(RATIFICATION, lambda r: r["paths"][0]["ticks"][1]["governance"].update(proposals=["x"])),
+                "the boundary does not enact the action"),
+            "the first boundary's pulser ratifying nothing": (
+                edited(RATIFICATION, lambda r: r["paths"][1]["ticks"][1]["governance"].update(enacted=[])),
+                "the fresh pulser does not ratify the action"),
+            "another action": (
+                edited(RATIFICATION, lambda r: r["derivation"]["changes"][0].update(id="bb" * 32 + "#0")),
+                "not the derivation asked"),
+            "no committee vote": (
+                edited(RATIFICATION, lambda r: r["derivation"]["changes"][0].update(committeeVotes=0)),
+                "the derived state's governance is not the input's"),
+        }.items():
+            with self.subTest(name):
+                refused_with(self, problems(PROVENANCE, ratification=record), why)
+
+    def test_the_governance_cases_are_bound(self):
+        refused_with(self, problems(PROVENANCE, governance_sha256=ZERO), "governance.json differs")
+        refused_with(self, problems(changed(remover("governanceSha256"))), "the provenance's fields")
+        second = run.BRANCHES, "boundaries", 1
+        first_credit = run.CREDIT, "boundaries", 0
+        for name, (record, why) in {
+            "a record missing": (edited(GOVERNANCE, lambda g: g.pop(run.CREDIT)), "not the records of"),
+            "the sibling's descendant kept": (
+                governance_tick(*second, lambda t: t["removals"].update(removedDueToEnactment=[run.ACTION["B"]])),
+                "does not remove the branches"),
+            "the expired action's descendant kept": (
+                governance_tick(*second, lambda t: t["governance"].update(
+                    proposals=[run.ACTION[x] for x in "EFG"])),
+                "does not remove the branches"),
+            "the survivors out of order": (
+                governance_tick(*second, lambda t: t["governance"].update(
+                    proposals=[run.ACTION["G"], run.ACTION["F"]])),
+                "does not remove the branches"),
+            "the root not moved": (
+                governance_tick(*second, lambda t: t["governance"]["roots"].update(pparamUpdate=None)),
+                "does not remove the branches"),
+            "a removal at the first boundary": (
+                governance_tick(run.BRANCHES, "rewards", 1, lambda t: t["removals"].update(
+                    expired=[run.ACTION["D"]])),
+                "something was removed"),
+            "a removal inside an epoch": (
+                governance_tick(run.BRANCHES, "rewards", 2, lambda t: t.update(removals={})),
+                "the governance changed inside an epoch"),
+            "D not expiring": (
+                edited(GOVERNANCE, lambda g: g[run.BRANCHES]["derivation"]["changes"][3].update(expiresAfter=220)),
+                "action D is not the one asked"),
+            "the DRep's entry not credited": (
+                governance_tick(*first_credit, lambda t: t["governance"].update(
+                    drepStake=GOVERNANCE[run.CREDIT]["control"]["governance"]["drepStake"])),
+                "the distributions are not the control's with the deposit credited"),
+            "the pool's entry not credited": (
+                governance_tick(*first_credit, lambda t: t["governance"].update(poolStake=None)),
+                "the distributions are not the control's"),
+            "the deposit to another account": (
+                edited(GOVERNANCE, lambda g: g[run.CREDIT]["delegated"].update(account={"keyHash": "00" * 28})),
+                "not ratify's action returned to the delegated account"),
+            "the control at another slot": (
+                edited(GOVERNANCE, lambda g: g[run.CREDIT]["control"].update(slot=0)),
+                "the control is not ratify's state"),
+        }.items():
+            with self.subTest(name):
+                refused_with(self, problems(PROVENANCE, governance=record), why)
+
+    def test_the_governance_cases_are_those_recorded(self):
+        branches = GOVERNANCE[run.BRANCHES]["paths"][0]["ticks"][1]
+        self.assertEqual(branches["removals"]["removedDueToEnactment"], [run.ACTION["B"], run.ACTION["C"]])
+        self.assertEqual(branches["removals"]["expired"], [run.ACTION["D"], run.ACTION["E"]])
+        self.assertEqual(branches["governance"]["proposals"], [run.ACTION["F"], run.ACTION["G"]])
+        credit = GOVERNANCE[run.CREDIT]
+        first = credit["paths"][0]["ticks"][0]["governance"]
+        deposit = credit["derivation"]["facts"]["deposited"] - credit["inputDeposited"]
+        self.assertEqual(deposit, 100_000_000_000)
+        for key in ("drepStake", "poolStake"):
+            self.assertEqual(first[key] - credit["control"]["governance"][key], deposit, key)
 
     def test_each_binding_field_changed_is_refused(self):
         for name, edit in MUTATIONS.items():

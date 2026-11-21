@@ -11,8 +11,10 @@ module Main (main) where
 import Cardano.Crypto.Hash (hashFromBytes, hashToBytes)
 import Cardano.Crypto.Leios (LeiosCommittee (..), LeiosSeat (..))
 import Cardano.Ledger.Alonzo.Genesis (AlonzoGenesis)
+import Cardano.Ledger.Address (AccountAddress (..), AccountId (..))
 import Cardano.Ledger.BaseTypes (
   EpochInterval (..),
+  addEpochInterval,
   EpochNo (..),
   Globals (..),
   Network,
@@ -29,9 +31,61 @@ import Cardano.Ledger.Babbage (BabbageEra)
 import Cardano.Ledger.Binary (serialize')
 import Cardano.Ledger.Conway (ConwayEra)
 import Cardano.Ledger.Conway.Genesis (ConwayGenesis)
-import Cardano.Ledger.Conway.Governance (cgsFuturePParamsL)
+import Cardano.Ledger.Compactible (fromCompact)
+import Cardano.Ledger.Conway.Governance (
+  Constitution,
+  GovAction (..),
+  GovActionId (..),
+  GovActionPurpose (..),
+  GovActionIx (..),
+  GovActionState (..),
+  GovPurposeId (..),
+  ProposalProcedure (..),
+  PulsingSnapshot (..),
+  RatifyState (..),
+  Vote (..),
+  cgsConstitutionL,
+  cgsDRepPulsingStateL,
+  cgsFuturePParamsL,
+  cgsProposalsL,
+  constitutionAnchorL,
+  constitutionGuardrailsScriptHashL,
+  extractDRepPulsingState,
+  finishDRepPulser,
+  grCommitteeL,
+  grConstitutionL,
+  grHardForkL,
+  grPParamUpdateL,
+  pRootsL,
+  prRootL,
+  proposalsAddAction,
+  proposalsIds,
+ )
+import Cardano.Ledger.Conway.PParams (ppGovActionDepositL, ppGovActionLifetimeL)
+import Cardano.Ledger.Conway.Rules (ConwayEpochEvent (..), ConwayNewEpochEvent (..), updateDormantDRepExpiry)
+import Cardano.Ledger.Conway.State (
+  ConwayAccountState,
+  certVStateL,
+  dRepDelegationAccountStateL,
+  vsCommitteeStateL,
+  vsDRepsL,
+ )
+import Cardano.Ledger.Credential (Credential (..))
+import Cardano.Ledger.DRep (DRep (..))
 import Cardano.Ledger.Dijkstra.Genesis (DijkstraGenesis)
-import Cardano.Ledger.Dijkstra.PParams (ppLeiosCommitteeSizeL, ppMaxPledgeLeverageL)
+import Cardano.Ledger.Dijkstra.PParams (
+  ppLeiosCommitteeSizeL,
+  ppMaxEndorserBlockExUnitsL,
+  ppMaxPledgeLeverageL,
+  ppMaxRefScriptSizePerEndorserBlockL,
+  ppuMaxEndorserBlockExUnitsL,
+  ppuMaxRefScriptSizePerEndorserBlockL,
+ )
+import Cardano.Ledger.Core (emptyPParamsUpdate)
+import Cardano.Ledger.Hashes (extractHash, unsafeMakeSafeHash)
+import Cardano.Ledger.Plutus.ExUnits (ExUnits (..), OrdExUnits (..))
+import Cardano.Ledger.TxIn (TxId (..))
+import Data.Foldable (toList)
 import Cardano.Ledger.Genesis (NoGenesis (..))
 import Cardano.Ledger.Mary (MaryEra)
 import Cardano.Ledger.Shelley (ShelleyEra)
@@ -44,7 +98,9 @@ import Cardano.Ledger.Shelley.Transition (
 import Cardano.Ledger.Shelley.Translation (toFromByronTranslationContext)
 import qualified Cardano.Chain.UTxO as Byron
 import Data.Ratio (denominator, numerator)
-import Data.Word (Word16)
+import Data.Word (Word16, Word32)
+import qualified Data.Set as Set
+import Numeric.Natural (Natural)
 import System.FS.API.Types (MountPoint (..))
 import System.FS.IO (ioHasFS)
 import Cardano.Ledger.Binary (DecoderError, getVersion64)
@@ -53,8 +109,15 @@ import Cardano.Ledger.Coin (Coin (..))
 import Cardano.Ledger.Core (MaxPledgeLeverage (..), eraProtVerLow, translateEra')
 import Cardano.Ledger.Dijkstra (DijkstraEra)
 import Cardano.Ledger.Dijkstra.Rules (maxKeyAgeEpochs)
-import Cardano.Ledger.Hashes (KeyHash (..), KeyRole (StakePool), KeyRoleVRF (StakePoolVRF), VRFVerKeyHash (..))
-import Cardano.Ledger.Shelley.API (applyTickNoEvents)
+import Cardano.Ledger.Hashes (
+  KeyHash (..),
+  KeyRole (DRepRole, StakePool, Staking),
+  KeyRoleVRF (StakePoolVRF),
+  ScriptHash (..),
+  VRFVerKeyHash (..),
+ )
+import Cardano.Ledger.Shelley.API (ApplyTick (..), applyTickNoEvents)
+import Cardano.Ledger.Shelley.Rules (ShelleyTickEvent (..))
 import Cardano.Ledger.Shelley.Genesis (ShelleyGenesis (..), fromNominalDiffTimeMicro, mkShelleyGlobals)
 import Cardano.Ledger.Shelley.LedgerState (
   NewEpochState (..),
@@ -75,6 +138,8 @@ import Cardano.Ledger.State (
   MarkSnapShot (..),
   UTxO (..),
   accountsL,
+  accountsMapL,
+  authorizedHotCommitteeCredentials,
   certDStateL,
   sumBalancesAccounts,
   utxoL,
@@ -91,6 +156,7 @@ import Cardano.Ledger.State (
   psVRFKeyHashesL,
   sppVrfL,
   spsVrfL,
+  stakePoolDelegationAccountStateL,
   stakePoolStateToStakePoolParams,
  )
 import Cardano.Slotting.EpochInfo (epochInfoFirst, epochInfoSize)
@@ -99,6 +165,7 @@ import Cardano.Slotting.Slot (EpochSize (..), SlotNo (..))
 import Cardano.Slotting.Time (mkSlotLength)
 import Control.Exception (SomeException, displayException, evaluate, try)
 import Control.Monad (unless)
+import Control.State.Transition (SingEP (EPReturn))
 import Data.Aeson (FromJSON, Value (Null), eitherDecodeFileStrict, encode, object, (.=))
 import qualified Data.Aeson.Key as Key
 import Data.Aeson.Types (Pair)
@@ -106,7 +173,8 @@ import qualified Data.ByteString as BS
 import qualified "base16-bytestring" Data.ByteString.Base16 as Hex
 import qualified Data.ByteString.Lazy as LBS
 import Data.Functor.Identity (runIdentity)
-import Data.List (scanl')
+import Data.List (scanl', sort)
+import Data.Maybe (fromMaybe, listToMaybe)
 import qualified Data.Map.Strict as Map
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -153,6 +221,13 @@ data Change
   | -- Definite future protocol parameters (`cgsFuturePParamsL`, `DefinitePParamsUpdate`): the current ones with
     -- another Leios committee size (`ppLeiosCommitteeSizeL`).
     FutureCommitteeSize Word16
+  | -- An action added to the proposals as GOV adds one (`proposalsAddAction`,
+    -- `eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Proposals.hs:297-336`), its deposit added to the
+    -- deposit pot (`utxosDepositedL`), as GOV and LEDGER's deposits leave the pot equal to the obligations, and the
+    -- dormant epochs added to the DReps' expiries as the CERTS of a transaction with a proposal adds them
+    -- (`updateDormantDRepExpiry`, `eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Certs.hs:285-307`), in the
+    -- action's epoch.
+    Propose (GovActionState DijkstraEra)
 
 change :: Network -> NewEpochState DijkstraEra -> Change -> NewEpochState DijkstraEra
 change _ nes (ShareVrf q vrf) = nes & pStateL . psStakePoolsL %~ Map.adjust (spsVrfL .~ vrf) q
@@ -172,6 +247,14 @@ change _ nes (FutureCommitteeSize n) =
   nes
     & newEpochStateGovStateL . cgsFuturePParamsL
       .~ DefinitePParamsUpdate (nes ^. nesEsL . curPParamsEpochStateL & ppLeiosCommitteeSizeL .~ n)
+change _ nes (Propose gas) =
+  case proposalsAddAction gas (nes ^. newEpochStateGovStateL . cgsProposalsL) of
+    Nothing -> error "Propose: the action's parent is not its purpose's root"
+    Just ps ->
+      nes
+        & newEpochStateGovStateL . cgsProposalsL .~ ps
+        & nesEsL . esLStateL . lsUTxOStateL . utxosDepositedL %~ (<> pProcDeposit (gasProposalProcedure gas))
+        & nesEsL . esLStateL . lsCertStateL . certVStateL %~ updateDormantDRepExpiry (gasProposedIn gas)
 
 describe :: Network -> Change -> Value
 describe _ (ShareVrf q vrf) = object ["change" .= ("setActiveVrf" :: Text), "pool" .= poolId q, "vrf" .= vrfHex vrf]
@@ -192,6 +275,22 @@ describe _ (PledgeCap l) =
     ]
 describe _ (FutureCommitteeSize n) =
   object ["change" .= ("setFutureLeiosCommitteeSize" :: Text), "leiosCommitteeSize" .= n]
+describe _ (Propose gas) =
+  object
+    [ "change" .= ("propose" :: Text)
+    , "id" .= govActionIdText (gasId gas)
+    , "proposal" .= hex (serialize' (eraProtVerLow @DijkstraEra) (gasProposalProcedure gas))
+    , "proposedIn" .= unEpochNo (gasProposedIn gas)
+    , "expiresAfter" .= unEpochNo (gasExpiresAfter gas)
+    , "committeeVotes" .= Map.size (gasCommitteeVotes gas)
+    , "drepVotes" .= Map.size (gasDRepVotes gas)
+    , "stakePoolVotes" .= Map.size (gasStakePoolVotes gas)
+    ]
+
+govActionIdText :: GovActionId -> Text
+govActionIdText (GovActionId (TxId h) (GovActionIx ix)) = hex (originalBytesOfSafeHash h) <> "#" <> T.pack (show ix)
+  where
+    originalBytesOfSafeHash = hashToBytes . extractHash
 
 -- The pledge leverage cap of the `pledge-cap` derivation: 1, which binds for a pool whose pledge is below its
 -- stake (`maxPool'`, `libs/cardano-ledger-core/src/Cardano/Ledger/State/SnapShots.hs:141-163`).
@@ -201,6 +300,243 @@ pledgeCap = boundRational 1
 -- The Leios committee size the `committee-size` derivation's future parameters take.
 futureCommitteeSize :: Word16
 futureCommitteeSize = 2
+
+-- The values the `ratify` derivation's parameter change gives keys 47 and 48 (`ppuMaxEndorserBlockExUnitsL`,
+-- `ppuMaxRefScriptSizePerEndorserBlockL`, cardano-ledger 9df9f98c `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/
+-- PParams.hs:980-1006, 1473-1479`): the memory and steps of an endorser block's scripts, and its reference scripts'
+-- size.
+ratifyEndorserLimits :: (Natural, Natural, Word32)
+ratifyEndorserLimits = (140000000, 100000000000, 2097152)
+
+-- Who votes on an action a derivation proposes: every authorized hot committee credential
+-- (`authorizedHotCommitteeCredentials`), every registered DRep and every registered pool yes, so the committee,
+-- the DReps and the pools each accept it if they hold stake and members enough; or no one.
+data Voters = AllYes | NoVotes
+
+-- An action a derivation proposes, built with the ledger's own types and lenses as GOV builds one
+-- (`mkGovActionState`, `eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Gov.hs:401-418`): the action `action`,
+-- with the governance action deposit of the current parameters, returned to the account of `returnCredential`,
+-- under the constitution's anchor, with the votes of `voters`, proposed in the state's epoch and expiring after
+-- `expiresAfter`; the id is of a transaction of 32 bytes of 0xaa, at index `ix`.
+actionState ::
+  Network ->
+  NewEpochState DijkstraEra ->
+  Word16 ->
+  Credential Staking ->
+  Voters ->
+  EpochNo ->
+  GovAction DijkstraEra ->
+  Maybe (GovActionState DijkstraEra)
+actionState network nes ix returnCredential voters expiresAfter action = do
+  txHash <- hashFromBytes (BS.replicate 32 0xaa)
+  let pp = nes ^. nesEsL . curPParamsEpochStateL
+      vState = nes ^. nesEsL . esLStateL . lsCertStateL . certVStateL
+      constitution = nes ^. newEpochStateGovStateL . cgsConstitutionL
+      votes :: Ord k => Set.Set k -> Map.Map k Vote
+      votes = case voters of
+        AllYes -> Map.fromSet (const VoteYes)
+        NoVotes -> const Map.empty
+  pure
+    GovActionState
+      { gasId = GovActionId (TxId (unsafeMakeSafeHash txHash)) (GovActionIx ix)
+      , gasCommitteeVotes = votes (authorizedHotCommitteeCredentials (vState ^. vsCommitteeStateL))
+      , gasDRepVotes = votes (Map.keysSet (vState ^. vsDRepsL))
+      , gasStakePoolVotes = votes (Map.keysSet (nes ^. pStateL . psStakePoolsL))
+      , gasProposalProcedure =
+          ProposalProcedure
+            { pProcDeposit = pp ^. ppGovActionDepositL
+            , pProcReturnAddr = AccountAddress network (AccountId returnCredential)
+            , pProcGovAction = action
+            , pProcAnchor = constitution ^. constitutionAnchorL
+            }
+      , gasProposedIn = nesEL nes
+      , gasExpiresAfter = expiresAfter
+      }
+
+-- The last epoch an action proposed in the state's epoch can be voted in: the epoch and the action lifetime of the
+-- current parameters.
+lifetimeEnd :: NewEpochState DijkstraEra -> EpochNo
+lifetimeEnd nes = addEpochInterval (nesEL nes) (nes ^. nesEsL . curPParamsEpochStateL . ppGovActionLifetimeL)
+
+-- The `ratify` derivation's change of keys 47 and 48 (Network group, Security group, `Dijkstra/PParams.hs:233-299`)
+-- to `ratifyEndorserLimits`, with the parent `parent` and the constitution's guardrails script.
+endorserChange ::
+  NewEpochState DijkstraEra -> StrictMaybe (GovPurposeId 'PParamUpdatePurpose) -> GovAction DijkstraEra
+endorserChange nes parent = ParameterChange parent update guardrails
+  where
+    (mem, steps, refScriptSize) = ratifyEndorserLimits
+    update =
+      emptyPParamsUpdate
+        & ppuMaxEndorserBlockExUnitsL .~ SJust (OrdExUnits (ExUnits mem steps))
+        & ppuMaxRefScriptSizePerEndorserBlockL .~ SJust refScriptSize
+    guardrails = nes ^. newEpochStateGovStateL . cgsConstitutionL . constitutionGuardrailsScriptHashL
+
+-- The root of the parameter changes.
+pparamRoot :: NewEpochState DijkstraEra -> StrictMaybe (GovPurposeId 'PParamUpdatePurpose)
+pparamRoot nes = nes ^. newEpochStateGovStateL . cgsProposalsL . pRootsL . grPParamUpdateL . prRootL
+
+-- The registered accounts by credential.
+accountsOf :: NewEpochState DijkstraEra -> Map.Map (Credential Staking) (ConwayAccountState DijkstraEra)
+accountsOf nes = nes ^. nesEsL . esLStateL . lsCertStateL . certDStateL . accountsL . accountsMapL
+
+-- The first registered account in key order.
+firstAccount :: NewEpochState DijkstraEra -> Maybe (Credential Staking)
+firstAccount nes = fst <$> Map.lookupMin (accountsOf nes)
+
+-- The action of the `ratify` derivation: the change of keys 47 and 48 (`endorserChange`) whose parent is the root
+-- of its purpose, returned to the first registered account in key order, and voted yes by everyone
+-- (`AllYes`); proposed in the state's epoch and expiring after the action lifetime, the id's index 0.
+ratifyAction :: Network -> NewEpochState DijkstraEra -> Maybe (GovActionState DijkstraEra)
+ratifyAction network nes = do
+  returnCredential <- firstAccount nes
+  actionState network nes 0 returnCredential AllYes (lifetimeEnd nes) (endorserChange nes (pparamRoot nes))
+
+-- The account the `deposit-credit` derivation returns its action's deposit to: the first registered account in
+-- key order that delegates to a registered pool and to a registered DRep of a credential, with that pool and
+-- that DRep, whose entries in the pulser's distributions the derivations report.
+data Delegated = Delegated (Credential Staking) (KeyHash StakePool) (Credential DRepRole)
+
+delegatedAccount :: NewEpochState DijkstraEra -> Maybe Delegated
+delegatedAccount nes =
+  listToMaybe
+    [ Delegated cred pool drep
+    | (cred, account) <- Map.toAscList (accountsOf nes)
+    , Just pool <- [account ^. stakePoolDelegationAccountStateL]
+    , Map.member pool (nes ^. pStateL . psStakePoolsL)
+    , Just (DRepCredential drep) <- [account ^. dRepDelegationAccountStateL]
+    , Map.member drep (nes ^. nesEsL . esLStateL . lsCertStateL . certVStateL . vsDRepsL)
+    ]
+
+-- The actions of the `remove-branches` derivation, in the order they are proposed, each returned to the first
+-- registered account in key order as `ratify`'s is, the ids' indices 0 to 6: A, `ratify`'s action; B, the same
+-- change with the same parent, A's competing sibling; C, the same change whose parent is B; D, the constitution
+-- proposed anew (`NewConstitution`) with the root of the constitutions as its parent, expiring after the state's
+-- epoch, so the pulser of the next epoch finds it expired (`gasExpiresAfter < reCurrentEpoch`,
+-- `eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Ratify.hs:336-358`); E, the constitution whose parent is D;
+-- F, the change whose parent is A; and G, an information action. No one votes on B to G. The pulser of the first
+-- boundary enacts A and expires D, and the second boundary's `proposalsApplyEnactment`
+-- (`Governance/Proposals.hs:485-556`) removes D with its descendant E as expired, makes A the root, removes its
+-- sibling B with B's descendant C, and keeps F, now the root's child, and G.
+removeBranchesActions :: Network -> NewEpochState DijkstraEra -> Maybe [GovActionState DijkstraEra]
+removeBranchesActions network nes = do
+  first <- firstAccount nes
+  let act ix voters expiry = actionState network nes ix first voters expiry
+      later = lifetimeEnd nes
+      constitution :: Constitution DijkstraEra
+      constitution = nes ^. newEpochStateGovStateL . cgsConstitutionL
+      constitutionRoot = nes ^. newEpochStateGovStateL . cgsProposalsL . pRootsL . grConstitutionL . prRootL
+      purposeOf :: GovActionState DijkstraEra -> StrictMaybe (GovPurposeId p)
+      purposeOf = SJust . GovPurposeId . gasId
+  a <- act 0 AllYes later (endorserChange nes (pparamRoot nes))
+  b <- act 1 NoVotes later (endorserChange nes (pparamRoot nes))
+  c <- act 2 NoVotes later (endorserChange nes (purposeOf b))
+  d <- act 3 NoVotes (nesEL nes) (NewConstitution constitutionRoot constitution)
+  e <- act 4 NoVotes later (NewConstitution (purposeOf d) constitution)
+  f <- act 5 NoVotes later (endorserChange nes (purposeOf a))
+  g <- act 6 NoVotes later InfoAction
+  pure [a, b, c, d, e, f, g]
+
+-- The action of the `deposit-credit` derivation: `ratify`'s, its deposit returned to the delegated account
+-- (`delegatedAccount`) instead, so `computeDRepDistr` (`Governance/DRepPulser.hs:200-242`) credits the deposit to
+-- both that account's DRep and its pool.
+depositCreditAction :: Network -> NewEpochState DijkstraEra -> Delegated -> Maybe (GovActionState DijkstraEra)
+depositCreditAction network nes (Delegated cred _ _) =
+  actionState network nes 0 cred AllYes (lifetimeEnd nes) (endorserChange nes (pparamRoot nes))
+
+-- What a state of the `ratify` derivation holds of its governance, read with the ledger's own accessors: the ids
+-- of the proposals in order, of the actions the pulser's ratification enacts (`extractDRepPulsingState`, which
+-- completes a running pulser), the root of the parameter changes, and keys 47 and 48 of the current parameters.
+govFacts :: NewEpochState DijkstraEra -> Value
+govFacts nes =
+  object
+    [ "proposals" .= map govActionIdText (toList (proposalsIds props))
+    , "enacted" .= map (govActionIdText . gasId) (toList (rsEnacted ratified))
+    , "pparamUpdateRoot" .= case props ^. pRootsL . grPParamUpdateL . prRootL of
+        SNothing -> Nothing
+        SJust (GovPurposeId gai) -> Just (govActionIdText gai)
+    , "maxEndorserBlockExUnits" .= [exUnitsMem limits, exUnitsSteps limits]
+    , "maxRefScriptSizePerEndorserBlock" .= (pp ^. ppMaxRefScriptSizePerEndorserBlockL)
+    ]
+  where
+    gs = nes ^. newEpochStateGovStateL
+    props = gs ^. cgsProposalsL
+    ratified = extractDRepPulsingState (gs ^. cgsDRepPulsingStateL)
+    pp = nes ^. nesEsL . curPParamsEpochStateL
+    limits = unOrdExUnits (pp ^. ppMaxEndorserBlockExUnitsL)
+
+-- What a state of the `remove-branches` and `deposit-credit` derivations holds of its governance, read with the
+-- ledger's own accessors: the ids of the proposals in order; those of the actions the pulser's ratification enacts
+-- and of those it finds expired (`finishDRepPulser`, which completes a running pulser,
+-- `Governance/DRepPulser.hs:388-430`); the root of each purpose; and the entries of the delegated account's DRep and
+-- pool in the pulser's DRep distribution and pool distribution (`psDRepDistr`, `psPoolDistr`, `:98-102`), or null.
+proposalFacts :: Delegated -> NewEpochState DijkstraEra -> Value
+proposalFacts (Delegated _ pool drep) nes =
+  object
+    [ "proposals" .= map govActionIdText (toList (proposalsIds props))
+    , "enacted" .= map (govActionIdText . gasId) (toList (rsEnacted ratified))
+    , "expired" .= map govActionIdText (Set.toAscList (rsExpired ratified))
+    , "roots"
+        .= object
+          [ "pparamUpdate" .= rootText (roots ^. grPParamUpdateL . prRootL)
+          , "hardFork" .= rootText (roots ^. grHardForkL . prRootL)
+          , "committee" .= rootText (roots ^. grCommitteeL . prRootL)
+          , "constitution" .= rootText (roots ^. grConstitutionL . prRootL)
+          ]
+    , "drepStake" .= fmap (unCoin . fromCompact) (Map.lookup (DRepCredential drep) (psDRepDistr snapshot))
+    , "poolStake" .= fmap (unCoin . fromCompact) (Map.lookup pool (psPoolDistr snapshot))
+    ]
+  where
+    gs = nes ^. newEpochStateGovStateL
+    props = gs ^. cgsProposalsL
+    roots = props ^. pRootsL
+    (snapshot, ratified) = finishDRepPulser (gs ^. cgsDRepPulsingStateL)
+
+rootText :: StrictMaybe (GovPurposeId p) -> Maybe Text
+rootText SNothing = Nothing
+rootText (SJust (GovPurposeId gai)) = Just (govActionIdText gai)
+
+credentialJson :: Credential r -> Value
+credentialJson (KeyHashObj (KeyHash h)) = object ["keyHash" .= hex (hashToBytes h)]
+credentialJson (ScriptHashObj (ScriptHash h)) = object ["scriptHash" .= hex (hashToBytes h)]
+
+delegatedJson :: Delegated -> Value
+delegatedJson (Delegated cred pool drep) =
+  object ["account" .= credentialJson cred, "pool" .= poolId pool, "drep" .= credentialJson drep]
+
+-- The actions Dijkstra's EPOCH removed at a boundary, as its `GovInfoEvent` reports them
+-- (`eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Epoch.hs:197-202`): the ids of those enacted, of those removed
+-- as competing with an enacted one, and of those removed as expired, each with its descendants, in order; and the
+-- unclaimed deposits by id. Null for a tick with no such event, which crosses no boundary.
+removals :: [ShelleyTickEvent DijkstraEra] -> Either String Value
+removals events =
+  case [(e, r, x, u) | TickNewEpochEvent (EpochEvent (GovInfoEvent e r x u)) <- events] of
+    [] -> Right Null
+    [(e, r, x, u)] ->
+      Right $
+        object
+          [ "enacted" .= ids e
+          , "removedDueToEnactment" .= ids r
+          , "expired" .= ids x
+          , "unclaimed" .= object [Key.fromText (govActionIdText i) .= unCoin c | (i, c) <- Map.toAscList u]
+          ]
+    _ -> Left "a tick with more than one GovInfoEvent"
+  where
+    ids = sort . map (govActionIdText . gasId) . Set.toList
+
+-- What the states of a derivation report of their governance: nothing; the `ratify` derivation's facts
+-- (`govFacts`); or the facts of the proposals (`proposalFacts`) of `remove-branches` or `deposit-credit`, with the
+-- delegated account whose DRep's and pool's entries are watched, and each tick's removals.
+data ProposalCase = RemoveBranches | DepositCredit
+
+data Report = NoGovernance | Ratification | ProposalReport ProposalCase Delegated
+
+governanceValue :: Report -> NewEpochState DijkstraEra -> Maybe Value
+governanceValue NoGovernance _ = Nothing
+governanceValue Ratification nes = Just (govFacts nes)
+governanceValue (ProposalReport _ d) nes = Just (proposalFacts d nes)
+
+governanceOf :: Report -> NewEpochState DijkstraEra -> [Pair]
+governanceOf report nes = ["governance" .= v | Just v <- [governanceValue report nes]]
 
 -- The VRF key hash every derived state is given as its future one: 32 bytes of 0xee, registered to no pool.
 newVrfBytes :: BS.ByteString
@@ -317,12 +653,14 @@ facts nes =
 -- `eras/conway/impl/src/Cardano/Ledger/Conway/Rules/NewEpoch.hs:153-184`)
 -- with one in the state ticked from.
 tick ::
+  Report ->
   [(Text, VRFVerKeyHash StakePoolVRF)] ->
   NewEpochState DijkstraEra ->
   (SlotNo, NewEpochState DijkstraEra, BS.ByteString) ->
+  Maybe Value ->
   Value
-tick watched before (slot, after, bytes) =
-  object
+tick report watched before (slot, after, bytes) removed =
+  object $
     [ "slot" .= unSlotNo slot
     , "state" .= hex bytes
     , "facts" .= facts after
@@ -331,6 +669,8 @@ tick watched before (slot, after, bytes) =
     , "rewardUpdateApplied" .= (crossed && rewardUpdate (nesRu before) /= "absent")
     , "poolsRetired" .= Map.size (Map.difference (pools before) (pools after))
     ]
+      ++ governanceOf report after
+      ++ ["removals" .= r | Just r <- [removed]]
   where
     crossed = nesEL after /= nesEL before
     pools nes = nes ^. pStateL . psStakePoolsL
@@ -342,7 +682,11 @@ tick watched before (slot, after, bytes) =
 -- (`applyChainTickLedgerResult`, `Shelley/Ledger/Ledger.hs:586-624`): the state as the snapshot holds it, whose
 -- UTxO is in the tables and not in the state, and which consensus ticks without them (`:607-609`). Each state
 -- reached is written with `toCBOR`, the encoding the snapshot uses. A derivation other than `none` first changes
--- the input's pool state ([[Change]]); the paths then start from the derived state.
+-- the input's pool state ([[Change]]); the paths then start from the derived state. The `remove-branches` and
+-- `deposit-credit` derivations also report each tick's removals, from the events of the same TICK (`applyTick`
+-- with its events returned, whose state `applyTickNoEvents` is, `Shelley/API/Validation.hs:55-76, 186-193`),
+-- refused unless that state is the one reached; and `deposit-credit` reports, for comparison, the governance of
+-- `ratify`'s derived state, whose action's deposit returns to an account with no delegation, at the first boundary.
 run :: ShelleyGenesis -> BS.ByteString -> Text -> [TickPath] -> IO Value
 run sg bytes derive paths = do
   input <-
@@ -355,6 +699,21 @@ run sg bytes derive paths = do
       epoch = nesEL input
       firstSlot e = runIdentity (epochInfoFirst ei e)
       network = sgNetworkId sg
+      delegated c =
+        maybe
+          (die "no account delegates to a registered pool and a registered DRep of a credential")
+          (pure . ProposalReport c)
+          (delegatedAccount input)
+  -- The derivations that add governance actions; their states also report their governance.
+  report <- case derive of
+    "ratify" -> pure Ratification
+    "remove-branches" -> delegated RemoveBranches
+    "deposit-credit" -> delegated DepositCredit
+    _ -> pure NoGovernance
+  case report of
+    ProposalReport DepositCredit (Delegated cred _ _)
+      | Just cred == firstAccount input -> die "the delegated account is the first registered account"
+    _ -> pure ()
   new <- maybe (die "no VRF key hash of 32 bytes") (pure . VRFVerKeyHash) (hashFromBytes newVrfBytes)
   (start, watched, derived) <-
     if derive == "none"
@@ -362,7 +721,11 @@ run sg bytes derive paths = do
       else do
         (changes, roles, vrfs) <-
           maybe (die ("no derivation " <> T.unpack derive <> " of this state")) pure $
-            derivation derive epoch new (input ^. pStateL)
+            case report of
+              Ratification -> proposed . pure <$> ratifyAction network input
+              ProposalReport RemoveBranches _ -> proposed <$> removeBranchesActions network input
+              ProposalReport DepositCredit d -> proposed . pure <$> depositCreditAction network input d
+              NoGovernance -> derivation derive epoch new (input ^. pStateL)
         unless (Map.notMember new (input ^. pStateL . psVRFKeyHashesL)) $
           die "the new VRF key hash is registered"
         let state = foldl' (change network) input changes
@@ -370,7 +733,7 @@ run sg bytes derive paths = do
         pure
           ( state
           , vrfs
-          , object
+          , object $
               [ "name" .= derive
               , "pools" .= object [Key.fromText role .= poolId pool | (role, pool) <- roles]
               , "changes" .= map (describe network) changes
@@ -378,11 +741,18 @@ run sg bytes derive paths = do
               , "facts" .= facts state
               , "vrfCounts" .= vrfCounts vrfs state
               ]
+                ++ governanceOf report state
           )
-  outcome <- try $ traverse (path start watched globals) paths
+  control <- case report of
+    ProposalReport DepositCredit d -> do
+      gas <- maybe (die "no ratify action of this state") pure (ratifyAction network input)
+      let slot = firstSlot (succ epoch)
+          boundary = applyTickNoEvents globals (change network input (Propose gas)) slot
+      pure ["control" .= object ["slot" .= unSlotNo slot, "governance" .= proposalFacts d boundary]]
+    _ -> pure []
+  outcome <- try $ traverse (path report start watched globals) paths
   ticked <- either (\(e :: SomeException) -> die ("TICK: " <> displayException e)) pure outcome
-  pure $
-    object
+  pure . object $
       [ "version" .= getVersion64 (eraProtVerLow @DijkstraEra)
       , "roundTrip" .= True
       , "globals"
@@ -399,16 +769,29 @@ run sg bytes derive paths = do
             , "epochAfterFirstSlot" .= unSlotNo (firstSlot (succ (succ epoch)))
             ]
       , "input" .= facts input
+      , "inputGovernance" .= fromMaybe Null (governanceValue report input)
       , "derivation" .= derived
       , "paths" .= ticked
       ]
+      ++ (case report of
+            ProposalReport _ d -> ["delegated" .= delegatedJson d]
+            _ -> [])
+      ++ control
   where
-    path input watched globals (TickPath name slots) = do
+    proposed gass = (map Propose gass, [], [])
+    path report input watched globals (TickPath name slots) = do
       let states = drop 1 (scanl' (applyTickNoEvents globals) input slots)
       written <- traverse (evaluate . encoded) states
       let reached = zip3 slots states written
           befores = input : states
-      pure $ object ["name" .= name, "ticks" .= zipWith (tick watched) befores reached]
+      removed <- case report of
+        ProposalReport _ _ -> traverse (fmap Just . tickRemovals globals) (zip befores reached)
+        _ -> pure (map (const Nothing) reached)
+      pure $ object ["name" .= name, "ticks" .= zipWith3 (tick report watched) befores reached removed]
+    tickRemovals globals (before, (slot, _, reachedBytes)) = do
+      let (after, events) = applyTick EPReturn globals before slot
+      unless (encoded after == reachedBytes) $ die "TICK with its events reaches another state"
+      either die pure (removals events)
 
 -- A path argument: `name=slot,slot,...`.
 tickPath :: String -> Maybe TickPath
@@ -500,7 +883,8 @@ ticks args = do
     _ ->
       die
         "arguments: the Shelley genesis file, the NewEpochState's file, a derivation (none, retire, \
-        \reregister-new-vrf, both, both-sharer, pledge-cap or committee-size), and one or more \
+        \reregister-new-vrf, both, both-sharer, pledge-cap, committee-size, ratify, remove-branches or \
+        \deposit-credit), and one or more \
         \name=slot,slot,...; or genesis and the Shelley, Alonzo, Conway and Dijkstra genesis files"
   sg <- either (die . ("Shelley genesis: " <>)) pure =<< eitherDecodeFileStrict genesis
   bytes <- BS.readFile file
