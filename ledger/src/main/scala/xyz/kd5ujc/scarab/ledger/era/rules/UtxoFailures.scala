@@ -15,7 +15,7 @@ import xyz.kd5ujc.scarab.ledger.{
   UtxosFailure as FlatUtxosFailure
 }
 import xyz.kd5ujc.scarab.ledger.era.*
-import xyz.kd5ujc.scarab.ledger.state.{Coin, Conway, EraTag}
+import xyz.kd5ujc.scarab.ledger.state.{Coin, Conway, Dijkstra, EraTag}
 import xyz.kd5ujc.scarab.plutus.ExUnits
 
 // The failures of UTXO as the reference declares them (cardano-ledger f649f975, the `Rules/Utxo.hs`
@@ -152,6 +152,27 @@ object ConwayUtxoPredFailure:
   given [E <: EraTag]: CanEqual[ConwayUtxoPredFailure[E], ConwayUtxoPredFailure[E]] =
     CanEqual.derived
 
+  /** UTXOS's failure in the node's flat form (`UtxosFailure`), as [[toStored]] gives it, for the
+    * eras whose UTXOS is Conway's: its `CollectErrors` returned as they are, a script's failure the
+    * flat one with the evaluator's request and no reconstruction bytes.
+    */
+  def storedUtxos[E <: EraTag](
+      failure: ConwayUtxosPredFailure[E]
+  ): Either[NonEmptyList[CollectError[E]], FlatUtxosFailure] = failure match
+    case ConwayUtxosPredFailure.CollectErrors(errors) => Left(errors)
+    case ConwayUtxosPredFailure.ValidationTagMismatch(isValid, description) =>
+      Right(
+        FlatUtxosFailure.ValidationTagMismatch(
+          isValid == IsPhase2Valid.Phase2Valid,
+          description match
+            case TagMismatchDescription.PassedUnexpectedly => None
+            case TagMismatchDescription.FailedUnexpectedly(fs) =>
+              Some(fs.toList.toVector.map { case FailureDescription.PlutusFailure(cause, pwc) =>
+                PlutusFailure(cause, Bytes.empty, Some(PlutusWithContext.evalRequest(pwc)))
+              })
+        )
+      )
+
   /** The failure in the node's flat form (`PredicateFailure`), which its encoders write and the
     * flat rules report: glue until the failures of the era types have their own encoders (#85). It
     * is one-way. UTXOS's `CollectErrors`, whose purposes and context errors the flat failure holds
@@ -168,21 +189,7 @@ object ConwayUtxoPredFailure:
       Right(PredicateFailure.utxo(f))
     def outs(os: NonEmptyList[TxOut[Conway]]) = os.toList.toVector.map(s.toStored)
     failure match
-      case UtxosFailure(ConwayUtxosPredFailure.CollectErrors(errors)) => Left(errors)
-      case UtxosFailure(ConwayUtxosPredFailure.ValidationTagMismatch(isValid, description)) =>
-        utxo(
-          UtxoFailure.Utxos(
-            FlatUtxosFailure.ValidationTagMismatch(
-              isValid == IsPhase2Valid.Phase2Valid,
-              description match
-                case TagMismatchDescription.PassedUnexpectedly => None
-                case TagMismatchDescription.FailedUnexpectedly(fs) =>
-                  Some(fs.toList.toVector.map { case FailureDescription.PlutusFailure(cause, pwc) =>
-                    PlutusFailure(cause, Bytes.empty, Some(PlutusWithContext.evalRequest(pwc)))
-                  })
-            )
-          )
-        )
+      case UtxosFailure(f) => storedUtxos(f).map(u => PredicateFailure.utxo(UtxoFailure.Utxos(u)))
       case BadInputsUTxO(ins) => utxo(UtxoFailure.BadInputs(ins.toSortedSet))
       case OutsideValidityIntervalUTxO(vi, slot) =>
         utxo(UtxoFailure.OutsideValidityInterval(vi.invalidBefore, vi.invalidHereafter, slot))
@@ -228,17 +235,24 @@ object ConwayUtxoPredFailure:
         utxo(UtxoFailure.BabbageNonDisjointRefInputs(ins.toList.toVector))
 
 /** `EraRuleFailure "UTXO" era`: Conway's is its own (`Conway/Rules/Utxo.hs:146`, cardano-ledger
-  * f649f975). Each era adds its case with its rule.
+  * f649f975), and so is Dijkstra's (`Dijkstra/Rules/Utxo.hs:172`, cardano-ledger 9df9f98c). Each
+  * era adds its case with its rule.
   */
 type UtxoPredFailure[E <: EraTag] = E match
-  case Conway => ConwayUtxoPredFailure[Conway]
+  case Conway   => ConwayUtxoPredFailure[Conway]
+  case Dijkstra => DijkstraUtxoPredFailure[Dijkstra]
 
 /** `InjectRuleFailure "UTXO" f era` (`Core/Era.hs:120-126`, cardano-ledger f649f975): how era `E`
   * reports a failure `F` of a UTXO predicate defined in an earlier era, or its own. One instance
   * per era and failure type, in the companion. Shelley's differs by reference build, so it is a
   * value of the rule's context ([[InjectShelleyUtxoFailure]]).
+  *
+  * It is contravariant in `F`: an instance over a failure type serves every narrower type. Where
+  * the reference's injection is partial (`error "Impossible"` on a constructor its rule never
+  * reaches), the era's instance is over the union of the constructors its rule does reach, each
+  * predicate declaring the constructors it reports ([[DijkstraUtxo]]), so every instance is total.
   */
-trait InjectUtxoFailure[F, E <: EraTag]:
+trait InjectUtxoFailure[-F, E <: EraTag]:
   def injectFailure(failure: F): UtxoPredFailure[E]
 
 object InjectUtxoFailure:
@@ -278,6 +292,61 @@ object InjectUtxoFailure:
     def injectFailure(failure: ConwayUtxosPredFailure[Conway]): UtxoPredFailure[Conway] =
       ConwayUtxoPredFailure.UtxosFailure(failure)
 
+  /** `instance InjectRuleFailure "UTXO" DijkstraUtxoPredFailure DijkstraEra`
+    * (`Dijkstra/Rules/Utxo.hs:177`, cardano-ledger 9df9f98c): the identity.
+    */
+  given dijkstra: InjectUtxoFailure[DijkstraUtxoPredFailure[Dijkstra], Dijkstra] with
+    def injectFailure(failure: DijkstraUtxoPredFailure[Dijkstra]): UtxoPredFailure[Dijkstra] =
+      failure
+
+  /** `Dijkstra/Rules/Utxo.hs:179-180`, cardano-ledger 9df9f98c, on the constructors the reference
+    * maps ([[DijkstraUtxo.ConwayFailure]]).
+    */
+  given dijkstraConway: InjectUtxoFailure[DijkstraUtxo.ConwayFailure[Dijkstra], Dijkstra] with
+    def injectFailure(failure: DijkstraUtxo.ConwayFailure[Dijkstra]): UtxoPredFailure[Dijkstra] =
+      DijkstraUtxo.conwayToDijkstraUtxoPredFailure(failure)
+
+  /** `Dijkstra/Rules/Utxo.hs:182-183`, cardano-ledger 9df9f98c, on the constructors Dijkstra's UTXO
+    * reports.
+    */
+  given dijkstraBabbage: InjectUtxoFailure[DijkstraUtxo.BabbageFailure[Dijkstra], Dijkstra] with
+    def injectFailure(failure: DijkstraUtxo.BabbageFailure[Dijkstra]): UtxoPredFailure[Dijkstra] =
+      DijkstraUtxo.babbageToDijkstraUtxoPredFailure(failure)
+
+  /** `Dijkstra/Rules/Utxo.hs:185-186`, cardano-ledger 9df9f98c, on the constructors Dijkstra's UTXO
+    * reports.
+    */
+  given dijkstraAlonzo: InjectUtxoFailure[DijkstraUtxo.AlonzoFailure[Dijkstra], Dijkstra] with
+    def injectFailure(failure: DijkstraUtxo.AlonzoFailure[Dijkstra]): UtxoPredFailure[Dijkstra] =
+      DijkstraUtxo.alonzoToDijkstraUtxoPredFailure(failure)
+
+  /** `Dijkstra/Rules/Utxo.hs:188-192`, cardano-ledger 9df9f98c, on the constructors Dijkstra's UTXO
+    * reports: one injection, as Dijkstra is of one build.
+    */
+  given dijkstraShelley: InjectUtxoFailure[DijkstraUtxo.ShelleyFailure[Dijkstra], Dijkstra] with
+    def injectFailure(failure: DijkstraUtxo.ShelleyFailure[Dijkstra]): UtxoPredFailure[Dijkstra] =
+      DijkstraUtxo.shelleyToDijkstraUtxoPredFailure(failure)
+
+  /** `Dijkstra/Rules/Utxo.hs:194-195`, cardano-ledger 9df9f98c, on the constructor Dijkstra's UTXO
+    * reports.
+    */
+  given dijkstraAllegra: InjectUtxoFailure[DijkstraUtxo.AllegraFailure[Dijkstra], Dijkstra] with
+    def injectFailure(failure: DijkstraUtxo.AllegraFailure[Dijkstra]): UtxoPredFailure[Dijkstra] =
+      DijkstraUtxo.allegraToDijkstraUtxoPredFailure(failure)
+
+  /** `Dijkstra/Rules/Utxo.hs:197-198`, cardano-ledger 9df9f98c: `UtxosFailure`. */
+  given dijkstraUtxos: InjectUtxoFailure[ConwayUtxosPredFailure[Dijkstra], Dijkstra] with
+    def injectFailure(failure: ConwayUtxosPredFailure[Dijkstra]): UtxoPredFailure[Dijkstra] =
+      DijkstraUtxoPredFailure.UtxosFailure(failure)
+
+  /** `Dijkstra/Rules/Utxo.hs:200-205`, cardano-ledger 9df9f98c: `conwayToDijkstraUtxoPredFailure .
+    * alonzoToConwayUtxoPredFailure . Alonzo.UtxosFailure . injectFailure`, whose every value is
+    * `UtxosFailure` of UTXOS's failure made Conway's ([[InjectAlonzoUtxos]]).
+    */
+  given dijkstraAlonzoUtxos: InjectUtxoFailure[AlonzoUtxosPredFailure[Dijkstra], Dijkstra] with
+    def injectFailure(failure: AlonzoUtxosPredFailure[Dijkstra]): UtxoPredFailure[Dijkstra] =
+      DijkstraUtxoPredFailure.UtxosFailure(InjectAlonzoUtxos.dijkstra.injectFailure(failure))
+
 /** `Embed (UTXOS era) (UTXO era)` (`Conway/Rules/Utxo.hs:286-295`, cardano-ledger f649f975): how
   * UTXOS's failures and events sit in UTXO's (`wrapFailed`, `wrapEvent`).
   */
@@ -291,4 +360,13 @@ object EmbedUtxosInUtxo:
     def wrapFailed(failure: UtxosPredFailure[Conway]): UtxoPredFailure[Conway] =
       ConwayUtxoPredFailure.UtxosFailure(failure)
     def wrapEvent(event: UtxosEvent[Conway]): AlonzoUtxoEvent[Conway] =
+      AlonzoUtxoEvent.UtxosEvent(event)
+
+  /** Dijkstra's (`Dijkstra/Rules/Utxo.hs:474-482`, cardano-ledger 9df9f98c): `UtxosFailure` and
+    * Alonzo's `UtxosEvent`.
+    */
+  given dijkstra: EmbedUtxosInUtxo[Dijkstra] with
+    def wrapFailed(failure: UtxosPredFailure[Dijkstra]): UtxoPredFailure[Dijkstra] =
+      DijkstraUtxoPredFailure.UtxosFailure(failure)
+    def wrapEvent(event: UtxosEvent[Dijkstra]): AlonzoUtxoEvent[Dijkstra] =
       AlonzoUtxoEvent.UtxosEvent(event)

@@ -20,7 +20,7 @@ import xyz.kd5ujc.scarab.ledger.era.{
   TxLevel
 }
 import xyz.kd5ujc.scarab.ledger.rules.{Judge, Sts}
-import xyz.kd5ujc.scarab.ledger.state.{Conway, EraTag}
+import xyz.kd5ujc.scarab.ledger.state.{Conway, Dijkstra, EraTag}
 import xyz.kd5ujc.scarab.plutus.{EvalFailure, ScriptEvaluator}
 
 // UTXOS as the reference writes it (cardano-ledger f649f975, the `Rules/Utxos.hs` of Alonzo, Babbage
@@ -56,15 +56,18 @@ enum TagMismatchDescription:
   case FailedUnexpectedly(failures: NonEmptyList[FailureDescription])
 
 /** `EraRuleFailure "PPUP" era` (`Core/Era.hs`, cardano-ledger f649f975), of the eras whose UTXOS is
-  * typed: Conway has no PPUP, its failure is `VoidEraRule` (`Conway/Era.hs`), no value. The eras
-  * before Conway, whose UTXOS runs PPUP, add their case with their PPUP.
+  * typed: Conway has no PPUP, its failure is `VoidEraRule` (`Conway/Era.hs`), no value, and neither
+  * has Dijkstra (`Dijkstra/Era.hs:86-90`, cardano-ledger 9df9f98c). The eras before Conway, whose
+  * UTXOS runs PPUP, add their case with their PPUP.
   */
 type PpupPredFailure[E <: EraTag] = E match
-  case Conway => Nothing
+  case Conway   => Nothing
+  case Dijkstra => Nothing
 
-/** `EraRuleEvent "PPUP" era`, as [[PpupPredFailure]]: Conway's is `VoidEraRule`. */
+/** `EraRuleEvent "PPUP" era`, as [[PpupPredFailure]]: Conway's and Dijkstra's are `VoidEraRule`. */
 type PpupEvent[E <: EraTag] = E match
-  case Conway => Nothing
+  case Conway   => Nothing
+  case Dijkstra => Nothing
 
 /** `data AlonzoUtxosPredFailure era` (`Alonzo/Rules/Utxos.hs:323-336`, cardano-ledger f649f975):
   * the failures Alonzo's and Babbage's UTXOS functions report, which an era injects into its own
@@ -99,16 +102,19 @@ enum ConwayUtxosEvent[E <: EraTag]:
   case FailedPlutusScriptsEvent(scripts: NonEmptyList[PlutusWithContext])
 
 /** `EraRuleFailure "UTXOS" era`: Conway's is its own (`Conway/Rules/Utxos.hs:76`, cardano-ledger
-  * f649f975). Each era adds its case with its rule.
+  * f649f975), and Dijkstra's is Conway's, as its UTXOS is (`Dijkstra/Rules/Utxos.hs:18`,
+  * cardano-ledger 9df9f98c). Each era adds its case with its rule.
   */
 type UtxosPredFailure[E <: EraTag] = E match
-  case Conway => ConwayUtxosPredFailure[Conway]
+  case Conway   => ConwayUtxosPredFailure[Conway]
+  case Dijkstra => ConwayUtxosPredFailure[Dijkstra]
 
 /** `EraRuleEvent "UTXOS" era`: Conway's is its own (`Conway/Rules/Utxos.hs:78`, cardano-ledger
-  * f649f975).
+  * f649f975), and Dijkstra's is Conway's (`Dijkstra/Rules/Utxos.hs:20`, cardano-ledger 9df9f98c).
   */
 type UtxosEvent[E <: EraTag] = E match
-  case Conway => ConwayUtxosEvent[Conway]
+  case Conway   => ConwayUtxosEvent[Conway]
+  case Dijkstra => ConwayUtxosEvent[Dijkstra]
 
 /** `InjectRuleFailure "UTXOS" AlonzoUtxosPredFailure era` and `InjectRuleEvent "UTXOS"
   * AlonzoUtxosEvent era` (`Core/Era.hs`, cardano-ledger f649f975): how era `E` reports the failures
@@ -126,6 +132,13 @@ object InjectAlonzoUtxos:
       ConwayUtxos.alonzoToConwayUtxosPredFailure[Conway](failure)
     def injectEvent(event: AlonzoUtxosEvent[Conway]): UtxosEvent[Conway] =
       ConwayUtxos.alonzoToConwayUtxosEvent[Conway](event)
+
+  /** Dijkstra's (`Dijkstra/Rules/Utxos.hs:26-30`, cardano-ledger 9df9f98c): Conway's functions. */
+  given dijkstra: InjectAlonzoUtxos[Dijkstra] with
+    def injectFailure(failure: AlonzoUtxosPredFailure[Dijkstra]): UtxosPredFailure[Dijkstra] =
+      ConwayUtxos.alonzoToConwayUtxosPredFailure[Dijkstra](failure)
+    def injectEvent(event: AlonzoUtxosEvent[Dijkstra]): UtxosEvent[Dijkstra] =
+      ConwayUtxos.alonzoToConwayUtxosEvent[Dijkstra](event)
 
 /** Alonzo's functions of UTXOS (`eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Utxos.hs`,
   * cardano-ledger f649f975).

@@ -1509,6 +1509,83 @@ Conway's rules on the classes follow as the rest of stage 2.
     holds (not counted) and of proposals at both levels, each total derived by hand from the reference's rules. The
     accounts and the obligations are Conway's instance's, on a state of distinct stake, pool and DRep deposits and an
     account delegated to a pool and a DRep.
+- **Dijkstra's UTXOS, UTXO and UTXOW** (`era/rules/DijkstraUtxo.scala`, `era/rules/DijkstraUtxow.scala`; `Rules/Utxos.hs`,
+  `Rules/Utxo.hs` and `Rules/Utxow.hs` of `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/`, cardano-ledger 9df9f98c):
+  - UTXOS is Conway's (`EraRule "UTXOS" DijkstraEra = Conway.UTXOS`): Dijkstra's cases of the failure and event
+    families, PPUP's and MIR's with no value, and Conway's injection of Alonzo's UTXOS failures.
+  - UTXO and UTXOW are Dijkstra's own. Their failure types are `DijkstraUtxoPredFailure` and
+    `DijkstraUtxowPredFailure`, in tag order, with the reference's injections and embeddings. The environment is
+    Dijkstra's `UtxoEnv`: the slot, the parameters, the pool state after the sub-transactions, and the certificate
+    state and UTxO set before the transaction, which every lookup reads but one: the second bad-inputs check
+    reads the threaded state's UTxO set (`utxosUtxo utxos`, `Rules/Utxo.hs:354`), so a top-level input a
+    sub-transaction spent is refused.
+  - `dijkstraUtxoTransition` runs these in Dijkstra's order and selection, then UTXOS and Babbage's
+    `updateUTxOState`:
+    - the inputs, against the set before and against the threaded state;
+    - Shelley's `validateFeeTooSmallUTxO`, not `feesOK`, and the batch's collateral (`validateBatchCollateral`);
+    - the value conserved over the batch, only for a transaction flagged valid; in the legacy mode, also over the
+      top level against the pool state after the sub-transactions;
+    - no pointer in the collateral return.
+  - `dijkstraUtxowTransition` aggregates the scripts needed, the witnesses and the reference scripts over every
+    level, and adds the guards' checks: `MissingRequiredGuards` on the signal, then `validateGuardDatums`, written
+    for either level for SUBUTXOW. `hasExactSetOfRedeemers` now changes the purposes' forms through
+    `ConwayEraScript`'s `hoistPlutusPurpose`, not Conway's evidence, so it serves both eras.
+  - **The injections the reference leaves partial** (decided 2026-11-20, #85). `conwayToDijkstraUtxoPredFailure`
+    calls `error "Impossible"` on `WrongNetworkWithdrawal` (ENTITIES') and `OutputTooSmallUTxO`
+    (`Utxo.hs:572-573`). The uninhabited payload that `MirSigners` uses cannot express this, because Shelley's
+    `WrongNetworkWithdrawal` has a value at Dijkstra through ENTITIES. Instead, each shared predicate declares the
+    constructor it reports as its result type. `InjectUtxoFailure` and `InjectUtxowFailure` are contravariant in
+    the failure type, and Dijkstra's instances are over the union of constructors its UTXO reaches
+    (`DijkstraUtxo.ShelleyFailure` and the others). So every instance is total, and the impossible constructors
+    have no injection: requesting one does not compile. Conway's instances over its whole types serve the
+    narrower requests unchanged.
+  - **The body without its sub-transactions** (`txBody & subTransactionsTxBodyL .~ mempty`, `Utxo.hs:380-387`,
+    `Utxow.hs:281-285`). The legacy mode's value check and datum check read the top level alone. The node cannot
+    make a body again outside the decoder, so `DijkstraUTxO`'s `…WithoutSubTransactions` functions compute those
+    values directly; they read no id and no bytes. UTXOW takes the allowed supplemental datums through
+    `AlonzoUtxow.missingRequiredDatumsAllowing`.
+  - Evidence:
+    - `DijkstraRulesOracleSuite`: on each of the reference's 17 UTXOW cases (`fixtures/reference/dijkstra-rules`),
+      the era UTXOW runs from the same parameters, certificate state, UTxO set and slot, on the transaction read by
+      the era decoder and annotated by `mkDijkstraStAnnTopTx`. Its failures, put in the flat form and written by
+      the suite's encoder, are the reference's bytes in its order, and its verdicts are the flat rule's. The flat
+      form is never narrowed: an extra redeemer whose `Word32` index the flat failure's `Int` cannot hold is left
+      unprojected (`DijkstraUtxowSuite`, at 2³¹−1, 2³¹ and 2³²−1).
+    - `DijkstraUtxowSuite`, on the testnet's chain (`fixtures/reference/leios-testnet-chain-contexts`): UTXOW whole
+      admits every ranking block's transaction without sub-transactions. It runs from the genesis parameters and
+      the chain's cost models, with no certificate state, at the block's slot, with the node's evaluator; every
+      Plutus script passes. The scripts each success event reports are, by hash and in order, the contexts the
+      reference collected for that transaction: 110 over the 78, of which 17 have several. Of the 94 endorser-block transactions without sub-transactions, 90 are admitted at the
+      certifying ranking block's slot. The other four end their validity interval before that slot and are
+      admitted only at their endorser block's slot. The slot a closure is applied at is BBODY's question (D8).
+    - `DijkstraUtxowSuite`, on built values of every constructor Dijkstra's UTXO reports: each injection equals
+      the reference's composition through Conway's failure. The impossible constructors, and Conway's and
+      Alonzo's whole failure types, have no Dijkstra injection (`compileErrors`, beside a reachable one that
+      has).
+    - `DijkstraUtxowSuite`, a component check on the chain's 28 batches: UTXOW admits each against the UTxO set
+      before it (the state after SUBLEDGERS is D7c's). On the 22 context refusals
+      (`fixtures/reference/leios-testnet-context-refusals`), UTXOS records the batch's collection errors as
+      `CollectErrors` (12: 11 at the top level, one in a sub-transaction) and evaluates nothing under
+      `NonStatic`.
+    - `DijkstraRulesOracleSuite` and `DijkstraRulesSuite`: on the oracle's four admitted cases and the flat
+      suite's devnet transaction, with its guarded reference script refused and then holding by a signature,
+      the era rule leaves the flat rule's state or gives its failures; under `NonStatic` it gives the flat
+      rule's verdict on all 17 oracle cases.
+    - `DijkstraUTxOSuite`: on every batch whose body the suite can write again, the values and datums without the
+      sub-transactions equal the batch's functions applied to the body rewritten without key 23.
+    - Conway's era suites (`EraUtxosSuite`, `EraUtxoSuite`, `EraUtxowSuite`, `ConwayUtxoChecksSuite`,
+      `ConwayUtxowChecksSuite` and the reference suites) keep their expected values.
+  - Incomplete (CNF-2):
+    - the 28 batches of the chain as the reference judges them: UTXOW reads the state after SUBLEDGERS (D7c);
+      here they are a component check;
+    - the forecast: the history given ends far after the chain, so `OutsideForecast` is not exercised at Dijkstra;
+    - refusals that no recording holds
+      ([#85's item](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7056846371)): a guard's
+      (`MissingRequiredGuards`, `MalformedGuardDatums`), the legacy mode's value, a pointer in the collateral return,
+      an input a sub-transaction spent, a batch's collateral, and a Plutus refusal;
+    - the refusals are compared through the flat form and the suite's encoder: the era failures have no encoder
+      yet (#796).
+  - Not yet (#85): ENTITIES, the certificate rules, GOV, the sub-transactions' rules and LEDGER (D7b to D7e).
 - **Next, Conway's rules.** The first rule ported is one that needs no parameters, the second one that
   does, each under a differential against the flat rule on the recorded blocks and the refusal corpus.
 - The body is read through the flat decoder for now. What only the projection refuses (an update, genesis

@@ -623,3 +623,43 @@ class DijkstraUTxOSuite extends FunSuite:
       Right(Nil)
     )
   }
+
+  test(
+    "the top level's values and datums without its sub-transactions are those of the body without them"
+  ) {
+    // `txBody & subTransactionsTxBodyL .~ mempty` (`Dijkstra/Rules/Utxo.hs:380-387`, `Utxow.hs:281-285`,
+    // cardano-ledger 9df9f98c): the functions that leave the sub-transactions out, against the
+    // functions of the whole batch on the body written again without key 23, of every batch whose
+    // other fields a map head of one byte counts (the one crafted body of all 24 fields aside)
+    import xyz.kd5ujc.scarab.codec.Value as V
+    def fields(c: Case) = node(c.era.body.raw).value match
+      case V.Map(es) => es.size
+      case other     => fail(s"not a map: $other")
+    val batches =
+      cases.filter(c => bodies.subTransactions(c.era.body).toVector.nonEmpty && fields(c) <= 24)
+    assert(batches.size >= 28, s"${batches.size} batches")
+    val pp = testnetPParams
+    batches.foreach { c =>
+      val u = utxosOf(c)
+      val without = withoutSubTransactions(c).era.body
+      val isReg: xyz.kd5ujc.scarab.ledger.state.KeyHash[
+        xyz.kd5ujc.scarab.ledger.state.StakePool
+      ] => Boolean =
+        _ => false
+      assertEquals(
+        DijkstraUTxO.dijkstraConsumedWithoutSubTransactions(pp, u.era, c.era.body),
+        DijkstraUTxO.dijkstraConsumed[TxLevel.Top](pp, u.era, without),
+        c.name
+      )
+      assertEquals(
+        DijkstraUTxO.dijkstraProducedValueWithoutSubTransactions(pp, isReg, c.era.body),
+        DijkstraUTxO.dijkstraProducedValue(pp, isReg, without),
+        c.name
+      )
+      assertEquals(
+        DijkstraUTxO.getDijkstraSupplementalDataHashesWithoutSubTransactions(u.era, c.era.body),
+        DijkstraUTxO.getDijkstraSupplementalDataHashes[TxLevel.Top](u.era, without),
+        c.name
+      )
+    }
+  }

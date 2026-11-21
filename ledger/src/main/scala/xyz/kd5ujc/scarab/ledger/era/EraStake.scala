@@ -9,6 +9,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
   CompactCoin,
   Conway,
   ConwayInstantStake,
+  Dijkstra,
   Credential,
   EraTag,
   InstantStake,
@@ -45,6 +46,21 @@ object EraStake:
         stake: InstantStake[Conway]
     ): Either[VocabError, InstantStake[Conway]] =
       deleteConwayInstantStake[Conway](utxo, stake)
+
+  /** Dijkstra's (`eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/State/Stake.hs:18-23`,
+    * cardano-ledger 9df9f98c): Conway's instant stake and functions.
+    */
+  given dijkstra: EraStake[Dijkstra] with
+    def addInstantStake(
+        utxo: UTxO[Dijkstra],
+        stake: InstantStake[Dijkstra]
+    ): Either[VocabError, InstantStake[Dijkstra]] =
+      addConwayInstantStake[Dijkstra](utxo, stake)
+    def deleteInstantStake(
+        utxo: UTxO[Dijkstra],
+        stake: InstantStake[Dijkstra]
+    ): Either[VocabError, InstantStake[Dijkstra]] =
+      deleteConwayInstantStake[Dijkstra](utxo, stake)
 
   /** `addConwayInstantStake` (`eras/conway/impl/src/Cardano/Ledger/Conway/State/Stake.hs:87-89`,
     * cardano-ledger f649f975): `(+) @Word64`, which wraps.

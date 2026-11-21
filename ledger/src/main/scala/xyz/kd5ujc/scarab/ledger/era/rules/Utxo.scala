@@ -86,7 +86,7 @@ final case class UtxoContext[E <: EraTag](
 /** The injection of a test's failures into the rule's (`injectFailure`, as `runTest` applies it
   * through `validateTrans`, `Rules/ValidationMode.hs:85`, cardano-ledger f649f975).
   */
-private def injected[F, E <: EraTag](test: Test[F])(using
+private[rules] def injected[F, E <: EraTag](test: Test[F])(using
     inject: InjectUtxoFailure[F, E]
 ): Test[UtxoPredFailure[E]] =
   test.leftMap(_.map(inject.injectFailure))
@@ -120,8 +120,23 @@ object ShelleyUtxo:
   def validateInputSetEmptyUTxO[E <: EraTag, L <: TxLevel](body: TxBody[L, E])(using
       b: EraTxBody[E],
       l: b.Level[L]
-  ): Test[ShelleyUtxoPredFailure[E]] =
-    Test.failureUnless(b.inputs(body).nonEmpty, ShelleyUtxoPredFailure.InputSetEmptyUTxO())
+  ): Test[ShelleyUtxoPredFailure.InputSetEmptyUTxO[E]] =
+    Test.failureUnless(b.inputs(body).nonEmpty, new ShelleyUtxoPredFailure.InputSetEmptyUTxO[E]())
+
+  /** `validateFeeTooSmallUTxO` (`Shelley/Rules/Utxo.hs:447-463`, cardano-ledger 9df9f98c): the fee
+    * at least the minimum (`getMinFeeTxUtxo`), the failure with the fee (supplied) and the minimum
+    * (expected). Dijkstra's UTXO runs it (`Dijkstra/Rules/Utxo.hs:357`, cardano-ledger 9df9f98c),
+    * where Babbage's and Conway's run `feesOK`.
+    */
+  def validateFeeTooSmallUTxO[E <: EraTag](pp: PParams[E], tx: Tx[TxLevel.Top, E], utxo: UTxO[E])(
+      using e: EraUTxO[E]
+  ): Test[ShelleyUtxoPredFailure.FeeTooSmallUTxO[E]] =
+    val minFee = e.getMinFeeTxUtxo[TxLevel.Top](pp, tx, utxo)(using e.txOf.bodyOf.top)
+    val txFee = e.txOf.bodyOf.fee(e.txOf.body[TxLevel.Top](tx)(using e.txOf.bodyOf.top))
+    Test.failureUnless(
+      minFee.value <= txFee.value,
+      new ShelleyUtxoPredFailure.FeeTooSmallUTxO[E](Mismatch(txFee, minFee))
+    )
 
   /** `validateBadInputsUTxO` (`Shelley/Rules/Utxo.hs:461-469`, cardano-ledger f649f975): the inputs
     * the UTxO set does not hold.
@@ -129,9 +144,9 @@ object ShelleyUtxo:
   def validateBadInputsUTxO[E <: EraTag](
       utxo: UTxO[E],
       inputs: Set[TxIn]
-  ): Test[ShelleyUtxoPredFailure[E]] =
+  ): Test[ShelleyUtxoPredFailure.BadInputsUTxO[E]] =
     Test.failureOnJust(NonEmptySet.fromSet(inputs.filterNot(utxo.unUTxO.contains).to(SortedSet)))(
-      ShelleyUtxoPredFailure.BadInputsUTxO(_)
+      new ShelleyUtxoPredFailure.BadInputsUTxO[E](_)
     )
 
   /** `validateWrongNetwork` (`Shelley/Rules/Utxo.hs:474-485`, cardano-ledger f649f975): the
@@ -140,13 +155,13 @@ object ShelleyUtxo:
     */
   def validateWrongNetwork[E <: EraTag](netId: Network, outputs: Vector[TxOut[E]])(using
       o: EraTxOut[E]
-  ): Test[ShelleyUtxoPredFailure[E]] =
+  ): Test[ShelleyUtxoPredFailure.WrongNetwork[E]] =
     val wrong = outputs
       .map(o.address)
       .filter(a => networkOf(a).exists(_ != wire(netId)))
     val wrongSet = SortedSet.from(wrong)(using addressOrder.toOrdering)
     Test.failureOnJust(NonEmptySet.fromSet(wrongSet))(
-      ShelleyUtxoPredFailure.WrongNetwork(netId, _)
+      new ShelleyUtxoPredFailure.WrongNetwork[E](netId, _)
     )
 
   /** `getNetwork` of an address: a Shelley address's header network, a bootstrap address's
@@ -177,12 +192,12 @@ object ShelleyUtxo:
       t: EraTx[E],
       l: t.bodyOf.Level[L],
       p: EraPParams[E]
-  ): Test[ShelleyUtxoPredFailure[E]] =
+  ): Test[ShelleyUtxoPredFailure.MaxTxSizeUTxO[E]] =
     val txSize = BigInt(t.sizeTxF(tx))
     val maxTxSize = EraPParams.ppMaxTxSizeL[E].get(pp).value
     Test.failureUnless(
       txSize <= maxTxSize,
-      ShelleyUtxoPredFailure.MaxTxSizeUTxO(Mismatch(txSize, maxTxSize))
+      new ShelleyUtxoPredFailure.MaxTxSizeUTxO[E](Mismatch(txSize, maxTxSize))
     )
 
   /** `validateValueNotConservedUTxO` (`Shelley/Rules/Utxo.hs:503-519`, cardano-ledger f649f975):
@@ -217,7 +232,7 @@ object ShelleyUtxo:
     */
   def validateOutputBootAddrAttrsTooBig[E <: EraTag](outputs: Vector[TxOut[E]])(using
       o: EraTxOut[E]
-  ): Test[ShelleyUtxoPredFailure[E]] =
+  ): Test[ShelleyUtxoPredFailure.OutputBootAddrAttrsTooBig[E]] =
     val outputsAttrsTooBig = outputs.filter(out =>
       o.address(out).kind match
         case Address.Kind.Byron(_) =>
@@ -228,7 +243,7 @@ object ShelleyUtxo:
         case Address.Kind.Shelley(_, _, _, _) => false
     )
     Test.failureOnJust(NonEmptyList.fromList(outputsAttrsTooBig.toList))(
-      ShelleyUtxoPredFailure.OutputBootAddrAttrsTooBig(_)
+      new ShelleyUtxoPredFailure.OutputBootAddrAttrsTooBig[E](_)
     )
 
   /** `updateUTxOState` (`Shelley/Rules/Utxo.hs:584-600`, cardano-ledger f649f975): the deposits,
@@ -413,11 +428,11 @@ object AllegraUtxo:
   )(using
       b: AllegraEraTxBody[E],
       l: b.Level[L]
-  ): Test[AllegraUtxoPredFailure[E]] =
+  ): Test[AllegraUtxoPredFailure.OutsideValidityIntervalUTxO[E]] =
     val vi = b.vldt(body)
     Test.failureUnless(
       vi.invalidBefore.forall(_ <= slot) && vi.invalidHereafter.forall(slot < _),
-      AllegraUtxoPredFailure.OutsideValidityIntervalUTxO(vi, slot)
+      new AllegraUtxoPredFailure.OutsideValidityIntervalUTxO[E](vi, slot)
     )
 
 /** Alonzo's predicates of UTXO (`eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Utxo.hs`,
@@ -429,12 +444,12 @@ object AlonzoUtxo:
       using
       b: AlonzoEraTxBody[E],
       l: b.Level[L]
-  ): Test[AlonzoUtxoPredFailure[E]] =
+  ): Test[AlonzoUtxoPredFailure.WrongNetworkInTxBody[E]] =
     b.networkId(body)
-      .fold(Test.pass[AlonzoUtxoPredFailure[E]])(bid =>
+      .fold(Test.pass[AlonzoUtxoPredFailure.WrongNetworkInTxBody[E]])(bid =>
         Test.failureUnless(
           bid == netId,
-          AlonzoUtxoPredFailure.WrongNetworkInTxBody(Mismatch(bid, netId))
+          new AlonzoUtxoPredFailure.WrongNetworkInTxBody[E](Mismatch(bid, netId))
         )
       )
 
@@ -446,13 +461,13 @@ object AlonzoUtxo:
       using
       b: AlonzoEraTxBody[E],
       p: AlonzoEraPParams[E]
-  ): Test[AlonzoUtxoPredFailure[E]] =
+  ): Test[AlonzoUtxoPredFailure.TooManyCollateralInputs[E]] =
     val maxColl = PParams.lensHKD[E].andThen(p.hkdMaxCollateralInputsL[Identity]).get(pp).value
     // `fromIntegral . Set.size`: the size narrowed to a `Word16`, so modulo 2^16
     val numColl = BigInt(b.collateralInputs(body).size) % (BigInt(1) << 16)
     Test.failureUnless(
       numColl <= maxColl,
-      AlonzoUtxoPredFailure.TooManyCollateralInputs(Mismatch(numColl.toInt, maxColl.toInt))
+      new AlonzoUtxoPredFailure.TooManyCollateralInputs[E](Mismatch(numColl.toInt, maxColl.toInt))
     )
 
   /** `isKeyHashAddr` and `vKeyLocked` (`Alonzo/Rules/Utxo.hs:252-266`, cardano-ledger f649f975): an
@@ -469,10 +484,10 @@ object AlonzoUtxo:
     */
   def validateScriptsNotPaidUTxO[E <: EraTag](utxoCollateral: Map[TxIn, TxOut[E]])(using
       o: EraTxOut[E]
-  ): Test[AlonzoUtxoPredFailure[E]] =
+  ): Test[AlonzoUtxoPredFailure.ScriptsNotPaidUTxO[E]] =
     Test.failureOnJust(
       NonEmptyMap.fromMap(SortedMap.from(utxoCollateral.filterNot((_, out) => vKeyLocked(out))))
-    )(AlonzoUtxoPredFailure.ScriptsNotPaidUTxO(_))
+    )(new AlonzoUtxoPredFailure.ScriptsNotPaidUTxO[E](_))
 
   /** `validateInsufficientCollateral` (`Alonzo/Rules/Utxo.hs:335-350`, cardano-ledger f649f975): a
     * hundred times the balance at least the fee times `ppCollateralPercentage`; the failure names
@@ -482,12 +497,18 @@ object AlonzoUtxo:
       pp: PParams[E],
       body: TxBody[TxLevel.Top, E],
       bal: BigInt
-  )(using b: EraTxBody[E], p: AlonzoEraPParams[E]): Test[AlonzoUtxoPredFailure[E]] =
+  )(using
+      b: EraTxBody[E],
+      p: AlonzoEraPParams[E]
+  ): Test[AlonzoUtxoPredFailure.InsufficientCollateral[E]] =
     val txfee = b.fee(body).value
     val collPerc = AlonzoEraPParams.ppCollateralPercentageL[E].get(pp).value
     Test.failureUnless(
       bal * 100 >= collPerc * txfee,
-      AlonzoUtxoPredFailure.InsufficientCollateral(bal, Coin(Rational(collPerc * txfee, 100).ceil))
+      new AlonzoUtxoPredFailure.InsufficientCollateral[E](
+        bal,
+        Coin(Rational(collPerc * txfee, 100).ceil)
+      )
     )
 
   /** `validateExUnitsTooBigUTxO` (`Alonzo/Rules/Utxo.hs:451-465`, cardano-ledger f649f975;
@@ -498,12 +519,12 @@ object AlonzoUtxo:
       t: AlonzoEraTx[E],
       l: t.bodyOf.Level[L],
       p: AlonzoEraPParams[E]
-  ): Test[AlonzoUtxoPredFailure[E]] =
+  ): Test[AlonzoUtxoPredFailure.ExUnitsTooBigUTxO[E]] =
     val maxTxExUnits = AlonzoEraPParams.ppMaxTxExUnitsL[E].get(pp).units
     val totalExUnits = t.getTotalExUnits[L](tx)
     Test.failureUnless(
       totalExUnits.fits(maxTxExUnits),
-      AlonzoUtxoPredFailure.ExUnitsTooBigUTxO(Mismatch(totalExUnits, maxTxExUnits))
+      new AlonzoUtxoPredFailure.ExUnitsTooBigUTxO[E](Mismatch(totalExUnits, maxTxExUnits))
     )
 
   /** `validateOutsideForecast` (`Alonzo/Rules/Utxo.hs:362-385`, cardano-ledger f649f975): the end
@@ -519,13 +540,16 @@ object AlonzoUtxo:
       slotNo: BigInt,
       sysSt: BigInt,
       tx: Tx[L, E]
-  )(using t: AlonzoEraTx[E], l: t.bodyOf.Level[L]): Test[AlonzoUtxoPredFailure[E]] =
+  )(using
+      t: AlonzoEraTx[E],
+      l: t.bodyOf.Level[L]
+  ): Test[AlonzoUtxoPredFailure.OutsideForecast[E]] =
     t.bodyOf.vldt(t.body(tx)).invalidHereafter match
       case Some(ifj) if t.witsOf.rdmrsTxWits(t.wits(tx)).entries.nonEmpty =>
         val extended = PosixClock.Extended(slotNo, PosixClock.Forecast(sysSt, ei))
         Test.failureUnless(
           extended.posix(ifj).isRight,
-          AlonzoUtxoPredFailure.OutsideForecast(ifj)
+          new AlonzoUtxoPredFailure.OutsideForecast[E](ifj)
         )
       case _ => Test.pass
 
@@ -541,7 +565,7 @@ object AlonzoUtxo:
       o: EraTxOut[E],
       p: AlonzoEraPParams[E],
       s: StoredTxOut[E]
-  ): Test[AlonzoUtxoPredFailure[E]] =
+  ): Test[AlonzoUtxoPredFailure.OutputTooBigUTxO[E]] =
     val maxValSize = AlonzoEraPParams.ppMaxValSizeL[E].get(pp).value
     val outputsTooBig = outputs.foldLeft(List.empty[(Int, Int, TxOut[E])]) { (ans, txOut) =>
       val serSize = s.storedValue(o.value(txOut)).serializedSize
@@ -549,8 +573,15 @@ object AlonzoUtxo:
       else ans
     }
     Test.failureOnJust(NonEmptyList.fromList(outputsTooBig))(
-      AlonzoUtxoPredFailure.OutputTooBigUTxO(_)
+      new AlonzoUtxoPredFailure.OutputTooBigUTxO[E](_)
     )
+
+/** The failures of Alonzo's type that Babbage's `validateTotalCollateral` reports, each predicate
+  * it runs declaring its own: the injection it asks for need only take these.
+  */
+type CollateralFailure[E <: EraTag] = AlonzoUtxoPredFailure.ScriptsNotPaidUTxO[E] |
+  AlonzoUtxoPredFailure.CollateralContainsNonADA[E] |
+  AlonzoUtxoPredFailure.InsufficientCollateral[E] | AlonzoUtxoPredFailure.NoCollateralInputs[E]
 
 /** Babbage's predicates of UTXO (`eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Utxo.hs`,
   * cardano-ledger f649f975).
@@ -618,8 +649,8 @@ object BabbageUtxo:
   )(using
       b: BabbageEraTxBody[E],
       p: AlonzoEraPParams[E],
-      alonzo: InjectUtxoFailure[AlonzoUtxoPredFailure[E], E],
-      babbage: InjectUtxoFailure[BabbageUtxoPredFailure[E], E]
+      alonzo: InjectUtxoFailure[CollateralFailure[E], E],
+      babbage: InjectUtxoFailure[BabbageUtxoPredFailure.IncorrectTotalCollateralField[E], E]
   ): Test[UtxoPredFailure[E]] =
     given EraTxOut[E] = b.outputsOf
     val bal = collAdaBalance(txBody, utxoCollateral)
@@ -631,7 +662,7 @@ object BabbageUtxo:
       injected(
         Test.failureUnless(
           utxoCollateral.nonEmpty,
-          AlonzoUtxoPredFailure.NoCollateralInputs[E]()
+          new AlonzoUtxoPredFailure.NoCollateralInputs[E]()
         )
       )
     )
@@ -643,7 +674,7 @@ object BabbageUtxo:
   def validateCollateralContainsNonADA[E <: EraTag](
       txBody: TxBody[TxLevel.Top, E],
       utxoCollateral: Map[TxIn, TxOut[E]]
-  )(using b: BabbageEraTxBody[E]): Test[AlonzoUtxoPredFailure[E]] =
+  )(using b: BabbageEraTxBody[E]): Test[AlonzoUtxoPredFailure.CollateralContainsNonADA[E]] =
     val o = b.outputsOf
     val v = o.valueOps
     given EraTxOut[E] = o
@@ -660,7 +691,7 @@ object BabbageUtxo:
       case _                                   => collateralBalance
     Test.failureUnless(
       onlyAdaInCollateral,
-      AlonzoUtxoPredFailure.CollateralContainsNonADA(valueWithNonAda)
+      new AlonzoUtxoPredFailure.CollateralContainsNonADA[E](valueWithNonAda)
     )
 
   /** `validateCollateralEqBalance` (`Babbage/Rules/Utxo.hs:294-300`, cardano-ledger f649f975): the
@@ -669,11 +700,11 @@ object BabbageUtxo:
   def validateCollateralEqBalance[E <: EraTag](
       bal: BigInt,
       txcoll: Option[Coin]
-  ): Test[BabbageUtxoPredFailure[E]] =
-    txcoll.fold(Test.pass[BabbageUtxoPredFailure[E]])(tc =>
+  ): Test[BabbageUtxoPredFailure.IncorrectTotalCollateralField[E]] =
+    txcoll.fold(Test.pass[BabbageUtxoPredFailure.IncorrectTotalCollateralField[E]])(tc =>
       Test.failureUnless(
         bal == tc.value,
-        BabbageUtxoPredFailure.IncorrectTotalCollateralField(bal, tc)
+        new BabbageUtxoPredFailure.IncorrectTotalCollateralField[E](bal, tc)
       )
     )
 
@@ -803,7 +834,7 @@ object BabbageUtxo:
       o: EraTxOut[E],
       p: BabbageEraPParams[E],
       v: Value[E] =:= MultiAssetValue
-  ): Test[BabbageUtxoPredFailure[E]] =
+  ): Test[BabbageUtxoPredFailure.BabbageOutputTooSmallUTxO[E]] =
     val outsWithMin = outs.map(out => (out.value, BabbageTxOuts.babbageMinUTxOValue(pp, out)))
     val outputsTooSmall = outsWithMin.filterNot { (out, minSize) =>
       val value = v(o.value(out))
@@ -812,7 +843,7 @@ object BabbageUtxo:
       )
     }
     Test.failureOnJust(NonEmptyList.fromList(outputsTooSmall.toList))(
-      BabbageUtxoPredFailure.BabbageOutputTooSmallUTxO(_)
+      new BabbageUtxoPredFailure.BabbageOutputTooSmallUTxO[E](_)
     )
 
   /** `collOuts` (`eras/babbage/impl/src/Cardano/Ledger/Babbage/Collateral.hs:43-50`, cardano-ledger

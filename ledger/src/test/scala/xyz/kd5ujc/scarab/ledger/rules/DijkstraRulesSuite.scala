@@ -546,3 +546,68 @@ class DijkstraRulesSuite extends FunSuite:
       Left(xyz.kd5ujc.scarab.ledger.LedgerFailure.NativeScriptUnread(devnetTx.id, hash))
     )
   }
+
+  // ---- the era-typed UTXOW on the same cases (#85)
+
+  /** The era-typed UTXOW (`era.rules.DijkstraUtxow`) on `tx` read by the era decoder, from the
+    * state and parameters the flat UTXOW is given here.
+    */
+  private def eraUtxow(tx: DijkstraTx, from: DijkstraLedger) =
+    import xyz.kd5ujc.scarab.ledger.era.dijkstra.{DijkstraCorpus, DijkstraUtxoRun}
+    import xyz.kd5ujc.scarab.ledger.era.rules.{DijkstraUtxoContext, DijkstraUtxoEnv as EraUtxoEnv}
+    val era = xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraTx
+      .inBlock(
+        xyz.kd5ujc.scarab.ledger.CborRead
+          .decode(tx.raw, V12.nestedLimits)
+          .fold(e => fail(e.toString), identity)
+      )
+      .fold(e => fail(e.toString), identity)
+    val env = EraUtxoEnv[Dijkstra](
+      225,
+      DijkstraCorpus.era(pp),
+      from.state.cert.pState,
+      from.state.cert,
+      DijkstraUtxoRun.originalUtxo(from.state.utxo.utxo.utxo, era)
+    )
+    val params = xyz.kd5ujc.scarab.ledger.Horizon.Params(100, 1000, 30, 30)
+    val history = xyz.kd5ujc.scarab.ledger.Horizon
+      .History(Vector.empty, xyz.kd5ujc.scarab.ledger.Horizon.Edge(0, 0, 0), params, Some(params))
+      .at(xyz.kd5ujc.scarab.ledger.Horizon.Transition.Unknown(Some(BigInt(1000))))
+    DijkstraUtxoRun.run(
+      env,
+      DijkstraUtxoRun.annotate(s => fail(s"the clock was read at $s"), env, era),
+      DijkstraUtxoContext(
+        Network.Testnet,
+        0,
+        history,
+        xyz.kd5ujc.scarab.ledger.TxEnv.Validation.All
+      ),
+      from.state.utxo,
+      xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default,
+      xyz.kd5ujc.scarab.ledger.Verdicts.Direct,
+      xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder
+    )
+
+  /** The era-typed UTXOW gives the flat one's failures in their flat form, or its state after. */
+  private def sameAsFlat(tx: DijkstraTx, from: DijkstraLedger): Unit =
+    (eraUtxow(tx, from), utxow(tx, from)) match
+      case (Right(Right((era, _))), Right(Right(flat))) => assertEquals(era, flat.state)
+      case (Right(Left(era)), Right(Left(flat))) =>
+        assertEquals(
+          era.toChain.toVector.map(f =>
+            xyz.kd5ujc.scarab.ledger.era.rules.DijkstraUtxowPredFailure
+              .toStored(f, _ => None)
+              .fold(u => fail(s"no flat form of $u"), identity)
+          ),
+          flat.toChain.toVector
+        )
+      case other => fail(s"$other")
+
+  test("the era-typed UTXOW gives the flat rule's verdicts and state on these UTXOW cases") {
+    // the devnet transaction, its needed reference script with a guard the body lacks, and that
+    // script holding by a signature beside the guard; the halting cases (a guard or a direct deposit
+    // in the body, which the flat rule cannot carry) have no flat verdict to compare
+    sameAsFlat(devnetTx, funded(pp))
+    sameAsFlat(devnetTx, lockedBy(guard)._2)
+    sameAsFlat(devnetTx, lockedBy("8202" + "82" + guard + genesisSigner)._2)
+  }

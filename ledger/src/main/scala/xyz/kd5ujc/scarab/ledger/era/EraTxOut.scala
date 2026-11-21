@@ -87,6 +87,15 @@ object StoredTxOut:
       xyz.kd5ujc.scarab.ledger.era.conway.ConwayTxOut.fromStored(out)
     def storedValue(value: Value[Conway]): xyz.kd5ujc.scarab.ledger.Value = value.stored
 
+  given dijkstra: StoredTxOut[Dijkstra] with
+    def toStored(out: TxOut[Dijkstra]): xyz.kd5ujc.scarab.ledger.TxOut =
+      xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraTxOut.toStored(out)
+    private[ledger] def fromStored(
+        out: xyz.kd5ujc.scarab.ledger.TxOut
+    ): Either[EraTxError, TxOut[Dijkstra]] =
+      xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraTxOut.fromStored(out)
+    def storedValue(value: Value[Dijkstra]): xyz.kd5ujc.scarab.ledger.Value = value.stored
+
 /** The functions of Babbage's outputs (`eras/babbage/impl/src/Cardano/Ledger/Babbage/TxOut.hs`,
   * cardano-ledger f649f975).
   */
