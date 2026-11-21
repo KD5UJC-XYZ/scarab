@@ -12,7 +12,9 @@
 -- `show` renders it, or `ppuWellFormed` of the update at protocol versions 12.0 and 10.0
 -- (`eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs:1149-1175`) and its
 -- `modifiedPPGroups` (`eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs:174-182`), each group
--- as its DRep group and its stake-pool group as `show` renders them.
+-- as its DRep group and its stake-pool group as `show` renders them, and the hex of the decoded
+-- update as the reference writes it (`serialize'` at version 12, the version it was decoded at:
+-- `EncCBOR (PParamsUpdate era)`, `libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs:250-262`).
 module Main (main) where
 
 import Cardano.Ledger.BaseTypes (ProtVer (..), natVersion)
@@ -46,6 +48,7 @@ verdict i bytes =
         , "wellFormed12" .= ppuWellFormed (ProtVer (natVersion @12) 0) u
         , "wellFormed10" .= ppuWellFormed (ProtVer (natVersion @10) 0) u
         , "groups" .= [[show d, show s] | PPGroups d s <- Set.toList (modifiedPPGroups u)]
+        , "reencoded" .= T.decodeUtf8 (Hex.encode (Binary.serialize' (natVersion @12) u))
         ]
 
 main :: IO ()
