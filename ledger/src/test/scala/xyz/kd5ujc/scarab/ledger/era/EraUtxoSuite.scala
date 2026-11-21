@@ -539,3 +539,146 @@ class EraUtxoSuite extends munit.FunSuite:
       ConwayUtxowPredFailure.UtxoFailure[Conway](ConwayUtxoPredFailure.InputSetEmptyUTxO[Conway]())
     )
   }
+
+  // ---- LEDGER whole: its checks, CERTS, GOV, then UTXOW ----------------------------------------
+
+  /** An action of a GOV failure as `c`'s proposals read it. */
+  private def readOf(c: Case) =
+    val b = EraTxBody.conway
+    rules.ConwayGovPredFailure.readOf(
+      b.proposalProcedures[TxLevel.Top](t.body[TxLevel.Top](c.typed)(using t.bodyOf.top))(using
+        b.top
+      ).toVector
+    )
+
+  /** Both LEDGERs on `c`, from the chain that holds its outputs, at the root: the same outcome,
+    * which is returned, and where admitted the same state; the counters UTXOS's events give,
+    * through UTXO's, UTXOW's and LEDGER's embeddings, are the flat rule's (`Counted.plutus`).
+    */
+  private def sameLedger(
+      c: Case,
+      build: ReferenceBuild,
+      validation: TxEnv.Validation,
+      evaluator: ScriptEvaluator[Id]
+  ): Outcome =
+    val what = s"${c.name} under ${build.name}, $validation (LEDGER)"
+    val nes = Build.funded(Build.nes[Conway](5, c.flatPp), c.utxo)
+    val ls = ConwayNewEpochState.ls.get(nes)
+    val account = nes.es.chainAccount
+    val globals =
+      TestLedger.globals.copy(ledger = TestLedger.globals.ledger.copy(referenceBuild = build))
+    val ctx = env.copy(
+      clock = Some(c.clock),
+      evaluator = evaluator,
+      validation = validation,
+      referenceBuild = build
+    )
+    val flat = Judgment.run(xyz.kd5ujc.scarab.ledger.rules.Ledger, RuleT.Policy.Accumulate)(
+      globals,
+      xyz.kd5ujc.scarab.ledger.rules.LedgerEnv(ctx, account.treasury),
+      Counted(ls, PlutusStats.zero),
+      c.flat
+    )
+    val era = EraLedgerRun.ledger(
+      globals,
+      rules.LedgerEnv[Conway](
+        env.slot,
+        Some(right("epoch")(xyz.kd5ujc.scarab.ledger.state.EpochNo.fromBigInt(env.epoch))),
+        xyz.kd5ujc.scarab.ledger.state.TxIx.txIxFromIntegral(0).getOrElse(fail("index 0")),
+        c.pp,
+        account
+      ),
+      stAnnTx(c),
+      UtxoContext[Conway](
+        Network.of(BigInt(env.network)).getOrElse(fail(s"network ${env.network}")),
+        0,
+        historyAt(env.slot),
+        validation,
+        ConwayUtxo.injectShelleyFailure(build)
+      ),
+      ls,
+      evaluator,
+      env.verdicts,
+      env.decoder
+    )
+    val theirs = flat match
+      case Left(LedgerFailure.Unavailable(_, _, reason)) => Outcome.NoVerdict(reason)
+      case Left(other)                                   => fail(s"$what: flat defect $other")
+      case Right(Left(fs)) =>
+        Outcome.Refused(fs.toList.map(f => EraUtxoRun.form(f).getOrElse(fail(s"$what: $f"))))
+      case Right(Right(counted)) =>
+        Outcome.Admitted(counted.plutus.succeeded, counted.plutus.failed, counted.plutus.scripts)
+    val ours = era match
+      case Left(EraLedgerRun.Defect.Script(ScriptVerdictUnavailable(_, reason))) =>
+        Outcome.NoVerdict(reason)
+      case Left(defect) => fail(s"$what: era defect $defect")
+      case Right(Left(fs)) =>
+        Outcome.Refused(
+          fs.toList.map(f =>
+            EraLedgerRun.form(f, purposes(c), readOf(c)).getOrElse(fail(s"$what: $f"))
+          )
+        )
+      case Right(Right((state, events))) =>
+        val (succeeded, failed, scripts) = EraLedgerRun
+          .counters(t.isValid(c.typed) == IsPhase2Valid.Phase2Valid, events)
+          .getOrElse(fail(s"$what: events $events"))
+        flat match
+          case Right(Right(counted)) =>
+            assert(
+              summon[cats.Eq[LedgerState[Conway]]].eqv(state, counted.state),
+              s"$what: $state\n${counted.state}"
+            )
+          case _ => ()
+        Outcome.Admitted(succeeded, failed, scripts)
+    assertEquals(ours, theirs, what)
+    // a collection's errors with their contents, the translations' failures among them, which the
+    // comparison's form keeps by kind alone: in the node's flat form (`EraLedgerRun.flat`)
+    (era, flat) match
+      case (Right(Left(fs)), Right(Left(flatFs))) =>
+        val collected = fs.toList.zip(flatFs.toList).collect {
+          case (
+                e,
+                f @ PredicateFailure.Utxow(
+                  UtxowFailure.Utxo(
+                    UtxoFailure.Utxos(xyz.kd5ujc.scarab.ledger.UtxosFailure.CollectErrors(_))
+                  )
+                )
+              ) =>
+            (e, f)
+        }
+        collected.foreach((e, f) =>
+          assertEquals(EraLedgerRun.flat(e, purposes(c), readOf(c)), Right(f), what)
+        )
+      case _ => ()
+    ours
+
+  test("LEDGER whole, as submitted: the reference's verdict and the flat LEDGER's") {
+    recorded.foreach { c =>
+      sameLedger(c, ReferenceBuild.Release11_1, TxEnv.Validation.All, scarab) match
+        case Outcome.Admitted(_, _, _) => assert(c.accepted, s"${c.name}: the reference refused")
+        case Outcome.Refused(_)        => assert(!c.accepted, s"${c.name}: the reference accepted")
+        case Outcome.NoVerdict(reason) => fail(s"${c.name}: no verdict, $reason")
+    }
+  }
+
+  test("LEDGER whole on every case, both flags, each build and each policy: the flat LEDGER's") {
+    // the counters LEDGER's events give are the flat rule's, a passing and a failing run of scripts
+    // among them
+    val outcomes = for
+      c <- everyCase
+      build <- ReferenceBuild.values.toVector
+      validation <- TxEnv.Validation.values.toVector
+    yield sameLedger(c, build, validation, scarab)
+    assert(outcomes.exists { case Outcome.Admitted(1, 0, n) => n > 0; case _ => false })
+    assert(outcomes.exists { case Outcome.Admitted(0, 1, n) => n > 0; case _ => false })
+    assert(outcomes.exists { case Outcome.Refused(_) => true; case _ => false })
+    // a translation's failure among the collections' compared with their contents
+    assert(outcomes.exists {
+      case Outcome.Refused(fs) =>
+        fs.exists {
+          case Failure.CollectErrors(kinds) => kinds.contains(EraUtxoRun.Collect.BadTranslation)
+          case _                            => false
+        }
+      case _ => false
+    })
+  }

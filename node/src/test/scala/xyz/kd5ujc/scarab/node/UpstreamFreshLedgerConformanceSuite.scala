@@ -133,10 +133,12 @@ class UpstreamFreshLedgerConformanceSuite extends FunSuite:
     )
 
   /** Compare the complete rule-level failure list with the unchanged native encoding. */
-  private def rejection(rule: String, e: LedgerFailure, failures: Node): Unit =
-    val predicates = e match
-      case LedgerFailure.Rejected(_, causes) => causes.toChain.toVector
-      case other                             => fail(s"expected typed native refusal, got $other")
+  private def rejection(rule: String, e: LedgerFailure, failures: Node): Unit = e match
+    case LedgerFailure.Rejected(_, causes) => rejected(rule, causes.toChain.toVector, failures)
+    case other                             => fail(s"expected typed native refusal, got $other")
+
+  /** Compare the rule's failures, in the node's flat form, with the unchanged native encoding. */
+  private def rejected(rule: String, predicates: Vector[PredicateFailure], failures: Node): Unit =
     val answer = Cbor
       .decode(
         PredicateFailureCbor.applyTxError(predicates).fold(error => fail(error.message), identity)
@@ -273,6 +275,144 @@ class UpstreamFreshLedgerConformanceSuite extends FunSuite:
           )
         case other => fail(s"unknown observation $other")
 
+  /** The era-typed LEDGER or LEDGERS on a LEDGER or LEDGERS row's inputs, each transaction read by
+    * Conway's decoder from its original parts, the root of its judgment as the hook ran it: an
+    * accepted judgment leaves the reference's post-state, a refused one's failures encode to its
+    * bytes in their order. The era judgment's outcome is returned.
+    */
+  private def eraReplay(
+      row: Json,
+      directory: Path,
+      incoherent: Boolean
+  ): UpstreamEraLedger.Outcome =
+    def read(name: String): Node = nodeAt(directory.resolve(s"$name.cbor"))
+    def eraTx(n: Node) =
+      UpstreamEraLedger.transaction(n).fold(e => fail(s"era transaction: $e"), identity)
+    val rule = text(row, "rule")
+    val fields = array(read("environment"))
+    assertEquals(Files.readString(directory.resolve("result.txt")), text(row, "result"))
+    val before = decode(read("state"), UpstreamNativeStates.nativeLedgerState)
+    cacheInvariant(before.utxo, incoherent)
+    val slot = decode(fields(0), summon[Codec[SlotNo]]).toBigInt
+    val (txs, judged) = rule match
+      case "LEDGERS" =>
+        assertEquals(fields.size, 4)
+        val txs = array(read("signal")).map(eraTx)
+        txs -> UpstreamEraLedger
+          .ledgers(
+            globals,
+            slot,
+            decode(fields(1), summon[Codec[EpochNo]]),
+            decode(fields(2), Params.conwayCodec),
+            decode(fields(3), summon[Codec[ChainAccountState]]),
+            before,
+            txs
+          )
+          .map(UpstreamEraLedger.ofLedgers)
+      case "LEDGER" =>
+        assertEquals(fields.size, 5)
+        val tx = eraTx(read("signal"))
+        Vector(tx) -> UpstreamEraLedger
+          .ledger(
+            globals,
+            slot,
+            array(fields(1)).headOption.map(n => decode(n, summon[Codec[EpochNo]])),
+            decode(fields(2), Wire.word16).toInt,
+            decode(fields(3), Params.conwayCodec),
+            decode(fields(4), summon[Codec[ChainAccountState]]),
+            before,
+            tx
+          )
+          .map(UpstreamEraLedger.ofLedger)
+      case other => fail(s"not a LEDGER or LEDGERS row: $other")
+    val outcome = judged
+      .fold(e => fail(s"era inputs: $e"), identity)
+      .fold(e => fail(s"era defect: $e"), identity)
+    (text(row, "native"), outcome) match
+      case ("accepted", UpstreamEraLedger.Outcome.Admitted(state, _)) =>
+        sameLedger(
+          state,
+          decode(read("implementation-state"), UpstreamNativeStates.nativeLedgerState)
+        )
+        outcome
+      case ("rejected", UpstreamEraLedger.Outcome.Refused(failures)) =>
+        rejected(
+          rule,
+          UpstreamEraLedger
+            .stored(txs, before, failures)
+            .fold(e => fail(s"flat form: $e"), identity),
+          read("implementation-failures")
+        )
+        outcome
+      case (native, other) => fail(s"native $native, era $other")
+
+  private val ledgerRules = Set("LEDGER", "LEDGERS")
+
+  cases.filter(row => ledgerRules(text(row, "rule"))).foreach { row =>
+    val id = text(row, "id")
+    test(
+      s"the era-typed ${text(row, "rule")} gives the native ${text(row, "native")} outcome: $id"
+    ) {
+      eraReplay(row, base.resolve(s"cases/$id"), text(row, "replayScope") == "incoherent-cache")
+    }
+  }
+
+  test("LEDGER tells CERTS's pool registration and GOV's removed votes, embedded in its events") {
+    // the pool the reference's post-state registers, and the DRep it drops, each told by the
+    // sub-rule and wrapped by LEDGER's embeddings (`Conway/Rules/Ledger.hs:543-560` and `:589-601`,
+    // cardano-ledger f649f975)
+    def judged(id: String) =
+      val row = cases.find(r => text(r, "id") == id).getOrElse(fail(s"no case $id"))
+      val dir = base.resolve(s"cases/$id")
+      val states = Vector("state", "implementation-state").map(n =>
+        decode(nodeAt(dir.resolve(s"$n.cbor")), UpstreamNativeStates.nativeLedgerState)
+      )
+      eraReplay(row, dir, incoherent = false) match
+        case UpstreamEraLedger.Outcome.Admitted(_, events) => (states(0), states(1), events)
+        case other                                         => fail(s"$id: $other")
+    import xyz.kd5ujc.scarab.ledger.era.rules.{
+      ConwayCertEvent,
+      ConwayCertsEvent,
+      ConwayGovEvent,
+      ConwayLedgerEvent,
+      PoolEvent
+    }
+    val (poolBefore, poolAfter, poolEvents) = judged("ledger-274103")
+    val pools = LedgerState.pState[Conway].get(poolAfter).stakePools.keySet --
+      LedgerState.pState[Conway].get(poolBefore).stakePools.keySet
+    assertEquals(pools.size, 1)
+    assertEquals(
+      poolEvents.collect { case e: ConwayLedgerEvent.CertsEvent[Conway] => e },
+      pools.toVector.map(pool =>
+        ConwayLedgerEvent.CertsEvent[Conway](
+          ConwayCertsEvent.CertEvent(ConwayCertEvent.PoolEvent(PoolEvent.RegisterPool(pool)))
+        )
+      )
+    )
+    val (drepBefore, drepAfter, drepEvents) = judged("drep-delegation-unregistration-ledger-4")
+    val dropped = drepBefore.cert.vState.dreps.keySet -- drepAfter.cert.vState.dreps.keySet
+    assertEquals(dropped.size, 1)
+    val drepTx = UpstreamEraLedger
+      .transaction(
+        nodeAt(base.resolve("cases/drep-delegation-unregistration-ledger-4/signal.cbor"))
+      )
+      .fold(e => fail(s"transaction: $e"), identity)
+    val txId =
+      xyz.kd5ujc.scarab.ledger.era.EraTxBody.conway.id[xyz.kd5ujc.scarab.ledger.era.TxLevel.Top](
+        xyz.kd5ujc.scarab.ledger.era.EraTx.conway
+          .body[xyz.kd5ujc.scarab.ledger.era.TxLevel.Top](drepTx)(using
+            xyz.kd5ujc.scarab.ledger.era.EraTx.conway.bodyOf.top
+          )
+      )(using xyz.kd5ujc.scarab.ledger.era.EraTxBody.conway.top)
+    assertEquals(
+      drepEvents.collect {
+        case ConwayLedgerEvent.GovEvent(ConwayGovEvent.GovRemovedVotes(id, votes, dreps)) =>
+          (id.bytes, votes.toVector, dreps.toVector)
+      },
+      Vector((txId, Vector.empty, dropped.toVector))
+    )
+  }
+
   cases.foreach { row =>
     val id = text(row, "id")
     val rule = text(row, "rule")
@@ -308,6 +448,22 @@ class UpstreamFreshLedgerConformanceSuite extends FunSuite:
     test(s"original generated-cache native refusal membership: $id") {
       replay(originalRefusal(row), base.resolve(s"original-generated/$id"), incoherent = true)
     }
+  }
+
+  originalRefusals.foreach { row =>
+    val id = text(row, "id")
+    test(s"the era-typed rule gives the original generated-cache native refusal: $id") {
+      eraReplay(originalRefusal(row), base.resolve(s"original-generated/$id"), incoherent = true)
+    }
+  }
+
+  test("the era-typed LEDGER and LEDGERS run every LEDGER and LEDGERS judgment of the corpus") {
+    // 38 rows of the cases (29 LEDGER, 9 LEDGERS) and the 8 original generated refusals
+    val rows = cases.filter(row => ledgerRules(text(row, "rule")))
+    assertEquals(rows.count(row => text(row, "rule") == "LEDGER"), 29)
+    assertEquals(rows.count(row => text(row, "rule") == "LEDGERS"), 9)
+    assertEquals(originalRefusals.map(row => text(originalRefusal(row), "rule")).toSet, ledgerRules)
+    assertEquals(rows.size + originalRefusals.size, 46)
   }
 
   test("all seventeen original generated states execute with their original native outcomes") {

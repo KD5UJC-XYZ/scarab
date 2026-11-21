@@ -222,3 +222,57 @@ class UpstreamMultiLedgerConformanceSuite extends FunSuite:
       }
     }
   }
+
+  // the era-typed LEDGERS on the same inputs, each transaction read by Conway's decoder from its
+  // original parts: an accepted batch leaves the reference's post-state, a refused one's failures,
+  // in their order, encode to the reference's bytes
+  cases.foreach { id =>
+    test(s"the era-typed LEDGERS gives the native state or complete ordered refusal: $id") {
+      val before = decode(item(id, "state"), UpstreamNativeStates.nativeLedgerState)
+      val env = array(item(id, "environment"))
+      assertEquals(env.size, 4)
+      val txs = array(item(id, "signal")).map(
+        UpstreamEraLedger.transaction(_).fold(e => fail(s"$id transaction: $e"), identity)
+      )
+      val outcome = UpstreamEraLedger
+        .ledgers(
+          globals,
+          decode(env(0), summon[Codec[SlotNo]]).toBigInt,
+          decode(env(1), summon[Codec[EpochNo]]),
+          decode(env(2), Params.conwayCodec),
+          decode(env(3), summon[Codec[ChainAccountState]]),
+          before,
+          txs
+        )
+        .fold(e => fail(s"$id era inputs: $e"), identity)
+      UpstreamEraLedger.ofLedgers(outcome).fold(e => fail(s"$id defect: $e"), identity) match
+        case UpstreamEraLedger.Outcome.Admitted(state, _) =>
+          assertEquals(
+            Files.readString(base.resolve(s"cases/$id/result.txt")),
+            "implementation-accepted\nformal-not-invoked\n"
+          )
+          assertLedger(
+            state,
+            decode(item(id, "implementation-state"), UpstreamNativeStates.nativeLedgerState)
+          )
+        case UpstreamEraLedger.Outcome.Refused(failures) =>
+          assertEquals(
+            Files.readString(base.resolve(s"cases/$id/result.txt")),
+            "implementation-rejected\nformal-not-invoked\n"
+          )
+          val predicates = UpstreamEraLedger
+            .stored(txs, before, failures)
+            .fold(e => fail(s"$id flat form: $e"), identity)
+          val wire = Cbor
+            .decode(
+              PredicateFailureCbor
+                .applyTxError(predicates)
+                .fold(error => fail(error.message), identity)
+            )
+            .fold(e => fail(e.message), identity)
+          assertEquals(
+            array(array(wire).head)(1).original.hex,
+            item(id, "implementation-failure").original.hex
+          )
+    }
+  }

@@ -37,7 +37,8 @@ import TestLedger.*
   * from the outputs it spends, its collateral, the registered return accounts and the roots its
   * proposals name; everything else is the transaction as it was on chain. UTXOW (witnesses,
   * scripts, the script data hash), UTXO (fee, balance with the proposal deposit, collateral), GOV
-  * and phase 2 (the real script against our script context) must accept it.
+  * and phase 2 (the real script against our script context) must accept it, and the era-typed
+  * LEDGERS, on the bytes the flat transaction keeps, with the same state, counters and refusals.
   */
 class PreviewConwayRulesSuite extends FunSuite:
   private val ada = BigInt(1000000)
@@ -160,8 +161,78 @@ class PreviewConwayRulesSuite extends FunSuite:
       decoder = ScarabEvaluator.defaultDecoder
     )
 
+  /** The era-typed LEDGERS (`ShelleyLedgers.ledgersTransition`) on the transaction of `c` alone,
+    * read by Conway's decoder from the bytes the flat transaction keeps, from the ledger state of
+    * `s`, at the slot and epoch, parameters and chain accounts the flat rules are given, under the
+    * epoch information of the clock (one era without an end).
+    */
+  private def eraLedgers(s: NewEpochState[Conway], c: PlutusCase) =
+    val ctx = envOf(c)
+    val witnesses = c.tx.witnesses.raw.getOrElse(fail(s"${c.name}: no witness bytes"))
+    val tx = era.conway.ConwayTx
+      .decode(
+        Block.Transaction(c.tx.body.raw, witnesses, c.tx.auxiliary, c.tx.isValid),
+        xyz.kd5ujc.scarab.protocol.StateLayout.Node11_1
+      )
+      .fold(e => fail(s"${c.name}: $e"), identity)
+    val pp = era.PParams[Conway](
+      era.conway.ConwayPParams.fromStored(gov(s).curPParams).fold(e => fail(s"$e"), identity)
+    )
+    val epochInfo = Horizon(
+      cats.data.NonEmptyVector.one(
+        Horizon.Era(Horizon.Edge(0, 0, 0), None, Horizon.Params(86400, 1000, 129600, 129600))
+      )
+    )
+    val judged = era.EraLedgerRun.ledgers(
+      NativeRules.globalsOf(ctx),
+      era.rules.LedgersEnv[Conway](
+        ctx.slot,
+        state.EpochNo.fromBigInt(ctx.epoch).fold(e => fail(s"$e"), identity),
+        pp,
+        s.es.chainAccount
+      ),
+      Vector(tx),
+      era.rules.UtxoContext[Conway](
+        era.Network.of(BigInt(ctx.network)).getOrElse(fail(s"network ${ctx.network}")),
+        1666656000000L,
+        epochInfo,
+        ctx.validation,
+        era.rules.ConwayUtxo.injectShelleyFailure(ctx.referenceBuild)
+      ),
+      s.es.ls,
+      ctx.evaluator,
+      ctx.verdicts,
+      ctx.decoder,
+      ctx.clock.getOrElse(fail("no clock")).posix
+    )
+    (tx, judged.fold(defect => fail(s"${c.name}: era defect $defect"), identity))
+
+  /** The flat rules' state after `c` from `s`; the era-typed LEDGERS, on the same transaction,
+    * admits it with the same ledger state, and the counters its scripts' events give through
+    * LEDGER's and LEDGERS's embeddings are the flat rules' (`integrityChecked`, which no event
+    * tells, aside). Its events are returned with it.
+    */
+  private def acceptedWithEvents(
+      s: NewEpochState[Conway],
+      c: PlutusCase
+  ): (Counted[NewEpochState[Conway]], Vector[era.rules.LedgerEvent[Conway]]) =
+    val after = NativeRules.txIn[Conway](s, c.tx, envOf(c)).fold(f => fail(f.message), identity)
+    val (tx, judged) = eraLedgers(s, c)
+    val events = judged match
+      case Right((ls, es)) =>
+        assert(cats.Eq[LedgerState[Conway]].eqv(ls, after.state.es.ls), s"${c.name}: era state")
+        es.map { case era.rules.ShelleyLedgersEvent.LedgerEvent(e) => e }
+      case Left(fs) => fail(s"${c.name}: the era LEDGERS refused $fs")
+    val t = era.EraTx.conway
+    assertEquals(
+      era.EraLedgerRun.counters(t.isValid(tx) == era.IsPhase2Valid.Phase2Valid, events),
+      Some((after.plutus.succeeded, after.plutus.failed, after.plutus.scripts)),
+      s"${c.name}: the counters"
+    )
+    (after, events.toVector)
+
   private def accepted(s: NewEpochState[Conway], c: PlutusCase): Counted[NewEpochState[Conway]] =
-    NativeRules.txIn[Conway](s, c.tx, envOf(c)).fold(f => fail(f.message), identity)
+    acceptedWithEvents(s, c)._1
 
   test("the captured proposal transactions are present") {
     assert(cases.size >= 4, cases.size)
@@ -179,8 +250,18 @@ class PreviewConwayRulesSuite extends FunSuite:
     ) {
       val s = worldOf(c)
       assertEquals(total(s), Supply)
-      val after = accepted(s, c)
+      val (after, events) = acceptedWithEvents(s, c)
       val body = c.tx.body
+      // GOV tells the proposals after the transaction's, LEDGER and LEDGERS wrapping its event
+      // (`Conway/Rules/Gov.hs` `GovNewProposals`, cardano-ledger f649f975)
+      assertEquals(
+        events.collect {
+          case era.rules.ConwayLedgerEvent
+                .GovEvent(era.rules.ConwayGovEvent.GovNewProposals(id, proposals)) =>
+            (id.bytes, era.rules.ProposalsRecord.conway.write(proposals))
+        },
+        Vector((body.id, gov(after.state).proposals))
+      )
       assertEquals(fees(after.state), body.fee)
       assertEquals(gov(after.state).proposals.actions.size, body.proposals.size)
       assertEquals(deposited(after.state), deposited(s) + body.proposals.map(_.deposit).sum)
@@ -188,9 +269,11 @@ class PreviewConwayRulesSuite extends FunSuite:
       assertEquals(after.plutus.succeeded, 1L)
       assertEquals(after.plutus.integrityChecked, 1L)
       assertEquals(total(after.state), Supply)
-      // and the same transaction with another guardrails script is refused
+      // and the same transaction with another guardrails script is refused: a script hash of 28
+      // bytes, which the era vocabulary reads, not the proposal's
+      val another = xyz.kd5ujc.scarab.crypto.Blake2b.hash224.hash(body.id)
       val other = ConwayNewEpochState.gov.modify(g =>
-        g.copy(constitution = g.constitution.copy(script = Some(body.id)))
+        g.copy(constitution = g.constitution.copy(script = Some(another)))
       )(s)
       NativeRules.txIn[Conway](other, c.tx, envOf(c)) match
         case Left(
@@ -201,6 +284,17 @@ class PreviewConwayRulesSuite extends FunSuite:
             ) =>
           ()
         case other => fail(s"$other")
+      eraLedgers(other, c)._2 match
+        case Left(fs) =>
+          fs.toChain.toList match
+            case era.rules.ShelleyLedgersPredFailure.LedgerFailure(
+                  era.rules.ConwayLedgerPredFailure.ConwayGovFailure(
+                    era.rules.ConwayGovPredFailure.InvalidGuardrailsScriptHash(_, _)
+                  )
+                ) :: Nil =>
+              ()
+            case other => fail(s"${c.name}: the era LEDGERS refused $other")
+        case Right(_) => fail(s"${c.name}: the era LEDGERS admitted another guardrails script")
     }
   }
 

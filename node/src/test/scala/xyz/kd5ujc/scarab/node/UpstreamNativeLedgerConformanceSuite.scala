@@ -501,3 +501,67 @@ class UpstreamNativeLedgerConformanceSuite extends FunSuite:
       assertLedger(actual.state, expected)
     }
   }
+
+  // the era-typed LEDGER and LEDGERS on the same fixture inputs, the transaction read by Conway's
+  // decoder from its original parts, each the root of its judgment as the hook ran it; the
+  // expectation is the reference's post-state, not the flat rule's
+  private def eraAdmitted(
+      id: String,
+      judged: Either[UpstreamEraLedger.Unread, UpstreamEraLedger.Outcome]
+  ) =
+    judged.fold(e => fail(s"$id era inputs: $e"), identity) match
+      case UpstreamEraLedger.Outcome.Admitted(state, _) => state
+      case UpstreamEraLedger.Outcome.Refused(fs)        => fail(s"$id refused: $fs")
+
+  (1 to 3).foreach { ordinal =>
+    test(s"the era-typed LEDGER gives LEDGER-$ordinal's complete native state") {
+      val id = s"LEDGER-$ordinal"
+      val codec = FullStates.nativeLedgerState
+      val before = decode(id, "state", codec)
+      val fields = node(id, "environment").value match
+        case Value.Arr(xs) if xs.size == 5 => xs
+        case other => fail(s"expected all five native LEDGER environment fields, got $other")
+      val slot = summon[Codec[SlotNo]].decode(fields(0)).fold(e => fail(e.render), identity)
+      val epoch = Wire
+        .strictMaybe(summon[Codec[EpochNo]])
+        .decode(fields(1))
+        .fold(e => fail(e.render), identity)
+      val index = Wire.word16.decode(fields(2)).fold(e => fail(e.render), identity)
+      val params = Params.conwayCodec.decode(fields(3)).fold(e => fail(e.render), identity)
+      val account = summon[Codec[ChainAccountState]]
+        .decode(fields(4))
+        .fold(e => fail(e.render), identity)
+      val tx = UpstreamEraLedger
+        .transaction(node(id, "signal"))
+        .fold(e => fail(s"$id transaction: $e"), identity)
+      val judged = UpstreamEraLedger
+        .ledger(globals, slot.toBigInt, epoch, index.toInt, params, account, before, tx)
+        .map(j => UpstreamEraLedger.ofLedger(j).fold(e => fail(s"$id defect: $e"), identity))
+      assertLedger(eraAdmitted(id, judged), decode(id, "implementation-state", codec))
+    }
+  }
+
+  test("the era-typed LEDGERS gives LEDGERS-5's complete native state") {
+    val id = "LEDGERS-5"
+    val before = decode(id, "state", FullStates.nativeLedgerState)
+    val env = node(id, "environment").value match
+      case Value.Arr(xs) if xs.size == 4 => xs
+      case other => fail(s"expected full native LEDGERS environment, got $other")
+    val slot = summon[Codec[SlotNo]].decode(env(0)).fold(e => fail(e.render), identity)
+    val epoch = summon[Codec[EpochNo]].decode(env(1)).fold(e => fail(e.render), identity)
+    val params = Params.conwayCodec.decode(env(2)).fold(e => fail(e.render), identity)
+    val account =
+      summon[Codec[ChainAccountState]].decode(env(3)).fold(e => fail(e.render), identity)
+    val txs = node(id, "signal").value match
+      case Value.Arr(xs) =>
+        xs.map(UpstreamEraLedger.transaction(_).fold(e => fail(s"$id transaction: $e"), identity))
+      case other => fail(s"expected the batch of transactions, got $other")
+    assertEquals(txs.size, 1)
+    val judged = UpstreamEraLedger
+      .ledgers(globals, slot.toBigInt, epoch, params, account, before, txs)
+      .map(j => UpstreamEraLedger.ofLedgers(j).fold(e => fail(s"$id defect: $e"), identity))
+    assertLedger(
+      eraAdmitted(id, judged),
+      decode(id, "implementation-state", FullStates.nativeLedgerState)
+    )
+  }
