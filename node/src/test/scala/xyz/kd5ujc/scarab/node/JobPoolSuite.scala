@@ -3,6 +3,7 @@ package xyz.kd5ujc.scarab.node
 
 import cats.effect.{Deferred, IO, Ref}
 import cats.effect.std.{Queue, Supervisor}
+import cats.syntax.all.*
 import xyz.kd5ujc.scarab.network.FailsOnUncaught
 
 /** A job of the pool ends by handing over exactly one value: its action's, or its handler's when
@@ -33,7 +34,7 @@ class JobPoolSuite extends FailsOnUncaught:
         fiber <- pool.forkJob(
           JobPool.Job(
             action,
-            cause => handled.update(cause :: _) *> handler(cause),
+            (cause, _) => handled.update(cause :: _) *> handler(cause),
             cause => Completion.Fallen(cause)
           )
         )
@@ -79,7 +80,7 @@ class JobPoolSuite extends FailsOnUncaught:
           fiber <- JobPool[IO, Completion](supervisor, completions.offer).forkJob(
             JobPool.Job(
               entered.complete(()) *> IO.never[Completion],
-              cause => handled.update(cause :: _).as(Completion.Handled(cause)),
+              (cause, _) => handled.update(cause :: _).as(Completion.Handled(cause)),
               cause => Completion.Fallen(cause)
             )
           )
@@ -105,27 +106,53 @@ class JobPoolSuite extends FailsOnUncaught:
     }
   }
 
-  // the handoff after the action returns is masked, as `forkJob'` writes the completion queue
-  test("a job cancelled once its action returned still hands over its value") {
-    for
-      returned <- Deferred[IO, Unit]
-      release <- Deferred[IO, Unit]
-      result <- Supervisor[IO](await = false).use { supervisor =>
-        for
-          completions <- Queue.unbounded[IO, Completion]
-          handing = (value: Completion) =>
-            returned.complete(()) *> release.get *> completions.offer(value)
-          fiber <- JobPool[IO, Completion](supervisor, handing).forkJob(
-            JobPool.Job.pure(IO.pure(Completion.Returned), cause => Completion.Handled(cause))
-          )
-          _ <- returned.get
-          cancelled <- fiber.cancel.start
-          _ <- release.complete(())
-          _ <- cancelled.join
-          handed <- completions.tryTakeN(None)
-        yield handed
-      }
-    yield assertEquals(result, List(Completion.Returned))
+  /** Hand `job`'s completion to a sink that runs `handing` first, and give everything handed. */
+  private def handedBy(
+      handing: Ref[IO, Int] => IO[Unit],
+      action: IO[Completion]
+  ): IO[List[Completion]] =
+    Supervisor[IO](await = false).use { supervisor =>
+      for
+        completions <- Queue.unbounded[IO, Completion]
+        attempts <- Ref.of[IO, Int](0)
+        sink = (value: Completion) => handing(attempts) *> completions.offer(value)
+        fiber <- JobPool[IO, Completion](supervisor, sink).forkJob(
+          JobPool.Job.pure(action, cause => Completion.Handled(cause))
+        )
+        _ <- fiber.join
+        handed <- completions.tryTakeN(None)
+      yield handed
+    }
+
+  // the handoff after the action returns is masked, as `forkJob'` writes the completion queue: a
+  // cancellation the handoff itself asks for waits until it is done
+  test("a job cancelled during its handoff still hands over its value") {
+    handedBy(_ => IO.canceled, IO.pure(Completion.Returned)).map(handed =>
+      assertEquals(handed, List(Completion.Returned))
+    )
+  }
+
+  test("a handoff that raises once is tried again, and hands over the value once") {
+    handedBy(
+      attempts =>
+        attempts.getAndUpdate(_ + 1).flatMap(n => IO.raiseError(new Raised).whenA(n == 0)),
+      IO.pure(Completion.Returned)
+    ).map(handed => assertEquals(handed, List(Completion.Returned)))
+  }
+
+  test("a handoff that raises twice hands over the fallback for its exception instead") {
+    handedBy(
+      attempts => attempts.getAndUpdate(_ + 1).flatMap(n => IO.raiseError(new Raised).whenA(n < 2)),
+      IO.pure(Completion.Returned)
+    ).map(handed =>
+      assert(
+        handed match
+          case List(Completion.Handled(_: Raised)) => true
+          case _                                   => false
+        ,
+        s"the fallback should be handed over alone, was $handed"
+      )
+    )
   }
 
   test("a pool completing elsewhere hands its jobs' values there, its handler's included") {
