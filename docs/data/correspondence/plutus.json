@@ -132,7 +132,6 @@
    "structure": "differs",
    "note": "blst's projective point, as the reference's Element holds it, with its compressed encoding made from it once when it is first asked for (or the point from an encoding, once)",
    "evidence": [
-    "PointsSuite",
     "Bls12_381Suite"
    ],
    "digest": "57b8facf098a3fdd"
@@ -164,7 +163,6 @@
    "structure": "differs",
    "note": "as G1Element, over G2",
    "evidence": [
-    "PointsSuite",
     "Bls12_381Suite"
    ],
    "digest": "6b02f513492e1711"
@@ -213,13 +211,10 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1263#issuecomment-7067527248",
    "note": "deleteCoin over typed keys, with the figures of Value#updated",
-   "evidence": [
-    "ValueUpdateSuite",
-    "ValuesSuite"
-   ],
    "digest": "3bad0f0318da0af8"
   },
   "def uplc.Value#updated": {
@@ -235,13 +230,10 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1263#issuecomment-7067527248",
    "note": "the update of insertCoin once its keys and amount are typed (Values.insertCoin checks them): the entry set and the size, total and negative-amount figures changed without a recount; the reference also keeps the negative amounts per currency, for keepPolicies and dropPolicies, which here recount",
-   "evidence": [
-    "ValueUpdateSuite",
-    "ValuesSuite"
-   ],
    "digest": "b789ae9a09d90081"
   },
   "def uplc.bls.Bls12_381.G1.equal": {
@@ -295,7 +287,6 @@
    "structure": "differs",
    "note": "the end of blst's hash_to_g2, which blsHash calls: the sum of the two mapped points with the cofactor cleared, by RFC 9380 appendix G.3 over Bouncy Castle's Fp2Element",
    "evidence": [
-    "PointsSuite",
     "Bls12_381Suite"
    ],
    "digest": "9dd8c08fbba095bf"
@@ -407,7 +398,6 @@
    "structure": "differs",
    "note": "blsCompress of the point, kept once made",
    "evidence": [
-    "PointsSuite",
     "Bls12_381Suite"
    ],
    "digest": "ee6a41222184d93c"
@@ -429,7 +419,6 @@
    "structure": "differs",
    "note": "blsCompress of the point, kept once made",
    "evidence": [
-    "PointsSuite",
     "Bls12_381Suite"
    ],
    "digest": "86b87416584197d6"
