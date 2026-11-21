@@ -5,6 +5,7 @@ import re
 import sys
 import tempfile
 import unittest
+from xml.sax.saxutils import quoteattr
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import ci_test_shards as shards
@@ -29,9 +30,24 @@ def plan(inventory=INVENTORY, weights=None):
     return shards.make_plan(shards.read_inventory(inventory), shards.read_weights(weights or WEIGHTS))
 
 
-def report(suite, tests=2, failures=0, errors=0):
+SKIP = {"module": "node", "suite": "x.node.LightSuite", "test": "reads the pinned capture",
+        "environment": ["SCARAB_CAPTURE"], "issue": 294}
+
+
+def skips(*entries):
+    return shards.read_skips({"skips": list(entries)})
+
+
+def report(suite, tests=2, failures=0, errors=0, skipped=(), cases=None):
+    """sbt's JUnit report of `suite`: `tests` test cases, the last of them named by `skipped` and skipped, as sbt
+    writes munit's `assume` and `.ignore`; `cases` overrides the number of test cases written."""
+    names = [f"test {i}" for i in range(tests - len(skipped))] + list(skipped)
+    written = names if cases is None else names[:cases]
+    body = "".join(f"<testcase classname={quoteattr(suite)} name={quoteattr(name)} time=\"0.001\">"
+                   + ("<skipped/>" if name in skipped else "") + "</testcase>" for name in written)
     return (f"<?xml version='1.0' encoding='UTF-8'?>\n<testsuite name=\"{suite}\" tests=\"{tests}\" "
-            f"failures=\"{failures}\" errors=\"{errors}\" skipped=\"0\" time=\"0.1\"></testsuite>\n")
+            f"failures=\"{failures}\" errors=\"{errors}\" skipped=\"{len(skipped)}\" time=\"0.1\">{body}"
+            "</testsuite>\n")
 
 
 class InventoryTests(unittest.TestCase):
@@ -78,6 +94,44 @@ class WeightsTests(unittest.TestCase):
             with self.subTest(message=message):
                 with self.assertRaisesRegex(shards.ShardError, re.escape(message)):
                     shards.assign(inventory, shards.read_weights(data))
+
+
+class SkipsTests(unittest.TestCase):
+    def test_reads_an_entry_by_module_suite_and_test(self):
+        allowed = skips(SKIP, dict(SKIP, test="needs the pinned blst", environment=[], data="blst 0.3.15", issue=7))
+        self.assertEqual(sorted(allowed), [("node", "x.node.LightSuite", "needs the pinned blst"),
+                                           ("node", "x.node.LightSuite", "reads the pinned capture")])
+        self.assertEqual(allowed[("node", "x.node.LightSuite", "needs the pinned blst")].waits_on(), "blst 0.3.15")
+
+    def test_refuses_an_entry_that_does_not_say_what_it_waits_on_or_who_owns_it(self):
+        without = {k: v for k, v in SKIP.items() if k != "issue"}
+        cases = {
+            "no 'issue'": without,
+            "`issue` is not the number": dict(SKIP, issue="294"),
+            "`issue` is not the number ": dict(SKIP, issue=True),
+            "`issue` is not the number  ": dict(SKIP, issue=0),
+            "names neither the environment variables nor the data": dict(SKIP, environment=[]),
+            "`environment` is not a list": dict(SKIP, environment="SCARAB_CAPTURE"),
+            "`environment` is not a list ": dict(SKIP, environment=["scarab_capture"]),
+            "`environment` is not a list  ": dict(SKIP, environment=["SCARAB_CAPTURE", "SCARAB_CAPTURE"]),
+            "`data` is not a description": dict(SKIP, data=" "),
+            "`suite` is not a class name": dict(SKIP, suite="x.node.*"),
+            "`module` is not a module name": dict(SKIP, module=""),
+            "`test` is not a test name": dict(SKIP, test=" padded "),
+            "unknown field 'reason'": dict(SKIP, reason="waits"),
+        }
+        for message, entry in cases.items():
+            with self.subTest(message=message):
+                with self.assertRaisesRegex(shards.ShardError, re.escape(message.strip())):
+                    skips(entry)
+
+    def test_refuses_a_test_listed_twice_and_a_file_that_is_not_the_allowlist(self):
+        with self.assertRaisesRegex(shards.ShardError, "is listed twice"):
+            skips(SKIP, dict(SKIP, issue=7))
+        for data in ([], {}, {"skips": {}}, {"skips": ["x"]}):
+            with self.subTest(data=data):
+                with self.assertRaises(shards.ShardError):
+                    shards.read_skips(data)
 
 
 class PlanTests(unittest.TestCase):
@@ -176,23 +230,88 @@ class ReportTests(unittest.TestCase):
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(report(suite))
 
+    def verify(self, allowed=None):
+        return shards.verify(self.plan, self.root, allowed if allowed is not None else {})
+
+    def problems(self, allowed=None):
+        with self.assertRaises(shards.ShardError) as raised:
+            self.verify(allowed)
+        return raised.exception.problems
+
     def test_accepts_one_passing_report_per_suite_and_counts_tests(self):
         self.write_reports()
-        totals = shards.verify(self.plan, self.root)
-        self.assertEqual(sum(s for s, _ in totals.values()), 7, "seven suites")
-        self.assertEqual(sum(t for _, t in totals.values()), 14, "two tests each")
+        verified = self.verify()
+        self.assertEqual(sum(t[0] for t in verified.totals.values()), 7, "seven suites")
+        self.assertEqual(sum(t[1] for t in verified.totals.values()), 14, "two tests each")
+        self.assertEqual(sum(t[2] for t in verified.totals.values()), 0, "no test skipped")
+        self.assertEqual(verified.skipped, ())
 
     def test_refuses_a_missing_report(self):
         self.write_reports(skip={"x.node.LightSuite"})
         with self.assertRaisesRegex(shards.ShardError, "suite x.node.LightSuite of node has no report"):
-            shards.verify(self.plan, self.root)
+            self.verify()
+
+    def test_refuses_a_skipped_test_the_allowlist_does_not_list(self):
+        self.write_reports(**{"x.node.LightSuite": report("x.node.LightSuite", tests=3, skipped=["waits on data"])})
+        problems = self.problems(skips(SKIP))
+        self.assertTrue(any("test 'waits on data' was skipped, and scripts/ci_test_skips.json does not list it" in p
+                            for p in problems), problems)
+        self.assertTrue(any("an incomplete run is not a pass (CNF-2)" in p for p in problems), problems)
+
+    def test_refuses_a_skip_listed_for_another_suite_or_module(self):
+        for entry in (dict(SKIP, suite="x.node.OtherSuite"), dict(SKIP, module="codec", suite="x.codec.ASuite")):
+            with self.subTest(entry=entry):
+                self.dir.cleanup()
+                self.root.mkdir()
+                self.write_reports(**{"x.node.LightSuite": report("x.node.LightSuite", skipped=[SKIP["test"]])})
+                problems = self.problems(skips(entry))
+                self.assertTrue(any(f"test {SKIP['test']!r} was skipped" in p for p in problems), problems)
+
+    def test_accepts_a_listed_skip_and_reports_what_it_waits_on(self):
+        self.write_reports(**{"x.node.LightSuite": report("x.node.LightSuite", tests=1, skipped=[SKIP["test"]])})
+        verified = self.verify(skips(SKIP))
+        self.assertEqual([s.key for s in verified.skipped], [("node", "x.node.LightSuite", SKIP["test"])],
+                         "the one listed skip, accepted")
+        self.assertEqual(sum(t[2] for t in verified.totals.values()), 1, "one test skipped")
+        self.assertEqual(verified.skipped[0].waits_on(), "SCARAB_CAPTURE")
+
+    def test_refuses_a_listed_skip_whose_test_did_not_skip(self):
+        self.write_reports()
+        problems = self.problems(skips(SKIP))
+        self.assertEqual(problems, [f"scripts/ci_test_skips.json lists test {SKIP['test']!r} of x.node.LightSuite of "
+                                    "node, which did not skip: remove its entry"])
+
+    def test_refuses_a_listed_skip_of_a_suite_the_plan_does_not_hold(self):
+        self.write_reports()
+        problems = self.problems(skips(dict(SKIP, suite="x.node.Gone")))
+        self.assertEqual(len(problems), 1, problems)
+        self.assertIn("x.node.Gone of node, a suite the plan does not hold: remove its entry", problems[0])
+
+    def test_refuses_a_report_that_ran_no_test(self):
+        self.write_reports(**{"x.node.LightSuite": report("x.node.LightSuite", tests=0)})
+        self.assertEqual(self.problems(), ["report 2/node/TEST-x.node.LightSuite.xml: suite x.node.LightSuite of node "
+                                           "ran no test"])
+
+    def test_refuses_a_report_whose_counts_are_not_its_test_cases(self):
+        cases = {
+            "counts 2 tests, 0 skipped, but holds 1 test cases, 0 skipped": report("x.node.LightSuite", cases=1),
+            "counts 2 tests, 0 skipped, but holds 2 test cases, 1 skipped":
+                report("x.node.LightSuite", skipped=["s"]).replace('skipped="1"', 'skipped="0"'),
+            "is not the JUnit report of x.node.LightSuite": report("x.node.LightSuite").replace(' skipped="0"', ""),
+        }
+        for message, text in cases.items():
+            with self.subTest(message=message):
+                self.dir.cleanup()
+                self.root.mkdir()
+                self.write_reports(**{"x.node.LightSuite": text})
+                with self.assertRaisesRegex(shards.ShardError, re.escape(message)):
+                    self.verify()
 
     def test_refuses_a_suite_reported_twice_or_from_another_shard(self):
         self.write_reports(extra=[("1", "codec", "x.codec.ASuite")])
-        with self.assertRaises(shards.ShardError) as raised:
-            shards.verify(self.plan, self.root)
-        self.assertIn("suite x.codec.ASuite of codec has 2 reports", raised.exception.problems)
-        self.assertTrue(any("was planned in shard 3" in p for p in raised.exception.problems), raised.exception)
+        problems = self.problems()
+        self.assertIn("suite x.codec.ASuite of codec has 2 reports", problems)
+        self.assertTrue(any("was planned in shard 3" in p for p in problems), problems)
 
     def test_refuses_a_report_the_plan_does_not_hold(self):
         for shard, module, message in (("1", "node", "x.node.Stray of node is not in the plan"),
@@ -203,7 +322,7 @@ class ReportTests(unittest.TestCase):
                 self.root.mkdir()
                 self.write_reports(extra=[(shard, module, "x.node.Stray")])
                 with self.assertRaisesRegex(shards.ShardError, re.escape(message)):
-                    shards.verify(self.plan, self.root)
+                    self.verify()
 
     def test_refuses_failures_errors_and_reports_that_are_not_the_suites(self):
         cases = {
@@ -218,7 +337,7 @@ class ReportTests(unittest.TestCase):
                 self.root.mkdir()
                 self.write_reports(**{"x.node.LightSuite": text})
                 with self.assertRaisesRegex(shards.ShardError, re.escape(message)):
-                    shards.verify(self.plan, self.root)
+                    self.verify()
 
     def test_collect_copies_each_module_reports_under_the_shard(self):
         checkout = self.root / "checkout"
@@ -282,6 +401,36 @@ class CommittedWeightsTests(unittest.TestCase):
         matrix = re.search(r"^        shard: \[([\d, ]+)\]$", self.workflow, re.MULTILINE)
         self.assertIsNotNone(matrix, "the shard job's matrix")
         self.assertEqual([int(n) for n in matrix.group(1).split(",")], list(range(1, self.weights.shards + 1)))
+
+
+class CommittedSkipsTests(unittest.TestCase):
+    """The committed allowlist: every entry names a test of its module's sources, and the variables it waits on."""
+    allowed = shards.load_skips(ROOT)
+    build = (ROOT / "build.sbt").read_text()
+
+    def sources(self, module):
+        declared = re.search(rf'lazy val {module} = scarab\("{module}"(?:, "([\w-]+)")?\)', self.build)
+        self.assertIsNotNone(declared, f"build.sbt declares module {module}")
+        directory = declared.group(1) or module
+        return list((ROOT / directory / "src" / "test" / "scala").rglob("*.scala"))
+
+    def test_is_in_module_suite_and_test_order(self):
+        data = json.loads((ROOT / shards.SKIPS).read_text(encoding="utf-8"))
+        keys = [(e["module"], e["suite"], e["test"]) for e in data["skips"]]
+        self.assertEqual(keys, sorted(keys), "entries sorted by module, suite and test")
+
+    def test_every_entry_is_a_test_of_its_suite_that_reads_what_it_waits_on(self):
+        for skip in self.allowed.values():
+            package, _, simple = skip.suite.rpartition(".")
+            with self.subTest(suite=skip.suite, test=skip.test):
+                declared = [p.read_text() for p in self.sources(skip.module)
+                            if re.search(rf"^package {re.escape(package)}$", p.read_text(), re.MULTILINE)
+                            and re.search(rf"\bclass {re.escape(simple)}\b", p.read_text())]
+                self.assertEqual(len(declared), 1, f"{skip.suite} is declared once in {skip.module}'s tests")
+                self.assertTrue(json.dumps(skip.test, ensure_ascii=False) in declared[0],
+                                f"{skip.suite} declares the test {skip.test!r} by that name")
+                for variable in skip.environment:
+                    self.assertTrue(f'"{variable}"' in declared[0], f"{skip.suite} reads {variable}")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,3 @@
+### Changed (ci, #1151)
+
+- "Scala tests and native guards" no longer passes an incomplete run (CNF-2 of the design rules): `scripts/ci_test_shards.py verify` now also fails a suite whose report ran no test, a report whose counts are not its test cases, and a skipped test (munit's `assume` and `.ignore` alike) that `scripts/ci_test_skips.json` does not list. Each entry of that allowlist names the module, suite and test, the environment variables or data the test waits on, and the issue that owns running it; an entry whose test did not skip fails the check too, so the list holds exactly the skips CI has. The listed skips are printed with what they wait on. A new test that skips in CI needs an entry; a change that makes a listed test run removes its entry.

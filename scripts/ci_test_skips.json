@@ -1,0 +1,117 @@
+{
+ "_comment": "The tests CI's shards may report as skipped (scripts/ci_test_shards.py verify, #1151); any other skip, and a suite that runs no test, fails the shard report check, because an incomplete run is not a pass (CNF-2, docs/design-rules.md). Each entry names the module, suite and test as the JUnit report does, the environment variables whose absence skips it (`environment`) or the data it waits on (`data`), and the issue that owns running it. An entry whose test runs is refused: remove it with the change that makes the test run. Read from CI run 44935743836 (2026-11-21, main b9cb03153). The #294 entries are the external-data cases of scripts/candidate_acceptance/cases.json, which the manual candidate-acceptance workflow runs with their data.",
+ "skips": [
+  {
+   "module": "node",
+   "suite": "xyz.kd5ujc.scarab.node.PlutusReplaySuite",
+   "test": "serial and bounded parallel full block validation agree on a captured window",
+   "environment": [
+    "SCARAB_PLUTUS_CAPTURE"
+   ],
+   "data": "an offline captured preprod window, with its baseline and output directories (SCARAB_PLUTUS_BASELINE, SCARAB_PLUTUS_OUTPUT)",
+   "issue": 294
+  },
+  {
+   "module": "node",
+   "suite": "xyz.kd5ujc.scarab.node.differential.BoundaryDigestSuite",
+   "test": "the ticked state at the boundary is the one recorded before the change",
+   "environment": [
+    "SCARAB_K1_DB"
+   ],
+   "data": "the verified V5 conversion corpus of the Preview K1 run, with its recorded immutable chain",
+   "issue": 294
+  },
+  {
+   "module": "node",
+   "suite": "xyz.kd5ujc.scarab.node.preview.PreviewReplaySuite",
+   "test": "original Preview blocks match required native projection fields and Scala execution modes",
+   "environment": [
+    "SCARAB_PREVIEW_CAPTURE",
+    "SCARAB_PREVIEW_WINDOWS"
+   ],
+   "data": "an offline Preview capture or a window manifest, with the native reference bodies",
+   "issue": 294
+  },
+  {
+   "module": "node",
+   "suite": "xyz.kd5ujc.scarab.storage.MithrilBootstrapAcceptanceSuite",
+   "test": "the actual certified Preview bootstrap restores its original checkpoint and projection",
+   "environment": [
+    "SCARAB_MITHRIL_DB"
+   ],
+   "data": "a completed authentic Mithril bootstrap of Preview",
+   "issue": 294
+  },
+  {
+   "module": "node",
+   "suite": "xyz.kd5ujc.scarab.storage.PreprodSnapshotExportSuite",
+   "test": "the authenticated preprod checkpoint exports byte-identical canonical state and tables",
+   "environment": [
+    "SCARAB_EXPORT_DB"
+   ],
+   "data": "the preserved authenticated preprod database and its native snapshot",
+   "issue": 294
+  },
+  {
+   "module": "node",
+   "suite": "xyz.kd5ujc.scarab.storage.PreprodSnapshotImportSuite",
+   "test": "the authenticated original preprod snapshot imports all 4,526,058 outputs and restores V5",
+   "environment": [
+    "SCARAB_IMPORT_FIXTURE"
+   ],
+   "data": "the verified ancillary archive and recorded database of preprod",
+   "issue": 294
+  },
+  {
+   "module": "storage",
+   "suite": "xyz.kd5ujc.scarab.storage.MemPackJoinSuite",
+   "test": "the pinned preprod tables decode and canonically pack back",
+   "environment": [
+    "SCARAB_MEMPACK_TABLES"
+   ],
+   "data": "the pinned preprod tables file",
+   "issue": 294
+  },
+  {
+   "module": "storage",
+   "suite": "xyz.kd5ujc.scarab.storage.MemPackJoinSuite",
+   "test": "the same-snapshot checkpoint and native table have identical keys and output semantics",
+   "environment": [
+    "SCARAB_MEMPACK_TABLES",
+    "SCARAB_MEMPACK_CHECKPOINT"
+   ],
+   "data": "the pinned preprod tables file and the checkpoint of the same snapshot",
+   "issue": 294
+  },
+  {
+   "module": "storage",
+   "suite": "xyz.kd5ujc.scarab.storage.haskell.HaskellRealFilesSuite",
+   "test": "every chunk's primary and secondary index parse as they did before",
+   "environment": [
+    "SCARAB_NATIVE_K1_DB"
+   ],
+   "data": "the pinned native ImmutableDB of the Preview K1 run",
+   "issue": 294
+  },
+  {
+   "module": "storage",
+   "suite": "xyz.kd5ujc.scarab.storage.haskell.state.LedgerFileSuite",
+   "test": "the real Preview state of a Haskell node is written again byte for byte (HASKELL_STATE_FILE)",
+   "environment": [
+    "HASKELL_STATE_FILE"
+   ],
+   "data": "a ledger state file a Haskell node wrote on Preview",
+   "issue": 294
+  },
+  {
+   "module": "storage",
+   "suite": "xyz.kd5ujc.scarab.storage.haskell.state.SnapshotTableStreamSuite",
+   "test": "a full preprod table streams through MemPack conversion and writes byte-identical bytes",
+   "environment": [
+    "SCARAB_MEMPACK_TABLES"
+   ],
+   "data": "the pinned preprod tables file",
+   "issue": 294
+  }
+ ]
+}
