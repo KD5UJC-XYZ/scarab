@@ -17,6 +17,7 @@ import xyz.kd5ujc.scarab.protocol.{
   ChainSync,
   EbHash,
   EbPoint,
+  LeiosFetchFault,
   LeiosFetchRefusal,
   LeiosWord,
   NtNHeader,
@@ -126,6 +127,32 @@ class PeerDefectPolicySuite extends FailsOnUncaught:
         case Fault.Failed(error @ PeerError.LeiosFetchRefused(seen)) =>
           assertEquals(seen, refused)
           assertEquals(FailurePolicy.classify(error), expected, refusal.toString)
+          assertEquals(FailurePolicy.disposition(SessionEnd.Failed(error)), Disposition.Backoff)
+        case other => fail(s"unexpected $other")
+    }
+  }
+
+  test("a LeiosFetch answer refused ends the connection, the peer tried again later (#54)") {
+    val point = EbPoint(
+      LeiosWord.Word64.from(BigInt(7)).fold(e => fail(e.toString), identity),
+      EbHash.fromBytes(Bytes(Vector.fill(32)(4)))
+    )
+    val size = LeiosWord.Word32.wrap(10)
+    // the reference's handler of the answer throws with `error` or
+    // `ExnLeiosWellHashedBodyRejected`, which no rethrow policy names: `ShutdownPeer`
+    // (ouroboros-consensus 2416493b LeiosDemoLogic.hs:849-1172, 1395-1588 and 1972-1986)
+    Vector(
+      LeiosFetchFault.BodyHashMismatch(point, point.hash),
+      LeiosFetchFault.TxsCountMismatch(point, 1, 2),
+      LeiosFetchFault.JobRootHashMismatch(point, 0),
+      LeiosFetchFault.BlockWrongSize(point, size, size),
+      LeiosFetchFault.ClosureTooBig(point, 11L, size)
+    ).foreach { fault =>
+      val refused = NetworkError.LeiosFetchInvalidReply(fault)
+      Peer.networkFault(refused) match
+        case Fault.Failed(error @ PeerError.LeiosFetchInvalidReply(seen)) =>
+          assertEquals(seen, refused)
+          assertEquals(FailurePolicy.classify(error), FailureClass.Transient, fault.toString)
           assertEquals(FailurePolicy.disposition(SessionEnd.Failed(error)), Disposition.Backoff)
         case other => fail(s"unexpected $other")
     }

@@ -21,14 +21,23 @@ import xyz.kd5ujc.scarab.protocol.LeiosWord.Word32
 /** A request of the LeiosFetch client with what to do with its answer (`SomeLeiosFetchJob`,
   * `LeiosDemoOnlyTestFetch.hs` 494-499 of ouroboros-consensus 2416493b): the message the client
   * sends from Idle and the continuation the answer is handed to. The client is told nothing else
-  * about it; what the request was for is the continuation's.
+  * about it; what the request was for is the continuation's. The continuation raises through the
+  * capability of the client's receiver, which runs it, so an answer it refuses ends the connection
+  * as the reference's thread death does.
   */
 enum LeiosFetchJob[F[_]]:
   /** `MsgLeiosBlockRequest`, answered by `MsgLeiosBlock`. */
-  case Block(point: EbPoint, onReply: Vector[(LeiosTxHash, Word32)] => F[Unit])
+  case Block(
+      point: EbPoint,
+      onReply: Vector[(LeiosTxHash, Word32)] => Raise[F, NetworkError] ?=> F[Unit]
+  )
 
   /** `MsgLeiosBlockTxsRequest`, answered by `MsgLeiosBlockTxs`, its transactions as they came. */
-  case BlockTxs(point: EbPoint, bitmaps: TxBitmaps, onReply: Vector[Bytes] => F[Unit])
+  case BlockTxs(
+      point: EbPoint,
+      bitmaps: TxBitmaps,
+      onReply: Vector[Bytes] => Raise[F, NetworkError] ?=> F[Unit]
+  )
 
 /** The pipelined LeiosFetch client (`leiosFetchClientPeerPipelined`, `LeiosDemoOnlyTestFetch.hs`
   * 587-683 at 2416493b), run by the reference's pipelined driver (`runPipelinedPeerWithLimits`).

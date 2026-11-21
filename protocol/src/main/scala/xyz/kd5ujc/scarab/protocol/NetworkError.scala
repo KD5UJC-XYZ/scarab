@@ -23,6 +23,9 @@ enum NetworkError extends DomainError:
 
   /** The LeiosFetch server ends the connection rather than answer a request. */
   case LeiosFetchRefused(refusal: LeiosFetchRefusal)
+
+  /** The LeiosFetch client ends the connection over the peer's answer. */
+  case LeiosFetchInvalidReply(fault: LeiosFetchFault)
   case QueryRefused(refusal: QueryRefusal[?])
 
   /** The selected ledger view and its backing UTxO generation did not have a provable relation. */
@@ -110,6 +113,8 @@ enum NetworkError extends DomainError:
       s"${Protocols.name(p)} protocol violation: ${NetworkError.violationMessage(d)}"
     case LeiosFetchRefused(r) =>
       s"${Protocols.name(Protocols.LeiosFetch)} request refused: ${r.message}"
+    case LeiosFetchInvalidReply(f) =>
+      s"${Protocols.name(Protocols.LeiosFetch)} answer refused: ${f.message}"
     case QueryRefused(r) =>
       s"${Protocols.name(Protocols.LocalStateQuery)} query not answered: ${r.message}"
     case StateAcquireFailure(point, flushed, pinned, selected) =>

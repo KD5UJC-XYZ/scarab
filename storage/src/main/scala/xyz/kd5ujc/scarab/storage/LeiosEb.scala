@@ -5,7 +5,7 @@ import cats.data.NonEmptyVector
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, DomainError, Value}
 import xyz.kd5ujc.scarab.crypto.Blake2b
-import xyz.kd5ujc.scarab.protocol.LeiosTxHash
+import xyz.kd5ujc.scarab.protocol.{EbHash, LeiosTxHash}
 import xyz.kd5ujc.scarab.protocol.LeiosWord.Word32
 
 /** An endorser block's body: the hash and the size of each transaction it lists, in order
@@ -35,16 +35,7 @@ final class LeiosEb private (val transactions: NonEmptyVector[(LeiosTxHash, Word
     * `Types.hs:247-252` at 2416493b): a definite map of each transaction hash, a byte string, to
     * its size, an unsigned integer in its shortest form.
     */
-  def encoded: Bytes =
-    val head = LeiosEb.head(5, size.toLong)
-    val parts = transactions.toVector.flatMap { case (hash, bytes) =>
-      Vector(
-        LeiosEb.head(2, hash.bytes.size.toLong),
-        hash.bytes.toArray,
-        LeiosEb.head(0, bytes.toLong)
-      )
-    }
-    Bytes.wrap((head +: parts).toArray.flatten)
+  def encoded: Bytes = LeiosEb.encode(transactions.toVector)
 
   /** Where each transaction is in the closure: `n + 1` positions, each the sum of the sizes before
     * it (`encodeTxBounds`, `Storage/LeiosDB/Impl/SQLite/Read.hs:264-267` at 2416493b).
@@ -99,6 +90,22 @@ object LeiosEb:
             .flatMap(from)
         case _ => Left(Error.NotAMap)
     }
+
+  /** The encoding of a body that lists these transactions, whatever their number and the lengths of
+    * their hashes (`encodeLeiosEb`, `Types.hs:247-252` at 2416493b): a definite map of each hash, a
+    * byte string, to its size, an unsigned integer in its shortest form.
+    */
+  def encode(transactions: Vector[(LeiosTxHash, Word32)]): Bytes =
+    val parts = transactions.flatMap { case (hash, bytes) =>
+      Vector(head(2, hash.bytes.size.toLong), hash.bytes.toArray, head(0, bytes.toLong))
+    }
+    Bytes.wrap((head(5, transactions.size.toLong) +: parts).toArray.flatten)
+
+  /** The endorser-block hash of a body that lists these transactions: the Blake2b-256 of its
+    * encoding (`hashLeiosEb`, `LeiosDemoTypes.hs:1297-1299` at 2416493b).
+    */
+  def hashOf(transactions: Vector[(LeiosTxHash, Word32)]): EbHash =
+    EbHash.fromBytes(Blake2b.hash256.hash(encode(transactions)))
 
   /** The length of an endorser-block hash and of a transaction hash (`PackedBytes 32`). */
   val HashBytes: Int = 32

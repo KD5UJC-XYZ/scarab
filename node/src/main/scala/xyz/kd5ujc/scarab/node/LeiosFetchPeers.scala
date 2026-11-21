@@ -199,8 +199,11 @@ object LeiosFetchShared:
 object LeiosFetchJobs:
   def of[F[_]](
       request: LeiosFetchRequest,
-      onBlock: (LeiosFetchRequest.Block, Vector[(LeiosTxHash, Word32)]) => F[Unit],
-      onTxs: (LeiosFetchRequest.BlockTxs, Vector[Bytes]) => F[Unit]
+      onBlock: (LeiosFetchRequest.Block, Vector[(LeiosTxHash, Word32)]) => Raise[
+        F,
+        NetworkError
+      ] ?=> F[Unit],
+      onTxs: (LeiosFetchRequest.BlockTxs, Vector[Bytes]) => Raise[F, NetworkError] ?=> F[Unit]
   ): Either[LeiosWireError, LeiosFetchJob[F]] = request match
     case block: LeiosFetchRequest.Block =>
       Right(LeiosFetchJob.Block(block.point, txs => onBlock(block, txs)))
