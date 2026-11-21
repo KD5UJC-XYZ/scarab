@@ -5,11 +5,11 @@
   "`approval` records that question and the owner's decision, in neutral words and never as a quotation, with their UTC times and the digest of the surface they admit. It is evidence of the approval, never an approval itself. `approval` is null only for the baseline: the surface of main (bc0e4995a, after #994 merged) on 2026-11-14, when the freeze began, which approves nothing."
  ],
  "approval": {
-  "question": "First, asked 2026-11-20T20:24:10Z: Codex found three states where #1224's Haskell endorser-block import/export doesn't round-trip exactly. (1) An EB copied to the immutable partition, evicted, then partly refetched: the import keeps only the partial closure, so exporting writes it into both partitions and the Haskell node's immutable fallback loses transactions it had. (2) A Haskell GC 'mark' committed but not yet swept when the node stopped: Scarab has no 'marked' status, so export loses the pending sweep (rows stay until the next GC). (3) A closure row the reference allocated but left all-zero (a failed local fill) is not exported, and the reference's copier checks the row's existence. All three need extra stored state (a storage-format change) to round-trip exactly. None arise for a normally running node's database except around a crash or failed fill. How should #1224 handle them? Second, asked 2026-11-20T20:28:31Z: You approved a storage-format change so the endorser-block store round-trips three states exactly (per-partition closure, a 'marked for GC' status, closure-row presence). A fourth needs the same kind of change: when an EB is promoted more than once, the reference's copier copies only the newest announcement each time, so its immutable file can hold e.g. slots 21 and 30 for one hash, or only 30, depending on history, while Scarab's store marks every promoted point the same way and can't tell which were copied. Exporting newest-only under-writes after repeated copies; exporting all over-writes after one. Include a per-point 'copied to immutable' marker in the same format change? Third, asked 2026-11-20T20:56:28Z: To round-trip the four states you approved exactly, the Leios store now mirrors the reference's two SQLite databases table for table (volatile and immutable partitions, each with its own rows, bodies, closure rows and transactions). That goes slightly beyond the literal approval: (a) body presence is tracked per partition too; (b) point status 3 changes meaning from Scarab's 'evicted' to the reference's 'marked for the sweeper' (eviction is now simply 'no volatile rows'); (c) the old column families are replaced, and a store in the old layout is refused (ForeignDatabase) with no migration. No store in the old layout exists anywhere: #1223 merged today and no node can open a Leios store yet (follow refuses the Leios build). This also withdraws the three store Deviations you approved on 2026-11-19, since the store now behaves as the reference does. Confirm this layout?",
-  "asked_at": "2026-11-20T20:56:28Z",
-  "decision": "Approved in three steps. The first answer (20:28:18Z): the three states are fixed exactly, by a storage format change of the Leios store that records partition-specific state: a closure per partition, the marked status, and a closure row's presence. The second answer (20:28:52Z): the per-point record of the rows copied into the immutable partition is included in the same change. The third answer (21:48:53Z) confirms the layout as built: body presence per partition, status 3 meaning marked for the sweeper and eviction the absence of volatile rows, the old column families replaced and a store of the old layout refused with no migration, and the withdrawal of the three store deviations approved on 2026-11-19. The store holds the reference's two partitions table for table, with the same magic and version; a store of the previous layout is refused and nothing migrates it. Nothing else is approved.",
-  "decided_at": "2026-11-20T21:48:53Z",
-  "surface_sha256": "96da880bdec6de10bd4e818ff69487c694eded428d27e7dee04cea7464b4c5df"
+  "question": "Storage format (FMT-1): to follow the Leios testnet from genesis, Scarab's stored ledger state (inside the V10 snapshot) must hold governance proposals that update Dijkstra-added parameters. The testnet has two (keys 45/46 in epochs 22-24, keys 47/48 in epochs 71-73); today Scarab refuses them (DijkstraNotYet.ParameterUpdate). The change mirrors the reference's encoding exactly (cardano-ledger 9df9f98c EncCBOR PParamsUpdate: a definite map in ascending key order, keys 34-56 decoded as Dijkstra's), in V10 in place, with no new version and no migration; states without such proposals keep their bytes. The G1 replay (epochs 89-100) does not need it, but a sync from genesis does. On 2026-11-19 you ruled the similar lift not FMT-1, but #1241 has since put these codecs under the format guard, so it needs an approval record. Approve it as its own storage-format PR?",
+  "asked_at": "2026-11-21T14:33:55Z",
+  "decision": "Approved as recommended: one storage-format pull request in which the stored proposals of a Dijkstra state hold an era-typed parameter update, the state codec reads and writes update keys 34 to 56 as the reference writes them, a golden V10 body case holds such a proposal, and the approval is recorded; V10 changed in place, with no new version and no migration. The GOV, RATIFY and ENACT rules for Dijkstra's keys follow with the era work.",
+  "decided_at": "2026-11-21T14:35:51Z",
+  "surface_sha256": "649cd0e99b9fd1fe8811b94f085db62b772fe42472b3bd74b0638392b16ac7b7"
  },
  "surface": {
   "registry": {
@@ -269,7 +269,7 @@
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV9.scala": "c137fed393e4dd5f96c9815d4e858fa1929e21bfce75ea9aaa90eb30608668f5",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/CertStateCodecs.scala": "6cdebec042cb239e702bb38ab433438034af42d23f419151bbc9ef29b35b8fc3",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/ConsensusCodecs.scala": "ef22fd1b2d75680ec5e0071b8cff73a116a1e837a539a6845ebd63cd45a1e6d8",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/ConwayCodecs.scala": "050040f1e442e00fb448ef2a7c8296ff229413a41f46e7c79ad91e5d516aaa0e",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/ConwayCodecs.scala": "4208f25b839b6f6b444314e48800e92a56b57e7a8bf640fa712457c5e78a09d4",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/Envelope.scala": "e538ab5c49e0ee9f41cadff7029cdc514a790a753a8b7e547fe32654d6ca2f92",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/EpochStateCodecs.scala": "4be536a2166841090cd0d27e42f9e247dfd5550c5251662c6c8c0632bb1fbd14",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/GovStateCodecs.scala": "b5786dd7c6a4097a345fb1bc7371d06fcd9d8d4c6344ef0734291ab1af36b9d7",
@@ -278,7 +278,7 @@
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/HaskellStateCodecs.scala": "eff5766f1249ba4843cb3e22e9819133370f4d955094cd283d6d96ee3c7ae9c9",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/LedgerFileCodecs.scala": "da67df20db22b3535397dc21fafe51ec5e0d858e12ce2a6e4aab1894668f9d32",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/NodeOrders.scala": "344093d18720fc3e064dabca426d2eb1ace16246a5b18d279407e453298b960c",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/NodeTypeCodecs.scala": "11984ae5fef2a92fdd87fd8f912455f80d4312827bb0d80e1271f4e90a56cb8e",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/NodeTypeCodecs.scala": "eb4e2f7234a6f9339759038678ebcdf61cb61d57e8eeedece5834212ac49662b",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/Params.scala": "41c5941c850388e1eb68d2ab6dfb2e3c7361167ea0eb80218c17a876f221442d",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/ProposalsReading.scala": "1db8028ebb4238a55e1dc869d46aa98db7333d7b5eb510a0763bc0aad382a1e1",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/Record.scala": "3cc9db95616e5b058f27d41da49f4a273699cc46ab98cb7b2dc9f1e6a7939c46",
@@ -617,20 +617,22 @@
      "${c.file} reads back with the snapshot's reader and writes the same bytes",
      "${c.file}: $e",
      "${c.file}: not a Conway state",
+     "${c.file}: not a Dijkstra state",
      "a pool",
      "the future parameters",
      "the proposal: $other"
     ],
-    "code_sha256": "8bd936025c6c804f913a5f0847237d7c00756bbc9431e0f6aa98f6c4bf32fa0a"
+    "code_sha256": "081e16c480a3c86f92a435fe403deb83363cf37d7c1358ac448c9ae679d775a3"
    },
    "storage/src/test/scala/xyz/kd5ujc/scarab/storage/V10BodyCases.scala": {
     "literals": [
      "",
      " ",
+     " 182f 82 1a80befc00 1b0000008bb2c97000 1835 f6",
      "$k%02x",
      "${c.file}: $e",
      "${c.source}: $e",
-     "${c.source}: not a Conway state",
+     "${c.source}: not a state of its case's era",
      ".json",
      "0b",
      "0c",
@@ -641,6 +643,8 @@
      "1f",
      "5820",
      "5d",
+     "6e",
+     "6f",
      "82",
      "82 7864",
      "9f",
@@ -649,23 +653,27 @@
      "a state with a pool",
      "a state with two pools",
      "a3",
+     "a7 00 182c 1822 1a00100000 1824 03 1825 d81e820302 1826 d81e820501",
      "d81e82190241192710 d81e821902d11a00989680",
      "ff",
      "fixtures/haskell-state/conway-4593/state",
      "fixtures/leios/state/conway-195/state",
+     "fixtures/leios/state/dijkstra-203/state",
      "fixtures/snapshot-v10-bodies",
      "https://pools.example.org/",
      "leios-conway.cbor",
+     "leios-dijkstra-param-proposal.cbor",
      "m",
      "margin",
      "node11_1-conway-indefinite-prices.cbor",
      "node11_1-conway.cbor",
+     "not an update of Dijkstra's keys",
      "port",
      "relay.example.org",
      "the body holds the update",
      "the update occurs once"
     ],
-    "code_sha256": "72b4391a71e72720b9101a10f4fc612c8c24637b67cdc469fae1a003f1930fab"
+    "code_sha256": "8d31c7093042ba5fe200fb9519a98ebcd766d5cbbcd19326038053a3fd42235a"
    }
   },
   "previous_version_suites": {
@@ -678,6 +686,7 @@
   "fixtures": {
    "fixtures/network-identity-v6/network-identity": "933037d584eefcb4357e1f1c3857c5854175b2e5636196d9152662dba89b9588",
    "fixtures/snapshot-v10-bodies/leios-conway.cbor": "b6a1f78813252d89cc00f865f29b5d7e2009023aa62917fd75386bb87286b830",
+   "fixtures/snapshot-v10-bodies/leios-dijkstra-param-proposal.cbor": "cce40a1a688da8af8b817b32d0ea9f89f549646e5deb187794cb71810fb087f8",
    "fixtures/snapshot-v10-bodies/node11_1-conway-indefinite-prices.cbor": "ba223ee1e04ee9b549b6adc2801799ca99df8ec00b86f4bcec622a40deb43bb9",
    "fixtures/snapshot-v10-bodies/node11_1-conway.cbor": "871ba419c08795a858c6879d58d641f6555260c5ada9c2d5ba0e24e1ffe0d224",
    "fixtures/snapshot-v10/SHA256SUMS": "e54e83261bb5bea3d01b40d67504d820c9026f6d2752c983fab4b8e3b4e352ca",

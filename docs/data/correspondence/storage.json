@@ -87,7 +87,23 @@
     "DijkstraCodecsSuite",
     "CborDatasetSuite"
    ],
-   "digest": "e41457e10171a2f0"
+   "digest": "ab279855a20c2f25"
+  },
+  "val storage.haskell.state.NodeTypeCodecs#dijkstraParamUpdate": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "symbol": "EncCBOR (PParamsUpdate era)",
+     "lines": [250, 264]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": ["DijkstraParamProposalSuite", "DijkstraCodecsSuite", "V10BodyGoldenSuite"],
+   "note": "the writer of a Dijkstra state's proposal update that sets a key Dijkstra adds, and of DijkstraCodecs.paramUpdate; read by DijkstraParamUpdate.decode at version 12 (decodeSparseKeyed, Core/PParams.hs:264-299). Reading and writing such updates in the Leios layout's state was approved under the format freeze on 2026-11-21 (#826), V10 changed in place",
+   "digest": "4790303d97c93975"
   },
   "val storage.haskell.state.DijkstraCodecs.balanceInterval": {
    "upstream": [

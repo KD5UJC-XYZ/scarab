@@ -180,12 +180,14 @@
      ]
     }
    ],
-   "class": "Mirror",
-   "structure": "same",
+   "class": "Gap",
+   "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85",
    "evidence": [
     "DijkstraEpochReferenceSuite"
    ],
-   "digest": "d77bcc16bec3b006"
+   "note": "the boundary halts (TickFailure.NotYet of DijkstraNotYet.Rules) before the fresh DRep pulser ratifies a proposal whose update sets a parameter Dijkstra adds, keys 34 to 56: RATIFY's groups of those keys are not computed yet (#826)",
+   "digest": "70fcc66629de26b0"
   },
   "val ledger.rules.DijkstraPoolReap.adopt": {
    "upstream": [
@@ -35424,6 +35426,18 @@
   }
  },
  "glue": [
+  {
+   "reason": "the update a flat parameter change holds, of its era: Conway's ConwayParamUpdate, or, in a Dijkstra state of the Leios layout, a Dijkstra PParamsUpdate that sets a key Dijkstra adds (DijkstraKeysUpdate), the node's representation of PParamsUpdate era (Core/PParams.hs:230, cardano-ledger 9df9f98c) in its stored proposals; the predicate the Dijkstra rules halt on; and the order of a body's proposals over it, which holds Conway's alone (#826)",
+   "definitions": [
+    "type ledger.ParamChangeUpdate",
+    "class ledger.DijkstraKeysUpdate",
+    "object ledger.DijkstraKeysUpdate",
+    "def ledger.DijkstraKeysUpdate.from",
+    "val ledger.DijkstraKeysUpdate.FirstKey",
+    "def ledger.rules.DijkstraConway.setsDijkstraKeys",
+    "given ledger.IdentityOrder.paramChangeUpdate"
+   ]
+  },
   {
    "reason": "the companion of BlsKeyState, and the type of POOLREAP's voting key on adoption, which the reference passes to mkStakePoolState as an argument; neither has a counterpart",
    "definitions": [
