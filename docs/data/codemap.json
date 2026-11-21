@@ -954,6 +954,24 @@
     },
     {
       "module": "consensus",
+      "path": "consensus/leios",
+      "responsibility": "The Leios build's endorser-block fetch decision: the fetch state, the decision over the peers' offers, the closure's jobs and the reference's StdGen it draws them with",
+      "entryPoints": [
+        "LeiosOutstanding",
+        "LeiosFetchLogic",
+        "LeiosJobPool",
+        "StdGen"
+      ],
+      "suites": [
+        "LeiosFetchLogicSuite",
+        "StdGenSuite"
+      ],
+      "docs": [
+        "docs/leios.md"
+      ]
+    },
+    {
+      "module": "consensus",
       "path": "consensus/state",
       "responsibility": "Extended ledger state, chain-dependent state, era history, telescope, state mirror",
       "entryPoints": [

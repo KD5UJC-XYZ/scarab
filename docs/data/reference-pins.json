@@ -256,10 +256,11 @@
    "repository": "IntersectMBO/ouroboros-network",
    "revision": "2f1c154f248659b89523d5679ca532f442e7ed2a",
    "urlPattern": "https://github.com/IntersectMBO/ouroboros-network/commit/{revision}",
-   "role": "Leios testnet reference: the build of the public Leios testnet (release rc-2026w44, #711): the network layer of that node, recorded with the others; nothing is mirrored from it yet.",
+   "role": "Leios testnet reference: the build of the public Leios testnet (release rc-2026w44, #711): the network layer of that node, recorded with the others; the Leios fetch decision mirrors its IsBigLedgerPeer.",
    "dependents": [
     "docs/leios.md",
-    "scripts/oracle/leios-testnet/README.md"
+    "scripts/oracle/leios-testnet/README.md",
+    "consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/leios/LeiosFetchTypes.scala"
    ]
   },
   {
@@ -528,6 +529,30 @@
     "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/MuslMath.scala",
     "ledger/licenses/README.md",
     "scripts/oracle/release-libm/run.py"
+   ]
+  },
+  {
+   "name": "random",
+   "repository": "haskell/random",
+   "version": "1.3.1",
+   "revision": "d83e66f48b937edbc37707f53cee5c85464fe99b",
+   "urlPattern": "https://github.com/haskell/random/commit/{revision}",
+   "role": "random 1.3.1 as the Leios testnet build links it (unit random-1.3.1-126384cd in the Leios reference image's cabal store; the repository has no tag for 1.3.1, and this commit, which sets the version, holds the release's System/Random/Internal.hs byte for byte): the StdGen and the uniformR the Leios fetch decision draws its jobs with.",
+   "dependents": [
+    "consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/leios/StdGen.scala",
+    "scripts/oracle/leios-stdgen/README.md"
+   ]
+  },
+  {
+   "name": "splitmix",
+   "repository": "haskellari/splitmix",
+   "version": "0.1.3.2",
+   "revision": "419c763825d6e0dceb266ef64e9cbcb7e07a481f",
+   "urlPattern": "https://github.com/haskellari/splitmix/commit/{revision}",
+   "role": "splitmix 0.1.3.2 (tag v0.1.3.2 at this commit) as the Leios testnet build links it (unit splitmix-0.1.3.2-f11367c6 in the Leios reference image's cabal store): the SMGen under random's StdGen.",
+   "dependents": [
+    "consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/leios/StdGen.scala",
+    "scripts/oracle/leios-stdgen/README.md"
    ]
   }
  ]
