@@ -656,7 +656,7 @@
     {
       "module": "ledger",
       "path": "ledger/era",
-      "responsibility": "Era-specific transaction types (#85): the type families as match types, the reference's era classes with one instance per era, what the eras share (output and script representations, certificate parts), the protocol parameters as higher-kinded data, the governance state with its classes, read from and written to the node's flat record, the voting thresholds and environment of ratification, and the DRep pulser computed where it starts",
+      "responsibility": "Era-specific transaction types (#85): the type families as match types, the reference's era classes with one instance per era, what the eras share (output and script representations, certificate parts), the protocol parameters as higher-kinded data, the governance state with its classes, read from and written to the node's flat record (the tick's one seam, `StoredGov`), the voting thresholds and environment of ratification, and the DRep pulser computed where it starts",
       "entryPoints": [
         "Tx",
         "TxOut",
@@ -683,6 +683,7 @@
         "EraGov",
         "ConwayEraGov",
         "GovStateRecord",
+        "StoredGov",
         "VotingThreshold",
         "RatifyEnv",
         "Committee",
@@ -801,7 +802,7 @@
     {
       "module": "ledger",
       "path": "ledger/era/rules",
-      "responsibility": "The reference's rule predicates on the era types, each generic in its era over the reference's classes, in objects named after the reference's Rules modules (among them RATIFY, ENACT and Dijkstra's EPOCH, not yet the node's); their verdicts are compared with the flat rules' (#85, stage 2); Dijkstra's BBODY and closure application, run by the node on a block",
+      "responsibility": "The reference's rule predicates on the era types, each generic in its era over the reference's classes, in objects named after the reference's Rules modules (among them RATIFY, ENACT and Dijkstra's TICK, NEWEPOCH and EPOCH, which the node's tick of a Dijkstra state runs); their verdicts are compared with the flat rules' (#85, stage 2); Dijkstra's BBODY and closure application, run by the node on a block",
       "entryPoints": [
         "ShelleyUtxo",
         "AllegraUtxo",
@@ -814,7 +815,10 @@
         "ConwayEnact",
         "DijkstraEpoch",
         "EpochGovState",
-        "DijkstraBlockRun"
+        "DijkstraBlockRun",
+        "DijkstraTick",
+        "DijkstraNewEpoch",
+        "NewEpochGovState"
       ],
       "suites": [
         "ConwayUtxoChecksSuite",
@@ -824,7 +828,8 @@
         "EraRatifyConformanceSuite",
         "EraRatifyStoredSuite",
         "EraEpochGovSuite",
-        "DijkstraEraEpochGovSuite"
+        "DijkstraEraEpochGovSuite",
+        "DijkstraEpochReferenceSuite"
       ],
       "docs": [
         "docs/design/era-typed-transactions.md"
