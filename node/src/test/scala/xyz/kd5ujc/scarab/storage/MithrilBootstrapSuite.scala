@@ -37,6 +37,15 @@ class MithrilBootstrapSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     .fold(e => fail(e.message), identity)
   private val endpoint =
     Client.Endpoint.parse("http://127.0.0.1:1234").fold(e => fail(e.message), identity)
+
+  /** One bootstrap, as the command runs it: with an instance of the Leios stores' permits of its
+    * own.
+    */
+  private def bootstrap(config: Bootstrap.Config, client: Client[IO])(using
+      Handle[IO, Bootstrap.Error]
+  ): IO[Bootstrap.Report] =
+    LeiosStoreLocks.make[IO].flatMap(Bootstrap.run[IO](config, client, _))
+
   private def config(root: Path, source: Client.Source): Bootstrap.Config =
     val identity = setup.identity.copy(magic = 2L)
     Bootstrap.Config(
@@ -189,7 +198,7 @@ class MithrilBootstrapSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           Files.createDirectory(cache.toNioPath)
           Files.writeString((cache / "untouched").toNioPath, "source cache")
         }
-        result <- attempt(Bootstrap.run(requested, client))
+        result <- attempt(bootstrap(requested, client))
         report = result.fold(error => fail(error.message), identity)
         identity <- IO.blocking(
           Files.readString((root / "db" / NetworkIdentityFile.FileName).toNioPath)
@@ -220,7 +229,7 @@ class MithrilBootstrapSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           Files.writeString((root / "db/old").toNioPath, "original")
         }
         result <- attempt(
-          Bootstrap.run(config(root, Client.Source.Download), refusing(invoked.set(true)))
+          bootstrap(config(root, Client.Source.Download), refusing(invoked.set(true)))
         )
         touched <- invoked.get
       yield
@@ -250,7 +259,7 @@ class MithrilBootstrapSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
               } *>
                 Client.Error.RefusedVerification.raise[IO, Client.Verified]
             case _ => IO.raiseError(new AssertionError("expected owned cache"))
-        result <- attempt(Bootstrap.run(config(root, Client.Source.Cached(original)), client))
+        result <- attempt(bootstrap(config(root, Client.Source.Cached(original)), client))
         _ <- StorageTestKit.ok(DatabaseOwnership.resource[IO](root / "db").use(_ => IO.unit))
       yield
         assertEquals(result, Left(Bootstrap.Error.Client(Client.Error.RefusedVerification)))
@@ -270,10 +279,10 @@ class MithrilBootstrapSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           Files.createSymbolicLink((source / "link").toNioPath, root.toNioPath); ()
         }
         symlink <- attempt(
-          Bootstrap.run(config(root, Client.Source.Cached(source)), refusing(invoked.set(true)))
+          bootstrap(config(root, Client.Source.Cached(source)), refusing(invoked.set(true)))
         )
         overlap <- attempt(
-          Bootstrap.run(config(root, Client.Source.Cached(root)), refusing(invoked.set(true)))
+          bootstrap(config(root, Client.Source.Cached(root)), refusing(invoked.set(true)))
         )
         touched <- invoked.get
       yield
@@ -326,7 +335,7 @@ class MithrilBootstrapSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         _ <- Vector(source / "db", alias / "missing/db").traverse_ { destination =>
           val requested = config(root, Client.Source.Cached(source)).copy(destination = destination)
           for
-            result <- attempt(Bootstrap.run(requested, refusing(invoked.set(true))))
+            result <- attempt(bootstrap(requested, refusing(invoked.set(true))))
             after <- inventory
           yield
             assertEquals(result, Left(Bootstrap.Error.UnsafeSource(source.toString)))
@@ -343,7 +352,7 @@ class MithrilBootstrapSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       val requested = base.copy(request = base.request.copy(network = Client.Network.Preprod))
       for
         invoked <- IO.ref(false)
-        result <- attempt(Bootstrap.run(requested, refusing(invoked.set(true))))
+        result <- attempt(bootstrap(requested, refusing(invoked.set(true))))
         touched <- invoked.get
         contents <- IO.blocking {
           val paths = Files.list(root.toNioPath)
@@ -366,7 +375,7 @@ class MithrilBootstrapSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
               Raise[IO, Client.Error]
           ): IO[Client.Verified] =
             started.complete(()).void *> IO.never
-        fiber <- attempt(Bootstrap.run(config(root, Client.Source.Download), client)).start
+        fiber <- attempt(bootstrap(config(root, Client.Source.Download), client)).start
         _ <- started.get.timeout(5.seconds)
         _ <- fiber.cancel
         result <- fiber.join
@@ -494,7 +503,7 @@ class MithrilBootstrapSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           ()
         }
         result <- attempt(
-          Bootstrap.run(config(root, Client.Source.Cached(source)), refusing(IO.unit))
+          bootstrap(config(root, Client.Source.Cached(source)), refusing(IO.unit))
         )
       yield
         assert(result.left.exists(_.isInstanceOf[Bootstrap.Error.Storage]))

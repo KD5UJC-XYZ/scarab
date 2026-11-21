@@ -190,17 +190,23 @@ class ByronStoredKeysSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       val haskell = dir.toNioPath.resolve("haskell")
       haskellDb(haskell, recorded)
       for
+        // an instance of the Leios stores' permits of its own, as the command makes one
         imported <- attempt(
-          HaskellImport.run[IO](
-            HaskellImport.Config(
-              Path.fromNioPath(haskell),
-              dir / "db",
-              setup.identity,
-              epochSlots,
-              chunk
-            ),
-            _ => IO.unit
-          )
+          LeiosStoreLocks
+            .make[IO]
+            .flatMap(locks =>
+              HaskellImport.run[IO](
+                HaskellImport.Config(
+                  Path.fromNioPath(haskell),
+                  dir / "db",
+                  setup.identity,
+                  epochSlots,
+                  chunk
+                ),
+                locks,
+                _ => IO.unit
+              )
+            )
         )
         started <- start(dir / "db", identified = true)
       yield
@@ -216,17 +222,23 @@ class ByronStoredKeysSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       val haskell = dir.toNioPath.resolve("haskell")
       haskellDb(haskell, recorded.take(2) :+ wideVoter)
       for
+        // an instance of the Leios stores' permits of its own, as the command makes one
         imported <- attempt(
-          HaskellImport.run[IO](
-            HaskellImport.Config(
-              Path.fromNioPath(haskell),
-              dir / "db",
-              setup.identity,
-              epochSlots,
-              chunk
-            ),
-            _ => IO.unit
-          )
+          LeiosStoreLocks
+            .make[IO]
+            .flatMap(locks =>
+              HaskellImport.run[IO](
+                HaskellImport.Config(
+                  Path.fromNioPath(haskell),
+                  dir / "db",
+                  setup.identity,
+                  epochSlots,
+                  chunk
+                ),
+                locks,
+                _ => IO.unit
+              )
+            )
         )
         started <- start(dir / "db", identified = true)
       yield

@@ -405,6 +405,20 @@
       },
       "sha256": "b05785f9f18e6716bab63424b11454513b9943a222595b70411009202fc592b5"
     },
+    "sqlite-jdbc-3.54.1.0/LICENSE": {
+      "source": {
+        "jar": "org.xerial:sqlite-jdbc:3.54.1.0",
+        "entry": "META-INF/maven/org.xerial/sqlite-jdbc/LICENSE"
+      },
+      "sha256": "3ddf9be5c28fe27dad143a5dc76eea25222ad1dd68934a047064e56ed2fa40c5"
+    },
+    "sqlite-jdbc-3.54.1.0/LICENSE.zentus": {
+      "source": {
+        "jar": "org.xerial:sqlite-jdbc:3.54.1.0",
+        "entry": "META-INF/maven/org.xerial/sqlite-jdbc/LICENSE.zentus"
+      },
+      "sha256": "89167dab92289c7e5e2b65b044f0856b703d05e5d5e35c3548e73d9c7d2f5048"
+    },
     "vault-3.7.0/LICENSE": {
       "source": {
         "git": "https://github.com/typelevel/vault",
@@ -767,6 +781,14 @@
         "vault-3.7.0/NOTICE"
       ]
     },
+    "org.xerial:sqlite-jdbc:3.54.1.0": {
+      "licence": "Apache-2.0",
+      "texts": [
+        "sqlite-jdbc-3.54.1.0/LICENSE",
+        "sqlite-jdbc-3.54.1.0/LICENSE.zentus"
+      ],
+      "note": "LICENSE.zentus is the BSD-style notice of the Zentus SQLiteJDBC code it derives from. Used only by the offline import and export of a Leios reference database."
+    },
     "tech.pegasys:jblst:0.3.18": {
       "licence": "Apache-2.0 AND MIT",
       "texts": [
@@ -816,6 +838,35 @@
       "texts": [
         "jblst-0.3.18/LICENSE",
         "crypto/LICENSE-blst"
+      ]
+    },
+    {
+      "paths": [
+        "org/sqlite/native/FreeBSD/aarch64/libsqlitejdbc.so",
+        "org/sqlite/native/FreeBSD/x86/libsqlitejdbc.so",
+        "org/sqlite/native/FreeBSD/x86_64/libsqlitejdbc.so",
+        "org/sqlite/native/Linux-Musl/aarch64/libsqlitejdbc.so",
+        "org/sqlite/native/Linux-Musl/x86/libsqlitejdbc.so",
+        "org/sqlite/native/Linux-Musl/x86_64/libsqlitejdbc.so",
+        "org/sqlite/native/Linux/aarch64/libsqlitejdbc.so",
+        "org/sqlite/native/Linux/arm/libsqlitejdbc.so",
+        "org/sqlite/native/Linux/armv6/libsqlitejdbc.so",
+        "org/sqlite/native/Linux/armv7/libsqlitejdbc.so",
+        "org/sqlite/native/Linux/ppc64/libsqlitejdbc.so",
+        "org/sqlite/native/Linux/riscv64/libsqlitejdbc.so",
+        "org/sqlite/native/Linux/x86/libsqlitejdbc.so",
+        "org/sqlite/native/Linux/x86_64/libsqlitejdbc.so",
+        "org/sqlite/native/Mac/aarch64/libsqlitejdbc.dylib",
+        "org/sqlite/native/Mac/x86_64/libsqlitejdbc.dylib",
+        "org/sqlite/native/Windows/aarch64/sqlitejdbc.dll",
+        "org/sqlite/native/Windows/armv7/sqlitejdbc.dll",
+        "org/sqlite/native/Windows/x86/sqlitejdbc.dll",
+        "org/sqlite/native/Windows/x86_64/sqlitejdbc.dll"
+      ],
+      "contents": "sqlite-jdbc 3.54.1.0 natives: SQLite 3.54.1 (public domain, no licence text required) with the sqlite-jdbc JNI glue",
+      "texts": [
+        "sqlite-jdbc-3.54.1.0/LICENSE",
+        "sqlite-jdbc-3.54.1.0/LICENSE.zentus"
       ]
     }
   ]

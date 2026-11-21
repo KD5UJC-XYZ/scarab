@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.node.tools
 
 import xyz.kd5ujc.scarab.protocol.ReferenceBuild
+import xyz.kd5ujc.scarab.storage.LeiosStoreLocks
 import xyz.kd5ujc.scarab.storage.haskell.{ChunkSlots, HaskellImport, HaskellImportError}
 import cats.effect.{ExitCode, IO}
 import cats.mtl.Handle
@@ -19,7 +20,8 @@ import xyz.kd5ujc.scarab.node.NodeSetup
   * its blocks to our immutable store under `--db`, so that `follow --db <dir>` replays them locally
   * instead of downloading them. The chain links, the block numbers, the header hashes and the
   * protocol magic are checked; a database of another network is refused. Re-running it continues
-  * after the blocks already stored.
+  * after the blocks already stored. A Leios node's endorser-block database (`leios.vol.db` and
+  * `leios.imm.db`, never written) is read into the Leios store at `<db>/leios` first.
   */
 object HaskellImportCommand:
   val Usage: String =
@@ -102,7 +104,11 @@ object HaskellImportCommand:
             )
             Handle
               .allow[HaskellImportError] {
-                HaskellImport.run[IO](config, progress).map(Some(_))
+                // the process's one instance: the command opens a Leios store nowhere else
+                LeiosStoreLocks
+                  .make[IO]
+                  .flatMap(HaskellImport.run[IO](config, _, progress))
+                  .map(Some(_))
               }
               .rescue(e => log("error", "message" -> Json.fromString(e.message)).as(None))
               .flatMap {
@@ -121,6 +127,10 @@ object HaskellImportCommand:
                     "ignoredReason" -> r.truncation
                       .flatMap(_._2.cause)
                       .fold(Json.Null)(c => Json.fromString(c.message)),
+                    "leiosPoints" -> r.leios.fold(Json.Null)(c => Json.fromLong(c.points)),
+                    "leiosBodies" -> r.leios.fold(Json.Null)(c => Json.fromLong(c.bodies)),
+                    "leiosTransactions" -> r.leios
+                      .fold(Json.Null)(c => Json.fromLong(c.transactions)),
                     "seconds" -> Json.fromLong(r.elapsed.toSeconds)
                   ).as(ExitCode.Success)
                 case None => IO.pure(ExitCode(1))

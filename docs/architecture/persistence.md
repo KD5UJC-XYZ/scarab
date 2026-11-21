@@ -248,6 +248,21 @@ build opens none, nor does the backend `InMemory` (the reference's in-memory Lei
 no store for) or a run without `--db`. A failed open stops the start with `StorageError.LeiosStore`
 and the store's typed cause.
 
+`import-haskell-db` reads a Leios node's `leios.imm.db` and `leios.vol.db`, when the database has
+them, into this store before it imports the blocks (`leiosPoints`, `leiosBodies` and
+`leiosTransactions` on its `done` line), into a new store at `leios.import/` beside it that replaces
+the previous one, under its lock, only once both files are read, so an import again never merges into
+what an earlier one left. The files are opened as immutable, so nothing is written beside them,
+unless a write-ahead log beside one holds frames, which are then read through SQLite's shared memory
+file. Each file is read in one read transaction, so each partition is that file at one moment; the
+two are read one after the other, so of a running node a copy or sweep committed between them is in
+one and not the other, and a stopped node's files are read as one state. `LeiosReferenceDb.exportFrom` writes a store as new files with the reference's
+pragmas and schema, as the reference would hold it: each partition of the store in the file of that
+partition, its rows (with their status in `leios.vol.db`), bodies and allocated closures, a closure's
+unwritten transactions as zeroes. An import reads each file into the same partition, so an export
+imported again is the same store and an import exported again the same files, row for row. Both use
+`sqlite-jdbc`, only offline: the node never opens SQLite.
+
 **Shutdown.** Releasing the storage resource (SIGTERM or SIGINT through the IOApp's cancellation,
 `--seconds`, or a fatal error) first waits for a snapshot in flight and then, unless the newest
 snapshot already is at the immutable tip, forces the immutable store and writes a snapshot with its

@@ -29,6 +29,8 @@ def policy(name):
         return 'discard-system-junk'
     if name.startswith('META-INF/scarab/'):
         return 'deduplicate'
+    if name.startswith('META-INF/maven/'):
+        return 'discard-dependency-metadata'
     if name == 'META-INF/DEPENDENCIES' or re.fullmatch(r'(readme|about|\._license|license|licence|notice|copying)(\.\w+)?', leaf) and not leaf.endswith('.class'):
         return 'rename-legal-or-readme'
     if name.lower() in CONFIG:
