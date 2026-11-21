@@ -12,6 +12,7 @@ import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Rational, Value}
 import xyz.kd5ujc.scarab.ledger.{Committee, EnactState, EpochGeometry, LedgerGlobals, Proposals}
 import xyz.kd5ujc.scarab.ledger.rules.{Globals, Gov, GovEnv, GovSignal, JudgedSts}
 import xyz.kd5ujc.scarab.ledger.state.*
+import xyz.kd5ujc.scarab.ledger.era.EraGovRun
 import xyz.kd5ujc.scarab.models.runtime.Codec
 import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellStateCodecs, Params, Wire}
 
@@ -129,4 +130,26 @@ class UpstreamGovConformanceSuite extends FunSuite:
       )
       .fold(e => fail(s"Scarab GOV refused the upstream-accepted empty signal: $e"), identity)
     assertEquals(actual, expected, "complete GOV proposal state")
+
+    // and the era-typed GOV on the same judgment: the same proposals after
+    val eraEnv = xyz.kd5ujc.scarab.ledger.era.rules.GovEnv[Conway](
+      Hash32.fromBytes(txId).fold(e => fail(s"id: $e"), identity),
+      epoch,
+      xyz.kd5ujc.scarab.ledger.era.PParams[Conway](
+        xyz.kd5ujc.scarab.ledger.era.conway.ConwayPParams
+          .fromStored(pp)
+          .fold(e => fail(s"parameters: $e"), identity)
+      ),
+      guardrails.map(b => ScriptHash.fromBytes(b).fold(e => fail(s"guardrails: $e"), identity)),
+      cert,
+      committee
+    )
+    val eraSignal = EraGovRun
+      .signalFromFlat(Vector.empty, Vector.empty, Vector.empty)
+      .fold(e => fail(s"era signal: $e"), identity)
+    val eraBefore = EraGovRun.proposals(before).fold(e => fail(s"stored proposals: $e"), identity)
+    EraGovRun.run(eraEnv, eraSignal, Network.Testnet, eraBefore) match
+      case Right(Right((after, _))) =>
+        assertEquals(EraGovRun.toStored(after), expected, "the era-typed GOV's proposals")
+      case other => fail(s"the era-typed GOV on the empty signal: $other")
   }

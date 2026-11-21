@@ -104,7 +104,8 @@ type ProposalRead[E <: EraTag] = E match
   * cardano-ledger f649f975), with the flat proposal it was read as ([[ProposalRead]]), which the
   * flat rules and their failures carry. Two proposals are equal when they mean the same, as the
   * reference's derived `Eq` compares them: by the deposit, the return account, the action and the
-  * anchor, not the proposal read. Made only by an era's decoder.
+  * anchor, not the proposal read. Made only by an era's decoder, and by the read of the node's
+  * record of the proposals, from the proposal it stored (`ConwayProposals.fromStored`).
   */
 final class ProposalProcedure[E <: EraTag] private[era] (
     val pProcDeposit: Coin,
