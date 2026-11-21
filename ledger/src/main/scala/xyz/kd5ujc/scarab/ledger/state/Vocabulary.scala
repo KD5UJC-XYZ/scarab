@@ -266,6 +266,9 @@ object TxIx:
     */
   def enumerate[A](as: Vector[A]): Vector[(A, TxIx)] = as.take(count).zipWithIndex
 
+  /** `minBound` of the derived `Bounded` instance: 0. */
+  val minBound: TxIx = 0
+
   /** `maxBound` of the derived `Bounded` instance: 65,535. */
   val maxBound: TxIx = count - 1
 

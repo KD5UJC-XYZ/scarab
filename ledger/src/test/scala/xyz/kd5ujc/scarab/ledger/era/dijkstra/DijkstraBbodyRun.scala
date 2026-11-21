@@ -12,26 +12,32 @@ import xyz.kd5ujc.scarab.ledger.era.{
   EraBlockHeader,
   LeiosEraBlockHeader,
   Proposals,
-  ScriptVerdictUnavailable
+  ScriptVerdictUnavailable,
+  Tx,
+  TxLevel
 }
 import xyz.kd5ujc.scarab.ledger.era.rules.{
   BbodyEnv,
   BbodyEvent,
   BbodyPredFailure,
   DijkstraBbody,
+  DijkstraClosure,
   DijkstraUtxoContext,
   GovDefect,
+  LedgerEnv,
   PoolDefect,
   ShelleyBbodyState,
   UtxoStateDefect
 }
 import xyz.kd5ujc.scarab.ledger.rules.{Globals, Judgment, RuleT, contramap, focus}
-import xyz.kd5ujc.scarab.ledger.state.Dijkstra
+import xyz.kd5ujc.scarab.ledger.state.{Dijkstra, LedgerState}
 import xyz.kd5ujc.scarab.plutus.{ScriptDecoder, ScriptEvaluator}
 
 /** Dijkstra's BBODY on the era types (`DijkstraBbody`) run in one judgment, every failure
   * accumulated, from a BBODY state and the era's proposals, with the node's evaluator, for
-  * `DijkstraBbodySuite` and the node's `DijkstraRulesOracleSuite`.
+  * `DijkstraBbodySuite` and the node's `DijkstraRulesOracleSuite`; and the application of an
+  * endorser block's closure (`DijkstraClosure`), which records no failure, for
+  * `DijkstraClosureSuite`.
   */
 object DijkstraBbodyRun:
   /** What a judgment ends with short of a verdict, as [[DijkstraLedgerRun.Defect]]. */
@@ -95,4 +101,43 @@ object DijkstraBbodyRun:
         ),
         RuleT.Policy.Accumulate
       )(globals, (state, proposals, Chain.empty))
+      .map(_.map(_._1))
+
+  /** The closure `txs` applied (`DijkstraClosure.applyLeiosClosure`) with `env` to `state` and
+    * `proposals`: the state after, the proposals after, or a defect. It records no failure.
+    */
+  def closure(
+      globals: Globals,
+      env: LedgerEnv[Dijkstra],
+      txs: Vector[Tx[TxLevel.Top, Dijkstra]],
+      context: DijkstraUtxoContext,
+      state: LedgerState[Dijkstra],
+      proposals: Proposals[Dijkstra],
+      evaluator: ScriptEvaluator[Id],
+      verdicts: Verdicts,
+      decoder: ScriptDecoder[Id],
+      slotToPOSIXTime: BigInt => Either[TranslationError, BigInt]
+  ): Judged =
+    given ScriptEvaluator[F] = request => Monad[F].unit.map(_ => evaluator.evaluate(request))
+    given Stateful[F, LedgerState[Dijkstra]] =
+      summon[Stateful[F, ShelleyBbodyState[Dijkstra]]].focus(ShelleyBbodyState.ls[Dijkstra])
+    Judgment
+      .judge(
+        DijkstraClosure.applyLeiosClosure[F](
+          env,
+          txs,
+          context,
+          verdicts,
+          decoder,
+          slotToPOSIXTime
+        ),
+        RuleT.Policy.Accumulate
+      )(
+        globals,
+        (
+          ShelleyBbodyState[Dijkstra](state, xyz.kd5ujc.scarab.ledger.state.BlocksMade.empty),
+          proposals,
+          Chain.empty
+        )
+      )
       .map(_.map(_._1))
