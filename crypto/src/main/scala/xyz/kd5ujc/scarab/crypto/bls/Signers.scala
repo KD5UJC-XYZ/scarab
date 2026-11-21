@@ -30,16 +30,16 @@ object Signers:
   extension (s: Signers)
     def bytes: Bytes = s
 
-    /** The set seats in ascending order, for a committee of `seats`. Strict: the length must be
-      * exactly `ceil(seats / 8)` and the padding bits (index >= seats) clear.
+    /** The set seats in ascending order, for a committee of `seats`: `bitFieldMembers` of
+      * `verifyLeiosCert` (cardano-base c1e1ed8d `cardano-crypto-leios/src/Cardano/Crypto/
+      * Leios.hs:332-340`). The length must be exactly `ceil(seats / 8)` bytes, else `None`
+      * (`MalformedSigners`, `:305-307`); bits at or beyond `seats` name no seat and are ignored, as
+      * there (`globalIx < n`).
       */
-    def members(seats: Int): Either[BlsError, Vector[SeatId]] =
-      val expected = (seats + 7) / 8
-      if seats > SeatId.maxIndex + 1 then Left(BlsError.CommitteeTooLarge(seats))
-      else if s.size != expected then Left(BlsError.SignersWrongLength(expected, s.size))
-      else
-        val set = (0 until expected * 8).filter(i =>
-          s.lift(i >> 3).exists(b => (b & (0x80 >> (i & 7))) != 0)
-        )
-        if set.exists(_ >= seats) then Left(BlsError.SignersPaddingSet)
-        else Right(set.iterator.map(SeatId.unsafe).toVector)
+    def members(seats: Int): Option[Vector[SeatId]] =
+      Option.when(s.size == (seats + 7) / 8)(
+        (0 until seats).iterator
+          .filter(i => s.lift(i >> 3).exists(b => (b & (0x80 >> (i & 7))) != 0))
+          .map(SeatId.unsafe)
+          .toVector
+      )

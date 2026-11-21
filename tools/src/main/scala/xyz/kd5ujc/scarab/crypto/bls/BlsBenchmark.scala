@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.crypto.bls
 
+import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.crypto.bls.BlsFixtures.*
 
 /** Micro-benchmark for a 900-seat committee. Not a test: run
@@ -22,7 +23,7 @@ object BlsBenchmark:
     val (keys, tKeys) = time(Vector.tabulate(seats)(i => key(i + 1)))
     val (pops, tPops) = time(keys.map(k => right(MinSig.provePossession(k._1))))
     val registered = keys.zip(pops).map { case ((_, vk), pop) =>
-      (Weight.fromNatural(BigInt(1000)).get, Some((vk, pop)))
+      (Weight(Rational(1, seats)), Some((vk, pop)))
     }
     val (committee, tBuild) = time(right(Committee.fromSeats(registered)))
     val (sigs, tSign) = time(keys.map(k => right(MinSig.sign(k._1, h.bytes))))
@@ -35,7 +36,7 @@ object BlsBenchmark:
       )
     val full = cert(seats)
     val two3 = cert(700)
-    val need = Weight.fractionCeil(committee.totalWeight, 3, 4).get
+    val need = Weight(Rational(3, 4))
     // warm-up
     (0 until 30).foreach(_ => right(Certificate.verify(committee, need, h, full)))
     def bench(label: String, c: Certificate): Unit =

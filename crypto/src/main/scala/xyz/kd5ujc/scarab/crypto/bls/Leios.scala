@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.crypto.bls
 
+import cats.data.NonEmptyVector
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
 
 /** A seat: its weight and, if the pool registered a key with a valid proof of possession, the key.
@@ -33,16 +34,20 @@ object Committee:
   def fromSeats(
       seats: Vector[(Weight, Option[(VerificationKey, ProofOfPossession)])]
   ): Either[BlsError, Committee] =
-    if seats.sizeIs > SeatId.maxIndex + 1 then Left(BlsError.CommitteeTooLarge(seats.size))
-    else
-      Right(
-        new Committee(seats.map { case (w, reg) =>
-          Seat(
-            w,
-            reg.flatMap { case (vk, pop) => MinSig.verifyPossession(vk, pop).toOption.map(_ => vk) }
-          )
-        })
+    honoured(seats.map { case (w, reg) =>
+      Seat(
+        w,
+        reg.flatMap { case (vk, pop) => MinSig.verifyPossession(vk, pop).toOption.map(_ => vk) }
       )
+    })
+
+  /** Seats whose keys were already admitted: the committee the ledger seated, each key's proof of
+    * possession checked when it was selected (`mkLeiosCommittee`, cardano-base c1e1ed8d
+    * `cardano-crypto-leios/src/Cardano/Crypto/Leios.hs:154-169`), so no proof is checked again.
+    */
+  def honoured(seats: Vector[Seat]): Either[BlsError, Committee] =
+    if seats.sizeIs > SeatId.maxIndex + 1 then Left(BlsError.CommitteeTooLarge(seats.size))
+    else Right(new Committee(seats))
 
   /** CIP-164 seating: the top `size` candidates by stake descending, ties by pool id ascending
     * (unsigned byte order); position is the seat index.
@@ -140,32 +145,62 @@ object Certificate:
         sig <- MinSig.aggregateSignatures(ordered.map(_._2))
       yield Certificate(signers, sig)
 
-  /** Verify a certificate over `message` (the announcing RB hash) against a committee: bitfield
-    * shape, keyless signers, weight at least `required`, then one aggregate pairing check. Returns
-    * the signers' total weight. Same order of checks as `verifyLeiosCert` in cardano-base, plus the
-    * strict padding rule (see docs/leios.md).
+  /** `verifyLeiosCert` (cardano-base c1e1ed8d `cardano-crypto-leios/src/Cardano/Crypto/
+    * Leios.hs:289-340`): the certificate over `message` (the announcing RB hash) against a
+    * committee and the weight its signers must reach, in the reference's order: a committee a
+    * `Word16` seat id can address, a bitfield of `ceil(seats / 8)` bytes (bits at or beyond the
+    * committee size ignored), no signer on a keyless seat, the signers' exact summed weight at least
+    * `required`, then one pairing check against the sum of the signers' keys. Returns that weight.
+    * No signer is no special case: the weight is zero, and the empty key sum fails as
+    * `InvalidSignature` when nothing is required. A failure of the native library is
+    * [[BlsError.Backend]], no verdict on the certificate.
     */
   def verify(
       committee: Committee,
       required: Weight,
       message: RbHash,
       cert: Certificate
-  ): Either[BlsError, Weight] =
+  ): Either[VerificationError | BlsError.Backend, Weight] =
+    val n = committee.size
     for
-      members <- cert.signers.members(committee.size)
-      _ <- Either.cond(members.nonEmpty, (), BlsError.NoSigners)
+      _ <- Either.cond[VerificationError | BlsError.Backend, Unit](
+        n <= SeatId.maxIndex + 1,
+        (),
+        VerificationError.MalformedCommittee(n)
+      )
+      members <- cert.signers.members(n).toRight(VerificationError.MalformedSigners)
       seats = members.map(m => (m, committee.seats(m.index)))
-      keyless = seats.collect { case (m, Seat(_, None)) => m }
-      _ <- Either.cond(keyless.isEmpty, (), BlsError.SignerWithoutKey(keyless))
+      _ <- NonEmptyVector
+        .fromVector(seats.collect { case (m, Seat(_, None)) => m })
+        .map(VerificationError.SignerWithoutKey(_))
+        .toLeft(())
       weight = seats.foldLeft(Weight.zero)((a, s) => a + s._2.weight)
       _ <- Either.cond(
         Ordering[Weight].gteq(weight, required),
         (),
-        BlsError.InsufficientWeight(weight, required)
+        VerificationError.InsufficientWeight(weight)
       )
-      keys = seats.flatMap(_._2.key)
-      _ <- MinSig.verifyAggregate(keys, message.bytes, cert.signature)
+      _ <- MinSig
+        .verifyAggregate(seats.flatMap(_._2.key), message.bytes, cert.signature)
+        .left
+        .map(signatureVerdict)
     yield weight
+
+  /** A failure of the key sum or of the pairing check as `verifyLeiosCert` reads it: any one is
+    * `InvalidSignature` (`first (const InvalidSignature)`, cardano-base c1e1ed8d
+    * `cardano-crypto-leios/src/Cardano/Crypto/Leios.hs:317-321`), but a failure of the native
+    * library, which is no verdict. Only the first three cases arise there; the rest are named so
+    * that a new case is judged here.
+    */
+  private def signatureVerdict(e: BlsError): VerificationError | BlsError.Backend = e match
+    case native: BlsError.Backend => native
+    case BlsError.EmptyAggregate | BlsError.AggregateIsInfinity(_) | BlsError.SignatureInvalid |
+        BlsError.WrongLength(_, _, _) | BlsError.NotCompressed(_) | BlsError.MalformedPoint(_) |
+        BlsError.NotInSubgroup(_) | BlsError.Infinity(_) | BlsError.InvalidScalar |
+        BlsError.ProofOfPossessionInvalid | BlsError.SeatOutOfRange(_) |
+        BlsError.CommitteeTooLarge(_) | BlsError.NoSigners | BlsError.SignerNotInCommittee(_) |
+        BlsError.SeatHasNoKey(_) | BlsError.MalformedCbor(_) =>
+      VerificationError.InvalidSignature
 
   /** Strict decode: canonical CBOR, two fields, bitfield at most 8192 bytes, a signature point of
     * the subgroup ([[fromFields]]).

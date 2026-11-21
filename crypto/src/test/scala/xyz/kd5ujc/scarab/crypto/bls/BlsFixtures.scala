@@ -10,7 +10,7 @@ object BlsFixtures:
 
   def hex(s: String): Bytes = Bytes.fromHex(s).fold(e => throw new AssertionError(e), identity)
 
-  def right[A](e: Either[BlsError, A]): A =
+  def right[E, A](e: Either[E, A]): A =
     e.fold(err => throw new AssertionError(err.toString), identity)
 
   /** Throwaway keys from the Leios proto-devnet (public upstream): name, key, key bytes, proof. */

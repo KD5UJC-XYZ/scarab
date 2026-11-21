@@ -419,29 +419,39 @@ confined to `MinSig.guard`). Roadmap item N2 / issue 71. Not audited; research s
   `VerificationKey` (96-byte compressed G2), `Signature` and `ProofOfPossession` (48-byte
   compressed G1). Decoding requires the exact length, the compression flag, a valid point, the
   prime-order subgroup check, and rejects the identity. Opaque types: `Seed`, `SeatId` (16 bits),
-  `RbHash`, `Signers` (bitfield, at most 8192 bytes), `Weight` (non-negative stake).
+  `RbHash`, `Signers` (bitfield, at most 8192 bytes), `Weight` (an exact `Rational`, the
+  reference's `type Weight = Rational`).
 - `Committee.fromSeats` (checks each proof of possession once; a failing proof makes a keyless seat,
-  as `mkLeiosCommittee`), `Committee.select(candidates, N_c)` (stake descending, pool id ascending,
-  truncated), `Weight.fractionCeil(totalActiveStake, num, den)` (exact `tau`), `Vote` (`sign`,
-  `verify`, `encode`, `decode`), `Certificate` (`aggregate`, `verify`, `encode`, `decode`).
-  `Certificate.verify` follows `verifyLeiosCert`: committee size, bitfield length, keyless signers,
-  weight against `required`, then one pairing check against the sum of the signers' keys.
-- Every failure is a `BlsError` case (closed ADT; no strings, no exceptions). The CBOR codecs are
-  strict (shortest form, definite length, no trailing bytes) and fail with `CborFault`.
+  as `mkLeiosCommittee`), `Committee.honoured` (seats whose keys the ledger already admitted),
+  `Committee.select(candidates, N_c)` (stake descending, pool id ascending, truncated), `Vote`
+  (`sign`, `verify`, `encode`, `decode`), `Certificate` (`aggregate`, `verify`, `encode`, `decode`).
+  `Certificate.verify` is `verifyLeiosCert` of cardano-base `c1e1ed8d` (`Leios.hs:289-340`): committee
+  size, bitfield length (bits at or beyond the committee size ignored), keyless signers, the exact
+  summed weight against `required`, then one pairing check against the sum of the signers' keys,
+  failing with the reference's five `VerificationError` cases.
+- Every other failure is a `BlsError` case (closed ADT; no strings, no exceptions); a failure of the
+  native library during verification stays `BlsError.Backend`, no verdict on the certificate. The
+  CBOR codecs are strict (shortest form, definite length, no trailing bytes) and fail with `CborFault`.
 
 ### Decisions where the sources are silent or differ (all recorded here, none silent)
 
 - **Proof of possession is 48 bytes** (one G1 signature), not the 96-byte pair of the older Rust
   specification in `ouroboros-leios/crypto-benchmarks.rs`: the proofs in the proto-devnet genesis
   are 48 bytes and verify, and regenerate byte for byte from the secret keys.
-- **Padding bits of the signer bitfield must be clear** (`SignersPaddingSet`). `cardano-base`
-  ignores bits at or beyond the committee size. No honest producer sets them, so valid certificates
-  are the same set; a node that wants the reference's exact acceptance can drop the check in
-  `Signers.members`. Flag for N4.
-- **A signature or proof that is the identity is rejected at decode**; `cardano-base` rejects it
-  later (at verification and aggregation). Same accepted set.
-- **Quorum is `tau` of total active stake** (`leios-committee.md` in the Blueprint), not of the
-  stake seated on the committee: the caller passes `required`.
+- **Padding bits of the signer bitfield are ignored**, as `verifyLeiosCert` ignores them
+  (`globalIx < n`). Until 2026-11-21 Scarab refused a certificate with one set (`SignersPaddingSet`), a
+  difference never approved that refused certificates the reference accepts; it was corrected to the
+  reference (#73).
+- **No signer is no case of its own**: the weight is zero, so `InsufficientWeight` against any positive
+  threshold, and `InvalidSignature` (the empty key sum) when nothing is required, as in the reference.
+  Until 2026-11-21 Scarab refused it as `NoSigners`; corrected with the padding rule.
+- **A vote's signature or a proof that is the identity is rejected at decode**; `cardano-base`
+  rejects it later (at verification and aggregation). Same accepted set. A certificate's signature
+  is decoded as the reference decodes it, the identity included (`Signature.decoded`), and
+  verification refuses it.
+- **Quorum is a fraction of total active stake**: each seat weighs its pool's stake ratio and the
+  threshold is `ppLeiosQuorumStakeThreshold` (`getLeiosCommitteeFromView`, ouroboros-consensus
+  2416493b `Shelley/Ledger/Ledger.hs:990-993`), both exact; the caller passes `required`.
 - Not modelled here (ledger-side, N3/L1): expiry of a registered key after
   `ceil(slotsPerKESPeriod * maxKESEvolutions / epochLength) + 2` epochs (Blueprint), activation at
   the epoch boundary, the choice of the announcing RB.
