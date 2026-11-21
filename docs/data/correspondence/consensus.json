@@ -21,8 +21,7 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "LeiosCertificateFixtureSuite",
-    "LeiosCertificationSuite"
+    "LeiosCertificateFixtureSuite"
    ],
    "note": "the CertRB path of applyBlock's ApplyVal up to the closure: the parent's announcement, announcingRbHash, leiosCommitteeOfTip and verifyLeiosCert in that order, each failing with its LeiosExtValidationError, all on the unticked parent; a pure function of those inputs returning the verdict, where the reference runs it inside its ExceptT before resolveAndApplyLeiosClosure, and a typed defect for what the reference cannot hold; the two FIXME checks are not run, as there. The fixture suite runs it on the testnet's certifying block 97,276 from its parent's state",
    "digest": "acc25b1034fc8e51"
@@ -63,8 +62,7 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "LeiosCertificateFixtureSuite",
-    "LeiosCertificationSuite"
+    "LeiosCertificateFixtureSuite"
    ],
    "note": "announcementLeiosPoint of protocolStateLeiosAnnouncement, composed: a Praos2 state's announcement at fromWithOrigin (SlotNo 0) praosStateLastSlot, none for the states of the other protocols; the election's issuer and the body size, which the point does not carry, are not kept",
    "digest": "3f82dbf1bce281a3"
@@ -105,8 +103,7 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "LeiosCertificateFixtureSuite",
-    "LeiosCertificationSuite"
+    "LeiosCertificateFixtureSuite"
    ],
    "note": "the ledger view at the state's own tip reduced to the two fields getLeiosCommitteeFromView reads: the set snapshot's committee and unboundRational of the current ppLeiosQuorumStakeThreshold in Dijkstra, none in the eras before it; read from the NewEpochState directly rather than through ledgerViewOfTip's forecast, which at its own anchor projects the same state; a Dijkstra state of the 11.1 layout, which the Leios build cannot hold, is a defect. The fixture suite reads the testnet's committee of epoch 100 with it, under which block 97,276's certificate verifies",
    "digest": "0c95d0bd5dc18156"
@@ -124,11 +121,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
-   "evidence": [
-    "LeiosCertificationSuite"
-   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1263#issuecomment-7067525112",
    "note": "the four constructors applyBlock raises, with their fields in the reference's order (LeiosPoint as EbPoint, LeiosCert as the BLS layer's Certificate); LeiosCertificateForecastRejected, chain selection's verdict, is not a case of block application and is not here",
    "digest": "90875d862bf717b6"
   },
@@ -145,11 +140,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
-   "evidence": [
-    "ByronWindowThresholdSuite"
-   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1263#issuecomment-7067525112",
    "note": "the threshold field of pbftWindowParams, for the configured signature threshold and a window its caller gives (ByronRules.update gives k, as pbftWindowSize does); the reference builds the window size and the threshold together from its configuration, and the floor into a Word64 is ByronRules.windowThreshold's, whose results the suite compares with values measured on GHC 9.10.3",
    "digest": "c9f223416cf6a663"
   },
@@ -731,12 +724,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
-   "evidence": [
-    "LeiosChainSelSuite",
-    "LeiosEbGateSuite"
-   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1263#issuecomment-7067525112",
    "note": "the two Leios fields of BlockInfo, biHasLeiosCert as LeiosCert and biLeiosAnnouncedEb as the announced endorser block's hash (the announcer's ElId and the size, which the gate does not read, are not kept); the node's processed forest keeps them in each block's DeliveredHeader beside its header, where the reference's VolatileDB keeps BlockInfo",
    "digest": "77c5b00f297f0d34"
   },
@@ -794,12 +784,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
-   "evidence": [
-    "LeiosChainSelSuite",
-    "LeiosEbGateSuite"
-   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1263#issuecomment-7067525112",
    "note": "the blocks ignoreUnacquiredCertRB and ignoreUnacquiredCertRBSuc hide, as a set the node's candidate construction excludes from the forest with the invalid ones (AvailableBlocks.candidates), where the reference wraps the forest's lookup and successor functions; both hide a block as a tip and as a successor",
    "digest": "a49b478ab7dbf987"
   },
@@ -816,12 +803,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
-   "evidence": [
-    "LeiosChainSelSuite",
-    "LeiosEbGateSuite"
-   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1263#issuecomment-7067525112",
    "note": "the certifying, not invalid, successors of the blocks announcing the endorser block, found by a pass over the forest where the reference reads its VolatileDB's announcer index (getLeiosAnnouncers)",
    "digest": "e639bae34b13fa6e"
   },
