@@ -204,10 +204,13 @@ object Projection:
 
   def govAction(a: GovAction): Json = a match
     case GovAction.ParameterChange(prev, u, policy) =>
+      val keys = u match
+        case c: ConwayParamUpdate  => c.keys
+        case d: DijkstraKeysUpdate => d.update.fields.keySet
       Json.obj(
         "tag" -> "ParameterChange".asJson,
         "prev" -> optId(prev),
-        "keys" -> u.keys.toVector.sorted.asJson,
+        "keys" -> keys.toVector.sorted.asJson,
         "policy" -> policy.map(_.hex).asJson
       )
     case GovAction.HardFork(prev, major, minor) =>

@@ -13,6 +13,7 @@ import xyz.kd5ujc.scarab.ledger.{
   Certificate,
   ConwayParam,
   ConwayParamUpdate,
+  DijkstraKeysUpdate,
   Credential,
   DRep,
   GovAction,
@@ -437,9 +438,11 @@ object ConwayCodecs:
 
   /** `EncCBOR (GovAction era)` (`eras/conway/impl/src/Cardano/Ledger/Conway/Governance/
     * Procedures.hs:928-946`, cardano-ledger f649f975): a parameter change
-    * `[0, previous / null, update, policy / null]` with its update by [[parameterUpdate]], every
-    * other action by [[NodeTypeCodecs.govAction]], which writes them from their values. The version
-    * reaches the sets and maps of a committee update and the anchor of a constitution.
+    * `[0, previous / null, update, policy / null]` with its update by [[parameterUpdate]], or, an
+    * update that sets a parameter Dijkstra adds, by Dijkstra's
+    * ([[NodeTypeCodecs.dijkstraParamUpdate]]), every other action by [[NodeTypeCodecs.govAction]],
+    * which writes them from their values. The version reaches the sets and maps of a committee
+    * update and the anchor of a constitution.
     */
   def govAction(using ProtVer): Codec[GovAction] =
     val previous = nullable(state.govActionId)
@@ -448,7 +451,9 @@ object ConwayCodecs:
       case (GovAction.ParameterChange(prev, update, pol), out) =>
         alternative(out, 4, 0)
         previous.encode(prev, out)
-        parameterUpdate.encode(update, out)
+        update match
+          case u: ConwayParamUpdate  => parameterUpdate.encode(u, out)
+          case d: DijkstraKeysUpdate => state.dijkstraParamUpdate.encode(d.update, out)
         policy.encode(pol, out)
       case (other, out) => state.govAction.encode(other, out)
     }(a => first(govActionBounds(a), decoderLimits(a)))
@@ -465,7 +470,10 @@ object ConwayCodecs:
     def script(pol: Option[Bytes]) = pol.flatMap(hash28.check)
     a match
       case GovAction.ParameterChange(prev, update, pol) =>
-        first(ids(prev), parameterUpdate.check(update), script(pol))
+        val values = update match
+          case u: ConwayParamUpdate  => parameterUpdate.check(u)
+          case d: DijkstraKeysUpdate => state.dijkstraParamUpdate.check(d.update)
+        first(ids(prev), values, script(pol))
       case GovAction.HardFork(prev, major, minor) =>
         first(ids(prev), Codec.uintBig(13).check(major), word(32).check(minor))
       case GovAction.TreasuryWithdrawals(ws, pol) =>

@@ -592,7 +592,11 @@ class HaskellStateCodecSuite extends ScalaCheckSuite:
     val codec = govAction(using version(10))
     val action = readOk(codec, stored)
     action match
-      case xyz.kd5ujc.scarab.ledger.GovAction.ParameterChange(None, update, None) =>
+      case xyz.kd5ujc.scarab.ledger.GovAction.ParameterChange(
+            None,
+            update: xyz.kd5ujc.scarab.ledger.ConwayParamUpdate,
+            None
+          ) =>
         assertEquals(update.keys, Set(0, 9))
         assertEquals(
           update.collectFirst { case xyz.kd5ujc.scarab.ledger.ConwayParam.A0(r) => r },
@@ -613,7 +617,11 @@ class HaskellStateCodecSuite extends ScalaCheckSuite:
     val codec = govAction(using version(10))
     val action = readOk(codec, stored)
     action match
-      case xyz.kd5ujc.scarab.ledger.GovAction.ParameterChange(None, update, None) =>
+      case xyz.kd5ujc.scarab.ledger.GovAction.ParameterChange(
+            None,
+            update: xyz.kd5ujc.scarab.ledger.ConwayParamUpdate,
+            None
+          ) =>
         assertEquals(update.keys, Set(19, 20, 21))
       case other => fail(s"not a parameter change: $other")
     // cardano-ledger f649f975, Cardano/Ledger/Plutus/ExUnits.hs:192-193, 219-220: definite records.

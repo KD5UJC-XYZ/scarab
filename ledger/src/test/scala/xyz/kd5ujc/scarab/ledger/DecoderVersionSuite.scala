@@ -357,8 +357,8 @@ class DecoderVersionSuite extends FunSuite:
   private def proposedParams(body: TxBody): Vector[ConwayParam] =
     body.proposals.flatMap { p =>
       p.action match
-        case GovAction.ParameterChange(_, update, _) => update.params
-        case _                                       => Vector.empty
+        case GovAction.ParameterChange(_, update: ConwayParamUpdate, _) => update.params
+        case _                                                          => Vector.empty
     }
 
   test("parameter prices and both execution-unit limits accept indefinite records from 12") {

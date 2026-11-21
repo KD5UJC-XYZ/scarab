@@ -119,8 +119,8 @@ class ContextFailureCborSuite extends FunSuite:
       .find(_.name == "api-proposal-noncanonical-params")
       .getOrElse(fail("no parameter oracle"))
     val update = proposal.tx.body.proposals.headOption.map(_.action) match
-      case Some(GovAction.ParameterChange(_, update, _)) => update
-      case _                                             => fail("not a parameter change")
+      case Some(GovAction.ParameterChange(_, update: ConwayParamUpdate, _)) => update
+      case _ => fail("not a parameter change")
     assertEquals(update.encodings.toMap.apply(0).hex, "1801")
     assertEquals(update.encodings.toMap.apply(9).hex, "d81e820204")
     val body = proposal.tx.body.raw

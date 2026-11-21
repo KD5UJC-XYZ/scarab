@@ -107,13 +107,43 @@ object Voter:
 enum Vote:
   case No, Yes, Abstain
 
-/** Governance action of a proposal procedure. A parameter change holds a typed Conway update that
-  * keeps the original encoding of each value ([[ConwayParamUpdate]]).
+/** The update a parameter change holds ([[GovAction.ParameterChange]]), the `PParamsUpdate era` of
+  * its era (`libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs:224`, cardano-ledger
+  * 9df9f98c): Conway's ([[ConwayParamUpdate]]), or, in a Dijkstra state of the Leios build's
+  * layout, Dijkstra's when it sets a parameter Dijkstra adds ([[DijkstraKeysUpdate]]). An update of
+  * a Dijkstra state that sets Conway's parameters alone, keys 0 to 33, which Dijkstra's
+  * `eraPParams` shares (`eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs:741-776`), is
+  * held as Conway's, as it was before Dijkstra's keys were read.
+  */
+type ParamChangeUpdate = ConwayParamUpdate | DijkstraKeysUpdate
+
+/** A Dijkstra `PParamsUpdate` that sets at least one of the parameters Dijkstra adds, update keys
+  * 34 to 56 (cardano-ledger 9df9f98c `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs:
+  * 798-1123`), with whichever of Conway's keys it sets beside them: one update, as the reference
+  * holds it. Made only by [[DijkstraKeysUpdate.from]]. The state holds it in a proposal of a
+  * Dijkstra state of the Leios build's layout; the rules of those keys (GOV's well-formedness,
+  * RATIFY's groups, ENACT) are not run yet, so a transaction does not propose one
+  * (`DijkstraPending.ParameterChangeProposal`), a pool's vote on one halts, and the epoch boundary
+  * halts before it ratifies a state that holds one.
+  */
+final case class DijkstraKeysUpdate private (update: dijkstra.DijkstraParamUpdate, firstAdded: Int)
+
+object DijkstraKeysUpdate:
+  /** The first update key of the parameters Dijkstra adds. */
+  val FirstKey: Int = 34
+
+  /** `update`, when it sets a parameter Dijkstra adds, with the least key it sets of those. */
+  def from(update: dijkstra.DijkstraParamUpdate): Option[DijkstraKeysUpdate] =
+    update.fields.keySet.filter(_ >= FirstKey).minOption.map(DijkstraKeysUpdate(update, _))
+
+/** Governance action of a proposal procedure. A parameter change holds the update of its era
+  * ([[ParamChangeUpdate]]): a typed Conway update that keeps the original encoding of each value
+  * ([[ConwayParamUpdate]]), or a Dijkstra one that sets a parameter Dijkstra adds.
   */
 enum GovAction:
   case ParameterChange(
       previous: Option[GovActionId],
-      update: ConwayParamUpdate,
+      update: ParamChangeUpdate,
       policy: Option[Bytes]
   )
   case HardFork(previous: Option[GovActionId], major: BigInt, minor: BigInt)
@@ -174,7 +204,7 @@ object Proposal:
       p.deposit,
       p.returnAccount,
       p.action match
-        case GovAction.ParameterChange(previous, update, policy) =>
+        case GovAction.ParameterChange(previous, update: ConwayParamUpdate, policy) =>
           ActionIdentity.Update(previous, update.byKey, policy)
         case GovAction.TreasuryWithdrawals(ws, policy) =>
           ActionIdentity.Withdrawals(TreeMap.from(ws), policy)

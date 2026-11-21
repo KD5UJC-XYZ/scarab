@@ -178,8 +178,8 @@ class DetachedRecordsSuite extends FunSuite:
     )
     val body = TxBody.decode(raw, Era.Conway).fold(e => fail(e.toString), identity)
     val update = body.proposals.headOption.map(_.action) match
-      case Some(GovAction.ParameterChange(_, u, _)) => u
-      case other                                    => fail(s"not a parameter change: $other")
+      case Some(GovAction.ParameterChange(_, u: ConwayParamUpdate, _)) => u
+      case other => fail(s"not a parameter change: $other")
     assertEquals(update.encodings, Vector(20 -> bytes("820102")))
     assertEquals(
       ConwayParamUpdate.fromEncoded(update.encodings.map((k, v) => BigInt(k) -> v)).map(_.params),

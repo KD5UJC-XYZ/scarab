@@ -356,7 +356,7 @@ class RecordedScriptContextsSuite extends FunSuite:
     val seen = (named("preview") ++ named("preprod")).flatMap { row =>
       val name = field[String](row, "name")
       val updates = input(row).tx.body.proposals.map(_.action).collect {
-        case GovAction.ParameterChange(_, update, _) => update
+        case GovAction.ParameterChange(_, update: ConwayParamUpdate, _) => update
       }
       val contexts = field[Vector[Json]](field[Json](row, "oracle"), "scripts")
         .flatMap(s => s.hcursor.downField("contextCbor").focus.flatMap(_.asString))

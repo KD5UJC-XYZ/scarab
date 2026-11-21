@@ -115,7 +115,7 @@ class PreviewConwayGovernanceSuite extends FunSuite:
               policy.map(_.hex),
               array(description, "contents").lift(1).flatMap(_.asString)
             )
-          case GovAction.ParameterChange(_, update, policy) =>
+          case GovAction.ParameterChange(_, update: ConwayParamUpdate, policy) =>
             val parameters = array(description, "contents")(1).asObject.get
             assertEquals(update.keys.size, parameters.size)
             // the explorer names each parameter; the typed value must be the one it reports

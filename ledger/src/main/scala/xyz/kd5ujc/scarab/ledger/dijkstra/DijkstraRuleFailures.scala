@@ -211,8 +211,10 @@ enum DijkstraPending:
     */
   case PoolRegistration
 
-  /** A parameter-change proposal: the store of proposals holds Conway updates
-    * ([[xyz.kd5ujc.scarab.ledger.ConwayParamUpdate]]), not the Dijkstra one it carries.
+  /** A parameter-change proposal, whose GOV checks of Dijkstra's update (`ppuWellFormed`,
+    * cardano-ledger 9df9f98c `Dijkstra/PParams.hs:1149-1175`) are not run yet, or a pool's vote on
+    * a stored proposal whose update sets a parameter Dijkstra adds
+    * ([[xyz.kd5ujc.scarab.ledger.DijkstraKeysUpdate]]), whose groups are not computed yet.
     */
   case ParameterChangeProposal
 

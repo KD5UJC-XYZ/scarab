@@ -130,44 +130,11 @@ object DijkstraCodecs:
         }
   }((a, b) => a.copy(raw = b.raw) == b)
 
-  /** `EncCBOR PParamsUpdate`, `Core/PParams.hs:250-264`, and Dijkstra's `eraPParams`: sparse
-    * ascending update keys. The version-12 field decoders validate the key, value type and range.
-    * Reference: cardano-ledger 9df9f98c.
+  /** `EncCBOR PParamsUpdate`, `Core/PParams.hs:250-264`, and Dijkstra's `eraPParams`: the state's
+    * codec ([[NodeTypeCodecs.dijkstraParamUpdate]]), which a proposal of a Dijkstra state is
+    * written with. Reference: cardano-ledger 9df9f98c.
     */
-  val paramUpdate: Codec[DijkstraParamUpdate] =
-    codec("PParamsUpdate")(DijkstraParamUpdate.decode) { (u, out) =>
-      out.mapHead(u.fields.size)
-      u.fields.toVector.sortBy(_._1).foreach { (key, value) =>
-        out.uint(key.toLong)
-        paramValue(value, out)
-      }
-    }(_ == _)
-
-  private def paramValue(value: DijkstraParamValue, out: Writer): Unit =
-    import DijkstraParamValue.*
-    value match
-      case Number(n)         => out.uint(n)
-      case Ratio(r)          => Wire.nonNegativeInterval.encode(r, out)
-      case OptionalRatio(r)  => optional(r, out)(Wire.nonNegativeInterval.encode)
-      case OptionalNumber(n) => optional(n, out)((v, w) => w.uint(v))
-      case CostModels(models) =>
-        out.variableMap(models.size) {
-          models.toVector.sortBy(_._1).foreach { (language, parameters) =>
-            out.uint(language.toLong)
-            out.variableArray(parameters.size)(parameters.foreach(n => out.int(BigInt(n))))
-          }
-        }
-      case Pair(memory, steps) =>
-        out.arrayHead(2)
-        Wire.nonNegativeInterval.encode(memory, out)
-        Wire.nonNegativeInterval.encode(steps, out)
-      case ExUnits(memory, steps) =>
-        out.arrayHead(2)
-        out.uint(memory)
-        out.uint(steps)
-      case Thresholds(values) =>
-        out.arrayHead(values.size)
-        values.foreach(Wire.unitInterval.encode(_, out))
+  val paramUpdate: Codec[DijkstraParamUpdate] = state.dijkstraParamUpdate
 
   /** `EncCBOR AccountBalanceInterval`, `Dijkstra/Scripts.hs:677-682`: a bare exact coin or a pair
     * of nullable bounds. The decoder refuses a pair with neither bound. Reference: cardano-ledger

@@ -132,6 +132,10 @@ object Gens extends LowPriorityGens:
       .fold(_ => Gen.fail, Gen.const)
     update <- ConwayParamUpdate.fromEncoded(encoded).fold(_ => Gen.fail, Gen.const)
   yield update)
+
+  /** A parameter change's update: Conway's, the update a Conway state and body hold. */
+  given paramChangeUpdate: Gens[xyz.kd5ujc.scarab.ledger.ParamChangeUpdate] =
+    of(conwayParamUpdate.gen)
   given govAction: Gens[GovAction] = auto
   given proposal: Gens[Proposal] = auto
   given govAnchor: Gens[xyz.kd5ujc.scarab.ledger.Anchor] = auto

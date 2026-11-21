@@ -28,6 +28,13 @@ object Ratify:
     val params = u.params
     (params.map(_.drepGroup).toSet, params.exists(_.poolGroup == StakePoolGroup.Security))
 
+  // An update that sets a parameter Dijkstra adds ([[DijkstraKeysUpdate]]) has groups this build
+  // does not compute yet (Dijkstra's `modifiedPPGroups`, cardano-ledger 9df9f98c
+  // `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs:798-1123`): its thresholds are
+  // unavailable, so it is never ratified, and a pool may not vote on it. Neither the epoch
+  // boundary nor GOV reaches these cases: Dijkstra's EPOCH halts before it ratifies a state that
+  // holds one, and Dijkstra's GOV halts on a pool's vote on one.
+
   def isBootstrap(pp: ProtocolParams): Boolean = pp.protocolMajor == 9
 
   def drepThreshold(pp: ProtocolParams, committeeElected: Boolean, a: GovAction): Threshold =
@@ -39,7 +46,8 @@ object Ratify:
         Required(if committeeElected then t.committeeNormal else t.committeeNoConfidence)
       case _: GovAction.NewConstitution => Required(t.updateToConstitution)
       case _: GovAction.HardFork        => Required(t.hardForkInitiation)
-      case GovAction.ParameterChange(_, u, _) =>
+      case GovAction.ParameterChange(_, _: DijkstraKeysUpdate, _) => Unavailable
+      case GovAction.ParameterChange(_, u: ConwayParamUpdate, _) =>
         val ratios = modifiedGroups(u)._1.map {
           case DRepGroup.Network   => t.ppNetworkGroup
           case DRepGroup.Economic  => t.ppEconomicGroup
@@ -56,9 +64,10 @@ object Ratify:
       case _: GovAction.NoConfidence => Required(t.motionNoConfidence)
       case _: GovAction.UpdateCommittee =>
         Required(if committeeElected then t.committeeNormal else t.committeeNoConfidence)
-      case _: GovAction.NewConstitution => NotAllowed
-      case _: GovAction.HardFork        => Required(t.hardForkInitiation)
-      case GovAction.ParameterChange(_, u, _) =>
+      case _: GovAction.NewConstitution                           => NotAllowed
+      case _: GovAction.HardFork                                  => Required(t.hardForkInitiation)
+      case GovAction.ParameterChange(_, _: DijkstraKeysUpdate, _) => Unavailable
+      case GovAction.ParameterChange(_, u: ConwayParamUpdate, _) =>
         if modifiedGroups(u)._2 then Required(t.securityGroup) else NotAllowed
       case _: GovAction.TreasuryWithdrawals => NotAllowed
       case GovAction.Info                   => Unavailable
@@ -97,7 +106,8 @@ object Ratify:
 
   def isPoolVotingAllowed(a: GovAction): Boolean = a match
     case _: GovAction.NewConstitution | _: GovAction.TreasuryWithdrawals => false
-    case GovAction.ParameterChange(_, u, _)                              => modifiedGroups(u)._2
+    case GovAction.ParameterChange(_, u: ConwayParamUpdate, _)           => modifiedGroups(u)._2
+    case GovAction.ParameterChange(_, _: DijkstraKeysUpdate, _)          => false
     case _                                                               => true
 
   /** What ratification looks at: the pulser's snapshot of the DRep and pool distributions. */
@@ -262,9 +272,13 @@ object Ratify:
     }
     end.copy(enact = end.enact.copy(treasury = 0))
 
-  /** ENACT: the effect of one ratified action. */
+  /** ENACT: the effect of one ratified action. An update that sets a parameter Dijkstra adds is
+    * never ratified here (its thresholds are unavailable), and Dijkstra's ENACT of it is not run
+    * yet: it changes nothing.
+    */
   def enact(st: EnactState, id: GovActionId, a: GovAction): EnactState = a match
-    case GovAction.ParameterChange(_, u, _) =>
+    case GovAction.ParameterChange(_, _: DijkstraKeysUpdate, _) => st
+    case GovAction.ParameterChange(_, u: ConwayParamUpdate, _) =>
       st.copy(
         params = u.applyTo(st.params),
         prevIds = st.prevIds.copy(paramUpdate = Some(id))

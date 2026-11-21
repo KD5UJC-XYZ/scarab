@@ -11,8 +11,10 @@ import xyz.kd5ujc.scarab.ledger.{
   Certificate,
   CertFailure,
   CertsFailure,
+  DijkstraKeysUpdate,
   GovAction,
   GovActionId,
+  GovActionState,
   GovFailure,
   LedgerFailure,
   PoolFailure,
@@ -213,6 +215,13 @@ object DijkstraConway:
   def proposal(p: DijkstraProposal): Either[DijkstraPending, Proposal] =
     action(p.action).map(Proposal(p.deposit, p.returnAccount, _, anchor(p.anchor)))
 
+  /** Whether a stored proposal's update sets a parameter Dijkstra adds
+    * ([[xyz.kd5ujc.scarab.ledger.DijkstraKeysUpdate]]), whose rules are not run yet.
+    */
+  def setsDijkstraKeys(gas: GovActionState): Boolean = gas.action match
+    case GovAction.ParameterChange(_, _: DijkstraKeysUpdate, _) => true
+    case _                                                      => false
+
 /** POOL of Dijkstra (`Dijkstra/Rules/Pool.hs:199-318`, `poolTransition`, cardano-ledger 9df9f98c):
   * a retirement is Shelley's, the same checks in the same order (`Pool.hs:301-318`;
   * `Shelley/Rules/Pool.hs`), run by the Conway rule with its failures taken into
@@ -391,7 +400,10 @@ object DijkstraGovSignal:
   * ([[GovFailure]], `conwayToDijkstraGovPredFailure`, `Gov.hs:222-243`). The signal is read as
   * Conway's: the certificates only for the DReps they unregister, the one thing the rule reads of
   * them (`collectRemovals`, `Conway/Rules/Gov.hs:612-618`). A parameter-change proposal halts
-  * ([[DijkstraPending.ParameterChangeProposal]]).
+  * ([[DijkstraPending.ParameterChangeProposal]]), and so does a pool's vote on a stored proposal
+  * whose update sets a parameter Dijkstra adds: whether a pool may vote on it is whether it changes
+  * a parameter of the security group (`votingStakePoolThreshold`, `Conway/Rules/Ratify.hs`), which
+  * Dijkstra's groups of those keys decide, not computed yet.
   */
 object DijkstraGov
     extends JudgedSts[GovEnv, Proposals, DijkstraGovSignal, GovFailure, DijkstraHalt]:
@@ -409,16 +421,31 @@ object DijkstraGov
     val unregistrations = signal.certificates.collect {
       case DijkstraCert.UnregisterDRep(c, refund) => Certificate.UnregisterDRep(c, refund)
     }
-    signal.proposals
-      .traverse(DijkstraConway.proposal)
-      .fold(
-        DijkstraSts.halt[F, Unit](_),
-        proposals =>
-          DijkstraSts.asConway[F, GovEnv, Proposals, Proposals, GovSignal, GovFailure](
-            Gov,
-            env,
-            GovSignal(votes, proposals, unregistrations),
-            DijkstraSts.same,
-            { case PredicateFailure.Gov(f) => f }
+    def poolVoteOnDijkstraKeys(stored: Proposals): Boolean =
+      votes.exists {
+        case (Voter.Pool(_), procedures) =>
+          procedures.exists((id, _) => stored.byId.get(id).exists(DijkstraConway.setsDijkstraKeys))
+        case _ => false
+      }
+    st.get.flatMap { stored =>
+      signal.proposals
+        .traverse(DijkstraConway.proposal)
+        .flatMap(proposals =>
+          Either.cond(
+            !poolVoteOnDijkstraKeys(stored),
+            proposals,
+            DijkstraPending.ParameterChangeProposal
           )
-      )
+        )
+        .fold(
+          DijkstraSts.halt[F, Unit](_),
+          proposals =>
+            DijkstraSts.asConway[F, GovEnv, Proposals, Proposals, GovSignal, GovFailure](
+              Gov,
+              env,
+              GovSignal(votes, proposals, unregistrations),
+              DijkstraSts.same,
+              { case PredicateFailure.Gov(f) => f }
+            )
+        )
+    }

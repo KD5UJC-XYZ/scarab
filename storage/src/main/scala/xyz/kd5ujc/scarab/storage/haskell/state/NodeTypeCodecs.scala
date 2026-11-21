@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.storage.haskell.state
 
 import cats.Order
-import xyz.kd5ujc.scarab.codec.{Bytes, Interned, Rational, Value}
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Interned, Rational, Value}
 import xyz.kd5ujc.scarab.ledger.{
   Anchor,
   Committee,
@@ -13,12 +13,14 @@ import xyz.kd5ujc.scarab.ledger.{
   DRepState,
   DecodeField,
   DecoderVersion,
+  DijkstraKeysUpdate,
   EnactState,
   GenDelegPair,
   GovAction,
   GovActionId,
   GovActionState,
   LedgerDecodeError,
+  ParamChangeUpdate,
   ParamUpdate,
   PoolParams,
   PrevIds,
@@ -30,6 +32,7 @@ import xyz.kd5ujc.scarab.ledger.{
   RewardAccount,
   Vote
 }
+import xyz.kd5ujc.scarab.ledger.dijkstra.{DijkstraParamUpdate, DijkstraParamValue}
 import xyz.kd5ujc.scarab.ledger.state.{ProtVer, Sorted}
 import xyz.kd5ujc.scarab.protocol.{DijkstraNotYet, StateLayout}
 import xyz.kd5ujc.scarab.models.runtime.{
@@ -329,12 +332,82 @@ trait NodeTypeCodecs extends VocabularyCodecs:
     */
   private val dijkstraUpdateKeys: Set[BigInt] = (34 to 56).map(BigInt(_)).toSet
 
+  /** Dijkstra's `PParamsUpdate` as the Leios build writes it (`EncCBOR PParamsUpdate`,
+    * cardano-ledger 9df9f98c
+    * `libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs:250-262`): a definite map of the
+    * fields set, in `eraPParams` order (`Dijkstra/PParams.hs:741-796`), which is ascending update
+    * key, each key a `Word` and each value its field's `encCBOR`: a number as the least unsigned
+    * integer, a bounded ratio as tag 30 of its numerator and denominator (the reference's `Ratio`
+    * holds them reduced), a `MaxPledgeLeverage` and the Peras bootstrap round (its `EraCodec`,
+    * `PParams.hs:1064-1080`) null or the value, `ExUnits` and `Prices` definite pairs, the cost
+    * models a map by language, the voting thresholds a definite list. Read at version 12 by
+    * [[DijkstraParamUpdate.decode]] (`decodeSparseKeyed`, `Core/PParams.hs:264-299`); a value is
+    * written when it reads back as itself.
+    */
+  val dijkstraParamUpdate: Codec[DijkstraParamUpdate] = new Codec[DijkstraParamUpdate]:
+    def decode(n: Node): Decoded[DijkstraParamUpdate] =
+      DijkstraParamUpdate.decode(n).left.map(why => DecodeError.at(n, Kind.Domain(why)))
+    def encode(u: DijkstraParamUpdate, out: Writer): Unit =
+      out.mapHead(u.fields.size)
+      u.fields.toVector.sortBy(_._1).foreach { (key, value) =>
+        out.uint(key.toLong)
+        dijkstraParamValue(value, out)
+      }
+    override def check(u: DijkstraParamUpdate): Option[ConstraintViolation] =
+      decodeBytes(encodeUnchecked(u), Cbor.Limits.Unbounded) match
+        case Left(e) =>
+          Some(ConstraintViolation("PParamsUpdate", "a writable Dijkstra value", e.toString))
+        case Right(b) => Codec.refuse(b != u, "PParamsUpdate", "an exact value round trip", u)
+
+  private def dijkstraParamValue(value: DijkstraParamValue, out: Writer): Unit =
+    import DijkstraParamValue.*
+    def optional[A](a: Option[A])(put: A => Unit): Unit = a.fold(out.nul())(put)
+    value match
+      case Number(n)         => out.uint(n)
+      case Ratio(r)          => Wire.nonNegativeInterval.encode(r, out)
+      case OptionalRatio(r)  => optional(r)(Wire.nonNegativeInterval.encode(_, out))
+      case OptionalNumber(n) => optional(n)(out.uint(_))
+      case CostModels(models) =>
+        out.variableMap(models.size) {
+          models.toVector.sortBy(_._1).foreach { (language, parameters) =>
+            out.uint(language.toLong)
+            out.variableArray(parameters.size)(parameters.foreach(n => out.int(BigInt(n))))
+          }
+        }
+      case Pair(memory, steps) =>
+        out.arrayHead(2)
+        Wire.nonNegativeInterval.encode(memory, out)
+        Wire.nonNegativeInterval.encode(steps, out)
+      case ExUnits(memory, steps) =>
+        out.arrayHead(2)
+        out.uint(memory)
+        out.uint(steps)
+      case Thresholds(values) =>
+        out.arrayHead(values.size)
+        values.foreach(Wire.unitInterval.encode(_, out))
+
+  /** An update of Conway's parameters alone ([[ConwayParamUpdate]]), as `conway` reads and writes
+    * it: an update that sets a parameter Dijkstra adds is not one, and not written.
+    */
+  private def conwayOnly(conway: Codec[ConwayParamUpdate]): Codec[ParamChangeUpdate] =
+    new Codec[ParamChangeUpdate]:
+      def decode(n: Node): Decoded[ParamChangeUpdate] = conway.decode(n)
+      // an update of Dijkstra's keys is refused by `check`; never written
+      def encode(a: ParamChangeUpdate, out: Writer): Unit = a match
+        case u: ConwayParamUpdate  => conway.encode(u, out)
+        case _: DijkstraKeysUpdate => ()
+      override def check(a: ParamChangeUpdate): Option[ConstraintViolation] = a match
+        case u: ConwayParamUpdate => conway.check(u)
+        case d: DijkstraKeysUpdate =>
+          Some(ConstraintViolation("PParamsUpdate", "an update of Conway's parameters", d.toString))
+
   /** The `PParamsUpdate` of a proposal in a Dijkstra state, read at version 12 (`decodeSparseKeyed`
     * over the era's keys, each value `decCBOR` at 12, cardano-ledger 9df9f98c
     * `Core/PParams.hs:264-299`): Conway's keys as a body is read at 12
     * ([[ConwayParamUpdate.decode]]), its bounded ratios of `Word64` s and its `ExUnits` and
-    * `Prices` definite or indefinite. A key of a parameter Dijkstra adds is refused
-    * ([[DijkstraNotYet.ParameterUpdate]]); any other unknown key as the reference refuses it.
+    * `Prices` definite or indefinite. A key of a parameter Dijkstra adds is refused in the 11.1
+    * layout ([[DijkstraNotYet.ParameterUpdate]]), whose Dijkstra parameters are not the Leios
+    * build's; any other unknown key as the reference refuses it.
     */
   private val paramUpdateFrom12: Codec[ConwayParamUpdate] = new Codec[ConwayParamUpdate]:
     def decode(n: Node): Decoded[ConwayParamUpdate] =
@@ -350,6 +423,32 @@ trait NodeTypeCodecs extends VocabularyCodecs:
     def encode(a: ConwayParamUpdate, out: Writer): Unit = conwayParamUpdate.encode(a, out)
     override def check(a: ConwayParamUpdate): Option[ConstraintViolation] =
       conwayParamUpdate.check(a)
+
+  /** The `PParamsUpdate` of a proposal in a Dijkstra state of the Leios build's layout, read at
+    * version 12 as one map (`decodeSparseKeyed`, cardano-ledger 9df9f98c
+    * `Core/PParams.hs:264-299`), its entries in order: an update of Conway's keys alone, 0 to 33,
+    * as [[paramUpdateFrom12]] reads and writes it, and one that sets a parameter Dijkstra adds,
+    * keys 34 to 56, as Dijkstra's ([[DijkstraKeysUpdate]], [[dijkstraParamUpdate]]), whichever of
+    * Conway's keys it also sets. The reading of Conway's keys stops at the first key of Dijkstra's,
+    * and the update is read again as Dijkstra's, which reads Conway's keys at the same types: the
+    * first refusal of either is the first entry the reference refuses.
+    */
+  private val leiosParamUpdateFrom12: Codec[ParamChangeUpdate] = new Codec[ParamChangeUpdate]:
+    def decode(n: Node): Decoded[ParamChangeUpdate] =
+      ConwayParamUpdate.decode(n, DecoderVersion.Dijkstra) match
+        case Right(u) => Right(u)
+        case Left(first @ LedgerDecodeError.UnknownKey(DecodeField.ParameterUpdate, key))
+            if dijkstraUpdateKeys.contains(key) =>
+          dijkstraParamUpdate
+            .decode(n)
+            .flatMap(DijkstraKeysUpdate.from(_).toRight(DecodeError.at(n, Kind.Domain(first))))
+        case Left(why) => Left(DecodeError.at(n, Kind.Domain(why)))
+    def encode(a: ParamChangeUpdate, out: Writer): Unit = a match
+      case u: ConwayParamUpdate  => conwayParamUpdate.encode(u, out)
+      case d: DijkstraKeysUpdate => dijkstraParamUpdate.encode(d.update, out)
+    override def check(a: ParamChangeUpdate): Option[ConstraintViolation] = a match
+      case u: ConwayParamUpdate  => conwayParamUpdate.check(u)
+      case d: DijkstraKeysUpdate => dijkstraParamUpdate.check(d.update)
 
   given govActionId: Codec[GovActionId] =
     Record.of[GovActionId]((hash32Bytes, word16))
@@ -391,7 +490,12 @@ trait NodeTypeCodecs extends VocabularyCodecs:
     private val version = Record.of[(BigInt, BigInt)]((Codec.uintBig(13), word32))
     private val maxMajor: BigInt = if v.atLeast(12) then 13 else 12
     private val threshold = unitIntervalAt
-    private val parameters = if v.atLeast(12) then paramUpdateFrom12 else conwayParamUpdate
+    private val parameters: Codec[ParamChangeUpdate] =
+      if !v.atLeast(12) then conwayOnly(conwayParamUpdate)
+      else
+        stateLayout match
+          case StateLayout.Leios    => leiosParamUpdateFrom12
+          case StateLayout.Node11_1 => conwayOnly(paramUpdateFrom12)
     def decode(n: Node): Decoded[GovAction] =
       variant(n).flatMap {
         case (t, Vector(g, u, p)) if t == 0 =>
@@ -459,7 +563,13 @@ trait NodeTypeCodecs extends VocabularyCodecs:
         previous.encode(prev, out); constitution.encode(Constitution(anchor, script), out)
       case GovAction.Info =>
         out.arrayHead(1); out.uint(6L)
-    override def check(a: GovAction): Option[ConstraintViolation] = ConwayCodecs.govActionBounds(a)
+    // the bounds of the action, and an update of Dijkstra's keys only where the layout holds one
+    override def check(a: GovAction): Option[ConstraintViolation] =
+      ConwayCodecs
+        .govActionBounds(a)
+        .orElse(a match
+          case GovAction.ParameterChange(_, update, _) => parameters.check(update)
+          case _                                       => None)
 
   /** `ProposalProcedure` (`Procedures.hs:537-543`): the deposit, the account the deposit returns
     * to, the action and its anchor.

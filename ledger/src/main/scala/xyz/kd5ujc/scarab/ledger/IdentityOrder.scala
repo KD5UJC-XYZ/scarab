@@ -147,10 +147,26 @@ private[ledger] object IdentityOrder:
   given updateEntry: Ordering[ConwayParamUpdate.Entry] = Ordering.by(e => (e.param, e.original))
   given conwayParamUpdate: Ordering[ConwayParamUpdate] = Ordering.by(_.entries.toVector)
 
+  /** A parameter change's update ([[ParamChangeUpdate]]): Conway's before Dijkstra's, each by its
+    * own order. A body's proposals, which this order compares, hold Conway's alone.
+    */
+  given paramChangeUpdate: Ordering[ParamChangeUpdate] = (a, b) =>
+    (a, b) match
+      case (x: ConwayParamUpdate, y: ConwayParamUpdate) => by(x, y)
+      case (x: DijkstraKeysUpdate, y: DijkstraKeysUpdate) =>
+        by(x.update, y.update)(using dijkstra.DijkstraOrder.paramUpdate)
+      case (_: ConwayParamUpdate, _: DijkstraKeysUpdate) => -1
+      case (_: DijkstraKeysUpdate, _: ConwayParamUpdate) => 1
+
   given govAction: Ordering[GovAction] = (a, b) =>
     import GovAction.*
     (a, b) match
-      case (ParameterChange(p, u, s), ParameterChange(q, v, t))   => by((p, u, s), (q, v, t))
+      case (ParameterChange(p, u, s), ParameterChange(q, v, t)) =>
+        val parents = by(p, q)
+        if parents != 0 then parents
+        else
+          val updates = paramChangeUpdate.compare(u, v)
+          if updates != 0 then updates else by(s, t)
       case (HardFork(p, m, n), HardFork(q, o, r))                 => by((p, m, n), (q, o, r))
       case (TreasuryWithdrawals(w, s), TreasuryWithdrawals(x, t)) => by((w, s), (x, t))
       case (NoConfidence(p), NoConfidence(q))                     => by(p, q)

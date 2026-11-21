@@ -216,7 +216,7 @@ private[ntc] object ContextFailureCbor:
 
   private def proposal(value: Proposal)(using ProtVer): Option[Bytes] =
     val projected = value.action match
-      case GovAction.ParameterChange(previous, update, policy) =>
+      case GovAction.ParameterChange(previous, update: ConwayParamUpdate, policy) =>
         Params.canonicalConwayUpdate(update).toOption.map { canonical =>
           value.copy(action = GovAction.ParameterChange(previous, canonical, policy))
         }

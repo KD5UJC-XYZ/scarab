@@ -405,8 +405,13 @@ object ScriptContexts:
 
   private def proposalData(p: Proposal): Result[PlutusData] =
     val action: Result[PlutusData] = p.action match
-      case GovAction.ParameterChange(prev, update, script) =>
+      case GovAction.ParameterChange(prev, update: ConwayParamUpdate, script) =>
         Right(constr(0, previous(prev), changedParameters(update), policy(script)))
+      // an update of Dijkstra's keys, by the same `ToPlutusData (PParamsUpdate era)`
+      // (`Conway/PParams.hs:200-206`, cardano-ledger 9df9f98c); a Conway body holds none
+      case GovAction.ParameterChange(prev, update: DijkstraKeysUpdate, script) =>
+        val changed = dijkstra.DijkstraScriptContexts.changedParameters(update.update)
+        Right(constr(0, previous(prev), changed, policy(script)))
       case GovAction.HardFork(prev, major, minor) =>
         Right(constr(1, previous(prev), constr(0, I(major), I(minor))))
       case GovAction.TreasuryWithdrawals(withdrawals, script) =>

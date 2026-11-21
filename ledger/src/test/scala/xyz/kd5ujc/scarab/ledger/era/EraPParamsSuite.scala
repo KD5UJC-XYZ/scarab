@@ -137,7 +137,7 @@ class EraPParamsSuite extends ScalaCheckSuite:
       }
       .flatMap(_.body.proposals)
       .map(_.action)
-      .collect { case GovAction.ParameterChange(_, update, _) => update }
+      .collect { case GovAction.ParameterChange(_, update: ConwayParamUpdate, _) => update }
 
   test(
     "the recorded Preview parameter changes: applied, well-formed and grouped as the flat rules"

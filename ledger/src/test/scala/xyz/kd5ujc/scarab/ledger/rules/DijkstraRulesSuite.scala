@@ -275,11 +275,11 @@ class DijkstraRulesSuite extends FunSuite:
 
   private val govEnv = GovEnv(Bytes.fromArray(Array.fill(32)(6)), 1, pp, None, emptyCert, None)
 
-  private def gov(signal: DijkstraGovSignal) =
+  private def gov(signal: DijkstraGovSignal, stored: Proposals = Proposals.empty) =
     DijkstraSts.judge(DijkstraGov, Judgment.Policy.Accumulate)(
       globals,
       govEnv,
-      Proposals.empty,
+      stored,
       signal
     )
 
@@ -317,6 +317,46 @@ class DijkstraRulesSuite extends FunSuite:
       gov(DijkstraGovSignal(Vector.empty, Vector(proposal), Vector.empty)),
       Left(DijkstraHalt.NotYet(DijkstraNotYet.Rules, DijkstraPending.ParameterChangeProposal))
     )
+  }
+
+  // whether a pool may vote is whether the update changes a parameter of the security group, which
+  // Dijkstra's groups of keys 34 to 56 decide (`modifiedPPGroups`, cardano-ledger 9df9f98c
+  // `Dijkstra/PParams.hs:798-1123`), not computed yet
+  test("GOV halts on a pool's vote on a stored proposal of Dijkstra's keys, not on a DRep's") {
+    val id = DijkstraGovActionId(Bytes.fromArray(Array.fill(32)(5)), 0)
+    val update = xyz.kd5ujc.scarab.ledger.DijkstraKeysUpdate
+      .from(DijkstraParamUpdate(Map(45 -> DijkstraParamValue.Number(BigInt(308_000)))))
+      .getOrElse(fail("not an update of Dijkstra's keys"))
+    val stored = Proposals(
+      Vector(
+        xyz.kd5ujc.scarab.ledger.GovActionState(
+          DijkstraConway.actionId(id),
+          Map.empty,
+          Map.empty,
+          Map.empty,
+          xyz.kd5ujc.scarab.ledger.Proposal(
+            pp.govActionDeposit,
+            RewardAccount(0, key(9)),
+            xyz.kd5ujc.scarab.ledger.GovAction.ParameterChange(None, update, None)
+          ),
+          BigInt(0),
+          BigInt(6)
+        )
+      ),
+      xyz.kd5ujc.scarab.ledger.PrevIds()
+    )
+    def voting(voter: DijkstraVoter) = DijkstraGovSignal(
+      Vector(voter -> Vector(id -> DijkstraVotingProcedure(Vote.Yes, None))),
+      Vector.empty,
+      Vector.empty
+    )
+    val pool = Bytes.fromArray(Array.fill(28)(3))
+    assertEquals(
+      gov(voting(DijkstraVoter.StakePool(pool)), stored),
+      Left(DijkstraHalt.NotYet(DijkstraNotYet.Rules, DijkstraPending.ParameterChangeProposal))
+    )
+    // a DRep may vote on any action: Conway's transition judges the vote (its voter is unknown)
+    assert(gov(voting(DijkstraVoter.DRep(key(8))), stored).isRight)
   }
 
   // ---- the numbers of the failures

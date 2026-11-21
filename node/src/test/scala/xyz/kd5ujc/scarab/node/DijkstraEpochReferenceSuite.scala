@@ -6,8 +6,28 @@ import io.circe.{ACursor, HCursor, parser}
 import java.nio.file.{Files, Path}
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
-import xyz.kd5ujc.scarab.ledger.{PoolParams, RewardAccount}
-import xyz.kd5ujc.scarab.ledger.rules.{Convert, EraLedger, Globals, Sts, Tick, Translate}
+import xyz.kd5ujc.scarab.ledger.{
+  ConwayParamUpdate,
+  Credential,
+  DijkstraKeysUpdate,
+  GovAction,
+  GovActionId,
+  GovActionState,
+  ParamChangeUpdate,
+  PoolParams,
+  Proposal,
+  RewardAccount
+}
+import xyz.kd5ujc.scarab.ledger.dijkstra.{DijkstraParamUpdate, DijkstraParamValue}
+import xyz.kd5ujc.scarab.ledger.rules.{
+  Convert,
+  EraLedger,
+  Globals,
+  Sts,
+  Tick,
+  TickFailure,
+  Translate
+}
 import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.ledger.state.{
   ConwayGovState,
@@ -28,7 +48,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
   addInterval
 }
 import xyz.kd5ujc.scarab.node.read.EraRead
-import xyz.kd5ujc.scarab.protocol.ReferenceBuild
+import xyz.kd5ujc.scarab.protocol.{DijkstraNotYet, ReferenceBuild}
 import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellState, LeiosStateCodecs}
 
 /** Dijkstra's tick across epoch boundaries, against the native TICK of the Leios build
@@ -285,6 +305,60 @@ class DijkstraEpochReferenceSuite extends FunSuite:
           case other                     => fail(s"$id holds $other")
       }
     }
+  }
+
+  /** A proposal of `update` added to the state's proposals, of no parent and no policy. */
+  private def withProposal(nes: NewEpochState[Dijkstra], update: ParamChangeUpdate) =
+    val ls = nes.es.ls
+    val gov: ConwayGovState = ls.utxo.gov
+    val gas = GovActionState(
+      GovActionId(Bytes.fromArray(Array.fill(32)(0x5d.toByte)), BigInt(0)),
+      Map.empty,
+      Map.empty,
+      Map.empty,
+      Proposal(
+        BigInt(100_000_000_000L),
+        RewardAccount(0, Credential.Key(Bytes.fromArray(Array.fill(28)(0x0d.toByte)))),
+        GovAction.ParameterChange(None, update, None)
+      ),
+      nes.epoch.toBigInt,
+      nes.epoch.toBigInt + 6
+    )
+    val proposals = gov.proposals.copy(actions = gov.proposals.actions :+ gas)
+    nes.copy(es =
+      nes.es.copy(ls =
+        ls.copy[Dijkstra](utxo = ls.utxo.copy[Dijkstra](gov = gov.copy(proposals = proposals)))
+      )
+    )
+
+  test(
+    "the boundary halts before it ratifies a proposal that sets a parameter Dijkstra adds, not one of Conway's"
+  ) {
+    val c = cases
+      .find(c => text(c, "name") == "dijkstra-203" && text(c, "path") == "boundaries")
+      .getOrElse(fail("no boundaries case of dijkstra-203"))
+    val start = input(text(c, "name"), text(c, "stateSha256"))
+    val globals = globalsOf(configOf(text(c, "genesis")))
+    val boundary = right(c.downField("ticks").values.toRight("no ticks")).toVector
+      .map(_.hcursor)
+      .find(t => number(t.downField("facts"), "epoch") > start.epoch.toBigInt)
+      .map(t => right(SlotNo.fromBigInt(number(t, "slot"))))
+      .getOrElse(fail("no tick across the boundary"))
+    def tick(nes: NewEpochState[Dijkstra]) = Sts(Tick.sts[Dijkstra])(globals, (), nes, boundary)
+    // key 45, as the testnet proposed it (its first update's half)
+    val dijkstra = DijkstraKeysUpdate
+      .from(DijkstraParamUpdate(Map(45 -> DijkstraParamValue.Number(BigInt(308_000)))))
+      .getOrElse(fail("not an update of Dijkstra's keys"))
+    assertEquals(
+      tick(withProposal(start, dijkstra)).swap.toOption,
+      Some(TickFailure.NotYet(DijkstraNotYet.Rules))
+    )
+    val conway = right(
+      ConwayParamUpdate.fromEncoded(
+        Vector(BigInt(0) -> Bytes.fromArray(Array(0x18, 0x2c).map(_.toByte)))
+      )
+    )
+    assert(tick(withProposal(start, conway)).isRight)
   }
 
   /** Each tick of the case from `start`, the state after it equal to the native one. */

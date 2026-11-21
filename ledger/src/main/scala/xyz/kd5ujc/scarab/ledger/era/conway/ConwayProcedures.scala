@@ -5,7 +5,9 @@ import cats.syntax.all.*
 import scala.collection.immutable.SortedMap
 import xyz.kd5ujc.scarab.ledger.{
   Constitution,
+  ConwayParamUpdate,
   DecodeField,
+  DijkstraKeysUpdate,
   GovAction as FlatGovAction,
   GovActionId,
   Proposal,
@@ -40,10 +42,13 @@ object ConwayProcedures:
     * the reference's type does, so none of these refusals is reached from bytes it accepted: an
     * update outside its fields' types ([[ConwayPParams.fromUpdate]]), a version outside `Version`
     * and `Word32`, a script hash or committee credential of the wrong length, an epoch outside
-    * `Word64` and a threshold outside `[0, 1]`.
+    * `Word64` and a threshold outside `[0, 1]`. An update that sets a parameter Dijkstra adds,
+    * which only a Dijkstra state holds, is not Conway's: refused at its first such key.
     */
   private[era] def govAction(a: FlatGovAction): Either[EraTxError, GovAction[Conway]] = a match
-    case FlatGovAction.ParameterChange(previous, update, policy) =>
+    case FlatGovAction.ParameterChange(_, update: DijkstraKeysUpdate, _) =>
+      Left(EraTxError.PParams(PParamsError.UnknownKey(update.firstAdded)))
+    case FlatGovAction.ParameterChange(previous, update: ConwayParamUpdate, policy) =>
       (
         ConwayPParams.fromUpdate(update).leftMap(EraTxError.PParams(_)),
         guardrails(policy)

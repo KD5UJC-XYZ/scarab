@@ -735,7 +735,7 @@ class EraConwaySuite extends munit.FunSuite:
   private def agrees(typed: GovAction[Conway], flat: FlatGovAction): Unit = (typed, flat) match
     case (
           GovAction.ParameterChange(parent, update, guardrails),
-          FlatGovAction.ParameterChange(flatParent, flatUpdate, flatGuardrails)
+          FlatGovAction.ParameterChange(flatParent, flatUpdate: ConwayParamUpdate, flatGuardrails)
         ) =>
       assertEquals(parent.map(_.unGovPurposeId), flatParent)
       assertEquals(guardrails.map(_.bytes), flatGuardrails)

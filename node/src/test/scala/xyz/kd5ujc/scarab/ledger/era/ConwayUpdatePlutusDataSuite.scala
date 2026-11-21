@@ -4,7 +4,12 @@ package xyz.kd5ujc.scarab.ledger.era
 import xyz.kd5ujc.scarab.protocol.StateLayout
 import java.nio.file.Path
 import munit.FunSuite
-import xyz.kd5ujc.scarab.ledger.{GovAction as FlatGovAction, ScriptContexts, Tx as FlatTx}
+import xyz.kd5ujc.scarab.ledger.{
+  ConwayParamUpdate,
+  GovAction as FlatGovAction,
+  ScriptContexts,
+  Tx as FlatTx
+}
 import xyz.kd5ujc.scarab.ledger.era.conway.ConwayTx
 import xyz.kd5ujc.scarab.ledger.state.Conway
 import xyz.kd5ujc.scarab.node.mempool.LocalSubmission
@@ -41,7 +46,7 @@ class ConwayUpdatePlutusDataSuite extends FunSuite:
           (p.pProcGovAction, f.action) match
             case (
                   GovAction.ParameterChange(_, update, _),
-                  FlatGovAction.ParameterChange(_, u, _)
+                  FlatGovAction.ParameterChange(_, u: ConwayParamUpdate, _)
                 ) =>
               assertEquals(
                 ToPlutusData[PParamsUpdate[Conway]].toPlutusData(update),

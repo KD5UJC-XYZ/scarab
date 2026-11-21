@@ -4,7 +4,14 @@ package xyz.kd5ujc.scarab.storage.haskell.state
 import java.nio.file.{Files, Path}
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Rational, Value}
-import xyz.kd5ujc.scarab.ledger.{ConwayParam, DecodeField, GovAction, LedgerDecodeError}
+import xyz.kd5ujc.scarab.ledger.{
+  ConwayParam,
+  ConwayParamUpdate,
+  DecodeField,
+  DijkstraKeysUpdate,
+  GovAction,
+  LedgerDecodeError
+}
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.models.runtime.{Codec, DecodeError, Writer}
 import xyz.kd5ujc.scarab.protocol.DijkstraNotYet
@@ -222,10 +229,12 @@ class DijkstraEpochStateSuite extends FunSuite:
   }
 
   private def update(a: GovAction): Vector[ConwayParam] = a match
-    case GovAction.ParameterChange(_, u, _) => u.params
-    case other                              => fail(s"not a parameter change: $other")
+    case GovAction.ParameterChange(_, u: ConwayParamUpdate, _) => u.params
+    case other => fail(s"not a parameter change: $other")
 
-  test("a proposal's parameter update from version 12: Conway's keys at 12, Dijkstra's refused") {
+  test(
+    "a proposal's parameter update from version 12: Conway's keys at 12, Dijkstra's in the Leios layout"
+  ) {
     val rho = parameterChange(10, minusOne)
     // before 12 the stored reader reads the `Integer` s: 1
     assertEquals(
@@ -252,15 +261,19 @@ class DijkstraEpochStateSuite extends FunSuite:
     assert(readBytes(LeiosStateCodecs.govAction(using v12), units) match
       case GovAction.ParameterChange(_, _, _) => true
       case _                                  => false)
-    // key 34, Dijkstra's `maxRefScriptSizePerBlock` (`Dijkstra/PParams.hs:798-810`, 9df9f98c): not yet
+    // keys 34 and 56, Dijkstra's `maxRefScriptSizePerBlock` (`Dijkstra/PParams.hs:798-810`,
+    // 9df9f98c) and its last: read and written in the Leios layout, refused in the 11.1 layout's
     val dijkstraKey = parameterChange(34, _.uint(BigInt(1)))
-    val e = failure(LeiosStateCodecs.govAction(using v12), dijkstraKey)
-    assertEquals(e.kind, Kind.Domain(DijkstraNotYet.ParameterUpdate))
-    assertEquals(e.path.headOption, Some("update"))
-    assertEquals(
-      failure(LeiosStateCodecs.govAction(using v12), parameterChange(56, _.uint(BigInt(1)))).kind,
-      Kind.Domain(DijkstraNotYet.ParameterUpdate)
-    )
+    Vector(dijkstraKey, parameterChange(56, _.uint(BigInt(1)))).foreach { raw =>
+      val read = readBytes(LeiosStateCodecs.govAction(using v12), raw)
+      assert(read match
+        case GovAction.ParameterChange(_, _: DijkstraKeysUpdate, _) => true
+        case _                                                      => false)
+      assertEquals(LeiosStateCodecs.govAction(using v12).write(read), Right(raw))
+      val e = failure(HaskellStateCodecs.govAction(using v12), raw)
+      assertEquals(e.kind, Kind.Domain(DijkstraNotYet.ParameterUpdate))
+      assertEquals(e.path.headOption, Some("update"))
+    }
     // past Dijkstra's keys, and before 12, an unknown key (`Decoder.hs:1243`, 9df9f98c)
     assertEquals(
       failure(LeiosStateCodecs.govAction(using v12), parameterChange(57, _.uint(BigInt(1)))).kind,

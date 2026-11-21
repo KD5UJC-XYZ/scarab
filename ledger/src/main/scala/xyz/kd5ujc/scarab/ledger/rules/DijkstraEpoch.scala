@@ -13,7 +13,11 @@ import xyz.kd5ujc.scarab.ledger.state.*
   * that ledger state with the parameters now current, seating the Leios committee of the next epoch
   * ([[DijkstraSnap]]); and the fresh DRep pulser starts over the new mark's pool distribution
   * ([[ConwayEpoch.withFreshPulser]]). Conway's EPOCH runs SNAP first, on the state the boundary
-  * begins with.
+  * begins with. The fresh pulser is not started over a proposal whose update sets a parameter
+  * Dijkstra adds ([[xyz.kd5ujc.scarab.ledger.DijkstraKeysUpdate]]): RATIFY's groups of those keys
+  * are not computed yet, so the boundary halts ([[TickFailure.NotYet]] of
+  * [[xyz.kd5ujc.scarab.protocol.DijkstraNotYet.Rules]]). A proposal the ratification being enacted
+  * removes does not halt it.
   */
 object DijkstraEpoch:
   val sts: Sts[Unit, EpochState[Dijkstra], EpochNo, TickFailure] =
@@ -43,5 +47,11 @@ object DijkstraEpoch:
             EpochState.snapshots[Dijkstra]
           )
           es3 <- es.get
+          pending = summon[ConwayShapes[Dijkstra]].gov(es3.ls.utxo.gov).proposals.actions
+          _ <- Monad[F].whenA(pending.exists(DijkstraConway.setsDijkstraKeys))(
+            failures.raise[TickFailure, Unit](
+              TickFailure.NotYet(xyz.kd5ujc.scarab.protocol.DijkstraNotYet.Rules)
+            )
+          )
           _ <- es.set(ConwayEpoch.withFreshPulser(globals, es3, epoch))
         yield ()

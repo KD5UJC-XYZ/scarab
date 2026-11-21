@@ -328,8 +328,12 @@ object GovKernel
         case _ => Monad[F].unit
       _ <- check(
         action match
-          case GovAction.ParameterChange(_, u, _) => GovChecks.wellFormed(pp, u)
-          case _                                  => true
+          case GovAction.ParameterChange(_, u: node.ConwayParamUpdate, _) =>
+            GovChecks.wellFormed(pp, u)
+          // Conway's GOV is given Conway's proposals: Dijkstra's GOV halts on a parameter change
+          // before it calls this rule (`DijkstraPending.ParameterChangeProposal`)
+          case GovAction.ParameterChange(_, _: node.DijkstraKeysUpdate, _) => false
+          case _                                                           => true
         ,
         GovFailure.MalformedProposal(action)
       )
