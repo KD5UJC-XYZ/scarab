@@ -87,8 +87,9 @@ mark, and they run back to back after it. Before each collection Scarab forces i
 disk, an approved Deviation (listed below). A collection that fails, the force included, or an
 exception in the fiber that runs them, stops the node. A file holds 1,000 blocks, and the next one is
 started as soon as one fills, so a full file can be collected before another block arrives
-(`volMaxBlocksPerFile`, `putBlockImpl`, `Storage/VolatileDB/Impl.hs` 186 and 387-399); Scarab first
-forces the full file and the directory to disk, an approved Deviation (listed below). Files an earlier
+(`volMaxBlocksPerFile`, `putBlockImpl`, `Storage/VolatileDB/Impl.hs` 186 and 387-399); Scarab forces
+the full file to disk before it creates the next, and the directory before it writes to the next, an
+approved Deviation (listed below). Files an earlier
 build wrote keep their 512-block boundaries, but the newest file of such a log, if it holds fewer than
 1,000 blocks (a full 512-block one included), is the one written to and is
 filled to 1,000. The selected-chain log shares the
@@ -96,12 +97,12 @@ writer: its files of 512 blocks are now rolled at the block that fills them too,
 collected at the next 4,096-block trigger before another record is written. When the log is opened, the
 files of its directory whose names it does not read are logged and left alone, as the reference traces
 `InvalidFileNames` (`receivedInvalidFileNames`; `mkOpenState`, `State.hs` 319-339). Scarab and the
-reference read different names as log files. The reference reads a file number from any name, the text after its last
-`-` and before its first `.` (`parseFd`, `Storage/VolatileDB/Impl/Util.hs` 45-74), so it also reads
-`blocks-01.dat` as file 1, and recovers such a file under the name it is listed under. Scarab reads a
-number only from a name `<number>.log`. A name that does so but is not the writer's 8-digit spelling of
-its number (`1.log` for `00000001.log`) refuses the log, in either log, before any file changes, an
-approved Deviation (listed below), as does a name that holds a locale's digits (`FileNameProblem`).
+reference read different names as log files: the reference reads a file number from names other than
+the ones its writer gives (`parseFd`, `Storage/VolatileDB/Impl/Util.hs` 45-74) and recovers such a file
+under the name it is listed under, where a name `<number>.log` that is not the writer's own spelling of
+its number (`1.log` for `00000001.log`) refuses Scarab's log, either log, before any file changes, an
+approved Deviation (listed below, whose row gives both rules), as does a name that holds a locale's
+digits (`FileNameProblem`).
 Then each file is validated on its own (`mkOpenStateHelper`,
 `validateFile`, `Storage/VolatileDB/Impl/State.hs` 372-436): it is read up to its first record that is
 damaged or whose block the start-up check refuses, as the reference stops at the first block it cannot
@@ -131,9 +132,9 @@ both pins:
 - the start-up check, run on each record at every open, and the seeding of the block pool from the log
   that relies on it (2026-11-20);
 - the force of the immutable store before each collection (2026-11-20);
-- the refusal of a log file name that reads as a file number but is not the writer's 8-digit spelling of
-  it (2026-11-21);
-- the force of a full file and the directory before the next file is started (2026-11-21).
+- the refusal of a log file name that reads as a file number but is not the writer's own spelling of it
+  (2026-11-21);
+- the force of a full file, and of the directory, when a file fills (2026-11-21).
 
 The start adds a block of the selected chain that the log lacks only once it passes the start-up check,
 which a resume does not run in full (a Byron boundary block's body is not decoded)

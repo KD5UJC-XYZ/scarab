@@ -37,10 +37,10 @@
   open, and the start seeds the block pool by decoding each block's header (and a Dijkstra block's
   body, for its Leios fields). The start adds a block of the selected chain that the log lacks only
   once it passes the start-up check (`receivedBlockDiscarded` when it does not).
-- In either log, a full file and the log's directory are forced to disk in the append of the block
-  that fills the file, before the next file is started, where they were forced at the next write; a
-  failure of that force fails the append and stops the node. The reference forces neither when it
-  starts its next file. The refusal of a name that is not the writer's own and this force are approved
+- In either log, the append of the block that fills a file forces the file to disk before the next
+  file is created, and the log's directory before any record is written to the next file, where both
+  were forced at the next write; a failure of either force fails the append and stops the node. The
+  reference forces neither when it starts its next file. The refusal of a name that is not the writer's own and this force are approved
   Deviations (decisions register, 2026-11-21).
 - In either log, a record header whose length runs past the file's end or what an Int holds, or
   whose record fails its checksum, ends the file's readable part without the record being read
