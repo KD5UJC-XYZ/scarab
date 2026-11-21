@@ -350,7 +350,7 @@ object PeerNetwork:
       case Status.Activating   => "activating"
       case Status.Hot          => "hot"
       case Status.Deactivating => "deactivating"
-      case Status.Closing      => "closing"
+      case Status.Closing(_)   => "closing"
       case Status.Cooling      => "cooling"
     val c = view.counters
     Json.obj(

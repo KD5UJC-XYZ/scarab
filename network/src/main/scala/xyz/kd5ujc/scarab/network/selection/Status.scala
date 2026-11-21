@@ -42,8 +42,12 @@ enum Status:
   /** A job is ending the hot protocols (`inProgressDemoteHot`); the peer is still active. */
   case Deactivating
 
-  /** A job is closing the connection (`inProgressDemoteWarm`); the peer is still established. */
-  case Closing
+  /** A job is closing the connection (`inProgressDemoteWarm`); the peer is still established, and
+    * keeps the time it may be activated from, as the reference keeps its established-peer record
+    * (ouroboros-network c45735a5 `Governor/EstablishedPeers.hs` 940-946), for a close that times
+    * out.
+    */
+  case Closing(readyAt: Time)
 
   /** The connection failed or was closed under us and lingers until the connection manager has
     * released it (`PeerCooling`, `inProgressDemoteToCold`); the peer is still established, and can
@@ -63,8 +67,8 @@ enum Status:
 
   /** A job works on the peer, so the decisions leave it alone. */
   def inProgress: Boolean = this match
-    case Connecting | Activating | Deactivating | Closing | Cooling => true
-    case _                                                          => false
+    case Connecting | Activating | Deactivating | Closing(_) | Cooling => true
+    case _                                                             => false
 
 /** Where a known peer came from. A peer has one origin; a local root wins over a public one, as
   * `Monitor.localRoots` keeps the two sets disjoint (`Governor/Monitor.hs` 381-386).

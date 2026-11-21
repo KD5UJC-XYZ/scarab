@@ -139,7 +139,17 @@ private[selection] final class BigLedgerGuards[A](
         Picks.warmDemotion(available, demotable, st.rng, p => st.peers(p).tepid)
       Go(
         Decision(
-          withStatus(picked, Status.Closing).copy(rng = next),
+          picked
+            .foldLeft(st)((s, p) =>
+              s.updated(p)(r =>
+                r.copy(status = r.status match
+                  case Status.Warm(readyAt) => Status.Closing(readyAt)
+                  case Status.Cold(_) | Status.Connecting | Status.Activating | Status.Hot |
+                      Status.Deactivating | Status.Closing(_) | Status.Cooling =>
+                    Status.Closing(now))
+              )
+            )
+            .copy(rng = next),
           picked.map(Job.Close(_)),
           List(
             Trace.DemoteBigLedger(

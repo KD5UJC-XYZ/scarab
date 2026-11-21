@@ -118,7 +118,13 @@ object GovernorState:
     lazy val connecting: SortedSet[A] = where((_, r) => r.status == Status.Connecting)
     lazy val activating: SortedSet[A] = where((_, r) => r.status == Status.Activating)
     lazy val deactivating: SortedSet[A] = where((_, r) => r.status == Status.Deactivating)
-    lazy val closing: SortedSet[A] = where((_, r) => r.status == Status.Closing)
+    lazy val closing: SortedSet[A] = where((_, r) =>
+      r.status match
+        case Status.Closing(_) => true
+        case Status.Cold(_) | Status.Connecting | Status.Warm(_) | Status.Activating | Status.Hot |
+            Status.Deactivating | Status.Cooling =>
+          false
+    )
     lazy val cooling: SortedSet[A] = where((_, r) => r.status == Status.Cooling)
     lazy val localRoots: SortedSet[A] = state.localRoots.keys
     lazy val roots: SortedSet[A] =
@@ -159,7 +165,13 @@ object GovernorState:
     lazy val connecting: SortedSet[A] = where(_.status == Status.Connecting)
     lazy val activating: SortedSet[A] = where(_.status == Status.Activating)
     lazy val deactivating: SortedSet[A] = where(_.status == Status.Deactivating)
-    lazy val closing: SortedSet[A] = where(_.status == Status.Closing)
+    lazy val closing: SortedSet[A] = where(r =>
+      r.status match
+        case Status.Closing(_) => true
+        case Status.Cold(_) | Status.Connecting | Status.Warm(_) | Status.Activating | Status.Hot |
+            Status.Deactivating | Status.Cooling =>
+          false
+    )
     lazy val cooling: SortedSet[A] = where(_.status == Status.Cooling)
 
   /** `OutboundConnectionsState` (`Cardano/Network/PeerSelection/Governor/Types.hs` 57-109, Praos

@@ -134,6 +134,13 @@ enum Outcome[A]:
   case ConnectFailed(peer: A, failure: FailureClass, generation: BigInt = BigInt(0))
   case Activated(peer: A)
   case ActivateFailed(peer: A, failure: FailureClass)
+
+  /** The activation raised, and its connection, closed, is still held by the connection manager:
+    * the peer is established and cooling until its release is seen, as the reference's monitor
+    * takes a connection it reads cooling (`PeerCooling`, ouroboros-network c45735a5
+    * `Governor/Monitor.hs` 292-296).
+    */
+  case ActivateFailedLingering(peer: A, failure: FailureClass)
   case Deactivated(peer: A)
 
   /** The hot protocols could not be ended cleanly; the connection was closed. */

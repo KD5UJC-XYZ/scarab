@@ -277,7 +277,12 @@ private[selection] object Events:
         val st = st0.updated(peer)(_.copy(status = Status.Cold(None), tepid = true))
         Decision(st, Nil, List(Trace.DemoteFailed(Temperature.Hot, peer, timedOut = false)))
 
-      case Outcome.Closed(peer) if status(peer).contains(Status.Closing) =>
+      case Outcome.Closed(peer) if status(peer).exists {
+            case Status.Closing(_) => true
+            case Status.Cold(_) | Status.Connecting | Status.Warm(_) | Status.Activating |
+                Status.Hot | Status.Deactivating | Status.Cooling =>
+              false
+          } =>
         val st = st0.updated(peer)(_.copy(status = Status.Cold(None)))
         Decision(st, Nil, List(Trace.DemoteDone(Temperature.Warm, peer, established(st, peer))))
 
@@ -287,15 +292,33 @@ private[selection] object Events:
       // `Governor/EstablishedPeers.hs` 940-946). What its connection does next is the monitor's
       // (`Governor/Monitor.hs` 292-308): the effect layer reads the connection at once and reports
       // it cooling or gone.
-      case Outcome.CloseTimedOut(peer)
-          if status(peer).exists(s => s == Status.Closing || s == Status.Deactivating) =>
-        val (from, kept) =
-          if status(peer).contains(Status.Closing) then (Temperature.Warm, Status.Warm(now))
-          else (Temperature.Hot, Status.Hot)
+      case Outcome.CloseTimedOut(peer) if status(peer).exists {
+            case Status.Closing(_) | Status.Deactivating => true
+            case Status.Cold(_) | Status.Connecting | Status.Warm(_) | Status.Activating |
+                Status.Hot | Status.Cooling =>
+              false
+          } =>
+        val (from, kept) = status(peer) match
+          case Some(Status.Closing(readyAt)) => (Temperature.Warm, Status.Warm(readyAt))
+          case Some(
+                Status.Deactivating | Status.Cold(_) | Status.Connecting | Status.Warm(_) |
+                Status.Activating | Status.Hot | Status.Cooling
+              ) | None =>
+            (Temperature.Hot, Status.Hot)
         Decision(
           st0.withStatus(peer, kept),
           Nil,
           List(Trace.DemoteFailed(from, peer, timedOut = true))
+        )
+
+      // The activation raised and its connection is still held: established and cooling, until the
+      // monitor sees it released (`Governor/Monitor.hs` 292-296 at c45735a5)
+      case Outcome.ActivateFailedLingering(peer, failure)
+          if status(peer).contains(Status.Activating) =>
+        Decision(
+          st0.withStatus(peer, Status.Cooling),
+          Nil,
+          List(Trace.PromoteFailed(Temperature.Warm, peer, failure, None, false))
         )
 
       case Outcome.RootsFound(found, ttl, generation)
@@ -412,4 +435,6 @@ private[selection] object Events:
       case Outcome.ConnectFailed(p, _, _) => List(Trace.PromoteAborted(Temperature.Cold, p))
       case Outcome.Activated(p)           => List(Trace.PromoteAborted(Temperature.Warm, p))
       case Outcome.ActivateFailed(p, _)   => List(Trace.PromoteAborted(Temperature.Warm, p))
-      case _                              => Nil
+      case Outcome.ActivateFailedLingering(p, _) =>
+        List(Trace.PromoteAborted(Temperature.Warm, p))
+      case _ => Nil
