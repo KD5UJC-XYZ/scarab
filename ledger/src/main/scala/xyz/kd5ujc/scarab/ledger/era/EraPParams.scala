@@ -332,6 +332,30 @@ object ConwayEraPParams:
   ): Lens[PParams[E], CompactCoin] =
     PParams.lensHKD[E].andThen(p.hkdGovActionDepositCompactL[Identity])
 
+  /** `ppPoolVotingThresholdsL` (`Conway/PParams.hs:223-225`, cardano-ledger f649f975). */
+  def ppPoolVotingThresholdsL[E <: EraTag](using
+      p: ConwayEraPParams[E]
+  ): Lens[PParams[E], PoolVotingThresholds] =
+    PParams.lensHKD[E].andThen(p.hkdPoolVotingThresholdsL[Identity])
+
+  /** `ppDRepVotingThresholdsL` (`Conway/PParams.hs:227-229`, cardano-ledger f649f975). */
+  def ppDRepVotingThresholdsL[E <: EraTag](using
+      p: ConwayEraPParams[E]
+  ): Lens[PParams[E], DRepVotingThresholds] =
+    PParams.lensHKD[E].andThen(p.hkdDRepVotingThresholdsL[Identity])
+
+  /** `ppCommitteeMinSizeL` (`Conway/PParams.hs:231-232`, cardano-ledger f649f975). */
+  def ppCommitteeMinSizeL[E <: EraTag](using
+      p: ConwayEraPParams[E]
+  ): Lens[PParams[E], Unsigned[W16]] =
+    PParams.lensHKD[E].andThen(p.hkdCommitteeMinSizeL[Identity])
+
+  /** `ppCommitteeMaxTermLengthL` (`Conway/PParams.hs:234-235`, cardano-ledger f649f975). */
+  def ppCommitteeMaxTermLengthL[E <: EraTag](using
+      p: ConwayEraPParams[E]
+  ): Lens[PParams[E], EpochInterval] =
+    PParams.lensHKD[E].andThen(p.hkdCommitteeMaxTermLengthL[Identity])
+
   /** `ppGovActionLifetimeL` (`Conway/PParams.hs:237-238`, cardano-ledger f649f975). */
   def ppGovActionLifetimeL[E <: EraTag](using
       p: ConwayEraPParams[E]

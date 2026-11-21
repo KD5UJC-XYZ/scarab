@@ -11,7 +11,6 @@ import xyz.kd5ujc.scarab.ledger.{
   Credential as FlatCredential,
   GovActionId,
   Mismatch,
-  StakePoolGroup,
   Unsigned,
   Voter
 }
@@ -88,49 +87,6 @@ object ConwayCommittee:
         )
       )
     )
-
-/** Who may vote on an action (`isCommitteeVotingAllowed`, `isDRepVotingAllowed` and
-  * `isStakePoolVotingAllowed`, `eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Internal.hs:
-  * 350-526`, cardano-ledger f649f975): `isVotingAllowed` of the voter's threshold, which is
-  * `NoVotingAllowed` only for the actions below. The thresholds' values are ratification's and
-  * never reach `isVotingAllowed`, and with no committee (`committee = SNothing`) the committee's
-  * threshold of the other actions is `NoVotingThreshold`, so the current epoch and the committee
-  * state, which the reference passes, decide nothing here.
-  */
-object ConwayVoting:
-  /** `isCommitteeVotingAllowed` (`Internal.hs:408-424, 444-479`, cardano-ledger f649f975): not on a
-    * motion of no confidence or a committee update.
-    */
-  def isCommitteeVotingAllowed[E <: EraTag](action: GovAction[E]): Boolean = action match
-    case GovAction.NoConfidence(_) | GovAction.UpdateCommittee(_, _, _, _) => false
-    case GovAction.NewConstitution(_, _) | GovAction.HardForkInitiation(_, _) |
-        GovAction.ParameterChange(_, _, _) | GovAction.TreasuryWithdrawals(_, _) |
-        GovAction.InfoAction() =>
-      true
-
-  /** `isDRepVotingAllowed` (`Internal.hs:481-490, 504-532`, cardano-ledger f649f975): on every
-    * action.
-    */
-  def isDRepVotingAllowed[E <: EraTag](action: GovAction[E]): Boolean = action match
-    case GovAction.NoConfidence(_) | GovAction.UpdateCommittee(_, _, _, _) |
-        GovAction.NewConstitution(_, _) | GovAction.HardForkInitiation(_, _) |
-        GovAction.ParameterChange(_, _, _) | GovAction.TreasuryWithdrawals(_, _) |
-        GovAction.InfoAction() =>
-      true
-
-  /** `isStakePoolVotingAllowed` (`Internal.hs:350-406`, cardano-ledger f649f975): not on a new
-    * constitution or a treasury withdrawal, and on a parameter change only if it changes a
-    * parameter of the security group.
-    */
-  def isStakePoolVotingAllowed[E <: EraTag](action: GovAction[E])(using
-      p: ConwayEraPParams[E]
-  ): Boolean = action match
-    case GovAction.NewConstitution(_, _) | GovAction.TreasuryWithdrawals(_, _) => false
-    case GovAction.ParameterChange(_, ppu, _) =>
-      p.modifiedPPGroups(ppu).exists(_.pool == StakePoolGroup.Security)
-    case GovAction.NoConfidence(_) | GovAction.UpdateCommittee(_, _, _, _) |
-        GovAction.HardForkInitiation(_, _) | GovAction.InfoAction() =>
-      true
 
 /** `data GovEnv era` (`Conway/Rules/Gov.hs:149-157`, cardano-ledger f649f975): the transaction's id
   * (the hash of its body), the current epoch, the parameters, the constitution's guardrails script
@@ -266,17 +222,21 @@ object ConwayGov:
       cats.Order[EpochNo].lteqv(curEpoch, gas.gasExpiresAfter)
     )
 
-  /** `checkVotersAreValid` (`Conway/Rules/Gov.hs:364-376`, cardano-ledger f649f975), its current
-    * epoch and committee state left out ([[ConwayVoting]]).
+  /** `checkVotersAreValid` (`Conway/Rules/Gov.hs:364-376`, cardano-ledger f649f975): whether each
+    * voter's body may vote on the action ([[VotingThreshold.isCommitteeVotingAllowed]],
+    * [[VotingThreshold.isDRepVotingAllowed]], [[VotingThreshold.isStakePoolVotingAllowed]]).
     */
-  def checkVotersAreValid[E <: EraTag](votes: Vector[(Voter, GovActionState[E])])(using
-      ConwayEraPParams[E]
-  ): Test[ConwayGovPredFailure[E]] =
+  def checkVotersAreValid[E <: EraTag](
+      currentEpoch: EpochNo,
+      committeeState: CommitteeState,
+      votes: Vector[(Voter, GovActionState[E])]
+  )(using ConwayEraPParams[E]): Test[ConwayGovPredFailure[E]] =
     checkDisallowedVotes(votes, ConwayGovPredFailure.DisallowedVoters(_)) { (gas, voter) =>
       voter match
-        case Voter.CommitteeHot(_) => ConwayVoting.isCommitteeVotingAllowed(gas.gasAction)
-        case Voter.DRepVoter(_)    => ConwayVoting.isDRepVotingAllowed(gas.gasAction)
-        case Voter.Pool(_)         => ConwayVoting.isStakePoolVotingAllowed(gas.gasAction)
+        case Voter.CommitteeHot(_) =>
+          VotingThreshold.isCommitteeVotingAllowed(currentEpoch, committeeState, gas.gasAction)
+        case Voter.DRepVoter(_) => VotingThreshold.isDRepVotingAllowed(gas.gasAction)
+        case Voter.Pool(_)      => VotingThreshold.isStakePoolVotingAllowed(gas.gasAction)
     }
 
   /** `checkBootstrapVotes` (`Conway/Rules/Gov.hs:378-391`, cardano-ledger f649f975): in the
@@ -581,7 +541,7 @@ object ConwayGov:
         .traverse_(ids => fail(ConwayGovPredFailure.GovActionsDoNotExist(ids)))
       _ <- runTest(checkBootstrapVotes(pp, knownVotes))
       _ <- runTest(checkVotesAreNotForExpiredActions(currentEpoch, knownVotes))
-      _ <- runTest(checkVotersAreValid(knownVotes))
+      _ <- runTest(checkVotersAreValid(currentEpoch, committeeState, knownVotes))
       unregisteredDReps = SortedSet.from(
         signal.gsCertificates.flatMap(cert => t.getUnRegDRepTxCert(cert).map(_._1))
       )
