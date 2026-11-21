@@ -61,7 +61,16 @@ class BlockchainTimeSuite extends FailsOnUncaught:
   // `hardForkBlockchainTime` (`HardFork.hs` 76-90 at 2416493b): `systemTimeWait`, then the first
   // reading, published before the time is returned, and the loop forked with its delay
   test("acquisition waits for the system start and publishes the first reading before it returns") {
-    val starting = geometry.copy(systemStart = Instant.EPOCH.plusSeconds(3))
+    acquisitionAt(Instant.EPOCH.plusSeconds(3), 3.seconds)
+  }
+
+  // `waitForSystemStart` waits the exact difference (`WallClock/Default.hs` 29-34 at 2416493b)
+  test("acquisition waits for a system start that is not on a whole millisecond") {
+    acquisitionAt(Instant.EPOCH.plusNanos(3000500000L), 3000500000L.nanos)
+  }
+
+  private def acquisitionAt(systemStart: Instant, expectedWait: FiniteDuration) =
+    val starting = geometry.copy(systemStart = systemStart)
     val slotLength = Duration.between(starting.slotStart(0), starting.slotStart(1)).toNanos.nanos
     val slotOf =
       (handle: Ref[IO, Option[BlockchainTime[IO]]]) => handle.get.flatMap(_.traverse(_.currentSlot))
@@ -88,13 +97,12 @@ class BlockchainTimeSuite extends FailsOnUncaught:
     yield
       // nothing is returned before the system start, which is the only wait
       assertEquals(before, None)
-      assertEquals(wait, 3.seconds)
+      assertEquals(wait, expectedWait)
       // the first reading, the slot of the system start, is published as the time is returned
       assertEquals(acquired, Some(Some(BigInt(0))))
       // the loop's first wait is the first reading's delay, until the next slot
       assertEquals(firstDelay, slotLength)
       assertEquals(next, Some(Some(BigInt(1))))
-  }
 
   test("a slot the era history at the tip does not translate is published as unknown") {
     for

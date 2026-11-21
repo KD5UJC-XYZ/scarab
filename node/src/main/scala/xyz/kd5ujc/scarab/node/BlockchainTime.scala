@@ -61,12 +61,11 @@ object BlockchainTime:
       sleep: Option[FiniteDuration => F[Unit]] = None
   )(using F: Temporal[F]): Resource[F, BlockchainTime[F]] =
     val wait = sleep.getOrElse(F.sleep(_))
-    // `systemTimeWait`: once, for as long as the system start is ahead
+    // `systemTimeWait`: once, for exactly as long as the system start is ahead
     val systemTimeWait: F[Unit] =
       (clock.now, clock.geometry).tupled.flatMap { (instant, geometry) =>
-        Forger.reading(geometry, instant, _ => false) match
-          case Forger.Reading.BeforeStart(remaining)            => wait(remaining)
-          case Forger.Reading.Unknown | Forger.Reading.Known(_) => F.unit
+        wait(Duration.between(instant, geometry.systemStart).toNanos.nanos)
+          .whenA(instant.isBefore(geometry.systemStart))
       }
     // `getCurrentSlot'`: the slot, the time it was read at and the wait until the next reading; a
     // time before the system start, which only a clock moved back gives here, translates no slot
