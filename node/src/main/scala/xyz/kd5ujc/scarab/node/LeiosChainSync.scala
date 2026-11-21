@@ -11,7 +11,6 @@ import xyz.kd5ujc.scarab.consensus.leios.{
   AnnouncementFields,
   AnnouncingHeader,
   BytesSize,
-  LeiosAnnouncements,
   LeiosRollForward
 }
 import xyz.kd5ujc.scarab.consensus.state.ChainDepState
@@ -52,10 +51,10 @@ trait LeiosChainSync[F[_]](using F: cats.Monad[F]):
   ): F[Unit]
 
 object LeiosChainSync:
-  /** The central state of the announcements the node has counted, shared by every connection
-    * (`getLeiosCentralState`'s `selfPeer`, `LeiosDemoLogic/Announcements.hs` 238-262 at 2416493b).
+  /** The central state of the announcements the node has counted and relays, shared by every
+    * connection (`getLeiosCentralState`, `LeiosDemoLogic/Announcements.hs` 238-268 at 2416493b).
     */
-  type Central[F[_]] = AtomicCell[F, LeiosAnnouncements[AnnouncingHeader]]
+  type Central[F[_]] = AtomicCell[F, LeiosCentral[F]]
 
   /** The handling of `vars` ' connection, over the fetch logic's `shared` state, the node's
     * `central` announcements and its store, whose failure goes to `fatal`; `onset` places a slot on
@@ -137,20 +136,22 @@ object LeiosChainSync:
       )
 
     /** `processAnnouncementCentrally` for an announcement received over ChainSync
-      * (`LeiosDemoLogic.hs` 1777-1853 at 2416493b): counted once per election, at most twice
-      * (`onAnnouncementCentral`, `Announcements.hs` 338-376); a new one records its endorser block
-      * as awaited (`recordAnnouncedEb`) and its point in the store (`writeEbPoint`). It is not
-      * relayed: the LeiosNotify server is not run, nor the transaction cache kept (#54).
+      * (`LeiosDemoLogic.hs` 1777-1853 at 2416493b), always relayed (`Announcements.DoRelay`,
+      * `NodeToNode.hs` 488-510): counted once per election, at most twice, and relayed to the peers
+      * the node's LeiosNotify servers run for (`onAnnouncementCentral`, `Announcements.hs` 338-414;
+      * [[LeiosCentral.announced]]); a new one then records its endorser block as awaited
+      * (`recordAnnouncedEb`) and its point in the store (`writeEbPoint`). No transaction cache is
+      * kept (#54).
       */
     private def announced(header: LeiosHeader, anc: AnnouncingHeader): F[Unit] =
-      onset(header.slot).flatMap { at =>
-        central.evalUpdate(counted =>
-          counted.extendLive(anc.fields.election, anc) match
-            case Left(_) => F.pure(counted)
-            case Right((_, next)) =>
-              recordAnnounced(anc.fields, at) *> writePoint(anc.fields).as(next)
+      onset(header.slot).flatMap(at =>
+        LeiosCentral.announced(
+          central,
+          ShouldRelay.DoRelay,
+          anc,
+          recordAnnounced(anc.fields, at) *> writePoint(anc.fields)
         )
-      }
+      )
 
     /** `recordAnnouncedEb` (`LeiosDemoLogic.hs` 2097-2138): the decision is woken only when the
       * announcement gives it something new to do.

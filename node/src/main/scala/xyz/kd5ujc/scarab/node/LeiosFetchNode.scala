@@ -11,7 +11,6 @@ import xyz.kd5ujc.scarab.consensus.leios.{
   AnnouncingHeader,
   BytesSize,
   IsBigLedgerPeer,
-  LeiosAnnouncements,
   LeiosFetchStaticEnv,
   StdGen
 }
@@ -19,12 +18,14 @@ import xyz.kd5ujc.scarab.network.{
   LeiosFetchInitiator,
   LeiosFetchPipelined,
   LeiosFetchRequestHandler,
+  LeiosNotifyServer,
   MuxChannel,
   NetworkError
 }
 import xyz.kd5ujc.scarab.node.forge.{ForgedLeiosEb, OnForgedLeiosEb}
 import xyz.kd5ujc.scarab.protocol.LeiosWord.{Word32, Word64}
-import xyz.kd5ujc.scarab.storage.{LeiosStore, LeiosStoreError}
+import xyz.kd5ujc.scarab.storage.{LeiosEbNotification, LeiosStore, LeiosStoreError}
+import cats.effect.std.Queue
 
 /** The Leios build's endorser-block fetch of a node: the fetch logic's state shared by its peers,
   * what is done with their answers, and its store, which the LeiosFetch server answers from. The
@@ -37,7 +38,10 @@ final class LeiosFetchNode[F[_]] private (
     store: LeiosStore[F],
     central: LeiosChainSync.Central[F],
     onset: BigInt => F[Option[FiniteDuration]],
-    fatal: LeiosStoreError => F[Unit]
+    fatal: LeiosStoreError => F[Unit],
+    notifications: Resource[F, Queue[F, LeiosEbNotification]],
+    immutableTip: F[Option[Word64]],
+    lead: LeiosMinOfferLead
 )(using F: Async[F]):
   /** The ChainSync client's Leios handling of the connection whose vars are `vars`
     * ([[LeiosChainSync]]): the client runs inside the peer's bracket, as the reference's does
@@ -80,11 +84,11 @@ final class LeiosFetchNode[F[_]] private (
   /** `onForgedLeiosEb` (`LeiosDemoLogic.hs` 2389-2460 at ouroboros-consensus 2416493b): an endorser
     * block the node forged, handed to the handlers a peer's announcement, body and closure go
     * through, with no peer, so that the fetch logic's state is what receiving it would make it.
-    * First the announcement ([[announcedLocally]]), then the body
-    * ([[LeiosFetchArrival.forgedBlock]]) and the closure ([[LeiosFetchArrival.forgedTxs]]), each
-    * written before the next. Not mirrored (#54): no relay of the announcement, for the LeiosNotify
-    * server is not run; no transaction cache; no egress credit; no traces of the forged and stored
-    * endorser block.
+    * First the announcement, relayed to the peers the node's LeiosNotify servers run for
+    * ([[announcedLocally]]), then the body ([[LeiosFetchArrival.forgedBlock]]) and the closure
+    * ([[LeiosFetchArrival.forgedTxs]]), each written before the next, whose writes the servers
+    * offer. Not mirrored (#54): no transaction cache; no egress credit; no traces of the forged and
+    * stored endorser block.
     */
   val onForged: OnForgedLeiosEb[F] = new OnForgedLeiosEb[F]:
     def forged(announcing: AnnouncingHeader, eb: ForgedLeiosEb)(using
@@ -94,26 +98,46 @@ final class LeiosFetchNode[F[_]] private (
         arrival.forgedTxs(eb.point, eb.closure)
 
   /** `processAnnouncementCentrally` of an announcement the node forged (`ForgedLocally`,
-    * `LeiosDemoLogic.hs` 1784-1853): counted once per election as a peer's is
-    * (`onAnnouncementCentral`); a new one marks its endorser block as imminent in the fetch logic's
-    * state (`markForged`, `markBodyImminent`), so that it is never fetched, even when a peer relays
-    * the announcement back, and records its point in the store (`writeEbPoint`). It records no
-    * onset, as the age of a forged block is not diffusion's.
+    * `Announcements.DoRelay`, `LeiosDemoLogic.hs` 1784-1853 and 2425-2436): counted once per
+    * election as a peer's is, and relayed to the peers with a credit (`onAnnouncementCentral`,
+    * [[LeiosCentral.announced]]); a new one then marks its endorser block as imminent in the fetch
+    * logic's state (`markForged`, `markBodyImminent`), so that it is never fetched, even when a
+    * peer relays the announcement back, and records its point in the store (`writeEbPoint`). It
+    * records no onset, as the age of a forged block is not diffusion's.
     */
   private def announcedLocally(anc: AnnouncingHeader)(using Raise[F, LeiosStoreError]): F[Unit] =
     val fields = anc.fields
-    central.evalUpdate(counted =>
-      counted.extendLive(fields.election, anc) match
-        case Left(_) => F.pure(counted)
-        case Right((_, next)) =>
-          shared.outstanding.update(_.markBodyImminent(fields.ebHash, fields.election.slot)) *>
-            store.writeEbPoint(fields.point, Word32.wrap(fields.ebBodySize.toLong)).as(next)
+    announcedCentrally(
+      anc,
+      ShouldRelay.DoRelay,
+      shared.outstanding.update(_.markBodyImminent(fields.ebHash, fields.election.slot)) *>
+        store.writeEbPoint(fields.point, Word32.wrap(fields.ebBodySize.toLong)).void
     )
 
   /** The LeiosFetch server's answers (`hLeiosFetchServer`, `NodeToNode.hs` 957-961 at
     * ouroboros-consensus 2416493b).
     */
   def responder: LeiosFetchRequestHandler[F] = LeiosFetchStoreHandler(store)
+
+  /** The replies of one run of the LeiosNotify server (`hLeiosNotifyServer`, `NodeToNode.hs`
+    * 769-936 at ouroboros-consensus 2416493b; [[LeiosNotifyRelay.server]]): the announcements the
+    * node relays and the offers of what its store acquires, each held to the offer lead from the
+    * immutable tip.
+    */
+  def notifier: Resource[F, LeiosNotifyServer.Replies[F]] =
+    LeiosNotifyRelay.server(central, notifications, immutableTip, lead)
+
+  /** `processAnnouncementCentrally` of an announcement that is not a peer's ChainSync roll-forward,
+    * such as one the node forged (`ForgedLocally`, `LeiosDemoLogic.hs` 1784-1853 and 2399-2425):
+    * counted once per election, relayed where `relay` says so, then `publishLocally`
+    * ([[LeiosCentral.announced]]).
+    */
+  def announcedCentrally(
+      anc: AnnouncingHeader,
+      relay: ShouldRelay,
+      publishLocally: F[Unit]
+  ): F[Unit] =
+    LeiosCentral.announced(central, relay, anc, publishLocally)
 
   /** The decision loop and its pruning for the life of the resource ([[LeiosFetchKernel.run]]). */
   def kernel[E](
@@ -164,7 +188,9 @@ object LeiosFetchNode:
     * answers and their claims run under `supervisor`, the node's, each on a slot of one writer's
     * queue its peers share ([[LeiosFetchArrival.WriterQueueDepth]]); the store's failure goes to
     * `fatal`, and an exception in one of them to `defect`, each of which stops the node. `onset`
-    * places a slot on the wall clock since the system start.
+    * places a slot on the wall clock since the system start. Its LeiosNotify servers ([[notifier]])
+    * offer from `notifications`, the store's, held to `lead` from the slot of the immutable tip
+    * `immutableTipNow` reads.
     */
   def create[F[_]: Async](
       store: LeiosStore[F],
@@ -173,14 +199,17 @@ object LeiosFetchNode:
       supervisor: Supervisor[F],
       fatal: LeiosStoreError => F[Unit],
       defect: Throwable => F[Unit],
-      onset: BigInt => F[Option[FiniteDuration]]
+      onset: BigInt => F[Option[FiniteDuration]],
+      notifications: Resource[F, Queue[F, LeiosEbNotification]],
+      immutableTipNow: F[Option[Word64]],
+      lead: LeiosMinOfferLead
   )(using Raise[F, LeiosStoreError]): F[LeiosFetchNode[F]] =
     (
       LeiosFetchKernel
         .initialized[F, Long](store, prng, immutableTip)
         .flatMap(LeiosFetchShared.create[F, Long]),
       Semaphore[F](LeiosFetchArrival.WriterQueueDepth),
-      AtomicCell[F].of(LeiosAnnouncements.empty[AnnouncingHeader])
+      AtomicCell[F].of(LeiosCentral.empty[F])
     ).mapN((shared, slots, central) =>
       new LeiosFetchNode(
         shared,
@@ -195,6 +224,9 @@ object LeiosFetchNode:
         store,
         central,
         onset,
-        fatal
+        fatal,
+        notifications,
+        immutableTipNow,
+        lead
       )
     )

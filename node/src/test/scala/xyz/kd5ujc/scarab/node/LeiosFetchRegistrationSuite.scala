@@ -4,16 +4,19 @@ package xyz.kd5ujc.scarab.node
 import cats.data.NonEmptyVector
 import cats.effect.{IO, Outcome, Resource}
 import cats.effect.testkit.TestControl
-import cats.effect.std.Supervisor
+import cats.effect.std.{Queue, Supervisor}
 import cats.mtl.Raise
 import cats.syntax.all.*
 import fs2.Stream
 import fs2.io.file.{Files, Path}
 import scala.collection.immutable.SortedMap
 import scala.concurrent.duration.*
+import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.{Bytes, DomainError}
+import xyz.kd5ujc.scarab.ledger.LeiosHeader
 import xyz.kd5ujc.scarab.consensus.leios.{
   AnnouncementFields,
+  AnnouncingHeader,
   BytesSize,
   ElId,
   IsBigLedgerPeer,
@@ -54,7 +57,13 @@ import xyz.kd5ujc.scarab.protocol.{
   ProtocolError,
   TxSubmission2Fixtures
 }
-import xyz.kd5ujc.scarab.storage.{LeiosEb, LeiosStoreLocks, LeiosStoreSuite, RocksLeiosStore}
+import xyz.kd5ujc.scarab.storage.{
+  LeiosEb,
+  LeiosEbNotification,
+  LeiosStoreLocks,
+  LeiosStoreSuite,
+  RocksLeiosStore
+}
 import xyz.kd5ujc.scarab.consensus.leios.LeiosOrders.given
 
 import Peers.*
@@ -63,9 +72,9 @@ import Peers.*
   * ouroboros-consensus 2416493b `Ouroboros/Consensus/Network/NodeToNode.hs` 2000-2020 and
   * 2079-2100): one node's client, run by its hot activation, fetches an endorser block and its
   * closure from another's store server through the registered protocols, so the first node's store
-  * completes the closure; the LeiosNotify server, with nothing to notify, holds a peer's requests
-  * and answers its quit, so the peer can demote the connection and promote it again; and a release
-  * build's connection carries no Leios protocol.
+  * completes the closure; the LeiosNotify server, with nothing to notify it, holds a peer's
+  * requests and answers its quit, so the peer can demote the connection and promote it again; and a
+  * release build's connection carries no Leios protocol.
   */
 class LeiosFetchRegistrationSuite extends FailsOnUncaught:
   import LeiosStoreSuite.{ok, allowing, word32, slot, tx}
@@ -74,6 +83,22 @@ class LeiosFetchRegistrationSuite extends FailsOnUncaught:
   private val magic = 42L
   private val connection = 7L
   private val issuer = Bytes(Vector.fill(28)(5.toByte))
+
+  /** The public Leios testnet's announcing header 64849
+    * (`fixtures/leios/testnet/headers-notable.tsv`, provenance in its README), the header a relay
+    * announces with.
+    */
+  private val announcingHeader: LeiosHeader =
+    java.nio.file.Files
+      .readAllLines(java.nio.file.Path.of("fixtures/leios/testnet/headers-notable.tsv"))
+      .asScala
+      .map(_.split('\t'))
+      .collectFirst { case cols if cols(0) == "announcing" => cols(5) }
+      .flatMap(hex => Bytes.fromHex(hex).toOption)
+      .flatMap(envelope => HfcHeader.decode(envelope).toOption)
+      .collect { case HfcHeader.Dijkstra(raw) => raw }
+      .flatMap(raw => LeiosHeader.decode(raw).toOption)
+      .getOrElse(fail("the fixture's announcing header does not decode"))
 
   private val source = new ChainSyncServer.Source[IO, Bytes]:
     def intersect(points: Vector[ChainSync.Point]) = IO.pure(Left(ChainSync.Tip.Origin))
@@ -151,6 +176,8 @@ class LeiosFetchRegistrationSuite extends FailsOnUncaught:
     val p = EbPoint(slot(10), LeiosEb.hashOf(eb.transactions.toVector))
     val size = BytesSize.wrap(eb.encoded.size.toLong)
     val closure = BytesSize.wrap(txs.map(_.size.toLong).sum)
+    // no lead, so that the endorser block of slot 10 is offered from the origin
+    val noLead = LeiosMinOfferLead(xyz.kd5ujc.scarab.protocol.LeiosWord.Word64.fromUnsigned(0L))
     (store(dir / "a"), store(dir / "b"), Supervisor[IO](await = true)).tupled.use {
       (ours, theirs, settling) =>
         for
@@ -168,7 +195,10 @@ class LeiosFetchRegistrationSuite extends FailsOnUncaught:
               settling,
               e => IO.raiseError(new AssertionError(e.toString)),
               IO.raiseError,
-              _ => IO.pure(None)
+              _ => IO.pure(None),
+              acquired.notifications.subscribe,
+              IO.pure(None),
+              noLead
             )
           )
           // the endorser block is focused, and the peer offers its body and its closure
@@ -181,33 +211,53 @@ class LeiosFetchRegistrationSuite extends FailsOnUncaught:
           )
           _ <- node.shared.peers.update(_.updated(connection, vars))
           (a, b) <- Bearer.inMemory[IO](64)
-          completed <- typed(
-            Served
-              .accept(
-                b,
-                magic,
-                handlers(Some(LeiosFetchStoreHandler(theirs))),
-                NodeToNodeServer.Settings(bundle = HotBundle.Leios)
-              )
-              .background
-              .surround(
-                activated(a, HotBundle.Leios, node.initiator(connection))(
-                  node
-                    .kernel[Unit](
-                      IO.pure(Some(p.slot)),
-                      IO.pure(_ => Left(())),
-                      Stream.empty,
-                      IO.raiseError
-                    )
-                    .surround(node.shared.wake *> acquired.next)
-                    .timeout(30.seconds)
-                )
-              )
+          // another peer's LeiosNotify server holds three requests and is told of the endorser
+          // block, whose body and closure the fetch then brings: it is offered both (the relay,
+          // `hLeiosNotifyServer`'s pump at ouroboros-consensus 2416493b)
+          announcement = AnnouncingHeader(
+            announcingHeader,
+            AnnouncementFields(ElId(p.slot, issuer), p.hash, size)
           )
+          fetched <- node.notifier.flatTap(_.pump.background).use { downstream =>
+            downstream.requested.replicateA_(3) *>
+              node.announcedCentrally(announcement, ShouldRelay.DoRelay, IO.unit) *>
+              typed(
+                Served
+                  .accept(
+                    b,
+                    magic,
+                    handlers(Some(LeiosFetchStoreHandler(theirs))),
+                    NodeToNodeServer.Settings(bundle = HotBundle.Leios)
+                  )
+                  .background
+                  .surround(
+                    activated(a, HotBundle.Leios, node.initiator(connection))(
+                      node
+                        .kernel[Unit](
+                          IO.pure(Some(p.slot)),
+                          IO.pure(_ => Left(())),
+                          Stream.empty,
+                          IO.raiseError
+                        )
+                        .surround(node.shared.wake *> acquired.next)
+                        .timeout(30.seconds)
+                    )
+                  )
+              ).product(downstream.next.replicateA(3))
+          }
+          (completed, relayed) = fetched
           whole <- ok(ours.lookupEbClosure(p.hash))
         yield
           assertEquals(completed, Right(p))
           assertEquals(whole.map(_.map(_._2)), Some(txs))
+          assertEquals(
+            relayed,
+            List(
+              LeiosNotifyServer.Reply.Announcement(HfcHeader.Dijkstra(announcingHeader.raw)),
+              LeiosNotifyServer.Reply.BlockOffer(p, word32(size.toLong)),
+              LeiosNotifyServer.Reply.BlockTxsOffer(p)
+            )
+          )
     }
   }
 
@@ -224,7 +274,10 @@ class LeiosFetchRegistrationSuite extends FailsOnUncaught:
                 settling,
                 e => IO.raiseError(new AssertionError(e.toString)),
                 IO.raiseError,
-                _ => IO.pure(None)
+                _ => IO.pure(None),
+                Resource.eval(Queue.unbounded[IO, LeiosEbNotification]),
+                IO.pure(None),
+                LeiosMinOfferLead.Default
               )
             )
             (a, b) <- Bearer.inMemory[IO](64)
@@ -266,7 +319,10 @@ class LeiosFetchRegistrationSuite extends FailsOnUncaught:
               settling,
               e => IO.raiseError(new AssertionError(e.toString)),
               IO.raiseError,
-              _ => IO.pure(None)
+              _ => IO.pure(None),
+              Resource.eval(Queue.unbounded[IO, LeiosEbNotification]),
+              IO.pure(None),
+              LeiosMinOfferLead.Default
             )
           )
           (a, b) <- Bearer.inMemory[IO](64)
@@ -346,7 +402,10 @@ class LeiosFetchRegistrationSuite extends FailsOnUncaught:
                 settling,
                 e => IO.raiseError(new AssertionError(e.toString)),
                 IO.raiseError,
-                _ => IO.pure(None)
+                _ => IO.pure(None),
+                Resource.eval(Queue.unbounded[IO, LeiosEbNotification]),
+                IO.pure(None),
+                LeiosMinOfferLead.Default
               )
             )
             (a, b) <- Bearer.inMemory[IO](64)

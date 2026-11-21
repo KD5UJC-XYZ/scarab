@@ -72,13 +72,14 @@ class LeiosTestnetConfigSuite extends FunSuite:
     assertEquals(settings.ledgerDb.snapshots.maximumDelaySeconds, BigInt(1080))
     for key <- List(
         "EgressBudgetMbps",
-        "LeiosMinOfferLead",
         "LeiosAdaptiveEndorsements",
         "LedgerDB"
       )
     do assert(settings.unsupported.contains(s"$key: recognised but unused"))
-    // its SQLite backend is where the Leios build's node opens the endorser-block store
+    // its SQLite backend is where the Leios build's node opens the endorser-block store, whose
+    // LeiosNotify servers offer by the lead
     assert(!settings.unsupported.contains("LeiosDbConfig: recognised but unused"))
+    assert(!settings.unsupported.contains("LeiosMinOfferLead: recognised but unused"))
   }
 
   test("the node setup reads the genesis, funds and pool from `extraConfig` included") {

@@ -44,11 +44,13 @@ object LeiosSettings:
 
   /** The keys `build` 's node uses, which are not reported unused: `LeiosDbConfig` under the Leios
     * build, where the node opens the store it keeps on disk, and `follow` refuses the in-memory one
-    * this build does not have ([[LeiosStorage]]).
+    * this build does not have ([[LeiosStorage]]), and `LeiosMinOfferLead` with it, which its
+    * LeiosNotify servers offer by ([[LeiosMinOfferLead]]).
     */
   private def used(build: ReferenceBuild): Set[NodeConfig.TopLevelKey] =
     build match
-      case ReferenceBuild.LeiosB004fe0c => Set[NodeConfig.TopLevelKey]("LeiosDbConfig")
+      case ReferenceBuild.LeiosB004fe0c =>
+        Set[NodeConfig.TopLevelKey]("LeiosDbConfig", "LeiosMinOfferLead")
       case ReferenceBuild.Release11_1 | ReferenceBuild.Release11_2 => Set.empty
 
   private[node] def parse(
