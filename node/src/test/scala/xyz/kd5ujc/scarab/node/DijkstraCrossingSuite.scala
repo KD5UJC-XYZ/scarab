@@ -34,9 +34,10 @@ import xyz.kd5ujc.scarab.node.read.ChainRead.given
 
 /** When the block path upgrades the stored outputs on entering Dijkstra (#815): only for a block
   * the rules accepted that took the chain into Dijkstra from any earlier era
-  * ([[MirrorRules.DijkstraCrossing]]). The node refuses Dijkstra blocks for now (OD-4), so the
-  * crossing is checked on the states, and the pass over the store is counted on the era-walking
-  * capture (`fixtures/eras`, Byron to Conway) and on a block whose header fails its checks.
+  * ([[MirrorRules.DijkstraCrossing]]). The crossing is checked on the states, and the pass over the
+  * store is counted on the era-walking capture (`fixtures/eras`, Byron to Conway) and on a block
+  * whose header fails its checks; the devnet chain's crossing block, which the Leios build applies,
+  * is `MirrorDijkstraSuite` 's.
   */
 class DijkstraCrossingSuite extends CatsEffectSuite:
   private val fixtures = Path.of("fixtures/eras")
