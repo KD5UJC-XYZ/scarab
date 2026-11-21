@@ -642,11 +642,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
-   "evidence": [
-    "ImmutableServingSuite"
-   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1263#issuecomment-7067527974",
    "note": "garbageCollect's decision: every chunk last used at or before now less the expiry is dropped; here by walking the cache's index ordered by last use, where the reference takes a view of its IntPSQ, and with the age taken as now less the use; the trace event (TracePastChunksExpired) is not emitted, as the store emits none of the cache's TraceCacheEvent. ImmutableServingSuite checks the expiry over time under TestControl; no suite compares it with the reference",
    "digest": "ab4fd30bdd1109cd"
   },
@@ -694,9 +692,7 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "HaskellImportSuite",
-    "ImmutableServingSuite",
-    "ChainServerSuite"
+    "HaskellImportSuite"
    ],
    "note": "getBlockComponent for the components a point's index entry answers (GetSlot, GetHash, GetIsEBB): getSlotInfo finds the point in the primary and secondary indexes and extractBlockComponent answers them from the entry, the block not read. Here one method gives the entry's slot, hash, boundary flag and block number (which the reference's secondary index does not hold), found in the chunk's entries as the store holds them, and the chunk file is not opened (the reference opens it, Impl.hs 466-469). HaskellImportSuite compares what it finds, for every block and for another hash at each slot, with the reference's own primary and secondary indexes: the Preview ImmutableDB cardano-node 11.1.3 wrote, and a Byron-to-Conway database with boundary blocks written by the reference's encoding rules; the other suites check that no block is read",
    "digest": "aae023bb0d47d5d9"
@@ -809,7 +805,7 @@
    ],
    "class": "Mirror",
    "structure": "differs",
-   "evidence": ["FuturePoolParamsCodecSuite", "HaskellStateCodecSuite", "LeiosLayoutSuite", "DijkstraEpochReferenceSuite", "LeiosQueryAnswersSuite"],
+   "evidence": ["HaskellStateCodecSuite", "LeiosLayoutSuite", "DijkstraEpochReferenceSuite", "LeiosQueryAnswersSuite"],
    "note": "nine items written by the node's parameters' codec (poolParams), so the bytes of parameters without a key are those written before (FuturePoolParamsCodecSuite, both layouts). Read by that codec, then as the reference reads the two fields it keeps unread: the metadata as DecCBOR PoolMetadata at the state's version (PoolMetadata.read: a [url, hash] record, the url bounded by the version and its text chunked only in the Leios layout from version 12, the hash chunked from 12 in both) and the account's network 0 or 1 (decodeAccountAddressT, Address.hs:930-948 at f649f975), each refused with a typed error; the owner decided on 2026-11-19 (asked 19:18:13Z, decided 20:18:03Z, #85 item 38) that the state read matches the reference here. In the Leios layout from version 12 the voting key is read where the third of ten items is a list (decodeStakePoolParamsFlat) and written as ten items with the key third (withStakePoolParamsFlatEncoding, through ConwayCodecs.poolFieldsWith); below version 12 it is not written, as the reference drops it. Keyed parameters have their relays read as the reference reads them (PoolRelays.fromState); keyless ones keep the earlier reader, which takes any array and keeps its bytes. Reading and writing the key was approved under the format freeze on 2026-11-20 (#54), V10 changed in place",
    "digest": "7082b046a8ef49bc"
   },
@@ -825,7 +821,7 @@
    ],
    "class": "Mirror",
    "structure": "differs",
-   "evidence": ["FuturePoolParamsCodecSuite", "DijkstraEpochReferenceSuite"],
+   "evidence": ["DijkstraEpochReferenceSuite"],
    "note": "the flat fields with a third written after the VRF key hash, the voting key's place; the caller writes the list length and the key, where the reference computes both from the encoding version",
    "digest": "204acf3869539dc0"
   },
@@ -841,7 +837,7 @@
    ],
    "class": "Mirror",
    "structure": "differs",
-   "evidence": ["FuturePoolParamsCodecSuite", "DijkstraEpochStateSuite"],
+   "evidence": ["DijkstraEpochStateSuite"],
    "note": "the ten items with the third read by the slot's codec: none for the node's parameters (refused as DijkstraNotYet.PoolParamsBlsKey where it is a key), the key for the state's parameters; the reference peeks at the third item's type instead",
    "digest": "13eedd12517ba138"
   },
@@ -1778,7 +1774,6 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "LeiosReferenceDbSuite",
     "HaskellImportSuite"
    ],
    "digest": "5d9bd88db4337927"
@@ -1887,12 +1882,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
-   "evidence": [
-    "ChainServerSuite",
-    "ReceivedBlocksSuite"
-   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1263#issuecomment-7067527974",
    "note": "the block's reference (hash, slot, number, boundary) and its predecessor, the fields of BlockInfo the iterator's path walk reads; the header's offset and size, which the reference keeps to read a header alone, are not kept. Evidence: the wire cases of ChainServerSuite assert each outcome of the reference's ChainDB iterator and BlockFetch server, as their source at the pins gives it, over a connection Scarab serves; no running reference node is asked",
    "digest": "adb426558b5074cb"
   },
@@ -2059,7 +2051,6 @@
    "structure": "differs",
    "record": "docs/decisions.md#genesis-storage-and-keys",
    "evidence": [
-    "ReceivedBlocksSuite",
     "FetchedBlockIntegritySuite"
    ],
    "note": "the block decoder and integrity predicate the reference gives its VolatileDB (volCodecConfig, volCheckIntegrity, volValidationPolicy), as one function the node passes to the received log's open (ReceivedBlockRecovery.startUp), given the point the record stores as well: a record it refuses cannot be read and cuts its file, as parseBlockFile cuts at BlockReadErr or BlockCorruptedErr. Where it differs, by the approved Deviation of the decisions register's 2026-11-20 row (#1247): the node's check decodes the block, checks the record's point and checks the body against the header at every open, where the reference only decodes by default (NoValidation, VolatileDB/Impl.hs 188) and checks integrity (the header's own and the body against the header) only with ValidateAll, after an unclean shutdown or when the operator asks for it (ensureValidateAll, ChainDB/Impl/Args.hs 154-167); the header's own integrity is not checked here. ReceivedBlocksSuite and FetchedBlockIntegritySuite check the approved check; no suite compares it with the reference's validation policy, which it departs from by decision",
@@ -2172,11 +2163,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
-   "evidence": [
-    "LeiosBackgroundSuite"
-   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1263#issuecomment-7067527974",
    "note": "the fields of the VolatileDB's BlockInfo that copyToImmutableDB's certifiedEb reads (biHash, biSlotNo, biPrevHash, biHasLeiosCert, biLeiosAnnouncedEb); the announcement is its hash alone, its point's slot the block's own slot (announcementLeiosPoint, headerElId), and the other fields are not read (#830)",
    "digest": "bbd877ecaee2b285"
   },
