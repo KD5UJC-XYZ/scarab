@@ -13,7 +13,16 @@ import xyz.kd5ujc.scarab.network.*
 import xyz.kd5ujc.scarab.network.selection.FailureClass
 import xyz.kd5ujc.scarab.node.forge.ForgedChain
 import xyz.kd5ujc.scarab.node.log.NodeEvent
-import xyz.kd5ujc.scarab.protocol.{ChainSync, NtNHeader, NtnVersion}
+import xyz.kd5ujc.scarab.protocol.{
+  ChainSync,
+  EbHash,
+  EbPoint,
+  LeiosFetchRefusal,
+  LeiosWord,
+  NtNHeader,
+  NtnVersion
+}
+import xyz.kd5ujc.scarab.storage.{LeiosEb, LeiosStoreError}
 
 /** A decoder that throws on a peer's input is the connection's failure, not the node's: the policy
   * turns on where the exception came from (network `RethrowPolicy.hs`, `ShutdownPeer` for an
@@ -90,6 +99,33 @@ class PeerDefectPolicySuite extends FailsOnUncaught:
         case Fault.Failed(error @ PeerError.RangeRefused(seen)) =>
           assertEquals(seen, refused)
           assertEquals(FailurePolicy.classify(error), FailureClass.Transient, refusal.toString)
+          assertEquals(FailurePolicy.disposition(SessionEnd.Failed(error)), Disposition.Backoff)
+        case other => fail(s"unexpected $other")
+    }
+  }
+
+  test("a LeiosFetch request refused ends the connection, charged only when the peer's (#54)") {
+    val point = EbPoint(
+      LeiosWord.Word64.from(BigInt(7)).fold(e => fail(e.toString), identity),
+      EbHash.fromBytes(Bytes(Vector.fill(32)(4)))
+    )
+    val undecodable = LeiosEb.decode(Bytes(Vector(0))).fold(identity, eb => fail(s"decoded $eb"))
+    // the reference's handler throws each, `ShutdownPeer` (ouroboros-consensus 2416493b
+    // LeiosDemoLogic.hs:263-307): a request for what this node does not hold is the peer's, tried
+    // again after the error delay; our own store's failure, or a body it holds that it cannot answer
+    // with, is not counted against the peer (owner decision 2026-10-28, issue 567)
+    Vector(
+      LeiosFetchRefusal.UnknownBlockRequested(point) -> FailureClass.Transient,
+      LeiosFetchRefusal.UnknownTxsRequested(point, Vector(0, 3)) -> FailureClass.Transient,
+      LeiosFetchRefusal.StoredBodyUndecodable(point, undecodable) -> FailureClass.NotThePeers,
+      LeiosFetchRefusal.StoredBodyTooLarge(point, 17143) -> FailureClass.NotThePeers,
+      LeiosFetchRefusal.Store(LeiosStoreError.FormatMissing) -> FailureClass.NotThePeers
+    ).foreach { (refusal, expected) =>
+      val refused = NetworkError.LeiosFetchRefused(refusal)
+      Peer.networkFault(refused) match
+        case Fault.Failed(error @ PeerError.LeiosFetchRefused(seen)) =>
+          assertEquals(seen, refused)
+          assertEquals(FailurePolicy.classify(error), expected, refusal.toString)
           assertEquals(FailurePolicy.disposition(SessionEnd.Failed(error)), Disposition.Backoff)
         case other => fail(s"unexpected $other")
     }
