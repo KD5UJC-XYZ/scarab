@@ -46,6 +46,13 @@ object LeiosFetchKernel:
     * dropped and its requests queued, each on the peers read first. `forecast` is the closure's
     * bound forecast from the immutable tip, read once for the pass; `currentSlot` is unknown while
     * the clock is.
+    *
+    * A peer is still live only with the vars read first: a connection demoted and activated again
+    * meanwhile keeps its identity with fresh vars, and the decision leaves it to the next pass
+    * rather than charge the new activation with requests queued on the old one's vars, which no
+    * client reads. The reference re-reads the live peers by their keys alone
+    * (`Map.restrictKeys offerings (Map.keysSet stillLivePeers)`, `NodeKernel.hs` 570-610 at
+    * 2416493b), so the race its re-read closes stays open there for a reactivation.
     */
   def step[F[_], P: Order, E](
       shared: LeiosFetchShared[F, P],
@@ -59,14 +66,16 @@ object LeiosFetchKernel:
       decision <- shared.outstanding.evalModify { outstanding =>
         for
           stillLive <- shared.peers.get
+          // the peers live with the vars the offers were read from
+          same = peers.filter((p, vars) => stillLive.get(p).exists(_ eq vars))
           slot <- currentSlot
           bound <- forecast
           decided = LeiosFetchLogic.iteration(
             env,
             bound,
             slot,
-            offerings.filter((p, _) => stillLive.contains(p)).toMap,
-            stillLive.view.mapValues(_.whetherBigLedgerPeer).toMap,
+            offerings.filter((p, _) => same.contains(p)).toMap,
+            same.view.mapValues(_.whetherBigLedgerPeer).toMap,
             outstanding
           )
         yield (decided.outstanding, decided)

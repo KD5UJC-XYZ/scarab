@@ -111,6 +111,46 @@ class LeiosFetchKernelSuite extends FailsOnUncaught:
       assertEquals(after.requestedBytesSizePerPeer.get(1), Some(offered))
   }
 
+  test("a peer activated again between the decision's two reads is assigned nothing") {
+    val fresh = EbPoint(slot(10), hash(1))
+    def taken(vars: LeiosPeerVars[IO]): IO[Option[LeiosRequestsToSend.Taken]] =
+      vars.requestsToSend.tryTake
+    for
+      shared <- withPeers(
+        focused(empty, 10, 1),
+        Map(1 -> Map(fresh -> offer(WhetherTxsClosureOffered.Offered)))
+      )
+      retired <- shared.peers.get.map(_(1))
+      release <- Deferred[IO, Unit]
+      // the state is held while the decision reads the peers and their offers, and the decision
+      // then waits for it
+      control <- TestControl.execute(
+        Deferred[IO, Unit].flatMap { held =>
+          shared.outstanding.evalUpdate(o => held.complete(()) *> release.get.as(o)).start *>
+            held.get *> LeiosFetchKernel.step(shared, env, IO.pure(Some(slot(11))), noForecast)
+        }
+      )
+      _ <- control.tick
+      waiting <- control.results
+      // meanwhile the connection is demoted, its peer gone, and activated again: the same
+      // identity with fresh vars, which offer nothing yet
+      activated <- LeiosPeerVars.create[IO](IsBigLedgerPeer.NotBigLedgerPeer)
+      _ <- shared.peers.update(_.updated(1, activated))
+      _ <- release.complete(())
+      _ <- control.tick
+      decided <- control.results
+      after <- shared.outstanding.get
+      onRetired <- taken(retired)
+      onActivated <- taken(activated)
+    yield
+      assertEquals(waiting, None, "the decision waits for the state")
+      assert(decided.exists(_.isSuccess), s"the decision ends: $decided")
+      // nothing is charged to the new activation, and neither vars holds a request
+      assert(!after.requestedBytesSizePerPeer.contains(1))
+      assert(!after.requestedEbPeers.contains(fresh.hash))
+      assertEquals((onRetired, onActivated), (None, None))
+  }
+
   test("the loop decides once per wake, at most once every half second") {
     TestControl.executeEmbed {
       for
