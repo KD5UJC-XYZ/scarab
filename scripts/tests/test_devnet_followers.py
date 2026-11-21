@@ -1,12 +1,14 @@
 # SPDX-License-Identifier: Apache-2.0
 """The Scala follower of an `e2e` run: its names and ports, the comparisons with the reference (a judgment stands
-once made), the run's own stop of it, the judgment of its whole log, and the removed `--plutus-vm` and `--instance`.
+once made), the run's own stop of it, the judgment of its whole log, `follow --reference-build` reaching the node's
+command line, and the removed `--plutus-vm` and `--instance`.
 
 Run from the repository root:  python3 -m unittest discover -s scripts/tests -v
 """
 import contextlib
 import io
 import json
+import os
 import pathlib
 import shutil
 import subprocess
@@ -18,7 +20,7 @@ from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from devnet import cluster, compare, eraview, follower, util  # noqa: E402
+from devnet import cli, cluster, compare, eraview, follower, util  # noqa: E402
 from devnet.scenarios import e2e as e2e_scenario  # noqa: E402
 from devnet.util import SINGLE_FOLLOWER  # noqa: E402
 from oracle.finality import Block  # noqa: E402
@@ -81,8 +83,10 @@ class FollowerSiteTest(unittest.TestCase):
 
 
 class FollowerProcessTest(unittest.TestCase):
-    def follow(self):
-        """(program arguments, scala_container keywords, frozen directory) of `follow`."""
+    def follow(self, argv=None):
+        """(program arguments, scala_container keywords, frozen directory) of `follow`: called directly, or, with
+        `argv` (the arguments after `devnet.py --name n`), parsed by `devnet.py` as a run started by another run
+        (`cli.RUN_MARKER`), so neither the free-space check nor the size line runs."""
         seen = {}
 
         def container(args, root, classpath, main, program, mounts=(), name=None, classes=None):
@@ -99,8 +103,13 @@ class FollowerProcessTest(unittest.TestCase):
                                  side_effect=lambda r, previous, frozen: seen.update(frozen=frozen) or "cp"), \
                     patch.object(follower, "scala_container", side_effect=container), \
                     patch.object(follower.subprocess, "Popen", return_value=process), \
+                    patch.dict(os.environ, {cli.RUN_MARKER: "n"}), \
+                    patch.object(sys, "argv", ["devnet.py", "--name", "n", *(argv or ())]), \
                     self.assertRaises(SystemExit):
-                follower.follow(args)
+                if argv is None:
+                    follower.follow(args)
+                else:
+                    cli.main()
             return seen, root
 
     def test_the_follower_runs_with_its_ports_socket_stall_and_classes(self):
@@ -114,6 +123,20 @@ class FollowerProcessTest(unittest.TestCase):
         self.assertIn(f"{root / 'scala-sock'}:/sock", seen["mounts"])
         self.assertIn(f"{root / 'stall'}:/stall", seen["mounts"])
         self.assertNotIn("--plutus-vm", program, "the node has one Plutus evaluator, its own")
+
+    def test_the_reference_build_reaches_the_nodes_command_line_as_given(self):
+        # passed on as the node takes it, the value unchecked here: the node parses it (`ReferenceBuildFlag.parse`)
+        for build in ("leios-b004fe0c", "11.1", "not-a-build"):
+            seen, _ = self.follow(["follow", "--reference-build", build])
+            program = seen["program"]
+            self.assertEqual(program[:1], ["follow"])
+            self.assertEqual(program.count("--reference-build"), 1)
+            self.assertEqual(program[program.index("--reference-build") + 1], build)
+
+    def test_without_the_flag_the_node_runs_its_own_default_build(self):
+        for argv in (None, ["follow"]):
+            seen, _ = self.follow(argv)
+            self.assertNotIn("--reference-build", seen["program"])
 
     def test_the_child_cli_names_no_evaluator_and_no_instance(self):
         with patch.object(follower.subprocess, "Popen") as launch:

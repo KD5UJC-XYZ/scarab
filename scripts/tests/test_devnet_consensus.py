@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from devnet.consensus import arguments, configuration
+from devnet.consensus import CONFIG_NAMES, arguments, configuration
 from devnet import follower
 from devnet.scenarios import restart
 
@@ -43,6 +43,25 @@ class ConsensusModeTests(unittest.TestCase):
                     self.assertIsNone(topology["bootstrapPeers"])
                 else:
                     self.assertEqual(len(flags), 2)
+
+    def test_the_configuration_is_the_one_the_node_finds_in_the_genesis_directory(self):
+        # `up-dijkstra` writes `config.json`, `up` and `up-eras` `configuration.yaml` (`NodeSetup.ConfigNames`)
+        self.assertEqual(CONFIG_NAMES, ("configuration.yaml", "configuration.json", "config.json"))
+        for present, read in ((("config.json",), "config.json"),
+                              (("config.json", "configuration.yaml"), "configuration.yaml")):
+            with tempfile.TemporaryDirectory(prefix="scarab-54-mode-") as temporary:
+                root = pathlib.Path(temporary)
+                (root / "genesis").mkdir()
+                for name in present:
+                    (root / "genesis" / name).write_text(json.dumps({"Source": name}))
+                flags = configuration(root, "PraosMode", [3001])
+                selected = json.loads((root / "genesis" / pathlib.Path(flags[1]).name).read_text())
+                self.assertEqual(selected, {"Source": read, "ConsensusMode": "PraosMode"})
+        with tempfile.TemporaryDirectory(prefix="scarab-54-mode-") as temporary:
+            root = pathlib.Path(temporary)
+            (root / "genesis").mkdir()
+            with self.assertRaises(SystemExit):
+                configuration(root, "PraosMode", [3001])
 
     def test_restart_keeps_explicit_mode_on_every_start(self):
         args = SimpleNamespace(name="scarab-33-mode", consensus_mode="GenesisMode")
