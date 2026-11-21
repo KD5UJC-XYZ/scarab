@@ -13,7 +13,8 @@ import xyz.kd5ujc.scarab.ledger.{
   TxIn,
   TxOut,
   Utxo,
-  UtxoFailure
+  UtxoFailure,
+  UtxowFailure
 }
 import xyz.kd5ujc.scarab.ledger.era.{
   ConwayEraPParams,
@@ -954,7 +955,9 @@ class ConwayUtxoChecksSuite extends FunSuite:
         case Left(defect) => fail(s"$what: era defect $defect")
         case Right(Left(fs)) =>
           Whole.Refused(
-            fs.toChain.toList.map(f => EraUtxoRun.eraForm(f).getOrElse(fail(s"$what: $f")))
+            fs.toChain.toList.map(f =>
+              EraUtxoRun.eraForm(f, purposes(s)).getOrElse(fail(s"$what: $f"))
+            )
           )
         case Right(Right((after, _))) => Whole.Admitted(after)
     val env = TxEnv(
@@ -1019,14 +1022,39 @@ class ConwayUtxoChecksSuite extends FunSuite:
       "no case UTXOS refuses"
     )
 
+  /** The cases the mempool's measure refuses before the ledger (`txMeasureAlonzo`,
+    * `Shelley/Ledger/Mempool.hs:590-612`, ouroboros-consensus 82ecba32): their recorded refusal is
+    * the measure's, not the rules', so the whole rules' byte comparisons leave them out, by name.
+    */
+  private val MeasureRefused: Set[String] = Set(
+    "conway-devnet/tx-too-large",
+    "conway-devnet/tx-too-large-spent-inputs",
+    "conway-devnet/utxo-mint-units-too-big"
+  )
+
+  /** `cases` without [[MeasureRefused]], each of which is among them; the measure
+    * (`Capacity.phase1`) refuses those and no other, so a case it comes to refuse fails the suite
+    * and is not dropped.
+    */
+  private def withoutMeasureRefusals(cases: Vector[Seen]): Vector[Seen] =
+    val (refused, compared) = cases.partition(s => MeasureRefused.contains(s.label))
+    assertEquals(refused.map(_.label).toSet, MeasureRefused, "the measure's refusals are not cases")
+    assertEquals(
+      cases
+        .filter(s => xyz.kd5ujc.scarab.node.mempool.Capacity.phase1(s.flat, s.flatPp).isLeft)
+        .map(_.label)
+        .toSet,
+      MeasureRefused,
+      "the measure refuses other cases than those named"
+    )
+    compared
+
   test("conwayUtxoTransition's refusal is the reference's, byte for byte, where only UTXO failed"):
     // UTXO one level down, an odd depth as under MEMPOOL, LEDGER and UTXOW, where the reference
-    // reports its failures in their order (`EraUtxoRun.run`). The mempool's measure refuses three of
-    // the cases only UTXO refuses before the ledger (`tx-too-large`, `tx-too-large-spent-inputs`,
-    // `utxo-mint-units-too-big`), so their recorded refusal is the measure's and they are left out
-    val utxoOnly = seen.filter(s =>
-      s.families.nonEmpty && s.families.forall(_ == Family.UTXO) &&
-        xyz.kd5ujc.scarab.node.mempool.Capacity.phase1(s.flat, s.flatPp).isRight
+    // reports its failures in their order (`EraUtxoRun.run`); the cases the mempool's measure
+    // refuses before the ledger are left out, by name
+    val utxoOnly = withoutMeasureRefusals(
+      seen.filter(s => s.families.nonEmpty && s.families.forall(_ == Family.UTXO))
     )
     assert(utxoOnly.nonEmpty, "no case that only UTXO refuses")
     utxoOnly.foreach { s =>
@@ -1048,6 +1076,129 @@ class ConwayUtxoChecksSuite extends FunSuite:
         ) match
         case Right(Left(fs)) => fs.toChain.toVector.map(stored)
         case other           => fail(s"${s.label}: $other")
+      assertEquals(
+        PredicateFailureCbor.applyTxError(failures).fold(e => fail(s"${s.label}: $e"), _.hex),
+        s.reason.hex,
+        s.label
+      )
+    }
+
+  // ---- UTXOW whole: its checks, then UTXO with UTXOS -------------------------------------------
+
+  /** The purposes of `s`'s scripts needed in their flat form, for a missing redeemer's failure. */
+  private def purposes(s: Seen) =
+    val u = EraUTxO.conway
+    val t = EraTx.conway
+    xyz.kd5ujc.scarab.ledger.era.rules.ConwayUtxowPredFailure.storedPurposes(
+      u.getScriptsNeeded[TxLevel.Top](s.utxo, t.body[TxLevel.Top](s.typed)(using t.bodyOf.top))(
+        using u.txOf.bodyOf.top
+      ),
+      s.utxo
+    )
+
+  /** The era-typed `babbageUtxowTransition` on `s`, `depth` levels below the root. */
+  private def eraUtxow(s: Seen, build: ReferenceBuild, validation: TxEnv.Validation, depth: Int) =
+    EraUtxoRun.Utxow.run(
+      UtxoEnv(s.slot, s.pp, s.cert),
+      xyz.kd5ujc.scarab.ledger.era.AlonzoStAnnTx
+        .mkAlonzoStAnnTx[Conway](clock.posix, s.pp, s.utxo, Map.empty, s.typed),
+      UtxoContext(
+        s.netId,
+        0,
+        historyAt(s.slot),
+        validation,
+        ConwayUtxo.injectShelleyFailure(build)
+      ),
+      s.utxoState,
+      xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default,
+      xyz.kd5ujc.scarab.ledger.Verdicts.Direct,
+      xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder,
+      depth
+    )
+
+  /** The era-typed UTXOW and the flat one (`rules.Utxow`) on `s` from its state. */
+  private def wholeUtxow(
+      s: Seen,
+      build: ReferenceBuild,
+      validation: TxEnv.Validation
+  ): (Whole, Whole) =
+    val what = s"${s.label} under ${build.name}, $validation (UTXOW)"
+    val era = eraUtxow(s, build, validation, 0) match
+      case Left(defect) => fail(s"$what: era defect $defect")
+      case Right(Left(fs)) =>
+        Whole.Refused(
+          fs.toChain.toList.map(f =>
+            EraUtxoRun.Utxow.eraForm(f, purposes(s)).getOrElse(fail(s"$what: $f"))
+          )
+        )
+      case Right(Right((after, _))) => Whole.Admitted(after)
+    val env = TxEnv(
+      slot = s.slot,
+      epoch = 0,
+      network = s.network,
+      evaluator = xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default,
+      decoder = xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder,
+      validation = validation,
+      referenceBuild = build,
+      clock = Some(clock)
+    )
+    val flat = Judgment.run(xyz.kd5ujc.scarab.ledger.rules.Utxow, RuleT.Policy.Accumulate)(
+      xyz.kd5ujc.scarab.ledger.TestLedger.globals,
+      FlatUtxoEnv(env, s.flatPp, s.cert),
+      Counted(s.utxoState, xyz.kd5ujc.scarab.ledger.PlutusStats.zero),
+      StAnnTx(s.flat, Utxo.fromMap(s.stored))
+    ) match
+      case Left(defect) => fail(s"$what: flat defect $defect")
+      case Right(Left(fs)) =>
+        Whole.Refused(fs.toChain.toList.map(f => EraUtxoRun.form(f).getOrElse(fail(s"$what: $f"))))
+      case Right(Right(counted)) => Whole.Admitted(counted.state)
+    (era, flat)
+
+  test("babbageUtxowTransition gives the flat UTXOW's failures, in order, on every Conway case"):
+    val outcomes = for
+      s <- seen
+      build <- ReferenceBuild.values.toVector
+      validation <- TxEnv.Validation.values.toVector
+    yield
+      val what = s"${s.label} under ${build.name}, $validation"
+      wholeUtxow(s, build, validation) match
+        case (Whole.Admitted(ours), Whole.Admitted(theirs)) =>
+          assert(summon[cats.Eq[UTxOState[Conway]]].eqv(ours, theirs), what)
+          Whole.Admitted(ours)
+        case (era, flat) =>
+          assertEquals(era, flat, what)
+          era
+    assert(
+      outcomes.exists {
+        case Whole.Refused(fs) =>
+          fs.exists {
+            case EraUtxoRun.Failure.Utxo(PredicateFailure.Utxow(UtxowFailure.Utxo(_))) => false
+            case EraUtxoRun.Failure.Utxo(PredicateFailure.Utxow(_))                    => true
+            case _                                                                     => false
+          }
+        case _ => false
+      },
+      "no case UTXOW's own checks refuse"
+    )
+
+  test("babbageUtxowTransition's refusal is the reference's, byte for byte, where only it failed"):
+    // UTXOW two levels down, as under MEMPOOL and LEDGER; the cases the mempool's measure refuses
+    // before the ledger are left out, by name, as for UTXO above
+    val utxowOnly = withoutMeasureRefusals(
+      seen.filter(s =>
+        s.families.nonEmpty && s.families.forall(f => f == Family.UTXOW || f == Family.UTXO)
+      )
+    )
+    assert(utxowOnly.exists(_.families.contains(Family.UTXOW)), "no case only UTXOW refuses")
+    utxowOnly.foreach { s =>
+      val failures = eraUtxow(s, s.build, TxEnv.Validation.All, 2) match
+        case Right(Left(fs)) =>
+          fs.toChain.toVector.map(f =>
+            xyz.kd5ujc.scarab.ledger.era.rules.ConwayUtxowPredFailure
+              .toStored(f, purposes(s))
+              .fold(e => fail(s"${s.label}: $e"), identity)
+          )
+        case other => fail(s"${s.label}: $other")
       assertEquals(
         PredicateFailureCbor.applyTxError(failures).fold(e => fail(s"${s.label}: $e"), _.hex),
         s.reason.hex,

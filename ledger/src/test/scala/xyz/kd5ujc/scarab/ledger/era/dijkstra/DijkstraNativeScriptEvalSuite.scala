@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.era.dijkstra
 
+import cats.syntax.all.*
 import munit.ScalaCheckSuite
 import org.scalacheck.{Gen, Prop}
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -113,4 +114,109 @@ class DijkstraNativeScriptEvalSuite extends ScalaCheckSuite:
     val deep = script(hex(("8201" + "81").repeat(20000) + guard))
     assertEquals(PreprodDeepTx.onSmallStack(deep.eval(Set.empty, None, None, guards)), true)
     assertEquals(PreprodDeepTx.onSmallStack(deep.eval(Set.empty, None, None, Set.empty)), false)
+  }
+
+  // `validateNativeScript` of Dijkstra's transaction (`validateDijkstraNativeScript`,
+  // `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Tx.hs:427-438`, cardano-ledger 9df9f98c): the
+  // script for the key hashes of the transaction's key witnesses (`witVKeyHash` of `addrTxWitsL`),
+  // its body's validity interval and its body's guards (`guardsTxBodyL`)
+  test("validateNativeScript reads the witnesses, the interval and the guards of the transaction") {
+    import xyz.kd5ujc.scarab.ledger.Verdicts
+    import xyz.kd5ujc.scarab.ledger.dijkstra.{DijkstraTx as FlatTx, V12}
+    import xyz.kd5ujc.scarab.ledger.era.{EraTx, TxLevel}
+    def bytesHex(b: Bytes): String = b.hex
+    def uint(n: BigInt): String =
+      if n < 24 then f"${n.toInt}%02x"
+      else if n < 256 then f"18${n.toInt}%02x"
+      else if n < 65536 then f"19${n.toInt}%04x"
+      else if n < BigInt(1L << 32) then f"1a${n.toLong}%08x"
+      else f"1b${n.toLong}%016x"
+    def credential(c: Credential): String = c match
+      case Credential.Key(h)    => "8200581c" + bytesHex(h)
+      case Credential.Script(h) => "8201581c" + bytesHex(h)
+    // every transaction of the Leios corpus both decoders read, with guards and key witnesses, and
+    // each again with a key guard added to its body (the corpus's guards are scripts')
+    import xyz.kd5ujc.scarab.codec.{Cbor, Node, Value}
+    val keyGuard = Credential.Key(Bytes(Vector.fill(28)(0x5e.toByte)))
+    def leaf(v: Value): Node = Node(v, Bytes.empty)
+    def withKeyGuard(n: Node): Option[Node] = n.value match
+      case Value.Arr(parts) =>
+        parts.headOption.map(_.value).collect { case Value.Map(fields) =>
+          val guard = leaf(
+            Value.Arr(Vector(leaf(Value.UInt(0)), leaf(Value.ByteString(keyGuard.hash))))
+          )
+          val edited = fields.map { (k, v) =>
+            if k.value == Value.UInt(14) then
+              k -> (v.value match
+                case Value.Tag(tag, inner) =>
+                  inner.value match
+                    case Value.Arr(gs) => leaf(Value.Tag(tag, leaf(Value.Arr(gs :+ guard))))
+                    case _             => v
+                case Value.Arr(gs) => leaf(Value.Arr(gs :+ guard))
+                case _             => v)
+            else k -> v
+          }
+          val raw = Cbor
+            .encode(Value.Arr(leaf(Value.Map(edited)) +: parts.tail), Cbor.Limits.Unbounded)
+            .fold(e => fail(e.toString), identity)
+          CborRead.decode(raw, V12.nestedLimits).fold(e => fail(e.toString), identity)
+        }
+      case _ => None
+    val read = DijkstraCorpus.leiosCorpus
+      .filter(j => DijkstraCorpus.str(j, "kind") == "tx")
+      .flatMap(j => CborRead.decode(hex(DijkstraCorpus.str(j, "bytes")), V12.nestedLimits).toOption)
+    val txs = (read ++ read.flatMap(withKeyGuard))
+      .flatMap(n => (FlatTx.inBlock(n).toOption, DijkstraTx.inBlock(n).toOption).tupled)
+      .filter((flat, _) => flat.body.guards.nonEmpty && flat.witnesses.vkeys.nonEmpty)
+    assert(txs.nonEmpty, "no transaction with guards and key witnesses")
+    val t = EraTx.dijkstra
+    val kinds = txs.flatMap { (flat, era) =>
+      val signers = flat.witnesses.vkeys.map(w => Verdicts.Direct.keyHash(w._1)).toSet
+      val guards = flat.body.guards.toSet
+      val signer = signers.head
+      val absent = Credential.Key(Bytes(Vector.fill(28)(0x7f.toByte)))
+      val bound = flat.body.validityStart.orElse(flat.body.ttl).getOrElse(BigInt(100))
+      // the interval's end, and the slot before it: an expiry at the end holds, one before does not
+      val end = flat.body.ttl.getOrElse(bound)
+      val scripts = flat.body.guards.map(g => "8206" + credential(g)) ++ Vector(
+        "8206" + credential(absent),
+        "8200581c" + bytesHex(signer),
+        "8204" + uint(bound),
+        "8205" + uint(bound),
+        "8205" + uint(end),
+        "8205" + uint((end - 1).max(BigInt(0))),
+        "8303" + "02" + "83" + ("8206" + credential(flat.body.guards.head)) +
+          ("8200581c" + bytesHex(signer)) + ("8206" + credential(absent)),
+        "8303" + "03" + "83" + ("8206" + credential(flat.body.guards.head)) +
+          ("8200581c" + bytesHex(signer)) + ("8206" + credential(absent))
+      )
+      scripts.map { raw =>
+        val native = script(hex(raw))
+        val ours = t.validateNativeScript[TxLevel.Top](era, native)(using t.bodyOf.top)
+        assertEquals(
+          ours,
+          native.eval(signers, flat.body.validityStart, flat.body.ttl, guards),
+          s"${flat.id.hex}: $raw"
+        )
+        (
+          flat.body.guards.exists {
+            case Credential.Script(_) => true
+            case Credential.Key(_)    => false
+          },
+          ours
+        )
+      }
+    }
+    assert(kinds.exists(_._2) && kinds.exists(!_._2), "no script that holds and one that fails")
+    // the body's guards of both kinds: a key's and a script's credential, each read as its own
+    assert(kinds.exists(_._1), "no transaction with a script guard")
+    assert(
+      txs.exists((flat, _) =>
+        flat.body.guards.exists {
+          case Credential.Key(_)    => true
+          case Credential.Script(_) => false
+        }
+      ),
+      "no transaction with a key guard"
+    )
   }

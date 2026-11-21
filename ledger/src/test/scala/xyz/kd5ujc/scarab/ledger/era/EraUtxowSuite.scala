@@ -113,6 +113,12 @@ class EraUtxowSuite extends munit.FunSuite:
       top
     )
 
+  /** A UTXOW predicate's verdict in the node's flat form, through Conway's injection `inject`. */
+  private def flatOf[A](test: xyz.kd5ujc.scarab.ledger.rules.Test[A])(
+      inject: A => xyz.kd5ujc.scarab.ledger.era.rules.ConwayUtxowPredFailure[Conway]
+  ): xyz.kd5ujc.scarab.ledger.rules.Test[PredicateFailure] =
+    EraUtxoRun.utxowFlat(test)(inject).getOrElse(fail(s"no flat form: $test"))
+
   test("the corpus has Conway transactions, some with redeemers and some with datums") {
     val flats = transactions.map(both(_)._1)
     assert(flats.exists(_.witnesses.redeemers.nonEmpty))
@@ -123,7 +129,9 @@ class EraUtxowSuite extends munit.FunSuite:
     transactions.foreach { t =>
       val (flat, c) = both(t)
       assertEquals(
-        ShelleyUtxow.validateVerifiedWits[Conway, TxLevel.Top](c, Verdicts.Direct)(using tx, top),
+        ShelleyUtxow
+          .validateVerifiedWits[Conway, TxLevel.Top](c, Verdicts.Direct)(using tx, top)
+          .map(test => flatOf(test)(EraUtxoRun.shelleyW)),
         TxChecks.verifiedWits(flat, Verdicts.Direct),
         flat.body.id.hex
       )
@@ -150,12 +158,14 @@ class EraUtxowSuite extends munit.FunSuite:
       )
       // the verdict: the flat check's, which compares the same hash and reports the same mismatch
       assertEquals(
-        AlonzoUtxow.checkScriptIntegrityHash[Conway, TxLevel.Top](c, pp, si)(using
-          tx,
-          summon[EraPParams[Conway]],
-          summon[xyz.kd5ujc.scarab.ledger.era.Era[Conway]],
-          top
-        ),
+        flatOf(
+          AlonzoUtxow.checkScriptIntegrityHash[Conway, TxLevel.Top](c, pp, si)(using
+            tx,
+            summon[EraPParams[Conway]],
+            summon[xyz.kd5ujc.scarab.ledger.era.Era[Conway]],
+            top
+          )
+        )(EraUtxoRun.alonzoW),
         Test.failureUnless(
           FlatScriptIntegrity.hash[Conway](flat, flatPp, kindsOf) == flat.body.scriptDataHash,
           PredicateFailure.utxow(FlatScriptIntegrity.mismatch[Conway](flat, flatPp, kindsOf))
@@ -202,12 +212,14 @@ class EraUtxowSuite extends munit.FunSuite:
   test("babbageMissingScripts: the extraneous, then the missing, beside the reference scripts") {
     val (_, pp) = params(9)
     def h(b: Int) = Bytes(Vector.fill(28)(b.toByte))
-    val result = BabbageUtxow.babbageMissingScripts[Conway](
-      pp,
-      sNeeded = Set(h(1), h(2), h(3)),
-      sRefs = Set(h(2)),
-      sReceived = Set(h(1), h(4))
-    )
+    val result = flatOf(
+      BabbageUtxow.babbageMissingScripts[Conway](
+        pp,
+        sNeeded = Set(h(1), h(2), h(3)),
+        sRefs = Set(h(2)),
+        sReceived = Set(h(1), h(4))
+      )
+    )(EraUtxoRun.shelleyW)
     assertEquals(
       Test.failures(result).map(_.toNonEmptyVector.toVector),
       Some(
@@ -222,7 +234,9 @@ class EraUtxowSuite extends munit.FunSuite:
       )
     )
     assertEquals(
-      BabbageUtxow.babbageMissingScripts[Conway](pp, Set(h(1), h(2)), Set(h(2)), Set(h(1))),
+      flatOf(BabbageUtxow.babbageMissingScripts[Conway](pp, Set(h(1), h(2)), Set(h(2)), Set(h(1))))(
+        EraUtxoRun.shelleyW
+      ),
       Test.pass[PredicateFailure]
     )
   }

@@ -10,7 +10,33 @@ import xyz.kd5ujc.scarab.codec.{Bytes, Cbor}
 import xyz.kd5ujc.scarab.ledger.*
 import xyz.kd5ujc.scarab.ledger.testByteStrings
 import xyz.kd5ujc.scarab.ledger.rules.RedeemerIndexCases
-import xyz.kd5ujc.scarab.ledger.state.{Alonzo, Babbage, Conway, EraTag, ShelleyBasedEra}
+import xyz.kd5ujc.scarab.ledger.state.{
+  Alonzo,
+  Babbage,
+  Conway,
+  ConwayLedgerState,
+  ConwayNewEpochState,
+  EraTag,
+  LedgerState,
+  ShelleyBasedEra
+}
+import xyz.kd5ujc.scarab.ledger.era.{
+  AlonzoStAnnTx,
+  EraTx,
+  EraUTxO,
+  EraUtxoRun,
+  Network,
+  PParams,
+  TxLevel
+}
+import xyz.kd5ujc.scarab.ledger.era.conway.{ConwayPParams, ConwayTx, ConwayUTxO}
+import xyz.kd5ujc.scarab.ledger.era.rules.{
+  ConwayUtxo,
+  ConwayUtxowPredFailure,
+  UtxoContext,
+  UtxoEnv as EraUtxoEnv
+}
+import xyz.kd5ujc.scarab.protocol.{ReferenceBuild, StateLayout}
 import xyz.kd5ujc.scarab.node.mempool.MempoolState
 import xyz.kd5ujc.scarab.protocol.Era
 
@@ -176,5 +202,79 @@ class RedeemerIndexReferenceSuite extends FunSuite:
             Some(reason.hex),
             s"${r.label}: $failures"
           )
+    }
+  }
+
+  // the era-typed UTXOW whole (`babbageUtxowTransition`, with UTXO and UTXOS) on the Conway cases,
+  // from the same chain: an accepted case is admitted, and a refused one's failures, two levels
+  // below the root as under MEMPOOL and LEDGER, encode to the reference's refusal byte for byte
+  records.filter(_.era == Era.Conway).foreach { r =>
+    test(s"${r.era} ${r.kind}: the era-typed UTXOW's verdict is the reference's") {
+      val flatTx = r.tx
+      val credential = flatTx.body.certificates.collect {
+        case Certificate.Delegate(credential, Some(_), _, _) => credential
+      }.distinct match
+        case Vector(one) => one
+        case other       => fail(s"${r.label}: the certificates delegate $other")
+      val pools = flatTx.body.certificates.collect {
+        case Certificate.Delegate(_, Some(pool), _, _) => pool
+      }.distinct
+      val flatPp = TestLedger.params(r.major).copy(costModels = Map(0 -> r.costModel))
+      val nes = RedeemerIndexCases.chain[Conway](flatPp, r.spent, credential, pools)(using
+        ShelleyBasedEra.SConway
+      )
+      val ls = ConwayNewEpochState.ls.get(nes)
+      val pp = PParams[Conway](ConwayPParams.fromStored(flatPp).fold(e => fail(s"$e"), identity))
+      val tx = ConwayTx
+        .fromEnvelope(r.raw, StateLayout.Node11_1)
+        .fold(e => fail(s"${r.label}: $e"), identity)
+      val utxo = ConwayUTxO.fromStored(r.spent.toMap).fold(e => fail(s"${r.label}: $e"), identity)
+      val env = TestLedger.env
+      val clock = env.clock.getOrElse(fail("the environment has no clock"))
+      val params = Horizon.Params(100, 1000, 30, 30)
+      val history = Horizon
+        .History(Vector.empty, Horizon.Edge(0, 0, 0), params, Some(params))
+        .at(Horizon.Transition.Unknown(Some(env.slot)))
+      val u = EraUTxO.conway
+      val t = EraTx.conway
+      val purposes = ConwayUtxowPredFailure.storedPurposes(
+        u.getScriptsNeeded[TxLevel.Top](utxo, t.body[TxLevel.Top](tx)(using t.bodyOf.top))(using
+          u.txOf.bodyOf.top
+        ),
+        utxo
+      )
+      val result = EraUtxoRun.Utxow.run(
+        EraUtxoEnv(env.slot, pp, ConwayLedgerState.cert.get(ls)),
+        AlonzoStAnnTx.mkAlonzoStAnnTx[Conway](clock.posix, pp, utxo, Map.empty, tx),
+        UtxoContext(
+          Network.of(BigInt(env.network)).getOrElse(fail(s"network ${env.network}")),
+          0,
+          history,
+          TxEnv.Validation.All,
+          ConwayUtxo.injectShelleyFailure(ReferenceBuild.Release11_1)
+        ),
+        LedgerState.utxo[Conway].get(ls),
+        env.evaluator,
+        env.verdicts,
+        env.decoder,
+        depth = 2
+      )
+      (result, r.reason) match
+        case (Right(Right(_)), None) => assert(r.accepted, r.label)
+        case (Right(Left(failures)), Some(reason)) =>
+          val flat = failures.toChain.toVector.map(f =>
+            ConwayUtxowPredFailure
+              .toStored(f, purposes)
+              .fold(e => fail(s"${r.label}: $e"), identity)
+          )
+          assertEquals(
+            PredicateFailureCbor
+              .applyTxError(r.era, flat)
+              .fold(error => fail(error.message), identity)
+              .map(_.hex),
+            Some(reason.hex),
+            s"${r.label}: $failures"
+          )
+        case other => fail(s"${r.label}: $other, the reference's ${r.reason.map(_.hex)}")
     }
   }

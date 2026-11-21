@@ -154,8 +154,9 @@ object DijkstraTx:
   /** `instance EraTx DijkstraEra` (`Tx.hs:216-253`, cardano-ledger 9df9f98c) and `instance
     * AlonzoEraTx DijkstraEra` (`Tx.hs:413-422`), of both levels. The size for the fee is the
     * class's default (`Core.hs`), the bytes of the parts and the list's, which is
-    * [[DijkstraTx.sizeTxF]]'s count. `mkBasicTx` and `validateNativeScript` are not members of the
-    * class here, as for Conway; `allInputsTxBodyF` is [[EraTxBody.allInputs]].
+    * [[DijkstraTx.sizeTxF]]'s count. `mkBasicTx` is not a member of the class here, as for Conway;
+    * `validateNativeScript` is `validateDijkstraNativeScript` (`Tx.hs:427-438`); `allInputsTxBodyF`
+    * is [[EraTxBody.allInputs]].
     */
   val instance: AlonzoEraTx[Dijkstra] { val bodyOf: EraTxBody.dijkstra.type } =
     new AlonzoEraTx[Dijkstra]:
@@ -185,6 +186,26 @@ object DijkstraTx:
       ): Long = tx.sizeTxF
       // `sizeTxF = dijkstraTxL . sizeDijkstraTxF`, `Tx.hs:243`, cardano-ledger 9df9f98c
       override def sizeTxF[L <: TxLevel](tx: DijkstraTx[L])(using BothLevels[L]): Long = tx.sizeTxF
+      // `validateNativeScript = validateDijkstraNativeScript`, `Tx.hs:427-438`, cardano-ledger
+      // 9df9f98c: the script for the key hashes of the key witnesses, the validity interval and the
+      // body's guards
+      override def validateNativeScript[L <: TxLevel](
+          tx: DijkstraTx[L],
+          native: DijkstraNativeScript
+      )(using l: BothLevels[L]): Boolean =
+        val txBody = body[L](tx)
+        val vi = bodyOf.vldt[L](txBody)
+        native.eval(
+          witsOf.addrTxWits(wits[L](tx)).map(_.keyHash),
+          vi.invalidBefore,
+          vi.invalidHereafter,
+          txBody.guards.toVector.map {
+            case xyz.kd5ujc.scarab.ledger.state.Credential.KeyHashObj(h) =>
+              xyz.kd5ujc.scarab.ledger.Credential.Key(h.bytes)
+            case xyz.kd5ujc.scarab.ledger.state.Credential.ScriptHashObj(h) =>
+              xyz.kd5ujc.scarab.ledger.Credential.Script(h.bytes)
+          }.toSet
+        )
       // `getMinFeeTx = getConwayMinFeeTx`, `Tx.hs:249`, cardano-ledger 9df9f98c
       override def getMinFeeTx[L <: TxLevel](
           pp: PParams[Dijkstra],

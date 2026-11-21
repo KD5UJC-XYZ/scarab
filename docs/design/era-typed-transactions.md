@@ -659,40 +659,44 @@ Conway's rules on the classes follow as the rest of stage 2.
     holds. UTXOS's `CollectErrors` are returned as they are, since the flat failure holds their purposes and
     context errors in its own vocabulary.
   - `EraUtxoSuite` runs the whole rule and the flat UTXO (`rules.Utxo`) in one judgment from the same state on
-    the 70 Conway submissions of `EraUtxosSuite`, as submitted and with the flag the other way, under each
-    build and each policy. The failures are the same in the same order, UTXO's own in the flat form, a
-    script's failure by its error, trace and request, and a collection's by its kind. An admitted
-    transaction leaves the same state, and the counters UTXOS's events give, embedded in UTXO's, are the
-    flat rule's. With a maximum transaction size of one byte, UTXO's failure is recorded and UTXOS evaluates
-    no script (an evaluator that fails the suite if asked).
+    the 70 Conway submissions of `EraUtxosSuite`, as submitted and with the flag the other way, under each build
+    and each policy. The failures are the same in the same order, UTXO's own in the flat form, a script's failure
+    by its error, trace and request, and a collection's as the incomplete item below says. An admitted
+    transaction leaves the same state, and the counters UTXOS's events give, embedded in UTXO's, are the flat
+    rule's. With a maximum transaction size of one byte, UTXO's failure is recorded and UTXOS evaluates no script
+    (an evaluator that fails the suite if asked).
   - `ConwayUtxoChecksSuite` does the same on every Conway case of the refusal corpora, with each case's UTxO
     set and certificate state, under each build and policy, cases with several failures among them. Where
     the reference refused a transaction for UTXO alone, the whole rule's failures, run at an odd depth as
     under the reference's MEMPOOL, LEDGER and UTXOW, encode to the reference's refusal byte for byte. Three
-    such cases are left out, `tx-too-large`, `tx-too-large-spent-inputs` and `utxo-mint-units-too-big`: the
-    mempool's measure refuses them before the ledger (`Capacity.phase1`), so their recorded refusal is the
-    measure's, not a refusal of UTXO whole. Some cases are admitted under a policy, and UTXOS refuses some.
-    The predicates' comparisons above keep their expected values, each failure injected into Conway's and
-    put in the flat form.
+    such cases are left out by name, `tx-too-large`, `tx-too-large-spent-inputs` and `utxo-mint-units-too-big`:
+    the mempool's measure refuses them before the ledger, so their recorded refusal is the measure's, not a
+    refusal of UTXO whole. The suite asserts that the measure (`Capacity.phase1`) refuses these three cases and
+    no other, so a case it comes to refuse fails the suite instead of leaving the comparison. Some cases are
+    admitted under a policy, and UTXOS refuses some. The predicates' comparisons above keep their expected
+    values, each failure injected into Conway's and put in the flat form.
   - `PastHorizonReferenceSuite` runs the whole rule on the reference's recorded Conway refusals of an end
     past the forecast horizon, with the recorded state, UTxO set and era history: its only failure is UTXOS's
     collection error: the time past the horizon (`TimeTranslationPastHorizon`), with the clock's own failure
     for the interval's end, complete and typed, the reference's refusal. The recorded capture has one redeemer,
     and the reference's collector stops translating contexts at the first failure.
-  - Incomplete (CNF-2): a collection's failure is compared by kind, its contents being
-    `EraPlutusContextSuite`'s; a script's failure is compared by its cause and the evaluator's request, which
-    the flat form keeps, not by the runnable's script hash, which the typed `PlutusWithContext` also holds;
-    the reference's multi-script results (`fixtures/reference/script-results`) are compared at UTXOS alone
-    (`EraUtxosSuite`), not through UTXO whole; the refusals are compared through the flat form and the
-    node's encoder, not an encoder of the era failures (#796); the pre-Conway UTXO fixture
-    (`fixtures/reference/pre-conway-utxo`)
-    holds pre-Conway bodies with one Conway collateral predicate's verdict, not transactions Conway's UTXO
-    judges, so it stays with the flat predicates' suite; the recorded verdicts on a certificate's redeemer
-    index (`fixtures/devnet/redeemer-index.jsonl`) are UTXOW's, and come with its transition (#85); the
-    forecast corpus's Alonzo and Babbage cases, and the pre-Conway predicates of `remaining-predicates` and
+  - Incomplete (CNF-2): of a collection's failures, a missing redeemer is compared by its purpose in the flat
+    form (a purpose with none fails the comparison), a missing script by its hash and a missing cost model by its
+    language, but a context's failure to translate (`BadTranslation`) by its kind alone, its contents being
+    `EraPlutusContextSuite`'s, since the flat failure holds them in its own vocabulary; a script's failure is
+    compared by its cause and the evaluator's request, which the flat form keeps, not by the runnable's script
+    hash, which the typed `PlutusWithContext` also holds; the reference's multi-script results
+    (`fixtures/reference/script-results`) are compared at UTXOS alone (`EraUtxosSuite`), not through UTXO whole;
+    the refusals are compared through the flat form and the node's encoder, not an encoder of the era failures
+    (#796); the pre-Conway UTXO fixture (`fixtures/reference/pre-conway-utxo`) holds pre-Conway bodies with one
+    Conway collateral predicate's verdict, not transactions Conway's UTXO judges, so it stays with the flat
+    predicates' suite; the recorded verdicts on a certificate's redeemer index
+    (`fixtures/devnet/redeemer-index.jsonl`) are UTXOW's, run with its transition (UTXOW whole, below); the forecast
+    corpus's Alonzo and Babbage cases, and the pre-Conway predicates of `remaining-predicates` and
     `instant-stake`, are of eras whose UTXO is not typed yet.
-  - Not yet (#85): UTXOW's transition with UTXO embedded, the failing native scripts, and the node's phase-2
-    counters (`PlutusStats`), which the events stand for until the Conway switch. The defects stay typed raises
+  - UTXOW's transition with UTXO embedded and the failing native scripts came after (UTXOW whole, below). Not
+    yet (#85): the node's phase-2 counters (`PlutusStats`), which the events stand for until the Conway
+    switch. The defects stay typed raises
     until then too: the node's `LedgerFailure.Unavailable` names a script by its flat redeemer, which a
     `PlutusWithContext` does not carry, and has no case for a stored output the era does not read.
 - **Conway's rules, the first predicates of UTXOW** (`era/rules/Utxow.scala`): six of the predicates
@@ -745,9 +749,10 @@ Conway's rules on the classes follow as the rest of stage 2.
     spends only Plutus V3 outputs, so crafted cases spend one without a datum as Plutus V3 (no failure, CIP-69)
     and as Plutus V1 (unspendable), add redeemers no purpose needs out of their order, and need a Plutus script
     to mint, certify, withdraw and vote with no redeemer.
-  - The failing native scripts wait (#85); `getSpendingDatum` came with the script context, and the members of
-    `AlonzoEraUTxO` that read the annotated transaction, the auxiliary data's validation and the well-formed
-    scripts came with the annotated transaction (`StAnnTx`, below). UTXOW's transition on it waits (#85).
+  - `getSpendingDatum` came with the script context, and the members of `AlonzoEraUTxO` that read the annotated
+    transaction, the auxiliary data's validation and the well-formed scripts came with the annotated
+    transaction (`StAnnTx`, below). The failing native scripts, the predicates' own failure types and UTXOW's
+    transition came with UTXOW whole (below).
 - **The Plutus V3 script context** (`era/PlutusContext.scala`, `era/PlutusLedgerApi.scala`, the `TxInfo`
   modules `era/PlutusTxInfos.scala`, `era/AlonzoTxInfo.scala`, `era/BabbageTxInfo.scala` and
   `era/conway/ConwayTxInfo.scala`): the reference's `EraPlutusTxInfo l era` (`Alonzo/Plutus/Context.hs`), with
@@ -1011,8 +1016,81 @@ Conway's rules on the classes follow as the rest of stage 2.
     `validateMetadata` reads the scripts only where the data and its hash are both present, the reference's
     order; the flat check reads them first, so data without its hash, with a script the decoder gives no
     verdict for, is the predicate's `MissingTxBodyMetadataHash` and the flat check's defect.
-  - Not yet (#85): UTXOW's transition, LEDGER and the mempool on the era types. The node still builds
-    contexts and checks transactions with the flat rules.
+  - Not yet (#85): LEDGER and the mempool on the era types (UTXOW's transition came with UTXOW whole, below).
+    The node still builds contexts and checks transactions with the flat rules.
+- **UTXOW whole, with the reference's failures** (`era/rules/Utxow.scala`, `era/rules/UtxowFailures.scala`,
+  `era/AllegraTx.scala`; the `Rules/Utxow.hs` of Shelley, Alonzo, Babbage and Conway, `Allegra/Scripts.hs:
+  477-497` and `Allegra/Tx.hs:104-110`, cardano-ledger f649f975, where 29a7d656 and 9df9f98c differ in derived
+  `Ord` instances):
+  - UTXOW's failures are the reference's own types, one per era (`ShelleyUtxowPredFailure` to
+    `ConwayUtxowPredFailure`), with `EraRuleFailure "UTXOW"` a match type with Conway's case, and its events
+    Shelley's and Alonzo's (`AlonzoUtxowEvent`). Each predicate above reports its own era's type, a missing
+    redeemer's purpose as its item, as the reference's; Conway's injections are `babbageToConwayUtxowPredFailure`,
+    `alonzoToConwayUtxowPredFailure` and `shelleyToConwayUtxowPredFailure` (`InjectUtxowFailure`). The MIR
+    quorum's failure, which the reference's injection into Conway calls impossible (`error`), has no value at
+    Conway (`MirSigners`), as PPUP's has none (`absurdEraRule`): the case is impossible at Conway in both, and
+    the compiler enforces what the reference asserts with `error`. The failures of UTXO's predicates and of
+    UTXOS are injected into UTXOW's as `UtxoFailure . injectFailure` (`Conway/Rules/Utxow.hs:129-145, 318`),
+    one instance over UTXO's injection, Shelley's by the build's (`conwayShelleyUtxo`).
+  - A native script is evaluated on the era types: `EraTx#validateNativeScript` (`Core.hs:213`), Allegra's
+    `validateTimelock` and `evalTimelock` from Allegra to Conway, over the representation they share, and
+    Dijkstra's `validateDijkstraNativeScript` (`Dijkstra/Tx.hs:427-438`, cardano-ledger 9df9f98c).
+    `evalTimelock` evaluates the scripts the reference evaluates, in its order, and stops where it stops: all of a
+    list at the first that fails, any at the first that holds, `m` of a list once `m` hold, none for a
+    non-positive `m` (`isValidMOf`, `Allegra/Scripts.hs:487-495`). It is deferred and run as a trampoline
+    (`Eval`), so a script as deep as a transaction is evaluated on the heap. `validateFailedBabbageScripts` reads
+    it.
+  - `babbageUtxowTransition` (`Babbage/Rules/Utxow.hs:308-390`): the failing needed native scripts, the
+    missing and extraneous scripts, the datums, the redeemers, the signatures, the witnesses needed, the
+    auxiliary data, the well-formed scripts and the script integrity hash, every failure recorded and injected;
+    the signatures, the auxiliary data and the well-formed scripts only under the policy that validates the
+    signal; then UTXO as its sub-rule, its failures and events embedded as the reference's
+    `Embed (UTXO era) (UTXOW era)` does (`EmbedUtxoInUtxow`). It reads the UTxO set as UTXO does. A signature
+    check or a script decoding with no verdict is raised as the node's `LedgerDefect`, as the flat rule raises
+    it.
+  - `ConwayUtxowPredFailure.toStored` gives a failure's flat form, a missing redeemer's purpose, of UTXOW's
+    `MissingRedeemers` or UTXOS's `NoRedeemer`, given its flat form, with its index and spent output, from the
+    transaction's scripts needed (`storedPurposes`). A context's failure to translate is left as it is.
+  - Evidence:
+    - `AllegraTimelockSuite`: `evalTimelock` gives the flat evaluation's verdict on every form, each bound
+      unbounded, inside and outside, and `m` of a list at, below and above the scripts that hold, zero and
+      negative among them; it asks about the key hashes the reference asks about, in its order, and no others
+      (a probe of the signers' set), on each of the lists' stopping points, nested and not; on a small stack, a
+      script nesting all, any and one of a list in turn 6,000 levels deep; `validateNativeScript` on the preprod
+      script of 5,383 levels, on a small stack; and `validateFailedBabbageScripts` on that transaction against the
+      flat check, with a needed script that no witness signs (`ScriptWitnessNotValidatingUTXOW`), one that a
+      witness signs, and the failing one provided but not needed: no Conway case of the corpora has a failing
+      native script.
+    - `EraUtxoSuite`: the whole UTXOW and the flat `rules.Utxow` on the 70 submissions, as submitted and with
+      the flag the other way, under each build and each policy: the same failures in order, the same state where
+      admitted, and the counters UTXOS's events give through UTXO's and UTXOW's embeddings. As submitted, each
+      verdict is the reference's. With each admitted case's script integrity hash taken out, UTXOW's failures
+      alone are recorded, none of UTXO's, and UTXOS evaluates no script (an evaluator that fails the suite if
+      asked). The injections of UTXO's and UTXOS's failures into UTXOW's equal the embedding's.
+    - `ConwayUtxoChecksSuite`: the same on every Conway case of the refusal corpora, UTXOW's own checks refusing
+      some; where the reference refused a transaction for UTXOW and UTXO alone, the whole rule's failures, two
+      levels below the root as under MEMPOOL and LEDGER, encode to the reference's refusal byte for byte, the
+      mempool measure's three refusals left out by name as for UTXO.
+    - `RedeemerIndexReferenceSuite`: on the three Conway cases of the reference's recorded verdicts on a
+      certificate's redeemer index (`fixtures/devnet/redeemer-index.jsonl`, #1203), the accepted one is
+      admitted, and each refused one's failures, missing redeemers and UTXOS's collection errors among them,
+      encode to the reference's refusal byte for byte.
+    - `DijkstraNativeScriptEvalSuite`: Dijkstra's `validateNativeScript` on every transaction of the Leios
+      corpus with guards and key witnesses, and each again with a key guard added to its body (the corpus's
+      guards are scripts'), with a guard of each of its body's credentials, one it lacks, its witness's
+      signature, a validity start and end at its interval's bound, and two of three of these and three of
+      three: the transaction's witnesses, interval and guards read as the reference's
+      `validateDijkstraNativeScript` reads them, the verdict `evalDijkstraNativeScript`'s on the flat
+      transaction's.
+    - The existing suites of the predicates (`ConwayUtxowChecksSuite`, `EraUtxowSuite`,
+      `EraPlutusContextSuite`) keep their expected values, each failure injected into Conway's and put in the
+      flat form.
+  - Incomplete (CNF-2): a context's failure to translate (`BadTranslation`) is compared by its kind alone, its
+    contents being `EraPlutusContextSuite`'s, while a missing redeemer is compared by its purpose in the flat
+    form, one with none failing the comparison, and a missing script by its hash; the refusals are compared
+    through the flat form and the node's encoder (#796); the redeemer-index cases of Alonzo and Babbage are of
+    eras whose UTXOW is not typed yet.
+  - Not yet (#85): LEDGER and the mempool on the era types, and the node's phase-2 counters (`PlutusStats`).
 - **Proposals and votes** (`era/Procedures.scala`, `conway/ConwayProcedures.scala`): `GovAction[E]`,
   `ProposalProcedure[E]` and `VotingProcedures[E]` are data types parameterised by the era, as the reference's
   `data GovAction era` and the others are, not families (decided 2026-11-16, #85): a family with one case reduces, in
@@ -1198,7 +1276,8 @@ Conway's rules on the classes follow as the rest of stage 2.
     that level (`SubOnly`, as `TopOnly` gives the top level), as the family named at the sub-transaction level
     outright would be reduced at Conway too, where it has no case.
   - Not here: `DijkstraEraTx`'s `hashTx` ([#85's item](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7024127184)),
-    and `mkBasicTx` and `validateNativeScript`, which the class has for no era here.
+    and `mkBasicTx`, which the class has for no era here. `validateNativeScript` came with UTXOW whole (above),
+    Dijkstra's the reference's `validateDijkstraNativeScript`.
   - `DijkstraUTxOSuite` reads every Dijkstra transaction the repository holds (`DijkstraCorpus`, which
     `DijkstraTxSuite` reads too), at both levels, with the recorded UTxO set where the corpus has one and stand-in
     outputs elsewhere. Against the flat rules: the scripts needed equal `DijkstraPurposes.scriptsNeeded` in order,
