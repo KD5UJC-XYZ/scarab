@@ -30,6 +30,7 @@ class HeaderClockCanonicalSuite extends FailsOnUncaught:
       for
         prepared <- Ref.of[IO, Vector[BigInt]](Vector.empty)
         check = new HeaderCheck[IO]:
+          def withLeios(leios: xyz.kd5ujc.scarab.node.LeiosChainSync[IO]): HeaderCheck[IO] = this
           def start(intersection: ChainSync.Point): IO[HeaderGate[IO]] = IO.pure(new HeaderGate[IO]:
             override val canonicalTiming = true
             def counts = IO.pure(HeaderGate.Counts(0, 0, 0))

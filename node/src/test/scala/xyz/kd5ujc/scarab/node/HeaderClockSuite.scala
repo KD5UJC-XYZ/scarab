@@ -102,6 +102,7 @@ class HeaderClockSuite extends CatsEffectSuite with ScalaCheckSuite:
   private final class Recorder:
     val reached = Ref.unsafe[IO, Vector[(Long, Vector[SyncEvent])]](Vector.empty)
     val check: HeaderCheck[IO] = new HeaderCheck[IO]:
+      def withLeios(leios: xyz.kd5ujc.scarab.node.LeiosChainSync[IO]): HeaderCheck[IO] = this
       def start(intersection: ChainSync.Point) = IO.pure(new HeaderGate[IO]:
         def accept(batch: Vector[SyncEvent])(using Raise[IO, PeerError]) =
           millis.flatMap(t => reached.update(_ :+ (t -> batch)))
@@ -310,6 +311,7 @@ class HeaderClockSuite extends CatsEffectSuite with ScalaCheckSuite:
     )
     def reporting(told: GenesisInternalProblem => IO[Unit]): HeaderCheck[IO] =
       new HeaderCheck[IO]:
+        def withLeios(leios: xyz.kd5ujc.scarab.node.LeiosChainSync[IO]): HeaderCheck[IO] = this
         def start(intersection: ChainSync.Point) =
           told(problem).as(HeaderGate.none[IO])
         override def withInvariant(

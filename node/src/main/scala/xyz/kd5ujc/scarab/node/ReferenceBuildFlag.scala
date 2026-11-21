@@ -52,6 +52,17 @@ object ReferenceBuildFlag:
         Left(ConfigError(ConfigProblem.ReferenceBuildNotYet(ReferenceBuildNotYet.Rules(build))))
       )
 
+  /** `--header-first` under `build`: a release build may run without header-first validation, as
+    * Scarab's own block-only mode; the Leios build's ChainSync client counts and fetches endorser
+    * blocks from the headers it validates (`leiosMsgRollForwardCallback`, ouroboros-consensus
+    * 2416493b `Network/NodeToNode.hs` 484-526), and the reference has no block-only mode, so `off`
+    * is refused there ([[ConfigProblem.HeaderFirstRequired]]), in either consensus mode.
+    */
+  def headerFirst(build: ReferenceBuild, on: Boolean): Either[ConfigError, Unit] = build match
+    case ReferenceBuild.Release11_1 | ReferenceBuild.Release11_2 => Right(())
+    case ReferenceBuild.LeiosB004fe0c =>
+      Either.cond(on, (), ConfigError(ConfigProblem.HeaderFirstRequired(build)))
+
   /** The fields of the line that names the build a command runs with: its name, stability and pins,
     * the exact pinned release among them.
     */

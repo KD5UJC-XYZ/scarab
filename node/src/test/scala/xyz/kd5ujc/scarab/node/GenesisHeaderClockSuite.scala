@@ -159,6 +159,8 @@ class GenesisHeaderClockSuite extends FailsOnUncaught:
                 (IO.realTime, offset.get).mapN((t, o) => Instant.EPOCH.plusNanos((t + o).toNanos))
               def geometry = IO.raiseError(new AssertionError("canonical global geometry"))
             checker = new HeaderCheck[IO]:
+              def withLeios(leios: xyz.kd5ujc.scarab.node.LeiosChainSync[IO]): HeaderCheck[IO] =
+                this
               def start(intersection: ChainSync.Point) = IO.pure(new HeaderGate[IO]:
                 override val canonicalTiming = true
                 override def forecastTime(header: xyz.kd5ujc.scarab.ledger.Header)(using
@@ -204,6 +206,8 @@ class GenesisHeaderClockSuite extends FailsOnUncaught:
           for
             waiting <- Deferred[IO, Unit]
             checker = new HeaderCheck[IO]:
+              def withLeios(leios: xyz.kd5ujc.scarab.node.LeiosChainSync[IO]): HeaderCheck[IO] =
+                this
               def start(intersection: ChainSync.Point) = IO.pure(new HeaderGate[IO]:
                 override val canonicalTiming = true
                 override def forecastTime(header: xyz.kd5ujc.scarab.ledger.Header)(using

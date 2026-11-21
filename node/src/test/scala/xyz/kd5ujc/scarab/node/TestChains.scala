@@ -23,6 +23,7 @@ private[node] object TestChains:
   /** `check` (none: every header accepted) with gates that take any jump's headers. */
   def grafting(check: Option[HeaderCheck[IO]]): HeaderCheck.Grafting[IO] =
     new HeaderCheck.Grafting[IO]:
+      def withLeios(leios: LeiosChainSync[IO]): HeaderCheck.Grafting[IO] = this
       def startGrafting(intersection: ChainSync.Point) =
         check.fold(IO.pure(HeaderGate.none[IO]))(_.start(intersection)).map(grafting)
 

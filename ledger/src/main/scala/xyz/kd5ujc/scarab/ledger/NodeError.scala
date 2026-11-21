@@ -130,6 +130,18 @@ enum PeerError extends NodeError:
     */
   case LeiosNotifyExcessiveRequests(cause: NetworkError.LeiosNotifyExcessiveRequests)
 
+  /** The peer's ChainSync roll-forwards claimed two endorser blocks certified for one election, the
+    * election's slot and pool, the one claimed first and the one claimed now
+    * (`ExnLeiosTwoCertificationClaims`, ouroboros-consensus 2416493b `LeiosDemoLogic.hs`
+    * 1696-1731): one certified announcement per election is all an honest peer ever selects.
+    */
+  case LeiosTwoCertificationClaims(
+      slot: xyz.kd5ujc.scarab.protocol.LeiosWord.Word64,
+      pool: xyz.kd5ujc.scarab.codec.Bytes,
+      alreadyClaimed: xyz.kd5ujc.scarab.protocol.EbHash,
+      claimed: xyz.kd5ujc.scarab.protocol.EbHash
+  )
+
   def message: String = this match
     case Handshake(r)   => s"handshake: ${r.message}"
     case Protocol(r)    => s"protocol: ${PeerError.protocolMessage(r)}"
@@ -158,6 +170,8 @@ enum PeerError extends NodeError:
     case LeiosFetchRefused(cause)            => cause.message
     case LeiosFetchInvalidReply(cause)       => cause.message
     case LeiosNotifyExcessiveRequests(cause) => cause.message
+    case LeiosTwoCertificationClaims(slot, pool, first, second) =>
+      s"the peer claimed ${first.bytes.hex} and ${second.bytes.hex} certified for the election of pool ${pool.hex} at slot ${slot.toBigInt}"
 
 object PeerError:
   enum GenesisProblem:

@@ -68,7 +68,8 @@ class Praos2ReferenceSuite extends munit.FunSuite:
     word32(1000),
     word32(4000),
     word32(7000),
-    word32(40000)
+    word32(40000),
+    word32(260000)
   )
   private val config = Praos2.Config(
     setup.praos,

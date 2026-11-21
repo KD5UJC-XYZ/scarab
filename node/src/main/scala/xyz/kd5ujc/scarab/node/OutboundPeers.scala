@@ -765,63 +765,82 @@ final class OutboundPeers[F[_]: Async, A] private (
             // an invariant of the Genesis code met on this connection ends it, uncharged
             val invariant: GenesisInternalProblem => F[Unit] =
               problem => abort(PeerError.GenesisInvariant(problem))
-            GenesisRuntime
-              .controls(
-                hot.genesis,
-                hot.pool,
-                peer.hashCode.toLong,
-                connection.mux.connectionId,
-                abort,
-                invariant
-              )
-              .use { (fetching, genesis) =>
-                Peer
-                  .over(
-                    connection,
-                    hot.peer,
-                    hot.heightSnapshot,
-                    genesis.fold(Peer.Chain.Praos(hot.headers.map(_.withInvariant(invariant))))(
-                      _.chain
-                    ),
-                    Some(metered(peer, sourceKey.activationGeneration)),
-                    Some(hot.pool),
-                    Some(rejectedCachedBlock(sourceKey, _)),
-                    fetchIdentity = Some(peer.hashCode.toLong),
-                    patience = genesis.map(_.patience),
-                    received = genesis.map(_.received),
-                    chainSyncObserver = genesis.map(_.observer),
-                    fetchSession = fetching,
-                    retainedHeaders = genesis.fold(BlockPool.Retained)(_.retainedHeaders),
-                    selectionWork = genesis.map(_.work)
-                  )
-                  .use { over =>
-                    session.connection.complete(connection) *> started.complete(Right(())) *>
-                      follow(over)
-                        .flatTap {
-                          // asked to stop: bring the pipeline to rest before the wire is ended
-                          case SessionEnd.Stopped(_) => asked.flatMap(a => over.quiesce.whenA(a))
-                          case end
-                              if SessionEnd
-                                .returnDelay(end)
-                                .nonEmpty || end == SessionEnd.Returned =>
-                            session.result.get.flatMap(_.complete(Right(end))) *> over.quiesce
-                          case end =>
-                            publish(link, end).whenA(
-                              SessionEnd.networkFailure(end).nonEmpty
-                            ) *>
-                              SessionEnd.networkFailure(end).traverse_(connection.mux.abort)
-                        }
-                  }
-                  .flatMap {
-                    case SessionEnd.Stopped(_) =>
-                      connection.finishGracefully(false).as(SessionEnd.Stopped(true))
-                    case SessionEnd.Returned =>
-                      connection.finishGracefully(false).as(SessionEnd.Returned)
-                    case end if SessionEnd.returnDelay(end).nonEmpty =>
-                      connection.finishGracefully(true).as(end)
-                    case other => F.pure(other)
-                  }
-              }
+            // the Leios build's ChainSync client runs inside the peer's bracket, sharing its vars
+            // with the connection's LeiosFetch client (`bracketLeiosPeer`, ouroboros-consensus
+            // 2416493b `NodeToNode.hs` 1473)
+            def withLeios[R](use: Option[LeiosChainSync[F]] => F[R]): F[R] =
+              hot.leios.fold(use(None))(_.chainSyncOf(link.connection.id)(l => use(Some(l))))
+            withLeios { leios =>
+              GenesisRuntime
+                .controls(
+                  hot.genesis,
+                  hot.pool,
+                  peer.hashCode.toLong,
+                  connection.mux.connectionId,
+                  abort,
+                  invariant,
+                  leios
+                )
+                .use { (fetching, genesis) =>
+                  Peer
+                    .over(
+                      connection,
+                      hot.peer,
+                      hot.heightSnapshot,
+                      genesis.fold(
+                        Peer.Chain.Praos(
+                          hot.headers.map(h =>
+                            leios.fold(h.withInvariant(invariant))(
+                              h.withInvariant(invariant).withLeios
+                            )
+                          )
+                        )
+                      )(bound =>
+                        Peer.Chain.Genesis(
+                          leios.fold(bound.headers)(bound.headers.withLeios),
+                          bound.control
+                        )
+                      ),
+                      Some(metered(peer, sourceKey.activationGeneration)),
+                      Some(hot.pool),
+                      Some(rejectedCachedBlock(sourceKey, _)),
+                      fetchIdentity = Some(peer.hashCode.toLong),
+                      patience = genesis.map(_.patience),
+                      received = genesis.map(_.received),
+                      chainSyncObserver = genesis.map(_.observer),
+                      fetchSession = fetching,
+                      retainedHeaders = genesis.fold(BlockPool.Retained)(_.retainedHeaders),
+                      selectionWork = genesis.map(_.work)
+                    )
+                    .use { over =>
+                      session.connection.complete(connection) *> started.complete(Right(())) *>
+                        follow(over)
+                          .flatTap {
+                            // asked to stop: bring the pipeline to rest before the wire is ended
+                            case SessionEnd.Stopped(_) => asked.flatMap(a => over.quiesce.whenA(a))
+                            case end
+                                if SessionEnd
+                                  .returnDelay(end)
+                                  .nonEmpty || end == SessionEnd.Returned =>
+                              session.result.get.flatMap(_.complete(Right(end))) *> over.quiesce
+                            case end =>
+                              publish(link, end).whenA(
+                                SessionEnd.networkFailure(end).nonEmpty
+                              ) *>
+                                SessionEnd.networkFailure(end).traverse_(connection.mux.abort)
+                          }
+                    }
+                    .flatMap {
+                      case SessionEnd.Stopped(_) =>
+                        connection.finishGracefully(false).as(SessionEnd.Stopped(true))
+                      case SessionEnd.Returned =>
+                        connection.finishGracefully(false).as(SessionEnd.Returned)
+                      case end if SessionEnd.returnDelay(end).nonEmpty =>
+                        connection.finishGracefully(true).as(end)
+                      case other => F.pure(other)
+                    }
+                }
+            }
           }
       }
 

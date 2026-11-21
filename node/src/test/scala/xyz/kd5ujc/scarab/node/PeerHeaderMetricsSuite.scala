@@ -73,6 +73,8 @@ class PeerHeaderMetricsSuite extends FailsOnUncaught:
               def done(using Raise[IO, NetworkError]) = IO.unit
               def idle = IO.pure(true)
             check = new HeaderCheck[IO]:
+              def withLeios(leios: xyz.kd5ujc.scarab.node.LeiosChainSync[IO]): HeaderCheck[IO] =
+                this
               def start(point: ChainSync.Point) = IO.pure(new HeaderGate[IO]:
                 def counts = IO.pure(HeaderGate.Counts(0, 0, 0))
                 def accept(batch: Vector[SyncEvent])(using Raise[IO, PeerError]) = IO.unit

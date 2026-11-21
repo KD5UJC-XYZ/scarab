@@ -188,7 +188,9 @@ object DijkstraCrossing:
 
   /** `forecastToPolyPraosLedgerView` of Praos2 (`Protocol/Praos2.hs:136-159`, ouroboros-consensus
     * 2416493b) over `mkDijkstraForecast` (`Dijkstra/Forecast.hs:124-152`, cardano-ledger 9df9f98c),
-    * the fields header validation reads ([[Praos2.LedgerView]]).
+    * the fields header validation and the Leios fetch read ([[Praos2.LedgerView]]): the bound on an
+    * endorser block's transactions is `maxEndorserBlockTxsSize` (`plvMaxEbTxsSize`,
+    * `Protocol/Praos2.hs:155-156`).
     */
   private def ledgerView(
       pools: PoolDistr,
@@ -205,10 +207,12 @@ object DijkstraCrossing:
       word32(pp.leiosAnnouncementPeriodLength),
       word32(pp.leiosVotePeriodLength),
       word32(pp.leiosDiffusionPeriodLength),
-      word32(pp.maxEndorserBlockReferencesSize)
+      word32(pp.maxEndorserBlockReferencesSize),
+      word32(pp.maxEndorserBlockTxsSize)
     ).mapN(
       Praos2.LedgerView(
         pools.distribution.unsorted.map((id, p) => id -> Praos2.PoolStake(p.stake, p.vrf)),
+        _,
         _,
         _,
         _,

@@ -75,6 +75,11 @@ object FailurePolicy:
     // (ouroboros-consensus 2416493b LeiosDemoOnlyTestNotify.hs:675-678 and 700-703), which no rethrow policy
     // names (Node/RethrowPolicy.hs), so it is `ShutdownPeer`, the default
     case _: PeerError.LeiosNotifyExcessiveRequests => FailureClass.Transient
+    // The peer's roll-forwards claimed two endorser blocks certified for one election: the
+    // reference's ChainSync client throws `ExnLeiosTwoCertificationClaims` (ouroboros-consensus
+    // 2416493b LeiosDemoLogic.hs:1696-1731), which no rethrow policy names
+    // (Node/RethrowPolicy.hs), so it is `ShutdownPeer`, the default
+    case _: PeerError.LeiosTwoCertificationClaims => FailureClass.Transient
     // Consensus 82ecba329 Node/RethrowPolicy.hs maps every ChainSyncClientException,
     // including EmptyBucket, DensityTooLow and HistoricityError, to ShutdownPeer.
     // Network c45735a5 PeerStateActions.hs uses epErrorDelay (10s default), preserving

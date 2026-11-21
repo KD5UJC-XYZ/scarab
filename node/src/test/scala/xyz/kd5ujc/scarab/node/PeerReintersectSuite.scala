@@ -132,6 +132,7 @@ class PeerReintersectSuite extends FailsOnUncaught:
                 )
           }
         check = new HeaderCheck[IO]:
+          def withLeios(leios: xyz.kd5ujc.scarab.node.LeiosChainSync[IO]): HeaderCheck[IO] = this
           def start(point: ChainSync.Point) = gate(point)
           override def capture(using cats.Applicative[IO]) =
             IO.pure(

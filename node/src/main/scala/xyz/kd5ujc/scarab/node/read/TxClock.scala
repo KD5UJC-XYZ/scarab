@@ -16,10 +16,14 @@ import xyz.kd5ujc.scarab.protocol.Era
 trait TxClock[S]:
   def at(state: S, era: Era, slot: BigInt): flat.PosixClock
 
-  /** Whether the era history at the state's tip translates `slot` (`wallclockToSlot` of the summary
-    * of the current ledger, `hfbtGetLedgerState`).
+  /** Whether the era history at the state's tip translates `slot`: `wallclockToSlot` of the summary
+    * of the selected chain's ledger state, `hardForkSummary` of `hfbtGetLedgerState`
+    * (`BlockchainTime/WallClock/HardFork.hs` 76-102 and 156-176 at ouroboros-consensus 2416493b),
+    * the summary with the state's own era and its transition ([[ChainRead.summary]]). The slot is
+    * translated where it is before the end of the summary's last era, as the time of its start is
+    * before that era's end time.
     */
-  def translates(state: S, slot: BigInt): Boolean = at(state, Era.Conway, slot).posix(slot).isRight
+  def translates(state: S, slot: BigInt): Boolean
 
 object TxClock:
   /** The clock of a chain read by `ChainRead`, placed by `geometry` as the state resolves it
@@ -28,5 +32,8 @@ object TxClock:
   def of[S](geometry: EpochGeometry, byron: EraHistory.ByronParams, forks: HardForkConfig)(using
       read: ChainRead[S]
   ): TxClock[S] = new TxClock[S]:
+    private def placement(state: S) = Placement(state.geometry(geometry), byron, forks)
     def at(state: S, era: Era, slot: BigInt): flat.PosixClock =
-      state.clock(Placement(state.geometry(geometry), byron, forks), era, slot)
+      state.clock(placement(state), era, slot)
+    def translates(state: S, slot: BigInt): Boolean =
+      state.summary(placement(state)).last.end.forall(slot < _.slot)

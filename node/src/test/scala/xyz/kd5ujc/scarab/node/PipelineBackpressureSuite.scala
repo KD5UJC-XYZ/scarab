@@ -235,6 +235,7 @@ class PipelineBackpressureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaugh
         def unavailable[A](cause: xyz.kd5ujc.scarab.ledger.ChainSyncInternalProblem): IO[A] =
           IO(fail(cause.message))
       check = new HeaderCheck[IO]:
+        def withLeios(leios: xyz.kd5ujc.scarab.node.LeiosChainSync[IO]): HeaderCheck[IO] = this
         def start(point: ChainSync.Point) = starts
           .update(_ :+ point)
           .as(new HeaderGate[IO]:
@@ -282,6 +283,7 @@ class PipelineBackpressureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaugh
       finalized: Option[Deferred[IO, Unit]] = None,
       holdCancellation: Boolean = false
   ): HeaderCheck[IO] = new HeaderCheck[IO]:
+    def withLeios(leios: xyz.kd5ujc.scarab.node.LeiosChainSync[IO]): HeaderCheck[IO] = this
     def start(point: ChainSync.Point) = IO.pure(new HeaderGate[IO]:
       def counts = IO.pure(HeaderGate.Counts(0, 0, 0))
       def accept(batch: Vector[SyncEvent])(using Raise[IO, PeerError]) =

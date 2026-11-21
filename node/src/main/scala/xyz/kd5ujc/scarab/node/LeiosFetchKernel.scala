@@ -88,15 +88,18 @@ object LeiosFetchKernel:
       )
     yield ()
 
-  /** `pruneOutstandingToImmTip`, and the peers' offers and certification claims below the immutable
-    * tip's slot: both are keyed slot first, so those are a prefix. The central state the reference
-    * prunes first is LeiosNotify's, which this node does not run (#54).
+  /** The central announcements' dedup (`pruneCentralState`, `Announcements.hs` 286-293 at
+    * 2416493b), then `pruneOutstandingToImmTip`, and the peers' offers and certification claims
+    * below the immutable tip's slot: all are keyed slot first, so those are a prefix.
     */
-  def pruned[F[_], P](shared: LeiosFetchShared[F, P], immutableTip: Word64)(using
-      F: Async[F]
-  ): F[Unit] =
+  def pruned[F[_], P](
+      shared: LeiosFetchShared[F, P],
+      central: LeiosChainSync.Central[F],
+      immutableTip: Word64
+  )(using F: Async[F]): F[Unit] =
     val tip = immutableTip.toBigInt
-    shared.outstanding.update(_.prunedToImmTip(immutableTip)._2) *>
+    central.update(_.prunedToImmTip(immutableTip)) *>
+      shared.outstanding.update(_.prunedToImmTip(immutableTip)._2) *>
       shared.peers.get.flatMap(
         _.values.toVector.traverse_(vars =>
           vars.offerings.update(_.dropWhile((point, _) => point.slot.toBigInt < tip)) *>
@@ -112,6 +115,7 @@ object LeiosFetchKernel:
     */
   def run[F[_], P: Order, E](
       shared: LeiosFetchShared[F, P],
+      central: LeiosChainSync.Central[F],
       env: LeiosFetchStaticEnv,
       currentSlot: F[Option[Word64]],
       forecast: F[Word64 => Either[E, BytesSize]],
@@ -126,7 +130,7 @@ object LeiosFetchKernel:
       }
     val pruning: F[Unit] =
       immutableSlots
-        .evalMap(slot => Word64.from(slot).fold(_ => F.unit, pruned(shared, _)))
+        .evalMap(slot => Word64.from(slot).fold(_ => F.unit, pruned(shared, central, _)))
         .compile
         .drain
     (

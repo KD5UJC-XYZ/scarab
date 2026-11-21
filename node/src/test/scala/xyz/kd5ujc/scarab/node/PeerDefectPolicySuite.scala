@@ -171,6 +171,18 @@ class PeerDefectPolicySuite extends FailsOnUncaught:
       case other => fail(s"unexpected $other")
   }
 
+  test("two certification claims for one election cost the peer the connection, tried again") {
+    val error = PeerError.LeiosTwoCertificationClaims(
+      xyz.kd5ujc.scarab.protocol.LeiosWord.Word64.clamped(40),
+      xyz.kd5ujc.scarab.codec.Bytes(Vector.fill(28)(2.toByte)),
+      xyz.kd5ujc.scarab.protocol.EbHash
+        .fromBytes(xyz.kd5ujc.scarab.codec.Bytes(Vector.fill(32)(1))),
+      xyz.kd5ujc.scarab.protocol.EbHash.fromBytes(xyz.kd5ujc.scarab.codec.Bytes(Vector.fill(32)(3)))
+    )
+    assertEquals(FailurePolicy.classify(error), FailureClass.Transient)
+    assertEquals(FailurePolicy.disposition(SessionEnd.Failed(error)), Disposition.Backoff)
+  }
+
   // issue 567: of unknown origin on a connection, the connection's: it ends, uncharged
   test("a defect of unknown origin on a connection ends that connection, not the node") {
     Peer.networkFault(NetworkError.Defect(cause)) match

@@ -1460,7 +1460,9 @@ object Main extends IOApp:
   private final case class Headers(
       nodeChain: HeaderCheck.Grafting[IO],
       check: Option[HeaderCheck[IO]],
-      observePeer: Peer.Observation => IO[Unit]
+      observePeer: Peer.Observation => IO[Unit],
+      slotClock: SlotClock[IO],
+      rules: NodeHeaderRules[MirrorState]
   )
 
   /** The blocks fetched ahead, shared by every session, the Genesis runtime when it runs, and the
@@ -1872,11 +1874,7 @@ object Main extends IOApp:
       )
       // the transactions' time translation, placed by the node's era history parameters: the
       // mempool and the forger use it as the block rules translate time
-      txClock = TxClock.of[MirrorState](
-        genesis.geometry,
-        setup.byronHistory,
-        setup.praos.forks
-      )
+      txClock = setup.txClock
       mempoolEnvironment = new cats.mtl.Ask[IO, MempoolEnv]:
         val applicative = summon[cats.Applicative[IO]]
         def ask[E >: MempoolEnv]: IO[E] =
@@ -1987,19 +1985,20 @@ object Main extends IOApp:
     // view, so the block's own validation does not repeat them. Every live session also
     // holds its headers to the node's clock (AUD-01, #153), with or without header-first.
     val slotClock = SlotClock.system[IO](chain.ref.get.map(_.state.geometry(genesis.geometry)))
+    val headerRules = {
+      given HeaderTimeRead[MirrorState] = HeaderTimeRead.mirror(setup.byronHistory)
+      NodeHeaderRules(
+        setup.praos.copy(verdicts = cache.forHeaders),
+        setup.globals,
+        setup.byronRules,
+        setup.handOver
+      )
+    }
     // the node's own check: a Genesis node is built with it, as its gates can graft
     val nodeChain = HeaderClock.grafting[IO](
       slotClock,
       HeaderCheck.forNodeChain[IO, MirrorState](
-        {
-          given HeaderTimeRead[MirrorState] = HeaderTimeRead.mirror(setup.byronHistory)
-          NodeHeaderRules(
-            setup.praos.copy(verdicts = cache.forHeaders),
-            setup.globals,
-            setup.byronRules,
-            setup.handOver
-          )
-        },
+        headerRules,
         scheduling.compute,
         setup.retainedHeaders,
         warm = Some((headers, state) =>
@@ -2057,7 +2056,7 @@ object Main extends IOApp:
         case Peer.Observation.HeaderReceived | Peer.Observation.HeadersArrived(_, _) |
             Peer.Observation.BlocksArrived(_, _) | Peer.Observation.Intersected(_) =>
           IO.unit)
-    Headers(nodeChain, headerCheck, observePeer)
+    Headers(nodeChain, headerCheck, observePeer, slotClock, headerRules)
 
   /** The blocks fetched ahead, shared by the sessions of all peers (one peer fetches each block),
     * seeded from the received log, and the Genesis runtime in Genesis mode.
@@ -2137,6 +2136,11 @@ object Main extends IOApp:
       // the fetch logic's state from the store's complete closures at or after the immutable tip,
       // its generator a draw of the node's (`initInternalState`, `NodeKernel.hs:938-951` at
       // ouroboros-consensus 2416493b)
+      // a slot's onset since the system start, as `hdrSlotTime` places it
+      onset = (slot: BigInt) =>
+        headers.slotClock.geometry.map(g =>
+          Option(java.time.Duration.between(g.systemStart, g.slotStart(slot)).toNanos.nanos)
+        )
       leiosFetch <- leios.traverse { store =>
         (
           cats.effect.std.Random.scalaUtilRandom[IO].flatMap(_.nextLong),
@@ -2149,7 +2153,8 @@ object Main extends IOApp:
             xyz.kd5ujc.scarab.protocol.LeiosWord.Word64.clamped(tip),
             run.settling,
             e => fatalSink(Fatal.Storage(StorageError.LeiosStore(e))),
-            cause => fatalSink(Fatal.Defect(cause))
+            cause => fatalSink(Fatal.Defect(cause)),
+            onset
           )(using summon, LeiosStorage.lifted[IO])
         }
       }
@@ -2297,15 +2302,28 @@ object Main extends IOApp:
       // the network starts from the configuration in force, which a SIGHUP during start-up may
       // have read again, as the reference's diffusion reads the variables its initial handler
       // wrote (`Run.hs` 412-435)
-      // the Leios fetch decision loop runs as long as the peer network does; what makes an endorser
-      // block fetchable (offers, the closure's bound, the clock's slot) is not wired yet (#54)
-      val leiosKernel = leiosFetch.traverse_(
-        _.kernel[LeiosFetchNode.Unforecast](
-          IO.pure(None),
-          IO.pure(_ => Left(LeiosFetchNode.Unforecast.NotWired)),
-          blockPool.leios.immutableSlots,
-          cause => fatalSink(Fatal.Defect(cause))
-        )
+      // the Leios fetch decision loop runs as long as the peer network does, reading the slot the
+      // node's blockchain time publishes and the closure's bound forecast from the immutable tip
+      // (`NodeKernel.hs:580-593` at ouroboros-consensus 2416493b)
+      val leiosKernel = leiosFetch.traverse_(node =>
+        BlockchainTime
+          .ofChain[IO, MirrorState](
+            headers.slotClock,
+            ref.get,
+            chain.txClock,
+            problem => fatalSink(Fatal.Internal(problem)),
+            cause => fatalSink(Fatal.Defect(cause))
+          )
+          .flatMap(time =>
+            node.kernel[LeiosFetchNode.Unforecast](
+              time.currentSlot.map(_.map(xyz.kd5ujc.scarab.protocol.LeiosWord.Word64.clamped)),
+              ref.get.map(current =>
+                slot => LeiosFetchNode.forecast(headers.rules, current.anchor, slot)
+              ),
+              blockPool.leios.immutableSlots,
+              cause => fatalSink(Fatal.Defect(cause))
+            )
+          )
       )
       val network = leiosKernel *> Resource
         .eval(run.hangup.pending.set(None) *> run.hangup.network.get)
@@ -3033,6 +3051,9 @@ object Main extends IOApp:
             .parse(flags, multi)
             .leftMap(e => ConfigError(ConfigProblem.WithUsage(e.problem, Usage)))
           referenceBuild <- ReferenceBuildFlag.parse(flags.get("reference-build"), Usage)
+          _ <- ReferenceBuildFlag
+            .headerFirst(referenceBuild, headerFirst)
+            .leftMap(e => ConfigError(ConfigProblem.WithUsage(e.problem, Usage)))
         yield Options(
           dir,
           peers,

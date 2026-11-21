@@ -139,6 +139,9 @@ object HeaderClock:
     override def observed(observer: HeaderCheck.Event => F[Unit]): HeaderCheck[F] =
       clocked(clock, inner.observed(observer), skew, patience)
 
+    def withLeios(leios: LeiosChainSync[F]): HeaderCheck[F] =
+      clocked(clock, inner.withLeios(leios), skew, patience)
+
     def start(intersection: ChainSync.Point): F[HeaderGate[F]] =
       inner.start(intersection).map(gate => new Gated[F](clock, gate, skew, patience))
 
@@ -191,6 +194,9 @@ object HeaderClock:
 
     override def observed(observer: HeaderCheck.Event => F[Unit]): HeaderCheck.Grafting[F] =
       grafting(clock, inner.observed(observer), skew, patience)
+
+    def withLeios(leios: LeiosChainSync[F]): HeaderCheck.Grafting[F] =
+      grafting(clock, inner.withLeios(leios), skew, patience)
 
   private class Gated[F[_]: Temporal](
       clock: SlotClock[F],

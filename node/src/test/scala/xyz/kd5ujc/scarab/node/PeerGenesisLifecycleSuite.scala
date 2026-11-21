@@ -162,6 +162,8 @@ class PeerGenesisLifecycleSuite extends FailsOnUncaught:
                 (operation == Operation.RollbackEnd || operation == Operation.LegacyRollbackEnd || operation == Operation.DrainBatch)
               )(
                 new HeaderCheck[IO]:
+                  def withLeios(leios: xyz.kd5ujc.scarab.node.LeiosChainSync[IO]): HeaderCheck[IO] =
+                    this
                   def start(@scala.annotation.unused point: ChainSync.Point) =
                     IO.pure(new HeaderGate[IO]:
                       def accept(@scala.annotation.unused batch: Vector[SyncEvent])(using

@@ -166,7 +166,7 @@ class DijkstraHeaderRulesSuite extends munit.FunSuite:
     // the epoch nonce of epoch 1, which Praos2's tick made from the translated Praos state
     assertNotEquals(state.praos.epochNonce, crossing.protocol.view.epochNonce)
     (end: NodeHeaderState) match {
-      case NodeHeaderState.Shelley(_, previous, _, _) =>
+      case NodeHeaderState.Shelley(_, previous, _, _, _) =>
         assertEquals(previous, Some(ref(dijkstraHeaders.last)))
       case other => fail(s"not a Shelley header state: $other")
     }

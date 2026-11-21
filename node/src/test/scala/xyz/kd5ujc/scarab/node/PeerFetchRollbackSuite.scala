@@ -197,6 +197,9 @@ class PeerFetchRollbackSuite extends FailsOnUncaught:
                   chain = Peer.Chain.Praos(
                     Option.when(streaming)(
                       new HeaderCheck[IO]:
+                        def withLeios(
+                            leios: xyz.kd5ujc.scarab.node.LeiosChainSync[IO]
+                        ): HeaderCheck[IO] = this
                         def start(intersection: ChainSync.Point): IO[HeaderGate[IO]] =
                           IO.pure(new HeaderGate[IO]:
                             def counts = IO.pure(HeaderGate.Counts(0, 0, 0))

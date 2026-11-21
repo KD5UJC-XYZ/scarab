@@ -19,6 +19,12 @@ import xyz.kd5ujc.scarab.ledger.state.{
 }
 import xyz.kd5ujc.scarab.node.read.{ChainRead, EraRead}
 import xyz.kd5ujc.scarab.protocol.{Era, ReferenceBuild}
+import xyz.kd5ujc.scarab.protocol.LeiosWord.Word32
+
+/** The header state after a Shelley-based header: the protocol's, and the closure bound of the
+  * ledger view it was validated against ([[LeiosBound]]).
+  */
+private[node] final case class ShelleyValidated(protocol: ProtocolState, leiosBound: LeiosBound)
 
 /** The Shelley ledger forecast shared by every header-validation mode. Parameters and envelope
   * checks come from the same forecast ledger view, including at an epoch boundary. The native
@@ -44,7 +50,7 @@ private[node] final class ShelleyHeaderForecast[S](config: PraosConfig, globals:
       h: Header.Shelley,
       forecastLimit: Option[BigInt] = None,
       genericEnvelope: Either[HeaderError, Unit] = Right(())
-  ): HeaderRules.Prepared[ProtocolState] =
+  ): HeaderRules.Prepared[ShelleyValidated] =
     val firstShelley = anchor.consensus.byron.firstShelleyEpoch
     val cfg =
       firstShelley.fold(config)(first => config.copy(geometry = config.geometry.resolved(first)))
@@ -68,7 +74,36 @@ private[node] final class ShelleyHeaderForecast[S](config: PraosConfig, globals:
       )
       .getOrElse(
         prepareInEra(ledger, afterVoting, tip, prev, h, forecastLimit, genericEnvelope, cfg, glob)
+          .map(ShelleyValidated(_, LeiosBound.WithoutLeios))
       )
+
+  /** The closure bound of the view at the tip of `anchor` 's ledger ([[Praos2Headers.boundOfTip]]),
+    * in the geometry [[prepareShelley]] validates with; a build without Praos2 has no Leios.
+    */
+  private[node] def boundOfTip[E <: EraTag](anchor: S, ledger: EraRead[E]): LeiosBound =
+    val firstShelley = anchor.consensus.byron.firstShelleyEpoch
+    val geometry = firstShelley.fold(config.geometry)(config.geometry.resolved(_))
+    val glob = firstShelley.fold(globals)(first => globals.copy(firstEpoch = first))
+    Praos2Headers
+      .of(glob.referenceBuild)
+      .fold(LeiosBound.WithoutLeios)(_.boundOfTip(Globals(glob, geometry), ledger, anchor.tipSlot))
+
+  /** The bound on an endorser block's transactions forecast from the anchor for `slot`
+    * ([[Praos2Headers.maxEbTxsSize]]), in the geometry [[prepareShelley]] validates with.
+    */
+  private[node] def maxEbTxsSize[E <: EraTag](
+      rules: Praos2Headers,
+      anchor: S,
+      ledger: EraRead[E],
+      afterVoting: Long,
+      tip: Option[BlockRef],
+      slot: BigInt
+  ): Either[Praos2Headers.Unforecast, Word32] =
+    val firstShelley = anchor.consensus.byron.firstShelleyEpoch
+    val cfg =
+      firstShelley.fold(config)(first => config.copy(geometry = config.geometry.resolved(first)))
+    val glob = firstShelley.fold(globals)(first => globals.copy(firstEpoch = first))
+    rules.maxEbTxsSize(cfg, Globals(glob, cfg.geometry), ledger, afterVoting, tip, slot)
 
   /** The header rules of the eras before Dijkstra, and of Dijkstra in a build that does not run
     * Praos2 for it ([[Praos2Headers.of]]).
@@ -212,57 +247,97 @@ private[node] final class Praos2Headers private ():
       h: Header.Shelley,
       forecastLimit: Option[BigInt],
       genericEnvelope: Either[HeaderError, Unit]
-  ): Option[Prepared[ProtocolState]] =
+  ): Option[Prepared[ShelleyValidated]] =
     Option.when(h.era == Era.Dijkstra) {
-      val geometry = cfg.geometry
-      val epoch = geometry.epochOf(h.slot)
+      val epoch = cfg.geometry.epochOf(h.slot)
       val tipSlot = tip.fold(BigInt(-1))(_.slot)
-      val anchorEra = EraNes.eraOf(ledger.era)
-      // the anchor's era ends before the header's epoch: the view is of the next era
-      val end = cfg.forks
-        .transition(geometry.k)(
-          Hfc.Pending(anchorEra, ledger.epoch.toBigInt, ledger.definiteUpdateMajor, afterVoting)
-        )
-        .filter(_ <= epoch)
-      val viewEra = end.flatMap(_ => HardForkConfig.next(anchorEra)).getOrElse(anchorEra)
-      val horizon = (f: CrossingForecastFailure) =>
-        f match
-          case _: CrossingForecastFailure.OutsideForecastRange =>
-            Prepared.Unknown(ForecastReason.Horizon(h.slot, tipSlot))
-          case other @ (_: CrossingForecastFailure.Translation |
-              _: CrossingForecastFailure.Parameter | _: CrossingForecastFailure.Vocabulary) =>
-            Prepared.Undecided(HeaderDefect.DijkstraView(other))
-      val unread = (e: HeaderStructureProblem) => Prepared.Invalid(HeaderError.Structure(e))
-      val view: Either[Prepared[ProtocolState], Praos2.LedgerView] = ledger.era match
-        case ShelleyBasedEra.SDijkstra =>
-          for
-            at <- forecastFor(h, tip)
-            (slot, anchorTip) = at
-            nes <- ledger.nes.leftMap(e => unread(HeaderStructureProblem.LedgerRead(e)))
-            view <- DijkstraCrossing.forecastInEra(globals, slot, anchorTip, nes).leftMap(horizon)
-          yield view
-        case ShelleyBasedEra.SConway =>
-          end.fold(
-            Left(
-              wrongEra(globals, ledger, tip, h, epoch, viewEra, end, forecastLimit, genericEnvelope)
-            )
-          ) { first =>
+      forecast(cfg, globals, ledger, afterVoting, tip, h.slot) match
+        case Left(unforecast) => unknown(unforecast, h, tipSlot)
+        case Right(Praos2Headers.Forecast.Leios(view)) =>
+          check(cfg, view, parent, prev, h, epoch, tipSlot, genericEnvelope)
+        case Right(Praos2Headers.Forecast.WithoutLeios(viewEra, end)) =>
+          wrongEra(globals, ledger, tip, h, epoch, viewEra, end, forecastLimit, genericEnvelope)
+    }
+
+  /** The ledger view forecast from the anchor for `slot`, as the hard-fork combinator forecasts it
+    * (`oneForecast`, `HardFork/Combinator/Ledger.hs:555-620`, ouroboros-consensus 2416493b): in the
+    * anchor's era, or once the anchor's known end is passed in the next era alone, never further.
+    * Where that era is Dijkstra the view is Conway's across the boundary
+    * ([[DijkstraCrossing.forecast]]) or Dijkstra's own ([[DijkstraCrossing.forecastInEra]]); where
+    * it is another, the view has no Leios fields and only its era and the anchor's known end are
+    * told, whose range [[inRange]] decides.
+    */
+  def forecast[E <: EraTag](
+      cfg: PraosConfig,
+      globals: Globals,
+      ledger: EraRead[E],
+      afterVoting: Long,
+      tip: Option[BlockRef],
+      slot: BigInt
+  ): Either[Praos2Headers.Unforecast, Praos2Headers.Forecast] =
+    import Praos2Headers.{Forecast, Unforecast}
+    val geometry = cfg.geometry
+    val epoch = geometry.epochOf(slot)
+    val anchorEra = EraNes.eraOf(ledger.era)
+    // the anchor's era ends before the slot's epoch: the view is of the next era
+    val end = cfg.forks
+      .transition(geometry.k)(
+        Hfc.Pending(anchorEra, ledger.epoch.toBigInt, ledger.definiteUpdateMajor, afterVoting)
+      )
+      .filter(_ <= epoch)
+    val viewEra = end.flatMap(_ => HardForkConfig.next(anchorEra)).getOrElse(anchorEra)
+    val horizon = (f: CrossingForecastFailure) =>
+      f match
+        case _: CrossingForecastFailure.OutsideForecastRange => Unforecast.Horizon
+        case other @ (_: CrossingForecastFailure.Translation |
+            _: CrossingForecastFailure.Parameter | _: CrossingForecastFailure.Vocabulary) =>
+          Unforecast.View(other)
+    val unread = (e: HeaderStructureProblem) => Unforecast.Unread(e)
+    ledger.era match
+      case ShelleyBasedEra.SDijkstra =>
+        for
+          at <- forecastFor(slot, tip)
+          (forSlot, anchorTip) = at
+          nes <- ledger.nes.leftMap(e => unread(HeaderStructureProblem.LedgerRead(e)))
+          view <- DijkstraCrossing.forecastInEra(globals, forSlot, anchorTip, nes).leftMap(horizon)
+        yield Forecast.Leios(view)
+      case ShelleyBasedEra.SConway =>
+        end.fold[Either[Unforecast, Forecast]](Right(Forecast.WithoutLeios(viewEra, end))) {
+          first =>
             for
-              at <- forecastFor(h, tip)
-              (slot, anchorTip) = at
+              at <- forecastFor(slot, tip)
+              (forSlot, anchorTip) = at
               transition <- vocab(SlotNo.fromBigInt(geometry.firstSlot(first)))
               nes <- ledger.nes.leftMap(e => unread(HeaderStructureProblem.LedgerRead(e)))
               view <- DijkstraCrossing
-                .forecast(globals, globals, transition, slot, anchorTip, nes)
+                .forecast(globals, globals, transition, forSlot, anchorTip, nes)
                 .leftMap(horizon)
-            yield view
-          }
-        case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
-            ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage =>
-          Left(
-            wrongEra(globals, ledger, tip, h, epoch, viewEra, end, forecastLimit, genericEnvelope)
-          )
-      view.fold(identity, check(cfg, _, parent, prev, h, epoch, tipSlot, genericEnvelope))
+            yield Forecast.Leios(view)
+        }
+      case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
+          ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage =>
+        Right(Forecast.WithoutLeios(viewEra, end))
+
+  /** The bound on an endorser block's transactions in the ledger view forecast from the anchor for
+    * `slot` (`getLeiosMaxEbTxsSizeFromView` of the view `forecastFor` gives, as the fetch logic
+    * reads it, `NodeKernel.hs:586-593` at ouroboros-consensus 2416493b): a Dijkstra view's
+    * `plvMaxEbTxsSize`, and 0 for the view of an era without it (`ResolveLeiosBlock`'s default,
+    * `Storage/LedgerDB/Forker.hs:975-987`), within its range; past the range none.
+    */
+  def maxEbTxsSize[E <: EraTag](
+      cfg: PraosConfig,
+      globals: Globals,
+      ledger: EraRead[E],
+      afterVoting: Long,
+      tip: Option[BlockRef],
+      slot: BigInt
+  ): Either[Praos2Headers.Unforecast, Word32] =
+    forecast(cfg, globals, ledger, afterVoting, tip, slot).flatMap {
+      case Praos2Headers.Forecast.Leios(view) => Right(view.maxEbTxsSize)
+      case Praos2Headers.Forecast.WithoutLeios(_, end) =>
+        inRange(globals, tip, slot, end, None).flatMap(within =>
+          Either.cond(within, Word32.wrap(0L), Praos2Headers.Unforecast.Horizon)
+        )
     }
 
   /** The prepared check of `h` from an anchor still in Byron, or none where it is not a Dijkstra
@@ -288,22 +363,7 @@ private[node] final class Praos2Headers private ():
       genericEnvelope: Either[HeaderError, Unit]
   ): Option[Prepared[ProtocolState]] =
     Option.when(h.era == Era.Dijkstra) {
-      val k = byron.ledger.genesis.securityParam
-      val boundary = byron.configuredShelleyEpoch
-        .orElse(ByronLedger.transition(byron.ledger, ledger))
-        .map(first => (first, cfg.geometry.resolved(first)))
-        .filter((first, geometry) => h.slot >= geometry.firstSlot(first))
-      val (viewEra, maxFor, epoch) = boundary match
-        case Some((first, geometry)) =>
-          (
-            Era.Shelley,
-            geometry.firstSlot(first) + geometry.stabilityWindow.toBigInt,
-            geometry.epochOf(h.slot)
-          )
-        case None =>
-          // the Byron forecast is at the ledger's last slot, 0 at the genesis
-          // (`at = NotOrigin (cvsLastSlot st)`), so its bound is that slot + 1 + 2k there too
-          (Era.Byron, ledger.lastSlot + 1 + 2 * k, h.slot / byron.ledger.epochSlots)
+      val (viewEra, maxFor, epoch, boundary) = byronRange(cfg, byron, ledger, h.slot)
       if h.slot >= maxFor then
         Prepared.Unknown(
           ForecastReason
@@ -322,20 +382,121 @@ private[node] final class Praos2Headers private ():
         )
     }
 
-  private def vocab[A](
-      read: Either[VocabError, A]
-  ): Either[Prepared[ProtocolState], A] =
-    read.leftMap(e => Prepared.Undecided(HeaderDefect.Praos2(Praos2Defect.Vocabulary(e))))
+  /** The closure bound of `ledgerViewOfTip` (`HeaderStateHistory.hs:250-262` at 2416493b): of a
+    * Dijkstra ledger, its view at its own tip ([[DijkstraCrossing.forecastInEra]] at the tip), or
+    * unknown where the node cannot make it; another era's view has no Leios fields.
+    */
+  def boundOfTip[E <: EraTag](
+      globals: Globals,
+      ledger: EraRead[E],
+      tip: WithOrigin[SlotNo]
+  ): LeiosBound =
+    ledger.era match
+      case ShelleyBasedEra.SDijkstra =>
+        val slot = tip match
+          case WithOrigin.At(s)  => s
+          case WithOrigin.Origin => SlotNo.fromUnsigned(0)
+        ledger.nes.toOption
+          .flatMap(DijkstraCrossing.forecastInEra(globals, slot, tip, _).toOption)
+          .fold(LeiosBound.Unknown)(view => LeiosBound.Of(view.maxEbTxsSize))
+      case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
+          ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage | ShelleyBasedEra.SConway =>
+        LeiosBound.WithoutLeios
+
+  /** The era of the view a Byron anchor forecasts for `slot`, the exclusive bound of its range, the
+    * slot's epoch, and the Shelley boundary once `slot` is past it ([[fromByron]]).
+    */
+  private def byronRange(
+      cfg: PraosConfig,
+      byron: ByronRules.Config,
+      ledger: ByronLedgerState,
+      slot: BigInt
+  ): (Era, BigInt, BigInt, Option[(BigInt, EpochGeometry)]) =
+    val k = byron.ledger.genesis.securityParam
+    val boundary = byron.configuredShelleyEpoch
+      .orElse(ByronLedger.transition(byron.ledger, ledger))
+      .map(first => (first, cfg.geometry.resolved(first)))
+      .filter((first, geometry) => slot >= geometry.firstSlot(first))
+    boundary match
+      case Some((first, geometry)) =>
+        (
+          Era.Shelley,
+          geometry.firstSlot(first) + geometry.stabilityWindow.toBigInt,
+          geometry.epochOf(slot),
+          boundary
+        )
+      case None =>
+        // the Byron forecast is at the ledger's last slot, 0 at the genesis
+        // (`at = NotOrigin (cvsLastSlot st)`), so its bound is that slot + 1 + 2k there too
+        (Era.Byron, ledger.lastSlot + 1 + 2 * k, slot / byron.ledger.epochSlots, None)
+
+  /** [[maxEbTxsSize]] from an anchor still in Byron: its view is Byron's or Shelley's, never
+    * Dijkstra's ([[fromByron]]), so 0 within the range.
+    */
+  def maxEbTxsSizeFromByron(
+      cfg: PraosConfig,
+      byron: ByronRules.Config,
+      ledger: ByronLedgerState,
+      slot: BigInt
+  ): Either[Praos2Headers.Unforecast, Word32] =
+    val (_, maxFor, _, _) = byronRange(cfg, byron, ledger, slot)
+    Either.cond(slot < maxFor, Word32.wrap(0L), Praos2Headers.Unforecast.Horizon)
+
+  /** No view for `h`: past the range no verdict yet; a view the node cannot make, or a slot its
+    * vocabulary cannot hold, a defect of its own; a ledger that cannot be read, a refusal.
+    */
+  private def unknown(
+      unforecast: Praos2Headers.Unforecast,
+      h: Header.Shelley,
+      tipSlot: BigInt
+  ): Prepared[Nothing] = unforecast match
+    case Praos2Headers.Unforecast.Horizon =>
+      Prepared.Unknown(ForecastReason.Horizon(h.slot, tipSlot))
+    case Praos2Headers.Unforecast.View(failure) =>
+      Prepared.Undecided(HeaderDefect.DijkstraView(failure))
+    case Praos2Headers.Unforecast.Unread(problem) =>
+      Prepared.Invalid(HeaderError.Structure(problem))
+    case Praos2Headers.Unforecast.Vocabulary(error) =>
+      Prepared.Undecided(HeaderDefect.Praos2(Praos2Defect.Vocabulary(error)))
+
+  private def vocab[A](read: Either[VocabError, A]): Either[Praos2Headers.Unforecast, A] =
+    read.leftMap(Praos2Headers.Unforecast.Vocabulary(_))
 
   /** The slot to forecast for and the anchor's tip, as the forecast takes them. */
   private def forecastFor(
-      h: Header.Shelley,
+      slot: BigInt,
       tip: Option[BlockRef]
-  ): Either[Prepared[ProtocolState], (SlotNo, WithOrigin[SlotNo])] =
+  ): Either[Praos2Headers.Unforecast, (SlotNo, WithOrigin[SlotNo])] =
     for
-      slot <- vocab(SlotNo.fromBigInt(h.slot))
+      forSlot <- vocab(SlotNo.fromBigInt(slot))
       at <- vocab(tip.traverse(t => SlotNo.fromBigInt(t.slot)))
-    yield (slot, at.fold[WithOrigin[SlotNo]](WithOrigin.Origin)(WithOrigin.At(_)))
+    yield (forSlot, at.fold[WithOrigin[SlotNo]](WithOrigin.Origin)(WithOrigin.At(_)))
+
+  /** Whether the view of another era than Dijkstra reaches `slot` from the anchor: the anchor's own
+    * range, or across its known end `crossEraForecastBound` ([[DijkstraCrossing.forecastBound]]),
+    * or `forecastLimit` where a Byron anchor's translated ledger replaces the anchor's own.
+    */
+  private def inRange(
+      globals: Globals,
+      tip: Option[BlockRef],
+      slot: BigInt,
+      end: Option[BigInt],
+      forecastLimit: Option[BigInt]
+  ): Either[Praos2Headers.Unforecast, Boolean] =
+    val window = globals.stabilityWindow
+    for
+      at <- forecastFor(slot, tip)
+      (forSlot, anchorTip) = at
+      transition <- end.traverse(first =>
+        vocab(SlotNo.fromBigInt(globals.geometry.firstSlot(first)))
+      )
+      successor = tip.fold(BigInt(0))(_.slot + 1)
+      maxFor = forecastLimit.getOrElse(
+        transition.fold(successor + window)(t =>
+          DijkstraCrossing.forecastBound(anchorTip, t, window, window).toBigInt
+        )
+      )
+    yield anchorTip == WithOrigin.At(forSlot) || forSlot.toBigInt < maxFor
 
   /** A Dijkstra header whose slot the anchor's forecast places in `viewEra`, another era: within
     * the forecast's range (the anchor's own, or across its known end `crossEraForecastBound`,
@@ -352,23 +513,9 @@ private[node] final class Praos2Headers private ():
       end: Option[BigInt],
       forecastLimit: Option[BigInt],
       genericEnvelope: Either[HeaderError, Unit]
-  ): Prepared[ProtocolState] =
-    val window = globals.stabilityWindow
-    val ranged = for
-      at <- forecastFor(h, tip)
-      (slot, anchorTip) = at
-      transition <- end.traverse(first =>
-        vocab(SlotNo.fromBigInt(globals.geometry.firstSlot(first)))
-      )
-      successor = tip.fold(BigInt(0))(_.slot + 1)
-      maxFor = forecastLimit.getOrElse(
-        transition.fold(successor + window)(t =>
-          DijkstraCrossing.forecastBound(anchorTip, t, window, window).toBigInt
-        )
-      )
-    yield anchorTip == WithOrigin.At(slot) || slot.toBigInt < maxFor
-    ranged.fold(
-      identity,
+  ): Prepared[Nothing] =
+    inRange(globals, tip, h.slot, end, forecastLimit).fold(
+      unknown(_, h, tip.fold(BigInt(-1))(_.slot)),
       within =>
         if !within then
           Prepared.Unknown(ForecastReason.Horizon(h.slot, tip.fold(BigInt(-1))(_.slot)))
@@ -397,7 +544,7 @@ private[node] final class Praos2Headers private ():
       epoch: BigInt,
       tipSlot: BigInt,
       genericEnvelope: Either[HeaderError, Unit]
-  ): Prepared[ProtocolState] =
+  ): Prepared[ShelleyValidated] =
     val config = Praos2.Config(
       cfg,
       Word64.fromUnsigned(cfg.forks.maxMajorProtVer.toLong),
@@ -417,7 +564,7 @@ private[node] final class Praos2Headers private ():
     // before, carried over
     val translated = prev.in(Era.Conway)
     Prepared.Check(() =>
-      val checked: Either[Outcome[ProtocolState], ProtocolState] =
+      val checked: Either[Outcome[ShelleyValidated], ShelleyValidated] =
         for
           state <- translated.dep match
             case ChainDepState.Praos2(p) => Right(p)
@@ -445,14 +592,36 @@ private[node] final class Praos2Headers private ():
             case d: Praos2Defect   => defect(d)
             case p: ProviderDefect => Outcome.Unverifiable(p)
           }
-        yield ProtocolState(
-          ChainDepState.Praos2(next.protocol),
-          translated.extras.copy(epoch = epoch)
+        yield ShelleyValidated(
+          ProtocolState(ChainDepState.Praos2(next.protocol), translated.extras.copy(epoch = epoch)),
+          LeiosBound.Of(view.maxEbTxsSize)
         )
       checked.fold(identity, Outcome.Valid(_))
     )
 
 private[node] object Praos2Headers:
+  /** The ledger view forecast for a slot ([[Praos2Headers.forecast]]). */
+  enum Forecast:
+    /** Dijkstra's, with the Leios fields. */
+    case Leios(view: Praos2.LedgerView)
+
+    /** Of `viewEra`, an era without Leios: the anchor's, or the next after its known `end`. */
+    case WithoutLeios(viewEra: Era, end: Option[BigInt])
+
+  /** Why there is no view for a slot. */
+  enum Unforecast:
+    /** The slot is past the forecast's range: no view yet (`PastHorizon`). */
+    case Horizon
+
+    /** The view could not be made of the anchor's state: a defect of the node's own. */
+    case View(failure: CrossingForecastFailure)
+
+    /** The anchor's ledger could not be read. */
+    case Unread(problem: HeaderStructureProblem)
+
+    /** A slot outside the vocabulary's words. */
+    case Vocabulary(error: VocabError)
+
   /** The rules of a Dijkstra header in `build`: Praos2's in the Leios build, whose Dijkstra header
     * is the Leios header (`ShelleyProtocolHeader (Praos2 c) = Leios.Header c`,
     * `Protocol/Praos2.hs:57`, ouroboros-consensus 2416493b); none in the release lines, whose

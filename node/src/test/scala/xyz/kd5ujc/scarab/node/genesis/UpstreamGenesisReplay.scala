@@ -119,6 +119,8 @@ object UpstreamGenesisReplay extends munit.Assertions:
       override def snapshot(using cats.Applicative[IO]) = gate.snapshot
       override def intersectionSelection(using cats.Applicative[IO]) = gate.intersectionSelection
     new HeaderCheck.Grafting[IO]:
+      def withLeios(leios: xyz.kd5ujc.scarab.node.LeiosChainSync[IO]): HeaderCheck.Grafting[IO] =
+        this
       def startGrafting(point: ChainSync.Point) = check.startGrafting(point).map(wrap)
       def start(point: ChainSync.Point) = startGrafting(point).widen
       def captureGrafting(using cats.Applicative[IO]) =
