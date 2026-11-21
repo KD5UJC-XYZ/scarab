@@ -1040,6 +1040,14 @@ G1's end state is `fixtures/leios/state/testnet-2168639` (`--end /work/fixtures/
 of slot 2,168,639. The states are private local data and are not published; the provenance of windows P and
 G (the testnet build's `db-analyser`, replaying the recorded database) is recorded with them.
 
+The tests that read these states take their directory from the environment variable
+`SCARAB_LEIOS_REFERENCE_STATES` (`LeiosReferenceStates`, in the storage tests), laid out as the windows' own:
+`g1/<slot>`, `window-p/<slot>` and `window-g/<slot>`, each named after its state's tip slot and holding the
+reference's `state`, `tables` and `meta`. G1's start is `g1/1943999`. Unset, each such test is skipped by
+name and names the variable, an environmental skip that
+[#54](https://github.com/KD5UJC-XYZ/scarab/issues/54#issuecomment-7070543699) tracks; set to a directory
+that does not hold a state a test reads, that test fails.
+
 ### What runs before the Dijkstra rules, and what they must provide
 
 Until the rules apply a Dijkstra block (#85 D8), every window halts at the first block after its start
