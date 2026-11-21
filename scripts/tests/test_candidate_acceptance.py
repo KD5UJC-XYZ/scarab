@@ -60,6 +60,18 @@ class CandidateAcceptanceTests(unittest.TestCase):
         ET.ElementTree(root).write(path)
         return path
 
+    def test_every_mandatory_case_is_a_test_its_suite_declares_by_that_name(self):
+        checkout = MODULE.parents[1]
+        for row in self.cases["required"]:
+            package, _, simple = row["suite"].rpartition(".")
+            with self.subTest(suite=row["suite"], name=row["name"]):
+                sources = [path.read_text(encoding="utf-8")
+                           for path in (checkout / row["project"] / "src" / "test" / "scala").rglob("*.scala")]
+                declared = [text for text in sources if f"\npackage {package}\n" in text and f"class {simple} " in text]
+                self.assertEqual(len(declared), 1, f"{row['suite']} is declared once in {row['project']}'s tests")
+                self.assertTrue(json.dumps(row["name"], ensure_ascii=False) in declared[0],
+                                f"{row['suite']} declares no test named {row['name']!r}")
+
     def test_unavailable_manifest_fails_before_download_or_docker(self):
         with patch.object(candidate, "download") as download, patch.object(candidate.subprocess, "run") as docker, patch.object(candidate.subprocess, "check_output", return_value="a" * 40):
             with self.assertRaisesRegex(candidate.Rejected, "unavailable"):
