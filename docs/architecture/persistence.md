@@ -271,7 +271,14 @@ before the copy, where the reference reads its VolatileDB (`copyToImmutableDB` a
 230-310). Each collection of the received log then collects the store at its slot
 (`garbageCollectBlocks`, 547-559; both `LeiosBackgroundSuite`); the reference prunes its in-memory
 LeiosTxCache just before, which Scarab does not have. A failure of either stops the node, as the
-collection's failure does.
+collection's failure does. A copy appends before it promotes, so a run that stopped in between, or
+whose promotion failed, leaves a certifying block immutable and its endorser block unpinned; the
+reference leaves it so, and its next collection can delete that endorser block. Scarab's open closes
+the window, an Improvement ([decisions register](../decisions.md#genesis-storage-and-keys),
+2026-11-21): before any collection can run it promotes what the immutable blocks certify, walking
+those at or after the slot of the oldest point of the volatile partition, with the predecessor of the
+first, since a collection takes only hashes of that partition and a certified endorser block is at its
+announcing predecessor's slot (`LeiosBackgroundSuite`).
 
 `import-haskell-db` reads a Leios node's `leios.imm.db` and `leios.vol.db`, when the database has
 them, into this store before it imports the blocks (`leiosPoints`, `leiosBodies` and

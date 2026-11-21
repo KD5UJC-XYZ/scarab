@@ -4,18 +4,19 @@ package xyz.kd5ujc.scarab.storage
 import cats.effect.{IO, Outcome, Ref}
 import cats.effect.std.Queue
 import cats.effect.testkit.TestControl
-import cats.mtl.Handle
+import cats.mtl.{Handle, Raise}
 import cats.syntax.all.*
 import java.nio.file.{Files as JFiles, Path as JPath}
 import scala.concurrent.duration.*
 import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.{Anchor, BlockRef, BlockRules, LeiosBlockInfo, LeiosCert}
-import xyz.kd5ujc.scarab.ledger.{Block, NodeError}
+import xyz.kd5ujc.scarab.ledger.{Block, NodeError, StorageError}
 import xyz.kd5ujc.scarab.network.FailsOnUncaught
 import xyz.kd5ujc.scarab.node.ReceivedBlockRecovery
-import xyz.kd5ujc.scarab.protocol.{EbPoint, HfcHeader}
-import xyz.kd5ujc.scarab.protocol.LeiosWord.Word64
+import xyz.kd5ujc.scarab.protocol.{EbHash, EbPoint, HfcHeader}
+import xyz.kd5ujc.scarab.protocol.LeiosWord.{Word32, Word64}
+import fs2.io.file.Path
 
 /** The chain database drives the Leios store as ouroboros-consensus 2416493b's background drives
   * its LeiosDB (`Storage/ChainDB/Impl/Background.hs`): a copy to the immutable store promotes the
@@ -254,6 +255,108 @@ class LeiosBackgroundSuite extends FailsOnUncaught:
         collected,
         Some(Held(Vector(certified, later), Vector(true, false, true), Vector(true, false, true)))
       )
+  }
+
+  /** A failure of the Leios store, as a write that fails. */
+  private val boom = new java.io.IOException("the Leios store's write failed")
+
+  /** `store`, its promotions of any endorser block failing with [[boom]]. */
+  private def failing(store: LeiosStore[IO]): LeiosStore[IO] = new LeiosStore[IO]:
+    def writeEbPoint(point: EbPoint, announced: Word32)(using Raise[IO, LeiosStoreError]) =
+      store.writeEbPoint(point, announced)
+    def writeEbBody(point: EbPoint, eb: LeiosEb, fills: Vector[LocalFill])(using
+        Raise[IO, LeiosStoreError]
+    ) = store.writeEbBody(point, eb, fills)
+    def writeTxs(point: EbPoint, txs: Vector[(Int, Bytes)])(using Raise[IO, LeiosStoreError]) =
+      store.writeTxs(point, txs)
+    def lookupEbBody(hash: EbHash)(using Raise[IO, LeiosStoreError]) = store.lookupEbBody(hash)
+    def lookupEbClosure(hash: EbHash)(using Raise[IO, LeiosStoreError]) =
+      store.lookupEbClosure(hash)
+    def batchRetrieveTxs(hash: EbHash, offsets: Vector[Int])(using Raise[IO, LeiosStoreError]) =
+      store.batchRetrieveTxs(hash, offsets)
+    def scanEbPoints(using Raise[IO, LeiosStoreError]) = store.scanEbPoints
+    def scanCompleteEbClosuresNotOlderThanSlot(slot: Word64)(using Raise[IO, LeiosStoreError]) =
+      store.scanCompleteEbClosuresNotOlderThanSlot(slot)
+    def garbageCollect(slot: Word64)(using Raise[IO, LeiosStoreError]) = store.garbageCollect(slot)
+    def promoteToImmutable(points: Vector[EbPoint])(using raise: Raise[IO, LeiosStoreError]) =
+      if points.isEmpty then store.promoteToImmutable(points)
+      else raise.raise(LeiosStoreError.Io(boom))
+
+  /** The snapshot files in `dir` deleted: this suite's states are not in a format a start reads. */
+  private def snapshotsDropped(dir: Path): IO[Unit] =
+    IO.blocking(
+      scala.util.Using
+        .resource(JFiles.list((dir / "snapshots").toNioPath))(
+          _.iterator.asScala.toVector
+        )
+        .foreach(JFiles.delete)
+    )
+
+  test(
+    "an endorser block whose promotion failed after its certifier's copy is promoted at the next " +
+      "open, so a collection past the certifier keeps it"
+  ) {
+    StorageTestKit.tempDir.use { dir =>
+      val leiosStore = LeiosStoreLocks
+        .resource[IO]
+        .flatMap(locks =>
+          LeiosStoreSuite.allowing(RocksLeiosStore.resource[IO](dir / "leios", locks))
+        )
+      def opened(leios: LeiosStore[IO])(using Handle[IO, NodeError]) =
+        ChainStorage.open[IO, Int](
+          dir,
+          config,
+          rules,
+          0,
+          _ => IO.unit,
+          StateBacking.none[IO, Int],
+          _ => IO.unit,
+          leios = Some(leios)
+        )(ReceivedBlockRecovery.startUp(epochSlots))
+      for
+        // the first run: both blocks are copied, and the certifier's promotion fails after its
+        // append, which stops the storage
+        failed <- leiosStore.use { leios =>
+          stored(Vector(certified, unvetoed, later).traverse_ { p =>
+            leios.writeEbPoint(p, word32(1)) *> leios.writeEbBody(p, body(1), Vector.empty) *>
+              leios.writeTxs(p, Vector(0 -> tx(0)))
+          }) *> Handle
+            .allow[NodeError](
+              opened(failing(leios))
+                .use(recovered =>
+                  recovered.persistence.extended(
+                    announcerRef,
+                    announcing,
+                    Vector(announcerRef),
+                    Anchor(Some(announcerRef), 0)
+                  ) *> recovered.persistence.extended(
+                    certifierRef,
+                    certifying,
+                    Vector(certifierRef),
+                    Anchor(Some(certifierRef), 1)
+                  )
+                )
+                .as(Option.empty[NodeError])
+            )
+            .rescue(e => IO.pure(Some(e)))
+        }
+        _ <- snapshotsDropped(dir)
+        // the next run opens both stores again, then the store is collected past the certifier
+        reopened <- leiosStore.use { leios =>
+          typed(opened(leios).use(_.store.tip)).flatMap(tip =>
+            stored(leios.garbageCollect(word64(certifierRef.slot + 1))) *> held(leios).map(tip -> _)
+          )
+        }
+      yield
+        assertEquals(failed, Some(StorageError.LeiosStore(LeiosStoreError.Io(boom))))
+        assertEquals(reopened._1, Some(certifierRef), "the certifier was copied before it failed")
+        // the certified endorser block's body and closure are in the immutable partition; the one
+        // nothing certifies is collected, and the one at the collection's slot stays
+        assertEquals(
+          reopened._2,
+          Held(Vector(later), Vector(true, false, true), Vector(true, false, true))
+        )
+    }
   }
 
   test("a block certifies nothing without a certificate, on genesis, or after no announcement") {

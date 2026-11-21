@@ -12,7 +12,7 @@ import fs2.concurrent.SignallingRef
 import fs2.io.file.Path
 import java.nio.file.Files
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.protocol.ChainSync
+import xyz.kd5ujc.scarab.protocol.{ChainSync, EbPoint}
 import xyz.kd5ujc.scarab.protocol.LeiosWord.Word64
 import xyz.kd5ujc.scarab.consensus.{
   AcquiredLeiosEbs,
@@ -570,6 +570,9 @@ object ChainStorage:
       )
       // Released before the stores: a graceful stop leaves a snapshot at the immutable tip.
       _ <- Resource.onFinalize(persistence.shutdownSnapshot)
+      // the endorser blocks that immutable blocks certify are promoted before any collection can
+      // run, so that one whose promotion an earlier run did not reach is not collected
+      _ <- Resource.eval(leios.traverse_(reconciled(store, _, config.byronEpochSlots)))
       // the received log's collections, run on their schedule until one fails: the failure is
       // raised by the next block the persistence stores, in the follower's own fiber. Whatever ends
       // the runner, a collection's failure or an exception anywhere in it, ends it with a value
@@ -596,6 +599,63 @@ object ChainStorage:
       persistence.snapshotsWritten,
       stopped.get
     )
+
+  /** Promote in `eb` the endorser blocks that the immutable blocks certify, as the copies promote
+    * them ([[Persistence]]), for the blocks whose promotion a run may not have reached: a copy
+    * appends its blocks before it promotes, so a run that stopped in between, or whose promotion
+    * failed, left a certifying block immutable and its endorser block unpinned. The reference has
+    * that window (`copyToImmutableDB`, `Storage/ChainDB/Impl/Background.hs` 262 and 285 at
+    * ouroboros-consensus 2416493b) and nothing at its open closes it (`openDBInternal`,
+    * `ChainDB/Impl.hs` 180-300; its copier resumes pinned rows only, `LeiosDB/Impl/SQLite.hs`
+    * 157-161), so its next collection can delete the endorser block; this open closes it, an
+    * Improvement (the decisions register, docs/decisions.md, 2026-11-21, #830).
+    *
+    * The blocks walked are the immutable blocks at or after the slot of the oldest point the
+    * store's volatile partition holds, with the predecessor of the first: a collection only takes a
+    * hash from the volatile partition, a certifying block's endorser block is at the slot of its
+    * announcing predecessor, and that predecessor comes before the certifying block, so every
+    * endorser block a collection could take that an immutable block certifies is found, however
+    * many blocks the interrupted copy held. Promotion changes nothing for an endorser block already
+    * promoted or copied. A store with no volatile point walks nothing.
+    */
+  private def reconciled[F[_]: Async](
+      store: ImmutableStore[F],
+      eb: LeiosStore[F],
+      byronEpochSlots: BigInt
+  )(using Raise[F, StorageError], Raise[F, ChainError]): F[Unit] =
+    val F = Async[F]
+    def info(raw: Bytes): F[LeiosBackground.Info] =
+      LeiosBackground.Info.of(byronEpochSlots)(raw).fold(_.raise[F, LeiosBackground.Info], F.pure)
+    // the endorser block `next` certifies, with `previous` as its lookup's predecessor
+    def certified(previous: Option[LeiosBackground.Info], next: LeiosBackground.Info) =
+      LeiosBackground.certifiedEb(
+        (previous.toVector :+ next).map(i => i.hash -> i).toMap.get
+      )(next.hash)
+    for
+      oldest <- eb
+        .scanEbPoints(using LeiosBackground.lifted[F])
+        .map(_.map(_.slot.toBigInt).minOption)
+      first <- oldest.flatTraverse(store.pointAtOrAfterSlot)
+      found <- first.traverse { ref =>
+        val walked = fs2.Stream.evalSeq(store.get(ref.point).map(_.toVector)) ++
+          store.stream(ref.point).map(_.raw)
+        for
+          before <- ref.blockNo.some
+            .filter(_ > 0)
+            .flatTraverse(n => store.byBlockNo(n - 1))
+            .flatMap(_.traverse(s => info(s.raw)))
+          points <- walked
+            .evalMap(info)
+            .evalScan((before, Option.empty[EbPoint])) { case ((previous, _), next) =>
+              F.pure((Some(next), certified(previous, next)))
+            }
+            .collect { case (_, Some(point)) => point }
+            .compile
+            .toVector
+        yield points
+      }
+      _ <- found.traverse_(points => eb.promoteToImmutable(points)(using LeiosBackground.lifted[F]))
+    yield ()
 
   /** Rebuild the volatile chain from the log: apply the logged blocks after the immutable tip, in
     * order, on top of the recovered state. Blocks that do not connect or that the rules refuse end
