@@ -1134,7 +1134,7 @@
     "LeiosFetchLogicSuite"
    ],
    "note": "the byte sum modulo 2^32 as the reference's Word32",
-   "digest": "f4b8dc88ecb0eb61"
+   "digest": "53c301daccf813d6"
   },
   "val consensus.leios.LeiosJobPool.empty": {
    "upstream": [
@@ -1945,7 +1945,7 @@
     "LeiosFetchLogicSuite"
    ],
    "note": "the forecast's failure left generic, as only its Left is read",
-   "digest": "79274e9ab78e7837"
+   "digest": "c5762b8da2fc4b53"
   },
   "def consensus.leios.LeiosFetchLogic.peerBudget": {
    "upstream": [
@@ -1986,7 +1986,7 @@
     "LeiosFetchLogicSuite"
    ],
    "note": "the prefix of Map.spanAntitone, the sum modulo 2^64 as the reference's Word64",
-   "digest": "4a2e7da4f095d924"
+   "digest": "11d653e18b96d91a"
   },
   "def consensus.leios.LeiosFetchLogic.pickJobs": {
    "upstream": [

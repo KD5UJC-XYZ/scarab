@@ -439,6 +439,106 @@ class LeiosFetchLogicSuite extends ScalaCheckSuite:
     assert(LeiosJobPool.of(size(10), 5, SortedMap.empty).isEmpty)
   }
 
+  test("jobs partition the misses in ascending offset order, whatever the map's own order") {
+    // three 30 KiB transactions and 64 KiB jobs: {0, 1} and {2}, as `IntMap.toAscList` walks them
+    val big = SortedMap.from((0 to 2).map(off => off -> (txHashOf(off), size(30L * 1024L))))
+    val descending = SortedMap.from(big)(using Ordering.Int.reverse)
+    val ascendingPool = LeiosJobPool.of(env.maxJobBytesSize, env.maxJobTxCount, big)
+    val descendingPool = LeiosJobPool.of(env.maxJobBytesSize, env.maxJobTxCount, descending)
+    assertEquals(descendingPool, ascendingPool)
+    assertEquals(
+      descendingPool.jobs.values.map(_.job.offsets.toSortedSet.toVector).toVector,
+      Vector(Vector(0, 1), Vector(2))
+    )
+    // a correct answer to the job is ingested
+    val job = descendingPool.lookup(LeiosJobId(0)).fold(fail("no job"))(identity)
+    val sized = SortedMap(0 -> txBytesOf(0), 1 -> txBytesOf(1))
+    val small =
+      LeiosJobPool.of(size(1000), 10, SortedMap.from(misses(0 to 1))(using Ordering.Int.reverse))
+    val smallJob = small.lookup(LeiosJobId(0)).fold(fail("no job"))(identity)
+    assertEquals(
+      LeiosFetchLogic.ingestJob(sized, LeiosJobId(0), smallJob).map(_.map(_._1)),
+      Right(Vector(0, 1))
+    )
+    assertEquals(job.root, JobRootHash.of(Vector(txHashOf(0), txHashOf(1))))
+  }
+
+  test(
+    "the decision walks offers in point order and peers in their order, whatever the maps' own"
+  ) {
+    // a budget that one body request of 600 bytes exhausts: only the first point walked is asked for
+    val tight = env.copy(maxRequestedBytesSizePerPeer = size(600))
+    val points = Vector(95L, 100L, 90L).map(s => point(s, ('a' + s % 26).toChar))
+    val o = points.foldLeft(empty)((acc, p) =>
+      acc
+        .recordMaxAnnouncementSlot(p.hash, p.slot, None)
+        .focusElectionIfUnfocused(ElId(p.slot, fixtureIssuer), p.hash)
+    )
+    val offer = PeerOffer(None, Some(size(600)), WhetherTxsClosureOffered.NotOffered)
+    def offersIn(ordering: Ordering[EbPoint]) =
+      SortedMap.from(points.map(_ -> offer))(using ordering)
+    def run(peerOrdering: Ordering[Pid], pointOrdering: Ordering[EbPoint]) =
+      LeiosFetchLogic
+        .iteration(
+          tight,
+          anyClosureSize,
+          Some(slot(100)),
+          SortedMap.from(Vector(peerA, peerB).map(_ -> offersIn(pointOrdering)))(using
+            peerOrdering
+          ),
+          Map.empty,
+          o
+        )
+        .requests
+        .toVector
+    val reference = run(Ordering.Int, ebPointOrdering)
+    // the freshest window oldest first: slot 90 is walked first, for both peers
+    assertEquals(
+      reference.map((peer, reqs) => peer -> bodyRequests(reqs).map(_._1)),
+      Vector(peerA -> Vector(points(2).hash), peerB -> Vector(points(2).hash))
+    )
+    assertEquals(run(Ordering.Int.reverse, ebPointOrdering.reverse), reference)
+    assertEquals(run(Ordering.Int, ebPointOrdering.reverse), reference)
+    // the tiers alone, from a newest-first map
+    val (hi, lo) =
+      LeiosFetchLogic.priorityTiers(Some(slot(100)), BigInt(10), offersIn(ebPointOrdering.reverse))
+    assertEquals((hi ++ lo).map(_._1.slot.toBigInt), Vector[BigInt](90, 95, 100))
+  }
+
+  test("the peers draw their closure jobs in their order, whatever the offerings map's own") {
+    // one job per 32-byte transaction, and a budget of one job: the generator's first draw goes to
+    // the peer walked first, as the reference's fold over `Map (PeerId pid)` walks them
+    val h = eb('c')
+    val p = EbPoint(slot(10), h)
+    val o = empty
+      .recordMaxAnnouncementSlot(h, slot(10), None)
+      .acquireEbBody(h, LeiosJobPool.of(size(1000), 1, misses(0 to 5)))
+      .focusElectionIfUnfocused(ElId(slot(10), fixtureIssuer), h)
+    val offer = PeerOffer(None, None, WhetherTxsClosureOffered.Offered)
+    def run(peerOrdering: Ordering[Pid]) =
+      LeiosFetchLogic
+        .iteration(
+          env.copy(maxRequestedBytesSizePerPeer = size(32)),
+          anyClosureSize,
+          Some(slot(11)),
+          SortedMap.from(Vector(peerA, peerB).map(_ -> Map(p -> offer)))(using peerOrdering),
+          Map.empty,
+          o
+        )
+        .requests
+        .map((peer, reqs) =>
+          peer -> reqs.toVector.collect { case LeiosFetchRequest.BlockTxs(_, jobs) =>
+            jobs.keys.toSortedSet.toVector
+          }
+        )
+    val reference = run(Ordering.Int)
+    assertEquals(run(Ordering.Int.reverse), reference)
+    // the draws are the reference's: `uniformR (0, 5)` of `mkStdGen 0` is 0, then `uniformR (0, 4)`
+    // of the generator it returns picks among ids 1 to 5 (StdGenSuite, the Picks.hs order 0, 1)
+    assertEquals(reference.get(peerA), Some(Vector(Vector(0))))
+    assertEquals(reference.get(peerB), Some(Vector(Vector(1))))
+  }
+
   test("requests are cut at the request bound, a job never split") {
     val pool = LeiosJobPool.of(size(64), 2, misses(0 to 5))
     val picked =

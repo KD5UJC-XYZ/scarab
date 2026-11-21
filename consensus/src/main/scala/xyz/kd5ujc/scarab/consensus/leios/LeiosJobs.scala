@@ -111,12 +111,13 @@ object LeiosJobPool:
   /** `mkLeiosJobPool` (`LeiosJobs.hs` 105-129 at 2416493b): the missing transactions, by offset,
     * partitioned greedily in offset order. A job grows while it holds fewer than `maxJobTxCount`
     * transactions and the next one keeps it within `maxJobBytes` (the sum a `Word32`, modulo 2^32^
-    * as the reference's), and always holds at least one.
+    * as the reference's), and always holds at least one. The misses are walked in ascending numeric
+    * offset order, as `IntMap.toAscList` walks them, whatever order the given map keeps.
     */
   def of(
       maxJobBytes: BytesSize,
       maxJobTxCount: Int,
-      misses: SortedMap[Int, (LeiosTxHash, BytesSize)]
+      misses: collection.Map[Int, (LeiosTxHash, BytesSize)]
   ): LeiosJobPool =
     final case class Growing(
         offsets: NonEmptySet[Int],
@@ -125,14 +126,16 @@ object LeiosJobPool:
     )
     def flush(g: Growing): LeiosJob = LeiosJob(g.offsets, g.bytes, JobRootHash.of(g.hashes))
     val (done, last) =
-      misses.foldLeft((Vector.empty[LeiosJob], Option.empty[Growing])) {
-        case ((done, None), (off, (h, sz))) =>
-          (done, Some(Growing(NonEmptySet.one(off), sz, Vector(h))))
-        case ((done, Some(g)), (off, (h, sz))) =>
-          if g.hashes.sizeIs < maxJobTxCount && (g.bytes + sz) <= maxJobBytes then
-            (done, Some(Growing(g.offsets.add(off), g.bytes + sz, g.hashes :+ h)))
-          else (done :+ flush(g), Some(Growing(NonEmptySet.one(off), sz, Vector(h))))
-      }
+      misses.toVector
+        .sortBy(_._1)(using Ordering.Int)
+        .foldLeft((Vector.empty[LeiosJob], Option.empty[Growing])) {
+          case ((done, None), (off, (h, sz))) =>
+            (done, Some(Growing(NonEmptySet.one(off), sz, Vector(h))))
+          case ((done, Some(g)), (off, (h, sz))) =>
+            if g.hashes.sizeIs < maxJobTxCount && (g.bytes + sz) <= maxJobBytes then
+              (done, Some(Growing(g.offsets.add(off), g.bytes + sz, g.hashes :+ h)))
+            else (done :+ flush(g), Some(Growing(NonEmptySet.one(off), sz, Vector(h))))
+        }
     val all = done ++ last.map(flush)
     val ids = all.indices
     LeiosJobPool(

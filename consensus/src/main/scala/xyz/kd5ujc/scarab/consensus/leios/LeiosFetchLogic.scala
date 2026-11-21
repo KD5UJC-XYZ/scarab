@@ -51,21 +51,25 @@ object LeiosFetchLogic:
       env: LeiosFetchStaticEnv,
       forecastMaxEbTxsSize: Word64 => Either[E, BytesSize],
       currentSlot: Option[Word64],
-      offerings: SortedMap[P, SortedMap[EbPoint, PeerOffer]],
+      offerings: collection.Map[P, collection.Map[EbPoint, PeerOffer]],
       bigLedgerPeers: Map[P, IsBigLedgerPeer],
       outstanding: LeiosOutstanding[P]
   ): LeiosFetchDecision[P] =
     given Ordering[P] = Order[P].toOrdering
-    offerings.foldLeft(LeiosFetchDecision(outstanding, SortedMap.empty, SortedMap.empty)) {
-      case (LeiosFetchDecision(acc, reqs, drops), (peer, offers)) =>
-        val isBig = bigLedgerPeers.getOrElse(peer, IsBigLedgerPeer.NotBigLedgerPeer)
-        val walked = assignPeer(env, forecastMaxEbTxsSize, currentSlot, isBig, peer, offers, acc)
-        LeiosFetchDecision(
-          walked.outstanding,
-          NonEmptyVector.fromVector(walked.requests).fold(reqs)(reqs.updated(peer, _)),
-          NonEmptySet.fromSet(walked.drops).fold(drops)(drops.updated(peer, _))
-        )
-    }
+    // the peers in their `Order`, as the reference's `Map (PeerId pid)` folds them, whatever order
+    // the given map keeps
+    offerings.toVector
+      .sortBy(_._1)
+      .foldLeft(LeiosFetchDecision(outstanding, SortedMap.empty, SortedMap.empty)) {
+        case (LeiosFetchDecision(acc, reqs, drops), (peer, offers)) =>
+          val isBig = bigLedgerPeers.getOrElse(peer, IsBigLedgerPeer.NotBigLedgerPeer)
+          val walked = assignPeer(env, forecastMaxEbTxsSize, currentSlot, isBig, peer, offers, acc)
+          LeiosFetchDecision(
+            walked.outstanding,
+            NonEmptyVector.fromVector(walked.requests).fold(reqs)(reqs.updated(peer, _)),
+            NonEmptySet.fromSet(walked.drops).fold(drops)(drops.updated(peer, _))
+          )
+      }
 
   /** `peerBudget` (`LeiosDemoLogic.hs` 402-410): the peer's cap less what it has in flight. */
   def peerBudget[P](
@@ -88,14 +92,16 @@ object LeiosFetchLogic:
   def priorityTiers[V](
       currentSlot: Option[Word64],
       l: BigInt,
-      offers: SortedMap[EbPoint, V]
+      offers: collection.Map[EbPoint, V]
   ): (Vector[(EbPoint, V)], Vector[(EbPoint, V)]) =
+    // in the reference's point order (`LeiosPoint`'s `Ord`), whatever order the given map keeps
+    val ascending = offers.toVector.sortBy(_._1)(using ebPointOrdering)
     currentSlot match
-      case None => (offers.toVector, Vector.empty)
+      case None => (ascending, Vector.empty)
       case Some(s) =>
         val (stale, fresh) =
-          offers.span((p, _) => (p.slot.toBigInt + l).mod(Word64Modulus) < s.toBigInt)
-        (fresh.toVector, stale.toVector.reverse)
+          ascending.span((p, _) => (p.slot.toBigInt + l).mod(Word64Modulus) < s.toBigInt)
+        (fresh, stale.reverse)
 
   /** A peer's walk: the state, its requests in the order decided and the offers to drop. */
   private final case class Walk[P](
@@ -114,7 +120,7 @@ object LeiosFetchLogic:
       currentSlot: Option[Word64],
       isBig: IsBigLedgerPeer,
       peer: P,
-      offers: SortedMap[EbPoint, PeerOffer],
+      offers: collection.Map[EbPoint, PeerOffer],
       acc: LeiosOutstanding[P]
   ): Walk[P] =
     val focused = offers.filter((point, _) => acc.isFocused(point.hash))
