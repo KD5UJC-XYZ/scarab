@@ -1,8 +1,7 @@
 ### Added (node, #54)
 
 - The Leios build's node fetches endorser blocks over LeiosFetch, mirroring ouroboros-consensus
-  2416493b. Nothing offers it an endorser block yet, so on a network it fetches nothing until the
-  offers are wired.
+  2416493b. The endorser blocks it is offered come over ChainSync; LeiosNotify offers none yet.
   - **Registration.** Under `--reference-build leios-b004fe0c`, with an endorser-block store, every
     node-to-node connection carries protocols 18 and 19, hot and started on demand. Each hot
     activation runs the LeiosFetch client, and the server answers from the store; a clean end of
