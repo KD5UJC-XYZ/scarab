@@ -1182,10 +1182,8 @@ Conway's rules on the classes follow as the rest of stage 2.
     reference's relation marker (`RelEQ`, `RelGT`), which names the comparison only in the reference's rendering. The embedding into LEDGER (`ConwayGovFailure`, `GovEvent`)
     comes with LEDGER. `ConwayGovPredFailure.toStored` gives a failure's flat form, one-way glue the comparisons
     read; an action is put in it as the transaction's proposal read it (`readOf`).
-  - Who may vote (`ConwayVoting`) is the reference's `isVotingAllowed` of each voter's threshold, written as the
-    constructors whose threshold is `NoVotingAllowed`: the thresholds' values are ratification's and never reach it,
-    and with no committee, as the reference passes it, the committee's threshold of the other actions is
-    `NoVotingThreshold`. On the recorded proposals of each of the seven actions and on two crafted parameter
+  - Who may vote is the reference's `isVotingAllowed` of each voter's threshold (`VotingThreshold`, with RATIFY,
+    below). On the recorded proposals of each of the seven actions and on two crafted parameter
     changes, one of the security group and one of none, it equals the flat rule's (`EraConwaySuite`).
   - `ConwayGovChecksSuite` runs the whole rule and the flat GOV on every Conway case of the refusal corpora, at the
     recorded version and at 9, 10 and 11: the same failures in the same order, or the same proposals after. These
@@ -1268,14 +1266,88 @@ Conway's rules on the classes follow as the rest of stage 2.
     restored state of each era, its five parameter records distinct in a field of the era and in one of
     another era and a delaying action ratified, reads each record into its own position with the delay kept,
     and is written back to the same flat record over each position's own record; over one record for every
-    position it is not. Every proposal of the reference's Dijkstra GOV cases goes through the flat record unchanged, as the
+    position it is not. Every proposal of the reference's Dijkstra GOV cases but its two parameter changes (keys 38 and 47, refused with their keys) goes through the flat record unchanged, as the
     flat path writes it; the chain's two proposal items are read by the stored reader as the body reads them,
     and refused by the flat record with their keys, alone and in a governance state. The lens laws hold for
     every lens at both eras.
   - Left for the next stages: Dijkstra's LEDGER keeps its proposals in their own capability, since the chain's
     proposals update keys the flat record cannot hold; it reads them from the governance state once the state
     holds the era's record. The stored record's flip to the era's, and its codec, are a format change of their
-    own (FMT-1). RATIFY, ENACT, the epoch's governance steps and Dijkstra's tick on these records follow (#85).
+    own (FMT-1). RATIFY and ENACT (below); the epoch's governance steps and Dijkstra's tick on these records follow (#85).
+- **RATIFY and ENACT** (`era/Ratify.scala`, `era/rules/Ratify.scala`, `era/rules/Enact.scala`; `Conway/Rules/Ratify.hs`,
+  `Conway/Rules/Enact.hs`, `Governance/Internal.hs:311-606` and `Conway/Governance.hs:526-577`, cardano-ledger
+  f649f975; both eras' RATIFY and ENACT are Conway's, `Dijkstra/Era.hs:208, 226` at 9df9f98c):
+  - The thresholds have one home (`VotingThreshold`): the reference's three cases, `toRatifyVotingThreshold`,
+    `isVotingAllowed`, `pparamsUpdateThreshold` and the pools', committee's and DReps' `…ThresholdInternal`, with
+    `isStakePoolVotingAllowed`, `isCommitteeVotingAllowed` and `isDRepVotingAllowed` over them. GOV's
+    `checkVotersAreValid` calls these with the current epoch and the committee state, as the reference does; the
+    shortcut that listed the actions each body may not vote on is gone. The update's groups are the era's
+    (`modifiedPPGroups`), so Dijkstra's keys 34 to 56 take the groups its record gives them
+    (`Dijkstra/PParams.hs:233-299`): 34 to 37, 40 to 48 and 49 to 54 Network/Security, 38 Technical/NoStakePool,
+    39 Economic/NoStakePool, 55 and 56 Economic/Security.
+  - `RatifyEnv[E]` is the Leios build's (9df9f98c `Internal.hs:560-570`): its pools' stake is the voting stake
+    (`VotingStakePoolDistr`), where f649f975 reads the same two numbers from the pool distribution. Its committee
+    state, DReps' states, accounts and pools are the node's typed records. A pool that did not vote counts as
+    `defaultStakePoolVote` gives; the stake sums are compact coins, `Word64`s as the reference's are, and the
+    committee's active size is counted at the minimum's `Word16`, as `fromIntegral` counts it.
+  - `ConwayRatify.ratifyTransition` is a fold over the signal, where the reference's recursion is not a tail call
+    (STK-1): the branch that does not ratify carries the state on unchanged, and nothing later reads the expired
+    set, so it is the same result. Each action is judged on the enact state the actions before it left.
+    `ConwayEnact.enactmentTransition` is the reference's, `applyPPUpdates` of the era setting `ensCurPParams`.
+    Of withdrawals to two accounts of one credential it keeps the greater account's, as `Map.mapKeys` keeps it.
+    Neither rule has a failure or an event (`Void`, `VoidEraRule "ENACT"`). The enact state's committee is still
+    the node's record: RATIFY and ENACT read it at the reference's `Committee` (`Committee.fromStored`). That read,
+    and the reading of a withdrawal's account, is a `VocabError` where it cannot be made. No state the node's codec
+    reads holds such a committee: the codec bounds its credentials, epochs and threshold as the reference's types do.
+    An imported state can hold such an account. The node's stored codec of an account takes the header's low nibble,
+    0 to 15, as its network, where the reference's decoder takes 0 and 1 only (`Address.hs:930-946`, 9df9f98c). So
+    ENACT of a withdrawal to network 2 is `VocabError.OutOfRange` of the network (`EraRatifyStoredSuite`); the
+    codec is frozen (FMT-1), and its bound is a separate decision.
+  - Evidence (`EraRatifySuite`, `EraRatifyConformanceSuite`, `EraRatifyStoredSuite`, `DijkstraRulesOracleSuite`):
+    - The upstream Conway cases the flat rules run reach the reference implementation's state through the era
+      rules, and the flat record of it: the four RATIFY transitions and six approval cases of `conway-ratify`, the
+      five RATIFY outcomes of `conway-governance-functional` and the ENACT case of `conway-enact`.
+    - At Dijkstra, every update of the Leios build's parameter corpus gives the pools' and DReps' thresholds of the
+      groups the build recorded for it, each body's threshold distinct. One change of each group, keys 47, 38,
+      39, and 55 with 56, is ratified when every body votes yes and refused when the DReps or the committee vote
+      no. The pools' no refuses it only where they vote. ENACT gives `applyPPUpdates`' parameters.
+    - Two cases of the Leios build, recorded on 2026-11-21: a pool's vote on a change of key 38, which GOV refuses
+      as `DisallowedVoters`, and on one of key 47, which it admits. The era's GOV gives the build's bytes on both;
+      the flat rules halt on their setup's pool registration.
+    - RATIFY over the pulser's snapshot of each recorded state reaches the stored ratification, and the flat
+      `Ratify` the stored flat record: `fixtures/haskell-state/conway-4593`, `fixtures/leios/state/conway-195`, the
+      native V10 fixtures `conway-native-730`, `eras/conway-729` and `eras/conway-730`,
+      `fixtures/leios/state/dijkstra-203` and `testnet-2168639`, and eight private states of the public Leios
+      testnet's replay windows, not published, among them window G's 1,533,582. Every one of these snapshots is
+      empty, so this binds the start, the treasury's reset and the record's reading only.
+    - `conway-195`, of the Leios devnet's epoch 0, starts from the translation's parameters. The chain starts in
+      Conway, and the Babbage to Conway translation completes the pulser over `mkEnactState`, the current
+      parameters from the current and the previous from the previous (`Conway/Translation.hs:70-85, 165-178`,
+      `Conway/Governance.hs:329-339, 449-458`, 9df9f98c). Consensus then injects the Alonzo genesis'
+      `extraConfig` cost models into the current parameters only (ouroboros-consensus 2416493b
+      `Cardano/Node.hs:843-865, 881-889`; cardano-ledger 9df9f98c `Conway/Transition.hs:161-169`,
+      `Alonzo/Transition.hs:63-82`). The stored enact state so holds the translation's parameters, made from the
+      devnet's genesis files: they differ from the state's current ones in the cost models only, field 15 of 31,
+      and equal the previous ones. From them RATIFY reaches the stored ratification exactly.
+    - Window G's 1,576,750, private: its pulser holds one action, the one its ratification enacted, a change of
+      keys 47 and 48. ENACT of it on the live current and previous parameters and the live roots gives exactly the
+      stored enact state's current and previous parameters and its roots, the parameter-update root advanced to
+      the action. Each is read from the state's bytes field by field: the parameters by the era's decoder
+      (`PParams.decodePParams`), the action by the era's reader of a stored proposal, the roots by the node's codec
+      of them at the era's types (`ConwayProposals.roots`). The flat codec refuses the state's proposal, and the
+      RATIFY of this snapshot is incomplete (CNF-2): its voting inputs at the epoch's start (the committee's
+      state, the accounts and the pools) are not stored, so they are not established from the later state. The
+      flat codec refuses window G's 1,555,188 too, whose live proposals hold the same change and whose snapshot is
+      empty; its RATIFY is incomplete likewise.
+    - Several voters in each body give the committee's, DReps' and pools' shares at, above and below each
+      threshold, an abstaining, expired or always-abstain voter not counted and a silent one counted as no. ENACT
+      keeps the previous parameters where they differ from the current ones before it.
+    - Properties: ENACT's withdrawals move their sum out of the treasury, and an action no body accepts is never
+      enacted and expires only past its last epoch (TST-6). 20,000 chained changes are enacted on a 256 KiB stack
+      (STK-3).
+  - Left for the next stages: the pulser on the era types, which makes the environment from the epoch state; the
+    epoch's governance steps; Dijkstra's tick; and the enact state's committee as the reference's `Committee`
+    (#85). The flat `Ratify` and `Enact` stay on the node's path.
 - **LEDGER and LEDGERS whole, with the reference's failures** (`era/rules/Ledger.scala`,
   `era/rules/LedgerFailures.scala`; `Conway/Rules/Ledger.hs`, `Conway/Rules/Ledgers.hs` and Shelley's
   `Rules/Ledger.hs` and `Rules/Ledgers.hs`, cardano-ledger f649f975, where 29a7d656 and 9df9f98c differ in derived
