@@ -108,7 +108,7 @@ enum Vote:
   case No, Yes, Abstain
 
 /** The update a parameter change holds ([[GovAction.ParameterChange]]), the `PParamsUpdate era` of
-  * its era (`libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs:224`, cardano-ledger
+  * its era (`libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs:230`, cardano-ledger
   * 9df9f98c): Conway's ([[ConwayParamUpdate]]), or, in a Dijkstra state of the Leios build's
   * layout, Dijkstra's when it sets a parameter Dijkstra adds ([[DijkstraKeysUpdate]]). An update of
   * a Dijkstra state that sets Conway's parameters alone, keys 0 to 33, which Dijkstra's

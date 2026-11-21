@@ -29,10 +29,11 @@ enum DijkstraNotYet extends DomainError:
     */
   case PoolParamsBlsKey
 
-  /** A parameter update of a governance proposal in a Dijkstra state that sets a parameter Dijkstra
-    * adds, update keys 34 to 56 (cardano-ledger 9df9f98c
-    * `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs:798-1123`): a proposal's update
-    * holds Conway's parameters only. Persisted formats.
+  /** A parameter update of a governance proposal in a Dijkstra state of the 11.1 layout that sets
+    * one of update keys 34 to 56, the keys the Leios build's Dijkstra adds (cardano-ledger 9df9f98c
+    * `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs:798-1123`); the 11.1 line's
+    * Dijkstra parameters are not those (cardano-ledger f649f975). The Leios build's layout reads
+    * and writes them. Persisted formats.
     */
   case ParameterUpdate
 
@@ -51,6 +52,6 @@ enum DijkstraNotYet extends DomainError:
     case PoolParamsBlsKey =>
       "a pool's BLS key is not read into the node's pool parameters, which have no place for it"
     case ParameterUpdate =>
-      "a Dijkstra parameter update in a governance proposal of the state is not read by this build"
+      "a Dijkstra parameter update in a governance proposal of an 11.1 state is not read by this build"
     case PerasEpochContext =>
       "a Peras epoch context with Dijkstra's voting committee is not read by this build"
