@@ -206,8 +206,12 @@ object HaskellImport:
             )
           yield (block, BlockRef(h.slot, h.hash, h.blockNo, h.isBoundary))
 
-    /** The source's Leios database into the store at `leios/` of the target, if it has one. */
-    val importLeios: F[Option[LeiosReferenceDb.Counts]] =
+    /** The source's Leios database read into a store staged beside `leios/` of the target, if it
+      * has one ([[RocksLeiosStore.staging]]): it replaces the target's store only once the blocks
+      * are imported, so a source the target's chain is not in leaves the target's endorser blocks
+      * as they were.
+      */
+    val importLeios: F[Option[RocksLeiosStore.Staged[F, LeiosReferenceDb.Counts]]] =
       given Raise[F, LeiosReferenceDb.Error] = new Raise[F, LeiosReferenceDb.Error]:
         def functor: Functor[F] = F
         def raise[E2 <: LeiosReferenceDb.Error, A](e: E2): F[A] =
@@ -223,7 +227,7 @@ object HaskellImport:
           // reference's pending copies and sweeps are imported as they are, and the node's next
           // open of the store resumes them
           RocksLeiosStore
-            .replacing[F, LeiosReferenceDb.Counts](config.db / "leios", leiosLocks)(
+            .staging[F, LeiosReferenceDb.Counts](config.db / "leios", leiosLocks)(
               LeiosReferenceDb.importInto[F](config.haskellDb, _)
             )
             .map(Some(_))
@@ -244,13 +248,14 @@ object HaskellImport:
           chunkSlots = config.chunkSlots.value
         )
         _ <- NetworkIdentityFile.admit[F](config.db, config.identity, admission)
-        // the Leios database first, then the blocks
+        // the Leios database staged first, then the blocks, then the staged store published: a
+        // source the target's chain is not in, or a block it refuses, leaves the target's store
         leios <- importLeios
         reader = HaskellImmutableReader[F](config.haskellDb / "immutable", config.chunkSlots)
         truncation <- cats.effect.Ref.of[F, Option[(ChunkNo, Truncation)]](None)
         chunkCount <- cats.effect.Ref.of[F, Int](0)
         beyond <- cats.effect.Ref.of[F, Boolean](false)
-        result <- FileImmutableStore.open[F](config.db / "immutable").use { (store, _) =>
+        imported = FileImmutableStore.open[F](config.db / "immutable").use { (store, _) =>
           def step(st: State, b: HaskellBlock): F[State] =
             decode(b).flatMap { (block, ref) =>
               val h = block.header
@@ -323,6 +328,10 @@ object HaskellImport:
             newTip <- store.tip
           yield (last, newTip)
         }
+        result <- F.guaranteeCase(imported)(outcome =>
+          F.unlessA(outcome.isSuccess)(leios.traverse_(_.discard))
+        )
+        _ <- leios.traverse_(_.publish)
         (state, newTip) = result
         finished <- Clock[F].monotonic
         dropped <- truncation.get
@@ -336,6 +345,6 @@ object HaskellImport:
         stopped,
         dropped,
         finished - began,
-        leios
+        leios.map(_.value)
       )
     }

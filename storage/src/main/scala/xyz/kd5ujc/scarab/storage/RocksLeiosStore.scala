@@ -1214,6 +1214,25 @@ object RocksLeiosStore:
   private[storage] def replacing[F[_]: Async, A](dir: Path, locks: LeiosStoreLocks[F])(
       fill: RocksLeiosStore[F] => F[A]
   )(using Raise[F, LeiosStoreError]): F[A] =
+    staging[F, A](dir, locks)(fill).flatMap(staged => staged.publish.as(staged.value))
+
+  /** A store built at [[importStage]] by `fill` and not yet in place of the one in `dir`:
+    * [[publish]] puts it there, as [[replacing]] does; [[discard]] removes it, and the store in
+    * `dir` stays as it was. Until one of them runs, the store in `dir` is untouched.
+    */
+  private[storage] final class Staged[F[_], A](
+      val value: A,
+      val publish: F[Unit],
+      val discard: F[Unit]
+  )
+
+  /** [[replacing]] up to its publication: the store is built at [[importStage]] by `fill` (what an
+    * interrupted import left there removed first), and published or discarded by the caller once it
+    * knows whether the import it belongs to succeeds.
+    */
+  private[storage] def staging[F[_]: Async, A](dir: Path, locks: LeiosStoreLocks[F])(
+      fill: RocksLeiosStore[F] => F[A]
+  )(using Raise[F, LeiosStoreError]): F[Staged[F, A]] =
     val F = Async[F]
     val nio = dir.toNioPath
     val stage = importStage(nio)
@@ -1221,24 +1240,24 @@ object RocksLeiosStore:
       F.blocking(body).attempt.flatMap(_.fold(e => LeiosStoreError.Io(e).raise[F, B], F.pure))
     def cleared(path: java.nio.file.Path): F[Unit] =
       io(if Files.exists(path) then RocksUtxoStore.deleteTree(path))
+    // the stage's own lock file, once nothing holds it
+    val unlocked = F.blocking(Files.deleteIfExists(lockFile(stage))).attempt.void
+    val publish = F.uncancelable(poll =>
+      firstOpen[F, Unit](
+        dir,
+        locks,
+        target => F.blocking(syncParent(target)),
+        channel => F.blocking(Option(channel.tryLock())),
+        poll
+      )(
+        cleared(nio) *> io(Files.move(stage, nio, StandardCopyOption.ATOMIC_MOVE)) *>
+          io(syncParent(nio))
+      )
+    ) *> unlocked
     for
       _ <- cleared(stage)
       filled <- verbatim[F](Path.fromNioPath(stage), locks).use(fill)
-      _ <- F.uncancelable(poll =>
-        firstOpen[F, Unit](
-          dir,
-          locks,
-          target => F.blocking(syncParent(target)),
-          channel => F.blocking(Option(channel.tryLock())),
-          poll
-        )(
-          cleared(nio) *> io(Files.move(stage, nio, StandardCopyOption.ATOMIC_MOVE)) *>
-            io(syncParent(nio))
-        )
-      )
-      // the stage's own lock file, once nothing holds it
-      _ <- F.blocking(Files.deleteIfExists(lockFile(stage))).attempt.void
-    yield filled
+    yield Staged(filled, publish, cleared(stage) *> unlocked)
 
   /** [[resource]], attempting the first open's lock with `attemptLock`. */
   private[storage] def resourceWith[F[_]: Async](

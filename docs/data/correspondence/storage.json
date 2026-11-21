@@ -2752,11 +2752,16 @@
    ]
   },
   {
-   "reason": "how an import of the reference's SQLite files keeps them whole, which the reference, having no import, does not have: each file read inside one read transaction, so each partition is that file at one moment, and the store it fills built apart and published in place of the previous one once both files are read, so an import again never merges into what an earlier one left",
+   "reason": "how an import of the reference's SQLite files keeps them whole, which the reference, having no import, does not have: each file read inside one read transaction, so each partition is that file at one moment, and the store it fills built apart and published in place of the previous one once both files are read (by `import-haskell-db` only once the blocks are imported, so a source the target's chain is not in leaves the target's store), so an import again never merges into what an earlier one left",
    "definitions": [
     "def storage.leios.LeiosReferenceDb.snapshot",
     "def storage.RocksLeiosStore.importStage",
-    "def storage.RocksLeiosStore.replacing"
+    "def storage.RocksLeiosStore.replacing",
+    "def storage.RocksLeiosStore.staging",
+    "class storage.RocksLeiosStore.Staged",
+    "val storage.RocksLeiosStore.Staged#value",
+    "val storage.RocksLeiosStore.Staged#publish",
+    "val storage.RocksLeiosStore.Staged#discard"
    ]
   },
   {
