@@ -31,7 +31,8 @@ import xyz.kd5ujc.scarab.ledger.rules.{EraNes, Globals, Hfc}
 import xyz.kd5ujc.scarab.ledger.state.{Conway, Dijkstra, NewEpochState, ShelleyBasedEra, SlotNo}
 import xyz.kd5ujc.scarab.node.read.{ChainRead, ConwayView, InEra, TxClock}
 import xyz.kd5ujc.scarab.node.read.MirrorEraRead
-import xyz.kd5ujc.scarab.node.mempool.{Entry, Mempool, MempoolLedger, MempoolState, Rejection}
+import xyz.kd5ujc.scarab.node.mempool.{Capacity, Entry, Mempool, MempoolLedger, MempoolState}
+import xyz.kd5ujc.scarab.node.mempool.Rejection
 import xyz.kd5ujc.scarab.protocol.{ChainSync, ReferenceBuild}
 import xyz.kd5ujc.scarab.storage.UtxoStore
 import scala.concurrent.duration.*
@@ -271,6 +272,10 @@ trait ForgeEvents[F[_]]:
   *   The ledger a block's transactions in a slot on a predecessor are selected against: the ticked
   *   ledger itself, but in a test that needs one no chain state holds (a parameter beyond the
   *   state's range, so that the selection withholds a transaction).
+  * @param dijkstraSnapshots
+  *   The pool's snapshot of a slot a Dijkstra ranking block takes its transactions from
+  *   ([[BlockBuilder.ranking]]): none, while the pool admits no Dijkstra transaction
+  *   ([[DijkstraSnapshots.unadmitted]]).
   */
 final class Forger[F[_]: Async, S](
     config: PraosConfig,
@@ -296,7 +301,8 @@ final class Forger[F[_]: Async, S](
     chains: Signal[F, VolatileChain[S]],
     shared: Forger.Shared[F],
     pause: Forger.Point => F[Unit],
-    selectionLedger: (BigInt, ChainSync.Point, MempoolLedger) => MempoolLedger
+    selectionLedger: (BigInt, ChainSync.Point, MempoolLedger) => MempoolLedger,
+    dijkstraSnapshots: DijkstraSnapshots[F]
 )(using
     chain: Stateful[F, VolatileChain[S]],
     read: ChainRead[S],
@@ -1412,12 +1418,22 @@ final class Forger[F[_]: Async, S](
       snapshot <- perform(mempool.snapshot)
       selected <- ticked match
         case Forger.Ticked.InConway(ledger) =>
-          perform(select(context.base, slot, epoch, ledger, snapshot))
-        // Dijkstra's transaction selection is not built yet: its block is the minimal one, with
-        // no transactions, and the pool keeps them (#54)
-        case Forger.Ticked.InDijkstra(_) =>
-          proceed((Vector.empty[(Entry, BlockBuilder.Piece)], Map.empty[Bytes, Rejection]))
-      (chosen, withheld) = selected
+          perform(select(context.base, slot, epoch, ledger, snapshot)).map((chosen, withheld) =>
+            (BlockBuilder.Assembly.InConway(BlockBuilder.body(chosen.map(_._2))), withheld)
+          )
+        // the pool's snapshot of the slot, partitioned for the ranking block; this forger
+        // certifies no endorser block yet, so the block takes its transactions (#54)
+        case Forger.Ticked.InDijkstra(nes) =>
+          perform(dijkstraSnapshots.forSlot(nes, slot)).map(held =>
+            (
+              BlockBuilder.Assembly.dijkstra(
+                BlockBuilder.ranking(held, Capacity.dijkstraBlockUnit(ticked.params)).transactions,
+                None
+              ),
+              Map.empty[Bytes, Rejection]
+            )
+          )
+      (body, withheld) = selected
       _ <- perform(hold.withdrawal(withheld))
       _ <- hold.say(
         ForgeTrace.ForgingMempoolSnapshot(
@@ -1427,11 +1443,9 @@ final class Forger[F[_]: Async, S](
           snapshot.tipSlot + 1
         )
       )
-      ids = chosen.map(_._1.id)
+      ids = body.ids
       _ <- perform(pause(Forger.Point.Signing(slot)))
-      signed <- perform(
-        assemble(context, forecastable, ticked, cert, vrf, chosen.map(_._2), admitted)
-      )
+      signed <- perform(assemble(context, forecastable, ticked.params, cert, vrf, body, admitted))
         .flatMap(_.fold(disabled)(proceed))
         .flatMap(_.fold(_ => unpublished, proceed))
         .flatMap(_.fold(d => hold.defect(slot, epoch, d, ids), proceed))
@@ -1665,19 +1679,16 @@ final class Forger[F[_]: Async, S](
   private def assemble(
       context: Forger.Context[S],
       forecastable: Forecastable,
-      ticked: Forger.Ticked,
+      params: ProtocolParams,
       cert: VrfCert,
       vrf: Draft03Prover.SigningKey,
-      pieces: Vector[BlockBuilder.Piece],
+      body: BlockBuilder.Assembly,
       admitted: Option[Admitted]
   )(using
       Handle[F, NodeError],
       Raise[F, Fatal]
   ): F[Option[Either[NotAdmitted, Either[ForgeDefect, (Forger.Built, Long)]]]] =
     val slot = forecastable.slot
-    val body = ticked match
-      case Forger.Ticked.InConway(_)   => BlockBuilder.Assembly.InConway(BlockBuilder.body(pieces))
-      case Forger.Ticked.InDijkstra(_) => BlockBuilder.Assembly.minimalDijkstra
     val kesPeriod = kesPeriodOf(slot)
     def signedWith(c: PoolCredentials)(using
         Raise[F, Fatal]
@@ -1724,8 +1735,8 @@ final class Forger[F[_]: Async, S](
           else signedWith(c).map(signed => Some(signed -> generation))
         }
         .map(_.flatten)
-    if body.size > ticked.params.maxBlockBodySize then
-      F.pure(Some(Right(Left(ForgeDefect.BodySize(body.size, ticked.params.maxBlockBodySize)))))
+    if body.size > params.maxBlockBodySize then
+      F.pure(Some(Right(Left(ForgeDefect.BodySize(body.size, params.maxBlockBodySize)))))
     else
       assembled.flatMap(
         _.traverse((signed, generation) =>
@@ -2587,6 +2598,9 @@ object Forger:
     * @param enabled
     *   Forge from the start; false starts with forging disabled (`--start-as-non-producing-node`,
     *   see [[HotKeys.create]]).
+    * @param dijkstraSnapshots
+    *   Where a Dijkstra ranking block's transactions come from; none: the node's,
+    *   [[DijkstraSnapshots.unadmitted]].
     */
   def create[F[_]: Async, S](
       config: PraosConfig,
@@ -2607,7 +2621,8 @@ object Forger:
       enabled: Boolean = true,
       chains: Option[Signal[F, VolatileChain[S]]] = None,
       pause: Option[Point => F[Unit]] = None,
-      selectionLedger: Option[(BigInt, ChainSync.Point, MempoolLedger) => MempoolLedger] = None
+      selectionLedger: Option[(BigInt, ChainSync.Point, MempoolLedger) => MempoolLedger] = None,
+      dijkstraSnapshots: Option[DijkstraSnapshots[F]] = None
   )(using
       Stateful[F, VolatileChain[S]],
       ChainRead[S],
@@ -2649,6 +2664,7 @@ object Forger:
         chains.getOrElse(follower.committedChain),
         shared,
         pause.getOrElse(_ => Async[F].unit),
-        selectionLedger.getOrElse((_, _, ticked) => ticked)
+        selectionLedger.getOrElse((_, _, ticked) => ticked),
+        dijkstraSnapshots.getOrElse(DijkstraSnapshots.unadmitted[F])
       )
     }

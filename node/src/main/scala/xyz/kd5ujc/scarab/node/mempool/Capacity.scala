@@ -11,9 +11,12 @@ import xyz.kd5ujc.scarab.ledger.{
   Tx,
   UtxoFailure
 }
+import xyz.kd5ujc.scarab.codec.DomainError
+import xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraTx
+import xyz.kd5ujc.scarab.ledger.rules.DijkstraTxMeasures
 import xyz.kd5ujc.scarab.network.Word32
 import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.TxMeasure
-import xyz.kd5ujc.scarab.protocol.Era
+import xyz.kd5ujc.scarab.protocol.{Era, LeiosFetch}
 
 /** What a transaction counts for in the mempool, and how much the mempool may hold: the measures of
   * `ouroboros-consensus-cardano` `Shelley/Ledger/Mempool.hs` (`txInBlockSize`, `txMeasureAlonzo`,
@@ -64,6 +67,100 @@ object Capacity:
     */
   def of(ledger: PoolLedger, capacityOverride: Option[Word32]): TxMeasure =
     blocks(Shape.of(ledger.era).project(blockUnit(ledger.params)), capacityOverride)
+
+  /** `blockCapacityTxMeasure` of Dijkstra (`TxLimits (ShelleyBlock p DijkstraEra)`,
+    * ouroboros-consensus 2416493b
+    * `ouroboros-consensus-cardano/src/shelley/Ouroboros/Consensus/Shelley/Ledger/Mempool.hs:980-994`):
+    * Conway's `blockCapacityConwayMeasure` (`:759-773`), the body size less
+    * [[FixedBlockBodyOverhead]] and the block's execution units (`blockCapacityAlonzoMeasure`,
+    * `txsMaxBytes`, `:433-443, 641-652`), and the reference-script bytes of a block, which Dijkstra
+    * reads from its parameters (`ppMaxRefScriptSizePerBlockG = ppLensHKD .
+    * hkdMaxRefScriptSizePerBlockL`, cardano-ledger 9df9f98c
+    * `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs:1195`) where Conway's is the
+    * constant of [[blockUnit]]. What one ranking block takes from the pool.
+    */
+  def dijkstraBlockUnit(params: ProtocolParams): TxMeasure =
+    TxMeasure(
+      (params.maxBlockBodySize - FixedBlockBodyOverhead).max(0).toLong,
+      params.maxBlockExUnits.mem,
+      params.maxBlockExUnits.steps,
+      params.maxRefScriptSizePerBlock.toLong
+    )
+
+  /** The parameters' `maxEndorserBlockReferencesSize` is more than the LeiosFetch codec's message
+    * limit can carry (`maxLeiosEbBytesSize`, [[LeiosFetch.MaxEbBytes]]): `guardLeiosWireLimit`
+    * (ouroboros-consensus 2416493b `Shelley/Ledger/Mempool.hs:924-939`) fails hard there, when the
+    * mempool's capacity is first computed from such parameters, and the node stops.
+    */
+  final case class EndorserBlockReferencesOverWire(parameter: BigInt, wire: Int) extends DomainError
+
+  /** `mempoolEbReservation` of `ebCapacityTxMeasure` under Dijkstra: the closure part of
+    * `leiosEndorserBlockCapacity` (ouroboros-consensus 2416493b `Shelley/Ledger/Mempool.hs:886-913,
+    * 994-995`), the transaction bytes, the execution units and the reference-script bytes one
+    * endorser block may hold (`maxEndorserBlockTxsSize`, `maxEndorserBlockExUnits`,
+    * `maxRefScriptSizePerEndorserBlock`), unscaled: the scale of the forger's share applies to an
+    * endorser block it forges, not to the pool (`computeMempoolCapacity`,
+    * `Mempool/Capacity.hs:69-82`). The capacity passes `guardLeiosWireLimit` first, as the
+    * reference's pattern on the record forces it ([[EndorserBlockReferencesOverWire]]).
+    */
+  def endorserBlockReservation(
+      params: ProtocolParams
+  ): Either[EndorserBlockReferencesOverWire, TxMeasure] =
+    Either.cond(
+      params.maxEndorserBlockReferencesSize <= LeiosFetch.MaxEbBytes,
+      TxMeasure(
+        params.maxEndorserBlockTxsSize.toLong,
+        params.maxEndorserBlockExUnits.mem,
+        params.maxEndorserBlockExUnits.steps,
+        params.maxRefScriptSizePerEndorserBlock.toLong
+      ),
+      EndorserBlockReferencesOverWire(params.maxEndorserBlockReferencesSize, LeiosFetch.MaxEbBytes)
+    )
+
+  /** `computeMempoolCapacity` under Dijkstra (ouroboros-consensus 2416493b
+    * `ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Mempool/Capacity.hs:69-95`):
+    * the unit is one ranking block ([[dijkstraBlockUnit]]) plus one endorser block's reservation
+    * ([[endorserBlockReservation]]), and the override is counted in units of their bytes together,
+    * as [[of]] counts Conway's, and exactly, as [[of]] is, where the reference adds and multiplies
+    * in `Word32` (the same approved deviation). The pool has no ledger of Dijkstra yet
+    * ([[PoolLedger.of]]), so no pool is bounded by this until it admits Dijkstra's transactions.
+    */
+  def ofDijkstra(
+      params: ProtocolParams,
+      capacityOverride: Option[Word32]
+  ): Either[EndorserBlockReferencesOverWire, TxMeasure] =
+    endorserBlockReservation(params).map(eb =>
+      blocks(dijkstraBlockUnit(params) + eb, capacityOverride)
+    )
+
+  /** The measure a Dijkstra transaction is admitted with and keeps (`txMeasure` of
+    * `TxLimits (ShelleyBlock p DijkstraEra)`, ouroboros-consensus 2416493b
+    * `Shelley/Ledger/Mempool.hs:980-987`): `txMeasureAlonzo` 's size, [[DijkstraTx.size]] plus
+    * [[PerTxOverhead]] (`txInBlockSize`, `:445-458`), and execution units, `totExUnits`, which is
+    * `getTotalExUnits` (cardano-ledger 9df9f98c
+    * `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Tx.hs:510-515`) and in Dijkstra counts the
+    * sub-transactions' redeemers too (`Dijkstra/Tx.hs:417-421`,
+    * [[DijkstraTxMeasures.totalExUnits]]); and `txMeasureRefScripts` 's `refScriptBytes`
+    * (`Mempool.hs:775-798`), the top-level body's only ([[dijkstraRefScriptBytes]]). The checks of
+    * the three against `maxTxSize`, `maxTxExUnits` and `maxRefScriptSizePerTx` are admission's,
+    * with Dijkstra's failures, and are not here.
+    */
+  def dijkstraMeasure(tx: DijkstraTx, refScriptBytes: Long): TxMeasure =
+    val units = DijkstraTxMeasures.totalExUnits(tx)
+    TxMeasure(tx.size + PerTxOverhead, units.mem, units.steps, refScriptBytes)
+
+  /** `txNonDistinctRefScriptsSize` as the mempool's measure reads it (cardano-ledger 9df9f98c
+    * `eras/conway/impl/src/Cardano/Ledger/Conway/UTxO.hs:160-170`, from
+    * `Shelley/Ledger/Mempool.hs:789`, ouroboros-consensus 2416493b): the reference scripts of the
+    * transaction's own inputs and reference inputs, not its sub-transactions', which LEDGER's
+    * `batchNonDistinctRefScriptsSize` counts. `size` names the reference script of an output of the
+    * UTxO set the pool holds the transaction against.
+    */
+  def dijkstraRefScriptBytes(
+      size: xyz.kd5ujc.scarab.ledger.TxIn => Option[Long],
+      tx: DijkstraTx
+  ): Long =
+    DijkstraTxMeasures.refScriptsSize(size, tx.body)
 
   private def blocks(unit: TxMeasure, capacityOverride: Option[Word32]): TxMeasure =
     val count = capacityOverride.fold(DefaultBlocks) { o =>

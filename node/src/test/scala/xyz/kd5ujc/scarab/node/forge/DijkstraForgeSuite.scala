@@ -36,7 +36,10 @@ import xyz.kd5ujc.scarab.ledger.state.{
   VRFVerKeyHash,
   Word64
 }
+import xyz.kd5ujc.scarab.network.Word32
+import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.TxMeasure
 import xyz.kd5ujc.scarab.node.{NodeHeaderRules, NodeHeaderState, NodeSetup}
+import xyz.kd5ujc.scarab.node.mempool.Capacity
 import xyz.kd5ujc.scarab.node.read.InEra
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.protocol.{Era, HfcHeader, NtNHeader, ReferenceBuild}
@@ -53,6 +56,11 @@ import xyz.kd5ujc.scarab.protocol.StateLayout
   * The steps are the forger's own ([[Forger.ledgerAt]], [[Forger.leaderView]], [[Forger.inputsOf]],
   * [[Leadership.check]], [[Forger.tickedTo]], [[BlockBuilder.Assembly]]); only the KES signature is
   * made here, by the same `sign` the forger calls.
+  *
+  * Two blocks are forged: the minimal one, and a ranking block with the 40 transactions of the
+  * testnet's block 64,853, taken from a snapshot of the pool ([[DijkstraSnapshot]],
+  * [[BlockBuilder.ranking]]) within the capacity of Dijkstra's parameters in the state
+  * ([[Capacity.dijkstraBlockUnit]]), whose body must be the recorded block's, byte for byte.
   *
   * Checked: the header through the peer's ChainSync path and Praos2's rules ([[NodeHeaderRules]]),
   * the block through BlockFetch's `blockMatchesHeader` ([[BlockTransport.check]]) and the body
@@ -167,7 +175,8 @@ class DijkstraForgeSuite extends munit.FunSuite:
     val view = Forger.leaderView(ledger, injected.protocol, epoch)
     Forger.inputsOf(geometry, epoch, view, poolId, setup.praos.activeSlotsCoeff, vrf)
 
-  private lazy val forged: Forged =
+  /** The first slot the test pool leads, its certificate, and the state ticked into it. */
+  private lazy val led: (BigInt, xyz.kd5ujc.scarab.ledger.VrfCert, Forger.Ticked) =
     val window = (tip.slot + 1) until (tip.slot + 1 + geometry.stabilityWindow.toBigInt)
     val (slot, cert) = window.iterator
       .filter(s => geometry.epochOf(s) == epoch)
@@ -183,9 +192,12 @@ class DijkstraForgeSuite extends munit.FunSuite:
       )
       .fold(e => fail(e.message), identity)
     ticked match
-      case Forger.TipLedger.InDijkstra(_) => ()
-      case other                          => fail(s"ticked out of Dijkstra: $other")
-    val body = BlockBuilder.Assembly.minimalDijkstra
+      case Forger.TipLedger.InDijkstra(nes) => (slot, cert, Forger.Ticked.InDijkstra(nes))
+      case other                            => fail(s"ticked out of Dijkstra: $other")
+
+  /** The block of `body` forged in the test pool's slot, as [[Forger]]'s `assemble` builds it. */
+  private def forge(body: BlockBuilder.Assembly): Forged =
+    val (slot, cert, _) = led
     val period = slot / setup.praos.slotsPerKesPeriod
     val headerBody = body.headerBody(
       tip.blockNo + 1,
@@ -200,6 +212,8 @@ class DijkstraForgeSuite extends munit.FunSuite:
     val raw = body.block(headerBody, kes.sign(headerBody))
     val header = LeiosBlock.decode(raw).fold(e => fail(e.message), _.header)
     Forged(slot, raw, header)
+
+  private lazy val forged: Forged = forge(BlockBuilder.Assembly.minimalDijkstra)
 
   // --- the checks a peer's block meets -------------------------------------------------------
 
@@ -319,4 +333,118 @@ class DijkstraForgeSuite extends munit.FunSuite:
         release.toString
       )
     }
+  }
+
+  // --- a ranking block with transactions ------------------------------------------------------
+
+  /** Block 64,853 of the testnet (`announcing-with-txs` of `blocks-rc-2026w44.tsv`), which the
+    * reference forged with 40 transactions in its body and an endorser block announced, and its
+    * body's bytes as the block holds them.
+    */
+  private lazy val recorded: (LeiosBlock, Bytes) =
+    val raw = rows(leios.resolve("testnet/blocks-rc-2026w44.tsv")).collectFirst {
+      case r if r(0) == "announcing-with-txs" => hex(r(5))
+    }.get
+    val body = Cbor.decode(raw).fold(e => fail(e.toString), identity).value match
+      case Value.Arr(Vector(_, block)) =>
+        block.value match
+          case Value.Arr(Vector(_, b)) => b.original
+          case other                   => fail(s"not [header, body]: $other")
+      case other => fail(s"not [tag, block]: $other")
+    (LeiosBlock.decode(raw).fold(e => fail(e.message), identity), body)
+
+  private def word32(n: Long): Word32 = Word32.fromLong(n).getOrElse(fail(s"not a Word32: $n"))
+
+  /** The parameters of the slot the test pool forges in. */
+  private lazy val params = led._3.params
+
+  /** Block 64,853's transactions as a snapshot of the pool would hold them, oldest first, each with
+    * the measure admission gives it ([[Capacity.dijkstraMeasure]]). The block is from slot
+    * 1,455,869 and the only state here is of slot 2,168,639, whose UTxO set no longer holds the
+    * outputs its transactions spend: they are not revalidated here, and their reference-script
+    * bytes, measured against the UTxO set at admission, are taken as none. The revalidation is the
+    * pool's ([[DijkstraSnapshot]]).
+    */
+  private lazy val snapshot: DijkstraSnapshot =
+    DijkstraSnapshot(
+      recorded._1.transactions.map(tx => DijkstraHeld(tx, Capacity.dijkstraMeasure(tx, 0L)))
+    )
+
+  test("a ranking block's capacity is the testnet's, from Dijkstra's parameters") {
+    // `blockCapacityConwayMeasure` at Dijkstra: 90,112 less 1,024 bytes, the block's units, and
+    // the parameters' 1 MiB of reference scripts
+    assertEquals(
+      Capacity.dijkstraBlockUnit(params),
+      TxMeasure(89088L, BigInt(72000000), BigInt(20000000000L), 1048576L)
+    )
+    // the closure part of an endorser block's capacity, as the pool reserves it: the parameters
+    // of the state as Scarab decodes it, which differ from both genesis files' (260,000 bytes,
+    // 720,000,000 and 2e11 units, 1 MiB); no other recording holds them, so they are pinned here,
+    // not confirmed against the reference
+    val eb = TxMeasure(2000000L, BigInt(2160000000L), BigInt(600000000000L), 12000000L)
+    // within the LeiosFetch limit of 600,000 bytes, so the wire guard passes
+    assertEquals(params.maxEndorserBlockReferencesSize, BigInt(308000))
+    assertEquals(Capacity.endorserBlockReservation(params), Right(eb))
+    // the pool holds two of each, and an override is counted in units of both
+    val unit = Capacity.dijkstraBlockUnit(params) + eb
+    assertEquals(Capacity.ofDijkstra(params, None), Right(unit + unit))
+    assertEquals(
+      Capacity.ofDijkstra(params, Some(word32(unit.bytes * 2 + 1))).map(_.bytes),
+      Right(unit.bytes * 3)
+    )
+    assertEquals(Capacity.ofDijkstra(params, Some(word32(1))), Right(unit))
+  }
+
+  test("block 64,853's transactions measure as the reference's sizes, and fit one ranking block") {
+    val txs = recorded._1.transactions
+    assertEquals(txs.size, 40)
+    // `sizeTxF` writes the three memoized parts under a one-byte head, the block form also the flag
+    txs.foreach(tx => assertEquals(tx.size, tx.forBlockInclusion.size.toLong - 1, tx.id.hex))
+    val total = snapshot.held.map(_.measure).reduce(_ + _)
+    assertEquals(total.bytes, txs.map(_.size + Capacity.PerTxOverhead).sum)
+    val ranking = BlockBuilder.ranking(snapshot, Capacity.dijkstraBlockUnit(params))
+    assertEquals(ranking.transactions, txs)
+    assertEquals(ranking.used, total)
+    assert(Capacity.fits(total)(Capacity.dijkstraBlockUnit(params)), total)
+  }
+
+  test("the forged body of block 64,853's transactions is the reference's, byte for byte") {
+    val ranking = BlockBuilder.ranking(snapshot, Capacity.dijkstraBlockUnit(params))
+    val (block, recordedBody) = recorded
+    BlockBuilder.Assembly.dijkstra(ranking.transactions, None) match
+      case BlockBuilder.Assembly.InDijkstra(body) =>
+        assertEquals(body.encode, recordedBody)
+        assertEquals(body.hash, block.header.bodyHash)
+        assertEquals(BigInt(body.size), block.header.bodySize)
+      case other => fail(s"not a Dijkstra body: $other")
+  }
+
+  test(
+    "a ranking block forged with transactions passes Praos2's header rules and the block checks"
+  ) {
+    val ranking = BlockBuilder.ranking(snapshot, Capacity.dijkstraBlockUnit(params))
+    val body = BlockBuilder.Assembly.dijkstra(ranking.transactions, None)
+    val withTxs = forge(body)
+    assertEquals(BigInt(body.size), withTxs.header.bodySize)
+    assert(body.size <= params.maxBlockBodySize, body.size)
+    assertEquals(body.ids, recorded._1.transactions.map(_.id))
+    val start = rules.at(injected) match
+      case s: NodeHeaderState.Shelley => s.copy(previous = Some(tip))
+      case other                      => fail(s"not a Shelley header state: $other")
+    val header = received(withTxs.header.raw)
+    rules.validate(injected, Some(tip), start, header) match
+      case Outcome.Valid(_) => ()
+      case other            => fail(s"slot ${withTxs.slot}: $other")
+    BlockTransport.check(header, withTxs.raw).fold(e => fail(e.message), identity) match
+      case d: Block.Dijkstra =>
+        assertEquals(d.block.faults, Vector.empty)
+        assertEquals(d.block.transactions, recorded._1.transactions)
+        assertEquals(d.block.body.encode, recorded._2)
+      case other => fail(s"not a Dijkstra block: $other")
+    assertEquals(withTxs.header.leios.blockBodyContainsLeiosCert, false)
+    assertEquals(withTxs.header.leios.announcement, None)
+    assertEquals(
+      Block.decode(withTxs.raw, geometry.byron.epochSlots).map(_.era),
+      Right(Era.Dijkstra)
+    )
   }

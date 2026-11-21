@@ -125,6 +125,26 @@
    ],
    "digest": "8251fb7cc8eb9943"
   },
+  "def ledger.dijkstra.DijkstraTx#size": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Tx.hs",
+     "symbol": "sizeDijkstraTxF",
+     "lines": [
+      297,
+      320
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraSelectionSuite"
+   ],
+   "digest": "4d321466838ee53f"
+  },
   "class ledger.LeiosBlockBody": {
    "upstream": [
     {

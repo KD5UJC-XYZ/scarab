@@ -11,6 +11,8 @@ import xyz.kd5ujc.scarab.ledger.{LeiosBlock, LeiosBlockBody, LeiosHeader}
 import xyz.kd5ujc.scarab.ledger.{LeiosHeaderBody, LeiosHeaderFields}
 import xyz.kd5ujc.scarab.ledger.{LedgerGlobals, PosixClock, ProtocolParams, RefScripts, TxEnv}
 import xyz.kd5ujc.scarab.ledger.rules.Globals
+import xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraTx
+import xyz.kd5ujc.scarab.crypto.bls.Certificate
 import xyz.kd5ujc.scarab.plutus.{ExUnits, ScriptDecoder, ScriptEvaluator}
 import cats.Id
 import xyz.kd5ujc.scarab.protocol.Era
@@ -19,9 +21,10 @@ import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.TxMeasure
 import xyz.kd5ujc.scarab.node.mempool.{Capacity, Entry, MempoolLedger}
 
 /** Block assembly, pure: choose the transactions that fit the protocol limits, encode the body, the
-  * header body and the block. Conway's as below; in the Leios build also Dijkstra's minimal block
-  * ([[Assembly]], [[leiosHeaderBody]]). Every function is deterministic in its arguments; the
-  * effects (clock, mempool, KES evolution, adoption) live in [[Forger]].
+  * header body and the block. Conway's as below; in the Leios build also Dijkstra's ranking block,
+  * its transactions taken from the pool's snapshot ([[ranking]], [[Assembly]],
+  * [[leiosHeaderBody]]). Every function is deterministic in its arguments; the effects (clock,
+  * mempool, KES evolution, adoption) live in [[Forger]].
   *
   * The encodings are the reference's: the block is `[7, [header, [tx_body], [witness_set], {index:
   * auxiliary_data}, [invalid_index]]]`, the header `[header_body, kes_sig]` and `header_body` the
@@ -405,9 +408,78 @@ object BlockBuilder:
         LeiosBlock.encode(LeiosHeader.signed(headerBody, kesSignature), b.encode)
 
   object Assembly:
-    /** The body of the minimal Dijkstra block: no transactions and neither certificate, as the
-      * reference forges it with an empty mempool and nothing to certify (`mkBody`,
-      * ouroboros-consensus 2416493b `Shelley/Ledger/Forge.hs:152-160`). Dijkstra's transaction
-      * selection is not built yet (#54).
+    /** The body of a Dijkstra ranking block, `mkBody` (ouroboros-consensus 2416493b
+      * `ouroboros-consensus-cardano/src/shelley/Ouroboros/Consensus/Shelley/Ledger/Forge.hs:146-160`):
+      * a block that certifies an endorser block carries the certificate and no transactions, as the
+      * certified closure is its transaction sequence at application; any other carries the
+      * transactions taken for it ([[ranking]]) and no certificate. No Peras certificate is forged
+      * (`fbPerasCert = Nothing`, `NodeKernel/Forge.hs:238`).
       */
-    val minimalDijkstra: Assembly = InDijkstra(LeiosBlockBody(Vector.empty, None, None))
+    def dijkstra(
+        transactions: Vector[DijkstraTx],
+        leiosCertificate: Option[Certificate]
+    ): Assembly =
+      InDijkstra(
+        LeiosBlockBody(
+          leiosCertificate.fold(transactions)(_ => Vector.empty),
+          leiosCertificate,
+          None
+        )
+      )
+
+    /** The body of the minimal Dijkstra block: no transactions and neither certificate, as the
+      * reference forges it with an empty mempool and nothing to certify.
+      */
+    val minimalDijkstra: Assembly = dijkstra(Vector.empty, None)
+
+  /** `Data.Measure` 's operations a split of the pool's sequence needs (`zero`, `plus` and the
+    * pointwise `<=`, `Data.Measure` of the `measures` package that ouroboros-consensus 2416493b
+    * builds on, `Mempool/TxSeq.hs:39-40`).
+    */
+  trait Measure[M]:
+    def zero: M
+    def plus(a: M, b: M): M
+
+    /** Within `limit` in every component. */
+    def within(m: M, limit: M): Boolean
+
+  object Measure:
+    given Measure[TxMeasure] with
+      def zero: TxMeasure = TxMeasure.zero
+      def plus(a: TxMeasure, b: TxMeasure): TxMeasure = a + b
+      def within(m: TxMeasure, limit: TxMeasure): Boolean = Capacity.fits(m)(limit)
+
+  /** `splitAfterTxSize` (ouroboros-consensus 2416493b
+    * `ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Mempool/TxSeq.hs:211-231`, by
+    * its specification `splitAfterTxSizeSpec`, `:239-263`): the longest prefix of `items` whose
+    * measures add up to no more than `limit` in every component, the rest, and the prefix's total.
+    * The first item that would take the total past `limit` ends the prefix, however small the items
+    * after it.
+    */
+  def splitAfterSize[A, M](items: Vector[A], limit: M)(measure: A => M)(using
+      m: Measure[M]
+  ): (Vector[A], Vector[A], M) =
+    @tailrec
+    def go(i: Int, total: M): (Int, M) =
+      if i == items.size then (i, total)
+      else
+        val next = m.plus(total, measure(items(i)))
+        if m.within(next, limit) then go(i + 1, next) else (i, total)
+    val (taken, total) = go(0, m.zero)
+    (items.take(taken), items.drop(taken), total)
+
+  /** The transactions of a Dijkstra ranking block and what they count for. */
+  final case class Ranking(chosen: Vector[DijkstraHeld], used: TxMeasure):
+    def transactions: Vector[DijkstraTx] = chosen.map(_.tx)
+
+  /** The transactions a Dijkstra ranking block takes from the pool's snapshot of its slot: the
+    * first part of `snapshotPartition` (`implSnapshotPartition`, ouroboros-consensus 2416493b
+    * `ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Mempool/Impl/Common.hs:760-773`),
+    * the longest prefix of the snapshot, oldest first, whose measures fit `capacity`, the block's
+    * `blockCapacityTxMeasure` ([[Capacity.dijkstraBlockUnit]]), as the forge loop takes it when it
+    * certifies nothing (`partitionMempool`, `NodeKernel/Forge.hs:786-803`). The run of transactions
+    * after it, for an endorser block, is the second part, not taken here.
+    */
+  def ranking(snapshot: DijkstraSnapshot, capacity: TxMeasure): Ranking =
+    val (chosen, _, used) = splitAfterSize(snapshot.held, capacity)(_.measure)
+    Ranking(chosen, used)

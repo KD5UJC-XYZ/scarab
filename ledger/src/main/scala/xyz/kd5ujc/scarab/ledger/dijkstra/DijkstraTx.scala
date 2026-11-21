@@ -99,6 +99,17 @@ final case class DijkstraTx(
       )
     )
 
+  /** `sizeTxF` (`sizeDijkstraTxF`, `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Tx.hs:244,
+    * 297-320`, cardano-ledger 9df9f98c): the length of `toCBORForSizeComputation`, `encodeListLen
+    * 3` of the body, the witness set and the auxiliary data or null, each written as the bytes it
+    * memoizes, at the era's lowest version. The validity flag is left out, for compatibility with
+    * Mary (`Tx.hs:497-499`), so the size is [[forBlockInclusion]]'s less the flag's byte.
+    */
+  def size: Long =
+    import xyz.kd5ujc.scarab.ledger.HeaderBodyEncoding.{Null, list}
+    list(3).length.toLong + body.raw.size + witnesses.raw.size +
+      auxiliary.fold(Null.length.toLong)(_.raw.size.toLong)
+
 object DijkstraTx:
   /** `decodeDijkstraTopTxInBlock` (`eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Tx.hs:175-182`,
     * cardano-ledger 9df9f98c): `decodeRecordNamed "DijkstraTx" (const 4)` of the body, the witness

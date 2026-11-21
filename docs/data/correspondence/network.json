@@ -6,6 +6,26 @@
   "network/src/main/scala"
  ],
  "entries": {
+  "val protocol.LeiosFetch.MaxEbBytes": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoOnlyTestFetch.hs",
+     "symbol": "maxLeiosEbBytesSize",
+     "lines": [
+      214,
+      215
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraSelectionSuite"
+   ],
+   "digest": "aa59d0077029f3ff"
+  },
   "class protocol.ChainSync.Limits": {
    "upstream": [
     {

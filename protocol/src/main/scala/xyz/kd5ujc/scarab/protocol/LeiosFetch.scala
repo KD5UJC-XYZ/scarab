@@ -45,7 +45,7 @@ object LeiosFetch:
   val MiniProtocolId: Int = 19
 
   /** The consensus design ceiling on an endorser block's encoding (`maxLeiosEbBytesSize`). */
-  private val MaxEbBytes = 600000
+  val MaxEbBytes: Int = 600000
 
   /** The most transactions an endorser block may name: `maxTxsPerEb` of
     * `Ouroboros.Consensus.Leios.Types` (ouroboros-consensus `7b239a16`),
