@@ -44,6 +44,47 @@ object HeaderBodyEncoding:
   /** The header body of `fields` in its layout. */
   def encode(fields: Fields): Bytes = join(body(fields))
 
+  /** A Leios header body, `encCBOR` of `HeaderBodyRaw`
+    * (`libs/cardano-protocol/src/Cardano/Protocol/ Leios/BlockHeader.hs:278-306`, cardano-ledger
+    * 9df9f98c): the Praos fields with the protocol version replaced by the version info, then the
+    * certificate flag and the announcement or null, 12 items, every list definite and every head
+    * the shortest (`encodeNullStrictMaybe`; `BlockHeaderVersionInfo` and
+    * `EbReferencesAnnouncement`, `libs/cardano-ledger-core/src/Cardano/ Ledger/Block.hs:160-161,
+    * 178-182`). The reference memoizes this encoding when it forges (`mkHeaderBody`,
+    * `BlockHeader.hs:214-220`, through `extendHeaderBodyWithLeios`, consensus 2416493b
+    * `Shelley/Protocol/Praos.hs:275-300`), and its KES signature is over those bytes
+    * (`getSignableRepresentation = originalBytes`, `BlockHeader.hs:164-165`): what the forger signs
+    * and what the header holds.
+    */
+  def leios(f: LeiosHeaderBody): Bytes =
+    val announcement = f.leios.announcement.fold(Vector(Null))(a =>
+      Vector(list(2), bytes(a.hash.bytes), uint(BigInt(a.size)))
+    )
+    join(
+      Vector(
+        list(12),
+        uint(f.blockNo),
+        uint(f.slot),
+        f.prevHash.fold(Null)(bytes),
+        bytes(f.issuerVkey),
+        bytes(f.vrfVkey),
+        list(2),
+        bytes(f.vrf.output),
+        bytes(f.vrf.proof),
+        uint(f.bodySize),
+        bytes(f.bodyHash),
+        list(4),
+        bytes(f.opCert.hotVkey),
+        uint(f.opCert.sequence),
+        uint(f.opCert.kesPeriod),
+        bytes(f.opCert.sigma),
+        list(2),
+        uint(f.leios.versionInfo.highestSupportedMajor),
+        uint(f.leios.versionInfo.softwareTag),
+        if f.leios.blockBodyContainsLeiosCert then True else False
+      ) ++ announcement
+    )
+
   private def body(f: Fields): Vector[Array[Byte]] =
     def cert(c: VrfCert) = Vector(list(2), bytes(c.output), bytes(c.proof))
     val opCert =
@@ -77,7 +118,7 @@ object HeaderBodyEncoding:
   /** A head of major type `major` and argument `n`, an unsigned integer below `2^64`, in its
     * shortest form.
     */
-  private def head(major: Int, n: BigInt): Array[Byte] =
+  private[ledger] def head(major: Int, n: BigInt): Array[Byte] =
     val m = major << 5
     if n < 24 then Array((m | n.toInt).toByte)
     else
@@ -88,8 +129,10 @@ object HeaderBodyEncoding:
         else (27, 8)
       (m | code).toByte +: Array.tabulate[Byte](width)(i => (n >> (8 * (width - 1 - i))).toByte)
 
-  private def uint(n: BigInt): Array[Byte] = head(0, n)
-  private def bytes(b: Bytes): Array[Byte] = head(2, BigInt(b.size)) ++ b.toArray
-  private def list(n: Int): Array[Byte] = head(4, BigInt(n))
-  private val Null: Array[Byte] = Array(0xf6.toByte)
-  private def join(parts: Vector[Array[Byte]]): Bytes = Bytes.wrap(parts.flatten.toArray)
+  private[ledger] def uint(n: BigInt): Array[Byte] = head(0, n)
+  private[ledger] def bytes(b: Bytes): Array[Byte] = head(2, BigInt(b.size)) ++ b.toArray
+  private[ledger] def list(n: Int): Array[Byte] = head(4, BigInt(n))
+  private[ledger] val Null: Array[Byte] = Array(0xf6.toByte)
+  private[ledger] val True: Array[Byte] = Array(0xf5.toByte)
+  private[ledger] val False: Array[Byte] = Array(0xf4.toByte)
+  private[ledger] def join(parts: Vector[Array[Byte]]): Bytes = Bytes.wrap(parts.flatten.toArray)
