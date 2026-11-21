@@ -220,7 +220,9 @@ private[ntc] object ContextFailureCbor:
         Params.canonicalConwayUpdate(update).toOption.map { canonical =>
           value.copy(action = GovAction.ParameterChange(previous, canonical, policy))
         }
-      case _ => Some(value)
+      // a Conway body's proposal holds Conway's update; the 11.1 state codec writes no other
+      case GovAction.ParameterChange(_, _: DijkstraKeysUpdate, _) => None
+      case _                                                      => Some(value)
     projected.map(p => HaskellStateCodecs.proposal.encodeUnchecked(p))
 
   private def relayBytes(raw: Bytes): Option[Bytes] =

@@ -357,6 +357,13 @@ class DijkstraRulesSuite extends FunSuite:
     )
     // a DRep may vote on any action: Conway's transition judges the vote (its voter is unknown)
     assert(gov(voting(DijkstraVoter.DRep(key(8))), stored).isRight)
+    // the flat RATIFY, which the boundary does not reach with it, gives it no threshold and no
+    // pool vote, so it is never ratified, and its ENACT changes nothing
+    val action = xyz.kd5ujc.scarab.ledger.GovAction.ParameterChange(None, update, None)
+    import xyz.kd5ujc.scarab.ledger.Ratify
+    assertEquals(Ratify.drepThreshold(pp, true, action), Ratify.Threshold.Unavailable)
+    assertEquals(Ratify.spoThreshold(pp, true, action), Ratify.Threshold.Unavailable)
+    assert(!Ratify.isPoolVotingAllowed(action))
   }
 
   // ---- the numbers of the failures
