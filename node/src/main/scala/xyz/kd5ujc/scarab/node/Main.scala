@@ -3051,6 +3051,9 @@ object Main extends IOApp:
             .parse(flags, multi)
             .leftMap(e => ConfigError(ConfigProblem.WithUsage(e.problem, Usage)))
           referenceBuild <- ReferenceBuildFlag.parse(flags.get("reference-build"), Usage)
+          _ <- ReferenceBuildFlag
+            .headerFirst(referenceBuild, headerFirst)
+            .leftMap(e => ConfigError(ConfigProblem.WithUsage(e.problem, Usage)))
         yield Options(
           dir,
           peers,

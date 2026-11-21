@@ -28,6 +28,21 @@ class ConfigErrorCaseSuite extends FunSuite:
     )
   }
 
+  // #54: the Leios build's ChainSync client fetches endorser blocks from the headers it validates,
+  // and the reference has no block-only mode
+  test("--header-first off is refused under the Leios build, and kept under a release build") {
+    val follow = List("follow", "--config", "config.json", "--peer", "127.0.0.1:3001")
+    val leios = List("--reference-build", "leios-b004fe0c")
+    val off = List("--header-first", "off")
+    assertEquals(
+      problem((follow ++ leios ++ off)*),
+      ConfigProblem.HeaderFirstRequired(ReferenceBuild.LeiosB004fe0c)
+    )
+    assert(Main.parse(follow ++ leios).map(_.headerFirst) == Right(true))
+    assert(Main.parse(follow ++ leios ++ List("--header-first", "on")).isRight)
+    assert(Main.parse(follow ++ off).map(_.headerFirst) == Right(false))
+  }
+
   test("a configuration that is valid JSON but has the wrong shape is distinguished") {
     assertEquals(
       NodeConfig.parse(ReferenceBuild.Default)("[]").left.map(_.problem),

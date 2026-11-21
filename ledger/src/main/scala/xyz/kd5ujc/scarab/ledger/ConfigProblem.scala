@@ -149,6 +149,12 @@ enum ConfigProblem:
   /** A `--reference-build` value that names a build not implemented yet (#826). */
   case ReferenceBuildNotYet(cause: xyz.kd5ujc.scarab.protocol.ReferenceBuildNotYet)
 
+  /** `--header-first off` under a build whose ChainSync client counts and fetches endorser blocks
+    * from the headers it validates (#54): the reference has no block-only mode, so without
+    * header-first validation that build would not fetch them.
+    */
+  case HeaderFirstRequired(build: xyz.kd5ujc.scarab.protocol.ReferenceBuild)
+
   def message: String = this match
     case ActiveSlotsCoefficient(e)   => e.message
     case GenesisNumber(field, cause) => s"genesis ${field.key}: ${cause.message}"
@@ -196,6 +202,9 @@ enum ConfigProblem:
       s"byron genesis avvmDistr: $value is $n bytes, a redeem key is 32"
     case ReferenceBuildUnknown(cause) => s"--reference-build: ${cause.message}"
     case ReferenceBuildNotYet(cause)  => s"--reference-build: ${cause.message}"
+    case HeaderFirstRequired(build) =>
+      s"--header-first off: the build ${build.name} fetches endorser blocks from the headers it " +
+        "validates, and has no block-only mode"
     case MempoolCapacity(actual) =>
       s"configuration MempoolCapacityBytesOverride: ${actual.noSpaces} is neither a number of bytes from 0 to 4294967295 nor NoOverride"
     case MempoolTimeouts(_)            => "Mempool timeouts must be either all set or all unset"
