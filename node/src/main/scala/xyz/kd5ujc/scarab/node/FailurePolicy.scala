@@ -3,6 +3,7 @@ package xyz.kd5ujc.scarab.node
 
 import xyz.kd5ujc.scarab.ledger.PeerError
 import xyz.kd5ujc.scarab.network.selection.FailureClass
+import xyz.kd5ujc.scarab.protocol.LeiosFetchRefusal
 
 /** How the governor treats each way a peer can fail (owner decision 8, docs/design/peer-selection/
   * decisions-and-risks.md section 8a): a peer that broke the protocol, sent an invalid header or an
@@ -59,6 +60,11 @@ object FailurePolicy:
     // ImmutableDB's `InvalidIteratorRangeError` (`ourBug`) are each `ShutdownPeer` (consensus
     // 82ecba329 Node/RethrowPolicy.hs:72-100), the peer tried again after the error delay
     case _: PeerError.RangeRefused => FailureClass.Transient
+    // Our LeiosFetch server ended the connection rather than answer the peer's request: the
+    // reference's handler throws `ExnLeiosUnknownBlockRequested`, `ExnLeiosUnknownTxsRequested` or a
+    // `LeiosDbException` (ouroboros-consensus 2416493b LeiosDemoLogic.hs:263-307), which no rethrow
+    // policy names, so each is `ShutdownPeer`, the default (Node/RethrowPolicy.hs)
+    case PeerError.LeiosFetchRefused(cause) => leiosFetchRefused(cause.refusal)
     // Consensus 82ecba329 Node/RethrowPolicy.hs maps every ChainSyncClientException,
     // including EmptyBucket, DensityTooLow and HistoricityError, to ShutdownPeer.
     // Network c45735a5 PeerStateActions.hs uses epErrorDelay (10s default), preserving
@@ -69,6 +75,19 @@ object FailurePolicy:
         PeerError.NoIntersection | _: PeerError.RolledBackPastIntersection | _: PeerError.Diverged |
         _: PeerError.MuxSetup | _: PeerError.MuxWrite =>
       FailureClass.Transient
+
+  /** A request for a body or transactions this node does not hold is the peer's, and the peer is
+    * tried again after the error delay, as `ShutdownPeer` has it. A store that failed, or a body it
+    * holds that the server cannot answer with, is the node's own: the connection ends as the
+    * reference's does, and nothing is counted against the peer, which asked for nothing wrong
+    * (owner decision 2026-10-28, issue 567, `docs/decisions.md`).
+    */
+  private def leiosFetchRefused(refusal: LeiosFetchRefusal): FailureClass = refusal match
+    case _: LeiosFetchRefusal.UnknownBlockRequested | _: LeiosFetchRefusal.UnknownTxsRequested =>
+      FailureClass.Transient
+    case _: LeiosFetchRefusal.StoredBodyUndecodable | _: LeiosFetchRefusal.StoredBodyTooLarge |
+        _: LeiosFetchRefusal.Store =>
+      FailureClass.NotThePeers
 
   /** What the node does about the end of a hot session. Every outcome has an answer here; a failure
     * that is not the peer's is never a reason to try the peer again (issue 154).

@@ -163,7 +163,16 @@ object Mux:
       sduTimeout: FiniteDuration = 30.seconds,
       handshakeSduTimeout: FiniteDuration = 10.seconds,
       receiveBufferLimit: Long = ReceiveBuffer.MaxArray
-  )
+  ):
+    /** The largest message `protocol` sends: [[maxMessageBytes]], but LeiosFetch's are bounded only
+      * by what a byte array holds, as the reference's mux bounds no message it sends
+      * (`muxChannel`'s `send`, network-mux `Network/Mux.hs` 908-937 at ouroboros-network 2f1c154f,
+      * the Leios testnet's network layer): the server's answer of transactions is as large as the
+      * request names (`msgLeiosBlockTxsRequest`, `LeiosDemoLogic.hs` 284-307 at ouroboros-consensus
+      * 2416493b), and the receiving client applies its own limit to it.
+      */
+    def sendLimit(protocol: Int): Int =
+      if protocol == Protocols.LeiosFetch then Int.MaxValue else maxMessageBytes
 
   object Config:
     /** The responder of a node-to-client connection. The reference gives every node-to-client
@@ -613,7 +622,7 @@ object Mux:
                       sending(lane.role),
                       config.sduSize,
                       lane.protocol,
-                      config.maxMessageBytes
+                      config.sendLimit(lane.protocol)
                     )
                     .flatMap(_.traverse(WireMux.encode))
                   frames match
@@ -788,11 +797,11 @@ object Mux:
       dispatch.check((id, role)).flatMap(_.fold(F.unit)(_.raise[F, Unit]))
 
     def send(message: Bytes)(using Raise[F, NetworkError]): F[Unit] = permitted *>
-      (if message.size == 0 || message.size > config.maxMessageBytes then
+      (if message.size == 0 || message.size > config.sendLimit(id) then
          NetworkError
            .IllegalTransition(
              id,
-             NetworkError.RuntimeViolation.OutgoingMessageSize(message.size, config.maxMessageBytes)
+             NetworkError.RuntimeViolation.OutgoingMessageSize(message.size, config.sendLimit(id))
            )
            .raise
        else

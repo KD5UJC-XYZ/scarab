@@ -52,11 +52,14 @@ object IngressLimits:
   /** KeepAlive: one small outstanding message. */
   val KeepAliveBytes = 1280L
 
-  /** Leios notify and fetch (protocols 18 and 19) are not in ouroboros-network 1.2.0.0: they come
-    * from the leios prototype build, whose limits are not published. Only tools run them; this is
-    * the largest message the wire codec accepts, with the margin.
+  /** LeiosNotify and LeiosFetch (protocols 18 and 19) come from the Leios build, not from
+    * ouroboros-network: `leiosNotifyProtocolLimits` and `leiosFetchProtocolLimits`
+    * (`Ouroboros/Consensus/Network/NodeToNode.hs` 2170-2186 of ouroboros-consensus 2416493b), the
+    * margin added to `maxLeiosNotifyIngressQueue` (1 MiB) and `maxLeiosFetchIngressQueue` (60 MiB)
+    * of `demoLeiosFetchStaticEnv` (`LeiosDemoTypes.hs` 1178-1195).
     */
-  val LeiosBytes = 100000000L
+  val LeiosNotifyBytes: Long = 1L << 20
+  val LeiosFetchBytes: Long = 5L * 12L * (1L << 20)
 
   /** Byte budgets by mini-protocol number, with a small fallback for protocols without a dedicated
     * formula. This function does not register protocols: [[Mux]] separately rejects SDUs for
@@ -75,8 +78,9 @@ object IngressLimits:
       )
     case Protocols.TxSubmission2 =>
       withMargin(parameters.maxUnacknowledgedTxIds.toLong * (TxIdReplyBytes + TxBytes))
-    case Protocols.KeepAlive                          => withMargin(KeepAliveBytes)
-    case Protocols.LeiosNotify | Protocols.LeiosFetch => LeiosBytes
+    case Protocols.KeepAlive   => withMargin(KeepAliveBytes)
+    case Protocols.LeiosNotify => withMargin(LeiosNotifyBytes)
+    case Protocols.LeiosFetch  => withMargin(LeiosFetchBytes)
     // the protocol numbers of node-to-client never share a connection with these (see below)
     case Protocols.LocalChainSync | Protocols.LocalTxSubmission | Protocols.LocalStateQuery |
         Protocols.LocalTxMonitor =>

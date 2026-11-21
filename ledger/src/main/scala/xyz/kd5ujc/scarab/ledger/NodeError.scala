@@ -113,6 +113,12 @@ enum PeerError extends NodeError:
     */
   case RangeRefused(cause: NetworkError.RangeRefused)
 
+  /** Our LeiosFetch server ended the connection rather than answer the peer's request
+    * ([[NetworkError.LeiosFetchRefused]]): it named an endorser block or a transaction this node
+    * does not hold, or the store could not answer.
+    */
+  case LeiosFetchRefused(cause: NetworkError.LeiosFetchRefused)
+
   def message: String = this match
     case Handshake(r)   => s"handshake: ${r.message}"
     case Protocol(r)    => s"protocol: ${PeerError.protocolMessage(r)}"
@@ -134,10 +140,11 @@ enum PeerError extends NodeError:
     case GenesisInvariant(problem) => s"the node's own Genesis state broke: ${problem.message}"
     case ServingDefect(protocol, cause) =>
       s"the node's own code threw answering ${xyz.kd5ujc.scarab.protocol.Protocols.name(protocol)}: ${NetworkError.describe(cause)}"
-    case Unverifiable(e)       => e.message
-    case HeaderUndecided(p, d) => s"${Points.show(p)} has no verdict: ${d.message}"
-    case NotKept(cause)        => cause.message
-    case RangeRefused(cause)   => cause.message
+    case Unverifiable(e)          => e.message
+    case HeaderUndecided(p, d)    => s"${Points.show(p)} has no verdict: ${d.message}"
+    case NotKept(cause)           => cause.message
+    case RangeRefused(cause)      => cause.message
+    case LeiosFetchRefused(cause) => cause.message
 
 object PeerError:
   enum GenesisProblem:

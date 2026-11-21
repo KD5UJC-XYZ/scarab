@@ -145,3 +145,22 @@ object LeiosFetch:
 
   def decodePrefix(state: State, bytes: Bytes): Either[LeiosWireError, (Message, Int)] =
     LeiosFetchDecoder.decode(state, bytes)
+
+  /** The decoder the node receives a message of `state` with: [[decodePrefix]] resumed on each
+    * longer prefix from the step its last prefix stopped in, as the reference's driver feeds each
+    * chunk to its decoder's continuation (`runDecoderWithLimit`). A token the codec refuses fails
+    * the message as soon as it arrives, before the rest of the message: an Idle server, which waits
+    * for its next request without a time limit, refuses a frame it does not admit at once.
+    */
+  def incremental(state: State): IncrementalDecoder[Message] =
+    new IncrementalDecoder[Message]:
+      type Cursor = (LeiosFetchDecoder.Checkpoint, Int)
+      val initial: Cursor = LeiosFetchDecoder.start
+      def resume(cursor: Cursor, input: Bytes): (Cursor, ChainSync.DecodeResult[Message]) =
+        LeiosFetchDecoder.resumed(state, cursor, input) match
+          case LeiosStream.Resumed.Short(stage, position) =>
+            ((stage, position), ChainSync.DecodeResult.NeedMore)
+          case LeiosStream.Resumed.Done(Right((message, consumed))) =>
+            (initial, ChainSync.DecodeResult.Decoded(message, consumed))
+          case LeiosStream.Resumed.Done(Left(error)) =>
+            (initial, ChainSync.DecodeResult.Failed(ProtocolError.Leios(error)))
