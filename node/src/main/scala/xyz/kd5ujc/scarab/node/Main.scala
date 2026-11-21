@@ -1874,11 +1874,7 @@ object Main extends IOApp:
       )
       // the transactions' time translation, placed by the node's era history parameters: the
       // mempool and the forger use it as the block rules translate time
-      txClock = TxClock.of[MirrorState](
-        genesis.geometry,
-        setup.byronHistory,
-        setup.praos.forks
-      )
+      txClock = setup.txClock
       mempoolEnvironment = new cats.mtl.Ask[IO, MempoolEnv]:
         val applicative = summon[cats.Applicative[IO]]
         def ask[E >: MempoolEnv]: IO[E] =
@@ -2311,10 +2307,10 @@ object Main extends IOApp:
       // (`NodeKernel.hs:580-593` at ouroboros-consensus 2416493b)
       val leiosKernel = leiosFetch.traverse_(node =>
         BlockchainTime
-          .resource[IO, MirrorState](
+          .ofChain[IO, MirrorState](
             headers.slotClock,
             ref.get,
-            forge.Forger.withinHorizon[MirrorState](using chain.txClock),
+            chain.txClock,
             problem => fatalSink(Fatal.Internal(problem)),
             cause => fatalSink(Fatal.Defect(cause))
           )

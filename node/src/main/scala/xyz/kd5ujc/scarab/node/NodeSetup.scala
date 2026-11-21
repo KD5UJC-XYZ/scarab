@@ -128,6 +128,14 @@ final case class NodeSetup(
   /** The Byron parameters of the era history, where the mirror's telescopes are placed. */
   def byronHistory: EraHistory.ByronParams = mirrorEnv().byron
 
+  /** The time translation of the node's chain, placed by its era history parameters (the genesis
+    * geometry, the Byron era's parameters and the hard-fork triggers): the mempool, the forger and
+    * the blockchain time translate time with it as the block rules do.
+    */
+  def txClock: read.TxClock[MirrorState] =
+    import read.ChainRead.given
+    read.TxClock.of[MirrorState](geometry, byronHistory, praos.forks)
+
   /** The hash the chain's first block must name as its predecessor. */
   def origin: Option[Bytes] = byron.map(_.hash)
 
