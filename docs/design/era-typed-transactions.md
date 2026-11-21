@@ -1101,17 +1101,82 @@ Conway's rules on the classes follow as the rest of stage 2.
   read; a proposal keeps the flat `Proposal` it was read as, which the flat failures carry, and is equal by its
   typed fields. Every recorded Conway proposal, of each of the seven actions, reads with the flat fields, and
   crafted proposals at each bound and past it give the flat decoder's verdict and error.
-- **GOV's first functions** (`era/rules/Gov.scala`): `isBootstrapAction`, `checkBootstrapProposal`,
-  `actionWellFormed`, `checkGuardrailsScriptHash` and `unelectedCommitteeVoters`, with Conway's version gates and the
-  committee's authorised hot credentials, each generic in its era over the reference's classes. They report the
-  node's flat failures; `actionWellFormed` takes the action as read for its failure.
-  - `ConwayGovChecksSuite` compares the failures they report with those the flat GOV rule records for the same
-    checks, on every Conway case of the refusal corpus and on crafted ones. The corpus never fails
-    `checkBootstrapProposal`; a crafted case does.
-  - Both paths list unelected committee voters as the reference does, the ascending list of a set, whatever order
-    the body's map arrived in.
-  - The functions that read the stored proposals, and the checks `conwayGovTransition` writes inline, wait for the
-    governance state's era types (`EraGov`, tracked on #85).
+- **GOV whole, with the reference's failures** (`era/Proposals.scala`, `era/conway/ConwayProposals.scala`,
+  `era/rules/Gov.scala`, `era/rules/GovFailures.scala`; `Conway/Rules/Gov.hs`, `Governance/Proposals.hs` and the
+  voting functions of `Governance/Internal.hs`, cardano-ledger f649f975, where 29a7d656 differs only in the failure
+  type's derived `Ord`):
+  - Conway's `conwayGovTransition`, generic in its era over `ConwayEraPParams`, `ConwayEraCertState` and
+    `ConwayEraTxCert`: each proposal's checks in the reference's order (`checkBootstrapProposal`, the hard fork's
+    `preceedingHardFork` and `pvCanFollow`, `actionWellFormed`, the return and withdrawal accounts after the
+    bootstrap phase, the deposit, the networks, the guardrails script hash, a withdrawal's sum, a committee
+    update's members) and its ancestry (`proposalsAddAction`, `InvalidPrevGovActionId`); then the voters that do
+    not exist, the actions that do not, `checkBootstrapVotes`, `checkVotesAreNotForExpiredActions` and
+    `checkVotersAreValid`, the votes cast and the votes of the DReps the transaction unregisters removed. Both
+    events are told and the proposals after are the state whatever was recorded. An expiry is `addEpochInterval`'s
+    `Word64` sum, and `pvCanFollow`'s minor version a `Word32` sum, both wrapping. A proposal's index is a
+    `GovActionIx` (`Word16`, `indexedGovProps`); a 65,537th proposal has none, where the reference's `succ` of
+    `maxBound` throws, and is a raised `GovDefect.ProposalIndexOverflow` before any proposal is judged
+    (`EraProposalsSuite` checks the index 65,535 and its successor). An account in a failure is the reference's
+    `AccountAddress`, and the events' transaction id the hash of its body (`Hash32`).
+  - The state is the reference's `Proposals era`: an ordered map of `GovActionState era` and the four purpose trees
+    (`GovRelation`, `PRoot`, `PEdges`, `PGraph`), made only by `proposalsAddAction`, which adjusts a parent's
+    children before it inserts the new edge, as the reference composes them. Conway's is read from the node's
+    record of the proposals (`ConwayProposals.fromStored`, the reference's `mkProposals` over its roots and
+    actions) and written back (`toStored`), so nothing persisted changes. A record the era cannot read is a typed
+    `ProposalsReadError`, never a verdict: an action that attaches to no tree (`Unattached`), or a store rebuilt
+    with other actions than the record, as an id held twice gives (`Malformed`, the reference's `OMap is
+    malformed`), never one action dropped silently. `EraProposalsSuite` checks a chain's root, parent and child
+    edges directly, which `toStored` does not keep, an action replacing its own id named as its parent, and both
+    read errors. The read makes Conway's proposals from the proposals the decoder stored,
+    the one way besides the decoder that a `ProposalProcedure` is made.
+  - The failures are `ConwayGovPredFailure`, its 19 constructors in tag order, and the events `ConwayGovEvent`;
+    `EraRuleFailure "GOV"` and `EraRuleEvent "GOV"` are match types with Conway's case, and `InjectGov` is the
+    reference's two injections at Conway, the identities. A mismatch is the node's `Mismatch`, without the
+    reference's relation marker (`RelEQ`, `RelGT`), which names the comparison only in the reference's rendering. The embedding into LEDGER (`ConwayGovFailure`, `GovEvent`)
+    comes with LEDGER. `ConwayGovPredFailure.toStored` gives a failure's flat form, one-way glue the comparisons
+    read; an action is put in it as the transaction's proposal read it (`readOf`).
+  - Who may vote (`ConwayVoting`) is the reference's `isVotingAllowed` of each voter's threshold, written as the
+    constructors whose threshold is `NoVotingAllowed`: the thresholds' values are ratification's and never reach it,
+    and with no committee, as the reference passes it, the committee's threshold of the other actions is
+    `NoVotingThreshold`. On the recorded proposals of each of the seven actions and on two crafted parameter
+    changes, one of the security group and one of none, it equals the flat rule's (`EraConwaySuite`).
+  - `ConwayGovChecksSuite` runs the whole rule and the flat GOV on every Conway case of the refusal corpora, at the
+    recorded version and at 9, 10 and 11: the same failures in the same order, or the same proposals after. These
+    runs reach every one of the 19 failures. GOV's events carry the transaction's id, the proposals after and the
+    DReps its certificates unregister. Where the reference refused a transaction for GOV alone (29 cases), the
+    whole rule's failures, run two levels down as under MEMPOOL and LEDGER, encode to the reference's refusal byte
+    for byte. A crafted committee update that fails both its conflict and its expiry records them in that order. The
+    predicates' comparisons keep their expected values, each failure in the flat form.
+  - `UpstreamGovernanceFunctionalSuite` runs it on the upstream GOV cases: the 15 lawful seeds, the empty vote maps
+    of a named committee voter and the registered DRep's vote leave the reference's proposals, as the flat rule
+    does, and the changed deposit is refused with the reference's failure. Five seeds (510102, 510103, 510109,
+    510113 and 510114) hold a zero registration count in their pools' VRF key hashes, which the node's decoder
+    refuses; GOV never reads them, so those seeds run on their original environment with that field left out.
+    Cast again on the proposals after, the DRep's vote replaces the one cast, and the event names it.
+    `UpstreamGovConformanceSuite`'s generated empty signal leaves the reference's proposals too.
+  - Where the flat rule differs: it lists the failures over votes (`GovActionsDoNotExist`, `VotingOnExpiredGovAction`,
+    `DisallowedVoters`, `DisallowedVotesDuringBootstrap`) in the order the body's maps arrived in, and
+    `TreasuryWithdrawalReturnAccountsDoNotExist` in the order the withdrawals did. The reference folds a `Map`
+    (`foldrVotingProcedures`, `Map.keys`), so its lists ascend, and so do the era rule's. A crafted body with two
+    votes on unknown actions out of order shows it (`ConwayGovChecksSuite`). The verdict is the same; only the
+    order of a refusal's list differs, and no recorded refusal holds an out-of-order body, so the evidence for the
+    reference's order is its source. Tracked as #85's
+    [item](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7054122427).
+  - Incomplete (CNF-2):
+    - the environment's certificate state is the recorded state's, not the state after CERTS, which LEDGER gives;
+    - every refusal GOV alone gave holds one failure, so the byte-for-byte comparison does not tell the depth's
+      order of several; the cases GOV refused with other rules (`certs-gov-utxow`, `gov-proposal-wrong-deposit`)
+      come with LEDGER;
+    - the scenarios of `ConwayGovernanceSuite`, `PreviewConwayRulesSuite` and the mempool suites run GOV through
+      LEDGER, and come with LEDGER;
+    - `ProposalsReadError` is reached by crafted stores only (`EraProposalsSuite`): the node's record is written
+      by the flat rule.
+  - Not yet (#85): the governance state's classes (`EraGov`, `ConwayEraGov`) over typed parameters; the committee in
+    the environment as the reference's `Committee era`; the votes keyed by the reference's typed voter. The ordered
+    map is a vector, and the proposals are read per transaction, which the Conway switch must make cheap, as the
+    flat rule's single pass over the votes is (#94). The flat rule numbers proposals with an unbounded index
+    (`zipWithIndex`), where the reference's is a `Word16`; only a 65,537th proposal tells them apart, and stage 3
+    deletes the flat rule.
 - **Conway's certificate rules** (`ledger/.../era/rules/Certs.scala`): CERTS, CERT, DELEG, GOVCERT and
   Shelley's POOL, each the reference's transition under its name, generic in its era over the state classes
   `EraAccounts`, `ConwayEraAccounts`, `EraCertState` and `ConwayEraCertState` (Conway's instances over the
@@ -1200,8 +1265,7 @@ Conway's rules on the classes follow as the rest of stage 2.
     node built by hand can hold a value its bytes are not
     ([#85, tracked](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6999001864)).
     A proposal keeps the flat proposal it was read as, era-indexed (`ProposalRead[E]`), since a
-    Dijkstra parameter change has no flat Conway proposal; GOV's `checkBootstrapProposal`, whose failure carries the
-    flat Conway proposal, takes evidence that the era's is one.
+    Dijkstra parameter change has no flat Conway proposal.
   - `DijkstraTxSuite` reads the Dijkstra transactions the repository holds with both decoders: the Leios corpus's
     536 transactions alone (the 273 the flat decoder accepts, 16 of which register a pool, and the 263 it refuses,
     some before either decoder, as bytes that are not one item of CBOR), the 63 transactions of the corpus's blocks
