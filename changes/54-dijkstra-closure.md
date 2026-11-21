@@ -1,0 +1,3 @@
+### Added (Leios, #54)
+
+- The application of a certified endorser block's closure, as the Leios testnet's build makes it (ouroboros-consensus 2416493b): the closure's transactions, read from the endorser-block store as an endorser block holds them, applied by Dijkstra's LEDGER with no predicate checked at the slot of the state before the certifying block. A closure missing from the store, or one whose transaction does not decode, is a typed defect of the node's own, never a refusal of the block. Endorser-block transactions of the testnet chain whose validity interval ends before their certifying block's slot apply, as on the chain. The node does not run it yet, so nothing changes in behaviour.
