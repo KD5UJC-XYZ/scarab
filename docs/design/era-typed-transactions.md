@@ -1848,8 +1848,8 @@ Conway's rules on the classes follow as the rest of stage 2.
       refusal at the top level (D7a), and SUBUTXOW collects nothing; no case of `fixtures/reference/dijkstra-rules`
       has a sub-transaction; the flat rules halt on one;
     - the failures are not compared with the reference's bytes: the era failures have no encoder yet (#796).
-  - Not yet (#85): SUBGOV, SUBLEDGER and SUBLEDGERS (D7c's last part), and LEDGER (D7e); SUBENTITIES and the
-    sub-transactions' certificate rules are the next bullet's.
+  - Not yet (#85): LEDGER (D7e); SUBENTITIES and the sub-transactions' certificate rules, then SUBGOV, SUBLEDGER and
+    SUBLEDGERS, are the next bullets'.
 - **Dijkstra's sub-transaction certificate rules and SUBENTITIES** (`era/rules/DijkstraSubCerts.scala`,
   `era/rules/DijkstraSubEntities.scala`; `Rules/{SubDeleg,SubPool,SubGovCert,SubCert,SubCerts,SubEntities}.hs` of
   `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/`, cardano-ledger 9df9f98c):
@@ -1921,7 +1921,86 @@ Conway's rules on the classes follow as the rest of stage 2.
       which vote or name the current treasury: they record each level's collection, not a verdict of the rules, so
       SUBENTITIES is not run on them;
     - the failures are not compared with the reference's bytes: the era failures have no encoder yet (#796).
-  - Not yet (#85): SUBGOV, SUBLEDGER and SUBLEDGERS (D7c's last part), and LEDGER (D7e).
+  - Not yet (#85): LEDGER (D7e); SUBGOV, SUBLEDGER and SUBLEDGERS are the next bullet's.
+- **Dijkstra's SUBGOV, SUBLEDGER and SUBLEDGERS** (`era/rules/DijkstraSubLedger.scala`;
+  `Rules/{SubGov,SubLedger,SubLedgers}.hs` of `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/`, cardano-ledger
+  9df9f98c):
+  - SUBGOV's failure and event are newtypes over Dijkstra's GOV failure and Conway's GOV event
+    (`DijkstraSubGovPredFailure`, `DijkstraSubGovEvent`, `SubGov.hs:43-64`), and each of its injections is the newtype
+    after GOV's (`SubGov.hs:50-56`), so its transition is D7d's GOV with its judge and events contramapped by the
+    newtypes (D4), as SUBDELEG's, SUBPOOL's and SUBGOVCERT's are.
+  - SUBLEDGER (`DijkstraSubLedgerPredFailure`, tags 1, 2, 3 and 5; `DijkstraSubLedgerEvent`; `SubLedgerEnv`) runs, in
+    the reference's order (`SubLedger.hs:245-311`): the treasury the sub-transaction declares against the chain's,
+    whatever the top level's flag (Conway's `validateTreasuryValue`, now of either level and declaring its
+    constructor); when the top level is flagged valid, SUBENTITIES with the committee and its proposals of the
+    governance state and the accounts before the batch, then SUBGOV with the sub-transaction's id and the certificate
+    state after SUBENTITIES; then SUBUTXOW with the certificate state SUBLEDGER was given. Flagged invalid, SUBENTITIES
+    and SUBGOV do not run. The certificate state after is SUBENTITIES', or the one given. SUBLEDGERS
+    (`DijkstraSubLedgersPredFailure`, `DijkstraSubLedgersEvent`) folds SUBLEDGER over the sub-transactions (`foldM`,
+    each a sub-rule on the state the one before left), which `tailRecM` runs in constant stack. Each rule's embeddings
+    are `EmbedInSubLedger` and `EmbedSubLedgerInSubLedgers`.
+  - The proposals are the era's, in their own capability beside the ledger state, which SUBGOV judges and leaves, and
+    from which the committee's proposals SUBENTITIES reads are taken (`proposalsWithPurpose`, now on the era's
+    `Proposals`), so both read the proposals the earlier sub-transactions left: the node's record of them in the
+    governance state cannot hold a Dijkstra parameter change (the Gap of
+    [#85's item](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923488137)). The committee and the
+    constitution are the governance state's, and the committee's proposals are put in the node's record that
+    `SubEntitiesEnv` holds (the Gap of [#85's item](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923349468)).
+  - **The injection the reference leaves partial**, by D7a's decision. `conwayToDijkstraSubLedgerPredFailure`
+    (`SubLedger.hs:373-394`) calls 4 of Conway's LEDGER constructors impossible. Its instance here
+    (`DijkstraSubLedger.ConwayFailure`) is over the 4 it maps whose payloads SUBLEDGER's injections take whole: CERTS's
+    failure, GOV's, the accounts missing and the treasury. `ConwayUtxowFailure` is left out too, by the decision that
+    left UTXOW's `UtxoFailure` out of SUBUTXOW's (2026-11-21, #85): its payload, Dijkstra's UTXOW failure, goes through
+    SUBUTXOW's injection, which the reference leaves partial, and no predicate SUBLEDGER runs reports it.
+  - Evidence:
+    - `DijkstraSubLedgerSuite`, on the testnet's chain (`fixtures/reference/leios-testnet-chain-contexts`): of the 38
+      sub-transactions of its 28 batches, 3 withdraw, 2 register an account and none names the treasury, votes,
+      proposes, deposits directly or donates. From the recorded outputs and the empty certificate state, SUBLEDGERS
+      refuses the 3 batches whose sub-transactions withdraw, each with SUBENTITIES' accounts missing from the current
+      and the original accounts, and admits the other 25. From that state with the withdrawn accounts registered, the
+      least state the withdrawals need, it admits all 28: every sub-transaction's inputs spent and outputs created in
+      order, the instant stake moved with them, the fees, deposits, donation and governance state as they were, the
+      whole certificate state the one before with the accounts withdrawn from drained and those registered added with
+      their deposits of 2,000,000 lovelace, the proposals as they were, and the events, in one ordered sequence, of
+      each sub-transaction in turn: SUBGOV's two, by its id, with no proposal and no vote, then SUBUTXOW's outputs
+      spent and created. D7a's UTXOW then admits each top level on
+      the state SUBLEDGERS leaves, with the pools after it and the certificate state before the transaction
+      (`Ledger.hs:476-485`), every level's inputs spent and outputs created.
+    - `DijkstraSubLedgerSuite`, on crafted cases: a sub-transaction that names a treasury other than the chain's is
+      refused with `SubTreasuryValueMismatch` with the top level flagged either way, and after SUBUTXOW's block when
+      its inputs are spent; with the chain's treasury and the top level flagged invalid, its spent inputs are still
+      SUBUTXOW's refusal; flagged invalid, a sub-transaction that withdraws from accounts the state lacks is admitted
+      and changes nothing; a sub-transaction that registers the script account its proposal's deposit returns to, from
+      a state without it, is admitted and its proposal added by the sub-transaction's id, so SUBGOV reads the
+      certificate state after SUBENTITIES; without the registration it is GOV's `ProposalReturnAccountDoesNotExist`,
+      and with another deposit `ProposalDepositIncorrect`, each in SUBGOV's newtype; flagged invalid, neither runs; the
+      proposal's epoch is the slot's on the testnet's 21,600-slot epochs where the environment gives none, and a
+      distinct epoch the environment gives otherwise; a committee update one
+      sub-transaction proposes, beside an information action, is the committee's one proposal by its id
+      (`proposalsWithPurpose`, and in the node's record), and the next sub-transaction's authorisation of a hot key
+      for the member it adds is admitted, and refused as `DijkstraCommitteeIsUnknown` without it; a registering
+      sub-transaction given twice is refused the second time with SUBENTITIES' block, then SUBUTXOW's of its spent
+      inputs; two sub-transactions given twice, the second's block reported first at the root; SUBLEDGERS on one
+      sub-transaction given 2000 times on a small stack (STK-3).
+    - `DijkstraGovSuite`: on each of Conway's 19 GOV failures, built, SUBGOV's injections are the newtype after GOV's;
+      on the chain's proposals, admitted and refused, SUBGOV's proposals, events and failures are GOV's in its
+      newtypes.
+    - `DijkstraSubLedgerSuite`, on built values: each of SUBLEDGER's and SUBLEDGERS' injections is the reference's
+      composition; the four constructors the reference calls impossible, `ConwayUtxowFailure` and the whole type have
+      no instance (`compileErrors`, beside a reachable one that has).
+    - D7a's, D7b's and D7d's Dijkstra suites, Conway's era suites and the node's Conway and upstream suites keep their
+      expected values.
+  - Incomplete (CNF-2):
+    - the batches as the reference judged them: the fixture records neither the chain's certificate state nor its
+      proposals, so the accounts registered are the least the withdrawals need, and the verdicts there are the rules';
+    - SUBUTXOW given the certificate state from before SUBENTITIES, threaded from the earlier sub-transactions: no
+      check of SUBUTXOW or SUBUTXO reads it at 9df9f98c (`getWitsVKeyNeeded _ = getConwayWitsVKeyNeeded`,
+      `Dijkstra/UTxO.hs:161`, and `sueCertState` is read nowhere else), so no verdict can show it; the threading of
+      the state SUBLEDGER returns is shown instead;
+    - refusals that no recording holds: any of SUBLEDGER's, SUBLEDGERS' or SUBGOV's by the reference, and a
+      sub-transaction's votes and proposals but the crafted ones;
+    - the failures are not compared with the reference's bytes: the era failures have no encoder yet (#796).
+  - Not yet (#85): LEDGER (D7e), which runs SUBLEDGERS before the top level's rules.
 - **Next, Conway's rules.** The first rule ported is one that needs no parameters, the second one that
   does, each under a differential against the flat rule on the recorded blocks and the refusal corpus.
 - The body is read through the flat decoder for now. What only the projection refuses (an update, genesis
