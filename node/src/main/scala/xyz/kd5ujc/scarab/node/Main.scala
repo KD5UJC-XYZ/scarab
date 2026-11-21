@@ -1694,6 +1694,10 @@ object Main extends IOApp:
         case Some(SnapshotInterval.Slots(n)) => SnapshotPolicy.EverySlots(BigInt(n))
         case Some(SnapshotInterval.Epochs(n)) =>
           SnapshotPolicy.EverySlots(BigInt(n) * genesis.geometry.epochLength)
+      // the run's endorser-block store goes to the chain database, whose copies promote in it and
+      // whose collections collect it, as the reference's ChainDB background drives its LeiosDB
+      // (`copyToImmutableDB`, `garbageCollectBlocks`, `ChainDB/Impl/Background.hs:230-292,
+      // 547-559` at ouroboros-consensus 2416493b)
       ChainStorage
         .open[IO, MirrorState](
           fs2.io.file.Path.fromNioPath(dir),
@@ -1711,7 +1715,8 @@ object Main extends IOApp:
           rules.warm,
           Some(scheduling.compute),
           Some(SnapshotMigration.toCurrent[IO]),
-          Some(TransitionRecount.reopen[IO](genesis.geometry))
+          Some(TransitionRecount.reopen[IO](genesis.geometry)),
+          run.leios
         )(ReceivedBlockRecovery.startUp(genesis.geometry.byron.epochSlots))
         // a failed collection of the received log stops the node, as the failure of the
         // reference's collection ends the thread it is linked to (consensus 82ecba329
