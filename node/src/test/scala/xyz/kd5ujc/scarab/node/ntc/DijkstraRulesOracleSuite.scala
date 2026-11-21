@@ -1176,3 +1176,87 @@ class DijkstraRulesOracleSuite extends FunSuite:
       case other => fail(s"the era LEDGERS: $other")
     assertEquals(era, flatLedgers)
   }
+
+  // ---- the era-typed BBODY ------------------------------------------------------------------------
+
+  /** The oracle's globals for BBODY: epochs of 100 slots (`fixedEpochInfo (EpochSize 100)`), whose
+    * boundary BBODY reads (`slotToEpochBoundary`), in the Leios build.
+    */
+  private val bbodyGlobals =
+    leiosGlobals.copy(geometry = leiosGlobals.geometry.copy(epochLength = 100))
+
+  /** Dijkstra's BBODY on the era types (`era.rules.DijkstraBbody`, #85) on a `bbody` case at the
+    * root, as the oracle applies it: the block read into the era's types, from the default ledger
+    * state with the case's UTxO set, no blocks made, the default store of proposals and a chain
+    * account of zero.
+    */
+  private def eraBbodyRun(c: Json) =
+    import xyz.kd5ujc.scarab.ledger.era.dijkstra.{DijkstraBbodyRun, DijkstraBlock, DijkstraCorpus}
+    val h = c.hcursor
+    val pp = params(c)
+    DijkstraBbodyRun.bbody(
+      bbodyGlobals,
+      xyz.kd5ujc.scarab.ledger.era.rules
+        .BbodyEnv[Dijkstra](DijkstraCorpus.era(pp), ChainAccountState(Coin(0), Coin(0))),
+      ok(DijkstraBlock.decode(hex(str(h.downField("block"))))),
+      xyz.kd5ujc.scarab.ledger.era.rules
+        .DijkstraUtxoContext(
+          Network.Testnet,
+          0,
+          history,
+          xyz.kd5ujc.scarab.ledger.TxEnv.Validation.All
+        ),
+      xyz.kd5ujc.scarab.ledger.era.rules.ShelleyBbodyState[Dijkstra](
+        ledger(pp, num(h.downField("epoch")), utxoOf(c)).state,
+        BlocksMade.empty
+      ),
+      xyz.kd5ujc.scarab.ledger.era.EraGovRun.dijkstraEmpty,
+      xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default,
+      xyz.kd5ujc.scarab.ledger.Verdicts.Direct,
+      xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder,
+      s => fail(s"the clock was read at $s")
+    )
+
+  test("the era-typed BBODY gives each bbody case's verdict byte for byte, and the blocks made") {
+    // the refusals are the header's and body's (`bbody/major-13`, `other-body-*`) and LEDGERS'
+    // (`bbody/devnet-37` on the default state, and flagged invalid); every other block is admitted,
+    // and counted once for its issuer, as the reference's `blocksMade` has it
+    assertEquals(bbodyCases.size, 15)
+    val judged = bbodyCases.map { c =>
+      val name = str(c.hcursor.downField("name"))
+      eraBbodyRun(c) match
+        case Left(defect) => fail(s"$name: $defect")
+        case Right(Right((after, _, _))) =>
+          assertEquals(reference(c), Verdict.Accepted, name)
+          assertEquals(
+            after.blocksMade.blocks.values.map(n => BigInt(n.bits)).toVector,
+            c.hcursor
+              .downField("reference")
+              .downField("blocksMade")
+              .as[Vector[BigInt]]
+              .fold(e => fail(e.message), identity),
+            name
+          )
+          name -> false
+        case Right(Left(fs)) =>
+          val ours = fs.toChain.toVector.map(f =>
+            bbody(
+              xyz.kd5ujc.scarab.ledger.era.rules.DijkstraBbody
+                .toStored(f, _ => None, _ => None)
+                .fold(u => fail(s"$name: no flat form of $u"), identity)
+            )
+          )
+          assertEquals(Verdict.Refused(ours), reference(c), name)
+          name -> true
+    }
+    assertEquals(
+      judged.filter(_._2).map(_._1),
+      Vector(
+        "bbody/devnet-37",
+        "bbody/major-13",
+        "bbody/other-body-hash",
+        "bbody/other-body-size-and-hash",
+        "bbody/devnet-37-invalid-flag"
+      )
+    )
+  }

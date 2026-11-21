@@ -73,7 +73,13 @@ object KeyHash:
   def fromBytes[R <: KeyRole](bytes: Bytes): Either[VocabError, KeyHash[R]] =
     checked(VocabError.Kind.KeyHash, 28, bytes)
 
-  extension [R <: KeyRole](h: KeyHash[R]) def bytes: Bytes = h
+  extension [R <: KeyRole](h: KeyHash[R])
+    def bytes: Bytes = h
+
+    /** `coerceKeyRole` (`Keys/Internal.hs:89-95`, cardano-ledger 9df9f98c): the same hash in
+      * another role, as BBODY counts a block's issuer as a pool (`incrBlocks`).
+      */
+    def coerceKeyRole[S <: KeyRole]: KeyHash[S] = h
 
   given [R <: KeyRole]: Order[KeyHash[R]] = hashOrder
   given [R <: KeyRole]: Show[KeyHash[R]] = Show.show(h => s"KeyHash(${h.hex})")
