@@ -102,7 +102,7 @@ a change to the helper changes its owner's digest.
 }
 ```
 
-An entry may also have `evidence` (suite names) and `record` (a link).
+An entry may also have `evidence` (suite names), `record` (a link) and `gap` (an issue link).
 
 - `upstream`: one or more counterparts. Each names a revision pinned in `docs/data/reference-pins.json`, and
   `lines` cover the counterpart at that revision.
@@ -117,7 +117,8 @@ An entry may also have `evidence` (suite names) and `record` (a link).
   A `differs` entry names in `evidence` the suites that compare that behaviour with the reference: an exported
   reference corpus, an oracle, or a comparison with a running reference node. A suite that only restates what
   the source says is not such evidence, and nor is one that reads fixtures of unknown origin. Without it the
-  entry is a Gap, which links its issue instead.
+  entry is a Gap, which links its issue instead. An approved Deviation that no suite compares with the reference
+  stays a Deviation, its `record` linking the decision, and links in `gap` the issue of the missing comparison.
 
   Each suite a `differs` entry names has its comparison contract in the
   [comparison register](../data/test-coverage-register.json), whatever the entry's class. The contract is a
@@ -210,7 +211,8 @@ fails. Without clones, as in CI, the guard prints that the check did not run, an
   record, as [REF-7](../design-rules.md#ref-7) says. It is fixed in a change of its own.
 - **A `differs` entry**: name in `evidence` only suites that compare with the reference, and add or extend the
   register entry that is each one's comparison contract. A suite that compares nothing with the reference stays
-  out of `evidence`; with no suite left, the entry is a Gap.
+  out of `evidence`. With no suite left, the entry is a Gap, or, for an approved Deviation, it links the issue of
+  the missing comparison in `gap`.
 
 ## What the guard does not check
 

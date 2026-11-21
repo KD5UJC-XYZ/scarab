@@ -290,6 +290,44 @@ class GuardTest(unittest.TestCase):
         self.fixture.area({key: self.fixture.entry(key, structure='differs', **{'class': 'Gap', 'record': issue})}, [])
         self.assertEqual(self.fixture.run()[0], 0, 'a Gap that names no evidence needs no contract')
 
+    def test_a_differing_deviation_with_no_comparing_suite_links_the_issue_of_its_gap(self):
+        key = 'enum net.KeepAlive.State'
+        decision = 'docs/data/reference-pins.json'
+        issue = 'https://github.com/KD5UJC-XYZ/scarab/issues/1263#issuecomment-1'
+        self.fixture.area({key: self.fixture.entry(key)}, [])
+        self.assertEqual(self.fixture.run('--write-baseline')[0], 0)
+        deviation = {'class': 'Deviation', 'structure': 'differs', 'record': decision}
+        passing = [
+            ('the gap linked', {**deviation, 'gap': issue}),
+            ('the gap linked beside a registered suite', {**deviation, 'gap': issue, 'evidence': ['KeepAliveSuite']}),
+        ]
+        self.fixture.register([self.fixture.contract([SUITE_FILE, CORPUS_FILE])])
+        for name, fields in passing:
+            with self.subTest(case=name):
+                self.fixture.area({key: self.fixture.entry(key, **fields)}, [])
+                status, out = self.fixture.run()
+                self.assertEqual(status, 0, out)
+        self.fixture.register([])
+        failing = [
+            ('no suite and no gap', deviation, 'or, for a Deviation, the issue of the missing comparison ("gap")'),
+            ('an unregistered suite beside the gap', {**deviation, 'gap': issue, 'evidence': ['KeepAliveSuite']},
+             'KeepAliveSuite has no comparison contract'),
+            ('a gap that is no issue', {**deviation, 'gap': 'docs/decisions.md'},
+             '"gap" is the issue of the missing comparison (https://'),
+            ('a gap on a Mirror', {'structure': 'differs', 'gap': issue},
+             '"gap" is the issue of the missing comparison of a Deviation whose structure differs'),
+            ('a gap on a Gap', {'class': 'Gap', 'structure': 'differs', 'record': issue, 'gap': issue},
+             '"gap" is the issue of the missing comparison of a Deviation whose structure differs'),
+            ('a gap on a Deviation of the same structure', {**deviation, 'structure': 'same', 'gap': issue},
+             '"gap" is the issue of the missing comparison of a Deviation whose structure differs'),
+        ]
+        for name, fields, message in failing:
+            with self.subTest(case=name):
+                self.fixture.area({key: self.fixture.entry(key, **fields)}, [])
+                status, out = self.fixture.run()
+                self.assertEqual(status, 1, out)
+                self.assertIn(message, out)
+
     def test_a_suite_defined_twice_needs_one_of_its_files_registered(self):
         key = 'enum net.KeepAlive.State'
         other = 'net/src/test/scala/more/KeepAliveSuite.scala'

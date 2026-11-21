@@ -859,9 +859,11 @@ cites its upstream file and line at the pinned version, a revision registered in
   `scripts/check_correspondence.py` refuses a definition that is neither mapped to its counterpart at a registered
   pin nor listed as glue, a mapped definition whose code changed while its entry did not, and an evidence suite of
   a `differs` entry that has no comparison contract against the reference (a corpus, an oracle or a running node)
-  in `docs/data/test-coverage-register.json` (the [correspondence map](design/correspondence-map.md)). The
-  definitions that existed when the map began are in a baseline that only shrinks
-  ([#1026](https://github.com/KD5UJC-XYZ/scarab/issues/1026)). A citation in a comment is review only.
+  in `docs/data/test-coverage-register.json`. A `differs` entry with no such suite is a Gap, or an approved
+  Deviation whose `gap` links the issue of the missing comparison (the
+  [correspondence map](design/correspondence-map.md)). The definitions that existed when the map began are in a
+  baseline that only shrinks ([#1026](https://github.com/KD5UJC-XYZ/scarab/issues/1026)). A citation in a comment
+  is review only.
 - **Why:** owner's decisions, 2026-10-27 and 2026-11-14 ([decisions register](decisions.md#reference-fidelity));
   [ADR 0001, amendment of 2026-11-14](adr/0001-haskell-node-as-reference.md#amendment-2026-11-14-what-mirroring-means);
   [ADR 0008](adr/0008-networking-mirrors-ouroboros-network.md).

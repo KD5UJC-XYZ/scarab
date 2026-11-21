@@ -18,7 +18,9 @@ shrinks. The guard refuses:
   * an entry whose `class` is not Mirror, Improvement, Deviation or Gap, or whose `structure` is not `same` or
     `differs`; an Improvement, Deviation or Gap without a `record` link (a Gap's is its issue); a `differs` entry
     without `evidence`, the test suites that compare that behaviour with the reference, unless it is a Gap (a
-    structure that differs with no such evidence is one); an evidence suite that no test source defines;
+    structure that differs with no such evidence is one) or a Deviation that links the issue of its missing
+    comparison in `gap`; a `gap` on any other entry, or one that is not an issue link; an evidence suite that no
+    test source defines;
   * an evidence suite of a `differs` entry with no comparison contract in `docs/data/test-coverage-register.json`:
     a register entry whose `evidence` names a file that defines the suite and a reference source, whose
     classification compares with the reference (COMPARISON_KINDS) and whose assertion is enforced (`covered` or
@@ -83,7 +85,7 @@ ENFORCED = ('covered', 'bounded')
 # node (a devnet harness, or the receipt of an external acceptance run against one).
 REFERENCE_SOURCES = (re.compile(r'scripts/oracle/.+'), re.compile(r'scripts/devnet/.+'),
                      re.compile(r'docs/data/external-acceptance-[\w-]+\.json'))
-ENTRY_FIELDS = frozenset(('upstream', 'class', 'structure', 'digest', 'record', 'evidence', 'note'))
+ENTRY_FIELDS = frozenset(('upstream', 'class', 'structure', 'digest', 'record', 'evidence', 'gap', 'note'))
 UPSTREAM_FIELDS = frozenset(('repository', 'revision', 'file', 'symbol', 'lines'))
 REVISION = re.compile(r'[0-9a-f]{40}')
 ISSUE = re.compile(r'https://github\.com/KD5UJC-XYZ/scarab/issues/\d+(?:#[\w-]+)?')
@@ -341,9 +343,18 @@ def entry_problems(root: Path, key: str, entry, digest: str, registered, clones:
     if not isinstance(evidence, list) or not all(isinstance(s, str) for s in evidence):
         out.append(f'{key}: "evidence" is a list of test suite names')
         evidence = []
-    if structure == 'differs' and not evidence and kind != 'Gap':
+    gap = entry.get('gap')
+    if gap is not None:
+        if kind != 'Deviation' or structure != 'differs':
+            out.append(f'{key}: "gap" is the issue of the missing comparison of a Deviation whose structure differs; '
+                       'a Gap links its issue as its "record"')
+        elif not isinstance(gap, str) or not ISSUE.fullmatch(gap):
+            out.append(f'{key}: "gap" is the issue of the missing comparison '
+                       '(https://github.com/KD5UJC-XYZ/scarab/issues/N)')
+    if structure == 'differs' and not evidence and kind != 'Gap' and not (kind == 'Deviation' and gap is not None):
         out.append(f'{key}: its structure differs from the reference\'s, so it names the suites that compare that '
-                   'behaviour with the reference ("evidence")')
+                   'behaviour with the reference ("evidence"), or, for a Deviation, the issue of the missing '
+                   'comparison ("gap")')
     out += [f'{key}: evidence suite {s} is not defined by any test source' for s in evidence if s not in suites]
     if structure == 'differs':
         out += [f'{key}: evidence suite {s} has no comparison contract in {REGISTER}: an entry, '
