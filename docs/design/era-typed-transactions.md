@@ -1219,12 +1219,65 @@ Conway's rules on the classes follow as the rest of stage 2.
       the flat LEDGER (LEDGER whole, below, says why);
     - `ProposalsReadError` is reached by crafted stores only (`EraProposalsSuite`): the node's record is written
       by the flat rule.
-  - Not yet (#85): the governance state's classes (`EraGov`, `ConwayEraGov`) over typed parameters; the committee in
-    the environment as the reference's `Committee era`; the votes keyed by the reference's typed voter. The ordered
+  - Not yet (#85): the committee in the environment as the reference's `Committee era`; the votes of a transaction
+    as the reference's typed voter (an action's state holds them under it, below). The ordered
     map is a vector, and the proposals are read per transaction, which the Conway switch must make cheap, as the
     flat rule's single pass over the votes is (#94). The flat rule numbers proposals with an unbounded index
     (`zipWithIndex`), where the reference's is a `Word16`; only a 65,537th proposal tells them apart, and stage 3
     deletes the flat rule.
+- **The governance state** (`era/Governance.scala`, `era/GovStateRecord.scala`, `era/dijkstra/DijkstraProposals.scala`;
+  `Conway/Governance.hs`, `Governance/Internal.hs`, `Governance/DRepPulser.hs` and `State/Governance.hs`,
+  cardano-ledger f649f975, Dijkstra's instances `Dijkstra/Governance.hs:28-49` at 9df9f98c):
+  - The reference's records by era, their fields in its order: `ConwayGovState[E]`, `EnactState[E]`,
+    `RatifyState[E]`, `PulsingSnapshot[E]`, `DRepPulsingState[E]` in the completed form the node holds and the
+    reference encodes (`DRComplete`), `FuturePParams[E]`, over `PParams[E]` and `Proposals[E]`; the committee, the
+    constitution, the DReps' states and the distributions are the node's types. The era's family `GovState`
+    is `ConwayGovState` from Conway. `EraGov` and `ConwayEraGov` have the reference's members, lenses onto the
+    record, `emptyGovState` (the reference's `Default`) and `obligationGovState` (the proposals' deposits), their
+    superclasses members, with one instance for Conway and one for Dijkstra.
+  - An action state's votes are keyed by the voters' role-typed credentials and pool key hash, in the
+    reference's `Map` order, which is the flat keys' order (a property of each role). The votes of a transaction
+    still carry the node's flat voter, which GOV reads into the reference's `Voter` once, a key outside its role
+    a `GovDefect`.
+  - `GovStateRecord` reads the node's flat record into each era's and writes it back, each parameter record
+    over its own position's flat record (`GovStateBases.of`), which keeps that position's other eras' fields:
+    a restored state can hold different ones at each position (`MirrorStep.withParams` restores the current
+    and previous parameters from the sidecar and leaves the enact state's as decoded), and a state the
+    Haskell codecs read holds the codec's empty values there. The DReps' states the pulser's snapshot holds
+    are the node's flat `DRepState`, declared deposit first; a codec of the era's record writes the
+    reference's order (expiry, anchor, deposit, delegators: `libs/cardano-ledger-core/src/Cardano/Ledger/DRep.hs:166-171`
+    and its `EncCBOR`, `:192-199`, at f649f975 and 9df9f98c alike), as the flat state codec does. Dijkstra's proposals (`DijkstraProposals`) are read as Dijkstra's decoder reads one at
+    version 12, from the flat proposal the record holds or from a state's item (`DijkstraProposals.proposal`,
+    for a codec of the era's state). Written back, an update of the keys Dijkstra adds (34 to 56) is refused
+    with its keys (`ProposalsWriteError.UnstorableUpdate`), since the flat update has no field for one;
+    `ProposalsRecord` gains Dijkstra's, its write fallible, and Conway's LEDGER raises such a refusal.
+  - Evidence (`EraGovStateStoredSuite`, `EraGovStateSuite`): the governance state of `fixtures/haskell-state/conway-4593`,
+    `fixtures/leios/state/conway-195`, the native V10 fixtures `conway-native-730`, `eras/conway-729` and
+    `eras/conway-730`, `fixtures/leios/state/dijkstra-203` and `testnet-2168639` reads into the era's record and
+    is written back to the same flat record and the same state bytes; none holds a proposal, an enacted action
+    or one in the pulser's snapshot. So do nine private states of the public Leios testnet, not published: the
+    G1 window's start (slot 1,943,999) and the replay windows' states at slots 1,015,165, 1,036,794, 1,058,391,
+    1,079,994, 1,511,985, 1,533,582, 1,598,375 and 1,619,990; the two at 1,555,188 and 1,576,750 hold the
+    proposal of keys 47 and 48, which the flat codec refuses with its typed cause; their stored proposal is
+    read by `DijkstraProposals.proposal` and refused by the flat record with its keys. Each private state is a
+    test of its own, read from the directory `SCARAB_LEIOS_REFERENCE_STATES` names
+    ([the replay windows](../leios.md#13-offline-replay-against-the-references-ledger-states-g1-54)): skipped by
+    name where it is unset, failed where it is set without the state. The 14 proposals of the recorded Preview
+    governance blocks, two of each kind of action, with votes of every kind of voter and of both credential
+    kinds of the committee and the DReps, in the proposals, the ratification and the pulser's snapshot of the
+    Conway and of the Dijkstra state, with definite future parameters, read into each era and back to the same
+    flat record (an update's kept encodings the writer's, at Dijkstra) and, both written, the same bytes. A
+    restored state of each era, its five parameter records distinct in a field of the era and in one of
+    another era and a delaying action ratified, reads each record into its own position with the delay kept,
+    and is written back to the same flat record over each position's own record; over one record for every
+    position it is not. Every proposal of the reference's Dijkstra GOV cases goes through the flat record unchanged, as the
+    flat path writes it; the chain's two proposal items are read by the stored reader as the body reads them,
+    and refused by the flat record with their keys, alone and in a governance state. The lens laws hold for
+    every lens at both eras.
+  - Left for the next stages: Dijkstra's LEDGER keeps its proposals in their own capability, since the chain's
+    proposals update keys the flat record cannot hold; it reads them from the governance state once the state
+    holds the era's record. The stored record's flip to the era's, and its codec, are a format change of their
+    own (FMT-1). RATIFY, ENACT, the epoch's governance steps and Dijkstra's tick on these records follow (#85).
 - **LEDGER and LEDGERS whole, with the reference's failures** (`era/rules/Ledger.scala`,
   `era/rules/LedgerFailures.scala`; `Conway/Rules/Ledger.hs`, `Conway/Rules/Ledgers.hs` and Shelley's
   `Rules/Ledger.hs` and `Rules/Ledgers.hs`, cardano-ledger f649f975, where 29a7d656 and 9df9f98c differ in derived
@@ -1824,7 +1877,8 @@ Conway's rules on the classes follow as the rest of stage 2.
       yet (#796).
   - Not yet (#85): what Conway's GOV leaves, the Dijkstra copy inherits: the reference's typed voter in the votes
     and the failures ([item](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923023870)), the
-    governance state's classes and the committee as the reference's
+    committee as the reference's and GOV's functions over the governance state's classes, which are in place
+    (the governance state, above)
     ([item](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923488137)), and the flat GOV's order of
     its vote failures ([item](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7054122427)).
 - **Dijkstra's SUBUTXO and SUBUTXOW** (`era/rules/DijkstraSubUtxo.scala`, `era/rules/DijkstraSubUtxow.scala`;
