@@ -1381,6 +1381,446 @@
         "ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/era/dijkstra/DijkstraPParamsSuite.scala"
       ],
       "candidateRequired": false
+    },
+    {
+      "id": "conway-refusal-corpus-era-rules",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "The Conway cases of the reference refusal corpora, judged by the era-typed UTXO, UTXOW, CERTS, GOV and LEDGER rules.",
+      "assertion": "Where every failure of the reference's refusal is of one rule, that era-typed rule's failures encode to the reference's refusal bytes exactly; on every Conway case the era-typed rules give the flat rules' verdicts and failures, whose complete refusals ReferenceRefusalSuite compares with the reference.",
+      "rationale": "The era-typed rules restructure the flat ones; the recorded refusals show that the restructuring keeps the reference's failures. A predicate the corpus never fails is compared only on crafted cases, against the flat rule, and each suite names those predicates.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/85",
+      "resolution": "The five suites compare the refusal bytes of the cases whose failures are of their rule alone.",
+      "evidence": [
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/ntc/ConwayUtxoChecksSuite.scala",
+        "node/src/test/scala/xyz/kd5ujc/scarab/ledger/era/ConwayUtxowChecksSuite.scala",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/ntc/ConwayCertsChecksSuite.scala",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/ntc/ConwayGovChecksSuite.scala",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/ntc/ConwayLedgerChecksSuite.scala",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/ntc/ReferenceRefusalSuite.scala",
+        "fixtures/reference/refusals/manifest.json",
+        "fixtures/reference/refusals/README.md"
+      ],
+      "candidateRequired": false
+    },
+    {
+      "id": "conway-submission-verdicts-era-rules",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "The 70 Conway transactions submitted to the reference node 11.1.3 (the Plutus V1 context, context-error and Plutus boundary submissions) and the reference's multi-script results, judged by the era-typed UTXOS, UTXO, UTXOW and LEDGER.",
+      "assertion": "As submitted, each era-typed rule gives the reference node's verdict; the scripts that passed and failed are the reference's, in its order; the effects of an admitted invalid-flag transaction are the reference's.",
+      "rationale": "The era-typed rules restructure the flat ones; the reference's verdicts on these submissions are the comparison. With the flag flipped, and under each build and validation policy, the comparison is with the flat rules.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/85",
+      "resolution": "EraUtxosSuite and EraUtxoSuite compare every submission with the verdict the reference node recorded.",
+      "evidence": [
+        "ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/era/EraUtxosSuite.scala",
+        "ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/era/EraUtxoSuite.scala",
+        "fixtures/reference/v1-context/conway-pv9.json",
+        "fixtures/reference/v1-context/conway-pv10.json",
+        "fixtures/reference/context-errors/submissions/conway-pv10.json",
+        "fixtures/reference/plutus-boundaries/transactions/conway-pv10.json",
+        "fixtures/reference/script-results/aggregation.json"
+      ],
+      "candidateRequired": false
+    },
+    {
+      "id": "conway-script-contexts-era-types",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "The Plutus V1 to V3 script contexts of Conway transactions: the recorded Preview and preprod transactions, the several-voter probes, the context matrix, the context errors, the script results and the auxiliary-data observations, as the pinned Haskell collection (collectPlutusScriptsWithContext, cardano-ledger f649f975) and its decoders give them.",
+      "assertion": "Each request the reference collected is the node's, argument for argument and byte for byte, in its order; each refusal is the reference's, for the same purposes; the collection verdicts and the auxiliary-data verdicts are the reference's.",
+      "rationale": "The era-typed translation and the collection differ in structure from the reference; the contexts the reference collected are the comparison.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/85",
+      "resolution": "EraPlutusContextSuite, RecordedScriptContextsSuite, ContextCollectionSuite and ContextMatrixSuite compare every recorded row.",
+      "evidence": [
+        "ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/era/EraPlutusContextSuite.scala",
+        "ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/RecordedScriptContextsSuite.scala",
+        "ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/ContextCollectionSuite.scala",
+        "ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/ContextReferenceCases.scala",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/ntc/ContextMatrixSuite.scala",
+        "fixtures/reference/recorded-contexts/contexts.json",
+        "fixtures/reference/context-matrix/matrix.json",
+        "fixtures/reference/context-errors/collection.json",
+        "fixtures/reference/script-results/aggregation.json",
+        "fixtures/reference/auxiliary-scripts/auxiliary.json",
+        "scripts/oracle/plutus/recorded-contexts/README.md"
+      ],
+      "candidateRequired": false
+    },
+    {
+      "id": "dijkstra-rules-oracle-era-rules",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "The 68 cases of the Dijkstra rules oracle (BBODY, UTXOW, CERTS and GOV of the Leios testnet's build, cardano-ledger 9df9f98c), judged by the node and by the era-typed UTXOW, CERTS, GOV and ENTITIES.",
+      "assertion": "Each completed case has the reference's acceptance, and for a refusal its predicate failures in its order, each the reference's bytes; the era-typed rules give the same and the flat rules' states; ENTITIES admits the transaction of the devnet block the reference accepted.",
+      "rationale": "The era-typed Dijkstra rules restructure the reference's; the oracle's verdicts are the comparison. A case that reaches a rule this build does not have is an incomplete gate, reported apart.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/54",
+      "resolution": "DijkstraRulesOracleSuite compares every completed case.",
+      "evidence": [
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/ntc/DijkstraRulesOracleSuite.scala",
+        "fixtures/reference/dijkstra-rules/cases.jsonl",
+        "fixtures/reference/dijkstra-rules/provenance.json",
+        "scripts/oracle/dijkstra-rules/Main.hs"
+      ],
+      "candidateRequired": false
+    },
+    {
+      "id": "leios-testnet-script-contexts",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "The script contexts the Leios testnet's build collects (cardano-ledger 9df9f98c, plutus-ledger-api 1.71.0.0): the chain's 200 transactions, the context refusals and the hand-written Plutus V4 cases.",
+      "assertion": "Each level's contexts are the reference's in order, byte for byte, or its refusal with every field; every Plutus V4 argument the reference recorded reads into the types and writes back to the reference's bytes.",
+      "rationale": "Dijkstra's translation on the era types differs in structure from the reference; the recorded contexts are the comparison.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/54",
+      "resolution": "DijkstraPlutusContextSuite, DijkstraScriptContextsSuite and PlutusLedgerApiV4Suite compare every recorded context and refusal.",
+      "evidence": [
+        "ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/era/dijkstra/DijkstraPlutusContextSuite.scala",
+        "ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/dijkstra/DijkstraScriptContextsSuite.scala",
+        "ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/era/PlutusLedgerApiV4Suite.scala",
+        "fixtures/reference/leios-testnet-chain-contexts/results.json",
+        "fixtures/reference/leios-testnet-contexts/results.json",
+        "fixtures/reference/leios-testnet-context-refusals/results.json"
+      ],
+      "candidateRequired": false
+    },
+    {
+      "id": "leios-testnet-chain-component-checks",
+      "classification": "native-parity",
+      "status": "bounded",
+      "scope": "The Leios testnet chain's transactions and batches that its ledger accepted, the context refusals and the Dijkstra rules oracle's UTXOW cases, judged by Dijkstra's UTXO, UTXOW, SUBUTXO, SUBUTXOW and UTxO functions on the era types.",
+      "assertion": "UTXOW admits every ranking block transaction without sub-transactions, its scripts passing; SUBUTXOW admits every sub-transaction of the chain's batches, threaded; the value, keys, scripts and datums the accepted transactions need hold; UTXOS reports the recorded collection errors; the oracle's UTXOW refusals record the values, keys, scripts and fee the functions give.",
+      "rationale": "The fixture records neither the chain's certificate state nor the state after SUBLEDGERS, so these are component checks of the reference's acceptance, not its verdict on whole batches (CNF-2).",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/85",
+      "resolution": "Bounded: the whole batches as the reference judges them need SUBLEDGERS and the sub-transactions' rules, which the suites name as incomplete.",
+      "evidence": [
+        "ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/era/dijkstra/DijkstraSubUtxowSuite.scala",
+        "ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/era/dijkstra/DijkstraUtxowSuite.scala",
+        "ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/era/dijkstra/DijkstraUTxOSuite.scala",
+        "fixtures/reference/leios-testnet-chain-contexts/cases.json",
+        "fixtures/reference/leios-testnet-context-refusals/cases.json",
+        "fixtures/reference/dijkstra-rules/cases.jsonl"
+      ],
+      "candidateRequired": false
+    },
+    {
+      "id": "leios-testnet-decoding-verdicts",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "The transactions of the Leios build's decoding corpus (accepted and refused, recorded and synthetic), the testnet's blocks, the devnet chain's Dijkstra transactions and the script-context fixtures, read by the era decoder.",
+      "assertion": "The era decoder accepts and refuses the corpus's transactions as the build does (273 accepted, 263 refused), each with the flat decoder's reading or error, and the flat decoder gives the build's verdict on every case.",
+      "rationale": "The era decoder differs in structure from the reference's; the build's recorded verdicts are the comparison, per case through the flat decoder and in total directly.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/711",
+      "resolution": "DijkstraTxSuite and LeiosTestnetBlockReferenceSuite compare every case of the corpus.",
+      "evidence": [
+        "ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/era/dijkstra/DijkstraTxSuite.scala",
+        "ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/LeiosTestnetBlockReferenceSuite.scala",
+        "fixtures/reference/leios-testnet-blocks/cases.jsonl"
+      ],
+      "candidateRequired": false
+    },
+    {
+      "id": "dijkstra-epoch-tick",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "The two Dijkstra states the Leios build wrote and the oracle's derivations of them, ticked across two epoch boundaries and past the start of the reward update.",
+      "assertion": "After every tick the state the node writes is the native tick's (its SHA-256, and its bytes where the fixture holds them), the globals the native tick's.",
+      "rationale": "Dijkstra's EPOCH, POOLREAP and SNAP on the era types differ in structure from the reference's; the native tick is the comparison.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/54",
+      "resolution": "DijkstraEpochReferenceSuite compares every state on both paths; no case is excluded.",
+      "evidence": [
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/DijkstraEpochReferenceSuite.scala",
+        "fixtures/reference/dijkstra-epoch/cases.json",
+        "scripts/oracle/dijkstra-epoch/Main.hs"
+      ],
+      "candidateRequired": false
+    },
+    {
+      "id": "leios-build-state-files",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "The ledger state files a node of the Leios build wrote (fixtures/leios/state: the devnet's last Conway state, its first Dijkstra state and the public testnet's state at slot 2,168,639).",
+      "assertion": "Each is read in the Leios layout and written again byte for byte, its parameter records at the reference's types; the era history's bounds are those of the captured telescopes, field for field.",
+      "rationale": "The state codecs and the era history differ in structure from the reference; the files the reference wrote are the comparison. Hand-built records cover the switches no captured state holds.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/826",
+      "resolution": "DijkstraEpochStateSuite, DijkstraPParamsStateSuite, LeiosLayoutSuite and LeiosBoundsEvidenceSuite read every captured state.",
+      "evidence": [
+        "storage/src/test/scala/xyz/kd5ujc/scarab/storage/haskell/state/DijkstraEpochStateSuite.scala",
+        "storage/src/test/scala/xyz/kd5ujc/scarab/storage/haskell/state/DijkstraPParamsStateSuite.scala",
+        "storage/src/test/scala/xyz/kd5ujc/scarab/storage/haskell/state/LeiosLayoutSuite.scala",
+        "node/src/test/scala/xyz/kd5ujc/scarab/storage/LeiosBoundsEvidenceSuite.scala",
+        "fixtures/leios/state/dijkstra-203/state",
+        "fixtures/leios/README.md"
+      ],
+      "candidateRequired": false
+    },
+    {
+      "id": "haskell-node-state-files",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "The ledger snapshots cardano-node 11.1.3 wrote on the era-walking devnet, one per era (fixtures/haskell-state).",
+      "assertion": "Each state file is written again byte for byte and its meta file is the reference's; the Conway state's current and previous parameters read at the reference's types and come back unchanged.",
+      "rationale": "The state codecs differ in structure from the reference; the files the reference wrote are the comparison.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/85",
+      "resolution": "LedgerFileSuite and ConwayPParamsStateSuite read every committed snapshot.",
+      "evidence": [
+        "storage/src/test/scala/xyz/kd5ujc/scarab/storage/haskell/state/LedgerFileSuite.scala",
+        "storage/src/test/scala/xyz/kd5ujc/scarab/storage/haskell/state/ConwayPParamsStateSuite.scala",
+        "fixtures/haskell-state/conway-4593/state",
+        "fixtures/haskell-state/README.md"
+      ],
+      "candidateRequired": false
+    },
+    {
+      "id": "dijkstra-headers-the-reference-adopted",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "The Dijkstra headers the reference adopted: the Conway-to-Dijkstra devnet chain of the Leios build and the public testnet's headers and certifying block after slot 2,168,639.",
+      "assertion": "Every header the reference adopted passes the header rules and Praos2 from the translated or captured state, its VRF and leader checks included; the certificate the reference adopted (block 97,276) passes certification.",
+      "rationale": "The crossing, the header rules and the certification differ in structure from the reference; its adoption of these headers and this certificate is the comparison, on accepted cases only.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/54",
+      "resolution": "DijkstraHeaderRulesSuite, DijkstraCrossingSuite (consensus) and LeiosCertificateFixtureSuite check every recorded header.",
+      "evidence": [
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/DijkstraHeaderRulesSuite.scala",
+        "node/src/test/scala/xyz/kd5ujc/scarab/consensus/DijkstraCrossingSuite.scala",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/LeiosCertificateFixtureSuite.scala",
+        "fixtures/dijkstra-devnet/manifest.json",
+        "fixtures/leios/testnet/headers-after-2168639.tsv",
+        "fixtures/leios/testnet/blocks-after-2168639.tsv"
+      ],
+      "candidateRequired": false
+    },
+    {
+      "id": "leios-ntc-query-answers",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "GetStakePoolState and GetLeiosCommittee of the Leios build at node-to-client version 23 on the three states the build wrote and the oracle's derived states.",
+      "assertion": "Each answer is the bytes the build's own ledger code writes for it.",
+      "rationale": "The queries' answers are built from the node's state types; the build's ledger code is the comparison.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/826",
+      "resolution": "LeiosQueryAnswersSuite compares every state and query.",
+      "evidence": [
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/ntc/LeiosQueryAnswersSuite.scala",
+        "fixtures/reference/leios-ntc-queries/cases.jsonl",
+        "scripts/oracle/leios-ntc-queries/Main.hs"
+      ],
+      "candidateRequired": false
+    },
+    {
+      "id": "upstream-conway-conformance-era-rules",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "The generated Conway CERT, CERTS, POOL and GOV judgments exported from cardano-ledger's pinned conformance hooks, and the lawful GOV inputs with their observed outcomes.",
+      "assertion": "The era-typed CERT, CERTS, POOL and GOV give the full Haskell state, proposals and failures of every upstream judgment.",
+      "rationale": "The era-typed rules restructure the flat ones; the upstream judgments are the comparison.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/85",
+      "resolution": "UpstreamCertConformanceSuite, UpstreamCertsCoverageSuite, UpstreamPoolConformanceSuite and UpstreamGovernanceFunctionalSuite compare every retained judgment.",
+      "evidence": [
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/UpstreamCertConformanceSuite.scala",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/UpstreamCertsCoverageSuite.scala",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/UpstreamPoolConformanceSuite.scala",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/UpstreamGovernanceFunctionalSuite.scala",
+        "node/src/test/resources/upstream/conway-cert/manifest.json",
+        "node/src/test/resources/upstream/conway-certs/manifest.json",
+        "node/src/test/resources/upstream/conway-pool/manifest.json",
+        "node/src/test/resources/upstream/conway-governance-functional/manifest.json"
+      ],
+      "candidateRequired": false
+    },
+    {
+      "id": "plutus-171-conformance",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "The 1,009 evaluation cases of plutus 1.71.0.0's conformance tests (plutus-conformance/test-cases/uplc/evaluation), in its runner profile.",
+      "assertion": "Every case gives the recorded result and the exact recorded budget, with no exclusion.",
+      "rationale": "The machine and its builtins differ in structure from the reference's; the upstream expectations are the comparison.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/1099",
+      "resolution": "CekConformance171Suite runs every case.",
+      "evidence": [
+        "uplc/src/test/scala/xyz/kd5ujc/scarab/uplc/cost/CekConformanceSuite.scala",
+        "plutus/src/test/resources/plutus-reference/releases.json"
+      ],
+      "candidateRequired": false
+    },
+    {
+      "id": "plutus-171-generated-oracle",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "The generated UPLC programs of the 1.71.0.0 fixture, protocols 5 to 12, judged by the pinned Haskell evaluator of plutus 1.71.0.0.",
+      "assertion": "The same admission and stage, error class and constructor, budget on success and failure, and logs, on every program.",
+      "rationale": "The evaluator differs in structure from the reference's; the oracle's verdicts are the comparison.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/1099",
+      "resolution": "GeneratedOracle171Suite compares every generated program; a negative control doubles every cost.",
+      "evidence": [
+        "uplc/src/test/scala/xyz/kd5ujc/scarab/uplc/oracle/GeneratedOracleSuite.scala",
+        "fixtures/reference/uplc-generated-171/verdicts.jsonl",
+        "scripts/oracle/plutus/generated-171/Main.hs"
+      ],
+      "candidateRequired": false
+    },
+    {
+      "id": "plutus-data-builtin-verdicts",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "The reference's verdicts on the Data probes: serialiseData of wide constructor indices, constrData at its index bounds and equalsData on reordered, repeated and nested maps, V1 to V3 at protocols 9 to 11.",
+      "assertion": "Each probe's verdict is the reference's.",
+      "rationale": "The Data builtins differ in structure from the reference's; the oracle's verdicts are the comparison. Budgets are not compared.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/1099",
+      "resolution": "DataReferenceSuite compares every verdict row.",
+      "evidence": [
+        "uplc/src/test/scala/xyz/kd5ujc/scarab/uplc/builtin/core/DataReferenceSuite.scala",
+        "fixtures/reference/plutus-serialise-data/verdicts.jsonl",
+        "fixtures/reference/plutus-equals-data/verdicts.jsonl"
+      ],
+      "candidateRequired": false
+    },
+    {
+      "id": "bls-hash-to-group-points",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "hashToGroup of G1 and G2 on the messages and tags of the hash vectors: empty, ASCII, high-bit, zero-containing and 255-byte tags.",
+      "assertion": "The compressed points are those the pinned Haskell crypto module exported.",
+      "rationale": "The BLS12-381 builtins run on blst through the node's own layer; the exported points are the comparison. The group laws and the pairing are checked as laws, not against the reference.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/1099",
+      "resolution": "Bls12_381Suite compares every vector.",
+      "evidence": [
+        "uplc/src/test/scala/xyz/kd5ujc/scarab/uplc/builtin/extended/Bls12_381Suite.scala",
+        "fixtures/reference/plutus-boundaries/hash-vectors.jsonl"
+      ],
+      "candidateRequired": false
+    },
+    {
+      "id": "forecast-horizon-refusals",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "Plutus validity upper bounds at the forecast horizon, submitted to the reference node 11.1.3 on throwaway devnets, one corpus per era from protocol 5.",
+      "assertion": "Scarab's rules, and the era-typed UTXO and LEDGER, give the reference's verdict, a refusal byte for byte.",
+      "rationale": "The horizon's checks differ in structure from the reference's; the recorded refusals are the comparison.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/85",
+      "resolution": "PastHorizonReferenceSuite compares every recorded case; an absent corpus fails the suite.",
+      "evidence": [
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/ntc/PastHorizonReferenceSuite.scala",
+        "fixtures/reference/plutus-forecast-horizon/conway-past-horizon/corpus.json",
+        "fixtures/reference/plutus-forecast-horizon/README.md"
+      ],
+      "candidateRequired": false
+    },
+    {
+      "id": "redeemer-index-verdicts",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "The redeemer-index cases the e2e scenario sent the reference node 11.1.3, with the node's verdict on each.",
+      "assertion": "The node's pool rules, the era-typed UTXOW and the era-typed LEDGER accept what the reference accepted and refuse what it refused with exactly the recorded bytes.",
+      "rationale": "The redeemer index and the era-typed rules differ in structure from the reference's; the recorded verdicts are the comparison.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/85",
+      "resolution": "RedeemerIndexReferenceSuite compares every recorded case.",
+      "evidence": [
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/ntc/RedeemerIndexReferenceSuite.scala",
+        "fixtures/devnet/redeemer-index.jsonl"
+      ],
+      "candidateRequired": false
+    },
+    {
+      "id": "query-golden-answers",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "The reference node 11.1.3's answers to the local state queries that do not depend on activity, over the devnet's genesis.",
+      "assertion": "Each answer equals the reference's.",
+      "rationale": "The answers are built from the node's own state; the reference's answers are the comparison.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/85",
+      "resolution": "QueryGoldenSuite compares every recorded query.",
+      "evidence": [
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/ntc/QueryGoldenSuite.scala",
+        "fixtures/devnet/lsq/golden.json"
+      ],
+      "candidateRequired": false
+    },
+    {
+      "id": "mempack-txout-bytes",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "The 95 MemPack outputs of the preprod snapshot's tables file that cardano-node 11.1.3 wrote, and the tables files of the seven devnet snapshots.",
+      "assertion": "Every output decodes to what the independent decoder reads and packs back to the bytes the node wrote.",
+      "rationale": "The MemPack codec differs in structure from the reference's; the node's bytes are the comparison.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/294",
+      "resolution": "TxOutMemPackSuite compares every sampled output and every devnet table.",
+      "evidence": [
+        "ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/mempack/TxOutMemPackSuite.scala",
+        "fixtures/mempack/preprod-conway-sample.tsv",
+        "scripts/oracle/mempack.py"
+      ],
+      "candidateRequired": false
+    },
+    {
+      "id": "haskell-immutable-preview-import",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "Three finished chunks of a Preview ImmutableDB that cardano-node 11.1.3 wrote, with the independent inventory of their 648 blocks.",
+      "assertion": "The reader and the import yield every block, its slot, hash, number, length and SHA-256 as the inventory gives them, and the index finds each as the reference's does.",
+      "rationale": "The reader differs in structure from the reference's ImmutableDB; the database the reference wrote is the comparison. Epoch-boundary blocks are synthetic controls.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/85",
+      "resolution": "HaskellImportSuite reads and imports every chunk.",
+      "evidence": [
+        "node/src/test/scala/xyz/kd5ujc/scarab/storage/haskell/HaskellImportSuite.scala",
+        "fixtures/haskell-immutable/preview/expected-blocks.tsv"
+      ],
+      "candidateRequired": false
+    },
+    {
+      "id": "reference-adopted-block-integrity",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "The bodies of the blocks the reference adopted: the era-walking devnet capture, the mainnet Byron blocks, the Conway-to-Dijkstra devnet chain and the Leios testnet blocks.",
+      "assertion": "Every body satisfies its announced header and passes the transport checks.",
+      "rationale": "The integrity check differs in structure from the reference's; the reference's adoption of the blocks is the comparison, on accepted cases only.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/85",
+      "resolution": "FetchedBlockIntegritySuite checks all 731 adopted bodies.",
+      "evidence": [
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/FetchedBlockIntegritySuite.scala",
+        "fixtures/eras/blocks.hex",
+        "fixtures/mainnet/byron-tx-blocks.hex",
+        "fixtures/dijkstra-devnet/blocks.tsv",
+        "fixtures/leios/testnet/blocks-rc-2026w44.tsv"
+      ],
+      "candidateRequired": false
+    },
+    {
+      "id": "coin-encoding-native-boundaries",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "The eleven signed and compact Coin boundaries measured through the native Haskell APIs.",
+      "assertion": "The encoding of each amount is the native bytes, and the read of those bytes is the native one's, a refusal outside a Word64.",
+      "rationale": "The state codecs differ in structure from the reference's; the measured boundaries are the comparison. The suite's other goldens are worked out by hand from the Haskell instances.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/492",
+      "resolution": "HaskellStateCodecSuite compares every measured case.",
+      "evidence": [
+        "storage/src/test/scala/xyz/kd5ujc/scarab/storage/haskell/state/HaskellStateCodecSuite.scala",
+        "fixtures/reference/coin-arithmetic/cases.jsonl"
+      ],
+      "candidateRequired": false
     }
   ]
 }
