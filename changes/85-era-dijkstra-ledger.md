@@ -1,0 +1,3 @@
+### Added (era types, #85)
+
+- Dijkstra's LEDGER, LEDGERS and MEMPOOL run on the era types, as the Leios testnet's build (cardano-ledger 9df9f98c) has them, with the reference's failure types, events and injections, total on what each rule reaches. Each of the testnet chain's 200 recorded transactions, its 28 batches among them, is admitted whole from the recorded outputs and the least state its body needs, and leaves the state its parts derive; the reference's recorded refusals of the devnet's block and transactions are given byte for byte where the refusal is LEDGER's. The node still judges with the existing rules, so nothing changes in behaviour.
