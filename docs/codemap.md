@@ -128,6 +128,7 @@ Praos family, chain selection, hard fork, state mirror.
 |---|---|---|---|---|
 | consensus | Praos, TPraos and PBFT, chain selection, hard-fork triggers, header rules, volatile chain | `Praos`, `TPraos`, `ChainSelection`, `ForkTrigger`, `HeaderRules`, `VolatileChain`, `BlockRules`, `Scheduling` | `ChainSelectionSuite`, `TPraosSuite`, `HardForkSuite`, `VolatileChainSuite`, `SchedulingSuite`, `HeaderChainErrorSuite` | [ADR 0001](adr/0001-haskell-node-as-reference.md), [ADR 0007](adr/0007-era-indexed-state.md) |
 | consensus/genesis | Genesis density and diffusion punishment | `DiffusionPunishment`, `GenesisDensity` | `DiffusionPunishmentSuite`, `GenesisDensitySuite`, `UpstreamGenesisDensitySuite` | [design genesis](design/genesis.md) |
+| consensus/leios | The Leios build's endorser-block fetch decision: the fetch state, the decision over the peers' offers, the closure's jobs and the reference's StdGen it draws them with | `LeiosOutstanding`, `LeiosFetchLogic`, `LeiosJobPool`, `StdGen` | `LeiosFetchLogicSuite`, `StdGenSuite` | [leios](leios.md) |
 | consensus/state | Extended ledger state, chain-dependent state, era history, telescope, state mirror | `ExtLedgerState`, `ChainDepState`, `HeaderState`, `Telescope`, `EraHistory`, `StateMirror`, `MirrorStep`, `GenesisMirror` | `TelescopeSuite`, `StateLawsSuite`, `MirrorStepSuite`, `MirrorProvenanceSuite`, `DiffSuite` | [ADR 0007](adr/0007-era-indexed-state.md), [ADR 0009](adr/0009-ledger-mirror-step-2.md), [design ledger-mirror-step2](design/ledger-mirror-step2.md) |
 
 ## storage
