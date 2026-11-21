@@ -151,14 +151,26 @@ final case class ConfigSettings(
   def maxNtnVersion: NtnVersion =
     NtnVersion.maximum(experimentalProtocols = experimentalProtocolsEnabled)
 
-  /** The greatest protocol version the node declares it handles (`cardanoProtocolVersion`): 12.0
-    * with `ExperimentalHardForksEnabled`, 11.2 otherwise (cardano-node 11.1.3
-    * `Cardano.Node.Protocol.Cardano` lines 192-194). Forged headers carry it in every Shelley-based
-    * era (ouroboros-consensus 82ecba32 `Shelley/Ledger/Forge.hs:83`, the block configs of
-    * `Cardano/Node.hs:703-830`).
+  /** The greatest protocol version the node declares it handles under `build`
+    * (`cardanoProtocolVersion`, `Cardano.Node.Protocol.Cardano` lines 192-194 of each build's
+    * node): 12.0 with `ExperimentalHardForksEnabled` in every build; without it 11.2 in the release
+    * builds (cardano-node 11.1.3) and 11.0 in the Leios build (cardano-node b004fe0c). Forged
+    * headers carry it in every Shelley-based era: the block configs of every era take it
+    * (ouroboros-consensus 82ecba32 `Cardano/Node.hs:703-830`; 2416493b `Cardano/Node.hs:605-737`,
+    * Dijkstra's at 732-737) and `forgeShelleyBlock` writes `shelleyProtocolVersion` of the block
+    * config (82ecba32 `Shelley/Ledger/Forge.hs:83`; 2416493b `Shelley/Ledger/Forge.hs:144`). A
+    * Praos header holds it as `hbProtVer`; a Leios header, Dijkstra's under the Leios build, as its
+    * version info, the major as the highest supported one and the minor as the software tag
+    * (2416493b `Shelley/Protocol/Praos.hs:184, 275-300`). The 11.2 line keeps the 11.1 line's
+    * value, though its release 11.2.1 declares 11.3 without the flag (#1002); the build is refused
+    * at start.
     */
-  def protocolVersion: (BigInt, BigInt) =
-    if experimentalHardForksEnabled then (BigInt(12), BigInt(0)) else (BigInt(11), BigInt(2))
+  def protocolVersion(build: ReferenceBuild): (BigInt, BigInt) =
+    if experimentalHardForksEnabled then (BigInt(12), BigInt(0))
+    else
+      build match
+        case ReferenceBuild.LeiosB004fe0c                            => (BigInt(11), BigInt(0))
+        case ReferenceBuild.Release11_1 | ReferenceBuild.Release11_2 => (BigInt(11), BigInt(2))
 
   /** POM.hs:899-905 (cardano-node 11.1.3): relays default on, producers off; an explicit setting
     * wins.
