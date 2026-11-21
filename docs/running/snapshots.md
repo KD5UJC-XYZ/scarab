@@ -279,7 +279,9 @@ build recorded beside them. Nothing is converted between builds. The command fir
 Leios build's layout (every Shelley-based era, Dijkstra among them), and `11.1` refuses that
 layout's three-part extended state; a database imported so is not followed yet (#826). A Dijkstra
 snapshot needs its point's block in the database: import the blocks with
-`import-haskell-db --reference-build leios-b004fe0c` first.
+`import-haskell-db --reference-build leios-b004fe0c` first. The offline replay of the Leios testnet
+against the reference's states is in
+[the Leios note](../leios.md#13-offline-replay-against-the-references-ledger-states-g1-54).
 
 First import the immutable blocks with `import-haskell-db` (above). The destination must contain the
 configured network identity and the exact snapshot point in its current-format immutable chunks,
