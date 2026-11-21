@@ -49,8 +49,10 @@ object Praos2:
   final case class PoolStake(share: Rational, vrf: VRFVerKeyHash)
 
   /** The fields of PolyPraosLedgerView read by header validation (Praos2.hs:136-159 and
-    * Praos/Views.hs:70-93, ouroboros-consensus 2416493b). Committee, quorum and transaction-byte
-    * bounds belong to body/vote validation and are not consulted by these header predicates.
+    * Praos/Views.hs:70-93, ouroboros-consensus 2416493b), and `plvMaxEbTxsSize`, the bound on the
+    * bytes of the transactions an endorser block references (Praos/Views.hs:90-91), which the Leios
+    * fetch reads (`getLeiosMaxEbTxsSizeFromView`, `Shelley/Ledger/Leios.hs:161-163`). The committee
+    * and the quorum belong to vote validation and are not consulted by these header predicates.
     */
   final case class LedgerView(
       pools: Map[KeyHash[StakePool], PoolStake],
@@ -60,7 +62,8 @@ object Praos2:
       announcementPeriodMillis: Word32,
       votePeriodMillis: Word32,
       diffusionPeriodMillis: Word32,
-      maxEbReferencesSize: Word32
+      maxEbReferencesSize: Word32,
+      maxEbTxsSize: Word32
   )
 
   /** The epoch queries made by tick, certification and nonce freezing. A forecast failure is no

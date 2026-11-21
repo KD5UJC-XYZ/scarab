@@ -207,6 +207,7 @@ class DijkstraCrossingSuite extends munit.FunSuite:
     assertEquals(view.votePeriodMillis, word32(4000))
     assertEquals(view.diffusionPeriodMillis, word32(7000))
     assertEquals(view.maxEbReferencesSize, word32(40000))
+    assertEquals(view.maxEbTxsSize, word32(260000))
     assertEquals(view.protocolVersion, ProtVer(Word64.fromUnsigned(12), Word64.zero))
     assertEquals(view.maxHeaderSize, word16(1100))
     assertEquals(view.pools.size, 3)
