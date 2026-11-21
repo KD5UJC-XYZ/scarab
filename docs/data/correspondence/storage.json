@@ -571,9 +571,7 @@
    "class": "Deviation",
    "structure": "differs",
    "record": "docs/decisions.md#genesis-storage-and-keys",
-   "evidence": [
-    "ImmutableServingSuite"
-   ],
+   "gap": "https://github.com/KD5UJC-XYZ/scarab/issues/1263#issuecomment-7068380854",
    "note": "the reference's past chunks (an IntPSQ by time of last use) and their number, bounded at 250 chunks; here a map by chunk with an index ordered by (time of last use, order of use), and the number of entries held, bounded at 270,000 entries; the chunk appended to is held apart, in Current, as currentChunkInfo is. ImmutableServingSuite checks the approved policy; no suite compares it with the reference, whose bound it departs from by decision",
    "digest": "6dfc58894fc03669"
   },
@@ -623,9 +621,7 @@
    "class": "Deviation",
    "structure": "differs",
    "record": "docs/decisions.md#genesis-storage-and-keys",
-   "evidence": [
-    "ImmutableServingSuite"
-   ],
+   "gap": "https://github.com/KD5UJC-XYZ/scarab/issues/1263#issuecomment-7068380854",
    "note": "the reference adds a chunk, then drops the least recently used one if more than 250 are held (composed at getChunkInfo and openPrimaryIndex); here it adds the chunk, then drops the least recently used until the entries held are within the bound, and does not hold an index larger than the bound. ImmutableServingSuite checks the approved policy; no suite compares it with the reference, whose bound it departs from by decision",
    "digest": "c1084d816c6ee09b"
   },
