@@ -32,6 +32,10 @@ def follow(args):
     if mode != "GenesisMode":
         program += ["--peer", f"127.0.0.1:{port}"]
     program += configuration(root, mode, [port])
+    build = getattr(args, "reference_build", None)
+    if build is not None:
+        # the build the cluster's reference runs, named as the node takes it; without the flag the node's default
+        program += ["--reference-build", build]
     if own_build(args):
         # the Prometheus endpoint on a listener of its own (an older build, run for a baseline, has no such flag)
         program += ["--metrics-listen", f"127.0.0.1:{site.metrics_port}"]

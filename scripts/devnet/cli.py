@@ -3,7 +3,8 @@
 
     devnet.py up                   create genesis and start the reference cluster
     devnet.py tip [--node N]       reference tip as JSON
-    devnet.py follow [--seconds N] run the Scala follower against node1 (logs to the run dir)
+    devnet.py follow [--seconds N] run the Scala follower against node1 (logs to the run dir); --reference-build
+                                   names the cluster's build to the node (leios-b004fe0c for up-dijkstra)
     devnet.py load [--seconds N]   submit randomized ADA transfers between wallets
     devnet.py compare              compare the Scala ledger with the reference at one block
     devnet.py soak [--seconds N]   up + follow + load + periodic compare, then a summary
@@ -232,6 +233,11 @@ def main():
                                      "instead of the checkout's, to write a database in an older format "
                                      "(the environment variable SCARAB_FOLLOW_CLASSES does the same for the followers "
                                      "that other scenarios start, as `e2e --oracle`)")
+    f.add_argument("--reference-build", metavar="BUILD",
+                   help="the cardano-node build the cluster's reference runs, passed on as the node's own "
+                        "`follow --reference-build` (the node checks the value; without the flag, the node's "
+                        "default): leios-b004fe0c for an `up-dijkstra` cluster, with --db for its endorser-block "
+                        "store")
     f.set_defaults(run=follow)
     ld = sub.add_parser("load", help="submit randomized ADA transfers, staking and certificates")
     ld.add_argument("--seconds", type=int, help="stop after this long (default: until killed)")

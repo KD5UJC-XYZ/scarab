@@ -11,11 +11,25 @@ def write_whole(path, text):
     part.replace(path)
 
 
+# The node configuration's names in a `--genesis-dir`, in the order the node looks for them
+# (`NodeSetup.ConfigNames`): `up` and `up-eras` write `configuration.yaml`, `up-dijkstra` `config.json`.
+CONFIG_NAMES = ("configuration.yaml", "configuration.json", "config.json")
+
+
+def genesis_configuration(root):
+    """The node configuration the follower reads from the run's genesis directory, as the node finds it."""
+    genesis = root / "genesis"
+    found = next((genesis / name for name in CONFIG_NAMES if (genesis / name).is_file()), None)
+    if found is None:
+        raise SystemExit(f"{genesis} has no node configuration (one of {', '.join(CONFIG_NAMES)})")
+    return found
+
+
 def configuration(root, mode, ports=()):
     """Write a separate configuration only when a mode was explicitly requested."""
     if mode is None:
         return []
-    config = json.loads((root / "genesis" / "configuration.yaml").read_text())
+    config = json.loads(genesis_configuration(root).read_text())
     config["ConsensusMode"] = mode
     # The reference template's paths belong to its container. The follower chooses its own
     # database with --db and starts no Unix listener; relay supplies an explicit mounted socket.
