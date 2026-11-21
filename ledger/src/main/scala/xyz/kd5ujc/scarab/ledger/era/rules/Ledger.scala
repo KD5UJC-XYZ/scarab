@@ -499,18 +499,67 @@ object ConwayLedger:
       )
     yield ()
 
-/** LEDGERS (`Shelley/Rules/Ledgers.hs`, cardano-ledger f649f975), Conway's (`Conway/Era.hs:244`,
-  * Babbage's `LEDGERS`, whose transition is Shelley's).
+/** LEDGERS, Conway's (`Conway/Era.hs:244`, cardano-ledger f649f975) and Dijkstra's
+  * ([[DijkstraLedgers]]): Babbage's `LEDGERS` both (`Babbage/Rules/Ledgers.hs`), Shelley's failures
+  * and events (`Shelley/Rules/Ledgers.hs`).
   */
 object ShelleyLedgers:
-  /** `ledgersTransition` (`Shelley/Rules/Ledgers.hs:185-211`, cardano-ledger f649f975): the
-    * transactions in order, each annotated against the UTxO set the rule then judges it on
-    * (`mkStAnnTx`, here Alonzo's [[AlonzoStAnnTx.mkAlonzoStAnnTx]] with an empty cache, its epoch
-    * information and system start `slotToPOSIXTime`), and judged by LEDGER as a sub-rule with its
-    * index (`zip [minBound ..]`, so no more than a `TxIx` numbers: [[TxIx.enumerate]]), its
-    * failures and events embedded ([[EmbedLedgerInLedgers]]). The UTxO set a transaction is
-    * annotated against is the stored outputs of its inputs, collateral and reference inputs, every
-    * output the annotation reads.
+  /** The fold of Babbage's `ledgersTransition` (`Babbage/Rules/Ledgers.hs:124-142`, cardano-ledger
+    * f649f975, the same at 9df9f98c): the transactions in order, each annotated by the era's
+    * `mkStAnnTx` (`annotate`) against the UTxO set the rule then judges it on and the cache the
+    * annotation before left (`cacheStAnnTxG`), the first against `emptyCache` (`mempty`), and
+    * judged by the era's LEDGER (`ledger`) as a sub-rule with its index (`zip [minBound ..]`, so no
+    * more than a `TxIx` numbers: [[TxIx.enumerate]]) and the environment's slot, epoch, parameters
+    * and chain accounts. The UTxO set a transaction is annotated against is the stored outputs of
+    * its inputs, collateral and reference inputs ([[EraTxBody.allInputs]]), every output the
+    * annotation reads, read into the era; one the era does not read is raised
+    * ([[UtxoStateDefect]]). `ledger` runs with its failures and events embedded by the caller
+    * ([[EmbedLedgerInLedgers]]).
+    */
+  def ledgersFold[F[_]: Monad, E <: EraTag](
+      env: LedgersEnv[E],
+      txs: Vector[Tx[TxLevel.Top, E]],
+      emptyCache: StAnnTxCache[E]
+  )(annotate: (UTxO[E], StAnnTxCache[E], Tx[TxLevel.Top, E]) => StAnnTx[TxLevel.Top, E])(
+      ledger: (LedgerEnv[E], StAnnTx[TxLevel.Top, E]) => F[Unit]
+  )(using
+      t: EraTx[E],
+      s: StoredTxOut[E],
+      state: Stateful[F, LedgerState[E]],
+      judge: Judge[F, LedgersPredFailure[E]],
+      stateDefect: Raise[F, UtxoStateDefect]
+  ): F[Unit] =
+    TxIx
+      .enumerate(txs)
+      .foldLeftM(emptyCache) { case (cache, (tx, ix)) =>
+        for
+          current <- state.get
+          txBody = t.body[TxLevel.Top](tx)(using t.bodyOf.top)
+          utxo <- ShelleyUtxo.readStored[F, E](
+            ShelleyUtxo.extractKeys(current.utxo.utxo.utxo, t.bodyOf.allInputs(txBody))._2
+          )
+          stAnnTx = annotate(utxo, cache, tx)
+          _ <- judge.nest(
+            ledger(
+              LedgerEnv[E](
+                env.ledgersSlotNo,
+                Some(env.ledgersEpochNo),
+                ix,
+                env.ledgersPp,
+                env.ledgersAccount
+              ),
+              stAnnTx
+            )
+          )
+        yield t.cacheStAnnTx[TxLevel.Top](stAnnTx)(using t.bodyOf.top)
+      }
+      .void
+
+  /** Babbage's `ledgersTransition` (`Babbage/Rules/Ledgers.hs:124-142`, cardano-ledger f649f975) at
+    * Conway ([[ledgersFold]]): each transaction annotated by `mkStAnnTx`, here Alonzo's
+    * [[AlonzoStAnnTx.mkAlonzoStAnnTx]] with the cache the one before left, its epoch information
+    * and system start `slotToPOSIXTime`, and judged by Conway's LEDGER, its failures and events
+    * embedded ([[EmbedLedgerInLedgers]]).
     */
   def ledgersTransition[F[_]: Monad, E <: EraTag](
       env: LedgersEnv[E],
@@ -576,38 +625,18 @@ object ShelleyLedgers:
   ): F[Unit] =
     given Judge[F, LedgerPredFailure[E]] = judge.contramap(embedLedger.wrapFailed)
     given Tell[F, Chain[LedgerEvent[E]]] = toldIn(events)(embedLedger.wrapEvent)
-    TxIx.enumerate(txs).traverse_ { (tx, ix) =>
-      for
-        current <- state.get
-        txBody = t.body[TxLevel.Top](tx)(using t.bodyOf.top)
-        utxo <- ShelleyUtxo.readStored[F, E](
-          ShelleyUtxo.extractKeys(current.utxo.utxo.utxo, b.allInputs(txBody))._2
-        )
-        stAnnTx = annotated(
-          AlonzoStAnnTx
-            .mkAlonzoStAnnTx[E](slotToPOSIXTime, env.ledgersPp, utxo, Map.empty, tx)(using
-              pa,
-              t,
-              u,
-              scripts,
-              plutusContext,
-              needed
-            )
-        )
-        _ <- judge.nest(
-          ConwayLedger.conwayLedgerTransition[F, E](
-            LedgerEnv[E](
-              env.ledgersSlotNo,
-              Some(env.ledgersEpochNo),
-              ix,
-              env.ledgersPp,
-              env.ledgersAccount
-            ),
-            stAnnTx,
-            utxoContext,
-            verdicts,
-            decoder
+    ledgersFold[F, E](env, txs, cached.flip(Map.empty))((utxo, cache, tx) =>
+      annotated(
+        AlonzoStAnnTx
+          .mkAlonzoStAnnTx[E](slotToPOSIXTime, env.ledgersPp, utxo, cached(cache), tx)(using
+            pa,
+            t,
+            u,
+            scripts,
+            plutusContext,
+            needed
           )
-        )
-      yield ()
-    }
+      )
+    )((ledgerEnv, stAnnTx) =>
+      ConwayLedger.conwayLedgerTransition[F, E](ledgerEnv, stAnnTx, utxoContext, verdicts, decoder)
+    )
