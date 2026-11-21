@@ -1,16 +1,27 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.era
 
+import cats.data.NonEmptySet
 import scala.collection.immutable.{SortedMap, SortedSet}
-import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{
-  Credential as FlatCredential,
   GovActionId,
+  LedgerDecodeError,
   RewardAccount,
   Vote,
-  Voter
+  Voter as FlatVoter
 }
-import xyz.kd5ujc.scarab.ledger.state.{Coin, EpochNo, EraTag}
+import xyz.kd5ujc.scarab.ledger.rules.Convert
+import xyz.kd5ujc.scarab.ledger.state.{
+  Coin,
+  Credential,
+  DRepRole,
+  EpochNo,
+  EraTag,
+  HotCommittee,
+  KeyHash,
+  StakePool,
+  VocabError
+}
 
 // The governance actions proposed and not yet enacted, as the reference keeps them (cardano-ledger
 // f649f975 `eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Procedures.hs` and
@@ -89,16 +100,42 @@ final case class PEdges[A](peParent: Option[A], peChildren: SortedSet[A])
   */
 final case class PGraph[A](unPGraph: SortedMap[A, PEdges[A]])
 
+/** `data Voter` (`Procedures.hs:338-342`, cardano-ledger f649f975): who casts a vote, a committee
+  * member's hot credential, a DRep's credential or a pool's key hash, each of its role: the key a
+  * vote is held under in an action's state ([[GovActionState]]). The votes of a transaction carry
+  * the node's flat voter ([[VotingProcedures]]), which GOV reads into this one where it casts them
+  * ([[Voter.fromFlat]]), until the votes carry the reference's typed voter (#85).
+  */
+enum Voter:
+  case CommitteeVoter(credential: Credential[HotCommittee])
+  case DRepVoter(credential: Credential[DRepRole])
+  case StakePoolVoter(keyHash: KeyHash[StakePool])
+
+object Voter:
+  /** The node's flat voter at the reference's types; a hash of another length than the role's is
+    * refused, which the flat decoder already refused (`Voter.decode`).
+    */
+  def fromFlat(v: FlatVoter): Either[VocabError, Voter] = v match
+    case FlatVoter.CommitteeHot(c) => Convert.credential[HotCommittee](c).map(CommitteeVoter(_))
+    case FlatVoter.DRepVoter(c)    => Convert.credential[DRepRole](c).map(DRepVoter(_))
+    case FlatVoter.Pool(kh)        => KeyHash.fromBytes[StakePool](kh).map(StakePoolVoter(_))
+
+  /** The node's flat voter of a typed one, the inverse of [[fromFlat]]. */
+  def toFlat(v: Voter): FlatVoter = v match
+    case CommitteeVoter(c) => FlatVoter.CommitteeHot(Convert.back(c))
+    case DRepVoter(c)      => FlatVoter.DRepVoter(Convert.back(c))
+    case StakePoolVoter(k) => FlatVoter.Pool(k.bytes)
+
 /** `data GovActionState era` (`Procedures.hs:219-228`, cardano-ledger f649f975): a proposed action,
-  * the votes cast on it, the epoch it was proposed in and the last epoch it can be ratified in. The
-  * votes are keyed by what the era's voter ([[Voter]]) holds, its credential or pool key hash as
-  * the node reads them, until the votes carry the reference's typed voter (#85).
+  * the votes cast on it, each map keyed by its voters' role (`:221-223`) and ordered as the
+  * reference's `Map` is, by the role's `Ord` ([[Credential]]'s, [[KeyHash]]'s), the epoch it was
+  * proposed in and the last epoch it can be ratified in.
   */
 final case class GovActionState[E <: EraTag](
     gasId: GovActionId,
-    gasCommitteeVotes: Map[FlatCredential, Vote],
-    gasDRepVotes: Map[FlatCredential, Vote],
-    gasStakePoolVotes: Map[Bytes, Vote],
+    gasCommitteeVotes: SortedMap[Credential[HotCommittee], Vote],
+    gasDRepVotes: SortedMap[Credential[DRepRole], Vote],
+    gasStakePoolVotes: SortedMap[KeyHash[StakePool], Vote],
     gasProposalProcedure: ProposalProcedure[E],
     gasProposedIn: EpochNo,
     gasExpiresAfter: EpochNo
@@ -244,8 +281,9 @@ object Proposals:
   ): Proposals[E] =
     def updateVote(gas: GovActionState[E]): GovActionState[E] = voter match
       case Voter.DRepVoter(c) => gas.copy(gasDRepVotes = gas.gasDRepVotes.updated(c, vote))
-      case Voter.Pool(kh) => gas.copy(gasStakePoolVotes = gas.gasStakePoolVotes.updated(kh, vote))
-      case Voter.CommitteeHot(c) =>
+      case Voter.StakePoolVoter(kh) =>
+        gas.copy(gasStakePoolVotes = gas.gasStakePoolVotes.updated(kh, vote))
+      case Voter.CommitteeVoter(c) =>
         gas.copy(gasCommitteeVotes = gas.gasCommitteeVotes.updated(c, vote))
     ps.copy(pProps = ps.pProps.adjust(updateVote, gai))
 
@@ -316,7 +354,10 @@ enum ProposalsReadError:
   case StoredProposal(id: GovActionId, error: EraTxError)
 
   /** A stored action's epochs outside `EpochNo`. */
-  case StoredEpoch(id: GovActionId, error: xyz.kd5ujc.scarab.ledger.state.VocabError)
+  case StoredEpoch(id: GovActionId, error: VocabError)
+
+  /** A stored action's voter, a credential or pool key hash of another length than its role's. */
+  case StoredVoter(id: GovActionId, error: VocabError)
 
   /** `mkProposals: Could not add a proposal`: a stored action whose parent is neither its tree's
     * root nor an action stored before it.
@@ -327,3 +368,18 @@ enum ProposalsReadError:
     * record holding an id twice gives: the ids recorded and those the store holds, in order.
     */
   case Malformed(recorded: Vector[GovActionId], rebuilt: Vector[GovActionId])
+
+/** Why an era's action state cannot be written to the node's record of it, which holds Conway's
+  * flat proposal: what only an era whose proposals hold more than Conway's gives (Dijkstra). None
+  * is a verdict of the rules.
+  */
+enum ProposalsWriteError:
+  /** A parameter change that sets parameters the flat update has no field for, the update keys of
+    * those Dijkstra adds (34 to 56, `Dijkstra/PParams.hs:798-1123`, cardano-ledger 9df9f98c).
+    */
+  case UnstorableUpdate(id: GovActionId, keys: NonEmptySet[BigInt])
+
+  /** A parameter change whose update, written by the era's encoder, the flat reader of an update
+    * refuses: what no update the era's decoder read gives.
+    */
+  case StoredUpdate(id: GovActionId, error: LedgerDecodeError)
