@@ -24,6 +24,10 @@ private[log] object PeerSelectionLines:
 
   private def peers(ps: Iterable[Addr]): Json = ps.toList.map(_.toString).sorted.asJson
   private def seconds(d: FiniteDuration): Json = (d.toMillis / 1000.0).asJson
+
+  /** The exception of a root request that raised, as the reference's failure trace carries it. */
+  private def defected(defect: Option[Throwable]): List[(String, Json)] =
+    defect.toList.map(cause => "defect" -> NetworkError.describe(cause).asJson)
   private def failure(f: FailureClass): Json = f.toString.asJson
   private def temperature(t: Temperature): Json = t.toString.toLowerCase.asJson
 
@@ -65,12 +69,14 @@ private[log] object PeerSelectionLines:
         "backoffs" -> backoffs.asJson,
         "retryInSeconds" -> seconds(retryIn)
       )
-    case Trace.RootsFailure(backoffs, retryIn) =>
+    case Trace.RootsFailure(backoffs, retryIn, defect) =>
       EventKind.PeerSelectionRoots
         .line(
-          "action" -> "failure".asJson,
-          "backoffs" -> backoffs.asJson,
-          "retryInSeconds" -> seconds(retryIn)
+          (List(
+            "action" -> "failure".asJson,
+            "backoffs" -> backoffs.asJson,
+            "retryInSeconds" -> seconds(retryIn)
+          ) ++ defected(defect))*
         )
         .at(Severity.Warning)
     case Trace.Promote(from, ps, local, target, current) =>
@@ -198,13 +204,15 @@ private[log] object PeerSelectionLines:
         "backoffs" -> backoffs.asJson,
         "retryInSeconds" -> seconds(retryIn)
       )
-    case Trace.BigLedgerFailure(backoffs, retryIn) =>
+    case Trace.BigLedgerFailure(backoffs, retryIn, defect) =>
       EventKind.PeerSelectionRoots
         .line(
-          "action" -> "failure".asJson,
-          "bigLedger" -> true.asJson,
-          "backoffs" -> backoffs.asJson,
-          "retryInSeconds" -> seconds(retryIn)
+          (List(
+            "action" -> "failure".asJson,
+            "bigLedger" -> true.asJson,
+            "backoffs" -> backoffs.asJson,
+            "retryInSeconds" -> seconds(retryIn)
+          ) ++ defected(defect))*
         )
         .at(Severity.Warning)
     case Trace.ForgetBigLedger(target, known, ps) =>

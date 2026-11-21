@@ -24,6 +24,13 @@ object PeerShare:
     case Failed(error: xyz.kd5ujc.scarab.network.NetworkError)
     case TimedOut()
 
+    /** The phase that waited for the request raised `error`: what the request answered is not
+      * known, the request is no longer in flight, and the time the next one is due stays as the
+      * request set it (the phase's `handler`, ouroboros-network c45735a5 `Governor/KnownPeers.hs`
+      * 280-289, which neither pin's failure back-off reaches).
+      */
+    case PhaseFailed(error: xyz.kd5ujc.scarab.network.NetworkError)
+
   /** One round of peer-share requests, until each asked peer has answered or timed out.
     *
     * @param remaining

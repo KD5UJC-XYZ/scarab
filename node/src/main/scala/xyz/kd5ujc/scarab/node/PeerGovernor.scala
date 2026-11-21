@@ -223,12 +223,12 @@ object PeerGovernor:
         )
     case Trace.TargetsChanged(_) | Trace.LocalRootsChanged(_, _) | Trace.JudgementChanged(_) |
         Trace.OnlyBootstrapPeers() | Trace.RootsRequest(_, _) | Trace.RootsResults(_, _, _) |
-        Trace.RootsFailure(_, _) | Trace.Promote(_, _, _, _, _) | Trace.PromoteDone(_, _, _, _) |
+        Trace.RootsFailure(_, _, _) | Trace.Promote(_, _, _, _, _) | Trace.PromoteDone(_, _, _, _) |
         Trace.PromoteFailed(_, _, _, _, _) | Trace.PromoteAborted(_, _) |
         Trace.Demote(_, _, _, _, _, _) | Trace.DemoteFailed(_, _, _) |
         Trace.PeerActionFailed(_, _, _) | Trace.CachedBlockRejected(_, _, _, _) |
         Trace.ForgetCold(_, _, _) | Trace.Forgotten(_) | Trace.BigLedgerRequest(_, _) |
-        Trace.BigLedgerResults(_, _, _) | Trace.BigLedgerFailure(_, _) |
+        Trace.BigLedgerResults(_, _, _) | Trace.BigLedgerFailure(_, _, _) |
         Trace.ForgetBigLedger(_, _, _) | Trace.PromoteBigLedger(_, _, _, _) |
         Trace.DemoteBigLedger(_, _, _, _, _) | Trace.PickInbound(_) | Trace.ShareRequests(_, _) |
         Trace.ShareResults(_, _) =>
