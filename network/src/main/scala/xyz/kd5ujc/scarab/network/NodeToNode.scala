@@ -26,8 +26,8 @@ import scala.concurrent.duration.*
   *   The owned rolling pipeline supplied by production hot activations. Test connections can retain
   *   their explicitly scripted fixed-batch client.
   * @param leiosFetchFinish
-  *   The Leios build's LeiosFetch client, when this activation runs one: its stop, which returns the
-  *   wait for the client's end on the wire (its answers collected and `MsgDone` sent).
+  *   The Leios build's LeiosFetch client, when this activation runs one: its stop, which returns
+  *   the wait for the client's end on the wire (its answers collected and `MsgDone` sent).
   */
 final class NodeToNodeConnection[F[_], P](
     val version: Int,
@@ -151,7 +151,10 @@ final class WarmConnection[F[_], P, A] private[network] (
       initiator: LeiosFetchInitiator[F],
       result: ProtocolResults.Run[F, A]
   )(using F: Async[F], raise: Raise[F, NetworkError]): Resource[F, F[F[Unit]]] =
-    (Resource.eval(mux.channel(Protocols.LeiosFetch, role)), Resource.eval(StopLatch.create[F])).tupled.flatMap { (channel, latch) =>
+    (
+      Resource.eval(mux.channel(Protocols.LeiosFetch, role)),
+      Resource.eval(StopLatch.create[F])
+    ).tupled.flatMap { (channel, latch) =>
       val client = Fibers
         .scoped[F, NetworkError, Unit](NetworkError.fromThrowable("leios-fetch", _))(
           initiator.run(channel, stop => applications.onHotStop(stop) *> latch.register(stop))
@@ -239,8 +242,9 @@ final class WarmConnection[F[_], P, A] private[network] (
     )
 
 /** The stop of an activation's LeiosFetch client, as its clean end gives it: the stop the client
-  * registers ([[LeiosFetchInitiator.run]] 's `onStop`) is run once when [[fire]] d, at once if it is
-  * registered after, as [[ProtocolResults.onHotStop]] runs a stop registered after the governor's.
+  * registers ([[LeiosFetchInitiator.run]] 's `onStop`) is run once when [[fire]] d, at once if it
+  * is registered after, as [[ProtocolResults.onHotStop]] runs a stop registered after the
+  * governor's.
   */
 private final class StopLatch[F[_]] private (cell: Ref[F, StopLatch.State[F]])(using F: Async[F]):
   import StopLatch.State
@@ -251,13 +255,13 @@ private final class StopLatch[F[_]] private (cell: Ref[F, StopLatch.State[F]])(u
       .make(
         F.uncancelable(_ =>
           cell.flatModify {
-            case State.Open(_)      => (State.Open(Some(stop)), F.unit)
+            case State.Open(_)         => (State.Open(Some(stop)), F.unit)
             case fired @ State.Fired() => (fired, stop)
           }
         )
       )(_ =>
         cell.update {
-          case State.Open(_)      => State.Open(None)
+          case State.Open(_)         => State.Open(None)
           case fired @ State.Fired() => fired
         }
       )
@@ -266,7 +270,7 @@ private final class StopLatch[F[_]] private (cell: Ref[F, StopLatch.State[F]])(u
   def fire: F[Unit] =
     F.uncancelable(_ =>
       cell.flatModify {
-        case State.Open(stop)   => (State.Fired(), stop.sequence_)
+        case State.Open(stop)      => (State.Fired(), stop.sequence_)
         case fired @ State.Fired() => (fired, F.unit)
       }
     )

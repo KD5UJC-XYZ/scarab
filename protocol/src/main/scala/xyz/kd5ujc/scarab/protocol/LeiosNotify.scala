@@ -123,7 +123,7 @@ object LeiosNotify:
         (
           (),
           LeiosNotifyDecoder.decodeIdle(input) match
-            case Right((message, consumed))      => ChainSync.DecodeResult.Decoded(message, consumed)
+            case Right((message, consumed)) => ChainSync.DecodeResult.Decoded(message, consumed)
             case Left(LeiosWireError.Incomplete) => ChainSync.DecodeResult.NeedMore
-            case Left(error)                     => ChainSync.DecodeResult.Failed(ProtocolError.Leios(error))
+            case Left(error) => ChainSync.DecodeResult.Failed(ProtocolError.Leios(error))
         )

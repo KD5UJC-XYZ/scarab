@@ -100,8 +100,8 @@ private[protocol] object LeiosNotifyDecoder:
       LeiosNotify.AnnouncementReader
   ): Result[(Message, Int)] = framed(state, input, announcement)
 
-  /** The client's messages, of Idle, which carry no header: the server reads them with no reader
-    * of one.
+  /** The client's messages, of Idle, which carry no header: the server reads them with no reader of
+    * one.
     */
   def decodeIdle(input: Bytes): Result[(Message, Int)] =
     framed(State.Idle, input, fail(LeiosWireError.NotAdmitted(4)))

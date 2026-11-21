@@ -250,79 +250,84 @@ class LeiosFetchRegistrationSuite extends FailsOnUncaught:
       }
   }
 
-  dirs.test("a hot session that ends cleanly, the governor not yet told, ends its LeiosFetch client") {
-    dir =>
-      (store(dir / "a"), store(dir / "b"), Supervisor[IO](await = true)).tupled.use {
-        (ours, theirs, settling) =>
-          for
-            node <- ok(
-              LeiosFetchNode.create[IO](
-                ours,
-                StdGen.mk(4),
-                slot(0),
-                settling,
-                e => IO.raiseError(new AssertionError(e.toString)),
-                IO.raiseError
+  dirs.test(
+    "a hot session that ends cleanly, the governor not yet told, ends its LeiosFetch client"
+  ) { dir =>
+    (store(dir / "a"), store(dir / "b"), Supervisor[IO](await = true)).tupled.use {
+      (ours, theirs, settling) =>
+        for
+          node <- ok(
+            LeiosFetchNode.create[IO](
+              ours,
+              StdGen.mk(4),
+              slot(0),
+              settling,
+              e => IO.raiseError(new AssertionError(e.toString)),
+              IO.raiseError
+            )
+          )
+          (a, b) <- Bearer.inMemory[IO](64)
+          // ChainSync returned: the session ends the hot protocols on the wire and releases the
+          // activation, and only then does the governor tell them to stop and wait for them all
+          program = typed(
+            Served
+              .accept(
+                b,
+                magic,
+                handlers(Some(LeiosFetchStoreHandler(theirs))),
+                NodeToNodeServer.Settings(bundle = HotBundle.Leios)
               )
-            )
-            (a, b) <- Bearer.inMemory[IO](64)
-            // ChainSync returned: the session ends the hot protocols on the wire and releases the
-            // activation, and only then does the governor tell them to stop and wait for them all
-            program = typed(
-              Served
-                .accept(
-                  b,
-                  magic,
-                  handlers(Some(LeiosFetchStoreHandler(theirs))),
-                  NodeToNodeServer.Settings(bundle = HotBundle.Leios)
-                )
-                .background
-                .surround(
-                  NodeToNode
-                    .warmOverWithResults[IO, Bytes, Unit](
-                      a,
-                      magic,
-                      ChainSyncFixtures.rawItem,
-                      (),
-                      NodeToNode.Settings(bundle = HotBundle.Leios)
-                    )
-                    .use(warm =>
-                      (warm.applications.activateHot *>
-                        warm.applications.startHot(false, leiosFetch = true)).flatMap(results =>
-                        warm
-                          .startHotProtocols(
-                            results,
-                            None,
-                            None,
-                            ChainSyncTimeouts.PeerTrust.Untrustable,
-                            None,
-                            leiosFetch = Some(node.initiator(connection))
-                          )
-                          .use(_.finishGracefully(false))
-                      ) *> warm.applications.terminateHot *>
-                        warm.applications.awaitAll(Set(ProtocolResults.Temperature.Hot))
-                    )
-                )
-            )
-            // no time passes: every result is in at once, none waits out the deactivation's 300 s
-            control <- TestControl.execute(program)
-            _ <- control.tick
-            outcome <- control.results
-            left <- node.shared.peers.get
-          yield
-            outcome match
-              case Some(Outcome.Succeeded(results)) =>
-                assertEquals(
-                  results,
-                  Right(
-                    ProtocolResults.LastToFinish.AllSucceeded(
-                      Map(Protocols.ChainSync -> (), Protocols.BlockFetch -> (), Protocols.LeiosFetch -> ())
+              .background
+              .surround(
+                NodeToNode
+                  .warmOverWithResults[IO, Bytes, Unit](
+                    a,
+                    magic,
+                    ChainSyncFixtures.rawItem,
+                    (),
+                    NodeToNode.Settings(bundle = HotBundle.Leios)
+                  )
+                  .use(warm =>
+                    (warm.applications.activateHot *>
+                      warm.applications.startHot(false, leiosFetch = true)).flatMap(results =>
+                      warm
+                        .startHotProtocols(
+                          results,
+                          None,
+                          None,
+                          ChainSyncTimeouts.PeerTrust.Untrustable,
+                          None,
+                          leiosFetch = Some(node.initiator(connection))
+                        )
+                        .use(_.finishGracefully(false))
+                    ) *> warm.applications.terminateHot *>
+                      warm.applications.awaitAll(Set(ProtocolResults.Temperature.Hot))
+                  )
+              )
+          )
+          // no time passes: every result is in at once, none waits out the deactivation's 300 s
+          control <- TestControl.execute(program)
+          _ <- control.tick
+          outcome <- control.results
+          left <- node.shared.peers.get
+        yield
+          outcome match
+            case Some(Outcome.Succeeded(results)) =>
+              assertEquals(
+                results,
+                Right(
+                  ProtocolResults.LastToFinish.AllSucceeded(
+                    Map(
+                      Protocols.ChainSync -> (),
+                      Protocols.BlockFetch -> (),
+                      Protocols.LeiosFetch -> ()
                     )
                   )
                 )
-              case other => fail(s"the hot protocols' results are not all in: $other")
-            assert(left.isEmpty)
-      }
+              )
+            case other => fail(s"the hot protocols' results are not all in: $other")
+          assert(left.isEmpty)
+    }
   }
 
   dirs.test("an activation released with its LeiosFetch client running ends it with the cause") {
@@ -389,14 +394,15 @@ class LeiosFetchRegistrationSuite extends FailsOnUncaught:
           (
             (),
             LeiosNotify.decodePrefix(state, input) match
-              case Right((m, n)) => ChainSync.DecodeResult.Decoded(m, n)
+              case Right((m, n))                   => ChainSync.DecodeResult.Decoded(m, n)
               case Left(LeiosWireError.Incomplete) => ChainSync.DecodeResult.NeedMore
-              case Left(e)                         => ChainSync.DecodeResult.Failed(ProtocolError.Leios(e))
+              case Left(e) => ChainSync.DecodeResult.Failed(ProtocolError.Leios(e))
           ))
 
-    /** A conversation as the reference's pipelined client has one (`leiosNotifyClientPeerPipelined`,
-      * `LeiosDemoOnlyTestNotify.hs` 523-634): `requests` requests, then the quit, then the replies
-      * to what it left outstanding and the server's `MsgDone`.
+    /** A conversation as the reference's pipelined client has one
+      * (`leiosNotifyClientPeerPipelined`, `LeiosDemoOnlyTestNotify.hs` 523-634): `requests`
+      * requests, then the quit, then the replies to what it left outstanding and the server's
+      * `MsgDone`.
       */
     def conversation(requests: Int): IO[(Vector[LeiosNotify.Message], LeiosNotify.Message)] =
       send(LeiosNotify.Message.RequestNext).replicateA_(requests) *>
@@ -455,7 +461,9 @@ class LeiosFetchRegistrationSuite extends FailsOnUncaught:
       (a, b) <- Bearer.inMemory[IO](64)
       ended <- typed(
         notifying(a, b)((client, end) =>
-          client.send(LeiosNotify.Message.RequestNext).replicateA_(LeiosNotifyServer.PipelineDepth) *>
+          client
+            .send(LeiosNotify.Message.RequestNext)
+            .replicateA_(LeiosNotifyServer.PipelineDepth) *>
             client.send(LeiosNotify.Message.RequestNext) *> end
         )
       )

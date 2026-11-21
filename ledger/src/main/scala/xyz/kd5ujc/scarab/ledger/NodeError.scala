@@ -151,12 +151,12 @@ enum PeerError extends NodeError:
     case GenesisInvariant(problem) => s"the node's own Genesis state broke: ${problem.message}"
     case ServingDefect(protocol, cause) =>
       s"the node's own code threw answering ${xyz.kd5ujc.scarab.protocol.Protocols.name(protocol)}: ${NetworkError.describe(cause)}"
-    case Unverifiable(e)               => e.message
-    case HeaderUndecided(p, d)         => s"${Points.show(p)} has no verdict: ${d.message}"
-    case NotKept(cause)                => cause.message
-    case RangeRefused(cause)           => cause.message
-    case LeiosFetchRefused(cause)      => cause.message
-    case LeiosFetchInvalidReply(cause) => cause.message
+    case Unverifiable(e)                     => e.message
+    case HeaderUndecided(p, d)               => s"${Points.show(p)} has no verdict: ${d.message}"
+    case NotKept(cause)                      => cause.message
+    case RangeRefused(cause)                 => cause.message
+    case LeiosFetchRefused(cause)            => cause.message
+    case LeiosFetchInvalidReply(cause)       => cause.message
     case LeiosNotifyExcessiveRequests(cause) => cause.message
 
 object PeerError:

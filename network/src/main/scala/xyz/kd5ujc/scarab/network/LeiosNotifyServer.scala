@@ -12,11 +12,12 @@ import xyz.kd5ujc.scarab.protocol.{LeiosNotify, LeiosWireError, ProtocolError}
   * 2416493b, run by `aLeiosNotifyServer`, `Ouroboros/Consensus/Network/NodeToNode.hs` 1891-1909):
   * each `MsgLeiosNotificationRequestNext` is counted and held, its reply waiting for a notification
   * that never comes, and the client's next message read ahead; `MsgQuit` is answered with a
-  * `MsgCanceled` for each request held, then `MsgDone`, which ends the conversation, so the peer can
-  * demote the connection and start the protocol again on the same bearer. A request that arrives
-  * with [[PipelineDepth]] held ends the connection ([[NetworkError.LeiosNotifyExcessiveRequests]]),
-  * as `incr` refuses it (`NodeToNode.hs` 821-827). Idle waits forever, under its byte limit
-  * (`smallByteLimit`, `byteLimitsLeiosNotify` and `timeLimitsLeiosNotify`, `:241-255`).
+  * `MsgCanceled` for each request held, then `MsgDone`, which ends the conversation, so the peer
+  * can demote the connection and start the protocol again on the same bearer. A request that
+  * arrives with [[PipelineDepth]] held ends the connection
+  * ([[NetworkError.LeiosNotifyExcessiveRequests]]), as `incr` refuses it (`NodeToNode.hs` 821-827).
+  * Idle waits forever, under its byte limit (`smallByteLimit`, `byteLimitsLeiosNotify` and
+  * `timeLimitsLeiosNotify`, `:241-255`).
   *
   * Not mirrored (#54): the node notifies nothing, neither announcements, offers nor votes, so every
   * request is held until the client quits.
@@ -35,7 +36,10 @@ object LeiosNotifyServer:
     def send(message: LeiosNotify.Message): F[Unit] =
       LeiosNotify
         .encode(message)
-        .fold(e => NetworkError.IllegalTransition(id, ProtocolError.Leios(e)).raise[F, Unit], channel.send)
+        .fold(
+          e => NetworkError.IllegalTransition(id, ProtocolError.Leios(e)).raise[F, Unit],
+          channel.send
+        )
     def loop(held: Int): F[Unit] =
       channel.recv(LeiosNotify.SmallByteLimit)(LeiosNotify.idleIncremental).flatMap {
         case LeiosNotify.Message.RequestNext =>

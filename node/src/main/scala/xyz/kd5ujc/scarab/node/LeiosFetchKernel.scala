@@ -50,9 +50,9 @@ object LeiosFetchKernel:
     * A peer is still live only with the vars read first: a connection demoted and activated again
     * meanwhile keeps its identity with fresh vars, and the decision leaves it to the next pass
     * rather than charge the new activation with requests queued on the old one's vars, which no
-    * client reads. The reference re-reads the live peers by their keys alone
-    * (`Map.restrictKeys offerings (Map.keysSet stillLivePeers)`, `NodeKernel.hs` 570-610 at
-    * 2416493b), so the race its re-read closes stays open there for a reactivation.
+    * client reads. The reference re-reads the live peers by their keys alone (`Map.restrictKeys
+    * offerings (Map.keysSet stillLivePeers)`, `NodeKernel.hs` 570-610 at 2416493b), so the race its
+    * re-read closes stays open there for a reactivation.
     */
   def step[F[_], P: Order, E](
       shared: LeiosFetchShared[F, P],
