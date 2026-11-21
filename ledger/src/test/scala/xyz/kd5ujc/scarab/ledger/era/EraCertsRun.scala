@@ -83,6 +83,23 @@ object EraCertsRun:
         .judge(nested, RuleT.Policy.Accumulate)(globals, (state, Chain.empty))
         .map(_.map(_._1))
 
+    /** `program` from `state`, `depth` levels below the root, after `before` is recorded at the
+      * root, so that it starts with the failing flag raised (`Extended.hs:725-727`, cardano-ledger
+      * 9df9f98c `libs/small-steps`): what it records, `before` taken out (the root reports it
+      * last).
+      */
+    def runFailing(globals: Globals, state: S, depth: Int, before: Rec)(
+        program: F[Unit]
+    ): Either[D, Vector[Rec]] =
+      val judge = summon[Judge[F, Rec]]
+      val nested = (0 until depth).foldLeft(program)((fa, _) => judge.nest(fa))
+      Judgment
+        .judge(Monad[F].flatMap(judge.fail(before))(_ => nested), RuleT.Policy.Accumulate)(
+          globals,
+          (state, Chain.empty)
+        )
+        .map(_.fold(_.toChain.toVector.dropRight(1), _ => Vector.empty))
+
   private val certsRun =
     Run[CertsPredFailure[Conway], CertsEvent[Conway], CertState[Conway], LedgerDefect]
   private val poolRun = Run[PoolPredFailure[Conway], PoolRuleEvent[Conway], PState, LedgerDefect]
@@ -263,6 +280,30 @@ object EraCertsRun:
     given Raise[entitiesRun.F, LedgerDefect] =
       summon[Raise[entitiesRun.F, DijkstraDefect]].contramap(Right(_))
     entitiesRun.run(globals, state, depth)(
+      ENTITIES.dijkstraEntitiesTransition[entitiesRun.F](env, stAnnTx, validation)
+    )
+
+  /** ENTITIES as [[entities]] runs it, after a failure before it (`before`, of any rule, recorded
+    * at the root): the failures it records, the checks it guards by `whenFailureFree` skipped
+    * (`Dijkstra/Rules/Entities.hs:297`, cardano-ledger 9df9f98c), as LEDGER runs it after
+    * SUBLEDGERS or its own checks refused.
+    */
+  def entitiesAfterFailure(
+      globals: Globals,
+      env: EntitiesEnv[Dijkstra],
+      state: CertState[Dijkstra],
+      stAnnTx: StAnnTx[TxLevel.Top, Dijkstra],
+      before: EntitiesRuleFailure[Dijkstra],
+      validation: TxEnv.Validation = TxEnv.Validation.All,
+      depth: Int = 0
+  ): Either[DijkstraDefect, Vector[EntitiesRuleFailure[Dijkstra]]] =
+    import entitiesRun.given
+    import RuleT.given
+    given Raise[entitiesRun.F, PoolDefect] =
+      summon[Raise[entitiesRun.F, DijkstraDefect]].contramap(Left(_))
+    given Raise[entitiesRun.F, LedgerDefect] =
+      summon[Raise[entitiesRun.F, DijkstraDefect]].contramap(Right(_))
+    entitiesRun.runFailing(globals, state, depth, before)(
       ENTITIES.dijkstraEntitiesTransition[entitiesRun.F](env, stAnnTx, validation)
     )
 
