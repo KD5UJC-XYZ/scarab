@@ -1758,6 +1758,7 @@
           "ForgerFailureSuite",
           "ForgeSuite",
           "DijkstraForgeSuite",
+          "DijkstraSelectionSuite",
           "SystemStartSuite",
           "LeadershipSuite",
           "Draft03ProverSuite",
