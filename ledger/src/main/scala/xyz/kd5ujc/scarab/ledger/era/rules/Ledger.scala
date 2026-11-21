@@ -153,16 +153,20 @@ object ConwayLedger:
     case ShelleyLedgerPredFailure.ShelleyIncompleteWithdrawals(x) =>
       ConwayLedgerPredFailure.ConwayIncompleteWithdrawals(x)
 
-  /** `validateTreasuryValue` (`Conway/Rules/Ledger.hs:442-454`, cardano-ledger f649f975). */
+  /** `validateTreasuryValue` (`Conway/Rules/Ledger.hs:442-454`, cardano-ledger f649f975), of a body
+    * of either level: its failure the constructor it reports, so that SUBLEDGER's injection over
+    * the constructors it reaches serves it (Dijkstra's `SubLedger.hs:260`, cardano-ledger
+    * 9df9f98c).
+    */
   def validateTreasuryValue[E <: EraTag, L <: TxLevel](body: TxBody[L, E], treasury: Coin)(using
       b: ConwayEraTxBody[E],
       l: b.Level[L]
-  ): Test[ConwayLedgerPredFailure[E]] =
+  ): Test[ConwayLedgerPredFailure.ConwayTreasuryValueMismatch[E]] =
     b.currentTreasuryValue[L](body)
-      .fold(Test.pass[ConwayLedgerPredFailure[E]])(submitted =>
+      .fold(Test.pass[ConwayLedgerPredFailure.ConwayTreasuryValueMismatch[E]])(submitted =>
         Test.failureUnless(
           submitted == treasury,
-          ConwayLedgerPredFailure.ConwayTreasuryValueMismatch(Mismatch(submitted, treasury))
+          new ConwayLedgerPredFailure.ConwayTreasuryValueMismatch[E](Mismatch(submitted, treasury))
         )
       )
 
