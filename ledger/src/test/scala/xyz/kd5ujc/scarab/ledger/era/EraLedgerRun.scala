@@ -40,6 +40,7 @@ object EraLedgerRun:
     case Ledger(cause: LedgerDefect)
     case Gov(cause: GovDefect)
     case Proposals(cause: ProposalsReadError)
+    case ProposalsWrite(cause: ProposalsWriteError)
 
   private final class Run[Rec, Ev]:
     type Events = Chain[Ev]
@@ -59,6 +60,8 @@ object EraLedgerRun:
     given Raise[F, LedgerDefect] = summon[Raise[F, Defect]].contramap(Defect.Ledger(_))
     given Raise[F, GovDefect] = summon[Raise[F, Defect]].contramap(Defect.Gov(_))
     given Raise[F, ProposalsReadError] = summon[Raise[F, Defect]].contramap(Defect.Proposals(_))
+    given Raise[F, ProposalsWriteError] =
+      summon[Raise[F, Defect]].contramap(Defect.ProposalsWrite(_))
 
     def lifted(evaluator: ScriptEvaluator[Id]): ScriptEvaluator[F] =
       request => Monad[F].map(Monad[F].unit)(_ => evaluator.evaluate(request))

@@ -9,7 +9,6 @@ import cats.syntax.all.*
 import xyz.kd5ujc.scarab.ledger.{
   Certificate,
   GovActionId,
-  GovActionState as StoredGovActionState,
   GovFailure,
   PredicateFailure,
   PrevIds,
@@ -232,17 +231,7 @@ object EraGovRun:
       .traverse(gas =>
         DijkstraConway
           .proposal(gas.gasProposalProcedure.read)
-          .map(p =>
-            StoredGovActionState(
-              gas.gasId,
-              gas.gasCommitteeVotes,
-              gas.gasDRepVotes,
-              gas.gasStakePoolVotes,
-              p,
-              gas.gasProposedIn.toBigInt,
-              gas.gasExpiresAfter.toBigInt
-            )
-          )
+          .map(xyz.kd5ujc.scarab.ledger.era.conway.ConwayProposals.storedWith(gas, _))
       )
       .map(actions =>
         StoredProposals(

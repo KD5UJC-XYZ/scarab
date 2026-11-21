@@ -131,3 +131,13 @@ type StAnnTx[L <: TxLevel, E <: EraTag] = E match
 type StAnnTxCache[E <: EraTag] = E match
   case Conway   => Map[xyz.kd5ujc.scarab.codec.Bytes, SupportedPlutusRunnable[Conway]]
   case Dijkstra => Map[xyz.kd5ujc.scarab.codec.Bytes, SupportedPlutusRunnable[Dijkstra]]
+
+/** The governance state of era `E` (`type GovState era`,
+  * `libs/cardano-ledger-core/src/Cardano/Ledger/State/Governance.hs:66`, cardano-ledger f649f975):
+  * `ConwayGovState era` from Conway (`Conway/Governance.hs:406`, cardano-ledger f649f975;
+  * `Dijkstra/Governance.hs:29`, cardano-ledger 9df9f98c), the record [[EraGov]] has lenses onto.
+  * The ledger state still holds the node's flat record (`xyz.kd5ujc.scarab.ledger.state.GovState`).
+  */
+type GovState[E <: EraTag] = E match
+  case Conway   => ConwayGovState[Conway]
+  case Dijkstra => ConwayGovState[Dijkstra]

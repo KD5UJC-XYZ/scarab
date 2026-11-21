@@ -13,6 +13,7 @@ import xyz.kd5ujc.scarab.ledger.{
   Verdicts
 }
 import xyz.kd5ujc.scarab.ledger.era.*
+import xyz.kd5ujc.scarab.ledger.era.conway.ConwayProposals
 import xyz.kd5ujc.scarab.ledger.rules.{DijkstraConway, Globals, Judge, Sts, Test, focus}
 import xyz.kd5ujc.scarab.ledger.state.{
   Accounts,
@@ -306,17 +307,7 @@ object DijkstraSubLedger:
         DijkstraConway
           .proposal(gas.gasProposalProcedure.read)
           .toOption
-          .map(p =>
-            gas.gasId -> FlatGovActionState(
-              gas.gasId,
-              gas.gasCommitteeVotes,
-              gas.gasDRepVotes,
-              gas.gasStakePoolVotes,
-              p,
-              gas.gasProposedIn.toBigInt,
-              gas.gasExpiresAfter.toBigInt
-            )
-          )
+          .map(p => gas.gasId -> ConwayProposals.storedWith(gas, p))
       )
       .toMap
 
