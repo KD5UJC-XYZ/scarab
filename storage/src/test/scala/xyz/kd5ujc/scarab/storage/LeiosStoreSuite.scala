@@ -43,8 +43,8 @@ class LeiosStoreSuite extends CatsEffectSuite:
         _ <- s.writeEbPoint(point(10, 2), word32(50))
         points <- s.scanEbPoints
       yield
-        assertEquals(first, Vector.empty)
-        assertEquals(again, Vector.empty)
+        assertEquals(first, PointWritten(None, Vector.empty))
+        assertEquals(again, PointWritten(None, Vector.empty))
         assertEquals(points, Vector(point(10, 2), point(20, 1))))
     }
   }
@@ -109,7 +109,10 @@ class LeiosStoreSuite extends CatsEffectSuite:
         repeated <- s.writeTxs(point(10, 1), Vector(1 -> tx(1)))
         complete <- s.scanCompleteEbClosuresNotOlderThanSlot(slot(11))
       yield
-        assertEquals(written, BodyWritten(Vector.empty, Vector.empty))
+        assertEquals(
+          written,
+          BodyWritten(Vector(point(10, 1), point(12, 1)), Vector.empty, Vector.empty)
+        )
         assertEquals(stored, Some(eb.encoded))
         assertEquals(before, None)
         assertEquals(partly, Vector.empty)
@@ -162,8 +165,8 @@ class LeiosStoreSuite extends CatsEffectSuite:
         again <- s.writeEbBody(point(9, 1), eb, Vector.empty)
       yield
         assertEquals(first, Vector(point(1, 1)))
-        assertEquals(novel, Vector(point(9, 1)))
-        assertEquals(again, BodyWritten(Vector.empty, Vector.empty)))
+        assertEquals(novel, PointWritten(Some(word32(eb.encoded.size.toLong)), Vector(point(9, 1))))
+        assertEquals(again, BodyWritten(Vector.empty, Vector.empty, Vector.empty)))
     }
   }
 
@@ -191,7 +194,7 @@ class LeiosStoreSuite extends CatsEffectSuite:
           held <- s.batchRetrieveTxs(hash(2), Vector(0, 1))
           completed <- s.writeTxs(point(2, 2), Vector(1 -> tx(7)))
         yield
-          assertEquals(written, BodyWritten(Vector.empty, Vector(0)))
+          assertEquals(written, BodyWritten(Vector(point(2, 2)), Vector.empty, Vector(0)))
           assertEquals(held, Vector(0 -> tx(1), 1 -> zeroes(tx(7).size)))
           assertEquals(completed, Vector(point(2, 2))))
       }
@@ -199,14 +202,20 @@ class LeiosStoreSuite extends CatsEffectSuite:
 
   dirs.test("fills that fill the whole body complete it with the body") { dir =>
     store(dir / "leios").use { s =>
-      ok(for
-        _ <- s.writeEbPoint(point(1, 1), word32(1))
-        _ <- s.writeEbBody(point(1, 1), body(1), Vector.empty)
-        _ <- s.writeTxs(point(1, 1), Vector(0 -> tx(0)))
-        _ <- s.writeEbPoint(point(3, 2), word32(1))
-        _ <- s.writeEbPoint(point(4, 2), word32(1))
-        written <- s.writeEbBody(point(3, 2), body(1), Vector(LocalFill(0, TxLocation(hash(1), 0))))
-      yield assertEquals(written, BodyWritten(Vector(point(3, 2), point(4, 2)), Vector(0))))
+      ok(
+        for
+          _ <- s.writeEbPoint(point(1, 1), word32(1))
+          _ <- s.writeEbBody(point(1, 1), body(1), Vector.empty)
+          _ <- s.writeTxs(point(1, 1), Vector(0 -> tx(0)))
+          _ <- s.writeEbPoint(point(3, 2), word32(1))
+          _ <- s.writeEbPoint(point(4, 2), word32(1))
+          written <- s
+            .writeEbBody(point(3, 2), body(1), Vector(LocalFill(0, TxLocation(hash(1), 0))))
+        yield assertEquals(
+          written,
+          BodyWritten(Vector(point(3, 2), point(4, 2)), Vector(point(3, 2), point(4, 2)), Vector(0))
+        )
+      )
     }
   }
 
@@ -359,7 +368,7 @@ class LeiosStoreSuite extends CatsEffectSuite:
         completed <- s.writeTxs(point(1, 1), Vector(0 -> tx(0)))
       yield
         assertEquals(refused, Left(LeiosEb.Error.BadEntry(0)))
-        assertEquals(written, BodyWritten(Vector.empty, Vector.empty))
+        assertEquals(written, BodyWritten(Vector(point(1, 1)), Vector.empty, Vector.empty))
         assertEquals(completed, Vector(point(1, 1))))
     }
   }
@@ -460,11 +469,11 @@ class LeiosStoreSuite extends CatsEffectSuite:
       val (points, closure, again) = evictedReads
       assertEquals(points, Vector.empty)
       assertEquals(closure, Some(2))
-      assertEquals(again, Vector.empty)
+      assertEquals(again, PointWritten(None, Vector.empty))
       assertEquals(scanned, Vector.empty)
       val (early, written, emptied, refetching, completed, rescanned, repointed) = fetched
       assertEquals(early, Vector.empty)
-      assertEquals(written, BodyWritten(Vector.empty, Vector.empty))
+      assertEquals(written, BodyWritten(Vector(point(10, h)), Vector.empty, Vector.empty))
       assertEquals(emptied, Vector(0 -> zeroes(tx(0).size), 1 -> zeroes(tx(1).size)))
       assertEquals(refetching, None)
       // the evicted point stays in the immutable partition only, so the point at 10 alone is
@@ -914,7 +923,7 @@ class LeiosStoreSuite extends CatsEffectSuite:
         allocated <- s.stored(hash(2))
         bare <- s.stored(hash(3))
       yield
-        assertEquals(written, BodyWritten(Vector.empty, Vector.empty))
+        assertEquals(written, BodyWritten(Vector(point(2, 2)), Vector.empty, Vector.empty))
         // an allocated closure of zeroes, distinct from none, which the copier checks for
         assertEquals(allocated.volatile.closure, Some(SortedMap.empty[Int, Bytes]))
         assertEquals(allocated.volatile.points.map(_._3), Vector(EbStatus.Copied))

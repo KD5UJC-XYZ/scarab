@@ -269,20 +269,26 @@ final class RocksLeiosStore[F[_]] private (
 
   def writeEbPoint(point: EbPoint, announced: Word32)(using
       Raise[F, LeiosStoreError]
-  ): F[Vector[EbPoint]] =
+  ): F[PointWritten] =
     writing { p =>
       hashKey(point.hash).map { key =>
         val k = pointKey(slotBits(point.slot), key)
-        if has(Family.VolEbs, k) then (Vector.empty, p)
+        if has(Family.VolEbs, k) then (PointWritten(None, Vector.empty), p)
         else
-          // the reference completes a novel point whose body and closure its volatile partition
-          // holds complete; read before the commit, so that nothing after it can fail and leave the
-          // rows held in memory behind the store
-          val completed = if has(Family.VolComplete, key) then Vector(point) else Vector.empty
+          // the reference gives a novel point the body its volatile partition holds
+          // (`stLookupEbBodySize`), and completes it where the closure is complete there; read
+          // before the commit, so that nothing after it can fail and leave the rows held in memory
+          // behind the store
+          val bodied = get(Family.VolBodies, key).map(b => Word32.wrap(b.length.toLong))
+          val completed =
+            if has(Family.VolComplete, key) then Vector(point) else Vector.empty
           commit(
             Vector(Op.Put(Family.VolEbs, k, volValue(announced.toLong, EbStatus.Volatile)))
           )
-          (completed, p.added(point.hash, point.slot, Row(announced.toLong, EbStatus.Volatile)))
+          (
+            PointWritten(bodied, completed),
+            p.added(point.hash, point.slot, Row(announced.toLong, EbStatus.Volatile))
+          )
       }
     }
 
@@ -298,7 +304,8 @@ final class RocksLeiosStore[F[_]] private (
           LeiosStoreError.PointNotWritten(point)
         )
       yield
-        if has(Family.VolBodies, key) then (BodyWritten(Vector.empty, Vector.empty), p)
+        if has(Family.VolBodies, key) then
+          (BodyWritten(Vector.empty, Vector.empty, Vector.empty), p)
         else
           val filled = fills.foldLeft(SortedMap.empty[Int, Bytes]) { (acc, fill) =>
             if acc.contains(fill.offset) then acc
@@ -316,8 +323,11 @@ final class RocksLeiosStore[F[_]] private (
               filled.toVector.map((o, tx) => Op.Put(Family.VolTxs, txKey(key, o), tx.toArray)) ++
               Option.when(complete)(Op.Put(Family.VolComplete, key, Empty)) ++ copy
           )
-          val completed = if complete then p.pointsOf(point.hash) else Vector.empty
-          (BodyWritten(completed, filled.keys.toVector), next)
+          // every point of the hash has its body now (`lookupPoints`, `Insert.hs:143` at
+          // ouroboros-consensus 2416493b)
+          val points = p.pointsOf(point.hash)
+          val completed = if complete then points else Vector.empty
+          (BodyWritten(points, completed, filled.keys.toVector), next)
     }
 
   /** The bytes a fill copies, if the volatile partition holds a transaction of the declared size at

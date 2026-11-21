@@ -12,7 +12,15 @@ import xyz.kd5ujc.scarab.consensus.AcquiredLeiosEbs
 import xyz.kd5ujc.scarab.ledger.StorageError
 import xyz.kd5ujc.scarab.protocol.{EbHash, EbPoint, LeiosTxHash}
 import xyz.kd5ujc.scarab.protocol.LeiosWord.{Word32, Word64}
-import xyz.kd5ujc.scarab.storage.{BodyWritten, LeiosEb, LeiosStore, LeiosStoreError, LocalFill}
+import xyz.kd5ujc.scarab.storage.{
+  BodyWritten,
+  LeiosEb,
+  LeiosEbNotification,
+  LeiosStore,
+  LeiosStoreError,
+  LocalFill,
+  PointWritten
+}
 
 /** The endorser blocks whose closure is acquired, which chain selection reads
   * ([[xyz.kd5ujc.scarab.consensus.LeiosCertGate]]): the ChainDB's `cdbAcquiredLeiosEbs`
@@ -32,12 +40,14 @@ import xyz.kd5ujc.scarab.storage.{BodyWritten, LeiosEb, LeiosStore, LeiosStoreEr
   * 160-163, 318-322`). A writer offers them to an unbounded channel ([[notifying]]) rather than
   * updating the set and queueing a reselection itself, as the reference's store notifies a channel
   * its runner reads: so a write never waits for the chain-selection queue, whose capacity is
-  * bounded.
+  * bounded. The same writer publishes what each write acquired to the store's other subscribers
+  * ([[notifications]]), the LeiosNotify servers among them.
   */
 private[node] final class LeiosAcquired[F[_]] private (
     state: Ref[F, AcquiredLeiosEbs],
     completions: Queue[F, EbPoint],
-    immutable: SignallingRef[F, Option[BigInt]]
+    immutable: SignallingRef[F, Option[BigInt]],
+    val notifications: LeiosEbChannel[F]
 )(using F: Async[F]):
   def snapshot: F[AcquiredLeiosEbs] = state.get
 
@@ -62,26 +72,50 @@ private[node] final class LeiosAcquired[F[_]] private (
     */
   def immutableSlots: Stream[F, BigInt] = immutable.discrete.unNone.changes
 
-  /** `store`, its completions offered to [[next]]. Each write and the offer of what it completed
-    * are one uncancelable step, so that no completion is lost to a cancelled writer.
+  /** `store`, its completions offered to [[next]] and what each write acquired published to
+    * [[notifications]] (`notify`, `Storage/LeiosDB/Impl/SQLite/Insert.hs` at ouroboros-consensus
+    * 2416493b). Each write, the offer of what it completed and the publication are one uncancelable
+    * step, so that no completion or notification is lost to a cancelled writer.
     */
   def notifying(store: LeiosStore[F]): LeiosStore[F] = new LeiosStore[F]:
     private def offered(points: Vector[EbPoint]): F[Unit] = points.traverse_(completions.offer)
 
     def writeEbPoint(point: EbPoint, announced: Word32)(using
         Raise[F, LeiosStoreError]
-    ): F[Vector[EbPoint]] =
-      F.uncancelable(_ => store.writeEbPoint(point, announced).flatTap(offered))
+    ): F[PointWritten] =
+      F.uncancelable(_ =>
+        store
+          .writeEbPoint(point, announced)
+          .flatTap(w =>
+            offered(w.completed) *> notifications.publish(LeiosEbNotification.of(point, w))
+          )
+      )
 
     def writeEbBody(point: EbPoint, body: LeiosEb, fills: Vector[LocalFill])(using
         Raise[F, LeiosStoreError]
     ): F[BodyWritten] =
-      F.uncancelable(_ => store.writeEbBody(point, body, fills).flatTap(w => offered(w.completed)))
+      F.uncancelable(_ =>
+        store
+          .writeEbBody(point, body, fills)
+          .flatTap { w =>
+            // `encodeLeiosEbSize eb` (`Insert.hs:161` at ouroboros-consensus 2416493b): the length
+            // of the body's encoding
+            val size = Word32.wrap(body.encoded.size.toLong)
+            offered(w.completed) *> notifications.publish(LeiosEbNotification.of(size, w))
+          }
+      )
 
     def writeTxs(point: EbPoint, txs: Vector[(Int, Bytes)])(using
         Raise[F, LeiosStoreError]
     ): F[Vector[EbPoint]] =
-      F.uncancelable(_ => store.writeTxs(point, txs).flatTap(offered))
+      F.uncancelable(_ =>
+        store
+          .writeTxs(point, txs)
+          .flatTap(completed =>
+            offered(completed) *>
+              notifications.publish(completed.map(LeiosEbNotification.AcquiredEbTxs(_)))
+          )
+      )
 
     def lookupEbBody(hash: EbHash)(using Raise[F, LeiosStoreError]): F[Option[Bytes]] =
       store.lookupEbBody(hash)
@@ -127,5 +161,6 @@ private[node] object LeiosAcquired:
     (
       Ref.of[F, AcquiredLeiosEbs](AcquiredLeiosEbs.empty),
       Queue.unbounded[F, EbPoint],
-      SignallingRef.of[F, Option[BigInt]](None)
-    ).mapN(new LeiosAcquired(_, _, _))
+      SignallingRef.of[F, Option[BigInt]](None),
+      LeiosEbChannel.create[F]
+    ).mapN(new LeiosAcquired(_, _, _, _))

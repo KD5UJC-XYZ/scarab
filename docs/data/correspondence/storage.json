@@ -1176,14 +1176,138 @@
       127,
       136
      ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LeiosDB/Impl/SQLite/Insert.hs",
+     "symbol": "sqlInsertEbBody",
+     "lines": [
+      120,
+      163
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "LeiosStoreSuite"
+   ],
+   "digest": "675e7f2e230e9abb",
+   "note": "with the points sqlInsertEbBody notifies AcquiredEb for, every point of the hash where the body was stored, returned beside what the write completed rather than notified on a channel"
+  },
+  "class storage.PointWritten": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LeiosDB/API.hs",
+     "symbol": "writeEbPoint",
+     "lines": [
+      118,
+      126
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LeiosDB/Impl/SQLite/Insert.hs",
+     "symbol": "sqlInsertEbPoint",
+     "lines": [
+      76,
+      111
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "LeiosStoreSuite",
+    "LeiosNotifyRelaySuite"
+   ],
+   "note": "what sqlInsertEbPoint notifies and returns: the length of the volatile body (stLookupEbBodySize) of a novel point's hash, for AcquiredEb, and CompletedEbs",
+   "digest": "b41557f6b96ef7b6"
+  },
+  "enum storage.LeiosEbNotification": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LeiosDB/API.hs",
+     "symbol": "LeiosEbNotification",
+     "lines": [
+      177,
+      186
+     ]
     }
    ],
    "class": "Mirror",
    "structure": "same",
    "evidence": [
-    "LeiosStoreSuite"
+    "LeiosNotifyRelaySuite"
    ],
-   "digest": "e58e9572887993bf"
+   "digest": "50171e62e8bfe4fc"
+  },
+  "object storage.LeiosEbNotification": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LeiosDB/Impl/SQLite/Insert.hs",
+     "symbol": "sqlInsertEbPoint",
+     "lines": [
+      76,
+      111
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LeiosDB/Impl/SQLite/Insert.hs",
+     "symbol": "sqlInsertEbBody",
+     "lines": [
+      120,
+      163
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "LeiosNotifyRelaySuite"
+   ],
+   "note": "the notifications of a point write and a body write in the order the inserts notify them, the body's then the closure's, made from what the write returned",
+   "digest": "e1998bb3326fe881"
+  },
+  "def storage.LeiosEbNotification.of": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LeiosDB/Impl/SQLite/Insert.hs",
+     "symbol": "sqlInsertEbPoint",
+     "lines": [
+      76,
+      111
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LeiosDB/Impl/SQLite/Insert.hs",
+     "symbol": "sqlInsertEbBody",
+     "lines": [
+      120,
+      163
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "LeiosNotifyRelaySuite"
+   ],
+   "digest": "71a1870990bde44c"
   },
   "enum storage.EbStatus": {
    "upstream": [
@@ -1246,11 +1370,12 @@
     }
    ],
    "class": "Mirror",
-   "structure": "same",
+   "structure": "differs",
    "evidence": [
     "LeiosStoreSuite"
    ],
-   "digest": "9921afedcd56bc7b"
+   "digest": "79153c75c016467f",
+   "note": "returns PointWritten: the body size sqlInsertEbPoint notifies AcquiredEb with for a novel point, beside the completed points"
   },
   "def storage.LeiosStore#writeEbBody": {
    "upstream": [
@@ -1450,7 +1575,7 @@
    "evidence": [
     "LeiosStoreSuite"
    ],
-   "digest": "d6acf998818f92db"
+   "digest": "c21eef335c452bd9"
   },
   "def storage.RocksLeiosStore#writeEbBody": {
    "upstream": [
@@ -1480,7 +1605,7 @@
    "evidence": [
     "LeiosStoreSuite"
    ],
-   "digest": "3862bb8dc450ca03"
+   "digest": "b3b151b2e0d60739"
   },
   "def storage.RocksLeiosStore#writeTxs": {
    "upstream": [
