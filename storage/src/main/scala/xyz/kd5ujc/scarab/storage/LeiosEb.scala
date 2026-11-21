@@ -37,6 +37,13 @@ final class LeiosEb private (val transactions: NonEmptyVector[(LeiosTxHash, Word
     */
   def encoded: Bytes = LeiosEb.encode(transactions.toVector)
 
+  /** The length of [[encoded]], as the reference computes it without encoding (`encodeLeiosEbSize`,
+    * `Types.hs:276-279` at 2416493b): the map's head and each transaction's [[LeiosEb.itemSize]].
+    */
+  def encodedSize: Long =
+    LeiosEb.cborIntBytesSize(size.toLong) +
+      transactions.foldLeft(0L)((sum, item) => sum + LeiosEb.itemSize(item._2.toLong))
+
   /** Where each transaction is in the closure: `n + 1` positions, each the sum of the sizes before
     * it (`encodeTxBounds`, `Storage/LeiosDB/Impl/SQLite/Read.hs:264-267` at 2416493b).
     */
@@ -67,6 +74,40 @@ object LeiosEb:
     transactions.toVector.indexWhere(_._1.bytes.size != HashBytes) match
       case -1    => Right(new LeiosEb(transactions))
       case index => Left(Error.BadEntry(index))
+
+  /** The body of the transactions `txs`, each as the bytes the closure holds, in order: the body
+    * part of `forgeLeiosEb` (`LeiosDemoTypes.hs:1273-1295` at 2416493b), each transaction's hash
+    * ([[hashTx]]) and its length. The hashes are Blake2b-256 digests, 32 bytes, so the body is one
+    * [[from]] accepts; a length is a JVM array's, which a `Word32` holds.
+    */
+  def of(txs: NonEmptyVector[Bytes]): LeiosEb =
+    new LeiosEb(txs.map(tx => hashTx(tx) -> Word32.wrap(tx.size.toLong)))
+
+  /** `encodeLeiosEbItemSize` (`Types.hs:229-232` at 2416493b): the bytes one reference takes in a
+    * body, for a transaction of `txSize` bytes: the 32-byte hash under its head, and the size.
+    */
+  def itemSize(txSize: Long): Long =
+    cborIntBytesSize(HashBytes.toLong) + HashBytes + cborIntBytesSize(txSize)
+
+  /** `encodeLeiosEbMaxFramingSize` (`Types.hs:263-264` at 2416493b): the widest map head a body can
+    * have, that of a count as wide as a `Word32`.
+    */
+  val MaxFramingSize: Long = cborIntBytesSize(0xffffffffL)
+
+  /** `leiosReferencesCapacity` (`Types.hs:266-271` at 2416493b): the bytes of references a body may
+    * hold under a `maxEndorserBlockReferencesSize` of `parameter`, the widest head taken off; a
+    * parameter smaller than the head leaves none.
+    */
+  def referencesCapacity(parameter: Long): Long = parameter - parameter.min(MaxFramingSize)
+
+  /** `cborIntBytesSize` (`Types.hs:283-288` at 2416493b): the length of the head of an unsigned
+    * integer `n` in its shortest form, at most that of a `Word32`, as the reference counts it.
+    */
+  def cborIntBytesSize(n: Long): Long =
+    if n < 24 then 1
+    else if n < 0x100L then 2
+    else if n < 0x10000L then 3
+    else 5
 
   /** The bytes of `hash` 's body, read back: the decoder of the reference's stored bodies
     * (`decodeStoredTxHashes`, `Read.hs:186-198` at 2416493b), which reads 32-byte hashes and 32-bit

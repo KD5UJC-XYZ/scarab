@@ -27,10 +27,11 @@ import xyz.kd5ujc.scarab.storage.{LeiosEb, LeiosStore, LeiosStoreError}
 
 /** What the node does with a LeiosFetch answer (`processLeiosBlock` and `processLeiosBlockTxs`,
   * `LeiosDemoLogic.hs` 849-1172 and 1395-1588 of ouroboros-consensus 2416493b), for the answers of
-  * a peer, `ReceivedBlockFrom` and `ReceivedTxsFrom`: checked, accounted for in the fetch logic's
-  * state, written to `store` and claimed once written. `store` is the node's notifying store
-  * ([[LeiosAcquired.notifying]]), so a write that completes a closure grows the endorser blocks
-  * chain selection may use.
+  * a peer, `ReceivedBlockFrom` and `ReceivedTxsFrom`, and for an endorser block the node forged,
+  * `ForgedBlock` and `ForgedTxs` ([[forgedBlock]], [[forgedTxs]]). A peer's answers are checked,
+  * accounted for in the fetch logic's state, written to `store` and claimed once written. `store`
+  * is the node's notifying store ([[LeiosAcquired.notifying]]), so a write that completes a closure
+  * grows the endorser blocks chain selection may use.
   *
   * An answer that is not what was asked for raises [[NetworkError.LeiosFetchInvalidReply]], which
   * ends the connection. The store's failure is the node's own: it goes to `fatal`, which stops the
@@ -164,6 +165,43 @@ final class LeiosFetchArrival[F[_], P](
       _ <- shared.outstanding.update(LeiosFetchLogic.refundTxRequest(peer, batchBytes, _))
       _ <- shared.wake
     yield ()
+
+  /** `processLeiosBlock` of a body the node forged (`ForgedBlock`, `LeiosDemoLogic.hs` 849-1172):
+    * not checked, as the node made it; no request refunded, for no peer sent it. A body neither
+    * held nor older than what the fetch logic was pruned to is written as an answer's is
+    * ([[acquire]]): its point at the size of its encoding, the body with no fills, and the body
+    * held with the jobs of every transaction, as the forge pulls none from the pool
+    * (`noMempoolPull`). The writes take their slots of the writer's queue and are awaited, not
+    * settled on a fiber: the forge must not announce what it has not stored (`ForgedBlock{} ->
+    * settle`, 1144-1146). The store's failure is raised to the forger.
+    */
+  def forgedBlock(point: EbPoint, eb: LeiosEb)(using Raise[F, LeiosStoreError]): F[Unit] =
+    for
+      persist <- shared.outstanding.modify { o =>
+        val tooOld = point.slot.toBigInt < o.outstandingPrunedSlot.toBigInt
+        val novel = !o.ebState.get(point.hash).exists(_.hasBody)
+        (o, !tooOld && novel)
+      }
+      _ <- shared.wake
+      _ <- awaited(2)(acquire(point, eb, BytesSize.wrap(eb.encodedSize), _)).whenA(persist)
+    yield ()
+
+  /** `processLeiosBlockTxs` of the closure the node forged (`ForgedTxs`, `LeiosDemoLogic.hs`
+    * 1412-1426 and 1530-1546): every transaction written at its offset in the body, on one slot of
+    * the writer's queue and awaited; no job is retired, as the forge holds none.
+    */
+  def forgedTxs(point: EbPoint, closure: NonEmptyVector[(LeiosTxHash, Bytes)])(using
+      Raise[F, LeiosStoreError]
+  ): F[Unit] =
+    val txs = closure.toVector.zipWithIndex.map { case ((_, bytes), offset) => offset -> bytes }
+    awaited(1)(landed => store.writeTxs(point, txs) *> landed) *> shared.wake
+
+  /** `jobs` writes on slots of the writer's queue, waiting while it is full, then run here: each
+    * slot is given back as its write lands. A store's failure stops the node, so the slots of a
+    * write that failed are not given back.
+    */
+  private def awaited(jobs: Long)(writes: F[Unit] => F[Unit]): F[Unit] =
+    F.uncancelable(poll => poll(slots.acquireN(jobs)) *> writes(slots.release))
 
   /** The body's write and its claim: the point at the size the body was sent at, the body with no
     * fills, and then the body held with the jobs of the transactions the write still misses.

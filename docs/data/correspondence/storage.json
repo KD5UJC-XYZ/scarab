@@ -5,6 +5,126 @@
   "storage/src/main/scala"
  ],
  "entries": {
+  "def storage.LeiosEb#encodedSize": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Leios/Types.hs",
+     "symbol": "encodeLeiosEbSize",
+     "lines": [
+      276,
+      279
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraEndorserBlockSuite"
+   ],
+   "digest": "9f62db93aeb8e0b0"
+  },
+  "def storage.LeiosEb.cborIntBytesSize": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Leios/Types.hs",
+     "symbol": "cborIntBytesSize",
+     "lines": [
+      283,
+      288
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraEndorserBlockSuite"
+   ],
+   "digest": "03f0cd365f793eef"
+  },
+  "def storage.LeiosEb.itemSize": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Leios/Types.hs",
+     "symbol": "encodeLeiosEbItemSize",
+     "lines": [
+      229,
+      232
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraEndorserBlockSuite"
+   ],
+   "digest": "0b8ee6fec16e29fd"
+  },
+  "def storage.LeiosEb.of": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoTypes.hs",
+     "symbol": "forgeLeiosEb",
+     "lines": [
+      1273,
+      1295
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraEndorserBlockSuite"
+   ],
+   "digest": "14105642d6f51b54"
+  },
+  "def storage.LeiosEb.referencesCapacity": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Leios/Types.hs",
+     "symbol": "leiosReferencesCapacity",
+     "lines": [
+      270,
+      271
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraEndorserBlockSuite"
+   ],
+   "digest": "8ab3ae5b90adfa81"
+  },
+  "val storage.LeiosEb.MaxFramingSize": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Leios/Types.hs",
+     "symbol": "encodeLeiosEbMaxFramingSize",
+     "lines": [
+      263,
+      264
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraEndorserBlockSuite"
+   ],
+   "digest": "6efe1d6d7542b1c6"
+  },
   "val storage.haskell.state.DijkstraCodecs.relay": {
    "upstream": [
     {

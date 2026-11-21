@@ -98,7 +98,7 @@ class DijkstraSelectionSuite extends munit.FunSuite:
       .fold(e => fail(e.message), identity)
     val cert: Certificate = certified.leiosCertificate.map(_.certificate).getOrElse(fail("no cert"))
     BlockBuilder.Assembly.dijkstra(txs, Some(cert)) match
-      case BlockBuilder.Assembly.InDijkstra(body) =>
+      case BlockBuilder.Assembly.InDijkstra(body, _) =>
         assertEquals(body.transactions, Vector.empty)
         assertEquals(body.leiosCertificate, Some(cert))
         // the reference's certifying block 64,850 is that body, byte for byte

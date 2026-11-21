@@ -39,7 +39,9 @@ import xyz.kd5ujc.scarab.ledger.state.{
 import xyz.kd5ujc.scarab.network.Word32
 import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.TxMeasure
 import xyz.kd5ujc.scarab.node.{NodeHeaderRules, NodeHeaderState, NodeSetup}
-import xyz.kd5ujc.scarab.node.mempool.Capacity
+import xyz.kd5ujc.scarab.node.mempool.{Capacity, EbMeasure}
+import xyz.kd5ujc.scarab.consensus.leios.AnnouncingHeader
+import cats.data.NonEmptyVector
 import xyz.kd5ujc.scarab.node.read.InEra
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.protocol.{Era, HfcHeader, NtNHeader, ReferenceBuild}
@@ -412,7 +414,7 @@ class DijkstraForgeSuite extends munit.FunSuite:
     val ranking = BlockBuilder.ranking(snapshot, Capacity.dijkstraBlockUnit(params))
     val (block, recordedBody) = recorded
     BlockBuilder.Assembly.dijkstra(ranking.transactions, None) match
-      case BlockBuilder.Assembly.InDijkstra(body) =>
+      case BlockBuilder.Assembly.InDijkstra(body, _) =>
         assertEquals(body.encode, recordedBody)
         assertEquals(body.hash, block.header.bodyHash)
         assertEquals(BigInt(body.size), block.header.bodySize)
@@ -447,4 +449,48 @@ class DijkstraForgeSuite extends munit.FunSuite:
       Block.decode(withTxs.raw, geometry.byron.epochSlots).map(_.era),
       Right(Era.Dijkstra)
     )
+  }
+
+  // --- a ranking block that announces an endorser block ---------------------------------------
+
+  test("the endorser block's capacity is the testnet's, from Dijkstra's parameters") {
+    // the closure part is the pool's reservation; the references are 308,000 less the 5 bytes
+    // of the widest head
+    assertEquals(
+      Capacity.endorserBlockCapacity(params),
+      Right(
+        EbMeasure(
+          TxMeasure(2000000L, BigInt(2160000000L), BigInt(600000000000L), 12000000L),
+          307995L
+        )
+      )
+    )
+  }
+
+  test("a ranking block announcing an endorser block passes Praos2's header rules and the checks") {
+    val endorsing =
+      BlockBuilder.Endorsing(led._1, NonEmptyVector.fromVectorUnsafe(recorded._1.transactions))
+    val body = BlockBuilder.Assembly.dijkstra(Vector.empty, None, Some(endorsing))
+    val announcing = forge(body)
+    assertEquals(announcing.header.leios.announcement, Some(endorsing.forged.announcement))
+    assertEquals(endorsing.forged.point.slot.toBigInt, announcing.slot)
+    val start = rules.at(injected) match
+      case s: NodeHeaderState.Shelley => s.copy(previous = Some(tip))
+      case other                      => fail(s"not a Shelley header state: $other")
+    val header = received(announcing.header.raw)
+    rules.validate(injected, Some(tip), start, header) match
+      case Outcome.Valid(_) => ()
+      case other            => fail(s"slot ${announcing.slot}: $other")
+    val decoded = BlockTransport.check(header, announcing.raw).fold(e => fail(e.message), identity)
+    decoded match
+      case d: Block.Dijkstra => assertEquals(d.block.faults, Vector.empty)
+      case other             => fail(s"not a Dijkstra block: $other")
+    // what the forge hands on: the header announcing the block it forged, as a peer would read
+    // the announcement from it (`mkForgedAnnouncingHeader` and `mkAnnouncingHeader` agree)
+    val handed = Forger.announced(decoded, body).getOrElse(fail("no endorser block handed on"))
+    assertEquals(handed.forged, endorsing.forged)
+    assertEquals(Some(handed.announcing), AnnouncingHeader.of(announcing.header))
+    assertEquals(handed.announcing.fields.point, endorsing.forged.point)
+    // a block with no endorser block hands none on
+    assertEquals(Forger.announced(decoded, BlockBuilder.Assembly.minimalDijkstra), None)
   }

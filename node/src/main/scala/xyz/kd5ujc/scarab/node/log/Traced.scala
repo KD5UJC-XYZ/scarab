@@ -651,6 +651,8 @@ object Traced:
       val detail = defect match
         case ForgeDefect.BodySize(actual, maximum) =>
           List("bodySize" -> actual.asJson, "maxBodySize" -> maximum.asJson)
+        case ForgeDefect.EndorserBlockSize(actual, maximum) =>
+          List("endorserBlockSize" -> actual.asJson, "maxEndorserBlockSize" -> maximum.asJson)
         case ForgeDefect.BlockDecode(cause) => List("cause" -> cause.message.asJson)
       EventKind.ForgeDefect.line(
         (List("slot" -> slot.asJson, "kind" -> defect.productPrefix.asJson) ++ detail :+
