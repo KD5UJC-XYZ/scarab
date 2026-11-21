@@ -1576,8 +1576,8 @@ Conway's rules on the classes follow as the rest of stage 2.
     - Conway's era suites (`EraUtxosSuite`, `EraUtxoSuite`, `EraUtxowSuite`, `ConwayUtxoChecksSuite`,
       `ConwayUtxowChecksSuite` and the reference suites) keep their expected values.
   - Incomplete (CNF-2):
-    - the 28 batches of the chain as the reference judges them: UTXOW reads the state after SUBLEDGERS (D7c);
-      here they are a component check;
+    - the 28 batches of the chain: here a component check; LEDGER runs them whole, UTXOW on the state after
+      SUBLEDGERS (D7e);
     - the forecast: the history given ends far after the chain, so `OutsideForecast` is not exercised at Dijkstra;
     - refusals that no recording holds
       ([#85's item](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7056846371)): a guard's
@@ -1585,8 +1585,8 @@ Conway's rules on the classes follow as the rest of stage 2.
       an input a sub-transaction spent, a batch's collateral, and a Plutus refusal;
     - the refusals are compared through the flat form and the suite's encoder: the era failures have no encoder
       yet (#796).
-  - Not yet (#85): the sub-transactions' rules and LEDGER (D7c, D7e); ENTITIES and the certificate rules, and
-    GOV, are the next bullets'.
+  - ENTITIES and the certificate rules, GOV, the sub-transactions' rules (D7c) and LEDGER (D7e) are the later
+    bullets'.
 - **Dijkstra's certificate rules and ENTITIES** (`era/rules/DijkstraCerts.scala`,
   `era/rules/DijkstraCertsFailures.scala`; `Rules/{Entities,Cert,Certs,Deleg,Pool,GovCert}.hs` of
   `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/`, cardano-ledger 9df9f98c):
@@ -1734,7 +1734,7 @@ Conway's rules on the classes follow as the rest of stage 2.
     comparisons read; a parameter change, which the flat Conway action cannot hold, has none
     (`GovActionNotRead`).
   - The transition is generic in its era, where the reference's is generic in its rule too, for SUBGOV (D7c). The
-    LEDGER constructor and injections (`DijkstraGovFailure`, `Ledger.hs:101, 189-196`) come with Dijkstra's LEDGER
+    LEDGER constructor and injections (`DijkstraGovFailure`, `Ledger.hs:101, 189-196`) are Dijkstra's LEDGER's
     (D7e).
   - Evidence:
     - `DijkstraRulesOracleSuite`: on the reference's 16 `gov` cases (`fixtures/reference/dijkstra-rules`), GOV at
@@ -1848,8 +1848,8 @@ Conway's rules on the classes follow as the rest of stage 2.
       refusal at the top level (D7a), and SUBUTXOW collects nothing; no case of `fixtures/reference/dijkstra-rules`
       has a sub-transaction; the flat rules halt on one;
     - the failures are not compared with the reference's bytes: the era failures have no encoder yet (#796).
-  - Not yet (#85): LEDGER (D7e); SUBENTITIES and the sub-transactions' certificate rules, then SUBGOV, SUBLEDGER and
-    SUBLEDGERS, are the next bullets'.
+  - SUBENTITIES and the sub-transactions' certificate rules, then SUBGOV, SUBLEDGER and SUBLEDGERS, and LEDGER
+    (D7e), are the later bullets'.
 - **Dijkstra's sub-transaction certificate rules and SUBENTITIES** (`era/rules/DijkstraSubCerts.scala`,
   `era/rules/DijkstraSubEntities.scala`; `Rules/{SubDeleg,SubPool,SubGovCert,SubCert,SubCerts,SubEntities}.hs` of
   `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/`, cardano-ledger 9df9f98c):
@@ -1921,7 +1921,7 @@ Conway's rules on the classes follow as the rest of stage 2.
       which vote or name the current treasury: they record each level's collection, not a verdict of the rules, so
       SUBENTITIES is not run on them;
     - the failures are not compared with the reference's bytes: the era failures have no encoder yet (#796).
-  - Not yet (#85): LEDGER (D7e); SUBGOV, SUBLEDGER and SUBLEDGERS are the next bullet's.
+  - SUBGOV, SUBLEDGER and SUBLEDGERS, then LEDGER (D7e), are the later bullets'.
 - **Dijkstra's SUBGOV, SUBLEDGER and SUBLEDGERS** (`era/rules/DijkstraSubLedger.scala`;
   `Rules/{SubGov,SubLedger,SubLedgers}.hs` of `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/`, cardano-ledger
   9df9f98c):
@@ -2000,7 +2000,168 @@ Conway's rules on the classes follow as the rest of stage 2.
     - refusals that no recording holds: any of SUBLEDGER's, SUBLEDGERS' or SUBGOV's by the reference, and a
       sub-transaction's votes and proposals but the crafted ones;
     - the failures are not compared with the reference's bytes: the era failures have no encoder yet (#796).
-  - Not yet (#85): LEDGER (D7e), which runs SUBLEDGERS before the top level's rules.
+  - LEDGER (D7e), which runs SUBLEDGERS before the top level's rules, is the next bullet's.
+- **Dijkstra's LEDGER, LEDGERS and MEMPOOL** (`era/rules/DijkstraLedger.scala`, `era/rules/DijkstraMempool.scala`,
+  `era/rules/LedgerFailures.scala`; `Rules/{Ledger,Ledgers,Mempool}.hs` of `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/`,
+  cardano-ledger 9df9f98c):
+  - The failure type is `DijkstraLedgerPredFailure` (`Ledger.hs:98-105`), in tag order (1 to 6, `:252-259`), and the
+    event `DijkstraLedgerEvent` (`:279-284`); `EraRuleFailure "LEDGER"` and `EraRuleEvent "LEDGER"` have Dijkstra's
+    case. The embeddings of UTXOW, GOV, ENTITIES and SUBLEDGERS are `EmbedInDijkstraLedger` (`:489-573`). The
+    reference's injections (`:113-205`) are each an instance, UTXOW's and the rules below it one instance over UTXOW's
+    injection, ENTITIES' and the rules below it one over ENTITIES', as Conway's are; Shelley's `AccountAlreadyRegistered`
+    goes through DELEG's (`InjectDelegFailure.dijkstra`), then CERT's, CERTS's and ENTITIES' constructors.
+    `DijkstraLedgerPredFailure.toStored` gives the flat form, one-way glue the comparisons read; the flat type has no
+    form for ENTITIES' and SUBLEDGERS' failures (`DijkstraLedgerUnprojected`).
+  - **The injections the reference leaves partial**, by D7a's decision. `conwayToDijkstraLedgerPredFailure` calls
+    `error "Impossible"` on `ConwayWdrlNotDelegatedToDRep` and `ConwayMempoolFailure` (`:538, 541`): its instance is over
+    the seven constructors it maps (`DijkstraLedger.ConwayFailure`), each payload taken whole, so the two have no
+    injection. `shelleyToDijkstraLedgerPredFailure` calls DELEGS's failure impossible (`:551`), which has no value at
+    Dijkstra (`DelegsPredFailure`), as at Conway. `InjectLedgerFailure` is now contravariant in the failure, as UTXOW's
+    is, so the instance over the seven serves a predicate declaring one of them.
+  - `dijkstraLedgerTransition` (`:392-487`) runs, in the reference's order:
+    - SUBLEDGERS on the sub-transactions, whatever the top level's flag, with the UTxO set and the accounts before the
+      transaction and the top level's flag in its environment, on the ledger state and the proposals;
+    - for every transaction, the treasury it declares against the chain's and the batch's reference scripts
+      (`validateAllRefScriptSize`, `batchNonDistinctRefScriptsSize`) against the UTxO set before it;
+    - for a transaction flagged valid, ENTITIES on the certificate state after SUBLEDGERS, with the committee of the
+      governance state, its proposals among those after SUBLEDGERS and the accounts before the transaction; then GOV
+      on the proposals after SUBLEDGERS, with the transaction's id and the certificate state after ENTITIES;
+    - UTXOW on the UTxO state after SUBLEDGERS, with the pool state after SUBLEDGERS, the certificate state before the
+      transaction and the UTxO set before it (`:475-486`).
+
+    The UTxO set before the transaction is the stored outputs of every level's inputs, reference inputs and collateral
+    (`allInputs`), read into the era, the set D7a's UTXOW reads its lookups from. The proposals are the era's, in their
+    own capability beside the ledger state, as SUBLEDGER's are (the Gap of
+    [#85's item](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923488137)). The reference's
+    `shelleyLedgerAssertions` are not run, as Conway's era LEDGER does not run them.
+  - LEDGERS is Babbage's at Dijkstra (`Dijkstra/Era.hs:296`), Babbage's transition (`Babbage/Rules/Ledgers.hs:124-142`),
+    whose fold Conway's and Dijkstra's now share (`ShelleyLedgers.ledgersFold`), `mkStAnnTx` being
+    `mkDijkstraStAnnTopTx` (`Dijkstra.hs:92`). The fold starts with an empty cache of runnable scripts once and hands
+    the cache each annotation leaves (`cacheStAnnTxG`) to the next, as Conway's LEDGERS, Babbage's at f649f975 too,
+    now does with Alonzo's `mkStAnnTx` (it gave each an empty cache before); the cache holds what the annotation
+    builds, so no verdict changes. Its injections are the twenty the reference lists (`Ledgers.hs:25-82`),
+    each LEDGER's wrapped in `LedgerFailure`; the ten LEDGER has and LEDGERS does not (Conway's and Shelley's LEDGER
+    failures, Conway's UTXOW and UTXO failures, ENTITIES', Dijkstra's POOL's, Conway's GOVCERT's, SUBLEDGERS',
+    SUBENTITIES' and `AccountAlreadyRegistered`) have no instance.
+  - MEMPOOL (`Mempool.hs`): `DijkstraMempoolPredFailure` (tags 1 to 3, `:118-122`), `DijkstraMempoolEvent`, its three
+    injections and LEDGER's embedding. The transition refuses a transaction none of whose top-level inputs the UTxO set
+    holds (`AllInputsAreSpent`) and runs LEDGER only if nothing failed (`whenFailureFreeDefault`); Dijkstra's has no
+    check of unelected committee members, which the node's flat Conway MEMPOOL keeps below version 11. The mempool's
+    failure holds the node's typed cause (`MempoolProblem`) where the reference holds its `Text`, as Conway's
+    `ConwayMempoolFailure` does; the reference tells `AllInputsAreSpent` by the text
+    `"All inputs are spent. Transaction has probably already been included"` (`:93`), which the node's cause
+    `MempoolProblem.AllInputsSpent` renders, so the injection tells it by that cause (STR-3); a cause whose text is
+    free (`Rule`, `Ledger`) is a `MempoolFailure` whatever it reads. The injection of
+    Conway's LEDGER failure is over the mempool's failure and the seven constructors LEDGER's maps
+    (`DijkstraMempool.ConwayFailure`).
+  - #85's checklist: MEMPOOL and LEDGER at 9df9f98c call no `hashTx`, so the item on Dijkstra's `hashTx` is not
+    touched; the item on the V4 guard's aggregation of votes and treasury amounts across levels, closed by #1254, is
+    the script contexts', which LEDGER does not build.
+  - Evidence:
+    - `DijkstraLedgerSuite`, the testnet's chain (`fixtures/reference/leios-testnet-chain-contexts`), every one of its 200
+      transactions flagged valid, at the slot D7a judges it at (an endorser block's own where its validity interval
+      ends before the certifying ranking block's slot):
+      - from the empty certificate state, LEDGER admits 174 and refuses the 26 whose seed (below) holds anything, each
+        with the failures its sub-rules give it run one by one, one level down as LEDGER nests them (SUBLEDGERS,
+        ENTITIES, GOV, UTXOW, each given the state the one before left, ENTITIES after a refusal of SUBLEDGERS with the
+        failing flag raised), LEDGER's blocks last first at the root;
+      - from its seed, the least state its body needs, derived from the body alone (each account a level withdraws
+        from, deposits to, bounds the balance of, or unregisters or delegates before registering it, and each
+        proposal's return account, registered with the balance the batch withdraws; the testnet's constitution; for a
+        parameter change naming its parent, the proposals rooted there), LEDGER admits all 200, the 28 batches among
+        them, every script run by the node's evaluator. The state each leaves is the one its parts derive without
+        LEDGER's transition: every level's inputs spent and outputs created and the instant stake moved with them, the
+        top level's fee, every level's donation, the deposits by the obligations' change and the proposals' deposits;
+        the certificate state of each level in turn, its withdrawals taken from the balances, CERTS alone on its
+        certificates and its direct deposits added; the proposals GOV alone leaves. The events are the whole vector its
+        sub-rules run one by one tell, in LEDGER's order, GOV's two among them, its new proposals by the transaction's
+        id;
+      - on the batches whose sub-transactions withdraw, ENTITIES admits the top level with the accounts before the
+        batch and refuses it with those after SUBLEDGERS (`WithdrawalAmountsExceedingOriginalBalance`), which LEDGER
+        does not give it; the chain's first proposal, from a state without its return account, is refused by GOV for
+        that account, and encoded again with a registration of it (body field 4, under the policy that skips the
+        signal's checks) is not, as GOV reads the certificate state after ENTITIES;
+      - under a limit below a transaction's reference scripts' size, flagged valid, the size is its one failure: it is
+        recorded before ENTITIES, whose check of the current accounts, the one that refuses the transaction from the
+        empty state, runs only while nothing has failed and reads the flag the sub-rule inherits
+        (`Control/State/Transition/Extended.hs:725-727`); flagged invalid (the flag is outside the body its signatures
+        are over), the size and UTXOW's alone; a declared treasury other than the chain's is refused with the top level
+        flagged either way;
+      - a built batch (below) whose sub-transaction names the main network and withdraws from an account no state
+        holds, as its top level does: flagged valid, SUBUTXO, SUBENTITIES and ENTITIES refuse it; flagged invalid, the
+        sub-transaction's refusal of its network (`SubWrongNetworkInTxBody`) alone, as SUBLEDGERS runs whatever the flag,
+        SUBENTITIES and ENTITIES do not, and UTXOS evaluates scripts only while nothing has failed
+        (`Babbage/Rules/Utxos.hs:209`);
+      - the reference's own cases of the pinned suite (`eras/dijkstra/impl/testlib/Test/Cardano/Ledger/Dijkstra/Imp/`),
+        each with its exact expectation, on batches built as its fixups leave them (an input for each level, the fee,
+        a change output, the collateral, the script integrity hash, real signatures; `DijkstraImpBatch`), under every
+        check: `UtxoSpec.hs:525`, at `m` = 1 ada, a sub-transaction registering a fresh pool that the top level, in legacy
+        mode through a Plutus V3 script that would fail, its output holding the datum's hash and the spending
+        transaction's witnesses the datum (`fixupOutputDatums`, `fixupDatums`), re-registers: the one failure is
+        `ValueNotConservedInLegacyMode` of 8m + the pool deposit + 5m + 4m against 10m + 3m + 4m, as UTXOW is given the
+        pool state after SUBLEDGERS (given the one before, the top level owes the deposit again and balances, and the
+        script runs and fails, `ValidationTagMismatch`), and the batch-wide check the certificate state before the
+        transaction (given the one after, the fresh pool's deposit goes uncounted and `ValueNotConservedUTxO` of
+        522 ada against 22 follows);
+        `LedgerSpec.hs:122`, a sub-transaction's reference script (`purposeIsWellformedNoDatum`, 629 bytes, its hash
+        the one the reference lists) over a limit one byte below, `DijkstraTxRefScriptsSizeTooBig` of 629 against 628,
+        and admitted at the limit (`:167`); `:138`, a script two sub-transactions reference, 1258 against 629; `:195`, the
+        size before a declared treasury one lovelace off, in that order; `MempoolSpec.hs:44`, a spent top-level input and
+        a live sub-input, `AllInputsAreSpent` alone; `:91`, the same with the sub-transaction naming the main network,
+        and with the inputs live SUBUTXO's refusal of the network through LEDGER alone;
+      - LEDGERS of one transaction is its LEDGER one level down, from the seed and from the empty state, on all 200; on
+        the block of the sample with the most transactions, and on a built block whose second transaction spends the
+        native-script output the first pays, LEDGERS leaves the state and events of LEDGER on each in turn, each
+        annotated against the state the one before left (against the UTxO set before the block, the second is
+        refused); of two built transactions providing the same Plutus V3 script, the second's annotation holds the
+        runnable the first's built (the same object), where one given an empty cache builds another;
+      - MEMPOOL is LEDGER one level down on all 200, from the seed and from the empty state; judged again on the state
+        it left, each is refused with `AllInputsAreSpent` alone; with one of its inputs restored, LEDGER runs and refuses
+        the others as spent;
+      - on built values, each injection into LEDGER, LEDGERS and MEMPOOL equals the reference's composition, LEDGERS's
+        on each of its twenty families against the constructors the reference composes; LEDGERS's instances are
+        contravariant, as LEDGER's and MEMPOOL's are, so a constructor's type summons its family's or its union's
+        instance (`ShelleyUtxoPredFailure.BadInputsUTxO`); the constructors the reference calls impossible, the whole
+        types and the ten LEDGERS lacks have no instance (`compileErrors`, beside a reachable one that has).
+    - `DijkstraRulesOracleSuite` (`fixtures/reference/dijkstra-rules`): on the 17 `utxow` cases through LEDGER at the
+      root, from the certificate state the era CERTS leaves after each case's setup, the 15 whose refusal is LEDGER's
+      whole give the reference's verdicts, the refusals byte for byte through the flat form and the suite's encoder;
+      the two refund cases' whole refusals are their UTXOW part, compared byte for byte, then one
+      `RefundIncorrectDELEG` of 3 ada declared against the 2 held, through DELEG, CERT, CERTS and ENTITIES;
+      on the 15 `bbody` cases, LEDGERS one level below the root gives the reference's LEDGERS refusals byte for byte,
+      those of the devnet's block with a transaction on the default state (`bbody/devnet-37`) and flagged invalid,
+      admits the block on the genesis output it spends (`bbody/devnet-37-genesis-utxo`), where the flat rules halt,
+      and admits every other block, whose refusals are BBODY's own. Where the flat rules judge, on `utxow/invalid-flag`
+      and `bbody/devnet-37-invalid-flag`, the era LEDGER and LEDGERS give the flat failures.
+    - Conway's LEDGER suites (`ConwayLedgerChecksSuite`, `LedgerInjectionSuite`, the upstream LEDGER conformance suites,
+      `PreviewConwayRulesSuite`, `EraUtxoSuite`, `RedeemerIndexReferenceSuite`, `PastHorizonReferenceSuite`,
+      `ContextRefusalReasonSuite`), their LEDGERS through the shared fold, and D7a's to D7c's Dijkstra suites keep
+      their expected values.
+  - Incomplete (CNF-2):
+    - the chain's transactions as the reference judged them: the fixture records neither the chain's certificate state
+      nor its proposals ([#85's item](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7059193499)), so the
+      seed is the least state the bodies need, and the verdicts there are the rules';
+    - the order of `utxow/no-utxo`'s three failures: the oracle applied UTXOW at the root, which reports its failures
+      last first, where LEDGER's block keeps their order; that order is compared with BBODY's recorded refusal of the
+      same transaction (`bbody/devnet-37`) instead;
+    - `utxow/refund-declared-balanced` and `utxow/refund-held-balanced`: LEDGER's ENTITIES refuses the deregistration's
+      declared refund, which the oracle's UTXOW alone does not judge, so no recording holds it; their UTXOW part is
+      compared with the reference's bytes and ENTITIES' failure with the one the fixture's construction gives;
+    - UTXOW's pool state after SUBLEDGERS on recorded data: no chain batch or oracle case registers a pool in a
+      sub-transaction; the pinned suite's own case (`UtxoSpec.hs:525`, above) tells the two states apart instead;
+    - the hand-offs neither a recording nor a case of the pinned suite tells apart: UTXOW's certificate state before the
+      transaction where the pool case does not read it, for the key witnesses it needs (`Dijkstra/Rules/Utxow.hs:297`)
+      and the deposits the UTxO state records (`Dijkstra/Rules/Utxo.hs:422-426`), against the one after (the chain's two
+      transactions that unregister accounts are admitted by UTXOW with either certificate state); and
+      ENTITIES' committee proposals after SUBLEDGERS, as no sub-transaction of the chain proposes. SUBLEDGER's crafted
+      cases show the same choice for SUBENTITIES (D7c);
+    - the flat rules halt on every transaction flagged valid (ENTITIES, SUBLEDGERS), so they are compared on the two
+      cases flagged invalid alone;
+    - refusals that no recording holds: LEDGER's own (the treasury and the reference scripts' size) and MEMPOOL's, here
+      on crafted and built transactions, the built ones against the pinned suite's expectations;
+    - the failures are compared through the flat form and the suite's encoder: the era failures have no encoder yet
+      (#796).
+  - Not yet (#85): the node's mempool and block body run the flat rules until the era rules are wired in (D8).
 - **Next, Conway's rules.** The first rule ported is one that needs no parameters, the second one that
   does, each under a differential against the flat rule on the recorded blocks and the refusal corpus.
 - The body is read through the flat decoder for now. What only the projection refuses (an update, genesis
