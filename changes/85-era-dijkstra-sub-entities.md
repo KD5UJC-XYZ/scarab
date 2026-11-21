@@ -1,0 +1,3 @@
+### Added (era types, #85)
+
+- Dijkstra's sub-transaction certificate rules (SUBDELEG, SUBPOOL, SUBGOVCERT, SUBCERT and SUBCERTS) and SUBENTITIES run on the era types, as the Leios testnet's build (cardano-ledger 9df9f98c) has them, with the reference's failure types and injections, total on what each rule reaches. On the reference's 20 recorded certificate cases they refuse as the reference's CERTS does, through the reference's injection, and each recorded sub-transaction of the testnet chain is judged as the rules say from an empty state. The node still judges with the existing rules, so nothing changes in behaviour.
