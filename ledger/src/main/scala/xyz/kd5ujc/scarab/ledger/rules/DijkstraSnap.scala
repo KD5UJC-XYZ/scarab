@@ -4,7 +4,8 @@ package xyz.kd5ujc.scarab.ledger.rules
 import cats.Monad
 import cats.mtl.{Ask, Raise, Stateful}
 import cats.syntax.all.*
-import xyz.kd5ujc.scarab.ledger.ProtocolParams
+import xyz.kd5ujc.scarab.ledger.era.{Identity, PParams}
+import xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraEraPParams
 import xyz.kd5ujc.scarab.ledger.state.*
 
 /** Dijkstra's SNAP (cardano-ledger 9df9f98c `Dijkstra/Rules/Snap.hs:105-145`, `snapTransition`):
@@ -13,16 +14,17 @@ import xyz.kd5ujc.scarab.ledger.state.*
   * the KES constants give ([[Globals.maxKeyAgeEpochs]]); the old mark rotates into the set position
   * with the committee it memoises, the old set into the go position, and the fees become the
   * snapshot fee ([[LeiosCommitteeSelection.rotate]]). The environment is `SnapEnv ls pp`:
-  * Dijkstra's EPOCH passes the ledger state and the current parameters after enactment
-  * ([[DijkstraEpoch]]).
+  * Dijkstra's EPOCH passes the ledger state and the era's current parameters after enactment
+  * (`Dijkstra/Rules/Epoch.hs:235-241`; [[xyz.kd5ujc.scarab.ledger.era.rules.DijkstraEpoch]]), whose
+  * committee size SNAP reads (`ppLeiosCommitteeSizeL`).
   *
   * Dijkstra's state is of the Leios build's layout: a Dijkstra state of the 11.1 layout is not held
   * ([[xyz.kd5ujc.scarab.protocol.DijkstraNotYet.LedgerState]]), and its snapshots are refused so.
   */
 object DijkstraSnap:
-  val sts: Sts[(LedgerState[Dijkstra], ProtocolParams), SnapShots, EpochNo, TickFailure] =
-    new Sts[(LedgerState[Dijkstra], ProtocolParams), SnapShots, EpochNo, TickFailure]:
-      def transition[F[_]: Monad](env: (LedgerState[Dijkstra], ProtocolParams), epoch: EpochNo)(
+  val sts: Sts[(LedgerState[Dijkstra], PParams[Dijkstra]), SnapShots, EpochNo, TickFailure] =
+    new Sts[(LedgerState[Dijkstra], PParams[Dijkstra]), SnapShots, EpochNo, TickFailure]:
+      def transition[F[_]: Monad](env: (LedgerState[Dijkstra], PParams[Dijkstra]), epoch: EpochNo)(
           using
           ask: Ask[F, Globals],
           snapshots: Stateful[F, SnapShots],
@@ -39,7 +41,13 @@ object DijkstraSnap:
           )
           size <- Sts.lift[F, TickFailure, LeiosCommitteeSize](
             LeiosCommitteeSize
-              .fromBigInt(pp.leiosCommitteeSize)
+              .fromBigInt(
+                PParams
+                  .lensHKD[Dijkstra]
+                  .andThen(DijkstraEraPParams.dijkstra.hkdLeiosCommitteeSizeL[Identity])
+                  .get(pp)
+                  .value
+              )
               .leftMap(TickFailure.LeiosCommittee(_))
           )
           s <- snapshots.get

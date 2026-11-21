@@ -365,10 +365,11 @@ object MirrorRules:
   /** A quantity of the ledger state outside its vocabulary type, met by the tick or by a rule of a
     * transaction ([[BlockFailure.stateOutOfRange]]), the consensus state's per-epoch transition
     * counter past `Word32` ([[StateMirrorError.TransitionCounterOverflow]]), or a state with no
-    * Leios committee for SNAP's rotation ([[xyz.kd5ujc.scarab.ledger.ChainError.LeiosCommittee]]):
-    * no verdict on the block. The reference aborts with an exception there (`compactCoinOrError`;
-    * the counter's `succ`, which throws at `maxBound`) or cannot hold such a state, so this is the
-    * node's stop and never a refusal.
+    * Leios committee for SNAP's rotation ([[xyz.kd5ujc.scarab.ledger.ChainError.LeiosCommittee]]),
+    * or a governance record that does not hold the state Dijkstra's tick works on
+    * ([[xyz.kd5ujc.scarab.ledger.ChainError.GovRecord]]): no verdict on the block. The reference
+    * aborts with an exception there (`compactCoinOrError`; the counter's `succ`, which throws at
+    * `maxBound`) or cannot hold such a state, so this is the node's stop and never a refusal.
     */
   private[node] def stateOutOfRange(
       header: Header,
@@ -382,6 +383,8 @@ object MirrorRules:
         None
       case BlockFailure.Tick(TickFailure.LeiosCommittee(cause)) =>
         Some(xyz.kd5ujc.scarab.ledger.ChainError.LeiosCommittee(header.slot, cause))
+      case BlockFailure.Tick(TickFailure.GovRecord(cause)) =>
+        Some(xyz.kd5ujc.scarab.ledger.ChainError.GovRecord(header.slot, cause))
       case _ =>
         failure.stateOutOfRange
           .orElse(failure match
