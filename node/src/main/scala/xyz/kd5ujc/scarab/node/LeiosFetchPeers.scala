@@ -2,7 +2,8 @@
 package xyz.kd5ujc.scarab.node
 
 import cats.Order
-import cats.effect.{Async, Ref, Resource}
+import cats.data.NonEmptyVector
+import cats.effect.{Async, Deferred, Ref, Resource}
 import cats.effect.std.{AtomicCell, Queue}
 import cats.mtl.{Handle, Raise}
 import cats.mtl.syntax.all.*
@@ -51,7 +52,7 @@ final class LeiosPeerVars[F[_]] private (
     val offerings: AtomicCell[F, SortedMap[EbPoint, PeerOffer]],
     val certificationClaims: AtomicCell[F, SortedMap[ElId, EbHash]],
     val maxAcceptedJumpSlot: Ref[F, Option[Word64]],
-    val requestsToSend: Queue[F, LeiosFetchRequest]
+    val requestsToSend: LeiosRequestsToSend[F]
 )
 
 object LeiosPeerVars:
@@ -61,8 +62,88 @@ object LeiosPeerVars:
       AtomicCell[F].of(SortedMap.empty[EbPoint, PeerOffer]),
       AtomicCell[F].of(SortedMap.empty[ElId, EbHash]),
       Ref.of[F, Option[Word64]](None),
-      Queue.unbounded[F, LeiosFetchRequest]
+      LeiosRequestsToSend.create[F]
     ).mapN(new LeiosPeerVars(isBig, _, _, _, _))
+
+/** The requests the decision assigned one peer that its LeiosFetch client has not sent yet, and the
+  * client's stop: `requestsToSend` of `LeiosPeerVars` (`LeiosDemoTypes.hs` 481 of
+  * ouroboros-consensus 2416493b, a `StrictTVar (Seq LeiosFetchRequest)`) and the `Terminate` of the
+  * control message, which `nextLeiosFetchClientCommand` reads in one STM transaction, the stop
+  * first (`LeiosDemoLogic.hs` 716-794; `Ouroboros/Consensus/Network/NodeToNode.hs` 937-944). One
+  * cell holds both, so that the stop and the next request are one decision, polled or awaited: once
+  * stopped, the client is given the stop, whatever was queued before or after it.
+  */
+final class LeiosRequestsToSend[F[_]] private (cell: Ref[F, LeiosRequestsToSend.State[F]])(using
+    F: Async[F]
+):
+  import LeiosRequestsToSend.{State, Taken}
+
+  /** The decision's new requests, after those queued already (`modifyTVar requestsToSend (<>
+    * reqs)`, `Ouroboros/Consensus/NodeKernel.hs` 641). After the stop they are never sent.
+    */
+  def offer(requests: NonEmptyVector[LeiosFetchRequest]): F[Unit] =
+    F.uncancelable { _ =>
+      Deferred[F, Unit].flatMap { fresh =>
+        cell.flatModify {
+          case State.Open(queued, changed) =>
+            (State.Open(queued ++ requests.toVector, fresh), changed.complete(()).void)
+          case stopped @ State.Stopped() => (stopped, F.unit)
+        }
+      }
+    }
+
+  /** The control message's `Terminate`, written here by whoever runs the client: its next
+    * instruction, polled or awaited, is the stop.
+    */
+  def terminate: F[Unit] =
+    F.uncancelable(_ =>
+      cell.flatModify {
+        case State.Open(_, changed)    => (State.Stopped(), changed.complete(()).void)
+        case stopped @ State.Stopped() => (stopped, F.unit)
+      }
+    )
+
+  /** The stop, else the oldest request, taken in the same step; else the wait for a change. */
+  private def attempt: F[Either[F[Unit], Taken]] =
+    cell.modify {
+      case stopped @ State.Stopped() => (stopped, Right(Taken.Stop))
+      case open @ State.Open(queued, changed) =>
+        queued.headOption.fold((open, Left(changed.get)))(request =>
+          (State.Open(queued.drop(1), changed), Right(Taken.Request(request)))
+        )
+    }
+
+  /** `checkOrBlock`: the stop or a request when one is ready, without waiting. */
+  def tryTake: F[Option[Taken]] = attempt.map(_.toOption)
+
+  /** `awaitStopOrRequest`: the stop or a request, waiting for one. A cancelled wait takes nothing.
+    */
+  def take: F[Taken] =
+    F.uncancelable { poll =>
+      F.tailRecM(())(_ =>
+        attempt.flatMap {
+          case Right(taken)  => F.pure(Right(taken))
+          case Left(changed) => poll(changed).as(Left(()))
+        }
+      )
+    }
+
+object LeiosRequestsToSend:
+  /** What the client is given next: the stop, or the oldest request queued. */
+  enum Taken:
+    case Stop
+    case Request(request: LeiosFetchRequest)
+
+  /** The requests queued and the signal of their next change, until the stop. */
+  private enum State[F[_]]:
+    case Open(queued: Vector[LeiosFetchRequest], changed: Deferred[F, Unit])
+    case Stopped()
+
+  /** `newTVarIO Seq.empty` (`LeiosDemoTypes.hs` 503): no request, not stopped. */
+  def create[F[_]: Async]: F[LeiosRequestsToSend[F]] =
+    Deferred[F, Unit].flatMap(changed =>
+      Ref.of[F, State[F]](State.Open(Vector.empty, changed)).map(new LeiosRequestsToSend(_))
+    )
 
 /** The fetch logic's state shared by the node and its peers' mini-protocols: the decision's state
   * (`getLeiosOutstanding`, an `MVar` there, held here so a step may run effects while it holds it),
@@ -138,13 +219,12 @@ object LeiosFetchJobs:
       .map(TxBitmaps(_))
 
   /** `nextLeiosFetchClientCommand` (`LeiosDemoLogic.hs` 716-794 at 2416493b): the client's next
-    * instruction. Its result when the governor asks it to stop; else the peer's next request to
-    * send as its job; and when neither is ready, the wait for whichever comes first.
+    * instruction. Its result once the client is told to stop; else the peer's next request to send
+    * as its job; and when neither is ready, the wait for whichever comes first. The stop and the
+    * request are one decision of `requests` ([[LeiosRequestsToSend]]), the stop first.
     */
   def next[F[_]](
-      stopping: F[Boolean],
-      stopped: F[Unit],
-      requests: Queue[F, LeiosFetchRequest],
+      requests: LeiosRequestsToSend[F],
       job: LeiosFetchRequest => Either[LeiosWireError, LeiosFetchJob[F]]
   )(using
       F: Async[F],
@@ -152,20 +232,19 @@ object LeiosFetchJobs:
   ): F[
     Either[F[LeiosFetchPipelined.Instruction[F, Unit]], LeiosFetchPipelined.Instruction[F, Unit]]
   ] =
-    def sent(request: LeiosFetchRequest): F[LeiosFetchPipelined.Instruction[F, Unit]] =
-      job(request).fold(
-        e => NetworkError.IllegalTransition(Protocols.LeiosFetch, ProtocolError.Leios(e)).raise,
-        j => F.pure(Right(j))
-      )
-    val waiting: F[LeiosFetchPipelined.Instruction[F, Unit]] =
-      stopping.ifM(
-        F.pure(Left(())),
-        F.race(stopped, requests.take).flatMap(_.fold(_ => F.pure(Left(())), sent))
-      )
-    stopping.ifM(
-      F.pure(Right(Left(()))),
-      requests.tryTake.flatMap(_.fold(F.pure(Left(waiting)))(r => sent(r).map(Right(_))))
-    )
+    def instruction(
+        taken: LeiosRequestsToSend.Taken
+    ): F[LeiosFetchPipelined.Instruction[F, Unit]] = taken match
+      case LeiosRequestsToSend.Taken.Stop => F.pure(Left(()))
+      case LeiosRequestsToSend.Taken.Request(request) =>
+        job(request).fold(
+          e => NetworkError.IllegalTransition(Protocols.LeiosFetch, ProtocolError.Leios(e)).raise,
+          j => F.pure(Right(j))
+        )
+    requests.tryTake.flatMap {
+      case Some(taken) => instruction(taken).map(Right(_))
+      case None        => F.pure(Left(requests.take.flatMap(instruction)))
+    }
 
 /** The LeiosFetch server's answers, from the node's endorser-block store (`leiosFetchHandler`,
   * `msgLeiosBlockRequest` and `msgLeiosBlockTxsRequest`, `LeiosDemoLogic.hs` 246-307 at 2416493b).

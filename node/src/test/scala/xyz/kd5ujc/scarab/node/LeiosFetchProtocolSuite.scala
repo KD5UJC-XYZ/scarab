@@ -6,6 +6,8 @@ import cats.effect.{Deferred, IO, Ref, Resource}
 import cats.effect.std.Queue
 import cats.syntax.all.*
 import fs2.io.file.{Files, Path}
+import org.scalacheck.Gen
+import org.scalacheck.rng.Seed
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.leios.{BytesSize, JobRootHash, LeiosFetchRequest, LeiosJob}
 import xyz.kd5ujc.scarab.network.{
@@ -20,7 +22,14 @@ import xyz.kd5ujc.scarab.network.{
   Peers,
   Protocols
 }
-import xyz.kd5ujc.scarab.protocol.{EbHash, EbPoint, LeiosFetchRefusal, LeiosTxHash, TxBitmaps}
+import xyz.kd5ujc.scarab.protocol.{
+  EbHash,
+  EbPoint,
+  LeiosFetch,
+  LeiosFetchRefusal,
+  LeiosTxHash,
+  TxBitmaps
+}
 import xyz.kd5ujc.scarab.protocol.LeiosWord.{Word16, Word32, Word64}
 import xyz.kd5ujc.scarab.storage.{LeiosEb, LeiosStoreLocks, LeiosStoreSuite, RocksLeiosStore}
 
@@ -215,6 +224,120 @@ class LeiosFetchProtocolSuite extends FailsOnUncaught:
       case Right(LeiosFetchJob.BlockTxs(point, b, _)) =>
         assertEquals((point, b), (p, bitmaps(0, 63, 64, 130)))
       case other => fail(s"not a transactions job: $other")
+  }
+
+  private val blockRequest: LeiosFetchRequest =
+    LeiosFetchRequest.Block(
+      EbPoint(slot(3), EbHash.fromBytes(Bytes(Vector.fill(32)(5)))),
+      BytesSize.wrap(1),
+      BytesSize.wrap(1)
+    )
+  private def job(request: LeiosFetchRequest) =
+    LeiosFetchJobs.of[IO](request, (_, _) => IO.unit, (_, _) => IO.unit)
+
+  test("the stop is the client's next instruction, whatever was queued before or after it") {
+    typed {
+      for
+        // polled: a request queued after the stop is not taken
+        after <- LeiosRequestsToSend.create[IO]
+        _ <- after.terminate *> after.offer(NonEmptyVector.one(blockRequest))
+        polledAfter <- LeiosFetchJobs.next(after, job)
+        // polled: nor is one queued before it
+        before <- LeiosRequestsToSend.create[IO]
+        _ <- before.offer(NonEmptyVector.one(blockRequest)) *> before.terminate
+        polledBefore <- LeiosFetchJobs.next(before, job)
+        // awaited: the wait the client was given ends with the stop, not with the request queued
+        // after it
+        awaited <- LeiosRequestsToSend.create[IO]
+        instruction <- LeiosFetchJobs.next(awaited, job)
+        waiting <- instruction.fold(IO.pure, ready => IO(fail(s"ready at once: $ready")))
+        _ <- awaited.terminate *> awaited.offer(NonEmptyVector.one(blockRequest))
+        woken <- waiting
+        // without a stop the request is the job
+        open <- LeiosRequestsToSend.create[IO]
+        _ <- open.offer(NonEmptyVector.one(blockRequest))
+        sent <- LeiosFetchJobs.next(open, job)
+      yield
+        assertEquals(polledAfter.map(_.left.toOption), Right(Some(())))
+        assertEquals(polledBefore.map(_.left.toOption), Right(Some(())))
+        assertEquals(woken.left.toOption, Some(()))
+        sent match
+          case Right(Right(LeiosFetchJob.Block(point, _))) =>
+            assertEquals(point, EbPoint(slot(3), EbHash.fromBytes(Bytes(Vector.fill(32)(5)))))
+          case other => fail(s"not the request's job: $other")
+    }.map(r => assert(r.isRight, r.toString))
+  }
+
+  test("the requests to send are a queue that the stop ends, as a model of them says") {
+    enum Op:
+      case Offer(slots: NonEmptyVector[Int])
+      case Terminate
+      case Take
+    val op: Gen[Op] = Gen.frequency(
+      4 -> Gen
+        .nonEmptyListOf(Gen.choose(0, 1000))
+        .map(l => Op.Offer(NonEmptyVector.fromVectorUnsafe(l.take(4).toVector))),
+      1 -> Gen.const(Op.Terminate),
+      5 -> Gen.const(Op.Take)
+    )
+    def request(n: Int): LeiosFetchRequest =
+      LeiosFetchRequest.Block(
+        EbPoint(slot(n.toLong), EbHash.fromBytes(Bytes(Vector.fill(32)(1)))),
+        BytesSize.wrap(1),
+        BytesSize.wrap(1)
+      )
+    // the model: the requests queued, oldest first, until the stop, which every take then gives
+    def model(ops: List[Op]): Vector[Option[LeiosRequestsToSend.Taken]] =
+      ops
+        .foldLeft((Option(Vector.empty[Int]), Vector.empty[Option[LeiosRequestsToSend.Taken]])) {
+          case ((Some(queued), seen), Op.Offer(slots)) => (Some(queued ++ slots.toVector), seen)
+          case ((None, seen), Op.Offer(_))             => (None, seen)
+          case ((_, seen), Op.Terminate)               => (None, seen)
+          case ((None, seen), Op.Take) => (None, seen :+ Some(LeiosRequestsToSend.Taken.Stop))
+          case ((Some(queued), seen), Op.Take) =>
+            (
+              Some(queued.drop(1)),
+              seen :+ queued.headOption.map(n => LeiosRequestsToSend.Taken.Request(request(n)))
+            )
+        }
+        ._2
+    def run(ops: List[Op]): IO[Vector[Option[LeiosRequestsToSend.Taken]]] =
+      LeiosRequestsToSend.create[IO].flatMap { requests =>
+        ops.foldLeftM(Vector.empty[Option[LeiosRequestsToSend.Taken]]) {
+          case (seen, Op.Offer(slots)) => requests.offer(slots.map(request)).as(seen)
+          case (seen, Op.Terminate)    => requests.terminate.as(seen)
+          case (seen, Op.Take)         => requests.tryTake.map(seen :+ _)
+        }
+      }
+    val cases = Gen.listOfN(300, Gen.listOf(op)).apply(Gen.Parameters.default, Seed(54L)).toList
+    cases.flatten.traverse(ops => run(ops).map(ops -> _)).map { runs =>
+      assert(runs.nonEmpty)
+      runs.foreach((ops, seen) => assertEquals(seen, model(ops), ops.toString))
+    }
+  }
+
+  test("a stop before a request queued after it puts MsgDone next on the wire") {
+    typed(
+      linked(protocols = Set(Protocols.LeiosFetch)).use { (c, s) =>
+        for
+          cc <- c.channel(Protocols.LeiosFetch)
+          sc <- s.channel(Protocols.LeiosFetch)
+          requests <- LeiosRequestsToSend.create[IO]
+          waiting <- Deferred[IO, Unit]
+          // the client's instruction, noting when the client is given the wait
+          next = LeiosFetchJobs
+            .next(requests, job)
+            .flatTap(_.fold(_ => waiting.complete(()).void, _ => IO.unit))
+          client <- LeiosFetchPipelined.run[IO, Unit](cc, next).start
+          _ <- waiting.get
+          _ <- requests.terminate *> requests.offer(NonEmptyVector.one(blockRequest))
+          first <- sc.recv(LeiosFetchServer.IdleByteLimit)(
+            LeiosFetch.incremental(LeiosFetch.State.Idle)
+          )
+          ended <- client.joinWithNever
+        yield (first, ended)
+      }
+    ).map(r => assertEquals(r, Right((LeiosFetch.Message.Done, ()))))
   }
 
   test("the ingress limits are the reference's, with the margin") {
