@@ -33,7 +33,7 @@ private def hashes(hs: Set[Bytes]): Option[NonEmptySet[Bytes]] =
 /** The defect of a script the decoder gives no verdict for, in the transaction `txId`, as the flat
   * checks report it.
   */
-private def unavailable(txId: Bytes)(u: UnavailableScript): LedgerDefect =
+private[rules] def unavailable(txId: Bytes)(u: UnavailableScript): LedgerDefect =
   LedgerFailure.Unavailable(
     txId,
     ScriptLocation.Phase1(u.scriptHash),
@@ -56,7 +56,7 @@ object ShelleyUtxow:
   def validateVerifiedWits[E <: EraTag, L <: TxLevel](tx: Tx[L, E], verdicts: Verdicts)(using
       t: EraTx[E],
       l: t.bodyOf.Level[L]
-  ): Either[LedgerDefect, Test[ShelleyUtxowPredFailure[E]]] =
+  ): Either[LedgerDefect, Test[ShelleyUtxowPredFailure.InvalidWitnessesUTXOW[E]]] =
     val txBodyHash = t.bodyOf.id[L](t.body[L](tx))
     val wits = t.wits[L](tx)
     def failing(witnesses: Vector[(Bytes, Bytes)]) =
@@ -71,7 +71,7 @@ object ShelleyUtxow:
         LedgerFailure.Unverifiable(txBodyHash, _),
         failed =>
           Test.failureOnJust(NonEmptyList.fromList(failed.toList))(
-            ShelleyUtxowPredFailure.InvalidWitnessesUTXOW(_)
+            new ShelleyUtxowPredFailure.InvalidWitnessesUTXOW[E](_)
           )
       )
 
@@ -83,11 +83,19 @@ object ShelleyUtxow:
       certState: xyz.kd5ujc.scarab.ledger.state.CertState[E],
       utxo: UTxO[E],
       txBody: TxBody[L, E]
-  )(using u: EraUTxO[E], l: u.txOf.bodyOf.Level[L]): Test[ShelleyUtxowPredFailure[E]] =
+  )(using
+      u: EraUTxO[E],
+      l: u.txOf.bodyOf.Level[L]
+  ): Test[ShelleyUtxowPredFailure.MissingVKeyWitnessesUTXOW[E]] =
     val needed = u.getWitsVKeyNeeded[L](certState, utxo, txBody)
     Test.failureOnJust(hashes(needed -- witsKeyHashes))(
-      ShelleyUtxowPredFailure.MissingVKeyWitnessesUTXOW(_)
+      new ShelleyUtxowPredFailure.MissingVKeyWitnessesUTXOW[E](_)
     )
+
+  /** The failures [[validateMetadata]] reports, the domain of an injection it asks for. */
+  type MetadataFailure[E <: EraTag] = ShelleyUtxowPredFailure.MissingTxBodyMetadataHash[E] |
+    ShelleyUtxowPredFailure.MissingTxMetadata[E] |
+    ShelleyUtxowPredFailure.ConflictingMetadataHash[E] | ShelleyUtxowPredFailure.InvalidMetadata[E]
 
   /** `validateMetadata` (`Shelley/Rules/Utxow.hs:427-443`, cardano-ledger f649f975): the body's
     * hash of the auxiliary data and the data go together, and with both the hash is the data's
@@ -108,19 +116,19 @@ object ShelleyUtxow:
       t: EraTx[E],
       l: t.bodyOf.Level[L],
       p: EraPParams[E]
-  ): Either[LedgerDefect, Test[ShelleyUtxowPredFailure[E]]] =
+  ): Either[LedgerDefect, Test[MetadataFailure[E]]] =
     val tx = t.txStAnnTx(stAnnTx)
     val txBody = t.body(tx)
     val pv = p.ppProtocolVersionL.get(pp)
     (t.bodyOf.auxDataHash(txBody), t.auxData(tx)) match
       case (None, None) => Right(Test.pass)
       case (Some(mdh), None) =>
-        Right(Test.failureUnless(false, ShelleyUtxowPredFailure.MissingTxMetadata[E](mdh)))
+        Right(Test.failureUnless(false, new ShelleyUtxowPredFailure.MissingTxMetadata[E](mdh)))
       case (None, Some(md)) =>
         Right(
           Test.failureUnless(
             false,
-            ShelleyUtxowPredFailure.MissingTxBodyMetadataHash[E](
+            new ShelleyUtxowPredFailure.MissingTxBodyMetadataHash[E](
               EraTxAuxData.hashTxAuxData(md)(using t.auxDataOf)
             )
           )
@@ -131,12 +139,12 @@ object ShelleyUtxow:
           .validateTxAuxData(decoder, t.cacheStAnnTx(stAnnTx), pv, md)
           .leftMap(unavailable(t.bodyOf.id(txBody)))
           .map(valid =>
-            Test.all(
+            Test.all[MetadataFailure[E]](
               Test.failureUnless(
                 computed == mdh,
-                ShelleyUtxowPredFailure.ConflictingMetadataHash[E](Mismatch(mdh, computed))
+                new ShelleyUtxowPredFailure.ConflictingMetadataHash[E](Mismatch(mdh, computed))
               ),
-              Test.failureUnless(valid, ShelleyUtxowPredFailure.InvalidMetadata[E]())
+              Test.failureUnless(valid, new ShelleyUtxowPredFailure.InvalidMetadata[E]())
             )
           )
 
@@ -144,6 +152,19 @@ object ShelleyUtxow:
   * cardano-ledger f649f975).
   */
 object AlonzoUtxow:
+  /** The failures [[missingRequiredDatums]] reports, the domain of an injection it asks for. */
+  type DatumsFailure[E <: EraTag] = AlonzoUtxowPredFailure.UnspendableUTxONoDatumHash[E] |
+    AlonzoUtxowPredFailure.MissingRequiredDatums[E] |
+    AlonzoUtxowPredFailure.NotAllowedSupplementalDatums[E]
+
+  /** The failures [[hasExactSetOfRedeemers]] reports. */
+  type RedeemersFailure[E <: EraTag] = AlonzoUtxowPredFailure.ExtraRedeemers[E] |
+    AlonzoUtxowPredFailure.MissingRedeemers[E]
+
+  /** The failures [[checkScriptIntegrityHash]] reports. */
+  type IntegrityFailure[E <: EraTag] = AlonzoUtxowPredFailure.PPViewHashesDontMatch[E] |
+    AlonzoUtxowPredFailure.ScriptIntegrityHashMismatch[E]
+
   /** `missingRequiredDatums` (`Alonzo/Rules/Utxow.hs:210-234`, cardano-ledger f649f975): the spent
     * Plutus outputs that need a datum and have none (`UnspendableUTxONoDatumHash`), the datums the
     * spent outputs name that the witnesses lack (`MissingRequiredDatums`, with the witnesses'
@@ -159,7 +180,7 @@ object AlonzoUtxow:
       l: t.bodyOf.Level[L],
       u: AlonzoEraUTxO[E],
       lu: u.txOf.bodyOf.Level[L]
-  ): Test[AlonzoUtxowPredFailure[E]] =
+  ): Test[DatumsFailure[E]] =
     missingRequiredDatumsAllowing[E, L](
       scriptsProvided,
       utxo,
@@ -179,7 +200,7 @@ object AlonzoUtxow:
       utxo: UTxO[E],
       tx: Tx[L, E],
       allowedSupplementalDataHashes: Set[Bytes]
-  )(using t: AlonzoEraTx[E], l: t.bodyOf.Level[L]): Test[AlonzoUtxowPredFailure[E]] =
+  )(using t: AlonzoEraTx[E], l: t.bodyOf.Level[L]): Test[DatumsFailure[E]] =
     val txBody = t.body[L](tx)
     val (inputHashes, txInsNoDataHash) = AlonzoUTxO.getInputDataHashesTxBody[E, L](
       utxo,
@@ -191,17 +212,17 @@ object AlonzoUtxow:
     val supplimentalDatumHashes = txHashes -- inputHashes
     val (okSupplimentalDHs, notOkSupplimentalDHs) =
       supplimentalDatumHashes.partition(allowedSupplementalDataHashes.contains)
-    Test.all(
+    Test.all[DatumsFailure[E]](
       Test.failureOnJust(
         NonEmptySet.fromSet(SortedSet.from(txInsNoDataHash)(using TxIn.given_Ordering_TxIn))
       )(
-        AlonzoUtxowPredFailure.UnspendableUTxONoDatumHash(_)
+        new AlonzoUtxowPredFailure.UnspendableUTxONoDatumHash[E](_)
       ),
       Test.failureOnJust(hashes(unmatchedDatumHashes))(
-        AlonzoUtxowPredFailure.MissingRequiredDatums(_, txHashes)
+        new AlonzoUtxowPredFailure.MissingRequiredDatums[E](_, txHashes)
       ),
       Test.failureOnJust(hashes(notOkSupplimentalDHs))(
-        AlonzoUtxowPredFailure.NotAllowedSupplementalDatums(_, okSupplimentalDHs)
+        new AlonzoUtxowPredFailure.NotAllowedSupplementalDatums[E](_, okSupplimentalDHs)
       )
     )
 
@@ -221,7 +242,7 @@ object AlonzoUtxow:
       t: AlonzoEraTx[E],
       l: t.bodyOf.Level[L],
       s: ConwayEraScript[E]
-  ): Test[AlonzoUtxowPredFailure[E]] =
+  ): Test[RedeemersFailure[E]] =
     given EraScript[E] = t.witsOf.scriptsOf
     val toAsIx = s.hoistPlutusPurpose[AsIxItem, AsIx](
       [ix, it] => (asIxItem: AsIxItem[ix, it]) => AsIxItem.toAsIx(asIxItem)
@@ -242,15 +263,15 @@ object AlonzoUtxow:
         redeemersNeeded,
         _._1
       )
-    Test.all(
+    Test.all[RedeemersFailure[E]](
       Test.failureOnJust(NonEmptyList.fromList(extraRdmrs.toList))(
-        AlonzoUtxowPredFailure.ExtraRedeemers(_)
+        new AlonzoUtxowPredFailure.ExtraRedeemers[E](_)
       ),
       Test.failureOnJust(
         NonEmptyList.fromList(
           missingRdmrs.toList.map((_, needed) => (toAsItem(needed._1), needed._2))
         )
-      )(AlonzoUtxowPredFailure.MissingRedeemers(_))
+      )(new AlonzoUtxowPredFailure.MissingRedeemers[E](_))
     )
 
   /** `extSymmetricDifference` (`Alonzo/Rules/Utxow.hs:378-383`, cardano-ledger f649f975): the
@@ -281,22 +302,29 @@ object AlonzoUtxow:
       p: EraPParams[E],
       era: Era[E],
       l: t.bodyOf.Level[L]
-  ): Test[AlonzoUtxowPredFailure[E]] =
+  ): Test[IntegrityFailure[E]] =
     val computedScriptIntegrityHash = scriptIntegrity.map(ScriptIntegrity.hashScriptIntegrity(_))
     val suppliedScriptIntegrityHash = t.bodyOf.scriptIntegrityHash[L](t.body[L](tx))
     val expectedScriptIntegrity = scriptIntegrity.map(ScriptIntegrity.originalBytes(_))
     val mismatch = Mismatch(suppliedScriptIntegrityHash, computedScriptIntegrityHash)
-    Test.failureUnless(
+    Test.failureUnless[IntegrityFailure[E]](
       suppliedScriptIntegrityHash == computedScriptIntegrityHash,
       if p.ppProtocolVersionL.get(pp).pvMajor.value < 11 then
-        AlonzoUtxowPredFailure.PPViewHashesDontMatch(mismatch)
-      else AlonzoUtxowPredFailure.ScriptIntegrityHashMismatch(mismatch, expectedScriptIntegrity)
+        new AlonzoUtxowPredFailure.PPViewHashesDontMatch[E](mismatch)
+      else
+        new AlonzoUtxowPredFailure.ScriptIntegrityHashMismatch[E](mismatch, expectedScriptIntegrity)
     )
 
 /** Babbage's predicates of UTXOW (`eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Utxow.hs`,
   * cardano-ledger f649f975).
   */
 object BabbageUtxow:
+  /** The failures [[validateScriptsWellFormedTxOuts]] reports, the domain of an injection it asks
+    * for.
+    */
+  type WellFormedFailure[E <: EraTag] = BabbageUtxowPredFailure.MalformedScriptWitnesses[E] |
+    BabbageUtxowPredFailure.MalformedReferenceScripts[E]
+
   /** `babbageMissingScripts` (`Babbage/Rules/Utxow.hs:193-208`, cardano-ledger f649f975): the
     * scripts received are exactly the needed ones less those the reference inputs and the inputs
     * provide. The extraneous first, then the missing, Shelley's failures. The parameters are
@@ -325,7 +353,10 @@ object BabbageUtxow:
       tx: Tx[L, E],
       scriptsProvided: ScriptsProvided[E],
       neededHashes: Set[Bytes]
-  )(using t: EraTx[E], l: t.bodyOf.Level[L]): Test[ShelleyUtxowPredFailure[E]] =
+  )(using
+      t: EraTx[E],
+      l: t.bodyOf.Level[L]
+  ): Test[ShelleyUtxowPredFailure.ScriptWitnessNotValidatingUTXOW[E]] =
     val s = t.witsOf.scriptsOf
     val failedScripts = scriptsProvided.unScriptsProvided.filter((scriptHash, script) =>
       s.getNativeScript(script)
@@ -334,7 +365,7 @@ object BabbageUtxow:
         )
     )
     Test.failureOnJust(hashes(failedScripts.keySet))(
-      ShelleyUtxowPredFailure.ScriptWitnessNotValidatingUTXOW(_)
+      new ShelleyUtxowPredFailure.ScriptWitnessNotValidatingUTXOW[E](_)
     )
 
   /** `validateScriptsWellFormed` (`Babbage/Rules/Utxow.hs:234-251`, cardano-ledger f649f975): the
@@ -351,7 +382,7 @@ object BabbageUtxow:
       s: AlonzoEraScript[E],
       p: EraPParams[E],
       cache: StAnnTxCache[E] =:= Map[Bytes, SupportedPlutusRunnable[E]]
-  ): Either[LedgerDefect, Test[BabbageUtxowPredFailure[E]]] =
+  ): Either[LedgerDefect, Test[WellFormedFailure[E]]] =
     val top = t.bodyOf.top
     val tx = t.txStAnnTx(stAnnTx)(using top)
     val txBody = t.body(tx)(using top)
@@ -391,7 +422,7 @@ object BabbageUtxow:
       o: BabbageEraTxOut[E],
       s: AlonzoEraScript[E],
       p: EraPParams[E]
-  ): Either[UnavailableScript, Test[BabbageUtxowPredFailure[E]]] =
+  ): Either[UnavailableScript, Test[WellFormedFailure[E]]] =
     val pv = p.ppProtocolVersionL.get(pp)
     def filterInvalidScripts(
         scripts: Map[Bytes, Script[E]]
@@ -412,9 +443,13 @@ object BabbageUtxow:
     for
       witnesses <- filterInvalidScripts(witScripts)
       references <- filterInvalidScripts(refScripts)
-    yield Test.all(
-      Test.failureOnJust(hashes(witnesses))(BabbageUtxowPredFailure.MalformedScriptWitnesses(_)),
-      Test.failureOnJust(hashes(references))(BabbageUtxowPredFailure.MalformedReferenceScripts(_))
+    yield Test.all[WellFormedFailure[E]](
+      Test.failureOnJust(hashes(witnesses))(
+        new BabbageUtxowPredFailure.MalformedScriptWitnesses[E](_)
+      ),
+      Test.failureOnJust(hashes(references))(
+        new BabbageUtxowPredFailure.MalformedReferenceScripts[E](_)
+      )
     )
 
   /** `babbageUtxowTransition` (`Babbage/Rules/Utxow.hs:308-390`, cardano-ledger f649f975), the

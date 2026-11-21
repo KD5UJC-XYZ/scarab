@@ -17,9 +17,13 @@ import xyz.kd5ujc.scarab.ledger.era.{
 import xyz.kd5ujc.scarab.ledger.era.rules.{
   AlonzoUtxowEvent,
   ConwayUtxos,
+  DijkstraSubUtxow,
+  DijkstraSubUtxowEvent,
   DijkstraUtxoContext,
   DijkstraUtxoEnv,
   DijkstraUtxow,
+  SubUtxoEnv,
+  SubUtxowPredFailure,
   UtxoStateDefect,
   UtxosEvent,
   UtxosPredFailure,
@@ -31,7 +35,8 @@ import xyz.kd5ujc.scarab.plutus.{ScriptDecoder, ScriptEvaluator}
 
 /** Dijkstra's UTXOW on the era types (`DijkstraUtxow.dijkstraUtxowTransition`, with its UTXO and
   * Conway's UTXOS) run in one judgment, for the suites that compare it with the flat rule and with
-  * the reference's verdicts (`DijkstraRulesOracleSuite` in the node, `DijkstraUtxowSuite`).
+  * the reference's verdicts (`DijkstraRulesOracleSuite` in the node, `DijkstraUtxowSuite`), and
+  * SUBUTXOW with its SUBUTXO ([[Sub]], `DijkstraSubUtxowSuite`).
   */
 object DijkstraUtxoRun extends munit.Assertions:
   type Rec = UtxowPredFailure[Dijkstra]
@@ -127,4 +132,42 @@ object DijkstraUtxoRun extends munit.Assertions:
           ConwayUtxos.utxosTransition[U, Dijkstra](stAnnTx, validation),
           RuleT.Policy.Accumulate
         )(TestLedger.globals, Chain.empty)
+        .map(_.map(_._1))
+
+  /** Dijkstra's SUBUTXOW on the era types (`DijkstraSubUtxow.dijkstraSubUtxowTransition`, with its
+    * SUBUTXO) on one sub-transaction, as [[run]] runs UTXOW: a defect raised, the failures in the
+    * reference's order, or the state and the events told.
+    */
+  object Sub:
+    type SRec = SubUtxowPredFailure[Dijkstra]
+    type SEvents = Chain[DijkstraSubUtxowEvent[Dijkstra]]
+    type SDefect = Either[UtxoStateDefect, LedgerDefect]
+    type SS = (UTxOState[Dijkstra], SEvents)
+    type V[A] = RuleT[SRec, SDefect, SS, A]
+
+    private given Stateful[V, UTxOState[Dijkstra]] =
+      summon[Stateful[V, SS]].focus(Lens[SS, UTxOState[Dijkstra]](_._1)(u => s => (u, s._2)))
+
+    private given Tell[V, SEvents] = new Tell[V, SEvents]:
+      val functor: Functor[V] = summon[Monad[V]]
+      def tell(events: SEvents): V[Unit] =
+        summon[Stateful[V, SS]].modify((u, e) => (u, e ++ events))
+
+    private given Raise[V, UtxoStateDefect] = summon[Raise[V, SDefect]].contramap(Left(_))
+
+    private given Raise[V, LedgerDefect] = summon[Raise[V, SDefect]].contramap(Right(_))
+
+    def run(
+        env: SubUtxoEnv[Dijkstra],
+        stAnnTx: DijkstraStAnnTx[TxLevel.Sub],
+        context: DijkstraUtxoContext,
+        state: UTxOState[Dijkstra],
+        verdicts: Verdicts,
+        decoder: ScriptDecoder[Id]
+    ): Either[SDefect, Either[NonEmptyChain[SRec], SS]] =
+      Judgment
+        .judge(
+          DijkstraSubUtxow.dijkstraSubUtxowTransition[V](env, stAnnTx, context, verdicts, decoder),
+          RuleT.Policy.Accumulate
+        )(TestLedger.globals, (state, Chain.empty))
         .map(_.map(_._1))

@@ -1780,6 +1780,76 @@ Conway's rules on the classes follow as the rest of stage 2.
     governance state's classes and the committee as the reference's
     ([item](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923488137)), and the flat GOV's order of
     its vote failures ([item](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7054122427)).
+- **Dijkstra's SUBUTXO and SUBUTXOW** (`era/rules/DijkstraSubUtxo.scala`, `era/rules/DijkstraSubUtxow.scala`;
+  `Rules/SubUtxo.hs` and `Rules/SubUtxow.hs` of `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/`, cardano-ledger
+  9df9f98c):
+  - The failure types are `DijkstraSubUtxoPredFailure` (tags 0 to 4 and 6 to 10) and `DijkstraSubUtxowPredFailure`
+    (0 to 17), in tag order, with their events (`DijkstraSubUtxoEvent`, `DijkstraSubUtxowEvent`), the reference's
+    injections and the embedding of SUBUTXO. `EraRuleFailure` and `EraRuleEvent` of each are match types with
+    Dijkstra's case alone. The environment is `SubUtxoEnv`: the slot, the parameters, the certificate state SUBLEDGER
+    was given, from before its SUBENTITIES and SUBGOV (`SubLedger.hs:248, 307`: the state SUBLEDGERS threads from the
+    earlier sub-transactions), the UTxO set before the whole transaction and the top level's validity flag. Each runs on one
+    sub-transaction's annotated form (`mkDijkstraStAnnSubTx`, through `subTransactionsStAnnTx`).
+  - `dijkstraSubUtxoTransition` runs, in the reference's order: the validity interval, the forecast, the outputs'
+    size, an empty input set, the inputs against the threaded state's UTxO set alone, the bootstrap attributes (on the
+    signal), the outputs' least lovelace, and the outputs' and the body's network (on the signal). When the top level
+    is flagged valid, by the environment's flag, it adds the sub-transaction's donation and moves its inputs and
+    outputs with the instant stake (`updateUTxOAndInstantStake`, its `TxUTxODiff` told), with no deposit and no fee;
+    flagged invalid, it leaves the state as it is.
+  - `dijkstraSubUtxowTransition` runs, of the sub-transaction alone and every lookup against the UTxO set before the
+    transaction: the signatures (on the signal), the failing needed native scripts, the keys needed against the
+    environment's certificate state, the datums, the auxiliary data (on the signal), the integrity hash, the
+    redeemers, the well-formed scripts of its witnesses and outputs (on the signal) and the required guards' datums
+    (D7a's `validateGuardDatums` at the sub-transaction level); then SUBUTXO. The missing and extraneous scripts and
+    the required guards are UTXOW's, over every level, and no script is evaluated: UTXOS evaluates the batch's.
+  - **The injections the reference leaves partial**, by D7a's decision. `dijkstraUtxoToDijkstraSubUtxoPredFailure`
+    (`SubUtxo.hs:304-329`) calls 13 constructors impossible, and `dijkstraUtxowToDijkstraSubUtxowPredFailure`
+    (`SubUtxow.hs:337-364`) 3. The UTXOW predicates SUBUTXOW runs now declare the constructors they report, as
+    UTXO's did in D7a, and each instance is over the constructors the rule reaches (`DijkstraSubUtxo.UtxoFailure`,
+    `DijkstraSubUtxow.UtxowFailure` and the others). UTXOW's `UtxoFailure` is left out too (decided 2026-11-21, #85):
+    the reference maps it through SUBUTXO's partial injection of its payload, and no predicate SUBUTXOW runs reports
+    it, as SUBUTXO's failures reach SUBUTXOW through the embedding. `MaxTxSizeUTxO`, which the reference maps and
+    SUBUTXO does not report, is kept in the domains of Dijkstra's UTXO failure and Conway's; the earlier eras' domains
+    are the constructors SUBUTXO reports, as D7a's are, so Shelley's `MaxTxSizeUTxO` has no injection into SUBUTXO.
+    Conway's and Dijkstra's UTXOW keep their instances through the contravariant classes. The failures have no flat form: the flat types have none for a sub-transaction's.
+  - Evidence (`DijkstraSubUtxowSuite`):
+    - the testnet's chain (`fixtures/reference/leios-testnet-chain-contexts`): on each of the 28 batches, 38
+      sub-transactions, which the chain's ledger accepted, SUBUTXOW admits each sub-transaction, threaded in order from
+      the batch's recorded outputs, from the genesis parameters and the chain's cost models, with no certificate
+      state, its signatures and integrity hashes checked; each tells the outputs it spends and creates, moves their
+      instant stake (6 of the 38 change it) and leaves the fees, deposits and donation as they were. D7a's UTXOW then
+      admits the top level on the threaded state, at the slot the fixture records (an endorser block's batch at the
+      certifying ranking block's), and the batch leaves every level's inputs spent and outputs created. No sub-transaction registers a pool, so the pool state after the
+      sub-transactions is the one before. A component check: SUBENTITIES and SUBGOV are not run, and the certificate
+      state is not the chain's;
+    - a sub-transaction judged again on the state it left is refused with `SubBadInputsUTxO` of its inputs alone,
+      which the set before the transaction still holds, and so with the top level flagged invalid, as the predicates run
+      before the flag is read; flagged invalid, an admitted one leaves the state as it is and tells nothing; a
+      sub-transaction encoded again with a donation (body field 23's first, field 22) adds it to a pot that held one,
+      the fees and deposits as they were, and adds nothing flagged invalid; under other cost models, on the other network, a sub-transaction whose inputs are spent is
+      refused with SUBUTXO's block first and then the integrity hash, its supplied and computed hashes and the bytes
+      the computed one is over as the rule's functions give them, as the reference's list is at the root, and
+      without the network's failure under `NonStatic`;
+    - on built values of every constructor the rules report, each injection equals the reference's composition
+      through Conway's and Dijkstra's failures, the two named functions written out again in the suite case for
+      case; the impossible constructors, UTXOW's `UtxoFailure`, and whole failure types have no injection
+      (`compileErrors`, beside reachable ones that have);
+    - Conway's era suites, D7a's, D7b's and D7d's Dijkstra suites and the node's Conway and upstream suites keep their
+      expected values.
+  - Incomplete (CNF-2):
+    - the batches as the reference judged them: SUBLEDGER runs SUBENTITIES and SUBGOV before SUBUTXOW (the next parts
+      of D7c), which reads the certificate state from before them, threaded from the earlier sub-transactions, and the
+      fixture does not record the chain's certificate state;
+    - refusals that no recording holds: any of SUBUTXO's or SUBUTXOW's, so its refusals here are the rules' on crafted
+      states and parameters, and its constructors are built values; a sub-transaction's validity interval, network and
+      auxiliary data, which no chain sub-transaction has, and the forecast, as in D7a;
+    - the context refusals (`fixtures/reference/leios-testnet-context-refusals`, 6 cases with 9 sub-transactions)
+      record each level's collection, not a verdict of the rules; the one refused in a sub-transaction is UTXOS's
+      refusal at the top level (D7a), and SUBUTXOW collects nothing; no case of `fixtures/reference/dijkstra-rules`
+      has a sub-transaction; the flat rules halt on one;
+    - the failures are not compared with the reference's bytes: the era failures have no encoder yet (#796).
+  - Not yet (#85): SUBENTITIES, the sub-transactions' certificate rules, SUBGOV, SUBLEDGER and SUBLEDGERS (D7c's next
+    parts), and LEDGER (D7e).
 - **Next, Conway's rules.** The first rule ported is one that needs no parameters, the second one that
   does, each under a differential against the flat rule on the recorded blocks and the refusal corpus.
 - The body is read through the flat decoder for now. What only the projection refuses (an update, genesis
