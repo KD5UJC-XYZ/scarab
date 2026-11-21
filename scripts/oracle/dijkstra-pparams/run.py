@@ -2,9 +2,10 @@
 # SPDX-License-Identifier: Apache-2.0
 """Build the Dijkstra protocol-parameter update cases and measure them with the oracle.
 
-Each case is a `PParamsUpdate DijkstraEra` as the reference encodes it from version 12: a map of
-update keys to values. The oracle (`Main.hs`, image `scarab-dijkstra-pparams-oracle:local`) decodes
-it at version 12 and prints `ppuWellFormed` at versions 12.0 and 10.0 and `modifiedPPGroups`, or the
+Each case is a `PParamsUpdate DijkstraEra` of version 12: a map of update keys to values, as the
+reference encodes it, or as it does not (`noncanonical`, `malformed`). The oracle (`Main.hs`, image
+`scarab-dijkstra-pparams-oracle:local`) decodes it at version 12 and prints `ppuWellFormed` at
+versions 12.0 and 10.0, `modifiedPPGroups` and the update as the reference writes it, or the
 decoder's refusal.
 
     python3 scripts/oracle/dijkstra-pparams/run.py            # offline: the cases match the fixture
@@ -21,6 +22,9 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(ROOT / "scripts"))
+from cleanup import container_labels  # noqa: E402
+
 FIXTURE = ROOT / "fixtures/reference/dijkstra-pparams"
 CASES_FILE = FIXTURE / "cases.jsonl"
 PROVENANCE = FIXTURE / "provenance.json"
@@ -111,12 +115,123 @@ def generate():
     cases.append(case("a size and a Leios duration", [(3, uint(16384)), (41, uint(4000))]))
     cases.append(case("a zero deposit among others", [(5, uint(2)), (6, uint(0)), (43, uint(600))]))
     cases.append(case("an unknown key", [(57, uint(1))]))
-    return cases
+    return cases + lengths() + noncanonical() + malformed()
 
 
-def run_image(cases):
+def raw(name, encoded):
+    """A case of the bytes as written, not sorted or wrapped by `case`."""
+    return {"id": name, "update": encoded.hex()}
+
+
+def indef_arr(*items):
+    return b"\x9f" + b"".join(items) + b"\xff"
+
+
+def indef_map(pairs):
+    return b"\xbf" + b"".join(uint(k) + v for k, v in pairs) + b"\xff"
+
+
+def nint(n):
+    """The integer -1 - n."""
+    return head(1, n)
+
+
+INT64_MIN, INT64_MAX = nint((1 << 63) - 1), uint((1 << 63) - 1)
+
+
+def costs(count):
+    return [uint(i) if i % 2 == 0 else nint(i) for i in range(count)]
+
+
+def lengths():
+    """Cost models on both sides of `lengthThreshold` (`Encoder.hs:442-468`): the reference writes a
+    map of more than 23 languages, and a list of more than 23 parameters, of indefinite length."""
+    def models(pairs):
+        return [(18, cmap(pairs))]
+    return [
+        case("cost models of 23 languages", models([(i, arr()) for i in range(23)])),
+        case("cost models of 24 languages", models([(i, arr()) for i in range(24)])),
+        case("cost models of 30 languages", models([(i, arr(uint(i))) for i in range(30)])),
+        case("a cost model of 23 parameters", models([(0, arr(*costs(23)))])),
+        case("a cost model of 24 parameters", models([(0, arr(*costs(24)))])),
+        case("an unknown language's cost model of 24 parameters", models([(9, arr(*costs(24)))])),
+        case("a cost model of 200 parameters, Int64's bounds among them",
+             models([(2, arr(INT64_MIN, INT64_MAX, *costs(198)))])),
+        case("cost models of 24 languages of 24 parameters each",
+             models([(i, arr(*costs(24))) for i in range(24)])),
+    ]
+
+
+def noncanonical():
+    """Updates the reference accepts but does not write: indefinite maps and lists where it writes
+    definite ones, wide heads, unsorted keys and an unreduced ratio."""
+    return [
+        raw("an indefinite update", indef_map([(0, uint(1))])),
+        raw("an indefinite update of two keys", indef_map([(3, uint(16384)), (41, uint(4000))])),
+        raw("update keys out of order", cmap([(1, uint(1)), (0, uint(1))])),
+        raw("a wide key and a wide value", bytes.fromhex("a1 1800 1801")),
+        raw("an eight-byte value", bytes.fromhex("a1 00 1b0000000000000001")),
+        raw("a wide coin", bytes.fromhex("a1 181e 1a00000001")),
+        raw("an unreduced ratio", cmap([(9, ratio(2, 4))])),
+        raw("a ratio of an indefinite list", cmap([(9, head(6, 30) + indef_arr(uint(1), uint(2)))])),
+        raw("a ratio of a wide tag and wide items", bytes.fromhex("a1 09 d9001e 82 1801 1a00000002")),
+        raw("indefinite cost models", cmap([(18, indef_map([(0, arr())]))])),
+        raw("an indefinite cost model", cmap([(18, cmap([(0, indef_arr(uint(1), uint(2)))]))])),
+        raw("indefinite cost models of 24 languages", cmap([(18, indef_map([(i, arr()) for i in range(24)]))])),
+        raw("an indefinite cost model of 24 parameters", cmap([(18, cmap([(0, indef_arr(*costs(24)))]))])),
+        raw("cost-model languages out of order", cmap([(18, cmap([(1, arr()), (0, arr())]))])),
+        raw("indefinite prices", cmap([(19, indef_arr(HALF, HALF))])),
+        raw("indefinite execution units", cmap([(20, indef_arr(uint(1), uint(1)))])),
+        raw("indefinite pool thresholds", cmap([(25, indef_arr(*[HALF] * 5))])),
+        raw("indefinite DRep thresholds", cmap([(26, indef_arr(*[HALF] * 10))])),
+        raw("indefinite endorser-block execution units", cmap([(47, indef_arr(uint(1), uint(1)))])),
+    ]
+
+
+def malformed():
+    """Updates the reference refuses, most with two faults, so that which one it finds first is its
+    verdict: a ratio's items before its length (`decodeIntegralRational`, `DecCBOR.hs:271-280`), a
+    cost-model map's entries before a repeated language (`decodeMapByKey`, `Decoder.hs:801-832`), a
+    record's fields before its length (`decodeRecordNamed`, `Decoder.hs:645-700`), and an update's
+    entries in order (`decodeSparseKeyed`, `Decoder.hs:1228-1287`)."""
+    tag30 = head(6, 30)
+    return [
+        raw("a ratio of three items, the third null", cmap([(9, tag30 + arr(uint(1), uint(2), NULL))])),
+        raw("a ratio of three items, a zero denominator", cmap([(9, tag30 + arr(uint(1), uint(0), uint(5)))])),
+        raw("a ratio of one null item", cmap([(9, tag30 + arr(NULL))])),
+        raw("a ratio of a zero denominator", cmap([(9, ratio(1, 0))])),
+        raw("an indefinite ratio of three items, the third null",
+            cmap([(9, tag30 + indef_arr(uint(1), uint(2), NULL))])),
+        raw("a ratio of a negative item", cmap([(9, tag30 + arr(nint(0), uint(2)))])),
+        raw("cost models of a repeated language, its second list bad",
+            cmap([(18, bytes.fromhex("a2 00 80 00 81 f6"))])),
+        raw("cost models of a repeated language", cmap([(18, bytes.fromhex("a2 00 80 00 80"))])),
+        raw("a cost-model language past Word8, its list bad", cmap([(18, bytes.fromhex("a1 190100 81 f6"))])),
+        raw("a negative cost-model language", cmap([(18, bytes.fromhex("a1 20 80"))])),
+        raw("a cost-model parameter as a bignum", cmap([(18, bytes.fromhex("a1 00 81 c24101"))])),
+        raw("a cost-model parameter past Int64", cmap([(18, bytes.fromhex("a1 00 81 1b8000000000000000"))])),
+        raw("indefinite execution units of one item", cmap([(20, indef_arr(uint(1)))])),
+        raw("indefinite execution units of three items", cmap([(20, indef_arr(uint(1), uint(1), uint(1)))])),
+        raw("execution units of one item, a key after it", bytes.fromhex("a2 14 81 01 15 82 01 01")),
+        raw("execution units of one item, last", cmap([(20, arr(uint(1)))])),
+        raw("execution units of three items, the first null", cmap([(20, arr(NULL, uint(0), uint(0)))])),
+        raw("execution units of null", cmap([(20, NULL)])),
+        raw("indefinite prices of one item", cmap([(19, indef_arr(HALF))])),
+        raw("prices of three items, the first null", cmap([(19, arr(NULL, HALF, HALF))])),
+        raw("indefinite pool thresholds of four", cmap([(25, indef_arr(*[HALF] * 4))])),
+        raw("indefinite DRep thresholds of ten, the tenth null", cmap([(26, indef_arr(*[HALF] * 9, NULL))])),
+        raw("a repeated key, its second value bad", bytes.fromhex("a2 00 01 00 f6")),
+        raw("a bad value before an unknown key", bytes.fromhex("a2 1822 f6 1839 01")),
+        raw("an unknown key after a good one", bytes.fromhex("a2 1822 01 1839 f6")),
+        raw("a negative word", cmap([(0, nint(0))])),
+        raw("a Word32 past its width", cmap([(3, bytes.fromhex("1b0000000100000000"))])),
+    ]
+
+
+def run_image(cases, name):
     done = subprocess.run(
-        ["docker", "run", "--rm", "-i", "--network", "none", "--read-only", IMAGE],
+        ["docker", "run", "--rm", "-i", "--name", name, *container_labels("oracle", name), "--network", "none",
+         "--read-only", IMAGE],
         input="".join(json.dumps(c) + "\n" for c in cases), check=True, capture_output=True, text=True)
     results = [json.loads(line) for line in done.stdout.splitlines() if line]
     out = []
@@ -144,17 +259,20 @@ def main():
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--record", action="store_true")
     mode.add_argument("--replay", action="store_true")
+    parser.add_argument("--name", default="dijkstra-pparams",
+                        help="the container name and owner label of the oracle's run")
     args = parser.parse_args()
     cases = generate()
     if args.record:
-        results = run_image(cases)
+        results = run_image(cases, args.name)
         FIXTURE.mkdir(parents=True, exist_ok=True)
         CASES_FILE.write_text("".join(json.dumps(r, sort_keys=True) + "\n" for r in results))
         image = subprocess.check_output(["docker", "image", "inspect", IMAGE, "--format", "{{.Id}}"], text=True).strip()
         PROVENANCE.write_text(json.dumps({
             "schemaVersion": 1,
             "scope": "Dijkstra protocol-parameter updates of the Leios testnet build: the update decoded at "
-                     "version 12, ppuWellFormed at versions 12.0 and 10.0 and modifiedPPGroups",
+                     "version 12, ppuWellFormed at versions 12.0 and 10.0, modifiedPPGroups and the decoded "
+                     "update serialized at version 12",
             "image": IMAGE,
             "imageId": image,
             "ledger": {"repository": "IntersectMBO/cardano-ledger",
@@ -172,7 +290,7 @@ def main():
         print("the generated cases differ from the fixture: run --record", file=sys.stderr)
         return 1
     if args.replay:
-        fresh = run_image(cases)
+        fresh = run_image(cases, args.name)
         differing = [f["id"] for f, r in zip(fresh, recorded(), strict=True) if f["reference"] != r["reference"]]
         if differing:
             print(f"{len(differing)} results differ: {differing[:5]}", file=sys.stderr)
