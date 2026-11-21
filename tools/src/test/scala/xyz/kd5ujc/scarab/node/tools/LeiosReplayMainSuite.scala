@@ -65,6 +65,9 @@ class LeiosReplayMainSuite extends FailsOnUncaught:
     files.foreach((name, bytes) => JFiles.write(dir.resolve(name), bytes.toArray))
     dir
 
+  private def checked[A](body: cats.mtl.Raise[IO, Error] ?=> IO[A]): IO[Either[Error, A]] =
+    Handle.allow[Error](body.map(_.asRight[Error])).rescue(e => IO.pure(Left(e)))
+
   private def run(window: Window): IO[Either[Error, Outcome]] =
     Handle
       .allow[Error](LeiosReplayMain.window(window).map(_.asRight[Error]))
@@ -128,8 +131,10 @@ class LeiosReplayMainSuite extends FailsOnUncaught:
         startDir <- IO.blocking(
           ledger(root.resolve("start"), start.slot, LeiosStateFixture.movedFiles)
         )
-        // the end state is not read before the replay reaches it
-        endDir <- IO.blocking(ledger(root.resolve("end"), next.point.slot, Vector.empty))
+        // the end state's files are only recorded before the replay reaches it
+        endDir <- IO.blocking(
+          ledger(root.resolve("end"), next.point.slot, LeiosStateFixture.movedFiles)
+        )
         window <- windowOf(root, startDir, endDir, next.point.slot)
         outcome <- run(window)
       yield
@@ -172,15 +177,54 @@ class LeiosReplayMainSuite extends FailsOnUncaught:
       for
         expected <- IO.blocking(ledger(root.resolve("expected"), 203, original))
         actual <- IO.blocking(ledger(root.resolve("actual"), 203, LeiosStateFixture.movedFiles))
-        outcome <- LeiosReplayMain.compare(LeiosStateFixture.layout, expected, actual, start, 0)
+        outcome <- checked(
+          LeiosReplayMain
+            .reference(expected)
+            .flatMap(LeiosReplayMain.compare(LeiosStateFixture.layout, _, actual, start, 0))
+        )
       yield outcome match
-        case Outcome.Differs(_, _, first, located, others) =>
+        case Right(Outcome.Differs(_, _, first, located, others)) =>
           assertEquals(first.file, "state")
           assertEquals(others.map(_.file), Vector("meta"))
           located match
             case Some(Located.At(d)) => assert(d.path.render.nonEmpty, d.toString)
             case other               => fail(s"not located as a state: $other")
         case other => fail(s"not a difference: $other")
+    }
+  }
+
+  test("an end directory that is not there is refused before anything is written, never compared") {
+    tempDir.use { dir =>
+      val root = dir.toNioPath
+      for
+        startDir <- IO.blocking(
+          ledger(root.resolve("start"), start.slot, LeiosStateFixture.movedFiles)
+        )
+        window <- windowOf(root, startDir, startDir, start.slot)
+        // the directory the export would write: <out>/<slot>_scarab
+        absent = window.out.resolve(s"${start.slot}_scarab")
+        outcome <- run(window.copy(end = absent, endSlot = Some(start.slot)))
+      yield
+        assertEquals(outcome, Left(Error.NoReference(absent)))
+        assert(!JFiles.exists(window.db), "nothing staged")
+        assert(!JFiles.exists(absent), "nothing exported")
+    }
+  }
+
+  test("an exported file that is the reference's own is refused, not compared with itself") {
+    tempDir.use { dir =>
+      val root = dir.toNioPath
+      for
+        expected <- IO.blocking(ledger(root.resolve("same"), 202, LeiosStateFixture.movedFiles))
+        outcome <- checked(
+          LeiosReplayMain
+            .reference(expected)
+            .flatMap(LeiosReplayMain.compare(LeiosStateFixture.layout, _, expected, start, 0))
+        )
+      yield assertEquals(
+        outcome,
+        Left(Error.Alias(expected.resolve("state"), expected.resolve("state")))
+      )
     }
   }
 
