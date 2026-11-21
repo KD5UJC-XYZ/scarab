@@ -2,7 +2,8 @@
 package xyz.kd5ujc.scarab.node
 
 import cats.data.NonEmptyVector
-import cats.effect.{IO, Resource}
+import cats.effect.{IO, Outcome, Resource}
+import cats.effect.testkit.TestControl
 import cats.effect.std.Supervisor
 import cats.mtl.Raise
 import cats.syntax.all.*
@@ -245,6 +246,128 @@ class LeiosFetchRegistrationSuite extends FailsOnUncaught:
           yield
             assertEquals(ended, Right(Some(ProtocolResults.Result.Returned(()))))
             // the client's bracket is released: the peer is no longer live
+            assert(left.isEmpty)
+      }
+  }
+
+  dirs.test("a hot session that ends cleanly, the governor not yet told, ends its LeiosFetch client") {
+    dir =>
+      (store(dir / "a"), store(dir / "b"), Supervisor[IO](await = true)).tupled.use {
+        (ours, theirs, settling) =>
+          for
+            node <- ok(
+              LeiosFetchNode.create[IO](
+                ours,
+                StdGen.mk(4),
+                slot(0),
+                settling,
+                e => IO.raiseError(new AssertionError(e.toString)),
+                IO.raiseError
+              )
+            )
+            (a, b) <- Bearer.inMemory[IO](64)
+            // ChainSync returned: the session ends the hot protocols on the wire and releases the
+            // activation, and only then does the governor tell them to stop and wait for them all
+            program = typed(
+              Served
+                .accept(
+                  b,
+                  magic,
+                  handlers(Some(LeiosFetchStoreHandler(theirs))),
+                  NodeToNodeServer.Settings(bundle = HotBundle.Leios)
+                )
+                .background
+                .surround(
+                  NodeToNode
+                    .warmOverWithResults[IO, Bytes, Unit](
+                      a,
+                      magic,
+                      ChainSyncFixtures.rawItem,
+                      (),
+                      NodeToNode.Settings(bundle = HotBundle.Leios)
+                    )
+                    .use(warm =>
+                      (warm.applications.activateHot *>
+                        warm.applications.startHot(false, leiosFetch = true)).flatMap(results =>
+                        warm
+                          .startHotProtocols(
+                            results,
+                            None,
+                            None,
+                            ChainSyncTimeouts.PeerTrust.Untrustable,
+                            None,
+                            leiosFetch = Some(node.initiator(connection))
+                          )
+                          .use(_.finishGracefully(false))
+                      ) *> warm.applications.terminateHot *>
+                        warm.applications.awaitAll(Set(ProtocolResults.Temperature.Hot))
+                    )
+                )
+            )
+            // no time passes: every result is in at once, none waits out the deactivation's 300 s
+            control <- TestControl.execute(program)
+            _ <- control.tick
+            outcome <- control.results
+            left <- node.shared.peers.get
+          yield
+            outcome match
+              case Some(Outcome.Succeeded(results)) =>
+                assertEquals(
+                  results,
+                  Right(
+                    ProtocolResults.LastToFinish.AllSucceeded(
+                      Map(Protocols.ChainSync -> (), Protocols.BlockFetch -> (), Protocols.LeiosFetch -> ())
+                    )
+                  )
+                )
+              case other => fail(s"the hot protocols' results are not all in: $other")
+            assert(left.isEmpty)
+      }
+  }
+
+  dirs.test("an activation released with its LeiosFetch client running ends it with the cause") {
+    dir =>
+      (store(dir / "a"), store(dir / "b"), Supervisor[IO](await = true)).tupled.use {
+        (ours, theirs, settling) =>
+          for
+            node <- ok(
+              LeiosFetchNode.create[IO](
+                ours,
+                StdGen.mk(4),
+                slot(0),
+                settling,
+                e => IO.raiseError(new AssertionError(e.toString)),
+                IO.raiseError
+              )
+            )
+            (a, b) <- Bearer.inMemory[IO](64)
+            // released neither ended on the wire nor told to stop
+            released = (net: Net) ?=>
+              activatedWith(a, HotBundle.Leios, node.initiator(connection))(IO.pure)
+                .flatMap(_.snapshot.map(_.entries.get(Protocols.LeiosFetch).map(_.result)))
+            ended <- typed(
+              Served
+                .accept(
+                  b,
+                  magic,
+                  handlers(Some(LeiosFetchStoreHandler(theirs))),
+                  NodeToNodeServer.Settings(bundle = HotBundle.Leios)
+                )
+                .background
+                .surround(released)
+            )
+            left <- node.shared.peers.get
+          yield
+            assertEquals(
+              ended,
+              Right(
+                Some(
+                  ProtocolResults.Result.Errored(
+                    NetworkError.BearerClosed(NetworkError.Closure.Aborted)
+                  )
+                )
+              )
+            )
             assert(left.isEmpty)
       }
   }
