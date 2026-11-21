@@ -233,13 +233,13 @@ def describe_leios_block(raw):
     return described
 
 
-def judge(chains, closures=None, kinds=None):
+def judge(chains, closures=None, kinds=None, certificates=1):
     """The verdict on the nodes' immutable chains ({node: [describe_leios_block]}), the EB closures each node's
     LeiosDB holds ({node: set of EB hashes}) and the trace counts of each node's log ({node: {kind: n}}).
 
     It passes when the chains agree (each is a prefix of the longest), and the part every node holds has an RB that
-    announces an EB and a certifying RB whose parent is an announcing RB; with `closures`, every node holds each
-    certified EB's closure; with `kinds`, some node voted."""
+    announces an EB and at least `certificates` certifying RBs whose parent is an announcing RB; with `closures`,
+    every node holds each certified EB's closure; with `kinds`, some node voted."""
     problems = []
     order = sorted(chains)
     longest = max((chains[n] for n in order), key=len, default=[])
@@ -264,6 +264,9 @@ def judge(chains, closures=None, kinds=None):
         problems.append("no block every node holds announces an endorser block")
     if not certified:
         problems.append("no block every node holds certifies an endorser block")
+    elif len(certified) < certificates:
+        problems.append(f"{len(certified)} blocks every node holds certify an endorser block, fewer than the "
+                        f"{certificates} asked for")
     if closures is not None:
         for c in certified:
             missing = [n for n in order if c["eb"] not in closures.get(n, set())]
@@ -368,8 +371,26 @@ def leios_traffic(args):
         raise SystemExit(f"{root} exists; run `devnet.py down` first")
     dijkstra_plan(args.dijkstra_epoch, args.genesis_protocol_major)
     (root / "genesis").mkdir(parents=True)
-    log = lambda m: print(json.dumps(m), flush=True)  # noqa: E731
     start_reference(args.name, cpus=args.cpus, memory=args.memory, work=args.work_size)
+    try:
+        _drive(args, root, started)
+    finally:
+        _remove_reference(args.name, root, args.pools)
+
+
+def _remove_reference(name, root, pools):
+    """The reference container this run started, removed on every exit: its nodes, its tmpfs (databases and the
+    run's throwaway keys) go with it. The nodes' logs are kept in the run directory first, for a failed run's
+    diagnosis; `leios.json` is already there."""
+    for n in range(1, pools + 1):
+        log = subprocess.run(["docker", "exec", ref(name), "cat", f"/work/node{n}.log"], capture_output=True)
+        if log.returncode == 0:
+            (root / f"node{n}.log").write_bytes(log.stdout)
+    subprocess.run(["docker", "rm", "-f", ref(name)], capture_output=True)
+
+
+def _drive(args, root, started):
+    log = lambda m: print(json.dumps(m), flush=True)  # noqa: E731
     image_slot = read_json(args.name, f"{IMAGE_CONFIG}/shelley-genesis.json")["slotLength"]
     spec = dijkstra_spec(read_json(args.name, f"{IMAGE_CONFIG}/dijkstra-genesis.json"), image_slot, args.slot_length)
     gap = certification_gap(spec, args.slot_length)
@@ -494,7 +515,7 @@ def leios_traffic(args):
         lines = subprocess.run(["docker", "exec", ref(args.name), "cat", f"/work/node{n}.log"],
                                capture_output=True, text=True, check=True).stdout.splitlines()
         kinds[n], reasons[n] = trace_kinds(lines)
-    verdict = judge(chains, closures, kinds)
+    verdict = judge(chains, closures, kinds, certificates=args.certificates)
     summary = {"referenceOnly": True, "image": LEIOS_IMAGE, "seconds": round(time.monotonic() - started),
                "verdict": verdict, "traces": kinds, "notVotedReasons": reasons,
                "loadSubmitted": submitted, "loadRejected": rejected,

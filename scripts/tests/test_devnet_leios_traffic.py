@@ -156,6 +156,13 @@ class JudgeTest(unittest.TestCase):
         self.assertEqual((verdict["votesCast"], verdict["certificateSigners"]), (4, 4))
         self.assertEqual(verdict["certified"][0]["gapSlots"], 10)
 
+    def test_fewer_certificates_than_asked_for_fail(self):
+        blocks = chain((None, None), (self.EB, None), (None, b"\x0f"), (None, None))
+        verdict = lt.judge({1: blocks, 2: blocks}, {1: {self.EB.hex()}, 2: {self.EB.hex()}},
+                           {1: {"LeiosVoted": 2}, 2: {"LeiosVoted": 2}}, certificates=3)
+        self.assertFalse(verdict["pass"])
+        self.assertTrue(any("fewer than the 3 asked for" in p for p in verdict["problems"]), verdict["problems"])
+
     def test_a_certificate_only_one_node_holds_fails(self):
         blocks = chain((self.EB, None), (None, b"\x0f"))
         verdict = lt.judge({1: blocks, 2: blocks[:1]})
