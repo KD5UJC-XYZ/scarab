@@ -51,7 +51,7 @@ object LeiosFetchKernel:
     * meanwhile keeps its identity with fresh vars, and the decision leaves it to the next pass
     * rather than charge the new activation with requests queued on the old one's vars, which no
     * client reads. The reference re-reads the live peers by their keys alone (`Map.restrictKeys
-    * offerings (Map.keysSet stillLivePeers)`, `NodeKernel.hs` 570-610 at 2416493b), so the race its
+    * offerings (Map.keysSet stillLivePeers)`, `NodeKernel.hs` 571-603 at 2416493b), so the race its
     * re-read closes stays open there for a reactivation.
     */
   def step[F[_], P: Order, E](
