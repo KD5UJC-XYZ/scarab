@@ -81,22 +81,61 @@ class DijkstraPParamsSuite extends DisciplineSuite:
   private def decoded(bytes: Bytes): Either[LedgerDecodeError, DijkstraParamUpdate] =
     DijkstraParamUpdate.decode(Cbor.decode(bytes).fold(e => fail(s"not CBOR: $e"), identity))
 
+  private type Refusal = PartialFunction[LedgerDecodeError, Unit]
+
+  private val zeroRatio: Refusal = {
+    case LedgerDecodeError.RationalOutOfBounds(_, LedgerDecodeError.OutOfBounds.Reduced(r))
+        if r == Rational.zero =>
+      ()
+  }
+  private val key57: Refusal = { case LedgerDecodeError.UnknownKey(_, k) if k == 57 => () }
+  private val shape: Refusal = {
+    case LedgerDecodeError.Expected(_, _, _) | LedgerDecodeError.ExpectedTag(_, _, _) |
+        LedgerDecodeError.ArrayLength(_, _, _) | LedgerDecodeError.UnknownKey(_, _) =>
+      ()
+  }
+  private val length: Refusal = { case LedgerDecodeError.ArrayLength(_, _, _) => () }
+  private val range: Refusal = { case LedgerDecodeError.NumberOutOfRange(_, _, _, _) => () }
+  private val duplicate: Refusal = { case LedgerDecodeError.DuplicateElement(_) => () }
+
   /** The typed refusal of each row the build refuses (`DeserialiseFailure` in the corpus): a zero
-    * where a `NonZero` is built, a ratio outside `PositiveInterval`, and a key no field has.
+    * where a `NonZero` is built, a ratio outside `PositiveInterval`, a key no field has, and the
+    * malformed values of the corpus. Of an update with two faults this decoder's verdict is
+    * compared and not which fault it names (`V12`); the era codec's suite (`EraPParamsCborSuite`)
+    * compares that with the build.
     */
-  private val refusals: Map[String, PartialFunction[LedgerDecodeError, Unit]] = Map(
+  private val refusals: Map[String, Refusal] = Map(
     "refScriptCostStride zero" -> { case LedgerDecodeError.Zero(_) => () },
-    "refScriptCostMultiplier zero" -> {
-      case LedgerDecodeError.RationalOutOfBounds(_, LedgerDecodeError.OutOfBounds.Reduced(r))
-          if r == Rational.zero =>
-        ()
-    },
-    "perasHealingFactor zero" -> {
-      case LedgerDecodeError.RationalOutOfBounds(_, LedgerDecodeError.OutOfBounds.Reduced(r))
-          if r == Rational.zero =>
-        ()
-    },
-    "an unknown key" -> { case LedgerDecodeError.UnknownKey(_, k) if k == 57 => () }
+    "refScriptCostMultiplier zero" -> zeroRatio,
+    "perasHealingFactor zero" -> zeroRatio,
+    "an unknown key" -> key57,
+    "a ratio of three items, the third null" -> shape,
+    "a ratio of one null item" -> shape,
+    "an indefinite ratio of three items, the third null" -> shape,
+    "a ratio of a negative item" -> shape,
+    "a negative cost-model language" -> shape,
+    "a cost-model parameter as a bignum" -> shape,
+    "cost models of a repeated language, its second list bad" -> shape,
+    "execution units of null" -> shape,
+    "prices of three items, the first null" -> shape,
+    "indefinite DRep thresholds of ten, the tenth null" -> shape,
+    "execution units of three items, the first null" -> shape,
+    "a bad value before an unknown key" -> shape,
+    "a negative word" -> shape,
+    "a ratio of three items, a zero denominator" -> length,
+    "indefinite execution units of one item" -> length,
+    "indefinite execution units of three items" -> length,
+    "execution units of one item, a key after it" -> length,
+    "execution units of one item, last" -> length,
+    "indefinite prices of one item" -> length,
+    "indefinite pool thresholds of four" -> length,
+    "a cost-model language past Word8, its list bad" -> range,
+    "a cost-model parameter past Int64" -> range,
+    "a Word32 past its width" -> range,
+    "a ratio of a zero denominator" -> { case LedgerDecodeError.ZeroDenominator(_) => () },
+    "cost models of a repeated language" -> duplicate,
+    "a repeated key, its second value bad" -> duplicate,
+    "an unknown key after a good one" -> key57
   )
 
   private def word[W <: Unsigned.Width: Unsigned.Bound](id: String, n: BigInt): Unsigned[W] =
@@ -294,8 +333,10 @@ class DijkstraPParamsSuite extends DisciplineSuite:
   private val v12 = ProtVer(Version.lit(12), Unsigned.lit[W32](0))
   private val v10 = ProtVer(Version.lit(10), Unsigned.lit[W32](0))
 
-  test("the corpus is present: every key alone, zero and not, and the build's refusals"):
-    assertEquals(rows.size, 113)
+  test(
+    "the corpus is present: every key alone, zero and not, long cost models, noncanonical and malformed updates, and the build's refusals"
+  ):
+    assertEquals(rows.size, 167)
     assertEquals(
       rows.filter(_.reference.hcursor.downField("refused").succeeded).map(_.id).toSet,
       refusals.keySet
