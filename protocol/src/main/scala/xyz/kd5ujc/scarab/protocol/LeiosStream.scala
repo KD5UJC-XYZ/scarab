@@ -4,6 +4,7 @@ package xyz.kd5ujc.scarab.protocol
 import cats.Monad
 import cats.data.StateT
 import cats.syntax.all.*
+import scala.annotation.tailrec
 import xyz.kd5ujc.scarab.codec.Bytes
 
 import LeiosWord.Word64
@@ -67,27 +68,46 @@ private[protocol] object LeiosStream:
     if next == 255 then byte.as(true) else pure(false)
   }
 
-  /** Util.CBOR.decodeElemsUpTo: indefinite collections look for break before the bound, then decode
-    * one entry. The reversed accumulator and tailRecM keep externally sized input safe.
+  /** The entries of a collection read so far, newest first, and how many. */
+  private[protocol] final case class Entries[A](count: Int, newestFirst: List[A]):
+    def added(entry: A): Entries[A] = Entries(count + 1, entry :: newestFirst)
+    def inOrder: Vector[A] = newestFirst.reverse.toVector
+
+  private[protocol] object Entries:
+    def none[A]: Entries[A] = Entries(0, Nil)
+
+  /** The head of a collection of at most `maximum` entries, as Util.CBOR.decodeElemsUpTo reads it:
+    * its length, definite or not, refused above the bound before any entry is read.
     */
-  private[protocol] def collection[A](
+  private[protocol] def collectionHead(
       tag: Int,
       field: LeiosField,
       major: Int,
       maximum: Int
-  )(entry: (Int, Option[A]) => Decoder[A]): Decoder[Vector[A]] =
+  ): Decoder[Option[BigInt]] =
     length(major, LeiosWireError.BadField(tag, field)).flatMap { size =>
-      def tooMany(actual: BigInt): LeiosWireError =
-        LeiosWireError.TooMany(tag, field, maximum, actual)
-      check(size.forall(_ <= maximum), tooMany(size.getOrElse(BigInt(maximum) + 1))) *>
-        Monad[Decoder].tailRecM((0, List.empty[A])) { case (count, acc) =>
-          val done = size.fold(break)(n => pure(BigInt(count) == n))
-          done.flatMap { ended =>
-            if ended then pure(Right(acc.reverse.toVector))
-            else if count >= maximum then fail(tooMany(BigInt(count) + 1))
-            else entry(count, acc.headOption).map(value => Left((count + 1, value :: acc)))
-          }
-        }
+      check(
+        size.forall(_ <= maximum),
+        LeiosWireError.TooMany(tag, field, maximum, size.getOrElse(BigInt(maximum) + 1))
+      ).as(size)
+    }
+
+  /** The next step of a collection whose head gave `size`, after the entries `read`: an indefinite
+    * collection looks for its break before the bound, then decodes one entry
+    * (Util.CBOR.decodeElemsUpTo). The collection once it has ended, else the entries with one more.
+    */
+  private[protocol] def collectionStep[A](
+      tag: Int,
+      field: LeiosField,
+      maximum: Int,
+      size: Option[BigInt],
+      read: Entries[A]
+  )(entry: (Int, Option[A]) => Decoder[A]): Decoder[Either[Entries[A], Vector[A]]] =
+    size.fold(break)(n => pure(BigInt(read.count) == n)).flatMap { ended =>
+      if ended then pure(Right(read.inOrder))
+      else if read.count >= maximum then
+        fail(LeiosWireError.TooMany(tag, field, maximum, BigInt(read.count) + 1))
+      else entry(read.count, read.newestFirst.headOption).map(value => Left(read.added(value)))
     }
 
   /** A definite length: cborg's `decodeListLen` or `decodeMapLen`, which refuse an indefinite one.
@@ -133,3 +153,26 @@ private[protocol] object LeiosStream:
   /** Run `decoder` over `input` from its start: the value and the bytes consumed. */
   private[protocol] def run[A](decoder: Decoder[A], input: Bytes): Result[(A, Int)] =
     decoder.run(Cursor(input, 0)).map { case (cursor, value) => value -> cursor.position }
+
+  /** Where a decoder run in steps stopped: short of input at the checkpoint `stage`, which begins
+    * at `position`, or with its verdict on the message, the value and the bytes it took.
+    */
+  private[protocol] enum Resumed[+S, +A]:
+    case Short(stage: S, position: Int)
+    case Done(result: Result[(A, Int)])
+
+  /** A message decoded in steps from the checkpoint `stage` at `position`, each step from where the
+    * one before ended, until one gives the value, as cborg's incremental decoder
+    * (`deserialiseIncremental`) reads a message token by token across the chunks it comes in and
+    * fails at the first token it refuses. A step that runs short of input leaves its checkpoint, so
+    * the next, longer prefix reads that step again and nothing before it: each step reads a bounded
+    * number of heads, so a message that arrives in many parts is read once.
+    */
+  @tailrec private[protocol] def resume[S, A](stage: S, position: Int, input: Bytes)(
+      step: S => Decoder[Either[S, A]]
+  ): Resumed[S, A] =
+    step(stage).run(Cursor(input, position)) match
+      case Left(LeiosWireError.Incomplete) => Resumed.Short(stage, position)
+      case Left(error)                     => Resumed.Done(Left(error))
+      case Right((cursor, Left(next)))     => resume(next, cursor.position, input)(step)
+      case Right((cursor, Right(value)))   => Resumed.Done(Right(value -> cursor.position))

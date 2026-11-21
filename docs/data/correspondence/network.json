@@ -1732,7 +1732,7 @@
    ]
   },
   {
-   "reason": "the LeiosFetch runtime's Scala plumbing with no counterpart of its own: the client's settings record and instruction alias, the message tag a refusal names, the companions, the refusal's rendering, and the decoder the multiplexer receives a LeiosFetch message with, the codec run once its CBOR item has arrived (#54)",
+   "reason": "the LeiosFetch runtime's Scala plumbing with no counterpart of its own: the client's settings record and instruction alias, the message tag a refusal names, the companions, the refusal's rendering, and the decoder the multiplexer receives a LeiosFetch message with, the codec resumed on each longer prefix from the step its last prefix stopped in, as the driver feeds cborg's decoder each chunk (#54)",
    "definitions": [
     "class network.LeiosFetchPipelined.Settings",
     "type network.LeiosFetchPipelined.Instruction",
@@ -1742,6 +1742,23 @@
     "object protocol.LeiosFetchRefusal",
     "def protocol.LeiosFetchRefusal#message",
     "def protocol.LeiosFetch.incremental"
+   ]
+  },
+  {
+   "reason": "the LeiosFetch codec read in steps, so that a message the driver receives in parts is read once and refused at the first token the codec refuses, as cborg's incremental decoder reads the reference's single Decoder: the stages and the checkpoint a message starts from, the runner that resumes from a checkpoint, and a counted collection's head and its next entry with the entries read so far (the bound checks of the reference's decodeBitmaps and of its transaction list); cborg's incremental decoding is the runtime's, with no definition to map (#54)",
+   "definitions": [
+    "enum protocol.LeiosFetchDecoder.Stage",
+    "val protocol.LeiosFetchDecoder.start",
+    "def protocol.LeiosFetchDecoder.resumed",
+    "enum protocol.LeiosStream.Resumed",
+    "def protocol.LeiosStream.resume",
+    "class protocol.LeiosStream.Entries",
+    "object protocol.LeiosStream.Entries",
+    "def protocol.LeiosStream.Entries#added",
+    "def protocol.LeiosStream.Entries#inOrder",
+    "def protocol.LeiosStream.Entries.none",
+    "def protocol.LeiosStream.collectionHead",
+    "def protocol.LeiosStream.collectionStep"
    ]
   }
  ]
