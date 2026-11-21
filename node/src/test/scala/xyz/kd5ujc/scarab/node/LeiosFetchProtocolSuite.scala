@@ -48,17 +48,22 @@ class LeiosFetchProtocolSuite extends FailsOnUncaught:
   private val dirs = ResourceFunFixture(Files.forAsync[IO].tempDirectory)
 
   private def tx(i: Int): Bytes = LeiosStoreSuite.tx(i)
-  private def body(n: Int): LeiosEb =
+  private def body(n: Int, transaction: Int => Bytes = tx): LeiosEb =
     LeiosStoreSuite.eb(
       NonEmptyVector.fromVectorUnsafe(
-        Vector.tabulate(n)(i => LeiosEb.hashTx(tx(i)) -> word32(tx(i).size.toLong))
+        Vector.tabulate(n)(i =>
+          LeiosEb.hashTx(transaction(i)) -> word32(transaction(i).size.toLong)
+        )
       )
     )
 
-  /** A store holding `bodies` whole: each body, every transaction of its closure. */
+  /** A store holding `bodies` whole: each body, every transaction of its closure, transaction `i`
+    * of each body being `transaction(i)`.
+    */
   private def filled(
       dir: Path,
-      bodies: Vector[(EbPoint, LeiosEb)]
+      bodies: Vector[(EbPoint, LeiosEb)],
+      transaction: Int => Bytes = tx
   ): Resource[IO, RocksLeiosStore[IO]] =
     LeiosStoreLocks
       .resource[IO]
@@ -66,7 +71,7 @@ class LeiosFetchProtocolSuite extends FailsOnUncaught:
       .evalTap { s =>
         ok(bodies.traverse_ { (p, eb) =>
           s.writeEbPoint(p, word32(eb.encoded.size.toLong)) *> s.writeEbBody(p, eb, Vector.empty) *>
-            s.writeTxs(p, Vector.tabulate(eb.size)(i => i -> tx(i)))
+            s.writeTxs(p, Vector.tabulate(eb.size)(i => i -> transaction(i)))
         })
       }
 
@@ -206,6 +211,42 @@ class LeiosFetchProtocolSuite extends FailsOnUncaught:
           assertEquals(block, Some(LeiosFetchRefusal.UnknownBlockRequested(unknown)))
           assertEquals(beyond, Some(LeiosFetchRefusal.UnknownTxsRequested(held, Vector(0, 3))))
           assertEquals(unwritten, Some(LeiosFetchRefusal.UnknownTxsRequested(partial, Vector(1))))
+      }
+  }
+
+  dirs.test("an answer of transactions over the multiplexer's message ceiling is sent whole") {
+    dir =>
+      // 200 transactions of 16,000 bytes: 3.2 MB, over the 2,500,000 bytes the multiplexer bounds the
+      // messages of the other protocols with
+      def large(i: Int): Bytes = Bytes(Vector.tabulate(16000)(j => ((i + j) % 251 + 1).toByte))
+      val n = 200
+      val eb = body(n, large)
+      val p = EbPoint(slot(4), EbHash.fromBytes(Bytes(Vector.fill(32)(6))))
+      def encoded(message: LeiosFetch.Message): Bytes =
+        LeiosFetch.encode(message).fold(e => fail(e.toString), identity)
+      val all = bitmaps((0 until n)*)
+      val request = LeiosFetch.Message.BlockTxsRequest(p, all)
+      filled(dir / "leios", Vector(p -> eb), large).use { store =>
+        for
+          // a client that receives with a bound of its own, above the answer's size
+          served <- connected(store)(ch =>
+            ch.send(encoded(request)) *>
+              ch.recv(4000000)(LeiosFetch.incremental(LeiosFetch.State.BlockTxs))
+                .flatTap(_ => ch.send(encoded(LeiosFetch.Message.Done)))
+          )
+          // the pipelined client keeps the limit of BlockTxs, 550,000 bytes, and refuses it
+          pipelined <- connected(store)(ch =>
+            fetch(ch, Vector(LeiosFetchJob.BlockTxs[IO](p, all, _ => IO.unit)))
+          )
+        yield
+          assertEquals(
+            served,
+            (Right(LeiosFetch.Message.BlockTxs(Vector.tabulate(n)(large))), None)
+          )
+          pipelined._1 match
+            case Left(NetworkError.IngressLimit(Protocols.LeiosFetch, bytes)) =>
+              assert(bytes > LeiosFetch.BlockTxsByteLimit, bytes.toString)
+            case other => fail(s"the pipelined client took the answer: $other")
       }
   }
 

@@ -1437,6 +1437,28 @@
    ],
    "note": "maxLeiosFetchIngressQueue, the margin added where nodeToNode reads it",
    "digest": "96f8b83d41b8ddd3"
+  },
+  "def network.Mux.Config#sendLimit": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "2f1c154f248659b89523d5679ca532f442e7ed2a",
+     "file": "network-mux/src/Network/Mux.hs",
+     "symbol": "muxChannel",
+     "lines": [
+      880,
+      937
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "LeiosFetchProtocolSuite",
+    "MuxSuite"
+   ],
+   "note": "LeiosFetch's messages are sent whatever their size, as muxChannel's send bounds none; the other protocols keep the node's ceiling of maxMessageBytes",
+   "digest": "43e19df212e76fc6"
   }
  },
  "glue": [
