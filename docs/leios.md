@@ -979,7 +979,8 @@ path under `--reference-build leios-b004fe0c`.
 
 A reference ledger directory is the `ledger/<slot>` that the reference node, or its `db-analyser
 --store-ledger`, writes: `state`, `tables` and `meta`, named after its tip's slot. `--end-slot` gives the
-end's slot where the directory is not named after it. The program prints JSON lines (`leiosReplay`). Its
+end's slot where the directory is not named after it. The end directory's files are recorded before anything is written; one that is not there, or
+holds none of the three, is refused (`error`), and so is an exported file that is the end's own. The program prints JSON lines (`leiosReplay`). Its
 last line and exit code are the outcome:
 
 | Outcome | Exit | Meaning |

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.tools
 
+import cats.data.NonEmptyVector
 import cats.effect.{ExitCode, IO, IOApp, Ref, Resource}
 import cats.mtl.{Ask, Handle, Raise}
 import cats.mtl.syntax.all.*
@@ -113,6 +114,12 @@ object LeiosReplayMain extends IOApp:
     /** The replay ended before or after the end slot. */
     case Reached(expected: BigInt, actual: Option[BlockRef])
     case Export(cause: LedgerSnapshotExport.Error)
+
+    /** The end directory is not there, or holds none of `state`, `tables` and `meta`. */
+    case NoReference(dir: Path)
+
+    /** An exported file is the reference's own (`expected` and `exported` are one file). */
+    case Alias(expected: Path, exported: Path)
 
   /** Where a `state` that differs in its bytes first differs as a state. */
   enum Located:
@@ -244,44 +251,73 @@ object LeiosReplayMain extends IOApp:
       .merge
 
   /** The window's files compared: the outcome once the replay reached `end`. */
+  /** The reference end state, recorded before anything is written: its directory and the files of
+    * [[Compared]] it holds, at least one. Only [[reference]] makes one.
+    */
+  final case class Reference private[LeiosReplayMain] (dir: Path, files: NonEmptyVector[String])
+
+  /** The end directory's files as they are now, or [[Error.NoReference]] for a directory that is
+    * not there or holds none of [[Compared]]: a window is compared with the reference's state,
+    * never with what the export writes.
+    */
+  def reference(dir: Path)(using Raise[IO, Error]): IO[Reference] =
+    Compared
+      .filterA(name => IO.blocking(JFiles.isRegularFile(dir.resolve(name))))
+      .flatMap(present =>
+        lift(
+          NonEmptyVector
+            .fromVector(present)
+            .map(Reference(dir, _))
+            .toRight(Error.NoReference(dir))
+        )
+      )
+
   def compare(
       layout: ReferenceLayout,
-      expected: Path,
+      reference: Reference,
       exported: Path,
       end: BlockRef,
       applied: Long
-  ): IO[Outcome] =
-    Compared
-      .traverse(name => IO.blocking(JFiles.isRegularFile(expected.resolve(name))).map(name -> _))
-      .flatMap { present =>
-        val compared = present.collect { case (name, true) => name }
-        val absent = present.collect { case (name, false) => name }
-        compared
-          .flatTraverse(name =>
-            firstDifference(
-              name,
-              FsPath.fromNioPath(expected.resolve(name)),
-              FsPath.fromNioPath(exported.resolve(name))
-            ).map(_.toVector)
-          )
-          .flatMap {
-            case first +: others =>
-              val located =
-                if first.file == "state" then
-                  IO.blocking(
-                    Some(
-                      locate(
-                        layout,
-                        Bytes.wrap(JFiles.readAllBytes(expected.resolve("state"))),
-                        Bytes.wrap(JFiles.readAllBytes(exported.resolve("state")))
-                      )
+  )(using Raise[IO, Error]): IO[Outcome] =
+    val expected = reference.dir
+    val compared = reference.files.toVector
+    val absent = Compared.filterNot(compared.contains)
+    // an exported file that is the expected one would be compared with itself
+    compared
+      .traverse_(name =>
+        IO.blocking(
+          JFiles.exists(exported.resolve(name)) &&
+            JFiles.isSameFile(expected.resolve(name), exported.resolve(name))
+        ).flatMap(same =>
+          Error.Alias(expected.resolve(name), exported.resolve(name)).raise[IO, Unit].whenA(same)
+        )
+      ) *> {
+      compared
+        .flatTraverse(name =>
+          firstDifference(
+            name,
+            FsPath.fromNioPath(expected.resolve(name)),
+            FsPath.fromNioPath(exported.resolve(name))
+          ).map(_.toVector)
+        )
+        .flatMap {
+          case first +: others =>
+            val located =
+              if first.file == "state" then
+                IO.blocking(
+                  Some(
+                    locate(
+                      layout,
+                      Bytes.wrap(JFiles.readAllBytes(expected.resolve("state"))),
+                      Bytes.wrap(JFiles.readAllBytes(exported.resolve("state")))
                     )
                   )
-                else IO.pure(None)
-              located.map(Outcome.Differs(end, applied, first, _, others))
-            case _ => IO.pure(Outcome.Matched(end, applied, compared, absent))
-          }
-      }
+                )
+              else IO.pure(None)
+            located.map(Outcome.Differs(end, applied, first, _, others))
+          case _ => IO.pure(Outcome.Matched(end, applied, compared, absent))
+        }
+    }
 
   private def lift[A](result: Either[Error, A])(using Raise[IO, Error]): IO[A] =
     result.fold(_.raise[IO, A], IO.pure)
@@ -556,6 +592,7 @@ object LeiosReplayMain extends IOApp:
       setup: NodeSetup,
       from: BlockRef,
       endSlot: BigInt,
+      expected: Reference,
       locks: LeiosStoreLocks[IO]
   )(using Raise[IO, Error]): IO[Outcome] =
     replay(window.db, setup, from, locks).flatMap {
@@ -565,7 +602,7 @@ object LeiosReplayMain extends IOApp:
           end <- lift(anchor.filter(_.slot == endSlot).toRight(Error.Reached(endSlot, anchor)))
           report <- exported(window.db, window.out, endSlot)
           layout <- lift(ReferenceBuildFlag.layout(Build).leftMap(Error.Config(_)))
-          outcome <- compare(layout, window.end, report.directory.toNioPath, end, applied)
+          outcome <- compare(layout, expected, report.directory.toNioPath, end, applied)
         yield outcome
     }
 
@@ -573,6 +610,8 @@ object LeiosReplayMain extends IOApp:
   def window(window: Window)(using Raise[IO, Error]): IO[Outcome] =
     for
       endSlot <- lift(window.endSlot.fold(slotOf(window.end))(Right(_)))
+      // the reference's files, before the export can write any
+      expected <- reference(window.end)
       _ <- fresh(window.db)
       setup <- setupOf(window.config)
       _ <- log("referenceBuild", ReferenceBuildFlag.fields(Build)*)
@@ -585,7 +624,7 @@ object LeiosReplayMain extends IOApp:
         "hash" -> Json.fromString(started.anchor.hash.hex),
         "outputs" -> Json.fromLong(started.count)
       )
-      outcome <- replayed(window, setup, started.anchor, endSlot, locks)
+      outcome <- replayed(window, setup, started.anchor, endSlot, expected, locks)
     yield outcome
 
   private def pointFields(point: ChainSync.Point): List[(String, Json)] = point match
