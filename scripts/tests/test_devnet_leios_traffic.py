@@ -189,6 +189,18 @@ class TraceTest(unittest.TestCase):
         self.assertEqual(reasons, {"TooLate": 1})
 
 
+class ProgressTest(unittest.TestCase):
+    def test_the_uniq_counts_of_the_logs_are_read(self):
+        text = '      7 "kind":"LeiosBlockCertified"\n     35 "kind":"LeiosVoted"\n'
+        self.assertEqual(lt.kind_counts(text), {"LeiosBlockCertified": 7, "LeiosVoted": 35})
+        self.assertEqual(lt.kind_counts(""), {})
+
+    def test_the_command_counts_the_three_progress_kinds_of_every_log(self):
+        self.assertIn("/work/node*.log", lt.KIND_COUNT_COMMAND)
+        for kind in ("BlockForged", "BlockCertified", "Voted"):
+            self.assertIn(kind, lt.KIND_COUNT_COMMAND)
+
+
 class CliTest(unittest.TestCase):
     def test_the_command_is_a_run_with_its_own_default_name(self):
         self.assertIn("leios-traffic", cli.RUNS)

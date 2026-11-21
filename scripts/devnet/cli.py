@@ -207,7 +207,9 @@ def main():
     lt.add_argument("--load-tx-bytes", type=int, default=14000, help="the size of a load transaction, about")
     lt.add_argument("--overflow", type=float, default=1.5,
                     help="the mempool the load keeps, as a multiple of the ranking block's transaction bytes")
-    lt.add_argument("--check-seconds", type=float, default=10, help="seconds between reads of the nodes' chains")
+    lt.add_argument("--certificates", type=int, default=1,
+                    help="certifying blocks the nodes' logs must show forged before the load stops")
+    lt.add_argument("--check-seconds", type=float, default=10, help="seconds between looks at the nodes' logs")
     lt.add_argument("--timeout", type=int, default=1500, help="overall time limit in seconds")
     lt.add_argument("--cpus", type=int, default=6, help="CPUs of the reference container")
     lt.add_argument("--memory", default="12g", help="memory of the reference container")

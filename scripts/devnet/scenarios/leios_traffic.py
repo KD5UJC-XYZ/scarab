@@ -21,7 +21,8 @@ node here; the run is the private judge its Leios follower and forger will be ch
   The RB holds `maxBlockBodySize - 1024` bytes of transactions (`Shelley/Ledger/Mempool.hs:207-208, 433-443`), with
   the block's execution units and reference script bytes as further limits (lines 641-650, 759-771); simple
   transactions meet only the byte limit. The load is transactions padded with metadata to about 14 KB, built
-  offline from chained fan-outs, and submitted so that the mempool holds a little more than one RB (`wave_size`).
+  offline from chained fan-outs. Whenever the mempool holds less than `--overflow` (1.5) RBs, a wave tops it up to
+  that (`wave_size`), until a node's log shows a certifying block forged.
 - **Diffusion.** A node offers an EB onward only when its slot is `LeiosMinOfferLead` or more past the node's
   immutable tip (`LeiosDemoLogic.hs:2353-2363`). The testnet's 1,200 slots exceed this cluster's immutable lag of
   about k/f slots, so no EB would leave its forger (cardano-node `Cardano/Node/Configuration/Leios.hs:45-57`); the
@@ -298,6 +299,21 @@ def trace_kinds(lines):
     return kinds, reasons
 
 
+# one pass over every node's log for the kinds that show progress, as `uniq -c` lines
+KIND_COUNT_COMMAND = ("grep -ho '\"kind\":\"Leios\\(BlockForged\\|BlockCertified\\|Voted\\)\"' /work/node*.log "
+                      "| sort | uniq -c")
+
+
+def kind_counts(text):
+    """{kind: count} from the `uniq -c` lines of `KIND_COUNT_COMMAND` (`   3 "kind":"LeiosVoted"`)."""
+    counts = {}
+    for line in text.splitlines():
+        count, _, kind = line.strip().partition(" ")
+        if count.isdigit() and kind.startswith('"kind":"'):
+            counts[kind[len('"kind":"'):-1]] = int(count)
+    return counts
+
+
 def immutable_chain(name, node):
     """The described blocks of node `node`'s ImmutableDB, in order."""
     db = f"{ENV}/node-data/node{node}/db/immutable"
@@ -431,31 +447,43 @@ def leios_traffic(args):
     committee = in_ref(args.name, f"{CLI} query leios-committee {net}", check=False)
     log({"committeeSeated": seated, "leiosCommittee": (committee.stdout or committee.stderr).strip()[:2000]})
 
+    # The load runs until a node's log says it forged a certifying block; reading the chains is too slow to do
+    # between waves (a full ImmutableDB of padded blocks takes seconds per node in Python). The judge reads them
+    # once the certifying block is `k + 2` blocks deep on every node and the nodes have stopped.
     left = list(range(args.load_txs))
-    submitted, rejected, verdict, last_check = 0, 0, None, 0.0
-    while True:
-        if time.monotonic() > deadline:
-            break
-        info = _json(args.name, f"{CLI} query tx-mempool info {net}")
-        wave = wave_size(info["sizeInBytes"], target, tx_bytes, len(left))
+    submitted, rejected, last_check, counts = 0, 0, time.monotonic(), {}
+    # what the load did since the last look at the logs: passes, waves, the mempool sizes it saw
+    window = {"passes": 0, "waves": 0, "mempoolMin": None, "mempoolMax": 0}
+    while time.monotonic() < deadline and left:
+        size = _json(args.name, f"{CLI} query tx-mempool info {net}")["sizeInBytes"]
+        window.update(passes=window["passes"] + 1, mempoolMax=max(window["mempoolMax"], size),
+                      mempoolMin=size if window["mempoolMin"] is None else min(window["mempoolMin"], size))
+        wave = wave_size(size, target, tx_bytes, len(left))
         if wave:
             files = [f"{LOAD}/t{i}.tx" for i in left[:wave]]
             left = left[wave:]
             ok, failed = submit_results(in_ref(args.name, submit_all_script(files, cli=CLI), timeout=120,
                                                check=False).stdout)
+            window["waves"] += 1
             submitted, rejected = submitted + len(ok), rejected + len(failed)
             for f, error in failed.items():
                 log({"rejected": f, "error": error})
         if time.monotonic() - last_check > args.check_seconds:
+            counts = kind_counts(in_ref(args.name, KIND_COUNT_COMMAND, check=False).stdout)
+            log({"submitted": submitted, "left": len(left), **window, "traces": counts})
+            window = {"passes": 0, "waves": 0, "mempoolMin": None, "mempoolMax": 0}
             last_check = time.monotonic()
-            verdict = judge({n: immutable_chain(args.name, n) for n in ports})
-            log({"submitted": submitted, "left": len(left), "mempoolBytes": info["sizeInBytes"],
-                 **{k: verdict[k] for k in ("commonBlocks", "announcingBlocks", "certifyingBlocks")}})
-            if verdict["pass"]:
+            if counts.get("LeiosBlockCertified", 0) >= args.certificates:
                 break
-        if not left and not info["sizeInBytes"]:
-            break
         time.sleep(0.5)
+    deep = max(t["block"] for t in (tip(args.name, n) for n in ports) if t) + args.security_param + 2
+    log({"loadStopped": submitted, "certifyingBlocksForged": counts.get("LeiosBlockCertified", 0),
+         "untilBlock": deep})
+    for n in ports:
+        def reached(_, n=n):
+            t = tip(args.name, n)
+            return t if t is not None and t.get("block", 0) >= deep else None
+        wait_for(f"node {n}'s block {deep}", reached)
 
     stop_nodes(args.name)
     chains = {n: immutable_chain(args.name, n) for n in ports}
