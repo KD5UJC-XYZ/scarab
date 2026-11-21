@@ -656,7 +656,7 @@
     {
       "module": "ledger",
       "path": "ledger/era",
-      "responsibility": "Era-specific transaction types (#85): the type families as match types, the reference's era classes with one instance per era, what the eras share (output and script representations, certificate parts), and the protocol parameters as higher-kinded data",
+      "responsibility": "Era-specific transaction types (#85): the type families as match types, the reference's era classes with one instance per era, what the eras share (output and script representations, certificate parts), the protocol parameters as higher-kinded data, and the governance state with its classes, read from and written to the node's flat record",
       "entryPoints": [
         "Tx",
         "TxOut",
@@ -678,14 +678,20 @@
         "PParams",
         "PParamsUpdate",
         "PParamsHKD",
-        "HKDFunctor"
+        "HKDFunctor",
+        "ConwayGovState",
+        "EraGov",
+        "ConwayEraGov",
+        "GovStateRecord"
       ],
       "suites": [
         "EraCoreSuite",
         "EraPParamsSuite",
         "EraConwaySuite",
         "EraTxSuite",
-        "EraValueSuite"
+        "EraValueSuite",
+        "EraGovStateSuite",
+        "EraGovStateStoredSuite"
       ],
       "docs": [
         "docs/design/era-typed-transactions.md"
