@@ -2,11 +2,19 @@
 package xyz.kd5ujc.scarab.node
 
 import cats.effect.{Async, Resource}
-import cats.effect.std.{Semaphore, Supervisor}
+import cats.effect.std.{AtomicCell, Semaphore, Supervisor}
 import cats.mtl.Raise
 import cats.syntax.all.*
 import fs2.Stream
-import xyz.kd5ujc.scarab.consensus.leios.{BytesSize, IsBigLedgerPeer, LeiosFetchStaticEnv, StdGen}
+import scala.concurrent.duration.FiniteDuration
+import xyz.kd5ujc.scarab.consensus.leios.{
+  AnnouncingHeader,
+  BytesSize,
+  IsBigLedgerPeer,
+  LeiosAnnouncements,
+  LeiosFetchStaticEnv,
+  StdGen
+}
 import xyz.kd5ujc.scarab.network.{
   LeiosFetchInitiator,
   LeiosFetchPipelined,
@@ -25,8 +33,22 @@ import xyz.kd5ujc.scarab.storage.{LeiosStore, LeiosStoreError}
 final class LeiosFetchNode[F[_]] private (
     val shared: LeiosFetchShared[F, Long],
     arrival: LeiosFetchArrival[F, Long],
-    store: LeiosStore[F]
+    store: LeiosStore[F],
+    central: LeiosChainSync.Central[F],
+    onset: BigInt => F[Option[FiniteDuration]],
+    fatal: LeiosStoreError => F[Unit]
 )(using F: Async[F]):
+  /** The ChainSync client's Leios handling of the connection whose vars are `vars`
+    * ([[LeiosChainSync]]): the client runs inside the peer's bracket, as the reference's does
+    * (`bracketLeiosPeer`, `NodeToNode.hs` 1473 at ouroboros-consensus 2416493b).
+    */
+  def chainSync(vars: LeiosPeerVars[F]): LeiosChainSync[F] =
+    LeiosChainSync(shared, vars, central, store, onset, fatal)
+
+  /** `use` inside `connection`'s bracket, with the ChainSync client's Leios handling of it. */
+  def chainSyncOf[A](connection: Long)(use: LeiosChainSync[F] => F[A]): F[A] =
+    shared.bracketPeer(connection, IsBigLedgerPeer.NotBigLedgerPeer)(vars => use(chainSync(vars)))
+
   /** The LeiosFetch client of `connection` 's hot activation (`aLeiosFetchClient` and
     * `hLeiosFetchClient`, `NodeToNode.hs` 937-956 and 1911-1935 at ouroboros-consensus 2416493b):
     * the pipelined client over the requests the decision queues for the peer, each answer handed to
@@ -68,6 +90,7 @@ final class LeiosFetchNode[F[_]] private (
   ): Resource[F, Unit] =
     LeiosFetchKernel.run(
       shared,
+      central,
       LeiosFetchStaticEnv.demo,
       currentSlot,
       forecast,
@@ -106,7 +129,8 @@ object LeiosFetchNode:
     * complete closures at or after `immutableTip` ([[LeiosFetchKernel.initialized]]). The writes of
     * answers and their claims run under `supervisor`, the node's, each on a slot of one writer's
     * queue its peers share ([[LeiosFetchArrival.WriterQueueDepth]]); the store's failure goes to
-    * `fatal`, and an exception in one of them to `defect`, each of which stops the node.
+    * `fatal`, and an exception in one of them to `defect`, each of which stops the node. `onset`
+    * places a slot on the wall clock since the system start.
     */
   def create[F[_]: Async](
       store: LeiosStore[F],
@@ -114,14 +138,16 @@ object LeiosFetchNode:
       immutableTip: Word64,
       supervisor: Supervisor[F],
       fatal: LeiosStoreError => F[Unit],
-      defect: Throwable => F[Unit]
+      defect: Throwable => F[Unit],
+      onset: BigInt => F[Option[FiniteDuration]]
   )(using Raise[F, LeiosStoreError]): F[LeiosFetchNode[F]] =
     (
       LeiosFetchKernel
         .initialized[F, Long](store, prng, immutableTip)
         .flatMap(LeiosFetchShared.create[F, Long]),
-      Semaphore[F](LeiosFetchArrival.WriterQueueDepth)
-    ).mapN((shared, slots) =>
+      Semaphore[F](LeiosFetchArrival.WriterQueueDepth),
+      AtomicCell[F].of(LeiosAnnouncements.empty[AnnouncingHeader])
+    ).mapN((shared, slots, central) =>
       new LeiosFetchNode(
         shared,
         LeiosFetchArrival(
@@ -132,6 +158,9 @@ object LeiosFetchNode:
           settling => supervisor.supervise(settling.handleErrorWith(defect)).void,
           slots
         ),
-        store
+        store,
+        central,
+        onset,
+        fatal
       )
     )

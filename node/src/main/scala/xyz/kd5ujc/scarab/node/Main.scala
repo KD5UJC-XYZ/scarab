@@ -2140,6 +2140,11 @@ object Main extends IOApp:
       // the fetch logic's state from the store's complete closures at or after the immutable tip,
       // its generator a draw of the node's (`initInternalState`, `NodeKernel.hs:938-951` at
       // ouroboros-consensus 2416493b)
+      // a slot's onset since the system start, as `hdrSlotTime` places it
+      onset = (slot: BigInt) =>
+        headers.slotClock.geometry.map(g =>
+          Option(java.time.Duration.between(g.systemStart, g.slotStart(slot)).toNanos.nanos)
+        )
       leiosFetch <- leios.traverse { store =>
         (
           cats.effect.std.Random.scalaUtilRandom[IO].flatMap(_.nextLong),
@@ -2152,7 +2157,8 @@ object Main extends IOApp:
             xyz.kd5ujc.scarab.protocol.LeiosWord.Word64.clamped(tip),
             run.settling,
             e => fatalSink(Fatal.Storage(StorageError.LeiosStore(e))),
-            cause => fatalSink(Fatal.Defect(cause))
+            cause => fatalSink(Fatal.Defect(cause)),
+            onset
           )(using summon, LeiosStorage.lifted[IO])
         }
       }

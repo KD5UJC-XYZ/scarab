@@ -28,12 +28,13 @@ enum NodeHeaderState:
       state: ProtocolState,
       previous: Option[BlockRef],
       firstEpoch: Option[BigInt],
-      translated: Option[InEra]
+      translated: Option[InEra],
+      leiosView: Option[Praos2.LedgerView] = None
   )
 
   def protocol: Option[ProtocolState] = this match
-    case Shelley(state, _, _, _) => Some(state)
-    case _: Byron                => None
+    case Shelley(state, _, _, _, _) => Some(state)
+    case _: Byron                   => None
 
 /** Header validation never counts an unchecked header. Its Byron ledger forecast is the native
   * exclusive NOW+1+2k bound (Byron/Ledger/Ledger.hs:268–320), and its first Shelley view uses the
@@ -64,7 +65,17 @@ final class NodeHeaderRules[S](
       val old = state.consensus.byron
       NodeHeaderState.Byron(old.pbft, state.protocol, old.tip, None)
     else
-      NodeHeaderState.Shelley(state.protocol, None, state.consensus.byron.firstShelleyEpoch, None)
+      // the view at the tip of the ledger, as the reference's header state of an applied block
+      // records it (`ledgerViewOfTip`, `HeaderStateHistory.hs:250-262` at 2416493b)
+      NodeHeaderState.Shelley(
+        state.protocol,
+        None,
+        state.consensus.byron.firstShelleyEpoch,
+        None,
+        state.ledger(None).toOption.flatten.flatMap { case InEra.Of(_, ledger) =>
+          shelleyRules.viewOfTip(state, ledger)
+        }
+      )
 
   def validate(
       anchor: S,
@@ -158,16 +169,17 @@ final class NodeHeaderRules[S](
     }
 
   private def wrap(
-      outcome: Prepared[ProtocolState],
+      outcome: Prepared[ShelleyValidated],
       header: Header.Shelley,
       first: Option[BigInt],
       translated: Option[InEra]
   ): Prepared[NodeHeaderState] = outcome.map(next =>
     NodeHeaderState.Shelley(
-      next,
+      next.protocol,
       Some(BlockRef(header.slot, header.hash, header.blockNo)),
       first,
-      translated
+      translated,
+      next.leiosView
     )
   )
 

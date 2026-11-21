@@ -48,12 +48,20 @@ final class GenesisRuntime[F[_]: Async] private (
       identity: Long,
       disconnect: PeerError => F[Unit],
       fatal: GenesisInternalProblem => F[Unit],
-      densityOrder: PeerOrder
+      densityOrder: PeerOrder,
+      leios: Option[LeiosChainSync[F]] = None
   ): Resource[F, (FetchCoordinator.Session[F], GenesisRuntime.Bound[F])] =
     for
       fetching <- pool.fetchCoordinator.session(identity, Some(densityOrder))
       current <- Resource.eval(selection)
-      bound <- session(fetching.identity, current.anchor, disconnect, fatal, Some(densityOrder))
+      bound <- session(
+        fetching.identity,
+        current.anchor,
+        disconnect,
+        fatal,
+        Some(densityOrder),
+        leios
+      )
     yield fetching -> bound
 
   def session(
@@ -61,7 +69,8 @@ final class GenesisRuntime[F[_]: Async] private (
       anchor: Point,
       disconnect: PeerError => F[Unit],
       fatal: GenesisInternalProblem => F[Unit],
-      densityOrder: Option[PeerOrder] = None
+      densityOrder: Option[PeerOrder] = None,
+      leios: Option[LeiosChainSync[F]] = None
   ): Resource[F, GenesisRuntime.Bound[F]] =
     def refused[A](problem: PeerError.GenesisProblem): F[A] =
       disconnect(PeerError.Genesis(problem)) *> F.never[A]
@@ -129,7 +138,7 @@ final class GenesisRuntime[F[_]: Async] private (
             val offset = state.flatMap {
               case _: NodeHeaderState.Byron =>
                 Some(history.byron.slotLengthMillis * slot.value)
-              case NodeHeaderState.Shelley(_, _, firstEpoch, _) =>
+              case NodeHeaderState.Shelley(_, _, firstEpoch, _, _) =>
                 if !history.byron.derived then Some(history.slotOffsetMillis(slot.value))
                 else firstEpoch.map(epoch => history.resolved(epoch).slotOffsetMillis(slot.value))
             }
@@ -241,6 +250,25 @@ final class GenesisRuntime[F[_]: Async] private (
             ) *> raw.set(point match
             case Point.Origin         => LatestSlot.Origin
             case Point.Block(slot, _) => LatestSlot.At(slot.value)) *> publish
+
+        /** `leiosJumpAcceptedCallback` (`NodeToNode.hs` 512-526 at ouroboros-consensus 2416493b):
+          * the headers of the dynamo's candidate up to the jump's tip, each with the header state
+          * as of its predecessor, handed to the Leios build's handling of this connection; a peer
+          * it charges is disconnected, as the reference's client thread dies.
+          */
+        def jumpAccepted(history: HeaderChain[NodeHeaderState], tip: Point): F[Unit] =
+          leios.traverse_ { handling =>
+            history.rollback(tip).traverse_ { candidate =>
+              val headers = candidate.entries
+                .map(_.header)
+                .zip(candidate.baseState +: candidate.entries.map(_.state))
+                .collect { case (header, Some(predecessor)) => header -> predecessor }
+              Handle
+                .allow[PeerError](handling.jumped(headers).map(_.asRight[PeerError]))
+                .rescue(e => F.pure(e.asLeft[Unit]))
+                .flatMap(_.fold(e => disconnect(e) *> F.never[Unit], F.pure))
+            }
+          }
         def processJump(
             gate: HeaderGate.Grafting[F],
             info: JumpInfo[GenesisPeer.Checkpoint],
@@ -264,41 +292,43 @@ final class GenesisRuntime[F[_]: Async] private (
                       case Left(HeaderCheck.GraftError.MissingState(point)) =>
                         invariant(GenesisInternalProblem.HeaderStateUnavailable(point))
                       case Right(_) =>
-                        publishedBy(gate).flatMap {
-                          case None =>
-                            invariant(GenesisInternalProblem.GraftMissingPoint(accepted.tip))
-                          case Some(installed) =>
-                            installed.entries.lastOption
-                              .map(_.header.blockNo)
-                              .orElse(installed.baseState.flatMap {
-                                case NodeHeaderState.Byron(_, _, _, blockNo) => blockNo
-                                case NodeHeaderState.Shelley(_, previous, _, _) =>
-                                  previous.map(_.blockNo)
-                              })
-                              .orElse {
-                                val ours = accepted.payload.selection
-                                if installed.base == ours.anchor then Some(ours.anchorView.blockNo)
-                                else
-                                  ours.blocks
-                                    .find(_.point == installed.base)
-                                    .map(_.view.blockNo)
-                              }
-                              // Client.hs:1340-1385: only JumpToGoodPoint installs validator state.
-                              .traverse_(n => patience.jumpedTo(n).whenA(goodPoint)) *>
-                              raw.set(accepted.tip match
-                                case Point.Origin => LatestSlot.Origin
-                                case Point.Block(slot, _) =>
-                                  LatestSlot.At(slot.value)) *> publish
-                                .as(
-                                  GenesisPeer.Applied.Grafted(
-                                    ChainSelection
-                                      .Candidate(
-                                        installed.base,
-                                        installed.entries.map(_.header)
-                                      )
+                        jumpAccepted(accepted.payload.history, accepted.tip) *>
+                          publishedBy(gate).flatMap {
+                            case None =>
+                              invariant(GenesisInternalProblem.GraftMissingPoint(accepted.tip))
+                            case Some(installed) =>
+                              installed.entries.lastOption
+                                .map(_.header.blockNo)
+                                .orElse(installed.baseState.flatMap {
+                                  case NodeHeaderState.Byron(_, _, _, blockNo) => blockNo
+                                  case NodeHeaderState.Shelley(_, previous, _, _, _) =>
+                                    previous.map(_.blockNo)
+                                })
+                                .orElse {
+                                  val ours = accepted.payload.selection
+                                  if installed.base == ours.anchor then
+                                    Some(ours.anchorView.blockNo)
+                                  else
+                                    ours.blocks
+                                      .find(_.point == installed.base)
+                                      .map(_.view.blockNo)
+                                }
+                                // Client.hs:1340-1385: only JumpToGoodPoint installs validator state.
+                                .traverse_(n => patience.jumpedTo(n).whenA(goodPoint)) *>
+                                raw.set(accepted.tip match
+                                  case Point.Origin => LatestSlot.Origin
+                                  case Point.Block(slot, _) =>
+                                    LatestSlot.At(slot.value)) *> publish
+                                  .as(
+                                    GenesisPeer.Applied.Grafted(
+                                      ChainSelection
+                                        .Candidate(
+                                          installed.base,
+                                          installed.entries.map(_.header)
+                                        )
+                                    )
                                   )
-                                )
-                        }
+                          }
                     }
               }
       val received: SyncEvent => F[Unit] = {
@@ -351,7 +381,8 @@ object GenesisRuntime:
         xyz.kd5ujc.scarab.network.ConnectionId
       ]],
       disconnect: PeerError => F[Unit],
-      fatal: GenesisInternalProblem => F[Unit]
+      fatal: GenesisInternalProblem => F[Unit],
+      leios: Option[LeiosChainSync[F]] = None
   )(using
       Raise[F, PeerError]
   ): Resource[F, (Option[FetchCoordinator.Session[F]], Option[Bound[F]])] =
@@ -373,7 +404,7 @@ object GenesisRuntime:
                 .raise[F, PeerOrder]
             )
         key
-          .flatMap(order => genesis.bind(pool, identity, disconnect, fatal, order))
+          .flatMap(order => genesis.bind(pool, identity, disconnect, fatal, order, leios))
           .map((fetching, bound) => Some(fetching) -> Some(bound))
       case None => Resource.pure(None -> None)
 

@@ -127,6 +127,12 @@ trait HeaderCheck[F[_]]:
 
   def observed(observer: HeaderCheck.Event => F[Unit]): HeaderCheck[F] = this
 
+  /** This check, its gates handing each header they validate, and each jump they graft, to `leios`
+    * ([[LeiosChainSync]]), as the Leios build's ChainSync client does; a check without header-first
+    * validation hands nothing.
+    */
+  def withLeios(leios: LeiosChainSync[F]): HeaderCheck[F] = this
+
 object HeaderCheck:
   /** Version and wait share the selected-chain publication cell; changes between sampling and
     * waiting remain observable even when a forecast waits without a patience deadline.
@@ -280,6 +286,7 @@ object HeaderCheck:
     override def withPatience(patience: LimitOnPatience[F]): Grafting[F] = this
     override def withInvariant(invariant: GenesisInternalProblem => F[Unit]): Grafting[F] = this
     override def observed(observer: Event => F[Unit]): Grafting[F] = this
+    override def withLeios(leios: LeiosChainSync[F]): Grafting[F] = this
 
   /** [[Captured]], whose gates graft. */
   final case class GraftingCaptured[F[_]](
@@ -321,6 +328,9 @@ object HeaderCheck:
     override def withInvariant(invariant: GenesisInternalProblem => F[Unit]): NodeChain[F, S] =
       NodeChain(inner.withInvariant(invariant))
 
+    override def withLeios(leios: LeiosChainSync[F]): NodeChain[F, S] =
+      NodeChain(inner.withLeios(leios))
+
     override def observed(observer: Event => F[Unit]): NodeChain[F, S] =
       NodeChain(inner.observed(observer))
 
@@ -346,7 +356,8 @@ object HeaderCheck:
       patience: Option[LimitOnPatience[F]],
       publication: Option[Event => F[Unit]],
       stateWitness: Option[H =:= NodeHeaderState],
-      canonical: Option[Canonical[F, S, H]]
+      canonical: Option[Canonical[F, S, H]],
+      leios: Option[LeiosChainSync[F]] = None
   )(using
       chain: Stateful[F, VolatileChain[S]]
   ) extends HeaderCheck[F]:
@@ -395,7 +406,8 @@ object HeaderCheck:
         Some(value),
         publication,
         stateWitness,
-        canonical
+        canonical,
+        leios
       )
 
     override def withInvariant(invariant: GenesisInternalProblem => F[Unit]): ChainCheck[F, S, H] =
@@ -410,7 +422,24 @@ object HeaderCheck:
         patience,
         publication,
         stateWitness,
-        canonical.map(_.copy(invariant = invariant))
+        canonical.map(_.copy(invariant = invariant)),
+        leios
+      )
+
+    override def withLeios(hook: LeiosChainSync[F]): ChainCheck[F, S, H] =
+      ChainCheck(
+        rules,
+        compute,
+        warm,
+        poll,
+        retained,
+        observe,
+        added,
+        patience,
+        publication,
+        stateWitness,
+        canonical,
+        Some(hook)
       )
 
     override def observed(observer: Event => F[Unit]): ChainCheck[F, S, H] =
@@ -425,7 +454,8 @@ object HeaderCheck:
         patience,
         Some(event => publication.traverse_(_(event)) *> observer(event)),
         stateWitness,
-        canonical
+        canonical,
+        leios
       )
 
     override def capture(using Applicative[F]): F[Option[Captured[F]]] =
@@ -500,7 +530,7 @@ object HeaderCheck:
         }
         state <- Ref.of[F, HeaderChain[H]](initial)
         tally <- Ref.of[F, HeaderGate.Counts](HeaderGate.Counts(0, 0, 0))
-        prepared <- Ref.of[F, Option[(Header, ChainSync.Point, () => Outcome[H])]](None)
+        prepared <- Ref.of[F, Option[(Header, ChainSync.Point, H, () => Outcome[H])]](None)
         knownSelection <- Ref.of[F, Option[ChainSelection.Local]](selected)
       yield gate(state, tally, prepared, knownSelection)
 
@@ -515,7 +545,7 @@ object HeaderCheck:
     private def gate(
         state: Ref[F, HeaderChain[H]],
         tally: Ref[F, HeaderGate.Counts],
-        prepared: Ref[F, Option[(Header, ChainSync.Point, () => Outcome[H])]],
+        prepared: Ref[F, Option[(Header, ChainSync.Point, H, () => Outcome[H])]],
         knownSelection: Ref[F, Option[ChainSelection.Local]]
     ): ChainGate[F, H] =
       new ChainGate[F, H]:
@@ -590,13 +620,13 @@ object HeaderCheck:
                             }
                           case ready =>
                             knownSelection.set(selected) *> prepared
-                              .set(Some((header, hc.tipPoint, () => ready.result)))
+                              .set(Some((header, hc.tipPoint, previous, () => ready.result)))
                               .as(Right(HeaderGate.Acceptance.Accepted))
                         }
               }
             state.get.flatMap { hc =>
               prepared.get.flatMap {
-                case Some((h, parent, _)) if h == header && parent == hc.tipPoint =>
+                case Some((h, parent, _, _)) if h == header && parent == hc.tipPoint =>
                   F.pure(HeaderGate.Acceptance.Accepted)
                 case _ =>
                   val checkTime = awaitSample(sample)
@@ -786,7 +816,7 @@ object HeaderCheck:
               case HeaderGate.Acceptance.End(point) =>
                 Raise[F, Reintersection].raise(Reintersection.End(point))
             }
-            .flatMap { case (outcome, waited) =>
+            .flatMap { case (outcome, waited, predecessor) =>
               outcome match
                 case Outcome.Valid(next) =>
                   record(header, Some(next)) *> tally.update(c =>
@@ -795,7 +825,13 @@ object HeaderCheck:
                       waited = c.waited + (if waited then 1 else 0)
                     )
                   ) *> patience.traverse_(_.validated(header.blockNo)) *>
-                    publication.traverse_(_(Event.Validated(header)))
+                    publication.traverse_(_(Event.Validated(header))) *>
+                    // the roll-forward's Leios handling, with the header state as of its
+                    // predecessor (`leiosMsgRollForwardCallback`, ouroboros-consensus 2416493b
+                    // `MiniProtocol/ChainSync/Client.hs` 1576-1586)
+                    (leios, stateWitness, predecessor).tupled.traverse_((hook, equality, before) =>
+                      hook.rolledForward(header, equality(before))
+                    )
                 case Outcome.Invalid(error) => invalid(header, error)
                 // no verdict on the header: this peer's session ends, through this fiber's own `Raise`
                 case Outcome.Unverifiable(defect) =>
@@ -829,10 +865,13 @@ object HeaderCheck:
         private def resolve(
             header: Header,
             waited: Boolean
-        )(using Raise[F, PeerError], Raise[F, Reintersection]): F[(Outcome[H], Boolean)] =
+        )(using
+            Raise[F, PeerError],
+            Raise[F, Reintersection]
+        ): F[(Outcome[H], Boolean, Option[H])] =
           (state.get, prepared.getAndSet(None)).tupled.flatMap {
-            case (hc, Some((h, parent, run))) if h == header && parent == hc.tipPoint =>
-              if hc.canExtend(header) then F.delay(run()).map(_ -> waited)
+            case (hc, Some((h, parent, previous, run))) if h == header && parent == hc.tipPoint =>
+              if hc.canExtend(header) then F.delay(run()).map((_, waited, Some(previous)))
               else
                 protocol(PeerError.ProtocolProblem.HeaderDoesNotExtend(header.point, hc.tipPoint))
             case _ => resolveFresh(header, waited)
@@ -841,7 +880,10 @@ object HeaderCheck:
         private def resolveFresh(
             header: Header,
             waited: Boolean
-        )(using Raise[F, PeerError], Raise[F, Reintersection]): F[(Outcome[H], Boolean)] =
+        )(using
+            Raise[F, PeerError],
+            Raise[F, Reintersection]
+        ): F[(Outcome[H], Boolean, Option[H])] =
           for
             version <- revision
             hc <- state.get
@@ -849,7 +891,7 @@ object HeaderCheck:
             (current, selected) = snapshot
             result <-
               if !hc.canExtend(header) then
-                protocol[(Outcome[H], Boolean)](
+                protocol[(Outcome[H], Boolean, Option[H])](
                   PeerError.ProtocolProblem.HeaderDoesNotExtend(header.point, hc.tipPoint)
                 )
               else
@@ -859,7 +901,7 @@ object HeaderCheck:
                   case (Some(prev), Some((anchorState, tip))) =>
                     F.delay(rules.validate(anchorState, tip, prev, header)).flatMap {
                       case Outcome.Later(_) => wait(header, waited, hc, selected, version)
-                      case other            => F.pure(other -> waited)
+                      case other            => F.pure((other, waited, Some(prev)))
                     }
                   // the parent's header state is not known until our chain applies it
                   case (None, Some(_)) => wait(header, waited, hc, selected, version)
@@ -901,9 +943,13 @@ object HeaderCheck:
             hc: HeaderChain[H],
             selected: Option[ChainSelection.Local],
             version: Option[Long]
-        )(using Raise[F, PeerError], Raise[F, Reintersection]): F[(Outcome[H], Boolean)] =
+        )(using
+            Raise[F, PeerError],
+            Raise[F, Reintersection]
+        ): F[(Outcome[H], Boolean, Option[H])] =
           sparse(hc, selected).flatMap {
-            case Some(problem) => PeerError.Genesis(problem).raise[F, (Outcome[H], Boolean)]
+            case Some(problem) =>
+              PeerError.Genesis(problem).raise[F, (Outcome[H], Boolean, Option[H])]
             case None =>
               val waiting = waitForChange(version) *> resolve(header, waited = true)
               patience

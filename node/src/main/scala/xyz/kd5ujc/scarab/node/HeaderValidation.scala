@@ -21,6 +21,15 @@ import xyz.kd5ujc.scarab.node.read.{ChainRead, EraRead}
 import xyz.kd5ujc.scarab.protocol.{Era, ReferenceBuild}
 import xyz.kd5ujc.scarab.protocol.LeiosWord.Word32
 
+/** The header state after a Shelley-based header: the protocol's, and the ledger view it was
+  * validated against where that is Praos2's (`hswtLedgerView`, `HeaderStateHistory.hs:161-170` at
+  * ouroboros-consensus 2416493b), none in an era without Leios.
+  */
+private[node] final case class ShelleyValidated(
+    protocol: ProtocolState,
+    leiosView: Option[Praos2.LedgerView]
+)
+
 /** The Shelley ledger forecast shared by every header-validation mode. Parameters and envelope
   * checks come from the same forecast ledger view, including at an epoch boundary. The native
   * forecast horizon is exclusive; a missing forecast waits for ledger progress rather than
@@ -45,7 +54,7 @@ private[node] final class ShelleyHeaderForecast[S](config: PraosConfig, globals:
       h: Header.Shelley,
       forecastLimit: Option[BigInt] = None,
       genericEnvelope: Either[HeaderError, Unit] = Right(())
-  ): HeaderRules.Prepared[ProtocolState] =
+  ): HeaderRules.Prepared[ShelleyValidated] =
     val firstShelley = anchor.consensus.byron.firstShelleyEpoch
     val cfg =
       firstShelley.fold(config)(first => config.copy(geometry = config.geometry.resolved(first)))
@@ -69,7 +78,22 @@ private[node] final class ShelleyHeaderForecast[S](config: PraosConfig, globals:
       )
       .getOrElse(
         prepareInEra(ledger, afterVoting, tip, prev, h, forecastLimit, genericEnvelope, cfg, glob)
+          .map(ShelleyValidated(_, None))
       )
+
+  /** The Leios view at the tip of `anchor` 's ledger ([[Praos2Headers.viewOfTip]]), in the geometry
+    * [[prepareShelley]] validates with; none in a build without Praos2.
+    */
+  private[node] def viewOfTip[E <: EraTag](
+      anchor: S,
+      ledger: EraRead[E]
+  ): Option[Praos2.LedgerView] =
+    val firstShelley = anchor.consensus.byron.firstShelleyEpoch
+    val geometry = firstShelley.fold(config.geometry)(config.geometry.resolved(_))
+    val glob = firstShelley.fold(globals)(first => globals.copy(firstEpoch = first))
+    Praos2Headers
+      .of(glob.referenceBuild)
+      .flatMap(_.viewOfTip(Globals(glob, geometry), ledger, anchor.tipSlot))
 
   /** The bound on an endorser block's transactions forecast from the anchor for `slot`
     * ([[Praos2Headers.maxEbTxsSize]]), in the geometry [[prepareShelley]] validates with.
@@ -230,7 +254,7 @@ private[node] final class Praos2Headers private ():
       h: Header.Shelley,
       forecastLimit: Option[BigInt],
       genericEnvelope: Either[HeaderError, Unit]
-  ): Option[Prepared[ProtocolState]] =
+  ): Option[Prepared[ShelleyValidated]] =
     Option.when(h.era == Era.Dijkstra) {
       val epoch = cfg.geometry.epochOf(h.slot)
       val tipSlot = tip.fold(BigInt(-1))(_.slot)
@@ -365,6 +389,25 @@ private[node] final class Praos2Headers private ():
         )
     }
 
+  /** `ledgerViewOfTip` (`HeaderStateHistory.hs:250-262` at 2416493b) where the ledger is
+    * Dijkstra's: the view at its own tip ([[DijkstraCrossing.forecastInEra]] at the tip); none for
+    * another era's ledger, whose view has no Leios fields, or one it cannot make.
+    */
+  def viewOfTip[E <: EraTag](
+      globals: Globals,
+      ledger: EraRead[E],
+      tip: WithOrigin[SlotNo]
+  ): Option[Praos2.LedgerView] =
+    ledger.era match
+      case ShelleyBasedEra.SDijkstra =>
+        val slot = tip match
+          case WithOrigin.At(s)  => s
+          case WithOrigin.Origin => SlotNo.fromUnsigned(0)
+        ledger.nes.toOption.flatMap(DijkstraCrossing.forecastInEra(globals, slot, tip, _).toOption)
+      case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
+          ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage | ShelleyBasedEra.SConway =>
+        None
+
   /** The era of the view a Byron anchor forecasts for `slot`, the exclusive bound of its range, the
     * slot's epoch, and the Shelley boundary once `slot` is past it ([[fromByron]]).
     */
@@ -411,7 +454,7 @@ private[node] final class Praos2Headers private ():
       unforecast: Praos2Headers.Unforecast,
       h: Header.Shelley,
       tipSlot: BigInt
-  ): Prepared[ProtocolState] = unforecast match
+  ): Prepared[Nothing] = unforecast match
     case Praos2Headers.Unforecast.Horizon =>
       Prepared.Unknown(ForecastReason.Horizon(h.slot, tipSlot))
     case Praos2Headers.Unforecast.View(failure) =>
@@ -475,7 +518,7 @@ private[node] final class Praos2Headers private ():
       end: Option[BigInt],
       forecastLimit: Option[BigInt],
       genericEnvelope: Either[HeaderError, Unit]
-  ): Prepared[ProtocolState] =
+  ): Prepared[Nothing] =
     inRange(globals, tip, h.slot, end, forecastLimit).fold(
       unknown(_, h, tip.fold(BigInt(-1))(_.slot)),
       within =>
@@ -506,7 +549,7 @@ private[node] final class Praos2Headers private ():
       epoch: BigInt,
       tipSlot: BigInt,
       genericEnvelope: Either[HeaderError, Unit]
-  ): Prepared[ProtocolState] =
+  ): Prepared[ShelleyValidated] =
     val config = Praos2.Config(
       cfg,
       Word64.fromUnsigned(cfg.forks.maxMajorProtVer.toLong),
@@ -526,7 +569,7 @@ private[node] final class Praos2Headers private ():
     // before, carried over
     val translated = prev.in(Era.Conway)
     Prepared.Check(() =>
-      val checked: Either[Outcome[ProtocolState], ProtocolState] =
+      val checked: Either[Outcome[ShelleyValidated], ShelleyValidated] =
         for
           state <- translated.dep match
             case ChainDepState.Praos2(p) => Right(p)
@@ -554,9 +597,9 @@ private[node] final class Praos2Headers private ():
             case d: Praos2Defect   => defect(d)
             case p: ProviderDefect => Outcome.Unverifiable(p)
           }
-        yield ProtocolState(
-          ChainDepState.Praos2(next.protocol),
-          translated.extras.copy(epoch = epoch)
+        yield ShelleyValidated(
+          ProtocolState(ChainDepState.Praos2(next.protocol), translated.extras.copy(epoch = epoch)),
+          Some(view)
         )
       checked.fold(identity, Outcome.Valid(_))
     )

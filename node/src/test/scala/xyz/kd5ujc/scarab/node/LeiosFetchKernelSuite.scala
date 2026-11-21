@@ -12,10 +12,12 @@ import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.leios.{
   AnnouncementFields,
+  AnnouncingHeader,
   BytesSize,
   EbFetchState,
   ElId,
   IsBigLedgerPeer,
+  LeiosAnnouncements,
   LeiosFetchRequest,
   LeiosFetchStaticEnv,
   LeiosJobPool,
@@ -79,6 +81,19 @@ class LeiosFetchKernelSuite extends FailsOnUncaught:
           )
       )
     )
+
+  /** The loop and the pruning over a central dedup of its own. */
+  private def kernel[E](
+      shared: LeiosFetchShared[IO, Int],
+      env: LeiosFetchStaticEnv,
+      currentSlot: IO[Option[Word64]],
+      forecast: IO[Word64 => Either[E, BytesSize]],
+      slots: Stream[IO, BigInt],
+      defect: Throwable => IO[Unit]
+  ): cats.effect.Resource[IO, Unit] =
+    cats.effect.Resource
+      .eval(cats.effect.std.AtomicCell[IO].of(LeiosAnnouncements.empty[AnnouncingHeader]))
+      .flatMap(LeiosFetchKernel.run(shared, _, env, currentSlot, forecast, slots, defect))
 
   test("a decision queues a live peer's requests and drops the offers it finds dead") {
     val fresh = EbPoint(slot(10), hash(1))
@@ -169,8 +184,7 @@ class LeiosFetchKernelSuite extends FailsOnUncaught:
               )
           )
           .as(Option(slot(1)))
-        result <- LeiosFetchKernel
-          .run(shared, env, slotRead, noForecast, Stream.empty, IO.raiseError)
+        result <- kernel(shared, env, slotRead, noForecast, Stream.empty, IO.raiseError)
           .surround(
             IO.monotonic.flatMap(start =>
               // woken again as soon as the first decision is made: the second waits out the pace
@@ -187,15 +201,14 @@ class LeiosFetchKernelSuite extends FailsOnUncaught:
     for
       shared <- withPeers(empty, Map.empty)
       stopped <- Deferred[IO, Throwable]
-      seen <- LeiosFetchKernel
-        .run[IO, Int, Unit](
-          shared,
-          env,
-          IO.pure(None),
-          IO.raiseError(boom),
-          Stream.empty,
-          stopped.complete(_).void
-        )
+      seen <- kernel[Unit](
+        shared,
+        env,
+        IO.pure(None),
+        IO.raiseError(boom),
+        Stream.empty,
+        stopped.complete(_).void
+      )
         .surround(shared.wake *> stopped.get)
     yield assertEquals(seen, boom)
   }
@@ -218,15 +231,14 @@ class LeiosFetchKernelSuite extends FailsOnUncaught:
         SortedMap(ElId(slot(5), issuer) -> old.hash, ElId(slot(20), issuer) -> kept.hash)
       )
       pruned <- Deferred[IO, Unit]
-      _ <- LeiosFetchKernel
-        .run(
-          shared,
-          env,
-          IO.pure(None),
-          noForecast,
-          Stream.emit(BigInt(10)) ++ Stream.exec(pruned.complete(()).void),
-          IO.raiseError
-        )
+      _ <- kernel(
+        shared,
+        env,
+        IO.pure(None),
+        noForecast,
+        Stream.emit(BigInt(10)) ++ Stream.exec(pruned.complete(()).void),
+        IO.raiseError
+      )
         .surround(pruned.get)
       after <- shared.outstanding.get
       offers <- vars.offerings.get

@@ -167,7 +167,8 @@ class LeiosFetchRegistrationSuite extends FailsOnUncaught:
               slot(0),
               settling,
               e => IO.raiseError(new AssertionError(e.toString)),
-              IO.raiseError
+              IO.raiseError,
+              _ => IO.pure(None)
             )
           )
           // the endorser block is focused, and the peer offers its body and its closure
@@ -222,7 +223,8 @@ class LeiosFetchRegistrationSuite extends FailsOnUncaught:
                 slot(0),
                 settling,
                 e => IO.raiseError(new AssertionError(e.toString)),
-                IO.raiseError
+                IO.raiseError,
+                _ => IO.pure(None)
               )
             )
             (a, b) <- Bearer.inMemory[IO](64)
@@ -263,7 +265,8 @@ class LeiosFetchRegistrationSuite extends FailsOnUncaught:
               slot(0),
               settling,
               e => IO.raiseError(new AssertionError(e.toString)),
-              IO.raiseError
+              IO.raiseError,
+              _ => IO.pure(None)
             )
           )
           (a, b) <- Bearer.inMemory[IO](64)
@@ -342,7 +345,8 @@ class LeiosFetchRegistrationSuite extends FailsOnUncaught:
                 slot(0),
                 settling,
                 e => IO.raiseError(new AssertionError(e.toString)),
-                IO.raiseError
+                IO.raiseError,
+                _ => IO.pure(None)
               )
             )
             (a, b) <- Bearer.inMemory[IO](64)
