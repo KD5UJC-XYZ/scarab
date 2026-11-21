@@ -263,6 +263,36 @@ object DijkstraCorpus extends Assertions:
     val flat = DijkstraCert.decode(n).fold(e => fail(e.toString), identity)
     DijkstraProcedures.cert(flat, Right(n)).fold(e => fail(e.toString), identity)
 
+  /** Proposals as the era reads them from the bytes `raw` of a set of them: the flat decoder's, at
+    * the reference's types ([[DijkstraProcedures.proposal]]), as Dijkstra's body reads each.
+    */
+  def eraProposals(
+      raw: Bytes
+  ): xyz.kd5ujc.scarab.ledger.era.OSet[
+    xyz.kd5ujc.scarab.ledger.era.ProposalProcedure[xyz.kd5ujc.scarab.ledger.state.Dijkstra]
+  ] =
+    val flat = DijkstraProposal.set(node(raw)).fold(e => fail(e.toString), identity)
+    xyz.kd5ujc.scarab.ledger.era.OSet.decoded(
+      flat.map(p => DijkstraProcedures.proposal(p).fold(e => fail(e.toString), identity))
+    )
+
+  /** Votes as the era reads them from the bytes `raw` of a map of them: the flat decoder's, at the
+    * reference's types ([[DijkstraProcedures.votes]]), as Dijkstra's body reads them.
+    */
+  def eraVotes(
+      raw: Bytes
+  ): xyz.kd5ujc.scarab.ledger.era.VotingProcedures[xyz.kd5ujc.scarab.ledger.state.Dijkstra] =
+    DijkstraProcedures.votes(
+      xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraVoting
+        .procedures(node(raw))
+        .fold(e => fail(e.toString), identity)
+    )
+
+  /** No votes, as a body without the field reads them. */
+  val noVotes
+      : xyz.kd5ujc.scarab.ledger.era.VotingProcedures[xyz.kd5ujc.scarab.ledger.state.Dijkstra] =
+    xyz.kd5ujc.scarab.ledger.era.VotingProcedures(scala.collection.immutable.SortedMap.empty)
+
   // ---- a purpose's item as both resolutions can say it, the flat rules' and the era types'
 
   def txIn(i: DijkstraTxIn): TxIn = TxIn(i.id, BigInt(i.index))

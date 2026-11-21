@@ -1585,8 +1585,8 @@ Conway's rules on the classes follow as the rest of stage 2.
       an input a sub-transaction spent, a batch's collateral, and a Plutus refusal;
     - the refusals are compared through the flat form and the suite's encoder: the era failures have no encoder
       yet (#796).
-  - Not yet (#85): GOV, the sub-transactions' rules and LEDGER (D7c to D7e); ENTITIES and the certificate rules
-    are the next bullet's.
+  - Not yet (#85): the sub-transactions' rules and LEDGER (D7c, D7e); ENTITIES and the certificate rules, and
+    GOV, are the next bullets'.
 - **Dijkstra's certificate rules and ENTITIES** (`era/rules/DijkstraCerts.scala`,
   `era/rules/DijkstraCertsFailures.scala`; `Rules/{Entities,Cert,Certs,Deleg,Pool,GovCert}.hs` of
   `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/`, cardano-ledger 9df9f98c):
@@ -1705,7 +1705,7 @@ Conway's rules on the classes follow as the rest of stage 2.
       fixture does not record; here they are a component check from the empty state;
     - the certificates of the 2 chain transactions that hold them in a sub-transaction: SUBCERTS's (D7c); and
       ENTITIES on the chain's 28 batches as the reference judged them, which reads the state after SUBLEDGERS;
-    - the `gov` cases' own verdicts, which are GOV's (D7d); only their setups are compared here;
+    - the `gov` cases' own verdicts, which are GOV's (the next bullet); only their setups are compared here;
     - a pool registration against the flat rules, which halt on one (`DijkstraPending.PoolRegistration`): POOL's
       registrations are compared with the reference's invariant and recorded parameters, not with a flat rule;
     - refusals that no recording holds: any of ENTITIES' own failures, and a pool registration with a voting key,
@@ -1717,6 +1717,69 @@ Conway's rules on the classes follow as the rest of stage 2.
     withdrawals and deposits keyed by `AccountAddress`
     ([item](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7058657335)); the sub-transactions' rules,
     which reuse POOL and ENTITIES' checks (D7c).
+- **Dijkstra's GOV** (`era/rules/DijkstraGovFailures.scala`, `era/rules/GovFailures.scala`; `Rules/Gov.hs` of
+  `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/`, cardano-ledger 9df9f98c):
+  - GOV is Conway's transition at Dijkstra (`transitionRules = [Conway.conwayGovTransition]`, `Gov.hs:220`), on
+    Conway's `Proposals` and Conway's environment and signal (`Gov.hs:211-216`), unchanged: Conway's `Gov.hs` and
+    `Governance/Proposals.hs` at 9df9f98c are f649f975's but for the failure type's derived `Ord`, and the voting
+    functions of `Governance/Internal.hs` and `pvCanFollow` are the same. What Dijkstra changes reaches it
+    through the parameter class alone: `ConwayEraPParams[Dijkstra]`'s `ppuWellFormed` (`Dijkstra/PParams.hs:1149-1175`,
+    with no version gate) and the groups of Dijkstra's fields, its keys 34 to 56 among them, which decide whether
+    a stake pool may vote on a parameter change. Dijkstra adds no check of its own to GOV and removes none.
+  - The failure type is `DijkstraGovPredFailure` (`Gov.hs:73-114`), a type of its own with Conway's 19
+    constructors under their names, in tag order (`:135-155`), with `ConwayGovPredFailure`'s fields. `conwayToDijkstraGovPredFailure` (`:222-243`) is total, so
+    D7a's decision on partial injections has nothing to narrow. `EraRuleFailure "GOV"` and `EraRuleEvent "GOV"`
+    have Dijkstra's cases, the event Conway's (`:121-123`), and `InjectGov.dijkstra` is the reference's two
+    instances (`:127-130`). `DijkstraGovPredFailure.toStored` gives a failure's flat form, Conway's, one-way glue the
+    comparisons read; a parameter change, which the flat Conway action cannot hold, has none
+    (`GovActionNotRead`).
+  - The transition is generic in its era, where the reference's is generic in its rule too, for SUBGOV (D7c). The
+    LEDGER constructor and injections (`DijkstraGovFailure`, `Ledger.hs:101, 189-196`) come with Dijkstra's LEDGER
+    (D7e).
+  - Evidence:
+    - `DijkstraRulesOracleSuite`: on the reference's 16 `gov` cases (`fixtures/reference/dijkstra-rules`), GOV at
+      the root, as the oracle applies it, from the certificate state Dijkstra's era CERTS leaves after the case's
+      setup and the default store of proposals, the signal read by the era's decoders. Its 10 refusals, put in
+      the flat form by `toStored` and written by the suite's encoder, are the reference's bytes in its order,
+      `committee-conflicting`'s two reversed at the root among them. Its verdicts are the flat rule's on all 16.
+      On the 6 both admit, its proposals after, written as the flat rule keeps them, are the flat rule's, and its
+      events are the sequence Conway's transition tells (`GovNewProposals`, then `GovRemovedVotes`), checked
+      against that sequence: the oracle records no events, and the flat rule tells none. The flat form restores an
+      action from the proposal it was read as, so `gov/treasury-zero`'s failure is also checked on the era type:
+      its withdrawal of zero to the recorded account, with no guardrails script.
+    - `DijkstraGovSuite`, the testnet's chain (`fixtures/reference/leios-testnet-chain-contexts`): its only two
+      proposals, parameter changes of the endorser-block limits (keys 45 and 46, then 47 and 48), which the chain's
+      ledger admitted. From a state that registers their return account, under the testnet's genesis parameters
+      and constitution, at their slots' epochs, they are admitted in sequence, the second the child of the first,
+      and the second is admitted on a store whose root is the first, as when the first was enacted. The second is
+      refused with `InvalidPrevGovActionId` on the default store, the first with `InvalidGuardrailsScriptHash`
+      under no constitution, and with `ProposalDepositIncorrect` and `ProposalReturnAccountDoesNotExist` under
+      another deposit and no account. A registered stake pool and DRep vote on the first, since those keys are of
+      the security group (`Dijkstra/PParams.hs:258-269`).
+    - `DijkstraGovSuite`, the rest: the Leios build's decoding corpus's empty parameter change is
+      `MalformedProposal`, and its return account of the other network refused after it; each of Conway's
+      failures, built, is Dijkstra's of the same tag and fields, through `InjectGov.dijkstra` too, and the events
+      pass as they are.
+    - Conway's GOV suites (`ConwayGovChecksSuite`, `UpstreamGovernanceFunctionalSuite`, `UpstreamGovConformanceSuite`,
+      `EraProposalsSuite`) and the LEDGER suites that run GOV keep their expected values.
+  - Incomplete (CNF-2):
+    - the chain's proposals as the reference judged them: the fixture records neither the chain's certificate state
+      nor its proposals, so each verdict there is the rule's, derived by hand. No other transaction of the
+      recorded chain and block samples proposes or votes at the top level (the chain's other 198, the testnet's
+      blocks' 40, the corpus's blocks' 63 and the devnet chain's one). The votes and proposals of the Leios
+      build's decoding corpus, and of the hand-built `everything` and `governance` cases of the script-context
+      fixture (`fixtures/reference/leios-testnet-contexts`), carry no GOV verdict;
+    - refusals that no recording holds, at Dijkstra: a parameter change, malformed or not, against the reference,
+      which the oracle's cases exclude, and the failures over votes beyond `VotersDoNotExist` and
+      `GovActionsDoNotExist`;
+    - a sub-transaction's proposals and votes: SUBGOV's (D7c);
+    - the refusals are compared through the flat form and the suite's encoder: the era failures have no encoder
+      yet (#796).
+  - Not yet (#85): what Conway's GOV leaves, the Dijkstra copy inherits: the reference's typed voter in the votes
+    and the failures ([item](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923023870)), the
+    governance state's classes and the committee as the reference's
+    ([item](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923488137)), and the flat GOV's order of
+    its vote failures ([item](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7054122427)).
 - **Next, Conway's rules.** The first rule ported is one that needs no parameters, the second one that
   does, each under a differential against the flat rule on the recorded blocks and the refusal corpus.
 - The body is read through the flat decoder for now. What only the projection refuses (an update, genesis

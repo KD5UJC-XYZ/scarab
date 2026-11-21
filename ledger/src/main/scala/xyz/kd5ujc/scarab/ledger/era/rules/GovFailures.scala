@@ -22,6 +22,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
   Conway,
   Credential,
   DRepRole,
+  Dijkstra,
   EpochNo,
   EraTag,
   Hash32,
@@ -76,8 +77,9 @@ enum ConwayGovPredFailure[E <: EraTag]:
   case TreasuryWithdrawalReturnAccountsDoNotExist(accounts: NonEmptyList[AccountAddress])
   case UnelectedCommitteeVoters(credentials: NonEmptyList[FlatCredential])
 
-/** An action the failure carries that is not one of the proposals it was given: the flat form holds
-  * the action as read, which only the proposal keeps.
+/** An action the failure carries that has no flat form here: one that is not one of the proposals
+  * it was given, as the flat form holds the action as read, which only the proposal keeps; or, at
+  * Dijkstra, a parameter change, which the flat Conway action cannot hold.
   */
 final case class GovActionNotRead[E <: EraTag](action: GovAction[E])
 
@@ -175,16 +177,19 @@ enum ConwayGovEvent[E <: EraTag]:
   )
 
 /** `EraRuleFailure "GOV" era`: Conway's is its own (`Conway/Rules/Gov.hs:225`, cardano-ledger
-  * f649f975). Each era adds its case with its rule.
+  * f649f975), Dijkstra's `DijkstraGovPredFailure` (`Dijkstra/Rules/Gov.hs:121`, cardano-ledger
+  * 9df9f98c). Each era adds its case with its rule.
   */
 type GovPredFailure[E <: EraTag] = E match
-  case Conway => ConwayGovPredFailure[Conway]
+  case Conway   => ConwayGovPredFailure[Conway]
+  case Dijkstra => DijkstraGovPredFailure[Dijkstra]
 
 /** `EraRuleEvent "GOV" era`: Conway's is its own (`Conway/Rules/Gov.hs:227`, cardano-ledger
-  * f649f975).
+  * f649f975), and Dijkstra's is Conway's (`Dijkstra/Rules/Gov.hs:123`, cardano-ledger 9df9f98c).
   */
 type GovEvent[E <: EraTag] = E match
-  case Conway => ConwayGovEvent[Conway]
+  case Conway   => ConwayGovEvent[Conway]
+  case Dijkstra => ConwayGovEvent[Dijkstra]
 
 /** `InjectRuleFailure "GOV" ConwayGovPredFailure era` and `InjectRuleEvent "GOV" ConwayGovEvent
   * era` (`libs/cardano-ledger-core/src/Cardano/Ledger/Core/Era.hs:120-134`, cardano-ledger
@@ -200,6 +205,15 @@ object InjectGov:
   given conway: InjectGov[Conway] with
     def injectFailure(failure: ConwayGovPredFailure[Conway]): GovPredFailure[Conway] = failure
     def injectEvent(event: ConwayGovEvent[Conway]): GovEvent[Conway] = event
+
+  /** `Dijkstra/Rules/Gov.hs:127-130`, cardano-ledger 9df9f98c: Conway's failure as Dijkstra's
+    * (`conwayToDijkstraGovPredFailure`), and Conway's event as it is. Dijkstra's own failure is its
+    * rule's (`Gov.hs:125`), which the transition, reporting Conway's, never injects.
+    */
+  given dijkstra: InjectGov[Dijkstra] with
+    def injectFailure(failure: ConwayGovPredFailure[Dijkstra]): GovPredFailure[Dijkstra] =
+      DijkstraGovPredFailure.conwayToDijkstraGovPredFailure(failure)
+    def injectEvent(event: ConwayGovEvent[Dijkstra]): GovEvent[Dijkstra] = event
 
 /** The order of the sets and maps GOV's failures and events hold: the reference's derived ones. */
 private[rules] given voterVoteOrdering: Ordering[(Voter, GovActionId)] =

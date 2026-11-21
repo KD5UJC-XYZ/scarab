@@ -58,6 +58,15 @@ import xyz.kd5ujc.scarab.protocol.{DijkstraNotYet, Era}
   * (`DijkstraCertsStored.toStored`) and written by this suite's encoder, are the reference's bytes
   * in its order, and its verdicts and states the flat rule's. ENTITIES is run on the transaction of
   * the devnet block the reference accepted, where the flat rules halt.
+  *
+  * The era-typed GOV (Conway's transition at Dijkstra, `EraGovRun.dijkstra`, #85) is run on every
+  * `gov` case at the root, from the certificate state the era-typed CERTS leaves after its setup:
+  * its failures, in the flat Dijkstra form (`DijkstraGovPredFailure.toStored`) and written by this
+  * suite's encoder, are the reference's bytes in its order; its verdicts are the flat rule's on all
+  * 16, and on the 6 both admit its proposals after are the flat rule's and its events the sequence
+  * Conway's transition tells (`GovNewProposals`, then `GovRemovedVotes`), which the oracle does not
+  * record. The flat form restores an action from the proposal it was read as, so
+  * `gov/treasury-zero` 's failure is checked on the era type too.
   */
 class DijkstraRulesOracleSuite extends FunSuite:
   private val fixture = Path.of("fixtures", "reference", "dijkstra-rules", "cases.jsonl")
@@ -366,31 +375,41 @@ class DijkstraRulesOracleSuite extends FunSuite:
       case "certs" =>
         val cs = decoded(strings(h.downField("certs")))(DijkstraCert.decode)
         judged(runCerts(pp, epoch, cs))(f => dijkstra(certs(f)))
-      case "gov" =>
-        val setup = decoded(strings(h.downField("setup")))(DijkstraCert.decode)
-        val cert = runCerts(pp, epoch, setup) match
-          case Right(Right(s)) => s
-          case other           => fail(s"the setup does not pass: $other")
-        val votes = h
-          .downField("votes")
-          .as[String]
-          .toOption
-          .fold(Vector.empty)(v => ok(DijkstraVoting.procedures(node(hex(v)))))
-        val proposals = h
-          .downField("proposals")
-          .as[String]
-          .toOption
-          .fold(Vector.empty)(p => ok(DijkstraProposal.set(node(hex(p)))))
-        judged(
-          DijkstraSts.judge(DijkstraGov, Judgment.Policy.Accumulate)(
-            globals,
-            GovEnv(Bytes.fromArray(Array.fill(32)(6)), epoch, pp, None, cert, None),
-            Proposals.empty,
-            DijkstraGovSignal(votes, proposals, Vector.empty)
-          )
-        )(g => dijkstra(conway(PredicateFailure.Gov(g))))
+      case "gov"   => judged(flatGov(c))(gov)
       case "utxow" => judged(flatUtxow(c, xyz.kd5ujc.scarab.ledger.TxEnv.Validation.All))(utxow)
       case other   => fail(s"kind $other")
+
+  /** A GOV failure as Dijkstra's encoder writes it: Conway's, with a `Mismatch` as one item. */
+  private def gov(g: xyz.kd5ujc.scarab.ledger.GovFailure): Bytes =
+    dijkstra(conway(PredicateFailure.Gov(g)))
+
+  /** The flat GOV on a `gov` case: its setup's certificate state, the default store of proposals,
+    * for a transaction whose id is 32 bytes of 6.
+    */
+  private def flatGov(c: Json) =
+    val h = c.hcursor
+    val pp = params(c)
+    val epoch = num(h.downField("epoch"))
+    val setup = decoded(strings(h.downField("setup")))(DijkstraCert.decode)
+    val cert = runCerts(pp, epoch, setup) match
+      case Right(Right(s)) => s
+      case other           => fail(s"the setup does not pass: $other")
+    val votes = h
+      .downField("votes")
+      .as[String]
+      .toOption
+      .fold(Vector.empty)(v => ok(DijkstraVoting.procedures(node(hex(v)))))
+    val proposals = h
+      .downField("proposals")
+      .as[String]
+      .toOption
+      .fold(Vector.empty)(p => ok(DijkstraProposal.set(node(hex(p)))))
+    DijkstraSts.judge(DijkstraGov, Judgment.Policy.Accumulate)(
+      globals,
+      GovEnv(Bytes.fromArray(Array.fill(32)(6)), epoch, pp, None, cert, None),
+      Proposals.empty,
+      DijkstraGovSignal(votes, proposals, Vector.empty)
+    )
 
   /** The flat UTXOW on a `utxow` case under `validation`. */
   private def flatUtxow(c: Json, validation: xyz.kd5ujc.scarab.ledger.TxEnv.Validation) =
@@ -700,4 +719,132 @@ class DijkstraRulesOracleSuite extends FunSuite:
       stAnnTx
     )
     assertEquals(judged.map(_.map(_._1)), Right(Right(start)))
+  }
+
+  // ---- the era-typed GOV --------------------------------------------------------------------------
+
+  private lazy val govCases: Vector[Json] =
+    cases.filter(c => str(c.hcursor.downField("kind")) == "gov")
+
+  /** The signal of a `gov` case as the era reads it: its votes and proposals, no certificates. */
+  private def eraGovSignal(c: Json): xyz.kd5ujc.scarab.ledger.era.rules.GovSignal[Dijkstra] =
+    import xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraCorpus
+    val h = c.hcursor
+    xyz.kd5ujc.scarab.ledger.era.rules.GovSignal[Dijkstra](
+      h.downField("votes")
+        .as[String]
+        .toOption
+        .fold(DijkstraCorpus.noVotes)(v => DijkstraCorpus.eraVotes(hex(v))),
+      h.downField("proposals")
+        .as[String]
+        .toOption
+        .fold(xyz.kd5ujc.scarab.ledger.era.OSet.empty)(p => DijkstraCorpus.eraProposals(hex(p))),
+      Vector.empty
+    )
+
+  /** The transaction id of every `gov` case: 32 bytes of 6. */
+  private val govTxId: Hash32 = ok(Hash32.fromBytes(Bytes.fromArray(Array.fill(32)(6))))
+
+  /** Dijkstra's GOV on the era types (Conway's transition at Dijkstra, `Dijkstra/Rules/Gov.hs:220`,
+    * cardano-ledger 9df9f98c) at the root, as the oracle applies it: from the certificate state
+    * Dijkstra's era CERTS leaves after the case's setup and the default store of proposals, with no
+    * guardrails script and no committee, on the testnet.
+    */
+  private def eraGovRun(c: Json) =
+    import xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraCorpus
+    val cert = eraCertsRun(c, "setup") match
+      case Right(Right((s, _))) => s
+      case other                => fail(s"the setup does not pass: $other")
+    xyz.kd5ujc.scarab.ledger.era.EraGovRun.dijkstra(
+      xyz.kd5ujc.scarab.ledger.era.rules
+        .GovEnv[Dijkstra](govTxId, epochOf(c), DijkstraCorpus.era(params(c)), None, cert, None),
+      eraGovSignal(c),
+      Network.Testnet,
+      xyz.kd5ujc.scarab.ledger.era.EraGovRun.dijkstraEmpty
+    )
+
+  private def eraGov(c: Json): Verdict = eraGovRun(c) match
+    case Left(defect)    => fail(s"${str(c.hcursor.downField("name"))}: $defect")
+    case Right(Right(_)) => Verdict.Accepted
+    case Right(Left(fs)) =>
+      Verdict.Refused(
+        fs.toChain.toVector.map(f =>
+          gov(
+            xyz.kd5ujc.scarab.ledger.era.EraGovRun
+              .dijkstraStored(eraGovSignal(c), f)
+              .fold(n => fail(s"no flat form of $n"), identity)
+          )
+        )
+      )
+
+  test("the era-typed GOV gives the reference's verdict on every gov case, byte for byte") {
+    assertEquals(govCases.size, 16)
+    val differing = govCases.flatMap { c =>
+      val name = str(c.hcursor.downField("name"))
+      val (ours, expected) = (eraGov(c), reference(c))
+      Option.when(ours != expected)(s"$name: $ours, the reference $expected")
+    }
+    assertEquals(differing, Vector.empty[String])
+  }
+
+  test(
+    "the era-typed GOV's refusal of a zero withdrawal holds the account, the zero and no policy"
+  ) {
+    import xyz.kd5ujc.scarab.ledger.era.GovAction
+    import xyz.kd5ujc.scarab.ledger.era.rules.DijkstraGovPredFailure
+    val c = govCases
+      .find(c => str(c.hcursor.downField("name")) == "gov/treasury-zero")
+      .getOrElse(fail("no case gov/treasury-zero"))
+    // the case's one proposal withdraws 0 to the testnet's key account of 28 bytes of 1, with no
+    // guardrails script (`ZeroTreasuryWithdrawals`, `Conway/Rules/Gov.hs:550`, cardano-ledger
+    // 9df9f98c)
+    val account = xyz.kd5ujc.scarab.ledger.RewardAccount(
+      0,
+      xyz.kd5ujc.scarab.ledger.Credential.Key(Bytes.fromArray(Array.fill(28)(1)))
+    )
+    eraGovRun(c) match
+      case Right(Left(fs)) =>
+        assertEquals(
+          fs.toChain.toVector,
+          Vector(
+            DijkstraGovPredFailure.ZeroTreasuryWithdrawals[Dijkstra](
+              GovAction.TreasuryWithdrawals(Map(account -> Coin(0)), None)
+            )
+          )
+        )
+      case other => fail(s"not refused: $other")
+  }
+
+  test("the era-typed GOV gives the flat rule's verdict on every gov case, and its state") {
+    import xyz.kd5ujc.scarab.ledger.era.rules.{ConwayGovEvent, drepCredentialOrdering}
+    val admitted = govCases.flatMap { c =>
+      val name = str(c.hcursor.downField("name"))
+      assertEquals(eraGov(c), scarab(c), name)
+      (eraGovRun(c), flatGov(c)) match
+        case (Right(Right((era, events))), Right(Right(flat))) =>
+          assertEquals(
+            xyz.kd5ujc.scarab.ledger.era.EraGovRun.dijkstraToStored(era),
+            Right(flat),
+            name
+          )
+          // both events, each by the transaction's id: the proposals after, and no vote replaced
+          // or removed, as no case casts a vote twice or unregisters a DRep
+          assertEquals(
+            events.toVector,
+            Vector(
+              ConwayGovEvent.GovNewProposals[Dijkstra](govTxId, era),
+              ConwayGovEvent.GovRemovedVotes[Dijkstra](
+                govTxId,
+                scala.collection.immutable.SortedSet.empty,
+                scala.collection.immutable.SortedSet.empty
+              )
+            ),
+            name
+          )
+          Some(name)
+        case (Right(Left(_)), Right(Left(_))) => None
+        case other                            => fail(s"$name: $other")
+    }
+    assertEquals(admitted.size, govCases.count(c => reference(c) == Verdict.Accepted))
+    assertEquals(admitted.size, 6)
   }
