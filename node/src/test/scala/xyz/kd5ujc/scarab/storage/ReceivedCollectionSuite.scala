@@ -406,8 +406,9 @@ class ReceivedCollectionSuite extends FailsOnUncaught:
     // at a block it cannot read (`parseBlockFile`, `BlockReadErr`,
     // `Storage/VolatileDB/Impl/Parser.hs` 70-107, ouroboros-consensus 82ecba329), and M by the
     // check of the reference Scarab's record keeps beside the block, which the reference reads
-    // from the block itself. Each file is cut there and the third is read all the same, at this
-    // open and the next
+    // from the block itself; M's cut names block 3, the block its body decodes to, as the
+    // reference names a corrupt block (`blockHash blk`, `Parser.hs` 102-107). Each file is cut
+    // there and the third is read all the same, at this open and the next
     // The third file is [7 W 8], W a recorded block whose body no longer matches its header
     // ([[wrongBody]]): it decodes, and the check finds it corrupt, as the reference's
     // `BlockCorruptedErr`
@@ -498,7 +499,11 @@ class ReceivedCollectionSuite extends FailsOnUncaught:
                 ),
                 StorageEvent.ReceivedOpened(report)
               ) =>
-            assertEquals(m, mismatched._1.hash, "the block whose header is not its record's")
+            assertEquals(
+              m,
+              block(3)._1.hash,
+              "the block whose header is not its record's, named by its own hash as decoded"
+            )
             assertEquals(mAt, size(block(1)), "cut after block 1")
             assertEquals(uAt, size(block(5)), "cut after block 5")
             assertEquals(w, wrongBody._1.hash, "the block whose body is not its header's")

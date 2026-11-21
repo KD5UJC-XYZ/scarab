@@ -1991,8 +1991,8 @@
    "class": "Gap",
    "structure": "differs",
    "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1261",
-   "note": "the blocks of a file read in turn, each with where its record is and what is read from it, up to the first record that cannot be read (BlockReadErr, here also a record that is not a block, which the received log never writes) or whose block the given check refuses as undecodable (BlockReadErr) or corrupt (BlockCorruptedErr), and the offset where they end (#1247) Where it differs: one pass reads Scarab's framed records, decodes and applies the given check, and keeps no header context (the reference's pbiNestedCtxt); no differential comparison covers it (#1261).",
-   "digest": "defc539b8da2355c"
+   "note": "the blocks of a file read in turn, each with where its record is and what is read from it, up to the first record that cannot be read (BlockReadErr, here also a record that is not a block, which the received log never writes) or whose block the given check refuses as undecodable (BlockReadErr) or corrupt (BlockCorruptedErr, with the hash of the block as decoded, which the check's refusal carries, as parseBlockFile gives blockHash blk, Parser.hs 102-107; not the hash the record names), and the offset where they end (#1247) Where it differs: one pass reads Scarab's framed records, decodes and applies the given check, and keeps no header context (the reference's pbiNestedCtxt); no differential comparison covers it (#1261).",
+   "digest": "d087f13bd3322091"
   },
   "def storage.VolatileStore.addedToIndex": {
    "upstream": [
@@ -2084,7 +2084,7 @@
     "ReceivedBlocksSuite",
     "ReceivedCollectionSuite"
    ],
-   "note": "why the open of the received log cut a file, with ParseError's constructors: ReadFailed for a record that cannot be read or whose block does not decode (BlockReadErr, its reason Scarab's reader's, ReadFailure, where the reference's ReadIncrementalErr is its CBOR reader's), Corrupted with the hash of a block that decodes and that the check finds corrupt (BlockCorruptedErr), and Duplicated with the hash, the file that holds the block and the file cut (DuplicatedBlock) (#1247)",
+   "note": "why the open of the received log cut a file, with ParseError's constructors: ReadFailed for a record that cannot be read or whose block does not decode (BlockReadErr, its reason Scarab's reader's, ReadFailure, where the reference's ReadIncrementalErr is its CBOR reader's), Corrupted with the hash of a block that decodes and that the check finds corrupt, the decoded block's hash as BlockCorruptedErr's is (blockHash blk, Parser.hs 102-107), not the hash the record names when the two differ, and Duplicated with the hash, the file that holds the block and the file cut (DuplicatedBlock) (#1247)",
    "digest": "f37a972fd554fb68"
   },
   "class storage.VolatileStore.Cut": {

@@ -974,6 +974,41 @@ class ReceivedBlocksSuite extends FailsOnUncaught:
     }
   }
 
+  test("a corrupt block's cut is named by the hash its body decodes to, not by its record's") {
+    // the check decodes the second record's body as block 9, which is not the block the record
+    // names: the cut names block 9, as the reference names a corrupt block by the hash of the
+    // block it decoded (`blockHash blk`, `parseBlockFile`, `Storage/VolatileDB/Impl/Parser.hs`
+    // 102-107, ouroboros-consensus 82ecba329)
+    tempDir.use { dir =>
+      ok {
+        val a = block(1)
+        val bad = block(3)._1 -> corrupt
+        val decodedAs = hash(9)
+        val check: ReceivedBlocks.Check = (ref, raw) =>
+          if raw == corrupt then
+            Left(
+              VolatileStore.Refusal.Corrupt(
+                decodedAs,
+                StorageError.Corrupt("synthetic block", Undecodable.Body)
+              )
+            )
+          else decodes(ref, raw)
+        for
+          _ <- VolatileStore
+            .open[IO](dir, 4)
+            .use((log, _) => Vector(a, bad).traverse_((r, raw) => log.append(r, raw)))
+          recovery <- ReceivedBlocks
+            .recovering[IO](dir, 4)(unread, check, _ => IO.unit)
+            .use((_, r) => IO.pure(r))
+        yield assertEquals(
+          recovery.cuts.map(_.cause),
+          Vector(VolatileStore.CutCause.Corrupted(decodedAs)),
+          s"the decoded block's hash, not the record's (${bad._1.hash.hex})"
+        )
+      }
+    }
+  }
+
   test("the scan and the repeat walk of a file of many records run on a small stack") {
     // STK-3: 20,000 records in one file, the last a repeat of the first, parsed and indexed on a
     // thread of 256 KiB of stack

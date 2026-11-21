@@ -220,8 +220,11 @@ object VolatileStore:
     /** The block does not decode. */
     case Undecodable(error: StorageError)
 
-    /** The block decodes, but the check finds it corrupt. */
-    case Corrupt(error: StorageError)
+    /** The block decodes, its hash `hash` (the reference's `blockHash blk`, which is not the
+      * record's when the block is not the one the record names), but the check finds it corrupt, as
+      * `error` says.
+      */
+    case Corrupt(hash: Bytes, error: StorageError)
 
   /** Why a record cannot be read, the reason a `BlockReadErr` carries (the reference's
     * `ReadIncrementalErr`, which describes its reader of bare CBOR blocks).
@@ -241,7 +244,9 @@ object VolatileStore:
     /** The record there cannot be read (`BlockReadErr`). */
     case ReadFailed(failure: ReadFailure)
 
-    /** The block of the record there, `hash`, decodes but is corrupt (`BlockCorruptedErr`). */
+    /** The block of the record there decodes but is corrupt (`BlockCorruptedErr`): `hash` is the
+      * decoded block's, as the reference's is (`blockHash blk`), whatever hash the record names.
+      */
     case Corrupted(hash: Bytes)
 
     /** The block of the record there, `hash`, is already indexed from the file `first`, this file
@@ -499,9 +504,10 @@ object VolatileStore:
     * makes of it, up to the first record that is incomplete, fails its checksum, is not understood,
     * is not a block or whose block `read` refuses, and the offset where they end: the reference's
     * `parseBlockFile`, which decodes the blocks of a file in turn and stops at the first it cannot
-    * read (`BlockReadErr`) or, validating, finds corrupt (`BlockCorruptedErr`)
-    * (`Storage/VolatileDB/Impl/Parser.hs` 52-107, ouroboros-consensus 82ecba329). A log of blocks
-    * only holds no rollback record, so one is a record the parse cannot read.
+    * read (`BlockReadErr`) or, validating, finds corrupt (`BlockCorruptedErr`, with the decoded
+    * block's hash, which the refusal carries) (`Storage/VolatileDB/Impl/Parser.hs` 52-107,
+    * ouroboros-consensus 82ecba329). A log of blocks only holds no rollback record, so one is a
+    * record the parse cannot read.
     */
   private[storage] def parsedBlocks[N](channel: FileChannel, seq: Int)(
       read: (BlockRef, Bytes) => Either[Refusal, N]
@@ -513,7 +519,7 @@ object VolatileStore:
           case Right(n) => Right(parsed :+ ((ref, at, n)))
           case Left(Refusal.Undecodable(error)) =>
             Left(CutCause.ReadFailed(ReadFailure.Undecodable(error)))
-          case Left(Refusal.Corrupt(_)) => Left(CutCause.Corrupted(ref.hash))
+          case Left(Refusal.Corrupt(hash, _)) => Left(CutCause.Corrupted(hash))
       case (_, VolatileRecord.Rollback(_), _) => Left(unreadable)
     }
 

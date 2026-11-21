@@ -66,9 +66,10 @@ object StorageTestKit:
   val corrupt: Bytes = Bytes("corrupt".getBytes.toVector)
 
   /** The start-up check of a log of synthetic blocks ([[ReceivedBlocks.Check]]): every body decodes
-    * but [[undecodable]], and every body that decodes is sound but [[corrupt]].
+    * but [[undecodable]], as the block its record names, and every body that decodes is sound but
+    * [[corrupt]].
     */
-  val decodes: ReceivedBlocks.Check = (_, raw) =>
+  val decodes: ReceivedBlocks.Check = (ref, raw) =>
     if raw == undecodable then
       Left(
         VolatileStore.Refusal.Undecodable(
@@ -76,7 +77,12 @@ object StorageTestKit:
         )
       )
     else if raw == corrupt then
-      Left(VolatileStore.Refusal.Corrupt(StorageError.Corrupt("synthetic block", Undecodable.Body)))
+      Left(
+        VolatileStore.Refusal.Corrupt(
+          ref.hash,
+          StorageError.Corrupt("synthetic block", Undecodable.Body)
+        )
+      )
     else Right(())
 
   /** A synthetic block `i`: slot `i * gap`, number `i`, payload of varying size. */

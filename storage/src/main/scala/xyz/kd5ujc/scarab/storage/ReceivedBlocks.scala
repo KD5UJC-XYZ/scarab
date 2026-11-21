@@ -105,10 +105,10 @@ trait ReceivedBlocks[F[_]]:
 object ReceivedBlocks:
   /** The start-up check of a recovered record, run on each record as the open reads it: its block
     * decodes and its header names the record's point, the typed reason when it does not, told apart
-    * as a block that does not decode or one that decodes and is corrupt
-    * ([[VolatileStore.Refusal]]). The open cuts the record's file at the first record refused, as
-    * the reference's VolatileDB cuts a file at the first block it cannot decode (`BlockReadErr`)
-    * or, validating, finds corrupt (`BlockCorruptedErr`) (`parseBlockFile`,
+    * as a block that does not decode or one that decodes and is corrupt, named by the decoded
+    * block's hash ([[VolatileStore.Refusal]]). The open cuts the record's file at the first record
+    * refused, as the reference's VolatileDB cuts a file at the first block it cannot decode
+    * (`BlockReadErr`) or, validating, finds corrupt (`BlockCorruptedErr`) (`parseBlockFile`,
     * `Storage/VolatileDB/Impl/Parser.hs` 70-107, and `truncateError`,
     * `Storage/VolatileDB/Impl/State.hs` 412-450, ouroboros-consensus 82ecba329).
     */

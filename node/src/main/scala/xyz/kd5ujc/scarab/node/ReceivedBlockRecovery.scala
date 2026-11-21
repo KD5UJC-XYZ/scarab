@@ -34,7 +34,7 @@ private[scarab] object ReceivedBlockRecovery:
   ): Either[StorageError, BlockPool.Delivered] =
     refusing(expected, raw, byronEpochSlots).leftMap {
       case VolatileStore.Refusal.Undecodable(error) => error
-      case VolatileStore.Refusal.Corrupt(error)     => error
+      case VolatileStore.Refusal.Corrupt(_, error)  => error
     }
 
   /** The metadata the block pool is seeded with from a block the received log holds at the node's
@@ -73,7 +73,10 @@ private[scarab] object ReceivedBlockRecovery:
 
   /** [[checked]], with why it refuses a block: the block, or a transaction or Byron body in it,
     * does not decode; or it decodes, and its header is not the record's, its body does not match
-    * its header, or its header's fields are not the punishment view's.
+    * its header, or its header's fields are not the punishment view's. A block that decodes is
+    * refused with its own hash, the decoded header's, as the reference's parser names a corrupt
+    * block (`blockHash blk`, `Storage/VolatileDB/Impl/Parser.hs` 102-107, ouroboros-consensus
+    * 82ecba329, the same at 808e40054), not with the hash the record names.
     */
   private def refusing(
       expected: BlockRef,
@@ -90,6 +93,7 @@ private[scarab] object ReceivedBlockRecovery:
         actual == expected,
         (),
         VolatileStore.Refusal.Corrupt(
+          header.hash,
           StorageError.Corrupt(
             "received block metadata",
             Problem.MetadataMismatch(expected, actual)
@@ -100,20 +104,28 @@ private[scarab] object ReceivedBlockRecovery:
         .checked(header, raw)
         .leftMap {
           case PeerError.ProtocolProblem.FetchedBlockIntegrity(cause) =>
-            transport(cause, StorageError.Corrupt("received block transport", cause))
+            transport(cause, header.hash, StorageError.Corrupt("received block transport", cause))
           case PeerError.ProtocolProblem.InvalidPunishmentHeader(cause) =>
-            VolatileStore.Refusal.Corrupt(StorageError.Corrupt("received block header", cause))
+            VolatileStore.Refusal.Corrupt(
+              header.hash,
+              StorageError.Corrupt("received block header", cause)
+            )
           case other =>
             VolatileStore.Refusal.Corrupt(
+              header.hash,
               StorageError.Corrupt("received block", PeerError.Protocol(other))
             )
         }
     yield delivered
 
-  /** A refusal of the transport check: a part of the block that does not decode, or a block that
-    * decodes and does not match its header.
+  /** A refusal of the transport check of the block decoded with hash `hash`: a part of the block
+    * that does not decode, or a block that decodes and does not match its header.
     */
-  private def transport(cause: BlockTransportError, error: StorageError): VolatileStore.Refusal =
+  private def transport(
+      cause: BlockTransportError,
+      hash: Bytes,
+      error: StorageError
+  ): VolatileStore.Refusal =
     cause match
       case BlockTransportError.Decode(_) | BlockTransportError.TransactionDecode(_, _) |
           BlockTransportError.ByronBodyDecode(_) =>
@@ -121,4 +133,4 @@ private[scarab] object ReceivedBlockRecovery:
       case BlockTransportError.WrongEra(_, _) | BlockTransportError.WrongHeader(_, _) |
           BlockTransportError.WrongBodyHash(_, _) | BlockTransportError.ByronBodyProof(_) |
           BlockTransportError.LeiosBody(_) =>
-        VolatileStore.Refusal.Corrupt(error)
+        VolatileStore.Refusal.Corrupt(hash, error)
