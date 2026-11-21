@@ -909,7 +909,7 @@ left open, or differs from it, §8 lists the point under S2; it is not repeated 
 
 - **The inputs (§5.2).** `EpochInputs` is an epoch's leader-check inputs as one value, compared by value: the epoch and
   its slots, the epoch nonce, the pool's stake and the total, the active slot coefficient, and the VRF key by its
-  public key. `Forger.inputsAt` derives it from a tip through `Forger.conwayAt` and `Forger.leaderView`, the functions
+  public key. `Forger.inputsAt` derives it from a tip through `Forger.ledgerAt` and `Forger.leaderView`, the functions
   the slot driver's own check of an uncovered slot calls (Q3), so the two paths cannot be given different inputs.
 - **The schedule (§5.2).** `LeaderSchedule` walks an epoch in chunks of `LeaderSchedule.ChunkSlots` (100) slots with
   `Leadership.decide`: the output for every slot, a proof for a led slot only. `LeaderSchedule.Pacing` sets the pause
