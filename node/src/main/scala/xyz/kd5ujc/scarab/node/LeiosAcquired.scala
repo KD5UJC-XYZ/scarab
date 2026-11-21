@@ -5,6 +5,8 @@ import cats.effect.{Async, Ref}
 import cats.effect.std.Queue
 import cats.mtl.Raise
 import cats.syntax.all.*
+import fs2.Stream
+import fs2.concurrent.SignallingRef
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.AcquiredLeiosEbs
 import xyz.kd5ujc.scarab.ledger.StorageError
@@ -34,7 +36,8 @@ import xyz.kd5ujc.scarab.storage.{BodyWritten, LeiosEb, LeiosStore, LeiosStoreEr
   */
 private[node] final class LeiosAcquired[F[_]] private (
     state: Ref[F, AcquiredLeiosEbs],
-    completions: Queue[F, EbPoint]
+    completions: Queue[F, EbPoint],
+    immutable: SignallingRef[F, Option[BigInt]]
 )(using F: Async[F]):
   def snapshot: F[AcquiredLeiosEbs] = state.get
 
@@ -48,9 +51,16 @@ private[node] final class LeiosAcquired[F[_]] private (
   def acquired(point: EbPoint): F[Boolean] =
     state.modify(held => held.inserted(point).fold((held, false))((novel, next) => (next, novel)))
 
-  /** `pruneAcquiredLeiosEbs` at the immutable tip's slot. */
+  /** `pruneAcquiredLeiosEbs` at the immutable tip's slot, which [[immutableSlots]] then reports. */
   def pruned(immutableSlot: BigInt): F[Unit] =
-    state.update(held => held.pruned(Some(immutableSlot)).getOrElse(held))
+    state.update(held => held.pruned(Some(immutableSlot)).getOrElse(held)) *>
+      immutable.set(Some(immutableSlot))
+
+  /** The immutable tip's slot each time the collection is scheduled at another one: what the fetch
+    * logic is pruned at (`NodeKernel.leiosImmTipPrune`, a `Watcher` whose fingerprint is the slot,
+    * `NodeKernel.hs:715-735` at ouroboros-consensus 2416493b).
+    */
+  def immutableSlots: Stream[F, BigInt] = immutable.discrete.unNone.changes
 
   /** `store`, its completions offered to [[next]]. Each write and the offer of what it completed
     * are one uncancelable step, so that no completion is lost to a cancelled writer.
@@ -114,5 +124,8 @@ private[node] object LeiosAcquired:
       .map(AcquiredLeiosEbs.of)
 
   def create[F[_]: Async]: F[LeiosAcquired[F]] =
-    (Ref.of[F, AcquiredLeiosEbs](AcquiredLeiosEbs.empty), Queue.unbounded[F, EbPoint])
-      .mapN(new LeiosAcquired(_, _))
+    (
+      Ref.of[F, AcquiredLeiosEbs](AcquiredLeiosEbs.empty),
+      Queue.unbounded[F, EbPoint],
+      SignallingRef.of[F, Option[BigInt]](None)
+    ).mapN(new LeiosAcquired(_, _, _))
