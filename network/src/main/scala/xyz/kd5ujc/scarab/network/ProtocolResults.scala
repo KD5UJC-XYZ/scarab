@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
-import cats.effect.{Async, Deferred, Ref}
+import cats.effect.{Async, Deferred, Ref, Resource}
 import cats.data.NonEmptyVector
 import cats.syntax.all.*
 
@@ -11,7 +11,8 @@ import cats.syntax.all.*
   * later activation.
   */
 final class ProtocolResults[F[_]: Async, A] private (
-    state: Ref[F, ProtocolResults.State[F, A]]
+    state: Ref[F, ProtocolResults.State[F, A]],
+    stops: Ref[F, ProtocolResults.Stops[F]]
 ):
   import ProtocolResults.*
   private val F = Async[F]
@@ -76,11 +77,14 @@ final class ProtocolResults[F[_]: Async, A] private (
     install(Vector(protocol -> temperature), Map(temperature -> Control.Continue))
       .map(run(protocol, _))
 
-  /** Replace the whole hot bundle as one write, as `startProtocols` does (1164–1174). */
-  def startHot(transactions: Boolean): F[Hot[F, A]] =
+  /** Replace the whole hot bundle as one write, as `startProtocols` does (1164–1174). With
+    * `leiosFetch` the Leios build's LeiosFetch client is one of them; its LeiosNotify, which this
+    * node does not run (#54), is not.
+    */
+  def startHot(transactions: Boolean, leiosFetch: Boolean = false): F[Hot[F, A]] =
     val ids = Vector(Protocols.ChainSync, Protocols.BlockFetch) ++ Option.when(transactions)(
       Protocols.TxSubmission2
-    )
+    ) ++ Option.when(leiosFetch)(Protocols.LeiosFetch)
     install(
       ids.map(_ -> Temperature.Hot),
       Map.empty,
@@ -90,11 +94,42 @@ final class ProtocolResults[F[_]: Async, A] private (
         Hot(
           run(Protocols.ChainSync, generation),
           run(Protocols.BlockFetch, generation),
-          Option.when(transactions)(run(Protocols.TxSubmission2, generation))
+          Option.when(transactions)(run(Protocols.TxSubmission2, generation)),
+          Option.when(leiosFetch)(run(Protocols.LeiosFetch, generation))
         )
       )
 
-  def activateHot: F[Unit] = update(s =>
+  /** Run `stop` when the hot protocols are told to terminate, before the control message says so
+    * ([[terminateHot]], [[terminateAll]]), for the life of the resource; at once if they are told
+    * already. A client whose own stop must come no later than the control message's registers it
+    * here: the Leios build's LeiosFetch client, whose stop and next request are one decision
+    * (`nextLeiosFetchClientCommand`, `LeiosDemoLogic.hs` 716-794 of ouroboros-consensus 2416493b).
+    */
+  def onHotStop(stop: F[Unit]): Resource[F, Unit] =
+    Resource
+      .make(
+        F.uncancelable(_ =>
+          stops
+            .modify(s =>
+              if s.terminated then (s, (None, stop))
+              else
+                (
+                  s.copy(hooks = s.hooks.updated(s.next, stop), next = s.next + 1),
+                  (Some(s.next), F.unit)
+                )
+            )
+            .flatMap((id, now) => now.as(id))
+        )
+      )(id => id.traverse_(key => stops.update(s => s.copy(hooks = s.hooks - key))))
+      .void
+
+  /** The hot protocols' registered stops, once each, then the stop recorded for later ones. */
+  private def stopHot: F[Unit] =
+    stops
+      .modify(s => (s.copy(terminated = true, hooks = Map.empty), s.hooks.values.toVector))
+      .flatMap(_.sequence_)
+
+  def activateHot: F[Unit] = stops.update(_.copy(terminated = false)) *> update(s =>
     s.copy(controls =
       s.controls ++ Map(Temperature.Hot -> Control.Continue, Temperature.Warm -> Control.Quiesce)
     )
@@ -109,14 +144,16 @@ final class ProtocolResults[F[_]: Async, A] private (
     }
   }
 
-  def terminateHot: F[Unit] = update(s =>
+  def terminateHot: F[Unit] = F.uncancelable(_ => stopHot) *> update(s =>
     s.copy(controls =
       s.controls ++ Map(Temperature.Hot -> Control.Terminate, Temperature.Warm -> Control.Continue)
     )
   )
 
   def terminateAll: F[Unit] =
-    update(s => s.copy(controls = Temperature.values.map(_ -> Control.Terminate).toMap))
+    F.uncancelable(_ => stopHot) *> update(s =>
+      s.copy(controls = Temperature.values.map(_ -> Control.Terminate).toMap)
+    )
 
   /** Retain the bearer failure before releasing protocol resources. Already returned values and
     * inactive handles keep their results; the mux API currently exposes one terminal cause.
@@ -202,7 +239,8 @@ object ProtocolResults:
   final case class Hot[F[_], A](
       chainSync: Run[F, A],
       blockFetch: Run[F, A],
-      transactions: Option[Run[F, A]]
+      transactions: Option[Run[F, A]],
+      leiosFetch: Option[Run[F, A]] = None
   )
 
   final case class Snapshot[F[_], A](
@@ -228,6 +266,11 @@ object ProtocolResults:
           }
       }.headOption
 
+  /** The stops registered for the hot protocols ([[ProtocolResults.onHotStop]]), and whether they
+    * were told to terminate since the last activation.
+    */
+  private final case class Stops[F[_]](terminated: Boolean, hooks: Map[Long, F[Unit]], next: Long)
+
   private final case class State[F[_], A](
       entries: Map[Int, Entry[A]],
       controls: Map[Temperature, Control],
@@ -252,5 +295,9 @@ object ProtocolResults:
             changed
           )
         )
-        .map(new ProtocolResults(_))
+        .flatMap(state =>
+          Ref
+            .of[F, Stops[F]](Stops(terminated = true, Map.empty, 0L))
+            .map(new ProtocolResults(state, _))
+        )
     )

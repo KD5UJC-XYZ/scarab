@@ -98,6 +98,19 @@ private[protocol] object LeiosNotifyDecoder:
     */
   def decode(state: State, input: Bytes)(using
       LeiosNotify.AnnouncementReader
+  ): Result[(Message, Int)] = framed(state, input, announcement)
+
+  /** The client's messages, of Idle, which carry no header: the server reads them with no reader of
+    * one.
+    */
+  def decodeIdle(input: Bytes): Result[(Message, Int)] =
+    framed(State.Idle, input, fail(LeiosWireError.NotAdmitted(4)))
+
+  /** The message of `state` at the start of `input`, an announcement read by `announced`. */
+  private def framed(
+      state: State,
+      input: Bytes,
+      announced: => Decoder[Message]
   ): Result[(Message, Int)] =
     val decoder = for
       size <- definite(4, LeiosWireError.NotAnArray)
@@ -107,7 +120,7 @@ private[protocol] object LeiosNotifyDecoder:
         case (State.Idle, k) if k == 1 => fields(1, size, 1)(pure(Message.Quit))
         case (State.Busy, k) if k == 2 => fields(2, size, 1)(pure(Message.Canceled))
         case (State.Idle, k) if k == 3 => fields(3, size, 1)(pure(Message.RequestNext))
-        case (State.Busy, k) if k == 4 => fields(4, size, 2)(announcement)
+        case (State.Busy, k) if k == 4 => fields(4, size, 2)(announced)
         case (State.Busy, k) if k == 5 =>
           fields(5, size, 3)(
             for

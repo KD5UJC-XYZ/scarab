@@ -169,3 +169,25 @@ class ProtocolResultsSuite extends FailsOnUncaught:
       )
     )
   }
+
+  test("a hot stop runs before the control message says Terminate, once, and at once if late") {
+    for
+      results <- ProtocolResults.create[IO, Unit]
+      seen <- cats.effect.Ref.of[IO, Vector[Control]](Vector.empty)
+      record = results.control(Temperature.Hot).flatMap(c => seen.update(_ :+ c))
+      _ <- results.activateHot
+      outcome <- results
+        .onHotStop(record)
+        .surround(
+          results.terminateHot *> results.terminateAll *> seen.get
+        )
+      // registered once the hot protocols were told to stop: it runs at once
+      late <- results.onHotStop(record).use_ *> seen.get
+      // a new activation's stop waits for its own Terminate
+      _ <- results.activateHot
+      fresh <- results.onHotStop(record).use_ *> seen.get
+    yield
+      assertEquals(outcome, Vector(Control.Continue))
+      assertEquals(late, Vector(Control.Continue, Control.Terminate))
+      assertEquals(fresh, late)
+  }

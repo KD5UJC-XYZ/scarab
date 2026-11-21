@@ -119,6 +119,17 @@ enum PeerError extends NodeError:
     */
   case LeiosFetchRefused(cause: NetworkError.LeiosFetchRefused)
 
+  /** Our LeiosFetch client ended the connection over the peer's answer
+    * ([[NetworkError.LeiosFetchInvalidReply]]): a body or transactions that are not what was asked
+    * for, or a body that hashes to the one asked for and is still refused.
+    */
+  case LeiosFetchInvalidReply(cause: NetworkError.LeiosFetchInvalidReply)
+
+  /** Our LeiosNotify server ended the connection over a request beyond the pipelining bound
+    * ([[NetworkError.LeiosNotifyExcessiveRequests]]).
+    */
+  case LeiosNotifyExcessiveRequests(cause: NetworkError.LeiosNotifyExcessiveRequests)
+
   def message: String = this match
     case Handshake(r)   => s"handshake: ${r.message}"
     case Protocol(r)    => s"protocol: ${PeerError.protocolMessage(r)}"
@@ -140,11 +151,13 @@ enum PeerError extends NodeError:
     case GenesisInvariant(problem) => s"the node's own Genesis state broke: ${problem.message}"
     case ServingDefect(protocol, cause) =>
       s"the node's own code threw answering ${xyz.kd5ujc.scarab.protocol.Protocols.name(protocol)}: ${NetworkError.describe(cause)}"
-    case Unverifiable(e)          => e.message
-    case HeaderUndecided(p, d)    => s"${Points.show(p)} has no verdict: ${d.message}"
-    case NotKept(cause)           => cause.message
-    case RangeRefused(cause)      => cause.message
-    case LeiosFetchRefused(cause) => cause.message
+    case Unverifiable(e)                     => e.message
+    case HeaderUndecided(p, d)               => s"${Points.show(p)} has no verdict: ${d.message}"
+    case NotKept(cause)                      => cause.message
+    case RangeRefused(cause)                 => cause.message
+    case LeiosFetchRefused(cause)            => cause.message
+    case LeiosFetchInvalidReply(cause)       => cause.message
+    case LeiosNotifyExcessiveRequests(cause) => cause.message
 
 object PeerError:
   enum GenesisProblem:

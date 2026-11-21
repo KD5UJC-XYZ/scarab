@@ -446,6 +446,14 @@ object Peer:
     // our own LeiosFetch server ended the connection over the peer's request, as the reference's
     // handler throws for it (`FailurePolicy`)
     case cause: NetworkError.LeiosFetchRefused => Fault.Failed(PeerError.LeiosFetchRefused(cause))
+    // our own LeiosFetch client ended the connection over the peer's answer, as the reference's
+    // handler of the answer throws (`FailurePolicy`)
+    case cause: NetworkError.LeiosFetchInvalidReply =>
+      Fault.Failed(PeerError.LeiosFetchInvalidReply(cause))
+    // our own LeiosNotify server ended the connection over a request beyond the pipelining bound,
+    // as the reference's server throws (`FailurePolicy`)
+    case cause: NetworkError.LeiosNotifyExcessiveRequests =>
+      Fault.Failed(PeerError.LeiosNotifyExcessiveRequests(cause))
     case cause: (NetworkError.HandshakeRefused | NetworkError.VersionMismatch) =>
       Fault.Failed(PeerError.Handshake(cause))
     case cause: (NetworkError.IngressLimit | NetworkError.Decode | NetworkError.IllegalTransition |

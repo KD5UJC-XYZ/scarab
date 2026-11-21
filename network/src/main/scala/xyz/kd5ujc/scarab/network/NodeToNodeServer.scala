@@ -18,13 +18,17 @@ import scala.concurrent.duration.*
   * @param peerSharing
   *   The peers we tell others about, when the connection agrees to peer sharing; none answers every
   *   request with an empty list.
+  * @param leiosFetch
+  *   The answers of the LeiosFetch server, which runs where the bundle is the Leios build's
+  *   ([[HotBundle.Leios]]): the node's endorser-block store.
   */
 final class ServerHandlers[F[_], P](
     val codec: ChainSync.PayloadCodec[P],
     val chainSync: Resource[F, ChainSyncServer.Source[F, P]],
     val blocks: BlockFetchServer.Blocks[F],
     val transactions: TxSubmissionServer.Sink[F],
-    val peerSharing: Option[PeerSharingServer.Source[F]] = None
+    val peerSharing: Option[PeerSharingServer.Source[F]] = None,
+    val leiosFetch: Option[LeiosFetchRequestHandler[F]] = None
 )
 
 /** Node-to-node, responder side. [[start]] runs the four server mini-protocols on a multiplexer and
@@ -45,6 +49,8 @@ object NodeToNodeServer:
     * @param maxVersion
     *   The highest node-to-node version accepted: the latest release unless the configuration
     *   enables experimental protocols.
+    * @param bundle
+    *   The hot mini-protocols the build adds ([[HotBundle]]).
     */
   final case class Settings(
       handshakeTimeout: FiniteDuration = Handshake.DefaultPhaseTimeout,
@@ -57,8 +63,12 @@ object NodeToNodeServer:
       transactions: TxSubmissionServer.Settings = TxSubmissionServer.Settings(),
       offerPeerSharing: Boolean = false,
       maxVersion: NtnVersion = NtnVersion.LatestReleased,
-      peerSharing: PeerSharingServer.Settings = PeerSharingServer.Settings()
+      peerSharing: PeerSharingServer.Settings = PeerSharingServer.Settings(),
+      bundle: HotBundle = HotBundle.Release
   )
+
+  /** The multiplexer's mini-protocols of a connection whose bundle is `bundle`. */
+  private[network] def protocols(bundle: HotBundle): Set[Int] = Protocol ++ bundle.protocols
 
   val Protocol: Set[Int] = Set(
     Protocols.Handshake,
@@ -80,8 +90,11 @@ object NodeToNodeServer:
       )
     if peerSharing then always.add(Protocols.PeerSharing) else always
 
-  private[network] def applicationProtocols(peerSharing: Boolean): Set[Int] =
-    application(peerSharing).toSortedSet
+  private[network] def applicationProtocols(
+      peerSharing: Boolean,
+      bundle: HotBundle = HotBundle.Release
+  ): Set[Int] =
+    application(peerSharing).toSortedSet ++ bundle.protocols
 
   /** The temperature of a responder's mini-protocol in the reference's bundle (`TemperatureBundle`,
     * cardano-diffusion `NodeToNode.hs` 252-325, ouroboros-network `c5117705`): ChainSync,
@@ -115,7 +128,7 @@ object NodeToNodeServer:
         .scoped[F, NetworkError, Unit](t => NetworkError.fromThrowable(name, t))(program)
         .flatMap(_.fold(mux.abort, _ => Async[F].unit))
     def channel(protocol: Int) = Resource.eval(mux.channel(protocol, Mux.Role.Responder))
-    val installed = applicationProtocols(peerSharing)
+    val installed = applicationProtocols(peerSharing, settings.bundle)
     // one run of a responder, started on demand by `trigger`: counted by its temperature while it
     // runs, when the connection counts its responders (for the peer's activity)
     def episode(temperature: Temperature, trigger: F[Unit])(run: F[Unit]): F[Unit] =
@@ -180,6 +193,33 @@ object NodeToNodeServer:
           )
         )
       ).background
+      // the Leios build's LeiosNotify server, hot and started on demand (`aLeiosNotifyServer`,
+      // `NodeToNode.hs` 1891-1909 and 2081-2089 at ouroboros-consensus 2416493b), with nothing to
+      // notify (#54)
+      _ <- Option
+        .when(settings.bundle == HotBundle.Leios)(())
+        .traverse_ { _ =>
+          channel(Protocols.LeiosNotify).flatMap { notify =>
+            guarded("leios-notify")(
+              episode(Temperature.Hot, onDemand(started)(Protocols.LeiosNotify))(
+                LeiosNotifyServer.run(notify)
+              ).foreverM[Unit]
+            ).background
+          }
+        }
+      // the Leios build's LeiosFetch server, hot and started on demand (`aLeiosFetchServer`,
+      // `NodeToNode.hs` 1937-1951 and 2090-2098 at ouroboros-consensus 2416493b)
+      _ <- handlers.leiosFetch
+        .filter(_ => settings.bundle == HotBundle.Leios)
+        .traverse_ { handler =>
+          channel(Protocols.LeiosFetch).flatMap { fetch =>
+            guarded("leios-fetch")(
+              episode(Temperature.Hot, onDemand(started)(Protocols.LeiosFetch))(
+                LeiosFetchServer.run(fetch, handler)
+              ).foreverM[Unit]
+            ).background
+          }
+        }
       _ <- Option
         .when(peerSharing)(handlers.peerSharing.getOrElse(PeerSharingServer.empty[F]))
         .traverse_ { source =>
@@ -429,7 +469,7 @@ object NodeToNodeServer:
         Resource.unit[F]
   )(using Raise[F, NetworkError]): F[ConnectionEnd] =
     val config = settings.mux.copy(role = Mux.Role.Responder, duplex = settings.duplex)
-    val served = Mux.handshakeResource(bearer, Protocol, config).use { mux =>
+    val served = Mux.handshakeResource(bearer, protocols(settings.bundle), config).use { mux =>
       for
         agreed <- mux
           .channel(Protocols.Handshake)

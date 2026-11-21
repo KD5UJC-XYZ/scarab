@@ -3,6 +3,7 @@ package xyz.kd5ujc.scarab.network
 
 import cats.{Applicative, Monad}
 import cats.effect.{Async, Ref, Resource}
+import cats.effect.syntax.all.*
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
@@ -24,6 +25,9 @@ import scala.concurrent.duration.*
   * @param chainSyncPipeline
   *   The owned rolling pipeline supplied by production hot activations. Test connections can retain
   *   their explicitly scripted fixed-batch client.
+  * @param leiosFetchFinish
+  *   The Leios build's LeiosFetch client, when this activation runs one: its stop, which returns
+  *   the wait for the client's end on the wire (its answers collected and `MsgDone` sent).
   */
 final class NodeToNodeConnection[F[_], P](
     val version: Int,
@@ -34,7 +38,8 @@ final class NodeToNodeConnection[F[_], P](
     val fetchPerformance: Option[F[FetchGsv.PeerGsv]] = None,
     blockFetchEnded: Option[F[Unit]] = None,
     val chainSyncPipeline: Option[ChainSyncClient.Pipeline[F, P]] = None,
-    chainSyncEnded: Option[F[Unit]] = None
+    chainSyncEnded: Option[F[Unit]] = None,
+    leiosFetchFinish: Option[F[F[Unit]]] = None
 ):
   /** End the hot protocols on the wire, so the connection can carry a new activation: ChainSync and
     * BlockFetch say `MsgDone` where they are idle, TxSubmission2 at the peer's next blocking
@@ -44,12 +49,21 @@ final class NodeToNodeConnection[F[_], P](
   def finish(within: FiniteDuration)(using Monad[F], Raise[F, NetworkError]): F[Boolean] =
     (chainSync.idle, blockFetch.idle).tupled.flatMap {
       case (true, true) =>
-        chainSync.done *> chainSyncEnded.sequence_ *> blockFetch.done *> blockFetchEnded.sequence_ *> transactions
-          .fold(
-            true.pure[F]
-          )(_.finish(within))
+        leiosFetchStopped { ended =>
+          chainSync.done *> chainSyncEnded.sequence_ *> blockFetch.done *> blockFetchEnded.sequence_ *> transactions
+            .fold(
+              true.pure[F]
+            )(_.finish(within))
+            .flatTap(_ => ended)
+        }
       case _ => false.pure[F]
     }
+
+  /** The LeiosFetch client told to stop, so it drains while the others end, then `body` given the
+    * wait for its end, which comes last: its answers collected and `MsgDone` sent.
+    */
+  private def leiosFetchStopped[A](body: F[Unit] => F[A])(using Monad[F]): F[A] =
+    leiosFetchFinish.sequence.flatMap(ended => body(ended.sequence_))
 
   /** ChainSync has already sent MsgDone as a normal result. Drain the remaining hot protocols
     * without sending a second ChainSync message in its terminal state.
@@ -59,22 +73,29 @@ final class NodeToNodeConnection[F[_], P](
   )(using Monad[F], Raise[F, NetworkError]): F[Boolean] =
     blockFetch.idle.flatMap {
       case true =>
-        chainSyncEnded.sequence_ *> blockFetch.done *> blockFetchEnded.sequence_ *> transactions
-          .fold(true.pure[F])(
-            _.finish(within)
-          )
+        leiosFetchStopped { ended =>
+          chainSyncEnded.sequence_ *> blockFetch.done *> blockFetchEnded.sequence_ *> transactions
+            .fold(true.pure[F])(
+              _.finish(within)
+            )
+            .flatTap(_ => ended)
+        }
       case false => false.pure[F]
     }
 
   /** End the drained hot protocols without a second deadline or a lossy Boolean result.
-    * PeerStateActions owns the all-results timeout and connection release.
+    * PeerStateActions owns the all-results timeout and connection release. The Leios build's
+    * LeiosFetch client is told to stop first and waited for last, so its result is in when the
+    * activation is released, whether or not the governor told the hot protocols to stop.
     */
   def finishGracefully(
       chainSyncAlreadyEnded: Boolean
   )(using Monad[F], Raise[F, NetworkError]): F[Unit] =
-    chainSync.done.unlessA(chainSyncAlreadyEnded) *> chainSyncEnded.sequence_ *>
-      blockFetch.done *> blockFetchEnded.sequence_ *>
-      transactions.traverse_(_.terminate.flatMap(_.fold(_.raise[F, Unit], _.pure[F])))
+    leiosFetchStopped(ended =>
+      chainSync.done.unlessA(chainSyncAlreadyEnded) *> chainSyncEnded.sequence_ *>
+        blockFetch.done *> blockFetchEnded.sequence_ *>
+        transactions.traverse_(_.terminate.flatMap(_.fold(_.raise[F, Unit], _.pure[F]))) *> ended
+    )
 
 /** A connection with its handshake done and KeepAlive running, the temperature the reference calls
   * warm (`Ouroboros.Network.PeerSelection.PeerStateActions`: established protocols only). The hot
@@ -117,6 +138,50 @@ final class WarmConnection[F[_], P, A] private[network] (
       .eval(applications.activateHot *> applications.startHot(transactions.nonEmpty))
       .flatMap(startHotProtocols(_, transactions, blockFetchEnded, peerTrust, chainSyncResult))
 
+  /** The Leios build's LeiosFetch client of this activation, its result `result`, told to stop with
+    * the other hot protocols (`aLeiosFetchClient`, `NodeToNode.hs` 1911-1935 at ouroboros-consensus
+    * 2416493b), and a failure of it ends the connection as the other hot clients' do. The resource
+    * is its stop, which returns the wait for its end: the clean end of the activation
+    * ([[NodeToNodeConnection.finishGracefully]]) stops it and waits, as the governor's `Terminate`
+    * does, so its result is in before the activation is released. Released otherwise, the client is
+    * cancelled and its result is the connection's end ([[NodeToNode.protocolEnd]]), never left
+    * running.
+    */
+  private def leiosFetchClient(
+      initiator: LeiosFetchInitiator[F],
+      result: ProtocolResults.Run[F, A]
+  )(using F: Async[F], raise: Raise[F, NetworkError]): Resource[F, F[F[Unit]]] =
+    (
+      Resource.eval(mux.channel(Protocols.LeiosFetch, role)),
+      Resource.eval(StopLatch.create[F])
+    ).tupled.flatMap { (channel, latch) =>
+      val client = Fibers
+        .scoped[F, NetworkError, Unit](NetworkError.fromThrowable("leios-fetch", _))(
+          initiator.run(channel, stop => applications.onHotStop(stop) *> latch.register(stop))
+        )
+        .flatMap {
+          case Right(_) => result.complete(Right(noInitiatorResult))
+          case Left(error) =>
+            NodeToNode
+              .protocolEnd(mux, error)
+              .flatMap(cause => result.complete(Left(cause))) *> mux.abort(error)
+        }
+      // told to stop, the client is let finish: it collects its answers and sends `MsgDone`, so its
+      // result is in before the activation is gone; otherwise it ends with the activation
+      Resource
+        .make(client.start)(fiber =>
+          applications.control(ProtocolResults.Temperature.Hot).flatMap {
+            case ProtocolResults.Control.Terminate => fiber.join.void
+            case ProtocolResults.Control.Continue | ProtocolResults.Control.Quiesce =>
+              // after the cancel, so the client's bracket is released before the result says so
+              fiber.cancel *> NodeToNode
+                .protocolEnd(mux, NetworkError.BearerClosed(NetworkError.Closure.Aborted))
+                .flatMap(cause => result.complete(Left(cause)))
+          }
+        )
+        .map(fiber => latch.fire.as(fiber.join.void))
+    }
+
   /** Start an activation whose control and result handles were installed by its status owner.
     * @param served
     *   Told the bytes of the transactions of each TxSubmission2 reply this side sends.
@@ -127,10 +192,12 @@ final class WarmConnection[F[_], P, A] private[network] (
       blockFetchEnded: Option[F[Unit]],
       peerTrust: ChainSyncTimeouts.PeerTrust,
       chainSyncResult: Option[ProtocolResults.Run[F, A] => F[Unit]],
-      served: Option[Long => F[Unit]] = None
+      served: Option[Long => F[Unit]] = None,
+      leiosFetch: Option[LeiosFetchInitiator[F]] = None
   )(using Async[F], Raise[F, NetworkError]): Resource[F, NodeToNodeConnection[F, P]] =
     for
       _ <- Resource.eval(chainSyncResult.traverse_(_(results.chainSync)))
+      leiosFetchFinish <- (leiosFetch, results.leiosFetch).tupled.traverse(leiosFetchClient.tupled)
       running <- (transactions, results.transactions).tupled.traverse { (source, result) =>
         TxSubmissionClient.backgroundFinishing(
           mux,
@@ -170,8 +237,51 @@ final class WarmConnection[F[_], P, A] private[network] (
       fetchPerformance,
       blockFetchEnded,
       Some(chainSync),
-      Option.when(chainSyncResult.isEmpty)(results.chainSync.complete(Right(noInitiatorResult)))
+      Option.when(chainSyncResult.isEmpty)(results.chainSync.complete(Right(noInitiatorResult))),
+      leiosFetchFinish
     )
+
+/** The stop of an activation's LeiosFetch client, as its clean end gives it: the stop the client
+  * registers ([[LeiosFetchInitiator.run]] 's `onStop`) is run once when [[fire]] d, at once if it
+  * is registered after, as [[ProtocolResults.onHotStop]] runs a stop registered after the
+  * governor's.
+  */
+private final class StopLatch[F[_]] private (cell: Ref[F, StopLatch.State[F]])(using F: Async[F]):
+  import StopLatch.State
+
+  /** `stop` for the life of the resource, run at once if the latch has fired. */
+  def register(stop: F[Unit]): Resource[F, Unit] =
+    Resource
+      .make(
+        F.uncancelable(_ =>
+          cell.flatModify {
+            case State.Open(_)         => (State.Open(Some(stop)), F.unit)
+            case fired @ State.Fired() => (fired, stop)
+          }
+        )
+      )(_ =>
+        cell.update {
+          case State.Open(_)         => State.Open(None)
+          case fired @ State.Fired() => fired
+        }
+      )
+
+  /** Run the registered stop, once, and every later one. */
+  def fire: F[Unit] =
+    F.uncancelable(_ =>
+      cell.flatModify {
+        case State.Open(stop)      => (State.Fired(), stop.sequence_)
+        case fired @ State.Fired() => (fired, F.unit)
+      }
+    )
+
+private object StopLatch:
+  private enum State[F[_]]:
+    case Open(stop: Option[F[Unit]])
+    case Fired()
+
+  def create[F[_]: Async]: F[StopLatch[F]] =
+    Ref.of[F, State[F]](State.Open(None)).map(new StopLatch(_))
 
 object NodeToNode:
 
@@ -199,6 +309,8 @@ object NodeToNode:
     * @param maxVersion
     *   The highest version offered: the latest release (15, as cardano-node 11.1.3) unless the
     *   configuration enables experimental protocols (then 16, which adds the Peras flag).
+    * @param bundle
+    *   The hot mini-protocols the build adds ([[HotBundle]]), on every connection of ours.
     */
   final case class Settings(
       connectTimeout: FiniteDuration = 10.seconds,
@@ -209,7 +321,8 @@ object NodeToNode:
       keepAlive: KeepAliveClient.Settings = KeepAliveClient.Settings(),
       offerPeerSharing: Boolean = false,
       maxVersion: NtnVersion = NtnVersion.LatestReleased,
-      peerSharing: PeerSharingClient.Settings = PeerSharingClient.Settings()
+      peerSharing: PeerSharingClient.Settings = PeerSharingClient.Settings(),
+      bundle: HotBundle = HotBundle.Release
   ):
     /** The ingress limits for a ChainSync client that pipelines `requests` requests at once: the
       * reference's high mark of 300 (`chainSyncPipeliningHighMark`) is the least, since the limit
@@ -299,7 +412,7 @@ object NodeToNode:
     for
       mux <- Mux.handshakeResource(
         bearer,
-        NodeToNodeServer.Protocol,
+        NodeToNodeServer.protocols(settings.bundle),
         settings.mux.copy(duplex = serve.isDefined)
       )
       agreed <- Resource.eval(
@@ -312,7 +425,7 @@ object NodeToNode:
         .fold(
           Resource.eval(
             mux.installApplication(
-              NodeToNodeServer.applicationProtocols(agreed.data.peerSharing),
+              NodeToNodeServer.applicationProtocols(agreed.data.peerSharing, settings.bundle),
               Set.empty
             )
           )
@@ -320,6 +433,7 @@ object NodeToNode:
           NodeToNodeServer.start(
             mux,
             handlers,
+            NodeToNodeServer.Settings(bundle = settings.bundle),
             peerSharing = agreed.data.peerSharing,
             initiators = true
           )
@@ -368,7 +482,7 @@ object NodeToNode:
     for
       mux <- Mux.handshakeResource(
         bearer,
-        NodeToNodeServer.Protocol,
+        NodeToNodeServer.protocols(settings.bundle),
         settings.mux.copy(duplex = serve.isDefined)
       )
       agreed <- Resource.eval(
@@ -387,7 +501,7 @@ object NodeToNode:
         .fold(
           Resource.eval(
             mux.installApplication(
-              NodeToNodeServer.applicationProtocols(agreed.data.peerSharing),
+              NodeToNodeServer.applicationProtocols(agreed.data.peerSharing, settings.bundle),
               Set.empty
             )
           ) *> NodeToNodeServer.published(connection, handle).void
@@ -396,7 +510,7 @@ object NodeToNode:
             NodeToNodeServer.start(
               mux,
               handlers,
-              server,
+              server.copy(bundle = settings.bundle),
               peerSharing = agreed.data.peerSharing,
               initiators = true,
               responders = Some(responders)

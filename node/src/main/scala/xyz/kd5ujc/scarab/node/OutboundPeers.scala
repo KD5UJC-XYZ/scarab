@@ -638,7 +638,8 @@ final class OutboundPeers[F[_]: Async, A] private (
             case Phase.Warm() =>
               for
                 _ <- link.warm.applications.activateHot
-                results <- link.warm.applications.startHot(hot.transactions.nonEmpty)
+                results <- link.warm.applications
+                  .startHot(hot.transactions.nonEmpty, leiosFetch = hot.leios.isDefined)
                 _ <- session.result.complete(results.chainSync)
                 _ <- link.phase.set(Phase.Hot(session))
                 _ <- link.children
@@ -753,7 +754,8 @@ final class OutboundPeers[F[_]: Async, A] private (
                 Some(retire(key)),
                 trust,
                 Some(result => session.result.complete(result).void),
-                Some(served(peer, key.activationGeneration))
+                Some(served(peer, key.activationGeneration)),
+                hot.leios.map(_.initiator(link.connection.id))
               )
               .map(_ -> key)
           )
@@ -1253,6 +1255,9 @@ object OutboundPeers:
     *   the node runs one, as the reference's connection manager announces such a connection to its
     *   inbound governor only in responder mode (`InResponderMode`, `ConnectionManager/Core.hs`
     *   1621-1625 at ouroboros-network `c45735a5`, the same at `4646039f` and `2f1c154f`).
+    * @param leios
+    *   The Leios build's endorser-block fetch, whose LeiosFetch client each hot activation runs;
+    *   `network` 's bundle is then the Leios build's ([[HotBundle.Leios]]).
     */
   final case class Hot[F[_]](
       magic: Long,
@@ -1269,7 +1274,8 @@ object OutboundPeers:
       fatal: Fatal => F[Unit],
       serve: Option[ServerHandlers[F, NtNHeader]] = None,
       genesis: Option[GenesisRuntime[F]] = None,
-      inboundGovernor: Option[(SocketAddress[IpAddress], Boolean) => Resource[F, Unit]] = None
+      inboundGovernor: Option[(SocketAddress[IpAddress], Boolean) => Resource[F, Unit]] = None,
+      leios: Option[LeiosFetchNode[F]] = None
   )
 
   /** A connection of ours, and what its owner can do to it.
