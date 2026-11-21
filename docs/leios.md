@@ -1048,24 +1048,25 @@ name and names the variable, an environmental skip that
 [#54](https://github.com/KD5UJC-XYZ/scarab/issues/54#issuecomment-7070543699) tracks; set to a directory
 that does not hold a state a test reads, that test fails.
 
-### What runs before the Dijkstra rules, and what they must provide
+### What the Dijkstra rules apply in a window
 
-Until the rules apply a Dijkstra block (#85 D8), every window halts at the first block after its start
-(`halted`, `notYet` `Rules`, exit 3), and a window whose start and end are the same state is the
-import–export round trip of that state. The runs on the recorded database are in the
-[evidence log](compatibility/evidence-log-6.md). Two states of window G are not imported: they hold the
+The node's rules apply Dijkstra blocks under the Leios build (#85 D8), and a window whose start and end
+are the same state is the import–export round trip of that state. With them, G1 and the three hops of
+window P each end with `matched` (exit 0): the node's state, tables and meta at the end slot are the
+reference's, byte for byte. The earlier runs on the recorded database, from before the rules applied a
+Dijkstra block, are in the [evidence log](compatibility/evidence-log-6.md). Two states of window G are not imported: they hold the
 proposal that updates the endorser-block limits, a parameter Dijkstra adds (`DijkstraNotYet.ParameterUpdate`,
 #826), so the hops that start there end with a typed `error` before any block, and the hop that ends at
 the first of them cannot be compared.
 
-For a window to pass, the node's block application has to apply what the reference applies, all through
+A window passes where the node's block application applies what the reference applies, all through
 `MirrorRules`, which the program builds as `follow` does:
 
 - a Dijkstra block through Dijkstra's BBODY, the refusal `BlockFailure.NotYet(DijkstraNotYet.Rules)` lifted;
 - before a certifying block, the closure of the endorser block its predecessor announced, applied to the
   unticked parent's state (`applyLeiosClosure`), read from the endorser-block store that the program opens
-  and gives the chain database as `follow` does. Where the rules take that store, the program gives it the
-  same one;
+  as `follow` does (`LeiosStorage.follows`) and gives both the chain database and the rules, with the
+  tip's Leios committee as `follow` keeps it;
 - the parts of Dijkstra's LEDGER the window's transactions reach (for G1: sub-transactions, a direct
   deposit, a pool re-registration with a voting key, account certificates), and EPOCH and SNAP at each
   boundary, with the Leios committee;

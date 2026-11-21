@@ -9,7 +9,7 @@ import cats.syntax.all.*
 import fs2.io.file.{Files, Path as FsPath}
 import io.circe.Json
 import java.nio.file.{Files as JFiles, Path}
-import xyz.kd5ujc.scarab.codec.{Bytes, DomainError}
+import xyz.kd5ujc.scarab.codec.{Bytes, DomainError, Rational}
 import xyz.kd5ujc.scarab.consensus.{BlockNoVerdict, BlockRef}
 import xyz.kd5ujc.scarab.consensus.state.{ConsensusMirrorEnv, ExtLedgerState, MirrorState}
 import xyz.kd5ujc.scarab.ledger.{
@@ -22,7 +22,8 @@ import xyz.kd5ujc.scarab.ledger.{
   StorageError,
   ValidationError
 }
-import xyz.kd5ujc.scarab.ledger.state.{Diff, Difference, SlotNo}
+import xyz.kd5ujc.scarab.consensus.leios.TipCommittee
+import xyz.kd5ujc.scarab.ledger.state.{Diff, Difference, LeiosCommittee, SlotNo}
 import xyz.kd5ujc.scarab.models.runtime.DecodeError
 import xyz.kd5ujc.scarab.node.{
   LeiosStorage,
@@ -466,7 +467,8 @@ object LeiosReplayMain extends IOApp:
       praos: xyz.kd5ujc.scarab.consensus.PraosConfig,
       utxo: UtxoStore[IO],
       parallel: ParallelPlutus[IO],
-      after: (Header, MirrorState, MirrorState) => Raise[IO, StorageError] ?=> IO[Unit]
+      after: (Header, MirrorState, MirrorState) => Raise[IO, StorageError] ?=> IO[Unit],
+      leios: Option[MirrorRules.Leios[IO]]
   ): MirrorRules[IO] =
     MirrorRules[IO](
       praos,
@@ -477,7 +479,8 @@ object LeiosReplayMain extends IOApp:
       xyz.kd5ujc.scarab.plutus.PlutusBackend.default,
       utxoStore = Some(utxo),
       afterBlock = Some(after),
-      parallelPlutus = Some(parallel)
+      parallelPlutus = Some(parallel),
+      leios = leios
     )
 
   /** The part of Dijkstra that `failure` names as not implemented yet, wherever the rules put it: a
@@ -496,16 +499,19 @@ object LeiosReplayMain extends IOApp:
       case BlockFailure.TxDecode(_, e)                  => decoded(e)
       case _                                            => None
 
-  /** The errors the rules raise for a block they have no verdict on because the node does not hold
-    * a part of Dijkstra yet, with the block's slot and the no-verdict the follower withholds the
-    * block for ([[BlockNoVerdict]]): none on main. Once #85 D8(c) lands, a proposal that updates a
-    * parameter Dijkstra adds (keys 34 to 56, which the state's record holds only once #826's format
-    * change lands) is such a no-verdict, and this becomes the one case that maps the error (c)
-    * raises for it to (c)'s `BlockNoVerdict`. Any other error stays an error of the run, with no
-    * verdict.
+  /** The errors the rules raise for a block they have no verdict on, with the block's slot and the
+    * no-verdict the follower withholds the block for: a Dijkstra block's defect that is a limit of
+    * this build valid peer input can meet ([[BlockNoVerdict.ofDijkstra]], as `Follower` routes it),
+    * among them a proposal that updates a parameter Dijkstra adds (keys 34 to 56, which the state's
+    * record holds only once #826's format change lands). Any other error stays an error of the run,
+    * with no verdict.
     */
   val noVerdictNotYet: PartialFunction[NodeError, (BigInt, BlockNoVerdict)] =
-    PartialFunction.empty
+    Function.unlift {
+      case ChainError.DijkstraBlock(slot, defect) =>
+        BlockNoVerdict.ofDijkstra(defect).map(slot -> _)
+      case _ => None
+    }
 
   /** The outcome of a block the rules did not apply: a halt where they name a part not implemented
     * yet, else their refusal of a block the reference applied.
@@ -533,17 +539,21 @@ object LeiosReplayMain extends IOApp:
         .admitting(StateAdmission.restored(layout.build))
     val stores = for
       _ <- DatabaseOwnership.resource[IO](dir)
-      leios <- LeiosStorage.resource[IO](
-        Build,
-        setup.config.settings.leios.database,
-        Some(dir),
-        locks
+      plan <- Resource.eval(
+        LeiosStorage
+          .follows(Build, setup.config.settings.leios.database, Some(dir))
+          .fold(_.raise[IO, LeiosStorage.Plan], IO.pure)
       )
+      leios <- LeiosStorage.resource[IO](plan, locks)
       utxo <- RocksUtxoStore.resource[IO](dir / "utxo" / "live")
       cache <- VerificationCache.resource[IO]()
       parallel <- Resource.eval(ParallelPlutus.create[IO](ParallelPlutus.Workers.default))
-    yield (leios, utxo, cache, parallel)
-    stores.use { (leios, utxo, cache, parallel) =>
+      // the Leios committee of the tip, as `follow` keeps it (`Main.ruled`)
+      committees <- Resource.eval(
+        Ref.of[IO, Option[((LeiosCommittee, Rational), TipCommittee)]](None)
+      )
+    yield (leios, utxo, cache, parallel, committees)
+    stores.use { (leios, utxo, cache, parallel, committees) =>
       val after = (header: Header, _: MirrorState, state: MirrorState) =>
         (_: Raise[IO, StorageError]) ?=>
           IO.delay(cache.noteEpochNonce(state.ledgerEpoch, state.protocol.epochNonce)) *>
@@ -557,7 +567,7 @@ object LeiosReplayMain extends IOApp:
             byronEpochSlots = setup.geometry.byron.epochSlots,
             identity = Some(setup.identity)
           ),
-          rulesOf(setup, praos, utxo, parallel, after),
+          rulesOf(setup, praos, utxo, parallel, after, leios.map(MirrorRules.Leios(_, committees))),
           setup.mirrorStart,
           events,
           new UtxoBacking[IO, MirrorState](utxo, dir / "utxo" / "checkpoints"),
