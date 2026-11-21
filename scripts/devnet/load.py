@@ -150,10 +150,10 @@ def load(args):
     print(json.dumps(stats), flush=True)
 
 
-def submit_all_script(tx_files, parallelism=8, attempts=10):
+def submit_all_script(tx_files, parallelism=8, attempts=10, cli=CLI):
     """A shell script that submits the signed transactions of `tx_files` concurrently, `parallelism`
-    `cardano-cli` processes at a time, and prints one line per file: `ok <file>` or
-    `fail <file> <error>`.
+    `cardano-cli` processes at a time (`cli`, the Conway one by default), and prints one line per file:
+    `ok <file>` or `fail <file> <error>`.
 
     The node's local socket takes only a few connections at the same moment (more fail with
     `connect: resource exhausted`), so the files go in groups of `parallelism`, and such a failure
@@ -161,7 +161,7 @@ def submit_all_script(tx_files, parallelism=8, attempts=10):
     """
     def job(f):
         return (f"( for a in $(seq {attempts}); do "
-                f"{CLI} transaction submit {util.SOCKET} --tx-file {f} > /dev/null 2> {f}.err && "
+                f"{cli} transaction submit {util.SOCKET} --tx-file {f} > /dev/null 2> {f}.err && "
                 f"{{ echo \"ok {f}\"; exit 0; }}; grep -q 'resource exhausted' {f}.err || break; "
                 f"sleep 0.$a; done; echo \"fail {f} $(head -c 300 {f}.err | tr '\\n' ' ')\" ) &")
     groups = [tx_files[i:i + parallelism] for i in range(0, len(tx_files), parallelism)]
