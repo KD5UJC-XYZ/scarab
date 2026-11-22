@@ -40,11 +40,17 @@ def skips(*entries):
 
 def report(suite, tests=2, failures=0, errors=0, skipped=(), cases=None):
     """sbt's JUnit report of `suite`: `tests` test cases, the last of them named by `skipped` and skipped, as sbt
-    writes munit's `assume` and `.ignore`; `cases` overrides the number of test cases written."""
+    writes munit's `assume` and `.ignore`, the first `failures` of them failed and the `errors` after those errored;
+    `cases` overrides the number of test cases written."""
     names = [f"test {i}" for i in range(tests - len(skipped))] + list(skipped)
     written = names if cases is None else names[:cases]
+
+    def outcome(i, name):
+        return ("<failure/>" if i < failures else "<error/>" if i < failures + errors else "") + (
+            "<skipped/>" if name in skipped else "")
+
     body = "".join(f"<testcase classname={quoteattr(suite)} name={quoteattr(name)} time=\"0.001\">"
-                   + ("<skipped/>" if name in skipped else "") + "</testcase>" for name in written)
+                   + outcome(i, name) + "</testcase>" for i, name in enumerate(written))
     return (f"<?xml version='1.0' encoding='UTF-8'?>\n<testsuite name=\"{suite}\" tests=\"{tests}\" "
             f"failures=\"{failures}\" errors=\"{errors}\" skipped=\"{len(skipped)}\" time=\"0.1\">{body}"
             "</testsuite>\n")
@@ -287,16 +293,26 @@ class ReportTests(unittest.TestCase):
         self.assertEqual(len(problems), 1, problems)
         self.assertIn("x.node.Gone of node, a suite the plan does not hold: remove its entry", problems[0])
 
-    def test_refuses_a_report_that_ran_no_test(self):
+    def test_refuses_a_report_that_holds_no_test_case(self):
         self.write_reports(**{"x.node.LightSuite": report("x.node.LightSuite", tests=0)})
         self.assertEqual(self.problems(), ["report 2/node/TEST-x.node.LightSuite.xml: suite x.node.LightSuite of node "
-                                           "ran no test"])
+                                           "reported no test case"])
+
+    def test_accepts_a_suite_whose_every_test_case_is_a_listed_skip(self):
+        self.write_reports(**{"x.node.LightSuite": report("x.node.LightSuite", tests=1, skipped=[SKIP["test"]])})
+        self.assertEqual(len(self.verify(skips(SKIP)).skipped), 1, "by design: each skip is listed with its owner")
 
     def test_refuses_a_report_whose_counts_are_not_its_test_cases(self):
+        held = "but holds {} tests, {} skipped, {} failures, {} errors".format
         cases = {
-            "counts 2 tests, 0 skipped, but holds 1 test cases, 0 skipped": report("x.node.LightSuite", cases=1),
-            "counts 2 tests, 0 skipped, but holds 2 test cases, 1 skipped":
+            "counts 2 tests, 0 skipped, 0 failures, 0 errors, " + held(1, 0, 0, 0):
+                report("x.node.LightSuite", cases=1),
+            "counts 2 tests, 0 skipped, 0 failures, 0 errors, " + held(2, 1, 0, 0):
                 report("x.node.LightSuite", skipped=["s"]).replace('skipped="1"', 'skipped="0"'),
+            "counts 2 tests, 0 skipped, 1 failures, 0 errors, " + held(2, 0, 0, 0):
+                report("x.node.LightSuite").replace('failures="0"', 'failures="1"'),
+            "counts 2 tests, 0 skipped, 0 failures, 1 errors, " + held(2, 0, 0, 0):
+                report("x.node.LightSuite").replace('errors="0"', 'errors="1"'),
             "is not the JUnit report of x.node.LightSuite": report("x.node.LightSuite").replace(' skipped="0"', ""),
         }
         for message, text in cases.items():
@@ -324,10 +340,40 @@ class ReportTests(unittest.TestCase):
                 with self.assertRaisesRegex(shards.ShardError, re.escape(message)):
                     self.verify()
 
+    def test_refuses_a_failed_or_errored_test_case_whatever_the_counts_say(self):
+        where = "report 2/node/TEST-x.node.LightSuite.xml"
+        for kind, verb in (("failure", "failed"), ("error", "errored")):
+            with self.subTest(kind=kind):
+                self.dir.cleanup()
+                self.root.mkdir()
+                # one test case, every count zero, and the case failed (or errored)
+                text = ("<?xml version='1.0' encoding='UTF-8'?>\n<testsuite name=\"x.node.LightSuite\" tests=\"1\" "
+                        "failures=\"0\" errors=\"0\" skipped=\"0\" time=\"0.1\"><testcase "
+                        f"classname=\"x.node.LightSuite\" name=\"case\"><{kind}/></testcase></testsuite>\n")
+                self.write_reports(**{"x.node.LightSuite": text})
+                problems = self.problems()
+                self.assertIn(f"{where}: test 'case' {verb}", problems)
+                self.assertTrue(any(p.startswith(f"{where} counts 1 tests") for p in problems), problems)
+
+    def test_refuses_a_test_case_of_another_suite_and_a_name_reported_twice(self):
+        where = "report 2/node/TEST-x.node.LightSuite.xml"
+        cases = {
+            f"{where}: test case 'test 1' has classname 'x.node.OtherSuite', not x.node.LightSuite":
+                report("x.node.LightSuite").replace('classname="x.node.LightSuite" name="test 1"',
+                                                    'classname="x.node.OtherSuite" name="test 1"'),
+            f"{where}: test 'test 0' is reported 2 times": report("x.node.LightSuite").replace('"test 1"', '"test 0"'),
+        }
+        for message, text in cases.items():
+            with self.subTest(message=message):
+                self.dir.cleanup()
+                self.root.mkdir()
+                self.write_reports(**{"x.node.LightSuite": text})
+                self.assertEqual(self.problems(), [message])
+
     def test_refuses_failures_errors_and_reports_that_are_not_the_suites(self):
         cases = {
-            "1 failures, 0 errors": report("x.node.LightSuite", failures=1),
-            "0 failures, 2 errors": report("x.node.LightSuite", errors=2),
+            "test 'test 0' failed": report("x.node.LightSuite", failures=1),
+            "test 'test 1' errored": report("x.node.LightSuite", errors=2),
             "is not the JUnit report of x.node.LightSuite": report("x.node.OtherSuite"),
             "is not XML": "<testsuite",
         }

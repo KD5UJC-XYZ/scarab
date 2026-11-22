@@ -22,11 +22,13 @@ shard, and that each shard's commands run each of its suites exactly once (`comm
 was planned in, a report for a suite the plan does not hold, and a report with a failure or an error. sbt writes a
 suite's report to one file per module, so a second run of a suite in the same shard would replace the first; the
 check of the commands is what rules that out.
-An incomplete run is not a pass (CNF-2, docs/design-rules.md): `verify` also refuses a report that ran no test, and
-a skipped test that `scripts/ci_test_skips.json` does not list. sbt's report shows munit's `assume` and `.ignore`
-alike, as a `<skipped/>` test case. Each entry of that file names the module, suite and test, the environment
-variables or data the test waits on, and the issue that owns running it; an entry whose test did not skip is
-refused too, so the list holds exactly the skips CI has. The allowed skips are printed with what they wait on.
+An incomplete run is not a pass (CNF-2, docs/design-rules.md): `verify` also refuses a report that holds no test case,
+a report whose counts are not those of its test cases or that holds a test case of another suite or one name twice,
+a failed or errored test case whatever the counts say, and a skipped test that `scripts/ci_test_skips.json` does not
+list. sbt's report shows munit's `assume` and `.ignore` alike, as a `<skipped/>` test case. Each entry of that file
+names the module, suite and test, the environment variables or data the test waits on, and the issue that owns
+running it; an entry whose test did not skip is refused too, so the list holds exactly the skips CI has. The allowed
+skips are printed with what they wait on.
 `compiled` refuses a shard's sbt log in which sbt compiled anything: a shard runs the build job's classes as they
 are.
 
@@ -367,9 +369,11 @@ def collect(plan: dict, number: int, root: Path, out: Path) -> int:
 
 
 def verify(plan: dict, reports: Path, skips: dict[tuple[str, str, str], Skip]) -> Verified:
-    """Refuses unless every suite of the plan has exactly one report, from its own shard, that ran at least one test,
-    with no failure or error and no skipped test that `skips` does not list, and every report is for a suite of the
-    plan. Refuses an entry of `skips` whose test did not skip."""
+    """Refuses unless every suite of the plan has exactly one report, from its own shard, that holds at least one test
+    case, each of its suite and named once, with counts that are those of its test cases, no failed or errored test
+    case and no skipped test that `skips` does not list, and every report is for a suite of the plan. Refuses an entry
+    of `skips` whose test did not skip. A report that leaves a test case out, with counts to match, is not seen: the
+    plan lists suites, not their tests."""
     check_plan(plan)
     planned = {(m, s): shard["shard"] for shard in plan["shards"] for m, s in shard["suites"]}
     modules = {m.name for m in plan_inventory(plan)}
@@ -404,16 +408,24 @@ def verify(plan: dict, reports: Path, skips: dict[tuple[str, str, str], Skip]) -
             problems.append(f"report {where} is not the JUnit report of {suite}")
             continue
         cases = root.findall("testcase")
-        skips_here = [case.get("name", "") for case in cases if case.find("skipped") is not None]
-        if int(counts["tests"]) != len(cases) or int(counts["skipped"]) != len(skips_here):
-            problems.append(f"report {where} counts {counts['tests']} tests, {counts['skipped']} skipped, but holds "
-                            f"{len(cases)} test cases, {len(skips_here)} skipped")
-            continue
+        names = [case.get("name", "") for case in cases]
+        outcomes = {kind: [case.get("name", "") for case in cases if case.find(kind) is not None]
+                    for kind in ("skipped", "failure", "error")}
+        skips_here = outcomes["skipped"]
+        problems += [f"report {where}: test case {case.get('name', '')!r} has classname {case.get('classname')!r}, "
+                     f"not {suite}" for case in cases if case.get("classname") != suite]
+        problems += [f"report {where}: test {name!r} is reported {n} times"
+                     for name, n in sorted(Counter(names).items()) if n > 1]
+        problems += [f"report {where}: test {name!r} failed" for name in outcomes["failure"]]
+        problems += [f"report {where}: test {name!r} errored" for name in outcomes["error"]]
+        held = {"tests": len(cases), "skipped": len(skips_here), "failures": len(outcomes["failure"]),
+                "errors": len(outcomes["error"])}
+        if any(int(counts[k]) != n for k, n in held.items()):
+            problems.append(f"report {where} counts " + ", ".join(f"{counts[k]} {k}" for k in held)
+                            + ", but holds " + ", ".join(f"{n} {k}" for k, n in held.items()))
         read.add((module, suite))
         if not cases:
-            problems.append(f"report {where}: suite {suite} of {module} ran no test")
-        if int(counts["failures"]) or int(counts["errors"]):
-            problems.append(f"report {where}: {counts['failures']} failures, {counts['errors']} errors")
+            problems.append(f"report {where}: suite {suite} of {module} reported no test case")
         for test in skips_here:
             if (module, suite, test) in skips:
                 skipped.add((module, suite, test))
