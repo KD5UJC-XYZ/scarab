@@ -2645,7 +2645,8 @@ Conway's rules on the classes follow as the rest of stage 2.
     holds them beside the BBODY state, read from the node's record where a rule first reads them and written back
     once after the block, so a block whose rules never reach GOV never reads them; a judgment of one transaction
     keeps the lens over the record (`ProposalsRecord.stateful`). The mempool's pool state still reads them through
-    the lens: its run is the plan's first item.
+    the lens: its run is the plan's first item, which is to hold them per pool state
+    (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7084210613).
   - The phase-2 counters (`PlutusStats`, Scarab's own): of BBODY's events, the run keeps what the counters read
     (`ScriptsTold`): UTXOS's passed and failed scripts (`Babbage/Rules/Utxos.hs:130-155`, `:192-222`) and the
     `TotalDeposits` a valid transaction's UTXO tells after them (`Babbage/Rules/Utxo.hs:449-486`), which ends a valid
@@ -2671,11 +2672,12 @@ Conway's rules on the classes follow as the rest of stage 2.
     certificates 0 and 2; the observations on the same blocks; the proposals of two transactions of one block.
   - Differences from the flat rules: the flat rules observe a transaction whose scripts' contexts cannot be collected
     (`Left` of the collection's errors); the era run observes only scripts it runs, so a collection's failure is not
-    observed. Under every failure accumulated (`ValidateAll`, #1328's run), a defect raised by a later
+    observed (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7084208368). Under every failure accumulated (`ValidateAll`, #1328's run), a defect raised by a later
     transaction of a block the flat rules refuse at an earlier one (a phase-1 script the decoder cannot judge, a
     stored output the era does not read) ends the era run without a verdict, where the flat rules refuse the block;
     a phase-2 script is not evaluated once a failure is recorded (`whenFailureFree`), so it does not. No suite
-    exercises the second; it is open for the switch, beside the accumulated refusals (#412).
+    exercises the second; it is open for the switch, beside the accumulated refusals (#412,
+    https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7084209535).
 - **Dijkstra's BBODY** (`era/EraBlock.scala`, `era/dijkstra/DijkstraBlock.scala`, `era/rules/BbodyFailures.scala`,
   `era/rules/DijkstraBbody.scala`; `Rules/Bbody.hs` of `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/`, cardano-ledger
   9df9f98c, with the predicates of Shelley's, Alonzo's and Conway's BBODY it runs):
