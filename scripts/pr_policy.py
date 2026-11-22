@@ -53,6 +53,13 @@ REVIEW = "independent review"
 LINK = re.compile(r"https?://\S+")
 REFERENCE_DEFINITION = re.compile(r"^ {0,3}\[([^\]]+)\]:[ \t]*(?:\n[ \t]*)?(\S+)[^\n]*$", re.MULTILINE)
 REFERENCE = re.compile(r"\[([^\]]+)\](?:\[([^\]]*)\])?(?![(:])")
+# An inline link (not an image): its text, which may hold one level of brackets, and its destination, bare or in angle
+# brackets, with an optional title.
+INLINE_LINK = re.compile(r"(?<!!)\[(?:[^\[\]\\]|\\.|\[[^\[\]]*\])*\]\(\s*(?:<([^<>\n]*)>|([^\s()<>]*(?:\([^\s()]*\)[^\s()<>]*)*))"
+                         r"(?:\s+(?:\"[^\"]*\"|'[^']*'|\([^)]*\)))?\s*\)")
+# An image, whose text and source are no link of the section.
+IMAGE = re.compile("!" + INLINE_LINK.pattern.removeprefix("(?<!!)"))
+AUTOLINK = re.compile(r"<(https?://[^\s<>]*)>")
 ISSUE_LINK = re.compile(r"(?:\[#\d+\]\([^)]*\)|#\d+\b|https://github\.com/[^/\s]+/[^/\s]+/issues/\d+)")
 APPROVAL = re.compile(r"(?:https?://|#\d+|\]\()")
 SECTION_LEVEL = 1
@@ -164,14 +171,31 @@ def without_code_spans(text):
     return "".join(out)
 
 
-def link_targets(text):
-    """The targets of the links `text` renders: each inline link, autolink or bare URL outside link reference
-    definitions (from its scheme to the next space), and the URL of each reference link whose label a definition
-    gives one."""
-    defined = {label.strip().lower(): target for label, target in REFERENCE_DEFINITION.findall(text)}
-    rest = REFERENCE_DEFINITION.sub("", text)
-    referenced = (defined.get((ref or label).strip().lower(), "") for label, ref in REFERENCE.findall(rest))
-    return LINK.findall(rest) + [target for target in referenced if LINK.match(target)]
+def label_key(label):
+    """A link label as CommonMark matches it: case-folded, with its runs of white space as one space."""
+    return " ".join(label.split()).casefold()
+
+
+def link_targets(text, body=None):
+    """The destinations of the links `text` renders, never their visible text: each inline link's destination, each
+    autolink, each reference link whose label a definition anywhere in `body` (by default `text`) gives a URL, the
+    first definition of a label winning, and each bare URL outside them (from its scheme to the next space). A link's
+    text is not a link of its own, an image is none, and a definition that no link in `text` uses is none."""
+    source = text if body is None else "\n".join(rendered_lines(body))
+    defined = {}
+    for label, target in REFERENCE_DEFINITION.findall(source):
+        defined.setdefault(label_key(label), target)
+    targets = []
+    def take(target, match):
+        if target is None or not LINK.match(target):
+            return match.group(0) if target is None else " "
+        targets.append(target)
+        return " "
+    rest = IMAGE.sub(" ", REFERENCE_DEFINITION.sub("", text))
+    rest = INLINE_LINK.sub(lambda m: take(m.group(1) if m.group(1) is not None else m.group(2), m), rest)
+    rest = AUTOLINK.sub(lambda m: take(m.group(1), m), rest)
+    rest = REFERENCE.sub(lambda m: take(defined.get(label_key(m.group(2) or m.group(1))), m), rest)
+    return targets + LINK.findall(rest)
 
 
 def review_link(pr):
@@ -186,14 +210,14 @@ def review_link(pr):
 
 def check_review(pr):
     """A pull request that is not a draft links the independent review of its final diff: a link GitHub renders
-    (`link_targets`), in the section as `rendered_section` reads it, outside code spans, to a comment or a review of
-    that pull request (`review_link`). Another link, such as the attribution line a body ends with, which falls in
-    its last section, is not a review."""
+    (`link_targets`: its destination, with reference definitions read from the whole body), in the section as
+    `rendered_section` reads it, outside code spans, to a comment or a review of that pull request (`review_link`).
+    Another link, such as the attribution line a body ends with, which falls in its last section, is not a review."""
     if pr.get("draft") is True:
         return
     text, link = rendered_section(pr.get("body"), REVIEW), review_link(pr)
     require(text is not None and link is not None
-            and any(link.match(target) for target in link_targets(without_code_spans(text))),
+            and any(link.match(target) for target in link_targets(without_code_spans(text), pr.get("body"))),
             'a pull request that is not a draft needs an "## Independent review" section that links the review of its '
             "final diff posted on it, a comment or a review of this pull request (https://github.com/<repository>/pull/"
             "<number>#issuecomment-<id> or #pullrequestreview-<id>; CONTRIBUTING.md, \"Independent review\"); keep it "
