@@ -313,6 +313,13 @@ enum EventKind(val area: Area, val severity: Severity):
   case ReplayFinished extends EventKind(Area.Storage, Severity.Info)
   case ShutdownSnapshot extends EventKind(Area.Storage, Severity.Info)
 
+  // Leios voting, `TraceLeiosKernel` 's cases with their `kind` s and severities
+  // (`LeiosDemoTypes.hs:1975-2090, 2335-2350` at ouroboros-consensus 2416493b)
+  case LeiosKernelMsg extends EventKind(Area.Chain, Severity.Info)
+  case LeiosVoteScheduled extends EventKind(Area.Chain, Severity.Info)
+  case LeiosVoted extends EventKind(Area.Chain, Severity.Info)
+  case LeiosNotVoted extends EventKind(Area.Chain, Severity.Info)
+
   // the libraries
   case Slf4j extends EventKind(Area.Library, Severity.Info)
 

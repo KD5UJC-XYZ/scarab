@@ -531,6 +531,7 @@ object NodeEvent:
           case _: Fatal.Internal     => "internal"
           case _: Fatal.Defect       => "defect"
           case _: Fatal.Unverifiable => "unverifiable"
+          case _: Fatal.LeiosVoting  => "leiosVoting"
         ).asJson,
         "message" -> fault.message.asJson,
         "exitCode" -> Main.FaultExitCode(fault).code.asJson

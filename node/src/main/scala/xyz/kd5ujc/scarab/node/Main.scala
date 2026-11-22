@@ -51,6 +51,7 @@ import xyz.kd5ujc.scarab.storage.{
 }
 import cats.mtl.{Ask, Handle, Raise, Stateful, Tell}
 import xyz.kd5ujc.scarab.consensus.state.{ConsensusMirrorEnv, MirrorState}
+import xyz.kd5ujc.scarab.ledger.rules.contramap
 import cats.syntax.all.*
 import java.nio.file.{InvalidPathException, Path}
 import com.comcast.ip4s.{Host, IpAddress, Port, SocketAddress}
@@ -731,7 +732,7 @@ object Main extends IOApp:
   private[node] def stopped(fault: Fatal)(using Assertions[IO]): IO[Unit] = fault match
     case Fatal.Internal(ClockProblem.SystemClockMovedBack(_, _)) => IO.unit
     case Fatal.Unavailable(_) | Fatal.Storage(_) | Fatal.Internal(_) | Fatal.Defect(_) |
-        Fatal.Unverifiable(_) =>
+        Fatal.Unverifiable(_) | Fatal.LeiosVoting(_) =>
       Assertions[IO].unreachable(Property.Unreachable.StoppedOnFault, Stop(fault))
 
   /** The reporter of the faults that stop the node ([[FatalReporter]]): the first is logged (`log`,
@@ -1504,7 +1505,8 @@ object Main extends IOApp:
       genesisRuntime: Option[GenesisRuntime[IO]],
       leios: Option[LeiosStore[IO]],
       leiosFetch: Option[LeiosFetchNode[IO]],
-      leiosVotes: Option[LeiosVotes[IO]]
+      leiosVotes: Option[LeiosVotes[IO]],
+      voting: Resource[IO, Unit]
   )
 
   /** The connections: the manager, the inbound governor, the outbound network and the listener. */
@@ -2227,7 +2229,57 @@ object Main extends IOApp:
           chain.ref.get.flatMap(c => rules.rules.committeeOf(c.state)).map(_.getOrElse(Right(None)))
         )
       )
-    yield Supply(blockPool, genesisRuntime, leios, leiosFetch, leiosVotes)
+      // the voting thread of a Leios build, over the node's one vote state, with the voting keys of the credentials read at
+      // start-up, also for a node started as non-producing (`topLevelConfigVotingKeys`,
+      // `Cardano/Node.hs:836-840` at ouroboros-consensus 2416493b, forked by the node kernel,
+      // `NodeKernel.hs:655-671`): its failure stops the node, as the reference's is linked to it
+      voting = (leios, leiosVotes).tupled.fold(Resource.unit[IO]) { (store, vs) =>
+        val keys = run.credentials.fold(Vector.empty)(_.voting)
+        val start = headers.slotClock.geometry.map(_.systemStart)
+        Handle
+          .allow[LeiosVotingFault] {
+            val fault = summon[cats.mtl.Raise[IO, LeiosVotingFault]]
+            given cats.mtl.Raise[IO, xyz.kd5ujc.scarab.consensus.leios.LeiosVotingDefect] =
+              fault.contramap(LeiosVotingFault.Vote(_))
+            given cats.mtl.Raise[IO, xyz.kd5ujc.scarab.storage.LeiosStoreError] =
+              fault.contramap(e => LeiosVotingFault.Storage(StorageError.LeiosStore(e)))
+            val committee = (state: MirrorState) =>
+              rules.rules.committeeOf(state).flatMap {
+                case None              => IO.pure(None)
+                case Some(Right(seen)) => IO.pure(seen)
+                case Some(Left(defect)) =>
+                  fault.raise[LeiosVotingFault, Option[
+                    xyz.kd5ujc.scarab.consensus.leios.TipCommittee
+                  ]](
+                    LeiosVotingFault.Committee(defect)
+                  )
+              }
+            LeiosVotingRun.run(
+              LeiosVoter.env[IO](
+                start,
+                chain.ref.get,
+                committee,
+                LeiosVoter.validateClosure[IO](
+                  store.lookupEbClosure(_),
+                  Some(run.store),
+                  chain.mempoolEnvironment.ask[MempoolEnv],
+                  chain.txClock
+                ),
+                vs
+              ),
+              LeiosVoteSchedule(onset, LeiosVoter.timing[IO](chain.ref.get)),
+              keys,
+              blockPool.leios.notifications.subscribe,
+              event => Log[IO].emit(event)
+            )
+          }
+          .rescue(failed => fatalSink(failed.fatal))
+          // an exception of the rules or a store ends the thread too, and stops the node
+          .handleErrorWith(cause => fatalSink(Fatal.Defect(cause)))
+          .background
+          .void
+      }
+    yield Supply(blockPool, genesisRuntime, leios, leiosFetch, leiosVotes, voting)
 
   /** The node's connections: the manager, the inbound governor, the outbound peer network and the
     * relay's listener.
@@ -2761,6 +2813,7 @@ object Main extends IOApp:
             .flatMap(relayStopped => local(raise).map(IO.race(relayStopped, _).map(_.merge)))
             .flatTap(_ => signals)
             .flatTap(_ => production)
+            .flatTap(_ => supply.voting)
             .flatTap(_ => reporting)
             .flatTap(_ => watching)
             .use(serverStopped =>
@@ -2860,13 +2913,15 @@ object Main extends IOApp:
 
   /** The exit code of a run that a session's failure stopped: the storage failed (5), the node
     * failed itself (6), something threw that nobody expected (7), or evaluation was unavailable
-    * (8). A supervisor restarts the node from its database; a storage failure is the one the
-    * reference also ends the node for (`consensusRethrowPolicy`, `ShutdownNode`).
+    * (8); the voting thread's failure is the node's own (6). A supervisor restarts the node from
+    * its database; a storage failure is the one the reference also ends the node for
+    * (`consensusRethrowPolicy`, `ShutdownNode`).
     */
   def FaultExitCode(fault: Fatal): ExitCode = fault match
     case _: Fatal.Unavailable => ExitCode(8)
     case _: Fatal.Storage     => ExitCode(5)
     case _: Fatal.Internal    => ExitCode(6)
+    case _: Fatal.LeiosVoting => ExitCode(6)
     case _: Fatal.Defect      => ExitCode(7)
     // a library failed where a verdict is needed: the same class as an exception from a library
     case _: Fatal.Unverifiable => ExitCode(7)

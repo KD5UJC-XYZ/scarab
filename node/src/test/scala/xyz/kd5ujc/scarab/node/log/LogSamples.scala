@@ -765,3 +765,61 @@ object LogSamples:
       ),
       LeiosNotifyEvent.Certified(announcing)
     )
+
+  /** The voting thread's lines: a vote of a throwaway key made here. */
+  val leios: List[xyz.kd5ujc.scarab.node.LeiosKernelEvent[
+    Rejection,
+    xyz.kd5ujc.scarab.ledger.era.rules.LeiosClosureDefect
+  ]] =
+    import xyz.kd5ujc.scarab.node.LeiosKernelEvent
+    import xyz.kd5ujc.scarab.consensus.leios.{AddVoteResult, LeiosNotVotedReason, VoteTally}
+    import xyz.kd5ujc.scarab.crypto.bls.{SeatId, Vote, Weight}
+    import xyz.kd5ujc.scarab.crypto.bls.BlsFixtures.{key, rbHash, right}
+    import xyz.kd5ujc.scarab.ledger.era.rules.LeiosClosureDefect
+    import xyz.kd5ujc.scarab.protocol.{EbHash, EbPoint, LeiosTxHash}
+    import xyz.kd5ujc.scarab.protocol.LeiosWord.Word64
+    val point = EbPoint(Word64.fromUnsigned(4200L), EbHash.fromBytes(hash))
+    val vote = right(Vote.sign(key(5)._1, right(SeatId.fromInt(2)), rbHash(7)))
+    val tally = VoteTally(
+      Weight(xyz.kd5ujc.scarab.codec.Rational(1, 3)),
+      Weight(xyz.kd5ujc.scarab.codec.Rational(2, 3)),
+      Weight(xyz.kd5ujc.scarab.codec.Rational(3, 4))
+    )
+    List(
+      LeiosKernelEvent.VotingDisabled,
+      LeiosKernelEvent.VoteScheduled(point, 3.seconds, 7.seconds),
+      LeiosKernelEvent.NoVoteOnset(point),
+      LeiosKernelEvent.Voted(vote, tally.weight),
+      LeiosKernelEvent.VoteAcquired(vote, tally),
+      LeiosKernelEvent.Certified(rbHash(7)),
+      LeiosKernelEvent.SeatNotVoted(point, vote, AddVoteResult.AlreadyKnown),
+      LeiosKernelEvent.NotVoted(point, LeiosNotVotedReason.ChainTipDoesNotAnnounce),
+      LeiosKernelEvent.NotVoted(point, LeiosNotVotedReason.TooLate),
+      LeiosKernelEvent.NotVoted(point, LeiosNotVotedReason.NotOnCommittee),
+      LeiosKernelEvent
+        .NotVoted(point, LeiosNotVotedReason.EbTxsInvalid(Rejection.WrongEra(6, Era.Dijkstra))),
+      LeiosKernelEvent.NotVoted(
+        point,
+        LeiosNotVotedReason.VoteRejected(
+          cats.data.NonEmptyVector
+            .of(vote -> AddVoteResult.AlreadyKnown, vote -> AddVoteResult.NoCommittee)
+        )
+      ),
+      LeiosKernelEvent.NotVoted(
+        point,
+        LeiosNotVotedReason.ClosureUnavailable(LeiosClosureDefect.Missing(EbHash.fromBytes(hash)))
+      ),
+      LeiosKernelEvent.NotVoted(
+        point,
+        LeiosNotVotedReason.ClosureUnavailable(
+          LeiosClosureDefect.TxUndecodable(
+            EbHash.fromBytes(hash),
+            LeiosTxHash.fromBytes(hash),
+            xyz.kd5ujc.scarab.ledger.era.EraTxError.Decode(
+              xyz.kd5ujc.scarab.ledger.LedgerDecodeError
+                .Empty(xyz.kd5ujc.scarab.ledger.DecodeField.AuxiliaryData)
+            )
+          )
+        )
+      )
+    )

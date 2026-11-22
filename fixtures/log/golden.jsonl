@@ -261,3 +261,17 @@
 {"event":"leiosNotifyOffer","at":"2026-10-16T12:00:00Z","connection":3,"slot":2425,"ebHash":"2525252525252525252525252525252525252525252525252525252525252525","part":"closure"}
 {"event":"leiosVoteAcquired","at":"2026-10-16T12:00:00Z","connection":3,"rbHash":"d9dadbdcdddedfe0e1e2e3e4e5e6e7e8e9eaebecedeeeff0f1f2f3f4f5f6f7f8","seat":2,"weight":"1/4","tally":"3/4","threshold":"3/4"}
 {"event":"leiosCertified","at":"2026-10-16T12:00:00Z","rbHash":"d9dadbdcdddedfe0e1e2e3e4e5e6e7e8e9eaebecedeeeff0f1f2f3f4f5f6f7f8"}
+{"event":"leiosKernelMsg","at":"2026-10-16T12:00:00Z","message":"runLeiosVoting: disabled because no topLevelConfigVotingKeys"}
+{"event":"leiosVoteScheduled","at":"2026-10-16T12:00:00Z","ebHash":"abababababababababababababababababababababababababababababababab","ebSlot":4200,"voteIn":3,"deadlineIn":7}
+{"event":"leiosKernelMsg","at":"2026-10-16T12:00:00Z","message":"newVoteTimers: no wall-clock onset for 4200@abababababababababababababababababababababababababababababababab"}
+{"event":"leiosVoted","at":"2026-10-16T12:00:00Z","rbHash":"d9dadbdcdddedfe0e1e2e3e4e5e6e7e8e9eaebecedeeeff0f1f2f3f4f5f6f7f8","seat":2,"weight":"1/3"}
+{"event":"leiosVoteAcquired","at":"2026-10-16T12:00:00Z","connection":null,"rbHash":"d9dadbdcdddedfe0e1e2e3e4e5e6e7e8e9eaebecedeeeff0f1f2f3f4f5f6f7f8","seat":2,"weight":"1/3","tally":"2/3","threshold":"3/4"}
+{"event":"leiosCertified","at":"2026-10-16T12:00:00Z","rbHash":"d9dadbdcdddedfe0e1e2e3e4e5e6e7e8e9eaebecedeeeff0f1f2f3f4f5f6f7f8"}
+{"event":"leiosNotVoted","at":"2026-10-16T12:00:00Z","ebHash":"abababababababababababababababababababababababababababababababab","ebSlot":4200,"reason":"voteRejected: AlreadyKnown"}
+{"event":"leiosNotVoted","at":"2026-10-16T12:00:00Z","ebHash":"abababababababababababababababababababababababababababababababab","ebSlot":4200,"reason":"chainTipDoesNotAnnounce"}
+{"event":"leiosNotVoted","at":"2026-10-16T12:00:00Z","ebHash":"abababababababababababababababababababababababababababababababab","ebSlot":4200,"reason":"tooLate"}
+{"event":"leiosNotVoted","at":"2026-10-16T12:00:00Z","ebHash":"abababababababababababababababababababababababababababababababab","ebSlot":4200,"reason":"notOnCommittee"}
+{"event":"leiosNotVoted","at":"2026-10-16T12:00:00Z","ebHash":"abababababababababababababababababababababababababababababababab","ebSlot":4200,"reason":"ebTxsInvalid: era 6 is not the ledger's, Dijkstra"}
+{"event":"leiosNotVoted","at":"2026-10-16T12:00:00Z","ebHash":"abababababababababababababababababababababababababababababababab","ebSlot":4200,"reason":"voteRejected: all 2 votes rejected"}
+{"event":"leiosNotVoted","at":"2026-10-16T12:00:00Z","ebHash":"abababababababababababababababababababababababababababababababab","ebSlot":4200,"reason":"closureUnavailable: LeiosClosureMissing abababababababababababababababababababababababababababababababab"}
+{"event":"leiosNotVoted","at":"2026-10-16T12:00:00Z","ebHash":"abababababababababababababababababababababababababababababababab","ebSlot":4200,"reason":"closureUnavailable: LeiosClosureTxUndecodable abababababababababababababababababababababababababababababababab abababababababababababababababababababababababababababababababab Decode(Empty(auxiliary data))"}

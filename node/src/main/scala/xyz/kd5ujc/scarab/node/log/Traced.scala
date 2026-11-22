@@ -20,6 +20,11 @@ import xyz.kd5ujc.scarab.node.forge.{
   KesInfo
 }
 import xyz.kd5ujc.scarab.node.mempool.{MempoolEvent, Rejection}
+import xyz.kd5ujc.scarab.node.LeiosKernelEvent
+import xyz.kd5ujc.scarab.consensus.leios.{AddVoteResult, LeiosNotVotedReason}
+import xyz.kd5ujc.scarab.crypto.bls.Weight
+import xyz.kd5ujc.scarab.ledger.era.rules.LeiosClosureDefect
+import xyz.kd5ujc.scarab.protocol.EbPoint
 import xyz.kd5ujc.scarab.protocol.ChainSync
 import xyz.kd5ujc.scarab.storage.{StorageEvent, VolatileStore}
 
@@ -660,3 +665,89 @@ object Traced:
         (List("slot" -> slot.asJson, "kind" -> defect.productPrefix.asJson) ++ detail :+
           ("evicted" -> evicted.map(_.hex).asJson))*
       )
+
+  /** The voting thread's lines (`TraceLeiosKernel`'s `ToJSON`, `LeiosDemoTypes.hs:1975-2090`,
+    * ouroboros-consensus 2416493b): hashes in hex (`prettyRbHash`, `prettyEbHash`), durations in
+    * seconds, a vote by its block's hash and its seat and a weight as a rational, as the node's
+    * LeiosNotify client's lines write them, and the reason a vote was not cast as the reference
+    * words it (`notVotedReasonText`, `:2177-2184`), each refusal in Scarab's rendering of it.
+    */
+  given Traced[LeiosKernelEvent[Rejection, LeiosClosureDefect]] =
+    case LeiosKernelEvent.VotingDisabled =>
+      EventKind.LeiosKernelMsg.line(
+        "message" -> "runLeiosVoting: disabled because no topLevelConfigVotingKeys".asJson
+      )
+    case LeiosKernelEvent.NoVoteOnset(point) =>
+      EventKind.LeiosKernelMsg.line(
+        "message" -> s"newVoteTimers: no wall-clock onset for ${leiosPoint(point)}".asJson
+      )
+    case LeiosKernelEvent.VoteScheduled(point, voteIn, deadlineIn) =>
+      EventKind.LeiosVoteScheduled.line(
+        "ebHash" -> point.hash.bytes.hex.asJson,
+        "ebSlot" -> point.slot.toBigInt.asJson,
+        "voteIn" -> durationSeconds(voteIn).asJson,
+        "deadlineIn" -> durationSeconds(deadlineIn).asJson
+      )
+    case LeiosKernelEvent.Voted(vote, weight) =>
+      EventKind.LeiosVoted.line(
+        "rbHash" -> vote.announcingRbHash.bytes.hex.asJson,
+        "seat" -> vote.voter.index.asJson,
+        "weight" -> weightOf(weight)
+      )
+    // the LeiosNotify client's line of a counted vote, of no connection for the node's own
+    case LeiosKernelEvent.VoteAcquired(vote, tally) =>
+      EventKind.LeiosVoteAcquired.line(
+        "connection" -> Json.Null,
+        "rbHash" -> vote.announcingRbHash.bytes.hex.asJson,
+        "seat" -> vote.voter.index.asJson,
+        "weight" -> weightOf(tally.weight),
+        "tally" -> weightOf(tally.tally),
+        "threshold" -> weightOf(tally.threshold)
+      )
+    case LeiosKernelEvent.Certified(rbHash) =>
+      EventKind.LeiosCertified.line("rbHash" -> rbHash.bytes.hex.asJson)
+    case LeiosKernelEvent.SeatNotVoted(point, _, answer) =>
+      notVoted(point, s"voteRejected: ${addVoteResult(answer)}")
+    case LeiosKernelEvent.NotVoted(point, reason) =>
+      notVoted(
+        point,
+        reason match
+          case LeiosNotVotedReason.ChainTipDoesNotAnnounce => "chainTipDoesNotAnnounce"
+          case LeiosNotVotedReason.TooLate                 => "tooLate"
+          case LeiosNotVotedReason.NotOnCommittee          => "notOnCommittee"
+          case LeiosNotVotedReason.EbTxsInvalid(cause)     => s"ebTxsInvalid: ${cause.message}"
+          case LeiosNotVotedReason.VoteRejected(answers) =>
+            s"voteRejected: all ${answers.length} votes rejected"
+          case LeiosNotVotedReason.ClosureUnavailable(cause) =>
+            s"closureUnavailable: ${closureError(cause)}"
+      )
+
+  private def notVoted(point: EbPoint, reason: String): Line =
+    EventKind.LeiosNotVoted.line(
+      "ebHash" -> point.hash.bytes.hex.asJson,
+      "ebSlot" -> point.slot.toBigInt.asJson,
+      "reason" -> reason.asJson
+    )
+
+  /** `prettyLeiosPoint`: the slot and the endorser block's hash. */
+  private def leiosPoint(point: EbPoint): String =
+    s"${point.slot.toBigInt}@${point.hash.bytes.hex}"
+
+  /** A weight as the LeiosNotify client's lines write one, `numerator/denominator`. */
+  private def weightOf(w: Weight): Json = s"${w.value.numerator}/${w.value.denominator}".asJson
+
+  private def durationSeconds(d: scala.concurrent.duration.FiniteDuration): BigDecimal =
+    BigDecimal(BigDecimal(d.toNanos, 9).underlying.stripTrailingZeros)
+
+  /** `show` of an `AddVoteResult` that counted nothing. */
+  private def addVoteResult(answer: AddVoteResult): String = answer match
+    case AddVoteResult.NoCommittee     => "NoCommittee"
+    case AddVoteResult.Invalid(reason) => s"VoteInvalid $reason"
+    case AddVoteResult.AlreadyKnown    => "AlreadyKnown"
+    case AddVoteResult.Added(tally, _) => s"Added $tally"
+
+  /** `show` of a `LeiosClosureError`. */
+  private def closureError(defect: LeiosClosureDefect): String = defect match
+    case LeiosClosureDefect.Missing(eb) => s"LeiosClosureMissing ${eb.bytes.hex}"
+    case LeiosClosureDefect.TxUndecodable(eb, tx, cause) =>
+      s"LeiosClosureTxUndecodable ${eb.bytes.hex} ${tx.bytes.hex} $cause"
