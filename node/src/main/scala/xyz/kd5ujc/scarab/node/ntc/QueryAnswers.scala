@@ -75,6 +75,11 @@ enum Unanswered extends DomainError:
   /** The answer holds a value outside the range of the Haskell type it is written as. */
   case Unwritable
 
+  /** The ledger state (`DebugNewEpochState`, `DebugEpochState`) cannot be written in the Haskell
+    * encoding of the node's state layout: the constraint it violates.
+    */
+  case UnwritableState(cause: xyz.kd5ujc.scarab.storage.haskell.state.StateNotWritable)
+
   /** Stored pool relays could not be decoded; retain every affected pool and typed cause. */
   case StoredRelays(pools: NonEmptyVector[xyz.kd5ujc.scarab.node.SkippedPool])
 
@@ -620,8 +625,8 @@ object QueryAnswers:
           case Some(era) =>
             RewardProvenance.codec(using Versions.eraLow(era)).answer(RewardProvenance.default)
           case None => Left(Unanswered.Unsupported)
-      case DebugEpochState    => MirrorAnswers.epochState(view)
-      case DebugNewEpochState => MirrorAnswers.newEpochState(view)
+      case DebugEpochState    => MirrorAnswers.epochState(view, env.layout)
+      case DebugNewEpochState => MirrorAnswers.newEpochState(view, env.layout)
       case GetUTxOWhole       => utxoAnswer(utxo)
       case GetUTxOByAddress(addresses) =>
         utxoAnswer(utxo.filter { case (_, o) => addresses(o.address.raw) })

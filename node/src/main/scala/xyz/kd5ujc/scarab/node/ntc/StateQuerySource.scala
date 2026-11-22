@@ -172,6 +172,8 @@ object StateQuerySource:
                             Right(
                               Left(Refusal.Unwritable(shown, error))
                             )
+                          case Right(Left(error @ Unanswered.UnwritableState(_))) =>
+                            Right(Left(Refusal.Unwritable(shown, error)))
                           case Right(Left(error @ Unanswered.StoredRelays(_))) =>
                             Right(Left(Refusal.Unwritable(shown, error)))
                           case Right(Left(Unanswered.UnwritableLedgerConfig(error))) =>

@@ -6,7 +6,8 @@ import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.state.{EraTag, MirrorError, NewEpochState, ShelleyBasedEra}
 import xyz.kd5ujc.scarab.node.read.InEra
-import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellState, StateNotWritable}
+import xyz.kd5ujc.scarab.protocol.StateLayout
+import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellLedgerFile, StateNotWritable, Versions}
 
 /** Why the state of a query cannot be answered as the Haskell state: the answer is the new-epoch
   * state of the ledger ([[xyz.kd5ujc.scarab.node.read.EraRead.nes]]) written in the Haskell
@@ -29,7 +30,7 @@ object MirrorRefusal:
   def unanswered(r: MirrorRefusal): Unanswered = r match
     case Unmirrorable(e) => Unanswered.Refused(e)
     case ByronLedger     => Unanswered.Unsupported
-    case Unwritable(_)   => Unanswered.Unwritable
+    case Unwritable(e)   => Unanswered.UnwritableState(e)
 
 /** `DebugEpochState` and `DebugNewEpochState` (`Shelley/Ledger/Query.hs`): the epoch state and the
   * new-epoch state of the ledger as the Haskell node writes them, the answers of
@@ -37,8 +38,11 @@ object MirrorRefusal:
   *
   * The state is read through [[xyz.kd5ujc.scarab.node.read.ChainRead]] as the ledger state of its
   * era (the mirror of the Haskell state, as it is) and written with the codec of the state file at
-  * the version of its era. The UTxO is not in the answer (the reference answers `map(0)` there, its
-  * entries live in the tables of the ledger), as it is not in the state file.
+  * the version of its era, in the state layout of the reference build the node mirrors
+  * ([[HaskellLedgerFile.codecs]], the layout `export-ledger-snapshot` writes the state file in): a
+  * Dijkstra state is written in the Leios build's layout, and the 11.1 line's layout writes none.
+  * The UTxO is not in the answer (the reference answers `map(0)` there, its entries live in the
+  * tables of the ledger), as it is not in the state file.
   *
   * Historical incompleteness is carried by the state's provenance. It does not alter these native
   * answers or permit comparison exclusions: the devnet compares every received byte and reports
@@ -58,26 +62,34 @@ object MirrorAnswers:
     e.leftMap(MirrorRefusal.Unwritable(_))
 
   /** The answer of `DebugNewEpochState`. */
-  def newEpochState[S](view: QueryView[S]): Either[Unanswered, Bytes] =
-    answer(view, epochOnly = false)
+  def newEpochState[S](view: QueryView[S], layout: StateLayout): Either[Unanswered, Bytes] =
+    answer(view, layout, epochOnly = false)
 
   /** The answer of `DebugEpochState`. */
-  def epochState[S](view: QueryView[S]): Either[Unanswered, Bytes] =
-    answer(view, epochOnly = true)
+  def epochState[S](view: QueryView[S], layout: StateLayout): Either[Unanswered, Bytes] =
+    answer(view, layout, epochOnly = true)
 
   private def write[E <: EraTag](
       era: ShelleyBasedEra[E],
       nes: NewEpochState[E],
+      layout: StateLayout,
       epochOnly: Boolean
   ): Either[StateNotWritable, Bytes] =
-    if epochOnly then HaskellState.encodeEpochState(nes.es)(using era)
-    else HaskellState.encode(nes)(using era)
+    val codecs = HaskellLedgerFile.codecs(layout)
+    val written =
+      if epochOnly then codecs.epochState[E](using era, Versions.eraLow(era)).write(nes.es)
+      else codecs.newEpochState[E](using era).write(nes)
+    written.left.map(StateNotWritable(_))
 
-  private def answer[S](view: QueryView[S], epochOnly: Boolean): Either[Unanswered, Bytes] =
+  private def answer[S](
+      view: QueryView[S],
+      layout: StateLayout,
+      epochOnly: Boolean
+  ): Either[Unanswered, Bytes] =
     shelley(view)
       .flatMap { case InEra.Of(era, l) =>
         l.nes
           .leftMap(MirrorRefusal.Unmirrorable(_))
-          .flatMap(nes => unwritable(write(era, nes, epochOnly)))
+          .flatMap(nes => unwritable(write(era, nes, layout, epochOnly)))
       }
       .leftMap(MirrorRefusal.unanswered)

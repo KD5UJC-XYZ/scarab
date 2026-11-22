@@ -34,7 +34,8 @@ import xyz.kd5ujc.scarab.node.read.{ChainRead, EraRead, InEra, MirrorEraRead, Re
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.protocol.{Era, NtcVersion, StateLayout}
 import xyz.kd5ujc.scarab.protocol.ChainSync.Point
-import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellState, LeiosStateCodecs}
+import xyz.kd5ujc.scarab.models.runtime.ConstraintViolation
+import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellState, LeiosStateCodecs, StateNotWritable}
 
 /** The answers of the Leios build's two queries, `GetStakePoolState` (40) and `GetLeiosCommittee`
   * (41), asked under that build at node-to-client version 23 of the three states it wrote
@@ -232,6 +233,58 @@ class LeiosQueryAnswersSuite extends FunSuite:
         )
         k
     assertEquals(checked.size, 24)
+  }
+
+  /** The new-epoch state the build wrote in a captured state file, as it wrote it: the item of the
+    * ledger's telescope that [[native]] reads.
+    */
+  private def stateItem(name: String, tag: Era, path: Int*): Bytes =
+    val raw = Bytes.wrap(Files.readAllBytes(Path.of(s"fixtures/leios/state/$name/state")))
+    val root = Cbor.decode(raw, HaskellState.limits).fold(e => fail(e.toString), identity)
+    at(at(root, 1, 0, tag.ordinal, 1, 1, 1), path*).original
+
+  private def debugState(c: Captured, q: LedgerQuery, env: QueryEnv) =
+    QueryAnswers.answerOrWhy(
+      env,
+      QueryView(Point.Origin, None, c.state),
+      Map.empty,
+      NtcQuery.IfCurrent(c.era, q),
+      NtcVersion.V23
+    )
+
+  test(
+    "DebugNewEpochState and DebugEpochState under the Leios build: the states the build wrote, byte for byte"
+  ) {
+    captured.foreach { c =>
+      assertEquals(
+        debugState(c, LedgerQuery.DebugNewEpochState, leios).map(_.hex),
+        Right(result(stateItem(c.name, c.state.era)).hex),
+        c.name
+      )
+      // the epoch state, `nesEs`, the fourth of the layout's six fields
+      assertEquals(
+        debugState(c, LedgerQuery.DebugEpochState, leios).map(_.hex),
+        Right(result(stateItem(c.name, c.state.era, 3)).hex),
+        c.name
+      )
+    }
+  }
+
+  test("the 11.1 layout writes no Dijkstra state, and says which constraint refuses it") {
+    val refusal = Left(
+      Unanswered.UnwritableState(
+        StateNotWritable(
+          ConstraintViolation("NewEpochState", "a value of an era this build writes", "Dijkstra")
+        )
+      )
+    )
+    captured.filter(_.era == QueryEra.Dijkstra).foreach { c =>
+      assertEquals(
+        debugState(c, LedgerQuery.DebugNewEpochState, NtcGolden.queryEnv),
+        refusal,
+        c.name
+      )
+    }
   }
 
   test("inside GetCBOR each answer is the same bytes under tag 24") {
