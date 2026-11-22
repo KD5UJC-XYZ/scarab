@@ -49073,14 +49073,6 @@
    ]
   },
   {
-   "reason": "the run of Conway's era rules on a block as the node is to apply it at the Conway switch (#85), BBODY with every failure accumulated and every check validated, the context of its transactions' rules made from the judgment's Globals (network, the build's injection), on the fused interpreter with the events discarded (applyBlockEither with ValidateAll, ComputeLedgerEvents off), and its defects",
-   "definitions": [
-    "def ledger.era.rules.ConwayBlockRun.bbody",
-    "enum ledger.era.rules.ConwayRuleDefect",
-    "object ledger.era.rules.ConwayBlockRun"
-   ]
-  },
-  {
    "reason": "the companions of the era types' Mismatch and of Relation: its equality with itself, the reference's derived Eq, which reads the two values alone, and its flat form (stored, storedBy), the node's flat Mismatch the era failures' projections to the flat failures write until those have their encoders (#85)",
    "definitions": [
     "object ledger.era.Mismatch",
@@ -49088,6 +49080,25 @@
     "def ledger.era.Mismatch.stored",
     "def ledger.era.Mismatch.storedBy",
     "object ledger.era.Relation"
+   ]
+  },
+  {
+   "reason": "the run of Conway's era rules on a block as the node is to apply it at the Conway switch (#85), BBODY with every failure accumulated and every check validated, the context of its transactions' rules made from the judgment's Globals (network, the build's injection), on the fused interpreter with the events discarded but for what the node's phase-2 counters read (applyBlockEither with ValidateAll, ComputeLedgerEvents off), the proposals held beside the BBODY state, read from the node's record once a block and written back once, its defects, and what an admitted block comes to with its counters",
+   "definitions": [
+    "class ledger.era.rules.ConwayBlockRun.Applied",
+    "def ledger.era.rules.ConwayBlockRun.bbody",
+    "enum ledger.era.rules.ConwayRuleDefect",
+    "object ledger.era.rules.ConwayBlockRun"
+   ]
+  },
+  {
+   "reason": "the node's phase-2 counters (PlutusStats, Scarab's own, which the reference has none of) of a Conway block the era rules admitted (#85): what of BBODY's events they read (ScriptsTold, UTXOS's passed and failed scripts and UTXO's change of the deposits a valid transaction tells after them) and their count by transaction, integrityChecked the bodies that declare a script integrity hash, as the flat rules count them from their evaluations (TxChecks.phase2, EraBlock.Plan)",
+   "definitions": [
+    "def ledger.era.rules.ConwayPhase2.counted",
+    "def ledger.era.rules.ScriptsTold.of",
+    "enum ledger.era.rules.ScriptsTold",
+    "object ledger.era.rules.ConwayPhase2",
+    "object ledger.era.rules.ScriptsTold"
    ]
   }
  ]

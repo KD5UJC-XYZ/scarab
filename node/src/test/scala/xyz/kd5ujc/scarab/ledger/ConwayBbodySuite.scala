@@ -176,6 +176,7 @@ class ConwayBbodySuite extends FunSuite:
       flat: Verdict,
       ticked: NewEpochState[Conway],
       flatPlutus: Option[PlutusStats],
+      eraPlutus: Option[PlutusStats],
       flatBbodyAdmits: Boolean,
       eraFailures: Vector[BbodyPredFailure[Conway]],
       eraEvaluated: Int,
@@ -307,12 +308,13 @@ class ConwayBbodySuite extends FunSuite:
       .fold(defect => fail(s"${before.name}: era defect $defect"), identity)
     val era: Verdict = judged match
       case Left(fs)     => Left(flatOf(before.name, fs, block))
-      case Right(after) => Right((after.ls, after.blocksMade))
+      case Right(after) => Right((after.state.ls, after.state.blocksMade))
     Judged(
       era,
       flat,
       ticked,
       outcome.toOption.collect { case EraBlock.Outcome.Applied(_, plutus) => plutus },
+      judged.toOption.map(_.plutus),
       body match
         case EraBlock.Outcome.Applied(_, _) => true
         case _                              => false
@@ -502,6 +504,10 @@ class ConwayBbodySuite extends FunSuite:
     val onMainnet = all.map { b =>
       val j = judge(b, b.raw)
       same(b.name, j.era, j.flat)
+      // the phase-2 counters, the flat rules' (CNF-2: the recorded blocks run no script, so the
+      // counters are zero on both sides; the blocks of built transactions below count scripts)
+      assertEquals(j.eraPlutus, j.flatPlutus, b.name)
+      assertEquals(j.eraPlutus, Some(PlutusStats.zero), b.name)
       j.era match
         case Right((_, made)) =>
           // counted once more for its issuer
@@ -727,7 +733,8 @@ class ConwayBbodySuite extends FunSuite:
     */
   private def blockOf(
       txs: Vector[Built],
-      header: Vector[Bytes] => Vector[Bytes] = identity
+      header: Vector[Bytes] => Vector[Bytes] = identity,
+      invalid: Vector[Int] = Vector.empty
   ): Bytes =
     crafted(third.raw)(
       _ =>
@@ -735,7 +742,7 @@ class ConwayBbodySuite extends FunSuite:
           array(txs.map(_.body)),
           array(txs.map(_.wits)),
           encoded(Value.Map(Vector.empty)),
-          array(Vector.empty)
+          array(invalid.map(i => encoded(Value.UInt(BigInt(i)))))
         ),
       (fields, parts) => header(committing(fields, parts))
     )
@@ -971,10 +978,8 @@ class ConwayBbodySuite extends FunSuite:
     same("admitted", admitted.era, admitted.flat)
     // the script ran, as the flat rules count it, and its output is spent
     assertEquals((admitted.eraEvaluated, admitted.flatEvaluated), (1, 1))
-    assertEquals(
-      admitted.flatPlutus.map(p => (p.succeeded, p.failed, p.scripts)),
-      Some((1L, 0L, 1L))
-    )
+    assertEquals(admitted.flatPlutus, Some(PlutusStats(1, 0, 1, 1)))
+    assertEquals(admitted.eraPlutus, admitted.flatPlutus)
     admitted.era.foreach((ls, _) => assert(ls.utxo.utxo.utxo.get(utxo.head._1).isEmpty))
     Vector(
       ExUnits(units.mem - 1, params.maxBlockExUnits.steps),
@@ -987,6 +992,130 @@ class ConwayBbodySuite extends FunSuite:
         s"$below"
       )
       same(s"$below", refused.era, refused.flat)
+    }
+  }
+
+  /** The datum the script outputs of the counters' blocks lock with, and the units of each of their
+    * redeemers.
+    */
+  private val lockDatum: Node = B.uint(0)
+  private val redeemerUnits: ExUnits = ExUnits(1000000, 500000000)
+
+  /** A transaction spending the inputs at `inputs` of `utxo` (the script outputs among them by
+    * `scripts`, each with a redeemer for its place among the sorted inputs and `lockDatum` in the
+    * witnesses), paying `out` with a fee of 3 ada and the collateral at `collateral` if any, its
+    * script integrity hash the one its witnesses make with Plutus V3 if `languages` holds it.
+    */
+  private def spending(
+      utxo: Vector[(TxIn, TxOut)],
+      inputs: Vector[Int],
+      scripts: Vector[(Int, Bytes)],
+      collateral: Option[Int],
+      out: BigInt,
+      outputs: Vector[Node] = Vector.empty,
+      datums: Vector[Node] = Vector(lockDatum),
+      languages: Set[PlutusLanguage] = Set(PlutusLanguage.V3)
+  ): Built =
+    val params = ConwayNewEpochState.gov.get(judge(third, third.raw).ticked).curPParams
+    val pp = PParams[Conway](ok("parameters")(ConwayPParams.fromStored(params)))
+    val sorted = inputs.sortBy(i => utxo(i)._1)
+    val redeemers = scripts.map((i, _) =>
+      B.arr(B.uint(0), B.uint(sorted.indexOf(i))) -> B.arr(
+        B.uint(0),
+        B.arr(B.uint(redeemerUnits.mem), B.uint(redeemerUnits.steps))
+      )
+    )
+    val more = Vector(
+      Option.when(datums.nonEmpty)(4 -> B.set(datums*)),
+      Option.when(redeemers.nonEmpty)(5 -> B.cmap(redeemers*)),
+      Option.when(scripts.nonEmpty)(7 -> B.set(scripts.map(s => B.bytes(s._2)).distinct*))
+    ).flatten
+    def withHash(integrity: Bytes): Built =
+      val body = B.body(
+        0 -> B.set(inputs.map(in(utxo, _))*),
+        1 -> B.arr((outputs :+ paid(out))*),
+        2 -> B.uint(3000000),
+        11 -> B.bytes(integrity)
+      )
+      val withCollateral = collateral.fold(body)(c =>
+        B.body(
+          0 -> B.set(inputs.map(in(utxo, _))*),
+          1 -> B.arr((outputs :+ paid(out))*),
+          2 -> B.uint(3000000),
+          11 -> B.bytes(integrity),
+          13 -> B.set(in(utxo, c))
+        )
+      )
+      built(withCollateral, B.witnesses(withCollateral, Vector(payer), more*))
+    val integrity = ScriptIntegrity
+      .mkScriptIntegrity[Conway, TxLevel.Top](
+        pp,
+        withHash(Bytes(Vector.fill(32)(0.toByte))).era,
+        languages
+      )(using
+        EraTx.conway,
+        AlonzoEraPParams.conway,
+        xyz.kd5ujc.scarab.ledger.era.EraTxWits.conway,
+        EraTx.conway.bodyOf.top
+      )
+      .map(ScriptIntegrity.hashScriptIntegrity(_))
+      .getOrElse(fail("no script integrity"))
+    withHash(integrity)
+
+  private def locked(script: Bytes, coin: BigInt): Node =
+    B.datumHashOut(B.scriptAddress(B.scriptHash(3, script)), coin, B.dataHash(lockDatum))
+
+  test(
+    "the phase-2 counters of BBODY's events: a valid transaction of two scripts, an invalid one whose scripts all fail, one whose scripts pass and fail, and a hash with no redeemer, the flat rules' counts"
+  ) {
+    val (succeeds, fails) = (alwaysSucceedsWithDatumV3, B.alwaysFailsWithDatumV3)
+    // 0, 1: two outputs at the script that passes; 2: at the one that fails; 3, 4: one at each;
+    // 5 to 11: fees and collateral (an invalid transaction's own, which it spends)
+    val utxo = funded(
+      Vector(
+        locked(succeeds, 10000000),
+        locked(succeeds, 10000000),
+        locked(fails, 10000000),
+        locked(succeeds, 10000000),
+        locked(fails, 10000000)
+      ) ++ Vector.fill(7)(paid(30000000))
+    )
+    val valid =
+      spending(utxo, Vector(0, 1, 5), Vector(0 -> succeeds, 1 -> succeeds), Some(6), 47000000)
+    val allFail = spending(utxo, Vector(2, 7), Vector(2 -> fails), Some(10), 37000000)
+    val passAndFail =
+      spending(utxo, Vector(3, 4, 8), Vector(3 -> succeeds, 4 -> fails), Some(11), 47000000)
+    // an output locked by the datum's hash, the datum given in the witnesses alone (a supplemental
+    // datum), so that the body declares a script integrity hash and no script runs
+    val datumOnly = spending(
+      utxo,
+      Vector(9),
+      Vector.empty,
+      None,
+      17000000,
+      outputs = Vector(locked(succeeds, 10000000)),
+      languages = Set.empty
+    )
+    Vector[(String, Vector[Built], Vector[Int], PlutusStats)](
+      ("valid", Vector(valid), Vector.empty, PlutusStats(1, 0, 2, 1)),
+      ("all fail", Vector(allFail), Vector(0), PlutusStats(0, 1, 1, 1)),
+      ("pass and fail", Vector(passAndFail), Vector(0), PlutusStats(0, 1, 2, 1)),
+      // a valid transaction's passed scripts, then an invalid one's failed ones: two transactions
+      ("valid, then all fail", Vector(valid, allFail), Vector(1), PlutusStats(1, 1, 3, 2)),
+      ("all fail, then valid", Vector(allFail, valid), Vector(0), PlutusStats(1, 1, 3, 2)),
+      (
+        "every kind",
+        Vector(passAndFail, valid, datumOnly, allFail),
+        Vector(0, 3),
+        PlutusStats(1, 2, 5, 4)
+      ),
+      ("datum only", Vector(datumOnly), Vector.empty, PlutusStats(0, 0, 0, 1))
+    ).foreach { (what, txs, invalid, expected) =>
+      val j = judge(third, blockOf(txs, invalid = invalid), change = holding(utxo))
+      assert(j.era.isRight, s"$what: ${j.era}")
+      same(what, j.era, j.flat)
+      assertEquals(j.flatPlutus, Some(expected), what)
+      assertEquals(j.eraPlutus, j.flatPlutus, what)
     }
   }
 

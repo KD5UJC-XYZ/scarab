@@ -10,12 +10,15 @@ import xyz.kd5ujc.scarab.ledger.{
   Horizon,
   LedgerDefect,
   SystemStart,
+  LedgerFailure,
+  PlutusStats,
   TranslationError,
   TxEnv,
   Verdicts
 }
 import xyz.kd5ujc.scarab.ledger.era.{
   Block,
+  EraBlockBody,
   EraBlockHeader,
   PraosEraBlockHeader,
   Proposals,
@@ -43,11 +46,11 @@ enum ConwayRuleDefect:
   * `ValidateAll`, cardano-ledger f649f975 `Shelley/API/Validation.hs`): BBODY in one judgment
   * ([[ConwayBbody.conwayBbody]]), every failure accumulated (`RuleT.Policy.Accumulate`), every
   * check of its transactions validated (`TxEnv.Validation.All`, the `ValidateAll` of
-  * `applyBlockEither`); the events are discarded. The proposals are held beside the BBODY state,
-  * read from the node's record in the governance state once, where a rule first reads them, and
-  * written back once, after the block ([[Held]]), as Dijkstra's run holds its own
-  * ([[DijkstraBlockRun]]). The node does not run it yet: its blocks run the flat BBODY until the
-  * Conway switch (#85).
+  * `applyBlockEither`); of the events, only what the node's phase-2 counters read is kept
+  * ([[ScriptsTold]], [[ConwayPhase2.counted]]). The proposals are held beside the BBODY state, read
+  * from the node's record in the governance state once, where a rule first reads them, and written
+  * back once, after the block ([[Held]]), as Dijkstra's run holds its own ([[DijkstraBlockRun]]).
+  * The node does not run it yet: its blocks run the flat BBODY until the Conway switch (#85).
   */
 object ConwayBlockRun:
   /** The proposals of a run: not yet read from the node's record, or the era's, as the rules left
@@ -57,17 +60,32 @@ object ConwayBlockRun:
     case Unread
     case Read(proposals: Proposals[Conway])
 
-  private type S = (ShelleyBbodyState[Conway], Held)
+  /** The state of a run: BBODY's, the proposals it holds, and what of its events the counters read,
+    * in their order.
+    */
+  private final case class S(bbody: ShelleyBbodyState[Conway], held: Held, told: Chain[ScriptsTold])
+
   private type F[A] = RuleT[BbodyPredFailure[Conway], ConwayRuleDefect, S, A]
   import RuleT.given
 
   private given Stateful[F, ShelleyBbodyState[Conway]] =
-    summon[Stateful[F, S]].focus(Lens[S, ShelleyBbodyState[Conway]](_._1)(b => s => (b, s._2)))
+    summon[Stateful[F, S]].focus(
+      Lens[S, ShelleyBbodyState[Conway]](_.bbody)(b => _.copy(bbody = b))
+    )
 
-  // the events of a block applied by the node are not kept (`ComputeLedgerEvents` off)
+  // the events of a block applied by the node are not kept (`ComputeLedgerEvents` off) but for
+  // what the node's phase-2 counters read of them
   private given Tell[F, Chain[BbodyEvent[Conway]]] = new Tell[F, Chain[BbodyEvent[Conway]]]:
     val functor: Functor[F] = summon[Monad[F]]
-    def tell(events: Chain[BbodyEvent[Conway]]): F[Unit] = Monad[F].unit
+    def tell(events: Chain[BbodyEvent[Conway]]): F[Unit] =
+      summon[Stateful[F, S]].modify(s =>
+        s.copy(told = s.told ++ events.flatMap(e => Chain.fromOption(ScriptsTold.of(e))))
+      )
+
+  /** What a block the rules admitted comes to: the BBODY state after it, and the node's phase-2
+    * counters of its scripts, from zero ([[ConwayPhase2.counted]]).
+    */
+  final case class Applied(state: ShelleyBbodyState[Conway], plutus: PlutusStats)
 
   private given Raise[F, ScriptVerdictUnavailable] =
     summon[Raise[F, ConwayRuleDefect]].contramap(ConwayRuleDefect.Unavailable(_))
@@ -89,27 +107,29 @@ object ConwayBlockRun:
     */
   private given Stateful[F, Proposals[Conway]] = new Stateful[F, Proposals[Conway]]:
     val monad: Monad[F] = summon[Monad[F]]
-    def get: F[Proposals[Conway]] = summon[Stateful[F, S]].get.flatMap {
-      case (_, Held.Read(proposals)) => Monad[F].pure(proposals)
-      case (bbody, Held.Unread) =>
-        ProposalsRecord.conway
-          .read(bbody.ls.utxo.gov.proposals)
-          .fold(
-            summon[Raise[F, ProposalsReadError]].raise[ProposalsReadError, Proposals[Conway]],
-            proposals => set(proposals).as(proposals)
-          )
+    def get: F[Proposals[Conway]] = summon[Stateful[F, S]].get.flatMap { s =>
+      s.held match
+        case Held.Read(proposals) => Monad[F].pure(proposals)
+        case Held.Unread =>
+          ProposalsRecord.conway
+            .read(s.bbody.ls.utxo.gov.proposals)
+            .fold(
+              summon[Raise[F, ProposalsReadError]].raise[ProposalsReadError, Proposals[Conway]],
+              proposals => set(proposals).as(proposals)
+            )
     }
     def set(proposals: Proposals[Conway]): F[Unit] =
-      summon[Stateful[F, S]].modify((bbody, _) => (bbody, Held.Read(proposals)))
+      summon[Stateful[F, S]].modify(_.copy(held = Held.Read(proposals)))
 
   /** The BBODY state with the proposals the run holds written back into the node's record
     * ([[ProposalsRecord.write]]; ones it cannot hold are a defect), the record as it was if the
     * rules never read them.
     */
   private def written(after: S): Either[ConwayRuleDefect, ShelleyBbodyState[Conway]] =
-    after match
-      case (bbody, Held.Unread) => Right(bbody)
-      case (bbody, Held.Read(proposals)) =>
+    val bbody = after.bbody
+    after.held match
+      case Held.Unread => Right(bbody)
+      case Held.Read(proposals) =>
         ProposalsRecord.conway
           .write(proposals)
           .bimap(
@@ -122,9 +142,10 @@ object ConwayBlockRun:
                 .modify(_.copy(proposals = stored))(bbody)
           )
 
-  /** BBODY on `block` from `state`: a defect, the refusal's failures, or the BBODY state after. The
-    * context of its transactions' rules is made here from `globals`, as the reference's rules read
-    * it from theirs: the network (`networkId`, the Shelley genesis's) and the build's injection of
+  /** BBODY on `block` from `state`: a defect, the refusal's failures, or the BBODY state after with
+    * the block's phase-2 counters ([[Applied]]). The context of its transactions' rules is made
+    * here from `globals`, as the reference's rules read it from theirs: the network (`networkId`;
+    * one outside `Network` is a defect, [[LedgerFailure.Vocab]]) and the build's injection of
     * Shelley's UTXO failures ([[ConwayUtxo.injectShelleyFailure]]), with the system start and the
     * epoch information the caller gives (`systemStart`, `epochInfo`), and every
     * check validated, so that no caller runs the block's rules under another policy or on another
@@ -144,10 +165,7 @@ object ConwayBlockRun:
   )(using
       EraBlockHeader[H, Conway],
       PraosEraBlockHeader[H, Conway]
-  ): Either[ConwayRuleDefect, Either[
-    NonEmptyChain[BbodyPredFailure[Conway]],
-    ShelleyBbodyState[Conway]
-  ]] =
+  ): Either[ConwayRuleDefect, Either[NonEmptyChain[BbodyPredFailure[Conway]], Applied]] =
     given ScriptEvaluator[F] = lifted(evaluator)
     val netId = globals.networkId
     val context = UtxoContext[Conway](
@@ -161,5 +179,15 @@ object ConwayBlockRun:
       .judge(
         ConwayBbody.conwayBbody[F, H](env, block, context, verdicts, decoder, slotToPOSIXTime),
         RuleT.Policy.Accumulate
-      )(globals, (state, Held.Unread))
-      .flatMap(_.traverse((after, _) => written(after)))
+      )(globals, S(state, Held.Unread, Chain.empty))
+      .flatMap(
+        _.traverse((after, _) =>
+          written(after).map(
+            Applied(
+              _,
+              ConwayPhase2
+                .counted(EraBlockBody.conway.txSeqBlockBody(block.blockBody), after.told)
+            )
+          )
+        )
+      )
