@@ -805,8 +805,10 @@ consensus envelopes around them are the same as before Dijkstra and not versione
 tip or era state both ways (`DijkstraNotYet.LedgerState`). A pool's BLS key in its future
 `StakePoolParams` is read and written as the reference does from version 12: ten items with the key
 third, nine without (`State/StakePool.hs:716-771`; approved under the format freeze on 2026-11-20,
-#54). Not read yet: a proposal's update of a parameter Dijkstra adds
-(`DijkstraNotYet.ParameterUpdate`) and a Peras epoch context (`DijkstraNotYet.PerasEpochContext`).
+#54). The governance state is held as the era's record and read and written as the reference's,
+its parameters by `EncCBOR (PParams era)` and a proposal's update, keys 34 to 56 among them, by
+`EncCBOR (PParamsUpdate era)` (`Core/PParams.hs:204-301`; approved under the format freeze on
+2026-11-21, #826). Not read yet: a Peras epoch context (`DijkstraNotYet.PerasEpochContext`).
 
 **The model.** Each record that differs holds one part that the layout decides, a closed enum with a
 case per layout extending `LayoutPart`: `Bound.Layout`, `ShelleyLedgerState.Layout`,

@@ -991,7 +991,7 @@ last line and exit code are the outcome:
 | `matched`, `notCompared` not empty | 6 | the files it holds match, but some are missing: not a pass (CNF-2) |
 | `differs` | 4 | the first difference, located |
 | `halted` | 3 | the rules do not apply the block at this slot yet (`BlockFailure.NotYet`, with its part); not a pass |
-| `withheld` | 3 | the node has no verdict on the block of this slot for a part it does not hold yet, and withholds it as the follower does (`LeiosReplayMain.noVerdictNotYet`, with its `BlockNoVerdict`: after #85 D8, a proposal of a parameter Dijkstra adds, until #826's format change); not a pass |
+| `withheld` | 3 | the node has no verdict on the block of this slot for a part it does not hold yet, and withholds it as the follower does (`LeiosReplayMain.noVerdictNotYet`, with its `BlockNoVerdict`); not a pass |
 | `refused` | 5 | the rules refuse a block that the reference applied, with the typed failure |
 | `error` | 1 | no verdict: the inputs, the staging, the start state or the export failed (typed) |
 
@@ -1054,10 +1054,12 @@ The node's rules apply Dijkstra blocks under the Leios build (#85 D8), and a win
 are the same state is the import–export round trip of that state. With them, G1 and the three hops of
 window P each end with `matched` (exit 0): the node's state, tables and meta at the end slot are the
 reference's, byte for byte. The earlier runs on the recorded database, from before the rules applied a
-Dijkstra block, are in the [evidence log](compatibility/evidence-log-6.md). Two states of window G are not imported: they hold the
-proposal that updates the endorser-block limits, a parameter Dijkstra adds (`DijkstraNotYet.ParameterUpdate`,
-#826), so the hops that start there end with a typed `error` before any block, and the hop that ends at
-the first of them cannot be compared.
+Dijkstra block, are in the [evidence log](compatibility/evidence-log-6.md). Since a Dijkstra state's governance
+state is held as the era's record (#826), window G's proposal of the endorser-block limits, parameters Dijkstra
+adds, is read, applied, ratified and enacted: its hops through that proposal, 1,533,582 to 1,555,188, 1,576,750
+and 1,598,375, each end with `matched` (exit 0), with 1,016, 1,004 and 1,080 blocks applied, and so do the
+window's first and last hops (local runs of 2026-11-22 on the private recorded database, not published). Before it, the first withheld the block that
+proposed the change and the other two ended with a typed `error` before any block.
 
 A window passes where the node's block application applies what the reference applies, all through
 `MirrorRules`, which the program builds as `follow` does:
