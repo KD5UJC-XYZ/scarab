@@ -40,10 +40,9 @@ import xyz.kd5ujc.scarab.ledger.state.{
 }
 
 /** The epoch state the era's EPOCH works on: the node's epoch state and the era's governance state
-  * ([[ConwayGovState]]), until the ledger state holds the era's record (#85). What the rule reads
-  * and writes of the governance state is `gov`. The node's record of it that `es` holds is not
-  * written, so it is stale after the rule; it is read only as the record SNAP's parameters are
-  * written over, for the fields of other eras, which SNAP does not read.
+  * ([[ConwayGovState]]) beside it. What the rule reads and writes of the governance state is `gov`.
+  * The one `es` holds is not written, so it is stale after the rule, which reads none of it; `gov`
+  * replaces it after the rule ([[StoredGov.onRecord]]).
   */
 final case class EpochGovState[E <: EraTag](es: EpochState[E], gov: ConwayGovState[E])
 
@@ -316,13 +315,13 @@ object DijkstraEpoch:
           _ <- st.set(EpochGovState(epochState3, govState2))
         yield ()
 
-  /** [[sts]] on the node's epoch state, its governance record read before and written back after
+  /** [[sts]] on the node's epoch state, its governance state taken out before and put back after
     * ([[StoredGov.onRecord]]).
     */
   val onRecord: Sts[Unit, EpochState[Dijkstra], EpochNo, TickFailure] =
-    StoredGov.onRecord[Dijkstra, EpochState[Dijkstra], EpochGovState[Dijkstra], EpochNo](
+    StoredGov.onRecord[EpochState[Dijkstra], EpochGovState[Dijkstra], EpochNo](
       sts,
-      StoredGov.recordOf[Dijkstra],
+      StoredGov.recordOf,
       EpochGovState(_, _),
       s => (s.es, s.gov)
     )

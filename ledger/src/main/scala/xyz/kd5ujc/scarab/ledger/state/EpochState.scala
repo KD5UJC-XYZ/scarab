@@ -182,7 +182,8 @@ object NewEpochState:
 
   /** The state of an empty chain at `epoch`, of any era (see [[Empty]]). */
   def empty[E <: EraTag](epoch: EpochNo, params: ProtocolParams)(using
-      ShelleyBasedEra[E]
+      ShelleyBasedEra[E],
+      FlatGov[E]
   ): NewEpochState[E] =
     NewEpochState[E](
       epoch,

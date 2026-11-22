@@ -44,15 +44,15 @@ import xyz.kd5ujc.scarab.ledger.era.conway.{ConwayPParams, ConwayProposals}
 import xyz.kd5ujc.scarab.ledger.rules.Convert
 import xyz.kd5ujc.scarab.ledger.state.{Conway, Dijkstra}
 
-/** Dijkstra's proposals read from the node's record of them and written back, as Conway's are
-  * ([[ConwayProposals]]): the record holds Conway's flat proposal ([[Proposal]]), whose update
-  * holds Conway's keys only. A stored proposal is read as Dijkstra's decoder reads a proposal at
-  * version 12 ([[DijkstraProposal.decode]], then [[DijkstraProcedures.proposal]]), the only other
-  * way a Dijkstra proposal is made: from the item a state holds ([[proposal]]), or from the flat
-  * proposal the node's record holds ([[fromFlat]]), whose update is read through its typed value
-  * and the era's encoder. Written back, an update that sets a parameter Dijkstra adds (keys 34 to
-  * 56) is refused ([[ProposalsWriteError.UnstorableUpdate]]): the flat record cannot hold it. At
-  * cardano-ledger 9df9f98c.
+/** Dijkstra's proposals read from the node's flat record of them and written back, as Conway's are
+  * ([[ConwayProposals]]): the flat record holds Conway's flat proposal ([[Proposal]]), whose update
+  * holds Conway's keys only. The ledger state holds Dijkstra's own record, whose proposals the
+  * state's codec reads as Dijkstra's decoder reads a proposal at version 12 ([[proposal]]:
+  * [[DijkstraProposal.decode]], then [[DijkstraProcedures.proposal]]); a flat proposal is read
+  * ([[fromFlat]]) where the chain enters Dijkstra, its update read through its typed value and the
+  * era's encoder. Written into the flat record, an update that sets a parameter Dijkstra adds (keys
+  * 34 to 56) is refused ([[ProposalsWriteError.UnstorableUpdate]]): the flat record cannot hold it.
+  * At cardano-ledger 9df9f98c.
   */
 object DijkstraProposals:
   /** A proposal of a Dijkstra state's item, as the state's decoder reads it (`DecCBOR
@@ -130,7 +130,7 @@ object DijkstraProposals:
     EraPParams.conway.eraPParams.flatMap(_.ppUpdate.map(_.ppuTag.value)).toSet
 
   /** The update keys `u` sets, in the order of the era's descriptions. */
-  private def keysSet(u: PParamsUpdate[Dijkstra]): Vector[BigInt] =
+  def updateKeys(u: PParamsUpdate[Dijkstra]): Vector[BigInt] =
     EraPParams.dijkstra.eraPParams.flatMap(
       _.ppUpdate.filter(_.ppuLens.get(u).isDefined).map(_.ppuTag.value)
     )
@@ -144,7 +144,7 @@ object DijkstraProposals:
       u: PParamsUpdate[Dijkstra]
   ): Either[ProposalsWriteError, ConwayParamUpdate] =
     NonEmptySet
-      .fromSet(SortedSet.from(keysSet(u).filterNot(conwayKeys)))
+      .fromSet(SortedSet.from(updateKeys(u).filterNot(conwayKeys)))
       .map(ProposalsWriteError.UnstorableUpdate(id, _))
       .toLeft(())
       .flatMap(_ =>
@@ -162,17 +162,31 @@ object DijkstraProposals:
       id: GovActionId,
       p: ProposalProcedure[Dijkstra]
   ): Either[ProposalsWriteError, Proposal] =
+    val action: Either[ProposalsWriteError, FlatGovAction] =
+      flatOrUpdate(p.pProcGovAction).fold(
+        { case GovAction.ParameterChange(parent, u, guardrails) =>
+          flatUpdate(id, u).map(
+            FlatGovAction.ParameterChange(parent.map(_.unGovPurposeId), _, guardrails.map(_.bytes))
+          )
+        },
+        Right(_)
+      )
+    action.map(Proposal(p.pProcDeposit.value, p.pProcReturnAddr, _, p.pProcAnchor))
+
+  /** An action of Dijkstra as the flat record holds it, every action but a parameter change, which
+    * is given back: its update is Dijkstra's ([[PParamsUpdate]]), which the flat record's update of
+    * Conway's keys does not hold. The other actions have the same values in both, which the Haskell
+    * state codec writes by the flat record's writer.
+    */
+  def flatOrUpdate(
+      a: GovAction[Dijkstra]
+  ): Either[GovAction.ParameterChange[Dijkstra], FlatGovAction] =
     def previous[P <: GovActionPurpose](parent: Option[GovPurposeId[P]]): Option[GovActionId] =
       parent.map(_.unGovPurposeId)
-    val action: Either[ProposalsWriteError, FlatGovAction] = p.pProcGovAction match
-      case GovAction.ParameterChange(parent, u, guardrails) =>
-        flatUpdate(id, u).map(
-          FlatGovAction.ParameterChange(previous(parent), _, guardrails.map(_.bytes))
-        )
+    a match
+      case change: GovAction.ParameterChange[Dijkstra] => Left(change)
       case GovAction.HardForkInitiation(parent, v) =>
-        Right(
-          FlatGovAction.HardFork(previous(parent), BigInt(v.pvMajor.value), v.pvMinor.value)
-        )
+        Right(FlatGovAction.HardFork(previous(parent), BigInt(v.pvMajor.value), v.pvMinor.value))
       case GovAction.TreasuryWithdrawals(ws, guardrails) =>
         Right(
           FlatGovAction.TreasuryWithdrawals(
@@ -193,7 +207,6 @@ object DijkstraProposals:
       case GovAction.NewConstitution(parent, c) =>
         Right(FlatGovAction.NewConstitution(previous(parent), c.script, c.anchor))
       case GovAction.InfoAction() => Right(FlatGovAction.Info)
-    action.map(Proposal(p.pProcDeposit.value, p.pProcReturnAddr, _, p.pProcAnchor))
 
   /** A stored action's state as Dijkstra's, its proposal read by [[fromFlat]]. */
   def action(stored: StoredGovActionState): Either[ProposalsReadError, GovActionState[Dijkstra]] =

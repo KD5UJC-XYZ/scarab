@@ -23,8 +23,7 @@ import xyz.kd5ujc.scarab.ledger.state.*
   * ()`, `Signal = SlotNo`). Era changes are not this rule's: the hard-fork combinator translates
   * the state before it ticks into the new era ([[Hfc]]).
   *
-  * Dijkstra's is the same rule on the era's governance state, the node's record of it read before
-  * the tick and written back after it
+  * Dijkstra's is the same rule on the era's governance state, the record the state holds
   * ([[xyz.kd5ujc.scarab.ledger.era.rules.DijkstraTick.onRecord]]): every tick of a Dijkstra state
   * (a block's, the mempool's, the forger's) runs Dijkstra's EPOCH on the era types there.
   */
@@ -61,12 +60,7 @@ object Tick:
               n.copy(es =
                 n.es.copy(ls =
                   n.es.ls.copy[E](utxo =
-                    n.es.ls.utxo.copy(gov =
-                      EraLedger.withFuture(
-                        n.es.ls.utxo.gov,
-                        EraLedger.solidify(EraLedger.futurePParams(n.es.ls.utxo.gov))
-                      )
-                    )
+                    n.es.ls.utxo.copy(gov = EraLedger.solidifyFuture(n.es.ls.utxo.gov))
                   )
                 )
               )

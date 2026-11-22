@@ -6,6 +6,11 @@ import monocle.Lens
 import scala.annotation.tailrec
 import scala.collection.immutable.SortedMap
 import xyz.kd5ujc.scarab.ledger.{GenDelegPair, Ptr, ProtocolParams}
+import xyz.kd5ujc.scarab.ledger.era.{
+  ConwayGovState as EraConwayGovState,
+  FuturePParams as EraFuturePParams,
+  GovStateRecord
+}
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.ledger.state.given
 
@@ -43,13 +48,15 @@ object EraLedger:
 
   private def foldGov[E <: EraTag, A](g: GovState[E])(
       shelley: ShelleyGovState => A,
-      conway: ConwayGovState => A
-  )(using era: ShelleyBasedEra[E]): A = era.gov.on(g)(shelley, conway)
+      conway: ConwayGovState => A,
+      dijkstra: EraConwayGovState[Dijkstra] => A
+  )(using era: ShelleyBasedEra[E]): A = era.gov.on(g)(shelley, conway, dijkstra)
 
   private def mapGov[E <: EraTag](g: GovState[E])(
       shelley: ShelleyGovState => ShelleyGovState,
-      conway: ConwayGovState => ConwayGovState
-  )(using era: ShelleyBasedEra[E]): GovState[E] = era.gov.update(g)(shelley, conway)
+      conway: ConwayGovState => ConwayGovState,
+      dijkstra: EraConwayGovState[Dijkstra] => EraConwayGovState[Dijkstra]
+  )(using era: ShelleyBasedEra[E]): GovState[E] = era.gov.update(g)(shelley, conway, dijkstra)
 
   private def onCert[E <: EraTag](ls: LedgerState[E])(
       shelley: ShelleyCertState => ShelleyCertState,
@@ -292,76 +299,78 @@ object EraLedger:
 
   // ---- the governance state (`EraGov`, `State/Governance.hs`)
 
-  /** `curPParamsGovStateL`. */
+  /** `curPParamsGovStateL`, as the node's flat record: Dijkstra's the era's parameters written over
+    * the record whose other fields are at zero ([[GovStateRecord.view]]), as the state's codec
+    * reads them.
+    */
   def curPParams[E <: EraTag](g: GovState[E])(using ShelleyBasedEra[E]): ProtocolParams =
-    foldGov[E, ProtocolParams](g)(_.curPParams, _.curPParams)
-
-  /** `prevPParamsGovStateL`. */
-  def prevPParams[E <: EraTag](g: GovState[E])(using ShelleyBasedEra[E]): ProtocolParams =
-    foldGov[E, ProtocolParams](g)(_.prevPParams, _.prevPParams)
-
-  /** `futurePParamsGovStateL`. */
-  def futurePParams[E <: EraTag](g: GovState[E])(using ShelleyBasedEra[E]): FuturePParams =
-    foldGov[E, FuturePParams](g)(_.futurePParams, _.futurePParams)
-
-  /** `predictFuturePParams` (`Conway/Governance.hs:299`, cardano-ledger f649f975) on the governance
-    * state of any era: Conway's, and the identity before it (`Shelley/Rules/NewEpoch.hs`: a tick
-    * within an epoch changes nothing).
-    */
-  def predictFuture[E <: EraTag](g: GovState[E])(using ShelleyBasedEra[E]): GovState[E] =
-    mapGov(g)(identity, ConwayEpoch.predictFuturePParams)
-
-  /** The part of the governance state that UPEC works on: the proposed updates and the parameters.
-    * Before Conway it is the governance state itself; Conway has no proposed updates, so its view
-    * has none and writing the view back changes only the parameters.
-    */
-  def shelleyGov[E <: EraTag](using era: ShelleyBasedEra[E]): Lens[GovState[E], ShelleyGovState] =
-    Lens[GovState[E], ShelleyGovState](g =>
-      foldGov[E, ShelleyGovState](g)(
-        identity,
-        c =>
-          ShelleyGovState(
-            Sorted.empty,
-            Sorted.empty,
-            c.curPParams,
-            c.prevPParams,
-            c.futurePParams
-          )
-      )
-    )(v =>
-      g =>
-        mapGov[E](g)(
-          _ => v,
-          _.copy(
-            curPParams = v.curPParams,
-            prevPParams = v.prevPParams,
-            futurePParams = v.futurePParams
-          )
-        )
+    foldGov[E, ProtocolParams](g)(
+      _.curPParams,
+      _.curPParams,
+      d => GovStateRecord.view(d.cgsCurPParams)
     )
 
-  /** The parameters in force, the previous ones and the future ones, changed by `f` (Haskell's
-    * `translateEra'` of each).
-    */
-  def mapParams[E <: EraTag](g: GovState[E])(f: ProtocolParams => ProtocolParams)(using
-      ShelleyBasedEra[E]
-  ): GovState[E] =
-    withPParams(g, f(curPParams(g)), f(prevPParams(g)), FuturePParams.map(futurePParams(g))(f))
+  /** `prevPParamsGovStateL`, as the node's flat record ([[curPParams]]). */
+  def prevPParams[E <: EraTag](g: GovState[E])(using ShelleyBasedEra[E]): ProtocolParams =
+    foldGov[E, ProtocolParams](g)(
+      _.prevPParams,
+      _.prevPParams,
+      d => GovStateRecord.view(d.cgsPrevPParams)
+    )
 
+  /** `futurePParamsGovStateL`, as the node's flat record ([[curPParams]]). */
+  def futurePParams[E <: EraTag](g: GovState[E])(using ShelleyBasedEra[E]): FuturePParams =
+    foldGov[E, FuturePParams](g)(
+      _.futurePParams,
+      _.futurePParams,
+      d => GovStateRecord.futureView(d.cgsFuturePParams)
+    )
+
+  /** `predictFuturePParams` (`Conway/Governance.hs:299`, cardano-ledger f649f975) on the governance
+    * state of any era: Conway's and Dijkstra's, and the identity before it
+    * (`Shelley/Rules/NewEpoch.hs`: a tick within an epoch changes nothing).
+    */
+  def predictFuture[E <: EraTag](g: GovState[E])(using ShelleyBasedEra[E]): GovState[E] =
+    mapGov(g)(
+      identity,
+      ConwayEpoch.predictFuturePParams,
+      EraConwayGovState.predictFuturePParams[Dijkstra]
+    )
+
+  /** `solidifyNextEpochPParams` (`Shelley/Rules/Tick.hs:144`, cardano-ledger f649f975) on the
+    * governance state of any era: its future parameters solidified ([[solidify]]).
+    */
+  def solidifyFuture[E <: EraTag](g: GovState[E])(using ShelleyBasedEra[E]): GovState[E] =
+    mapGov(g)(
+      s => s.copy(futurePParams = solidify(s.futurePParams)),
+      c => c.copy(futurePParams = solidify(c.futurePParams)),
+      d => d.copy(cgsFuturePParams = EraFuturePParams.solidifyFuturePParams(d.cgsFuturePParams))
+    )
+
+  /** The governance state of an era before Conway seen as the record UPEC works on: the proposed
+    * updates and the parameters, the governance state itself.
+    */
+  def shelleyGov[E <: EraTag](using
+      ev: GovState[E] =:= ShelleyGovState
+  ): Lens[
+    GovState[E],
+    ShelleyGovState
+  ] =
+    Lens[GovState[E], ShelleyGovState](ev(_))(v => _ => ev.flip(v))
+
+  /** `g` with the parameters in force, the previous and the future ones replaced: of an era whose
+    * governance state is one of the node's flat records ([[FlatGov]]).
+    */
   def withPParams[E <: EraTag](
       g: GovState[E],
       cur: ProtocolParams,
       prev: ProtocolParams,
       future: FuturePParams
-  )(using ShelleyBasedEra[E]): GovState[E] =
-    mapGov(g)(
-      _.copy(curPParams = cur, prevPParams = prev, futurePParams = future),
-      _.copy(curPParams = cur, prevPParams = prev, futurePParams = future)
+  )(using flat: FlatGov[E]): GovState[E] =
+    flat.record.fold(
+      ev => ev.flip(ev(g).copy(curPParams = cur, prevPParams = prev, futurePParams = future)),
+      ev => ev.flip(ev(g).copy(curPParams = cur, prevPParams = prev, futurePParams = future))
     )
-
-  def withFuture[E <: EraTag](g: GovState[E], future: FuturePParams)(using
-      ShelleyBasedEra[E]
-  ): GovState[E] = mapGov(g)(_.copy(futurePParams = future), _.copy(futurePParams = future))
 
   /** `solidifyFuturePParams` (`State/Governance.hs:135`, cardano-ledger f649f975). */
   def solidify(f: FuturePParams): FuturePParams = f match

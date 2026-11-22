@@ -14,6 +14,7 @@ import xyz.kd5ujc.scarab.ledger.{
   Utxo as NodeUtxo
 }
 import xyz.kd5ujc.scarab.ledger.dijkstra.*
+import xyz.kd5ujc.scarab.ledger.era.GovStateRecord
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.plutus.ExUnits
 
@@ -119,7 +120,7 @@ object DijkstraLedgerRule
   ): F[Unit] =
     for
       before <- st.get
-      pp = before.state.utxo.gov.curPParams
+      pp = GovStateRecord.view(before.state.utxo.gov.cgsCurPParams)
       utxo = before.state.utxo.utxo.utxo
       _ <-
         if tx.body.subTransactions.isEmpty then Monad[F].unit

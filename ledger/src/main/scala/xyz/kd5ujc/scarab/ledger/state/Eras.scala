@@ -43,11 +43,11 @@ enum ShelleyBasedEra[E <: EraTag]:
   // to that era, so the families reduce there; this is the one place that lists the eras of each
   // shape, and era-generic code works on the proofs instead of matching on eras.
 
-  /** The certificate, account, instant-stake and governance families of this era, with their
-    * shapes: Shelley's records up to Babbage, Conway's from Conway. Dijkstra's are Conway's records
-    * (cardano-ledger 9df9f98c
+  /** The certificate, account and instant-stake families of this era, with their shapes, and the
+    * governance family up to Babbage: Shelley's records up to Babbage, Conway's from Conway.
+    * Dijkstra's are Conway's records (cardano-ledger 9df9f98c
     * `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/State/CertState.hs:23`, `State/Account.hs:13`,
-    * `State/Stake.hs:19`, `Governance.hs:29`).
+    * `State/Stake.hs:19`); its governance family is the era's own record ([[gov]]).
     */
   def shapes: Either[ShelleyShapes[E], ConwayShapes[E]] = this match
     case SShelley  => Left(ShelleyShapes(summon, summon, summon, summon))
@@ -55,8 +55,8 @@ enum ShelleyBasedEra[E <: EraTag]:
     case SMary     => Left(ShelleyShapes(summon, summon, summon, summon))
     case SAlonzo   => Left(ShelleyShapes(summon, summon, summon, summon))
     case SBabbage  => Left(ShelleyShapes(summon, summon, summon, summon))
-    case SConway   => Right(ConwayShapes(summon, summon, summon, summon))
-    case SDijkstra => Right(ConwayShapes(summon, summon, summon, summon))
+    case SConway   => Right(ConwayShapes(summon, summon, summon))
+    case SDijkstra => Right(ConwayShapes(summon, summon, summon))
 
   /** `CertState[E]`: Shelley's record up to Babbage, Conway's from Conway. */
   def cert: EraShape[CertState[E], ShelleyCertState, ConwayCertState] =
@@ -70,9 +70,17 @@ enum ShelleyBasedEra[E <: EraTag]:
   def instantStake: EraShape[InstantStake[E], ShelleyInstantStake, ConwayInstantStake] =
     shapes.fold(s => Left(s.instantStake), c => Right(c.instantStake))
 
-  /** `GovState[E]`: the proposed updates up to Babbage, Conway's governance from Conway. */
-  def gov: EraShape[GovState[E], ShelleyGovState, ConwayGovState] =
-    shapes.fold(s => Left(s.gov), c => Right(c.gov))
+  /** `GovState[E]`: the proposed updates up to Babbage, Conway's governance record in Conway, and
+    * the era's own record in Dijkstra ([[GovShape]]).
+    */
+  def gov: GovShape[E] = this match
+    case SShelley  => GovShape.Proposed(summon)
+    case SAllegra  => GovShape.Proposed(summon)
+    case SMary     => GovShape.Proposed(summon)
+    case SAlonzo   => GovShape.Proposed(summon)
+    case SBabbage  => GovShape.Proposed(summon)
+    case SConway   => GovShape.Flat(summon)
+    case SDijkstra => GovShape.Era(summon)
 
   /** `StashedAVVM[E]`: the UTxO in Shelley, nothing after. */
   def stashedAvvm: EraShape[StashedAVVM[E], UtxoTables, Unit] = this match
@@ -105,17 +113,87 @@ final case class ShelleyShapes[E <: EraTag](
     gov: GovState[E] =:= ShelleyGovState
 )
 
-/** The families of an era from Conway are Conway's records: the proofs. */
+/** The certificate, account and instant-stake families of an era from Conway are Conway's records:
+  * the proofs. Its governance family is the era's [[GovShape]].
+  */
 final case class ConwayShapes[E <: EraTag](
     cert: CertState[E] =:= ConwayCertState,
     accounts: Accounts[E] =:= ConwayAccounts,
-    instantStake: InstantStake[E] =:= ConwayInstantStake,
-    gov: GovState[E] =:= ConwayGovState
+    instantStake: InstantStake[E] =:= ConwayInstantStake
 )
 
 object ConwayShapes:
-  given conway: ConwayShapes[Conway] = ConwayShapes(summon, summon, summon, summon)
-  given dijkstra: ConwayShapes[Dijkstra] = ConwayShapes(summon, summon, summon, summon)
+  given conway: ConwayShapes[Conway] = ConwayShapes(summon, summon, summon)
+  given dijkstra: ConwayShapes[Dijkstra] = ConwayShapes(summon, summon, summon)
+
+/** Which record the governance family `GovState[E]` is in an era, with the proof: Shelley's
+  * proposed updates up to Babbage, the node's flat record of Conway's governance in Conway, and in
+  * Dijkstra the era's own record, `ConwayGovState DijkstraEra` (cardano-ledger 9df9f98c
+  * `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Governance.hs:29`), which the ledger state holds
+  * and the Haskell state codec reads and writes as the reference does (#85, FMT-1).
+  */
+enum GovShape[E <: EraTag]:
+  case Proposed(ev: GovState[E] =:= ShelleyGovState)
+  case Flat(ev: GovState[E] =:= ConwayGovState)
+  case Era(ev: GovState[E] =:= xyz.kd5ujc.scarab.ledger.era.ConwayGovState[Dijkstra])
+
+  /** `value` seen as the record it is. */
+  def on[R](value: GovState[E])(
+      proposed: ShelleyGovState => R,
+      flat: ConwayGovState => R,
+      era: xyz.kd5ujc.scarab.ledger.era.ConwayGovState[Dijkstra] => R
+  ): R = this match
+    case Proposed(ev) => proposed(ev(value))
+    case Flat(ev)     => flat(ev(value))
+    case Era(ev)      => era(ev(value))
+
+  /** `value` changed within the record it is. */
+  def update(value: GovState[E])(
+      proposed: ShelleyGovState => ShelleyGovState,
+      flat: ConwayGovState => ConwayGovState,
+      era: xyz.kd5ujc.scarab.ledger.era.ConwayGovState[
+        Dijkstra
+      ] => xyz.kd5ujc.scarab.ledger.era.ConwayGovState[
+        Dijkstra
+      ]
+  ): GovState[E] = this match
+    case Proposed(ev) => ev.flip(proposed(ev(value)))
+    case Flat(ev)     => ev.flip(flat(ev(value)))
+    case Era(ev)      => ev.flip(era(ev(value)))
+
+  /** The proof that the family is one of the node's flat records, Shelley's proposed updates or
+    * Conway's flat record; none in Dijkstra, whose record is the era's.
+    */
+  def flat: Option[FlatGov[E]] = this match
+    case Proposed(ev) => Some(FlatGov(Left(ev)))
+    case Flat(ev)     => Some(FlatGov(Right(ev)))
+    case Era(_)       => None
+
+  /** The instance of a type class for the family, from the instance for the record the era has. */
+  def instance[T[_]](
+      proposed: => T[ShelleyGovState],
+      flat: => T[ConwayGovState],
+      era: => T[xyz.kd5ujc.scarab.ledger.era.ConwayGovState[Dijkstra]]
+  ): T[GovState[E]] = this match
+    case Proposed(ev) => ev.flip.substituteCo(proposed)
+    case Flat(ev)     => ev.flip.substituteCo(flat)
+    case Era(ev)      => ev.flip.substituteCo(era)
+
+/** The proof that the governance family of an era is one of the node's flat records: Shelley's
+  * proposed updates (up to Babbage) or Conway's flat record (Conway), what the setters of the flat
+  * parameters write ([[GovShape.flat]]).
+  */
+final case class FlatGov[E <: EraTag](
+    record: Either[GovState[E] =:= ShelleyGovState, GovState[E] =:= ConwayGovState]
+)
+
+object FlatGov:
+  given shelley: FlatGov[Shelley] = FlatGov(Left(summon))
+  given allegra: FlatGov[Allegra] = FlatGov(Left(summon))
+  given mary: FlatGov[Mary] = FlatGov(Left(summon))
+  given alonzo: FlatGov[Alonzo] = FlatGov(Left(summon))
+  given babbage: FlatGov[Babbage] = FlatGov(Left(summon))
+  given conway: FlatGov[Conway] = FlatGov(Right(summon))
 
 /** Which of two shapes `A` and `B` the type family `F` takes in an era, with the proof that `F` is
   * that shape (an era witness gives it: [[ShelleyBasedEra.cert]], ...). The operations below are
@@ -180,6 +258,8 @@ type InstantStake[E <: EraTag] = E match
   case Dijkstra => ConwayInstantStake
 
 /** `GovState era`: the governance state of Conway replaces the proposed protocol-parameter updates.
+  * Dijkstra's is the era's own record (`Dijkstra/Governance.hs:29`, cardano-ledger 9df9f98c), with
+  * the era's parameters and updates; Conway's is still the node's flat record.
   */
 type GovState[E <: EraTag] = E match
   case Shelley  => ShelleyGovState
@@ -188,7 +268,7 @@ type GovState[E <: EraTag] = E match
   case Alonzo   => ShelleyGovState
   case Babbage  => ShelleyGovState
   case Conway   => ConwayGovState
-  case Dijkstra => ConwayGovState
+  case Dijkstra => xyz.kd5ujc.scarab.ledger.era.ConwayGovState[Dijkstra]
 
 /** `StashedAVVMAddresses era`: the UTxO (the same opaque handle as the main one) in Shelley, `()`
   * after (`LedgerState/Types.hs:357-359`, cardano-ledger f649f975).
@@ -207,6 +287,15 @@ type StashedAVVM[E <: EraTag] = E match
   * in), so the era-generic composites import this object's givens.
   */
 object EraInstances:
+  /** Dijkstra's governance record compared by its values (`ProposalProcedure` 's equality ignores
+    * the proposal it was read as) and shown as a whole.
+    */
+  private val eraGovEq: Eq[xyz.kd5ujc.scarab.ledger.era.ConwayGovState[Dijkstra]] =
+    Eq.fromUniversalEquals
+
+  private val eraGovShow: Show[xyz.kd5ujc.scarab.ledger.era.ConwayGovState[Dijkstra]] =
+    Show.fromToString
+
   given certStateEq[E <: EraTag](using era: ShelleyBasedEra[E]): Eq[CertState[E]] =
     era.cert.instance(Eq[ShelleyCertState], Eq[ConwayCertState])
 
@@ -214,10 +303,10 @@ object EraInstances:
     era.cert.instance(Show[ShelleyCertState], Show[ConwayCertState])
 
   given govStateEq[E <: EraTag](using era: ShelleyBasedEra[E]): Eq[GovState[E]] =
-    era.gov.instance(Eq[ShelleyGovState], Eq[ConwayGovState])
+    era.gov.instance(Eq[ShelleyGovState], Eq[ConwayGovState], eraGovEq)
 
   given govStateShow[E <: EraTag](using era: ShelleyBasedEra[E]): Show[GovState[E]] =
-    era.gov.instance(Show[ShelleyGovState], Show[ConwayGovState])
+    era.gov.instance(Show[ShelleyGovState], Show[ConwayGovState], eraGovShow)
 
   given instantStakeEq[E <: EraTag](using era: ShelleyBasedEra[E]): Eq[InstantStake[E]] =
     era.instantStake.instance(Eq[ShelleyInstantStake], Eq[ConwayInstantStake])
@@ -235,7 +324,11 @@ object EraInstances:
     era.cert.instance(Diff[ShelleyCertState], Diff[ConwayCertState])
 
   given govStateDiff[E <: EraTag](using era: ShelleyBasedEra[E]): Diff[GovState[E]] =
-    era.gov.instance(Diff[ShelleyGovState], Diff[ConwayGovState])
+    era.gov.instance(
+      Diff[ShelleyGovState],
+      Diff[ConwayGovState],
+      Diff.leaf(eraGovEq, eraGovShow.show)
+    )
 
   given instantStakeDiff[E <: EraTag](using era: ShelleyBasedEra[E]): Diff[InstantStake[E]] =
     era.instantStake.instance(Diff[ShelleyInstantStake], Diff[ConwayInstantStake])

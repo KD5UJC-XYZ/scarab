@@ -136,7 +136,8 @@ type StAnnTxCache[E <: EraTag] = E match
   * `libs/cardano-ledger-core/src/Cardano/Ledger/State/Governance.hs:66`, cardano-ledger f649f975):
   * `ConwayGovState era` from Conway (`Conway/Governance.hs:406`, cardano-ledger f649f975;
   * `Dijkstra/Governance.hs:29`, cardano-ledger 9df9f98c), the record [[EraGov]] has lenses onto.
-  * The ledger state still holds the node's flat record (`xyz.kd5ujc.scarab.ledger.state.GovState`).
+  * The ledger state holds Dijkstra's (`xyz.kd5ujc.scarab.ledger.state.GovState`), and Conway's as
+  * the node's flat record.
   */
 type GovState[E <: EraTag] = E match
   case Conway   => ConwayGovState[Conway]

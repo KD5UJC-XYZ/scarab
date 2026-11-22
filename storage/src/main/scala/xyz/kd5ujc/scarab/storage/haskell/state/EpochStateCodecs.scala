@@ -80,11 +80,11 @@ trait EpochStateCodecs extends RewardCodecs:
     era.cert.instance(shelleyCertState, conwayCertState)
 
   /** The governance state of the era, the parameters those of the era as this layout writes them
-    * ([[Params.codecIn]]).
+    * ([[Params.codecIn]]); Dijkstra's on the era's types ([[dijkstraGovState]]).
     */
   def govState[E <: EraTag](using era: ShelleyBasedEra[E], v: ProtVer): Codec[GovState[E]] =
-    val params = Params.codecIn(stateLayout, era)
-    era.gov.instance(shelleyGovState(params), conwayGovStateWith(params))
+    def params = Params.codecIn(stateLayout, era)
+    era.gov.instance(shelleyGovState(params), conwayGovStateWith(params), dijkstraGovState)
 
   def instantStake[E <: EraTag](using era: ShelleyBasedEra[E], v: ProtVer): Codec[InstantStake[E]] =
     era.instantStake.instance(shelleyInstantStake, conwayInstantStake)

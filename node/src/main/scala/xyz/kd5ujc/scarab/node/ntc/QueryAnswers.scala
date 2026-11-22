@@ -13,12 +13,19 @@ import xyz.kd5ujc.scarab.ledger.EpochGeometry
 import xyz.kd5ujc.scarab.consensus.{BlockRef, HardForkConfig}
 import xyz.kd5ujc.scarab.consensus.state.{ChainDepState, Placement}
 import xyz.kd5ujc.scarab.ledger.*
+import xyz.kd5ujc.scarab.ledger.era.{
+  ConwayGovState as EraConwayGovState,
+  DRepPulsingState as EraDRepPulsingState,
+  FuturePParams as EraFuturePParams,
+  PParams
+}
 import xyz.kd5ujc.scarab.ledger.rules.{EraLedger, StakeDistribution}
 import xyz.kd5ujc.scarab.ledger.state as mirror
 import xyz.kd5ujc.scarab.ledger.state.{
   Conway,
   ConwayCertState,
   ConwayGovState,
+  Dijkstra,
   EraTag,
   FuturePParams,
   LeiosCommitteeError,
@@ -426,19 +433,28 @@ object QueryAnswers:
   /** The version Dijkstra's answers are written at, its lowest (`toEraCBOR @DijkstraEra`, 12). */
   private val dijkstraVersion: ProtVer = Versions.eraLow(ShelleyBasedEra.SDijkstra)
 
-  /** Dijkstra's governance state in the Leios build's layout, with the codec of its parameters in
-    * that layout ([[Params.codecIn]]); none in another era, nor in the 11.1 line's layout, whose
-    * Dijkstra state is not read or written yet.
+  /** The future parameters of Dijkstra's record that `GetFuturePParams` answers, as Conway's are
+    * answered (`FuturePParams.nextParams`): the definite ones, or the potential ones if known.
+    */
+  private def dijkstraNextParams(f: EraFuturePParams[Dijkstra]): Option[PParams[Dijkstra]] =
+    f match
+      case EraFuturePParams.NoPParamsUpdate()         => None
+      case EraFuturePParams.DefinitePParamsUpdate(p)  => Some(p)
+      case EraFuturePParams.PotentialPParamsUpdate(p) => p
+
+  /** Dijkstra's governance state in the Leios build's layout, the era's record
+    * ([[xyz.kd5ujc.scarab.ledger.era.ConwayGovState]]); none in another era, nor in the 11.1 line's
+    * layout, whose Dijkstra state is not read or written yet.
     */
   private def dijkstraGovernance[E <: EraTag](
       l: EraRead[E],
       layout: StateLayout
-  ): Option[(Read[ConwayGovState], Codec[ProtocolParams])] =
+  ): Option[Read[EraConwayGovState[Dijkstra]]] =
     l.era match
       case ShelleyBasedEra.SDijkstra =>
         layout match
           case StateLayout.Node11_1 => None
-          case StateLayout.Leios    => Some((l.gov, Params.codecIn(layout, l.era)))
+          case StateLayout.Leios    => Some(l.gov)
       case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
           ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage | ShelleyBasedEra.SConway =>
         None
@@ -566,17 +582,17 @@ object QueryAnswers:
         case Some(facts) => f(facts)
         case None        => Left(Unanswered.Unsupported)
       }
-    // A query of Conway's governance state, in Conway, or in Dijkstra of the Leios build with its
-    // parameters' codec, written at Dijkstra's lowest version (`LC.toEraCBOR @era`, Query.hs:961-962,
+    // A query of Conway's governance state, in Conway, or in Dijkstra of the Leios build on the
+    // era's record, written at Dijkstra's lowest version (`LC.toEraCBOR @era`, Query.hs:961-962,
     // ouroboros-consensus 2416493b)
     def governed(
         inConway: ConwayFacts => Either[Unanswered, Bytes],
-        inDijkstra: (Read[ConwayGovState], Codec[ProtocolParams]) => Either[Unanswered, Bytes]
+        inDijkstra: Read[EraConwayGovState[Dijkstra]] => Either[Unanswered, Bytes]
     ): Either[Unanswered, Bytes] =
       shelleyBased { facts =>
         facts.conway
           .map(inConway)
-          .orElse(dijkstraGovernance(facts.l, env.layout).map(inDijkstra.tupled))
+          .orElse(dijkstraGovernance(facts.l, env.layout).map(inDijkstra))
           .getOrElse(Left(Unanswered.Unsupported))
       }
     // The view of an era from Shelley to Conway and the era's lowest version, which its `toEraCBOR`
@@ -714,15 +730,20 @@ object QueryAnswers:
       case GetRatifyState =>
         governed(
           f => ratifyState.answerRead(f.gov.map(_.drepPulsing.ratify)),
-          (gov, params) =>
+          gov =>
             LeiosStateCodecs
-              .ratifyStateWith(params)(using dijkstraVersion)
-              .answerRead(gov.map(_.drepPulsing.ratify))
+              .dijkstraRatifyState(using dijkstraVersion)
+              .answerRead(
+                gov.map(g => EraDRepPulsingState.extractDRepPulsingState(g.cgsDRepPulsingState))
+              )
         )
       case GetFuturePParams =>
         governed(
           f => Wire.strictMaybe(protocolParams).answerRead(f.gov.map(_.futurePParams.nextParams)),
-          (gov, params) => Wire.strictMaybe(params).answerRead(gov.map(_.futurePParams.nextParams))
+          gov =>
+            Wire
+              .strictMaybe(LeiosStateCodecs.dijkstraPParams)
+              .answerRead(gov.map(g => dijkstraNextParams(g.cgsFuturePParams)))
         )
       case QueryStakePoolDefaultVote(pool) =>
         conway(f =>

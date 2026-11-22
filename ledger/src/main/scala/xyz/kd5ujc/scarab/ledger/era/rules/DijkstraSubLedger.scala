@@ -372,7 +372,7 @@ object DijkstraSubLedger:
       )(Monad[F].pure)
       ledgerState <- state.get
       govState = ledgerState.utxo.gov
-      committee = govState.committee
+      committee = govState.cgsCommittee
       proposalsBefore <- proposals.get
       _ <- test(
         ConwayLedger.validateTreasuryValue[Dijkstra, TxLevel.Sub](
@@ -407,7 +407,7 @@ object DijkstraSubLedger:
             certStateAfterSubEntities <- state.inspect(certL.get)
             txId <- vocab[F, Hash32](Hash32.fromBytes(b.id[TxLevel.Sub](txBody)))
             guardrails <- vocab[F, Option[ScriptHash]](
-              govState.constitution.script.traverse(ScriptHash.fromBytes)
+              govState.cgsConstitution.script.traverse(ScriptHash.fromBytes)
             )
             _ <- judge.nest(
               DijkstraSUBGOV.subGovTransition[F](

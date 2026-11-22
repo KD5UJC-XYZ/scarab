@@ -75,24 +75,47 @@ object ConwayProposals:
       stored: StoredGovActionState,
       proposal: Proposal => Either[P, ProposalProcedure[E]]
   )(wrap: (GovActionId, P) => ProposalsReadError): Either[ProposalsReadError, GovActionState[E]] =
+    proposal(stored.proposal)
+      .leftMap(wrap(stored.id, _))
+      .flatMap(p =>
+        actionOf[E](
+          stored.id,
+          stored.committeeVotes,
+          stored.drepVotes,
+          stored.poolVotes,
+          p,
+          stored.proposedIn,
+          stored.expiresAfter
+        )
+      )
+
+  /** An action's state of era `E` from the items the node's record of one holds, with its proposal
+    * `p` already the era's: each vote keyed by its voter's role, and its epochs. What the Haskell
+    * state codec reads a Dijkstra state's actions with.
+    */
+  def actionOf[E <: EraTag](
+      id: GovActionId,
+      committeeVotes: Map[FlatCredential, Vote],
+      drepVotes: Map[FlatCredential, Vote],
+      poolVotes: Map[Bytes, Vote],
+      p: ProposalProcedure[E],
+      proposedIn: BigInt,
+      expiresAfter: BigInt
+  ): Either[ProposalsReadError, GovActionState[E]] =
     for
-      p <- proposal(stored.proposal).leftMap(wrap(stored.id, _))
       committee <- votes[FlatCredential, Credential[HotCommittee]](
-        stored.committeeVotes,
+        committeeVotes,
         Convert.credential[HotCommittee](_)
-      ).leftMap(ProposalsReadError.StoredVoter(stored.id, _))
+      ).leftMap(ProposalsReadError.StoredVoter(id, _))
       dreps <- votes[FlatCredential, Credential[DRepRole]](
-        stored.drepVotes,
+        drepVotes,
         Convert.credential[DRepRole](_)
-      ).leftMap(ProposalsReadError.StoredVoter(stored.id, _))
-      pools <- votes[Bytes, KeyHash[StakePool]](stored.poolVotes, KeyHash.fromBytes[StakePool](_))
-        .leftMap(ProposalsReadError.StoredVoter(stored.id, _))
-      epochs <- (
-        EpochNo.fromBigInt(stored.proposedIn),
-        EpochNo.fromBigInt(stored.expiresAfter)
-      ).tupled
-        .leftMap(ProposalsReadError.StoredEpoch(stored.id, _))
-    yield GovActionState[E](stored.id, committee, dreps, pools, p, epochs._1, epochs._2)
+      ).leftMap(ProposalsReadError.StoredVoter(id, _))
+      pools <- votes[Bytes, KeyHash[StakePool]](poolVotes, KeyHash.fromBytes[StakePool](_))
+        .leftMap(ProposalsReadError.StoredVoter(id, _))
+      epochs <- (EpochNo.fromBigInt(proposedIn), EpochNo.fromBigInt(expiresAfter)).tupled
+        .leftMap(ProposalsReadError.StoredEpoch(id, _))
+    yield GovActionState[E](id, committee, dreps, pools, p, epochs._1, epochs._2)
 
   /** Era `E` 's action state as the node records it, with `proposal` the flat proposal of its own:
     * the inverse of [[actionWith]].

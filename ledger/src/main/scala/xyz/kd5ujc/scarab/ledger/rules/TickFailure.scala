@@ -67,12 +67,11 @@ enum TickFailure derives Eq, Show:
     */
   case LayoutNotYet(cause: xyz.kd5ujc.scarab.protocol.ReferenceBuildNotYet)
 
-  /** The node's record of the governance state does not hold the era's state Dijkstra's tick works
-    * on ([[xyz.kd5ujc.scarab.ledger.era.StoredGovError]]): a record that does not read into the
-    * era's, which only a damaged record gives, or a state the record cannot hold, which the tick
-    * never leaves. The reference holds the era's record itself, so this is no verdict on the block
-    * ([[xyz.kd5ujc.scarab.ledger.ChainError.GovRecord]]): the block is not recorded as invalid and
-    * no peer is blamed.
+  /** The node's flat record of a Conway governance state does not read into Dijkstra's where the
+    * chain enters Dijkstra ([[xyz.kd5ujc.scarab.ledger.era.StoredGovError]]), which only a damaged
+    * record gives. The reference translates its own record of the era before, so this is no verdict
+    * on the block ([[xyz.kd5ujc.scarab.ledger.ChainError.GovRecord]]): the block is not recorded as
+    * invalid and no peer is blamed.
     */
   case GovRecord(cause: xyz.kd5ujc.scarab.ledger.era.StoredGovError)
 

@@ -16,6 +16,9 @@ import xyz.kd5ujc.scarab.ledger.*
 import xyz.kd5ujc.scarab.ledger.state as mirror
 import xyz.kd5ujc.scarab.ledger.state.{EraTag, KeyRole, ShelleyBasedEra}
 import xyz.kd5ujc.scarab.ledger as flat
+import xyz.kd5ujc.scarab.ledger.era
+import xyz.kd5ujc.scarab.ledger.era.conway.ConwayProposals
+import xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraProposals
 import xyz.kd5ujc.scarab.node.read.{ChainRead, EraRead, EraViews, InEra, Read}
 import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.codec.Rational
@@ -308,27 +311,98 @@ object Projection:
       voting: Option[mirror.VState],
       pulsed: Option[mirror.DRComplete],
       donation: mirror.Coin
-  )(using ShelleyBasedEra[E]): Json =
-    val conway = EraViews.conwayGov(gov)
-    val proposals = conway.fold(flat.Proposals.empty)(_.proposals)
+  )(using era: ShelleyBasedEra[E]): Json =
+    era.gov match
+      case mirror.GovShape.Era(ev) => dijkstraGovJson(ev(gov), voting, donation)
+      case mirror.GovShape.Proposed(_) | mirror.GovShape.Flat(_) =>
+        val conway = EraViews.conwayGov(gov)
+        val proposals = conway.fold(flat.Proposals.empty)(_.proposals)
+        Json.obj(
+          "proposals" -> proposals.actions.map(proposal).asJson,
+          "committee" -> committee(conway.flatMap(_.committee)),
+          "constitution" -> constitution(
+            conway.fold(flat.ConwayGenesis.noConstitution)(_.constitution)
+          ),
+          "committeeState" -> committeeState(voting),
+          "prevGovActionIds" -> prevIds(proposals.roots),
+          "ratify" -> pulsed.fold(Json.Null)(p => ratifyState(p.ratify)),
+          "drepDistr" -> pulsed.fold(Json.Null)(p => coinMap(p.snapshot.drepDistr, drepKey)),
+          "donation" -> donation.value.asJson
+        )
+
+  /** Dijkstra's governance state, the era's record, shown as [[govJson]] shows Conway's: each
+    * action as the flat record's, a parameter change with the keys its update sets.
+    */
+  private def dijkstraGovJson(
+      gov: era.ConwayGovState[mirror.Dijkstra],
+      voting: Option[mirror.VState],
+      donation: mirror.Coin
+  ): Json =
+    val pulser = gov.cgsDRepPulsingState match
+      case era.DRepPulsingState.DRComplete(snapshot, ratify) => (snapshot, ratify)
+    val (snapshot, ratify) = pulser
+    val enact = ratify.rsEnactState
+    val enactParams = era.GovStateRecord.view(enact.ensCurPParams)
     Json.obj(
-      "proposals" -> proposals.actions.map(proposal).asJson,
-      "committee" -> committee(conway.flatMap(_.committee)),
-      "constitution" -> constitution(
-        conway.fold(flat.ConwayGenesis.noConstitution)(_.constitution)
+      "proposals" -> gov.cgsProposals.pProps.toVector.map(dijkstraProposal).asJson,
+      "committee" -> committee(gov.cgsCommittee),
+      "constitution" -> constitution(gov.cgsConstitution),
+      "committeeState" -> committeeState(voting),
+      "prevGovActionIds" -> prevIds(
+        ConwayProposals.prevIds(era.Proposals.toPrevGovActionIds(gov.cgsProposals.pRoots))
       ),
-      "committeeState" -> Json.fromFields(
-        voting.toVector.flatMap(_.committeeState.creds.toVector).sortBy(e => credName(e._1)).map {
-          case (c, mirror.CommitteeAuthorization.CommitteeHotCredential(h)) =>
-            credName(c) -> Json.obj("hot" -> credName(h).asJson)
-          case (c, mirror.CommitteeAuthorization.CommitteeMemberResigned(a)) =>
-            credName(c) -> Json.obj("resigned" -> true.asJson, "anchor" -> a.map(anchor).asJson)
-        }
+      "ratify" -> Json.obj(
+        "enacted" -> ratify.rsEnacted.map(g => id(g.gasId)).asJson,
+        "expired" -> ratify.rsExpired.toVector.map(g => s"${g.txId.hex}#${g.index}").sorted.asJson,
+        "delayed" -> ratify.rsDelayed.asJson,
+        "committee" -> committee(enact.ensCommittee),
+        "constitution" -> constitution(enact.ensConstitution),
+        "prevGovActionIds" -> prevIds(ConwayProposals.prevIds(enact.ensPrevGovActionIds)),
+        "withdrawals" -> coinMap(
+          enact.ensWithdrawals.map((c, v) => flat.rules.Convert.back(c) -> v.value),
+          cred
+        ),
+        "protocolVersion" -> Vector(enactParams.protocolMajor, enactParams.protocolMinor).asJson
       ),
-      "prevGovActionIds" -> prevIds(proposals.roots),
-      "ratify" -> pulsed.fold(Json.Null)(p => ratifyState(p.ratify)),
-      "drepDistr" -> pulsed.fold(Json.Null)(p => coinMap(p.snapshot.drepDistr, drepKey)),
+      "drepDistr" -> coinMap(snapshot.psDRepDistr, drepKey),
       "donation" -> donation.value.asJson
+    )
+
+  /** A Dijkstra action's state as [[proposal]] shows a Conway one. */
+  private def dijkstraProposal(g: era.GovActionState[mirror.Dijkstra]): Json =
+    val action = DijkstraProposals.flatOrUpdate(g.gasAction) match
+      case Right(a) => govAction(a)
+      case Left(era.GovAction.ParameterChange(parent, u, guardrails)) =>
+        Json.obj(
+          "tag" -> "ParameterChange".asJson,
+          "prev" -> optId(parent.map(_.unGovPurposeId)),
+          "keys" -> DijkstraProposals.updateKeys(u).sorted.asJson,
+          "policy" -> guardrails.map(_.bytes.hex).asJson
+        )
+    Json.obj(
+      "id" -> id(g.gasId),
+      "deposit" -> g.gasDeposit.value.asJson,
+      "returnAccount" -> cred(g.gasReturnAddr.credential).asJson,
+      "anchor" -> anchor(g.gasProposalProcedure.pProcAnchor),
+      "action" -> action,
+      "committeeVotes" -> votes(
+        g.gasCommitteeVotes.map((c, v) => flat.rules.Convert.back(c) -> v),
+        cred
+      ),
+      "drepVotes" -> votes(g.gasDRepVotes.map((c, v) => flat.rules.Convert.back(c) -> v), cred),
+      "poolVotes" -> votes(g.gasStakePoolVotes.map((k, v) => k.bytes -> v), (b: Bytes) => b.hex),
+      "proposedIn" -> g.gasProposedIn.toBigInt.asJson,
+      "expiresAfter" -> g.gasExpiresAfter.toBigInt.asJson
+    )
+
+  private def committeeState(voting: Option[mirror.VState]): Json =
+    Json.fromFields(
+      voting.toVector.flatMap(_.committeeState.creds.toVector).sortBy(e => credName(e._1)).map {
+        case (c, mirror.CommitteeAuthorization.CommitteeHotCredential(h)) =>
+          credName(c) -> Json.obj("hot" -> credName(h).asJson)
+        case (c, mirror.CommitteeAuthorization.CommitteeMemberResigned(a)) =>
+          credName(c) -> Json.obj("resigned" -> true.asJson, "anchor" -> a.map(anchor).asJson)
+      }
     )
 
   private def snapshotJson(s: mirror.SnapShot): Json =

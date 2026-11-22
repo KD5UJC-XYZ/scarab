@@ -42,7 +42,7 @@ import xyz.kd5ujc.scarab.ledger.era.{
   BothLevels,
   EraBlockBody,
   EraTx,
-  GovStateRecord,
+  PParams,
   Proposals,
   Tx,
   TxLevel
@@ -63,11 +63,10 @@ import xyz.kd5ujc.scarab.ledger.era.rules.{
   GovDefect,
   LeiosClosureDefect,
   PoolDefect,
-  ProposalsRecord,
   ShelleyBbodyState,
   UtxoStateDefect
 }
-import xyz.kd5ujc.scarab.ledger.rules.{EraBlock, EraLedger, EraNes, Globals}
+import xyz.kd5ujc.scarab.ledger.rules.{EraBlock, EraNes, Globals}
 import xyz.kd5ujc.scarab.ledger.state.{
   Dijkstra,
   LeiosCommittee,
@@ -262,47 +261,26 @@ private[node] object MirrorDijkstra:
             ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage | ShelleyBasedEra.SConway =>
           None
 
-  /** The parameters in force in `nes`, in Dijkstra's types. */
-  private def pparamsOf(slot: BigInt, nes: NewEpochState[Dijkstra]) =
-    halt(
-      GovStateRecord.dijkstra
-        .pparams(EraLedger.curPParams(nes.es.ls.utxo.gov))
-        .leftMap(e => stop(slot, DijkstraBlockDefect.Parameters(e)))
-    )
+  /** The parameters in force in `nes`. */
+  private def pparamsOf(nes: NewEpochState[Dijkstra]): PParams[Dijkstra] =
+    nes.es.ls.utxo.gov.cgsCurPParams
 
-  /** The proposals of `nes` 's governance record, in Dijkstra's types. */
-  private def proposalsOf(slot: BigInt, nes: NewEpochState[Dijkstra]): Step[Proposals[Dijkstra]] =
-    halt(
-      ProposalsRecord.dijkstra
-        .read(nes.es.ls.utxo.gov.proposals)
-        .leftMap(e => stop(slot, DijkstraBlockDefect.Proposals(e)))
-    )
+  /** The proposals of `nes` 's governance state. */
+  private def proposalsOf(nes: NewEpochState[Dijkstra]): Proposals[Dijkstra] =
+    nes.es.ls.utxo.gov.cgsProposals
 
-  /** `nes` with `proposals` written back into its governance record. An update the record cannot
-    * hold is no verdict ([[DijkstraBlockDefect.UnstorableProposals]]), for which the follower
-    * withholds the block, blaming no peer: the testnet's ledger admits such updates, and the record
-    * holds a parameter Dijkstra adds once its format holds them (#85).
-    */
+  /** `nes` with `proposals` as its governance state's. */
   private def withProposals(
-      slot: BigInt,
       nes: NewEpochState[Dijkstra],
       proposals: Proposals[Dijkstra]
-  ): Step[NewEpochState[Dijkstra]] =
-    halt(
-      ProposalsRecord.dijkstra
-        .write(proposals)
-        .bimap(
-          e => stop(slot, DijkstraBlockDefect.UnstorableProposals(e)),
-          stored =>
-            val ls = nes.es.ls
-            nes.copy[Dijkstra](es =
-              nes.es.copy[Dijkstra](ls =
-                ls.copy[Dijkstra](utxo =
-                  ls.utxo.copy[Dijkstra](gov = ls.utxo.gov.copy(proposals = stored))
-                )
-              )
-            )
+  ): NewEpochState[Dijkstra] =
+    val ls = nes.es.ls
+    nes.copy[Dijkstra](es =
+      nes.es.copy[Dijkstra](ls =
+        ls.copy[Dijkstra](utxo =
+          ls.utxo.copy[Dijkstra](gov = ls.utxo.gov.copy(cgsProposals = proposals))
         )
+      )
     )
 
   /** What every run of the era rules on the block reads beyond the state. */
@@ -333,8 +311,8 @@ private[node] object MirrorDijkstra:
         verified.closure.leftMap(d => stop(env.slot, DijkstraBlockDefect.Closure(d)))
       )
       txs = resolved.map(_._2)
-      pp <- pparamsOf(env.slot, parent)
-      proposals <- proposalsOf(env.slot, parent)
+      pp = pparamsOf(parent)
+      proposals = proposalsOf(parent)
       ledgerEnv = DijkstraClosure.mkMempoolEnv(
         DijkstraClosure.tipSlot(tipSlot),
         pp,
@@ -356,11 +334,7 @@ private[node] object MirrorDijkstra:
         )
       )
       (ls, after) = applied
-      nes <- withProposals(
-        env.slot,
-        parent.copy[Dijkstra](es = parent.es.copy[Dijkstra](ls = ls)),
-        after
-      )
+      nes = withProposals(parent.copy[Dijkstra](es = parent.es.copy[Dijkstra](ls = ls)), after)
     yield (nes, DijkstraClosure.closureTxBytes(txs))
 
   /** The Leios checks of a certifying block against the unticked state of its parent
@@ -525,8 +499,8 @@ private[node] object MirrorDijkstra:
       block: EraBlockOf[DijkstraBlockHeader, Dijkstra]
   ): Step[NewEpochState[Dijkstra]] =
     for
-      pp <- pparamsOf(env.slot, ticked)
-      proposals <- proposalsOf(env.slot, ticked)
+      pp = pparamsOf(ticked)
+      proposals = proposalsOf(ticked)
       applied <- judged(
         env.slot,
         DijkstraBlockRun.bbody(
@@ -543,13 +517,10 @@ private[node] object MirrorDijkstra:
         )
       )
       (after, ps) = applied
-      nes <- withProposals(
-        env.slot,
-        ticked
-          .copy[Dijkstra](bcur = after.blocksMade, es = ticked.es.copy[Dijkstra](ls = after.ls)),
-        ps
-      )
-    yield nes
+    yield withProposals(
+      ticked.copy[Dijkstra](bcur = after.blocksMade, es = ticked.es.copy[Dijkstra](ls = after.ls)),
+      ps
+    )
 
   /** What the era rules read for `announced` 's block on `state`: the slot, the globals, the UTxO
     * rules' context, with every check, and the clock of the state's era history at its tip

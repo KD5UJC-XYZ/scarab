@@ -18,7 +18,7 @@ import xyz.kd5ujc.scarab.ledger.state.*
   * epoch Conway predicts the future parameters again (`Conway/Rules/NewEpoch.hs:161-166`) and the
   * earlier eras change nothing.
   *
-  * Dijkstra's is Conway's on the era types, on the node's governance record read and written back
+  * Dijkstra's is Conway's on the era types, on the state's governance state, the era's record
   * ([[xyz.kd5ujc.scarab.ledger.era.rules.DijkstraNewEpoch.onRecord]]).
   *
   * For an epoch that is not the next one the reference does nothing (`pure src`; Conway also

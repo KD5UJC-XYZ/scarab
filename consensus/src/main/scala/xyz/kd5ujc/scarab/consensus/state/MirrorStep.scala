@@ -18,6 +18,8 @@ import xyz.kd5ujc.scarab.ledger.state.{
   EpochState,
   LedgerState,
   NewEpochState,
+  EraTag,
+  FlatGov,
   FuturePParams,
   Gap,
   NodeExtras,
@@ -417,7 +419,9 @@ object MirrorStep:
     * into those eras rely on them). The parameters in force and the previous ones are the
     * sidecar's; the future ones, which the section holds with the era's fields only, are the
     * sidecar's laid over with what the update changed
-    * ([[xyz.kd5ujc.scarab.ledger.ProtocolParams.overlay]]).
+    * ([[xyz.kd5ujc.scarab.ledger.ProtocolParams.overlay]]). A Dijkstra state is as the section
+    * holds it: its record is the era's, with every field of the era's parameters, and no era comes
+    * after it whose fields the translation reads.
     */
   def withParams(
       m: MirrorState,
@@ -427,24 +431,31 @@ object MirrorStep:
     m.ext.ledgerState.state match
       case EraLedgerState.ByronCurrent(_) => m
       case i: EraLedgerState.InShelleyEra[e] =>
-        given ShelleyBasedEra[e] = i.era
-        val ls = i.state.nes.es.ls
-        val gov = ls.utxo.gov
-        val read = EraLedger.curPParams(gov)
-        val widened = EraLedger.withPParams(
-          gov,
-          params,
-          prev.getOrElse(EraLedger.prevPParams(gov)),
-          FuturePParams.map(EraLedger.futurePParams(gov))(
-            xyz.kd5ujc.scarab.ledger.ProtocolParams.overlay(params, read, _)
-          )
-        )
-        val nes = i.state.nes
-        val state = i.state.copy(nes =
-          nes.copy(es = nes.es.copy(ls = ls.copy[e](utxo = ls.utxo.copy(gov = widened))))
-        )
-        m.copy(ext =
-          m.ext.copy(ledgerState =
-            m.ext.ledgerState.withState(EraLedgerState.InShelleyEra(i.era, state))
-          )
-        )
+        i.era.gov.flat.fold(m)(flat => widened(m, i, params, prev)(using i.era, flat))
+
+  private def widened[E <: EraTag](
+      m: MirrorState,
+      i: EraLedgerState.InShelleyEra[E],
+      params: xyz.kd5ujc.scarab.ledger.ProtocolParams,
+      prev: Option[xyz.kd5ujc.scarab.ledger.ProtocolParams]
+  )(using ShelleyBasedEra[E], FlatGov[E]): MirrorState =
+    val ls = i.state.nes.es.ls
+    val gov = ls.utxo.gov
+    val read = EraLedger.curPParams(gov)
+    val widened = EraLedger.withPParams(
+      gov,
+      params,
+      prev.getOrElse(EraLedger.prevPParams(gov)),
+      FuturePParams.map(EraLedger.futurePParams(gov))(
+        xyz.kd5ujc.scarab.ledger.ProtocolParams.overlay(params, read, _)
+      )
+    )
+    val nes = i.state.nes
+    val state = i.state.copy(nes =
+      nes.copy(es = nes.es.copy(ls = ls.copy[E](utxo = ls.utxo.copy(gov = widened))))
+    )
+    m.copy(ext =
+      m.ext.copy(ledgerState =
+        m.ext.ledgerState.withState(EraLedgerState.InShelleyEra(i.era, state))
+      )
+    )

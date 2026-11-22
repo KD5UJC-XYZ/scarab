@@ -48,13 +48,6 @@ enum BlockNoVerdict:
     */
   case ScriptUnavailable(cause: xyz.kd5ujc.scarab.ledger.era.ScriptVerdictUnavailable)
 
-  /** The proposals a Dijkstra block leaves cannot be written back into the state's record: an
-    * update of a parameter Dijkstra adds, keys 34 to 56, which the public testnet's ledger admits
-    * and the record holds only once its format does (#85,
-    * `DijkstraBlockDefect.UnstorableProposals`).
-    */
-  case UnstorableProposals(cause: xyz.kd5ujc.scarab.ledger.era.ProposalsWriteError)
-
   /** The node's two readings of a Dijkstra block's bytes disagree, or a value its decoder's bounds
     * rule out came of them (`DijkstraBlockDefect.Projection`): a defect of its own decoders.
     */
@@ -83,8 +76,6 @@ enum BlockNoVerdict:
         .ValidationError(point, xyz.kd5ujc.scarab.ledger.BlockFailure.Tx(unavailable))
       s"evaluation unavailable: ${error.message}"
     case ScriptUnavailable(cause) => s"evaluation unavailable: ${cause.reason}"
-    case UnstorableProposals(cause) =>
-      xyz.kd5ujc.scarab.ledger.DijkstraBlockDefect.UnstorableProposals(cause).message
     case Projection(cause) => xyz.kd5ujc.scarab.ledger.DijkstraBlockDefect.Projection(cause).message
     case Verification(defect)   => s"verification failed: ${defect.message}"
     case StateOutOfRange(error) => error.message
@@ -98,9 +89,9 @@ enum BlockNoVerdict:
     this match
       case Evaluation(_, unavailable) => BlockNoVerdict.recoveryOf(unavailable.reason)
       case ScriptUnavailable(cause)   => BlockNoVerdict.recoveryOf(cause.reason)
-      // the same build reads the same bytes and holds the same record again
-      case UnstorableProposals(_) | Projection(_) => Deterministic
-      case Verification(_)                        => Passing
+      // the same build reads the same bytes again
+      case Projection(_)   => Deterministic
+      case Verification(_) => Passing
       // a quantity of the state stays out of range for the same state
       case StateOutOfRange(_) => Deterministic
       case Defect(_)          => Passing
@@ -113,11 +104,10 @@ object BlockNoVerdict:
   def ofDijkstra(defect: xyz.kd5ujc.scarab.ledger.DijkstraBlockDefect): Option[BlockNoVerdict] =
     import xyz.kd5ujc.scarab.ledger.DijkstraBlockDefect as D
     defect match
-      case D.Unavailable(cause)         => Some(ScriptUnavailable(cause))
-      case D.UnstorableProposals(cause) => Some(UnstorableProposals(cause))
-      case D.Projection(cause)          => Some(Projection(cause))
-      case D.Closure(_) | D.Certification(_) | D.Header(_) | D.View(_) | D.Parameters(_) |
-          D.Proposals(_) | D.UtxoState(_) | D.Gov(_) =>
+      case D.Unavailable(cause) => Some(ScriptUnavailable(cause))
+      case D.Projection(cause)  => Some(Projection(cause))
+      case D.Closure(_) | D.Certification(_) | D.Header(_) | D.View(_) | D.UtxoState(_) |
+          D.Gov(_) =>
         None
 
   /** Whether an evaluator's missing verdict can pass on its own, by its cause. */
