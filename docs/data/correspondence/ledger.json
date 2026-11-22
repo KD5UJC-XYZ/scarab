@@ -32770,8 +32770,8 @@
    "evidence": [
     "ConwayLedgerChecksSuite"
    ],
-   "note": "the reference's transition generic in its era over the reference's classes, the sub-rules UTXOW, CERTS and GOV called as UTXOW calls UTXO, each a sub-rule (Judge.nest) whose failures and events are embedded (EmbedInLedger); the withdrawals' move by the build the judgment's Globals name (WithdrawalsRule); GOV's state the node's record of the proposals read into the era's and written back (ProposalsRecord), a record the era cannot read a raised ProposalsReadError, proposals the record cannot hold a raised ProposalsWriteError; the UTxO set the reference-script size reads is the stored outputs of the body's inputs, collateral and reference inputs; the defects of the sub-rules stay their own raises; the epoch, where the environment has none, is the total epochOf of Globals' geometry, where the reference's epochFromSlot (Slot.hs:66-69) reads its Globals' epoch information and fails outside a bounded history: the suites show the result within the history only (CNF-2)",
-   "digest": "b8922f4fa8609c88"
+   "note": "the reference's transition generic in its era over the reference's classes, the sub-rules UTXOW, CERTS and GOV called as UTXOW calls UTXO, each a sub-rule (Judge.nest) whose failures and events are embedded (EmbedInLedger); the withdrawals' move by the build the judgment's Globals name (WithdrawalsRule); GOV's state the era's proposals in their own capability beside the ledger state, as DijkstraLedger's, held by the caller (ConwayBlockRun reads the node's record once a block and writes it back once; ProposalsRecord.stateful on every read and write); the committee's actions CERTS reads are those of the proposals before the transaction (proposalsWithPurpose grCommitteeL, :367-370), each as the node records it (ProposalsRecord.storedAction); the UTxO set the reference-script size reads is the stored outputs of the body's inputs, collateral and reference inputs; the defects of the sub-rules stay their own raises; the epoch, where the environment has none, is the total epochOf of Globals' geometry, where the reference's epochFromSlot (Slot.hs:66-69) reads its Globals' epoch information and fails outside a bounded history: the suites show the result within the history only (CNF-2)",
+   "digest": "1d457d2dfad07f09"
   },
   "def ledger.era.rules.ConwayLedger.shelleyToConwayLedgerPredFailure": {
    "upstream": [
@@ -32895,8 +32895,8 @@
    "evidence": [
     "ConwayLedgerChecksSuite"
    ],
-   "note": "Conway's LEDGERS, Babbage's (Conway/Era.hs:244), through the fold it shares with Dijkstra's (ledgersFold); mkStAnnTx is Alonzo's mkAlonzoStAnnTx given the cache the annotation before left, its epoch information and system start one function, the UTxO set the stored outputs of the transaction's inputs; the index by TxIx.enumerate, zip [minBound ..]",
-   "digest": "27cad0fe36a291a7"
+   "note": "Conway's LEDGERS, Babbage's (Conway/Era.hs:244), through the fold it shares with Dijkstra's (ledgersFold); mkStAnnTx is Alonzo's mkAlonzoStAnnTx given the cache the annotation before left, its epoch information and system start one function, the UTxO set the stored outputs of the transaction's inputs; the index by TxIx.enumerate, zip [minBound ..]; the proposals the caller's capability, which each transaction's LEDGER judges",
+   "digest": "5e51746c4f8659d5"
   },
   "enum ledger.era.rules.ConwayLedgerPredFailure": {
    "upstream": [
@@ -33709,6 +33709,27 @@
    "note": "the era's Proposals written back as the node's record, a typed ProposalsWriteError where it cannot hold an action",
    "digest": "ec30e85d2022f311"
   },
+  "def ledger.era.rules.ProposalsRecord#storedAction": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance.hs",
+     "symbol": "proposalsGovStateL",
+     "lines": [
+      424,
+      424
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "ConwayLedgerChecksSuite"
+   ],
+   "note": "an era's action state as the node records it, the form of the committee's actions CertsEnv holds (proposalsWithPurpose grCommitteeL in Conway's LEDGER)",
+   "digest": "0cf324dd407d07d9"
+  },
   "given ledger.era.rules.ProposalsRecord.conway": {
    "upstream": [
     {
@@ -33727,8 +33748,8 @@
    "evidence": [
     "ConwayLedgerChecksSuite"
    ],
-   "note": "Conway's, over ConwayProposals.fromStored and toStored",
-   "digest": "017ad70c87e7a4f4"
+   "note": "Conway's, over ConwayProposals.fromStored, toStored and storedAction",
+   "digest": "b98be3c626a37d7e"
   },
   "def ledger.era.rules.InjectLedgerFailure.conwayShelleyUtxo": {
    "upstream": [
@@ -47305,8 +47326,8 @@
    "evidence": [
     "ConwayBbodySuite"
    ],
-   "note": "conwayBbodyTransition >> alonzoBbodyTransition on Conway's LEDGERS, its failures and events embedded; the parameters of LEDGERS's transactions (context, verdicts, decoder, the clock) given by the caller; ConwayBbodySuite compares it with the flat BBODY; its expectations are the reference's own only on the 53 recorded Conway blocks the reference accepted",
-   "digest": "5ce7872da882ba5a"
+   "note": "conwayBbodyTransition >> alonzoBbodyTransition on Conway's LEDGERS, its failures and events embedded; the parameters of LEDGERS's transactions (context, verdicts, decoder, the clock) and the proposals GOV judges, a capability beside the BBODY state, given by the caller; ConwayBbodySuite compares it with the flat BBODY; its expectations are the reference's own only on the 53 recorded Conway blocks the reference accepted",
+   "digest": "454e0b7264e213ac"
   },
   "enum ledger.era.rules.HeaderProtVerGate": {
    "upstream": [

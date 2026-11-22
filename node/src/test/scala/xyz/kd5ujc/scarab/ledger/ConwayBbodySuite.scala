@@ -1023,6 +1023,51 @@ class ConwayBbodySuite extends FunSuite:
     )
   }
 
+  test(
+    "two transactions of one block proposing: the era run holds the proposals across them and writes back the flat BBODY's record"
+  ) {
+    // the era run reads the node's record of the proposals once, where GOV first reads them, holds
+    // them across the block's transactions, and writes them back once after it (`ConwayBlockRun`):
+    // the second transaction's GOV judges the first one's proposal, and the record after the block
+    // is the flat rules' (the cluster's parameters are at major 9, the bootstrap phase, where an
+    // info action may be proposed and its return account is not looked up)
+    val params = ConwayNewEpochState.gov.get(judge(third, third.raw).ticked).curPParams
+    val deposit = params.govActionDeposit
+    val fund = deposit + 20000000
+    val utxo = funded(Vector(paid(fund), paid(fund)))
+    def proposing(ix: Int): Built =
+      val body = B.body(
+        0 -> B.set(in(utxo, ix)),
+        1 -> B.arr(paid(17000000)),
+        2 -> B.uint(3000000),
+        20 -> B.set(
+          B.arr(
+            B.uint(deposit),
+            B.bytes(B.rewardAccount(payer)),
+            B.arr(B.uint(6)),
+            B.arr(
+              B.leaf(Value.Text(s"https://example.com/$ix")),
+              B.bytes(Bytes(Vector.fill(32)(0)))
+            )
+          )
+        )
+      )
+      built(body, B.witnesses(body, Vector(payer)))
+    val txs = Vector(proposing(0), proposing(1))
+    val j = judge(third, blockOf(txs), change = holding(utxo))
+    assert(j.era.isRight, s"${j.era}")
+    same("proposing", j.era, j.flat)
+    j.era.foreach((ls, _) =>
+      assertEquals(
+        ls.utxo.gov.proposals.actions.map(_.id),
+        txs.map(t => xyz.kd5ujc.scarab.ledger.GovActionId(t.id, 0))
+      )
+    )
+    // a block with no transaction leaves the record as it was, never read
+    val empty = judge(third, blockOf(Vector.empty), change = holding(utxo))
+    same("empty", empty.era, empty.flat)
+  }
+
   test("the injections into Conway's BBODY are the reference's compositions") {
     // LEDGERS's and below, `shelleyToConwayBbodyPredFailure . Shelley.LedgersFailure .
     // injectFailure` (`Conway/Rules/Bbody.hs:164-165`, cardano-ledger f649f975), through LEDGERS's
