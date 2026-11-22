@@ -216,7 +216,8 @@ def describe_leios_block(raw):
     `eb_references_announcement = [eb_hash, eb_size] / nil`; its block body is
     `[transactions, leios_certificate / nil, peras_certificate / nil]` with `leios_certificate = [signers, signature]`
     (cardano-ledger 9df9f98c `eras/dijkstra/impl/cddl/data/dijkstra.cddl:59-117, 940-945`). `signers` counts the
-    certificate's set signer bits."""
+    certificate's set signer bits, and `signerSeats` lists their seats: seat `i` is bit `7 - i mod 8` of byte
+    `i / 8` (`bitFieldMembers`, cardano-base c1e1ed8d `cardano-crypto-leios/src/Cardano/Crypto/Leios.hs:332-340`)."""
     tag_span, block_span = cborspan.children(raw, 0)
     tag = cborspan.head(raw, tag_span[0])[1]
     era = BLOCK_TAG_ERA.get(tag)
@@ -227,7 +228,8 @@ def describe_leios_block(raw):
     prev = None if _is_null(raw, header_body[2]) else cborspan.payload(raw, header_body[2]).hex()
     described = {"era": era, "blockNo": cborspan.head(raw, header_body[0][0])[1],
                  "slot": cborspan.head(raw, header_body[1][0])[1], "hash": blake2b_256(raw[header[0]:header[1]]),
-                 "prevHash": prev, "announces": None, "ebSize": None, "certifies": False, "signers": None}
+                 "prevHash": prev, "announces": None, "ebSize": None, "certifies": False, "signers": None,
+                 "signerSeats": None}
     if era != "dijkstra":
         return described
     if len(header_body) != 12:
@@ -245,7 +247,13 @@ def describe_leios_block(raw):
         signers = cborspan.payload(raw, cborspan.children(raw, cert[0])[0])
         described["certifies"] = True
         described["signers"] = sum(bin(b).count("1") for b in signers)
+        described["signerSeats"] = signer_seats(signers)
     return described
+
+
+def signer_seats(bitfield):
+    """The seats a certificate's signer bitfield sets, ascending: seat `i` is bit `7 - i mod 8` of byte `i / 8`."""
+    return [i for i in range(len(bitfield) * 8) if bitfield[i // 8] & (0x80 >> (i % 8))]
 
 
 def common_chain(chains):
@@ -351,9 +359,15 @@ def acquired_votes(lines, votes):
     return len(seen)
 
 
-def voting_verdict(cast, acquired):
+def certified_with(chain, seats):
+    """How many certificates of `chain` (described blocks) count one of `seats` among their signers."""
+    return sum(1 for b in chain if b.get("certifies") and set(b.get("signerSeats") or ()) & set(seats))
+
+
+def voting_verdict(cast, acquired, certified=None):
     """The verdict on a voting follower: incomplete without a vote of its own (CNF-2), failed when no reference node
-    counted one, else passed."""
+    counted one, else passed. `certified` (the certificates on the chain that count the follower's seat) is reported
+    beside it; a certificate needs only a quorum, which the other seats can reach, so none is no failure."""
     if not cast:
         return {"verdict": "incomplete", "problems": ["the follower cast no vote"]}
     if not any(acquired.values()):
@@ -633,8 +647,10 @@ def _drive(args, root, started):
                                        capture_output=True, text=True, check=True).stdout.splitlines()
                 acquired[n] = acquired_votes(lines, cast)
             voted = voting_verdict(cast, acquired)
-            follow["voting"] = {"pool": voting, "cast": len(cast), "seats": sorted({v for _, v in cast}),
-                                "acquiredByNode": acquired, **voted}
+            seats = sorted({v for _, v in cast})
+            follow["voting"] = {"pool": voting, "cast": len(cast), "seats": seats, "acquiredByNode": acquired,
+                                "certificatesWithSeat": certified_with(common, seats),
+                                "certificates": sum(1 for b in common if b.get("certifies")), **voted}
             if voted["verdict"] == "failed":
                 judged["problems"] = judged["problems"] + voted["problems"]
                 judged["verdict"] = "failed"
