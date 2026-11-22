@@ -24,7 +24,7 @@ import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.TxMeasure
 import xyz.kd5ujc.scarab.node.read.ConwayView
 import xyz.kd5ujc.scarab.node.{Fatal, StorageBoundary}
 import xyz.kd5ujc.scarab.node.assertions.{Assertions, Property}
-import xyz.kd5ujc.scarab.protocol.{Era, TxSubmission2}
+import xyz.kd5ujc.scarab.protocol.{Era, LeiosTxHash, TxSubmission2}
 import xyz.kd5ujc.scarab.storage.UtxoStore
 import xyz.kd5ujc.scarab.ledger.era.rules.DijkstraRuleDefect
 
@@ -134,6 +134,12 @@ trait Mempool[F[_]]:
   def lines: F[Mempool.Lines]
 
   def snapshot: F[MempoolState]
+
+  /** The held transactions by the hash an endorser block lists them by, with their bytes
+    * (`getLeiosTxIndex`, ouroboros-consensus 2416493b `Mempool/API.hs:241-244`, `Mempool/Init.hs`
+    * 135-140; [[MempoolState.leiosTxIndex]]).
+    */
+  def leiosTxIndex: F[Map[LeiosTxHash, Bytes]]
 
   def contains(id: Bytes): F[Boolean]
 
@@ -412,7 +418,7 @@ object Mempool:
                 current =>
                   UtxoStore
                     .complete(utxoStore, current.utxo, MempoolState.readSet(Some(transaction)))
-                    .map(u => held.copy(current = Right(current.withUtxo(u))))
+                    .map(u => held.withCurrent(current.withUtxo(u)))
               )
             case None => F.pure(held)
           activeEnv <- readEnv
@@ -522,6 +528,8 @@ object Mempool:
 
       def snapshot = state.get
 
+      def leiosTxIndex = state.get.map(_.leiosTxIndex)
+
       def contains(id: Bytes) = state.get.map(_.contains(id))
 
       def awaitChange(same: MempoolState => Boolean): F[MempoolState] =
@@ -563,7 +571,7 @@ object Mempool:
           )
           activeEnv <- readEnv
           synced <- F.blocking(current.sync(completed, target.tipSlot, activeEnv))
-          next = synced._1.copy(tipHash = target.tipHash)
+          next = synced._1.at(target.tipHash)
           dropped = synced._2
           _ <- state.set(next)
           _ <- version.update(_ + 1)
@@ -605,7 +613,7 @@ object Mempool:
                       .map(l.withUtxo)
                   )
                   activeEnv <- readEnv
-                  revalidated <- F.blocking(current.copy(base = completed).remove(ids, activeEnv))
+                  revalidated <- F.blocking(current.withBase(completed).remove(ids, activeEnv))
                   (next, dependants) = revalidated
                   _ <- state.set(next)
                   _ <- version.update(_ + 1)
