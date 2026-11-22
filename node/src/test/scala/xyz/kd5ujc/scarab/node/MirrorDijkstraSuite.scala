@@ -481,6 +481,118 @@ class MirrorDijkstraSuite extends CatsEffectSuite:
     }
   }
 
+  // the forger's certifying path (`partitionMempool`'s `resolveAndApplyLeiosClosure`,
+  // `NodeKernel/Forge.hs:826-857` at ouroboros-consensus 2416493b) on a closure that holds the
+  // testnet's keys-45/46 proposal: the closure applies on the era types and the pool's snapshot is
+  // taken on the state that holds the proposal; only a closure that does not apply stops the node
+  test(
+    "the forger certifies a closure holding the keys-45/46 proposal; a missing closure stops it"
+  ) {
+    import xyz.kd5ujc.scarab.consensus.BlockRef
+    import xyz.kd5ujc.scarab.consensus.leios.CertifyDecision
+    import xyz.kd5ujc.scarab.ledger.StorageError
+    import xyz.kd5ujc.scarab.ledger.state.{Dijkstra, NewEpochState}
+    import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.TxMeasure
+    import xyz.kd5ujc.scarab.node.forge.{
+      BlockBuilder,
+      DijkstraForge,
+      DijkstraParent,
+      DijkstraSnapshot,
+      DijkstraSnapshots
+    }
+    import xyz.kd5ujc.scarab.node.mempool.EbMeasure
+    import xyz.kd5ujc.scarab.protocol.EbPoint
+    import xyz.kd5ujc.scarab.protocol.LeiosWord.Word64
+    given cats.mtl.Raise[IO, StorageError] with
+      def functor = cats.Functor[IO]
+      def raise[E <: StorageError, A](e: E): IO[A] = IO(fail(e.message))
+    def keysOf(nes: NewEpochState[Dijkstra]) = EraProposals
+      .proposalsActions(nes.es.ls.utxo.gov.cgsProposals)
+      .map(_.gasAction)
+      .collect { case xyz.kd5ujc.scarab.ledger.era.GovAction.ParameterChange(_, u, _) =>
+        xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraProposals.updateKeys(u).toSet
+      }
+    devnetStates.flatMap { states =>
+      val parent = states.last
+      val tipHeader = devnetChain.last._1
+      val tip = BlockRef(tipHeader.slot, tipHeader.hash, tipHeader.blockNo)
+      val unticked =
+        MirrorStep.nesOf(parent).flatMap(MirrorDijkstra.inDijkstra).getOrElse(fail("no Dijkstra"))
+      val point = EbPoint(Word64.clamped(tip.slot), eb)
+      val held = LeiosTxHash.fromBytes(Blake2b.hash256.hash(testnetProposal))
+      val slot = BigInt(240)
+      def certifier(stored: Option[Vector[(LeiosTxHash, Bytes)]]) = LeiosCertifier[IO](
+        h => IO.pure(Option.when(h == eb)(stored).flatten),
+        _ => IO.pure(None),
+        None,
+        (state, at) =>
+          MirrorDijkstra.envAt(
+            state,
+            at,
+            Era.Dijkstra,
+            leiosSetup.praos,
+            leiosSetup.globals,
+            leiosSetup.byronHistory,
+            xyz.kd5ujc.scarab.plutus.PlutusBackend.default
+          )
+      )
+      // what the pool's snapshot is taken on: the parent with the closure applied, ticked
+      def recording(seen: cats.effect.Ref[IO, Option[NewEpochState[Dijkstra]]]) =
+        new DijkstraSnapshots[IO]:
+          def forSlot(
+              ticked: NewEpochState[Dijkstra],
+              at: BigInt,
+              clock: xyz.kd5ujc.scarab.ledger.PosixClock
+          )(using cats.mtl.Raise[IO, StorageError]) =
+            seen.set(Some(ticked)).as(DijkstraSnapshot.empty)
+      val parentOf = DijkstraParent(parent, Some(tip), unticked, unticked, Some(point))
+      val cert = signedOver(tip.hash)
+      val decision = CertifyDecision.Certify(cert, point)
+      def partition(c: forge.LeiosCertifying[IO, MirrorState], s: DijkstraSnapshots[IO]) =
+        Handle
+          .allow[Fatal](
+            DijkstraForge
+              .partition[IO, MirrorState](
+                slot,
+                parentOf,
+                decision,
+                TxMeasure.zero,
+                EbMeasure.zero,
+                s,
+                c,
+                nes => Right(nes),
+                leiosSetup.txClock.at(parent, Era.Dijkstra, slot)
+              )
+              .map(Right(_))
+          )
+          .rescue(f => IO.pure(Left(f)))
+      for
+        seen <- cats.effect.Ref.of[IO, Option[NewEpochState[Dijkstra]]](None)
+        applied <- partition(certifier(Some(Vector(held -> testnetProposal))), recording(seen))
+        snapshotState <- seen.get
+        missing <- partition(certifier(None), DijkstraSnapshots.unadmitted[IO])
+      yield
+        applied match
+          case Right(split) =>
+            split.body match
+              case BlockBuilder.Assembly.InDijkstra(body, None) =>
+                assertEquals(body.leiosCertificate, Some(cert))
+                assertEquals(body.transactions, Vector.empty)
+              case other => fail(s"not a certifying body: $other")
+          case Left(f) => fail(s"the forger stopped on a valid closure: ${f.message}")
+        assertEquals(keysOf(unticked), Vector.empty)
+        assertEquals(
+          snapshotState.map(keysOf),
+          Some(Vector(Set(BigInt(45), BigInt(46))))
+        )
+        // a closure the store does not hold is the reference's `error`: the node stops
+        missing match
+          case Left(Fatal.Internal(xyz.kd5ujc.scarab.ledger.ChainError.DijkstraBlock(_, d))) =>
+            assertEquals(d, DijkstraBlockDefect.Closure(LeiosClosureDefect.Missing(eb)))
+          case other => fail(s"a missing closure did not stop the forger: $other")
+    }
+  }
+
   test(
     "a failure of the era's types is the bytes' refusal; the node's readings that disagree are its own"
   ) {
