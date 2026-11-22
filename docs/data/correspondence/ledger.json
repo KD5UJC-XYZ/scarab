@@ -32875,7 +32875,7 @@
    "evidence": [
     "ConwayLedgerChecksSuite"
    ],
-   "digest": "e687be50414f66fa"
+   "digest": "84fa77bf4f21905d"
   },
   "def ledger.era.rules.ShelleyLedgers.ledgersTransition": {
    "upstream": [
@@ -47275,7 +47275,7 @@
     "ConwayBbodySuite"
    ],
    "note": "the network the judgment's Globals', as the reference reads it (the Shelley genesis's networkId); the gate of the header's version by build (HeaderProtVerGate); the UTxO set the stored outputs of the block's inputs and reference inputs before LEDGERS, read into the era; ConwayBbodySuite compares it with the flat BBODY; its expectations are the reference's own only on the 53 recorded Conway blocks the reference accepted",
-   "digest": "2d841d74d5708162"
+   "digest": "666466678d94b0aa"
   },
   "def ledger.era.rules.ConwayBbody.conwayBbody": {
    "upstream": [
