@@ -397,20 +397,33 @@ final class VerificationCache private (val parallelism: Int, direct: Verdicts) e
         .flatMap(jobs => run(jobs.flatten, parallelism))
 
   /** `jobs` in [[chunked]] chunks on up to `parallelism` `blocking` threads, under the bound all
-    * warming shares ([[running]]). Waiting for a permit is cancelable (the thread is interrupted,
-    * and a permit not acquired is not released), so a caller cancelled while other warming holds
-    * every permit, as the closure check is when its read of the outputs fails, is not held behind
-    * that work.
+    * warming shares ([[running]]), each chunk holding one permit ([[permit]]).
     */
   private def run[F[_]: Async](jobs: Vector[Job], parallelism: Int): F[Unit] =
     chunked(jobs, parallelism)
-      .parTraverseN(parallelism)(chunk =>
-        Resource
-          .makeFull[F, Unit](poll => poll(Async[F].interruptible(running.acquire())))(_ =>
-            Async[F].delay(running.release())
+      .parTraverseN(parallelism)(chunk => permit[F].surround(Async[F].blocking(chunk.foreach(_()))))
+      .void
+
+  /** One of [[running]]'s permits, released exactly once. Waiting for it is cancelable (the waiting
+    * thread is interrupted), so a caller cancelled while other warming holds every permit, as the
+    * closure check is when its read of the outputs fails, is not held behind that work. A permit
+    * the semaphore granted is marked held by the thread that took it, before the effect returns,
+    * and is released by the release or, when cancellation discards the effect's result, by the
+    * cancellation; a wait interrupted before the grant takes no permit and releases none.
+    */
+  private def permit[F[_]: Async]: Resource[F, Unit] =
+    def releaseHeld(held: java.util.concurrent.atomic.AtomicBoolean): F[Unit] =
+      Async[F].delay(if held.getAndSet(false) then running.release())
+    Resource
+      .makeFull[F, java.util.concurrent.atomic.AtomicBoolean](poll =>
+        Async[F]
+          .delay(new java.util.concurrent.atomic.AtomicBoolean(false))
+          .flatMap(held =>
+            poll(Async[F].interruptible { running.acquire(); held.set(true) })
+              .onCancel(releaseHeld(held))
+              .as(held)
           )
-          .surround(Async[F].blocking(chunk.foreach(_())))
-      )
+      )(releaseHeld)
       .void
 
   /** Verify the witness signatures `checks` in parallel and keep the verdicts for the rules, which
