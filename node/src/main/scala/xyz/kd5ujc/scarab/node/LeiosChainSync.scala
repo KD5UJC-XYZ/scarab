@@ -140,8 +140,8 @@ object LeiosChainSync:
       * `NodeToNode.hs` 488-510): counted once per election, at most twice, and relayed to the peers
       * the node's LeiosNotify servers run for (`onAnnouncementCentral`, `Announcements.hs` 338-414;
       * [[LeiosCentral.announced]]); a new one then records its endorser block as awaited
-      * (`recordAnnouncedEb`) and its point in the store (`writeEbPoint`). No transaction cache is
-      * kept (#54).
+      * (`recordAnnouncedEb`), in the transaction cache (`recordAnnouncementInTxCache`) and its
+      * point in the store (`writeEbPoint`).
       */
     private def announced(header: LeiosHeader, anc: AnnouncingHeader): F[Unit] =
       onset(header.slot).flatMap(at =>
@@ -153,8 +153,9 @@ object LeiosChainSync:
     * at ouroboros-consensus 2416493b): counted once per election, at most twice, and relayed where
     * `relay` says so to the peers the node's LeiosNotify servers run for (`onAnnouncementCentral`,
     * `Announcements.hs` 338-414; [[LeiosCentral.announced]]); a new one then records its endorser
-    * block as awaited, with the onset `at` of its slot (`recordAnnouncedEb`), and its point in the
-    * store (`writeEbPoint`), whose failure goes to `fatal`. No transaction cache is kept (#54).
+    * block as awaited, with the onset `at` of its slot (`recordAnnouncedEb`), in the transaction
+    * cache (`recordAnnouncementInTxCache`), and its point in the store (`writeEbPoint`), whose
+    * failure goes to `fatal`.
     */
   def processCentrally[F[_], P](
       shared: LeiosFetchShared[F, P],
@@ -180,7 +181,12 @@ object LeiosChainSync:
         )
         .rescue(e => F.pure(e.asLeft[Unit]))
         .flatMap(_.fold(fatal, F.pure))
-    LeiosCentral.announced(central, relay, anc, recordAnnounced *> writePoint)
+    LeiosCentral.announced(
+      central,
+      relay,
+      anc,
+      recordAnnounced *> shared.txCache.announced(anc) *> writePoint
+    )
 
   /** `past` of `headersWithPredecessorStates` (`NodeToNode.hs` 2128-2144 at 2416493b): the headers
     * of a fragment from `anchor` after the slot `acceptedThrough` (none: Origin), split with

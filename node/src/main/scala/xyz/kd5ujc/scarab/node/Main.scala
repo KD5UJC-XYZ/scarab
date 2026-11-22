@@ -1392,6 +1392,7 @@ object Main extends IOApp:
       topology: Option[Topology],
       store: UtxoStore[IO],
       leios: Option[LeiosStore[IO]],
+      txCache: LeiosTxCache[IO],
       cache: VerificationCache,
       scheduling: Scheduling[IO],
       settling: Supervisor[IO],
@@ -1548,46 +1549,52 @@ object Main extends IOApp:
       assertions: Assertions[IO]
   ): IO[ExitCode] =
     val setup = loaded.copy(praos = loaded.praos.copy(verdicts = cache))
-    val run =
-      Startup(
-        options,
-        cliPeers,
-        loaded,
-        setup,
-        topology,
-        store,
-        leios,
-        cache,
-        scheduling,
-        settling,
-        credentials,
-        listening,
-        hangup,
-        layout
-      )
-    instrumented(run, background).flatTap(i => hangup.events.set(forgeEvents(i.measured))).flatMap {
-      instruments =>
-        given Metrics[IO] = instruments.metrics
-        ruled(run).flatMap { rules =>
-          // The mirror's environment as the snapshots ask for it: the configuration, and the eras this
-          // node has seen begin so far.
-          given Ask[IO, ConsensusMirrorEnv] = setup.mirrorAsk(instruments.eraStarts.get)
-          // A restored state no chain of the build reaches is refused (`StateAdmission`).
-          given SnapshotFormat[IO, MirrorState] =
-            SnapshotV10
-              .format[IO](options.snapshotCheck, layout)
-              .admitting(StateAdmission.restored(layout.build))
-          // What a scrape reads besides the counters the events keep: each source answers for itself
-          // and is added when it exists, so the endpoint can listen before the stores are opened (a
-          // collector that is not there yet leaves its gauges absent).
-          val exposed = options.metricsListen.fold(Resource.unit[IO])(address =>
-            MetricsServer.resource[IO](address, instruments.collectors.scrape).void
-          )
-          exposed
-            .surround(
-              storage(run, instruments, rules, backing).use(following(run, instruments, rules, _))
+    // the node's LeiosTxCache, before the chain database whose collections evict it
+    // (`newHashTableLeiosTxCache`, `Node.hs:560-581` at ouroboros-consensus 2416493b)
+    LeiosTxCache.create[IO].flatMap { txCache =>
+      val run =
+        Startup(
+          options,
+          cliPeers,
+          loaded,
+          setup,
+          topology,
+          store,
+          leios,
+          txCache,
+          cache,
+          scheduling,
+          settling,
+          credentials,
+          listening,
+          hangup,
+          layout
+        )
+      instrumented(run, background)
+        .flatTap(i => hangup.events.set(forgeEvents(i.measured)))
+        .flatMap { instruments =>
+          given Metrics[IO] = instruments.metrics
+          ruled(run).flatMap { rules =>
+            // The mirror's environment as the snapshots ask for it: the configuration, and the eras this
+            // node has seen begin so far.
+            given Ask[IO, ConsensusMirrorEnv] = setup.mirrorAsk(instruments.eraStarts.get)
+            // A restored state no chain of the build reaches is refused (`StateAdmission`).
+            given SnapshotFormat[IO, MirrorState] =
+              SnapshotV10
+                .format[IO](options.snapshotCheck, layout)
+                .admitting(StateAdmission.restored(layout.build))
+            // What a scrape reads besides the counters the events keep: each source answers for itself
+            // and is added when it exists, so the endpoint can listen before the stores are opened (a
+            // collector that is not there yet leaves its gauges absent).
+            val exposed = options.metricsListen.fold(Resource.unit[IO])(address =>
+              MetricsServer.resource[IO](address, instruments.collectors.scrape).void
             )
-            .map(exitCode)
+            exposed
+              .surround(
+                storage(run, instruments, rules, backing).use(following(run, instruments, rules, _))
+              )
+              .map(exitCode)
+          }
         }
     }
 
@@ -1767,7 +1774,8 @@ object Main extends IOApp:
           Some(scheduling.compute),
           Some(SnapshotMigration.toCurrent[IO]),
           Some(TransitionRecount.reopen[IO](genesis.geometry)),
-          run.leios
+          run.leios,
+          run.leios.as(run.txCache.evictOlderThan)
         )(ReceivedBlockRecovery.startUp(genesis.geometry.byron.epochSlots))
         // a failed collection of the received log stops the node, as the failure of the
         // reference's collection ends the thread it is linked to (consensus 82ecba329
@@ -2220,7 +2228,8 @@ object Main extends IOApp:
             setup.config.settings.leios.minOfferLead.fold(LeiosMinOfferLead.Default)(lead =>
               LeiosMinOfferLead(xyz.kd5ujc.scarab.protocol.LeiosWord.Word64.clamped(lead.toBigInt))
             ),
-            LeiosMempoolPull.of(chain.mempool.leiosTxIndex)
+            LeiosMempoolPull.of(chain.mempool.leiosTxIndex),
+            run.txCache
           )(using summon, LeiosStorage.lifted[IO])
         }
       }
@@ -2264,10 +2273,12 @@ object Main extends IOApp:
                 LeiosVoter.validateClosure[IO](
                   store.lookupEbClosure(_),
                   Some(run.store),
+                  run.txCache,
                   chain.mempoolEnvironment.ask[MempoolEnv],
                   chain.txClock
                 ),
-                vs
+                vs,
+                event => Log[IO].emit(event)
               ),
               LeiosVoteSchedule(onset, LeiosVoter.timing[IO](chain.ref.get)),
               keys,

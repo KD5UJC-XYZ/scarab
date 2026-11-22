@@ -146,19 +146,24 @@ class LeiosNotifyClientSuite extends FailsOnUncaught:
     (store(dir), Supervisor[IO](await = true), Resource.eval(LeiosAcquired.create[IO])).tupled
       .evalMap { (rocks, settling, acquired) =>
         ok(
-          LeiosFetchNode.create[IO](
-            acquired.notifying(rocks),
-            StdGen.mk(4),
-            Word64.clamped(0),
-            settling,
-            e => IO.raiseError(new AssertionError(e.toString)),
-            IO.raiseError,
-            _ => IO.pure(None),
-            acquired.notifications.subscribe,
-            IO.pure(None),
-            LeiosMinOfferLead(Word64.fromUnsigned(0L)),
-            LeiosMempoolPull.none[IO]
-          )
+          LeiosTxCache
+            .create[IO]
+            .flatMap(txCache =>
+              LeiosFetchNode.create[IO](
+                acquired.notifying(rocks),
+                StdGen.mk(4),
+                Word64.clamped(0),
+                settling,
+                e => IO.raiseError(new AssertionError(e.toString)),
+                IO.raiseError,
+                _ => IO.pure(None),
+                acquired.notifications.subscribe,
+                IO.pure(None),
+                LeiosMinOfferLead(Word64.fromUnsigned(0L)),
+                LeiosMempoolPull.none[IO],
+                txCache
+              )
+            )
         ).map(_ -> rocks)
       }
 

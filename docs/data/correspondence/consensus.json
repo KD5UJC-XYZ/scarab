@@ -3181,8 +3181,8 @@
    "class": "Gap",
    "structure": "differs",
    "record": "https://github.com/KD5UJC-XYZ/scarab/issues/54#issuecomment-7071535058",
-   "note": "valid, invalid, unreadable; the valid case carries none of the reapplied and applied counts and the measure the reference traces, which come with validateEbClosure",
-   "digest": "403ca8d4be8d642e"
+   "note": "valid (with the counts reapplied and applied), invalid, unreadable; the valid case carries no summed measure of the applied transactions, which the reference only traces",
+   "digest": "919b4a17cd59bc6c"
   },
   "def consensus.leios.LeiosVoting.tipAnnouncerFor": {
    "upstream": [
@@ -3236,7 +3236,7 @@
    "class": "Mirror",
    "structure": "same",
    "note": "the deadline, the tip announcing the point, the committee and seats, the closure's verdict, the deadline again, then one signed vote per seat added to the vote state, every vote refused being VoteRejected; over a capability for the clock, the forker at the volatile tip, the closure validation and addVote",
-   "digest": "996e1bf0d28bb64f"
+   "digest": "522b886a9c66a324"
   },
   "def consensus.leios.LeiosVoting.decideLeiosCertify": {
    "upstream": [

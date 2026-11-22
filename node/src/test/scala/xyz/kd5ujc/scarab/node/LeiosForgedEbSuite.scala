@@ -100,19 +100,24 @@ class LeiosForgedEbSuite extends FailsOnUncaught:
       Resource.eval(LeiosAcquired.create[IO])
     ).tupled.evalMap { (store, settling, acquired) =>
       ok(
-        LeiosFetchNode.create[IO](
-          acquired.notifying(store),
-          StdGen.mk(4),
-          slot(0),
-          settling,
-          e => IO.raiseError(new AssertionError(e.toString)),
-          IO.raiseError,
-          _ => IO.pure(None),
-          acquired.notifications.subscribe,
-          IO.pure(None),
-          LeiosMinOfferLead.Default,
-          LeiosMempoolPull.none[IO]
-        )
+        LeiosTxCache
+          .create[IO]
+          .flatMap(txCache =>
+            LeiosFetchNode.create[IO](
+              acquired.notifying(store),
+              StdGen.mk(4),
+              slot(0),
+              settling,
+              e => IO.raiseError(new AssertionError(e.toString)),
+              IO.raiseError,
+              _ => IO.pure(None),
+              acquired.notifications.subscribe,
+              IO.pure(None),
+              LeiosMinOfferLead.Default,
+              LeiosMempoolPull.none[IO],
+              txCache
+            )
+          )
       ).map(node => (node, store, acquired))
     }
 

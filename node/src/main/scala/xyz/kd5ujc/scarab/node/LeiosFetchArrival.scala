@@ -12,6 +12,9 @@ import scala.collection.immutable.{SortedMap, SortedSet}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.leios.{
   BytesSize,
+  ProtVerParity,
+  EbFetchState,
+  EbState,
   LeiosFetchLogic,
   LeiosFetchRequest,
   LeiosFetchStaticEnv,
@@ -20,6 +23,7 @@ import xyz.kd5ujc.scarab.consensus.leios.{
   LeiosTxsReplyFault
 }
 import xyz.kd5ujc.scarab.network.NetworkError
+import xyz.kd5ujc.scarab.node.mempool.LeiosTxIndex
 import xyz.kd5ujc.scarab.protocol.{EbPoint, LeiosFetchFault, LeiosTxHash}
 import xyz.kd5ujc.scarab.protocol.LeiosWord.Word32
 import xyz.kd5ujc.scarab.storage.{LeiosEb, LeiosStore, LeiosStoreError}
@@ -59,8 +63,9 @@ import xyz.kd5ujc.scarab.storage.{LeiosEb, LeiosStore, LeiosStoreError}
   * takes nothing and retires nothing of the new pool, and still releases what the peer had in
   * flight.
   *
-  * Not mirrored (#54): no cross-EB fills (the `LeiosTxCache`), no egress credit refilled at a claim
-  * (`LeiosFreshBytes`), and no arrival telemetry.
+  * Each answer updates the node's transaction cache ([[LeiosTxCache]]) where the reference's does.
+  * Not mirrored (#54): no cross-EB fills (the cache's transaction locations), no egress credit
+  * refilled at a claim (`LeiosFreshBytes`), and no arrival telemetry.
   */
 final class LeiosFetchArrival[F[_], P](
     shared: LeiosFetchShared[F, P],
@@ -116,9 +121,12 @@ final class LeiosFetchArrival[F[_], P](
             )
           )
         else
-          pull(LeiosFetchArrival.txSet(eb)).map(p =>
-            (cleaned, Some(LeiosFetchArrival.pulled(eb, p)))
-          )
+          // the body's entries in the transaction cache, then the pull (`insertBody` and
+          // `pullFromMempool`, `LeiosDemoLogic.hs` 1003-1033)
+          shared.txCache.insertBody(h, eb) *>
+            pull(LeiosFetchArrival.txSet(eb)).map(p =>
+              (cleaned, Some(LeiosFetchArrival.pulled(eb, p)))
+            )
       }
       _ <- shared.wake
       // the state is cleaned before the write is queued, as the reference's is (`LeiosDemoLogic.hs`
@@ -183,6 +191,9 @@ final class LeiosFetchArrival[F[_], P](
             )
         )
       )
+      // the peer's transactions in the transaction cache, unapplied, once their write is queued
+      // (`withLockedInsertUnappliedTx` of `ReceivedTxsFrom`, `LeiosDemoLogic.hs` 1561-1564)
+      _ <- shared.txCache.insertUnapplied(ingested.map(_._2))
       _ <- shared.outstanding.update(LeiosFetchLogic.refundTxRequest(peer, batchBytes, _))
       _ <- shared.wake
     yield ()
@@ -204,8 +215,10 @@ final class LeiosFetchArrival[F[_], P](
         (o, !tooOld && novel)
       }
       _ <- shared.wake
+      // the body's entries in the transaction cache (`insertBody`, `LeiosDemoLogic.hs` 1003-1012)
+      _ <- shared.txCache.insertBody(point.hash, eb).whenA(persist)
       // the forge holds the whole closure, which it writes next: nothing is pulled (`noMempoolPull`)
-      nothing = LeiosFetchArrival.Pulled(LeiosFetchArrival.txSet(eb), SortedMap.empty)
+      nothing = LeiosFetchArrival.Pulled(LeiosFetchArrival.txSet(eb), SortedMap.empty, None)
       _ <- awaited(nothing.writes)(acquire(point, eb, BytesSize.wrap(eb.encodedSize), nothing, _))
         .whenA(persist)
     yield ()
@@ -231,9 +244,14 @@ final class LeiosFetchArrival[F[_], P](
     * the size the body was sent at, the body with no fills, the body then held with the jobs of the
     * transactions neither the mempool nor the write holds (`settle`, `LeiosDemoLogic.hs`
     * 1099-1139), and last the transactions taken from the mempool, written at their offsets
-    * (`ingestAcquiredTxs` of `MempoolTxs`, 1428-1437, which holds no job to retire). That last
-    * write is the one that completes a closure the mempool held whole, so its completion reaches
-    * the store's subscribers, the voting thread among them, with the body.
+    * (`ingestAcquiredTxs` of `MempoolTxs`, 1428-1437, which holds no job to retire), recorded in
+    * the transaction cache as applied under the mempool's parity (`insertApplied`, 1570-1572) after
+    * the write, as the reference records them once their write is queued. That last write is the
+    * one that completes a closure the mempool held whole, so its completion reaches the store's
+    * subscribers, the voting thread among them, with the body; a vote that its completion wakes
+    * before the cache's update finds the transactions untagged and validates them in full, as the
+    * reference's does when its writer lands the write first (its TODO at 1560 would record them
+    * before the write).
     */
   private def acquire(
       point: EbPoint,
@@ -253,7 +271,13 @@ final class LeiosFetchArrival[F[_], P](
       )
       _ <- shared.outstanding.update(_.acquireEbBody(point.hash, pool))
       _ <- shared.wake
-      _ <- (store.writeTxs(point, pulled.ingest.toVector) *> landed *> shared.wake)
+      // the cache's update follows the write, as the reference's follows its queueing
+      // (`LeiosDemoLogic.hs` 1527-1572)
+      _ <- (store.writeTxs(point, pulled.ingest.view.mapValues(_._2).toVector) *> landed *>
+        shared.wake *>
+        pulled.parity.traverse_(
+          shared.txCache.insertApplied(pulled.ingest.values.map(_._1), _)
+        ))
         .whenA(pulled.ingest.nonEmpty)
     yield ()
 
@@ -280,13 +304,14 @@ final class LeiosFetchArrival[F[_], P](
   private def word32(size: BytesSize): Word32 = Word32.wrap(size.toLong)
 
 object LeiosFetchArrival:
-  /** What the mempool gave a novel body: the transactions still to fetch, by offset, and the bytes
-    * of the others at theirs (`missedBoth` and the ingest of `mbMempoolTxs`, `LeiosDemoLogic.hs`
-    * 1026-1040).
+  /** What the mempool gave a novel body: the transactions still to fetch, by offset, the hashes and
+    * bytes of the others at theirs, and the parity they were validated under (`missedBoth` and the
+    * ingest of `mbMempoolTxs`, `LeiosDemoLogic.hs` 1026-1040).
     */
   final case class Pulled(
       missed: SortedMap[Int, (LeiosTxHash, BytesSize)],
-      ingest: SortedMap[Int, Bytes]
+      ingest: SortedMap[Int, (LeiosTxHash, Bytes)],
+      parity: Option[ProtVerParity]
   ):
     /** The writes it takes on the writer's queue: the point, the body and, if any, the mempool's
       * transactions.
@@ -302,16 +327,16 @@ object LeiosFetchArrival:
   /** The pull's result for `eb`: the offsets it found, with their bytes, are ingested; the rest is
     * missed (`IntMap.mapMaybeWithKey` over `fullTxSet` less `notInMempool`, 1034-1037).
     */
-  def pulled(
-      eb: LeiosEb,
-      found: (SortedMap[Int, (LeiosTxHash, BytesSize)], Map[LeiosTxHash, Bytes])
-  ): Pulled =
-    val (missed, hits) = found
+  def pulled(eb: LeiosEb, found: LeiosMempoolPull.Found): Pulled =
     Pulled(
-      missed,
+      found.missed,
       txSet(eb).flatMap { case (offset, (hash, _)) =>
-        Option.unless(missed.contains(offset))(hash).flatMap(hits.get).map(offset -> _)
-      }
+        Option
+          .unless(found.missed.contains(offset))(hash)
+          .flatMap(found.hits.get)
+          .map(offset -> (hash, _))
+      },
+      found.parity
     )
 
   /** `writerQueueDepth` (`Impl/SQLite/WriteQueue.hs` 214-231 at ouroboros-consensus 2416493b): a
@@ -322,21 +347,31 @@ object LeiosFetchArrival:
 
 /** `processLeiosBlock` 's pull from the node's mempool (`pullFromMempool`, `LeiosDemoLogic.hs`
   * 864-870 of ouroboros-consensus 2416493b): of a body's transactions by offset, those still to
-  * fetch from peers and the bytes, by hash, of those the mempool holds.
+  * fetch from peers, the bytes, by hash, of those the mempool holds, and the parity of the protocol
+  * version they were validated under.
   */
 trait LeiosMempoolPull[F[_]]:
-  def apply(
-      misses: SortedMap[Int, (LeiosTxHash, BytesSize)]
-  ): F[(SortedMap[Int, (LeiosTxHash, BytesSize)], Map[LeiosTxHash, Bytes])]
+  def apply(misses: SortedMap[Int, (LeiosTxHash, BytesSize)]): F[LeiosMempoolPull.Found]
 
 object LeiosMempoolPull:
+  /** What a pull found: the misses still to fetch, the hits' bytes by hash, and their parity. */
+  final case class Found(
+      missed: SortedMap[Int, (LeiosTxHash, BytesSize)],
+      hits: Map[LeiosTxHash, Bytes],
+      parity: Option[ProtVerParity]
+  )
+
   /** `mkMempoolPull` (`LeiosDemoLogic.hs` 1186-1200): the pull from the index `readIndex` reads,
     * the mempool's `getLeiosTxIndex` (`Ouroboros/Consensus/Network/NodeToNode.hs` 950-952), read
     * once a pull.
     */
-  def of[F[_]: Functor](readIndex: F[Map[LeiosTxHash, Bytes]]): LeiosMempoolPull[F] =
-    misses => readIndex.map(LeiosFetchLogic.mempoolPull(_, misses))
+  def of[F[_]: Functor](readIndex: F[LeiosTxIndex]): LeiosMempoolPull[F] =
+    misses =>
+      readIndex.map { index =>
+        val (missed, hits) = LeiosFetchLogic.mempoolPull(index.txs, misses)
+        Found(missed, hits, index.parity)
+      }
 
   /** `noMempoolPull` (`LeiosDemoLogic.hs` 1174-1178): every miss kept, nothing found. */
   def none[F[_]: Applicative]: LeiosMempoolPull[F] =
-    misses => Applicative[F].pure((misses, Map.empty))
+    misses => Applicative[F].pure(Found(misses, Map.empty, None))

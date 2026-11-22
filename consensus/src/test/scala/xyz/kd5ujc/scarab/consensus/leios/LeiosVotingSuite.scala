@@ -109,7 +109,8 @@ class LeiosVotingSuite extends ScalaCheckSuite:
       .value
 
   test("each seat a key holds gets one vote, the key's smallest seat, a stranger's seat none") {
-    val (world, result) = run(env(view(), EbClosureVerdict.Valid, added), List(1.second, 2.seconds))
+    val (world, result) =
+      run(env(view(), EbClosureVerdict.Valid(0, 0), added), List(1.second, 2.seconds))
     val votes = result.map(_.map(_.map(_._1).toVector))
     assertEquals(
       votes.map(_.map(_.map(v => (v.voter, v.announcingRbHash)))),
@@ -125,24 +126,25 @@ class LeiosVotingSuite extends ScalaCheckSuite:
 
   test("the deadline is checked first and is strict: at it a vote is cast, after it none") {
     val (atWorld, at) =
-      run(env(view(), EbClosureVerdict.Valid, added), List(10.seconds, 10.seconds))
+      run(env(view(), EbClosureVerdict.Valid(0, 0), added), List(10.seconds, 10.seconds))
     assert(at.exists(_.isRight))
     assertEquals(atWorld.added.size, 2)
-    val (late, after) = run(env(view(), EbClosureVerdict.Valid, added), List(10.seconds + 1.milli))
+    val (late, after) =
+      run(env(view(), EbClosureVerdict.Valid(0, 0), added), List(10.seconds + 1.milli))
     assertEquals(after, Right(Left(LeiosNotVotedReason.TooLate)))
     assertEquals(late.validated, 0)
   }
 
   test("a validation that ends after the deadline casts no vote") {
     val (world, result) =
-      run(env(view(), EbClosureVerdict.Valid, added), List(9.seconds, 10.seconds + 1.milli))
+      run(env(view(), EbClosureVerdict.Valid(0, 0), added), List(9.seconds, 10.seconds + 1.milli))
     assertEquals(result, Right(Left(LeiosNotVotedReason.TooLate)))
     assertEquals((world.validated, world.added), (1, Vector.empty))
   }
 
   test("a selection whose tip does not announce the block, or none, casts no vote, unvalidated") {
     Vector(view(announces = false), view(tipHash = None), None).foreach { v =>
-      val (world, result) = run(env(v, EbClosureVerdict.Valid, added), List(1.second))
+      val (world, result) = run(env(v, EbClosureVerdict.Valid(0, 0), added), List(1.second))
       assertEquals(result, Right(Left(LeiosNotVotedReason.ChainTipDoesNotAnnounce)))
       assertEquals(world.validated, 0)
     }
@@ -151,9 +153,9 @@ class LeiosVotingSuite extends ScalaCheckSuite:
   test("no committee, or no seat of our keys, casts no vote, unvalidated") {
     val noCommittee = view().map(_.copy(committee = None))
     Vector(
-      run(env(noCommittee, EbClosureVerdict.Valid, added), List(1.second)),
-      run(env(view(), EbClosureVerdict.Valid, added), List(1.second), Vector(voting(2))),
-      run(env(view(), EbClosureVerdict.Valid, added), List(1.second), Vector.empty)
+      run(env(noCommittee, EbClosureVerdict.Valid(0, 0), added), List(1.second)),
+      run(env(view(), EbClosureVerdict.Valid(0, 0), added), List(1.second), Vector(voting(2))),
+      run(env(view(), EbClosureVerdict.Valid(0, 0), added), List(1.second), Vector.empty)
     ).foreach { (world, result) =>
       assertEquals(result, Right(Left(LeiosNotVotedReason.NotOnCommittee)))
       assertEquals(world.validated, 0)
@@ -173,13 +175,13 @@ class LeiosVotingSuite extends ScalaCheckSuite:
 
   test("votes all refused are VoteRejected; one accepted is a vote") {
     val refused: Vote => AddVoteResult = _ => AddVoteResult.AlreadyKnown
-    run(env(view(), EbClosureVerdict.Valid, refused), List(1.second, 2.seconds))._2 match
+    run(env(view(), EbClosureVerdict.Valid(0, 0), refused), List(1.second, 2.seconds))._2 match
       case Right(Left(LeiosNotVotedReason.VoteRejected(answers))) =>
         assertEquals(answers.map(_._2).toVector, Vector.fill(2)(AddVoteResult.AlreadyKnown))
       case other => fail(s"not rejected: $other")
     val oneOf: Vote => AddVoteResult = v => if v.voter == seat(1) then added(v) else refused(v)
     assert(
-      run(env(view(), EbClosureVerdict.Valid, oneOf), List(1.second, 2.seconds))._2
+      run(env(view(), EbClosureVerdict.Valid(0, 0), oneOf), List(1.second, 2.seconds))._2
         .exists(_.isRight)
     )
   }

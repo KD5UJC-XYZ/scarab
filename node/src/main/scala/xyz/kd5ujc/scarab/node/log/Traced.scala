@@ -731,6 +731,14 @@ object Traced:
         "voteIn" -> durationSeconds(voteIn).asJson,
         "deadlineIn" -> durationSeconds(deadlineIn).asJson
       )
+    case LeiosKernelEvent.EbValidated(point, reapplied, applied, duration) =>
+      EventKind.LeiosEbValidated.line(
+        "ebHash" -> point.hash.bytes.hex.asJson,
+        "ebSlot" -> point.slot.toBigInt.asJson,
+        "reapplied" -> reapplied.asJson,
+        "applied" -> applied.asJson,
+        "duration" -> durationSeconds(duration).asJson
+      )
     case LeiosKernelEvent.Voted(vote, weight) =>
       EventKind.LeiosVoted.line(
         "rbHash" -> vote.announcingRbHash.bytes.hex.asJson,

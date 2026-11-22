@@ -184,7 +184,7 @@ class LeiosClosureCheckSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   test(
     "a closure of a transaction that applies is valid on the announcing state ticked to its slot"
   ) {
-    checked(Vector(tx)).map(v => assertEquals(v, EbClosureVerdict.Valid))
+    checked(Vector(tx)).map(v => assertEquals(v, EbClosureVerdict.Valid(0, 1)))
   }
 
   test("a closure that spends its inputs twice is refused at its second transaction") {
@@ -255,17 +255,22 @@ class LeiosClosureCheckSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       val state =
         LeiosClosureCheck.ticked(envOf(s).rules, nesOf(s), at).fold(e => fail(e.toString), identity)
       def lookup(answer: Option[Vector[(LeiosTxHash, Bytes)]]) =
-        LeiosClosureCheck.validateEbClosure[IO](
-          h => IO(assertEquals(h, p.hash)).as(answer),
-          None,
-          p,
-          state,
-          envOf(s)
-        )
+        LeiosTxCache
+          .create[IO]
+          .flatMap(cache =>
+            LeiosClosureCheck.validateEbClosure[IO](
+              h => IO(assertEquals(h, p.hash)).as(answer),
+              None,
+              cache,
+              p,
+              state,
+              envOf(s)
+            )
+          )
       val garbled = Vector(LeiosTxHash.fromBytes(tx.id) -> hex("8200"))
       (lookup(Some(stored)), lookup(None), lookup(Some(garbled))).tupled.map {
         (valid, missing, undecodable) =>
-          assertEquals(valid, EbClosureVerdict.Valid)
+          assertEquals(valid, EbClosureVerdict.Valid(0, 1))
           assertEquals(missing, EbClosureVerdict.Unreadable(LeiosClosureDefect.Missing(p.hash)))
           undecodable match
             case EbClosureVerdict.Unreadable(LeiosClosureDefect.TxUndecodable(eb, txh, _)) =>
@@ -291,22 +296,26 @@ class LeiosClosureCheckSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       for
         store <- MemoryUtxoStore[IO]
         _ <- store.write(spent.view.mapValues(Some(_)).toMap, 0L)
+        cache <- LeiosTxCache.create[IO]
         withStore <- LeiosClosureCheck.validateEbClosure[IO](
           _ => IO.pure(Some(stored)),
           Some(store),
+          cache,
           p,
           state.withUtxo(stripped),
           envOf(s)
         )
+        fresh <- LeiosTxCache.create[IO]
         without <- LeiosClosureCheck.validateEbClosure[IO](
           _ => IO.pure(Some(stored)),
           None,
+          fresh,
           p,
           state.withUtxo(stripped),
           envOf(s)
         )
       yield
-        assertEquals(withStore, EbClosureVerdict.Valid)
+        assertEquals(withStore, EbClosureVerdict.Valid(0, 1))
         // without the store the state holds none of them: MEMPOOL's own refusal
         assertEquals(
           refused(without),
@@ -316,7 +325,7 @@ class LeiosClosureCheckSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   }
 
   test("an empty closure is valid, as `goValidate` 's `[]` is") {
-    checked(Vector.empty).map(v => assertEquals(v, EbClosureVerdict.Valid))
+    checked(Vector.empty).map(v => assertEquals(v, EbClosureVerdict.Valid(0, 0)))
   }
 
   // ---- the testnet's parameter change in a closure -----------------------------------------------
@@ -458,7 +467,7 @@ class LeiosClosureCheckSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     assert(!heldProposal(proposalState), "the proposal is not held before")
     assertEquals(
       LeiosClosureCheck.applyClosure(Vector(entry(proposalTx)), proposalState, proposalEnv),
-      EbClosureVerdict.Valid
+      EbClosureVerdict.Valid(0, 1)
     )
   }
 

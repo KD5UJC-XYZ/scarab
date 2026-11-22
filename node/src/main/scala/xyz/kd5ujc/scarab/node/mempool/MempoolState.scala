@@ -323,6 +323,15 @@ final case class MempoolState private (
   /** The era of the pool's ledger, which its transactions are of; none while it has no ledger. */
   def era: Option[Era] = base.toOption.map(_.era)
 
+  /** `protVerParity (leiosCurrentProtVer lcfg (isLedgerState st))` (`getLeiosTxIndex`,
+    * `Mempool/Init.hs:135-140` at ouroboros-consensus 2416493b): the parity of the protocol version
+    * of the pool's ledger after its transactions, none while it has no ledger.
+    */
+  def leiosParity: Option[xyz.kd5ujc.scarab.consensus.leios.ProtVerParity] =
+    current.toOption.map(l =>
+      xyz.kd5ujc.scarab.consensus.leios.ProtVerParity.of(l.params.protocolMajor)
+    )
+
   /** The capacity: `computeMempoolCapacity` of the parameters of the ticked ledger at the base of
     * the pool, in the measure of its era ([[Capacity.of]]), so it follows a parameter change at the
     * next revalidation ([[sync]]), and is zero while there is no ledger. A pool over its capacity

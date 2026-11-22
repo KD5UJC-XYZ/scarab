@@ -144,7 +144,17 @@ class LeiosFetchLatencySuite extends FailsOnUncaught:
       stored(dir / "leios").use { store =>
         TestControl
           .executeEmbed(
-            offered(store, LeiosMempoolPull.of(IO.pure(txs.map(t => LeiosEb.hashTx(t) -> t).toMap)))
+            offered(
+              store,
+              LeiosMempoolPull.of(
+                IO.pure(
+                  xyz.kd5ujc.scarab.node.mempool.LeiosTxIndex(
+                    txs.map(t => LeiosEb.hashTx(t) -> t).toMap,
+                    Some(xyz.kd5ujc.scarab.consensus.leios.ProtVerParity.Even)
+                  )
+                )
+              )
+            )
           )
           .map(run =>
             // the offer wakes the decision at once; the body's arrival completes the closure
@@ -180,7 +190,14 @@ class LeiosFetchLatencySuite extends FailsOnUncaught:
         .executeEmbed(
           offered(
             store,
-            LeiosMempoolPull.of(IO.pure(inPool.map(txs).map(t => LeiosEb.hashTx(t) -> t).toMap))
+            LeiosMempoolPull.of(
+              IO.pure(
+                xyz.kd5ujc.scarab.node.mempool.LeiosTxIndex(
+                  inPool.map(txs).map(t => LeiosEb.hashTx(t) -> t).toMap,
+                  Some(xyz.kd5ujc.scarab.consensus.leios.ProtVerParity.Even)
+                )
+              )
+            )
           )
         )
         .map(run =>

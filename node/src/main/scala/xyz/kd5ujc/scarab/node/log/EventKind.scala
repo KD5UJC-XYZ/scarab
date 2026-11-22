@@ -317,6 +317,7 @@ enum EventKind(val area: Area, val severity: Severity):
   // (`LeiosDemoTypes.hs:1975-2090, 2335-2350` at ouroboros-consensus 2416493b)
   case LeiosKernelMsg extends EventKind(Area.Chain, Severity.Info)
   case LeiosVoteScheduled extends EventKind(Area.Chain, Severity.Info)
+  case LeiosEbValidated extends EventKind(Area.Chain, Severity.Info)
   case LeiosVoted extends EventKind(Area.Chain, Severity.Info)
   case LeiosNotVoted extends EventKind(Area.Chain, Severity.Info)
 

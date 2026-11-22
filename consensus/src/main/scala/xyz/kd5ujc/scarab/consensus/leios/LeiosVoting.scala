@@ -75,10 +75,13 @@ enum LeiosNotVotedReason[+I, +U]:
   case ClosureUnavailable(cause: U)
 
 /** `EbClosureVerdict` (`LeiosVoting.hs:432-444`, ouroboros-consensus 2416493b): the outcome of
-  * applying an endorser block's transactions to the announcing block's ledger state.
+  * applying an endorser block's transactions to the announcing block's ledger state. A valid one
+  * counts the transactions reapplied, as the transaction cache held them validated, and those
+  * validated in full (`EbClosureValid`; the summed measure of the latter, which the reference only
+  * traces, is not kept, #54).
   */
 enum EbClosureVerdict[+I, +U]:
-  case Valid
+  case Valid(reapplied: Int, applied: Int)
   case Invalid(cause: I)
   case Unreadable(cause: U)
 
@@ -199,7 +202,7 @@ object LeiosVoting:
                         no(LeiosNotVotedReason.ClosureUnavailable(cause))
                       case EbClosureVerdict.Invalid(cause) =>
                         no(LeiosNotVotedReason.EbTxsInvalid(cause))
-                      case EbClosureVerdict.Valid =>
+                      case EbClosureVerdict.Valid(_, _) =>
                         env.now.flatMap { validated =>
                           if validated > deadline then no(LeiosNotVotedReason.TooLate)
                           else cast(env, held, rbHash).map(answered)

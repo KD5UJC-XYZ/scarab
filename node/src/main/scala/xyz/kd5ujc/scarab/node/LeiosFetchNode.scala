@@ -145,8 +145,9 @@ final class LeiosFetchNode[F[_]] private (
     * First the announcement, relayed to the peers the node's LeiosNotify servers run for
     * ([[announcedLocally]]), then the body ([[LeiosFetchArrival.forgedBlock]]) and the closure
     * ([[LeiosFetchArrival.forgedTxs]]), each written before the next, whose writes the servers
-    * offer. Not mirrored (#54): no transaction cache; no egress credit; no traces of the forged and
-    * stored endorser block.
+    * offer. Not mirrored (#54): the forged closure's transactions are not recorded in the
+    * transaction cache as applied (`ForgedTxs`' parity); no egress credit; no traces of the forged
+    * and stored endorser block.
     */
   val onForged: OnForgedLeiosEb[F] = new OnForgedLeiosEb[F]:
     def forged(announcing: AnnouncingHeader, eb: ForgedLeiosEb)(using
@@ -160,8 +161,9 @@ final class LeiosFetchNode[F[_]] private (
     * election as a peer's is, and relayed to the peers with a credit (`onAnnouncementCentral`,
     * [[LeiosCentral.announced]]); a new one then marks its endorser block as imminent in the fetch
     * logic's state (`markForged`, `markBodyImminent`), so that it is never fetched, even when a
-    * peer relays the announcement back, and records its point in the store (`writeEbPoint`). It
-    * records no onset, as the age of a forged block is not diffusion's.
+    * peer relays the announcement back, records it in the transaction cache
+    * (`recordAnnouncementInTxCache`) and its point in the store (`writeEbPoint`). It records no
+    * onset, as the age of a forged block is not diffusion's.
     */
   private def announcedLocally(anc: AnnouncingHeader)(using Raise[F, LeiosStoreError]): F[Unit] =
     val fields = anc.fields
@@ -169,6 +171,7 @@ final class LeiosFetchNode[F[_]] private (
       anc,
       ShouldRelay.DoRelay,
       shared.outstanding.update(_.markBodyImminent(fields.ebHash, fields.election.slot)) *>
+        shared.txCache.announced(anc) *>
         store.writeEbPoint(fields.point, Word32.wrap(fields.ebBodySize.toLong)).void
     )
 
@@ -265,7 +268,8 @@ object LeiosFetchNode:
     * offer from `notifications`, the store's, held to `lead` from the slot of the immutable tip
     * `immutableTipNow` reads. A body's transactions are pulled from the node's mempool through
     * `pull` ([[LeiosMempoolPull]]), as the reference's fetch clients pull them
-    * (`Ouroboros/Consensus/Network/NodeToNode.hs` 950-952 at 2416493b).
+    * (`Ouroboros/Consensus/Network/NodeToNode.hs` 950-952 at 2416493b), and its handlers keep the
+    * node's transaction cache `txCache` ([[LeiosTxCache]]).
     */
   def create[F[_]: Async](
       store: LeiosStore[F],
@@ -278,12 +282,13 @@ object LeiosFetchNode:
       notifications: Resource[F, Queue[F, LeiosEbNotification]],
       immutableTipNow: F[Option[Word64]],
       lead: LeiosMinOfferLead,
-      pull: LeiosMempoolPull[F]
+      pull: LeiosMempoolPull[F],
+      txCache: LeiosTxCache[F]
   )(using Raise[F, LeiosStoreError]): F[LeiosFetchNode[F]] =
     (
       LeiosFetchKernel
         .initialized[F, Long](store, prng, immutableTip)
-        .flatMap(LeiosFetchShared.create[F, Long]),
+        .flatMap(LeiosFetchShared.create[F, Long](_, txCache)),
       Semaphore[F](LeiosFetchArrival.WriterQueueDepth),
       AtomicCell[F].of(LeiosCentral.empty[F])
     ).mapN((shared, slots, central) =>

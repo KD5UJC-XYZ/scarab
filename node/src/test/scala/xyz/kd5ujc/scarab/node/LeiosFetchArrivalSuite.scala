@@ -228,7 +228,14 @@ class LeiosFetchArrivalSuite extends FailsOnUncaught:
     txs.map(t => LeiosEb.hashTx(t) -> t).toMap
 
   private def mempoolOf(txs: Vector[Bytes]): LeiosMempoolPull[IO] =
-    LeiosMempoolPull.of(IO.pure(indexOf(txs)))
+    LeiosMempoolPull.of(
+      IO.pure(
+        xyz.kd5ujc.scarab.node.mempool.LeiosTxIndex(
+          indexOf(txs),
+          Some(xyz.kd5ujc.scarab.consensus.leios.ProtVerParity.Even)
+        )
+      )
+    )
 
   dirs.test("a body whose closure the mempool holds is acquired with it, and nothing is fetched") {
     dir =>
@@ -263,6 +270,38 @@ class LeiosFetchArrivalSuite extends FailsOnUncaught:
             Vector(Written.Point, Written.Body, Written.Txs(txs.indices.toVector))
           )
       }
+  }
+
+  dirs.test(
+    "the mempool's transactions are in the transaction cache, applied under its parity, once the write that completes the closure settles"
+  ) { dir =>
+    val txs = Vector.tabulate(5)(tx)
+    val eb = body(txs)
+    val (asking, request) = asked(eb, size(eb), closure(eb))
+    val p = request.point
+    stored(dir / "leios").use { rocks =>
+      for
+        log <- Ref.of[IO, Vector[Written]](Vector.empty)
+        r <- rig(new Recording(rocks, log), asking, pull = mempoolOf(txs))
+        // the announcement, as the node takes it before the body (`recordAnnouncementInTxCache`)
+        _ <- r.shared.txCache.insertAnnouncement(
+          p.slot.toBigInt,
+          xyz.kd5ujc.scarab.crypto.bls.BlsFixtures.rbHash(3),
+          p.hash
+        )
+        found <- r.acquired.notifications.subscribe.use(published =>
+          typed(r.arrival.block(peer, request, eb.transactions.toVector)) *> r.settled.take *>
+            published.take.iterateUntil(_ == LeiosEbNotification.AcquiredEbTxs(p)) *>
+            r.shared.txCache.lookup
+        )
+        index <- r.shared.txCache.snapshot
+      yield
+        assertEquals(
+          eb.transactions.toVector.map(e => found(e._1)),
+          Vector.fill(5)(Some(Right(xyz.kd5ujc.scarab.consensus.leios.ProtVerParity.Even)))
+        )
+        assertEquals(index.lookupBody(p.hash), Some(eb))
+    }
   }
 
   dirs.test(
