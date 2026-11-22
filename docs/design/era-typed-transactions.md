@@ -2735,7 +2735,10 @@ Conway's rules on the classes follow as the rest of stage 2.
     with the block's (the block's own less those its transactions create, `neededTxInsForBlock`,
     `Cardano/Ledger/Block.hs:104-110`; the closure's each transaction's, `Shelley/Ledger/Leios.hs:198`), and applied to
     the parent, unticked and stamped with the block's number, with that state's parameters, account and proposals; then
-    the tick, BBODY on the era types with every failure accumulated, Praos2's header rules, checkpoints included, with
+    the tick, BBODY on the era types with every failure accumulated and every check validated (`ValidateAll`), the
+    context of its transactions' rules made by the run from the judgment's `Globals` (the network, `networkId`,
+    `Dijkstra/Rules/Utxo.hs:400`), so that no caller gives it another policy or network; Praos2's header rules,
+    checkpoints included, with
     the ledger view of the state ticked before BBODY (`applyHelper`, `Ledger/Extended.hs:297-311`; `protocolLedgerView`,
     `currentForecast`), and the state's cumulative transaction bytes gaining the closure's and the block's
     (`Layout.afterBytes`, the Leios layout's existing field). The proposals are read from the state's record before the

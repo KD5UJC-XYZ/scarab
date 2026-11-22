@@ -47771,7 +47771,7 @@
    ]
   },
   {
-   "reason": "the run of Dijkstra's era rules on a block as the node applies it, BBODY with every failure accumulated and the closure's application, on the fused interpreter with the proposals as their own state and the events discarded (applyBlockEither with ValidateAll, ComputeLedgerEvents off), and its defects; and the tick of a block given by its era and header hash, which a block on the era types gives (#54)",
+   "reason": "the run of Dijkstra's era rules on a block as the node applies it, BBODY with every failure accumulated, the context of its transactions' rules made from the judgment's Globals (the network, networkId) with every check validated, and the closure's application, on the fused interpreter with the proposals as their own state and the events discarded (applyBlockEither with ValidateAll, ComputeLedgerEvents off), and its defects; and the tick of a block given by its era and header hash, which a block on the era types gives (#54)",
    "definitions": [
     "def ledger.era.rules.DijkstraBlockRun.bbody",
     "def ledger.era.rules.DijkstraBlockRun.closure",

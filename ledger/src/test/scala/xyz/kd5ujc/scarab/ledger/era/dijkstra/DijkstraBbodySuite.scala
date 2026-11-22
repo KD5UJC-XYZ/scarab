@@ -36,6 +36,8 @@ import xyz.kd5ujc.scarab.protocol.ReferenceBuild
   *   - the block's execution units and reference scripts against the flat rules' sums on the
   *     chain's recorded transactions, the reference scripts at versions 10 and 12, the limits at
   *     their boundaries, and a block past both refused by BBODY after LEDGERS's failures;
+  *   - the node's run (`DijkstraBlockRun.bbody`) on the network of its globals with every check,
+  *     and a network outside `Network` a defect;
   *   - the block counted for its issuer, and an overlay slot not counted;
   *   - the injections into BBODY on built values against the reference's compositions, the 24 the
   *     reference lists, and none for the constructor the reference calls impossible or a failure
@@ -500,6 +502,81 @@ class DijkstraBbodySuite extends FunSuite:
       case DijkstraBbodyPredFailure.LedgersFailure(_) => ()
       case other                                      => fail(s"not LEDGERS's: $other")
     }
+  }
+
+  // ---- the node's run --------------------------------------------------------------------------------
+
+  /** The chain's transactions `rs` in the devnet block's body, its header committing to that body,
+    * and a state holding the outputs they spend.
+    */
+  private def sampled(rs: Vector[Recorded]): (Bytes, ShelleyBbodyState[Dijkstra]) =
+    val utxo = UTxO[Dijkstra](rs.flatMap(_.utxo.unUTxO).toMap)
+    val ls = empty.ls
+    val seeded = empty.copy(ls =
+      ls.copy[Dijkstra](utxo =
+        ls.utxo.copy[Dijkstra](
+          utxo = xyz.kd5ujc.scarab.ledger.state.UtxoTables(
+            flat.Utxo(utxo.unUTxO.view.mapValues(StoredTxOut.dijkstra.toStored).toMap)
+          ),
+          instantStake = ok(EraStake.dijkstra.addInstantStake(utxo, ls.utxo.instantStake))
+        )
+      )
+    )
+    (crafted(plain)(_.updated(0, array(rs.map(_.flat.raw))), committing), seeded)
+
+  /** The globals with the network `n`. */
+  private def onNetwork(n: Int): Globals = globals.copy(ledger = globals.ledger.copy(network = n))
+
+  /** The node's run of BBODY (`DijkstraBlockRun.bbody`) on `raw` from `state` under `on`. */
+  private def nodeRun(on: Globals, raw: Bytes, state: ShelleyBbodyState[Dijkstra]) =
+    DijkstraBlockRun.bbody(
+      on,
+      BbodyEnv[Dijkstra](testnetPParams, ChainAccountState(Coin(0), Coin(0))),
+      ok(DijkstraBlock.decode(raw)),
+      0,
+      history,
+      state,
+      EraGovRun.dijkstraEmpty,
+      ScarabEvaluator.default,
+      flat.Verdicts.Direct,
+      ScarabEvaluator.defaultDecoder,
+      slot => Right(slot * 1000)
+    )
+
+  test("the node's run reads its network from the globals and validates every check") {
+    val (raw, seeded) = sampled(byBlock.head)
+    // the refusal or the state after, of the node's run and of BBODY on a context given whole
+    def ofNode(n: Int) = nodeRun(onNetwork(n), raw, seeded) match
+      case Right(Left(fs))          => Left(fs.toChain.toVector)
+      case Right(Right((after, _))) => Right(after)
+      case Left(d)                  => fail(s"a defect: $d")
+    def judgedOn(network: Network, validation: flat.TxEnv.Validation) =
+      run(raw, testnetPParams, seeded, DijkstraUtxoContext(network, 0, history, validation)) match
+        case Right(Left(fs))             => Left(fs.toChain.toVector)
+        case Right(Right((after, _, _))) => Right(after)
+        case Left(d)                     => fail(s"a defect: $d")
+    val all = flat.TxEnv.Validation.All
+    // the two networks tell the block's transactions apart, and so do the two policies
+    assertNotEquals(judgedOn(Network.Testnet, all), judgedOn(Network.Mainnet, all))
+    assertNotEquals(
+      judgedOn(Network.Mainnet, all),
+      judgedOn(Network.Mainnet, flat.TxEnv.Validation.NonStatic)
+    )
+    // the run is BBODY on the globals' network (`networkId`) with every check
+    assertEquals(ofNode(Network.Testnet.wire), judgedOn(Network.Testnet, all))
+    assertEquals(ofNode(Network.Mainnet.wire), judgedOn(Network.Mainnet, all))
+    // a network outside `Network` is a defect, not a network
+    assertEquals(
+      nodeRun(onNetwork(2), plain, empty),
+      Left(
+        DijkstraRuleDefect.Ledger(
+          flat.LedgerFailure.Vocab(
+            xyz.kd5ujc.scarab.ledger.state.VocabError
+              .OutOfRange(xyz.kd5ujc.scarab.ledger.state.VocabError.Kind.Network, BigInt(2))
+          )
+        )
+      )
+    )
   }
 
   // ---- the blocks made --------------------------------------------------------------------------------
