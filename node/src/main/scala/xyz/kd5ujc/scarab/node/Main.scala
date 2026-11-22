@@ -2508,7 +2508,12 @@ object Main extends IOApp:
       // started as non-producing, as the reference reads them (`Run.hs` 195-201)
       forging <- (options.forge, credentials).tupled.traverse { (files, pool) =>
         for
-          source <- HotKeySource.files[IO](files.vrfSkey, files.kesSkey, files.opCert)
+          source <- HotKeySource.files[IO](
+            files.vrfSkey,
+            files.kesSkey,
+            files.opCert,
+            files.blsSkey
+          )
           forger <- {
             given TxClock[MirrorState] = chain.txClock
             // the endorser blocks it forges go to the fetch's handlers and store; the node does not

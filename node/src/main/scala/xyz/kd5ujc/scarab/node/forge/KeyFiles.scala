@@ -146,9 +146,40 @@ object KeyFiles:
         .leftMap(e => ForgeError.KeyFile(file, ForgeKeyProblem.Bls(e)))
     yield key
 
+  /** The bytes of a `--shelley-bls-key` file (`BS.readFile`,
+    * `Cardano/Node/Protocol/Shelley.hs:332`, cardano-node b004fe0c): any failure to read them is
+    * the reference's `CredentialsReadError`.
+    */
+  def readBls(file: Path): Either[ForgeError, Array[Byte]] =
+    Either
+      .catchNonFatal(Files.readAllBytes(file))
+      .leftMap(e => ForgeError.KeyFile(file.toString, ForgeKeyProblem.Io(e)))
+
+  /** The voting keys of the bytes of a `--shelley-bls-key` file, each with its verification key.
+    * Bytes that are not UTF-8 are no JSON, as `eitherDecodeStrict'` finds them.
+    */
+  def blsVotingKeys(file: Path, bytes: Array[Byte]): Either[ForgeError, Vector[VotingKey]] =
+    val name = file.toString
+    for
+      text <- Either
+        .catchNonFatal(
+          java.nio.charset.StandardCharsets.UTF_8
+            .newDecoder()
+            .decode(java.nio.ByteBuffer.wrap(bytes))
+            .toString
+        )
+        .leftMap(e =>
+          ForgeError.KeyFile(name, ForgeKeyProblem.Json(io.circe.ParsingFailure("not UTF-8", e)))
+        )
+      secrets <- blsSigningKeys(name, text)
+      keys <- secrets.traverse(k =>
+        VotingKey.of(k).leftMap(e => ForgeError.KeyFile(name, ForgeKeyProblem.Bls(e)))
+      )
+    yield keys
+
   /** The voting keys of a `--shelley-bls-key` file, read. */
-  def loadBlsSigningKeys(file: Path): Either[ForgeError, Vector[SecretKey]] =
-    read(file).flatMap(blsSigningKeys(file.toString, _))
+  def loadBlsSigningKeys(file: Path): Either[ForgeError, Vector[VotingKey]] =
+    readBls(file).flatMap(blsVotingKeys(file, _))
 
   /** The KES key as `cardano-cli node key-gen-KES` writes it (the 608-byte period-0 key), or as
     * [[KesFiles]] writes it back after evolving (the same envelope; the period is read off the
@@ -232,12 +263,7 @@ object KeyFiles:
       // the voting keys after the VRF key and before the KES key and the certificate, as
       // `readLeaderCredentialsSingleton` reads them (`Cardano/Node/Protocol/Shelley.hs:187-201`,
       // cardano-node b004fe0c)
-      voting <- blsFile.traverse(loadBlsSigningKeys).map(_.getOrElse(Vector.empty))
-      keys <- voting.traverse(k =>
-        VotingKey
-          .of(k)
-          .leftMap(e => ForgeError.KeyFile(blsFile.fold("")(_.toString), ForgeKeyProblem.Bls(e)))
-      )
+      keys <- blsFile.traverse(loadBlsSigningKeys).map(_.getOrElse(Vector.empty))
       hot <- KesFiles.readHot(kesFile, opCertFile)
       credentials = PoolCredentials(vrf, hot.kes, hot.opCert, hot.coldVkey, keys)
       _ <- PoolCredentials.check(credentials)

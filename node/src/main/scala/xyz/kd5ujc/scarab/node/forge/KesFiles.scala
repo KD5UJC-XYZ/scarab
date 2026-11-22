@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.forge
 
+import xyz.kd5ujc.scarab.consensus.leios.VotingKey
 import scala.util.Using.Releasable
 import scala.util.Using
 import xyz.kd5ujc.scarab.ledger.ForgeKeyProblem
@@ -671,7 +672,11 @@ object KesFiles:
 
   /** What a reload found in the credential files. */
   enum Reread:
-    case Found(credentials: HotCredentials, vrf: Draft03Prover.SigningKey)
+    case Found(
+        credentials: HotCredentials,
+        vrf: Draft03Prover.SigningKey,
+        voting: Vector[VotingKey] = Vector.empty
+    )
 
     /** The first file, in the reference's reading order, that does not exist. */
     case Absent(file: Path)
@@ -686,25 +691,46 @@ object KesFiles:
 
   /** The credentials again at a reload, in the order the reference reads them on SIGHUP
     * (cardano-node 11.1.3, `cardano-node/src/Cardano/Node/Protocol/Shelley.hs` 183-205 and 214-224,
-    * `readLeaderCredentialsSingleton` and `opCertKesKeyCheck`): the VRF key, then the certificate,
-    * then the KES key, each checked to exist just before it is read. The first that does not exist
-    * ends the read ([[Reread.Absent]]). The VRF key read is the one forging takes, as the
-    * reference's new block forging does (#919).
+    * `readLeaderCredentialsSingleton` and `opCertKesKeyCheck`): the VRF key, then the voting keys
+    * of `--shelley-bls-key` when it is given (cardano-node b004fe0c, the same file 187-192), then
+    * the certificate, then the KES key, each checked to exist just before it is read. The first
+    * that does not exist ends the read ([[Reread.Absent]]). The VRF key read is the one forging
+    * takes, as the reference's new block forging does (#919).
     */
-  def reread(vrfFile: Path, kesFile: Path, opCertFile: Path): Either[ForgeError, Reread] =
+  def reread(
+      vrfFile: Path,
+      kesFile: Path,
+      opCertFile: Path,
+      blsFile: Option[Path] = None
+  ): Either[ForgeError, Reread] =
     def present(file: Path)(read: => Either[ForgeError, Reread]): Either[ForgeError, Reread] =
       if exists(file) then read else Right(Reread.Absent(file))
+    // the voting keys after the VRF key, as cardano-node b004fe0c reads them
+    // (`Cardano/Node/Protocol/Shelley.hs:187-192`): a file that cannot be read at all is its
+    // `CredentialsReadError`, which the reload takes for a removed file and so disables forging
+    // (`Run.hs:741-751`); one that reads but does not parse is an error that keeps what is in force
+    // (`Run.hs:713-714`)
+    def voting(read: Vector[VotingKey] => Either[ForgeError, Reread]): Either[ForgeError, Reread] =
+      blsFile.fold(read(Vector.empty)) { file =>
+        KeyFiles.readBls(file) match
+          case Left(ForgeError.KeyFile(_, ForgeKeyProblem.Io(_: java.io.IOException))) =>
+            Right(Reread.Absent(file))
+          case Left(other)  => Left(other)
+          case Right(bytes) => KeyFiles.blsVotingKeys(file, bytes).flatMap(read)
+      }
     present(vrfFile) {
       KeyFiles.read(vrfFile).flatMap(KeyFiles.vrfSigningKey(vrfFile.toString, _)).flatMap { vrf =>
-        present(opCertFile) {
-          KeyFiles.read(opCertFile).flatMap(KeyFiles.opCert(opCertFile.toString, _)).flatMap {
-            (opCert, cold) =>
-              present(kesFile) {
-                for
-                  real <- resolved(kesFile)
-                  kes <- recover(real)
-                yield Reread.Found(HotCredentials(kes, opCert, cold), vrf)
-              }
+        voting { keys =>
+          present(opCertFile) {
+            KeyFiles.read(opCertFile).flatMap(KeyFiles.opCert(opCertFile.toString, _)).flatMap {
+              (opCert, cold) =>
+                present(kesFile) {
+                  for
+                    real <- resolved(kesFile)
+                    kes <- recover(real)
+                  yield Reread.Found(HotCredentials(kes, opCert, cold), vrf, keys)
+                }
+            }
           }
         }
       }
