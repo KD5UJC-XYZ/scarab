@@ -130,11 +130,12 @@ def acquired_era(session):
     return era
 
 
-def acquired_shelley_era(session):
-    """`acquired_era`, which must be a Shelley-based era (`SHELLEY_BASED`); a `RuntimeError` otherwise. The era is
-    read from the reply's own bytes, which must be an unsigned integer (`MalformedReply` otherwise)."""
+def acquired_shelley_era(session, eras=SHELLEY_BASED):
+    """`acquired_era`, which must be a Shelley-based era (`SHELLEY_BASED`, or the indexes `eras` names: Dijkstra's
+    too for a Leios-build cluster); a `RuntimeError` otherwise. The era is read from the reply's own bytes, which must
+    be an unsigned integer (`MalformedReply` otherwise)."""
     era = acquired_era(session)
-    if era not in SHELLEY_BASED:
+    if era not in eras:
         raise RuntimeError(f"the acquired state is of era {era!r}, not a Shelley-based era")
     return era
 

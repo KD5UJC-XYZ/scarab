@@ -1,11 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
 """A reference-only cluster of the Leios testnet build that crosses from Conway into Dijkstra (#54).
 
-REFERENCE ONLY: Scarab cannot follow a Dijkstra chain yet, so nothing here starts a Scala node. The cluster is the
-evidence base for the Dijkstra codec and rule work: `up-dijkstra` starts it and drives it into Dijkstra with one
-Dijkstra transaction, `capture-dijkstra` saves its chain from Origin as a fixture. `devnet.py follow
---reference-build leios-b004fe0c` starts the Scala follower against it by hand; the node refuses that build's
-`follow` until it runs its rules (`ReferenceBuildFlag.follows`).
+REFERENCE ONLY: nothing here starts a Scala node. The cluster is the evidence base for the Dijkstra codec and rule
+work: `up-dijkstra` starts it and drives it into Dijkstra with one Dijkstra transaction, `capture-dijkstra` saves its
+chain from Origin as a fixture. `devnet.py follow --reference-build leios-b004fe0c --db` starts the Scala follower
+against it by hand, and `leios-traffic --follow` starts one against its Leios cluster and judges it
+(`scenarios/leios_follow.py`).
 
 The image is the one the public Leios testnet runs (release rc-2026w44, cardano-node b004fe0c, pinned in
 `docs/data/reference-pins.json`; digest and binaries in `docs/leios.md` section 12). The 11.1.3 reference cannot

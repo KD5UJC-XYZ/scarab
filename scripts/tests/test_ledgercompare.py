@@ -119,6 +119,21 @@ if __name__ == "__main__":
     unittest.main()
 
 
+class LeiosLayoutTest(unittest.TestCase):
+    def test_a_new_epoch_state_of_the_leios_layout_has_six_fields(self):
+        six = nes()[:6]  # the 11.1 layout's seven fields less the pool distribution
+        raw = answer(six)
+        leios = ledgercompare.compare("DebugNewEpochState", raw, raw,
+                                      new_epoch_fields=ledgercompare.LEIOS_NEW_EPOCH_STATE_FIELDS)
+        self.assertTrue(leios.equal, leios.problems)
+        eleven = ledgercompare.compare("DebugNewEpochState", raw, raw)
+        self.assertFalse(eleven.equal)
+        self.assertIn("expected arity", eleven.problems[0])
+        seven = answer(nes())
+        self.assertFalse(ledgercompare.compare("DebugNewEpochState", seven, seven,
+                                               new_epoch_fields=ledgercompare.LEIOS_NEW_EPOCH_STATE_FIELDS).equal)
+
+
 class WholeStateComparisonTest(unittest.TestCase):
     """The per-era whole-state comparison of `e2e` (`compare.whole_state`): where two answers first differ,
     and the tally each era reports."""
@@ -228,7 +243,7 @@ class WholeStateAnchorTest(unittest.TestCase):
         utxo = cbor.enc([4, [{}]])
 
         class Session:
-            def __init__(self, container, socket, magic, host=False, deadline=None):
+            def __init__(self, container, socket, magic, host=False, deadline=None, relay="socat"):
                 self.side = "scala" if host else "reference"
                 self.last_raw = None
                 self.asked = 0
@@ -363,7 +378,7 @@ class WholeStateForkTest(unittest.TestCase):
         utxo = cbor.enc([4, [{}]])
 
         class Session:
-            def __init__(self, container, socket, magic, host=False, deadline=None):
+            def __init__(self, container, socket, magic, host=False, deadline=None, relay="socat"):
                 self.side, self.asked = ("scala" if host else "reference"), 0
 
             def __enter__(self):

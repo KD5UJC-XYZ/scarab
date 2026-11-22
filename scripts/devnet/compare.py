@@ -375,8 +375,9 @@ ERA_INDEX = {"shelley": 1, "allegra": 2, "mary": 3, "alonzo": 4, "babbage": 5, "
 # era) and its judge. The new-epoch state holds the UTxO as an empty map on both nodes (UTxO-HD keeps it in the
 # ledger's tables), so the whole UTxO is asked beside it.
 WHOLE_QUERIES = {
-    "DebugNewEpochState": (12, lambda reference, scala: ledgercompare.compare("DebugNewEpochState", reference, scala)),
-    ledgercompare.UTXO_LABEL: (7, ledgercompare.compare_utxo),
+    "DebugNewEpochState": (12, lambda reference, scala, fields: ledgercompare.compare(
+        "DebugNewEpochState", reference, scala, new_epoch_fields=fields)),
+    ledgercompare.UTXO_LABEL: (7, lambda reference, scala, _: ledgercompare.compare_utxo(reference, scala)),
 }
 
 
@@ -460,7 +461,12 @@ def failure_kind(error):
     return "defect"
 
 
-def whole_state(name, era, scala_socket=None, anchor="scala", attempts=1, site=SINGLE_FOLLOWER, reselections=None):
+# the era of a state `whole_state` compares, by its index; Dijkstra's (7) is one only where `eras` admits it
+WHOLE_ERA_NAMES = {**eraview.ERA_NAMES, 7: "dijkstra"}
+
+
+def whole_state(name, era, scala_socket=None, anchor="scala", attempts=1, site=SINGLE_FOLLOWER, reselections=None,
+                relay="socat", eras=ntcquery.SHELLEY_BASED, new_epoch_fields=ledgercompare.NEW_EPOCH_STATE_FIELDS):
     """The complete same-point ledger state of both nodes: each of `WHOLE_QUERIES`, asked over node-to-client on
     one session per node acquired at one point, and judged on every byte (`ledgercompare`). The point is the volatile
     tip of `anchor`: the Scala node's when it follows, as every block it holds is the reference's; the reference's
@@ -470,7 +476,10 @@ def whole_state(name, era, scala_socket=None, anchor="scala", attempts=1, site=S
     but no block to compare a state at). Every reply is judged on its bytes as well (`ntcquery.acquire_reply`,
     `ntcquery.result_offset`). The queries ask the era of the state that was acquired at the anchor, as the era battery
     does (`ntcquery.acquired_shelley_era`), so that a round across an era boundary compares one era on both nodes;
-    `era` is the caller's era and is not asked. `scala_socket` is the Scala node's node-to-client socket
+    `era` is the caller's era and is not asked; `eras` are the era indexes a state may be of (`ntcquery.SHELLEY_BASED`, and
+    Dijkstra's on a Leios-build cluster), and `relay` the program that carries the reference's session in its container
+    (`ntcquery.RELAYS`: the Leios build's image has `perl`, not `socat`); `new_epoch_fields` the arity of a new-epoch
+    state in the layout of the build both nodes run (`ledgercompare.LEIOS_NEW_EPOCH_STATE_FIELDS` for the Leios build). `scala_socket` is the Scala node's node-to-client socket
     (`scala-sock/node.socket` of the run dir by default, the socket directory of the follower `site`).
 
     The acquisitions are bounded. The other node is asked for a point at most `attempts` times, `SAME_POINT_PAUSE`
@@ -505,7 +514,7 @@ def whole_state(name, era, scala_socket=None, anchor="scala", attempts=1, site=S
         return ntcquery.LocalStateQuery(None, str(scala_socket), MAGIC, host=True, deadline=60)
 
     def reference():
-        return ntcquery.LocalStateQuery(ref(name), reference_socket(), MAGIC, deadline=60)
+        return ntcquery.LocalStateQuery(ref(name), reference_socket(), MAGIC, deadline=60, relay=relay)
 
     first, second = (scala, reference) if anchor == "scala" else (reference, scala)
 
@@ -532,8 +541,8 @@ def whole_state(name, era, scala_socket=None, anchor="scala", attempts=1, site=S
             if point is None:
                 raise AtOrigin("the anchor is at Origin: no block to compare a state at")
             now["stage"] = "anchor-query"
-            index = ntcquery.acquired_shelley_era(session)
-            now["era"] = eraview.ERA_NAMES[index]
+            index = ntcquery.acquired_shelley_era(session, eras)
+            now["era"] = WHOLE_ERA_NAMES[index]
             queries = now["queries"] = queries_of(index)
             return point, {label: ask_raw(session, q) for label, q in queries.items()}
 
@@ -585,7 +594,7 @@ def whole_state(name, era, scala_socket=None, anchor="scala", attempts=1, site=S
         slot = point[0]
         answers = {}
         for label, (_, judge) in WHOLE_QUERIES.items():
-            verdict = judge(expected[label], got[label])
+            verdict = judge(expected[label], got[label], new_epoch_fields)
             result = {"matched": verdict.equal, "byteEqual": verdict.raw_equal, "problems": verdict.problems,
                       "referenceBytes": len(expected[label]), "scalaBytes": len(got[label])}
             if not verdict.equal:
