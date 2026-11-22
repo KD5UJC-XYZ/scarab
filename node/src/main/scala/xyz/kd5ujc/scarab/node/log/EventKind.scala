@@ -141,6 +141,16 @@ enum EventKind(val area: Area, val severity: Severity):
   case ChainSyncRounds extends EventKind(Area.Chain, Severity.Info)
   case SlowFetch extends EventKind(Area.Chain, Severity.Info)
 
+  /** What the Leios build's LeiosNotify client received (ouroboros-consensus 2416493b
+    * `NodeToNode.hs` 683-765): a peer's announcement taken as new and each offer, as the
+    * reference's `TraceLeiosPeer` lines; each vote the vote state counted and the certificate it
+    * completed, as its `TraceLeiosVoteAcquired` and `TraceLeiosCertified`.
+    */
+  case LeiosNotifyAnnouncement extends EventKind(Area.Chain, Severity.Debug)
+  case LeiosNotifyOffer extends EventKind(Area.Chain, Severity.Debug)
+  case LeiosVoteAcquired extends EventKind(Area.Chain, Severity.Info)
+  case LeiosCertified extends EventKind(Area.Chain, Severity.Info)
+
   // the ledger state
   case LedgerEpoch extends EventKind(Area.Ledger, Severity.Info)
 

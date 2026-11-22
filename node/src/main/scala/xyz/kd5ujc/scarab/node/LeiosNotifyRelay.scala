@@ -8,17 +8,13 @@ import fs2.concurrent.SignallingRef
 import scala.collection.immutable.{Queue as Fifo, SortedMap}
 import xyz.kd5ujc.scarab.consensus.leios.{AnnouncingHeader, ElId, ElState, LeiosAnnouncements}
 import xyz.kd5ujc.scarab.consensus.leios.LeiosOrders.given
+import xyz.kd5ujc.scarab.crypto.bls.Vote
+import xyz.kd5ujc.scarab.ledger.OfferedPart
 import xyz.kd5ujc.scarab.network.LeiosNotifyServer
 import xyz.kd5ujc.scarab.network.LeiosNotifyServer.{Reply, Requested}
 import xyz.kd5ujc.scarab.protocol.{EbPoint, HfcHeader}
 import xyz.kd5ujc.scarab.protocol.LeiosWord.Word64
 import xyz.kd5ujc.scarab.storage.LeiosEbNotification
-
-/** Which of a point's two independent offers a reply makes (`OfferedBodyOrClosure`,
-  * `LeiosDemoLogic.hs` 1989-1990 at ouroboros-consensus 2416493b).
-  */
-enum OfferedPart derives CanEqual:
-  case Body, Closure
 
 /** Whether an announcement or an offer is relayed downstream (`ShouldRelay`,
   * `LeiosDemoLogic/Announcements.hs` 320-328 at ouroboros-consensus 2416493b).
@@ -93,6 +89,15 @@ final case class LeiosNotifyOutgoing(
               announced.updated(point, offered + part)
             )
           case Some(_) | None => this
+
+  /** The pump's enqueue of a vote of the vote state's subscription (`pumpNext`'s `getNextVote`,
+    * `NodeToNode.hs` 859 and 915-933): `MsgLeiosVotes` of the one vote, queued where the peer has a
+    * credit, dropped otherwise.
+    */
+  def voting(vote: Vote): LeiosNotifyOutgoing =
+    if credits > 0 then
+      copy(credits = credits - 1, messages = messages.enqueue(Reply.Votes(Vector(vote))))
+    else this
 
   /** `next`: the first queued reply, and the queue without it. */
   def next: Option[(Reply, LeiosNotifyOutgoing)] =
@@ -200,23 +205,27 @@ object LeiosCentral:
   * the immutable tip's slot and the node's offer lead.
   */
 private[node] object LeiosNotifyRelay:
-  /** One run of a peer's server: the store's notifications subscribed to and an empty queue made,
-    * which is registered with the central state for the run's life (`insertPeerCentral`, and
-    * `deletePeerCentral` in the pump's `finally`). Its replies count requests into credits (`incr`)
-    * and take the queue's next reply (`next`); its pump moves each notification into an offer
-    * (`pumpNext`), pruning first what the peer was announced to the immutable tip, and drops one
-    * that is not to be relayed, was not announced to the peer, was offered to it already, or finds
-    * it with no credit. The node relays no votes.
+  /** One run of a peer's server: the store's notifications and the vote state's votes subscribed to
+    * (`subscribeEbNotifications`, `subscribeVotes`) and an empty queue made, which is registered
+    * with the central state for the run's life (`insertPeerCentral`, and `deletePeerCentral` in the
+    * pump's `finally`). Its replies count requests into credits (`incr`) and take the queue's next
+    * reply (`next`); its pump takes whichever of a notification and a vote comes first
+    * (`pumpNext`), pruning first what the peer was announced to the immutable tip: a notification
+    * becomes an offer, dropped where it is not to be relayed, was not announced to the peer, was
+    * offered to it already, or finds it with no credit; a vote becomes `MsgLeiosVotes` of it,
+    * dropped where the peer has no credit.
     */
   def server[F[_]](
       central: AtomicCell[F, LeiosCentral[F]],
       notifications: Resource[F, Queue[F, LeiosEbNotification]],
+      votes: Resource[F, Queue[F, Vote]],
       immutableTip: F[Option[Word64]],
       lead: LeiosMinOfferLead,
       depth: Int = LeiosNotifyServer.PipelineDepth
   )(using F: Async[F]): Resource[F, LeiosNotifyServer.Replies[F]] =
     for
       subscription <- notifications
+      voted <- votes
       queue <- Resource.eval(SignallingRef.of[F, LeiosNotifyOutgoing](LeiosNotifyOutgoing.empty))
       peer <- Resource.eval(F.unique)
       _ <- Resource.make(central.update(_.inserted(peer, queue)))(_ =>
@@ -235,13 +244,17 @@ private[node] object LeiosNotifyRelay:
           .flatMap(_.fold(queue.waitUntil(_.messages.nonEmpty) *> next)(F.pure))
 
       def pump: F[Unit] =
-        subscription.take
-          .flatMap { notification =>
-            val (point, part, reply) = LeiosNotifyOutgoing.offer(notification)
+        F.race(subscription.take, voted.take)
+          .flatMap { next =>
             immutableTip.flatMap(tip =>
-              queue.update(
-                _.prunedTo(tip).offering(point, part, reply, lead.decision(tip, point.slot))
-              )
+              queue.update { outgoing =>
+                val pruned = outgoing.prunedTo(tip)
+                next match
+                  case Left(notification) =>
+                    val (point, part, reply) = LeiosNotifyOutgoing.offer(notification)
+                    pruned.offering(point, part, reply, lead.decision(tip, point.slot))
+                  case Right(vote) => pruned.voting(vote)
+              }
             )
           }
           .foreverM[Unit]

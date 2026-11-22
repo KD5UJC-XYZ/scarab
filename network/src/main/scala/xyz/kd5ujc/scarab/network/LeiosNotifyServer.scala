@@ -9,6 +9,7 @@ import cats.syntax.all.*
 import fs2.concurrent.SignallingRef
 import xyz.kd5ujc.scarab.protocol.{EbPoint, HfcHeader, LeiosNotify, LeiosWireError, ProtocolError}
 import xyz.kd5ujc.scarab.protocol.LeiosWord.Word32
+import xyz.kd5ujc.scarab.crypto.bls.Vote
 
 /** The Leios build's LeiosNotify server (`leiosNotifyServerPeerLookahead`,
   * `LeiosDemoOnlyTestNotify.hs` 636-722 of ouroboros-consensus 2416493b, run by
@@ -38,13 +39,13 @@ object LeiosNotifyServer:
 
   /** A reply to a held request (`Message ... StBusy StIdle` but `MsgCanceled`, which only the
     * server's quit makes): an endorser block's announcement, by the header that announces it, an
-    * offer of its body at its size, or an offer of its closure. Votes are not among them: the node
-    * holds none to relay (#54).
+    * offer of its body at its size, an offer of its closure, or votes.
     */
   enum Reply:
     case Announcement(header: HfcHeader)
     case BlockOffer(point: EbPoint, ebSize: Word32)
     case BlockTxsOffer(point: EbPoint)
+    case Votes(votes: Vector[Vote])
 
   /** One run's replies (`hLeiosNotifyServer`, `NodeToNode.hs` 769-936 at 2416493b): `requested`
     * counts a request (`incr`), `next` takes the queue's next reply, waiting for one (`next`), and
@@ -84,6 +85,7 @@ object LeiosNotifyServer:
           .fold(illegal, h => F.pure(LeiosNotify.Message.BlockAnnouncement(h)))
       case Reply.BlockOffer(point, size) => F.pure(LeiosNotify.Message.BlockOffer(point, size))
       case Reply.BlockTxsOffer(point)    => F.pure(LeiosNotify.Message.BlockTxsOffer(point))
+      case Reply.Votes(votes) => F.pure(LeiosNotify.Message.Votes(votes, votes.map(_.encode)))
     (Deferred[F, Unit], Queue.unbounded[F, Unit], SignallingRef.of[F, Long](0L)).flatMapN {
       (quit, held, answered) =>
         // `responder`: once the client quit, `MsgCanceled`; else the next reply, or `MsgCanceled`
@@ -116,15 +118,5 @@ object LeiosNotifyServer:
         F.race(replies.pump *> F.never[Unit], F.race(sender, loop(0L))).void
     }
 
-  /** A message's key on the wire (`codecLeiosNotify`, `LeiosDemoOnlyTestNotify.hs:259-352` at
-    * ouroboros-consensus 2416493b).
-    */
-  private def tag(message: LeiosNotify.Message): Int = message match
-    case LeiosNotify.Message.Done                 => 0
-    case LeiosNotify.Message.Quit                 => 1
-    case LeiosNotify.Message.Canceled             => 2
-    case LeiosNotify.Message.RequestNext          => 3
-    case LeiosNotify.Message.BlockAnnouncement(_) => 4
-    case LeiosNotify.Message.BlockOffer(_, _)     => 5
-    case LeiosNotify.Message.BlockTxsOffer(_)     => 6
-    case LeiosNotify.Message.Votes(_, _)          => 7
+  /** A message's key on the wire ([[LeiosNotifyPipelined.tag]]). */
+  private def tag(message: LeiosNotify.Message): Int = LeiosNotifyPipelined.tag(message)

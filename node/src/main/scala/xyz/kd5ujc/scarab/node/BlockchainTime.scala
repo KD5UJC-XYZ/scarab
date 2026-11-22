@@ -2,6 +2,8 @@
 package xyz.kd5ujc.scarab.node
 
 import cats.effect.{Ref, Resource, Temporal}
+import fs2.Stream
+import fs2.concurrent.SignallingRef
 import cats.effect.syntax.all.*
 import cats.syntax.all.*
 import java.time.{Duration, Instant}
@@ -17,9 +19,14 @@ import xyz.kd5ujc.scarab.node.read.TxClock
   * slotVar`) rather than reading the wall clock themselves. The first reading is taken when the
   * resource is acquired, after the system start.
   */
-final class BlockchainTime[F[_]] private (slot: Ref[F, Option[BigInt]]):
+final class BlockchainTime[F[_]] private (slot: SignallingRef[F, Option[BigInt]]):
   /** `getCurrentSlot`: the slot last published, none while it is unknown. */
   def currentSlot: F[Option[BigInt]] = slot.get
+
+  /** The slot as it is published, each change once: what a transaction that reads `slotVar` retries
+    * on.
+    */
+  def published: Stream[F, Option[BigInt]] = slot.discrete
 
 object BlockchainTime:
   /** `checkValidClockChange` (`HardFork.hs` 118-150 at 2416493b): the slot to publish after
@@ -95,7 +102,7 @@ object BlockchainTime:
     Resource
       .eval(systemTimeWait *> current)
       .flatMap { (first, instant, delay) =>
-        Resource.eval(Ref.of[F, Option[BigInt]](first)).flatMap { slot =>
+        Resource.eval(SignallingRef.of[F, Option[BigInt]](first)).flatMap { slot =>
           loop(slot, (first, instant), delay)
             .handleErrorWith(defect)
             .background

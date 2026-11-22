@@ -218,32 +218,33 @@ class LeiosFetchRegistrationSuite extends FailsOnUncaught:
             announcingHeader,
             AnnouncementFields(ElId(p.slot, issuer), p.hash, size)
           )
-          fetched <- node.notifier.flatTap(_.pump.background).use { downstream =>
-            downstream.requested.replicateA_(3) *>
-              node.announcedCentrally(announcement, ShouldRelay.DoRelay, IO.unit) *>
-              typed(
-                Served
-                  .accept(
-                    b,
-                    magic,
-                    handlers(Some(LeiosFetchStoreHandler(theirs))),
-                    NodeToNodeServer.Settings(bundle = HotBundle.Leios)
-                  )
-                  .background
-                  .surround(
-                    activated(a, HotBundle.Leios, node.initiator(connection))(
-                      node
-                        .kernel[Unit](
-                          IO.pure(Some(p.slot)),
-                          IO.pure(_ => Left(())),
-                          Stream.empty,
-                          IO.raiseError
-                        )
-                        .surround(node.shared.wake *> acquired.next)
-                        .timeout(30.seconds)
+          fetched <- node.notifier(LeiosVotesSuite.noVotes).flatTap(_.pump.background).use {
+            downstream =>
+              downstream.requested.replicateA_(3) *>
+                node.announcedCentrally(announcement, ShouldRelay.DoRelay, IO.unit) *>
+                typed(
+                  Served
+                    .accept(
+                      b,
+                      magic,
+                      handlers(Some(LeiosFetchStoreHandler(theirs))),
+                      NodeToNodeServer.Settings(bundle = HotBundle.Leios)
                     )
-                  )
-              ).product(downstream.next.replicateA(3))
+                    .background
+                    .surround(
+                      activated(a, HotBundle.Leios, node.initiator(connection))(
+                        node
+                          .kernel[Unit](
+                            IO.pure(Some(p.slot)),
+                            IO.pure(_ => Left(())),
+                            Stream.empty,
+                            IO.raiseError
+                          )
+                          .surround(node.shared.wake *> acquired.next)
+                          .timeout(30.seconds)
+                      )
+                    )
+                ).product(downstream.next.replicateA(3))
           }
           (completed, relayed) = fetched
           whole <- ok(ours.lookupEbClosure(p.hash))

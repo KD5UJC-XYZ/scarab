@@ -142,6 +142,23 @@ enum PeerError extends NodeError:
       claimed: xyz.kd5ujc.scarab.protocol.EbHash
   )
 
+  /** Our LeiosNotify client ended the connection over the peer's reply ([[LeiosNotifyFault]]): an
+    * announcement or an offer it refuses, or a cancellation before it quit (`hLeiosNotifyClient`,
+    * ouroboros-consensus 2416493b `NodeToNode.hs` 615-768).
+    */
+  case LeiosNotify(fault: LeiosNotifyFault)
+
+  /** The node's vote state reached no answer on a vote of this peer's, for the announcing block
+    * `rbHash`: the native BLS library failed, the certificate could not be assembled, or the
+    * committee of the selection's tip could not be read. A defect of the node's own, never a
+    * verdict on the vote: the connection ends as the reference's exception in its LeiosNotify
+    * client ends it, and the peer is not charged.
+    */
+  case LeiosVoteUndecided(
+      rbHash: xyz.kd5ujc.scarab.crypto.bls.RbHash,
+      cause: xyz.kd5ujc.scarab.crypto.bls.BlsError | LeiosCertificationDefect
+  )
+
   def message: String = this match
     case Handshake(r)   => s"handshake: ${r.message}"
     case Protocol(r)    => s"protocol: ${PeerError.protocolMessage(r)}"
@@ -172,6 +189,12 @@ enum PeerError extends NodeError:
     case LeiosNotifyExcessiveRequests(cause) => cause.message
     case LeiosTwoCertificationClaims(slot, pool, first, second) =>
       s"the peer claimed ${first.bytes.hex} and ${second.bytes.hex} certified for the election of pool ${pool.hex} at slot ${slot.toBigInt}"
+    case LeiosNotify(fault) => s"LeiosNotify: ${fault.message}"
+    case LeiosVoteUndecided(rbHash, cause) =>
+      val why = cause match
+        case d: LeiosCertificationDefect              => d.message
+        case e: xyz.kd5ujc.scarab.crypto.bls.BlsError => e.toString
+      s"no answer on a vote for ${rbHash.bytes.hex}: $why"
 
 object PeerError:
   enum GenesisProblem:

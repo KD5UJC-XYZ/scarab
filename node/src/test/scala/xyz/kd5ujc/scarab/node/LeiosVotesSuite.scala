@@ -31,14 +31,14 @@ class LeiosVotesSuite extends FailsOnUncaught:
   test("a seat's vote counted already is AlreadyKnown before its signature is checked") {
     val forged = right(Vote.sign(keys(1)._1, right(SeatId.fromInt(0)), announcing))
     for
-      votes <- LeiosVotes.create[IO](IO.pure(Some(committee)))
+      votes <- LeiosVotes.create[IO](IO.pure(Right(Some(committee))))
       answers <- allowed(votes.received(Vector(vote(0), forged)))
     yield assertEquals(answers.drop(1), Vector(AddVoteResult.AlreadyKnown))
   }
 
   test("without a committee no vote counts, and none is published") {
     for
-      votes <- LeiosVotes.create[IO](IO.pure(None))
+      votes <- LeiosVotes.create[IO](IO.pure(Right(None)))
       result <- votes.subscribe.use(q => allowed(votes.add(vote(0))).product(q.tryTakeN(None)))
     yield assertEquals(result, (AddVoteResult.NoCommittee, List.empty))
   }
@@ -47,7 +47,7 @@ class LeiosVotesSuite extends FailsOnUncaught:
     // seat 1's vote signed with another key, before seat 1 has voted
     val forged = right(Vote.sign(keys(2)._1, right(SeatId.fromInt(1)), announcing))
     for
-      votes <- LeiosVotes.create[IO](IO.pure(Some(committee)))
+      votes <- LeiosVotes.create[IO](IO.pure(Right(Some(committee))))
       late <- allowed(votes.add(vote(3)))
       seen <- votes.subscribe.use { q =>
         allowed(votes.received(Vector(vote(0), vote(0), forged, vote(1), vote(2))))
@@ -82,7 +82,7 @@ class LeiosVotesSuite extends FailsOnUncaught:
   test("the committee is read for every vote, so a vote counts against the one in force") {
     for
       current <- Ref.of[IO, Option[TipCommittee]](None)
-      votes <- LeiosVotes.create[IO](current.get)
+      votes <- LeiosVotes.create[IO](current.get.map(Right(_)))
       before <- allowed(votes.add(vote(0)))
       _ <- current.set(Some(committee))
       after <- allowed(votes.add(vote(0)))
@@ -93,7 +93,7 @@ class LeiosVotesSuite extends FailsOnUncaught:
 
   test("the same vote added concurrently is counted once") {
     for
-      votes <- LeiosVotes.create[IO](IO.pure(Some(committee)))
+      votes <- LeiosVotes.create[IO](IO.pure(Right(Some(committee))))
       results <- votes.subscribe.use(q =>
         allowed(Vector.fill(8)(vote(2)).parTraverse(votes.add)).product(q.tryTakeN(None))
       )
@@ -103,3 +103,8 @@ class LeiosVotesSuite extends FailsOnUncaught:
       assertEquals(answers.count(_ == AddVoteResult.AlreadyKnown), 7)
       assertEquals(published, List(vote(2)))
   }
+
+object LeiosVotesSuite:
+  /** A vote subscription that never yields: a LeiosNotify server with no vote to relay. */
+  val noVotes: cats.effect.Resource[IO, cats.effect.std.Queue[IO, Vote]] =
+    cats.effect.Resource.eval(cats.effect.std.Queue.unbounded[IO, Vote])

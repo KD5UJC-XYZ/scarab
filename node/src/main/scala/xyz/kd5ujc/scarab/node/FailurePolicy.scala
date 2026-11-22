@@ -80,6 +80,16 @@ object FailurePolicy:
     // 2416493b LeiosDemoLogic.hs:1696-1731), which no rethrow policy names
     // (Node/RethrowPolicy.hs), so it is `ShutdownPeer`, the default
     case _: PeerError.LeiosTwoCertificationClaims => FailureClass.Transient
+    // Our LeiosNotify client ended the connection over the peer's reply: the reference's handler
+    // throws `ExnLeiosBlockAnnouncementMissing`, `ExnInvalidLeiosAnnouncement`,
+    // `ExnLeiosInvalidOffer` or `LeiosNotifyUnexpectedMsgCancel` (ouroboros-consensus 2416493b
+    // NodeToNode.hs:615-768), which no rethrow policy names (Node/RethrowPolicy.hs), so each is
+    // `ShutdownPeer`, the default
+    case _: PeerError.LeiosNotify => FailureClass.Transient
+    // The vote state reached no answer on the peer's vote, a defect of the node's own: the
+    // reference's exception ends the client (`ShutdownPeer`); as for the other defects of our own,
+    // nothing is counted against the peer
+    case _: PeerError.LeiosVoteUndecided => FailureClass.NotThePeers
     // Consensus 82ecba329 Node/RethrowPolicy.hs maps every ChainSyncClientException,
     // including EmptyBucket, DensityTooLow and HistoricityError, to ShutdownPeer.
     // Network c45735a5 PeerStateActions.hs uses epErrorDelay (10s default), preserving

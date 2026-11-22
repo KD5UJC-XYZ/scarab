@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.ledger.OfferedPart
 import cats.effect.{IO, Resource}
 import cats.effect.std.AtomicCell
 import cats.mtl.{Handle, Raise}
@@ -274,7 +275,13 @@ class LeiosNotifyRelaySuite extends FailsOnUncaught:
       tip: Option[Word64]
   ): Resource[IO, LeiosNotifyServer.Replies[IO]] =
     LeiosNotifyRelay
-      .server(central, acquired.notifications.subscribe, IO.pure(tip), LeiosMinOfferLead.Default)
+      .server(
+        central,
+        acquired.notifications.subscribe,
+        LeiosVotesSuite.noVotes,
+        IO.pure(tip),
+        LeiosMinOfferLead.Default
+      )
       .flatTap(replies => replies.pump.background)
 
   /** The header state after `header`, as the gate leaves it ([[LeiosChainSyncSuite]]'s). */
@@ -461,6 +468,7 @@ class LeiosNotifyRelaySuite extends FailsOnUncaught:
           .server(
             central,
             acquired.notifications.subscribe,
+            LeiosVotesSuite.noVotes,
             IO.pure(None),
             LeiosMinOfferLead.Default
           )

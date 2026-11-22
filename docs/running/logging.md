@@ -130,6 +130,10 @@ table and the code differ). The severity is the kind's; the rows marked so are r
 | `headersChecked` | `Chain.HeadersChecked` | Info | `validated`, `unchecked`, `waited` |
 | `chainSyncRounds` | `Chain.ChainSyncRounds` | Info | `rounds`, `headers`, `avgMs`, `maxMs`, `maxDepth`; legacy batch facade only; production rolling sessions retain the per-reply header counter and do not emit round aggregates |
 | `slowFetch` | `Chain.SlowFetch` | Info | `millis` |
+| `leiosNotifyAnnouncement` | `Chain.LeiosNotifyAnnouncement` | Debug | `connection`, `slot`, `ebHash`, `relayed`, `ageMillis`: an announcement a peer relayed over LeiosNotify that the node took as new (Leios build) |
+| `leiosNotifyOffer` | `Chain.LeiosNotifyOffer` | Debug | `connection`, `slot`, `ebHash`, `part` (`body` or `closure`), `ebSize` (a body offer only): an offer a peer made over LeiosNotify (Leios build) |
+| `leiosVoteAcquired` | `Chain.LeiosVoteAcquired` | Info | `connection`, `rbHash`, `seat`, `weight`, `tally`, `threshold` (each a rational as `numerator/denominator`): a peer's vote the vote state counted (Leios build) |
+| `leiosCertified` | `Chain.LeiosCertified` | Info | `rbHash`: a counted vote completed the certificate of the endorser block that block announced (Leios build) |
 | `ledgerEpoch` | `Ledger.LedgerEpoch` | Info | `epoch`, `utxo`, `accounts`, `pools`, `treasury`, `reserves`, `protocolVersion`, `phase2`, `scriptIntegrityHashChecked`, `scheduling` |
 | `connection` | `Net.Connection` | Info (Warning when `what` is `refused` or `acceptHardLimit`) | `remote`, `what`, `provenance`, `from`, `to`, `reason`; the accept loop's `acceptRateLimited` (`delaySeconds`, exact, and `connections`), `acceptHardLimit` (`limit`) and `acceptResumed` (`connections`) are the reference's `AcceptConnectionsPolicyTrace` |
 | `inbound` | `Net.Inbound` | Info (Warning when `state` is `refused` or `cachedBlockRejected`) | `remote`, `state`, `reason` |

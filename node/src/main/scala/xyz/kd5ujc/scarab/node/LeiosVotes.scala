@@ -13,6 +13,7 @@ import xyz.kd5ujc.scarab.consensus.leios.{
   VoteInvalid
 }
 import xyz.kd5ujc.scarab.crypto.bls.{BlsError, Certificate, RbHash, SeatId, Vote, Weight}
+import xyz.kd5ujc.scarab.ledger.LeiosCertificationDefect
 
 /** Why the vote state reached no answer on a vote: a failure of this node, never a verdict on the
   * vote.
@@ -24,6 +25,11 @@ enum LeiosVotesDefect:
   /** The certificate of validated votes could not be assembled ([[VoteAggregationDefect]]). */
   case Aggregation(cause: VoteAggregationDefect)
 
+  /** The committee of the selection's tip could not be read from its ledger
+    * ([[LeiosCertificationDefect]]): a state the reference cannot hold.
+    */
+  case Committee(cause: LeiosCertificationDefect)
+
 /** The node's Leios vote state, `LeiosVoteState m` (`LeiosVoteState.hs:42-55, 146-247`,
   * ouroboros-consensus 2416493b): the votes of this node and of its peers, tallied by announcing
   * block against the committee of the selection's tip, a certificate assembled once a tally reaches
@@ -33,7 +39,7 @@ enum LeiosVotesDefect:
 final class LeiosVotes[F[_]] private (
     state: Ref[F, LeiosVoteState],
     subscribers: Ref[F, Map[Unique.Token, Queue[F, Vote]]],
-    committee: F[Option[TipCommittee]]
+    committee: F[Either[LeiosCertificationDefect, Option[TipCommittee]]]
 )(using F: Concurrent[F]):
 
   /** `addVote` (`LeiosVoteState.hs:157-234`, ouroboros-consensus 2416493b): a vote counted already
@@ -47,8 +53,10 @@ final class LeiosVotes[F[_]] private (
       case true => F.pure(AddVoteResult.AlreadyKnown)
       case false =>
         committee.flatMap {
-          case None => F.pure(AddVoteResult.NoCommittee)
-          case Some(TipCommittee(members, threshold)) =>
+          case Left(failed) =>
+            defect.raise[LeiosVotesDefect, AddVoteResult](LeiosVotesDefect.Committee(failed))
+          case Right(None) => F.pure(AddVoteResult.NoCommittee)
+          case Right(Some(TipCommittee(members, threshold))) =>
             VoteInvalid.validate(members, vote) match
               case Left(native) =>
                 defect.raise[LeiosVotesDefect, AddVoteResult](LeiosVotesDefect.Verification(native))
@@ -105,9 +113,11 @@ final class LeiosVotes[F[_]] private (
 object LeiosVotes:
   /** `newLeiosVoteState` (`LeiosVoteState.hs:146-156`, ouroboros-consensus 2416493b) of the
     * committee in force, read for each vote: `leiosCommitteeOfTip` of the selection's ledger state
-    * (`NodeKernel.hs:988-991`).
+    * (`NodeKernel.hs:988-991`), or the defect that left it unread.
     */
-  def create[F[_]: Concurrent](committee: F[Option[TipCommittee]]): F[LeiosVotes[F]] =
+  def create[F[_]: Concurrent](
+      committee: F[Either[LeiosCertificationDefect, Option[TipCommittee]]]
+  ): F[LeiosVotes[F]] =
     (
       Ref.of[F, LeiosVoteState](LeiosVoteState.empty),
       Ref.of[F, Map[Unique.Token, Queue[F, Vote]]](Map.empty)

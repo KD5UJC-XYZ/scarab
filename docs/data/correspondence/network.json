@@ -1677,7 +1677,7 @@
     "LeiosNotifyRelaySuite"
    ],
    "note": "each request counted by the replies' incr and held, the client's next message read ahead, a sender answering the held requests in order with the replies' next, or MsgCanceled once the client quit (responder's orElse, the quit first); MsgQuit answered once every held request is (drain) by MsgDone; incr's ExcessiveRequests a typed end; the pump raced with the conversation, as withAsync pump with link runs it (aLeiosNotifyServer, NodeToNode.hs 1891-1909)",
-   "digest": "8d29acba2d41b80c"
+   "digest": "378222e067417796"
   },
   "val network.LeiosNotifyServer.PipelineDepth": {
    "upstream": [
@@ -1718,7 +1718,7 @@
     "LeiosFetchRegistrationSuite"
    ],
    "note": "decode from StIdle, the client's messages, which carry no header",
-   "digest": "0d2a5100090188a9"
+   "digest": "8c45db02c7a8b039"
   },
   "enum network.LeiosNotifyServer.Requested": {
    "upstream": [
@@ -1760,8 +1760,8 @@
     "LeiosNotifyServerSuite",
     "LeiosNotifyRelaySuite"
    ],
-   "note": "the messages from StBusy to StIdle a server's queue holds: MsgLeiosBlockAnnouncement by its header's envelope, MsgLeiosBlockOffer, MsgLeiosBlockTxsOffer; MsgCanceled is made by the server's quit only, and MsgLeiosVotes is not a case, the node relaying no votes",
-   "digest": "56e73dff2383bfc7"
+   "note": "the messages from StBusy to StIdle a server's queue holds: MsgLeiosBlockAnnouncement by its header's envelope, MsgLeiosBlockOffer, MsgLeiosBlockTxsOffer and MsgLeiosVotes; MsgCanceled is made by the server's quit only",
+   "digest": "c5103e1c7b922fd7"
   },
   "trait network.LeiosNotifyServer.Replies": {
    "upstream": [
@@ -1891,6 +1891,254 @@
    ],
    "note": "the replies of each run of the LeiosNotify server, a resource acquired when the run starts, as aLeiosNotifyServer calls hLeiosNotifyServer per run",
    "digest": "83cc4f2872d2665e"
+  },
+  "enum network.LeiosNotification": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoOnlyTestNotify.hs",
+     "symbol": "Message",
+     "lines": [
+      172,
+      211
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the messages from StBusy to StIdle a client receives: MsgLeiosBlockAnnouncement by its header's envelope, the two offers, MsgLeiosVotes, MsgCanceled",
+   "digest": "917894d87dab5a42"
+  },
+  "object network.LeiosNotifyPipelined": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoOnlyTestNotify.hs",
+     "symbol": "leiosNotifyClientPeerPipelined",
+     "lines": [
+      529,
+      634
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the pipelined client",
+   "digest": "1ff28c1ef97b353a"
+  },
+  "val network.LeiosNotifyPipelined.PipelineDepth": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus-diffusion/src/ouroboros-consensus-diffusion/Ouroboros/Consensus/Network/NodeToNode.hs",
+     "symbol": "leiosNotifyPipelineDepth",
+     "lines": [
+      2145,
+      2146
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "1000, the server's",
+   "digest": "2dbf82da8f8ed34b"
+  },
+  "val network.LeiosNotifyPipelined.QuitTimeout": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoOnlyTestNotify.hs",
+     "symbol": "timeLimitsLeiosNotify",
+     "lines": [
+      249,
+      255
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "longWait, the limit of StQuit; StBusy waits forever",
+   "digest": "d1bce8f0191c4f9e"
+  },
+  "class network.LeiosNotifyPipelined.Settings": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoOnlyTestNotify.hs",
+     "symbol": "leiosNotifyClientPeerPipelined",
+     "lines": [
+      529,
+      537
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the depth checkDone gives and the Quit limit",
+   "digest": "c3ebe8455436eed2"
+  },
+  "def network.LeiosNotifyPipelined.run": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoOnlyTestNotify.hs",
+     "symbol": "leiosNotifyClientPeerPipelined",
+     "lines": [
+      529,
+      634
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus-diffusion/src/ouroboros-consensus-diffusion/Ouroboros/Consensus/Network/NodeToNode.hs",
+     "symbol": "aLeiosNotifyClient",
+     "lines": [
+      1866,
+      1889
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "LeiosNotifyPipelinedSuite",
+    "LeiosNotifyClientSuite"
+   ],
+   "note": "before each request the stop, then the gate (awaitImmTipCanForecastNow), then the depth; told to stop MsgQuit at once, the outstanding replies collected unhandled (AlreadyDraining), then MsgDone; a sender and a receiver, as the pipelined driver's receiver queue, each reply handed on in order and counted as arrived after",
+   "digest": "7e911b4709c4bd83"
+  },
+  "def network.LeiosNotifyPipelined.tag": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoOnlyTestNotify.hs",
+     "symbol": "codecLeiosNotify",
+     "lines": [
+      259,
+      352
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "a message's key on the wire",
+   "digest": "438d9a1acf041e42"
+  },
+  "trait network.LeiosNotifyInitiator": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus-diffusion/src/ouroboros-consensus-diffusion/Ouroboros/Consensus/Network/NodeToNode.hs",
+     "symbol": "aLeiosNotifyClient",
+     "lines": [
+      1866,
+      1889
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the client of one hot activation, stopped with the hot protocols",
+   "digest": "8c33d0bcc9839248"
+  },
+  "def network.LeiosNotifyInitiator#run": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus-diffusion/src/ouroboros-consensus-diffusion/Ouroboros/Consensus/Network/NodeToNode.hs",
+     "symbol": "aLeiosNotifyClient",
+     "lines": [
+      1866,
+      1889
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "over its channel until told to stop",
+   "digest": "78a65585928a7abc"
+  },
+  "def protocol.LeiosNotify.incremental": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoOnlyTestNotify.hs",
+     "symbol": "codecLeiosNotify",
+     "lines": [
+      259,
+      396
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the client's decoder of StBusy and StQuit, read in steps as cborg's incremental decoder reads a message once",
+   "digest": "442499696f0c4dbd"
+  },
+  "def protocol.LeiosNotifyDecoder.resumed": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoOnlyTestNotify.hs",
+     "symbol": "decode",
+     "lines": [
+      274,
+      388
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "a message read on from a checkpoint: the frame, then each vote",
+   "digest": "605e5b73084c8ed7"
+  },
+  "enum protocol.LeiosNotifyDecoder.Checkpoint": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoOnlyTestNotify.hs",
+     "symbol": "decodeVotes",
+     "lines": [
+      383,
+      388
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the frame, or the votes of decodeVotes read so far",
+   "digest": "3f96482b26e83628"
+  },
+  "val protocol.LeiosNotifyDecoder.start": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoOnlyTestNotify.hs",
+     "symbol": "decode",
+     "lines": [
+      274,
+      283
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "a message read from its start",
+   "digest": "b4f7cdaa9cf17553"
   }
  },
  "glue": [

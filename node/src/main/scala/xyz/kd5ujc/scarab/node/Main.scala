@@ -1503,7 +1503,8 @@ object Main extends IOApp:
       blockPool: BlockPool[IO],
       genesisRuntime: Option[GenesisRuntime[IO]],
       leios: Option[LeiosStore[IO]],
-      leiosFetch: Option[LeiosFetchNode[IO]]
+      leiosFetch: Option[LeiosFetchNode[IO]],
+      leiosVotes: Option[LeiosVotes[IO]]
   )
 
   /** The connections: the manager, the inbound governor, the outbound network and the listener. */
@@ -1844,7 +1845,15 @@ object Main extends IOApp:
             instruments.fatalSink(Fatal.Internal(problem))
       val headers = headerChecks(run, instruments, rules, chain)
       for
-        supply <- supplied(run, instruments, chain, headers, opened.received, opened.acquired)
+        supply <- supplied(
+          run,
+          instruments,
+          rules,
+          chain,
+          headers,
+          opened.received,
+          opened.acquired
+        )
         connections <- connected(run, instruments, chain, headers, supply, opened.immutable)
         services <- served(
           run,
@@ -2102,6 +2111,7 @@ object Main extends IOApp:
   private def supplied(
       run: Startup,
       instruments: Instruments,
+      rules: Rules,
       chain: Chain,
       headers: Headers,
       receivedBlocks: Option[ReceivedBlocks[IO]],
@@ -2206,7 +2216,14 @@ object Main extends IOApp:
           )(using summon, LeiosStorage.lifted[IO])
         }
       }
-    yield Supply(blockPool, genesisRuntime, leios, leiosFetch)
+      // the vote state of the Leios build, of the committee of the selection's tip, read for each
+      // vote (`newLeiosVoteState`, `NodeKernel.hs:988-991` at ouroboros-consensus 2416493b)
+      leiosVotes <- leiosFetch.traverse(_ =>
+        LeiosVotes.create[IO](
+          chain.ref.get.flatMap(c => rules.rules.committeeOf(c.state)).map(_.getOrElse(Right(None)))
+        )
+      )
+    yield Supply(blockPool, genesisRuntime, leios, leiosFetch, leiosVotes)
 
   /** The node's connections: the manager, the inbound governor, the outbound peer network and the
     * relay's listener.
@@ -2227,7 +2244,7 @@ object Main extends IOApp:
     import run.{genesis, options, scheduling, setup}
     import instruments.{collectors, fatalSink, measured}
     import chain.{follower, mempool, ref, server}
-    import supply.{blockPool, genesisRuntime, leiosFetch}
+    import supply.{blockPool, genesisRuntime, leiosFetch, leiosVotes}
     def fail[A](e: NodeError): IO[A] = Handle[IO, NodeError].raise(e)
     def logged(event: NodeEvent): IO[Unit] = Log[IO].emit(event)
     val genesisGovernor = genesisRuntime.map(_.governor)
@@ -2242,6 +2259,9 @@ object Main extends IOApp:
     for
       seed <- IO.delay(java.util.concurrent.ThreadLocalRandom.current().nextLong())
       sharing <- PeerSharingRuntime.create[IO](seed)
+      // whether the immutable tip can forecast the current slot, which the LeiosNotify clients wait
+      // for before each request (`awaitImmTipCanForecastNow`), kept beside the fetch decision
+      leiosGate <- LeiosForecastGate.create[IO]
       handlers = ServerHandlers[IO, NtNHeader](
         NtNHeader.codec,
         server.source,
@@ -2249,7 +2269,7 @@ object Main extends IOApp:
         mempool.sink(fatalSink),
         peerSharing = Some(sharing.source),
         leiosFetch = leiosFetch.map(_.responder),
-        leiosNotify = leiosFetch.map(_.notifier)
+        leiosNotify = (leiosFetch, leiosVotes).mapN((node, votes) => node.notifier(votes.subscribe))
       )
       manager <- ConnectionManager.create[IO](
         ConnectionManager.Limits(
@@ -2336,7 +2356,30 @@ object Main extends IOApp:
         serve = Some(handlers),
         genesis = genesisRuntime,
         inboundGovernor = inboundGovernor,
-        leios = leiosFetch
+        leios = leiosFetch,
+        leiosNotify = (leiosVotes, headers.rules.announcementRules).mapN { (votes, check) =>
+          LeiosNotifyContext[IO](
+            votes,
+            new LeiosNotifyView[IO]:
+              def immutableTip =
+                ref.get.map(
+                  _.anchor.block.map(b =>
+                    xyz.kd5ujc.scarab.protocol.LeiosWord.Word64.clamped(b.slot)
+                  )
+                )
+              def onset(header: xyz.kd5ujc.scarab.ledger.LeiosHeader) =
+                ref.get.map(c =>
+                  headers.rules.slotOnset(c.anchor.state, c.anchor.block, header.slot)
+                )
+              def validate(header: xyz.kd5ujc.scarab.ledger.LeiosHeader) =
+                ref.get.map(c => check(c.anchor.state, c.anchor.block, header))
+              def ready = leiosGate.ready
+            ,
+            headers.slotClock,
+            event => logged(NodeEvent.LeiosNotify(event)),
+            AnnouncedHeaders(genesis.geometry.byron.epochSlots)
+          )
+        }
       )
       val emitOutput = (out: Output[PeerNetwork.Addr]) =>
         measured.peerSelection(out) *> (out match
@@ -2370,6 +2413,20 @@ object Main extends IOApp:
                 slot => LeiosFetchNode.forecast(headers.rules, current.anchor, slot)
               ),
               blockPool.leios.immutableSlots,
+              cause => fatalSink(Fatal.Defect(cause))
+            ) *> leiosGate.kept(
+              time,
+              blockPool.leios.immutableSlots,
+              slot =>
+                ref.get.map(current =>
+                  LeiosFetchNode
+                    .forecast(
+                      headers.rules,
+                      current.anchor,
+                      xyz.kd5ujc.scarab.protocol.LeiosWord.Word64.clamped(slot)
+                    )
+                    .isRight
+                ),
               cause => fatalSink(Fatal.Defect(cause))
             )
           )
