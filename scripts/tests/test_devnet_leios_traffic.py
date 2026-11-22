@@ -208,6 +208,33 @@ class ProgressTest(unittest.TestCase):
             self.assertIn(kind, lt.KIND_COUNT_COMMAND)
 
 
+class VotingTest(unittest.TestCase):
+    """`--follow-vote`: the follower's own votes, the reference nodes that counted them, and the verdict."""
+
+    events = [{"event": "leiosVoted", "rbHash": "aa", "seat": 4, "weight": "1/5"},
+              {"event": "leiosVoted", "rbHash": "bb", "seat": 4, "weight": "1/5"},
+              {"event": "leiosNotVoted", "ebHash": "cc", "ebSlot": 3, "reason": "tooLate"}]
+
+    def test_the_followers_votes_are_its_voted_lines(self):
+        self.assertEqual(lt.follower_votes(self.events), {("aa", 4), ("bb", 4)})
+
+    def test_a_reference_node_counted_only_the_votes_it_acquired_of_the_follower(self):
+        def line(rb, voter, kind="LeiosVoteAcquired"):
+            return json.dumps({"data": {"kind": kind, "vote": {"rbHash": rb, "voterId": voter}}})
+        lines = [line("aa", 4), line("aa", 4), line("aa", 1), line("bb", 4, kind="LeiosVoted"), "not json"]
+        self.assertEqual(lt.acquired_votes(lines, {("aa", 4), ("bb", 4)}), 1)
+
+    def test_no_vote_is_incomplete_and_no_vote_acquired_fails(self):
+        self.assertEqual(lt.voting_verdict(set(), {1: 0})["verdict"], "incomplete")
+        self.assertEqual(lt.voting_verdict({("aa", 4)}, {1: 0, 2: 0})["verdict"], "failed")
+        self.assertEqual(lt.voting_verdict({("aa", 4)}, {1: 0, 2: 1}), {"verdict": "passed", "problems": []})
+
+    def test_the_voters_listener_is_a_further_local_root(self):
+        roots = dijkstra.topology(2, 3, (lt.VOTER_PORT,))["localRoots"][0]
+        self.assertEqual([a["port"] for a in roots["accessPoints"]], [3001, 3003, lt.VOTER_PORT])
+        self.assertEqual(roots["valency"], 3)
+
+
 class CliTest(unittest.TestCase):
     def test_the_command_is_a_run_with_its_own_default_name(self):
         self.assertIn("leios-traffic", cli.RUNS)

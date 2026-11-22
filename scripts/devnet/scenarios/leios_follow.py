@@ -114,10 +114,12 @@ def selected_chain(events):
     return follower_chain(events)[0]
 
 
-def follower_command(name, node, scala_cpus):
-    """The `devnet.py follow` process of the follower of the Leios cluster."""
+def follower_command(name, node, scala_cpus, voter=None):
+    """The `devnet.py follow` process of the follower of the Leios cluster; with `voter` (its listening address and
+    the directory of a pool's keys) it listens and votes."""
+    extra = [] if voter is None else ["--listen", voter[0], "--voter-keys", str(voter[1])]
     return [sys.executable, str(ENTRY), "--name", name, "follow", "--reference-build", BUILD, "--db",
-            "--local-socket", "--node", str(node), "--scala-cpus", str(scala_cpus)]
+            "--local-socket", "--node", str(node), "--scala-cpus", str(scala_cpus), *extra]
 
 
 def tip_block(events):
@@ -256,10 +258,10 @@ def whole_verdict(whole):
 
 # ---------------------------------------------------------------- the follower's run
 
-def start(args):
+def start(args, voter=None):
     """Start the follower; returns its `devnet.py follow` process. Its output goes to its own log in the run
     directory (`follower.jsonl`), which `follow` writes."""
-    return subprocess.Popen(follower_command(args.name, args.follow_node, args.scala_cpus),
+    return subprocess.Popen(follower_command(args.name, args.follow_node, args.scala_cpus, voter),
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 

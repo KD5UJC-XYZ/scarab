@@ -308,6 +308,11 @@ class CliTest(unittest.TestCase):
         for flag in (["--reference-build", "leios-b004fe0c"], ["--db"], ["--local-socket"], ["--node", "2"]):
             self.assertTrue(any(command[i:i + len(flag)] == flag for i in range(len(command))), flag)
 
+    def test_a_voting_follower_listens_and_is_given_the_pools_keys(self):
+        command = lf.follower_command("n", 2, 2, ("127.0.0.1:3101", "/run/voter"))
+        self.assertEqual(command[-4:], ["--listen", "127.0.0.1:3101", "--voter-keys", "/run/voter"])
+        self.assertNotIn("--listen", lf.follower_command("n", 2, 2))
+
 
 if __name__ == "__main__":
     unittest.main()

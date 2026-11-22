@@ -225,6 +225,12 @@ def main():
     lt.add_argument("--follow-catch-up", type=int, default=300,
                     help="with --follow: seconds the follower may take to reach the block the reference nodes are "
                          "waited for once the load stops")
+    lt.add_argument("--follow-vote", type=int, metavar="POOL",
+                    help="with --follow: the follower also votes as pool POOL, with that pool's throwaway keys of the "
+                         "run (`--forge --start-as-non-producing-node --shelley-bls-key`), and listens for the "
+                         "reference nodes, which dial it; pool POOL's reference node runs without its BLS key, so "
+                         "the follower is that seat's only voter; the judge requires a vote of the follower acquired "
+                         "by a reference node")
     lt.set_defaults(run=leios_traffic)
     sc = sub.add_parser("sample-chain-dep", help="next to up-eras: record the reference's DebugChainDepState answers at chosen tips")
     sc.add_argument("--out", required=True, help="JSON file of the recorded points")
@@ -278,6 +284,11 @@ def main():
                         "`follow --reference-build` (the node checks the value; without the flag, the node's "
                         "default): leios-b004fe0c for an `up-dijkstra` cluster, with --db for its endorser-block "
                         "store")
+    f.add_argument("--listen", metavar="HOST:PORT", help="accept node-to-node connections at this address")
+    f.add_argument("--voter-keys", metavar="DIR",
+                   help="a directory of a pool's `vrf.skey`, `kes.skey`, `opcert.cert` and `bls.skey`: the follower "
+                        "is given them with --forge and --start-as-non-producing-node, so it votes with the BLS key "
+                        "and forges nothing")
     f.set_defaults(run=follow)
     ld = sub.add_parser("load", help="submit randomized ADA transfers, staking and certificates")
     ld.add_argument("--seconds", type=int, help="stop after this long (default: until killed)")
