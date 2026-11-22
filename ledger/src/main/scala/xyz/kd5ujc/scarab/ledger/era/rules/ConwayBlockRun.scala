@@ -269,12 +269,13 @@ object ConwayBlockRun:
 
   /** BBODY on `block` from `state`: a defect, the refusal's failures, or the BBODY state after with
     * the block's phase-2 counters ([[Applied]]). The context of its transactions' rules is made
-    * here from `globals`, as the reference's rules read it from theirs: the network (`networkId`, the Shelley genesis's) and the build's injection of
-    * Shelley's UTXO failures ([[ConwayUtxo.injectShelleyFailure]]), with the system start and the
-    * epoch information the caller gives (`systemStart`, `epochInfo`), and every
-    * check validated, so that no caller runs the block's rules under another policy or on another
-    * network. A script the evaluator gives no verdict for is named by its transaction and redeemer
-    * where the rules met it ([[ConwayRuleDefect.ScriptUnavailable]]).
+    * here from `globals`, as the reference's rules read it from theirs: the network (`networkId`,
+    * the Shelley genesis's) and the build's injection of Shelley's UTXO failures
+    * ([[ConwayUtxo.injectShelleyFailure]]), with the system start and the epoch information the
+    * caller gives (`systemStart`, `epochInfo`), and every check validated, so that no caller runs
+    * the block's rules under another policy or on another network. A script the evaluator gives no
+    * verdict for is named by its transaction and redeemer where the rules met it
+    * ([[ConwayRuleDefect.ScriptUnavailable]]).
     */
   def bbody[H](
       globals: Globals,
