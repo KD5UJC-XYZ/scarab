@@ -2,14 +2,20 @@
 package xyz.kd5ujc.scarab.node
 
 import cats.{Applicative, Monad}
-import cats.effect.{Clock, Deferred, Ref, Temporal}
-import cats.effect.std.{Queue, Supervisor}
+import cats.effect.{Clock, Deferred, Poll, Ref, Temporal}
+import cats.effect.std.Supervisor
 import cats.mtl.{Ask, Raise, Stateful, Tell}
 import cats.syntax.all.*
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.network.selection.*
 import xyz.kd5ujc.scarab.network.ChainSyncTimeouts.PeerTrust
-import xyz.kd5ujc.scarab.network.{OutboundLimit, PeerActionError, PeerOperation, PeerStatus}
+import xyz.kd5ujc.scarab.network.{
+  NetworkError,
+  OutboundLimit,
+  PeerActionError,
+  PeerOperation,
+  PeerStatus
+}
 import xyz.kd5ujc.scarab.protocol.ConnectionState.Provenance
 import xyz.kd5ujc.scarab.ledger.PeerError
 import xyz.kd5ujc.scarab.node.assertions.{Assertions, Property}
@@ -183,10 +189,11 @@ final case class GovernorConfig(
 
 /** The governor loop: the effect that drives [[PeerSelection]]. It keeps the state in `Stateful`,
   * reads its settings from `Ask`, tells what it did through `Tell`, and ends only by raising a
-  * [[GovernorError]]. Jobs run in fibers of the `Supervisor`, each of which ends by offering its
-  * outcome to the queue, so a job that is cancelled at shutdown leaves no claim behind; events
-  * arrive on the same queue from the connections, the Genesis State Machine and the regime of
-  * targets.
+  * [[GovernorError]]. Jobs run in fibers of the `Supervisor`, forked through a [[JobPool]] with the
+  * handler that turns an exception of the job into its completion, so each job ends by offering its
+  * outcome to the queue, the handler's if it raised; a job that is cancelled at shutdown leaves no
+  * claim behind. Events arrive on the same queue from the connections, the Genesis State Machine
+  * and the regime of targets.
   *
   * The peer metrics and what the churn governor last wrote ([[PeerGovernor.ChurnWritten]]) are read
   * through `Ask` once per pass: targets written but not yet announced are taken, and the decision
@@ -216,12 +223,12 @@ object PeerGovernor:
         )
     case Trace.TargetsChanged(_) | Trace.LocalRootsChanged(_, _) | Trace.JudgementChanged(_) |
         Trace.OnlyBootstrapPeers() | Trace.RootsRequest(_, _) | Trace.RootsResults(_, _, _) |
-        Trace.RootsFailure(_, _) | Trace.Promote(_, _, _, _, _) | Trace.PromoteDone(_, _, _, _) |
+        Trace.RootsFailure(_, _, _) | Trace.Promote(_, _, _, _, _) | Trace.PromoteDone(_, _, _, _) |
         Trace.PromoteFailed(_, _, _, _, _) | Trace.PromoteAborted(_, _) |
         Trace.Demote(_, _, _, _, _, _) | Trace.DemoteFailed(_, _, _) |
         Trace.PeerActionFailed(_, _, _) | Trace.CachedBlockRejected(_, _, _, _) |
         Trace.ForgetCold(_, _, _) | Trace.Forgotten(_) | Trace.BigLedgerRequest(_, _) |
-        Trace.BigLedgerResults(_, _, _) | Trace.BigLedgerFailure(_, _) |
+        Trace.BigLedgerResults(_, _, _) | Trace.BigLedgerFailure(_, _, _) |
         Trace.ForgetBigLedger(_, _, _) | Trace.PromoteBigLedger(_, _, _, _) |
         Trace.DemoteBigLedger(_, _, _, _, _) | Trace.PickInbound(_) | Trace.ShareRequests(_, _) |
         Trace.ShareResults(_, _) =>
@@ -275,7 +282,7 @@ object PeerGovernor:
   def run[F[_]: Temporal, A](
       actions: PeerStateActions[F, A],
       roots: RootProvider[F, A],
-      events: Queue[F, Event[A]],
+      events: JobPool.Unbounded[F, Event[A]],
       supervisor: Supervisor[F],
       sharing: Option[PeerSharingActions[F, A]] = None,
       beforeEventApplied: Option[Event[A] => F[Unit]] = None,
@@ -290,15 +297,20 @@ object PeerGovernor:
       churn: Ask[F, ChurnWritten],
       assertions: Assertions[F]
   ): F[Nothing] =
-    (Ref.of[F, Set[Time]](Set.empty), Ref.of[F, ChurnMode](ChurnMode.Initial)).tupled
-      .flatMap((scheduled, paired) =>
+    (
+      Ref.of[F, Set[Time]](Set.empty),
+      Ref.of[F, ChurnMode](ChurnMode.Initial),
+      Ref.of[F, Map[Long, F[Unit]]](Map.empty)
+    ).tupled
+      .flatMap((scheduled, paired, phases) =>
         loop(
           actions,
           roots,
           events,
-          supervisor,
+          JobPool[F, Event[A]](supervisor, JobPool.Handoff.queue(events)),
           scheduled,
           paired,
+          phases,
           sharing,
           beforeEventApplied,
           onEventApplied,
@@ -306,18 +318,24 @@ object PeerGovernor:
         )
       )
 
-  /** @param scheduled
+  /** @param jobs
+    *   The only way the loop starts a fiber: each with its handler, completing to the queue.
+    * @param scheduled
     *   The times a wake-up is already asked for.
     * @param paired
     *   The churn mode written with the targets the governor took last.
+    * @param phases
+    *   For each peer-sharing batch whose first phase is done, the start of its second phase, which
+    *   the governor starts once it has applied the first phase's completion.
     */
   private def loop[F[_]: Temporal, A](
       actions: PeerStateActions[F, A],
       roots: RootProvider[F, A],
-      events: Queue[F, Event[A]],
-      supervisor: Supervisor[F],
+      events: JobPool.Unbounded[F, Event[A]],
+      jobs: JobPool[F, Event[A]],
       scheduled: Ref[F, Set[Time]],
       paired: Ref[F, ChurnMode],
+      phases: Ref[F, Map[Long, F[Unit]]],
       sharing: Option[PeerSharingActions[F, A]],
       beforeEventApplied: Option[Event[A] => F[Unit]],
       onEventApplied: Option[Event[A] => F[Unit]],
@@ -336,32 +354,55 @@ object PeerGovernor:
 
     def now: F[Time] = Clock[F].monotonic
 
-    /** Start an ordinary job and report its outcome to its owner. */
-    def complete(result: F[Outcome[A]]): F[Unit] =
-      supervisor.supervise(result.flatMap(outcome => events.offer(Event.Completed(outcome)))).void
+    /** Start an ordinary job and report its outcome to its owner, or its handler's. */
+    def complete(job: JobPool.Job[F, Outcome[A]]): F[Unit] =
+      jobs.forkJob(job.map(Event.Completed(_))).void
 
     // Capture the retained connection in the governor fiber, before supervising the action.
     // ActivePeers.hs (c45735a5):167–181,450–461; EstablishedPeers.hs:971–978.
     def connectionJob(peer: A, generation: Option[BigInt] = None)(
-        run: PeerStateActions.Connection[F] => F[Outcome[A]],
-        legacy: F[Option[Outcome[A]]]
+        run: PeerStateActions.Connection[F] => JobPool.Job[F, Outcome[A]],
+        legacy: JobPool.Job[F, Option[Outcome[A]]]
     ): F[Unit] = connections match
       case None =>
-        supervisor
-          .supervise(legacy.flatMap(_.traverse_(value => events.offer(Event.Completed(value)))))
+        jobs
+          .completingTo(
+            JobPool.Handoff.queue(events).contramap[Outcome[A]](Event.Completed(_)).optional
+          )
+          .forkJob(legacy)
           .void
       case Some(source) =>
         source.monitorPeerConnection(peer).flatMap {
           case Some(handle) if generation.forall(_ == handle.rootsGeneration) =>
-            supervisor
-              .supervise(
-                run(handle).flatMap(value =>
-                  events.offer(Event.ConnectionCompleted(peer, handle.identity, value))
-                )
-              )
+            jobs
+              .forkJob(run(handle).map(Event.ConnectionCompleted(peer, handle.identity, _)))
               .void
           case _ => F.unit
         }
+
+    /** What a handler tells of the exception it met, where telling cannot keep the completion from
+      * the governor: an output that cannot be written is the log's failure (#1147), not a reason to
+      * leave the peer in its job's state.
+      */
+    def report(output: Output[A]): F[Unit] = out.tell(output).attempt.void
+
+    /** How an exception of the node's own code in a job counts against its peer: not at all, as for
+      * an exception of ours while connecting (`EstablishmentError.Defect`, issue 567), where the
+      * reference's handlers count it (`reportFailures`, `EstablishedPeers.hs` 532-540 and
+      * `ActivePeers.hs` 500-509 at c45735a5).
+      */
+    def defect(cause: Throwable): FailureClass =
+      FailurePolicy.classify(PeerError.ConnectionDefect(cause))
+
+    /** The trace of an action whose job raised, its exception kept as the defect it is. */
+    def raised(peer: A, operation: PeerOperation, cause: Throwable): Output[A] =
+      Output.Traced(
+        Trace.PeerActionFailed(
+          peer,
+          operation,
+          PeerActionError.ConnectionFailure(NetworkError.Defect(cause))
+        )
+      )
 
     // Governor demotion jobs, not PeerStateActions, own the manager-release deadline.
     // ActivePeers.hs (c45735a5):987–998; EstablishedPeers.hs:971–992.
@@ -374,89 +415,141 @@ object PeerGovernor:
         )
       }
 
-    /** Start a job in a fiber of the supervisor; it ends by offering its outcome. */
+    /** The release a handler waits for; a wait that raises is reported, its cause kept, and counts
+      * as no release.
+      */
+    def waitRelease(
+        peer: A,
+        handle: PeerStateActions.Connection[F],
+        poll: Poll[F]
+    ): F[PeerStateActions.Release] =
+      poll(awaitRelease(handle)).handleErrorWith(problem =>
+        report(raised(peer, PeerOperation.Close, problem)).as(PeerStateActions.Release.Lingering)
+      )
+
+    /** Start a job in a fiber of the supervisor, with its handler; it ends by offering its outcome,
+      * or its handler's.
+      */
     def start(job: Job[A]): F[Unit] = job match
       case Job.Share(batch, amount, peers) =>
         config.reader(_.policy).flatMap { policy =>
+          type Pending = List[(A, Deferred[F, PeerShare.Result[A]])]
+          def shared(results: List[(A, PeerShare.Result[A])]): Event[A] =
+            Event.Completed(Outcome.Shared(batch, results))
+          // A phase that raises reports its cause for each of its peers, which are then no longer in
+          // flight, and leaves the time each is next due as it was (`handler`, `KnownPeers.hs`
+          // 280-289 at c45735a5).
+          def raised(of: List[A])(cause: Throwable): Event[A] =
+            shared(of.map(_ -> PeerShare.Result.PhaseFailed(NetworkError.Defect(cause))))
           // Requests belong to the supervisor, not to the governor's short wait. A logical
           // timeout stops waiting for discovery; the bounded wire request still drains its reply
-          // before this client can be reused (as the reference's protocol controller does).
-          peers
-            .traverse { peer =>
-              Deferred[F, PeerShare.Result[A]]
-                .flatTap { result =>
-                  val request = sharing.fold(
-                    F.pure[PeerShare.Result[A]](PeerShare.Result.NotRegistered())
-                  )(_.request(peer, amount))
-                  supervisor.supervise(request.flatMap(result.complete).void).void
-                }
-                .map(peer -> _)
-            }
-            .flatMap { pending =>
-              def collect(
-                  wait: FiniteDuration,
-                  remaining: List[(A, Deferred[F, PeerShare.Result[A]])]
-              ) =
-                F.race(F.sleep(wait), remaining.traverse_(_._2.get)).flatMap { _ =>
-                  remaining.traverse { (peer, result) =>
-                    result.tryGet.map(value => (peer, result, value))
-                  }
-                }
-              val phases = for
-                first <- collect(policy.peerShareBatchWaitTime, pending)
-                done = first.collect { case (peer, _, Some(result)) => peer -> result }
-                rest = first.collect { case (peer, result, None) => peer -> result }
-                _ <- events.offer(Event.Completed(Outcome.Shared(batch, done))).whenA(done.nonEmpty)
-                _ <-
-                  if rest.isEmpty then F.unit
-                  else
-                    collect(
-                      (policy.peerShareOverallTimeout - policy.peerShareBatchWaitTime)
-                        .max(Duration.Zero),
-                      rest
+          // before this client can be reused (as the reference's protocol controller does). Each
+          // is the reference's `async` of its request, whose exception or cancellation the phase
+          // takes as its result when it ends (`waitAllCatchOrTimeout`, `KnownPeers.hs` 589-600 at
+          // c45735a5, by `waitCatchSTM`).
+          val requested: F[Pending] = peers.traverse { peer =>
+            Deferred[F, PeerShare.Result[A]]
+              .flatTap { result =>
+                val request = sharing.fold(
+                  F.pure[PeerShare.Result[A]](PeerShare.Result.NotRegistered())
+                )(_.request(peer, amount))
+                jobs
+                  .completingTo(JobPool.Handoff.deferred(result))
+                  .forkJob(
+                    JobPool.Job.pure(
+                      F.onCancel(request, result.complete(PeerShare.Result.Cancelled()).void),
+                      cause => PeerShare.Result.Failed(NetworkError.Defect(cause))
                     )
-                      .flatMap(results =>
-                        events.offer(
-                          Event.Completed(
-                            Outcome.Shared(
-                              batch,
-                              results.map((peer, _, value) =>
-                                peer -> value.getOrElse(PeerShare.Result.TimedOut())
-                              )
-                            )
-                          )
-                        )
-                      )
-              yield ()
-              supervisor.supervise(phases).void
+                  )
+                  .void
+              }
+              .map(peer -> _)
+          }
+          def collect(wait: FiniteDuration, remaining: Pending) =
+            F.race(F.sleep(wait), remaining.traverse_(_._2.get)).flatMap { _ =>
+              remaining.traverse { (peer, result) =>
+                result.tryGet.map(value => (peer, result, value))
+              }
             }
+          // The second phase waits for the rest up to the overall timeout from when it starts
+          // (`jobPhase2`, `KnownPeers.hs` 385-), which is once the governor has applied the first
+          // phase's completion, as the reference's governor forks the completion's `decisionJobs`
+          // (378-382) after applying it (`Governor.hs` 614-638).
+          def second(rest: Pending) =
+            JobPool.Job.pure(
+              collect(
+                (policy.peerShareOverallTimeout - policy.peerShareBatchWaitTime)
+                  .max(Duration.Zero),
+                rest
+              ).map(results =>
+                shared(
+                  results
+                    .map((peer, _, value) => peer -> value.getOrElse(PeerShare.Result.TimedOut()))
+                )
+              ),
+              raised(rest.map(_._1))
+            )
+          // The first phase starts the requests and gives the answers of the batch wait, and the
+          // start of the second phase for the rest (`jobPhase1`, `KnownPeers.hs` 268 and 291-383);
+          // what it raises is its handler's, for all of its peers, and has no second phase.
+          val first = JobPool.Job.pure[F, (Event[A], Option[F[Unit]])](
+            for
+              pending <- requested
+              results <- collect(policy.peerShareBatchWaitTime, pending)
+              done = results.collect { case (peer, _, Some(result)) => peer -> result }
+              rest = results.collect { case (peer, result, None) => peer -> result }
+            yield (shared(done), Option.when(rest.nonEmpty)(jobs.forkJob(second(rest)).void)),
+            cause => (raised(peers)(cause), None)
+          )
+          // the second phase is registered as the completion that starts it is offered
+          jobs
+            .completingTo(
+              JobPool.Handoff
+                .queue(events)
+                .contramap[(Event[A], Option[F[Unit]])](_._1)
+                .updating(phases)((m, completion) =>
+                  completion._2.fold(m)(start => m.updated(batch, start))
+                )
+            )
+            .forkJob(first)
+            .void
         }
       case Job.Connect(peer, mode, provenance, generation) =>
         // the governor's classification of the peer for the outbound limit, read by the dial when
         // it reserves the connection: the state then, not the state of this decision
         val classification = state.get.map(_.dialOf(peer))
-        supervisor
-          .supervise(
-            actions.establishAt(peer, mode, provenance, classification, generation).flatMap {
-              case Right(handle) =>
-                events.offer(
-                  Event
-                    .ConnectionCompleted(
+        def failed(failure: FailureClass): Event[A] =
+          Event.Completed(Outcome.ConnectFailed(peer, failure, generation))
+        // `promoteColdPeer`'s handler (`EstablishedPeers.hs` 505-568 at c45735a5): the failure is
+        // recorded with its back-off, and the peer is no longer connecting. `establishAt` gives the
+        // exceptions of the connection as values, so what reaches here is the job's own
+        def handler(cause: Throwable): F[Event[A]] =
+          report(Output.EstablishmentFailed(peer, EstablishmentError.Defect(cause)))
+            .as(failed(defect(cause)))
+        jobs
+          .forkJob(
+            JobPool.Job(
+              actions.establishAt(peer, mode, provenance, classification, generation).flatMap {
+                case Right(handle) =>
+                  F.pure(
+                    Event.ConnectionCompleted(
                       peer,
                       handle.identity,
                       Outcome.Connected(peer, generation, Some(handle.peerSharing))
                     )
-                )
-              case Left(error) =>
-                val failure = error match
-                  case EstablishmentError.Failed(cause) => FailurePolicy.classify(cause)
-                  // an exception of our own while connecting: nothing against the peer (issue 567)
-                  case EstablishmentError.Defect(cause) =>
-                    FailurePolicy.classify(PeerError.ConnectionDefect(cause))
-                  case EstablishmentError.Superseded => FailureClass.Transient
-                out.tell(Output.EstablishmentFailed(peer, error)) *>
-                  events.offer(Event.Completed(Outcome.ConnectFailed(peer, failure, generation)))
-            }
+                  )
+                case Left(error) =>
+                  val failure = error match
+                    case EstablishmentError.Failed(cause) => FailurePolicy.classify(cause)
+                    // an exception of our own while connecting: nothing against the peer
+                    // (issue 567)
+                    case EstablishmentError.Defect(cause) => defect(cause)
+                    case EstablishmentError.Superseded    => FailureClass.Transient
+                  report(Output.EstablishmentFailed(peer, error)).as(failed(failure))
+              },
+              (cause, _) => handler(cause),
+              cause => failed(defect(cause))
+            )
           )
           .void
       case Job.Activate(peer, trust) =>
@@ -476,12 +569,74 @@ object PeerGovernor:
                   case _                     => None
               )
               .getOrElse(FailureClass.Transient)
-            out.tell(Output.Traced(Trace.PeerActionFailed(peer, PeerOperation.Activate, error))) *>
+            report(Output.Traced(Trace.PeerActionFailed(peer, PeerOperation.Activate, error))) *>
               config.reader(_.activationPause).flatMap(F.sleep) *>
               F.pure[Outcome[A]](Outcome.ActivateFailed(peer, failure))
+        def last(cause: Throwable): Outcome[A] =
+          Outcome.ActivateFailedLingering(peer, defect(cause))
+        // What a close of the connection released, its failure reported; one that raised leaves the
+        // connection held as far as the governor knows.
+        def closing(close: F[PeerStateActions.Result[PeerStateActions.CloseResult]])(
+            poll: Poll[F]
+        ): F[Option[PeerStateActions.Release]] =
+          poll(close)
+            .flatMap {
+              case Right(result) =>
+                report(
+                  Output.Traced(
+                    Trace.PeerActionFailed(
+                      peer,
+                      PeerOperation.Close,
+                      PeerActionError.TimedOut(PeerOperation.Close)
+                    )
+                  )
+                ).whenA(result.completion == PeerStateActions.CloseCompletion.TimedOut)
+                  .as(Some(result.release))
+              case Left(failure) =>
+                report(
+                  Output.Traced(Trace.PeerActionFailed(peer, PeerOperation.Close, failure.cause))
+                ).as(Some(failure.release))
+            }
+            .handleErrorWith(problem => report(raised(peer, PeerOperation.Close, problem)).as(None))
+        // `promoteWarmPeer`'s handler (`ActivePeers.hs` 460-558 at c45735a5): the pause, then the
+        // failed promotion, which the governor applies while the peer is still activating and
+        // traces as aborted otherwise. The exception is of the node's own code on the connection,
+        // so the connection is closed first, as such an exception ends its connection (ADR 0017,
+        // amendment of 2026-10-28), and its release waited for up to the demotion timeout, as the
+        // close job waits for it. Released, the peer leaves the established set with it; if the
+        // close raised or the release did not come, it is cooling (decisions register, 2026-11-22).
+        def failed(close: Poll[F] => F[PeerStateActions.Release])(
+            cause: Throwable,
+            poll: Poll[F]
+        ): F[Outcome[A]] =
+          report(raised(peer, PeerOperation.Activate, cause)) *> close(poll).flatMap(release =>
+            poll(config.reader(_.activationPause).flatMap(F.sleep)).as(release match
+              case PeerStateActions.Release.Released  => Outcome.ActivateFailed(peer, defect(cause))
+              case PeerStateActions.Release.Lingering => last(cause))
+          )
         connectionJob(peer)(
-          _.activate(trust).flatMap(outcome),
-          actions.activate(peer, trust).flatMap(outcome).map(Some(_))
+          handle =>
+            JobPool.Job(
+              handle.activate(trust).flatMap(outcome),
+              failed(poll =>
+                closing(handle.close)(poll).flatMap(
+                  _.fold(F.pure(PeerStateActions.Release.Lingering))(_ =>
+                    waitRelease(peer, handle, poll)
+                  )
+                )
+              ),
+              last
+            ),
+          JobPool
+            .Job(
+              actions.activate(peer, trust).flatMap(outcome),
+              failed(poll =>
+                closing(actions.close(peer))(poll)
+                  .map(_.getOrElse(PeerStateActions.Release.Lingering))
+              ),
+              last
+            )
+            .map(Some(_))
         )
       case Job.Deactivate(peer) =>
         def outcome(result: PeerStateActions.Result[PeerStateActions.Deactivation]): F[Outcome[A]] =
@@ -492,111 +647,171 @@ object PeerGovernor:
             case Right(PeerStateActions.Deactivation.Lingering) =>
               F.pure(Outcome.CloseTimedOut(peer))
             case Left(failure) =>
-              out
-                .tell(
-                  Output.Traced(
-                    Trace.PeerActionFailed(peer, PeerOperation.Deactivate, failure.cause)
-                  )
-                )
-                .as(
-                  if failure.release == PeerStateActions.Release.Released then
-                    Outcome.DeactivateFailed(peer)
-                  else Outcome.CloseTimedOut(peer)
-                )
+              report(
+                Output.Traced(Trace.PeerActionFailed(peer, PeerOperation.Deactivate, failure.cause))
+              ).as(
+                if failure.release == PeerStateActions.Release.Released then
+                  Outcome.DeactivateFailed(peer)
+                else Outcome.CloseTimedOut(peer)
+              )
+        def released(release: PeerStateActions.Release): Outcome[A] = release match
+          case PeerStateActions.Release.Released  => Outcome.DeactivateFailed(peer)
+          case PeerStateActions.Release.Lingering => Outcome.CloseTimedOut(peer)
+        def reported(cause: Throwable): F[Unit] =
+          report(raised(peer, PeerOperation.Deactivate, cause))
+        // `demoteActivePeer`'s handler (`ActivePeers.hs` 980-1039 at c45735a5): wait for the
+        // connection to go cold, up to the demotion timeout; cold, the peer is neither hot nor
+        // established, and tepid; still held, it stays, cooling
+        def handler(handle: PeerStateActions.Connection[F])(
+            cause: Throwable,
+            poll: Poll[F]
+        ): F[Outcome[A]] =
+          reported(cause) *> waitRelease(peer, handle, poll).map(released)
+        // with no connection to watch, it is not seen cold: the handler's timeout
+        def unwatched(cause: Throwable): F[Outcome[A]] =
+          reported(cause).as[Outcome[A]](Outcome.CloseTimedOut(peer))
         connectionJob(peer)(
           handle =>
-            handle.deactivate.flatMap {
-              case result @ Right(PeerStateActions.Deactivation.Warm) => outcome(result)
-              case Left(failure) =>
-                awaitRelease(handle).flatMap(release =>
-                  outcome(Left(failure.copy(release = release)))
-                )
-              case Right(_) =>
-                awaitRelease(handle).flatMap {
-                  case PeerStateActions.Release.Released =>
-                    outcome(Right(PeerStateActions.Deactivation.Closed))
-                  case PeerStateActions.Release.Lingering =>
-                    outcome(Right(PeerStateActions.Deactivation.Lingering))
-                }
-            },
-          actions.deactivate(peer).flatMap(outcome).map(Some(_))
+            JobPool.Job(
+              handle.deactivate.flatMap {
+                case result @ Right(PeerStateActions.Deactivation.Warm) => outcome(result)
+                case Left(failure) =>
+                  awaitRelease(handle).flatMap(release =>
+                    outcome(Left(failure.copy(release = release)))
+                  )
+                case Right(_) => awaitRelease(handle).map(released)
+              },
+              handler(handle),
+              _ => Outcome.CloseTimedOut(peer)
+            ),
+          JobPool
+            .Job(
+              actions.deactivate(peer).flatMap(outcome),
+              (cause, _) => unwatched(cause),
+              _ => Outcome.CloseTimedOut(peer)
+            )
+            .map(Some(_))
         )
       case Job.Close(peer, generation) =>
         def outcome(result: PeerStateActions.Result[PeerStateActions.CloseResult]): F[Outcome[A]] =
           result match
             case Right(result) =>
-              out
-                .tell(
-                  Output.Traced(
-                    Trace.PeerActionFailed(
-                      peer,
-                      PeerOperation.Close,
-                      PeerActionError.TimedOut(PeerOperation.Close)
-                    )
+              report(
+                Output.Traced(
+                  Trace.PeerActionFailed(
+                    peer,
+                    PeerOperation.Close,
+                    PeerActionError.TimedOut(PeerOperation.Close)
                   )
                 )
-                .whenA(result.completion == PeerStateActions.CloseCompletion.TimedOut) *>
+              ).whenA(result.completion == PeerStateActions.CloseCompletion.TimedOut) *>
                 F.pure(
                   if result.release == PeerStateActions.Release.Released then Outcome.Closed(peer)
                   else Outcome.CloseTimedOut(peer)
                 )
             case Left(failure) =>
-              out
-                .tell(
-                  Output.Traced(Trace.PeerActionFailed(peer, PeerOperation.Close, failure.cause))
-                )
+              report(
+                Output.Traced(Trace.PeerActionFailed(peer, PeerOperation.Close, failure.cause))
+              )
                 .as(
                   if failure.release == PeerStateActions.Release.Released then Outcome.Closed(peer)
                   else Outcome.CloseTimedOut(peer)
                 )
+        def released(release: PeerStateActions.Release): Outcome[A] = release match
+          case PeerStateActions.Release.Released  => Outcome.Closed(peer)
+          case PeerStateActions.Release.Lingering => Outcome.CloseTimedOut(peer)
+        def reported(cause: Throwable): F[Unit] = report(raised(peer, PeerOperation.Close, cause))
+        // `demoteEstablishedPeer`'s handler (`EstablishedPeers.hs` 909-967 at c45735a5): wait for
+        // the connection to go cold, up to the demotion timeout; cold, the peer is no longer
+        // established; still held, it stays, cooling
+        def handler(handle: PeerStateActions.Connection[F])(
+            cause: Throwable,
+            poll: Poll[F]
+        ): F[Outcome[A]] =
+          reported(cause) *> waitRelease(peer, handle, poll).map(released)
         val legacy = generation match
-          case None => actions.close(peer).flatMap(outcome).map(Some(_))
+          // with no connection to watch, it is not seen cold: the handler's timeout
+          case None =>
+            JobPool
+              .Job(
+                actions.close(peer).flatMap(outcome),
+                (cause, _) => reported(cause).as[Outcome[A]](Outcome.CloseTimedOut(peer)),
+                _ => Outcome.CloseTimedOut(peer)
+              )
+              .map(Some(_))
+          // nothing says the link that raised was the generation's, and no close of it is in
+          // progress: the peer is cold
           case Some(expected) =>
-            actions.closeIfGeneration(peer, expected).flatMap(_.traverse(outcome))
+            JobPool.Job(
+              actions.closeIfGeneration(peer, expected).flatMap(_.traverse(outcome)),
+              (cause, _) => reported(cause).as(Option.empty[Outcome[A]]),
+              _ => None
+            )
         connectionJob(peer, generation)(
           handle =>
-            handle.close.flatMap {
-              case Left(failure) =>
-                awaitRelease(handle).flatMap(release =>
-                  outcome(Left(failure.copy(release = release)))
-                )
-              case Right(result) =>
-                awaitRelease(handle).flatMap(release =>
-                  outcome(Right(result.copy(release = release)))
-                )
-            },
+            JobPool.Job(
+              handle.close.flatMap {
+                case Left(failure) =>
+                  awaitRelease(handle).flatMap(release =>
+                    outcome(Left(failure.copy(release = release)))
+                  )
+                case Right(result) =>
+                  awaitRelease(handle).flatMap(release =>
+                    outcome(Right(result.copy(release = release)))
+                  )
+              },
+              handler(handle),
+              _ => Outcome.CloseTimedOut(peer)
+            ),
           legacy
         )
       // The connection to leave out is the one the peer has when the governor decides it, captured
       // here in the governor fiber, as `connectionJob` captures the others: a later connection to
       // the peer, which the decision did not see, keeps its place. No outcome: the governor's state
-      // already says the peer is a local root.
+      // already says the peer is a local root. Scarab's own, so its handler is too: an exception
+      // of the limit's bookkeeping leaves that place held until the connection ends, and ends the
+      // fiber with nothing to report.
       case Job.Exempt(peer) =>
+        def exempt(action: F[Unit]): F[Unit] =
+          jobs
+            .completingTo(JobPool.Handoff.none[F, Unit])
+            .forkJob(JobPool.Job.pure(action, _ => ()))
+            .void
         connections match
-          case None => supervisor.supervise(actions.exempt(peer)).void
+          case None => exempt(actions.exempt(peer))
           case Some(source) =>
-            source
-              .monitorPeerConnection(peer)
-              .flatMap(_.traverse_(handle => supervisor.supervise(handle.exempt).void))
+            source.monitorPeerConnection(peer).flatMap(_.traverse_(handle => exempt(handle.exempt)))
       case Job.RequestRoots(max, bootstrap, generation) =>
+        // `jobReqPublicRootPeers`'s handler (`RootPeers.hs` 125-155 at c45735a5): a failed
+        // request, one back-off step further, with its exception
+        def handler(cause: Throwable): Outcome[A] = Outcome.RootsFailed(generation, Some(cause))
         complete(
-          roots
-            .request(max, bootstrap)
-            .map(
-              _.fold[Outcome[A]](Outcome.RootsFailed(generation))((found, ttl) =>
-                Outcome.RootsFound(found, ttl, generation)
-              )
-            )
+          JobPool.Job.pure(
+            roots
+              .request(max, bootstrap)
+              .map(
+                _.fold[Outcome[A]](Outcome.RootsFailed(generation))((found, ttl) =>
+                  Outcome.RootsFound(found, ttl, generation)
+                )
+              ),
+            handler
+          )
         )
       case Job.RequestBigLedger(max, generation) =>
+        // `jobReqBigLedgerPeers`'s handler (`BigLedgerPeers.hs` 134-162 at c45735a5): the same
+        // for big ledger peers
+        def handler(cause: Throwable): Outcome[A] = Outcome.BigLedgerFailed(generation, Some(cause))
         complete(
-          roots
-            .requestBigLedger(max)
-            .map(
-              _.fold[Outcome[A]](Outcome.BigLedgerFailed(generation))((found, ttl) =>
-                Outcome.BigLedgerFound(found, ttl, generation)
-              )
-            )
+          JobPool.Job.pure(
+            roots
+              .requestBigLedger(max)
+              .map(
+                _.fold[Outcome[A]](Outcome.BigLedgerFailed(generation))((found, ttl) =>
+                  Outcome.BigLedgerFound(found, ttl, generation)
+                )
+              ),
+            handler
+          )
         )
 
     /** Make a decision the state: the new state, the jobs started, the traces told. */
@@ -623,6 +838,47 @@ object PeerGovernor:
         _ <- onEventApplied.traverse_(_(event))
       yield ()
 
+    /** What the monitor reads on a connection that is cooling or gone: its loss, released or not
+      * (`Governor/Monitor.hs` 292-308 at c45735a5).
+      */
+    def lost(current: PeerStateActions.Monitoring, reason: String): Observation =
+      Observation.Lost(
+        current.failure.fold(FailureClass.Transient)(FailurePolicy.classify),
+        current.repromoteDelay.getOrElse(Duration.Zero),
+        current.status == PeerStatus.Cold,
+        current.failure.fold(reason)(_.message)
+      )
+
+    /** Apply what was read on the connection `handle` names, as an observation of it. */
+    def observed(
+        peer: A,
+        handle: PeerStateActions.Connection[F],
+        observation: Observation
+    ): F[Unit] =
+      applySnapshot(
+        Event.Observed(peer, observation, Some(handle.rootsGeneration), Some(handle.identity))
+      )
+
+    def observe(
+        peer: A,
+        observation: Observation,
+        generation: Option[BigInt],
+        identity: Option[BigInt]
+    ): F[Unit] =
+      applySnapshot(Event.Observed(peer, observation, generation, identity))
+
+    /** Apply a job's completion, and the second phase of a peer-sharing batch it starts. */
+    def completed(outcome: Outcome[A]): F[Unit] =
+      applySnapshot(Event.Completed(outcome)) *> (outcome match
+        case Outcome.Shared(batch, _) =>
+          phases.modify(m => (m - batch, m.get(batch))).flatMap(_.sequence_)
+        case Outcome.Connected(_, _, _) | Outcome.ConnectFailed(_, _, _) | Outcome.Activated(_) |
+            Outcome.ActivateFailed(_, _) | Outcome.ActivateFailedLingering(_, _) |
+            Outcome.Deactivated(_) | Outcome.DeactivateFailed(_) | Outcome.Closed(_) |
+            Outcome.CloseTimedOut(_) | Outcome.RootsFound(_, _, _) | Outcome.RootsFailed(_, _) |
+            Outcome.BigLedgerFound(_, _, _) | Outcome.BigLedgerFailed(_, _) =>
+          F.unit)
+
     def apply(event: Event[A]): F[Unit] = event match
       case Event.ConnectionCompleted(peer, identity, outcome) =>
         connections.fold(applySnapshot(Event.Completed(outcome))) { source =>
@@ -636,30 +892,19 @@ object PeerGovernor:
                     applySnapshot(Event.Completed(connected)) *>
                       (current.status match
                         case PeerStatus.Cold | PeerStatus.Cooling =>
-                          applySnapshot(
-                            Event.Observed(
-                              peer,
-                              Observation.Lost(
-                                current.failure
-                                  .fold(FailureClass.Transient)(FailurePolicy.classify),
-                                current.repromoteDelay.getOrElse(Duration.Zero),
-                                current.status == PeerStatus.Cold,
-                                current.failure.fold(
-                                  "connection ended before establishment was accepted"
-                                )(_.message)
-                              ),
-                              Some(handle.rootsGeneration),
-                              Some(identity)
-                            )
+                          observed(
+                            peer,
+                            handle,
+                            lost(current, "connection ended before establishment was accepted")
                           )
                         case _ => F.unit)
                   }
-                case _ => applySnapshot(Event.Completed(outcome))
+                case _ => completed(outcome)
             case _ => F.unit
           }
         }
-      case event @ Event.Observed(peer, observation, generation, Some(identity)) =>
-        connections.fold(applySnapshot(event)) { source =>
+      case Event.Observed(peer, observation, generation, Some(identity)) =>
+        connections.fold(observe(peer, observation, generation, Some(identity))) { source =>
           source.monitorPeerConnection(peer).flatMap {
             case Some(handle)
                 if handle.identity == identity && generation.forall(_ == handle.rootsGeneration) =>
@@ -677,9 +922,7 @@ object PeerGovernor:
                   case (_, action: Observation.ActionFailed)        => Some(action)
                   case (_, cached: Observation.CachedBlockRejected) => Some(cached)
                   case _                                            => None
-                observed.traverse_(value =>
-                  applySnapshot(Event.Observed(peer, value, generation, Some(identity)))
-                )
+                observed.traverse_(value => observe(peer, value, generation, Some(identity)))
               }
             case _ => F.unit
           }
@@ -690,7 +933,10 @@ object PeerGovernor:
           .flatMap(written =>
             written.targets.filter(_.generation == generation).traverse_(take(written, _))
           )
-      case _ => applySnapshot(event)
+      case Event.Observed(peer, observation, generation, None) =>
+        observe(peer, observation, generation, None)
+      case Event.Completed(outcome) => completed(outcome)
+      case _                        => applySnapshot(event)
 
     /** Take targets the churn governor wrote, and remember the mode written with them if they were
       * taken (a topology generation not yet in force does not take them).
@@ -732,10 +978,15 @@ object PeerGovernor:
         case false => F.unit
         case true =>
           now.flatMap { current =>
-            supervisor
-              .supervise(
-                F.sleep((at - current).max(Duration.Zero)) *>
-                  scheduled.update(_ - at) *> events.offer(Event.Wake(at))
+            // due however its timer ends, so that the time can be asked for again
+            val due = scheduled.update(_ - at).as[Event[A]](Event.Wake(at))
+            jobs
+              .forkJob(
+                JobPool.Job(
+                  F.sleep((at - current).max(Duration.Zero)) *> due,
+                  (_, _) => due,
+                  _ => Event.Wake(at)
+                )
               )
               .void
           }

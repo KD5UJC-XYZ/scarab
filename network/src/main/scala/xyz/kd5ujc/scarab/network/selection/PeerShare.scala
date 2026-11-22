@@ -24,6 +24,19 @@ object PeerShare:
     case Failed(error: xyz.kd5ujc.scarab.network.NetworkError)
     case TimedOut()
 
+    /** The request was cancelled before it answered (the reference's `AsyncCancelled`, which
+      * `waitAllCatchOrTimeout` gives as its result, ouroboros-network c45735a5
+      * `Governor/KnownPeers.hs` 589-600).
+      */
+    case Cancelled()
+
+    /** The phase that waited for the request raised `error`: what the request answered is not
+      * known, the request is no longer in flight, and the time the next one is due stays as the
+      * request set it (the phase's `handler`, ouroboros-network c45735a5 `Governor/KnownPeers.hs`
+      * 280-289, which neither pin's failure back-off reaches).
+      */
+    case PhaseFailed(error: xyz.kd5ujc.scarab.network.NetworkError)
+
   /** One round of peer-share requests, until each asked peer has answered or timed out.
     *
     * @param remaining
@@ -176,7 +189,7 @@ object PeerShare:
         )
         .take(batch.remaining.max(0))
       val retried = applicable.foldLeft(st.peers) {
-        case (m, (peer, Result.Failed(_) | Result.TimedOut())) =>
+        case (m, (peer, Result.Failed(_) | Result.TimedOut() | Result.Cancelled())) =>
           m.get(peer)
             .fold(m)(r =>
               m.updated(peer, r.copy(shareAt = Some(now + policy.peerShareFailureRetryTime)))
@@ -193,10 +206,11 @@ object PeerShare:
       val batches =
         if remaining.pending.isEmpty then st.sharing.batches - id
         else st.sharing.batches.updated(id, remaining)
+      // a phase with no answers changes nothing to tell, as main tells nothing for it
       Decision(
         st.copy(peers = peers, sharing = st.sharing.copy(batches = batches)),
         Nil,
-        List(Trace.ShareResults(applicable, added))
+        Option.when(applicable.nonEmpty)(Trace.ShareResults(applicable, added)).toList
       )
     }
 

@@ -134,6 +134,14 @@ enum Outcome[A]:
   case ConnectFailed(peer: A, failure: FailureClass, generation: BigInt = BigInt(0))
   case Activated(peer: A)
   case ActivateFailed(peer: A, failure: FailureClass)
+
+  /** The activation raised, and its connection may still be held, its state unknown: the close
+    * raised, the wait for the release raised, or the connection was not seen cold within the
+    * demotion timeout (even after a close that reported it released); the peer is established and
+    * cooling until its release is seen, as the reference's monitor takes a connection it reads
+    * cooling (`PeerCooling`, ouroboros-network c45735a5 `Governor/Monitor.hs` 292-296).
+    */
+  case ActivateFailedLingering(peer: A, failure: FailureClass)
   case Deactivated(peer: A)
 
   /** The hot protocols could not be ended cleanly; the connection was closed. */
@@ -145,11 +153,20 @@ enum Outcome[A]:
 
   /** The request for public roots answered, with the time its answer is good for. */
   case RootsFound(found: PublicRoots[A], ttl: FiniteDuration, generation: BigInt = BigInt(0))
-  case RootsFailed(generation: BigInt = BigInt(0))
+
+  /** The request for public roots failed; `defect` is the exception of the job that asked, when it
+    * raised (`jobReqPublicRootPeers`'s handler traces it, ouroboros-network c45735a5
+    * `Governor/RootPeers.hs` 127-155).
+    */
+  case RootsFailed(generation: BigInt = BigInt(0), defect: Option[Throwable] = None)
 
   /** The request for big ledger peers answered, with the time its answer is good for. */
   case BigLedgerFound(found: BigLedgerRoots[A], ttl: FiniteDuration, generation: BigInt = BigInt(0))
-  case BigLedgerFailed(generation: BigInt = BigInt(0))
+
+  /** The request for big ledger peers failed; `defect` as for [[RootsFailed]]
+    * (`jobReqBigLedgerPeers`'s handler, `Governor/BigLedgerPeers.hs` 136-162 at c45735a5).
+    */
+  case BigLedgerFailed(generation: BigInt = BigInt(0), defect: Option[Throwable] = None)
 
   /** One completed phase of a peer-sharing batch. */
   case Shared(batch: Long, results: List[(A, PeerShare.Result[A])])
@@ -189,7 +206,7 @@ enum Trace[A]:
   case OnlyBootstrapPeers()
   case RootsRequest(target: Int, current: Int)
   case RootsResults(found: Set[A], backoffs: Int, retryIn: FiniteDuration)
-  case RootsFailure(backoffs: Int, retryIn: FiniteDuration)
+  case RootsFailure(backoffs: Int, retryIn: FiniteDuration, defect: Option[Throwable] = None)
 
   /** A decision to move peers up a temperature. `local` for the local root families. */
   case Promote(
@@ -257,7 +274,7 @@ enum Trace[A]:
   // `TracePeerSelection`, `Types.hs`)
   case BigLedgerRequest(target: Int, current: Int)
   case BigLedgerResults(found: Set[A], backoffs: Int, retryIn: FiniteDuration)
-  case BigLedgerFailure(backoffs: Int, retryIn: FiniteDuration)
+  case BigLedgerFailure(backoffs: Int, retryIn: FiniteDuration, defect: Option[Throwable] = None)
   case ForgetBigLedger(target: Int, known: Int, peers: List[A])
   case PromoteBigLedger(from: Temperature, peers: List[A], target: Int, current: Int)
 

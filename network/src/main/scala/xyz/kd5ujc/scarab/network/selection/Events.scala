@@ -292,6 +292,16 @@ private[selection] object Events:
           List(Trace.DemoteFailed(from, peer, timedOut = true))
         )
 
+      // The activation raised and its connection is still held: established and cooling, until the
+      // monitor sees it released (`Governor/Monitor.hs` 292-296 at c45735a5)
+      case Outcome.ActivateFailedLingering(peer, failure)
+          if status(peer).contains(Status.Activating) =>
+        Decision(
+          st0.withStatus(peer, Status.Cooling),
+          Nil,
+          List(Trace.PromoteFailed(Temperature.Warm, peer, failure, None, false))
+        )
+
       case Outcome.RootsFound(found, ttl, generation)
           if st0.publicRootsInFlight && generation == st0.rootsGeneration =>
         val local = st0.localRoots.keys
@@ -328,7 +338,7 @@ private[selection] object Events:
           List(Trace.RootsResults(fresh, backoffs, retryIn))
         )
 
-      case Outcome.RootsFailed(generation)
+      case Outcome.RootsFailed(generation, defect)
           if st0.publicRootsInFlight && generation == st0.rootsGeneration =>
         // one step in the failure direction (negative), an exponential delay of up to 2^8 seconds
         val backoffs = st0.publicRootBackoffs.min(0) - 1
@@ -340,7 +350,7 @@ private[selection] object Events:
             publicRootsInFlight = false
           ),
           Nil,
-          List(Trace.RootsFailure(backoffs, retryIn))
+          List(Trace.RootsFailure(backoffs, retryIn, defect))
         )
 
       case Outcome.BigLedgerFound(found, ttl, generation)
@@ -375,7 +385,7 @@ private[selection] object Events:
           List(Trace.BigLedgerResults(fresh, backoffs, retryIn))
         )
 
-      case Outcome.BigLedgerFailed(generation)
+      case Outcome.BigLedgerFailed(generation, defect)
           if st0.bigLedgerInFlight && generation == st0.rootsGeneration =>
         val backoffs = st0.bigLedgerBackoffs.min(0) - 1
         val retryIn = (1L << math.abs(backoffs).min(policy.maxPublicRootBackoff).toLong).seconds
@@ -386,7 +396,7 @@ private[selection] object Events:
             bigLedgerInFlight = false
           ),
           Nil,
-          List(Trace.BigLedgerFailure(backoffs, retryIn))
+          List(Trace.BigLedgerFailure(backoffs, retryIn, defect))
         )
 
       // A late rejection can forget a connecting source before its bearer is registered. Close
@@ -406,4 +416,6 @@ private[selection] object Events:
       case Outcome.ConnectFailed(p, _, _) => List(Trace.PromoteAborted(Temperature.Cold, p))
       case Outcome.Activated(p)           => List(Trace.PromoteAborted(Temperature.Warm, p))
       case Outcome.ActivateFailed(p, _)   => List(Trace.PromoteAborted(Temperature.Warm, p))
-      case _                              => Nil
+      case Outcome.ActivateFailedLingering(p, _) =>
+        List(Trace.PromoteAborted(Temperature.Warm, p))
+      case _ => Nil

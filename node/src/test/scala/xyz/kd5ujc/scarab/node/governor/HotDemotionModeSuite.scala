@@ -63,7 +63,7 @@ class HotDemotionModeSuite extends FailsOnUncaught:
         )
       for
         state <- Ref.of[IO, GovernorState[Int]](initial)
-        events <- Queue.unbounded[IO, Event[Int]]
+        events <- xyz.kd5ujc.scarab.node.JobPool.Unbounded[IO, Event[Int]]
         seen <- SignallingRef[IO, Vector[Seen]](Vector.empty)
         given Stateful[IO, GovernorState[Int]] = RefStateful(state)
         given Ask[IO, GovernorConfig] = Ask.const[IO, GovernorConfig](

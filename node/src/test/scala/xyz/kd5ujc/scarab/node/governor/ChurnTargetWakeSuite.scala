@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.node.governor
 
 import xyz.kd5ujc.scarab.node.assertions.Assertions
 import cats.effect.{Deferred, IO, Ref}
-import cats.effect.std.{Queue, Supervisor}
+import cats.effect.std.Supervisor
 import cats.effect.testkit.TestControl
 import cats.mtl.{Ask, Handle, Stateful, Tell}
 import cats.syntax.all.*
@@ -35,7 +35,7 @@ class ChurnTargetWakeSuite extends FailsOnUncaught:
         initial <- state.get
         proposals <- ChurnTargets
           .create[IO](initial.view(Duration.Zero).counters, Churn.Proposal.from(one))
-        events <- Queue.unbounded[IO, Event[Int]]
+        events <- xyz.kd5ujc.scarab.node.JobPool.Unbounded[IO, Event[Int]]
         complete <- Deferred[IO, Targets]
         _ <- events0.traverse_(events.offer)
         _ <- proposals.change(generation, ChurnMode.Initial)(_ => latest)

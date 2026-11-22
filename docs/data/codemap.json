@@ -1295,7 +1295,8 @@
       "suites": [
         "LogRouterSuite",
         "LogGoldenSuite",
-        "LogDocsSuite"
+        "LogDocsSuite",
+        "PeerSelectionLinesSuite"
       ],
       "docs": [
         "docs/adr/0014-typed-log.md"
