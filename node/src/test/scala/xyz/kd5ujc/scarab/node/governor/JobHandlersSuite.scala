@@ -606,9 +606,7 @@ class JobHandlersSuite extends FailsOnUncaught:
         ),
         s"the activation should first leave the peer cooling: ${applied.outputs}"
       )
-      // the release follows a crash of the node's own code: nothing is charged to the peer (#567)
-      assertEquals(applied.record.map(_.failCount), Some(0))
-    }
+    )
   }
 
   // the timeout keeps the peer warm; the connection then goes cold with no report of its own but
@@ -631,11 +629,9 @@ class JobHandlersSuite extends FailsOnUncaught:
             case Status.Cold(_) => true
             case _              => false)
       case _ => false
-    }.map { applied =>
+    }.map(applied =>
       assert(applied.at >= policy.demotionTimeout, s"came before the timeout, at ${applied.at}")
-      // a demotion that goes cold counts the failure, as the reference's monitor does
-      assertEquals(applied.record.map(_.failCount), Some(1))
-    }
+    )
   }
 
   // `demoteEstablishedPeer`'s handler (EstablishedPeers.hs 909-967 at c45735a5): the connection

@@ -301,10 +301,9 @@ object PeerGovernor:
       Ref.of[F, Set[Time]](Set.empty),
       Ref.of[F, ChurnMode](ChurnMode.Initial),
       Ref.of[F, Map[A, (Observation, Option[BigInt], Option[BigInt])]](Map.empty),
-      Ref.of[F, Map[Long, F[Unit]]](Map.empty),
-      Ref.of[F, Set[A]](Set.empty)
+      Ref.of[F, Map[Long, F[Unit]]](Map.empty)
     ).tupled
-      .flatMap((scheduled, paired, held, phases, uncharged) =>
+      .flatMap((scheduled, paired, held, phases) =>
         loop(
           actions,
           roots,
@@ -314,7 +313,6 @@ object PeerGovernor:
           paired,
           held,
           phases,
-          uncharged,
           sharing,
           beforeEventApplied,
           onEventApplied,
@@ -334,9 +332,6 @@ object PeerGovernor:
     * @param phases
     *   For each peer-sharing batch whose first phase is done, the start of its second phase, which
     *   the governor starts once it has applied the first phase's completion.
-    * @param uncharged
-    *   The peers cooling because an activation raised and its cleanup left the connection held: the
-    *   release that moves one is not charged to it, as no crash of the node's own code is (#567).
     */
   private def loop[F[_]: Temporal, A](
       actions: PeerStateActions[F, A],
@@ -347,7 +342,6 @@ object PeerGovernor:
       paired: Ref[F, ChurnMode],
       held: Ref[F, Map[A, (Observation, Option[BigInt], Option[BigInt])]],
       phases: Ref[F, Map[Long, F[Unit]]],
-      uncharged: Ref[F, Set[A]],
       sharing: Option[PeerSharingActions[F, A]],
       beforeEventApplied: Option[Event[A] => F[Unit]],
       onEventApplied: Option[Event[A] => F[Unit]],
@@ -878,22 +872,7 @@ object PeerGovernor:
         held
           .update(_.updated(peer, (observation, generation, identity)))
           .whenA(demoting && ofConnection)
-      } *> uncharged.get.flatMap { lingering =>
-        val applied = observation match
-          case Observation.Lost(failure, delay, released, reason) =>
-            Observation.Lost(
-              if lingering(peer) then FailureClass.NotThePeers else failure,
-              delay,
-              released,
-              reason
-            )
-          case Observation.HotEnded(_, _) | Observation.ActionFailed(_, _) |
-              Observation.CachedBlockRejected(_, _, _) =>
-            observation
-        applySnapshot(Event.Observed(peer, applied, generation, identity))
-      } *> state.get.flatMap(st =>
-        uncharged.update(_ - peer).unlessA(st.peers.get(peer).exists(_.status == Status.Cooling))
-      )
+      } *> applySnapshot(Event.Observed(peer, observation, generation, identity))
 
     /** Apply a job's completion, and what follows from it in the governor: the report held while a
       * demotion timed out, or the second phase of a peer-sharing batch.
@@ -912,12 +891,9 @@ object PeerGovernor:
         case Outcome.Closed(peer)           => held.update(_ - peer)
         case Outcome.Shared(batch, _) =>
           phases.modify(m => (m - batch, m.get(batch))).flatMap(_.sequence_)
-        case Outcome.ActivateFailedLingering(peer, _) =>
-          state.get.flatMap(st =>
-            uncharged.update(_ + peer).whenA(st.peers.get(peer).exists(_.status == Status.Cooling))
-          )
         case Outcome.Connected(_, _, _) | Outcome.ConnectFailed(_, _, _) | Outcome.Activated(_) |
-            Outcome.ActivateFailed(_, _) | Outcome.RootsFound(_, _, _) | Outcome.RootsFailed(_, _) |
+            Outcome.ActivateFailed(_, _) | Outcome.ActivateFailedLingering(_, _) |
+            Outcome.RootsFound(_, _, _) | Outcome.RootsFailed(_, _) |
             Outcome.BigLedgerFound(_, _, _) | Outcome.BigLedgerFailed(_, _) =>
           F.unit)
 
