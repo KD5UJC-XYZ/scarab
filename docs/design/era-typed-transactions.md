@@ -1220,7 +1220,8 @@ Conway's rules on the classes follow as the rest of stage 2.
       by the flat rule.
   - Not yet (#85): the committee in the environment as the reference's `Committee era`; the votes of a transaction
     as the reference's typed voter (an action's state holds them under it, below). The ordered
-    map is a vector, and the proposals are read per transaction, which the Conway switch must make cheap, as the
+    map is a vector, and the proposals are read once a block by the block's run (below) and per transaction
+    elsewhere, which the Conway switch must make cheap for the mempool too, as the
     flat rule's single pass over the votes is (#94). The flat rule numbers proposals with an unbounded index
     (`zipWithIndex`), where the reference's is a `Word16`; only a 65,537th proposal tells them apart, and stage 3
     deletes the flat rule.
@@ -2635,6 +2636,41 @@ Conway's rules on the classes follow as the rest of stage 2.
     two failures, the hash's first as the root reverses what its predicates recorded (`Judgment.flatten`, as the
     reference returns the pair for Dijkstra's BBODY), and the flat rule's one. Of these, the expectations are the
     reference's own only on the 53 recorded blocks it accepted; the rest are the flat rules'.
+- **Conway's block run, what the switch reads of it** (`era/rules/ConwayBlockRun.scala`, `era/rules/ConwayPhase2.scala`,
+  `era/rules/Ledger.scala`), the glue the Conway switch wires in (item 3 of
+  https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7078449515); the node does not run it yet:
+  - The proposals: Conway's LEDGER, LEDGERS and BBODY take the proposals GOV judges as a capability beside the ledger
+    state, as Dijkstra's LEDGER does, and CERTS's committee actions are those of the proposals before the transaction
+    (`proposalsWithPurpose grCommitteeL`, `Conway/Rules/Ledger.hs:367-370`, cardano-ledger f649f975). `ConwayBlockRun`
+    holds them beside the BBODY state, read from the node's record where a rule first reads them and written back
+    once after the block, so a block whose rules never reach GOV never reads them; a judgment of one transaction
+    keeps the lens over the record (`ProposalsRecord.stateful`). The mempool's pool state still reads them through
+    the lens (#1332's run).
+  - The phase-2 counters (`PlutusStats`, Scarab's own): of BBODY's events, the run keeps what the counters read
+    (`ScriptsTold`): UTXOS's passed and failed scripts (`Babbage/Rules/Utxos.hs:130-155`, `:192-222`) and the
+    `TotalDeposits` a valid transaction's UTXO tells after them (`Babbage/Rules/Utxo.hs:449-486`), which ends a valid
+    transaction's scripts as its failed scripts end an invalid one's. `integrityChecked` keeps its meaning: the bodies
+    of an admitted block declaring a script integrity hash, which UTXOW recomputed and found equal.
+  - A script with no verdict (`ScriptVerdictUnavailable`): the run names it by its transaction and redeemer as the
+    flat rules do (`LedgerFailure.Unavailable`, `ConwayRuleDefect.ScriptUnavailable`), so that `Follower` and
+    `ChainStorage` route it as they route the flat rules'. Its transaction is the one whose script, collected again
+    in the ledger state the rules ran it in, one purpose at a time, equals it (`ConwayPhase2.locate`): a context is
+    one transaction's and one purpose's.
+  - The phase-2 observer (`--plutus-cases`): given one (`ConwayBlockRun.Observing`), the run locates each script the
+    evaluator runs the same way and tells the flat rules' `Phase2.Observation` of a transaction once its last script
+    ran or one had no verdict.
+  - `ConwayBbodySuite` compares each with the flat rules: the counters on the 53 recorded blocks (zero on both, as no
+    script runs in them) and on built blocks of valid and invalid script transactions and a datum-only integrity
+    hash; the naming of each of the four scripts of a block of a valid and an invalid transaction, with the
+    evaluator giving no verdict on each in turn; the observations on the same blocks; the proposals of two
+    transactions of one block.
+  - Differences from the flat rules: the flat rules observe a transaction whose scripts' contexts cannot be collected
+    (`Left` of the collection's errors); the era run observes only scripts it runs, so a collection's failure is not
+    observed. Under every failure accumulated (`ValidateAll`, #1328's run), a defect raised by a later
+    transaction of a block the flat rules refuse at an earlier one (a phase-1 script the decoder cannot judge, a
+    stored output the era does not read) ends the era run without a verdict, where the flat rules refuse the block;
+    a phase-2 script is not evaluated once a failure is recorded (`whenFailureFree`), so it does not. The switch
+    settles the second with the accumulated refusals (#412).
 - **Dijkstra's BBODY** (`era/EraBlock.scala`, `era/dijkstra/DijkstraBlock.scala`, `era/rules/BbodyFailures.scala`,
   `era/rules/DijkstraBbody.scala`; `Rules/Bbody.hs` of `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/`, cardano-ledger
   9df9f98c, with the predicates of Shelley's, Alonzo's and Conway's BBODY it runs):

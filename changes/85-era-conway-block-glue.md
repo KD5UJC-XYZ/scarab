@@ -1,0 +1,3 @@
+### Added (era types, #85)
+
+- Conway's block rules on the era types hold a block's proposals once, read from the node's record where a rule first reads them and written back after the block, count the node's phase-2 counters from the rules' events, name a script the evaluator gives no verdict on by its transaction and redeemer as the existing rules do, and give the `--plutus-cases` recorder the existing rules' observations. On the recorded Conway blocks and on built blocks of valid and invalid script transactions, each equals the existing rules'. The node still applies Conway blocks with the existing rules, so nothing changes in behaviour.

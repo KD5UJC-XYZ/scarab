@@ -1145,11 +1145,12 @@ class ConwayBbodySuite extends FunSuite:
       outputs = Vector(locked(succeeds, 10000000)),
       languages = Set.empty
     )
+    // each block's transactions, those flagged invalid and the counters; a valid transaction's
+    // passed scripts then an invalid one's failed ones are two transactions
     Vector[(String, Vector[Built], Vector[Int], PlutusStats)](
       ("valid", Vector(valid), Vector.empty, PlutusStats(1, 0, 2, 1)),
       ("all fail", Vector(allFail), Vector(0), PlutusStats(0, 1, 1, 1)),
       ("pass and fail", Vector(passAndFail), Vector(0), PlutusStats(0, 1, 2, 1)),
-      // a valid transaction's passed scripts, then an invalid one's failed ones: two transactions
       ("valid, then all fail", Vector(valid, allFail), Vector(1), PlutusStats(1, 1, 3, 2)),
       ("all fail, then valid", Vector(allFail, valid), Vector(0), PlutusStats(1, 1, 3, 2)),
       (
