@@ -375,8 +375,9 @@ ERA_INDEX = {"shelley": 1, "allegra": 2, "mary": 3, "alonzo": 4, "babbage": 5, "
 # era) and its judge. The new-epoch state holds the UTxO as an empty map on both nodes (UTxO-HD keeps it in the
 # ledger's tables), so the whole UTxO is asked beside it.
 WHOLE_QUERIES = {
-    "DebugNewEpochState": (12, lambda reference, scala: ledgercompare.compare("DebugNewEpochState", reference, scala)),
-    ledgercompare.UTXO_LABEL: (7, ledgercompare.compare_utxo),
+    "DebugNewEpochState": (12, lambda reference, scala, fields: ledgercompare.compare(
+        "DebugNewEpochState", reference, scala, new_epoch_fields=fields)),
+    ledgercompare.UTXO_LABEL: (7, lambda reference, scala, _: ledgercompare.compare_utxo(reference, scala)),
 }
 
 
@@ -465,7 +466,7 @@ WHOLE_ERA_NAMES = {**eraview.ERA_NAMES, 7: "dijkstra"}
 
 
 def whole_state(name, era, scala_socket=None, anchor="scala", attempts=1, site=SINGLE_FOLLOWER, reselections=None,
-                relay="socat", eras=ntcquery.SHELLEY_BASED):
+                relay="socat", eras=ntcquery.SHELLEY_BASED, new_epoch_fields=ledgercompare.NEW_EPOCH_STATE_FIELDS):
     """The complete same-point ledger state of both nodes: each of `WHOLE_QUERIES`, asked over node-to-client on
     one session per node acquired at one point, and judged on every byte (`ledgercompare`). The point is the volatile
     tip of `anchor`: the Scala node's when it follows, as every block it holds is the reference's; the reference's
@@ -477,7 +478,8 @@ def whole_state(name, era, scala_socket=None, anchor="scala", attempts=1, site=S
     does (`ntcquery.acquired_shelley_era`), so that a round across an era boundary compares one era on both nodes;
     `era` is the caller's era and is not asked; `eras` are the era indexes a state may be of (`ntcquery.SHELLEY_BASED`, and
     Dijkstra's on a Leios-build cluster), and `relay` the program that carries the reference's session in its container
-    (`ntcquery.RELAYS`: the Leios build's image has `perl`, not `socat`). `scala_socket` is the Scala node's node-to-client socket
+    (`ntcquery.RELAYS`: the Leios build's image has `perl`, not `socat`); `new_epoch_fields` the arity of a new-epoch
+    state in the layout of the build both nodes run (`ledgercompare.LEIOS_NEW_EPOCH_STATE_FIELDS` for the Leios build). `scala_socket` is the Scala node's node-to-client socket
     (`scala-sock/node.socket` of the run dir by default, the socket directory of the follower `site`).
 
     The acquisitions are bounded. The other node is asked for a point at most `attempts` times, `SAME_POINT_PAUSE`
@@ -592,7 +594,7 @@ def whole_state(name, era, scala_socket=None, anchor="scala", attempts=1, site=S
         slot = point[0]
         answers = {}
         for label, (_, judge) in WHOLE_QUERIES.items():
-            verdict = judge(expected[label], got[label])
+            verdict = judge(expected[label], got[label], new_epoch_fields)
             result = {"matched": verdict.equal, "byteEqual": verdict.raw_equal, "problems": verdict.problems,
                       "referenceBytes": len(expected[label]), "scalaBytes": len(got[label])}
             if not verdict.equal:

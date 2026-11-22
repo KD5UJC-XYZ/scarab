@@ -30,7 +30,7 @@ import shutil
 import subprocess
 import sys
 import time
-from .. import compare
+from .. import compare, ledgercompare
 from ..cluster import database_mounts, freeze_classes, scala_container
 from ..util import ENTRY, REPO, SINGLE_FOLLOWER, docker, read_final_log, read_log
 
@@ -238,7 +238,8 @@ def catch_up(root, process, kinds, target, seconds, log):
 def ledger_state(args):
     """The same-point ledger state of the follower and reference node 1, at the follower's tip; never raises."""
     try:
-        return compare.whole_state(args.name, "dijkstra", attempts=5, relay="perl", eras=LEIOS_ERAS)
+        return compare.whole_state(args.name, "dijkstra", attempts=5, relay="perl", eras=LEIOS_ERAS,
+                                   new_epoch_fields=ledgercompare.LEIOS_NEW_EPOCH_STATE_FIELDS)
     except Exception as e:  # a defect of the harness is a result to report, not the end of the run
         return {"error": repr(e)[:600], "kind": "harness"}
 

@@ -22,7 +22,13 @@ def applies(label):
     return label in LABELS
 
 
-def _state(raw, wrapped, epoch_state):
+# The fields of a `NewEpochState`: seven in the 11.1 layout; six in the Leios build's, which has no pool distribution
+# (cardano-ledger 9df9f98c `Shelley/LedgerState/Types.hs:393-422`)
+NEW_EPOCH_STATE_FIELDS = 7
+LEIOS_NEW_EPOCH_STATE_FIELDS = 6
+
+
+def _state(raw, wrapped, epoch_state, new_epoch_fields=NEW_EPOCH_STATE_FIELDS):
     if C.item_end(raw, 0) != len(raw):
         raise C.Malformed("bytes after the answer")
     if C.head(raw, 0)[:2] != (4, 2):
@@ -41,20 +47,22 @@ def _state(raw, wrapped, epoch_state):
             raise C.Malformed("GetCBOR answer is not #6.24")
         content = C.resolve(raw, [1, 0, 0])[0]
         data = C.payload(raw, content)
-    if C.head(data, 0)[:2] != (4, 4 if epoch_state else 7) or C.item_end(data, 0) != len(data):
+    if C.head(data, 0)[:2] != (4, 4 if epoch_state else new_epoch_fields) or C.item_end(data, 0) != len(data):
         raise C.Malformed("ledger state is not one complete array of the expected arity")
     return data
 
 
-def compare(label, reference, scala):
-    """Validate framing and require complete wire-byte equality at the acquired point."""
+def compare(label, reference, scala, new_epoch_fields=NEW_EPOCH_STATE_FIELDS):
+    """Validate framing and require complete wire-byte equality at the acquired point. `new_epoch_fields` is the
+    arity of a new-epoch state in the layout of the build both nodes run (`LEIOS_NEW_EPOCH_STATE_FIELDS` for the
+    Leios build)."""
     verdict = Verdict(False, reference == scala)
     if not applies(label):
         verdict.problems.append(f"not a ledger-state query: {label}")
         return verdict
     for name, raw in (("reference", reference), ("scala", scala)):
         try:
-            _state(raw, label.startswith("GetCBOR/"), label.endswith("DebugEpochState"))
+            _state(raw, label.startswith("GetCBOR/"), label.endswith("DebugEpochState"), new_epoch_fields)
         except (C.Malformed, IndexError) as error:
             verdict.problems.append(f"{name}: not a ledger-state answer: {error}")
     if not verdict.raw_equal:
