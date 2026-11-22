@@ -276,49 +276,51 @@ class LeiosTxCacheSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       def functor = cats.Functor[IO]
       def raise[E <: StorageError, A](error: E): IO[A] = IO.raiseError(Stopped(error))
     val (stripped, _) = split
-    VerificationCache.resource[IO](1).use { witnesses =>
-      // the semaphore's own account: a warming chunk is waiting for the permit the test holds
-      def queued: IO[Unit] =
-        IO.delay(witnesses.running.hasQueuedThreads).flatMap(q => IO.unlessA(q)(IO.cede *> queued))
-      // fails only once the check's warming waits behind the held permit
-      val failing = new UtxoReadView[IO]:
-        def read(keys: Iterable[TxIn])(using
-            raise: Raise[IO, StorageError]
-        ): IO[Map[TxIn, TxOut]] =
-          queued *> raise.raise(StorageError.DatabaseInUse("the test's store"))
-        def stamp(using Raise[IO, StorageError]): IO[Long] = IO.pure(0L)
-        def all(using Raise[IO, StorageError]): IO[Map[TxIn, TxOut]] = IO.pure(Map.empty)
-        def select(keep: TxOut => Boolean)(using Raise[IO, StorageError]): IO[Map[TxIn, TxOut]] =
-          IO.pure(Map.empty)
-        def selectAddresses(addresses: Set[Bytes])(using
-            Raise[IO, StorageError]
-        ): IO[Map[TxIn, TxOut]] = IO.pure(Map.empty)
-      for
-        ended <- IO
-          .blocking(witnesses.running.acquire())
-          .bracket { _ =>
-            cacheOf(r.stored, Vector.empty, parity).flatMap(cache =>
-              LeiosClosureCheck
-                .validateEbClosure[IO](
-                  _ => IO.pure(Some(r.stored)),
-                  Some(failing),
-                  cache,
-                  witnesses.warmWitnesses[IO],
-                  r.point,
-                  stripped,
-                  r.env.copy(verdicts = witnesses)
-                )
-                .attempt
-            )
-          }(_ => IO.delay(witnesses.running.release()))
-        free <- IO.delay(witnesses.running.availablePermits())
-      yield
-        ended match
-          case Left(Stopped(StorageError.DatabaseInUse(_))) => ()
-          case other => fail(s"not the store's error: $other")
-        // the cancelled wait took no permit: the cache warms at its full parallelism again
-        assertEquals(free, 1)
-    }
+    // the cache's one permit, whose waits trip a latch: a warming chunk has come to wait for it
+    val waiting = new java.util.concurrent.CountDownLatch(1)
+    val permits = new java.util.concurrent.Semaphore(1):
+      override def acquire(): Unit =
+        waiting.countDown()
+        super.acquire()
+    val witnesses = VerificationCache.unsafe(1, running = Some(permits))
+    // fails only once the check's warming waits behind the held permit
+    val failing = new UtxoReadView[IO]:
+      def read(keys: Iterable[TxIn])(using
+          raise: Raise[IO, StorageError]
+      ): IO[Map[TxIn, TxOut]] =
+        IO.blocking(waiting.await()) *> raise.raise(StorageError.DatabaseInUse("the test's store"))
+      def stamp(using Raise[IO, StorageError]): IO[Long] = IO.pure(0L)
+      def all(using Raise[IO, StorageError]): IO[Map[TxIn, TxOut]] = IO.pure(Map.empty)
+      def select(keep: TxOut => Boolean)(using Raise[IO, StorageError]): IO[Map[TxIn, TxOut]] =
+        IO.pure(Map.empty)
+      def selectAddresses(addresses: Set[Bytes])(using
+          Raise[IO, StorageError]
+      ): IO[Map[TxIn, TxOut]] = IO.pure(Map.empty)
+    for
+      ended <- IO
+        .delay(assert(permits.tryAcquire(), "the test holds the permit"))
+        .bracket { _ =>
+          cacheOf(r.stored, Vector.empty, parity).flatMap(cache =>
+            LeiosClosureCheck
+              .validateEbClosure[IO](
+                _ => IO.pure(Some(r.stored)),
+                Some(failing),
+                cache,
+                witnesses.warmWitnesses[IO],
+                r.point,
+                stripped,
+                r.env.copy(verdicts = witnesses)
+              )
+              .attempt
+          )
+        }(_ => IO.delay(permits.release()))
+      free <- IO.delay(permits.availablePermits())
+    yield
+      ended match
+        case Left(Stopped(StorageError.DatabaseInUse(_))) => ()
+        case other                                        => fail(s"not the store's error: $other")
+      // the cancelled wait took no permit: the cache warms at its full parallelism again
+      assertEquals(free, 1)
   }
 
   test("a transaction only the mempool held and a fetched one: applied and unapplied") {

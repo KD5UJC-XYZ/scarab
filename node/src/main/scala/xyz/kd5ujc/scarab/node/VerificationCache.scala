@@ -42,8 +42,15 @@ import xyz.kd5ujc.scarab.crypto.vrf.PraosVrfCertificate as Vrf
   *
   * @param direct
   *   the providers every verdict is computed with; [[Verdicts.Direct]] except in tests
+  * @param running
+  *   the permits all warming shares, `parallelism` of them; a test may supply its own to observe
+  *   the waits
   */
-final class VerificationCache private (val parallelism: Int, direct: Verdicts) extends Verdicts:
+final class VerificationCache private (
+    val parallelism: Int,
+    direct: Verdicts,
+    private[node] val running: java.util.concurrent.Semaphore
+) extends Verdicts:
   private final case class WitnessKey(vkey: Bytes, signature: Bytes, message: Bytes)
   private final case class HeaderKey(
       hash: Bytes,
@@ -301,9 +308,8 @@ final class VerificationCache private (val parallelism: Int, direct: Verdicts) e
   private type Job = () => Unit
 
   // Ranges are warmed concurrently (one `warm` per fetched range): all of them together run at most
-  // `parallelism` chunks at once, so that several single-block batches do not put several times
-  // as many runnable threads as CPUs on the machine.
-  private[node] val running = new java.util.concurrent.Semaphore(parallelism)
+  // `parallelism` chunks at once ([[running]]), so that several single-block batches do not put
+  // several times as many runnable threads as CPUs on the machine.
 
   /** A block whose checks are running: the decoded block is offered to the rules (`prepared`) when
     * the last of its jobs is done, so that the rules find the verdicts together with the block.
@@ -457,14 +463,25 @@ object VerificationCache:
 
   /** A fresh, empty cache whose background pool is shut down when the resource is released. */
   def resource[F[_]: Sync](parallelism: Int = defaultParallelism): Resource[F, VerificationCache] =
-    Resource.make(Sync[F].delay(new VerificationCache(parallelism, Verdicts.Direct)))(c =>
-      Sync[F].delay(c.shutdown())
-    )
+    Resource.make(
+      Sync[F].delay(
+        new VerificationCache(
+          parallelism,
+          Verdicts.Direct,
+          new java.util.concurrent.Semaphore(parallelism)
+        )
+      )
+    )(c => Sync[F].delay(c.shutdown()))
 
   /** An unmanaged cache for tests (no background pool is started unless an epoch rewarm happens).
     */
   private[node] def unsafe(
       parallelism: Int = defaultParallelism,
-      direct: Verdicts = Verdicts.Direct
+      direct: Verdicts = Verdicts.Direct,
+      running: Option[java.util.concurrent.Semaphore] = None
   ): VerificationCache =
-    new VerificationCache(parallelism, direct)
+    new VerificationCache(
+      parallelism,
+      direct,
+      running.getOrElse(new java.util.concurrent.Semaphore(parallelism))
+    )

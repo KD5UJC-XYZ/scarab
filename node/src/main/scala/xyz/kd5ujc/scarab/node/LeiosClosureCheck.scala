@@ -157,9 +157,10 @@ object LeiosClosureCheck:
           val parity = parityOf(state)
           for
             // only which signatures to verify ahead: the steps are decided on the read after the
-            // outputs, as the reference reads its cache (`LeiosVoting.hs:483-489`). A transaction
-            // tagged in between is reapplied and its warmed verdicts go unused; one untagged in
-            // between is applied in full and its signatures verified in place
+            // outputs, as the reference reads its cache (`LeiosVoting.hs:483-489`,
+            // ouroboros-consensus 2416493b). A transaction tagged in between is reapplied and its
+            // warmed verdicts go unused; one untagged in between is applied in full and its
+            // signatures verified in place
             early <- cache.lookup
             // the spent outputs and the witnesses' verdicts need nothing of each other: both at once
             (utxo, _) <- Async[F].both(
