@@ -249,9 +249,7 @@ class DijkstraForgeSuite extends munit.FunSuite:
     assertEquals(geometry.epochOf(slot), next)
     def tick(from: Forger.TipLedger, to: BigInt) =
       Forger.tickedTo(g, transition, from, to).fold(e => fail(e.message), identity)
-    val base = Forger
-      .blockBase(g, transition, geometry.firstSlot(next), parent, next)
-      .fold(e => fail(e.message), identity)
+    val base = Forger.crossed((Some(tip.hash), next), parent, testnet.protocol, next).ledger
     assertEquals(base, parent)
     val direct = tick(parent, slot)
     assertEquals(tick(base, slot), direct)

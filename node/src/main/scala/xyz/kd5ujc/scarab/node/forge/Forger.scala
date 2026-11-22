@@ -1414,7 +1414,18 @@ final class Forger[F[_]: Async, S](
           )
         else proceed(())
       _ <- hold.say(ForgeTrace.NodeIsLeader(slot))
-      ticked <- perform(lift(tick(crossed.ledger, slot)))
+      // the boundary is the expensive part of the tick (#131): off the compute pool, as the
+      // epoch's leader view is
+      ticked <- perform(
+        F.blocking(
+          Forger.blockLedger(
+            Globals(globals, geometry),
+            config.forks.transition(geometry.k),
+            crossed,
+            slot
+          )
+        ).flatMap(lift)
+      )
       _ <- hold.say(ForgeTrace.ForgeTickedLedgerState(slot, context.prev))
       _ <- perform(
         lift(
@@ -1828,18 +1839,6 @@ final class Forger[F[_]: Async, S](
       )
     )(defect => F.pure(Some(Right(Left(defect)))))
 
-  /** The ledger state at `slot` from the state at the tip, in its era ([[Forger.tickedTo]]): a
-    * Conway state as the mempool's ledger, a Dijkstra state (the Leios build only) as it is.
-    */
-  private def tick(ledger: Forger.TipLedger, slot: BigInt): Either[NodeError, Forger.Ticked] =
-    ticked(ledger, slot).map {
-      case Forger.TipLedger.InConway(nes)   => Forger.Ticked.InConway(MempoolLedger.of(nes))
-      case Forger.TipLedger.InDijkstra(nes) => Forger.Ticked.InDijkstra(nes)
-    }
-
-  private def ticked(ledger: Forger.TipLedger, slot: BigInt): Either[NodeError, Forger.TipLedger] =
-    Forger.tickedTo(Globals(globals, geometry), config.forks.transition(geometry.k), ledger, slot)
-
   /** The tip's ledger state in the node's reference build ([[Forger.ledgerAt]]). */
   private def ledgerAt(
       current: VolatileChain[S],
@@ -1848,8 +1847,8 @@ final class Forger[F[_]: Async, S](
   ): Either[NodeError, Forger.TipLedger] =
     Forger.ledgerAt(current.state, current.tipRef, epoch, slot, globals.referenceBuild)
 
-  /** The ledger and Praos state of the tip carried to `epoch` (cached per tip and epoch: the epoch
-    * boundary is the expensive part and every slot of a new epoch needs it; a chain at its origin,
+  /** The tip's ledger state and the ledger view of `epoch` 's leader check ([[Forger.crossed]];
+    * cached per tip and epoch, as every slot of the epoch needs the view; a chain at its origin,
     * whose tip names no state, is not cached). This is where the ledger view of the slot comes
     * from; the refusals here are Scarab's own (only Praos with Conway transactions is forged, and
     * in the Leios build Praos2 on Dijkstra, on a fully validated ledger: [[Forger.ledgerAt]]).
@@ -1865,20 +1864,7 @@ final class Forger[F[_]: Async, S](
       case _ =>
         for
           ledger <- lift(ledgerAt(current, epoch, slot))
-          c <- F
-            .blocking {
-              val view = Forger.leaderView(ledger, current.state.protocol, epoch)
-              Forger
-                .blockBase(
-                  Globals(globals, geometry),
-                  config.forks.transition(geometry.k),
-                  geometry.firstSlot(epoch),
-                  ledger,
-                  epoch
-                )
-                .map(Forger.Crossed(key, _, view))
-            }
-            .flatMap(lift)
+          c <- F.blocking(Forger.crossed(key, ledger, current.state.protocol, epoch))
           _ <- cache.set(Some(c))
         yield c
     }
@@ -2477,33 +2463,49 @@ object Forger:
   def withinHorizon[S](using clock: TxClock[S]): (VolatileChain[S], BigInt) => Boolean =
     (current, slot) => clock.translates(current.state, slot)
 
-  /** The ledger state the block of a slot of `epoch` is ticked from, the tip's state `ledger` being
-    * the parent's. A Dijkstra parent's state is the block's base itself: the block is ticked once,
-    * from its parent's state to its slot (`applyChainTick`, ouroboros-consensus 2416493b
-    * `HardFork/Combinator/Ledger.hs`), as block application ticks it (`EraBlock.ticked`), so the
-    * state handed to the snapshot provider is the one the block is validated against. A tick to the
-    * epoch's first slot and then to the slot would differ from it past the new epoch's slot of no
-    * return: the second tick solidifies the future parameters the boundary has just made, where the
-    * block's tick solidifies those of the parent's epoch before its boundary (`Shelley/Rules/
-    * Tick.hs:147-185`, cardano-ledger 9df9f98c), and its RUPD reads the state after the boundary. A
-    * Conway parent's state is carried to the epoch's first slot, as before, its block's ledger read
-    * for the mempool's transactions only.
+  /** What the forger keeps of the tip, the parent of the blocks it forges, for the slots of `epoch`
+    * ([[Crossed]]): its ledger state `ledger` as it is, and the ledger view of the epoch's leader
+    * check ([[leaderView]]).
+    *
+    * The state is not carried into `epoch` here: a led slot's block is ticked once, from its
+    * parent's state to its slot (`getTickedLedgerState`'s `applyChainTick`, ouroboros-consensus
+    * 2416493b `NodeKernel/Forge.hs:686-705`), as block application ticks it (`EraBlock.ticked`), so
+    * the state the mempool's transactions are selected on (Conway), or the snapshot provider is
+    * given (Dijkstra), is the one the block is validated against. A tick to the epoch's first slot
+    * and then to the slot differs from it at and past the new epoch's slot of no return: TICK
+    * solidifies the future parameters before NEWEPOCH (`validatingTickTransition`,
+    * `Shelley/Rules/Tick.hs:160-181` at cardano-ledger f649f975, 147-185 at 9df9f98c), so the
+    * single tick solidifies the parent's, which EPOCH replaces with the new epoch's prediction,
+    * where the second of two ticks solidifies that prediction; a slot reaches it from a parent of
+    * the old epoch where the epoch is shorter than three stability windows, as on the devnets
+    * (`ConwayForgeTickSuite`, `DijkstraForgeSuite`).
     */
-  private[forge] def blockBase(
+  private[forge] def crossed(
+      key: (Option[Bytes], BigInt),
+      ledger: TipLedger,
+      protocol: ProtocolState,
+      epoch: BigInt
+  ): Crossed =
+    Crossed(key, ledger, leaderView(ledger, protocol, epoch))
+
+  /** The ledger state the block of the led slot `slot` is built on: the tip's state
+    * `crossed.ledger`, the block's parent's, ticked once to the slot ([[tickedTo]], [[crossed]]), a
+    * Conway state as the mempool's ledger, a Dijkstra state (the Leios build only) as it is. The
+    * only tick of an attempt's block.
+    */
+  private[forge] def blockLedger(
       globals: Globals,
       transition: Hfc.Transition,
-      firstSlot: BigInt,
-      ledger: TipLedger,
-      epoch: BigInt
-  ): Either[NodeError, TipLedger] =
-    ledger match
-      case TipLedger.InDijkstra(_) => Right(ledger)
-      case TipLedger.InConway(_) =>
-        if epoch > ledger.epoch then tickedTo(globals, transition, ledger, firstSlot)
-        else Right(ledger)
+      crossed: Crossed,
+      slot: BigInt
+  ): Either[NodeError, Ticked] =
+    tickedTo(globals, transition, crossed.ledger, slot).map {
+      case TipLedger.InConway(nes)   => Ticked.InConway(MempoolLedger.of(nes))
+      case TipLedger.InDijkstra(nes) => Ticked.InDijkstra(nes)
+    }
 
-  /** The tip's ledger state the block's tick starts from ([[blockBase]]), and the ledger view of
-    * the epoch's leader check.
+  /** The tip's ledger state, which a led slot's block is ticked from ([[crossed]]), and the ledger
+    * view of the epoch's leader check.
     */
   final case class Crossed(
       key: (Option[Bytes], BigInt),
