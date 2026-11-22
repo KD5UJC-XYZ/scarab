@@ -8,7 +8,7 @@ import cats.syntax.all.*
 import xyz.kd5ujc.scarab.ledger.{LedgerDefect, MempoolProblem, Verdicts}
 import xyz.kd5ujc.scarab.ledger.era.*
 import xyz.kd5ujc.scarab.ledger.rules.{Globals, Judge, Sts}
-import xyz.kd5ujc.scarab.ledger.state.{Dijkstra, EraTag, LedgerState}
+import xyz.kd5ujc.scarab.ledger.state.{Conway, Dijkstra, EraTag, LedgerState}
 import xyz.kd5ujc.scarab.plutus.{ScriptDecoder, ScriptEvaluator}
 
 // MEMPOOL of Dijkstra as the reference writes it (cardano-ledger 9df9f98c,
@@ -40,16 +40,21 @@ object DijkstraMempoolEvent:
   given [E <: EraTag]: CanEqual[DijkstraMempoolEvent[E], DijkstraMempoolEvent[E]] =
     CanEqual.derived
 
-/** `EraRuleFailure "MEMPOOL" era`: Dijkstra's (`Dijkstra/Rules/Mempool.hs:85`, cardano-ledger
-  * 9df9f98c).
+/** `EraRuleFailure "MEMPOOL" era`: Conway's is LEDGER's (`type PredicateFailure (MEMPOOL era) =
+  * ConwayLedgerPredFailure era`, `Conway/Rules/Mempool.hs:86`, cardano-ledger f649f975, whose
+  * `EraRule "MEMPOOL" ConwayEra` is Conway's MEMPOOL, `Conway/Era.hs:232`), and Dijkstra's its own
+  * (`Dijkstra/Rules/Mempool.hs:85`, cardano-ledger 9df9f98c).
   */
 type MempoolPredFailure[E <: EraTag] = E match
+  case Conway   => ConwayLedgerPredFailure[Conway]
   case Dijkstra => DijkstraMempoolPredFailure[Dijkstra]
 
-/** `EraRuleEvent "MEMPOOL" era`: Dijkstra's (`Dijkstra/Rules/Mempool.hs:87`, cardano-ledger
-  * 9df9f98c).
+/** `EraRuleEvent "MEMPOOL" era`: Conway's is LEDGER's (`type Event (MEMPOOL era) =
+  * ConwayLedgerEvent era`, `Conway/Rules/Mempool.hs:87`, cardano-ledger f649f975), and Dijkstra's
+  * its own (`Dijkstra/Rules/Mempool.hs:87`, cardano-ledger 9df9f98c).
   */
 type MempoolEvent[E <: EraTag] = E match
+  case Conway   => ConwayLedgerEvent[Conway]
   case Dijkstra => DijkstraMempoolEvent[Dijkstra]
 
 /** `InjectRuleFailure "MEMPOOL" f era` (`Core/Era.hs:119-124`, cardano-ledger 9df9f98c): how era
@@ -84,14 +89,22 @@ object InjectMempoolFailure:
         InjectLedgerFailure.dijkstraUtxow[DijkstraUtxoPredFailure[Dijkstra]].injectFailure(failure)
       )
 
-/** `Embed (LEDGER era) (MEMPOOL era)` (`Dijkstra/Rules/Mempool.hs:209-217`, cardano-ledger
-  * 9df9f98c): `LedgerFailure` and `LedgerEvent`.
+/** `Embed (LEDGER era) (MEMPOOL era)`: Conway's the identity (`Conway/Rules/Mempool.hs:140-172`,
+  * cardano-ledger f649f975), Dijkstra's `LedgerFailure` and `LedgerEvent`
+  * (`Dijkstra/Rules/Mempool.hs:209-217`, cardano-ledger 9df9f98c).
   */
 trait EmbedLedgerInMempool[E <: EraTag]:
   def wrapFailed(failure: LedgerPredFailure[E]): MempoolPredFailure[E]
   def wrapEvent(event: LedgerEvent[E]): MempoolEvent[E]
 
 object EmbedLedgerInMempool:
+  /** `wrapFailed = id` and `wrapEvent = id` (`Conway/Rules/Mempool.hs:171-172`, cardano-ledger
+    * f649f975): MEMPOOL's failure and event are LEDGER's.
+    */
+  given conway: EmbedLedgerInMempool[Conway] with
+    def wrapFailed(failure: LedgerPredFailure[Conway]): MempoolPredFailure[Conway] = failure
+    def wrapEvent(event: LedgerEvent[Conway]): MempoolEvent[Conway] = event
+
   given dijkstra: EmbedLedgerInMempool[Dijkstra] with
     def wrapFailed(failure: LedgerPredFailure[Dijkstra]): MempoolPredFailure[Dijkstra] =
       DijkstraMempoolPredFailure.LedgerFailure(failure)
