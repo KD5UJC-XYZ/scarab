@@ -415,6 +415,18 @@ object PeerGovernor:
         )
       }
 
+    /** The release a handler waits for; a wait that raises is reported, its cause kept, and counts
+      * as no release.
+      */
+    def waitRelease(
+        peer: A,
+        handle: PeerStateActions.Connection[F],
+        poll: Poll[F]
+    ): F[PeerStateActions.Release] =
+      poll(awaitRelease(handle)).handleErrorWith(problem =>
+        report(raised(peer, PeerOperation.Close, problem)).as(PeerStateActions.Release.Lingering)
+      )
+
     /** Start a job in a fiber of the supervisor, with its handler; it ends by offering its outcome,
       * or its handler's.
       */
@@ -609,7 +621,7 @@ object PeerGovernor:
               failed(poll =>
                 closing(handle.close)(poll).flatMap(
                   _.fold(F.pure(PeerStateActions.Release.Lingering))(_ =>
-                    poll(awaitRelease(handle))
+                    waitRelease(peer, handle, poll)
                   )
                 )
               ),
@@ -654,7 +666,7 @@ object PeerGovernor:
             cause: Throwable,
             poll: Poll[F]
         ): F[Outcome[A]] =
-          reported(cause) *> poll(awaitRelease(handle)).map(released)
+          reported(cause) *> waitRelease(peer, handle, poll).map(released)
         // with no connection to watch, it is not seen cold: the handler's timeout
         def unwatched(cause: Throwable): F[Outcome[A]] =
           reported(cause).as[Outcome[A]](Outcome.CloseTimedOut(peer))
@@ -716,7 +728,7 @@ object PeerGovernor:
             cause: Throwable,
             poll: Poll[F]
         ): F[Outcome[A]] =
-          reported(cause) *> poll(awaitRelease(handle)).map(released)
+          reported(cause) *> waitRelease(peer, handle, poll).map(released)
         val legacy = generation match
           // with no connection to watch, it is not seen cold: the handler's timeout
           case None =>

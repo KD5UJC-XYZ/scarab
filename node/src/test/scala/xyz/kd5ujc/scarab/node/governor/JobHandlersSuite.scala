@@ -522,6 +522,23 @@ class JobHandlersSuite extends FailsOnUncaught:
     }
   }
 
+  // the release is waited for: a close that says released, but whose connection is not seen cold
+  // within the demotion timeout, leaves the peer cooling
+  test("an activation whose cleanup's release does not come in time leaves the peer cooling") {
+    govern(
+      state(targets(0, 1, 1, 1), Peer -> warm),
+      actions(activating = IO.raiseError(new Raised), closing = released),
+      cold = IO.never
+    ) {
+      case Outcome.ActivateFailed(Peer, _) | Outcome.ActivateFailedLingering(Peer, _) => true
+      case _                                                                          => false
+    }.map { applied =>
+      assertEquals(applied.outcome, Outcome.ActivateFailedLingering(Peer, FailureClass.NotThePeers))
+      assert(applied.at >= policy.demotionTimeout, s"came before the timeout, at ${applied.at}")
+      assertEquals(applied.record.map(_.status), Some(Status.Cooling))
+    }
+  }
+
   // the cleanup's close that times out is reported as the close job reports it
   test("an activation whose cleanup's close times out reports the close's timeout") {
     govern(

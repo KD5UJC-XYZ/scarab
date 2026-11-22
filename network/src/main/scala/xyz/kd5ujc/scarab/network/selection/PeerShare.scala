@@ -209,7 +209,8 @@ object PeerShare:
       Decision(
         st.copy(peers = peers, sharing = st.sharing.copy(batches = batches)),
         Nil,
-        List(Trace.ShareResults(applicable, added))
+        // a phase with no answers changes nothing to tell, as main tells nothing for it
+        Option.when(applicable.nonEmpty)(Trace.ShareResults(applicable, added)).toList
       )
     }
 
