@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.node.governor
 
 import xyz.kd5ujc.scarab.node.assertions.Assertions
 import cats.effect.{Deferred, IO, Ref}
-import cats.effect.std.{Queue, Supervisor}
+import cats.effect.std.Supervisor
 import cats.effect.testkit.TestControl
 import cats.mtl.{Ask, Handle, Stateful, Tell}
 import cats.syntax.all.*
@@ -145,8 +145,6 @@ class JobHandlersSuite extends FailsOnUncaught:
     *   What the retained connection reads when the governor looks at it.
     * @param refused
     *   The outputs whose telling raises, as a log that cannot be written does.
-    * @param alongside
-    *   What the world does while the governor runs, given the governor's queue.
     */
   private def watch(
       initial: GovernorState[Int],
@@ -157,9 +155,6 @@ class JobHandlersSuite extends FailsOnUncaught:
       connected: Boolean = true,
       reads: PeerStatus,
       refused: Output[Int] => Boolean = _ => false,
-      alongside: Queue[IO, Event[Int]] => IO[Unit] = _ => IO.unit,
-      reacting: Event[Int] => Option[Event[Int]] = _ => None,
-      onApplied: Event[Int] => IO[Unit] = _ => IO.unit,
       beforeApplied: Event[Int] => IO[Unit] = _ => IO.unit,
       embed: IO[Applied] => IO[Applied] = TestControl.executeEmbed(_)
   )(until: (Event[Int], GovernorState[Int]) => Boolean): IO[Applied] =
@@ -191,23 +186,20 @@ class JobHandlersSuite extends FailsOnUncaught:
                 sharing,
                 beforeEventApplied = Some(beforeApplied),
                 onEventApplied = Some(event =>
-                  onApplied(event) *> reacting(event).traverse_(events.offer) *> current.get
-                    .flatMap(st =>
-                      (IO.monotonic, told.get)
-                        .flatMapN((at, outputs) =>
-                          applied.complete(Applied(event, at, st, outputs)).void
-                        )
-                        .whenA(until(event, st))
-                    )
+                  current.get.flatMap(st =>
+                    (IO.monotonic, told.get)
+                      .flatMapN((at, outputs) =>
+                        applied.complete(Applied(event, at, st, outputs)).void
+                      )
+                      .whenA(until(event, st))
+                  )
                 ),
                 connections = Option.when(connected)(connections(actions, cold, reads))
               )
               .void
           }
           .rescue(error => IO.raiseError(new AssertionError(error.toString)))
-        result <- (run, alongside(events)).parTupled.background.use(_ =>
-          applied.get.timeout(1.hour)
-        )
+        result <- run.background.use(_ => applied.get.timeout(1.hour))
       yield result
     })
 
@@ -220,20 +212,9 @@ class JobHandlersSuite extends FailsOnUncaught:
       sharing: Option[PeerSharingActions[IO, Int]] = None,
       connected: Boolean = true,
       reads: PeerStatus = PeerStatus.Warm,
-      refused: Output[Int] => Boolean = _ => false,
-      reacting: Event[Int] => Option[Event[Int]] = _ => None
+      refused: Output[Int] => Boolean = _ => false
   )(applies: Outcome[Int] => Boolean): IO[Applied] =
-    watch(
-      initial,
-      actions,
-      cold,
-      roots,
-      sharing,
-      connected,
-      reads,
-      refused,
-      reacting = reacting
-    ) {
+    watch(initial, actions, cold, roots, sharing, connected, reads, refused) {
       case (Event.Completed(outcome), _) => applies(outcome)
       case _                             => false
     }
@@ -386,29 +367,24 @@ class JobHandlersSuite extends FailsOnUncaught:
     */
   private def lingering(
       initial: GovernorState[Int],
-      demotion: Deferred[IO, Unit] => PeerStateActions[IO, Int],
+      demotion: PeerStateActions[IO, Int],
       cold: IO[Unit]
   ): IO[Applied] =
-    Deferred[IO, Unit].flatMap(started =>
-      govern(initial, demotion(started), cold = cold, reads = PeerStatus.Cooling) {
-        case Outcome.CloseTimedOut(Peer) => true
-        case _                           => false
-      }
-    )
-
-  private def raising(started: Deferred[IO, Unit]) =
-    started.complete(()) *> IO.raiseError(new Raised)
+    govern(initial, demotion, cold = cold, reads = PeerStatus.Cooling) {
+      case Outcome.CloseTimedOut(Peer) => true
+      case _                           => false
+    }
 
   private def timedOut(from: Temperature)(applied: Applied): Boolean =
     applied.outputs.contains(Output.Traced(Trace.DemoteFailed(from, Peer, timedOut = true)))
 
-  // the same handler when the connection is not seen cold within the demotion timeout: the peer
-  // keeps its place, and the monitor then demotes it by what its connection reads, cooling
-  // (Monitor.hs 298-302 at c45735a5)
+  // the same handler when the connection is not seen cold within the demotion timeout: the
+  // timeout's completion, `CloseTimedOut`, moves the peer to cooling itself, as a typed
+  // deactivation that lingers does
   test("a deactivation that raises leaves the peer cooling when its connection lingers") {
     lingering(
       state(targets(0, 1, 1, 0), Peer -> hot),
-      started => actions(deactivating = raising(started)),
+      actions(deactivating = IO.raiseError(new Raised)),
       IO.never
     ).map { applied =>
       assert(applied.at >= policy.demotionTimeout, s"came before the timeout, at ${applied.at}")
@@ -420,7 +396,7 @@ class JobHandlersSuite extends FailsOnUncaught:
   test("a deactivation whose wait for the release raises leaves the peer cooling at once") {
     lingering(
       state(targets(0, 1, 1, 0), Peer -> hot),
-      started => actions(deactivating = raising(started)),
+      actions(deactivating = IO.raiseError(new Raised)),
       IO.raiseError(new Raised)
     ).map { applied =>
       assert(applied.at < policy.demotionTimeout, s"waited for the timeout, at ${applied.at}")
@@ -485,7 +461,7 @@ class JobHandlersSuite extends FailsOnUncaught:
   test("a close that raises leaves the peer cooling when its connection lingers") {
     lingering(
       state(targets(0, 1, 0, 0), Peer -> warm),
-      started => actions(closing = raising(started)),
+      actions(closing = IO.raiseError(new Raised)),
       IO.never
     ).map { applied =>
       assert(applied.at >= policy.demotionTimeout, s"came before the timeout, at ${applied.at}")
@@ -497,7 +473,7 @@ class JobHandlersSuite extends FailsOnUncaught:
   test("a close whose wait for the release raises leaves the peer cooling at once") {
     lingering(
       state(targets(0, 1, 0, 0), Peer -> warm),
-      started => actions(closing = raising(started)),
+      actions(closing = IO.raiseError(new Raised)),
       IO.raiseError(new Raised)
     ).map { applied =>
       assert(applied.at < policy.demotionTimeout, s"waited for the timeout, at ${applied.at}")
