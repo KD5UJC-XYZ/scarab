@@ -458,7 +458,9 @@ class ConwayLedgerChecksSuite extends FunSuite:
     "the era failures' own encoder writes the flat form's bytes, on every refused case, version, build and policy"
   ):
     // the same era failures, written by `ConwayFailureCbor` and by `PredicateFailureCbor` after the
-    // flat projection, where the projection has a form for each; the encoder has bytes for every one
+    // flat projection: every refusal is compared, none left out, the flat projection having a form
+    // for each failure of the corpus: the 3,744 refusals of the cases at each version, build, policy
+    // and depth
     val judged = for
       s0 <- seen
       s <- versions(s0)
@@ -472,16 +474,17 @@ class ConwayLedgerChecksSuite extends FunSuite:
     yield
       val what = s"${s.label} under ${build.name}, $validation, depth $depth"
       val direct = ConwayFailureCborCheck.direct(fs)
-      fs.traverse(ConwayLedgerPredFailure.toStored(_, purposes(s), readOf(s))) match
-        case Right(flat) =>
-          assertEquals(
-            direct.hex,
-            PredicateFailureCbor.applyTxError(flat).fold(e => fail(s"$what: $e"), _.hex),
-            what
-          )
-          true
-        case Left(_) => false
-    assert(clue(judged.count(identity)) > 100, "the projected refusals compared")
+      val flat = fs
+        .traverse(ConwayLedgerPredFailure.toStored(_, purposes(s), readOf(s)))
+        .fold(e => fail(s"$what: no flat form, $e"), identity)
+      assertEquals(
+        direct.hex,
+        PredicateFailureCbor.applyTxError(flat).fold(e => fail(s"$what: $e"), _.hex),
+        what
+      )
+      what
+    assertEquals(judged.size, 3744, "the refusals compared")
+    assertEquals(judged.distinct.size, judged.size, "each judgment once")
 
   test("LEDGERS of one transaction is its LEDGER one level down, embedded, on every Conway case"):
     seen.foreach { s =>
