@@ -93,7 +93,8 @@ import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.TxMeasure
   * Each era applies a transaction by its own rule (`ApplyTx`, cardano-ledger f649f975): LEDGER from
   * Shelley to Babbage ([[EarlierLedger]]; `Shelley/API/Mempool.hs:325-344`, `Allegra.hs:37-47`,
   * `Mary.hs:44-53`, `Alonzo.hs:77-94`, `Babbage.hs:59-69`), MEMPOOL in Conway ([[MempoolLedger]];
-  * `Conway.hs:50-59`).
+  * `Conway.hs:50-59`), and Dijkstra's MEMPOOL in the Leios build ([[DijkstraLedger]];
+  * `Dijkstra.hs:87-96`, cardano-ledger 9df9f98c).
   */
 sealed trait PoolLedger:
   /** The era of the ledger, which every transaction the pool holds is of. */

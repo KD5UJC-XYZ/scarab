@@ -82,8 +82,13 @@ object RelayedTransactions extends TxSubmission2.TransactionReader:
     def body(original: Bytes): Either[ProtocolError, Bytes] = RelayedTransactions.body(original)
     def read(original: Bytes): Either[ProtocolError, Bytes] = RelayedTransactions.read(original)
 
-    override def body(original: Bytes, era: Era): Either[ProtocolError, Bytes] =
-      read(original, era)
+    // a Dijkstra transaction's body is read with the whole transaction; another era's as the
+    // release builds read it
+    override def body(original: Bytes, era: Era): Either[ProtocolError, Bytes] = era match
+      case Era.Dijkstra => read(original, era)
+      case Era.Byron | Era.Shelley | Era.Allegra | Era.Mary | Era.Alonzo | Era.Babbage |
+          Era.Conway =>
+        RelayedTransactions.body(original, era)
 
     override def read(original: Bytes, era: Era): Either[ProtocolError, Bytes] = era match
       case Era.Dijkstra =>

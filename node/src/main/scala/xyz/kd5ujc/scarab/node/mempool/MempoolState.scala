@@ -62,8 +62,8 @@ enum Rejection:
     */
   case WrongEra(transaction: Int, ledger: Era)
 
-  /** The chain has no ledger state the pool validates against (it is in Byron or Dijkstra, or its
-    * state cannot be read): the pool takes nothing until it has.
+  /** The chain has no ledger state the pool validates against (it is in Byron, or in Dijkstra under
+    * a release build, or its state cannot be read): the pool takes nothing until it has.
     */
   case NoLedger(why: ConwayView.Unavailable)
 

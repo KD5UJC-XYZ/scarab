@@ -249,7 +249,8 @@ object Mempool:
     * 808e4005 179-230: none from Shelley to Babbage, nor in Dijkstra; Byron's is
     * `nothingMkMempoolApplyTxError`, `byron` `Byron/Ledger/Mempool.hs` 143). Its text names the
     * submitted transaction, so there is none either for a transaction of an era whose transactions
-    * the pool does not take (Byron, Dijkstra), whose id it cannot show.
+    * the pool does not read (Byron, and Dijkstra under the release builds), whose id it cannot
+    * show.
     */
   private[mempool] def tooSlow(
       ledger: Era,

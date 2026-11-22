@@ -67,8 +67,8 @@ object GenTx:
     * transaction of three items after constructor 0 (`82 00 82 00 82 00 83`), which the reference
     * refuses at once (`enforceSize "TxAux" 2`,
     * `eras/byron/ledger/impl/src/Cardano/Chain/UTxO/TxAux.hs:108-114`, cardano-ledger f649f975),
-    * waits and then ends the connection; Dijkstra's is not read past its envelope. Every message a
-    * prefix refused here starts is refused whole too ([[LocalSubmission.unwrap]],
+    * waits and then ends the connection; Dijkstra's is read whole in the Leios build only. Every
+    * message a prefix refused here starts is refused whole too ([[LocalSubmission.unwrap]],
     * [[MempoolState.read]]).
     */
   def prefix(input: Bytes): LocalTxSubmission.TxPrefix =
