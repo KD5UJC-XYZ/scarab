@@ -2558,10 +2558,10 @@ Conway's rules on the classes follow as the rest of stage 2.
     the body's size and hash against its header's, LEDGERS (Conway's `ShelleyLedgers.ledgersTransition`, embedded),
     the block's units, and the block counted for its issuer. The Shelley, Alonzo and Conway predicates are the ones
     Dijkstra's BBODY runs, moved beside it, each cited at both pins. `ConwayBlockRun` runs it in one judgment, as
-    `DijkstraBlockRun` runs Dijkstra's, but with the context of its transactions' rules made from the judgment's
-    `Globals` (the network, the build's injection) and every check validated (`ValidateAll`); the network the header's
-    version is checked on is `Globals`' too, as the reference reads it (`:306`). The node does not run it yet (the
-    Conway switch).
+    `DijkstraBlockRun` runs Dijkstra's, with the context of its transactions' rules made, as Dijkstra's is, from the
+    judgment's `Globals` (the network, and here the build's injection) and every check validated (`ValidateAll`);
+    the network the header's version is checked on is `Globals`' too, as the reference reads it (`:306`). The node
+    does not run it yet (the Conway switch).
   - Conway's block is `AlonzoBlockBody` (`BlockBody`'s Conway case, `Conway/BlockBody.hs:14-15`), made only from a
     block's bytes (its decoder, `ConwayBlock`), its size and hash those of the segments the flat decoder read
     (`hashAlonzoSegWits`, `Alonzo/BlockBody/Internal.hs:188-210`), and the header's instance that of the Praos header.
