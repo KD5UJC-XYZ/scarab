@@ -42180,7 +42180,7 @@
     "DijkstraBbodySuite",
     "DijkstraRulesOracleSuite"
    ],
-   "note": "its constructors in the order of their tags (0 to 6, :119-127); the sizes Longs, the header's major version its Word32 (Unsigned[W32]), the units the node's; no encoder of its own yet: its refusals are compared with the reference's bytes through DijkstraBbody.toStored and the oracle suite's encoder (#796)",
+   "note": "its constructors in the order of their tags (0 to 6, :119-128); the sizes Longs, the header's major version its Word32 (Unsigned[W32]), the units the node's; no encoder of its own yet: its refusals are compared with the reference's bytes through DijkstraBbody.toStored and the oracle suite's encoder (#796)",
    "digest": "25d4b311c2e78a06"
   },
   "type ledger.era.rules.BbodyPredFailure": {
@@ -47627,9 +47627,12 @@
     }
    ],
    "class": "Mirror",
-   "structure": "same",
-   "note": "the version's Word32 (Unsigned[W32]): exact, as a version is at most 13, so the narrowing is the identity",
-   "digest": "762cec2983c2b0cd"
+   "structure": "differs",
+   "note": "the version's Word32 (Unsigned[W32]); the reference returns the Word32 it stores (Version.hs:144), Scarab holds the version as a bounded Int and narrows it modulo 2^32, which is the identity for every version (at most 13); DijkstraRulesOracleSuite's bbody/major-13 case checks the encoded refusal",
+   "digest": "762cec2983c2b0cd",
+   "evidence": [
+    "DijkstraRulesOracleSuite"
+   ]
   }
  },
  "glue": [

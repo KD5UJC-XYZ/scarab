@@ -2624,8 +2624,8 @@ Conway's rules on the classes follow as the rest of stage 2.
     composition's map, and LEDGERS's twenty as one instance over LEDGERS's injection. `conwayToDijkstraBbodyPredFailure`
     calls `HeaderProtVerTooHigh` impossible (`:413`), so by D7a's decision on the reference's partial injections its
     instance is over the five constructors it maps (`ConwayBbodyFailureInDijkstra`), and that constructor has no
-    injection. A size is the reference's `Int` as a `Long`, a header's `Word32` a `Long` its reader bounds, and the units
-    the node's, as UTXO's failures hold them. `DijkstraBbody.toStored` gives the flat form (`DijkstraBbodyFailure`),
+    injection. A size is the reference's `Int` as a `Long`, a header's `Word32` and `HeaderProtVerTooLow`'s the
+    reference's `Word32` (`Unsigned[W32]`), and the units the node's, as UTXO's failures hold them. `DijkstraBbody.toStored` gives the flat form (`DijkstraBbodyFailure`),
     one-way glue the comparisons read.
   - `dijkstraBbodyTransition` (`:333-402`) runs, every failure recorded, in the reference's order: the body's size and
     hash against its header's (`validateBlockBodySize`, `validateBlockBodyHash`); the header's highest supported major

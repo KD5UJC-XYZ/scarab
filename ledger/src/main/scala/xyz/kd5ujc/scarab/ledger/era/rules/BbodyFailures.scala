@@ -49,7 +49,7 @@ enum ConwayBbodyPredFailure[E <: EraTag]:
   case HeaderProtVerTooHigh(mismatch: Mismatch[RelLTEQ, Version])
 
 /** `data DijkstraBbodyPredFailure era` (`Dijkstra/Rules/Bbody.hs:88-97`, cardano-ledger 9df9f98c),
-  * its constructors in the order of their tags (0 to 6, `:119-127`).
+  * its constructors in the order of their tags (0 to 6, `:119-128`).
   */
 enum DijkstraBbodyPredFailure[E <: EraTag]:
   case WrongBlockBodySizeBBODY(mismatch: Mismatch[RelEQ, Long])
