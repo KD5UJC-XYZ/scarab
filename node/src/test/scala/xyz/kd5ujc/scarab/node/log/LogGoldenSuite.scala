@@ -11,6 +11,8 @@ import cats.effect.{IO, Ref}
 import scala.concurrent.duration.*
 import cats.mtl.Tell
 import cats.syntax.all.*
+import io.circe.Json
+import io.circe.syntax.*
 import munit.CatsEffectSuite
 import xyz.kd5ujc.scarab.consensus.{FollowerEvent, SchedulingStats, VolatileChain}
 import xyz.kd5ujc.scarab.network.{ConnectionEvent, ConnectionEvents}
@@ -299,4 +301,18 @@ class LogGoldenSuite extends CatsEffectSuite:
       """{"event":"slowFetch","at":"2026-10-16T12:00:00Z","millis":300}"""
     )
     assertEquals(line.kind.namespace, "Chain.SlowFetch")
+  }
+
+  test("a root or big-ledger failure line has a `defect` only when its request raised") {
+    val raised = new IllegalStateException("injected roots defect")
+    def fields(trace: Trace[SocketAddress[Host]]): List[(String, Json)] =
+      summon[Traced[NodeEvent]].line(NodeEvent.PeerSelection(trace)).fields
+    val counts = List("backoffs" -> (-1).asJson, "retryInSeconds" -> 2.0.asJson)
+    val roots = ("action" -> "failure".asJson) :: counts
+    val bigLedger = ("action" -> "failure".asJson) :: ("bigLedger" -> true.asJson) :: counts
+    val defect = "defect" -> "injected roots defect".asJson
+    assertEquals(fields(Trace.RootsFailure(-1, 2.seconds, Some(raised))), roots :+ defect)
+    assertEquals(fields(Trace.RootsFailure(-1, 2.seconds, None)), roots)
+    assertEquals(fields(Trace.BigLedgerFailure(-1, 2.seconds, Some(raised))), bigLedger :+ defect)
+    assertEquals(fields(Trace.BigLedgerFailure(-1, 2.seconds, None)), bigLedger)
   }
