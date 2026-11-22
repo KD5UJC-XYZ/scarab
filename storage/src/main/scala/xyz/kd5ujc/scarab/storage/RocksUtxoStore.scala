@@ -614,27 +614,44 @@ object RocksUtxoStore:
   /** The bytes each value is read into; a larger one is read again whole. */
   private val ValueSlot = 1024
 
-  /** The stored value of each of `keys`, in their order, none for an absent one, by batch reads
-    * that report each key's status (`multiGetByteBuffers`, with `options` where given): an absent
-    * key (`NotFound`) costs nothing beyond its batch; a value larger than its slot is read again
-    * whole; any other status is the database's failure ([[StorageError.Corrupt[?]]] for damaged
-    * data, as a direct read's), not an absent key.
+  /** The stored value of each of `keys`, in their order, none for an absent one, all read on one
+    * snapshot of `d`: `options` ' where given (a pinned view's), else one taken for this read and
+    * released after it, so every batch and every value read again whole sees the same database,
+    * whatever a writer commits meanwhile. The reads are batches that report each key's status
+    * (`multiGetByteBuffers`): an absent key (`NotFound`) costs nothing beyond its batch; a value
+    * larger than its slot is read again whole; any other status is the database's failure
+    * ([[StorageError.Corrupt[?]]] for damaged data, as a direct read's), not an absent key.
     */
   private[storage] def multiRead(
       d: RocksDB,
       options: Option[ReadOptions],
       keys: Vector[Array[Byte]]
   ): Either[StorageError, Vector[Option[Array[Byte]]]] =
-    val keyBuffer = java.nio.ByteBuffer.allocateDirect(KeyLength * ReadChunk)
-    val valueBuffer = java.nio.ByteBuffer.allocateDirect(ValueSlot * ReadChunk)
+    options match
+      case Some(o) => readOn(d, o, keys)
+      case None =>
+        val release: Using.Releasable[Snapshot] = s => d.releaseSnapshot(s)
+        Using.resource(d.getSnapshot) { snapshot =>
+          Using.resource(new ReadOptions().setSnapshot(snapshot))(readOn(d, _, keys))
+        }(using release)
+
+  /** [[multiRead]] with `options`, whose snapshot every read uses; the buffers hold as many slots
+    * as the largest batch needs, at most [[ReadChunk]].
+    */
+  private def readOn(
+      d: RocksDB,
+      options: ReadOptions,
+      keys: Vector[Array[Byte]]
+  ): Either[StorageError, Vector[Option[Array[Byte]]]] =
+    val slots = keys.size.min(ReadChunk)
+    val keyBuffer = java.nio.ByteBuffer.allocateDirect(KeyLength * slots)
+    val valueBuffer = java.nio.ByteBuffer.allocateDirect(ValueSlot * slots)
     keys.grouped(ReadChunk).toVector.flatTraverse { chunk =>
       val ks = chunk.zipWithIndex.map { (k, i) =>
         keyBuffer.put(i * KeyLength, k).slice(i * KeyLength, k.length)
       }
       val vs = chunk.indices.map(i => valueBuffer.slice(i * ValueSlot, ValueSlot)).toVector
-      val statuses = options match
-        case Some(o) => d.multiGetByteBuffers(o, ks.asJava, vs.asJava)
-        case None    => d.multiGetByteBuffers(ks.asJava, vs.asJava)
+      val statuses = d.multiGetByteBuffers(options, ks.asJava, vs.asJava)
       chunk.iterator
         .zip(statuses.asScala.iterator)
         .zip(vs.iterator)
@@ -642,7 +659,7 @@ object RocksUtxoStore:
           got.status.getCode match
             case Status.Code.NotFound => Right(None)
             case Status.Code.Ok if got.requiredSize > ValueSlot =>
-              Right(Option(options.fold(d.get(key))(d.get(_, key))))
+              Right(Option(d.get(options, key)))
             case Status.Code.Ok =>
               val bytes = new Array[Byte](got.requiredSize)
               slot.get(0, bytes)
