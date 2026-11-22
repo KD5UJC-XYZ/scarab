@@ -227,15 +227,15 @@ class LeiosFetchArrivalSuite extends FailsOnUncaught:
   private def indexOf(txs: Vector[Bytes]): Map[LeiosTxHash, Bytes] =
     txs.map(t => LeiosEb.hashTx(t) -> t).toMap
 
-  private def mempoolOf(txs: Vector[Bytes]): LeiosMempoolPull[IO] =
-    LeiosMempoolPull.of(
-      IO.pure(
-        xyz.kd5ujc.scarab.node.mempool.LeiosTxIndex(
-          indexOf(txs),
-          Some(xyz.kd5ujc.scarab.consensus.leios.ProtVerParity.Even)
-        )
-      )
+  /** A mempool's index of `txs`, validated under the even parity. */
+  private def indexed(txs: Map[LeiosTxHash, Bytes]): xyz.kd5ujc.scarab.node.mempool.LeiosTxIndex =
+    xyz.kd5ujc.scarab.node.mempool.LeiosTxIndex(
+      txs,
+      Some(xyz.kd5ujc.scarab.consensus.leios.ProtVerParity.Even)
     )
+
+  private def mempoolOf(txs: Vector[Bytes]): LeiosMempoolPull[IO] =
+    LeiosMempoolPull.of(IO.pure(indexed(indexOf(txs))))
 
   dirs.test("a body whose closure the mempool holds is acquired with it, and nothing is fetched") {
     dir =>
@@ -600,7 +600,7 @@ class LeiosFetchArrivalSuite extends FailsOnUncaught:
             r <- rig(
               new Recording(rocks, log),
               asking,
-              pull = LeiosMempoolPull.of(index.get),
+              pull = LeiosMempoolPull.of(index.get.map(indexed)),
               limits = pairs
             )
             stale <- acquired(r, eb, request)
@@ -663,7 +663,12 @@ class LeiosFetchArrivalSuite extends FailsOnUncaught:
       TestControl.executeEmbed(
         for
           index <- Ref.of[IO, Map[LeiosTxHash, Bytes]](Map.empty)
-          r <- rig(rocks, asking, pull = LeiosMempoolPull.of(index.get), limits = pairs)
+          r <- rig(
+            rocks,
+            asking,
+            pull = LeiosMempoolPull.of(index.get.map(indexed)),
+            limits = pairs
+          )
           stale <- acquired(r, eb, request)
           again <- reacquired(r, eb, index.set(indexOf(txs.take(2))))
           vars <- LeiosPeerVars.create[IO](IsBigLedgerPeer.NotBigLedgerPeer)
@@ -717,7 +722,7 @@ class LeiosFetchArrivalSuite extends FailsOnUncaught:
             r <- rig(
               new GatedTxs(rocks, first),
               asking,
-              pull = LeiosMempoolPull.of(index.get),
+              pull = LeiosMempoolPull.of(index.get.map(indexed)),
               limits = pairs
             )
             stale <- acquired(r, eb, request)

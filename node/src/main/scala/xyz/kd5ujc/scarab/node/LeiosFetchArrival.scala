@@ -13,8 +13,6 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.leios.{
   BytesSize,
   ProtVerParity,
-  EbFetchState,
-  EbState,
   LeiosFetchLogic,
   LeiosFetchRequest,
   LeiosFetchStaticEnv,
