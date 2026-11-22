@@ -6,18 +6,14 @@ import io.circe.{ACursor, HCursor, parser}
 import java.nio.file.{Files, Path}
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
-import xyz.kd5ujc.scarab.ledger.{
-  ConwayParamUpdate,
-  DecoderVersion,
-  GovAction as FlatGovAction,
-  GovActionId,
-  GovActionState as FlatGovActionState,
-  PoolParams,
-  Proposal,
-  RewardAccount
+import xyz.kd5ujc.scarab.ledger.{PoolParams, ProtocolParams, RewardAccount}
+import xyz.kd5ujc.scarab.ledger.era.{
+  ConwayGovState,
+  FuturePParams,
+  GovStateRecord,
+  PParams,
+  StoredGov
 }
-import xyz.kd5ujc.scarab.ledger.Credential as FlatCredential
-import xyz.kd5ujc.scarab.ledger.era.{GovStateReadError, StoredGov, StoredGovError}
 import xyz.kd5ujc.scarab.ledger.era.rules.{
   DijkstraEpoch,
   DijkstraNewEpoch,
@@ -34,15 +30,12 @@ import xyz.kd5ujc.scarab.ledger.rules.{
   RupdEnv,
   Sts,
   Tick,
-  TickFailure,
   Translate
 }
 import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.ledger.state.{
-  ConwayGovState,
   Dijkstra,
   EpochInterval,
-  FuturePParams,
   EpochNo,
   KeyHash,
   NewEpochState,
@@ -199,25 +192,28 @@ class DijkstraEpochReferenceSuite extends FunSuite:
   /** One of the oracle's changes to the state: of the parameters, or of the pool state. */
   private def changeState(nes: NewEpochState[Dijkstra], c: ACursor): NewEpochState[Dijkstra] =
     val ls = nes.es.ls
-    val gov: ConwayGovState = ls.utxo.gov
-    def withGov(g: ConwayGovState) =
+    val gov: ConwayGovState[Dijkstra] = ls.utxo.gov
+    def withGov(g: ConwayGovState[Dijkstra]) =
       nes.copy(es = nes.es.copy(ls = ls.copy[Dijkstra](utxo = ls.utxo.copy[Dijkstra](gov = g))))
+    // a field of the era's parameters set through the node's flat record of them
+    def set(pp: PParams[Dijkstra])(f: ProtocolParams => ProtocolParams): PParams[Dijkstra] =
+      right(GovStateRecord.dijkstra.pparams(f(GovStateRecord.view(pp))))
     text(c, "change") match
       case "setMaxPledgeLeverage" =>
         // `ppMaxPledgeLeverageL` of the current and the previous parameters
         val l = Some(Rational(number(c, "numerator"), number(c, "denominator")))
         withGov(
           gov.copy(
-            curPParams = gov.curPParams.copy(maxPledgeLeverage = l),
-            prevPParams = gov.prevPParams.copy(maxPledgeLeverage = l)
+            cgsCurPParams = set(gov.cgsCurPParams)(_.copy(maxPledgeLeverage = l)),
+            cgsPrevPParams = set(gov.cgsPrevPParams)(_.copy(maxPledgeLeverage = l))
           )
         )
       case "setFutureLeiosCommitteeSize" =>
         // `cgsFuturePParamsL .~ DefinitePParamsUpdate (current & ppLeiosCommitteeSizeL .~ n)`
         withGov(
-          gov.copy(futurePParams =
+          gov.copy(cgsFuturePParams =
             FuturePParams.DefinitePParamsUpdate(
-              gov.curPParams.copy(leiosCommitteeSize = number(c, "leiosCommitteeSize"))
+              set(gov.cgsCurPParams)(_.copy(leiosCommitteeSize = number(c, "leiosCommitteeSize")))
             )
           )
         )
@@ -331,47 +327,24 @@ class DijkstraEpochReferenceSuite extends FunSuite:
     }
   }
 
-  // the seam of Dijkstra's tick on the node's path (`StoredGov`): over every state the node's record
-  // holds, reading the record into the era's and writing it back is the identity, and so is
-  // writing the era's parameters over the record's own for the node's rules that read them
-  cases
-    .distinctBy(c => (text(c, "name"), c.downField("derivation").get[String]("name").toOption))
-    .foreach { c =>
-      val name = text(c, "name")
-      val derivation = c.downField("derivation").get[String]("name").getOrElse("none")
-      test(
-        s"$name, $derivation: the node's governance record reads into the era's and back losslessly"
-      ) {
-        val start = startOf(c, input(name, text(c, "stateSha256")))
-        val record = start.es.ls.utxo.gov
-        val gov = right(StoredGov.dijkstra.read(record))
-        assertEquals(StoredGov.dijkstra.write(gov, gov, record), Right(record))
-        assertEquals(StoredGov.dijkstra.synced(start.es, gov), start.es)
-      }
-    }
-
   // the node's NEWEPOCH and EPOCH of a Dijkstra state, which its tick does not call, are the era's
-  // rules on the record read and written back, as the tick's
-  test("the node's NEWEPOCH and EPOCH of a Dijkstra state are the era's on its governance record") {
+  // rules with the governance state taken out and put back, as the tick's
+  test("the node's NEWEPOCH and EPOCH of a Dijkstra state are the era's on its governance state") {
     val c = cases.head
     val start = startOf(c, input(text(c, "name"), text(c, "stateSha256")))
     val globals = globalsOf(configOf(text(c, "genesis")))
     val next = right(EpochNo.fromBigInt(start.epoch.toBigInt + 1))
-    val record = NewEpochGovState.record[Dijkstra]
-    val gov = right(StoredGov.dijkstra.read(record.get(start)))
+    val record = NewEpochGovState.record
+    val gov = record.get(start)
     val newEpoch = right(Sts(DijkstraNewEpoch.sts)(globals, (), NewEpochGovState(start, gov), next))
     assertEquals(
       right(Sts(NewEpoch.sts[Dijkstra])(globals, (), start, next)),
-      record.replace(right(StoredGov.dijkstra.write(newEpoch.gov, gov, record.get(start))))(
-        newEpoch.nes
-      )
+      record.replace(newEpoch.gov)(newEpoch.nes)
     )
     val epoch = right(Sts(DijkstraEpoch.sts)(globals, (), EpochGovState(start.es, gov), next))
     assertEquals(
       right(Sts(Epoch.sts[Dijkstra])(globals, (), start.es, next)),
-      StoredGov
-        .recordOf[Dijkstra]
-        .replace(right(StoredGov.dijkstra.write(epoch.gov, gov, record.get(start))))(epoch.es)
+      StoredGov.recordOf.replace(epoch.gov)(epoch.es)
     )
   }
 
@@ -398,149 +371,17 @@ class DijkstraEpochReferenceSuite extends FunSuite:
     assertNotEquals(rupd(RupdEnv(after.bprev, after.es)), began, "the boundary's environment")
   }
 
-  // the node's record keeps each update field's original encoding (`ConwayParamUpdate.encodings`),
-  // which the era's values do not: an action the tick carries, into the fresh pulser's snapshot
-  // too, is written back as the record held it, here a fee coefficient of 1 as `18 01`
-  test(
-    "an action whose update keeps a field's own encoding is carried by the tick as it was read"
-  ) {
-    val c = cases.find(c => text(c, "path") == "boundaries").getOrElse(fail("no boundaries case"))
-    val start = startOf(c, input(text(c, "name"), text(c, "stateSha256")))
-    val globals = globalsOf(configOf(text(c, "genesis")))
-    val update = updateOf("a1001801")
-    assertEquals(update.encodings.toMap.apply(0).hex, "1801")
-    val record = NewEpochGovState.record[Dijkstra]
-    val g = record.get(start)
-    val proposal = Proposal(
-      BigInt(100000),
-      RewardAccount(0, FlatCredential.Key(Bytes(Vector.fill(28)(7.toByte)))),
-      FlatGovAction.ParameterChange(g.proposals.roots.paramUpdate, update, None)
-    )
-    val id = GovActionId(Bytes(Vector.fill(32)(7.toByte)), BigInt(0))
-    val epoch = start.epoch.toBigInt
-    val action =
-      FlatGovActionState(id, Map.empty, Map.empty, Map.empty, proposal, epoch, epoch + 6)
-    val held = record.replace(
-      g.copy(proposals = g.proposals.copy(actions = g.proposals.actions :+ action))
-    )(start)
-    val gov = right(StoredGov.dijkstra.read(record.get(held)))
-    assertEquals(StoredGov.dijkstra.write(gov, gov, record.get(held)), Right(record.get(held)))
-    def kept(at: BigInt) =
-      val after = record.get(
-        right(
-          Sts(Tick.sts[Dijkstra])(globals, (), held, right(SlotNo.fromBigInt(at))).leftMap(_.show)
-        )
-      )
-      (after.proposals.actions ++ after.drepPulsing.snapshot.proposals)
-        .filter(_.id == id)
-        .map(_.proposal)
-    // inside the epoch, and across the boundary, where the fresh pulser's snapshot holds it too
-    assertEquals(kept(globals.firstSlot(epoch + 1) - 1), Vector(proposal))
-    assertEquals(kept(globals.firstSlot(epoch + 1)), Vector(proposal, proposal))
-  }
-
-  /** A stored update read from the CBOR `hex`, each field's encoding kept. */
-  private def updateOf(hex: String): ConwayParamUpdate =
-    right(
-      Bytes
-        .fromHex(hex)
-        .leftMap(_.message)
-        .flatMap(b => Cbor.decode(b).leftMap(_.toString))
-        .flatMap(ConwayParamUpdate.decode(_, DecoderVersion.Dijkstra).leftMap(_.toString))
-    )
-
-  // each place the record holds an action keeps its own proposal: an accepted block writes the
-  // proposals again (`01`) while the pulser's snapshot keeps the one it took (`18 01`)
-  test(
-    "an action held with two encodings keeps each in its own place through the seam and a tick"
-  ) {
-    val c = cases.find(c => text(c, "path") == "boundaries").getOrElse(fail("no boundaries case"))
-    val start = startOf(c, input(text(c, "name"), text(c, "stateSha256")))
-    val globals = globalsOf(configOf(text(c, "genesis")))
-    val record = NewEpochGovState.record[Dijkstra]
-    val g = record.get(start)
-    val id = GovActionId(Bytes(Vector.fill(32)(8.toByte)), BigInt(0))
-    val epoch = start.epoch.toBigInt
-    def action(update: ConwayParamUpdate) =
-      FlatGovActionState(
-        id,
-        Map.empty,
-        Map.empty,
-        Map.empty,
-        Proposal(
-          BigInt(100000),
-          RewardAccount(0, FlatCredential.Key(Bytes(Vector.fill(28)(8.toByte)))),
-          FlatGovAction.ParameterChange(g.proposals.roots.paramUpdate, update, None)
-        ),
-        epoch,
-        epoch + 6
-      )
-    val live = action(updateOf("a10001"))
-    val taken = action(updateOf("a1001801"))
-    assertNotEquals(live.proposal, taken.proposal)
-    val pulsing = g.drepPulsing
-    val held = record.replace(
-      g.copy(
-        proposals = g.proposals.copy(actions = g.proposals.actions :+ live),
-        drepPulsing = pulsing.copy(snapshot =
-          pulsing.snapshot.copy(proposals = pulsing.snapshot.proposals :+ taken)
-        )
-      )
-    )(start)
-    val gov = right(StoredGov.dijkstra.read(record.get(held)))
-    assertEquals(StoredGov.dijkstra.write(gov, gov, record.get(held)), Right(record.get(held)))
-    val after = record.get(
-      right(
-        Sts(Tick.sts[Dijkstra])(
-          globals,
-          (),
-          held,
-          right(SlotNo.fromBigInt(globals.firstSlot(epoch + 1) - 1))
-        ).leftMap(_.show)
-      )
-    )
-    assertEquals(after.proposals.actions.filter(_.id == id).map(_.proposal), Vector(live.proposal))
-    assertEquals(
-      after.drepPulsing.snapshot.proposals.filter(_.id == id).map(_.proposal),
-      Vector(taken.proposal)
-    )
-  }
-
-  test("a governance record the era does not read stops Dijkstra's tick with its typed cause") {
-    val c = cases.head
-    val start = startOf(c, input(text(c, "name"), text(c, "stateSha256")))
-    val short = FlatCredential.Key(Bytes(Vector.fill(27)(1.toByte)))
-    val damaged = NewEpochGovState
-      .record[Dijkstra]
-      .modify(g =>
-        g.copy(drepPulsing =
-          g.drepPulsing.copy(ratify =
-            g.drepPulsing.ratify
-              .copy(enact = g.drepPulsing.ratify.enact.copy(withdrawals = Map(short -> BigInt(1))))
-          )
-        )
-      )(start)
-    val globals = globalsOf(configOf(text(c, "genesis")))
-    val slot = right(SlotNo.fromBigInt(number(c.downField("ticks").downN(0), "slot")))
-    Sts(Tick.sts[Dijkstra])(globals, (), damaged, slot) match
-      case Left(TickFailure.GovRecord(StoredGovError.Read(GovStateReadError.Withdrawal(_)))) => ()
-      case other => fail(s"not the record's refusal: $other")
-  }
-
   /** Each tick of the case from `start` with the era's EPOCH ([[EraDijkstraTick]]), its governance
-    * state read into the era's record and written back over the start's records, the state after it
-    * equal to the native one.
+    * state carried beside the state, the state after it equal to the native one.
     */
   private def eraTickAll(c: HCursor, globals: Globals, start: NewEpochState[Dijkstra]): Unit =
     val ticks = right(c.downField("ticks").values.toRight("no ticks")).toVector
-    val bases = EraDijkstraTick.bases(start)
-    ticks.foldLeft(right(EraDijkstraTick.read(start))) { (before, tickJson) =>
+    ticks.foldLeft(EraDijkstraTick.read(start)) { (before, tickJson) =>
       val tick = tickJson.hcursor
       val slot = right(SlotNo.fromBigInt(number(tick, "slot")))
       val at = s"at slot ${number(tick, "slot")}"
       val after = right(EraDijkstraTick.tick(globals, before, slot).leftMap(_.show))
-      val written = right(EraDijkstraTick.stored(after, bases).leftMap(_.toString))
-      val encoded = right(state.write(written).left.map(_.toString))
+      val encoded = right(state.write(EraDijkstraTick.stored(after)).left.map(_.toString))
       tick.get[String]("file").toOption.foreach { file =>
         val expected = Bytes.wrap(Files.readAllBytes(fixture.resolve(file)))
         assertEquals(encoded.hex, expected.hex, at)

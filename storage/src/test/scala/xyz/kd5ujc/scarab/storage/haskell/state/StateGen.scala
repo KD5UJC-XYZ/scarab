@@ -6,6 +6,7 @@ import org.scalacheck.{Arbitrary, Gen}
 import scala.collection.immutable.{SortedMap, SortedSet}
 import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
 import xyz.kd5ujc.scarab.ledger as node
+import xyz.kd5ujc.scarab.ledger.era.{ConwayGovState as EraConwayGovState, GovStateRecord}
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.ledger.state.EpochStateGen.given
 import xyz.kd5ujc.scarab.ledger.state.LedgerStateGen.{*, given}
@@ -392,23 +393,29 @@ object StateGen:
       paramsOf[E].map(p => FuturePParams.PotentialPParamsUpdate(Some(p)))
     )
 
-  def enactState: Gen[node.EnactState] =
+  def enactState: Gen[node.EnactState] = enactStateOf[Conway]
+
+  /** [[enactState]] with the parameters of era `E`. */
+  def enactStateOf[E <: EraTag](using ShelleyBasedEra[E]): Gen[node.EnactState] =
     Gen
       .zip(
         Gen.option(committee),
         constitution,
-        paramsOf[Conway],
-        paramsOf[Conway],
+        paramsOf[E],
+        paramsOf[E],
         amounts,
         smallMap(nodeCredential, amounts),
         prevIds
       )
       .map(node.EnactState(_, _, _, _, _, _, _))
 
-  def ratifyState: Gen[node.RatifyState] =
+  def ratifyState: Gen[node.RatifyState] = ratifyStateOf[Conway]
+
+  /** [[ratifyState]] with the parameters of era `E`. */
+  def ratifyStateOf[E <: EraTag](using ShelleyBasedEra[E]): Gen[node.RatifyState] =
     Gen
       .zip(
-        enactState,
+        enactStateOf[E],
         Gen.choose(0, 2).flatMap(Gen.listOfN(_, govActionState)).map(_.toVector),
         smallSet(govActionId),
         Gen.oneOf(true, false)
@@ -434,8 +441,25 @@ object StateGen:
       .zip(updates, updates, paramsOf[E], paramsOf[E], futurePParams[E])
       .map(ShelleyGovState(_, _, _, _, _))
 
+  /** Dijkstra's governance state: Conway's record over Dijkstra's parameters, read into the era's
+    * ([[GovStateRecord.fromStored]]).
+    */
+  def dijkstraGov: Gen[EraConwayGovState[Dijkstra]] =
+    Gen
+      .zip(
+        proposals,
+        Gen.option(committee),
+        constitution,
+        paramsOf[Dijkstra],
+        paramsOf[Dijkstra],
+        futurePParams[Dijkstra],
+        Gen.zip(pulsingSnapshot, ratifyStateOf[Dijkstra]).map(DRComplete(_, _))
+      )
+      .map(ConwayGovState(_, _, _, _, _, _, _))
+      .flatMap(g => GovStateRecord.fromStored[Dijkstra](g).fold(_ => Gen.fail, Gen.const))
+
   def govState[E <: EraTag](using era: ShelleyBasedEra[E]): Gen[GovState[E]] =
-    era.gov.instance(shelleyGov[E], conwayGov)
+    era.gov.instance(shelleyGov[E], conwayGov, dijkstraGov)
 
   // ---- certificate state
 

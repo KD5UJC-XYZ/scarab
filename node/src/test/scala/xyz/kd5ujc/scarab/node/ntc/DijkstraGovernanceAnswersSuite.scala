@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.ntc
 
+import xyz.kd5ujc.scarab.ledger.era.{
+  ConwayGovState as EraConwayGovState,
+  FuturePParams as EraFuturePParams
+}
 import cats.data.NonEmptyVector
 import java.nio.file.{Files, Path}
 import munit.FunSuite
@@ -15,15 +19,7 @@ import xyz.kd5ujc.scarab.consensus.state.{
 }
 import xyz.kd5ujc.scarab.ledger.{PlutusStats, Utxo}
 import xyz.kd5ujc.scarab.ledger.rules.EraLedger
-import xyz.kd5ujc.scarab.ledger.state.{
-  ConwayGovState,
-  Dijkstra,
-  FuturePParams,
-  NewEpochState,
-  ShelleyBasedEra,
-  SlotNo,
-  WithOrigin
-}
+import xyz.kd5ujc.scarab.ledger.state.{Dijkstra, NewEpochState, ShelleyBasedEra, SlotNo, WithOrigin}
 import xyz.kd5ujc.scarab.node.NodeSetup
 import xyz.kd5ujc.scarab.node.read.{ChainRead, InEra, MirrorEraRead, Read}
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
@@ -179,13 +175,13 @@ class DijkstraGovernanceAnswersSuite extends FunSuite:
 
   test("future parameters a state holds are answered as `Just` Dijkstra's parameters") {
     states.foreach { c =>
-      val gov: ConwayGovState = c.nes.es.ls.utxo.gov
+      val gov: EraConwayGovState[Dijkstra] = c.nes.es.ls.utxo.gov
       Vector(
-        FuturePParams.DefinitePParamsUpdate(gov.curPParams),
-        FuturePParams.PotentialPParamsUpdate(Some(gov.curPParams))
+        EraFuturePParams.DefinitePParamsUpdate(gov.cgsCurPParams),
+        EraFuturePParams.PotentialPParamsUpdate(Some(gov.cgsCurPParams))
       ).foreach { future =>
         val ls = c.nes.es.ls
-        val utxo = ls.utxo.copy[Dijkstra](gov = gov.copy(futurePParams = future))
+        val utxo = ls.utxo.copy[Dijkstra](gov = gov.copy(cgsFuturePParams = future))
         val held =
           c.nes.copy[Dijkstra](es = c.nes.es.copy[Dijkstra](ls = ls.copy[Dijkstra](utxo = utxo)))
         assertEquals(

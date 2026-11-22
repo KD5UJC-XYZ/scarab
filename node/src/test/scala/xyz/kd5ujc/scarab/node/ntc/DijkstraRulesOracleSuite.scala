@@ -168,7 +168,7 @@ class DijkstraRulesOracleSuite extends FunSuite:
     )
 
   private def ledger(pp: ProtocolParams, epoch: BigInt, utxo: Utxo = Utxo.empty): DijkstraLedger =
-    val ls = NewEpochState.empty[Dijkstra](ok(EpochNo.fromBigInt(epoch)), pp).es.ls
+    val ls = xyz.kd5ujc.scarab.ledger.state.Build.dijkstra(ok(EpochNo.fromBigInt(epoch)), pp).es.ls
     Counted(
       ls.copy[Dijkstra](utxo = ls.utxo.copy[Dijkstra](utxo = UtxoTables(utxo))),
       xyz.kd5ujc.scarab.ledger.PlutusStats.zero

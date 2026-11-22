@@ -35,8 +35,11 @@ import xyz.kd5ujc.scarab.ledger.era.{
   GovActionPurpose,
   GovPurposeId,
   GovRelation,
+  GovStateBases,
+  GovStateReadError,
   GovStateRecord,
   PParams,
+  ProposalsWriteError,
   Proposals,
   RatifyEnv,
   RatifySignal,
@@ -57,7 +60,6 @@ import xyz.kd5ujc.scarab.ledger.state.{
   EpochNo,
   EraTag,
   FlatView,
-  GovState,
   KeyHash,
   NewEpochState,
   NonZero,
@@ -68,8 +70,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
   VocabError,
   Word64
 }
-import xyz.kd5ujc.scarab.models.runtime.{Codec, DecodeError}
-import xyz.kd5ujc.scarab.protocol.DijkstraNotYet
+import xyz.kd5ujc.scarab.models.runtime.Codec
 import xyz.kd5ujc.scarab.storage.haskell.state.{
   HaskellState,
   HaskellStateCodecs,
@@ -186,6 +187,28 @@ class EraRatifyStoredSuite extends FunSuite with ExternalInputs:
       FlatView.pools(0, c.certPStateL.get(cert).stakePools)
     )
 
+  /** A state's governance state as the node's flat record, which the flat rule reads, and as the
+    * era's record: Conway's state holds the flat record, read into the era's; Dijkstra's holds the
+    * era's, written as the flat record over the fields its codec left at zero (`Params.empty`).
+    */
+  private trait GovViews[E <: EraTag]:
+    def apply(
+        nes: NewEpochState[E]
+    ): Either[
+      GovStateReadError | ProposalsWriteError,
+      (ConwayGovState, xyz.kd5ujc.scarab.ledger.era.ConwayGovState[E])
+    ]
+
+  private given GovViews[Conway] = nes =>
+    val flat: ConwayGovState = nes.es.ls.utxo.gov
+    GovStateRecord.fromStored[Conway](flat).map(flat -> _)
+
+  private given GovViews[Dijkstra] = nes =>
+    val era: xyz.kd5ujc.scarab.ledger.era.ConwayGovState[Dijkstra] = nes.es.ls.utxo.gov
+    GovStateRecord
+      .toStored[Dijkstra](era, GovStateBases.uniform(Params.empty))
+      .map(_ -> era)
+
   /** RATIFY of a state's snapshot on both rules, beside its stored ratification. */
   private final case class Replayed[E <: EraTag](
       era: xyz.kd5ujc.scarab.ledger.era.ConwayGovState[E],
@@ -210,10 +233,9 @@ class EraRatifyStoredSuite extends FunSuite with ExternalInputs:
       c: ConwayEraCertState[E],
       p: ConwayEraPParams[E],
       a: ConwayEraAccounts[E]
-  )(using gs: GovState[E] =:= ConwayGovState): (EpochNo, Replayed[E]) =
+  )(using views: GovViews[E]): (EpochNo, Replayed[E]) =
     val state = right(s"$what decode")(codec.decode(nes))
-    val flat = gs(state.es.ls.utxo.gov)
-    val era = right(s"$what fromStored")(GovStateRecord.fromStored[E](flat))
+    val (flat, era) = right(s"$what views")(views(state))
     val (snapshot, stored) = era.cgsDRepPulsingState match
       case DRepPulsingState.DRComplete(s, rs) => (s, rs)
     val treasury = state.es.chainAccount.treasury
@@ -261,7 +283,7 @@ class EraRatifyStoredSuite extends FunSuite with ExternalInputs:
       ConwayEraCertState[E],
       ConwayEraPParams[E],
       ConwayEraAccounts[E]
-  )(using GovState[E] =:= ConwayGovState): Int =
+  )(using GovViews[E]): Int =
     val (_, r) = replayed[E](what, codec, nes, None)
     assertEquals(r.end, r.stored, what)
     assertEquals(r.flatEnd, r.flatStored, what)
@@ -380,15 +402,14 @@ class EraRatifyStoredSuite extends FunSuite with ExternalInputs:
     val name = capture.name
     if withDijkstraKeys(capture) then
       test(
-        s"RATIFY over the testnet's private state $name is incomplete: the flat codec refuses it"
+        s"RATIFY over the testnet's private state $name is incomplete: the flat rule cannot hold it"
       ) {
         withInput(LeiosReferenceStates.input(capture)) { root =>
           val (_, nes) = current(stateFile(capture.state(root)))
-          assertEquals(
-            LeiosStateCodecs.newEpochState[Dijkstra].decode(nes).left.map(_.kind),
-            Left(DecodeError.Kind.Domain(DijkstraNotYet.ParameterUpdate)),
-            name
-          )
+          val state = right(name)(LeiosStateCodecs.newEpochState[Dijkstra].decode(nes))
+          // its proposal updates keys 47 and 48, which the flat record of the flat rule has no
+          // form for
+          assert(summon[GovViews[Dijkstra]](state).isLeft, name)
         }
       }
     else

@@ -10,7 +10,7 @@ class EmptySuite extends FunSuite:
   private val epoch = EpochNo.fromUnsigned(7L)
 
   /** An empty state of the era, read through the era-generic paths. */
-  private def check[E <: EraTag](using ShelleyBasedEra[E]): NewEpochState[E] =
+  private def check[E <: EraTag](using ShelleyBasedEra[E], FlatGov[E]): NewEpochState[E] =
     val nes = NewEpochState.empty[E](epoch, params)
     assertEquals(nes.epoch, epoch)
     assertEquals(nes, NewEpochState.empty[E](epoch, params))

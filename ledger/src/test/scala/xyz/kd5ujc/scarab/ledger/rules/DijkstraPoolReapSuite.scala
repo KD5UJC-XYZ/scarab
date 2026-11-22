@@ -45,7 +45,8 @@ class DijkstraPoolReapSuite extends FunSuite:
       held: PoolBlsKey,
       future: PoolParamsBlsKey
   ): Either[TickFailure, PoolBlsKey] =
-    val ls = Empty.ledgerState[Dijkstra](TestLedger.params(10))
+    val ls = xyz.kd5ujc.scarab.ledger.state.Build
+      .ledgerState[Dijkstra](xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraCorpus.testnetStored)
     val pool = right(
       Convert.poolState(
         params,

@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.ledger.state
 
 import xyz.kd5ujc.scarab.ledger as node
+import xyz.kd5ujc.scarab.ledger.era.GovStateRecord
 import xyz.kd5ujc.scarab.ledger.rules.{Convert, Counted, InstantStakeOps, ShelleyInstantStakeOps}
 
 /** Native era-indexed state builders for rule tests, including independent VRF key counts, exact
@@ -14,11 +15,55 @@ import xyz.kd5ujc.scarab.ledger.rules.{Convert, Counted, InstantStakeOps, Shelle
 object Build:
   private def fail(why: String): Nothing = throw new AssertionError(why)
 
-  /** The state of an empty chain in `epoch` with `params` in force (`NewEpochState.empty`). */
+  /** The state of an empty chain in `epoch` with `params` in force (`NewEpochState.empty`). A
+    * Dijkstra state's governance record is the era's: Conway's empty record with `params`, read
+    * into Dijkstra's as the chain's translation reads it ([[GovStateRecord.fromStored]]).
+    */
   def nes[E <: EraTag](epoch: Long, params: node.ProtocolParams)(using
       ShelleyBasedEra[E]
   ): NewEpochState[E] =
-    NewEpochState.empty[E](EpochNo.fromUnsigned(epoch), params)
+    nesAt[E](EpochNo.fromUnsigned(epoch), params)
+
+  /** [[nes]] at `epoch`. */
+  def nesAt[E <: EraTag](epoch: EpochNo, params: node.ProtocolParams)(using
+      era: ShelleyBasedEra[E]
+  ): NewEpochState[E] =
+    era match
+      case ShelleyBasedEra.SDijkstra => dijkstra(epoch, params)
+      case _ =>
+        given FlatGov[E] = era.gov.flat.getOrElse(fail("a flat governance record"))
+        NewEpochState.empty[E](epoch, params)
+
+  /** The ledger state of [[nes]] (`Empty.ledgerState`). */
+  def ledgerState[E <: EraTag](params: node.ProtocolParams)(using
+      ShelleyBasedEra[E]
+  ): LedgerState[E] =
+    nes[E](0L, params).es.ls
+
+  /** [[nes]] in Dijkstra. */
+  def dijkstra(epoch: EpochNo, params: node.ProtocolParams): NewEpochState[Dijkstra] =
+    val c = NewEpochState.empty[Conway](epoch, params)
+    val gov = GovStateRecord
+      .fromStored[Dijkstra](c.es.ls.utxo.gov)
+      .fold(e => fail(s"$e"), identity)
+    val u = c.es.ls.utxo
+    NewEpochState[Dijkstra](
+      c.epoch,
+      c.bprev,
+      c.bcur,
+      EpochState[Dijkstra](
+        c.es.chainAccount,
+        LedgerState[Dijkstra](
+          c.es.ls.cert,
+          UTxOState[Dijkstra](u.utxo, u.deposited, u.fees, gov, u.instantStake, u.donation)
+        ),
+        c.es.snapshots,
+        c.es.nonMyopic
+      ),
+      c.ru,
+      c.layout,
+      ()
+    )
 
   /** The ledger state of `nes` with the node's phase-2 counters at zero: what a LEDGER judgment is
     * run on.

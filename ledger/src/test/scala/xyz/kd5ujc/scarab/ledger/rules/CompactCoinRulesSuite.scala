@@ -27,7 +27,7 @@ class CompactCoinRulesSuite extends FunSuite:
     def check[E <: EraTag](major: Int)(using ShelleyBasedEra[E]): Unit =
       List(2, 40).foreach { count =>
         val original = accounts(
-          NewEpochState.empty[E](epoch, TestLedger.params(major)),
+          xyz.kd5ujc.scarab.ledger.state.Build.nesAt[E](epoch, TestLedger.params(major)),
           (1 to count).map(n =>
             cred(n) -> EraLedger.AccountView(compact(maximum), compact(0), None)
           )

@@ -53,8 +53,16 @@ object StateGen:
   )
   given Arbitrary[ShelleyTransition] = Arbitrary(arb[Word32].map(ShelleyTransition(_)))
 
+  /** The parameters of an empty state of era `E`: Dijkstra's are upgraded by its genesis, the era's
+    * governance record holding them at the era's types.
+    */
+  private def paramsOf[E <: EraTag](using era: ShelleyBasedEra[E]) = era match
+    case ShelleyBasedEra.SDijkstra =>
+      xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraFixture.genesis.upgrade(LedgerStateGen.params)
+    case _ => LedgerStateGen.params
+
   def newEpochState[E <: EraTag](using ShelleyBasedEra[E]): Gen[NewEpochState[E]] =
-    arb[EpochNo].map(NewEpochState.empty[E](_, LedgerStateGen.params))
+    arb[EpochNo].map(xyz.kd5ujc.scarab.ledger.state.Build.nesAt[E](_, paramsOf[E]))
 
   def shelleyLedgerState[E <: EraTag](using ShelleyBasedEra[E]): Gen[ShelleyLedgerState[E]] =
     for

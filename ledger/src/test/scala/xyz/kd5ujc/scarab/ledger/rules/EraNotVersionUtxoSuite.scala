@@ -61,7 +61,7 @@ class EraNotVersionUtxoSuite extends FunSuite:
       collateralReturn = returned
     )
     val tx = TestLedger.tx(body, Vector(alice), Witnesses.empty.copy(redeemers = redeemers))
-    val cert = pre.cert.get(Empty.ledgerState[E](pp)(using pre.era))
+    val cert = pre.cert.get(xyz.kd5ujc.scarab.ledger.state.Build.ledgerState[E](pp)(using pre.era))
     Test
       .failures(ShelleyUtxo.validate[E](UtxoEnv(TestLedger.env, pp, cert), StAnnTx(tx, utxo), 0, 0))
       .fold(List.empty[PredicateFailure])(_.iterator.toList)

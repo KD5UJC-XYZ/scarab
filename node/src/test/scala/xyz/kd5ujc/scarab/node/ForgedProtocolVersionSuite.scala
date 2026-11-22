@@ -125,7 +125,8 @@ class ForgedProtocolVersionSuite extends FunSuite:
         header.leios.copy(versionInfo = HeaderVersionInfo(version._1, version._2))
       )
     )
-    val pp = testnetState.es.ls.utxo.gov.curPParams
+    val pp =
+      xyz.kd5ujc.scarab.ledger.era.GovStateRecord.view(testnetState.es.ls.utxo.gov.cgsCurPParams)
     val issuer = DijkstraBbody.issuer(block).getOrElse(fail("issuer"))
     DijkstraSts
       .judge(DijkstraBbody, Judgment.Policy.Accumulate)(
@@ -141,7 +142,12 @@ class ForgedProtocolVersionSuite extends FunSuite:
       .map(_.left.map(_.toChain.toVector))
 
   test("Dijkstra's BBODY takes the forged version on the testnet; the one without the flag not") {
-    assertEquals(testnetState.es.ls.utxo.gov.curPParams.protocolMajor, BigInt(12))
+    assertEquals(
+      xyz.kd5ujc.scarab.ledger.era.GovStateRecord
+        .view(testnetState.es.ls.utxo.gov.cgsCurPParams)
+        .protocolMajor,
+      BigInt(12)
+    )
     assert(bbody(testnetSetup.forgedProtocolVersion).exists(_.isRight))
     assertEquals(
       bbody(forged(ReferenceBuild.LeiosB004fe0c, experimental = false)),

@@ -13,7 +13,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.consensus.state.{ConsensusMirrorEnv, EraLedgerState, MirrorState}
 import xyz.kd5ujc.scarab.ledger.{Block, ParamUpdate, StorageError}
-import xyz.kd5ujc.scarab.ledger.state.{ShelleyBasedEra, update}
+import xyz.kd5ujc.scarab.ledger.state.ShelleyBasedEra
 import xyz.kd5ujc.scarab.node.{MirrorSteps, NodeSetup}
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.node.read.InEra
@@ -136,6 +136,7 @@ class SnapshotV10Suite extends CatsEffectSuite:
                   xyz.kd5ujc.scarab.ledger.state.Sorted
                     .map(gov.curProposals.toList.map((k, _) => k -> update))
                 ),
+              identity,
               identity
             )
             val nes = i.state.nes

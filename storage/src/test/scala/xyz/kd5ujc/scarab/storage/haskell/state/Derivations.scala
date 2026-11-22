@@ -90,7 +90,11 @@ object Derivations:
   )
 
   private def futureOf[E <: EraTag](g: GovState[E])(using era: ShelleyBasedEra[E]): String =
-    era.gov.on(g)(_.futurePParams.productPrefix, _.futurePParams.productPrefix)
+    era.gov.on(g)(
+      _.futurePParams.productPrefix,
+      _.futurePParams.productPrefix,
+      _.cgsFuturePParams.productPrefix
+    )
 
   /** The derivations of the current era of a file, if it is a Shelley-based one. */
   def ofFile(file: HaskellLedgerFile): Option[Derivations] = file.ledger.state match
