@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import xyz.kd5ujc.scarab.ledger.{Header, HeaderVrf, Prepared, Verdicts}
+import xyz.kd5ujc.scarab.ledger.{Header, HeaderVrf, Prepared, Verdicts, WitnessCheck}
 import cats.effect.{Async, Resource, Sync}
 import cats.effect.syntax.all.*
 import cats.syntax.all.*
@@ -346,18 +346,7 @@ final class VerificationCache private (val parallelism: Int, direct: Verdicts) e
               direct.opCert(b.header, config.slotsPerKesPeriod, config.maxKesEvolutions)
             ): Unit,
           () => warmVrf(b.header, config, epochNonce.get)
-        ) ++ triples.map { k =>
-          (() =>
-            // a verdict that is still there (the same block warmed again: a second peer's batch, a
-            // range fetched again after a rollback) is a function of its key, so it is not computed
-            // again. A defect is discarded: the validation asks the provider itself
-            val present = witnesses.containsKey(k)
-            warmedStats.record(present)
-            if !present then
-              keyHash(k.vkey)
-              compute(k).foreach(valid => witnesses.put(k, valid)): Unit
-          ): Job
-        }
+        ) ++ triples.map(witnessJob)
       val pending = new Pending(p, checks.size)
       // a job's defect is discarded (the validation asks the provider itself); the last job to
       // finish stores the block's prepared checks
@@ -366,6 +355,18 @@ final class VerificationCache private (val parallelism: Int, direct: Verdicts) e
         if pending.finished() then prepared.put(b.header.hash, p): Unit
       }
     }
+
+  /** The check of one witness, its verdict kept. A verdict that is still there (the same block
+    * warmed again: a second peer's batch, a range fetched again after a rollback, a transaction of
+    * a closure warmed again) is a function of its key, so it is not computed again. A defect is
+    * discarded: the validation asks the provider itself.
+    */
+  private def witnessJob(k: WitnessKey): Job = () =>
+    val present = witnesses.containsKey(k)
+    warmedStats.record(present)
+    if !present then
+      keyHash(k.vkey)
+      compute(k).foreach(valid => witnesses.put(k, valid)): Unit
 
   /** The jobs of a batch in chunks of about `perChunk` jobs: a few chunks per thread so that a slow
     * one does not leave the others idle, and never fewer than [[MinChunk]] jobs (about a
@@ -391,17 +392,40 @@ final class VerificationCache private (val parallelism: Int, direct: Verdicts) e
     else
       val guarded: (=> Vector[Job]) => Vector[Job] = body =>
         Either.catchNonFatal(body).getOrElse(Vector.empty)
-      for
-        jobs <- blocks
-          .parTraverseN(parallelism)(b => Async[F].blocking(guarded(jobsOf(b, config))))
-          .map(_.flatten)
-        _ <- chunked(jobs, parallelism)
-          .parTraverseN(parallelism)(chunk =>
-            Resource
-              .make(Async[F].blocking(running.acquire()))(_ => Async[F].delay(running.release()))
-              .surround(Async[F].blocking(chunk.foreach(_())))
-          )
-      yield ()
+      blocks
+        .parTraverseN(parallelism)(b => Async[F].blocking(guarded(jobsOf(b, config))))
+        .flatMap(jobs => run(jobs.flatten, parallelism))
+
+  /** `jobs` in [[chunked]] chunks on up to `parallelism` `blocking` threads, under the bound all
+    * warming shares ([[running]]).
+    */
+  private def run[F[_]: Async](jobs: Vector[Job], parallelism: Int): F[Unit] =
+    chunked(jobs, parallelism)
+      .parTraverseN(parallelism)(chunk =>
+        Resource
+          .make(Async[F].blocking(running.acquire()))(_ => Async[F].delay(running.release()))
+          .surround(Async[F].blocking(chunk.foreach(_())))
+      )
+      .void
+
+  /** Verify the witness signatures `checks` in parallel and keep the verdicts for the rules, which
+    * take each once through [[witness]]: the closure check of an endorser block before a vote,
+    * whose transactions it then applies in order, as the block path warms a fetched range
+    * ([[warm]]). The application stays sequential and the verdicts are the ones [[Verdicts.Direct]]
+    * gives, so only when each signature is verified changes (an Improvement over the reference,
+    * which verifies each when its rule reaches it, approved by the owner on 2026-11-22 for #79). A
+    * job's failure is discarded, as [[warm]]'s is: the rule that reaches the check asks the
+    * provider itself.
+    */
+  def warmWitnesses[F[_]: Async](checks: Vector[WitnessCheck]): F[Unit] =
+    Async[F].delay(if witnesses.size > Limit then witnesses.clear()) *>
+      run(
+        checks.distinct.map { c =>
+          val job = witnessJob(WitnessKey(c.vkey, c.signature, c.message))
+          (() => Either.catchNonFatal(job()).getOrElse(())): Job
+        },
+        parallelism
+      )
 
   /** Warm with the cache's own default parallelism. */
   def warm[F[_]: Async](blocks: Vector[Bytes], config: PraosConfig): F[Unit] =

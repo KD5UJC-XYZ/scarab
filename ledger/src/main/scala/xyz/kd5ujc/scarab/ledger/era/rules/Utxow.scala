@@ -7,7 +7,14 @@ import cats.data.{Chain, NonEmptyList, NonEmptySet}
 import cats.mtl.{Raise, Stateful, Tell}
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.{LedgerDefect, LedgerFailure, ScriptLocation, TxIn, Verdicts}
+import xyz.kd5ujc.scarab.ledger.{
+  LedgerDefect,
+  LedgerFailure,
+  ScriptLocation,
+  TxIn,
+  Verdicts,
+  WitnessCheck
+}
 import xyz.kd5ujc.scarab.plutus.{EvalFailure, ScriptDecoder, ScriptEvaluator}
 import xyz.kd5ujc.scarab.ledger.era.*
 import xyz.kd5ujc.scarab.ledger.era.Relation.*
@@ -52,15 +59,12 @@ object ShelleyUtxow:
       l: t.bodyOf.Level[L]
   ): Either[LedgerDefect, Test[ShelleyUtxowPredFailure.InvalidWitnessesUTXOW[E]]] =
     val txBodyHash = t.bodyOf.id[L](t.body[L](tx))
-    val wits = t.wits[L](tx)
-    def failing(witnesses: Vector[(Bytes, Bytes)]) =
-      witnesses.traverseFilter((vkey, signature) =>
-        verdicts.witness(vkey, signature, txBodyHash).map(valid => Option.unless(valid)(vkey))
+    verifiedWitsAsked[E, L](tx)
+      .traverseFilter(asked =>
+        verdicts
+          .witness(asked.vkey, asked.signature, asked.message)
+          .map(valid => Option.unless(valid)(asked.vkey))
       )
-    (
-      failing(t.witsOf.addrTxWits(wits).toVector.map(w => (w.vkey, w.signature))),
-      failing(t.witsOf.bootAddrTxWits(wits).map(w => (w.vkey, w.signature)))
-    ).mapN(_ ++ _)
       .bimap(
         LedgerFailure.Unverifiable(txBodyHash, _),
         failed =>
@@ -68,6 +72,21 @@ object ShelleyUtxow:
             new ShelleyUtxowPredFailure.InvalidWitnessesUTXOW[E](_)
           )
       )
+
+  /** The signature checks [[validateVerifiedWits]] asks `verdicts` for, in its order: each key
+    * witness, then each bootstrap witness, of the body's hash. A node that verifies them ahead of
+    * the rules (`VerificationCache`) verifies exactly these, so what it remembers is what the rule
+    * asks.
+    */
+  def verifiedWitsAsked[E <: EraTag, L <: TxLevel](tx: Tx[L, E])(using
+      t: EraTx[E],
+      l: t.bodyOf.Level[L]
+  ): Vector[WitnessCheck] =
+    val txBodyHash = t.bodyOf.id[L](t.body[L](tx))
+    val wits = t.wits[L](tx)
+    (t.witsOf.addrTxWits(wits).toVector.map(w => (w.vkey, w.signature)) ++
+      t.witsOf.bootAddrTxWits(wits).map(w => (w.vkey, w.signature)))
+      .map((vkey, signature) => WitnessCheck(vkey, signature, txBodyHash))
 
   /** `validateNeededWitnesses` (`Shelley/Rules/Utxow.hs:409-423`, cardano-ledger f649f975): the
     * hashes of the keys that must sign (`getWitsVKeyNeeded`) and that no witness provides.

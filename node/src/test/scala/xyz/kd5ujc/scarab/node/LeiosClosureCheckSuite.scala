@@ -11,7 +11,7 @@ import xyz.kd5ujc.scarab.codec.{Bytes, Value}
 import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.consensus.leios.EbClosureVerdict
 import xyz.kd5ujc.scarab.consensus.state.{MirrorState, MirrorStep}
-import xyz.kd5ujc.scarab.ledger.{Block, Header, NodeError, StorageError}
+import xyz.kd5ujc.scarab.ledger.{Block, Header, NodeError, StorageError, WitnessCheck}
 import xyz.kd5ujc.scarab.ledger.era.{IsPhase2Valid, Tx, TxLevel}
 import xyz.kd5ujc.scarab.ledger.era.dijkstra.{DijkstraCorpus, DijkstraTx}
 import xyz.kd5ujc.scarab.ledger.era.rules.{
@@ -262,6 +262,7 @@ class LeiosClosureCheckSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
               h => IO(assertEquals(h, p.hash)).as(answer),
               None,
               cache,
+              (_: Vector[WitnessCheck]) => IO.unit,
               p,
               state,
               envOf(s)
@@ -301,6 +302,7 @@ class LeiosClosureCheckSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           _ => IO.pure(Some(stored)),
           Some(store),
           cache,
+          (_: Vector[WitnessCheck]) => IO.unit,
           p,
           state.withUtxo(stripped),
           envOf(s)
@@ -310,6 +312,7 @@ class LeiosClosureCheckSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           _ => IO.pure(Some(stored)),
           None,
           fresh,
+          (_: Vector[WitnessCheck]) => IO.unit,
           p,
           state.withUtxo(stripped),
           envOf(s)

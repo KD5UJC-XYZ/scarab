@@ -9,7 +9,7 @@ import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.leios.{EbClosureVerdict, ProtVerParity}
 import xyz.kd5ujc.scarab.crypto.bls.BlsFixtures.rbHash
-import xyz.kd5ujc.scarab.ledger.StorageError
+import xyz.kd5ujc.scarab.ledger.{StorageError, WitnessCheck}
 import xyz.kd5ujc.scarab.ledger.era.rules.{
   DijkstraLedgerPredFailure,
   DijkstraMempoolPredFailure,
@@ -89,17 +89,22 @@ class LeiosTxCacheSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       _ <- cache.insertApplied(applied, under)
     yield cache
 
+  /** The check of `closure` with `cache`; with `witnesses`, its witness signatures verified in
+    * parallel first and handed to the rules by that cache, as the node runs it.
+    */
   private def check(
       closure: Vector[(LeiosTxHash, Bytes)],
-      cache: LeiosTxCache[IO]
+      cache: LeiosTxCache[IO],
+      witnesses: Option[VerificationCache] = None
   ): IO[EbClosureVerdict[Rejection, LeiosClosureDefect]] =
     LeiosClosureCheck.validateEbClosure[IO](
       _ => IO.pure(Some(closure)),
       None,
       cache,
+      witnesses.fold((_: Vector[WitnessCheck]) => IO.unit)(_.warmWitnesses[IO]),
       r.point,
       state,
-      r.env
+      witnesses.fold(r.env)(w => r.env.copy(verdicts = w))
     )
 
   private def validated(cache: LeiosTxCache[IO], closure: Vector[(LeiosTxHash, Bytes)]) =
@@ -169,6 +174,35 @@ class LeiosTxCacheSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       assertEquals(held.drop(6), Vector.fill(317)(None))
   }
 
+  test(
+    "witnesses verified in parallel ahead of the application: the same verdicts, each one taken"
+  ) {
+    VerificationCache.resource[IO](4).use { witnesses =>
+      for
+        parallel <- cacheOf(r.stored, Vector.empty, parity).flatMap(
+          check(r.stored, _, Some(witnesses))
+        )
+        taken = (witnesses.witnessStats.hits.sum, witnesses.witnessStats.misses.sum)
+        forgedParallel <- cacheOf(withForged, Vector.empty, parity).flatMap(
+          check(withForged, _, Some(witnesses))
+        )
+        forgedSerial <- cacheOf(withForged, Vector.empty, parity).flatMap(check(withForged, _))
+        // a hit is reapplied and checks no witness: none of its signatures is verified ahead
+        before = witnesses.warmedStats.misses.sum
+        _ <- cacheOf(r.stored, r.stored.map(_._1), parity).flatMap(
+          check(r.stored, _, Some(witnesses))
+        )
+        after = witnesses.warmedStats.misses.sum
+      yield
+        assertEquals(parallel, EbClosureVerdict.Valid(0, 323))
+        // every one of the 323 key witnesses the rules asked for was there, none computed again
+        assertEquals(taken, (323L, 0L))
+        refusedWitness(forgedParallel)
+        assertEquals(forgedParallel, forgedSerial)
+        assertEquals(after, before)
+    }
+  }
+
   test("a transaction only the mempool held and a fetched one: applied and unapplied") {
     for
       cache <- cacheOf(r.stored, Vector(r.stored(0)._1), parity)
@@ -211,12 +245,19 @@ class LeiosTxCacheSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       (warm, warmVerdicts) <- best(
         cacheOf(r.stored, r.stored.map(_._1), parity).flatMap(check(r.stored, _))
       )
+      (parallel, parallelVerdicts) <- VerificationCache
+        .resource[IO](4)
+        .use(w =>
+          best(cacheOf(r.stored, Vector.empty, parity).flatMap(check(r.stored, _, Some(w))))
+        )
       _ <- IO.println(
         f"LeiosTxCacheSuite: 323 transactions, cold ${cold.toMicros / 1000.0}%.1f ms, " +
+          f"cold with witnesses on 4 threads ${parallel.toMicros / 1000.0}%.1f ms, " +
           f"warm ${warm.toMicros / 1000.0}%.1f ms, ${cold.toNanos.toDouble / warm.toNanos}%.1fx"
       )
     yield
       assertEquals(coldVerdicts.distinct, Vector(EbClosureVerdict.Valid(0, 323)))
+      assertEquals(parallelVerdicts.distinct, Vector(EbClosureVerdict.Valid(0, 323)))
       assertEquals(warmVerdicts.distinct, Vector(EbClosureVerdict.Valid(323, 0)))
       assert(warm < 1.second, s"warm $warm")
       assert(warm < cold, s"warm $warm, cold $cold")
