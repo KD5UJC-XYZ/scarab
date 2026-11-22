@@ -403,16 +403,65 @@ class CommittedWeightsTests(unittest.TestCase):
         self.assertEqual([int(n) for n in matrix.group(1).split(",")], list(range(1, self.weights.shards + 1)))
 
 
+# Scala comments, so that a name or variable that only a comment mentions does not count. A `//` or `/*` inside a
+# string literal is taken as a comment too, which can only hide a declaration, never invent one.
+SCALA_COMMENT = re.compile(r"/\*.*?\*/|//[^\n]*", re.DOTALL)
+TEST_NAME = re.compile(r'\btest\(\s*(s?)"((?:[^"\\\n]|\\.)*)"')
+PLACEHOLDER = re.compile(r"\$\{[^}]*\}|\$[A-Za-z_]\w*")
+
+
+def scala_code(text):
+    return SCALA_COMMENT.sub("", text)
+
+
+def declares_test(source, name):
+    """Whether `source` declares a munit test named `name`: a `test(...)` whose name is that literal, or an
+    interpolated literal (`s"..."`) whose fixed text, which must not be blank, is the name's around its
+    placeholders."""
+    for interpolated, literal in TEST_NAME.findall(scala_code(source)):
+        text = literal.replace('\\"', '"').replace("\\\\", "\\")
+        if not interpolated:
+            if text == name:
+                return True
+            continue
+        parts = PLACEHOLDER.split(text.replace("$$", "\0"))
+        if "".join(parts).strip() and re.fullmatch(".+".join(re.escape(part.replace("\0", "$")) for part in parts),
+                                                   name, re.DOTALL):
+            return True
+    return False
+
+
 class CommittedSkipsTests(unittest.TestCase):
     """The committed allowlist: every entry names a test of its module's sources, and the variables it waits on."""
     allowed = shards.load_skips(ROOT)
     build = (ROOT / "build.sbt").read_text()
+    tests = {path: path.read_text(encoding="utf-8") for path in ROOT.glob("*/src/test/scala/**/*.scala")}
 
     def sources(self, module):
         declared = re.search(rf'lazy val {module} = scarab\("{module}"(?:, "([\w-]+)")?\)', self.build)
         self.assertIsNotNone(declared, f"build.sbt declares module {module}")
         directory = declared.group(1) or module
         return list((ROOT / directory / "src" / "test" / "scala").rglob("*.scala"))
+
+    def reads(self, suite, package, variable):
+        """Whether the code of `suite`, a source of `package`, names `variable` as a string literal, or uses a member
+        of a test-tree object whose code does, an object the suite sees: one of its own package, or one it imports
+        by name (`LeiosReferenceStates` reads `SCARAB_LEIOS_REFERENCE_STATES` for the suites that use it)."""
+        literal = f'"{variable}"'
+        code = scala_code(suite)
+        if literal in code:
+            return True
+        for text in self.tests.values():
+            helper = scala_code(text)
+            declared = re.search(r"^package (\S+)$", helper, re.MULTILINE)
+            if literal not in helper or not declared:
+                continue
+            for name in re.findall(r"^object (\w+)", helper, re.MULTILINE):
+                seen = declared.group(1) == package or re.search(
+                    rf"^import {re.escape(declared.group(1))}\.(?:{name}\b|\{{[^}}]*\b{name}\b)", code, re.MULTILINE)
+                if seen and re.search(rf"\b{name}\.\w", code):
+                    return True
+        return False
 
     def test_is_in_module_suite_and_test_order(self):
         data = json.loads((ROOT / shards.SKIPS).read_text(encoding="utf-8"))
@@ -427,10 +476,41 @@ class CommittedSkipsTests(unittest.TestCase):
                             if re.search(rf"^package {re.escape(package)}$", p.read_text(), re.MULTILINE)
                             and re.search(rf"\bclass {re.escape(simple)}\b", p.read_text())]
                 self.assertEqual(len(declared), 1, f"{skip.suite} is declared once in {skip.module}'s tests")
-                self.assertTrue(json.dumps(skip.test, ensure_ascii=False) in declared[0],
+                self.assertTrue(declares_test(declared[0], skip.test),
                                 f"{skip.suite} declares the test {skip.test!r} by that name")
                 for variable in skip.environment:
-                    self.assertTrue(f'"{variable}"' in declared[0], f"{skip.suite} reads {variable}")
+                    self.assertTrue(self.reads(declared[0], package, variable), f"{skip.suite} reads {variable}")
+
+
+class CheckOfTheCommittedListTests(unittest.TestCase):
+    """The checks the committed allowlist is held to, on sources made for them."""
+    suite = ('package x.node\n\nimport x.storage.{Kit, States}\n\nclass ASuite extends FunSuite:\n'
+             '  test("reads the capture") { assume(sys.env.contains("SCARAB_CAPTURE"), "unset") }\n'
+             '  // test("only a comment names this one")\n'
+             '  Vector(1, 2).foreach { n =>\n    test(s"the state $n\'s window reads back") { States.input(n) }\n  }\n'
+             '  test(s"$n") {}\n')
+    helper = 'package x.storage\n\nobject States:\n  val variable = "SCARAB_STATES"\n'
+
+    def test_a_test_is_declared_by_a_literal_or_by_the_fixed_text_of_an_interpolated_one(self):
+        self.assertTrue(declares_test(self.suite, "reads the capture"))
+        self.assertTrue(declares_test(self.suite, "the state 2's window reads back"))
+        self.assertFalse(declares_test(self.suite, "the state 2 reads back"), "the fixed text must match")
+        self.assertFalse(declares_test(self.suite, "only a comment names this one"), "a comment declares nothing")
+        self.assertFalse(declares_test(self.suite, "anything at all"), "a placeholder alone declares nothing")
+
+    def test_a_variable_is_read_directly_or_through_an_object_the_suite_uses(self):
+        check = CommittedSkipsTests()
+        check.tests = {Path("x/storage/States.scala"): self.helper}
+        self.assertTrue(check.reads(self.suite, "x.node", "SCARAB_CAPTURE"))
+        self.assertTrue(check.reads(self.suite, "x.node", "SCARAB_STATES"), "through States, which it imports and uses")
+        self.assertFalse(check.reads(self.suite.replace("Kit, States", "Kit"), "x.node", "SCARAB_STATES"),
+                         "States is not imported")
+        self.assertFalse(check.reads(self.suite.replace("States.input(n)", "()"), "x.node", "SCARAB_STATES"),
+                         "States is imported but not used")
+        self.assertFalse(check.reads(self.suite, "x.node", "SCARAB_OTHER"), "no source reads it")
+        commented = 'package x.storage\n\nobject States:\n  // "SCARAB_STATES"\n'
+        check.tests = {Path("x/storage/States.scala"): commented}
+        self.assertFalse(check.reads(self.suite, "x.node", "SCARAB_STATES"), "a comment of the object reads nothing")
 
 
 if __name__ == "__main__":
