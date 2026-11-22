@@ -515,7 +515,8 @@ private[node] object MirrorDijkstra:
     yield ProtocolState(ChainDepState.Praos2(next.protocol), translated.extras.copy(epoch = epoch))
 
   /** BBODY on the ticked state (`dijkstraBbodyTransition`, [[DijkstraBlockRun.bbody]]), with its
-    * parameters, account and proposals: the state after it.
+    * parameters, account and proposals, and the system start and era history of the context: the
+    * state after it. The network and the validation policy are the run's own, from the globals.
     */
   private def bbody(
       env: Env,
@@ -531,7 +532,8 @@ private[node] object MirrorDijkstra:
           env.globals,
           BbodyEnv[Dijkstra](pp, ticked.es.chainAccount),
           block,
-          env.context,
+          env.context.systemStart,
+          env.context.epochInfo,
           ShelleyBbodyState[Dijkstra](ticked.es.ls, ticked.bcur),
           proposals,
           env.backend.evaluator,

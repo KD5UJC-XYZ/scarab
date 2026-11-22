@@ -2563,7 +2563,8 @@ Conway's rules on the classes follow as the rest of stage 2.
     not have, as the reference's `MemoBytes` ties them (`Dijkstra/BlockBody/Internal.hs:115-121`); the header's instance
     is that of the build's Praos2 header (`EraBlockHeader (Header c) era` and `LeiosEraBlockHeader (Header c) era`,
     `libs/cardano-protocol/src/Cardano/Protocol/Leios/BlockHeader.hs:363-379`), over the decoded header with the classes'
-    fields read once in their types (`DijkstraBlockHeader`).
+    fields read once in their types (`DijkstraBlockHeader`, a plain class, so no derived `Mirror` builds one whose fields
+    are not its header's).
   - The failure types are Shelley's, Alonzo's, Conway's and Dijkstra's BBODY failures (`Dijkstra/Rules/Bbody.hs:88-97`,
     tags 0 to 6), with Shelley's and Alonzo's events, `EraRuleFailure "BBODY"` and `EraRuleEvent "BBODY"` with Conway's
     and Dijkstra's cases, Conway's two conversions, and LEDGERS's embedding. The reference's 24 injections (`:150-296`)
@@ -2749,7 +2750,11 @@ Conway's rules on the classes follow as the rest of stage 2.
     with the block's (the block's own less those its transactions create, `neededTxInsForBlock`,
     `Cardano/Ledger/Block.hs:104-110`; the closure's each transaction's, `Shelley/Ledger/Leios.hs:198`), and applied to
     the parent, unticked and stamped with the block's number, with that state's parameters, account and proposals; then
-    the tick, BBODY on the era types with every failure accumulated, Praos2's header rules, checkpoints included, with
+    the tick, BBODY on the era types with every failure accumulated and every check validated (`ValidateAll`, as the
+    reference's application validates; its reapplication validates none, where the node validates replays in full), the
+    context of its transactions' rules made by the run from the judgment's `Globals` (the network, `networkId`,
+    `Dijkstra/Rules/Utxo.hs:400`), so that no caller gives it another policy or network; Praos2's header rules,
+    checkpoints included, with
     the ledger view of the state ticked before BBODY (`applyHelper`, `Ledger/Extended.hs:297-311`; `protocolLedgerView`,
     `currentForecast`), and the state's cumulative transaction bytes gaining the closure's and the block's
     (`Layout.afterBytes`, the Leios layout's existing field). The proposals are read from the state's record before the

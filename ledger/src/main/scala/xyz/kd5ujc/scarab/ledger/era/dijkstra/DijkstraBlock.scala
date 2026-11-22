@@ -78,14 +78,17 @@ object DijkstraBlockBody:
   * `LeiosEraBlockHeader (Header c) DijkstraEra` of the build's Praos2 header): the header the block
   * decoder read, with the fields the classes give in their types, read once by [[fromHeader]].
   */
-final case class DijkstraBlockHeader private (
-    header: LeiosHeader,
-    issuer: KeyHash[BlockIssuer],
-    slot: SlotNo,
-    bodySize: Long,
-    bodyHash: Hash32,
-    versionInfo: BlockHeaderVersionInfo
-)
+final class DijkstraBlockHeader private (
+    val header: LeiosHeader,
+    val issuer: KeyHash[BlockIssuer],
+    val slot: SlotNo,
+    val bodySize: Long,
+    val bodyHash: Hash32,
+    val versionInfo: BlockHeaderVersionInfo
+):
+  // Not a case class: its derived `Mirror` would make one whose fields are not its header's.
+  override def toString: String =
+    s"DijkstraBlockHeader($issuer, $slot, $bodySize, $bodyHash, $versionInfo)"
 
 object DijkstraBlockHeader:
   private val Word32Max: BigInt = BigInt(0xffffffffL)
@@ -114,7 +117,7 @@ object DijkstraBlockHeader:
             info.highestSupportedMajor.max(info.softwareTag)
           )
         )
-    ).mapN(DijkstraBlockHeader(header, _, _, _, _, _)).leftMap(EraTxError.Vocab(_))
+    ).mapN(new DijkstraBlockHeader(header, _, _, _, _, _)).leftMap(EraTxError.Vocab(_))
 
   /** The build's Praos2 header's instances of the two classes (`EraBlockHeader (Header c) era` and
     * `LeiosEraBlockHeader (Header c) era`, `libs/cardano-protocol/src/Cardano/Protocol/Leios/

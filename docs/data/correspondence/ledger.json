@@ -47916,12 +47916,13 @@
    ]
   },
   {
-   "reason": "the companions of BBODY's era types and failures (their CanEqual givens), the header's fields read once in the classes' types (DijkstraBlockHeader), the evidence that a flat block or transaction is one the block decoder read (DijkstraBlock.Decoded, which only DijkstraBlock.decode makes), why a block's bytes are not a block in the era's types, by whose the failure is (DijkstraBlockError and its total classification DijkstraBlockError.of: the block decoder's refusal, the era types' refusal of what it read, or the node's own readings that disagree), a body's rendering, the BBODY state's lens, and the adapter of Dijkstra's BBODY failures to the node's flat Dijkstra failure (DijkstraBbody.toStored), one-way glue the comparisons read until the era failures have their own encoders (#796)",
+   "reason": "the companions of BBODY's era types and failures (their CanEqual givens), the header's fields read once in the classes' types (DijkstraBlockHeader, a plain class so that no derived Mirror builds one whose fields are not its header's, and its rendering), the evidence that a flat block or transaction is one the block decoder read (DijkstraBlock.Decoded, which only DijkstraBlock.decode makes), why a block's bytes are not a block in the era's types, by whose the failure is (DijkstraBlockError and its total classification DijkstraBlockError.of: the block decoder's refusal, the era types' refusal of what it read, or the node's own readings that disagree), a body's rendering, the BBODY state's lens, and the adapter of Dijkstra's BBODY failures to the node's flat Dijkstra failure (DijkstraBbody.toStored), one-way glue the comparisons read until the era failures have their own encoders (#796)",
    "definitions": [
     "class ledger.era.dijkstra.DijkstraBlock.Decoded",
     "class ledger.era.dijkstra.DijkstraBlockHeader",
     "def ledger.era.dijkstra.DijkstraBlockBody#toString",
     "def ledger.era.dijkstra.DijkstraBlockError.of",
+    "def ledger.era.dijkstra.DijkstraBlockHeader#toString",
     "def ledger.era.dijkstra.DijkstraBlockHeader.fromHeader",
     "def ledger.era.rules.DijkstraBbody.toStored",
     "def ledger.era.rules.ShelleyBbodyState.ls",
@@ -47956,7 +47957,13 @@
     "object ledger.era.rules.ShelleyBbody",
     "object ledger.era.rules.ShelleyBbodyEvent",
     "object ledger.era.rules.ShelleyBbodyPredFailure",
-    "object ledger.era.rules.ShelleyBbodyState"
+    "object ledger.era.rules.ShelleyBbodyState",
+    "val ledger.era.dijkstra.DijkstraBlockHeader#bodyHash",
+    "val ledger.era.dijkstra.DijkstraBlockHeader#bodySize",
+    "val ledger.era.dijkstra.DijkstraBlockHeader#header",
+    "val ledger.era.dijkstra.DijkstraBlockHeader#issuer",
+    "val ledger.era.dijkstra.DijkstraBlockHeader#slot",
+    "val ledger.era.dijkstra.DijkstraBlockHeader#versionInfo"
    ]
   },
   {
@@ -47970,7 +47977,7 @@
    ]
   },
   {
-   "reason": "the run of Dijkstra's era rules on a block as the node applies it, BBODY with every failure accumulated and the closure's application, on the fused interpreter with the proposals as their own state and the events discarded (applyBlockEither with ValidateAll, ComputeLedgerEvents off), and its defects; and the tick of a block given by its era and header hash, which a block on the era types gives (#54)",
+   "reason": "the run of Dijkstra's era rules on a block as the node applies it, BBODY with every failure accumulated, the context of its transactions' rules made from the judgment's Globals (the network, networkId) with every check validated as the reference's application does (its reapplication validates none, where the node validates replays in full), and the closure's application, on the fused interpreter with the proposals as their own state and the events discarded (applyBlockEither with ValidateAll, ComputeLedgerEvents off), and its defects; and the tick of a block given by its era and header hash, which a block on the era types gives (#54)",
    "definitions": [
     "def ledger.era.rules.DijkstraBlockRun.bbody",
     "def ledger.era.rules.DijkstraBlockRun.closure",
