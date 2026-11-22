@@ -3,7 +3,8 @@ package xyz.kd5ujc.scarab.ledger
 
 import cats.data.NonEmptyChain
 import java.nio.file.{Files, Path}
-import munit.FunSuite
+import cats.effect.IO
+import cats.syntax.all.*
 import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
 import xyz.kd5ujc.scarab.consensus.state.{MirrorState, MirrorStep}
@@ -38,6 +39,7 @@ import xyz.kd5ujc.scarab.ledger.era.rules.{
   ConwayBbody,
   ConwayBbodyPredFailure,
   ConwayBlockRun,
+  ConwayPhase2,
   ConwayRuleDefect,
   HeaderProtVerGate,
   InjectBbodyFailure,
@@ -46,7 +48,13 @@ import xyz.kd5ujc.scarab.ledger.era.rules.{
   ShelleyBbodyState,
   ShelleyLedgersPredFailure
 }
-import xyz.kd5ujc.scarab.ledger.rules.{Bbody as FlatBbody, EraBlock, EraNes, Globals}
+import xyz.kd5ujc.scarab.ledger.rules.{
+  Bbody as FlatBbody,
+  EraBlock,
+  EraNes,
+  Globals,
+  TxDependencies
+}
 import xyz.kd5ujc.scarab.ledger.state.{
   BlocksMade,
   Coin,
@@ -74,7 +82,8 @@ import xyz.kd5ujc.scarab.plutus.{
 }
 import xyz.kd5ujc.scarab.uplc.cek.{CekError, CekFailure}
 import xyz.kd5ujc.scarab.uplc.ledger.EvaluationError
-import xyz.kd5ujc.scarab.node.{MirrorSteps, NodeSetup}
+import xyz.kd5ujc.scarab.network.FailsOnUncaught
+import xyz.kd5ujc.scarab.node.{MirrorSteps, NodeSetup, ParallelPlutus}
 import xyz.kd5ujc.scarab.protocol.{Era, ReferenceBuild, StateLayout}
 
 /** Conway's BBODY on the era types (`ConwayBbody.conwayBbody`, run by `ConwayBlockRun`;
@@ -117,7 +126,7 @@ import xyz.kd5ujc.scarab.protocol.{Era, ReferenceBuild, StateLayout}
   * of the header's version (`HeaderProtVerGate`) is never met with a failure, since from major 12
   * the version after it is the last (13) and no header's major decodes past it.
   */
-class ConwayBbodySuite extends FunSuite:
+class ConwayBbodySuite extends FailsOnUncaught:
   private given ShelleyBasedEra[Conway] = ShelleyBasedEra.SConway
 
   private def ok[A](what: String)(e: Either[?, A]): A = e.fold(x => fail(s"$what: $x"), identity)
@@ -192,7 +201,10 @@ class ConwayBbodySuite extends FunSuite:
       eraEvaluated: Int,
       flatEvaluated: Int,
       eraObserved: Vector[Phase2.Observation],
-      flatObserved: Vector[Phase2.Observation]
+      flatObserved: Vector[Phase2.Observation],
+      deferred: Vector[Vector[Int]],
+      replayed: Option[ConwayBlockRun.Observing] => ConwayBlockRun.Body,
+      program: (ScriptEvaluator[cats.Id], Option[ConwayBlockRun.Observing]) => ConwayBlockRun.Body
   ):
     /** The era run's verdict, where it reached one. */
     def era: Verdict = eraRun.fold(defect => fail(s"era defect $defect"), identity)
@@ -289,6 +301,57 @@ class ConwayBbodySuite extends FunSuite:
       else ScarabEvaluator.default.evaluate(request)
     def count: Int = runs.get
 
+  /** The era run's evaluator ([[Counting]]), each result it gives kept by its request and the place
+    * of the request among the equal ones asked before; and the same results given again
+    * ([[replaying]]), each request answered by the result of its place, so that a prepared plan
+    * sees the serial run's results (a failure's term compares by identity), whatever the order its
+    * jobs run in. A request the serial run never asked is the node's evaluator's.
+    */
+  private final class Shared(unsupportedAt: Option[Int]) extends ScriptEvaluator[cats.Id]:
+    private val counting = Counting(unsupportedAt)
+    private val results =
+      new java.util.concurrent.atomic.AtomicReference(Map.empty[(EvalRequest, Int), EvalResult])
+    private def placed(
+        asked: java.util.concurrent.atomic.AtomicReference[Map[EvalRequest, Int]],
+        request: EvalRequest
+    ): Int =
+      asked
+        .getAndUpdate(m => m.updated(request, m.getOrElse(request, 0) + 1))
+        .getOrElse(request, 0)
+    private val asked = new java.util.concurrent.atomic.AtomicReference(Map.empty[EvalRequest, Int])
+    def evaluate(request: EvalRequest): EvalResult =
+      val place = placed(asked, request)
+      val result = counting.evaluate(request)
+      val _ = results.updateAndGet(_.updated((request, place), result))
+      result
+    def count: Int = counting.count
+    def replaying: ScriptEvaluator[cats.Id] =
+      val again = new java.util.concurrent.atomic.AtomicReference(Map.empty[EvalRequest, Int])
+      request =>
+        results.get.getOrElse(
+          (request, placed(again, request)),
+          ScarabEvaluator.default.evaluate(request)
+        )
+
+  /** The prepared plan's result is the serial era run's: the same BBODY state, blocks made and
+    * counters, or the same failures, defect and naming.
+    */
+  private def samePlanned(
+      name: String,
+      serial: ConwayBlockRun.Result,
+      planned: Either[Phase2.Defect, ConwayBlockRun.Result]
+  ): Unit =
+    planned match
+      case Left(defect) => fail(s"$name: the plan's defect $defect")
+      case Right(Right(Right(p))) =>
+        serial match
+          case Right(Right(s)) =>
+            assert(cats.Eq[LedgerState[Conway]].eqv(p.state.ls, s.state.ls), s"$name: plan state")
+            assertEquals(p.state.blocksMade, s.state.blocksMade, s"$name: plan blocks made")
+            assertEquals(p.plutus, s.plutus, s"$name: plan counters")
+          case other => fail(s"$name: the plan admits the block the serial run judges $other")
+      case Right(other) => assertEquals(other, serial, s"$name: the plan")
+
   /** The state of `before` ticked to the block `raw` as `MirrorRules` ticks it (stamped with the
     * block's number, then the combinator's tick), changed by `change`; then the era BBODY and the
     * flat side on it: the envelope's check of the header's version (`HardForkConfig.check`, as
@@ -314,8 +377,8 @@ class ConwayBbodySuite extends FunSuite:
       setup.globals.copy(network = network, referenceBuild = build),
       geometry
     )
-    val (flatEvaluator, eraEvaluator) = (Counting(unsupportedAt), Counting(unsupportedAt))
-    val (flatObserved, eraObserved) = (Observations(), Observations())
+    val (flatEvaluator, eraEvaluator) = (Counting(unsupportedAt), Shared(unsupportedAt))
+    val (flatObserved, eraObserved, planObserved) = (Observations(), Observations(), Observations())
     // one clock, which both sides' observations hold
     val clock = PosixClock.total(globals.systemStart, geometry)
     val ctx = EraBlock.Context(
@@ -383,8 +446,11 @@ class ConwayBbodySuite extends FunSuite:
     // the network, the validation policy and the build's injection are the run's own, from the
     // globals; the system start the globals' (the Shelley genesis's), and the epoch information
     // of one era from the cluster's start
-    val run = ConwayBlockRun
-      .bbody(
+    def programOf(
+        evaluator: ScriptEvaluator[cats.Id],
+        observing: Option[ConwayBlockRun.Observing]
+    ): ConwayBlockRun.Body = ConwayBlockRun
+      .program(
         globals,
         BbodyEnv[Conway](pp, ticked.es.chainAccount),
         eraBlock,
@@ -404,12 +470,45 @@ class ConwayBbodySuite extends FunSuite:
           )
         ),
         state,
-        eraEvaluator,
+        evaluator,
         Verdicts.Direct,
         ScarabEvaluator.defaultDecoder,
         clock.posix,
-        Option.when(observe)(ConwayBlockRun.Observing(eraObserved.observe, Some(clock)))
+        observing
       )
+    val run = programOf(
+      eraEvaluator,
+      Option.when(observe)(ConwayBlockRun.Observing(eraObserved.observe, Some(clock)))
+    ).serial
+    // the era run prepared, its jobs run last batch first, each batch's last first, with the
+    // serial run's results: the same result and observations as the serial run's
+    val plan = programOf(
+      eraEvaluator.replaying,
+      Option.when(observe)(ConwayBlockRun.Observing(planObserved.observe, Some(clock)))
+    ).prepare
+    samePlanned(
+      before.name,
+      run,
+      plan.resolve(plan.batches.reverse.flatMap(_.reverse).map(plan.execute))
+    )
+    assertEquals(
+      planObserved.all.map(comparable),
+      eraObserved.all.map(comparable),
+      s"${before.name}: the plan's observations"
+    )
+    // the graph of the era's transactions is the flat rules'
+    EraBlockBody.conway
+      .txSeqBlockBody(eraBlock.blockBody)
+      .zip(EraBlock.decode(block))
+      .foreach {
+        case (tx, Right(flatTx)) =>
+          assertEquals(
+            ConwayPhase2.footprint(tx),
+            TxDependencies.Footprint.of(flatTx),
+            s"${before.name}: footprint"
+          )
+        case (_, Left(_)) => ()
+      }
     val judged = run.toOption
     val era: Either[ConwayRuleDefect, Verdict] = run.map {
       case Left(fs)     => Left(flatOf(before.name, fs, block))
@@ -429,12 +528,15 @@ class ConwayBbodySuite extends FunSuite:
       eraEvaluator.count,
       flatEvaluator.count,
       eraObserved.all,
-      flatObserved.all
+      flatObserved.all,
+      plan.batches.map(_.map(_.index)),
+      o => programOf(eraEvaluator.replaying, o),
+      programOf
     )
 
   /** The era BBODY's failures in the node's flat form, in their order; LEDGERS's, which the flat
     * form holds by the transaction refused, as that of the block's one transaction, in the place of
-    * the first of them.
+    * the first of them (none in a block of more transactions).
     */
   private def flatOf(
       name: String,
@@ -446,10 +548,12 @@ class ConwayBbodySuite extends FunSuite:
       case ConwayBbodyPredFailure.LedgersFailure(ShelleyLedgersPredFailure.LedgerFailure(f)) =>
         ok(s"$name: flat")(EraLedgerRun.flat(f, _ => None, _ => None))
     }
-    lazy val rejected = NonEmptyChain.fromSeq(ledgers).map { fs =>
+    // a block of more transactions has no flat form here: the era's failures do not say which
+    // transaction each is of, and the flat rules stop at the first refused one
+    lazy val rejected = NonEmptyChain.fromSeq(ledgers).flatMap { fs =>
       block.transactions match
-        case Vector(t) => BlockFailure.Tx(LedgerFailure.Rejected(t.id, fs))
-        case ts        => fail(s"$name: LEDGERS's failures in a block of ${ts.size}")
+        case Vector(t) => Some(BlockFailure.Tx(LedgerFailure.Rejected(t.id, fs)))
+        case _         => None
     }
     val firstLedgers = all.indexWhere {
       case ConwayBbodyPredFailure.LedgersFailure(_) => true
@@ -1122,7 +1226,8 @@ class ConwayBbodySuite extends FunSuite:
       out: BigInt,
       outputs: Vector[Node] = Vector.empty,
       datums: Vector[Node] = Vector(lockDatum),
-      languages: Set[PlutusLanguage] = Set(PlutusLanguage.V3)
+      languages: Set[PlutusLanguage] = Set(PlutusLanguage.V3),
+      references: Vector[Int] = Vector.empty
   ): Built =
     val params = ConwayNewEpochState.gov.get(judge(third, third.raw).ticked).curPParams
     val pp = PParams[Conway](ok("parameters")(ConwayPParams.fromStored(params)))
@@ -1140,21 +1245,16 @@ class ConwayBbodySuite extends FunSuite:
     ).flatten
     def withHash(integrity: Bytes): Built =
       val body = B.body(
-        0 -> B.set(inputs.map(in(utxo, _))*),
-        1 -> B.arr((outputs :+ paid(out))*),
-        2 -> B.uint(3000000),
-        11 -> B.bytes(integrity)
+        Vector(
+          Some(0 -> B.set(inputs.map(in(utxo, _))*)),
+          Some(1 -> B.arr((outputs :+ paid(out))*)),
+          Some(2 -> B.uint(3000000)),
+          Some(11 -> B.bytes(integrity)),
+          collateral.map(c => 13 -> B.set(in(utxo, c))),
+          Option.when(references.nonEmpty)(18 -> B.set(references.map(in(utxo, _))*))
+        ).flatten*
       )
-      val withCollateral = collateral.fold(body)(c =>
-        B.body(
-          0 -> B.set(inputs.map(in(utxo, _))*),
-          1 -> B.arr((outputs :+ paid(out))*),
-          2 -> B.uint(3000000),
-          11 -> B.bytes(integrity),
-          13 -> B.set(in(utxo, c))
-        )
-      )
-      built(withCollateral, B.witnesses(withCollateral, Vector(payer), more*))
+      built(body, B.witnesses(body, Vector(payer), more*))
     val integrity = ScriptIntegrity
       .mkScriptIntegrity[Conway, TxLevel.Top](
         pp,
@@ -1223,6 +1323,8 @@ class ConwayBbodySuite extends FunSuite:
       val j = judge(third, blockOf(txs, invalid = invalid), change = holding(utxo))
       assert(j.era.isRight, s"$what: ${j.era}")
       same(what, j.era, j.flat)
+      // the plan deferred the scripts of each transaction whose scripts ran
+      assertEquals(j.deferred.flatten.size, txs.count(_ != datumOnly), what)
       assertEquals(j.flatPlutus, Some(expected), what)
       assertEquals(j.eraPlutus, j.flatPlutus, what)
       // the phase-2 observations (`--plutus-cases`), one by transaction whose scripts ran, and
@@ -1394,6 +1496,177 @@ class ConwayBbodySuite extends FunSuite:
     }
     assertEquals(named.map(_.size), Vector(1, 1))
     assertEquals(named.flatten.distinct.size, 2)
+  }
+
+  // ---- the era run prepared for bounded parallel evaluation (ADR 0018) -------------------------------
+
+  /** A block of four script transactions that depend on each other: the first spends a script
+    * output and creates another, which the second spends, its collateral the first's other output;
+    * the third, flagged invalid, reads that output as a reference input, and the fourth spends it
+    * after both read it. The batches are the first, the second and third, the fourth.
+    */
+  private final case class Dependent(utxo: Vector[(TxIn, TxOut)], txs: Vector[Built])
+
+  private lazy val dependent: Dependent =
+    val (succeeds, fails) = (alwaysSucceedsWithDatumV3, B.alwaysFailsWithDatumV3)
+    // 0, 4, 7: script outputs; 1, 3, 5: fees; 2, 6, 8: collateral
+    val utxo = funded(
+      Vector(
+        locked(succeeds, 10000000),
+        paid(30000000),
+        paid(30000000),
+        paid(30000000),
+        locked(fails, 10000000),
+        paid(30000000),
+        paid(30000000),
+        locked(succeeds, 10000000),
+        paid(30000000)
+      )
+    )
+    val first = spending(
+      utxo,
+      Vector(0, 1),
+      Vector(0 -> succeeds),
+      Some(2),
+      27000000,
+      outputs = Vector(locked(succeeds, 10000000))
+    )
+    // 9: the first's script output, 10: its other output
+    val all = utxo ++ TxIn.txouts(
+      first.id,
+      ok("first")(Tx.fromBlock(first.transaction, Era.Conway)).body.outputs
+    )
+    Dependent(
+      utxo,
+      Vector(
+        first,
+        spending(all, Vector(9, 3), Vector(9 -> succeeds), Some(10), 37000000),
+        spending(all, Vector(4, 5), Vector(4 -> fails), Some(6), 37000000, references = Vector(10)),
+        spending(all, Vector(10, 7), Vector(7 -> succeeds), Some(8), 34000000)
+      )
+    )
+
+  test(
+    "dependent script transactions: the prepared era run batches them by their reads and writes and comes to the serial run's verdict, counters, naming and observations"
+  ) {
+    val Dependent(utxo, txs) = dependent
+    val raw = blockOf(txs, invalid = Vector(2))
+    val admitted = judge(third, raw, change = holding(utxo), observe = true)
+    assert(admitted.era.isRight, s"${admitted.era}")
+    same("admitted", admitted.era, admitted.flat)
+    assertEquals(admitted.eraPlutus, admitted.flatPlutus)
+    assertEquals(admitted.eraPlutus, Some(PlutusStats(3, 1, 4, 4)))
+    assertEquals(admitted.eraObserved.map(comparable), admitted.flatObserved.map(comparable))
+    assertEquals(admitted.deferred, Vector(Vector(0), Vector(1, 2), Vector(3)))
+    // no verdict on each script in turn: the plan stops where the serial run stops, and names it
+    (1 to 4).foreach { n =>
+      Vector(false, true).foreach { observe =>
+        val j =
+          judge(third, raw, change = holding(utxo), unsupportedAt = Some(n), observe = observe)
+        val failure = j.flat match
+          case Left(Vector(BlockFailure.Tx(failure: LedgerFailure.Unavailable))) => failure
+          case other => fail(s"$n: the flat rules' ${other.map(_._1)}")
+        assertEquals(j.eraRun.left.toOption, Some(ConwayRuleDefect.ScriptUnavailable(failure)))
+        assertEquals(j.eraObserved.map(comparable), j.flatObserved.map(comparable), s"$n")
+      }
+    }
+    // a verdict that is not the flag's: the second flagged invalid though its script passes, the
+    // third flagged valid though its script fails; the serial run's refusal, every failure kept
+    Vector(Vector(1, 2), Vector.empty[Int]).foreach { invalid =>
+      val j = judge(third, blockOf(txs, invalid = invalid), change = holding(utxo), observe = true)
+      assert(j.eraFailures.nonEmpty, s"$invalid: ${j.eraRun}")
+      assertEquals(j.eraObserved.map(comparable), j.flatObserved.map(comparable), s"$invalid")
+    }
+  }
+
+  test(
+    "the prepared era run through the node's bounded workers: the serial run's result at one, two and four workers"
+  ) {
+    val Dependent(utxo, txs) = dependent
+    Vector(Vector(2), Vector(1, 2), Vector.empty[Int])
+      .traverse_ { invalid =>
+        val j = judge(third, blockOf(txs, invalid = invalid), change = holding(utxo))
+        val serial = j.replayed(None).serial
+        Vector(1, 2, 4).traverse_ { n =>
+          ParallelPlutus.Workers
+            .from(n)
+            .fold(e => IO(fail(s"$e")), ParallelPlutus.create[IO](_))
+            .flatMap(_(j.replayed(None)))
+            .map(result => samePlanned(s"$invalid at $n workers", serial, Right(result)))
+        }
+      }
+  }
+
+  /** The node's evaluator but on `at`, the request of a script whose evaluation ends in `defect`, a
+    * raw defect of the implementation.
+    */
+  private final class Defective(at: EvalRequest) extends ScriptEvaluator[cats.Id]:
+    val defect = new IllegalStateException("an evaluator defect")
+    def evaluate(request: EvalRequest): EvalResult =
+      if request == at then throw defect else ScarabEvaluator.default.evaluate(request)
+
+  /** The request of the first script of the `n` th transaction the flat rules observed. */
+  private def requestOf(j: Judged, n: Int): EvalRequest =
+    j.flatObserved.lift(n).map(_.outcome) match
+      case Some(Right(Phase2.Outcome.Passed(report))) =>
+        report.evaluations.headOption.fold(fail(s"$n: no evaluation"))(_.request)
+      case Some(Right(Phase2.Outcome.Failed(report, _))) =>
+        report.evaluations.headOption.fold(fail(s"$n: no evaluation"))(_.request)
+      case other => fail(s"$n: observed $other")
+
+  test(
+    "a raw defect of a script's evaluation: the prepared era run raises the very defect the serial run raises, after the same observations, and none the serial run never reaches"
+  ) {
+    val Dependent(utxo, txs) = dependent
+    val admitted =
+      judge(third, blockOf(txs, invalid = Vector(2)), change = holding(utxo), observe = true)
+    // the third transaction's script ends in a defect: the first two observed, then the defect
+    val defective = Defective(requestOf(admitted, 2))
+    val (serialSeen, planSeen) = (Observations(), Observations())
+    val serial =
+      Either.catchNonFatal(
+        admitted.program(defective, Some(ConwayBlockRun.Observing(serialSeen.observe, None))).serial
+      )
+    assert(serial.left.exists(_ eq defective.defect), s"$serial")
+    val plan =
+      admitted.program(defective, Some(ConwayBlockRun.Observing(planSeen.observe, None))).prepare
+    val planned = plan.resolve(plan.batches.flatten.map(plan.execute))
+    assert(planned.left.exists(_.cause eq defective.defect), s"$planned")
+    assertEquals(planSeen.all.map(comparable), serialSeen.all.map(comparable))
+    assertEquals(serialSeen.all.size, 2)
+    // the fourth's script ends in a defect, after the second's verdict is not its flag's: the serial
+    // run records that failure and runs no later script, so the plan's result is the refusal
+    val refused = judge(third, blockOf(txs, invalid = Vector(1, 2)), change = holding(utxo))
+    val late = Defective(requestOf(admitted, 3))
+    val serialRefusal = refused.program(late, None).serial
+    assert(serialRefusal.exists(_.isLeft), s"$serialRefusal")
+    val latePlan = refused.program(late, None).prepare
+    samePlanned(
+      "late",
+      serialRefusal,
+      latePlan.resolve(latePlan.batches.flatten.map(latePlan.execute))
+    )
+  }
+
+  test(
+    "missing or foreign completed values: the prepared era run evaluates them itself, never taking one for a pass"
+  ) {
+    val Dependent(utxo, txs) = dependent
+    Vector(Vector(2), Vector(1, 2)).foreach { invalid =>
+      val j = judge(third, blockOf(txs, invalid = invalid), change = holding(utxo))
+      val serial = j.replayed(None).serial
+      val plan = j.replayed(None).prepare
+      samePlanned(s"$invalid missing", serial, plan.resolve(Vector.empty))
+      // the completed values of another preparation of the same block are foreign, though their
+      // scripts are the same
+      val other = j.replayed(None).prepare
+      assertEquals(other.jobs.size, plan.jobs.size)
+      samePlanned(
+        s"$invalid foreign",
+        serial,
+        plan.resolve(other.batches.flatten.map(other.execute))
+      )
+    }
   }
 
   test("a transaction whose input is missing: LEDGERS's refusal, embedded, the flat LEDGER's") {
