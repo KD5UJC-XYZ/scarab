@@ -2012,7 +2012,7 @@
     "LeiosNotifyClientSuite"
    ],
    "note": "before each request the stop, then the gate (awaitImmTipCanForecastNow), then the depth; told to stop MsgQuit at once, the outstanding replies collected unhandled (AlreadyDraining), then MsgDone; a sender and a receiver, as the pipelined driver's receiver queue, each reply handed on in order and counted as arrived after",
-   "digest": "7e911b4709c4bd83"
+   "digest": "1bcb2382532f9b6b"
   },
   "def network.LeiosNotifyPipelined.tag": {
    "upstream": [
