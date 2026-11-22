@@ -506,3 +506,24 @@ object PlutusEvaluation:
     pwcs.foldLeftM(Monoid[ScriptResult].empty)((results, pwc) =>
       runPlutusScript[F](pwc).map(results |+| _)
     )
+
+/** Where UTXOS evaluates the scripts of a transaction it collected them for: Scarab's own, which
+  * the reference has no counterpart for, since it evaluates them there (`evalPlutusScripts`, then
+  * the verdict checked against the flag, `Babbage/Rules/Utxos.hs:130-155` and `:192-222`,
+  * cardano-ledger f649f975). A block run evaluates them there too ([[Phase2Deferral.now]]), but
+  * while the node prepares a block whose scripts it evaluates in bounded parallel workers (ADR
+  * 0018) the run records them and evaluates none, which supplies no verdict: the rules go on as the
+  * transaction's flag announces, and the block's plan checks every verdict after, in order.
+  */
+trait Phase2Deferral[F[_], E <: EraTag]:
+  /** The scripts `scripts` of `tx`, which `now` evaluates and checks. */
+  def evalScripts(tx: Tx[TxLevel.Top, E], scripts: NonEmptyList[PlutusWithContext])(
+      now: F[Unit]
+  ): F[Unit]
+
+object Phase2Deferral:
+  /** The scripts evaluated where they are collected, as the reference evaluates them. */
+  def now[F[_], E <: EraTag]: Phase2Deferral[F, E] = new Phase2Deferral[F, E]:
+    def evalScripts(tx: Tx[TxLevel.Top, E], scripts: NonEmptyList[PlutusWithContext])(
+        now: F[Unit]
+    ): F[Unit] = now

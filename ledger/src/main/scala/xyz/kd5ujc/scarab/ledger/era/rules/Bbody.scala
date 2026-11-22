@@ -362,6 +362,7 @@ object ConwayBbody:
       events: Tell[F, Chain[BbodyEvent[Conway]]],
       evaluator: ScriptEvaluator[F],
       unavailable: Raise[F, ScriptVerdictUnavailable],
+      deferral: Phase2Deferral[F, Conway],
       stateDefect: Raise[F, UtxoStateDefect],
       defect: Raise[F, LedgerDefect],
       govDefect: Raise[F, GovDefect],

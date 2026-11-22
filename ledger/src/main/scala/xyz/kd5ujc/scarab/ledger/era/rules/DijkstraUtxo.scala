@@ -520,6 +520,9 @@ object DijkstraUtxo:
     given Tell[F, Chain[UtxosEvent[Dijkstra]]] = new Tell[F, Chain[UtxosEvent[Dijkstra]]]:
       val functor: cats.Functor[F] = events.functor
       def tell(l: Chain[UtxosEvent[Dijkstra]]): F[Unit] = events.tell(l.map(embed.wrapEvent))
+    // a Dijkstra block's scripts are evaluated where UTXOS collects them: its run prepares no
+    // block for parallel evaluation yet (#85)
+    given Phase2Deferral[F, Dijkstra] = Phase2Deferral.now
     for
       utxoState <- state.get
       current <- ShelleyUtxo.readStored[F, Dijkstra](

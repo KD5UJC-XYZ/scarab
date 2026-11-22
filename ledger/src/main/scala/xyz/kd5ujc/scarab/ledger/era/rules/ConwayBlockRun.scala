@@ -24,6 +24,7 @@ import xyz.kd5ujc.scarab.ledger.era.{
   EraBlockBody,
   EraBlockHeader,
   PParams,
+  Phase2Deferral,
   PlutusWithContext,
   PraosEraBlockHeader,
   Proposals,
@@ -304,6 +305,7 @@ object ConwayBlockRun:
         slotToPOSIXTime
       )
     )
+    given Phase2Deferral[F, Conway] = Phase2Deferral.now
     // a script with no verdict, named by its transaction and redeemer in the ledger state the
     // rules judged it in, the state at the raise, at its place among its transaction's scripts:
     // it ran, and was counted, so `ran` less one ran before it

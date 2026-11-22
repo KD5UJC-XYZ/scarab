@@ -9,6 +9,7 @@ import monocle.Lens
 import xyz.kd5ujc.scarab.ledger.{LedgerDefect, TestLedger, Utxo, Verdicts}
 import xyz.kd5ujc.scarab.ledger.era.{
   EraTxBody,
+  Phase2Deferral,
   ScriptVerdictUnavailable,
   StoredTxOut,
   TxLevel,
@@ -127,6 +128,7 @@ object DijkstraUtxoRun extends munit.Assertions:
         evaluator: ScriptEvaluator[Id]
     ): Either[ScriptVerdictUnavailable, Either[NonEmptyChain[URec], UEvents]] =
       given ScriptEvaluator[U] = request => Monad[U].unit.map(_ => evaluator.evaluate(request))
+      given Phase2Deferral[U, Dijkstra] = Phase2Deferral.now
       Judgment
         .judge(
           ConwayUtxos.utxosTransition[U, Dijkstra](stAnnTx, validation),

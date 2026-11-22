@@ -106,6 +106,7 @@ object EraLedgerRun:
     import ledgerRun.given
     import RuleT.given
     given ScriptEvaluator[ledgerRun.F] = ledgerRun.lifted(evaluator)
+    given Phase2Deferral[ledgerRun.F, Conway] = Phase2Deferral.now
     ledgerRun.run(globals, state, depth)(
       ConwayLedger
         .conwayLedgerTransition[ledgerRun.F, Conway](env, stAnnTx, context, verdicts, decoder)
@@ -126,6 +127,7 @@ object EraLedgerRun:
     import ledgersRun.given
     import RuleT.given
     given ScriptEvaluator[ledgersRun.F] = ledgersRun.lifted(evaluator)
+    given Phase2Deferral[ledgersRun.F, Conway] = Phase2Deferral.now
     ledgersRun.run(globals, state, 0)(
       ShelleyLedgers.ledgersTransition[ledgersRun.F, Conway](
         env,

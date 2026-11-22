@@ -82,6 +82,7 @@ object EraUtxoRun:
       asSubRule: Boolean = false
   ): Either[Defect, Either[NonEmptyChain[Rec], S]] =
     given ScriptEvaluator[F] = lifted(evaluator)
+    given Phase2Deferral[F, Conway] = Phase2Deferral.now
     val transition = ConwayUtxo.conwayUtxoTransition[F, Conway](env, stAnnTx, context)
     Judgment
       .judge(
@@ -132,6 +133,7 @@ object EraUtxoRun:
         depth: Int = 0
     ): Either[WDefect, Either[NonEmptyChain[WRec], WS]] =
       given ScriptEvaluator[W] = request => Monad[W].unit.map(_ => evaluator.evaluate(request))
+      given Phase2Deferral[W, Conway] = Phase2Deferral.now
       val judge = summon[Judge[W, WRec]]
       val transition = rules.BabbageUtxow
         .babbageUtxowTransition[W, Conway](env, stAnnTx, context, verdicts, decoder)
