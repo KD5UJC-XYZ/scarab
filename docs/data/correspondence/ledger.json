@@ -42433,6 +42433,152 @@
    "note": "the signal the block with its header's two classes as using clauses (LeiosBbodySignal); the proposals in their own capability beside the ledger state, as LEDGER's are; the UTxO set the reference scripts are measured against the stored outputs of the block's inputs and reference inputs before LEDGERS, read into the era",
    "digest": "a5e21cc604b4e3ef"
   },
+  "enum ledger.era.rules.LeiosClosureDefect": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoTypes.hs",
+     "symbol": "LeiosClosureError",
+     "lines": [
+      1828,
+      1835
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraClosureSuite"
+   ],
+   "note": "the decoder's complaint the typed EraTxError where the reference renders it as Text; a defect of the node's own, which whoever applies the closure stops the node on, as the reference's error does",
+   "digest": "c008bf6fe1f7dfc8"
+  },
+  "def ledger.era.rules.DijkstraClosure.deserializeTxForLeios": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoTypes.hs",
+     "symbol": "deserializeTxForLeios",
+     "lines": [
+      1240,
+      1246
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraClosureSuite"
+   ],
+   "note": "decodeFullAnnotator of decodeDijkstraTopTxInBlock as one whole item read with the block decoder's bounds (CborRead.decode, unbounded), then the era's DijkstraTx.inBlock; the build's verdict on every transaction case of leios-testnet-blocks",
+   "digest": "9fecd5d7ccb7e34c"
+  },
+  "def ledger.era.rules.DijkstraClosure.resolveLeiosClosure": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus-cardano/src/shelley/Ouroboros/Consensus/Shelley/Ledger/Leios.hs",
+     "symbol": "resolveLeiosClosure",
+     "lines": [
+      167,
+      177
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraClosureSuite"
+   ],
+   "note": "a pure function of what the store's lookupEbClosure gave; the transactions in Dijkstra's era types where the reference makes GenTx",
+   "digest": "abe17ba2ecc42453"
+  },
+  "def ledger.era.rules.DijkstraClosure.mkMempoolEnv": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/API/Mempool.hs",
+     "symbol": "mkMempoolEnv",
+     "lines": [
+      363,
+      377
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraClosureSuite"
+   ],
+   "note": "the parameters and the chain's account given, which the reference reads from the NewEpochState",
+   "digest": "08ee717b4fc37483"
+  },
+  "def ledger.era.rules.DijkstraClosure.tipSlot": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus-cardano/src/shelley/Ouroboros/Consensus/Shelley/Ledger/Leios.hs",
+     "symbol": "fromWithOrigin",
+     "lines": [
+      237,
+      237
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraClosureSuite"
+   ],
+   "digest": "0ed57c578527aa58"
+  },
+  "def ledger.era.rules.DijkstraClosure.closureTxBytes": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus-cardano/src/shelley/Ouroboros/Consensus/Shelley/Ledger/Leios.hs",
+     "symbol": "closureBytes",
+     "lines": [
+      223,
+      224
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraClosureSuite"
+   ],
+   "digest": "32db391cf3fa8faf"
+  },
+  "def ledger.era.rules.DijkstraClosure.applyLeiosClosure": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus-cardano/src/shelley/Ouroboros/Consensus/Shelley/Ledger/Leios.hs",
+     "symbol": "applyLeiosClosure",
+     "lines": [
+      210,
+      252
+     ]
+    }
+   ],
+   "class": "Gap",
+   "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/54#issuecomment-7063435066",
+   "evidence": [
+    "DijkstraClosureSuite"
+   ],
+   "note": "each transaction annotated by Dijkstra's mkStAnnTx (DijkstraLedgers.mkStAnnTx) with an empty cache; ValidateNone as the policy that skips the static checks (every labelled step carries lblStatic) with a judgment that records nothing and never fails, the events discarded; the node computes some predicates the judgment then drops, so a defect raised while computing one is raised where the reference, lazy, meets none (a Gap); the state the closure is applied to and the cumulative bytes are the caller's, as stowing the tables and the consensus state's counter are the node's",
+   "digest": "1ead9678049bf099"
+  },
   "def ledger.era.dijkstra.DijkstraBlockBody.ofDecoded": {
    "upstream": [
     {
@@ -42524,7 +42670,8 @@
    "class": "Mirror",
    "structure": "same",
    "evidence": [
-    "DijkstraBbodyImpSuite"
+    "DijkstraBbodyImpSuite",
+    "DijkstraClosureSuite"
    ],
    "note": "minBound of the derived Bounded instance",
    "digest": "779d7edb6f9f68d1"
@@ -43524,6 +43671,14 @@
     "object ledger.era.rules.ShelleyBbodyEvent",
     "object ledger.era.rules.ShelleyBbodyPredFailure",
     "object ledger.era.rules.ShelleyBbodyState"
+   ]
+  },
+  {
+   "reason": "the companions of the closure's application and of its defect (the defect's CanEqual given)",
+   "definitions": [
+    "object ledger.era.rules.DijkstraClosure",
+    "object ledger.era.rules.LeiosClosureDefect",
+    "given ledger.era.rules.LeiosClosureDefect.given_CanEqual_LeiosClosureDefect_LeiosClosureDefect"
    ]
   }
  ]
