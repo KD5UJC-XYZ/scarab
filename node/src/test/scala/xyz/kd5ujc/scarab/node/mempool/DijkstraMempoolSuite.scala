@@ -1,0 +1,532 @@
+// SPDX-License-Identifier: Apache-2.0
+package xyz.kd5ujc.scarab.node.mempool
+
+import cats.data.NonEmptyChain
+import cats.effect.IO
+import cats.mtl.{Handle, Raise}
+import cats.syntax.all.*
+import io.circe.parser
+import java.nio.file.{Files, Path}
+import scala.jdk.CollectionConverters.*
+import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.consensus.BlockRef
+import xyz.kd5ujc.scarab.consensus.state.{MirrorState, MirrorStep}
+import xyz.kd5ujc.scarab.ledger.{
+  Block,
+  ForgeError,
+  ForgeProtocolProblem,
+  Header,
+  LeiosBlock,
+  Mismatch,
+  NodeError,
+  ProtocolParams,
+  StorageError
+}
+import xyz.kd5ujc.scarab.ledger.era.IsPhase2Valid
+import xyz.kd5ujc.scarab.ledger.era.rules.{
+  ConwayUtxosPredFailure,
+  DijkstraLedgerPredFailure,
+  DijkstraMempoolPredFailure,
+  DijkstraUtxoPredFailure,
+  DijkstraUtxowPredFailure,
+  TagMismatchDescription
+}
+import xyz.kd5ujc.scarab.ledger.rules.{EraLedger, EraNes, Globals, Hfc}
+import xyz.kd5ujc.scarab.ledger.state.{Dijkstra, NewEpochState, ShelleyBasedEra, SlotNo}
+import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.TxMeasure
+import xyz.kd5ujc.scarab.network.LocalTxSubmissionServer
+import xyz.kd5ujc.scarab.node.assertions.Assertions
+import xyz.kd5ujc.scarab.node.forge.{BlockBuilder, DijkstraSnapshots}
+import xyz.kd5ujc.scarab.node.read.ChainRead.given
+import xyz.kd5ujc.scarab.node.read.ConwayView
+import xyz.kd5ujc.scarab.node.{MirrorDijkstra, MirrorRules, NodeSetup}
+import xyz.kd5ujc.scarab.plutus.PlutusBackend
+import xyz.kd5ujc.scarab.protocol.{Era, LeiosFetch, ReferenceBuild}
+
+/** The pool's Dijkstra ledger under the Leios build (#54): the devnet's recorded Dijkstra
+  * transaction (`fixtures/dijkstra-devnet/transaction.json`, the transaction of its block 37)
+  * admitted against the state the reference's chain had before that block, the reference's refusals
+  * of a duplicate and of an altered transaction, the measures' limits and the capacity at their
+  * boundaries, `guardLeiosWireLimit`, the release builds' pool, revalidation at the next tip, the
+  * forger's snapshot of the pool through the node's [[DijkstraSnapshots.ofPool]], and the
+  * transaction as LocalTxSubmission, TxSubmission2 and LocalTxMonitor take and show it.
+  *
+  * The public testnet's state (`fixtures/leios/state/testnet-2168639`) is not used: its UTxO set is
+  * not published, so none of its transactions' inputs are in it.
+  */
+class DijkstraMempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
+  private given Assertions[IO] = Assertions.noop[IO]
+  private given Raise[IO, StorageError] with
+    def functor = cats.Functor[IO]
+    def raise[E <: StorageError, A](error: E): IO[A] = IO(fail(error.message))
+
+  private def hex(s: String): Bytes = Bytes.fromHex(s).fold(e => fail(e.message), identity)
+
+  private val devnet = Path.of("fixtures", "dijkstra-devnet")
+
+  private lazy val setup: NodeSetup =
+    NodeSetup
+      .fromDirectory(ReferenceBuild.LeiosB004fe0c)(devnet.resolve("genesis"))
+      .fold(e => fail(e.message), identity)
+
+  private def geometry = setup.praos.geometry
+
+  private def transition = setup.praos.forks.transition(geometry.k)
+
+  /** The devnet chain up to its block 37, which holds its one Dijkstra transaction. */
+  private lazy val chain: Vector[(Header, Bytes)] =
+    Files
+      .readAllLines(devnet.resolve("blocks.tsv"))
+      .asScala
+      .toVector
+      .drop(1)
+      .filter(_.nonEmpty)
+      .map(_.split('\t'))
+      .take(38)
+      .map { r =>
+        val raw = hex(r(4))
+        Block.decode(raw, geometry.byron.epochSlots).fold(e => fail(e.message), _.header) -> raw
+      }
+
+  /** The states after each block, the start first: `states(i)` is the state before block `i`. */
+  private lazy val states: IO[Vector[MirrorState]] =
+    val rules = new MirrorRules[IO](
+      setup.praos,
+      setup.globals,
+      setup.byronRules,
+      setup.handOver,
+      setup.byronHistory,
+      PlutusBackend.default
+    )
+    chain.foldLeftM(Vector(setup.mirrorStart)) { case (applied, (header, raw)) =>
+      Handle
+        .allow[NodeError](rules(applied.last, header, raw).map(applied :+ _))
+        .rescue(e => IO(fail(s"block ${applied.size - 1}: ${e.message}")))
+    }
+
+  private def tipOf(i: Int): BlockRef =
+    val h = chain(i)._1
+    BlockRef(h.slot, h.hash, h.blockNo)
+
+  /** The transaction the devnet's wallet submitted, in its mempool form. */
+  private lazy val submitted: Bytes =
+    val json = parser.parse(Files.readString(devnet.resolve("transaction.json")))
+    hex(json.flatMap(_.hcursor.get[String]("cborHex")).fold(e => fail(e.getMessage), identity))
+
+  /** Block 37's transaction, as the block holds it. */
+  private lazy val inBlock =
+    LeiosBlock.decode(chain(37)._2).fold(e => fail(e.message), _.transactions) match
+      case Vector(t) => t
+      case other     => fail(s"not one transaction: ${other.size}")
+
+  private def envOf(state: MirrorState, tip: BlockRef): MempoolEnv =
+    MempoolEnv(
+      setup.globals,
+      geometry,
+      PlutusBackend.default.evaluator,
+      PlutusBackend.default.decoder,
+      clock = Some(era => setup.txClock.at(state, era, tip.slot + 1))
+    )
+
+  /** The pool's ledger of the chain whose tip is block `i - 1`, of `states(i)`. */
+  private def ledgerOf(state: MirrorState, tip: BlockRef): DijkstraLedger =
+    PoolLedger.at(state, Some(tip), envOf(state, tip), transition) match
+      case Right(Right(d: DijkstraLedger)) => d
+      case other                           => fail(s"not a Dijkstra ledger: $other")
+
+  private def nesOf(state: MirrorState): NewEpochState[Dijkstra] =
+    MirrorStep
+      .nesOf(state)
+      .flatMap(MirrorDijkstra.inDijkstra)
+      .getOrElse(fail("not in Dijkstra"))
+
+  /** The ledger of `state` 's tip ticked to the slot after it, its parameters in force changed by
+    * `f`, under `build`.
+    */
+  private def withParams(state: MirrorState, tip: BlockRef, build: ReferenceBuild)(
+      f: ProtocolParams => ProtocolParams
+  ) =
+    val nes = nesOf(state)
+    val ls = nes.es.ls
+    given ShelleyBasedEra[Dijkstra] = ShelleyBasedEra.SDijkstra
+    val changed = nes.copy[Dijkstra](es =
+      nes.es.copy[Dijkstra](ls =
+        ls.copy[Dijkstra](utxo = ls.utxo.copy[Dijkstra](gov = EraLedger.mapParams(ls.utxo.gov)(f)))
+      )
+    )
+    PoolLedger.ticked(
+      EraNes.InEra(ShelleyBasedEra.SDijkstra, changed),
+      MirrorStep.afterVotingOf(state),
+      Some(tip.slot),
+      envOf(state, tip).copy(globals = setup.globals.copy(referenceBuild = build)),
+      transition
+    )
+
+  private def pool(ledger: PoolLedger, tip: BlockRef, capacity: Option[Long] = None) =
+    MempoolState.empty(Right(ledger), tip.slot, capacity.map(TxKit.word32), Some(tip.hash))
+
+  private val dijkstra = Submission(Era.Dijkstra.index, _: Bytes)
+
+  private def refusals(r: Either[Rejection, (MempoolState, Entry)]) = r match
+    case Left(Rejection.DijkstraRefused(_, failures)) => failures.toChain.toVector
+    case other                                        => fail(s"not Dijkstra's refusal: $other")
+
+  test("the devnet's Dijkstra transaction is admitted on the state before its block, as recorded") {
+    states.map { s =>
+      val tip = tipOf(36)
+      val env = envOf(s(37), tip)
+      val (held, entry) = pool(ledgerOf(s(37), tip), tip)
+        .add(dijkstra(submitted), env, Source.Local)
+        .fold(r => fail(r.message), identity)
+      assertEquals(entry.era, Era.Dijkstra)
+      assertEquals(entry.id, inBlock.id)
+      // held and relayed in its mempool form, `[body, wits, aux / null]`
+      assertEquals(entry.raw, submitted)
+      // `txMeasure`: its size plus the per-transaction overhead, no units, no reference script
+      assertEquals(Capacity.measure(entry), TxMeasure(submitted.size + 4L, 0, 0, 0L))
+      assertEquals(held.used, Capacity.measure(entry))
+      // LocalTxMonitor lists it in Dijkstra
+      assertEquals(
+        LocalMonitor.snapshot(held).txs.map(_.tx),
+        Vector(LocalMonitor.wrapTx(Era.Dijkstra, submitted))
+      )
+      // a peer's is applied with its flag valid (`DoNotIntervene`), and is admitted the same
+      val (_, remote) = pool(ledgerOf(s(37), tip), tip)
+        .add(dijkstra(submitted), env, Source.Remote)
+        .fold(r => fail(r.message), identity)
+      remote.held match
+        case Held.InDijkstra(h) => assertEquals(h.read.isValid, IsPhase2Valid.Phase2Valid)
+        case other              => fail(s"not a Dijkstra transaction: $other")
+    }
+  }
+
+  test(
+    "a duplicate, and the transaction once its block is applied, are refused: all inputs spent"
+  ) {
+    states.map { s =>
+      val tip = tipOf(36)
+      val env = envOf(s(37), tip)
+      val (held, _) = pool(ledgerOf(s(37), tip), tip)
+        .add(dijkstra(submitted), env, Source.Local)
+        .fold(r => fail(r.message), identity)
+      // MEMPOOL's own check, the only failure (`whenFailureFreeDefault`)
+      assertEquals(
+        refusals(held.add(dijkstra(submitted), env, Source.Local)),
+        Vector(DijkstraMempoolPredFailure.AllInputsAreSpent[Dijkstra]())
+      )
+      val after = tipOf(37)
+      assertEquals(
+        refusals(
+          pool(ledgerOf(s(38), after), after)
+            .add(dijkstra(submitted), envOf(s(38), after), Source.Local)
+        ),
+        Vector(DijkstraMempoolPredFailure.AllInputsAreSpent[Dijkstra]())
+      )
+    }
+  }
+
+  test("an altered transaction is refused by LEDGER: the witness and the balance, in UTXOW") {
+    states.map { s =>
+      val tip = tipOf(36)
+      // the fee one lovelace more: the body's hash and its balance change, the witness does not
+      val fee = hex("021a0002990d")
+      val at = submitted.value.indexOfSlice(fee.value)
+      assert(at > 0, "the fee field")
+      val altered = submitted.take(at) ++ hex("021a0002990e") ++ submitted.drop(at + fee.size)
+      val failures = refusals(
+        pool(ledgerOf(s(37), tip), tip).add(dijkstra(altered), envOf(s(37), tip), Source.Local)
+      )
+      def utxow(f: DijkstraMempoolPredFailure[Dijkstra]) = f match
+        case DijkstraMempoolPredFailure.LedgerFailure(
+              DijkstraLedgerPredFailure.DijkstraUtxowFailure(u)
+            ) =>
+          Some(u)
+        case _ => None
+      val inUtxow = failures.flatMap(utxow)
+      assertEquals(inUtxow.size, failures.size, s"$failures")
+      assert(
+        inUtxow.exists {
+          case DijkstraUtxowPredFailure.InvalidWitnessesUTXOW(_) => true
+          case _                                                 => false
+        },
+        s"$failures"
+      )
+      assert(
+        inUtxow.exists {
+          case DijkstraUtxowPredFailure.UtxoFailure(
+                DijkstraUtxoPredFailure.ValueNotConservedUTxO(_)
+              ) =>
+            true
+          case _ => false
+        },
+        s"$failures"
+      )
+    }
+  }
+
+  test("maxTxSize at its boundary: the size admitted, a byte less Dijkstra's MaxTxSizeUTxO alone") {
+    states.map { s =>
+      val tip = tipOf(36)
+      val env = envOf(s(37), tip)
+      val size = BigInt(submitted.size)
+      def at(limit: BigInt) =
+        withParams(s(37), tip, ReferenceBuild.LeiosB004fe0c)(_.copy(maxTxSize = limit)) match
+          case Right(Right(l)) => pool(l, tip).add(dijkstra(submitted), env, Source.Local)
+          case other           => fail(s"no ledger: $other")
+      assert(at(size).isRight, s"${at(size)}")
+      assertEquals(
+        refusals(at(size - 1)),
+        Vector(
+          InjectMempoolFailureOf.utxo(
+            DijkstraUtxoPredFailure.MaxTxSizeUTxO[Dijkstra](Mismatch(size, size - 1))
+          )
+        )
+      )
+    }
+  }
+
+  test(
+    "the capacity is a ranking block and an endorser block's reservation; a byte short is full"
+  ) {
+    states.map { s =>
+      val tip = tipOf(36)
+      val env = envOf(s(37), tip)
+      val ledger = ledgerOf(s(37), tip)
+      // `computeMempoolCapacity`: two units without an override
+      assertEquals(
+        pool(ledger, tip).capacity,
+        Capacity.ofDijkstra(ledger.params, None).fold(e => fail(e.toString), identity)
+      )
+      val needed = submitted.size + 4L
+      // one unit whose bytes are exactly the transaction's measure, or a byte fewer: the ranking
+      // block's bytes and the endorser block's split between them
+      def unit(bytes: Long) =
+        withParams(s(37), tip, ReferenceBuild.LeiosB004fe0c)(
+          _.copy(
+            maxBlockBodySize = BigInt(bytes / 2 + Capacity.FixedBlockBodyOverhead),
+            maxEndorserBlockTxsSize = BigInt(bytes - bytes / 2)
+          )
+        ) match
+          case Right(Right(l)) => pool(l, tip, Some(1L))
+          case other           => fail(s"no ledger: $other")
+      assertEquals(unit(needed).capacity.bytes, needed)
+      assert(unit(needed).add(dijkstra(submitted), env, Source.Local).isRight)
+      unit(needed - 1).add(dijkstra(submitted), env, Source.Local) match
+        case Left(full: Rejection.Full) => assertEquals(full.needed.bytes, needed)
+        case other                      => fail(s"not full: $other")
+    }
+  }
+
+  test("guardLeiosWireLimit: references the LeiosFetch codec cannot carry stop the node") {
+    states.map { s =>
+      val tip = tipOf(36)
+      def at(size: BigInt) =
+        withParams(s(37), tip, ReferenceBuild.LeiosB004fe0c)(
+          _.copy(maxEndorserBlockReferencesSize = size)
+        )
+      assert(at(BigInt(LeiosFetch.MaxEbBytes)).exists(_.isRight))
+      at(BigInt(LeiosFetch.MaxEbBytes) + 1) match
+        case Left(failure @ PoolLedger.Failure.WireLimit(over)) =>
+          assertEquals(over.parameter, BigInt(LeiosFetch.MaxEbBytes) + 1)
+          assertEquals[NodeError, NodeError](
+            failure.stop(tip.slot + 1),
+            ForgeError.UnsupportedProtocol(
+              ForgeProtocolProblem.EndorserBlockReferencesOverWire(
+                BigInt(LeiosFetch.MaxEbBytes) + 1,
+                LeiosFetch.MaxEbBytes
+              )
+            )
+          )
+        case other => fail(s"not the wire limit: $other")
+    }
+  }
+
+  test("the release builds keep no Dijkstra ledger, and do not read a Dijkstra transaction") {
+    states.map { s =>
+      val tip = tipOf(36)
+      assertEquals(
+        withParams(s(37), tip, ReferenceBuild.Release11_2)(identity),
+        Right(Left(ConwayView.Unavailable.InEarlier(Era.Dijkstra)))
+      )
+      assertEquals(
+        MempoolState.read(dijkstra(submitted), ReferenceBuild.Release11_2),
+        Right(MempoolState.Read.Foreign(Era.Dijkstra.index))
+      )
+    }
+  }
+
+  test("revalidation: kept at the same tip with its ticket, dropped once its block is applied") {
+    states.map { s =>
+      val tip = tipOf(36)
+      val env = envOf(s(37), tip)
+      val (held, entry) = pool(ledgerOf(s(37), tip), tip)
+        .add(dijkstra(submitted), env, Source.Local)
+        .fold(r => fail(r.message), identity)
+      // `reapplyTx`, at the same protocol version: the annotation of its admission, kept
+      val (same, none) = held.sync(Right(ledgerOf(s(37), tip)), tip.slot, env)
+      assertEquals(none, Vector.empty)
+      assertEquals(same.entries.map(_.ticket), Vector(entry.ticket))
+      val after = tipOf(37)
+      val (next, dropped) =
+        held.sync(Right(ledgerOf(s(38), after)), after.slot, envOf(s(38), after))
+      assertEquals(next.entries, Vector.empty)
+      dropped match
+        case Vector((e, Rejection.DijkstraRefused(_, failures))) =>
+          assertEquals(e.id, entry.id)
+          assertEquals(
+            failures,
+            NonEmptyChain.one(DijkstraMempoolPredFailure.AllInputsAreSpent[Dijkstra]())
+          )
+        case other => fail(s"not dropped as spent: $other")
+    }
+  }
+
+  test(
+    "a Conway transaction reaches Dijkstra by redecoding: submitted, and held across the crossing"
+  ) {
+    states.map { s =>
+      val conway = Submission(Era.Conway.index, submitted)
+      // submitted in Conway to the Dijkstra pool: read in Conway, written in Conway and read again
+      // in Dijkstra (`matchTx`, ouroboros-consensus 2416493b `HardFork/Combinator/InjectTxs.hs`)
+      val tip = tipOf(36)
+      val (_, entry) = pool(ledgerOf(s(37), tip), tip)
+        .add(conway, envOf(s(37), tip), Source.Local)
+        .fold(r => fail(r.message), identity)
+      assertEquals((entry.era, entry.id), (Era.Dijkstra, inBlock.id))
+      // held by the Conway pool of the last tip whose next slot is in Conway, then revalidated in
+      // Dijkstra
+      val (last, before, conwayPool) = (1 to 36).reverseIterator
+        .map(i => (i, tipOf(i - 1)))
+        .collectFirst(Function.unlift { (i, t) =>
+          PoolLedger.at(s(i), Some(t), envOf(s(i), t), transition) match
+            case Right(Right(l: MempoolLedger)) => Some((i, t, l))
+            case _                              => None
+        })
+        .getOrElse(fail("no Conway ledger"))
+      val (held, first) = pool(conwayPool, before)
+        .add(conway, envOf(s(last), before), Source.Local)
+        .fold(r => fail(r.message), identity)
+      assertEquals(first.era, Era.Conway)
+      val (moved, dropped) = held.sync(Right(ledgerOf(s(37), tip)), tip.slot, envOf(s(37), tip))
+      assertEquals(dropped, Vector.empty)
+      assertEquals(
+        moved.entries.map(e => (e.era, e.id, e.ticket)),
+        Vector((Era.Dijkstra, inBlock.id, first.ticket))
+      )
+    }
+  }
+
+  test(
+    "the forger's snapshot of the pool: a ranking block with the transaction, or an endorser block"
+  ) {
+    for
+      s <- states
+      tip = tipOf(36)
+      env = envOf(s(37), tip)
+      mempool <- Mempool.create[IO](
+        Right(ledgerOf(s(37), tip)),
+        tip.slot,
+        env,
+        None,
+        MempoolEvents.none[IO]
+      )
+      handler = LocalSubmission.handler(mempool, ReferenceBuild.LeiosB004fe0c)(f =>
+        IO(fail(s"fatal: $f"))
+      )
+      // LocalTxSubmission takes it: `[7, #6.24(tx)]`
+      answer <- handler(LocalMonitor.wrapTx(Era.Dijkstra, submitted))
+      _ = assertEquals(answer, LocalTxSubmissionServer.Response.Accepted)
+      slot = chain(37)._1.slot
+      ticked = Hfc
+        .tick(Globals(setup.globals, geometry), transition)(
+          MirrorStep.nesOf(s(37)).getOrElse(fail("no ledger")),
+          MirrorStep.afterVotingOf(s(37)),
+          SlotNo.fromBigInt(slot).fold(e => fail(e.toString), identity)
+        )
+        .map(MirrorDijkstra.inDijkstra)
+        .fold(e => fail(e.toString), _.getOrElse(fail("not in Dijkstra")))
+      snapshot <- DijkstraSnapshots
+        .ofPool[IO](mempool, None, IO.pure(env))
+        .forSlot(ticked, slot, setup.txClock.at(s(37), Era.Dijkstra, slot))
+    yield
+      assertEquals(snapshot.withheld, Map.empty)
+      assertEquals(snapshot.held.map(_.tx.id), Vector(inBlock.id))
+      // the block form the forger writes is the one block 37 holds
+      assertEquals(snapshot.held.map(_.tx.forBlockInclusion), Vector(inBlock.forBlockInclusion))
+      assertEquals(snapshot.held.map(_.measure), Vector(TxMeasure(submitted.size + 4L, 0, 0, 0L)))
+      val params = ledgerOf(s(37), tip).params
+      val eb = Capacity.endorserBlockCapacity(params).fold(e => fail(e.toString), identity)
+      val ranking = BlockBuilder.partition(snapshot, Capacity.dijkstraBlockUnit(params), eb)
+      assertEquals(ranking.ranking.transactions.map(_.id), Vector(inBlock.id))
+      assertEquals(ranking.endorsing(slot), None)
+      // a ranking block that takes nothing leaves it to the endorser block it announces
+      val endorsing = BlockBuilder.partition(snapshot, TxMeasure.zero, eb)
+      assertEquals(endorsing.ranking.transactions, Vector.empty)
+      assertEquals(endorsing.endorsedTransactions.map(_.id), Vector(inBlock.id))
+      assert(endorsing.endorsing(slot).isDefined)
+  }
+
+  test("TxSubmission2's Leios reader reads a Dijkstra transaction; LocalTxSubmission writes none") {
+    states.map { s =>
+      val leios = RelayedTransactions.of(ReferenceBuild.LeiosB004fe0c)
+      val body = inBlock.body.raw
+      assertEquals(leios.read(submitted, Era.Dijkstra), Right(body))
+      assertEquals(leios.body(submitted, Era.Dijkstra), Right(body))
+      assert(leios.read(submitted.drop(1), Era.Dijkstra).isLeft)
+      // Dijkstra's refusal has no encoding here: no reply (#796)
+      val tip = tipOf(37)
+      val refused = pool(ledgerOf(s(38), tip), tip)
+        .add(dijkstra(submitted), envOf(s(38), tip), Source.Local)
+        .fold(identity, _ => fail("admitted"))
+      LocalSubmission.response(Refused(refused, Some(Era.Dijkstra))) match
+        case LocalTxSubmissionServer.Response.ServiceUnavailable(
+              LocalTxSubmissionServer.Unavailable.Presentation(
+                LocalSubmission.DijkstraNoEncoding.Refused(_)
+              )
+            ) =>
+          ()
+        case other => fail(s"not without a reply: $other")
+    }
+  }
+
+  test("isIncorrectClaimedFlag: UTXOS's tag mismatch alone, whatever the flag it names") {
+    val mismatch = DijkstraMempoolPredFailure.LedgerFailure[Dijkstra](
+      DijkstraLedgerPredFailure.DijkstraUtxowFailure[Dijkstra](
+        DijkstraUtxowPredFailure.UtxoFailure[Dijkstra](
+          DijkstraUtxoPredFailure.UtxosFailure[Dijkstra](
+            ConwayUtxosPredFailure.ValidationTagMismatch[Dijkstra](
+              IsPhase2Valid.Phase2Invalid,
+              TagMismatchDescription.PassedUnexpectedly
+            )
+          )
+        )
+      )
+    )
+    assert(DijkstraState.isIncorrectClaimedFlag(NonEmptyChain.one(mismatch)))
+    assert(
+      !DijkstraState.isIncorrectClaimedFlag(
+        NonEmptyChain(mismatch, DijkstraMempoolPredFailure.AllInputsAreSpent[Dijkstra]())
+      )
+    )
+  }
+
+  test("the phase-two flag set on both forms: the id kept, the block form's last byte the flag") {
+    val read = DijkstraRead.submitted(submitted).fold(e => fail(e.toString), identity)
+    val invalid = read.withIsValid(IsPhase2Valid.Phase2Invalid)
+    assertEquals(invalid.id, read.id)
+    assertEquals(invalid.isValid, IsPhase2Valid.Phase2Invalid)
+    assertEquals(invalid.flat.isValid, false)
+    val (valid, flipped) = (read.flat.forBlockInclusion, invalid.flat.forBlockInclusion)
+    assertEquals(flipped.take(flipped.size - 1), valid.take(valid.size - 1))
+    assertEquals(
+      (valid.drop(valid.size - 1), flipped.drop(flipped.size - 1)),
+      (hex("f5"), hex("f4"))
+    )
+    // the mempool form omits the flag
+    assertEquals(invalid.raw, read.raw)
+  }
+
+/** Dijkstra's injection of UTXO's failures into MEMPOOL's, for the assertions. */
+private object InjectMempoolFailureOf:
+  def utxo(f: DijkstraUtxoPredFailure[Dijkstra]): DijkstraMempoolPredFailure[Dijkstra] =
+    xyz.kd5ujc.scarab.ledger.era.rules.InjectMempoolFailure.dijkstraUtxo.injectFailure(f)
