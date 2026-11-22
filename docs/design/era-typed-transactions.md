@@ -2549,7 +2549,8 @@ Conway's rules on the classes follow as the rest of stage 2.
     not have, as the reference's `MemoBytes` ties them (`Dijkstra/BlockBody/Internal.hs:115-121`); the header's instance
     is that of the build's Praos2 header (`EraBlockHeader (Header c) era` and `LeiosEraBlockHeader (Header c) era`,
     `libs/cardano-protocol/src/Cardano/Protocol/Leios/BlockHeader.hs:363-379`), over the decoded header with the classes'
-    fields read once in their types (`DijkstraBlockHeader`).
+    fields read once in their types (`DijkstraBlockHeader`, a plain class, so no derived `Mirror` builds one whose fields
+    are not its header's).
   - The failure types are Shelley's, Alonzo's, Conway's and Dijkstra's BBODY failures (`Dijkstra/Rules/Bbody.hs:88-97`,
     tags 0 to 6), with Shelley's and Alonzo's events, `EraRuleFailure "BBODY"` and `EraRuleEvent "BBODY"` with Conway's
     and Dijkstra's cases, Conway's two conversions, and LEDGERS's embedding. The reference's 24 injections (`:150-296`)

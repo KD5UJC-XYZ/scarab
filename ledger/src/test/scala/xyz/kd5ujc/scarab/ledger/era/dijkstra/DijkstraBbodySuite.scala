@@ -38,6 +38,7 @@ import xyz.kd5ujc.scarab.protocol.ReferenceBuild
   *     their boundaries, and a block past both refused by BBODY after LEDGERS's failures;
   *   - the node's run (`DijkstraBlockRun.bbody`) on the network of its globals with every check,
   *     and a network outside `Network` a defect;
+  *   - no derived `Mirror` for the block's body or header, which only the block decoder makes;
   *   - the block counted for its issuer, and an overlay slot not counted;
   *   - the injections into BBODY on built values against the reference's compositions, the 24 the
   *     reference lists, and none for the constructor the reference calls impossible or a failure
@@ -577,6 +578,20 @@ class DijkstraBbodySuite extends FunSuite:
         )
       )
     )
+  }
+
+  test("no Dijkstra block value that keeps its bytes has a Mirror to build it from other fields") {
+    // a case class's derived `Mirror.ProductOf` builds one from any fields (`fromProduct`), so the
+    // block's body and header are plain classes: their only way in is the block decoder
+    Vector(
+      compileErrors("summon[scala.deriving.Mirror.ProductOf[DijkstraBlockBody]]"),
+      compileErrors("summon[scala.deriving.Mirror.ProductOf[DijkstraBlockHeader]]")
+    ).foreach(errs => assert(errs.contains("No given instance"), errs))
+    // nor does the header's companion build one from a product of fields
+    val fromProduct = compileErrors("DijkstraBlockHeader.fromProduct(EmptyTuple)")
+    assert(fromProduct.contains("fromProduct"), fromProduct)
+    // the same summon compiles for a case class
+    assertEquals(compileErrors("summon[scala.deriving.Mirror.ProductOf[ValidityInterval]]"), "")
   }
 
   // ---- the blocks made --------------------------------------------------------------------------------
