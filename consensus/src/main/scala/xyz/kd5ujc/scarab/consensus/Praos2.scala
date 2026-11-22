@@ -128,6 +128,14 @@ object Praos2:
         None
       )
 
+  /** `OCINStaleness` (`Storage/LedgerDB/Forker.hs`, ouroboros-consensus 2416493b): whether a
+    * relayed announcement's counter is at least the one the immutable tip recorded for its issuer,
+    * so that it is processed and relayed, or below it or unrecorded, so that it is accepted from
+    * the peer and neither.
+    */
+  enum OcinStaleness derives CanEqual:
+    case Fresh, Stale
+
   final case class Tip(hash: Bytes, blockNo: BlockNo, slot: SlotNo)
   final case class ChainState(tip: Option[Tip], protocol: State)
   final case class Ticked private[consensus] (chain: ChainState, ledger: LedgerView)
@@ -193,7 +201,77 @@ object Praos2:
         sequence,
         header
       )
-      registered <- ticked.ledger.pools
+      _ <- election(config, ticked.ledger, p, pool, header)
+      next <- reupdate(config, header, ticked)
+    yield ChainState(Some(Tip(header.hash, blockNo, slot)), next)
+
+  /** `validateAnnouncementChainDepState` of the Leios build (`Shelley/Ledger/Leios.hs:286-321`,
+    * ouroboros-consensus 2416493b): the relaxed, out-of-context protocol checks of a header relayed
+    * as an announcement, against the immutable tip's state ticked to its slot. Only the Leios
+    * checks that need no predecessor run (`leiosContextFreeHeaderChecks`, `PolyPraos.hs:692-711`:
+    * the announcement's size), then the election proof (`doValidateVRFSignature`, `:810-839`), then
+    * the signatures and the counter (`doValidateKESSignatureWorker DoNotUpperBoundOCERT`,
+    * `:879-920`): a counter above the recorded one is honest lag, so it has no upper bound, and a
+    * counter below it, or none recorded, is [[OcinStaleness.Stale]] where full validation refuses.
+    * No state is produced: the announcement is not applied.
+    */
+  def validateAnnouncement(
+      config: Config,
+      header: LeiosHeader,
+      ticked: Ticked
+  ): Either[Failure, OcinStaleness] =
+    val p = ticked.chain.protocol.praos
+    for
+      _ <- announcementSize(ticked.ledger, header)
+      issuer <- Praos.issuerKey(header.issuerVkey).leftMap(Praos2Defect.Vocabulary(_))
+      pool <- KeyHash.fromBytes[StakePool](issuer.bytes).leftMap(Praos2Defect.Vocabulary(_))
+      _ <- election(config, ticked.ledger, p, pool, header)
+      sequence <- Praos.counterOf(header.opCert.sequence).leftMap(Praos2Defect.Vocabulary(_))
+      _ <- signatures(config.praos, header)
+    yield recorded(ticked.ledger.pools.contains(pool), p, issuer) match
+      case Some(previous) if previous.toBigInt <= sequence.toBigInt => OcinStaleness.Fresh
+      case Some(_) | None                                           => OcinStaleness.Stale
+
+  /** `additionalEnvelopeChecks` of a Shelley-based block (`Shelley/Ledger/Ledger.hs`, ouroboros-
+    * consensus 2416493b), the envelope checks a relayed announcement's header meets out of context
+    * (`validateAnnouncementHeader`, `LeiosDemoLogic/Announcements/Validate.hs:218-224`): the node's
+    * major version, the header's size and the body's size in `view`.
+    */
+  def additionalEnvelope(
+      config: Config,
+      header: LeiosHeader,
+      view: LedgerView
+  ): Either[EnvelopeError, Unit] =
+    for
+      _ <- Either.cond(
+        view.protocolVersion.major.toBigInt <= config.maxMajor.toBigInt,
+        (),
+        EnvelopeError.ObsoleteNode(view.protocolVersion.major.toBigInt, config.maxMajor.toBigInt)
+      )
+      _ <- Either.cond(
+        header.raw.size <= view.maxHeaderSize.toInt,
+        (),
+        EnvelopeError.HeaderSizeTooLarge(header.raw.size, view.maxHeaderSize.toInt)
+      )
+      _ <- Either.cond(
+        header.bodySize <= view.maxBodySize.toLong,
+        (),
+        EnvelopeError.BlockSizeTooLarge(header.bodySize, view.maxBodySize.toLong)
+      )
+    yield ()
+
+  /** `doValidateVRFSignature` (`PolyPraos.hs:810-839`, ouroboros-consensus 2416493b): the issuer's
+    * stake and VRF key, then the proof and the leader threshold.
+    */
+  private def election(
+      config: Config,
+      ledger: LedgerView,
+      p: PraosState,
+      pool: KeyHash[StakePool],
+      header: LeiosHeader
+  ): Either[Failure, Unit] =
+    for
+      registered <- ledger.pools
         .get(pool)
         .toRight[Failure](Praos2Error.Praos(PraosError.IssuerWithoutStake(pool.bytes)))
       vrfHash = Blake2b.hash256.hash(header.vrfVkey)
@@ -214,8 +292,7 @@ object Praos2:
           case e: PraosError     => Praos2Error.Praos(e)
           case d: ProviderDefect => d
         }
-      next <- reupdate(config, header, ticked)
-    yield ChainState(Some(Tip(header.hash, blockNo, slot)), next)
+    yield ()
 
   /** Reapply an already validated header, as `reupdateChainDepStatePolyPraos` does. The caller owns
     * that precondition; this path consumes the certified output without verifying its proof.
@@ -274,28 +351,7 @@ object Praos2:
         Praos2Error.UnexpectedPrevHash(previous, header.prevHash)
       )
       _ <- config.praos.checkpoints.validate(header.praosView).leftMap(Praos2Error.Envelope(_))
-      view = ticked.ledger
-      _ <- Either.cond(
-        view.protocolVersion.major.toBigInt <= config.maxMajor.toBigInt,
-        (),
-        Praos2Error.Envelope(
-          EnvelopeError.ObsoleteNode(view.protocolVersion.major.toBigInt, config.maxMajor.toBigInt)
-        )
-      )
-      _ <- Either.cond(
-        header.raw.size <= view.maxHeaderSize.toInt,
-        (),
-        Praos2Error.Envelope(
-          EnvelopeError.HeaderSizeTooLarge(header.raw.size, view.maxHeaderSize.toInt)
-        )
-      )
-      _ <- Either.cond(
-        header.bodySize <= view.maxBodySize.toLong,
-        (),
-        Praos2Error.Envelope(
-          EnvelopeError.BlockSizeTooLarge(header.bodySize, view.maxBodySize.toLong)
-        )
-      )
+      _ <- additionalEnvelope(config, header, ticked.ledger).leftMap(Praos2Error.Envelope(_))
     yield ()
 
   /** `minCertificationSlot`, Leios/Types.hs:299-317 (ouroboros-consensus 2416493b). The caller
@@ -339,13 +395,7 @@ object Praos2:
       state: State
   ): Either[Praos2Error | Praos2Defect, Unit] =
     for
-      _ <- header.leios.announcement.traverse_ { a =>
-        Either.cond[Praos2Error | Praos2Defect, Unit](
-          a.size <= ledger.maxEbReferencesSize.toLong,
-          (),
-          Praos2Error.LeiosEbTooBig(a.size, ledger.maxEbReferencesSize)
-        )
-      }
+      _ <- announcementSize(ledger, header)
       _ <-
         if !header.leios.blockBodyContainsLeiosCert then Right(())
         else
@@ -363,6 +413,21 @@ object Praos2:
             case _ => Left(Praos2Error.LeiosCertWithoutAnnouncement)
     yield ()
 
+  /** `leiosContextFreeHeaderChecks` (`PolyPraos.hs:692-711`, ouroboros-consensus 2416493b): the
+    * announced endorser block's size within the view's bound.
+    */
+  private def announcementSize(
+      ledger: LedgerView,
+      header: LeiosHeader
+  ): Either[Praos2Error, Unit] =
+    header.leios.announcement.traverse_ { a =>
+      Either.cond(
+        a.size <= ledger.maxEbReferencesSize.toLong,
+        (),
+        Praos2Error.LeiosEbTooBig(a.size, ledger.maxEbReferencesSize)
+      )
+    }
+
   /** The certificate checks precede the VRF checks (PolyPraos.hs:615-624,900-937,
     * ouroboros-consensus 2416493b). The reference adds KES periods and increments certificate
     * counters in unsigned machine words.
@@ -375,6 +440,38 @@ object Praos2:
       sequence: Word64,
       header: LeiosHeader
   ): Either[Failure, Unit] =
+    for
+      _ <- signatures(config, header)
+      previous <- recorded(knownPool, state, issuer)
+        .toRight(Praos2Error.Certificate(OCertError.NoCounter(issuer.bytes)))
+      _ <- Either.cond(
+        previous.toBigInt <= sequence.toBigInt,
+        (),
+        Praos2Error.CounterTooSmall(previous, sequence)
+      )
+      upper = Word64.fromUnsigned(previous.bits + 1)
+      _ <- Either.cond(
+        sequence.toBigInt <= upper.toBigInt,
+        (),
+        Praos2Error.CounterOverIncremented(previous, sequence)
+      )
+    yield ()
+
+  /** `currentIssueNo` of `doValidateKESSignatureWorker` (`PolyPraos.hs:921-928`,
+    * ouroboros-consensus 2416493b): the counter recorded for the issuer, or 0 for a pool of the
+    * stake distribution without one.
+    */
+  private def recorded(
+      knownPool: Boolean,
+      state: PraosState,
+      issuer: KeyHash[BlockIssuer]
+  ): Option[Word64] =
+    state.ocertCounters.get(issuer).orElse(Option.when(knownPool)(Word64.zero))
+
+  /** The KES period's bounds and the two signatures, the counter's checks aside
+    * (`doValidateKESSignatureWorker`, `PolyPraos.hs:893-905`, ouroboros-consensus 2416493b).
+    */
+  private def signatures(config: PraosConfig, header: LeiosHeader): Either[Failure, Unit] =
     val start = header.opCert.kesPeriod
     for
       _ <- Either.cond(
@@ -393,19 +490,4 @@ object Praos2:
       _ <- config.verdicts
         .opCert(header.praosView, config.slotsPerKesPeriod, config.maxKesEvolutions)
         .refusedAs(Praos2Error.Certificate(_))
-      previous <- state.ocertCounters
-        .get(issuer)
-        .orElse(Option.when(knownPool)(Word64.zero))
-        .toRight(Praos2Error.Certificate(OCertError.NoCounter(issuer.bytes)))
-      _ <- Either.cond(
-        previous.toBigInt <= sequence.toBigInt,
-        (),
-        Praos2Error.CounterTooSmall(previous, sequence)
-      )
-      upper = Word64.fromUnsigned(previous.bits + 1)
-      _ <- Either.cond(
-        sequence.toBigInt <= upper.toBigInt,
-        (),
-        Praos2Error.CounterOverIncremented(previous, sequence)
-      )
     yield ()

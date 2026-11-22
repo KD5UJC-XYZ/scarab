@@ -500,3 +500,107 @@ class Praos2ReferenceSuite extends munit.FunSuite:
     assertEquals(Praos2.validate(certConfig, h, ticked), Left(cert))
     assertEquals(Praos2.validate(vrfConfig, h, ticked), Left(ProviderDefect.VrfVerifier(vrf)))
   }
+
+  // `validateAnnouncementChainDepState` (ouroboros-consensus 2416493b `Shelley/Ledger/Leios.hs`
+  // 286-321): the relaxed checks of a header relayed as an announcement, over the recorded headers
+  // and the native cases' headers and options
+  private lazy val cases: Map[String, Json] = Files
+    .readAllLines(Path.of("fixtures/reference/leios-praos2/cases.jsonl"))
+    .asScala
+    .toVector
+    .map(line => parser.parse(line).fold(e => fail(e.message), identity))
+    .map(row => field[String](row, "name") -> row)
+    .toMap
+
+  /** The announcement check of a native case's header, its state and view as the case sets them. */
+  private def announcement(name: String): Either[Praos2.Failure, Praos2.OcinStaleness] =
+    val row = cases.getOrElse(name, fail(s"no case $name"))
+    val header = readHeader(field[String](row, "header"))
+    val options = field[Json](row, "options")
+    val cfg = testConfig(options)
+    val ledger = testView(options)
+    val prefix = headers.take(field[Int](row, "context")).foldLeft(initial) { (state, h) =>
+      val ticked =
+        Praos2.tick(config, view, slot(h.slot), state).fold(e => fail(e.toString), identity)
+      Praos2.validate(config, h, ticked).fold(e => fail(e.toString), identity)
+    }
+    val ticked = Praos2
+      .tick(cfg, ledger, slot(header.slot), testState(prefix, header, options))
+      .fold(e => fail(e.toString), identity)
+    Praos2.validateAnnouncement(cfg, header, ticked)
+
+  test("an announcement of each recorded header is fresh against the state before it") {
+    headers.take(200).foldLeft(initial) { (state, header) =>
+      val ticked =
+        Praos2.tick(config, view, slot(header.slot), state).fold(e => fail(e.toString), identity)
+      assertEquals(
+        Praos2.validateAnnouncement(config, header, ticked),
+        Right(Praos2.OcinStaleness.Fresh)
+      )
+      Praos2.validate(config, header, ticked).fold(e => fail(e.toString), identity)
+    }
+  }
+
+  test("an announcement checks out of context: no chain extension, no certification gap") {
+    // a header five past the state it is checked against: full validation refuses its block number
+    val older = headers.take(5).foldLeft(initial) { (state, h) =>
+      val ticked =
+        Praos2.tick(config, view, slot(h.slot), state).fold(e => fail(e.toString), identity)
+      Praos2.validate(config, h, ticked).fold(e => fail(e.toString), identity)
+    }
+    val later = headers(10)
+    val ticked =
+      Praos2.tick(config, view, slot(later.slot), older).fold(e => fail(e.toString), identity)
+    assert(Praos2.validate(config, later, ticked).isLeft)
+    assertEquals(
+      Praos2.validateAnnouncement(config, later, ticked),
+      Right(Praos2.OcinStaleness.Fresh)
+    )
+    assertNotEquals(
+      announcement("certificate-one-slot-too-young").left.toOption,
+      Some(Praos2Error.LeiosCertTooYoung(slot(199), slot(212), slot(213)))
+    )
+    // the announcement's size is checked
+    assertEquals(
+      announcement("eb-size-before-missing-announcement"),
+      Left(Praos2Error.LeiosEbTooBig(40001L, word32(40000)))
+    )
+  }
+
+  test("a counter below the recorded one is stale, and one above it has no bound") {
+    // full validation: CounterTooSmallOCERT, and CounterOverIncrementedOCERT
+    assertEquals(announcement("counter-too-small"), Right(Praos2.OcinStaleness.Stale))
+    assertEquals(announcement("signed-counter-over-increment"), Right(Praos2.OcinStaleness.Fresh))
+    assertEquals(
+      announcement("signed-counter-first-two-refused"),
+      Right(Praos2.OcinStaleness.Fresh)
+    )
+  }
+
+  test("an announcement's election proof precedes its signatures, which precede its counter") {
+    // the VRF first: an unknown pool is VRFKeyUnknown, where full validation finds no counter
+    assertEquals(
+      announcement("no-counter-for-unknown-pool"),
+      Left(
+        Praos2Error.Praos(PraosError.IssuerWithoutStake(issuerOf("no-counter-for-unknown-pool")))
+      )
+    )
+    // a bad signature refuses a header whose counter would only make it stale
+    assertEquals(
+      announcement("invalid-cold-signature-before-counter"),
+      Left(Praos2Error.Certificate(OCertError.OpCertSignatureRejected))
+    )
+    assertEquals(
+      announcement("invalid-kes-signature"),
+      Left(Praos2Error.Certificate(OCertError.KesSignatureRejected))
+    )
+    assertEquals(
+      announcement("vrf-proof-wrong-epoch-nonce").left.toOption.collect {
+        case Praos2Error.Praos(_: PraosError.VrfRejected) => ()
+      },
+      Some(())
+    )
+  }
+
+  private def issuerOf(name: String): Bytes =
+    issuer(readHeader(field[String](cases(name), "header"))).bytes

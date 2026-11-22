@@ -188,6 +188,45 @@ final class NodeHeaderRules[S](
               Left(Praos2Headers.Unforecast.Unread(HeaderStructureProblem.MissingByronLedger))
     }
 
+  /** The out-of-context check of a header relayed as an announcement, against an anchor at its tip,
+    * the immutable tip, as the Leios build's LeiosNotify client checks it
+    * (`validateAnnouncementHeader`, `LeiosDemoLogic/Announcements/Validate.hs:205-247` at
+    * ouroboros-consensus 2416493b; [[Praos2Headers.announcement]]): none in a build without Praos2
+    * ([[Praos2Headers.of]]), which runs no LeiosNotify.
+    */
+  def announcementRules: Option[(S, Option[BlockRef], LeiosHeader) => AnnouncementCheck] =
+    Praos2Headers.of(globals.referenceBuild).map { rules => (anchor, tip, header) =>
+      anchor.ledger(tip) match
+        case Left(error) =>
+          AnnouncementCheck.Refused(
+            HeaderError.Structure(HeaderStructureProblem.LedgerRead(error))
+          )
+        case Right(Some(InEra.Of(_, ledger))) =>
+          shelleyRules.announcement(
+            rules,
+            anchor,
+            ledger,
+            anchor.afterVoting,
+            tip,
+            anchor.protocol,
+            header
+          )
+        case Right(None) =>
+          (byron, anchor.consensus.byron.ledger) match
+            case (Some(cfg), Some(ledger)) =>
+              rules.announcementFromByron(config, cfg, ledger, header)
+            case _ =>
+              AnnouncementCheck.Refused(
+                HeaderError.Structure(HeaderStructureProblem.MissingByronLedger)
+              )
+    }
+
+  /** The onset of `slot` on the clock as `anchor` 's era history at `tip` places it
+    * (`judgeHeaderArrival`'s query, `InFutureCheck.hs`), as [[forecastTime]] places a header's.
+    */
+  def slotOnset(anchor: S, tip: Option[BlockRef], slot: BigInt): HeaderRules.TimeForecast =
+    history.forecast(anchor, tip, slot, config, byron)
+
   private def wrap(
       outcome: Prepared[ShelleyValidated],
       header: Header.Shelley,
