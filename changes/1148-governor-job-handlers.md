@@ -19,6 +19,7 @@
   connecting.
 - A peer-share request that is cancelled is reported as cancelled when the phase collects the
   results, not at the batch's deadline as timed out; a batch's second phase starts once its first
-  phase's answers are applied, so a late reply has the whole of its time; and a first phase with no
-  answers logs an empty `peerShareResults` line, as the reference traces it.
+  phase's answers are applied, so a late reply has the whole of its time.
 - An activation cleanup whose close times out reports the close's timeout, as the close job does.
+- A peer left cooling by an activation's cleanup or a demotion's timeout is moved only by its
+  connection's own report; when no report comes it stays cooling (#1307).
