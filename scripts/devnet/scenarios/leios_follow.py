@@ -16,13 +16,14 @@ included); then the follower is stopped, and the reference nodes run on until ev
 follower's last block. Its store is read afterwards, once its process has released the store's lock, by the tool
 `LeiosStoreCheckMain` (`tools`), for every endorser block the reference chain announces up to the follower's tip.
 
-The judge (`judge_follower`) requires: the follower's selected chain, rebuilt from its `extended` and `rolledBack`
-lines (`selected_chain`), is the reference chain's prefix, a tip within `k` blocks of the end that is off it
-being reported as a fork at the stop rather than failing; every certifying block of the reference chain up to the
-follower's tip is on the follower's chain, and the closure of the endorser block it certifies is complete in the
-follower's store; no line of an error or critical severity (the severities of `EventKind.scala`, `severities`) and
-no unparsed output in the follower's log; and the same-point ledger state equal on every byte, or the comparison
-incomplete, which is never a pass (CNF-2).
+The judge (`judge_follower`) passes only when the follower's selected chain, rebuilt from its `extended` and
+`rolledBack` lines (`follower_chain`), is the reference chain's prefix, compared position by position from Origin;
+when the closure of the endorser block each certifying block of that matched prefix certifies is complete in the
+follower's store; when its log has no line written at an error severity or above (`effective_severity`: a library
+line's own `level`, the node's overrides by kind and field, else the kind's severity in `EventKind.scala`) and no
+unparsed output; and when the same-point ledger state is equal on every byte. A fork within `k` blocks of the tip
+(kept as `forkAtStop`), a gap in the follower's chain, a roll-back to a point it did not hold, an uncompared ledger
+state or no certifying block is incomplete, never a pass (CNF-2); a deeper fork fails.
 """
 import json
 import re
@@ -38,7 +39,22 @@ BUILD = "leios-b004fe0c"
 EVENT_KINDS = REPO / "node/src/main/scala/xyz/kd5ujc/scarab/node/log/EventKind.scala"
 STORE_CHECK = "xyz.kd5ujc.scarab.node.tools.LeiosStoreCheckMain"
 TOOLS_CLASSES = REPO / "tools/target/scala-3.9.0/classes"
-FAILING = ("Error", "Critical")
+FAILING = ("Error", "Critical", "Alert", "Emergency")
+# The lines the node writes at another severity than their kind's (`Line.at`), by their kind and the field that tells
+# them apart: `PeerSelectionLines`, `Traced` and `NodeEvent` of node/src/main/.../log. A library line (`slf4j`) carries
+# its own as `level`.
+OVERRIDES = {
+    ("ledgerPeers", "action", "snapshotVerificationFailed"): "Error",
+    ("ledgerPeers", "action", "snapshotIgnored"): "Warning",
+    ("ledgerPeers", "action", "poolSkipped"): "Warning",
+    ("ledgerPeers", "action", "unreadable"): "Warning",
+    ("connection", "what", "refused"): "Warning",
+    ("connection", "what", "acceptHardLimit"): "Warning",
+    ("inbound", "state", "refused"): "Warning",
+    ("peerSelectionRoots", "action", "failure"): "Warning",
+    ("peerSelectionPromote", "action", "failed"): "Warning",
+    ("peerSelectionDemote", "action", "failed"): "Warning",
+}
 # the hard-fork era indexes of a block query: Shelley to Conway, and Dijkstra (7) under the Leios build
 LEIOS_ERAS = range(1, 8)
 STOP_SECONDS = 30
@@ -55,10 +71,29 @@ def severities(source):
     return table
 
 
-def selected_chain(events):
-    """The chain the follower selected at the end of its log: its `extended` blocks ({slot, blockNo, hash}) in order,
-    each `rolledBack` cutting the chain back to its `to` point (Origin: `to` without a hash)."""
-    chain = []
+def effective_severity(event, kinds):
+    """The severity a log line was written at: a library line's own `level`, else the override of its kind and
+    distinguishing field (`OVERRIDES`), else its kind's (`kinds`, `severities`); None for a kind not in the table."""
+    name = event.get("event")
+    if name == "slf4j" and isinstance(event.get("level"), str):
+        return event["level"]
+    for (kind, field, value), severity in OVERRIDES.items():
+        if name == kind and event.get(field) == value:
+            return severity
+    return kinds.get(name)
+
+
+def failing(events, kinds):
+    """The lines of `events` written at an error severity or above (`effective_severity`)."""
+    return [e for e in events if effective_severity(e, kinds) in FAILING]
+
+
+def follower_chain(events):
+    """(chain, unrecognised): the chain the follower selected at the end of its log, its `extended` blocks
+    ({slot, blockNo, hash}) in order, each `rolledBack` cutting it back to its `to` point (Origin: `to` without a
+    hash); and every roll-back whose point is not on the chain rebuilt so far, which leaves the chain unknown from
+    there (it is then cut to nothing)."""
+    chain, unrecognised = [], []
     for e in events:
         if e.get("event") == "extended":
             chain.append(e["block"])
@@ -68,8 +103,15 @@ def selected_chain(events):
                 chain = []
                 continue
             keep = next((i for i in range(len(chain) - 1, -1, -1) if chain[i]["hash"] == to["hash"]), None)
+            if keep is None:
+                unrecognised.append(to)
             chain = chain[:keep + 1] if keep is not None else []
-    return chain
+    return chain, unrecognised
+
+
+def selected_chain(events):
+    """The chain of `follower_chain`, alone."""
+    return follower_chain(events)[0]
 
 
 def follower_command(name, node, scala_cpus):
@@ -101,34 +143,53 @@ def store_lines(text):
     return found, errors
 
 
-def judge_follower(reference, scala, store, events, other, kinds, security_param, whole=None, exit_code=None):
+def matched_prefix(reference, scala):
+    """How many blocks of the follower's chain are the reference chain's, position by position from Origin (block,
+    slot and hash), and the first block that is not, or None."""
+    for i, b in enumerate(scala):
+        r = reference[i] if i < len(reference) else None
+        if r is None or (r["blockNo"], r["slot"], r["hash"]) != (b["blockNo"], b["slot"], b["hash"]):
+            return i, b
+    return len(scala), None
+
+
+def judge_follower(reference, scala, store, events, other, kinds, security_param, whole=None, exit_code=None,
+                   unrecognised=()):
     """The verdict on the follower. `reference` is the chain every reference node holds in its ImmutableDB (described
-    blocks, `leios_traffic.describe_leios_block`), `scala` the follower's selected chain (`selected_chain`), `store`
-    what its endorser-block store holds of each EB hash (`store_lines`), `events` and `other` its log (`read_log`),
-    `kinds` the severities of `severities`, `whole` the result of `compare.whole_state`.
+    blocks from Origin, `leios_traffic.describe_leios_block`), `scala` the follower's selected chain and
+    `unrecognised` the roll-backs to a point it did not hold (`follower_chain`), `store` what its endorser-block store
+    holds of each EB hash (`store_lines`), `events` and `other` its log (`read_log`), `kinds` the severities of
+    `severities`, `whole` the result of `compare.whole_state`.
+
+    The follower's chain is compared with the reference's position by position from Origin (`matched_prefix`), and
+    only the matched part counts: a certifying block counts once the follower's chain holds it at its position. A
+    first unmatched block that is a reference block at another position is a gap in the follower's chain, one past the
+    reference's immutable chain is not judged yet, and one off the reference's chain is a fork: within `k` blocks of
+    the follower's tip it is kept as `forkAtStop` and the evidence is incomplete, deeper it fails. A roll-back to a
+    point the follower did not hold leaves its chain unknown: incomplete.
 
     Returns {"verdict": "passed" | "incomplete" | "failed", "problems", "incomplete", ...counts}."""
     problems, incomplete = [], []
-    by_no = {b["blockNo"]: b for b in reference}
-    on_chain, fork = [], None
-    for b in scala:
-        ref_block = by_no.get(b["blockNo"])
-        if ref_block is not None and ref_block["hash"] == b["hash"] and ref_block["slot"] == b["slot"]:
-            on_chain.append(b)
-            continue
-        fork = b
-        break
+    matched, fork = matched_prefix(reference, scala)
+    positions = {b["hash"]: i for i, b in enumerate(reference)}
     if not scala:
         problems.append("the follower applied no block")
     elif fork is not None:
-        depth = scala[-1]["blockNo"] - fork["blockNo"]
-        where = ("is not the reference's" if fork["blockNo"] in by_no
-                 else "is past the reference nodes' immutable chain")
-        if depth >= security_param:
-            problems.append(f"the follower's block {fork['blockNo']} (slot {fork['slot']}, {fork['hash'][:16]}) "
-                            f"{where}, {depth} blocks below its tip")
-    tip = on_chain[-1]["blockNo"] if on_chain else -1
-    upto = [b for b in reference if b["blockNo"] <= tip]
+        depth = len(scala) - 1 - matched
+        where = f"the follower's block {fork['blockNo']} (slot {fork['slot']}, {fork['hash'][:16]}) at position {matched}"
+        if fork["hash"] in positions:
+            incomplete.append(f"{where} is the reference's block at position {positions[fork['hash']]}: a gap in the "
+                              f"follower's chain")
+        elif matched >= len(reference):
+            incomplete.append(f"{where} is past the reference nodes' immutable chain")
+        elif depth >= security_param:
+            problems.append(f"{where} is not the reference's, {depth} blocks below its tip")
+        else:
+            incomplete.append(f"{where} is not the reference's, {depth} blocks below its tip: a fork at the stop")
+    for to in unrecognised:
+        incomplete.append(f"the follower rolled back to {to}, a point its log does not show it holding")
+    upto = reference[:matched]
+    by_no = {b["blockNo"]: b for b in upto}
     announced = [b for b in upto if b["announces"]]
     certifying = []
     for b in upto:
@@ -146,7 +207,7 @@ def judge_follower(reference, scala, store, events, other, kinds, security_param
                             f"{eb[:16]} is not complete in its store (body {'held' if held.get('body') else 'absent'})")
     if not certifying:
         incomplete.append("no certifying block is on the follower's chain")
-    errors = [e for e in events if kinds.get(e.get("event")) in FAILING]
+    errors = failing(events, kinds)
     for e in errors[:5]:
         problems.append(f"the follower logged {e.get('event')}: {json.dumps(e)[:600]}")
     if len(errors) > 5:
@@ -157,7 +218,7 @@ def judge_follower(reference, scala, store, events, other, kinds, security_param
         problems.append(f"the follower ended with {exit_code}")
     warnings = {}
     for e in events:
-        if kinds.get(e.get("event")) == "Warning":
+        if effective_severity(e, kinds) == "Warning":
             warnings[e["event"]] = warnings.get(e["event"], 0) + 1
     ledger = whole_verdict(whole)
     if ledger["status"] == "differs":
@@ -166,7 +227,7 @@ def judge_follower(reference, scala, store, events, other, kinds, security_param
         incomplete.append(f"the same-point ledger state was not compared: {ledger['detail']}")
     verdict = "failed" if problems else "incomplete" if incomplete else "passed"
     return {"verdict": verdict, "problems": problems, "incomplete": incomplete,
-            "blocksFollowed": len(scala), "blocksOnReferenceChain": len(on_chain),
+            "blocksFollowed": len(scala), "blocksOnReferenceChain": matched,
             "dijkstraBlocks": sum(1 for b in upto if b["era"] == "dijkstra"),
             "forkAtStop": None if fork is None else {"blockNo": fork["blockNo"], "slot": fork["slot"],
                                                      "hash": fork["hash"]},
@@ -205,7 +266,7 @@ def start(args):
 def problem(root, process, kinds):
     """The first reason the follower already fails, or None: it ended, logged an error line or unparsed output."""
     events, other = read_log(SINGLE_FOLLOWER.log(root))
-    errors = [e for e in events if kinds.get(e.get("event")) in FAILING]
+    errors = failing(events, kinds)
     if errors:
         return f"the follower logged {errors[0].get('event')}: {json.dumps(errors[0])[:600]}"
     if other:
@@ -260,29 +321,46 @@ def remove(name):
     subprocess.run(["docker", "rm", "-f", SINGLE_FOLLOWER.container(name)], capture_output=True)
 
 
-def store_check(args, root, hashes):
+STORE_CHECK_SECONDS = 600
+
+
+def store_check(args, root, hashes, run=subprocess.run):
     """What the stopped follower's endorser-block store holds of each of `hashes`, by `LeiosStoreCheckMain` run on
-    the run's frozen classes and the `tools` classes; ({hash: {...}}, problems)."""
+    the run's frozen classes and the `tools` classes; ({hash: {...}}, problems). The helper container's id is
+    written to a file (`docker run --cidfile`), and on every exit, a timeout or an interruption too, that container
+    (by its id, or by its name before docker wrote one) and the copies of the classes are removed. `run` runs the
+    docker commands (`subprocess.run`)."""
     if not hashes:
         return {}, []
-    tools = root / "tools-classes"
     if not any(TOOLS_CLASSES.rglob("LeiosStoreCheckMain*.class")):
         return {}, [f"no compiled {STORE_CHECK}; run tools/compile in the checkout's Docker build"]
-    shutil.rmtree(tools, ignore_errors=True)
-    shutil.copytree(TOOLS_CLASSES, tools)
-    classpath = freeze_classes(root, None, frozen=root / "check-classes") + ":/run/tools"
-    db = SINGLE_FOLLOWER.directory(root, "db")
-    command = scala_container(args, root, classpath, STORE_CHECK, ["--db", "/db", "--hashes", ",".join(hashes)],
-                              mounts=[*database_mounts(db), f"{tools}:/run/tools:ro"], name=f"{args.name}-leios-store",
-                              cpus=1, classes=root / "check-classes")
-    r = subprocess.run(["docker", *command], capture_output=True, text=True, timeout=600)
-    found, errors = store_lines(r.stdout)
-    problems = [f"{STORE_CHECK}: {e[:300]}" for e in errors]
-    if r.returncode != 0:
-        problems.append(f"{STORE_CHECK} ended with {r.returncode}: {r.stderr.strip()[-600:]}")
-    shutil.rmtree(tools, ignore_errors=True)
-    shutil.rmtree(root / "check-classes", ignore_errors=True)
-    return found, problems
+    tools, checks, cidfile = root / "tools-classes", root / "check-classes", root / "leios-store.cid"
+    name = f"{args.name}-leios-store"
+    try:
+        cidfile.unlink(missing_ok=True)
+        shutil.rmtree(tools, ignore_errors=True)
+        shutil.copytree(TOOLS_CLASSES, tools)
+        classpath = freeze_classes(root, None, frozen=checks) + ":/run/tools"
+        db = SINGLE_FOLLOWER.directory(root, "db")
+        command = scala_container(args, root, classpath, STORE_CHECK, ["--db", "/db", "--hashes", ",".join(hashes)],
+                                  mounts=[*database_mounts(db), f"{tools}:/run/tools:ro"], name=name, cpus=1,
+                                  classes=checks)
+        try:
+            r = run(["docker", command[0], "--cidfile", str(cidfile), *command[1:]], capture_output=True, text=True,
+                    timeout=STORE_CHECK_SECONDS)
+        except subprocess.TimeoutExpired:
+            return {}, [f"{STORE_CHECK} did not end within {STORE_CHECK_SECONDS} s"]
+        found, errors = store_lines(r.stdout)
+        problems = [f"{STORE_CHECK}: {e[:300]}" for e in errors]
+        if r.returncode != 0:
+            problems.append(f"{STORE_CHECK} ended with {r.returncode}: {r.stderr.strip()[-600:]}")
+        return found, problems
+    finally:
+        helper = cidfile.read_text().strip() if cidfile.exists() else ""
+        run(["docker", "rm", "-f", helper or name], capture_output=True, text=True)
+        cidfile.unlink(missing_ok=True)
+        shutil.rmtree(tools, ignore_errors=True)
+        shutil.rmtree(checks, ignore_errors=True)
 
 
 def final_log(root):

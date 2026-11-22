@@ -554,12 +554,13 @@ def _drive(args, root, started):
     if following:
         common = common_chain(chains)
         events, other = leios_follow.final_log(root)
-        scala = leios_follow.selected_chain(events)
+        scala, unrecognised = leios_follow.follower_chain(events)
         tip_no = scala[-1]["blockNo"] if scala else -1
         hashes = sorted({b["announces"] for b in common if b["announces"] and b["blockNo"] <= tip_no})
         store, store_problems = leios_follow.store_check(args, root, hashes)
         judged = leios_follow.judge_follower(common, scala, store, events, other, severities, args.security_param,
-                                             whole=follow["ledgerState"], exit_code=follow["exit"])
+                                             whole=follow["ledgerState"], exit_code=follow["exit"],
+                                             unrecognised=unrecognised)
         judged["problems"] = ([follow["failure"]] if follow["failure"] else []) + store_problems + judged["problems"]
         if judged["problems"]:
             judged["verdict"] = "failed"
