@@ -672,7 +672,7 @@ Conway's rules on the classes follow as the rest of stage 2.
     - the context errors are compared by kind and order, their contents being `EraPlutusContextSuite`'s,
       whose corpus does not hold the four Plutus boundary submissions;
     - the tag mismatch's diagnostics are compared with the flat rule's typed failure and request, not with
-      the reference's text and CBOR (the era failures have no encoder yet; the flat rule's are compared,
+      the reference's text and CBOR (the era failures had no encoder at this stage; the flat rule's are compared,
       `ContextRefusalReasonSuite`, and the diagnostics' remaining parity is #796);
     - the events are compared as UTXOS's own; their embedding in UTXO's (`UtxosEvent`) is not exercised;
     - the bound of `txouts` and the clamp of `mkCollateralTxIn` are `TxOutsBoundSuite`'s, and the two
@@ -700,7 +700,8 @@ Conway's rules on the classes follow as the rest of stage 2.
     the store into the era: every output any predicate reads. A script with no verdict
     (`ScriptVerdictUnavailable`) and a damaged store or an output outside the state's vocabulary
     (`UtxoStateDefect`) stay their own typed raises, as UTXOS's and the state change's are.
-  - The era failures have no encoder yet. `ConwayUtxoPredFailure.toStored` gives a failure's flat form, glue
+  - The era failures had no encoder at this stage (Conway's era failure encoder, below, came later).
+    `ConwayUtxoPredFailure.toStored` gives a failure's flat form, glue
     that the comparisons with the flat rules read. It is one-way and not lossless. A failed script keeps the
     evaluator's request but not the runnable's script hash, which the typed `PlutusWithContext`'s equality also
     holds. UTXOS's `CollectErrors` are returned as they are, since the flat failure holds their purposes and
@@ -1655,6 +1656,40 @@ Conway's rules on the classes follow as the rest of stage 2.
     within an era history only, as every suite's slot is in its history, not where the reference's
     `epochFromSlot` fails.
   - Not yet (#85): the node's mempool, block body and phase-2 counters run the flat LEDGER until the Conway switch.
+- **Conway's era failure encoder** (`node/.../ntc/ConwayFailureCbor.scala`; `Conway.hs:50-53` and the `EncCBOR`
+  instances of `Conway/Rules/{Ledger,Utxow,Utxo,Utxos,Certs,Cert,Deleg,GovCert,Gov}.hs`, Shelley's `Rules/Pool.hs`,
+  `Alonzo/Plutus/Context.hs`, `Alonzo/Rules/Utxos.hs`, the context errors of `Conway/TxInfo.hs` and
+  `Babbage/TxInfo.hs`, `Conway/Scripts.hs`, `Conway/TxCert.hs` and `Procedures.hs`, cardano-ledger f649f975):
+  Conway's `ApplyTxError`, the non-empty list of LEDGER's failures, which is MEMPOOL's failure too
+  (`Conway/Rules/Mempool.hs:86`), written from the era failures constructor by constructor at version 9, in the
+  hard-fork combinator's wrapper. A purpose with its item, a certificate, an action, a proposal and a context's
+  error are written from the era's values, so the bridge's `Left`s (UTXOS's collection errors, a missing redeemer
+  whose purpose no needed script names, an action no proposal reads) have bytes; outputs, accounts and credentials
+  by the writers the flat encoder uses. A `Coin`, a failure's value (`EncCBOR MaryValue`, its coin and quantities
+  `Integer`s) and its units (`Natural`s) are `encodeInteger`'s, a bignum past 64 bits, where the flat encoder's
+  writers fail or keep the low 64 bits; a set of addresses is in the reference's order of addresses (the derived
+  `Ord Addr`), not their bytes'. Not wired: `LocalSubmission` sends the flat failures' bytes until the switch.
+  - Evidence: beside each comparison of the era rules' refusals with the reference's bytes through the flat form
+    (`ConwayLedgerChecksSuite`'s LEDGER cases, `RedeemerIndexReferenceSuite`, `ContextRefusalReasonSuite`,
+    `PastHorizonReferenceSuite`, the upstream LEDGER and LEDGERS judgments), the era failures written by the
+    encoder give the same bytes; on every refusal of the Conway refusal corpus, at each version, build, policy and
+    depth, none left out, the bytes of the flat form's encoder; `ConwayFailureCborSuite` holds every constructor of the
+    LEDGER tree to the flat form's bytes (mixed credentials and networks, collections past 23 items, signed
+    integers), the failures the bridge cannot project to the flat form's bytes of the same values, the recorded
+    reasons of `PredicateFailureCborSuite` and the certificates of the reference's collection oracle to the
+    reference's bytes, sums past 64 bits, a set of every kind of address and a pool's metadata hash past a CBOR
+    read's default bounds to the bytes derived from the reference's instances, and 20,000 collection errors on a
+    small stack.
+  - What the reference has no constructor for has no bytes (`NoReferenceEncoding`), where the flat encoder sends
+    the flat failure's text as `ConwayMempoolFailure`: an `Undecodable` context, a time past the horizon whose cause
+    is not the clock's `PastHorizon`, Alonzo's unsupported certificate, unsupported purpose and impossible context,
+    and a pool registration whose relays or metadata do not read as the reference's; a decision of the switch
+    (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7078449515). Alonzo's three are 9df9f98c's alone,
+    where they have encodings even at version 9 (`[8, [8, [9 | 10 | 11, payload]]]` at Conway's context error,
+    `Babbage/TxInfo.hs:315-316` there); Conway's injection lifts the first two to Conway's own errors and only
+    Dijkstra's contexts raise the third, so none is a Conway value. The encoder writes Conway's CERTS tag 0
+    (`WithdrawalsNotInRewardsCERTS`), which the 11.2 and Leios builds' CERTS no longer has; their other Conway
+    instances write the same bytes as f649f975's.
 - **Conway's certificate rules** (`ledger/.../era/rules/Certs.scala`, `era/rules/CertsFailures.scala`): CERTS,
   CERT, DELEG, GOVCERT and Shelley's POOL, each the reference's transition under its name, generic in its era
   over the state classes `EraAccounts`, `ConwayEraAccounts`, `EraCertState` and `ConwayEraCertState` (Conway's

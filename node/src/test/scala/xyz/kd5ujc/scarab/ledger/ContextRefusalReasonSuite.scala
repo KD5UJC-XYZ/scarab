@@ -177,13 +177,20 @@ class ContextRefusalReasonSuite extends FunSuite:
     )
     judged match
       case Right(Left(fs)) =>
-        PredicateFailureCbor
+        val flat = PredicateFailureCbor
           .applyTxError(
             fs.toChain.toVector.map(f =>
               EraLedgerRun.flat(f, purposes, read).fold(e => fail(s"$name: $e"), identity)
             )
           )
           .fold(error => fail(error.message), identity)
+        // the era failures written by their own encoder, without the flat form
+        assertEquals(
+          xyz.kd5ujc.scarab.node.ntc.ConwayFailureCborCheck.direct(fs.toChain.toVector).hex,
+          flat.hex,
+          s"$name: direct"
+        )
+        flat
       case Right(Right(_)) => fail(s"$name: the era LEDGER accepts what the reference refused")
       case Left(defect)    => fail(s"$name: era defect $defect")
 

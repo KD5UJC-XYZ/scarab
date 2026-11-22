@@ -336,13 +336,16 @@ class UpstreamFreshLedgerConformanceSuite extends FunSuite:
         )
         outcome
       case ("rejected", UpstreamEraLedger.Outcome.Refused(failures)) =>
-        rejected(
-          rule,
-          UpstreamEraLedger
-            .stored(txs, before, failures)
-            .fold(e => fail(s"flat form: $e"), identity),
-          read("implementation-failures")
+        val predicates = UpstreamEraLedger
+          .stored(txs, before, failures)
+          .fold(e => fail(s"flat form: $e"), identity)
+        // the era failures written by their own encoder, without the flat form
+        assertEquals(
+          xyz.kd5ujc.scarab.node.ntc.ConwayFailureCborCheck.direct(failures).hex,
+          PredicateFailureCbor.applyTxError(predicates).fold(error => fail(error.message), _.hex),
+          "direct"
         )
+        rejected(rule, predicates, read("implementation-failures"))
         outcome
       case (native, other) => fail(s"native $native, era $other")
 

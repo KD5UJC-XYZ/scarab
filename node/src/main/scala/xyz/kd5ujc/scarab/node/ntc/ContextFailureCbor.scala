@@ -197,7 +197,7 @@ private[ntc] object ContextFailureCbor:
         TranslationError.NoEraHistory | TranslationError.NoClockSample(_) =>
       None
 
-  private def votingProcedures(
+  private[ntc] def votingProcedures(
       procedures: Vector[(Voter, Vector[(GovActionId, VotingProcedure)])]
   )(using ProtVer): Bytes =
     CborOut.build { w =>
@@ -223,7 +223,7 @@ private[ntc] object ContextFailureCbor:
       case _ => Some(value)
     projected.map(p => HaskellStateCodecs.proposal.encodeUnchecked(p))
 
-  private def relayBytes(raw: Bytes): Option[Bytes] =
+  private[ntc] def relayBytes(raw: Bytes): Option[Bytes] =
     PoolRelays.decode(raw).toOption.map { relays =>
       CborOut.build { w =>
         list(w, relays) { (out, relay) =>

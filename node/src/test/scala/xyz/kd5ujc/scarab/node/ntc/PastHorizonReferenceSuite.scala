@@ -534,6 +534,12 @@ class PastHorizonReferenceSuite extends FunSuite:
       )
       val ours = judged match
         case Right(Left(fs)) =>
+          // the era failures written by their own encoder, without the flat form
+          assertEquals(
+            Some(ConwayFailureCborCheck.direct(fs.toChain.toVector).hex),
+            r.reason.map(_.hex),
+            s"${r.label}: direct"
+          )
           Some(
             PredicateFailureCbor
               .applyTxError(
