@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.node.governor
 
 import xyz.kd5ujc.scarab.node.assertions.Assertions
 import cats.effect.{Deferred, IO, Ref}
-import cats.effect.std.{Queue, Supervisor}
+import cats.effect.std.Supervisor
 import cats.effect.testkit.TestControl
 import cats.mtl.{Ask, Handle, Stateful, Tell}
 import cats.syntax.all.*
@@ -58,7 +58,7 @@ class PeerSharingLoopSuite extends FailsOnUncaught:
         sharing = PeerShare.Governor(enabled = true)
       )
     for
-      events <- Queue.unbounded[IO, Event[Int]]
+      events <- xyz.kd5ujc.scarab.node.JobPool.Unbounded[IO, Event[Int]]
       state <- Ref.of[IO, GovernorState[Int]](initial)
       requests <- Ref.of[IO, Vector[(Time, Int)]](Vector.empty)
       results <- Ref.of[IO, Vector[(Time, List[Int])]](Vector.empty)
@@ -125,7 +125,7 @@ class PeerSharingLoopSuite extends FailsOnUncaught:
       val initial =
         GovernorState.initial[Int](1L, LocalRoots.empty, Targets.relay, Sensitivity.initial(false))
       for
-        events <- Queue.unbounded[IO, Event[Int]]
+        events <- xyz.kd5ujc.scarab.node.JobPool.Unbounded[IO, Event[Int]]
         state <- Ref.of[IO, GovernorState[Int]](initial)
         applied <- Deferred[IO, BigInt]
         given Stateful[IO, GovernorState[Int]] = RefStateful(state)
@@ -205,7 +205,7 @@ class PeerSharingLoopSuite extends FailsOnUncaught:
       val initial =
         GovernorState.initial[Int](1L, LocalRoots.empty, Targets.relay, Sensitivity.initial(false))
       for
-        events <- Queue.unbounded[IO, Event[Int]]
+        events <- xyz.kd5ujc.scarab.node.JobPool.Unbounded[IO, Event[Int]]
         state <- Ref.of[IO, GovernorState[Int]](initial)
         entered <- Deferred[IO, Unit]
         release <- Deferred[IO, Unit]
@@ -292,7 +292,7 @@ class PeerSharingLoopSuite extends FailsOnUncaught:
       val initial =
         GovernorState.initial[Int](1L, LocalRoots.empty, Targets.relay, Sensitivity.initial(false))
       for
-        events <- Queue.unbounded[IO, Event[Int]]
+        events <- xyz.kd5ujc.scarab.node.JobPool.Unbounded[IO, Event[Int]]
         state <- Ref.of[IO, GovernorState[Int]](initial)
         entered <- Deferred[IO, Unit]
         given Stateful[IO, GovernorState[Int]] = RefStateful(state)
@@ -357,7 +357,7 @@ class PeerSharingLoopSuite extends FailsOnUncaught:
       oldCanceled <- Deferred[IO, Unit]
       currentGeneration <- Ref.of[IO, BigInt](1)
       traces <- Ref.of[IO, Vector[(BigInt, Boolean)]](Vector.empty)
-      events <- Queue.unbounded[IO, Event[Int]]
+      events <- xyz.kd5ujc.scarab.node.JobPool.Unbounded[IO, Event[Int]]
       oldCheck <- PeerNetwork
         .runSnapshotCheck(
           oldResult.get,
@@ -416,7 +416,7 @@ class PeerSharingLoopSuite extends FailsOnUncaught:
         .initial[Int](1L, LocalRoots.empty, Targets.relay, Sensitivity.initial(false))
         .copy(rootsGeneration = BigInt(1))
       for
-        events <- Queue.unbounded[IO, Event[Int]]
+        events <- xyz.kd5ujc.scarab.node.JobPool.Unbounded[IO, Event[Int]]
         state <- Ref.of[IO, GovernorState[Int]](initial)
         liveLinkGeneration <- Ref.of[IO, Option[BigInt]](Some(BigInt(1)))
         closeCalls <- Ref.of[IO, Vector[Int]](Vector.empty)

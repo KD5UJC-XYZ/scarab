@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.node.governor
 
 import xyz.kd5ujc.scarab.node.assertions.Assertions
 import cats.effect.{Deferred, IO, Ref}
-import cats.effect.std.{Queue, Supervisor}
+import cats.effect.std.Supervisor
 import cats.effect.testkit.TestControl
 import cats.effect.unsafe.implicits.global
 import cats.mtl.{Ask, Raise, Stateful, Tell}
@@ -169,7 +169,7 @@ object MockEnvironment:
             .modify(v => (v :+ ((now - origin) -> what), v.size))
             .flatMap(size => overflow.complete(()).void.whenA(size > MaxRecorded))
         )
-      events <- Queue.unbounded[IO, Event[Peer]]
+      events <- xyz.kd5ujc.scarab.node.JobPool.Unbounded[IO, Event[Peer]]
       fatal <- Deferred[IO, GovernorFault]
       statuses <- Ref.of[IO, Map[Peer, Ref[IO, Conn]]](Map.empty)
       cursors <- Ref.of[IO, Map[Peer, (Int, Int)]](Map.empty)

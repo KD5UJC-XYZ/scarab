@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.node.governor
 
 import xyz.kd5ujc.scarab.node.assertions.Assertions
 import cats.effect.{Deferred, IO, Ref}
-import cats.effect.std.{Queue, Supervisor}
+import cats.effect.std.Supervisor
 import cats.mtl.{Ask, Handle, Stateful, Tell}
 import scala.collection.immutable.SortedMap
 import scala.concurrent.duration.*
@@ -37,7 +37,7 @@ class ActivationTrustSuite extends FailsOnUncaught:
         )
       for
         state <- Ref.of[IO, GovernorState[Int]](initial)
-        events <- Queue.unbounded[IO, Event[Int]]
+        events <- xyz.kd5ujc.scarab.node.JobPool.Unbounded[IO, Event[Int]]
         entered <- Deferred[IO, Unit]
         release <- Deferred[IO, Unit]
         reloaded <- Deferred[IO, Unit]

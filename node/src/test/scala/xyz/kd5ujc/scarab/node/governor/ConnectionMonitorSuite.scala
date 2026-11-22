@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.node.governor
 
 import xyz.kd5ujc.scarab.node.assertions.{Assertions, Collecting, Property}
 import cats.effect.{Deferred, IO, Ref}
-import cats.effect.std.{Queue, Supervisor}
+import cats.effect.std.Supervisor
 import cats.effect.testkit.TestControl
 import cats.mtl.{Ask, Handle, Stateful, Tell}
 import cats.syntax.all.*
@@ -43,7 +43,7 @@ class ConnectionMonitorSuite extends FailsOnUncaught:
         )
       for
         state <- Ref.of[IO, GovernorState[Int]](initial)
-        events <- Queue.unbounded[IO, Event[Int]]
+        events <- xyz.kd5ujc.scarab.node.JobPool.Unbounded[IO, Event[Int]]
         complete <- Deferred[IO, GovernorState[Int]]
         traces <- Ref.of[IO, Vector[Trace[Int]]](Vector.empty)
         _ <- preceding.traverse_(events.offer) *> events.offer(event) *> events.offer(
@@ -336,7 +336,7 @@ class ConnectionMonitorSuite extends FailsOnUncaught:
       )
       for
         state <- Ref.of[IO, GovernorState[Int]](initial)
-        events <- Queue.unbounded[IO, Event[Int]]
+        events <- xyz.kd5ujc.scarab.node.JobPool.Unbounded[IO, Event[Int]]
         exempted <- Ref.of[IO, Vector[BigInt]](Vector.empty)
         late <- Deferred[IO, Unit]
         decided <- Deferred[IO, Unit]

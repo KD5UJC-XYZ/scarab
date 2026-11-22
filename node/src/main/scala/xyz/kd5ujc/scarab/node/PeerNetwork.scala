@@ -350,7 +350,7 @@ object PeerNetwork:
       case Status.Activating   => "activating"
       case Status.Hot          => "hot"
       case Status.Deactivating => "deactivating"
-      case Status.Closing(_)   => "closing"
+      case Status.Closing      => "closing"
       case Status.Cooling      => "cooling"
     val c = view.counters
     Json.obj(
@@ -467,7 +467,7 @@ object PeerNetwork:
       )
       roots = LocalRoots.fromGroups(initialLocal)
       localHot = roots.groups.map(_.hot.value).sum
-      events <- Resource.eval(Queue.unbounded[F, Event[Addr]])
+      events <- Resource.eval(JobPool.Unbounded[F, Event[Addr]])
       rootInstallAcks <- Resource.eval(
         Ref.of[F, Map[BigInt, (Runtime[F], Deferred[F, Unit])]](Map.empty)
       )

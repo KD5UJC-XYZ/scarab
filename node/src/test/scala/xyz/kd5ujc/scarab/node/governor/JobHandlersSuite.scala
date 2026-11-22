@@ -134,24 +134,6 @@ class JobHandlersSuite extends FailsOnUncaught:
     def request(max: Int, bootstrap: Boolean) = IO.never
     def requestBigLedger(max: Int) = IO.never
 
-  /** The governor's queue, but for the first `times` offers of events that `refuses`, which raise,
-    * as an offer that fails does.
-    */
-  private def refusing(
-      queue: Queue[IO, Event[Int]],
-      refused: Ref[IO, Int],
-      refuses: Event[Int] => Boolean,
-      times: Int
-  ): Queue[IO, Event[Int]] = new Queue[IO, Event[Int]]:
-    def offer(event: Event[Int]) =
-      refused
-        .modify(n => if refuses(event) && n < times then (n + 1, true) else (n, false))
-        .ifM(ifTrue = IO.raiseError(new Raised), ifFalse = queue.offer(event))
-    def tryOffer(event: Event[Int]) = queue.tryOffer(event)
-    def take = queue.take
-    def tryTake = queue.tryTake
-    def size = queue.size
-
   /** Run the governor from `initial` until it applies an event that `until` holds of, with its
     * state after it, and give what it did then. One that never comes fails at an hour of virtual
     * time.
@@ -163,8 +145,6 @@ class JobHandlersSuite extends FailsOnUncaught:
     *   What the retained connection reads when the governor looks at it.
     * @param refused
     *   The outputs whose telling raises, as a log that cannot be written does.
-    * @param refusedOffer
-    *   The events whose first `refusals` offers to the governor's queue raise.
     * @param alongside
     *   What the world does while the governor runs, given the governor's queue.
     */
@@ -173,12 +153,10 @@ class JobHandlersSuite extends FailsOnUncaught:
       actions: PeerStateActions[IO, Int],
       cold: IO[Unit],
       roots: RootProvider[IO, Int] = noRoots,
-      sharing: Option[PeerSharingActions[IO, Int]] = None,
+      sharing: Option[PeerSharingActions[IO, Int]],
       connected: Boolean = true,
       reads: PeerStatus,
       refused: Output[Int] => Boolean = _ => false,
-      refusedOffer: Event[Int] => Boolean = _ => false,
-      refusals: Int = 1,
       alongside: Queue[IO, Event[Int]] => IO[Unit] = _ => IO.unit,
       reacting: Event[Int] => Option[Event[Int]] = _ => None,
       onApplied: Event[Int] => IO[Unit] = _ => IO.unit,
@@ -188,9 +166,7 @@ class JobHandlersSuite extends FailsOnUncaught:
     embed(Supervisor[IO](await = false).use { supervisor =>
       for
         current <- Ref.of[IO, GovernorState[Int]](initial)
-        queue <- Queue.unbounded[IO, Event[Int]]
-        offersRefused <- Ref.of[IO, Int](0)
-        events = refusing(queue, offersRefused, refusedOffer, refusals)
+        events <- xyz.kd5ujc.scarab.node.JobPool.Unbounded[IO, Event[Int]]
         told <- Ref.of[IO, Vector[Output[Int]]](Vector.empty)
         applied <- Deferred[IO, Applied]
         given Stateful[IO, GovernorState[Int]] = RefStateful(current)
@@ -245,8 +221,6 @@ class JobHandlersSuite extends FailsOnUncaught:
       connected: Boolean = true,
       reads: PeerStatus = PeerStatus.Warm,
       refused: Output[Int] => Boolean = _ => false,
-      refusedOffer: Event[Int] => Boolean = _ => false,
-      refusals: Int = 1,
       reacting: Event[Int] => Option[Event[Int]] = _ => None
   )(applies: Outcome[Int] => Boolean): IO[Applied] =
     watch(
@@ -258,8 +232,6 @@ class JobHandlersSuite extends FailsOnUncaught:
       connected,
       reads,
       refused,
-      refusedOffer,
-      refusals,
       reacting = reacting
     ) {
       case (Event.Completed(outcome), _) => applies(outcome)
@@ -410,35 +382,19 @@ class JobHandlersSuite extends FailsOnUncaught:
   }
 
   /** The peer's demotion raised and its connection was not seen cold, the wait for it timing out
-    * (`cold` never ends) or raising; meanwhile the connection reports itself cooling. Gives what
-    * the governor did once that report was applied to the peer.
+    * (`cold` never ends) or raising. Gives what the governor did with the timeout's completion.
     */
   private def lingering(
       initial: GovernorState[Int],
       demotion: Deferred[IO, Unit] => PeerStateActions[IO, Int],
       cold: IO[Unit]
   ): IO[Applied] =
-    Deferred[IO, Unit].flatMap { started =>
-      watch(
-        initial,
-        demotion(started),
-        cold = cold,
-        reads = PeerStatus.Cooling,
-        alongside = events =>
-          started.get *> events.offer(
-            Event.Observed(
-              Peer,
-              Observation.Lost(FailureClass.NotThePeers, 30.seconds, true, "cooling"),
-              Some(BigInt(0)),
-              Some(BigInt(1))
-            )
-          )
-      ) {
-        case (Event.Observed(Peer, Observation.Lost(_, _, false, _), _, _), st) =>
-          st.peers.get(Peer).exists(_.status == Status.Cooling)
-        case _ => false
+    Deferred[IO, Unit].flatMap(started =>
+      govern(initial, demotion(started), cold = cold, reads = PeerStatus.Cooling) {
+        case Outcome.CloseTimedOut(Peer) => true
+        case _                           => false
       }
-    }
+    )
 
   private def raising(started: Deferred[IO, Unit]) =
     started.complete(()) *> IO.raiseError(new Raised)
@@ -458,16 +414,6 @@ class JobHandlersSuite extends FailsOnUncaught:
       assert(applied.at >= policy.demotionTimeout, s"came before the timeout, at ${applied.at}")
       assert(timedOut(Temperature.Hot)(applied), s"no timed-out demotion in ${applied.outputs}")
       assertEquals(applied.record.map(_.status), Some(Status.Cooling))
-      assert(
-        applied.outputs.exists {
-          case Output.Traced(
-                Trace.DemoteAsynchronous(Peer, _, Some(FailureClass.NotThePeers), _, _, _)
-              ) =>
-            true
-          case _ => false
-        },
-        s"the connection's own report should demote the peer: ${applied.outputs}"
-      )
     }
   }
 
@@ -480,57 +426,6 @@ class JobHandlersSuite extends FailsOnUncaught:
       assert(applied.at < policy.demotionTimeout, s"waited for the timeout, at ${applied.at}")
       assert(timedOut(Temperature.Hot)(applied), s"no timed-out demotion in ${applied.outputs}")
       assertEquals(applied.record.map(_.status), Some(Status.Cooling))
-    }
-  }
-
-  // `demoteActivePeer`'s handler on a timeout keeps the peer active (ActivePeers.hs 1007-1017 at
-  // c45735a5): a connection that still reads hot leaves it hot
-  test("a deactivation that times out keeps the peer active while its connection reads hot") {
-    govern(
-      state(targets(0, 1, 1, 0), Peer -> hot),
-      actions(deactivating = IO.raiseError(new Raised)),
-      cold = IO.never,
-      reads = PeerStatus.Hot
-    ) {
-      case Outcome.DeactivateFailed(Peer) | Outcome.CloseTimedOut(Peer) => true
-      case _                                                            => false
-    }.map { applied =>
-      assertEquals(applied.outcome, Outcome.CloseTimedOut(Peer))
-      assertEquals(applied.record.map(_.status), Some(Status.Hot))
-      assertEquals(applied.state.view(applied.at).active.size, 1)
-    }
-  }
-
-  test("a deactivation the connection leaves lingering keeps the peer active after the timeout") {
-    govern(
-      state(targets(0, 1, 1, 0), Peer -> hot),
-      actions(deactivating = IO.pure(Right(PeerStateActions.Deactivation.Lingering))),
-      cold = IO.never,
-      reads = PeerStatus.Hot
-    ) {
-      case Outcome.DeactivateFailed(Peer) | Outcome.CloseTimedOut(Peer) => true
-      case _                                                            => false
-    }.map { applied =>
-      assertEquals(applied.outcome, Outcome.CloseTimedOut(Peer))
-      assert(applied.at >= policy.demotionTimeout, s"came before the timeout, at ${applied.at}")
-      assertEquals(applied.record.map(_.status), Some(Status.Hot))
-      assertEquals(applied.state.view(applied.at).active.size, 1)
-    }
-  }
-
-  // the timeout keeps the established peer as it was, the time it may be activated from included
-  // (EstablishedPeers.hs 940-946 at c45735a5)
-  test("a close that times out keeps the time the peer may be activated from") {
-    govern(
-      state(targets(0, 1, 0, 0), Peer -> warm.copy(status = Status.Warm(1.hour))),
-      actions(closing = IO.raiseError(new Raised)),
-      cold = IO.raiseError(new Raised)
-    ) {
-      case Outcome.Closed(Peer) | Outcome.CloseTimedOut(Peer) => true
-      case _                                                  => false
-    }.map { applied =>
-      assertEquals(applied.outcome, Outcome.CloseTimedOut(Peer))
-      assertEquals(applied.record.map(_.status), Some(Status.Warm(1.hour)))
     }
   }
 
@@ -560,78 +455,6 @@ class JobHandlersSuite extends FailsOnUncaught:
         "the close's exception should be reported"
       )
     }
-  }
-
-  /** What the connection monitor reports when a connection a close of ours left cooling goes cold,
-    * with nothing failed: released, the class of an unattributed loss.
-    */
-  private val quietRelease: Event[Int] = Event.Observed(
-    Peer,
-    Observation.Lost(FailureClass.Transient, 10.seconds, true, "connection released"),
-    Some(BigInt(0)),
-    Some(BigInt(1))
-  )
-
-  // the cleanup leaves the connection cooling; the monitor then reports it gone, and the peer is
-  // cold (Monitor.hs 304-308 at c45735a5)
-  test("an activation whose cleanup lingers leaves the peer cooling until its release, then cold") {
-    watch(
-      state(targets(0, 1, 1, 1), Peer -> warm),
-      actions(
-        activating = IO.raiseError(new Raised),
-        closing = IO.pure(
-          Right(PeerStateActions.CloseResult(PeerStateActions.Release.Lingering))
-        )
-      ),
-      cold = IO.never,
-      reads = PeerStatus.Cold,
-      reacting = {
-        case Event.Completed(Outcome.ActivateFailedLingering(Peer, _)) => Some(quietRelease)
-        case _                                                         => None
-      }
-    ) {
-      case (Event.Observed(Peer, Observation.Lost(_, _, true, _), _, _), st) =>
-        st.peers
-          .get(Peer)
-          .exists(_.status match
-            case Status.Cold(_) => true
-            case _              => false)
-      case _ => false
-    }.map { applied =>
-      assert(
-        applied.outputs.contains(
-          Output.Traced(
-            Trace.PromoteFailed(Temperature.Warm, Peer, FailureClass.NotThePeers, None, false)
-          )
-        ),
-        s"the activation should first leave the peer cooling: ${applied.outputs}"
-      )
-    )
-  }
-
-  // the timeout keeps the peer warm; the connection then goes cold with no report of its own but
-  // the monitor's, and the peer is cold
-  test("a timed-out close whose connection later goes cold quietly leaves the peer cold") {
-    watch(
-      state(targets(0, 1, 0, 0), Peer -> warm),
-      actions(closing = IO.raiseError(new Raised)),
-      cold = IO.never,
-      reads = PeerStatus.Cold,
-      reacting = {
-        case Event.Completed(Outcome.CloseTimedOut(Peer)) => Some(quietRelease)
-        case _                                            => None
-      }
-    ) {
-      case (Event.Observed(Peer, Observation.Lost(_, _, true, _), _, _), st) =>
-        st.peers
-          .get(Peer)
-          .exists(_.status match
-            case Status.Cold(_) => true
-            case _              => false)
-      case _ => false
-    }.map(applied =>
-      assert(applied.at >= policy.demotionTimeout, s"came before the timeout, at ${applied.at}")
-    )
   }
 
   // `demoteEstablishedPeer`'s handler (EstablishedPeers.hs 909-967 at c45735a5): the connection
@@ -683,48 +506,9 @@ class JobHandlersSuite extends FailsOnUncaught:
     }
   }
 
-  // The monitor reports the release while the close's job still waits, so the governor, still
-  // closing the peer, leaves it to the job; the job's wait then times out. Reading the connection
-  // when the timeout is applied finds it gone, as the reference's monitor reads it
-  // (Monitor.hs 304-308 at c45735a5), and the peer is cold, not left cooling.
-  test("a release reported before a close's timeout leaves the peer cold, not cooling") {
-    (Deferred[IO, Unit], Deferred[IO, Unit]).tupled.flatMap { (closing, reported) =>
-      watch(
-        state(targets(0, 1, 0, 0), Peer -> warm),
-        actions(closing = closing.complete(()) *> reported.get *> IO.raiseError(new Raised)),
-        cold = IO.never,
-        connected = false,
-        reads = PeerStatus.Cold,
-        alongside = events =>
-          closing.get *> events.offer(
-            Event.Observed(
-              Peer,
-              Observation.Lost(FailureClass.Transient, Duration.Zero, true, "closed"),
-              Some(BigInt(0)),
-              None
-            )
-          ),
-        onApplied = {
-          case Event.Observed(Peer, _, _, _) => reported.complete(()).void
-          case _                             => IO.unit
-        }
-      ) {
-        case (Event.Observed(Peer, _, _, _), st) =>
-          st.peers
-            .get(Peer)
-            .exists(_.status match
-              case Status.Cold(_) => true
-              case _              => false)
-        case _ => false
-      }.map { applied =>
-        assert(timedOut(Temperature.Warm)(applied), s"no timed-out demotion in ${applied.outputs}")
-      }
-    }
-  }
-
   // with no retained connection to watch, nothing reads it: the peer keeps its place, as the
   // handler's timeout leaves it
-  test("without a retained connection, a close that raises keeps the peer established") {
+  test("without a retained connection, a close that raises leaves the peer cooling") {
     govern(
       state(targets(0, 1, 0, 0), Peer -> warm),
       actions(closing = IO.raiseError(new Raised)),
@@ -734,11 +518,41 @@ class JobHandlersSuite extends FailsOnUncaught:
       case _                                                  => false
     }.map { applied =>
       assertEquals(applied.outcome, Outcome.CloseTimedOut(Peer))
+      assertEquals(applied.record.map(_.status), Some(Status.Cooling))
+    }
+  }
+
+  // the cleanup's close that times out is reported as the close job reports it
+  test("an activation whose cleanup's close times out reports the close's timeout") {
+    govern(
+      state(targets(0, 1, 1, 1), Peer -> warm),
+      actions(
+        activating = IO.raiseError(new Raised),
+        closing = IO.pure(
+          Right(
+            PeerStateActions.CloseResult(
+              PeerStateActions.Release.Released,
+              PeerStateActions.CloseCompletion.TimedOut
+            )
+          )
+        )
+      )
+    ) {
+      case Outcome.ActivateFailed(Peer, _) | Outcome.ActivateFailedLingering(Peer, _) => true
+      case _                                                                          => false
+    }.map { applied =>
+      assertEquals(applied.outcome, Outcome.ActivateFailed(Peer, FailureClass.NotThePeers))
       assert(
-        applied.record.exists(_.status match
-          case Status.Warm(_) => true
-          case _              => false),
-        s"the peer should stay established, was ${applied.record}"
+        applied.outputs.contains(
+          Output.Traced(
+            Trace.PeerActionFailed(
+              Peer,
+              PeerOperation.Close,
+              PeerActionError.TimedOut(PeerOperation.Close)
+            )
+          )
+        ),
+        s"the close's timeout should be reported: ${applied.outputs}"
       )
     }
   }
@@ -969,7 +783,7 @@ class JobHandlersSuite extends FailsOnUncaught:
         current <- Ref.of[IO, GovernorState[Int]](
           state(targets(0, 1, 1, 0), Peer -> PeerRecord.cold(Origin.Other))
         )
-        events <- Queue.unbounded[IO, Event[Int]]
+        events <- xyz.kd5ujc.scarab.node.JobPool.Unbounded[IO, Event[Int]]
         told <- Ref.of[IO, Vector[Output[Int]]](Vector.empty)
         entered <- Deferred[IO, Unit]
         given Stateful[IO, GovernorState[Int]] = RefStateful(current)

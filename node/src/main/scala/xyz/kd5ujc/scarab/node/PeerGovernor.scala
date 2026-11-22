@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.node
 
 import cats.{Applicative, Monad}
 import cats.effect.{Clock, Deferred, Poll, Ref, Temporal}
-import cats.effect.std.{Queue, Supervisor}
+import cats.effect.std.Supervisor
 import cats.mtl.{Ask, Raise, Stateful, Tell}
 import cats.syntax.all.*
 import scala.concurrent.duration.*
@@ -282,7 +282,7 @@ object PeerGovernor:
   def run[F[_]: Temporal, A](
       actions: PeerStateActions[F, A],
       roots: RootProvider[F, A],
-      events: Queue[F, Event[A]],
+      events: JobPool.Unbounded[F, Event[A]],
       supervisor: Supervisor[F],
       sharing: Option[PeerSharingActions[F, A]] = None,
       beforeEventApplied: Option[Event[A] => F[Unit]] = None,
@@ -300,10 +300,9 @@ object PeerGovernor:
     (
       Ref.of[F, Set[Time]](Set.empty),
       Ref.of[F, ChurnMode](ChurnMode.Initial),
-      Ref.of[F, Map[A, (Observation, Option[BigInt], Option[BigInt])]](Map.empty),
       Ref.of[F, Map[Long, F[Unit]]](Map.empty)
     ).tupled
-      .flatMap((scheduled, paired, held, phases) =>
+      .flatMap((scheduled, paired, phases) =>
         loop(
           actions,
           roots,
@@ -311,7 +310,6 @@ object PeerGovernor:
           JobPool[F, Event[A]](supervisor, JobPool.Handoff.queue(events)),
           scheduled,
           paired,
-          held,
           phases,
           sharing,
           beforeEventApplied,
@@ -326,9 +324,6 @@ object PeerGovernor:
     *   The times a wake-up is already asked for.
     * @param paired
     *   The churn mode written with the targets the governor took last.
-    * @param held
-    *   For each peer being demoted, the last report of its connection that came meanwhile (a loss,
-    *   or the end of its hot protocols), which the demotion's job leaves to its completion.
     * @param phases
     *   For each peer-sharing batch whose first phase is done, the start of its second phase, which
     *   the governor starts once it has applied the first phase's completion.
@@ -336,11 +331,10 @@ object PeerGovernor:
   private def loop[F[_]: Temporal, A](
       actions: PeerStateActions[F, A],
       roots: RootProvider[F, A],
-      events: Queue[F, Event[A]],
+      events: JobPool.Unbounded[F, Event[A]],
       jobs: JobPool[F, Event[A]],
       scheduled: Ref[F, Set[Time]],
       paired: Ref[F, ChurnMode],
-      held: Ref[F, Map[A, (Observation, Option[BigInt], Option[BigInt])]],
       phases: Ref[F, Map[Long, F[Unit]]],
       sharing: Option[PeerSharingActions[F, A]],
       beforeEventApplied: Option[Event[A] => F[Unit]],
@@ -572,7 +566,7 @@ object PeerGovernor:
         // connection held as far as the governor knows.
         def closing(close: F[PeerStateActions.Result[PeerStateActions.CloseResult]])(
             poll: Poll[F]
-        ): F[PeerStateActions.Release] =
+        ): F[Option[PeerStateActions.Release]] =
           poll(close)
             .flatMap {
               case Right(result) =>
@@ -585,22 +579,20 @@ object PeerGovernor:
                     )
                   )
                 ).whenA(result.completion == PeerStateActions.CloseCompletion.TimedOut)
-                  .as(result.release)
+                  .as(Some(result.release))
               case Left(failure) =>
                 report(
                   Output.Traced(Trace.PeerActionFailed(peer, PeerOperation.Close, failure.cause))
-                ).as(failure.release)
+                ).as(Some(failure.release))
             }
-            .handleErrorWith(problem =>
-              report(raised(peer, PeerOperation.Close, problem))
-                .as(PeerStateActions.Release.Lingering)
-            )
+            .handleErrorWith(problem => report(raised(peer, PeerOperation.Close, problem)).as(None))
         // `promoteWarmPeer`'s handler (`ActivePeers.hs` 460-558 at c45735a5): the pause, then the
         // failed promotion, which the governor applies while the peer is still activating and
         // traces as aborted otherwise. The exception is of the node's own code on the connection,
         // so the connection is closed first, as such an exception ends its connection (ADR 0017,
-        // amendment of 2026-10-28). Released, the peer leaves the established set with it; still
-        // held, it is cooling until the release is seen (`Governor/Monitor.hs` 292-296).
+        // amendment of 2026-10-28), and its release waited for up to the demotion timeout, as the
+        // close job waits for it. Released, the peer leaves the established set with it; if the
+        // close raised or the release did not come, it is cooling (decisions register, 2026-11-22).
         def failed(close: Poll[F] => F[PeerStateActions.Release])(
             cause: Throwable,
             poll: Poll[F]
@@ -614,13 +606,22 @@ object PeerGovernor:
           handle =>
             JobPool.Job(
               handle.activate(trust).flatMap(outcome),
-              failed(closing(handle.close)),
+              failed(poll =>
+                closing(handle.close)(poll).flatMap(
+                  _.fold(F.pure(PeerStateActions.Release.Lingering))(_ =>
+                    poll(awaitRelease(handle))
+                  )
+                )
+              ),
               last
             ),
           JobPool
             .Job(
               actions.activate(peer, trust).flatMap(outcome),
-              failed(closing(actions.close(peer))),
+              failed(poll =>
+                closing(actions.close(peer))(poll)
+                  .map(_.getOrElse(PeerStateActions.Release.Lingering))
+              ),
               last
             )
             .map(Some(_))
@@ -846,54 +847,23 @@ object PeerGovernor:
         Event.Observed(peer, observation, Some(handle.rootsGeneration), Some(handle.identity))
       )
 
-    /** A report of a peer's connection that comes while the peer is being demoted, which the
-      * decisions leave to the demotion's job, is held, the last one only. A demotion that times out
-      * keeps the peer's place, and the monitor then demotes it by what its connection last reported
-      * (`Governor/Monitor.hs` 292-308 at c45735a5), so its completion applies the report held; any
-      * other end of the demotion drops it.
-      */
     def observe(
         peer: A,
         observation: Observation,
         generation: Option[BigInt],
         identity: Option[BigInt]
     ): F[Unit] =
-      state.get.flatMap { st =>
-        val demoting = st.peers
-          .get(peer)
-          .exists(_.status match
-            case Status.Closing(_) | Status.Deactivating => true
-            case Status.Cold(_) | Status.Connecting | Status.Warm(_) | Status.Activating |
-                Status.Hot | Status.Cooling =>
-              false)
-        val ofConnection = observation match
-          case Observation.Lost(_, _, _, _) | Observation.HotEnded(_, _)                 => true
-          case Observation.ActionFailed(_, _) | Observation.CachedBlockRejected(_, _, _) => false
-        held
-          .update(_.updated(peer, (observation, generation, identity)))
-          .whenA(demoting && ofConnection)
-      } *> applySnapshot(Event.Observed(peer, observation, generation, identity))
+      applySnapshot(Event.Observed(peer, observation, generation, identity))
 
-    /** Apply a job's completion, and what follows from it in the governor: the report held while a
-      * demotion timed out, or the second phase of a peer-sharing batch.
-      */
-    def completed(outcome: Outcome[A], identity: Option[BigInt]): F[Unit] =
+    /** Apply a job's completion, and the second phase of a peer-sharing batch it starts. */
+    def completed(outcome: Outcome[A]): F[Unit] =
       applySnapshot(Event.Completed(outcome)) *> (outcome match
-        case Outcome.CloseTimedOut(peer) =>
-          held
-            .modify(m => (m - peer, m.get(peer)))
-            .flatMap(_.traverse_ { (observation, generation, observed) =>
-              applySnapshot(Event.Observed(peer, observation, generation, observed))
-                .whenA(identity.forall(id => observed.forall(_ == id)))
-            })
-        case Outcome.Deactivated(peer)      => held.update(_ - peer)
-        case Outcome.DeactivateFailed(peer) => held.update(_ - peer)
-        case Outcome.Closed(peer)           => held.update(_ - peer)
         case Outcome.Shared(batch, _) =>
           phases.modify(m => (m - batch, m.get(batch))).flatMap(_.sequence_)
         case Outcome.Connected(_, _, _) | Outcome.ConnectFailed(_, _, _) | Outcome.Activated(_) |
             Outcome.ActivateFailed(_, _) | Outcome.ActivateFailedLingering(_, _) |
-            Outcome.RootsFound(_, _, _) | Outcome.RootsFailed(_, _) |
+            Outcome.Deactivated(_) | Outcome.DeactivateFailed(_) | Outcome.Closed(_) |
+            Outcome.CloseTimedOut(_) | Outcome.RootsFound(_, _, _) | Outcome.RootsFailed(_, _) |
             Outcome.BigLedgerFound(_, _, _) | Outcome.BigLedgerFailed(_, _) =>
           F.unit)
 
@@ -917,7 +887,7 @@ object PeerGovernor:
                           )
                         case _ => F.unit)
                   }
-                case _ => completed(outcome, Some(identity))
+                case _ => completed(outcome)
             case _ => F.unit
           }
         }
@@ -953,7 +923,7 @@ object PeerGovernor:
           )
       case Event.Observed(peer, observation, generation, None) =>
         observe(peer, observation, generation, None)
-      case Event.Completed(outcome) => completed(outcome, None)
+      case Event.Completed(outcome) => completed(outcome)
       case _                        => applySnapshot(event)
 
     /** Take targets the churn governor wrote, and remember the mode written with them if they were

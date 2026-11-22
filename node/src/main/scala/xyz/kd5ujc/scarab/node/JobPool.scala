@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.node
 
 import cats.{Applicative, FlatMap, Functor}
-import cats.effect.{Deferred, Fiber, MonadCancelThrow, Poll, Ref}
+import cats.effect.{Concurrent, Deferred, Fiber, MonadCancelThrow, Poll, Ref}
 import cats.effect.std.{Queue, Supervisor}
 import cats.syntax.all.*
 
@@ -74,8 +74,7 @@ object JobPool:
 
   /** Where a job's completion goes: the offer to an unbounded queue or the completion of a
     * `Deferred`, neither of which raises, as the reference's `writeTQueue` does not (`JobPool.hs`
-    * 113 at c45735a5), so a completion is written once and a job never ends without one. A queue
-    * given here must be unbounded.
+    * 113 at c45735a5), so a completion is written once and a job never ends without one.
     */
   final class Handoff[F[_], C] private (private[JobPool] val give: C => F[Unit]):
     /** The same place, for a value `f` makes into its completion. */
@@ -91,13 +90,25 @@ object JobPool:
       new Handoff(value => ref.update(f(_, value)) *> give(value))
 
   object Handoff:
-    def queue[F[_], C](queue: Queue[F, C]): Handoff[F, C] = new Handoff(queue.offer)
+    def queue[F[_], C](queue: Unbounded[F, C]): Handoff[F, C] = new Handoff(queue.offer)
 
     def deferred[F[_]: Functor, C](deferred: Deferred[F, C]): Handoff[F, C] =
       new Handoff(deferred.complete(_).void)
 
     /** For a job that reports nothing. */
     def none[F[_]: Applicative, C]: Handoff[F, C] = new Handoff(_ => Applicative[F].unit)
+
+  /** A queue that can only be made unbounded, so that its offer neither waits nor raises. */
+  final class Unbounded[F[_], A] private (underlying: Queue[F, A]) extends Queue[F, A]:
+    def offer(a: A): F[Unit] = underlying.offer(a)
+    def tryOffer(a: A): F[Boolean] = underlying.tryOffer(a)
+    def take: F[A] = underlying.take
+    def tryTake: F[Option[A]] = underlying.tryTake
+    def size: F[Int] = underlying.size
+
+  object Unbounded:
+    def apply[F[_]: Concurrent, A]: F[Unbounded[F, A]] =
+      Queue.unbounded[F, A].map(new Unbounded(_))
 
   def apply[F[_]: MonadCancelThrow, C](
       supervisor: Supervisor[F],

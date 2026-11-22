@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.node
 
 import cats.effect.{Deferred, IO, Ref}
-import cats.effect.std.{Queue, Supervisor}
+import cats.effect.std.Supervisor
 import xyz.kd5ujc.scarab.network.FailsOnUncaught
 
 /** A job of the pool ends by handing over exactly one value: its action's, or its handler's when
@@ -27,7 +27,7 @@ class JobPoolSuite extends FailsOnUncaught:
   ): IO[(Boolean, List[Completion], List[Throwable])] =
     Supervisor[IO](await = false).use { supervisor =>
       for
-        completions <- Queue.unbounded[IO, Completion]
+        completions <- JobPool.Unbounded[IO, Completion]
         handled <- Ref.of[IO, List[Throwable]](Nil)
         pool = JobPool[IO, Completion](supervisor, JobPool.Handoff.queue(completions))
         fiber <- pool.forkJob(
@@ -74,7 +74,7 @@ class JobPoolSuite extends FailsOnUncaught:
       entered <- Deferred[IO, Unit]
       result <- Supervisor[IO](await = false).use { supervisor =>
         for
-          completions <- Queue.unbounded[IO, Completion]
+          completions <- JobPool.Unbounded[IO, Completion]
           handled <- Ref.of[IO, List[Throwable]](Nil)
           fiber <- JobPool[IO, Completion](supervisor, JobPool.Handoff.queue(completions)).forkJob(
             JobPool.Job(
@@ -105,12 +105,23 @@ class JobPoolSuite extends FailsOnUncaught:
     }
   }
 
+  // the handler runs masked, as `forkJob'` masks it, so a cancellation it asks for itself waits
+  // until its completion has been handed over
+  test("a job whose handler asks for its own cancellation still hands over the handler's value") {
+    val raised = new Raised
+    fork(IO.raiseError(raised), cause => IO.canceled *> IO.pure(Completion.Handled(cause))).map {
+      (_, handed, seen) =>
+        assertEquals(handed, List(Completion.Handled(raised)))
+        assertEquals(seen, List(raised))
+    }
+  }
+
   test("a pool completing elsewhere hands its jobs' values there, its handler's included") {
     val raised = new Raised
     Supervisor[IO](await = false).use { supervisor =>
       for
-        first <- Queue.unbounded[IO, Completion]
-        other <- Queue.unbounded[IO, Int]
+        first <- JobPool.Unbounded[IO, Completion]
+        other <- JobPool.Unbounded[IO, Int]
         pool = JobPool[IO, Completion](supervisor, JobPool.Handoff.queue(first))
         fiber <- pool
           .completingTo(JobPool.Handoff.queue(other))
