@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.era.rules
 
-import cats.{Functor, Id, Monad}
+import cats.{Eval, Functor, Id, Monad}
 import cats.data.Chain
 import cats.mtl.{Raise, Tell}
 import cats.syntax.all.*
@@ -105,7 +105,8 @@ object ConwayMempoolRun:
       slotToPOSIXTime: BigInt => Either[TranslationError, BigInt],
       evaluator: ScriptEvaluator[Id],
       verdicts: Verdicts,
-      decoder: ScriptDecoder[Id]
+      decoder: ScriptDecoder[Id],
+      annotation: Annotation = Annotation.mkStAnnTx
   ):
     /** The build the judgment follows. */
     def build: ReferenceBuild = globals.ledger.referenceBuild
@@ -115,6 +116,22 @@ object ConwayMempoolRun:
       */
     def context(validation: TxEnv.Validation): UtxoContext[Conway] =
       UtxoContext(netId, systemStart, epochInfo, validation, ConwayUtxo.injectShelleyFailure(build))
+
+  /** How the run annotates a transaction against the UTxO set (`mkStAnnTx`), as a value of
+    * [[Judging]] so that a test can observe when the run annotates; the node runs Conway's own
+    * ([[Annotation.mkStAnnTx]]).
+    */
+  trait Annotation:
+    def apply(
+        slotToPOSIXTime: BigInt => Either[TranslationError, BigInt],
+        pp: PParams[Conway],
+        utxo: UTxO[Conway],
+        tx: Tx[TxLevel.Top, Conway]
+    ): StAnnTx[TxLevel.Top, Conway]
+
+  object Annotation:
+    /** Conway's `mkStAnnTx` with an empty cache ([[annotate]]). */
+    val mkStAnnTx: Annotation = annotate(_, _, _, _)
 
   /** How a held transaction is applied again, by the build's consensus (`reapplyShelleyTx`). */
   enum Reapply derives CanEqual:
@@ -219,10 +236,12 @@ object ConwayMempoolRun:
   /** `internalApplyTxWithValidation` of Conway, `defaultApplyTxWithValidation @"MEMPOOL"`
     * (`Conway.hs:57`; `Shelley/API/Mempool.hs:283-296`, cardano-ledger f649f975): `tx` annotated
     * against the state's UTxO set ([[annotate]]), then MEMPOOL with `validation`; the ledger state
-    * after it, and what the transaction was validated with ([[ValidatedTx]]). The annotation is
-    * made where LEDGER first reads it ([[ConwayMempool.mempoolTransitionAnnotating]]), as the
-    * reference's lazy fields are, so that a stored output the era cannot read is no defect of a
-    * transaction MEMPOOL refuses as a duplicate.
+    * after it, and what the transaction was validated with ([[ValidatedTx]]). The annotation, the
+    * read of the stored outputs and the script contexts' construction, is computed only where
+    * LEDGER first reads it ([[ConwayMempool.mempoolTransitionAnnotating]]), and at most once, as
+    * the reference's lazy fields are: a transaction MEMPOOL refuses as a duplicate is never
+    * annotated, so it costs no such work, and a stored output the era cannot read is no defect of
+    * it.
     */
   def applyTxWithValidation(
       judging: Judging,
@@ -231,27 +250,35 @@ object ConwayMempoolRun:
       tx: Tx[TxLevel.Top, Conway],
       validation: TxEnv.Validation
   ): Outcome[(LedgerState[Conway], ValidatedTx)] =
-    val annotated: Either[ConwayRuleDefect, StAnnTx[TxLevel.Top, Conway]] =
+    // made at most once, and only when first read: by LEDGER's step of MEMPOOL, which a program of
+    // `F` runs only as the judgment reaches it (`flatMap` is a step of the program), then by the
+    // admission's `ValidatedTx`, which reads the same value
+    val annotated: Eval[Either[ConwayRuleDefect, StAnnTx[TxLevel.Top, Conway]]] = Eval.later(
       utxoOf(state, tx)
         .bimap(
           ConwayRuleDefect.UtxoState(_),
-          annotate(judging.slotToPOSIXTime, env.ledgerPp, _, tx)
+          judging.annotation(judging.slotToPOSIXTime, env.ledgerPp, _, tx)
         )
+    )
     judged(judging, state)(
       ConwayMempool.mempoolTransitionAnnotating[F](
         env,
         tx,
-        annotated.fold(
-          d =>
-            summon[Raise[F, ConwayRuleDefect]]
-              .raise[ConwayRuleDefect, StAnnTx[TxLevel.Top, Conway]](d),
-          Monad[F].pure
+        Monad[F].unit.flatMap(_ =>
+          annotated.value.fold(
+            d =>
+              summon[Raise[F, ConwayRuleDefect]]
+                .raise[ConwayRuleDefect, StAnnTx[TxLevel.Top, Conway]](d),
+            Monad[F].pure
+          )
         ),
         judging.context(validation),
         judging.verdicts,
         judging.decoder
       )
-    ).flatMap(_.traverse(after => annotated.map(stAnnTx => after -> validatedIn(env, stAnnTx))))
+    ).flatMap(
+      _.traverse(after => annotated.value.map(stAnnTx => after -> validatedIn(env, stAnnTx)))
+    )
 
   /** `unsafeMakeValidatedTx` (`Shelley/API/Mempool.hs:131-151`, cardano-ledger f649f975), which the
     * reference keeps for tests: `tx` held as if validated in `env` and `state`, annotated against
@@ -264,7 +291,7 @@ object ConwayMempoolRun:
       tx: Tx[TxLevel.Top, Conway]
   ): Either[UtxoStateDefect, ValidatedTx] =
     utxoOf(state, tx).map(utxo =>
-      validatedIn(env, annotate(judging.slotToPOSIXTime, env.ledgerPp, utxo, tx))
+      validatedIn(env, judging.annotation(judging.slotToPOSIXTime, env.ledgerPp, utxo, tx))
     )
 
   /** `applyTxWithFullValidation` (`Shelley/API/Mempool.hs:406-413`, cardano-ledger f649f975):

@@ -2959,8 +2959,9 @@ Conway's rules on the classes follow as the rest of stage 2.
     (`ProposalsRecord`). The reference's `AlonzoStAnnTx` is strict in the transaction alone (`Alonzo/Tx.hs:556-565`),
     so the fields it derives from the UTxO set are not made for a transaction MEMPOOL refuses as a duplicate; the node
     makes them from the stored outputs read into the era, which can fail where the reference's typed set cannot, so the
-    run's annotation is an effect forced where LEDGER first reads it (`mempoolTransitionAnnotating`): a stored output
-    the era cannot read is no defect of a duplicate.
+    run's annotation is an effect forced where LEDGER first reads it (`mempoolTransitionAnnotating`), computed then
+    and at most once, the admission's `ValidatedTx` reading the same value: a duplicate costs no read of the stored
+    outputs and no script context, and a stored output the era cannot read is no defect of it.
   - The run (`ConwayMempoolRun`), on the fused interpreter, every failure accumulated and the events discarded
     (`ruleApplyTxValidation`, `asoEvents = EPDiscard`): `applyTx` is `applyTxWithFullValidation`, the transaction
     annotated against the stored outputs of its inputs, reference inputs and collateral with the environment's
@@ -3007,7 +3008,11 @@ Conway's rules on the classes follow as the rest of stage 2.
       refuses it; at another major version 11.2 and the Leios build refuse it with the full application's failures;
     - a transaction whose only input the state does not hold and whose reference input's stored output the era cannot
       read is refused with `AllInputsSpent` alone by `applyTx` and `reapply` under every build, as the flat MEMPOOL
-      refuses it; with an input the state holds, LEDGER reads that output and the run stops with the state's defect.
+      refuses it; with an input the state holds, LEDGER reads that output and the run stops with the state's defect;
+    - a duplicate (a payment again once its input is spent, and one whose only input the state never held) is
+      refused with `AllInputsSpent` by `applyTx` and `reapply` under every build without being annotated: the
+      judgment's annotation (`Judging.annotation`, Conway's `mkStAnnTx` in the node) is one that fails if made, which
+      a transaction MEMPOOL does not refuse makes.
   - A difference of the flat path, recorded and not decided: the flat pool's `MempoolLedger.reapply` is 11.1's
     `reapplyTx` under every build, so under 11.2 and the Leios build it admits again a held transaction whose major
     version changed, which their `reapplyValidatedTx` validates in full (the suite asserts it). The node keeps the flat

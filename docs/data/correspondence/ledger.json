@@ -48037,8 +48037,8 @@
    "evidence": [
     "ConwayMempoolRunSuite"
    ],
-   "note": "annotated against the stored outputs of the transaction's inputs, reference inputs and collateral (utxoOf), the part of utxoG the annotation reads; the annotation made where LEDGER first reads it (mempoolTransitionAnnotating), as the reference's lazy fields are",
-   "digest": "03cd598fbe29cf24"
+   "note": "annotated against the stored outputs of the transaction's inputs, reference inputs and collateral (utxoOf), the part of utxoG the annotation reads; the annotation (the stored outputs' read and the script contexts) computed only where LEDGER first reads it (mempoolTransitionAnnotating) and at most once, as the reference's lazy fields are, so a duplicate is never annotated",
+   "digest": "f2f94ee9d5cc35b3"
   },
   "def ledger.era.rules.ConwayMempoolRun.applyTx": {
    "upstream": [
@@ -48366,7 +48366,7 @@
     "ConwayMempoolRunSuite"
    ],
    "note": "for tests only, as the reference's; a stored output the era cannot read is the state's defect",
-   "digest": "71b8c31069ba37b1"
+   "digest": "1955f8cee4fade8a"
   },
   "def ledger.era.rules.ConwayMempool.mempoolTransitionAnnotating": {
    "upstream": [
@@ -49685,9 +49685,10 @@
    ]
   },
   {
-   "reason": "the run of Conway's MEMPOOL as the node's pool will apply a transaction (#85, not wired yet), on the fused interpreter, with what it is judged with besides the environment and the state (Judging, its build and its UTXO context), and its outcome (its defects are ConwayBlockRun's, ConwayRuleDefect); the read of the stored outputs of a transaction's inputs into the era, which the reference's mempool takes from its ledger tables (getTransactionKeySets); and the module objects of MEMPOOL and of Conway's ApplyTxError, with the error's equality with itself only: Scala containers with no counterpart",
+   "reason": "the run of Conway's MEMPOOL as the node's pool will apply a transaction (#85, not wired yet), on the fused interpreter, with what it is judged with besides the environment and the state (Judging, its build, its UTXO context and its annotation, Annotation, which the node runs as Conway's mkStAnnTx and a test wraps to observe when the run annotates), and its outcome (its defects are ConwayBlockRun's, ConwayRuleDefect); the read of the stored outputs of a transaction's inputs into the era, which the reference's mempool takes from its ledger tables (getTransactionKeySets); and the module objects of MEMPOOL and of Conway's ApplyTxError, with the error's equality with itself only: Scala containers with no counterpart",
    "definitions": [
     "class ledger.era.rules.ConwayMempoolRun.Judging",
+    "def ledger.era.rules.ConwayMempoolRun.Annotation#apply",
     "def ledger.era.rules.ConwayMempoolRun.Judging#build",
     "def ledger.era.rules.ConwayMempoolRun.Judging#context",
     "def ledger.era.rules.ConwayMempoolRun.utxoOf",
@@ -49695,8 +49696,11 @@
     "object ledger.era.rules.ConwayApplyTxError",
     "object ledger.era.rules.ConwayMempool",
     "object ledger.era.rules.ConwayMempoolRun",
+    "object ledger.era.rules.ConwayMempoolRun.Annotation",
     "object ledger.era.rules.ConwayMempoolRun.Reapply",
-    "type ledger.era.rules.ConwayMempoolRun.Outcome"
+    "trait ledger.era.rules.ConwayMempoolRun.Annotation",
+    "type ledger.era.rules.ConwayMempoolRun.Outcome",
+    "val ledger.era.rules.ConwayMempoolRun.Annotation.mkStAnnTx"
    ]
   }
  ]

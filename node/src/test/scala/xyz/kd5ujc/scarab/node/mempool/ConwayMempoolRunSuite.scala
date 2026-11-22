@@ -697,6 +697,45 @@ class ConwayMempoolRunSuite extends FunSuite:
         case other => fail(s"${build.name}: not the stored output's defect: $other")
     }
 
+  /** The run annotated a transaction where a test forbids it. */
+  private final class Annotated(label: String)
+      extends RuntimeException(s"$label: the run annotated the transaction")
+
+  /** `s` judged with an annotation that refuses to be made. */
+  private def forbidding(s: Seen): Seen =
+    s.copy(judging = s.judging.copy(annotation = (_, _, _, _) => throw Annotated(s.label)))
+
+  test("a duplicate is never annotated: no stored output read and no script context built for it"):
+    val l3 = TxKit.ledger(3)
+    val (paid, _) = TxKit.pay(1)
+    val after = l3.applied(FlatTx.fromEnvelope(paid, Era.Conway).getOrElse(fail("paid")), kitSlot)
+    val allSpent = ConwayApplyTxError(
+      NonEmptyChain.one(ConwayLedgerPredFailure.ConwayMempoolFailure(MempoolProblem.AllInputsSpent))
+    )
+    // the payment again, once its input is spent, and one whose only input the state never held
+    Vector(kit("again", paid, after), kit("ghost", TxKit.pay(9)._1, l3)).foreach { s0 =>
+      // held as validated in the state before the payment
+      val heldBefore = held(s0.withLedger(l3))
+      ReferenceBuild.values.foreach { build =>
+        val s = forbidding(s0.under(build))
+        assertEquals(
+          ConwayMempoolRun.applyTx(s.judging, s.env, s.ledger.ls, s.typed).map(_.map(_._1)),
+          Right(Left(allSpent)),
+          s"${s.label} under ${build.name}"
+        )
+        assertEquals(
+          ConwayMempoolRun.reapply(s.judging, s.env, s.ledger.ls, heldBefore).map(_.map(_ => ())),
+          Right(Left(allSpent)),
+          s"${s.label} under ${build.name}: reapply"
+        )
+      }
+    }
+    // the control: a transaction MEMPOOL does not refuse is annotated, by LEDGER's step
+    val live = forbidding(kit("live", paid, l3))
+    intercept[Annotated](
+      ConwayMempoolRun.applyTx(live.judging, live.env, live.ledger.ls, live.typed)
+    )
+
   // ---- the reapplication by build
 
   test("reapply: each build's consensus, which differ where the major version changed"):
