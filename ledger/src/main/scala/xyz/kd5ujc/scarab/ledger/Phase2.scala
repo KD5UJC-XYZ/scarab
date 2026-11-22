@@ -69,6 +69,30 @@ object Phase2:
 
   final case class Defect(cause: Throwable) extends DomainError
 
+  /** An immutable block body program whose scripts the node can evaluate in bounded parallel
+    * workers (ADR 0018): the serial rules ([[serial]]), the executable reference, or an ordered
+    * preparation ([[prepare]]) whose plan yields the same result. The flat rules' body
+    * (`EraBlock.Body`) and an era block run's (`ConwayBlockRun.Body`) are each one.
+    */
+  trait Program[A]:
+    def serial: A
+    def hasScripts: Boolean
+
+    /** Whether preparation can pay: more than one transaction carries redeemers. */
+    def worthwhile: Boolean
+    def prepare: Plan[A]
+
+  /** A prepared body: its jobs in dependency batches, each executed alone into a value, and the
+    * only route to the body's result, which checks every reached verdict in transaction order.
+    * Missing or foreign completed values are evaluated directly, never treated as a success.
+    */
+  trait Plan[A]:
+    type Job
+    type Completed
+    def batches: Vector[Vector[Job]]
+    def execute(job: Job): Completed
+    def resolve(completed: Vector[Completed]): Either[Defect, A]
+
   final class Completed private[Phase2] (
       private[ledger] val job: Job,
       private[ledger] val outcome: Either[Defect, Collected[Outcome]]

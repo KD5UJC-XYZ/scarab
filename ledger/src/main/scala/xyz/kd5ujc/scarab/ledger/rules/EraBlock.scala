@@ -75,7 +75,7 @@ object EraBlock:
       block: Block.Shelley,
       txs: Vector[Either[LedgerDecodeError, Tx]],
       before: PlutusStats
-  ):
+  ) extends Phase2.Program[Outcome]:
     def serial: Outcome = body(ctx)(ticked, header, block, txs, before)
     def hasScripts: Boolean = txs.exists(_.exists(_.witnesses.redeemers.nonEmpty))
     def worthwhile: Boolean = txs.count(_.exists(_.witnesses.redeemers.nonEmpty)) > 1
@@ -117,7 +117,9 @@ object EraBlock:
       before: PlutusStats,
       observer: Option[Phase2.Observation => Unit],
       evaluator: ScriptEvaluator[cats.Id]
-  ):
+  ) extends Phase2.Plan[Outcome]:
+    type Job = Phase2.Job
+    type Completed = Phase2.Completed
     def batches: Vector[Vector[Phase2.Job]] = TxDependencies.batches(txs, jobs)
     def execute(job: Phase2.Job): Phase2.Completed = Phase2.execute(job, evaluator)
 
