@@ -39,8 +39,7 @@ import xyz.kd5ujc.scarab.protocol.ReferenceBuild
   *   - the block's execution units and reference scripts against the flat rules' sums on the
   *     chain's recorded transactions, the reference scripts at versions 10 and 12, the limits at
   *     their boundaries, and a block past both refused by BBODY after LEDGERS's failures;
-  *   - the node's run (`DijkstraBlockRun.bbody`) on the network of its globals with every check,
-  *     and a network outside `Network` a defect;
+  *   - the node's run (`DijkstraBlockRun.bbody`) on the network of its globals with every check;
   *   - no derived `Mirror` for the block's body or header, which only the block decoder makes;
   *   - the block counted for its issuer, and an overlay slot not counted;
   *   - the injections into BBODY on built values against the reference's compositions, the 24 the
@@ -529,7 +528,8 @@ class DijkstraBbodySuite extends FunSuite:
     (crafted(plain)(_.updated(0, array(rs.map(_.flat.raw))), committing), seeded)
 
   /** The globals with the network `n`. */
-  private def onNetwork(n: Int): Globals = globals.copy(ledger = globals.ledger.copy(network = n))
+  private def onNetwork(n: Network): Globals =
+    globals.copy(ledger = globals.ledger.copy(network = n))
 
   /** The node's run of BBODY (`DijkstraBlockRun.bbody`) on `raw` from `state` under `on`. */
   private def nodeRun(on: Globals, raw: Bytes, state: ShelleyBbodyState[Dijkstra]) =
@@ -550,7 +550,7 @@ class DijkstraBbodySuite extends FunSuite:
   test("the node's run reads its network from the globals and validates every check") {
     val (raw, seeded) = sampled(byBlock.head)
     // the refusal or the state after, of the node's run and of BBODY on a context given whole
-    def ofNode(n: Int) = nodeRun(onNetwork(n), raw, seeded) match
+    def ofNode(n: Network) = nodeRun(onNetwork(n), raw, seeded) match
       case Right(Left(fs))          => Left(fs.toChain.toVector)
       case Right(Right((after, _))) => Right(after)
       case Left(d)                  => fail(s"a defect: $d")
@@ -567,20 +567,8 @@ class DijkstraBbodySuite extends FunSuite:
       judgedOn(Network.Mainnet, flat.TxEnv.Validation.NonStatic)
     )
     // the run is BBODY on the globals' network (`networkId`) with every check
-    assertEquals(ofNode(Network.Testnet.wire), judgedOn(Network.Testnet, all))
-    assertEquals(ofNode(Network.Mainnet.wire), judgedOn(Network.Mainnet, all))
-    // a network outside `Network` is a defect, not a network
-    assertEquals(
-      nodeRun(onNetwork(2), plain, empty),
-      Left(
-        DijkstraRuleDefect.Ledger(
-          flat.LedgerFailure.Vocab(
-            xyz.kd5ujc.scarab.ledger.state.VocabError
-              .OutOfRange(xyz.kd5ujc.scarab.ledger.state.VocabError.Kind.Network, BigInt(2))
-          )
-        )
-      )
-    )
+    assertEquals(ofNode(Network.Testnet), judgedOn(Network.Testnet, all))
+    assertEquals(ofNode(Network.Mainnet), judgedOn(Network.Mainnet, all))
   }
 
   test("no Dijkstra block value that keeps its bytes has a Mirror to build it from other fields") {

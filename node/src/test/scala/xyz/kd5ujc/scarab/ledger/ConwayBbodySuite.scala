@@ -210,7 +210,7 @@ class ConwayBbodySuite extends FunSuite:
     val header = block.header
     val geometry = setup.geometry
     val globals = Globals(
-      setup.globals.copy(network = network.wire, referenceBuild = build),
+      setup.globals.copy(network = network, referenceBuild = build),
       geometry
     )
     val (flatEvaluator, eraEvaluator) = (Counting(), Counting())

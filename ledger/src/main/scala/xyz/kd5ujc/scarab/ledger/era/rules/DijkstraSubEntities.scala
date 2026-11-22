@@ -21,7 +21,6 @@ import xyz.kd5ujc.scarab.ledger.state.{
   EpochNo,
   EraTag,
   Network,
-  VocabError,
   Withdrawals
 }
 
