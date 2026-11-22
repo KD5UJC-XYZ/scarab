@@ -722,6 +722,51 @@ class JobHandlersSuite extends FailsOnUncaught:
     }
   }
 
+  // A first phase whose requests are all still in flight at the batch wait has no answers: its
+  // completion is applied, so the second phase starts, but it tells no share results. Here a log
+  // that cannot write an empty share result would stop the governor before the second phase.
+  test(
+    "a peer-share first phase with no answers tells nothing, and the second phase still starts"
+  ) {
+    val sharing = new PeerSharingActions[IO, Int]:
+      def inbound = IO.pure(Map.empty[Int, Boolean])
+      def request(peer: Int, amount: PeerSharing.Amount) = IO.never
+      def publish(state: GovernorState[Int]) = IO.unit
+    govern(
+      twoSharing,
+      actions(),
+      sharing = Some(sharing),
+      refused = {
+        case Output.Traced(Trace.ShareResults(Nil, _)) => true
+        case _                                         => false
+      }
+    ) {
+      case Outcome.Shared(_, results) => results.nonEmpty
+      case _                          => false
+    }.map { applied =>
+      applied.outcome match
+        case Outcome.Shared(0L, results) =>
+          assertEquals(
+            results.toMap,
+            Map[Int, PeerShare.Result[Int]](
+              Peer -> PeerShare.Result.TimedOut(),
+              Other -> PeerShare.Result.TimedOut()
+            )
+          )
+          assertEquals(
+            applied.outputs.collect { case Output.Traced(t @ Trace.ShareResults(_, _)) => t },
+            Vector(Trace.ShareResults(results, Nil)),
+            "only the second phase should tell its share results"
+          )
+        case other => fail(s"not the batch's second phase: $other")
+      assert(
+        applied.at >= policy.peerShareOverallTimeout,
+        s"the second phase should wait its whole time, ended at ${applied.at}"
+      )
+      assertEquals(applied.state.sharing.batches, Map.empty[Long, PeerShare.Batch[Int]])
+    }
+  }
+
   // `jobReqPublicRootPeers`'s handler (RootPeers.hs 125-155 at c45735a5): a failed request, the
   // back-off one step in the failure direction and the next request 2 s on, its exception traced
   test("a request for public roots that raises is a failed request, one back-off step on") {

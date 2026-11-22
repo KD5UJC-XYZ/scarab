@@ -190,6 +190,19 @@ class PeerShareGovernorSuite extends FunSuite:
     assertEquals(d.state.sharing.inFlight, 0)
   }
 
+  test("a completion with no answers tells nothing and keeps its peers in flight for the next") {
+    val started = decision(state())
+    val (id, asked) = batch(started)
+    val empty = PeerShare.completed(started.state, id, Nil, 303.seconds, policy)
+    assertEquals(empty.traces, Nil)
+    assertEquals(empty.jobs, Nil)
+    assertEquals(empty.state, started.state)
+    val timedOut: List[(Int, PeerShare.Result[Int])] = asked.map(_ -> PeerShare.Result.TimedOut())
+    val later = PeerShare.completed(empty.state, id, timedOut, 310.seconds, policy)
+    assertEquals(later.traces, List(Trace.ShareResults(timedOut, Nil)))
+    assertEquals(later.state.sharing.inFlight, 0)
+  }
+
   test(
     "a late completion after disconnection never restores the connection or re-inserts its source"
   ) {
