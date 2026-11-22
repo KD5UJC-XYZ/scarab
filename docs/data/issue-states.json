@@ -53,7 +53,7 @@
   "51": ["open", "", true],
   "52": ["open", "", false],
   "53": ["closed", "completed", false],
-  "54": ["open", "", true],
+  "54": ["open", "reopened", true],
   "55": ["closed", "completed", false],
   "56": ["closed", "completed", false],
   "57": ["closed", "completed", false],
