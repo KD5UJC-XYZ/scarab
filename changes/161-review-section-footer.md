@@ -3,7 +3,8 @@
 - The pull request policy's review check counts only a link to a comment or a review of the pull
   request itself (`https://github.com/<repository>/pull/<number>#issuecomment-<id>` or
   `#pullrequestreview-<id>`) in its "Independent review" section, or the review written in the
-  section itself (at least 25 words besides the attribution line). Until now any link counted,
+  section itself (at least 25 words of visible prose: code, link destinations, hidden
+  reference definitions and the attribution line do not count). Until now any link counted,
   so a section that said only "Pending" passed when the body's closing attribution line, which
   falls in its last section, carried a link.
 - The check reads a link by its destination, never its visible text, so a link that shows this

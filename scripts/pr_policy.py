@@ -184,7 +184,7 @@ def link_targets(text, body=None):
     source = text if body is None else "\n".join(rendered_lines(body))
     defined = {}
     for label, target in REFERENCE_DEFINITION.findall(source):
-        defined.setdefault(label_key(label), target)
+        defined.setdefault(label_key(label), target[1:-1] if target.startswith("<") and target.endswith(">") else target)
     targets = []
     def take(target, match):
         if target is None or not LINK.match(target):
@@ -212,10 +212,25 @@ ATTRIBUTION = re.compile(r"^.*Generated with \[Claude Code\]\(https://claude\.co
 INLINE_REVIEW_WORDS = 25
 
 
+HTML_CODE = re.compile(r"<(code|pre|kbd|samp)\b[^>]*>.*?</\1\s*>", re.IGNORECASE | re.DOTALL)
+HTML_TAG = re.compile(r"</?[A-Za-z][^>]*>")
+
+
+def visible_prose(text):
+    """The words of `text` a reader sees as prose: without the attribution line, code spans, HTML code elements,
+    other HTML tags, reference definitions (GitHub hides them), images, and link destinations (a link's text is
+    kept, an autolink and a bare URL count for nothing)."""
+    rest = HTML_CODE.sub(" ", without_code_spans(ATTRIBUTION.sub("", text)))
+    rest = IMAGE.sub(" ", REFERENCE_DEFINITION.sub(" ", HTML_TAG.sub(" ", rest)))
+    rest = INLINE_LINK.sub(lambda m: " " + m.group(0)[1:m.group(0).index("](")] + " ", rest)
+    rest = LINK.sub(" ", AUTOLINK.sub(" ", rest))
+    return re.findall(r"\w+", rest)
+
+
 def inline_review(text):
-    """Whether the section carries the review itself, written in the body: at least `INLINE_REVIEW_WORDS` words
-    outside code spans once the attribution line is removed, so "Pending" or a bare footer is not a review."""
-    return len(re.findall(r"\w+", ATTRIBUTION.sub("", without_code_spans(text)))) >= INLINE_REVIEW_WORDS
+    """Whether the section carries the review itself, written in the body: at least `INLINE_REVIEW_WORDS` words of
+    visible prose (`visible_prose`), so "Pending", a bare footer or hidden text is not a review."""
+    return len(visible_prose(text)) >= INLINE_REVIEW_WORDS
 
 
 def check_review(pr):
