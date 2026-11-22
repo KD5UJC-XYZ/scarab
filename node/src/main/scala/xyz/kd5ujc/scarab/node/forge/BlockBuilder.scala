@@ -231,7 +231,7 @@ object BlockBuilder:
         val env = TxEnv(
           slot,
           epoch,
-          globals.network,
+          globals.network.wire,
           firstSlotNextEpoch = geometry.firstSlot(epoch + 1),
           stabilityWindow = geometry.stabilityWindow.toBigInt,
           txIndex = acc.chosen.size,

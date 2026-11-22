@@ -9310,8 +9310,8 @@
     "PoolParamsLayoutSuite",
     "UpstreamPoolConformanceSuite"
    ],
-   "note": "the reward account's network compared as the state's Network, the node's read into it; RegisterPool and ReregisterPool told where the reference tells them; a pool registers in the layout of the build the node follows, parameters of another refused as a defect the reference, one build, never meets",
-   "digest": "5b139b5de57ac9b4"
+   "note": "the reward account's network compared as the state's Network with the Globals' own (the Shelley genesis's networkId, #1334); RegisterPool and ReregisterPool told where the reference tells them; a pool registers in the layout of the build the node follows, parameters of another refused as a defect the reference, one build, never meets",
+   "digest": "8fefa9f67a967474"
   },
   "type ledger.era.EraAccounts.Undrained": {
    "upstream": [
@@ -34990,8 +34990,8 @@
     "DijkstraRulesOracleSuite",
     "DijkstraCertsSuite"
    ],
-   "note": "generic in its era, where the reference is generic in its rule too (SUBPOOL reuses it, D7c); the reward account's network compared as the state's Network, the node's read into it; RegisterPool and ReregisterPool told where the reference tells them; the proof of possession checked only under a policy that runs the static checks, a parameter (CertRule.dijkstra), a key it cannot check POOL's own defect raised through its own capability (PoolDefect); a new pool registers in the layout of the build the node follows and a re-registration waits in its pool state's, parameters of another layout refused as a defect the reference, one build, never meets (LedgerFailure.PoolParamsLayout)",
-   "digest": "f3e92eb5a7ce13a2"
+   "note": "generic in its era, where the reference is generic in its rule too (SUBPOOL reuses it, D7c); the reward account's network compared as the state's Network with the Globals' own (the Shelley genesis's networkId, #1334); RegisterPool and ReregisterPool told where the reference tells them; the proof of possession checked only under a policy that runs the static checks, a parameter (CertRule.dijkstra), a key it cannot check POOL's own defect raised through its own capability (PoolDefect); a new pool registers in the layout of the build the node follows and a re-registration waits in its pool state's, parameters of another layout refused as a defect the reference, one build, never meets (LedgerFailure.PoolParamsLayout)",
+   "digest": "c8262e690dfc85bf"
   },
   "def ledger.era.rules.DijkstraPOOL.invalid": {
    "upstream": [
@@ -47633,6 +47633,34 @@
    "evidence": [
     "DijkstraRulesOracleSuite"
    ]
+  },
+  "def ledger.GenesisState.networkId": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "symbol": "Network",
+     "lines": [
+      878,
+      881
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Genesis.hs",
+     "symbol": "networkId",
+     "lines": [
+      500,
+      500
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the genesis's networkId read by the derived FromJSON Network, its two constructors by name; GenesisStart's injections and the ledger's Globals (mkShelleyGlobals) read it here",
+   "digest": "03f4fe5f1e0dcb96"
   }
  },
  "glue": [

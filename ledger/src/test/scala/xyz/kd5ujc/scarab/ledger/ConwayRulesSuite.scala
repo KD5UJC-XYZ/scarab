@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
+import xyz.kd5ujc.scarab.ledger.state.Network
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
 import xyz.kd5ujc.scarab.crypto.Blake2b
@@ -694,7 +695,7 @@ class ConwayRulesSuite extends FunSuite:
       Supply,
       100,
       Rational(1, 20),
-      network = 0,
+      network = Network.Testnet,
       kes = xyz.kd5ujc.scarab.ledger.KesParameters.Mainnet
     )
     val idle = inConway(

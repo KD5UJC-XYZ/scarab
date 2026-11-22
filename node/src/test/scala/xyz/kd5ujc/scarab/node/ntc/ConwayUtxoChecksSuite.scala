@@ -121,7 +121,8 @@ class ConwayUtxoChecksSuite extends FunSuite:
         NodeSetup.fromFiles(c.build)(name => c.genesis.get(name).map(_.toArray))
       )
       val codecs = right(s"${c.path} layout")(stateCodecs(c.build))
-      val network = setup.globals.network
+      val netId = setup.globals.network
+      val network = netId.wire
       c.cases.map { rc =>
         val what = s"${c.path}/${rc.label}"
         val bytes: Bytes = right(s"$what item")(LocalSubmission.unwrap(rc.item)).raw
@@ -135,7 +136,7 @@ class ConwayUtxoChecksSuite extends FunSuite:
           bytes,
           rc.tipSlot + 1,
           network,
-          Network.of(BigInt(network)).getOrElse(fail(s"$what network $network")),
+          netId,
           right(s"$what flat")(Tx.fromEnvelope(bytes, Era.Conway)),
           right(s"$what typed")(ConwayTx.fromEnvelope(bytes, StateLayout.Node11_1)),
           stored,

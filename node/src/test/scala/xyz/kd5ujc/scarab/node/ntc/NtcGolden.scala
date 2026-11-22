@@ -60,7 +60,7 @@ object NtcGolden:
       .fold(e => sys.error(e.message), identity)
 
   val mirrorEnv: MirrorEnv =
-    MirrorEnv(setup.globals.network, setup.geometry, setup.globals.updateQuorum)
+    MirrorEnv(setup.globals.network.wire, setup.geometry, setup.globals.updateQuorum)
 
   val queryEnv: QueryEnv = QueryEnv(
     setup.byronParams

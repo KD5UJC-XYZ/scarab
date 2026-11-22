@@ -23,7 +23,12 @@ object NativeRewardFixture extends Assertions:
   def coin(n: BigInt): Coin = Coin(n)
   def compact(n: BigInt): CompactCoin = ok(CompactCoin.fromBigInt(n))
 
-  def globals(slots: Int, active: Rational, security: Int = 1, network: Int = 0): Globals =
+  def globals(
+      slots: Int,
+      active: Rational,
+      security: Int = 1,
+      network: Network = Network.Testnet
+  ): Globals =
     Globals(
       LedgerGlobals(
         Supply,

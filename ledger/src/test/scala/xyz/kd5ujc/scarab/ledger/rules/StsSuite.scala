@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.rules
 
+import xyz.kd5ujc.scarab.ledger.state.Network
 import xyz.kd5ujc.scarab.ledger.TestGeometry
 import cats.{Eq, Monad}
 import cats.laws.discipline.MonadTests
@@ -29,12 +30,12 @@ class StsSuite extends DisciplineSuite:
       BigInt(1000),
       100,
       Rational(1, 20),
-      network = 0,
+      network = Network.Testnet,
       kes = xyz.kd5ujc.scarab.ledger.KesParameters.Mainnet
     ),
     EpochGeometry(Instant.EPOCH, 1000, 100, TestGeometry.k(5), TestGeometry.f("0.05"))
   )
-  private val otherGlobals = globals.copy(ledger = globals.ledger.copy(network = 1))
+  private val otherGlobals = globals.copy(ledger = globals.ledger.copy(network = Network.Mainnet))
 
   // Programs compare by what they do on a sample of environments and states.
   given [A: Eq]: Eq[RuleT[Nothing, Fail, Int, A]] = Eq.instance((x, y) =>
@@ -48,7 +49,7 @@ class StsSuite extends DisciplineSuite:
   given Arbitrary[Fail] = Arbitrary(genFail)
   given Cogen[Fail] = Cogen[Int].contramap(_.toString.length)
   given Arbitrary[Globals] = Arbitrary(Gen.oneOf(globals, otherGlobals))
-  given Cogen[Globals] = Cogen[Int].contramap(_.networkId)
+  given Cogen[Globals] = Cogen[Int].contramap(_.networkId.wire)
 
   // A random program: reads the state, maybe changes it, maybe fails, returns a value.
   given [A: Arbitrary]: Arbitrary[RuleT[Nothing, Fail, Int, A]] = Arbitrary(
@@ -174,27 +175,27 @@ class StsSuite extends DisciplineSuite:
 
   test("a rule asks for the globals it runs with") {
     val program = Sts.globals[R].map(_.networkId)
-    assertEquals(program.run(otherGlobals, 0), Right((0, 1)))
+    assertEquals(program.run(otherGlobals, 0), Right((0, Network.Mainnet)))
     val local = Ask[R, Globals].ask[Globals]
     assertEquals(local.run(globals, 3).map(_._2), Right(globals))
   }
 
   test("nested scopes restore Globals and rollback before recovery with different result types") {
-    val read = Ask[R, Globals].ask[Globals].map(_.networkId)
-    def network(n: Int)(g: Globals): Globals = g.copy(ledger = g.ledger.copy(network = n))
+    val read = Ask[R, Globals].ask[Globals].map(_.quorum)
+    def quorum(n: Int)(g: Globals): Globals = g.copy(ledger = g.ledger.copy(updateQuorum = n))
     val failed = Local[R, Globals].local(
       Stateful[R, Int].set(99) *> Raise[R, Fail].raise[Fail, String](Fail.Big)
-    )(network(1))
+    )(quorum(1))
     val recovered = Handle[R, Fail].handleWith(failed)(_ => read.map(n => s"recovered-$n"))
     val program = for
       before <- read
-      text <- Local[R, Globals].local(recovered)(network(2))
+      text <- Local[R, Globals].local(recovered)(quorum(2))
       after <- read
       state <- Stateful[R, Int].get
-      success <- Local[R, Globals].local(read.map(_ == 3))(network(3))
+      success <- Local[R, Globals].local(read.map(_ == 3))(quorum(3))
       restored <- read
     yield (before, text, after, state, success, restored)
-    assertEquals(program.run(globals, 7), Right((7, (0, "recovered-2", 0, 7, true, 0))))
+    assertEquals(program.run(globals, 7), Right((7, (5, "recovered-2", 5, 7, true, 5))))
   }
 
 object StsSuite:

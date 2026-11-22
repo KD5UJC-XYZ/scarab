@@ -24,7 +24,7 @@ class UpstreamLawfulNewEpochSuite extends FunSuite:
       BigInt("45000000000000000"),
       100,
       Rational(9, 10),
-      0,
+      Network.Testnet,
       updateQuorum = 5,
       kes = xyz.kd5ujc.scarab.ledger.KesParameters.Mainnet
     ),

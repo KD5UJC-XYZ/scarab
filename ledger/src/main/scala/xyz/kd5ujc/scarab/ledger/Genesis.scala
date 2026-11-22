@@ -17,9 +17,15 @@ import xyz.kd5ujc.scarab.ledger.json.{
 }
 import xyz.kd5ujc.scarab.ledger.state.PositiveUnitInterval
 
-/** Network configuration read from the Shelley genesis file. */
+/** Network configuration read from the Shelley genesis file.
+  *
+  * @param networkId
+  *   `sgNetworkId` (`Shelley/Genesis.hs:310`, cardano-ledger f649f975): the ledger's network, which
+  *   the magic does not decide.
+  */
 final case class ShelleyGenesis(
     networkMagic: Long,
+    networkId: xyz.kd5ujc.scarab.ledger.state.Network,
     geometry: EpochGeometry,
     kes: KesParameters,
     maxLovelaceSupply: BigInt,
@@ -46,6 +52,7 @@ object Genesis:
           .leftMap(e => ConfigError(ConfigProblem.InvalidTimestamp(s, e)))
       )
       magic <- field[Long](c, "networkMagic")
+      networkId <- GenesisState.networkId(c)
       f <- number(c, GenesisNumberField.ActiveSlotsCoeff)(PositiveUnitInterval.fromJson)
       k <- number(c, GenesisNumberField.SecurityParam)(FromJson.nonZeroWord64)
       epochLength <- field[Long](c, "epochLength")
@@ -61,7 +68,14 @@ object Genesis:
         ConfigError(ConfigProblem.FractionalSlotMilliseconds(slotLength))
       )
       geometry <- EpochGeometry.checked(start, millis, epochLength, k, f)
-    yield ShelleyGenesis(magic, geometry, KesParameters(kesEvolutions, kesPeriod), supply, json)
+    yield ShelleyGenesis(
+      magic,
+      networkId,
+      geometry,
+      KesParameters(kesEvolutions, kesPeriod),
+      supply,
+      json
+    )
 
   private def number[A](c: ACursor, name: GenesisNumberField)(
       read: Json => Either[NumberError, A]

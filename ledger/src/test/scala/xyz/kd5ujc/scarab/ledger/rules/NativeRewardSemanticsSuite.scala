@@ -217,7 +217,7 @@ class NativeRewardSemanticsSuite extends FunSuite:
     val native = initial.copy(es =
       initial.es.copy(ls = initial.es.ls.copy[Allegra](utxo = initial.es.ls.utxo.copy(gov = gov)))
     )
-    amount(rewards(native, globals(432000, Rational(1, 20), network = 1)), owner)
+    amount(rewards(native, globals(432000, Rational(1, 20), network = Network.Mainnet)), owner)
 
   test("the epoch 235 leader reward matches the reference only with the AVVM balances returned") {
     val nodeReserves = BigInt("12794406996777589")

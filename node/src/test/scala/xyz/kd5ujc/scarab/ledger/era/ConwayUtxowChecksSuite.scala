@@ -94,7 +94,7 @@ class ConwayUtxowChecksSuite extends FunSuite:
           flatPp,
           PParams[Conway](right(s"$what typed parameters")(ConwayPParams.fromStored(flatPp))),
           rc.tipSlot + 1,
-          setup.globals.network,
+          setup.globals.network.wire,
           xyz.kd5ujc.scarab.ledger.state.ConwayNewEpochState.ls
             .andThen(xyz.kd5ujc.scarab.ledger.state.ConwayLedgerState.cert)
             .get(nes),

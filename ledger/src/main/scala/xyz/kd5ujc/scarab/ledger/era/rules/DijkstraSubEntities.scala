@@ -254,11 +254,7 @@ object DijkstraSubEntities:
       certState <- st.get
       accounts = accountsL.get(certState)
       globals <- ask.ask[Globals]
-      network <- vocab[F, Network](
-        Network
-          .of(BigInt(globals.networkId))
-          .toRight(VocabError.OutOfRange(VocabError.Kind.Network, BigInt(globals.networkId)))
-      )
+      network = globals.networkId
       withdrawals = b.withdrawals[TxLevel.Sub](txBody)
       directDeposits <- vocab[F, SortedMap[AccountAddress, Coin]](
         ENTITIES.keyed(b.directDeposits[TxLevel.Sub](txBody))

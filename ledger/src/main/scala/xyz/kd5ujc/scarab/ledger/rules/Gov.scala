@@ -176,7 +176,7 @@ object GovKernel
         .map(env.cert.accountRegistered)
     for
       globals <- Sts.globals[F]
-      network = globals.networkId
+      network = globals.networkId.wire
       // from protocol version 11 the committee voters must be elected members
       _ <-
         if pp.protocolMajor > 10 then

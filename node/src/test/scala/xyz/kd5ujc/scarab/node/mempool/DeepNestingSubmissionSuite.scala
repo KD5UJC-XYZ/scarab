@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.mempool
 
+import xyz.kd5ujc.scarab.ledger.state.Network
 import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import xyz.kd5ujc.scarab.network.recvPrefix
 import xyz.kd5ujc.scarab.node.assertions.Assertions
@@ -36,7 +37,7 @@ class DeepNestingSubmissionSuite extends CatsEffectSuite:
     TestLedger.Supply,
     432000,
     Rational(1, 20),
-    network = 0,
+    network = Network.Testnet,
     kes = xyz.kd5ujc.scarab.ledger.KesParameters.Mainnet
   )
   private val geometry =

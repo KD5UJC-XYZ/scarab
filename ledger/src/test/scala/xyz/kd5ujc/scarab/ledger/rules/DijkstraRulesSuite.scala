@@ -42,7 +42,7 @@ class DijkstraRulesSuite extends FunSuite:
       TestLedger.Supply,
       100,
       Rational(1, 2),
-      network = 0,
+      network = Network.Testnet,
       updateQuorum = 2,
       kes = xyz.kd5ujc.scarab.ledger.KesParameters.Mainnet
     ),

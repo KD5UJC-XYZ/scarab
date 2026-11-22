@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.rules
 
+import xyz.kd5ujc.scarab.ledger.state.Network
 import xyz.kd5ujc.scarab.ledger.TestGeometry
 import cats.data.NonEmptyChain
 import cats.syntax.all.*
@@ -34,7 +35,7 @@ class ShelleyMirAccumulationSuite extends FunSuite:
       BigInt(1000),
       100,
       Rational(1, 20),
-      network = 0,
+      network = Network.Testnet,
       kes = xyz.kd5ujc.scarab.ledger.KesParameters.Mainnet
     ),
     EpochGeometry(Instant.EPOCH, 1000, 100, TestGeometry.k(5), TestGeometry.f("0.05"))

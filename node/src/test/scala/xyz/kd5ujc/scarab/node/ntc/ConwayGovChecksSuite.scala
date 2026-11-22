@@ -167,7 +167,7 @@ class ConwayGovChecksSuite extends FunSuite:
       s.cert,
       s.gov.committee
     )
-    val netId = Network.of(BigInt(s.globals.networkId)).getOrElse(fail(s"${s.label}: network"))
+    val netId = s.globals.networkId
     val state = right(s"${s.label}: the stored proposals")(EraGovRun.proposals(s.gov.proposals))
     right(s"${s.label}: a defect")(EraGovRun.run(env, signal, netId, state, depth)) match
       case Left(fs) =>
@@ -292,7 +292,7 @@ class ConwayGovChecksSuite extends FunSuite:
 
   // a proposal `[deposit, return account, action, anchor]` on the case's network
   private def account(s: Seen): String =
-    val header = if s.globals.networkId == 1 then "e1" else "e0"
+    val header = if s.globals.networkId == Network.Mainnet then "e1" else "e0"
     s"581d$header${"a1" * 28}"
   private val anchor = "826161" + "5820" + "cc" * 32
   private def proposal(s: Seen, action: String): String = s"8400${account(s)}$action$anchor"

@@ -19,7 +19,7 @@ object RewardPulserFixture extends Assertions:
       Supply,
       10000,
       Rational(1, 20),
-      network = 0,
+      network = Network.Testnet,
       startRewards = 400,
       conway = None,
       alonzoCoinsPerUTxOWord = 34482,

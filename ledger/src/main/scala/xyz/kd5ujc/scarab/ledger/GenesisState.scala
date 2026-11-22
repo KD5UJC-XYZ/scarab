@@ -22,7 +22,26 @@ object GenesisState:
       byronNetworkMagic: Option[Long] = None
   )
 
-  /** Network constants from the genesis files. */
+  /** `sgNetworkId`, read by the derived `FromJSON Network` (`BaseTypes.hs:878-881`, cardano-ledger
+    * f649f975; `Shelley/Genesis.hs:500`): the constructor's name, `Testnet` or `Mainnet`. The
+    * ledger's network is this field, never one decided from the network magic.
+    */
+  def networkId(c: ACursor): Either[ConfigError, state.Network] =
+    c.downField("networkId")
+      .as[String]
+      .leftMap(e => ConfigError(ConfigProblem.JsonField("genesis", "networkId", e)))
+      .flatMap {
+        case "Testnet" => Right(state.Network.Testnet)
+        case "Mainnet" => Right(state.Network.Mainnet)
+        case other =>
+          Left(ConfigError(ConfigProblem.Selection("networkId", other, Set("Mainnet", "Testnet"))))
+      }
+
+  /** Network constants from the genesis files: the `Globals` the reference makes of the Shelley
+    * genesis (`mkShelleyGlobals`, cardano-ledger 9df9f98c `Shelley/Genesis.hs:768-789`, called by
+    * `mkShelleyLedgerConfig`, ouroboros-consensus 2416493b `Shelley/Ledger/Ledger.hs:226-239`),
+    * whose `networkId` is `sgNetworkId` (`Shelley/Genesis.hs:775`).
+    */
   def globals(
       files: Files,
       genesis: xyz.kd5ujc.scarab.ledger.ShelleyGenesis
@@ -68,7 +87,7 @@ object GenesisState:
         genesis.maxLovelaceSupply,
         genesis.geometry.epochLength,
         genesis.geometry.activeSlotsCoeff.rational,
-        network = if genesis.networkMagic == 764824073L then 1 else 0,
+        network = genesis.networkId,
         updateQuorum = quorum,
         stabilityWindow = genesis.geometry.stabilityWindow.toBigInt,
         startRewards = genesis.geometry.randomnessStabilisationWindow.toBigInt,

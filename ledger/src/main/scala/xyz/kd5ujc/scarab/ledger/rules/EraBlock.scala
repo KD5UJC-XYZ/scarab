@@ -230,7 +230,7 @@ object EraBlock:
     TxEnv(
       header.slot,
       epoch,
-      globals.networkId,
+      globals.networkId.wire,
       firstSlotNextEpoch = geometry.firstSlot(epoch + 1),
       stabilityWindow = geometry.stabilityWindow.toBigInt,
       txIndex = 0,

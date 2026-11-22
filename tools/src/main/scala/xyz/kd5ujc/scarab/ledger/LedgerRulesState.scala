@@ -25,6 +25,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
   HotCommittee,
   KeyHash,
   LedgerState,
+  Network,
   NonZero,
   PoolBlsKey,
   PositiveUnitInterval,
@@ -133,6 +134,12 @@ object LedgerRulesState:
         window / 60,
         FixtureError.Unsupported(s"no security parameter has the stability window $window")
       )
+      network <- Network
+        .of(BigInt(f.network))
+        .toRight(
+          FixtureError
+            .Vocab("network", VocabError.OutOfRange(VocabError.Kind.Network, BigInt(f.network)))
+        )
       securityParam <- NonZero
         .from(Word64.fromUnsigned(k.toLong))
         .leftMap(FixtureError.Vocab("k", _))
@@ -151,7 +158,7 @@ object LedgerRulesState:
         maxSupply = MaxSupply,
         epochLength = era.epochSize,
         activeSlotsCoeff = ActiveSlotsCoeff,
-        network = f.network,
+        network = network,
         stabilityWindow = window,
         kes = xyz.kd5ujc.scarab.ledger.KesParameters.Mainnet
       ),

@@ -179,7 +179,7 @@ object NodeSetup:
   ): ConsensusMirrorEnv =
     val geometry = genesis.geometry
     ConsensusMirrorEnv(
-      MirrorEnv(globals.network, geometry, globals.updateQuorum),
+      MirrorEnv(globals.network.wire, geometry, globals.updateQuorum),
       praos.forks,
       byronParams.fold(
         EraHistory.ByronParams(

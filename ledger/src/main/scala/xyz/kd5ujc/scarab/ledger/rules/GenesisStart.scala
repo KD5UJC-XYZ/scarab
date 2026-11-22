@@ -196,12 +196,8 @@ object GenesisInjections:
     val s = files.shelley.hcursor
     val c = files.conway.hcursor
     for
-      network <- s.get[String]("networkId").leftMap(field("genesis", "networkId"))
-      mainnet <- network match
-        case "Mainnet" => Right(true)
-        case "Testnet" => Right(false)
-        case other =>
-          Left(ConfigError(ConfigProblem.Selection("networkId", other, Set("Mainnet", "Testnet"))))
+      network <- GenesisState.networkId(s)
+      mainnet = network == Network.Mainnet
       funds <- GenesisState.entries(
         s.downField("initialFunds"),
         "initialFunds",

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.mempool
 
+import xyz.kd5ujc.scarab.ledger.state.Network
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.node.assertions.{Assertions, Collecting, Property}
 import xyz.kd5ujc.scarab.network.Settled
@@ -41,7 +42,7 @@ object TxKit:
         Supply,
         1000,
         Rational(1, 20),
-        network = 0,
+        network = Network.Testnet,
         updateQuorum = 2,
         kes = xyz.kd5ujc.scarab.ledger.KesParameters.Mainnet
       ),

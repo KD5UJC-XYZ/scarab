@@ -167,11 +167,7 @@ object POOL:
         val cost = stakePoolParams.cost
         for
           globals <- ask.ask[Globals]
-          netId <- vocab[F, Network](
-            Network
-              .of(BigInt(globals.networkId))
-              .toRight(VocabError.OutOfRange(VocabError.Kind.Network, BigInt(globals.networkId)))
-          )
+          netId = globals.networkId
           // `hardforkAlonzoValidatePoolAccountAddressNetID` (`Shelley/Era.hs:248-251`,
           // cardano-ledger f649f975)
           _ <-
@@ -942,7 +938,7 @@ object CERTS:
     val withdrawals = b.withdrawals[TxLevel.Top](body)(using b.top)
     val accountsL = c.certDStateL.andThen(DState.accounts[Accounts[E]])
     for
-      network <- ask.ask[Globals].map(_.networkId)
+      network <- ask.ask[Globals].map(_.networkId.wire)
       certState <- st.get
       bad = EraAccounts.withdrawalsThatDoNotDrainAccounts[E](
         withdrawals,

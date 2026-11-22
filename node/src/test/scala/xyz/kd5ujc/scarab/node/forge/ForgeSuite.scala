@@ -18,7 +18,7 @@ import xyz.kd5ujc.scarab.consensus.state.MirrorState
 import xyz.kd5ujc.scarab.ledger.VrfCert
 import xyz.kd5ujc.scarab.node.{ConfigSettings, Fatal, Follower}
 import xyz.kd5ujc.scarab.consensus.{ChainSelection, SelectView}
-import xyz.kd5ujc.scarab.ledger.state.{NewEpochState, PoolDistr}
+import xyz.kd5ujc.scarab.ledger.state.{Network, NewEpochState, PoolDistr}
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.ledger.*
 import xyz.kd5ujc.scarab.node.mempool.{Source, TxKit}
@@ -94,7 +94,7 @@ class ForgeSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ForgeFix
       (BigInt(12), BigInt(0))
     )
     // on a testnet, and on mainnet where `checkHeaderProtVerTooHigh` allows the ledger's major + 1
-    List(0, 1).traverse_ { network =>
+    List(Network.Testnet, Network.Mainnet).traverse_ { network =>
       withHandle {
         for
           h <- harness(p, ledger, protocolVersion = configured, network = network)
