@@ -3,18 +3,30 @@ package xyz.kd5ujc.scarab.ledger.era
 
 import scala.annotation.unused
 import xyz.kd5ujc.scarab.ledger.{LeiosBlock, Nonce}
-import xyz.kd5ujc.scarab.ledger.state.{BlockIssuer, Dijkstra, EraTag, Hash32, KeyHash, SlotNo}
+import xyz.kd5ujc.scarab.ledger.state.{
+  BlockIssuer,
+  Conway,
+  Dijkstra,
+  EraTag,
+  Hash32,
+  KeyHash,
+  SlotNo
+}
 
 // A block and the classes of its body and header as the reference declares them (cardano-ledger
 // 9df9f98c `libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs:644-669`,
 // `libs/cardano-ledger-core/src/Cardano/Ledger/Block.hs:51-158`,
 // `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/BlockBody/Internal.hs:100-246`), with the
-// members BBODY reads and Dijkstra's instances. The reference's lenses are getters here: the rules
-// only read a block. The members the rules do not read (`mkBasicBlockBody`,
+// members BBODY reads and Conway's and Dijkstra's instances. The reference's lenses are getters
+// here: the rules only read a block. The members the rules do not read (`mkBasicBlockBody`,
 // `blockHeaderSizeBlockHeaderG`, `ebReferencesAnnouncementBlockHeaderL`) come with their readers.
 
-/** The block body of era `E` (`type BlockBody era`, `Core.hs:654`, cardano-ledger 9df9f98c). */
+/** The block body of era `E` (`type BlockBody era`, `Core.hs:654`, cardano-ledger 9df9f98c):
+  * Conway's Alonzo's (`eras/conway/impl/src/Cardano/Ledger/Conway/BlockBody.hs:14-15`,
+  * cardano-ledger f649f975) and Dijkstra's own.
+  */
 type BlockBody[E <: EraTag] = E match
+  case Conway   => conway.ConwayBlockBody
   case Dijkstra => dijkstra.DijkstraBlockBody
 
 /** `data Block h era = Block {blockHeader :: h, blockBody :: BlockBody era}` (`Block.hs:51-55`,
@@ -81,6 +93,8 @@ trait DijkstraEraBlockBody[E <: EraTag] extends EraBlockBody[E]:
   def perasCertBlockBody(body: BlockBody[E]): Option[PerasCert]
 
 object EraBlockBody:
+  given conway: EraBlockBody[Conway] = xyz.kd5ujc.scarab.ledger.era.conway.ConwayBlockBody.instance
+
   given dijkstra: DijkstraEraBlockBody[Dijkstra] =
     xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraBlockBody.instance
 
@@ -103,6 +117,17 @@ trait EraBlockHeader[H, E <: EraTag]:
   /** `slotNoBlockHeaderL`. */
   def slotNoBlockHeader(block: Block[H, E]): SlotNo
 
+/** `class Era era => PraosEraBlockHeader h era` (`Block.hs:129-130`, cardano-ledger 9df9f98c): the
+  * protocol version a Praos header declares. At f649f975 the member is `EraBlockHeader` 's
+  * (`Block.hs:146-152`), and its one reader is Conway's BBODY (`Conway/Rules/Bbody.hs:295`); a
+  * class of its own leaves Dijkstra's header without it, as the build's Leios header has no
+  * protocol version (`libs/cardano-protocol/src/Cardano/Protocol/Leios/BlockHeader.hs`,
+  * cardano-ledger 9df9f98c, which instantiates no `PraosEraBlockHeader`).
+  */
+trait PraosEraBlockHeader[H, E <: EraTag]:
+  /** `protVerBlockHeaderL`: the protocol version of the header's body. */
+  def protVerBlockHeader(block: Block[H, E]): ProtVer
+
 /** `class Era era => LeiosEraBlockHeader h era` (`Block.hs:132-147`, cardano-ledger 9df9f98c). */
 trait LeiosEraBlockHeader[H, E <: EraTag]:
   /** `prevNonceBlockHeaderL`: the class's default, the neutral nonce, which no header of the build
@@ -114,6 +139,9 @@ trait LeiosEraBlockHeader[H, E <: EraTag]:
   def versionInfoBlockHeader(block: Block[H, E]): BlockHeaderVersionInfo
 
 object EraBlockHeader:
+  given conway: EraBlockHeader[xyz.kd5ujc.scarab.ledger.era.conway.ConwayBlockHeader, Conway] =
+    xyz.kd5ujc.scarab.ledger.era.conway.ConwayBlockHeader.instance
+
   given dijkstra: EraBlockHeader[
     xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraBlockHeader,
     Dijkstra
@@ -124,3 +152,7 @@ object LeiosEraBlockHeader:
     xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraBlockHeader,
     Dijkstra
   ] = xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraBlockHeader.instance
+
+object PraosEraBlockHeader:
+  given conway: PraosEraBlockHeader[xyz.kd5ujc.scarab.ledger.era.conway.ConwayBlockHeader, Conway] =
+    xyz.kd5ujc.scarab.ledger.era.conway.ConwayBlockHeader.instance

@@ -722,12 +722,6 @@
   {
    "kind": "missing-symbol",
    "path": "docs/design/ledger-mirror-step2.md",
-   "key": "ConwayBlock.Context",
-   "count": 1
-  },
-  {
-   "kind": "missing-symbol",
-   "path": "docs/design/ledger-mirror-step2.md",
    "key": "ConwayRules.vrfAvailable",
    "count": 1
   },

@@ -747,14 +747,16 @@
         "ConwayPlutusPurpose",
         "ConwayScript",
         "ConwayTxOut",
-        "ConwayPParams"
+        "ConwayPParams",
+        "ConwayBlock"
       ],
       "suites": [
         "EraCoreSuite",
         "EraConwaySuite",
         "EraTxSuite",
         "EraPParamsSuite",
-        "ConwayPParamsStateSuite"
+        "ConwayPParamsStateSuite",
+        "ConwayBbodySuite"
       ],
       "docs": [
         "docs/design/era-typed-transactions.md"
@@ -818,7 +820,9 @@
         "DijkstraBlockRun",
         "DijkstraTick",
         "DijkstraNewEpoch",
-        "NewEpochGovState"
+        "NewEpochGovState",
+        "ConwayBbody",
+        "ConwayBlockRun"
       ],
       "suites": [
         "ConwayUtxoChecksSuite",
@@ -830,7 +834,8 @@
         "EraEpochGovSuite",
         "DijkstraEraEpochGovSuite",
         "DijkstraEpochReferenceSuite",
-        "PreviewConwayBlockLedgersSuite"
+        "PreviewConwayBlockLedgersSuite",
+        "ConwayBbodySuite"
       ],
       "docs": [
         "docs/design/era-typed-transactions.md"
