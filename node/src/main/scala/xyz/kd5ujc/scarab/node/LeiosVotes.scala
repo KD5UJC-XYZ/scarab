@@ -37,19 +37,21 @@ enum LeiosVotesDefect:
   * reference's `TVar` s are.
   */
 final class LeiosVotes[F[_]] private (
-    state: Ref[F, LeiosVoteState],
-    subscribers: Ref[F, Map[Unique.Token, Queue[F, Vote]]],
+    held: Ref[F, LeiosVotes.Held[F]],
     committee: F[Either[LeiosCertificationDefect, Option[TipCommittee]]]
 )(using F: Concurrent[F]):
 
   /** `addVote` (`LeiosVoteState.hs:157-234`, ouroboros-consensus 2416493b): a vote counted already
     * is `AlreadyKnown` before any check; then the committee in force, read once (`NoCommittee`
     * without one); then the vote is validated against it outside the update, the pairing being the
-    * costly part; then, in one update, counted unless a concurrent add counted it first. Every vote
-    * counted goes to each subscriber, once.
+    * costly part; then, in one update, counted unless a concurrent add counted it first, and given
+    * to each subscriber registered at that update, once. The count and the delivery are one step
+    * that a cancellation does not split, as the reference counts the vote and writes it to its
+    * broadcast channel in one transaction: a vote is never counted while a subscriber misses it,
+    * which a later copy, `AlreadyKnown`, would never make good.
     */
   def add(vote: Vote)(using defect: Raise[F, LeiosVotesDefect]): F[AddVoteResult] =
-    state.get.map(_.seen(vote)).flatMap {
+    held.get.map(_.state.seen(vote)).flatMap {
       case true => F.pure(AddVoteResult.AlreadyKnown)
       case false =>
         committee.flatMap {
@@ -62,20 +64,29 @@ final class LeiosVotes[F[_]] private (
                 defect.raise[LeiosVotesDefect, AddVoteResult](LeiosVotesDefect.Verification(native))
               case Right(Left(reason)) => F.pure(AddVoteResult.Invalid(reason))
               case Right(Right(weight)) =>
-                state
-                  .modify(s =>
-                    s.add(vote, weight, members, threshold) match
-                      case Left(failed)          => (s, Left(failed))
-                      case Right((next, result)) => (next, Right(result))
-                  )
-                  .flatMap {
-                    case Left(failed) =>
+                F.uncancelable(_ =>
+                  held
+                    .modify(h =>
+                      h.state.add(vote, weight, members, threshold) match
+                        case Left(failed) => (h, Left(failed))
+                        case Right((next, result)) =>
+                          (h.copy(state = next), Right((result, h.subscribers.values.toVector)))
+                    )
+                    .flatMap {
+                      case Right((added @ AddVoteResult.Added(_, _), at)) =>
+                        at.traverse_(_(vote)).as(Right(added))
+                      case Right((other, _)) => F.pure(Right(other))
+                      case Left(failed)      => F.pure(Left(failed))
+                    }
+                ).flatMap(
+                  _.fold(
+                    failed =>
                       defect.raise[LeiosVotesDefect, AddVoteResult](
                         LeiosVotesDefect.Aggregation(failed)
-                      )
-                    case Right(added @ AddVoteResult.Added(_, _)) => publish(vote).as(added)
-                    case Right(other)                             => F.pure(other)
-                  }
+                      ),
+                    F.pure
+                  )
+                )
         }
     }
 
@@ -87,28 +98,32 @@ final class LeiosVotes[F[_]] private (
     votes.traverse(add)
 
   /** `queryCert` (`LeiosVoteState.hs:241-243`, ouroboros-consensus 2416493b). */
-  def certificate(rbHash: RbHash): F[Option[Certificate]] = state.get.map(_.certificate(rbHash))
+  def certificate(rbHash: RbHash): F[Option[Certificate]] =
+    held.get.map(_.state.certificate(rbHash))
 
   /** `queryVoters` (`LeiosVoteState.hs:244-246`, ouroboros-consensus 2416493b). */
-  def voters(rbHash: RbHash): F[Map[SeatId, Weight]] = state.get.map(_.voters(rbHash))
+  def voters(rbHash: RbHash): F[Map[SeatId, Weight]] = held.get.map(_.state.voters(rbHash))
 
   /** `subscribeVotes` (`LeiosVoteState.hs:235-240`, ouroboros-consensus 2416493b): each vote
     * counted from now on, once, for the life of the resource, on an unbounded queue as a duplicated
-    * `TChan` is. The reference writes the vote to its channel in the transaction that counts it;
-    * here it is offered just after, so two votes counted at once by two adds may reach a subscriber
-    * in either order.
+    * `TChan` is. Each vote is delivered in the update that counts it ([[add]]); two votes counted
+    * at once by two adds may reach a subscriber in either order.
     */
   def subscribe: Resource[F, Queue[F, Vote]] =
+    Resource.eval(Queue.unbounded[F, Vote]).flatTap(queue => subscribeWith(queue.offer))
+
+  /** `deliver` given each vote counted from now on, once, for the life of the resource. It runs in
+    * the step that counts the vote, which no cancellation splits, so it must not wait: an unbounded
+    * queue's offer, as [[subscribe]] 's.
+    */
+  private[node] def subscribeWith(deliver: Vote => F[Unit]): Resource[F, Unit] =
     Resource
       .make(
-        (F.unique, Queue.unbounded[F, Vote]).flatMapN((token, queue) =>
-          subscribers.update(_.updated(token, queue)).as(token -> queue)
+        F.unique.flatTap(token =>
+          held.update(h => h.copy(subscribers = h.subscribers.updated(token, deliver)))
         )
-      )((token, _) => subscribers.update(_ - token))
-      .map(_._2)
-
-  private def publish(vote: Vote): F[Unit] =
-    subscribers.get.flatMap(_.values.toVector.traverse_(_.offer(vote)))
+      )(token => held.update(h => h.copy(subscribers = h.subscribers - token)))
+      .void
 
 object LeiosVotes:
   /** `newLeiosVoteState` (`LeiosVoteState.hs:146-156`, ouroboros-consensus 2416493b) of the
@@ -118,7 +133,12 @@ object LeiosVotes:
   def create[F[_]: Concurrent](
       committee: F[Either[LeiosCertificationDefect, Option[TipCommittee]]]
   ): F[LeiosVotes[F]] =
-    (
-      Ref.of[F, LeiosVoteState](LeiosVoteState.empty),
-      Ref.of[F, Map[Unique.Token, Queue[F, Vote]]](Map.empty)
-    ).mapN(new LeiosVotes(_, _, committee))
+    Ref.of[F, Held[F]](Held(LeiosVoteState.empty, Map.empty)).map(new LeiosVotes(_, committee))
+
+  /** The vote state and the subscribers, in one cell, so that a vote's count and the subscribers it
+    * goes to are read in one update.
+    */
+  private final case class Held[F[_]](
+      state: LeiosVoteState,
+      subscribers: Map[Unique.Token, Vote => F[Unit]]
+  )

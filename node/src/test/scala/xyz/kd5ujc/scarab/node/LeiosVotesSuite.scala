@@ -104,6 +104,41 @@ class LeiosVotesSuite extends FailsOnUncaught:
       assertEquals(published, List(vote(2)))
   }
 
+  test("a receiver cancelled while it delivers a vote still delivers it to every subscriber") {
+    // the first subscriber's delivery waits for the test, so the add is cancelled mid fan-out;
+    // the vote is then counted and every subscriber registered at the count has it, or neither
+    for
+      votes <- LeiosVotes.create[IO](IO.pure(Right(Some(committee))))
+      delivering <- cats.effect.Deferred[IO, Unit]
+      release <- cats.effect.Deferred[IO, Unit]
+      first <- Ref.of[IO, Vector[Vote]](Vector.empty)
+      second <- Ref.of[IO, Vector[Vote]](Vector.empty)
+      // the first registered is the first delivered to only by chance of the map's order, so each
+      // delivery waits once, whichever comes first
+      gated = (into: Ref[IO, Vector[Vote]]) =>
+        (v: Vote) =>
+          delivering
+            .complete(())
+            .flatMap(firstHere => release.get.whenA(firstHere) *> into.update(_ :+ v))
+      outcome <- (votes.subscribeWith(gated(first)), votes.subscribeWith(gated(second))).tupled
+        .use { _ =>
+          for
+            adding <- allowed(votes.add(vote(3))).start
+            _ <- delivering.get
+            // the cancel waits for the delivery, which the release lets finish
+            cancelled <- adding.cancel.start
+            _ <- release.complete(())
+            _ <- cancelled.joinWithNever
+            again <- allowed(votes.add(vote(3)))
+            got <- (first.get, second.get).tupled
+          yield (again, got)
+        }
+    yield
+      val (again, (got1, got2)) = outcome
+      assertEquals(again, AddVoteResult.AlreadyKnown)
+      assertEquals((got1, got2), (Vector(vote(3)), Vector(vote(3))))
+  }
+
 object LeiosVotesSuite:
   /** A vote subscription that never yields: a LeiosNotify server with no vote to relay. */
   val noVotes: cats.effect.Resource[IO, cats.effect.std.Queue[IO, Vote]] =
