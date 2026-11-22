@@ -343,7 +343,8 @@ object ConwayBbody:
     * ([[EmbedLedgersInBbody]], `Embed ledgers (BBODY era)`, `:318-327`). The network the header's
     * version is checked on is the judgment's `Globals` ', as the reference reads it; the context's
     * is LEDGERS's alone. The signal is the reference's `BbodySignal`: a block whose header `H` has
-    * the two header classes. LEDGERS raises its own defects.
+    * the two header classes. LEDGERS raises its own defects. The proposals GOV judges are the
+    * caller's, beside the BBODY state (`proposals`), as LEDGER takes them ([[ConwayLedger]]).
     */
   def conwayBbody[F[_]: Monad, H](
       env: BbodyEnv[Conway],
@@ -364,8 +365,7 @@ object ConwayBbody:
       stateDefect: Raise[F, UtxoStateDefect],
       defect: Raise[F, LedgerDefect],
       govDefect: Raise[F, GovDefect],
-      readError: Raise[F, ProposalsReadError],
-      writeError: Raise[F, ProposalsWriteError]
+      proposals: Stateful[F, Proposals[Conway]]
   ): F[Unit] =
     val embed = EmbedLedgersInBbody.conway
     given t.bodyOf.Level[TxLevel.Top] = t.bodyOf.top

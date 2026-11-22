@@ -19,6 +19,7 @@ import xyz.kd5ujc.scarab.ledger.era.rules.{
   LedgersEnv,
   LedgersEvent,
   LedgersPredFailure,
+  ProposalsRecord,
   ShelleyLedgers,
   UtxoContext,
   UtxoStateDefect,
@@ -62,6 +63,10 @@ object EraLedgerRun:
     given Raise[F, ProposalsReadError] = summon[Raise[F, Defect]].contramap(Defect.Proposals(_))
     given Raise[F, ProposalsWriteError] =
       summon[Raise[F, Defect]].contramap(Defect.ProposalsWrite(_))
+
+    // one transaction's or one block's LEDGER: the proposals read from the node's record on every
+    // read and written back on every write
+    given Stateful[F, Proposals[Conway]] = ProposalsRecord.stateful[F, Conway]
 
     def lifted(evaluator: ScriptEvaluator[Id]): ScriptEvaluator[F] =
       request => Monad[F].map(Monad[F].unit)(_ => evaluator.evaluate(request))

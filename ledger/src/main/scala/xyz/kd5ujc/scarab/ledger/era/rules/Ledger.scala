@@ -7,7 +7,7 @@ import cats.mtl.{Ask, Raise, Stateful, Tell}
 import cats.syntax.all.*
 import scala.collection.immutable.SortedMap
 import xyz.kd5ujc.scarab.ledger.{
-  GovAction as FlatGovAction,
+  GovActionState as StoredGovActionState,
   TranslationError,
   LedgerDefect,
   LedgerFailure,
@@ -85,16 +85,25 @@ sealed trait ProposalsRecord[E <: EraTag]:
   def read(stored: StoredProposals): Either[ProposalsReadError, Proposals[E]]
   def write(proposals: Proposals[E]): Either[ProposalsWriteError, StoredProposals]
 
+  /** An action's state as the node records it, as the rules below LEDGER read the committee's
+    * actions ([[CertsEnv]]).
+    */
+  def storedAction(gas: GovActionState[E]): StoredGovActionState
+
 object ProposalsRecord:
   given conway: ProposalsRecord[Conway] with
     def read(stored: StoredProposals): Either[ProposalsReadError, Proposals[Conway]] =
       ConwayProposals.fromStored(stored)
     def write(proposals: Proposals[Conway]): Either[ProposalsWriteError, StoredProposals] =
       Right(ConwayProposals.toStored(proposals))
+    def storedAction(gas: GovActionState[Conway]): StoredGovActionState =
+      ConwayProposals.storedAction(gas)
 
   /** The proposals of the ledger state's governance record, read into the era's on every `get` and
     * written back on every `set`: a record the era cannot read is raised (`readError`), and
-    * proposals it cannot hold (`writeError`).
+    * proposals it cannot hold (`writeError`). For a judgment of one transaction, whose LEDGER reads
+    * them for CERTS's committee actions and for GOV; a run over many holds them once beside the
+    * ledger state instead ([[ConwayBlockRun]]).
     */
   def stateful[F[_]: Monad, E <: EraTag](using
       state: Stateful[F, LedgerState[E]],
@@ -250,12 +259,15 @@ object ConwayLedger:
     * transaction, UTXOW, with the certificate state before the transaction in its environment, as
     * its refunds are computed from it. Every sub-rule runs whatever was recorded before it.
     *
-    * The proposals are the node's record, read into the era's ([[ProposalsRecord]]) for GOV and
-    * written back; a record the era cannot read is raised ([[ProposalsReadError]]). The epoch is
-    * the environment's, or the slot's by the geometry of `Globals` (`epochOf`), which is total,
-    * where the reference's `epochFromSlot` (`Slot.hs:66-69`, cardano-ledger f649f975) reads the
-    * epoch information of its `Globals` and fails outside a bounded history: the two agree within
-    * the history. UTXOW's arguments are UTXOW's ([[BabbageUtxow.babbageUtxowTransition]]).
+    * The proposals are the era's, in their own capability beside the ledger state (`proposals`),
+    * which GOV judges and leaves and whose committee's actions CERTS reads (`proposalsWithPurpose
+    * grCommitteeL`, `:367-370`), each as the node records it ([[ProposalsRecord.storedAction]]):
+    * the caller holds them, read from the node's record once for a block ([[ConwayBlockRun]]), or
+    * on every read and write for one transaction ([[ProposalsRecord.stateful]]). The epoch is the
+    * environment's, or the slot's by the geometry of `Globals` (`epochOf`), which is total, where
+    * the reference's `epochFromSlot` (`Slot.hs:66-69`, cardano-ledger f649f975) reads the epoch
+    * information of its `Globals` and fails outside a bounded history: the two agree within the
+    * history. UTXOW's arguments are UTXOW's ([[BabbageUtxow.babbageUtxowTransition]]).
     */
   def conwayLedgerTransition[F[_]: Monad, E <: EraTag](
       env: LedgerEnv[E],
@@ -313,8 +325,7 @@ object ConwayLedger:
       stateDefect: Raise[F, UtxoStateDefect],
       defect: Raise[F, LedgerDefect],
       govDefect: Raise[F, GovDefect],
-      readError: Raise[F, ProposalsReadError],
-      writeError: Raise[F, ProposalsWriteError]
+      proposals: Stateful[F, Proposals[E]]
   ): F[Unit] =
     given acc: ConwayEraAccounts[E] = c.accountsOf
     val top = t.bodyOf.top
@@ -332,23 +343,19 @@ object ConwayLedger:
     val withdrawals = b.withdrawals[TxLevel.Top](txBody)(using b.top)
     def test(t: Test[ConwayLedgerPredFailure[E]]): F[Unit] =
       Sts.runTest[F, LedgerPredFailure[E]](t.leftMap(_.map(injectLedger.injectFailure)))
-    // the proposals GOV judges and leaves: the node's record in the governance state, read into
-    // the era's and written back
-    val proposals: Stateful[F, Proposals[E]] = ProposalsRecord.stateful[F, E]
     def valid(certState: CertState[E], utxoState: UTxOState[E], curEpochNo: EpochNo): F[Unit] =
       val govState = gs(utxoState.gov)
       val committee = govState.committee
-      // `proposalsWithPurpose grCommitteeL proposals`: the actions of the committee's purpose
-      val committeeProposals = govState.proposals.actions.collect {
-        case g if g.proposal.action match
-              case FlatGovAction.NoConfidence(_) | FlatGovAction.UpdateCommittee(_, _, _, _) =>
-                true
-              case _ => false
-            =>
-          g.id -> g
-      }.toMap
       val accounts = accountsL.get(certState)
       for
+        // `proposalsWithPurpose grCommitteeL proposals`: the actions of the committee's purpose,
+        // of the proposals before the transaction
+        before <- proposals.get
+        committeeProposals = Proposals
+          .proposalsWithPurpose[E, GovActionPurpose.Committee](GovRelation.grCommitteeL, before)
+          .valuesIterator
+          .map(gas => gas.gasId -> record.storedAction(gas))
+          .toMap
         globals <- ask.ask[Globals]
         _ <- test(
           validateTreasuryValue[E, TxLevel.Top](txBody, env.ledgerAccount.treasury)(using b, b.top)
@@ -621,8 +628,7 @@ object ShelleyLedgers:
       stateDefect: Raise[F, UtxoStateDefect],
       defect: Raise[F, LedgerDefect],
       govDefect: Raise[F, GovDefect],
-      readError: Raise[F, ProposalsReadError],
-      writeError: Raise[F, ProposalsWriteError],
+      proposals: Stateful[F, Proposals[E]],
       scripts: ConwayEraScript[E],
       plutusContext: EraPlutusContext[E],
       annotated: AlonzoStAnnTx[E] =:= StAnnTx[TxLevel.Top, E],

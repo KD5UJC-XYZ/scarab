@@ -38,6 +38,7 @@ import xyz.kd5ujc.scarab.ledger.era.rules.{
   ConwayBbody,
   ConwayBbodyPredFailure,
   ConwayBlockRun,
+  ConwayRuleDefect,
   HeaderProtVerGate,
   InjectBbodyFailure,
   ShelleyBbody,
@@ -48,22 +49,31 @@ import xyz.kd5ujc.scarab.ledger.era.rules.{
 import xyz.kd5ujc.scarab.ledger.rules.{Bbody as FlatBbody, EraBlock, EraNes, Globals}
 import xyz.kd5ujc.scarab.ledger.state.{
   BlocksMade,
+  Coin,
+  CompactCoin,
   Conway,
+  ConwayAccountState,
+  ConwayAccounts,
   ConwayNewEpochState,
   LedgerState,
   Network,
   NewEpochState,
   ShelleyBasedEra,
+  Staking,
   UtxoTables
 }
 import xyz.kd5ujc.scarab.plutus.{
+  EvalFailure,
   EvalRequest,
   EvalResult,
   ExUnits,
   PlutusLanguage,
   ScarabEvaluator,
-  ScriptEvaluator
+  ScriptEvaluator,
+  ScriptFailure
 }
+import xyz.kd5ujc.scarab.uplc.cek.{CekError, CekFailure}
+import xyz.kd5ujc.scarab.uplc.ledger.EvaluationError
 import xyz.kd5ujc.scarab.node.{MirrorSteps, NodeSetup}
 import xyz.kd5ujc.scarab.protocol.{Era, ReferenceBuild, StateLayout}
 
@@ -172,22 +182,111 @@ class ConwayBbodySuite extends FunSuite:
     * failures as well as their flat form, and the scripts each side's evaluator ran.
     */
   private final case class Judged(
-      era: Verdict,
+      eraRun: Either[ConwayRuleDefect, Verdict],
       flat: Verdict,
       ticked: NewEpochState[Conway],
       flatPlutus: Option[PlutusStats],
+      eraPlutus: Option[PlutusStats],
       flatBbodyAdmits: Boolean,
       eraFailures: Vector[BbodyPredFailure[Conway]],
       eraEvaluated: Int,
-      flatEvaluated: Int
+      flatEvaluated: Int,
+      eraObserved: Vector[Phase2.Observation],
+      flatObserved: Vector[Phase2.Observation]
+  ):
+    /** The era run's verdict, where it reached one. */
+    def era: Verdict = eraRun.fold(defect => fail(s"era defect $defect"), identity)
+
+  /** A script's failure in a form that compares by value: a machine's failure by its error and
+    * whether the reference attaches a term to it (`ErrorWithCause`), since the term (`Cause`, read
+    * only when asked for) compares by identity; every other failure as it is, whose fields compare
+    * by value.
+    */
+  private enum FailureForm derives CanEqual:
+    case Machine(error: CekError, caused: Boolean, logs: Vector[String])
+    case Other(failure: EvalFailure)
+
+  private def formOf(failure: EvalFailure): FailureForm = failure match
+    case EvalFailure.Script(
+          ScriptFailure.Uplc(EvaluationError.Cek(CekFailure(error, cause)), logs)
+        ) =>
+      FailureForm.Machine(error, cause.isDefined, logs)
+    case EvalFailure.Script(_) | EvalFailure.Decode(_) | EvalFailure.Unsupported(_) |
+        EvalFailure.OutOfBudget | EvalFailure.OpenTerm(_) =>
+      FailureForm.Other(failure)
+
+  /** A script's result with its failure in its comparable form ([[FailureForm]]). */
+  private enum ResultForm derives CanEqual:
+    case Passed(used: ExUnits, logs: Vector[String])
+    case Failed(failure: FailureForm, used: ExUnits, logs: Vector[String])
+
+  private type EvaluationForm = (Redeemer, EvalRequest, ResultForm)
+
+  /** What an observation says of its scripts, each failure in its comparable form. */
+  private enum OutcomeForm derives CanEqual:
+    case Passed(evaluations: Vector[EvaluationForm])
+    case Failed(
+        evaluations: Vector[EvaluationForm],
+        failures: Vector[(Redeemer, EvalRequest, FailureForm)]
+    )
+    case Unavailable(
+        evaluations: Vector[EvaluationForm],
+        redeemer: Redeemer,
+        reason: EvalFailure.Unsupported
+    )
+
+  /** An observation as it compares: every field as it is, its outcome in its comparable form. */
+  private final case class ObservationForm(
+      tx: Tx,
+      params: ProtocolParams,
+      slot: BigInt,
+      spent: Map[TxIn, TxOut],
+      references: Map[TxIn, TxOut],
+      clock: Option[PosixClock],
+      outcome: Phase2.Collected[OutcomeForm]
   )
 
-  /** The node's evaluator, counting the scripts it is asked to run. */
-  private final class Counting extends ScriptEvaluator[cats.Id]:
+  private def comparable(o: Phase2.Observation): ObservationForm =
+    def result(r: EvalResult): ResultForm = r match
+      case EvalResult.Success(used, logs)         => ResultForm.Passed(used, logs)
+      case EvalResult.Failure(reason, used, logs) => ResultForm.Failed(formOf(reason), used, logs)
+    def evaluations(report: Phase2.Report): Vector[EvaluationForm] =
+      report.evaluations.map(e => (e.redeemer, e.request, result(e.result)))
+    val outcome = o.outcome.map {
+      case Phase2.Outcome.Passed(report) => OutcomeForm.Passed(evaluations(report))
+      case Phase2.Outcome.Failed(report, failures) =>
+        OutcomeForm.Failed(
+          evaluations(report),
+          failures.toVector.map(f => (f.redeemer, f.request, formOf(f.reason)))
+        )
+      case Phase2.Outcome.Unavailable(report, redeemer, reason) =>
+        OutcomeForm.Unavailable(evaluations(report), redeemer, reason)
+    }
+    ObservationForm(o.tx, o.params, o.slot, o.spent, o.references, o.clock, outcome)
+
+  /** The phase-2 observations a side's observer is told (`--plutus-cases`), in order. */
+  private final class Observations:
+    private val told =
+      new java.util.concurrent.atomic.AtomicReference(Vector.empty[Phase2.Observation])
+    def observe(o: Phase2.Observation): Unit = { val _ = told.updateAndGet(_ :+ o); () }
+    def all: Vector[Phase2.Observation] = told.get
+
+  /** The node's evaluator, counting the scripts it is asked to run, and giving no verdict on the
+    * `unsupportedAt` th, as an evaluator's limit does (`EvalFailure.Unsupported`).
+    */
+  private final class Counting(unsupportedAt: Option[Int]) extends ScriptEvaluator[cats.Id]:
     private val runs = new java.util.concurrent.atomic.AtomicInteger(0)
     def evaluate(request: EvalRequest): EvalResult =
-      runs.incrementAndGet()
-      ScarabEvaluator.default.evaluate(request)
+      val n = runs.incrementAndGet()
+      if unsupportedAt.contains(n) then
+        EvalResult.Failure(
+          xyz.kd5ujc.scarab.plutus.EvalFailure.Unsupported(
+            xyz.kd5ujc.scarab.plutus.BackendFailure.StackExhausted
+          ),
+          ExUnits.zero,
+          Vector.empty
+        )
+      else ScarabEvaluator.default.evaluate(request)
     def count: Int = runs.get
 
   /** The state of `before` ticked to the block `raw` as `MirrorRules` ticks it (stamped with the
@@ -201,7 +300,9 @@ class ConwayBbodySuite extends FunSuite:
       raw: Bytes,
       network: Network = Network.Testnet,
       build: ReferenceBuild = ReferenceBuild.Release11_1,
-      change: NewEpochState[Conway] => NewEpochState[Conway] = identity
+      change: NewEpochState[Conway] => NewEpochState[Conway] = identity,
+      unsupportedAt: Option[Int] = None,
+      observe: Boolean = false
   ): Judged =
     val setup = before.setup
     val block = FlatBlock.decodeShelley(raw) match
@@ -213,14 +314,19 @@ class ConwayBbodySuite extends FunSuite:
       setup.globals.copy(network = network, referenceBuild = build),
       geometry
     )
-    val (flatEvaluator, eraEvaluator) = (Counting(), Counting())
+    val (flatEvaluator, eraEvaluator) = (Counting(unsupportedAt), Counting(unsupportedAt))
+    val (flatObserved, eraObserved) = (Observations(), Observations())
+    // one clock, which both sides' observations hold
+    val clock = PosixClock.total(globals.systemStart, geometry)
     val ctx = EraBlock.Context(
       globals,
       setup.praos.forks.transition(geometry.k),
       MirrorStep.afterVotingOf(before.mirror),
       verdicts = Verdicts.Direct,
       evaluator = flatEvaluator,
-      decoder = ScarabEvaluator.defaultDecoder
+      observer = Option.when(observe)(flatObserved.observe),
+      decoder = ScarabEvaluator.defaultDecoder,
+      clock = Some(clock)
     )
     val nes = MirrorStep.nesOf(before.mirror).getOrElse(fail(s"${before.name}: no Shelley state"))
     val stamped = EraNes.mapUtxo(nes)(_.at(header.blockNo.toLong))
@@ -274,11 +380,10 @@ class ConwayBbodySuite extends FunSuite:
       ),
       ticked.bcur
     )
-    val clock = PosixClock.total(globals.systemStart, geometry)
     // the network, the validation policy and the build's injection are the run's own, from the
     // globals; the system start the globals' (the Shelley genesis's), and the epoch information
     // of one era from the cluster's start
-    val judged = ConwayBlockRun
+    val run = ConwayBlockRun
       .bbody(
         globals,
         BbodyEnv[Conway](pp, ticked.es.chainAccount),
@@ -302,24 +407,29 @@ class ConwayBbodySuite extends FunSuite:
         eraEvaluator,
         Verdicts.Direct,
         ScarabEvaluator.defaultDecoder,
-        clock.posix
+        clock.posix,
+        Option.when(observe)(ConwayBlockRun.Observing(eraObserved.observe, Some(clock)))
       )
-      .fold(defect => fail(s"${before.name}: era defect $defect"), identity)
-    val era: Verdict = judged match
+    val judged = run.toOption
+    val era: Either[ConwayRuleDefect, Verdict] = run.map {
       case Left(fs)     => Left(flatOf(before.name, fs, block))
-      case Right(after) => Right((after.ls, after.blocksMade))
+      case Right(after) => Right((after.state.ls, after.state.blocksMade))
+    }
     Judged(
       era,
       flat,
       ticked,
       outcome.toOption.collect { case EraBlock.Outcome.Applied(_, plutus) => plutus },
+      judged.flatMap(_.toOption).map(_.plutus),
       body match
         case EraBlock.Outcome.Applied(_, _) => true
         case _                              => false
       ,
-      judged.left.toOption.fold(Vector.empty)(_.toChain.toVector),
+      judged.flatMap(_.left.toOption).fold(Vector.empty)(_.toChain.toVector),
       eraEvaluator.count,
-      flatEvaluator.count
+      flatEvaluator.count,
+      eraObserved.all,
+      flatObserved.all
     )
 
   /** The era BBODY's failures in the node's flat form, in their order; LEDGERS's, which the flat
@@ -502,6 +612,10 @@ class ConwayBbodySuite extends FunSuite:
     val onMainnet = all.map { b =>
       val j = judge(b, b.raw)
       same(b.name, j.era, j.flat)
+      // the phase-2 counters, the flat rules' (CNF-2: the recorded blocks run no script, so the
+      // counters are zero on both sides; the blocks of built transactions below count scripts)
+      assertEquals(j.eraPlutus, j.flatPlutus, b.name)
+      assertEquals(j.eraPlutus, Some(PlutusStats.zero), b.name)
       j.era match
         case Right((_, made)) =>
           // counted once more for its issuer
@@ -727,7 +841,8 @@ class ConwayBbodySuite extends FunSuite:
     */
   private def blockOf(
       txs: Vector[Built],
-      header: Vector[Bytes] => Vector[Bytes] = identity
+      header: Vector[Bytes] => Vector[Bytes] = identity,
+      invalid: Vector[Int] = Vector.empty
   ): Bytes =
     crafted(third.raw)(
       _ =>
@@ -735,7 +850,7 @@ class ConwayBbodySuite extends FunSuite:
           array(txs.map(_.body)),
           array(txs.map(_.wits)),
           encoded(Value.Map(Vector.empty)),
-          array(Vector.empty)
+          array(invalid.map(i => encoded(Value.UInt(BigInt(i)))))
         ),
       (fields, parts) => header(committing(fields, parts))
     )
@@ -971,10 +1086,8 @@ class ConwayBbodySuite extends FunSuite:
     same("admitted", admitted.era, admitted.flat)
     // the script ran, as the flat rules count it, and its output is spent
     assertEquals((admitted.eraEvaluated, admitted.flatEvaluated), (1, 1))
-    assertEquals(
-      admitted.flatPlutus.map(p => (p.succeeded, p.failed, p.scripts)),
-      Some((1L, 0L, 1L))
-    )
+    assertEquals(admitted.flatPlutus, Some(PlutusStats(1, 0, 1, 1)))
+    assertEquals(admitted.eraPlutus, admitted.flatPlutus)
     admitted.era.foreach((ls, _) => assert(ls.utxo.utxo.utxo.get(utxo.head._1).isEmpty))
     Vector(
       ExUnits(units.mem - 1, params.maxBlockExUnits.steps),
@@ -988,6 +1101,299 @@ class ConwayBbodySuite extends FunSuite:
       )
       same(s"$below", refused.era, refused.flat)
     }
+  }
+
+  /** The datum the script outputs of the counters' blocks lock with, and the units of each of their
+    * redeemers.
+    */
+  private val lockDatum: Node = B.uint(0)
+  private val redeemerUnits: ExUnits = ExUnits(1000000, 500000000)
+
+  /** A transaction spending the inputs at `inputs` of `utxo` (the script outputs among them by
+    * `scripts`, each with a redeemer for its place among the sorted inputs and `lockDatum` in the
+    * witnesses), paying `out` with a fee of 3 ada and the collateral at `collateral` if any, its
+    * script integrity hash the one its witnesses make with Plutus V3 if `languages` holds it.
+    */
+  private def spending(
+      utxo: Vector[(TxIn, TxOut)],
+      inputs: Vector[Int],
+      scripts: Vector[(Int, Bytes)],
+      collateral: Option[Int],
+      out: BigInt,
+      outputs: Vector[Node] = Vector.empty,
+      datums: Vector[Node] = Vector(lockDatum),
+      languages: Set[PlutusLanguage] = Set(PlutusLanguage.V3)
+  ): Built =
+    val params = ConwayNewEpochState.gov.get(judge(third, third.raw).ticked).curPParams
+    val pp = PParams[Conway](ok("parameters")(ConwayPParams.fromStored(params)))
+    val sorted = inputs.sortBy(i => utxo(i)._1)
+    val redeemers = scripts.map((i, _) =>
+      B.arr(B.uint(0), B.uint(sorted.indexOf(i))) -> B.arr(
+        B.uint(0),
+        B.arr(B.uint(redeemerUnits.mem), B.uint(redeemerUnits.steps))
+      )
+    )
+    val more = Vector(
+      Option.when(datums.nonEmpty)(4 -> B.set(datums*)),
+      Option.when(redeemers.nonEmpty)(5 -> B.cmap(redeemers*)),
+      Option.when(scripts.nonEmpty)(7 -> B.set(scripts.map(s => B.bytes(s._2)).distinct*))
+    ).flatten
+    def withHash(integrity: Bytes): Built =
+      val body = B.body(
+        0 -> B.set(inputs.map(in(utxo, _))*),
+        1 -> B.arr((outputs :+ paid(out))*),
+        2 -> B.uint(3000000),
+        11 -> B.bytes(integrity)
+      )
+      val withCollateral = collateral.fold(body)(c =>
+        B.body(
+          0 -> B.set(inputs.map(in(utxo, _))*),
+          1 -> B.arr((outputs :+ paid(out))*),
+          2 -> B.uint(3000000),
+          11 -> B.bytes(integrity),
+          13 -> B.set(in(utxo, c))
+        )
+      )
+      built(withCollateral, B.witnesses(withCollateral, Vector(payer), more*))
+    val integrity = ScriptIntegrity
+      .mkScriptIntegrity[Conway, TxLevel.Top](
+        pp,
+        withHash(Bytes(Vector.fill(32)(0.toByte))).era,
+        languages
+      )(using
+        EraTx.conway,
+        AlonzoEraPParams.conway,
+        xyz.kd5ujc.scarab.ledger.era.EraTxWits.conway,
+        EraTx.conway.bodyOf.top
+      )
+      .map(ScriptIntegrity.hashScriptIntegrity(_))
+      .getOrElse(fail("no script integrity"))
+    withHash(integrity)
+
+  private def locked(script: Bytes, coin: BigInt): Node =
+    B.datumHashOut(B.scriptAddress(B.scriptHash(3, script)), coin, B.dataHash(lockDatum))
+
+  test(
+    "the phase-2 counters of BBODY's events: a valid transaction of two scripts, an invalid one whose scripts all fail, one whose scripts pass and fail, and a hash with no redeemer, the flat rules' counts"
+  ) {
+    val (succeeds, fails) = (alwaysSucceedsWithDatumV3, B.alwaysFailsWithDatumV3)
+    // 0, 1: two outputs at the script that passes; 2: at the one that fails; 3, 4: one at each;
+    // 5 to 11: fees and collateral (an invalid transaction's own, which it spends)
+    val utxo = funded(
+      Vector(
+        locked(succeeds, 10000000),
+        locked(succeeds, 10000000),
+        locked(fails, 10000000),
+        locked(succeeds, 10000000),
+        locked(fails, 10000000)
+      ) ++ Vector.fill(7)(paid(30000000))
+    )
+    val valid =
+      spending(utxo, Vector(0, 1, 5), Vector(0 -> succeeds, 1 -> succeeds), Some(6), 47000000)
+    val allFail = spending(utxo, Vector(2, 7), Vector(2 -> fails), Some(10), 37000000)
+    val passAndFail =
+      spending(utxo, Vector(3, 4, 8), Vector(3 -> succeeds, 4 -> fails), Some(11), 47000000)
+    // an output locked by the datum's hash, the datum given in the witnesses alone (a supplemental
+    // datum), so that the body declares a script integrity hash and no script runs
+    val datumOnly = spending(
+      utxo,
+      Vector(9),
+      Vector.empty,
+      None,
+      17000000,
+      outputs = Vector(locked(succeeds, 10000000)),
+      languages = Set.empty
+    )
+    // each block's transactions, those flagged invalid and the counters; a valid transaction's
+    // passed scripts then an invalid one's failed ones are two transactions
+    Vector[(String, Vector[Built], Vector[Int], PlutusStats)](
+      ("valid", Vector(valid), Vector.empty, PlutusStats(1, 0, 2, 1)),
+      ("all fail", Vector(allFail), Vector(0), PlutusStats(0, 1, 1, 1)),
+      ("pass and fail", Vector(passAndFail), Vector(0), PlutusStats(0, 1, 2, 1)),
+      ("valid, then all fail", Vector(valid, allFail), Vector(1), PlutusStats(1, 1, 3, 2)),
+      ("all fail, then valid", Vector(allFail, valid), Vector(0), PlutusStats(1, 1, 3, 2)),
+      (
+        "every kind",
+        Vector(passAndFail, valid, datumOnly, allFail),
+        Vector(0, 3),
+        PlutusStats(1, 2, 5, 4)
+      ),
+      ("datum only", Vector(datumOnly), Vector.empty, PlutusStats(0, 0, 0, 1))
+    ).foreach { (what, txs, invalid, expected) =>
+      val j = judge(third, blockOf(txs, invalid = invalid), change = holding(utxo))
+      assert(j.era.isRight, s"$what: ${j.era}")
+      same(what, j.era, j.flat)
+      assertEquals(j.flatPlutus, Some(expected), what)
+      assertEquals(j.eraPlutus, j.flatPlutus, what)
+      // the phase-2 observations (`--plutus-cases`), one by transaction whose scripts ran, and
+      // with the observer the same verdict and counters
+      val o = judge(third, blockOf(txs, invalid = invalid), change = holding(utxo), observe = true)
+      assertEquals(o.flatObserved.size, txs.count(_ != datumOnly), what)
+      assertEquals(o.eraObserved.map(comparable), o.flatObserved.map(comparable), what)
+      same(what, o.era, j.era)
+      assertEquals(o.eraPlutus, j.eraPlutus, what)
+    }
+  }
+
+  test(
+    "a script the evaluator gives no verdict for: the era run names its transaction and redeemer as the flat rules name them, whichever script of the block it is"
+  ) {
+    val (succeeds, fails) = (alwaysSucceedsWithDatumV3, B.alwaysFailsWithDatumV3)
+    val utxo = funded(
+      Vector(
+        locked(succeeds, 10000000),
+        locked(succeeds, 10000000),
+        locked(succeeds, 10000000),
+        locked(fails, 10000000)
+      ) ++ Vector.fill(4)(paid(30000000))
+    )
+    // a valid transaction of two scripts, then an invalid one of a script that passes and one
+    // that fails: the four scripts the evaluator is asked to run, in the order the rules run them
+    val valid =
+      spending(utxo, Vector(0, 1, 4), Vector(0 -> succeeds, 1 -> succeeds), Some(5), 47000000)
+    val passAndFail =
+      spending(utxo, Vector(2, 3, 6), Vector(2 -> succeeds, 3 -> fails), Some(7), 47000000)
+    val raw = blockOf(Vector(valid, passAndFail), invalid = Vector(1))
+    val named = (1 to 4).map { n =>
+      val j = judge(third, raw, change = holding(utxo), unsupportedAt = Some(n))
+      val failure = j.flat match
+        case Left(Vector(BlockFailure.Tx(failure: LedgerFailure.Unavailable))) => failure
+        case other => fail(s"$n: the flat rules' ${other.map(_._1)}")
+      assertEquals(j.eraRun.left.toOption, Some(ConwayRuleDefect.ScriptUnavailable(failure)), s"$n")
+      // the evaluation stops at the script with no verdict on both sides
+      assertEquals((j.eraEvaluated, j.flatEvaluated), (n, n), s"$n")
+      // the transactions observed, the last with no verdict on the script, and with the observer
+      // the same naming
+      val o =
+        judge(third, raw, change = holding(utxo), unsupportedAt = Some(n), observe = true)
+      assertEquals(o.flatObserved.size, if n <= 2 then 1 else 2, s"$n")
+      assertEquals(o.eraObserved.map(comparable), o.flatObserved.map(comparable), s"$n")
+      assertEquals(o.eraRun.left.toOption, j.eraRun.left.toOption, s"$n")
+      (failure.txId, failure.location)
+    }
+    // each of the four scripts named once, the first two of the valid transaction
+    assertEquals(
+      named.map(_._1).toVector,
+      Vector(valid.id, valid.id, passAndFail.id, passAndFail.id)
+    )
+    assertEquals(named.distinct.size, 4)
+  }
+
+  test(
+    "two scripts of one transaction whose requests are equal at distinct redeemers: the era run names and observes each by its place, as the flat rules do"
+  ) {
+    // a Plutus V1 script's staking credential, registered, unregistered (certificate 0, the
+    // Shelley form), registered again, and unregistered with its refund (certificate 2, Conway's
+    // form): a V1 context names both unregistrations by the one form it has for them
+    // (`transTxCertV1V2`, `Conway/TxInfo.hs:406-418`, cardano-ledger 9df9f98c), so with equal
+    // redeemers the two scripts' contexts, and their requests, are equal
+    val v1 = hex("4d01000033222220051200120011")
+    val credential = Credential.Script(B.scriptHash(1, v1))
+    val params = ConwayNewEpochState.gov.get(judge(third, third.raw).ticked).curPParams
+    val pp = PParams[Conway](ok("parameters")(ConwayPParams.fromStored(params)))
+    val deposit = params.keyDeposit
+    val utxo = funded(Vector(paid(30000000), paid(30000000)))
+    val staking = B.arr(B.uint(1), B.bytes(credential.hash))
+    val redeemer = B.arr(B.uint(0), B.arr(B.uint(redeemerUnits.mem), B.uint(redeemerUnits.steps)))
+    def withHash(integrity: Bytes): Built =
+      val body = B.body(
+        0 -> B.set(in(utxo, 0)),
+        1 -> B.arr(paid(27000000 + deposit)),
+        2 -> B.uint(3000000),
+        4 -> B.arr(
+          B.arr(B.uint(1), staking),
+          B.arr(B.uint(0), staking),
+          B.arr(B.uint(8), staking, B.uint(deposit))
+        ),
+        11 -> B.bytes(integrity),
+        13 -> B.set(in(utxo, 1))
+      )
+      built(
+        body,
+        B.witnesses(
+          body,
+          Vector(payer),
+          3 -> B.set(B.bytes(v1)),
+          5 -> B.cmap(
+            B.arr(B.uint(2), B.uint(0)) -> redeemer,
+            B.arr(B.uint(2), B.uint(2)) -> redeemer
+          )
+        )
+      )
+    val integrity = ScriptIntegrity
+      .mkScriptIntegrity[Conway, TxLevel.Top](
+        pp,
+        withHash(Bytes(Vector.fill(32)(0.toByte))).era,
+        Set(PlutusLanguage.V1)
+      )(using
+        EraTx.conway,
+        AlonzoEraPParams.conway,
+        xyz.kd5ujc.scarab.ledger.era.EraTxWits.conway,
+        EraTx.conway.bodyOf.top
+      )
+      .map(ScriptIntegrity.hashScriptIntegrity(_))
+      .getOrElse(fail("no script integrity"))
+    val tx = withHash(integrity)
+    // the credential registered with the cluster's deposit, which the deposits held count
+    val registered = holding(utxo).andThen(
+      ConwayNewEpochState.accounts
+        .modify(accounts =>
+          ConwayAccounts(
+            accounts.states.updated(
+              ok("credential")(
+                xyz.kd5ujc.scarab.ledger.rules.Convert.credential[Staking](credential)
+              ),
+              ConwayAccountState(
+                ok("balance")(CompactCoin.fromBigInt(0)),
+                ok("deposit")(CompactCoin.fromBigInt(deposit)),
+                None,
+                None
+              )
+            )
+          )
+        )
+        .andThen(
+          ConwayNewEpochState.ls.modify(ls =>
+            ls.copy[Conway](utxo =
+              ls.utxo.copy(deposited = Coin(ls.utxo.deposited.value + deposit))
+            )
+          )
+        )
+    )
+    val raw = blockOf(Vector(tx))
+    val admitted = judge(third, raw, change = registered, observe = true)
+    assert(admitted.era.isRight, s"${admitted.era}")
+    same("admitted", admitted.era, admitted.flat)
+    assertEquals(admitted.eraPlutus, admitted.flatPlutus)
+    // the two requests are equal, at certificates 0 and 2
+    val evaluations = admitted.flatObserved match
+      case Vector(Phase2.Observation(_, _, _, _, _, _, Right(Phase2.Outcome.Passed(report)))) =>
+        report.evaluations
+      case other => fail(s"the flat rules' observations $other")
+    assertEquals(
+      evaluations.map(e => (e.redeemer.tag, e.redeemer.index)).toSet,
+      Set[(Int, BigInt)]((2, 0), (2, 2))
+    )
+    assertEquals(evaluations.map(_.request).distinct.size, 1)
+    assertEquals(admitted.eraObserved.map(comparable), admitted.flatObserved.map(comparable))
+    // with no verdict on either, each named and observed by its own redeemer
+    val named = Vector(1, 2).map { n =>
+      Vector(false, true).map { observe =>
+        val j = judge(third, raw, change = registered, unsupportedAt = Some(n), observe = observe)
+        val failure = j.flat match
+          case Left(Vector(BlockFailure.Tx(failure: LedgerFailure.Unavailable))) => failure
+          case other => fail(s"$n: the flat rules' ${other.map(_._1)}")
+        assertEquals(
+          j.eraRun.left.toOption,
+          Some(ConwayRuleDefect.ScriptUnavailable(failure)),
+          s"$n"
+        )
+        assertEquals(j.eraObserved.map(comparable), j.flatObserved.map(comparable), s"$n")
+        failure.location
+      }.distinct
+    }
+    assertEquals(named.map(_.size), Vector(1, 1))
+    assertEquals(named.flatten.distinct.size, 2)
   }
 
   test("a transaction whose input is missing: LEDGERS's refusal, embedded, the flat LEDGER's") {
@@ -1021,6 +1427,51 @@ class ConwayBbodySuite extends FunSuite:
       },
       Vector(Set(missing))
     )
+  }
+
+  test(
+    "two transactions of one block proposing: the era run holds the proposals across them and writes back the flat BBODY's record"
+  ) {
+    // the era run reads the node's record of the proposals once, where GOV first reads them, holds
+    // them across the block's transactions, and writes them back once after it (`ConwayBlockRun`):
+    // the second transaction's GOV judges the first one's proposal, and the record after the block
+    // is the flat rules' (the cluster's parameters are at major 9, the bootstrap phase, where an
+    // info action may be proposed and its return account is not looked up)
+    val params = ConwayNewEpochState.gov.get(judge(third, third.raw).ticked).curPParams
+    val deposit = params.govActionDeposit
+    val fund = deposit + 20000000
+    val utxo = funded(Vector(paid(fund), paid(fund)))
+    def proposing(ix: Int): Built =
+      val body = B.body(
+        0 -> B.set(in(utxo, ix)),
+        1 -> B.arr(paid(17000000)),
+        2 -> B.uint(3000000),
+        20 -> B.set(
+          B.arr(
+            B.uint(deposit),
+            B.bytes(B.rewardAccount(payer)),
+            B.arr(B.uint(6)),
+            B.arr(
+              B.leaf(Value.Text(s"https://example.com/$ix")),
+              B.bytes(Bytes(Vector.fill(32)(0)))
+            )
+          )
+        )
+      )
+      built(body, B.witnesses(body, Vector(payer)))
+    val txs = Vector(proposing(0), proposing(1))
+    val j = judge(third, blockOf(txs), change = holding(utxo))
+    assert(j.era.isRight, s"${j.era}")
+    same("proposing", j.era, j.flat)
+    j.era.foreach((ls, _) =>
+      assertEquals(
+        ls.utxo.gov.proposals.actions.map(_.id),
+        txs.map(t => xyz.kd5ujc.scarab.ledger.GovActionId(t.id, 0))
+      )
+    )
+    // a block with no transaction leaves the record as it was, never read
+    val empty = judge(third, blockOf(Vector.empty), change = holding(utxo))
+    same("empty", empty.era, empty.flat)
   }
 
   test("the injections into Conway's BBODY are the reference's compositions") {
