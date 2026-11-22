@@ -22,6 +22,13 @@ shard, and that each shard's commands run each of its suites exactly once (`comm
 was planned in, a report for a suite the plan does not hold, and a report with a failure or an error. sbt writes a
 suite's report to one file per module, so a second run of a suite in the same shard would replace the first; the
 check of the commands is what rules that out.
+An incomplete run is not a pass (CNF-2, docs/design-rules.md): `verify` also refuses a report that holds no test case,
+a report whose counts are not those of its test cases or that holds a test case of another suite or one name twice,
+a failed or errored test case whatever the counts say, and a skipped test that `scripts/ci_test_skips.json` does not
+list. sbt's report shows munit's `assume` and `.ignore` alike, as a `<skipped/>` test case. Each entry of that file
+names the module, suite and test, the environment variables or data the test waits on, and the issue that owns
+running it; an entry whose test did not skip is refused too, so the list holds exactly the skips CI has. The allowed
+skips are printed with what they wait on.
 `compiled` refuses a shard's sbt log in which sbt compiled anything: a shard runs the build job's classes as they
 are.
 
@@ -47,9 +54,11 @@ import xml.etree.ElementTree as ElementTree
 
 ROOT = Path(__file__).resolve().parents[1]
 WEIGHTS = "scripts/ci_test_shards.json"
+SKIPS = "scripts/ci_test_skips.json"
 # A suite name `testOnly` takes as itself: a dotted JVM class name, no glob (`*`) or space.
 SUITE = re.compile(r"[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*")
 MODULE = re.compile(r"[A-Za-z][\w-]*")
+VARIABLE = re.compile(r"[A-Z][A-Z0-9_]*")
 DIRECTORY = re.compile(r"[\w.-]+(?:/[\w.-]+)*")
 # Zinc's line for a compilation it starts ("compiling 14 Scala sources to ..."), the meta-build's included.
 COMPILING = re.compile(r"^\[info\] compiling \d+ (?:Scala|Java) source")
@@ -83,6 +92,31 @@ class Unit:
     module: str
     suite: str | None
     seconds: float
+
+
+@dataclass(frozen=True)
+class Skip:
+    """A test CI may report as skipped: what it waits on, and the issue that owns running it."""
+    module: str
+    suite: str
+    test: str
+    environment: tuple[str, ...]
+    data: str | None
+    issue: int
+
+    @property
+    def key(self) -> tuple[str, str, str]:
+        return (self.module, self.suite, self.test)
+
+    def waits_on(self) -> str:
+        return ", ".join([*self.environment, *([self.data] if self.data else [])])
+
+
+@dataclass(frozen=True)
+class Verified:
+    """What `verify` accepted: each shard's (suites, tests, skipped), and the skips it allowed."""
+    totals: dict[int, tuple[int, int, int]]
+    skipped: tuple[Skip, ...]
 
 
 def read_inventory(text: str) -> list[Module]:
@@ -146,6 +180,51 @@ def read_weights(data: object) -> Weights:
         raise ShardError(problems)
     return Weights(shards, {k: float(v) for k, v in modules.items()},
                    {m: {k: float(v) for k, v in named.items()} for m, named in split.items()})
+
+
+def read_skips(data: object) -> dict[tuple[str, str, str], Skip]:
+    """The allowlist of skipped tests, by (module, suite, test). Each entry names its `module`, `suite` and `test`,
+    the `environment` variables the test waits on (a list, empty only when `data` says what it waits on), and the
+    `issue` that owns running it; `data` is optional."""
+    if not isinstance(data, dict) or not isinstance(data.get("skips"), list):
+        raise ShardError([f"{SKIPS} must be a JSON object with a `skips` list"])
+    fields = {"module", "suite", "test", "environment", "data", "issue"}
+    problems = []
+    result: dict[tuple[str, str, str], Skip] = {}
+    for number, entry in enumerate(data["skips"], 1):
+        where = f"{SKIPS} entry {number}"
+        if not isinstance(entry, dict):
+            problems.append(f"{where} is not an object")
+            continue
+        wrong = [f"unknown field {k!r}" for k in sorted(set(entry) - fields)]
+        wrong += [f"no {k!r}" for k in sorted(fields - {"data"} - set(entry))]
+        module, suite, test = entry.get("module"), entry.get("suite"), entry.get("test")
+        environment, extra, issue = entry.get("environment", []), entry.get("data"), entry.get("issue")
+        if not isinstance(module, str) or not MODULE.fullmatch(module):
+            wrong.append("`module` is not a module name")
+        if not isinstance(suite, str) or not SUITE.fullmatch(suite):
+            wrong.append("`suite` is not a class name")
+        if not isinstance(test, str) or not test.strip() or test != test.strip():
+            wrong.append("`test` is not a test name")
+        if (not isinstance(environment, list) or len(set(map(str, environment))) != len(environment)
+                or not all(isinstance(v, str) and VARIABLE.fullmatch(v) for v in environment)):
+            wrong.append("`environment` is not a list of distinct environment variable names")
+        if extra is not None and (not isinstance(extra, str) or not extra.strip()):
+            wrong.append("`data` is not a description of the data the test waits on")
+        if isinstance(environment, list) and not environment and extra is None:
+            wrong.append("it names neither the environment variables nor the data the test waits on")
+        if not isinstance(issue, int) or isinstance(issue, bool) or issue < 1:
+            wrong.append("`issue` is not the number of the issue that owns running the test")
+        if wrong:
+            problems.append(f"{where}: " + "; ".join(wrong))
+            continue
+        skip = Skip(module, suite, test, tuple(environment), extra, issue)
+        if skip.key in result:
+            problems.append(f"{where}: test {test!r} of {suite} of {module} is listed twice")
+        result[skip.key] = skip
+    if problems:
+        raise ShardError(problems)
+    return result
 
 
 def units(inventory: list[Module], weights: Weights) -> list[Unit]:
@@ -289,14 +368,20 @@ def collect(plan: dict, number: int, root: Path, out: Path) -> int:
     return copied
 
 
-def verify(plan: dict, reports: Path) -> dict[int, tuple[int, int]]:
-    """Refuses unless every suite of the plan has exactly one report, from its own shard, with no failure or
-    error, and every report is for a suite of the plan. Returns each shard's (suites, tests)."""
+def verify(plan: dict, reports: Path, skips: dict[tuple[str, str, str], Skip]) -> Verified:
+    """Refuses unless every suite of the plan has exactly one report, from its own shard, that holds at least one test
+    case, each of its suite and named once, with counts that are those of its test cases, no failed or errored test
+    case and no skipped test that `skips` does not list, and every report is for a suite of the plan. Refuses an entry
+    of `skips` whose test did not skip. A report that leaves a test case out, with counts to match, is not seen: the
+    plan lists suites, not their tests."""
     check_plan(plan)
     planned = {(m, s): shard["shard"] for shard in plan["shards"] for m, s in shard["suites"]}
     modules = {m.name for m in plan_inventory(plan)}
     seen: Counter[tuple[str, str]] = Counter()
-    totals = {shard["shard"]: (0, 0) for shard in plan["shards"]}
+    read: set[tuple[str, str]] = set()
+    skipped: set[tuple[str, str, str]] = set()
+    unlisted = 0
+    totals = {shard["shard"]: (0, 0, 0) for shard in plan["shards"]}
     problems = []
     for path in sorted(reports.glob("*/*/TEST-*.xml")):
         shard_dir, module = path.parent.parent.name, path.parent.name
@@ -318,20 +403,53 @@ def verify(plan: dict, reports: Path) -> dict[int, tuple[int, int]]:
         except ElementTree.ParseError as error:
             problems.append(f"report {where} is not XML: {error}")
             continue
-        counts = {k: root.get(k, "") for k in ("tests", "failures", "errors")}
+        counts = {k: root.get(k, "") for k in ("tests", "failures", "errors", "skipped")}
         if root.tag != "testsuite" or root.get("name") != suite or not all(v.isdigit() for v in counts.values()):
             problems.append(f"report {where} is not the JUnit report of {suite}")
             continue
-        if int(counts["failures"]) or int(counts["errors"]):
-            problems.append(f"report {where}: {counts['failures']} failures, {counts['errors']} errors")
-        suites, tests = totals[number]
-        totals[number] = (suites + 1, tests + int(counts["tests"]))
+        cases = root.findall("testcase")
+        names = [case.get("name", "") for case in cases]
+        outcomes = {kind: [case.get("name", "") for case in cases if case.find(kind) is not None]
+                    for kind in ("skipped", "failure", "error")}
+        skips_here = outcomes["skipped"]
+        problems += [f"report {where}: test case {case.get('name', '')!r} has classname {case.get('classname')!r}, "
+                     f"not {suite}" for case in cases if case.get("classname") != suite]
+        problems += [f"report {where}: test {name!r} is reported {n} times"
+                     for name, n in sorted(Counter(names).items()) if n > 1]
+        problems += [f"report {where}: test {name!r} failed" for name in outcomes["failure"]]
+        problems += [f"report {where}: test {name!r} errored" for name in outcomes["error"]]
+        held = {"tests": len(cases), "skipped": len(skips_here), "failures": len(outcomes["failure"]),
+                "errors": len(outcomes["error"])}
+        if any(int(counts[k]) != n for k, n in held.items()):
+            problems.append(f"report {where} counts " + ", ".join(f"{counts[k]} {k}" for k in held)
+                            + ", but holds " + ", ".join(f"{n} {k}" for k, n in held.items()))
+        read.add((module, suite))
+        if not cases:
+            problems.append(f"report {where}: suite {suite} of {module} reported no test case")
+        for test in skips_here:
+            if (module, suite, test) in skips:
+                skipped.add((module, suite, test))
+            else:
+                unlisted += 1
+                problems.append(f"report {where}: test {test!r} was skipped, and {SKIPS} does not list it")
+        suites, tests, skips_so_far = totals[number]
+        totals[number] = (suites + 1, tests + len(cases), skips_so_far + len(skips_here))
+    if unlisted:
+        problems.append(f"an incomplete run is not a pass (CNF-2): run each test above that skipped, or list it in "
+                        f"{SKIPS} with what it waits on and the issue that owns running it")
     problems += [f"suite {s} of {m} has no report (planned in shard {n})" for (m, s), n in sorted(planned.items())
                  if seen[(m, s)] == 0]
     problems += [f"suite {s} of {m} has {n} reports" for (m, s), n in sorted(seen.items()) if n > 1]
+    for key, skip in sorted(skips.items()):
+        if (skip.module, skip.suite) not in planned:
+            problems.append(f"{SKIPS} lists test {skip.test!r} of {skip.suite} of {skip.module}, a suite the plan "
+                            "does not hold: remove its entry")
+        elif (skip.module, skip.suite) in read and key not in skipped:
+            problems.append(f"{SKIPS} lists test {skip.test!r} of {skip.suite} of {skip.module}, which did not "
+                            "skip: remove its entry")
     if problems:
         raise ShardError(problems)
-    return totals
+    return Verified(totals, tuple(skips[key] for key in sorted(skipped)))
 
 
 def compiled(log: str) -> list[str]:
@@ -341,6 +459,10 @@ def compiled(log: str) -> list[str]:
 
 def load_weights(root: Path) -> Weights:
     return read_weights(json.loads((root / WEIGHTS).read_text(encoding="utf-8")))
+
+
+def load_skips(root: Path) -> dict[tuple[str, str, str], Skip]:
+    return read_skips(json.loads((root / SKIPS).read_text(encoding="utf-8")))
 
 
 def main(argv: list[str]) -> int:
@@ -378,11 +500,15 @@ def main(argv: list[str]) -> int:
             count = collect(json.loads(args.plan.read_text(encoding="utf-8")), args.shard, Path.cwd(), args.out)
             print(f"shard {args.shard}: {count} reports")
         elif args.action == "verify":
-            totals = verify(json.loads(args.plan.read_text(encoding="utf-8")), args.reports)
-            for number, (suites, tests) in sorted(totals.items()):
-                print(f"shard {number}: {suites} suites, {tests} tests")
-            print(f"every suite ran once, in its shard, and passed: {sum(s for s, _ in totals.values())} suites, "
-                  f"{sum(t for _, t in totals.values())} tests")
+            verified = verify(json.loads(args.plan.read_text(encoding="utf-8")), args.reports, load_skips(ROOT))
+            for number, (suites, tests, skipped) in sorted(verified.totals.items()):
+                print(f"shard {number}: {suites} suites, {tests} tests, {skipped} skipped")
+            for skip in verified.skipped:
+                print(f"skipped, as {SKIPS} allows: {skip.suite} of {skip.module}: {skip.test!r} "
+                      f"(waits on {skip.waits_on()}; #{skip.issue})")
+            suites, tests = (sum(t[i] for t in verified.totals.values()) for i in (0, 1))
+            print(f"every suite ran once, in its shard, and passed but for the {len(verified.skipped)} skips listed: "
+                  f"{suites} suites, {tests} tests")
         else:
             lines = compiled(args.log.read_text(encoding="utf-8", errors="replace"))
             if lines:

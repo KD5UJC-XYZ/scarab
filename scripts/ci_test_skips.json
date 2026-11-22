@@ -1,0 +1,426 @@
+{
+ "_comment": "The tests CI's shards may report as skipped (scripts/ci_test_shards.py verify, #1151); any other skip, and a suite that runs no test, fails the shard report check, because an incomplete run is not a pass (CNF-2, docs/design-rules.md). Each entry names the module, suite and test as the JUnit report does, the environment variables whose absence skips it (`environment`) or the data it waits on (`data`), and the issue that owns running it. An entry whose test runs is refused: remove it with the change that makes the test run. Read from CI runs 44935743836 (2026-11-21, main b9cb03153) and 44976228903 (2026-11-22, main 74477ce1c). Eleven of the #294 entries are the external-data cases of scripts/candidate_acceptance/cases.json, which the manual candidate-acceptance workflow runs with their data; the twelfth is the ignored multiScalarMul comparison, a follow-up in #294's checklist. #1293 moves the five FormatBenchSuite benchmarks to `tools` (TOOL-1). The #54 entries wait on the reference's ledger states of the public Leios testnet, which are private and read through LeiosReferenceStates; #54's checklist holds running them where the states exist.",
+ "skips": [
+  {
+   "module": "node",
+   "suite": "xyz.kd5ujc.scarab.node.DijkstraEraEpochGovSuite",
+   "test": "window G: 1533582 ticked into the next epoch has the boundary's governance of 1555188",
+   "environment": [
+    "SCARAB_LEIOS_REFERENCE_STATES"
+   ],
+   "data": "the reference's ledger states window-g/1533582 and window-g/1555188 of the public Leios testnet, which are not in the repository (LeiosReferenceStates)",
+   "issue": 54
+  },
+  {
+   "module": "node",
+   "suite": "xyz.kd5ujc.scarab.node.DijkstraEraEpochGovSuite",
+   "test": "window G: 1555188 ticked into the next epoch has the boundary's governance of 1576750",
+   "environment": [
+    "SCARAB_LEIOS_REFERENCE_STATES"
+   ],
+   "data": "the reference's ledger states window-g/1555188 and window-g/1576750 of the public Leios testnet, which are not in the repository (LeiosReferenceStates)",
+   "issue": 54
+  },
+  {
+   "module": "node",
+   "suite": "xyz.kd5ujc.scarab.node.DijkstraEraEpochGovSuite",
+   "test": "window G: 1576750 ticked into the next epoch has the boundary's governance of 1598375",
+   "environment": [
+    "SCARAB_LEIOS_REFERENCE_STATES"
+   ],
+   "data": "the reference's ledger states window-g/1576750 and window-g/1598375 of the public Leios testnet, which are not in the repository (LeiosReferenceStates)",
+   "issue": 54
+  },
+  {
+   "module": "node",
+   "suite": "xyz.kd5ujc.scarab.node.PlutusReplaySuite",
+   "test": "serial and bounded parallel full block validation agree on a captured window",
+   "environment": [
+    "SCARAB_PLUTUS_CAPTURE"
+   ],
+   "data": "an offline captured preprod window, with its baseline and output directories (SCARAB_PLUTUS_BASELINE, SCARAB_PLUTUS_OUTPUT)",
+   "issue": 294
+  },
+  {
+   "module": "node",
+   "suite": "xyz.kd5ujc.scarab.node.differential.BoundaryDigestSuite",
+   "test": "the ticked state at the boundary is the one recorded before the change",
+   "environment": [
+    "SCARAB_K1_DB"
+   ],
+   "data": "the verified V5 conversion corpus of the Preview K1 run, with its recorded immutable chain",
+   "issue": 294
+  },
+  {
+   "module": "node",
+   "suite": "xyz.kd5ujc.scarab.node.preview.PreviewReplaySuite",
+   "test": "original Preview blocks match required native projection fields and Scala execution modes",
+   "environment": [
+    "SCARAB_PREVIEW_CAPTURE",
+    "SCARAB_PREVIEW_WINDOWS"
+   ],
+   "data": "an offline Preview capture or a window manifest, with the native reference bodies",
+   "issue": 294
+  },
+  {
+   "module": "node",
+   "suite": "xyz.kd5ujc.scarab.storage.EraGovStateStoredSuite",
+   "test": "the testnet's private Dijkstra state g1/1943999 reads into the era types and back",
+   "environment": [
+    "SCARAB_LEIOS_REFERENCE_STATES"
+   ],
+   "data": "the reference's ledger state g1/1943999 of the public Leios testnet, which is not in the repository (LeiosReferenceStates)",
+   "issue": 54
+  },
+  {
+   "module": "node",
+   "suite": "xyz.kd5ujc.scarab.storage.EraGovStateStoredSuite",
+   "test": "the testnet's private Dijkstra state window-g/1511985 reads into the era types and back",
+   "environment": [
+    "SCARAB_LEIOS_REFERENCE_STATES"
+   ],
+   "data": "the reference's ledger state window-g/1511985 of the public Leios testnet, which is not in the repository (LeiosReferenceStates)",
+   "issue": 54
+  },
+  {
+   "module": "node",
+   "suite": "xyz.kd5ujc.scarab.storage.EraGovStateStoredSuite",
+   "test": "the testnet's private Dijkstra state window-g/1533582 reads into the era types and back",
+   "environment": [
+    "SCARAB_LEIOS_REFERENCE_STATES"
+   ],
+   "data": "the reference's ledger state window-g/1533582 of the public Leios testnet, which is not in the repository (LeiosReferenceStates)",
+   "issue": 54
+  },
+  {
+   "module": "node",
+   "suite": "xyz.kd5ujc.scarab.storage.EraGovStateStoredSuite",
+   "test": "the testnet's private Dijkstra state window-g/1555188 is refused by the flat codec, its proposal by the flat record",
+   "environment": [
+    "SCARAB_LEIOS_REFERENCE_STATES"
+   ],
+   "data": "the reference's ledger state window-g/1555188 of the public Leios testnet, which is not in the repository (LeiosReferenceStates)",
+   "issue": 54
+  },
+  {
+   "module": "node",
+   "suite": "xyz.kd5ujc.scarab.storage.EraGovStateStoredSuite",
+   "test": "the testnet's private Dijkstra state window-g/1576750 is refused by the flat codec, its proposal by the flat record",
+   "environment": [
+    "SCARAB_LEIOS_REFERENCE_STATES"
+   ],
+   "data": "the reference's ledger state window-g/1576750 of the public Leios testnet, which is not in the repository (LeiosReferenceStates)",
+   "issue": 54
+  },
+  {
+   "module": "node",
+   "suite": "xyz.kd5ujc.scarab.storage.EraGovStateStoredSuite",
+   "test": "the testnet's private Dijkstra state window-g/1598375 reads into the era types and back",
+   "environment": [
+    "SCARAB_LEIOS_REFERENCE_STATES"
+   ],
+   "data": "the reference's ledger state window-g/1598375 of the public Leios testnet, which is not in the repository (LeiosReferenceStates)",
+   "issue": 54
+  },
+  {
+   "module": "node",
+   "suite": "xyz.kd5ujc.scarab.storage.EraGovStateStoredSuite",
+   "test": "the testnet's private Dijkstra state window-g/1619990 reads into the era types and back",
+   "environment": [
+    "SCARAB_LEIOS_REFERENCE_STATES"
+   ],
+   "data": "the reference's ledger state window-g/1619990 of the public Leios testnet, which is not in the repository (LeiosReferenceStates)",
+   "issue": 54
+  },
+  {
+   "module": "node",
+   "suite": "xyz.kd5ujc.scarab.storage.EraGovStateStoredSuite",
+   "test": "the testnet's private Dijkstra state window-p/1015165 reads into the era types and back",
+   "environment": [
+    "SCARAB_LEIOS_REFERENCE_STATES"
+   ],
+   "data": "the reference's ledger state window-p/1015165 of the public Leios testnet, which is not in the repository (LeiosReferenceStates)",
+   "issue": 54
+  },
+  {
+   "module": "node",
+   "suite": "xyz.kd5ujc.scarab.storage.EraGovStateStoredSuite",
+   "test": "the testnet's private Dijkstra state window-p/1036794 reads into the era types and back",
+   "environment": [
+    "SCARAB_LEIOS_REFERENCE_STATES"
+   ],
+   "data": "the reference's ledger state window-p/1036794 of the public Leios testnet, which is not in the repository (LeiosReferenceStates)",
+   "issue": 54
+  },
+  {
+   "module": "node",
+   "suite": "xyz.kd5ujc.scarab.storage.EraGovStateStoredSuite",
+   "test": "the testnet's private Dijkstra state window-p/1058391 reads into the era types and back",
+   "environment": [
+    "SCARAB_LEIOS_REFERENCE_STATES"
+   ],
+   "data": "the reference's ledger state window-p/1058391 of the public Leios testnet, which is not in the repository (LeiosReferenceStates)",
+   "issue": 54
+  },
+  {
+   "module": "node",
+   "suite": "xyz.kd5ujc.scarab.storage.EraGovStateStoredSuite",
+   "test": "the testnet's private Dijkstra state window-p/1079994 reads into the era types and back",
+   "environment": [
+    "SCARAB_LEIOS_REFERENCE_STATES"
+   ],
+   "data": "the reference's ledger state window-p/1079994 of the public Leios testnet, which is not in the repository (LeiosReferenceStates)",
+   "issue": 54
+  },
+  {
+   "module": "node",
+   "suite": "xyz.kd5ujc.scarab.storage.EraRatifyStoredSuite",
+   "test": "ENACT of window G's ratified update at 1,576,750 gives the stored parameters and roots",
+   "environment": [
+    "SCARAB_LEIOS_REFERENCE_STATES"
+   ],
+   "data": "the reference's ledger state window-g/1576750 of the public Leios testnet, which is not in the repository (LeiosReferenceStates)",
+   "issue": 54
+  },
+  {
+   "module": "node",
+   "suite": "xyz.kd5ujc.scarab.storage.EraRatifyStoredSuite",
+   "test": "RATIFY over the testnet's private state window-g/1511985's snapshot reaches its ratification",
+   "environment": [
+    "SCARAB_LEIOS_REFERENCE_STATES"
+   ],
+   "data": "the reference's ledger state window-g/1511985 of the public Leios testnet, which is not in the repository (LeiosReferenceStates)",
+   "issue": 54
+  },
+  {
+   "module": "node",
+   "suite": "xyz.kd5ujc.scarab.storage.EraRatifyStoredSuite",
+   "test": "RATIFY over the testnet's private state window-g/1533582's snapshot reaches its ratification",
+   "environment": [
+    "SCARAB_LEIOS_REFERENCE_STATES"
+   ],
+   "data": "the reference's ledger state window-g/1533582 of the public Leios testnet, which is not in the repository (LeiosReferenceStates)",
+   "issue": 54
+  },
+  {
+   "module": "node",
+   "suite": "xyz.kd5ujc.scarab.storage.EraRatifyStoredSuite",
+   "test": "RATIFY over the testnet's private state window-g/1555188 is incomplete: the flat codec refuses it",
+   "environment": [
+    "SCARAB_LEIOS_REFERENCE_STATES"
+   ],
+   "data": "the reference's ledger state window-g/1555188 of the public Leios testnet, which is not in the repository (LeiosReferenceStates)",
+   "issue": 54
+  },
+  {
+   "module": "node",
+   "suite": "xyz.kd5ujc.scarab.storage.EraRatifyStoredSuite",
+   "test": "RATIFY over the testnet's private state window-g/1576750 is incomplete: the flat codec refuses it",
+   "environment": [
+    "SCARAB_LEIOS_REFERENCE_STATES"
+   ],
+   "data": "the reference's ledger state window-g/1576750 of the public Leios testnet, which is not in the repository (LeiosReferenceStates)",
+   "issue": 54
+  },
+  {
+   "module": "node",
+   "suite": "xyz.kd5ujc.scarab.storage.EraRatifyStoredSuite",
+   "test": "RATIFY over the testnet's private state window-g/1598375's snapshot reaches its ratification",
+   "environment": [
+    "SCARAB_LEIOS_REFERENCE_STATES"
+   ],
+   "data": "the reference's ledger state window-g/1598375 of the public Leios testnet, which is not in the repository (LeiosReferenceStates)",
+   "issue": 54
+  },
+  {
+   "module": "node",
+   "suite": "xyz.kd5ujc.scarab.storage.EraRatifyStoredSuite",
+   "test": "RATIFY over the testnet's private state window-g/1619990's snapshot reaches its ratification",
+   "environment": [
+    "SCARAB_LEIOS_REFERENCE_STATES"
+   ],
+   "data": "the reference's ledger state window-g/1619990 of the public Leios testnet, which is not in the repository (LeiosReferenceStates)",
+   "issue": 54
+  },
+  {
+   "module": "node",
+   "suite": "xyz.kd5ujc.scarab.storage.EraRatifyStoredSuite",
+   "test": "RATIFY over the testnet's private state window-p/1015165's snapshot reaches its ratification",
+   "environment": [
+    "SCARAB_LEIOS_REFERENCE_STATES"
+   ],
+   "data": "the reference's ledger state window-p/1015165 of the public Leios testnet, which is not in the repository (LeiosReferenceStates)",
+   "issue": 54
+  },
+  {
+   "module": "node",
+   "suite": "xyz.kd5ujc.scarab.storage.EraRatifyStoredSuite",
+   "test": "RATIFY over the testnet's private state window-p/1036794's snapshot reaches its ratification",
+   "environment": [
+    "SCARAB_LEIOS_REFERENCE_STATES"
+   ],
+   "data": "the reference's ledger state window-p/1036794 of the public Leios testnet, which is not in the repository (LeiosReferenceStates)",
+   "issue": 54
+  },
+  {
+   "module": "node",
+   "suite": "xyz.kd5ujc.scarab.storage.EraRatifyStoredSuite",
+   "test": "RATIFY over the testnet's private state window-p/1058391's snapshot reaches its ratification",
+   "environment": [
+    "SCARAB_LEIOS_REFERENCE_STATES"
+   ],
+   "data": "the reference's ledger state window-p/1058391 of the public Leios testnet, which is not in the repository (LeiosReferenceStates)",
+   "issue": 54
+  },
+  {
+   "module": "node",
+   "suite": "xyz.kd5ujc.scarab.storage.EraRatifyStoredSuite",
+   "test": "RATIFY over the testnet's private state window-p/1079994's snapshot reaches its ratification",
+   "environment": [
+    "SCARAB_LEIOS_REFERENCE_STATES"
+   ],
+   "data": "the reference's ledger state window-p/1079994 of the public Leios testnet, which is not in the repository (LeiosReferenceStates)",
+   "issue": 54
+  },
+  {
+   "module": "node",
+   "suite": "xyz.kd5ujc.scarab.storage.MithrilBootstrapAcceptanceSuite",
+   "test": "the actual certified Preview bootstrap restores its original checkpoint and projection",
+   "environment": [
+    "SCARAB_MITHRIL_DB"
+   ],
+   "data": "a completed authentic Mithril bootstrap of Preview",
+   "issue": 294
+  },
+  {
+   "module": "node",
+   "suite": "xyz.kd5ujc.scarab.storage.PreprodSnapshotExportSuite",
+   "test": "the authenticated preprod checkpoint exports byte-identical canonical state and tables",
+   "environment": [
+    "SCARAB_EXPORT_DB"
+   ],
+   "data": "the preserved authenticated preprod database and its native snapshot",
+   "issue": 294
+  },
+  {
+   "module": "node",
+   "suite": "xyz.kd5ujc.scarab.storage.PreprodSnapshotImportSuite",
+   "test": "the authenticated original preprod snapshot imports all 4,526,058 outputs and restores V5",
+   "environment": [
+    "SCARAB_IMPORT_FIXTURE"
+   ],
+   "data": "the verified ancillary archive and recorded database of preprod",
+   "issue": 294
+  },
+  {
+   "module": "storage",
+   "suite": "xyz.kd5ujc.scarab.storage.FormatBenchSuite",
+   "test": "bench: Haskell secondary and primary index files of the K1 Preview run",
+   "environment": [
+    "SCARAB_BENCH",
+    "SCARAB_K1_DB"
+   ],
+   "data": "a hand-run benchmark of the binary formats (CONTRIBUTING.md, binary formats), on the Haskell ImmutableDB of the Preview K1 run",
+   "issue": 1293
+  },
+  {
+   "module": "storage",
+   "suite": "xyz.kd5ujc.scarab.storage.FormatBenchSuite",
+   "test": "bench: file store index entries (our immutable store reads)",
+   "environment": [
+    "SCARAB_BENCH"
+   ],
+   "data": "a hand-run benchmark of the binary formats (CONTRIBUTING.md, binary formats)",
+   "issue": 1293
+  },
+  {
+   "module": "storage",
+   "suite": "xyz.kd5ujc.scarab.storage.FormatBenchSuite",
+   "test": "bench: the UTxO key (id[32] | u16 index), per lookup and per change",
+   "environment": [
+    "SCARAB_BENCH"
+   ],
+   "data": "a hand-run benchmark of the binary formats (CONTRIBUTING.md, binary formats)",
+   "issue": 1293
+  },
+  {
+   "module": "storage",
+   "suite": "xyz.kd5ujc.scarab.storage.FormatBenchSuite",
+   "test": "bench: the mux SDU header (protocol/Mux.scala), per SDU on every connection",
+   "environment": [
+    "SCARAB_BENCH"
+   ],
+   "data": "a hand-run benchmark of the binary formats (CONTRIBUTING.md, binary formats)",
+   "issue": 1293
+  },
+  {
+   "module": "storage",
+   "suite": "xyz.kd5ujc.scarab.storage.FormatBenchSuite",
+   "test": "bench: volatile log records",
+   "environment": [
+    "SCARAB_BENCH"
+   ],
+   "data": "a hand-run benchmark of the binary formats (CONTRIBUTING.md, binary formats)",
+   "issue": 1293
+  },
+  {
+   "module": "storage",
+   "suite": "xyz.kd5ujc.scarab.storage.MemPackJoinSuite",
+   "test": "the pinned preprod tables decode and canonically pack back",
+   "environment": [
+    "SCARAB_MEMPACK_TABLES"
+   ],
+   "data": "the pinned preprod tables file",
+   "issue": 294
+  },
+  {
+   "module": "storage",
+   "suite": "xyz.kd5ujc.scarab.storage.MemPackJoinSuite",
+   "test": "the same-snapshot checkpoint and native table have identical keys and output semantics",
+   "environment": [
+    "SCARAB_MEMPACK_TABLES",
+    "SCARAB_MEMPACK_CHECKPOINT"
+   ],
+   "data": "the pinned preprod tables file and the checkpoint of the same snapshot",
+   "issue": 294
+  },
+  {
+   "module": "storage",
+   "suite": "xyz.kd5ujc.scarab.storage.haskell.HaskellRealFilesSuite",
+   "test": "every chunk's primary and secondary index parse as they did before",
+   "environment": [
+    "SCARAB_NATIVE_K1_DB"
+   ],
+   "data": "the pinned native ImmutableDB of the Preview K1 run",
+   "issue": 294
+  },
+  {
+   "module": "storage",
+   "suite": "xyz.kd5ujc.scarab.storage.haskell.state.LedgerFileSuite",
+   "test": "the real Preview state of a Haskell node is written again byte for byte (HASKELL_STATE_FILE)",
+   "environment": [
+    "HASKELL_STATE_FILE"
+   ],
+   "data": "a ledger state file a Haskell node wrote on Preview",
+   "issue": 294
+  },
+  {
+   "module": "storage",
+   "suite": "xyz.kd5ujc.scarab.storage.haskell.state.SnapshotTableStreamSuite",
+   "test": "a full preprod table streams through MemPack conversion and writes byte-identical bytes",
+   "environment": [
+    "SCARAB_MEMPACK_TABLES"
+   ],
+   "data": "the pinned preprod tables file",
+   "issue": 294
+  },
+  {
+   "module": "uplc",
+   "suite": "xyz.kd5ujc.scarab.uplc.builtin.extended.Bls12_381Suite",
+   "test": "multiScalarMul against blst 0.3.15's Pippenger sum: unverified, blst is not vendored",
+   "environment": [],
+   "data": "the source of blst 0.3.15, which is not vendored (ADR 0025); the test is `.ignore`d",
+   "issue": 294
+  }
+ ]
+}

@@ -4,7 +4,7 @@
     {
       "project": "node",
       "suite": "xyz.kd5ujc.scarab.node.ConfigSuite",
-      "name": "the mainnet Byron hash is verified against the full file when it is at hand"
+      "name": "the mainnet Byron hash is verified against the complete pinned public file"
     },
     {
       "project": "node",
