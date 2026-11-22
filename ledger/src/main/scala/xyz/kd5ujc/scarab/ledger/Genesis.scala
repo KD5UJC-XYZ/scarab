@@ -53,11 +53,13 @@ object Genesis:
         .parse(text)
         .leftMap(e => ConfigError(ConfigProblem.JsonSyntax("shelley genesis", e)))
       c = json.hcursor
-      start <- field[String](c, "systemStart").flatMap(s =>
-        Either
-          .catchNonFatal(Instant.parse(s))
-          .leftMap(e => ConfigError(ConfigProblem.InvalidTimestamp(s, e)))
-      )
+      start <- GenesisSchema
+        .systemStart(json)
+        .flatMap(s =>
+          Either
+            .catchNonFatal(Instant.parse(s))
+            .leftMap(e => ConfigError(ConfigProblem.InvalidTimestamp(s, e)))
+        )
       magic <- GenesisSchema.networkMagic(json)
       networkId <- GenesisState.networkId(c)
       f <- number(c, GenesisNumberField.ActiveSlotsCoeff)(PositiveUnitInterval.fromJson)

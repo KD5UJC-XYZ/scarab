@@ -1,9 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import io.circe.parser
+import io.circe.{Json, parser}
 import xyz.kd5ujc.scarab.protocol.{Era, ReferenceBuild}
-import xyz.kd5ujc.scarab.ledger.{Genesis, PosixClock, SystemStart}
+import xyz.kd5ujc.scarab.ledger.{
+  ConfigProblem,
+  Genesis,
+  GenesisFieldError,
+  GenesisFile,
+  GenesisSchema,
+  PosixClock,
+  SystemStart
+}
+import xyz.kd5ujc.scarab.ledger.json.JsonKind
 import java.nio.file.{Files, Path}
 import java.time.Instant
 import munit.FunSuite
@@ -112,6 +121,37 @@ class SystemStartSuite extends FunSuite:
       lsqLike.txClock.at(lsqLike.mirrorStart, Era.Byron, 3).posix(3),
       Right(BigInt(byronStart.toEpochMilli) + 240 + 3000)
     )
+  }
+
+  // `Genesis.shelley` reads `systemStart` first, as the reference's `parseJSON` does: a refusal of
+  // the field is the check's, and comes before one of a later field
+  private val shelleyJson: Json =
+    parser
+      .parse(new String(Files.readAllBytes(dir.resolve("shelley-genesis.json")), "UTF-8"))
+      .fold(e => fail(e.message), identity)
+
+  private def refusal(edited: Json): ConfigProblem =
+    def read(name: String): Option[Array[Byte]] =
+      Option.when(Files.exists(dir.resolve(name))) {
+        if name == "shelley-genesis.json" then edited.noSpaces.getBytes("UTF-8")
+        else Files.readAllBytes(dir.resolve(name))
+      }
+    NodeSetup.fromFiles(ReferenceBuild.Default)(read).fold(_.problem, _ => fail("accepted"))
+
+  test("a genesis without systemStart, or with one that is not a string, is refused at the field") {
+    def at(cause: GenesisFieldError) =
+      ConfigProblem.GenesisField(GenesisFile.Shelley, Vector("systemStart"), cause)
+    val badMagic = Json.obj("networkMagic" -> Json.fromString("one"))
+    List(
+      shelleyJson.mapObject(_.remove("systemStart")) -> at(GenesisFieldError.Missing),
+      shelleyJson.deepMerge(Json.obj("systemStart" -> Json.fromInt(1))) ->
+        at(GenesisFieldError.Kind(JsonKind.String, JsonKind.Number)),
+      shelleyJson.mapObject(_.remove("systemStart")).deepMerge(badMagic) ->
+        at(GenesisFieldError.Missing)
+    ).foreach { (edited, expected) =>
+      assertEquals(refusal(edited), expected)
+      assertEquals(GenesisSchema.shelley(edited).left.map(_.problem), Left(expected))
+    }
   }
 
   // on the public networks and the Leios testnet the two starts agree, so the ledger's start is

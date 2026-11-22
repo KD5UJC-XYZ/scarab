@@ -47748,6 +47748,37 @@
    "note": "the picosecond constants of SystemStart.posixMillis",
    "digest": "f25f214b92e80ed0"
   },
+  "def ledger.GenesisSchema.systemStart": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Genesis.hs",
+     "symbol": "sgSystemStart",
+     "lines": [
+      308,
+      308
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Genesis.hs",
+     "symbol": "parseJSON",
+     "lines": [
+      494,
+      518
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "SystemStartSuite"
+   ],
+   "note": "the Shelley genesis's systemStart read first, as parseJSON reads it, refused as GenesisSchema.shelley refuses the field (missing, or not a string); its reading as a UTCTime is Genesis.shelley's",
+   "digest": "055599b40eacb40d"
+  },
   "def ledger.rules.Globals#systemStart": {
    "upstream": [
     {
