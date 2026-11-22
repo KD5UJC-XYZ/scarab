@@ -2,12 +2,12 @@
 package xyz.kd5ujc.scarab.ledger.era
 
 import cats.{Eq, Order}
+import cats.data.NonEmptySet
 import monocle.Lens
 import monocle.law.discipline.LensTests
 import munit.DisciplineSuite
 import org.scalacheck.{Arbitrary, Cogen, Gen}
 import org.scalacheck.Prop.forAll
-import scala.collection.immutable.SortedSet
 import xyz.kd5ujc.scarab.codec.{Bytes, Node, Rational, Value}
 import xyz.kd5ujc.scarab.ledger.{
   Anchor,
@@ -49,8 +49,9 @@ import xyz.kd5ujc.scarab.ledger.state.{
   *     credential's and the bytes' orders), so that a vote map is the same sequence either way;
   *   - Dijkstra's proposals through the flat record: every proposal of the reference's GOV cases
   *     read by the stored reader, written to the flat proposal as the flat path writes it
-  *     (`DijkstraConway.proposal`) and read back unchanged, and the chain's two proposals, of keys
-  *     45 and 46, and 47 and 48, refused with their keys, alone and in a governance state;
+  *     (`DijkstraConway.proposal`) and read back unchanged, but the two parameter changes, of keys
+  *     38 and 47, refused with their keys, and the chain's two proposals, of keys 45 and 46, and 47
+  *     and 48, refused with their keys, alone and in a governance state;
   *   - a stored vote of a pool key of another length refused with its action's id.
   */
 class EraGovStateSuite extends DisciplineSuite:
@@ -222,21 +223,58 @@ class EraGovStateSuite extends DisciplineSuite:
   ) {
     val items = jsonLines("fixtures/reference/dijkstra-rules/cases.jsonl")
       .filter(j => str(j, "kind") == "gov")
-      .flatMap(_.hcursor.downField("proposals").as[String].toOption)
-      .flatMap(p => setItems(node(hex(p))))
-    val kinds = items.zipWithIndex.map { (n, i) =>
+      .flatMap(j =>
+        j.hcursor
+          .downField("proposals")
+          .as[String]
+          .toOption
+          .toVector
+          .flatMap(p => setItems(node(hex(p))).map(str(j, "name") -> _))
+      )
+    val written = items.zipWithIndex.map { case ((name, n), i) =>
       val era = ok(DijkstraProposals.proposal(n))
-      val flat = ok(DijkstraProposals.toFlat(id(i), era))
-      // the flat proposal the flat path writes of the one read, which holds no parameter change
-      assertEquals(Right(flat), DijkstraConway.proposal(era.read), s"#$i")
-      val back = ok(DijkstraProposals.fromFlat(flat))
-      assertEquals(back, era, s"#$i")
-      assertEquals(back.read, era.read, s"#$i")
-      flat.action.ordinal
+      name -> DijkstraProposals.toFlat(id(i), era).map { flat =>
+        // the flat proposal the flat path writes of the one read
+        assertEquals(Right(flat), DijkstraConway.proposal(era.read), s"$name #$i")
+        val back = ok(DijkstraProposals.fromFlat(flat))
+        assertEquals(back, era, s"$name #$i")
+        assertEquals(back.read, era.read, s"$name #$i")
+        flat.action.ordinal
+      }
     }
-    assertEquals(items.size, 15)
-    // every kind of action but a parameter change, which no GOV case of the corpus proposes
-    assertEquals(SortedSet.from(kinds), SortedSet(1, 2, 3, 4, 5, 6))
+    // every kind of action but a parameter change goes through, by its case; the two parameter
+    // changes, of keys 38 and 47, are refused with their ids and keys, which the flat update has no
+    // field for
+    assertEquals(
+      written.collect { case (name, Right(kind)) => name -> kind },
+      Vector(
+        "gov/info" -> 6,
+        "gov/info-deposit-wrong" -> 6,
+        "gov/info-return-unknown" -> 6,
+        "gov/info-return-mainnet" -> 6,
+        "gov/treasury-zero" -> 2,
+        "gov/treasury-unknown-account" -> 2,
+        "gov/hard-fork-13" -> 1,
+        "gov/hard-fork-13-1" -> 1,
+        "gov/hard-fork-12" -> 1,
+        "gov/committee-conflicting" -> 4,
+        "gov/no-confidence" -> 3,
+        "gov/constitution" -> 5,
+        "gov/vote-own-info" -> 6,
+        "gov/two-proposals-vote-second" -> 6,
+        "gov/two-proposals-vote-second" -> 3
+      )
+    )
+    assertEquals(
+      written.collect { case (name, Left(e)) => name -> e },
+      Vector(
+        "gov/pool-vote-key-38" ->
+          ProposalsWriteError.UnstorableUpdate(id(15), NonEmptySet.of(BigInt(38))),
+        "gov/pool-vote-key-47" ->
+          ProposalsWriteError.UnstorableUpdate(id(16), NonEmptySet.of(BigInt(47)))
+      )
+    )
+    assertEquals(items.size, 17)
   }
 
   private given BothLevels[TxLevel.Top] = BothLevels.Top

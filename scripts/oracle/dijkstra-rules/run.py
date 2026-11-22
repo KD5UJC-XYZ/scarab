@@ -23,6 +23,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "scripts"))
 
+from cleanup import container_labels  # noqa: E402
 from devnet import cborspan  # noqa: E402
 FIXTURE = ROOT / "fixtures/reference/dijkstra-rules"
 CASES_FILE = FIXTURE / "cases.jsonl"
@@ -137,6 +138,13 @@ def unreg(i, refund=DEPOSIT):
 
 def reg_drep(i, deposit=DREP):
     return arr(uint(16), key(i), uint(deposit), NULL)
+
+
+def pool_reg(i):
+    """A pool's registration, `[3, operator, vrf, pledge, cost, margin, account, owners, relays,
+    metadata]`, without a BLS key, its cost the minimum."""
+    return arr(uint(3), bstr(h28(i)), bstr(bytes([i]) * 32), uint(0), uint(PARAMS["minPoolCost"]),
+               head(6, 30) + arr(uint(0), uint(1)), account(i), tagged_set([]), arr(), NULL)
 
 
 def proposal(action, deposit=GOV, ret=account(1)):
@@ -304,6 +312,17 @@ def generate():
     }
     for name, fields in gov.items():
         case(f"gov/{name}", "gov", setup=setup, **fields)
+
+    # A pool's vote on a parameter change of a key Dijkstra adds, in the transaction that proposes
+    # it: on the pledge leverage (key 38, Technical/NoStakePool), which the pools may not vote on,
+    # and on the endorser block's execution units (key 47, Network/Security), which they may. The
+    # updates are those of the Leios build's parameter corpus (`fixtures/reference/dijkstra-pparams`).
+    pool_setup = setup + [pool_reg(8).hex()]
+    pool_voter = arr(uint(4), bstr(h28(8)))
+    for name, update in {"pool-vote-key-38": "a11826d81e820102", "pool-vote-key-47": "a1182f820101"}.items():
+        change = arr(uint(0), NULL, bytes.fromhex(update), NULL)
+        case(f"gov/{name}", "gov", setup=pool_setup, proposals=tagged_set([proposal(change)]),
+             votes=votes(pool_voter))
     names = [c["name"] for c in cases]
     assert len(names) == len(set(names)), "case names must be unique"
     return cases
@@ -374,11 +393,12 @@ def with_invalid_flag(block):
     return with_body_hash(flipped, hashlib.blake2b(block_body(flipped), digest_size=32).digest())
 
 
-def run_image(cases):
+def run_image(cases, owner):
     with tempfile.TemporaryDirectory() as scratch:
         (Path(scratch) / "in.json").write_text(json.dumps(cases))
         done = subprocess.run(
-            ["docker", "run", "--rm", "--network", "none", "--read-only", "-v", f"{scratch}:/in:ro", IMAGE, "/in/in.json"],
+            ["docker", "run", "--rm", *container_labels("oracle", owner), "--network", "none", "--read-only",
+             "-v", f"{scratch}:/in:ro", IMAGE, "/in/in.json"],
             check=True, capture_output=True)
     results = json.loads(done.stdout)
     return [dict(c, reference=r["reference"]) for c, r in zip(cases, results, strict=True)]
@@ -401,10 +421,11 @@ def main():
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--record", action="store_true")
     mode.add_argument("--replay", action="store_true")
+    parser.add_argument("--owner", default="dijkstra-rules", help="the owner label of the oracle container")
     args = parser.parse_args()
     cases = generate()
     if args.record:
-        results = run_image(cases)
+        results = run_image(cases, args.owner)
         FIXTURE.mkdir(parents=True, exist_ok=True)
         CASES_FILE.write_text("".join(json.dumps(r, sort_keys=True) + "\n" for r in results))
         image = subprocess.check_output(["docker", "image", "inspect", IMAGE, "--format", "{{.Id}}"], text=True).strip()
@@ -414,7 +435,8 @@ def main():
                      "GOVCERT) and GOV of the Leios testnet build, each applied on its own with every check "
                      "run: BBODY over the devnet's Dijkstra blocks, UTXOW over the devnet transaction and its "
                      "variants, CERTS on the default certificate state, GOV after a CERTS setup on the "
-                     "default store of proposals; not LEDGER on its own, ENTITIES or the SUB rules",
+                     "default store of proposals, pools' votes on parameter changes of keys 38 and 47 "
+                     "among them; not LEDGER on its own, ENTITIES or the SUB rules",
             "image": IMAGE,
             "imageId": image,
             "ledger": {"repository": "IntersectMBO/cardano-ledger",
@@ -433,7 +455,7 @@ def main():
         print("the generated cases differ from the fixture: run --record", file=sys.stderr)
         return 1
     if args.replay:
-        fresh = run_image(cases)
+        fresh = run_image(cases, args.owner)
         differing = [f["name"] for f, r in zip(fresh, recorded(), strict=True) if f["reference"] != r["reference"]]
         if differing:
             print(f"{len(differing)} results differ: {differing[:5]}", file=sys.stderr)

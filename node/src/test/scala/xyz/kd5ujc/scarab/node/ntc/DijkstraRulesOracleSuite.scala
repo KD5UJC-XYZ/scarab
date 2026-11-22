@@ -62,10 +62,13 @@ import xyz.kd5ujc.scarab.protocol.{DijkstraNotYet, Era}
   * The era-typed GOV (Conway's transition at Dijkstra, `EraGovRun.dijkstra`, #85) is run on every
   * `gov` case at the root, from the certificate state the era-typed CERTS leaves after its setup:
   * its failures, in the flat Dijkstra form (`DijkstraGovPredFailure.toStored`) and written by this
-  * suite's encoder, are the reference's bytes in its order; its verdicts are the flat rule's on all
-  * 16, and on the 6 both admit its proposals after are the flat rule's and its events the sequence
-  * Conway's transition tells (`GovNewProposals`, then `GovRemovedVotes`), which the oracle does not
-  * record. The flat form restores an action from the proposal it was read as, so
+  * suite's encoder, are the reference's bytes in its order, on all 18; its verdicts are the flat
+  * rule's on the 16 the flat rules judge, and on the 6 both admit its proposals after are the flat
+  * rule's and its events the sequence Conway's transition tells (`GovNewProposals`, then
+  * `GovRemovedVotes`), which the oracle does not record. The other two are a pool's vote on a
+  * parameter change of key 38, which the pools may not vote on (`DisallowedVoters`), and of key 47,
+  * which they may, each after a pool's registration, which the flat rules halt on (an incomplete
+  * flat comparison, CNF-2). The flat form restores an action from the proposal it was read as, so
   * `gov/treasury-zero` 's failure is checked on the era type too.
   *
   * The era-typed LEDGER (`era.rules.DijkstraLedger`, #85) is run on every `utxow` case at the root,
@@ -402,9 +405,16 @@ class DijkstraRulesOracleSuite extends FunSuite:
     val pp = params(c)
     val epoch = num(h.downField("epoch"))
     val setup = decoded(strings(h.downField("setup")))(DijkstraCert.decode)
-    val cert = runCerts(pp, epoch, setup) match
-      case Right(Right(s)) => s
-      case other           => fail(s"the setup does not pass: $other")
+    // a setup the flat rules halt on (a pool's registration) halts the case
+    runCerts(pp, epoch, setup).flatMap {
+      case Right(cert) => Right(flatGovOn(c, cert))
+      case Left(fs)    => fail(s"the setup does not pass: $fs")
+    }.flatten
+
+  private def flatGovOn(c: Json, cert: ConwayCertState) =
+    val h = c.hcursor
+    val pp = params(c)
+    val epoch = num(h.downField("epoch"))
     val votes = h
       .downField("votes")
       .as[String]
@@ -459,7 +469,7 @@ class DijkstraRulesOracleSuite extends FunSuite:
   }
 
   test("the fixture holds the oracle's cases") {
-    assertEquals(cases.size, 68)
+    assertEquals(cases.size, 70)
   }
 
   test("every completed case agrees with the unchanged reference verdict") {
@@ -475,15 +485,23 @@ class DijkstraRulesOracleSuite extends FunSuite:
     assertEquals(differing, Vector.empty[String])
   }
 
+  /** The cases of a pool's vote on a parameter change of a key Dijkstra adds, whose setup registers
+    * the pool, which the flat CERTS halts on; the era's rules judge them.
+    */
+  private val poolVoteCases = Set("gov/pool-vote-key-38", "gov/pool-vote-key-47")
+
   test("unfinished ENTITIES cases are reported separately from reference agreement") {
     val incomplete = observations.collect { case (name, Verdict.Halted(cause), expected) =>
       (name, cause, expected)
     }
-    assertEquals(incomplete.size, 2, "incomplete oracle comparisons, not conformance passes")
+    assertEquals(incomplete.size, 4, "incomplete oracle comparisons, not conformance passes")
     incomplete.foreach { (name, cause, expected) =>
+      // the two pools' votes register a pool first, which the flat rules halt on
+      val pending =
+        if poolVoteCases(name) then DijkstraPending.PoolRegistration else DijkstraPending.Entities
       assertEquals(
         cause,
-        DijkstraHalt.NotYet(DijkstraNotYet.Rules, DijkstraPending.Entities),
+        DijkstraHalt.NotYet(DijkstraNotYet.Rules, pending),
         s"$name remains incomplete; the unchanged reference verdict is $expected"
       )
     }
@@ -724,7 +742,7 @@ class DijkstraRulesOracleSuite extends FunSuite:
 
   test("the era-typed CERTS leaves the flat rule's state after every gov and utxow case's setup") {
     val withSetup = cases.filter(c => strings(c.hcursor.downField("setup")).nonEmpty)
-    assertEquals(withSetup.size, 18)
+    assertEquals(withSetup.size, 20)
     withSetup.foreach { c =>
       val name = str(c.hcursor.downField("name"))
       val flat = runCerts(
@@ -734,7 +752,16 @@ class DijkstraRulesOracleSuite extends FunSuite:
       )
       (eraCertsRun(c, "setup"), flat) match
         case (Right(Right((era, _))), Right(Right(flat))) => assertEquals(era, flat, name)
-        case other                                        => fail(s"$name: $other")
+        // the era's CERTS registers the pool the flat rule halts on
+        case (
+              Right(Right((era, _))),
+              Left(DijkstraHalt.NotYet(_, DijkstraPending.PoolRegistration))
+            ) if poolVoteCases(name) =>
+          assert(
+            era.pState.stakePools.keySet.map(_.bytes).contains(Bytes.fromArray(Array.fill(28)(8))),
+            name
+          )
+        case other => fail(s"$name: $other")
     }
   }
 
@@ -835,7 +862,7 @@ class DijkstraRulesOracleSuite extends FunSuite:
       )
 
   test("the era-typed GOV gives the reference's verdict on every gov case, byte for byte") {
-    assertEquals(govCases.size, 16)
+    assertEquals(govCases.size, 18)
     val differing = govCases.flatMap { c =>
       val name = str(c.hcursor.downField("name"))
       val (ours, expected) = (eraGov(c), reference(c))
@@ -874,7 +901,8 @@ class DijkstraRulesOracleSuite extends FunSuite:
 
   test("the era-typed GOV gives the flat rule's verdict on every gov case, and its state") {
     import xyz.kd5ujc.scarab.ledger.era.rules.{ConwayGovEvent, drepCredentialOrdering}
-    val admitted = govCases.flatMap { c =>
+    val judged = govCases.filterNot(c => poolVoteCases(str(c.hcursor.downField("name"))))
+    val admitted = judged.flatMap { c =>
       val name = str(c.hcursor.downField("name"))
       assertEquals(eraGov(c), scarab(c), name)
       (eraGovRun(c), flatGov(c)) match
@@ -902,8 +930,42 @@ class DijkstraRulesOracleSuite extends FunSuite:
         case (Right(Left(_)), Right(Left(_))) => None
         case other                            => fail(s"$name: $other")
     }
-    assertEquals(admitted.size, govCases.count(c => reference(c) == Verdict.Accepted))
+    assertEquals(admitted.size, judged.count(c => reference(c) == Verdict.Accepted))
     assertEquals(admitted.size, 6)
+  }
+
+  test("the era-typed GOV refuses a pool's vote on key 38 and admits one on key 47, as the build") {
+    import xyz.kd5ujc.scarab.ledger.era.rules.DijkstraGovPredFailure
+    val byName = govCases.map(c => str(c.hcursor.downField("name")) -> c).toMap
+    // `DisallowedVoters` of the pool (28 bytes of 8) on the case's one action, the transaction's
+    // first proposal (`Conway/Rules/Gov.hs:364-376`, `isStakePoolVotingAllowed`, cardano-ledger
+    // 9df9f98c): key 38 is of no stake pool group (`Dijkstra/PParams.hs:236`)
+    eraGovRun(byName("gov/pool-vote-key-38")) match
+      case Right(Left(fs)) =>
+        val failures = fs.toChain.toVector
+        assertEquals(failures.size, 1)
+        failures.head match
+          case DijkstraGovPredFailure.DisallowedVoters(votes) =>
+            assertEquals(
+              votes.toList.map((v, id) => (v, id)),
+              List(
+                (
+                  xyz.kd5ujc.scarab.ledger.Voter.Pool(Bytes.fromArray(Array.fill(28)(8))),
+                  xyz.kd5ujc.scarab.ledger.GovActionId(govTxId.bytes, BigInt(0))
+                )
+              )
+            )
+          case other => fail(s"not DisallowedVoters: $other")
+      case other => fail(s"not refused: $other")
+    // key 47 is of the security group, which the pools vote on (`Dijkstra/PParams.hs:265-266`,
+    // cardano-ledger 9df9f98c)
+    eraGovRun(byName("gov/pool-vote-key-47")) match
+      case Right(Right((proposals, _))) =>
+        val gas = proposals.pProps.toVector
+        assertEquals(gas.size, 1)
+        assertEquals(gas.head.gasStakePoolVotes.size, 1)
+      case other => fail(s"not admitted: $other")
+    poolVoteCases.foreach(n => assertEquals(eraGov(byName(n)), reference(byName(n)), n))
   }
 
   // ---- the era-typed LEDGER and LEDGERS -----------------------------------------------------------

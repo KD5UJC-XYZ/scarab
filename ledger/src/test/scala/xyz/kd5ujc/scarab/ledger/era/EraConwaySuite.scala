@@ -819,9 +819,14 @@ class EraConwaySuite extends munit.FunSuite:
       val (typed, flat) = (p.pProcGovAction, p.read.action)
       assertEquals(
         (
-          xyz.kd5ujc.scarab.ledger.era.rules.ConwayVoting.isCommitteeVotingAllowed(typed),
-          xyz.kd5ujc.scarab.ledger.era.rules.ConwayVoting.isDRepVotingAllowed(typed),
-          xyz.kd5ujc.scarab.ledger.era.rules.ConwayVoting.isStakePoolVotingAllowed(typed)
+          VotingThreshold.isCommitteeVotingAllowed(
+            xyz.kd5ujc.scarab.ledger.state.EpochNo.fromUnsigned(0),
+            xyz.kd5ujc.scarab.ledger.state
+              .CommitteeState(xyz.kd5ujc.scarab.ledger.state.Sorted.empty),
+            typed
+          ),
+          VotingThreshold.isDRepVotingAllowed(typed),
+          VotingThreshold.isStakePoolVotingAllowed(typed)
         ),
         (
           xyz.kd5ujc.scarab.ledger.Ratify.isCommitteeVotingAllowed(flat),
@@ -833,7 +838,7 @@ class EraConwaySuite extends munit.FunSuite:
     }
     val poolOnChanges = proposals.collect {
       case p if p.pProcGovAction.ordinal == 0 =>
-        xyz.kd5ujc.scarab.ledger.era.rules.ConwayVoting.isStakePoolVotingAllowed(p.pProcGovAction)
+        VotingThreshold.isStakePoolVotingAllowed(p.pProcGovAction)
     }.toSet
     assertEquals(
       poolOnChanges,
