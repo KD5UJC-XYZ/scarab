@@ -57,8 +57,8 @@ final case class DijkstraRead private (flat: FlatDijkstraTx, tx: Tx[TxLevel.Top,
     Bytes.fromArray(Array(0x83.toByte)) ++ flat.body.raw ++ flat.witnesses.raw ++
       flat.auxiliary.fold(Bytes.fromArray(Array(0xf6.toByte)))(_.raw)
 
-  /** `sizeTxF` (`Tx.hs:310-319`): the bytes of the parts and the list's head, which is the length
-    * of [[raw]].
+  /** `sizeTxF` (`Tx.hs:310-319`, cardano-ledger 9df9f98c): the bytes of the parts and the list's
+    * head, which is the length of [[raw]].
     */
   def size: Long = EraTx.dijkstra.sizeTxF[TxLevel.Top](tx)(using BothLevels.Top)
 

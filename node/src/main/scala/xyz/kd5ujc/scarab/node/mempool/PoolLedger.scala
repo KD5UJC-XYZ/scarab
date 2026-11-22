@@ -553,10 +553,11 @@ final case class DijkstraState private (
     )
 
   /** `applyTx` of Dijkstra (`applyShelleyTx`, `Shelley/Ledger/Mempool.hs:331-366`, through
-    * `applyAlonzoBasedTx`, `Shelley/Eras.hs:291-342`, ouroboros-consensus 2416493b): a local transaction (`Intervene`) applied as
-    * it is; a peer's (`DoNotIntervene`) applied with its flag `Phase2Valid`, and, when the only
-    * failure is UTXOS's `ValidationTagMismatch` (`isIncorrectClaimedFlag` of Dijkstra, `:409-420`,
-    * whatever the flag it names), again with `Phase2Invalid`, that result the answer.
+    * `applyAlonzoBasedTx`, `Shelley/Eras.hs:291-342`, ouroboros-consensus 2416493b): a local
+    * transaction (`Intervene`) applied as it is; a peer's (`DoNotIntervene`) applied with its flag
+    * `Phase2Valid`, and, when the only failure is UTXOS's `ValidationTagMismatch`
+    * (`isIncorrectClaimedFlag` of Dijkstra, `:409-420`, whatever the flag it names), again with
+    * `Phase2Invalid`, that result the answer.
     */
   def admit(
       t: DijkstraRead,

@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.node.mempool
 
 import xyz.kd5ujc.scarab.protocol.ReferenceBuild
-
 import xyz.kd5ujc.scarab.node.assertions.Assertions
 import cats.effect.IO
 import munit.CatsEffectSuite

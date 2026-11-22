@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.node.mempool
 
 import xyz.kd5ujc.scarab.protocol.ReferenceBuild
-
 import xyz.kd5ujc.scarab.network.recvPrefix
 import cats.effect.{IO, Resource}
 import cats.mtl.Handle

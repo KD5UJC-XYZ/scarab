@@ -71,8 +71,9 @@ object DijkstraSnapshots:
 
   /** The node's: the snapshot of `mempool` 's held Dijkstra transactions on `ticked`, the stored
     * outputs their rules read fetched from `utxoStore` first, as the reference reads them from the
-    * forker of the unticked state (`readUntickedTables`, `Mempool/Query.hs:107-117`, ouroboros-consensus 2416493b), revalidated
-    * at `slot` in the environment `environment` gives ([[MempoolState.dijkstraSnapshot]]).
+    * forker of the unticked state (`readUntickedTables`, `Mempool/Query.hs:107-117`,
+    * ouroboros-consensus 2416493b), revalidated at `slot` in the environment `environment` gives
+    * ([[MempoolState.dijkstraSnapshot]]).
     */
   def ofPool[F[_]: Sync](
       mempool: Mempool[F],
