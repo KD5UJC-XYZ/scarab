@@ -237,6 +237,28 @@ class DijkstraForgeSuite extends munit.FunSuite:
       .flatMap(Header.fromNtN(_, geometry.byron.epochSlots).left.map(_.message))
       .fold(e => fail(e), identity)
 
+  // the block's ledger is ticked once from its parent's state, as block application ticks it
+  // (`applyChainTick`, `EraBlock.ticked`): past the new epoch's slot of no return a tick to the
+  // epoch's first slot and then to the slot solidifies the future parameters the boundary made
+  test("a Dijkstra block's ledger is its parent's ticked once to the slot, across a boundary") {
+    val g = Globals(setup.globals, geometry)
+    val transition = setup.praos.forks.transition(geometry.k)
+    val parent = Forger.TipLedger.InDijkstra(dijkstra(testnet))
+    val next = parent.epoch + 1
+    val slot = g.slotOfNoReturn(next)
+    assertEquals(geometry.epochOf(slot), next)
+    def tick(from: Forger.TipLedger, to: BigInt) =
+      Forger.tickedTo(g, transition, from, to).fold(e => fail(e.message), identity)
+    val base = Forger
+      .blockBase(g, transition, geometry.firstSlot(next), parent, next)
+      .fold(e => fail(e.message), identity)
+    assertEquals(base, parent)
+    val direct = tick(parent, slot)
+    assertEquals(tick(base, slot), direct)
+    // the two ticks the forger made before differ from the block's at that slot
+    assertNotEquals(tick(tick(parent, geometry.firstSlot(next)), slot), direct)
+  }
+
   test("the test pool leads some slots after the tip and not others: the leader check decides") {
     val led = ((tip.slot + 1) to (tip.slot + 400)).map(s => Leadership.check(s, inputs).isRight)
     val count = led.count(identity)

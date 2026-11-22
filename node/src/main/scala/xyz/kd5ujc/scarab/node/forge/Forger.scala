@@ -1868,12 +1868,15 @@ final class Forger[F[_]: Async, S](
           c <- F
             .blocking {
               val view = Forger.leaderView(ledger, current.state.protocol, epoch)
-              // the boundaries between the tip's epoch and the slot's, for the block's own ledger
-              // (`applyChainTick`); the slot's own work is done per attempt
-              val start =
-                if epoch > ledger.epoch then ticked(ledger, geometry.firstSlot(epoch))
-                else Right(ledger)
-              start.map(Forger.Crossed(key, _, view))
+              Forger
+                .blockBase(
+                  Globals(globals, geometry),
+                  config.forks.transition(geometry.k),
+                  geometry.firstSlot(epoch),
+                  ledger,
+                  epoch
+                )
+                .map(Forger.Crossed(key, _, view))
             }
             .flatMap(lift)
           _ <- cache.set(Some(c))
@@ -2474,7 +2477,33 @@ object Forger:
   def withinHorizon[S](using clock: TxClock[S]): (VolatileChain[S], BigInt) => Boolean =
     (current, slot) => clock.translates(current.state, slot)
 
-  /** The tip's ledger state carried into an epoch, and the ledger view of the epoch's leader check.
+  /** The ledger state the block of a slot of `epoch` is ticked from, the tip's state `ledger` being
+    * the parent's. A Dijkstra parent's state is the block's base itself: the block is ticked once,
+    * from its parent's state to its slot (`applyChainTick`, ouroboros-consensus 2416493b
+    * `HardFork/Combinator/Ledger.hs`), as block application ticks it (`EraBlock.ticked`), so the
+    * state handed to the snapshot provider is the one the block is validated against. A tick to the
+    * epoch's first slot and then to the slot would differ from it past the new epoch's slot of no
+    * return: the second tick solidifies the future parameters the boundary has just made, where the
+    * block's tick solidifies those of the parent's epoch before its boundary (`Shelley/Rules/
+    * Tick.hs:147-185`, cardano-ledger 9df9f98c), and its RUPD reads the state after the boundary. A
+    * Conway parent's state is carried to the epoch's first slot, as before, its block's ledger read
+    * for the mempool's transactions only.
+    */
+  private[forge] def blockBase(
+      globals: Globals,
+      transition: Hfc.Transition,
+      firstSlot: BigInt,
+      ledger: TipLedger,
+      epoch: BigInt
+  ): Either[NodeError, TipLedger] =
+    ledger match
+      case TipLedger.InDijkstra(_) => Right(ledger)
+      case TipLedger.InConway(_) =>
+        if epoch > ledger.epoch then tickedTo(globals, transition, ledger, firstSlot)
+        else Right(ledger)
+
+  /** The tip's ledger state the block's tick starts from ([[blockBase]]), and the ledger view of
+    * the epoch's leader check.
     */
   final case class Crossed(
       key: (Option[Bytes], BigInt),
