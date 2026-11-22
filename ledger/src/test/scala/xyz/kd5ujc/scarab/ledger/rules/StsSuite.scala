@@ -31,6 +31,7 @@ class StsSuite extends DisciplineSuite:
       100,
       Rational(1, 20),
       network = Network.Testnet,
+      systemStart = xyz.kd5ujc.scarab.ledger.SystemStart(java.time.Instant.EPOCH),
       kes = xyz.kd5ujc.scarab.ledger.KesParameters.Mainnet
     ),
     EpochGeometry(Instant.EPOCH, 1000, 100, TestGeometry.k(5), TestGeometry.f("0.05"))

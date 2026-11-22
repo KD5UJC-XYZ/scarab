@@ -7,7 +7,16 @@ import cats.mtl.{Raise, Stateful, Tell}
 import cats.syntax.all.*
 import scala.collection.immutable.{SortedMap, SortedSet}
 import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
-import xyz.kd5ujc.scarab.ledger.{Address, Credential, Horizon, PosixClock, TxEnv, TxIn, Unsigned}
+import xyz.kd5ujc.scarab.ledger.{
+  Address,
+  Credential,
+  Horizon,
+  PosixClock,
+  SystemStart,
+  TxEnv,
+  TxIn,
+  Unsigned
+}
 import xyz.kd5ujc.scarab.ledger.Unsigned.Width.W16
 import xyz.kd5ujc.scarab.ledger.era.*
 import xyz.kd5ujc.scarab.ledger.rules.{Judge, Sts, Test}
@@ -67,7 +76,7 @@ final class InjectShelleyUtxoFailure[E <: EraTag] private[rules] (
   */
 final case class UtxoContext[E <: EraTag](
     netId: Network,
-    systemStart: BigInt,
+    systemStart: SystemStart,
     epochInfo: Horizon,
     validation: TxEnv.Validation,
     injectShelley: InjectShelleyUtxoFailure[E]
@@ -533,8 +542,8 @@ object AlonzoUtxo:
 
   /** `validateOutsideForecast` (`Alonzo/Rules/Utxo.hs:362-385`, cardano-ledger f649f975): the end
     * of the validity interval of a transaction with redeemers translates to a time, through the
-    * epoch information `ei` (the era history, from the system start `sysSt` in POSIX milliseconds)
-    * extended linearly from the current slot (`unsafeLinearExtendEpochInfo`, cardano-base 060819b5
+    * epoch information `ei` (the era history, from the ledger's system start `sysSt`) extended
+    * linearly from the current slot (`unsafeLinearExtendEpochInfo`, cardano-base 060819b5
     * `cardano-slotting/src/Cardano/Slotting/EpochInfo/Extend.hs:23-77`,
     * [[xyz.kd5ujc.scarab.ledger.PosixClock.Extended]]). The extension fails only where the current
     * slot is past `ei`, so an end past the horizon alone passes.
@@ -542,7 +551,7 @@ object AlonzoUtxo:
   def validateOutsideForecast[E <: EraTag, L <: TxLevel](
       ei: Horizon,
       slotNo: BigInt,
-      sysSt: BigInt,
+      sysSt: SystemStart,
       tx: Tx[L, E]
   )(using
       t: AlonzoEraTx[E],

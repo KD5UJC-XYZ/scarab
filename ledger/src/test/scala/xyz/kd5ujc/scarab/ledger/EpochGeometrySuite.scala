@@ -94,7 +94,7 @@ class EpochGeometrySuite extends ScalaCheckSuite:
     assertEquals(long.slotStart(0), start)
     assertEquals(long.slotStart(1), Instant.ofEpochMilli(Long.MaxValue))
     assertEquals(
-      PosixClock.total(long).posix(1),
+      PosixClock.total(SystemStart(start), long).posix(1),
       Right(BigInt(start.toEpochMilli) + (BigInt(1) << 64))
     )
   }

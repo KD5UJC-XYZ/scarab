@@ -206,7 +206,13 @@ class ConwayLedgerChecksSuite extends FunSuite:
     AlonzoStAnnTx.mkAlonzoStAnnTx[Conway](clock.posix, s.pp, s.utxo, Map.empty, s.typed)
 
   private def context(s: Seen, build: ReferenceBuild, validation: TxEnv.Validation) =
-    UtxoContext(s.netId, 0, historyAt(s.slot), validation, ConwayUtxo.injectShelleyFailure(build))
+    UtxoContext(
+      s.netId,
+      xyz.kd5ujc.scarab.ledger.SystemStart(java.time.Instant.EPOCH),
+      historyAt(s.slot),
+      validation,
+      ConwayUtxo.injectShelleyFailure(build)
+    )
 
   /** LEDGER's environment of `s`: its slot and epoch, the first index, its parameters and the
     * chain's accounts, of which LEDGER reads the treasury alone (the mempool's ledger keeps no

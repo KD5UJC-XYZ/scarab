@@ -25,6 +25,7 @@ class UpstreamLawfulNewEpochSuite extends FunSuite:
       100,
       Rational(9, 10),
       Network.Testnet,
+      systemStart = xyz.kd5ujc.scarab.ledger.SystemStart(java.time.Instant.EPOCH),
       updateQuorum = 5,
       kes = xyz.kd5ujc.scarab.ledger.KesParameters.Mainnet
     ),

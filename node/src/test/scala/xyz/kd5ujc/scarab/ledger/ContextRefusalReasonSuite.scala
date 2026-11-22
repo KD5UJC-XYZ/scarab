@@ -153,7 +153,7 @@ class ContextRefusalReasonSuite extends FunSuite:
       AlonzoStAnnTx.mkAlonzoStAnnTx[Conway](clock.posix, pp, utxo, Map.empty, tx),
       UtxoContext[Conway](
         Network.of(BigInt(env.network)).getOrElse(fail(s"network ${env.network}")),
-        0,
+        xyz.kd5ujc.scarab.ledger.SystemStart(java.time.Instant.EPOCH),
         history,
         env.validation,
         ConwayUtxo.injectShelleyFailure(env.referenceBuild)

@@ -142,7 +142,7 @@ final case class NodeSetup(
     */
   def txClock: read.TxClock[MirrorState] =
     import read.ChainRead.given
-    read.TxClock.of[MirrorState](geometry, byronHistory, praos.forks)
+    read.TxClock.of[MirrorState](globals.systemStart, geometry, byronHistory, praos.forks)
 
   /** The hash the chain's first block must name as its predecessor. */
   def origin: Option[Bytes] = byron.map(_.hash)

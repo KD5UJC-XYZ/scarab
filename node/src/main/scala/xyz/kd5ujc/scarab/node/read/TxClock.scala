@@ -27,13 +27,18 @@ trait TxClock[S]:
 
 object TxClock:
   /** The clock of a chain read by `ChainRead`, placed by `geometry` as the state resolves it
-    * ([[ChainRead.geometry]]), the Byron era's parameters and the hard-fork triggers.
+    * ([[ChainRead.geometry]]), the Byron era's parameters and the hard-fork triggers, its times
+    * from the ledger's system start `start` (the `systemStart` of `Globals`, the Shelley
+    * genesis's).
     */
-  def of[S](geometry: EpochGeometry, byron: EraHistory.ByronParams, forks: HardForkConfig)(using
-      read: ChainRead[S]
-  ): TxClock[S] = new TxClock[S]:
+  def of[S](
+      start: flat.SystemStart,
+      geometry: EpochGeometry,
+      byron: EraHistory.ByronParams,
+      forks: HardForkConfig
+  )(using read: ChainRead[S]): TxClock[S] = new TxClock[S]:
     private def placement(state: S) = Placement(state.geometry(geometry), byron, forks)
     def at(state: S, era: Era, slot: BigInt): flat.PosixClock =
-      state.clock(placement(state), era, slot)
+      state.clock(start, placement(state), era, slot)
     def translates(state: S, slot: BigInt): Boolean =
       state.summary(placement(state)).last.end.forall(slot < _.slot)

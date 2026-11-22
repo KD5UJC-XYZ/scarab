@@ -577,11 +577,11 @@ private[node] object MirrorDijkstra:
       Globals(globals, geometry),
       DijkstraUtxoContext(
         globals.network,
-        BigInt(geometry.systemStart.toEpochMilli),
+        globals.systemStart,
         MirrorClock.horizon(state, placement, era, slot),
         TxEnv.Validation.All
       ),
-      MirrorClock.of(state, placement, era, slot),
+      MirrorClock.of(globals.systemStart, state, placement, era, slot),
       backend,
       config
     )

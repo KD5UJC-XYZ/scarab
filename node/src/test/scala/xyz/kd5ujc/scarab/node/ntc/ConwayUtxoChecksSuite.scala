@@ -751,7 +751,12 @@ class ConwayUtxoChecksSuite extends FunSuite:
 
   private def outsideForecast(s: Seen, ei: Horizon, slot: BigInt): Verdict[PredicateFailure] =
     alonzo(
-      AlonzoUtxo.validateOutsideForecast[Conway, TxLevel.Top](ei, slot, 0, s.typed)(using
+      AlonzoUtxo.validateOutsideForecast[Conway, TxLevel.Top](
+        ei,
+        slot,
+        xyz.kd5ujc.scarab.ledger.SystemStart(java.time.Instant.EPOCH),
+        s.typed
+      )(using
         EraTx.conway,
         EraTx.conway.bodyOf.top
       )
@@ -822,7 +827,13 @@ class ConwayUtxoChecksSuite extends FunSuite:
       UtxoEnv(s.slot, s.pp, s.cert),
       s.utxo,
       s.typed,
-      UtxoContext(s.netId, 0, ei, validation, ConwayUtxo.injectShelleyFailure(build))
+      UtxoContext(
+        s.netId,
+        xyz.kd5ujc.scarab.ledger.SystemStart(java.time.Instant.EPOCH),
+        ei,
+        validation,
+        ConwayUtxo.injectShelleyFailure(build)
+      )
     )
     (flat, conway(typed))
 
@@ -950,7 +961,13 @@ class ConwayUtxoChecksSuite extends FunSuite:
     val stAnnTx = xyz.kd5ujc.scarab.ledger.era.AlonzoStAnnTx
       .mkAlonzoStAnnTx[Conway](clock.posix, s.pp, s.utxo, Map.empty, s.typed)
     val context =
-      UtxoContext(s.netId, 0, historyAt(s.slot), validation, ConwayUtxo.injectShelleyFailure(build))
+      UtxoContext(
+        s.netId,
+        xyz.kd5ujc.scarab.ledger.SystemStart(java.time.Instant.EPOCH),
+        historyAt(s.slot),
+        validation,
+        ConwayUtxo.injectShelleyFailure(build)
+      )
     val era =
       EraUtxoRun.run(UtxoEnv(s.slot, s.pp, s.cert), stAnnTx, context, s.utxoState, evaluator) match
         case Left(defect) => fail(s"$what: era defect $defect")
@@ -1066,7 +1083,7 @@ class ConwayUtxoChecksSuite extends FunSuite:
             .mkAlonzoStAnnTx[Conway](clock.posix, s.pp, s.utxo, Map.empty, s.typed),
           UtxoContext(
             s.netId,
-            0,
+            xyz.kd5ujc.scarab.ledger.SystemStart(java.time.Instant.EPOCH),
             historyAt(s.slot),
             TxEnv.Validation.All,
             ConwayUtxo.injectShelleyFailure(s.build)
@@ -1105,7 +1122,7 @@ class ConwayUtxoChecksSuite extends FunSuite:
         .mkAlonzoStAnnTx[Conway](clock.posix, s.pp, s.utxo, Map.empty, s.typed),
       UtxoContext(
         s.netId,
-        0,
+        xyz.kd5ujc.scarab.ledger.SystemStart(java.time.Instant.EPOCH),
         historyAt(s.slot),
         validation,
         ConwayUtxo.injectShelleyFailure(build)

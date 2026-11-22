@@ -397,7 +397,10 @@ object ConwayTestKit extends munit.Assertions:
     )
     val context = UtxoContext[Conway](
       Network.of(BigInt(ctx.network)).getOrElse(fail(s"network ${ctx.network}")),
-      clock.posix(0).fold(e => fail(s"the system start: $e"), identity),
+      xyz.kd5ujc.scarab.ledger.SystemStart(
+        java.time.Instant
+          .ofEpochMilli(clock.posix(0).fold(e => fail(s"the system start: $e"), identity).toLong)
+      ),
       epochInfo(globals),
       ctx.validation,
       ConwayUtxo.injectShelleyFailure(ctx.referenceBuild)

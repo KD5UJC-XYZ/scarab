@@ -136,7 +136,12 @@ class DijkstraUtxowSuite extends FunSuite:
     DijkstraUtxoRun.run(
       env,
       DijkstraStAnnTx.mkDijkstraStAnnTopTx(clock, pp, utxo, Map.empty, tx),
-      DijkstraUtxoContext(Network.Testnet, systemStart * 1000, history, TxEnv.Validation.All),
+      DijkstraUtxoContext(
+        Network.Testnet,
+        xyz.kd5ujc.scarab.ledger.SystemStart(Instant.ofEpochSecond(systemStart.toLong)),
+        history,
+        TxEnv.Validation.All
+      ),
       start.utxo.copy[Dijkstra](utxo = UtxoTables(stored)),
       ScarabEvaluator.default,
       Verdicts.Direct,

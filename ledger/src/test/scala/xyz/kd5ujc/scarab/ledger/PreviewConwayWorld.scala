@@ -249,7 +249,7 @@ object PreviewConwayWorld:
     )
     era.rules.UtxoContext[Conway](
       era.Network.of(BigInt(ctx.network)).getOrElse(fail(s"network ${ctx.network}")),
-      1666656000000L,
+      xyz.kd5ujc.scarab.ledger.SystemStart(java.time.Instant.ofEpochMilli(1666656000000L)),
       epochInfo,
       ctx.validation,
       era.rules.ConwayUtxo.injectShelleyFailure(ctx.referenceBuild)

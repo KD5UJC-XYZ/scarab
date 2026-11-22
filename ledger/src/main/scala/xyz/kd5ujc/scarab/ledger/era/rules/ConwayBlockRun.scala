@@ -5,7 +5,14 @@ import cats.{Functor, Id, Monad}
 import cats.data.{Chain, NonEmptyChain}
 import cats.mtl.{Raise, Tell}
 import cats.syntax.all.*
-import xyz.kd5ujc.scarab.ledger.{Horizon, LedgerDefect, TranslationError, TxEnv, Verdicts}
+import xyz.kd5ujc.scarab.ledger.{
+  Horizon,
+  LedgerDefect,
+  SystemStart,
+  TranslationError,
+  TxEnv,
+  Verdicts
+}
 import xyz.kd5ujc.scarab.ledger.era.{
   Block,
   EraBlockHeader,
@@ -67,15 +74,14 @@ object ConwayBlockRun:
     * context of its transactions' rules is made here from `globals`, as the reference's rules read
     * it from theirs: the network (`networkId`, the Shelley genesis's) and the build's injection of
     * Shelley's UTXO failures ([[ConwayUtxo.injectShelleyFailure]]), with the system start and the
-    * epoch information the node's `Globals` does not hold (`systemStart`, `epochInfo`), and every
-    * check validated, so that no caller runs the block's rules under another policy or on another
-    * network.
+    * epoch information the caller gives (`systemStart`, `epochInfo`), and every check validated, so
+    * that no caller runs the block's rules under another policy or on another network.
     */
   def bbody[H](
       globals: Globals,
       env: BbodyEnv[Conway],
       block: Block[H, Conway],
-      systemStart: BigInt,
+      systemStart: SystemStart,
       epochInfo: Horizon,
       state: ShelleyBbodyState[Conway],
       evaluator: ScriptEvaluator[Id],

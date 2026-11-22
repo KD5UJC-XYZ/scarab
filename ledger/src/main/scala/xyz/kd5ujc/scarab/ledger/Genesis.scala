@@ -19,11 +19,18 @@ import xyz.kd5ujc.scarab.ledger.state.PositiveUnitInterval
 
 /** Network configuration read from the Shelley genesis file.
   *
+  * @param systemStart
+  *   `sgSystemStart` (`Shelley/Genesis.hs:308`, cardano-ledger f649f975): the ledger's system
+  *   start, the `systemStart` of `Globals` (`mkShelleyGlobals`, cardano-ledger 9df9f98c
+  *   `Shelley/Genesis.hs:768-789`) that the Plutus script contexts' times count from. The
+  *   geometry's [[EpochGeometry.systemStart]] is the hard-fork combinator's, which
+  *   [[Genesis.withSystemStart]] sets to the Byron genesis's, and is not this one.
   * @param networkId
   *   `sgNetworkId` (`Shelley/Genesis.hs:310`, cardano-ledger f649f975): the ledger's network, which
   *   the magic does not decide.
   */
 final case class ShelleyGenesis(
+    systemStart: SystemStart,
     networkMagic: Long,
     networkId: xyz.kd5ujc.scarab.ledger.state.Network,
     geometry: EpochGeometry,
@@ -46,11 +53,13 @@ object Genesis:
         .parse(text)
         .leftMap(e => ConfigError(ConfigProblem.JsonSyntax("shelley genesis", e)))
       c = json.hcursor
-      start <- field[String](c, "systemStart").flatMap(s =>
-        Either
-          .catchNonFatal(Instant.parse(s))
-          .leftMap(e => ConfigError(ConfigProblem.InvalidTimestamp(s, e)))
-      )
+      start <- GenesisSchema
+        .systemStart(json)
+        .flatMap(s =>
+          Either
+            .catchNonFatal(Instant.parse(s))
+            .leftMap(e => ConfigError(ConfigProblem.InvalidTimestamp(s, e)))
+        )
       magic <- GenesisSchema.networkMagic(json)
       networkId <- GenesisState.networkId(c)
       f <- number(c, GenesisNumberField.ActiveSlotsCoeff)(PositiveUnitInterval.fromJson)
@@ -69,6 +78,7 @@ object Genesis:
       )
       geometry <- EpochGeometry.checked(start, millis, epochLength, k, f)
     yield ShelleyGenesis(
+      SystemStart(start),
       magic,
       networkId,
       geometry,
@@ -108,11 +118,14 @@ object Genesis:
 
   /** The reference node's clock starts at the Byron genesis' `startTime` (whole seconds), which on
     * a network started with `cardano-testnet` or by hand need not equal the Shelley genesis'
-    * `systemStart`: the hard-fork combinator takes its system start from the Byron genesis, and the
-    * Shelley value is only read for the Shelley parameters. A node that used the Shelley value
+    * `systemStart`: the hard-fork combinator takes its system start from the first era's
+    * configuration, Byron's (`getSameConfigValue getSystemStart`, ouroboros-consensus 2416493b
+    * `HardFork/Combinator/Node.hs:38`; `Byron/Node.hs:296-298`). A node that used the Shelley value
     * would run a slot clock that differs from the network's by the difference of the two (found on
     * the devnet, where the two were written a second apart). Without a Byron genesis the Shelley
-    * value stands.
+    * value stands. Only the geometry's start, the combinator's, changes: the ledger's,
+    * [[ShelleyGenesis.systemStart]], stays the Shelley genesis's, as the ledger's `Globals` take
+    * it.
     */
   def withSystemStart(genesis: ShelleyGenesis, byron: Option[ByronGenesis]): ShelleyGenesis =
     byron
@@ -137,9 +150,10 @@ final case class ByronDelegation(epoch: BigInt, issuer: Bytes, delegate: Bytes, 
   * balances (32-byte redeem keys), `nonAvvm` the balances at ordinary addresses (the address
   * encoding).
   * @param startTime
-  *   `startTime` in whole seconds (an `Int54`): the reference reports it as the system start of the
-  *   hard-fork combinator (it may differ from the Shelley genesis `systemStart` by the sub-second
-  *   part).
+  *   `startTime` in whole seconds (an `Int54`): the system start of the hard-fork combinator, from
+  *   which the slot clock and `GetSystemStart` count. It may differ from the Shelley genesis's
+  *   `systemStart`, the ledger's system start ([[ShelleyGenesis.systemStart]]), by the sub-second
+  *   part or more.
   * @param securityParam
   *   `k`, a `BlockCount` (`Word64`) taken from an `Int54` by `fromIntegral`.
   * @param protocolMagic

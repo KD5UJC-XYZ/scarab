@@ -96,6 +96,7 @@ object GenesisState:
         genesis.geometry.epochLength,
         genesis.geometry.activeSlotsCoeff.rational,
         network = genesis.networkId,
+        systemStart = genesis.systemStart,
         updateQuorum = quorum,
         stabilityWindow = genesis.geometry.stabilityWindow.toBigInt,
         startRewards = genesis.geometry.randomnessStabilisationWindow.toBigInt,

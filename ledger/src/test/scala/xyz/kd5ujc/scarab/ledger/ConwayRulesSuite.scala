@@ -696,6 +696,7 @@ class ConwayRulesSuite extends FunSuite:
       100,
       Rational(1, 20),
       network = Network.Testnet,
+      systemStart = xyz.kd5ujc.scarab.ledger.SystemStart(java.time.Instant.EPOCH),
       kes = xyz.kd5ujc.scarab.ledger.KesParameters.Mainnet
     )
     val idle = inConway(

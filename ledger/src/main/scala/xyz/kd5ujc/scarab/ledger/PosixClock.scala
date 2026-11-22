@@ -10,12 +10,14 @@ sealed trait PosixClock:
 
 object PosixClock:
 
-  /** The era history at a tip, over the system start (POSIX milliseconds). */
-  final case class Forecast(systemStartMillis: BigInt, horizon: Horizon) extends PosixClock:
+  /** The era history at a tip, over the ledger's system start (`slotToPOSIXTime`,
+    * [[SystemStart.posixMillis]]).
+    */
+  final case class Forecast(systemStart: SystemStart, horizon: Horizon) extends PosixClock:
     def posix(slot: BigInt): Either[TranslationError, BigInt] =
       horizon
         .timePs(slot)
-        .map(ps => systemStartMillis + ps / BigInt(1000000000))
+        .map(systemStart.posixMillis)
         .toRight(TranslationError.PastHorizon(slot, horizon))
 
   /** Alonzo's clock: the era history extended linearly from the slot of the block (or of the
@@ -36,7 +38,7 @@ object PosixClock:
           start <- base.horizon.timePs(basis)
           length <- base.horizon.slotLengthPs(basis)
         yield start + (slot - basis) * length
-        ps.map(t => base.systemStartMillis + t / BigInt(1000000000))
+        ps.map(base.systemStart.posixMillis)
           .toRight(TranslationError.PastHorizon(basis, base.horizon))
 
   /** A clock with no horizon: every slot has a time. For fixtures and recorded cases that carry no
@@ -45,18 +47,21 @@ object PosixClock:
   final case class Total(time: BigInt => BigInt) extends PosixClock:
     def posix(slot: BigInt): Either[TranslationError, BigInt] = Right(time(slot))
 
-  /** The clock of a chain on `geometry` at the tip of `history`: see [[Horizon.History]]; Alonzo's
+  /** The clock of a chain at the tip of `history`, from the ledger's system start `start` (the
+    * `systemStart` of `Globals`, not the hard-fork combinator's): see [[Horizon.History]]; Alonzo's
     * ([[Extended]]) when `extendedFrom` gives the basis slot.
     */
   def forecast(
-      geometry: EpochGeometry,
+      start: SystemStart,
       history: Horizon.History,
       transition: Horizon.Transition,
       extendedFrom: Option[BigInt] = None
   ): PosixClock =
-    val base = Forecast(BigInt(geometry.systemStart.toEpochMilli), history.at(transition))
+    val base = Forecast(start, history.at(transition))
     extendedFrom.fold[PosixClock](base)(Extended(_, base))
 
-  /** The geometry alone, without a horizon. */
-  def total(geometry: EpochGeometry): PosixClock =
-    Total(slot => BigInt(geometry.systemStart.toEpochMilli) + geometry.slotOffsetMillis(slot))
+  /** The slots of `geometry` from the ledger's system start `start`, without a horizon. */
+  def total(start: SystemStart, geometry: EpochGeometry): PosixClock =
+    Total(slot => start.posixMillis(geometry.slotOffsetMillis(slot) * PsPerMilli))
+
+  private val PsPerMilli = BigInt(1000000000)

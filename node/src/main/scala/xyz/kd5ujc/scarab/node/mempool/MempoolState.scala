@@ -257,7 +257,7 @@ final case class MempoolEnv(
       stabilityWindow = geometry.stabilityWindow.toBigInt,
       txIndex = 0,
       updateQuorum = globals.updateQuorum,
-      clock = Some(clock.fold(PosixClock.total(geometry))(_(ledger.era))),
+      clock = Some(clock.fold(PosixClock.total(globals.systemStart, geometry))(_(ledger.era))),
       evaluator = evaluator,
       decoder = decoder,
       verdicts = verdicts,

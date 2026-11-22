@@ -63,15 +63,17 @@ trait ChainRead[S]:
     def ledger(at: Option[BlockRef]): Read[Option[InEra]]
 
     /** The slot to time translation of the transactions of a block of `era` at `slot` (or of the
-      * mempool's next block) applied on this state: the era history at its tip with the forecast
-      * horizon ([[MirrorClock]]). A state with no era history of its own has no horizon.
+      * mempool's next block) applied on this state, from the ledger's system start `start`: the era
+      * history at its tip with the forecast horizon ([[MirrorClock]]). A state with no era history
+      * of its own has no horizon.
       */
     def clock(
+        start: flat.SystemStart,
         placement: Placement,
         @unused era: Era,
         @unused slot: BigInt
     ): flat.PosixClock =
-      flat.PosixClock.total(placement.geometry)
+      flat.PosixClock.total(start, placement.geometry)
 
     /** The era history at the tip, as `GetInterpreter` answers it ([[MirrorClock.interpreter]]). */
     def summary(placement: Placement): NonEmptyVector[EraSummary]
@@ -117,8 +119,13 @@ object ChainRead:
       def utxo: flat.Utxo = m.ext.ledgerState.state match
         case EraLedgerState.ByronCurrent(_)    => flat.Utxo.empty
         case i: EraLedgerState.InShelleyEra[e] => i.state.nes.es.ls.utxo.utxo.utxo
-      override def clock(placement: Placement, era: Era, slot: BigInt): flat.PosixClock =
-        MirrorClock.of(m, placement, era, slot)
+      override def clock(
+          start: flat.SystemStart,
+          placement: Placement,
+          era: Era,
+          slot: BigInt
+      ): flat.PosixClock =
+        MirrorClock.of(start, m, placement, era, slot)
       def summary(placement: Placement): NonEmptyVector[EraSummary] =
         MirrorClock.interpreter(m, placement)
       def ledger(at: Option[BlockRef]): Read[Option[InEra]] =

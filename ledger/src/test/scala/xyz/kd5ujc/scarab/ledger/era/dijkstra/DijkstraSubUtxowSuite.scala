@@ -118,7 +118,12 @@ class DijkstraSubUtxowSuite extends FunSuite:
       .at(Horizon.Transition.Unknown(Some(BigInt(0))))
 
   private def context(validation: TxEnv.Validation, network: Network = Network.Testnet) =
-    DijkstraUtxoContext(network, systemStart * 1000, history, validation)
+    DijkstraUtxoContext(
+      network,
+      xyz.kd5ujc.scarab.ledger.SystemStart(Instant.ofEpochSecond(systemStart.toLong)),
+      history,
+      validation
+    )
 
   private def read(c: io.circe.Json): (DijkstraTx[TxLevel.Top], UTxO[Dijkstra]) =
     val tx = DijkstraTx.inBlock(node(hex(str(c, "bytes")))).fold(e => fail(e.toString), identity)

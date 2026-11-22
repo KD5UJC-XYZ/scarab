@@ -118,7 +118,7 @@ object LedgerRulesState:
     val start = edge(era.start)
     val end = era.end.fold(params.boundAt(start, epoch + 1))(edge)
     PosixClock.Forecast(
-      BigInt(0),
+      SystemStart(Instant.EPOCH),
       Horizon(NonEmptyVector.one(Horizon.Era(start, Some(end), params)))
     )
 
@@ -159,6 +159,7 @@ object LedgerRulesState:
         epochLength = era.epochSize,
         activeSlotsCoeff = ActiveSlotsCoeff,
         network = network,
+        systemStart = SystemStart(Instant.EPOCH),
         stabilityWindow = window,
         kes = xyz.kd5ujc.scarab.ledger.KesParameters.Mainnet
       ),

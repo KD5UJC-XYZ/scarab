@@ -138,7 +138,12 @@ class DijkstraBbodySuite extends FunSuite:
       .at(flat.Horizon.Transition.Unknown(Some(BigInt(0))))
 
   private val context =
-    DijkstraUtxoContext(Network.Testnet, 0, history, flat.TxEnv.Validation.All)
+    DijkstraUtxoContext(
+      Network.Testnet,
+      xyz.kd5ujc.scarab.ledger.SystemStart(java.time.Instant.EPOCH),
+      history,
+      flat.TxEnv.Validation.All
+    )
 
   private lazy val empty: ShelleyBbodyState[Dijkstra] =
     ShelleyBbodyState[Dijkstra](
@@ -484,7 +489,12 @@ class DijkstraBbodySuite extends FunSuite:
       testnetStored.copy(maxRefScriptSizePerBlock = BigInt(total - 1), maxBlockExUnits = fewer)
     )
     val nonStatic =
-      DijkstraUtxoContext(Network.Testnet, 0, history, flat.TxEnv.Validation.NonStatic)
+      DijkstraUtxoContext(
+        Network.Testnet,
+        xyz.kd5ujc.scarab.ledger.SystemStart(java.time.Instant.EPOCH),
+        history,
+        flat.TxEnv.Validation.NonStatic
+      )
     // the sampled transactions in the devnet block's body, its header committing to that body
     val withTxs = crafted(plain)(_.updated(0, array(rs.map(_.flat.raw))), committing)
     val fs = run(withTxs, limited, seeded, nonStatic) match
@@ -537,7 +547,7 @@ class DijkstraBbodySuite extends FunSuite:
       on,
       BbodyEnv[Dijkstra](testnetPParams, ChainAccountState(Coin(0), Coin(0))),
       ok(DijkstraBlock.decode(raw)),
-      0,
+      xyz.kd5ujc.scarab.ledger.SystemStart(java.time.Instant.EPOCH),
       history,
       state,
       EraGovRun.dijkstraEmpty,
@@ -555,7 +565,17 @@ class DijkstraBbodySuite extends FunSuite:
       case Right(Right((after, _))) => Right(after)
       case Left(d)                  => fail(s"a defect: $d")
     def judgedOn(network: Network, validation: flat.TxEnv.Validation) =
-      run(raw, testnetPParams, seeded, DijkstraUtxoContext(network, 0, history, validation)) match
+      run(
+        raw,
+        testnetPParams,
+        seeded,
+        DijkstraUtxoContext(
+          network,
+          xyz.kd5ujc.scarab.ledger.SystemStart(java.time.Instant.EPOCH),
+          history,
+          validation
+        )
+      ) match
         case Right(Left(fs))             => Left(fs.toChain.toVector)
         case Right(Right((after, _, _))) => Right(after)
         case Left(d)                     => fail(s"a defect: $d")

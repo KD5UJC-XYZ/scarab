@@ -91,7 +91,12 @@ class DijkstraClosureSuite extends FunSuite:
       .at(flat.Horizon.Transition.Unknown(Some(BigInt(0))))
 
   private def context(validation: flat.TxEnv.Validation) =
-    DijkstraUtxoContext(Network.Testnet, 0, history, validation)
+    DijkstraUtxoContext(
+      Network.Testnet,
+      xyz.kd5ujc.scarab.ledger.SystemStart(java.time.Instant.EPOCH),
+      history,
+      validation
+    )
 
   private lazy val start =
     xyz.kd5ujc.scarab.ledger.state.Build.dijkstra(EpochNo.fromUnsigned(0L), testnetStored).es.ls

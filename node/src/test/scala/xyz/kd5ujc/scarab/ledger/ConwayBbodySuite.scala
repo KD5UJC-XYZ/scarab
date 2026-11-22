@@ -274,15 +274,16 @@ class ConwayBbodySuite extends FunSuite:
       ),
       ticked.bcur
     )
-    val clock = PosixClock.total(geometry)
+    val clock = PosixClock.total(globals.systemStart, geometry)
     // the network, the validation policy and the build's injection are the run's own, from the
-    // globals; the system start and the epoch information of one era from the cluster's start
+    // globals; the system start the globals' (the Shelley genesis's), and the epoch information
+    // of one era from the cluster's start
     val judged = ConwayBlockRun
       .bbody(
         globals,
         BbodyEnv[Conway](pp, ticked.es.chainAccount),
         eraBlock,
-        BigInt(geometry.systemStart.toEpochMilli),
+        globals.systemStart,
         Horizon(
           cats.data.NonEmptyVector.one(
             Horizon.Era(
