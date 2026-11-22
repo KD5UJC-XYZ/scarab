@@ -125,8 +125,13 @@ object GovStateRecord:
     * the era's record: what the node's rules that still read the flat record read of a Dijkstra
     * state (`EraLedger.curPParams`).
     */
-  def view(pp: PParams[Dijkstra]): ProtocolParams =
-    DijkstraPParams.toStored(pp.hkd, ProtocolParams.empty)
+  def view(pp: PParams[Dijkstra]): ProtocolParams = viewOver(pp, ProtocolParams.empty)
+
+  /** Dijkstra's parameters `pp` laid over the flat record `base`: every field of the era's from
+    * `pp`, the others `base` 's, as a restored snapshot's sidecar is written again.
+    */
+  def viewOver(pp: PParams[Dijkstra], base: ProtocolParams): ProtocolParams =
+    DijkstraPParams.toStored(pp.hkd, base)
 
   /** Dijkstra's future parameters as the node's flat record ([[view]]). */
   def futureView(f: FuturePParams[Dijkstra]): StoredFuturePParams = f match

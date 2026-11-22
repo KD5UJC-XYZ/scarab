@@ -39140,7 +39140,7 @@
    "evidence": [
     "DijkstraSubLedgerSuite"
    ],
-   "note": "the proposals the era's, in their own capability beside the ledger state, as the node's record of them in the governance state cannot hold a Dijkstra parameter change; the committee and the constitution the governance state's; the epoch the environment's or the slot's by Globals' geometry, as in Conway's LEDGER; an id, script hash or epoch outside the vocabulary raised",
+   "note": "the proposals the era's, in their own capability beside the ledger state; the committee and the constitution the governance state's; the epoch the environment's or the slot's by Globals' geometry, as in Conway's LEDGER; an id, script hash or epoch outside the vocabulary raised",
    "digest": "b80b7e520624975a"
   },
   "trait ledger.era.rules.EmbedInSubLedger": {
@@ -40682,7 +40682,7 @@
     "DijkstraLedgerSuite",
     "DijkstraRulesOracleSuite"
    ],
-   "note": "the proposals the era's, in their own capability beside the ledger state, as SUBLEDGER's are, as the node's record of them in the governance state cannot hold a Dijkstra parameter change; the committee and the constitution the governance state's, the committee's proposals put in the node's record EntitiesEnv holds; the UTxO set before the transaction the stored outputs of every level's inputs, reference inputs and collateral; the epoch the environment's or the slot's by the geometry of Globals; the reference's assertions (shelleyLedgerAssertions) not run, as at Conway",
+   "note": "the proposals the era's, in their own capability beside the ledger state, as SUBLEDGER's are; the committee and the constitution the governance state's, the committee's proposals put in the node's record EntitiesEnv holds; the UTxO set before the transaction the stored outputs of every level's inputs, reference inputs and collateral; the epoch the environment's or the slot's by the geometry of Globals; the reference's assertions (shelleyLedgerAssertions) not run, as at Conway",
    "digest": "5a15cfaf20461008"
   },
   "def ledger.era.rules.DijkstraLedgers.mkStAnnTx": {
@@ -46588,11 +46588,12 @@
  },
  "glue": [
   {
-   "reason": "The governance family of each era as the ledger state holds it (#826): which record it is, Shelley's proposed updates, Conway's flat record or Dijkstra's era record (GovShape, its views and the flat records' proof, FlatGov, with its instances), the readers of the flat parameters over Dijkstra's record (GovStateRecord.view and futureView, over the zero record ProtocolParams.empty the state's codec reads a parameter record over), the solidification of any era's future parameters (EraLedger.solidifyFuture, solidifyNextEpochPParams of each family), an action's state of an era from the flat record's items (ConwayProposals.actionOf), and a Dijkstra action other than a parameter change as the flat record holds it and the keys an update sets (DijkstraProposals.flatOrUpdate, updateKeys), which the state's codec and the node's projections write with: the reference holds each era's record itself, so it has none of these",
+   "reason": "The governance family of each era as the ledger state holds it (#826): which record it is, Shelley's proposed updates, Conway's flat record or Dijkstra's era record (GovShape, its views and the flat records' proof, FlatGov, with its instances), the readers of the flat parameters over Dijkstra's record (GovStateRecord.view and futureView, over the zero record or, viewOver, a restored sidecar's record, ProtocolParams.empty the state's codec reads a parameter record over), the solidification of any era's future parameters (EraLedger.solidifyFuture, solidifyNextEpochPParams of each family), an action's state of an era from the flat record's items (ConwayProposals.actionOf), and a Dijkstra action other than a parameter change as the flat record holds it and the keys an update sets (DijkstraProposals.flatOrUpdate, updateKeys), which the state's codec and the node's projections write with: the reference holds each era's record itself, so it has none of these",
    "definitions": [
     "class ledger.state.FlatGov",
     "def ledger.era.GovStateRecord.futureView",
     "def ledger.era.GovStateRecord.view",
+    "def ledger.era.GovStateRecord.viewOver",
     "def ledger.era.conway.ConwayProposals.actionOf",
     "def ledger.era.dijkstra.DijkstraProposals.flatOrUpdate",
     "def ledger.era.dijkstra.DijkstraProposals.updateKeys",

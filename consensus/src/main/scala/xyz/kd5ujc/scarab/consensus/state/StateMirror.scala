@@ -6,7 +6,16 @@ import cats.{Eq, Show}
 import cats.derived.*
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.consensus.{BlockRef, ConsensusExtras, FollowState, HardForkConfig}
-import xyz.kd5ujc.scarab.ledger.state.{Diff, Gap, MirrorEnv, MirrorError, NodeExtras, WithOrigin}
+import xyz.kd5ujc.scarab.ledger.era.{ConwayGovState as EraConwayGovState, GovStateRecord}
+import xyz.kd5ujc.scarab.ledger.state.{
+  Diff,
+  Dijkstra,
+  Gap,
+  MirrorEnv,
+  MirrorError,
+  NodeExtras,
+  WithOrigin
+}
 import xyz.kd5ujc.scarab.protocol.{Era, StateLayout}
 
 // The consensus side of the mirror: the Haskell `ExtLedgerState` of the Cardano block
@@ -159,29 +168,82 @@ object MirrorProvenance:
   given Show[MirrorProvenance] = Show.fromToString
   given Diff[MirrorProvenance] = Diff.leaf(summon[Eq[MirrorProvenance]], _.toString)
 
+/** The flat parameter records, current and previous, a restored Dijkstra state's snapshot sidecar
+  * holds: the fields of the eras before Dijkstra its writer gave them (an import writes the
+  * genesis's, `Params.completeIn`), which Dijkstra's governance state, the era's record, has no
+  * place for. The sidecar is written again with the governance state's parameters laid over them,
+  * so a restored state keeps its sidecar's bytes; the typed record is authoritative for Dijkstra's
+  * own fields. Held in memory only, never written apart from the sidecar's records (#826).
+  */
+final case class RestoredParams(
+    current: xyz.kd5ujc.scarab.ledger.ProtocolParams,
+    previous: Option[xyz.kd5ujc.scarab.ledger.ProtocolParams]
+)
+
+object RestoredParams:
+  /** The sidecar's records `current` and `previous` of a restored Dijkstra state whose governance
+    * state is `gov`: none when they are what this node writes of it, its parameters over zeros, so
+    * a state restored from a file it wrote is the state written.
+    */
+  def of(
+      gov: EraConwayGovState[Dijkstra],
+      current: xyz.kd5ujc.scarab.ledger.ProtocolParams,
+      previous: Option[xyz.kd5ujc.scarab.ledger.ProtocolParams]
+  ): Option[RestoredParams] =
+    Option.unless(
+      current == GovStateRecord.view(gov.cgsCurPParams) &&
+        previous.contains(GovStateRecord.view(gov.cgsPrevPParams))
+    )(RestoredParams(current, previous))
+
+  /** The sidecar's records of a Dijkstra state whose governance state is `gov`: its parameters laid
+    * over `restored` 's records, those of the snapshot it was restored from, or over zeros.
+    */
+  def written(
+      gov: EraConwayGovState[Dijkstra],
+      restored: Option[RestoredParams]
+  ): (xyz.kd5ujc.scarab.ledger.ProtocolParams, Option[xyz.kd5ujc.scarab.ledger.ProtocolParams]) =
+    restored match
+      case None =>
+        (GovStateRecord.view(gov.cgsCurPParams), Some(GovStateRecord.view(gov.cgsPrevPParams)))
+      case Some(r) =>
+        (
+          GovStateRecord.viewOver(gov.cgsCurPParams, r.current),
+          r.previous.map(GovStateRecord.viewOver(gov.cgsPrevPParams, _))
+        )
+
+  given Eq[RestoredParams] = Eq.fromUniversalEquals
+  given Show[RestoredParams] = Show.fromToString
+  given Diff[RestoredParams] = Diff.leaf(summon[Eq[RestoredParams]], _.toString)
+
 /** The mirror of the node's state: the Haskell `ExtLedgerState` and node-only bookkeeping.
   * Provenance is mandatory: a constructor cannot silently turn an incomplete import into a complete
-  * state.
+  * state. `restored` is the sidecar's parameter records of a restored Dijkstra state
+  * ([[RestoredParams]]), none otherwise.
   */
 final case class MirrorState(
     ext: ExtLedgerState,
     extras: MirrorExtras,
-    provenance: MirrorProvenance
+    provenance: MirrorProvenance,
+    restored: Option[RestoredParams]
 )
 
 object MirrorState:
   given Eq[MirrorState] =
-    Eq.instance((a, b) => a.ext === b.ext && a.extras === b.extras && a.provenance === b.provenance)
+    Eq.instance((a, b) =>
+      a.ext === b.ext && a.extras === b.extras && a.provenance === b.provenance &&
+        a.restored === b.restored
+    )
 
   given Diff[MirrorState] = Diff.record(
     Diff.at("ext")(_.ext),
     Diff.at("extras")(_.extras),
-    Diff.at("provenance")(_.provenance)
+    Diff.at("provenance")(_.provenance),
+    Diff.at("restored")(_.restored)
   )
 
   given Show[MirrorState] =
     Show.show(m =>
-      s"MirrorState(ext = ${m.ext.show}, extras = ${m.extras.show}, provenance = ${m.provenance.show})"
+      s"MirrorState(ext = ${m.ext.show}, extras = ${m.extras.show}, provenance = ${m.provenance.show}, restored = ${m.restored.show})"
     )
 
 /** The tip of the header state as the node's block reference. */

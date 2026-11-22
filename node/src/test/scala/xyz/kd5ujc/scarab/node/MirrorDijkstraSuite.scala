@@ -15,6 +15,7 @@ import xyz.kd5ujc.scarab.consensus.state.{
   MirrorState,
   MirrorStep,
   ProtocolState,
+  RestoredParams,
   StateMirror
 }
 import xyz.kd5ujc.scarab.crypto.Blake2b
@@ -30,6 +31,7 @@ import xyz.kd5ujc.scarab.ledger.{
   LeiosBlock,
   LeiosExtValidationError,
   NodeError,
+  ProtocolParams,
   TxIn
 }
 import xyz.kd5ujc.scarab.ledger.era.Proposals as EraProposals
@@ -166,6 +168,28 @@ class MirrorDijkstraSuite extends CatsEffectSuite:
         StateMirror.anchorOf(states.last.ext.headerState.tip).map(_.blockNo),
         Some(BigInt(1))
       )
+  }
+
+  // a restored Dijkstra state keeps its snapshot sidecar's records through the blocks it applies,
+  // so the sidecar written at a later anchor still holds the fields of the eras before it (#826)
+  test("the sidecar's records a restored Dijkstra state keeps survive the next block applied") {
+    for
+      rules <- rulesOf(leiosSetup, stored = false)
+      applied <- applyAll(rules, leiosSetup.mirrorStart, devnetChain.take(35))
+      states = applied.fold((i, e) => fail(s"block $i: ${e.message}"), identity)
+      before = states.last
+      _ = assertEquals(before.era, Era.Dijkstra)
+      kept = Some(
+        RestoredParams(
+          ProtocolParams.empty.copy(d = Rational.one),
+          Some(ProtocolParams.empty.copy(d = Rational.one))
+        )
+      )
+      next <- applyAll(rules, before.copy(restored = kept), devnetChain.slice(35, 36))
+    yield
+      val after = next.fold((i, e) => fail(s"block $i: ${e.message}"), identity).last
+      assertEquals(after.era, Era.Dijkstra)
+      assertEquals(after.restored, kept)
   }
 
   test("a release build refuses a Dijkstra block as before (NotYet), from the state it follows") {

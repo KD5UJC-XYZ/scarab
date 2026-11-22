@@ -15,6 +15,7 @@ import xyz.kd5ujc.scarab.consensus.state.{
   MirrorProvenance,
   MirrorState,
   MirrorStep,
+  RestoredParams,
   ShelleyLedgerState,
   StateMirror,
   StateMirrorError,
@@ -112,6 +113,13 @@ object SnapshotV5:
       case (shelley: MirrorExtras.InShelley, i: EraLedgerState.InShelleyEra[e]) =>
         given xyz.kd5ujc.scarab.ledger.state.ShelleyBasedEra[e] = i.era
         val gov = i.state.nes.es.ls.utxo.gov
+        // a Dijkstra state's records are its parameters over those of the sidecar it was restored
+        // from ([[RestoredParams]])
+        val (params, prevParams) = i.era.gov.on(gov)(
+          _ => (EraLedger.curPParams(gov), Some(EraLedger.prevPParams(gov))),
+          _ => (EraLedger.curPParams(gov), Some(EraLedger.prevPParams(gov))),
+          era => RestoredParams.written(era, m.restored)
+        )
         for
           file <- HaskellLedgerFile
             .of(m.ext)
@@ -120,8 +128,8 @@ object SnapshotV5:
         yield sidecar(
           SnapshotSidecar.Chain.InShelley(
             i.state.nes.es.ls.utxo.utxo.utxo,
-            EraLedger.curPParams(gov),
-            Some(EraLedger.prevPParams(gov)),
+            params,
+            prevParams,
             shelley
           )
         ) -> haskell
@@ -248,7 +256,7 @@ object SnapshotV5:
         (),
         corrupt(SnapshotReadError.AnchorMismatch)
       )
-    yield MirrorStep.withParams(MirrorState(ext, extras, provenance), params, prevParams)
+    yield MirrorStep.withParams(MirrorState(ext, extras, provenance, None), params, prevParams)
 
   /** The sidecar of the content of a V5 file, read into the current types (a V5 file whose Byron
     * update state lost its installer metadata is refused, [[SnapshotSidecarV7]]).

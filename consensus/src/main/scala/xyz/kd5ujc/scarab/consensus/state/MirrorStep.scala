@@ -223,7 +223,8 @@ object MirrorStep:
             ledgerExtras.copy(plutus = plutus),
             consensus.copy(protocol = protocol.extras)
           ),
-          provenanceAfter(m, placement.geometry, era, header.slot, start.epoch)
+          provenanceAfter(m, placement.geometry, era, header.slot, start.epoch),
+          m.restored
         )
 
   /** Consensus `Shelley/Ledger/Ledger.hs:569-575,711-717,740-741` (82ecba3): reset at a new epoch,
@@ -379,7 +380,8 @@ object MirrorStep:
               m.ext.layout
             ),
             MirrorExtras.InByron(pending, follow, protocol),
-            m.provenance
+            m.provenance,
+            m.restored
           )
         }
 
@@ -419,9 +421,10 @@ object MirrorStep:
     * into those eras rely on them). The parameters in force and the previous ones are the
     * sidecar's; the future ones, which the section holds with the era's fields only, are the
     * sidecar's laid over with what the update changed
-    * ([[xyz.kd5ujc.scarab.ledger.ProtocolParams.overlay]]). A Dijkstra state is as the section
-    * holds it: its record is the era's, with every field of the era's parameters, and no era comes
-    * after it whose fields the translation reads.
+    * ([[xyz.kd5ujc.scarab.ledger.ProtocolParams.overlay]]). A Dijkstra state's parameters are as
+    * the section holds them: its record is the era's, with every field of the era's parameters, and
+    * no era comes after it whose fields the translation reads; the sidecar's records are kept
+    * beside it ([[RestoredParams]]), so the sidecar is written again as it was read.
     */
   def withParams(
       m: MirrorState,
@@ -431,7 +434,14 @@ object MirrorStep:
     m.ext.ledgerState.state match
       case EraLedgerState.ByronCurrent(_) => m
       case i: EraLedgerState.InShelleyEra[e] =>
-        i.era.gov.flat.fold(m)(flat => widened(m, i, params, prev)(using i.era, flat))
+        i.era.gov.flat match
+          case Some(flat) => widened(m, i, params, prev)(using i.era, flat)
+          case None =>
+            i.era.gov.on(i.state.nes.es.ls.utxo.gov)(
+              _ => m,
+              _ => m,
+              gov => m.copy(restored = RestoredParams.of(gov, params, prev))
+            )
 
   private def widened[E <: EraTag](
       m: MirrorState,

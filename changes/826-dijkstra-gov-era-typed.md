@@ -8,3 +8,8 @@
 - A Dijkstra block whose transactions propose such an update is applied, where the node withheld it before
   as no verdict. The public Leios testnet's window of epochs 69 to 74, with its change of the endorser-block
   limits proposed, ratified and enacted, now replays to the reference's states.
+- The mempool holds a Dijkstra transaction proposing such an update, and judges transactions on a state
+  whose proposals hold one, where it did not before.
+- A Dijkstra snapshot imported from the reference's state, restored and written again, keeps its sidecar's
+  parameter records whole: their fields of the eras before Dijkstra are those the import wrote, Dijkstra's
+  own the governance state's.

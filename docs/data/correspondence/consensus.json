@@ -3620,6 +3620,18 @@
     "enum consensus.leios.LeiosVotingDefect",
     "class consensus.leios.VoteAggregationDefect"
    ]
+  },
+  {
+   "reason": "a restored Dijkstra state's snapshot sidecar parameter records, held beside the mirror in memory so the sidecar is written again as it was read (the fields of the eras before Dijkstra, which Dijkstra's governance state has no place for, as the import wrote them), Dijkstra's own fields the governance state's; the reference's snapshot has no such sidecar, so this has no counterpart (#826)",
+   "definitions": [
+    "class consensus.state.RestoredParams",
+    "object consensus.state.RestoredParams",
+    "def consensus.state.RestoredParams.of",
+    "def consensus.state.RestoredParams.written",
+    "given consensus.state.RestoredParams.given_Eq_RestoredParams",
+    "given consensus.state.RestoredParams.given_Show_RestoredParams",
+    "given consensus.state.RestoredParams.given_Diff_RestoredParams"
+   ]
   }
  ]
 }

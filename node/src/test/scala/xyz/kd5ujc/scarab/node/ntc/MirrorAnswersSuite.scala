@@ -444,7 +444,7 @@ class MirrorAnswersSuite extends FunSuite:
       val raw = Bytes.fromArray(Files.readAllBytes(Path.of(s"fixtures/haskell-state/$name/state")))
       val file = HaskellLedgerFile.decode(raw).fold(e => fail(s"$name: ${e.render}"), identity)
       val ext = file.ext.getOrElse(fail(s"$name: no Shelley-based state"))
-      val state = MirrorState(ext, capture.extras, MirrorProvenance.complete)
+      val state = MirrorState(ext, capture.extras, MirrorProvenance.complete, None)
       // the file is `[1, [ledger telescope, header state]]`, the telescope's last item the current
       // era's `[start, [2, [tip, new-epoch state, transition]]]`: the governance state there is the
       // reference's own bytes
@@ -550,7 +550,7 @@ class MirrorAnswersSuite extends FunSuite:
       // era's `[start, [2, [tip, new-epoch state, transition]]]`
       val current = item(raw, 1, 0).items.flatMap(_.toVector.lastOption).getOrElse(fail(name))
       val nes = item(current.original, 1, 1, 1).original
-      (name, file.era, MirrorState(ext, capture.extras, MirrorProvenance.complete), nes)
+      (name, file.era, MirrorState(ext, capture.extras, MirrorProvenance.complete, None), nes)
     }
 
   test(

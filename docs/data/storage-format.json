@@ -9,7 +9,7 @@
   "asked_at": "2026-11-22T04:06:40Z",
   "decision": "Approved in four steps. The first answer (2026-11-21T14:35:51Z): one storage-format pull request in which the stored proposals of a Dijkstra state hold an era-typed parameter update, the state codec reads and writes update keys 34 to 56 as cardano-ledger 9df9f98c's EncCBOR PParamsUpdate writes them, a golden V10 body case holds such a proposal, and the approval is recorded; V10 changed in place, with no new version and no migration. The second answer (15:53:11Z): the change is rebuilt on the era types, not a union in the flat governance action. The third answer (16:39:18Z): the approval covers the stored governance state of a Dijkstra state becoming the era's record, ConwayGovState of Dijkstra with the era's PParams and PParamsUpdate, in the reference's field order and to the same bytes, landing after the era types' tick. The fourth answer (2026-11-22T04:37:46Z): a V10 Dijkstra snapshot's sidecar writes Dijkstra's parameters with the other eras' fields zero, so the four fields dead in Dijkstra are zero for a state translated into Dijkstra in process; imported states and every other era keep their bytes; in the same pull request, V10 in place, with no new version and no migration. Nothing else is approved.",
   "decided_at": "2026-11-22T04:37:46Z",
-  "surface_sha256": "c5f8ab6be435696d70a7ed3009695d3f528545cceecd4a5628b9be29e406b8fb"
+  "surface_sha256": "e5fbdab1f74cb2f7ea9c16397b43341ce725bd015b4120350dc9deab21a5322f"
  },
  "surface": {
   "registry": {
@@ -263,7 +263,7 @@
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotMigration.scala": "25e4606de501019a542cf49c3905897b5dd30185bfb0f0d79ecafe064ee62d90",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotSidecar.scala": "8936c1c5b3ef5ad1ef96e303c142485c3914490cb1625e7f7248250446109860",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV10.scala": "3eaeffcaa134dd5fc98322dea1b9fd5e59195acb7c76599082dbb71d1448229c",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV5.scala": "034c11e689feb29bc44d5855b63d70ac5a622f656afcc7a05ace805fbd58da1a",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV5.scala": "9ac6c24476d8a52f52f3f601c642018de19a0494c7baad054543c223e205f1d1",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV7.scala": "1db1c2781205f65ae9decbc835e34a1118a821bfc53be1128f48eb48224d1add",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV8.scala": "c56ee0253fd57be19c42d7d9f11e517b9a8130d0d79349a3e81db4230ccc2402",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV9.scala": "c137fed393e4dd5f96c9815d4e858fa1929e21bfce75ea9aaa90eb30608668f5",

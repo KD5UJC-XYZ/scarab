@@ -74,5 +74,6 @@ object ByronMirror:
       MirrorState(
         ExtLedgerState(ledger, HeaderState(tip, dep), GenesisMirror.originExt(env.layout)),
         MirrorExtras.InByron(pending, consensus.follow, consensus.protocol),
-        provenance
+        provenance,
+        None
       )
