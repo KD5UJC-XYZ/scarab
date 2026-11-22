@@ -202,15 +202,15 @@ final class RocksUtxoStore[F[_]: Sync] private (
         else
           guardResult("utxo snapshot read") {
             snapshot.use { (d, _) =>
-              wanted.iterator
-                .zip(d.multiGetAsList(options, wanted.map(_._2).asJava).asScala.iterator)
-                .collect {
-                  case ((in, _), bytes) if bytes != null => Coding.decodeValue(bytes).map(in -> _)
-                }
-                .toVector
-                .sequence
-                .leftMap(reason => StorageError.Corrupt("utxo entry", reason))
-                .map(_.toMap)
+              RocksUtxoStore.multiRead(d, Some(options), wanted.map(_._2)).flatMap { values =>
+                wanted.iterator
+                  .zip(values)
+                  .collect { case ((in, _), Some(bytes)) => Coding.decodeValue(bytes).map(in -> _) }
+                  .toVector
+                  .sequence
+                  .leftMap(reason => StorageError.Corrupt("utxo entry", reason))
+                  .map(_.toMap)
+              }
             }
           }
 
@@ -263,11 +263,7 @@ final class RocksUtxoStore[F[_]: Sync] private (
     * is damaged data ([[StorageError.Corrupt[?]]]), anything else an I/O error
     * ([[StorageError.Io]]).
     */
-  private def failure(what: String, e: Throwable): StorageError = e match
-    case r: RocksDBException
-        if r.getStatus != null && r.getStatus.getCode == Status.Code.Corruption =>
-      StorageError.Corrupt(what, StorageStructureError.RocksFailure(e))
-    case _ => StorageError.Io(what, e)
+  private def failure(what: String, e: Throwable): StorageError = RocksUtxoStore.failureOf(what, e)
 
   private def guard[A](what: String)(body: => A)(using Raise[F, StorageError]): F[A] =
     F.blocking(body).attempt.flatMap {
@@ -337,20 +333,19 @@ final class RocksUtxoStore[F[_]: Sync] private (
     else
       guardE("utxo read") {
         opened { d =>
-          val values = d.multiGetAsList(wanted.map(_._2).asJava).iterator().asScala
-          wanted.iterator
-            .zip(values)
-            // The batch read gives `null` for a key it could not read as well as for an absent one
-            // (a failed block checksum is not an exception there), so a miss is read again singly,
-            // which throws on an error and returns `null` only for an absent key.
-            .map { case ((in, key), v) => in -> (if v != null then v else d.get(key)) }
-            .collect { case (in, v) if v != null => in -> v }
-            .map { case (in, bytes) =>
-              Coding.decodeValue(bytes).bimap(e => Coding.EntryError(in, e), out => in -> out)
-            }
-            .toVector
-            .sequence
-            .bimap(StorageError.Corrupt("utxo entry", _), _.toMap)
+          // each key's own status tells an absent key from one the database could not read (a
+          // failed block checksum), so an absent key costs nothing beyond the batch
+          RocksUtxoStore.multiRead(d, None, wanted.map(_._2)).flatMap { values =>
+            wanted.iterator
+              .zip(values)
+              .collect { case ((in, _), Some(bytes)) => in -> bytes }
+              .map { case (in, bytes) =>
+                Coding.decodeValue(bytes).bimap(e => Coding.EntryError(in, e), out => in -> out)
+              }
+              .toVector
+              .sequence
+              .bimap(StorageError.Corrupt("utxo entry", _), _.toMap)
+          }
         }
       }
 
@@ -600,10 +595,11 @@ final class RocksUtxoStore[F[_]: Sync] private (
 object RocksUtxoStore:
   RocksDB.loadLibrary()
 
-  /** What the store's native memory is bounded by: one LRU block cache (data, index and filter
-    * blocks) of `capacity` bytes, and a write buffer manager that charges the memtables to the same
-    * cache and flushes the largest once they hold half of it, so the store stays near `capacity`
-    * whatever the number of memtables (roadmap K6).
+  /** What the store's native memory is bounded by: one LRU block cache (data blocks) of `capacity`
+    * bytes, and a write buffer manager that charges the memtables to the same cache and flushes the
+    * largest once they hold half of it, so the store stays near `capacity` whatever the number of
+    * memtables (roadmap K6), beside its tables' index and filter blocks, which their readers hold
+    * ([[open]]).
     */
   private[storage] final class Shared(val capacity: Long):
     val cache = new LRUCache(capacity)
@@ -612,13 +608,98 @@ object RocksUtxoStore:
       writeBuffers.close()
       cache.close()
 
+  /** The keys a batch read takes at once. */
+  private val ReadChunk = 1024
+
+  /** The bytes each value is read into; a larger one is read again whole. */
+  private val ValueSlot = 1024
+
+  /** The stored value of each of `keys`, in their order, none for an absent one, all read on one
+    * snapshot of `d`: `options` ' where given (a pinned view's), else one taken for this read and
+    * released after it, so every batch and every value read again whole sees the same database,
+    * whatever a writer commits meanwhile. The reads are batches that report each key's status
+    * (`multiGetByteBuffers`): an absent key (`NotFound`) costs nothing beyond its batch; a value
+    * larger than its slot is read again whole; any other status is the database's failure
+    * ([[StorageError.Corrupt[?]]] for damaged data, as a direct read's), not an absent key.
+    */
+  private[storage] def multiRead(
+      d: RocksDB,
+      options: Option[ReadOptions],
+      keys: Vector[Array[Byte]]
+  ): Either[StorageError, Vector[Option[Array[Byte]]]] =
+    options match
+      case Some(o) => readOn(d, o, keys)
+      case None =>
+        val release: Using.Releasable[Snapshot] = s => d.releaseSnapshot(s)
+        Using.resource(d.getSnapshot) { snapshot =>
+          Using.resource(new ReadOptions().setSnapshot(snapshot))(readOn(d, _, keys))
+        }(using release)
+
+  /** [[multiRead]] with `options`, whose snapshot every read uses; the buffers hold as many slots
+    * as the largest batch needs, at most [[ReadChunk]].
+    */
+  private def readOn(
+      d: RocksDB,
+      options: ReadOptions,
+      keys: Vector[Array[Byte]]
+  ): Either[StorageError, Vector[Option[Array[Byte]]]] =
+    val slots = keys.size.min(ReadChunk)
+    val keyBuffer = java.nio.ByteBuffer.allocateDirect(KeyLength * slots)
+    val valueBuffer = java.nio.ByteBuffer.allocateDirect(ValueSlot * slots)
+    keys.grouped(ReadChunk).toVector.flatTraverse { chunk =>
+      val ks = chunk.zipWithIndex.map { (k, i) =>
+        keyBuffer.put(i * KeyLength, k).slice(i * KeyLength, k.length)
+      }
+      val vs = chunk.indices.map(i => valueBuffer.slice(i * ValueSlot, ValueSlot)).toVector
+      val statuses = d.multiGetByteBuffers(options, ks.asJava, vs.asJava)
+      chunk.iterator
+        .zip(statuses.asScala.iterator)
+        .zip(vs.iterator)
+        .map { case ((key, got), slot) =>
+          got.status.getCode match
+            case Status.Code.NotFound => Right(None)
+            case Status.Code.Ok if got.requiredSize > ValueSlot =>
+              Right(Option(d.get(options, key)))
+            case Status.Code.Ok =>
+              val bytes = new Array[Byte](got.requiredSize)
+              slot.get(0, bytes)
+              Right(Some(bytes))
+            case _ =>
+              Left(
+                failureOf("utxo read", new RocksDBException(got.status.getCodeString, got.status))
+              )
+        }
+        .toVector
+        .sequence
+    }
+
+  /** A failure of the database as a typed error: a checksum or format failure the library reports
+    * is damaged data ([[StorageError.Corrupt[?]]]), anything else an I/O error
+    * ([[StorageError.Io]]).
+    */
+  private[storage] def failureOf(what: String, e: Throwable): StorageError = e match
+    case r: RocksDBException
+        if r.getStatus != null && r.getStatus.getCode == Status.Code.Corruption =>
+      StorageError.Corrupt(what, StorageStructureError.RocksFailure(e))
+    case _ => StorageError.Io(what, e)
+
+  /** The store's database in `dir`. Its tables' index and filter blocks are held by their table
+    * readers, outside the block cache (RocksDB's default): a table's filter is one block, about 10
+    * bits a key, so the filter of a table of 11 million entries is some 14 MB, larger than a shard
+    * of the cache, which would never keep it and read it again for every key it does not hold
+    * (#79). They cost about 1.3 bytes an entry of memory beside the cache.
+    */
   private[storage] def open(dir: java.nio.file.Path, shared: Shared): RocksDB =
+    RocksDB.open(options(shared), dir.toString)
+
+  /** The options [[open]] opens the database with, over `shared`'s cache and write buffers. */
+  private[storage] def options(shared: Shared): Options =
     val table = new BlockBasedTableConfig()
       .setBlockCache(shared.cache)
       .setFilterPolicy(new BloomFilter(10, false))
-      .setCacheIndexAndFilterBlocks(true)
+      .setCacheIndexAndFilterBlocks(false)
       .setBlockSize(16 * 1024)
-    val options = new Options()
+    new Options()
       .setCreateIfMissing(true)
       .setWriteBufferManager(shared.writeBuffers)
       .setTableFormatConfig(table)
@@ -627,7 +708,6 @@ object RocksUtxoStore:
       .setMaxWriteBufferNumber(3)
       .setMaxBackgroundJobs(4)
       .setMaxOpenFiles(512)
-    RocksDB.open(options, dir.toString)
 
   private[storage] def deleteTree(path: java.nio.file.Path): Unit =
     if Files.exists(path) then

@@ -3180,6 +3180,14 @@
    "definitions": [
     "enum storage.haskell.state.EraGovReadError"
    ]
+  },
+  {
+   "reason": "The RocksDB UTxO store's own plumbing, Scarab's backing store of the ledger tables with no counterpart in the reference's UTxO-HD backends: the options it opens its database with, its batch read by each key's status, and its library failures as typed errors (#79).",
+   "definitions": [
+    "def storage.RocksUtxoStore.options",
+    "def storage.RocksUtxoStore.multiRead",
+    "def storage.RocksUtxoStore.failureOf"
+   ]
   }
  ]
 }
