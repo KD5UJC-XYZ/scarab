@@ -287,6 +287,22 @@ class ForgingTest(unittest.TestCase):
         lost = [e for e in self.events if e.get("hash") != "h3"]
         self.assertEqual(lt.forging_verdict(self.chains(), {1: {"e2"}, 2: {"e2"}}, lost)["verdict"], "failed")
 
+    def test_the_reference_nodes_must_forge_the_certifying_blocks_asked_for(self):
+        kinds = {1: {"LeiosBlockCertified": 1, "LeiosVoted": 3}, 2: {"LeiosVoted": 3}, 3: {"LeiosBlockCertified": 1}}
+        self.assertEqual(lt.reference_certifying(kinds, 2), {"verdict": "passed", "forged": 2, "problems": []})
+        # the follower's certifying block on the chain does not count: its log is not among the reference nodes'
+        short = lt.reference_certifying({1: {"LeiosVoted": 3}, 2: {}}, 1)
+        self.assertEqual((short["verdict"], short["forged"]), ("incomplete", 0))
+        self.assertIn("fewer than the 1 asked for", short["problems"][0])
+
+    def test_only_the_followers_certifying_block_on_the_chain_is_incomplete_not_a_pass(self):
+        # the chain's one certifying block is the follower's: the chain judge passes it, the reference count does not
+        chains = self.chains()
+        self.assertTrue(lt.judge(chains, {1: {"e2"}, 2: {"e2"}}, certificates=1)["pass"])
+        self.assertTrue(lt.forging_verdict(chains, {1: {"e2"}, 2: {"e2"}}, self.events)["verdict"] == "passed")
+        self.assertEqual(lt.reference_certifying({1: {"LeiosVoted": 2}, 2: {"LeiosVoted": 2}}, 1)["verdict"],
+                         "incomplete")
+
     def test_a_lost_slot_battle_is_no_failure_of_a_forging_follower(self):
         kinds = lt.forging_severities({"didntAdoptBlock": "Error", "fatal": "Critical"})
         self.assertEqual(kinds, {"didntAdoptBlock": "Warning", "fatal": "Critical"})

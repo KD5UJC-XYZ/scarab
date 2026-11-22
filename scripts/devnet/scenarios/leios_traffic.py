@@ -57,6 +57,8 @@ against; with `--follow`, the Scala node follows the cluster from its start and 
   node holds, one of its Dijkstra ranking blocks, one that announces an endorser block it forged whose closure every
   reference node's LeiosDB holds, and one of its certifying blocks, besides a vote acquired; none forged of a kind
   is incomplete, forged and not there fails.
+  The certifying blocks `--certificates` asks for are counted in the reference nodes' own logs
+  (`reference_certifying`), so the follower's on the chain never stand in for them; fewer is incomplete.
 
 The judge (`judge`) reads each node's ImmutableDB after the nodes stop, and requires on the chain every node holds:
 an RB that announces an EB, and a certifying RB whose parent is the announcing RB; every node applied that block
@@ -407,6 +409,19 @@ def scarab_counts(events):
     return counts
 
 
+def reference_certifying(kinds, certificates):
+    """The verdict on the certifying blocks the reference nodes forged, from their final logs ({node: {kind: n}},
+    `trace_kinds`): each forged one is a `LeiosBlockCertified` of its forger's log, which a follower's log is not
+    among. Fewer than `certificates` is incomplete (CNF-2): the load or the time ran out first, and the run did not
+    show what it was asked to."""
+    forged = sum(k.get("LeiosBlockCertified", 0) for k in kinds.values())
+    if forged >= certificates:
+        return {"verdict": "passed", "forged": forged, "problems": []}
+    return {"verdict": "incomplete", "forged": forged,
+            "problems": [f"the reference nodes forged {forged} certifying blocks, fewer than the {certificates} asked "
+                         "for: the load or the time ran out first"]}
+
+
 def forging_severities(kinds):
     """The follower's severities for a forging follower: a block of its own that its chain selection did not adopt
     (`didntAdoptBlock`, Error as the reference's `TraceDidntAdoptBlock`) is a lost slot battle in a cluster of
@@ -712,6 +727,9 @@ def _drive(args, root, started):
                                capture_output=True, text=True, check=True).stdout.splitlines()
         kinds[n], reasons[n] = trace_kinds(lines)
     verdict = judge(chains, closures, kinds, certificates=args.certificates)
+    # the certifying blocks the reference nodes forged, apart from the follower's: those on the chain may be all
+    # a forging follower's
+    reference = reference_certifying(kinds, args.certificates)
     if following:
         common = common_chain(chains)
         events, other = leios_follow.final_log(root)
@@ -754,7 +772,8 @@ def _drive(args, root, started):
                 judged["incomplete"] = judged["incomplete"] + voted["problems"]
                 judged["verdict"] = "incomplete"
     summary = {"referenceOnly": True, "image": LEIOS_IMAGE, "seconds": round(time.monotonic() - started),
-               "verdict": verdict, "follower": follow, "traces": kinds, "notVotedReasons": reasons,
+               "verdict": verdict, "referenceCertifying": reference, "follower": follow, "traces": kinds,
+               "notVotedReasons": reasons,
                "loadSubmitted": submitted, "loadRejected": rejected,
                "ebClosuresPerNode": {n: len(c) for n, c in closures.items()},
                "cluster": {"pools": args.pools, "epochLength": args.epoch_length, "slotLength": args.slot_length,
@@ -769,6 +788,8 @@ def _drive(args, root, started):
         raise SystemExit(f"leios-traffic failed: {verdict['problems']}")
     if follow is not None and follow["verdict"]["verdict"] == "failed":
         raise SystemExit(f"leios-traffic --follow failed: {follow['verdict']['problems']}")
+    if reference["verdict"] == "incomplete":
+        raise SystemExit(f"INCOMPLETE: leios-traffic: {reference['problems']}")
     if follow is not None and follow["verdict"]["verdict"] == "incomplete":
         raise SystemExit(f"INCOMPLETE: leios-traffic --follow: {follow['verdict']['incomplete']}")
 
