@@ -90,6 +90,18 @@ object GenesisSchema:
         )
     )
 
+  /** `networkMagic`, a `Word32` (`sgNetworkMagic`, `Shelley/Genesis.hs:309,499`, cardano-ledger
+    * f649f975), refused as [[shelley]] refuses it: [[Genesis.shelley]] reads it before `networkId`,
+    * in the reference's order, so a magic out of range is refused before a wrong `networkId`.
+    */
+  def networkMagic(shelley: Json): Either[ConfigError, Long] =
+    val path = Vector("networkMagic")
+    at(GenesisFile.Shelley, shelley.hcursor.downField("networkMagic"), path).flatMap(json =>
+      FromJson
+        .word(32)(json)
+        .bimap(e => fieldError(GenesisFile.Shelley, path, GenesisFieldError.Number(e)), _.toLong)
+    )
+
   private def at(file: GenesisFile, cursor: ACursor, path: Vector[String]) =
     cursor.focus.toRight(fieldError(file, path, GenesisFieldError.Missing))
 

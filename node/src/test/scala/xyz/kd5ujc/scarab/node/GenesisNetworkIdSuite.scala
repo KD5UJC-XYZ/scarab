@@ -117,3 +117,21 @@ class GenesisNetworkIdSuite extends FunSuite:
       assertEquals(GenesisSchema.shelley(edited).left.map(_.problem), Left(expected))
     }
   }
+
+  test(
+    "a magic out of the Word32 range is refused before a wrong networkId, as the reference reads them"
+  ) {
+    List(Json.fromInt(-1), Json.fromLong(4294967296L)).foreach { magic =>
+      val edited = shelley.deepMerge(
+        Json.obj("networkMagic" -> magic, "networkId" -> Json.fromString("Preview"))
+      )
+      val expected = GenesisSchema.shelley(edited).left.map(_.problem)
+      expected match
+        case Left(
+              ConfigProblem.GenesisField(GenesisFile.Shelley, path, GenesisFieldError.Number(_))
+            ) =>
+          assertEquals(path, Vector("networkMagic"), s"magic $magic")
+        case other => fail(s"magic $magic: the check gave $other")
+      assertEquals(Left(refusal(edited)), expected, s"magic $magic")
+    }
+  }

@@ -47661,6 +47661,34 @@
    "structure": "same",
    "note": "the genesis's networkId read by the derived FromJSON Network, its two constructors by name, refused as GenesisSchema refuses the field; GenesisStart's injections and the ledger's Globals (mkShelleyGlobals) read it here",
    "digest": "991f5d2c8c5309a7"
+  },
+  "def ledger.GenesisSchema.networkMagic": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Genesis.hs",
+     "symbol": "sgNetworkMagic",
+     "lines": [
+      309,
+      309
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Genesis.hs",
+     "symbol": "parseJSON",
+     "lines": [
+      494,
+      518
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the genesis's networkMagic read as FromJSON ShelleyGenesis reads it, a Word32 (FromJSON Word32, parseBoundedIntegral), refused as GenesisSchema.shelley refuses the field, so Genesis.shelley refuses it before networkId (#1334)",
+   "digest": "75b728dedfdb68d6"
   }
  },
  "glue": [

@@ -51,7 +51,7 @@ object Genesis:
           .catchNonFatal(Instant.parse(s))
           .leftMap(e => ConfigError(ConfigProblem.InvalidTimestamp(s, e)))
       )
-      magic <- field[Long](c, "networkMagic")
+      magic <- GenesisSchema.networkMagic(json)
       networkId <- GenesisState.networkId(c)
       f <- number(c, GenesisNumberField.ActiveSlotsCoeff)(PositiveUnitInterval.fromJson)
       k <- number(c, GenesisNumberField.SecurityParam)(FromJson.nonZeroWord64)
