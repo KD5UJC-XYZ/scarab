@@ -1632,17 +1632,19 @@ Conway's rules on the classes follow as the rest of stage 2.
     the blocks of `conway-governance.hex` at slots 117938233 (three committee votes), 122335579 (a proposal and a
     spend) and 122488843 (a proposal), six transactions. On every prefix of a block both admit it with the same
     ledger state, and the counters the scripts' events give, transaction by transaction, sum to the flat rules'. A
-    block with its first transaction again at its end is refused by both for what the block spent: the era LEDGER at
-    the root gives the flat LEDGER's failures in their order, and the era LEDGERS the same failures as LEDGER's one
-    level down. Under another guardrails script the block of the proposal and the spend is refused by GOV alone, on
-    the proposal, by both.
+    block with its first transaction again at its end is refused by both for what the block spent, its own inputs
+    found spent: the era LEDGER at the root gives the flat LEDGER's failures in their order, contents and all
+    (`EraLedgerRun.flat`, the inputs a context cannot resolve among them), the era LEDGERS gives them reversed, as
+    each of the failing LEDGER's is put in front of LEDGERS' list (`Extended.hs:721`, cardano-ledger f649f975), and
+    the flat LEDGERS the flat LEDGER's first failure. Under another guardrails script the block of the proposal and
+    the spend is refused by GOV alone, on the proposal, by both.
   - Incomplete (CNF-2): `ConwayGovernanceSuite` and the mempool suites build flat transactions without bytes, which
     the era types cannot read until the test builders move to per-era kits (§4), so they run the flat LEDGER only
     (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7056445357); LEDGERS is compared in sequence
     on recorded blocks only from a state built from their transactions' recorded outputs, as the repository holds
     no ledger state of a chain at a recorded Conway block with transactions, and not on blocks whose transactions
     spend what an earlier one of the block made
-    (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7056445970); the epoch from the slot is compared
+    (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7076811330); the epoch from the slot is compared
     within an era history only, as every suite's slot is in its history, not where the reference's
     `epochFromSlot` fails.
   - Not yet (#85): the node's mempool, block body and phase-2 counters run the flat LEDGER until the Conway switch.

@@ -6,7 +6,7 @@ import java.nio.file.{Files, Path}
 import munit.FunSuite
 import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.era.{EraLedgerRun, EraTx, EraTxBody, EraUTxO, EraUtxoRun, TxLevel}
+import xyz.kd5ujc.scarab.ledger.era.{EraLedgerRun, EraTx, EraTxBody, EraUTxO, TxLevel}
 import xyz.kd5ujc.scarab.ledger.era.conway.{ConwayTx, ConwayUTxO}
 import xyz.kd5ujc.scarab.ledger.era.rules.{
   ConwayGovPredFailure,
@@ -103,6 +103,7 @@ class PreviewConwayBlockLedgersSuite extends FunSuite:
         val what = s"$name line $i"
         val cases = b.transactions.map(t => byId(t.id))
         b.transactions.zip(cases).foreach { (t, c) =>
+          assertEquals(c.slot, b.header.slot, s"$what: ${c.name}'s slot")
           assertEquals(c.tx.body.raw, t.body, s"$what: ${c.name}'s body")
           assertEquals(c.tx.witnesses.raw, Some(t.witnesses), s"$what: ${c.name}'s witnesses")
           assertEquals(c.tx.isValid, t.isValid, s"$what: ${c.name}'s flag")
@@ -133,18 +134,21 @@ class PreviewConwayBlockLedgersSuite extends FunSuite:
       txs
     )
 
-  /** The flat LEDGER on `tx` at index `ix` of a block from `ls`, every failure recorded. */
+  /** The flat LEDGER on `tx` at index `ix` of a block from `ls`, its failures as `policy` keeps
+    * them.
+    */
   private def flatLedger(
       what: String,
       s: NewEpochState[Conway],
       ls: LedgerState[Conway],
       slot: BigInt,
       ix: Int,
-      tx: Tx
+      tx: Tx,
+      policy: Judgment.Policy
   ): Either[cats.data.NonEmptyChain[PredicateFailure], Counted[LedgerState[Conway]]] =
     val ctx = envOf(slot).copy(txIndex = ix)
     Judgment
-      .run(FlatLedger, Judgment.Policy.Accumulate)(
+      .run(FlatLedger, policy)(
         NativeRules.globalsOf(ctx),
         FlatLedgerEnv(ctx, s.es.chainAccount.treasury),
         Counted(ls, PlutusStats.zero),
@@ -158,12 +162,13 @@ class PreviewConwayBlockLedgersSuite extends FunSuite:
   ): Vector[LedgerEvent[Conway]] =
     events.toVector.map { case ShelleyLedgersEvent.LedgerEvent(e) => e }
 
-  /** An era failure of `tx`, judged on `ls`, in the comparison's form (`EraLedgerRun.form`): a
-    * missing redeemer's purpose by the scripts `tx` needs there, an action by its proposals.
+  /** An era failure of `tx`, judged on `ls`, in the node's flat form (`EraLedgerRun.flat`), which
+    * keeps a translation failure's contents: a missing redeemer's purpose by the scripts `tx` needs
+    * there, an action by its proposals.
     */
-  private def eraForm(what: String, ls: LedgerState[Conway], tx: ConwayTx)(
+  private def eraFlat(what: String, ls: LedgerState[Conway], tx: ConwayTx)(
       failure: LedgerPredFailure[Conway]
-  ): EraUtxoRun.Failure =
+  ): PredicateFailure =
     val u = EraUTxO.conway
     val t = EraTx.conway
     val b = EraTxBody.conway
@@ -176,10 +181,9 @@ class PreviewConwayBlockLedgersSuite extends FunSuite:
     )
     val read =
       ConwayGovPredFailure.readOf(b.proposalProcedures[TxLevel.Top](body)(using b.top).toVector)
-    EraLedgerRun.form(failure, purposes, read).getOrElse(fail(s"$what: no form for $failure"))
-
-  private def flatForm(what: String)(failure: PredicateFailure): EraUtxoRun.Failure =
-    EraUtxoRun.form(failure).getOrElse(fail(s"$what: no form for $failure"))
+    EraLedgerRun
+      .flat(failure, purposes, read)
+      .fold(e => fail(s"$what: no flat form for $failure: $e"), identity)
 
   private def scripts(c: Counted[?]): (Long, Long, Long) =
     (c.plutus.succeeded, c.plutus.failed, c.plutus.scripts)
@@ -256,37 +260,65 @@ class PreviewConwayBlockLedgersSuite extends FunSuite:
       val n = r.flat.size
       val what = s"${r.label}, its first transaction again at index $n"
       val before = flatLedgers(world, r.slot, r.flat).fold(f => fail(s"$what: $f"), identity)
-      val accumulated = flatLedger(what, world, before.state, r.slot, n, r.flat.head) match
-        case Left(fs) => fs.toChain.toList.map(flatForm(what))
-        case Right(_) => fail(s"$what: the flat LEDGER admitted it again")
-      flatLedgers(world, r.slot, r.flat :+ r.flat.head) match
+      val repeated = r.flat.head
+      def flatAlone(policy: Judgment.Policy) =
+        flatLedger(what, world, before.state, r.slot, n, repeated, policy) match
+          case Left(fs) => fs.toChain.toList
+          case Right(_) => fail(s"$what: the flat LEDGER admitted it again")
+      val accumulated = flatAlone(Judgment.Policy.Accumulate)
+      // refused for the inputs the block spent: exactly the transaction's own, and its scripts'
+      // contexts cannot be built for them
+      val consumed = repeated.body.inputs.toSet
+      assertEquals(
+        accumulated.collect {
+          case PredicateFailure.Utxow(UtxowFailure.Utxo(UtxoFailure.BadInputs(inputs))) => inputs
+        },
+        List(consumed),
+        s"$what: the inputs it finds spent"
+      )
+      accumulated
+        .collect {
+          case PredicateFailure.Utxow(
+                UtxowFailure.Utxo(UtxoFailure.Utxos(UtxosFailure.CollectErrors(es)))
+              ) =>
+            es.toVector
+        }
+        .flatten
+        .foreach {
+          case CollectError.BadTranslation(TranslationError.UnresolvedInput(input)) =>
+            assert(consumed.contains(input), s"$what: $input is not an input it spent before")
+          case other => fail(s"$what: a collection's failure $other")
+        }
+      // the flat LEDGERS: the block's verdict is the transaction's first failure, as the flat
+      // LEDGER at its first failure gives it
+      flatLedgers(world, r.slot, r.flat :+ repeated) match
         case Left(LedgerFailure.Rejected(id, fs)) =>
-          assertEquals(id, r.flat.head.body.id, what)
-          fs.toChain.toList
-            .map(flatForm(what))
-            .foreach(f =>
-              assert(accumulated.contains(f), s"$what: the flat LEDGERS' $f among $accumulated")
-            )
+          assertEquals(id, repeated.body.id, what)
+          assertEquals(
+            fs.toChain.toList,
+            flatAlone(Judgment.Policy.FirstFailure),
+            s"$what: the flat LEDGERS' failure"
+          )
         case other => fail(s"$what: the flat LEDGERS gave $other")
       // the era LEDGER at the root, from the state after the block: the flat LEDGER's failures in
-      // their order
+      // their order, contents and all
       val tx = r.typed.head
-      val form = eraForm(what, before.state, tx)
+      val flatOf = eraFlat(what, before.state, tx)
       def eraAlone(depth: Int) =
         PreviewConwayWorld.eraLedger(what, world, before.state, r.slot, n, tx, depth) match
-          case Left(fs) => fs.toChain.toList.map(form)
+          case Left(fs) => fs.toChain.toList.map(flatOf)
           case Right(_) => fail(s"$what: the era LEDGER admitted it again")
       assertEquals(eraAlone(0), accumulated, s"$what: the era LEDGER at the root")
-      // the era LEDGERS: that transaction's failures, LEDGER's one level down, where the reference
-      // reports them in the other order (`Judgment.flatten`), and the transactions before admitted
+      // the era LEDGERS, the transactions before admitted: the sole failing transaction's failures
+      // put in front of LEDGERS' list one at a time (`Extended.hs:721`, cardano-ledger f649f975),
+      // so the root LEDGER's reversed, which is LEDGER's one level down
       PreviewConwayWorld.eraLedgers(what, world, r.slot, r.typed :+ tx) match
         case Left(fs) =>
           val ledgers = fs.toChain.toList.map { case ShelleyLedgersPredFailure.LedgerFailure(f) =>
-            form(f)
+            flatOf(f)
           }
+          assertEquals(ledgers, accumulated.reverse, s"$what: the flat LEDGER's failures reversed")
           assertEquals(ledgers, eraAlone(1), s"$what: LEDGER one level down")
-          assertEquals(ledgers.toSet, accumulated.toSet, s"$what: the flat LEDGER's failures")
-          assertEquals(ledgers.size, accumulated.size, s"$what: as many as the flat LEDGER's")
         case Right(_) => fail(s"$what: the era LEDGERS admitted it again")
     }
   }
@@ -310,7 +342,7 @@ class PreviewConwayBlockLedgersSuite extends FunSuite:
             )
           ) =>
         assertEquals(rejected.txId, r.flat.head.body.id, r.label)
-        rejected.failures.toChain.toList.map(flatForm(r.label))
+        rejected.failures.toChain.toList
       case unexpected => fail(s"${r.label}: the flat LEDGERS gave $unexpected")
     PreviewConwayWorld.eraLedgers(r.label, other, r.slot, r.typed) match
       case Left(fs) =>
@@ -321,7 +353,7 @@ class PreviewConwayBlockLedgersSuite extends FunSuite:
                 )
               ) :: Nil =>
             assertEquals(
-              List(eraForm(r.label, other.es.ls, r.typed.head)(f)),
+              List(eraFlat(r.label, other.es.ls, r.typed.head)(f)),
               flat,
               r.label
             )
