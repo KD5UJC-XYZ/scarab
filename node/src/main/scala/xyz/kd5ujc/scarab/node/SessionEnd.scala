@@ -279,7 +279,13 @@ enum Fatal extends DomainError:
     */
   case Unverifiable(error: VerificationDefect)
 
+  /** The Leios voting thread failed ([[LeiosVotingFault]]), which stops the node as the reference's
+    * linked voting thread does.
+    */
+  case LeiosVoting(fault: LeiosVotingFault)
+
   def message: String = this match
+    case LeiosVoting(f)  => f.message
     case Unverifiable(e) => e.message
     case Unavailable(e)  => e.message
     case Storage(e)      => s"storage: ${e.message}"

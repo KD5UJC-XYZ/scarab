@@ -419,10 +419,10 @@ final case class DijkstraState private (ls: LedgerState[Dijkstra], account: Chai
     DijkstraState.Readable(ls.utxo.gov.cgsCurPParams, ls.utxo.gov.cgsProposals)
 
   /** The stored outputs of the transaction's inputs, read into the era. */
-  private def utxoOf(t: DijkstraRead): Either[Rejection, UTxO[Dijkstra]] =
+  private def utxoOf(tx: ETx[TxLevel.Top, Dijkstra]): Either[Rejection, UTxO[Dijkstra]] =
     DijkstraMempoolRun
-      .utxoOf(ls, t.tx)
-      .leftMap(d => unjudged(t.id)(DijkstraUnjudged.UtxoState(d)))
+      .utxoOf(ls, tx)
+      .leftMap(d => unjudged(tx.id)(DijkstraUnjudged.UtxoState(d)))
 
   /** `txMeasurePhase1` of Dijkstra (`txMeasureAlonzo`, ouroboros-consensus 2416493b
     * `Shelley/Ledger/Mempool.hs:654-676`): the size (`sizeTxF`) at most `maxTxSize`
@@ -464,7 +464,7 @@ final case class DijkstraState private (ls: LedgerState[Dijkstra], account: Chai
   def phase2(t: DijkstraRead): Either[Rejection, Long] =
     val r = readable
     for
-      u <- utxoOf(t)
+      u <- utxoOf(t.tx)
       size = DijkstraState.refScriptsSize(u, t.tx)
       limit = EraPParams.dijkstra.ppMaxRefScriptSizePerTxG.get(r.pp).value.toLong
       _ <- Either.cond(
@@ -525,18 +525,36 @@ final case class DijkstraState private (ls: LedgerState[Dijkstra], account: Chai
       t: DijkstraRead,
       env: DijkstraPoolEnv
   ): Either[Rejection, (DijkstraState, DijkstraAdmitted)] =
+    validatedFull(t.tx, env).map((next, validated) => (next, DijkstraAdmitted(t, validated)))
+
+  /** [[applyFull]] of a transaction in the era's types: the ledger after it, and what it was
+    * validated with.
+    */
+  private def validatedFull(
+      tx: ETx[TxLevel.Top, Dijkstra],
+      env: DijkstraPoolEnv
+  ): Either[Rejection, (DijkstraState, DijkstraValidated)] =
     val r = readable
     for
-      u <- utxoOf(t)
-      stAnnTx = DijkstraMempoolRun.annotate(env.clock.posix, r.pp, u, t.tx)
-      next <- judged(t.id, r, stAnnTx, env, TxEnv.Validation.All)
+      u <- utxoOf(tx)
+      stAnnTx = DijkstraMempoolRun.annotate(env.clock.posix, r.pp, u, tx)
+      next <- judged(tx.id, r, stAnnTx, env, TxEnv.Validation.All)
     yield (
       next,
-      DijkstraAdmitted(
-        t,
-        DijkstraValidated(stAnnTx, EraPParams.dijkstra.ppProtocolVersionL.get(r.pp), env.slot)
-      )
+      DijkstraValidated(stAnnTx, EraPParams.dijkstra.ppProtocolVersionL.get(r.pp), env.slot)
     )
+
+  /** `applyTx lcfg Intervene slot tx` of a transaction of an endorser block's closure
+    * (`validateEbClosure`, `LeiosVoting.hs:519-542`, ouroboros-consensus 2416493b): the transaction
+    * with the validity flag the block declares, applied as it is with every check ([[applyFull]]);
+    * `Intervene` leaves the flag alone, so a transaction whose flag its scripts contradict is
+    * refused, not applied as a collateral-only one. The ledger after it.
+    */
+  def applyIntervening(
+      tx: ETx[TxLevel.Top, Dijkstra],
+      env: DijkstraPoolEnv
+  ): Either[Rejection, DijkstraState] =
+    validatedFull(tx, env).map(_._1)
 
   /** `applyTx` of Dijkstra (`applyShelleyTx`, `Shelley/Ledger/Mempool.hs:331-366`, through
     * `applyAlonzoBasedTx`, `Shelley/Eras.hs:291-342`, ouroboros-consensus 2416493b): a local

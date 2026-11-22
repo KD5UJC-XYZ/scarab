@@ -90,9 +90,11 @@ def node_config(image_config, genesis_hashes, dijkstra_epoch):
     return config
 
 
-def topology(node, pools):
-    """Node `node`'s topology: the other pools as trusted local roots, no bootstrap or public peers."""
+def topology(node, pools, extra=()):
+    """Node `node`'s topology: the other pools, and the ports `extra` (a Scala node's listener), as trusted local
+    roots, no bootstrap or public peers."""
     others = [{"address": "127.0.0.1", "port": BASE_PORT + n - 1} for n in range(1, pools + 1) if n != node]
+    others += [{"address": "127.0.0.1", "port": port} for port in extra]
     return {"bootstrapPeers": None,
             "localRoots": [{"accessPoints": others, "advertise": False, "trustable": True,
                             "valency": len(others)}],
@@ -227,13 +229,17 @@ def make_network(args, spec_dijkstra=None, config_extra=None):
     put_file(args.name, f"{ENV}/config.json", json.dumps({**config, **(config_extra or {})}, indent=2))
 
 
-def start_nodes(args, root, bls_key=None):
+def start_nodes(args, root, bls_key=None, extra_roots=None):
     """Start every pool's node, each with its topology, and copy the genesis and configuration files into `root`.
-    `bls_key(n)` names pool `n`'s BLS signing key, if it votes. Returns {pool: port}."""
+    `bls_key(n)` names pool `n`'s BLS signing key, if it votes; `extra_roots(n)` the further ports pool `n` dials.
+    Returns {pool: port}."""
     for n in range(1, args.pools + 1):
         in_ref(args.name, f"mkdir -p {ENV}/node-data/node{n} {ENV}/socket/node{n}")
-        put_file(args.name, f"{ENV}/node-data/node{n}/topology.json", json.dumps(topology(n, args.pools), indent=2))
-        docker("exec", "-d", ref(args.name), "/bin/sh", "-c", node_command(n, bls_key(n) if bls_key else None))
+        roots = extra_roots(n) if extra_roots else ()
+        put_file(args.name, f"{ENV}/node-data/node{n}/topology.json",
+                 json.dumps(topology(n, args.pools, roots), indent=2))
+        key = bls_key(n) if bls_key else None
+        docker("exec", "-d", ref(args.name), "/bin/sh", "-c", node_command(n, key))
     ports = {n: BASE_PORT + n - 1 for n in range(1, args.pools + 1)}
     (root / "ports.json").write_text(json.dumps(ports))
     for file in (*GENESIS_FILES, "config.json"):

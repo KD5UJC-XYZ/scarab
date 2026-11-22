@@ -40,6 +40,16 @@ against; with `--follow`, the Scala node follows the cluster from its start and 
   `leiosQuorumStakeThreshold` (0.75) of it (cardano-ledger `State/LeiosCommittee.hs:58-93`; ouroboros-consensus
   `LeiosVoteState.hs:62`). Five equal pools reach it with any four.
 
+- **A voting follower.** With `--follow-vote POOL` the follower also votes as pool POOL: the run's throwaway keys of
+  that pool (VRF, KES, operational certificate, BLS) are copied into the run directory (`voter/`) and given to it
+  with `--forge --start-as-non-producing-node --shelley-bls-key`, it listens on `VOTER_PORT`, which every reference
+  node dials as a local root, so their LeiosNotify clients receive its votes, and pool POOL's reference node runs
+  without its BLS key, so the follower is that seat's only voter. The judge requires a vote of the follower
+  (`leiosVoted`) that a reference node counted (`LeiosVoteAcquired` of its block's hash and seat): none cast is
+  incomplete (CNF-2), none counted fails. A certificate is assembled when the tally first reaches the quorum, so
+  it counts the follower's seat only if its vote was among the first; with `--quiet-pool` further pools run without
+  their keys, the quorum needs the follower's seat, and every certificate on the chain must count it.
+
 The judge (`judge`) reads each node's ImmutableDB after the nodes stop, and requires on the chain every node holds:
 an RB that announces an EB, and a certifying RB whose parent is the announcing RB; every node applied that block
 (it is in its immutable chain), and every node's LeiosDB holds the certified EB's closure. The votes come from the
@@ -55,8 +65,8 @@ import subprocess
 import tempfile
 import time
 from .. import cborspan
-from ..dijkstra import (BLOCK_TAG_ERA, IMAGE_CONFIG, LEIOS_IMAGE, blake2b_256, dijkstra_plan, make_network, socket,
-                        split_chunk, start_nodes, start_reference, tip, tx_spent)
+from ..dijkstra import (BASE_PORT, BLOCK_TAG_ERA, IMAGE_CONFIG, LEIOS_IMAGE, blake2b_256, dijkstra_plan, make_network,
+                        socket, split_chunk, start_nodes, start_reference, tip, tx_spent)
 from ..load import submit_all_script, submit_results
 from ..util import ENV, MAGIC, data_root, in_ref, put_file, read_json, ref
 from . import leios_follow
@@ -69,6 +79,10 @@ TX = "/work/tx"
 FIXED_BLOCK_BODY_OVERHEAD = 1024
 # metadata strings of 64 bytes, the most a transaction metadatum string holds; each costs 66 bytes
 METADATUM = "leios-traffic padding for one ranking block overflow, 64 bytes.."
+# the port a voting follower (`--follow-vote`) listens on, in the reference container's network namespace
+VOTER_PORT = BASE_PORT + 100
+# the pool's files the voting follower is given (`follower.py`)
+VOTER_FILES = ("vrf.skey", "kes.skey", "opcert.cert", "bls.skey")
 FAN_OUT_LOVELACE = 5_000_000
 FAN_OUT_PER_TX = 200
 # KIND names of the traces the judge counts (LeiosDemoTypes.hs:2037-2083, 2135)
@@ -204,7 +218,8 @@ def describe_leios_block(raw):
     `eb_references_announcement = [eb_hash, eb_size] / nil`; its block body is
     `[transactions, leios_certificate / nil, peras_certificate / nil]` with `leios_certificate = [signers, signature]`
     (cardano-ledger 9df9f98c `eras/dijkstra/impl/cddl/data/dijkstra.cddl:59-117, 940-945`). `signers` counts the
-    certificate's set signer bits."""
+    certificate's set signer bits, and `signerSeats` lists their seats: seat `i` is bit `7 - i mod 8` of byte
+    `i / 8` (`bitFieldMembers`, cardano-base c1e1ed8d `cardano-crypto-leios/src/Cardano/Crypto/Leios.hs:332-340`)."""
     tag_span, block_span = cborspan.children(raw, 0)
     tag = cborspan.head(raw, tag_span[0])[1]
     era = BLOCK_TAG_ERA.get(tag)
@@ -215,7 +230,8 @@ def describe_leios_block(raw):
     prev = None if _is_null(raw, header_body[2]) else cborspan.payload(raw, header_body[2]).hex()
     described = {"era": era, "blockNo": cborspan.head(raw, header_body[0][0])[1],
                  "slot": cborspan.head(raw, header_body[1][0])[1], "hash": blake2b_256(raw[header[0]:header[1]]),
-                 "prevHash": prev, "announces": None, "ebSize": None, "certifies": False, "signers": None}
+                 "prevHash": prev, "announces": None, "ebSize": None, "certifies": False, "signers": None,
+                 "signerSeats": None}
     if era != "dijkstra":
         return described
     if len(header_body) != 12:
@@ -233,7 +249,13 @@ def describe_leios_block(raw):
         signers = cborspan.payload(raw, cborspan.children(raw, cert[0])[0])
         described["certifies"] = True
         described["signers"] = sum(bin(b).count("1") for b in signers)
+        described["signerSeats"] = signer_seats(signers)
     return described
+
+
+def signer_seats(bitfield):
+    """The seats a certificate's signer bitfield sets, ascending: seat `i` is bit `7 - i mod 8` of byte `i / 8`."""
+    return [i for i in range(len(bitfield) * 8) if bitfield[i // 8] & (0x80 >> (i % 8))]
 
 
 def common_chain(chains):
@@ -315,6 +337,52 @@ def trace_kinds(lines):
 # one pass over every node's log for the kinds that show progress, as `uniq -c` lines
 KIND_COUNT_COMMAND = ("grep -ho '\"kind\":\"Leios\\(BlockForged\\|BlockCertified\\|Voted\\)\"' /work/node*.log "
                       "| sort | uniq -c")
+
+
+def follower_votes(events):
+    """{(rbHash, voterId)} of the follower's own counted votes (`leiosVoted` lines of its log)."""
+    return {(e["rbHash"], e["seat"]) for e in events
+            if e.get("event") == "leiosVoted" and "rbHash" in e and "seat" in e}
+
+
+def acquired_votes(lines, votes):
+    """How many of `votes` ({(rbHash, voterId)}) a reference node's log shows counted (`LeiosVoteAcquired`, which
+    the node traces once per vote it counts, ouroboros-consensus 2416493b `NodeToNode.hs:745-766`)."""
+    seen = set()
+    for line in lines:
+        try:
+            data = json.loads(line).get("data", {})
+        except (json.JSONDecodeError, AttributeError):
+            continue
+        if isinstance(data, dict) and data.get("kind") == "LeiosVoteAcquired" and isinstance(data.get("vote"), dict):
+            key = (data["vote"].get("rbHash"), data["vote"].get("voterId"))
+            if key in votes:
+                seen.add(key)
+    return len(seen)
+
+
+def certified_with(chain, seats):
+    """How many certificates of `chain` (described blocks) count one of `seats` among their signers."""
+    return sum(1 for b in chain if b.get("certifies") and set(b.get("signerSeats") or ()) & set(seats))
+
+
+def voting_verdict(cast, acquired, certificates=0, with_seat=0, needed=False):
+    """The verdict on a voting follower: incomplete without a vote of its own (CNF-2), failed when no reference node
+    counted one. A certificate is assembled once the tally first reaches the quorum (`addVote`,
+    ouroboros-consensus 2416493b `LeiosVoteState.hs:198-223`), so the follower's seat is in it only when its vote
+    came before the quorum or was needed for it. With `needed` (quiet pools leave no quorum without the follower's
+    seat), a certificate on the chain that does not count it fails, and no certificate is incomplete; otherwise the
+    certificates are only reported."""
+    if not cast:
+        return {"verdict": "incomplete", "problems": ["the follower cast no vote"]}
+    if not any(acquired.values()):
+        return {"verdict": "failed", "problems": [f"no reference node counted any of the follower's {len(cast)} votes"]}
+    if needed and with_seat < certificates:
+        return {"verdict": "failed",
+                "problems": [f"{certificates - with_seat} of {certificates} certificates do not count the follower's seat"]}
+    if needed and certificates == 0:
+        return {"verdict": "incomplete", "problems": ["no certificate on the chain, which needs the follower's seat"]}
+    return {"verdict": "passed", "problems": []}
 
 
 def kind_counts(text):
@@ -414,7 +482,26 @@ def _drive(args, root, started):
                  config_extra={"LeiosMinOfferLead": args.min_offer_lead})
     for n in range(1, args.pools + 1):
         in_ref(args.name, bls_keygen_command(n))
-    ports = start_nodes(args, root, bls_key=lambda n: f"{ENV}/pools-keys/pool{n}/bls.skey")
+    voting = getattr(args, "follow_vote", None)
+    quiet = set(getattr(args, "quiet_pool", None) or ())
+    if quiet and (voting is None or voting in quiet or not quiet <= set(range(1, args.pools + 1))):
+        raise SystemExit("--quiet-pool needs --follow-vote, pools 1..N other than the follower's")
+    voter = None
+    if voting is not None:
+        if not getattr(args, "follow", False) or not 1 <= voting <= args.pools:
+            raise SystemExit(f"--follow-vote {voting} needs --follow and a pool 1..{args.pools}")
+        # the pool's throwaway keys of this run, for the follower; its reference node runs without its BLS key
+        keys = root / "voter"
+        keys.mkdir(mode=0o700)
+        for f in VOTER_FILES:
+            raw = subprocess.run(["docker", "exec", ref(args.name), "cat", f"{ENV}/pools-keys/pool{voting}/{f}"],
+                                 capture_output=True, check=True).stdout
+            (keys / f).write_bytes(raw)
+            (keys / f).chmod(0o600)
+        voter = (f"127.0.0.1:{VOTER_PORT}", keys)
+    ports = start_nodes(args, root,
+                        bls_key=lambda n: None if n == voting or n in quiet else f"{ENV}/pools-keys/pool{n}/bls.skey",
+                        extra_roots=lambda n: (VOTER_PORT,) if voting is not None else ())
 
     deadline = started + args.timeout
     following = getattr(args, "follow", False)
@@ -436,7 +523,7 @@ def _drive(args, root, started):
     if following:
         # from the cluster's first answer, so the follower crosses from Conway into Dijkstra live
         first = wait_for(f"node {args.follow_node}'s first answer", lambda t: t, poll=0.5)
-        follower = leios_follow.start(args)
+        follower = leios_follow.start(args, voter)
         log({"followerStarted": {"node": args.follow_node, "port": ports[args.follow_node], "referenceTip": first}})
     entered = wait_for("Dijkstra", lambda t: t if t.get("era", "").lower() == "dijkstra" else None)
     log({"dijkstra": entered})
@@ -565,6 +652,26 @@ def _drive(args, root, started):
         if judged["problems"]:
             judged["verdict"] = "failed"
         follow = {**follow, "verdict": judged, "storeChecked": len(hashes)}
+        if voting is not None:
+            cast = follower_votes(events)
+            acquired = {}
+            for n in ports:
+                lines = subprocess.run(["docker", "exec", ref(args.name), "cat", f"/work/node{n}.log"],
+                                       capture_output=True, text=True, check=True).stdout.splitlines()
+                acquired[n] = acquired_votes(lines, cast)
+            seats = sorted({v for _, v in cast})
+            certificates = sum(1 for b in common if b.get("certifies"))
+            with_seat = certified_with(common, seats)
+            voted = voting_verdict(cast, acquired, certificates, with_seat, needed=bool(quiet))
+            follow["voting"] = {"pool": voting, "quietPools": sorted(quiet), "cast": len(cast), "seats": seats,
+                                "acquiredByNode": acquired, "certificatesWithSeat": with_seat,
+                                "certificates": certificates, **voted}
+            if voted["verdict"] == "failed":
+                judged["problems"] = judged["problems"] + voted["problems"]
+                judged["verdict"] = "failed"
+            elif voted["verdict"] == "incomplete" and judged["verdict"] == "passed":
+                judged["incomplete"] = judged["incomplete"] + voted["problems"]
+                judged["verdict"] = "incomplete"
     summary = {"referenceOnly": True, "image": LEIOS_IMAGE, "seconds": round(time.monotonic() - started),
                "verdict": verdict, "follower": follow, "traces": kinds, "notVotedReasons": reasons,
                "loadSubmitted": submitted, "loadRejected": rejected,

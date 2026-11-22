@@ -370,6 +370,8 @@ private[node] object BlockSelection:
             case Left(Fatal.Unavailable(cause))  => owner.raise[NodeError, Unit](cause)
             case Left(Fatal.Internal(cause))     => owner.raise[NodeError, Unit](cause)
             case Left(Fatal.Unverifiable(cause)) => owner.raise[NodeError, Unit](cause)
-            case Left(Fatal.Defect(cause))       => Async[F].raiseError[Unit](cause))
+            case Left(Fatal.Defect(cause))       => Async[F].raiseError[Unit](cause)
+            // the selection raises none; the node's sink stops the node on it all the same
+            case Left(voting @ Fatal.LeiosVoting(_)) => fatal(voting))
         yield selection.selecting)
     }

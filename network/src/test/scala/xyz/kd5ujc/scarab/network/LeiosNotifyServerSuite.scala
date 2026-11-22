@@ -5,6 +5,8 @@ import cats.effect.IO
 import cats.effect.std.Queue
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.crypto.bls.{SeatId, Vote}
+import xyz.kd5ujc.scarab.crypto.bls.BlsFixtures.{key, rbHash, right}
 import xyz.kd5ujc.scarab.protocol.{
   ChainSync,
   EbHash,
@@ -130,6 +132,24 @@ class LeiosNotifyServerSuite extends FailsOnUncaught:
     yield outcome).map(result =>
       assertEquals(result, Right((Right(()), LeiosNotify.Message.BlockAnnouncement(envelope))))
     )
+  }
+
+  test("a vote goes out alone in its MsgLeiosVotes") {
+    // a throwaway key made here
+    val vote = right(Vote.sign(key(77)._1, right(SeatId.fromInt(3)), rbHash(9)))
+    typed(for
+      queued <- Queue.unbounded[IO, Reply]
+      replies <- scripted(queued)
+      _ <- queued.offer(Reply.Votes(Vector(vote)))
+      outcome <- conversing(replies)(c =>
+        send(c, LeiosNotify.Message.RequestNext) *> receive(c, LeiosNotify.State.Busy) <*
+          send(c, LeiosNotify.Message.Quit) <* receive(c, LeiosNotify.State.Quit)
+      )
+    yield outcome).map {
+      case Right((Right(()), LeiosNotify.Message.Votes(votes, raw))) =>
+        assertEquals((votes, raw), (Vector(vote), Vector(vote.encode)))
+      case other => fail(s"not one vote: $other")
+    }
   }
 
   test("a quit with nothing held is answered with MsgDone at once") {
