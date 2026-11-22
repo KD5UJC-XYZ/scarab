@@ -9,13 +9,13 @@ import xyz.kd5ujc.scarab.ledger.{
   Mismatch,
   PlutusFailure,
   PredicateFailure,
-  RewardAccount,
   TxIn,
   UtxoFailure,
   UtxosFailure as FlatUtxosFailure
 }
 import xyz.kd5ujc.scarab.ledger.era.*
-import xyz.kd5ujc.scarab.ledger.state.{Coin, Conway, Dijkstra, EraTag}
+import xyz.kd5ujc.scarab.ledger.rules.Convert
+import xyz.kd5ujc.scarab.ledger.state.{AccountAddress, Coin, Conway, Dijkstra, EraTag}
 import xyz.kd5ujc.scarab.plutus.ExUnits
 
 // The failures of UTXO as the reference declares them (cardano-ledger f649f975, the `Rules/Utxo.hs`
@@ -26,13 +26,12 @@ import xyz.kd5ujc.scarab.plutus.ExUnits
 // types are the same but for the derived `Ord` instances and Alonzo's and Conway's units, held as
 // `OrdExUnits` for that `Ord`; Shelley's injection into Allegra differs ([[AllegraUtxo]]).
 
-/** The order of the sets the failures hold: `TxIn` 's and `AccountAddress` 's are the reference's
-  * derived ones. An address is held by the bytes it was read from, whose order is the bytes', where
-  * the reference collects decoded addresses (`Set Addr`, equal by value; the Gap of
-  * `validateWrongNetwork`, #796).
+/** The order of the sets the failures hold: `TxIn` 's is the reference's derived one, as is
+  * `AccountAddress` 's, in its companion. An address is held by the bytes it was read from, whose
+  * order is the bytes', where the reference collects decoded addresses (`Set Addr`, equal by value;
+  * the Gap of `validateWrongNetwork`, #796).
   */
 private[rules] given txInOrder: Order[TxIn] = Order.fromOrdering
-private[rules] given accountOrder: Order[RewardAccount] = Order.fromOrdering
 private[rules] given addressOrder: Order[Address] =
   Order.by[Address, Bytes](_.raw)(using Order.fromOrdering)
 
@@ -51,7 +50,7 @@ enum ShelleyUtxoPredFailure[E <: EraTag]:
   /** What is consumed (supplied) and what is produced (expected). */
   case ValueNotConservedUTxO(mismatch: Mismatch[Value[E]])
   case WrongNetwork(expected: Network, addresses: NonEmptySet[Address])
-  case WrongNetworkWithdrawal(expected: Network, accounts: NonEmptySet[RewardAccount])
+  case WrongNetworkWithdrawal(expected: Network, accounts: NonEmptySet[AccountAddress])
   case OutputTooSmallUTxO(outputs: NonEmptyList[TxOut[E]])
   case UpdateFailure(failure: PpupPredFailure[E])
   case OutputBootAddrAttrsTooBig(outputs: NonEmptyList[TxOut[E]])
@@ -67,7 +66,7 @@ enum AllegraUtxoPredFailure[E <: EraTag]:
   case FeeTooSmallUTxO(mismatch: Mismatch[Coin])
   case ValueNotConservedUTxO(mismatch: Mismatch[Value[E]])
   case WrongNetwork(expected: Network, addresses: NonEmptySet[Address])
-  case WrongNetworkWithdrawal(expected: Network, accounts: NonEmptySet[RewardAccount])
+  case WrongNetworkWithdrawal(expected: Network, accounts: NonEmptySet[AccountAddress])
   case OutputTooSmallUTxO(outputs: NonEmptyList[TxOut[E]])
   case UpdateFailure(failure: PpupPredFailure[E])
   case OutputBootAddrAttrsTooBig(outputs: NonEmptyList[TxOut[E]])
@@ -84,7 +83,7 @@ enum AlonzoUtxoPredFailure[E <: EraTag]:
   case FeeTooSmallUTxO(mismatch: Mismatch[Coin])
   case ValueNotConservedUTxO(mismatch: Mismatch[Value[E]])
   case WrongNetwork(expected: Network, addresses: NonEmptySet[Address])
-  case WrongNetworkWithdrawal(expected: Network, accounts: NonEmptySet[RewardAccount])
+  case WrongNetworkWithdrawal(expected: Network, accounts: NonEmptySet[AccountAddress])
   case OutputTooSmallUTxO(outputs: NonEmptyList[TxOut[E]])
   case UtxosFailure(failure: UtxosPredFailure[E])
   case OutputBootAddrAttrsTooBig(outputs: NonEmptyList[TxOut[E]])
@@ -132,7 +131,7 @@ enum ConwayUtxoPredFailure[E <: EraTag]:
   case FeeTooSmallUTxO(mismatch: Mismatch[Coin])
   case ValueNotConservedUTxO(mismatch: Mismatch[Value[E]])
   case WrongNetwork(expected: Network, addresses: NonEmptySet[Address])
-  case WrongNetworkWithdrawal(expected: Network, accounts: NonEmptySet[RewardAccount])
+  case WrongNetworkWithdrawal(expected: Network, accounts: NonEmptySet[AccountAddress])
   case OutputTooSmallUTxO(outputs: NonEmptyList[TxOut[E]])
   case OutputBootAddrAttrsTooBig(outputs: NonEmptyList[TxOut[E]])
   case OutputTooBigUTxO(outputs: NonEmptyList[(Int, Int, TxOut[E])])
@@ -206,7 +205,12 @@ object ConwayUtxoPredFailure:
       case WrongNetwork(n, addrs) =>
         utxo(UtxoFailure.WrongNetwork(n.ordinal, addrs.toSortedSet.map(_.raw)))
       case WrongNetworkWithdrawal(n, accounts) =>
-        utxo(UtxoFailure.WrongNetworkWithdrawal(n.ordinal, accounts.toSortedSet))
+        utxo(
+          UtxoFailure.WrongNetworkWithdrawal(
+            n.ordinal,
+            accounts.toSortedSet.map(Convert.rewardAccountBack)
+          )
+        )
       case OutputTooSmallUTxO(os)        => utxo(UtxoFailure.OutputTooSmall(outs(os)))
       case OutputBootAddrAttrsTooBig(os) => utxo(UtxoFailure.OutputBootAddrAttrsTooBig(outs(os)))
       case OutputTooBigUTxO(os) =>

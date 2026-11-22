@@ -6,7 +6,16 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{CborRead, Credential as FlatCredential, Unsigned, Voter}
 import xyz.kd5ujc.scarab.ledger.era.{AsItem, AsIx, EraScript, EraTxCert}
 import xyz.kd5ujc.scarab.ledger.era.conway.ConwayPlutusPurpose
-import xyz.kd5ujc.scarab.ledger.state.{EpochNo, KeyHash, ScriptHash, StakePool}
+import xyz.kd5ujc.scarab.ledger.state.{
+  AccountAddress,
+  AccountId,
+  Credential,
+  EpochNo,
+  KeyHash,
+  Network,
+  ScriptHash,
+  StakePool
+}
 
 /** Dijkstra's purposes ([[DijkstraPlutusPurpose]], cardano-ledger 9df9f98c
   * `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Scripts.hs:122-129`) and its script class
@@ -102,8 +111,14 @@ class DijkstraPlutusPurposeSuite extends FunSuite:
     val cert = EraTxCert.dijkstra.mkRetirePoolTxCert(pk, EpochNo.fromUnsigned(10))
     val certifying = scripts.mkCertifyingPurpose[AsItem](AsItem(cert))
     assertEquals(scripts.toCertifyingPurpose[AsItem](certifying), Some(AsItem(cert)))
-    val account =
-      xyz.kd5ujc.scarab.ledger.RewardAccount(0, FlatCredential.Script(hex("55" * 28)))
+    val account = AccountAddress(
+      Network.Testnet,
+      AccountId(
+        Credential.ScriptHashObj(
+          ScriptHash.fromBytes(hex("55" * 28)).fold(e => fail(e.toString), identity)
+        )
+      )
+    )
     val withdrawing = scripts.mkWithdrawingPurpose[AsItem](AsItem(account))
     assertEquals(scripts.toWithdrawingPurpose[AsItem](withdrawing), Some(AsItem(account)))
     assertEquals(scripts.toSpendingPurpose[AsItem](withdrawing), None)

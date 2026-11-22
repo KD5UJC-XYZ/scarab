@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.ledger.era.rules
 
 import cats.Monad
-import cats.data.{Chain, NonEmptyChain, NonEmptyMap, NonEmptySet}
+import cats.data.{Chain, NonEmptyMap, NonEmptySet}
 import cats.mtl.{Ask, Raise, Stateful, Tell}
 import cats.syntax.all.*
 import scala.collection.immutable.SortedMap
@@ -21,7 +21,8 @@ import xyz.kd5ujc.scarab.ledger.state.{
   EpochNo,
   EraTag,
   Network,
-  VocabError
+  VocabError,
+  Withdrawals
 }
 
 // SUBENTITIES of Dijkstra as the reference writes it (cardano-ledger 9df9f98c,
@@ -169,38 +170,41 @@ object DijkstraSubEntities:
 
   /** `injectFailure` of `InjectRuleFailure "SUBENTITIES" Shelley.ShelleyUtxoPredFailure
     * DijkstraEra` (`Dijkstra/Rules/SubEntities.hs:203-204`, cardano-ledger 9df9f98c):
-    * [[entitiesToSubEntitiesPredFailure]] after ENTITIES' injection, on the one constructor its
-    * predicate declares; ENTITIES' reads the accounts into `AccountAddress`
-    * ([[ENTITIES.shelleyUtxoToDijkstraEntitiesPredFailure]]), so this is a function whose `Left`
-    * the rule raises, not an instance.
+    * [[entitiesToSubEntitiesPredFailure]] after ENTITIES' injection
+    * ([[ENTITIES.shelleyUtxoToDijkstraEntitiesPredFailure]]), on the one constructor its predicate
+    * declares.
     */
   def shelleyUtxoToDijkstraSubEntitiesPredFailure(
       failure: ShelleyUtxoPredFailure.WrongNetworkWithdrawal[Dijkstra]
-  ): Either[VocabError, SubEntitiesPredFailure[Dijkstra]] =
-    ENTITIES.shelleyUtxoToDijkstraEntitiesPredFailure(failure).map(entitiesToSubEntitiesPredFailure)
+  ): SubEntitiesPredFailure[Dijkstra] =
+    entitiesToSubEntitiesPredFailure(ENTITIES.shelleyUtxoToDijkstraEntitiesPredFailure(failure))
 
   /** `validateMissingOriginalAccountsInWithdrawals` (`Dijkstra/Rules/SubEntities.hs:280-289`,
     * cardano-ledger 9df9f98c).
     */
   def validateMissingOriginalAccountsInWithdrawals(
-      withdrawals: SortedMap[AccountAddress, Coin],
+      withdrawals: Withdrawals,
       network: Network,
       originalAccounts: Accounts[Dijkstra]
   ): Test[SubEntitiesPredFailure.SubWithdrawalAccountsMissingFromOriginal[Dijkstra]] =
     Test.failureOnJust(ENTITIES.withdrawalsMissingAccounts(withdrawals, network, originalAccounts))(
-      new SubEntitiesPredFailure.SubWithdrawalAccountsMissingFromOriginal[Dijkstra](_)
+      missing =>
+        new SubEntitiesPredFailure.SubWithdrawalAccountsMissingFromOriginal[Dijkstra](
+          missing.unWithdrawals
+        )
     )
 
   /** `validateMissingAccountsInWithdrawals` (`Dijkstra/Rules/SubEntities.hs:291-300`,
     * cardano-ledger 9df9f98c).
     */
   def validateMissingAccountsInWithdrawals(
-      withdrawals: SortedMap[AccountAddress, Coin],
+      withdrawals: Withdrawals,
       network: Network,
       accounts: Accounts[Dijkstra]
   ): Test[SubEntitiesPredFailure.SubWithdrawalAccountsMissing[Dijkstra]] =
     Test.failureOnJust(ENTITIES.withdrawalsMissingAccounts(withdrawals, network, accounts))(
-      new SubEntitiesPredFailure.SubWithdrawalAccountsMissing[Dijkstra](_)
+      missing =>
+        new SubEntitiesPredFailure.SubWithdrawalAccountsMissing[Dijkstra](missing.unWithdrawals)
     )
 
   private val t = EraTx.dijkstra
@@ -221,9 +225,9 @@ object DijkstraSubEntities:
     * SUBCERTS runs as a sub-rule on that state, its failures and events embedded
     * (`SubEntities.hs:340-348`); the direct deposits are checked against the accounts after
     * SUBCERTS and added to them. Unlike ENTITIES, no withdrawal's amount is checked here, and the
-    * withdrawals are applied whatever failed. Each account of the body is read into the reference's
-    * `AccountAddress`, which every decoded one is; a value outside the vocabulary is raised
-    * (`LedgerFailure.Vocab`).
+    * withdrawals are applied whatever failed. Each account of the direct deposits and the balance
+    * intervals is read into the reference's `AccountAddress`, which every decoded one is; a value
+    * outside the vocabulary is raised (`LedgerFailure.Vocab`).
     *
     * `validation` is the policy the judgment runs under, which SUBPOOL's static check reads; a
     * voting key SUBPOOL cannot check is raised (`poolDefect`).
@@ -255,25 +259,18 @@ object DijkstraSubEntities:
           .of(BigInt(globals.networkId))
           .toRight(VocabError.OutOfRange(VocabError.Kind.Network, BigInt(globals.networkId)))
       )
-      withdrawals <- vocab[F, SortedMap[AccountAddress, Coin]](
-        ENTITIES.keyed(b.withdrawals[TxLevel.Sub](txBody))
-      )
+      withdrawals = b.withdrawals[TxLevel.Sub](txBody)
       directDeposits <- vocab[F, SortedMap[AccountAddress, Coin]](
         ENTITIES.keyed(b.directDeposits[TxLevel.Sub](txBody))
       )
       intervals <- vocab[F, SortedMap[AccountAddress, AccountBalanceInterval]](
         ENTITIES.keyed(b.accountBalanceIntervals[TxLevel.Sub](txBody))
       )
-      wrongNetworkWithdrawals <- vocab[F, Option[NonEmptyChain[SubEntitiesPredFailure[Dijkstra]]]](
-        Test
-          .failures(
-            ShelleyUtxo.validateWrongNetworkWithdrawal[Dijkstra, TxLevel.Sub](network, txBody)
-          )
-          .traverse(_.traverse(shelleyUtxoToDijkstraSubEntitiesPredFailure))
-      )
-      _ <- wrongNetworkWithdrawals.traverse_(fs => judge.tell(fs.toChain))
       _ <- Sts.runTest[F, SubEntitiesRuleFailure[Dijkstra]](
         Test.all(
+          ShelleyUtxo
+            .validateWrongNetworkWithdrawal[Dijkstra, TxLevel.Sub](network, txBody)
+            .leftMap(_.map(shelleyUtxoToDijkstraSubEntitiesPredFailure)),
           injected(ENTITIES.validateWrongNetworkInDirectDeposit(network, directDeposits)),
           injected(ENTITIES.validateAccountBalanceIntervals(network, accounts, intervals)),
           injected(

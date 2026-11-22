@@ -17,6 +17,7 @@ import xyz.kd5ujc.scarab.ledger.dijkstra.{
   V12
 }
 import xyz.kd5ujc.scarab.ledger.era.AsIxItem
+import xyz.kd5ujc.scarab.ledger.rules.Convert
 
 /** The Dijkstra transactions the repository holds, as the era-type suites read them: the corpus of
   * the Leios build's verdicts (`fixtures/reference/leios-testnet-blocks`, its transactions alone
@@ -353,7 +354,8 @@ object DijkstraCorpus extends Assertions:
       case DijkstraMinting(AsIxItem(ix, policy)) => (1, ix.value, Item.Policy(policy))
       case DijkstraCertifying(AsIxItem(ix, cert)) =>
         (2, ix.value, Item.Cert(c.getVKeyWitnessTxCert(cert), c.getScriptWitnessTxCert(cert)))
-      case DijkstraWithdrawing(AsIxItem(ix, a)) => (3, ix.value, Item.Account(a))
-      case DijkstraVoting(AsIxItem(ix, v))      => (4, ix.value, Item.ByVoter(v))
-      case DijkstraProposing(AsIxItem(ix, p))   => (5, ix.value, Item.Proposal(p.read))
-      case DijkstraGuarding(AsIxItem(ix, h))    => (6, ix.value, Item.Guard(h.bytes))
+      case DijkstraWithdrawing(AsIxItem(ix, a)) =>
+        (3, ix.value, Item.Account(Convert.rewardAccountBack(a)))
+      case DijkstraVoting(AsIxItem(ix, v))    => (4, ix.value, Item.ByVoter(v))
+      case DijkstraProposing(AsIxItem(ix, p)) => (5, ix.value, Item.Proposal(p.read))
+      case DijkstraGuarding(AsIxItem(ix, h))  => (6, ix.value, Item.Guard(h.bytes))

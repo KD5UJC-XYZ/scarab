@@ -53,7 +53,8 @@ import xyz.kd5ujc.scarab.ledger.state.{
   Guard,
   KeyHash,
   ScriptHash,
-  StakePool
+  StakePool,
+  Withdrawals
 }
 
 /** An account's balance interval (`data AccountBalanceInterval era`,
@@ -88,7 +89,7 @@ private[dijkstra] final case class DijkstraBodyFields(
     referenceInputs: SortedSet[TxIn],
     outputs: Vector[Sized[DijkstraTxOut]],
     certs: OSet[DijkstraTxCert],
-    withdrawals: Map[RewardAccount, Coin],
+    withdrawals: Withdrawals,
     validity: ValidityInterval,
     guards: OSet[Credential[Guard]],
     mint: Map[Bytes, Map[Bytes, BigInt]],
@@ -124,7 +125,7 @@ sealed abstract class DijkstraTxBody[L <: TxLevel] private[dijkstra] (
   /** The outputs, each with the size of the encoding it was read from (`Sized`). */
   def outputs: Vector[Sized[DijkstraTxOut]] = fields.outputs
   def certs: OSet[DijkstraTxCert] = fields.certs
-  def withdrawals: Map[RewardAccount, Coin] = fields.withdrawals
+  def withdrawals: Withdrawals = fields.withdrawals
   def validity: ValidityInterval = fields.validity
   def guards: OSet[Credential[Guard]] = fields.guards
   def mint: Map[Bytes, Map[Bytes, BigInt]] = fields.mint
@@ -227,6 +228,11 @@ object DijkstraTxBody:
     for
       outputs <- b.outputs.traverse(sized)
       certs <- b.certificates.zipWithIndex.traverse((c, i) => DijkstraProcedures.cert(c, item(i)))
+      // the reference's `Withdrawals` (`dtbrWithdrawals` and `dstbrWithdrawals`, `TxBody.hs:181,
+      // 205`, cardano-ledger 9df9f98c), each account the `AccountAddress` the decoder read
+      withdrawals <- Convert
+        .withdrawals(b.withdrawals.map((a, c) => a -> Coin(c)))
+        .leftMap(EraTxError.Vocab(_))
       proposals <- b.proposals.traverse(DijkstraProcedures.proposal)
       network <- b.networkId.traverse(v =>
         Network
@@ -261,7 +267,7 @@ object DijkstraTxBody:
       inputs(b.referenceInputs),
       outputs,
       OSet.decoded(certs),
-      b.withdrawals.map((a, c) => a -> Coin(c)).toMap,
+      withdrawals,
       ValidityInterval(b.validityStart, b.ttl),
       OSet.decoded(guards),
       b.mint,
@@ -349,7 +355,9 @@ object DijkstraTxBody:
       case DijkstraSpending(idx) =>
         Indexable.fromIndexSet(idx, txBody.spendInputs).map(DijkstraSpending(_))
       case DijkstraWithdrawing(idx) =>
-        Indexable.fromIndexMap(idx, txBody.withdrawals).map(DijkstraWithdrawing(_))
+        Indexable
+          .fromIndexMap(idx, txBody.withdrawals.unWithdrawals)
+          .map(DijkstraWithdrawing(_))
       case DijkstraCertifying(idx) =>
         Indexable.fromIndexOSet(idx, txBody.certs).map(DijkstraCertifying(_))
       case DijkstraVoting(idx) =>
@@ -410,7 +418,7 @@ object DijkstraTxBody:
       override def fee(body: TxBody[TxLevel.Top, Dijkstra]): Coin = topBody(body).fee
       override def withdrawals[L <: TxLevel](body: TxBody[L, Dijkstra])(using
           BothLevels[L]
-      ): Map[RewardAccount, Coin] = body.withdrawals
+      ): Withdrawals = body.withdrawals
       override def auxDataHash[L <: TxLevel](body: TxBody[L, Dijkstra])(using
           BothLevels[L]
       ): Option[Bytes] = body.auxDataHash

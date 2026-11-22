@@ -3,7 +3,15 @@ package xyz.kd5ujc.scarab.ledger.era
 
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{Address, Credential as FlatCredential, Ptr, RewardAccount, TxIn}
-import xyz.kd5ujc.scarab.ledger.state.{Coin, Credential, EpochNo, KeyHash, KeyRole, ScriptHash}
+import xyz.kd5ujc.scarab.ledger.state.{
+  AccountAddress,
+  Coin,
+  Credential,
+  EpochNo,
+  KeyHash,
+  KeyRole,
+  ScriptHash
+}
 import xyz.kd5ujc.scarab.plutus.PlutusData
 
 /** The translations of the core's values to the script context's
@@ -59,7 +67,10 @@ object PlutusTxInfos:
   /** `transAccountAddress` (`Plutus/TxInfo.hs:157-158`, cardano-ledger f649f975): the account's
     * credential, its network dropped.
     */
-  def transAccountAddress(a: RewardAccount): PV1.Credential = transCredFlat(a.credential)
+  def transAccountAddress(a: AccountAddress): PV1.Credential = transCred(a.id.credential)
+
+  /** `transAccountAddress` of an account the node holds untyped (a governance action's). */
+  def transAccountAddressFlat(a: RewardAccount): PV1.Credential = transCredFlat(a.credential)
 
   /** `transTxId` (`Plutus/TxInfo.hs:176-177`, cardano-ledger f649f975). */
   def transTxId(id: Bytes): PV1.TxId = PV1.TxId(transSafeHash(id))

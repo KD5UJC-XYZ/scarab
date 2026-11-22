@@ -15,7 +15,8 @@ import xyz.kd5ujc.scarab.ledger.state.{
   KeyHash,
   StakePool,
   Staking,
-  VocabError
+  VocabError,
+  Withdrawals
 }
 
 /** The fields every era's body has (`EraTxBody`, cardano-ledger f649f975
@@ -50,7 +51,11 @@ trait EraTxBody[E <: EraTag]:
   def inputs[L <: TxLevel](body: TxBody[L, E])(using Level[L]): SortedSet[TxIn]
   def outputs[L <: TxLevel](body: TxBody[L, E])(using Level[L]): Vector[TxOut[E]]
   def fee(body: TxBody[TxLevel.Top, E]): Coin
-  def withdrawals[L <: TxLevel](body: TxBody[L, E])(using Level[L]): Map[RewardAccount, Coin]
+
+  /** `withdrawalsTxBodyL` (`Core.hs:251`, cardano-ledger f649f975): the reference's
+    * [[Withdrawals]], each account an `AccountAddress`.
+    */
+  def withdrawals[L <: TxLevel](body: TxBody[L, E])(using Level[L]): Withdrawals
   def auxDataHash[L <: TxLevel](body: TxBody[L, E])(using Level[L]): Option[Bytes]
 
   /** `certsTxBodyL`: the certificates in order, a sequence in the class (`Core.hs:265`,

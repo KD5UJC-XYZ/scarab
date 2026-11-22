@@ -3,15 +3,7 @@ package xyz.kd5ujc.scarab.ledger.era.dijkstra
 
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Node}
-import xyz.kd5ujc.scarab.ledger.{
-  Credential,
-  DecodeField,
-  LedgerDecodeError,
-  RewardAccount,
-  TxIn,
-  Unsigned,
-  Voter
-}
+import xyz.kd5ujc.scarab.ledger.{Credential, DecodeField, LedgerDecodeError, TxIn, Unsigned, Voter}
 import xyz.kd5ujc.scarab.ledger.dijkstra.V12
 import xyz.kd5ujc.scarab.ledger.era.{
   AlonzoScriptRep,
@@ -23,7 +15,7 @@ import xyz.kd5ujc.scarab.ledger.era.{
   ProposalProcedure
 }
 import xyz.kd5ujc.scarab.ledger.era.conway.{ConwayPlutusScript, ConwayScript}
-import xyz.kd5ujc.scarab.ledger.state.{Dijkstra, ScriptHash}
+import xyz.kd5ujc.scarab.ledger.state.{AccountAddress, Dijkstra, ScriptHash}
 
 // Dijkstra's scripts, at cardano-ledger 9df9f98c, the ledger of the Leios testnet's build (the
 // Dijkstra Scarab implements, #54): the opaque type is transparent in this file only.
@@ -224,11 +216,11 @@ object DijkstraScript:
           DijkstraPlutusPurpose.DijkstraProposing(_) | DijkstraPlutusPurpose.DijkstraGuarding(_) =>
         None
     override def mkWithdrawingPurpose[F[_, _]](
-        account: F[Unsigned[Unsigned.Width.W32], RewardAccount]
+        account: F[Unsigned[Unsigned.Width.W32], AccountAddress]
     ): DijkstraPlutusPurpose[F] = DijkstraPlutusPurpose.DijkstraWithdrawing(account)
     override def toWithdrawingPurpose[F[_, _]](
         purpose: DijkstraPlutusPurpose[F]
-    ): Option[F[Unsigned[Unsigned.Width.W32], RewardAccount]] = purpose match
+    ): Option[F[Unsigned[Unsigned.Width.W32], AccountAddress]] = purpose match
       case DijkstraPlutusPurpose.DijkstraWithdrawing(i) => Some(i)
       case DijkstraPlutusPurpose.DijkstraSpending(_) | DijkstraPlutusPurpose.DijkstraMinting(_) |
           DijkstraPlutusPurpose.DijkstraCertifying(_) | DijkstraPlutusPurpose.DijkstraVoting(_) |

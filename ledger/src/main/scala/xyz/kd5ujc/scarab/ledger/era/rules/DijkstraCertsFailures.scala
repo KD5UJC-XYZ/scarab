@@ -200,7 +200,8 @@ object DijkstraCertsStored:
 /** `data EntitiesPredFailure era` (`Dijkstra/Rules/Entities.hs:107-133`, cardano-ledger 9df9f98c),
   * its constructors in the order of their tags (0 to 13, `:154-169`). The withdrawals and the
   * direct deposits are the reference's `Withdrawals` and `DirectDeposits` (`Map AccountAddress
-  * Coin`, `Address.hs:980, 997`), each account read into it from the body's.
+  * Coin`, `Address.hs:980, 997`): the body's withdrawals, and each account of its direct deposits
+  * read into `AccountAddress`.
   */
 enum EntitiesPredFailure[E <: EraTag]:
   case CertsFailure(failure: CertsPredFailure[E])

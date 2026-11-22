@@ -198,10 +198,11 @@ object AlonzoUTxO:
       s: ConwayEraScript[E]
   ): AlonzoScriptsNeeded[E] =
     AlonzoScriptsNeeded(
-      zipAsIxItem(b.withdrawals[L](body).keys.toVector.sorted) { asIxItem =>
-        credScriptHash(asIxItem.item.credential).map(hash =>
-          (s.mkWithdrawingPurpose(asIxItem), hash)
-        )
+      zipAsIxItem(b.withdrawals[L](body).unWithdrawals.keys.toVector) { asIxItem =>
+        asIxItem.item.id.credential match
+          case Credential.ScriptHashObj(hash) =>
+            Some((s.mkWithdrawingPurpose(asIxItem), hash.bytes))
+          case Credential.KeyHashObj(_) => None
       }.flatten
     )
 
@@ -326,11 +327,12 @@ object ShelleyUTxO:
       )
     val wdrlAuthors = b
       .withdrawals[L](body)
+      .unWithdrawals
       .keySet
       .flatMap(account =>
-        account.credential match
-          case xyz.kd5ujc.scarab.ledger.Credential.Key(h)    => Some(h)
-          case xyz.kd5ujc.scarab.ledger.Credential.Script(_) => None
+        account.id.credential match
+          case Credential.KeyHashObj(h)    => Some(h.bytes)
+          case Credential.ScriptHashObj(_) => None
       )
     val owners = certs
       .flatMap(b.certsOf.getRegPoolTxCert(_).toVector.flatMap(_.owners.toVector.map(_.bytes)))
@@ -396,7 +398,7 @@ object MaryUTxO:
     val mintedMultiAsset =
       MultiAssetValue.of(xyz.kd5ujc.scarab.ledger.Value.minted(b.mint(body)))
     val refunds = b.getTotalRefundsTxBody(pp, lookupStakingDeposit, body)
-    val withdrawals = b.withdrawals(body).valuesIterator.map(_.value).sum
+    val withdrawals = b.withdrawals(body).unWithdrawals.valuesIterator.map(_.value).sum
     val consumedValue = ops.plus(
       v(UTxOs.sumUTxO(UTxOs.txInsFilter(utxo, b.inputs(body)))),
       ops.inject(Coin(refunds.value + withdrawals))

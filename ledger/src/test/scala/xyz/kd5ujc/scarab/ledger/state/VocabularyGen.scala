@@ -56,6 +56,20 @@ object VocabularyGen:
     Gen.oneOf(-1L, 0L, 1L, Long.MinValue).map(n => DeltaCoin(BigInt(n)))
   )
 
+  given Arbitrary[AccountAddress] = Arbitrary(
+    for
+      network <- Gen.oneOf(Network.Testnet, Network.Mainnet)
+      credential <- Arbitrary.arbitrary[Credential[Staking]]
+    yield AccountAddress(network, AccountId(credential))
+  )
+
+  /** Withdrawals of a few accounts, so that two of them often share an account. */
+  given Arbitrary[Withdrawals] = Arbitrary(
+    Gen
+      .listOfN(3, Gen.zip(Arbitrary.arbitrary[AccountAddress], Arbitrary.arbitrary[Coin]))
+      .flatMap(entries => Gen.choose(0, entries.size).map(n => Withdrawals(entries.take(n).toMap)))
+  )
+
   /** Words around the edges of both halves: values from 2^63 up are negative `Long` s, and must
     * sort above the small ones.
     */

@@ -13,7 +13,7 @@ import xyz.kd5ujc.scarab.ledger.{
   Proposals,
   Tx
 }
-import xyz.kd5ujc.scarab.ledger.state.*
+import xyz.kd5ujc.scarab.ledger.state.{Withdrawals as _, *}
 
 /** The state the rules of a Conway transaction run on: the ledger state, with the node's phase-2
   * counters beside it ([[Counted]]).

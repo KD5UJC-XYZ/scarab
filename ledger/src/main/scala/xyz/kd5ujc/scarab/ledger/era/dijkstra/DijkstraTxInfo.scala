@@ -81,6 +81,7 @@ import xyz.kd5ujc.scarab.ledger.era.{
 }
 import xyz.kd5ujc.scarab.ledger.era.conway.{ConwayContextError, ConwayEraPlutusTxInfo, ConwayTxInfo}
 import xyz.kd5ujc.scarab.ledger.state.{
+  AccountAddress,
   Coin,
   ColdCommittee,
   Credential,
@@ -89,7 +90,8 @@ import xyz.kd5ujc.scarab.ledger.state.{
   Guard,
   KeyRole,
   ScriptHash,
-  TxIx
+  TxIx,
+  Withdrawals
 }
 import xyz.kd5ujc.scarab.plutus.PlutusLanguage as Lang
 
@@ -652,10 +654,10 @@ object DijkstraTxInfo:
   /** `transWithdrawals` (`TxInfo.hs:692-693`, cardano-ledger 9df9f98c): by the account's
     * credential, in the accounts' order.
     */
-  def transWithdrawals(
-      withdrawals: Map[RewardAccount, Coin]
-  ): AssocMap[PV1.Credential, PV1.Lovelace] =
-    ConwayTxInfo.transMap(transAccountAddressToCredential, transCoinToLovelace)(withdrawals)
+  def transWithdrawals(withdrawals: Withdrawals): AssocMap[PV1.Credential, PV1.Lovelace] =
+    ConwayTxInfo.transMap(transAccountAddressToCredential, transCoinToLovelace)(
+      withdrawals.unWithdrawals
+    )
 
   /** `transDirectDeposits` (`TxInfo.hs:695-696`, cardano-ledger 9df9f98c): by the account's
     * credential, in the accounts' order.
@@ -663,7 +665,7 @@ object DijkstraTxInfo:
   def transDirectDeposits(
       deposits: Map[RewardAccount, Coin]
   ): AssocMap[PV1.Credential, PV1.Lovelace] =
-    ConwayTxInfo.transMap(transAccountAddressToCredential, transCoinToLovelace)(deposits)
+    ConwayTxInfo.transMap(transAccountAddressToCredentialFlat, transCoinToLovelace)(deposits)
 
   /** `transCredToAccountId` (`TxInfo.hs:698-699`, cardano-ledger 9df9f98c). */
   def transCredToAccountId[R <: KeyRole](c: Credential[R]): PV4.AccountId =
@@ -729,10 +731,15 @@ object DijkstraTxInfo:
 
   /** `transAccountAddressToAccountId` (`TxInfo.hs:738-739`, cardano-ledger 9df9f98c). */
   def transAccountAddressToAccountId(a: RewardAccount): PV4.AccountId =
-    PV4.AccountId(transAccountAddress(a))
+    PV4.AccountId(transAccountAddressFlat(a))
 
   /** `transAccountAddressToCredential` (`TxInfo.hs:741-742`, cardano-ledger 9df9f98c). */
-  def transAccountAddressToCredential(a: RewardAccount): PV1.Credential = transAccountAddress(a)
+  def transAccountAddressToCredential(a: AccountAddress): PV1.Credential = transAccountAddress(a)
+
+  /** `transAccountAddressToCredential` of an account the node holds untyped (a direct deposit's).
+    */
+  def transAccountAddressToCredentialFlat(a: RewardAccount): PV1.Credential =
+    transAccountAddressFlat(a)
 
   /** `transValidityInterval` of Dijkstra (`TxInfo.hs:745-756`, cardano-ledger 9df9f98c): each end
     * in POSIX time, or open; a slot the clock cannot translate refused
@@ -834,7 +841,7 @@ object DijkstraTxInfo:
     */
   private final case class BatchTx(
       txId: Bytes,
-      withdrawals: Map[RewardAccount, Coin],
+      withdrawals: Withdrawals,
       directDeposits: Map[RewardAccount, Coin],
       vldt: ValidityInterval,
       votes: VotingProcedures[Dijkstra],
@@ -858,9 +865,8 @@ object DijkstraTxInfo:
       b.treasuryDonation[L](txBody)
     )
 
-  /** `Map.unionWith (<>)` of coins (`instance Semigroup Withdrawals`, `DirectDeposits`,
-    * `libs/cardano-ledger-core/src/Cardano/Ledger/Address.hs:984-985, 1001-1002`, cardano-ledger
-    * 9df9f98c).
+  /** `Map.unionWith (<>)` of coins (`instance Semigroup DirectDeposits`,
+    * `libs/cardano-ledger-core/src/Cardano/Ledger/Address.hs:1001-1002`, cardano-ledger 9df9f98c).
     */
   private def unionCoins(
       a: Map[RewardAccount, Coin],
@@ -1008,8 +1014,7 @@ object DijkstraTxInfo:
         ttisMints = ConwayTxInfo.transMintValue(batchMints),
         ttisBurns = ConwayTxInfo.transMintValue(batchBurns),
         ttisTxCerts = batchTxInfo.flatMap(_.txInfoTxCerts),
-        ttisWithdrawals =
-          transWithdrawals(batch.map(_.withdrawals).foldLeft(Map.empty)(unionCoins)),
+        ttisWithdrawals = transWithdrawals(batch.map(_.withdrawals).combineAll),
         ttisDirectDeposits =
           transDirectDeposits(batch.map(_.directDeposits).foldLeft(Map.empty)(unionCoins)),
         ttisValidRange = batchTimeRange,
@@ -1125,7 +1130,7 @@ object DijkstraTxInfo:
   ): PV4.ProposalProcedure =
     PV4.ProposalProcedure(
       transCoinToLovelace(p.pProcDeposit),
-      transAccountAddress(p.pProcReturnAddr),
+      transAccountAddressFlat(p.pProcReturnAddr),
       transGovAction[L, E](p.pProcGovAction)
     )
 
@@ -1159,7 +1164,7 @@ object DijkstraTxInfo:
         )
       case GovAction.TreasuryWithdrawals(withdrawals, govPolicy) =>
         PV4.GovernanceAction.TreasuryWithdrawals(
-          ConwayTxInfo.transMap(transAccountAddress, transCoinToLovelace)(withdrawals),
+          ConwayTxInfo.transMap(transAccountAddressFlat, transCoinToLovelace)(withdrawals),
           transGovPolicy(govPolicy)
         )
       case GovAction.NoConfidence(pGovActionId) =>

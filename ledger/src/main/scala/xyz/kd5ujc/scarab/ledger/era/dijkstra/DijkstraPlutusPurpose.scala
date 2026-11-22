@@ -2,10 +2,10 @@
 package xyz.kd5ujc.scarab.ledger.era.dijkstra
 
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.{RewardAccount, TxIn, Unsigned, Voter}
+import xyz.kd5ujc.scarab.ledger.{TxIn, Unsigned, Voter}
 import xyz.kd5ujc.scarab.ledger.era.{AsIx, ProposalProcedure}
 import xyz.kd5ujc.scarab.ledger.era.conway.ConwayPlutusPurpose
-import xyz.kd5ujc.scarab.ledger.state.{Dijkstra, ScriptHash}
+import xyz.kd5ujc.scarab.ledger.state.{AccountAddress, Dijkstra, ScriptHash}
 
 /** A Dijkstra Plutus purpose in the form `F` (`data DijkstraPlutusPurpose f era`, cardano-ledger
   * 9df9f98c `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Scripts.hs:122-129`): Conway's purposes
@@ -15,7 +15,7 @@ enum DijkstraPlutusPurpose[F[_, _]]:
   case DijkstraSpending(purpose: F[Unsigned[Unsigned.Width.W32], TxIn])
   case DijkstraMinting(purpose: F[Unsigned[Unsigned.Width.W32], Bytes])
   case DijkstraCertifying(purpose: F[Unsigned[Unsigned.Width.W32], DijkstraTxCert])
-  case DijkstraWithdrawing(purpose: F[Unsigned[Unsigned.Width.W32], RewardAccount])
+  case DijkstraWithdrawing(purpose: F[Unsigned[Unsigned.Width.W32], AccountAddress])
   case DijkstraVoting(purpose: F[Unsigned[Unsigned.Width.W32], Voter])
   case DijkstraProposing(purpose: F[Unsigned[Unsigned.Width.W32], ProposalProcedure[Dijkstra]])
   case DijkstraGuarding(purpose: F[Unsigned[Unsigned.Width.W32], ScriptHash])

@@ -211,7 +211,7 @@ class DijkstraSubLedgerSuite extends FunSuite:
     txs.body[TxLevel.Sub](subTx(sub))(using BothLevels.Sub)
 
   private def withdrawalsOf(sub: DijkstraStAnnTx[TxLevel.Sub]): SortedMap[AccountAddress, Coin] =
-    ok(ENTITIES.keyed(bodies.withdrawals[TxLevel.Sub](subBody(sub))(using BothLevels.Sub)))
+    bodies.withdrawals[TxLevel.Sub](subBody(sub))(using BothLevels.Sub).unWithdrawals
 
   private def certsOf(sub: DijkstraStAnnTx[TxLevel.Sub]): Vector[DijkstraTxCert] =
     bodies.certs[TxLevel.Sub](subBody(sub))(using BothLevels.Sub)
@@ -328,7 +328,7 @@ class DijkstraSubLedgerSuite extends FunSuite:
     given BothLevels[TxLevel.Sub] = BothLevels.Sub
     assertEquals(
       Vector(
-        count(bodies.withdrawals[TxLevel.Sub](_).nonEmpty),
+        count(bodies.withdrawals[TxLevel.Sub](_).unWithdrawals.nonEmpty),
         count(bodies.certs[TxLevel.Sub](_).nonEmpty),
         count(bodies.currentTreasuryValue[TxLevel.Sub](_).nonEmpty),
         count(bodies.votingProcedures[TxLevel.Sub](_).unVotingProcedures.nonEmpty),

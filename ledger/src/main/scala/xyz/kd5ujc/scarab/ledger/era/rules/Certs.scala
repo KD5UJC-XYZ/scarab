@@ -944,21 +944,15 @@ object CERTS:
     for
       network <- ask.ask[Globals].map(_.networkId)
       certState <- st.get
-      bad <- vocab[F, Option[EraAccounts.Undrained]](
-        EraAccounts.withdrawalsThatDoNotDrainAccounts[E](
-          withdrawals,
-          network,
-          accountsL.get(certState)
-        )
+      bad = EraAccounts.withdrawalsThatDoNotDrainAccounts[E](
+        withdrawals,
+        network,
+        accountsL.get(certState)
       )
-      // the reference's `Withdrawals`, keyed by `AccountAddress`, which every decoded reward
-      // account is
-      notInRewards <- bad.traverse((invalid, incomplete) =>
-        vocab[F, Map[AccountAddress, Coin]](
-          (invalid ++ incomplete.view.mapValues(_.supplied)).toVector
-            .traverse((account, coin) => Convert.accountAddress(account).map(_ -> coin))
-            .map(_.toMap)
-        )
+      // `unWithdrawals invalid <> fmap mismatchSupplied incomplete`, the maps' union, whose keys
+      // are disjoint (`Certs.hs:230-235`, cardano-ledger f649f975)
+      notInRewards = bad.map[Map[AccountAddress, Coin]]((invalid, incomplete) =>
+        invalid.unWithdrawals ++ incomplete.view.mapValues(_.supplied)
       )
       _ <- Sts.failOnJust[F, Map[AccountAddress, Coin], CertsPredFailure[E]](notInRewards)(ws =>
         inject.injectFailure(

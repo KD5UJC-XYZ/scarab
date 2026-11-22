@@ -156,7 +156,15 @@ class EraConwaySuite extends munit.FunSuite:
       assertEquals(body.inputs[TxLevel.Top](c).toVector, flat.inputs.sorted)
       assertEquals(body.outputs[TxLevel.Top](c).map(body.outputsOf.raw), flat.outputs.map(_.raw))
       assertEquals(body.fee(c).value, flat.fee)
-      assertEquals(body.withdrawals[TxLevel.Top](c), flat.withdrawals)
+      // the accounts the flat decoder read, as `AccountAddress`, in the flat map's order
+      assertEquals(
+        body
+          .withdrawals[TxLevel.Top](c)
+          .unWithdrawals
+          .toVector
+          .map((a, coin) => Convert.rewardAccountBack(a) -> coin),
+        flat.withdrawals.toVector
+      )
       assertEquals(body.auxDataHash[TxLevel.Top](c), flat.auxDataHash)
       assertEquals(body.vldt[TxLevel.Top](c), ValidityInterval(flat.validityStart, flat.ttl))
       assertEquals(body.mint[TxLevel.Top](c), flat.mint)

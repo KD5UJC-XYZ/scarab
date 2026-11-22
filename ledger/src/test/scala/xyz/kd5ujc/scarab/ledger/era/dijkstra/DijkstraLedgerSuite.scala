@@ -246,8 +246,8 @@ class DijkstraLedgerSuite extends FunSuite:
     ok(ENTITIES.keyed(m)).toMap
 
   private def withdrawalsOf(tx: DijkstraTx[TxLevel.Top]): Vector[Map[AccountAddress, Coin]] =
-    subBodies(tx).map(b => keyed(bodies.withdrawals[TxLevel.Sub](b)(using sub))) :+
-      keyed(bodies.withdrawals[TxLevel.Top](tx.body))
+    subBodies(tx).map(b => bodies.withdrawals[TxLevel.Sub](b)(using sub).unWithdrawals.toMap) :+
+      bodies.withdrawals[TxLevel.Top](tx.body).unWithdrawals.toMap
 
   private def depositsOf(tx: DijkstraTx[TxLevel.Top]): Vector[Map[AccountAddress, Coin]] =
     subBodies(tx).map(b => keyed(bodies.directDeposits[TxLevel.Sub](b)(using sub))) :+
@@ -739,7 +739,7 @@ class DijkstraLedgerSuite extends FunSuite:
     // (`Dijkstra/Rules/Ledger.hs:442`, cardano-ledger 9df9f98c)
     val withdrawing = chain.filter(k =>
       subBodies(k.tx).exists(b =>
-        bodies.withdrawals[TxLevel.Sub](b)(using sub).values.exists(_.value > 0)
+        bodies.withdrawals[TxLevel.Sub](b)(using sub).unWithdrawals.values.exists(_.value > 0)
       )
     )
     assert(withdrawing.nonEmpty)
@@ -846,7 +846,10 @@ class DijkstraLedgerSuite extends FunSuite:
     // (the flag is outside the body, so its signatures hold), the size and UTXOW's
     val k = chain
       .find(k =>
-        subBodies(k.tx).isEmpty && bodies.withdrawals[TxLevel.Top](k.tx.body).nonEmpty &&
+        subBodies(k.tx).isEmpty && bodies
+          .withdrawals[TxLevel.Top](k.tx.body)
+          .unWithdrawals
+          .nonEmpty &&
           DijkstraUTxO.batchNonDistinctRefScriptsSize(k.utxo, k.tx) > 0
       )
       .getOrElse(fail("no such transaction"))
