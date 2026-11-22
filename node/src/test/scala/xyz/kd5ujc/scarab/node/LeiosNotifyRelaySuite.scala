@@ -50,7 +50,13 @@ import xyz.kd5ujc.scarab.protocol.{
   TxSubmission2Fixtures
 }
 import xyz.kd5ujc.scarab.protocol.LeiosWord.{Word32, Word64}
-import xyz.kd5ujc.scarab.storage.{LeiosStore, LeiosStoreLocks, LeiosStoreSuite, RocksLeiosStore}
+import xyz.kd5ujc.scarab.storage.{
+  LeiosEbNotification,
+  LeiosStore,
+  LeiosStoreLocks,
+  LeiosStoreSuite,
+  RocksLeiosStore
+}
 
 import Peers.*
 
@@ -484,6 +490,51 @@ class LeiosNotifyRelaySuite extends FailsOnUncaught:
           )
         )
     }
+  }
+
+  test("with one credit left, a pending offer goes before a pending vote, as <|> prefers it") {
+    val p = first.fields.point
+    val vote = xyz.kd5ujc.scarab.crypto.bls.BlsFixtures.right(
+      xyz.kd5ujc.scarab.crypto.bls.Vote.sign(
+        xyz.kd5ujc.scarab.crypto.bls.BlsFixtures.key(965)._1,
+        xyz.kd5ujc.scarab.crypto.bls.BlsFixtures.right(
+          xyz.kd5ujc.scarab.crypto.bls.SeatId.fromInt(0)
+        ),
+        xyz.kd5ujc.scarab.crypto.bls.BlsFixtures.rbHash(6)
+      )
+    )
+    // `pumpNext`'s `readTChan chan <|> getNextVote` (NodeToNode.hs 838-859 at ouroboros-consensus
+    // 2416493b): both sources hold one before the pump starts, and the store's is taken first
+    val program =
+      for
+        central <- AtomicCell[IO].of(LeiosCentral.empty[IO])
+        notified <- cats.effect.std.Queue.unbounded[IO, LeiosEbNotification]
+        voted <- cats.effect.std.Queue.unbounded[IO, xyz.kd5ujc.scarab.crypto.bls.Vote]
+        replies <- LeiosNotifyRelay
+          .server(
+            central,
+            Resource.pure(notified),
+            Resource.pure(voted),
+            IO.pure(None),
+            LeiosMinOfferLead.Default
+          )
+          .use { b =>
+            for
+              _ <- credited(b, 2)
+              // the announcement takes one credit, leaving the last
+              _ <- LeiosCentral.announced(central, ShouldRelay.DoRelay, first, IO.unit)
+              // the votes queued first, and more of them
+              _ <- voted.offer(vote).replicateA_(3)
+              _ <- notified.offer(LeiosEbNotification.AcquiredEb(p, word32(9)))
+              replies <- b.pump.background.surround(b.next.replicateA(2))
+            yield replies
+          }
+      yield replies
+    cats.effect.testkit.TestControl
+      .executeEmbed(program)
+      .map(replies =>
+        assertEquals(replies, List(announcementOf(first), Reply.BlockOffer(p, word32(9))))
+      )
   }
 
   dirs.test("a server's run registers it with the central state for the run's life") { dir =>

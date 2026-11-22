@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import cats.effect.{Async, Resource, Unique}
+import cats.effect.{Async, Outcome, Resource, Unique}
 import cats.effect.std.{AtomicCell, Queue}
 import cats.syntax.all.*
-import fs2.Stream
 import fs2.concurrent.SignallingRef
 import scala.collection.immutable.{Queue as Fifo, SortedMap}
 import xyz.kd5ujc.scarab.consensus.leios.{AnnouncingHeader, ElId, ElState, LeiosAnnouncements}
@@ -244,13 +243,11 @@ private[node] object LeiosNotifyRelay:
           .modify(o => o.next.fold((o, Option.empty[Reply]))((reply, rest) => (rest, Some(reply))))
           .flatMap(_.fold(queue.waitUntil(_.messages.nonEmpty) *> next)(F.pure))
 
-      // each notification and each vote taken once, whichever comes first, none lost to the other
+      // `pumpNext`'s `readTChan chan <|> getNextVote` (`NodeToNode.hs` 838-859): a pending
+      // notification before a pending vote, each taken once
       def pump: F[Unit] =
-        Stream
-          .fromQueueUnterminated(subscription)
-          .map(_.asLeft[Vote])
-          .merge(Stream.fromQueueUnterminated(voted).map(_.asRight[LeiosEbNotification]))
-          .evalMap { next =>
+        pending
+          .flatMap(_.traverse_ { next =>
             immutableTip.flatMap(tip =>
               queue.update { outgoing =>
                 val pruned = outgoing.prunedTo(tip)
@@ -261,6 +258,35 @@ private[node] object LeiosNotifyRelay:
                   case Right(vote) => pruned.voting(vote)
               }
             )
-          }
-          .compile
-          .drain
+          })
+          .foreverM[Unit]
+
+      /** The next of the two sources, the store's notification first where both hold one; with
+        * neither, the first to arrive. Waiting on both, a take the other's arrival cancels may have
+        * taken already: its element is kept, in the left-biased order, never dropped.
+        */
+      private def pending: F[List[Either[LeiosEbNotification, Vote]]] =
+        subscription.tryTake.flatMap {
+          case Some(notification) => F.pure(List(Left(notification)))
+          case None =>
+            voted.tryTake.flatMap {
+              case Some(vote) => F.pure(List(Right(vote)))
+              case None =>
+                def both(
+                    notification: Option[LeiosEbNotification],
+                    vote: Option[Vote]
+                ): List[Either[LeiosEbNotification, Vote]] =
+                  notification.map(Left(_)).toList ++ vote.map(Right(_)).toList
+                F.racePair(subscription.take, voted.take).flatMap {
+                  case Left((won, other)) =>
+                    (settled(won), other.cancel *> other.join.flatMap(settled)).mapN(both)
+                  case Right((other, won)) =>
+                    (other.cancel *> other.join.flatMap(settled), settled(won)).mapN(both)
+                }
+            }
+        }
+
+      private def settled[A](outcome: Outcome[F, Throwable, A]): F[Option[A]] = outcome match
+        case Outcome.Succeeded(fa) => fa.map(Some(_))
+        case Outcome.Canceled()    => F.pure(None)
+        case Outcome.Errored(e)    => F.raiseError(e)
