@@ -15,7 +15,7 @@ import xyz.kd5ujc.scarab.ledger.{
   Tx,
   TxEnv
 }
-import xyz.kd5ujc.scarab.ledger.state.*
+import xyz.kd5ujc.scarab.ledger.state.{Withdrawals as _, *}
 
 // LEDGER, LEDGERS and BBODY for the eras before Conway (`Shelley/Rules/Ledger.hs`, `Ledgers.hs`,
 // `Bbody.hs`, with `Alonzo/Rules/Ledger.hs`, `Bbody.hs`), on the ledger state counted with the

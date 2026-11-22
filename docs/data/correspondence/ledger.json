@@ -25156,6 +25156,161 @@
    "structure": "same",
    "digest": "5df284cc74641016"
   },
+  "given ledger.state.AccountAddress.order": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Address.hs",
+     "symbol": "AccountAddress",
+     "lines": [
+      183,
+      187
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "VocabularySuite"
+   ],
+   "note": "the derived Ord: the network, then the account's credential",
+   "digest": "e1dda948857f8c97"
+  },
+  "given ledger.state.AccountAddress.ordering": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Address.hs",
+     "symbol": "AccountAddress",
+     "lines": [
+      183,
+      187
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "VocabularySuite"
+   ],
+   "note": "the derived Ord as the Scala Ordering of the maps of accounts, the order's own (SortOrder)",
+   "digest": "beff1cc2eee09da1"
+  },
+  "type ledger.state.Withdrawals": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Address.hs",
+     "symbol": "Withdrawals",
+     "lines": [
+      980,
+      982
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "VocabularySuite"
+   ],
+   "note": "the newtype over its map, the accounts in the order of Ord AccountAddress",
+   "digest": "ea94b57591f6c6f0"
+  },
+  "def ledger.state.Withdrawals.apply": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Address.hs",
+     "symbol": "Withdrawals",
+     "lines": [
+      980,
+      982
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "VocabularySuite"
+   ],
+   "note": "the constructor, the map sorted by Ord AccountAddress",
+   "digest": "67e06d50f0af4cd1"
+  },
+  "def ledger.state.Withdrawals.unWithdrawals": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Address.hs",
+     "symbol": "unWithdrawals",
+     "lines": [
+      980,
+      982
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "VocabularySuite"
+   ],
+   "digest": "db8014f66b6e57a4"
+  },
+  "val ledger.state.Withdrawals.empty": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Address.hs",
+     "symbol": "mempty",
+     "lines": [
+      987,
+      988
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "VocabularySuite"
+   ],
+   "digest": "0ed6a472647b070a"
+  },
+  "given ledger.state.Withdrawals.given_Monoid_Withdrawals": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Address.hs",
+     "symbol": "Semigroup Withdrawals",
+     "lines": [
+      984,
+      985
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Address.hs",
+     "symbol": "Monoid Withdrawals",
+     "lines": [
+      987,
+      988
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "VocabularySuite"
+   ],
+   "note": "Map.unionWith (<>) of the amounts, and the empty map",
+   "digest": "1deed77b7f0b86ec"
+  },
   "class ledger.state.PoolMetadata": {
    "upstream": [
     {
@@ -46843,7 +46998,9 @@
     "given ledger.era.dijkstra.PlutusLegacyMode.given_CanEqual_PlutusLegacyMode_PlutusLegacyMode",
     "given ledger.state.Credential.guardCredentialOrder",
     "given ledger.era.EraAccounts.dijkstra",
-    "given ledger.era.EraCertState.dijkstra"
+    "given ledger.era.EraCertState.dijkstra",
+    "object ledger.state.AccountAddress",
+    "object ledger.state.Withdrawals"
    ]
   },
   {
@@ -47286,7 +47443,7 @@
    ]
   },
   {
-   "reason": "the conversions between the node's flat pool parameters and reward accounts and the state's (the flat rules and decoders read the node's, and the state holds the reference's types), each refusal the vocabulary's; and the instances and rendering that hold the state's pool parameters' and metadata's equality, the reference's derived Eq; the metadata of a term a decoder already read, as POOL reads its hash again (held); the decoder version of a stored record's ProtVer; and POOL's refusal of parameters of another layout than the state they go into, a defect the reference, one build, never meets",
+   "reason": "the conversions between the node's flat pool parameters and reward accounts and the state's (the flat rules and decoders read the node's, and the state holds the reference's types), each refusal the vocabulary's; and the instances and rendering that hold the state's pool parameters', metadata's and withdrawals' equality, the reference's derived Eq; the metadata of a term a decoder already read, as POOL reads its hash again (held); the decoder version of a stored record's ProtVer; and POOL's refusal of parameters of another layout than the state they go into, a defect the reference, one build, never meets",
    "definitions": [
     "def ledger.rules.Convert.accountAddress",
     "def ledger.rules.Convert.rewardAccountBack",
@@ -47303,7 +47460,10 @@
     "def ledger.state.PoolMetadata.held",
     "def ledger.DecoderVersion.ofMajor",
     "def ledger.era.rules.sameLayout",
-    "class ledger.LedgerFailure.PoolParamsLayout"
+    "class ledger.LedgerFailure.PoolParamsLayout",
+    "given ledger.state.Withdrawals.given_CanEqual_Withdrawals_Withdrawals",
+    "given ledger.state.Withdrawals.given_Eq_Withdrawals",
+    "given ledger.state.Withdrawals.given_Show_Withdrawals"
    ]
   },
   {

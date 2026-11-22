@@ -2,12 +2,14 @@
 package xyz.kd5ujc.scarab.ledger.state
 
 import cats.Order
-import cats.kernel.laws.discipline.OrderTests
+import cats.kernel.laws.discipline.{MonoidTests, OrderTests}
 import cats.syntax.all.*
 import munit.DisciplineSuite
 import org.scalacheck.Cogen
 import org.scalacheck.Prop.forAll
 import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.ledger.RewardAccount
+import xyz.kd5ujc.scarab.ledger.rules.Convert
 import xyz.kd5ujc.scarab.ledger.state.Credential.{KeyHashObj, ScriptHashObj}
 import xyz.kd5ujc.scarab.ledger.state.DRep.*
 import xyz.kd5ujc.scarab.ledger.state.VocabularyGen.{*, given}
@@ -21,6 +23,8 @@ class VocabularySuite extends DisciplineSuite:
   given Cogen[VRFVerKeyHash] = cogenShow
   given Cogen[Hash32] = cogenShow
   given Cogen[Credential[Staking]] = cogenShow
+  given Cogen[AccountAddress] = cogenShow
+  given Cogen[Withdrawals] = cogenShow
   given Cogen[DRep] = cogenShow
   given Cogen[Coin] = cogenShow
   given Cogen[DeltaCoin] = cogenShow
@@ -38,6 +42,8 @@ class VocabularySuite extends DisciplineSuite:
   checkAll("VRFVerKeyHash", OrderTests[VRFVerKeyHash].order)
   checkAll("Hash32", OrderTests[Hash32].order)
   checkAll("Credential", OrderTests[Credential[Staking]].order)
+  checkAll("AccountAddress", OrderTests[AccountAddress].order)
+  checkAll("Withdrawals", MonoidTests[Withdrawals].monoid)
   checkAll("DRep", OrderTests[DRep].order)
   checkAll("Coin", OrderTests[Coin].order)
   checkAll("DeltaCoin", OrderTests[DeltaCoin].order)
@@ -102,6 +108,34 @@ class VocabularySuite extends DisciplineSuite:
     val hi = NonZero.from(Word64.fromUnsigned(-1L)).toOption.get
     val lo = NonZero.from(Word64.fromUnsigned(1L)).toOption.get
     assert(lt(lo, hi))
+  }
+
+  property("AccountAddress: the order of the flat reward account it is (Address.hs:183-187)") {
+    forAll((a: AccountAddress, b: AccountAddress) =>
+      Integer.signum(Order[AccountAddress].compare(a, b)) == Integer.signum(
+        Ordering[RewardAccount].compare(Convert.rewardAccountBack(a), Convert.rewardAccountBack(b))
+      )
+    )
+  }
+
+  test("AccountAddress: Testnet before Mainnet, then the credential (BaseTypes.hs:878-881)") {
+    def at(n: Network, c: Credential[Staking]) = AccountAddress(n, AccountId(c))
+    val testnetKey = at(Network.Testnet, KeyHashObj(key(0)))
+    val mainnetScript = at(Network.Mainnet, ScriptHashObj(script(0)))
+    assert(lt(testnetKey, mainnetScript))
+    assert(lt(at(Network.Testnet, ScriptHashObj(script(0xff))), testnetKey))
+  }
+
+  property("Withdrawals: <> sums the amounts of an account (Address.hs:984-985)") {
+    forAll((x: Withdrawals, y: Withdrawals) =>
+      val both = (x |+| y).unWithdrawals
+      both.keySet == (x.unWithdrawals.keySet ++ y.unWithdrawals.keySet) &&
+      both.forall((a, c) =>
+        c.value == x.unWithdrawals.get(a).fold(BigInt(0))(_.value) +
+          y.unWithdrawals.get(a).fold(BigInt(0))(_.value)
+      ) &&
+      both.keys.toVector == both.keys.toVector.sorted(using Order[AccountAddress].toOrdering)
+    )
   }
 
   property("Eq agrees with the order") {

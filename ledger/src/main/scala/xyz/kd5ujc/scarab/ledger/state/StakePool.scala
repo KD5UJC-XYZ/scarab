@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.state
 
-import cats.{Eq, Show}
+import cats.{Eq, Monoid, Order, Show}
 import cats.derived.*
-import scala.collection.immutable.SortedSet
+import cats.syntax.all.*
+import scala.collection.immutable.{SortedMap, SortedSet}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{
   ByteStrings,
@@ -27,6 +28,53 @@ final case class AccountId(credential: Credential[Staking]) derives Eq, Show
   * address, on its network.
   */
 final case class AccountAddress(networkId: Network, id: AccountId) derives Eq, Show
+
+object AccountAddress:
+  /** The derived `Ord AccountAddress` (`Address.hs:183-187`, cardano-ledger f649f975): the network,
+    * `Testnet` before `Mainnet` (`BaseTypes.hs:878-881`), then the account's credential
+    * (`Credential.hs:98-101`). One instance, so that every map of accounts sees the same order.
+    */
+  private object AccountAddressOrder extends SortOrder[AccountAddress]:
+    private val credentials = Order[Credential[Staking]]
+    def compare(x: AccountAddress, y: AccountAddress): Int =
+      val networks = Integer.compare(x.networkId.ordinal, y.networkId.ordinal)
+      if networks != 0 then networks else credentials.compare(x.id.credential, y.id.credential)
+
+  given order: Order[AccountAddress] = AccountAddressOrder
+  given ordering: Ordering[AccountAddress] = AccountAddressOrder.ordering
+
+/** `newtype Withdrawals = Withdrawals {unWithdrawals :: Map AccountAddress Coin}`
+  * (`libs/cardano-ledger-core/src/Cardano/Ledger/Address.hs:980-982`, cardano-ledger f649f975): the
+  * amounts a body withdraws from its accounts, by account, in the order of `Ord AccountAddress`,
+  * which a `Map` gives its keys.
+  */
+opaque type Withdrawals = SortedMap[AccountAddress, Coin]
+
+object Withdrawals:
+  /** `Withdrawals`, the accounts in their order. */
+  def apply(withdrawals: Map[AccountAddress, Coin]): Withdrawals =
+    SortedMap.from(withdrawals)(using AccountAddress.ordering)
+
+  /** `mempty` (`instance Monoid Withdrawals`, `Address.hs:987-988`, cardano-ledger f649f975). */
+  val empty: Withdrawals = SortedMap.empty(using AccountAddress.ordering)
+
+  extension (w: Withdrawals) def unWithdrawals: SortedMap[AccountAddress, Coin] = w
+
+  /** `instance Semigroup Withdrawals` (`Address.hs:984-985`, cardano-ledger f649f975): the amounts
+    * of an account summed (`Map.unionWith (<>)`), and `mempty` the empty map.
+    */
+  given Monoid[Withdrawals] with
+    def empty: Withdrawals = Withdrawals.empty
+    def combine(x: Withdrawals, y: Withdrawals): Withdrawals =
+      y.foldLeft(x)((m, entry) =>
+        m.updatedWith(entry._1)(v => Some(v.fold(entry._2)(w => Coin(w.value + entry._2.value))))
+      )
+
+  given Eq[Withdrawals] = Eq.fromUniversalEquals
+  given Show[Withdrawals] = Show.show(w =>
+    w.toVector.map((a, c) => s"${a.show} -> ${c.show}").mkString("Withdrawals(", ", ", ")")
+  )
+  given CanEqual[Withdrawals, Withdrawals] = CanEqual.derived
 
 /** `data PoolMetadata` (`libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs:293-297`,
   * cardano-ledger f649f975): a URL and the hash of the metadata it names. Scarab keeps the term as
