@@ -2942,6 +2942,58 @@ Conway's rules on the classes follow as the rest of stage 2.
     run serially, outside the parallel plan (`EraBlock.Body`, over the flat transactions); a script the evaluator
     cannot judge is withheld without the transaction and redeemer the other eras' no-verdict names; its evaluations
     are neither observed nor counted.
+- **Conway's MEMPOOL and its run** (`era/rules/ConwayMempool.scala`, `era/rules/ConwayMempoolRun.scala`; cardano-ledger
+  f649f975 `eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Mempool.hs`, the same rule at 29a7d656 and 9df9f98c, and
+  `Conway.hs:50-59`, `eras/shelley/impl/src/Cardano/Ledger/Shelley/API/Mempool.hs`), not wired into the node yet (the
+  plan's PR1, [#85](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7078449515)):
+  - `EraRuleFailure "MEMPOOL"` and `EraRuleEvent "MEMPOOL"` have Conway's case, LEDGER's failure and event
+    (`type PredicateFailure (MEMPOOL era) = ConwayLedgerPredFailure era`, `Mempool.hs:86-87`), and LEDGER's embedding
+    is the identity (`EmbedLedgerInMempool.conway`, `:140-172`). `ConwayApplyTxError` is the reference's
+    `ApplyTxError ConwayEra` (`Conway.hs:51-53`), MEMPOOL's failures in their order.
+  - `mempoolTransition` (`Mempool.hs:91-138`) runs, in the reference's order: a transaction none of whose inputs the
+    UTxO set holds is refused (`ConwayMempoolFailure` of `MempoolProblem.AllInputsSpent`), and then nothing else is
+    checked (`whenFailureFreeDefault`); below version 11 of the environment's parameters, the unelected committee voters
+    (`unelectedCommitteeVoters` of the governance state's committee and the certificate state's committee state) are
+    MEMPOOL's failure (`MempoolProblem.UnelectedCommittee`, the voters as the reference's set lists them); then Conway's
+    LEDGER one level down. The proposals are the node's record in the governance state, as LEDGER reads them
+    (`ProposalsRecord`).
+  - The run (`ConwayMempoolRun`), on the fused interpreter, every failure accumulated and the events discarded
+    (`ruleApplyTxValidation`, `asoEvents = EPDiscard`): `applyTx` is `applyTxWithFullValidation`, the transaction
+    annotated against the stored outputs of its inputs, reference inputs and collateral with the environment's
+    parameters and an empty cache, then MEMPOOL with every check, giving the state after and what it was validated with
+    (`ConwayValidated`, the reference's `ValidatedTx`: the annotation, the environment's protocol version and the slot);
+    `mkMempoolEnv` is the reference's (no epoch, the least index). `reapply` is the function the build's consensus
+    calls, an exhaustive match on the build of the judgment's `Globals` (REF-3), which also selects UTXO's injection of
+    Shelley's failures: under 11.1, the ledger's `reapplyTx` (ouroboros-consensus 82ecba32 `Shelley/Ledger/Mempool.hs:325-348`;
+    `Shelley/API/Mempool.hs:465-473`), the transaction annotated again and MEMPOOL without the static checks, whatever
+    version it was validated at; under 11.2 and the Leios build, its `reapplyValidatedTx` (808e4005 `:349-372`,
+    2416493b `:368-391`; `Shelley/API/Mempool.hs:420-439`), the held annotation without the static checks under the
+    state's major version, the transaction annotated again and every check under another.
+  - Evidence (`ConwayMempoolRunSuite`):
+    - on every Conway case of the refusal corpus, at its recorded protocol version and at 9, 10 and 11, under each
+      build, `applyTx` and `reapply` (of the transaction held as validated in that state: under 11.2 and the Leios
+      build on the annotation of its validation) give the flat MEMPOOL's (`MempoolLedger.submit` and `reapply`)
+      failures in the same order, through the flat projection, or the same ledger state; where the 11.2 and Leios builds refuse a
+      withdrawal in LEDGER below version 11, the three cases of the moved withdrawals, every other failure is the
+      same (the named difference of [#85](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7055304484),
+      which `ConwayLedgerChecksSuite` compares in the reference's form);
+    - at the root, as the mempool runs it, `applyTx`'s refusal of every corpus case but the three the measure refuses
+      first (`all-inputs-spent`, MEMPOOL's own, among them) encodes to the reference's refusal byte for byte;
+    - on the pool suites' transactions (`TxKit`: a payment, one after another, a fee too small, inputs all spent, a
+      double spend, a missing witness, a signature that does not verify, an expired and a live validity interval, a
+      reference input, an output with a Plutus reference script, a stake registration, an unelected voter), at each
+      version and under each build, the same verdicts, failures and
+      states as the flat MEMPOOL, the environment's epoch the slot's and the state's alike;
+    - an unelected committee voter is MEMPOOL's failure at version 10 and GOV's at 11, after LEDGER's failures in the
+      reference's order; no recording holds this refusal, so its order is the flat rule's, not checked against the
+      reference's bytes;
+    - a transaction that only the static checks refuse (a signature that does not verify), held as validated at
+      version 10 and applied again at 11, is admitted under 11.1 and refused under 11.2 and the Leios build with the full
+      application's failures; held at 11, it is admitted under every build.
+  - A difference of the flat path, recorded and not decided: the flat pool's `MempoolLedger.reapply` is 11.1's
+    `reapplyTx` under every build, so under 11.2 and the Leios build it admits again a held transaction whose major
+    version changed, which their `reapplyValidatedTx` validates in full (the suite asserts it). The node keeps the flat
+    path until the mempool is wired to the era rules (the plan's PR6).
 - **Next, Conway's rules.** The first rule ported is one that needs no parameters, the second one that
   does, each under a differential against the flat rule on the recorded blocks and the refusal corpus.
 - The body is read through the flat decoder for now. What only the projection refuses (an update, genesis
