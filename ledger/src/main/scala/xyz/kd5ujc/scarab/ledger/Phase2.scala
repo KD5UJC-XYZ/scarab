@@ -103,9 +103,13 @@ object Phase2:
     val outcome = Either.catchNonFatal(job.requests.map(run(_, evaluator))).leftMap(Defect(_))
     new Completed(job, outcome)
 
-  /** Only the ledger's preparation factory can install this capability. */
-  sealed abstract class Preparation:
-    private[ledger] def append(job: Job): Unit
+  /** Only the ledger's preparation factory can install this capability: the recorder of one block's
+    * jobs `J`, the flat rules' ([[Preparation]]) or an era block run's.
+    */
+  sealed abstract class Recorder[J]:
+    private[ledger] def append(job: J): Unit
+
+  type Preparation = Recorder[Job]
 
   private[ledger] def job(
       index: Int,
@@ -126,11 +130,17 @@ object Phase2:
   /** Instance-local builder behind a pure, block-local interface. It avoids a second ledger pass on
     * the measured hot path; neither the capability nor the tentative state escapes the plan.
     */
-  @SuppressWarnings(Array("org.wartremover.warts.MutableDataStructures"))
   private[ledger] def capture[A](body: Preparation => A): (Either[Defect, A], Vector[Job]) =
-    val jobs = Vector.newBuilder[Job]
-    val recorder = new Preparation:
-      def append(job: Job): Unit = { val _ = jobs.addOne(job); () }
+    captured[Job, A](body)
+
+  /** [[capture]] of the jobs `J` of any body program: the jobs recorded before a raw defect are
+    * kept beside it, so that the plan lands them in order before the defect.
+    */
+  @SuppressWarnings(Array("org.wartremover.warts.MutableDataStructures"))
+  private[ledger] def captured[J, A](body: Recorder[J] => A): (Either[Defect, A], Vector[J]) =
+    val jobs = Vector.newBuilder[J]
+    val recorder = new Recorder[J]:
+      def append(job: J): Unit = { val _ = jobs.addOne(job); () }
     val result = Either.catchNonFatal(body(recorder)).leftMap(Defect(_))
     (result, jobs.result())
 
