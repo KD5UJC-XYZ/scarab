@@ -5,7 +5,8 @@ import cats.Order
 import cats.data.NonEmptyMap
 import scala.concurrent.duration.FiniteDuration
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.protocol.{EbHash, EbPoint}
+import xyz.kd5ujc.scarab.crypto.bls.RbHash
+import xyz.kd5ujc.scarab.protocol.{EbHash, EbPoint, LeiosTxHash}
 import xyz.kd5ujc.scarab.protocol.LeiosWord.Word64
 
 /** A size in bytes on the Leios protocols: the reference's `BytesSize`, a `Word32`
@@ -47,6 +48,14 @@ object LeiosOrders:
       if bySlot != 0 then bySlot else ebHashOrder.compare(a.hash, b.hash)
     )
   given ebHashOrdering: Ordering[EbHash] = ebHashOrder.toOrdering
+
+  /** A transaction hash and an announcing header's hash as `TxHash` and `RbHash` order
+    * (`Leios/Types.hs` 116-117, 147-148 at 2416493b): their bytes' unsigned lexicographic order.
+    * Keys a peer chooses are kept in ordered maps by these, as the reference keeps them, never
+    * hashed: `Bytes.hashCode` collisions are cheap to make.
+    */
+  given txHashOrdering: Ordering[LeiosTxHash] = (a, b) => a.bytes.compareTo(b.bytes)
+  given rbHashOrdering: Ordering[RbHash] = (a, b) => a.bytes.compareTo(b.bytes)
   given ebPointOrdering: Ordering[EbPoint] = ebPointOrder.toOrdering
   given slotOrdering: Ordering[Word64] = Ordering.by(_.toBigInt)
 

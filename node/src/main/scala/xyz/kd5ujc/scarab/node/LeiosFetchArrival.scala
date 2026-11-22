@@ -10,6 +10,7 @@ import cats.mtl.syntax.all.*
 import cats.syntax.all.*
 import scala.collection.immutable.{SortedMap, SortedSet}
 import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.consensus.leios.LeiosOrders.txHashOrdering
 import xyz.kd5ujc.scarab.consensus.leios.{
   BytesSize,
   ProtVerParity,
@@ -88,12 +89,7 @@ final class LeiosFetchArrival[F[_], P](
     val tooBig = Option.when(closure > request.maxEbTxsSize.toLong)(request.maxEbTxsSize)
     val wrongLength = sent != request.offeredSize
     val received = LeiosEb.hashOf(txs)
-    val duplicates = txs
-      .groupMapReduce(_._1.bytes)(_ => 1)(_ + _)
-      .collect { case (hash, n) if n > 1 => hash }
-      .toVector
-      .sortWith(_.compareTo(_) < 0)
-      .map(LeiosTxHash.fromBytes)
+    val duplicates = LeiosFetchArrival.duplicateTxHashes(txs)
     for
       _ <- fault(LeiosFetchFault.BodyHashMismatch(point, received))
         .unlessA(received.bytes == h.bytes)
@@ -316,6 +312,21 @@ object LeiosFetchArrival:
       */
     def writes: Long = if ingest.isEmpty then 2 else 3
 
+  /** `duplicateTxHashes` (`LeiosDemoLogic.hs` 930-936 at ouroboros-consensus 2416493b): the hashes
+    * a body lists more than once, in their bytes' order, counted in a map ordered by `order`, as
+    * `Map.fromListWith` counts them. They are never hashed: a producer chooses them, and
+    * `Bytes.hashCode` collisions are cheap to make.
+    */
+  def duplicateTxHashes(txs: Vector[(LeiosTxHash, Word32)])(using
+      order: Ordering[LeiosTxHash]
+  ): Vector[LeiosTxHash] =
+    txs
+      .foldLeft(SortedMap.empty[LeiosTxHash, Int])((counts, entry) =>
+        counts.updatedWith(entry._1)(n => Some(n.fold(1)(_ + 1)))
+      )
+      .collect { case (hash, n) if n > 1 => hash }
+      .toVector
+
   /** The body's transactions by offset (`fullTxSet`, `LeiosDemoLogic.hs` 1028-1029). */
   def txSet(eb: LeiosEb): SortedMap[Int, (LeiosTxHash, BytesSize)] =
     SortedMap.from(eb.transactions.toVector.zipWithIndex.map { case ((hash, size), offset) =>
@@ -355,7 +366,7 @@ object LeiosMempoolPull:
   /** What a pull found: the misses still to fetch, the hits' bytes by hash, and their parity. */
   final case class Found(
       missed: SortedMap[Int, (LeiosTxHash, BytesSize)],
-      hits: Map[LeiosTxHash, Bytes],
+      hits: SortedMap[LeiosTxHash, Bytes],
       parity: Option[ProtVerParity]
   )
 
@@ -372,4 +383,4 @@ object LeiosMempoolPull:
 
   /** `noMempoolPull` (`LeiosDemoLogic.hs` 1174-1178): every miss kept, nothing found. */
   def none[F[_]: Applicative]: LeiosMempoolPull[F] =
-    misses => Applicative[F].pure(Found(misses, Map.empty, None))
+    misses => Applicative[F].pure(Found(misses, SortedMap.empty, None))

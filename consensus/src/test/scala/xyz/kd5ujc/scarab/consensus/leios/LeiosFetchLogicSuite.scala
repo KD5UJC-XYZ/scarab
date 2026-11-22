@@ -579,7 +579,7 @@ class LeiosFetchLogicSuite extends ScalaCheckSuite:
       .recordMaxAnnouncementSlot(h, slot(10), None)
       .acquireEbBody(h, demoPool(0 to 4))
       .focusElectionIfUnfocused(ElId(slot(10), fixtureIssuer), h)
-      .copy(requestedEbPeers = Map(eb('z') -> NonEmptySet.of(peerA, peerB)))
+      .copy(requestedEbPeers = SortedMap(eb('z') -> NonEmptySet.of(peerA, peerB)))
     val offers = SortedMap(
       peerA -> SortedMap(
         EbPoint(slot(10), h) -> PeerOffer(None, None, WhetherTxsClosureOffered.Offered)
@@ -590,7 +590,7 @@ class LeiosFetchLogicSuite extends ScalaCheckSuite:
       .outstanding
     assertEquals(
       after.requestedJobsPerPeer.get(peerA).map(_.keySet),
-      Some(Set(LeiosJobPoolOf(h, LeiosJobPoolId.first)))
+      Some(SortedSet(LeiosJobPoolOf(h, LeiosJobPoolId.first)))
     )
     val removed = LeiosFetchLogic.removePeer(peerA, after)
     assertEquals(removed.requestedBytesSizePerPeer.get(peerA), None)
@@ -606,7 +606,7 @@ class LeiosFetchLogicSuite extends ScalaCheckSuite:
     val h = eb('a')
     val o = empty.copy(
       requestedBytesSizePerPeer = SortedMap(peerA -> size(100)),
-      requestedEbPeers = Map(h -> NonEmptySet.of(peerA))
+      requestedEbPeers = SortedMap(h -> NonEmptySet.of(peerA))
     )
     val once = LeiosFetchLogic.refundEbRequest(peerA, h, size(100), o)
     assertEquals(once.requestedBytesSizePerPeer.get(peerA), None)
@@ -698,7 +698,7 @@ class LeiosFetchLogicSuite extends ScalaCheckSuite:
     assertEquals(
       again.requestedJobsPerPeer.get(peerA),
       Some(
-        Map(
+        SortedMap(
           LeiosJobPoolOf(h, old) -> NonEmptySet.of(0, 1),
           LeiosJobPoolOf(h, next) -> NonEmptySet.of(0, 1)
         )
@@ -760,7 +760,7 @@ class LeiosFetchLogicSuite extends ScalaCheckSuite:
     // the old pool's ids are released; the peer's requests for the new pool's stay in flight
     assertEquals(
       late.requestedJobsPerPeer.get(peerA),
-      Some(Map(LeiosJobPoolOf(h, LeiosJobPoolId.first.next) -> NonEmptySet.of(0, 1)))
+      Some(SortedMap(LeiosJobPoolOf(h, LeiosJobPoolId.first.next) -> NonEmptySet.of(0, 1)))
     )
     // the same request retires its jobs from the pool that issued it
     val done = stale.foldLeft(asked)((acc, r) => LeiosFetchLogic.completeTxRequest(peerA, r, acc))
@@ -891,5 +891,8 @@ class LeiosFetchLogicSuite extends ScalaCheckSuite:
         Map(h(2) -> Bytes(Vector(2.toByte)))
       )
     )
-    assertEquals(LeiosFetchLogic.mempoolPull(Map.empty, misses), (misses, Map.empty))
+    assertEquals(
+      LeiosFetchLogic.mempoolPull(Map.empty, misses),
+      (misses, SortedMap.empty[LeiosTxHash, Bytes])
+    )
   }

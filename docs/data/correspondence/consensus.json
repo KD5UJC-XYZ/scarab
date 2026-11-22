@@ -1752,7 +1752,7 @@
     "LeiosFetchLogicSuite"
    ],
    "note": "the MultiSet as positive counts by hash",
-   "digest": "099f7014257c496c"
+   "digest": "215a40cfca106070"
   },
   "class consensus.leios.LeiosOutstanding": {
    "upstream": [
@@ -1774,7 +1774,7 @@
     "LeiosFetchLogicSuite"
    ],
    "note": "over the peers' identifiers; the reference's PeerId newtype is the identifier itself; requestedJobsPerPeer keyed by the endorser block and the pool (LeiosJobPoolOf) where the reference keys it by the endorser block alone; and nextJobPool, the id the next pool installed takes, which no prune resets; an Improvement approved on 2026-11-22: a reply after its endorser block was pruned and acquired again with another pool no longer matches that pool's jobs by number",
-   "digest": "bcb63ef1713cc7bb",
+   "digest": "3dfe5871d4193e3d",
    "record": "https://github.com/KD5UJC-XYZ/scarab/issues/54#issuecomment-7076220269"
   },
   "def consensus.leios.LeiosOutstanding#isFocused": {
@@ -2010,7 +2010,7 @@
    "evidence": [
     "LeiosFetchLogicSuite"
    ],
-   "digest": "e6f78547641b36c4",
+   "digest": "3454494d513fbe66",
    "note": "no pool installed yet: nextJobPool at its first id (LeiosJobPoolId)"
   },
   "def consensus.leios.LeiosOutstanding.initialized": {
@@ -2247,7 +2247,7 @@
    "evidence": [
     "LeiosFetchLogicSuite"
    ],
-   "digest": "f4b1e09edad11a86",
+   "digest": "77f2bee8b4e8719c",
    "record": "https://github.com/KD5UJC-XYZ/scarab/issues/54#issuecomment-7076220269",
    "note": "the peer's jobs in flight are unpicked in the held pool only where it is the pool they were picked from; an Improvement approved on 2026-11-22: a reply after its endorser block was pruned and acquired again with another pool no longer matches that pool's jobs by number"
   },
@@ -2407,7 +2407,7 @@
     "LeiosFetchLogicSuite"
    ],
    "note": "the pure step after the index is read; the index holds only transactions with bytes, so the reference's toBytes is the identity here",
-   "digest": "9b28653a9d6af1ad"
+   "digest": "d7a1c9f2ee159390"
   },
   "class consensus.leios.AnnouncingHeader": {
    "upstream": [
@@ -2775,7 +2775,7 @@
    "class": "Mirror",
    "structure": "same",
    "note": "the state newLeiosVoteState's two TVars hold: the tallies by announcing block and the first-seen order of their blocks",
-   "digest": "78755c8cdbadea50"
+   "digest": "eea49a7f4808bd69"
   },
   "object consensus.leios.LeiosVoteState": {
    "upstream": [
@@ -2793,7 +2793,7 @@
    "class": "Mirror",
    "structure": "same",
    "note": "the empty state and the bound of the window",
-   "digest": "07959adc0a890da2"
+   "digest": "97429f210a38b009"
   },
   "val consensus.leios.LeiosVoteState.empty": {
    "upstream": [
@@ -2811,7 +2811,7 @@
    "class": "Mirror",
    "structure": "same",
    "note": "the empty map and order newLeiosVoteState starts from",
-   "digest": "1173dd4d15b1d555"
+   "digest": "e4836034632a54b7"
   },
   "val consensus.leios.LeiosVoteState.Window": {
    "upstream": [
@@ -4241,7 +4241,9 @@
     "def consensus.leios.FocusedEbs.deleted",
     "object consensus.leios.LeiosOutstanding",
     "class consensus.leios.LeiosFetchDecision",
-    "object consensus.leios.LeiosFetchLogic"
+    "object consensus.leios.LeiosFetchLogic",
+    "given consensus.leios.LeiosOrders.txHashOrdering",
+    "given consensus.leios.LeiosOrders.rbHashOrdering"
    ]
   },
   {
@@ -4311,6 +4313,14 @@
    "reason": "The LeiosTxCache index's empty index over orderings it is given, so that a test can count the comparisons of its maps; the node takes the byte orderings (#54).",
    "definitions": [
     "def consensus.leios.LeiosTxCacheIndex.ordered"
+   ]
+  },
+  {
+   "reason": "the orders a peer's jobs in flight are kept in (requestedJobsPerPeer as an ordered map, as the reference's Map): a pool id by its count, and a pool of an endorser block by the block's hash bytes then the pool's id; Scala plumbing with no counterpart of its own, the pool id being part of the approved Improvement of LeiosJobPoolId (#54)",
+   "definitions": [
+    "object consensus.leios.LeiosJobPoolOf",
+    "given consensus.leios.LeiosJobPoolOf.given_Ordering_LeiosJobPoolOf",
+    "given consensus.leios.LeiosJobPoolId.given_Ordering_LeiosJobPoolId"
    ]
   }
  ]
