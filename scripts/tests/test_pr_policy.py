@@ -2,8 +2,11 @@
 import copy
 from datetime import datetime, timezone
 from pathlib import Path
+import json
 import re
+import subprocess
 import sys
+import tempfile
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -433,6 +436,64 @@ class StorageFormatTests(unittest.TestCase):
             with self.subTest(hidden=hidden[:30]), self.assertRaisesRegex(policy.PolicyError, "section|is missing"):
                 self.check(self.pr(body=base + hidden))
         self.assertTrue(self.check(self.pr(body=base + RECORD + "---\n\nmore prose\n")))
+
+
+class FileListTests(unittest.TestCase):
+    """The path checks decide on the complete list of changed paths, or the policy fails (GitHub lists at most 3,000)."""
+
+    def pr(self, changed, head="feature"):
+        pr = pull_request(head=head)
+        pr["title"], pr["user"], pr["body"] = "fix(node): repair", {"type": "User"}, body_of(1, "None", "None")
+        pr["changed_files"] = changed
+        return pr
+
+    def test_a_list_shorter_than_the_pull_request_fails(self):
+        listed = [f"node/src/main/scala/A{i}.scala" for i in range(3000)]
+        with self.assertRaisesRegex(policy.PolicyError, "changes 3001 files, but the policy read 3000 changed paths: "
+                                                        "GitHub lists at most 3,000"):
+            policy.check_file_list(self.pr(3001), listed)
+        for count in [None, "3000"]:
+            with self.subTest(count=count), self.assertRaisesRegex(policy.PolicyError, "changed paths"):
+                policy.check_file_list(self.pr(count), listed)
+
+    def test_a_complete_list_passes_and_one_read_from_git_may_hold_both_sides_of_a_rename(self):
+        listed = [f"node/src/main/scala/A{i}.scala" for i in range(3000)]
+        policy.check_file_list(self.pr(3000), listed)
+        policy.check_file_list(self.pr(2999), listed)
+        policy.check_file_list(self.pr(0), [])
+
+    def test_a_promotion_of_dev_reads_no_path_and_is_not_checked(self):
+        policy.check_file_list(self.pr(5000, head="dev"), [])
+
+    def test_the_list_is_read_one_path_per_line(self):
+        self.assertEqual(policy.changed_paths("docs/a b.md\nREADME.md\n\n"), ["docs/a b.md", "README.md"])
+        self.assertEqual(policy.changed_paths(""), [])
+
+    def test_the_command_line_refuses_a_short_list_and_checks_a_complete_one(self):
+        # A pull request of 3,001 files whose 3,001st is the storage format manifest: the list GitHub gives leaves the
+        # manifest out and is refused; the complete list, as git reads it, makes it a storage format change, which this
+        # title is not.
+        script = Path(__file__).resolve().parents[1] / "pr_policy.py"
+        listed = [f"node/src/main/scala/A{i}.scala" for i in range(3000)]
+        with tempfile.TemporaryDirectory() as tmp:
+            def write(name, text):
+                path = Path(tmp) / name
+                path.write_text(text, encoding="utf-8")
+                return str(path)
+            event = write("event.json", json.dumps({"repository": {"id": 42}, "pull_request": self.pr(3001)}))
+            def run(paths):
+                argv = [sys.executable, str(script), "--event", event, "--repository", "example/scarab",
+                        "--repository-id", "42", "--files", write("files.txt", "".join(f + "\n" for f in paths))]
+                return subprocess.run(argv, capture_output=True, text=True, env={})
+            short = run(listed)
+            self.assertNotEqual(short.returncode, 0)
+            self.assertIn("changes 3001 files, but the policy read 3000 changed paths", short.stderr)
+            complete = run(listed + [fmt.MANIFEST])
+            self.assertNotEqual(complete.returncode, 0)
+            self.assertIn("a storage format change (FMT-1) needs a title", complete.stderr)
+            plain = run(listed + ["node/src/main/scala/B.scala"])
+            self.assertEqual(plain.returncode, 0, plain.stderr)
+            self.assertEqual(json.loads(plain.stdout)["level"], 1)
 
 
 if __name__ == "__main__":

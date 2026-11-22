@@ -2,7 +2,9 @@
 name: PR policy
 
 # Evaluate metadata using trusted default-branch code. No PR checkout, cache, secret or build; the only network use is
-# a read of the pull request's changed paths, for the level floors of scripts/pr_policy.py.
+# a read of the pull request's changed paths, for the level floors of scripts/pr_policy.py, and, when GitHub's list of
+# them stops short, a fetch of the head and merge-base commits and trees (no file content) into a bare repository
+# outside the checkout, whose names `git diff` lists; nothing of the pull request is checked out or run.
 on:
   pull_request_target:
     types: [opened, reopened, synchronize, edited, ready_for_review]
@@ -26,13 +28,37 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
+      # GitHub lists at most 3,000 files of a pull request. When the list is shorter than changed_files, the paths are
+      # read from git instead: the head and the merge base, fetched as commits and trees only (no blobs, depth 1) into a
+      # bare repository in RUNNER_TEMP, and `git diff --name-only --no-renames` between them. A read that fails keeps
+      # the short list, which scripts/pr_policy.py refuses.
       - name: Read the changed paths
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          CHANGED_FILES: ${{ github.event.pull_request.changed_files }}
         run: |
           gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files" --jq '.[].filename' \
             > "$RUNNER_TEMP/files.txt"
+          listed=$(grep -c . "$RUNNER_TEMP/files.txt" || true)
+          if [ "$listed" -lt "$CHANGED_FILES" ]; then
+            repo="$RUNNER_TEMP/changed-paths.git"
+            auth=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)
+            if base=$(gh api "repos/${GITHUB_REPOSITORY}/compare/${BASE_SHA}...${HEAD_SHA}" \
+                  --jq '.merge_base_commit.sha') && [[ "$base" =~ ^[0-9a-f]{40}$ ]] \
+                && git init -q --bare "$repo" \
+                && GIT_TERMINAL_PROMPT=0 GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=http.https://github.com/.extraheader \
+                  GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $auth" git -C "$repo" fetch -q --no-tags --depth=1 \
+                  --filter=blob:none "https://github.com/${GITHUB_REPOSITORY}.git" "$HEAD_SHA" "$base" \
+                && git -C "$repo" diff --name-only --no-renames -z "$base" "$HEAD_SHA" > "$RUNNER_TEMP/files.z"; then
+              tr '\0' '\n' < "$RUNNER_TEMP/files.z" > "$RUNNER_TEMP/files.txt"
+              echo "GitHub listed ${listed} of ${CHANGED_FILES} changed files; read $(grep -c . "$RUNNER_TEMP/files.txt" || true) paths from git"
+            else
+              echo "GitHub listed ${listed} of ${CHANGED_FILES} changed files, and git could not read the rest"
+            fi
+          fi
       - name: Validate event metadata
         env:
           SCARAB_PROMOTION_POLICY: ${{ vars.SCARAB_PROMOTION_POLICY }}

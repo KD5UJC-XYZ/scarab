@@ -25,6 +25,13 @@ as it was asked and the owner's decision in neutral words, and the UTC times the
 `Asked at:`, `Decision:`, `Decided at:`). Those lines record an approval the owner gave in the chat session doing the
 work; this check reads their form only. It applies to a bot's pull request too, and not to a promotion of `dev`, whose changes each passed
 it as their own pull request. A storage format change is at least level 3.
+
+The changed paths (`--files`, one per line) are all of them, or the policy fails: GitHub's list of a pull request's
+files stops at 3,000, so when it is shorter the workflow reads the paths from git instead (the head and the merge base
+fetched as commits and trees only, never checked out, and `git diff --name-only --no-renames`, which names both sides
+of a rename). A list still shorter than the event's `changed_files` cannot show whether the pull request touches the
+register, the manifest or the guard, and fails rather than pass on what it leaves out. A promotion of `dev`, which
+reads no path, is not checked for this.
 """
 import argparse
 from datetime import datetime, timezone
@@ -367,6 +374,25 @@ def check_storage_format(pr, files, now):
     return True
 
 
+def changed_paths(text):
+    """The changed paths of the `--files` list, one per line, as the workflow writes them (a path may hold a space)."""
+    return [line for line in (text or "").splitlines() if line]
+
+
+def check_file_list(pr, files):
+    """The changed paths are all of them: at least the event's `changed_files` (a list read from git names both sides
+    of a rename, so it may hold more). A shorter list fails, since the path checks would decide on what it leaves out;
+    a promotion of `dev` reads no path and is not checked."""
+    if promotion(pr):
+        return
+    count = pr.get("changed_files")
+    require(type(count) is int and len(files) >= count,
+            f"the pull request changes {count} files, but the policy read {len(files)} changed paths: GitHub lists at "
+            "most 3,000 files of a pull request, and the complete list could not be read from git, so the policy cannot "
+            "see whether it touches the persisted-format register, the storage format manifest or its guard; run the "
+            "check again")
+
+
 def check_body(pr, files=()):
     """The level the body states; None for a bot's pull request and for a promotion of `dev`, whose changes each
     passed this check as their own pull request."""
@@ -428,7 +454,8 @@ def main():
             "event repository identity differs from the trusted runner")
     pr = event.get("pull_request", {})
     result = evaluate(pr, args.repository, args.repository_id, args.mode)
-    files = args.files.read_text(encoding="utf-8").split() if args.files else []
+    files = changed_paths(args.files.read_text(encoding="utf-8")) if args.files else []
+    check_file_list(pr, files)
     storage = check_storage_format(pr, files, datetime.now(timezone.utc))
     print(json.dumps(dict(result, level=check_body(pr, files), storageFormatChange=storage), sort_keys=True))
 
