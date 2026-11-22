@@ -6,8 +6,9 @@ import cats.data.{Chain, NonEmptyList, NonEmptySet}
 import cats.mtl.{Raise, Stateful, Tell}
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.{Address, Mismatch, TxIn}
+import xyz.kd5ujc.scarab.ledger.{Address, TxIn}
 import xyz.kd5ujc.scarab.ledger.era.*
+import xyz.kd5ujc.scarab.ledger.era.Relation.*
 import xyz.kd5ujc.scarab.ledger.rules.{Judge, Sts, Test}
 import xyz.kd5ujc.scarab.ledger.state.{CertState, Coin, Dijkstra, EraTag, UTxOState}
 
@@ -25,12 +26,12 @@ import xyz.kd5ujc.scarab.ledger.state.{CertState, Coin, Dijkstra, EraTag, UTxOSt
 enum DijkstraSubUtxoPredFailure[E <: EraTag]:
   case SubBadInputsUTxO(inputs: NonEmptySet[TxIn])
   case SubOutsideValidityIntervalUTxO(interval: ValidityInterval, slot: BigInt)
-  case SubMaxTxSizeUTxO(mismatch: Mismatch[BigInt])
+  case SubMaxTxSizeUTxO(mismatch: Mismatch[RelLTEQ, BigInt])
   case SubInputSetEmptyUTxO()
   case SubWrongNetwork(expected: Network, addresses: NonEmptySet[Address])
   case SubOutputBootAddrAttrsTooBig(outputs: NonEmptyList[TxOut[E]])
   case SubOutputTooBigUTxO(outputs: NonEmptyList[(Int, Int, TxOut[E])])
-  case SubWrongNetworkInTxBody(mismatch: Mismatch[Network])
+  case SubWrongNetworkInTxBody(mismatch: Mismatch[RelEQ, Network])
   case SubOutsideForecast(slot: BigInt)
   case SubBabbageOutputTooSmallUTxO(outputs: NonEmptyList[(TxOut[E], Coin)])
 

@@ -7,11 +7,11 @@ import xyz.kd5ujc.scarab.ledger.{
   GovAction as FlatGovAction,
   GovActionId,
   GovFailure,
-  Mismatch,
   Proposal,
   Voter
 }
 import xyz.kd5ujc.scarab.ledger.era.*
+import xyz.kd5ujc.scarab.ledger.era.Relation.*
 import xyz.kd5ujc.scarab.ledger.rules.{Convert, DijkstraConway}
 import xyz.kd5ujc.scarab.ledger.state.{
   AccountAddress,
@@ -35,7 +35,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
   * fields, which Dijkstra's encoder writes with a `Mismatch` as one item (`To mm`, `:168-169,
   * 180-181`). The fields are those of [[ConwayGovPredFailure]]: a voter and a voter's credential
   * the era's voter as the node reads it, until the votes carry the reference's typed voter (#85),
-  * and a mismatch the node's `Mismatch`, without the reference's relation (`RelEQ`, `RelGT`).
+  * and a mismatch with the reference's relation ([[Mismatch]]: `RelEQ`, `RelGT`).
   */
 enum DijkstraGovPredFailure[E <: EraTag]:
   case GovActionsDoNotExist(ids: NonEmptyList[GovActionId])
@@ -44,7 +44,7 @@ enum DijkstraGovPredFailure[E <: EraTag]:
   case TreasuryWithdrawalsNetworkIdMismatch(accounts: NonEmptySet[AccountAddress], network: Network)
 
   /** The deposit (supplied) and the parameters' (expected). */
-  case ProposalDepositIncorrect(mismatch: Mismatch[Coin])
+  case ProposalDepositIncorrect(mismatch: Mismatch[RelEQ, Coin])
 
   /** The votes on actions their voters may not vote on. */
   case DisallowedVoters(votes: NonEmptyList[(Voter, GovActionId)])
@@ -62,7 +62,7 @@ enum DijkstraGovPredFailure[E <: EraTag]:
     */
   case ProposalCantFollow(
       parent: Option[GovPurposeId[GovActionPurpose.HardFork]],
-      mismatch: Mismatch[ProtVer]
+      mismatch: Mismatch[RelGT, ProtVer]
   )
 
   /** The guardrails script hash the proposal names, and the constitution's. */
@@ -155,7 +155,7 @@ object DijkstraGovPredFailure:
           )
         )
       case ProposalDepositIncorrect(m) =>
-        Right(GovFailure.ProposalDepositIncorrect(Mismatch(m.supplied.value, m.expected.value)))
+        Right(GovFailure.ProposalDepositIncorrect(m.storedBy(_.value)))
       case DisallowedVoters(votes) => Right(GovFailure.DisallowedVoters(votes.toList.toVector))
       case ConflictingCommitteeUpdate(members) =>
         Right(GovFailure.ConflictingCommitteeUpdate(members.toSortedSet.map(Convert.back(_))))
@@ -172,7 +172,7 @@ object DijkstraGovPredFailure:
         Right(
           GovFailure.ProposalCantFollow(
             parent.map(_.unGovPurposeId),
-            Mismatch(version(m.supplied), version(m.expected))
+            m.storedBy(version(_))
           )
         )
       case InvalidGuardrailsScriptHash(proposed, constitution) =>

@@ -5,6 +5,7 @@ import cats.syntax.all.*
 import java.time.Instant
 import munit.FunSuite
 import xyz.kd5ujc.scarab.ledger as flat
+import xyz.kd5ujc.scarab.ledger.Unsigned
 import xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraTxIn
 import xyz.kd5ujc.scarab.ledger.{
   EpochGeometry,
@@ -16,6 +17,7 @@ import xyz.kd5ujc.scarab.ledger.{
   Verdicts
 }
 import xyz.kd5ujc.scarab.ledger.era.*
+import xyz.kd5ujc.scarab.ledger.era.Relation.*
 import xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraCorpus.*
 import xyz.kd5ujc.scarab.ledger.era.rules.*
 import xyz.kd5ujc.scarab.ledger.rules.{Convert, Globals}
@@ -25,6 +27,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
   CertState,
   ChainAccountState,
   Coin,
+  DeltaCoin,
   CompactCoin,
   ConwayAccounts,
   Credential,
@@ -878,7 +881,7 @@ class DijkstraLedgerSuite extends FunSuite:
       )
     val tooBig =
       DijkstraLedgerPredFailure.DijkstraTxRefScriptsSizeTooBig[Dijkstra](
-        flat.Mismatch(size, size - 1)
+        Mismatch(size, size - 1)
       )
     val entities = judged(k, pp)
     assert(entities.nonEmpty && entities.forall(isOf(_) == 2), s"$entities")
@@ -908,7 +911,7 @@ class DijkstraLedgerSuite extends FunSuite:
       )
     val mismatch =
       DijkstraLedgerPredFailure.DijkstraTreasuryValueMismatch[Dijkstra](
-        flat.Mismatch(Coin(5000000), Coin(7000000))
+        Mismatch(Coin(5000000), Coin(7000000))
       )
     val valid = crafted(k, valid = true, _ :+ treasury)
     assertEquals(bodies.currentTreasuryValue[TxLevel.Top](valid.tx.body), Some(Coin(5000000)))
@@ -1113,7 +1116,7 @@ class DijkstraLedgerSuite extends FunSuite:
       ledgerOf(k, params = maxRefScriptSize(refSize - 1)),
       Vector(
         DijkstraLedgerPredFailure.DijkstraTxRefScriptsSizeTooBig[Dijkstra](
-          flat.Mismatch(refSize, refSize - 1)
+          Mismatch(refSize, refSize - 1)
         )
       )
     )
@@ -1139,7 +1142,7 @@ class DijkstraLedgerSuite extends FunSuite:
       ledgerOf(k, params = maxRefScriptSize(refSize)),
       Vector(
         DijkstraLedgerPredFailure.DijkstraTxRefScriptsSizeTooBig[Dijkstra](
-          flat.Mismatch(2 * refSize, refSize)
+          Mismatch(2 * refSize, refSize)
         )
       )
     )
@@ -1165,10 +1168,10 @@ class DijkstraLedgerSuite extends FunSuite:
       ledgerOf(k, params = maxRefScriptSize(refSize - 1), treasury = Coin(5000000)),
       Vector(
         DijkstraLedgerPredFailure.DijkstraTxRefScriptsSizeTooBig[Dijkstra](
-          flat.Mismatch(refSize, refSize - 1)
+          Mismatch(refSize, refSize - 1)
         ),
         DijkstraLedgerPredFailure.DijkstraTreasuryValueMismatch[Dijkstra](
-          flat.Mismatch(Coin(5000001), Coin(5000000))
+          Mismatch(Coin(5000001), Coin(5000000))
         )
       )
     )
@@ -1202,7 +1205,7 @@ class DijkstraLedgerSuite extends FunSuite:
         DijkstraSubLedgerPredFailure.SubUtxowFailure(
           DijkstraSubUtxowPredFailure.SubUtxoFailure(
             DijkstraSubUtxoPredFailure.SubWrongNetworkInTxBody(
-              flat.Mismatch(Network.Mainnet, Network.Testnet)
+              Mismatch(Network.Mainnet, Network.Testnet)
             )
           )
         )
@@ -1332,7 +1335,7 @@ class DijkstraLedgerSuite extends FunSuite:
         DijkstraLedgerPredFailure.DijkstraUtxowFailure[Dijkstra](
           DijkstraUtxowPredFailure.UtxoFailure(
             DijkstraUtxoPredFailure.ValueNotConservedInLegacyMode(
-              flat.Mismatch(
+              Mismatch(
                 MultiAssetValue.ofAda(8 * m + deposit + 5 * m + 4 * m),
                 MultiAssetValue.ofAda(10 * m + 3 * m + 4 * m)
               )
@@ -1544,13 +1547,13 @@ class DijkstraLedgerSuite extends FunSuite:
     def into[F](f: F)(using i: InjectLedgerFailure[F, Dijkstra]): LedgerPredFailure[Dijkstra] =
       i.injectFailure(f)
     val missing = Map(account -> Coin(1))
-    val inexact = cats.data.NonEmptyMap.one(account, flat.Mismatch(Coin(1), Coin(2)))
+    val inexact = cats.data.NonEmptyMap.one(account, Mismatch[RelEQ, Coin](Coin(1), Coin(2)))
     val deleg = ConwayDelegPredFailure.IncorrectDepositDELEG[Dijkstra](Coin(1))
     val certs =
       ConwayCertsPredFailure.CertFailure[Dijkstra](ConwayCertPredFailure.DelegFailure(deleg))
     val utxow = DijkstraUtxowPredFailure.InvalidMetadata[Dijkstra]()
     val gov =
-      DijkstraGovPredFailure.ProposalDepositIncorrect[Dijkstra](flat.Mismatch(Coin(1), Coin(2)))
+      DijkstraGovPredFailure.ProposalDepositIncorrect[Dijkstra](Mismatch(Coin(1), Coin(2)))
     val entities = DijkstraLedgerPredFailure.DijkstraEntitiesFailure[Dijkstra](_)
     // `conwayToDijkstraLedgerPredFailure` (`Dijkstra/Rules/Ledger.hs:534-543`, cardano-ledger
     // 9df9f98c) on the seven constructors it maps
@@ -1569,18 +1572,18 @@ class DijkstraLedgerSuite extends FunSuite:
     assertEquals(
       into(
         new ConwayLedgerPredFailure.ConwayTreasuryValueMismatch[Dijkstra](
-          flat.Mismatch(Coin(1), Coin(2))
+          Mismatch(Coin(1), Coin(2))
         )
       ),
       DijkstraLedgerPredFailure.DijkstraTreasuryValueMismatch[Dijkstra](
-        flat.Mismatch(Coin(1), Coin(2))
+        Mismatch(Coin(1), Coin(2))
       )
     )
     assertEquals(
       into(
-        new ConwayLedgerPredFailure.ConwayTxRefScriptsSizeTooBig[Dijkstra](flat.Mismatch(2L, 1L))
+        new ConwayLedgerPredFailure.ConwayTxRefScriptsSizeTooBig[Dijkstra](Mismatch(2L, 1L))
       ),
-      DijkstraLedgerPredFailure.DijkstraTxRefScriptsSizeTooBig[Dijkstra](flat.Mismatch(2L, 1L))
+      DijkstraLedgerPredFailure.DijkstraTxRefScriptsSizeTooBig[Dijkstra](Mismatch(2L, 1L))
     )
     assertEquals(
       into(new ConwayLedgerPredFailure.ConwayWithdrawalsMissingAccounts[Dijkstra](missing)),
@@ -1640,7 +1643,7 @@ class DijkstraLedgerSuite extends FunSuite:
     assertEquals(into(gov), DijkstraLedgerPredFailure.DijkstraGovFailure[Dijkstra](gov))
     assertEquals(
       into(
-        ConwayGovPredFailure.ProposalDepositIncorrect[Dijkstra](flat.Mismatch(Coin(1), Coin(2)))
+        ConwayGovPredFailure.ProposalDepositIncorrect[Dijkstra](Mismatch(Coin(1), Coin(2)))
       ),
       DijkstraLedgerPredFailure.DijkstraGovFailure[Dijkstra](gov)
     )
@@ -1659,7 +1662,7 @@ class DijkstraLedgerSuite extends FunSuite:
     )
     // the identity (`:121`)
     val own = DijkstraLedgerPredFailure.DijkstraTreasuryValueMismatch[Dijkstra](
-      flat.Mismatch(Coin(1), Coin(2))
+      Mismatch(Coin(1), Coin(2))
     )
     assertEquals(into(own), own)
   }
@@ -1709,9 +1712,9 @@ class DijkstraLedgerSuite extends FunSuite:
     val certs =
       ConwayCertsPredFailure.CertFailure[Dijkstra](ConwayCertPredFailure.DelegFailure(deleg))
     val gov =
-      DijkstraGovPredFailure.ProposalDepositIncorrect[Dijkstra](flat.Mismatch(Coin(1), Coin(2)))
+      DijkstraGovPredFailure.ProposalDepositIncorrect[Dijkstra](Mismatch(Coin(1), Coin(2)))
     val own = DijkstraLedgerPredFailure.DijkstraTreasuryValueMismatch[Dijkstra](
-      flat.Mismatch(Coin(1), Coin(2))
+      Mismatch(Coin(1), Coin(2))
     )
     // `Dijkstra/Rules/Ledgers.hs:25-82`, cardano-ledger 9df9f98c
     assertEquals(into(own), ShelleyLedgersPredFailure.LedgerFailure[Dijkstra](own))
@@ -1730,7 +1733,7 @@ class DijkstraLedgerSuite extends FunSuite:
     assertEquals(into(gov), viaLedger(gov))
     assertEquals(
       into(
-        ConwayGovPredFailure.ProposalDepositIncorrect[Dijkstra](flat.Mismatch(Coin(1), Coin(2)))
+        ConwayGovPredFailure.ProposalDepositIncorrect[Dijkstra](Mismatch(Coin(1), Coin(2)))
       ),
       viaLedger(gov)
     )
@@ -1749,7 +1752,7 @@ class DijkstraLedgerSuite extends FunSuite:
         )
       )
     val hash = xyz.kd5ujc.scarab.codec.Bytes(Vector.fill(32)(7.toByte))
-    val integrity = flat.Mismatch[Option[xyz.kd5ujc.scarab.codec.Bytes]](None, Some(hash))
+    val integrity = Mismatch[RelEQ, Option[xyz.kd5ujc.scarab.codec.Bytes]](None, Some(hash))
     // `Dijkstra/Rules/Ledgers.hs:33-34`, cardano-ledger 9df9f98c, through
     // `babbageToConwayUtxowPredFailure`
     assertEquals(
@@ -1770,16 +1773,20 @@ class DijkstraLedgerSuite extends FunSuite:
     // Alonzo's, Shelley's and Allegra's failures (`Dijkstra/Rules/Utxo.hs:182-195`, cardano-ledger
     // 9df9f98c)
     val babbage: DijkstraUtxo.BabbageFailure[Dijkstra] =
-      new BabbageUtxoPredFailure.IncorrectTotalCollateralField[Dijkstra](BigInt(1), Coin(2))
+      new BabbageUtxoPredFailure.IncorrectTotalCollateralField[Dijkstra](DeltaCoin(1), Coin(2))
     assertEquals(
       into(babbage),
-      inUtxo(DijkstraUtxoPredFailure.IncorrectTotalCollateralField(BigInt(1), Coin(2)))
+      inUtxo(DijkstraUtxoPredFailure.IncorrectTotalCollateralField(DeltaCoin(1), Coin(2)))
     )
     val alonzo: DijkstraUtxo.AlonzoFailure[Dijkstra] =
-      new AlonzoUtxoPredFailure.TooManyCollateralInputs[Dijkstra](flat.Mismatch(4, 3))
+      new AlonzoUtxoPredFailure.TooManyCollateralInputs[Dijkstra](
+        Mismatch(Unsigned.lit(4), Unsigned.lit(3))
+      )
     assertEquals(
       into(alonzo),
-      inUtxo(DijkstraUtxoPredFailure.TooManyCollateralInputs(flat.Mismatch(4, 3)))
+      inUtxo(
+        DijkstraUtxoPredFailure.TooManyCollateralInputs(Mismatch(Unsigned.lit(4), Unsigned.lit(3)))
+      )
     )
     val badInput =
       cats.data.NonEmptySet.one(chain.head.utxo.unUTxO.keys.head)(using cats.Order.fromOrdering)
@@ -1812,17 +1819,17 @@ class DijkstraLedgerSuite extends FunSuite:
     // cardano-ledger 9df9f98c), and `:75-76`
     assertEquals(
       into(
-        ShelleyPoolPredFailure.StakePoolCostTooLowPOOL[Dijkstra](flat.Mismatch(Coin(1), Coin(2)))
+        ShelleyPoolPredFailure.StakePoolCostTooLowPOOL[Dijkstra](Mismatch(Coin(1), Coin(2)))
       ),
       inCert(
         ConwayCertPredFailure.PoolFailure(
-          DijkstraPoolPredFailure.StakePoolCostTooLowPOOL(flat.Mismatch(Coin(1), Coin(2)))
+          DijkstraPoolPredFailure.StakePoolCostTooLowPOOL(Mismatch(Coin(1), Coin(2)))
         )
       )
     )
     val drep =
       DijkstraGovCertPredFailure.DijkstraDRepIncorrectDeposit[Dijkstra](
-        flat.Mismatch(Coin(1), Coin(2))
+        Mismatch(Coin(1), Coin(2))
       )
     assertEquals(into(drep), inCert(ConwayCertPredFailure.GovCertFailure(drep)))
     // the instances are contravariant: a constructor's type finds its family's instance, or the
@@ -2012,7 +2019,7 @@ class DijkstraLedgerSuite extends FunSuite:
                   DijkstraSubLedgerPredFailure.SubUtxowFailure(
                     DijkstraSubUtxowPredFailure.SubUtxoFailure(
                       DijkstraSubUtxoPredFailure.SubWrongNetworkInTxBody(
-                        flat.Mismatch(Network.Mainnet, Network.Testnet)
+                        Mismatch(Network.Mainnet, Network.Testnet)
                       )
                     )
                   )
@@ -2084,7 +2091,7 @@ class DijkstraLedgerSuite extends FunSuite:
       into(new ConwayLedgerPredFailure.ConwayMempoolFailure[Dijkstra](other)),
       DijkstraMempoolPredFailure.MempoolFailure[Dijkstra](other)
     )
-    val treasury = flat.Mismatch(Coin(1), Coin(2))
+    val treasury = Mismatch[RelEQ, Coin](Coin(1), Coin(2))
     assertEquals(
       into(new ConwayLedgerPredFailure.ConwayTreasuryValueMismatch[Dijkstra](treasury)),
       DijkstraMempoolPredFailure.LedgerFailure[Dijkstra](

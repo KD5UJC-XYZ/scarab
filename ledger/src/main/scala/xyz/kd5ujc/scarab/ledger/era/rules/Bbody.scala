@@ -6,15 +6,9 @@ import cats.data.Chain
 import cats.mtl.{Ask, Raise, Stateful, Tell}
 import cats.syntax.all.*
 import monocle.Lens
-import xyz.kd5ujc.scarab.ledger.{
-  LedgerDefect,
-  LedgerFailure,
-  Mismatch,
-  TranslationError,
-  TxIn,
-  Verdicts
-}
+import xyz.kd5ujc.scarab.ledger.{LedgerDefect, LedgerFailure, TranslationError, TxIn, Verdicts}
 import xyz.kd5ujc.scarab.ledger.era.*
+import xyz.kd5ujc.scarab.ledger.era.Relation.RelLTEQ
 import xyz.kd5ujc.scarab.ledger.era.conway.ConwayUTxO
 import xyz.kd5ujc.scarab.ledger.rules.{Globals, Judge, Sts, Test, focus}
 import xyz.kd5ujc.scarab.ledger.state.{
@@ -306,7 +300,7 @@ object ConwayBbody:
   ): F[Unit] =
     val pp = env.bbodyPp
     val curProtVerMajor = p.ppProtocolVersionL.get(pp).pvMajor
-    val checkHeaderProtVerTooHigh: Option[Mismatch[Version]] =
+    val checkHeaderProtVerTooHigh: Option[Mismatch[RelLTEQ, Version]] =
       val bhProtVerMajor = h.protVerBlockHeader(block).pvMajor
       Version
         .mkVersion(BigInt(curProtVerMajor.value) + 1)

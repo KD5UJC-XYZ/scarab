@@ -5,9 +5,12 @@ import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Rational, Value}
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.ledger as flat
-import xyz.kd5ujc.scarab.ledger.{Block as FlatBlock, LeiosBlock, Mismatch, Nonce}
+import xyz.kd5ujc.scarab.ledger.Unsigned
+import xyz.kd5ujc.scarab.ledger.Unsigned.Width.W32
+import xyz.kd5ujc.scarab.ledger.{Block as FlatBlock, LeiosBlock, Nonce}
 import xyz.kd5ujc.scarab.ledger.dijkstra.{DijkstraTx as FlatDijkstraTx, DijkstraTxIn}
 import xyz.kd5ujc.scarab.ledger.era.*
+import xyz.kd5ujc.scarab.ledger.era.Relation.*
 import xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraCorpus.*
 import xyz.kd5ujc.scarab.ledger.era.rules.*
 import xyz.kd5ujc.scarab.ledger.rules.Globals
@@ -107,7 +110,7 @@ class DijkstraBbodySuite extends FunSuite:
       )
       val info = l.versionInfoBlockHeader(block)
       assertEquals(
-        (BigInt(info.bhviHighestSupportedMajorVersion), BigInt(info.bhviSelfReportedSoftwareTag)),
+        (info.bhviHighestSupportedMajorVersion.value, info.bhviSelfReportedSoftwareTag.value),
         (b.header.leios.versionInfo.highestSupportedMajor, b.header.leios.versionInfo.softwareTag),
         name
       )
@@ -286,7 +289,7 @@ class DijkstraBbodySuite extends FunSuite:
       refused(plain, withMajor(highest + 1)),
       Vector[DijkstraBbodyPredFailure[Dijkstra]](
         DijkstraBbodyPredFailure.HeaderProtVerTooLow[Dijkstra](
-          Mismatch(highest.toLong, highest.toLong + 1)
+          Mismatch(Unsigned.wrapping[W32](highest), Unsigned.wrapping[W32](highest + 1))
         )
       )
     )
@@ -614,15 +617,17 @@ class DijkstraBbodySuite extends FunSuite:
   test("BBODY injects each failure as the reference composes it") {
     def into[F](f: F)(using i: InjectBbodyFailure[F, Dijkstra]): BbodyPredFailure[Dijkstra] =
       i.injectFailure(f)
-    val size = Mismatch(1L, 2L)
-    val hashes = Mismatch(hash(1), hash(2))
-    val units = Mismatch(ExUnits(1, 2), ExUnits(0, 0))
+    val size = Mismatch[RelEQ, Long](1L, 2L)
+    val refScripts = Mismatch[RelLTEQ, Long](1L, 2L)
+    val majors = Mismatch[RelGTEQ, Unsigned[W32]](Unsigned.lit(1), Unsigned.lit(2))
+    val hashes = Mismatch[RelEQ, xyz.kd5ujc.scarab.ledger.state.Hash32](hash(1), hash(2))
+    val units = Mismatch[RelLTEQ, ExUnits](ExUnits(1, 2), ExUnits(0, 0))
     val ledger: DijkstraLedgerPredFailure[Dijkstra] =
       DijkstraLedgerPredFailure.DijkstraTreasuryValueMismatch(Mismatch(Coin(1), Coin(2)))
     val ledgers = ShelleyLedgersPredFailure.LedgerFailure[Dijkstra](ledger)
     // Dijkstra's own: the identity
     val own: DijkstraBbodyPredFailure[Dijkstra] =
-      DijkstraBbodyPredFailure.HeaderProtVerTooLow[Dijkstra](size)
+      DijkstraBbodyPredFailure.HeaderProtVerTooLow[Dijkstra](majors)
     assertEquals(into(own), own)
     // Shelley's: `conwayToDijkstra . shelleyToConway`
     assertEquals(
@@ -688,8 +693,8 @@ class DijkstraBbodySuite extends FunSuite:
       DijkstraBbodyPredFailure.InvalidBodyHashBBODY[Dijkstra](hashes)
     )
     assertEquals(
-      into(new ConwayBbodyPredFailure.BodyRefScriptsSizeTooBig[Dijkstra](size)),
-      DijkstraBbodyPredFailure.BodyRefScriptsSizeTooBig[Dijkstra](size)
+      into(new ConwayBbodyPredFailure.BodyRefScriptsSizeTooBig[Dijkstra](refScripts)),
+      DijkstraBbodyPredFailure.BodyRefScriptsSizeTooBig[Dijkstra](refScripts)
     )
     assertEquals(
       into(new ConwayBbodyPredFailure.TooManyExUnits[Dijkstra](units)),

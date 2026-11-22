@@ -6,7 +6,7 @@ import xyz.kd5ujc.scarab.ledger.{
   CertsFailure as FlatCertsFailure,
   DelegFailure as FlatDelegFailure,
   GovCertFailure as FlatGovCertFailure,
-  Mismatch,
+  Mismatch as FlatMismatch,
   PoolFailure as FlatPoolFailure,
   PredicateFailure
 }
@@ -27,6 +27,8 @@ import xyz.kd5ujc.scarab.ledger.state.{
   Staking,
   VRFVerKeyHash
 }
+import xyz.kd5ujc.scarab.ledger.era.Mismatch
+import xyz.kd5ujc.scarab.ledger.era.Relation.*
 
 // The failures and events of Conway's certificate rules as the reference declares them
 // (cardano-ledger f649f975, `eras/conway/impl/src/Cardano/Ledger/Conway/Rules/{Certs,Cert,Deleg,
@@ -58,10 +60,10 @@ enum ConwayDelegPredFailure[E <: EraTag]:
   case DelegateeStakePoolNotRegisteredDELEG(pool: KeyHash[StakePool])
 
   /** The deposit (supplied) and the parameters' (expected). */
-  case DepositIncorrectDELEG(mismatch: Mismatch[Coin])
+  case DepositIncorrectDELEG(mismatch: Mismatch[RelEQ, Coin])
 
   /** The refund (supplied) and the account's deposit (expected). */
-  case RefundIncorrectDELEG(mismatch: Mismatch[Coin])
+  case RefundIncorrectDELEG(mismatch: Mismatch[RelEQ, Coin])
 
 /** `data ShelleyPoolPredFailure era` (`Shelley/Rules/Pool.hs:91-114`, cardano-ledger f649f975), its
   * constructors in the order of their tags (0, 1, then 3 to 6, `:154-170`: tag 2 is unused).
@@ -72,13 +74,16 @@ enum ShelleyPoolPredFailure[E <: EraTag]:
   /** The epoch (supplied) against the current one, which it must follow, and against the last one
     * it may be, which it must not pass (expected).
     */
-  case StakePoolRetirementWrongEpochPOOL(current: Mismatch[EpochNo], latest: Mismatch[EpochNo])
+  case StakePoolRetirementWrongEpochPOOL(
+      current: Mismatch[RelGT, EpochNo],
+      latest: Mismatch[RelLTEQ, EpochNo]
+  )
 
   /** The cost (supplied) and the parameters' minimum (expected). */
-  case StakePoolCostTooLowPOOL(mismatch: Mismatch[Coin])
+  case StakePoolCostTooLowPOOL(mismatch: Mismatch[RelGTEQ, Coin])
 
   /** The reward account's network (supplied) and the node's (expected). */
-  case WrongNetworkPOOL(mismatch: Mismatch[Network], pool: KeyHash[StakePool])
+  case WrongNetworkPOOL(mismatch: Mismatch[RelEQ, Network], pool: KeyHash[StakePool])
   case PoolMedataHashTooBig(pool: KeyHash[StakePool], size: Int)
   case VRFKeyHashAlreadyRegistered(pool: KeyHash[StakePool], vrf: VRFVerKeyHash)
 
@@ -90,11 +95,11 @@ enum ConwayGovCertPredFailure[E <: EraTag]:
   case ConwayDRepNotRegistered(credential: Credential[DRepRole])
 
   /** The deposit (supplied) and the parameters' (expected). */
-  case ConwayDRepIncorrectDeposit(mismatch: Mismatch[Coin])
+  case ConwayDRepIncorrectDeposit(mismatch: Mismatch[RelEQ, Coin])
   case ConwayCommitteeHasPreviouslyResigned(credential: Credential[ColdCommittee])
 
   /** The refund (supplied) and the DRep's deposit (expected). */
-  case ConwayDRepIncorrectRefund(mismatch: Mismatch[Coin])
+  case ConwayDRepIncorrectRefund(mismatch: Mismatch[RelEQ, Coin])
   case ConwayCommitteeIsUnknown(credential: Credential[ColdCommittee])
 
 /** `data ConwayCertPredFailure era` (`Conway/Rules/Cert.hs:101-105`, cardano-ledger f649f975), its
@@ -503,7 +508,7 @@ object ShelleyPoolPredFailure:
       FlatPoolFailure.StakePoolRetirementWrongEpoch(epochs(current), epochs(latest))
     case StakePoolCostTooLowPOOL(m) => FlatPoolFailure.StakePoolCostTooLow(coins(m))
     case WrongNetworkPOOL(m, p) =>
-      FlatPoolFailure.WrongNetworkPool(Mismatch(m.supplied.wire, m.expected.wire), p.bytes)
+      FlatPoolFailure.WrongNetworkPool(m.storedBy(_.wire), p.bytes)
     case PoolMedataHashTooBig(p, size) => FlatPoolFailure.PoolMedataHashTooBig(p.bytes, size)
     case VRFKeyHashAlreadyRegistered(p, v) =>
       FlatPoolFailure.VRFKeyHashAlreadyRegistered(p.bytes, v.bytes)
@@ -522,8 +527,12 @@ object ConwayGovCertPredFailure:
     case ConwayDRepIncorrectRefund(m) => FlatGovCertFailure.DRepIncorrectRefund(coins(m))
     case ConwayCommitteeIsUnknown(c)  => FlatGovCertFailure.CommitteeIsUnknown(Convert.back(c))
 
-private[rules] def coins(m: Mismatch[Coin]): Mismatch[BigInt] =
-  Mismatch(m.supplied.value, m.expected.value)
+private[rules] def coins[R <: xyz.kd5ujc.scarab.ledger.era.Relation](
+    m: Mismatch[R, Coin]
+): FlatMismatch[BigInt] =
+  m.storedBy(_.value)
 
-private[rules] def epochs(m: Mismatch[EpochNo]): Mismatch[BigInt] =
-  Mismatch(m.supplied.toBigInt, m.expected.toBigInt)
+private[rules] def epochs[R <: xyz.kd5ujc.scarab.ledger.era.Relation](
+    m: Mismatch[R, EpochNo]
+): FlatMismatch[BigInt] =
+  m.storedBy(_.toBigInt)

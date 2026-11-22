@@ -10,7 +10,6 @@ import xyz.kd5ujc.scarab.ledger.{
   Committee,
   Credential as FlatCredential,
   GovActionId,
-  Mismatch,
   Unsigned,
   Voter
 }

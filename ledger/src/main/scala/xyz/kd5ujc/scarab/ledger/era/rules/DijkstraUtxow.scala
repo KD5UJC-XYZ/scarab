@@ -7,9 +7,10 @@ import cats.mtl.{Raise, Stateful, Tell}
 import cats.syntax.all.*
 import scala.collection.immutable.SortedSet
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.{LedgerDefect, Mismatch, TxIn, Verdicts}
+import xyz.kd5ujc.scarab.ledger.{LedgerDefect, TxIn, Verdicts}
 import xyz.kd5ujc.scarab.ledger.dijkstra.{DijkstraPurpose, DijkstraUtxowFailure}
 import xyz.kd5ujc.scarab.ledger.era.*
+import xyz.kd5ujc.scarab.ledger.era.Relation.*
 import xyz.kd5ujc.scarab.ledger.era.dijkstra.{DijkstraPlutusPurpose, DijkstraUTxO, PlutusLegacyMode}
 import xyz.kd5ujc.scarab.ledger.rules.{Convert, Judge, Sts, Test}
 import xyz.kd5ujc.scarab.ledger.state.{Credential, Dijkstra, EraTag, Guard, UTxOState}
@@ -36,7 +37,7 @@ enum DijkstraUtxowPredFailure[E <: EraTag]:
   case ScriptWitnessNotValidatingUTXOW(hashes: NonEmptySet[Bytes])
   case MissingTxBodyMetadataHash(hash: Bytes)
   case MissingTxMetadata(hash: Bytes)
-  case ConflictingMetadataHash(mismatch: Mismatch[Bytes])
+  case ConflictingMetadataHash(mismatch: Mismatch[RelEQ, Bytes])
   case InvalidMetadata()
   case ExtraneousScriptWitnessesUTXOW(hashes: NonEmptySet[Bytes])
 
@@ -48,14 +49,17 @@ enum DijkstraUtxowPredFailure[E <: EraTag]:
 
   /** The supplemental datums not allowed, and those allowed. */
   case NotAllowedSupplementalDatums(unallowed: NonEmptySet[Bytes], acceptable: Set[Bytes])
-  case PPViewHashesDontMatch(mismatch: Mismatch[Option[Bytes]])
+  case PPViewHashesDontMatch(mismatch: Mismatch[RelEQ, Option[Bytes]])
   case UnspendableUTxONoDatumHash(inputs: NonEmptySet[TxIn])
   case ExtraRedeemers(purposes: NonEmptyList[PlutusPurpose[AsIx, E]])
   case MalformedScriptWitnesses(hashes: NonEmptySet[Bytes])
   case MalformedReferenceScripts(hashes: NonEmptySet[Bytes])
 
   /** The supplied and computed hashes, and the bytes the computed one is over. */
-  case ScriptIntegrityHashMismatch(mismatch: Mismatch[Option[Bytes]], expected: Option[Bytes])
+  case ScriptIntegrityHashMismatch(
+      mismatch: Mismatch[RelEQ, Option[Bytes]],
+      expected: Option[Bytes]
+  )
 
   /** The guards the levels require of the top level that its guards lack. */
   case MissingRequiredGuards(credentials: NonEmptySet[Credential[Guard]])
@@ -105,8 +109,8 @@ object DijkstraUtxowPredFailure:
         ok(DijkstraUtxowFailure.ScriptWitnessNotValidating(hs.toSortedSet))
       case MissingTxBodyMetadataHash(h) => ok(DijkstraUtxowFailure.MissingTxBodyMetadataHash(h))
       case MissingTxMetadata(h)         => ok(DijkstraUtxowFailure.MissingTxMetadata(h))
-      case ConflictingMetadataHash(m)   => ok(DijkstraUtxowFailure.ConflictingMetadataHash(m))
-      case InvalidMetadata()            => ok(DijkstraUtxowFailure.InvalidMetadata)
+      case ConflictingMetadataHash(m) => ok(DijkstraUtxowFailure.ConflictingMetadataHash(m.stored))
+      case InvalidMetadata()          => ok(DijkstraUtxowFailure.InvalidMetadata)
       case ExtraneousScriptWitnessesUTXOW(hs) =>
         ok(DijkstraUtxowFailure.ExtraneousScriptWitnesses(hs.toSortedSet))
       case MissingRedeemers(ps) =>
@@ -119,7 +123,7 @@ object DijkstraUtxowPredFailure:
         ok(DijkstraUtxowFailure.MissingRequiredDatums(m.toSortedSet, r))
       case NotAllowedSupplementalDatums(u, a) =>
         ok(DijkstraUtxowFailure.NotAllowedSupplementalDatums(u.toSortedSet, a))
-      case PPViewHashesDontMatch(m) => ok(DijkstraUtxowFailure.PPViewHashesDontMatch(m))
+      case PPViewHashesDontMatch(m) => ok(DijkstraUtxowFailure.PPViewHashesDontMatch(m.stored))
       case UnspendableUTxONoDatumHash(ins) =>
         ok(DijkstraUtxowFailure.UnspendableUTxONoDatumHash(ins.toSortedSet))
       case ExtraRedeemers(ps) =>
@@ -133,7 +137,7 @@ object DijkstraUtxowPredFailure:
       case MalformedReferenceScripts(hs) =>
         ok(DijkstraUtxowFailure.MalformedReferenceScripts(hs.toSortedSet))
       case ScriptIntegrityHashMismatch(m, e) =>
-        ok(DijkstraUtxowFailure.ScriptIntegrityHashMismatch(m, e))
+        ok(DijkstraUtxowFailure.ScriptIntegrityHashMismatch(m.stored, e))
       case MissingRequiredGuards(cs) => ok(DijkstraUtxowFailure.MissingRequiredGuards(creds(cs)))
       case MalformedGuardDatums(cs)  => ok(DijkstraUtxowFailure.MalformedGuardDatums(creds(cs)))
 

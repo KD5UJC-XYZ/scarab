@@ -1084,7 +1084,9 @@ class DijkstraRulesOracleSuite extends FunSuite:
         EntitiesPredFailure.CertsFailure(
           ConwayCertsPredFailure.CertFailure(
             ConwayCertPredFailure.DelegFailure(
-              ConwayDelegPredFailure.RefundIncorrectDELEG(Mismatch(Coin(3000000), Coin(2000000)))
+              ConwayDelegPredFailure.RefundIncorrectDELEG(
+                xyz.kd5ujc.scarab.ledger.era.Mismatch(Coin(3000000), Coin(2000000))
+              )
             )
           )
         )

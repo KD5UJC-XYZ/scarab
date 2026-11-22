@@ -6,16 +6,18 @@ import cats.data.{NonEmptyList, NonEmptyMap, NonEmptySet}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{
   Address,
-  Mismatch,
   PlutusFailure,
   PredicateFailure,
   TxIn,
+  Unsigned,
   UtxoFailure,
   UtxosFailure as FlatUtxosFailure
 }
+import xyz.kd5ujc.scarab.ledger.Unsigned.Width.W16
 import xyz.kd5ujc.scarab.ledger.era.*
+import xyz.kd5ujc.scarab.ledger.era.Relation.*
 import xyz.kd5ujc.scarab.ledger.rules.Convert
-import xyz.kd5ujc.scarab.ledger.state.{AccountAddress, Coin, Conway, Dijkstra, EraTag}
+import xyz.kd5ujc.scarab.ledger.state.{AccountAddress, Coin, Conway, DeltaCoin, Dijkstra, EraTag}
 import xyz.kd5ujc.scarab.plutus.ExUnits
 
 // The failures of UTXO as the reference declares them (cardano-ledger f649f975, the `Rules/Utxo.hs`
@@ -42,13 +44,13 @@ enum ShelleyUtxoPredFailure[E <: EraTag]:
   case BadInputsUTxO(inputs: NonEmptySet[TxIn])
 
   /** The time to live (supplied) and the slot (expected). */
-  case ExpiredUTxO(mismatch: Mismatch[BigInt])
-  case MaxTxSizeUTxO(mismatch: Mismatch[BigInt])
+  case ExpiredUTxO(mismatch: Mismatch[RelLTEQ, BigInt])
+  case MaxTxSizeUTxO(mismatch: Mismatch[RelLTEQ, BigInt])
   case InputSetEmptyUTxO()
-  case FeeTooSmallUTxO(mismatch: Mismatch[Coin])
+  case FeeTooSmallUTxO(mismatch: Mismatch[RelGTEQ, Coin])
 
   /** What is consumed (supplied) and what is produced (expected). */
-  case ValueNotConservedUTxO(mismatch: Mismatch[Value[E]])
+  case ValueNotConservedUTxO(mismatch: Mismatch[RelEQ, Value[E]])
   case WrongNetwork(expected: Network, addresses: NonEmptySet[Address])
   case WrongNetworkWithdrawal(expected: Network, accounts: NonEmptySet[AccountAddress])
   case OutputTooSmallUTxO(outputs: NonEmptyList[TxOut[E]])
@@ -61,10 +63,10 @@ enum ShelleyUtxoPredFailure[E <: EraTag]:
 enum AllegraUtxoPredFailure[E <: EraTag]:
   case BadInputsUTxO(inputs: NonEmptySet[TxIn])
   case OutsideValidityIntervalUTxO(interval: ValidityInterval, slot: BigInt)
-  case MaxTxSizeUTxO(mismatch: Mismatch[BigInt])
+  case MaxTxSizeUTxO(mismatch: Mismatch[RelLTEQ, BigInt])
   case InputSetEmptyUTxO()
-  case FeeTooSmallUTxO(mismatch: Mismatch[Coin])
-  case ValueNotConservedUTxO(mismatch: Mismatch[Value[E]])
+  case FeeTooSmallUTxO(mismatch: Mismatch[RelGTEQ, Coin])
+  case ValueNotConservedUTxO(mismatch: Mismatch[RelEQ, Value[E]])
   case WrongNetwork(expected: Network, addresses: NonEmptySet[Address])
   case WrongNetworkWithdrawal(expected: Network, accounts: NonEmptySet[AccountAddress])
   case OutputTooSmallUTxO(outputs: NonEmptyList[TxOut[E]])
@@ -78,10 +80,10 @@ enum AllegraUtxoPredFailure[E <: EraTag]:
 enum AlonzoUtxoPredFailure[E <: EraTag]:
   case BadInputsUTxO(inputs: NonEmptySet[TxIn])
   case OutsideValidityIntervalUTxO(interval: ValidityInterval, slot: BigInt)
-  case MaxTxSizeUTxO(mismatch: Mismatch[BigInt])
+  case MaxTxSizeUTxO(mismatch: Mismatch[RelLTEQ, BigInt])
   case InputSetEmptyUTxO()
-  case FeeTooSmallUTxO(mismatch: Mismatch[Coin])
-  case ValueNotConservedUTxO(mismatch: Mismatch[Value[E]])
+  case FeeTooSmallUTxO(mismatch: Mismatch[RelGTEQ, Coin])
+  case ValueNotConservedUTxO(mismatch: Mismatch[RelEQ, Value[E]])
   case WrongNetwork(expected: Network, addresses: NonEmptySet[Address])
   case WrongNetworkWithdrawal(expected: Network, accounts: NonEmptySet[AccountAddress])
   case OutputTooSmallUTxO(outputs: NonEmptyList[TxOut[E]])
@@ -92,17 +94,17 @@ enum AlonzoUtxoPredFailure[E <: EraTag]:
   case OutputTooBigUTxO(outputs: NonEmptyList[(Int, Int, TxOut[E])])
 
   /** The balance (a `DeltaCoin`) and the collateral the fee requires. */
-  case InsufficientCollateral(balance: BigInt, required: Coin)
+  case InsufficientCollateral(balance: DeltaCoin, required: Coin)
   case ScriptsNotPaidUTxO(outputs: NonEmptyMap[TxIn, TxOut[E]])
-  case ExUnitsTooBigUTxO(mismatch: Mismatch[ExUnits])
+  case ExUnitsTooBigUTxO(mismatch: Mismatch[RelLTEQ, ExUnits])
   case CollateralContainsNonADA(value: Value[E])
 
   /** The body's network (supplied) and the node's (expected). */
-  case WrongNetworkInTxBody(mismatch: Mismatch[Network])
+  case WrongNetworkInTxBody(mismatch: Mismatch[RelEQ, Network])
   case OutsideForecast(slot: BigInt)
 
   /** The number of collateral inputs, narrowed to a `Word16`, and the parameters' maximum. */
-  case TooManyCollateralInputs(mismatch: Mismatch[Int])
+  case TooManyCollateralInputs(mismatch: Mismatch[RelLTEQ, Unsigned[W16]])
   case NoCollateralInputs()
 
 /** `data BabbageUtxoPredFailure era` (`eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Utxo.hs:
@@ -112,7 +114,7 @@ enum BabbageUtxoPredFailure[E <: EraTag]:
   case AlonzoInBabbageUtxoPredFailure(failure: AlonzoUtxoPredFailure[E])
 
   /** The collateral provided (a `DeltaCoin`) and the total the body declares. */
-  case IncorrectTotalCollateralField(provided: BigInt, declared: Coin)
+  case IncorrectTotalCollateralField(provided: DeltaCoin, declared: Coin)
 
   /** Each output with its least lovelace. */
   case BabbageOutputTooSmallUTxO(outputs: NonEmptyList[(TxOut[E], Coin)])
@@ -126,24 +128,24 @@ enum ConwayUtxoPredFailure[E <: EraTag]:
   case UtxosFailure(failure: UtxosPredFailure[E])
   case BadInputsUTxO(inputs: NonEmptySet[TxIn])
   case OutsideValidityIntervalUTxO(interval: ValidityInterval, slot: BigInt)
-  case MaxTxSizeUTxO(mismatch: Mismatch[BigInt])
+  case MaxTxSizeUTxO(mismatch: Mismatch[RelLTEQ, BigInt])
   case InputSetEmptyUTxO()
-  case FeeTooSmallUTxO(mismatch: Mismatch[Coin])
-  case ValueNotConservedUTxO(mismatch: Mismatch[Value[E]])
+  case FeeTooSmallUTxO(mismatch: Mismatch[RelGTEQ, Coin])
+  case ValueNotConservedUTxO(mismatch: Mismatch[RelEQ, Value[E]])
   case WrongNetwork(expected: Network, addresses: NonEmptySet[Address])
   case WrongNetworkWithdrawal(expected: Network, accounts: NonEmptySet[AccountAddress])
   case OutputTooSmallUTxO(outputs: NonEmptyList[TxOut[E]])
   case OutputBootAddrAttrsTooBig(outputs: NonEmptyList[TxOut[E]])
   case OutputTooBigUTxO(outputs: NonEmptyList[(Int, Int, TxOut[E])])
-  case InsufficientCollateral(balance: BigInt, required: Coin)
+  case InsufficientCollateral(balance: DeltaCoin, required: Coin)
   case ScriptsNotPaidUTxO(outputs: NonEmptyMap[TxIn, TxOut[E]])
-  case ExUnitsTooBigUTxO(mismatch: Mismatch[ExUnits])
+  case ExUnitsTooBigUTxO(mismatch: Mismatch[RelLTEQ, ExUnits])
   case CollateralContainsNonADA(value: Value[E])
-  case WrongNetworkInTxBody(mismatch: Mismatch[Network])
+  case WrongNetworkInTxBody(mismatch: Mismatch[RelEQ, Network])
   case OutsideForecast(slot: BigInt)
-  case TooManyCollateralInputs(mismatch: Mismatch[Int])
+  case TooManyCollateralInputs(mismatch: Mismatch[RelLTEQ, Unsigned[W16]])
   case NoCollateralInputs()
-  case IncorrectTotalCollateralField(provided: BigInt, declared: Coin)
+  case IncorrectTotalCollateralField(provided: DeltaCoin, declared: Coin)
   case BabbageOutputTooSmallUTxO(outputs: NonEmptyList[(TxOut[E], Coin)])
   case BabbageNonDisjointRefInputs(inputs: NonEmptyList[TxIn])
 
@@ -192,14 +194,14 @@ object ConwayUtxoPredFailure:
       case BadInputsUTxO(ins) => utxo(UtxoFailure.BadInputs(ins.toSortedSet))
       case OutsideValidityIntervalUTxO(vi, slot) =>
         utxo(UtxoFailure.OutsideValidityInterval(vi.invalidBefore, vi.invalidHereafter, slot))
-      case MaxTxSizeUTxO(m)    => utxo(UtxoFailure.MaxTxSize(m))
+      case MaxTxSizeUTxO(m)    => utxo(UtxoFailure.MaxTxSize(m.stored))
       case InputSetEmptyUTxO() => utxo(UtxoFailure.InputSetEmpty)
       case FeeTooSmallUTxO(m) =>
-        utxo(UtxoFailure.FeeTooSmall(Mismatch(m.supplied.value, m.expected.value)))
+        utxo(UtxoFailure.FeeTooSmall(m.storedBy(_.value)))
       case ValueNotConservedUTxO(m) =>
         utxo(
           UtxoFailure.ValueNotConserved(
-            Mismatch(s.storedValue(m.supplied), s.storedValue(m.expected))
+            m.storedBy(s.storedValue)
           )
         )
       case WrongNetwork(n, addrs) =>
@@ -216,19 +218,20 @@ object ConwayUtxoPredFailure:
       case OutputTooBigUTxO(os) =>
         utxo(UtxoFailure.OutputTooBig(os.toList.toVector.map((a, b, o) => (a, b, s.toStored(o)))))
       case InsufficientCollateral(bal, required) =>
-        utxo(UtxoFailure.InsufficientCollateral(bal, required.value))
+        utxo(UtxoFailure.InsufficientCollateral(bal.value, required.value))
       case ScriptsNotPaidUTxO(os) =>
         utxo(UtxoFailure.ScriptsNotPaid(os.toSortedMap.view.mapValues(s.toStored).toMap))
-      case ExUnitsTooBigUTxO(m) => utxo(UtxoFailure.ExUnitsTooBig(m))
+      case ExUnitsTooBigUTxO(m) => utxo(UtxoFailure.ExUnitsTooBig(m.stored))
       case CollateralContainsNonADA(v) =>
         utxo(UtxoFailure.CollateralContainsNonAda(s.storedValue(v)))
       case WrongNetworkInTxBody(m) =>
-        utxo(UtxoFailure.WrongNetworkInTxBody(Mismatch(m.supplied.ordinal, m.expected.ordinal)))
-      case OutsideForecast(slot)      => utxo(UtxoFailure.OutsideForecast(slot))
-      case TooManyCollateralInputs(m) => utxo(UtxoFailure.TooManyCollateralInputs(m))
-      case NoCollateralInputs()       => utxo(UtxoFailure.NoCollateralInputs)
+        utxo(UtxoFailure.WrongNetworkInTxBody(m.storedBy(_.ordinal)))
+      case OutsideForecast(slot) => utxo(UtxoFailure.OutsideForecast(slot))
+      case TooManyCollateralInputs(m) =>
+        utxo(UtxoFailure.TooManyCollateralInputs(m.storedBy(_.value.toInt)))
+      case NoCollateralInputs() => utxo(UtxoFailure.NoCollateralInputs)
       case IncorrectTotalCollateralField(provided, declared) =>
-        utxo(UtxoFailure.IncorrectTotalCollateralField(provided, declared.value))
+        utxo(UtxoFailure.IncorrectTotalCollateralField(provided.value, declared.value))
       case BabbageOutputTooSmallUTxO(os) =>
         utxo(
           UtxoFailure.BabbageOutputTooSmall(

@@ -3,9 +3,9 @@ package xyz.kd5ujc.scarab.ledger.era.rules
 
 import cats.data.{NonEmptyList, NonEmptySet}
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.Mismatch
 import xyz.kd5ujc.scarab.ledger.era.IsPhase2Valid
-import xyz.kd5ujc.scarab.ledger.state.{Coin, Conway}
+import xyz.kd5ujc.scarab.ledger.state.{Coin, DeltaCoin, Conway}
+import xyz.kd5ujc.scarab.ledger.era.Mismatch
 import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 
 /** The injections of LEDGER (`InjectRuleFailure "LEDGER"`, `Conway/Rules/Ledger.hs:133-187`) and
@@ -30,7 +30,7 @@ class LedgerInjectionSuite extends munit.FunSuite:
     ConwayUtxowPredFailure.InvalidWitnessesUTXOW[Conway](NonEmptyList.one(Bytes.empty))
   private val conwayU = ConwayUtxoPredFailure.InputSetEmptyUTxO[Conway]()
   private val babbageU =
-    BabbageUtxoPredFailure.IncorrectTotalCollateralField[Conway](BigInt(1), Coin.zero)
+    BabbageUtxoPredFailure.IncorrectTotalCollateralField[Conway](DeltaCoin(1), Coin.zero)
   private val alonzoU = AlonzoUtxoPredFailure.InputSetEmptyUTxO[Conway]()
   private val allegraU = AllegraUtxoPredFailure.InputSetEmptyUTxO[Conway]()
   private val alonzoS = AlonzoUtxosPredFailure.ValidationTagMismatch[Conway](

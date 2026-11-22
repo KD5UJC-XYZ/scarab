@@ -7,7 +7,8 @@ import cats.mtl.{Raise, Stateful, Tell}
 import cats.syntax.all.*
 import scala.collection.immutable.{SortedMap, SortedSet}
 import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
-import xyz.kd5ujc.scarab.ledger.{Address, Credential, Horizon, Mismatch, PosixClock, TxEnv, TxIn}
+import xyz.kd5ujc.scarab.ledger.{Address, Credential, Horizon, PosixClock, TxEnv, TxIn, Unsigned}
+import xyz.kd5ujc.scarab.ledger.Unsigned.Width.W16
 import xyz.kd5ujc.scarab.ledger.era.*
 import xyz.kd5ujc.scarab.ledger.rules.{Judge, Sts, Test}
 import xyz.kd5ujc.scarab.plutus.ScriptEvaluator
@@ -15,6 +16,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
   CertState,
   Coin,
   Conway,
+  DeltaCoin,
   EraTag,
   UTxOState,
   UtxoTables,
@@ -464,12 +466,12 @@ object AlonzoUtxo:
       b: AlonzoEraTxBody[E],
       p: AlonzoEraPParams[E]
   ): Test[AlonzoUtxoPredFailure.TooManyCollateralInputs[E]] =
-    val maxColl = PParams.lensHKD[E].andThen(p.hkdMaxCollateralInputsL[Identity]).get(pp).value
+    val maxColl = PParams.lensHKD[E].andThen(p.hkdMaxCollateralInputsL[Identity]).get(pp)
     // `fromIntegral . Set.size`: the size narrowed to a `Word16`, so modulo 2^16
-    val numColl = BigInt(b.collateralInputs(body).size) % (BigInt(1) << 16)
+    val numColl = Unsigned.wrapping[W16](BigInt(b.collateralInputs(body).size))
     Test.failureUnless(
-      numColl <= maxColl,
-      new AlonzoUtxoPredFailure.TooManyCollateralInputs[E](Mismatch(numColl.toInt, maxColl.toInt))
+      numColl.value <= maxColl.value,
+      new AlonzoUtxoPredFailure.TooManyCollateralInputs[E](Mismatch(numColl, maxColl))
     )
 
   /** `isKeyHashAddr` and `vKeyLocked` (`Alonzo/Rules/Utxo.hs:252-266`, cardano-ledger f649f975): an
@@ -508,7 +510,7 @@ object AlonzoUtxo:
     Test.failureUnless(
       bal * 100 >= collPerc * txfee,
       new AlonzoUtxoPredFailure.InsufficientCollateral[E](
-        bal,
+        DeltaCoin(bal),
         Coin(Rational(collPerc * txfee, 100).ceil)
       )
     )
@@ -706,7 +708,7 @@ object BabbageUtxo:
     txcoll.fold(Test.pass[BabbageUtxoPredFailure.IncorrectTotalCollateralField[E]])(tc =>
       Test.failureUnless(
         bal == tc.value,
-        new BabbageUtxoPredFailure.IncorrectTotalCollateralField[E](bal, tc)
+        new BabbageUtxoPredFailure.IncorrectTotalCollateralField[E](DeltaCoin(bal), tc)
       )
     )
 

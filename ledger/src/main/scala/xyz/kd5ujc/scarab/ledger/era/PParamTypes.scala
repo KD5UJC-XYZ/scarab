@@ -105,7 +105,14 @@ object Version:
   inline def lit(inline n: Int): Version =
     inline if n < 0 || n > 13 then scala.compiletime.error("not a version") else n
 
-  extension (v: Version) def value: Int = v
+  extension (v: Version)
+    def value: Int = v
+
+    /** `getVersion32` (`libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Version.hs:143-145`,
+      * cardano-ledger f649f975, the same at 9df9f98c): the version's `Word32`, exact, as a version
+      * is at most [[Max]].
+      */
+    def getVersion32: Unsigned[W32] = Unsigned.wrapping[W32](BigInt(v))
 
   given Ordering[Version] = Ordering.Int
 

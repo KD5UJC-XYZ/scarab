@@ -11,12 +11,12 @@ import xyz.kd5ujc.scarab.ledger.{
   TranslationError,
   LedgerDefect,
   LedgerFailure,
-  Mismatch,
   Proposals as StoredProposals,
   Verdicts
 }
 import xyz.kd5ujc.scarab.plutus.{ScriptDecoder, ScriptEvaluator}
 import xyz.kd5ujc.scarab.ledger.era.*
+import xyz.kd5ujc.scarab.ledger.era.Relation.RelEQ
 import xyz.kd5ujc.scarab.ledger.era.conway.{ConwayProposals, ConwayTxCert, ConwayUTxO}
 import xyz.kd5ujc.scarab.ledger.rules.{Globals, Judge, Sts, Test, focus}
 import xyz.kd5ujc.scarab.ledger.state.{
@@ -144,7 +144,7 @@ object ShelleyLedger:
       network <- ask.ask[Globals].map(_.networkId)
       (missingWithdrawals, incompleteWithdrawals) = EraAccounts
         .withdrawalsThatDoNotDrainAccounts[E](withdrawals, network, accounts)
-        .fold((Map.empty[AccountAddress, Coin], Map.empty[AccountAddress, Mismatch[Coin]]))(
+        .fold((Map.empty[AccountAddress, Coin], Map.empty[AccountAddress, Mismatch[RelEQ, Coin]]))(
           (missing, incomplete) => (missing.unWithdrawals, incomplete)
         )
       _ <-

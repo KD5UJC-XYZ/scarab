@@ -7,11 +7,11 @@ import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Value as CborValue}
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.ledger.dijkstra.{DijkstraTxIn, DijkstraUtxowFailure}
-import xyz.kd5ujc.scarab.ledger.{Horizon, Mismatch, TxEnv, TxIn, Unsigned, Utxo, Verdicts}
+import xyz.kd5ujc.scarab.ledger.{Horizon, TxEnv, TxIn, Unsigned, Utxo, Verdicts}
 import xyz.kd5ujc.scarab.ledger.era.*
 import xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraCorpus.*
 import xyz.kd5ujc.scarab.ledger.era.rules.*
-import xyz.kd5ujc.scarab.ledger.state.{Coin, Dijkstra, EpochNo, Network, UtxoTables}
+import xyz.kd5ujc.scarab.ledger.state.{Coin, DeltaCoin, Dijkstra, EpochNo, Network, UtxoTables}
 import xyz.kd5ujc.scarab.plutus.{ExUnits, PlutusLanguage, ScarabEvaluator}
 
 /** Dijkstra's UTXO and UTXOW on the era types (`DijkstraUtxo`, `DijkstraUtxow`, cardano-ledger
@@ -306,17 +306,19 @@ class DijkstraUtxowSuite extends FunSuite:
         Mismatch(Network.Mainnet, Network.Testnet)
       ),
       new AlonzoUtxoPredFailure.ExUnitsTooBigUTxO[Dijkstra](Mismatch(ExUnits(2, 2), ExUnits(1, 1))),
-      new AlonzoUtxoPredFailure.TooManyCollateralInputs[Dijkstra](Mismatch(4, 3)),
+      new AlonzoUtxoPredFailure.TooManyCollateralInputs[Dijkstra](
+        Mismatch(Unsigned.lit(4), Unsigned.lit(3))
+      ),
       new AlonzoUtxoPredFailure.ScriptsNotPaidUTxO[Dijkstra](NonEmptyMap.one(in, out)),
       new AlonzoUtxoPredFailure.CollateralContainsNonADA[Dijkstra](o.value(out)),
-      new AlonzoUtxoPredFailure.InsufficientCollateral[Dijkstra](BigInt(-1), Coin(9)),
+      new AlonzoUtxoPredFailure.InsufficientCollateral[Dijkstra](DeltaCoin(-1), Coin(9)),
       new AlonzoUtxoPredFailure.NoCollateralInputs[Dijkstra]()
     )
 
   private lazy val babbage: Vector[DijkstraUtxo.BabbageFailure[Dijkstra]] =
     val (_, out) = sample
     Vector[DijkstraUtxo.BabbageFailure[Dijkstra]](
-      new BabbageUtxoPredFailure.IncorrectTotalCollateralField[Dijkstra](BigInt(5), Coin(6)),
+      new BabbageUtxoPredFailure.IncorrectTotalCollateralField[Dijkstra](DeltaCoin(5), Coin(6)),
       new BabbageUtxoPredFailure.BabbageOutputTooSmallUTxO[Dijkstra](
         NonEmptyList.one((out, Coin(8)))
       )

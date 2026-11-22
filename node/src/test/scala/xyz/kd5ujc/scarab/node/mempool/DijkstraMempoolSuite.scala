@@ -23,7 +23,6 @@ import xyz.kd5ujc.scarab.ledger.{
   ForgeProtocolProblem,
   Header,
   LeiosBlock,
-  Mismatch,
   NodeError,
   ProtocolParams,
   StorageError
@@ -52,6 +51,7 @@ import xyz.kd5ujc.scarab.ledger.era.rules.{
 import xyz.kd5ujc.scarab.ledger.rules.{EraNes, Globals, Hfc}
 import xyz.kd5ujc.scarab.ledger.era.conway.ConwayProposals
 import xyz.kd5ujc.scarab.ledger.state.{Dijkstra, NewEpochState, ShelleyBasedEra, SlotNo}
+import xyz.kd5ujc.scarab.ledger.era.Mismatch
 import xyz.kd5ujc.scarab.storage.haskell.state.{LeiosStateCodecs, Versions}
 import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.TxMeasure
 import xyz.kd5ujc.scarab.network.LocalTxSubmissionServer

@@ -7,8 +7,9 @@ import cats.mtl.{Raise, Stateful, Tell}
 import cats.syntax.all.*
 import scala.collection.immutable.ListMap
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.{LedgerDefect, Mismatch, TxIn, Verdicts}
+import xyz.kd5ujc.scarab.ledger.{LedgerDefect, TxIn, Verdicts}
 import xyz.kd5ujc.scarab.ledger.era.*
+import xyz.kd5ujc.scarab.ledger.era.Relation.*
 import xyz.kd5ujc.scarab.ledger.rules.{Judge, Sts, Test}
 import xyz.kd5ujc.scarab.ledger.state.{Credential, Dijkstra, EraTag, Guard, UTxOState}
 import xyz.kd5ujc.scarab.plutus.ScriptDecoder
@@ -35,7 +36,7 @@ enum DijkstraSubUtxowPredFailure[E <: EraTag]:
   case SubScriptWitnessNotValidatingUTXOW(hashes: NonEmptySet[Bytes])
   case SubMissingTxBodyMetadataHash(hash: Bytes)
   case SubMissingTxMetadata(hash: Bytes)
-  case SubConflictingMetadataHash(mismatch: Mismatch[Bytes])
+  case SubConflictingMetadataHash(mismatch: Mismatch[RelEQ, Bytes])
   case SubInvalidMetadata()
 
   /** The purposes with no redeemer, as items, with the hash of the script each needs. */
@@ -46,14 +47,17 @@ enum DijkstraSubUtxowPredFailure[E <: EraTag]:
 
   /** The supplemental datums not allowed, and those allowed. */
   case SubNotAllowedSupplementalDatums(unallowed: NonEmptySet[Bytes], acceptable: Set[Bytes])
-  case SubPPViewHashesDontMatch(mismatch: Mismatch[Option[Bytes]])
+  case SubPPViewHashesDontMatch(mismatch: Mismatch[RelEQ, Option[Bytes]])
   case SubUnspendableUTxONoDatumHash(inputs: NonEmptySet[TxIn])
   case SubExtraRedeemers(purposes: NonEmptyList[PlutusPurpose[AsIx, E]])
   case SubMalformedScriptWitnesses(hashes: NonEmptySet[Bytes])
   case SubMalformedReferenceScripts(hashes: NonEmptySet[Bytes])
 
   /** The supplied and computed hashes, and the bytes the computed one is over. */
-  case SubScriptIntegrityHashMismatch(mismatch: Mismatch[Option[Bytes]], expected: Option[Bytes])
+  case SubScriptIntegrityHashMismatch(
+      mismatch: Mismatch[RelEQ, Option[Bytes]],
+      expected: Option[Bytes]
+  )
 
   /** The required guards whose datum is present where it must not be, or absent where it must be.
     */
