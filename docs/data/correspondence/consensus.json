@@ -23,7 +23,7 @@
    "evidence": [
     "DijkstraForgeSuite"
    ],
-   "digest": "b121dc7662a681e0"
+   "digest": "b34d18cd65de9102"
   },
   "def consensus.leios.LeiosCertification.check": {
    "upstream": [
@@ -2363,10 +2363,32 @@
    "class": "Mirror",
    "structure": "same",
    "evidence": [
+    "LeiosRollForwardSuite",
+    "LeiosNotifyRelaySuite"
+   ],
+   "note": "the header itself and its announcement, as ancHeader and ancAnnouncementFields; two are equal when their headers' hashes are, the one identity the dedup reads",
+   "digest": "781fee67474e460e"
+  },
+  "def consensus.leios.AnnouncingHeader#headerHash": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic.hs",
+     "symbol": "AnnouncingHeader",
+     "lines": [
+      1752,
+      1753
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
     "LeiosRollForwardSuite"
    ],
-   "note": "the header's hash for the header itself, the one identity the dedup reads",
-   "digest": "639ec7959af6c797"
+   "note": "headerHash (ancHeader a), what the Eq instance compares",
+   "digest": "68fdffd14ef3ca6e"
   },
   "def consensus.leios.AnnouncingHeader.of": {
    "upstream": [

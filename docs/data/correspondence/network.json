@@ -1613,7 +1613,7 @@
     "LeiosFetchRegistrationSuite"
    ],
    "note": "the handler the LeiosFetch responder answers with",
-   "digest": "c599756c61f3d2f4"
+   "digest": "91986ab68a72dfc6"
   },
   "enum protocol.LeiosFetchFault": {
    "upstream": [
@@ -1672,10 +1672,12 @@
    "class": "Mirror",
    "structure": "same",
    "evidence": [
-    "LeiosFetchRegistrationSuite"
+    "LeiosNotifyServerSuite",
+    "LeiosFetchRegistrationSuite",
+    "LeiosNotifyRelaySuite"
    ],
-   "note": "with an empty next: each request held and counted, the client's next message read ahead, MsgQuit answered by drain's MsgCanceled for each held request and MsgDone; incr's ExcessiveRequests a typed end",
-   "digest": "057648efa5ff2d33"
+   "note": "each request counted by the replies' incr and held, the client's next message read ahead, a sender answering the held requests in order with the replies' next, or MsgCanceled once the client quit (responder's orElse, the quit first); MsgQuit answered once every held request is (drain) by MsgDone; incr's ExcessiveRequests a typed end; the pump raced with the conversation, as withAsync pump with link runs it (aLeiosNotifyServer, NodeToNode.hs 1891-1909)",
+   "digest": "8d29acba2d41b80c"
   },
   "val network.LeiosNotifyServer.PipelineDepth": {
    "upstream": [
@@ -1717,6 +1719,178 @@
    ],
    "note": "decode from StIdle, the client's messages, which carry no header",
    "digest": "0d2a5100090188a9"
+  },
+  "enum network.LeiosNotifyServer.Requested": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoOnlyTestNotify.hs",
+     "symbol": "WhetherExcessiveRequests",
+     "lines": [
+      525,
+      527
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "LeiosNotifyServerSuite"
+   ],
+   "note": "its Excessive case carries the depth the connection was at, which the typed end reports",
+   "digest": "34d51808f13b819a"
+  },
+  "enum network.LeiosNotifyServer.Reply": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoOnlyTestNotify.hs",
+     "symbol": "Message",
+     "lines": [
+      172,
+      211
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "LeiosNotifyServerSuite",
+    "LeiosNotifyRelaySuite"
+   ],
+   "note": "the messages from StBusy to StIdle a server's queue holds: MsgLeiosBlockAnnouncement by its header's envelope, MsgLeiosBlockOffer, MsgLeiosBlockTxsOffer; MsgCanceled is made by the server's quit only, and MsgLeiosVotes is not a case, the node relaying no votes",
+   "digest": "56e73dff2383bfc7"
+  },
+  "trait network.LeiosNotifyServer.Replies": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus-diffusion/src/ouroboros-consensus-diffusion/Ouroboros/Consensus/Network/NodeToNode.hs",
+     "symbol": "hLeiosNotifyServer",
+     "lines": [
+      769,
+      936
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "LeiosNotifyServerSuite",
+    "LeiosNotifyRelaySuite"
+   ],
+   "note": "the pair hLeiosNotifyServer returns, the server peer's incr and next and the pump, as one value a run is given",
+   "digest": "d974d056ecdf6134"
+  },
+  "def network.LeiosNotifyServer.Replies#requested": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus-diffusion/src/ouroboros-consensus-diffusion/Ouroboros/Consensus/Network/NodeToNode.hs",
+     "symbol": "incr",
+     "lines": [
+      821,
+      827
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "LeiosNotifyServerSuite",
+    "LeiosNotifyRelaySuite"
+   ],
+   "digest": "1c690cfe90a52bea"
+  },
+  "def network.LeiosNotifyServer.Replies#next": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus-diffusion/src/ouroboros-consensus-diffusion/Ouroboros/Consensus/Network/NodeToNode.hs",
+     "symbol": "next",
+     "lines": [
+      830,
+      836
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "LeiosNotifyServerSuite",
+    "LeiosNotifyRelaySuite"
+   ],
+   "note": "an effect that waits for a queued reply where the reference's STM retries; the server races it with the quit, as the responder's orElse composes the retry",
+   "digest": "0161162d9a95dd26"
+  },
+  "def network.LeiosNotifyServer.Replies#pump": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus-diffusion/src/ouroboros-consensus-diffusion/Ouroboros/Consensus/Network/NodeToNode.hs",
+     "symbol": "pump",
+     "lines": [
+      912,
+      933
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "LeiosNotifyServerSuite",
+    "LeiosNotifyRelaySuite"
+   ],
+   "digest": "637f39a89519ad8b"
+  },
+  "def network.LeiosNotifyServer.silent": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus-diffusion/src/ouroboros-consensus-diffusion/Ouroboros/Consensus/Network/NodeToNode.hs",
+     "symbol": "hLeiosNotifyServer",
+     "lines": [
+      769,
+      936
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "LeiosFetchRegistrationSuite",
+    "LeiosNotifyServerSuite"
+   ],
+   "note": "the server's replies where nothing notifies them: incr's credits and a next that never returns, for a connection whose node gives no relay",
+   "digest": "e169abcdf7554d55"
+  },
+  "val network.ServerHandlers#leiosNotify": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus-diffusion/src/ouroboros-consensus-diffusion/Ouroboros/Consensus/Network/NodeToNode.hs",
+     "symbol": "hLeiosNotifyServer",
+     "lines": [
+      769,
+      936
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "LeiosNotifyRelaySuite"
+   ],
+   "note": "the replies of each run of the LeiosNotify server, a resource acquired when the run starts, as aLeiosNotifyServer calls hLeiosNotifyServer per run",
+   "digest": "83cc4f2872d2665e"
   }
  },
  "glue": [

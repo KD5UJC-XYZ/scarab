@@ -12,11 +12,9 @@ import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.Praos2
 import xyz.kd5ujc.scarab.consensus.leios.{
-  AnnouncingHeader,
   BytesSize,
   ElId,
   IsBigLedgerPeer,
-  LeiosAnnouncements,
   LeiosOutstanding,
   PeerOffer,
   StdGen,
@@ -118,7 +116,7 @@ class LeiosChainSyncSuite extends FailsOnUncaught:
             LeiosOutstanding.empty[Int](StdGen.mk(4), Word64.clamped(0))
           )
           vars <- LeiosPeerVars.create[IO](IsBigLedgerPeer.NotBigLedgerPeer)
-          central <- AtomicCell[IO].of(LeiosAnnouncements.empty[AnnouncingHeader])
+          central <- AtomicCell[IO].of(LeiosCentral.empty[IO])
           handling = LeiosChainSync(
             shared,
             vars,
@@ -233,7 +231,7 @@ class LeiosChainSyncSuite extends FailsOnUncaught:
           assertEquals(outstanding.elFocus.get(election), Some(announcement.hash))
           assert(outstanding.isFocused(announcement.hash))
           assertEquals(points, Vector(point))
-          assertEquals(counted.live.keySet, Set(election))
+          assertEquals(counted.selfPeer.live.keySet, Set(election))
           // an announcement is not this peer's offer: the roll-forward is not LeiosNotify
           assertEquals(offers.size, 0)
       }

@@ -200,7 +200,10 @@ class LeiosFetchEndToEndSuite extends FailsOnUncaught:
               settling,
               e => IO.raiseError(new AssertionError(e.toString)),
               IO.raiseError,
-              _ => IO.pure(None)
+              _ => IO.pure(None),
+              acquired.notifications.subscribe,
+              IO.pure(None),
+              LeiosMinOfferLead.Default
             )
           )
           hiddenBefore = LeiosCertGate.hidden(AcquiredLeiosEbs.empty, forest)

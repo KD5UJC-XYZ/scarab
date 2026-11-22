@@ -13,10 +13,12 @@ import xyz.kd5ujc.scarab.protocol.{EbHash, EbPoint}
 import xyz.kd5ujc.scarab.protocol.LeiosWord.Word64
 
 /** A header that announces an endorser block, with the announcement read from it once
-  * (`AnnouncingHeader`, `LeiosDemoLogic.hs` 1739-1753 at ouroboros-consensus 2416493b): two are the
-  * same announcement when their headers' hashes are, the one identity the dedup counts by.
+  * (`AnnouncingHeader`, `LeiosDemoLogic.hs` 1739-1753 at ouroboros-consensus 2416493b): the header,
+  * which a relay announces with, and its announcement; two are the same announcement when their
+  * headers' hashes are, the one identity the dedup counts by.
   */
-final case class AnnouncingHeader(headerHash: Bytes, fields: AnnouncementFields)
+final case class AnnouncingHeader(header: LeiosHeader, fields: AnnouncementFields):
+  def headerHash: Bytes = header.hash
 
 object AnnouncingHeader:
   given Eq[AnnouncingHeader] = Eq.instance((a, b) => a.headerHash == b.headerHash)
@@ -34,7 +36,7 @@ object AnnouncingHeader:
     */
   def forged(header: LeiosHeader, ebHash: EbHash, ebBodySize: BytesSize): AnnouncingHeader =
     AnnouncingHeader(
-      header.hash,
+      header,
       AnnouncementFields(
         ElId(Word64.clamped(header.slot), Blake2b.hash224.hash(header.issuerVkey)),
         ebHash,
@@ -57,8 +59,7 @@ enum AnnouncementRefused derives CanEqual:
 
 /** The announcements counted per election (`PeerState`, `Announcements.hs` 57-63 at 2416493b). The
   * node keeps one of its own as itself (`CentralState`'s `selfPeer`, 238-262), so that only a new
-  * announcement is processed; the relay queues and the record of what was sent to whom belong to
-  * the LeiosNotify server, which this node does not run (#54).
+  * announcement is processed and relayed.
   */
 final case class LeiosAnnouncements[A](live: SortedMap[ElId, ElState[A]]):
   /** `extendLive` (`Announcements.hs` 145-169): the election's first announcement, or a second that

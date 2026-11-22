@@ -16,8 +16,39 @@ final case class TxLocation(hash: EbHash, offset: Int)
   */
 final case class LocalFill(offset: Int, source: TxLocation)
 
-/** What a body write did: the points it completed and the offsets its fills filled. */
-final case class BodyWritten(completed: Vector[EbPoint], filled: Vector[Int])
+/** What a point write did: `bodied`, the size of the body the volatile partition holds for a novel
+  * point's endorser block, for which the reference notifies `AcquiredEb` at this point; and the
+  * points it completed, this one where that body's closure is complete (`sqlInsertEbPoint`,
+  * `Storage/LeiosDB/Impl/SQLite/Insert.hs:76-111` at ouroboros-consensus 2416493b).
+  */
+final case class PointWritten(bodied: Option[Word32], completed: Vector[EbPoint])
+
+/** What a body write did: `bodied`, every point of the hash where it stored the body, for each of
+  * which the reference notifies `AcquiredEb` (`sqlInsertEbBody`, `Insert.hs:120-163` at
+  * ouroboros-consensus 2416493b); the points it completed; and the offsets its fills filled.
+  */
+final case class BodyWritten(
+    bodied: Vector[EbPoint],
+    completed: Vector[EbPoint],
+    filled: Vector[Int]
+)
+
+/** What the store tells its subscribers a write acquired (`LeiosEbNotification`,
+  * `Storage/LeiosDB/API.hs:177-186` at ouroboros-consensus 2416493b): a body written, with its size
+  * in bytes, or a closure complete.
+  */
+enum LeiosEbNotification derives CanEqual:
+  case AcquiredEb(point: EbPoint, size: Word32)
+  case AcquiredEbTxs(point: EbPoint)
+
+object LeiosEbNotification:
+  /** A point write's notifications, in the reference's order: the body's, then the closure's. */
+  def of(point: EbPoint, written: PointWritten): Vector[LeiosEbNotification] =
+    written.bodied.toVector.map(AcquiredEb(point, _)) ++ written.completed.map(AcquiredEbTxs(_))
+
+  /** A body write's notifications: each point's body, then each completed point's closure. */
+  def of(size: Word32, written: BodyWritten): Vector[LeiosEbNotification] =
+    written.bodied.map(AcquiredEb(_, size)) ++ written.completed.map(AcquiredEbTxs(_))
 
 /** The status of a row of the volatile partition: the `status` column of the reference's
   * `leios.vol.db` (`Storage/LeiosDB/Impl/SQLite/Schema.hs:20-23` at 2416493b). A row is
@@ -108,17 +139,19 @@ enum LeiosStoreError extends DomainError:
   */
 trait LeiosStore[F[_]]:
   /** Record an announced point and its announced size (`writeEbPoint`) in the volatile partition. A
-    * point the volatile partition holds changes nothing. A novel point of a hash whose closure is
-    * complete in the volatile partition is complete on arrival, and is returned.
+    * point the volatile partition holds changes nothing. A novel point of a hash whose body the
+    * volatile partition holds has that body on arrival, whose size is returned; where its closure
+    * is complete there, the point is complete on arrival, and is returned.
     */
   def writeEbPoint(point: EbPoint, announced: Word32)(using
       Raise[F, LeiosStoreError]
-  ): F[Vector[EbPoint]]
+  ): F[PointWritten]
 
   /** Store a body in the volatile partition, and fill what its fills can from transactions the
     * volatile partition holds for other endorser blocks (`writeEbBody`, `sqlInsertEbBody`). The
-    * point must be in the volatile partition. A body the volatile partition holds changes nothing
-    * and completes nothing. Fills allocate the closure, whether they fill anything or not.
+    * point must be in the volatile partition. A body stored gives every point of its hash. A body
+    * the volatile partition holds changes nothing, gives no point and completes nothing. Fills
+    * allocate the closure, whether they fill anything or not.
     */
   def writeEbBody(point: EbPoint, body: LeiosEb, fills: Vector[LocalFill])(using
       Raise[F, LeiosStoreError]

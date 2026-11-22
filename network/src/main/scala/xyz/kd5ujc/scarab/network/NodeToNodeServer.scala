@@ -21,6 +21,10 @@ import scala.concurrent.duration.*
   * @param leiosFetch
   *   The answers of the LeiosFetch server, which runs where the bundle is the Leios build's
   *   ([[HotBundle.Leios]]): the node's endorser-block store.
+  * @param leiosNotify
+  *   The replies of each run of the LeiosNotify server, which runs where the bundle is the Leios
+  *   build's: the node's relay of endorser-block announcements and offers; none answers no request
+  *   ([[LeiosNotifyServer.silent]]).
   */
 final class ServerHandlers[F[_], P](
     val codec: ChainSync.PayloadCodec[P],
@@ -28,7 +32,8 @@ final class ServerHandlers[F[_], P](
     val blocks: BlockFetchServer.Blocks[F],
     val transactions: TxSubmissionServer.Sink[F],
     val peerSharing: Option[PeerSharingServer.Source[F]] = None,
-    val leiosFetch: Option[LeiosFetchRequestHandler[F]] = None
+    val leiosFetch: Option[LeiosFetchRequestHandler[F]] = None,
+    val leiosNotify: Option[Resource[F, LeiosNotifyServer.Replies[F]]] = None
 )
 
 /** Node-to-node, responder side. [[start]] runs the four server mini-protocols on a multiplexer and
@@ -194,15 +199,17 @@ object NodeToNodeServer:
         )
       ).background
       // the Leios build's LeiosNotify server, hot and started on demand (`aLeiosNotifyServer`,
-      // `NodeToNode.hs` 1891-1909 and 2081-2089 at ouroboros-consensus 2416493b), with nothing to
-      // notify (#54)
+      // `NodeToNode.hs` 1891-1909 and 2081-2089 at ouroboros-consensus 2416493b), each run with
+      // replies of its own (`hLeiosNotifyServer`)
       _ <- Option
-        .when(settings.bundle == HotBundle.Leios)(())
-        .traverse_ { _ =>
+        .when(settings.bundle == HotBundle.Leios)(
+          handlers.leiosNotify.getOrElse(Resource.eval(LeiosNotifyServer.silent[F]()))
+        )
+        .traverse_ { replies =>
           channel(Protocols.LeiosNotify).flatMap { notify =>
             guarded("leios-notify")(
               episode(Temperature.Hot, onDemand(started)(Protocols.LeiosNotify))(
-                LeiosNotifyServer.run(notify)
+                replies.use(LeiosNotifyServer.run(notify, _))
               ).foreverM[Unit]
             ).background
           }

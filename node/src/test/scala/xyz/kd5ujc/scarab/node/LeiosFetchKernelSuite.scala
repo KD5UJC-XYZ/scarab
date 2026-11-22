@@ -12,12 +12,10 @@ import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.leios.{
   AnnouncementFields,
-  AnnouncingHeader,
   BytesSize,
   EbFetchState,
   ElId,
   IsBigLedgerPeer,
-  LeiosAnnouncements,
   LeiosFetchRequest,
   LeiosFetchStaticEnv,
   LeiosJobPool,
@@ -92,7 +90,7 @@ class LeiosFetchKernelSuite extends FailsOnUncaught:
       defect: Throwable => IO[Unit]
   ): cats.effect.Resource[IO, Unit] =
     cats.effect.Resource
-      .eval(cats.effect.std.AtomicCell[IO].of(LeiosAnnouncements.empty[AnnouncingHeader]))
+      .eval(cats.effect.std.AtomicCell[IO].of(LeiosCentral.empty[IO]))
       .flatMap(LeiosFetchKernel.run(shared, _, env, currentSlot, forecast, slots, defect))
 
   test("a decision queues a live peer's requests and drops the offers it finds dead") {

@@ -2162,6 +2162,11 @@ object Main extends IOApp:
         headers.slotClock.geometry.map(g =>
           Option(java.time.Duration.between(g.systemStart, g.slotStart(slot)).toNanos.nanos)
         )
+      // the immutable tip's slot (`getImmTipSlot`, `NodeKernel.hs:1206-1215` at
+      // ouroboros-consensus 2416493b), which the LeiosNotify servers hold offers to the lead from
+      immutableTipSlot = chain.ref.get.map(
+        _.anchor.block.map(b => xyz.kd5ujc.scarab.protocol.LeiosWord.Word64.clamped(b.slot))
+      )
       leiosFetch <- leios.traverse { store =>
         (
           cats.effect.std.Random.scalaUtilRandom[IO].flatMap(_.nextLong),
@@ -2175,7 +2180,12 @@ object Main extends IOApp:
             run.settling,
             e => fatalSink(Fatal.Storage(StorageError.LeiosStore(e))),
             cause => fatalSink(Fatal.Defect(cause)),
-            onset
+            onset,
+            blockPool.leios.notifications.subscribe,
+            immutableTipSlot,
+            setup.config.settings.leios.minOfferLead.fold(LeiosMinOfferLead.Default)(lead =>
+              LeiosMinOfferLead(xyz.kd5ujc.scarab.protocol.LeiosWord.Word64.clamped(lead.toBigInt))
+            )
           )(using summon, LeiosStorage.lifted[IO])
         }
       }
@@ -2221,7 +2231,8 @@ object Main extends IOApp:
         server.blocks,
         mempool.sink(fatalSink),
         peerSharing = Some(sharing.source),
-        leiosFetch = leiosFetch.map(_.responder)
+        leiosFetch = leiosFetch.map(_.responder),
+        leiosNotify = leiosFetch.map(_.notifier)
       )
       manager <- ConnectionManager.create[IO](
         ConnectionManager.Limits(

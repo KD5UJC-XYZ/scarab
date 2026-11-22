@@ -19,10 +19,10 @@ import xyz.kd5ujc.scarab.consensus.leios.{
 }
 import scala.collection.immutable.SortedMap
 import xyz.kd5ujc.scarab.ledger.LeiosBlock
-import xyz.kd5ujc.scarab.network.{FailsOnUncaught, NetworkError}
+import xyz.kd5ujc.scarab.network.{FailsOnUncaught, LeiosNotifyServer, NetworkError}
 import xyz.kd5ujc.scarab.node.forge.ForgedLeiosEb
-import xyz.kd5ujc.scarab.protocol.TxBitmaps
-import xyz.kd5ujc.scarab.protocol.LeiosWord.{Word16, Word64}
+import xyz.kd5ujc.scarab.protocol.{HfcHeader, TxBitmaps}
+import xyz.kd5ujc.scarab.protocol.LeiosWord.{Word16, Word32, Word64}
 import xyz.kd5ujc.scarab.storage.{LeiosStoreLocks, LeiosStoreSuite, RocksLeiosStore}
 
 /** An endorser block the node forged, handed to its fetch's handlers (`onForgedLeiosEb`,
@@ -30,7 +30,8 @@ import xyz.kd5ujc.scarab.storage.{LeiosStoreLocks, LeiosStoreSuite, RocksLeiosSt
   * store holds its point, body and closure afterwards, the closure's completion reaches chain
   * selection's set, the fetch logic holds the body and never fetches it, and the LeiosFetch server
   * answers for it from the store as it answers for one fetched from a peer
-  * ([[LeiosFetchStoreHandler]]).
+  * ([[LeiosFetchStoreHandler]]); a downstream peer's LeiosNotify server is told of its
+  * announcement, then offered its body and its closure ([[LeiosNotifyRelay]]).
   *
   * The endorser block is forged of the 40 transactions of the testnet's block 64,853
   * (`fixtures/leios/testnet/blocks-rc-2026w44.tsv`), announced by that block's header; the
@@ -106,7 +107,10 @@ class LeiosForgedEbSuite extends FailsOnUncaught:
           settling,
           e => IO.raiseError(new AssertionError(e.toString)),
           IO.raiseError,
-          _ => IO.pure(None)
+          _ => IO.pure(None),
+          acquired.notifications.subscribe,
+          IO.pure(None),
+          LeiosMinOfferLead.Default
         )
       ).map(node => (node, store, acquired))
     }
@@ -175,5 +179,32 @@ class LeiosForgedEbSuite extends FailsOnUncaught:
         assertEquals(body, Some(forged.body.encoded))
         assertEquals(closure, Some(forged.closure.toVector))
         assert(counted.ebState.get(forged.point.hash).exists(_.hasBody))
+    }
+  }
+
+  dirs.test(
+    "a forged endorser block is announced to a downstream peer with credits, then its body and closure offered"
+  ) { dir =>
+    rig(dir / "leios").use { (node, _, _) =>
+      // the production forge callback, with a downstream server running and holding three requests
+      node.notifier.flatTap(_.pump.background).use { downstream =>
+        for
+          held <- downstream.requested.replicateA(3)
+          _ <- ok(node.onForged.forged(announcing, forged))
+          replies <- downstream.next.replicateA(3)
+        yield
+          assertEquals(held, List.fill(3)(LeiosNotifyServer.Requested.NotExcessive))
+          assertEquals(
+            replies,
+            List(
+              LeiosNotifyServer.Reply.Announcement(HfcHeader.Dijkstra(block.header.raw)),
+              LeiosNotifyServer.Reply.BlockOffer(
+                forged.point,
+                Word32.wrap(forged.body.encoded.size.toLong)
+              ),
+              LeiosNotifyServer.Reply.BlockTxsOffer(forged.point)
+            )
+          )
+      }
     }
   }
