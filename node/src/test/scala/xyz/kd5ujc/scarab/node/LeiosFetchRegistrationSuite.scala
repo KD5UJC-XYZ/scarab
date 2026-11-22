@@ -188,19 +188,24 @@ class LeiosFetchRegistrationSuite extends FailsOnUncaught:
           )
           acquired <- LeiosAcquired.create[IO]
           node <- ok(
-            LeiosFetchNode.create[IO](
-              acquired.notifying(ours),
-              StdGen.mk(4),
-              slot(0),
-              settling,
-              e => IO.raiseError(new AssertionError(e.toString)),
-              IO.raiseError,
-              _ => IO.pure(None),
-              acquired.notifications.subscribe,
-              IO.pure(None),
-              noLead,
-              LeiosMempoolPull.none[IO]
-            )
+            LeiosTxCache
+              .create[IO]
+              .flatMap(txCache =>
+                LeiosFetchNode.create[IO](
+                  acquired.notifying(ours),
+                  StdGen.mk(4),
+                  slot(0),
+                  settling,
+                  e => IO.raiseError(new AssertionError(e.toString)),
+                  IO.raiseError,
+                  _ => IO.pure(None),
+                  acquired.notifications.subscribe,
+                  IO.pure(None),
+                  noLead,
+                  LeiosMempoolPull.none[IO],
+                  txCache
+                )
+              )
           )
           // the endorser block is focused, and the peer offers its body and its closure
           _ <- node.shared.outstanding.update(
@@ -269,19 +274,24 @@ class LeiosFetchRegistrationSuite extends FailsOnUncaught:
         (ours, theirs, settling) =>
           for
             node <- ok(
-              LeiosFetchNode.create[IO](
-                ours,
-                StdGen.mk(4),
-                slot(0),
-                settling,
-                e => IO.raiseError(new AssertionError(e.toString)),
-                IO.raiseError,
-                _ => IO.pure(None),
-                Resource.eval(Queue.unbounded[IO, LeiosEbNotification]),
-                IO.pure(None),
-                LeiosMinOfferLead.Default,
-                LeiosMempoolPull.none[IO]
-              )
+              LeiosTxCache
+                .create[IO]
+                .flatMap(txCache =>
+                  LeiosFetchNode.create[IO](
+                    ours,
+                    StdGen.mk(4),
+                    slot(0),
+                    settling,
+                    e => IO.raiseError(new AssertionError(e.toString)),
+                    IO.raiseError,
+                    _ => IO.pure(None),
+                    Resource.eval(Queue.unbounded[IO, LeiosEbNotification]),
+                    IO.pure(None),
+                    LeiosMinOfferLead.Default,
+                    LeiosMempoolPull.none[IO],
+                    txCache
+                  )
+                )
             )
             (a, b) <- Bearer.inMemory[IO](64)
             // the activation is released as soon as the hot protocols are told to stop
@@ -315,19 +325,24 @@ class LeiosFetchRegistrationSuite extends FailsOnUncaught:
       (ours, theirs, settling) =>
         for
           node <- ok(
-            LeiosFetchNode.create[IO](
-              ours,
-              StdGen.mk(4),
-              slot(0),
-              settling,
-              e => IO.raiseError(new AssertionError(e.toString)),
-              IO.raiseError,
-              _ => IO.pure(None),
-              Resource.eval(Queue.unbounded[IO, LeiosEbNotification]),
-              IO.pure(None),
-              LeiosMinOfferLead.Default,
-              LeiosMempoolPull.none[IO]
-            )
+            LeiosTxCache
+              .create[IO]
+              .flatMap(txCache =>
+                LeiosFetchNode.create[IO](
+                  ours,
+                  StdGen.mk(4),
+                  slot(0),
+                  settling,
+                  e => IO.raiseError(new AssertionError(e.toString)),
+                  IO.raiseError,
+                  _ => IO.pure(None),
+                  Resource.eval(Queue.unbounded[IO, LeiosEbNotification]),
+                  IO.pure(None),
+                  LeiosMinOfferLead.Default,
+                  LeiosMempoolPull.none[IO],
+                  txCache
+                )
+              )
           )
           (a, b) <- Bearer.inMemory[IO](64)
           // ChainSync returned: the session ends the hot protocols on the wire and releases the
@@ -399,19 +414,24 @@ class LeiosFetchRegistrationSuite extends FailsOnUncaught:
         (ours, theirs, settling) =>
           for
             node <- ok(
-              LeiosFetchNode.create[IO](
-                ours,
-                StdGen.mk(4),
-                slot(0),
-                settling,
-                e => IO.raiseError(new AssertionError(e.toString)),
-                IO.raiseError,
-                _ => IO.pure(None),
-                Resource.eval(Queue.unbounded[IO, LeiosEbNotification]),
-                IO.pure(None),
-                LeiosMinOfferLead.Default,
-                LeiosMempoolPull.none[IO]
-              )
+              LeiosTxCache
+                .create[IO]
+                .flatMap(txCache =>
+                  LeiosFetchNode.create[IO](
+                    ours,
+                    StdGen.mk(4),
+                    slot(0),
+                    settling,
+                    e => IO.raiseError(new AssertionError(e.toString)),
+                    IO.raiseError,
+                    _ => IO.pure(None),
+                    Resource.eval(Queue.unbounded[IO, LeiosEbNotification]),
+                    IO.pure(None),
+                    LeiosMinOfferLead.Default,
+                    LeiosMempoolPull.none[IO],
+                    txCache
+                  )
+                )
             )
             (a, b) <- Bearer.inMemory[IO](64)
             // released neither ended on the wire nor told to stop

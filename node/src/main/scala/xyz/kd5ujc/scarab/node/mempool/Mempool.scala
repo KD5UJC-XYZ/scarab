@@ -78,6 +78,15 @@ enum DropCause:
     */
   case Withdrawal
 
+/** The pool's Leios index as one read of its state gives it ([[Mempool.leiosTxIndex]]): the held
+  * transactions by their Leios hash with their bytes, and the parity of the protocol version they
+  * were validated under, none while the pool has no ledger (when it holds no transaction).
+  */
+final case class LeiosTxIndex(
+    txs: Map[LeiosTxHash, Bytes],
+    parity: Option[xyz.kd5ujc.scarab.consensus.leios.ProtVerParity]
+)
+
 trait MempoolEvents[F[_]]:
   def emit(event: MempoolEvent): F[Unit]
 
@@ -135,11 +144,13 @@ trait Mempool[F[_]]:
 
   def snapshot: F[MempoolState]
 
-  /** The held transactions by the hash an endorser block lists them by, with their bytes
-    * (`getLeiosTxIndex`, ouroboros-consensus 2416493b `Mempool/API.hs:241-244`, `Mempool/Init.hs`
-    * 135-140; [[MempoolState.leiosTxIndex]]).
+  /** The held transactions by the hash an endorser block lists them by, with their bytes, and the
+    * parity of the protocol version of the pool's ledger, which they were validated under, from one
+    * read of the pool's state (`getLeiosTxIndex`, ouroboros-consensus 2416493b
+    * `Mempool/API.hs:241-244`, `Mempool/Init.hs:135-140`; [[MempoolState.leiosTxIndex]],
+    * [[MempoolState.leiosParity]]).
     */
-  def leiosTxIndex: F[Map[LeiosTxHash, Bytes]]
+  def leiosTxIndex: F[LeiosTxIndex]
 
   def contains(id: Bytes): F[Boolean]
 
@@ -527,7 +538,7 @@ object Mempool:
 
       def snapshot = state.get
 
-      def leiosTxIndex = state.get.map(_.leiosTxIndex)
+      def leiosTxIndex = state.get.map(s => LeiosTxIndex(s.leiosTxIndex, s.leiosParity))
 
       def contains(id: Bytes) = state.get.map(_.contains(id))
 

@@ -1,0 +1,223 @@
+// SPDX-License-Identifier: Apache-2.0
+package xyz.kd5ujc.scarab.node
+
+import cats.data.NonEmptyVector
+import cats.effect.IO
+import cats.mtl.Raise
+import cats.syntax.all.*
+import scala.concurrent.duration.*
+import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.consensus.leios.{EbClosureVerdict, ProtVerParity}
+import xyz.kd5ujc.scarab.crypto.bls.BlsFixtures.rbHash
+import xyz.kd5ujc.scarab.ledger.StorageError
+import xyz.kd5ujc.scarab.ledger.era.rules.{
+  DijkstraLedgerPredFailure,
+  DijkstraMempoolPredFailure,
+  DijkstraUtxowPredFailure,
+  LeiosClosureDefect
+}
+import xyz.kd5ujc.scarab.ledger.state.SlotNo
+import xyz.kd5ujc.scarab.node.mempool.{DijkstraState, Rejection}
+import xyz.kd5ujc.scarab.protocol.LeiosTxHash
+import xyz.kd5ujc.scarab.storage.LeiosEb
+
+/** The closure check with the node's LeiosTxCache (`validateEbClosure`, `LeiosVoting.hs:446-565` at
+  * ouroboros-consensus 2416493b), on the testnet's recorded closure of 323 transactions
+  * ([[RecordedLeiosClosure]]): a transaction the cache holds validated under the state's parity is
+  * reapplied, without the static checks, and any other applied in full, as the reference's `decide`
+  * takes them; what it validates in full is recorded, also the valid prefix of a closure that does
+  * not apply; an evicted transaction is a miss again; and with every transaction cached the check
+  * takes a fraction of the cold one. Its cases of the cold and warm checks, of the other parity and
+  * of a closure that does not apply are the reference's own properties of `validateEbClosure`
+  * (`prop_freshClosureFullyApplied`, `prop_secondLookReapplies`, `prop_otherProtVerRevalidates`,
+  * `prop_recordsValidatedBeforeFailure`, `prop_stopsAtFirstFailure`,
+  * `ouroboros-consensus/test/consensus-test/Test/LeiosVoting.hs:86-145` at 2416493b), here on the
+  * chain's own transactions.
+  */
+class LeiosTxCacheSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
+  override def munitIOTimeout: Duration = 5.minutes
+
+  private given Raise[IO, StorageError] with
+    def functor = cats.Functor[IO]
+    def raise[E <: StorageError, A](error: E): IO[A] = IO(fail(error.message))
+
+  private val r = RecordedLeiosClosure
+
+  private lazy val state: DijkstraState =
+    LeiosClosureCheck
+      .ticked(
+        r.env.rules,
+        r.seeded,
+        SlotNo.fromBigInt(r.slot).fold(e => fail(e.toString), identity)
+      )
+      .fold(e => fail(e.toString), identity)
+
+  private lazy val parity: ProtVerParity = LeiosClosureCheck.parityOf(state)
+
+  private def other(p: ProtVerParity): ProtVerParity = p match
+    case ProtVerParity.Even => ProtVerParity.Odd
+    case ProtVerParity.Odd  => ProtVerParity.Even
+
+  /** Transaction 6 of the closure (no auxiliary data, so its bytes end with its one key witness's
+    * signature, then `null` and `true`) with the signature's last byte flipped: its body, and so
+    * its balance and inputs, unchanged, only its witness wrong, which is a static check.
+    */
+  private lazy val forged: (LeiosTxHash, Bytes) =
+    val raw = r.stored(6)._2
+    assertEquals(raw.drop(raw.size - 2), Bytes.fromArray(Array(0xf6.toByte, 0xf5.toByte)))
+    val at = raw.size - 3
+    val flipped = raw.lift(at).fold(fail("no signature byte"))(b => (b ^ 1).toByte)
+    val altered = raw.take(at) ++ Bytes.fromArray(Array(flipped)) ++ raw.drop(at + 1)
+    LeiosEb.hashTx(altered) -> altered
+
+  private def withForged: Vector[(LeiosTxHash, Bytes)] = r.stored.updated(6, forged)
+
+  /** A cache that holds an announcement and the body of `closure`, so its transactions are tracked
+    * (`insertAnnouncement`, `insertBody`), and the transactions `applied` validated under `under`.
+    */
+  private def cacheOf(
+      closure: Vector[(LeiosTxHash, Bytes)],
+      applied: Vector[LeiosTxHash],
+      under: ProtVerParity
+  ): IO[LeiosTxCache[IO]] =
+    val body = LeiosEb.of(NonEmptyVector.fromVectorUnsafe(closure.map(_._2)))
+    val eb = LeiosEb.hashOf(body.transactions.toVector)
+    for
+      cache <- LeiosTxCache.create[IO]
+      _ <- cache.insertAnnouncement(r.point.slot.toBigInt, rbHash(1), eb)
+      _ <- cache.insertBody(eb, body)
+      _ <- cache.insertApplied(applied, under)
+    yield cache
+
+  private def check(
+      closure: Vector[(LeiosTxHash, Bytes)],
+      cache: LeiosTxCache[IO]
+  ): IO[EbClosureVerdict[Rejection, LeiosClosureDefect]] =
+    LeiosClosureCheck.validateEbClosure[IO](
+      _ => IO.pure(Some(closure)),
+      None,
+      cache,
+      r.point,
+      state,
+      r.env
+    )
+
+  private def validated(cache: LeiosTxCache[IO], closure: Vector[(LeiosTxHash, Bytes)]) =
+    cache.lookup.map(look => closure.map(e => look(e._1)))
+
+  private def refusedWitness(v: EbClosureVerdict[Rejection, ?]): Unit = v match
+    case EbClosureVerdict.Invalid(Rejection.DijkstraRefused(_, failures)) =>
+      assert(
+        failures.exists {
+          case DijkstraMempoolPredFailure.LedgerFailure(
+                DijkstraLedgerPredFailure.DijkstraUtxowFailure(
+                  DijkstraUtxowPredFailure.InvalidWitnessesUTXOW(_)
+                )
+              ) =>
+            true
+          case _ => false
+        },
+        s"$failures"
+      )
+    case other => fail(s"not a refused witness: $other")
+
+  test(
+    "a cold check validates every transaction in full and records them; the next reapplies all"
+  ) {
+    for
+      cache <- cacheOf(r.stored, Vector.empty, parity)
+      cold <- check(r.stored, cache)
+      held <- validated(cache, r.stored)
+      warm <- check(r.stored, cache)
+    yield
+      assertEquals(cold, EbClosureVerdict.Valid(0, 323))
+      assertEquals(held, Vector.fill(323)(Some(Right(parity))))
+      assertEquals(warm, EbClosureVerdict.Valid(323, 0))
+  }
+
+  test("tags under the other parity send every transaction back through the full check") {
+    cacheOf(r.stored, r.stored.map(_._1), other(parity))
+      .flatMap(check(r.stored, _))
+      .map(v => assertEquals(v, EbClosureVerdict.Valid(0, 323)))
+  }
+
+  test(
+    "a hit is reapplied without the static checks; a miss, or a hit of the other parity, is not"
+  ) {
+    val all = withForged.map(_._1)
+    for
+      hit <- cacheOf(withForged, all, parity).flatMap(check(withForged, _))
+      // the forged one untagged, every other one a hit
+      miss <- cacheOf(withForged, all.filterNot(_ == forged._1), parity)
+        .flatMap(check(withForged, _))
+      otherParity <- cacheOf(withForged, all, other(parity)).flatMap(check(withForged, _))
+    yield
+      // reapplyTx checks no witness: the reference's verdict on a closure its cache holds whole
+      assertEquals(hit, EbClosureVerdict.Valid(323, 0))
+      refusedWitness(miss)
+      refusedWitness(otherParity)
+  }
+
+  test("a closure that does not apply records the valid prefix it validated, and no more") {
+    for
+      cache <- cacheOf(withForged, Vector.empty, parity)
+      verdict <- check(withForged, cache)
+      held <- validated(cache, withForged)
+    yield
+      refusedWitness(verdict)
+      assertEquals(held.take(6), Vector.fill(6)(Some(Right(parity))))
+      assertEquals(held.drop(6), Vector.fill(317)(None))
+  }
+
+  test("a transaction only the mempool held and a fetched one: applied and unapplied") {
+    for
+      cache <- cacheOf(r.stored, Vector(r.stored(0)._1), parity)
+      _ <- cache.insertUnapplied(Vector(r.stored(1)._1))
+      look <- cache.lookup
+    yield
+      assertEquals(look(r.stored(0)._1), Some(Right(parity)))
+      assertEquals(look(r.stored(1)._1), Some(Left(())))
+      assertEquals(look(r.stored(2)._1), None)
+      assertEquals(
+        LeiosClosureCheck.Step.of(look(r.stored(1)._1), parity),
+        LeiosClosureCheck.Step.Apply
+      )
+  }
+
+  test("evicting the announcement prunes the cache: its transactions are misses again") {
+    for
+      cache <- cacheOf(r.stored, r.stored.map(_._1), parity)
+      _ <- cache.evictOlderThan(r.point.slot.toBigInt + 1)
+      held <- validated(cache, r.stored)
+      index <- cache.snapshot
+      verdict <- check(r.stored, cache)
+    yield
+      assertEquals(held, Vector.fill(323)(None))
+      assertEquals(index.announcementCount, 0)
+      // evicted past the endorser block's slot: the check records nothing it cannot track
+      assertEquals(verdict, EbClosureVerdict.Valid(0, 323))
+  }
+
+  test("benchmark: the recorded closure's check with a warm cache takes well under a second") {
+    val runs = 5
+    def timed[A](io: IO[A]): IO[(FiniteDuration, A)] =
+      IO.monotonic.flatMap(t0 => io.flatMap(a => IO.monotonic.map(t1 => (t1 - t0, a))))
+    def best(io: IO[EbClosureVerdict[Rejection, LeiosClosureDefect]]) =
+      (1 to runs).toVector.traverse(_ => timed(io)).map(rs => (rs.map(_._1).min, rs.map(_._2)))
+    for
+      (cold, coldVerdicts) <- best(
+        cacheOf(r.stored, Vector.empty, parity).flatMap(check(r.stored, _))
+      )
+      (warm, warmVerdicts) <- best(
+        cacheOf(r.stored, r.stored.map(_._1), parity).flatMap(check(r.stored, _))
+      )
+      _ <- IO.println(
+        f"LeiosTxCacheSuite: 323 transactions, cold ${cold.toMicros / 1000.0}%.1f ms, " +
+          f"warm ${warm.toMicros / 1000.0}%.1f ms, ${cold.toNanos.toDouble / warm.toNanos}%.1fx"
+      )
+    yield
+      assertEquals(coldVerdicts.distinct, Vector(EbClosureVerdict.Valid(0, 323)))
+      assertEquals(warmVerdicts.distinct, Vector(EbClosureVerdict.Valid(323, 0)))
+      assert(warm < 1.second, s"warm $warm")
+      assert(warm < cold, s"warm $warm, cold $cold")
+  }

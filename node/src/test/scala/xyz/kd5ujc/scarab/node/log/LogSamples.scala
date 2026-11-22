@@ -804,6 +804,7 @@ object LogSamples:
     List(
       LeiosKernelEvent.VotingDisabled,
       LeiosKernelEvent.VoteScheduled(point, 3.seconds, 7.seconds),
+      LeiosKernelEvent.EbValidated(point, 300, 23, 1500.millis),
       LeiosKernelEvent.NoVoteOnset(point),
       LeiosKernelEvent.Voted(vote, tally.weight),
       LeiosKernelEvent.VoteAcquired(vote, tally),

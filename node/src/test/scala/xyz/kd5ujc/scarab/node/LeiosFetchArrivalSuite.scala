@@ -227,8 +227,15 @@ class LeiosFetchArrivalSuite extends FailsOnUncaught:
   private def indexOf(txs: Vector[Bytes]): Map[LeiosTxHash, Bytes] =
     txs.map(t => LeiosEb.hashTx(t) -> t).toMap
 
+  /** A mempool's index of `txs`, validated under the even parity. */
+  private def indexed(txs: Map[LeiosTxHash, Bytes]): xyz.kd5ujc.scarab.node.mempool.LeiosTxIndex =
+    xyz.kd5ujc.scarab.node.mempool.LeiosTxIndex(
+      txs,
+      Some(xyz.kd5ujc.scarab.consensus.leios.ProtVerParity.Even)
+    )
+
   private def mempoolOf(txs: Vector[Bytes]): LeiosMempoolPull[IO] =
-    LeiosMempoolPull.of(IO.pure(indexOf(txs)))
+    LeiosMempoolPull.of(IO.pure(indexed(indexOf(txs))))
 
   dirs.test("a body whose closure the mempool holds is acquired with it, and nothing is fetched") {
     dir =>
@@ -263,6 +270,41 @@ class LeiosFetchArrivalSuite extends FailsOnUncaught:
             Vector(Written.Point, Written.Body, Written.Txs(txs.indices.toVector))
           )
       }
+  }
+
+  dirs.test(
+    "the mempool's transactions are in the transaction cache, applied under its parity, when the write that completes the closure is published"
+  ) { dir =>
+    val txs = Vector.tabulate(5)(tx)
+    val eb = body(txs)
+    val (asking, request) = asked(eb, size(eb), closure(eb))
+    val p = request.point
+    stored(dir / "leios").use { rocks =>
+      for
+        log <- Ref.of[IO, Vector[Written]](Vector.empty)
+        r <- rig(new Recording(rocks, log), asking, pull = mempoolOf(txs))
+        // the announcement, as the node takes it before the body (`recordAnnouncementInTxCache`)
+        _ <- r.shared.txCache.insertAnnouncement(
+          p.slot.toBigInt,
+          xyz.kd5ujc.scarab.crypto.bls.BlsFixtures.rbHash(3),
+          p.hash
+        )
+        // read as the completion is published, before the arrival settles: a vote that the
+        // completion wakes finds them tagged (the reference's TODO, `LeiosDemoLogic.hs` 1560)
+        found <- r.acquired.notifications.subscribe.use(published =>
+          typed(r.arrival.block(peer, request, eb.transactions.toVector)).background.use(_ =>
+            published.take.iterateUntil(_ == LeiosEbNotification.AcquiredEbTxs(p)) *>
+              r.shared.txCache.lookup <* r.settled.take
+          )
+        )
+        index <- r.shared.txCache.snapshot
+      yield
+        assertEquals(
+          eb.transactions.toVector.map(e => found(e._1)),
+          Vector.fill(5)(Some(Right(xyz.kd5ujc.scarab.consensus.leios.ProtVerParity.Even)))
+        )
+        assertEquals(index.lookupBody(p.hash), Some(eb))
+    }
   }
 
   dirs.test(
@@ -558,7 +600,7 @@ class LeiosFetchArrivalSuite extends FailsOnUncaught:
             r <- rig(
               new Recording(rocks, log),
               asking,
-              pull = LeiosMempoolPull.of(index.get),
+              pull = LeiosMempoolPull.of(index.get.map(indexed)),
               limits = pairs
             )
             stale <- acquired(r, eb, request)
@@ -621,7 +663,12 @@ class LeiosFetchArrivalSuite extends FailsOnUncaught:
       TestControl.executeEmbed(
         for
           index <- Ref.of[IO, Map[LeiosTxHash, Bytes]](Map.empty)
-          r <- rig(rocks, asking, pull = LeiosMempoolPull.of(index.get), limits = pairs)
+          r <- rig(
+            rocks,
+            asking,
+            pull = LeiosMempoolPull.of(index.get.map(indexed)),
+            limits = pairs
+          )
           stale <- acquired(r, eb, request)
           again <- reacquired(r, eb, index.set(indexOf(txs.take(2))))
           vars <- LeiosPeerVars.create[IO](IsBigLedgerPeer.NotBigLedgerPeer)
@@ -675,7 +722,7 @@ class LeiosFetchArrivalSuite extends FailsOnUncaught:
             r <- rig(
               new GatedTxs(rocks, first),
               asking,
-              pull = LeiosMempoolPull.of(index.get),
+              pull = LeiosMempoolPull.of(index.get.map(indexed)),
               limits = pairs
             )
             stale <- acquired(r, eb, request)

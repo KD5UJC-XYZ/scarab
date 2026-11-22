@@ -150,12 +150,14 @@ object LeiosRequestsToSend:
 /** The fetch logic's state shared by the node and its peers' mini-protocols: the decision's state
   * (`getLeiosOutstanding`, an `MVar` there, held here so a step may run effects while it holds it),
   * the signal that wakes the decision loop (`getLeiosReady`, an `MVar ()` that is put with
-  * `tryPutMVar`), and every live peer's vars (`getLeiosPeersVars`).
+  * `tryPutMVar`), every live peer's vars (`getLeiosPeersVars`), and the node's transaction cache
+  * (`getLeiosTxCache`, [[LeiosTxCache]]), which the same handlers and the voting thread update.
   */
 final class LeiosFetchShared[F[_], P] private (
     val outstanding: AtomicCell[F, LeiosOutstanding[P]],
     val ready: Queue[F, Unit],
-    val peers: Ref[F, SortedMap[P, LeiosPeerVars[F]]]
+    val peers: Ref[F, SortedMap[P, LeiosPeerVars[F]]],
+    val txCache: LeiosTxCache[F]
 )(using F: Async[F]):
   /** `tryPutMVar readyVar ()`: wake the decision loop, unless it is woken already. */
   def wake: F[Unit] = ready.tryOffer(()).void
@@ -182,13 +184,20 @@ final class LeiosFetchShared[F[_], P] private (
       .use(use)
 
 object LeiosFetchShared:
-  def create[F[_]: Async, P: Order](initial: LeiosOutstanding[P]): F[LeiosFetchShared[F, P]] =
+  def create[F[_]: Async, P: Order](
+      initial: LeiosOutstanding[P],
+      txCache: LeiosTxCache[F]
+  ): F[LeiosFetchShared[F, P]] =
     given Ordering[P] = Order[P].toOrdering
     (
       AtomicCell[F].of(initial),
       Queue.bounded[F, Unit](1),
       Ref.of[F, SortedMap[P, LeiosPeerVars[F]]](SortedMap.empty)
-    ).mapN(new LeiosFetchShared(_, _, _))
+    ).mapN(new LeiosFetchShared(_, _, _, txCache))
+
+  /** [[create]] with an empty transaction cache of its own. */
+  def create[F[_]: Async, P: Order](initial: LeiosOutstanding[P]): F[LeiosFetchShared[F, P]] =
+    LeiosTxCache.create[F].flatMap(create(initial, _))
 
 /** The boundary between the decision and the protocol: the request the decision made as the job the
   * LeiosFetch client sends (`nextLeiosFetchClientCommand`'s `g`, `LeiosDemoLogic.hs` 795-841 at

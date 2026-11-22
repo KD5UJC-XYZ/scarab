@@ -556,6 +556,35 @@ final case class DijkstraState private (ls: LedgerState[Dijkstra], account: Chai
   ): Either[Rejection, DijkstraState] =
     validatedFull(tx, env).map(_._1)
 
+  /** `reapplyTx lcfg slot (assumeValidatedClosureTx lcfg slot st tx) st` of a transaction of an
+    * endorser block's closure that the node's [[xyz.kd5ujc.scarab.node.LeiosTxCache]] holds as
+    * validated under the protocol version's parity of this state (`validateEbClosure`,
+    * `LeiosVoting.hs:511-518`, ouroboros-consensus 2416493b): the token is made against this state
+    * (`assumeValidatedClosureTx`, `Shelley/Ledger/Leios.hs:179-191`), the transaction annotated
+    * against its UTxO set with an empty cache at its parameters' protocol version
+    * (`unsafeMakeValidatedTx`, `Shelley/API/Mempool.hs:132-151`, cardano-ledger 9df9f98c); so
+    * `reapplyValidatedTx` (`:420-440`) meets the same major version and runs MEMPOOL without the
+    * static checks (`ValidateSuchThat (notElem lblStatic)`, `defaultReapplyValidatedTx`,
+    * `:298-323`): no witness is checked and no script evaluated, the validity flag taken as the
+    * block declares it. The ledger after it.
+    */
+  def reapplyIntervening(
+      tx: ETx[TxLevel.Top, Dijkstra],
+      env: DijkstraPoolEnv
+  ): Either[Rejection, DijkstraState] =
+    val r = readable
+    for
+      u <- utxoOf(tx)
+      stAnnTx = DijkstraMempoolRun.annotate(env.clock.posix, r.pp, u, tx)
+      next <- judged(tx.id, r, stAnnTx, env, TxEnv.Validation.NonStatic)
+    yield next
+
+  /** The major protocol version of the state's parameters (`leiosCurrentProtVer`,
+    * `Shelley/Ledger/Leios.hs:193-194`, ouroboros-consensus 2416493b).
+    */
+  def protocolMajor: Int =
+    EraPParams.dijkstra.ppProtocolVersionL.get(readable.pp).pvMajor.value
+
   /** `applyTx` of Dijkstra (`applyShelleyTx`, `Shelley/Ledger/Mempool.hs:331-366`, through
     * `applyAlonzoBasedTx`, `Shelley/Eras.hs:291-342`, ouroboros-consensus 2416493b): a local
     * transaction (`Intervene`) applied as it is; a peer's (`DoNotIntervene`) applied with its flag

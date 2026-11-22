@@ -129,12 +129,13 @@ object LeiosVoter:
 
   /** The closure check of the endorser block at `point` on the tip `tip` (`validateEbClosure`,
     * [[LeiosClosureCheck]]): the tip's state ticked to the block's slot, then the closure from
-    * `lookup` applied to it at that slot, with the mempool's environment and the clock of a
-    * transaction of that slot on the tip's state.
+    * `lookup` applied to it at that slot, reapplying what `cache` holds validated, with the
+    * mempool's environment and the clock of a transaction of that slot on the tip's state.
     */
   def validateClosure[F[_]: Async](
       lookup: EbHash => F[Option[Vector[(LeiosTxHash, Bytes)]]],
       utxoStore: Option[UtxoReadView[F]],
+      cache: LeiosTxCache[F],
       poolEnv: F[MempoolEnv],
       txClock: TxClock[MirrorState]
   )(point: xyz.kd5ujc.scarab.protocol.EbPoint, tip: VotingTip)(using
@@ -152,6 +153,7 @@ object LeiosVoter:
       verdict <- LeiosClosureCheck.validateEbClosure(
         lookup,
         utxoStore,
+        cache,
         point,
         at,
         DijkstraPoolEnv.of(env, slot).copy(clock = txClock.at(tip.state, Era.Dijkstra, slot))
@@ -160,7 +162,9 @@ object LeiosVoter:
 
   /** The voter's capabilities: the clock since `systemStart`, the [[selection]], the closure check
     * `validate`, and the vote state `votes` (`addVote`, whose vote, once counted, its subscribers,
-    * the LeiosNotify servers among them, relay).
+    * the LeiosNotify servers among them, relay). A valid closure is traced with what was reapplied
+    * and applied and how long the check took, by the monotonic clock from before it began
+    * (`TraceLeiosEbValidated`, `LeiosVoting.hs:353-372` at ouroboros-consensus 2416493b).
     */
   def env[F[_]: Async](
       systemStart: F[Instant],
@@ -169,7 +173,8 @@ object LeiosVoter:
       validate: (xyz.kd5ujc.scarab.protocol.EbPoint, VotingTip) => F[
         EbClosureVerdict[Rejection, LeiosClosureDefect]
       ],
-      votes: LeiosVotes[F]
+      votes: LeiosVotes[F],
+      trace: LeiosKernelEvent[Rejection, LeiosClosureDefect] => F[Unit]
   )(using fault: Raise[F, LeiosVotingFault]): Env[F] =
     new LeiosVotingEnv[F, VotingTip, Rejection, LeiosClosureDefect]:
       def now: F[FiniteDuration] = sinceStart[F](systemStart)
@@ -177,7 +182,16 @@ object LeiosVoter:
       def validateClosure(
           point: xyz.kd5ujc.scarab.protocol.EbPoint,
           ledger: VotingTip
-      ): F[EbClosureVerdict[Rejection, LeiosClosureDefect]] = validate(point, ledger)
+      ): F[EbClosureVerdict[Rejection, LeiosClosureDefect]] =
+        Clock[F].monotonic.flatMap(start =>
+          validate(point, ledger).flatTap {
+            case EbClosureVerdict.Valid(reapplied, applied) =>
+              Clock[F].monotonic.flatMap(end =>
+                trace(LeiosKernelEvent.EbValidated(point, reapplied, applied, end - start))
+              )
+            case EbClosureVerdict.Invalid(_) | EbClosureVerdict.Unreadable(_) => Async[F].unit
+          }
+        )
       def addVote(vote: Vote): F[AddVoteResult] =
         votes.add(vote)(using fault.contramap(LeiosVotingFault.Votes(_)))
 

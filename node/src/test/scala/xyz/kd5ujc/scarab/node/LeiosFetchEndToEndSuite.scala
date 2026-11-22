@@ -193,19 +193,24 @@ class LeiosFetchEndToEndSuite extends FailsOnUncaught:
       ).tupled.use { (b, a, settling, acquired) =>
         for
           node <- ok(
-            LeiosFetchNode.create[IO](
-              acquired.notifying(a),
-              StdGen.mk(4),
-              slot(0),
-              settling,
-              e => IO.raiseError(new AssertionError(e.toString)),
-              IO.raiseError,
-              _ => IO.pure(None),
-              acquired.notifications.subscribe,
-              IO.pure(None),
-              LeiosMinOfferLead.Default,
-              LeiosMempoolPull.none[IO]
-            )
+            LeiosTxCache
+              .create[IO]
+              .flatMap(txCache =>
+                LeiosFetchNode.create[IO](
+                  acquired.notifying(a),
+                  StdGen.mk(4),
+                  slot(0),
+                  settling,
+                  e => IO.raiseError(new AssertionError(e.toString)),
+                  IO.raiseError,
+                  _ => IO.pure(None),
+                  acquired.notifications.subscribe,
+                  IO.pure(None),
+                  LeiosMinOfferLead.Default,
+                  LeiosMempoolPull.none[IO],
+                  txCache
+                )
+              )
           )
           hiddenBefore = LeiosCertGate.hidden(AcquiredLeiosEbs.empty, forest)
           result <- typed(

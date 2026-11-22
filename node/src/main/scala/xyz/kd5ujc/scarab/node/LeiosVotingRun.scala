@@ -42,6 +42,12 @@ enum LeiosKernelEvent[+I, +U]:
     */
   case NoVoteOnset(point: EbPoint)
 
+  /** A closure checked valid: the transactions reapplied and those applied in full, and how long
+    * the check took (`TraceLeiosEbValidated`, `LeiosVoting.hs:360-372`,
+    * `LeiosDemoTypes.hs:1691-1702` at 2416493b, without the applied ones' summed measure, #54).
+    */
+  case EbValidated(point: EbPoint, reapplied: Int, applied: Int, duration: FiniteDuration)
+
   /** A vote of ours counted (`TraceLeiosVoted`, `LeiosVoting.hs:397` at 2416493b). */
   case Voted(vote: Vote, weight: Weight)
 

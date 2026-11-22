@@ -105,7 +105,7 @@ class LeiosVotingRunSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       def selection: IO[Option[SelectionView[Unit]]] =
         IO.pure(Some(SelectionView(chainDep(announces), Some(announcing), Some(committee), ())))
       def validateClosure(p: EbPoint, ledger: Unit): IO[EbClosureVerdict[String, Int]] =
-        run.validated.update(_ + 1).as(EbClosureVerdict.Valid)
+        run.validated.update(_ + 1).as(EbClosureVerdict.Valid(0, 0))
       def addVote(vote: Vote): IO[AddVoteResult] =
         Handle
           .allow[LeiosVotesDefect](run.votes.add(vote))
