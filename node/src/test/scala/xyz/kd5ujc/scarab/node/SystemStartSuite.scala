@@ -12,7 +12,10 @@ import xyz.kd5ujc.scarab.ledger.{
   PosixClock,
   SystemStart
 }
+import xyz.kd5ujc.scarab.ledger.era.{PV1, ValidityInterval}
+import xyz.kd5ujc.scarab.ledger.era.conway.ConwayTxInfo
 import xyz.kd5ujc.scarab.ledger.json.JsonKind
+import xyz.kd5ujc.scarab.ledger.state.Conway
 import java.nio.file.{Files, Path}
 import java.time.Instant
 import munit.FunSuite
@@ -167,6 +170,36 @@ class SystemStartSuite extends FunSuite:
       assertEquals(refusal(edited), expected)
       assertEquals(GenesisSchema.shelley(edited).left.map(_.problem), Left(expected))
     }
+  }
+
+  // a Conway script context's validity interval on the devnet whose Shelley start is 240.586427 ms
+  // after its Byron start: the mempool's and the forger's clock, through Conway's
+  // `transValidityInterval` (cardano-ledger 9df9f98c `Conway/TxInfo.hs:791-811`)
+  test(
+    "a Conway context's validity interval counts from the Shelley start of fixtures/devnet/lsq"
+  ) {
+    val lsq = NodeSetup
+      .fromDirectory(ReferenceBuild.Default)(Path.of("fixtures/devnet/lsq/genesis"))
+      .fold(e => fail(e.message), identity)
+    val byron = Instant.parse("2026-10-12T00:31:08Z")
+    assertEquals(lsq.globals.systemStart, SystemStart(byron.plusNanos(240586427)))
+    assertEquals(lsq.geometry.systemStart, byron)
+    // slots of 100 ms from the chain's start, which is in Conway
+    val clock = lsq.txClock.at(lsq.mirrorStart, Era.Conway, 10)
+    val range = ConwayTxInfo.transValidityInterval[Conway](
+      clock.posix,
+      ValidityInterval(Some(10), Some(20))
+    )
+    val base = BigInt(byron.toEpochMilli)
+    assertEquals(
+      range,
+      Right(
+        PV1.Interval(
+          PV1.lowerBound(PV1.POSIXTime(base + 240 + 1000)),
+          PV1.strictUpperBound(PV1.POSIXTime(base + 240 + 2000))
+        )
+      )
+    )
   }
 
   // on the public networks and the Leios testnet the two starts agree, so the ledger's start is
