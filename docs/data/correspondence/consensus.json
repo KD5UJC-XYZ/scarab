@@ -3571,6 +3571,553 @@
    "structure": "same",
    "note": "the Shelley envelope checks a ledger view decides: the obsolete node, the header's size, the body's size; shared by validate",
    "digest": "dff276c15ee81ad3"
+  },
+  "class consensus.leios.InsertBodySummary": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoTypes.hs",
+     "symbol": "LeiosTxCacheInsertBodySummary",
+     "lines": [
+      1605,
+      1612
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "note": "the counts; the load factor against the table's capacity, which the pure index does not have, is not kept",
+   "evidence": [
+    "LeiosTxCacheIndexSuite",
+    "LeiosTxCacheSuite"
+   ],
+   "digest": "6586e19a98c7e18f"
+  },
+  "class consensus.leios.LeiosTxCacheIndex": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosTxCache/Reference.hs",
+     "symbol": "LeiosTxCacheIndex",
+     "lines": [
+      96,
+      125
+     ]
+    }
+   ],
+   "class": "Gap",
+   "structure": "differs",
+   "note": "the announcements, bodies, transactions and pruned slot; the transactions' durable locations (txLocState, locRing, locNext), which serve cross-EB fills the node does not make, are not kept",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/54#issuecomment-7055704156",
+   "evidence": [
+    "LeiosTxCacheIndexSuite",
+    "LeiosTxCacheSuite"
+   ],
+   "digest": "468c1cc68a371925"
+  },
+  "def consensus.leios.BodyState#refs": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosTxCache/Reference.hs",
+     "symbol": "bodyRefCountL",
+     "lines": [
+      149,
+      158
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the lens's getter",
+   "digest": "0a7f8a13f3f9a59c"
+  },
+  "def consensus.leios.LeiosTxCacheIndex#evictOlderThan": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosTxCache/Reference.hs",
+     "symbol": "evictOlderThan",
+     "lines": [
+      264,
+      275
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the boundary advanced monotonically, then the stale announcements evicted",
+   "digest": "7480f974d8ea0a7b"
+  },
+  "def consensus.leios.LeiosTxCacheIndex#insertAnnouncement": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosTxCache/Reference.hs",
+     "symbol": "insertAnnouncement",
+     "lines": [
+      199,
+      236
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the announcement, no-op when present or older than the pruned slot, then evictIfNeeded; evictWhile, evictIfNeeded, evictOldest and decBody are its private helpers",
+   "digest": "039c0b7782db047f"
+  },
+  "def consensus.leios.LeiosTxCacheIndex#insertAppliedTx": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosTxCache/Reference.hs",
+     "symbol": "insertAppliedTx",
+     "lines": [
+      429,
+      443
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "no-op for an untracked transaction",
+   "digest": "c82093d067b24620"
+  },
+  "def consensus.leios.LeiosTxCacheIndex#insertBody": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosTxCache/Reference.hs",
+     "symbol": "insertBody",
+     "lines": [
+      354,
+      412
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "note": "the counts bumped and the summary of the transactions' prior states; no caller-supplied fold over locations",
+   "evidence": [
+    "LeiosTxCacheIndexSuite",
+    "LeiosTxCacheSuite"
+   ],
+   "digest": "bacaf43dc5579aa1"
+  },
+  "def consensus.leios.LeiosTxCacheIndex#insertUnappliedTx": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosTxCache/Reference.hs",
+     "symbol": "insertUnappliedTx",
+     "lines": [
+      415,
+      425
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the payload and the prior state",
+   "digest": "1ec131ad9fe25dfc"
+  },
+  "def consensus.leios.LeiosTxCacheIndex#lookupBody": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosTxCache/Reference.hs",
+     "symbol": "lookupBody",
+     "lines": [
+      455,
+      458
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the held body",
+   "digest": "43d96c94ee22e2cd"
+  },
+  "def consensus.leios.LeiosTxCacheIndex#lookupTx": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosTxCache/Reference.hs",
+     "symbol": "lookupTx",
+     "lines": [
+      448,
+      453
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "Left inserted, Right applied, None otherwise",
+   "digest": "fbdcd9af54c2f087"
+  },
+  "def consensus.leios.LeiosTxCacheIndex.empty": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosTxCache/Reference.hs",
+     "symbol": "emptyLeiosTxCacheIndex",
+     "lines": [
+      127,
+      138
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "without the locations",
+   "digest": "955e0de38c836fe3"
+  },
+  "def consensus.leios.ProtVerParity.of": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoTypes.hs",
+     "symbol": "protVerParity",
+     "lines": [
+      1255,
+      1258
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the major version's parity, of the major version itself rather than a ProtVer",
+   "digest": "f41679f513cd5d05"
+  },
+  "def consensus.leios.RefCount.dec": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosTxCache/Reference.hs",
+     "symbol": "decRefCount",
+     "lines": [
+      181,
+      184
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "decRefCount, None for SNothing",
+   "digest": "2eccbffe5de7758c"
+  },
+  "def consensus.leios.RefCount.inc": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosTxCache/Reference.hs",
+     "symbol": "incRefCount",
+     "lines": [
+      176,
+      177
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "incRefCount",
+   "digest": "ab8cfb77daf37ad6"
+  },
+  "def consensus.leios.RefCount.value": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosTxCache/API.hs",
+     "symbol": "RefCount",
+     "lines": [
+      182,
+      183
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the count",
+   "digest": "8dfa31222b2fc39b"
+  },
+  "def consensus.leios.ReferencesTxsByHash#txReferences": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosTxCache/API.hs",
+     "symbol": "foldTxReferences",
+     "lines": [
+      139,
+      139
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "note": "the hashes as an iterable to fold over, not the fold",
+   "evidence": [
+    "LeiosTxCacheIndexSuite",
+    "LeiosTxCacheSuite"
+   ],
+   "digest": "e408ff5e03913ef9"
+  },
+  "def consensus.leios.TxState#refs": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosTxCache/Reference.hs",
+     "symbol": "txRefCountL",
+     "lines": [
+      160,
+      174
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the lens's getter",
+   "digest": "0a7f8a13f3f9a59c"
+  },
+  "def consensus.leios.TxState#withRefs": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosTxCache/Reference.hs",
+     "symbol": "txRefCountL",
+     "lines": [
+      160,
+      174
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the lens's setter",
+   "digest": "13962e7789c0fea9"
+  },
+  "enum consensus.leios.BodyState": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosTxCache/API.hs",
+     "symbol": "BodyState",
+     "lines": [
+      185,
+      190
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "its two cases",
+   "digest": "f9fffd1b2164fbe6"
+  },
+  "enum consensus.leios.ProtVerParity": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoTypes.hs",
+     "symbol": "ProtVerParity",
+     "lines": [
+      1251,
+      1253
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "even and odd",
+   "digest": "5866b486ad1bece6"
+  },
+  "enum consensus.leios.TxArrivalPrior": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosTxCache/API.hs",
+     "symbol": "TxArrivalPrior",
+     "lines": [
+      192,
+      199
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "its three cases",
+   "digest": "d3685c6e64483728"
+  },
+  "enum consensus.leios.TxState": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosTxCache/Reference.hs",
+     "symbol": "TxState",
+     "lines": [
+      85,
+      94
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "its three cases",
+   "digest": "f7537d373eb7424b"
+  },
+  "object consensus.leios.LeiosTxCacheIndex": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosTxCache/Reference.hs",
+     "symbol": "emptyLeiosTxCacheIndex",
+     "lines": [
+      127,
+      138
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the companion: the empty index and the bound",
+   "digest": "6cdd0376bd80eeec"
+  },
+  "object consensus.leios.ProtVerParity": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoTypes.hs",
+     "symbol": "protVerParity",
+     "lines": [
+      1255,
+      1258
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the companion of protVerParity",
+   "digest": "8c7b02974bff90d2"
+  },
+  "object consensus.leios.RefCount": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosTxCache/Reference.hs",
+     "symbol": "incRefCount",
+     "lines": [
+      176,
+      184
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "incRefCount and decRefCount",
+   "digest": "b7d02c880d9adc3f"
+  },
+  "trait consensus.leios.ReferencesTxsByHash": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosTxCache/API.hs",
+     "symbol": "ReferencesTxsByHash",
+     "lines": [
+      138,
+      139
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "note": "the transactions' hashes in body order, without the sizes the fold also gives, which only locations and telemetry read",
+   "evidence": [
+    "LeiosTxCacheIndexSuite",
+    "LeiosTxCacheSuite"
+   ],
+   "digest": "b50f0ee68fe1fa42"
+  },
+  "type consensus.leios.RefCount": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosTxCache/API.hs",
+     "symbol": "RefCount",
+     "lines": [
+      182,
+      183
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "note": "an Int, at least one, where the reference's is a Word8",
+   "evidence": [
+    "LeiosTxCacheIndexSuite",
+    "LeiosTxCacheSuite"
+   ],
+   "digest": "568a5ee99568eec9"
+  },
+  "val consensus.leios.LeiosTxCacheIndex.MaxAnnouncementCount": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosTxCache/API.hs",
+     "symbol": "maxAnnouncementCount",
+     "lines": [
+      154,
+      155
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "128, the vote state's bound",
+   "digest": "da88ccebc67c0dcb"
+  },
+  "val consensus.leios.RefCount.one": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosTxCache/Reference.hs",
+     "symbol": "insertAnnouncement",
+     "lines": [
+      199,
+      236
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "MkRefCount 1, the count of a new entry",
+   "digest": "3a0fad9562799cdb"
   }
  },
  "glue": [
