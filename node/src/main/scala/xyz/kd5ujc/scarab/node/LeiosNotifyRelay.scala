@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import cats.effect.{Async, Resource, Unique}
+import cats.effect.{Async, Outcome, Resource, Unique}
 import cats.effect.std.{AtomicCell, Queue}
 import cats.syntax.all.*
-import fs2.Stream
 import fs2.concurrent.SignallingRef
 import scala.collection.immutable.{Queue as Fifo, SortedMap}
 import xyz.kd5ujc.scarab.consensus.leios.{AnnouncingHeader, ElId, ElState, LeiosAnnouncements}
@@ -244,23 +243,55 @@ private[node] object LeiosNotifyRelay:
           .modify(o => o.next.fold((o, Option.empty[Reply]))((reply, rest) => (rest, Some(reply))))
           .flatMap(_.fold(queue.waitUntil(_.messages.nonEmpty) *> next)(F.pure))
 
-      // each notification and each vote taken once, whichever comes first, none lost to the other
-      def pump: F[Unit] =
-        Stream
-          .fromQueueUnterminated(subscription)
-          .map(_.asLeft[Vote])
-          .merge(Stream.fromQueueUnterminated(voted).map(_.asRight[LeiosEbNotification]))
-          .evalMap { next =>
-            immutableTip.flatMap(tip =>
-              queue.update { outgoing =>
-                val pruned = outgoing.prunedTo(tip)
-                next match
-                  case Left(notification) =>
-                    val (point, part, reply) = LeiosNotifyOutgoing.offer(notification)
-                    pruned.offering(point, part, reply, lead.decision(tip, point.slot))
-                  case Right(vote) => pruned.voting(vote)
-              }
-            )
+      // `pumpNext`'s `readTChan chan <|> getNextVote` (`NodeToNode.hs` 838-859): a notification
+      // whenever one is ready, a vote only when none is, each taken once
+      def pump: F[Unit] = F.tailRecM(Option.empty[Vote])(held => step(held).map(Left(_)))
+
+      /** One turn of the pump, with the vote taken already and not yet given its turn, `held`: a
+        * notification ready is moved first and the vote kept; with none, the held vote, or a vote
+        * ready, is moved. With neither source ready, the pump waits for either; a vote the wait
+        * takes is held, so that the notifications ready by then go before it, as the reference's
+        * left-biased choice, read again in each transaction, has them. No item is dropped here:
+        * only a peer without a credit drops one (the pump's `when (c > 0)`).
+        */
+      private def step(held: Option[Vote]): F[Option[Vote]] =
+        subscription.tryTake.flatMap {
+          case Some(notification) => moved(Left(notification)).as(held)
+          case None =>
+            held match
+              case Some(vote) => moved(Right(vote)).as(None)
+              case None =>
+                voted.tryTake.flatMap {
+                  // held for one more look at the notifications
+                  case Some(vote) => F.pure(Some(vote))
+                  case None =>
+                    F.racePair(subscription.take, voted.take)
+                      .flatMap {
+                        case Left((won, other)) =>
+                          (settled(won), other.cancel *> other.join.flatMap(settled)).tupled
+                        case Right((other, won)) =>
+                          (other.cancel *> other.join.flatMap(settled), settled(won)).tupled
+                      }
+                      .flatMap((notification, vote) =>
+                        notification.traverse_(n => moved(Left(n))).as(vote)
+                      )
+                }
+        }
+
+      /** The notification or the vote into the peer's queue, the announced points pruned first. */
+      private def moved(next: Either[LeiosEbNotification, Vote]): F[Unit] =
+        immutableTip.flatMap(tip =>
+          queue.update { outgoing =>
+            val pruned = outgoing.prunedTo(tip)
+            next match
+              case Left(notification) =>
+                val (point, part, reply) = LeiosNotifyOutgoing.offer(notification)
+                pruned.offering(point, part, reply, lead.decision(tip, point.slot))
+              case Right(vote) => pruned.voting(vote)
           }
-          .compile
-          .drain
+        )
+
+      private def settled[A](outcome: Outcome[F, Throwable, A]): F[Option[A]] = outcome match
+        case Outcome.Succeeded(fa) => fa.map(Some(_))
+        case Outcome.Canceled()    => F.pure(None)
+        case Outcome.Errored(e)    => F.raiseError(e)

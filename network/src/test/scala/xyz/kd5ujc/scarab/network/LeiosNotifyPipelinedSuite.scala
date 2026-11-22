@@ -283,3 +283,61 @@ class LeiosNotifyPipelinedSuite extends FailsOnUncaught:
       )
     )
   }
+
+  test(
+    "at the depth, the request a reply makes room for waits for the gate the room finds closed"
+  ) {
+    // `checkDone` and the reply's arrival are read in one transaction
+    // (leiosNotifyClientPeerPipelined, LeiosDemoOnlyTestNotify.hs 549-582 at ouroboros-consensus
+    // 2416493b): with the gate closed when the room comes, no request goes until it opens
+    for
+      gate <- SignallingRef.of[IO, Boolean](true)
+      counted <- SignallingRef.of[IO, Int](0)
+      // the gate as each request found it
+      seen <- Ref.of[IO, Vector[Boolean]](Vector.empty)
+      handled <- SignallingRef.of[IO, Vector[LeiosNotification]](Vector.empty)
+      reopen <- Deferred[IO, Unit]
+      program = typed(for
+        queued <- Queue.unbounded[IO, Reply]
+        credits <- scripted(queued, counted, depth = 1)
+        replies = new Replies[IO]:
+          def requested = gate.get.flatMap(g => seen.update(_ :+ g)) *> credits.requested
+          def next = credits.next
+          def pump = credits.pump
+        stop <- Deferred[IO, Unit]
+        outcome <- (
+          conversing(
+            replies,
+            stop,
+            gate.waitUntil(identity),
+            n => handled.update(_ :+ n),
+            depth = 1
+          ),
+          for
+            _ <- counted.waitUntil(_ == 1)
+            _ <- gate.set(false)
+            _ <- queued.offer(Reply.BlockTxsOffer(point))
+            _ <- handled.waitUntil(_.nonEmpty)
+            _ <- reopen.get
+            _ <- gate.set(true)
+            _ <- counted.waitUntil(_ == 2)
+            _ <- stop.complete(())
+          yield ()
+        ).parTupled
+      yield outcome._1)
+      control <- cats.effect.testkit.TestControl.execute(program)
+      // every fiber runs to where it waits: the reply is handled with the gate closed
+      _ <- control.tick
+      whileClosed <- (counted.get, handled.get).tupled
+      _ <- reopen.complete(())
+      _ <- control.tick
+      result <- control.results
+      requests <- seen.get
+    yield
+      assertEquals(whileClosed, (1, Vector(LeiosNotification.BlockTxsOffer(point))))
+      assertEquals(requests, Vector(true, true))
+      result match
+        case Some(cats.effect.Outcome.Succeeded(ended)) =>
+          assertEquals(ended, Right((Right(()), Right(()))))
+        case other => fail(s"the conversation did not end: $other")
+  }

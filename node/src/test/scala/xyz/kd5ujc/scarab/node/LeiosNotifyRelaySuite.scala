@@ -50,7 +50,13 @@ import xyz.kd5ujc.scarab.protocol.{
   TxSubmission2Fixtures
 }
 import xyz.kd5ujc.scarab.protocol.LeiosWord.{Word32, Word64}
-import xyz.kd5ujc.scarab.storage.{LeiosStore, LeiosStoreLocks, LeiosStoreSuite, RocksLeiosStore}
+import xyz.kd5ujc.scarab.storage.{
+  LeiosEbNotification,
+  LeiosStore,
+  LeiosStoreLocks,
+  LeiosStoreSuite,
+  RocksLeiosStore
+}
 
 import Peers.*
 
@@ -483,6 +489,128 @@ class LeiosNotifyRelaySuite extends FailsOnUncaught:
             Reply.Votes(Vector(votes(1)))
           )
         )
+    }
+  }
+
+  test("with one credit left, a pending offer goes before a pending vote, as <|> prefers it") {
+    val p = first.fields.point
+    val vote = xyz.kd5ujc.scarab.crypto.bls.BlsFixtures.right(
+      xyz.kd5ujc.scarab.crypto.bls.Vote.sign(
+        xyz.kd5ujc.scarab.crypto.bls.BlsFixtures.key(965)._1,
+        xyz.kd5ujc.scarab.crypto.bls.BlsFixtures.right(
+          xyz.kd5ujc.scarab.crypto.bls.SeatId.fromInt(0)
+        ),
+        xyz.kd5ujc.scarab.crypto.bls.BlsFixtures.rbHash(6)
+      )
+    )
+    // `pumpNext`'s `readTChan chan <|> getNextVote` (NodeToNode.hs 838-859 at ouroboros-consensus
+    // 2416493b): both sources hold one before the pump starts, and the store's is taken first
+    val program =
+      for
+        central <- AtomicCell[IO].of(LeiosCentral.empty[IO])
+        notified <- cats.effect.std.Queue.unbounded[IO, LeiosEbNotification]
+        voted <- cats.effect.std.Queue.unbounded[IO, xyz.kd5ujc.scarab.crypto.bls.Vote]
+        replies <- LeiosNotifyRelay
+          .server(
+            central,
+            Resource.pure(notified),
+            Resource.pure(voted),
+            IO.pure(None),
+            LeiosMinOfferLead.Default
+          )
+          .use { b =>
+            for
+              _ <- credited(b, 2)
+              // the announcement takes one credit, leaving the last
+              _ <- LeiosCentral.announced(central, ShouldRelay.DoRelay, first, IO.unit)
+              // the votes queued first, and more of them
+              _ <- voted.offer(vote).replicateA_(3)
+              _ <- notified.offer(LeiosEbNotification.AcquiredEb(p, word32(9)))
+              replies <- b.pump.background.surround(b.next.replicateA(2))
+            yield replies
+          }
+      yield replies
+    cats.effect.testkit.TestControl
+      .executeEmbed(program)
+      .map(replies =>
+        assertEquals(replies, List(announcementOf(first), Reply.BlockOffer(p, word32(9))))
+      )
+  }
+
+  /** The replies of a server whose pump starts with both sources empty, then, once it waits, is
+    * given a body offer and a closure offer, as one store write publishes them, and then a vote,
+    * before it runs again; the peer has `credits` after the announcement takes one, and `n` replies
+    * are taken.
+    */
+  private def arrivingWhileWaiting(credits: Int, n: Int) =
+    val p = first.fields.point
+    val vote = xyz.kd5ujc.scarab.crypto.bls.BlsFixtures.right(
+      xyz.kd5ujc.scarab.crypto.bls.Vote.sign(
+        xyz.kd5ujc.scarab.crypto.bls.BlsFixtures.key(966)._1,
+        xyz.kd5ujc.scarab.crypto.bls.BlsFixtures.right(
+          xyz.kd5ujc.scarab.crypto.bls.SeatId.fromInt(1)
+        ),
+        xyz.kd5ujc.scarab.crypto.bls.BlsFixtures.rbHash(8)
+      )
+    )
+    for
+      notified <- cats.effect.std.Queue.unbounded[IO, LeiosEbNotification]
+      voted <- cats.effect.std.Queue.unbounded[IO, xyz.kd5ujc.scarab.crypto.bls.Vote]
+      waiting <- cats.effect.Deferred[IO, Unit]
+      program = for
+        central <- AtomicCell[IO].of(LeiosCentral.empty[IO])
+        replies <- LeiosNotifyRelay
+          .server(
+            central,
+            Resource.pure(notified),
+            Resource.pure(voted),
+            IO.pure(None),
+            LeiosMinOfferLead.Default
+          )
+          .use { b =>
+            credited(b, credits + 1) *>
+              LeiosCentral.announced(central, ShouldRelay.DoRelay, first, IO.unit) *>
+              b.pump.background.surround(waiting.get *> b.next.replicateA(n))
+          }
+      yield replies
+      control <- cats.effect.testkit.TestControl.execute(program)
+      // every fiber runs to where it waits: the pump on both sources, the test on `waiting`
+      _ <- control.tick
+      _ <- notified.offer(LeiosEbNotification.AcquiredEb(p, word32(9)))
+      _ <- notified.offer(LeiosEbNotification.AcquiredEbTxs(p))
+      _ <- voted.offer(vote)
+      _ <- waiting.complete(())
+      _ <- control.tick
+      result <- control.results
+    yield (result, p, vote)
+
+  test("offers that arrive while the pump waits, with a vote after them, go before the vote") {
+    // the two credits go to the body and the closure, as the left-biased choice gives them
+    arrivingWhileWaiting(credits = 2, n = 3).map { (result, p, _) =>
+      result match
+        case Some(cats.effect.Outcome.Succeeded(replies)) =>
+          assertEquals(
+            replies,
+            List(announcementOf(first), Reply.BlockOffer(p, word32(9)), Reply.BlockTxsOffer(p))
+          )
+        case other => fail(s"the replies are not all in: $other")
+    }
+  }
+
+  test("a vote held while offers go first is not lost: it takes the next credit") {
+    arrivingWhileWaiting(credits = 3, n = 4).map { (result, p, vote) =>
+      result match
+        case Some(cats.effect.Outcome.Succeeded(replies)) =>
+          assertEquals(
+            replies,
+            List(
+              announcementOf(first),
+              Reply.BlockOffer(p, word32(9)),
+              Reply.BlockTxsOffer(p),
+              Reply.Votes(Vector(vote))
+            )
+          )
+        case other => fail(s"the replies are not all in: $other")
     }
   }
 

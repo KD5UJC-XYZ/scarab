@@ -28,9 +28,9 @@ enum LeiosNotification:
   * 529-634 at ouroboros-consensus 2416493b), run by the reference's pipelined driver
   * (`runPipelinedPeerWithLimits`, `aLeiosNotifyClient`, `NodeToNode.hs` 1866-1889).
   *
-  *   - Before each request the client waits until it is told to stop, or until `ready`, the node's
-  *     own gate (`awaitImmTipCanForecastNow`), holds; a stop comes first. With `depth` requests
-  *     outstanding it waits for a reply first, the stop still first.
+  *   - Before each request the client waits until it is told to stop, or until there is room below
+  *     `depth` and then `ready`, the node's own gate (`awaitImmTipCanForecastNow`), holds; a stop
+  *     comes first, during either wait.
   *   - Told to stop (`checkDone`'s `Left`), it sends `MsgQuit` at once, outstanding requests or
   *     not, and the replies still outstanding are collected and not handed on (`AlreadyDraining`),
   *     then the server's `MsgDone` ends it.
@@ -76,9 +76,12 @@ object LeiosNotifyPipelined:
       channel.recv(LeiosNotify.SmallByteLimit)(LeiosNotify.incremental(state))
     SignallingRef.of[F, Pipe](Pipe(0, draining = false)).flatMap { pipe =>
       val sender = Fibers.scoped[F, NetworkError, Unit](NetworkError.Defect(_)) {
-        // `checkDone`, then the depth: the stop before the gate, and before the wait for a reply
+        // `checkDone` and the wait for a reply at the depth, which the reference reads in one
+        // transaction: the stop before either; the gate read once there is room, so a request is
+        // sent only while the gate holds as the room comes. Only this fiber adds to what is
+        // outstanding, so the room found stays while the gate is read
         val next: F[Boolean] =
-          F.race(stop.get, ready *> pipe.waitUntil(_.outstanding < settings.depth)).map(_.isLeft)
+          F.race(stop.get, pipe.waitUntil(_.outstanding < settings.depth) *> ready).map(_.isLeft)
         def loop: F[Unit] =
           stop.tryGet.flatMap {
             case Some(_) => quit
