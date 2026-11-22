@@ -1863,6 +1863,7 @@ object Main extends IOApp:
           chain,
           globals,
           opened.state.geometry(genesis.geometry),
+          supply.leios,
           supply.leiosFetch
         )
         ended <- ran(run, instruments, rules, chain, supply, connections, services, opened.received)
@@ -2573,6 +2574,7 @@ object Main extends IOApp:
       chain: Chain,
       globals: xyz.kd5ujc.scarab.ledger.LedgerGlobals,
       geometry: xyz.kd5ujc.scarab.ledger.EpochGeometry,
+      leiosStore: Option[LeiosStore[IO]],
       leiosFetch: Option[LeiosFetchNode[IO]]
   )(using
       Log[IO],
@@ -2645,6 +2647,30 @@ object Main extends IOApp:
             // revalidated on the ticked state of the slot (`DijkstraSnapshots.ofPool`);
             // the endorser blocks it forges go to the fetch's handlers and store; the node does not
             // adapt their capacity (`LeiosAdaptiveEndorsements`, #54)
+            // a block of the Leios build certifies what its parent announced once the store
+            // holds the closure and the vote state a certificate for the parent
+            // (`decideLeiosCertify`, `partitionMempool`, `NodeKernel/Forge.hs:324-396, 760-869`
+            // at ouroboros-consensus 2416493b)
+            val certifying = (leiosStore, leiosFetch).tupled.map { (leios, node) =>
+              LeiosCertifier[IO](
+                hash =>
+                  leios.lookupEbClosure(hash)(using
+                    summon[Raise[IO, StorageError]].contramap(StorageError.LeiosStore(_))
+                  ),
+                node.votes.certificate,
+                Some(store),
+                (state, slot) =>
+                  MirrorDijkstra.envAt(
+                    state,
+                    slot,
+                    xyz.kd5ujc.scarab.protocol.Era.Dijkstra,
+                    setup.praos.copy(geometry = geometry),
+                    globals,
+                    setup.byronHistory,
+                    run.plutus
+                  )
+              )
+            }
             Forger.create[IO, MirrorState](
               setup.praos.copy(geometry = geometry),
               globals,
@@ -2664,7 +2690,8 @@ object Main extends IOApp:
                   chain.mempoolEnvironment.ask[MempoolEnv]
                 )
               ),
-              onForgedEb = leiosFetch.map(_.onForged)
+              onForgedEb = leiosFetch.map(_.onForged),
+              certifying = certifying
             )
           }
         yield forger

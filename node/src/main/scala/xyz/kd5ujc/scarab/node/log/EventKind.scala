@@ -320,6 +320,13 @@ enum EventKind(val area: Area, val severity: Severity):
   case LeiosVoted extends EventKind(Area.Chain, Severity.Info)
   case LeiosNotVoted extends EventKind(Area.Chain, Severity.Info)
 
+  // Leios forging, the `TraceLeiosKernel` cases the forge loop traces, with their `kind` s and
+  // severities (`LeiosDemoTypes.hs:2019-2047, 2133-2137, 2341-2344, 2402` at ouroboros-consensus 2416493b)
+  case LeiosBlockForged extends EventKind(Area.Chain, Severity.Info)
+  case LeiosBlockAnnounced extends EventKind(Area.Chain, Severity.Info)
+  case LeiosBlockCertified extends EventKind(Area.Chain, Severity.Info)
+  case LeiosCertifiedAndAnnounced extends EventKind(Area.Chain, Severity.Info)
+
   // the libraries
   case Slf4j extends EventKind(Area.Library, Severity.Info)
 

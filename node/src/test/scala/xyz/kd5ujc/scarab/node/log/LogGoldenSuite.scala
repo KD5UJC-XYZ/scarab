@@ -290,6 +290,7 @@ class LogGoldenSuite extends CatsEffectSuite:
     covered(mempool, cases[MempoolEvent])
     covered(forge, cases[ForgeEvent])
     covered(forgeTraces, cases[xyz.kd5ujc.scarab.node.forge.ForgeTrace])
+    covered(leiosForge, cases[xyz.kd5ujc.scarab.node.forge.LeiosForgeTrace])
     covered(inbound, cases[InboundEvent])
     covered(localServer, cases[xyz.kd5ujc.scarab.network.LocalServer.Trace])
     covered(remoteServer, cases[xyz.kd5ujc.scarab.network.BearerServer.Trace])

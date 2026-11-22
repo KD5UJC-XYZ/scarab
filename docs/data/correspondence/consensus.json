@@ -3206,14 +3206,14 @@
      "symbol": "decideLeiosCertify",
      "lines": [
       324,
-      397
+      396
      ]
     }
    ],
    "class": "Mirror",
    "structure": "same",
-   "note": "the ticked announcement and the era's gap, the Word64 slot difference against the gap, the closure lookup, the genesis error as a defect, then queryCert of the tip; a typed outcome where the reference returns Nothing and traces",
-   "digest": "88eb41e07bf11afa"
+   "note": "the ticked announcement and the era's gap, the Word64 slot difference against the gap, the closure lookup, the genesis error as a defect of its own, then queryCert of the tip; a typed outcome where the reference returns Nothing and traces, a certificate with the announced point the reference traces",
+   "digest": "5f9317889343aa5a"
   },
   "def consensus.leios.LeiosVoting.minCertificationGap": {
    "upstream": [
@@ -3625,7 +3625,7 @@
    ]
   },
   {
-   "reason": "the Leios voting's Scala plumbing with no counterpart of its own: the companion of the decisions, a voting key kept with the verification key derived from it once (deriveVerKeyDSIGN in goVote), the capability goVote runs over and the view of the selection it reads (the reference's forker at the volatile tip), the typed outcome of decideLeiosCertify (the reference returns Maybe and traces), and the defects that are the reference's error calls or a native library failure (#54)",
+   "reason": "the Leios voting's Scala plumbing with no counterpart of its own: the companion of the decisions, a voting key kept with the verification key derived from it once (deriveVerKeyDSIGN in goVote), the capability goVote runs over and the view of the selection it reads (the reference's forker at the volatile tip), the typed outcome of decideLeiosCertify (the reference returns Maybe and traces), and the defects that are the reference's error calls (decideLeiosCertify's on genesis its own) or a native library failure (#54)",
    "definitions": [
     "object consensus.leios.LeiosVoting",
     "class consensus.leios.VotingKey",
@@ -3639,6 +3639,7 @@
     "class consensus.leios.SelectionView",
     "enum consensus.leios.CertifyDecision",
     "enum consensus.leios.LeiosVotingDefect",
+    "enum consensus.leios.CertifyDefect",
     "class consensus.leios.VoteAggregationDefect"
    ]
   },

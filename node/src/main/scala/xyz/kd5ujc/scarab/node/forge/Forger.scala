@@ -33,7 +33,13 @@ import xyz.kd5ujc.scarab.node.read.{ChainRead, ConwayView, InEra, TxClock}
 import xyz.kd5ujc.scarab.node.read.MirrorEraRead
 import xyz.kd5ujc.scarab.node.mempool.{Capacity, Entry, Mempool, MempoolLedger, MempoolState}
 import xyz.kd5ujc.scarab.node.mempool.{EbCapacityScale, EbMeasure, Rejection}
-import xyz.kd5ujc.scarab.consensus.leios.{AnnouncingHeader, BytesSize}
+import xyz.kd5ujc.scarab.consensus.leios.{
+  AnnouncingHeader,
+  BytesSize,
+  CertifyDecision,
+  LeiosCertification
+}
+import xyz.kd5ujc.scarab.protocol.EbPoint
 import xyz.kd5ujc.scarab.ledger.StorageError
 import xyz.kd5ujc.scarab.storage.LeiosStoreError
 import xyz.kd5ujc.scarab.protocol.{ChainSync, ReferenceBuild}
@@ -83,6 +89,11 @@ enum ForgeEvent:
 
   /** A trace of the blockchain time the loop reads its slots from. */
   case Clock(trace: ClockTrace)
+
+  /** A Leios line of the forge loop, which the reference traces to its Leios tracer
+    * ([[LeiosForgeTrace]]).
+    */
+  case Leios(trace: LeiosForgeTrace)
 
   /** The KES key's state after the forge state was updated at a slot: what the reference traces
     * through its `forgeStateInfoTracer` (`Block/Forging.hs` 218-220), cardano-node 11.1.3
@@ -202,6 +213,11 @@ enum DiscardReason:
   /** The slot is not led under the inputs in force: it is published as any slot not led is. */
   case NotLed
 
+  /** The block was built without a certificate the node holds at the onset: it is forged again, and
+    * certifies, as the reference's forge at the slot does.
+    */
+  case Certificate
+
 trait ForgeEvents[F[_]]:
   def emit(event: ForgeEvent): F[Unit]
 
@@ -287,6 +303,10 @@ trait ForgeEvents[F[_]]:
   * @param ebCapacityScale
   *   The share of an endorser block's capacity the forger forges with, read at each slot
   *   (`readEbCapacityScale`, [[EbCapacityScale]]).
+  * @param certifying
+  *   What a Dijkstra block's certification reads of the node: the store's closures, the vote
+  *   state's certificates and the certified closure's application ([[LeiosCertifying]]); none: the
+  *   forger never certifies ([[LeiosCertifying.none]]).
   */
 final class Forger[F[_]: Async, S](
     config: PraosConfig,
@@ -315,7 +335,8 @@ final class Forger[F[_]: Async, S](
     selectionLedger: (BigInt, ChainSync.Point, MempoolLedger) => MempoolLedger,
     dijkstraSnapshots: DijkstraSnapshots[F],
     onForgedEb: Option[OnForgedLeiosEb[F]],
-    ebCapacityScale: F[EbCapacityScale]
+    ebCapacityScale: F[EbCapacityScale],
+    certifying: LeiosCertifying[F, S]
 )(using
     chain: Stateful[F, VolatileChain[S]],
     read: ChainRead[S],
@@ -1059,10 +1080,12 @@ final class Forger[F[_]: Async, S](
         )
 
   /** Why a block built early cannot be handed over now, if it cannot: forging was disabled or the
-    * credentials replaced, the block context is not the one it was built on, or the slot's inputs
-    * are not those it was made from.
+    * credentials replaced, the block context is not the one it was built on, the slot's inputs are
+    * not those it was made from, or it would certify now ([[certifiesNow]]).
     */
-  private def holds(slot: BigInt, prepared: Prepared[S]): F[Option[DiscardReason]] =
+  private def holds(slot: BigInt, prepared: Prepared[S])(using
+      Handle[F, NodeError]
+  ): F[Option[DiscardReason]] =
     (chain.get, hot.inForce.get, hot.enabled).flatMapN { (current, installed, on) =>
       if !on || installed.generation != prepared.generation then
         F.pure(Some(DiscardReason.Credentials))
@@ -1072,7 +1095,7 @@ final class Forger[F[_]: Async, S](
               if context.prev == prepared.context.prev &&
                 context.blockNo == prepared.context.blockNo =>
             installed.vrf.fold(F.pure(Option(DiscardReason.Credentials))) { vrf =>
-              viewOf(context.base, prepared.inputs.epoch, slot).map {
+              viewOf(context.base, prepared.inputs.epoch, slot).flatMap {
                 case Right(view)
                     if Forger.inputsOf(
                       geometry,
@@ -1082,11 +1105,27 @@ final class Forger[F[_]: Async, S](
                       config.activeSlotsCoeff,
                       vrf
                     ) == prepared.inputs =>
-                  None
-                case Right(_) | Left(_) => Some(DiscardReason.Inputs)
+                  certifiesNow(prepared).map(Option.when(_)(DiscardReason.Certificate))
+                case Right(_) | Left(_) => F.pure(Some(DiscardReason.Inputs))
               }
             }
           case Right(_) | Left(_) => F.pure(Some(DiscardReason.BlockContext))
+    }
+
+  /** Whether a block built early without a certificate, only because the closure or the certificate
+    * was missing then, would certify now: the store holds the closure and the vote state a
+    * certificate for the parent. The reference decides at the slot (`decideLeiosCertify`,
+    * `NodeKernel/Forge.hs:324-396` at ouroboros-consensus 2416493b), so such a block is forged
+    * again.
+    */
+  private def certifiesNow(prepared: Prepared[S])(using Handle[F, NodeError]): F[Boolean] =
+    prepared.certifiable.fold(F.pure(false)) { (point, tip) =>
+      tip
+        .flatMap(xyz.kd5ujc.scarab.crypto.bls.RbHash.fromBytes)
+        .fold(F.pure(false))(rbHash =>
+          (certifying.closureHeld(point.hash), certifying.certificate(rbHash))
+            .mapN(_ && _.isDefined)
+        )
     }
 
   /** The Debug line of an attempt that does not count. */
@@ -1443,32 +1482,50 @@ final class Forger[F[_]: Async, S](
       selected <- ticked match
         case Forger.Ticked.InConway(ledger) =>
           perform(select(context.base, slot, epoch, ledger, snapshot)).map((chosen, withheld) =>
-            (BlockBuilder.Assembly.InConway(BlockBuilder.body(chosen.map(_._2))), withheld)
+            (
+              BlockBuilder.Assembly.InConway(BlockBuilder.body(chosen.map(_._2))),
+              withheld,
+              Option.empty[CertifyDecision]
+            )
           )
+        // whether the block certifies what its parent announced (`decideLeiosCertify`), then
         // the pool's snapshot of the slot, partitioned for the ranking block and the endorser
-        // block it announces (`partitionMempool`, `NodeKernel/Forge.hs:784-803` at
-        // ouroboros-consensus 2416493b); this forger certifies no endorser block yet, so the block
-        // takes its transactions (#54)
-        case Forger.Ticked.InDijkstra(nes) =>
+        // block it announces, on the parent with the certified closure applied when it
+        // certifies (`partitionMempool`, `NodeKernel/Forge.hs:760-869` at ouroboros-consensus
+        // 2416493b; [[DijkstraForge]])
+        case Forger.Ticked.InDijkstra(nes, unticked) =>
+          val parent = DijkstraParent(
+            context.base.state,
+            context.base.tipRef,
+            unticked,
+            nes,
+            LeiosCertification.announcement(crossed.view.protocol.dep)
+          )
           for
             ebLimit <- perform(endorserLimit(ticked.params))
-            held <- perform(
-              dijkstraSnapshots.forSlot(nes, slot, clock.at(context.base.state, Era.Dijkstra, slot))
+            decision <- perform(
+              DijkstraForge.decide(slot, BigInt(geometry.slotLengthMillis), parent, certifying)
             )
-          yield
-            val split =
-              BlockBuilder.partition(held, Capacity.dijkstraBlockUnit(ticked.params), ebLimit)
-            // the held transactions the rules have no verdict on leave the pool with their
-            // reason, as the Conway path's do (issue 584)
-            (
-              BlockBuilder.Assembly.dijkstra(
-                split.ranking.transactions,
-                None,
-                split.endorsing(slot)
-              ),
-              held.withheld
+            _ <- DijkstraForge
+              .decided(slot, decision)
+              .traverse_(t => perform(hold.line(ForgeEvent.Leios(t))))
+            split <- perform(
+              DijkstraForge.partition(
+                slot,
+                parent,
+                decision,
+                Capacity.dijkstraBlockUnit(ticked.params),
+                ebLimit,
+                dijkstraSnapshots,
+                certifying,
+                tickDijkstra(_, slot),
+                clock.at(context.base.state, Era.Dijkstra, slot)
+              )
             )
-      (body, withheld) = selected
+          // the held transactions the rules have no verdict on leave the pool with their
+          // reason, as the Conway path's do (issue 584)
+          yield (split.body, split.withheld, Some(split.decision))
+      (body, withheld, decision) = selected
       _ <- perform(hold.withdrawal(withheld))
       _ <- hold.say(
         ForgeTrace.ForgingMempoolSnapshot(
@@ -1488,6 +1545,11 @@ final class Forger[F[_]: Async, S](
         .flatMap(_.fold(_ => unpublished, proceed))
         .flatMap(_.fold(d => hold.defect(slot, epoch, d, ids), proceed))
       (block, signedWith) = signed
+      // the endorser block's lines `forgeShelleyBlock` traces once the header is made
+      // (`Shelley/Ledger/Forge.hs:124-138, 202-208` at ouroboros-consensus 2416493b)
+      _ <- DijkstraForge
+        .forged(slot, block.header.hash, block.body)
+        .traverse_(t => perform(hold.line(ForgeEvent.Leios(t))))
       _ <- hold.say(
         ForgeTrace.ForgedBlock(
           slot,
@@ -1516,7 +1578,7 @@ final class Forger[F[_]: Async, S](
         )
       )
       _ <- perform(hold.effect(forged(slot, block)))
-    yield Prepared(context, block, ids, inputs, signedWith)
+    yield Prepared(context, block, ids, inputs, signedWith, decision)
 
   /** The block handed to chain selection (`Follower.adoptForged`) and what came of it, its lines
     * held.
@@ -1844,6 +1906,20 @@ final class Forger[F[_]: Async, S](
       )
     )(defect => F.pure(Some(Right(Left(defect)))))
 
+  /** A Dijkstra state at `slot`, in Dijkstra ([[Forger.tickedTo]]). */
+  private def tickDijkstra(
+      nes: NewEpochState[Dijkstra],
+      slot: BigInt
+  ): Either[NodeError, NewEpochState[Dijkstra]] =
+    ticked(Forger.TipLedger.InDijkstra(nes), slot).flatMap {
+      case Forger.TipLedger.InDijkstra(next) => Right(next)
+      case Forger.TipLedger.InConway(_) =>
+        Left(ForgeError.UnsupportedProtocol(ForgeProtocolProblem.LeftDijkstra))
+    }
+
+  private def ticked(ledger: Forger.TipLedger, slot: BigInt): Either[NodeError, Forger.TipLedger] =
+    Forger.tickedTo(Globals(globals, geometry), config.forks.transition(geometry.k), ledger, slot)
+
   /** The tip's ledger state in the node's reference build ([[Forger.ledgerAt]]). */
   private def ledgerAt(
       current: VolatileChain[S],
@@ -2119,8 +2195,21 @@ object Forger:
       block: Built,
       ids: Vector[Bytes],
       inputs: EpochInputs,
-      generation: Long
-  )
+      generation: Long,
+      certify: Option[CertifyDecision] = None
+  ):
+    /** The endorser block and announcing block this block, built early, did not certify only
+      * because the closure or the certificate was missing then: what a forge at the slot's onset
+      * may find present ([[Forger.holds]]).
+      */
+    def certifiable: Option[(EbPoint, Option[Bytes])] = certify.flatMap {
+      case CertifyDecision.ClosureNotDownloaded(point) =>
+        Some(point -> context.base.tipRef.map(_.hash))
+      case CertifyDecision.NoCertificate(point) => Some(point -> context.base.tipRef.map(_.hash))
+      case CertifyDecision.NothingAnnounced | CertifyDecision.TooEarly(_, _) |
+          CertifyDecision.Certify(_, _) =>
+        None
+    }
 
   /** What an attempt came to before its block is handed over; an attempt that ended carries the
     * generation of the credentials in force when it began.
@@ -2495,7 +2584,8 @@ object Forger:
 
   /** The ledger state the block of the led slot `slot` is built on: the tip's state
     * `crossed.ledger`, the block's parent's, ticked once to the slot ([[tickedTo]], [[crossed]]), a
-    * Conway state as the mempool's ledger, a Dijkstra state (the Leios build only) as it is. The
+    * Conway state as the mempool's ledger, a Dijkstra state (the Leios build only) as it is, with the
+    * parent's unticked beside it ([[Ticked.InDijkstra]]). The
     * only tick of an attempt's block.
     */
   private[forge] def blockLedger(
@@ -2504,9 +2594,13 @@ object Forger:
       crossed: Crossed,
       slot: BigInt
   ): Either[NodeError, Ticked] =
-    tickedTo(globals, transition, crossed.ledger, slot).map {
-      case TipLedger.InConway(nes)   => Ticked.InConway(MempoolLedger.of(nes))
-      case TipLedger.InDijkstra(nes) => Ticked.InDijkstra(nes)
+    tickedTo(globals, transition, crossed.ledger, slot).flatMap { t =>
+      (t, crossed.ledger) match
+        case (TipLedger.InConway(nes), _) => Right(Ticked.InConway(MempoolLedger.of(nes)))
+        case (TipLedger.InDijkstra(nes), TipLedger.InDijkstra(parent)) =>
+          Right(Ticked.InDijkstra(nes, parent))
+        case (TipLedger.InDijkstra(_), TipLedger.InConway(_)) =>
+          Left(ForgeError.UnsupportedProtocol(ForgeProtocolProblem.LeftConway))
     }
 
   /** The tip's ledger state, which a led slot's block is ticked from ([[crossed]]), and the ledger
@@ -2552,11 +2646,16 @@ object Forger:
     */
   enum Ticked:
     case InConway(ledger: MempoolLedger)
-    case InDijkstra(nes: NewEpochState[Dijkstra])
+
+    /** The Dijkstra state of the slot, `nes`, and the parent's it was ticked from, unticked, which
+      * a certified closure is applied to (`partitionMempool` 's `unticked`, ouroboros-consensus
+      * 2416493b `NodeKernel/Forge.hs:826-835`).
+      */
+    case InDijkstra(nes: NewEpochState[Dijkstra], parent: NewEpochState[Dijkstra])
 
     def params: ProtocolParams = this match
-      case InConway(ledger) => ledger.params
-      case InDijkstra(nes)  => MirrorEraRead(nes)(using ShelleyBasedEra.SDijkstra).params
+      case InConway(ledger)   => ledger.params
+      case InDijkstra(nes, _) => MirrorEraRead(nes)(using ShelleyBasedEra.SDijkstra).params
 
   /** Whether `build` forges Dijkstra blocks: the Leios build does, as the testnet's node does
     * (`forgeShelleyBlock` of the Dijkstra era under Praos2, ouroboros-consensus 2416493b
@@ -2741,6 +2840,10 @@ object Forger:
     * @param ebCapacityScale
     *   The share of an endorser block's capacity to forge with; none: the whole, as a node without
     *   adaptive endorsements forges (`NodeKernel.hs:497-512` at ouroboros-consensus 2416493b).
+    * @param certifying
+    *   What a Dijkstra block's certification reads of the node
+    *   ([[xyz.kd5ujc.scarab.node.LeiosCertifier]] in the node); none: it never certifies,
+    *   [[LeiosCertifying.none]].
     */
   def create[F[_]: Async, S](
       config: PraosConfig,
@@ -2764,7 +2867,8 @@ object Forger:
       selectionLedger: Option[(BigInt, ChainSync.Point, MempoolLedger) => MempoolLedger] = None,
       dijkstraSnapshots: Option[DijkstraSnapshots[F]] = None,
       onForgedEb: Option[OnForgedLeiosEb[F]] = None,
-      ebCapacityScale: Option[F[EbCapacityScale]] = None
+      ebCapacityScale: Option[F[EbCapacityScale]] = None,
+      certifying: Option[LeiosCertifying[F, S]] = None
   )(using
       Stateful[F, VolatileChain[S]],
       ChainRead[S],
@@ -2809,6 +2913,7 @@ object Forger:
         selectionLedger.getOrElse((_, _, ticked) => ticked),
         dijkstraSnapshots.getOrElse(DijkstraSnapshots.unadmitted[F]),
         onForgedEb,
-        ebCapacityScale.getOrElse(Async[F].pure(EbCapacityScale.full))
+        ebCapacityScale.getOrElse(Async[F].pure(EbCapacityScale.full)),
+        certifying.getOrElse(LeiosCertifying.none[F, S])
       )
     }

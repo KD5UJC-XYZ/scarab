@@ -24,12 +24,15 @@ import xyz.kd5ujc.scarab.ledger.{
   BlockRule,
   ChainError,
   DijkstraBlockDefect,
+  ForgeCertifyProblem,
+  ForgeError,
   Header,
   LeaderCheck,
   LedgerGlobals,
   LeiosCertificationDefect,
   LeiosExtValidationError,
   LeiosHeader,
+  NodeError,
   PlutusStats,
   PosixClock,
   Praos2Defect,
@@ -337,6 +340,27 @@ private[node] object MirrorDijkstra:
       nes = withProposals(parent.copy[Dijkstra](es = parent.es.copy[Dijkstra](ls = ls)), after)
     yield (nes, DijkstraClosure.closureTxBytes(txs))
 
+  /** `resolveAndApplyLeiosClosure` on the forging path (`partitionMempool`,
+    * `NodeKernel/Forge.hs:826-841`, ouroboros-consensus 2416493b): the closure of the endorser
+    * block at `point`, as the store held it and resolved (`resolved`), applied to `parent`, the
+    * unticked state of the block forged in `env` 's slot, whose tip is at `tipSlot`, as block
+    * application applies it ([[closure]]). Whatever keeps it from applying is the node's stop, the
+    * reference's `error` (`:837-841`): a defect of the rules as block application meets it, and a
+    * refusal there a [[ForgeCertifyProblem.ClosureRefused]].
+    */
+  private[node] def closedForForging(
+      env: Env,
+      point: EbPoint,
+      resolved: Either[LeiosClosureDefect, Vector[(LeiosTxHash, Tx[TxLevel.Top, Dijkstra])]],
+      parent: NewEpochState[Dijkstra],
+      tipSlot: Option[SlotNo]
+  ): Either[NodeError, NewEpochState[Dijkstra]] =
+    closure(env, Verified(point, resolved), parent, tipSlot).value match
+      case Left(halted) => Left(halted)
+      case Right(Left(refused)) =>
+        Left(ForgeError.Certify(ForgeCertifyProblem.ClosureRefused(point.hash, refused)))
+      case Right(Right((nes, _))) => Right(nes)
+
   /** The Leios checks of a certifying block against the unticked state of its parent
     * ([[LeiosCertification.check]], `Forker.hs:631-666`, ouroboros-consensus 2416493b): `parent`
     * its chain-dependent state, `previousHash` the block's, `committee` the committee of its ledger
@@ -533,8 +557,18 @@ private[node] object MirrorDijkstra:
       globals: LedgerGlobals,
       byronParams: EraHistory.ByronParams,
       backend: PlutusBackend
+  ): Env = envAt(state, announced.slot, announced.era, config, globals, byronParams, backend)
+
+  /** What the era rules read for a block of `era` in `slot` on `state` ([[envOf]]). */
+  private[node] def envAt(
+      state: MirrorState,
+      slot: BigInt,
+      era: Era,
+      config: PraosConfig,
+      globals: LedgerGlobals,
+      byronParams: EraHistory.ByronParams,
+      backend: PlutusBackend
   ): Env =
-    val slot = announced.slot
     val geometry = config.geometry
     val placement = Placement(geometry, byronParams, config.forks)
     Env(
@@ -543,10 +577,10 @@ private[node] object MirrorDijkstra:
       DijkstraUtxoContext(
         Network.of(BigInt(globals.network)).getOrElse(Network.Testnet),
         BigInt(geometry.systemStart.toEpochMilli),
-        MirrorClock.horizon(state, placement, announced.era, slot),
+        MirrorClock.horizon(state, placement, era, slot),
         TxEnv.Validation.All
       ),
-      MirrorClock.of(state, placement, announced.era, slot),
+      MirrorClock.of(state, placement, era, slot),
       backend,
       config
     )

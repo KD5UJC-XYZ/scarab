@@ -575,8 +575,24 @@ object LogSamples:
     ForgeEvent.Discarded(BigInt(4208), DiscardReason.Inputs, Some(hash)),
     ForgeEvent.Discarded(BigInt(4209), DiscardReason.Credentials, Some(hash)),
     ForgeEvent.Discarded(BigInt(4210), DiscardReason.Refused, None),
-    ForgeEvent.Discarded(BigInt(4211), DiscardReason.NotLed, None)
-  )
+    ForgeEvent.Discarded(BigInt(4211), DiscardReason.NotLed, None),
+    ForgeEvent.Discarded(BigInt(4212), DiscardReason.Certificate, Some(hash))
+  ) ++ leiosForge.map(ForgeEvent.Leios(_))
+
+  /** The forge loop's Leios lines, one of each. */
+  lazy val leiosForge: List[xyz.kd5ujc.scarab.node.forge.LeiosForgeTrace] =
+    import xyz.kd5ujc.scarab.node.forge.LeiosForgeTrace
+    import xyz.kd5ujc.scarab.protocol.{EbHash, EbPoint}
+    import xyz.kd5ujc.scarab.protocol.LeiosWord.Word64
+    val point = EbPoint(Word64.fromUnsigned(4200L), EbHash.fromBytes(hash))
+    List(
+      LeiosForgeTrace.NotDownloaded(point),
+      LeiosForgeTrace.NoCertificate(point),
+      LeiosForgeTrace.BlockCertified(BigInt(4214), point),
+      LeiosForgeTrace.BlockForged(BigInt(4214), point, 3, 120L, 42000L),
+      LeiosForgeTrace.BlockAnnounced(hash, point),
+      LeiosForgeTrace.CertifiedAndAnnounced(BigInt(4214), hash)
+    )
 
   val scheduling: SchedulingReport = SchedulingReport(
     120L,

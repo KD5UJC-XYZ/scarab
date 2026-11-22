@@ -110,13 +110,15 @@ enum LeiosVotingDefect:
   /** Signing a vote failed in the native library. */
   case Signing(seat: SeatId, cause: BlsError)
 
+/** A failure of `decideLeiosCertify`, not a decision. */
+enum CertifyDefect derives CanEqual:
   /** A block that certifies would extend genesis: `decideLeiosCertify` 's `error`
-    * (`NodeKernel/Forge.hs:358`, ouroboros-consensus 2416493b), unreachable, since a block that
+    * (`NodeKernel/Forge.hs:366`, ouroboros-consensus 2416493b), unreachable, since a block that
     * announced is the parent.
     */
-  case CertifyOnGenesis
+  case OnGenesis
 
-/** `decideLeiosCertify` 's outcome (`NodeKernel/Forge.hs:324-397`, ouroboros-consensus 2416493b):
+/** `decideLeiosCertify` 's outcome (`NodeKernel/Forge.hs:324-396`, ouroboros-consensus 2416493b):
   * the certificate this block carries, or why it carries none. The reference returns `Nothing` for
   * every case but the last and traces two of them.
   */
@@ -133,8 +135,10 @@ enum CertifyDecision derives CanEqual:
   /** No certificate has been assembled for the announcing block (traced there). */
   case NoCertificate(announced: EbPoint)
 
-  /** This block carries `certificate` and certifies `endorserBlock`. */
-  case Certify(certificate: Certificate, endorserBlock: EbHash)
+  /** This block carries `certificate` and certifies the endorser block announced at `announced`
+    * (the reference returns the point's hash, and traces the point, `TraceLeiosBlockCertified`).
+    */
+  case Certify(certificate: Certificate, announced: EbPoint)
 
 /** The decisions of Leios voting and certifying (`LeiosVoting.hs`, `NodeKernel/Forge.hs`,
   * ouroboros-consensus 2416493b), over the node's capabilities.
@@ -228,7 +232,7 @@ object LeiosVoting:
     }
     Either.cond(accepted, answers, LeiosNotVotedReason.VoteRejected(answers))
 
-  /** `decideLeiosCertify` (`NodeKernel/Forge.hs:324-397`, ouroboros-consensus 2416493b): whether
+  /** `decideLeiosCertify` (`NodeKernel/Forge.hs:324-396`, ouroboros-consensus 2416493b): whether
     * the block forged for `slot` on top of the selection's tip carries a certificate, in the
     * reference's order:
     *
@@ -249,7 +253,7 @@ object LeiosVoting:
       tip: Option[RbHash],
       closureHeld: EbHash => F[Boolean],
       queryCert: RbHash => F[Option[Certificate]]
-  )(using defect: Raise[F, LeiosVotingDefect]): F[CertifyDecision] =
+  )(using defect: Raise[F, CertifyDefect]): F[CertifyDecision] =
     (announced, minGap).tupled match
       case None => Monad[F].pure(CertifyDecision.NothingAnnounced)
       case Some((point, gap)) =>
@@ -261,14 +265,10 @@ object LeiosVoting:
             case true =>
               tip match
                 case None =>
-                  defect.raise[LeiosVotingDefect, CertifyDecision](
-                    LeiosVotingDefect.CertifyOnGenesis
-                  )
+                  defect.raise[CertifyDefect, CertifyDecision](CertifyDefect.OnGenesis)
                 case Some(rbHash) =>
                   queryCert(rbHash).map(
-                    _.fold(CertifyDecision.NoCertificate(point))(
-                      CertifyDecision.Certify(_, point.hash)
-                    )
+                    _.fold(CertifyDecision.NoCertificate(point))(CertifyDecision.Certify(_, point))
                   )
           }
 
