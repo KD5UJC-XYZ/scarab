@@ -24,6 +24,9 @@ GOLDEN = 'node/src/test/scala/xyz/kd5ujc/scarab/storage/SnapshotGoldenSuite.scal
 IDENTITY = 'ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/NetworkIdentity.scala'
 UTXO = 'storage/src/main/scala/xyz/kd5ujc/scarab/storage/UtxoStore.scala'
 STORAGE = 'storage/src/main/scala/xyz/kd5ujc/scarab/storage'
+# A one-off exception as the guard holds one while its pull request is open: the committed `ONE_OFF_PATHS` is empty
+# once every such pull request has merged or closed, so the lookup is tested on this entry.
+ONE_OFF = {4242: ('consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/NodeState.scala', 'docs/leios.md')}
 
 
 def record(**changes):
@@ -432,7 +435,9 @@ class AllowlistTest(unittest.TestCase):
                 self.assertFalse(fmt.allowed(path))
         self.assertEqual(fmt.outside_format_change([fmt.MANIFEST, 'AGENTS.md', 'README.md']), ['AGENTS.md', 'README.md'])
 
+    @mock.patch.dict(fmt.ONE_OFF_PATHS, ONE_OFF, clear=True)
     def test_a_one_off_exception_holds_for_its_pull_request_only(self):
+        self.assertEqual(fmt.ONE_OFF_PATHS, ONE_OFF)
         for number, paths in fmt.ONE_OFF_PATHS.items():
             with self.subTest(number=number):
                 self.assertFalse(any(fmt.allowed(p) for p in paths))
@@ -440,6 +445,7 @@ class AllowlistTest(unittest.TestCase):
                 self.assertEqual(fmt.outside_format_change(list(paths), pull_request=number + 1), sorted(paths))
                 self.assertEqual(fmt.outside_format_change(['AGENTS.md', *paths], pull_request=number), ['AGENTS.md'])
 
+    @mock.patch.dict(fmt.ONE_OFF_PATHS, ONE_OFF, clear=True)
     def test_the_pull_request_is_read_from_the_events_and_none_on_a_doubt(self):
         number, paths = next(iter(fmt.ONE_OFF_PATHS.items()))
         with tempfile.TemporaryDirectory() as tmp:
