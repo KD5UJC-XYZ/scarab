@@ -432,6 +432,60 @@ class LeiosNotifyRelaySuite extends FailsOnUncaught:
     }
   }
 
+  dirs.test("the pump takes every offer and every vote, neither lost to the other") { dir =>
+    val p = first.fields.point
+    val eb = body(2)
+    val keys = Vector.tabulate(2)(i => xyz.kd5ujc.scarab.crypto.bls.BlsFixtures.key(960 + i))
+    val votes = keys.zipWithIndex.map { case ((sk, _), i) =>
+      xyz.kd5ujc.scarab.crypto.bls.BlsFixtures.right(
+        xyz.kd5ujc.scarab.crypto.bls.Vote.sign(
+          sk,
+          xyz.kd5ujc.scarab.crypto.bls.BlsFixtures.right(
+            xyz.kd5ujc.scarab.crypto.bls.SeatId.fromInt(i)
+          ),
+          xyz.kd5ujc.scarab.crypto.bls.BlsFixtures.rbHash(5)
+        )
+      )
+    }
+    (store(dir), Resource.eval(LeiosAcquired.create[IO])).tupled.use { (rocks, acquired) =>
+      val notifying = acquired.notifying(rocks)
+      for
+        central <- AtomicCell[IO].of(LeiosCentral.empty[IO])
+        voted <- cats.effect.std.Queue.unbounded[IO, xyz.kd5ujc.scarab.crypto.bls.Vote]
+        a <- chainSyncOfA(central, notifying)
+        replies <- LeiosNotifyRelay
+          .server(
+            central,
+            acquired.notifications.subscribe,
+            Resource.pure(voted),
+            IO.pure(None),
+            LeiosMinOfferLead.Default
+          )
+          .use { b =>
+            for
+              _ <- credited(b, 5)
+              _ <- peer(a.rolledForward(announcing.dijkstraView, after(certifying)))
+              // both sources hold what to send before the pump takes any
+              _ <- votes.traverse_(voted.offer)
+              _ <- ok(notifying.writeEbBody(p, eb, Vector.empty))
+              _ <- ok(notifying.writeTxs(p, Vector(0 -> tx(0), 1 -> tx(1))))
+              replies <- b.pump.background.surround(b.next.replicateA(5))
+            yield replies
+          }
+      yield
+        assertEquals(replies.head, announcementOf(first))
+        assertEquals(
+          replies.tail.toSet,
+          Set(
+            Reply.BlockOffer(p, word32(eb.encoded.size.toLong)),
+            Reply.BlockTxsOffer(p),
+            Reply.Votes(Vector(votes(0))),
+            Reply.Votes(Vector(votes(1)))
+          )
+        )
+    }
+  }
+
   dirs.test("a server's run registers it with the central state for the run's life") { dir =>
     (store(dir), Resource.eval(LeiosAcquired.create[IO])).tupled.use { (_, acquired) =>
       for

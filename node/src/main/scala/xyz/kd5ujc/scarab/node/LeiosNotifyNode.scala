@@ -33,18 +33,24 @@ import xyz.kd5ujc.scarab.protocol.{EbPoint, HfcHeader}
 import xyz.kd5ujc.scarab.protocol.LeiosWord.Word64
 import xyz.kd5ujc.scarab.storage.{LeiosStore, LeiosStoreError}
 
-/** What a LeiosNotify client of the Leios build reads of the node: the slot of the immutable tip,
-  * the onset of an announced slot as the immutable tip's era history places it
-  * (`judgeHeaderArrival`), the out-of-context check of an announcing header against the immutable
-  * tip (`validateAnnouncementHeader`, [[NodeHeaderRules.validateAnnouncement]]), and the wait until
-  * the immutable tip can forecast the current slot (`awaitImmTipCanForecastNow`,
-  * `LeiosDemoLogic.hs` 2012-2045 at ouroboros-consensus 2416493b).
+/** What a LeiosNotify client of the Leios build reads of the node: the immutable tip, read once for
+  * each reply, as the reference's handler reads the immutable ledger once
+  * (`ChainDB.getImmutableLedger`, `NodeToNode.hs` 640 and 670 at ouroboros-consensus 2416493b), and
+  * the wait until the immutable tip can forecast the current slot (`awaitImmTipCanForecastNow`,
+  * `LeiosDemoLogic.hs` 2012-2045).
   */
 trait LeiosNotifyView[F[_]]:
-  def immutableTip: F[Option[Word64]]
-  def onset(header: LeiosHeader): F[HeaderRules.TimeForecast]
-  def validate(header: LeiosHeader): F[AnnouncementCheck]
+  def immutable: F[LeiosImmutableTip]
   def ready: F[Unit]
+
+/** The immutable tip as one read of it: its slot, the onset of an announced slot as its era history
+  * places it (`judgeHeaderArrival`), and the out-of-context check of an announcing header against
+  * it (`validateAnnouncementHeader`, [[NodeHeaderRules.announcementRules]]).
+  */
+trait LeiosImmutableTip:
+  def slot: Option[Word64]
+  def onset(header: LeiosHeader): HeaderRules.TimeForecast
+  def validate(header: LeiosHeader): AnnouncementCheck
 
 /** What a LeiosNotify client tells of what it received, as the reference traces it: a peer's
   * announcement that the node took as new, and each offer (`TraceLeiosPeer`, `NodeToNode.hs`
@@ -110,10 +116,10 @@ private[node] final class LeiosNotifyHandling[F[_]](
     * peer's state then pruned to the immutable tip read before, as there.
     */
   private def announced(anc: AnnouncingHeader)(using Raise[F, PeerError]): F[Unit] =
-    (view.immutableTip, peerState.get).flatMapN { (immTip, st) =>
+    (view.immutable, peerState.get).flatMapN { (imm, st) =>
       LeiosNotifyPeerState
         .onAnnouncement[F, Validated](
-          validity,
+          validity(imm, _),
           (a, v) =>
             LeiosChainSync.processCentrally(shared, central, store, fatal)(v.relay, a, v.onset) *>
               events(LeiosNotifyEvent.Announced(connection, a.fields.point, v.relay, v.age)),
@@ -127,7 +133,7 @@ private[node] final class LeiosNotifyHandling[F[_]](
               LeiosNotifyFault.Announcement(anc.header.slot, anc.headerHash, error)
             )
           case Right(announcements) =>
-            peerState.set(st.copy(announcements = announcements).prunedToImmTip(immTip))
+            peerState.set(st.copy(announcements = announcements).prunedToImmTip(imm.slot))
         }
     }
 
@@ -137,12 +143,12 @@ private[node] final class LeiosNotifyHandling[F[_]](
     * up to `maxAnnouncementAgeSend` relayed ([[LeiosNotifyHandling.ageVerdict]]); then the header's
     * check against the immutable tip, a stale counter's announcement ignored.
     */
-  private def validity(anc: AnnouncingHeader)(using
+  private def validity(imm: LeiosImmutableTip, anc: AnnouncingHeader)(using
       Raise[F, PeerError]
   ): F[AnnouncementVerdict[Validated]] =
     val header = anc.header
     clock.now.flatMap { arrival =>
-      view.onset(header).flatMap {
+      F.pure(imm.onset(header)).flatMap {
         case HeaderRules.TimeForecast.Invalid(error) =>
           PeerError.InvalidHeader(header.point, error).raise
         case HeaderRules.TimeForecast.Unknown(_) =>
@@ -158,7 +164,7 @@ private[node] final class LeiosNotifyHandling[F[_]](
             LeiosNotifyHandling.ageVerdict(age) match
               case None => F.pure(AnnouncementVerdict.TooOld)
               case Some(relay) =>
-                view.validate(header).flatMap {
+                F.pure(imm.validate(header)).flatMap {
                   case AnnouncementCheck.Checked(Left(invalidity)) =>
                     F.pure(AnnouncementVerdict.Invalid(invalidity))
                   case AnnouncementCheck.Checked(Right(Praos2.OcinStaleness.Stale)) =>
@@ -186,8 +192,8 @@ private[node] final class LeiosNotifyHandling[F[_]](
   private def checkOffer(
       check: LeiosNotifyPeerState => Either[InvalidOffer, LeiosNotifyPeerState]
   )(using Raise[F, PeerError]): F[Unit] =
-    (view.immutableTip, peerState.get).flatMapN { (immTip, st) =>
-      check(st.prunedToImmTip(immTip)).fold(
+    (view.immutable, peerState.get).flatMapN { (imm, st) =>
+      check(st.prunedToImmTip(imm.slot)).fold(
         offer => refused[F, Unit](LeiosNotifyFault.Offer(offer)),
         peerState.set
       )

@@ -4,6 +4,7 @@ package xyz.kd5ujc.scarab.node
 import cats.effect.{Async, Resource, Unique}
 import cats.effect.std.{AtomicCell, Queue}
 import cats.syntax.all.*
+import fs2.Stream
 import fs2.concurrent.SignallingRef
 import scala.collection.immutable.{Queue as Fifo, SortedMap}
 import xyz.kd5ujc.scarab.consensus.leios.{AnnouncingHeader, ElId, ElState, LeiosAnnouncements}
@@ -243,9 +244,13 @@ private[node] object LeiosNotifyRelay:
           .modify(o => o.next.fold((o, Option.empty[Reply]))((reply, rest) => (rest, Some(reply))))
           .flatMap(_.fold(queue.waitUntil(_.messages.nonEmpty) *> next)(F.pure))
 
+      // each notification and each vote taken once, whichever comes first, none lost to the other
       def pump: F[Unit] =
-        F.race(subscription.take, voted.take)
-          .flatMap { next =>
+        Stream
+          .fromQueueUnterminated(subscription)
+          .map(_.asLeft[Vote])
+          .merge(Stream.fromQueueUnterminated(voted).map(_.asRight[LeiosEbNotification]))
+          .evalMap { next =>
             immutableTip.flatMap(tip =>
               queue.update { outgoing =>
                 val pruned = outgoing.prunedTo(tip)
@@ -257,4 +262,5 @@ private[node] object LeiosNotifyRelay:
               }
             )
           }
-          .foreverM[Unit]
+          .compile
+          .drain

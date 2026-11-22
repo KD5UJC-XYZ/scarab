@@ -121,10 +121,11 @@ class LeiosNotifyClientSuite extends FailsOnUncaught:
       check: AnnouncementCheck = AnnouncementCheck.Checked(Right(Praos2.OcinStaleness.Fresh)),
       immTip: Option[Word64] = None
   ): LeiosNotifyView[IO] = new LeiosNotifyView[IO]:
-    def immutableTip = IO.pure(immTip)
-    def onset(header: LeiosHeader) =
-      IO.pure(HeaderRules.TimeForecast.Known(picos(now) - BigInt(age.toNanos) * 1000))
-    def validate(header: LeiosHeader) = IO.pure(check)
+    def immutable = IO.pure(new LeiosImmutableTip:
+      val slot = immTip
+      def onset(header: LeiosHeader) =
+        HeaderRules.TimeForecast.Known(picos(now) - BigInt(age.toNanos) * 1000)
+      def validate(header: LeiosHeader) = check)
     def ready = IO.unit
 
   private lazy val keys = Vector.tabulate(4)(i => key(950 + i))
@@ -363,6 +364,61 @@ class LeiosNotifyClientSuite extends FailsOnUncaught:
       }
   }
 
+  dirs.test(
+    "an announcement whose slot begins within the skew is waited for; one beyond it ends the peer"
+  ) { dir =>
+    node(dir).use { (fetch, _) =>
+      // the system clock, which the in-future check reads and waits on
+      val system = SlotClock.system[IO](IO.raiseError(new AssertionError("no history read")))
+      def ahead(by: FiniteDuration): IO[LeiosNotifyView[IO]] =
+        IO.realTimeInstant.map(at =>
+          new LeiosNotifyView[IO]:
+            def immutable = IO.pure(new LeiosImmutableTip:
+              val slot = None
+              def onset(header: LeiosHeader) =
+                HeaderRules.TimeForecast.Known(picos(at) + BigInt(by.toNanos) * 1000)
+              def validate(header: LeiosHeader) =
+                AnnouncementCheck.Checked(Right(Praos2.OcinStaleness.Fresh)))
+            def ready = IO.unit
+        )
+      def handled(v: LeiosNotifyView[IO], name: String) =
+        for
+          votes <- noCommittee
+          events <- Ref.of[IO, Vector[LeiosNotifyEvent]](Vector.empty)
+          ended <- fetch.shared.bracketPeer(connection, IsBigLedgerPeer.NotBigLedgerPeer) { vars =>
+            Ref.of[IO, LeiosNotifyPeerState](LeiosNotifyPeerState.empty).flatMap { st =>
+              val context = LeiosNotifyContext[IO](
+                votes,
+                v,
+                system,
+                e => events.update(_ :+ e),
+                AnnouncedHeaders(BigInt(21600))
+              )
+              peer(fetch.notifyHandling(connection, vars, context, st).handle(announcement(name)))
+            }
+          }
+          told <- events.get
+        yield (ended, told)
+      for
+        near <- ahead(200.millis).flatMap(handled(_, "announcing"))
+        far <- ahead(3.seconds).flatMap(handled(_, "certifying"))
+      yield
+        // processed once its onset came: its age is then not below zero
+        assertEquals(near._1, Right(()))
+        assertEquals(
+          near._2.collect { case LeiosNotifyEvent.Announced(_, p, r, _) => (p, r) },
+          Vector((first.fields.point, ShouldRelay.DoRelay))
+        )
+        far._1 match
+          case Left(
+                PeerError.InvalidHeader(point, _: xyz.kd5ujc.scarab.ledger.HeaderError.FarFuture)
+              ) =>
+            assertEquals(point, next.header.point)
+          case other => fail(s"expected the far future refused, got $other")
+        assertEquals(far._2, Vector.empty)
+    }
+  }
+
   // --- offers ---
 
   dirs.test(
@@ -590,5 +646,98 @@ class LeiosNotifyClientSuite extends FailsOnUncaught:
         )
         assertEquals(counted.keySet.map(_.index), Set(0))
         assert(left.isEmpty)
+    }
+  }
+
+  dirs.test(
+    "a refused reply ends the activation's LeiosNotify client as the peer's fault, tried again later"
+  ) { dir =>
+    (node(dir / "a"), node(dir / "b")).tupled.use { case ((_, served), (client, _)) =>
+      val unannounced = next.fields.point
+      for
+        votes <- noCommittee
+        // a server that answers each request with an offer of what it never announced
+        offering = Resource.pure[IO, LeiosNotifyServer.Replies[IO]](
+          new LeiosNotifyServer.Replies[IO]:
+            def requested = IO.pure(LeiosNotifyServer.Requested.NotExcessive)
+            def next = IO.pure(Reply.BlockOffer(unannounced, Word32.wrap(2000)))
+            def pump = IO.unit
+        )
+        handlers = ServerHandlers[IO, Bytes](
+          ChainSyncFixtures.rawItem,
+          Resource.pure(chainSource),
+          Peers.blocksOf((_, _) => IO.pure(Peers.unknown)),
+          new TxSubmissionServer.Sink[IO]:
+            def reader = TxSubmission2Fixtures.structural
+            def known(id: Bytes) = IO.pure(false)
+            def submit(originals: Vector[xyz.kd5ujc.scarab.protocol.TxSubmission2.EraTx])(using
+                Raise[IO, NetworkError]
+            ) = IO.unit
+          ,
+          leiosFetch = Some(LeiosFetchStoreHandler(served)),
+          leiosNotify = Some(offering)
+        )
+        context = LeiosNotifyContext[IO](
+          votes,
+          view(1.second),
+          clock,
+          _ => IO.unit,
+          AnnouncedHeaders(BigInt(21600))
+        )
+        (a, b) <- Bearer.inMemory[IO](64)
+        ended <- typed(
+          Served
+            .accept(b, magic, handlers, NodeToNodeServer.Settings(bundle = HotBundle.Leios))
+            .background
+            .surround(
+              NodeToNode
+                .warmOverWithResults[IO, Bytes, Unit](
+                  a,
+                  magic,
+                  ChainSyncFixtures.rawItem,
+                  (),
+                  NodeToNode.Settings(bundle = HotBundle.Leios)
+                )
+                .use { warm =>
+                  def notifyEnded: IO[NetworkError] =
+                    warm.applications.snapshot.flatMap(s =>
+                      s.entries.get(Protocols.LeiosNotify).map(_.result) match
+                        case Some(ProtocolResults.Result.Errored(e: NetworkError)) => IO.pure(e)
+                        case _ => s.changed *> notifyEnded
+                    )
+                  (warm.applications.activateHot *>
+                    warm.applications.startHot(false, leiosNotify = true)).flatMap { results =>
+                    warm
+                      .startHotProtocols(
+                        results,
+                        None,
+                        None,
+                        ChainSyncTimeouts.PeerTrust.Untrustable,
+                        None,
+                        leiosNotify = Some(client.notifyInitiator(connection, context))
+                      )
+                      .surround(notifyEnded)
+                  }
+                }
+            )
+        )
+      yield
+        val fault = PeerError.LeiosNotify(
+          LeiosNotifyFault.Offer(
+            InvalidOffer.BlockOfferWithoutAnnouncement(unannounced, Word32.wrap(2000))
+          )
+        )
+        assertEquals(
+          ended,
+          Right(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(fault)))
+        )
+        assertEquals(
+          ended.map(Peer.networkFault),
+          Right(Fault.Failed(fault))
+        )
+        assertEquals(
+          FailurePolicy.classify(fault),
+          xyz.kd5ujc.scarab.network.selection.FailureClass.Transient
+        )
     }
   }

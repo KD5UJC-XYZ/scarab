@@ -2361,18 +2361,16 @@ object Main extends IOApp:
           LeiosNotifyContext[IO](
             votes,
             new LeiosNotifyView[IO]:
-              def immutableTip =
-                ref.get.map(
-                  _.anchor.block.map(b =>
+              def immutable = ref.get.map(c =>
+                new LeiosImmutableTip:
+                  val slot = c.anchor.block.map(b =>
                     xyz.kd5ujc.scarab.protocol.LeiosWord.Word64.clamped(b.slot)
                   )
-                )
-              def onset(header: xyz.kd5ujc.scarab.ledger.LeiosHeader) =
-                ref.get.map(c =>
-                  headers.rules.slotOnset(c.anchor.state, c.anchor.block, header.slot)
-                )
-              def validate(header: xyz.kd5ujc.scarab.ledger.LeiosHeader) =
-                ref.get.map(c => check(c.anchor.state, c.anchor.block, header))
+                  def onset(header: xyz.kd5ujc.scarab.ledger.LeiosHeader) =
+                    headers.rules.slotOnset(c.anchor.state, c.anchor.block, header.slot)
+                  def validate(header: xyz.kd5ujc.scarab.ledger.LeiosHeader) =
+                    check(c.anchor.state, c.anchor.block, header)
+              )
               def ready = leiosGate.ready
             ,
             headers.slotClock,

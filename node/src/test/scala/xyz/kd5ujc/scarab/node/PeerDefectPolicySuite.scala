@@ -132,6 +132,41 @@ class PeerDefectPolicySuite extends FailsOnUncaught:
     }
   }
 
+  test("a LeiosNotify reply refused ends the connection, the peer tried again later (#54)") {
+    val point = EbPoint(
+      LeiosWord.Word64.from(BigInt(7)).fold(e => fail(e.toString), identity),
+      EbHash.fromBytes(Bytes(Vector.fill(32)(4)))
+    )
+    // the reference's handler throws each, which no rethrow policy names: `ShutdownPeer`
+    // (ouroboros-consensus 2416493b NodeToNode.hs:615-768)
+    Vector(
+      xyz.kd5ujc.scarab.ledger.LeiosNotifyFault.AnnouncementMissing,
+      xyz.kd5ujc.scarab.ledger.LeiosNotifyFault.UnexpectedCancel,
+      xyz.kd5ujc.scarab.ledger.LeiosNotifyFault.Announcement(
+        BigInt(7),
+        Bytes(Vector.fill(32)(1)),
+        xyz.kd5ujc.scarab.ledger.AnnouncementError.TooOld
+      ),
+      xyz.kd5ujc.scarab.ledger.LeiosNotifyFault.Offer(
+        xyz.kd5ujc.scarab.ledger.InvalidOffer.ClosureOfferWithoutAnnouncement(point)
+      )
+    ).foreach { fault =>
+      val error = PeerError.LeiosNotify(fault)
+      Peer.networkFault(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(error))) match
+        case Fault.Failed(seen) =>
+          assertEquals(seen, error)
+          assertEquals(FailurePolicy.classify(error), FailureClass.Transient, fault.toString)
+          assertEquals(FailurePolicy.disposition(SessionEnd.Failed(error)), Disposition.Backoff)
+        case other => fail(s"unexpected $other")
+    }
+    // the vote state's defect is the node's own: nothing is counted against the peer
+    val undecided = PeerError.LeiosVoteUndecided(
+      xyz.kd5ujc.scarab.crypto.bls.BlsFixtures.rbHash(1),
+      xyz.kd5ujc.scarab.ledger.LeiosCertificationDefect.CommitteeOfNode11_1
+    )
+    assertEquals(FailurePolicy.classify(undecided), FailureClass.NotThePeers)
+  }
+
   test("a LeiosFetch answer refused ends the connection, the peer tried again later (#54)") {
     val point = EbPoint(
       LeiosWord.Word64.from(BigInt(7)).fold(e => fail(e.toString), identity),
