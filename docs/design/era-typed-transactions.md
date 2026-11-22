@@ -2655,17 +2655,20 @@ Conway's rules on the classes follow as the rest of stage 2.
     flat rules do (`LedgerFailure.Unavailable`, `ConwayRuleDefect.ScriptUnavailable`), so that `Follower` and
     `ChainStorage` route it as they route the flat rules'. Its transaction is the one whose script, collected again
     in the ledger state the rules ran it in, one purpose at a time, equals it (`ConwayPhase2.locate`): a context is
-    one transaction's and one purpose's. `ConwayPhase2Suite` (ledger) shows the scripts it locates are those UTXOS
+    one transaction's. Its redeemer is the one at its place among the transaction's scripts, in the order UTXOS runs
+    them (`evalPlutusScripts`, `Alonzo/Plutus/Evaluate.hs:188-207`), which the run counts: a Plutus V1 or V2 context
+    names a certificate by its form, so two scripts of one transaction can have equal contexts at distinct
+    redeemers. `ConwayPhase2Suite` (ledger) shows the scripts it locates are those UTXOS
     collects, in its order, with the flat rules' redeemers and requests, on the 40 recorded Plutus cases Conway's
     decoder reads (Plutus V1, V2 and V3, every purpose).
   - The phase-2 observer (`--plutus-cases`): given one (`ConwayBlockRun.Observing`), the run locates each script the
-    evaluator runs the same way and tells the flat rules' `Phase2.Observation` of a transaction once its last script
+    evaluator runs the same way, by its transaction and its place, and tells the flat rules' `Phase2.Observation` of a transaction once its last script
     ran or one had no verdict.
   - `ConwayBbodySuite` compares each with the flat rules: the counters on the 53 recorded blocks (zero on both, as no
     script runs in them) and on built blocks of valid and invalid script transactions and a datum-only integrity
     hash; the naming of each of the four scripts of a block of a valid and an invalid transaction, with the
-    evaluator giving no verdict on each in turn; the observations on the same blocks; the proposals of two
-    transactions of one block.
+    evaluator giving no verdict on each in turn, and of two V1 scripts of one transaction with equal requests at
+    certificates 0 and 2; the observations on the same blocks; the proposals of two transactions of one block.
   - Differences from the flat rules: the flat rules observe a transaction whose scripts' contexts cannot be collected
     (`Left` of the collection's errors); the era run observes only scripts it runs, so a collection's failure is not
     observed. Under every failure accumulated (`ValidateAll`, #1328's run), a defect raised by a later

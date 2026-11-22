@@ -49,22 +49,31 @@ import xyz.kd5ujc.scarab.ledger.era.rules.{
 import xyz.kd5ujc.scarab.ledger.rules.{Bbody as FlatBbody, EraBlock, EraNes, Globals}
 import xyz.kd5ujc.scarab.ledger.state.{
   BlocksMade,
+  Coin,
+  CompactCoin,
   Conway,
+  ConwayAccountState,
+  ConwayAccounts,
   ConwayNewEpochState,
   LedgerState,
   Network,
   NewEpochState,
   ShelleyBasedEra,
+  Staking,
   UtxoTables
 }
 import xyz.kd5ujc.scarab.plutus.{
+  EvalFailure,
   EvalRequest,
   EvalResult,
   ExUnits,
   PlutusLanguage,
   ScarabEvaluator,
-  ScriptEvaluator
+  ScriptEvaluator,
+  ScriptFailure
 }
+import xyz.kd5ujc.scarab.uplc.cek.{CekError, CekFailure}
+import xyz.kd5ujc.scarab.uplc.ledger.EvaluationError
 import xyz.kd5ujc.scarab.node.{MirrorSteps, NodeSetup}
 import xyz.kd5ujc.scarab.protocol.{Era, ReferenceBuild, StateLayout}
 
@@ -188,23 +197,72 @@ class ConwayBbodySuite extends FunSuite:
     /** The era run's verdict, where it reached one. */
     def era: Verdict = eraRun.fold(defect => fail(s"era defect $defect"), identity)
 
-  /** An observation with each script's failure as its text: a machine's failure holds what the
-    * machine stopped at, which compares by identity.
+  /** A script's failure in a form that compares by value: a machine's failure by its error and
+    * whether the reference attaches a term to it (`ErrorWithCause`), since the term (`Cause`, read
+    * only when asked for) compares by identity; every other failure as it is, whose fields compare
+    * by value.
     */
-  private def comparable(o: Phase2.Observation): Any =
-    def result(r: EvalResult): Any = r match
-      case EvalResult.Success(used, logs)         => (used, logs)
-      case EvalResult.Failure(reason, used, logs) => (reason.message, used, logs)
-    def evaluations(report: Phase2.Report): Vector[Any] =
+  private enum FailureForm derives CanEqual:
+    case Machine(error: CekError, caused: Boolean, logs: Vector[String])
+    case Other(failure: EvalFailure)
+
+  private def formOf(failure: EvalFailure): FailureForm = failure match
+    case EvalFailure.Script(
+          ScriptFailure.Uplc(EvaluationError.Cek(CekFailure(error, cause)), logs)
+        ) =>
+      FailureForm.Machine(error, cause.isDefined, logs)
+    case EvalFailure.Script(_) | EvalFailure.Decode(_) | EvalFailure.Unsupported(_) |
+        EvalFailure.OutOfBudget | EvalFailure.OpenTerm(_) =>
+      FailureForm.Other(failure)
+
+  /** A script's result with its failure in its comparable form ([[FailureForm]]). */
+  private enum ResultForm derives CanEqual:
+    case Passed(used: ExUnits, logs: Vector[String])
+    case Failed(failure: FailureForm, used: ExUnits, logs: Vector[String])
+
+  private type EvaluationForm = (Redeemer, EvalRequest, ResultForm)
+
+  /** What an observation says of its scripts, each failure in its comparable form. */
+  private enum OutcomeForm derives CanEqual:
+    case Passed(evaluations: Vector[EvaluationForm])
+    case Failed(
+        evaluations: Vector[EvaluationForm],
+        failures: Vector[(Redeemer, EvalRequest, FailureForm)]
+    )
+    case Unavailable(
+        evaluations: Vector[EvaluationForm],
+        redeemer: Redeemer,
+        reason: EvalFailure.Unsupported
+    )
+
+  /** An observation as it compares: every field as it is, its outcome in its comparable form. */
+  private final case class ObservationForm(
+      tx: Tx,
+      params: ProtocolParams,
+      slot: BigInt,
+      spent: Map[TxIn, TxOut],
+      references: Map[TxIn, TxOut],
+      clock: Option[PosixClock],
+      outcome: Phase2.Collected[OutcomeForm]
+  )
+
+  private def comparable(o: Phase2.Observation): ObservationForm =
+    def result(r: EvalResult): ResultForm = r match
+      case EvalResult.Success(used, logs)         => ResultForm.Passed(used, logs)
+      case EvalResult.Failure(reason, used, logs) => ResultForm.Failed(formOf(reason), used, logs)
+    def evaluations(report: Phase2.Report): Vector[EvaluationForm] =
       report.evaluations.map(e => (e.redeemer, e.request, result(e.result)))
     val outcome = o.outcome.map {
-      case Phase2.Outcome.Passed(report) => evaluations(report)
+      case Phase2.Outcome.Passed(report) => OutcomeForm.Passed(evaluations(report))
       case Phase2.Outcome.Failed(report, failures) =>
-        (evaluations(report), failures.toVector.map(f => (f.redeemer, f.request, f.reason.message)))
+        OutcomeForm.Failed(
+          evaluations(report),
+          failures.toVector.map(f => (f.redeemer, f.request, formOf(f.reason)))
+        )
       case Phase2.Outcome.Unavailable(report, redeemer, reason) =>
-        (evaluations(report), redeemer, reason)
+        OutcomeForm.Unavailable(evaluations(report), redeemer, reason)
     }
-    (o.tx, o.params, o.slot, o.spent, o.references, o.clock, outcome)
+    ObservationForm(o.tx, o.params, o.slot, o.spent, o.references, o.clock, outcome)
 
   /** The phase-2 observations a side's observer is told (`--plutus-cases`), in order. */
   private final class Observations:
@@ -1219,6 +1277,123 @@ class ConwayBbodySuite extends FunSuite:
       Vector(valid.id, valid.id, passAndFail.id, passAndFail.id)
     )
     assertEquals(named.distinct.size, 4)
+  }
+
+  test(
+    "two scripts of one transaction whose requests are equal at distinct redeemers: the era run names and observes each by its place, as the flat rules do"
+  ) {
+    // a Plutus V1 script's staking credential, registered, unregistered (certificate 0, the
+    // Shelley form), registered again, and unregistered with its refund (certificate 2, Conway's
+    // form): a V1 context names both unregistrations by the one form it has for them
+    // (`transTxCertV1V2`, `Conway/TxInfo.hs:406-418`, cardano-ledger 9df9f98c), so with equal
+    // redeemers the two scripts' contexts, and their requests, are equal
+    val v1 = hex("4d01000033222220051200120011")
+    val credential = Credential.Script(B.scriptHash(1, v1))
+    val params = ConwayNewEpochState.gov.get(judge(third, third.raw).ticked).curPParams
+    val pp = PParams[Conway](ok("parameters")(ConwayPParams.fromStored(params)))
+    val deposit = params.keyDeposit
+    val utxo = funded(Vector(paid(30000000), paid(30000000)))
+    val staking = B.arr(B.uint(1), B.bytes(credential.hash))
+    val redeemer = B.arr(B.uint(0), B.arr(B.uint(redeemerUnits.mem), B.uint(redeemerUnits.steps)))
+    def withHash(integrity: Bytes): Built =
+      val body = B.body(
+        0 -> B.set(in(utxo, 0)),
+        1 -> B.arr(paid(27000000 + deposit)),
+        2 -> B.uint(3000000),
+        4 -> B.arr(
+          B.arr(B.uint(1), staking),
+          B.arr(B.uint(0), staking),
+          B.arr(B.uint(8), staking, B.uint(deposit))
+        ),
+        11 -> B.bytes(integrity),
+        13 -> B.set(in(utxo, 1))
+      )
+      built(
+        body,
+        B.witnesses(
+          body,
+          Vector(payer),
+          3 -> B.set(B.bytes(v1)),
+          5 -> B.cmap(
+            B.arr(B.uint(2), B.uint(0)) -> redeemer,
+            B.arr(B.uint(2), B.uint(2)) -> redeemer
+          )
+        )
+      )
+    val integrity = ScriptIntegrity
+      .mkScriptIntegrity[Conway, TxLevel.Top](
+        pp,
+        withHash(Bytes(Vector.fill(32)(0.toByte))).era,
+        Set(PlutusLanguage.V1)
+      )(using
+        EraTx.conway,
+        AlonzoEraPParams.conway,
+        xyz.kd5ujc.scarab.ledger.era.EraTxWits.conway,
+        EraTx.conway.bodyOf.top
+      )
+      .map(ScriptIntegrity.hashScriptIntegrity(_))
+      .getOrElse(fail("no script integrity"))
+    val tx = withHash(integrity)
+    // the credential registered with the cluster's deposit, which the deposits held count
+    val registered = holding(utxo).andThen(
+      ConwayNewEpochState.accounts
+        .modify(accounts =>
+          ConwayAccounts(
+            accounts.states.updated(
+              ok("credential")(
+                xyz.kd5ujc.scarab.ledger.rules.Convert.credential[Staking](credential)
+              ),
+              ConwayAccountState(
+                ok("balance")(CompactCoin.fromBigInt(0)),
+                ok("deposit")(CompactCoin.fromBigInt(deposit)),
+                None,
+                None
+              )
+            )
+          )
+        )
+        .andThen(
+          ConwayNewEpochState.ls.modify(ls =>
+            ls.copy[Conway](utxo =
+              ls.utxo.copy(deposited = Coin(ls.utxo.deposited.value + deposit))
+            )
+          )
+        )
+    )
+    val raw = blockOf(Vector(tx))
+    val admitted = judge(third, raw, change = registered, observe = true)
+    assert(admitted.era.isRight, s"${admitted.era}")
+    same("admitted", admitted.era, admitted.flat)
+    assertEquals(admitted.eraPlutus, admitted.flatPlutus)
+    // the two requests are equal, at certificates 0 and 2
+    val evaluations = admitted.flatObserved match
+      case Vector(Phase2.Observation(_, _, _, _, _, _, Right(Phase2.Outcome.Passed(report)))) =>
+        report.evaluations
+      case other => fail(s"the flat rules' observations $other")
+    assertEquals(
+      evaluations.map(e => (e.redeemer.tag, e.redeemer.index)).toSet,
+      Set[(Int, BigInt)]((2, 0), (2, 2))
+    )
+    assertEquals(evaluations.map(_.request).distinct.size, 1)
+    assertEquals(admitted.eraObserved.map(comparable), admitted.flatObserved.map(comparable))
+    // with no verdict on either, each named and observed by its own redeemer
+    val named = Vector(1, 2).map { n =>
+      Vector(false, true).map { observe =>
+        val j = judge(third, raw, change = registered, unsupportedAt = Some(n), observe = observe)
+        val failure = j.flat match
+          case Left(Vector(BlockFailure.Tx(failure: LedgerFailure.Unavailable))) => failure
+          case other => fail(s"$n: the flat rules' ${other.map(_._1)}")
+        assertEquals(
+          j.eraRun.left.toOption,
+          Some(ConwayRuleDefect.ScriptUnavailable(failure)),
+          s"$n"
+        )
+        assertEquals(j.eraObserved.map(comparable), j.flatObserved.map(comparable), s"$n")
+        failure.location
+      }.distinct
+    }
+    assertEquals(named.map(_.size), Vector(1, 1))
+    assertEquals(named.flatten.distinct.size, 2)
   }
 
   test("a transaction whose input is missing: LEDGERS's refusal, embedded, the flat LEDGER's") {

@@ -69,13 +69,13 @@ class ConwayPhase2Suite extends FunSuite:
         flat,
         c.name
       )
-      // every script is located by itself, with its redeemer
-      found.scripts.foreach { (redeemer, pwc) =>
+      // every script locates its transaction by itself, and is there at its place
+      found.scripts.zipWithIndex.foreach { (script, place) =>
         assertEquals(
           ConwayPhase2
-            .locate(Vector(tx), ls, pp, c.posix)(_ == pwc)
-            .flatMap(_.scripts.collectFirst { case (r, p) if p == pwc => r }),
-          Some(redeemer),
+            .locate(Vector(tx), ls, pp, c.posix)(_ == script._2)
+            .flatMap(_.scripts.lift(place)),
+          Some(script),
           c.name
         )
       }

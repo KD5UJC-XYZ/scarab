@@ -88,13 +88,20 @@ object ConwayBlockRun:
     case In(located: ConwayPhase2.Located, done: Vector[Phase2.Evaluation])
 
   /** The state of a run: BBODY's, the proposals it holds, what of its events the counters read, in
-    * their order, and the scripts it observes.
+    * their order, the scripts it observes, and how many scripts of the transaction whose scripts
+    * run now ran so far (`ran`): a transaction's UTXOS runs them in the order its annotation
+    * collects them (`evalPlutusScripts`, `Alonzo/Plutus/Evaluate.hs:188-207`, cardano-ledger
+    * f649f975) and then tells them ([[ScriptsTold]]), which ends them; one whose scripts it does
+    * not tell records a failure, after which no script runs (`whenFailureFree`). So the `ran` th
+    * script of the transaction is the one running, which two scripts with the same request tell
+    * apart.
     */
   private final case class S(
       bbody: ShelleyBbodyState[Conway],
       held: Held,
       told: Chain[ScriptsTold],
-      observed: Observed
+      observed: Observed,
+      ran: Int
   )
 
   /** The node's phase-2 observer (`--plutus-cases`) of a run, as the flat rules call it
@@ -116,7 +123,12 @@ object ConwayBlockRun:
     val functor: Functor[F] = summon[Monad[F]]
     def tell(events: Chain[BbodyEvent[Conway]]): F[Unit] =
       summon[Stateful[F, S]].modify(s =>
-        s.copy(told = s.told ++ events.flatMap(e => Chain.fromOption(ScriptsTold.of(e))))
+        val now = events.flatMap(e => Chain.fromOption(ScriptsTold.of(e)))
+        val ended = now.exists {
+          case ScriptsTold.Passed(_) | ScriptsTold.Failed(_) => true
+          case ScriptsTold.Applied                           => false
+        }
+        s.copy(told = s.told ++ now, ran = if ended then 0 else s.ran)
       )
 
   /** What a block the rules admitted comes to: the BBODY state after it, and the node's phase-2
@@ -133,16 +145,20 @@ object ConwayBlockRun:
   private given Raise[F, ProposalsReadError] =
     summon[Raise[F, ConwayRuleDefect]].contramap(ConwayRuleDefect.ProposalsRead(_))
 
+  /** One more script of the transaction whose scripts run now ran ([[S]]). */
+  private val oneRan: F[Unit] = summon[Stateful[F, S]].modify(s => s.copy(ran = s.ran + 1))
+
   private def lifted(evaluator: ScriptEvaluator[Id]): ScriptEvaluator[F] =
-    request => Monad[F].unit.map(_ => evaluator.evaluate(request))
+    request => oneRan.map(_ => evaluator.evaluate(request))
 
   /** `evaluator` with each script it runs of the block of transactions `txs` observed by
     * `observing`, as the flat rules observe a transaction's (`TxChecks.phase2`): the script's
     * transaction located in the ledger state the rules run it in ([[ConwayPhase2.locate]]), its
-    * evaluations held until the last of its scripts or the one the evaluator gives no verdict for,
-    * then its observation told, with the parameters as the node records them, the block's slot and
-    * the outputs its inputs and reference inputs spend and read. A script of no transaction of the
-    * block, which the rules never run, is not observed.
+    * script the one at its place among them ([[S]]`.ran`, its request the one it is asked to run),
+    * its evaluations held until the last of its scripts or the one the evaluator gives no verdict
+    * for, then its observation told, with the parameters as the node records them, the block's slot
+    * and the outputs its inputs and reference inputs spend and read. A script of no transaction of
+    * the block, which the rules never run, is not observed.
     */
   private def observed(
       evaluator: ScriptEvaluator[Id],
@@ -153,8 +169,12 @@ object ConwayBlockRun:
       slotToPOSIXTime: BigInt => Either[TranslationError, BigInt]
   ): ScriptEvaluator[F] =
     val state = summon[Stateful[F, S]]
-    def redeemerOf(located: ConwayPhase2.Located, request: EvalRequest): Option[Redeemer] =
-      located.scripts.collectFirst {
+    def redeemerOf(
+        located: ConwayPhase2.Located,
+        place: Int,
+        request: EvalRequest
+    ): Option[Redeemer] =
+      located.scripts.lift(place).collect {
         case (redeemer, pwc) if PlutusWithContext.evalRequest(pwc) == request => redeemer
       }
     def told(located: ConwayPhase2.Located, s: S, outcome: Phase2.Outcome): F[Unit] =
@@ -176,11 +196,11 @@ object ConwayBlockRun:
           )
       )
     request =>
-      state.get.flatMap { s =>
+      (state.get <* oneRan).flatMap { s =>
         val result = evaluator.evaluate(request)
         val current = s.observed match
           case Observed.In(located, done) =>
-            redeemerOf(located, request).map(r => (located, done, r))
+            redeemerOf(located, s.ran, request).map(r => (located, done, r))
           case Observed.Between => None
         current
           .orElse(
@@ -188,7 +208,9 @@ object ConwayBlockRun:
               .locate(txs, s.bbody.ls, pp, slotToPOSIXTime)(pwc =>
                 PlutusWithContext.evalRequest(pwc) == request
               )
-              .flatMap(located => redeemerOf(located, request).map(r => (located, Vector.empty, r)))
+              .flatMap(located =>
+                redeemerOf(located, s.ran, request).map(r => (located, Vector.empty, r))
+              )
           )
           .fold(Monad[F].pure(result)) { (located, done, redeemer) =>
             val between = state.modify(_.copy(observed = Observed.Between))
@@ -282,7 +304,8 @@ object ConwayBlockRun:
       )
     )
     // a script with no verdict, named by its transaction and redeemer in the ledger state the
-    // rules judged it in, the state at the raise
+    // rules judged it in, the state at the raise, at its place among its transaction's scripts:
+    // it ran, and was counted, so `ran` less one ran before it
     given Raise[F, ScriptVerdictUnavailable] = new Raise[F, ScriptVerdictUnavailable]:
       val functor: Functor[F] = summon[Monad[F]]
       def raise[E2 <: ScriptVerdictUnavailable, A](cause: E2): F[A] =
@@ -294,7 +317,8 @@ object ConwayBlockRun:
                 s.bbody.ls,
                 env.bbodyPp,
                 slotToPOSIXTime,
-                cause
+                cause,
+                s.ran - 1
               )
               .fold(ConwayRuleDefect.Unavailable(cause))(ConwayRuleDefect.ScriptUnavailable(_))
           )
@@ -311,7 +335,7 @@ object ConwayBlockRun:
       .judge(
         ConwayBbody.conwayBbody[F, H](env, block, context, verdicts, decoder, slotToPOSIXTime),
         RuleT.Policy.Accumulate
-      )(globals, S(state, Held.Unread, Chain.empty, Observed.Between))
+      )(globals, S(state, Held.Unread, Chain.empty, Observed.Between, 0))
       .flatMap(
         _.traverse((after, _) =>
           written(after).map(

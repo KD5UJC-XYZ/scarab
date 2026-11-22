@@ -194,18 +194,22 @@ object ConwayPhase2:
   /** The script `cause` the evaluator gave no verdict for, named as the flat rules name it
     * ([[LedgerFailure.Unavailable]]: the transaction's id and its redeemer,
     * `TxChecks.checkedPhase2`), among the block's transactions `txs`, from the ledger state `ls`
-    * the rules judged it in ([[locate]]). None where no script of the block is it, which a script
-    * the rules ran never is.
+    * the rules judged it in ([[locate]]): the script at `place` among its transaction's, as UTXOS
+    * runs them (`evalPlutusScripts`, `Alonzo/Plutus/Evaluate.hs:188-207`, cardano-ledger f649f975),
+    * which two scripts of one transaction with equal contexts are told apart by (a Plutus V1 or V2
+    * context names a certificate by its form, so two certificates of the same form have one). None
+    * where the script there is not it, which the script the rules ran never is.
     */
   def named(
       txs: Vector[Tx[TxLevel.Top, Conway]],
       ls: LedgerState[Conway],
       pp: PParams[Conway],
       slotToPOSIXTime: BigInt => Either[TranslationError, BigInt],
-      cause: ScriptVerdictUnavailable
+      cause: ScriptVerdictUnavailable,
+      place: Int
   ): Option[LedgerFailure.Unavailable] =
     locate(txs, ls, pp, slotToPOSIXTime)(_ == cause.plutus).flatMap(located =>
-      located.scripts.collectFirst {
+      located.scripts.lift(place).collect {
         case (redeemer, pwc) if pwc == cause.plutus =>
           LedgerFailure.Unavailable(located.txId, ScriptLocation.Phase2(redeemer), cause.reason)
       }
