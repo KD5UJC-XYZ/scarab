@@ -1,0 +1,996 @@
+{
+ "deposit-credit": {
+  "control": {
+   "governance": {
+    "drepStake": 1000000000000,
+    "enacted": [
+     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#0"
+    ],
+    "expired": [],
+    "poolStake": 16020989118060,
+    "proposals": [
+     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#0"
+    ],
+    "roots": {
+     "committee": null,
+     "constitution": null,
+     "hardFork": null,
+     "pparamUpdate": "e57ccb64f3777d09cb0a86217d0c02577904f00d4873af705f7bdd585e896821#0"
+    }
+   },
+   "slot": 2181600
+  },
+  "delegated": {
+   "account": {
+    "keyHash": "68da84881e8de70c5ea759e61bc5a09fde2447896c1b25d3bbac22ef"
+   },
+   "drep": {
+    "keyHash": "da388496cca1dc6418e33fe706639873469d8b1e423d056e47736aca"
+   },
+   "pool": "8a04e2c7db3dff509c9f5f2b8e27d715eb8f3d0665deddc2e436f414"
+  },
+  "derivation": {
+   "bytes": 515197,
+   "changes": [
+    {
+     "change": "propose",
+     "committeeVotes": 3,
+     "drepVotes": 2,
+     "expiresAfter": 220,
+     "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#0",
+     "proposal": "841b000000174876e800581de068da84881e8de70c5ea759e61bc5a09fde2447896c1b25d3bbac22ef8400825820e57ccb64f3777d09cb0a86217d0c02577904f00d4873af705f7bdd585e89682100a2182f821a08583b001b000000174876e80018301a00200000581ce3172285605e502bde008a7efe2b2eec516958b7bae911947a5c9373827842697066733a2f2f6261666b726569617a686861776537736a777574686366676c336d6d7632737765633773756b76636c75336f6c69377164797a3475686875766d7958202a61e2f4b63442978140c77a70daab3961b22b12b63b13949a390c097214d1c5",
+     "proposedIn": 100,
+     "stakePoolVotes": 154
+    }
+   ],
+   "facts": {
+    "accountBalances": 14679476326893,
+    "deposited": 179756000000,
+    "epoch": 100,
+    "fees": 271372435560,
+    "futurePParams": "potential",
+    "futurePools": 0,
+    "leiosCommitteeSize": 900,
+    "mark": {
+     "committeeSize": 900,
+     "epoch": 100,
+     "keyedSeats": 154,
+     "maxKeyAge": 374,
+     "seats": 154
+    },
+    "maxPledgeLeverage": null,
+    "pools": 154,
+    "poolsRetiring": 0,
+    "reserves": 14231792686148440,
+    "rewardUpdate": "absent",
+    "set": {
+     "keyedSeats": 154,
+     "seats": 154
+    },
+    "treasury": 785393358810844,
+    "vrfKeyHashes": 154
+   },
+   "file": null,
+   "governance": {
+    "drepStake": 1000000000000,
+    "enacted": [],
+    "expired": [],
+    "poolStake": 16020989118060,
+    "proposals": [
+     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#0"
+    ],
+    "roots": {
+     "committee": null,
+     "constitution": null,
+     "hardFork": null,
+     "pparamUpdate": "e57ccb64f3777d09cb0a86217d0c02577904f00d4873af705f7bdd585e896821#0"
+    }
+   },
+   "name": "deposit-credit",
+   "stateSha256": "1b3d8daa49b73095910b40330c43b7772a294cc79321d62ad4b39fa1f94b38fc"
+  },
+  "inputDeposited": 79756000000,
+  "inputGovernance": {
+   "drepStake": 1000000000000,
+   "enacted": [],
+   "expired": [],
+   "poolStake": 16020989118060,
+   "proposals": [],
+   "roots": {
+    "committee": null,
+    "constitution": null,
+    "hardFork": null,
+    "pparamUpdate": "e57ccb64f3777d09cb0a86217d0c02577904f00d4873af705f7bdd585e896821#0"
+   }
+  },
+  "name": "testnet-2168639",
+  "paths": [
+   {
+    "path": "boundaries",
+    "ticks": [
+     {
+      "bytes": 525066,
+      "crossedBoundary": true,
+      "facts": {
+       "accountBalances": 14679476326893,
+       "deposited": 179756000000,
+       "epoch": 101,
+       "fees": 374107671341,
+       "futurePParams": "potential",
+       "futurePools": 0,
+       "leiosCommitteeSize": 900,
+       "mark": {
+        "committeeSize": 900,
+        "epoch": 101,
+        "keyedSeats": 154,
+        "maxKeyAge": 374,
+        "seats": 154
+       },
+       "maxPledgeLeverage": null,
+       "pools": 154,
+       "poolsRetiring": 0,
+       "reserves": 14231792686148440,
+       "rewardUpdate": "absent",
+       "set": {
+        "keyedSeats": 154,
+        "seats": 154
+       },
+       "treasury": 785393358810844,
+       "vrfKeyHashes": 154
+      },
+      "file": null,
+      "governance": {
+       "drepStake": 1100000000000,
+       "enacted": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#0"
+       ],
+       "expired": [],
+       "poolStake": 16120989118060,
+       "proposals": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#0"
+       ],
+       "roots": {
+        "committee": null,
+        "constitution": null,
+        "hardFork": null,
+        "pparamUpdate": "e57ccb64f3777d09cb0a86217d0c02577904f00d4873af705f7bdd585e896821#0"
+       }
+      },
+      "removals": {
+       "enacted": [],
+       "expired": [],
+       "removedDueToEnactment": [],
+       "unclaimed": {}
+      },
+      "rewardUpdateApplied": false,
+      "slot": 2181600,
+      "stateSha256": "2f3e9249a172b9058760f6f6ace87922be64001fe5ad0e7027345c89cbd6f13d"
+     },
+     {
+      "bytes": 502162,
+      "crossedBoundary": true,
+      "facts": {
+       "accountBalances": 14779476326893,
+       "deposited": 79756000000,
+       "epoch": 102,
+       "fees": 374107671341,
+       "futurePParams": "potential",
+       "futurePools": 0,
+       "leiosCommitteeSize": 900,
+       "mark": {
+        "committeeSize": 900,
+        "epoch": 102,
+        "keyedSeats": 154,
+        "maxKeyAge": 374,
+        "seats": 154
+       },
+       "maxPledgeLeverage": null,
+       "pools": 154,
+       "poolsRetiring": 0,
+       "reserves": 14231792686148440,
+       "rewardUpdate": "absent",
+       "set": {
+        "keyedSeats": 154,
+        "seats": 154
+       },
+       "treasury": 785393358810844,
+       "vrfKeyHashes": 154
+      },
+      "file": null,
+      "governance": {
+       "drepStake": 1100000000000,
+       "enacted": [],
+       "expired": [],
+       "poolStake": 16120989118060,
+       "proposals": [],
+       "roots": {
+        "committee": null,
+        "constitution": null,
+        "hardFork": null,
+        "pparamUpdate": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#0"
+       }
+      },
+      "removals": {
+       "enacted": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#0"
+       ],
+       "expired": [],
+       "removedDueToEnactment": [],
+       "unclaimed": {}
+      },
+      "rewardUpdateApplied": false,
+      "slot": 2203200,
+      "stateSha256": "89d753c2792f0cd453c403aff98b1108456ea291fe4abbbe8dc6c0595f9126b2"
+     }
+    ]
+   },
+   {
+    "path": "rewards",
+    "ticks": [
+     {
+      "bytes": 794826,
+      "crossedBoundary": false,
+      "facts": {
+       "accountBalances": 14679476326893,
+       "deposited": 179756000000,
+       "epoch": 100,
+       "fees": 271372435560,
+       "futurePParams": "none",
+       "futurePools": 0,
+       "leiosCommitteeSize": 900,
+       "mark": {
+        "committeeSize": 900,
+        "epoch": 100,
+        "keyedSeats": 154,
+        "maxKeyAge": 374,
+        "seats": 154
+       },
+       "maxPledgeLeverage": null,
+       "pools": 154,
+       "poolsRetiring": 0,
+       "reserves": 14231792686148440,
+       "rewardUpdate": "pulsing",
+       "set": {
+        "keyedSeats": 154,
+        "seats": 154
+       },
+       "treasury": 785393358810844,
+       "vrfKeyHashes": 154
+      },
+      "file": null,
+      "governance": {
+       "drepStake": 1000000000000,
+       "enacted": [],
+       "expired": [],
+       "poolStake": 16020989118060,
+       "proposals": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#0"
+       ],
+       "roots": {
+        "committee": null,
+        "constitution": null,
+        "hardFork": null,
+        "pparamUpdate": "e57ccb64f3777d09cb0a86217d0c02577904f00d4873af705f7bdd585e896821#0"
+       }
+      },
+      "removals": null,
+      "rewardUpdateApplied": false,
+      "slot": 2168641,
+      "stateSha256": "6dce25fcb29b709a846879cc0709b8fafe0dd9e108062f9d4e6a3ee38232910b"
+     },
+     {
+      "bytes": 525058,
+      "crossedBoundary": true,
+      "facts": {
+       "accountBalances": 14844238231823,
+       "deposited": 179756000000,
+       "epoch": 101,
+       "fees": 102735235781,
+       "futurePParams": "potential",
+       "futurePools": 0,
+       "leiosCommitteeSize": 900,
+       "mark": {
+        "committeeSize": 900,
+        "epoch": 101,
+        "keyedSeats": 154,
+        "maxKeyAge": 374,
+        "seats": 154
+       },
+       "maxPledgeLeverage": null,
+       "pools": 154,
+       "poolsRetiring": 0,
+       "reserves": 14224294265516808,
+       "rewardUpdate": "absent",
+       "set": {
+        "keyedSeats": 154,
+        "seats": 154
+       },
+       "treasury": 792998389973106,
+       "vrfKeyHashes": 154
+      },
+      "file": null,
+      "governance": {
+       "drepStake": 1100000000000,
+       "enacted": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#0"
+       ],
+       "expired": [],
+       "poolStake": 16137126591187,
+       "proposals": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#0"
+       ],
+       "roots": {
+        "committee": null,
+        "constitution": null,
+        "hardFork": null,
+        "pparamUpdate": "e57ccb64f3777d09cb0a86217d0c02577904f00d4873af705f7bdd585e896821#0"
+       }
+      },
+      "removals": {
+       "enacted": [],
+       "expired": [],
+       "removedDueToEnactment": [],
+       "unclaimed": {}
+      },
+      "rewardUpdateApplied": true,
+      "slot": 2181600,
+      "stateSha256": "ef2ffdf66188c593a560c494f36e05629a62cf26c06820005dd5dd414acef4fe"
+     },
+     {
+      "bytes": 791609,
+      "crossedBoundary": false,
+      "facts": {
+       "accountBalances": 14844238231823,
+       "deposited": 179756000000,
+       "epoch": 101,
+       "fees": 102735235781,
+       "futurePParams": "definite",
+       "futurePools": 0,
+       "leiosCommitteeSize": 900,
+       "mark": {
+        "committeeSize": 900,
+        "epoch": 101,
+        "keyedSeats": 154,
+        "maxKeyAge": 374,
+        "seats": 154
+       },
+       "maxPledgeLeverage": null,
+       "pools": 154,
+       "poolsRetiring": 0,
+       "reserves": 14224294265516808,
+       "rewardUpdate": "pulsing",
+       "set": {
+        "keyedSeats": 154,
+        "seats": 154
+       },
+       "treasury": 792998389973106,
+       "vrfKeyHashes": 154
+      },
+      "file": null,
+      "governance": {
+       "drepStake": 1100000000000,
+       "enacted": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#0"
+       ],
+       "expired": [],
+       "poolStake": 16137126591187,
+       "proposals": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#0"
+       ],
+       "roots": {
+        "committee": null,
+        "constitution": null,
+        "hardFork": null,
+        "pparamUpdate": "e57ccb64f3777d09cb0a86217d0c02577904f00d4873af705f7bdd585e896821#0"
+       }
+      },
+      "removals": null,
+      "rewardUpdateApplied": false,
+      "slot": 2190241,
+      "stateSha256": "f551233cb2e9ff3bfd695fdf6551048868e2ccea596ca9eceff4e8136c07ecb8"
+     },
+     {
+      "bytes": 502130,
+      "crossedBoundary": true,
+      "facts": {
+       "accountBalances": 15005257903441,
+       "deposited": 79756000000,
+       "epoch": 102,
+       "fees": 0,
+       "futurePParams": "potential",
+       "futurePools": 0,
+       "leiosCommitteeSize": 900,
+       "mark": {
+        "committeeSize": 900,
+        "epoch": 102,
+        "keyedSeats": 154,
+        "maxKeyAge": 374,
+        "seats": 154
+       },
+       "maxPledgeLeverage": null,
+       "pools": 154,
+       "poolsRetiring": 0,
+       "reserves": 14221533794266336,
+       "rewardUpdate": "absent",
+       "set": {
+        "keyedSeats": 154,
+        "seats": 154
+       },
+       "treasury": 795800576787741,
+       "vrfKeyHashes": 154
+      },
+      "file": null,
+      "governance": {
+       "drepStake": 1100000000000,
+       "enacted": [],
+       "expired": [],
+       "poolStake": 16142386439189,
+       "proposals": [],
+       "roots": {
+        "committee": null,
+        "constitution": null,
+        "hardFork": null,
+        "pparamUpdate": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#0"
+       }
+      },
+      "removals": {
+       "enacted": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#0"
+       ],
+       "expired": [],
+       "removedDueToEnactment": [],
+       "unclaimed": {}
+      },
+      "rewardUpdateApplied": true,
+      "slot": 2203200,
+      "stateSha256": "ca312247f84dd4e12a78a56d1dd380a5c05af4369e556aadb28d1eb1935f9552"
+     }
+    ]
+   }
+  ]
+ },
+ "remove-branches": {
+  "delegated": {
+   "account": {
+    "keyHash": "68da84881e8de70c5ea759e61bc5a09fde2447896c1b25d3bbac22ef"
+   },
+   "drep": {
+    "keyHash": "da388496cca1dc6418e33fe706639873469d8b1e423d056e47736aca"
+   },
+   "pool": "8a04e2c7db3dff509c9f5f2b8e27d715eb8f3d0665deddc2e436f414"
+  },
+  "derivation": {
+   "bytes": 516915,
+   "changes": [
+    {
+     "change": "propose",
+     "committeeVotes": 3,
+     "drepVotes": 2,
+     "expiresAfter": 220,
+     "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#0",
+     "proposal": "841b000000174876e800581df00123590c8fde63afbb62263be348f6da916ff9dab6edb656cde043038400825820e57ccb64f3777d09cb0a86217d0c02577904f00d4873af705f7bdd585e89682100a2182f821a08583b001b000000174876e80018301a00200000581ce3172285605e502bde008a7efe2b2eec516958b7bae911947a5c9373827842697066733a2f2f6261666b726569617a686861776537736a777574686366676c336d6d7632737765633773756b76636c75336f6c69377164797a3475686875766d7958202a61e2f4b63442978140c77a70daab3961b22b12b63b13949a390c097214d1c5",
+     "proposedIn": 100,
+     "stakePoolVotes": 154
+    },
+    {
+     "change": "propose",
+     "committeeVotes": 0,
+     "drepVotes": 0,
+     "expiresAfter": 220,
+     "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#1",
+     "proposal": "841b000000174876e800581df00123590c8fde63afbb62263be348f6da916ff9dab6edb656cde043038400825820e57ccb64f3777d09cb0a86217d0c02577904f00d4873af705f7bdd585e89682100a2182f821a08583b001b000000174876e80018301a00200000581ce3172285605e502bde008a7efe2b2eec516958b7bae911947a5c9373827842697066733a2f2f6261666b726569617a686861776537736a777574686366676c336d6d7632737765633773756b76636c75336f6c69377164797a3475686875766d7958202a61e2f4b63442978140c77a70daab3961b22b12b63b13949a390c097214d1c5",
+     "proposedIn": 100,
+     "stakePoolVotes": 0
+    },
+    {
+     "change": "propose",
+     "committeeVotes": 0,
+     "drepVotes": 0,
+     "expiresAfter": 220,
+     "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#2",
+     "proposal": "841b000000174876e800581df00123590c8fde63afbb62263be348f6da916ff9dab6edb656cde043038400825820aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa01a2182f821a08583b001b000000174876e80018301a00200000581ce3172285605e502bde008a7efe2b2eec516958b7bae911947a5c9373827842697066733a2f2f6261666b726569617a686861776537736a777574686366676c336d6d7632737765633773756b76636c75336f6c69377164797a3475686875766d7958202a61e2f4b63442978140c77a70daab3961b22b12b63b13949a390c097214d1c5",
+     "proposedIn": 100,
+     "stakePoolVotes": 0
+    },
+    {
+     "change": "propose",
+     "committeeVotes": 0,
+     "drepVotes": 0,
+     "expiresAfter": 100,
+     "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#3",
+     "proposal": "841b000000174876e800581df00123590c8fde63afbb62263be348f6da916ff9dab6edb656cde043038305f682827842697066733a2f2f6261666b726569617a686861776537736a777574686366676c336d6d7632737765633773756b76636c75336f6c69377164797a3475686875766d7958202a61e2f4b63442978140c77a70daab3961b22b12b63b13949a390c097214d1c5581ce3172285605e502bde008a7efe2b2eec516958b7bae911947a5c9373827842697066733a2f2f6261666b726569617a686861776537736a777574686366676c336d6d7632737765633773756b76636c75336f6c69377164797a3475686875766d7958202a61e2f4b63442978140c77a70daab3961b22b12b63b13949a390c097214d1c5",
+     "proposedIn": 100,
+     "stakePoolVotes": 0
+    },
+    {
+     "change": "propose",
+     "committeeVotes": 0,
+     "drepVotes": 0,
+     "expiresAfter": 220,
+     "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#4",
+     "proposal": "841b000000174876e800581df00123590c8fde63afbb62263be348f6da916ff9dab6edb656cde043038305825820aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0382827842697066733a2f2f6261666b726569617a686861776537736a777574686366676c336d6d7632737765633773756b76636c75336f6c69377164797a3475686875766d7958202a61e2f4b63442978140c77a70daab3961b22b12b63b13949a390c097214d1c5581ce3172285605e502bde008a7efe2b2eec516958b7bae911947a5c9373827842697066733a2f2f6261666b726569617a686861776537736a777574686366676c336d6d7632737765633773756b76636c75336f6c69377164797a3475686875766d7958202a61e2f4b63442978140c77a70daab3961b22b12b63b13949a390c097214d1c5",
+     "proposedIn": 100,
+     "stakePoolVotes": 0
+    },
+    {
+     "change": "propose",
+     "committeeVotes": 0,
+     "drepVotes": 0,
+     "expiresAfter": 220,
+     "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#5",
+     "proposal": "841b000000174876e800581df00123590c8fde63afbb62263be348f6da916ff9dab6edb656cde043038400825820aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa00a2182f821a08583b001b000000174876e80018301a00200000581ce3172285605e502bde008a7efe2b2eec516958b7bae911947a5c9373827842697066733a2f2f6261666b726569617a686861776537736a777574686366676c336d6d7632737765633773756b76636c75336f6c69377164797a3475686875766d7958202a61e2f4b63442978140c77a70daab3961b22b12b63b13949a390c097214d1c5",
+     "proposedIn": 100,
+     "stakePoolVotes": 0
+    },
+    {
+     "change": "propose",
+     "committeeVotes": 0,
+     "drepVotes": 0,
+     "expiresAfter": 220,
+     "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#6",
+     "proposal": "841b000000174876e800581df00123590c8fde63afbb62263be348f6da916ff9dab6edb656cde043038106827842697066733a2f2f6261666b726569617a686861776537736a777574686366676c336d6d7632737765633773756b76636c75336f6c69377164797a3475686875766d7958202a61e2f4b63442978140c77a70daab3961b22b12b63b13949a390c097214d1c5",
+     "proposedIn": 100,
+     "stakePoolVotes": 0
+    }
+   ],
+   "facts": {
+    "accountBalances": 14679476326893,
+    "deposited": 779756000000,
+    "epoch": 100,
+    "fees": 271372435560,
+    "futurePParams": "potential",
+    "futurePools": 0,
+    "leiosCommitteeSize": 900,
+    "mark": {
+     "committeeSize": 900,
+     "epoch": 100,
+     "keyedSeats": 154,
+     "maxKeyAge": 374,
+     "seats": 154
+    },
+    "maxPledgeLeverage": null,
+    "pools": 154,
+    "poolsRetiring": 0,
+    "reserves": 14231792686148440,
+    "rewardUpdate": "absent",
+    "set": {
+     "keyedSeats": 154,
+     "seats": 154
+    },
+    "treasury": 785393358810844,
+    "vrfKeyHashes": 154
+   },
+   "file": null,
+   "governance": {
+    "drepStake": 1000000000000,
+    "enacted": [],
+    "expired": [],
+    "poolStake": 16020989118060,
+    "proposals": [
+     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#0",
+     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#1",
+     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#2",
+     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#3",
+     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#4",
+     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#5",
+     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#6"
+    ],
+    "roots": {
+     "committee": null,
+     "constitution": null,
+     "hardFork": null,
+     "pparamUpdate": "e57ccb64f3777d09cb0a86217d0c02577904f00d4873af705f7bdd585e896821#0"
+    }
+   },
+   "name": "remove-branches",
+   "stateSha256": "b9fab3c45955e6991fae4f38b716f9720562e7a47b1782f67564c96864c95348"
+  },
+  "inputDeposited": 79756000000,
+  "inputGovernance": {
+   "drepStake": 1000000000000,
+   "enacted": [],
+   "expired": [],
+   "poolStake": 16020989118060,
+   "proposals": [],
+   "roots": {
+    "committee": null,
+    "constitution": null,
+    "hardFork": null,
+    "pparamUpdate": "e57ccb64f3777d09cb0a86217d0c02577904f00d4873af705f7bdd585e896821#0"
+   }
+  },
+  "name": "testnet-2168639",
+  "paths": [
+   {
+    "path": "boundaries",
+    "ticks": [
+     {
+      "bytes": 528538,
+      "crossedBoundary": true,
+      "facts": {
+       "accountBalances": 14679476326893,
+       "deposited": 779756000000,
+       "epoch": 101,
+       "fees": 374107671341,
+       "futurePParams": "potential",
+       "futurePools": 0,
+       "leiosCommitteeSize": 900,
+       "mark": {
+        "committeeSize": 900,
+        "epoch": 101,
+        "keyedSeats": 154,
+        "maxKeyAge": 374,
+        "seats": 154
+       },
+       "maxPledgeLeverage": null,
+       "pools": 154,
+       "poolsRetiring": 0,
+       "reserves": 14231792686148440,
+       "rewardUpdate": "absent",
+       "set": {
+        "keyedSeats": 154,
+        "seats": 154
+       },
+       "treasury": 785393358810844,
+       "vrfKeyHashes": 154
+      },
+      "file": null,
+      "governance": {
+       "drepStake": 1000000000000,
+       "enacted": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#0"
+       ],
+       "expired": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#3"
+       ],
+       "poolStake": 16020989118060,
+       "proposals": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#0",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#1",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#2",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#3",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#4",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#5",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#6"
+       ],
+       "roots": {
+        "committee": null,
+        "constitution": null,
+        "hardFork": null,
+        "pparamUpdate": "e57ccb64f3777d09cb0a86217d0c02577904f00d4873af705f7bdd585e896821#0"
+       }
+      },
+      "removals": {
+       "enacted": [],
+       "expired": [],
+       "removedDueToEnactment": [],
+       "unclaimed": {}
+      },
+      "rewardUpdateApplied": false,
+      "slot": 2181600,
+      "stateSha256": "abea5c0a06dffb130d6119a9caa952951bba6bcd5028f9de7dd7cb1ae379e294"
+     },
+     {
+      "bytes": 503104,
+      "crossedBoundary": true,
+      "facts": {
+       "accountBalances": 15179476326893,
+       "deposited": 279756000000,
+       "epoch": 102,
+       "fees": 374107671341,
+       "futurePParams": "potential",
+       "futurePools": 0,
+       "leiosCommitteeSize": 900,
+       "mark": {
+        "committeeSize": 900,
+        "epoch": 102,
+        "keyedSeats": 154,
+        "maxKeyAge": 374,
+        "seats": 154
+       },
+       "maxPledgeLeverage": null,
+       "pools": 154,
+       "poolsRetiring": 0,
+       "reserves": 14231792686148440,
+       "rewardUpdate": "absent",
+       "set": {
+        "keyedSeats": 154,
+        "seats": 154
+       },
+       "treasury": 785393358810844,
+       "vrfKeyHashes": 154
+      },
+      "file": null,
+      "governance": {
+       "drepStake": 1000000000000,
+       "enacted": [],
+       "expired": [],
+       "poolStake": 16020989118060,
+       "proposals": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#5",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#6"
+       ],
+       "roots": {
+        "committee": null,
+        "constitution": null,
+        "hardFork": null,
+        "pparamUpdate": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#0"
+       }
+      },
+      "removals": {
+       "enacted": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#0"
+       ],
+       "expired": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#3",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#4"
+       ],
+       "removedDueToEnactment": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#1",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#2"
+       ],
+       "unclaimed": {}
+      },
+      "rewardUpdateApplied": false,
+      "slot": 2203200,
+      "stateSha256": "d27cb88add7440cf60294eb61fc44f2de4d5c1b07c107544b41ca5b5d1fc90bd"
+     }
+    ]
+   },
+   {
+    "path": "rewards",
+    "ticks": [
+     {
+      "bytes": 796544,
+      "crossedBoundary": false,
+      "facts": {
+       "accountBalances": 14679476326893,
+       "deposited": 779756000000,
+       "epoch": 100,
+       "fees": 271372435560,
+       "futurePParams": "none",
+       "futurePools": 0,
+       "leiosCommitteeSize": 900,
+       "mark": {
+        "committeeSize": 900,
+        "epoch": 100,
+        "keyedSeats": 154,
+        "maxKeyAge": 374,
+        "seats": 154
+       },
+       "maxPledgeLeverage": null,
+       "pools": 154,
+       "poolsRetiring": 0,
+       "reserves": 14231792686148440,
+       "rewardUpdate": "pulsing",
+       "set": {
+        "keyedSeats": 154,
+        "seats": 154
+       },
+       "treasury": 785393358810844,
+       "vrfKeyHashes": 154
+      },
+      "file": null,
+      "governance": {
+       "drepStake": 1000000000000,
+       "enacted": [],
+       "expired": [],
+       "poolStake": 16020989118060,
+       "proposals": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#0",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#1",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#2",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#3",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#4",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#5",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#6"
+       ],
+       "roots": {
+        "committee": null,
+        "constitution": null,
+        "hardFork": null,
+        "pparamUpdate": "e57ccb64f3777d09cb0a86217d0c02577904f00d4873af705f7bdd585e896821#0"
+       }
+      },
+      "removals": null,
+      "rewardUpdateApplied": false,
+      "slot": 2168641,
+      "stateSha256": "e4bdd89b878548e38e59754cbd8e5235941a91511538d9b3c3f3044c412f93ee"
+     },
+     {
+      "bytes": 528530,
+      "crossedBoundary": true,
+      "facts": {
+       "accountBalances": 14844238231823,
+       "deposited": 779756000000,
+       "epoch": 101,
+       "fees": 102735235781,
+       "futurePParams": "potential",
+       "futurePools": 0,
+       "leiosCommitteeSize": 900,
+       "mark": {
+        "committeeSize": 900,
+        "epoch": 101,
+        "keyedSeats": 154,
+        "maxKeyAge": 374,
+        "seats": 154
+       },
+       "maxPledgeLeverage": null,
+       "pools": 154,
+       "poolsRetiring": 0,
+       "reserves": 14224294265516808,
+       "rewardUpdate": "absent",
+       "set": {
+        "keyedSeats": 154,
+        "seats": 154
+       },
+       "treasury": 792998389973106,
+       "vrfKeyHashes": 154
+      },
+      "file": null,
+      "governance": {
+       "drepStake": 1000000000000,
+       "enacted": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#0"
+       ],
+       "expired": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#3"
+       ],
+       "poolStake": 16037126591187,
+       "proposals": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#0",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#1",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#2",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#3",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#4",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#5",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#6"
+       ],
+       "roots": {
+        "committee": null,
+        "constitution": null,
+        "hardFork": null,
+        "pparamUpdate": "e57ccb64f3777d09cb0a86217d0c02577904f00d4873af705f7bdd585e896821#0"
+       }
+      },
+      "removals": {
+       "enacted": [],
+       "expired": [],
+       "removedDueToEnactment": [],
+       "unclaimed": {}
+      },
+      "rewardUpdateApplied": true,
+      "slot": 2181600,
+      "stateSha256": "14788037eddeb3df9514b90a4e6b907ee25769c808a5a8512804b46fa2394a59"
+     },
+     {
+      "bytes": 795081,
+      "crossedBoundary": false,
+      "facts": {
+       "accountBalances": 14844238231823,
+       "deposited": 779756000000,
+       "epoch": 101,
+       "fees": 102735235781,
+       "futurePParams": "definite",
+       "futurePools": 0,
+       "leiosCommitteeSize": 900,
+       "mark": {
+        "committeeSize": 900,
+        "epoch": 101,
+        "keyedSeats": 154,
+        "maxKeyAge": 374,
+        "seats": 154
+       },
+       "maxPledgeLeverage": null,
+       "pools": 154,
+       "poolsRetiring": 0,
+       "reserves": 14224294265516808,
+       "rewardUpdate": "pulsing",
+       "set": {
+        "keyedSeats": 154,
+        "seats": 154
+       },
+       "treasury": 792998389973106,
+       "vrfKeyHashes": 154
+      },
+      "file": null,
+      "governance": {
+       "drepStake": 1000000000000,
+       "enacted": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#0"
+       ],
+       "expired": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#3"
+       ],
+       "poolStake": 16037126591187,
+       "proposals": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#0",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#1",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#2",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#3",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#4",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#5",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#6"
+       ],
+       "roots": {
+        "committee": null,
+        "constitution": null,
+        "hardFork": null,
+        "pparamUpdate": "e57ccb64f3777d09cb0a86217d0c02577904f00d4873af705f7bdd585e896821#0"
+       }
+      },
+      "removals": null,
+      "rewardUpdateApplied": false,
+      "slot": 2190241,
+      "stateSha256": "d83d4ffb05bea1ceca9fd864c3085477bdaf14555ece401dfa30f58916572fe7"
+     },
+     {
+      "bytes": 503068,
+      "crossedBoundary": true,
+      "facts": {
+       "accountBalances": 15405257903441,
+       "deposited": 279756000000,
+       "epoch": 102,
+       "fees": 0,
+       "futurePParams": "potential",
+       "futurePools": 0,
+       "leiosCommitteeSize": 900,
+       "mark": {
+        "committeeSize": 900,
+        "epoch": 102,
+        "keyedSeats": 154,
+        "maxKeyAge": 374,
+        "seats": 154
+       },
+       "maxPledgeLeverage": null,
+       "pools": 154,
+       "poolsRetiring": 0,
+       "reserves": 14221533794266336,
+       "rewardUpdate": "absent",
+       "set": {
+        "keyedSeats": 154,
+        "seats": 154
+       },
+       "treasury": 795800576787741,
+       "vrfKeyHashes": 154
+      },
+      "file": null,
+      "governance": {
+       "drepStake": 1000000000000,
+       "enacted": [],
+       "expired": [],
+       "poolStake": 16042386439189,
+       "proposals": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#5",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#6"
+       ],
+       "roots": {
+        "committee": null,
+        "constitution": null,
+        "hardFork": null,
+        "pparamUpdate": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#0"
+       }
+      },
+      "removals": {
+       "enacted": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#0"
+       ],
+       "expired": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#3",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#4"
+       ],
+       "removedDueToEnactment": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#1",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#2"
+       ],
+       "unclaimed": {}
+      },
+      "rewardUpdateApplied": true,
+      "slot": 2203200,
+      "stateSha256": "598035a3df4de050aa392f31b76e0ed451de033100d61cf86ea41aaa56c5bff3"
+     }
+    ]
+   }
+  ]
+ }
+}

@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.ledger.era
 
 import cats.syntax.all.*
+import monocle.Lens
 import scala.collection.immutable.SortedMap
 import xyz.kd5ujc.scarab.ledger.Address
 import xyz.kd5ujc.scarab.ledger.rules.Convert
@@ -24,6 +25,11 @@ import xyz.kd5ujc.scarab.ledger.state.{
   * ([[xyz.kd5ujc.scarab.ledger.state.VocabError]]); the reference reads them with no refusal.
   */
 trait EraStake[E <: EraTag]:
+  /** `instantStakeCredentialsL` (`State/Stake.hs:191`, cardano-ledger 9df9f98c): the stake of each
+    * credential.
+    */
+  def instantStakeCredentialsL: Lens[InstantStake[E], SortedMap[Credential[Staking], CompactCoin]]
+
   /** `addInstantStake`: the stake of the outputs of `utxo` added to `stake`. */
   def addInstantStake(utxo: UTxO[E], stake: InstantStake[E]): Either[VocabError, InstantStake[E]]
 
@@ -36,6 +42,9 @@ trait EraStake[E <: EraTag]:
 /** The instances of each era and the functions of each era's `State/Stake.hs` over the class. */
 object EraStake:
   given conway: EraStake[Conway] with
+    val instantStakeCredentialsL
+        : Lens[InstantStake[Conway], SortedMap[Credential[Staking], CompactCoin]] =
+      conwayInstantStakeCredentialsL
     def addInstantStake(
         utxo: UTxO[Conway],
         stake: InstantStake[Conway]
@@ -51,6 +60,9 @@ object EraStake:
     * cardano-ledger 9df9f98c): Conway's instant stake and functions.
     */
   given dijkstra: EraStake[Dijkstra] with
+    val instantStakeCredentialsL
+        : Lens[InstantStake[Dijkstra], SortedMap[Credential[Staking], CompactCoin]] =
+      conwayInstantStakeCredentialsL
     def addInstantStake(
         utxo: UTxO[Dijkstra],
         stake: InstantStake[Dijkstra]
@@ -61,6 +73,13 @@ object EraStake:
         stake: InstantStake[Dijkstra]
     ): Either[VocabError, InstantStake[Dijkstra]] =
       deleteConwayInstantStake[Dijkstra](utxo, stake)
+
+  /** `conwayInstantStakeCredentialsL` (`Conway/State/Stake.hs:83-85`, cardano-ledger 9df9f98c). */
+  private val conwayInstantStakeCredentialsL
+      : Lens[ConwayInstantStake, SortedMap[Credential[Staking], CompactCoin]] =
+    Lens[ConwayInstantStake, SortedMap[Credential[Staking], CompactCoin]](_.credentialStake)(v =>
+      _ => ConwayInstantStake(v)
+    )
 
   /** `addConwayInstantStake` (`eras/conway/impl/src/Cardano/Ledger/Conway/State/Stake.hs:87-89`,
     * cardano-ledger f649f975): `(+) @Word64`, which wraps.

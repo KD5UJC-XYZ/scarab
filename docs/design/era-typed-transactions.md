@@ -1275,7 +1275,7 @@ Conway's rules on the classes follow as the rest of stage 2.
   - Left for the next stages: Dijkstra's LEDGER keeps its proposals in their own capability, since the chain's
     proposals update keys the flat record cannot hold; it reads them from the governance state once the state
     holds the era's record. The stored record's flip to the era's, and its codec, are a format change of their
-    own (FMT-1). RATIFY and ENACT (below); the epoch's governance steps and Dijkstra's tick on these records follow (#85).
+    own (FMT-1). RATIFY and ENACT, and Dijkstra's EPOCH, are below; Dijkstra's tick on these records follows (#85).
 - **RATIFY and ENACT** (`era/Ratify.scala`, `era/rules/Ratify.scala`, `era/rules/Enact.scala`; `Conway/Rules/Ratify.hs`,
   `Conway/Rules/Enact.hs`, `Governance/Internal.hs:311-606` and `Conway/Governance.hs:526-577`, cardano-ledger
   f649f975; both eras' RATIFY and ENACT are Conway's, `Dijkstra/Era.hs:208, 226` at 9df9f98c):
@@ -1341,16 +1341,113 @@ Conway's rules on the classes follow as the rest of stage 2.
       RATIFY of this snapshot is incomplete (CNF-2): its voting inputs at the epoch's start (the committee's
       state, the accounts and the pools) are not stored, so they are not established from the later state. The
       flat codec refuses window G's 1,555,188 too, whose live proposals hold the same change and whose snapshot is
-      empty; its RATIFY is incomplete likewise.
+      empty; its RATIFY is incomplete likewise. Both are bound since by Dijkstra's EPOCH on the era types (below),
+      whose pulser, started from 1,555,188 ticked into epoch 72, is 1,576,750's.
     - Several voters in each body give the committee's, DReps' and pools' shares at, above and below each
       threshold, an abstaining, expired or always-abstain voter not counted and a silent one counted as no. ENACT
       keeps the previous parameters where they differ from the current ones before it.
     - Properties: ENACT's withdrawals move their sum out of the treasury, and an action no body accepts is never
       enacted and expires only past its last epoch (TST-6). 20,000 chained changes are enacted on a 256 KiB stack
       (STK-3).
-  - Left for the next stages: the pulser on the era types, which makes the environment from the epoch state; the
-    epoch's governance steps; Dijkstra's tick; and the enact state's committee as the reference's `Committee`
-    (#85). The flat `Ratify` and `Enact` stay on the node's path.
+  - Left for the next stages: the pulser on the era types and the epoch's governance steps (done, below);
+    Dijkstra's tick; and the enact state's committee as the reference's `Committee` (#85). The flat `Ratify` and
+    `Enact` stay on the node's path.
+- **Dijkstra's EPOCH on the era types** (`era/rules/Epoch.scala`, `era/DRepPulser.scala`, with functions added to
+  `era/Proposals.scala`, `era/Governance.scala`, `era/EraAccounts.scala`, `era/EraStake.scala` and `era/OMap.scala`;
+  `Dijkstra/Rules/Epoch.hs:128-244`, `Conway/Rules/Epoch.hs:183-246, 423-427`, `Governance/Proposals.hs:431-580`,
+  `Governance/DRepPulser.hs:200-242, 388-430, 512-517`, `Conway/Governance.hs:300-339, 460-520` and
+  `State/Governance.hs:116-140`, cardano-ledger 9df9f98c), not yet called by the node:
+  - `DijkstraEpoch.sts` is Dijkstra's `epochTransition` over `EpochGovState[Dijkstra]`: the node's epoch state and
+    the era's `ConwayGovState[Dijkstra]` beside it, until the ledger state holds the era's record. The rule does not
+    write the epoch state's governance record, which is stale after it, and reads it only as the record SNAP's
+    parameters are written over (below); a caller that runs the node's rules after it (RUPD and the reward update
+    read the previous parameters) writes the era's parameters into it first, as the tests' tick does. In the reference's order: Dijkstra's POOLREAP (`DijkstraPoolReap`, the
+    node's rule on its records); the ratification the pulser reached (`extractDRepPulsingState`); its withdrawals
+    (`applyEnactedWithdrawals`); `proposalsApplyEnactment`; the governance state with the enact state's committee and
+    constitution, `nextEpochPParams`, the previous parameters the current ones and no future update;
+    `returnProposalDeposits` of the expired, enacted and removed actions (`Map.unions`, the first's of an id in two);
+    `updateNumDormantEpochs` on the DReps' state the rule began with and `updateCommitteeState`; the treasury with the
+    donations and the unclaimed deposits; the deposits counted again (`totalObligation`, the certificate state's and
+    `obligationGovState`) and the donations reset; HARDFORK (`HardFork`) if the protocol version changed; Dijkstra's
+    SNAP (`DijkstraSnap`) with the current parameters, read through the node's parameter record, the era's fields
+    written over the record's current one (`GovStateRecord.storedPParams`), whose other eras' fields SNAP does not
+    read; and `setFreshDRepPulsingState` over the new mark's pool distribution (`msStakePoolDistr`).
+  - The pulser is computed to completion where it starts (`DRepPulser.setFreshDRepPulsingState`), as forcing the
+    fresh `DRPulsing` gives (`finishDRepPulser` with its index zero and its distribution empty): `computeDRepDistr`
+    over every account, then RATIFY (`ConwayRatify.ratifyTransition`) over the actions by priority
+    (`reorderActions`), from `mkEnactState` with the treasury; then `predictFuturePParams`, a value where the
+    reference's is a thunk. The snapshot holds the node's flat DRep and pool types, as the record does.
+  - `proposalsRemoveIds`, `proposalsRemoveWithDescendants` and `proposalsApplyEnactment` are the reference's on the
+    era's `Proposals`; `getAllDescendants` walks the graph with a work list where the reference recurses (STK-1),
+    the same set over the forest `proposalsAddAction` builds. The reference's assertions are compiled out of the
+    node, so an enacted action the proposals no longer hold becomes its tree's root all the same, as there. Where
+    the reference calls `error` (`succ` of the last epoch, `compactCoinOrError`), the rule raises a `VocabError`;
+    a return account read at the stake credential's type is one too. The reference's events are not kept, as the
+    node's EPOCH keeps none. `solidifyFuturePParams` (TICK, `Shelley/Rules/Tick.hs:144-160`) and
+    `predictFuturePParams` (NEWEPOCH inside an epoch, `Conway/Rules/NewEpoch.hs:160-165`) are on the era's records
+    too; the tick that calls them is the next stage's.
+  - Evidence (`DijkstraEpochReferenceSuite`, `DijkstraEraEpochGovSuite`, `EraEpochGovSuite`). The tests run TICK
+    with the era's EPOCH in the node's EPOCH's place (`EraDijkstraTick`, test code: the node's TICK and NEWEPOCH
+    with the governance state held as the era's record, the node's rules that read it, RUPD and the reward
+    update, given its previous parameters). A state whose actions update keys 34 to 56, which the node's record of
+    an action cannot hold, is read and written by `DijkstraGovStateBytes` (test code): each action's proposal
+    stands as an information action of the same deposit, account and anchor for the node's codec, and is the
+    era reader's of the original item, whose bytes are spliced back when written. So every byte but the proposals'
+    is the node's codec's, and each proposal is the era reader's value of the bytes it is written as.
+    - The 28 cases of the Leios build's epoch fixture (`fixtures/reference/dijkstra-epoch`, both recorded Dijkstra
+      states, their six derivations, two paths): every state the era's EPOCH reaches, its governance state written
+      back to the node's record over the start's records, equals the build's TICK byte for byte, as the flat one does.
+    - The build's ratification case, recorded on 2026-11-21 (`ratification.json`): the testnet's state at epoch 100
+      with a change of keys 47 and 48 proposed and voted yes by every hot committee credential, DRep and pool (the
+      DReps' dormant epochs added to their expiries, as a transaction with a proposal adds them). Every state of
+      both paths equals the build's (its SHA-256 and size): the first boundary's fresh pulser ratifies the change;
+      on `rewards` the tick past the slot of no return solidifies the future parameters and the second boundary
+      enacts them; on `boundaries` none does, so the second boundary removes the action and moves the root to it
+      but keeps the parameters, as the reference's does. The derived state is checked to be the input with the
+      action added by `proposalsAddAction`, its deposit and the DReps' expiries.
+    - The build's two governance cases, recorded on 2026-11-21 (`governance.json`), from the same state and ticked
+      along both paths. Each derived state is made in the suite from the testnet's as the build derives it and
+      equals the build's byte for byte, and so does every state reached; so do each state's proposals in order,
+      its four roots, its pulser's enacted and expired actions and one account's DRep's and pool's entries in the
+      pulser's distributions. At each boundary the maps `proposalsApplyEnactment` gives, which the era's EPOCH
+      applies, are those of the build's `GovInfoEvent`, read from the events of the same TICK.
+      - `remove-branches`, a branched removal: seven actions, A the ratify case's; B, A's competing sibling, with
+        its child C; D, a constitution expiring in the state's epoch, with its child E; F, A's child; and G, an
+        information action. The second boundary removes B and C as competing with the enacted A, D and E as
+        expired, and keeps F, now the new root's child, and G, in order.
+      - `deposit-credit`: the ratify case's action with its deposit returned to an account delegated to both a pool
+        and a registered DRep. At the first boundary the build's DRep and pool entries exceed those of the ratify
+        case's state, the control, by the deposit (`computeDRepDistr`); a mutant that left the deposit out of the
+        DRep's sum (`DRepPulser.scala`) failed on the DRep's entry there, the pool's holding, and every other
+        case of the suites passed.
+    - Window G of the public Leios testnet, private and not published (read from the directory
+      `SCARAB_LEIOS_REFERENCE_STATES` names, each pair skipped by name where it is unset and failed where it is set
+      without the pair): its states at the ends of epochs 70, 71 and 72, each ticked to the slot of the next
+      epoch's first block, against the state at the end of that epoch. The inputs outside governance (stake, accounts, pools,
+      rewards, snapshots) are the earlier state's, read by the node's codec, the reward update in it completed
+      at the boundary. The boundary's pulser is the later state's, value for value and its item byte for byte; so are
+      the committee, the constitution, the current and previous parameters and the roots; the future parameters
+      are the later state's once solidified; and the later state's proposals are the boundary's, whole, then those
+      proposed in its epoch. 1,533,582's boundary ratifies nothing; 1,555,188's ratifies proposal 2, the change of
+      keys 47 and 48 (`e57c…#0`), and keeps it, its votes those of 1,576,750, where no vote is cast on it;
+      1,576,750's enacts it, its current parameters 1,598,375's. Not compared (CNF-2): of an action proposed in the
+      later state's epoch, all but that epoch (proposal 2, in 1,555,188), and whatever else that epoch's blocks
+      change.
+    - `proposalsApplyEnactment` on a forest of every shape, and on random forests (TST-6), gives the node's flat
+      `applyEnactment`'s proposals and removed actions; 10,000 descendants are removed on a 256 KiB stack (STK-3).
+      `returnProposalDeposits`, `applyEnactedWithdrawals`, `updateNumDormantEpochs`, the future parameters'
+      functions and `nextEpochPParams` have unit cases.
+  - Left for the next stages: Dijkstra's tick on these records, which `EraDijkstraTick` drafts in test code (#85);
+    the stored record's flip to the era's, its codec and the reading of a state's actions it gives, which the test
+    reader stands in for (FMT-1). The flat `DijkstraEpoch` stays on the node's path. When the tick is wired:
+    - a `VocabError` the era's EPOCH raises (`TickFailure.Vocab`) is where the reference calls `error`, which no
+      predicate failure of EPOCH answers, so it is a no-verdict that keeps its typed cause, never a refusal of the
+      block, as the node's route already treats it (`BlockFailure.stateOutOfRange`, `ChainError.StateOutOfRange`,
+      and the follower's `BlockNoVerdict.StateOutOfRange`);
+    - the node's rules that read the governance record, the reward update applied at the boundary and RUPD, are
+      given the era's `cgsPrevPParams`: the reward update's from the state the tick starts from, and RUPD's from
+      that pre-tick epoch state with its `bprev`, even where the tick crosses a boundary, as `EraDijkstraTick`
+      gives them.
 - **LEDGER and LEDGERS whole, with the reference's failures** (`era/rules/Ledger.scala`,
   `era/rules/LedgerFailures.scala`; `Conway/Rules/Ledger.hs`, `Conway/Rules/Ledgers.hs` and Shelley's
   `Rules/Ledger.hs` and `Rules/Ledgers.hs`, cardano-ledger f649f975, where 29a7d656 and 9df9f98c differ in derived

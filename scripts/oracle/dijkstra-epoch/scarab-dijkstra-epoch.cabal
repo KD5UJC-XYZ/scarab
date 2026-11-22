@@ -5,6 +5,6 @@ version: 0.1.0.0
 build-type: Simple
 executable scarab-dijkstra-epoch
   main-is: Main.hs
-  build-depends: base, cardano-crypto-class, cardano-ledger-dijkstra, cardano-ledger-conway, cardano-ledger-babbage, cardano-ledger-alonzo, cardano-ledger-mary, cardano-ledger-allegra, cardano-ledger-byron, fs-api, cardano-ledger-shelley, cardano-ledger-core, cardano-ledger-binary, cardano-crypto-leios, cardano-slotting, aeson, base16-bytestring, bytestring, containers, text, microlens
+  build-depends: base, cardano-crypto-class, cardano-ledger-dijkstra, cardano-ledger-conway, cardano-ledger-babbage, cardano-ledger-alonzo, cardano-ledger-mary, cardano-ledger-allegra, cardano-ledger-byron, fs-api, cardano-ledger-shelley, cardano-ledger-core, cardano-ledger-binary, cardano-crypto-leios, cardano-slotting, small-steps, aeson, base16-bytestring, bytestring, containers, text, microlens
   default-language: Haskell2010
   ghc-options: -Wall -Werror

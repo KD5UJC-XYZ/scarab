@@ -94,6 +94,35 @@ object EraAccounts:
       a: EraAccounts[E]
   ): Boolean = a.accountsMapL.get(accounts).contains(credential)
 
+  /** `addToBalanceAccounts` (`State/Account.hs:132-149`, cardano-ledger 9df9f98c): each account of
+    * `addBalanceMap` with its amount added to its balance (`<>`, which wraps); an amount of an
+    * account that is not registered is dropped (`assert False Nothing`, compiled out).
+    */
+  def addToBalanceAccounts[E <: EraTag](
+      addBalanceMap: Map[Credential[Staking], CompactCoin],
+      accounts: Accounts[E]
+  )(using a: EraAccounts[E]): Accounts[E] =
+    a.accountsMapL.modify(m =>
+      addBalanceMap.foldLeft(m) { case (acc, (credential, balanceToAdd)) =>
+        acc.updatedWith(credential)(
+          _.map(a.balanceAccountStateL.modify(_.add(balanceToAdd)))
+        )
+      }
+    )(accounts)
+
+  /** `updateLookupAccountState` (`State/Account.hs:167-176`, cardano-ledger 9df9f98c): the account
+    * of `credential` before `f`, if it is registered, and the accounts with `f` applied to it.
+    */
+  def updateLookupAccountState[E <: EraTag](
+      f: AccountState[E] => AccountState[E],
+      credential: Credential[Staking],
+      accounts: Accounts[E]
+  )(using a: EraAccounts[E]): (Option[AccountState[E]], Accounts[E]) =
+    val m = a.accountsMapL.get(accounts)
+    m.get(credential) match
+      case None      => (None, accounts)
+      case Some(old) => (Some(old), a.accountsMapL.replace(m.updated(credential, f(old)))(accounts))
+
   /** `adjustAccountState` (`State/Account.hs:181-184`, cardano-ledger f649f975): no change to an
     * account that is not registered.
     */

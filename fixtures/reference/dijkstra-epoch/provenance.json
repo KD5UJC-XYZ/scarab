@@ -2,8 +2,9 @@
   "cases": 28,
   "casesSha256": "b26f513840f77bc38b41106a8231d83fffccf7964d4e02ba64bb7878b3752b57",
   "consensusSourceCommit": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+  "governanceSha256": "9d8fbf8e257fb9786b44032e94c805bb7a7582dc4bc68f0644d3d2f2534dcedd",
   "image": "scarab-dijkstra-epoch-oracle:local",
-  "imageId": "sha256:a380278828a643d0acd93eb685d7c8212178c12ded8f532b5723ecf6727459b9",
+  "imageId": "sha256:f65e7ed1135845e7089d6d965415b9bf0d771e37bc1f10092837ad7db56210b2",
   "inputs": {
     "fixtures/leios/state/dijkstra-203/state": "c2d0d6ffaab9278061d27bbd1313488e87fba8a5c394b5cc4ee30f2ac20909d7",
     "fixtures/leios/state/genesis/shelley-genesis.json": "b6418c18967dcc1f168437238ba9f467c0a875937b5d11e5104d338753721a6c",
@@ -23,29 +24,38 @@
     "repository": "IntersectMBO/cardano-ledger",
     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c"
   },
-  "measuredAt": "2026-11-18",
+  "measuredAt": "2026-11-21",
   "oracle": {
     "imageFilesSha256": {
       "/oracle/leios-testnet/cabal.project": "1c72a46f8750acb95c9d1a2b92c45556b9b18dc3c3869d385631a0b36a104850",
       "/oracle/leios-testnet/cabal.project.local": "84485e77adc0d404440ffc706faa0d3e0072b2c910e24e57ddc42ff958b6fe33",
-      "/oracle/leios-testnet/dijkstra-epoch/Main.hs": "4bf26c6f15b9fa029cad459eddc75dc55e6d00bdb15a91a9f56d1b9f6b4c9897",
-      "/oracle/leios-testnet/dijkstra-epoch/scarab-dijkstra-epoch.cabal": "c0dea762982598a6c6bc5e87e2b3dbd2d6264918bccb5bcbdef46ab1f538a226",
-      "/usr/local/bin/scarab-dijkstra-epoch": "7f7c5418b7143fa6dcadd261940631dcf8d946f046bb464ee4c99ded19476363"
+      "/oracle/leios-testnet/dijkstra-epoch/Main.hs": "16312ad3befb3c89abca66ef89b79d657d6d13bb166c342c65d59a8ff35ab42c",
+      "/oracle/leios-testnet/dijkstra-epoch/scarab-dijkstra-epoch.cabal": "4d304b502c2c25e9cd824574e35c64956708c74de4c4e29574b3bd89492a61ac",
+      "/usr/local/bin/scarab-dijkstra-epoch": "154204b798970df9d6e2e8088ce9e3f3d9b9b2cf9a176ecae3744f7e0c3549ec"
     },
     "network": "none",
-    "oracleBinarySha256": "7f7c5418b7143fa6dcadd261940631dcf8d946f046bb464ee4c99ded19476363",
+    "oracleBinarySha256": "154204b798970df9d6e2e8088ce9e3f3d9b9b2cf9a176ecae3744f7e0c3549ec",
     "pinnedSources": {
       "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c": "unchanged",
       "c1e1ed8d7ae39c111c73fc5f59ac37ce5933b83c": "unchanged"
     }
   },
-  "packageSha256": "c0dea762982598a6c6bc5e87e2b3dbd2d6264918bccb5bcbdef46ab1f538a226",
+  "packageSha256": "4d304b502c2c25e9cd824574e35c64956708c74de4c4e29574b3bd89492a61ac",
   "program": "scripts/oracle/dijkstra-epoch/Main.hs",
-  "programSha256": "4bf26c6f15b9fa029cad459eddc75dc55e6d00bdb15a91a9f56d1b9f6b4c9897",
+  "programSha256": "16312ad3befb3c89abca66ef89b79d657d6d13bb166c342c65d59a8ff35ab42c",
+  "ratificationSha256": "d1c3c20d6cd218649577d801fc2007ed45814065d89330e359b651a556845e75",
   "schemaVersion": 1,
-  "scope": "Dijkstra's unchanged TICK (applyTickNoEvents) of the Leios testnet build, with the globals mkShelleyGlobals makes of each network's Shelley genesis file and a fixed epoch size, applied to the NewEpochState of two Leios-build state files (a devnet's first Dijkstra state, and the public Leios testnet at epoch 100) along two paths: the first slots of the next two epochs, and the same with a tick at each epoch's reward start point before its boundary; and, up to the first boundary, four states derived from each with the ledger's own lenses and functions (a pool retiring; a pool re-registering with another VRF key hash while a second pool shares its active one, the counts recomputed by populateVRFKeyHashes; both, retiring a third pool or the sharing one) to exercise Dijkstra's POOLREAP; a binding pledge leverage cap (CIP-50) in the current and previous parameters; and definite future parameters with another Leios committee size. No ledger rule makes the derived states. Also Dijkstra's genesis injection (injectIntoTestState) on the Leios testnet's genesis files, applied to the state the era translations reach from the empty Byron UTxO, as the node starts a chain in Dijkstra, and to createInitialState for comparison. Each state reached is written with toCBOR at version 12, as a ledger snapshot holds it. The ledger's NewEpochState only: not the consensus layer's ledger state around it (tip, transition, cumulative transaction bytes), nor the header state",
+  "scope": "Dijkstra's unchanged TICK (applyTickNoEvents) of the Leios testnet build, with the globals mkShelleyGlobals makes of each network's Shelley genesis file and a fixed epoch size, applied to the NewEpochState of two Leios-build state files (a devnet's first Dijkstra state, and the public Leios testnet at epoch 100) along two paths: the first slots of the next two epochs, and the same with a tick at each epoch's reward start point before its boundary; and, up to the first boundary, four states derived from each with the ledger's own lenses and functions (a pool retiring; a pool re-registering with another VRF key hash while a second pool shares its active one, the counts recomputed by populateVRFKeyHashes; both, retiring a third pool or the sharing one) to exercise Dijkstra's POOLREAP; a binding pledge leverage cap (CIP-50) in the current and previous parameters; and definite future parameters with another Leios committee size. No ledger rule makes the derived states. Also Dijkstra's genesis injection (injectIntoTestState) on the Leios testnet's genesis files, applied to the state the era translations reach from the empty Byron UTxO, as the node starts a chain in Dijkstra, and to createInitialState for comparison. And, from the testnet's state, one derived with a parameter change of keys 47 and 48 proposed (proposalsAddAction) with the yes votes of every hot committee credential, DRep and pool, the DReps' dormant epochs added as a transaction with a proposal adds them, ticked along both full paths: the pulser started at the first boundary ratifies it, and the second boundary enacts it. And two more such states, ticked alike: one with seven actions proposed, the first ratify's, so that the second boundary removes its competing sibling with the sibling's descendant, and an expired action with its descendant, keeping two (the removals as EPOCH's GovInfoEvent reports them); and ratify's action with its deposit returned to an account delegated to both a pool and a DRep, whose entries in the fresh pulser's distributions the first boundary credits with it. Each state reached is written with toCBOR at version 12, as a ledger snapshot holds it. The ledger's NewEpochState only: not the consensus layer's ledger state around it (tip, transition, cumulative transaction bytes), nor the header state",
   "sourceSha256": {
+    "eras/conway/impl/src/Cardano/Ledger/Conway/Governance.hs": "331a4e5d54382b2ad6c266dcc058c0d683c4ecd488bb7f6b673c101d1e8ac86e",
+    "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/DRepPulser.hs": "4842168df798e28ae859504dc8de2bb287b74cceb125b745ff004e99a811ddee",
+    "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Internal.hs": "c64a2a425cb7691304dd191a276b15fd100f4804f6ce2a6f415cae4a814d2ec4",
+    "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Proposals.hs": "a7b56cacf6fb38a13291cde2914fb06e12549e82b52002e43e2d24e6fdfe4ebe",
+    "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Certs.hs": "d52be44293f43b62525450042eeacb3b3e4b146736aff77b56d5e9e6e743b82f",
+    "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Enact.hs": "b3b5fd8d8d82372af7e1d0ebaa3c3b000f96ce77d87364342fc117b702123d05",
+    "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Epoch.hs": "619d9553cc57d6d62e46343e90ee2ceb0c85a3f86d7fa16a937f10057a33ca1e",
     "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/NewEpoch.hs": "0da7018eb4de2a92b0dc5b5547c1d7ea3b7b883997f55be94e540ceaa61f4bf9",
+    "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Ratify.hs": "715376c04ae980e884d219f86f1ada893c98b84dedcea58f1a93085cefbd045a",
     "eras/conway/impl/src/Cardano/Ledger/Conway/Transition.hs": "f71c44727ba75ad5fc900c454c16abfa6008a63638a133f28e66c6934ca56ab1",
     "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Era.hs": "ee9c125ff6ae6f0881dbb94451af877f99857fff9e29dd462360512f71030fd0",
     "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs": "2342bd7fcc497dd9aa312ce13994205a6acb5eec278c9001df035d99d8dbc8cf",
@@ -65,6 +75,7 @@
     "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Tick.hs": "a482eace1620cc116eb0e60ab3d6740e2829441fe85013940574acba0b168d21",
     "eras/shelley/impl/src/Cardano/Ledger/Shelley/Transition.hs": "6886aa7e600f352a3ed7f7822af115a0bdfcf406a6fe4affdfb409e6d9094e05",
     "libs/cardano-ledger-core/src/Cardano/Ledger/State/CertState.hs": "d277d9ced2007b55a237a85133599a635ad571acf7fe7acd5e0082fa40023e86",
+    "libs/cardano-ledger-core/src/Cardano/Ledger/State/Governance.hs": "abcdf3895abb73eaaf5ee17b7f764e7415f946ae67456e0fa11be4f694216cd9",
     "libs/cardano-ledger-core/src/Cardano/Ledger/State/SnapShots.hs": "ae7d5e0db3afe5f97183008047d2f7ecf2974c7d1249752284a600b55557d414",
     "libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs": "459d7de8a2c1bb070476cb0bebb0cd758efeea61ea7e450306af3654f1592e70"
   },
@@ -104,6 +115,7 @@
     "genesis-testnet.cbor": "d4c320cfdc71cb50fc24a40d19dd34d819ec77dca92cd61c7f4100aede91fc63",
     "testnet-2168639-boundaries-2181600.cbor": "d9eb7703bf049ac0f107382adc99d0935ce770fb43fdcc4b7a17988069a7ac9a",
     "testnet-2168639-boundaries-2203200.cbor": "01cd5008cc0fc5bc248a9e87149bef488a751e140d2b3d8bffca1077d10bf9c1",
+    "testnet-2168639-ratify.cbor": "a0281fd1ec365f8354c87f095e0a31bcb0cdbbd251faef8626e0c5ef4d25fdd7",
     "testnet-2168639-rewards-2181600.cbor": "c48c52b10f2a90116f1173f76b253d11d826c458bf49c20f53791e2aba654604",
     "testnet-2168639-rewards-2203200.cbor": "699b003105ad91568fb12f201d49f9666a0c1bd4d45e8a6f00c7349e99647f0e"
   }

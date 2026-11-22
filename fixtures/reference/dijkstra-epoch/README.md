@@ -8,6 +8,10 @@ Ledger states measured on 2026-11-18 against the unchanged Haskell ledger of the
 immutable ID, the oracle build it accepted (the digests of the image's `Main.hs`, package file, cabal project and
 executable, and the pinned checkouts found unchanged), the program's hash, the SHA-256 of each input, of each
 ledger source the states depend on (as found in the image and checked against the pin) and of each state file.
+The [ratification case](#the-ratification-case) was added on 2026-11-21 by the same build, its image rebuilt with the
+extended `Main.hs` and accepted anew; the earlier cases and their state files came back byte for byte. The two
+[governance cases](#the-governance-cases) were added the same day the same way, and `cases.json`,
+`ratification.json` and every state file came back byte for byte again.
 
 ## The cases
 
@@ -61,6 +65,68 @@ Each derived state is ticked along both paths up to the first boundary (`boundar
 state's bytes are in `<input>-<derivation>.cbor` and its ticks' in `<input>-<derivation>-<path>-<slot>.cbor`, for the
 devnet; the testnet's derived states (0.5 to 0.8 MB each) are recorded by digest and size only.
 
+### The ratification case
+
+`ratification.json` holds one more case, of the testnet's input only (the devnet's has no committee member to
+ratify an action): the `ratify` derivation, a parameter change proposed with the votes to pass, ticked along both
+full paths (the slots of the input's own cases), so that the DRep pulser started at the first boundary ratifies it
+and the second boundary enacts it. The derivation (`Main.hs`'s `ratifyAction`) adds one action with the ledger's
+`proposalsAddAction`: a change of keys 47 and 48 (`maxEndorserBlockExecutionUnits` to 140,000,000 memory and
+100,000,000,000 steps, `maxRefScriptSizePerEndorserBlock` to 2,097,152), its parent the root of the parameter
+changes, the constitution's guardrails script and anchor, the governance action deposit (100,000 ADA) returned to the
+first registered account, proposed in epoch 100 and expiring after 220, its id `aa…aa#0` (32 bytes of `0xaa`), with
+the yes votes of the three authorized hot committee credentials, both registered DReps and the 154 pools. Its deposit
+is added to the pot, and the DReps' 28 dormant epochs to their expiries, as the CERTS of a transaction with a
+proposal adds them (`updateDormantDRepExpiry`); without that both DReps would have expired (at 90 and 91) and the
+DReps' share be zero. No transaction made this state.
+
+| field | contents |
+|---|---|
+| `name`, `inputGovernance`, `inputDeposited` | the input, its governance facts (below) and its deposit pot |
+| `derivation` | `name` (`ratify`), `changes` (one `propose`: `id`, `proposal` (its `ProposalProcedure`'s CBOR at version 12, hex), `proposedIn`, `expiresAfter`, and the counts of `committeeVotes`, `drepVotes` and `stakePoolVotes`), `stateSha256`, `bytes`, `file` (`testnet-2168639-ratify.cbor`, 515,197 bytes), `facts` and `governance` |
+| `paths[]` | `path` and `ticks[]`: `slot`, `stateSha256`, `bytes`, `file` (null: 0.5 to 0.8 MB each, recorded by digest and size), `facts`, `governance`, `crossedBoundary`, `rewardUpdateApplied` |
+| `governance` | read with the ledger's accessors: `proposals` (the ids in order), `enacted` (the ids the pulser's ratification enacts, `extractDRepPulsingState`), `pparamUpdateRoot`, and keys 47 and 48 of the current parameters, `maxEndorserBlockExUnits` (`[memory, steps]`) and `maxRefScriptSizePerEndorserBlock` |
+
+At the first boundary (slot 2,181,600) the fresh pulser's ratification enacts the action on both paths, which stays
+proposed, its future parameters `potential`. On `rewards` the tick at 2,190,241, past the slot of no return
+(`solidifyFuturePParams`), makes them `definite`, and the second boundary (2,203,200) enacts them: keys 47 and 48 take
+the change's values, the action is gone, the root of the parameter changes is `aa…aa#0` and the deposit goes back to
+its account, out of the pot. On `boundaries` no tick passes that slot, so the future parameters stay `potential` and
+the second boundary takes the current ones (`nextEpochPParams`): the action is removed and the root moves to it, but
+the parameters keep the input's values, as the reference's EPOCH does.
+
+### The governance cases
+
+`governance.json` holds two more cases of the testnet's input, by derivation name, each ticked along both full paths
+as the ratification case is. Their records are the ratification case's, but that no state file is kept (`file` is
+null for the derived state too: 0.5 MB and more each, recorded by digest and size), and with:
+
+| field | contents |
+|---|---|
+| `delegated` | the first registered account in key order delegated to a registered pool and to a registered DRep of a credential (`account`, `drep`: `{"keyHash": …}`; `pool`), whose DRep's and pool's entries the governance reports |
+| `governance` | read with the ledger's accessors: `proposals` (the ids in order), `enacted` and `expired` (the ids the pulser's ratification enacts and finds expired, `finishDRepPulser`), `roots` (`pparamUpdate`, `hardFork`, `committee`, `constitution`: the id or null), and `drepStake` and `poolStake` (the delegated DRep's and pool's entries in the pulser's `psDRepDistr` and `psPoolDistr`, or null) |
+| `ticks[].removals` | the actions Dijkstra's EPOCH removed at the boundary, as its `GovInfoEvent` reports them, read from the events of the same TICK (`applyTick` with its events returned, whose state is checked to be the one reached): `enacted`, `removedDueToEnactment` and `expired` (the ids, sorted), and `unclaimed` (id → deposit); null for a tick inside an epoch |
+| `control` | `deposit-credit` only: `slot` (2,181,600) and `governance` of the ratification case's derived state ticked to the first boundary |
+
+Each action is proposed in epoch 100 with the governance action deposit of 100,000 ADA, its id `aa…aa#i` for
+`i` from 0, recorded in `changes` as the ratification case's is.
+
+- `remove-branches`: seven actions, each returned to the first registered account. A (`#0`) is the ratification
+  case's action, with the yes votes of every voter; B (`#1`), the same change with the same parent, A's competing
+  sibling; C (`#2`), the same change whose parent is B; D (`#3`), the constitution proposed anew with the root of the
+  constitutions as its parent, expiring after epoch 100; E (`#4`), the constitution whose parent is D; F (`#5`), the
+  change whose parent is A; G (`#6`), an information action. No one votes on B to G, and all but D expire after
+  220. At the first boundary the fresh pulser enacts A and finds D expired, and nothing is removed. At the second
+  (2,203,200) EPOCH removes D and E as expired, enacts A, removes B and C as competing with it, and keeps F, now the
+  new root's child, and G, in that order; the root of the parameter changes is A, the other roots stay null, and
+  the deposit pot keeps F's and G's deposits.
+- `deposit-credit`: the ratification case's action with its deposit returned to the delegated account instead (key
+  hash `68da…22ef`, delegated to pool `8a04…f414` and DRep `da38…6aca`). At the first boundary (2,181,600) the
+  fresh pulser's DRep distribution gives that DRep 1,100,000,000,000 and its pool distribution that pool
+  16,120,989,118,060, the control's 1,000,000,000,000 and 16,020,989,118,060 with the deposit credited to both
+  (`computeDRepDistr`); its ratification and enactment are the ratification case's, the deposit returning to
+  the delegated account.
+
 ### Dijkstra's genesis injection
 
 `genesis` in `cases.json` records the initial state of a chain that is in Dijkstra from its genesis, made from the
@@ -73,8 +139,8 @@ cites both). Its fields: `name` (`testnet`), `genesis` (the four genesis files t
 as the node's ledger snapshot holds it: `stateSha256`, `bytes`, `file`, `utxo` (the UTxO's CBOR, hex) and `facts`),
 and `equal` (whether the two injected states and their UTxO are the same: they are not). The files are
 `genesis-testnet-translated.cbor` (9,587 bytes), `genesis-testnet.cbor` (12,051) and
-`genesis-testnet-create-initial-state.cbor` (7,689). With the ten base files and the devnet's 24 derived ones, the
-fixture's 37 files take 2.8 MB.
+`genesis-testnet-create-initial-state.cbor` (7,689). With the ten base files, the devnet's 24 derived ones and the
+ratification case's derived state, the fixture's 38 files take 3.4 MB.
 
 | field | contents |
 |---|---|
@@ -139,8 +205,11 @@ never forced), a pulsing reward update in the encoding, a Leios committee with k
 from mark to set, and the key age derived from two networks' KES setups and epoch sizes. On the derived states only:
 a pool retirement with and without a registered reward account, future parameters with another VRF key hash, a
 VRF key hash two pools share, a binding pledge leverage cap, and a committee size changed at the boundary, with more
-pools than seats. Also Dijkstra's genesis injection on one network's genesis files. Not exercised: a governance
-action enacted or expired, a protocol-version change (`HARDFORK`), a reward update forced complete late in an epoch
+pools than seats. Also Dijkstra's genesis injection on one network's genesis files, and, on the ratification case, a parameter change
+of keys 47 and 48 ratified by the pulser and enacted at the next boundary, with and without the future parameters
+solidified; on the governance cases, an enacted action's competing sibling removed with its descendant, an expired
+action removed with its descendant, the survivors kept in order, and a proposal's deposit credited to its account's
+DRep and pool. Not exercised: an action of another kind enacted, an unclaimed deposit, a protocol-version change (`HARDFORK`), a reward update forced complete late in an epoch
 (`RewardsTooLate`), a genesis with Byron balances or more than one pool, a retirement, re-registration or parameter
 change the chain itself reached (no ledger rule makes the derived states, and
 Dijkstra's `POOL` refuses a VRF key hash another pool holds), and future parameters that change more than the VRF key
