@@ -3229,6 +3229,286 @@
    "structure": "same",
    "note": "3 announcement + vote + diffusion milliseconds over the slot length, rounded up; the zero slot length's error is a defect",
    "digest": "b6d8c749927746ab"
+  },
+  "class consensus.leios.LeiosNotifyPeerState": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic.hs",
+     "symbol": "LeiosNotifyPeerState",
+     "lines": [
+      2145,
+      2157
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the slot pruned to, the peer's announcements for dedup and equivocation counting, and the parts it offered of each point",
+   "digest": "6761fc69f4043a97"
+  },
+  "object consensus.leios.LeiosNotifyPeerState": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic.hs",
+     "symbol": "emptyLeiosNotifyPeerState",
+     "lines": [
+      2158,
+      2164
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "its companion",
+   "digest": "7b00d1af2cb2862a"
+  },
+  "val consensus.leios.LeiosNotifyPeerState.empty": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic.hs",
+     "symbol": "emptyLeiosNotifyPeerState",
+     "lines": [
+      2158,
+      2164
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "pruned to slot 0, nothing announced or offered",
+   "digest": "1a614357b1f5e0cc"
+  },
+  "val consensus.leios.LeiosNotifyPeerState.MaxEbBytesSize": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoOnlyTestFetch.hs",
+     "symbol": "maxLeiosEbBytesSize",
+     "lines": [
+      213,
+      215
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "600 * 1000",
+   "digest": "d17610b26f1a5291"
+  },
+  "def consensus.leios.LeiosNotifyPeerState#prunedToImmTip": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic.hs",
+     "symbol": "pruneLeiosNotifyPeerStateToImmTip",
+     "lines": [
+      2166,
+      2187
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "to a NotOrigin immutable tip above the slot pruned to: the announcements by prunePeerState, the offers below the tip dropped",
+   "digest": "a8b3f179c4a3ceaf"
+  },
+  "def consensus.leios.LeiosNotifyPeerState#announcedIt": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic.hs",
+     "symbol": "announcedIt",
+     "lines": [
+      2244,
+      2250
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic/Announcements.hs",
+     "symbol": "announcementsInSlot",
+     "lines": [
+      93,
+      108
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "an announcement of the peer's among the elections of the point's slot names its endorser block",
+   "digest": "cf094a08c81bcc5c"
+  },
+  "def consensus.leios.LeiosNotifyPeerState#blockOffer": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic.hs",
+     "symbol": "checkLeiosBlockOffer",
+     "lines": [
+      2207,
+      2241
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "LeiosNotifyPeerStateSuite"
+   ],
+   "note": "too old, a repeat, a size of 0 or above maxLeiosEbBytesSize, no announcement, in that order; otherwise the body recorded at the size claimed",
+   "digest": "ec98c191465bcea5"
+  },
+  "def consensus.leios.LeiosNotifyPeerState#closureOffer": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic.hs",
+     "symbol": "checkLeiosClosureOffer",
+     "lines": [
+      2256,
+      2278
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "too old, a repeat, no announcement; otherwise the closure recorded",
+   "digest": "2b74f02847bd55a4"
+  },
+  "def consensus.leios.LeiosNotifyPeerState.onAnnouncement": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic/Announcements.hs",
+     "symbol": "onAnnouncement",
+     "lines": [
+      201,
+      232
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "extendLive first (ErrRepeat, ErrThird), then the validation; VerdictTooOld and VerdictInvalid refuse, VerdictIgnore keeps the counted state, VerdictProcess runs the processing and keeps it; the trace is the caller's",
+   "digest": "6ab8080a8009e9b8"
+  },
+  "enum consensus.leios.AnnouncementVerdict": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic/Announcements.hs",
+     "symbol": "AnnouncementVerdict",
+     "lines": [
+      180,
+      199
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the four verdicts of the validation callback",
+   "digest": "53329a88ea94f1cf"
+  },
+  "enum consensus.Praos2.OcinStaleness": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LedgerDB/Forker.hs",
+     "symbol": "OCINStaleness",
+     "lines": [
+      814,
+      815
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "FreshOCIN and StaleOCIN",
+   "digest": "c749df843b25e7c6"
+  },
+  "def consensus.Praos2.validateAnnouncement": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus-cardano/src/shelley/Ouroboros/Consensus/Shelley/Ledger/Leios.hs",
+     "symbol": "validateAnnouncementChainDepState",
+     "lines": [
+      286,
+      321
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus-protocol/src/ouroboros-consensus-protocol/Ouroboros/Consensus/Protocol/PolyPraos.hs",
+     "symbol": "leiosContextFreeHeaderChecks",
+     "lines": [
+      692,
+      711
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus-protocol/src/ouroboros-consensus-protocol/Ouroboros/Consensus/Protocol/PolyPraos.hs",
+     "symbol": "doValidateVRFSignature",
+     "lines": [
+      810,
+      839
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus-protocol/src/ouroboros-consensus-protocol/Ouroboros/Consensus/Protocol/PolyPraos.hs",
+     "symbol": "doValidateKESSignatureWorker",
+     "lines": [
+      879,
+      928
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "Praos2ReferenceSuite"
+   ],
+   "note": "the announcement's size, the VRF checks, then the KES period, the two signatures and the counter without its upper bound, CounterTooSmallOCERT and NoCounterForKeyHashOCERT read as StaleOCIN; no state produced",
+   "digest": "1015f01bfb21ede5"
+  },
+  "def consensus.Praos2.additionalEnvelope": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus-cardano/src/shelley/Ouroboros/Consensus/Shelley/Ledger/Ledger.hs",
+     "symbol": "additionalEnvelopeChecks",
+     "lines": [
+      802,
+      808
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the Shelley envelope checks a ledger view decides: the obsolete node, the header's size, the body's size; shared by validate",
+   "digest": "dff276c15ee81ad3"
   }
  },
  "glue": [

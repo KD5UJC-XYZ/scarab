@@ -145,23 +145,33 @@ object LeiosChainSync:
       */
     private def announced(header: LeiosHeader, anc: AnnouncingHeader): F[Unit] =
       onset(header.slot).flatMap(at =>
-        LeiosCentral.announced(
-          central,
-          ShouldRelay.DoRelay,
-          anc,
-          recordAnnounced(anc.fields, at) *> writePoint(anc.fields)
-        )
+        processCentrally(shared, central, store, fatal)(ShouldRelay.DoRelay, anc, at)
       )
 
-    /** `recordAnnouncedEb` (`LeiosDemoLogic.hs` 2097-2138): the decision is woken only when the
-      * announcement gives it something new to do.
-      */
-    private def recordAnnounced(fields: AnnouncementFields, at: Option[FiniteDuration]): F[Unit] =
+  /** `processAnnouncementCentrally` of an announcement a peer relayed, over ChainSync or
+    * LeiosNotify (`ReceivedViaChainSync`, `ReceivedViaLeiosNotify`, `LeiosDemoLogic.hs` 1777-1853
+    * at ouroboros-consensus 2416493b): counted once per election, at most twice, and relayed where
+    * `relay` says so to the peers the node's LeiosNotify servers run for (`onAnnouncementCentral`,
+    * `Announcements.hs` 338-414; [[LeiosCentral.announced]]); a new one then records its endorser
+    * block as awaited, with the onset `at` of its slot (`recordAnnouncedEb`), and its point in the
+    * store (`writeEbPoint`), whose failure goes to `fatal`. No transaction cache is kept (#54).
+    */
+  def processCentrally[F[_], P](
+      shared: LeiosFetchShared[F, P],
+      central: Central[F],
+      store: LeiosStore[F],
+      fatal: LeiosStoreError => F[Unit]
+  )(relay: ShouldRelay, anc: AnnouncingHeader, at: Option[FiniteDuration])(using
+      F: Async[F]
+  ): F[Unit] =
+    val fields = anc.fields
+    // `recordAnnouncedEb` (`LeiosDemoLogic.hs` 2097-2138): the decision is woken only when the
+    // announcement gives it something new to do
+    val recordAnnounced =
       shared.outstanding
         .modify(_.announced(fields, at))
         .flatMap(changed => shared.wake.whenA(changed))
-
-    private def writePoint(fields: AnnouncementFields): F[Unit] =
+    val writePoint =
       Handle
         .allow[LeiosStoreError](
           store
@@ -170,6 +180,7 @@ object LeiosChainSync:
         )
         .rescue(e => F.pure(e.asLeft[Unit]))
         .flatMap(_.fold(fatal, F.pure))
+    LeiosCentral.announced(central, relay, anc, recordAnnounced *> writePoint)
 
   /** `past` of `headersWithPredecessorStates` (`NodeToNode.hs` 2128-2144 at 2416493b): the headers
     * of a fragment from `anchor` after the slot `acceptedThrough` (none: Origin), split with

@@ -78,13 +78,19 @@ final class ProtocolResults[F[_]: Async, A] private (
       .map(run(protocol, _))
 
   /** Replace the whole hot bundle as one write, as `startProtocols` does (1164–1174). With
-    * `leiosFetch` the Leios build's LeiosFetch client is one of them; its LeiosNotify, which this
-    * node does not run (#54), is not.
+    * `leiosFetch` the Leios build's LeiosFetch client is one of them, and with `leiosNotify` its
+    * LeiosNotify client.
     */
-  def startHot(transactions: Boolean, leiosFetch: Boolean = false): F[Hot[F, A]] =
+  def startHot(
+      transactions: Boolean,
+      leiosFetch: Boolean = false,
+      leiosNotify: Boolean = false
+  ): F[Hot[F, A]] =
     val ids = Vector(Protocols.ChainSync, Protocols.BlockFetch) ++ Option.when(transactions)(
       Protocols.TxSubmission2
-    ) ++ Option.when(leiosFetch)(Protocols.LeiosFetch)
+    ) ++ Option.when(leiosNotify)(Protocols.LeiosNotify) ++ Option.when(leiosFetch)(
+      Protocols.LeiosFetch
+    )
     install(
       ids.map(_ -> Temperature.Hot),
       Map.empty,
@@ -95,7 +101,8 @@ final class ProtocolResults[F[_]: Async, A] private (
           run(Protocols.ChainSync, generation),
           run(Protocols.BlockFetch, generation),
           Option.when(transactions)(run(Protocols.TxSubmission2, generation)),
-          Option.when(leiosFetch)(run(Protocols.LeiosFetch, generation))
+          Option.when(leiosFetch)(run(Protocols.LeiosFetch, generation)),
+          Option.when(leiosNotify)(run(Protocols.LeiosNotify, generation))
         )
       )
 
@@ -240,7 +247,8 @@ object ProtocolResults:
       chainSync: Run[F, A],
       blockFetch: Run[F, A],
       transactions: Option[Run[F, A]],
-      leiosFetch: Option[Run[F, A]] = None
+      leiosFetch: Option[Run[F, A]] = None,
+      leiosNotify: Option[Run[F, A]] = None
   )
 
   final case class Snapshot[F[_], A](

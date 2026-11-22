@@ -735,3 +735,33 @@ object LogSamples:
   )
 
   val memory: Json = Json.obj("heapUsed" -> 1024L.asJson, "rssAnon" -> Json.Null)
+
+  /** One of each line the Leios build's LeiosNotify client writes ([[LeiosNotifyEvent]]): the vote
+    * is signed with a throwaway key made here.
+    */
+  val leiosNotify: List[xyz.kd5ujc.scarab.node.LeiosNotifyEvent] =
+    import xyz.kd5ujc.scarab.crypto.bls.BlsFixtures.{key, rbHash, right}
+    import xyz.kd5ujc.scarab.crypto.bls.{SeatId, Vote, Weight}
+    import xyz.kd5ujc.scarab.node.{LeiosNotifyEvent, ShouldRelay}
+    val leiosPoint = xyz.kd5ujc.scarab.protocol.EbPoint(
+      xyz.kd5ujc.scarab.protocol.LeiosWord.Word64.fromUnsigned(2425L),
+      xyz.kd5ujc.scarab.protocol.EbHash.fromBytes(Bytes(Vector.fill(32)(0x25.toByte)))
+    )
+    val announcing = rbHash(7)
+    val vote = right(Vote.sign(key(970)._1, right(SeatId.fromInt(2)), announcing))
+    def quarters(n: Int) = Weight(xyz.kd5ujc.scarab.codec.Rational(n, 4))
+    List(
+      LeiosNotifyEvent.Announced(3L, leiosPoint, ShouldRelay.DoRelay, 34.millis),
+      LeiosNotifyEvent.BlockOffered(
+        3L,
+        leiosPoint,
+        xyz.kd5ujc.scarab.consensus.leios.BytesSize.wrap(149L)
+      ),
+      LeiosNotifyEvent.BlockTxsOffered(3L, leiosPoint),
+      LeiosNotifyEvent.VoteAcquired(
+        3L,
+        vote,
+        xyz.kd5ujc.scarab.consensus.leios.VoteTally(quarters(1), quarters(3), quarters(3))
+      ),
+      LeiosNotifyEvent.Certified(announcing)
+    )

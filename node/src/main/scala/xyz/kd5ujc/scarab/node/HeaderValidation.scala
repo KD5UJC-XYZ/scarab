@@ -26,6 +26,20 @@ import xyz.kd5ujc.scarab.protocol.LeiosWord.Word32
   */
 private[node] final case class ShelleyValidated(protocol: ProtocolState, leiosBound: LeiosBound)
 
+/** The answer of the out-of-context check of a header relayed as an announcement
+  * ([[Praos2Headers.announcement]]): a verdict, its invalidity or the counter's staleness; no
+  * verdict because the immutable tip, the node's own state, cannot be read or holds a
+  * chain-dependent state of another protocol (`Unreadable`); no verdict for another defect of the
+  * node's own; or none for a crypto provider's failure.
+  */
+enum AnnouncementCheck:
+  case Checked(
+      verdict: Either[xyz.kd5ujc.scarab.ledger.AnnouncementInvalidity, Praos2.OcinStaleness]
+  )
+  case Unreadable(error: HeaderError)
+  case Undecided(defect: HeaderDefect)
+  case Unverifiable(defect: ProviderDefect)
+
 /** The Shelley ledger forecast shared by every header-validation mode. Parameters and envelope
   * checks come from the same forecast ledger view, including at an epoch boundary. The native
   * forecast horizon is exclusive; a missing forecast waits for ledger progress rather than
@@ -104,6 +118,24 @@ private[node] final class ShelleyHeaderForecast[S](config: PraosConfig, globals:
       firstShelley.fold(config)(first => config.copy(geometry = config.geometry.resolved(first)))
     val glob = firstShelley.fold(globals)(first => globals.copy(firstEpoch = first))
     rules.maxEbTxsSize(cfg, Globals(glob, cfg.geometry), ledger, afterVoting, tip, slot)
+
+  /** The announcement check of `header` against `anchor`, the immutable tip
+    * ([[Praos2Headers.announcement]]), in the geometry [[prepareShelley]] validates with.
+    */
+  private[node] def announcement[E <: EraTag](
+      rules: Praos2Headers,
+      anchor: S,
+      ledger: EraRead[E],
+      afterVoting: Long,
+      tip: Option[BlockRef],
+      prev: ProtocolState,
+      header: LeiosHeader
+  ): AnnouncementCheck =
+    val firstShelley = anchor.consensus.byron.firstShelleyEpoch
+    val cfg =
+      firstShelley.fold(config)(first => config.copy(geometry = config.geometry.resolved(first)))
+    val glob = firstShelley.fold(globals)(first => globals.copy(firstEpoch = first))
+    rules.announcement(cfg, Globals(glob, cfg.geometry), ledger, afterVoting, tip, prev, header)
 
   /** The header rules of the eras before Dijkstra, and of Dijkstra in a build that does not run
     * Praos2 for it ([[Praos2Headers.of]]).
@@ -339,6 +371,105 @@ private[node] final class Praos2Headers private ():
           Either.cond(within, Word32.wrap(0L), Praos2Headers.Unforecast.Horizon)
         )
     }
+
+  /** `validateAnnouncementHeader` (`LeiosDemoLogic/Announcements/Validate.hs:205-247` at
+    * ouroboros-consensus 2416493b): a header relayed as an announcement, checked out of context
+    * against the anchor, the immutable tip, whose chain-dependent state is `prev`. A slot below the
+    * tip's is refused; then the view is forecast for the slot, a slot past its range refused; a
+    * view of another era than Dijkstra within its range is the hard-fork envelope's wrong era
+    * (`HardFork/Combinator/Ledger.hs:395-405`); then the view's envelope checks
+    * ([[Praos2.additionalEnvelope]]); then the tip's state, translated as [[check]] translates it,
+    * is ticked to the slot without the headers between, and the relaxed protocol checks run
+    * ([[Praos2.validateAnnouncement]]). The chain-extension checks are skipped.
+    */
+  def announcement[E <: EraTag](
+      cfg: PraosConfig,
+      globals: Globals,
+      ledger: EraRead[E],
+      afterVoting: Long,
+      tip: Option[BlockRef],
+      prev: ProtocolState,
+      header: LeiosHeader
+  ): AnnouncementCheck =
+    import AnnouncementCheck.{Checked, Undecided, Unreadable, Unverifiable}
+    import xyz.kd5ujc.scarab.ledger.AnnouncementInvalidity as Invalidity
+    val slot = header.slot
+    val epoch = cfg.geometry.epochOf(slot)
+    val refused = (i: Invalidity) => Checked(Left(i))
+    val unforecast = (u: Praos2Headers.Unforecast) =>
+      u match
+        case Praos2Headers.Unforecast.Horizon   => refused(Invalidity.OutsideHorizon)
+        case Praos2Headers.Unforecast.View(f)   => Undecided(HeaderDefect.DijkstraView(f))
+        case Praos2Headers.Unforecast.Unread(p) => Unreadable(HeaderError.Structure(p))
+        case Praos2Headers.Unforecast.Vocabulary(e) =>
+          Undecided(HeaderDefect.Praos2(Praos2Defect.Vocabulary(e)))
+    val defect = (d: Praos2Defect) => Undecided(HeaderDefect.Praos2(d))
+    if tip.exists(t => slot < t.slot) then refused(Invalidity.SlotBeforeImmutableTip)
+    else
+      forecast(cfg, globals, ledger, afterVoting, tip, slot) match
+        case Left(u) => unforecast(u)
+        case Right(Praos2Headers.Forecast.WithoutLeios(viewEra, end)) =>
+          inRange(globals, tip, slot, end, None).fold(
+            unforecast,
+            within =>
+              if !within then refused(Invalidity.OutsideHorizon)
+              else
+                val params =
+                  if epoch == ledger.epoch.toBigInt + 1 then ledger.paramsNextEpoch(globals.ledger)
+                  else ledger.params
+                refused(
+                  Invalidity.EnvelopeInvalid(
+                    EnvelopeError.WrongEra(Era.Dijkstra, viewEra, epoch, params.protocolMajor)
+                  )
+                )
+          )
+        case Right(Praos2Headers.Forecast.Leios(view)) =>
+          val config = Praos2Headers.config(cfg)
+          Praos2.additionalEnvelope(config, header, view) match
+            case Left(error) => refused(Invalidity.EnvelopeInvalid(error))
+            case Right(()) =>
+              val checked: Either[AnnouncementCheck, Praos2.OcinStaleness] =
+                for
+                  state <- Praos2Headers
+                    .chainDep(Praos2Headers.translated(prev), Era.Dijkstra)
+                    .leftMap(e => Unreadable(HeaderError.Praos(e)))
+                  at <- Praos2Headers.tipOf(tip).leftMap(e => defect(Praos2Defect.Vocabulary(e)))
+                  forSlot <- SlotNo
+                    .fromBigInt(slot)
+                    .leftMap(e => defect(Praos2Defect.Vocabulary(e)))
+                  ticked <- Praos2
+                    .tick(config, view, forSlot, Praos2.ChainState(at, state))
+                    .leftMap(defect)
+                  staleness <- Praos2.validateAnnouncement(config, header, ticked).leftMap {
+                    case e: Praos2Error    => refused(Invalidity.HeaderInvalid(e))
+                    case d: Praos2Defect   => defect(d)
+                    case p: ProviderDefect => Unverifiable(p)
+                  }
+                yield staleness
+              checked.fold(identity, s => Checked(Right(s)))
+
+  /** [[announcement]] from an anchor still in Byron, whose view is never Dijkstra's
+    * ([[fromByron]]): past its range the slot is refused as outside the horizon, within it as of
+    * the wrong era.
+    */
+  def announcementFromByron(
+      cfg: PraosConfig,
+      byron: ByronRules.Config,
+      ledger: ByronLedgerState,
+      header: LeiosHeader
+  ): AnnouncementCheck =
+    import xyz.kd5ujc.scarab.ledger.AnnouncementInvalidity as Invalidity
+    val (viewEra, maxFor, epoch, _) = byronRange(cfg, byron, ledger, header.slot)
+    AnnouncementCheck.Checked(
+      Left(
+        if header.slot >= maxFor then Invalidity.OutsideHorizon
+        else
+          Invalidity.EnvelopeInvalid(
+            EnvelopeError
+              .WrongEra(Era.Dijkstra, viewEra, epoch, BigInt(ledger.update.adoptedVersion.major))
+          )
+      )
+    )
 
   /** The prepared check of `h` from an anchor still in Byron, or none where it is not a Dijkstra
     * header. The forecast's era and range are the Byron anchor's, as the hard-fork combinator's

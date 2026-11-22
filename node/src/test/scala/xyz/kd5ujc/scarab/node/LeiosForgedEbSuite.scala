@@ -187,7 +187,7 @@ class LeiosForgedEbSuite extends FailsOnUncaught:
   ) { dir =>
     rig(dir / "leios").use { (node, _, _) =>
       // the production forge callback, with a downstream server running and holding three requests
-      node.notifier.flatTap(_.pump.background).use { downstream =>
+      node.notifier(LeiosVotesSuite.noVotes).flatTap(_.pump.background).use { downstream =>
         for
           held <- downstream.requested.replicateA(3)
           _ <- ok(node.onForged.forged(announcing, forged))

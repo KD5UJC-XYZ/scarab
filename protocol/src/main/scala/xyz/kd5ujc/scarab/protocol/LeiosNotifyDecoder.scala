@@ -46,11 +46,32 @@ private[protocol] object LeiosNotifyDecoder:
       )
     yield decoded -> raw
 
-  /** `decodeVotes`: `decodeListLen`, a definite list, of any count, `replicateM` of the votes. */
-  private val votes: Decoder[Message] =
+  /** Where the decoding of a message stands between its steps ([[LeiosStream.resume]]). */
+  enum Checkpoint:
+    case Frame
+
+    /** The `size` votes of `MsgLeiosVotes`, after the votes `read`. */
+    case Votes(size: BigInt, read: Entries[(Vote, Bytes)])
+
+  /** A message read from its start, before any step. */
+  val start: (Checkpoint, Int) = (Checkpoint.Frame, 0)
+
+  /** `decodeVotes`: `decodeListLen`, a definite list, of any count, then `replicateM` of the votes,
+    * each read in a step of its own, so that a vote is decoded, its signature checked in the
+    * subgroup, once however the message is cut into parts.
+    */
+  private val votesHead: Decoder[Either[Checkpoint, Message]] =
     definite(4, LeiosWireError.BadField(7, LeiosField.Votes))
-      .flatMap(n => repeat(n)(vote))
-      .map(vs => Message.Votes(vs.map(_._1), vs.map(_._2)))
+      .map(n => Left(Checkpoint.Votes(n, Entries.none)))
+
+  private def votesStep(
+      size: BigInt,
+      read: Entries[(Vote, Bytes)]
+  ): Decoder[Either[Checkpoint, Message]] =
+    if BigInt(read.count) >= size then
+      val vs = read.inOrder
+      pure(Right(Message.Votes(vs.map(_._1), vs.map(_._2))))
+    else vote(read.count).map(v => Left(Checkpoint.Votes(size, read.added(v))))
 
   /** The announcing header, `Header blk` read by the node-to-node decoder of its era: the hard-fork
     * envelope `[era, payload]` of one of the eras ([[HfcHeader.decode]]), then the header inside it
@@ -98,46 +119,68 @@ private[protocol] object LeiosNotifyDecoder:
     */
   def decode(state: State, input: Bytes)(using
       LeiosNotify.AnnouncementReader
-  ): Result[(Message, Int)] = framed(state, input, announcement)
+  ): Result[(Message, Int)] =
+    resumed(state, start, input) match
+      case Resumed.Short(_, _)  => Left(LeiosWireError.Incomplete)
+      case Resumed.Done(result) => result
+
+  /** A message of `state` read on from the checkpoint `at` of a shorter prefix of `input`. */
+  def resumed(state: State, at: (Checkpoint, Int), input: Bytes)(using
+      LeiosNotify.AnnouncementReader
+  ): Resumed[Checkpoint, Message] =
+    resume(at._1, at._2, input)(step(state, announcement))
 
   /** The client's messages, of Idle, which carry no header: the server reads them with no reader of
     * one.
     */
   def decodeIdle(input: Bytes): Result[(Message, Int)] =
-    framed(State.Idle, input, fail(LeiosWireError.NotAdmitted(4)))
+    resume(Checkpoint.Frame, 0, input)(
+      step(State.Idle, fail(LeiosWireError.NotAdmitted(4)))
+    ) match
+      case Resumed.Short(_, _)  => Left(LeiosWireError.Incomplete)
+      case Resumed.Done(result) => result
 
-  /** The message of `state` at the start of `input`, an announcement read by `announced`. */
-  private def framed(
+  /** One step of a message of `state` from `stage`: the frame, or one vote. */
+  private def step(state: State, announced: => Decoder[Message])(
+      stage: Checkpoint
+  ): Decoder[Either[Checkpoint, Message]] =
+    stage match
+      case Checkpoint.Frame             => frame(state, announced)
+      case Checkpoint.Votes(size, read) => votesStep(size, read)
+
+  /** The frame of the message of `state` at the cursor, with every field but the votes, an
+    * announcement read by `announced`.
+    */
+  private def frame(
       state: State,
-      input: Bytes,
       announced: => Decoder[Message]
-  ): Result[(Message, Int)] =
-    val decoder = for
+  ): Decoder[Either[Checkpoint, Message]] =
+    for
       size <- definite(4, LeiosWireError.NotAnArray)
       key <- unsigned(0, Word64.Max, LeiosWireError.BadField(-1, LeiosField.Word64))
       message <- (state, key) match
-        case (State.Quit, k) if k == 0 => fields(0, size, 1)(pure(Message.Done))
-        case (State.Idle, k) if k == 1 => fields(1, size, 1)(pure(Message.Quit))
-        case (State.Busy, k) if k == 2 => fields(2, size, 1)(pure(Message.Canceled))
-        case (State.Idle, k) if k == 3 => fields(3, size, 1)(pure(Message.RequestNext))
-        case (State.Busy, k) if k == 4 => fields(4, size, 2)(announced)
+        case (State.Quit, k) if k == 0 => fields(0, size, 1)(pure(Right(Message.Done)))
+        case (State.Idle, k) if k == 1 => fields(1, size, 1)(pure(Right(Message.Quit)))
+        case (State.Busy, k) if k == 2 => fields(2, size, 1)(pure(Right(Message.Canceled)))
+        case (State.Idle, k) if k == 3 => fields(3, size, 1)(pure(Right(Message.RequestNext)))
+        case (State.Busy, k) if k == 4 => fields(4, size, 2)(announced.map(Right(_)))
         case (State.Busy, k) if k == 5 =>
           fields(5, size, 3)(
             for
               p <- point(5)
               ebSize <- unsigned(0, Word32.Max, LeiosWireError.BadField(5, LeiosField.Word32))
                 .flatMap(n => StateT.liftF(Word32.from(n)))
-            yield Message.BlockOffer(p, ebSize)
+            yield Right(Message.BlockOffer(p, ebSize))
           )
-        case (State.Busy, k) if k == 6 => fields(6, size, 2)(point(6).map(Message.BlockTxsOffer(_)))
-        case (State.Busy, k) if k == 7 => fields(7, size, 2)(votes)
+        case (State.Busy, k) if k == 6 =>
+          fields(6, size, 2)(point(6).map(p => Right(Message.BlockTxsOffer(p))))
+        case (State.Busy, k) if k == 7 => fields(7, size, 2)(votesHead)
         case (_, k) if k <= 7          => fail(LeiosWireError.NotAdmitted(k.toInt))
         case (_, k)                    => fail(LeiosWireError.UnknownTag(k))
     yield message
-    run(decoder, input)
 
   /** The fields of message `key` when the list has the `expected` length, key included. */
-  private def fields(key: Int, size: BigInt, expected: Int)(
-      body: Decoder[Message]
-  ): Decoder[Message] =
+  private def fields[A](key: Int, size: BigInt, expected: Int)(
+      body: Decoder[A]
+  ): Decoder[A] =
     check(size == expected, LeiosWireError.WrongArity(key, expected - 1, size - 1)) *> body

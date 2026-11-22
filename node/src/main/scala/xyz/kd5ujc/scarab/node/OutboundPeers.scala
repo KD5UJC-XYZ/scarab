@@ -639,7 +639,11 @@ final class OutboundPeers[F[_]: Async, A] private (
               for
                 _ <- link.warm.applications.activateHot
                 results <- link.warm.applications
-                  .startHot(hot.transactions.nonEmpty, leiosFetch = hot.leios.isDefined)
+                  .startHot(
+                    hot.transactions.nonEmpty,
+                    leiosFetch = hot.leios.isDefined,
+                    leiosNotify = hot.notifyInitiator(link.connection.id).isDefined
+                  )
                 _ <- session.result.complete(results.chainSync)
                 _ <- link.phase.set(Phase.Hot(session))
                 _ <- link.children
@@ -755,7 +759,8 @@ final class OutboundPeers[F[_]: Async, A] private (
                 trust,
                 Some(result => session.result.complete(result).void),
                 Some(served(peer, key.activationGeneration)),
-                hot.leios.map(_.initiator(link.connection.id))
+                hot.leios.map(_.initiator(link.connection.id)),
+                hot.notifyInitiator(link.connection.id)
               )
               .map(_ -> key)
           )
@@ -1277,6 +1282,11 @@ object OutboundPeers:
     * @param leios
     *   The Leios build's endorser-block fetch, whose LeiosFetch client each hot activation runs;
     *   `network` 's bundle is then the Leios build's ([[HotBundle.Leios]]).
+    * @param leiosNotify
+    *   What the Leios build's LeiosNotify client of each hot activation needs beside the fetch
+    *   ([[LeiosFetchNode.notifyInitiator]]); it runs beside the LeiosFetch client where `leios` is
+    *   present too, as the reference's hot bundle runs both (`NodeToNode.hs` 2000-2020 at
+    *   ouroboros-consensus 2416493b).
     */
   final case class Hot[F[_]](
       magic: Long,
@@ -1294,8 +1304,12 @@ object OutboundPeers:
       serve: Option[ServerHandlers[F, NtNHeader]] = None,
       genesis: Option[GenesisRuntime[F]] = None,
       inboundGovernor: Option[(SocketAddress[IpAddress], Boolean) => Resource[F, Unit]] = None,
-      leios: Option[LeiosFetchNode[F]] = None
-  )
+      leios: Option[LeiosFetchNode[F]] = None,
+      leiosNotify: Option[LeiosNotifyContext[F]] = None
+  ):
+    /** The LeiosNotify client of `connection` 's activation, where the build runs one. */
+    def notifyInitiator(connection: Long): Option[LeiosNotifyInitiator[F]] =
+      (leios, leiosNotify).mapN(_.notifyInitiator(connection, _))
 
   /** A connection of ours, and what its owner can do to it.
     *

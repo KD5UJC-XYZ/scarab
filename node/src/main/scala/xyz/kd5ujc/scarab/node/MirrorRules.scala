@@ -265,7 +265,7 @@ final class MirrorRules[F[_]: Monad](
     * for an equal basis where there is one, as a committee is kept for its epoch; none for a state
     * of Byron's, whose rules compute none.
     */
-  private def committeeOf(state: MirrorState): F[
+  private[node] def committeeOf(state: MirrorState): F[
     Option[Either[LeiosCertificationDefect, Option[TipCommittee]]]
   ] =
     MirrorStep.nesOf(state).traverse { nes =>

@@ -249,6 +249,7 @@ class LogGoldenSuite extends CatsEffectSuite:
         _ <- node(
           NodeEvent.ConfigKeysIgnored(cats.data.NonEmptyList.of("MinNodeVersion", "TraceOptions"))
         )
+        _ <- leiosNotify.traverse_(e => node(NodeEvent.LeiosNotify(e)))
         all <- lines.get
       yield all
     }
@@ -290,6 +291,7 @@ class LogGoldenSuite extends CatsEffectSuite:
     covered(gsmEvents.map(_._2), cases[Gsm.Event])
     covered(ledgerPeers, cases[LedgerPeersTrace])
     covered(localRoots, cases[LocalRootsTrace])
+    covered(leiosNotify, cases[xyz.kd5ujc.scarab.node.LeiosNotifyEvent])
   }
 
   test("the JSON line is the event, the time and the fields, as JsonLog wrote it") {

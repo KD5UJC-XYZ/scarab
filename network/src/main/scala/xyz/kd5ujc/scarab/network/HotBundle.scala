@@ -29,3 +29,13 @@ trait LeiosFetchInitiator[F[_]]:
   def run(channel: MuxChannel[F], onStop: F[Unit] => Resource[F, Unit])(using
       Raise[F, NetworkError]
   ): F[Unit]
+
+/** The LeiosNotify client of one hot activation (`aLeiosNotifyClient`, `NodeToNode.hs` 1866-1889 at
+  * 2416493b): it runs over its channel until the governor tells the hot protocols to stop, which it
+  * learns through the stop it registers with `onStop`, as [[LeiosFetchInitiator]] does; it then
+  * quits, collects the replies outstanding and ends with the server's `MsgDone`.
+  */
+trait LeiosNotifyInitiator[F[_]]:
+  def run(channel: MuxChannel[F], onStop: F[Unit] => Resource[F, Unit])(using
+      Raise[F, NetworkError]
+  ): F[Unit]

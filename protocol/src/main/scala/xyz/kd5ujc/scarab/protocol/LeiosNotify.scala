@@ -109,6 +109,24 @@ object LeiosNotify:
   ): Either[LeiosWireError, (Message, Int)] =
     LeiosNotifyDecoder.decode(state, bytes)
 
+  /** The decoder a client receives the server's message of `state` with, Busy or Quit, read in
+    * steps across the parts it arrives in ([[LeiosNotifyDecoder.resumed]]): the frame, then each
+    * vote of `MsgLeiosVotes`, so that a prefix that runs short reads again only the step it is in,
+    * as cborg's incremental decoder reads the message once.
+    */
+  def incremental(state: State)(using AnnouncementReader): IncrementalDecoder[Message] =
+    new IncrementalDecoder[Message]:
+      type Cursor = (LeiosNotifyDecoder.Checkpoint, Int)
+      val initial: Cursor = LeiosNotifyDecoder.start
+      def resume(cursor: Cursor, input: Bytes): (Cursor, ChainSync.DecodeResult[Message]) =
+        LeiosNotifyDecoder.resumed(state, cursor, input) match
+          case LeiosStream.Resumed.Short(stage, position) =>
+            ((stage, position), ChainSync.DecodeResult.NeedMore)
+          case LeiosStream.Resumed.Done(Right((message, consumed))) =>
+            (initial, ChainSync.DecodeResult.Decoded(message, consumed))
+          case LeiosStream.Resumed.Done(Left(error)) =>
+            (initial, ChainSync.DecodeResult.Failed(ProtocolError.Leios(error)))
+
   /** The decoder the server receives the client's next message with, from Idle: `RequestNext` or
     * `Quit` (`codecLeiosNotify`'s `decode`, `LeiosDemoOnlyTestNotify.hs:353-396` at 2416493b). A
     * server that holds requests reads ahead from Idle, as the reference's lookahead server does

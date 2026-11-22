@@ -11,8 +11,11 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.VolatileChain
 import xyz.kd5ujc.scarab.ledger.{NodeError, ShelleyGenesis, StorageError}
 import xyz.kd5ujc.scarab.node.assertions.AssertionsFailure
+import xyz.kd5ujc.scarab.crypto.bls.Weight
 import xyz.kd5ujc.scarab.node.{
   BuildInfo,
+  LeiosNotifyEvent,
+  ShouldRelay,
   Fatal,
   InboundEvent,
   LedgerPeersTrace,
@@ -121,6 +124,9 @@ enum NodeEvent:
 
   /** The verification verdicts found ahead of the rules so far (every 20,000 blocks). */
   case VerificationCache(summary: String)
+
+  /** What the Leios build's LeiosNotify client received ([[LeiosNotifyEvent]]). */
+  case LeiosNotify(event: LeiosNotifyEvent)
 
   /** A block the start leaves out: one of the selected chain that the received log lacks and that
     * fails the log's start-up check, not added to it, or one of the log whose header does not
@@ -503,6 +509,7 @@ object NodeEvent:
       )
     case VerificationCache(summary) =>
       EventKind.VerificationCache.line("summary" -> summary.asJson)
+    case LeiosNotify(event) => leiosNotify(event)
     case ReceivedBlockDiscarded(hash, cause) =>
       EventKind.ReceivedBlockDiscarded.line(
         "hash" -> hash.hex.asJson,
@@ -634,3 +641,42 @@ private object LocalServerLines:
     case Trace.AcceptError(error)   => EventKind.AcceptError.line("reason" -> error.show.asJson)
     case Trace.ServerStopped        => EventKind.ServerStopped.line()
     case Trace.ServerError(failure) => EventKind.ServerError.line("reason" -> failure.show.asJson)
+
+/** The line of what the Leios build's LeiosNotify client received. */
+private def leiosNotify(event: LeiosNotifyEvent): Line =
+  def rational(w: Weight): Json = s"${w.value.numerator}/${w.value.denominator}".asJson
+  event match
+    case LeiosNotifyEvent.Announced(connection, point, relay, age) =>
+      EventKind.LeiosNotifyAnnouncement.line(
+        "connection" -> connection.asJson,
+        "slot" -> point.slot.toBigInt.asJson,
+        "ebHash" -> point.hash.bytes.hex.asJson,
+        "relayed" -> (relay == ShouldRelay.DoRelay).asJson,
+        "ageMillis" -> age.toMillis.asJson
+      )
+    case LeiosNotifyEvent.BlockOffered(connection, point, size) =>
+      EventKind.LeiosNotifyOffer.line(
+        "connection" -> connection.asJson,
+        "slot" -> point.slot.toBigInt.asJson,
+        "ebHash" -> point.hash.bytes.hex.asJson,
+        "part" -> "body".asJson,
+        "ebSize" -> size.toLong.asJson
+      )
+    case LeiosNotifyEvent.BlockTxsOffered(connection, point) =>
+      EventKind.LeiosNotifyOffer.line(
+        "connection" -> connection.asJson,
+        "slot" -> point.slot.toBigInt.asJson,
+        "ebHash" -> point.hash.bytes.hex.asJson,
+        "part" -> "closure".asJson
+      )
+    case LeiosNotifyEvent.VoteAcquired(connection, vote, tally) =>
+      EventKind.LeiosVoteAcquired.line(
+        "connection" -> connection.asJson,
+        "rbHash" -> vote.announcingRbHash.bytes.hex.asJson,
+        "seat" -> vote.voter.index.asJson,
+        "weight" -> rational(tally.weight),
+        "tally" -> rational(tally.tally),
+        "threshold" -> rational(tally.threshold)
+      )
+    case LeiosNotifyEvent.Certified(rbHash) =>
+      EventKind.LeiosCertified.line("rbHash" -> rbHash.bytes.hex.asJson)
