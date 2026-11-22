@@ -515,6 +515,32 @@ class DijkstraCertifySuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         case other => fail(s"not a Dijkstra body: $other")
   }
 
+  // `tickedProtocolStateLeiosAnnouncement` is `Nothing` once the tick crosses an epoch boundary
+  // (`Shelley/Ledger/Leios.hs:341-343`, ouroboros-consensus 2416493b): a block of the next epoch on
+  // the announcing block certifies nothing, however long after the announcement
+  test("in the next epoch the parent's announcement is cleared by the tick: nothing to certify") {
+    for
+      a <- announcing
+      (forged, endorsing, after) = a
+      vs <- votes(after, forged.header.hash, Vector(0, 1, 2, 3))
+      tip = refOf(forged.header)
+      next = epoch + 1
+      slot = geometry.firstSlot(next) + 1
+      ledger = ledgerAt(after, tip, forged.slot + 1)
+      announced = LeiosCertification.announcement(
+        Forger.leaderView(ledger, after.protocol, next).protocol.dep
+      )
+      parent = parentOf(after, tip, forged.slot + gap).copy(announced = announced)
+      decision <- decide(parent, slot, certifier(closureOf(endorsing), vs))
+    yield
+      assertEquals(
+        LeiosCertification.announcement(after.protocol.dep),
+        Some(endorsing.forged.point)
+      )
+      assertEquals(announced, None)
+      assertEquals(decision, CertifyDecision.NothingAnnounced)
+  }
+
   /** The certifying block forged at `a + gap` from the committee's four votes, its partition, and
     * the certificate.
     */
