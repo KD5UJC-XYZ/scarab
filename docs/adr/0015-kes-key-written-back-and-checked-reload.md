@@ -1,6 +1,6 @@
 # 0015. The evolved KES key is written back, and credentials are reloaded on SIGHUP only after a check
 
-- **Status**: Accepted; file-backed writeback retained by owner review on 2026-10-19, and amended on 2026-11-18 to write back only a KES period the node has confirmed. A separate KES agent is tracked in [H2 / #38](https://github.com/KD5UJC-XYZ/scarab/issues/38); the two-source policy — this path kept exactly as decided here, the agent path preferred for long-running pools — is [ADR 0023](0023-two-kes-credential-sources.md).
+- **Status**: Accepted; file-backed writeback retained by owner review on 2026-10-19, amended on 2026-11-18 to write back only a KES period the node has confirmed, and on 2026-11-22 to record that the period-0 key is not kept. A separate KES agent is tracked in [H2 / #38](https://github.com/KD5UJC-XYZ/scarab/issues/38); the two-source policy — this path kept exactly as decided here, the agent path preferred for long-running pools — is [ADR 0023](0023-two-kes-credential-sources.md).
 - **Date**: 2026-10-17
 - **Issue**: [#116](https://github.com/KD5UJC-XYZ/scarab/issues/116)
 
@@ -192,3 +192,24 @@ called by the slot driver after a slot's forecast check and by a forge after its
 at a period's first slot and at a reload, then a restart at the true time; a reload at the true time; normal
 operation; a second reload at the true time that starts again from the file, and one refused when the file's key is
 past the present too) and `KesConfirmedWriteBackSuite` (a poisoned key and a reload).
+
+## Amendment (2026-11-22): the period-0 key is not kept
+
+Owner decision recorded in the [decisions register](../decisions.md) (the #1149 row of 2026-11-22): asked
+2026-11-22T20:43:23Z and decided 2026-11-22T20:45:32Z, in the chat session doing the work. The question was whether
+to record that a key file Scarab has written back cannot be handed to `cardano-node`, and whether to keep the
+period-0 key so that a pool can move back to it on the same file.
+
+The reference builds its KES credential from the key file at evolution 0, whatever the file holds
+(`mkHotKey = mkHotKeyAtEvolution 0`, ouroboros-consensus 82ecba32 and 808e4005,
+`Ouroboros/Consensus/Protocol/Ledger/HotKey.hs` 225, called from `Ouroboros/Consensus/Protocol/Praos/Common.hs`
+322), and evolves it in memory to the current period. A file Scarab has written back holds the key at a later
+period, with the seeds of the earlier periods erased. Its envelope, its length and the certificate's verification
+key all match, so `cardano-node` starts on it. Its evolution from "0" then needs seeds that are gone, and the
+signatures it makes are not expected to verify. That last step is a reading of cardano-base's `SumKES`, not a run.
+
+**Scarab keeps no copy of the period-0 key, and a written-back file is not supported under `cardano-node`.** A pool
+that moves from Scarab to `cardano-node` gets a new KES key and a new operational certificate first. Keeping the
+period-0 key on disk, as the reference does, is not taken to be a secure way to run a pool. So nothing is changed
+to make a move back on the same file possible, and no run is made to confirm the reference's failure on such a
+file. Everything else in this record is unchanged.
