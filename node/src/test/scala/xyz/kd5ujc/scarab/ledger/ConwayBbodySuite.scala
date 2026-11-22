@@ -26,6 +26,8 @@ import xyz.kd5ujc.scarab.ledger.era.{
   UTxO,
   Version
 }
+import xyz.kd5ujc.scarab.ledger.era.Mismatch as EraMismatch
+import xyz.kd5ujc.scarab.ledger.era.Relation.{RelEQ, RelLTEQ}
 import xyz.kd5ujc.scarab.ledger.era.conway.{ConwayBlock, ConwayPParams, ConwayTx}
 import xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraImpBatch as B
 import xyz.kd5ujc.scarab.ledger.era.rules.{
@@ -349,7 +351,7 @@ class ConwayBbodySuite extends FunSuite:
       case (ConwayBbodyPredFailure.TooManyExUnits(m), _) =>
         Vector(BlockFailure.BlockExUnitsTooBig(m.supplied, m.expected))
       case (ConwayBbodyPredFailure.BodyRefScriptsSizeTooBig(m), _) =>
-        Vector(BlockFailure.RefScriptsTooLarge(m))
+        Vector(BlockFailure.RefScriptsTooLarge(m.stored))
       case (ConwayBbodyPredFailure.HeaderProtVerTooHigh(m), _) =>
         Vector(
           BlockFailure.Envelope(
@@ -482,7 +484,7 @@ class ConwayBbodySuite extends FunSuite:
         assertEquals(
           AlonzoBbody.validateExUnits[Conway](txs, below)(using t, t.bodyOf.top),
           cats.data.Validated.invalidNec(
-            new AlonzoBbodyPredFailure.TooManyExUnits[Conway](Mismatch(units, below))
+            new AlonzoBbodyPredFailure.TooManyExUnits[Conway](EraMismatch(units, below))
           ),
           name
         )
@@ -553,7 +555,7 @@ class ConwayBbodySuite extends FunSuite:
       ShelleyBbody
         .validateBlockBodySize(sized, PraosEraBlockHeader.conway.protVerBlockHeader(sized)),
       cats.data.Validated.invalidNec(
-        new ShelleyBbodyPredFailure.WrongBlockBodySizeBBODY[Conway](Mismatch(actual, actual + 1))
+        new ShelleyBbodyPredFailure.WrongBlockBodySizeBBODY[Conway](EraMismatch(actual, actual + 1))
       )
     )
     val hashed = ok("hash")(ConwayBlock.decode(hash, layout))
@@ -598,7 +600,7 @@ class ConwayBbodySuite extends FunSuite:
       j.eraFailures,
       Vector[BbodyPredFailure[Conway]](
         new ConwayBbodyPredFailure.InvalidBodyHashBBODY[Conway](
-          Mismatch(
+          EraMismatch(
             ok("hash")(xyz.kd5ujc.scarab.ledger.state.Hash32.fromBytes(actual.bodyHash)),
             ok("hash")(
               xyz.kd5ujc.scarab.ledger.state.Hash32.fromBytes(Bytes(Vector.fill(32)(7.toByte)))
@@ -606,7 +608,7 @@ class ConwayBbodySuite extends FunSuite:
           )
         ),
         new ConwayBbodyPredFailure.WrongBlockBodySizeBBODY[Conway](
-          Mismatch(actual.bodySize, actual.bodySize + 1)
+          EraMismatch(actual.bodySize, actual.bodySize + 1)
         )
       )
     )
@@ -903,7 +905,7 @@ class ConwayBbodySuite extends FunSuite:
     assertEquals(
       at11.eraFailures,
       Vector[BbodyPredFailure[Conway]](
-        new ConwayBbodyPredFailure.BodyRefScriptsSizeTooBig[Conway](Mismatch(total, limit))
+        new ConwayBbodyPredFailure.BodyRefScriptsSizeTooBig[Conway](EraMismatch(total, limit))
       )
     )
     assertEquals(at11.flat, Left(Vector(BlockFailure.RefScriptsTooLarge(Mismatch(total, limit)))))
@@ -1027,7 +1029,7 @@ class ConwayBbodySuite extends FunSuite:
     val treasury =
       new xyz.kd5ujc.scarab.ledger.era.rules.ConwayLedgerPredFailure.ConwayTreasuryValueMismatch[
         Conway
-      ](Mismatch(xyz.kd5ujc.scarab.ledger.state.Coin(1), xyz.kd5ujc.scarab.ledger.state.Coin(2)))
+      ](EraMismatch(xyz.kd5ujc.scarab.ledger.state.Coin(1), xyz.kd5ujc.scarab.ledger.state.Coin(2)))
     assertEquals(
       summon[InjectBbodyFailure[
         xyz.kd5ujc.scarab.ledger.era.rules.ConwayLedgerPredFailure[Conway],
@@ -1037,13 +1039,13 @@ class ConwayBbodySuite extends FunSuite:
         ShelleyLedgersPredFailure.LedgerFailure(treasury)
       )
     )
-    val m = Mismatch(1L, 2L)
+    val m = EraMismatch[RelEQ, Long](1L, 2L)
     assertEquals(
       summon[InjectBbodyFailure[ShelleyBbodyPredFailure[Conway], Conway]]
         .injectFailure(new ShelleyBbodyPredFailure.WrongBlockBodySizeBBODY[Conway](m)),
       new ConwayBbodyPredFailure.WrongBlockBodySizeBBODY[Conway](m)
     )
-    val u = Mismatch(ExUnits(1, 2), ExUnits(0, 0))
+    val u = EraMismatch[RelLTEQ, ExUnits](ExUnits(1, 2), ExUnits(0, 0))
     assertEquals(
       summon[InjectBbodyFailure[AlonzoBbodyPredFailure[Conway], Conway]]
         .injectFailure(new AlonzoBbodyPredFailure.TooManyExUnits[Conway](u)),

@@ -47275,7 +47275,7 @@
     "ConwayBbodySuite"
    ],
    "note": "the network the judgment's Globals', as the reference reads it (one outside Network a raised defect); the gate of the header's version by build (HeaderProtVerGate); the UTxO set the stored outputs of the block's inputs and reference inputs before LEDGERS, read into the era; ConwayBbodySuite compares it with the flat BBODY; its expectations are the reference's own only on the 53 recorded Conway blocks the reference accepted",
-   "digest": "396caa2b3c558598"
+   "digest": "2d841d74d5708162"
   },
   "def ledger.era.rules.ConwayBbody.conwayBbody": {
    "upstream": [
