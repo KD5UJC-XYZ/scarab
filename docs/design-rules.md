@@ -76,7 +76,7 @@ sessions end, and each asks for the work it does.
 | SPDX step | `.github/workflows/ci.yml`, "SPDX header on every script and workflow" | `.py`, `.yml` and `sbtw` under `scripts/` and `.github/workflows/` | a file without the header ([CMT-4](#cmt-4)) |
 | PR policy | `scripts/pr_policy.py`, on every pull request event | pull request title, body and changed paths | a missing level, a level below its floor, or a missing or malformed "Deviations from the reference" or "Gaps" section ([REF-7](#ref-7)); a storage format change whose title, paths or "Storage format change" section do not follow [FMT-1](#fmt-1) |
 | Storage format guard | `scripts/check_storage_format.py`, a guard like the others, against `docs/data/storage-format.json` | the persisted-format surface its docstring lists | any change to that surface ([FMT-1](#fmt-1)) |
-| Shard report check | `scripts/ci_test_shards.py verify`, in CI's "Scala tests and native guards", against `scripts/ci_test_skips.json` | the JUnit report of every suite of `check` | a suite without exactly one report from its shard, a failure or an error, a suite that ran no test, and a skipped test the allowlist does not list ([CNF-2](#cnf-2)) |
+| Shard report check | `scripts/ci_test_shards.py verify`, in CI's "Scala tests and native guards", against `scripts/ci_test_skips.json` | the JUnit report of every suite of `check` | a suite without exactly one report from its shard; a report whose counts are not those of its test cases, or that holds a test case of another suite or one name twice; a failed or errored test case; a suite that reported no test case; a skipped test the allowlist does not list; and an allowlist entry whose test did not skip or whose suite the plan does not hold ([CNF-2](#cnf-2)). A suite whose every test case is a listed skip passes |
 
 <a id="eff"></a>
 ## Effects and capabilities
@@ -516,10 +516,11 @@ fields not tested.
 
 - **Scope:** tests, and every report of a conformance result.
 - **Exceptions:** none.
-- **Enforcement:** in CI, `scripts/ci_test_shards.py verify` refuses a suite that ran no test and a skipped
-  test that `scripts/ci_test_skips.json` does not list with the environment variables or data it waits on
-  and the issue that owns running it; it prints the listed skips with what they wait on. Reports of
-  conformance results are review only.
+- **Enforcement:** in CI, `scripts/ci_test_shards.py verify` refuses a suite that reported no test case and a
+  skipped test that `scripts/ci_test_skips.json` does not list with the environment variables or data it waits
+  on and the issue that owns running it; it prints the listed skips with what they wait on. A suite whose every
+  test case is a listed skip passes, as an environmental skip reported with its scope. Reports of conformance
+  results are review only.
 - **Why:** [ADR 0001](adr/0001-haskell-node-as-reference.md).
 
 <a id="cnf-3"></a>
