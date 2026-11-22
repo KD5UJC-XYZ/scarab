@@ -206,10 +206,10 @@ object PeerShare:
       val batches =
         if remaining.pending.isEmpty then st.sharing.batches - id
         else st.sharing.batches.updated(id, remaining)
+      // a phase with no answers changes nothing to tell, as main tells nothing for it
       Decision(
         st.copy(peers = peers, sharing = st.sharing.copy(batches = batches)),
         Nil,
-        // a phase with no answers changes nothing to tell, as main tells nothing for it
         Option.when(applicable.nonEmpty)(Trace.ShareResults(applicable, added)).toList
       )
     }
