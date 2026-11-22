@@ -40,6 +40,7 @@ paths = [
   '''^fixtures/mainnet/genesis/byron-genesis\.json$''',
   '''^fixtures/preview/conway-governance\.json$''',
   '''^fixtures/reference/byron-genesis-data/cases\.jsonl$''',
+  '''^fixtures/reference/dijkstra-epoch/governance\.json$''',
   '''^fixtures/reference/genesis-pool-fields/cases\.jsonl$''',
   '''^fixtures/reference/ledger-api-pool-goldens/head/queryPoolParameters\.json$''',
   '''^fixtures/reference/ledger-api-pool-goldens/head/queryPoolState\.json$''',
