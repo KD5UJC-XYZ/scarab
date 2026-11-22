@@ -95,10 +95,11 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{
   * is not stored (the stake, the committee's state, the accounts and pools at the epoch's start),
   * so a snapshot holding actions could not be replayed soundly from a later state; the two window G
   * states with the proposal of keys 47 and 48 have no flat view (the flat rule's record has no form
-  * for the update), so they are not replayed, and their RATIFY is incomplete (CNF-2). Of the one whose pulser enacted that proposal, 1,576,750, ENACT of the
-  * action on the live parameters and roots gives the stored enact state's, read from the state's
-  * bytes. A withdrawal to an account of network 2, which the node's stored codec reads and the
-  * reference's does not, is ENACT's `VocabError`.
+  * for the update), so they are not replayed, and their RATIFY is incomplete (CNF-2). Of the one
+  * whose pulser enacted that proposal, 1,576,750, ENACT of the action on the live parameters and
+  * roots gives the stored enact state's, read from the state's bytes. A withdrawal to an account of
+  * network 2, which the node's stored codec reads and the reference's does not, is ENACT's
+  * `VocabError`.
   *
   * The private states are read from the directory `SCARAB_LEIOS_REFERENCE_STATES` names
   * ([[LeiosReferenceStates]]), one test each: skipped by name where the variable is not set (an
