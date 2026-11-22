@@ -591,8 +591,16 @@ object Main extends IOApp:
       acquired: xyz.kd5ujc.scarab.consensus.AcquiredLeiosEbs
   )
 
-  /** `--forge --vrf-skey <file> --kes-skey <file> --opcert <file>`: the pool's key files. */
-  final case class ForgeFiles(vrfSkey: Path, kesSkey: Path, opCert: Path)
+  /** `--forge --vrf-skey <file> --kes-skey <file> --opcert <file> [--shelley-bls-key <file>]`: the
+    * pool's key files, and its Leios voting keys, read with the others (`shelleyBLSFile`,
+    * cardano-node b004fe0c `Cardano/Node/Types.hs:183`).
+    */
+  final case class ForgeFiles(
+      vrfSkey: Path,
+      kesSkey: Path,
+      opCert: Path,
+      blsSkey: Option[Path] = None
+  )
 
   /** `--snapshot-every`: a number of slots (`50000` or `50000slots`) or of epochs (`2epochs`). */
   enum SnapshotInterval:
@@ -1183,7 +1191,13 @@ object Main extends IOApp:
     // The key lock, which the reference does not have, is taken just before them and held until the
     // node ends, so a second instance reads no key file ([[KeyGuard.credentials]])
     def credentials(files: ForgeFiles): Resource[IO, PoolCredentials] =
-      KeyGuard.credentials[IO](files.vrfSkey, files.kesSkey, files.opCert, requested.keyLock)
+      KeyGuard.credentials[IO](
+        files.vrfSkey,
+        files.kesSkey,
+        files.opCert,
+        requested.keyLock,
+        files.blsSkey
+      )
     // the stale socket goes once the configuration is read, before the topology and the database,
     // as the reference's `gatherConfiguredSockets` (`Run.hs` 317-324)
     def removedStale(setup: NodeSetup): IO[Either[SocketConfigError, Unit]] =
@@ -2818,7 +2832,7 @@ object Main extends IOApp:
       values.find(r => argument == s"--${r.flag}")
 
   private val Usage =
-    "usage: follow (--genesis-dir <dir> | --config <config.json>) (--peer <host>:<port> [--peer ...] | --topology <topology.json>) [--listen <host>:<port>] [--seconds N] [--query-listen off|P] [--query-port P] [--metrics-listen <host>:<port>] [--plutus-cases <dir>] [--db <dir>] [--adopt-legacy-network-identity] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--snapshot-check structure|full] [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--memory-report-seconds N] [--stall-minutes N] [--stall-exit-after <Ns|Nm|Nh>] [--stall-dump <dir>] [--churn-interval <Ns|Nm>] [--read-ahead N] [--chain-sync-low N] [--chain-sync-high N] [--header-first on|off] [--max-inbound N] [--max-outbound N] [--cpu-threads N] [--plutus-workers N] [--dump-state <dir> [--dump-state-at <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file> [--key-lock on|off]] [--start-as-non-producing-node] [--reference-build <build>] [--assertions-file <path>] " + LogSettings.Usage +
+    "usage: follow (--genesis-dir <dir> | --config <config.json>) (--peer <host>:<port> [--peer ...] | --topology <topology.json>) [--listen <host>:<port>] [--seconds N] [--query-listen off|P] [--query-port P] [--metrics-listen <host>:<port>] [--plutus-cases <dir>] [--db <dir>] [--adopt-legacy-network-identity] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--snapshot-check structure|full] [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--memory-report-seconds N] [--stall-minutes N] [--stall-exit-after <Ns|Nm|Nh>] [--stall-dump <dir>] [--churn-interval <Ns|Nm>] [--read-ahead N] [--chain-sync-low N] [--chain-sync-high N] [--header-first on|off] [--max-inbound N] [--max-outbound N] [--cpu-threads N] [--plutus-workers N] [--dump-state <dir> [--dump-state-at <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file> [--shelley-bls-key <file>] [--key-lock on|off]] [--start-as-non-producing-node] [--reference-build <build>] [--assertions-file <path>] " + LogSettings.Usage +
       "\n" + ReferenceBuildFlag.Help
 
   /** Flags that take a value and may repeat. */
@@ -2861,6 +2875,7 @@ object Main extends IOApp:
     "vrf-skey",
     "kes-skey",
     "opcert",
+    "shelley-bls-key",
     "key-lock",
     "reference-build",
     "assertions-file"
@@ -2985,7 +3000,16 @@ object Main extends IOApp:
                 flags.get("vrf-skey").toRight(invalid("vrf-skey")),
                 flags.get("kes-skey").toRight(invalid("kes-skey")),
                 flags.get("opcert").toRight(invalid("opcert"))
-              ).mapN((v, k, o) => Some(ForgeFiles(Path.of(v), Path.of(k), Path.of(o))))
+              ).mapN((v, k, o) =>
+                Some(
+                  ForgeFiles(
+                    Path.of(v),
+                    Path.of(k),
+                    Path.of(o),
+                    flags.get("shelley-bls-key").map(Path.of(_))
+                  )
+                )
+              )
           utxoKind <- flags
             .get("utxo-store")
             .traverse(k => Either.cond(Set("memory", "rocksdb")(k), k, invalid("utxo-store")))

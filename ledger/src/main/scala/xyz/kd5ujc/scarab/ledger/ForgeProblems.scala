@@ -16,6 +16,9 @@ enum ForgeKeyProblem:
   case Cbor(cause: BinaryCbor.Error)
   case ExpectedByteString(actual: KeyShape)
   case Vrf(cause: Draft03Prover.Failure)
+
+  /** A voting key of `--shelley-bls-key` is not a BLS12-381 scalar of the group. */
+  case Bls(cause: xyz.kd5ujc.scarab.crypto.bls.BlsError)
   case CertificateEnvelope(actual: KeyShape)
   case CertificateFields(actual: KeyShape)
   case FixedBytes(expected: Int, actual: KeyShape)

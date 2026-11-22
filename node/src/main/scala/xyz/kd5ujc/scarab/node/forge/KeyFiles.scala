@@ -7,6 +7,8 @@ import io.circe.parser
 import io.circe.syntax.*
 import java.nio.file.{Files, Path}
 import xyz.kd5ujc.scarab.crypto.Blake2b
+import xyz.kd5ujc.scarab.consensus.leios.VotingKey
+import xyz.kd5ujc.scarab.crypto.bls.SecretKey
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value}
 import xyz.kd5ujc.scarab.crypto.kes.Sum6KesSigning
 import xyz.kd5ujc.scarab.ledger.{ForgeError, ForgeKeyProblem, Header, KeyShape}
@@ -25,14 +27,17 @@ final case class HotCredentials(
 
 /** The credentials of a block-producing pool: the VRF signing key, the KES signing key (at period 0
   * as `cardano-cli` writes it, or at the period this node last evolved and wrote it, see
-  * [[KesFiles]]), the operational certificate and the cold verification key that issued it. The KES
-  * key is mutable: forging evolves it.
+  * [[KesFiles]]), the operational certificate and the cold verification key that issued it, and the
+  * Leios voting keys of `--shelley-bls-key` (`praosCanBeLeaderSignKeyBLS`, cardano-node b004fe0c
+  * `Cardano/Node/Protocol/Shelley.hs:303-322`), none without the flag. The KES key is mutable:
+  * forging evolves it.
   */
 final case class PoolCredentials(
     vrf: Draft03Prover.SigningKey,
     kes: Sum6KesSigning.SigningKey,
     opCert: Header.OpCert,
-    coldVkey: Bytes
+    coldVkey: Bytes,
+    voting: Vector[VotingKey] = Vector.empty
 ):
   def hot: HotCredentials = HotCredentials(kes, opCert, coldVkey)
 
@@ -73,6 +78,11 @@ object KeyFiles:
   val KesSigningKeyType = "KesSigningKey_ed25519_kes_2^6"
   val OpCertType = "NodeOperationalCertificate"
 
+  /** The envelope type `cardano-cli dijkstra node key-gen-BLS` writes for a BLS signing key
+    * (cardano-cli 11.3.1.0 of cardano-node b004fe0c, the Leios testnet's release).
+    */
+  val BlsSigningKeyType = "BlsSigningKey_bls12-381-BLS-Signature-Minimal-Signature-Size"
+
   /** The type and the decoded CBOR of an envelope's text. */
   def envelope(file: String, text: String): Either[ForgeError, (String, Bytes)] =
     def bad(reason: ForgeKeyProblem) = ForgeError.KeyFile(file, reason)
@@ -109,6 +119,36 @@ object KeyFiles:
         .fromBytes(payload)
         .leftMap(e => ForgeError.KeyFile(file, ForgeKeyProblem.Vrf(e)))
     yield key
+
+  /** The voting keys of `--shelley-bls-key` (`readBlsSigningKeys`, cardano-node b004fe0c
+    * `Cardano/Node/Protocol/Shelley.hs:324-339`): a JSON array of text envelopes, or else one text
+    * envelope, each a BLS signing key. When the text is not an array of envelopes the failure is
+    * the single envelope's, as there. An empty array is no key, so the node does not vote.
+    */
+  def blsSigningKeys(file: String, text: String): Either[ForgeError, Vector[SecretKey]] =
+    val asArray = parser.parse(text).toOption.flatMap(_.asArray).flatMap { items =>
+      items.traverse(item => envelope(file, item.noSpaces).toOption)
+    }
+    asArray
+      .fold(envelope(file, text).map(Vector(_)))(Right(_))
+      .flatMap(_.traverse((typ, raw) => blsSigningKey(file, typ, raw)))
+
+  private def blsSigningKey(file: String, typ: String, raw: Bytes): Either[ForgeError, SecretKey] =
+    for
+      _ <- Either.cond(
+        typ == BlsSigningKeyType,
+        (),
+        ForgeError.KeyFile(file, ForgeKeyProblem.EnvelopeType(BlsSigningKeyType, typ))
+      )
+      payload <- byteString(file, raw)
+      key <- SecretKey
+        .fromBytes(payload)
+        .leftMap(e => ForgeError.KeyFile(file, ForgeKeyProblem.Bls(e)))
+    yield key
+
+  /** The voting keys of a `--shelley-bls-key` file, read. */
+  def loadBlsSigningKeys(file: Path): Either[ForgeError, Vector[SecretKey]] =
+    read(file).flatMap(blsSigningKeys(file.toString, _))
 
   /** The KES key as `cardano-cli node key-gen-KES` writes it (the 608-byte period-0 key), or as
     * [[KesFiles]] writes it back after evolving (the same envelope; the period is read off the
@@ -180,11 +220,25 @@ object KeyFiles:
   /** Load and cross-check the three files of a pool (a KES key left half-replaced by a crash is put
     * right first, see [[KesFiles.recover]]).
     */
-  def load(vrfFile: Path, kesFile: Path, opCertFile: Path): Either[ForgeError, PoolCredentials] =
+  def load(
+      vrfFile: Path,
+      kesFile: Path,
+      opCertFile: Path,
+      blsFile: Option[Path] = None
+  ): Either[ForgeError, PoolCredentials] =
     for
       vrfText <- read(vrfFile)
       vrf <- vrfSigningKey(vrfFile.toString, vrfText)
+      // the voting keys after the VRF key and before the KES key and the certificate, as
+      // `readLeaderCredentialsSingleton` reads them (`Cardano/Node/Protocol/Shelley.hs:187-201`,
+      // cardano-node b004fe0c)
+      voting <- blsFile.traverse(loadBlsSigningKeys).map(_.getOrElse(Vector.empty))
+      keys <- voting.traverse(k =>
+        VotingKey
+          .of(k)
+          .leftMap(e => ForgeError.KeyFile(blsFile.fold("")(_.toString), ForgeKeyProblem.Bls(e)))
+      )
       hot <- KesFiles.readHot(kesFile, opCertFile)
-      credentials = PoolCredentials(vrf, hot.kes, hot.opCert, hot.coldVkey)
+      credentials = PoolCredentials(vrf, hot.kes, hot.opCert, hot.coldVkey, keys)
       _ <- PoolCredentials.check(credentials)
     yield credentials
