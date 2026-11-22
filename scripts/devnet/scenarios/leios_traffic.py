@@ -407,6 +407,13 @@ def scarab_counts(events):
     return counts
 
 
+def forging_severities(kinds):
+    """The follower's severities for a forging follower: a block of its own that its chain selection did not adopt
+    (`didntAdoptBlock`, Error as the reference's `TraceDidntAdoptBlock`) is a lost slot battle in a cluster of
+    several pools, not a failure of the node; `forging_verdict` judges its blocks by the reference nodes' chains."""
+    return {**kinds, "didntAdoptBlock": "Warning"}
+
+
 def forging_verdict(chains, closures, events):
     """The verdict on a forging follower: its ranking blocks (`forged` lines, by hash), the endorser blocks it forged
     (`leiosBlockForged`, by hash) and its certifying blocks, on the chain every reference node holds
@@ -566,6 +573,8 @@ def _drive(args, root, started):
     deadline = started + args.timeout
     following = getattr(args, "follow", False)
     severities = leios_follow.severities(leios_follow.EVENT_KINDS.read_text()) if following else {}
+    if forging is not None:
+        severities = forging_severities(severities)
     follower, follower_failure = None, None
     net = f"--testnet-magic {MAGIC} --socket-path {socket()}"
 

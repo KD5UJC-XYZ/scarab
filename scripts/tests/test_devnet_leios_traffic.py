@@ -287,6 +287,10 @@ class ForgingTest(unittest.TestCase):
         lost = [e for e in self.events if e.get("hash") != "h3"]
         self.assertEqual(lt.forging_verdict(self.chains(), {1: {"e2"}, 2: {"e2"}}, lost)["verdict"], "failed")
 
+    def test_a_lost_slot_battle_is_no_failure_of_a_forging_follower(self):
+        kinds = lt.forging_severities({"didntAdoptBlock": "Error", "fatal": "Critical"})
+        self.assertEqual(kinds, {"didntAdoptBlock": "Warning", "fatal": "Critical"})
+
     def test_the_forging_pools_node_is_not_started(self):
         calls = []
         args = type("A", (), {"name": "n", "pools": 3})()
