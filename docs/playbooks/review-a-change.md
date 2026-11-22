@@ -30,8 +30,8 @@ this is the order of work.
    "Independent review" section itself.
 7. Fill in the body's "Independent review" section: for a posted review, the link to that comment, the verdict and
    the disposition of each finding in a line; for one written there, the review itself (step 6).
-8. If the fixes changed more than wording, run a second, shorter review scoped to the fix commits, and post and
-   link it the same way. After a rebase that changes the diff, the review covers the new head.
+8. If the fixes changed more than wording, run a second, shorter review scoped to the fix commits, and record it
+   the same way (posted and linked, or written in the section). After a rebase that changes the diff, the review covers the new head.
 
 A contributor who is not an agent asks a maintainer or another contributor for the review, who posts it on the
 pull request; steps 5 to 8 are the same.

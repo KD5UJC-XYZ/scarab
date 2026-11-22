@@ -247,9 +247,12 @@ class PrBodyTests(unittest.TestCase):
                   "## Independent review\n\nPending. <code>" + "word " * 30 + "</code>\n",
                   "## Independent review\n\nPending.\n<pre>\n" + "word " * 30 + "\n</pre>\n",
                   "## Independent review\n\nPending. " + " ".join(f"https://example.org/a/b/c/{i}" for i in range(30)) + "\n"]
+        hidden += ["## Independent review\n\nPending.\n\n" + "".join(f"[label {i} words here]: <https://example.org/{i}>\n"
+                                                             for i in range(10)),
+                   "## Independent review\n\nPending. <code>https://github.com/example/scarab/pull/8#issuecomment-1</code>\n"]
         for review in [short, short + footer, "## Independent review\n\n`" + "word " * 30 + "`\n" + footer] + hidden:
             pr["body"] = body_of(1, "None", "None", review)
-            with self.subTest(review=review), self.assertRaisesRegex(policy.PolicyError, "written in the section"):
+            with self.subTest(review=review), self.assertRaisesRegex(policy.PolicyError, "Independent review"):
                 policy.check_body(pr)
 
     def test_the_review_link_is_read_by_its_destination_never_its_visible_text(self):

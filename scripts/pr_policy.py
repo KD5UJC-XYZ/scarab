@@ -220,9 +220,10 @@ def visible_prose(text):
     """The words of `text` a reader sees as prose: without the attribution line, code spans, HTML code elements,
     other HTML tags, reference definitions (GitHub hides them), images, and link destinations (a link's text is
     kept, an autolink and a bare URL count for nothing)."""
-    rest = HTML_CODE.sub(" ", without_code_spans(ATTRIBUTION.sub("", text)))
-    rest = IMAGE.sub(" ", REFERENCE_DEFINITION.sub(" ", HTML_TAG.sub(" ", rest)))
+    rest = REFERENCE_DEFINITION.sub(" ", HTML_CODE.sub(" ", without_code_spans(ATTRIBUTION.sub("", text))))
+    rest = IMAGE.sub(" ", HTML_TAG.sub(" ", rest))
     rest = INLINE_LINK.sub(lambda m: " " + m.group(0)[1:m.group(0).index("](")] + " ", rest)
+    rest = REFERENCE.sub(lambda m: " " + m.group(1) + " ", rest)
     rest = LINK.sub(" ", AUTOLINK.sub(" ", rest))
     return re.findall(r"\w+", rest)
 
@@ -243,7 +244,7 @@ def check_review(pr):
         return
     text, link = rendered_section(pr.get("body"), REVIEW), review_link(pr)
     linked = text is not None and link is not None and any(
-        link.match(target) for target in link_targets(without_code_spans(text), pr.get("body")))
+        link.match(target) for target in link_targets(HTML_CODE.sub(" ", without_code_spans(text)), pr.get("body")))
     require(linked or (text is not None and inline_review(text)),
             'a pull request that is not a draft needs an "## Independent review" section that links the review of its '
             "final diff posted on it, a comment or a review of this pull request (https://github.com/<repository>/pull/"
