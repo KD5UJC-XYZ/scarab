@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 import copy
+import json
 from datetime import datetime, timezone
 from pathlib import Path
 import json
@@ -574,6 +575,197 @@ class PathsStepTests(unittest.TestCase):
                 run, calls, _ = self.run_step(tmp, head=head, base=base)
                 self.assertNotEqual(run.returncode, 0)
                 self.assertEqual(calls, "")
+
+
+def guard_with(entries):
+    """A version of the guard whose `ONE_OFF_PATHS` is `entries`, written as the guard writes it."""
+    return ("# SPDX-License-Identifier: Apache-2.0\nFORMAT_CHANGE_PATHS = ('docs/storage-migrations.md',)\n"
+            + entries + "\n\n\ndef outside_format_change(files):\n    return ONE_OFF_PATHS.get(1, ())\n")
+
+
+def states(*entries):
+    return "\n".join(json.dumps({"number": n, "state": s, "merged": m}) for n, s, m in entries) + "\n"
+
+
+class OneOffTests(unittest.TestCase):
+    """A pull request that changes the guard leaves no one-off exception of a pull request that merged."""
+
+    def pr(self, head="feature"):
+        return pull_request(head=head)
+
+    def check(self, guard, read, files=(fmt.GUARD,), head="feature"):
+        return policy.check_one_off(self.pr(head), list(files), guard, policy.one_off_states(read))
+
+    def test_an_entry_naming_a_merged_pull_request_fails(self):
+        guard = guard_with("ONE_OFF_PATHS = {\n    1127: ('a.scala',),\n    1400: ('b.scala',),\n    1401: (),\n}")
+        with self.assertRaisesRegex(policy.PolicyError, r"still holds the one-off exception of #1127, which merged: .*"
+                                                        r"remove it"):
+            self.check(guard, states((1127, "closed", True), (1400, "open", False), (1401, "closed", False)))
+        with self.assertRaisesRegex(policy.PolicyError, r"exception of #1127, #1401, which merged"):
+            self.check(guard, states((1127, "closed", True), (1400, "open", False), (1401, "closed", True)))
+
+    def test_an_entry_naming_a_closed_pull_request_that_did_not_merge_passes(self):
+        guard = guard_with("ONE_OFF_PATHS = {1400: ('b.scala',), 1401: ()}")
+        self.assertEqual(self.check(guard, states((1400, "closed", False), (1401, "open", False))), [1400, 1401])
+
+    def test_an_entry_naming_an_open_pull_request_passes(self):
+        guard = guard_with("ONE_OFF_PATHS: dict[int, tuple[str, ...]] = {1400: ('b.scala',), 1401: ()}")
+        self.assertEqual(self.check(guard, states((1401, "open", False), (1400, "open", False))), [1400, 1401])
+
+    def test_a_guard_without_entries_passes(self):
+        for entries in ["ONE_OFF_PATHS = {}", "ONE_OFF_PATHS: dict[int, tuple[str, ...]] = {}"]:
+            with self.subTest(entries=entries):
+                self.assertEqual(self.check(guard_with(entries), ""), [])
+
+    def test_the_guard_on_this_branch_is_read(self):
+        source = (Path(__file__).resolve().parents[1] / "check_storage_format.py").read_text(encoding="utf-8")
+        self.assertEqual(policy.one_off_keys(source), sorted(fmt.ONE_OFF_PATHS))
+
+    def test_a_pull_request_that_leaves_the_guard_alone_is_unaffected(self):
+        stale = guard_with("ONE_OFF_PATHS = {1127: ('a.scala',)}")
+        for files in [(), ("node/src/main/scala/A.scala",), (fmt.MANIFEST, fmt.GUARD_TESTS)]:
+            with self.subTest(files=files):
+                self.assertEqual(self.check(stale, states((1127, "closed", True)), files), [])
+                self.assertEqual(policy.check_one_off(self.pr(), list(files), None, {}), [])
+
+    def test_a_promotion_of_dev_is_unaffected(self):
+        stale = guard_with("ONE_OFF_PATHS = {1127: ('a.scala',)}")
+        self.assertEqual(self.check(stale, states((1127, "closed", True)), head="dev"), [])
+        self.assertEqual(self.check("not python (", "", head="dev"), [])
+
+    def test_a_missing_state_or_an_unread_guard_fails(self):
+        guard = guard_with("ONE_OFF_PATHS = {1400: ('b.scala',), 1401: ()}")
+        with self.assertRaisesRegex(policy.PolicyError, "no state was read for #1401"):
+            self.check(guard, states((1400, "open", False)))
+        with self.assertRaisesRegex(policy.PolicyError, "its version of the guard was not read"):
+            policy.check_one_off(self.pr(), [fmt.GUARD], None, {})
+        for read in ["{not json\n", json.dumps({"number": 1400, "state": "draft", "merged": False}),
+                     json.dumps({"number": "1400", "state": "open", "merged": False}),
+                     json.dumps({"number": 1400, "state": "open"}), "[1400]"]:
+            with self.subTest(read=read), self.assertRaisesRegex(policy.PolicyError, "one-off state"):
+                policy.one_off_states(read)
+
+    def test_the_command_line_prints_the_keys_and_checks_the_states_it_is_given(self):
+        script = Path(__file__).resolve().parents[1] / "pr_policy.py"
+        with tempfile.TemporaryDirectory() as tmp:
+            def write(name, text):
+                path = Path(tmp) / name
+                path.write_text(text, encoding="utf-8")
+                return str(path)
+            def nul(name, paths):
+                path = Path(tmp) / name
+                path.write_bytes(b"".join(f.encode() + b"\0" for f in paths))
+                return str(path)
+            guard = write("guard.py", guard_with("ONE_OFF_PATHS = {1400: (), 1127: ()}"))
+            keys = subprocess.run([sys.executable, str(script), "--print-one-off-keys", guard],
+                                  capture_output=True, text=True, check=True, env={})
+            self.assertEqual(keys.stdout, "1127\n1400\n")
+            none = subprocess.run([sys.executable, str(script), "--print-one-off-keys",
+                                   write("empty.py", guard_with("ONE_OFF_PATHS = {}"))],
+                                  capture_output=True, text=True, check=True, env={})
+            self.assertEqual(none.stdout, "")
+            pr = self.pr()
+            pr["title"], pr["user"], pr["body"] = "fix(node): repair", {"type": "User"}, body_of(1, "None", "None")
+            pr["changed_files"] = 1
+            event = write("event.json", json.dumps({"repository": {"id": 42}, "pull_request": pr}))
+            files = nul("files.nul", ["node/src/main/scala/A.scala"])
+            argv = [sys.executable, str(script), "--event", event, "--repository", "example/scarab",
+                    "--repository-id", "42", "--files-nul", files, "--head-guard", str(Path(tmp) / "absent.py"),
+                    "--one-off-states", write("none.jsonl", "")]
+            run = subprocess.run(argv, capture_output=True, text=True, env={})
+            self.assertEqual(run.returncode, 0, run.stderr)
+            self.assertEqual(json.loads(run.stdout)["oneOffPullRequests"], [])
+            pr["title"], pr["body"] = STORAGE_TITLE, body_of(3, "None", "None") + RECORD
+            argv[argv.index(event)] = write("storage.json", json.dumps({"repository": {"id": 42}, "pull_request": pr}))
+            argv[argv.index(files)] = nul("guard-files.nul", [fmt.GUARD])
+            run = subprocess.run(argv, capture_output=True, text=True, env={})
+            self.assertNotEqual(run.returncode, 0)
+            self.assertIn("its version of the guard was not read", run.stderr)
+            argv[argv.index(str(Path(tmp) / "absent.py"))] = guard
+            argv[-1] = write("states.jsonl", states((1127, "closed", True), (1400, "open", False)))
+            run = subprocess.run(argv, capture_output=True, text=True, env={})
+            self.assertNotEqual(run.returncode, 0)
+            self.assertIn("still holds the one-off exception of #1127, which merged", run.stderr)
+            argv[-1] = write("open.jsonl", states((1127, "open", False), (1400, "open", False)))
+            run = subprocess.run(argv, capture_output=True, text=True, env={})
+            self.assertEqual(run.returncode, 0, run.stderr)
+            self.assertEqual(json.loads(run.stdout)["oneOffPullRequests"], [1127, 1400])
+
+    def one_off_step(self, tmp, paths, fail=""):
+        import check_ci_parity
+        steps = check_ci_parity.read_yaml(WORKFLOW.read_text(encoding="utf-8"))["jobs"]["metadata"]["steps"]
+        step = next(s for s in steps if s.get("name") == "Read the one-off exceptions of the pull request's guard")
+        bin_dir = Path(tmp) / "bin"
+        bin_dir.mkdir(exist_ok=True)
+        log = Path(tmp) / "calls.log"
+        (bin_dir / "gh").write_text(
+            "#!/bin/bash\n" f'echo "gh $*" >> "{log}"\n'
+            'case "$*" in\n'
+            f'  *contents/*) [ "{fail}" = guard ] && exit 1; printf "ONE_OFF_PATHS = {{1127: ()}}\\n";;\n'
+            f'  *pulls/1127*) [ "{fail}" = state ] && exit 1; echo \'{{"number": 1127, "state": "closed", "merged": true}}\';;\n'
+            "esac\n", encoding="utf-8")
+        (bin_dir / "gh").chmod(0o755)
+        (Path(tmp) / "files.nul").write_bytes(b"".join(f.encode() + b"\0" for f in paths))
+        env = {"PATH": f"{bin_dir}:{Path(sys.executable).parent}:/usr/bin:/bin", "RUNNER_TEMP": tmp,
+               "GITHUB_REPOSITORY": "example/scarab", "GH_TOKEN": "token", "HEAD_SHA": HEAD}
+        run = subprocess.run(["bash", "-e", "-c", step["run"]], capture_output=True, text=True, env=env,
+                             cwd=Path(__file__).resolve().parents[2])
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertNotIn("${{", step["run"])
+        read = lambda name: (Path(tmp) / name).read_text(encoding="utf-8") if (Path(tmp) / name).exists() else None
+        return read("calls.log") or "", read("head-guard.py"), read("one-off-states.jsonl")
+
+    def test_the_step_reads_the_guard_and_its_states_when_the_guard_is_a_changed_path(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            calls, guard, read = self.one_off_step(tmp, ["docs/a.md", fmt.GUARD])
+            self.assertIn(f"contents/scripts/check_storage_format.py?ref={HEAD}", calls)
+            self.assertEqual(policy.one_off_keys(guard), [1127])
+            self.assertEqual(policy.one_off_states(read), {1127: "merged"})
+        # a path that only looks like the guard on a line of its own is not the guard
+        for paths in [["docs/a.md"], ["docs/x\n" + fmt.GUARD]]:
+            with self.subTest(paths=paths), tempfile.TemporaryDirectory() as tmp:
+                calls, guard, read = self.one_off_step(tmp, paths)
+                self.assertEqual((calls, guard, read), ("", None, ""))
+
+    def test_a_failed_read_in_the_step_leaves_nothing_the_policy_would_pass(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _, guard, read = self.one_off_step(tmp, [fmt.GUARD], fail="guard")
+            self.assertIsNone(guard)
+            with self.assertRaisesRegex(policy.PolicyError, "its version of the guard was not read"):
+                policy.check_one_off(self.pr(), [fmt.GUARD], guard, policy.one_off_states(read))
+        with tempfile.TemporaryDirectory() as tmp:
+            _, guard, read = self.one_off_step(tmp, [fmt.GUARD], fail="state")
+            with self.assertRaisesRegex(policy.PolicyError, "no state was read for #1127"):
+                policy.check_one_off(self.pr(), [fmt.GUARD], guard, policy.one_off_states(read))
+
+    def test_the_guard_is_parsed_never_run_and_anything_unusual_is_refused(self):
+        self.assertEqual(policy.one_off_keys(guard_with("ONE_OFF_PATHS = {7: (), 7: ('x',), 3: ()}")), [3, 7])
+        # the source runs nothing: a call in it would raise if it were executed
+        self.assertEqual(policy.one_off_keys(guard_with("raise SystemExit(1)\nONE_OFF_PATHS = {5: ()}")), [5])
+        for source, message in [
+            ("not python (", "does not parse"),
+            ("", "binds ONE_OFF_PATHS once"),
+            (guard_with("ONE_OFF_PATHS = dict()"), "binds ONE_OFF_PATHS once"),
+            (guard_with("ONE_OFF_PATHS: dict[int, tuple[str, ...]]"), "binds ONE_OFF_PATHS once"),
+            (guard_with("ONE_OFF_PATHS = {}\nONE_OFF_PATHS = {1127: ()}"), "binds ONE_OFF_PATHS once"),
+            (guard_with("ONE_OFF_PATHS = {}\nONE_OFF_PATHS |= {1127: ()}"), "binds ONE_OFF_PATHS once"),
+            (guard_with("ONE_OFF_PATHS = {}\nONE_OFF_PATHS[1127] = ()"), "assigns none of its items"),
+            (guard_with("ONE_OFF_PATHS = OTHER = {}"), "binds ONE_OFF_PATHS once"),
+            (guard_with("ONE_OFF_PATHS, OTHER = {1127: ()}, 0"), "binds ONE_OFF_PATHS once"),
+            (guard_with("def f():\n    global ONE_OFF_PATHS\n    ONE_OFF_PATHS = {1127: ()}\nONE_OFF_PATHS = {}"),
+             "binds ONE_OFF_PATHS once"),
+            (guard_with("ONE_OFF_PATHS = {}\nfrom elsewhere import OTHER as ONE_OFF_PATHS"), "binds ONE_OFF_PATHS once"),
+            (guard_with("ONE_OFF_PATHS = {}\nimport ONE_OFF_PATHS"), "binds ONE_OFF_PATHS once"),
+            (guard_with("ONE_OFF_PATHS = {}\ndef ONE_OFF_PATHS():\n    pass"), "binds ONE_OFF_PATHS once"),
+            (guard_with("ONE_OFF_PATHS = {}\nif (ONE_OFF_PATHS := {1127: ()}):\n    pass"), "binds ONE_OFF_PATHS once"),
+            (guard_with("ONE_OFF_PATHS = {'1127': ()}"), "integer literals"),
+            (guard_with("ONE_OFF_PATHS = {True: ()}"), "integer literals"),
+            (guard_with("ONE_OFF_PATHS = {0: ()}"), "integer literals"),
+            (guard_with("ONE_OFF_PATHS = {1000 + 127: ()}"), "integer literals"),
+            (guard_with("ONE_OFF_PATHS = {**OTHER}"), "integer literals"),
+        ]:
+            with self.subTest(source=source[-60:]), self.assertRaisesRegex(policy.PolicyError, message):
+                policy.one_off_keys(source)
 
 
 if __name__ == "__main__":

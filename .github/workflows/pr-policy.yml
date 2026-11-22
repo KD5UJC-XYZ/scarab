@@ -5,6 +5,8 @@ name: PR policy
 # a read of the pull request's changed paths, for the path checks of scripts/pr_policy.py: the merge base from the
 # compare API, and the head and merge-base commits and trees (no file content) fetched into a bare repository outside
 # the checkout, whose names `git diff` lists; nothing of the pull request is checked out or run.
+# When the pull request changes the storage format guard, its version of the guard is read as data, with the
+# states of the pull requests its one-off exceptions name (FMT-1).
 on:
   pull_request_target:
     types: [opened, reopened, synchronize, edited, ready_for_review]
@@ -49,7 +51,33 @@ jobs:
             GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $auth" git -C "$repo" fetch -q --no-tags --depth=1 \
             --filter=blob:none "https://github.com/${GITHUB_REPOSITORY}.git" "$HEAD_SHA" "$base"
           git -C "$repo" diff --name-only --no-renames -z "$base" "$HEAD_SHA" > "$RUNNER_TEMP/files.nul"
+      # The pull request's guard is fetched as a file and read with `ast` by the trusted policy, never run, when it is
+      # among the changed paths (files.nul, NUL-delimited, from the step before). A read that fails leaves no file, or
+      # no state: the validation step refuses what it cannot read.
+      - name: Read the one-off exceptions of the pull request's guard
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          : > "$RUNNER_TEMP/one-off-states.jsonl"
+          : > "$RUNNER_TEMP/one-off-keys.txt"
+          if grep -qzxF scripts/check_storage_format.py "$RUNNER_TEMP/files.nul"; then
+            gh api -H "Accept: application/vnd.github.raw+json" \
+              "repos/${GITHUB_REPOSITORY}/contents/scripts/check_storage_format.py?ref=${HEAD_SHA}" \
+              > "$RUNNER_TEMP/head-guard.py" || rm -f "$RUNNER_TEMP/head-guard.py"
+            if [ -f "$RUNNER_TEMP/head-guard.py" ]; then
+              python3 scripts/pr_policy.py --print-one-off-keys "$RUNNER_TEMP/head-guard.py" \
+                > "$RUNNER_TEMP/one-off-keys.txt" || : > "$RUNNER_TEMP/one-off-keys.txt"
+            fi
+            while read -r number; do
+              if state=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${number}" --jq '{number, state, merged}'); then
+                printf '%s\n' "$state" >> "$RUNNER_TEMP/one-off-states.jsonl"
+              fi
+            done < "$RUNNER_TEMP/one-off-keys.txt"
+          fi
       - name: Validate event metadata
         env:
           SCARAB_PROMOTION_POLICY: ${{ vars.SCARAB_PROMOTION_POLICY }}
-        run: python3 scripts/pr_policy.py --files-nul "$RUNNER_TEMP/files.nul"
+        run: |
+          python3 scripts/pr_policy.py --files-nul "$RUNNER_TEMP/files.nul" --head-guard "$RUNNER_TEMP/head-guard.py" \
+            --one-off-states "$RUNNER_TEMP/one-off-states.jsonl"

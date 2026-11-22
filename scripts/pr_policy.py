@@ -32,8 +32,16 @@ merge base of its base and head SHAs, and the head, fetched as commits and trees
 NUL, so a path that holds a newline stays one path. A list shorter than the event's `changed_files` cannot be all of
 them, and fails rather than pass on what it leaves out. A promotion of `dev`, which reads no path, is not checked for
 this.
+
+A pull request that changes the guard also keeps its one-off exceptions current (FMT-1): every pull request that
+`ONE_OFF_PATHS` names in the guard as the pull request leaves it (`--head-guard`, read with `ast` and never run) must
+not have merged (`--one-off-states`, the states the workflow reads from the API, one JSON object per line); a closed
+one may be reopened, so its entry may stay. A pull request
+that leaves the guard alone, and a promotion of `dev`, are not checked for this, so an entry that outlives its pull
+request never blocks other work. `--print-one-off-keys` prints the numbers the workflow asks the API for.
 """
 import argparse
+import ast
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -43,7 +51,7 @@ import re
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from check_storage_format import approval_problems, outside_format_change, touches_freeze  # noqa: E402
+from check_storage_format import GUARD, approval_problems, outside_format_change, touches_freeze  # noqa: E402
 
 
 MODES = ("transition", "dev-only-main")
@@ -77,6 +85,8 @@ STORAGE_TITLE = re.compile(r"[a-z]+\(storage\)!: (?P<description>.*)")
 STORAGE_WORDS = re.compile(r"\bstorage format\b", re.IGNORECASE)
 STORAGE_TITLE_FORM = ('"<type>(storage)!: <description that names the storage format change>", for example '
                       '"fix(storage)!: storage format V10 drops the bootstrap sidecar fields"')
+ONE_OFF = "ONE_OFF_PATHS"
+PULL_STATES = ("open", "closed")
 RECORD_FIELD = re.compile(r"^\s*(?:[-*]\s+)?\**(question|asked at|decision|decided at)\**\s*:\**\s*(.*)$", re.IGNORECASE)
 
 
@@ -394,6 +404,68 @@ def check_file_list(pr, files):
             "the paths are read from git at the event's commits (--files-nul); run the check again")
 
 
+def one_off_keys(source):
+    """The pull-request numbers that key `ONE_OFF_PATHS` in `source`, a version of the storage format guard, read with
+    `ast` and never run. The name is bound once, at the top of the module, to a dict literal whose keys are positive
+    integer literals: a second binding (an assignment, an import, a definition) or an item assigned or deleted is
+    refused, never read as no entry. A method call on the map, such as `update`, is not seen."""
+    try:
+        tree = ast.parse(source)
+    except (SyntaxError, ValueError, RecursionError, MemoryError) as e:
+        raise PolicyError(f"the guard {GUARD} does not parse, so its {ONE_OFF} cannot be read: {type(e).__name__}") from e
+    def named(node):
+        return isinstance(node, ast.Name) and node.id == ONE_OFF
+    bindings = [n for n in ast.walk(tree) if named(n) and not isinstance(n.ctx, ast.Load)
+                or isinstance(n, ast.alias) and (n.asname or n.name.split(".")[0]) == ONE_OFF
+                or isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and n.name == ONE_OFF]
+    items = [n for n in ast.walk(tree) if isinstance(n, ast.Subscript) and named(n.value) and not isinstance(n.ctx, ast.Load)]
+    top = [n.value for n in tree.body
+           if isinstance(n, ast.Assign) and len(n.targets) == 1 and named(n.targets[0])
+           or isinstance(n, ast.AnnAssign) and named(n.target) and n.value is not None]
+    require(len(bindings) == 1 and len(top) == 1 and not items and isinstance(top[0], ast.Dict),
+            f"{GUARD} binds {ONE_OFF} once, at the top of the module, to a dict literal, and assigns none of its items")
+    keys = top[0].keys
+    require(all(isinstance(k, ast.Constant) and type(k.value) is int and k.value > 0 for k in keys),
+            f"the keys of {ONE_OFF} in {GUARD} are pull-request numbers written as integer literals")
+    return sorted({k.value for k in keys})
+
+
+def one_off_states(text):
+    """The state of each pull request in `text`, one JSON object per line with its `number`, `state` and `merged`, as
+    the workflow reads them from the API: `merged`, `closed` or `open`."""
+    states = {}
+    for line in (text or "").splitlines():
+        if not line.strip():
+            continue
+        try:
+            entry = json.loads(line)
+        except ValueError as e:
+            raise PolicyError("the one-off states are one JSON object per line") from e
+        require(isinstance(entry, dict) and type(entry.get("number")) is int and entry.get("state") in PULL_STATES
+                and type(entry.get("merged")) is bool, "each one-off state has an integer number, a state of open or "
+                "closed and a boolean merged")
+        states[entry["number"]] = "merged" if entry["merged"] else entry["state"]
+    return states
+
+
+def check_one_off(pr, files, head_guard, states):
+    """The pull requests `ONE_OFF_PATHS` names in the guard as this pull request leaves it (`head_guard`, its text),
+    none of them merged; empty when the pull request leaves the guard alone or is a promotion of `dev`. One that
+    merged, or whose state is missing, fails: its entry is removed by a follow-up pull request once its pull request
+    merges (FMT-1). One that closed without merging may be reopened, so its entry may stay."""
+    if promotion(pr) or GUARD not in files:
+        return []
+    require(head_guard is not None, f"the pull request changes {GUARD}, but its version of the guard was not read")
+    keys = one_off_keys(head_guard)
+    missing = [k for k in keys if k not in states]
+    require(not missing, f"{ONE_OFF} in {GUARD}: no state was read for " + ", ".join(f"#{k}" for k in missing))
+    stale = [f"#{k}" for k in keys if states[k] == "merged"]
+    require(not stale, f"{ONE_OFF} in {GUARD} still holds the one-off exception of " + ", ".join(stale) +
+            ", which merged: a follow-up pull request removes an exception once its pull request merges, so remove "
+            "it (FMT-1)")
+    return keys
+
+
 def check_body(pr, files=()):
     """The level the body states; None for a bot's pull request and for a promotion of `dev`, whose changes each
     passed this check as their own pull request."""
@@ -448,7 +520,15 @@ def main():
     parser.add_argument("--repository-id", type=int, default=os.environ.get("GITHUB_REPOSITORY_ID"))
     parser.add_argument("--mode", default=os.environ.get("SCARAB_PROMOTION_POLICY") or "transition")
     parser.add_argument("--files-nul", type=Path, help="the pull request's changed paths, each ended by NUL")
+    parser.add_argument("--head-guard", type=Path, help=f"the pull request's version of {GUARD}, read only when it changes")
+    parser.add_argument("--one-off-states", type=Path, help="the states of the pull requests its ONE_OFF_PATHS names")
+    parser.add_argument("--print-one-off-keys", type=Path, metavar="GUARD",
+                        help="print the pull requests ONE_OFF_PATHS names in GUARD, one per line, and stop")
     args = parser.parse_args()
+    if args.print_one_off_keys is not None:
+        for key in one_off_keys(args.print_one_off_keys.read_text(encoding="utf-8")):
+            print(key)
+        return
     require(args.event is not None and args.repository is not None, "require event and repository identity")
     event = json.loads(args.event.read_text())
     require(event.get("repository", {}).get("id") == args.repository_id,
@@ -458,7 +538,12 @@ def main():
     files = changed_paths(args.files_nul.read_bytes()) if args.files_nul else []
     check_file_list(pr, files)
     storage = check_storage_format(pr, files, datetime.now(timezone.utc))
-    print(json.dumps(dict(result, level=check_body(pr, files), storageFormatChange=storage), sort_keys=True))
+    head_guard = (args.head_guard.read_text(encoding="utf-8")
+                  if GUARD in files and args.head_guard is not None and args.head_guard.is_file() else None)
+    states = one_off_states(args.one_off_states.read_text(encoding="utf-8")) if args.one_off_states else {}
+    one_off = check_one_off(pr, files, head_guard, states)
+    print(json.dumps(dict(result, level=check_body(pr, files), storageFormatChange=storage, oneOffPullRequests=one_off),
+                     sort_keys=True))
 
 
 if __name__ == "__main__":
