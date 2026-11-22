@@ -11912,6 +11912,16 @@
    "upstream": [
     {
      "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "symbol": "PParam",
+     "lines": [
+      828,
+      837
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
      "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
      "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
      "symbol": "PParam",
@@ -11930,9 +11940,11 @@
     "ConwayUpdatePlutusDataSuite",
     "RecordedScriptContextsSuite",
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraScriptContextsSuite",
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
    ],
-   "note": "the name, the lens, the update and the Plutus data instance of the hidden type; the CBOR and JSON instances the constructor also packs, and the era decoder (`ppEraDecoder`, at the Leios build's pin the update's `ppuEraCodec`), are not here yet",
+   "note": "the name, the lens, the update and the Plutus data and CBOR instances of the hidden type; the JSON instances the constructor also packs are not here yet. The era decoder of f649f975 (`ppEraDecoder`, which no Conway description has) is, as at the Leios build's pin, the update's `ppuEraCodec`",
    "digest": "18f6b23906f857b4"
   },
   "type ledger.era.PParam#T": {
@@ -12058,6 +12070,16 @@
    "upstream": [
     {
      "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "symbol": "PParam",
+     "lines": [
+      828,
+      837
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
      "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
      "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
      "symbol": "PParam",
@@ -12075,9 +12097,11 @@
     "ConwayUpdatePlutusDataSuite",
     "RecordedScriptContextsSuite",
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraScriptContextsSuite",
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
    ],
-   "digest": "a440fdbf1ee1cf2e"
+   "digest": "09c19ddc514470ba"
   },
   "def ledger.era.PParam.field": {
    "upstream": [
@@ -12110,13 +12134,25 @@
     "ConwayUpdatePlutusDataSuite",
     "RecordedScriptContextsSuite",
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraScriptContextsSuite",
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
    ],
    "note": "a description of a field the update sets: the field's lens at `Identity` under `ppLensHKD` and at `StrictMaybe` under `ppuLensHKD`, which is each reference `pp…L` and `ppu…L` the descriptions name",
-   "digest": "4b7c09c7bae09345"
+   "digest": "207a436e09a42b12"
   },
   "class ledger.era.PParamUpdate": {
    "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "symbol": "PParamUpdate",
+     "lines": [
+      839,
+      848
+     ]
+    },
     {
      "repository": "IntersectMBO/cardano-ledger",
      "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
@@ -12136,10 +12172,12 @@
     "ConwayUpdatePlutusDataSuite",
     "RecordedScriptContextsSuite",
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraScriptContextsSuite",
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
    ],
-   "note": "the tag and the lens; the Leios build's `ppuEraCodec` is with the PParam Gap",
-   "digest": "1bd317243e1ae304"
+   "note": "the tag, the lens and the Leios build's era codec (`ppuEraCodec`), which f649f975's update does not have",
+   "digest": "9c7a37d1cd509adf"
   },
   "def ledger.era.EraPParams#eraPParams": {
    "upstream": [
@@ -13401,9 +13439,11 @@
    "structure": "same",
    "evidence": [
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraScriptContextsSuite",
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
    ],
-   "digest": "1a613749e33727d0"
+   "digest": "4bc84162eb665c8f"
   },
   "def ledger.era.dijkstra.DijkstraEraPParams.ppPerasQuorumThresholdSafetyMargin": {
    "upstream": [
@@ -42675,6 +42715,1684 @@
    ],
    "note": "minBound of the derived Bounded instance",
    "digest": "779d7edb6f9f68d1"
+  },
+  "type ledger.era.Encoding": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Encoding/Encoder.hs",
+     "symbol": "Encoding",
+     "lines": [
+      132,
+      133
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "note": "the bytes of the tokens, without the version the reference's `Encoding` takes: no encoder of the parameters' types reads it past version 2",
+   "digest": "468aa2928e6472bd"
+  },
+  "given ledger.era.Encoding.given_Monoid_Encoding": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Encoding/Encoder.hs",
+     "symbol": "Encoding",
+     "lines": [
+      132,
+      133
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "digest": "bc1d1627b1663a8d"
+  },
+  "def ledger.era.Encoding.encodeWord": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Encoding/Encoder.hs",
+     "symbol": "encodeWord",
+     "lines": [
+      181,
+      182
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "note": "also `encodeWord16`, `encodeWord32` and `encodeWord64` by the width of the word",
+   "digest": "951805dafaa8c824"
+  },
+  "def ledger.era.Encoding.encodeWord64": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Encoding/Encoder.hs",
+     "symbol": "encodeWord64",
+     "lines": [
+      193,
+      194
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "digest": "43450fa225e97593"
+  },
+  "def ledger.era.Encoding.encodeInteger": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Encoding/Encoder.hs",
+     "symbol": "encodeInteger",
+     "lines": [
+      211,
+      212
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "digest": "0357a4a936cdaf46"
+  },
+  "def ledger.era.Encoding.encodeListLen": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Encoding/Encoder.hs",
+     "symbol": "encodeListLen",
+     "lines": [
+      232,
+      233
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "digest": "0f6bdf1f3b635d3d"
+  },
+  "def ledger.era.Encoding.encodeMapLen": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Encoding/Encoder.hs",
+     "symbol": "encodeMapLen",
+     "lines": [
+      238,
+      239
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "digest": "e05db31cdf9c4e41"
+  },
+  "def ledger.era.Encoding.encodeTag": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Encoding/Encoder.hs",
+     "symbol": "encodeTag",
+     "lines": [
+      247,
+      248
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "digest": "92d67e65ded45aa8"
+  },
+  "val ledger.era.Encoding.encodeNull": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Encoding/Encoder.hs",
+     "symbol": "encodeNull",
+     "lines": [
+      259,
+      260
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "digest": "7dfbce8ba56c21a1"
+  },
+  "def ledger.era.Encoding.encodeStrictMaybe": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Encoding/Encoder.hs",
+     "symbol": "encodeStrictMaybe",
+     "lines": [
+      331,
+      334
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "digest": "a50a16a1422a1185"
+  },
+  "def ledger.era.Encoding.encodeNullStrictMaybe": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Encoding/Encoder.hs",
+     "symbol": "encodeNullStrictMaybe",
+     "lines": [
+      340,
+      343
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "digest": "c077cd7b00b472c9"
+  },
+  "def ledger.era.Encoding.variableListLenEncoding": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Encoding/Encoder.hs",
+     "symbol": "variableListLenEncoding",
+     "lines": [
+      458,
+      468
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "digest": "3364765f6890302a"
+  },
+  "def ledger.era.Encoding.variableMapLenEncoding": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Encoding/Encoder.hs",
+     "symbol": "variableMapLenEncoding",
+     "lines": [
+      433,
+      440
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "digest": "691a9c4e94b53ed3"
+  },
+  "def ledger.era.Encoding.bytes": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Encoding.hs",
+     "symbol": "serialize'",
+     "lines": [
+      56,
+      57
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "digest": "e7d25235b5f8b912"
+  },
+  "trait ledger.era.EncCBOR": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Encoding/EncCBOR.hs",
+     "symbol": "EncCBOR",
+     "lines": [
+      113,
+      116
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "digest": "548151593dc50304"
+  },
+  "def ledger.era.EncCBOR#encCBOR": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Encoding/EncCBOR.hs",
+     "symbol": "encCBOR",
+     "lines": [
+      113,
+      116
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "digest": "4bed2ed2784a6689"
+  },
+  "trait ledger.era.DecCBOR": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/DecCBOR.hs",
+     "symbol": "DecCBOR",
+     "lines": [
+      115,
+      116
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "note": "the decoder version and the site of a refusal are given (`DecodeAt`) where the reference's `Decoder s` carries the version",
+   "digest": "d0e2d25a6898ee3d"
+  },
+  "def ledger.era.DecCBOR#decCBOR": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/DecCBOR.hs",
+     "symbol": "decCBOR",
+     "lines": [
+      115,
+      116
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "note": "as the class: the version is given",
+   "digest": "972da9586f4f50c7"
+  },
+  "class ledger.era.EraCodec": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "symbol": "EraCodec",
+     "lines": [
+      820,
+      825
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "digest": "9e73075b0b7cf214"
+  },
+  "given ledger.era.EncCBOR.unsigned": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Encoding/EncCBOR.hs",
+     "symbol": "EncCBOR Word32",
+     "lines": [
+      154,
+      162
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "note": "the instances of `Word16`, `Word32` and `Word64`",
+   "digest": "a8c7bde743814081"
+  },
+  "given ledger.era.DecCBOR.unsigned": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/DecCBOR.hs",
+     "symbol": "DecCBOR Word32",
+     "lines": [
+      170,
+      181
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "note": "the instances of `Word16`, `Word32` and `Word64`, read as the node's decoders of an update read them below 12 and from 12",
+   "digest": "c19db9e5862c831d"
+  },
+  "given ledger.era.EncCBOR.compactCoin": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Coin.hs",
+     "symbol": "EncCBOR (CompactForm Coin)",
+     "lines": [
+      190,
+      191
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "digest": "dbf5983ac82066b2"
+  },
+  "given ledger.era.DecCBOR.compactCoin": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Coin.hs",
+     "symbol": "DecCBOR (CompactForm Coin)",
+     "lines": [
+      193,
+      194
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "digest": "d8fe9d5c595b643e"
+  },
+  "given ledger.era.EncCBOR.coinPerByte": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Coin.hs",
+     "symbol": "CoinPerByte",
+     "lines": [
+      220,
+      222
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "digest": "4d0bde07f0930010"
+  },
+  "given ledger.era.DecCBOR.coinPerByte": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Coin.hs",
+     "symbol": "CoinPerByte",
+     "lines": [
+      220,
+      222
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "digest": "18d405e5e6903780"
+  },
+  "given ledger.era.EncCBOR.coin": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Coin.hs",
+     "symbol": "EncCBOR",
+     "lines": [
+      106,
+      106
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "digest": "5098037c81319392"
+  },
+  "given ledger.era.DecCBOR.coin": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Coin.hs",
+     "symbol": "DecCBOR Coin",
+     "lines": [
+      108,
+      113
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "digest": "7b8cd09a63243b90"
+  },
+  "given ledger.era.EncCBOR.epochInterval": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Encoding/EncCBOR.hs",
+     "symbol": "EncCBOR EpochInterval",
+     "lines": [
+      451,
+      451
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "digest": "4010a28333f7929f"
+  },
+  "given ledger.era.DecCBOR.epochInterval": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/DecCBOR.hs",
+     "symbol": "DecCBOR EpochInterval",
+     "lines": [
+      679,
+      679
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "digest": "848d6cd07b6872ae"
+  },
+  "given ledger.era.EncCBOR.slotInterval": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Encoding/EncCBOR.hs",
+     "symbol": "EncCBOR SlotInterval",
+     "lines": [
+      440,
+      440
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "digest": "1a43e7ff07b7a3b1"
+  },
+  "given ledger.era.DecCBOR.slotInterval": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/DecCBOR.hs",
+     "symbol": "DecCBOR SlotInterval",
+     "lines": [
+      667,
+      667
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "digest": "55652acdd28965a6"
+  },
+  "given ledger.era.EncCBOR.milliseconds32": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "symbol": "Milliseconds32",
+     "lines": [
+      706,
+      708
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "digest": "385c45e524645e0d"
+  },
+  "given ledger.era.DecCBOR.milliseconds32": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "symbol": "Milliseconds32",
+     "lines": [
+      706,
+      708
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "digest": "f8053b10b696517a"
+  },
+  "given ledger.era.EncCBOR.unitInterval": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "symbol": "EncCBOR (BoundedRatio b a)",
+     "lines": [
+      405,
+      405
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "note": "`ToCBOR` of `BoundedRatio`, `encodeRatioWithTag`",
+   "digest": "9191c9690b2c4f77"
+  },
+  "given ledger.era.EncCBOR.nonNegativeInterval": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "symbol": "EncCBOR (BoundedRatio b a)",
+     "lines": [
+      405,
+      405
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "digest": "0f1906752daf7a4d"
+  },
+  "given ledger.era.EncCBOR.positiveInterval": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "symbol": "EncCBOR (BoundedRatio b a)",
+     "lines": [
+      405,
+      405
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "digest": "6541d47eea988f3d"
+  },
+  "given ledger.era.DecCBOR.unitInterval": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "symbol": "DecCBOR (BoundedRatio b a)",
+     "lines": [
+      407,
+      428
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Plain.hs",
+     "symbol": "decodeRationalWithTag",
+     "lines": [
+      159,
+      168
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "digest": "e0b966e89f91d362"
+  },
+  "given ledger.era.DecCBOR.nonNegativeInterval": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "symbol": "DecCBOR (BoundedRatio b a)",
+     "lines": [
+      407,
+      428
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Plain.hs",
+     "symbol": "decodeRationalWithTag",
+     "lines": [
+      159,
+      168
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "digest": "16338202124c2ace"
+  },
+  "given ledger.era.DecCBOR.positiveInterval": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "symbol": "DecCBOR (BoundedRatio b a)",
+     "lines": [
+      407,
+      428
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Plain.hs",
+     "symbol": "decodeRationalWithTag",
+     "lines": [
+      159,
+      168
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "digest": "b2bcf2fa5dc8a09f"
+  },
+  "given ledger.era.EncCBOR.nonZero": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes/NonZero.hs",
+     "symbol": "NonZero",
+     "lines": [
+      76,
+      78
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "digest": "47fa41dd3bdf2884"
+  },
+  "given ledger.era.DecCBOR.nonZeroWord32": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes/NonZero.hs",
+     "symbol": "DecCBOR (NonZero a)",
+     "lines": [
+      102,
+      103
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "note": "at `Word32`, the one `NonZero` of the parameters",
+   "digest": "a938281d22b3dabc"
+  },
+  "given ledger.era.EncCBOR.strictMaybe": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Encoding/EncCBOR.hs",
+     "symbol": "EncCBOR (SMaybe.StrictMaybe a)",
+     "lines": [
+      315,
+      316
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "digest": "ba67b5d11f72e7f6"
+  },
+  "given ledger.era.DecCBOR.strictMaybe": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/DecCBOR.hs",
+     "symbol": "DecCBOR (SMaybe.StrictMaybe a)",
+     "lines": [
+      464,
+      465
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/Decoder.hs",
+     "symbol": "decodeMaybeVarLen",
+     "lines": [
+      585,
+      601
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "digest": "f6fbfaac62528607"
+  },
+  "def ledger.era.DecCBOR.nullStrictMaybe": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/Decoder.hs",
+     "symbol": "decodeNullStrictMaybe",
+     "lines": [
+      626,
+      633
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "digest": "d55cadd878d67939"
+  },
+  "given ledger.era.EncCBOR.protVer": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "symbol": "EncCBORGroup ProtVer",
+     "lines": [
+      212,
+      245
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "digest": "449df52e4e376226"
+  },
+  "given ledger.era.DecCBOR.protVer": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "symbol": "DecCBORGroup ProtVer",
+     "lines": [
+      212,
+      245
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Group.hs",
+     "symbol": "groupRecord",
+     "lines": [
+      33,
+      35
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "digest": "3add9806b4b7442b"
+  },
+  "given ledger.era.EncCBOR.exUnits": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/ExUnits.hs",
+     "symbol": "EncCBOR ExUnits",
+     "lines": [
+      205,
+      206
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "digest": "077a3a49eac9ca21"
+  },
+  "given ledger.era.DecCBOR.exUnits": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/ExUnits.hs",
+     "symbol": "DecCBOR ExUnits",
+     "lines": [
+      208,
+      230
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "digest": "2f7abe330171c7d8"
+  },
+  "given ledger.era.EncCBOR.ordExUnits": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/ExUnits.hs",
+     "symbol": "OrdExUnits",
+     "lines": [
+      162,
+      164
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "digest": "6f83dca476dd34ba"
+  },
+  "given ledger.era.DecCBOR.ordExUnits": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/ExUnits.hs",
+     "symbol": "OrdExUnits",
+     "lines": [
+      162,
+      164
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "digest": "b28d254c4a140e5f"
+  },
+  "given ledger.era.EncCBOR.prices": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/ExUnits.hs",
+     "symbol": "EncCBOR Prices",
+     "lines": [
+      232,
+      233
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "digest": "892ecd4e02cbed82"
+  },
+  "given ledger.era.DecCBOR.prices": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/ExUnits.hs",
+     "symbol": "DecCBOR Prices",
+     "lines": [
+      235,
+      243
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "digest": "143660272d423e2f"
+  },
+  "given ledger.era.EncCBOR.costModels": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/CostModels.hs",
+     "symbol": "EncCBOR CostModels",
+     "lines": [
+      470,
+      471
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "digest": "01c5316b7076227a"
+  },
+  "given ledger.era.DecCBOR.costModels": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/CostModels.hs",
+     "symbol": "DecCBOR CostModels",
+     "lines": [
+      466,
+      468
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "note": "below 12 by the node's rule of `decodeCostModels` for the version, from 12 as the node's decoder of a Dijkstra update reads them",
+   "digest": "8374e2af1a34152d"
+  },
+  "given ledger.era.EncCBOR.poolVotingThresholds": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "symbol": "EncCBOR PoolVotingThresholds",
+     "lines": [
+      358,
+      365
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "digest": "1759ba99de733afa"
+  },
+  "given ledger.era.DecCBOR.poolVotingThresholds": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "symbol": "DecCBOR PoolVotingThresholds",
+     "lines": [
+      367,
+      375
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "digest": "3d0754a091cf763b"
+  },
+  "given ledger.era.EncCBOR.drepVotingThresholds": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "symbol": "EncCBOR DRepVotingThresholds",
+     "lines": [
+      506,
+      518
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "digest": "5c33054a45a911e7"
+  },
+  "given ledger.era.DecCBOR.drepVotingThresholds": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "symbol": "DecCBOR DRepVotingThresholds",
+     "lines": [
+      520,
+      533
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "digest": "dd9b526d53d5499b"
+  },
+  "given ledger.era.EncCBOR.maxPledgeLeverage": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "symbol": "EncCBOR MaxPledgeLeverage",
+     "lines": [
+      375,
+      376
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "digest": "0d4feda84c6a1ef0"
+  },
+  "given ledger.era.DecCBOR.maxPledgeLeverage": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "symbol": "DecCBOR MaxPledgeLeverage",
+     "lines": [
+      378,
+      379
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "digest": "32a61f57fedd0cf2"
+  },
+  "def ledger.era.PParam#encCBOR": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "symbol": "PParam",
+     "lines": [
+      828,
+      837
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "note": "the `EncCBOR t` the constructor packs",
+   "digest": "ecbe012c6cf1da2d"
+  },
+  "def ledger.era.PParam#decCBOR": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "symbol": "PParam",
+     "lines": [
+      828,
+      837
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "note": "the `DecCBOR t` the constructor packs",
+   "digest": "a3098bc4c1025c9e"
+  },
+  "def ledger.era.PParams.encodePParams": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "symbol": "EncCBOR (PParams era)",
+     "lines": [
+      204,
+      209
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "symbol": "EncCBOR (PParams era)",
+     "lines": [
+      198,
+      203
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "digest": "a358c0014432d35b"
+  },
+  "given ledger.era.PParams.encCBOR": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "symbol": "EncCBOR (PParams era)",
+     "lines": [
+      204,
+      209
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "note": "delegates to `encodePParams`",
+   "digest": "e67edeb6e9e9bc6b"
+  },
+  "def ledger.era.PParams.decodePParams": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "symbol": "DecCBOR (PParams era)",
+     "lines": [
+      211,
+      219
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "symbol": "DecCBOR (PParams era)",
+     "lines": [
+      205,
+      213
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "digest": "3a4707a18735fcce"
+  },
+  "given ledger.era.PParams.decCBOR": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "symbol": "DecCBOR (PParams era)",
+     "lines": [
+      211,
+      219
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "note": "delegates to `decodePParams`",
+   "digest": "90b3f3e3d76e224e"
+  },
+  "def ledger.era.PParamsUpdate.encodePParamsUpdate": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "symbol": "EncCBOR (PParamsUpdate era)",
+     "lines": [
+      250,
+      262
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "symbol": "EncCBOR (PParamsUpdate era)",
+     "lines": [
+      244,
+      255
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "digest": "8c5ca4b27d500c66"
+  },
+  "given ledger.era.PParamsUpdate.encCBOR": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "symbol": "EncCBOR (PParamsUpdate era)",
+     "lines": [
+      250,
+      262
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "note": "delegates to `encodePParamsUpdate`",
+   "digest": "1250a2db94206978"
+  },
+  "def ledger.era.PParamsUpdate.decodePParamsUpdate": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "symbol": "DecCBOR (PParamsUpdate era)",
+     "lines": [
+      264,
+      301
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/Decoder.hs",
+     "symbol": "decodeSparseKeyed",
+     "lines": [
+      1228,
+      1287
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "symbol": "DecCBOR (PParamsUpdate era)",
+     "lines": [
+      257,
+      293
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "note": "at f649f975 an era decoder is the description's (`ppEraDecoder`); no description of Conway's has one",
+   "digest": "77b12faab2469255"
+  },
+  "given ledger.era.PParamsUpdate.decCBOR": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "symbol": "DecCBOR (PParamsUpdate era)",
+     "lines": [
+      264,
+      301
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "note": "delegates to `decodePParamsUpdate`",
+   "digest": "8ff90cca9ec89aa5"
+  },
+  "def ledger.era.DecCBOR.recordNamed": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/Decoder.hs",
+     "symbol": "decodeRecordNamed",
+     "lines": [
+      645,
+      659
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/Decoder.hs",
+     "symbol": "decodeListLikeT",
+     "lines": [
+      682,
+      700
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/Decoder.hs",
+     "symbol": "decodeRecordNamed",
+     "lines": [
+      654,
+      668
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/Decoder.hs",
+     "symbol": "decodeListLikeT",
+     "lines": [
+      691,
+      709
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPParamsCborSuite"
+   ],
+   "note": "over a decoded list. A field the list lacks is refused where the reference refuses it: after an indefinite list by the field, whose reader meets the break (PParamsDecodeError.Break); after a definite list by the record's length at the first field it lacks, where the reference reads the enclosing item's next token (the end of the input, or the next key and then the size)",
+   "digest": "f43fc75fc032e796"
+  },
+  "enum ledger.era.PParamsDecodeError": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/Decoder.hs",
+     "symbol": "decodeSparseKeyed",
+     "lines": [
+      1228,
+      1287
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/Coders.hs",
+     "symbol": "duplicateKey",
+     "lines": [
+      634,
+      640
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/Decoder.hs",
+     "symbol": "decodeListLikeT",
+     "lines": [
+      682,
+      700
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "EraPParamsCborSuite"
+   ],
+   "note": "the reference fails with a DecoderErrorCustom whose text names the key, and a record's field that meets an indefinite list's break with cborg's refusal of the token at its offset; these carry the key, and the record's site and the field's index, as values",
+   "digest": "37c774286dba489e"
   }
  },
  "glue": [
@@ -42947,14 +44665,6 @@
    "reason": "how an output holds its reference script: by its hash and tree, without the bytes a script read from them keeps, which the output re-reads from its own encoding (#998); the reference's output holds the script whole, so this representation has no counterpart",
    "definitions": [
     "def ledger.Script#withoutBytes"
-   ]
-  },
-  {
-   "reason": "the conversions between Dijkstra's record and the parameters the node keeps (the flat `ProtocolParams`) and the decoded `DijkstraParamUpdate`; the reference keeps the record itself and has no counterpart (#85)",
-   "definitions": [
-    "def ledger.era.dijkstra.DijkstraPParams.fromStored",
-    "def ledger.era.dijkstra.DijkstraPParams.fromUpdate",
-    "def ledger.era.dijkstra.DijkstraPParams.toStored"
    ]
   },
   {
@@ -43679,6 +45389,42 @@
     "object ledger.era.rules.DijkstraClosure",
     "object ledger.era.rules.LeiosClosureDefect",
     "given ledger.era.rules.LeiosClosureDefect.given_CanEqual_LeiosClosureDefect_LeiosClosureDefect"
+   ]
+  },
+  {
+   "reason": "the conversions between Dijkstra's record and the parameters the node keeps (the flat `ProtocolParams`) and the decoded `DijkstraParamUpdate`, both ways; the reference keeps the record itself and has no counterpart (#85)",
+   "definitions": [
+    "def ledger.era.dijkstra.DijkstraPParams.fromStored",
+    "def ledger.era.dijkstra.DijkstraPParams.fromUpdate",
+    "def ledger.era.dijkstra.DijkstraPParams.toStored",
+    "def ledger.era.dijkstra.DijkstraPParams.toUpdate"
+   ]
+  },
+  {
+   "reason": "the era types' CBOR machinery with no counterpart: the version and refusal site a decoder is given (the reference's decoder monad carries the version), the summoners of the classes, and the companions holding the instances, which Haskell's instances need none of",
+   "definitions": [
+    "class ledger.era.DecodeAt",
+    "def ledger.era.DecCBOR.apply",
+    "def ledger.era.DecodeAt#at",
+    "def ledger.era.EncCBOR.apply",
+    "object ledger.era.DecCBOR",
+    "object ledger.era.EncCBOR",
+    "object ledger.era.Encoding"
+   ]
+  },
+  {
+   "reason": "the reader of a record's fields over the items of a decoded list, what it keeps between them and what follows the list's last item: the reference's decodeRecordNamed reads its fields from the token stream and has no such state",
+   "definitions": [
+    "class ledger.era.DecCBOR.RecordItems",
+    "def ledger.era.DecCBOR.field",
+    "enum ledger.era.DecCBOR.RecordEnd",
+    "type ledger.era.DecCBOR.RecordRead"
+   ]
+  },
+  {
+   "reason": "the walk's shape of a parameter update below version 12, which the era codec's test reads a detached update by; the reference reads the stream and has no walk (DetachedRecords, #687)",
+   "definitions": [
+    "def ledger.DetachedRecords.Shapes.parameterUpdate"
    ]
   }
  ]

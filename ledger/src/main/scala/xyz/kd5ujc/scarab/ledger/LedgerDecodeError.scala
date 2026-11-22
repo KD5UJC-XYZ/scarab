@@ -34,6 +34,11 @@ enum LedgerDecodeError extends DomainError:
   /** A key of a sparse record that names no field of it (`invalidKey`, `Coders.hs`). */
   case UnknownKey(site: DecodeSite, key: BigInt)
   case DuplicateKey(site: DecodeSite)
+
+  /** A refusal of the era types' parameter codecs ([[xyz.kd5ujc.scarab.ledger.era.PParams]]) that
+    * names more than these cases do.
+    */
+  case PParamsCodec(cause: xyz.kd5ujc.scarab.ledger.era.PParamsDecodeError)
   case UnsupportedCostModelLanguage(language: Int)
 
   /** A Plutus script of a language newer than the era's (`eraUnsupportedLanguage`, cardano-ledger
@@ -162,7 +167,7 @@ object LedgerDecodeError:
   private def repr(x: Any): String = x match
     case site: DecodeSite => site.show
     case e: (LedgerDecodeError | xyz.kd5ujc.scarab.ledger.NativeScript.DecodeError |
-          VotingProcedures.DecodeError) =>
+          VotingProcedures.DecodeError | xyz.kd5ujc.scarab.ledger.era.PParamsDecodeError) =>
       fields(e)
     case other => other.toString
 
