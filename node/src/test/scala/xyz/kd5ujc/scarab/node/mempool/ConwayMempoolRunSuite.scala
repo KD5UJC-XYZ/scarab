@@ -24,7 +24,6 @@ import xyz.kd5ujc.scarab.ledger.era.{
   EraTxBody,
   EraUTxO,
   EraUtxoRun,
-  Network,
   PParams,
   TxLevel,
   UTxO
@@ -122,9 +121,6 @@ class ConwayMempoolRunSuite extends FunSuite:
       .History(Vector.empty, Horizon.Edge(0, 0, 0), params, Some(params))
       .at(Horizon.Transition.Unknown(Some(tip)))
 
-  private def networkOf(n: Int): Network =
-    Network.of(BigInt(n)).getOrElse(fail(s"network $n"))
-
   private val corpus: Vector[Seen] =
     val loaded = right("the refusal corpus")(load(Path.of("fixtures/reference/refusals")))
     loaded.corpora.filter(_.era == RefusalEra.Conway).flatMap { c =>
@@ -160,11 +156,11 @@ class ConwayMempoolRunSuite extends FunSuite:
           ledger,
           slot,
           env.rules,
-          setup.globals.network,
+          setup.globals.network.wire,
           corpusClock,
           ConwayMempoolRun.Judging(
             env.rules,
-            networkOf(setup.globals.network),
+            setup.globals.network,
             0,
             historyAt(slot),
             corpusClock.posix,
@@ -396,11 +392,11 @@ class ConwayMempoolRunSuite extends FunSuite:
       ledger,
       kitSlot,
       env.rules,
-      env.globals.network,
+      env.globals.network.wire,
       clock,
       ConwayMempoolRun.Judging(
         env.rules,
-        networkOf(env.globals.network),
+        env.globals.network,
         BigInt(g.systemStart.toEpochMilli),
         Horizon(
           NonEmptyVector.one(
