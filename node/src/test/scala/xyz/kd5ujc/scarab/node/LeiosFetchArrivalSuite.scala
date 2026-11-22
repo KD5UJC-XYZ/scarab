@@ -273,7 +273,7 @@ class LeiosFetchArrivalSuite extends FailsOnUncaught:
   }
 
   dirs.test(
-    "the mempool's transactions are in the transaction cache, applied under its parity, once the write that completes the closure settles"
+    "the mempool's transactions are in the transaction cache, applied under its parity, when the write that completes the closure is published"
   ) { dir =>
     val txs = Vector.tabulate(5)(tx)
     val eb = body(txs)
@@ -289,10 +289,13 @@ class LeiosFetchArrivalSuite extends FailsOnUncaught:
           xyz.kd5ujc.scarab.crypto.bls.BlsFixtures.rbHash(3),
           p.hash
         )
+        // read as the completion is published, before the arrival settles: a vote that the
+        // completion wakes finds them tagged (the reference's TODO, `LeiosDemoLogic.hs` 1560)
         found <- r.acquired.notifications.subscribe.use(published =>
-          typed(r.arrival.block(peer, request, eb.transactions.toVector)) *> r.settled.take *>
+          typed(r.arrival.block(peer, request, eb.transactions.toVector)).background.use(_ =>
             published.take.iterateUntil(_ == LeiosEbNotification.AcquiredEbTxs(p)) *>
-            r.shared.txCache.lookup
+              r.shared.txCache.lookup <* r.settled.take
+          )
         )
         index <- r.shared.txCache.snapshot
       yield

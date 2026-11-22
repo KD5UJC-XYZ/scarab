@@ -245,13 +245,13 @@ final class LeiosFetchArrival[F[_], P](
     * transactions neither the mempool nor the write holds (`settle`, `LeiosDemoLogic.hs`
     * 1099-1139), and last the transactions taken from the mempool, written at their offsets
     * (`ingestAcquiredTxs` of `MempoolTxs`, 1428-1437, which holds no job to retire), recorded in
-    * the transaction cache as applied under the mempool's parity (`insertApplied`, 1570-1572) after
-    * the write, as the reference records them once their write is queued. That last write is the
-    * one that completes a closure the mempool held whole, so its completion reaches the store's
-    * subscribers, the voting thread among them, with the body; a vote that its completion wakes
-    * before the cache's update finds the transactions untagged and validates them in full, as the
-    * reference's does when its writer lands the write first (its TODO at 1560 would record them
-    * before the write).
+    * the transaction cache as applied under the mempool's parity (`insertApplied`, 1570-1572)
+    * before that write. That last write is the one that completes a closure the mempool held whole,
+    * so its completion reaches the store's subscribers, the voting thread among them, with the
+    * body, and a vote it wakes finds the transactions already tagged. The reference records them
+    * after it queues the write, so a vote its writer wakes first validates them in full; its own
+    * TODO at 1560 says to record them before, which this does (an Improvement, approved
+    * 2026-11-22).
     */
   private def acquire(
       point: EbPoint,
@@ -271,13 +271,13 @@ final class LeiosFetchArrival[F[_], P](
       )
       _ <- shared.outstanding.update(_.acquireEbBody(point.hash, pool))
       _ <- shared.wake
-      // the cache's update follows the write, as the reference's follows its queueing
-      // (`LeiosDemoLogic.hs` 1527-1572)
-      _ <- (store.writeTxs(point, pulled.ingest.view.mapValues(_._2).toVector) *> landed *>
-        shared.wake *>
-        pulled.parity.traverse_(
-          shared.txCache.insertApplied(pulled.ingest.values.map(_._1), _)
-        ))
+      // the cache's update precedes the write that may complete the closure, as the reference's
+      // TODO asks (`LeiosDemoLogic.hs` 1560; it updates after queueing the write, 1527-1572)
+      _ <- (pulled.parity.traverse_(
+        shared.txCache.insertApplied(pulled.ingest.values.map(_._1), _)
+      ) *>
+        store.writeTxs(point, pulled.ingest.view.mapValues(_._2).toVector) *> landed *>
+        shared.wake)
         .whenA(pulled.ingest.nonEmpty)
     yield ()
 
