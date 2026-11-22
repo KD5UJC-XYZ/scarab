@@ -32697,8 +32697,7 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "ConwayLedgerChecksSuite",
-    "PreviewConwayBlockLedgersSuite"
+    "ConwayLedgerChecksSuite"
    ],
    "note": "Conway's LEDGERS, Babbage's (Conway/Era.hs:244), through the fold it shares with Dijkstra's (ledgersFold); mkStAnnTx is Alonzo's mkAlonzoStAnnTx given the cache the annotation before left, its epoch information and system start one function, the UTxO set the stored outputs of the transaction's inputs; the index by TxIx.enumerate, zip [minBound ..]",
    "digest": "27cad0fe36a291a7"
@@ -40756,8 +40755,7 @@
    "structure": "differs",
    "evidence": [
     "DijkstraLedgerSuite",
-    "ConwayLedgerChecksSuite",
-    "PreviewConwayBlockLedgersSuite"
+    "ConwayLedgerChecksSuite"
    ],
    "note": "the fold of Babbage's ledgersTransition, its era's mkStAnnTx and LEDGER given, which Conway's and Dijkstra's LEDGERS share; the UTxO set the stored outputs of the transaction's inputs; the cache each annotation leaves handed to the next, the first given the empty one (mempty); the index by TxIx.enumerate, zip [minBound ..]",
    "digest": "d47a188a03c2494a"
