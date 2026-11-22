@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.mempool
 
-import cats.data.NonEmptyChain
+import cats.data.{NonEmptyChain, NonEmptyVector}
 import cats.effect.IO
 import cats.mtl.{Handle, Raise}
 import cats.syntax.all.*
 import io.circe.parser
+import org.scalacheck.Gen
+import org.scalacheck.rng.Seed
 import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Value}
@@ -54,7 +56,7 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{LeiosStateCodecs, Versions}
 import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.TxMeasure
 import xyz.kd5ujc.scarab.network.LocalTxSubmissionServer
 import xyz.kd5ujc.scarab.node.assertions.Assertions
-import xyz.kd5ujc.scarab.node.forge.{BlockBuilder, DijkstraSnapshots}
+import xyz.kd5ujc.scarab.node.forge.{BlockBuilder, DijkstraSnapshots, ForgedLeiosEb}
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.node.read.ConwayView
 import xyz.kd5ujc.scarab.node.{MirrorDijkstra, MirrorRules, NodeSetup}
@@ -589,6 +591,67 @@ class DijkstraMempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     }
   }
 
+  test("the Leios index: the forged endorser block's key, kept, then gone with the transaction") {
+    states.map { s =>
+      val tip = tipOf(36)
+      val env = envOf(s(37), tip)
+      val empty = pool(ledgerOf(s(37), tip), tip)
+      val (held, entry) =
+        empty.add(dijkstra(submitted), env, Source.Local).fold(r => fail(r.message), identity)
+      val flat = entry.held match
+        case Held.InDijkstra(admitted) => admitted.read.flat
+        case other                     => fail(s"not held in Dijkstra: $other")
+      // the key and bytes are the ones the forger lists and writes (`forgeLeiosEb`), which the
+      // reference's index keys by (`leiosTxHashOfGenTx`)
+      val forged = ForgedLeiosEb.forge(tip.slot + 1, NonEmptyVector.one(flat))
+      val listed = forged.closure.toVector.toMap
+      assertEquals(empty.leiosTxIndex, Map.empty)
+      assertEquals(held.leiosTxIndex, listed)
+      assertEquals(forged.body.transactions.map(_._1).toVector, held.leiosTxIndex.keys.toVector)
+      // revalidated at the same tip: kept, with its key
+      val (same, _) = held.sync(Right(ledgerOf(s(37), tip)), tip.slot, env)
+      assertEquals(same.leiosTxIndex, listed)
+      // removed, or dropped once its block is applied: gone from the index with the entry
+      assertEquals(held.remove(Set(entry.id), env)._1.leiosTxIndex, Map.empty)
+      val after = tipOf(37)
+      val (next, _) = held.sync(Right(ledgerOf(s(38), after)), after.slot, envOf(s(38), after))
+      assertEquals(next.leiosTxIndex, Map.empty)
+    }
+  }
+
+  test(
+    "the Leios index is the entries' keys after any sequence of adds, removals and revalidations"
+  ) {
+    enum Step:
+      case Add, Remove, Revalidate, Advance
+    states.map { s =>
+      val tip = tipOf(36)
+      val after = tipOf(37)
+      val env = envOf(s(37), tip)
+      val id = inBlock.id
+      def step(state: MempoolState, op: Step): MempoolState = op match
+        case Step.Add    => state.add(dijkstra(submitted), env, Source.Local).fold(_ => state, _._1)
+        case Step.Remove => state.remove(Set(id), env)._1
+        // back to the tip before the transaction's block, where it applies
+        case Step.Revalidate => state.sync(Right(ledgerOf(s(37), tip)), tip.slot, env)._1
+        // to the tip of its block, where it is spent and dropped
+        case Step.Advance =>
+          state.sync(Right(ledgerOf(s(38), after)), after.slot, envOf(s(38), after))._1
+      val steps = Gen.listOfN(12, Gen.oneOf(Step.values.toVector))
+      val start = pool(ledgerOf(s(37), tip), tip)
+      val visited = (0L until 64L).toVector.flatMap { seed =>
+        val ops = steps.apply(Gen.Parameters.default, Seed(seed)).getOrElse(fail("no sample"))
+        ops.scanLeft(start)(step).map(ops -> _)
+      }
+      visited.foreach { (ops, state) =>
+        assertEquals(state.leiosTxIndex, state.entries.flatMap(_.leiosTx).toMap, s"after $ops")
+        assertEquals(state.leiosTxIndex.size, state.entries.count(_.era == Era.Dijkstra))
+      }
+      // the sequences reach both a pool that holds the transaction and one that does not
+      assertEquals(visited.map(_._2.leiosTxIndex.size).toSet, Set(0, 1))
+    }
+  }
+
   test(
     "a Conway transaction reaches Dijkstra by redecoding: submitted, and held across the crossing"
   ) {
@@ -621,6 +684,10 @@ class DijkstraMempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         moved.entries.map(e => (e.era, e.id, e.ticket)),
         Vector((Era.Dijkstra, inBlock.id, first.ticket))
       )
+      // a Conway transaction has no key an endorser block lists; brought into Dijkstra, it has
+      assertEquals(held.leiosTxIndex, Map.empty)
+      assertEquals(moved.leiosTxIndex.keySet, moved.entries.flatMap(_.leiosTx.map(_._1)).toSet)
+      assertEquals(moved.leiosTxIndex.size, 1)
     }
   }
 

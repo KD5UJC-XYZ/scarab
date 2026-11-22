@@ -198,7 +198,8 @@ class LeiosFetchRegistrationSuite extends FailsOnUncaught:
               _ => IO.pure(None),
               acquired.notifications.subscribe,
               IO.pure(None),
-              noLead
+              noLead,
+              LeiosMempoolPull.none[IO]
             )
           )
           // the endorser block is focused, and the peer offers its body and its closure
@@ -278,7 +279,8 @@ class LeiosFetchRegistrationSuite extends FailsOnUncaught:
                 _ => IO.pure(None),
                 Resource.eval(Queue.unbounded[IO, LeiosEbNotification]),
                 IO.pure(None),
-                LeiosMinOfferLead.Default
+                LeiosMinOfferLead.Default,
+                LeiosMempoolPull.none[IO]
               )
             )
             (a, b) <- Bearer.inMemory[IO](64)
@@ -323,7 +325,8 @@ class LeiosFetchRegistrationSuite extends FailsOnUncaught:
               _ => IO.pure(None),
               Resource.eval(Queue.unbounded[IO, LeiosEbNotification]),
               IO.pure(None),
-              LeiosMinOfferLead.Default
+              LeiosMinOfferLead.Default,
+              LeiosMempoolPull.none[IO]
             )
           )
           (a, b) <- Bearer.inMemory[IO](64)
@@ -406,7 +409,8 @@ class LeiosFetchRegistrationSuite extends FailsOnUncaught:
                 _ => IO.pure(None),
                 Resource.eval(Queue.unbounded[IO, LeiosEbNotification]),
                 IO.pure(None),
-                LeiosMinOfferLead.Default
+                LeiosMinOfferLead.Default,
+                LeiosMempoolPull.none[IO]
               )
             )
             (a, b) <- Bearer.inMemory[IO](64)

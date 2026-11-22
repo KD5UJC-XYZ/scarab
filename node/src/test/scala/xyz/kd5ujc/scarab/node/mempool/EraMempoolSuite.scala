@@ -265,7 +265,7 @@ class EraMempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     val tx =
       xyz.kd5ujc.scarab.ledger.Tx.fromBlock(parts, Era.Babbage).fold(e => fail(e.message), identity)
     val entry = Entry(Era.Babbage, parts, tx, 1L)
-    val state = pool(Era.Babbage).copy(entries = Vector(entry), nextTicket = 2L)
+    val state = pool(Era.Babbage).holding(Vector(entry), ticket = 2L)
     Vector(translating, redecoding).foreach { env =>
       val (after, dropped) = state.sync(Right(ledger(Era.Conway)), 1001, env)
       assertEquals(after.entries, Vector.empty)
@@ -489,7 +489,7 @@ class EraMempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     val tx =
       xyz.kd5ujc.scarab.ledger.Tx.fromBlock(parts, Era.Babbage).fold(e => fail(e.message), identity)
     val entry = Entry(Era.Babbage, parts, tx, 1L)
-    val state = pool(Era.Babbage).copy(entries = Vector(entry), nextTicket = 2L)
+    val state = pool(Era.Babbage).holding(Vector(entry), ticket = 2L)
     val (translated, kept) = state.sync(Right(ledger(Era.Conway)), 1000, translating)
     assertEquals(kept, Vector.empty, "11.1 reapplies it: the signature is a static check")
     assertEquals(translated.entries.map(_.era), Vector(Era.Conway))

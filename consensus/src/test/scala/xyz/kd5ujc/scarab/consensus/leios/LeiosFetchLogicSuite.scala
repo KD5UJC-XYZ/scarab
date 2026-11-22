@@ -752,3 +752,18 @@ class LeiosFetchLogicSuite extends ScalaCheckSuite:
     assertEquals(size(1) - size(2), size(0xffffffffL))
     assertEquals(BytesSize.wrap(1L << 32), BytesSize.zero)
   }
+
+  test("mkMempoolPull: a miss the index holds is pulled with its bytes, the others stay missed") {
+    def h(i: Int): LeiosTxHash = LeiosTxHash.fromBytes(Bytes(Vector.fill(32)(i.toByte)))
+    val misses = SortedMap(0 -> (h(1), size(10)), 1 -> (h(2), size(20)), 4 -> (h(3), size(30)))
+    // the index also holds transactions the body does not list: they are not hits
+    val index = Map(h(2) -> Bytes(Vector(2.toByte)), h(9) -> Bytes(Vector(9.toByte)))
+    assertEquals(
+      LeiosFetchLogic.mempoolPull(index, misses),
+      (
+        SortedMap(0 -> (h(1), size(10)), 4 -> (h(3), size(30))),
+        Map(h(2) -> Bytes(Vector(2.toByte)))
+      )
+    )
+    assertEquals(LeiosFetchLogic.mempoolPull(Map.empty, misses), (misses, Map.empty))
+  }

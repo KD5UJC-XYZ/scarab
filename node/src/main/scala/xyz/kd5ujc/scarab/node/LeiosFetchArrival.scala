@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import cats.{Applicative, Functor}
 import cats.data.NonEmptyVector
 import cats.effect.Async
 import cats.effect.std.Semaphore
@@ -49,8 +50,13 @@ import xyz.kd5ujc.scarab.storage.{LeiosEb, LeiosStore, LeiosStoreError}
   * free again once it lands. A body's write is two (its point and its body), the transactions' one.
   * The wait is cancelable and takes nothing; once a write has its slot it is the node's.
   *
-  * Not mirrored (#54): no cross-EB fills (the `LeiosTxCache`), no transactions pulled from the
-  * mempool, no egress credit refilled at a claim (`LeiosFreshBytes`), and no arrival telemetry.
+  * A novel body's transactions the node's mempool holds are taken from it (`pullFromMempool`,
+  * [[LeiosMempoolPull]]) and written after the body, as the reference ingests them
+  * (`processLeiosBlockTxs` of `MempoolTxs`, `LeiosDemoLogic.hs` 1151-1161 and 1428-1437); only the
+  * others become jobs to fetch, so a closure the mempool holds whole is acquired with its body.
+  *
+  * Not mirrored (#54): no cross-EB fills (the `LeiosTxCache`), no egress credit refilled at a claim
+  * (`LeiosFreshBytes`), and no arrival telemetry.
   */
 final class LeiosFetchArrival[F[_], P](
     shared: LeiosFetchShared[F, P],
@@ -58,7 +64,8 @@ final class LeiosFetchArrival[F[_], P](
     env: LeiosFetchStaticEnv,
     fatal: LeiosStoreError => F[Unit],
     settle: F[Unit] => F[Unit],
-    slots: Semaphore[F]
+    slots: Semaphore[F],
+    pull: LeiosMempoolPull[F]
 )(using F: Async[F]):
   /** `processLeiosBlock` of a body `peer` sent for `request`. */
   def block(peer: P, request: LeiosFetchRequest.Block, txs: Vector[(LeiosTxHash, Word32)])(using
@@ -90,19 +97,31 @@ final class LeiosFetchArrival[F[_], P](
         .flatMap(LeiosEb.from)
         .fold(e => fault[LeiosEb](LeiosFetchFault.BodyNotStorable(point, e)), F.pure)
       // the novelty check, under the state: a body too old, already held or over its closure's
-      // bound is not written; one over its bound is held with nothing to fetch
-      persist <- shared.outstanding.modify { o =>
+      // bound is not written; one over its bound is held with nothing to fetch. A novel body's
+      // transactions are looked up in the mempool there, as the reference pulls them under its lock
+      // (`LeiosDemoLogic.hs` 1026-1040)
+      persist <- shared.outstanding.evalModify { o =>
         val tooOld = point.slot.toBigInt < o.outstandingPrunedSlot.toBigInt
         val novel = !o.ebState.get(h).exists(_.hasBody)
         val cleaned = LeiosFetchLogic.refundEbRequest(peer, h, request.offeredSize, o)
         if tooOld || !novel || tooBig.isDefined then
-          (tooBig.fold(cleaned)(_ => cleaned.acquireEbBody(h, LeiosJobPool.empty)), false)
-        else (cleaned, true)
+          F.pure(
+            (
+              tooBig.fold(cleaned)(_ => cleaned.acquireEbBody(h, LeiosJobPool.empty)),
+              Option.empty[LeiosFetchArrival.Pulled]
+            )
+          )
+        else
+          pull(LeiosFetchArrival.txSet(eb)).map(p =>
+            (cleaned, Some(LeiosFetchArrival.pulled(eb, p)))
+          )
       }
       _ <- shared.wake
       // the state is cleaned before the write is queued, as the reference's is (`LeiosDemoLogic.hs`
       // 1063-1098): the peer's bytes for the body are released even while the queue is full
-      _ <- submitted(2)(landed => written(acquire(point, eb, sent, landed))).whenA(persist)
+      _ <- persist.traverse_(p =>
+        submitted(p.writes)(landed => written(acquire(point, eb, sent, p, landed)))
+      )
       // the body is accounted for: now the peer answers for what it offered
       _ <- fault(
         LeiosFetchFault.BlockWrongSize(point, word32(request.offeredSize), word32(sent))
@@ -183,7 +202,10 @@ final class LeiosFetchArrival[F[_], P](
         (o, !tooOld && novel)
       }
       _ <- shared.wake
-      _ <- awaited(2)(acquire(point, eb, BytesSize.wrap(eb.encodedSize), _)).whenA(persist)
+      // the forge holds the whole closure, which it writes next: nothing is pulled (`noMempoolPull`)
+      nothing = LeiosFetchArrival.Pulled(LeiosFetchArrival.txSet(eb), SortedMap.empty)
+      _ <- awaited(nothing.writes)(acquire(point, eb, BytesSize.wrap(eb.encodedSize), nothing, _))
+        .whenA(persist)
     yield ()
 
   /** `processLeiosBlockTxs` of the closure the node forged (`ForgedTxs`, `LeiosDemoLogic.hs`
@@ -203,25 +225,34 @@ final class LeiosFetchArrival[F[_], P](
   private def awaited(jobs: Long)(writes: F[Unit] => F[Unit]): F[Unit] =
     F.uncancelable(poll => poll(slots.acquireN(jobs)) *> writes(slots.release))
 
-  /** The body's write and its claim: the point at the size the body was sent at, the body with no
-    * fills, and then the body held with the jobs of the transactions the write still misses.
+  /** The body's writes and its claim, in the order of the reference's single writer: the point at
+    * the size the body was sent at, the body with no fills, the body then held with the jobs of the
+    * transactions neither the mempool nor the write holds (`settle`, `LeiosDemoLogic.hs`
+    * 1099-1139), and last the transactions taken from the mempool, written at their offsets
+    * (`ingestAcquiredTxs` of `MempoolTxs`, 1428-1437, which holds no job to retire). That last
+    * write is the one that completes a closure the mempool held whole, so its completion reaches
+    * the store's subscribers, the voting thread among them, with the body.
     */
-  private def acquire(point: EbPoint, eb: LeiosEb, sent: BytesSize, landed: F[Unit])(using
-      Raise[F, LeiosStoreError]
-  ): F[Unit] =
+  private def acquire(
+      point: EbPoint,
+      eb: LeiosEb,
+      sent: BytesSize,
+      pulled: LeiosFetchArrival.Pulled,
+      landed: F[Unit]
+  )(using Raise[F, LeiosStoreError]): F[Unit] =
     for
       _ <- store.writeEbPoint(point, word32(sent)) *> landed
       body <- store.writeEbBody(point, eb, Vector.empty) <* landed
       filled = body.filled.toSet
-      misses = SortedMap.from(
-        eb.transactions.toVector.zipWithIndex.collect {
-          case ((hash, size), offset) if !filled(offset) =>
-            offset -> (hash, BytesSize.wrap(size.toLong))
-        }
+      pool = LeiosJobPool.of(
+        env.maxJobBytesSize,
+        env.maxJobTxCount,
+        pulled.missed.filterNot((offset, _) => filled(offset))
       )
-      pool = LeiosJobPool.of(env.maxJobBytesSize, env.maxJobTxCount, misses)
       _ <- shared.outstanding.update(_.acquireEbBody(point.hash, pool))
       _ <- shared.wake
+      _ <- (store.writeTxs(point, pulled.ingest.toVector) *> landed *> shared.wake)
+        .whenA(pulled.ingest.nonEmpty)
     yield ()
 
   /** `jobs` writes queued, each on a slot of the writer's queue, waiting while it is full
@@ -247,8 +278,63 @@ final class LeiosFetchArrival[F[_], P](
   private def word32(size: BytesSize): Word32 = Word32.wrap(size.toLong)
 
 object LeiosFetchArrival:
+  /** What the mempool gave a novel body: the transactions still to fetch, by offset, and the bytes
+    * of the others at theirs (`missedBoth` and the ingest of `mbMempoolTxs`, `LeiosDemoLogic.hs`
+    * 1026-1040).
+    */
+  final case class Pulled(
+      missed: SortedMap[Int, (LeiosTxHash, BytesSize)],
+      ingest: SortedMap[Int, Bytes]
+  ):
+    /** The writes it takes on the writer's queue: the point, the body and, if any, the mempool's
+      * transactions.
+      */
+    def writes: Long = if ingest.isEmpty then 2 else 3
+
+  /** The body's transactions by offset (`fullTxSet`, `LeiosDemoLogic.hs` 1028-1029). */
+  def txSet(eb: LeiosEb): SortedMap[Int, (LeiosTxHash, BytesSize)] =
+    SortedMap.from(eb.transactions.toVector.zipWithIndex.map { case ((hash, size), offset) =>
+      offset -> (hash, BytesSize.wrap(size.toLong))
+    })
+
+  /** The pull's result for `eb`: the offsets it found, with their bytes, are ingested; the rest is
+    * missed (`IntMap.mapMaybeWithKey` over `fullTxSet` less `notInMempool`, 1034-1037).
+    */
+  def pulled(
+      eb: LeiosEb,
+      found: (SortedMap[Int, (LeiosTxHash, BytesSize)], Map[LeiosTxHash, Bytes])
+  ): Pulled =
+    val (missed, hits) = found
+    Pulled(
+      missed,
+      txSet(eb).flatMap { case (offset, (hash, _)) =>
+        Option.unless(missed.contains(offset))(hash).flatMap(hits.get).map(offset -> _)
+      }
+    )
+
   /** `writerQueueDepth` (`Impl/SQLite/WriteQueue.hs` 214-231 at ouroboros-consensus 2416493b): a
     * slot for each of 20 upstream peers' fetch clients, the forge and 4 maintenance schedulers, and
     * 2 to spare.
     */
   val WriterQueueDepth: Long = 27
+
+/** `processLeiosBlock` 's pull from the node's mempool (`pullFromMempool`, `LeiosDemoLogic.hs`
+  * 864-870 of ouroboros-consensus 2416493b): of a body's transactions by offset, those still to
+  * fetch from peers and the bytes, by hash, of those the mempool holds.
+  */
+trait LeiosMempoolPull[F[_]]:
+  def apply(
+      misses: SortedMap[Int, (LeiosTxHash, BytesSize)]
+  ): F[(SortedMap[Int, (LeiosTxHash, BytesSize)], Map[LeiosTxHash, Bytes])]
+
+object LeiosMempoolPull:
+  /** `mkMempoolPull` (`LeiosDemoLogic.hs` 1186-1200): the pull from the index `readIndex` reads,
+    * the mempool's `getLeiosTxIndex` (`Ouroboros/Consensus/Network/NodeToNode.hs` 950-952), read
+    * once a pull.
+    */
+  def of[F[_]: Functor](readIndex: F[Map[LeiosTxHash, Bytes]]): LeiosMempoolPull[F] =
+    misses => readIndex.map(LeiosFetchLogic.mempoolPull(_, misses))
+
+  /** `noMempoolPull` (`LeiosDemoLogic.hs` 1174-1178): every miss kept, nothing found. */
+  def none[F[_]: Applicative]: LeiosMempoolPull[F] =
+    misses => Applicative[F].pure((misses, Map.empty))

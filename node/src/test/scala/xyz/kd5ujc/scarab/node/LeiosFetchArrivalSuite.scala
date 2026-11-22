@@ -39,11 +39,13 @@ import xyz.kd5ujc.scarab.protocol.LeiosWord.Word32
 import xyz.kd5ujc.scarab.storage.{
   BodyWritten,
   LeiosEb,
+  LeiosEbNotification,
   LeiosStore,
   LeiosStoreError,
   LeiosStoreLocks,
   LeiosStoreSuite,
   LocalFill,
+  PointWritten,
   RocksLeiosStore
 }
 
@@ -139,7 +141,8 @@ class LeiosFetchArrivalSuite extends FailsOnUncaught:
   private def rig(
       store: LeiosStore[IO],
       initial: LeiosOutstanding[Int],
-      depth: Long = LeiosFetchArrival.WriterQueueDepth
+      depth: Long = LeiosFetchArrival.WriterQueueDepth,
+      pull: LeiosMempoolPull[IO] = LeiosMempoolPull.none[IO]
   ): IO[Rig] =
     for
       shared <- LeiosFetchShared.create[IO, Int](initial)
@@ -156,7 +159,8 @@ class LeiosFetchArrivalSuite extends FailsOnUncaught:
         env,
         e => fatal.complete(e).void,
         settling => settling.guarantee(settled.offer(())).start.void,
-        slots
+        slots,
+        pull
       ),
       shared,
       acquired,
@@ -211,6 +215,82 @@ class LeiosFetchArrivalSuite extends FailsOnUncaught:
           assertEquals(whole.map(_.map(_._2)), Some(txs))
           assertEquals(woken, Some(()))
       }
+  }
+
+  /** The mempool's index of `txs`: each by the hash an endorser block lists it by. */
+  private def mempoolOf(txs: Vector[Bytes]): LeiosMempoolPull[IO] =
+    LeiosMempoolPull.of(IO.pure(txs.map(t => LeiosEb.hashTx(t) -> t).toMap))
+
+  dirs.test("a body whose closure the mempool holds is acquired with it, and nothing is fetched") {
+    dir =>
+      val txs = Vector.tabulate(70)(tx)
+      val eb = body(txs)
+      val (asking, request) = asked(eb, size(eb), closure(eb))
+      val p = request.point
+      stored(dir / "leios").use { rocks =>
+        for
+          log <- Ref.of[IO, Vector[Written]](Vector.empty)
+          r <- rig(new Recording(rocks, log), asking, pull = mempoolOf(txs))
+          result <- r.acquired.notifications.subscribe.use(published =>
+            typed(r.arrival.block(peer, request, eb.transactions.toVector)) <* r.settled.take
+              <* published.take.iterateUntil(_ == LeiosEbNotification.AcquiredEbTxs(p))
+          )
+          after <- r.shared.outstanding.get
+          completed <- r.acquired.next
+          whole <- ok(rocks.lookupEbClosure(p.hash))
+          writes <- log.get
+        yield
+          assertEquals(result, Right(()))
+          // held with nothing to fetch: the next decision asks the peer for no transaction
+          held(after, p) match
+            case Some(EbFetchState.BodyAcquired(pool)) => assert(pool.isEmpty)
+            case other                                 => fail(s"not acquired: $other")
+          assertEquals(closureRequests(after, p)._2, Vector.empty)
+          assertEquals(completed, p)
+          assertEquals(whole.map(_.map(_._2)), Some(txs))
+          // the reference's writer's order: the point, the body, then the mempool's transactions
+          assertEquals(
+            writes,
+            Vector(Written.Point, Written.Body, Written.Txs(txs.indices.toVector))
+          )
+      }
+  }
+
+  dirs.test(
+    "only the transactions the mempool misses become jobs, and are fetched to complete it"
+  ) { dir =>
+    val txs = Vector.tabulate(70)(tx)
+    val eb = body(txs)
+    val (asking, request) = asked(eb, size(eb), closure(eb))
+    val p = request.point
+    val (inPool, missed) = txs.indices.toVector.partition(_ % 3 != 0)
+    stored(dir / "leios").use { rocks =>
+      for
+        log <- Ref.of[IO, Vector[Written]](Vector.empty)
+        r <- rig(new Recording(rocks, log), asking, pull = mempoolOf(inPool.map(txs)))
+        bodyResult <- typed(r.arrival.block(peer, request, eb.transactions.toVector))
+        _ <- r.settled.take
+        afterBody <- r.shared.outstanding.get
+        (deciding, requests) = closureRequests(afterBody, p)
+        _ <- r.shared.outstanding.set(deciding)
+        txsResults <- requests.traverse(req =>
+          typed(r.arrival.blockTxs(peer, req, offsetsOf(req).map(txs))) <* r.settled.take
+        )
+        completed <- r.acquired.next
+        whole <- ok(rocks.lookupEbClosure(p.hash))
+        writes <- log.get
+      yield
+        assertEquals(bodyResult, Right(()))
+        // the jobs cover the misses, and nothing the mempool gave
+        assertEquals(requests.flatMap(offsetsOf).sorted, missed)
+        assertEquals(txsResults, requests.map(_ => Right(())))
+        assertEquals(completed, p)
+        assertEquals(whole.map(_.map(_._2)), Some(txs))
+        assertEquals(
+          writes.take(3),
+          Vector(Written.Point, Written.Body, Written.Txs(inPool))
+        )
+    }
   }
 
   dirs.test("a body that is not the one asked for is refused before anything is accounted") { dir =>
@@ -646,3 +726,27 @@ class LeiosFetchArrivalSuite extends FailsOnUncaught:
     def writeEbBody(point: EbPoint, body: LeiosEb, fills: Vector[LocalFill])(using
         Raise[IO, LeiosStoreError]
     ): IO[BodyWritten] = gate.get *> underlying.writeEbBody(point, body, fills)
+
+  /** A write of [[Recording]]: a point, a body, or transactions at their offsets. */
+  private enum Written derives CanEqual:
+    case Point
+    case Body
+    case Txs(offsets: Vector[Int])
+
+  /** A store that records its writes in the order they land. */
+  private final class Recording(underlying: LeiosStore[IO], log: Ref[IO, Vector[Written]])
+      extends LeiosStore[IO]:
+    export underlying.{lookupEbBody, lookupEbClosure, batchRetrieveTxs}
+    export underlying.{scanEbPoints, scanCompleteEbClosuresNotOlderThanSlot, garbageCollect}
+    export underlying.promoteToImmutable
+    def writeEbPoint(point: EbPoint, announced: Word32)(using
+        Raise[IO, LeiosStoreError]
+    ): IO[PointWritten] =
+      underlying.writeEbPoint(point, announced) <* log.update(_ :+ Written.Point)
+    def writeEbBody(point: EbPoint, body: LeiosEb, fills: Vector[LocalFill])(using
+        Raise[IO, LeiosStoreError]
+    ): IO[BodyWritten] = underlying.writeEbBody(point, body, fills) <* log.update(_ :+ Written.Body)
+    def writeTxs(point: EbPoint, txs: Vector[(Int, Bytes)])(using
+        Raise[IO, LeiosStoreError]
+    ): IO[Vector[EbPoint]] =
+      underlying.writeTxs(point, txs) <* log.update(_ :+ Written.Txs(txs.map(_._1)))

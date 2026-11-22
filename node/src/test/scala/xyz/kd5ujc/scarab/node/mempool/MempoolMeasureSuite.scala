@@ -194,7 +194,7 @@ class MempoolMeasureSuite extends munit.FunSuite with ScalaCheckSuite:
     val size = RefScripts.MaxRefScriptSizePerTx + 1
     val s0 = pool(ledger(1))
     val (raw, _) = spendRefScript
-    val afterHeld = s0.copy(current = Right(withRefScript(ledger(1), size)))
+    val afterHeld = s0.withCurrent(withRefScript(ledger(1), size))
     assert(
       add(afterHeld, raw).left.exists {
         case Rejection.Ledger(
@@ -257,7 +257,7 @@ class MempoolMeasureSuite extends munit.FunSuite with ScalaCheckSuite:
     val roomy = withRefScript(ledger(2), 100000)
     val (spend, _) = spendRefScript
     val base = held(pool(roomy), pay(1)._1)
-    val nearlyFull = base.copy(entries =
+    val nearlyFull = base.holding(
       base.entries.map(_.copy(refScriptBytes = 2 * RefScripts.MaxRefScriptSizePerBlock - 99999))
     )
     assertEquals(
@@ -359,7 +359,7 @@ class MempoolMeasureSuite extends munit.FunSuite with ScalaCheckSuite:
       pool(l)
         .sync(Right(l.withParams(_.copy(maxBlockBodySize = 1024 + 7 * unit))), 1000, env)
         ._1,
-      pool(l).copy(base = Left(xyz.kd5ujc.scarab.node.read.ConwayView.Unavailable.InByron))
+      pool(l).withBase(Left(xyz.kd5ujc.scarab.node.read.ConwayView.Unavailable.InByron))
     )
     states.foreach { s =>
       assertEquals(LocalMonitor.snapshot(s).capacity, s.capacity)

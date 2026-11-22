@@ -203,7 +203,8 @@ class LeiosFetchEndToEndSuite extends FailsOnUncaught:
               _ => IO.pure(None),
               acquired.notifications.subscribe,
               IO.pure(None),
-              LeiosMinOfferLead.Default
+              LeiosMinOfferLead.Default,
+              LeiosMempoolPull.none[IO]
             )
           )
           hiddenBefore = LeiosCertGate.hidden(AcquiredLeiosEbs.empty, forest)

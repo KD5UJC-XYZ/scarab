@@ -401,7 +401,7 @@ class MempoolTimeoutsSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     // with room and time, it is refused as the duplicate it is
     assertEquals(held.add(t1, env, Source.Local), Left(Rejection.AlreadyHeld(id1)))
     // past the capacity of time, it waits before its refusal
-    val slow = held.copy(entries = held.entries.map(_.copy(validation = 6.seconds)))
+    val slow = held.holding(held.entries.map(_.copy(validation = 6.seconds)))
     measured(slow) match
       case Right(m) =>
         assertEquals(
@@ -456,7 +456,7 @@ class MempoolTimeoutsSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       .sync(Right(ledger(2).withParams(_.copy(maxBlockBodySize = 1024 + 50))), 1000, env)
       ._1
     assert(narrow.measure(submitted, eleven).left.exists(_.isInstanceOf[Rejection.Full]))
-    val slow = held.copy(entries = held.entries.map(_.copy(validation = 6.seconds)))
+    val slow = held.holding(held.entries.map(_.copy(validation = 6.seconds)))
     slow.measure(submitted, eleven) match
       case Right(m) =>
         assertEquals(

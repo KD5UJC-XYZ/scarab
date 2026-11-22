@@ -13,7 +13,8 @@ import xyz.kd5ujc.scarab.plutus.{ScriptDecoder, ScriptEvaluator}
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node}
 import xyz.kd5ujc.scarab.node.read.ConwayView
-import xyz.kd5ujc.scarab.protocol.{Era, ReferenceBuild}
+import xyz.kd5ujc.scarab.protocol.{Era, LeiosTxHash, ReferenceBuild}
+import xyz.kd5ujc.scarab.storage.LeiosEb
 import cats.data.NonEmptyChain
 import xyz.kd5ujc.scarab.ledger.era.EraTxError
 import xyz.kd5ujc.scarab.ledger.era.rules.DijkstraMempoolPredFailure
@@ -197,6 +198,22 @@ final case class Entry(
 
   def size: Int = raw.size
 
+  /** The transaction as an endorser block lists it, its hash and its bytes, for a Dijkstra one:
+    * `leiosTxHashOfGenTx` and `leiosTxBytesOfGenTx` (ouroboros-consensus-cardano 2416493b
+    * `Shelley/Ledger/Leios.hs:155-159`), the bytes the forger writes in its endorser block
+    * (`serializeTxForLeios`, [[xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraTx.forBlockInclusion]]) of
+    * the transaction with the flag of its verdict, and their hash ([[LeiosEb.hashTx]]). None for a
+    * transaction of an earlier era, as the combinator's has none (`Cardano/Block.hs:1690-1696`).
+    * Computed when the entry is made, at its admission, as the reference keeps it with the
+    * transaction's ticket (`ValidatedTxWithDiffs`, `Mempool/Impl/Common.hs:493-523`), so a
+    * revalidation that keeps the entry does not hash it again.
+    */
+  val leiosTx: Option[(LeiosTxHash, Bytes)] = held match
+    case Held.InDijkstra(admitted) =>
+      val bytes = admitted.read.flat.forBlockInclusion
+      Some(LeiosEb.hashTx(bytes) -> bytes)
+    case Held.Flat(_, _, _) => None
+
 object Entry:
   /** A held transaction of an era from Shelley to Conway. */
   def apply(
@@ -273,21 +290,35 @@ final case class Submission(era: Int, raw: Bytes)
   * synchronised with, in the era of that slot ([[PoolLedger]]). `tipSlot` is -1 at Origin, making
   * its successor slot zero. Every operation is a pure function; [[Mempool]] serialises them.
   *
+  * The entries, their bytes and their Leios index change together, in one step of
+  * [[MempoolState.appended]], [[MempoolState.cleared]] or [[MempoolState.retaining]]; the
+  * constructor and `copy` are private, so no state has an index that is not its entries' keys.
+  *
+  * @param leiosTxIndex
+  *   The held transactions by the hash an endorser block lists them by, with their bytes as it
+  *   lists them (`isLeiosTxIndex`, ouroboros-consensus 2416493b `Mempool/Impl/Common.hs:138-144`,
+  *   read by `getLeiosTxIndex`, `Mempool/API.hs:241-244`): what the Leios fetch logic pulls an
+  *   endorser block's transactions from when its body arrives. Each entry's key is computed at its
+  *   admission ([[Entry.leiosTx]]), and the index is kept in step with the entries by every
+  *   addition, removal and revalidation, as the reference keeps it with `isTxs`
+  *   (`validateNewTransaction`, `Mempool/Impl/Common.hs:467-523`; `revalidateTxsFor'`, 575-644);
+  *   empty before Dijkstra.
   * @param tipHash
   *   The hash of that chain tip, none at Origin: the reference's `snapshotStateHash`, the
   *   `pointHash` of the tip the pool's state was computed for (consensus 82ecba329
   *   `Mempool/Impl/Common.hs` `snapshotFromTxSeq`), which the forger traces
   *   (`TraceForgingMempoolSnapshot`).
   */
-final case class MempoolState(
+final case class MempoolState private (
     base: Either[ConwayView.Unavailable, PoolLedger],
     tipSlot: BigInt,
     current: Either[ConwayView.Unavailable, PoolLedger],
     entries: Vector[Entry],
     bytes: Long,
+    leiosTxIndex: Map[LeiosTxHash, Bytes],
     nextTicket: Long,
     capacityOverride: Option[Word32],
-    tipHash: Option[Bytes] = None
+    tipHash: Option[Bytes]
 ):
   /** The era of the pool's ledger, which its transactions are of; none while it has no ledger. */
   def era: Option[Era] = base.toOption.map(_.era)
@@ -316,6 +347,43 @@ final case class MempoolState(
     Either.cond(needed.fits(free), (), Rejection.Full(needed, free))
 
   def contains(id: Bytes): Boolean = entries.exists(_.id == id)
+
+  /** `entry` held after the others: the entries, their bytes and the Leios index in one step
+    * (`validateNewTransaction`'s `isTxs` and `isLeiosTxIndex`, `Mempool/Impl/Common.hs:490-501` at
+    * ouroboros-consensus 2416493b).
+    */
+  private def appended(entry: Entry): MempoolState =
+    copy(
+      entries = entries :+ entry,
+      bytes = bytes + entry.size,
+      leiosTxIndex = entry.leiosTx.fold(leiosTxIndex)(leiosTxIndex + _)
+    )
+
+  /** Nothing held: no entry, no bytes and an empty index. */
+  private def cleared: MempoolState =
+    copy(entries = Vector.empty, bytes = 0, leiosTxIndex = Map.empty)
+
+  /** The entries `keep` holds, in order, with their bytes and their keys alone. */
+  private def retaining(keep: Entry => Boolean): MempoolState =
+    entries.filter(keep).foldLeft(cleared)(_.appended(_))
+
+  /** The pool with its ledger after the held transactions read from `ledger`: the same state, with
+    * the inputs it reads completed from the UTxO store.
+    */
+  def withCurrent(ledger: PoolLedger): MempoolState = copy(current = Right(ledger))
+
+  /** The pool with its base ledger `ledger`: the same state, with the inputs it reads completed. */
+  def withBase(ledger: Either[ConwayView.Unavailable, PoolLedger]): MempoolState =
+    copy(base = ledger)
+
+  /** The pool as of the chain tip whose hash is `hash` ([[tipHash]]). */
+  def at(hash: Option[Bytes]): MempoolState = copy(tipHash = hash)
+
+  /** The pool's own fields with `held` in place of its entries, its bytes and its index rebuilt
+    * from them: for tests that set up a pool's entries directly.
+    */
+  private[mempool] def holding(held: Vector[Entry], ticket: Long = nextTicket): MempoolState =
+    held.foldLeft(cleared)(_.appended(_)).copy(nextTicket = ticket)
 
   /** Validate and append a transaction of the pool's own era (original bytes) submitted from
     * `source`: a submission that names that era.
@@ -469,12 +537,7 @@ final case class MempoolState(
   def hold(admitted: MempoolState.Admitted, took: FiniteDuration): (MempoolState, Entry) =
     val entry = Entry(admitted.held, nextTicket, admitted.refScriptBytes, took)
     (
-      copy(
-        current = Right(admitted.next),
-        entries = entries :+ entry,
-        bytes = bytes + entry.size,
-        nextTicket = nextTicket + 1
-      ),
+      appended(entry).copy(current = Right(admitted.next), nextTicket = nextTicket + 1),
       entry
     )
 
@@ -508,24 +571,11 @@ final case class MempoolState(
       case Left(why) =>
         // no ledger to validate against: nothing is held, and everything held is dropped
         (
-          copy(
-            base = Left(why),
-            tipSlot = slot,
-            current = Left(why),
-            entries = Vector.empty,
-            bytes = 0
-          ),
+          cleared.copy(base = Left(why), tipSlot = slot, current = Left(why)),
           entries.map(_ -> Rejection.NoLedger(why))
         )
       case Right(l) =>
-        val start =
-          copy(
-            base = Right(l),
-            tipSlot = slot,
-            current = Right(l),
-            entries = Vector.empty,
-            bytes = 0
-          )
+        val start = cleared.copy(base = Right(l), tipSlot = slot, current = Right(l))
         entries.foldLeft((start, Vector.empty[(Entry, Rejection)])) {
           case ((state, dropped), entry) =>
             MempoolState.judging(
@@ -534,14 +584,7 @@ final case class MempoolState(
                 .flatMap(MempoolState.revalidate(entry, _, l, env, slot))
             ) match
               case Right((next, kept)) =>
-                (
-                  state.copy(
-                    current = Right(next),
-                    entries = state.entries :+ kept,
-                    bytes = state.bytes + kept.size
-                  ),
-                  dropped
-                )
+                (state.appended(kept).copy(current = Right(next)), dropped)
               // a refusal, or no verdict (`Ledger(Unverifiable | Unavailable)`, `RulesDefect`):
               // the transaction leaves the pool with its reason
               case Left(rejection) => (state, dropped :+ (entry -> rejection))
@@ -551,8 +594,7 @@ final case class MempoolState(
     * rest).
     */
   def remove(ids: Set[Bytes], env: MempoolEnv): (MempoolState, Vector[(Entry, Rejection)]) =
-    copy(entries = entries.filterNot(e => ids(e.id)))
-      .sync(base, tipSlot, env)
+    retaining(e => !ids(e.id)).sync(base, tipSlot, env)
 
   /** The longest prefix of the pool, in order, within `maxBytes`. */
   def forBlock(maxBytes: Long): Vector[Entry] =
@@ -606,7 +648,17 @@ object MempoolState:
       capacityOverride: Option[Word32],
       tipHash: Option[Bytes] = None
   ): MempoolState =
-    MempoolState(ledger, tipSlot, ledger, Vector.empty, 0L, 1L, capacityOverride, tipHash)
+    MempoolState(
+      ledger,
+      tipSlot,
+      ledger,
+      Vector.empty,
+      0L,
+      Map.empty,
+      1L,
+      capacityOverride,
+      tipHash
+    )
 
   /** A submission as read before the ledger is consulted: a transaction of a Shelley-based era,
     * decoded in that era ([[InEra]]), or the index of an era whose transactions the pool does not
