@@ -77,7 +77,6 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellStateCodecs, NodeOrders, 
 object ConwayFailureCbor:
   import PredicateFailureCbor.{
     coin as uint,
-    exUnits,
     hash,
     hashSet,
     int,
@@ -91,7 +90,6 @@ object ConwayFailureCbor:
     small,
     txIn,
     txOut,
-    value,
     voter
   }
   import NodeOrders.given
@@ -110,8 +108,11 @@ object ConwayFailureCbor:
     /** `Undecodable` (the node's own), a time past the horizon whose cause is not the clock's
       * `PastHorizon` (a missing era history or clock sample, the node's own), and the unsupported
       * certificate, unsupported purpose and impossible context Alonzo's error holds at 9df9f98c
-      * (`Alonzo/Plutus/TxInfo.hs:222-229`), which f649f975's has not, and which Conway's injection
-      * never puts there ([[xyz.kd5ujc.scarab.ledger.era.Inject.conwayAlonzo]]).
+      * (`Alonzo/Plutus/TxInfo.hs:222-229`), which f649f975's has not. At 9df9f98c those three have
+      * encodings even at version 9, `[8, [8, [9 | 10 | 11, payload]]]` at Conway's context error
+      * (`Babbage/TxInfo.hs:315-316` there); Conway's injection lifts the first two to Conway's own
+      * errors ([[xyz.kd5ujc.scarab.ledger.era.Inject.conwayAlonzo]]), and only Dijkstra's contexts
+      * raise the third, so none is a Conway value.
       */
     case ContextError(error: AlonzoContextError[Conway])
 
@@ -195,8 +196,76 @@ object ConwayFailureCbor:
   private def output(w: W, o: xyz.kd5ujc.scarab.ledger.era.TxOut[Conway]): W =
     txOut(w, stored.toStored(o))
 
+  /** `EncCBOR MaryValue` (`eras/mary/impl/src/Cardano/Ledger/Mary/Value.hs:342-350`, cardano-ledger
+    * f649f975): the coin alone, or `[coin, multi-asset]`; the multi-asset `Map PolicyID (Map
+    * AssetName Integer)` by `encodeMap` (`:155-156`, newtype-derived), each quantity an `Integer`.
+    * Every integer is `encodeInteger` 's, so a consumed or produced sum past 64 bits is a bignum.
+    */
   private def eraValue(w: W, v: xyz.kd5ujc.scarab.ledger.era.Value[Conway]): Unit =
-    value(w, stored.storedValue(v))
+    val flat = stored.storedValue(v)
+    if flat.assets.isEmpty then { w.integer(flat.coin); () }
+    else
+      w.array(2).integer(flat.coin)
+      map(w, flat.assets)(
+        (k, policy) => { k.bytes(policy); () },
+        (k, assets) =>
+          map(k, assets)((k2, name) => { k2.bytes(name); () }, (k2, q) => { k2.integer(q); () })
+          ()
+      )
+      ()
+
+  /** `EncCBOR ExUnits` (`libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/ExUnits.hs:102,
+    * 192-193`, cardano-ledger f649f975): `[memory, steps]`, each a `Natural`, `encodeInteger` 's,
+    * so a summed budget past 64 bits is a bignum.
+    */
+  private def units(w: W, u: xyz.kd5ujc.scarab.plutus.ExUnits): Unit =
+    w.array(2).integer(u.mem).integer(u.steps); ()
+
+  /** The derived `Ord Addr` (`data Addr = Addr Network (Credential Payment) StakeReference |
+    * AddrBootstrap BootstrapAddress`,
+    * `libs/cardano-ledger-core/src/Cardano/Ledger/Address.hs:167-170`, cardano-ledger f649f975),
+    * the order a set of addresses is written in: a Shelley address before a bootstrap one; then the
+    * network (`Testnet` before `Mainnet`, `BaseTypes.hs:878-881`), the payment credential
+    * (`ScriptHashObj` before `KeyHashObj`), and the stake reference (`StakeRefBase` before
+    * `StakeRefPtr` before `StakeRefNull`, `Credential.hs:219-223`, a pointer by its slot,
+    * transaction index and certificate index, `:258-259`). Bootstrap addresses are ordered by their
+    * root, the first field of the derived `Ord Byron.Address`
+    * (`eras/byron/ledger/impl/src/Cardano/Chain/Common/ Address.hs:141-151`, through
+    * `BootstrapAddress` 's newtype `Ord`, `Address.hs:391-395`): the root hashes the type and the
+    * attributes (`makeAddress`, `:255-262`), so two addresses with one root are one address. A root
+    * that did not parse, which Conway's decoder refuses, falls back to the address's bytes.
+    */
+  private val addrOrder: cats.Order[xyz.kd5ujc.scarab.ledger.Address] =
+    import xyz.kd5ujc.scarab.ledger.Address.Kind
+    import xyz.kd5ujc.scarab.ledger.{Credential as FlatCredential, Ptr}
+    val credentials = summon[cats.Order[FlatCredential]]
+    val bytes = summon[cats.Order[Bytes]]
+    // `StakeRefBase` 0, `StakeRefPtr` 1, `StakeRefNull` 2, by constructor
+    def stakeRef(k: Kind.Shelley): (Int, Option[FlatCredential], Option[Ptr]) =
+      (k.stake, k.pointer) match
+        case (Some(c), _)    => (0, Some(c), None)
+        case (None, Some(p)) => (1, None, Some(p))
+        case (None, None)    => (2, None, None)
+    def ptr(a: Ptr, b: Ptr): Int =
+      Ordering[(BigInt, BigInt, BigInt)]
+        .compare((a.slot, a.txIx, a.certIx), (b.slot, b.txIx, b.certIx))
+    cats.Order.from { (a, b) =>
+      (a.kind, b.kind) match
+        case (x: Kind.Shelley, y: Kind.Shelley) =>
+          val (rx, cx, px) = stakeRef(x)
+          val (ry, cy, py) = stakeRef(y)
+          Some(Integer.compare(x.network, y.network))
+            .filter(_ != 0)
+            .orElse(Some(credentials.compare(x.payment, y.payment)).filter(_ != 0))
+            .orElse(Some(Integer.compare(rx, ry)).filter(_ != 0))
+            .orElse((cx, cy).mapN(credentials.compare).filter(_ != 0))
+            .orElse((px, py).mapN(ptr).filter(_ != 0))
+            .getOrElse(0)
+        case (Kind.Shelley(_, _, _, _), Kind.Byron(_)) => -1
+        case (Kind.Byron(_), Kind.Shelley(_, _, _, _)) => 1
+        case (Kind.Byron(x), Kind.Byron(y)) =>
+          Some(bytes.compare(x, y)).filter(_ != 0).getOrElse(bytes.compare(a.raw, b.raw))
+    }
 
   // ---- LEDGER
 
@@ -346,7 +415,7 @@ object ConwayFailureCbor:
       case WrongNetwork(network, addresses) =>
         Right(build { w =>
           w.array(3).uint(7).uint(network.wire)
-          set(w, addresses.toSortedSet.toList.map(_.raw).toSet)((k, a) => { k.bytes(a); () })
+          set(w, addresses.toSortedSet.toList)((k, a) => { k.bytes(a.raw); () })(using addrOrder)
         })
       case WrongNetworkWithdrawal(network, accounts) =>
         Right(build { w =>
@@ -371,7 +440,7 @@ object ConwayFailureCbor:
         })
       case ExUnitsTooBigUTxO(m) =>
         Right(build { w =>
-          w.array(3).uint(14); swapped(w, m)(exUnits(_, _))
+          w.array(3).uint(14); swapped(w, m)(units)
         })
       case CollateralContainsNonADA(v) =>
         Right(build { w =>
@@ -635,7 +704,7 @@ object ConwayFailureCbor:
     * of whatever length it was read with.
     */
   private def metadata(m: PoolMetadata): Option[Bytes] =
-    Cbor.decode(m.bytes).toOption.map(_.value).flatMap {
+    Cbor.decode(m.bytes, Cbor.Limits.Unbounded).toOption.map(_.value).flatMap {
       case CborValue.Arr(Vector(url, _)) =>
         url.value match
           case CborValue.Text(u) => Some(build(_.array(2).text(u).bytes(m.hash)))

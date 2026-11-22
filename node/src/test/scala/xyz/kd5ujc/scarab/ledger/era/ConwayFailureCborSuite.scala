@@ -686,6 +686,104 @@ class ConwayFailureCborSuite extends FunSuite:
     )
   }
 
+  test(
+    "sums past 64 bits: a consumed value's coin and quantities, and a budget's units, are Integers"
+  ) {
+    // `EncCBOR MaryValue` (`Mary/Value.hs:342-350`) and `EncCBOR ExUnits` (`Plutus/ExUnits.hs:192-193`,
+    // cardano-ledger f649f975) write `Integer`s and `Natural`s by `encodeInteger`: 2^64 is the bignum
+    // `c2 49 01 00..00`, where the flat form's writers keep its low 64 bits
+    val big = BigInt(1) << 64
+    val bignum = "c249010000000000000000"
+    val consumed = MultiAssetValue.of(
+      xyz.kd5ujc.scarab.ledger.Value(big, Map(h28(4) -> Map(bytes(1, 1) -> big)))
+    )
+    val produced = MultiAssetValue.of(xyz.kd5ujc.scarab.ledger.Value.coin(1))
+    // [6 era, [[1 UTXOW, [0 UTXO, [6, consumed, produced]]]]]
+    assertEquals(
+      direct(utxo(ConwayUtxoPredFailure.ValueNotConservedUTxO(Mismatch(consumed, produced)))),
+      "818206" + "81" + "8201" + "8200" + "8306" +
+        "82" + bignum + "a1" + "581c" + h28(4).hex + "a1" + "4101" + bignum + "01"
+    )
+    assertEquals(
+      direct(
+        utxo(
+          ConwayUtxoPredFailure.CollateralContainsNonADA(
+            MultiAssetValue.of(
+              xyz.kd5ujc.scarab.ledger.Value(1, Map(h28(4) -> Map(Bytes.empty -> (big * big))))
+            )
+          )
+        )
+      ),
+      "818206" + "81" + "8201" + "8200" + "820f" +
+        "82" + "01" + "a1" + "581c" + h28(4).hex + "a1" + "40" + "c251" + "01" + "00" * 16
+    )
+    // the expected units, then the supplied (`swapMismatch`)
+    assertEquals(
+      direct(
+        utxo(ConwayUtxoPredFailure.ExUnitsTooBigUTxO(Mismatch(ExUnits(big, 1), ExUnits(10, big))))
+      ),
+      "818206" + "81" + "8201" + "8200" + "830e" + "820a" + bignum + "82" + bignum + "01"
+    )
+  }
+
+  test("a set of addresses is written in the reference's order of addresses, not their bytes'") {
+    // the derived `Ord Addr` (`Address.hs:167-170`, cardano-ledger f649f975): Shelley before bootstrap,
+    // then network, payment credential (script before key) and stake reference (base, pointer,
+    // none); in the order of their bytes these would be 01, 11, 41, 60, 61, 71, 82
+    val key = h28(0x22).hex
+    val scriptH = h28(0x33).hex
+    val stake = h28(0x44).hex
+    def addr(h: String) = right(h)(
+      xyz.kd5ujc.scarab.ledger.Address
+        .decode(Bytes.fromHex(h).getOrElse(fail(h)), xyz.kd5ujc.scarab.ledger.Address.Mode.Strict)
+    )
+    val baseKey = "01" + key + stake
+    val baseScript = "11" + scriptH + stake
+    val pointer = "41" + key + "050607"
+    val enterpriseKey = "61" + key
+    val enterpriseScript = "71" + scriptH
+    val testnet = "60" + key
+    val bootstrap =
+      "82d818586c83581cc63ee8ad8c770fec18a2cc14241a5320a49a5d0fbd17737e9cd879a8a202451a" +
+        "001082aa055841000000000000000000000000000000000000000000000000000000000000000000" +
+        "0000000000000000000000000000000000000000000000000000000000000000001a018a81a3"
+    val all =
+      Vector(baseKey, baseScript, pointer, enterpriseKey, enterpriseScript, testnet, bootstrap)
+    val f = utxo(
+      ConwayUtxoPredFailure.WrongNetwork(
+        Network.Mainnet,
+        NonEmptySet.of(addr(all.head), all.tail.map(addr)*)
+      )
+    )
+    def item(h: String) = (h.length / 2) match
+      case n if n < 24  => "%02x".format(0x40 + n) + h
+      case n if n < 256 => "58" + "%02x".format(n) + h
+      case n            => fail(s"$n bytes")
+    val ordered =
+      Vector(testnet, baseScript, enterpriseScript, baseKey, pointer, enterpriseKey, bootstrap)
+    // [6 era, [[1 UTXOW, [0 UTXO, [7, 1, 258([...])]]]]]
+    assertEquals(
+      direct(f),
+      "818206" + "81" + "8201" + "8200" + "830701" + "d90102" + "87" + ordered.map(item).mkString
+    )
+  }
+
+  test("a pool's metadata hash past the default bounds of a CBOR read is written whole") {
+    val long = bytes(7, 1_048_577)
+    val raw =
+      Bytes.fromHex("8269" + "68747470733a2f2f70" + "5a00100001" + long.hex).getOrElse(fail("md"))
+    val registration = Certificate.RegisterPool(pool.copy(metadata = Some(raw)))
+    val c = right("certificate")(ConwayTxCert.fromFlat(registration, StateLayout.Node11_1))
+    val f = utxos(
+      ConwayUtxosPredFailure.CollectErrors(
+        NonEmptyList.one(
+          CollectError.NoRedeemer[Conway](ConwayPlutusPurpose.ConwayCertifying(AsItem(c)))
+        )
+      )
+    )
+    assert(direct(f).endsWith("8269" + "68747470733a2f2f70" + "5a00100001" + long.hex))
+  }
+
   // ---- what the flat form cannot hold without the transaction
 
   test("an action no proposal reads: the flat form's bytes of the same action") {
