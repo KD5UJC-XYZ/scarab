@@ -198,7 +198,7 @@ final class NodeHeaderRules[S](
     Praos2Headers.of(globals.referenceBuild).map { rules => (anchor, tip, header) =>
       anchor.ledger(tip) match
         case Left(error) =>
-          AnnouncementCheck.Refused(
+          AnnouncementCheck.Unreadable(
             HeaderError.Structure(HeaderStructureProblem.LedgerRead(error))
           )
         case Right(Some(InEra.Of(_, ledger))) =>
@@ -216,7 +216,7 @@ final class NodeHeaderRules[S](
             case (Some(cfg), Some(ledger)) =>
               rules.announcementFromByron(config, cfg, ledger, header)
             case _ =>
-              AnnouncementCheck.Refused(
+              AnnouncementCheck.Unreadable(
                 HeaderError.Structure(HeaderStructureProblem.MissingByronLedger)
               )
     }

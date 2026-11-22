@@ -172,8 +172,9 @@ private[node] final class LeiosNotifyHandling[F[_]](
                     F.pure(AnnouncementVerdict.Ignore)
                   case AnnouncementCheck.Checked(Right(Praos2.OcinStaleness.Fresh)) =>
                     F.pure(AnnouncementVerdict.Process(Validated(relay, at, age)))
-                  case AnnouncementCheck.Refused(error) =>
-                    PeerError.InvalidHeader(header.point, error).raise
+                  // our own immutable tip unread: no verdict, and nothing against the peer
+                  case AnnouncementCheck.Unreadable(error) =>
+                    PeerError.LeiosAnnouncementUndecided(header.point, error).raise
                   case AnnouncementCheck.Undecided(defect) =>
                     PeerError.HeaderUndecided(header.point, defect).raise
                   case AnnouncementCheck.Unverifiable(defect) =>

@@ -90,6 +90,9 @@ object FailurePolicy:
     // reference's exception ends the client (`ShutdownPeer`); as for the other defects of our own,
     // nothing is counted against the peer
     case _: PeerError.LeiosVoteUndecided => FailureClass.NotThePeers
+    // The node could not read its own immutable tip to check the peer's announcement: as for a
+    // header left without a verdict by our own state, nothing is counted against the peer
+    case _: PeerError.LeiosAnnouncementUndecided => FailureClass.NotThePeers
     // Consensus 82ecba329 Node/RethrowPolicy.hs maps every ChainSyncClientException,
     // including EmptyBucket, DensityTooLow and HistoricityError, to ShutdownPeer.
     // Network c45735a5 PeerStateActions.hs uses epErrorDelay (10s default), preserving

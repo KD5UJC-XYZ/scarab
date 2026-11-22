@@ -27,16 +27,16 @@ import xyz.kd5ujc.scarab.protocol.LeiosWord.Word32
 private[node] final case class ShelleyValidated(protocol: ProtocolState, leiosBound: LeiosBound)
 
 /** The answer of the out-of-context check of a header relayed as an announcement
-  * ([[Praos2Headers.announcement]]): a verdict, its invalidity or the counter's staleness; a
-  * refusal the ChainSync gate makes on the same grounds, the anchor's ledger unreadable or its
-  * chain-dependent state of another protocol; no verdict for a defect of the node's own; or none
-  * for a crypto provider's failure.
+  * ([[Praos2Headers.announcement]]): a verdict, its invalidity or the counter's staleness; no
+  * verdict because the immutable tip, the node's own state, cannot be read or holds a
+  * chain-dependent state of another protocol (`Unreadable`); no verdict for another defect of the
+  * node's own; or none for a crypto provider's failure.
   */
 enum AnnouncementCheck:
   case Checked(
       verdict: Either[xyz.kd5ujc.scarab.ledger.AnnouncementInvalidity, Praos2.OcinStaleness]
   )
-  case Refused(error: HeaderError)
+  case Unreadable(error: HeaderError)
   case Undecided(defect: HeaderDefect)
   case Unverifiable(defect: ProviderDefect)
 
@@ -391,7 +391,7 @@ private[node] final class Praos2Headers private ():
       prev: ProtocolState,
       header: LeiosHeader
   ): AnnouncementCheck =
-    import AnnouncementCheck.{Checked, Refused, Undecided, Unverifiable}
+    import AnnouncementCheck.{Checked, Undecided, Unreadable, Unverifiable}
     import xyz.kd5ujc.scarab.ledger.AnnouncementInvalidity as Invalidity
     val slot = header.slot
     val epoch = cfg.geometry.epochOf(slot)
@@ -400,7 +400,7 @@ private[node] final class Praos2Headers private ():
       u match
         case Praos2Headers.Unforecast.Horizon   => refused(Invalidity.OutsideHorizon)
         case Praos2Headers.Unforecast.View(f)   => Undecided(HeaderDefect.DijkstraView(f))
-        case Praos2Headers.Unforecast.Unread(p) => Refused(HeaderError.Structure(p))
+        case Praos2Headers.Unforecast.Unread(p) => Unreadable(HeaderError.Structure(p))
         case Praos2Headers.Unforecast.Vocabulary(e) =>
           Undecided(HeaderDefect.Praos2(Praos2Defect.Vocabulary(e)))
     val defect = (d: Praos2Defect) => Undecided(HeaderDefect.Praos2(d))
@@ -432,7 +432,7 @@ private[node] final class Praos2Headers private ():
                 for
                   state <- Praos2Headers
                     .chainDep(Praos2Headers.translated(prev), Era.Dijkstra)
-                    .leftMap(e => Refused(HeaderError.Praos(e)))
+                    .leftMap(e => Unreadable(HeaderError.Praos(e)))
                   at <- Praos2Headers.tipOf(tip).leftMap(e => defect(Praos2Defect.Vocabulary(e)))
                   forSlot <- SlotNo
                     .fromBigInt(slot)

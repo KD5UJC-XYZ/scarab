@@ -340,6 +340,33 @@ class LeiosNotifyClientSuite extends FailsOnUncaught:
     }
   }
 
+  dirs.test("an announcement our own immutable tip cannot check ends the connection, uncharged") {
+    dir =>
+      node(dir).use { (fetch, _) =>
+        val cause = xyz.kd5ujc.scarab.ledger.HeaderError.Structure(
+          xyz.kd5ujc.scarab.ledger.HeaderStructureProblem.MissingByronLedger
+        )
+        for
+          votes <- noCommittee
+          events <- Ref.of[IO, Vector[LeiosNotifyEvent]](Vector.empty)
+          ended <- handling(
+            fetch,
+            view(1.second, AnnouncementCheck.Unreadable(cause)),
+            votes,
+            events
+          )((h, _) => peer(h.handle(announcement("announcing"))))
+          outstanding <- fetch.shared.outstanding.get
+        yield
+          val undecided = PeerError.LeiosAnnouncementUndecided(first.header.point, cause)
+          assertEquals(ended, Left(undecided))
+          assertEquals(
+            FailurePolicy.classify(undecided),
+            xyz.kd5ujc.scarab.network.selection.FailureClass.NotThePeers
+          )
+          assert(!outstanding.elFocus.contains(first.fields.election))
+      }
+  }
+
   dirs.test("a stale counter's announcement is counted from the peer, not processed or relayed") {
     dir =>
       node(dir).use { (fetch, _) =>
