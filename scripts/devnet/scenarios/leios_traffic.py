@@ -46,7 +46,9 @@ against; with `--follow`, the Scala node follows the cluster from its start and 
   node dials as a local root, so their LeiosNotify clients receive its votes, and pool POOL's reference node runs
   without its BLS key, so the follower is that seat's only voter. The judge requires a vote of the follower
   (`leiosVoted`) that a reference node counted (`LeiosVoteAcquired` of its block's hash and seat): none cast is
-  incomplete (CNF-2), none counted fails.
+  incomplete (CNF-2), none counted fails. A certificate is assembled when the tally first reaches the quorum, so
+  it counts the follower's seat only if its vote was among the first; with `--quiet-pool` further pools run without
+  their keys, the quorum needs the follower's seat, and every certificate on the chain must count it.
 
 The judge (`judge`) reads each node's ImmutableDB after the nodes stop, and requires on the chain every node holds:
 an RB that announces an EB, and a certifying RB whose parent is the announcing RB; every node applied that block
@@ -364,14 +366,22 @@ def certified_with(chain, seats):
     return sum(1 for b in chain if b.get("certifies") and set(b.get("signerSeats") or ()) & set(seats))
 
 
-def voting_verdict(cast, acquired, certified=None):
+def voting_verdict(cast, acquired, certificates=0, with_seat=0, needed=False):
     """The verdict on a voting follower: incomplete without a vote of its own (CNF-2), failed when no reference node
-    counted one, else passed. `certified` (the certificates on the chain that count the follower's seat) is reported
-    beside it; a certificate needs only a quorum, which the other seats can reach, so none is no failure."""
+    counted one. A certificate is assembled once the tally first reaches the quorum (`addVote`,
+    ouroboros-consensus 2416493b `LeiosVoteState.hs:198-223`), so the follower's seat is in it only when its vote
+    came before the quorum or was needed for it. With `needed` (quiet pools leave no quorum without the follower's
+    seat), a certificate on the chain that does not count it fails, and no certificate is incomplete; otherwise the
+    certificates are only reported."""
     if not cast:
         return {"verdict": "incomplete", "problems": ["the follower cast no vote"]}
     if not any(acquired.values()):
         return {"verdict": "failed", "problems": [f"no reference node counted any of the follower's {len(cast)} votes"]}
+    if needed and with_seat < certificates:
+        return {"verdict": "failed",
+                "problems": [f"{certificates - with_seat} of {certificates} certificates do not count the follower's seat"]}
+    if needed and certificates == 0:
+        return {"verdict": "incomplete", "problems": ["no certificate on the chain, which needs the follower's seat"]}
     return {"verdict": "passed", "problems": []}
 
 
@@ -473,6 +483,9 @@ def _drive(args, root, started):
     for n in range(1, args.pools + 1):
         in_ref(args.name, bls_keygen_command(n))
     voting = getattr(args, "follow_vote", None)
+    quiet = set(getattr(args, "quiet_pool", None) or ())
+    if quiet and (voting is None or voting in quiet or not quiet <= set(range(1, args.pools + 1))):
+        raise SystemExit("--quiet-pool needs --follow-vote, pools 1..N other than the follower's")
     voter = None
     if voting is not None:
         if not getattr(args, "follow", False) or not 1 <= voting <= args.pools:
@@ -487,7 +500,7 @@ def _drive(args, root, started):
             (keys / f).chmod(0o600)
         voter = (f"127.0.0.1:{VOTER_PORT}", keys)
     ports = start_nodes(args, root,
-                        bls_key=lambda n: None if n == voting else f"{ENV}/pools-keys/pool{n}/bls.skey",
+                        bls_key=lambda n: None if n == voting or n in quiet else f"{ENV}/pools-keys/pool{n}/bls.skey",
                         extra_roots=lambda n: (VOTER_PORT,) if voting is not None else ())
 
     deadline = started + args.timeout
@@ -646,11 +659,13 @@ def _drive(args, root, started):
                 lines = subprocess.run(["docker", "exec", ref(args.name), "cat", f"/work/node{n}.log"],
                                        capture_output=True, text=True, check=True).stdout.splitlines()
                 acquired[n] = acquired_votes(lines, cast)
-            voted = voting_verdict(cast, acquired)
             seats = sorted({v for _, v in cast})
-            follow["voting"] = {"pool": voting, "cast": len(cast), "seats": seats, "acquiredByNode": acquired,
-                                "certificatesWithSeat": certified_with(common, seats),
-                                "certificates": sum(1 for b in common if b.get("certifies")), **voted}
+            certificates = sum(1 for b in common if b.get("certifies"))
+            with_seat = certified_with(common, seats)
+            voted = voting_verdict(cast, acquired, certificates, with_seat, needed=bool(quiet))
+            follow["voting"] = {"pool": voting, "quietPools": sorted(quiet), "cast": len(cast), "seats": seats,
+                                "acquiredByNode": acquired, "certificatesWithSeat": with_seat,
+                                "certificates": certificates, **voted}
             if voted["verdict"] == "failed":
                 judged["problems"] = judged["problems"] + voted["problems"]
                 judged["verdict"] = "failed"

@@ -11,4 +11,5 @@
   null) and `leiosCertified`. A failure of the voting thread stops the node (`fatal` of kind
   `leiosVoting`, exit code 6).
 - `devnet.py leios-traffic --follow --follow-vote POOL`: the follower votes as pool POOL of the
-  cluster, and the judge requires a reference node to count one of its votes.
+  cluster, and the judge requires a reference node to count one of its votes; with `--quiet-pool`
+  the quorum needs the follower's seat, and every certificate on the chain must count it.

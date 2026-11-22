@@ -231,6 +231,9 @@ def main():
                          "reference nodes, which dial it; pool POOL's reference node runs without its BLS key, so "
                          "the follower is that seat's only voter; the judge requires a vote of the follower acquired "
                          "by a reference node")
+    lt.add_argument("--quiet-pool", type=int, action="append", default=[], metavar="POOL",
+                    help="with --follow-vote: pool POOL's reference node also runs without its BLS key (repeatable), "
+                         "so that a quorum needs the follower's seat and every certificate must count it")
     lt.set_defaults(run=leios_traffic)
     sc = sub.add_parser("sample-chain-dep", help="next to up-eras: record the reference's DebugChainDepState answers at chosen tips")
     sc.add_argument("--out", required=True, help="JSON file of the recorded points")

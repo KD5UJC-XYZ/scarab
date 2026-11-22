@@ -229,6 +229,13 @@ class VotingTest(unittest.TestCase):
         self.assertEqual(lt.voting_verdict({("aa", 4)}, {1: 0, 2: 0})["verdict"], "failed")
         self.assertEqual(lt.voting_verdict({("aa", 4)}, {1: 0, 2: 1}), {"verdict": "passed", "problems": []})
 
+    def test_with_quiet_pools_every_certificate_must_count_the_followers_seat(self):
+        cast, acquired = {("aa", 4)}, {1: 1}
+        self.assertEqual(lt.voting_verdict(cast, acquired, 2, 0)["verdict"], "passed")
+        self.assertEqual(lt.voting_verdict(cast, acquired, 2, 1, needed=True)["verdict"], "failed")
+        self.assertEqual(lt.voting_verdict(cast, acquired, 0, 0, needed=True)["verdict"], "incomplete")
+        self.assertEqual(lt.voting_verdict(cast, acquired, 2, 2, needed=True)["verdict"], "passed")
+
     def test_a_certificates_seats_are_its_set_bits_most_significant_first(self):
         self.assertEqual(lt.signer_seats(bytes([0b10100000, 0b00000001])), [0, 2, 15])
         chain = [{"certifies": True, "signerSeats": [0, 1, 2, 3]}, {"certifies": True, "signerSeats": [0, 4]},
