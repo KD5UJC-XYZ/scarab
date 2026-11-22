@@ -1664,23 +1664,32 @@ Conway's rules on the classes follow as the rest of stage 2.
   (`Conway/Rules/Mempool.hs:86`), written from the era failures constructor by constructor at version 9, in the
   hard-fork combinator's wrapper. A purpose with its item, a certificate, an action, a proposal and a context's
   error are written from the era's values, so the bridge's `Left`s (UTXOS's collection errors, a missing redeemer
-  whose purpose no needed script names, an action no proposal reads) have bytes; outputs, values, accounts and
-  credentials by the writers the flat encoder uses. A `Coin` is `encodeInteger`'s, a bignum past 64 bits, where the
-  flat encoder's writer has none. Not wired: `LocalSubmission` sends the flat failures' bytes until the switch.
+  whose purpose no needed script names, an action no proposal reads) have bytes; outputs, accounts and credentials
+  by the writers the flat encoder uses. A `Coin`, a failure's value (`EncCBOR MaryValue`, its coin and quantities
+  `Integer`s) and its units (`Natural`s) are `encodeInteger`'s, a bignum past 64 bits, where the flat encoder's
+  writers fail or keep the low 64 bits; a set of addresses is in the reference's order of addresses (the derived
+  `Ord Addr`), not their bytes'. Not wired: `LocalSubmission` sends the flat failures' bytes until the switch.
   - Evidence: beside each comparison of the era rules' refusals with the reference's bytes through the flat form
     (`ConwayLedgerChecksSuite`'s LEDGER cases, `RedeemerIndexReferenceSuite`, `ContextRefusalReasonSuite`,
     `PastHorizonReferenceSuite`, the upstream LEDGER and LEDGERS judgments), the era failures written by the
-    encoder give the same bytes; on every refused case of the Conway refusal corpus, at each version, build,
-    policy and depth, the bytes of the flat form's encoder; `ConwayFailureCborSuite` holds every constructor of the
+    encoder give the same bytes; on every refusal of the Conway refusal corpus, at each version, build, policy and
+    depth, none left out, the bytes of the flat form's encoder; `ConwayFailureCborSuite` holds every constructor of the
     LEDGER tree to the flat form's bytes (mixed credentials and networks, collections past 23 items, signed
     integers), the failures the bridge cannot project to the flat form's bytes of the same values, the recorded
     reasons of `PredicateFailureCborSuite` and the certificates of the reference's collection oracle to the
-    reference's bytes, and 20,000 collection errors on a small stack.
+    reference's bytes, sums past 64 bits, a set of every kind of address and a pool's metadata hash past a CBOR
+    read's default bounds to the bytes derived from the reference's instances, and 20,000 collection errors on a
+    small stack.
   - What the reference has no constructor for has no bytes (`NoReferenceEncoding`), where the flat encoder sends
     the flat failure's text as `ConwayMempoolFailure`: an `Undecodable` context, a time past the horizon whose cause
-    is not the clock's `PastHorizon`, the Alonzo errors only 9df9f98c has, and a pool registration whose relays or
-    metadata do not read as the reference's; a decision of the switch
-    (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7078449515).
+    is not the clock's `PastHorizon`, Alonzo's unsupported certificate, unsupported purpose and impossible context,
+    and a pool registration whose relays or metadata do not read as the reference's; a decision of the switch
+    (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7078449515). Alonzo's three are 9df9f98c's alone,
+    where they have encodings even at version 9 (`[8, [8, [9 | 10 | 11, payload]]]` at Conway's context error,
+    `Babbage/TxInfo.hs:315-316` there); Conway's injection lifts the first two to Conway's own errors and only
+    Dijkstra's contexts raise the third, so none is a Conway value. The encoder writes Conway's CERTS tag 0
+    (`WithdrawalsNotInRewardsCERTS`), which the 11.2 and Leios builds' CERTS no longer has; their other Conway
+    instances write the same bytes as f649f975's.
 - **Conway's certificate rules** (`ledger/.../era/rules/Certs.scala`, `era/rules/CertsFailures.scala`): CERTS,
   CERT, DELEG, GOVCERT and Shelley's POOL, each the reference's transition under its name, generic in its era
   over the state classes `EraAccounts`, `ConwayEraAccounts`, `EraCertState` and `ConwayEraCertState` (Conway's
