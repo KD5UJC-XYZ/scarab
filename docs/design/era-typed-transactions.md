@@ -1445,11 +1445,14 @@ Conway's rules on the classes follow as the rest of stage 2.
     `rules.Tick.sts` of a Dijkstra state is `DijkstraTick.onRecord`, so the block's tick (`EraBlock.ticked`, through
     `Hfc.tick`, which D8(c)'s Dijkstra blocks reach too), the mempool's (`PoolLedger.ticked`, through `Hfc.tick`), the
     forger's (`Forger.tickedTo`, through `Hfc.tick`) take it; `MempoolLedger.tick` ticks Conway only. The forger
-    ticks a Dijkstra block's ledger once, from its parent's state to its slot (`Forger.blockBase`), as block
+    ticks a Dijkstra block's ledger once, from its parent's state to its slot (`Forger.crossed`), as block
     application ticks it, so its snapshot provider is given the state the block is validated against; it ticked
     to the epoch's first slot and then to the slot before, which past the new epoch's slot of no return
-    solidifies the future parameters the boundary made (#1291's; a Conway block's ledger, read only for the
-    mempool's transactions, is still ticked so). The
+    solidifies the future parameters the boundary made (#1291's). A Conway block's ledger, which the mempool's
+    transactions are selected on, is now ticked once too (a follow-up of #85): the two ticks gave
+    another future-parameter state wherever the slot of no return falls in the forecast range after a boundary,
+    on the devnets whose epoch is shorter than three stability windows (the `pool` scenario's, 500 slots at
+    k = 5, f = 0.05), and agree on preprod's, mainnet's and preview's geometry (`ConwayForgeTickSuite`). The
     node-to-client code calls no tick: a submission reaches one through the mempool's ledger (`PoolLedger.at`). The
     flat `DijkstraEpoch` is removed, and the flat EPOCH and NEWEPOCH of a Dijkstra state run the era's rules too
     (`DijkstraEpoch.onRecord`, `DijkstraNewEpoch.onRecord`). Conway's tick and the eras before it are unchanged, and

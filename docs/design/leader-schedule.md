@@ -28,14 +28,14 @@ back the node stops. It hosts the #1032 assertion that a wake 1 µs to 1 ms befo
 new slot while forging is enabled, `stepInScope` runs `attempt`:
 
 - it traces `startLeadershipCheck`;
-- it picks the block to build on (`blockContext`), checks the forecast range (`forecast`), and carries the tip's state
-  into the slot's epoch (`crossedTo`, cached per tip and epoch): the pool distribution from
+- it picks the block to build on (`blockContext`), checks the forecast range (`forecast`), and reads the ledger view
+  of the slot's epoch from the tip's state (`crossedTo`, cached per tip and epoch): the pool distribution from
   `MirrorEraRead.leaderPools` and the epoch nonce from `Praos.tick`;
 - it updates the KES key to the slot's period (`HotKeys.update`: evolve and write back, or poison past the
   certificate's window) and traces `stateInfo`;
 - it runs the leader check, `Leadership.check`: since #1098 the VRF output alone (`Draft03Prover`'s `output`), and a
   proof only for a won slot;
-- for a led slot it ticks the ledger, selects from the mempool, builds and signs the block, and adopts it through
+- for a led slot it ticks the tip's ledger once to the slot, as block application does, selects from the mempool, builds and signs the block, and adopts it through
   `Follower.adoptForged`.
 
 Each step is traced as the reference traces it (`ForgeTrace`). `ForgeStats` folds the traces into the per-epoch
