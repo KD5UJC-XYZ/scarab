@@ -204,7 +204,9 @@ object LeiosFetchLogic:
 
   /** `assignClosure` (`LeiosDemoLogic.hs` 589-644): give the peer the least-requested jobs it does
     * not have in flight until its budget is spent or none is left, and whether none is left. The
-    * requests name the pool the jobs were picked from.
+    * requests name the pool the jobs were picked from, and only the peer's jobs in flight from that
+    * pool are excluded: what it owes a pool since replaced does not hide the new pool's jobs of the
+    * same numbers (an Improvement, [[LeiosJobPoolId]]).
     */
   private def assignClosure[P](
       env: LeiosFetchStaticEnv,
@@ -216,9 +218,10 @@ object LeiosFetchLogic:
   ): (LeiosOutstanding[P], Vector[LeiosFetchRequest], Boolean) =
     acc.ebState.get(h) match
       case Some(EbState(slot, onset, EbFetchState.BodyAcquired(pool, id))) =>
+        val key = LeiosJobPoolOf(h, id)
         val inflight = acc.requestedJobsPerPeer
           .get(peer)
-          .flatMap(_.get(h))
+          .flatMap(_.get(key))
           .fold(SortedSet.empty[Int])(_.toSortedSet)
         val (picked, pool2, prng2, exhausted) =
           pickJobs(acc.prng, inflight, pool, peerBudget(env, isBig, acc, peer))
@@ -227,13 +230,13 @@ object LeiosFetchLogic:
           case Some(nePicked) =>
             val ids = NonEmptySet.of(nePicked.head._1.toInt, nePicked.tail.map(_._1.toInt)*)
             val perPeer =
-              acc.requestedJobsPerPeer.getOrElse(peer, Map.empty[EbHash, NonEmptySet[Int]])
+              acc.requestedJobsPerPeer.getOrElse(peer, Map.empty[LeiosJobPoolOf, NonEmptySet[Int]])
             val next = acc.copy(
               ebState =
                 acc.ebState.updated(h, EbState(slot, onset, EbFetchState.BodyAcquired(pool2, id))),
               requestedJobsPerPeer = acc.requestedJobsPerPeer.updated(
                 peer,
-                perPeer.updated(h, perPeer.get(h).fold(ids)(_ | ids))
+                perPeer.updated(key, perPeer.get(key).fold(ids)(_ | ids))
               ),
               requestedBytesSizePerPeer = acc.requestedBytesSizePerPeer.updated(
                 peer,
@@ -338,21 +341,26 @@ object LeiosFetchLogic:
     }
 
   /** `removePeerFromOutstanding` (`LeiosDemoLogic.hs` 1209-1243): the peer is gone: its budget, its
-    * body requests and its jobs in flight are released, so others may be asked for them.
+    * body requests and its jobs in flight are released, so others may be asked for them. Its jobs
+    * in flight are released in the pool they were picked from only: a pool since replaced has no
+    * request of the peer's for its jobs of the same numbers (an Improvement, [[LeiosJobPoolId]]).
     */
   def removePeer[P](peer: P, o: LeiosOutstanding[P]): LeiosOutstanding[P] =
-    val held = o.requestedJobsPerPeer.getOrElse(peer, Map.empty[EbHash, NonEmptySet[Int]])
+    val held = o.requestedJobsPerPeer.getOrElse(peer, Map.empty[LeiosJobPoolOf, NonEmptySet[Int]])
     o.copy(
       requestedBytesSizePerPeer = o.requestedBytesSizePerPeer - peer,
       requestedEbPeers = o.requestedEbPeers.flatMap((h, peers) =>
         NonEmptySet.fromSet(peers.toSortedSet - peer).map(h -> _)
       ),
       requestedJobsPerPeer = o.requestedJobsPerPeer - peer,
-      ebState = held.foldLeft(o.ebState) { case (states, (h, ids)) =>
+      ebState = held.foldLeft(o.ebState) { case (states, (LeiosJobPoolOf(h, pool), ids)) =>
         states
           .get(h)
           .fold(states)(st =>
-            states.updated(h, onPool(st)(p => ids.foldLeft(p)((q, i) => q.unpick(LeiosJobId(i)))))
+            states.updated(
+              h,
+              onPoolOf(pool, st)(p => ids.foldLeft(p)((q, i) => q.unpick(LeiosJobId(i))))
+            )
           )
       }
     )
@@ -387,9 +395,9 @@ object LeiosFetchLogic:
 
   /** `completeTxRequest` (`LeiosDemoLogic.hs` 1293-1333): the request's jobs are fetched, gone from
     * the pool for every peer and from the peer's jobs in flight. Only the pool that issued the
-    * request loses them: one installed since, after a prune, numbers other jobs with the same ids,
-    * and keeps them; the peer's jobs in flight are released all the same (an Improvement,
-    * [[LeiosJobPoolId]]).
+    * request loses them, and only the peer's jobs in flight from that pool are released: one
+    * installed since, after a prune, numbers other jobs with the same ids, and keeps them and the
+    * peer's requests for them (an Improvement, [[LeiosJobPoolId]]).
     */
   def completeTxRequest[P](
       peer: P,
@@ -398,6 +406,7 @@ object LeiosFetchLogic:
   ): LeiosOutstanding[P] =
     val ids = request.jobs.keys
     val h = request.point.hash
+    val key = LeiosJobPoolOf(h, request.pool)
     o.copy(
       ebState = o.ebState.get(h).fold(o.ebState) { st =>
         o.ebState.updated(
@@ -407,10 +416,10 @@ object LeiosFetchLogic:
       },
       requestedJobsPerPeer =
         o.requestedJobsPerPeer.get(peer).fold(o.requestedJobsPerPeer) { perPeer =>
-          val inner = perPeer.get(h).fold(perPeer) { held =>
+          val inner = perPeer.get(key).fold(perPeer) { held =>
             NonEmptySet
               .fromSet(held.toSortedSet -- ids.toSortedSet)
-              .fold(perPeer - h)(perPeer.updated(h, _))
+              .fold(perPeer - key)(perPeer.updated(key, _))
           }
           if inner.isEmpty then o.requestedJobsPerPeer - peer
           else o.requestedJobsPerPeer.updated(peer, inner)

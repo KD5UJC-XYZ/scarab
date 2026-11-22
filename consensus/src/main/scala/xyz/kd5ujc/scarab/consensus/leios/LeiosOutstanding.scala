@@ -40,7 +40,10 @@ object FocusedEbs:
   *   - `outstandingPrunedSlot`: the slot everything has been pruned up to;
   *   - `numMissingBodies`: how many tracked endorser blocks have no body and are not being forged;
   *   - `requestedEbPeers`, `requestedBytesSizePerPeer` and `requestedJobsPerPeer`: what is in
-  *     flight, per endorser block and per peer, the only bound on what a peer is asked for;
+  *     flight, per endorser block and per peer, the only bound on what a peer is asked for; a
+  *     peer's jobs in flight are keyed by the pool they were picked from as well as the endorser
+  *     block ([[LeiosJobPoolOf]], part of the Improvement of [[LeiosJobPoolId]]), its bytes are one
+  *     sum, as the reference's;
   *   - `prng`: the decision loop's generator, which shuffles the job a peer is given;
   *   - `nextJobPool`: the id the next pool of jobs installed takes, which no prune resets, so a
   *     request in flight across a prune never names a pool installed after it ([[LeiosJobPoolId]],
@@ -55,7 +58,7 @@ final case class LeiosOutstanding[P] private[leios] (
     numMissingBodies: Int,
     requestedEbPeers: Map[EbHash, NonEmptySet[P]],
     requestedBytesSizePerPeer: SortedMap[P, BytesSize],
-    requestedJobsPerPeer: SortedMap[P, Map[EbHash, NonEmptySet[Int]]],
+    requestedJobsPerPeer: SortedMap[P, Map[LeiosJobPoolOf, NonEmptySet[Int]]],
     prng: StdGen,
     nextJobPool: LeiosJobPoolId
 ):

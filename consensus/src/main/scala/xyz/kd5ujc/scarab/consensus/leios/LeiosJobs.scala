@@ -5,7 +5,7 @@ import cats.data.NonEmptySet
 import scala.collection.immutable.{SortedMap, SortedSet}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.Blake2b
-import xyz.kd5ujc.scarab.protocol.LeiosTxHash
+import xyz.kd5ujc.scarab.protocol.{EbHash, LeiosTxHash}
 
 /** A job's commitment to the transactions it covers: the Blake2b-256 of their hashes concatenated
   * in ascending offset order (`JobRootHash`, `jobRootHashOfTxHashes`, `LeiosDemoTypes/LeiosJobs.hs`
@@ -53,6 +53,14 @@ object LeiosJobPoolId:
   extension (id: LeiosJobPoolId) private[leios] def next: LeiosJobPoolId = id + 1
 
   given CanEqual[LeiosJobPoolId, LeiosJobPoolId] = CanEqual.derived
+
+/** One pool of one endorser block's jobs: what a peer's jobs in flight are keyed by
+  * ([[LeiosOutstanding.requestedJobsPerPeer]]), so the ids a peer owes one pool are never taken for
+  * another's jobs of the same numbers. The reference keys them by the endorser block alone
+  * (`requestedJobsPerPeer`, `LeiosDemoTypes.hs` 585 at 2416493b); an Improvement with
+  * [[LeiosJobPoolId]].
+  */
+final case class LeiosJobPoolOf(eb: EbHash, pool: LeiosJobPoolId) derives CanEqual
 
 /** A unit of transaction-fetch work: the body offsets one `MsgLeiosBlockTxsRequest` fetches, the
   * size on the wire of those transactions and the commitment the answer is checked against

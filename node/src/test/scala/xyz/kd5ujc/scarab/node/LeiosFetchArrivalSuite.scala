@@ -9,12 +9,14 @@ import cats.mtl.Raise
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
 import fs2.io.file.{Files, Path}
+import scala.collection.immutable.SortedMap
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.leios.{
   AnnouncementFields,
   BytesSize,
   EbFetchState,
   ElId,
+  IsBigLedgerPeer,
   LeiosFetchLogic,
   LeiosFetchRequest,
   LeiosFetchStaticEnv,
@@ -23,6 +25,7 @@ import xyz.kd5ujc.scarab.consensus.leios.{
   StdGen,
   WhetherTxsClosureOffered
 }
+import xyz.kd5ujc.scarab.consensus.leios.LeiosOrders.given
 import xyz.kd5ujc.scarab.network.{
   FailsOnUncaught,
   Fibers,
@@ -35,7 +38,7 @@ import xyz.kd5ujc.scarab.network.{
   Protocols
 }
 import xyz.kd5ujc.scarab.protocol.{EbPoint, LeiosFetch, LeiosFetchFault, LeiosTxHash, TxBitmaps}
-import xyz.kd5ujc.scarab.protocol.LeiosWord.Word32
+import xyz.kd5ujc.scarab.protocol.LeiosWord.{Word32, Word64}
 import xyz.kd5ujc.scarab.storage.{
   BodyWritten,
   LeiosEb,
@@ -592,6 +595,68 @@ class LeiosFetchArrivalSuite extends FailsOnUncaught:
             assertEquals(whole.map(_.map(_._2)), Some(txs))
         )
       }
+  }
+
+  /** The requests the kernel queued for `vars`, taken. */
+  private def queued(vars: LeiosPeerVars[IO]): IO[Vector[LeiosFetchRequest]] =
+    Vector
+      .empty[LeiosFetchRequest]
+      .tailRecM(taken =>
+        vars.requestsToSend.tryTake.map {
+          case Some(LeiosRequestsToSend.Taken.Request(r))  => Left(taken :+ r)
+          case Some(LeiosRequestsToSend.Taken.Stop) | None => Right(taken)
+        }
+      )
+
+  dirs.test(
+    "a peer that owes a replaced pool's jobs is asked at once for the new pool's same-numbered job"
+  ) { dir =>
+    // the peer still owes the old pool's jobs 0 and 1 and is the only one to offer the closure
+    // again; the new pool's job 0 is another job, and the kernel's decision asks the peer for it
+    // before the late reply comes, so no new offer is needed once the decision drops this one
+    val txs = Vector.tabulate(4)(tx)
+    val eb = body(txs)
+    val (asking, request) = asked(eb, size(eb), closure(eb))
+    stored(dir / "leios").use { rocks =>
+      TestControl.executeEmbed(
+        for
+          index <- Ref.of[IO, Map[LeiosTxHash, Bytes]](Map.empty)
+          r <- rig(rocks, asking, pull = LeiosMempoolPull.of(index.get), limits = pairs)
+          stale <- acquired(r, eb, request)
+          again <- reacquired(r, eb, index.set(indexOf(txs.take(2))))
+          vars <- LeiosPeerVars.create[IO](IsBigLedgerPeer.NotBigLedgerPeer)
+          _ <- vars.offerings.set(
+            SortedMap(again.point -> PeerOffer(None, None, WhetherTxsClosureOffered.Offered))
+          )
+          _ <- r.shared.peers.update(_.updated(peer, vars))
+          _ <- LeiosFetchKernel.step(
+            r.shared,
+            pairs,
+            IO.pure(Some(again.point.slot)),
+            IO.pure((_: Word64) => Left(()))
+          )
+          fresh <- queued(vars).map(_.collect { case t: LeiosFetchRequest.BlockTxs => t })
+          offersLeft <- vars.offerings.get
+          late <- stale.traverse(req =>
+            typed(r.arrival.blockTxs(peer, req, offsetsOf(req).map(txs))) <* r.settled.take
+          )
+          fetched <- fresh.traverse(req =>
+            typed(r.arrival.blockTxs(peer, req, offsetsOf(req).map(txs))) <* r.settled.take
+          )
+          after <- r.shared.outstanding.get
+          whole <- ok(rocks.lookupEbClosure(again.point.hash))
+        yield
+          assertEquals(fresh.flatMap(offsetsOf), Vector(2, 3), "the new pool's job is asked for")
+          assertEquals(offersLeft, SortedMap.empty[EbPoint, PeerOffer], "its offer is spent")
+          assertEquals(late, stale.map(_ => Right(())))
+          assertEquals(fetched, fresh.map(_ => Right(())))
+          this.held(after, again.point) match
+            case Some(EbFetchState.BodyAcquired(pool, _)) => assert(pool.isEmpty, "jobs retired")
+            case other                                    => fail(s"not acquired: $other")
+          assert(after.requestedJobsPerPeer.isEmpty, "nothing is in flight")
+          assertEquals(whole.map(_.map(_._2)), Some(txs), "the closure completes")
+      )
+    }
   }
 
   dirs.test("a reply whose write lands after its pool is replaced retires none of the new jobs") {

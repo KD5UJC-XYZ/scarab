@@ -1773,8 +1773,8 @@
     "LeiosFetchArrivalSuite",
     "LeiosFetchLogicSuite"
    ],
-   "note": "over the peers' identifiers; the reference's PeerId newtype is the identifier itself; and nextJobPool, the id the next pool installed takes, which no prune resets; an Improvement approved on 2026-11-22: a reply after its endorser block was pruned and acquired again with another pool no longer matches that pool's jobs by number",
-   "digest": "1777170cd7707e99",
+   "note": "over the peers' identifiers; the reference's PeerId newtype is the identifier itself; requestedJobsPerPeer keyed by the endorser block and the pool (LeiosJobPoolOf) where the reference keys it by the endorser block alone; and nextJobPool, the id the next pool installed takes, which no prune resets; an Improvement approved on 2026-11-22: a reply after its endorser block was pruned and acquired again with another pool no longer matches that pool's jobs by number",
+   "digest": "bcb63ef1713cc7bb",
    "record": "https://github.com/KD5UJC-XYZ/scarab/issues/54#issuecomment-7076220269"
   },
   "def consensus.leios.LeiosOutstanding#isFocused": {
@@ -2242,12 +2242,14 @@
      ]
     }
    ],
-   "class": "Mirror",
-   "structure": "same",
+   "class": "Improvement",
+   "structure": "differs",
    "evidence": [
     "LeiosFetchLogicSuite"
    ],
-   "digest": "c5b3b75b64cacf5e"
+   "digest": "f4b1e09edad11a86",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/54#issuecomment-7076220269",
+   "note": "the peer's jobs in flight are unpicked in the held pool only where it is the pool they were picked from; an Improvement approved on 2026-11-22: a reply after its endorser block was pruned and acquired again with another pool no longer matches that pool's jobs by number"
   },
   "def consensus.leios.LeiosFetchLogic.refundEbRequest": {
    "upstream": [
@@ -2318,9 +2320,9 @@
     "LeiosFetchArrivalSuite",
     "LeiosFetchLogicSuite"
    ],
-   "digest": "01d9be9d0e7c2880",
+   "digest": "8578cf5c584d9d81",
    "record": "https://github.com/KD5UJC-XYZ/scarab/issues/54#issuecomment-7076220269",
-   "note": "the jobs are completed in the held pool only where it is the pool the request names, and the peer's jobs in flight dropped either way, as the reference drops them; an Improvement approved on 2026-11-22: a reply after its endorser block was pruned and acquired again with another pool no longer matches that pool's jobs by number"
+   "note": "the jobs are completed in the held pool only where it is the pool the request names, and only the peer's jobs in flight from that pool are dropped; an Improvement approved on 2026-11-22: a reply after its endorser block was pruned and acquired again with another pool no longer matches that pool's jobs by number"
   },
   "def consensus.leios.LeiosFetchLogic.pendingJobs": {
    "upstream": [
@@ -3642,12 +3644,13 @@
    ]
   },
   {
-   "reason": "the id of a pool of an endorser block's jobs, the Improvement approved on 2026-11-22 (https://github.com/KD5UJC-XYZ/scarab/issues/54#issuecomment-7076220269): the reference's transactions request names its jobs by number alone, so this type, its first id and its equality have no counterpart (#54)",
+   "reason": "the id of a pool of an endorser block's jobs and the key of a peer's jobs in flight by endorser block and pool, the Improvement approved on 2026-11-22 (https://github.com/KD5UJC-XYZ/scarab/issues/54#issuecomment-7076220269): the reference's transactions request names its jobs by number alone and keys a peer's jobs in flight by the endorser block alone, so these types, the first id and the equality have no counterpart (#54)",
    "definitions": [
     "type consensus.leios.LeiosJobPoolId",
     "object consensus.leios.LeiosJobPoolId",
     "val consensus.leios.LeiosJobPoolId.first",
-    "given consensus.leios.LeiosJobPoolId.given_CanEqual_LeiosJobPoolId_LeiosJobPoolId"
+    "given consensus.leios.LeiosJobPoolId.given_CanEqual_LeiosJobPoolId_LeiosJobPoolId",
+    "class consensus.leios.LeiosJobPoolOf"
    ]
   },
   {
