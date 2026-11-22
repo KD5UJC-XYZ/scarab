@@ -74,7 +74,7 @@ sessions end, and each asks for the work it does.
 | Crypto guards | `.github/workflows/security.yml`: semgrep with `.semgrep/scarab-crypto.yaml`, and `scripts/check_crypto_guard.py` | semgrep: every Scala and Java source but `tools`, `target` and `fixtures`; the containment guard: every Scala and Java source but `target`, `.git`, `.cache` and `fixtures`, so that it sees a reference that escapes its package | [CRY-1](#cry-1) |
 | Secret scan | gitleaks with `.gitleaks.toml`, in CI and `scripts/preflight` | full history | committed secrets ([FMT-3](#fmt-3)) |
 | SPDX step | `.github/workflows/ci.yml`, "SPDX header on every script and workflow" | `.py`, `.yml` and `sbtw` under `scripts/` and `.github/workflows/` | a file without the header ([CMT-4](#cmt-4)) |
-| PR policy | `scripts/pr_policy.py`, on every pull request event | pull request title, body and changed paths | a missing level, a level below its floor, or a missing or malformed "Deviations from the reference" or "Gaps" section ([REF-7](#ref-7)); a storage format change whose title, paths or "Storage format change" section do not follow [FMT-1](#fmt-1) |
+| PR policy | `scripts/pr_policy.py`, on every pull request event | pull request title, body and changed paths; when the storage format guard changes, its `ONE_OFF_PATHS` as the pull request leaves it and the states of the pull requests it names | a missing level, a level below its floor, or a missing or malformed "Deviations from the reference" or "Gaps" section ([REF-7](#ref-7)); a storage format change whose title, paths or "Storage format change" section do not follow [FMT-1](#fmt-1); a change of the guard whose one-off exceptions name a merged pull request ([FMT-1](#fmt-1)) |
 | Storage format guard | `scripts/check_storage_format.py`, a guard like the others, against `docs/data/storage-format.json` | the persisted-format surface its docstring lists | any change to that surface ([FMT-1](#fmt-1)) |
 | Shard report check | `scripts/ci_test_shards.py verify`, in CI's "Scala tests and native guards", against `scripts/ci_test_skips.json` | the JUnit report of every suite of `check` | a suite without exactly one report from its shard; a report whose counts are not those of its test cases, or that holds a test case of another suite or one name twice; a failed or errored test case; a suite that reported no test case; a skipped test the allowlist does not list; and an allowlist entry whose test did not skip or whose suite the plan does not hold ([CNF-2](#cnf-2)). A suite whose every test case is a listed skip passes |
 
@@ -936,7 +936,10 @@ it says that it wants to change the format, and asks.
 An approved change is a pull request of its own, never mixed with other work:
 - its title is conventional, with the `storage` scope and the breaking-change marker, and its description names the
   storage format change (`fix(storage)!: storage format V10 drops the bootstrap sidecar fields`);
-- it touches only the paths of `FORMAT_CHANGE_PATHS` in `scripts/check_storage_format.py`;
+- it touches only the paths of `FORMAT_CHANGE_PATHS` in `scripts/check_storage_format.py`, beside a one-off
+  exception the owner approved for that pull request only (`ONE_OFF_PATHS`). The policy check runs the guard as
+  `main` holds it, so the exception lands first, as a storage format change of its own, and a follow-up pull request
+  removes its entry once its pull request merges;
 - its body has a "Storage format change" section with the question as it was asked, when it was asked (UTC), the
   owner's decision in neutral words (never the owner's exact answer) and when it was given (UTC);
 - the same four, with the digest of the surface they admit, are the `approval` entry of
@@ -960,7 +963,9 @@ them while the freeze holds. An approved change is level 3, and a new version fo
   a surface without the V8 reader or a migration path from V8, and checks the form of the approval entry only. It
   does not see a persisted byte that none of these pins, such as a file name written inline in a store's opening
   code: there a change is review only. `scripts/pr_policy.py` refuses a pull request that changes the manifest, the
-  guard or its tests unless its title, its paths, its level and its "Storage format change" section are as above.
+  guard or its tests unless its title, its paths, its level and its "Storage format change" section are as above,
+  and one that changes the guard while its `ONE_OFF_PATHS` names a pull request that merged; a pull request
+  that leaves the guard alone is not checked for that, so a stale entry blocks no other work.
   That the owner gave the answer in the chat session doing the work is review only: no tool can see it.
 - **Why:** owner's decision, 2026-11-14 ([decisions register](decisions.md#genesis-storage-and-keys));
   [ADR 0006](adr/0006-versioned-formats-migrate-on-open.md) and its
