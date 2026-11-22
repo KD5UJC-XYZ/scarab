@@ -30,6 +30,11 @@ import xyz.kd5ujc.scarab.ledger.{
 import xyz.kd5ujc.scarab.ledger.TestLedger
 import xyz.kd5ujc.scarab.ledger.TestLedger.Key
 import xyz.kd5ujc.scarab.network.FailsOnUncaught
+import xyz.kd5ujc.scarab.crypto.bls.{
+  BlsFixtures,
+  SecretKey as BlsSecret,
+  VerificationKey as BlsVerification
+}
 
 /** KES key persistence, erasure and rotation (H2a, #116): the evolved key is written back and its
   * predecessor overwritten; a crash at any step leaves a usable key; SIGHUP's reload switches only
@@ -1529,7 +1534,7 @@ class KesRotationSuite extends CatsEffectSuite with FailsOnUncaught with ForgeFi
         f.install(hotFor(TestLedger.key(), 79, 0, 0))
         def reread = KesFiles.reread(f.vrf, f.kes, f.cert)
         reread match
-          case Right(KesFiles.Reread.Found(found, _)) => found.kes.forget()
+          case Right(KesFiles.Reread.Found(found, _, _)) => found.kes.forget()
           case other => fail(s"expected the credentials, found $other")
         // the first absent file in that order is the one named, whatever follows it
         Files.move(f.kes, f.dir.resolve("k"))
@@ -1552,6 +1557,116 @@ class KesRotationSuite extends CatsEffectSuite with FailsOnUncaught with ForgeFi
         Files.createSymbolicLink(f.vrf, f.dir.resolve("nowhere"))
         assertEquals(reread, Right(KesFiles.Reread.Absent(f.vrf)))
       }
+    }
+  }
+
+  // ---- the voting keys of --shelley-bls-key at a reload (cardano-node b004fe0c `Run.hs:701-755`)
+
+  /** A throwaway BLS key made here, in the envelope `cardano-cli dijkstra node key-gen-BLS` writes.
+    */
+  private def blsKey(n: Int): BlsSecret =
+    BlsFixtures.right(BlsSecret.generate(BlsFixtures.seed(n)))
+  private def blsText(n: Int): String =
+    s"""{"type": "${KeyFiles.BlsSigningKeyType}", "description": "", "cborHex": "${bstr(
+        blsKey(n).toBytes
+      )}"}"""
+  private def votingOf(c: PoolCredentials): Vector[Bytes] = c.voting.map(_.verification.bytes)
+  private def verificationOf(n: Int): Bytes =
+    BlsFixtures
+      .right(BlsVerification.derive(blsKey(n)))
+      .bytes
+
+  test("a reload reads the voting keys after the VRF key and before the certificate") {
+    withDir { f =>
+      IO {
+        val bls = f.dir.resolve("bls.skey")
+        Files.writeString(bls, s"[${blsText(1)}, ${blsText(2)}]")
+        f.install(hotFor(TestLedger.key(), 80, 0, 0))
+        def reread = KesFiles.reread(f.vrf, f.kes, f.cert, Some(bls))
+        reread match
+          case Right(KesFiles.Reread.Found(found, _, voting)) =>
+            found.kes.forget()
+            assertEquals(
+              voting.map(_.verification.bytes),
+              Vector(verificationOf(1), verificationOf(2))
+            )
+          case other => fail(s"expected the credentials, found $other")
+        // a voting key file that cannot be read is named before an absent certificate, after the VRF
+        Files.move(f.cert, f.dir.resolve("c"))
+        Files.delete(bls)
+        assertEquals(reread, Right(KesFiles.Reread.Absent(bls)))
+        Files.move(f.vrf, f.dir.resolve("v"))
+        assertEquals(reread, Right(KesFiles.Reread.Absent(f.vrf)))
+        Files.move(f.dir.resolve("v"), f.vrf)
+        // `BS.readFile` fails on a directory too: `CredentialsReadError`, as for a removed file
+        Files.createDirectory(bls)
+        assertEquals(reread, Right(KesFiles.Reread.Absent(bls)))
+        Files.delete(bls)
+        // one that reads but is no envelope is an error that names it, before the certificate
+        Files.writeString(bls, "not an envelope")
+        reread match
+          case Left(ForgeError.KeyFile(file, ForgeKeyProblem.Json(_))) =>
+            assertEquals(file, bls.toString)
+          case other => fail(s"expected a damaged voting key file, found $other")
+      }
+    }
+  }
+
+  private def blsCase(
+      seed: Int
+  )(change: (Files3, Path) => Unit)(
+      check: (Vector[ForgeEvent], Boolean, Option[PoolCredentials]) => Unit
+  ) =
+    val p = pool(kesStart = 50, seed = seed)
+    withDir { f =>
+      f.installPool(p)
+      val bls = f.dir.resolve("bls.skey")
+      Files.writeString(bls, blsText(1))
+      withHandle {
+        for
+          src <- HotKeySource.files[IO](f.vrf, f.kes, f.cert, Some(bls))
+          h <- harness(p, ledgerWith(p, 1), source = Some(src), clock = atSlot5100)
+          _ <- IO.blocking(change(f, bls))
+          _ <- h.forger.reload
+          events <- h.seen
+          enabled <- h.forger.hot.enabled
+          inUse <- Forger.scoped(h.forger.hot.current)
+        yield check(events, enabled, inUse.toOption.flatten)
+      }
+    }
+
+  test("SIGHUP with the voting key file removed disables forging, as CredentialsReadError does") {
+    blsCase(81)((_, bls) => Files.delete(bls)) { (events, enabled, inUse) =>
+      assertEquals(updates(events), Vector(BlockForgingState.DisabledBlockForging))
+      assert(!enabled)
+      assertEquals(inUse, None)
+    }
+  }
+
+  test("SIGHUP with a new voting key adopts it with the other credentials") {
+    blsCase(82)((_, bls) => Files.writeString(bls, s"[${blsText(3)}]")) {
+      (events, enabled, inUse) =>
+        assert(enabled)
+        assert(!events.exists(_.isInstanceOf[ForgeEvent.KesReloadRefused]), events.toString)
+        assertEquals(inUse.map(votingOf), Some(Vector(verificationOf(3))))
+    }
+  }
+
+  test("SIGHUP with a voting key file that does not parse refuses the reload and keeps forging") {
+    blsCase(83)((_, bls) => Files.writeString(bls, "{")) { (events, enabled, inUse) =>
+      assert(enabled)
+      assertEquals(updates(events), Vector.empty)
+      assert(
+        events.exists {
+          case ForgeEvent.KesReloadRefused(
+                ReloadRefusal.Unreadable(ForgeError.KeyFile(_, ForgeKeyProblem.Json(_)))
+              ) =>
+            true
+          case _ => false
+        },
+        events.toString
+      )
+      assertEquals(inUse.map(votingOf), Some(Vector.empty), "the credentials in force stay")
     }
   }
 

@@ -27,6 +27,14 @@ final class Committee private (val seats: Vector[Seat]):
 
   def seat(id: SeatId): Option[Seat] = seats.lift(id.index)
 
+  /** `getLeiosSeatId` (cardano-base c1e1ed8d `cardano-crypto-leios/src/Cardano/Crypto/
+    * Leios.hs:187-200`): the seat of a key, the smallest index of a seat holding it when the
+    * committee holds it twice, none when it holds it not. A committee holds no more seats than a
+    * seat id names ([[Committee.honoured]]), so every index is one.
+    */
+  def seatOf(key: VerificationKey): Option[SeatId] =
+    Option(seats.indexWhere(_.key.contains(key))).filter(_ >= 0).map(SeatId.unsafe)
+
 object Committee:
   /** Seats in the given order. A key whose proof of possession fails is dropped (keyless seat), as
     * `mkLeiosCommittee` does; each proof is checked once, here.
@@ -144,6 +152,23 @@ object Certificate:
         signers <- Signers.of(committee.size, votes.keySet)
         sig <- MinSig.aggregateSignatures(ordered.map(_._2))
       yield Certificate(signers, sig)
+
+  /** `aggregateLeiosCert` (cardano-base c1e1ed8d `cardano-crypto-leios/src/Cardano/Crypto/
+    * Leios.hs:227-263`), the reference's own aggregation, which the vote state assembles its
+    * certificates with: a committee a seat id can address, every seat within the committee, then
+    * the signatures summed in seat order (`aggregateSigsDSIGN` of `Map.elems`, refusing none or an
+    * identity sum). Unlike [[aggregate]] it does not refuse a keyless seat: the reference checks
+    * keys when it validates each vote, and a committee that changed since may hold the seat
+    * keyless.
+    */
+  def aggregateLeiosCert(
+      committee: Committee,
+      votes: Map[SeatId, Signature]
+  ): Either[BlsError, Certificate] =
+    for
+      signers <- Signers.of(committee.size, votes.keySet)
+      sig <- MinSig.aggregateSignatures(votes.toVector.sortBy(_._1.index).map(_._2))
+    yield Certificate(signers, sig)
 
   /** `verifyLeiosCert` (cardano-base c1e1ed8d `cardano-crypto-leios/src/Cardano/Crypto/
     * Leios.hs:289-340`): the certificate over `message` (the announcing RB hash) against a

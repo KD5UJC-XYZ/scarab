@@ -318,6 +318,17 @@ class MainArgsSuite extends munit.FunSuite:
       assert(Main.parse(base ++ List("--plutus-workers", value)).isLeft)
   }
 
+  test("--shelley-bls-key names the voting keys of a forging node, and nothing without --forge") {
+    val keys = List("--forge", "--vrf-skey", "v", "--kes-skey", "k", "--opcert", "o")
+    val bls = List("--shelley-bls-key", "bls.skey")
+    assertEquals(
+      Main.parse(base ++ keys ++ bls).map(_.forge.flatMap(_.blsSkey)),
+      Right(Some(java.nio.file.Path.of("bls.skey")))
+    )
+    assertEquals(Main.parse(base ++ keys).map(_.forge.flatMap(_.blsSkey)), Right(None))
+    assertEquals(Main.parse(base ++ bls).map(_.forge), Right(None))
+  }
+
   test(
     "--plutus-vm is refused as a removed flag that says what to do: the node has one evaluator"
   ) {

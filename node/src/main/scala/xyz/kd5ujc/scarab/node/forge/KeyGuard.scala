@@ -132,12 +132,18 @@ object KeyGuard:
     * crash's leftover the replacement the running instance is writing, and never finishes or erases
     * it.
     */
-  def credentials[F[_]: Sync](vrf: Path, kes: Path, opCert: Path, lock: Boolean)(using
+  def credentials[F[_]: Sync](
+      vrf: Path,
+      kes: Path,
+      opCert: Path,
+      lock: Boolean,
+      bls: Option[Path] = None
+  )(using
       Raise[F, ForgeError]
   ): Resource[F, PoolCredentials] =
     val F = Sync[F]
     held(kes, lock) *> Resource.eval(
-      F.blocking(KeyFiles.load(vrf, kes, opCert))
+      F.blocking(KeyFiles.load(vrf, kes, opCert, bls))
         .flatMap(_.fold(_.raise[F, PoolCredentials], F.pure))
     )
 

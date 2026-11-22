@@ -307,12 +307,29 @@ object Praos2:
       ledger: LedgerView,
       announcingSlot: SlotNo
   ): Either[Praos2Defect, SlotNo] =
+    certificationGap(
+      slotMillis,
+      ledger.announcementPeriodMillis.toLong,
+      ledger.votePeriodMillis.toLong,
+      ledger.diffusionPeriodMillis.toLong
+    ).map(gap => SlotNo.fromUnsigned((announcingSlot.toBigInt + gap).toLong))
+
+  /** `certificationGapOfPeriods` (`LeiosDemoTypes.hs:2843-2853`, ouroboros-consensus 2416493b), the
+    * `L` of CIP-164: the slots between an endorser block's announcement and the earliest block that
+    * may certify it, `3 * announcement + vote + diffusion` milliseconds over the slot length,
+    * rounded up, since a partly elapsed slot has not elapsed. A slot length of no millisecond is
+    * the reference's `error`.
+    */
+  def certificationGap(
+      slotMillis: BigInt,
+      announcementMillis: BigInt,
+      voteMillis: BigInt,
+      diffusionMillis: BigInt
+  ): Either[Praos2Defect, BigInt] =
     if slotMillis <= 0 then Left(Praos2Defect.NonPositiveSlotLength(slotMillis))
     else
-      val total = BigInt(3) * ledger.announcementPeriodMillis.toLong +
-        ledger.votePeriodMillis.toLong + ledger.diffusionPeriodMillis.toLong
-      val gap = (total + slotMillis - 1) / slotMillis
-      Right(SlotNo.fromUnsigned((announcingSlot.toBigInt + gap).toLong))
+      val total = BigInt(3) * announcementMillis + voteMillis + diffusionMillis
+      Right((total + slotMillis - 1) / slotMillis)
 
   private def leiosChecks(
       info: EpochInfo,

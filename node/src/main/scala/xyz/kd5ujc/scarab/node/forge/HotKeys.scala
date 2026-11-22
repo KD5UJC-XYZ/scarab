@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.forge
 
+import xyz.kd5ujc.scarab.consensus.leios.VotingKey
 import cats.Functor
 import cats.effect.{Async, Ref}
 import cats.effect.std.Mutex
@@ -151,7 +152,8 @@ object HotKeySource:
   final case class Candidate[F[_]](
       credentials: HotCredentials,
       vrf: Draft03Prover.SigningKey,
-      adopt: F[Unit]
+      adopt: F[Unit],
+      voting: Vector[VotingKey] = Vector.empty
   )
 
   /** What a read found: credentials to check, or a credential file that does not exist, which
@@ -161,21 +163,30 @@ object HotKeySource:
     case Found(candidate: Candidate[F])
     case Absent(file: Path)
 
-  /** The files given with `--vrf-skey`, `--kes-skey` and `--opcert`, read again in the reference's
-    * order ([[KesFiles.reread]]).
+  /** The files given with `--vrf-skey`, `--kes-skey`, `--opcert` and `--shelley-bls-key`, read
+    * again in the reference's order ([[KesFiles.reread]]).
     */
-  def files[F[_]: Async](vrfFile: Path, kesFile: Path, opCertFile: Path): F[HotKeySource[F]] =
+  def files[F[_]: Async](
+      vrfFile: Path,
+      kesFile: Path,
+      opCertFile: Path,
+      blsFile: Option[Path] = None
+  ): F[HotKeySource[F]] =
     val F = Async[F]
     F.blocking(KesFiles.resolved(kesFile)).flatMap { first =>
       Ref.of[F, Path](first.getOrElse(kesFile)).map { target =>
         new HotKeySource[F]:
-          def read = F.blocking(KesFiles.reread(vrfFile, kesFile, opCertFile)).flatMap {
-            case Left(error)                            => F.pure(Left(error))
-            case Right(KesFiles.Reread.Absent(file))    => F.pure(Right(Reading.Absent(file)))
-            case Right(KesFiles.Reread.Found(hot, vrf)) =>
+          def read = F.blocking(KesFiles.reread(vrfFile, kesFile, opCertFile, blsFile)).flatMap {
+            case Left(error)                         => F.pure(Left(error))
+            case Right(KesFiles.Reread.Absent(file)) => F.pure(Right(Reading.Absent(file)))
+            case Right(KesFiles.Reread.Found(hot, vrf, voting)) =>
               // the key is written back where it was read from, even if a link moves afterwards
               F.blocking(KesFiles.resolved(kesFile)).map { where =>
-                Right(Reading.Found(HotKeySource.Candidate(hot, vrf, where.traverse_(target.set))))
+                Right(
+                  Reading.Found(
+                    HotKeySource.Candidate(hot, vrf, where.traverse_(target.set), voting)
+                  )
+                )
               }
           }
           def persist(key: Sum6KesSigning.SigningKey) =
@@ -510,7 +521,9 @@ final class HotKeys[F[_]: Async] private (
   )(using Raise[F, Fatal]): F[Unit] =
     val candidate = found.credentials
     val kes = kept.fold(candidate.kes)(_.kes)
-    val next = PoolCredentials(found.vrf, kes, candidate.opCert, candidate.coldVkey)
+    // the voting keys read with the files, as the reference builds its block forging again from
+    // them all (`Run.hs:701-736`, cardano-node b004fe0c)
+    val next = PoolCredentials(found.vrf, kes, candidate.opCert, candidate.coldVkey, found.voting)
     val relative = kesPeriod - candidate.opCert.kesPeriod
     for
       // the period of the key in the file it was read from, to which the key in use goes now

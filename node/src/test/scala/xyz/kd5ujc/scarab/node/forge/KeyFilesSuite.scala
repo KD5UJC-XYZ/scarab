@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.node.forge
 
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.kes.Sum6KesSigning
-import xyz.kd5ujc.scarab.ledger.ForgeError
+import xyz.kd5ujc.scarab.ledger.{ForgeError, ForgeKeyProblem}
 import xyz.kd5ujc.scarab.crypto.opcert.OperationalCertificate
 import xyz.kd5ujc.scarab.crypto.vrf.Draft03Prover
 
@@ -150,5 +150,52 @@ class KeyFilesSuite extends munit.FunSuite:
     assertEquals(
       PoolCredentials.check(c.copy(opCert = c.opCert.copy(sigma = hex("00" * 64)))),
       Left(ForgeError.CertificateSignatureRejected)
+    )
+  }
+
+  // `--shelley-bls-key` (cardano-node b004fe0c `Cardano/Node/Protocol/Shelley.hs:324-339`): throwaway
+  // scalars made here, in the envelope `cardano-cli dijkstra node key-gen-BLS` writes
+
+  private def blsKey(n: Int) =
+    xyz.kd5ujc.scarab.crypto.bls.BlsFixtures.right(
+      xyz.kd5ujc.scarab.crypto.bls.SecretKey
+        .generate(xyz.kd5ujc.scarab.crypto.bls.BlsFixtures.seed(n))
+    )
+  private def blsEnvelope(n: Int) = envelope(KeyFiles.BlsSigningKeyType, bstr(blsKey(n).toBytes))
+  private def scalars(text: String) =
+    KeyFiles.blsSigningKeys("bls.skey", text).map(_.map(_.toBytes))
+
+  test("a BLS key file holds one text envelope, or a JSON array of them, or an empty array") {
+    assert(bstr(blsKey(1).toBytes).startsWith("5820"))
+    assertEquals(scalars(blsEnvelope(1)), Right(Vector(blsKey(1).toBytes)))
+    assertEquals(
+      scalars(s"[${blsEnvelope(1)}, ${blsEnvelope(2)}]"),
+      Right(Vector(blsKey(1).toBytes, blsKey(2).toBytes))
+    )
+    assertEquals(scalars("[]"), Right(Vector.empty))
+  }
+
+  test("a BLS key file of another envelope type, not a scalar, or not envelopes is refused") {
+    assertEquals(
+      scalars(envelope(KeyFiles.VrfSigningKeyType, bstr(blsKey(1).toBytes))),
+      Left(
+        ForgeError.KeyFile(
+          "bls.skey",
+          ForgeKeyProblem.EnvelopeType(KeyFiles.BlsSigningKeyType, KeyFiles.VrfSigningKeyType)
+        )
+      )
+    )
+    assert(
+      scalars(envelope(KeyFiles.BlsSigningKeyType, bstr(hex("00" * 32)))).left.exists {
+        case ForgeError.KeyFile(_, ForgeKeyProblem.Bls(_)) => true
+        case _                                             => false
+      }
+    )
+    // an array with an element that is no envelope is read as one envelope, which it is not
+    assert(
+      scalars(s"[${blsEnvelope(1)}, 5]").left.exists {
+        case ForgeError.KeyFile(_, ForgeKeyProblem.Field("type", _)) => true
+        case _                                                       => false
+      }
     )
   }
