@@ -10,8 +10,8 @@ approval link) and "Gaps" (`None`, or bullets that each start with an issue link
 "Independent review" section that links the review of its final diff posted on it, a comment or a review of that pull
 request (`https://github.com/<repository>/pull/<number>#issuecomment-<id>` or `#pullrequestreview-<id>`;
 CONTRIBUTING.md, "Independent review"); any other link, such as an attribution line after the section, is not one,
-and a draft passes without it. The stated level has floors from the changed files (`--files`, the pull request's file
-list): a file that is not documentation makes it at least 1, and the persisted-format register at least 3, as the
+and a draft passes without it. The stated level has floors from the changed files (`--files-nul`, the pull request's
+changed paths): a file that is not documentation makes it at least 1, and the persisted-format register at least 3, as the
 levels table of CONTRIBUTING.md defines them. A bot's pull request (a release
 proposal, a dependency update) and a promotion of `dev` to `main` are not checked for these. The promotion controller
 (`promote_main.py`) calls `evaluate` only, never the body checks.
@@ -26,12 +26,12 @@ as it was asked and the owner's decision in neutral words, and the UTC times the
 work; this check reads their form only. It applies to a bot's pull request too, and not to a promotion of `dev`, whose changes each passed
 it as their own pull request. A storage format change is at least level 3.
 
-The changed paths (`--files`, one per line) are all of them, or the policy fails: GitHub's list of a pull request's
-files stops at 3,000, so when it is shorter the workflow reads the paths from git instead (the head and the merge base
-fetched as commits and trees only, never checked out, and `git diff --name-only --no-renames`, which names both sides
-of a rename). A list still shorter than the event's `changed_files` cannot show whether the pull request touches the
-register, the manifest or the guard, and fails rather than pass on what it leaves out. A promotion of `dev`, which
-reads no path, is not checked for this.
+The changed paths (`--files-nul`) are all of them: the workflow reads them from git at the event's own commits (the
+merge base of its base and head SHAs, and the head, fetched as commits and trees only and never checked out), with
+`git diff --name-only --no-renames -z`, which names both sides of a rename, and they are read here as bytes split on
+NUL, so a path that holds a newline stays one path. A list shorter than the event's `changed_files` cannot be all of
+them, and fails rather than pass on what it leaves out. A promotion of `dev`, which reads no path, is not checked for
+this.
 """
 import argparse
 from datetime import datetime, timezone
@@ -374,23 +374,24 @@ def check_storage_format(pr, files, now):
     return True
 
 
-def changed_paths(text):
-    """The changed paths of the `--files` list, one per line, as the workflow writes them (a path may hold a space)."""
-    return [line for line in (text or "").splitlines() if line]
+def changed_paths(data):
+    """The changed paths of the `--files-nul` list: `git diff --name-only -z` output, each path ended by NUL, so a path
+    may hold a space or a newline. A path that is not UTF-8 keeps its bytes as surrogates and matches no path the
+    policy names."""
+    return [path.decode("utf-8", "surrogateescape") for path in (data or b"").split(b"\0") if path]
 
 
 def check_file_list(pr, files):
-    """The changed paths are all of them: at least the event's `changed_files` (a list read from git names both sides
-    of a rename, so it may hold more). A shorter list fails, since the path checks would decide on what it leaves out;
-    a promotion of `dev` reads no path and is not checked."""
+    """The changed paths are all of them: at least the event's `changed_files` (the list read from git names both sides
+    of a rename, so it may hold more, never fewer). A shorter list fails, since the path checks would decide on what it
+    leaves out; a promotion of `dev` reads no path and is not checked."""
     if promotion(pr):
         return
     count = pr.get("changed_files")
     require(type(count) is int and len(files) >= count,
-            f"the pull request changes {count} files, but the policy read {len(files)} changed paths: GitHub lists at "
-            "most 3,000 files of a pull request, and the complete list could not be read from git, so the policy cannot "
-            "see whether it touches the persisted-format register, the storage format manifest or its guard; run the "
-            "check again")
+            f"the pull request changes {count} files, but the policy read {len(files)} changed paths, so it cannot see "
+            "whether the pull request touches the persisted-format register, the storage format manifest or its guard: "
+            "the paths are read from git at the event's commits (--files-nul); run the check again")
 
 
 def check_body(pr, files=()):
@@ -446,7 +447,7 @@ def main():
     parser.add_argument("--repository", default=os.environ.get("GITHUB_REPOSITORY"), required=False)
     parser.add_argument("--repository-id", type=int, default=os.environ.get("GITHUB_REPOSITORY_ID"))
     parser.add_argument("--mode", default=os.environ.get("SCARAB_PROMOTION_POLICY") or "transition")
-    parser.add_argument("--files", type=Path, help="the pull request's changed paths, one per line")
+    parser.add_argument("--files-nul", type=Path, help="the pull request's changed paths, each ended by NUL")
     args = parser.parse_args()
     require(args.event is not None and args.repository is not None, "require event and repository identity")
     event = json.loads(args.event.read_text())
@@ -454,7 +455,7 @@ def main():
             "event repository identity differs from the trusted runner")
     pr = event.get("pull_request", {})
     result = evaluate(pr, args.repository, args.repository_id, args.mode)
-    files = changed_paths(args.files.read_text(encoding="utf-8")) if args.files else []
+    files = changed_paths(args.files_nul.read_bytes()) if args.files_nul else []
     check_file_list(pr, files)
     storage = check_storage_format(pr, files, datetime.now(timezone.utc))
     print(json.dumps(dict(result, level=check_body(pr, files), storageFormatChange=storage), sort_keys=True))
