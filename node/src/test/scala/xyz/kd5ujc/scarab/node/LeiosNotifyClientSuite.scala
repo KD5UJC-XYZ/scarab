@@ -370,16 +370,20 @@ class LeiosNotifyClientSuite extends FailsOnUncaught:
     node(dir).use { (fetch, _) =>
       // the system clock, which the in-future check reads and waits on
       val system = SlotClock.system[IO](IO.raiseError(new AssertionError("no history read")))
-      def ahead(by: FiniteDuration): IO[LeiosNotifyView[IO]] =
+      def ahead(by: FiniteDuration): IO[(LeiosNotifyView[IO], Instant)] =
         IO.realTimeInstant.map(at =>
-          new LeiosNotifyView[IO]:
-            def immutable = IO.pure(new LeiosImmutableTip:
-              val slot = None
-              def onset(header: LeiosHeader) =
-                HeaderRules.TimeForecast.Known(picos(at) + BigInt(by.toNanos) * 1000)
-              def validate(header: LeiosHeader) =
-                AnnouncementCheck.Checked(Right(Praos2.OcinStaleness.Fresh)))
-            def ready = IO.unit
+          (
+            new LeiosNotifyView[IO]:
+              def immutable = IO.pure(new LeiosImmutableTip:
+                val slot = None
+                def onset(header: LeiosHeader) =
+                  HeaderRules.TimeForecast.Known(picos(at) + BigInt(by.toNanos) * 1000)
+                def validate(header: LeiosHeader) =
+                  AnnouncementCheck.Checked(Right(Praos2.OcinStaleness.Fresh)))
+              def ready = IO.unit
+            ,
+            at.plusNanos(by.toNanos)
+          )
         )
       def handled(v: LeiosNotifyView[IO], name: String) =
         for
@@ -398,13 +402,16 @@ class LeiosNotifyClientSuite extends FailsOnUncaught:
             }
           }
           told <- events.get
-        yield (ended, told)
+          finished <- IO.realTimeInstant
+        yield (ended, told, finished)
       for
-        near <- ahead(200.millis).flatMap(handled(_, "announcing"))
-        far <- ahead(3.seconds).flatMap(handled(_, "certifying"))
+        nearAhead <- ahead(200.millis)
+        near <- handled(nearAhead._1, "announcing")
+        far <- ahead(30.seconds).flatMap((v, _) => handled(v, "certifying"))
       yield
-        // processed once its onset came: its age is then not below zero
+        // processed only once its onset came: the wait is the in-future check's
         assertEquals(near._1, Right(()))
+        assert(!near._3.isBefore(nearAhead._2), (near._3, nearAhead._2))
         assertEquals(
           near._2.collect { case LeiosNotifyEvent.Announced(_, p, r, _) => (p, r) },
           Vector((first.fields.point, ShouldRelay.DoRelay))

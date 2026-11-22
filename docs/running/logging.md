@@ -130,7 +130,7 @@ table and the code differ). The severity is the kind's; the rows marked so are r
 | `headersChecked` | `Chain.HeadersChecked` | Info | `validated`, `unchecked`, `waited` |
 | `chainSyncRounds` | `Chain.ChainSyncRounds` | Info | `rounds`, `headers`, `avgMs`, `maxMs`, `maxDepth`; legacy batch facade only; production rolling sessions retain the per-reply header counter and do not emit round aggregates |
 | `slowFetch` | `Chain.SlowFetch` | Info | `millis` |
-| `leiosNotifyAnnouncement` | `Chain.LeiosNotifyAnnouncement` | Debug | `connection`, `slot`, `ebHash`, `relayed`, `ageMillis`: an announcement a peer relayed over LeiosNotify that the node took as new (Leios build) |
+| `leiosNotifyAnnouncement` | `Chain.LeiosNotifyAnnouncement` | Debug | `connection`, `slot`, `ebHash`, `relayed`, `ageMillis`: an announcement a peer relayed over LeiosNotify, new from that peer and processed (it may already be counted from another); `relayed` is whether its age lets the node relay it (Leios build) |
 | `leiosNotifyOffer` | `Chain.LeiosNotifyOffer` | Debug | `connection`, `slot`, `ebHash`, `part` (`body` or `closure`), `ebSize` (a body offer only): an offer a peer made over LeiosNotify (Leios build) |
 | `leiosVoteAcquired` | `Chain.LeiosVoteAcquired` | Info | `connection`, `rbHash`, `seat`, `weight`, `tally`, `threshold` (each a rational as `numerator/denominator`): a peer's vote the vote state counted (Leios build) |
 | `leiosCertified` | `Chain.LeiosCertified` | Info | `rbHash`: a counted vote completed the certificate of the endorser block that block announced (Leios build) |

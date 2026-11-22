@@ -53,7 +53,8 @@ trait LeiosImmutableTip:
   def validate(header: LeiosHeader): AnnouncementCheck
 
 /** What a LeiosNotify client tells of what it received, as the reference traces it: a peer's
-  * announcement that the node took as new, and each offer (`TraceLeiosPeer`, `NodeToNode.hs`
+  * announcement new from that peer and processed, the central state may have counted it already,
+  * with whether its age lets it be relayed, and each offer (`TraceLeiosPeer`, `NodeToNode.hs`
   * 683-713 at ouroboros-consensus 2416493b), and each vote the vote state counted, with the
   * certificate it completed (`TraceLeiosVoteAcquired`, `TraceLeiosCertified`, `:730-765`).
   */
