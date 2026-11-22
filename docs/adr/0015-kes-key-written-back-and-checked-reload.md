@@ -205,8 +205,11 @@ The reference builds its KES credential from the key file at evolution 0, whatev
 `Ouroboros/Consensus/Protocol/Ledger/HotKey.hs` 225, called from `Ouroboros/Consensus/Protocol/Praos/Common.hs`
 322), and evolves it in memory to the current period. A file Scarab has written back holds the key at a later
 period, with the seeds of the earlier periods erased. Its envelope, its length and the certificate's verification
-key all match, so `cardano-node` starts on it. Its evolution from "0" then needs seeds that are gone, and the
-signatures it makes are not expected to verify. That last step is a reading of cardano-base's `SumKES`, not a run.
+key all match, so `cardano-node` loads it. Its evolution from "0" rebuilds a subtree from a stored right-half seed
+where it crosses that subtree's boundary (cardano-base `SumKES`, `updateKESWith`). Where that seed is one Scarab
+has erased, the key it reaches is wrong and its signatures are not expected to verify; where the seed is still
+intact, a signature can verify. So whether a given period's signature fails depends on the period, and a
+written-back file is not a usable credential for `cardano-node`. This is a reading of the source, not a run.
 
 **Scarab keeps no copy of the period-0 key, and a written-back file is not supported under `cardano-node`.** A pool
 that moves from Scarab to `cardano-node` gets a new KES key and a new operational certificate first. Keeping the
