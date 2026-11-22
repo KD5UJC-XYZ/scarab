@@ -9,7 +9,6 @@ import scala.annotation.unused
 import xyz.kd5ujc.scarab.ledger.{
   LedgerDefect,
   LedgerFailure,
-  Mismatch,
   Nonce,
   TranslationError,
   TxIn,
@@ -180,20 +179,21 @@ object DijkstraBbody:
   ): Either[DijkstraLedgerUnprojected, DijkstraBbodyFailure] = failure match
     case DijkstraBbodyPredFailure.WrongBlockBodySizeBBODY(m) =>
       Right(
-        DijkstraBbodyFailure.WrongBlockBodySize(Mismatch(BigInt(m.supplied), BigInt(m.expected)))
+        DijkstraBbodyFailure.WrongBlockBodySize(m.storedBy(BigInt(_)))
       )
     case DijkstraBbodyPredFailure.InvalidBodyHashBBODY(m) =>
-      Right(DijkstraBbodyFailure.InvalidBodyHash(Mismatch(m.supplied.bytes, m.expected.bytes)))
+      Right(DijkstraBbodyFailure.InvalidBodyHash(m.storedBy(_.bytes)))
     case DijkstraBbodyPredFailure.LedgersFailure(ShelleyLedgersPredFailure.LedgerFailure(f)) =>
       DijkstraLedgerPredFailure
         .toStored(f, purpose, read)
         .map(DijkstraBbodyFailure.LedgersFailure(_))
-    case DijkstraBbodyPredFailure.TooManyExUnits(m) => Right(DijkstraBbodyFailure.TooManyExUnits(m))
+    case DijkstraBbodyPredFailure.TooManyExUnits(m) =>
+      Right(DijkstraBbodyFailure.TooManyExUnits(m.stored))
     case DijkstraBbodyPredFailure.BodyRefScriptsSizeTooBig(m) =>
-      Right(DijkstraBbodyFailure.BodyRefScriptsSizeTooBig(m))
+      Right(DijkstraBbodyFailure.BodyRefScriptsSizeTooBig(m.stored))
     case DijkstraBbodyPredFailure.PerasCertValidationFailed(cert, nonce) =>
       Right(DijkstraBbodyFailure.PerasCertValidationFailed(cert.bytes, nonce))
     case DijkstraBbodyPredFailure.HeaderProtVerTooLow(m) =>
       Right(
-        DijkstraBbodyFailure.HeaderProtVerTooLow(Mismatch(BigInt(m.supplied), BigInt(m.expected)))
+        DijkstraBbodyFailure.HeaderProtVerTooLow(m.storedBy(BigInt(_)))
       )

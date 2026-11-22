@@ -1178,8 +1178,8 @@ Conway's rules on the classes follow as the rest of stage 2.
     the one way besides the decoder that a `ProposalProcedure` is made.
   - The failures are `ConwayGovPredFailure`, its 19 constructors in tag order, and the events `ConwayGovEvent`;
     `EraRuleFailure "GOV"` and `EraRuleEvent "GOV"` are match types with Conway's case, and `InjectGov` is the
-    reference's two injections at Conway, the identities. A mismatch is the node's `Mismatch`, without the
-    reference's relation marker (`RelEQ`, `RelGT`), which names the comparison only in the reference's rendering. The embedding into LEDGER (`ConwayGovFailure`, `GovEvent`)
+    reference's two injections at Conway, the identities. A mismatch is the era types' `Mismatch` with the
+    reference's relation (`RelEQ`, `RelGT`) as a type, as every era failure's is. The embedding into LEDGER (`ConwayGovFailure`, `GovEvent`)
     comes with LEDGER. `ConwayGovPredFailure.toStored` gives a failure's flat form, one-way glue the comparisons
     read; an action is put in it as the transaction's proposal read it (`readOf`).
   - Who may vote is the reference's `isVotingAllowed` of each voter's threshold (`VotingThreshold`, with RATIFY,

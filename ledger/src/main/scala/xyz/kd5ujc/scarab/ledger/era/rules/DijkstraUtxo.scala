@@ -5,9 +5,10 @@ import cats.Monad
 import cats.data.{Chain, NonEmptyList, NonEmptyMap, NonEmptySet}
 import cats.mtl.{Raise, Stateful, Tell}
 import cats.syntax.all.*
-import xyz.kd5ujc.scarab.ledger.{Address, Horizon, Mismatch, TxEnv, TxIn}
+import xyz.kd5ujc.scarab.ledger.{Address, Horizon, TxEnv, TxIn}
 import xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraUtxoFailure
 import xyz.kd5ujc.scarab.ledger.era.*
+import xyz.kd5ujc.scarab.ledger.era.Relation.*
 import xyz.kd5ujc.scarab.ledger.era.dijkstra.{DijkstraUTxO, PlutusLegacyMode}
 import xyz.kd5ujc.scarab.ledger.rules.{Judge, Sts, Test}
 import xyz.kd5ujc.scarab.ledger.state.{CertState, Coin, Dijkstra, EraTag, PState, UTxOState}
@@ -28,22 +29,22 @@ enum DijkstraUtxoPredFailure[E <: EraTag]:
   case UtxosFailure(failure: UtxosPredFailure[E])
   case BadInputsUTxO(inputs: NonEmptySet[TxIn])
   case OutsideValidityIntervalUTxO(interval: ValidityInterval, slot: BigInt)
-  case MaxTxSizeUTxO(mismatch: Mismatch[BigInt])
+  case MaxTxSizeUTxO(mismatch: Mismatch[RelLTEQ, BigInt])
   case InputSetEmptyUTxO()
-  case FeeTooSmallUTxO(mismatch: Mismatch[Coin])
+  case FeeTooSmallUTxO(mismatch: Mismatch[RelGTEQ, Coin])
 
   /** What the batch consumes (supplied) and what it produces (expected). */
-  case ValueNotConservedUTxO(mismatch: Mismatch[Value[E]])
+  case ValueNotConservedUTxO(mismatch: Mismatch[RelEQ, Value[E]])
   case WrongNetwork(expected: Network, addresses: NonEmptySet[Address])
   case OutputBootAddrAttrsTooBig(outputs: NonEmptyList[TxOut[E]])
   case OutputTooBigUTxO(outputs: NonEmptyList[(Int, Int, TxOut[E])])
   case InsufficientCollateral(balance: BigInt, required: Coin)
   case ScriptsNotPaidUTxO(outputs: NonEmptyMap[TxIn, TxOut[E]])
-  case ExUnitsTooBigUTxO(mismatch: Mismatch[ExUnits])
+  case ExUnitsTooBigUTxO(mismatch: Mismatch[RelLTEQ, ExUnits])
   case CollateralContainsNonADA(value: Value[E])
-  case WrongNetworkInTxBody(mismatch: Mismatch[Network])
+  case WrongNetworkInTxBody(mismatch: Mismatch[RelEQ, Network])
   case OutsideForecast(slot: BigInt)
-  case TooManyCollateralInputs(mismatch: Mismatch[Int])
+  case TooManyCollateralInputs(mismatch: Mismatch[RelLTEQ, Int])
   case NoCollateralInputs()
   case IncorrectTotalCollateralField(provided: BigInt, declared: Coin)
   case BabbageOutputTooSmallUTxO(outputs: NonEmptyList[(TxOut[E], Coin)])
@@ -52,7 +53,7 @@ enum DijkstraUtxoPredFailure[E <: EraTag]:
 
   /** What the top level consumes and produces in the legacy mode, its sub-transactions taken out.
     */
-  case ValueNotConservedInLegacyMode(mismatch: Mismatch[Value[E]])
+  case ValueNotConservedInLegacyMode(mismatch: Mismatch[RelEQ, Value[E]])
 
 object DijkstraUtxoPredFailure:
   given [E <: EraTag]: CanEqual[DijkstraUtxoPredFailure[E], DijkstraUtxoPredFailure[E]] =
@@ -74,14 +75,14 @@ object DijkstraUtxoPredFailure:
       case BadInputsUTxO(ins) => ok(DijkstraUtxoFailure.BadInputs(ins.toSortedSet))
       case OutsideValidityIntervalUTxO(vi, slot) =>
         ok(DijkstraUtxoFailure.OutsideValidityInterval(vi.invalidBefore, vi.invalidHereafter, slot))
-      case MaxTxSizeUTxO(m)    => ok(DijkstraUtxoFailure.MaxTxSize(m))
+      case MaxTxSizeUTxO(m)    => ok(DijkstraUtxoFailure.MaxTxSize(m.stored))
       case InputSetEmptyUTxO() => ok(DijkstraUtxoFailure.InputSetEmpty)
       case FeeTooSmallUTxO(m) =>
-        ok(DijkstraUtxoFailure.FeeTooSmall(Mismatch(m.supplied.value, m.expected.value)))
+        ok(DijkstraUtxoFailure.FeeTooSmall(m.storedBy(_.value)))
       case ValueNotConservedUTxO(m) =>
         ok(
           DijkstraUtxoFailure.ValueNotConserved(
-            Mismatch(s.storedValue(m.supplied), s.storedValue(m.expected))
+            m.storedBy(s.storedValue)
           )
         )
       case WrongNetwork(n, addrs) =>
@@ -98,15 +99,15 @@ object DijkstraUtxoPredFailure:
         ok(DijkstraUtxoFailure.InsufficientCollateral(bal, required.value))
       case ScriptsNotPaidUTxO(os) =>
         ok(DijkstraUtxoFailure.ScriptsNotPaid(os.toSortedMap.view.mapValues(s.toStored).toMap))
-      case ExUnitsTooBigUTxO(m) => ok(DijkstraUtxoFailure.ExUnitsTooBig(m))
+      case ExUnitsTooBigUTxO(m) => ok(DijkstraUtxoFailure.ExUnitsTooBig(m.stored))
       case CollateralContainsNonADA(v) =>
         ok(DijkstraUtxoFailure.CollateralContainsNonAda(s.storedValue(v)))
       case WrongNetworkInTxBody(m) =>
         ok(
-          DijkstraUtxoFailure.WrongNetworkInTxBody(Mismatch(m.supplied.ordinal, m.expected.ordinal))
+          DijkstraUtxoFailure.WrongNetworkInTxBody(m.storedBy(_.ordinal))
         )
       case OutsideForecast(slot)      => ok(DijkstraUtxoFailure.OutsideForecast(slot))
-      case TooManyCollateralInputs(m) => ok(DijkstraUtxoFailure.TooManyCollateralInputs(m))
+      case TooManyCollateralInputs(m) => ok(DijkstraUtxoFailure.TooManyCollateralInputs(m.stored))
       case NoCollateralInputs()       => ok(DijkstraUtxoFailure.NoCollateralInputs)
       case IncorrectTotalCollateralField(provided, declared) =>
         ok(DijkstraUtxoFailure.IncorrectTotalCollateralField(provided, declared.value))
@@ -123,7 +124,7 @@ object DijkstraUtxoPredFailure:
       case ValueNotConservedInLegacyMode(m) =>
         ok(
           DijkstraUtxoFailure.ValueNotConservedInLegacyMode(
-            Mismatch(s.storedValue(m.supplied), s.storedValue(m.expected))
+            m.storedBy(s.storedValue)
           )
         )
 
@@ -359,7 +360,7 @@ object DijkstraUtxo:
       utxo: UTxO[Dijkstra],
       pState: PState,
       txBody: TxBody[TxLevel.Top, Dijkstra]
-  ): Test[Mismatch[Value[Dijkstra]]] =
+  ): Test[Mismatch[RelEQ, Value[Dijkstra]]] =
     valueConserved(
       DijkstraUTxO.dijkstraConsumed[TxLevel.Top](pp, utxo, txBody),
       ShelleyUTxO.produced(pp, pState, txBody)(using u)
@@ -377,7 +378,7 @@ object DijkstraUtxo:
       utxo: UTxO[Dijkstra],
       pState: PState,
       txBody: TxBody[TxLevel.Top, Dijkstra]
-  ): Test[Mismatch[Value[Dijkstra]]] =
+  ): Test[Mismatch[RelEQ, Value[Dijkstra]]] =
     valueConserved(
       DijkstraUTxO.dijkstraConsumedWithoutSubTransactions(pp, utxo, txBody),
       DijkstraUTxO.dijkstraProducedValueWithoutSubTransactions(
@@ -390,7 +391,7 @@ object DijkstraUtxo:
   private def valueConserved(
       consumedValue: Value[Dijkstra],
       producedValue: Value[Dijkstra]
-  ): Test[Mismatch[Value[Dijkstra]]] =
+  ): Test[Mismatch[RelEQ, Value[Dijkstra]]] =
     Test.failureUnless(
       b.outputsOf.valueOps.eqv(consumedValue, producedValue),
       Mismatch(consumedValue, producedValue)

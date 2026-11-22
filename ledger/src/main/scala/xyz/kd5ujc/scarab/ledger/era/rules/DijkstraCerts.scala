@@ -13,11 +13,11 @@ import xyz.kd5ujc.scarab.ledger.{
   GovActionState,
   LedgerDefect,
   LedgerFailure,
-  Mismatch,
   RewardAccount,
   TxEnv
 }
 import xyz.kd5ujc.scarab.ledger.era.*
+import xyz.kd5ujc.scarab.ledger.era.Relation.*
 import xyz.kd5ujc.scarab.ledger.era.dijkstra.{
   AccountBalanceInterval,
   DijkstraTxCert,
@@ -382,11 +382,11 @@ object ENTITIES:
     * withdrawals of an account missing or on another network, and those not acceptable, each with
     * its account's balance.
     */
-  private def categorizeWithdrawals(acceptable: (Coin, Coin) => Boolean)(
+  private def categorizeWithdrawals[R <: Relation](acceptable: (Coin, Coin) => Boolean)(
       withdrawals: Withdrawals,
       network: Network,
       accounts: Accounts[Dijkstra]
-  ): Option[(Withdrawals, SortedMap[AccountAddress, Mismatch[Coin]])] =
+  ): Option[(Withdrawals, SortedMap[AccountAddress, Mismatch[R, Coin]])] =
     val found = withdrawals.unWithdrawals.map((address, amount) =>
       (address, amount, lookupAccount(address, network, accounts).map(balance))
     )
@@ -395,7 +395,7 @@ object ENTITIES:
     })
     val bad = SortedMap.from(found.collect {
       case (address, amount, Some(bal)) if !acceptable(amount, bal) =>
-        address -> Mismatch(amount, bal)
+        address -> Mismatch[R, Coin](amount, bal)
     })
     Option.when(missing.nonEmpty || bad.nonEmpty)((Withdrawals(missing), bad))
 
@@ -411,15 +411,15 @@ object ENTITIES:
       network: Network,
       accounts: Accounts[Dijkstra]
   ): Option[Withdrawals] =
-    categorizeWithdrawals((_, _) => true)(withdrawals, network, accounts).map(_._1)
+    categorizeWithdrawals[RelEQ]((_, _) => true)(withdrawals, network, accounts).map(_._1)
 
   /** `withdrawalsThatDoNotDrainAccounts` (`State/Account.hs:203-217`, cardano-ledger 9df9f98c). */
   def withdrawalsThatDoNotDrainAccounts(
       withdrawals: Withdrawals,
       network: Network,
       accounts: Accounts[Dijkstra]
-  ): Option[(Withdrawals, SortedMap[AccountAddress, Mismatch[Coin]])] =
-    categorizeWithdrawals(Order[Coin].eqv)(withdrawals, network, accounts)
+  ): Option[(Withdrawals, SortedMap[AccountAddress, Mismatch[RelEQ, Coin]])] =
+    categorizeWithdrawals[RelEQ](Order[Coin].eqv)(withdrawals, network, accounts)
 
   /** `withdrawalsThatExceedAccountBalance` (`State/Account.hs:219-228`, cardano-ledger 9df9f98c).
     */
@@ -427,8 +427,8 @@ object ENTITIES:
       withdrawals: Withdrawals,
       network: Network,
       accounts: Accounts[Dijkstra]
-  ): Option[(Withdrawals, SortedMap[AccountAddress, Mismatch[Coin]])] =
-    categorizeWithdrawals(Order[Coin].lteqv)(withdrawals, network, accounts)
+  ): Option[(Withdrawals, SortedMap[AccountAddress, Mismatch[RelLTEQ, Coin]])] =
+    categorizeWithdrawals[RelLTEQ](Order[Coin].lteqv)(withdrawals, network, accounts)
 
   /** `updateAccountBalances` (`State/Account.hs:312-330`, cardano-ledger 9df9f98c): `update` of
     * each registered account's balance and the entry's amount, whatever the entry's network; an
@@ -515,8 +515,8 @@ object ENTITIES:
     EntitiesPredFailure[Dijkstra]
   ] = Test.failureUnless(m.unWithdrawals.isEmpty, mk(m.unWithdrawals))
 
-  private def failMismatches(m: SortedMap[AccountAddress, Mismatch[Coin]])(
-      mk: NonEmptyMap[AccountAddress, Mismatch[Coin]] => EntitiesPredFailure[Dijkstra]
+  private def failMismatches[R <: Relation](m: SortedMap[AccountAddress, Mismatch[R, Coin]])(
+      mk: NonEmptyMap[AccountAddress, Mismatch[R, Coin]] => EntitiesPredFailure[Dijkstra]
   ): Test[EntitiesPredFailure[Dijkstra]] = Test.failureOnJust(NonEmptyMap.fromMap(m))(mk)
 
   /** `validateWithdrawalsAgainstOriginalAccounts` (`Dijkstra/Rules/Entities.hs:341-386`,

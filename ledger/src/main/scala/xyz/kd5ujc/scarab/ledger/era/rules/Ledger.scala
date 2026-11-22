@@ -11,7 +11,6 @@ import xyz.kd5ujc.scarab.ledger.{
   TranslationError,
   LedgerDefect,
   LedgerFailure,
-  Mismatch,
   Proposals as StoredProposals,
   Verdicts
 }

@@ -3,7 +3,6 @@ package xyz.kd5ujc.scarab.ledger.era
 
 import monocle.Lens
 import scala.collection.immutable.SortedMap
-import xyz.kd5ujc.scarab.ledger.Mismatch
 import xyz.kd5ujc.scarab.ledger.state.{
   AccountAddress,
   Accounts,
@@ -20,6 +19,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
   Staking,
   Withdrawals
 }
+import xyz.kd5ujc.scarab.ledger.era.Relation.*
 
 /** The state of one stake account in era `E` (`type AccountState era`, cardano-ledger f649f975
   * `libs/cardano-ledger-core/src/Cardano/Ledger/State/Account.hs:89`): one case per era that has
@@ -142,7 +142,7 @@ object EraAccounts:
   /** The withdrawals of no registered account of the network, and those that do not take their
     * account's whole balance.
     */
-  type Undrained = (Withdrawals, Map[AccountAddress, Mismatch[Coin]])
+  type Undrained = (Withdrawals, Map[AccountAddress, Mismatch[RelEQ, Coin]])
 
   /** `withdrawalsThatDoNotDrainAccounts` (`State/Account.hs:202-215`, by `categorizeWithdrawals`,
     * `:230-264`, cardano-ledger f649f975): none if every withdrawal drains a registered account of
@@ -169,7 +169,7 @@ object EraAccounts:
     val incomplete = found.collect {
       case (account, amount, Some(state))
           if amount.value != a.balanceAccountStateL.get(state).toBigInt =>
-        account -> Mismatch(amount, a.balanceAccountStateL.get(state).toCoin)
+        account -> Mismatch[RelEQ, Coin](amount, a.balanceAccountStateL.get(state).toCoin)
     }.toMap
     Option.when(missing.nonEmpty || incomplete.nonEmpty)((Withdrawals(missing), incomplete))
 

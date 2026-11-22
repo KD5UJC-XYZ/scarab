@@ -7,7 +7,7 @@ import cats.mtl.{Raise, Stateful, Tell}
 import cats.syntax.all.*
 import scala.collection.immutable.{SortedMap, SortedSet}
 import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
-import xyz.kd5ujc.scarab.ledger.{Address, Credential, Horizon, Mismatch, PosixClock, TxEnv, TxIn}
+import xyz.kd5ujc.scarab.ledger.{Address, Credential, Horizon, PosixClock, TxEnv, TxIn}
 import xyz.kd5ujc.scarab.ledger.era.*
 import xyz.kd5ujc.scarab.ledger.rules.{Judge, Sts, Test}
 import xyz.kd5ujc.scarab.plutus.ScriptEvaluator

@@ -13,7 +13,6 @@ import xyz.kd5ujc.scarab.ledger.{
   GovActionState,
   LedgerDefect,
   LedgerFailure,
-  Mismatch,
   TxEnv,
   Voter
 }
@@ -74,6 +73,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
   Word64,
   addInterval
 }
+import xyz.kd5ujc.scarab.ledger.era.Mismatch
 import xyz.kd5ujc.scarab.protocol.{ReferenceBuild, StateLayout}
 
 // Conway's certificate rules as the reference writes them (cardano-ledger f649f975

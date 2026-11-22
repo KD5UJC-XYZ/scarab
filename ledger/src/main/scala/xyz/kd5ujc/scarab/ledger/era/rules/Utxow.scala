@@ -7,16 +7,10 @@ import cats.data.{Chain, NonEmptyList, NonEmptySet}
 import cats.mtl.{Raise, Stateful, Tell}
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.{
-  LedgerDefect,
-  LedgerFailure,
-  Mismatch,
-  ScriptLocation,
-  TxIn,
-  Verdicts
-}
+import xyz.kd5ujc.scarab.ledger.{LedgerDefect, LedgerFailure, ScriptLocation, TxIn, Verdicts}
 import xyz.kd5ujc.scarab.plutus.{EvalFailure, ScriptDecoder, ScriptEvaluator}
 import xyz.kd5ujc.scarab.ledger.era.*
+import xyz.kd5ujc.scarab.ledger.era.Relation.*
 import xyz.kd5ujc.scarab.ledger.rules.{Judge, Sts, Test}
 import xyz.kd5ujc.scarab.ledger.state.{CertState, EraTag, UTxOState}
 
@@ -306,7 +300,8 @@ object AlonzoUtxow:
     val computedScriptIntegrityHash = scriptIntegrity.map(ScriptIntegrity.hashScriptIntegrity(_))
     val suppliedScriptIntegrityHash = t.bodyOf.scriptIntegrityHash[L](t.body[L](tx))
     val expectedScriptIntegrity = scriptIntegrity.map(ScriptIntegrity.originalBytes(_))
-    val mismatch = Mismatch(suppliedScriptIntegrityHash, computedScriptIntegrityHash)
+    val mismatch =
+      Mismatch[RelEQ, Option[Bytes]](suppliedScriptIntegrityHash, computedScriptIntegrityHash)
     Test.failureUnless[IntegrityFailure[E]](
       suppliedScriptIntegrityHash == computedScriptIntegrityHash,
       if p.ppProtocolVersionL.get(pp).pvMajor.value < 11 then

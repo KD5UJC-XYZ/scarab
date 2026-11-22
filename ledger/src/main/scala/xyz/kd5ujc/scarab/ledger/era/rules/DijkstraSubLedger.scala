@@ -9,10 +9,10 @@ import xyz.kd5ujc.scarab.ledger.{
   GovActionId,
   GovActionState as FlatGovActionState,
   LedgerDefect,
-  Mismatch,
   Verdicts
 }
 import xyz.kd5ujc.scarab.ledger.era.*
+import xyz.kd5ujc.scarab.ledger.era.Relation.*
 import xyz.kd5ujc.scarab.ledger.era.conway.ConwayProposals
 import xyz.kd5ujc.scarab.ledger.rules.{DijkstraConway, Globals, Judge, Sts, Test, focus}
 import xyz.kd5ujc.scarab.ledger.state.{
@@ -125,7 +125,7 @@ enum DijkstraSubLedgerPredFailure[E <: EraTag]:
   case SubGovFailure(failure: SubGovPredFailure[E])
 
   /** The treasury the sub-transaction's body declares (supplied) and the chain's (expected). */
-  case SubTreasuryValueMismatch(mismatch: Mismatch[Coin])
+  case SubTreasuryValueMismatch(mismatch: Mismatch[RelEQ, Coin])
 
 object DijkstraSubLedgerPredFailure:
   given [E <: EraTag]: CanEqual[DijkstraSubLedgerPredFailure[E], DijkstraSubLedgerPredFailure[E]] =

@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.era.rules
 
-import xyz.kd5ujc.scarab.ledger.{Mismatch, Nonce}
+import xyz.kd5ujc.scarab.ledger.{Nonce}
 import xyz.kd5ujc.scarab.ledger.era.{PerasCert, Version}
 import xyz.kd5ujc.scarab.ledger.state.{Conway, Dijkstra, EraTag, Hash32}
+import xyz.kd5ujc.scarab.ledger.era.Mismatch
+import xyz.kd5ujc.scarab.ledger.era.Relation.*
 import xyz.kd5ujc.scarab.plutus.ExUnits
 
 // The failures and events of BBODY as the reference declares them (cardano-ledger 9df9f98c, the
@@ -17,10 +19,10 @@ import xyz.kd5ujc.scarab.plutus.ExUnits
   */
 enum ShelleyBbodyPredFailure[E <: EraTag]:
   /** The body's size (supplied) and the size its header declares (expected). */
-  case WrongBlockBodySizeBBODY(mismatch: Mismatch[Long])
+  case WrongBlockBodySizeBBODY(mismatch: Mismatch[RelEQ, Long])
 
   /** The body's hash (supplied) and the hash its header declares (expected). */
-  case InvalidBodyHashBBODY(mismatch: Mismatch[Hash32])
+  case InvalidBodyHashBBODY(mismatch: Mismatch[RelEQ, Hash32])
   case LedgersFailure(failure: LedgersPredFailure[E])
 
 /** `data AlonzoBbodyPredFailure era` (`Alonzo/Rules/Bbody.hs:65-68`, cardano-ledger 9df9f98c). */
@@ -28,40 +30,40 @@ enum AlonzoBbodyPredFailure[E <: EraTag]:
   case ShelleyInAlonzoBbodyPredFailure(failure: ShelleyBbodyPredFailure[E])
 
   /** The units of the block's transactions (supplied) and the parameters' limit (expected). */
-  case TooManyExUnits(mismatch: Mismatch[ExUnits])
+  case TooManyExUnits(mismatch: Mismatch[RelLTEQ, ExUnits])
 
 /** `data ConwayBbodyPredFailure era` (`Conway/Rules/Bbody.hs:97-105`, cardano-ledger f649f975;
   * `:106-114` at 9df9f98c, whose units are `OrdExUnits`, the same units with an order), its
   * constructors in the order of their tags (0 to 5, `:125-132` at f649f975).
   */
 enum ConwayBbodyPredFailure[E <: EraTag]:
-  case WrongBlockBodySizeBBODY(mismatch: Mismatch[Long])
-  case InvalidBodyHashBBODY(mismatch: Mismatch[Hash32])
+  case WrongBlockBodySizeBBODY(mismatch: Mismatch[RelEQ, Long])
+  case InvalidBodyHashBBODY(mismatch: Mismatch[RelEQ, Hash32])
   case LedgersFailure(failure: LedgersPredFailure[E])
-  case TooManyExUnits(mismatch: Mismatch[ExUnits])
+  case TooManyExUnits(mismatch: Mismatch[RelLTEQ, ExUnits])
 
   /** The reference scripts of the block (supplied) and the parameters' limit (expected). */
-  case BodyRefScriptsSizeTooBig(mismatch: Mismatch[Long])
+  case BodyRefScriptsSizeTooBig(mismatch: Mismatch[RelLTEQ, Long])
 
   /** The header's protocol version (supplied) and the highest the node supports (expected). */
-  case HeaderProtVerTooHigh(mismatch: Mismatch[Version])
+  case HeaderProtVerTooHigh(mismatch: Mismatch[RelLTEQ, Version])
 
 /** `data DijkstraBbodyPredFailure era` (`Dijkstra/Rules/Bbody.hs:88-97`, cardano-ledger 9df9f98c),
   * its constructors in the order of their tags (0 to 6, `:119-127`).
   */
 enum DijkstraBbodyPredFailure[E <: EraTag]:
-  case WrongBlockBodySizeBBODY(mismatch: Mismatch[Long])
-  case InvalidBodyHashBBODY(mismatch: Mismatch[Hash32])
+  case WrongBlockBodySizeBBODY(mismatch: Mismatch[RelEQ, Long])
+  case InvalidBodyHashBBODY(mismatch: Mismatch[RelEQ, Hash32])
   case LedgersFailure(failure: LedgersPredFailure[E])
-  case TooManyExUnits(mismatch: Mismatch[ExUnits])
-  case BodyRefScriptsSizeTooBig(mismatch: Mismatch[Long])
+  case TooManyExUnits(mismatch: Mismatch[RelLTEQ, ExUnits])
+  case BodyRefScriptsSizeTooBig(mismatch: Mismatch[RelLTEQ, Long])
 
   /** The body's Peras certificate and the header's previous nonce. */
   case PerasCertValidationFailed(cert: PerasCert, nonce: Nonce)
 
   /** The header's highest supported major version (supplied) and the parameters' major (expected).
     */
-  case HeaderProtVerTooLow(mismatch: Mismatch[Long])
+  case HeaderProtVerTooLow(mismatch: Mismatch[RelGTEQ, Long])
 
 /** `EraRuleFailure "BBODY" era`: Conway's (`Conway/Rules/Bbody.hs:149`, cardano-ledger f649f975)
   * and Dijkstra's (`Dijkstra/Rules/Bbody.hs:146`, cardano-ledger 9df9f98c), each its own.

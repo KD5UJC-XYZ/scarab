@@ -6,7 +6,7 @@ import java.time.Instant
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
 import xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraTxIn
-import xyz.kd5ujc.scarab.ledger.{Horizon, Mismatch, TxEnv, TxIn, Unsigned, Utxo, Verdicts}
+import xyz.kd5ujc.scarab.ledger.{Horizon, TxEnv, TxIn, Unsigned, Utxo, Verdicts}
 import xyz.kd5ujc.scarab.ledger.era.*
 import xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraCorpus.*
 import xyz.kd5ujc.scarab.ledger.era.rules.*

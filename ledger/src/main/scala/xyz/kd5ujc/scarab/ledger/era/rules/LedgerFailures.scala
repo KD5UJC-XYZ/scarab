@@ -6,7 +6,6 @@ import cats.syntax.all.*
 import xyz.kd5ujc.scarab.ledger.{
   GovAction as FlatGovAction,
   MempoolProblem,
-  Mismatch,
   PredicateFailure,
   Purpose
 }
@@ -23,6 +22,8 @@ import xyz.kd5ujc.scarab.ledger.state.{
   KeyHash,
   Staking
 }
+import xyz.kd5ujc.scarab.ledger.era.Mismatch
+import xyz.kd5ujc.scarab.ledger.era.Relation.*
 import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 
 // The failures and events of LEDGER and LEDGERS as the reference declares them (cardano-ledger
@@ -56,7 +57,7 @@ enum ShelleyLedgerPredFailure[E <: EraTag]:
   /** Each withdrawal that does not drain its account: the amount (supplied) and the balance
     * (expected).
     */
-  case ShelleyIncompleteWithdrawals(mismatches: NonEmptyMap[AccountAddress, Mismatch[Coin]])
+  case ShelleyIncompleteWithdrawals(mismatches: NonEmptyMap[AccountAddress, Mismatch[RelEQ, Coin]])
 
 /** `data ConwayLedgerPredFailure era` (`Conway/Rules/Ledger.hs:117-127`, cardano-ledger f649f975),
   * its constructors in the order of their tags (1 to 9, `:231-240`). The mempool's failure is the
@@ -70,19 +71,19 @@ enum ConwayLedgerPredFailure[E <: EraTag]:
   case ConwayWdrlNotDelegatedToDRep(keys: NonEmptyList[KeyHash[Staking]])
 
   /** The treasury the body declares (supplied) and the chain's (expected). */
-  case ConwayTreasuryValueMismatch(mismatch: Mismatch[Coin])
+  case ConwayTreasuryValueMismatch(mismatch: Mismatch[RelEQ, Coin])
 
   /** The reference scripts' size (supplied) and the parameters' limit (expected), as the
     * reference's 64-bit `Int`.
     */
-  case ConwayTxRefScriptsSizeTooBig(mismatch: Mismatch[Long])
+  case ConwayTxRefScriptsSizeTooBig(mismatch: Mismatch[RelLTEQ, Long])
   case ConwayMempoolFailure(problem: MempoolProblem)
   case ConwayWithdrawalsMissingAccounts(withdrawals: Map[AccountAddress, Coin])
 
   /** Each withdrawal that does not drain its account: the amount (supplied) and the balance
     * (expected).
     */
-  case ConwayIncompleteWithdrawals(mismatches: NonEmptyMap[AccountAddress, Mismatch[Coin]])
+  case ConwayIncompleteWithdrawals(mismatches: NonEmptyMap[AccountAddress, Mismatch[RelEQ, Coin]])
 
 /** `EraRuleFailure "LEDGER" era`: Conway's is its own (`Conway/Rules/Ledger.hs:129`, cardano-ledger
   * f649f975), and Dijkstra's its own (`Dijkstra/Rules/Ledger.hs:107`, cardano-ledger 9df9f98c).
@@ -564,7 +565,6 @@ object ConwayLedgerPredFailure:
       purpose: ConwayPlutusPurpose[AsItem] => Option[Purpose],
       read: GovAction[Conway] => Option[FlatGovAction]
   ): Either[LedgerUnprojected, PredicateFailure] =
-    def coins(m: Mismatch[Coin]): Mismatch[BigInt] = Mismatch(m.supplied.value, m.expected.value)
     failure match
       case ConwayUtxowFailure(f) =>
         ConwayUtxowPredFailure.toStored(f, purpose).leftMap(LedgerUnprojected.Utxow(_))
@@ -574,8 +574,9 @@ object ConwayLedgerPredFailure:
       case ConwayWdrlNotDelegatedToDRep(keys) =>
         Right(PredicateFailure.WdrlNotDelegatedToDRep(keys.toList.toVector.map(_.bytes)))
       case ConwayTreasuryValueMismatch(m) => Right(PredicateFailure.TreasuryValueMismatch(coins(m)))
-      case ConwayTxRefScriptsSizeTooBig(m) => Right(PredicateFailure.TxRefScriptsSizeTooBig(m))
-      case ConwayMempoolFailure(p)         => Right(PredicateFailure.Mempool(p))
+      case ConwayTxRefScriptsSizeTooBig(m) =>
+        Right(PredicateFailure.TxRefScriptsSizeTooBig(m.stored))
+      case ConwayMempoolFailure(p) => Right(PredicateFailure.Mempool(p))
       case ConwayWithdrawalsMissingAccounts(ws) =>
         Right(
           PredicateFailure.WithdrawalsMissingAccounts(

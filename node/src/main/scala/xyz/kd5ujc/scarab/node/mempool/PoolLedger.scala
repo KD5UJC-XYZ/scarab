@@ -51,7 +51,7 @@ import xyz.kd5ujc.scarab.node.read.{ChainRead, ConwayView, InEra}
 import xyz.kd5ujc.scarab.protocol.{Era, ReferenceBuild}
 import cats.data.NonEmptyChain
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.{Mismatch, TxIn}
+import xyz.kd5ujc.scarab.ledger.TxIn
 import xyz.kd5ujc.scarab.ledger.era.{
   AlonzoEraPParams,
   BothLevels,
@@ -79,6 +79,7 @@ import xyz.kd5ujc.scarab.ledger.era.rules.{
 }
 import xyz.kd5ujc.scarab.ledger.rules.EraLedger
 import xyz.kd5ujc.scarab.ledger.state.Dijkstra
+import xyz.kd5ujc.scarab.ledger.era.Mismatch
 import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.TxMeasure
 
 /** The ledger the mempool validates a transaction against: the ledger state at the chain tip,

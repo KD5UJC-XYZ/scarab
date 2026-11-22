@@ -5,9 +5,10 @@ import cats.{Id, Monad}
 import cats.data.Chain
 import cats.mtl.{Ask, Raise, Stateful, Tell}
 import cats.syntax.all.*
-import xyz.kd5ujc.scarab.ledger.{LedgerDefect, Mismatch, TranslationError, Verdicts}
+import xyz.kd5ujc.scarab.ledger.{LedgerDefect, TranslationError, Verdicts}
 import xyz.kd5ujc.scarab.ledger.dijkstra.{DijkstraLedgerFailure, DijkstraPurpose}
 import xyz.kd5ujc.scarab.ledger.era.*
+import xyz.kd5ujc.scarab.ledger.era.Relation.*
 import xyz.kd5ujc.scarab.ledger.era.dijkstra.{DijkstraPlutusPurpose, DijkstraStAnnTx, DijkstraUTxO}
 import xyz.kd5ujc.scarab.ledger.rules.{Globals, Judge, Sts, Test, focus}
 import xyz.kd5ujc.scarab.ledger.state.{
@@ -40,12 +41,12 @@ enum DijkstraLedgerPredFailure[E <: EraTag]:
   case DijkstraGovFailure(failure: GovPredFailure[E])
 
   /** The treasury the body declares (supplied) and the chain's (expected). */
-  case DijkstraTreasuryValueMismatch(mismatch: Mismatch[Coin])
+  case DijkstraTreasuryValueMismatch(mismatch: Mismatch[RelEQ, Coin])
 
   /** The reference scripts' size over the batch (supplied) and the parameters' limit (expected), as
     * the reference's 64-bit `Int`.
     */
-  case DijkstraTxRefScriptsSizeTooBig(mismatch: Mismatch[Long])
+  case DijkstraTxRefScriptsSizeTooBig(mismatch: Mismatch[RelLTEQ, Long])
   case DijkstraSubLedgersFailure(failure: SubLedgersPredFailure[E])
 
 /** `data DijkstraLedgerEvent era` (`Dijkstra/Rules/Ledger.hs:279-284`, cardano-ledger 9df9f98c). */
@@ -95,10 +96,10 @@ object DijkstraLedgerPredFailure:
           .bimap(DijkstraLedgerUnprojected.Gov(_), DijkstraLedgerFailure.GovFailure(_))
       case DijkstraTreasuryValueMismatch(m) =>
         Right(
-          DijkstraLedgerFailure.TreasuryValueMismatch(Mismatch(m.supplied.value, m.expected.value))
+          DijkstraLedgerFailure.TreasuryValueMismatch(m.storedBy(_.value))
         )
       case DijkstraTxRefScriptsSizeTooBig(m) =>
-        Right(DijkstraLedgerFailure.TxRefScriptsSizeTooBig(m))
+        Right(DijkstraLedgerFailure.TxRefScriptsSizeTooBig(m.stored))
       case DijkstraSubLedgersFailure(f) => Left(DijkstraLedgerUnprojected.SubLedgers(f))
 
 /** The `Embed` instances of Dijkstra's LEDGER's sub-rules (`Dijkstra/Rules/Ledger.hs:489-508,

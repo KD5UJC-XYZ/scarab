@@ -12,7 +12,6 @@ import xyz.kd5ujc.scarab.ledger.{
   EpochGeometry,
   GovActionId,
   Horizon,
-  Mismatch,
   PreprodDeepTx,
   TestGeometry,
   TestLedger,

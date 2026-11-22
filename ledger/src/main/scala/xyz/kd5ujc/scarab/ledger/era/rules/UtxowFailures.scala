@@ -7,7 +7,6 @@ import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{
   CollectError as FlatCollectError,
-  Mismatch,
   PredicateFailure,
   Purpose,
   TxIn,
@@ -16,6 +15,7 @@ import xyz.kd5ujc.scarab.ledger.{
   UtxowFailure as FlatUtxowFailure
 }
 import xyz.kd5ujc.scarab.ledger.era.*
+import xyz.kd5ujc.scarab.ledger.era.Relation.*
 import xyz.kd5ujc.scarab.ledger.era.conway.ConwayPlutusPurpose
 import xyz.kd5ujc.scarab.ledger.state.{Conway, Dijkstra, EraTag}
 
@@ -54,7 +54,7 @@ enum ShelleyUtxowPredFailure[E <: EraTag]:
   case MIRInsufficientGenesisSigsUTXOW(signers: MirSigners[E])
   case MissingTxBodyMetadataHash(hash: Bytes)
   case MissingTxMetadata(hash: Bytes)
-  case ConflictingMetadataHash(mismatch: Mismatch[Bytes])
+  case ConflictingMetadataHash(mismatch: Mismatch[RelEQ, Bytes])
   case InvalidMetadata()
   case ExtraneousScriptWitnessesUTXOW(hashes: NonEmptySet[Bytes])
 
@@ -72,12 +72,15 @@ enum AlonzoUtxowPredFailure[E <: EraTag]:
 
   /** The supplemental datums not allowed, and those allowed. */
   case NotAllowedSupplementalDatums(unallowed: NonEmptySet[Bytes], acceptable: Set[Bytes])
-  case PPViewHashesDontMatch(mismatch: Mismatch[Option[Bytes]])
+  case PPViewHashesDontMatch(mismatch: Mismatch[RelEQ, Option[Bytes]])
   case UnspendableUTxONoDatumHash(inputs: NonEmptySet[TxIn])
   case ExtraRedeemers(purposes: NonEmptyList[PlutusPurpose[AsIx, E]])
 
   /** The supplied and computed hashes, and the bytes the computed one is over. */
-  case ScriptIntegrityHashMismatch(mismatch: Mismatch[Option[Bytes]], expected: Option[Bytes])
+  case ScriptIntegrityHashMismatch(
+      mismatch: Mismatch[RelEQ, Option[Bytes]],
+      expected: Option[Bytes]
+  )
 
 /** `data BabbageUtxowPredFailure era` (`eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/
   * Utxow.hs:80-94`, cardano-ledger f649f975).
@@ -87,7 +90,10 @@ enum BabbageUtxowPredFailure[E <: EraTag]:
   case UtxoFailure(failure: UtxoPredFailure[E])
   case MalformedScriptWitnesses(hashes: NonEmptySet[Bytes])
   case MalformedReferenceScripts(hashes: NonEmptySet[Bytes])
-  case ScriptIntegrityHashMismatch(mismatch: Mismatch[Option[Bytes]], expected: Option[Bytes])
+  case ScriptIntegrityHashMismatch(
+      mismatch: Mismatch[RelEQ, Option[Bytes]],
+      expected: Option[Bytes]
+  )
 
 /** `data ConwayUtxowPredFailure era` (`eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Utxow.hs:
   * 58-112`, cardano-ledger f649f975), its constructors in the reference's order, which is their tag
@@ -101,18 +107,21 @@ enum ConwayUtxowPredFailure[E <: EraTag]:
   case ScriptWitnessNotValidatingUTXOW(hashes: NonEmptySet[Bytes])
   case MissingTxBodyMetadataHash(hash: Bytes)
   case MissingTxMetadata(hash: Bytes)
-  case ConflictingMetadataHash(mismatch: Mismatch[Bytes])
+  case ConflictingMetadataHash(mismatch: Mismatch[RelEQ, Bytes])
   case InvalidMetadata()
   case ExtraneousScriptWitnessesUTXOW(hashes: NonEmptySet[Bytes])
   case MissingRedeemers(purposes: NonEmptyList[(PlutusPurpose[AsItem, E], Bytes)])
   case MissingRequiredDatums(missing: NonEmptySet[Bytes], received: Set[Bytes])
   case NotAllowedSupplementalDatums(unallowed: NonEmptySet[Bytes], acceptable: Set[Bytes])
-  case PPViewHashesDontMatch(mismatch: Mismatch[Option[Bytes]])
+  case PPViewHashesDontMatch(mismatch: Mismatch[RelEQ, Option[Bytes]])
   case UnspendableUTxONoDatumHash(inputs: NonEmptySet[TxIn])
   case ExtraRedeemers(purposes: NonEmptyList[PlutusPurpose[AsIx, E]])
   case MalformedScriptWitnesses(hashes: NonEmptySet[Bytes])
   case MalformedReferenceScripts(hashes: NonEmptySet[Bytes])
-  case ScriptIntegrityHashMismatch(mismatch: Mismatch[Option[Bytes]], expected: Option[Bytes])
+  case ScriptIntegrityHashMismatch(
+      mismatch: Mismatch[RelEQ, Option[Bytes]],
+      expected: Option[Bytes]
+  )
 
 /** What a failure's flat form cannot hold in the node's vocabulary without what the transaction
   * gives: UTXOS's collection errors, and a missing redeemer's purpose, which the flat failure names
@@ -174,7 +183,7 @@ object ConwayUtxowPredFailure:
         utxow(FlatUtxowFailure.ScriptWitnessNotValidating(set(hs)))
       case MissingTxBodyMetadataHash(h) => utxow(FlatUtxowFailure.MissingTxBodyMetadataHash(h))
       case MissingTxMetadata(h)         => utxow(FlatUtxowFailure.MissingTxMetadata(h))
-      case ConflictingMetadataHash(m)   => utxow(FlatUtxowFailure.ConflictingMetadataHash(m))
+      case ConflictingMetadataHash(m)   => utxow(FlatUtxowFailure.ConflictingMetadataHash(m.stored))
       case InvalidMetadata()            => utxow(FlatUtxowFailure.InvalidMetadata)
       case ExtraneousScriptWitnessesUTXOW(hs) =>
         utxow(FlatUtxowFailure.ExtraneousScriptWitnesses(set(hs)))
@@ -188,7 +197,7 @@ object ConwayUtxowPredFailure:
         utxow(FlatUtxowFailure.MissingRequiredDatums(set(missing), received))
       case NotAllowedSupplementalDatums(unallowed, acceptable) =>
         utxow(FlatUtxowFailure.NotAllowedSupplementalDatums(set(unallowed), acceptable))
-      case PPViewHashesDontMatch(m) => utxow(FlatUtxowFailure.PPViewHashesDontMatch(m))
+      case PPViewHashesDontMatch(m) => utxow(FlatUtxowFailure.PPViewHashesDontMatch(m.stored))
       case UnspendableUTxONoDatumHash(ins) =>
         utxow(FlatUtxowFailure.UnspendableUTxONoDatumHash(set(ins)))
       case ExtraRedeemers(ps) =>
@@ -197,7 +206,7 @@ object ConwayUtxowPredFailure:
       case MalformedReferenceScripts(hs) =>
         utxow(FlatUtxowFailure.MalformedReferenceScripts(set(hs)))
       case ScriptIntegrityHashMismatch(m, expected) =>
-        utxow(FlatUtxowFailure.ScriptIntegrityHashMismatch(m, expected))
+        utxow(FlatUtxowFailure.ScriptIntegrityHashMismatch(m.stored, expected))
 
   /** The flat form of a missing redeemer's purpose (`purpose` of [[toStored]]): the needed purpose
     * whose item it is, with its index, in its flat form (`ConwayPlutusPurpose.toStored`), its spent

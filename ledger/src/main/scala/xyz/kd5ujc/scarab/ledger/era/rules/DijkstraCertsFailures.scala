@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.ledger.era.rules
 
 import cats.data.{NonEmptyMap, NonEmptySet}
 import xyz.kd5ujc.scarab.crypto.bls.BlsError
-import xyz.kd5ujc.scarab.ledger.{GovCertFailure as FlatGovCertFailure, Mismatch}
+import xyz.kd5ujc.scarab.ledger.GovCertFailure as FlatGovCertFailure
 import xyz.kd5ujc.scarab.ledger.dijkstra.{
   DijkstraBlsKey,
   DijkstraCertFailure,
@@ -27,6 +27,8 @@ import xyz.kd5ujc.scarab.ledger.state.{
   StakePool,
   VRFVerKeyHash
 }
+import xyz.kd5ujc.scarab.ledger.era.Mismatch
+import xyz.kd5ujc.scarab.ledger.era.Relation.*
 
 // The failures and events of Dijkstra's certificate rules and of ENTITIES as the reference declares
 // them (cardano-ledger 9df9f98c, `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/{Pool,
@@ -43,13 +45,16 @@ enum DijkstraPoolPredFailure[E <: EraTag]:
   /** The epoch (supplied) against the current one, which it must follow, and against the last one
     * it may be, which it must not pass (expected).
     */
-  case StakePoolRetirementWrongEpochPOOL(current: Mismatch[EpochNo], latest: Mismatch[EpochNo])
+  case StakePoolRetirementWrongEpochPOOL(
+      current: Mismatch[RelGT, EpochNo],
+      latest: Mismatch[RelLTEQ, EpochNo]
+  )
 
   /** The cost (supplied) and the parameters' minimum (expected). */
-  case StakePoolCostTooLowPOOL(mismatch: Mismatch[Coin])
+  case StakePoolCostTooLowPOOL(mismatch: Mismatch[RelGTEQ, Coin])
 
   /** The reward account's network (supplied) and the node's (expected). */
-  case WrongNetworkPOOL(mismatch: Mismatch[Network], pool: KeyHash[StakePool])
+  case WrongNetworkPOOL(mismatch: Mismatch[RelEQ, Network], pool: KeyHash[StakePool])
   case PoolMedataHashTooBig(pool: KeyHash[StakePool], size: Int)
   case VRFKeyHashAlreadyRegistered(pool: KeyHash[StakePool], vrf: VRFVerKeyHash)
 
@@ -103,7 +108,7 @@ object DijkstraPoolPredFailure:
       DijkstraPoolFailure.StakePoolRetirementWrongEpoch(epochs(current), epochs(latest))
     case StakePoolCostTooLowPOOL(m) => DijkstraPoolFailure.StakePoolCostTooLow(coins(m))
     case WrongNetworkPOOL(m, p) =>
-      DijkstraPoolFailure.WrongNetworkPool(Mismatch(m.supplied.wire, m.expected.wire), p.bytes)
+      DijkstraPoolFailure.WrongNetworkPool(m.storedBy(_.wire), p.bytes)
     case PoolMedataHashTooBig(p, size) => DijkstraPoolFailure.PoolMedataHashTooBig(p.bytes, size)
     case VRFKeyHashAlreadyRegistered(p, v) =>
       DijkstraPoolFailure.VRFKeyHashAlreadyRegistered(p.bytes, v.bytes)
@@ -122,11 +127,11 @@ enum DijkstraGovCertPredFailure[E <: EraTag]:
   case DijkstraDRepNotRegistered(credential: Credential[DRepRole])
 
   /** The deposit (supplied) and the parameters' (expected). */
-  case DijkstraDRepIncorrectDeposit(mismatch: Mismatch[Coin])
+  case DijkstraDRepIncorrectDeposit(mismatch: Mismatch[RelEQ, Coin])
   case DijkstraCommitteeHasPreviouslyResigned(credential: Credential[ColdCommittee])
 
   /** The refund (supplied) and the DRep's deposit (expected). */
-  case DijkstraDRepIncorrectRefund(mismatch: Mismatch[Coin])
+  case DijkstraDRepIncorrectRefund(mismatch: Mismatch[RelEQ, Coin])
   case DijkstraCommitteeIsUnknown(credential: Credential[ColdCommittee])
 
 object DijkstraGovCertPredFailure:
@@ -212,13 +217,15 @@ enum EntitiesPredFailure[E <: EraTag]:
   case WithdrawalAccountsMissingFromOriginal(withdrawals: Map[AccountAddress, Coin])
 
   /** Each withdrawal (supplied) and its account's balance (expected). */
-  case WithdrawalAmountsInexactInLegacyMode(mismatches: NonEmptyMap[AccountAddress, Mismatch[Coin]])
+  case WithdrawalAmountsInexactInLegacyMode(
+      mismatches: NonEmptyMap[AccountAddress, Mismatch[RelEQ, Coin]]
+  )
 
   /** Each withdrawal summed over the batch (supplied) and its account's original balance
     * (expected).
     */
   case WithdrawalAmountsExceedingOriginalBalance(
-      mismatches: NonEmptyMap[AccountAddress, Mismatch[Coin]]
+      mismatches: NonEmptyMap[AccountAddress, Mismatch[RelLTEQ, Coin]]
   )
 
   /** The node's network, and the direct deposits' accounts on another. */

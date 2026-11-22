@@ -5,8 +5,9 @@ import cats.data.{NonEmptyList, NonEmptyMap, NonEmptySet}
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
 import xyz.kd5ujc.scarab.ledger as flat
-import xyz.kd5ujc.scarab.ledger.{GovActionId, Mismatch, TestLedger, Unsigned, Voter}
+import xyz.kd5ujc.scarab.ledger.{GovActionId, TestLedger, Unsigned, Voter}
 import xyz.kd5ujc.scarab.ledger.era.*
+import xyz.kd5ujc.scarab.ledger.era.Relation.*
 import xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraCorpus.*
 import xyz.kd5ujc.scarab.ledger.era.rules.*
 import xyz.kd5ujc.scarab.ledger.rules.{Convert, Globals}
@@ -98,11 +99,11 @@ class DijkstraGovSuite extends FunSuite:
     import DijkstraGovPredFailure as D
     val ids = NonEmptyList.of(actionId)
     val votes = NonEmptyList.of(vote)
-    val coins = Mismatch(Coin(1), Coin(2))
+    val coins = Mismatch[RelEQ, Coin](Coin(1), Coin(2))
     val members = NonEmptySet.of(cold)
     val terms = NonEmptyMap.of(cold -> EpochNo.fromUnsigned(1L))
     val parent = Some(GovPurposeId[GovActionPurpose.HardFork](actionId))
-    val versions = Mismatch(version, version)
+    val versions = Mismatch[RelGT, ProtVer](version, version)
     Vector(
       C.GovActionsDoNotExist(ids) -> D.GovActionsDoNotExist(ids),
       C.MalformedProposal(info) -> D.MalformedProposal(info),

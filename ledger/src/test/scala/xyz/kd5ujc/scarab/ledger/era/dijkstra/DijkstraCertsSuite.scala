@@ -7,7 +7,7 @@ import scala.collection.immutable.SortedMap
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Rational, Value}
 import xyz.kd5ujc.scarab.ledger as flat
 import xyz.kd5ujc.scarab.crypto.bls.VerificationKey
-import xyz.kd5ujc.scarab.ledger.{Mismatch, TestLedger, TxEnv}
+import xyz.kd5ujc.scarab.ledger.{TestLedger, TxEnv}
 import xyz.kd5ujc.scarab.ledger.era.*
 import xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraCorpus.*
 import xyz.kd5ujc.scarab.ledger.era.rules.*

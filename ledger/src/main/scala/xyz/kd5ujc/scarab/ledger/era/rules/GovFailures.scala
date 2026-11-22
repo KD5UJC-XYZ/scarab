@@ -8,12 +8,12 @@ import xyz.kd5ujc.scarab.ledger.{
   GovAction as FlatGovAction,
   GovActionId,
   GovFailure,
-  Mismatch,
   PredicateFailure,
   RewardAccount,
   Voter
 }
 import xyz.kd5ujc.scarab.ledger.era.*
+import xyz.kd5ujc.scarab.ledger.era.Relation.*
 import xyz.kd5ujc.scarab.ledger.rules.Convert
 import xyz.kd5ujc.scarab.ledger.state.{
   AccountAddress,
@@ -36,8 +36,8 @@ import xyz.kd5ujc.scarab.ledger.state.{
 /** `data ConwayGovPredFailure era` (`Conway/Rules/Gov.hs:177-218`, cardano-ledger f649f975), its
   * constructors in the order of their tags (0 to 18, `:237-255`). A voter and a voter's credential
   * are the era's voter ([[Voter]]) as the node reads it, until the votes carry the reference's
-  * typed voter (#85). A mismatch is the node's `Mismatch`, without the reference's relation
-  * (`RelEQ`, `RelGT`), which only names the comparison in the reference's rendering.
+  * typed voter (#85). A mismatch carries the reference's relation ([[Mismatch]]: `RelEQ` for the
+  * deposit, `RelGT` for the version).
   */
 enum ConwayGovPredFailure[E <: EraTag]:
   case GovActionsDoNotExist(ids: NonEmptyList[GovActionId])
@@ -46,7 +46,7 @@ enum ConwayGovPredFailure[E <: EraTag]:
   case TreasuryWithdrawalsNetworkIdMismatch(accounts: NonEmptySet[AccountAddress], network: Network)
 
   /** The deposit (supplied) and the parameters' (expected). */
-  case ProposalDepositIncorrect(mismatch: Mismatch[Coin])
+  case ProposalDepositIncorrect(mismatch: Mismatch[RelEQ, Coin])
 
   /** The votes on actions their voters may not vote on. */
   case DisallowedVoters(votes: NonEmptyList[(Voter, GovActionId)])
@@ -64,7 +64,7 @@ enum ConwayGovPredFailure[E <: EraTag]:
     */
   case ProposalCantFollow(
       parent: Option[GovPurposeId[GovActionPurpose.HardFork]],
-      mismatch: Mismatch[ProtVer]
+      mismatch: Mismatch[RelGT, ProtVer]
   )
 
   /** The guardrails script hash the proposal names, and the constitution's. */
@@ -122,7 +122,7 @@ object ConwayGovPredFailure:
           )
         )
       case ProposalDepositIncorrect(m) =>
-        gov(GovFailure.ProposalDepositIncorrect(Mismatch(m.supplied.value, m.expected.value)))
+        gov(GovFailure.ProposalDepositIncorrect(m.storedBy(_.value)))
       case DisallowedVoters(votes) => gov(GovFailure.DisallowedVoters(votes.toList.toVector))
       case ConflictingCommitteeUpdate(members) =>
         gov(GovFailure.ConflictingCommitteeUpdate(members.toSortedSet.map(Convert.back(_))))
@@ -139,7 +139,7 @@ object ConwayGovPredFailure:
         gov(
           GovFailure.ProposalCantFollow(
             parent.map(_.unGovPurposeId),
-            Mismatch(version(m.supplied), version(m.expected))
+            m.storedBy(version(_))
           )
         )
       case InvalidGuardrailsScriptHash(proposed, constitution) =>
