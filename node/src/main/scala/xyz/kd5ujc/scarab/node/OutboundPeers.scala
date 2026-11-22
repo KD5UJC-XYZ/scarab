@@ -432,20 +432,6 @@ final class OutboundPeers[F[_]: Async, A] private (
           cold *> observed(true).whenA(changed || demoting)
       }
 
-    // A connection that goes cold after a close or a cleanup of ours ends with no failure of its
-    // own: the governor still hears that it is gone, as the reference's monitor reads `PeerCold`
-    // whatever brought it (ouroboros-network c45735a5 `Governor/Monitor.hs` 137-144 and 304-308),
-    // and demotes the peer with a failure counted (188-200), the class of an unattributed loss.
-    def released: F[Unit] = report(
-      Event.Observed(
-        peer,
-        Observation
-          .Lost(FailureClass.Transient, config.repromoteDelay, true, "connection released"),
-        Some(link.rootsGeneration),
-        Some(link.identity)
-      )
-    )
-
     def ended(end: SessionEnd): F[Unit] =
       SessionEnd.networkFailure(end).traverse_(link.warm.applications.abortRunning) *>
         (FailurePolicy.disposition(end) match
@@ -466,7 +452,7 @@ final class OutboundPeers[F[_]: Async, A] private (
           case None =>
             phase match
               case Phase.Cold()    => F.pure(Right(()))
-              case Phase.Cooling() => (cold *> released).as(Right(()))
+              case Phase.Cooling() => cold.as(Right(()))
               case Phase.Warm() | Phase.Hot(_) =>
                 snapshot.first match
                   case Some((_, _, Left(error))) => failed(error).as(Right(()))
