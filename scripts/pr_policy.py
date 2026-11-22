@@ -7,8 +7,10 @@ pull request of level 1 or higher carries the two sections CONTRIBUTING.md asks 
 "Deviations from the reference" (`None`, or a table of behaviour, the pinned reference, what Scarab does and the
 approval link) and "Gaps" (`None`, or bullets that each start with an issue link). A section that opens with
 `None` may go on in prose. A pull request that is not a draft (the event's `draft` flag) also carries an
-"Independent review" section with a link, to the review of its final diff posted on it (CONTRIBUTING.md,
-"Independent review"); a draft passes without it. The stated level has floors from the changed files (`--files`, the pull request's file
+"Independent review" section that links the review of its final diff posted on it, a comment or a review of that pull
+request (`https://github.com/<repository>/pull/<number>#issuecomment-<id>` or `#pullrequestreview-<id>`;
+CONTRIBUTING.md, "Independent review"); any other link, such as an attribution line after the section, is not one,
+and a draft passes without it. The stated level has floors from the changed files (`--files`, the pull request's file
 list): a file that is not documentation makes it at least 1, and the persisted-format register at least 3, as the
 levels table of CONTRIBUTING.md defines them. A bot's pull request (a release
 proposal, a dependency update) and a promotion of `dev` to `main` are not checked for these. The promotion controller
@@ -51,6 +53,13 @@ REVIEW = "independent review"
 LINK = re.compile(r"https?://\S+")
 REFERENCE_DEFINITION = re.compile(r"^ {0,3}\[([^\]]+)\]:[ \t]*(?:\n[ \t]*)?(\S+)[^\n]*$", re.MULTILINE)
 REFERENCE = re.compile(r"\[([^\]]+)\](?:\[([^\]]*)\])?(?![(:])")
+# An inline link (not an image): its text, which may hold one level of brackets, and its destination, bare or in angle
+# brackets, with an optional title.
+INLINE_LINK = re.compile(r"(?<!!)\[(?:[^\[\]\\]|\\.|\[[^\[\]]*\])*\]\(\s*(?:<([^<>\n]*)>|([^\s()<>]*(?:\([^\s()]*\)[^\s()<>]*)*))"
+                         r"(?:\s+(?:\"[^\"]*\"|'[^']*'|\([^)]*\)))?\s*\)")
+# An image, whose text and source are no link of the section.
+IMAGE = re.compile("!" + INLINE_LINK.pattern.removeprefix("(?<!!)"))
+AUTOLINK = re.compile(r"<(https?://[^\s<>]*)>")
 ISSUE_LINK = re.compile(r"(?:\[#\d+\]\([^)]*\)|#\d+\b|https://github\.com/[^/\s]+/[^/\s]+/issues/\d+)")
 APPROVAL = re.compile(r"(?:https?://|#\d+|\]\()")
 SECTION_LEVEL = 1
@@ -162,25 +171,86 @@ def without_code_spans(text):
     return "".join(out)
 
 
-def has_link(text):
-    """Whether `text` renders a link: an inline link, an autolink or a bare URL outside link reference definitions,
-    or a reference link whose label one of them defines with a URL."""
-    defined = {label.strip().lower(): target for label, target in REFERENCE_DEFINITION.findall(text)}
-    rest = REFERENCE_DEFINITION.sub("", text)
-    if LINK.search(rest):
-        return True
-    return any(LINK.match(defined.get((ref or label).strip().lower(), "")) for label, ref in REFERENCE.findall(rest))
+def label_key(label):
+    """A link label as CommonMark matches it: case-folded, with its runs of white space as one space."""
+    return " ".join(label.split()).casefold()
+
+
+def link_targets(text, body=None):
+    """The destinations of the links `text` renders, never their visible text: each inline link's destination, each
+    autolink, each reference link whose label a definition anywhere in `body` (by default `text`) gives a URL, the
+    first definition of a label winning, and each bare URL outside them (from its scheme to the next space). A link's
+    text is not a link of its own, an image is none, and a definition that no link in `text` uses is none."""
+    source = text if body is None else "\n".join(rendered_lines(body))
+    defined = {}
+    for label, target in REFERENCE_DEFINITION.findall(source):
+        defined.setdefault(label_key(label), target[1:-1] if target.startswith("<") and target.endswith(">") else target)
+    targets = []
+    def take(target, match):
+        if target is None or not LINK.match(target):
+            return match.group(0) if target is None else " "
+        targets.append(target)
+        return " "
+    rest = IMAGE.sub(" ", REFERENCE_DEFINITION.sub("", text))
+    rest = INLINE_LINK.sub(lambda m: take(m.group(1) if m.group(1) is not None else m.group(2), m), rest)
+    rest = AUTOLINK.sub(lambda m: take(m.group(1), m), rest)
+    rest = REFERENCE.sub(lambda m: take(defined.get(label_key(m.group(2) or m.group(1))), m), rest)
+    return targets + LINK.findall(rest)
+
+
+def review_link(pr):
+    """The links that name a comment or a review of the pull request itself, as GitHub writes them; none when the
+    pull request's number or repository is missing."""
+    number, repository = pr.get("number"), ((pr.get("base") or {}).get("repo") or {}).get("full_name")
+    if type(number) is not int or not isinstance(repository, str) or not REPOSITORY.fullmatch(repository):
+        return None
+    return re.compile(rf"https://github\.com/{re.escape(repository)}/pull/{number}"
+                      rf"#(?:issuecomment|pullrequestreview)-\d+(?![\w-])", re.IGNORECASE)
+
+
+ATTRIBUTION = re.compile(r"^.*Generated with \[Claude Code\]\(https://claude\.com/claude-code\).*$", re.M)
+INLINE_REVIEW_WORDS = 25
+
+
+HTML_CODE = re.compile(r"<(code|pre|kbd|samp)\b[^>]*>.*?</\1\s*>", re.IGNORECASE | re.DOTALL)
+HTML_TAG = re.compile(r"</?[A-Za-z][^>]*>")
+
+
+def visible_prose(text):
+    """The words of `text` a reader sees as prose: without the attribution line, code spans, HTML code elements,
+    other HTML tags, reference definitions (GitHub hides them), images, and link destinations (a link's text is
+    kept, an autolink and a bare URL count for nothing)."""
+    rest = REFERENCE_DEFINITION.sub(" ", HTML_CODE.sub(" ", without_code_spans(ATTRIBUTION.sub("", text))))
+    rest = IMAGE.sub(" ", HTML_TAG.sub(" ", rest))
+    rest = INLINE_LINK.sub(lambda m: " " + m.group(0)[1:m.group(0).index("](")] + " ", rest)
+    rest = REFERENCE.sub(lambda m: " " + m.group(1) + " ", rest)
+    rest = LINK.sub(" ", AUTOLINK.sub(" ", rest))
+    return re.findall(r"\w+", rest)
+
+
+def inline_review(text):
+    """Whether the section carries the review itself, written in the body: at least `INLINE_REVIEW_WORDS` words of
+    visible prose (`visible_prose`), so "Pending", a bare footer or hidden text is not a review."""
+    return len(visible_prose(text)) >= INLINE_REVIEW_WORDS
 
 
 def check_review(pr):
-    """A pull request that is not a draft links the independent review of its final diff: a link GitHub renders
-    (`has_link`), in the section as `rendered_section` reads it, outside code spans."""
+    """A pull request that is not a draft records the independent review of its final diff in its "Independent
+    review" section, as `rendered_section` reads it: either a link GitHub renders (`link_targets`: its destination,
+    with reference definitions read from the whole body), outside code spans, to a comment or a review of that pull
+    request (`review_link`), or the review written in the section itself (`inline_review`). Another link, such as
+    the attribution line a body ends with, which falls in its last section, is not a review."""
     if pr.get("draft") is True:
         return
-    text = rendered_section(pr.get("body"), REVIEW)
-    require(text is not None and has_link(without_code_spans(text)),
+    text, link = rendered_section(pr.get("body"), REVIEW), review_link(pr)
+    linked = text is not None and link is not None and any(
+        link.match(target) for target in link_targets(HTML_CODE.sub(" ", without_code_spans(text)), pr.get("body")))
+    require(linked or (text is not None and inline_review(text)),
             'a pull request that is not a draft needs an "## Independent review" section that links the review of its '
-            "final diff posted on it (CONTRIBUTING.md, \"Independent review\"); keep it a draft until then")
+            "final diff posted on it, a comment or a review of this pull request (https://github.com/<repository>/pull/"
+            "<number>#issuecomment-<id> or #pullrequestreview-<id>), or holds that review written in the section "
+            f"(at least {INLINE_REVIEW_WORDS} words besides the attribution line; CONTRIBUTING.md, \"Independent "
+            'review"); keep it a draft until then')
 
 
 def level_floor(files):

@@ -6,7 +6,7 @@ this is the order of work.
 
 1. Review the final diff: after the level's gates and preflight pass on the head
    ([run the gates](run-the-gates-to-ready.md)), and before `gh pr ready`. The pull request stays a draft until
-   the review is posted and linked.
+   the review is recorded (step 6).
 2. Write a brief in a file outside the checkout, not in a shell command. It names:
    - the repository, the branch, the head commit and the base, and the scope: `git diff <base>...HEAD`;
    - what the change claims, in three to six bullets from the pull request body;
@@ -25,12 +25,13 @@ this is the order of work.
    A failed, cancelled or empty run is no review: run it again, and never report it as a clean one.
 5. Check each finding against the code before acting on it: the reviewer can be wrong. Fix the real findings and
    write down why each of the others is rejected.
-6. Post the review on the pull request (`gh pr comment <number> --body-file <file>`): each finding quoted, and its
-   disposition, fixed in which commit or rejected and why.
-7. Fill in the body's "Independent review" section: the link to that comment, the verdict, and the disposition of
-   each finding in a line.
-8. If the fixes changed more than wording, run a second, shorter review scoped to the fix commits, and post and
-   link it the same way. After a rebase that changes the diff, the review covers the new head.
+6. Record the review, each finding quoted with its disposition (fixed in which commit, or rejected and why), in one
+   of two ways: post it on the pull request (`gh pr comment <number> --body-file <file>`), or write it in the body's
+   "Independent review" section itself.
+7. Fill in the body's "Independent review" section: for a posted review, the link to that comment, the verdict and
+   the disposition of each finding in a line; for one written there, the review itself (step 6).
+8. If the fixes changed more than wording, run a second, shorter review scoped to the fix commits, and record it
+   the same way (posted and linked, or written in the section). After a rebase that changes the diff, the review covers the new head.
 
 A contributor who is not an agent asks a maintainer or another contributor for the review, who posts it on the
 pull request; steps 5 to 8 are the same.

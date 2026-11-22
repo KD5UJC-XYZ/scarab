@@ -173,13 +173,16 @@ from a capture says so.
 
 Every pull request gets an independent review of its final diff before it is marked ready, whatever its level: by
 someone other than its author, and for agent work by a read-only Codex review. The reviewer makes no edits; the
-review is posted on the pull request as a comment, with the disposition of each finding (fixed in which commit, or
-rejected and why). A review by the agent that wrote the change does not replace it, and a failed, cancelled or
-empty run is no review. The body's "Independent review" section links that comment and summarises the verdict and
-the disposition of each finding. Fixes that change more than wording get a second review, scoped to the fix
+review is recorded with the disposition of each finding (fixed in which commit, or rejected and why), in one of two
+ways: posted on the pull request as a comment that the body's "Independent review" section links and summarises
+(the verdict and each finding's disposition), or written in that section itself. A review by the agent that wrote
+the change does not replace it, and a failed, cancelled or empty run is no review. Fixes that change more than wording get a second review, scoped to the fix
 commits. The recipe is [Get an independent review](docs/playbooks/review-a-change.md). `scripts/pr_policy.py`
-refuses a pull request that is not a draft unless the section is there with a link in it; a draft passes, so a pull
-request stays a draft until its review is posted.
+refuses a pull request that is not a draft unless the section links a comment or a review of that pull request
+(`https://github.com/<repository>/pull/<number>#issuecomment-<id>`, or `#pullrequestreview-<id>`), or holds the
+review itself, written in the section (at least 25 words of visible prose, not counting code, link destinations, hidden reference definitions or the attribution line); another link, such as the
+attribution line a body ends with, does not count. A draft passes, so a pull request stays a draft until its review
+is posted.
 
 ### The one scenario per area
 

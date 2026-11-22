@@ -8,7 +8,7 @@
 - [ ] `scripts/sbtw check` passes (level 1 and above; after a rebase, CONTRIBUTING.md, "Rebase validation")
 - [ ] Level 0: relative links in the changed documents resolve; a design document or ADR also has its reference claims checked against the pinned source (CONTRIBUTING.md, "Levels")
 - [ ] One scenario per area touched (level 2 and above), with its result:
-- [ ] Independent review linked under "Independent review" (CONTRIBUTING.md, "Independent review")
+- [ ] Independent review linked, or written, under "Independent review" (CONTRIBUTING.md, "Independent review")
 - [ ] Storage format: unchanged, or changed with the owner's approval given in the chat session doing the work (question asked `<UTC>`, decided `<UTC>`), in a pull request of its own titled `<type>(storage)!: <the storage format change>` with the "Storage format change" section below (docs/design-rules.md, FMT-1)
 
 ## Deviations from the reference
@@ -42,8 +42,9 @@ owner's exact answer, with UTC times such as 2026-11-14T09:30:00Z. -->
 
 ## Independent review
 
-<!-- CONTRIBUTING.md, "Independent review": the link to the review comment, the verdict, and each finding's
-disposition. The PR policy check reads this section. -->
+<!-- CONTRIBUTING.md, "Independent review": the link to the review comment on this pull request
+(`.../pull/<number>#issuecomment-<id>`) or the review written here, the verdict, and each finding's disposition. The PR policy check reads this
+section. -->
 
 ## Evidence and docs
 
