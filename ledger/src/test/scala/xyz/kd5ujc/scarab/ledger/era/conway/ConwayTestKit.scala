@@ -77,7 +77,8 @@ object ConwayTestKit extends munit.Assertions:
       val m = major << 5
       def be(width: Int): Vector[Byte] =
         (width - 1 to 0 by -1).toVector.map(i => (n >> (8 * i)).toByte)
-      if n < 24 then Bytes(Vector((m | n.toInt).toByte))
+      if n < 0 then fail(s"$n is negative: no unsigned CBOR head holds it")
+      else if n < 24 then Bytes(Vector((m | n.toInt).toByte))
       else if n < 256 then Bytes((m | 24).toByte +: be(1))
       else if n < 65536 then Bytes((m | 25).toByte +: be(2))
       else if n < (BigInt(1) << 32) then Bytes((m | 26).toByte +: be(4))
@@ -239,7 +240,9 @@ object ConwayTestKit extends munit.Assertions:
       .fromBytes(arr(bytes(address.raw), uint(coin)))
       .fold(e => fail(s"output to $address of $coin: ${e.message}"), identity)
 
-  /** The fee that covers any transaction the parameters admit: the fee of the largest. */
+  /** The size-based fee of the largest transaction the parameters admit: it covers any
+    * transaction's size, though not a fee for execution units or reference scripts.
+    */
   def maxFee(pp: ProtocolParams): BigInt = pp.minFeeA * pp.maxTxSize + pp.minFeeB
 
   // ---- the transaction --------------------------------------------------------------------------
@@ -304,15 +307,15 @@ object ConwayTestKit extends munit.Assertions:
     def id: Bytes = flat.body.id
 
   /** `body` signed by `signers` (each once), valid and without auxiliary data, read back by the
-    * flat decoder and by Conway's; the flat reading gives every field of `body`.
+    * flat decoder and by Conway's; the flat reading gives every field of `body`. With no signers
+    * the witness set is empty, as the CDDL holds no empty list of vkey witnesses, and LEDGER judges
+    * the missing witnesses.
     */
   def tx(body: Body, signers: Vector[Key]): Built =
     val raw = body.encode
     val id = xyz.kd5ujc.scarab.crypto.Blake2b.hash256.hash(raw)
-    val witnesses =
-      map(
-        uint(0) -> set(signers.distinctBy(_.vkey).map(k => arr(bytes(k.vkey), bytes(k.sign(id)))))
-      )
+    val vkeys = signers.distinctBy(_.vkey).map(k => arr(bytes(k.vkey), bytes(k.sign(id))))
+    val witnesses = if vkeys.isEmpty then map() else map(uint(0) -> set(vkeys))
     val parts = Block.Transaction(raw, witnesses, None, true)
     val flat =
       Tx.fromBlock(parts, Era.Conway).fold(e => fail(s"flat decoder: ${e.message}"), identity)
@@ -321,17 +324,26 @@ object ConwayTestKit extends munit.Assertions:
       .fold(e => fail(s"Conway's decoder: $e"), identity)
     val b = flat.body
     assertEquals(
-      (b.inputs.toSet, b.outputs, b.fee, b.certificates, b.withdrawals, b.votes, b.proposals),
+      (b.inputs.toSet, b.outputs, b.fee, b.certificates, b.withdrawals, b.proposals),
       (
         body.inputs.toSet,
         body.outputs,
         body.fee,
         body.certificates,
         body.withdrawals.view.mapValues(xyz.kd5ujc.scarab.ledger.state.Coin(_)).toMap,
-        body.ballots,
         body.proposals
       ),
       "the flat decoder reads the body as it was built"
+    )
+    // every vote asked for, each as many times as asked, read back on its own rather than through
+    // the form it was written from
+    def counted[A](as: Vector[A]): Map[A, Int] = as.groupMapReduce(identity)(_ => 1)(_ + _)
+    assertEquals(
+      counted(b.votes.flatMap((v, bs) => bs.map((id, p) => (v, id, p.vote, p.anchor)))),
+      counted(
+        body.votes.flatMap((v, bs) => bs.map((id, vote) => (v, id, vote, Option.empty[Anchor])))
+      ),
+      "the flat decoder reads the votes as they were cast"
     )
     assertEquals((b.donation, b.currentTreasury), (body.donation, body.currentTreasury))
     Built(parts, flat, typed)

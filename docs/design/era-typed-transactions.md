@@ -1644,10 +1644,10 @@ Conway's rules on the classes follow as the rest of stage 2.
     asked for, and with Conway's; the funded outputs carry their bytes too. Each transaction's era LEDGER, its
     failures in the node's flat form (`EraLedgerRun.flat`), gives the suite's expected values, and the flat
     LEDGER on the same bytes from the same state gives the same failures in the same order or the same ledger
-    state, on every transaction of its 17 scenarios and two properties, across their epoch boundaries.
+    state, on every transaction the suite submits, across its epoch boundaries.
   - Incomplete (CNF-2): the mempool suites build their transactions with bytes, but the node's mempool judges
     them with the flat rules (`MempoolLedger`) until the Conway switch (below), so they run the flat LEDGER only
-    (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7056445357); LEDGERS is compared in sequence
+    (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7077088645); LEDGERS is compared in sequence
     on recorded blocks only from a state built from their transactions' recorded outputs, as the repository holds
     no ledger state of a chain at a recorded Conway block with transactions, and not on blocks whose transactions
     spend what an earlier one of the block made
