@@ -1,19 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.era.rules
 
-import xyz.kd5ujc.scarab.ledger.{Nonce}
-import xyz.kd5ujc.scarab.ledger.era.{PerasCert, Version}
-import xyz.kd5ujc.scarab.ledger.state.{Conway, Dijkstra, EraTag, Hash32}
-import xyz.kd5ujc.scarab.ledger.era.Mismatch
+import xyz.kd5ujc.scarab.ledger.{Nonce, Unsigned}
+import xyz.kd5ujc.scarab.ledger.Unsigned.Width.W32
+import xyz.kd5ujc.scarab.ledger.era.{Mismatch, PerasCert, Version}
 import xyz.kd5ujc.scarab.ledger.era.Relation.*
+import xyz.kd5ujc.scarab.ledger.state.{Conway, Dijkstra, EraTag, Hash32}
 import xyz.kd5ujc.scarab.plutus.ExUnits
 
 // The failures and events of BBODY as the reference declares them (cardano-ledger 9df9f98c, the
 // `Rules/Bbody.hs` of Shelley, Alonzo, Conway and Dijkstra; Conway's at f649f975, the same but for
 // derived `Ord` instances and the units' `OrdExUnits`), with the injections of every rule below
 // BBODY into Conway's and Dijkstra's and the embedding of LEDGERS in BBODY. A size is the reference's
-// `Int` (a `Long` here), a header's version word a `Word32` (a `Long` the header's reader bounds),
-// and a block's units (`OrdExUnits`) the node's, as UTXO's failures hold them.
+// `Int` (a `Long` here), a header's version word a `Word32` (`Unsigned[W32]`), each mismatch at the
+// reference's relation, and a block's units (`OrdExUnits`) the node's, as UTXO's failures hold them.
 
 /** `data ShelleyBbodyPredFailure era` (`Shelley/Rules/Bbody.hs:99-107`, cardano-ledger 9df9f98c).
   */
@@ -63,7 +63,7 @@ enum DijkstraBbodyPredFailure[E <: EraTag]:
 
   /** The header's highest supported major version (supplied) and the parameters' major (expected).
     */
-  case HeaderProtVerTooLow(mismatch: Mismatch[RelGTEQ, Long])
+  case HeaderProtVerTooLow(mismatch: Mismatch[RelGTEQ, Unsigned[W32]])
 
 /** `EraRuleFailure "BBODY" era`: Conway's (`Conway/Rules/Bbody.hs:149`, cardano-ledger f649f975)
   * and Dijkstra's (`Dijkstra/Rules/Bbody.hs:146`, cardano-ledger 9df9f98c), each its own.

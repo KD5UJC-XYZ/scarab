@@ -8,6 +8,7 @@ import scala.collection.immutable.SortedSet
 import xyz.kd5ujc.scarab.codec.{Bytes, Node, Value}
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.ledger as flat
+import xyz.kd5ujc.scarab.ledger.Unsigned.Width.W32
 import xyz.kd5ujc.scarab.ledger.{Nonce, Unsigned}
 import xyz.kd5ujc.scarab.ledger.era.*
 import xyz.kd5ujc.scarab.ledger.era.Relation.*
@@ -397,11 +398,17 @@ class DijkstraBbodyImpSuite extends FunSuite:
       LeiosEraBlockHeader.dijkstra
         .versionInfoBlockHeader(ok(DijkstraBlock.decode(raw)))
         .bhviHighestSupportedMajorVersion,
-      11L
+      Unsigned.lit[W32](11)
     )
     assertEquals(
       refused(raw, holding(funded)),
-      Vector(into(DijkstraBbodyPredFailure.HeaderProtVerTooLow[Dijkstra](Mismatch(11L, 12L))))
+      Vector(
+        into(
+          DijkstraBbodyPredFailure.HeaderProtVerTooLow[Dijkstra](
+            Mismatch(Unsigned.lit[W32](11), Unsigned.lit[W32](12))
+          )
+        )
+      )
     )
   }
 

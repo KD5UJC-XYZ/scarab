@@ -4498,7 +4498,7 @@
     "DijkstraUtxowSuite"
    ],
    "note": "the reference's predicate generic in its era over the reference's classes, the count narrowed to a Word16 as the reference's fromIntegral does; it reports its era's own failure type (AlonzoUtxoPredFailure), which the rule injects into its own; its verdict is compared with the flat rule's through ConwayUtxoPredFailure.toStored; its failure the constructor it reports, declared as its result type, so that an injection over the constructors a rule reaches serves it (Dijkstra's, whose reference injections are partial, #85)",
-   "digest": "f337cc1b7258b825"
+   "digest": "9214d9d11a064f50"
   },
   "def ledger.era.rules.AlonzoUtxo.validateWrongNetworkInTxBody": {
    "upstream": [
@@ -7037,7 +7037,7 @@
     "DijkstraUtxowSuite"
    ],
    "note": "the reference's predicate generic in its era over the reference's classes; it reports its era's own failure type (AlonzoUtxoPredFailure), which the rule injects into its own; its verdict is compared with the flat rule's through ConwayUtxoPredFailure.toStored; its failure the constructor it reports, declared as its result type, so that an injection over the constructors a rule reaches serves it (Dijkstra's, whose reference injections are partial, #85)",
-   "digest": "eb241bb634530da3"
+   "digest": "cd00f1369b9c43bd"
   },
   "def ledger.era.rules.AlonzoUtxo.validateExUnitsTooBigUTxO": {
    "upstream": [
@@ -7156,7 +7156,7 @@
     "DijkstraUtxowSuite"
    ],
    "note": "the reference's predicate generic in its era over the reference's classes; it reports its era's own failure type (BabbageUtxoPredFailure), which the rule injects into its own; its verdict is compared with the flat rule's through ConwayUtxoPredFailure.toStored; its failure the constructor it reports, declared as its result type, so that an injection over the constructors a rule reaches serves it (Dijkstra's, whose reference injections are partial, #85)",
-   "digest": "dce4fb76fe913256"
+   "digest": "ca68a09d855a4efb"
   },
   "def ledger.era.rules.BabbageUtxo.collAdaBalance": {
    "upstream": [
@@ -28841,8 +28841,8 @@
    "evidence": [
     "ConwayUtxoChecksSuite"
    ],
-   "note": "its fields at the node's types, as ShelleyUtxoPredFailure's, a DeltaCoin and a Word16 count as integers",
-   "digest": "466d93f96e51be15"
+   "note": "its fields at the node's types, as ShelleyUtxoPredFailure's; the balance the reference's DeltaCoin and the collateral count its Word16 (Unsigned[W16])",
+   "digest": "83e10e1ae76f172f"
   },
   "enum ledger.era.rules.BabbageUtxoPredFailure": {
    "upstream": [
@@ -28862,8 +28862,8 @@
    "evidence": [
     "ConwayUtxoChecksSuite"
    ],
-   "note": "its fields at the node's types, as ShelleyUtxoPredFailure's",
-   "digest": "038648eb690fff86"
+   "note": "its fields at the node's types, as ShelleyUtxoPredFailure's; the collateral provided the reference's DeltaCoin",
+   "digest": "7496657a4711df3d"
   },
   "enum ledger.era.rules.ConwayUtxoPredFailure": {
    "upstream": [
@@ -28885,7 +28885,7 @@
     "ConwayUtxoChecksSuite"
    ],
    "note": "its constructors in the reference's order, its fields at the node's types, as ShelleyUtxoPredFailure's; 29a7d656 and 9df9f98c hold the units as OrdExUnits, for an Ord instance this type does not have. No encoder of its own yet: its refusal is compared with the reference's bytes through ConwayUtxoPredFailure.toStored and the node's encoder where only UTXO failed (ConwayUtxoChecksSuite), and UTXOS's CollectErrors by kind (CNF-2, #796)",
-   "digest": "2cddb817e378ea7e"
+   "digest": "22d84c4a7a289f85"
   },
   "type ledger.era.rules.UtxoPredFailure": {
    "upstream": [
@@ -34023,7 +34023,7 @@
    "class": "Mirror",
    "structure": "same",
    "note": "its constructors in the reference's order, its fields at the node's types, as ConwayUtxoPredFailure's. No encoder of its own yet: its refusals are compared with the reference's bytes through DijkstraUtxoPredFailure.toStored and the oracle suite's encoder",
-   "digest": "3ef683a2da38ad1e"
+   "digest": "0c834a7d479cc680"
   },
   "def ledger.era.rules.DijkstraUtxo.conwayToDijkstraUtxoPredFailure": {
    "upstream": [
@@ -41380,13 +41380,13 @@
     }
    ],
    "class": "Mirror",
-   "structure": "differs",
+   "structure": "same",
    "evidence": [
     "DijkstraBbodySuite",
     "DijkstraRulesOracleSuite"
    ],
-   "note": "each Word32 a Long, bounded by the constructor of",
-   "digest": "71548a2c0ca91a25"
+   "note": "each Word32 the node's Unsigned[W32], which holds no other value",
+   "digest": "c5197a3e2751d84f"
   },
   "def ledger.era.BlockHeaderVersionInfo.of": {
    "upstream": [
@@ -41407,7 +41407,7 @@
     "DijkstraBbodySuite"
    ],
    "note": "the record's constructor over the decoder's two words, none outside Word32, which the header decoder never gives",
-   "digest": "a67933f03178d3ae"
+   "digest": "cbc83e4b20b6614a"
   },
   "class ledger.era.PerasCert": {
    "upstream": [
@@ -42180,8 +42180,8 @@
     "DijkstraBbodySuite",
     "DijkstraRulesOracleSuite"
    ],
-   "note": "its constructors in the order of their tags (0 to 6, :119-127); the sizes and the Word32 Longs, the units the node's; no encoder of its own yet: its refusals are compared with the reference's bytes through DijkstraBbody.toStored and the oracle suite's encoder (#796)",
-   "digest": "16f9a5d20b1c277f"
+   "note": "its constructors in the order of their tags (0 to 6, :119-127); the sizes Longs, the header's major version its Word32 (Unsigned[W32]), the units the node's; no encoder of its own yet: its refusals are compared with the reference's bytes through DijkstraBbody.toStored and the oracle suite's encoder (#796)",
+   "digest": "25d4b311c2e78a06"
   },
   "type ledger.era.rules.BbodyPredFailure": {
    "upstream": [
@@ -42937,7 +42937,7 @@
     "DijkstraRulesOracleSuite"
    ],
    "note": "the signal the block with its header's two classes as using clauses (LeiosBbodySignal); the proposals in their own capability beside the ledger state, as LEDGER's are; the UTxO set the reference scripts are measured against the stored outputs of the block's inputs and reference inputs before LEDGERS, read into the era",
-   "digest": "a5e21cc604b4e3ef"
+   "digest": "d73f834b415d26c6"
   },
   "enum ledger.era.rules.LeiosClosureDefect": {
    "upstream": [
@@ -47612,6 +47612,24 @@
    "class": "Mirror",
    "structure": "same",
    "digest": "77dbfba2ab787c33"
+  },
+  "def ledger.era.Version.getVersion32": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Version.hs",
+     "symbol": "getVersion32",
+     "lines": [
+      143,
+      145
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the version's Word32 (Unsigned[W32]): exact, as a version is at most 13, so the narrowing is the identity",
+   "digest": "762cec2983c2b0cd"
   }
  },
  "glue": [

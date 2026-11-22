@@ -5,6 +5,7 @@ import cats.syntax.all.*
 import java.time.Instant
 import munit.FunSuite
 import xyz.kd5ujc.scarab.ledger as flat
+import xyz.kd5ujc.scarab.ledger.Unsigned
 import xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraTxIn
 import xyz.kd5ujc.scarab.ledger.{
   EpochGeometry,
@@ -26,6 +27,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
   CertState,
   ChainAccountState,
   Coin,
+  DeltaCoin,
   CompactCoin,
   ConwayAccounts,
   Credential,
@@ -1771,16 +1773,20 @@ class DijkstraLedgerSuite extends FunSuite:
     // Alonzo's, Shelley's and Allegra's failures (`Dijkstra/Rules/Utxo.hs:182-195`, cardano-ledger
     // 9df9f98c)
     val babbage: DijkstraUtxo.BabbageFailure[Dijkstra] =
-      new BabbageUtxoPredFailure.IncorrectTotalCollateralField[Dijkstra](BigInt(1), Coin(2))
+      new BabbageUtxoPredFailure.IncorrectTotalCollateralField[Dijkstra](DeltaCoin(1), Coin(2))
     assertEquals(
       into(babbage),
-      inUtxo(DijkstraUtxoPredFailure.IncorrectTotalCollateralField(BigInt(1), Coin(2)))
+      inUtxo(DijkstraUtxoPredFailure.IncorrectTotalCollateralField(DeltaCoin(1), Coin(2)))
     )
     val alonzo: DijkstraUtxo.AlonzoFailure[Dijkstra] =
-      new AlonzoUtxoPredFailure.TooManyCollateralInputs[Dijkstra](Mismatch(4, 3))
+      new AlonzoUtxoPredFailure.TooManyCollateralInputs[Dijkstra](
+        Mismatch(Unsigned.lit(4), Unsigned.lit(3))
+      )
     assertEquals(
       into(alonzo),
-      inUtxo(DijkstraUtxoPredFailure.TooManyCollateralInputs(Mismatch(4, 3)))
+      inUtxo(
+        DijkstraUtxoPredFailure.TooManyCollateralInputs(Mismatch(Unsigned.lit(4), Unsigned.lit(3)))
+      )
     )
     val badInput =
       cats.data.NonEmptySet.one(chain.head.utxo.unUTxO.keys.head)(using cats.Order.fromOrdering)

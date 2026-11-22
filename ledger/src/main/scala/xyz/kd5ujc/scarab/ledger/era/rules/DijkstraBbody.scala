@@ -88,7 +88,7 @@ object DijkstraBbody:
     val txs = bb.txSeqBlockBody(blockBody)
     def test[A](check: Test[A])(using inject: InjectBbodyFailure[A, Dijkstra]): F[Unit] =
       Sts.runTest[F, BbodyPredFailure[Dijkstra]](check.leftMap(_.map(inject.injectFailure)))
-    val curProtVerMajor = protVer.pvMajor.value.toLong
+    val curProtVerMajor = protVer.pvMajor.getVersion32
     val bhviHighestSupportedMajorVersion =
       l.versionInfoBlockHeader(block).bhviHighestSupportedMajorVersion
     val bhSlot = h.slotNoBlockHeader(block)
@@ -97,7 +97,7 @@ object DijkstraBbody:
       _ <- test(ShelleyBbody.validateBlockBodyHash(block))
       _ <- test(
         Test.failureUnless(
-          bhviHighestSupportedMajorVersion >= curProtVerMajor,
+          bhviHighestSupportedMajorVersion.value >= curProtVerMajor.value,
           new DijkstraBbodyPredFailure.HeaderProtVerTooLow[Dijkstra](
             Mismatch(bhviHighestSupportedMajorVersion, curProtVerMajor)
           )
@@ -195,5 +195,5 @@ object DijkstraBbody:
       Right(DijkstraBbodyFailure.PerasCertValidationFailed(cert.bytes, nonce))
     case DijkstraBbodyPredFailure.HeaderProtVerTooLow(m) =>
       Right(
-        DijkstraBbodyFailure.HeaderProtVerTooLow(m.storedBy(BigInt(_)))
+        DijkstraBbodyFailure.HeaderProtVerTooLow(m.storedBy(_.value))
       )

@@ -9,13 +9,15 @@ import xyz.kd5ujc.scarab.ledger.{
   PlutusFailure,
   PredicateFailure,
   TxIn,
+  Unsigned,
   UtxoFailure,
   UtxosFailure as FlatUtxosFailure
 }
+import xyz.kd5ujc.scarab.ledger.Unsigned.Width.W16
 import xyz.kd5ujc.scarab.ledger.era.*
 import xyz.kd5ujc.scarab.ledger.era.Relation.*
 import xyz.kd5ujc.scarab.ledger.rules.Convert
-import xyz.kd5ujc.scarab.ledger.state.{AccountAddress, Coin, Conway, Dijkstra, EraTag}
+import xyz.kd5ujc.scarab.ledger.state.{AccountAddress, Coin, Conway, DeltaCoin, Dijkstra, EraTag}
 import xyz.kd5ujc.scarab.plutus.ExUnits
 
 // The failures of UTXO as the reference declares them (cardano-ledger f649f975, the `Rules/Utxo.hs`
@@ -92,7 +94,7 @@ enum AlonzoUtxoPredFailure[E <: EraTag]:
   case OutputTooBigUTxO(outputs: NonEmptyList[(Int, Int, TxOut[E])])
 
   /** The balance (a `DeltaCoin`) and the collateral the fee requires. */
-  case InsufficientCollateral(balance: BigInt, required: Coin)
+  case InsufficientCollateral(balance: DeltaCoin, required: Coin)
   case ScriptsNotPaidUTxO(outputs: NonEmptyMap[TxIn, TxOut[E]])
   case ExUnitsTooBigUTxO(mismatch: Mismatch[RelLTEQ, ExUnits])
   case CollateralContainsNonADA(value: Value[E])
@@ -102,7 +104,7 @@ enum AlonzoUtxoPredFailure[E <: EraTag]:
   case OutsideForecast(slot: BigInt)
 
   /** The number of collateral inputs, narrowed to a `Word16`, and the parameters' maximum. */
-  case TooManyCollateralInputs(mismatch: Mismatch[RelLTEQ, Int])
+  case TooManyCollateralInputs(mismatch: Mismatch[RelLTEQ, Unsigned[W16]])
   case NoCollateralInputs()
 
 /** `data BabbageUtxoPredFailure era` (`eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Utxo.hs:
@@ -112,7 +114,7 @@ enum BabbageUtxoPredFailure[E <: EraTag]:
   case AlonzoInBabbageUtxoPredFailure(failure: AlonzoUtxoPredFailure[E])
 
   /** The collateral provided (a `DeltaCoin`) and the total the body declares. */
-  case IncorrectTotalCollateralField(provided: BigInt, declared: Coin)
+  case IncorrectTotalCollateralField(provided: DeltaCoin, declared: Coin)
 
   /** Each output with its least lovelace. */
   case BabbageOutputTooSmallUTxO(outputs: NonEmptyList[(TxOut[E], Coin)])
@@ -135,15 +137,15 @@ enum ConwayUtxoPredFailure[E <: EraTag]:
   case OutputTooSmallUTxO(outputs: NonEmptyList[TxOut[E]])
   case OutputBootAddrAttrsTooBig(outputs: NonEmptyList[TxOut[E]])
   case OutputTooBigUTxO(outputs: NonEmptyList[(Int, Int, TxOut[E])])
-  case InsufficientCollateral(balance: BigInt, required: Coin)
+  case InsufficientCollateral(balance: DeltaCoin, required: Coin)
   case ScriptsNotPaidUTxO(outputs: NonEmptyMap[TxIn, TxOut[E]])
   case ExUnitsTooBigUTxO(mismatch: Mismatch[RelLTEQ, ExUnits])
   case CollateralContainsNonADA(value: Value[E])
   case WrongNetworkInTxBody(mismatch: Mismatch[RelEQ, Network])
   case OutsideForecast(slot: BigInt)
-  case TooManyCollateralInputs(mismatch: Mismatch[RelLTEQ, Int])
+  case TooManyCollateralInputs(mismatch: Mismatch[RelLTEQ, Unsigned[W16]])
   case NoCollateralInputs()
-  case IncorrectTotalCollateralField(provided: BigInt, declared: Coin)
+  case IncorrectTotalCollateralField(provided: DeltaCoin, declared: Coin)
   case BabbageOutputTooSmallUTxO(outputs: NonEmptyList[(TxOut[E], Coin)])
   case BabbageNonDisjointRefInputs(inputs: NonEmptyList[TxIn])
 
@@ -216,7 +218,7 @@ object ConwayUtxoPredFailure:
       case OutputTooBigUTxO(os) =>
         utxo(UtxoFailure.OutputTooBig(os.toList.toVector.map((a, b, o) => (a, b, s.toStored(o)))))
       case InsufficientCollateral(bal, required) =>
-        utxo(UtxoFailure.InsufficientCollateral(bal, required.value))
+        utxo(UtxoFailure.InsufficientCollateral(bal.value, required.value))
       case ScriptsNotPaidUTxO(os) =>
         utxo(UtxoFailure.ScriptsNotPaid(os.toSortedMap.view.mapValues(s.toStored).toMap))
       case ExUnitsTooBigUTxO(m) => utxo(UtxoFailure.ExUnitsTooBig(m.stored))
@@ -224,11 +226,12 @@ object ConwayUtxoPredFailure:
         utxo(UtxoFailure.CollateralContainsNonAda(s.storedValue(v)))
       case WrongNetworkInTxBody(m) =>
         utxo(UtxoFailure.WrongNetworkInTxBody(m.storedBy(_.ordinal)))
-      case OutsideForecast(slot)      => utxo(UtxoFailure.OutsideForecast(slot))
-      case TooManyCollateralInputs(m) => utxo(UtxoFailure.TooManyCollateralInputs(m.stored))
-      case NoCollateralInputs()       => utxo(UtxoFailure.NoCollateralInputs)
+      case OutsideForecast(slot) => utxo(UtxoFailure.OutsideForecast(slot))
+      case TooManyCollateralInputs(m) =>
+        utxo(UtxoFailure.TooManyCollateralInputs(m.storedBy(_.value.toInt)))
+      case NoCollateralInputs() => utxo(UtxoFailure.NoCollateralInputs)
       case IncorrectTotalCollateralField(provided, declared) =>
-        utxo(UtxoFailure.IncorrectTotalCollateralField(provided, declared.value))
+        utxo(UtxoFailure.IncorrectTotalCollateralField(provided.value, declared.value))
       case BabbageOutputTooSmallUTxO(os) =>
         utxo(
           UtxoFailure.BabbageOutputTooSmall(

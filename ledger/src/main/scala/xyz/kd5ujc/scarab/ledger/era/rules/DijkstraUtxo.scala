@@ -5,13 +5,22 @@ import cats.Monad
 import cats.data.{Chain, NonEmptyList, NonEmptyMap, NonEmptySet}
 import cats.mtl.{Raise, Stateful, Tell}
 import cats.syntax.all.*
-import xyz.kd5ujc.scarab.ledger.{Address, Horizon, TxEnv, TxIn}
+import xyz.kd5ujc.scarab.ledger.{Address, Horizon, TxEnv, TxIn, Unsigned}
+import xyz.kd5ujc.scarab.ledger.Unsigned.Width.W16
 import xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraUtxoFailure
 import xyz.kd5ujc.scarab.ledger.era.*
 import xyz.kd5ujc.scarab.ledger.era.Relation.*
 import xyz.kd5ujc.scarab.ledger.era.dijkstra.{DijkstraUTxO, PlutusLegacyMode}
 import xyz.kd5ujc.scarab.ledger.rules.{Judge, Sts, Test}
-import xyz.kd5ujc.scarab.ledger.state.{CertState, Coin, Dijkstra, EraTag, PState, UTxOState}
+import xyz.kd5ujc.scarab.ledger.state.{
+  CertState,
+  Coin,
+  DeltaCoin,
+  Dijkstra,
+  EraTag,
+  PState,
+  UTxOState
+}
 import xyz.kd5ujc.scarab.plutus.{ExUnits, ScriptEvaluator}
 
 // UTXO of Dijkstra as the reference writes it (cardano-ledger 9df9f98c,
@@ -38,15 +47,15 @@ enum DijkstraUtxoPredFailure[E <: EraTag]:
   case WrongNetwork(expected: Network, addresses: NonEmptySet[Address])
   case OutputBootAddrAttrsTooBig(outputs: NonEmptyList[TxOut[E]])
   case OutputTooBigUTxO(outputs: NonEmptyList[(Int, Int, TxOut[E])])
-  case InsufficientCollateral(balance: BigInt, required: Coin)
+  case InsufficientCollateral(balance: DeltaCoin, required: Coin)
   case ScriptsNotPaidUTxO(outputs: NonEmptyMap[TxIn, TxOut[E]])
   case ExUnitsTooBigUTxO(mismatch: Mismatch[RelLTEQ, ExUnits])
   case CollateralContainsNonADA(value: Value[E])
   case WrongNetworkInTxBody(mismatch: Mismatch[RelEQ, Network])
   case OutsideForecast(slot: BigInt)
-  case TooManyCollateralInputs(mismatch: Mismatch[RelLTEQ, Int])
+  case TooManyCollateralInputs(mismatch: Mismatch[RelLTEQ, Unsigned[W16]])
   case NoCollateralInputs()
-  case IncorrectTotalCollateralField(provided: BigInt, declared: Coin)
+  case IncorrectTotalCollateralField(provided: DeltaCoin, declared: Coin)
   case BabbageOutputTooSmallUTxO(outputs: NonEmptyList[(TxOut[E], Coin)])
   case BabbageNonDisjointRefInputs(inputs: NonEmptyList[TxIn])
   case PtrPresentInCollateralReturn(output: TxOut[E])
@@ -96,7 +105,7 @@ object DijkstraUtxoPredFailure:
           )
         )
       case InsufficientCollateral(bal, required) =>
-        ok(DijkstraUtxoFailure.InsufficientCollateral(bal, required.value))
+        ok(DijkstraUtxoFailure.InsufficientCollateral(bal.value, required.value))
       case ScriptsNotPaidUTxO(os) =>
         ok(DijkstraUtxoFailure.ScriptsNotPaid(os.toSortedMap.view.mapValues(s.toStored).toMap))
       case ExUnitsTooBigUTxO(m) => ok(DijkstraUtxoFailure.ExUnitsTooBig(m.stored))
@@ -106,11 +115,12 @@ object DijkstraUtxoPredFailure:
         ok(
           DijkstraUtxoFailure.WrongNetworkInTxBody(m.storedBy(_.ordinal))
         )
-      case OutsideForecast(slot)      => ok(DijkstraUtxoFailure.OutsideForecast(slot))
-      case TooManyCollateralInputs(m) => ok(DijkstraUtxoFailure.TooManyCollateralInputs(m.stored))
-      case NoCollateralInputs()       => ok(DijkstraUtxoFailure.NoCollateralInputs)
+      case OutsideForecast(slot) => ok(DijkstraUtxoFailure.OutsideForecast(slot))
+      case TooManyCollateralInputs(m) =>
+        ok(DijkstraUtxoFailure.TooManyCollateralInputs(m.storedBy(_.value.toInt)))
+      case NoCollateralInputs() => ok(DijkstraUtxoFailure.NoCollateralInputs)
       case IncorrectTotalCollateralField(provided, declared) =>
-        ok(DijkstraUtxoFailure.IncorrectTotalCollateralField(provided, declared.value))
+        ok(DijkstraUtxoFailure.IncorrectTotalCollateralField(provided.value, declared.value))
       case BabbageOutputTooSmallUTxO(os) =>
         ok(
           DijkstraUtxoFailure.BabbageOutputTooSmall(

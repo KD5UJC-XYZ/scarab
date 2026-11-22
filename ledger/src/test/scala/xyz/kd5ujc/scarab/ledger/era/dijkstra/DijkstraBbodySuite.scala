@@ -5,6 +5,8 @@ import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Rational, Value}
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.ledger as flat
+import xyz.kd5ujc.scarab.ledger.Unsigned
+import xyz.kd5ujc.scarab.ledger.Unsigned.Width.W32
 import xyz.kd5ujc.scarab.ledger.{Block as FlatBlock, LeiosBlock, Nonce}
 import xyz.kd5ujc.scarab.ledger.dijkstra.{DijkstraTx as FlatDijkstraTx, DijkstraTxIn}
 import xyz.kd5ujc.scarab.ledger.era.*
@@ -108,7 +110,7 @@ class DijkstraBbodySuite extends FunSuite:
       )
       val info = l.versionInfoBlockHeader(block)
       assertEquals(
-        (BigInt(info.bhviHighestSupportedMajorVersion), BigInt(info.bhviSelfReportedSoftwareTag)),
+        (info.bhviHighestSupportedMajorVersion.value, info.bhviSelfReportedSoftwareTag.value),
         (b.header.leios.versionInfo.highestSupportedMajor, b.header.leios.versionInfo.softwareTag),
         name
       )
@@ -287,7 +289,7 @@ class DijkstraBbodySuite extends FunSuite:
       refused(plain, withMajor(highest + 1)),
       Vector[DijkstraBbodyPredFailure[Dijkstra]](
         DijkstraBbodyPredFailure.HeaderProtVerTooLow[Dijkstra](
-          Mismatch(highest.toLong, highest.toLong + 1)
+          Mismatch(Unsigned.wrapping[W32](highest), Unsigned.wrapping[W32](highest + 1))
         )
       )
     )
@@ -617,7 +619,7 @@ class DijkstraBbodySuite extends FunSuite:
       i.injectFailure(f)
     val size = Mismatch[RelEQ, Long](1L, 2L)
     val refScripts = Mismatch[RelLTEQ, Long](1L, 2L)
-    val majors = Mismatch[RelGTEQ, Long](1L, 2L)
+    val majors = Mismatch[RelGTEQ, Unsigned[W32]](Unsigned.lit(1), Unsigned.lit(2))
     val hashes = Mismatch[RelEQ, xyz.kd5ujc.scarab.ledger.state.Hash32](hash(1), hash(2))
     val units = Mismatch[RelLTEQ, ExUnits](ExUnits(1, 2), ExUnits(0, 0))
     val ledger: DijkstraLedgerPredFailure[Dijkstra] =

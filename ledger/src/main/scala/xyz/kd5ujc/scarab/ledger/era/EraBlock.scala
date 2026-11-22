@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.era
 
+import cats.syntax.all.*
 import scala.annotation.unused
-import xyz.kd5ujc.scarab.ledger.{LeiosBlock, Nonce}
+import xyz.kd5ujc.scarab.ledger.{LeiosBlock, Nonce, Unsigned}
+import xyz.kd5ujc.scarab.ledger.Unsigned.Width.W32
 import xyz.kd5ujc.scarab.ledger.state.{
   BlockIssuer,
   Conway,
@@ -42,19 +44,15 @@ final case class Block[H, E <: EraTag](blockHeader: H, blockBody: BlockBody[E])
   * @param bhviSelfReportedSoftwareTag
   *   a value of the producer's software, which the ledger does not interpret
   */
-final case class BlockHeaderVersionInfo private (
-    bhviHighestSupportedMajorVersion: Long,
-    bhviSelfReportedSoftwareTag: Long
+final case class BlockHeaderVersionInfo(
+    bhviHighestSupportedMajorVersion: Unsigned[W32],
+    bhviSelfReportedSoftwareTag: Unsigned[W32]
 )
 
 object BlockHeaderVersionInfo:
-  private val Word32Max: BigInt = BigInt(0xffffffffL)
-
   /** The two words, or none where one is outside `Word32`. */
   def of(highest: BigInt, tag: BigInt): Option[BlockHeaderVersionInfo] =
-    Option.when(Seq(highest, tag).forall(w => w >= 0 && w <= Word32Max))(
-      BlockHeaderVersionInfo(highest.toLong, tag.toLong)
-    )
+    (Unsigned.from[W32](highest), Unsigned.from[W32](tag)).mapN(BlockHeaderVersionInfo(_, _))
 
   given CanEqual[BlockHeaderVersionInfo, BlockHeaderVersionInfo] = CanEqual.derived
 
