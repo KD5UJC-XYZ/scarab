@@ -13,6 +13,10 @@ import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.consensus.state.{MirrorState, MirrorStep}
 import xyz.kd5ujc.scarab.ledger.{
   Block,
+  ConwayGenesis,
+  Credential,
+  GovActionId,
+  RewardAccount,
   ForgeError,
   ForgeProtocolProblem,
   Header,
@@ -24,7 +28,17 @@ import xyz.kd5ujc.scarab.ledger.{
 }
 import xyz.kd5ujc.scarab.ledger.{TxIn, TxOut}
 import xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraTxIn as FlatTxIn
-import xyz.kd5ujc.scarab.ledger.era.{BothLevels, EraTx, IsPhase2Valid, StoredTxOut, TxLevel}
+import xyz.kd5ujc.scarab.ledger.era.{
+  BothLevels,
+  ConwayGovState as EraConwayGovState,
+  EraTx,
+  GovStateRecord,
+  Proposals as EraProposals,
+  IsPhase2Valid,
+  PParams,
+  StoredTxOut,
+  TxLevel
+}
 import xyz.kd5ujc.scarab.ledger.era.rules.{
   ConwayUtxosPredFailure,
   DijkstraLedgerPredFailure,
@@ -33,8 +47,10 @@ import xyz.kd5ujc.scarab.ledger.era.rules.{
   DijkstraUtxowPredFailure,
   TagMismatchDescription
 }
-import xyz.kd5ujc.scarab.ledger.rules.{EraLedger, EraNes, Globals, Hfc}
+import xyz.kd5ujc.scarab.ledger.rules.{EraNes, Globals, Hfc}
+import xyz.kd5ujc.scarab.ledger.era.conway.ConwayProposals
 import xyz.kd5ujc.scarab.ledger.state.{Dijkstra, NewEpochState, ShelleyBasedEra, SlotNo}
+import xyz.kd5ujc.scarab.storage.haskell.state.{LeiosStateCodecs, Versions}
 import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.TxMeasure
 import xyz.kd5ujc.scarab.network.LocalTxSubmissionServer
 import xyz.kd5ujc.scarab.node.assertions.Assertions
@@ -149,13 +165,29 @@ class DijkstraMempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   private def withParams(state: MirrorState, tip: BlockRef, build: ReferenceBuild)(
       f: ProtocolParams => ProtocolParams
   ) =
+    // the era's parameters changed through the node's flat record of them
+    def changedParams(pp: PParams[Dijkstra]): PParams[Dijkstra] =
+      GovStateRecord.dijkstra
+        .pparams(f(GovStateRecord.view(pp)))
+        .fold(e => fail(s"the changed parameters: $e"), identity)
+    withGov(state, tip, build)(gov =>
+      gov.copy(
+        cgsCurPParams = changedParams(gov.cgsCurPParams),
+        cgsPrevPParams = changedParams(gov.cgsPrevPParams)
+      )
+    )
+
+  /** The ledger of `state` 's tip ticked to the slot after it, its governance state changed by `g`,
+    * under `build`.
+    */
+  private def withGov(state: MirrorState, tip: BlockRef, build: ReferenceBuild)(
+      g: EraConwayGovState[Dijkstra] => EraConwayGovState[Dijkstra]
+  ) =
     val nes = nesOf(state)
     val ls = nes.es.ls
-    given ShelleyBasedEra[Dijkstra] = ShelleyBasedEra.SDijkstra
     val changed = nes.copy[Dijkstra](es =
-      nes.es.copy[Dijkstra](ls =
-        ls.copy[Dijkstra](utxo = ls.utxo.copy[Dijkstra](gov = EraLedger.mapParams(ls.utxo.gov)(f)))
-      )
+      nes.es
+        .copy[Dijkstra](ls = ls.copy[Dijkstra](utxo = ls.utxo.copy[Dijkstra](gov = g(ls.utxo.gov))))
     )
     PoolLedger.ticked(
       EraNes.InEra(ShelleyBasedEra.SDijkstra, changed),
@@ -466,6 +498,68 @@ class DijkstraMempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         MempoolState.read(dijkstra(submitted), ReferenceBuild.Release11_2),
         Right(MempoolState.Read.Foreign(Era.Dijkstra.index))
       )
+    }
+  }
+
+  /** The state's proposals with a proposal of window G's change of keys 47 and 48 (the endorser
+    * block's execution units and its reference-script size limit, parameters Dijkstra adds), read
+    * by the state's codec of a proposal, attached to the state's root of parameter changes.
+    */
+  private def withKeys47And48(gov: EraConwayGovState[Dijkstra], epoch: BigInt) =
+    val v12 = Versions.eraLow(ShelleyBasedEra.SDijkstra)
+    def written[A](e: Either[?, A]): A = e.fold(x => fail(x.toString), identity)
+    val account = written(
+      LeiosStateCodecs.rewardAccount.write(RewardAccount(0, Credential.Key(hex("0d" * 28))))
+    )
+    val anchor = written(LeiosStateCodecs.anchor(using v12).write(ConwayGenesis.noAnchor))
+    val update = "a2182f821a80befc001b0000008bb2c9700018301a00b71b00"
+    val raw = hex("841b000000174876e800" + account.hex + "8400f6" + update + "f6" + anchor.hex)
+    val proposal = written(LeiosStateCodecs.dijkstraProposal(using v12).decodeBytes(raw))
+    val gas = written(
+      ConwayProposals.actionOf[Dijkstra](
+        GovActionId(hex("47" * 32), BigInt(0)),
+        Map.empty,
+        Map.empty,
+        Map.empty,
+        proposal,
+        epoch,
+        epoch + 6
+      )
+    )
+    val added = EraProposals
+      .proposalsAddAction(gas, gov.cgsProposals)
+      .getOrElse(fail("the proposal attaches to the state's root"))
+    (gov.copy(cgsProposals = added), gas)
+
+  // the state's governance state is the era's record (#826), so a state whose proposals update
+  // parameters Dijkstra adds judges a transaction, and the pool keeps them through it
+  test("a state holding a proposal of keys 47 and 48 admits and revalidates a transaction") {
+    states.map { s =>
+      val tip = tipOf(36)
+      val env = envOf(s(37), tip)
+      val epoch = nesOf(s(37)).epoch.toBigInt
+      val ledger = withGov(s(37), tip, ReferenceBuild.LeiosB004fe0c)(withKeys47And48(_, epoch)._1)
+      val l = ledger match
+        case Right(Right(l: DijkstraLedger)) => l
+        case other                           => fail(s"no Dijkstra ledger: $other")
+      val (_, gas) = withKeys47And48(nesOf(s(37)).es.ls.utxo.gov, epoch)
+      val (held, entry) =
+        pool(l, tip)
+          .add(dijkstra(submitted), env, Source.Local)
+          .fold(r => fail(r.message), identity)
+      assertEquals(entry.id, inBlock.id)
+      // revalidation at the same tip keeps it, as `reapplyTx` does
+      val (same, none) = held.sync(Right(l), tip.slot, env)
+      assertEquals(none, Vector.empty)
+      assertEquals(same.entries.map(_.ticket), Vector(entry.ticket))
+      // the pool's ledger after the transaction, and after revalidation, still holds the proposal
+      Vector(held, same).foreach(_.current match
+        case Right(d: DijkstraLedger) =>
+          assertEquals(
+            EraProposals.proposalsLookupId(gas.gasId, d.state.ls.utxo.gov.cgsProposals),
+            Some(gas)
+          )
+        case other => fail(s"no Dijkstra ledger: $other"))
     }
   }
 

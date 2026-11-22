@@ -11,9 +11,6 @@ import xyz.kd5ujc.scarab.ledger.era.{
   EraTx,
   EraTxError,
   IsPhase2Valid,
-  PParamsError,
-  ProposalsReadError,
-  ProposalsWriteError,
   ProtVer,
   StAnnTx,
   Tx,
@@ -101,19 +98,6 @@ enum DijkstraUnjudged extends DomainError:
     * (the projection's failures, as `DijkstraBlockError.of` places them).
     */
   case Projection(cause: EraTxError)
-
-  /** The state's parameters in the era's types. */
-  case Parameters(cause: PParamsError)
-
-  /** The state's proposals in the era's types. */
-  case Proposals(cause: ProposalsReadError)
-
-  /** Proposals the state's record cannot hold once the transaction is applied: an update of the
-    * parameters Dijkstra adds (keys 34 to 56), which the record holds once its format does (#826).
-    * The testnet's ledger admits such a transaction, so it is no refusal; the pool does not hold
-    * it, as the block path withholds a block with one (`BlockNoVerdict.UnstorableProposals`).
-    */
-  case Unstorable(cause: ProposalsWriteError)
 
 /** What a Dijkstra transaction is judged with besides the ledger: the slot (`mkMempoolEnv`), the
   * constants of the rules, the UTxO rules' context and the clock of its annotation, the Plutus

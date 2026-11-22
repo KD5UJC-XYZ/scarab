@@ -227,7 +227,7 @@ object Mempool:
       // no verdict on a Dijkstra transaction where a provider failed on it (a script the evaluator
       // cannot judge, a BLS key the library cannot verify) or the node's two readings of it
       // disagree: the connection closes as for the flat eras', not charged; the node's other
-      // limits and defects (an update the record cannot hold, #826; the state's own defects) leave
+      // limits and defects (the state's own defects) leave
       // the peer's connection as it is, the transaction not held
       case Rejection.DijkstraUnjudged(_, cause) =>
         cause match
@@ -238,8 +238,7 @@ object Mempool:
           case DijkstraUnjudged.Rules(
                 DijkstraRuleDefect.UtxoState(_) | DijkstraRuleDefect.Ledger(_) |
                 DijkstraRuleDefect.Gov(_)
-              ) | DijkstraUnjudged.UtxoState(_) | DijkstraUnjudged.Parameters(_) |
-              DijkstraUnjudged.Proposals(_) | DijkstraUnjudged.Unstorable(_) =>
+              ) | DijkstraUnjudged.UtxoState(_) =>
             None
       case _ => None
 
