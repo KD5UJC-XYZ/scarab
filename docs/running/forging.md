@@ -86,7 +86,7 @@ has to change both before they run out. The node does four things for that; a dr
   check, and the key evolved to it is written; `kesKeyAhead` at the next start says so.
   The file stays a `cardano-cli` envelope: the period
   is read off the key itself (the erased seeds of the tree spell it), so there is no new format and no
-  migration. A restart needs no earlier key than the live file contains. This reduces the state available from
+  migration. A restart needs no earlier key than the live file contains. Before a pool moves to `cardano-node`, issue a new KES key and operational certificate: a file Scarab has written back is not a credential for it ([ADR 0015's amendment of 2026-11-22](../adr/0015-kes-key-written-back-and-checked-reload.md#amendment-2026-11-22-the-period-0-key-is-not-kept)). This reduces the state available from
   a later read of that path if earlier copies have not been retained; it does not establish complete
   past-key erasure. The replacement protocol writes every byte to `<file>.next`,
   forces the file, decodes it again to check the key structure, verification key, period and serialized bytes,
