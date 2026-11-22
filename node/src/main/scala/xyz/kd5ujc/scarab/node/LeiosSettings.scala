@@ -43,15 +43,13 @@ object LeiosSettings:
     )
 
   /** The keys `build` 's node uses, which are not reported unused: `LeiosDbConfig` under the Leios
-    * build when it keeps the store on disk, where the node opens it ([[LeiosStorage]]).
+    * build, where the node opens the store it keeps on disk, and `follow` refuses the in-memory one
+    * this build does not have ([[LeiosStorage]]).
     */
-  private def used(build: ReferenceBuild, database: LeiosDbBackend): Set[NodeConfig.TopLevelKey] =
-    (build, database) match
-      case (ReferenceBuild.LeiosB004fe0c, LeiosDbBackend.SQLite) =>
-        Set[NodeConfig.TopLevelKey]("LeiosDbConfig")
-      case (ReferenceBuild.LeiosB004fe0c, LeiosDbBackend.InMemory) |
-          (ReferenceBuild.Release11_1 | ReferenceBuild.Release11_2, _) =>
-        Set.empty
+  private def used(build: ReferenceBuild): Set[NodeConfig.TopLevelKey] =
+    build match
+      case ReferenceBuild.LeiosB004fe0c => Set[NodeConfig.TopLevelKey]("LeiosDbConfig")
+      case ReferenceBuild.Release11_1 | ReferenceBuild.Release11_2 => Set.empty
 
   private[node] def parse(
       k: ConfigFields[NodeConfig.TopLevelKey],
@@ -85,7 +83,7 @@ object LeiosSettings:
         backend,
         lead,
         adaptive,
-        keys.filter(key => k.value(key).nonEmpty && !used(build, backend)(key)).toSet[String]
+        keys.filter(key => k.value(key).nonEmpty && !used(build)(key)).toSet[String]
       )
 
   private def readAdaptive(

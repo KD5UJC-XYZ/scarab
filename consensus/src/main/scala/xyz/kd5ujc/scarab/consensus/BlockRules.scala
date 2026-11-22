@@ -43,6 +43,23 @@ enum BlockNoVerdict:
       unavailable: xyz.kd5ujc.scarab.ledger.LedgerFailure.Unavailable
   )
 
+  /** The evaluator cannot evaluate a script of a Dijkstra block, which the era rules raise with the
+    * script and no transaction (`ScriptVerdictUnavailable`): the other eras' [[Evaluation]].
+    */
+  case ScriptUnavailable(cause: xyz.kd5ujc.scarab.ledger.era.ScriptVerdictUnavailable)
+
+  /** The proposals a Dijkstra block leaves cannot be written back into the state's record: an
+    * update of a parameter Dijkstra adds, keys 34 to 56, which the public testnet's ledger admits
+    * and the record holds only once its format does (#85,
+    * `DijkstraBlockDefect.UnstorableProposals`).
+    */
+  case UnstorableProposals(cause: xyz.kd5ujc.scarab.ledger.era.ProposalsWriteError)
+
+  /** The node's two readings of a Dijkstra block's bytes disagree, or a value its decoder's bounds
+    * rule out came of them (`DijkstraBlockDefect.Projection`): a defect of its own decoders.
+    */
+  case Projection(cause: xyz.kd5ujc.scarab.ledger.era.EraTxError)
+
   /** A crypto provider failed on the block (`VerificationDefect`). */
   case Verification(defect: xyz.kd5ujc.scarab.ledger.VerificationDefect)
 
@@ -64,6 +81,10 @@ enum BlockNoVerdict:
       val error = xyz.kd5ujc.scarab.ledger
         .ValidationError(point, xyz.kd5ujc.scarab.ledger.BlockFailure.Tx(unavailable))
       s"evaluation unavailable: ${error.message}"
+    case ScriptUnavailable(cause) => s"evaluation unavailable: ${cause.reason}"
+    case UnstorableProposals(cause) =>
+      xyz.kd5ujc.scarab.ledger.DijkstraBlockDefect.UnstorableProposals(cause).message
+    case Projection(cause) => xyz.kd5ujc.scarab.ledger.DijkstraBlockDefect.Projection(cause).message
     case Verification(defect)   => s"verification failed: ${defect.message}"
     case StateOutOfRange(error) => error.message
     case Defect(cause)          => s"the rules threw: $cause"
@@ -73,48 +94,71 @@ enum BlockNoVerdict:
     */
   def recovery: BlockNoVerdict.Recovery =
     import BlockNoVerdict.Recovery.{Deterministic, Passing}
-    import xyz.kd5ujc.scarab.plutus.BackendFailure
     this match
-      case Evaluation(_, unavailable) =>
-        unavailable.reason.reason match
-          // a Throwable that reached the evaluator's adapter (an OutOfMemoryError, a linkage
-          // error): the environment, which may change
-          case BackendFailure.Defect(_) => Passing
-          // the same script exhausts the stack again, and a budget beyond 64 bits stays so
-          case BackendFailure.StackExhausted | BackendFailure.BudgetOutOfRange(_) => Deterministic
-          case BackendFailure.Uplc(reason) =>
-            import xyz.kd5ujc.scarab.uplc.ledger.Unavailability
-            import xyz.kd5ujc.scarab.uplc.builtin.extended.LibraryDefect
-            reason match
-              // an exception inside the own evaluator, or a builtin's library that threw: the
-              // environment
-              case Unavailability.Thrown(_) |
-                  Unavailability.BuiltinDefect(_, LibraryDefect.Thrown(_)) =>
-                Passing
-              // an evaluation stopped because its thread was interrupted: the rules of a block
-              // evaluate with an evaluator that never stops (`PlutusBackend.evaluator`), so only
-              // an interruption from outside, the environment
-              case Unavailability.Interrupted => Passing
-              // a library that answered what it cannot (an input it refuses, a hashed point
-              // outside the group, a Miller-loop result without the library's value): the same
-              // input and build answer the same
-              case Unavailability.BuiltinDefect(
-                    _,
-                    LibraryDefect.UnexpectedInput(_) | LibraryDefect.HashedOutsideGroup(_) |
-                    LibraryDefect.DetachedMlResult
-                  ) =>
-                Deterministic
-              // a cost model, machine, denotation or arity this build lacks: the same until a
-              // restart
-              case Unavailability.CostModel(_) | Unavailability.NoMachine(_, _) |
-                  Unavailability.NoDenotation(_, _) | Unavailability.BuiltinArity(_, _, _) =>
-                Deterministic
-      case Verification(_) => Passing
+      case Evaluation(_, unavailable) => BlockNoVerdict.recoveryOf(unavailable.reason)
+      case ScriptUnavailable(cause)   => BlockNoVerdict.recoveryOf(cause.reason)
+      // the same build reads the same bytes and holds the same record again
+      case UnstorableProposals(_) | Projection(_) => Deterministic
+      case Verification(_)                        => Passing
       // a quantity of the state stays out of range for the same state
       case StateOutOfRange(_) => Deterministic
       case Defect(_)          => Passing
 
 object BlockNoVerdict:
+  /** The no verdict a Dijkstra block's defect is, where the follower withholds the block for it: a
+    * limit of this build that valid peer input can meet. None where the node stops for it. A total
+    * match with no default, so a new defect must be placed here.
+    */
+  def ofDijkstra(defect: xyz.kd5ujc.scarab.ledger.DijkstraBlockDefect): Option[BlockNoVerdict] =
+    import xyz.kd5ujc.scarab.ledger.DijkstraBlockDefect as D
+    defect match
+      case D.Unavailable(cause)         => Some(ScriptUnavailable(cause))
+      case D.UnstorableProposals(cause) => Some(UnstorableProposals(cause))
+      case D.Projection(cause)          => Some(Projection(cause))
+      case D.Closure(_) | D.Certification(_) | D.Header(_) | D.View(_) | D.Parameters(_) |
+          D.Proposals(_) | D.UtxoState(_) | D.Gov(_) =>
+        None
+
+  /** Whether an evaluator's missing verdict can pass on its own, by its cause. */
+  private def recoveryOf(
+      unsupported: xyz.kd5ujc.scarab.plutus.EvalFailure.Unsupported
+  ): BlockNoVerdict.Recovery =
+    import BlockNoVerdict.Recovery.{Deterministic, Passing}
+    import xyz.kd5ujc.scarab.plutus.BackendFailure
+    unsupported.reason match
+      // a Throwable that reached the evaluator's adapter (an OutOfMemoryError, a linkage
+      // error): the environment, which may change
+      case BackendFailure.Defect(_) => Passing
+      // the same script exhausts the stack again, and a budget beyond 64 bits stays so
+      case BackendFailure.StackExhausted | BackendFailure.BudgetOutOfRange(_) => Deterministic
+      case BackendFailure.Uplc(reason) =>
+        import xyz.kd5ujc.scarab.uplc.ledger.Unavailability
+        import xyz.kd5ujc.scarab.uplc.builtin.extended.LibraryDefect
+        reason match
+          // an exception inside the own evaluator, or a builtin's library that threw: the
+          // environment
+          case Unavailability.Thrown(_) |
+              Unavailability.BuiltinDefect(_, LibraryDefect.Thrown(_)) =>
+            Passing
+          // an evaluation stopped because its thread was interrupted: the rules of a block
+          // evaluate with an evaluator that never stops (`PlutusBackend.evaluator`), so only
+          // an interruption from outside, the environment
+          case Unavailability.Interrupted => Passing
+          // a library that answered what it cannot (an input it refuses, a hashed point
+          // outside the group, a Miller-loop result without the library's value): the same
+          // input and build answer the same
+          case Unavailability.BuiltinDefect(
+                _,
+                LibraryDefect.UnexpectedInput(_) | LibraryDefect.HashedOutsideGroup(_) |
+                LibraryDefect.DetachedMlResult
+              ) =>
+            Deterministic
+          // a cost model, machine, denotation or arity this build lacks: the same until a
+          // restart
+          case Unavailability.CostModel(_) | Unavailability.NoMachine(_, _) |
+              Unavailability.NoDenotation(_, _) | Unavailability.BuiltinArity(_, _, _) =>
+            Deterministic
+
   /** Whether a cause of no verdict can pass on its own. */
   enum Recovery:
     /** It may pass (memory pressure, a rejected task, a provider's failure): the block is judged

@@ -49,6 +49,13 @@ object MirrorClock:
       Option.when(era == Era.Alonzo)(slot)
     )
 
+  /** The era history [[of]] reads, at its transition: the `EpochInfo` of the ledger's `Globals` a
+    * rule of `era` asks for at `slot` (`epochInfo`, as the clock's horizon).
+    */
+  def horizon(state: MirrorState, placement: Placement, era: Era, slot: BigInt): Horizon =
+    val (history, transition) = historyAt(state, placement, era, slot)
+    history.at(transition)
+
   /** The era history of `state` at its tip, as `GetInterpreter` answers it
     * (`interpretQueryHardFork` is `mkInterpreter (hardForkSummary cfg st)`,
     * `HardFork/Combinator/Ledger/Query.hs:529`; `hardForkSummary` is `reconstructSummary` of the

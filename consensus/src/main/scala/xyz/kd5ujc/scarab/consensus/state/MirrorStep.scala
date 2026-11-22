@@ -26,6 +26,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
   UTxOState,
   UtxoTables,
   VocabError,
+  Word64,
   WithOrigin
 }
 import xyz.kd5ujc.scarab.protocol.{Era, StateLayout}
@@ -154,10 +155,37 @@ object MirrorStep:
       consensus: ConsensusExtras,
       plutus: PlutusStats
   ): Either[StateMirrorError, MirrorState] =
+    step(m, placement, block.header, _.after(block), nes, protocol, consensus, plutus)
+
+  /** The mirror after a Dijkstra block whose header is `header`, as [[block]]: the fourth field
+    * gains `txBytes`, the bytes of the block's transactions and of its certified endorser block's
+    * closure ([[ShelleyLedgerState.Layout.afterBytes]]).
+    */
+  def dijkstraBlock(
+      m: MirrorState,
+      placement: Placement,
+      header: Header.Shelley,
+      txBytes: Word64,
+      nes: EraNes,
+      protocol: ProtocolState,
+      consensus: ConsensusExtras,
+      plutus: PlutusStats
+  ): Either[StateMirrorError, MirrorState] =
+    step(m, placement, header, _.afterBytes(txBytes), nes, protocol, consensus, plutus)
+
+  private def step(
+      m: MirrorState,
+      placement: Placement,
+      header: Header.Shelley,
+      layoutAfter: ShelleyLedgerState.Layout => ShelleyLedgerState.Layout,
+      nes: EraNes,
+      protocol: ProtocolState,
+      consensus: ConsensusExtras,
+      plutus: PlutusStats
+  ): Either[StateMirrorError, MirrorState] =
     m.extras match
       case _: MirrorExtras.InByron => Left(StateMirrorError.ExtrasMismatch(m.ext.ledgerState.era))
       case MirrorExtras.InShelley(ledgerExtras, _) =>
-        val header = block.header
         for
           shelley <- (nes match
             case n: EraNes.InEra[e] =>
@@ -175,7 +203,7 @@ object MirrorStep:
                       WithOrigin.At(ShelleyTip(slot, blockNo, hash)),
                       n.nes,
                       counter,
-                      before.after(block)
+                      layoutAfter(before)
                     )
                   )(using n.era),
                   AnnTip(slot, blockNo, TipInfo.ShelleyBasedTip(n.era, hash))

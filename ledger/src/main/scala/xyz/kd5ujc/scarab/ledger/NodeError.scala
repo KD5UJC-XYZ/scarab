@@ -383,8 +383,18 @@ enum ChainError extends NodeError:
     */
   case LeiosCommittee(slot: BigInt, cause: xyz.kd5ujc.scarab.ledger.state.LeiosCommitteeError)
 
+  /** The node cannot apply the Dijkstra block of `slot` ([[DijkstraBlockDefect]]): a missing or
+    * undecodable closure, which the reference meets with `error` (ouroboros-consensus 2416493b
+    * `Storage/LedgerDB/Forker.hs:1048-1052, 1084-1087`), or another state of its own it cannot
+    * judge. This is neither a verdict on the block nor a fault of the peer that sent it: the
+    * follower withholds the block for a limit of this build valid peer input can meet
+    * (`BlockNoVerdict.ofDijkstra`), and for the rest the node stops.
+    */
+  case DijkstraBlock(slot: BigInt, cause: DijkstraBlockDefect)
+
   def message: String = this match
-    case MempoolTick(slot, cause) => s"cannot tick mempool ledger to slot $slot: $cause"
+    case DijkstraBlock(slot, cause) => s"the Dijkstra block of slot $slot: ${cause.message}"
+    case MempoolTick(slot, cause)   => s"cannot tick mempool ledger to slot $slot: $cause"
     case CommitDefect(cause) =>
       s"the node's own code threw while committing a chain: ${NetworkError.describe(cause)}"
     case LeiosCommittee(slot, cause) =>

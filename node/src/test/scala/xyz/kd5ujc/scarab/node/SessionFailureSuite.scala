@@ -95,7 +95,9 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       unavailable: Option[Int] = None,
       held: Option[Int] = None,
       unverifiable: Option[(Int, BlockFailure)] = None,
-      outOfRange: Option[Int] = None
+      outOfRange: Option[Int] = None,
+      closureMissing: Option[Int] = None,
+      dijkstra: Option[(Int, xyz.kd5ujc.scarab.ledger.DijkstraBlockDefect)] = None
   ): IO[Result] =
     NodeScope.resource.use { node =>
       for
@@ -155,6 +157,13 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
             Raise[IO, ValidationError].raise[ValidationError, BigInt](
               ValidationError(header.point, unverifiable.fold(BlockFailure.HeaderDiffers)(_._2))
             )
+          else if dijkstra.exists(_._1 == header.blockNo.toInt) then
+            dijkstra.fold(IO.pure(header.blockNo))((_, defect) =>
+              Raise[IO, ChainError]
+                .raise[ChainError, BigInt](ChainError.DijkstraBlock(header.slot, defect))
+            )
+          else if closureMissing.contains(header.blockNo.toInt) then
+            Raise[IO, ChainError].raise[ChainError, BigInt](missingClosure(header.slot))
           else if outOfRange.contains(header.blockNo.toInt) then
             Raise[IO, ChainError].raise[ChainError, BigInt](
               ChainError.StateOutOfRange(header.slot, pot)
@@ -586,6 +595,63 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
 
   // the Byron to Shelley hand-over of the header forecast met the state out of range: the header
   // pipeline ends the session with it, and the node stops without blaming the peer
+  private def missingClosure(slot: BigInt): ChainError =
+    ChainError.DijkstraBlock(
+      slot,
+      xyz.kd5ujc.scarab.ledger.DijkstraBlockDefect.Closure(
+        xyz.kd5ujc.scarab.ledger.era.rules.LeiosClosureDefect
+          .Missing(xyz.kd5ujc.scarab.protocol.EbHash.fromBytes(Bytes.fromArray(Array.fill(32)(7))))
+      )
+    )
+
+  test("a certified closure missing from the store stops the node: no invalid record, no blame") {
+    session(closureMissing = Some(2)).map { left =>
+      val fault = missingClosure(headers(2).slot)
+      left.fatal match
+        case Some(Fatal.Internal(`fault`)) => ()
+        case other                         => fail(s"unexpected $other")
+      assertEquals(SessionEnd.peerError(left.end), None)
+      assertEquals(left.invalid, Set.empty[Bytes])
+      assertEquals(blockNos(left.stored), Vector(0, 1))
+    }
+  }
+
+  // the public testnet's ledger admitted parameter changes of the keys Dijkstra adds, which the
+  // state's record cannot hold yet (#85): valid peer input, so no verdict, never a stop
+  test(
+    "proposals the state's record cannot hold withhold the block: no record, no blame, no stop"
+  ) {
+    val unstorable = xyz.kd5ujc.scarab.ledger.era.ProposalsWriteError.UnstorableUpdate(
+      xyz.kd5ujc.scarab.ledger.GovActionId(Bytes.fromArray(Array.fill(32)(3)), BigInt(0)),
+      cats.data.NonEmptySet.of(BigInt(45), BigInt(46))
+    )
+    session(dijkstra =
+      Some(2 -> xyz.kd5ujc.scarab.ledger.DijkstraBlockDefect.UnstorableProposals(unstorable))
+    ).map { left =>
+      assertEquals(left.fatal, None)
+      withheld(left, 2) { case BlockNoVerdict.UnstorableProposals(cause) =>
+        assertEquals(cause, unstorable)
+      }
+    }
+  }
+
+  // the node's two readings of the same witness bytes disagree: its own decoders' defect
+  test("the node's readings of a block that disagree withhold it: no record, no blame, no stop") {
+    Vector(
+      xyz.kd5ujc.scarab.ledger.era.EraTxError.ScriptsReadAgain,
+      xyz.kd5ujc.scarab.ledger.era.EraTxError.WitnessDataReadAgain
+    ).traverse_ { disagreement =>
+      session(dijkstra =
+        Some(2 -> xyz.kd5ujc.scarab.ledger.DijkstraBlockDefect.Projection(disagreement))
+      ).map { left =>
+        assertEquals(left.fatal, None)
+        withheld(left, 2) { case BlockNoVerdict.Projection(cause) =>
+          assertEquals(cause, disagreement)
+        }
+      }
+    }
+  }
+
   test("a state out of range in the header forecast stops the node: no invalid record, no blame") {
     val header = headers(2)
     val forecast = PeerError.InvalidHeader(

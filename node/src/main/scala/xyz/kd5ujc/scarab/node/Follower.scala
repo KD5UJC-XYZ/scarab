@@ -525,6 +525,13 @@ final class Follower[F[_]: Async, S] private (
         // a state with no Leios committee is held no better: the same state, the same failure
         case Right(Left(noCommittee: xyz.kd5ujc.scarab.ledger.ChainError.LeiosCommittee)) =>
           F.pure(Left(Judged.NoVerdict(BlockNoVerdict.StateOutOfRange(noCommittee))))
+        // a Dijkstra block that meets a limit of this build valid peer input can meet (a script
+        // the evaluator cannot judge, proposals the state's record cannot hold, the node's own
+        // readings that disagree): no verdict, as the other eras'; any other defect stops the node
+        case Right(Left(stop: xyz.kd5ujc.scarab.ledger.ChainError.DijkstraBlock)) =>
+          BlockNoVerdict
+            .ofDijkstra(stop.cause)
+            .fold(stop.raise[F, Either[Judged, S]])(cause => F.pure(Left(Judged.NoVerdict(cause))))
         // storage and every other failure of the node stay the node's
         case Right(Left(other)) => other.raise[F, Either[Judged, S]]
         case Left(thrown)       => F.pure(Left(Judged.NoVerdict(BlockNoVerdict.Defect(thrown))))

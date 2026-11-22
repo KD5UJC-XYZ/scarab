@@ -1187,6 +1187,76 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     }
   }
 
+  test(
+    "a local failure on a stored volatile block stops the start before adoption and rolls nothing back"
+  ) {
+    val unavailable = LedgerFailure.Unavailable(
+      Bytes.empty,
+      ScriptLocation.Phase2(Redeemer(0, 0, Bytes.empty, ExUnits.zero)),
+      EvalFailure.Unsupported(xyz.kd5ujc.scarab.plutus.BackendFailure.StackExhausted)
+    )
+    val eb = xyz.kd5ujc.scarab.protocol.EbHash.fromBytes(Bytes.fromArray(Array.fill(32)(7.toByte)))
+    // the closure's read from the endorser-block store fails; the store gives no closure; a
+    // Dijkstra block the node has no verdict on; the evaluator cannot judge a script
+    val failures: Vector[Header => NodeError] = Vector(
+      _ => StorageError.LeiosStore(LeiosStoreError.Closed),
+      h =>
+        ChainError.DijkstraBlock(
+          h.slot,
+          xyz.kd5ujc.scarab.ledger.DijkstraBlockDefect.Closure(
+            xyz.kd5ujc.scarab.ledger.era.rules.LeiosClosureDefect.Missing(eb)
+          )
+        ),
+      h =>
+        ChainError.DijkstraBlock(
+          h.slot,
+          xyz.kd5ujc.scarab.ledger.DijkstraBlockDefect
+            .Projection(xyz.kd5ujc.scarab.ledger.era.EraTxError.ScriptsReadAgain)
+        ),
+      h => ValidationError(h.point, BlockFailure.Tx(unavailable))
+    )
+    def failingOn(
+        last: Header,
+        failure: Header => NodeError
+    ): BlockRules[IO, MirrorState] => BlockRules[IO, MirrorState] =
+      base =>
+        BlockRules.from { (state, header, raw) =>
+          if header.hash == last.hash then
+            failure(header) match
+              case e: StorageError => Raise[IO, StorageError].raise[StorageError, MirrorState](e)
+              case e: ChainError   => Raise[IO, ChainError].raise[ChainError, MirrorState](e)
+              case e: ValidationError =>
+                Raise[IO, ValidationError].raise[ValidationError, MirrorState](e)
+              case other => IO.raiseError(new AssertionError(s"not a rule's failure: $other"))
+          else base(state, header, raw)
+        }
+    tempDir.use { dir =>
+      for
+        first <- session(dir, 500)
+        tail = first.chain.blocks.lastOption.getOrElse(fail("expected a volatile suffix"))._1
+        header = headers.find(_.hash == tail.hash).getOrElse(fail("missing fixture header"))
+        stopped <- failures.traverse(f =>
+          session(dir, 500, wrapRules = failingOn(header, f)).attempt.map(f(header) -> _)
+        )
+        // control: the same database, healthy, keeps the whole tail it selected
+        again <- session(dir, 500)
+      yield
+        stopped.foreach {
+          case (raised, Left(refused: SessionRefused)) =>
+            val surfaced = raised match
+              case ValidationError(point, BlockFailure.Tx(u: LedgerFailure.Unavailable)) =>
+                xyz.kd5ujc.scarab.ledger.EvaluationUnavailable(point, u)
+              case other => other
+            assertEquals(refused.error, surfaced)
+          case (raised, other) => fail(s"expected the start to stop on $raised, got $other")
+        }
+        // nothing was cut back: the tail is as it was selected
+        assertEquals(again.resumed, k)
+        assertEquals(again.dropped, 0)
+        assertEquals(again.chain, first.chain)
+    }
+  }
+
   test("a volatile log that holds a block that does not apply is cut back to the valid part") {
     tempDir.use { dir =>
       for

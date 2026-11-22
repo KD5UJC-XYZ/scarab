@@ -545,11 +545,7 @@ private[node] final class Praos2Headers private ():
       tipSlot: BigInt,
       genericEnvelope: Either[HeaderError, Unit]
   ): Prepared[ShelleyValidated] =
-    val config = Praos2.Config(
-      cfg,
-      Word64.fromUnsigned(cfg.forks.maxMajorProtVer.toLong),
-      Praos2.EpochInfo.fromGeometry(cfg.geometry)
-    )
+    val config = Praos2Headers.config(cfg)
     // an epoch query past its forecast waits for the chain; any other defect is the node's own
     val defect = (d: Praos2Defect) =>
       d match
@@ -559,29 +555,19 @@ private[node] final class Praos2Headers private ():
             _: Praos2Defect.NonPositiveKesPeriod | _: Praos2Defect.SuccessorOverflow |
             _: Praos2Defect.Vocabulary) =>
           Outcome.Undecided(HeaderDefect.Praos2(other))
-    // `translateChainDepState` of `TranslateProto (Praos c) (Praos2 c)`, and of TPraos through
-    // Praos (`Protocol/Praos2.hs:189-209`, ouroboros-consensus 2416493b): the state of the era
-    // before, carried over
-    val translated = prev.in(Era.Conway)
+    val translated = Praos2Headers.translated(prev)
     Prepared.Check(() =>
       val checked: Either[Outcome[ShelleyValidated], ShelleyValidated] =
         for
-          state <- translated.dep match
-            case ChainDepState.Praos2(p) => Right(p)
-            case ChainDepState.Praos(p)  => Right(DijkstraCrossing.chainDepState(p))
-            case ChainDepState.TPraos(_) | ChainDepState.PBft(_) =>
-              Left(Outcome.Invalid(HeaderError.Praos(PraosError.WrongState(h.era))))
+          state <- Praos2Headers
+            .chainDep(translated, h.era)
+            .leftMap(e => Outcome.Invalid(HeaderError.Praos(e)))
           header <- LeiosHeader
             .decode(h.raw)
             .leftMap(e =>
               Outcome.Invalid(HeaderError.Structure(HeaderStructureProblem.LeiosHeaderUnread(e)))
             )
-          at <- parent
-            .traverse(p =>
-              (BlockNo.fromBigInt(p.blockNo), SlotNo.fromBigInt(p.slot))
-                .mapN(Praos2.Tip(p.hash, _, _))
-            )
-            .leftMap(e => defect(Praos2Defect.Vocabulary(e)))
+          at <- Praos2Headers.tipOf(parent).leftMap(e => defect(Praos2Defect.Vocabulary(e)))
           slot <- SlotNo.fromBigInt(h.slot).leftMap(e => defect(Praos2Defect.Vocabulary(e)))
           ticked <- Praos2
             .tick(config, view, slot, Praos2.ChainState(at, state))
@@ -600,6 +586,39 @@ private[node] final class Praos2Headers private ():
     )
 
 private[node] object Praos2Headers:
+  /** Praos2's configuration of the node's: its Praos configuration, the maximum major protocol
+    * version it supports, and the epochs of its geometry. The header gate and a Dijkstra block's
+    * application ([[MirrorDijkstra]]) both run Praos2 with it.
+    */
+  def config(cfg: PraosConfig): Praos2.Config =
+    Praos2.Config(
+      cfg,
+      Word64.fromUnsigned(cfg.forks.maxMajorProtVer.toLong),
+      Praos2.EpochInfo.fromGeometry(cfg.geometry)
+    )
+
+  /** `prev` carried into Dijkstra: `translateChainDepState` of `TranslateProto (Praos c) (Praos2
+    * c)`, and of TPraos through Praos (`Protocol/Praos2.hs:189-209`, ouroboros-consensus 2416493b),
+    * the state of the era before carried over.
+    */
+  def translated(prev: ProtocolState): ProtocolState = prev.in(Era.Conway)
+
+  /** The chain-dependent state of a [[translated]] state in Praos2's: its own, or Praos's made
+    * Praos2's ([[DijkstraCrossing.chainDepState]]); a state of an era before Praos is of the wrong
+    * protocol for a header of `era`.
+    */
+  def chainDep(translated: ProtocolState, era: Era): Either[PraosError, Praos2.State] =
+    translated.dep match
+      case ChainDepState.Praos2(p) => Right(p)
+      case ChainDepState.Praos(p)  => Right(DijkstraCrossing.chainDepState(p))
+      case ChainDepState.TPraos(_) | ChainDepState.PBft(_) => Left(PraosError.WrongState(era))
+
+  /** The tip of Praos2's chain state: the header a header extends, if any. */
+  def tipOf(parent: Option[BlockRef]): Either[VocabError, Option[Praos2.Tip]] =
+    parent.traverse(p =>
+      (BlockNo.fromBigInt(p.blockNo), SlotNo.fromBigInt(p.slot)).mapN(Praos2.Tip(p.hash, _, _))
+    )
+
   /** The ledger view forecast for a slot ([[Praos2Headers.forecast]]). */
   enum Forecast:
     /** Dijkstra's, with the Leios fields. */

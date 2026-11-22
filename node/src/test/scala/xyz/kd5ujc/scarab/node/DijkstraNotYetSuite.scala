@@ -26,9 +26,11 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{
 }
 
 /** The Dijkstra era is named (index 7, block tag 8) and its blocks, headers and transactions
-  * decode, but it is not implemented (#54): the rules and the 11.1 line's ledger state refuse it
-  * with a typed [[DijkstraNotYet]], and the raw-bytes Leios paths keep working. The Leios build's
-  * Dijkstra state is read and written (`LeiosLayoutSuite`, storage).
+  * decode; what this build does not implement of it (#54) is refused with a typed
+  * [[DijkstraNotYet]]: the flat transaction decoders, a release build's block rules and the 11.1
+  * line's ledger state, and the raw-bytes Leios paths keep working. The Leios build's block rules
+  * apply Dijkstra blocks (`MirrorDijkstraSuite`). The Leios build's Dijkstra state is read and
+  * written (`LeiosLayoutSuite`, storage).
   */
 class DijkstraNotYetSuite extends FunSuite:
   private val raw = Bytes.fromArray(Array(0x82.toByte, 0x01, 0x02))

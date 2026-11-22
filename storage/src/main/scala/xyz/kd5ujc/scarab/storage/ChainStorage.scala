@@ -27,13 +27,15 @@ import xyz.kd5ujc.scarab.consensus.{
 }
 import xyz.kd5ujc.scarab.ledger.{
   Block,
+  BlockFailure,
   ChainError,
+  EvaluationUnavailable,
+  LedgerFailure,
   NetworkIdentity,
   FirstImmutableProblem,
   NodeError,
   StorageError,
   ValidationError,
-  VerificationDefect,
   StorageStructureError
 }
 import xyz.kd5ujc.scarab.consensus.Compute
@@ -663,8 +665,10 @@ object ChainStorage:
 
   /** Rebuild the volatile chain from the log: apply the logged blocks after the immutable tip, in
     * order, on top of the recovered state. Blocks that do not connect or that the rules refuse end
-    * the chain there (the rest is fetched again, and the log is cut back); a crypto provider that
-    * fails on a block raises instead, and the log is left as it is; a log with more than `k` blocks
+    * the chain there (the rest is fetched again, and the log is cut back); a failure of the node's
+    * own on a block (a crypto provider or an evaluator that cannot judge it, the storage, a closure
+    * the endorser-block store cannot give, or any other failure of the chain model) raises instead,
+    * before the chain is adopted, and the log is left as it is; a log with more than `k` blocks
     * after the immutable tip (the immutable store lost an unforced tail) resumes the first `k`. The
     * result is the volatile chain the node continues from.
     *
@@ -733,17 +737,23 @@ object ChainStorage:
               F.pure(done)
             else
               handle.attempt(rules(chain.state, header, raw)).flatMap {
-                // A ledger state out of range stops the node: it does not end the chain here.
-                case Left(fatal: ChainError.StateOutOfRange) => fatal.raise[F, Vector[Resumed[S]]]
-                case Left(fatal: ChainError.LeiosCommittee)  => fatal.raise[F, Vector[Resumed[S]]]
-                // A crypto provider that fails is no refusal: the stored tail was selected on a
-                // verdict of an earlier run, so the start stops (Fatal.Unverifiable, as the
-                // exception ends the reference's linked thread) and nothing is rolled back.
+                // Only a refusal by the rules ends the chain here. The stored tail was selected on
+                // a verdict of an earlier run, so a failure of the node's own is no refusal: a
+                // crypto provider that fails (Fatal.Unverifiable, as the exception ends the
+                // reference's linked thread), an evaluator that cannot judge a script, a storage
+                // error, a closure the store cannot give, a ledger state out of range or any
+                // other failure of the chain model stops the start, and nothing is rolled back.
                 case Left(e: ValidationError) =>
-                  e.unverifiable.fold(F.pure(done))(handle.raise[NodeError, Vector[Resumed[S]]](_))
-                case Left(e: VerificationDefect) =>
-                  handle.raise[NodeError, Vector[Resumed[S]]](e)
-                case Left(_) => F.pure(done)
+                  e.unverifiable match
+                    case Some(defect) => handle.raise[NodeError, Vector[Resumed[S]]](defect)
+                    case None =>
+                      e.failure match
+                        case BlockFailure.Tx(unavailable: LedgerFailure.Unavailable) =>
+                          handle.raise[NodeError, Vector[Resumed[S]]](
+                            EvaluationUnavailable(e.point, unavailable)
+                          )
+                        case _ => F.pure(done)
+                case Left(own) => handle.raise[NodeError, Vector[Resumed[S]]](own)
                 case Right(next) =>
                   chain.extend(header, next) match
                     case Left(_) => F.pure(done)

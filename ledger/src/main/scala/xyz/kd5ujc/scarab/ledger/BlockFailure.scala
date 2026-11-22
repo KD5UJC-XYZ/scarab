@@ -131,23 +131,50 @@ enum BlockFailure:
     */
   case Mirror[E <: DomainError](cause: E) extends BlockFailure
 
-  /** A Dijkstra block, which decodes, but which no ledger rule of this build applies (#54). */
+  /** A Dijkstra block, which decodes, but which no ledger rule of this build applies: a release
+    * build's, whose Dijkstra this node does not run (#54).
+    */
   case NotYet(part: DijkstraNotYet)
+
+  // ---- Dijkstra, on the era types
+
+  /** A field of a decoded Dijkstra block the era's types refuse, one the era does not have or bytes
+    * they do not decode (`era.dijkstra.DijkstraBlockError.Era`); the node's own readings that
+    * disagree are no refusal (`DijkstraBlockDefect.Projection`).
+    */
+  case DijkstraEra(cause: xyz.kd5ujc.scarab.ledger.era.EraTxError)
+
+  /** The Leios checks of a certifying ranking block (`Forker.applyBlock`, ouroboros-consensus
+    * 2416493b `Storage/LedgerDB/Forker.hs:631-666`) refused it ([[LeiosExtValidationError]]).
+    */
+  case LeiosCertificate(error: LeiosExtValidationError)
+
+  /** A Praos2 header rule, retaining its typed cause. */
+  case Praos2(error: Praos2Error)
+
+  /** Dijkstra's BBODY refused the block (`Dijkstra/Rules/Bbody.hs`, cardano-ledger 9df9f98c), its
+    * failures in the reference's order.
+    */
+  case DijkstraBbody(
+      failures: cats.data.NonEmptyChain[
+        xyz.kd5ujc.scarab.ledger.era.rules.BbodyPredFailure[xyz.kd5ujc.scarab.ledger.state.Dijkstra]
+      ]
+  )
 
   /** The rule family, as the log names it. */
   def rule: BlockRule = this match
     case HeaderDiffers | Transport(_) | BodyCommitment | EraAnnounced(_, _) |
         EpochPrecedesLedger(_) | LedgerEra(_, _) | ByronAfterShelley | ByronAfterTransition(_, _) =>
       BlockRule.Structure
-    case Decode(_) | TxDecode(_, _) => BlockRule.Decode
+    case Decode(_) | TxDecode(_, _) | DijkstraEra(_) => BlockRule.Decode
     case NoByronGenesis | TransitionUndecided(_) | ShelleyBeforeTransition(_, _, _) | Byron(_) =>
       BlockRule.Byron
-    case Envelope(_)        => BlockRule.Envelope
-    case TPraos(_)          => BlockRule.TPraos
-    case Praos(_)           => BlockRule.Praos
-    case Unverifiable(r, _) => r
+    case Envelope(_)          => BlockRule.Envelope
+    case TPraos(_)            => BlockRule.TPraos
+    case Praos(_) | Praos2(_) => BlockRule.Praos
+    case Unverifiable(r, _)   => r
     case Handover(_) | SupplyInvariant(_, _, _) | RefScriptsTooLarge(_) | BlockExUnitsTooBig(_, _) |
-        Tx(_) | Tick(_) | Mirror(_) | NotYet(_) =>
+        Tx(_) | Tick(_) | Mirror(_) | NotYet(_) | LeiosCertificate(_) | DijkstraBbody(_) =>
       BlockRule.Ledger
 
   /** The reason, as the log renders it (the text of the old `(rule, reason)` pair, unchanged). */
@@ -180,10 +207,15 @@ enum BlockFailure:
       s"reference scripts of the block total ${m.supplied} bytes, over the limit of ${m.expected}"
     case BlockExUnitsTooBig(used, maximum) =>
       s"block execution units ${used.mem} mem / ${used.steps} steps exceed the maximum ${maximum.mem} / ${maximum.steps}"
-    case Tx(failure)   => failure.message
-    case Tick(failure) => s"tick refused: ${Show[TickFailure].show(failure)}"
-    case Mirror(text)  => s"the state cannot be held: $text"
-    case NotYet(part)  => part.message
+    case Tx(failure)             => failure.message
+    case Tick(failure)           => s"tick refused: ${Show[TickFailure].show(failure)}"
+    case Mirror(text)            => s"the state cannot be held: $text"
+    case NotYet(part)            => part.message
+    case DijkstraEra(cause)      => s"a field of the Dijkstra block is outside its type: $cause"
+    case LeiosCertificate(error) => error.message
+    case Praos2(error)           => error.message
+    case DijkstraBbody(failures) =>
+      s"BBODY refused the block: ${failures.iterator.mkString("; ")}"
 
 object BlockFailure:
   extension (failure: BlockFailure)

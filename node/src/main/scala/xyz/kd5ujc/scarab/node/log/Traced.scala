@@ -153,10 +153,14 @@ object Traced:
   /** The `kind` field of a cause of no verdict. */
   private[log] def noVerdictKind(cause: xyz.kd5ujc.scarab.consensus.BlockNoVerdict): String =
     cause match
-      case xyz.kd5ujc.scarab.consensus.BlockNoVerdict.Evaluation(_, _)   => "evaluation"
-      case xyz.kd5ujc.scarab.consensus.BlockNoVerdict.Verification(_)    => "verification"
-      case xyz.kd5ujc.scarab.consensus.BlockNoVerdict.StateOutOfRange(_) => "stateOutOfRange"
-      case xyz.kd5ujc.scarab.consensus.BlockNoVerdict.Defect(_)          => "defect"
+      case xyz.kd5ujc.scarab.consensus.BlockNoVerdict.Evaluation(_, _)     => "evaluation"
+      case xyz.kd5ujc.scarab.consensus.BlockNoVerdict.ScriptUnavailable(_) => "evaluation"
+      // the state's record cannot hold what the block leaves, as a quantity outside its type
+      case xyz.kd5ujc.scarab.consensus.BlockNoVerdict.UnstorableProposals(_) => "stateOutOfRange"
+      case xyz.kd5ujc.scarab.consensus.BlockNoVerdict.Projection(_)          => "defect"
+      case xyz.kd5ujc.scarab.consensus.BlockNoVerdict.Verification(_)        => "verification"
+      case xyz.kd5ujc.scarab.consensus.BlockNoVerdict.StateOutOfRange(_)     => "stateOutOfRange"
+      case xyz.kd5ujc.scarab.consensus.BlockNoVerdict.Defect(_)              => "defect"
 
   given Traced[StorageEvent] =
     case StorageEvent.FormatMigrated(m) =>

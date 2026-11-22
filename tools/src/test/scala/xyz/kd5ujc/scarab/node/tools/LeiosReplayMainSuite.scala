@@ -7,7 +7,15 @@ import cats.syntax.all.*
 import java.nio.file.{Files as JFiles, Path as JPath}
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.{Block, BlockFailure, ChainError, DecodeSite, LedgerDecodeError}
+import xyz.kd5ujc.scarab.ledger.{
+  Block,
+  BlockFailure,
+  ChainError,
+  DecodeSite,
+  LedgerDecodeError,
+  OCertError,
+  Praos2Error
+}
 import xyz.kd5ujc.scarab.consensus.BlockNoVerdict
 import xyz.kd5ujc.scarab.network.FailsOnUncaught
 import xyz.kd5ujc.scarab.protocol.{ChainSync, DijkstraNotYet}
@@ -21,9 +29,8 @@ import LeiosReplayMain.{ByteDifference, Error, Located, Outcome, Window}
 /** The offline Leios replay on the devnet state of `fixtures/leios/state` with its tip moved to the
   * first Dijkstra block of `fixtures/dijkstra-devnet` ([[LeiosStateFixture]]), whose chain is
   * staged as a reference ImmutableDB: a window that applies no block is the start state again, byte
-  * for byte, through import, the node's start and export; a window with a block after the start
-  * halts at that block's slot while the node's rules apply no Dijkstra block
-  * ([[DijkstraNotYet.Rules]], #85 D8).
+  * for byte, through import, the node's start and export; a window with a block after the start is
+  * refused at that block, which is another run's than the state.
   */
 class LeiosReplayMainSuite extends FailsOnUncaught:
   override def munitIOTimeout: Duration = 3.minutes
@@ -124,7 +131,11 @@ class LeiosReplayMainSuite extends FailsOnUncaught:
     }
   }
 
-  test("the replay halts at the first Dijkstra block after the start, with its slot and hash") {
+  test(
+    "a Dijkstra block the rules refuse after the start is reported with its slot, hash and failure"
+  ) {
+    // the fixture's start state is another run's than its blocks (`LeiosStateFixture`), so the
+    // first block's issuer has no operational certificate counter there: Praos2 refuses it
     tempDir.use { dir =>
       val root = dir.toNioPath
       for
@@ -142,9 +153,17 @@ class LeiosReplayMainSuite extends FailsOnUncaught:
           ChainSync.UInt64.saturating(next.point.slot),
           next.point.hash
         )
-        assertEquals(outcome, Right(Outcome.Halted(point, DijkstraNotYet.Rules, 0)))
-        assertEquals(outcome.map(LeiosReplayMain.exitCode), Right(ExitCode(3)))
-        assert(!JFiles.exists(root.resolve("out")), "a halted window exports nothing")
+        outcome match
+          case Right(
+                refused @ Outcome.Refused(
+                  `point`,
+                  BlockFailure.Praos2(Praos2Error.Certificate(OCertError.NoCounter(_))),
+                  0
+                )
+              ) =>
+            assertEquals(LeiosReplayMain.exitCode(refused), ExitCode(5))
+          case other => fail(s"expected the block refused for its issuer's counter, got $other")
+        assert(!JFiles.exists(root.resolve("out")), "a refused window exports nothing")
     }
   }
 
@@ -291,6 +310,30 @@ class LeiosReplayMainSuite extends FailsOnUncaught:
     val cause = BlockNoVerdict.StateOutOfRange(ChainError.NoIntersection)
     assertEquals(LeiosReplayMain.exitCode(Outcome.Withheld(204, cause, 1)), ExitCode(3))
     assert(!LeiosReplayMain.noVerdictNotYet.isDefinedAt(ChainError.NoIntersection))
+  }
+
+  test(
+    "a Dijkstra block's defect the follower withholds the block for is a halt; others stop the run"
+  ) {
+    val unstorable = xyz.kd5ujc.scarab.ledger.era.ProposalsWriteError.UnstorableUpdate(
+      xyz.kd5ujc.scarab.ledger.GovActionId(Bytes(Vector.fill(32)(0x07.toByte)), 0),
+      cats.data.NonEmptySet.of(BigInt(34))
+    )
+    assertEquals(
+      LeiosReplayMain.noVerdictNotYet.lift(
+        ChainError.DijkstraBlock(
+          1944035,
+          xyz.kd5ujc.scarab.ledger.DijkstraBlockDefect.UnstorableProposals(unstorable)
+        )
+      ),
+      Some(BigInt(1944035) -> BlockNoVerdict.UnstorableProposals(unstorable))
+    )
+    val missing = xyz.kd5ujc.scarab.ledger.DijkstraBlockDefect.Closure(
+      xyz.kd5ujc.scarab.ledger.era.rules.LeiosClosureDefect.Missing(
+        xyz.kd5ujc.scarab.protocol.EbHash.fromBytes(Bytes(Vector.fill(32)(0x2a.toByte)))
+      )
+    )
+    assert(!LeiosReplayMain.noVerdictNotYet.isDefinedAt(ChainError.DijkstraBlock(1944035, missing)))
   }
 
   test("the slot of a reference ledger directory is its name") {

@@ -32,7 +32,8 @@ class ReferenceBuildStartSuite extends CatsEffectSuite:
     try assertEquals(listing.toArray.toVector, Vector.empty)
     finally listing.close()
 
-  List("leios-b004fe0c", "11.2").foreach { build =>
+  // the Leios build runs (#54); 11.2 is the one build not implemented yet
+  List("11.2").foreach { build =>
     test(s"$build is refused at start, before any store, lease or file of the database") {
       StorageTestKit.tempDir.use { dir =>
         Main.run(follow((dir / "db").toString, build)).map { code =>
@@ -40,6 +41,72 @@ class ReferenceBuildStartSuite extends CatsEffectSuite:
           untouched(dir)
         }
       }
+    }
+  }
+
+  // without a database directory the Leios build has no endorser-block store, so a certifying
+  // block could never be applied: refused at start, before any store opens (#54)
+  test("leios-b004fe0c without --db or DatabasePath is refused at start, before any store opens") {
+    Main
+      .run(
+        List(
+          "follow",
+          "--genesis-dir",
+          "fixtures/dijkstra-devnet/genesis",
+          "--peer",
+          "127.0.0.1:1",
+          "--seconds",
+          "5",
+          "--reference-build",
+          "leios-b004fe0c"
+        )
+      )
+      .map(assertEquals(_, ExitCode(1)))
+  }
+
+  // the database directory the configuration names is the run's (`DatabasePath`, completed into
+  // the options before the store is admitted and opened there)
+  test("leios-b004fe0c with DatabasePath from --config and no --db opens its store there") {
+    StorageTestKit.tempDir.use { dir =>
+      val genesis = java.nio.file.Path.of("fixtures", "dijkstra-devnet", "genesis").toAbsolutePath
+      val source = Files.readString(genesis.resolve("config.json"))
+      val config = io.circe.parser
+        .parse(source)
+        .flatMap(_.asObject.toRight(new IllegalArgumentException("not an object")))
+        .fold(e => fail(e.toString), identity)
+      val rewritten = io.circe.Json
+        .fromJsonObject(
+          config.toList
+            .foldLeft(config) { case (obj, (key, value)) =>
+              if key.endsWith("GenesisFile") then
+                value.asString.fold(obj)(file =>
+                  obj.add(key, io.circe.Json.fromString(genesis.resolve(file).toString))
+                )
+              else obj
+            }
+            .add("DatabasePath", io.circe.Json.fromString((dir / "db").toString))
+        )
+        .noSpaces
+      val file = (dir / "config.json").toNioPath
+      for
+        _ <- cats.effect.IO.blocking(Files.writeString(file, rewritten))
+        code <- Main.run(
+          List(
+            "follow",
+            "--config",
+            file.toString,
+            "--peer",
+            "127.0.0.1:1",
+            "--seconds",
+            "2",
+            "--reference-build",
+            "leios-b004fe0c"
+          )
+        )
+        opened <- cats.effect.IO.blocking(Files.isDirectory((dir / "db" / "leios").toNioPath))
+      yield
+        assertEquals(code, ExitCode.Success)
+        assert(opened, "no endorser-block store in the configured database directory")
     }
   }
 

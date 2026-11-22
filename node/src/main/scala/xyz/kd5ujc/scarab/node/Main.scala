@@ -1212,7 +1212,26 @@ object Main extends IOApp:
               networkAtStart(requested, setup)
                 .flatMap(admitted)
                 .flatMap((options, setup, topology) =>
-                  started(options, setup, topology, requested.peers, pool, layout, listening)
+                  // the endorser-block store a Leios build's rules read, in the database directory
+                  // the run opens (its `--db` or the configuration's), before any store opens
+                  admitted(
+                    LeiosStorage.follows(
+                      options.referenceBuild,
+                      setup.config.settings.leios.database,
+                      options.db.map(fs2.io.file.Path.fromNioPath)
+                    )
+                  ).flatMap(leiosStore =>
+                    started(
+                      options,
+                      setup,
+                      topology,
+                      requested.peers,
+                      pool,
+                      layout,
+                      listening,
+                      leiosStore
+                    )
+                  )
                 )
           )
         yield code
@@ -1264,7 +1283,8 @@ object Main extends IOApp:
       cliPeers: List[SocketAddress[Host]],
       credentials: Option[PoolCredentials],
       layout: ReferenceLayout,
-      listening: Option[Listening]
+      listening: Option[Listening],
+      leiosStore: LeiosStorage.Plan
   )(using Handle[IO, NodeError], Log[IO], Assertions[IO]): IO[ExitCode] =
     val ownership = options.db.fold(Resource.unit[IO])(db =>
       xyz.kd5ujc.scarab.storage.DatabaseOwnership.resource[IO](fs2.io.file.Path.fromNioPath(db))
@@ -1309,14 +1329,7 @@ object Main extends IOApp:
     // first and released last, after the chain database, as the reference closes it after the run
     val leios = LeiosStoreLocks
       .resource[IO]
-      .flatMap(locks =>
-        LeiosStorage.resource[IO](
-          options.referenceBuild,
-          setup.config.settings.leios.database,
-          options.db.map(fs2.io.file.Path.fromNioPath),
-          locks
-        )
-      )
+      .flatMap(LeiosStorage.resource[IO](leiosStore, _))
     (
       hangup,
       ownership *> compatible *> (
@@ -1650,6 +1663,12 @@ object Main extends IOApp:
               logged(NodeEvent.VerificationCache(cache.summary)).whenA(n % 20000 == 0)
             }
       parallelPlutus <- ParallelPlutus.create[IO](options.plutusWorkers)
+      committees <- Ref.of[IO, Option[
+        (
+            (xyz.kd5ujc.scarab.ledger.state.LeiosCommittee, xyz.kd5ujc.scarab.codec.Rational),
+            xyz.kd5ujc.scarab.consensus.leios.TipCommittee
+        )
+      ]](None)
     yield Rules(
       praosConfig,
       raw => praosConfig.get.flatMap(cache.warm[IO](raw, _)),
@@ -1664,7 +1683,8 @@ object Main extends IOApp:
         utxoStore = Some(store),
         afterBlock = Some(afterBlock),
         compute = Some(scheduling.compute),
-        parallelPlutus = Some(parallelPlutus)
+        parallelPlutus = Some(parallelPlutus),
+        leios = run.leios.map(MirrorRules.Leios(_, committees))
       )
     )
 

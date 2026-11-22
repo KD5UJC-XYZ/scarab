@@ -40,7 +40,11 @@ import xyz.kd5ujc.scarab.ledger.state.{EpochNo, ShelleyBasedEra, VocabError}
 import xyz.kd5ujc.scarab.node.read.MirrorEraRead
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.storage.UtxoStore
-import xyz.kd5ujc.scarab.protocol.{DijkstraNotYet, Era}
+import xyz.kd5ujc.scarab.protocol.{DijkstraNotYet, Era, LeiosTxHash}
+import xyz.kd5ujc.scarab.storage.LeiosStoreError
+import xyz.kd5ujc.scarab.consensus.leios.TipCommittee
+import xyz.kd5ujc.scarab.ledger.LeiosCertificationDefect
+import xyz.kd5ujc.scarab.ledger.rules.contramap
 
 /** Full block validation on the era-indexed state: the rules of [[NodeRules]] with the Haskell
   * ledger state in place of the node's flat one (design `ledger-mirror-step2.md` §4, J2.8).
@@ -76,6 +80,10 @@ import xyz.kd5ujc.scarab.protocol.{DijkstraNotYet, Era}
   *   state digests).
   * @param compute
   *   Measures the pure rules; without one they are not timed.
+  * @param leios
+  *   The endorser-block store a certifying Dijkstra block's closure is read from, and the Leios
+  *   committee kept for the epoch ([[MirrorRules.Leios]]); without one no closure is held, and a
+  *   certifying block that passes its checks stops the node, as one whose closure is missing does.
   */
 final class MirrorRules[F[_]: Monad](
     config: PraosConfig,
@@ -92,7 +100,8 @@ final class MirrorRules[F[_]: Monad](
       ]
     ] = None,
     compute: Option[Compute[F]] = None,
-    parallelPlutus: Option[ParallelPlutus[F]] = None
+    parallelPlutus: Option[ParallelPlutus[F]] = None,
+    leios: Option[MirrorRules.Leios[F]] = None
 ) extends BlockRules[F, MirrorState]:
 
   private val cpu: Compute[F] = compute.getOrElse(Compute.inline[F])
@@ -105,6 +114,7 @@ final class MirrorRules[F[_]: Monad](
     def run(
         s: MirrorState,
         prepared: Option[Prepared],
+        dijkstra: MirrorDijkstra.Read,
         entered: MirrorRules.DijkstraCrossing => F[MirrorState] = c => c.after.pure[F]
     ): F[MirrorState] =
       val applied = parallelPlutus match
@@ -121,7 +131,8 @@ final class MirrorRules[F[_]: Monad](
               byronParams,
               plutus,
               phase2Observer,
-              prepared
+              prepared,
+              dijkstra
             )
           )
         case Some(workers) =>
@@ -137,56 +148,162 @@ final class MirrorRules[F[_]: Monad](
               byronParams,
               plutus,
               phase2Observer,
-              prepared
+              prepared,
+              dijkstra
             )(workers.apply)
           )
       applied
-        .flatMap(
-          _.fold(
-            failure =>
-              MirrorRules.stateOutOfRange(header, failure) match
-                case Some(fault) => fault.raise[F, MirrorState]
-                case None        => ValidationError(header.point, failure).raise[F, MirrorState],
-            accepted =>
-              MirrorRules.DijkstraCrossing
-                .of(s, accepted)
-                .fold(accepted.pure[F])(entered)
-                .flatTap(next => afterBlock.fold(().pure[F])(f => f(header, s, next)))
-          )
+        .flatMap {
+          // the node's own defect: no verdict on the block, and no peer blamed for it
+          case Left(stop) => stop.raise[F, MirrorState]
+          case Right(Left(failure)) =>
+            MirrorRules.stateOutOfRange(header, failure) match
+              case Some(fault) => fault.raise[F, MirrorState]
+              case None        => ValidationError(header.point, failure).raise[F, MirrorState]
+          case Right(Right(accepted)) =>
+            MirrorRules.DijkstraCrossing
+              .of(s, accepted)
+              .fold(accepted.pure[F])(entered)
+              .flatTap(next => afterBlock.fold(().pure[F])(f => f(header, s, next)))
+        }
+    // The read set: what the block's transactions spend or reference, fetched before the pure
+    // rules run (the rules then see a complete view of the entries they need).
+    def backed(
+        store: UtxoStore[F],
+        inputs: Set[xyz.kd5ujc.scarab.ledger.TxIn],
+        prepared: Option[Prepared],
+        dijkstra: MirrorDijkstra.Read
+    ): F[MirrorState] =
+      val inByron = state.ledger(None).fold(_ => false, _.isEmpty)
+      val wanted = state.utxo.missing(inputs)
+      for
+        // The block that enters Shelley replaces the genesis placeholder by the Byron UTxO, built
+        // as a whole at stamp 0: a store that still holds the placeholder (written by a build
+        // before the backing skipped Byron states) would treat those entries as stored. Start it
+        // empty, so that every entry is written (see `UtxoBacking`).
+        _ <- if inByron then store.reset else ().pure[F]
+        fetched <-
+          if wanted.isEmpty || inByron then
+            Map.empty[xyz.kd5ujc.scarab.ledger.TxIn, xyz.kd5ujc.scarab.ledger.TxOut].pure[F]
+          else store.read(wanted)
+        // A block that enters Dijkstra upgrades the stored outputs its tick did not see, once the
+        // rules have accepted it (`MirrorRules.DijkstraCrossing`), so a header or a body that
+        // fails them never starts the pass over the store. The mempool, the forger and the local
+        // state queries tick the state on their own: until the crossing block is applied, a state
+        // they tick into Dijkstra reads the stored outputs with their Conway bytes.
+        next <- run(
+          MirrorStep.mapUtxo(state)(_.withResident(fetched)),
+          prepared,
+          dijkstra,
+          MirrorRules.entered(store, _)
         )
-    (utxoStore, header) match
-      case (Some(store), h: Header.Shelley) =>
-        // The read set: what the block's transactions spend or reference, fetched before the pure
-        // rules run (the rules then see a complete view of the entries they need).
-        val prepared = NodeRules.prepare(h, raw, config.verdicts)
-        val inByron = state.ledger(None).fold(_ => false, _.isEmpty)
-        val wanted =
-          prepared.fold(Set.empty[xyz.kd5ujc.scarab.ledger.TxIn])(p => state.utxo.missing(p.inputs))
-        for
-          // The block that enters Shelley replaces the genesis placeholder by the Byron UTxO, built
-          // as a whole at stamp 0: a store that still holds the placeholder (written by a build
-          // before the backing skipped Byron states) would treat those entries as stored. Start
-          // it empty, so that every entry is written (see `UtxoBacking`).
-          _ <- if inByron then store.reset else ().pure[F]
-          fetched <-
-            if wanted.isEmpty || inByron then
-              Map.empty[xyz.kd5ujc.scarab.ledger.TxIn, xyz.kd5ujc.scarab.ledger.TxOut].pure[F]
-            else store.read(wanted)
-          // A block that enters Dijkstra upgrades the stored outputs its tick did not see, once the
-          // rules have accepted it (`MirrorRules.DijkstraCrossing`), so a header or a body that
-          // fails them never starts the pass over the store. The mempool, the forger and the local
-          // state queries tick the state on their own: until the crossing block is applied, a
-          // state they tick into Dijkstra reads the stored outputs with their Conway bytes.
-          next <- run(
-            MirrorStep.mapUtxo(state)(_.withResident(fetched)),
+        flushed <- store.flushed
+      yield MirrorStep.mapUtxo(next)(_.settled(flushed))
+    header match
+      case h: Header.Shelley if MirrorRules.runsDijkstra(globals, h) =>
+        dijkstraRead(state, h, raw).flatMap { (read, inputs) =>
+          utxoStore.fold(run(state, None, read))(backed(_, inputs, None, read))
+        }
+      case h: Header.Shelley =>
+        utxoStore.fold(run(state, None, MirrorDijkstra.Read.none)) { store =>
+          val prepared = NodeRules.prepare(h, raw, config.verdicts)
+          backed(
+            store,
+            prepared.fold(Set.empty[xyz.kd5ujc.scarab.ledger.TxIn])(_.inputs.toSet),
             prepared,
-            MirrorRules.entered(store, _)
+            MirrorDijkstra.Read.none
           )
-          flushed <- store.flushed
-        yield MirrorStep.mapUtxo(next)(_.settled(flushed))
-      case _ => run(state, None)
+        }
+      case _ => run(state, None, MirrorDijkstra.Read.none)
+
+  /** What a Dijkstra block's rules read beyond the state, read before they run
+    * ([[MirrorDijkstra.Read]]), and the inputs whose stored outputs they read
+    * ([[MirrorDijkstra.readSet]]): the block in the era's types; for a certifying block, its Leios
+    * checks with the committee of the state, kept for its basis, and only once they hold the
+    * closure the endorser-block store holds for the endorser block they verified, resolved once
+    * (`verifyLeiosCert`, then `lookupEbClosure` and `readTables`, `Forker.hs:660-682`, ouroboros-
+    * consensus 2416493b; [[MirrorDijkstra.certify]]). A block that does not decode reads nothing,
+    * and its failure is carried to the rules, so the bytes are decoded once.
+    */
+  private def dijkstraRead(state: MirrorState, header: Header.Shelley, raw: Bytes)(using
+      Raise[F, xyz.kd5ujc.scarab.ledger.StorageError]
+  ): F[(MirrorDijkstra.Read, Set[xyz.kd5ujc.scarab.ledger.TxIn])] =
+    xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraBlock.decode(raw) match
+      // the bytes' failure carried to the rules, which give its verdict; nothing is read
+      case Left(error) =>
+        (MirrorDijkstra.Read(Some(Left(error)), None), Set.empty[xyz.kd5ujc.scarab.ledger.TxIn])
+          .pure[F]
+      case Right(block) =>
+        val txs = xyz.kd5ujc.scarab.ledger.era.EraBlockBody.dijkstra.txSeqBlockBody(block.blockBody)
+        val lookup: xyz.kd5ujc.scarab.protocol.EbHash => F[Option[Vector[(LeiosTxHash, Bytes)]]] =
+          hash =>
+            leios.fold(Option.empty[Vector[(LeiosTxHash, Bytes)]].pure[F]) { l =>
+              given Raise[F, LeiosStoreError] =
+                summon[Raise[F, xyz.kd5ujc.scarab.ledger.StorageError]]
+                  .contramap(xyz.kd5ujc.scarab.ledger.StorageError.LeiosStore(_))
+              l.store.lookupEbClosure(hash)
+            }
+        block.blockBody.leiosCert
+          .traverse(cert =>
+            MirrorDijkstra.certify[F](
+              header.slot,
+              state.protocol.dep,
+              header.prevHash,
+              ().pure[F].flatMap(_ => committeeOf(state)).map(_.getOrElse(Right(None))),
+              cert.certificate,
+              lookup
+            )
+          )
+          .map(certification =>
+            (
+              MirrorDijkstra.Read(Some(Right(block)), certification),
+              MirrorDijkstra.readSet(txs, certification)
+            )
+          )
+
+  /** The committee of `state` 's ledger ([[LeiosCertification.leiosCommitteeOfTip]]), the one kept
+    * for an equal basis where there is one, as a committee is kept for its epoch; none for a state
+    * of Byron's, whose rules compute none.
+    */
+  private def committeeOf(state: MirrorState): F[
+    Option[Either[LeiosCertificationDefect, Option[TipCommittee]]]
+  ] =
+    MirrorStep.nesOf(state).traverse { nes =>
+      MirrorDijkstra.committeeBasis(nes) match
+        case Left(defect) => Left(defect).pure[F]
+        case Right(None)  => Right(None).pure[F]
+        case Right(Some(key)) =>
+          leios.fold(
+            xyz.kd5ujc.scarab.consensus.leios.LeiosCertification.tipCommittee
+              .tupled(key)
+              .map(Some(_))
+              .pure[F]
+          ) { l =>
+            l.committees.get.flatMap {
+              case Some((kept, committee)) if kept == key => Right(Some(committee)).pure[F]
+              case _ =>
+                xyz.kd5ujc.scarab.consensus.leios.LeiosCertification
+                  .tipCommittee(key._1, key._2)
+                  .traverse(c => l.committees.set(Some((key, c))).as(Some(c)))
+            }
+          }
+    }
 
 object MirrorRules:
+  /** What a Leios build's node reads a certifying block's closure from, and keeps its committee in:
+    * the endorser-block store, and the last committee computed with its basis
+    * ([[MirrorDijkstra.committeeBasis]]), used again for an equal basis.
+    */
+  final case class Leios[F[_]](
+      store: xyz.kd5ujc.scarab.storage.LeiosStore[F],
+      committees: cats.effect.Ref[F, Option[
+        (
+            (xyz.kd5ujc.scarab.ledger.state.LeiosCommittee, xyz.kd5ujc.scarab.codec.Rational),
+            TipCommittee
+        )
+      ]]
+  )
+
   /** A block that took the chain into Dijkstra from an earlier era and that the rules accepted: the
     * tick, the header checks against the ticked state and the body all passed. Only
     * [[DijkstraCrossing.of]] builds one, from the state before the block and the state the rules
@@ -278,10 +395,10 @@ object MirrorRules:
     */
   private[node] def stepLabel(
       before: MirrorState
-  )(result: Either[BlockFailure, MirrorState]): String =
+  )(result: MirrorDijkstra.Applied): String =
     result match
-      case Left(_) => "rejected"
-      case Right(after) =>
+      case Left(_) | Right(Left(_)) => "rejected"
+      case Right(Right(after)) =>
         if after.ledgerEpoch != before.ledgerEpoch ||
           after.consensus.follow.completed != before.consensus.follow.completed
         then "epochBoundary"
@@ -295,7 +412,7 @@ object MirrorRules:
     * chain is in (the Byron hand-over's state for the first Shelley block), the chain-dependent
     * state and the node's bookkeeping.
     */
-  private final case class Pre(
+  private[node] final case class Pre(
       nes: EraNes,
       protocol: ProtocolState,
       consensus: ConsensusExtras,
@@ -355,8 +472,9 @@ object MirrorRules:
       byronParams: EraHistory.ByronParams,
       plutus: PlutusBackend,
       phase2Observer: Option[Phase2.Observation => Unit] = None,
-      prepared: Option[Prepared] = None
-  ): Either[BlockFailure, MirrorState] =
+      prepared: Option[Prepared] = None,
+      dijkstra: MirrorDijkstra.Read = MirrorDijkstra.Read.none
+  ): MirrorDijkstra.Applied =
     applyBlockWith[cats.Id](
       state,
       header,
@@ -368,7 +486,8 @@ object MirrorRules:
       byronParams,
       plutus,
       phase2Observer,
-      prepared
+      prepared,
+      dijkstra
     )(_.serial)
 
   private[node] def applyBlockWith[F[_]: Monad](
@@ -382,26 +501,22 @@ object MirrorRules:
       byronParams: EraHistory.ByronParams,
       plutus: PlutusBackend,
       phase2Observer: Option[Phase2.Observation => Unit],
-      prepared: Option[Prepared]
-  )(validate: EraBlock.Body => F[EraBlock.Outcome]): F[Either[BlockFailure, MirrorState]] =
-    config.checkpoints.validate(header) match
-      case Left(error) =>
-        (Left(BlockFailure.Envelope(error)): Either[BlockFailure, MirrorState]).pure[F]
-      case Right(_) =>
-        header match
-          case h: Header.Byron =>
-            val chain = state.consensus
-            NodeRules
-              .byronStep(chain.byron, chain.follow, h, raw, byron)
-              .flatMap((next, follow) =>
-                MirrorStep.byronBlock(state, h, next, follow).leftMap(mirror)
-              )
-              .pure[F]
-          case h: Header.Shelley =>
-            val ready = for
-              entry <- NodeRules.entry(state.consensus.byron, h, config, globals, byron)
-              pre <- before(state, entry, handOver)
-              body <- shelley(
+      prepared: Option[Prepared],
+      dijkstra: MirrorDijkstra.Read
+  )(validate: EraBlock.Body => F[EraBlock.Outcome]): F[MirrorDijkstra.Applied] =
+    header match
+      // a Dijkstra block of the Leios build, on the era types, whose checkpoints Praos2's envelope
+      // checks after BBODY, as `validateHeader` runs after the ledger (`applyHelper`,
+      // `Ledger/Extended.hs:297-311`, ouroboros-consensus 2416493b); a release build's keeps the
+      // refusal of its era's path (`BlockFailure.NotYet`)
+      case h: Header.Shelley if runsDijkstra(globals, h) =>
+        NodeRules
+          .entry(state.consensus.byron, h, config, globals, byron)
+          .flatMap(entry => before(state, entry, handOver).map(entry -> _))
+          .fold(
+            failure => Right(Left(failure)),
+            (entry, pre) =>
+              MirrorDijkstra(
                 state,
                 pre,
                 h,
@@ -410,11 +525,55 @@ object MirrorRules:
                 entry.constants,
                 byronParams,
                 plutus,
-                phase2Observer,
-                prepared
+                dijkstra
               )
-            yield body
-            ready.traverse { (body, finish) => validate(body).map(finish) }.map(_.flatten)
+          )
+          .pure[F]
+      case _ =>
+        config.checkpoints.validate(header) match
+          case Left(error) =>
+            (Right(Left(BlockFailure.Envelope(error))): MirrorDijkstra.Applied).pure[F]
+          case Right(_) =>
+            header match
+              case h: Header.Byron =>
+                val chain = state.consensus
+                NodeRules
+                  .byronStep(chain.byron, chain.follow, h, raw, byron)
+                  .flatMap((next, follow) =>
+                    MirrorStep.byronBlock(state, h, next, follow).leftMap(mirror)
+                  )
+                  .asRight[xyz.kd5ujc.scarab.ledger.ChainError]
+                  .pure[F]
+              case h: Header.Shelley =>
+                val ready = for
+                  entry <- NodeRules.entry(state.consensus.byron, h, config, globals, byron)
+                  pre <- before(state, entry, handOver)
+                  body <- shelley(
+                    state,
+                    pre,
+                    h,
+                    raw,
+                    entry.configuration,
+                    entry.constants,
+                    byronParams,
+                    plutus,
+                    phase2Observer,
+                    prepared
+                  )
+                yield body
+                ready
+                  .traverse((body, finish) => validate(body).map(finish))
+                  .map(_.flatten.asRight[xyz.kd5ujc.scarab.ledger.ChainError])
+
+  /** Whether `header` 's block runs on Dijkstra's era rules: a Dijkstra block under the Leios
+    * build, whose Dijkstra this node runs; under a release build it does not (#54).
+    */
+  private[node] def runsDijkstra(globals: LedgerGlobals, header: Header.Shelley): Boolean =
+    header.era == Era.Dijkstra && (globals.referenceBuild match
+      case xyz.kd5ujc.scarab.protocol.ReferenceBuild.LeiosB004fe0c => true
+      case xyz.kd5ujc.scarab.protocol.ReferenceBuild.Release11_1 |
+          xyz.kd5ujc.scarab.protocol.ReferenceBuild.Release11_2 =>
+        false)
 
   private def shelley(
       state: MirrorState,
@@ -453,7 +612,8 @@ object MirrorRules:
       )
       block <- decoded match
         case b: Block.Shelley if b.era == announced.era => Right(b)
-        // a Dijkstra block decodes, and no ledger rule of Dijkstra applies it yet
+        // a Dijkstra block of a release build decodes, and no ledger rule of that build's Dijkstra
+        // applies it: the Leios build's runs on the era types (`MirrorDijkstra`)
         case _: Block.Dijkstra if announced.era == Era.Dijkstra =>
           Left(BlockFailure.NotYet(DijkstraNotYet.Rules))
         case b => Left(BlockFailure.EraAnnounced(b.era, announced.era))
@@ -494,19 +654,7 @@ object MirrorRules:
             case EraBlock.Outcome.Refused(failure)     => Left(failure)
             case EraBlock.Outcome.NotInEra(era) => Left(BlockFailure.LedgerEra(era, announced.era))
           (nes, plutus) = applied
-          follow = pre.consensus.follow
-          previous = follow.stats.filter(_.epoch == epoch)
-          finished = follow.stats.filter(_.epoch != epoch).orElse(follow.completed)
-          consensus = pre.consensus.copy(
-            follow = follow.copy(
-              era = Some(announced.era),
-              stats = Some(
-                previous.getOrElse(EpochStats(epoch, announced.era, 0, 0, 0)).record(leader)
-              ),
-              completed = finished
-            ),
-            byron = pre.consensus.byron.finish
-          )
+          consensus = followed(pre, announced, epoch, leader)
           placement = Placement(geometry, byronParams, config.forks)
           next <-
             (if pre.entered then MirrorStep.handover(state, placement, block, nes, praos, consensus)
@@ -514,6 +662,27 @@ object MirrorRules:
               .leftMap(mirror)
         yield next
       (program, finish)
+
+  /** The node's bookkeeping after `announced` 's block, whose leadership `leader` established: the
+    * era, the epoch's statistics and the completed epoch's, and the Byron prefix finished.
+    */
+  private[node] def followed(
+      pre: Pre,
+      announced: Header.Shelley,
+      epoch: BigInt,
+      leader: xyz.kd5ujc.scarab.ledger.LeaderCheck
+  ): ConsensusExtras =
+    val follow = pre.consensus.follow
+    val previous = follow.stats.filter(_.epoch == epoch)
+    val finished = follow.stats.filter(_.epoch != epoch).orElse(follow.completed)
+    pre.consensus.copy(
+      follow = follow.copy(
+        era = Some(announced.era),
+        stats = Some(previous.getOrElse(EpochStats(epoch, announced.era, 0, 0, 0)).record(leader)),
+        completed = finished
+      ),
+      byron = pre.consensus.byron.finish
+    )
 
   /** What the header rules read of the ticked ledger: the parameters in force, the genesis
     * delegations at the slot and the pool distribution of the leader check (`nesPd`).
