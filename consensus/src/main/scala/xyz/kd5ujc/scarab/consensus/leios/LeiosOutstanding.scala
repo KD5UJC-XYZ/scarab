@@ -15,10 +15,10 @@ import LeiosOrders.given
   * endorser block does not speak for another election that focuses the same one. Every count is
   * positive.
   */
-opaque type FocusedEbs = Map[EbHash, Int]
+opaque type FocusedEbs = SortedMap[EbHash, Int]
 
 object FocusedEbs:
-  val empty: FocusedEbs = Map.empty
+  val empty: FocusedEbs = SortedMap.empty
 
   extension (m: FocusedEbs)
     def contains(h: EbHash): Boolean = m.contains(h)
@@ -50,15 +50,15 @@ object FocusedEbs:
   *     an Improvement over the reference, which has no such count).
   */
 final case class LeiosOutstanding[P] private[leios] (
-    ebState: Map[EbHash, EbState],
+    ebState: SortedMap[EbHash, EbState],
     ebsPerMaxAnnouncementSlot: SortedMap[Word64, NonEmptySet[EbHash]],
     elFocus: SortedMap[ElId, EbHash],
     focusedEbs: FocusedEbs,
     outstandingPrunedSlot: Word64,
     numMissingBodies: Int,
-    requestedEbPeers: Map[EbHash, NonEmptySet[P]],
+    requestedEbPeers: SortedMap[EbHash, NonEmptySet[P]],
     requestedBytesSizePerPeer: SortedMap[P, BytesSize],
-    requestedJobsPerPeer: SortedMap[P, Map[LeiosJobPoolOf, NonEmptySet[Int]]],
+    requestedJobsPerPeer: SortedMap[P, SortedMap[LeiosJobPoolOf, NonEmptySet[Int]]],
     prng: StdGen,
     nextJobPool: LeiosJobPoolId
 ):
@@ -223,13 +223,13 @@ object LeiosOutstanding:
   def empty[P: Order](prng: StdGen, prunedSlot: Word64): LeiosOutstanding[P] =
     given Ordering[P] = Order[P].toOrdering
     LeiosOutstanding[P](
-      Map.empty,
+      SortedMap.empty,
       SortedMap.empty,
       SortedMap.empty,
       FocusedEbs.empty,
       prunedSlot,
       0,
-      Map.empty,
+      SortedMap.empty,
       SortedMap.empty,
       SortedMap.empty,
       prng,

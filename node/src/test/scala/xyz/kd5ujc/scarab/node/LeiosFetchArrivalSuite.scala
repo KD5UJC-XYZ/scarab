@@ -389,6 +389,36 @@ class LeiosFetchArrivalSuite extends FailsOnUncaught:
       }
   }
 
+  test(
+    "duplicates of hashes a producer chose with one hashCode are counted in bounded comparisons"
+  ) {
+    // `Bytes.hashCode` is the polynomial of base 31 over the signed bytes, so a pair of adjacent bytes
+    // `(k, 124 - 31 k)` contributes the same for every `k` in `0..7`; sixteen pairs give `8^16` hashes
+    val n = 17142
+    val distinct = Vector.tabulate(n) { i =>
+      val digits = Vector.tabulate(16)(p => (i >> (3 * p)) & 7)
+      LeiosTxHash.fromBytes(Bytes(digits.flatMap(k => Vector(k.toByte, (124 - 31 * k).toByte))))
+    }
+    assertEquals(distinct.map(_.bytes.hashCode).distinct.size, 1)
+    assertEquals(distinct.distinct.size, n)
+    // every hundredth listed again at the end
+    val again = distinct.indices.filter(_ % 100 == 0).map(distinct).toVector
+    val listed = (distinct ++ again).map(_ -> Word32.wrap(1L))
+    val comparisons = new java.util.concurrent.atomic.AtomicLong(0)
+    val counting: Ordering[LeiosTxHash] = (a, b) =>
+      comparisons.incrementAndGet()
+      a.bytes.compareTo(b.bytes)
+    val found = LeiosFetchArrival.duplicateTxHashes(listed)(using counting)
+    assertEquals(found, again.sortWith((a, b) => a.bytes.compareTo(b.bytes) < 0))
+    // one lookup and one update a listed hash, each at most the depth of a red-black tree:
+    // 2 m (2 log2 m + 2), about 1.2 million, where one hash bucket would cost O(m^2), some 150 million
+    val m = listed.size.toLong
+    val log2 = 64 - java.lang.Long.numberOfLeadingZeros(m)
+    assert(comparisons.get <= 2 * m * (2 * log2 + 2), clue(comparisons.get))
+    // and every listed hash was placed by comparison, none hashed
+    assert(comparisons.get >= m, clue(comparisons.get))
+  }
+
   dirs.test("a body of another size than offered is written and held, and then refused") { dir =>
     val eb = body(Vector.tabulate(3)(tx))
     val offered = size(eb) + BytesSize.wrap(1)

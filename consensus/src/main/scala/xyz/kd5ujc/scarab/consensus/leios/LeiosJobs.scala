@@ -54,6 +54,9 @@ object LeiosJobPoolId:
 
   given CanEqual[LeiosJobPoolId, LeiosJobPoolId] = CanEqual.derived
 
+  /** By the id's count, so pools order by when they were installed. */
+  given Ordering[LeiosJobPoolId] = Ordering.BigInt
+
 /** One pool of one endorser block's jobs: what a peer's jobs in flight are keyed by
   * ([[LeiosOutstanding.requestedJobsPerPeer]]), so the ids a peer owes one pool are never taken for
   * another's jobs of the same numbers. The reference keys them by the endorser block alone
@@ -61,6 +64,15 @@ object LeiosJobPoolId:
   * [[LeiosJobPoolId]].
   */
 final case class LeiosJobPoolOf(eb: EbHash, pool: LeiosJobPoolId) derives CanEqual
+
+object LeiosJobPoolOf:
+  /** By the endorser block's hash bytes, then the pool's id: the order a peer's jobs in flight are
+    * kept in, independent of the JVM's hash codes, as the reference's ordered maps are.
+    */
+  given Ordering[LeiosJobPoolOf] =
+    Ordering.by[LeiosJobPoolOf, (EbHash, LeiosJobPoolId)](k => (k.eb, k.pool))(using
+      Ordering.Tuple2(using LeiosOrders.ebHashOrdering, summon[Ordering[LeiosJobPoolId]])
+    )
 
 /** A unit of transaction-fetch work: the body offsets one `MsgLeiosBlockTxsRequest` fetches, the
   * size on the wire of those transactions and the commitment the answer is checked against

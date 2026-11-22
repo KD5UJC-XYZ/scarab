@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.consensus.leios
 
+import scala.collection.immutable.SortedMap
+import xyz.kd5ujc.scarab.consensus.leios.LeiosOrders.rbHashOrdering
 import xyz.kd5ujc.scarab.crypto.bls.{
   BlsError,
   Certificate,
@@ -94,7 +96,10 @@ object PointVotes:
   * `LeiosVoteState.hs:131-143`), a bound the reference marks unsafe: a vote names no slot, so
   * recency is arrival, not the chain.
   */
-final case class LeiosVoteState private (points: Map[RbHash, PointVotes], order: Vector[RbHash]):
+final case class LeiosVoteState private (
+    points: SortedMap[RbHash, PointVotes],
+    order: Vector[RbHash]
+):
 
   /** `seenIn` (`LeiosVoteState.hs:113-115`, ouroboros-consensus 2416493b): this seat's vote for
     * this block was counted.
@@ -154,7 +159,7 @@ object LeiosVoteState:
   /** `maxAnnouncementCount` (`LeiosTxCache/API.hs:154-155`, ouroboros-consensus 2416493b). */
   val Window: Int = 128
 
-  val empty: LeiosVoteState = LeiosVoteState(Map.empty, Vector.empty)
+  val empty: LeiosVoteState = LeiosVoteState(SortedMap.empty, Vector.empty)
 
   /** `boundPoints` (`LeiosVoteState.hs:131-143`, ouroboros-consensus 2416493b): a block already
     * tallied keeps its place; a new one goes last, and the first seen is dropped once more than
@@ -162,9 +167,9 @@ object LeiosVoteState:
     */
   private def boundPoints(
       rbHash: RbHash,
-      points: Map[RbHash, PointVotes],
+      points: SortedMap[RbHash, PointVotes],
       order: Vector[RbHash]
-  ): (Map[RbHash, PointVotes], Vector[RbHash]) =
+  ): (SortedMap[RbHash, PointVotes], Vector[RbHash]) =
     if points.contains(rbHash) then (points, order)
     else
       val grown = order :+ rbHash

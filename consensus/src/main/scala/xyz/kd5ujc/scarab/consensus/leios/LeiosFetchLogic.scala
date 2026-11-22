@@ -230,7 +230,10 @@ object LeiosFetchLogic:
           case Some(nePicked) =>
             val ids = NonEmptySet.of(nePicked.head._1.toInt, nePicked.tail.map(_._1.toInt)*)
             val perPeer =
-              acc.requestedJobsPerPeer.getOrElse(peer, Map.empty[LeiosJobPoolOf, NonEmptySet[Int]])
+              acc.requestedJobsPerPeer.getOrElse(
+                peer,
+                SortedMap.empty[LeiosJobPoolOf, NonEmptySet[Int]]
+              )
             val next = acc.copy(
               ebState =
                 acc.ebState.updated(h, EbState(slot, onset, EbFetchState.BodyAcquired(pool2, id))),
@@ -346,7 +349,8 @@ object LeiosFetchLogic:
     * request of the peer's for its jobs of the same numbers (an Improvement, [[LeiosJobPoolId]]).
     */
   def removePeer[P](peer: P, o: LeiosOutstanding[P]): LeiosOutstanding[P] =
-    val held = o.requestedJobsPerPeer.getOrElse(peer, Map.empty[LeiosJobPoolOf, NonEmptySet[Int]])
+    val held =
+      o.requestedJobsPerPeer.getOrElse(peer, SortedMap.empty[LeiosJobPoolOf, NonEmptySet[Int]])
     o.copy(
       requestedBytesSizePerPeer = o.requestedBytesSizePerPeer - peer,
       requestedEbPeers = o.requestedEbPeers.flatMap((h, peers) =>
@@ -481,8 +485,9 @@ object LeiosFetchLogic:
   def mempoolPull(
       index: collection.Map[LeiosTxHash, Bytes],
       misses: SortedMap[Int, (LeiosTxHash, BytesSize)]
-  ): (SortedMap[Int, (LeiosTxHash, BytesSize)], Map[LeiosTxHash, Bytes]) =
-    val hits = misses.valuesIterator.flatMap((h, _) => index.get(h).map(h -> _)).toMap
+  ): (SortedMap[Int, (LeiosTxHash, BytesSize)], SortedMap[LeiosTxHash, Bytes]) =
+    // the hits are keyed by the hashes the body lists, ordered as the reference's `Map` orders them
+    val hits = SortedMap.from(misses.valuesIterator.flatMap((h, _) => index.get(h).map(h -> _)))
     (misses.filterNot((_, missed) => hits.contains(missed._1)), hits)
 
   private def onPool(st: EbState)(f: LeiosJobPool => LeiosJobPool): EbState = st.fetch match
