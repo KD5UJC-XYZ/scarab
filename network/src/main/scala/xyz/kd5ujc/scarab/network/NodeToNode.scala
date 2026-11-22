@@ -25,9 +25,10 @@ import scala.concurrent.duration.*
   * @param chainSyncPipeline
   *   The owned rolling pipeline supplied by production hot activations. Test connections can retain
   *   their explicitly scripted fixed-batch client.
-  * @param leiosFetchFinish
-  *   The Leios build's LeiosFetch client, when this activation runs one: its stop, which returns
-  *   the wait for the client's end on the wire (its answers collected and `MsgDone` sent).
+  * @param leiosFinish
+  *   The Leios build's LeiosNotify and LeiosFetch clients, when this activation runs them: their
+  *   stop, which returns the wait for the clients' end on the wire (their replies collected and
+  *   `MsgDone` sent or received).
   */
 final class NodeToNodeConnection[F[_], P](
     val version: Int,
@@ -39,7 +40,7 @@ final class NodeToNodeConnection[F[_], P](
     blockFetchEnded: Option[F[Unit]] = None,
     val chainSyncPipeline: Option[ChainSyncClient.Pipeline[F, P]] = None,
     chainSyncEnded: Option[F[Unit]] = None,
-    leiosFetchFinish: Option[F[F[Unit]]] = None
+    leiosFinish: Option[F[F[Unit]]] = None
 ):
   /** End the hot protocols on the wire, so the connection can carry a new activation: ChainSync and
     * BlockFetch say `MsgDone` where they are idle, TxSubmission2 at the peer's next blocking
@@ -49,7 +50,7 @@ final class NodeToNodeConnection[F[_], P](
   def finish(within: FiniteDuration)(using Monad[F], Raise[F, NetworkError]): F[Boolean] =
     (chainSync.idle, blockFetch.idle).tupled.flatMap {
       case (true, true) =>
-        leiosFetchStopped { ended =>
+        leiosStopped { ended =>
           chainSync.done *> chainSyncEnded.sequence_ *> blockFetch.done *> blockFetchEnded.sequence_ *> transactions
             .fold(
               true.pure[F]
@@ -59,11 +60,11 @@ final class NodeToNodeConnection[F[_], P](
       case _ => false.pure[F]
     }
 
-  /** The LeiosFetch client told to stop, so it drains while the others end, then `body` given the
-    * wait for its end, which comes last: its answers collected and `MsgDone` sent.
+  /** The Leios clients told to stop, so they drain while the others end, then `body` given the wait
+    * for their end, which comes last: their replies collected and `MsgDone` sent or received.
     */
-  private def leiosFetchStopped[A](body: F[Unit] => F[A])(using Monad[F]): F[A] =
-    leiosFetchFinish.sequence.flatMap(ended => body(ended.sequence_))
+  private def leiosStopped[A](body: F[Unit] => F[A])(using Monad[F]): F[A] =
+    leiosFinish.sequence.flatMap(ended => body(ended.sequence_))
 
   /** ChainSync has already sent MsgDone as a normal result. Drain the remaining hot protocols
     * without sending a second ChainSync message in its terminal state.
@@ -73,7 +74,7 @@ final class NodeToNodeConnection[F[_], P](
   )(using Monad[F], Raise[F, NetworkError]): F[Boolean] =
     blockFetch.idle.flatMap {
       case true =>
-        leiosFetchStopped { ended =>
+        leiosStopped { ended =>
           chainSyncEnded.sequence_ *> blockFetch.done *> blockFetchEnded.sequence_ *> transactions
             .fold(true.pure[F])(
               _.finish(within)
@@ -91,7 +92,7 @@ final class NodeToNodeConnection[F[_], P](
   def finishGracefully(
       chainSyncAlreadyEnded: Boolean
   )(using Monad[F], Raise[F, NetworkError]): F[Unit] =
-    leiosFetchStopped(ended =>
+    leiosStopped(ended =>
       chainSync.done.unlessA(chainSyncAlreadyEnded) *> chainSyncEnded.sequence_ *>
         blockFetch.done *> blockFetchEnded.sequence_ *>
         transactions.traverse_(_.terminate.flatMap(_.fold(_.raise[F, Unit], _.pure[F]))) *> ended
@@ -151,13 +152,32 @@ final class WarmConnection[F[_], P, A] private[network] (
       initiator: LeiosFetchInitiator[F],
       result: ProtocolResults.Run[F, A]
   )(using F: Async[F], raise: Raise[F, NetworkError]): Resource[F, F[F[Unit]]] =
+    leiosClient(Protocols.LeiosFetch, "leios-fetch", result)(initiator.run(_, _))
+
+  /** The Leios build's LeiosNotify client of this activation, its result `result`, run and stopped
+    * as the LeiosFetch client is ([[leiosFetchClient]]; `aLeiosNotifyClient`, `NodeToNode.hs`
+    * 1866-1889 at ouroboros-consensus 2416493b).
+    */
+  private def leiosNotifyClient(
+      initiator: LeiosNotifyInitiator[F],
+      result: ProtocolResults.Run[F, A]
+  )(using F: Async[F], raise: Raise[F, NetworkError]): Resource[F, F[F[Unit]]] =
+    leiosClient(Protocols.LeiosNotify, "leios-notify", result)(initiator.run(_, _))
+
+  /** A Leios client over the channel of `protocol`, told to stop with the other hot protocols, its
+    * result `result` and its failure the connection's end; the resource is its stop, which returns
+    * the wait for its end.
+    */
+  private def leiosClient(protocol: Int, site: String, result: ProtocolResults.Run[F, A])(
+      run: (MuxChannel[F], F[Unit] => Resource[F, Unit]) => Raise[F, NetworkError] ?=> F[Unit]
+  )(using F: Async[F], raise: Raise[F, NetworkError]): Resource[F, F[F[Unit]]] =
     (
-      Resource.eval(mux.channel(Protocols.LeiosFetch, role)),
+      Resource.eval(mux.channel(protocol, role)),
       Resource.eval(StopLatch.create[F])
     ).tupled.flatMap { (channel, latch) =>
       val client = Fibers
-        .scoped[F, NetworkError, Unit](NetworkError.fromThrowable("leios-fetch", _))(
-          initiator.run(channel, stop => applications.onHotStop(stop) *> latch.register(stop))
+        .scoped[F, NetworkError, Unit](NetworkError.fromThrowable(site, _))(
+          run(channel, stop => applications.onHotStop(stop) *> latch.register(stop))
         )
         .flatMap {
           case Right(_) => result.complete(Right(noInitiatorResult))
@@ -193,11 +213,19 @@ final class WarmConnection[F[_], P, A] private[network] (
       peerTrust: ChainSyncTimeouts.PeerTrust,
       chainSyncResult: Option[ProtocolResults.Run[F, A] => F[Unit]],
       served: Option[Long => F[Unit]] = None,
-      leiosFetch: Option[LeiosFetchInitiator[F]] = None
+      leiosFetch: Option[LeiosFetchInitiator[F]] = None,
+      leiosNotify: Option[LeiosNotifyInitiator[F]] = None
   )(using Async[F], Raise[F, NetworkError]): Resource[F, NodeToNodeConnection[F, P]] =
     for
       _ <- Resource.eval(chainSyncResult.traverse_(_(results.chainSync)))
-      leiosFetchFinish <- (leiosFetch, results.leiosFetch).tupled.traverse(leiosFetchClient.tupled)
+      leiosNotifyFinish <- (leiosNotify, results.leiosNotify).tupled
+        .traverse(leiosNotifyClient.tupled)
+      leiosFetchOnly <- (leiosFetch, results.leiosFetch).tupled.traverse(leiosFetchClient.tupled)
+      // both told to stop at once, and waited for together
+      leiosFinish = (leiosNotifyFinish.toList ++ leiosFetchOnly.toList) match
+        case Nil => None
+        case finishes =>
+          Some(finishes.sequence.map(_.sequence_))
       running <- (transactions, results.transactions).tupled.traverse { (source, result) =>
         TxSubmissionClient.backgroundFinishing(
           mux,
@@ -238,7 +266,7 @@ final class WarmConnection[F[_], P, A] private[network] (
       blockFetchEnded,
       Some(chainSync),
       Option.when(chainSyncResult.isEmpty)(results.chainSync.complete(Right(noInitiatorResult))),
-      leiosFetchFinish
+      leiosFinish
     )
 
 /** The stop of an activation's LeiosFetch client, as its clean end gives it: the stop the client
