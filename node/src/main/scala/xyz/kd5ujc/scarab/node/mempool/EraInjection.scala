@@ -11,6 +11,30 @@ import xyz.kd5ujc.scarab.protocol.{Era, ReferenceBuild}
   */
 final case class EraTx(parts: Block.Transaction, tx: Tx)
 
+/** A transaction in an era whose transactions the pool takes: one of an era from Shelley to Conway
+  * with the era it is of ([[Flat]]), or one of Dijkstra in the era's types ([[InDijkstra]]).
+  */
+enum InEra:
+  case Flat(of: Era, transaction: EraTx)
+  case InDijkstra(transaction: DijkstraRead)
+
+  /** The era it is of. */
+  def era: Era = this match
+    case Flat(era, _)  => era
+    case InDijkstra(_) => Era.Dijkstra
+
+  /** The id, the hash of the body. */
+  def id: Bytes = this match
+    case Flat(_, t)       => t.parts.id
+    case InDijkstra(read) => read.id
+
+  /** The transaction as the reference writes it in its era, to relay, to list and to read again in
+    * another ([[EraInjection.envelope]]; Dijkstra's mempool form, [[DijkstraRead.raw]]).
+    */
+  def raw: Bytes = this match
+    case Flat(era, t)     => EraInjection.envelope(t.parts, era)
+    case InDijkstra(read) => read.raw
+
 /** How the mempool takes a transaction of another era than its ledger's, a submitted one or one it
   * holds when the ledger enters a new era. The two reference builds differ here, and the selected
   * build governs (REF-3, [[of]]):
@@ -36,15 +60,17 @@ enum EraInjection:
   case Translate
   case Redecode
 
-  /** `t`, read in `from`, in the ledger's era `to`; or the era the mismatch names for it. Neither
-    * mode reaches Dijkstra here: the pool has no ledger of it.
+  /** `t` in the ledger's era `to`; or the era the mismatch names for it. Only [[Redecode]] reaches
+    * Dijkstra, or leaves it: [[Translate]] is cardano-node 11.1.3's, whose node never enters it.
     */
-  def into(t: EraTx, from: Era, to: Era): Either[Era, EraTx] =
-    if from == to then Right(t)
+  def into(t: InEra, to: Era): Either[Era, InEra] =
+    if t.era == to then Right(t)
     else
-      this match
-        case Translate => EraInjection.translate(t, from, to)
-        case Redecode  => EraInjection.redecode(t, from, to)
+      (this, t) match
+        case (Translate, InEra.Flat(from, flat)) if to != Era.Dijkstra =>
+          EraInjection.translate(flat, from, to).map(InEra.Flat(to, _))
+        case (Translate, _) => Left(t.era)
+        case (Redecode, _)  => EraInjection.redecode(t, to)
 
   /** How a held transaction brought into a new era is validated there: under [[Translate]] it stays
     * validated and is applied again without the static checks (`InjectValidatedTx`,
@@ -126,16 +152,24 @@ object EraInjection:
         }
         .map(_._2)
 
-  /** The transaction serialised in `from` ([[envelope]]) and decoded whole in `to`, with nothing
-    * left over (`deserialiseFromBytes fromCBOR`, `InjectTxs.hs:239-247` at 808e4005).
+  /** The transaction serialised in its era ([[InEra.raw]]) and decoded whole in `to`, with nothing
+    * left over (`deserialiseFromBytes fromCBOR`, `InjectTxs.hs:239-247` at 808e4005; the same file
+    * at 2416493b): Dijkstra's by its mempool decoder (`decodeDijkstraTopTx`,
+    * [[DijkstraRead.submitted]]).
     */
-  private def redecode(t: EraTx, from: Era, to: Era): Either[Era, EraTx] =
-    DetachedRecords.read(
-      envelope(t.parts, from),
-      Cbor.Limits.Unbounded,
-      DetachedRecords.Shapes.transaction(to)
-    )(_ => from)(root =>
-      Tx.envelopeParts(root, to)
-        .flatMap(parts => Tx.fromBlock(parts, to).map(EraTx(parts, _)))
-        .leftMap(_ => from)
-    )
+  private def redecode(t: InEra, to: Era): Either[Era, InEra] =
+    val from = t.era
+    to match
+      case Era.Dijkstra =>
+        DijkstraRead.submitted(t.raw).bimap(_ => from, InEra.InDijkstra(_))
+      case Era.Byron | Era.Shelley | Era.Allegra | Era.Mary | Era.Alonzo | Era.Babbage |
+          Era.Conway =>
+        DetachedRecords.read(
+          t.raw,
+          Cbor.Limits.Unbounded,
+          DetachedRecords.Shapes.transaction(to)
+        )(_ => from)(root =>
+          Tx.envelopeParts(root, to)
+            .flatMap(parts => Tx.fromBlock(parts, to).map(EraTx(parts, _)))
+            .bimap(_ => from, InEra.Flat(to, _))
+        )

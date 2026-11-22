@@ -5,7 +5,10 @@ import xyz.kd5ujc.scarab.ledger.{TransactionDecodeProblem, MempoolProblem, Mempo
 import cats.effect.Async
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, DomainError, Node, Value}
-import xyz.kd5ujc.scarab.protocol.Era
+import xyz.kd5ujc.scarab.protocol.{Era, ReferenceBuild}
+import cats.data.NonEmptyChain
+import xyz.kd5ujc.scarab.ledger.era.rules.DijkstraMempoolPredFailure
+import xyz.kd5ujc.scarab.ledger.state.Dijkstra
 import xyz.kd5ujc.scarab.ledger.{LedgerFailure, PredicateFailure}
 import xyz.kd5ujc.scarab.node.ntc.{PredicateFailureCbor, RefusalPresentationError}
 import xyz.kd5ujc.scarab.node.{Fatal, StorageBoundary}
@@ -24,7 +27,23 @@ object LocalSubmission:
     */
   type NoReply = Rejection.Malformed | LedgerFailure.Unavailable | LedgerFailure.Unverifiable |
     Rejection.InputDefect | Rejection.RulesDefect | Rejection.TimedOut | RefusalPresentationError |
-    NoEncoding
+    NoEncoding | DijkstraNoEncoding | Rejection.DijkstraUnjudged
+
+  /** A refusal under a Dijkstra ledger that this build cannot write: Dijkstra's `ApplyTxError` of
+    * MEMPOOL's failures (`DijkstraApplyTxError`, cardano-ledger 9df9f98c
+    * `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra.hs:88-90`), which has no encoder of the era's
+    * types here yet; or a refusal of the node's own that the reference sends as free text in
+    * Conway, which Dijkstra has none of (`mkEraMkMempoolApplyTxError _prx = Nothing`,
+    * ouroboros-consensus 2416493b `Shelley/Eras.hs:273-281`). There is no reply.
+    */
+  enum DijkstraNoEncoding extends DomainError:
+    case Refused(failures: NonEmptyChain[DijkstraMempoolPredFailure[Dijkstra]])
+    case Text(problem: MempoolProblem)
+
+    def message: String = this match
+      case Refused(failures) =>
+        s"no Dijkstra encoding of the refusal: ${failures.toChain.toVector.mkString("; ")}"
+      case Text(problem) => s"no Dijkstra text of the refusal: ${problem.message}"
 
   /** A refusal by the rules of `era` that this build cannot write: one of `failures` has no
     * encoding in that era's ledger ([[PreConwayFailureCbor]]). There is no free-text failure before
@@ -44,6 +63,8 @@ object LocalSubmission:
       case d: Rejection.TimedOut         => d.message
       case d: RefusalPresentationError   => d.message
       case d: NoEncoding                 => d.message
+      case d: DijkstraNoEncoding         => d.message
+      case d: Rejection.DijkstraUnjudged => d.message
 
   val ConwayEra = 6
 
@@ -60,7 +81,8 @@ object LocalSubmission:
     * (`eras/byron/ledger/impl/src/Cardano/Chain/MempoolPayload.hs:85-93`, cardano-ledger f649f975).
     * These are the steps [[GenTx.prefix]] takes. A transaction of an era from Shelley to Conway is
     * then read in its era, and Byron's payload whole by the decoder of its kind
-    * ([[MempoolState.read]]); one of Dijkstra is not read further, and gets the era mismatch.
+    * ([[MempoolState.read]]), and one of Dijkstra in the Leios build; in the release builds one of
+    * Dijkstra is not read further, and gets the era mismatch.
     */
   def unwrap(item: Bytes): Either[Rejection, Submission] =
     def malformed(problem: TransactionDecodeProblem): Rejection = Rejection.Malformed(problem)
@@ -135,9 +157,11 @@ object LocalSubmission:
       case defect: Rejection.InputDefect                       => Left(defect)
       case defect: Rejection.RulesDefect                       => Left(defect)
       case cutOff: Rejection.TimedOut                          => Left(cutOff)
+      case unjudged: Rejection.DijkstraUnjudged                => Left(unjudged)
+      case Rejection.DijkstraRefused(_, failures) => Left(DijkstraNoEncoding.Refused(failures))
       // Conway's `ConwayMempoolFailure` with the reference's text (`Mempool/Update.hs` 278-283)
       case Rejection.TooSlow(id, submitted, took) =>
-        text(MempoolProblem.TooSlow(took, submitted, id))
+        text(era, MempoolProblem.TooSlow(took, submitted, id))
       case Rejection.WrongEra(transaction, ledger) =>
         Right(
           PredicateFailureCbor.eraMismatch(
@@ -148,13 +172,13 @@ object LocalSubmission:
         )
       case Rejection.Ledger(LedgerFailure.Rejected(_, failures)) =>
         inEra(era, failures.toChain.toVector)
-      case Rejection.Ledger(error) => text(MempoolProblem.Ledger(error))
+      case Rejection.Ledger(error) => text(era, MempoolProblem.Ledger(error))
       case Rejection.AlreadyHeld(_) =>
-        text(MempoolProblem.AllInputsSpent)
+        text(era, MempoolProblem.AllInputsSpent)
       case malformed: Rejection.Malformed => Left(malformed)
       case Rejection.Limits(_, failures) =>
         inEra(era, failures.toList.toVector)
-      case full: Rejection.Full => text(full.problem)
+      case full: Rejection.Full => text(era, full.problem)
       case Rejection.NoLedger(why) =>
         val cause = why match
           case xyz.kd5ujc.scarab.node.read.ConwayView.Unavailable.InByron =>
@@ -163,7 +187,7 @@ object LocalSubmission:
             MempoolLedgerProblem.Earlier(era)
           case xyz.kd5ujc.scarab.node.read.ConwayView.Unavailable.Refused(error) =>
             MempoolLedgerProblem.Refused(error)
-        text(MempoolProblem.NoLedger(cause))
+        text(era, MempoolProblem.NoLedger(cause))
 
   /** The `ApplyTxErr` of `failures` in the ledger's era: Conway's, with its free text for a failure
     * of a rule Conway does not have ([[PredicateFailureCbor.applyTxError]]), when the pool has a
@@ -179,8 +203,16 @@ object LocalSubmission:
       case Some(Era.Byron | Era.Conway | Era.Dijkstra) | None =>
         PredicateFailureCbor.applyTxError(failures)
 
-  private def text(message: MempoolProblem): Either[RefusalPresentationError, Bytes] =
-    PredicateFailureCbor.applyTxError(Vector(PredicateFailure.Mempool(message)))
+  /** Conway's free-text `ConwayMempoolFailure` of `message`; under a Dijkstra ledger, none
+    * ([[DijkstraNoEncoding.Text]]).
+    */
+  private def text(era: Option[Era], message: MempoolProblem): Either[NoReply, Bytes] =
+    era match
+      case Some(Era.Dijkstra) => Left(DijkstraNoEncoding.Text(message))
+      case Some(
+            Era.Byron | Era.Shelley | Era.Allegra | Era.Mary | Era.Alonzo | Era.Babbage | Era.Conway
+          ) | None =>
+        PredicateFailureCbor.applyTxError(Vector(PredicateFailure.Mempool(message)))
 
   /** Service unavailability has no ledger rejection bytes. The transport closes this connection;
     * admitting an external transaction does not require stopping the node.
@@ -204,6 +236,14 @@ object LocalSubmission:
           LocalTxSubmissionServer.Response.ServiceUnavailable(
             LocalTxSubmissionServer.Unavailable.Presentation(error)
           )
+        case error: DijkstraNoEncoding =>
+          LocalTxSubmissionServer.Response.ServiceUnavailable(
+            LocalTxSubmissionServer.Unavailable.Presentation(error)
+          )
+        // no verdict on a Dijkstra transaction: no reply, the client's connection ends, as a
+        // provider's failure ends it for the other eras
+        case unjudged: Rejection.DijkstraUnjudged =>
+          LocalTxSubmissionServer.Response.Aborted(unjudged.cause)
         // the transaction's decoder refuses it: no reply, the client's connection ends as the
         // reference's codec ends it, and as a prefix of it ends it ([[GenTx.prefix]])
         case Rejection.Malformed(cause) => LocalTxSubmissionServer.Response.Undecodable(cause)
@@ -226,9 +266,10 @@ object LocalSubmission:
     * never behind a submission that waits for room; one that reads takes its place in line.
     */
   def handler[F[_]: Async](
-      mempool: Mempool[F]
+      mempool: Mempool[F],
+      build: ReferenceBuild
   )(fatal: Fatal => F[Unit]): Bytes => F[LocalTxSubmissionServer.Response] = item =>
-    Async[F].delay(unwrap(item).flatMap(MempoolState.read)).flatMap {
+    Async[F].delay(unwrap(item).flatMap(MempoolState.read(_, build))).flatMap {
       case Left(rejection) => Async[F].pure(response(Refused(rejection, None)))
       case Right(read) =>
         StorageBoundary.run(fatal) {

@@ -1170,7 +1170,9 @@ object Targets:
             req(
               LocalSubmission
                 .unwrap(Bytes(Vector(0x82.toByte, 0x00.toByte)) ++ b)
-                .flatMap(MempoolState.read) == Right(MempoolState.Read.Foreign(0)),
+                .flatMap(
+                  MempoolState.read(_, xyz.kd5ujc.scarab.protocol.ReferenceBuild.Release11_2)
+                ) == Right(MempoolState.Read.Foreign(0)),
               "a payload the decoder reads is refused when submitted"
             )
           )

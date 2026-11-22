@@ -277,8 +277,9 @@ trait ForgeEvents[F[_]]:
   *   state's range, so that the selection withholds a transaction).
   * @param dijkstraSnapshots
   *   The pool's snapshot of a slot a Dijkstra ranking block takes its transactions from, with the
-  *   endorser block of those after them ([[BlockBuilder.partition]]): none, while the pool admits
-  *   no Dijkstra transaction ([[DijkstraSnapshots.unadmitted]]).
+  *   endorser block of those after them ([[BlockBuilder.partition]]): the node's pool
+  *   ([[DijkstraSnapshots.ofPool]]), or none for a forger of tests
+  *   ([[DijkstraSnapshots.unadmitted]]).
   * @param onForgedEb
   *   What is done with an endorser block forged with a ranking block, before the block goes to
   *   chain selection ([[OnForgedLeiosEb]]); none where the node has no endorser-block store, and
@@ -1451,17 +1452,21 @@ final class Forger[F[_]: Async, S](
         case Forger.Ticked.InDijkstra(nes) =>
           for
             ebLimit <- perform(endorserLimit(ticked.params))
-            held <- perform(dijkstraSnapshots.forSlot(nes, slot))
+            held <- perform(
+              dijkstraSnapshots.forSlot(nes, slot, clock.at(context.base.state, Era.Dijkstra, slot))
+            )
           yield
             val split =
               BlockBuilder.partition(held, Capacity.dijkstraBlockUnit(ticked.params), ebLimit)
+            // the held transactions the rules have no verdict on leave the pool with their
+            // reason, as the Conway path's do (issue 584)
             (
               BlockBuilder.Assembly.dijkstra(
                 split.ranking.transactions,
                 None,
                 split.endorsing(slot)
               ),
-              Map.empty[Bytes, Rejection]
+              held.withheld
             )
       (body, withheld) = selected
       _ <- perform(hold.withdrawal(withheld))
@@ -1698,7 +1703,7 @@ final class Forger[F[_]: Async, S](
       readable <- UtxoStore.complete(
         utxoStore,
         ticked.utxo,
-        UtxoStore.readSet(held.entries.map(_.tx))
+        MempoolState.readSet(held.entries.map(_.held.in))
       )
       selection <- F.blocking(
         BlockBuilder.select(
@@ -2728,8 +2733,8 @@ object Forger:
     *   Forge from the start; false starts with forging disabled (`--start-as-non-producing-node`,
     *   see [[HotKeys.create]]).
     * @param dijkstraSnapshots
-    *   Where a Dijkstra ranking block's transactions come from; none: the node's,
-    *   [[DijkstraSnapshots.unadmitted]].
+    *   Where a Dijkstra ranking block's transactions come from ([[DijkstraSnapshots.ofPool]] in the
+    *   node); none: empty snapshots, [[DijkstraSnapshots.unadmitted]].
     * @param onForgedEb
     *   What is done with a forged endorser block ([[OnForgedLeiosEb]]); none: no endorser block is
     *   forged.

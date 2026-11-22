@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.mempool
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import xyz.kd5ujc.scarab.node.assertions.{Assertions, Collecting, Property}
 import cats.effect.{IO, Ref}
 import cats.mtl.{Ask, Handle, Raise}
@@ -37,7 +38,9 @@ class MempoolProviderDefectSuite extends CatsEffectSuite:
     val (t1, id) = pay(1)
     for
       mempool <- Mempool.create[IO](Right(ledger(2)), 1000, defective, None, MempoolEvents.none[IO])
-      submit = LocalSubmission.handler[IO](mempool)(f => IO(fail(s"fatal: $f")))
+      submit = LocalSubmission.handler[IO](mempool, ReferenceBuild.Release11_2)(f =>
+        IO(fail(s"fatal: $f"))
+      )
       response <- submit(wrap(t1))
       held <- mempool.snapshot
     yield

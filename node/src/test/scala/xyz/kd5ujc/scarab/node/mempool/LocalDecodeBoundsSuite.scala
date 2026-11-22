@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.mempool
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import xyz.kd5ujc.scarab.node.assertions.Assertions
 import cats.effect.IO
 import munit.CatsEffectSuite
@@ -73,7 +74,9 @@ class LocalDecodeBoundsSuite extends CatsEffectSuite:
     Mempool
       .create[IO](Right(TxKit.ledger(1)), 1000, TxKit.env, None, MempoolEvents.none[IO])
       .flatMap(pool =>
-        LocalSubmission.handler(pool)(fatal => IO(fail(s"unexpected fatal: $fatal")))(wrapped)
+        LocalSubmission.handler(pool, ReferenceBuild.Release11_2)(fatal =>
+          IO(fail(s"unexpected fatal: $fatal"))
+        )(wrapped)
       )
       .map(result =>
         assertEquals(

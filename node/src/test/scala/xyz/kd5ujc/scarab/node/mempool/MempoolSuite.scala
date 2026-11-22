@@ -585,10 +585,16 @@ class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaC
     )
   )
 
-  private def replay(s: MempoolState): Either[LedgerFailure, PoolLedger] =
-    val base = s.base.fold(u => sys.error(u.toString), identity)
-    s.entries.foldLeft[Either[LedgerFailure, PoolLedger]](Right(base)) {
-      case (Right(l), e) => l.reapply(e.tx, env.txEnv(s.tipSlot, base), env.rules)
+  private def replay(s: MempoolState): Either[LedgerFailure, FlatLedger] =
+    val base = s.base.fold(
+      u => sys.error(u.toString),
+      {
+        case flat: FlatLedger      => flat
+        case other: DijkstraLedger => sys.error(s"not a flat ledger: ${other.era}")
+      }
+    )
+    s.entries.foldLeft[Either[LedgerFailure, FlatLedger]](Right(base)) {
+      case (Right(l), e) => l.reapply(FlatEntries.tx(e), env.txEnv(s.tipSlot, base), env.rules)
       case (left, _)     => left
     }
 
@@ -611,7 +617,7 @@ class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaC
               case other                 => sys.error(s"not a Conway ledger: ${other.era}")
             }
           )
-          val l1 = adopted.foldLeft(base)((l, e) => l.applied(e.tx, s.tipSlot))
+          val l1 = adopted.foldLeft(base)((l, e) => l.applied(FlatEntries.tx(e), s.tipSlot))
           history = base :: history
           s = s.sync(Right(l1), s.tipSlot + 1, env)._1
         case Op.Rollback =>

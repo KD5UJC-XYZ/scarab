@@ -96,7 +96,7 @@ enum FetchModeLabel derives LabelValue:
 /** Why the mempool refused a transaction ([[xyz.kd5ujc.scarab.node.mempool.Rejection]]). */
 enum RejectionLabel derives LabelValue:
   case Malformed, AlreadyHeld, Ledger, Full, WrongEra, NoLedger, InputDefect, RulesDefect, TooSlow,
-    TimedOut
+    TimedOut, NoVerdict
 
 object RejectionLabel:
   def of(reason: Rejection): RejectionLabel = reason match
@@ -111,6 +111,9 @@ object RejectionLabel:
     case Rejection.RulesDefect(_)   => RulesDefect
     case Rejection.TooSlow(_, _, _) => TooSlow
     case Rejection.TimedOut(_)      => TimedOut
+    // Dijkstra's refusal is the ledger's; no verdict on a Dijkstra transaction is its own reason
+    case Rejection.DijkstraRefused(_, _)  => Ledger
+    case Rejection.DijkstraUnjudged(_, _) => NoVerdict
 
 /** Why the forger gave a slot up before the leader check: the reference's `TraceSlotIsImmutable`,
   * `TraceBlockFromFuture` and `TraceNoLedgerView`. `Other` remains as a zero-valued series for

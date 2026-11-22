@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.mempool
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Node, Value}
 import xyz.kd5ujc.scarab.ledger.{DecodeField, LedgerDecodeError, TransactionDecodeProblem}
@@ -18,7 +19,7 @@ import ByronPayloads.*
   */
 class ByronSubmissionSuite extends FunSuite:
   private def read(message: Bytes): Either[Rejection, MempoolState.Read] =
-    LocalSubmission.unwrap(message).flatMap(MempoolState.read)
+    LocalSubmission.unwrap(message).flatMap(MempoolState.read(_, ReferenceBuild.Release11_2))
 
   /** Why the decoder of the payload's kind refuses `message`. */
   private def cause(message: Bytes): LedgerDecodeError = read(message) match

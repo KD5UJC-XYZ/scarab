@@ -126,7 +126,7 @@ Meanings and units worth knowing before building a dashboard:
 `Unnegotiated`, `OutboundUni`, `OutboundDup`, `OutboundIdle`, `InboundIdle`, `Inbound`, `Duplex`, `Terminating`
 or `Terminated` (`ConnectionManager/State.hs`, ouroboros-network `c45735a5`); `event` is, for `scarab_connection_events_total`, `Opened`, `Changed`, `Refused`, `Closed` or `Pruned`, and for
 `scarab_inbound_events_total`, `Accepted`, `Duplex`, `Unidirectional`, `Closed` or `Refused`; `reason` is, for `scarab_mempool_rejected_total`, `Malformed`,
-`AlreadyHeld`, `Ledger`, `Full`, `WrongEra`, `NoLedger`, `InputDefect`, `RulesDefect`, `TooSlow` or `TimedOut`, and for `scarab_forge_skipped_total`, `SlotIsImmutable`,
+`AlreadyHeld`, `Ledger`, `Full`, `WrongEra`, `NoLedger`, `InputDefect`, `RulesDefect`, `TooSlow`, `TimedOut` or `NoVerdict` (no verdict on a Dijkstra transaction), and for `scarab_forge_skipped_total`, `SlotIsImmutable`,
 `BlockFromFuture`, `NoLedgerView` or `Other`; `kind` (snapshots) is `Skipped`, `Failed` or `Refused`; `over_ms` is
 `50` or `100`; `area` is `heap` or `nonheap`; `gc` is the name the JVM gives the collector (`G1 Young
 Generation`, `G1 Old Generation`, `G1 Concurrent GC`); `version`, `scala_version` and `git_commit` of

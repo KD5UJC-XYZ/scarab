@@ -4,7 +4,11 @@ package xyz.kd5ujc.scarab.node.mempool
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.ledger.{
+  ChainError,
+  ForgeError,
+  ForgeProtocolProblem,
   LedgerFailure,
+  NodeError,
   PlutusStats,
   PredicateFailure,
   ProtocolParams,
@@ -44,7 +48,40 @@ import xyz.kd5ujc.scarab.ledger.state.{
   UtxoTables
 }
 import xyz.kd5ujc.scarab.node.read.{ChainRead, ConwayView, InEra}
-import xyz.kd5ujc.scarab.protocol.Era
+import xyz.kd5ujc.scarab.protocol.{Era, ReferenceBuild}
+import cats.data.NonEmptyChain
+import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.ledger.{Mismatch, TxIn}
+import xyz.kd5ujc.scarab.ledger.era.{
+  AlonzoEraPParams,
+  BothLevels,
+  EraPParams,
+  EraTx,
+  EraTxBody,
+  GovStateRecord,
+  IsPhase2Valid,
+  PParams,
+  Proposals,
+  StAnnTx,
+  TxLevel,
+  UTxO
+}
+import xyz.kd5ujc.scarab.ledger.era.Tx as ETx
+import xyz.kd5ujc.scarab.ledger.era.conway.ConwayUTxO
+import xyz.kd5ujc.scarab.ledger.era.rules.{
+  ConwayUtxosPredFailure,
+  DijkstraClosure,
+  DijkstraLedgerPredFailure,
+  DijkstraMempoolPredFailure,
+  DijkstraMempoolRun,
+  DijkstraUtxoPredFailure,
+  DijkstraUtxowPredFailure,
+  InjectMempoolFailure,
+  ProposalsRecord
+}
+import xyz.kd5ujc.scarab.ledger.rules.EraLedger
+import xyz.kd5ujc.scarab.ledger.state.Dijkstra
+import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.TxMeasure
 
 /** The ledger the mempool validates a transaction against: the ledger state at the chain tip,
   * ticked to the slot after it by the hard-fork combinator's tick, in the era that slot is in
@@ -56,13 +93,14 @@ import xyz.kd5ujc.scarab.protocol.Era
   * Each era applies a transaction by its own rule (`ApplyTx`, cardano-ledger f649f975): LEDGER from
   * Shelley to Babbage ([[EarlierLedger]]; `Shelley/API/Mempool.hs:325-344`, `Allegra.hs:37-47`,
   * `Mary.hs:44-53`, `Alonzo.hs:77-94`, `Babbage.hs:59-69`), MEMPOOL in Conway ([[MempoolLedger]];
-  * `Conway.hs:50-59`).
+  * `Conway.hs:50-59`), and Dijkstra's MEMPOOL in the Leios build ([[DijkstraLedger]];
+  * `Dijkstra.hs:87-96`, cardano-ledger 9df9f98c).
   */
 sealed trait PoolLedger:
   /** The era of the ledger, which every transaction the pool holds is of. */
   def era: Era
 
-  /** The protocol parameters in force. */
+  /** The protocol parameters in force, in the node's record. */
   def params: ProtocolParams
 
   /** The handle on the UTxO set. */
@@ -73,14 +111,20 @@ sealed trait PoolLedger:
 
   def withUtxo(u: Utxo): PoolLedger
 
+/** The ledger of an era from Shelley to Conway, whose transactions are the node's flat ones
+  * ([[Tx]]).
+  */
+sealed trait FlatLedger extends PoolLedger:
+  def withUtxo(u: Utxo): FlatLedger
+
   /** The transaction applied with every check (`applyTx`, `ValidateAll`). */
-  def submit(tx: Tx, env: TxEnv, rules: Globals): Either[LedgerFailure, PoolLedger]
+  def submit(tx: Tx, env: TxEnv, rules: Globals): Either[LedgerFailure, FlatLedger]
 
   /** A transaction validated before, applied again without the static checks (`reapplyTx`,
     * `ValidateSuchThat (notElem lblStatic)`, `Shelley/API/Mempool.hs:472-473`, cardano-ledger
     * f649f975).
     */
-  def reapply(tx: Tx, env: TxEnv, rules: Globals): Either[LedgerFailure, PoolLedger]
+  def reapply(tx: Tx, env: TxEnv, rules: Globals): Either[LedgerFailure, FlatLedger]
 
   /** The transaction admitted from `source`, with the transaction as it is to be held. */
   def admit(
@@ -88,7 +132,7 @@ sealed trait PoolLedger:
       env: TxEnv,
       rules: Globals,
       source: Source
-  ): Either[LedgerFailure, (PoolLedger, Tx)]
+  ): Either[LedgerFailure, (FlatLedger, Tx)]
 
 object PoolLedger:
 
@@ -122,20 +166,53 @@ object PoolLedger:
           case other => other.map(_ -> claimed)
       case _ => submit(tx).map(_ -> tx)
 
-  /** The pool's ledger of a new-epoch state of any era: none in Dijkstra, whose transactions this
-    * build does not validate in the pool.
+  /** Why the pool has no ledger of a chain that the node stops for: the tick to the slot after the
+    * tip failed, an internal failure of the ledger; or the parameters of a Dijkstra state set an
+    * endorser block the LeiosFetch codec cannot carry (`guardLeiosWireLimit`'s `error`,
+    * ouroboros-consensus 2416493b `Shelley/Ledger/Mempool.hs:915-939`, [[DijkstraLedger.of]]).
     */
-  def of(e: EraNes): Either[ConwayView.Unavailable, PoolLedger] = e match
+  enum Failure:
+    case Tick(cause: TickFailure)
+    case WireLimit(cause: Capacity.EndorserBlockReferencesOverWire)
+
+    /** The node's stop for the pool's ledger of the slot `slot`: the tick's failure
+      * ([[ChainError.MempoolTick]]), or the parameters the forger stops for too
+      * ([[ForgeProtocolProblem.EndorserBlockReferencesOverWire]]).
+      */
+    def stop(slot: BigInt): NodeError = this match
+      case Tick(cause) => ChainError.MempoolTick(slot, cause)
+      case WireLimit(over) =>
+        ForgeError.UnsupportedProtocol(
+          ForgeProtocolProblem.EndorserBlockReferencesOverWire(over.parameter, over.wire)
+        )
+
+  /** The pool's ledger of a new-epoch state of any era. A Dijkstra state has one in the Leios
+    * build, whose mempool takes Dijkstra transactions (`LedgerSupportsMempool (ShelleyBlock proto
+    * DijkstraEra)`, ouroboros-consensus 2416493b `Shelley/Ledger/Mempool.hs:214-245`), and none in
+    * the release builds, whose node never enters Dijkstra (REF-3).
+    */
+  def of(
+      e: EraNes,
+      build: ReferenceBuild
+  ): Either[Failure, Either[ConwayView.Unavailable, PoolLedger]] = e match
     case i: EraNes.InEra[x] =>
       i.era match
-        case ShelleyBasedEra.SConway => Right(MempoolLedger.of(i.nes))
+        case ShelleyBasedEra.SConway => Right(Right(MempoolLedger.of(i.nes)))
+        case ShelleyBasedEra.SDijkstra =>
+          build match
+            case ReferenceBuild.LeiosB004fe0c =>
+              DijkstraLedger.of(i.nes).bimap(Failure.WireLimit(_), Right(_))
+            case ReferenceBuild.Release11_1 | ReferenceBuild.Release11_2 =>
+              Right(Left(ConwayView.Unavailable.InEarlier(Era.Dijkstra)))
         case other =>
-          PreConway
-            .of(other)
-            .toRight(ConwayView.Unavailable.InEarlier(EraNes.eraOf(other)))
-            .map(pre =>
-              EarlierLedger[x](pre, i.nes.es.ls, i.nes.es.chainAccount, i.nes.epoch.toBigInt)
-            )
+          Right(
+            PreConway
+              .of(other)
+              .toRight(ConwayView.Unavailable.InEarlier(EraNes.eraOf(other)))
+              .map(pre =>
+                EarlierLedger[x](pre, i.nes.es.ls, i.nes.es.chainAccount, i.nes.epoch.toBigInt)
+              )
+          )
 
   /** The ledger of the chain whose state is `s` at its tip `tip`, ticked to the slot after the tip
     * (slot zero at Origin) by the hard-fork combinator's tick ([[Hfc.tick]]), which translates the
@@ -148,7 +225,7 @@ object PoolLedger:
       tip: Option[BlockRef],
       env: MempoolEnv,
       transition: Hfc.Transition
-  ): Either[TickFailure, Either[ConwayView.Unavailable, PoolLedger]] =
+  ): Either[Failure, Either[ConwayView.Unavailable, PoolLedger]] =
     s.ledger(tip) match
       case Left(error) => Right(Left(ConwayView.Unavailable.Refused(error)))
       case Right(None) => Right(Left(ConwayView.Unavailable.InByron))
@@ -167,11 +244,11 @@ object PoolLedger:
       tipSlot: Option[BigInt],
       env: MempoolEnv,
       transition: Hfc.Transition
-  ): Either[TickFailure, Either[ConwayView.Unavailable, PoolLedger]] =
-    for
+  ): Either[Failure, Either[ConwayView.Unavailable, PoolLedger]] =
+    (for
       slot <- SlotNo.fromBigInt(tipSlot.fold(BigInt(0))(_ + 1)).leftMap(TickFailure.Vocab(_))
       next <- Hfc.tick(env.rules, transition)(start, afterVoting, slot)
-    yield of(next)
+    yield next).leftMap(Failure.Tick(_)).flatMap(of(_, env.globals.referenceBuild))
 
 /** The ledger of an era from Shelley to Babbage, whose transactions LEDGER applies
   * (`ruleApplyTxValidation @"LEDGER"`, `Shelley/API/Mempool.hs:230-262`, cardano-ledger f649f975):
@@ -183,7 +260,7 @@ final case class EarlierLedger[E <: EraTag](
     ls: LedgerState[E],
     account: ChainAccountState,
     epoch: BigInt
-) extends PoolLedger:
+) extends FlatLedger:
   def era: Era = EraNes.eraOf(pre.era)
 
   def params: ProtocolParams = pre.curPParams.get(ls.utxo)
@@ -224,7 +301,7 @@ final case class EarlierLedger[E <: EraTag](
   * auxiliary_data]`, and the rules are those of the era-indexed state ([[Ledger]]).
   */
 final case class MempoolLedger(ls: LedgerState[Conway], treasury: Coin, epoch: BigInt)
-    extends PoolLedger:
+    extends FlatLedger:
   def era: Era = Era.Conway
 
   /** The protocol parameters in force. */
@@ -318,3 +395,311 @@ object MempoolLedger:
       env: MempoolEnv
   ): Either[TickFailure, Either[ConwayView.Unavailable, MempoolLedger]] =
     ConwayView(s, tip).traverse(tick(_, tip.map(_.slot), env))
+
+/** The state a Dijkstra transaction is judged against, and the rules that judge it
+  * (`LedgerSupportsMempool (ShelleyBlock proto DijkstraEra)`, ouroboros-consensus 2416493b
+  * `ouroboros-consensus-cardano/src/shelley/Ouroboros/Consensus/Shelley/Ledger/Mempool.hs:214-245`):
+  * the ledger state (`mkMempoolState`, cardano-ledger 9df9f98c `Shelley/API/Mempool.hs:384-385`)
+  * and the chain account of a state ticked to the slot judged at, and its parameters and proposals
+  * in the era's types, the proposals kept beside the state as the block path keeps them
+  * (`DijkstraBlockRun`). The pool's ledger holds one ([[DijkstraLedger]]), and so does a forging
+  * snapshot, judged at the slot it forges in.
+  */
+final case class DijkstraState private (
+    ls: LedgerState[Dijkstra],
+    account: ChainAccountState,
+    readable: Either[DijkstraUnjudged, DijkstraState.Readable]
+):
+  def utxo: Utxo = ls.utxo.utxo.utxo
+
+  def withUtxo(u: Utxo): DijkstraState =
+    copy(ls = ls.copy[Dijkstra](utxo = ls.utxo.copy[Dijkstra](utxo = UtxoTables(u))))
+
+  private def unjudged(id: Bytes)(cause: DijkstraUnjudged): Rejection =
+    Rejection.DijkstraUnjudged(Some(id), cause)
+
+  private def refused(id: Bytes)(failures: NonEmptyChain[DijkstraMempoolPredFailure[Dijkstra]]) =
+    Rejection.DijkstraRefused(id, failures)
+
+  private def judgeable(id: Bytes): Either[Rejection, DijkstraState.Readable] =
+    readable.leftMap(unjudged(id))
+
+  /** The stored outputs of the transaction's inputs, read into the era. */
+  private def utxoOf(t: DijkstraRead): Either[Rejection, UTxO[Dijkstra]] =
+    DijkstraMempoolRun
+      .utxoOf(ls, t.tx)
+      .leftMap(d => unjudged(t.id)(DijkstraUnjudged.UtxoState(d)))
+
+  /** `txMeasurePhase1` of Dijkstra (`txMeasureAlonzo`, ouroboros-consensus 2416493b
+    * `Shelley/Ledger/Mempool.hs:654-676`): the size (`sizeTxF`) at most `maxTxSize`
+    * (`txInBlockSize`, `:445-458`) and the execution units (`totExUnits`, which is
+    * `getTotalExUnits`, cardano-ledger 9df9f98c `Alonzo/Tx.hs:510-515`) pointwise at most
+    * `maxTxExUnits`, the two accumulated, size first, as `Validation` accumulates them; each
+    * failure Dijkstra's (`MaxTxSizeUTxO DijkstraEra`, `:536-546`; `ExUnitsTooBigUTxO DijkstraEra`,
+    * `:718-728`). The measure's bytes are the size plus [[Capacity.PerTxOverhead]].
+    */
+  def phase1(t: DijkstraRead): Either[Rejection, TxMeasure] =
+    judgeable(t.id).flatMap { r =>
+      val size = BigInt(t.size)
+      val maxTxSize = EraPParams.ppMaxTxSizeL[Dijkstra].get(r.pp).value
+      val units = EraTx.dijkstra.getTotalExUnits[TxLevel.Top](t.tx)(using BothLevels.Top)
+      val maxTxExUnits = AlonzoEraPParams.ppMaxTxExUnitsL[Dijkstra].get(r.pp).units
+      val inject = InjectMempoolFailure.dijkstraUtxo
+      val tooBig = Option.unless(size <= maxTxSize)(
+        inject.injectFailure(
+          DijkstraUtxoPredFailure.MaxTxSizeUTxO[Dijkstra](Mismatch(size, maxTxSize))
+        )
+      )
+      val tooMuch = Option.unless(units.fits(maxTxExUnits))(
+        inject.injectFailure(
+          DijkstraUtxoPredFailure.ExUnitsTooBigUTxO[Dijkstra](Mismatch(units, maxTxExUnits))
+        )
+      )
+      NonEmptyChain
+        .fromSeq(tooBig.toList ++ tooMuch.toList)
+        .map(refused(t.id))
+        .toLeft(TxMeasure(t.size + Capacity.PerTxOverhead, units.mem, units.steps, 0L))
+    }
+
+  /** `txMeasurePhase2` of Dijkstra (`txMeasureRefScripts`, `Shelley/Ledger/Mempool.hs:775-798`):
+    * the reference-script bytes of the top-level transaction's spent and reference inputs
+    * (`txNonDistinctRefScriptsSize`, cardano-ledger 9df9f98c `Conway/UTxO.hs:161-170`, not the
+    * sub-transactions', which LEDGER counts) in the state after the held transactions, at most
+    * `maxRefScriptSizePerTx` of the parameters (`ppMaxRefScriptSizePerTxG`), or Dijkstra's
+    * `DijkstraTxRefScriptsSizeTooBig` (`:812-821`).
+    */
+  def phase2(t: DijkstraRead): Either[Rejection, Long] =
+    for
+      r <- judgeable(t.id)
+      u <- utxoOf(t)
+      size = DijkstraState.refScriptsSize(u, t.tx)
+      limit = EraPParams.dijkstra.ppMaxRefScriptSizePerTxG.get(r.pp).value.toLong
+      _ <- Either.cond(
+        size <= limit,
+        (),
+        refused(t.id)(
+          NonEmptyChain.one(
+            DijkstraMempoolPredFailure.LedgerFailure[Dijkstra](
+              DijkstraLedgerPredFailure.DijkstraTxRefScriptsSizeTooBig[Dijkstra](
+                Mismatch(size, limit)
+              )
+            )
+          )
+        )
+      )
+    yield size
+
+  /** MEMPOOL on `stAnnTx` with `validation` ([[DijkstraMempoolRun.mempool]]), at `mkMempoolEnv` of
+    * the slot (`Shelley/API/Mempool.hs:363-377`, cardano-ledger 9df9f98c;
+    * [[DijkstraClosure.mkMempoolEnv]]): the ledger after it, its proposals written back into the
+    * state's record, whose refusal is [[DijkstraUnjudged.Unstorable]].
+    */
+  private def judged(
+      id: Bytes,
+      r: DijkstraState.Readable,
+      stAnnTx: StAnnTx[TxLevel.Top, Dijkstra],
+      env: DijkstraPoolEnv,
+      validation: TxEnv.Validation
+  ): Either[Rejection, DijkstraState] =
+    DijkstraMempoolRun
+      .mempool(
+        env.rules,
+        DijkstraClosure.mkMempoolEnv(env.slot, r.pp, account),
+        stAnnTx,
+        env.context(validation),
+        ls,
+        r.proposals,
+        env.evaluator,
+        env.verdicts,
+        env.decoder
+      )
+      .leftMap(d => unjudged(id)(DijkstraUnjudged.Rules(d)))
+      .flatMap(_.leftMap(refused(id)))
+      .flatMap { (after, proposals) =>
+        ProposalsRecord.dijkstra
+          .write(proposals)
+          .bimap(
+            e => unjudged(id)(DijkstraUnjudged.Unstorable(e)),
+            stored =>
+              copy(
+                ls = after.copy[Dijkstra](utxo =
+                  after.utxo.copy[Dijkstra](gov = after.utxo.gov.copy(proposals = stored))
+                ),
+                readable = Right(r.copy(proposals = proposals))
+              )
+          )
+      }
+
+  /** `applyTxWithFullValidation` (`Shelley/API/Mempool.hs:406-413`, cardano-ledger 9df9f98c) of `t`
+    * as it is (`defaultApplyShelleyBasedTx`, ouroboros-consensus 2416493b
+    * `Shelley/Eras.hs:172-190`): annotated against the state's UTxO set with an empty cache
+    * (`defaultApplyTxWithValidation`, `:267-296`), then MEMPOOL with every check; the ledger after
+    * it, and the transaction as held with what it was validated with.
+    */
+  def applyFull(
+      t: DijkstraRead,
+      env: DijkstraPoolEnv
+  ): Either[Rejection, (DijkstraState, DijkstraAdmitted)] =
+    for
+      r <- judgeable(t.id)
+      u <- utxoOf(t)
+      stAnnTx = DijkstraMempoolRun.annotate(env.clock.posix, r.pp, u, t.tx)
+      next <- judged(t.id, r, stAnnTx, env, TxEnv.Validation.All)
+    yield (
+      next,
+      DijkstraAdmitted(
+        t,
+        DijkstraValidated(stAnnTx, EraPParams.dijkstra.ppProtocolVersionL.get(r.pp), env.slot)
+      )
+    )
+
+  /** `applyTx` of Dijkstra (`applyShelleyTx`, `Shelley/Ledger/Mempool.hs:331-366`, through
+    * `applyAlonzoBasedTx`, `Shelley/Eras.hs:291-342`, ouroboros-consensus 2416493b): a local
+    * transaction (`Intervene`) applied as it is; a peer's (`DoNotIntervene`) applied with its flag
+    * `Phase2Valid`, and, when the only failure is UTXOS's `ValidationTagMismatch`
+    * (`isIncorrectClaimedFlag` of Dijkstra, `:409-420`, whatever the flag it names), again with
+    * `Phase2Invalid`, that result the answer.
+    */
+  def admit(
+      t: DijkstraRead,
+      env: DijkstraPoolEnv,
+      source: Source
+  ): Either[Rejection, (DijkstraState, DijkstraAdmitted)] =
+    source match
+      case Source.Local => applyFull(t, env)
+      case Source.Remote =>
+        applyFull(t.withIsValid(IsPhase2Valid.Phase2Valid), env) match
+          case Left(Rejection.DijkstraRefused(_, failures))
+              if DijkstraState.isIncorrectClaimedFlag(failures) =>
+            applyFull(t.withIsValid(IsPhase2Valid.Phase2Invalid), env)
+          case other => other
+
+  /** `reapplyTx` of Dijkstra (`reapplyShelleyTx`, `Shelley/Ledger/Mempool.hs:368-392`), which is
+    * `reapplyValidatedTx` (`Shelley/API/Mempool.hs:420-440`, cardano-ledger 9df9f98c): under the
+    * major protocol version `held` was validated at, MEMPOOL without the static checks on the
+    * annotation of its validation (`defaultReapplyValidatedTx`, `:298-323`); under another, with
+    * every check on the transaction annotated again. The transaction stays as held.
+    */
+  def reapply(held: DijkstraAdmitted, env: DijkstraPoolEnv): Either[Rejection, DijkstraState] =
+    val id = held.read.id
+    judgeable(id).flatMap { r =>
+      val current = EraPParams.dijkstra.ppProtocolVersionL.get(r.pp)
+      if current.pvMajor == held.validated.protocolVersion.pvMajor then
+        judged(id, r, held.validated.stAnnTx, env, TxEnv.Validation.NonStatic)
+      else applyFull(held.read, env).map(_._1)
+    }
+
+object DijkstraState:
+  /** The state's parameters and proposals in the era's types. */
+  final case class Readable(pp: PParams[Dijkstra], proposals: Proposals[Dijkstra])
+
+  /** The state of `nes` a Dijkstra transaction is judged against (`mkMempoolState`,
+    * `Shelley/API/Mempool.hs:384-385`, cardano-ledger 9df9f98c): its ledger state and chain
+    * account, and its parameters and proposals in the era's types, which, if they cannot be read,
+    * leave a state that judges no transaction ([[DijkstraUnjudged]]).
+    */
+  def of(nes: NewEpochState[Dijkstra]): DijkstraState =
+    val ls = nes.es.ls
+    DijkstraState(
+      ls,
+      nes.es.chainAccount,
+      for
+        pp <- GovStateRecord.dijkstra
+          .pparams(EraLedger.curPParams(ls.utxo.gov))
+          .leftMap(DijkstraUnjudged.Parameters(_))
+        proposals <- ProposalsRecord.dijkstra
+          .read(ls.utxo.gov.proposals)
+          .leftMap(DijkstraUnjudged.Proposals(_))
+      yield Readable(pp, proposals)
+    )
+
+  /** `isIncorrectClaimedFlag` of Dijkstra (`Shelley/Eras.hs:409-420`, ouroboros-consensus
+    * 2416493b): the only failure is UTXOS's `ValidationTagMismatch`, under LEDGER's UTXOW and UTXO,
+    * whatever the flag it names.
+    */
+  def isIncorrectClaimedFlag(
+      failures: NonEmptyChain[DijkstraMempoolPredFailure[Dijkstra]]
+  ): Boolean =
+    failures.length == 1 && (failures.head match
+      case DijkstraMempoolPredFailure.LedgerFailure(
+            DijkstraLedgerPredFailure.DijkstraUtxowFailure(
+              DijkstraUtxowPredFailure.UtxoFailure(
+                DijkstraUtxoPredFailure.UtxosFailure(
+                  ConwayUtxosPredFailure.ValidationTagMismatch(_, _)
+                )
+              )
+            )
+          ) =>
+        true
+      case _ => false)
+
+  private val t = EraTx.dijkstra
+  private val b = EraTxBody.dijkstra
+  private given BothLevels[TxLevel.Top] = BothLevels.Top
+
+  /** `txNonDistinctRefScriptsSize` of the top-level transaction (`Conway/UTxO.hs:161-170`,
+    * cardano-ledger 9df9f98c), as `txMeasureRefScripts` reads it.
+    */
+  private[mempool] def refScriptsSize(utxo: UTxO[Dijkstra], tx: ETx[TxLevel.Top, Dijkstra]): Long =
+    ConwayUTxO.txNonDistinctRefScriptsSize[Dijkstra, TxLevel.Top](utxo, tx)(using t, b)
+
+  /** The inputs at every level whose stored outputs a held transaction's rules read
+    * (`getTransactionKeySets`, `allInputsTxBodyF`, ouroboros-consensus 2416493b
+    * `Shelley/Ledger/Mempool.hs:226-230`).
+    */
+  def readSet(txs: Iterable[DijkstraRead]): Vector[TxIn] =
+    txs.iterator
+      .flatMap(r => t.bodyOf.allInputs(t.body[TxLevel.Top](r.tx)))
+      .toVector
+
+/** The pool's ledger of Dijkstra: the state of the new-epoch state ticked to the slot after the tip
+  * ([[DijkstraState]]), the epoch and the parameters in the node's record of that state, and
+  * `reservation`, one endorser block's share of the pool (`mempoolEbReservation` of
+  * `ebCapacityTxMeasure`, [[Capacity.endorserBlockReservation]]), which passed
+  * `guardLeiosWireLimit` when the ledger was made ([[DijkstraLedger.of]]).
+  */
+final case class DijkstraLedger private (
+    state: DijkstraState,
+    epoch: BigInt,
+    params: ProtocolParams,
+    reservation: TxMeasure
+) extends PoolLedger:
+  def era: Era = Era.Dijkstra
+
+  def utxo: Utxo = state.utxo
+
+  def withUtxo(u: Utxo): DijkstraLedger = copy(state = state.withUtxo(u))
+
+  def phase1(t: DijkstraRead): Either[Rejection, TxMeasure] = state.phase1(t)
+
+  def phase2(t: DijkstraRead): Either[Rejection, Long] = state.phase2(t)
+
+  def admit(
+      t: DijkstraRead,
+      env: DijkstraPoolEnv,
+      source: Source
+  ): Either[Rejection, (DijkstraLedger, DijkstraAdmitted)] =
+    state.admit(t, env, source).map((next, held) => copy(state = next) -> held)
+
+  def reapply(held: DijkstraAdmitted, env: DijkstraPoolEnv): Either[Rejection, DijkstraLedger] =
+    state.reapply(held, env).map(next => copy(state = next))
+
+object DijkstraLedger:
+  /** The pool's ledger of the new-epoch state `nes`, ticked to the slot after the tip: its
+    * endorser-block reservation first passes `guardLeiosWireLimit` (`Shelley/Ledger/Mempool.hs:
+    * 915-939`, ouroboros-consensus 2416493b), which the reference applies where the mempool
+    * computes its capacity from the state (`computeMempoolCapacity`, `Mempool/Capacity.hs:69-82`,
+    * into the strict `isCapacity` of `initInternalState` and of every revalidation,
+    * `Mempool/Impl/Common.hs:185, 258, 639`), so that parameters the wire cannot carry stop the
+    * node when the pool first learns them.
+    */
+  def of(
+      nes: NewEpochState[Dijkstra]
+  ): Either[Capacity.EndorserBlockReferencesOverWire, DijkstraLedger] =
+    val params = EraLedger.curPParams(nes.es.ls.utxo.gov)
+    Capacity
+      .endorserBlockReservation(params)
+      .map(DijkstraLedger(DijkstraState.of(nes), nes.epoch.toBigInt, params, _))
+
+  /** The inputs at every level whose stored outputs held transactions' rules read. */
+  def readSet(txs: Iterable[DijkstraRead]): Vector[TxIn] = DijkstraState.readSet(txs)

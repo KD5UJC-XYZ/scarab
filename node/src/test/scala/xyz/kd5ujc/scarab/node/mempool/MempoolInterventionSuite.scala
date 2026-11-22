@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.mempool
 
+import xyz.kd5ujc.scarab.node.mempool.FlatEntries.tx
 import xyz.kd5ujc.scarab.node.assertions.Assertions
 import cats.effect.IO
 import io.circe.parser.parse

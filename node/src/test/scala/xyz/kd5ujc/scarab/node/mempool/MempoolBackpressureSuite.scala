@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.mempool
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.node.assertions.Assertions
 import xyz.kd5ujc.scarab.network.Settled
@@ -320,7 +321,7 @@ class MempoolBackpressureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught
     for
       p <- probe(s.capacity)
       _ <- p.mempool.add(s.held, Source.Local)
-      handler = LocalSubmission.handler[IO](p.mempool)(fatal =>
+      handler = LocalSubmission.handler[IO](p.mempool, ReferenceBuild.Release11_2)(fatal =>
         IO(fail(s"unexpected fatal: $fatal"))
       )
       sink = p.mempool.sink(fatal => IO(fail(s"unexpected fatal: $fatal")))
@@ -365,7 +366,7 @@ class MempoolBackpressureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught
     for
       p <- probe(s.capacity)
       _ <- p.mempool.add(s.held, Source.Local)
-      handler = LocalSubmission.handler[IO](p.mempool)(fatal =>
+      handler = LocalSubmission.handler[IO](p.mempool, ReferenceBuild.Release11_2)(fatal =>
         IO(fail(s"unexpected fatal: $fatal"))
       )
       // the waiting submission is cancelled however this ends

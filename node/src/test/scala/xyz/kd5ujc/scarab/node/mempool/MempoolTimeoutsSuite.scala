@@ -268,7 +268,13 @@ class MempoolTimeoutsSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   ) {
     val measured = MempoolState
       .empty(Right(ledger(1)), 1000, None)
-      .measure(MempoolState.read(Submission(Era.Conway.index, pay(1)._1)).toOption.get, env)
+      .measure(
+        MempoolState
+          .read(Submission(Era.Conway.index, pay(1)._1), ReferenceBuild.Release11_2)
+          .toOption
+          .get,
+        env
+      )
       .fold(r => fail(r.message), identity)
     Era.values.foreach { era =>
       assertEquals(
@@ -384,7 +390,13 @@ class MempoolTimeoutsSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     val (t1, id1) = pay(1)
     val start = MempoolState.empty(Right(ledger(2)), 1000, None)
     val measured = (s: MempoolState) =>
-      s.measure(MempoolState.read(Submission(Era.Conway.index, t1)).toOption.get, env)
+      s.measure(
+        MempoolState
+          .read(Submission(Era.Conway.index, t1), ReferenceBuild.Release11_2)
+          .toOption
+          .get,
+        env
+      )
     val (held, _) = start.add(t1, env, Source.Local).fold(r => fail(r.message), identity)
     // with room and time, it is refused as the duplicate it is
     assertEquals(held.add(t1, env, Source.Local), Left(Rejection.AlreadyHeld(id1)))
@@ -433,7 +445,8 @@ class MempoolTimeoutsSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     "11.1: a transaction no later era reads is refused by the rules, after the waits and timed"
   ) {
     val (raw, id) = alonzoWithUpdate(1)
-    val submitted = MempoolState.read(Submission(Era.Alonzo.index, raw)).toOption.get
+    val submitted =
+      MempoolState.read(Submission(Era.Alonzo.index, raw), ReferenceBuild.Release11_2).toOption.get
     val mismatch = Rejection.WrongEra(Era.Babbage.index, Era.Conway)
     val eleven = built(ReferenceBuild.Release11_1)
     // measured as nothing: a pool over its capacity makes it wait, and so does one past its time
@@ -478,7 +491,8 @@ class MempoolTimeoutsSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
 
   test("11.2 and the Leios build: a transaction no later era reads is refused at its measure") {
     val (raw, _) = alonzoWithUpdate(1)
-    val submitted = MempoolState.read(Submission(Era.Alonzo.index, raw)).toOption.get
+    val submitted =
+      MempoolState.read(Submission(Era.Alonzo.index, raw), ReferenceBuild.Release11_2).toOption.get
     Vector(ReferenceBuild.Release11_2, ReferenceBuild.LeiosB004fe0c).traverse_ { build =>
       // redecoded, the transaction does not read in Conway: the mismatch names Alonzo
       val mismatch = Rejection.WrongEra(Era.Alonzo.index, Era.Conway)
@@ -504,7 +518,13 @@ class MempoolTimeoutsSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     val (t1, id1) = pay(1)
     val start = MempoolState.empty(Right(ledger(2)), 1000, None)
     val measured = start
-      .measure(MempoolState.read(Submission(Era.Conway.index, t1)).toOption.get, env)
+      .measure(
+        MempoolState
+          .read(Submission(Era.Conway.index, t1), ReferenceBuild.Release11_2)
+          .toOption
+          .get,
+        env
+      )
       .fold(r => fail(r.message), identity)
     start.tryAdd(measured, env, Source.Local, None) match
       case MempoolState.Tried.Done(Right(admitted)) =>
