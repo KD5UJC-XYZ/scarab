@@ -1639,7 +1639,7 @@ Conway's rules on the classes follow as the rest of stage 2.
     the flat LEDGERS the flat LEDGER's first failure. Under another guardrails script the block of the proposal and
     the spend is refused by GOV alone, on the proposal, by both.
   - `ConwayGovernanceSuite`'s scenarios are judged by the era LEDGER: Conway's test kit (`ConwayTestKit` in
-    `ledger/src/test`) writes each transaction as the reference writes a Conway body, its certificates, procedures
+    `ledger/src/test`) writes each transaction in the forms of Conway's CDDL, its body, certificates, procedures
     and actions, signs the body's hash and reads the parts back with the flat decoder, which must give every field
     asked for, and with Conway's; the funded outputs carry their bytes too. Each transaction's era LEDGER, its
     failures in the node's flat form (`EraLedgerRun.flat`), gives the suite's expected values, and the flat

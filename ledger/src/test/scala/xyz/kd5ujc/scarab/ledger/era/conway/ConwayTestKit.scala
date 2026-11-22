@@ -59,12 +59,12 @@ import xyz.kd5ujc.scarab.ledger.rules.{
 import xyz.kd5ujc.scarab.ledger.state.{Conway, EpochNo, LedgerState, NewEpochState, TxIx}
 import xyz.kd5ujc.scarab.protocol.{Era, StateLayout}
 
-/** Builders for Conway transactions whose bytes are true: a body and its witnesses are written as
-  * the reference writes them (`ConwayTxBodyRaw`'s `encCBOR`, `Conway/TxBody.hs`, the certificates,
-  * procedures and actions of `Conway/TxCert.hs` and `Conway/Governance/Procedures.hs`,
-  * cardano-ledger f649f975), then read by the node's flat decoder ([[Tx.fromBlock]]) and by
-  * Conway's ([[ConwayTx.decode]]), and the flat reading must give back every field the test asked
-  * for.
+/** Builders for Conway transactions whose bytes are true: a body and its witnesses are written in
+  * the forms of Conway's CDDL (the body's keys, the tags of its certificates, voters and actions),
+  * sets under tag 258, the keys of the body's maps ascending and a treasury withdrawal's in the
+  * order given, then read by the node's flat decoder ([[Tx.fromBlock]]) and by Conway's
+  * ([[ConwayTx.decode]]), and the flat reading must give back every field the test asked for. The
+  * bytes are a form both decoders read, not checked against the reference's own encoder.
   *
   * [[ledger]] judges such a transaction with Conway's LEDGER on the era types
   * (`ConwayLedger.conwayLedgerTransition`, through [[EraLedgerRun.ledger]]) and with the flat
@@ -94,7 +94,7 @@ object ConwayTestKit extends munit.Assertions:
       join(head(5, BigInt(entries.size)) +: entries.flatMap((k, v) => Seq(k, v)))
     def tag(number: Int, item: Bytes): Bytes = head(6, BigInt(number)) ++ item
 
-    /** A set or an ordered set as the reference writes one from protocol version 9: tag 258. */
+    /** A set or an ordered set, tagged 258 as the CDDL allows from Conway. */
     def set(items: Seq[Bytes]): Bytes = tag(258, arr(items*))
     val `null`: Bytes = Bytes(Vector(0xf6.toByte))
     val `true`: Bytes = Bytes(Vector(0xf5.toByte))
@@ -146,7 +146,7 @@ object ConwayTestKit extends munit.Assertions:
       p.metadata.getOrElse(`null`)
     )
 
-  /** `certificate` of Conway's CDDL: the tags of `ConwayTxCert`'s `encCBOR`. */
+  /** `certificate` of Conway's CDDL. */
   def certificate(c: Certificate): Bytes = c match
     case Certificate.Register(cred, None)      => arr(uint(0), credential(cred))
     case Certificate.Register(cred, Some(d))   => arr(uint(7), credential(cred), uint(d))
@@ -177,8 +177,8 @@ object ConwayTestKit extends munit.Assertions:
 
   def govActionId(id: GovActionId): Bytes = arr(bytes(id.txId), uint(id.index))
 
-  /** `gov_action`: the tags of `GovAction` 's `encCBOR`; a parameter update is written from the
-    * original encoding of each of its values.
+  /** `gov_action` of Conway's CDDL; a parameter update is written from the original encoding of
+    * each of its values.
     */
   def govAction(a: GovAction): Bytes = a match
     case GovAction.ParameterChange(previous, update, policy) =>
@@ -258,15 +258,19 @@ object ConwayTestKit extends munit.Assertions:
       donation: BigInt = 0,
       currentTreasury: Option[BigInt] = None
   ):
-    /** The votes by voter, in the order each voter first appears, as the body's map holds them. */
+    /** The votes by voter as the body's map holds them: the voters ascending, and each voter's
+      * actions ascending.
+      */
     def ballots: Vector[(Voter, Vector[(GovActionId, VotingProcedure)])] =
       votes
         .map(_._1)
         .distinct
+        .sorted
         .map(v =>
           v -> votes
             .collect { case (`v`, bs) => bs }
             .flatten
+            .sortBy(_._1)
             .map((id, vote) => id -> VotingProcedure(vote, None))
         )
 
