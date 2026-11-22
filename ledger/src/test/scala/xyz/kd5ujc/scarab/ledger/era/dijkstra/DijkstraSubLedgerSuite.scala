@@ -39,7 +39,6 @@ import xyz.kd5ujc.scarab.ledger.state.{
   Hash32,
   LedgerState,
   Network,
-  NewEpochState,
   Staking,
   UTxOState,
   UtxoTables
@@ -171,7 +170,7 @@ class DijkstraSubLedgerSuite extends FunSuite:
     (tx, UTxO[Dijkstra](utxo.toMap))
 
   private lazy val start: LedgerState[Dijkstra] =
-    NewEpochState.empty[Dijkstra](EpochNo.fromUnsigned(0L), stored).es.ls
+    xyz.kd5ujc.scarab.ledger.state.Build.dijkstra(EpochNo.fromUnsigned(0L), stored).es.ls
 
   private def storedState(utxo: UTxO[Dijkstra]): UTxOState[Dijkstra] =
     start.utxo.copy[Dijkstra](

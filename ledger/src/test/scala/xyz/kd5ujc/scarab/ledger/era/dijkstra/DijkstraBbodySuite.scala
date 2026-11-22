@@ -20,7 +20,6 @@ import xyz.kd5ujc.scarab.ledger.state.{
   EpochNo,
   KeyHash,
   Network,
-  NewEpochState,
   StakePool,
   UnitInterval
 }
@@ -138,7 +137,7 @@ class DijkstraBbodySuite extends FunSuite:
 
   private lazy val empty: ShelleyBbodyState[Dijkstra] =
     ShelleyBbodyState[Dijkstra](
-      NewEpochState.empty[Dijkstra](EpochNo.fromUnsigned(0L), testnetStored).es.ls,
+      xyz.kd5ujc.scarab.ledger.state.Build.dijkstra(EpochNo.fromUnsigned(0L), testnetStored).es.ls,
       BlocksMade.empty
     )
 

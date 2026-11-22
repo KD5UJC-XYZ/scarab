@@ -830,11 +830,16 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     val delegates = Vector(key(), key())
     val (funded, in) = fundedIn[E](pp.protocolMajor.toInt)
     val ls = funded.es.ls
-    val s0 = funded.copy(es =
-      funded.es.copy(ls =
-        ls.copy[E](utxo = ls.utxo.copy[E](gov = EraLedger.mapParams(ls.utxo.gov)(_ => pp)))
+    val ev = summon[PreConway[E]].govIs
+    val g = ev(ls.utxo.gov)
+    val withPP = ev.flip(
+      g.copy(
+        curPParams = pp,
+        prevPParams = pp,
+        futurePParams = FuturePParams.map(g.futurePParams)(_ => pp)
       )
     )
+    val s0 = funded.copy(es = funded.es.copy(ls = ls.copy[E](utxo = ls.utxo.copy[E](gov = withPP))))
     val s = withGenesis(s0, genesis.zip(delegates))
     val u = Update(genesis.map(_.hash -> update).toMap, 5)
     val b =

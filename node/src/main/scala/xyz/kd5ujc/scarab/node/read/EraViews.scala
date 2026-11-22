@@ -52,11 +52,13 @@ object EraViews:
   def vState[E <: EraTag](c: CertState[E])(using era: ShelleyBasedEra[E]): Option[VState] =
     era.cert.on(c)(_ => None, conway => Some(conway.vState))
 
-  /** The governance state of Conway, from Conway. */
+  /** The governance state of Conway, the node's flat record, in Conway; none before it, nor in
+    * Dijkstra, whose record is the era's.
+    */
   def conwayGov[E <: EraTag](g: GovState[E])(using
       era: ShelleyBasedEra[E]
   ): Option[ConwayGovState] =
-    era.gov.on(g)(_ => None, Some(_))
+    era.gov.on(g)(_ => None, Some(_), _ => None)
 
   /** The DRep as the node writes it. */
   def drep(d: DRep): flat.DRep = d match

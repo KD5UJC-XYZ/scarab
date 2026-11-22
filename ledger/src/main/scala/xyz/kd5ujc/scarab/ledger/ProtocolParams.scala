@@ -188,6 +188,32 @@ final case class ProtocolParams(
     (protocolMajor == 4 && protocolMinor > 0)
 
 object ProtocolParams:
+  /** What a field an era does not have reads as: zero, the neutral nonce, no cost models. The
+    * Haskell state codec reads an era's `PParams` over it (`Params.empty`).
+    */
+  val empty: ProtocolParams = ProtocolParams(
+    minFeeA = 0,
+    minFeeB = 0,
+    maxTxSize = 0,
+    maxBlockBodySize = 0,
+    maxValueSize = 0,
+    coinsPerUTxOByte = 0,
+    keyDeposit = 0,
+    poolDeposit = 0,
+    eMax = 0,
+    nOpt = 0,
+    a0 = Rational.zero,
+    rho = Rational.zero,
+    tau = Rational.zero,
+    minPoolCost = 0,
+    protocolMajor = 0,
+    drepDeposit = 0,
+    drepActivity = 0,
+    govActionDeposit = 0,
+    govActionLifetime = 0,
+    minFeeRefScriptCostPerByte = Rational.zero
+  )
+
   /** The parameters `changed` has over `base`, laid over `full`: field by field, the value of
     * `changed` where it differs from `base`, else the one of `full`. The Haskell `PParams` of an
     * era has only the fields of that era, and the parameters read from a snapshot have the others

@@ -2,7 +2,9 @@
 package xyz.kd5ujc.scarab.storage.haskell.state
 
 import cats.Order
-import xyz.kd5ujc.scarab.codec.{Bytes, Interned, Rational, Value}
+import cats.syntax.all.*
+import scala.collection.immutable.SortedSet
+import xyz.kd5ujc.scarab.codec.{Bytes, DomainError, Interned, Rational, Value}
 import xyz.kd5ujc.scarab.ledger.{
   Anchor,
   Committee,
@@ -30,7 +32,26 @@ import xyz.kd5ujc.scarab.ledger.{
   RewardAccount,
   Vote
 }
-import xyz.kd5ujc.scarab.ledger.state.{ProtVer, Sorted}
+import xyz.kd5ujc.scarab.ledger.era.{
+  ConwayGovState as EraConwayGovState,
+  DRepPulsingState,
+  DecodeAt,
+  EnactState as EraEnactState,
+  EraPParams,
+  FuturePParams as EraFuturePParams,
+  GovAction as EraGovAction,
+  GovActionState as EraGovActionState,
+  PParams,
+  PParamsUpdate,
+  ProposalProcedure,
+  Proposals as EraProposals,
+  PulsingSnapshot as EraPulsingSnapshot,
+  RatifyState as EraRatifyState
+}
+import xyz.kd5ujc.scarab.ledger.era.conway.ConwayProposals
+import xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraProposals
+import xyz.kd5ujc.scarab.ledger.rules.Convert
+import xyz.kd5ujc.scarab.ledger.state.{Coin, Dijkstra, ProtVer, Sorted, Staking}
 import xyz.kd5ujc.scarab.protocol.{DijkstraNotYet, StateLayout}
 import xyz.kd5ujc.scarab.models.runtime.{
   Codec,
@@ -329,12 +350,13 @@ trait NodeTypeCodecs extends VocabularyCodecs:
     */
   private val dijkstraUpdateKeys: Set[BigInt] = (34 to 56).map(BigInt(_)).toSet
 
-  /** The `PParamsUpdate` of a proposal in a Dijkstra state, read at version 12 (`decodeSparseKeyed`
-    * over the era's keys, each value `decCBOR` at 12, cardano-ledger 9df9f98c
-    * `Core/PParams.hs:264-299`): Conway's keys as a body is read at 12
-    * ([[ConwayParamUpdate.decode]]), its bounded ratios of `Word64` s and its `ExUnits` and
-    * `Prices` definite or indefinite. A key of a parameter Dijkstra adds is refused
-    * ([[DijkstraNotYet.ParameterUpdate]]); any other unknown key as the reference refuses it.
+  /** The `PParamsUpdate` of a flat proposal at version 12 (`decodeSparseKeyed` over the era's keys,
+    * each value `decCBOR` at 12, cardano-ledger 9df9f98c `Core/PParams.hs:264-299`): Conway's keys
+    * as a body is read at 12 ([[ConwayParamUpdate.decode]]), its bounded ratios of `Word64` s and
+    * its `ExUnits` and `Prices` definite or indefinite. The flat update holds Conway's keys only,
+    * so a key of a parameter Dijkstra adds is refused ([[DijkstraNotYet.ParameterUpdate]]), any
+    * other unknown key as the reference refuses it. A Dijkstra state's proposals are not read so:
+    * its governance state is the era's record ([[dijkstraGovState]]).
     */
   private val paramUpdateFrom12: Codec[ConwayParamUpdate] = new Codec[ConwayParamUpdate]:
     def decode(n: Node): Decoded[ConwayParamUpdate] =
@@ -572,3 +594,298 @@ trait NodeTypeCodecs extends VocabularyCodecs:
         sortedMap(hash28, amount)
       )
     )
+
+  // ---- Dijkstra's governance state, on the era's types
+
+  /** The codec of `A` from one of `R`: read through `make`, whose refusal is a located decode error
+    * of the domain, and written as the `R` it came from.
+    */
+  private def eraRead[R, A](c: Codec[R])(make: R => Either[DomainError, A])(
+      unmake: A => R
+  ): Codec[A] = new Codec[A]:
+    def decode(n: Node): Decoded[A] =
+      c.decode(n).flatMap(make(_).left.map(e => DecodeError.at(n, Kind.Domain(e))))
+    def encode(a: A, out: Writer): Unit = c.encode(unmake(a), out)
+    override def check(a: A): Option[ConstraintViolation] = c.check(unmake(a))
+
+  /** Where the era's decoders of a Dijkstra state's values read: at version 12, the version a
+    * Dijkstra state is read at ([[Versions.eraLow]]).
+    */
+  private def dijkstraAt(site: DecodeField): DecodeAt = DecodeAt(DecoderVersion.Dijkstra, site)
+
+  /** `PParams DijkstraEra` as the Leios build's state holds it: `EncCBOR (PParams era)`, a list of
+    * the era's parameters in the order of its descriptions (`Core/PParams.hs:204-219`,
+    * cardano-ledger 9df9f98c; [[PParams.encodePParams]], [[PParams.decodePParams]]). The 11.1
+    * layout's Dijkstra parameters are not the Leios build's, and are refused both ways
+    * ([[Versions.notYet]]).
+    */
+  def dijkstraPParams: Codec[PParams[Dijkstra]] = stateLayout match
+    case StateLayout.Node11_1 => Versions.notYet("PParams")
+    case StateLayout.Leios =>
+      new Codec[PParams[Dijkstra]]:
+        def decode(n: Node): Decoded[PParams[Dijkstra]] =
+          PParams
+            .decodePParams[Dijkstra](n)(using
+              EraPParams.dijkstra,
+              dijkstraAt(DecodeField.ProtocolParameters)
+            )
+            .left
+            .map(why => DecodeError.at(n, Kind.Domain(why)))
+        def encode(a: PParams[Dijkstra], out: Writer): Unit =
+          out.raw(PParams.encodePParams(a)(using EraPParams.dijkstra).bytes)
+
+  /** `FuturePParams DijkstraEra` (`State/Governance.hs:148-159`, cardano-ledger 9df9f98c): `[0]`,
+    * `[1, params]` or `[2, params?]`, the parameters [[dijkstraPParams]].
+    */
+  private def dijkstraFuturePParams: Codec[EraFuturePParams[Dijkstra]] =
+    new Codec[EraFuturePParams[Dijkstra]]:
+      private val params = dijkstraPParams
+      private val maybeParams = strictMaybe(params)
+      def decode(n: Node): Decoded[EraFuturePParams[Dijkstra]] =
+        variant(n).flatMap {
+          case (t, Vector()) if t == 0 => Right(EraFuturePParams.NoPParamsUpdate())
+          case (t, Vector(p)) if t == 1 =>
+            params.decode(p).map(EraFuturePParams.DefinitePParamsUpdate(_)).at("params")
+          case (t, Vector(p)) if t == 2 =>
+            maybeParams.decode(p).map(EraFuturePParams.PotentialPParamsUpdate(_)).at("params")
+          case (t, xs) => unknownVariant(n, "FuturePParams", t, xs.size)
+        }
+      def encode(a: EraFuturePParams[Dijkstra], out: Writer): Unit = a match
+        case EraFuturePParams.NoPParamsUpdate() =>
+          out.arrayHead(1); out.uint(0L)
+        case EraFuturePParams.DefinitePParamsUpdate(p) =>
+          out.arrayHead(2); out.uint(1L); params.encode(p, out)
+        case EraFuturePParams.PotentialPParamsUpdate(p) =>
+          out.arrayHead(2); out.uint(2L); maybeParams.encode(p, out)
+      override def check(a: EraFuturePParams[Dijkstra]): Option[ConstraintViolation] = a match
+        case EraFuturePParams.NoPParamsUpdate()         => None
+        case EraFuturePParams.DefinitePParamsUpdate(p)  => params.check(p)
+        case EraFuturePParams.PotentialPParamsUpdate(p) => maybeParams.check(p)
+
+  /** `ProposalProcedure DijkstraEra` (`Procedures.hs:567-580`, cardano-ledger 9df9f98c): `[deposit,
+    * return account, action, anchor]`, read by Dijkstra's decoder at version 12
+    * ([[DijkstraProposals.proposal]]). Its action is written as the flat record's writer writes it
+    * ([[govAction]]), but a parameter change, `[0, previous / null, update, policy / null]` with
+    * the era's update written by `EncCBOR (PParamsUpdate era)` (`Core/PParams.hs:250-262`,
+    * [[PParamsUpdate.encodePParamsUpdate]]): a definite map of the fields set, by ascending key,
+    * Dijkstra's keys 34 to 56 among them.
+    */
+  def dijkstraProposal(using ProtVer): Codec[ProposalProcedure[Dijkstra]] =
+    new Codec[ProposalProcedure[Dijkstra]]:
+      private val action = govAction
+      private val policy = nullable(hash28)
+      def decode(n: Node): Decoded[ProposalProcedure[Dijkstra]] =
+        DijkstraProposals
+          .proposal(n)
+          .left
+          .map(e => DecodeError.at(n, Kind.Domain(EraGovReadError.Proposal(e))))
+      private def writeAction(a: EraGovAction[Dijkstra], out: Writer): Unit =
+        DijkstraProposals.flatOrUpdate(a) match
+          case Right(flat) => action.encode(flat, out)
+          case Left(EraGovAction.ParameterChange(parent, update, guardrails)) =>
+            out.arrayHead(4); out.uint(0L)
+            previous.encode(parent.map(_.unGovPurposeId), out)
+            out.raw(PParamsUpdate.encodePParamsUpdate(update)(using EraPParams.dijkstra).bytes)
+            policy.encode(guardrails.map(_.bytes), out)
+      def encode(p: ProposalProcedure[Dijkstra], out: Writer): Unit =
+        out.arrayHead(4)
+        amount.encode(p.pProcDeposit.value, out)
+        rewardAccount.encode(p.pProcReturnAddr, out)
+        writeAction(p.pProcGovAction, out)
+        anchor.encode(p.pProcAnchor, out)
+      override def check(p: ProposalProcedure[Dijkstra]): Option[ConstraintViolation] =
+        amount
+          .check(p.pProcDeposit.value)
+          .orElse(rewardAccount.check(p.pProcReturnAddr))
+          .orElse(DijkstraProposals.flatOrUpdate(p.pProcGovAction).toOption.flatMap(action.check))
+          .orElse(anchor.check(p.pProcAnchor))
+
+  /** `GovActionState DijkstraEra` ([[govActionState]]'s items), its proposal [[dijkstraProposal]]:
+    * read into the era's ([[ConwayProposals.actionOf]]).
+    */
+  private def dijkstraGovActionState(using ProtVer): Codec[EraGovActionState[Dijkstra]] =
+    eraRead(
+      Record.of[
+        (
+            GovActionId,
+            Map[Credential, Vote],
+            Map[Credential, Vote],
+            Map[Bytes, Vote],
+            ProposalProcedure[Dijkstra],
+            BigInt,
+            BigInt
+        )
+      ](
+        (
+          govActionId,
+          sortedMap(nodeCredential, vote),
+          sortedMap(nodeCredential, vote),
+          sortedMap(hash28, vote),
+          dijkstraProposal,
+          amount,
+          amount
+        )
+      )
+    )((id, committee, dreps, pools, p, proposedIn, expiresAfter) =>
+      ConwayProposals
+        .actionOf[Dijkstra](id, committee, dreps, pools, p, proposedIn, expiresAfter)
+        .left
+        .map(EraGovReadError.Action(_))
+    )(gas =>
+      (
+        gas.gasId,
+        gas.gasCommitteeVotes.iterator.map((c, v) => Convert.back(c) -> v).toMap,
+        gas.gasDRepVotes.iterator.map((c, v) => Convert.back(c) -> v).toMap,
+        gas.gasStakePoolVotes.iterator.map((k, v) => k.bytes -> v).toMap,
+        gas.gasProposalProcedure,
+        gas.gasProposedIn.toBigInt,
+        gas.gasExpiresAfter.toBigInt
+      )
+    )
+
+  /** `Proposals DijkstraEra` ([[proposals]]'s items): the roots and the actions in order, the store
+    * `mkProposals` (`Proposals.hs:340-353`, cardano-ledger 9df9f98c) over them, as
+    * [[ProposalsReading]] says: of the proposals of one id the first kept, as the reference reads
+    * its `state` file, or the actions as written, which `mkProposals` takes as they are.
+    */
+  private def dijkstraProposals(using ProtVer): Codec[EraProposals[Dijkstra]] =
+    eraRead(
+      Record.of[(PrevIds, Vector[EraGovActionState[Dijkstra]])](
+        (prevIds, seqOf(dijkstraGovActionState))
+      )
+    )((roots, actions) =>
+      val read = proposalsReading match
+        case ProposalsReading.Reference => actions.distinctBy(_.gasId)
+        case ProposalsReading.AsWritten => actions
+      EraProposals
+        .mkProposals[Dijkstra](ConwayProposals.roots(roots), read)
+        .left
+        .map(EraGovReadError.Action(_))
+    )(ps =>
+      (
+        ConwayProposals.prevIds(EraProposals.toPrevGovActionIds(ps.pRoots)),
+        ps.pProps.toVector
+      )
+    )
+
+  /** `EnactState DijkstraEra` ([[enactStateWith]]'s items), its parameters [[dijkstraPParams]] and
+    * its withdrawals keyed by stake credentials.
+    */
+  private def dijkstraEnactState(using ProtVer): Codec[EraEnactState[Dijkstra]] =
+    val params = dijkstraPParams
+    eraRead(
+      Record.of[
+        (
+            Option[Committee],
+            Constitution,
+            PParams[Dijkstra],
+            PParams[Dijkstra],
+            BigInt,
+            Map[Credential, BigInt],
+            PrevIds
+        )
+      ](
+        (
+          strictMaybe(committee),
+          constitution,
+          params,
+          params,
+          amount,
+          sortedMap(nodeCredential, amount),
+          prevIds
+        )
+      )
+    )((committee, constitution, cur, prev, treasury, withdrawals, roots) =>
+      withdrawals.toVector
+        .traverse((c, v) => Convert.credential[Staking](c).map(_ -> Coin(v)))
+        .map(ws =>
+          EraEnactState[Dijkstra](
+            committee,
+            constitution,
+            cur,
+            prev,
+            Coin(treasury),
+            Sorted.map(ws),
+            ConwayProposals.roots(roots)
+          )
+        )
+    )(e =>
+      (
+        e.ensCommittee,
+        e.ensConstitution,
+        e.ensCurPParams,
+        e.ensPrevPParams,
+        e.ensTreasury.value,
+        e.ensWithdrawals.iterator.map((c, v) => Convert.back(c) -> v.value).toMap,
+        ConwayProposals.prevIds(e.ensPrevGovActionIds)
+      )
+    )
+
+  /** `RatifyState DijkstraEra` ([[ratifyStateWith]]'s items). */
+  def dijkstraRatifyState(using ProtVer): Codec[EraRatifyState[Dijkstra]] =
+    Record
+      .of[
+        (EraEnactState[Dijkstra], Vector[EraGovActionState[Dijkstra]], Set[GovActionId], Boolean)
+      ](
+        (dijkstraEnactState, seqOf(dijkstraGovActionState), sortedSet(govActionId), Codec.bool)
+      )
+      .imap((enact, enacted, expired, delayed) =>
+        EraRatifyState[Dijkstra](enact, enacted, SortedSet.from(expired), delayed)
+      )(r => (r.rsEnactState, r.rsEnacted, r.rsExpired, r.rsDelayed))
+
+  /** `DRepPulsingState DijkstraEra` as `DRComplete` ([[drCompleteWith]]'s items): the snapshot
+    * ([[pulsingSnapshot]]'s items) and the ratification.
+    */
+  private def dijkstraDRepPulsingState(using ProtVer): Codec[DRepPulsingState[Dijkstra]] =
+    val snapshot = Record
+      .of[
+        (
+            Vector[EraGovActionState[Dijkstra]],
+            Map[DRep, BigInt],
+            Map[Credential, DRepState],
+            Map[Bytes, BigInt]
+        )
+      ](
+        (
+          seqOf(dijkstraGovActionState),
+          sortedMap(nodeDRep, amount),
+          sortedMap(nodeCredential, nodeDRepState),
+          sortedMap(hash28, amount)
+        )
+      )
+      .imap(EraPulsingSnapshot[Dijkstra](_, _, _, _))(s =>
+        (s.psProposals, s.psDRepDistr, s.psDRepState, s.psPoolDistr)
+      )
+    Record
+      .of[(EraPulsingSnapshot[Dijkstra], EraRatifyState[Dijkstra])]((snapshot, dijkstraRatifyState))
+      .imap(DRepPulsingState.DRComplete(_, _))({ case DRepPulsingState.DRComplete(s, r) =>
+        (s, r)
+      })
+
+  /** `ConwayGovState DijkstraEra`, the governance state of a Dijkstra state
+    * (`Conway/Governance.hs:359-369`, cardano-ledger 9df9f98c; `Dijkstra/Governance.hs:29`):
+    * `[proposals, committee, constitution, current parameters, previous parameters, future
+    * parameters, DRep pulser]`, read and written on the era's types, as the reference writes them
+    * (#85, FMT-1).
+    */
+  def dijkstraGovState(using ProtVer): Codec[EraConwayGovState[Dijkstra]] =
+    val params = dijkstraPParams
+    Record.of[EraConwayGovState[Dijkstra]](
+      (
+        dijkstraProposals,
+        strictMaybe(committee),
+        constitution,
+        params,
+        params,
+        dijkstraFuturePParams,
+        dijkstraDRepPulsingState
+      )
+    )
+
+/** Why a stored value of Dijkstra's governance state is not a value of the era's types: a proposal
+  * Dijkstra's decoder refuses ([[xyz.kd5ujc.scarab.ledger.era.EraTxError]]), or an action's state
+  * or the proposals the era does not read ([[xyz.kd5ujc.scarab.ledger.era.ProposalsReadError]]).
+  */
+enum EraGovReadError extends DomainError:
+  case Proposal(cause: xyz.kd5ujc.scarab.ledger.era.EraTxError)
+  case Action(cause: xyz.kd5ujc.scarab.ledger.era.ProposalsReadError)

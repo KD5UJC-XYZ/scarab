@@ -18,7 +18,6 @@ import xyz.kd5ujc.scarab.ledger.state.{
   Guard,
   KeyHash,
   Network,
-  NewEpochState,
   UTxOState,
   UtxoTables
 }
@@ -132,8 +131,8 @@ class DijkstraSubUtxowSuite extends FunSuite:
       }
     (tx, UTxO[Dijkstra](utxo.toMap))
 
-  private lazy val start = NewEpochState
-    .empty[Dijkstra](EpochNo.fromBigInt(0).fold(e => fail(e.toString), identity), stored)
+  private lazy val start = xyz.kd5ujc.scarab.ledger.state.Build
+    .dijkstra(EpochNo.fromBigInt(0).fold(e => fail(e.toString), identity), stored)
     .es
     .ls
 

@@ -96,5 +96,6 @@ object GenesisMirror:
             originExt(layout)
           ),
           MirrorExtras.InShelley(NodeExtras(PlutusStats.zero), consensus),
-          MirrorProvenance.complete
+          MirrorProvenance.complete,
+          None
         )

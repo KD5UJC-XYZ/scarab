@@ -22,7 +22,6 @@ import xyz.kd5ujc.scarab.ledger.state.{
   Hash32,
   LedgerState,
   Network,
-  NewEpochState,
   TxIx,
   UtxoTables
 }
@@ -151,7 +150,7 @@ class DijkstraBbodyImpSuite extends FunSuite:
     DijkstraUtxoContext(Network.Testnet, 0, history, flat.TxEnv.Validation.All)
 
   private lazy val start: LedgerState[Dijkstra] =
-    NewEpochState.empty[Dijkstra](EpochNo.fromUnsigned(0L), stored).es.ls
+    xyz.kd5ujc.scarab.ledger.state.Build.dijkstra(EpochNo.fromUnsigned(0L), stored).es.ls
 
   /** The ledger state holding exactly the outputs of `utxo`. */
   private def holding(utxo: UTxO[Dijkstra]): LedgerState[Dijkstra] =

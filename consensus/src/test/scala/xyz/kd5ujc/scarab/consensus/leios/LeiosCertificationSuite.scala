@@ -21,7 +21,6 @@ import xyz.kd5ujc.scarab.crypto.bls.{
 import xyz.kd5ujc.scarab.crypto.bls.BlsFixtures.{key, rbHash, right}
 import xyz.kd5ujc.scarab.ledger.state.{
   Conway,
-  Dijkstra,
   EpochNo,
   LedgerStateGen,
   LeiosCommittee,
@@ -283,10 +282,12 @@ class LeiosCertificationSuite extends ScalaCheckSuite:
 
   test("leiosCommitteeOfTip: the set snapshot's committee in Dijkstra, none before it") {
     val epoch = right(EpochNo.fromBigInt(4))
-    val params = LedgerStateGen.params.copy(leiosQuorumStakeThreshold = quorum)
+    // Dijkstra's parameters at the era's types, its genesis's upgrade of the generated ones
+    val params = xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraFixture.genesis
+      .upgrade(LedgerStateGen.params)
+      .copy(leiosQuorumStakeThreshold = quorum)
     val dijkstra =
-      given ShelleyBasedEra[Dijkstra] = ShelleyBasedEra.SDijkstra
-      val empty = NewEpochState.empty[Dijkstra](epoch, params)
+      val empty = xyz.kd5ujc.scarab.ledger.state.Build.dijkstra(epoch, params)
       val layout = SnapShots.Layout.Leios(epoch, BigInt(5), BigInt(10), seated)
       empty.copy(es = empty.es.copy(snapshots = empty.es.snapshots.copy(layout = layout)))
     assertEquals(
@@ -295,12 +296,15 @@ class LeiosCertificationSuite extends ScalaCheckSuite:
         .map(_.map(t => (t.committee.seats, t.threshold))),
       Right(Some((tip.committee.seats, tip.threshold)))
     )
-    val conway = NewEpochState.empty[Conway](epoch, params)(using ShelleyBasedEra.SConway)
+    val conway = NewEpochState.empty[Conway](epoch, params)(using
+      ShelleyBasedEra.SConway,
+      xyz.kd5ujc.scarab.ledger.state.FlatGov.conway
+    )
     assertEquals(
       LeiosCertification.leiosCommitteeOfTip(conway)(using ShelleyBasedEra.SConway).map(_.isEmpty),
       Right(true)
     )
-    val dijkstra11 = NewEpochState.empty[Dijkstra](epoch, params)(using ShelleyBasedEra.SDijkstra)
+    val dijkstra11 = xyz.kd5ujc.scarab.ledger.state.Build.dijkstra(epoch, params)
     assertEquals(
       LeiosCertification
         .leiosCommitteeOfTip(dijkstra11)(using ShelleyBasedEra.SDijkstra)

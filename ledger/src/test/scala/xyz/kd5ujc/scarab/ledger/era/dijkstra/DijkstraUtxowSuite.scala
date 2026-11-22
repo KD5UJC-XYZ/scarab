@@ -11,7 +11,7 @@ import xyz.kd5ujc.scarab.ledger.{Horizon, Mismatch, TxEnv, TxIn, Unsigned, Utxo,
 import xyz.kd5ujc.scarab.ledger.era.*
 import xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraCorpus.*
 import xyz.kd5ujc.scarab.ledger.era.rules.*
-import xyz.kd5ujc.scarab.ledger.state.{Coin, Dijkstra, EpochNo, Network, NewEpochState, UtxoTables}
+import xyz.kd5ujc.scarab.ledger.state.{Coin, Dijkstra, EpochNo, Network, UtxoTables}
 import xyz.kd5ujc.scarab.plutus.{ExUnits, PlutusLanguage, ScarabEvaluator}
 
 /** Dijkstra's UTXO and UTXOW on the era types (`DijkstraUtxo`, `DijkstraUtxow`, cardano-ledger
@@ -113,8 +113,8 @@ class DijkstraUtxowSuite extends FunSuite:
       }
     (tx, UTxO[Dijkstra](utxo.toMap))
 
-  private lazy val start = NewEpochState
-    .empty[Dijkstra](EpochNo.fromBigInt(0).fold(e => fail(e.toString), identity), stored)
+  private lazy val start = xyz.kd5ujc.scarab.ledger.state.Build
+    .dijkstra(EpochNo.fromBigInt(0).fold(e => fail(e.toString), identity), stored)
     .es
     .ls
 

@@ -56,7 +56,7 @@ class DijkstraRulesSuite extends FunSuite:
 
   private def ledger(params: ProtocolParams): DijkstraLedger =
     Counted(
-      NewEpochState.empty[Dijkstra](ok(EpochNo.fromBigInt(1)), params).es.ls,
+      xyz.kd5ujc.scarab.ledger.state.Build.dijkstra(ok(EpochNo.fromBigInt(1)), params).es.ls,
       PlutusStats.zero
     )
 

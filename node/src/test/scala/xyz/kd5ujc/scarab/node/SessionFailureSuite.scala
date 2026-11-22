@@ -33,7 +33,7 @@ import xyz.kd5ujc.scarab.crypto.opcert.OperationalCertificate
 import xyz.kd5ujc.scarab.crypto.vrf.PraosVrfCertificate as Vrf
 import xyz.kd5ujc.scarab.crypto.witness.VerificationError
 import xyz.kd5ujc.scarab.ledger.byron.ByronSig
-import xyz.kd5ujc.scarab.ledger.era.{GovStateReadError, ProposalsWriteError, StoredGovError}
+import xyz.kd5ujc.scarab.ledger.era.{GovStateReadError, StoredGovError}
 import xyz.kd5ujc.scarab.ledger.rules.TickFailure
 import xyz.kd5ujc.scarab.ledger.state.VocabError
 import xyz.kd5ujc.scarab.protocol.ChainSync
@@ -243,21 +243,12 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   /** A pot that left the range of its type. */
   private val pot: VocabError = VocabError.OutOfRange(VocabError.Kind.CompactCoin, BigInt(1) << 64)
 
-  /** A governance record Dijkstra's tick cannot read into the era's: a withdrawal's credential of
-    * another length than a stake credential's.
+  /** A Conway governance record the translation into Dijkstra cannot read into the era's: a
+    * withdrawal's credential of another length than a stake credential's.
     */
   private val unreadRecord: StoredGovError =
     StoredGovError.Read(
       GovStateReadError.Withdrawal(VocabError.WrongHashLength(VocabError.Kind.KeyHash, 28, 27))
-    )
-
-  /** A state the record cannot hold: an update of keys Dijkstra adds. */
-  private val unstorable: StoredGovError =
-    StoredGovError.Write(
-      ProposalsWriteError.UnstorableUpdate(
-        xyz.kd5ujc.scarab.ledger.GovActionId(Bytes(Vector.fill(32)(6.toByte)), BigInt(0)),
-        cats.data.NonEmptySet.of(BigInt(47), BigInt(48))
-      )
     )
 
   private def blockNos(blocks: Vector[BlockRef]) = blocks.map(_.blockNo.toInt)
@@ -582,23 +573,19 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     assertEquals(MirrorRules.stateOutOfRange(header, BlockFailure.HeaderDiffers), None)
   }
 
-  // the reference holds Dijkstra's governance state as the era's record (cardano-ledger 9df9f98c
-  // `Dijkstra/Governance.hs:29`): a node's record that does not hold it is the node's state, no
-  // fault of the block, so it is no verdict, as a state out of range is
-  test(
-    "a governance record that does not hold Dijkstra's state is a stop, read or written: no refusal"
-  ) {
+  // the reference translates its own record of the era before into Dijkstra's (cardano-ledger
+  // 9df9f98c `Dijkstra/Translation.hs:70-80`): a node's record that does not read into it is the
+  // node's state, no fault of the block, so it is no verdict, as a state out of range is
+  test("a governance record that does not read into Dijkstra's state is a stop: no refusal") {
     val header = headers(2)
-    Vector(unreadRecord, unstorable).foreach { cause =>
-      assertEquals(
-        MirrorRules.stateOutOfRange(header, BlockFailure.Tick(TickFailure.GovRecord(cause))),
-        Some(ChainError.GovRecord(header.slot, cause))
-      )
-    }
+    assertEquals(
+      MirrorRules.stateOutOfRange(header, BlockFailure.Tick(TickFailure.GovRecord(unreadRecord))),
+      Some(ChainError.GovRecord(header.slot, unreadRecord))
+    )
   }
 
   test(
-    "a governance record that does not hold Dijkstra's state withholds the block: no record, no blame, no stop"
+    "a governance record that does not read into Dijkstra's state withholds the block: no record, no blame, no stop"
   ) {
     session(govRecord = Some(2)).map { left =>
       withheld(left, 2) { case BlockNoVerdict.StateOutOfRange(fault) =>
@@ -661,25 +648,6 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       assertEquals(SessionEnd.peerError(left.end), None)
       assertEquals(left.invalid, Set.empty[Bytes])
       assertEquals(blockNos(left.stored), Vector(0, 1))
-    }
-  }
-
-  // the public testnet's ledger admitted parameter changes of the keys Dijkstra adds, which the
-  // state's record cannot hold yet (#85): valid peer input, so no verdict, never a stop
-  test(
-    "proposals the state's record cannot hold withhold the block: no record, no blame, no stop"
-  ) {
-    val unstorable = xyz.kd5ujc.scarab.ledger.era.ProposalsWriteError.UnstorableUpdate(
-      xyz.kd5ujc.scarab.ledger.GovActionId(Bytes.fromArray(Array.fill(32)(3)), BigInt(0)),
-      cats.data.NonEmptySet.of(BigInt(45), BigInt(46))
-    )
-    session(dijkstra =
-      Some(2 -> xyz.kd5ujc.scarab.ledger.DijkstraBlockDefect.UnstorableProposals(unstorable))
-    ).map { left =>
-      assertEquals(left.fatal, None)
-      withheld(left, 2) { case BlockNoVerdict.UnstorableProposals(cause) =>
-        assertEquals(cause, unstorable)
-      }
     }
   }
 

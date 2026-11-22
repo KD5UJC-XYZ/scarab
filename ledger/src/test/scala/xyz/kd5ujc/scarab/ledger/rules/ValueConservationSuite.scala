@@ -85,7 +85,9 @@ class ValueConservationSuite extends FunSuite:
 
   private def preConway[E <: EraTag](using ShelleyBasedEra[E], PreConway[E]) =
     val pp = params(10)
-    val cert = PreConway[E].cert.get(NewEpochState.empty[E](EpochNo.fromUnsigned(5), pp).es.ls)
+    val cert = PreConway[E].cert.get(
+      xyz.kd5ujc.scarab.ledger.state.Build.nesAt[E](EpochNo.fromUnsigned(5), pp).es.ls
+    )
     val checks = UtxoChecks.of[E](
       UtxoEnv(TestLedger.env, pp, cert),
       StAnnTx(burnTwo, NodeUtxo(Map(txIn(1) -> held))),

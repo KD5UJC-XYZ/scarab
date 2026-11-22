@@ -22,6 +22,16 @@ import xyz.kd5ujc.scarab.ledger.{
 }
 import xyz.kd5ujc.scarab.ledger.GenesisState.InjectionSource
 import xyz.kd5ujc.scarab.ledger.dijkstra.{DijkstraFixture, DijkstraScript}
+import xyz.kd5ujc.scarab.ledger.era.{
+  ConwayGovState as EraConwayGovState,
+  DRepPulsingState as EraDRepPulsingState,
+  FuturePParams as EraFuturePParams,
+  GovStateBases,
+  GovStateReadError,
+  GovStateRecord,
+  PParams,
+  StoredGovError
+}
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.protocol.{DijkstraNotYet, Era, ReferenceBuild}
 
@@ -230,33 +240,70 @@ class DijkstraTranslationSuite extends FunSuite:
   private def translated: NewEpochState[Dijkstra] =
     Translate.conwayToDijkstra(withGenesis, before).fold(e => fail(e.toString), identity)
 
-  /** The fields Dijkstra adds are the genesis values and Conway's are kept, but the PlutusV4 model.
+  /** The fields Dijkstra adds are the genesis values and Conway's are kept, but the PlutusV4 model:
+    * the era's parameters are the upgraded record read into Dijkstra's.
     */
-  private def upgradedFrom(conway: ProtocolParams, dijkstra: ProtocolParams): Unit =
-    assertEquals(dijkstra, genesis.upgrade(conway))
-    assertEquals(dijkstra.costModels(3), genesis.plutusV4CostModel.map(BigInt(_)))
-    assertEquals(dijkstra.leiosCommitteeSize, genesis.leiosCommitteeSize)
-    assertEquals(dijkstra.minFeeA, conway.minFeeA)
+  private def upgradedFrom(conway: ProtocolParams, dijkstra: PParams[Dijkstra]): Unit =
+    assertEquals(Right(dijkstra), GovStateRecord.dijkstra.pparams(genesis.upgrade(conway)))
+    val flat = GovStateRecord.view(dijkstra)
+    assertEquals(flat.costModels(3), genesis.plutusV4CostModel.map(BigInt(_)))
+    assertEquals(flat.leiosCommitteeSize, genesis.leiosCommitteeSize)
+    assertEquals(flat.minFeeA, conway.minFeeA)
 
   test("every set of parameters is upgraded by the Dijkstra genesis") {
     val (c, d) = (before.es.ls.utxo.gov, translated.es.ls.utxo.gov)
-    upgradedFrom(c.curPParams, d.curPParams)
-    upgradedFrom(c.prevPParams, d.prevPParams)
-    (c.futurePParams, d.futurePParams) match
-      case (FuturePParams.DefinitePParamsUpdate(a), FuturePParams.DefinitePParamsUpdate(b)) =>
+    upgradedFrom(c.curPParams, d.cgsCurPParams)
+    upgradedFrom(c.prevPParams, d.cgsPrevPParams)
+    (c.futurePParams, d.cgsFuturePParams) match
+      case (FuturePParams.DefinitePParamsUpdate(a), EraFuturePParams.DefinitePParamsUpdate(b)) =>
         upgradedFrom(a, b)
       case other => fail(s"the future parameters: $other")
-    upgradedFrom(c.drepPulsing.ratify.enact.params, d.drepPulsing.ratify.enact.params)
-    upgradedFrom(c.drepPulsing.ratify.enact.prevParams, d.drepPulsing.ratify.enact.prevParams)
+    val (enact, eraEnact) = (c.drepPulsing.ratify.enact, ratifyOf(d).rsEnactState)
+    upgradedFrom(enact.params, eraEnact.ensCurPParams)
+    upgradedFrom(enact.prevParams, eraEnact.ensPrevPParams)
     assertEquals(
       FuturePParams.map(FuturePParams.PotentialPParamsUpdate(Some(c.curPParams)))(genesis.upgrade),
       FuturePParams.PotentialPParamsUpdate(Some(genesis.upgrade(c.curPParams)))
     )
   }
 
+  private def ratifyOf(g: EraConwayGovState[Dijkstra]) =
+    EraDRepPulsingState.extractDRepPulsingState(g.cgsDRepPulsingState)
+
+  // the translated record is read into Dijkstra's, which the ledger state holds: a record that does
+  // not read, which only a damaged one gives, is no verdict on a block (`TickFailure.GovRecord`)
+  test("a Conway record that does not read into Dijkstra's stops the translation with its cause") {
+    val short = node.Credential.Key(Bytes(Vector.fill(27)(1.toByte)))
+    val ls = before.es.ls
+    val g = ls.utxo.gov
+    val pulser = g.drepPulsing
+    val damaged = before.copy(es =
+      before.es.copy(ls =
+        ls.copy[Conway](utxo =
+          ls.utxo.copy[Conway](gov =
+            g.copy(drepPulsing =
+              pulser.copy(ratify =
+                pulser.ratify.copy(enact =
+                  pulser.ratify.enact.copy(withdrawals = Map(short -> BigInt(1)))
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    Translate.conwayToDijkstra(withGenesis, damaged) match
+      case Left(TickFailure.GovRecord(StoredGovError.Read(GovStateReadError.Withdrawal(_)))) => ()
+      case other => fail(s"not the record's refusal: $other")
+  }
+
   test("the governance, the accounts, the votes, the snapshots and the pots carry over") {
     val (b, a) = (before, translated)
-    val (c, d) = (b.es.ls.utxo.gov, a.es.ls.utxo.gov)
+    val c = b.es.ls.utxo.gov
+    // Dijkstra's record written back over Conway's: what is not a parameter is Conway's
+    val d = GovStateRecord
+      .toStored[Dijkstra](a.es.ls.utxo.gov, GovStateBases.of(c))
+      .fold(e => fail(e.toString), identity)
     assertEquals(d.proposals, c.proposals)
     assertEquals(d.committee, c.committee)
     assertEquals(d.constitution, c.constitution)

@@ -36,7 +36,6 @@ import xyz.kd5ujc.scarab.ledger.state.{
   EpochNo,
   LedgerState,
   Network,
-  NewEpochState,
   TxIx,
   UTxOState,
   UtxoTables
@@ -156,7 +155,7 @@ class DijkstraLedgerSuite extends FunSuite:
     DijkstraUtxoContext(Network.Testnet, systemStart * 1000, history, validation)
 
   private lazy val start: LedgerState[Dijkstra] =
-    NewEpochState.empty[Dijkstra](EpochNo.fromUnsigned(0L), stored).es.ls
+    xyz.kd5ujc.scarab.ledger.state.Build.dijkstra(EpochNo.fromUnsigned(0L), stored).es.ls
 
   private val noProposals: Proposals[Dijkstra] =
     Proposals.empty[Dijkstra](GovRelation[Option](None, None, None, None))
@@ -321,7 +320,7 @@ class DijkstraLedgerSuite extends FunSuite:
     val conway = json("fixtures/leios/testnet/config/conway-genesis.json").hcursor
       .downField("constitution")
     flat.Constitution(
-      start.utxo.gov.constitution.anchor,
+      start.utxo.gov.cgsConstitution.anchor,
       Some(hex(conway.get[String]("script").fold(e => fail(e.message), identity)))
     )
 
@@ -376,7 +375,7 @@ class DijkstraLedgerSuite extends FunSuite:
       case _                                       => None)
     Seed(
       cert,
-      storedState(k.utxo).copy[Dijkstra](gov = start.utxo.gov.copy(constitution = constitution)),
+      storedState(k.utxo).copy[Dijkstra](gov = start.utxo.gov.copy(cgsConstitution = constitution)),
       Proposals.empty[Dijkstra](GovRelation[Option](parents.headOption, None, None, None))
     )
 
@@ -504,7 +503,7 @@ class DijkstraLedgerSuite extends FunSuite:
       case Right(judged) => judged
       case Left(defect)  => fail(s"${k.name}: $defect")
     val (afterSub, proposalsAfterSub) = sub.fold(_ => (state, proposals), (st, ps, _) => (st, ps))
-    val committee = afterSub.utxo.gov.committee
+    val committee = afterSub.utxo.gov.cgsCommittee
     val valid = txs.isValid(k.tx) == IsPhase2Valid.Phase2Valid
     val entities = Option.when(valid)(
       ok(
@@ -551,7 +550,7 @@ class DijkstraLedgerSuite extends FunSuite:
             ok(Hash32.fromBytes(bodies.id[TxLevel.Top](k.tx.body))),
             epoch,
             pp,
-            ok(afterSub.utxo.gov.constitution.script.traverse(ScriptHash.fromBytes)),
+            ok(afterSub.utxo.gov.cgsConstitution.script.traverse(ScriptHash.fromBytes)),
             certAfterEntities,
             committee
           ),

@@ -150,7 +150,8 @@ class RemainingPredicateReferenceSuite extends FunSuite:
         .fold(e => fail(e.toString), identity)
       def validate[E <: EraTag](network: Int)(using ShelleyBasedEra[E], PreConway[E]) =
         val pp = TestLedger.params(major)
-        val cert = summon[PreConway[E]].cert.get(Empty.ledgerState[E](pp))
+        val cert =
+          summon[PreConway[E]].cert.get(xyz.kd5ujc.scarab.ledger.state.Build.ledgerState[E](pp))
         val spent =
           TestLedger.out(body.outputs.head.address, body.outputs.map(_.value.coin).sum + body.fee)
         val utxo = Utxo.fromMap(body.inputs.map(_ -> spent).toMap)

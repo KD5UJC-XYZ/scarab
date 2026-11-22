@@ -58,7 +58,7 @@ class ShelleyBbodySuite extends FunSuite:
   private def state[E <: EraTag](pp: ProtocolParams, utxo: Utxo = Utxo.empty)(using
       ShelleyBasedEra[E]
   ): ShelleyBbodyState[E] =
-    val empty = NewEpochState.empty[E](ok(EpochNo.fromBigInt(5)), pp)
+    val empty = xyz.kd5ujc.scarab.ledger.state.Build.nesAt[E](ok(EpochNo.fromBigInt(5)), pp)
     val ls = empty.es.ls
     ShelleyBbodyState(
       Counted(ls.copy[E](utxo = ls.utxo.copy[E](utxo = UtxoTables(utxo))), PlutusStats.zero),

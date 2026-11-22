@@ -115,7 +115,8 @@ object NativeRewardFixture extends Assertions:
       fee: BigInt = 0,
       epoch: Int = 5
   )(using ShelleyBasedEra[E]): NewEpochState[E] =
-    val base = NewEpochState.empty[E](ok(EpochNo.fromBigInt(epoch)), TestLedger.params(major))
+    val base = xyz.kd5ujc.scarab.ledger.state.Build
+      .nesAt[E](ok(EpochNo.fromBigInt(epoch)), TestLedger.params(major))
     registered(
       base.copy(
         bprev = BlocksMade(

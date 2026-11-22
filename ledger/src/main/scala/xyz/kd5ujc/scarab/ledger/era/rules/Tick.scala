@@ -23,7 +23,6 @@ import xyz.kd5ujc.scarab.ledger.state.{
   EpochNo,
   EpochState,
   EraTag,
-  GovState as StoredGovState,
   NewEpochState,
   PulsingRewUpdate,
   ShelleyBasedEra,
@@ -31,10 +30,10 @@ import xyz.kd5ujc.scarab.ledger.state.{
 }
 
 /** The new-epoch state the era's TICK and NEWEPOCH work on: the node's new-epoch state and the
-  * era's governance state ([[ConwayGovState]]) beside it, until the ledger state holds the era's
-  * record (#85). What the rules read and write of the governance state is `gov`; the node's record
-  * of it that `nes` holds is read only through [[StoredGov.synced]], by the node's rules that read
-  * it (the reward update and RUPD), and is written back by [[StoredGov]] after the tick.
+  * era's governance state ([[ConwayGovState]]) beside it. What the rules read and write of the
+  * governance state is `gov`; the one `nes` holds is the state the tick began with, read only
+  * through [[StoredGov.synced]], by the node's rules that read it (the reward update and RUPD), and
+  * replaced by `gov` after the tick ([[StoredGov.onRecord]]).
   */
 final case class NewEpochGovState[E <: EraTag](nes: NewEpochState[E], gov: ConwayGovState[E])
 
@@ -54,9 +53,9 @@ object NewEpochGovState:
       s => NewEpochGovState(s.nes.copy(es = v.es), v.gov)
     )
 
-  /** The node's record of the governance state in a new-epoch state. */
-  def record[E <: EraTag]: Lens[NewEpochState[E], StoredGovState[E]] =
-    NewEpochState.es[E].andThen(StoredGov.recordOf[E])
+  /** The governance state of a Dijkstra new-epoch state. */
+  def record: Lens[NewEpochState[Dijkstra], ConwayGovState[Dijkstra]] =
+    NewEpochState.es[Dijkstra].andThen(StoredGov.recordOf)
 
 /** Dijkstra's NEWEPOCH, Conway's (`EraRule "NEWEPOCH" DijkstraEra = ConwayNEWEPOCH`,
   * `newEpochTransition`, `Conway/Rules/NewEpoch.hs:153-184`, cardano-ledger 9df9f98c), on the era's
@@ -91,7 +90,7 @@ object DijkstraNewEpoch:
                       .complete(pending)
                       .flatMap(
                         NodeNewEpoch.applyRewardUpdate(
-                          StoredGov.dijkstra.synced(before.nes.es, before.gov),
+                          StoredGov.synced(before.nes.es, before.gov),
                           _
                         )
                       )
@@ -127,13 +126,13 @@ object DijkstraNewEpoch:
             yield ()
         }
 
-  /** [[sts]] on the node's new-epoch state, its governance record read before and written back
+  /** [[sts]] on the node's new-epoch state, its governance state taken out before and put back
     * after ([[StoredGov.onRecord]]).
     */
   val onRecord: Sts[Unit, NewEpochState[Dijkstra], EpochNo, TickFailure] =
-    StoredGov.onRecord[Dijkstra, NewEpochState[Dijkstra], NewEpochGovState[Dijkstra], EpochNo](
+    StoredGov.onRecord[NewEpochState[Dijkstra], NewEpochGovState[Dijkstra], EpochNo](
       sts,
-      NewEpochGovState.record[Dijkstra],
+      NewEpochGovState.record,
       NewEpochGovState(_, _),
       s => (s.nes, s.gov)
     )
@@ -195,19 +194,19 @@ object DijkstraTick:
               TickFailure
             ](
               Rupd.sts[Dijkstra],
-              RupdEnv(before.nes.bprev, StoredGov.dijkstra.synced(before.nes.es, before.gov)),
+              RupdEnv(before.nes.bprev, StoredGov.synced(before.nes.es, before.gov)),
               slot
             )
           }
         yield ()
 
-  /** [[sts]] on the node's new-epoch state, its governance record read before the tick and written
+  /** [[sts]] on the node's new-epoch state, its governance state taken out before the tick and put
     * back after it ([[StoredGov.onRecord]]): Dijkstra's tick on the node's path.
     */
   val onRecord: Sts[Unit, NewEpochState[Dijkstra], SlotNo, TickFailure] =
-    StoredGov.onRecord[Dijkstra, NewEpochState[Dijkstra], NewEpochGovState[Dijkstra], SlotNo](
+    StoredGov.onRecord[NewEpochState[Dijkstra], NewEpochGovState[Dijkstra], SlotNo](
       sts,
-      NewEpochGovState.record[Dijkstra],
+      NewEpochGovState.record,
       NewEpochGovState(_, _),
       s => (s.nes, s.gov)
     )

@@ -10,7 +10,7 @@ import xyz.kd5ujc.scarab.ledger.state.*
 /** EPOCH of the era `E` (`Shelley/Rules/Epoch.hs`, `Conway/Rules/Epoch.hs`, cardano-ledger 9df9f98c
   * `Dijkstra/Rules/Epoch.hs`): the Shelley rule before Conway, Conway's in Conway and Dijkstra's
   * own in Dijkstra, chosen by the witness as `EraRule "EPOCH" era` chooses it. Dijkstra's is the
-  * rule on the era types, on the node's governance record read and written back
+  * rule on the era types, on the state's governance state, the era's record
   * ([[xyz.kd5ujc.scarab.ledger.era.rules.DijkstraEpoch.onRecord]]); the node's tick runs it within
   * Dijkstra's own TICK ([[Tick]]).
   */
@@ -27,9 +27,11 @@ object Epoch:
         case ShelleyBasedEra.SConway => ConwayEpoch.sts.transition[F](env, epoch)
         case ShelleyBasedEra.SDijkstra =>
           xyz.kd5ujc.scarab.ledger.era.rules.DijkstraEpoch.onRecord.transition[F](env, epoch)
-        case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
-            ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage =>
-          shelley[E].transition[F](env, epoch)
+        case ShelleyBasedEra.SShelley => shelley[E].transition[F](env, epoch)
+        case ShelleyBasedEra.SAllegra => shelley[E].transition[F](env, epoch)
+        case ShelleyBasedEra.SMary    => shelley[E].transition[F](env, epoch)
+        case ShelleyBasedEra.SAlonzo  => shelley[E].transition[F](env, epoch)
+        case ShelleyBasedEra.SBabbage => shelley[E].transition[F](env, epoch)
 
   /** Runs a sub-rule on the part of the state that `lens` names (`trans`, `Extended.hs:475`
     * (cardano-ledger f649f975); all the rules of the tick fail with the same [[TickFailure]], so
@@ -44,11 +46,11 @@ object Epoch:
     given Embed[S, S0, TickFailure, TickFailure] = Embed(lens, identity[TickFailure])
     Sts.trans[F, Env, S, S0, Sig, TickFailure, TickFailure](sub, env, signal)
 
-  /** The Shelley governance state seen in the governance state of any era (the lens of
-    * [[EraLedger.shelleyGov]]) in an epoch state.
+  /** The Shelley governance state of an era before Conway (the lens of [[EraLedger.shelleyGov]]) in
+    * an epoch state.
     */
   private def shelleyGov[E <: EraTag](using
-      ShelleyBasedEra[E]
+      GovState[E] =:= ShelleyGovState
   ): Lens[EpochState[E], ShelleyGovState] =
     EpochState
       .ls[E]
@@ -68,7 +70,8 @@ object Epoch:
     * are in force.
     */
   private def shelley[E <: EraTag](using
-      ShelleyBasedEra[E]
+      ShelleyBasedEra[E],
+      GovState[E] =:= ShelleyGovState
   ): Sts[Unit, EpochState[E], EpochNo, TickFailure] =
     new Sts[Unit, EpochState[E], EpochNo, TickFailure]:
       def transition[F[_]: Monad](env: Unit, epoch: EpochNo)(using

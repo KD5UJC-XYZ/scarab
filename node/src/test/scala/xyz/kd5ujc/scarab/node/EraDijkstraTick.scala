@@ -1,52 +1,30 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import xyz.kd5ujc.scarab.ledger.era.{
-  ConwayGovState,
-  GovStateBases,
-  GovStateReadError,
-  GovStateRecord,
-  ProposalsWriteError
-}
+import xyz.kd5ujc.scarab.ledger.era.ConwayGovState
 import xyz.kd5ujc.scarab.ledger.era.rules.{DijkstraTick, NewEpochGovState}
 import xyz.kd5ujc.scarab.ledger.rules.{Globals, Sts, TickFailure}
 import xyz.kd5ujc.scarab.ledger.state.{Dijkstra, NewEpochState, SlotNo}
 
 /** Dijkstra's tick on the era's governance state carried from tick to tick beside the node's state
-  * ([[DijkstraTick.sts]], the node's own rule), for the suites whose states hold actions the node's
-  * record of the governance state cannot hold (an update of keys 34 to 56): the node's path
-  * ([[DijkstraTick.onRecord]]) reads and writes that record at every tick, so it cannot carry them.
-  * Each state is read and written by the era's reader of the node's record over the bases a suite
-  * gives.
+  * ([[DijkstraTick.sts]], the rule the node's path runs, [[DijkstraTick.onRecord]]), for the suites
+  * that change the governance state between ticks.
   */
 object EraDijkstraTick:
-  /** A Dijkstra state with its governance state as the era's record. */
+  /** A Dijkstra state with its governance state beside it. */
   type State = NewEpochGovState[Dijkstra]
 
   object State:
+    /** `nes` with `gov` as its governance state, and beside it. */
     def apply(nes: NewEpochState[Dijkstra], gov: ConwayGovState[Dijkstra]): State =
-      NewEpochGovState(nes, gov)
+      NewEpochGovState(NewEpochGovState.record.replace(gov)(nes), gov)
 
-  /** The state as the node records it: the era's governance state written to the node's record over
-    * `bases`, or the action the record cannot hold.
-    */
-  def stored(
-      s: State,
-      bases: GovStateBases
-  ): Either[ProposalsWriteError, NewEpochState[Dijkstra]] =
-    GovStateRecord
-      .toStored[Dijkstra](s.gov, bases)
-      .map(NewEpochGovState.record[Dijkstra].replace(_)(s.nes))
+  /** The state as the node holds it: its governance state the one beside it. */
+  def stored(s: State): NewEpochState[Dijkstra] = NewEpochGovState.record.replace(s.gov)(s.nes)
 
   /** Dijkstra's tick to `slot` ([[DijkstraTick.sts]]). */
   def tick(globals: Globals, before: State, slot: SlotNo): Either[TickFailure, State] =
     Sts(DijkstraTick.sts)(globals, (), before, slot)
 
-  /** The node's record of the governance state as the era's, read by the era's reader. */
-  def read(nes: NewEpochState[Dijkstra]): Either[GovStateReadError, State] =
-    GovStateRecord
-      .fromStored[Dijkstra](nes.es.ls.utxo.gov)
-      .map(NewEpochGovState(nes, _))
-
-  /** The flat record's parameter positions of `nes`, the bases its era record is written over. */
-  def bases(nes: NewEpochState[Dijkstra]): GovStateBases = GovStateBases.of(nes.es.ls.utxo.gov)
+  /** A node's Dijkstra state with its governance state beside it. */
+  def read(nes: NewEpochState[Dijkstra]): State = NewEpochGovState(nes, nes.es.ls.utxo.gov)

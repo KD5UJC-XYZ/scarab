@@ -11,6 +11,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.consensus.state.{ConsensusMirrorEnv, EraLedgerState}
 import xyz.kd5ujc.scarab.ledger.Block
+import xyz.kd5ujc.scarab.ledger.era.GovStateRecord
 import xyz.kd5ujc.scarab.ledger.rules.EraLedger
 import xyz.kd5ujc.scarab.ledger.state.ShelleyBasedEra
 import xyz.kd5ujc.scarab.models.runtime.DecodeError
@@ -224,6 +225,76 @@ class LeiosLayoutImportSuite extends CatsEffectSuite:
               name
             )
           )
+        }
+      yield ()
+    }
+  }
+
+  // the import writes the sidecar's parameter records whole, the fields of the eras before Dijkstra
+  // from the genesis (`Params.completeIn`; the devnet starts in Conway with d = 1): a restore keeps
+  // them, so the snapshot written again at the same anchor is the imported one, byte for byte, its
+  // Dijkstra parameters still the governance state's (#826)
+  test("slot 203 imported, restored and written again at its anchor is the same V10 file") {
+    val files = LeiosStateFixture.movedFiles
+    tempDir.use { root =>
+      for
+        input <- sourceOf(root, dijkstraPoint.slot, files, dijkstraPoint, dijkstraBlock)
+        (ledger, db) = input
+        report <- imported(config(ledger, db, leios))
+        _ <- IO(report.fold(e => fail(e.message), identity))
+        _ <- IO {
+          val content = JFiles
+            .readAllBytes((db / "snapshots" / FileLedgerSnapshots.nameOf(dijkstraPoint)).toNioPath)
+            .dropRight(32)
+          val sidecar = SnapshotV10.sidecarOf(content).fold(e => fail(e.message), identity)
+          val params = sidecar.chain match
+            case c: SnapshotSidecar.Chain.InShelley => c.params
+            case other                              => fail(s"not a Shelley-based sidecar: $other")
+          assertEquals(
+            params.d,
+            xyz.kd5ujc.scarab.codec.Rational.one,
+            "the genesis's decentralisation"
+          )
+          val restored = SnapshotV10
+            .decode(setup.mirrorEnv(), leios, content)
+            .fold(e => fail(e.message), identity)
+          assertEquals(restored.anchor, Some(dijkstraPoint))
+          val again = SnapshotV10.encoded(restored, leios).fold(e => fail(e.toString), identity)
+          assertEquals(Bytes.wrap(again).hex, Bytes.wrap(content).hex)
+          // the governance state is authoritative for Dijkstra's fields: a change of its maximum
+          // transaction size is the sidecar's, the genesis's decentralisation still kept
+          val m = restored.state
+          val changed = restored.copy(state = m.ext.ledgerState.state match
+            case i: EraLedgerState.InShelleyEra[e] =>
+              given ShelleyBasedEra[e] = i.era
+              val nes = i.state.nes
+              val ls = nes.es.ls
+              val gov = i.era.gov.update(ls.utxo.gov)(
+                _ => fail("not Dijkstra's record"),
+                _ => fail("not Dijkstra's record"),
+                g =>
+                  g.copy(cgsCurPParams =
+                    GovStateRecord.dijkstra
+                      .pparams(GovStateRecord.view(g.cgsCurPParams).copy(maxTxSize = 12345))
+                      .fold(e => fail(e.toString), identity)
+                  )
+              )
+              val next =
+                nes.copy[e](es = nes.es.copy[e](ls = ls.copy[e](utxo = ls.utxo.copy[e](gov = gov))))
+              m.copy(ext =
+                m.ext.copy(ledgerState =
+                  m.ext.ledgerState.withState(EraLedgerState.inEra[e](i.state.copy[e](nes = next)))
+                )
+              )
+            case other => fail(s"not a Shelley-based state: $other"))
+          val written = SnapshotV10.encoded(changed, leios).fold(e => fail(e.toString), identity)
+          val writtenParams =
+            SnapshotV10.sidecarOf(written).fold(e => fail(e.message), identity).chain match
+              case c: SnapshotSidecar.Chain.InShelley => c.params
+              case other => fail(s"not a Shelley-based sidecar: $other")
+          assertEquals(writtenParams.maxTxSize, BigInt(12345))
+          assertEquals(writtenParams.d, xyz.kd5ujc.scarab.codec.Rational.one)
+          assertEquals(writtenParams.copy(maxTxSize = params.maxTxSize), params)
         }
       yield ()
     }

@@ -19,7 +19,6 @@ import xyz.kd5ujc.scarab.ledger.{
 import xyz.kd5ujc.scarab.plutus.{ScriptDecoder, ScriptEvaluator}
 import xyz.kd5ujc.scarab.ledger.era.*
 import xyz.kd5ujc.scarab.ledger.era.conway.{ConwayProposals, ConwayTxCert, ConwayUTxO}
-import xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraProposals
 import xyz.kd5ujc.scarab.ledger.rules.{Convert, Globals, Judge, Sts, Test, focus}
 import xyz.kd5ujc.scarab.ledger.state.{
   AccountAddress,
@@ -28,7 +27,6 @@ import xyz.kd5ujc.scarab.ledger.state.{
   Coin,
   Conway,
   ConwayGovState,
-  Dijkstra,
   EpochNo,
   EraTag,
   GovState,
@@ -77,11 +75,10 @@ final case class LedgersEnv[E <: EraTag](
     ledgersAccount: ChainAccountState
 )
 
-/** How era `E` reads the node's record of the proposals into its [[Proposals]] and writes them
+/** How era `E` reads the node's flat record of the proposals into its [[Proposals]] and writes them
   * back, until the governance state holds the reference's `Proposals era` itself (#85): glue, the
-  * reference's `proposalsGovStateL`. A write is refused only where the record cannot hold an action
-  * (Dijkstra's update of a key Dijkstra adds, [[ProposalsWriteError]]). Only this package makes
-  * one.
+  * reference's `proposalsGovStateL`, Conway's only; Dijkstra's governance state is the era's
+  * record, whose proposals its LEDGER is given (`DijkstraLedger`). Only this package makes one.
   */
 sealed trait ProposalsRecord[E <: EraTag]:
   def read(stored: StoredProposals): Either[ProposalsReadError, Proposals[E]]
@@ -93,18 +90,6 @@ object ProposalsRecord:
       ConwayProposals.fromStored(stored)
     def write(proposals: Proposals[Conway]): Either[ProposalsWriteError, StoredProposals] =
       Right(ConwayProposals.toStored(proposals))
-
-  /** Dijkstra's ([[DijkstraProposals]]). Dijkstra's LEDGER does not read its proposals through it
-    * yet ([[DijkstraLedger]] keeps them in their own capability): the testnet chain's proposals
-    * update parameters Dijkstra adds, which the flat record cannot hold, so its suites' chain
-    * transactions would be refused at the write. It reads them so once the ledger state holds the
-    * era's governance record.
-    */
-  given dijkstra: ProposalsRecord[Dijkstra] with
-    def read(stored: StoredProposals): Either[ProposalsReadError, Proposals[Dijkstra]] =
-      DijkstraProposals.fromStored(stored)
-    def write(proposals: Proposals[Dijkstra]): Either[ProposalsWriteError, StoredProposals] =
-      DijkstraProposals.toStored(proposals)
 
   /** The proposals of the ledger state's governance record, read into the era's on every `get` and
     * written back on every `set`: a record the era cannot read is raised (`readError`), and

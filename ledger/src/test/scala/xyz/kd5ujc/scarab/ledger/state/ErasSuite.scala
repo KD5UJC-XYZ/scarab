@@ -84,7 +84,15 @@ class ErasSuite extends FunSuite:
     assertEquals(typeCheckErrors("val c: CertState[Alonzo] = LedgerStateGen.shelleyCert"), Nil)
     // Dijkstra's families are Conway's records (cardano-ledger 9df9f98c `Dijkstra/State/*.hs`)
     assertEquals(typeCheckErrors("val c: CertState[Dijkstra] = LedgerStateGen.conwayCert"), Nil)
-    assertEquals(typeCheckErrors("val g: GovState[Dijkstra] = LedgerStateGen.conwayGov"), Nil)
+    // its governance family is the era's own record (`Dijkstra/Governance.hs:29`, cardano-ledger
+    // 9df9f98c), not the flat one
+    assertEquals(
+      typeCheckErrors(
+        "val g: GovState[Dijkstra] = xyz.kd5ujc.scarab.ledger.era.ConwayGovState.empty[Dijkstra](using xyz.kd5ujc.scarab.ledger.era.EraPParams.dijkstra)"
+      ),
+      Nil
+    )
+    assert(typeCheckErrors("val g: GovState[Dijkstra] = LedgerStateGen.conwayGov").nonEmpty)
     assert(typeCheckErrors("val c: CertState[Dijkstra] = LedgerStateGen.shelleyCert").nonEmpty)
     assert(ShelleyBasedEra.SDijkstra.shapes.isRight)
     assertEquals(

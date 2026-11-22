@@ -11,6 +11,7 @@ import xyz.kd5ujc.scarab.ledger as node
 import xyz.kd5ujc.scarab.ledger.{ConfigError, ConfigProblem, GenesisPoolFields, GenesisState, Ptr}
 import xyz.kd5ujc.scarab.ledger.GenesisState.{FundAddress, InjectionData, InjectionSource}
 import xyz.kd5ujc.scarab.ledger.byron.ByronOut
+import xyz.kd5ujc.scarab.ledger.era.{CostModels, PParams, THKD}
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.protocol.{Era, StateLayout}
 
@@ -45,6 +46,11 @@ enum GenesisStartError extends DomainError derives Show:
   /** The era the chain starts in is not reached by the translations from Shelley. */
   case UnreachableEra(era: Era)
 
+  /** A parameter of the genesis does not fit the era's type (Dijkstra's cost models,
+    * [[xyz.kd5ujc.scarab.ledger.era.PParamsError]]).
+    */
+  case Parameters(cause: xyz.kd5ujc.scarab.ledger.era.PParamsError)
+
   /** A part of the Dijkstra era this build does not implement yet. */
   case NotYet(part: xyz.kd5ujc.scarab.protocol.DijkstraNotYet)
 
@@ -58,6 +64,7 @@ object GenesisStartError:
   private given Show[Era] = Show.fromToString
   private given Show[xyz.kd5ujc.scarab.protocol.DijkstraNotYet] = Show.fromToString
   private given Show[LeiosCommitteeError] = Show.fromToString
+  private given Show[xyz.kd5ujc.scarab.ledger.era.PParamsError] = Show.fromToString
 
 /** What the genesis files inject into the state of the era a chain starts in: the
   * `TransitionConfig` data of the reference that is only for test networks (`tcInitialFundsL`,
@@ -332,7 +339,8 @@ object GenesisStart:
       _ <- Either.cond(!injections.mainnet, (), GenesisStartError.InjectionNotAllowedOnMainnet)
       poolsSource <- resolve("stakePools", injections.stakePools)
       stakeSource <- resolve("stakeCredentials", injections.stakeCredentials)
-      funded <- registerInitialFunds(injections, alonzoInjectCostModels(injections, nes))
+      injected <- alonzoInjectCostModels(injections, nes)
+      funded <- registerInitialFunds(injections, injected)
       pools <- embedded("stakePools", poolsSource)
       pooled <- injectStakePools(pools, funded)
       stake <- embedded("stakeCredentials", stakeSource)
@@ -447,24 +455,49 @@ object GenesisStart:
     */
   def alonzoInjectCostModels[E <: EraTag](injections: GenesisInjections, nes: NewEpochState[E])(
       using era: ShelleyBasedEra[E]
-  ): NewEpochState[E] =
+  ): Either[GenesisStartError, NewEpochState[E]] =
     val alonzoOnwards = era match
       case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary  => false
       case ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage | ShelleyBasedEra.SConway => true
       // `instance AlonzoEraTransition DijkstraEra` (9df9f98c `Dijkstra/Transition.hs:70`)
       case ShelleyBasedEra.SDijkstra => true
-    if !alonzoOnwards || injections.costModels.isEmpty then nes
+    if !alonzoOnwards || injections.costModels.isEmpty then Right(nes)
     else
       val ls = nes.es.ls
       val gov = ls.utxo.gov
-      val cur = EraLedger.curPParams(gov)
-      val next = EraLedger.withPParams(
-        gov,
-        cur.copy(costModels = cur.costModels ++ injections.costModels),
-        EraLedger.prevPParams(gov),
-        EraLedger.futurePParams(gov)
-      )
-      withLedger(nes, ls.copy[E](utxo = ls.utxo.copy[E](gov = next)))
+      def withGov(next: GovState[E]): NewEpochState[E] =
+        withLedger(nes, ls.copy[E](utxo = ls.utxo.copy[E](gov = next)))
+      era.gov.flat match
+        case Some(flat) =>
+          given FlatGov[E] = flat
+          val cur = EraLedger.curPParams(gov)
+          Right(
+            withGov(
+              EraLedger.withPParams(
+                gov,
+                cur.copy(costModels = cur.costModels ++ injections.costModels),
+                EraLedger.prevPParams(gov),
+                EraLedger.futurePParams(gov)
+              )
+            )
+          )
+        case None =>
+          era.gov match
+            case GovShape.Era(ev) =>
+              // Dijkstra's record: its own cost models, `updateCostModels` over them
+              val d = ev(gov)
+              val pp = d.cgsCurPParams.hkd
+              CostModels
+                .from(pp.costModels.unTHKD.models ++ injections.costModels)
+                .leftMap(GenesisStartError.Parameters(_))
+                .map(models =>
+                  withGov(
+                    ev.flip(
+                      d.copy(cgsCurPParams = PParams[Dijkstra](pp.copy(costModels = THKD(models))))
+                    )
+                  )
+                )
+            case GovShape.Proposed(_) | GovShape.Flat(_) => Right(nes)
 
   private def withLedger[E <: EraTag](nes: NewEpochState[E], ls: LedgerState[E]): NewEpochState[E] =
     nes.copy(es = nes.es.copy(ls = ls))

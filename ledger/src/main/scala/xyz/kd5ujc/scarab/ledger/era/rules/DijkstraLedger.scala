@@ -333,7 +333,7 @@ object DijkstraLedger:
       _ <- t.isValid(tx) match
         case IsPhase2Valid.Phase2Valid =>
           val govState = afterSubLedgers.utxo.gov
-          val committee = govState.committee
+          val committee = govState.cgsCommittee
           for
             proposalsAfterSubLedgers <- proposals.get
             _ <- judge.nest(
@@ -360,7 +360,7 @@ object DijkstraLedger:
             certStateAfterEntities <- state.inspect(certL.get)
             txId <- vocab[F, Hash32](Hash32.fromBytes(b.id[TxLevel.Top](txBody)))
             guardrails <- vocab[F, Option[ScriptHash]](
-              govState.constitution.script.traverse(ScriptHash.fromBytes)
+              govState.cgsConstitution.script.traverse(ScriptHash.fromBytes)
             )
             _ <- judge.nest(
               ConwayGov.conwayGovTransition[F, Dijkstra](

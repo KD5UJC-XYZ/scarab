@@ -58,7 +58,6 @@ import xyz.kd5ujc.scarab.ledger.era.{
   EraPParams,
   EraTx,
   EraTxBody,
-  GovStateRecord,
   IsPhase2Valid,
   PParams,
   Proposals,
@@ -76,8 +75,7 @@ import xyz.kd5ujc.scarab.ledger.era.rules.{
   DijkstraMempoolRun,
   DijkstraUtxoPredFailure,
   DijkstraUtxowPredFailure,
-  InjectMempoolFailure,
-  ProposalsRecord
+  InjectMempoolFailure
 }
 import xyz.kd5ujc.scarab.ledger.rules.EraLedger
 import xyz.kd5ujc.scarab.ledger.state.Dijkstra
@@ -400,16 +398,11 @@ object MempoolLedger:
   * (`LedgerSupportsMempool (ShelleyBlock proto DijkstraEra)`, ouroboros-consensus 2416493b
   * `ouroboros-consensus-cardano/src/shelley/Ouroboros/Consensus/Shelley/Ledger/Mempool.hs:214-245`):
   * the ledger state (`mkMempoolState`, cardano-ledger 9df9f98c `Shelley/API/Mempool.hs:384-385`)
-  * and the chain account of a state ticked to the slot judged at, and its parameters and proposals
-  * in the era's types, the proposals kept beside the state as the block path keeps them
-  * (`DijkstraBlockRun`). The pool's ledger holds one ([[DijkstraLedger]]), and so does a forging
-  * snapshot, judged at the slot it forges in.
+  * and the chain account of a state ticked to the slot judged at, its parameters and proposals
+  * those of its governance state, the era's record. The pool's ledger holds one
+  * ([[DijkstraLedger]]), and so does a forging snapshot, judged at the slot it forges in.
   */
-final case class DijkstraState private (
-    ls: LedgerState[Dijkstra],
-    account: ChainAccountState,
-    readable: Either[DijkstraUnjudged, DijkstraState.Readable]
-):
+final case class DijkstraState private (ls: LedgerState[Dijkstra], account: ChainAccountState):
   def utxo: Utxo = ls.utxo.utxo.utxo
 
   def withUtxo(u: Utxo): DijkstraState =
@@ -421,8 +414,9 @@ final case class DijkstraState private (
   private def refused(id: Bytes)(failures: NonEmptyChain[DijkstraMempoolPredFailure[Dijkstra]]) =
     Rejection.DijkstraRefused(id, failures)
 
-  private def judgeable(id: Bytes): Either[Rejection, DijkstraState.Readable] =
-    readable.leftMap(unjudged(id))
+  /** The state's parameters and proposals: its governance state's. */
+  private def readable: DijkstraState.Readable =
+    DijkstraState.Readable(ls.utxo.gov.cgsCurPParams, ls.utxo.gov.cgsProposals)
 
   /** The stored outputs of the transaction's inputs, read into the era. */
   private def utxoOf(t: DijkstraRead): Either[Rejection, UTxO[Dijkstra]] =
@@ -439,27 +433,26 @@ final case class DijkstraState private (
     * `:718-728`). The measure's bytes are the size plus [[Capacity.PerTxOverhead]].
     */
   def phase1(t: DijkstraRead): Either[Rejection, TxMeasure] =
-    judgeable(t.id).flatMap { r =>
-      val size = BigInt(t.size)
-      val maxTxSize = EraPParams.ppMaxTxSizeL[Dijkstra].get(r.pp).value
-      val units = EraTx.dijkstra.getTotalExUnits[TxLevel.Top](t.tx)(using BothLevels.Top)
-      val maxTxExUnits = AlonzoEraPParams.ppMaxTxExUnitsL[Dijkstra].get(r.pp).units
-      val inject = InjectMempoolFailure.dijkstraUtxo
-      val tooBig = Option.unless(size <= maxTxSize)(
-        inject.injectFailure(
-          DijkstraUtxoPredFailure.MaxTxSizeUTxO[Dijkstra](Mismatch(size, maxTxSize))
-        )
+    val r = readable
+    val size = BigInt(t.size)
+    val maxTxSize = EraPParams.ppMaxTxSizeL[Dijkstra].get(r.pp).value
+    val units = EraTx.dijkstra.getTotalExUnits[TxLevel.Top](t.tx)(using BothLevels.Top)
+    val maxTxExUnits = AlonzoEraPParams.ppMaxTxExUnitsL[Dijkstra].get(r.pp).units
+    val inject = InjectMempoolFailure.dijkstraUtxo
+    val tooBig = Option.unless(size <= maxTxSize)(
+      inject.injectFailure(
+        DijkstraUtxoPredFailure.MaxTxSizeUTxO[Dijkstra](Mismatch(size, maxTxSize))
       )
-      val tooMuch = Option.unless(units.fits(maxTxExUnits))(
-        inject.injectFailure(
-          DijkstraUtxoPredFailure.ExUnitsTooBigUTxO[Dijkstra](Mismatch(units, maxTxExUnits))
-        )
+    )
+    val tooMuch = Option.unless(units.fits(maxTxExUnits))(
+      inject.injectFailure(
+        DijkstraUtxoPredFailure.ExUnitsTooBigUTxO[Dijkstra](Mismatch(units, maxTxExUnits))
       )
-      NonEmptyChain
-        .fromSeq(tooBig.toList ++ tooMuch.toList)
-        .map(refused(t.id))
-        .toLeft(TxMeasure(t.size + Capacity.PerTxOverhead, units.mem, units.steps, 0L))
-    }
+    )
+    NonEmptyChain
+      .fromSeq(tooBig.toList ++ tooMuch.toList)
+      .map(refused(t.id))
+      .toLeft(TxMeasure(t.size + Capacity.PerTxOverhead, units.mem, units.steps, 0L))
 
   /** `txMeasurePhase2` of Dijkstra (`txMeasureRefScripts`, `Shelley/Ledger/Mempool.hs:775-798`):
     * the reference-script bytes of the top-level transaction's spent and reference inputs
@@ -469,8 +462,8 @@ final case class DijkstraState private (
     * `DijkstraTxRefScriptsSizeTooBig` (`:812-821`).
     */
   def phase2(t: DijkstraRead): Either[Rejection, Long] =
+    val r = readable
     for
-      r <- judgeable(t.id)
       u <- utxoOf(t)
       size = DijkstraState.refScriptsSize(u, t.tx)
       limit = EraPParams.dijkstra.ppMaxRefScriptSizePerTxG.get(r.pp).value.toLong
@@ -491,8 +484,7 @@ final case class DijkstraState private (
 
   /** MEMPOOL on `stAnnTx` with `validation` ([[DijkstraMempoolRun.mempool]]), at `mkMempoolEnv` of
     * the slot (`Shelley/API/Mempool.hs:363-377`, cardano-ledger 9df9f98c;
-    * [[DijkstraClosure.mkMempoolEnv]]): the ledger after it, its proposals written back into the
-    * state's record, whose refusal is [[DijkstraUnjudged.Unstorable]].
+    * [[DijkstraClosure.mkMempoolEnv]]): the ledger after it, its proposals the governance state's.
     */
   private def judged(
       id: Bytes,
@@ -515,20 +507,13 @@ final case class DijkstraState private (
       )
       .leftMap(d => unjudged(id)(DijkstraUnjudged.Rules(d)))
       .flatMap(_.leftMap(refused(id)))
-      .flatMap { (after, proposals) =>
-        ProposalsRecord.dijkstra
-          .write(proposals)
-          .bimap(
-            e => unjudged(id)(DijkstraUnjudged.Unstorable(e)),
-            stored =>
-              copy(
-                ls = after.copy[Dijkstra](utxo =
-                  after.utxo.copy[Dijkstra](gov = after.utxo.gov.copy(proposals = stored))
-                ),
-                readable = Right(r.copy(proposals = proposals))
-              )
+      .map((after, proposals) =>
+        copy(ls =
+          after.copy[Dijkstra](utxo =
+            after.utxo.copy[Dijkstra](gov = after.utxo.gov.copy(cgsProposals = proposals))
           )
-      }
+        )
+      )
 
   /** `applyTxWithFullValidation` (`Shelley/API/Mempool.hs:406-413`, cardano-ledger 9df9f98c) of `t`
     * as it is (`defaultApplyShelleyBasedTx`, ouroboros-consensus 2416493b
@@ -540,8 +525,8 @@ final case class DijkstraState private (
       t: DijkstraRead,
       env: DijkstraPoolEnv
   ): Either[Rejection, (DijkstraState, DijkstraAdmitted)] =
+    val r = readable
     for
-      r <- judgeable(t.id)
       u <- utxoOf(t)
       stAnnTx = DijkstraMempoolRun.annotate(env.clock.posix, r.pp, u, t.tx)
       next <- judged(t.id, r, stAnnTx, env, TxEnv.Validation.All)
@@ -582,12 +567,11 @@ final case class DijkstraState private (
     */
   def reapply(held: DijkstraAdmitted, env: DijkstraPoolEnv): Either[Rejection, DijkstraState] =
     val id = held.read.id
-    judgeable(id).flatMap { r =>
-      val current = EraPParams.dijkstra.ppProtocolVersionL.get(r.pp)
-      if current.pvMajor == held.validated.protocolVersion.pvMajor then
-        judged(id, r, held.validated.stAnnTx, env, TxEnv.Validation.NonStatic)
-      else applyFull(held.read, env).map(_._1)
-    }
+    val r = readable
+    val current = EraPParams.dijkstra.ppProtocolVersionL.get(r.pp)
+    if current.pvMajor == held.validated.protocolVersion.pvMajor then
+      judged(id, r, held.validated.stAnnTx, env, TxEnv.Validation.NonStatic)
+    else applyFull(held.read, env).map(_._1)
 
 object DijkstraState:
   /** The state's parameters and proposals in the era's types. */
@@ -595,23 +579,10 @@ object DijkstraState:
 
   /** The state of `nes` a Dijkstra transaction is judged against (`mkMempoolState`,
     * `Shelley/API/Mempool.hs:384-385`, cardano-ledger 9df9f98c): its ledger state and chain
-    * account, and its parameters and proposals in the era's types, which, if they cannot be read,
-    * leave a state that judges no transaction ([[DijkstraUnjudged]]).
+    * account.
     */
   def of(nes: NewEpochState[Dijkstra]): DijkstraState =
-    val ls = nes.es.ls
-    DijkstraState(
-      ls,
-      nes.es.chainAccount,
-      for
-        pp <- GovStateRecord.dijkstra
-          .pparams(EraLedger.curPParams(ls.utxo.gov))
-          .leftMap(DijkstraUnjudged.Parameters(_))
-        proposals <- ProposalsRecord.dijkstra
-          .read(ls.utxo.gov.proposals)
-          .leftMap(DijkstraUnjudged.Proposals(_))
-      yield Readable(pp, proposals)
-    )
+    DijkstraState(nes.es.ls, nes.es.chainAccount)
 
   /** `isIncorrectClaimedFlag` of Dijkstra (`Shelley/Eras.hs:409-420`, ouroboros-consensus
     * 2416493b): the only failure is UTXOS's `ValidationTagMismatch`, under LEDGER's UTXOW and UTXO,

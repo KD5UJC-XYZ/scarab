@@ -16,11 +16,7 @@ import xyz.kd5ujc.scarab.ledger.era.{
   GovActionPurpose,
   GovActionState,
   GovPurposeId,
-  GovStateBases,
-  Proposals,
-  ProposalsWriteError,
-  StoredGov,
-  StoredGovError
+  Proposals
 }
 import xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraProposals
 import xyz.kd5ujc.scarab.ledger.era.rules.{CERTS, ConwayEpoch}
@@ -32,9 +28,9 @@ import xyz.kd5ujc.scarab.storage.{ExternalInputs, LeiosReferenceStates}
 import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellState, LeiosStateCodecs}
 
 /** Dijkstra's EPOCH on the era types ([[xyz.kd5ujc.scarab.ledger.era.rules.DijkstraEpoch]]) where
-  * the governance state holds an action that updates keys Dijkstra adds, which the node's record
-  * cannot hold, so the node's tick cannot run it: through [[EraDijkstraTick]], each state read and
-  * written by [[DijkstraGovStateBytes]].
+  * the governance state holds an action that updates keys Dijkstra adds: through
+  * [[EraDijkstraTick]], the governance state changed between ticks, each state read and written by
+  * the node's codec ([[DijkstraGovStateBytes]]).
   *
   *   - The Leios build's `ratify` case (`fixtures/reference/dijkstra-epoch/ratification.json`,
   *     oracle `scripts/oracle/dijkstra-epoch`): the testnet's state at epoch 100 with a change of
@@ -183,14 +179,13 @@ class DijkstraEraEpochGovSuite extends FunSuite with ExternalInputs:
         right("derived")(
           DijkstraGovStateBytes.read(file(fixture.resolve(text(derivation, "file"))))
         )
-      val bases = GovStateBases.of(derived.nes.es.ls.utxo.gov)
       val id = govActionId(text(derivation.downField("changes").downN(0), "id"))
       val ticks = right("ticks")(path.downField("ticks").values.toRight("none")).map(_.hcursor)
       val end = ticks.foldLeft(derived.state) { (before, tick) =>
         val slot = right("slot")(SlotNo.fromBigInt(number(tick, "slot")))
         val at = s"$name at slot ${number(tick, "slot")}"
         val after = right(at)(EraDijkstraTick.tick(globals, before, slot).leftMap(_.toString))
-        val written = right(at)(DijkstraGovStateBytes.write(after, bases, derived.proposals))
+        val written = right(at)(DijkstraGovStateBytes.write(after))
         assertEquals(sha256(written), text(tick, "stateSha256"), at)
         assertEquals(BigInt(written.size), number(tick, "bytes"), at)
         after
@@ -204,21 +199,24 @@ class DijkstraEraEpochGovSuite extends FunSuite with ExternalInputs:
     }
   }
 
-  // the node's path reads and writes the governance record at every tick (`StoredGov`): a state
-  // with the ratify case's action, an update of keys 47 and 48, is one the record cannot hold
-  test("the ratify case's state is refused by the node's record with the action and its keys") {
-    val derived = right("derived")(
-      DijkstraGovStateBytes.read(
-        file(fixture.resolve(text(record.downField("derivation"), "file")))
-      )
+  // the node's codec holds the ratify case's action, an update of keys 47 and 48, as the build
+  // writes it: the derived state reads and writes back byte for byte, and the node's tick runs on it
+  test("the ratify case's state is the node's, byte for byte, and its tick is the era's") {
+    val bytes = file(fixture.resolve(text(record.downField("derivation"), "file")))
+    val derived = right("derived")(DijkstraGovStateBytes.read(bytes))
+    assertEquals(right("written")(DijkstraGovStateBytes.write(derived.state)).hex, bytes.hex)
+    val slot = right("slot")(SlotNo.fromBigInt(firstTick))
+    val era = right("era")(EraDijkstraTick.tick(globals, derived.state, slot).leftMap(_.toString))
+    val node = right("node")(
+      Sts(Tick.sts[Dijkstra])(globals, (), derived.nes, slot).leftMap(_.toString)
     )
-    val id = govActionId(text(record.downField("derivation").downField("changes").downN(0), "id"))
-    StoredGov.dijkstra.write(derived.gov, derived.gov, derived.nes.es.ls.utxo.gov) match
-      case Left(StoredGovError.Write(ProposalsWriteError.UnstorableUpdate(refused, keys))) =>
-        assertEquals(refused, id)
-        assertEquals(keys.toSortedSet.toSet, Set(BigInt(47), BigInt(48)))
-      case other => fail(s"not the record's refusal: $other")
+    assertEquals(node, EraDijkstraTick.stored(era))
   }
+
+  /** The first tick of the ratify case's first path. */
+  private def firstTick: BigInt =
+    val path = record.downField("paths").downN(0)
+    number(path.downField("ticks").downN(0), "slot")
 
   private val nodeCodec = LeiosStateCodecs.newEpochState[Dijkstra]
 
@@ -426,9 +424,8 @@ class DijkstraEraEpochGovSuite extends FunSuite with ExternalInputs:
     val derivation = governanceCase.downField("derivation")
 
     test(s"the $name case's derived state is the testnet's with its actions proposed") {
-      val (derived, originals) = derivedOf(derivation)
-      val bases = GovStateBases.of(testnet.nes.es.ls.utxo.gov)
-      val written = right("written")(DijkstraGovStateBytes.write(derived, bases, originals))
+      val (derived, _) = derivedOf(derivation)
+      val written = right("written")(DijkstraGovStateBytes.write(derived))
       assertEquals(sha256(written), text(derivation, "stateSha256"))
       assertEquals(BigInt(written.size), number(derivation, "bytes"))
       assertGovernance(derived, derivation.downField("governance"), watched(governanceCase), name)
@@ -440,8 +437,7 @@ class DijkstraEraEpochGovSuite extends FunSuite with ExternalInputs:
         test(
           s"the $name case, $pathName: the era's EPOCH agrees with the build's after every slot"
         ) {
-          val (derived, originals) = derivedOf(derivation)
-          val bases = GovStateBases.of(testnet.nes.es.ls.utxo.gov)
+          val (derived, _) = derivedOf(derivation)
           val w = watched(governanceCase)
           val ticks = right("ticks")(path.downField("ticks").values.toRight("none")).map(_.hcursor)
           ticks.foldLeft(derived) { (before, tick) =>
@@ -457,7 +453,7 @@ class DijkstraEraEpochGovSuite extends FunSuite with ExternalInputs:
             )
             if after.nes.epoch != before.nes.epoch then assertRemovals(before, removals, at)
             else assert(removals.focus.exists(_.isNull), s"$at: no removals inside an epoch")
-            val written = right(at)(DijkstraGovStateBytes.write(after, bases, originals))
+            val written = right(at)(DijkstraGovStateBytes.write(after))
             assertEquals(sha256(written), text(tick, "stateSha256"), at)
             assertEquals(BigInt(written.size), number(tick, "bytes"), at)
             after
@@ -541,27 +537,20 @@ class DijkstraEraEpochGovSuite extends FunSuite with ExternalInputs:
         assertEquals(kept, boundary, "the boundary's proposals, whole")
         assert(proposed.forall(_.gasProposedIn == later.nes.epoch), "proposed in its epoch")
         // the pulser written is the later state's, byte for byte
-        val written = right("written")(
-          DijkstraGovStateBytes.write(
-            after,
-            GovStateBases.of(before.nes.es.ls.utxo.gov),
-            before.proposals
-          )
-        )
+        val written = right("written")(DijkstraGovStateBytes.write(after))
         assertEquals(
           pulserBytes(written).hex,
           pulserBytes(right("later")(DijkstraGovStateBytes.newEpochStateOfFile(file(toPath)))).hex
         )
-        // a state the node's record holds (none of its actions updates keys 34 to 56) runs the
-        // node's tick too, the governance record read and written back, to the same bytes: of the
-        // three, only the state before proposal 2 is proposed
+        // the node's codec reads every one of the three states, proposal 2's update of keys 47 and
+        // 48 among them, and the node's tick gives the same bytes
         val nodeRead = right("CBOR")(
           Cbor.decode(
             right("from")(DijkstraGovStateBytes.newEpochStateOfFile(file(fromPath))),
             HaskellState.limits
           )
         ).pipe(nodeCodec.decode)
-        assertEquals(nodeRead.isRight, from == 1533582, "read by the node's codec")
+        assert(nodeRead.isRight, s"read by the node's codec: $nodeRead")
         nodeRead.toOption.foreach { nes =>
           val ticked = right("the node's tick")(
             Sts(Tick.sts[Dijkstra])(

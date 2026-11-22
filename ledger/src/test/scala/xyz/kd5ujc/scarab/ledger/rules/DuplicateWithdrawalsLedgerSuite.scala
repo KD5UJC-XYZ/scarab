@@ -40,7 +40,7 @@ class DuplicateWithdrawalsLedgerSuite extends FunSuite:
       era: ShelleyBasedEra[E],
       pre: PreConway[E]
   ): LedgerState[E] =
-    val empty = Empty.ledgerState[E](params(major))
+    val empty = xyz.kd5ujc.scarab.ledger.state.Build.ledgerState[E](params(major))
     val registered = ShelleyCertOps.register(
       pre.cert.get(empty),
       stake,

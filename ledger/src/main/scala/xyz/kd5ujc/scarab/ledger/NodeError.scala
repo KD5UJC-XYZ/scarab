@@ -416,11 +416,11 @@ enum ChainError extends NodeError:
     */
   case LeiosCommittee(slot: BigInt, cause: xyz.kd5ujc.scarab.ledger.state.LeiosCommitteeError)
 
-  /** Dijkstra's tick for `slot` met a governance record that does not hold the era's state it works
-    * on ([[rules.TickFailure.GovRecord]]): a record the era's types do not read, or a state the
-    * record cannot hold. The reference holds the era's record itself, so it meets neither: this is
-    * neither a verdict on a block nor a fault of the peer that sent it, as a state out of range is
-    * not ([[StateOutOfRange]]).
+  /** The tick for `slot` that enters Dijkstra met a Conway governance record that does not read
+    * into Dijkstra's ([[rules.TickFailure.GovRecord]]), which only a damaged record gives. The
+    * reference translates its own record, so it does not meet it: this is neither a verdict on a
+    * block nor a fault of the peer that sent it, as a state out of range is not
+    * ([[StateOutOfRange]]).
     */
   case GovRecord(slot: BigInt, cause: xyz.kd5ujc.scarab.ledger.era.StoredGovError)
 

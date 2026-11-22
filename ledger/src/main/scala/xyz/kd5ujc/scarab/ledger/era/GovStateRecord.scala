@@ -99,10 +99,11 @@ enum GovStateReadError:
   /** A credential of the enact state's withdrawals of another length than a stake credential's. */
   case Withdrawal(error: VocabError)
 
-/** How era `E` reads the node's record of the governance state (the flat
+/** How era `E` reads the node's flat record of the governance state (the flat
   * [[xyz.kd5ujc.scarab.ledger.state.ConwayGovState]]) into its [[ConwayGovState]] and writes it
-  * back: its parameters, its proposals and each action state the record holds. Glue, until the
-  * ledger state holds the era's record itself. One instance per era, in the companion.
+  * back: its parameters, its proposals and each action state the record holds. Glue: Conway's
+  * ledger state holds the flat record; Dijkstra's holds the era's record, read from Conway's flat
+  * one where the chain enters Dijkstra ([[fromStored]]). One instance per era, in the companion.
   */
 sealed trait GovStateRecord[E <: EraTag]:
   /** The era's fields of the node's parameters. */
@@ -119,6 +120,27 @@ sealed trait GovStateRecord[E <: EraTag]:
   def storedAction(gas: GovActionState[E]): Either[ProposalsWriteError, StoredGovActionState]
 
 object GovStateRecord:
+  /** Dijkstra's parameters `pp` as the node's flat record, every field of the other eras at zero
+    * ([[ProtocolParams.empty]]), as the Haskell state codec read them before the ledger state held
+    * the era's record: what the node's rules that still read the flat record read of a Dijkstra
+    * state (`EraLedger.curPParams`).
+    */
+  def view(pp: PParams[Dijkstra]): ProtocolParams = viewOver(pp, ProtocolParams.empty)
+
+  /** Dijkstra's parameters `pp` laid over the flat record `base`: every field of the era's from
+    * `pp`, the others `base` 's, as a restored snapshot's sidecar is written again.
+    */
+  def viewOver(pp: PParams[Dijkstra], base: ProtocolParams): ProtocolParams =
+    DijkstraPParams.toStored(pp.hkd, base)
+
+  /** Dijkstra's future parameters as the node's flat record ([[view]]). */
+  def futureView(f: FuturePParams[Dijkstra]): StoredFuturePParams = f match
+    case FuturePParams.NoPParamsUpdate() => StoredFuturePParams.NoPParamsUpdate
+    case FuturePParams.DefinitePParamsUpdate(pp) =>
+      StoredFuturePParams.DefinitePParamsUpdate(view(pp))
+    case FuturePParams.PotentialPParamsUpdate(pp) =>
+      StoredFuturePParams.PotentialPParamsUpdate(pp.map(view))
+
   /** Conway's: its parameters ([[ConwayPParams.fromStored]]) and proposals ([[ConwayProposals]]),
     * whose every action the record holds.
     */

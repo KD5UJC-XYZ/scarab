@@ -22,9 +22,10 @@ import xyz.kd5ujc.scarab.ledger.state.{Coin, Conway, Credential, Dijkstra, EraTa
 // `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Governance.hs:28-49`): the proposals, the
 // parameters and the ratification of era `E`, and the classes `EraGov` and `ConwayEraGov` over
 // them. The committee, the constitution, the DReps' states and the distributions are the node's
-// types, the ones its record holds. The node stores the flat record
-// (`xyz.kd5ujc.scarab.ledger.state.ConwayGovState`), which each era reads in and writes back
-// ([[GovStateRecord]]), so nothing persisted changes.
+// types, the ones its record holds. The ledger state holds Dijkstra's record itself
+// (`xyz.kd5ujc.scarab.ledger.state.GovState`, #826), and Conway's flat record
+// (`xyz.kd5ujc.scarab.ledger.state.ConwayGovState`), which Conway reads in and writes back
+// ([[GovStateRecord]]).
 
 /** `data EnactState era` (`Governance/Internal.hs:129-141`, cardano-ledger f649f975): what enacting
   * the ratified actions changes, the committee, the constitution, the current and previous

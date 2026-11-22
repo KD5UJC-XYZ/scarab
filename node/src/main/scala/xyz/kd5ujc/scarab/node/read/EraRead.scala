@@ -90,9 +90,9 @@ trait EraRead[E <: EraTag]:
     */
   def ppup: Read[(Map[Bytes, flat.ParamUpdate], Map[Bytes, flat.ParamUpdate])]
 
-  /** The completed DRep pulser the state has run: none before Conway and, on a chain that entered
-    * Conway, before its first epoch boundary (the reference holds the pulser of the era translation
-    * then).
+  /** The completed DRep pulser the state has run, as the node's flat record: none before Conway
+    * and, on a chain that entered Conway, before its first epoch boundary (the reference holds the
+    * pulser of the era translation then); none in Dijkstra, whose record is the era's.
     */
   def pulsed: Read[Option[DRComplete]]
 
@@ -205,11 +205,12 @@ final class MirrorEraRead[E <: EraTag](val state: NewEpochState[E])(using
             g.curProposals.iterator.map((k, u) => k.bytes -> u).toMap,
             g.futureProposals.iterator.map((k, u) => k.bytes -> u).toMap
           ),
+        _ => (Map.empty, Map.empty),
         _ => (Map.empty, Map.empty)
       )
     )
 
   def pulsed: Read[Option[DRComplete]] =
-    Right(era.gov.on(ls.utxo.gov)(_ => None, conway => Some(conway.drepPulsing)))
+    Right(era.gov.on(ls.utxo.gov)(_ => None, conway => Some(conway.drepPulsing), _ => None))
 
   def nes: Read[NewEpochState[E]] = Right(state)

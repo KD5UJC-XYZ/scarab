@@ -50,9 +50,12 @@ object Empty:
   /** The governance state with `params` as the current and the previous parameters, no update
     * pending, and (Conway) no committee, an anchorless constitution and a completed empty pulser.
     */
-  def govState[E <: EraTag](params: ProtocolParams)(using era: ShelleyBasedEra[E]): GovState[E] =
-    era.gov.make(
-      ShelleyGovState(Sorted.empty, Sorted.empty, params, params, FuturePParams.NoPParamsUpdate), {
+  def govState[E <: EraTag](params: ProtocolParams)(using flat: FlatGov[E]): GovState[E] =
+    flat.record.fold(
+      _.flip(
+        ShelleyGovState(Sorted.empty, Sorted.empty, params, params, FuturePParams.NoPParamsUpdate)
+      ),
+      ev => {
         val constitution = Constitution(ConwayGenesis.noAnchor, None)
         val enact = EnactState(
           Some(Committee(Map.empty, Rational.zero)),
@@ -63,16 +66,18 @@ object Empty:
           Map.empty,
           PrevIds()
         )
-        ConwayGovState(
-          Proposals.empty,
-          None,
-          constitution,
-          params,
-          params,
-          FuturePParams.NoPParamsUpdate,
-          DRComplete(
-            PulsingSnapshot.empty,
-            RatifyState(enact, Vector.empty, Set.empty, delayed = false)
+        ev.flip(
+          ConwayGovState(
+            Proposals.empty,
+            None,
+            constitution,
+            params,
+            params,
+            FuturePParams.NoPParamsUpdate,
+            DRComplete(
+              PulsingSnapshot.empty,
+              RatifyState(enact, Vector.empty, Set.empty, delayed = false)
+            )
           )
         )
       }
@@ -82,7 +87,10 @@ object Empty:
   def stashedAvvm[E <: EraTag](using era: ShelleyBasedEra[E]): StashedAVVM[E] =
     era.stashedAvvm.make(UtxoTables(Utxo.empty), ())
 
-  def ledgerState[E <: EraTag](params: ProtocolParams)(using ShelleyBasedEra[E]): LedgerState[E] =
+  def ledgerState[E <: EraTag](params: ProtocolParams)(using
+      ShelleyBasedEra[E],
+      FlatGov[E]
+  ): LedgerState[E] =
     LedgerState[E](
       certState[E],
       UTxOState[E](
@@ -95,7 +103,10 @@ object Empty:
       )
     )
 
-  def epochState[E <: EraTag](params: ProtocolParams)(using ShelleyBasedEra[E]): EpochState[E] =
+  def epochState[E <: EraTag](params: ProtocolParams)(using
+      ShelleyBasedEra[E],
+      FlatGov[E]
+  ): EpochState[E] =
     EpochState[E](
       ChainAccountState(Coin.zero, Coin.zero),
       ledgerState[E](params),

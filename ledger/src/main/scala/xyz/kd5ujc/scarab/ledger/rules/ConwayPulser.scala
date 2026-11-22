@@ -7,8 +7,9 @@ import xyz.kd5ujc.scarab.ledger.state.*
 
 /** `setFreshDRepPulsingState` (`Conway/Governance.hs:458`, cardano-ledger f649f975): the DRep
   * pulser that starts at an epoch boundary, for the ratification that the next boundary applies. It
-  * is the same in every era with Conway's governance and certificate state ([[ConwayShapes]]),
-  * Dijkstra too (cardano-ledger 9df9f98c `Dijkstra/Rules/Epoch.hs:233`).
+  * is the same in every era with Conway's certificate state ([[ConwayShapes]]) and the node's flat
+  * governance record, Conway; Dijkstra's, the same rule (cardano-ledger 9df9f98c
+  * `Dijkstra/Rules/Epoch.hs:233`), is on the era's record (`era.DRepPulser`).
   *
   * Haskell spreads the pulser over the epoch (it works through the accounts a few at a time, so the
   * DRep distribution is ready two stability windows before the end of the epoch) and keeps it
@@ -26,11 +27,12 @@ object ConwayPulser:
     * the new `mark` snapshot's, with the deposits of the accounts that delegate to those pools.
     */
   def fresh[E <: EraTag](globals: Globals, es: EpochState[E], epoch: EpochNo)(using
-      shapes: ConwayShapes[E]
+      shapes: ConwayShapes[E],
+      gs: GovState[E] =:= ConwayGovState
   ): DRComplete =
     val ls = es.ls
     val cert: ConwayCertState = shapes.cert(ls.cert)
-    val gov: ConwayGovState = shapes.gov(ls.utxo.gov)
+    val gov: ConwayGovState = gs(ls.utxo.gov)
     val accounts = cert.dState.accounts.states
     // Ratification reads an account for one thing, the DRep that a pool's reward account
     // delegates to, so only those accounts are put in the node's form, not every account

@@ -27,10 +27,12 @@ import xyz.kd5ujc.scarab.ledger.era.{
   DRepPulsingState,
   EraGov,
   FuturePParams as EraFuturePParams,
+  GovAction as EraGovAction,
   GovState as EraGovState,
   GovStateBases,
   GovStateParams,
-  GovStateRecord
+  GovStateRecord,
+  Proposals as EraProposals
 }
 import xyz.kd5ujc.scarab.ledger.state.{
   Conway,
@@ -41,10 +43,8 @@ import xyz.kd5ujc.scarab.ledger.state.{
   GovState,
   NewEpochState
 }
-import xyz.kd5ujc.scarab.ledger.era.ProposalsWriteError
 import xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraProposals
-import xyz.kd5ujc.scarab.models.runtime.{Codec, DecodeError}
-import xyz.kd5ujc.scarab.protocol.DijkstraNotYet
+import xyz.kd5ujc.scarab.models.runtime.Codec
 import xyz.kd5ujc.scarab.storage.haskell.state.{
   HaskellState,
   HaskellStateCodecs,
@@ -54,21 +54,21 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{
   ReferenceLayout
 }
 
-/** The governance state of every recorded Conway and Dijkstra state the repository holds, read into
-  * the era types (`GovStateRecord.fromStored`) and written back (`GovStateRecord.toStored`)
-  * identical: the flat record the state's codec read, and the state's bytes the codec writes from
-  * it. The other eras' fields of each parameter record are the ones the codec leaves
-  * (`Params.empty`, one base for every position). Each state's counts are asserted, so that a state
-  * that holds nothing is seen as such: no recorded state holds a proposal, an enacted action or one
-  * in the pulser's snapshot, and the populated states are built from the Preview governance blocks'
+/** The governance state of every recorded Conway state the repository holds, read into the era
+  * types (`GovStateRecord.fromStored`) and written back (`GovStateRecord.toStored`) identical: the
+  * flat record the state's codec read, and the state's bytes the codec writes from it. A Dijkstra
+  * state's governance state is the era's record, which its codec reads and writes byte for byte.
+  * The other eras' fields of each parameter record are the ones the codec leaves (`Params.empty`,
+  * one base for every position). Each state's counts are asserted, so that a state that holds
+  * nothing is seen as such: no recorded state holds a proposal, an enacted action or one in the
+  * pulser's snapshot, and the populated states are built from the Preview governance blocks'
   * proposals. The private states of the public Leios testnet (the G1 start and the replay windows,
   * not in the repository: [[LeiosReferenceStates]], `SCARAB_LEIOS_REFERENCE_STATES`) are one test
   * each, skipped by name where the variable is not set (an environmental skip that #54 tracks) and
   * failed where it is set and the state is not there; the two of window G that hold the proposal of
-  * keys 47 and 48 are refused by the flat codec, which the era types do not change. A restored
-  * state's parameter records, each with other eras' fields of its own, are written back over their
-  * own positions' records (`GovStateBases.of`). The deposits the era's `obligationGovState` counts
-  * are the flat record's.
+  * keys 47 and 48 are read and written back too. A restored state's parameter records, each with
+  * other eras' fields of its own, are written back over their own positions' records
+  * (`GovStateBases.of`). The deposits the era's `obligationGovState` counts are the flat record's.
   */
 class EraGovStateStoredSuite extends FunSuite with ExternalInputs:
   private def right[E, A](what: String)(e: Either[E, A]): A =
@@ -145,6 +145,44 @@ class EraGovStateStoredSuite extends FunSuite with ExternalInputs:
   private def stateFile(path: String): Node =
     decode(Bytes.wrap(Files.readAllBytes(Path.of(path))))
 
+  /** A Dijkstra state, whose governance state is the era's record: read by the state's codec and
+    * written back byte for byte, with its counts; the deposits the era's `obligationGovState`
+    * counts are its proposals'.
+    */
+  private def dijkstraRoundTrip(
+      what: String,
+      codec: Codec[NewEpochState[Dijkstra]],
+      nes: Node
+  ): Counts =
+    val state = right(s"$what decode")(codec.decode(nes))
+    assertEquals(codec.write(state).map(_.hex), Right(nes.original.hex), what)
+    eraCounts(what, state.es.ls.utxo.gov)
+
+  private def eraCounts(what: String, era: EraConwayGovState[Dijkstra]): Counts =
+    val actions = EraProposals.proposalsActions(era.cgsProposals)
+    assertEquals(
+      EraGov.dijkstra.obligationGovState(era).oblProposal.value,
+      actions.map(_.gasDeposit.value).sum,
+      what
+    )
+    val ratify = DRepPulsingState.extractDRepPulsingState(era.cgsDRepPulsingState)
+    val snapshot = era.cgsDRepPulsingState match
+      case DRepPulsingState.DRComplete(s, _) => s
+    Counts(
+      actions.size,
+      actions
+        .map(a => a.gasCommitteeVotes.size + a.gasDRepVotes.size + a.gasStakePoolVotes.size)
+        .sum,
+      ratify.rsEnacted.size,
+      snapshot.psProposals.size
+    )
+
+  /** A Dijkstra state's governance state as the node's flat record, over the fields the codec of
+    * the flat record left at zero (`Params.empty`): of a state that holds no proposal.
+    */
+  private def flatOf(era: EraConwayGovState[Dijkstra]): ConwayGovState =
+    right("toStored")(GovStateRecord.toStored[Dijkstra](era, GovStateBases.uniform(Params.empty)))
+
   test("the recorded Conway states' governance state reads into the era types and back") {
     val read = Vector(
       ("fixtures/haskell-state/conway-4593/state", HaskellStateCodecs.newEpochState[Conway]),
@@ -193,12 +231,12 @@ class EraGovStateStoredSuite extends FunSuite with ExternalInputs:
     )
   }
 
-  test("the recorded Dijkstra states' governance state reads into the era types and back") {
+  test("the recorded Dijkstra states read into the era types and are written back byte for byte") {
     val read = Vector("dijkstra-203", "testnet-2168639").map { name =>
       val path = s"fixtures/leios/state/$name/state"
       val (index, nes) = current(stateFile(path))
       assertEquals(index, 7, path)
-      name -> roundTrip[Dijkstra](path, LeiosStateCodecs.newEpochState[Dijkstra], nes)
+      name -> dijkstraRoundTrip(path, LeiosStateCodecs.newEpochState[Dijkstra], nes)
     }.toMap
     assertEquals(
       read,
@@ -212,49 +250,33 @@ class EraGovStateStoredSuite extends FunSuite with ExternalInputs:
   private val testnetStates: Vector[LeiosReferenceStates.Capture] =
     LeiosReferenceStates.g1Start +: (LeiosReferenceStates.windowP ++ LeiosReferenceStates.windowG)
 
-  /** The two window G states whose proposals hold the update of keys 47 and 48, which the flat
-    * codec refuses (`DijkstraNotYet.ParameterUpdate`).
-    */
+  /** The two window G states whose proposals hold the update of keys 47 and 48 (proposal 2). */
   private val withDijkstraKeys: Set[LeiosReferenceStates.Capture] =
     Set(1555188L, 1576750L).map(LeiosReferenceStates.Capture(LeiosReferenceStates.Window.G, _))
 
   // one test each, so that a state not present is skipped by name (CNF-2)
   testnetStates.foreach { capture =>
     val name = capture.name
-    val refused = withDijkstraKeys(capture)
+    val proposing = withDijkstraKeys(capture)
     val what =
-      if refused then "is refused by the flat codec, its proposal by the flat record"
-      else "reads into the era types and back"
+      if proposing then "holds the proposal of keys 47 and 48, read and written back"
+      else "reads into the era types and is written back"
     test(s"the testnet's private Dijkstra state $name $what") {
       withInput(LeiosReferenceStates.input(capture)) { root =>
         val path = capture.state(root)
         val codec = LeiosStateCodecs.newEpochState[Dijkstra]
         val (index, nes) = current(decode(Bytes.wrap(Files.readAllBytes(path))))
         assertEquals(index, 7, name)
-        if refused then
-          assertEquals(
-            codec.decode(nes).left.map(_.kind),
-            Left(DecodeError.Kind.Domain(DijkstraNotYet.ParameterUpdate)),
-            name
-          )
-          // its one stored proposal, read by the era's reader of a stored Dijkstra proposal: the
-          // update of keys 47 and 48, which the flat record has no form for
-          val gas = items(at(at(nes, 3, 1, 1, 3), 0, 1))
-          assertEquals(gas.size, 1, name)
-          val proposal = right(name)(DijkstraProposals.proposal(items(gas(0))(4)))
-          assertEquals(
-            DijkstraProposals
-              .toFlat(GovActionId(Bytes(Vector.fill(32)(0)), BigInt(0)), proposal)
-              .left
-              .map {
-                case ProposalsWriteError.UnstorableUpdate(_, keys) => keys.toSortedSet.toVector
-                case other                                         => fail(s"$name: $other")
-              },
-            Left(Vector(BigInt(47), BigInt(48))),
-            name
-          )
-        // no other state of them holds a proposal the flat codec reads
-        else assertEquals(roundTrip[Dijkstra](name, codec, nes), Counts(0, 0, 0, 0), name)
+        val counts = dijkstraRoundTrip(name, codec, nes)
+        if proposing then
+          assertEquals(counts.proposals, 1, name)
+          val gov = right(name)(codec.decode(nes)).es.ls.utxo.gov
+          val keys = EraProposals.proposalsActions(gov.cgsProposals).map(_.gasAction).collect {
+            case EraGovAction.ParameterChange(_, u, _) => DijkstraProposals.updateKeys(u)
+          }
+          assertEquals(keys, Vector(Vector(BigInt(47), BigInt(48))), name)
+        // no other state of them holds a proposal
+        else assertEquals(counts, Counts(0, 0, 0, 0), name)
       }
     }
   }
@@ -394,12 +416,22 @@ class EraGovStateStoredSuite extends FunSuite with ExternalInputs:
     val dijkstraPath = "fixtures/leios/state/testnet-2168639/state"
     val dijkstraCodec = LeiosStateCodecs.newEpochState[Dijkstra]
     val dijkstra = nesOf(dijkstraPath, dijkstraCodec)
-    val dijkstraFlat = holding(dijkstra.es.ls.utxo.gov)
+    val dijkstraFlat = holding(flatOf(dijkstra.es.ls.utxo.gov))
     val dijkstraBack = through[Dijkstra]("Dijkstra", dijkstraFlat)
     assertEquals(dijkstraBack, canonical(dijkstraFlat))
+    // the era's record holding them, written by the state's codec and read back the same
+    val era = right("Dijkstra fromStored")(GovStateRecord.fromStored[Dijkstra](dijkstraFlat))
+    val held = dijkstra.copy(es =
+      dijkstra.es.copy(ls =
+        dijkstra.es.ls.copy[Dijkstra](utxo = dijkstra.es.ls.utxo.copy[Dijkstra](gov = era))
+      )
+    )
+    val written = right("Dijkstra written")(dijkstraCodec.write(held))
+    val reread = right("Dijkstra read")(dijkstraCodec.decode(decode(written)))
+    assertEquals(reread.es.ls.utxo.gov, era)
     assertEquals(
-      right("Dijkstra written back")(dijkstraCodec.write(withGov(dijkstra, dijkstraBack))),
-      right("Dijkstra written")(dijkstraCodec.write(withGov(dijkstra, dijkstraFlat)))
+      eraCounts("Dijkstra", era),
+      Counts(store.actions.size, store.actions.size * 5, 2, actions.size)
     )
   }
 
@@ -495,5 +527,5 @@ class EraGovStateStoredSuite extends FunSuite with ExternalInputs:
       "fixtures/leios/state/testnet-2168639/state",
       LeiosStateCodecs.newEpochState[Dijkstra]
     )
-    restoredThrough[Dijkstra]("Dijkstra", restored(dijkstra.es.ls.utxo.gov))
+    restoredThrough[Dijkstra]("Dijkstra", restored(flatOf(dijkstra.es.ls.utxo.gov)))
   }

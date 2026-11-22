@@ -82,7 +82,7 @@ class PreConwayUtxoPredicatesSuite extends FunSuite:
       pre: PreConway[E]
   ): Unit =
     val pp = TestLedger.params(major)
-    val cert = pre.cert.get(Empty.ledgerState[E](pp))
+    val cert = pre.cert.get(xyz.kd5ujc.scarab.ledger.state.Build.ledgerState[E](pp))
     def validate(tx: Tx, network: Int = 0) =
       ShelleyUtxo.validate[E](
         UtxoEnv(TestLedger.env.copy(network = network), pp, cert),
@@ -141,7 +141,7 @@ class PreConwayUtxoPredicatesSuite extends FunSuite:
       val checked = TxChecks.collateral[E](inputs, tx)
       assertEquals(checked.outputs, Vector(out))
       assertEquals(checked.fee, read[BigInt]("collateralCoin"))
-      val empty = Empty.ledgerState[E](pp).utxo
+      val empty = xyz.kd5ujc.scarab.ledger.state.Build.ledgerState[E](pp).utxo
       val stake = ShelleyInstantStakeOps
         .update(pre.instantStake.get(empty), Vector(out), Vector.empty)
         .fold(e => fail(e.toString), identity)
@@ -234,7 +234,7 @@ class PreConwayUtxoPredicatesSuite extends FunSuite:
       pre: PreConway[E]
   ): Unit =
     val pp = TestLedger.params(major)
-    val initial = Empty.ledgerState[E](pp)
+    val initial = xyz.kd5ujc.scarab.ledger.state.Build.ledgerState[E](pp)
     val funded = initial.copy[E](utxo = initial.utxo.copy[E](utxo = UtxoTables(utxo)))
     def admit(tx: Tx, network: Int = 0) =
       JudgedSts(ShelleyLedger.sts[E])(LedgerFailure.Rejected(tx.body.id, _))(
@@ -300,7 +300,8 @@ class PreConwayUtxoPredicatesSuite extends FunSuite:
         PreConway[E]
     ) =
       val pp = TestLedger.params(major)
-      val cert = summon[PreConway[E]].cert.get(Empty.ledgerState[E](pp))
+      val cert =
+        summon[PreConway[E]].cert.get(xyz.kd5ujc.scarab.ledger.state.Build.ledgerState[E](pp))
       Test.failures(ShelleyUtxo.validate[E](UtxoEnv(env(build), pp, cert), StAnnTx(tx, utxo), 0, 0))
     def conway(build: ReferenceBuild) =
       val pp = TestLedger.params(9)
@@ -461,7 +462,7 @@ class PreConwayUtxoPredicatesSuite extends FunSuite:
           UtxoEnv(
             TestLedger.env.copy(network = network),
             pp,
-            pre.cert.get(Empty.ledgerState[E](pp))
+            pre.cert.get(xyz.kd5ujc.scarab.ledger.state.Build.ledgerState[E](pp))
           ),
           StAnnTx(tx, inputs),
           0,

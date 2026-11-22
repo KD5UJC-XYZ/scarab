@@ -440,7 +440,7 @@
     "DijkstraEpochReferenceSuite",
     "LeiosEpochReferenceSuite"
    ],
-   "digest": "8d34ca2bd70a12af"
+   "digest": "8657a352c5105405"
   },
   "def ledger.rules.ConwayEpoch.withFreshPulser": {
    "upstream": [
@@ -461,7 +461,7 @@
     "DijkstraEpochReferenceSuite",
     "LeiosEpochReferenceSuite"
    ],
-   "digest": "fd567d5f5fd765ac"
+   "digest": "f0552f8e1060c18b"
   },
   "def ledger.rules.Globals#maxKeyAgeEpochs": {
    "upstream": [
@@ -39140,8 +39140,8 @@
    "evidence": [
     "DijkstraSubLedgerSuite"
    ],
-   "note": "the proposals the era's, in their own capability beside the ledger state, as the node's record of them in the governance state cannot hold a Dijkstra parameter change; the committee and the constitution the governance state's; the epoch the environment's or the slot's by Globals' geometry, as in Conway's LEDGER; an id, script hash or epoch outside the vocabulary raised",
-   "digest": "edb4047ad970e76d"
+   "note": "the proposals the era's, in their own capability beside the ledger state; the committee and the constitution the governance state's; the epoch the environment's or the slot's by Globals' geometry, as in Conway's LEDGER; an id, script hash or epoch outside the vocabulary raised",
+   "digest": "b80b7e520624975a"
   },
   "trait ledger.era.rules.EmbedInSubLedger": {
    "upstream": [
@@ -40682,8 +40682,8 @@
     "DijkstraLedgerSuite",
     "DijkstraRulesOracleSuite"
    ],
-   "note": "the proposals the era's, in their own capability beside the ledger state, as SUBLEDGER's are, as the node's record of them in the governance state cannot hold a Dijkstra parameter change; the committee and the constitution the governance state's, the committee's proposals put in the node's record EntitiesEnv holds; the UTxO set before the transaction the stored outputs of every level's inputs, reference inputs and collateral; the epoch the environment's or the slot's by the geometry of Globals; the reference's assertions (shelleyLedgerAssertions) not run, as at Conway",
-   "digest": "9446d01eec1845e2"
+   "note": "the proposals the era's, in their own capability beside the ledger state, as SUBLEDGER's are; the committee and the constitution the governance state's, the committee's proposals put in the node's record EntitiesEnv holds; the UTxO set before the transaction the stored outputs of every level's inputs, reference inputs and collateral; the epoch the environment's or the slot's by the geometry of Globals; the reference's assertions (shelleyLedgerAssertions) not run, as at Conway",
+   "digest": "5a15cfaf20461008"
   },
   "def ledger.era.rules.DijkstraLedgers.mkStAnnTx": {
    "upstream": [
@@ -45203,28 +45203,6 @@
    "note": "the proposals of the ledger state's record as a capability, read on get and written on set, the record's refusals raised",
    "digest": "a0dfed935997a68c"
   },
-  "given ledger.era.rules.ProposalsRecord.dijkstra": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance.hs",
-     "symbol": "proposalsGovStateL",
-     "lines": [
-      424,
-      424
-     ]
-    }
-   ],
-   "class": "Mirror",
-   "structure": "differs",
-   "evidence": [
-    "EraGovStateSuite",
-    "EraGovStateStoredSuite"
-   ],
-   "note": "Dijkstra's record (DijkstraProposals), which Dijkstra's LEDGER does not read through yet: the chain's updates of the keys Dijkstra adds have no flat form",
-   "digest": "39eaacec9c94b040"
-  },
   "def ledger.era.DecCBOR.recordNamed": {
    "upstream": [
     {
@@ -46582,8 +46560,8 @@
     "DijkstraEpochReferenceSuite",
     "DijkstraEraEpochGovSuite"
    ],
-   "note": "the state is the node's new-epoch state with the era's governance state beside it (NewEpochGovState), until the ledger state holds the era's record (#85); RUPD is the node's rule, given the era's current and previous parameters written over the node's record (StoredGov.synced); the mark snapshot's forcing has no counterpart in a strict state; no event is kept",
-   "digest": "1c7d448b64d82a0c"
+   "note": "the state is the node's new-epoch state with its governance state, the era's record, beside it (NewEpochGovState), put back after the rule (StoredGov.onRecord); RUPD is the node's rule, given the era's current and previous parameters written into the epoch state (StoredGov.synced); the mark snapshot's forcing has no counterpart in a strict state; no event is kept",
+   "digest": "e626ec4ce2e33bc4"
   },
   "val ledger.era.rules.DijkstraNewEpoch.sts": {
    "upstream": [
@@ -46604,34 +46582,83 @@
     "DijkstraEpochReferenceSuite",
     "DijkstraEraEpochGovSuite"
    ],
-   "note": "the state is the node's new-epoch state with the era's governance state beside it (NewEpochGovState), until the ledger state holds the era's record (#85); pulseDRepPulsingState is the identity on the complete pulser the node holds; the reward update is the node's, given the era's parameters written over the node's record (StoredGov.synced); the layout's own fields are set as the node's NEWEPOCH sets them; no event is kept",
-   "digest": "d997044ea12877fd"
+   "note": "the state is the node's new-epoch state with its governance state, the era's record, beside it (NewEpochGovState), put back after the rule (StoredGov.onRecord); pulseDRepPulsingState is the identity on the complete pulser the node holds; the reward update is the node's, given the era's parameters written into the epoch state (StoredGov.synced); the layout's own fields are set as the node's NEWEPOCH sets them; no event is kept",
+   "digest": "1fdbb3804a5ecc40"
   }
  },
  "glue": [
- {
-  "reason": "the rendering of the LeiosNotify client's refusals as log text (#54)",
-  "definitions": [
-   "def ledger.AnnouncementError#message",
-   "def ledger.AnnouncementInvalidity#message",
-   "def ledger.InvalidOffer#message",
-   "def ledger.LeiosNotifyFault#message"
-  ]
- },
- {
-  "reason": "the minimal CBOR writer of the header body encoders (shortest heads, definite lists), shared with the Leios block encoders; the reference's Encoding primitives (cardano-ledger-binary Encoding/Encoder.hs) have no single counterpart here",
-  "definitions": [
-   "def ledger.HeaderBodyEncoding.head",
-   "def ledger.HeaderBodyEncoding.uint",
-   "def ledger.HeaderBodyEncoding.bytes",
-   "def ledger.HeaderBodyEncoding.list",
-   "def ledger.HeaderBodyEncoding.join",
-   "val ledger.HeaderBodyEncoding.Null",
-   "val ledger.HeaderBodyEncoding.True",
-   "val ledger.HeaderBodyEncoding.False",
-   "object ledger.LeiosBlockBody"
-  ]
- },
+  {
+   "reason": "The governance family of each era as the ledger state holds it (#826): which record it is, Shelley's proposed updates, Conway's flat record or Dijkstra's era record (GovShape, its views and the flat records' proof, FlatGov, with its instances), the readers of the flat parameters over Dijkstra's record (GovStateRecord.view and futureView, over the zero record or, viewOver, a restored sidecar's record, ProtocolParams.empty the state's codec reads a parameter record over), the solidification of any era's future parameters (EraLedger.solidifyFuture, solidifyNextEpochPParams of each family), an action's state of an era from the flat record's items (ConwayProposals.actionOf), and a Dijkstra action other than a parameter change as the flat record holds it and the keys an update sets (DijkstraProposals.flatOrUpdate, updateKeys), which the state's codec and the node's projections write with: the reference holds each era's record itself, so it has none of these",
+   "definitions": [
+    "class ledger.state.FlatGov",
+    "def ledger.era.GovStateRecord.futureView",
+    "def ledger.era.GovStateRecord.view",
+    "def ledger.era.GovStateRecord.viewOver",
+    "def ledger.era.conway.ConwayProposals.actionOf",
+    "def ledger.era.dijkstra.DijkstraProposals.flatOrUpdate",
+    "def ledger.era.dijkstra.DijkstraProposals.updateKeys",
+    "def ledger.rules.EraLedger.solidifyFuture",
+    "def ledger.state.GovShape#flat",
+    "def ledger.state.GovShape#instance",
+    "def ledger.state.GovShape#on",
+    "def ledger.state.GovShape#update",
+    "enum ledger.state.GovShape",
+    "given ledger.state.FlatGov.allegra",
+    "given ledger.state.FlatGov.alonzo",
+    "given ledger.state.FlatGov.babbage",
+    "given ledger.state.FlatGov.conway",
+    "given ledger.state.FlatGov.mary",
+    "given ledger.state.FlatGov.shelley",
+    "object ledger.state.FlatGov",
+    "val ledger.ProtocolParams.empty"
+   ]
+  },
+  {
+   "reason": "Dijkstra's tick on the node's path (#85, #826): the governance state of a Dijkstra state, the era's record the ledger state holds, taken out before the era's rules and put back after them (StoredGov.onRecord, recordOf), written into the epoch state the node's reward update and RUPD read (synced), the error of the one reading of Conway's flat record into Dijkstra's (StoredGovError, at the translation), the new-epoch state with the era's governance state beside it and its lenses, the module objects of TICK and NEWEPOCH, whose rules are each mapped by themselves, and the node's layout fields of the new-epoch state that NEWEPOCH sets",
+   "definitions": [
+    "class ledger.era.rules.NewEpochGovState",
+    "def ledger.era.StoredGov.onRecord",
+    "def ledger.era.StoredGov.recordOf",
+    "def ledger.era.StoredGov.synced",
+    "def ledger.era.rules.NewEpochGovState.epoch",
+    "def ledger.era.rules.NewEpochGovState.gov",
+    "def ledger.era.rules.NewEpochGovState.nes",
+    "def ledger.era.rules.NewEpochGovState.record",
+    "def ledger.era.rules.NewEpochGovState.ru",
+    "def ledger.rules.NewEpoch.boundaryLayout",
+    "enum ledger.era.StoredGovError",
+    "object ledger.era.StoredGov",
+    "object ledger.era.rules.DijkstraNewEpoch",
+    "object ledger.era.rules.DijkstraTick",
+    "object ledger.era.rules.NewEpochGovState",
+    "val ledger.era.rules.DijkstraEpoch.onRecord",
+    "val ledger.era.rules.DijkstraNewEpoch.onRecord",
+    "val ledger.era.rules.DijkstraTick.onRecord"
+   ]
+  },
+  {
+   "reason": "the rendering of the LeiosNotify client's refusals as log text (#54)",
+   "definitions": [
+    "def ledger.AnnouncementError#message",
+    "def ledger.AnnouncementInvalidity#message",
+    "def ledger.InvalidOffer#message",
+    "def ledger.LeiosNotifyFault#message"
+   ]
+  },
+  {
+   "reason": "the minimal CBOR writer of the header body encoders (shortest heads, definite lists), shared with the Leios block encoders; the reference's Encoding primitives (cardano-ledger-binary Encoding/Encoder.hs) have no single counterpart here",
+   "definitions": [
+    "def ledger.HeaderBodyEncoding.head",
+    "def ledger.HeaderBodyEncoding.uint",
+    "def ledger.HeaderBodyEncoding.bytes",
+    "def ledger.HeaderBodyEncoding.list",
+    "def ledger.HeaderBodyEncoding.join",
+    "val ledger.HeaderBodyEncoding.Null",
+    "val ledger.HeaderBodyEncoding.True",
+    "val ledger.HeaderBodyEncoding.False",
+    "object ledger.LeiosBlockBody"
+   ]
+  },
   {
    "reason": "the companion of BlsKeyState, and the type of POOLREAP's voting key on adoption, which the reference passes to mkStakePoolState as an argument; neither has a counterpart",
    "definitions": [
@@ -47757,33 +47784,6 @@
    "reason": "why the Leios build's follow has no endorser-block store to open, which the configuration's refusal names (ConfigProblem.LeiosStoreRequired, #54): the reference has an in-memory LeiosDB this build does not, so it has no such refusal",
    "definitions": [
     "enum ledger.LeiosStoreMissing"
-   ]
-  },
-  {
-   "reason": "Dijkstra's tick on the node's path until the ledger state holds the era's governance record (#85): the one place it reads the node's flat governance record into the era's state and writes it back over the record it was read from (StoredGov, its errors and its Dijkstra instance), the rules on the node's records that read and write it (onRecord), the new-epoch state with the era's governance state beside it and its lenses, the module objects of TICK and NEWEPOCH, whose rules are each mapped by themselves, and the node's layout fields of the new-epoch state that NEWEPOCH sets",
-   "definitions": [
-    "class ledger.era.rules.NewEpochGovState",
-    "def ledger.era.StoredGov#read",
-    "def ledger.era.StoredGov#synced",
-    "def ledger.era.StoredGov#write",
-    "def ledger.era.StoredGov.onRecord",
-    "def ledger.era.StoredGov.recordOf",
-    "def ledger.era.rules.NewEpochGovState.epoch",
-    "def ledger.era.rules.NewEpochGovState.gov",
-    "def ledger.era.rules.NewEpochGovState.nes",
-    "def ledger.era.rules.NewEpochGovState.record",
-    "def ledger.era.rules.NewEpochGovState.ru",
-    "def ledger.rules.NewEpoch.boundaryLayout",
-    "enum ledger.era.StoredGovError",
-    "given ledger.era.StoredGov.dijkstra",
-    "object ledger.era.StoredGov",
-    "object ledger.era.rules.DijkstraNewEpoch",
-    "object ledger.era.rules.DijkstraTick",
-    "object ledger.era.rules.NewEpochGovState",
-    "trait ledger.era.StoredGov",
-    "val ledger.era.rules.DijkstraEpoch.onRecord",
-    "val ledger.era.rules.DijkstraNewEpoch.onRecord",
-    "val ledger.era.rules.DijkstraTick.onRecord"
    ]
   },
   {

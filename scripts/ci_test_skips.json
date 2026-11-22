@@ -65,7 +65,7 @@
   {
    "module": "node",
    "suite": "xyz.kd5ujc.scarab.storage.EraGovStateStoredSuite",
-   "test": "the testnet's private Dijkstra state g1/1943999 reads into the era types and back",
+   "test": "the testnet's private Dijkstra state g1/1943999 reads into the era types and is written back",
    "environment": [
     "SCARAB_LEIOS_REFERENCE_STATES"
    ],
@@ -75,7 +75,7 @@
   {
    "module": "node",
    "suite": "xyz.kd5ujc.scarab.storage.EraGovStateStoredSuite",
-   "test": "the testnet's private Dijkstra state window-g/1511985 reads into the era types and back",
+   "test": "the testnet's private Dijkstra state window-g/1511985 reads into the era types and is written back",
    "environment": [
     "SCARAB_LEIOS_REFERENCE_STATES"
    ],
@@ -85,7 +85,7 @@
   {
    "module": "node",
    "suite": "xyz.kd5ujc.scarab.storage.EraGovStateStoredSuite",
-   "test": "the testnet's private Dijkstra state window-g/1533582 reads into the era types and back",
+   "test": "the testnet's private Dijkstra state window-g/1533582 reads into the era types and is written back",
    "environment": [
     "SCARAB_LEIOS_REFERENCE_STATES"
    ],
@@ -95,7 +95,7 @@
   {
    "module": "node",
    "suite": "xyz.kd5ujc.scarab.storage.EraGovStateStoredSuite",
-   "test": "the testnet's private Dijkstra state window-g/1555188 is refused by the flat codec, its proposal by the flat record",
+   "test": "the testnet's private Dijkstra state window-g/1555188 holds the proposal of keys 47 and 48, read and written back",
    "environment": [
     "SCARAB_LEIOS_REFERENCE_STATES"
    ],
@@ -105,7 +105,7 @@
   {
    "module": "node",
    "suite": "xyz.kd5ujc.scarab.storage.EraGovStateStoredSuite",
-   "test": "the testnet's private Dijkstra state window-g/1576750 is refused by the flat codec, its proposal by the flat record",
+   "test": "the testnet's private Dijkstra state window-g/1576750 holds the proposal of keys 47 and 48, read and written back",
    "environment": [
     "SCARAB_LEIOS_REFERENCE_STATES"
    ],
@@ -115,7 +115,7 @@
   {
    "module": "node",
    "suite": "xyz.kd5ujc.scarab.storage.EraGovStateStoredSuite",
-   "test": "the testnet's private Dijkstra state window-g/1598375 reads into the era types and back",
+   "test": "the testnet's private Dijkstra state window-g/1598375 reads into the era types and is written back",
    "environment": [
     "SCARAB_LEIOS_REFERENCE_STATES"
    ],
@@ -125,7 +125,7 @@
   {
    "module": "node",
    "suite": "xyz.kd5ujc.scarab.storage.EraGovStateStoredSuite",
-   "test": "the testnet's private Dijkstra state window-g/1619990 reads into the era types and back",
+   "test": "the testnet's private Dijkstra state window-g/1619990 reads into the era types and is written back",
    "environment": [
     "SCARAB_LEIOS_REFERENCE_STATES"
    ],
@@ -135,7 +135,7 @@
   {
    "module": "node",
    "suite": "xyz.kd5ujc.scarab.storage.EraGovStateStoredSuite",
-   "test": "the testnet's private Dijkstra state window-p/1015165 reads into the era types and back",
+   "test": "the testnet's private Dijkstra state window-p/1015165 reads into the era types and is written back",
    "environment": [
     "SCARAB_LEIOS_REFERENCE_STATES"
    ],
@@ -145,7 +145,7 @@
   {
    "module": "node",
    "suite": "xyz.kd5ujc.scarab.storage.EraGovStateStoredSuite",
-   "test": "the testnet's private Dijkstra state window-p/1036794 reads into the era types and back",
+   "test": "the testnet's private Dijkstra state window-p/1036794 reads into the era types and is written back",
    "environment": [
     "SCARAB_LEIOS_REFERENCE_STATES"
    ],
@@ -155,7 +155,7 @@
   {
    "module": "node",
    "suite": "xyz.kd5ujc.scarab.storage.EraGovStateStoredSuite",
-   "test": "the testnet's private Dijkstra state window-p/1058391 reads into the era types and back",
+   "test": "the testnet's private Dijkstra state window-p/1058391 reads into the era types and is written back",
    "environment": [
     "SCARAB_LEIOS_REFERENCE_STATES"
    ],
@@ -165,7 +165,7 @@
   {
    "module": "node",
    "suite": "xyz.kd5ujc.scarab.storage.EraGovStateStoredSuite",
-   "test": "the testnet's private Dijkstra state window-p/1079994 reads into the era types and back",
+   "test": "the testnet's private Dijkstra state window-p/1079994 reads into the era types and is written back",
    "environment": [
     "SCARAB_LEIOS_REFERENCE_STATES"
    ],
@@ -205,7 +205,7 @@
   {
    "module": "node",
    "suite": "xyz.kd5ujc.scarab.storage.EraRatifyStoredSuite",
-   "test": "RATIFY over the testnet's private state window-g/1555188 is incomplete: the flat codec refuses it",
+   "test": "RATIFY over the testnet's private state window-g/1555188 is incomplete: its proposal of keys 47 and 48 has no flat view",
    "environment": [
     "SCARAB_LEIOS_REFERENCE_STATES"
    ],
@@ -215,7 +215,7 @@
   {
    "module": "node",
    "suite": "xyz.kd5ujc.scarab.storage.EraRatifyStoredSuite",
-   "test": "RATIFY over the testnet's private state window-g/1576750 is incomplete: the flat codec refuses it",
+   "test": "RATIFY over the testnet's private state window-g/1576750 is incomplete: its proposal of keys 47 and 48 has no flat view",
    "environment": [
     "SCARAB_LEIOS_REFERENCE_STATES"
    ],

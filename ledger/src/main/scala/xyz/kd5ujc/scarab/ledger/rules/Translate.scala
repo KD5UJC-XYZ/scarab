@@ -13,6 +13,7 @@ import xyz.kd5ujc.scarab.ledger.{
 import scala.collection.immutable.SortedMap
 import xyz.kd5ujc.scarab.ledger.ConwayGenesis
 import xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraScript
+import xyz.kd5ujc.scarab.ledger.era.{GovStateRecord, StoredGovError}
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.protocol.Era
 
@@ -96,10 +97,20 @@ object Translate:
 
   // ---- the parameters
 
+  /** The parameters in force, the previous ones and the future ones of a governance state before
+    * Conway, changed by `f` (Haskell's `translateEra'` of each).
+    */
   private def params[E <: EraTag](
       g: GovState[E]
-  )(f: ProtocolParams => ProtocolParams)(using ShelleyBasedEra[E]): GovState[E] =
-    EraLedger.mapParams(g)(f)
+  )(f: ProtocolParams => ProtocolParams)(using ev: GovState[E] =:= ShelleyGovState): GovState[E] =
+    val s = ev(g)
+    ev.flip(
+      s.copy(
+        curPParams = f(s.curPParams),
+        prevPParams = f(s.prevPParams),
+        futurePParams = FuturePParams.map(s.futurePParams)(f)
+      )
+    )
 
   /** The state of one pre-Conway era as the next one's: the records are the same (the families
     * select Shelley's for each), and the governance state's parameters are upgraded.
@@ -109,8 +120,8 @@ object Translate:
   )(using
       CertState[A] =:= CertState[B],
       GovState[A] =:= GovState[B],
-      InstantStake[A] =:= InstantStake[B],
-      ShelleyBasedEra[B]
+      GovState[B] =:= ShelleyGovState,
+      InstantStake[A] =:= InstantStake[B]
   ): NewEpochState[B] =
     val certs = summon[CertState[A] =:= CertState[B]]
     val govs = summon[GovState[A] =:= GovState[B]]
@@ -351,6 +362,10 @@ object Translate:
     * unchanged. The pulser the node holds is already complete, so `finishDRepPulser` (195-198) is
     * the identity.
     *
+    * The translated record is read into Dijkstra's own ([[GovStateRecord.fromStored]]), which the
+    * ledger state holds: a record that does not read, which only a damaged one gives, is
+    * [[TickFailure.GovRecord]].
+    *
     * The context is the Dijkstra genesis (`TranslationContext DijkstraEra`, 51), which a strict
     * configuration that enables `ExperimentalHardForksEnabled` must name; without one the
     * translation is refused ([[TickFailure.NoDijkstraGenesis]]).
@@ -359,7 +374,7 @@ object Translate:
       globals: Globals,
       nes: NewEpochState[Conway]
   ): Either[TickFailure, NewEpochState[Dijkstra]] =
-    globals.ledger.dijkstra.toRight(TickFailure.NoDijkstraGenesis).map { genesis =>
+    globals.ledger.dijkstra.toRight(TickFailure.NoDijkstraGenesis).flatMap { genesis =>
       val pools = populateVRFKeyHashes(nes.es.ls.cert.pState)
       val ls = nes.es.ls
       val gov = ls.utxo.gov
@@ -376,30 +391,35 @@ object Translate:
           )
         )
       )
-      NewEpochState[Dijkstra](
-        nes.epoch,
-        nes.bprev,
-        nes.bcur,
-        EpochState[Dijkstra](
-          nes.es.chainAccount,
-          LedgerState[Dijkstra](
-            ls.cert.copy(pState = pools),
-            UTxOState[Dijkstra](
-              UtxoTables(upgradeUtxo(ls.utxo.utxo.utxo)),
-              ls.utxo.deposited,
-              ls.utxo.fees,
-              dijkstraGov,
-              ls.utxo.instantStake,
-              ls.utxo.donation
-            )
-          ),
-          nes.es.snapshots,
-          nes.es.nonMyopic
-        ),
-        nes.ru,
-        nes.layout,
-        ()
-      )
+      GovStateRecord
+        .fromStored[Dijkstra](dijkstraGov)
+        .leftMap(e => TickFailure.GovRecord(StoredGovError.Read(e)))
+        .map(gov =>
+          NewEpochState[Dijkstra](
+            nes.epoch,
+            nes.bprev,
+            nes.bcur,
+            EpochState[Dijkstra](
+              nes.es.chainAccount,
+              LedgerState[Dijkstra](
+                ls.cert.copy(pState = pools),
+                UTxOState[Dijkstra](
+                  UtxoTables(upgradeUtxo(ls.utxo.utxo.utxo)),
+                  ls.utxo.deposited,
+                  ls.utxo.fees,
+                  gov,
+                  ls.utxo.instantStake,
+                  ls.utxo.donation
+                )
+              ),
+              nes.es.snapshots,
+              nes.es.nonMyopic
+            ),
+            nes.ru,
+            nes.layout,
+            ()
+          )
+        )
     }
 
   /** `populateVRFKeyHashes` of cardano-ledger 9df9f98c

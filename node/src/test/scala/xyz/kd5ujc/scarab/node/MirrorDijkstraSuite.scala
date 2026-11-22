@@ -15,6 +15,7 @@ import xyz.kd5ujc.scarab.consensus.state.{
   MirrorState,
   MirrorStep,
   ProtocolState,
+  RestoredParams,
   StateMirror
 }
 import xyz.kd5ujc.scarab.crypto.Blake2b
@@ -30,8 +31,10 @@ import xyz.kd5ujc.scarab.ledger.{
   LeiosBlock,
   LeiosExtValidationError,
   NodeError,
+  ProtocolParams,
   TxIn
 }
+import xyz.kd5ujc.scarab.ledger.era.Proposals as EraProposals
 import xyz.kd5ujc.scarab.ledger.era.rules.{DijkstraClosure, LeiosClosureDefect}
 import xyz.kd5ujc.scarab.ledger.rules.EraNes
 import xyz.kd5ujc.scarab.ledger.state.{BlockIssuer, KeyHash, LeiosCommittee, LeiosSeat}
@@ -165,6 +168,28 @@ class MirrorDijkstraSuite extends CatsEffectSuite:
         StateMirror.anchorOf(states.last.ext.headerState.tip).map(_.blockNo),
         Some(BigInt(1))
       )
+  }
+
+  // a restored Dijkstra state keeps its snapshot sidecar's records through the blocks it applies,
+  // so the sidecar written at a later anchor still holds the fields of the eras before it (#826)
+  test("the sidecar's records a restored Dijkstra state keeps survive the next block applied") {
+    for
+      rules <- rulesOf(leiosSetup, stored = false)
+      applied <- applyAll(rules, leiosSetup.mirrorStart, devnetChain.take(35))
+      states = applied.fold((i, e) => fail(s"block $i: ${e.message}"), identity)
+      before = states.last
+      _ = assertEquals(before.era, Era.Dijkstra)
+      kept = Some(
+        RestoredParams(
+          ProtocolParams.empty.copy(d = Rational.one),
+          Some(ProtocolParams.empty.copy(d = Rational.one))
+        )
+      )
+      next <- applyAll(rules, before.copy(restored = kept), devnetChain.slice(35, 36))
+    yield
+      val after = next.fold((i, e) => fail(s"block $i: ${e.message}"), identity).last
+      assertEquals(after.era, Era.Dijkstra)
+      assertEquals(after.restored, kept)
   }
 
   test("a release build refuses a Dijkstra block as before (NotYet), from the state it follows") {
@@ -400,7 +425,8 @@ class MirrorDijkstraSuite extends CatsEffectSuite:
   }
 
   // the public testnet's first proposal, a parameter change of keys 45 and 46 its ledger admitted
-  // (`fixtures/reference/leios-testnet-chain-contexts`): the state's record cannot hold it (#85)
+  // (`fixtures/reference/leios-testnet-chain-contexts`): the state's governance record, the era's,
+  // holds it (#85)
   private lazy val testnetProposal: Bytes =
     import xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraCorpus
     DijkstraCorpus.chainContextCases
@@ -419,34 +445,39 @@ class MirrorDijkstraSuite extends CatsEffectSuite:
       }
       .getOrElse(fail("no proposal in the testnet's transactions"))
 
-  test(
-    "a valid proposal of a key Dijkstra adds is no verdict, withheld: no refusal, no stop (#85)"
-  ) {
+  test("a valid proposal of a key Dijkstra adds is applied, and the state holds it (#85)") {
     devnetStates.map { states =>
       val parent = states.last
       val block = certifying(BigInt(240), signedOver(devnetChain.last._1.hash))
       val held = LeiosTxHash.fromBytes(Blake2b.hash256.hash(testnetProposal))
-      applyCertifying(
+      val pre = preOf(parent, true)
+      val checked = Some(
+        signedOver(devnetChain.last._1.hash) -> certification(
+          pre,
+          block,
+          h => Option.when(h == eb)(Vector(held -> testnetProposal))
+        )
+      )
+      val env = MirrorDijkstra.envOf(
         parent,
-        preOf(parent, true),
-        block,
-        h => Option.when(h == eb)(Vector(held -> testnetProposal))
-      ) match
-        case Left(
-              stop @ ChainError.DijkstraBlock(
-                slot,
-                DijkstraBlockDefect.UnstorableProposals(
-                  xyz.kd5ujc.scarab.ledger.era.ProposalsWriteError.UnstorableUpdate(_, keys)
-                )
-              )
-            ) =>
-          assertEquals(slot, BigInt(240))
-          assertEquals(keys.toSortedSet.toVector, Vector(BigInt(45), BigInt(46)))
-          // the follower withholds the block for it: no verdict, which is never a stop
-          BlockNoVerdict.ofDijkstra(stop.cause) match
-            case Some(BlockNoVerdict.UnstorableProposals(_)) => ()
-            case other                                       => fail(s"not withheld: $other")
-        case other => fail(s"not the record's limit: $other")
+        block._1,
+        leiosSetup.praos,
+        leiosSetup.globals,
+        leiosSetup.byronHistory,
+        xyz.kd5ujc.scarab.plutus.PlutusBackend.default
+      )
+      // the closure applied to the unticked parent: its proposal in the state's governance state
+      MirrorDijkstra.certified(env, parent, pre.nes, checked).value match
+        case Right(Right((applied, _))) =>
+          val nes = MirrorDijkstra.inDijkstra(applied).getOrElse(fail("not a Dijkstra state"))
+          val keys = EraProposals
+            .proposalsActions(nes.es.ls.utxo.gov.cgsProposals)
+            .map(_.gasAction)
+            .collect { case xyz.kd5ujc.scarab.ledger.era.GovAction.ParameterChange(_, u, _) =>
+              xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraProposals.updateKeys(u).toSet
+            }
+          assertEquals(keys, Vector(Set(BigInt(45), BigInt(46))))
+        case other => fail(s"the closure not applied: $other")
     }
   }
 

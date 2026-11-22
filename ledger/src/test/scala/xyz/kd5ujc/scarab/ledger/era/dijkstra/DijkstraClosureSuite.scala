@@ -16,7 +16,6 @@ import xyz.kd5ujc.scarab.ledger.state.{
   Dijkstra,
   EpochNo,
   Network,
-  NewEpochState,
   SlotNo,
   TxIx,
   UtxoTables,
@@ -95,7 +94,7 @@ class DijkstraClosureSuite extends FunSuite:
     DijkstraUtxoContext(Network.Testnet, 0, history, validation)
 
   private lazy val start =
-    NewEpochState.empty[Dijkstra](EpochNo.fromUnsigned(0L), testnetStored).es.ls
+    xyz.kd5ujc.scarab.ledger.state.Build.dijkstra(EpochNo.fromUnsigned(0L), testnetStored).es.ls
 
   private val noProposals: Proposals[Dijkstra] =
     Proposals.empty[Dijkstra](GovRelation[Option](None, None, None, None))

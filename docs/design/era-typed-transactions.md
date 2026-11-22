@@ -1522,6 +1522,33 @@ Conway's rules on the classes follow as the rest of stage 2.
       leios-b004fe0c --db --seconds 180`, 2026-11-21): the node extended its chain by 421 blocks from Conway into
       Dijkstra and across the nine Dijkstra boundaries of epochs 1 to 10 on this tick, refusing none and withholding
       none.
+- **Dijkstra's governance state stored on the era types** (#826, a storage format change of its own, FMT-1;
+  `state/Eras.scala`, `era/StoredGov.scala`, `haskell/state/NodeTypeCodecs.scala`; `Dijkstra/Governance.hs:29` and
+  `Core/PParams.hs:204-301`, cardano-ledger 9df9f98c). This supersedes the tick bullet's seam above:
+  - The ledger state's governance family of Dijkstra is the era's record, `ConwayGovState[Dijkstra]`
+    (`GovShape.Era`); Conway's is still the flat record, and the eras before it Shelley's. The setters of the flat
+    parameters take the proof that the record is a flat one (`FlatGov`); the readers that still take the flat
+    parameters read Dijkstra's written over a record whose other eras' fields are zero (`GovStateRecord.view`), as
+    the codec of the flat record read them. The tick's seam reads and writes nothing: the rules take the record out
+    of the state and put back the one they leave (`StoredGov.onRecord`), the reward update and RUPD read the record
+    beside the state written into it (`StoredGov.synced`), and the restore of each proposal's kept encoding is gone.
+    The one reading of the flat record into the era's is the translation into Dijkstra (`Translate.conwayToDijkstra`),
+    a record that does not read its `TickFailure.GovRecord`, as before no verdict on a block.
+  - The Haskell state codec writes the record as the reference does (`dijkstraGovState`): its parameters by
+    `PParams.encodePParams` and `decodePParams`, a parameter change's update by `encodePParamsUpdate` and its
+    proposal read by Dijkstra's decoder at version 12 (`DijkstraProposals.proposal`), every other item by the flat
+    record's own codecs (the actions other than a parameter change, the votes, the pulser's distributions and DRep
+    states, expiry first), the proposals rebuilt by `mkProposals`. The 11.1 layout refuses Dijkstra's parameters both
+    ways, as before. A block's proposals are the state's (`MirrorDijkstra`), so the block defects of parameters and
+    proposals the record did not read or could not hold, their no-verdict and the tick's failure to write the record
+    back are gone.
+  - Evidence: `V10BodyGoldenSuite`'s Dijkstra case, a proposal of keys 0, 34, 36, 37, 38, 47 and 53 in the proposals,
+    the pulser's snapshot and the enacted actions of `dijkstra-203`, written on the era types to the bytes of the
+    golden body the flat writer made before; `DijkstraParamProposalSuite`, every update of the build's parameter
+    corpus written as the build wrote it again and its refusals refused; `dijkstra-203`, `testnet-2168639` and the
+    private testnet states, window G's two that hold proposal 2 among them, read and written back byte for byte
+    (`EraGovStateStoredSuite`); the cases of `DijkstraEpochReferenceSuite` and `DijkstraEraEpochGovSuite` on the
+    node's tick, and window G replayed through proposal 2 (docs/leios.md §13).
 - **LEDGER and LEDGERS whole, with the reference's failures** (`era/rules/Ledger.scala`,
   `era/rules/LedgerFailures.scala`; `Conway/Rules/Ledger.hs`, `Conway/Rules/Ledgers.hs` and Shelley's
   `Rules/Ledger.hs` and `Rules/Ledgers.hs`, cardano-ledger f649f975, where 29a7d656 and 9df9f98c differ in derived

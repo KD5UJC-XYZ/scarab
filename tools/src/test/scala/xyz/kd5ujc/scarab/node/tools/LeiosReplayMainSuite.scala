@@ -315,18 +315,15 @@ class LeiosReplayMainSuite extends FailsOnUncaught:
   test(
     "a Dijkstra block's defect the follower withholds the block for is a halt; others stop the run"
   ) {
-    val unstorable = xyz.kd5ujc.scarab.ledger.era.ProposalsWriteError.UnstorableUpdate(
-      xyz.kd5ujc.scarab.ledger.GovActionId(Bytes(Vector.fill(32)(0x07.toByte)), 0),
-      cats.data.NonEmptySet.of(BigInt(34))
-    )
+    val disagreement = xyz.kd5ujc.scarab.ledger.era.EraTxError.ScriptsReadAgain
     assertEquals(
       LeiosReplayMain.noVerdictNotYet.lift(
         ChainError.DijkstraBlock(
           1944035,
-          xyz.kd5ujc.scarab.ledger.DijkstraBlockDefect.UnstorableProposals(unstorable)
+          xyz.kd5ujc.scarab.ledger.DijkstraBlockDefect.Projection(disagreement)
         )
       ),
-      Some(BigInt(1944035) -> BlockNoVerdict.UnstorableProposals(unstorable))
+      Some(BigInt(1944035) -> BlockNoVerdict.Projection(disagreement))
     )
     val missing = xyz.kd5ujc.scarab.ledger.DijkstraBlockDefect.Closure(
       xyz.kd5ujc.scarab.ledger.era.rules.LeiosClosureDefect.Missing(

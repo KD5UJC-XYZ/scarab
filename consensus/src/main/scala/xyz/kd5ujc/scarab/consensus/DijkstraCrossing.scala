@@ -4,6 +4,7 @@ package xyz.kd5ujc.scarab.consensus
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.consensus.state.PraosState
 import xyz.kd5ujc.scarab.ledger.{CrossingForecastFailure, ProtocolParams}
+import xyz.kd5ujc.scarab.ledger.era.GovStateRecord
 import xyz.kd5ujc.scarab.ledger.rules.{EraLedger, Globals, TickFailure}
 import xyz.kd5ujc.scarab.ledger.state.{
   Conway,
@@ -128,7 +129,12 @@ object DijkstraCrossing:
   private object Basis:
     def of(nes: NewEpochState[Dijkstra]): Basis =
       val gov = nes.es.ls.utxo.gov
-      Basis(nes.epoch, nes.es.snapshots, gov.curPParams, gov.futurePParams)
+      Basis(
+        nes.epoch,
+        nes.es.snapshots,
+        GovStateRecord.view(gov.cgsCurPParams),
+        GovStateRecord.futureView(gov.cgsFuturePParams)
+      )
 
     /** The basis of the Dijkstra state `Translate.conwayToDijkstra` makes of `nes`: the epoch and
       * the snapshots carried over, the current and future parameters upgraded by the Dijkstra

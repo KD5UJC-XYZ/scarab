@@ -171,27 +171,33 @@ object ConwayEpoch:
     */
   def totalObligation[E <: EraTag](ls: LedgerState[E])(using
       era: ShelleyBasedEra[E],
-      shapes: ConwayShapes[E]
+      shapes: ConwayShapes[E],
+      gs: GovState[E] =:= ConwayGovState
   ): BigInt =
     val cert = shapes.cert(ls.cert)
     EraLedger.keyDeposits(ls) +
       CompactCoin.sum(cert.pState.stakePools.valuesIterator.map(_.deposit)).toBigInt +
       CompactCoin.sum(cert.vState.dreps.valuesIterator.map(_.deposit)).toBigInt +
-      shapes.gov(ls.utxo.gov).proposals.totalDeposits
+      gs(ls.utxo.gov).proposals.totalDeposits
 
   /** The enactment of the ratification the DRep pulser reached, once POOLREAP has run, and the hard
     * fork rule if the protocol version changed: `es0` is the state the rule began with (its pulser,
     * governance state and donations), `es1` the one after the sub-rules. The same in every era with
-    * Conway's governance and certificate state ([[ConwayShapes]]): Dijkstra's EPOCH applies it as
-    * Conway's does (cardano-ledger 9df9f98c `Dijkstra/Rules/Epoch.hs:153-224`).
+    * Conway's certificate state ([[ConwayShapes]]) and the node's flat governance record, Conway;
+    * Dijkstra's EPOCH, which applies it as Conway's does (cardano-ledger 9df9f98c
+    * `Dijkstra/Rules/Epoch.hs:153-224`), is on the era's record (`era.rules.DijkstraEpoch`).
     */
   private[rules] def enact[E <: EraTag](
       build: ReferenceBuild,
       epoch: EpochNo,
       es0: EpochState[E],
       es1: EpochState[E]
-  )(using era: ShelleyBasedEra[E], shapes: ConwayShapes[E]): Either[VocabError, EpochState[E]] =
-    val gov0 = shapes.gov(es0.ls.utxo.gov)
+  )(using
+      era: ShelleyBasedEra[E],
+      shapes: ConwayShapes[E],
+      gs: GovState[E] =:= ConwayGovState
+  ): Either[VocabError, EpochState[E]] =
+    val gov0 = gs(es0.ls.utxo.gov)
     val ratify = gov0.drepPulsing.ratify
     val enacted = ratify.enact
     val ls1 = es1.ls
@@ -250,7 +256,7 @@ object ConwayEpoch:
           numDormantEpochs = dormant
         )
       )
-      ls2 = LedgerState[E](shapes.cert.flip(cert2), ls1.utxo.copy(gov = shapes.gov.flip(gov1)))
+      ls2 = LedgerState[E](shapes.cert.flip(cert2), ls1.utxo.copy(gov = gs.flip(gov1)))
       deposited = Coin(totalObligation(ls2))
       ls3 = ls2.copy[E](utxo = ls2.utxo.copy(deposited = deposited, donation = Coin.zero))
       es2 = es1.copy(chainAccount = es1.chainAccount.copy(treasury = treasury), ls = ls3)
@@ -271,12 +277,13 @@ object ConwayEpoch:
       es: EpochState[E],
       epoch: EpochNo
   )(using
-      shapes: ConwayShapes[E]
+      shapes: ConwayShapes[E],
+      gs: GovState[E] =:= ConwayGovState
   ): EpochState[E] =
     val pulser = ConwayPulser.fresh(globals, es, epoch)
-    val gov = shapes.gov(es.ls.utxo.gov)
+    val gov = gs(es.ls.utxo.gov)
     es.copy(ls =
       es.ls.copy[E](utxo =
-        es.ls.utxo.copy(gov = shapes.gov.flip(predictFuturePParams(gov.copy(drepPulsing = pulser))))
+        es.ls.utxo.copy(gov = gs.flip(predictFuturePParams(gov.copy(drepPulsing = pulser))))
       )
     )
