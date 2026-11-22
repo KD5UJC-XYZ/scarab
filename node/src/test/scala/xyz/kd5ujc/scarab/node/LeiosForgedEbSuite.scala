@@ -143,16 +143,16 @@ class LeiosForgedEbSuite extends FailsOnUncaught:
           // reference's does: the forge pulls none from the pool (`noMempoolPull`) and the write
           // of its closure retires no job (`ForgedTxs`)
           assertEquals(
-            state.ebState.get(point.hash).map(_.fetch),
+            state.ebState.get(point.hash).map(_.fetch).collect {
+              case EbFetchState.BodyAcquired(jobs, _) => jobs
+            },
             Some(
-              EbFetchState.BodyAcquired(
-                LeiosJobPool.of(
-                  LeiosFetchStaticEnv.demo.maxJobBytesSize,
-                  LeiosFetchStaticEnv.demo.maxJobTxCount,
-                  SortedMap.from(forged.body.transactions.toVector.zipWithIndex.map {
-                    case ((hash, size), offset) => offset -> (hash, BytesSize.wrap(size.toLong))
-                  })
-                )
+              LeiosJobPool.of(
+                LeiosFetchStaticEnv.demo.maxJobBytesSize,
+                LeiosFetchStaticEnv.demo.maxJobTxCount,
+                SortedMap.from(forged.body.transactions.toVector.zipWithIndex.map {
+                  case ((hash, size), offset) => offset -> (hash, BytesSize.wrap(size.toLong))
+                })
               )
             )
           )

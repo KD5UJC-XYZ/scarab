@@ -160,8 +160,9 @@ object LeiosFetchLogic:
             val (acc, reqs) =
               assignBody(forecast, peer, h, slot, offer, walk.outstanding, walk.requests)
             Walk(acc, reqs, walk.drops)
-          case (EbFetchState.BodyAcquired(_), WhetherTxsClosureOffered.NotOffered) => pruneThisOffer
-          case (EbFetchState.BodyAcquired(pool), WhetherTxsClosureOffered.Offered) =>
+          case (EbFetchState.BodyAcquired(_, _), WhetherTxsClosureOffered.NotOffered) =>
+            pruneThisOffer
+          case (EbFetchState.BodyAcquired(pool, _), WhetherTxsClosureOffered.Offered) =>
             if pool.isEmpty then pruneThisOffer
             else
               val (acc, reqs, exhausted) =
@@ -202,7 +203,8 @@ object LeiosFetchLogic:
           (next, reqs :+ LeiosFetchRequest.Block(EbPoint(slot, h), size, maxEbTxsSize))
 
   /** `assignClosure` (`LeiosDemoLogic.hs` 589-644): give the peer the least-requested jobs it does
-    * not have in flight until its budget is spent or none is left, and whether none is left.
+    * not have in flight until its budget is spent or none is left, and whether none is left. The
+    * requests name the pool the jobs were picked from.
     */
   private def assignClosure[P](
       env: LeiosFetchStaticEnv,
@@ -213,7 +215,7 @@ object LeiosFetchLogic:
       reqs: Vector[LeiosFetchRequest]
   ): (LeiosOutstanding[P], Vector[LeiosFetchRequest], Boolean) =
     acc.ebState.get(h) match
-      case Some(EbState(slot, onset, EbFetchState.BodyAcquired(pool))) =>
+      case Some(EbState(slot, onset, EbFetchState.BodyAcquired(pool, id))) =>
         val inflight = acc.requestedJobsPerPeer
           .get(peer)
           .flatMap(_.get(h))
@@ -228,7 +230,7 @@ object LeiosFetchLogic:
               acc.requestedJobsPerPeer.getOrElse(peer, Map.empty[EbHash, NonEmptySet[Int]])
             val next = acc.copy(
               ebState =
-                acc.ebState.updated(h, EbState(slot, onset, EbFetchState.BodyAcquired(pool2))),
+                acc.ebState.updated(h, EbState(slot, onset, EbFetchState.BodyAcquired(pool2, id))),
               requestedJobsPerPeer = acc.requestedJobsPerPeer.updated(
                 peer,
                 perPeer.updated(h, perPeer.get(h).fold(ids)(_ | ids))
@@ -240,7 +242,7 @@ object LeiosFetchLogic:
               ),
               prng = prng2
             )
-            (next, reqs ++ batchTxsRequests(env, EbPoint(slot, h), nePicked), exhausted)
+            (next, reqs ++ batchTxsRequests(env, EbPoint(slot, h), id, nePicked), exhausted)
       case Some(EbState(_, _, EbFetchState.NoBody | EbFetchState.BodyImminent)) | None =>
         (acc, reqs, false)
 
@@ -271,17 +273,20 @@ object LeiosFetchLogic:
     go(prng, inflight, pool, budget, Vector.empty)
 
   /** `batchTxsRequests` (`LeiosDemoLogic.hs` 678-699): the picked jobs, in order, cut into requests
-    * of at most `maxRequestBytesSize`; a job above it forms a request of its own.
+    * of at most `maxRequestBytesSize`; a job above it forms a request of its own. Each request
+    * names `pool`, the pool the jobs were picked from.
     */
   def batchTxsRequests(
       env: LeiosFetchStaticEnv,
       point: EbPoint,
+      pool: LeiosJobPoolId,
       picked: NonEmptyVector[(LeiosJobId, LeiosJob)]
   ): Vector[LeiosFetchRequest] =
     val cap = env.maxRequestBytesSize.toLong
     def flush(batch: NonEmptyVector[(LeiosJobId, LeiosJob)]): LeiosFetchRequest =
       LeiosFetchRequest.BlockTxs(
         point,
+        pool,
         NonEmptyMap.of(
           batch.head._1.toInt -> batch.head._2,
           batch.tail.map((i, j) => i.toInt -> j)*
@@ -381,7 +386,10 @@ object LeiosFetchLogic:
     else o.copy(requestedBytesSizePerPeer = refunded(o.requestedBytesSizePerPeer, peer, size))
 
   /** `completeTxRequest` (`LeiosDemoLogic.hs` 1293-1333): the request's jobs are fetched, gone from
-    * the pool for every peer and from the peer's jobs in flight.
+    * the pool for every peer and from the peer's jobs in flight. Only the pool that issued the
+    * request loses them: one installed since, after a prune, numbers other jobs with the same ids,
+    * and keeps them; the peer's jobs in flight are released all the same (an Improvement,
+    * [[LeiosJobPoolId]]).
     */
   def completeTxRequest[P](
       peer: P,
@@ -392,7 +400,10 @@ object LeiosFetchLogic:
     val h = request.point.hash
     o.copy(
       ebState = o.ebState.get(h).fold(o.ebState) { st =>
-        o.ebState.updated(h, onPool(st)(p => ids.foldLeft(p)((q, i) => q.complete(LeiosJobId(i)))))
+        o.ebState.updated(
+          h,
+          onPoolOf(request.pool, st)(p => ids.foldLeft(p)((q, i) => q.complete(LeiosJobId(i))))
+        )
       },
       requestedJobsPerPeer =
         o.requestedJobsPerPeer.get(peer).fold(o.requestedJobsPerPeer) { perPeer =>
@@ -405,6 +416,22 @@ object LeiosFetchLogic:
           else o.requestedJobsPerPeer.updated(peer, inner)
         }
     )
+
+  /** The `pendingJobs` of `processLeiosBlockTxs` (`LeiosDemoLogic.hs` 1469-1478): the request's
+    * jobs still in the pool, which alone are hashed and ingested; none where the body is not held.
+    * Only the pool that issued the request answers for them: where another is held, installed after
+    * a prune, none is pending (an Improvement, [[LeiosJobPoolId]]).
+    */
+  def pendingJobs[P](
+      request: LeiosFetchRequest.BlockTxs,
+      o: LeiosOutstanding[P]
+  ): SortedMap[Int, LeiosJob] =
+    o.ebState.get(request.point.hash).map(_.fetch) match
+      case Some(EbFetchState.BodyAcquired(jobs, pool)) if pool == request.pool =>
+        jobs.restrictToPending(request.jobs.toSortedMap)
+      case Some(EbFetchState.BodyAcquired(_, _) | EbFetchState.NoBody | EbFetchState.BodyImminent) |
+          None =>
+        SortedMap.empty
 
   /** `checkJobSize` (`LeiosDemoLogic.hs` 1349-1369): the answer's transactions for the job, by
     * offset, are as many as the job covers and their sizes sum to the job's, the sum a `Word32` as
@@ -450,8 +477,16 @@ object LeiosFetchLogic:
     (misses.filterNot((_, missed) => hits.contains(missed._1)), hits)
 
   private def onPool(st: EbState)(f: LeiosJobPool => LeiosJobPool): EbState = st.fetch match
-    case EbFetchState.BodyAcquired(pool) => st.copy(fetch = EbFetchState.BodyAcquired(f(pool)))
+    case EbFetchState.BodyAcquired(jobs, pool) =>
+      st.copy(fetch = EbFetchState.BodyAcquired(f(jobs), pool))
     case EbFetchState.NoBody | EbFetchState.BodyImminent => st
+
+  /** [[onPool]] where the held pool is `issuer`; any other is left as it is. */
+  private def onPoolOf(issuer: LeiosJobPoolId, st: EbState)(
+      f: LeiosJobPool => LeiosJobPool
+  ): EbState = st.fetch match
+    case EbFetchState.BodyAcquired(_, pool) if pool == issuer => onPool(st)(f)
+    case EbFetchState.BodyAcquired(_, _) | EbFetchState.NoBody | EbFetchState.BodyImminent => st
 
   private def refunded[P](
       m: SortedMap[P, BytesSize],

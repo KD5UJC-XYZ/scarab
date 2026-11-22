@@ -12,8 +12,6 @@ import scala.collection.immutable.{SortedMap, SortedSet}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.leios.{
   BytesSize,
-  EbFetchState,
-  EbState,
   LeiosFetchLogic,
   LeiosFetchRequest,
   LeiosFetchStaticEnv,
@@ -54,6 +52,12 @@ import xyz.kd5ujc.scarab.storage.{LeiosEb, LeiosStore, LeiosStoreError}
   * [[LeiosMempoolPull]]) and written after the body, as the reference ingests them
   * (`processLeiosBlockTxs` of `MempoolTxs`, `LeiosDemoLogic.hs` 1151-1161 and 1428-1437); only the
   * others become jobs to fetch, so a closure the mempool holds whole is acquired with its body.
+  *
+  * A transactions answer ingests and retires only the jobs of the pool its request was picked from
+  * (an Improvement over the reference, [[xyz.kd5ujc.scarab.consensus.leios.LeiosJobPoolId]]): an
+  * answer that arrives after its endorser block was pruned and acquired again with another pool
+  * takes nothing and retires nothing of the new pool, and still releases what the peer had in
+  * flight.
   *
   * Not mirrored (#54): no cross-EB fills (the `LeiosTxCache`), no egress credit refilled at a claim
   * (`LeiosFreshBytes`), and no arrival telemetry.
@@ -157,21 +161,19 @@ final class LeiosFetchArrival[F[_], P](
           .checkJobSize(aligned, LeiosJobId(i), j)
           .fold(e => fault[Unit](job(e)), F.pure)
       )
-      // only the jobs still pending are hashed and ingested; the state is read once
+      // only the jobs still pending in the pool that issued the request are hashed and ingested;
+      // the state is read once
       before <- shared.outstanding.get
-      pending = before.ebState.get(point.hash) match
-        case Some(EbState(_, _, EbFetchState.BodyAcquired(pool))) => pool.restrictToPending(jobs)
-        case Some(EbState(_, _, EbFetchState.NoBody | EbFetchState.BodyImminent)) | None =>
-          SortedMap.empty[Int, xyz.kd5ujc.scarab.consensus.leios.LeiosJob]
+      pending = LeiosFetchLogic.pendingJobs(request, before)
       ingested <- pending.toVector.flatTraverse((i, j) =>
         LeiosFetchLogic.ingestJob(aligned, LeiosJobId(i), j).fold(e => fault(job(e)), F.pure)
       )
-      // the jobs are retired once the write is durable (`onDurable`); the peer's bytes are
-      // released once the write is queued. A job is retired even where the store dropped some of
-      // its transactions, as the reference's is: its writer drops one whose bytes are not the size
-      // the body declares, or that start with a zero byte (`sqlInsertTxs`, `Impl/SQLite/Insert.hs`
-      // 287-297 at 2416493b), and `onDurable` (`LeiosDemoLogic.hs` 1575) retires the request's
-      // jobs whatever was dropped. A reply that passes the checks above holds at each offset the
+      // the jobs are retired once the write is durable (`onDurable`), from the pool that issued
+      // the request if it is still the one held then; the peer's bytes are released once the write
+      // is queued. A job is retired even where the store dropped some of its transactions, as the
+      // reference's is: its writer drops one whose bytes are not the size the body declares, or
+      // that start with a zero byte (`sqlInsertTxs`, `Impl/SQLite/Insert.hs` 287-297 at 2416493b),
+      // and `onDurable` (`LeiosDemoLogic.hs` 1575) retires the request's jobs whatever was dropped. A reply that passes the checks above holds at each offset the
       // bytes of the hash the body lists there, so only the body's own declarations make a drop
       _ <- submitted(1)(landed =>
         written(

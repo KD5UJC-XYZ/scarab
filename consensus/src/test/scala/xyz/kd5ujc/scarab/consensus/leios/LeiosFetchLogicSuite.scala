@@ -169,18 +169,15 @@ class LeiosFetchLogicSuite extends ScalaCheckSuite:
     assertEquals(announced.ebState.get(h).map(_.fetch), Some(EbFetchState.NoBody))
     assertEquals(
       announced.acquireEbBody(h, pool).ebState.get(h),
-      Some(EbState(slot(5), None, EbFetchState.BodyAcquired(pool)))
+      Some(EbState(slot(5), None, EbFetchState.BodyAcquired(pool, LeiosJobPoolId.first)))
     )
-    // a concurrent redundant delivery keeps the pool it found
+    // a concurrent redundant delivery keeps the pool it found, and takes no id
+    val again = announced.acquireEbBody(h, pool).acquireEbBody(h, LeiosJobPool.empty)
     assertEquals(
-      announced
-        .acquireEbBody(h, pool)
-        .acquireEbBody(h, LeiosJobPool.empty)
-        .ebState
-        .get(h)
-        .map(_.fetch),
-      Some(EbFetchState.BodyAcquired(pool))
+      again.ebState.get(h).map(_.fetch),
+      Some(EbFetchState.BodyAcquired(pool, LeiosJobPoolId.first))
     )
+    assertEquals(again.nextJobPool, LeiosJobPoolId.first.next)
     // an endorser block pruned before its write landed is not tracked again
     assertEquals(empty.acquireEbBody(h, pool), empty)
   }
@@ -192,7 +189,10 @@ class LeiosFetchLogicSuite extends ScalaCheckSuite:
       .recordMaxAnnouncementSlot(h, slot(5), None)
       .recordMaxAnnouncementSlot(h, slot(3), None)
       .acquireEbBody(h, pool)
-    assertEquals(o.ebState.get(h), Some(EbState(slot(5), None, EbFetchState.BodyAcquired(pool))))
+    assertEquals(
+      o.ebState.get(h),
+      Some(EbState(slot(5), None, EbFetchState.BodyAcquired(pool, LeiosJobPoolId.first)))
+    )
     assertEquals(o.prunedToImmTip(slot(4))._2.ebState.get(h), o.ebState.get(h))
     val (dropped, pruned) = o.prunedToImmTip(slot(6))
     assertEquals(pruned.ebState.get(h), None)
@@ -244,13 +244,15 @@ class LeiosFetchLogicSuite extends ScalaCheckSuite:
       Vector(EbPoint(slot(5), hA), EbPoint(slot(8), hA), EbPoint(slot(6), hB)),
       slot(4)
     )
+    // hA's second point finds its body held: hB's pool takes the next id
+    val (hAPool, hBPool) = (LeiosJobPoolId.first, LeiosJobPoolId.first.next)
     assertEquals(
       o.ebState.get(hB),
-      Some(EbState(slot(6), None, EbFetchState.BodyAcquired(LeiosJobPool.empty)))
+      Some(EbState(slot(6), None, EbFetchState.BodyAcquired(LeiosJobPool.empty, hBPool)))
     )
     assertEquals(
       o.ebState.get(hA),
-      Some(EbState(slot(8), None, EbFetchState.BodyAcquired(LeiosJobPool.empty)))
+      Some(EbState(slot(8), None, EbFetchState.BodyAcquired(LeiosJobPool.empty, hAPool)))
     )
     assert(o.ebState.values.forall(_.hasBody))
     assertEquals(o.numMissingBodies, 0)
@@ -291,7 +293,7 @@ class LeiosFetchLogicSuite extends ScalaCheckSuite:
       SortedSet.from(
         reqs.values
           .flatMap(_.toVector)
-          .collect { case LeiosFetchRequest.BlockTxs(_, jobs) =>
+          .collect { case LeiosFetchRequest.BlockTxs(_, _, jobs) =>
             jobs.toSortedMap.values.flatMap(_.offsets.toSortedSet)
           }
           .flatten
@@ -527,7 +529,7 @@ class LeiosFetchLogicSuite extends ScalaCheckSuite:
         )
         .requests
         .map((peer, reqs) =>
-          peer -> reqs.toVector.collect { case LeiosFetchRequest.BlockTxs(_, jobs) =>
+          peer -> reqs.toVector.collect { case LeiosFetchRequest.BlockTxs(_, _, jobs) =>
             jobs.keys.toSortedSet.toVector
           }
         )
@@ -544,10 +546,12 @@ class LeiosFetchLogicSuite extends ScalaCheckSuite:
     val picked =
       NonEmptyVector.fromVectorUnsafe(pool.jobs.toVector.map((i, st) => LeiosJobId(i) -> st.job))
     val small = env.copy(maxRequestBytesSize = size(130))
-    val reqs = LeiosFetchLogic.batchTxsRequests(small, point(1, 'a'), picked)
+    val reqs = LeiosFetchLogic.batchTxsRequests(small, point(1, 'a'), LeiosJobPoolId.first, picked)
     assertEquals(
-      reqs.collect { case LeiosFetchRequest.BlockTxs(_, jobs) => jobs.keys.toSortedSet.toVector },
-      Vector(Vector(0, 1), Vector(2))
+      reqs.collect { case LeiosFetchRequest.BlockTxs(_, pool, jobs) =>
+        (pool, jobs.keys.toSortedSet.toVector)
+      },
+      Vector(LeiosJobPoolId.first -> Vector(0, 1), LeiosJobPoolId.first -> Vector(2))
     )
   }
 
@@ -590,7 +594,7 @@ class LeiosFetchLogicSuite extends ScalaCheckSuite:
     assertEquals(removed.requestedJobsPerPeer.get(peerA), None)
     assertEquals(removed.requestedEbPeers.get(eb('z')).map(_.toSortedSet), Some(SortedSet(peerB)))
     removed.ebState.get(h).map(_.fetch) match
-      case Some(EbFetchState.BodyAcquired(pool)) =>
+      case Some(EbFetchState.BodyAcquired(pool, _)) =>
         assertEquals(pool.jobs.values.map(_.multiplicity).toSet, Set(0))
       case other => fail(s"not held: $other")
   }
@@ -632,14 +636,100 @@ class LeiosFetchLogicSuite extends ScalaCheckSuite:
     )
     assertEquals(done.requestedJobsPerPeer.get(peerA), None)
     assert(done.ebState.get(h).exists {
-      case EbState(_, _, EbFetchState.BodyAcquired(pool)) => pool.isEmpty
-      case _                                              => false
+      case EbState(_, _, EbFetchState.BodyAcquired(pool, _)) => pool.isEmpty
+      case _                                                 => false
     })
     // with nothing left to fetch the offer is dropped
     val again =
       LeiosFetchLogic.iteration(env, anyClosureSize, Some(slot(11)), offers, Map.empty, done)
     assertEquals(again.requests, SortedMap.empty[Pid, NonEmptyVector[LeiosFetchRequest]])
     assertEquals(again.drops.get(peerA).map(_.toSortedSet), Some(SortedSet(EbPoint(slot(10), h))))
+  }
+
+  /** `h` announced at slot 10 and held with one job per transaction of `ids`, and the decision's
+    * transactions requests to `peerA` for it, with the state after the decision.
+    */
+  private def heldAndAsked(
+      o: LeiosOutstanding[Pid],
+      h: EbHash,
+      at: Long,
+      ids: Seq[Int]
+  ): (LeiosOutstanding[Pid], Vector[LeiosFetchRequest.BlockTxs]) =
+    val held = o
+      .recordMaxAnnouncementSlot(h, slot(at), None)
+      .acquireEbBody(h, LeiosJobPool.of(size(64), 1, misses(ids)))
+      .focusElectionIfUnfocused(ElId(slot(at), fixtureIssuer), h)
+    val offers = SortedMap(
+      peerA -> SortedMap(
+        EbPoint(slot(at), h) -> PeerOffer(None, None, WhetherTxsClosureOffered.Offered)
+      )
+    )
+    val decision =
+      LeiosFetchLogic.iteration(env, anyClosureSize, Some(slot(at + 1)), offers, Map.empty, held)
+    (
+      decision.outstanding,
+      decision.requests.get(peerA).toVector.flatMap(_.toVector).collect {
+        case r: LeiosFetchRequest.BlockTxs => r
+      }
+    )
+
+  private def jobsOf(o: LeiosOutstanding[Pid], h: EbHash): Option[(LeiosJobPool, LeiosJobPoolId)] =
+    o.ebState.get(h).map(_.fetch).collect { case EbFetchState.BodyAcquired(jobs, pool) =>
+      (jobs, pool)
+    }
+
+  test("a pool held again after a prune takes a new id, and the old pool's requests name the old") {
+    val h = eb('c')
+    val (asked, stale) = heldAndAsked(empty, h, 10, 0 to 1)
+    val (_, replaced) = asked.prunedToImmTip(slot(11))
+    val (again, fresh) = heldAndAsked(replaced, h, 20, 2 to 3)
+    assertEquals(stale.map(_.pool), Vector(LeiosJobPoolId.first))
+    assertEquals(jobsOf(again, h).map(_._2), Some(LeiosJobPoolId.first.next))
+    // the old request's ids are the peer's in flight still, so the peer is asked for none of the
+    // new pool's jobs of the same numbers until its answer comes, as the reference's exclusion
+    assertEquals(fresh, Vector.empty)
+    assertEquals(
+      again.requestedJobsPerPeer.get(peerA).flatMap(_.get(h)),
+      Some(NonEmptySet.of(0, 1))
+    )
+  }
+
+  test("only the pool that issued a request has jobs pending for its answer") {
+    val h = eb('c')
+    val (asked, stale) = heldAndAsked(empty, h, 10, 0 to 1)
+    val req = stale.headOption.getOrElse(fail("no request"))
+    assertEquals(LeiosFetchLogic.pendingJobs(req, asked), req.jobs.toSortedMap)
+    // another peer's answer retired job 0 already
+    val oneDone = asked.copy(ebState =
+      asked.ebState.updatedWith(h)(
+        _.map(st =>
+          st.copy(fetch = st.fetch match
+            case EbFetchState.BodyAcquired(jobs, pool) =>
+              EbFetchState.BodyAcquired(jobs.complete(LeiosJobId(0)), pool)
+            case other => other)
+        )
+      )
+    )
+    assertEquals(LeiosFetchLogic.pendingJobs(req, oneDone).keySet, Set(1))
+    val (_, pruned) = asked.prunedToImmTip(slot(11))
+    assertEquals(LeiosFetchLogic.pendingJobs(req, pruned), SortedMap.empty[Int, LeiosJob])
+    val (again, _) = heldAndAsked(pruned, h, 20, 2 to 3)
+    assertEquals(LeiosFetchLogic.pendingJobs(req, again), SortedMap.empty[Int, LeiosJob])
+  }
+
+  test("an answer to a replaced pool retires none of its jobs and releases the peer's") {
+    val h = eb('c')
+    val (asked, stale) = heldAndAsked(empty, h, 10, 0 to 1)
+    val (_, pruned) = asked.prunedToImmTip(slot(11))
+    val (again, _) = heldAndAsked(pruned, h, 20, 2 to 3)
+    val late = stale.foldLeft(again)((acc, r) => LeiosFetchLogic.completeTxRequest(peerA, r, acc))
+    assertEquals(jobsOf(late, h), jobsOf(again, h))
+    assertEquals(jobsOf(late, h).map(_._1.jobs.keySet), Some(SortedSet(0, 1)))
+    assertEquals(late.requestedJobsPerPeer.get(peerA), None)
+    // the same request retires its jobs from the pool that issued it
+    val done = stale.foldLeft(asked)((acc, r) => LeiosFetchLogic.completeTxRequest(peerA, r, acc))
+    assert(jobsOf(done, h).exists(_._1.isEmpty))
+    assertEquals(done.requestedJobsPerPeer.get(peerA), None)
   }
 
   test("an answer is checked against each job's count, size and commitment") {

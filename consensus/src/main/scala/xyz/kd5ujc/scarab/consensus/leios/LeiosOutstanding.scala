@@ -41,7 +41,10 @@ object FocusedEbs:
   *   - `numMissingBodies`: how many tracked endorser blocks have no body and are not being forged;
   *   - `requestedEbPeers`, `requestedBytesSizePerPeer` and `requestedJobsPerPeer`: what is in
   *     flight, per endorser block and per peer, the only bound on what a peer is asked for;
-  *   - `prng`: the decision loop's generator, which shuffles the job a peer is given.
+  *   - `prng`: the decision loop's generator, which shuffles the job a peer is given;
+  *   - `nextJobPool`: the id the next pool of jobs installed takes, which no prune resets, so a
+  *     request in flight across a prune never names a pool installed after it ([[LeiosJobPoolId]],
+  *     an Improvement over the reference, which has no such count).
   */
 final case class LeiosOutstanding[P] private[leios] (
     ebState: Map[EbHash, EbState],
@@ -53,27 +56,27 @@ final case class LeiosOutstanding[P] private[leios] (
     requestedEbPeers: Map[EbHash, NonEmptySet[P]],
     requestedBytesSizePerPeer: SortedMap[P, BytesSize],
     requestedJobsPerPeer: SortedMap[P, Map[EbHash, NonEmptySet[Int]]],
-    prng: StdGen
+    prng: StdGen,
+    nextJobPool: LeiosJobPoolId
 ):
   /** `isFocusedEb`: whether some election is fetching this endorser block. */
   def isFocused(h: EbHash): Boolean = focusedEbs.contains(h)
 
   /** `acquireEbBody` (`LeiosDemoTypes.hs` 812-824 at 2416493b): the body's write is durable, so it
     * is held, with the jobs the write still leaves to fetch. An endorser block pruned meanwhile is
-    * left untracked, and one already held keeps its pool.
+    * left untracked, and one already held keeps its pool. A pool installed takes the next id
+    * ([[nextJobPool]]).
     */
   def acquireEbBody(h: EbHash, jobs: LeiosJobPool): LeiosOutstanding[P] =
-    alterEbState(h) {
-      case None => None
-      case Some(EbState(slot, onset, fetch)) =>
-        fetch match
-          case EbFetchState.NoBody | EbFetchState.BodyImminent =>
-            Some(EbState(slot, onset, EbFetchState.BodyAcquired(jobs)))
-          case EbFetchState.BodyAcquired(_) => None
-    }
+    ebState.get(h) match
+      case Some(EbState(slot, onset, EbFetchState.NoBody | EbFetchState.BodyImminent)) =>
+        alterEbState(h)(_ =>
+          Some(EbState(slot, onset, EbFetchState.BodyAcquired(jobs, nextJobPool)))
+        ).copy(nextJobPool = nextJobPool.next)
+      case Some(EbState(_, _, EbFetchState.BodyAcquired(_, _))) | None => this
 
   /** `markBodyImminent` (`LeiosDemoTypes.hs` 827-837): the node's own forge is producing this
-    * endorser block. A held body's pool is emptied: nothing of it is fetched.
+    * endorser block. A held body's pool is emptied, keeping its id: nothing of it is fetched.
     */
   def markBodyImminent(h: EbHash, slot: Word64): LeiosOutstanding[P] =
     alterEbState(h) {
@@ -82,8 +85,8 @@ final case class LeiosOutstanding[P] private[leios] (
         fetch match
           case EbFetchState.NoBody       => Some(EbState(oldSlot, onset, EbFetchState.BodyImminent))
           case EbFetchState.BodyImminent => None
-          case EbFetchState.BodyAcquired(_) =>
-            Some(EbState(oldSlot, onset, EbFetchState.BodyAcquired(LeiosJobPool.empty)))
+          case EbFetchState.BodyAcquired(_, pool) =>
+            Some(EbState(oldSlot, onset, EbFetchState.BodyAcquired(LeiosJobPool.empty, pool)))
     }
 
   /** `recordMaxAnnouncementSlot` (`LeiosDemoTypes.hs` 849-865): the endorser block is referenced at
@@ -212,7 +215,7 @@ final case class LeiosOutstanding[P] private[leios] (
 
 object LeiosOutstanding:
   /** `emptyLeiosOutstanding` (`LeiosDemoTypes.hs` 600-613 at 2416493b): nothing tracked or in
-    * flight, pruned up to `prunedSlot`.
+    * flight, pruned up to `prunedSlot`, and no pool of jobs installed yet.
     */
   def empty[P: Order](prng: StdGen, prunedSlot: Word64): LeiosOutstanding[P] =
     given Ordering[P] = Order[P].toOrdering
@@ -226,7 +229,8 @@ object LeiosOutstanding:
       Map.empty,
       SortedMap.empty,
       SortedMap.empty,
-      prng
+      prng,
+      LeiosJobPoolId.first
     )
 
   /** `initializeLeiosOutstanding` (`LeiosDemoTypes.hs` 922-931 at 2416493b): every endorser block

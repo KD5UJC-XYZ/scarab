@@ -112,8 +112,11 @@ enum EbFetchState derives CanEqual:
   /** Only announced. */
   case NoBody
 
-  /** The body is held; the jobs of its closure not yet requested. */
-  case BodyAcquired(jobs: LeiosJobPool)
+  /** The body is held; the jobs of its closure not yet requested, and which pool they are: a
+    * request names it, so a reply is held to the jobs of the pool that issued it
+    * ([[LeiosJobPoolId]]).
+    */
+  case BodyAcquired(jobs: LeiosJobPool, pool: LeiosJobPoolId)
 
 /** The state of one tracked endorser block (`EbState`, `LeiosDemoTypes.hs` 616-628 at 2416493b):
   * the greatest slot it was announced at, the onset of its earliest announcement's slot if one
@@ -124,15 +127,15 @@ final case class EbState(slot: Word64, onset: Option[FiniteDuration], fetch: EbF
     derives CanEqual:
   /** `ebStateHasBody`. */
   def hasBody: Boolean = fetch match
-    case EbFetchState.BodyAcquired(_)                    => true
+    case EbFetchState.BodyAcquired(_, _)                 => true
     case EbFetchState.NoBody | EbFetchState.BodyImminent => false
 
   /** `wantsBody`: whether the body is still to be fetched, this entry's part of
     * [[LeiosOutstanding.numMissingBodies]].
     */
   def wantsBody: Int = fetch match
-    case EbFetchState.NoBody                                      => 1
-    case EbFetchState.BodyImminent | EbFetchState.BodyAcquired(_) => 0
+    case EbFetchState.NoBody                                         => 1
+    case EbFetchState.BodyImminent | EbFetchState.BodyAcquired(_, _) => 0
 
 /** A request the fetch logic decided to send (`LeiosFetchRequest`, `LeiosDemoTypes.hs` 328-353 at
   * 2416493b).
@@ -143,10 +146,11 @@ enum LeiosFetchRequest derives CanEqual:
     */
   case Block(point: EbPoint, offeredSize: BytesSize, maxEbTxsSize: BytesSize)
 
-  /** Transactions of a body: the jobs the request covers by id, each with its commitment. Only the
-    * union of their offsets goes on the wire ([[LeiosFetchLogic.offsetsToBitmap]]).
+  /** Transactions of a body: the pool the jobs were picked from, and the jobs the request covers by
+    * id, each with its commitment. Only the union of their offsets goes on the wire
+    * ([[LeiosFetchLogic.offsetsToBitmap]]); the pool is the node's own ([[LeiosJobPoolId]]).
     */
-  case BlockTxs(point: EbPoint, jobs: NonEmptyMap[Int, LeiosJob])
+  case BlockTxs(point: EbPoint, pool: LeiosJobPoolId, jobs: NonEmptyMap[Int, LeiosJob])
 
 /** The fetch logic's limits (`LeiosFetchStaticEnv`, `LeiosDemoTypes.hs` 1149-1176 at 2416493b). */
 final case class LeiosFetchStaticEnv(
