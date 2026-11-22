@@ -1659,7 +1659,7 @@ Conway's rules on the classes follow as the rest of stage 2.
     LEDGER at every version, the base case gone (`Conway/Rules/Certs.hs:220` at both) and the constructor with
     it. Crafted withdrawals at 9, 10 and 11, under each of the three builds through CERTS's entry point, show the
     base case running only under 11.1 below 11 (`ConwayCertsChecksSuite`). The failure's withdrawals are the
-    reference's `Withdrawals`, keyed by `AccountAddress` (`Address.hs:980`), each body account read into it.
+    reference's `Withdrawals`, keyed by `AccountAddress` (`Address.hs:980`), as the era bodies hold them.
   - On the 33 upstream judgments of the 11.1 conformance export (1 CERT, 1 CERTS, 5 DELEG, 5 POOL and 21
     GOVCERT), the era rules, from the same inputs, leave the reference's full post-state
     (`UpstreamCertConformanceSuite`, `UpstreamCertsCoverageSuite`, `UpstreamDelegConformanceSuite`,
@@ -2013,12 +2013,11 @@ Conway's rules on the classes follow as the rest of stage 2.
     impossible for ENTITIES on every constructor (`conwayToDijkstraEntitiesPredFailure`, `Entities.hs:413-426`),
     and no predicate ENTITIES runs reports one, so it has no injection. Shelley's UTXO failure is impossible on
     every constructor but `WrongNetworkWithdrawal` (`Entities.hs:428-443`). `validateWrongNetworkWithdrawal` now
-    declares that constructor as its result, and ENTITIES injects it alone. That injection reads the accounts into
-    `AccountAddress`, a conversion total on decoded bodies but not by type, as the era bodies hold withdrawals
-    keyed by the node's reward account
-    ([#85's item](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7058657335)). So it is a function of
-    the rule whose `Left` the rule raises, not an instance. `InjectEntitiesFailure` is invariant: with that
-    constructor a function, no instance is over a narrowed type.
+    declares that constructor as its result, and ENTITIES injects it alone. The era bodies hold the reference's
+    `Withdrawals`, keyed by `AccountAddress`
+    ([#85's item](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7058657335)), so the injection is
+    total by type. It is a function of the rule, not an instance: `InjectEntitiesFailure` is invariant, and with
+    that constructor a function, no instance is over a narrowed type.
   - Evidence:
     - `DijkstraRulesOracleSuite`: on the reference's 20 `certs` cases (`fixtures/reference/dijkstra-rules`), CERTS
       on the era types, from the same parameters and state, gives the reference's refusal byte for byte, through
@@ -2085,7 +2084,7 @@ Conway's rules on the classes follow as the rest of stage 2.
       encoder yet (#796).
   - Not yet (#85): the committee and its proposals in `EntitiesEnv` are the node's records, as in `CertsEnv` (the
     Gap of [#85's item](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923349468)); the era bodies'
-    withdrawals and deposits keyed by `AccountAddress`
+    direct deposits and balance intervals keyed by `AccountAddress`, as their withdrawals now are
     ([item](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7058657335)); the sub-transactions' rules,
     which reuse POOL and ENTITIES' checks (D7c).
 - **Dijkstra's GOV** (`era/rules/DijkstraGovFailures.scala`, `era/rules/GovFailures.scala`; `Rules/Gov.hs` of
