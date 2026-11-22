@@ -829,7 +829,8 @@
         "EraRatifyStoredSuite",
         "EraEpochGovSuite",
         "DijkstraEraEpochGovSuite",
-        "DijkstraEpochReferenceSuite"
+        "DijkstraEpochReferenceSuite",
+        "PreviewConwayBlockLedgersSuite"
       ],
       "docs": [
         "docs/design/era-typed-transactions.md"
