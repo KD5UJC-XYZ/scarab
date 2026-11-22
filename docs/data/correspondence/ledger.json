@@ -47650,10 +47650,10 @@
      "repository": "IntersectMBO/cardano-ledger",
      "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
      "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Genesis.hs",
-     "symbol": "networkId",
+     "symbol": "parseJSON",
      "lines": [
-      500,
-      500
+      494,
+      518
      ]
     }
    ],
