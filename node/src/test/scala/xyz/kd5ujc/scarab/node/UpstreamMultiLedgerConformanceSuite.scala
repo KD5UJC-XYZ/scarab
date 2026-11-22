@@ -263,13 +263,16 @@ class UpstreamMultiLedgerConformanceSuite extends FunSuite:
           val predicates = UpstreamEraLedger
             .stored(txs, before, failures)
             .fold(e => fail(s"$id flat form: $e"), identity)
-          val wire = Cbor
-            .decode(
-              PredicateFailureCbor
-                .applyTxError(predicates)
-                .fold(error => fail(error.message), identity)
-            )
-            .fold(e => fail(e.message), identity)
+          val flat = PredicateFailureCbor
+            .applyTxError(predicates)
+            .fold(error => fail(error.message), identity)
+          // the era failures written by their own encoder, without the flat form
+          assertEquals(
+            xyz.kd5ujc.scarab.node.ntc.ConwayFailureCborCheck.direct(failures).hex,
+            flat.hex,
+            s"$id: direct"
+          )
+          val wire = Cbor.decode(flat).fold(e => fail(e.message), identity)
           assertEquals(
             array(array(wire).head)(1).original.hex,
             item(id, "implementation-failure").original.hex

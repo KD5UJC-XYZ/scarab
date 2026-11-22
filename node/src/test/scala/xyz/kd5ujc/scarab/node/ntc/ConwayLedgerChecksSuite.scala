@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.ntc
 
+import cats.syntax.all.*
 import java.nio.file.Path
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
@@ -440,15 +441,47 @@ class ConwayLedgerChecksSuite extends FunSuite:
       assert(compared.exists(_.label == l), s"$l is not compared")
     )
     compared.foreach { s =>
-      val failures = eraLedger(s, s.build, TxEnv.Validation.All, depth = 1) match
-        case Right(Left(fs)) => fs.toChain.toVector.map(stored(s))
+      val era = eraLedger(s, s.build, TxEnv.Validation.All, depth = 1) match
+        case Right(Left(fs)) => fs.toChain.toVector
         case other           => fail(s"${s.label}: $other")
+      val failures = era.map(stored(s))
       assertEquals(
         PredicateFailureCbor.applyTxError(failures).fold(e => fail(s"${s.label}: $e"), _.hex),
         s.reason.hex,
         s.label
       )
+      // the era failures written by their own encoder, without the flat form
+      assertEquals(ConwayFailureCborCheck.direct(era).hex, s.reason.hex, s"${s.label}: direct")
     }
+
+  test(
+    "the era failures' own encoder writes the flat form's bytes, on every refused case, version, build and policy"
+  ):
+    // the same era failures, written by `ConwayFailureCbor` and by `PredicateFailureCbor` after the
+    // flat projection, where the projection has a form for each; the encoder has bytes for every one
+    val judged = for
+      s0 <- seen
+      s <- versions(s0)
+      build <- ReferenceBuild.values.toVector
+      validation <- TxEnv.Validation.values.toVector
+      depth <- Vector(0, 1)
+      fs <- eraLedger(s, build, validation, depth) match
+        case Right(Left(fs)) => Vector(fs.toChain.toVector)
+        case Right(Right(_)) => Vector.empty
+        case Left(defect)    => fail(s"${s.label}: defect $defect")
+    yield
+      val what = s"${s.label} under ${build.name}, $validation, depth $depth"
+      val direct = ConwayFailureCborCheck.direct(fs)
+      fs.traverse(ConwayLedgerPredFailure.toStored(_, purposes(s), readOf(s))) match
+        case Right(flat) =>
+          assertEquals(
+            direct.hex,
+            PredicateFailureCbor.applyTxError(flat).fold(e => fail(s"$what: $e"), _.hex),
+            what
+          )
+          true
+        case Left(_) => false
+    assert(clue(judged.count(identity)) > 100, "the projected refusals compared")
 
   test("LEDGERS of one transaction is its LEDGER one level down, embedded, on every Conway case"):
     seen.foreach { s =>

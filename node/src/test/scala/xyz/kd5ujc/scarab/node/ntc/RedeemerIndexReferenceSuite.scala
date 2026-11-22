@@ -372,12 +372,14 @@ class RedeemerIndexReferenceSuite extends FunSuite:
           )
           assert(flat.plutus.scripts > 0, r.label)
         case (Right(Left(_)), Some(reason)) =>
-          val failures = judged(1) match
-            case Right(Left(fs)) =>
-              fs.toChain.toVector.map(f =>
-                EraLedgerRun.flat(f, purposes, read).fold(e => fail(s"${r.label}: $e"), identity)
-              )
-            case other => fail(s"${r.label}: one level down, $other")
+          val era = judged(1) match
+            case Right(Left(fs)) => fs.toChain.toVector
+            case other           => fail(s"${r.label}: one level down, $other")
+          // the era failures written by their own encoder, without the flat form
+          assertEquals(ConwayFailureCborCheck.direct(era).hex, reason.hex, s"${r.label}: direct")
+          val failures = era.map(f =>
+            EraLedgerRun.flat(f, purposes, read).fold(e => fail(s"${r.label}: $e"), identity)
+          )
           assertEquals(
             PredicateFailureCbor
               .applyTxError(r.era, failures)
