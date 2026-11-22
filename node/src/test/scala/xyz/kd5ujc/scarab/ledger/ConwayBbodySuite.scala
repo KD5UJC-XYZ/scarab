@@ -38,6 +38,7 @@ import xyz.kd5ujc.scarab.ledger.era.rules.{
   ConwayBbody,
   ConwayBbodyPredFailure,
   ConwayBlockRun,
+  ConwayRuleDefect,
   HeaderProtVerGate,
   InjectBbodyFailure,
   ShelleyBbody,
@@ -172,7 +173,7 @@ class ConwayBbodySuite extends FunSuite:
     * failures as well as their flat form, and the scripts each side's evaluator ran.
     */
   private final case class Judged(
-      era: Verdict,
+      eraRun: Either[ConwayRuleDefect, Verdict],
       flat: Verdict,
       ticked: NewEpochState[Conway],
       flatPlutus: Option[PlutusStats],
@@ -181,14 +182,26 @@ class ConwayBbodySuite extends FunSuite:
       eraFailures: Vector[BbodyPredFailure[Conway]],
       eraEvaluated: Int,
       flatEvaluated: Int
-  )
+  ):
+    /** The era run's verdict, where it reached one. */
+    def era: Verdict = eraRun.fold(defect => fail(s"era defect $defect"), identity)
 
-  /** The node's evaluator, counting the scripts it is asked to run. */
-  private final class Counting extends ScriptEvaluator[cats.Id]:
+  /** The node's evaluator, counting the scripts it is asked to run, and giving no verdict on the
+    * `unsupportedAt` th, as an evaluator's limit does (`EvalFailure.Unsupported`).
+    */
+  private final class Counting(unsupportedAt: Option[Int]) extends ScriptEvaluator[cats.Id]:
     private val runs = new java.util.concurrent.atomic.AtomicInteger(0)
     def evaluate(request: EvalRequest): EvalResult =
-      runs.incrementAndGet()
-      ScarabEvaluator.default.evaluate(request)
+      val n = runs.incrementAndGet()
+      if unsupportedAt.contains(n) then
+        EvalResult.Failure(
+          xyz.kd5ujc.scarab.plutus.EvalFailure.Unsupported(
+            xyz.kd5ujc.scarab.plutus.BackendFailure.StackExhausted
+          ),
+          ExUnits.zero,
+          Vector.empty
+        )
+      else ScarabEvaluator.default.evaluate(request)
     def count: Int = runs.get
 
   /** The state of `before` ticked to the block `raw` as `MirrorRules` ticks it (stamped with the
@@ -202,7 +215,8 @@ class ConwayBbodySuite extends FunSuite:
       raw: Bytes,
       network: Network = Network.Testnet,
       build: ReferenceBuild = ReferenceBuild.Release11_1,
-      change: NewEpochState[Conway] => NewEpochState[Conway] = identity
+      change: NewEpochState[Conway] => NewEpochState[Conway] = identity,
+      unsupportedAt: Option[Int] = None
   ): Judged =
     val setup = before.setup
     val block = FlatBlock.decodeShelley(raw) match
@@ -214,7 +228,7 @@ class ConwayBbodySuite extends FunSuite:
       setup.globals.copy(network = network, referenceBuild = build),
       geometry
     )
-    val (flatEvaluator, eraEvaluator) = (Counting(), Counting())
+    val (flatEvaluator, eraEvaluator) = (Counting(unsupportedAt), Counting(unsupportedAt))
     val ctx = EraBlock.Context(
       globals,
       setup.praos.forks.transition(geometry.k),
@@ -279,7 +293,7 @@ class ConwayBbodySuite extends FunSuite:
     // the network, the validation policy and the build's injection are the run's own, from the
     // globals; the system start the globals' (the Shelley genesis's), and the epoch information
     // of one era from the cluster's start
-    val judged = ConwayBlockRun
+    val run = ConwayBlockRun
       .bbody(
         globals,
         BbodyEnv[Conway](pp, ticked.es.chainAccount),
@@ -305,21 +319,22 @@ class ConwayBbodySuite extends FunSuite:
         ScarabEvaluator.defaultDecoder,
         clock.posix
       )
-      .fold(defect => fail(s"${before.name}: era defect $defect"), identity)
-    val era: Verdict = judged match
+    val judged = run.toOption
+    val era: Either[ConwayRuleDefect, Verdict] = run.map {
       case Left(fs)     => Left(flatOf(before.name, fs, block))
       case Right(after) => Right((after.state.ls, after.state.blocksMade))
+    }
     Judged(
       era,
       flat,
       ticked,
       outcome.toOption.collect { case EraBlock.Outcome.Applied(_, plutus) => plutus },
-      judged.toOption.map(_.plutus),
+      judged.flatMap(_.toOption).map(_.plutus),
       body match
         case EraBlock.Outcome.Applied(_, _) => true
         case _                              => false
       ,
-      judged.left.toOption.fold(Vector.empty)(_.toChain.toVector),
+      judged.flatMap(_.left.toOption).fold(Vector.empty)(_.toChain.toVector),
       eraEvaluator.count,
       flatEvaluator.count
     )
@@ -1117,6 +1132,43 @@ class ConwayBbodySuite extends FunSuite:
       assertEquals(j.flatPlutus, Some(expected), what)
       assertEquals(j.eraPlutus, j.flatPlutus, what)
     }
+  }
+
+  test(
+    "a script the evaluator gives no verdict for: the era run names its transaction and redeemer as the flat rules name them, whichever script of the block it is"
+  ) {
+    val (succeeds, fails) = (alwaysSucceedsWithDatumV3, B.alwaysFailsWithDatumV3)
+    val utxo = funded(
+      Vector(
+        locked(succeeds, 10000000),
+        locked(succeeds, 10000000),
+        locked(succeeds, 10000000),
+        locked(fails, 10000000)
+      ) ++ Vector.fill(4)(paid(30000000))
+    )
+    // a valid transaction of two scripts, then an invalid one of a script that passes and one
+    // that fails: the four scripts the evaluator is asked to run, in the order the rules run them
+    val valid =
+      spending(utxo, Vector(0, 1, 4), Vector(0 -> succeeds, 1 -> succeeds), Some(5), 47000000)
+    val passAndFail =
+      spending(utxo, Vector(2, 3, 6), Vector(2 -> succeeds, 3 -> fails), Some(7), 47000000)
+    val raw = blockOf(Vector(valid, passAndFail), invalid = Vector(1))
+    val named = (1 to 4).map { n =>
+      val j = judge(third, raw, change = holding(utxo), unsupportedAt = Some(n))
+      val failure = j.flat match
+        case Left(Vector(BlockFailure.Tx(failure: LedgerFailure.Unavailable))) => failure
+        case other => fail(s"$n: the flat rules' ${other.map(_._1)}")
+      assertEquals(j.eraRun.left.toOption, Some(ConwayRuleDefect.ScriptUnavailable(failure)), s"$n")
+      // the evaluation stops at the script with no verdict on both sides
+      assertEquals((j.eraEvaluated, j.flatEvaluated), (n, n), s"$n")
+      (failure.txId, failure.location)
+    }
+    // each of the four scripts named once, the first two of the valid transaction
+    assertEquals(
+      named.map(_._1).toVector,
+      Vector(valid.id, valid.id, passAndFail.id, passAndFail.id)
+    )
+    assertEquals(named.distinct.size, 4)
   }
 
   test("a transaction whose input is missing: LEDGERS's refusal, embedded, the flat LEDGER's") {

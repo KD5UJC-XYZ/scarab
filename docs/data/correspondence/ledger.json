@@ -49092,9 +49092,10 @@
    ]
   },
   {
-   "reason": "the node's phase-2 counters (PlutusStats, Scarab's own, which the reference has none of) of a Conway block the era rules admitted (#85): what of BBODY's events they read (ScriptsTold, UTXOS's passed and failed scripts and UTXO's change of the deposits a valid transaction tells after them) and their count by transaction, integrityChecked the bodies that declare a script integrity hash, as the flat rules count them from their evaluations (TxChecks.phase2, EraBlock.Plan)",
+   "reason": "the node's phase-2 observations (Scarab's own, which the reference has none of) of a Conway block the era rules judge (#85): a script with no verdict named by its transaction and redeemer as the flat rules name it (LedgerFailure.Unavailable), so that the node withholds the block as it does the flat rules', its context collected again one purpose at a time and compared; and the phase-2 counters (PlutusStats) of a block the rules admitted: what of BBODY's events they read (ScriptsTold, UTXOS's passed and failed scripts and UTXO's change of the deposits a valid transaction tells after them) and their count by transaction, integrityChecked the bodies that declare a script integrity hash, as the flat rules count them from their evaluations (TxChecks.phase2, EraBlock.Plan)",
    "definitions": [
     "def ledger.era.rules.ConwayPhase2.counted",
+    "def ledger.era.rules.ConwayPhase2.named",
     "def ledger.era.rules.ScriptsTold.of",
     "enum ledger.era.rules.ScriptsTold",
     "object ledger.era.rules.ConwayPhase2",

@@ -2,9 +2,17 @@
 package xyz.kd5ujc.scarab.ledger.era.rules
 
 import cats.data.Chain
-import xyz.kd5ujc.scarab.ledger.PlutusStats
-import xyz.kd5ujc.scarab.ledger.era.{EraTxBody, EraTx, Tx, TxLevel}
-import xyz.kd5ujc.scarab.ledger.state.Conway
+import cats.syntax.all.*
+import xyz.kd5ujc.scarab.ledger.{
+  LedgerFailure,
+  PlutusStats,
+  Redeemer,
+  ScriptLocation,
+  TranslationError
+}
+import xyz.kd5ujc.scarab.ledger.era.*
+import xyz.kd5ujc.scarab.ledger.era.conway.ConwayPlutusPurpose
+import xyz.kd5ujc.scarab.ledger.state.{Conway, LedgerState}
 
 /** What of Conway's BBODY events the node's phase-2 counters read ([[ConwayPhase2.counted]]):
   * UTXOS's scripts that passed and those that failed, and UTXO's change of the deposits, which it
@@ -80,3 +88,88 @@ object ConwayPhase2:
             Tally(stats.copy(succeeded = stats.succeeded + 1, scripts = stats.scripts + passed), 0L)
       }
       .stats
+
+  /** The script `cause` the evaluator gave no verdict for, named as the flat rules name it
+    * ([[LedgerFailure.Unavailable]]: the transaction's id and its redeemer,
+    * `TxChecks.checkedPhase2`), among the block's transactions `txs`, from the ledger state `ls`
+    * the rules judged it in, with the parameters `pp` and the clock `slotToPOSIXTime` they
+    * collected its context with. The script with its context names both: its context is that of one
+    * transaction and one purpose, so it is the one script of the block whose context, collected
+    * again against `ls` as UTXOS collected it (`collectPlutusScriptsWithContext`,
+    * `Alonzo/Plutus/Evaluate.hs:83-118`, cardano-ledger f649f975, one purpose at a time), is equal
+    * to it; a transaction of the block applied before it spent its inputs, and a later one's
+    * context names another transaction. None where no context is equal, which a script of the block
+    * never is.
+    */
+  def named(
+      txs: Vector[Tx[TxLevel.Top, Conway]],
+      ls: LedgerState[Conway],
+      pp: PParams[Conway],
+      slotToPOSIXTime: BigInt => Either[TranslationError, BigInt],
+      cause: ScriptVerdictUnavailable
+  ): Option[LedgerFailure.Unavailable] =
+    val t = EraTx.conway
+    val b = EraTxBody.conway
+    val u = summon[AlonzoEraUTxO[Conway]]
+    val c = summon[EraPlutusContext[Conway]]
+    given t.bodyOf.Level[TxLevel.Top] = t.bodyOf.top
+    val protVer = AlonzoEraPParams.conway.ppProtocolVersionL.get(pp)
+    val costModels =
+      PParams.lensHKD[Conway].andThen(AlonzoEraPParams.conway.hkdCostModelsL[Identity]).get(pp)
+    val stored = ls.utxo.utxo.utxo
+    txs.iterator
+      .flatMap { tx =>
+        val body = t.body[TxLevel.Top](tx)
+        val read = ShelleyUtxo
+          .extractKeys(stored, b.allInputs(body))
+          ._2
+          .toVector
+          .traverse((in, out) => StoredTxOut.conway.fromStored(out).toOption.map(in -> _))
+        read.iterator.flatMap { outs =>
+          val utxo = UTxO[Conway](outs.toMap)
+          val used = AlonzoPlutusEvaluate
+            .resolveNeededPlutusScriptsWithPurpose(
+              protVer,
+              u.getScriptsProvided[TxLevel.Top](utxo, tx)(using u.txOf.bodyOf.top),
+              u.getScriptsNeeded[TxLevel.Top](utxo, body)(using u.txOf.bodyOf.top),
+              Map.empty
+            )
+            ._2
+          val lti = LedgerTxInfo[TxLevel.Top, Conway](
+            protVer,
+            slotToPOSIXTime,
+            utxo,
+            tx,
+            used,
+            LedgerLevelTxInfo.LedgerTopTxInfo(Map.empty)
+          )
+          val result = c.mkTxInfoResult(lti)
+          used.iterator
+            .filter(one =>
+              AlonzoPlutusEvaluate
+                .scriptsWithContextFromLedgerTxInfoWithResult(
+                  lti.copy[TxLevel.Top, Conway](ltiScriptsUsed = List(one)),
+                  result,
+                  costModels
+                )
+                .toOption
+                .contains(List(cause.plutus))
+            )
+            .flatMap { (purpose, _) =>
+              val key = ConwayPlutusPurpose.hoistPlutusPurpose[AsIxItem, AsIx](
+                [ix, it] => (a: AsIxItem[ix, it]) => AsIxItem.toAsIx(a)
+              )(purpose)
+              t.witsOf.rdmrsTxWits(t.wits[TxLevel.Top](tx)).entries.get(key).map {
+                (data, exUnits) =>
+                  LedgerFailure.Unavailable(
+                    b.id[TxLevel.Top](body),
+                    ScriptLocation.Phase2(
+                      Redeemer(key.tag, key.ix.value, data.originalBytes, exUnits)
+                    ),
+                    cause.reason
+                  )
+              }
+            }
+        }
+      }
+      .nextOption()

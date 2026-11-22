@@ -36,6 +36,13 @@ import xyz.kd5ujc.scarab.plutus.{ScriptDecoder, ScriptEvaluator}
   */
 enum ConwayRuleDefect:
   case Unavailable(cause: ScriptVerdictUnavailable)
+
+  /** A script of the block's the evaluator gave no verdict for ([[ScriptVerdictUnavailable]]),
+    * named as the flat rules name it, by its transaction and its redeemer ([[ConwayPhase2.named]]),
+    * so that the node withholds the block as it withholds the flat rules'
+    * (`BlockNoVerdict.Evaluation`).
+    */
+  case ScriptUnavailable(failure: LedgerFailure.Unavailable)
   case UtxoState(cause: UtxoStateDefect)
   case Ledger(cause: LedgerDefect)
   case Gov(cause: GovDefect)
@@ -87,8 +94,6 @@ object ConwayBlockRun:
     */
   final case class Applied(state: ShelleyBbodyState[Conway], plutus: PlutusStats)
 
-  private given Raise[F, ScriptVerdictUnavailable] =
-    summon[Raise[F, ConwayRuleDefect]].contramap(ConwayRuleDefect.Unavailable(_))
   private given Raise[F, UtxoStateDefect] =
     summon[Raise[F, ConwayRuleDefect]].contramap(ConwayRuleDefect.UtxoState(_))
   private given Raise[F, LedgerDefect] =
@@ -144,12 +149,12 @@ object ConwayBlockRun:
 
   /** BBODY on `block` from `state`: a defect, the refusal's failures, or the BBODY state after with
     * the block's phase-2 counters ([[Applied]]). The context of its transactions' rules is made
-    * here from `globals`, as the reference's rules read it from theirs: the network (`networkId`;
-    * one outside `Network` is a defect, [[LedgerFailure.Vocab]]) and the build's injection of
+    * here from `globals`, as the reference's rules read it from theirs: the network (`networkId`, the Shelley genesis's) and the build's injection of
     * Shelley's UTXO failures ([[ConwayUtxo.injectShelleyFailure]]), with the system start and the
     * epoch information the caller gives (`systemStart`, `epochInfo`), and every
     * check validated, so that no caller runs the block's rules under another policy or on another
-    * network.
+    * network. A script the evaluator gives no verdict for is named by its transaction and redeemer
+    * where the rules met it ([[ConwayRuleDefect.ScriptUnavailable]]).
     */
   def bbody[H](
       globals: Globals,
@@ -167,6 +172,24 @@ object ConwayBlockRun:
       PraosEraBlockHeader[H, Conway]
   ): Either[ConwayRuleDefect, Either[NonEmptyChain[BbodyPredFailure[Conway]], Applied]] =
     given ScriptEvaluator[F] = lifted(evaluator)
+    // a script with no verdict, named by its transaction and redeemer in the ledger state the
+    // rules judged it in, the state at the raise
+    given Raise[F, ScriptVerdictUnavailable] = new Raise[F, ScriptVerdictUnavailable]:
+      val functor: Functor[F] = summon[Monad[F]]
+      def raise[E2 <: ScriptVerdictUnavailable, A](cause: E2): F[A] =
+        summon[Stateful[F, S]].get.flatMap(s =>
+          summon[Raise[F, ConwayRuleDefect]].raise[ConwayRuleDefect, A](
+            ConwayPhase2
+              .named(
+                EraBlockBody.conway.txSeqBlockBody(block.blockBody),
+                s.bbody.ls,
+                env.bbodyPp,
+                slotToPOSIXTime,
+                cause
+              )
+              .fold(ConwayRuleDefect.Unavailable(cause))(ConwayRuleDefect.ScriptUnavailable(_))
+          )
+        )
     val netId = globals.networkId
     val context = UtxoContext[Conway](
       netId,
