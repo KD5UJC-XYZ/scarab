@@ -5,7 +5,14 @@ import cats.{Eval, Functor, Id, Monad}
 import cats.data.Chain
 import cats.mtl.{Raise, Tell}
 import cats.syntax.all.*
-import xyz.kd5ujc.scarab.ledger.{Horizon, LedgerDefect, TranslationError, TxEnv, Verdicts}
+import xyz.kd5ujc.scarab.ledger.{
+  Horizon,
+  LedgerDefect,
+  SystemStart,
+  TranslationError,
+  TxEnv,
+  Verdicts
+}
 import xyz.kd5ujc.scarab.ledger.era.{
   AlonzoStAnnTx,
   EraPParams,
@@ -100,7 +107,7 @@ object ConwayMempoolRun:
   final case class Judging(
       globals: Globals,
       netId: Network,
-      systemStart: BigInt,
+      systemStart: SystemStart,
       epochInfo: Horizon,
       slotToPOSIXTime: BigInt => Either[TranslationError, BigInt],
       evaluator: ScriptEvaluator[Id],

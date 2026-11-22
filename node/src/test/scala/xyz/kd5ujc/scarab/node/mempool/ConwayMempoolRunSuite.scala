@@ -161,7 +161,7 @@ class ConwayMempoolRunSuite extends FunSuite:
           ConwayMempoolRun.Judging(
             env.rules,
             setup.globals.network,
-            0,
+            xyz.kd5ujc.scarab.ledger.SystemStart(java.time.Instant.EPOCH),
             historyAt(slot),
             corpusClock.posix,
             xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default,
@@ -383,7 +383,7 @@ class ConwayMempoolRunSuite extends FunSuite:
 
   private def kit(label: String, raw: Bytes, ledger: MempoolLedger): Seen =
     val env = TxKit.env
-    val clock = PosixClock.total(env.geometry)
+    val clock = PosixClock.total(env.globals.systemStart, env.geometry)
     val g = env.geometry
     Seen(
       label,
@@ -397,7 +397,7 @@ class ConwayMempoolRunSuite extends FunSuite:
       ConwayMempoolRun.Judging(
         env.rules,
         env.globals.network,
-        BigInt(g.systemStart.toEpochMilli),
+        env.globals.systemStart,
         Horizon(
           NonEmptyVector.one(
             Horizon.Era(

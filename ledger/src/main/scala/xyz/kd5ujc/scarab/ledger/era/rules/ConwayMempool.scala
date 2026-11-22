@@ -179,4 +179,5 @@ object ConwayMempool:
       Raise[F, ProposalsReadError],
       Raise[F, ProposalsWriteError]
   ): F[Unit] =
+    given Stateful[F, Proposals[Conway]] = ProposalsRecord.stateful[F, Conway]
     ConwayLedger.conwayLedgerTransition[F, Conway](env, stAnnTx, context, verdicts, decoder)
