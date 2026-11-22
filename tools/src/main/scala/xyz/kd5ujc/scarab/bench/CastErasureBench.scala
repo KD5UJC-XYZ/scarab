@@ -214,6 +214,7 @@ object CastErasureBench:
       100,
       Rational(1, 2),
       network = xyz.kd5ujc.scarab.ledger.state.Network.Testnet,
+      systemStart = xyz.kd5ujc.scarab.ledger.SystemStart(Instant.EPOCH),
       updateQuorum = 2,
       kes = xyz.kd5ujc.scarab.ledger.KesParameters.Mainnet
     ),

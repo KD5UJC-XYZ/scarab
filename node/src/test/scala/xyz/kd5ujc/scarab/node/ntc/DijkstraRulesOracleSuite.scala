@@ -91,6 +91,7 @@ class DijkstraRulesOracleSuite extends FunSuite:
       100,
       Rational(1, 2),
       network = Network.Testnet,
+      systemStart = xyz.kd5ujc.scarab.ledger.SystemStart(java.time.Instant.EPOCH),
       updateQuorum = 2,
       kes = xyz.kd5ujc.scarab.ledger.KesParameters.Mainnet
     ),
@@ -552,7 +553,12 @@ class DijkstraRulesOracleSuite extends FunSuite:
     DijkstraUtxoRun.run(
       env,
       DijkstraUtxoRun.annotate(s => fail(s"the clock was read at $s"), env, tx),
-      DijkstraUtxoContext(Network.Testnet, 0, history, validation),
+      DijkstraUtxoContext(
+        Network.Testnet,
+        xyz.kd5ujc.scarab.ledger.SystemStart(java.time.Instant.EPOCH),
+        history,
+        validation
+      ),
       ledger(pp, epoch, utxo).state.utxo,
       xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default,
       xyz.kd5ujc.scarab.ledger.Verdicts.Direct,
@@ -1037,7 +1043,7 @@ class DijkstraRulesOracleSuite extends FunSuite:
       xyz.kd5ujc.scarab.ledger.era.rules
         .DijkstraUtxoContext(
           Network.Testnet,
-          0,
+          xyz.kd5ujc.scarab.ledger.SystemStart(java.time.Instant.EPOCH),
           history,
           xyz.kd5ujc.scarab.ledger.TxEnv.Validation.All
         ),
@@ -1155,7 +1161,7 @@ class DijkstraRulesOracleSuite extends FunSuite:
       xyz.kd5ujc.scarab.ledger.era.rules
         .DijkstraUtxoContext(
           Network.Testnet,
-          0,
+          xyz.kd5ujc.scarab.ledger.SystemStart(java.time.Instant.EPOCH),
           history,
           xyz.kd5ujc.scarab.ledger.TxEnv.Validation.All
         ),
@@ -1266,7 +1272,7 @@ class DijkstraRulesOracleSuite extends FunSuite:
       xyz.kd5ujc.scarab.ledger.era.rules
         .DijkstraUtxoContext(
           Network.Testnet,
-          0,
+          xyz.kd5ujc.scarab.ledger.SystemStart(java.time.Instant.EPOCH),
           history,
           xyz.kd5ujc.scarab.ledger.TxEnv.Validation.All
         ),

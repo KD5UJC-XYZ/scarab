@@ -80,8 +80,10 @@ private[node] object UpstreamEraLedger:
         case _ => Left(Unread.Shape(n))
     case _ => Left(Unread.Shape(n))
 
-  /** The clock of the suites' geometry, which the annotation translates slots with. */
-  def clock(geometry: EpochGeometry): PosixClock = PosixClock.total(geometry)
+  /** The clock of the suites' geometry from their ledger's system start, which the annotation
+    * translates slots with.
+    */
+  def clock(globals: Globals): PosixClock = PosixClock.total(globals.systemStart, globals.geometry)
 
   /** One era from the start at `geometry`, without an end, as `fixedEpochInfo` is. */
   def epochInfo(geometry: EpochGeometry): Horizon =
@@ -100,7 +102,7 @@ private[node] object UpstreamEraLedger:
     Right(
       UtxoContext[Conway](
         globals.networkId,
-        BigInt(globals.geometry.systemStart.toEpochMilli),
+        globals.systemStart,
         epochInfo(globals.geometry),
         TxEnv.Validation.All,
         ConwayUtxo.injectShelleyFailure(globals.ledger.referenceBuild)
@@ -132,7 +134,7 @@ private[node] object UpstreamEraLedger:
     yield EraLedgerRun.ledger(
       globals,
       LedgerEnv[Conway](slot, epoch, ix, pp, account),
-      AlonzoStAnnTx.mkAlonzoStAnnTx[Conway](clock(globals.geometry).posix, pp, utxo, Map.empty, tx),
+      AlonzoStAnnTx.mkAlonzoStAnnTx[Conway](clock(globals).posix, pp, utxo, Map.empty, tx),
       ctx,
       before,
       ScarabEvaluator.default,
@@ -162,7 +164,7 @@ private[node] object UpstreamEraLedger:
       ScarabEvaluator.default,
       Verdicts.Direct,
       ScarabEvaluator.defaultDecoder,
-      clock(globals.geometry).posix
+      clock(globals).posix
     )
 
   /** LEDGER's failures in the node's flat form (`EraLedgerRun.flat`), which the node encodes as the

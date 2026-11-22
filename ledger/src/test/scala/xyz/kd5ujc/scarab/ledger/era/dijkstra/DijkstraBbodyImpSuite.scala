@@ -149,7 +149,12 @@ class DijkstraBbodyImpSuite extends FunSuite:
       .at(flat.Horizon.Transition.Unknown(Some(BigInt(0))))
 
   private val context =
-    DijkstraUtxoContext(Network.Testnet, 0, history, flat.TxEnv.Validation.All)
+    DijkstraUtxoContext(
+      Network.Testnet,
+      xyz.kd5ujc.scarab.ledger.SystemStart(java.time.Instant.EPOCH),
+      history,
+      flat.TxEnv.Validation.All
+    )
 
   private lazy val start: LedgerState[Dijkstra] =
     xyz.kd5ujc.scarab.ledger.state.Build.dijkstra(EpochNo.fromUnsigned(0L), stored).es.ls

@@ -20,6 +20,7 @@ object RewardPulserFixture extends Assertions:
       10000,
       Rational(1, 20),
       network = Network.Testnet,
+      systemStart = xyz.kd5ujc.scarab.ledger.SystemStart(java.time.Instant.EPOCH),
       startRewards = 400,
       conway = None,
       alonzoCoinsPerUTxOWord = 34482,

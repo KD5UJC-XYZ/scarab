@@ -28,6 +28,7 @@ class UpstreamEpochConformanceSuite extends FunSuite:
       BigInt(100),
       Rational(9, 10),
       network = Network.Testnet,
+      systemStart = xyz.kd5ujc.scarab.ledger.SystemStart(java.time.Instant.EPOCH),
       updateQuorum = 5,
       kes = xyz.kd5ujc.scarab.ledger.KesParameters.Mainnet
     ),

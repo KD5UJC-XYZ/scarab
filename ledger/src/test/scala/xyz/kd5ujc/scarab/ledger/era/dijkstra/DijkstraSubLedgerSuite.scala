@@ -156,7 +156,12 @@ class DijkstraSubLedgerSuite extends FunSuite:
       .at(Horizon.Transition.Unknown(Some(BigInt(0))))
 
   private def context(validation: TxEnv.Validation) =
-    DijkstraUtxoContext(Network.Testnet, systemStart * 1000, history, validation)
+    DijkstraUtxoContext(
+      Network.Testnet,
+      xyz.kd5ujc.scarab.ledger.SystemStart(Instant.ofEpochSecond(systemStart.toLong)),
+      history,
+      validation
+    )
 
   private def read(bytes: Bytes, c: io.circe.Json): (DijkstraTx[TxLevel.Top], UTxO[Dijkstra]) =
     val tx = ok(DijkstraTx.inBlock(node(bytes)))

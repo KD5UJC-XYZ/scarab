@@ -10020,8 +10020,8 @@
     "PastHorizonReferenceSuite",
     "DijkstraUtxowSuite"
    ],
-   "note": "the reference's predicate generic in its era over the reference's classes; the epoch information is the era history (Horizon) with the system start in POSIX milliseconds, extended by PosixClock.Extended (unsafeLinearExtendEpochInfo); it reports the node's flat UtxoFailure; its failure the constructor it reports, declared as its result type, so that an injection over the constructors a rule reaches serves it (Dijkstra's, whose reference injections are partial, #85)",
-   "digest": "035590621e8505a2"
+   "note": "the reference's predicate generic in its era over the reference's classes; the epoch information is the era history (Horizon) with the ledger's system start (SystemStart, the systemStart of Globals), extended by PosixClock.Extended (unsafeLinearExtendEpochInfo); it reports the node's flat UtxoFailure; its failure the constructor it reports, declared as its result type, so that an injection over the constructors a rule reaches serves it (Dijkstra's, whose reference injections are partial, #85)",
+   "digest": "56ea1036cb95d87d"
   },
   "class ledger.era.rules.UtxoEnv": {
    "upstream": [
@@ -47689,6 +47689,85 @@
    "structure": "same",
    "note": "the genesis's networkMagic read as FromJSON ShelleyGenesis reads it, a Word32 (FromJSON Word32, parseBoundedIntegral), refused as GenesisSchema.shelley refuses the field, so Genesis.shelley refuses it before networkId (#1334)",
    "digest": "75b728dedfdb68d6"
+  },
+  "class ledger.SystemStart": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-base",
+     "revision": "c1e1ed8d7ae39c111c73fc5f59ac37ce5933b83c",
+     "file": "cardano-slotting/src/Cardano/Slotting/Time.hs",
+     "symbol": "SystemStart",
+     "lines": [
+      61,
+      64
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the ledger's SystemStart, the systemStart of Globals that mkShelleyGlobals takes from sgSystemStart; a java.time.Instant to the nanosecond the genesis reader keeps for the UTCTime; the hard-fork combinator's start is EpochGeometry.systemStart",
+   "digest": "341bb69a19a29c50"
+  },
+  "def ledger.SystemStart#posixMillis": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/TxInfo.hs",
+     "symbol": "slotToPOSIXTime",
+     "lines": [
+      165,
+      172
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "LedgerSystemStartSuite",
+    "SystemStartSuite"
+   ],
+   "note": "slotToPOSIXTime over a relative time already taken from the epoch info (epochInfoSlotToUTCTime, fromRelativeTime): the start plus the offset in picoseconds, truncate . (* 1000) of the sum, toward zero",
+   "digest": "5778bb98168621be"
+  },
+  "object ledger.SystemStart": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-base",
+     "revision": "c1e1ed8d7ae39c111c73fc5f59ac37ce5933b83c",
+     "file": "cardano-slotting/src/Cardano/Slotting/Time.hs",
+     "symbol": "SystemStart",
+     "lines": [
+      61,
+      64
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the picosecond constants of SystemStart.posixMillis",
+   "digest": "f25f214b92e80ed0"
+  },
+  "def ledger.rules.Globals#systemStart": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Genesis.hs",
+     "symbol": "mkShelleyGlobals",
+     "lines": [
+      768,
+      789
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "SystemStartSuite"
+   ],
+   "note": "systemStart of Globals: SystemStart (sgSystemStart genesis), the Shelley genesis's, not the hard-fork combinator's",
+   "digest": "5bc19435f77eb1f6"
   }
  },
  "glue": [

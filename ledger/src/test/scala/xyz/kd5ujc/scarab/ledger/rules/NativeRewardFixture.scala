@@ -35,6 +35,7 @@ object NativeRewardFixture extends Assertions:
         slots,
         active,
         network,
+        systemStart = xyz.kd5ujc.scarab.ledger.SystemStart(java.time.Instant.EPOCH),
         kes = xyz.kd5ujc.scarab.ledger.KesParameters.Mainnet
       ),
       EpochGeometry(

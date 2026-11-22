@@ -38,6 +38,7 @@ class DeepNestingSubmissionSuite extends CatsEffectSuite:
     432000,
     Rational(1, 20),
     network = Network.Testnet,
+    systemStart = xyz.kd5ujc.scarab.ledger.SystemStart(java.time.Instant.EPOCH),
     kes = xyz.kd5ujc.scarab.ledger.KesParameters.Mainnet
   )
   private val geometry =

@@ -602,6 +602,7 @@ object MirrorRules:
       decoder = backend.decoder,
       clock = Some(
         MirrorClock.of(
+          globals.systemStart,
           state,
           Placement(geometry, byronParams, config.forks),
           announced.era,

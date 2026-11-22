@@ -172,7 +172,7 @@ class PastHorizonReferenceSuite extends FunSuite:
       Some(tip)
     )
     PosixClock.forecast(
-      setup.geometry,
+      setup.globals.systemStart,
       history,
       transition,
       Option.when(era == Era.Alonzo)(tip + 1)
@@ -332,7 +332,7 @@ class PastHorizonReferenceSuite extends FunSuite:
             case BlockBuilder.Selection(chosen, Vector()) => chosen.size
             case other                                    => fail(s"withheld: ${other.withheld}")
       assertEquals(chosen(bounded), 0)
-      assertEquals(chosen(PosixClock.total(setup.geometry)), 1)
+      assertEquals(chosen(PosixClock.total(setup.globals.systemStart, setup.geometry)), 1)
     }
   }
 
@@ -382,7 +382,8 @@ class PastHorizonReferenceSuite extends FunSuite:
       // at Origin the safe zone starts at slot zero, as for the tip -1
       val setup = setupOf(r)
       val placement = Placement(setup.geometry, setup.byronHistory, setup.praos.forks)
-      val ours = MirrorClock.of(setup.mirrorStart, placement, r.era, r.tip + 1)
+      val ours =
+        MirrorClock.of(setup.globals.systemStart, setup.mirrorStart, placement, r.era, r.tip + 1)
       val expected = clockAt(setup, r.era, 0, -1)
       def horizon(clock: PosixClock) = clock match
         case f: PosixClock.Forecast => f.horizon

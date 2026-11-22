@@ -235,7 +235,7 @@ object EraBlock:
       stabilityWindow = geometry.stabilityWindow.toBigInt,
       txIndex = 0,
       updateQuorum = globals.quorum,
-      clock = Some(ctx.clock.getOrElse(PosixClock.total(geometry))),
+      clock = Some(ctx.clock.getOrElse(PosixClock.total(globals.systemStart, geometry))),
       evaluator = ctx.evaluator,
       decoder = ctx.decoder,
       observer = ctx.observer,

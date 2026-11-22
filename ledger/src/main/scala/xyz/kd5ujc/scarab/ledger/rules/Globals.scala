@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.ledger.rules
 
 import xyz.kd5ujc.scarab.codec.Rational
-import xyz.kd5ujc.scarab.ledger.{EpochGeometry, LedgerGlobals}
+import xyz.kd5ujc.scarab.ledger.{EpochGeometry, LedgerGlobals, SystemStart}
 import xyz.kd5ujc.scarab.ledger.state.{EpochInterval, Network, NonZero, VocabError, Word64}
 
 /** The constants of a network that the era-indexed rules read from their environment: Haskell's
@@ -19,6 +19,11 @@ import xyz.kd5ujc.scarab.ledger.state.{EpochInterval, Network, NonZero, VocabErr
 final case class Globals(ledger: LedgerGlobals, geometry: EpochGeometry):
   /** `networkId`: the Shelley genesis's `networkId` ([[LedgerGlobals.network]]). */
   def networkId: Network = ledger.network
+
+  /** `systemStart`: the Shelley genesis's ([[LedgerGlobals.systemStart]]), from which the Plutus
+    * script contexts' times count; the geometry's is the hard-fork combinator's.
+    */
+  def systemStart: SystemStart = ledger.systemStart
 
   /** `quorum`: for update-system votes and MIR certificates. */
   def quorum: Int = ledger.updateQuorum

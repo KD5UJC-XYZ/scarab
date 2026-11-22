@@ -68,6 +68,7 @@ trait ForgeFixture:
       1000,
       Rational(1, 2),
       network = Network.Testnet,
+      systemStart = xyz.kd5ujc.scarab.ledger.SystemStart(java.time.Instant.EPOCH),
       updateQuorum = 2,
       kes = xyz.kd5ujc.scarab.ledger.KesParameters.Mainnet
     )
@@ -104,7 +105,8 @@ trait ForgeFixture:
       )
 
   /** The transactions' time translation, placed by this configuration's era history. */
-  given TxClock[MirrorState] = TxClock.of(geometry, mirrorEnv.byron, config.forks)
+  given TxClock[MirrorState] =
+    TxClock.of(globals.systemStart, geometry, mirrorEnv.byron, config.forks)
 
   /** What the mirror reads of this configuration. */
   lazy val mirrorEnv: ConsensusMirrorEnv = ConsensusMirrorEnv(

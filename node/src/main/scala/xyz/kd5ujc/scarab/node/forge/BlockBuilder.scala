@@ -236,7 +236,7 @@ object BlockBuilder:
           stabilityWindow = geometry.stabilityWindow.toBigInt,
           txIndex = acc.chosen.size,
           updateQuorum = globals.updateQuorum,
-          clock = Some(clock.getOrElse(PosixClock.total(geometry))),
+          clock = Some(clock.getOrElse(PosixClock.total(globals.systemStart, geometry))),
           decoder = decoder,
           evaluator = evaluator,
           referenceBuild = globals.referenceBuild

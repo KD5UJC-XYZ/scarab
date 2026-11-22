@@ -5,7 +5,7 @@ import cats.Monad
 import cats.data.{Chain, NonEmptyList, NonEmptyMap, NonEmptySet}
 import cats.mtl.{Raise, Stateful, Tell}
 import cats.syntax.all.*
-import xyz.kd5ujc.scarab.ledger.{Address, Horizon, TxEnv, TxIn, Unsigned}
+import xyz.kd5ujc.scarab.ledger.{Address, Horizon, SystemStart, TxEnv, TxIn, Unsigned}
 import xyz.kd5ujc.scarab.ledger.Unsigned.Width.W16
 import xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraUtxoFailure
 import xyz.kd5ujc.scarab.ledger.era.*
@@ -159,7 +159,7 @@ final case class DijkstraUtxoEnv[E <: EraTag](
   */
 final case class DijkstraUtxoContext(
     netId: Network,
-    systemStart: BigInt,
+    systemStart: SystemStart,
     epochInfo: Horizon,
     validation: TxEnv.Validation
 ):

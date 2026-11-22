@@ -4,7 +4,7 @@ package xyz.kd5ujc.scarab.node.mempool
 import cats.Id
 import cats.data.NonEmptyVector
 import xyz.kd5ujc.scarab.codec.{Bytes, DomainError}
-import xyz.kd5ujc.scarab.ledger.{Horizon, PosixClock, TxEnv, Verdicts}
+import xyz.kd5ujc.scarab.ledger.{Horizon, PosixClock, SystemStart, TxEnv, Verdicts}
 import xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraTx as FlatDijkstraTx
 import xyz.kd5ujc.scarab.ledger.era.{
   BothLevels,
@@ -128,19 +128,19 @@ object DijkstraPoolEnv:
       slot,
       env.rules,
       env.globals.network,
-      env.clock.fold(PosixClock.total(env.geometry))(_(Era.Dijkstra)),
+      env.clock.fold(PosixClock.total(env.globals.systemStart, env.geometry))(_(Era.Dijkstra)),
       env.evaluator,
       env.decoder,
       env.verdicts
     )
 
-  private def horizonOf(clock: PosixClock, rules: Globals): (BigInt, Horizon) = clock match
+  private def horizonOf(clock: PosixClock, rules: Globals): (SystemStart, Horizon) = clock match
     case PosixClock.Forecast(start, horizon)                         => (start, horizon)
     case PosixClock.Extended(_, PosixClock.Forecast(start, horizon)) => (start, horizon)
     case PosixClock.Total(_) =>
       val g = rules.geometry
       (
-        BigInt(g.systemStart.toEpochMilli),
+        rules.systemStart,
         Horizon(
           NonEmptyVector.one(
             Horizon.Era(

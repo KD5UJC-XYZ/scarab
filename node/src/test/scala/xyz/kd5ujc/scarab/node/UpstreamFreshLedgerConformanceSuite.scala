@@ -53,6 +53,7 @@ class UpstreamFreshLedgerConformanceSuite extends FunSuite:
       4320,
       Rational(1, 5),
       Network.Testnet,
+      systemStart = xyz.kd5ujc.scarab.ledger.SystemStart(geometry.systemStart),
       kes = xyz.kd5ujc.scarab.ledger.KesParameters.Mainnet
     ),
     geometry

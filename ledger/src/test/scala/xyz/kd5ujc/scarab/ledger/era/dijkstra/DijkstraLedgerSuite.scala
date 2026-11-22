@@ -155,7 +155,12 @@ class DijkstraLedgerSuite extends FunSuite:
       .at(Horizon.Transition.Unknown(Some(BigInt(0))))
 
   private def context(validation: TxEnv.Validation) =
-    DijkstraUtxoContext(Network.Testnet, systemStart * 1000, history, validation)
+    DijkstraUtxoContext(
+      Network.Testnet,
+      xyz.kd5ujc.scarab.ledger.SystemStart(Instant.ofEpochSecond(systemStart.toLong)),
+      history,
+      validation
+    )
 
   private lazy val start: LedgerState[Dijkstra] =
     xyz.kd5ujc.scarab.ledger.state.Build.dijkstra(EpochNo.fromUnsigned(0L), stored).es.ls

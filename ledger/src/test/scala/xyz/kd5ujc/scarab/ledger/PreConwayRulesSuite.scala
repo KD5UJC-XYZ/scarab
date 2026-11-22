@@ -73,6 +73,7 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     10000,
     Rational(1, 20),
     Network.Testnet,
+    systemStart = xyz.kd5ujc.scarab.ledger.SystemStart(java.time.Instant.EPOCH),
     updateQuorum = 2,
     kes = xyz.kd5ujc.scarab.ledger.KesParameters.Mainnet
   )
@@ -784,6 +785,7 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
       10000,
       Rational(1, 20),
       Network.Testnet,
+      systemStart = xyz.kd5ujc.scarab.ledger.SystemStart(java.time.Instant.EPOCH),
       updateQuorum = 2,
       kes = xyz.kd5ujc.scarab.ledger.KesParameters.Mainnet
     )
@@ -924,6 +926,7 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
       10000,
       Rational(1, 20),
       Network.Testnet,
+      systemStart = xyz.kd5ujc.scarab.ledger.SystemStart(java.time.Instant.EPOCH),
       updateQuorum = 2,
       kes = xyz.kd5ujc.scarab.ledger.KesParameters.Mainnet
     )
@@ -1013,6 +1016,7 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
         100,
         Rational(1, 2),
         Network.Testnet,
+        systemStart = xyz.kd5ujc.scarab.ledger.SystemStart(java.time.Instant.EPOCH),
         kes = xyz.kd5ujc.scarab.ledger.KesParameters.Mainnet
       )
       // each epoch makes its reward update (a block after the start of rewards creates it) and

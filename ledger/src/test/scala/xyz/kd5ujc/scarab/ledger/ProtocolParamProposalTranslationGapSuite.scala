@@ -29,6 +29,7 @@ class ProtocolParamProposalTranslationGapSuite extends FunSuite:
       10000,
       Rational(1, 20),
       Network.Testnet,
+      systemStart = xyz.kd5ujc.scarab.ledger.SystemStart(java.time.Instant.EPOCH),
       updateQuorum = 2,
       kes = xyz.kd5ujc.scarab.ledger.KesParameters.Mainnet
     )

@@ -46,6 +46,10 @@ final case class ConwayParams(
   * @param network
   *   `networkId` of `Globals`: the Shelley genesis's `networkId` (`mkShelleyGlobals`,
   *   cardano-ledger 9df9f98c `Shelley/Genesis.hs:775`), never one decided from the network magic.
+  * @param systemStart
+  *   `systemStart` of `Globals`: the Shelley genesis's `systemStart` (`mkShelleyGlobals`,
+  *   cardano-ledger 9df9f98c `Shelley/Genesis.hs:781,784`), from which the Plutus script contexts'
+  *   times count; not the hard-fork combinator's ([[EpochGeometry.systemStart]]).
   * @param alonzoCoinsPerUTxOWord
   *   `lovelacePerUTxOWord` of the Alonzo genesis: the parameter the Mary to Alonzo translation
   *   introduces (`upgradePParams`, `Alonzo/PParams.hs`), which the era-indexed parameters of the
@@ -71,6 +75,7 @@ final case class LedgerGlobals(
     epochLength: BigInt,
     activeSlotsCoeff: Rational,
     network: Network,
+    systemStart: SystemStart,
     updateQuorum: Int = 5,
     stabilityWindow: BigInt = 0,
     startRewards: BigInt = 0,

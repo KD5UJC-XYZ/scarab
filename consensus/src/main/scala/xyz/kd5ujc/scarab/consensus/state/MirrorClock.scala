@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.consensus.state
 
 import cats.data.NonEmptyVector
-import xyz.kd5ujc.scarab.ledger.{Horizon, PosixClock}
+import xyz.kd5ujc.scarab.ledger.{Horizon, PosixClock, SystemStart}
 import xyz.kd5ujc.scarab.ledger.rules.EraLedger
 import xyz.kd5ujc.scarab.ledger.state.WithOrigin
 import xyz.kd5ujc.scarab.protocol.Era
@@ -22,7 +22,10 @@ import xyz.kd5ujc.scarab.protocol.Era
 object MirrorClock:
 
   /** The clock of a transaction of an era-`era` block at `slot` applied on `state` (the mempool's
-    * transaction is a block of the next slot in the era of the tip).
+    * transaction is a block of the next slot in the era of the tip), from the ledger's system start
+    * `start`: the era history is the hard-fork combinator's, its times relative, and
+    * `slotToPOSIXTime` adds them to the `systemStart` of the ledger's `Globals`, the Shelley
+    * genesis's (cardano-ledger 9df9f98c `Plutus/TxInfo.hs:165-172`, `Shelley/Genesis.hs:768-789`).
     *
     * Where `era` is later than the state's, the tick extends the telescope into it first
     * (`extendToSlot`): the state's era ends where `era` starts ([[MirrorStep.startOf]]) and the
@@ -36,6 +39,7 @@ object MirrorClock:
     * of [[EraHistory.transition]]'s `afterVoting = 0` case whatever the translated state holds.
     */
   def of(
+      start: SystemStart,
       state: MirrorState,
       placement: Placement,
       era: Era,
@@ -43,7 +47,7 @@ object MirrorClock:
   ): PosixClock =
     val (history, transition) = historyAt(state, placement, era, slot)
     PosixClock.forecast(
-      placement.geometry,
+      start,
       history,
       transition,
       Option.when(era == Era.Alonzo)(slot)

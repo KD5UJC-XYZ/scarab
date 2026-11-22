@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
+import java.time.Instant
 import munit.FunSuite
 import xyz.kd5ujc.scarab.ledger.Horizon.{Edge, Era, History, Params, Transition}
 
@@ -90,7 +91,10 @@ class HorizonSuite extends FunSuite:
   }
 
   test("the clock of a horizon fails past it with the horizon, and starts from the system start") {
-    val clock = PosixClock.Forecast(BigInt(1000000), horizon(Transition.Unknown(Some(150))))
+    val clock = PosixClock.Forecast(
+      SystemStart(Instant.ofEpochMilli(1000000)),
+      horizon(Transition.Unknown(Some(150)))
+    )
     assertEquals(clock.posix(199), Right(BigInt(1000000 + 199000)))
     clock.posix(200) match
       case Left(TranslationError.PastHorizon(slot, _)) => assertEquals(slot, BigInt(200))
@@ -98,7 +102,10 @@ class HorizonSuite extends FunSuite:
   }
 
   test("Alonzo's clock extends the history linearly from the slot of the block, past the horizon") {
-    val base = PosixClock.Forecast(BigInt(1000000), horizon(Transition.Unknown(Some(150))))
+    val base = PosixClock.Forecast(
+      SystemStart(Instant.ofEpochMilli(1000000)),
+      horizon(Transition.Unknown(Some(150)))
+    )
     val clock = PosixClock.Extended(160, base)
     // up to the basis slot the history answers; past the horizon the slot length at the basis goes on
     assertEquals(clock.posix(160), Right(BigInt(1000000 + 160000)))

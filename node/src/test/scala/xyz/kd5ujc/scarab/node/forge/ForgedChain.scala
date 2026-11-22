@@ -108,13 +108,15 @@ class ForgedChainSetup(val geometry: EpochGeometry):
       geometry.epochLength,
       Rational(1, 2),
       network = Network.Testnet,
+      systemStart = xyz.kd5ujc.scarab.ledger.SystemStart(geometry.systemStart),
       updateQuorum = 2,
       kes = xyz.kd5ujc.scarab.ledger.KesParameters.Mainnet
     )
   val epochNonce: Nonce = Nonce.Hash(Blake2b.hash256.hash(Bytes(Vector(7))))
 
   /** The transactions' time translation, placed by this configuration's era history. */
-  given TxClock[MirrorState] = TxClock.of(geometry, mirrorEnv.byron, config.forks)
+  given TxClock[MirrorState] =
+    TxClock.of(globals.systemStart, geometry, mirrorEnv.byron, config.forks)
 
   /** What the mirror reads of this configuration. */
   val mirrorEnv: ConsensusMirrorEnv = ConsensusMirrorEnv(

@@ -166,7 +166,7 @@ class EraUtxoSuite extends munit.FunSuite:
       stAnnTx(c),
       UtxoContext[Conway](
         Network.of(BigInt(env.network)).getOrElse(fail(s"network ${env.network}")),
-        0,
+        xyz.kd5ujc.scarab.ledger.SystemStart(java.time.Instant.EPOCH),
         historyAt(env.slot),
         validation,
         ConwayUtxo.injectShelleyFailure(build)
@@ -405,7 +405,7 @@ class EraUtxoSuite extends munit.FunSuite:
       stAnnTx(c),
       UtxoContext[Conway](
         Network.of(BigInt(env.network)).getOrElse(fail(s"network ${env.network}")),
-        0,
+        xyz.kd5ujc.scarab.ledger.SystemStart(java.time.Instant.EPOCH),
         historyAt(env.slot),
         validation,
         ConwayUtxo.injectShelleyFailure(build)
@@ -591,7 +591,7 @@ class EraUtxoSuite extends munit.FunSuite:
       stAnnTx(c),
       UtxoContext[Conway](
         Network.of(BigInt(env.network)).getOrElse(fail(s"network ${env.network}")),
-        0,
+        xyz.kd5ujc.scarab.ledger.SystemStart(java.time.Instant.EPOCH),
         historyAt(env.slot),
         validation,
         ConwayUtxo.injectShelleyFailure(build)
