@@ -288,13 +288,14 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
     judge(st.nes, built, env(st, st.nonce))
       .map(next => Step(next, TxIn(built.id, 0), change, st.nonce + 1))
 
-  /** LEDGER on a transaction built with true bytes ([[ConwayTestKit]]). */
+  /** Conway's LEDGER on the era types on a transaction built with true bytes, its refusal in the
+    * node's flat form; the flat LEDGER agrees on the same bytes ([[ConwayTestKit.ledger]]).
+    */
   private def judge(
       nes: NewEpochState[Conway],
       built: ConwayTestKit.Built,
       ctx: TxEnv
-  ): Either[LedgerFailure, NewEpochState[Conway]] =
-    NativeRules.txIn[Conway](nes, built.flat, ctx).map(_.state)
+  ): Either[LedgerFailure, NewEpochState[Conway]] = ConwayTestKit.ledger(nes, built, ctx)
 
   private def ok[A](r: Either[LedgerFailure, A]): A = r.fold(f => fail(f.message), identity)
 

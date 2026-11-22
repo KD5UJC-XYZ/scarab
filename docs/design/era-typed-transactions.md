@@ -1213,8 +1213,8 @@ Conway's rules on the classes follow as the rest of stage 2.
     - every refusal GOV alone gave holds one failure, so the byte-for-byte comparison does not tell the depth's
       order of several; the cases GOV refused with other rules (`certs-gov-utxow`, `gov-proposal-wrong-deposit`)
       are compared through LEDGER (below);
-    - the scenarios of `ConwayGovernanceSuite`, `PreviewConwayRulesSuite` and the mempool suites run GOV through
-      the flat LEDGER (LEDGER whole, below, says why);
+    - the scenarios of `PreviewConwayRulesSuite` and the mempool suites run GOV through the flat LEDGER (LEDGER
+      whole, below, says why);
     - `ProposalsReadError` is reached by crafted stores only (`EraProposalsSuite`): the node's record is written
       by the flat rule.
   - Not yet (#85): the committee in the environment as the reference's `Committee era`; the votes of a transaction
@@ -1638,8 +1638,15 @@ Conway's rules on the classes follow as the rest of stage 2.
     each of the failing LEDGER's is put in front of LEDGERS' list (`Extended.hs:721`, cardano-ledger f649f975), and
     the flat LEDGERS the flat LEDGER's first failure. Under another guardrails script the block of the proposal and
     the spend is refused by GOV alone, on the proposal, by both.
-  - Incomplete (CNF-2): `ConwayGovernanceSuite` and the mempool suites build flat transactions without bytes, which
-    the era types cannot read until the test builders move to per-era kits (§4), so they run the flat LEDGER only
+  - `ConwayGovernanceSuite`'s scenarios are judged by the era LEDGER: Conway's test kit (`ConwayTestKit` in
+    `ledger/src/test`) writes each transaction as the reference writes a Conway body, its certificates, procedures
+    and actions, signs the body's hash and reads the parts back with the flat decoder, which must give every field
+    asked for, and with Conway's; the funded outputs carry their bytes too. Each transaction's era LEDGER, its
+    failures in the node's flat form (`EraLedgerRun.flat`), gives the suite's expected values, and the flat
+    LEDGER on the same bytes from the same state gives the same failures in the same order or the same ledger
+    state, on every transaction of its 17 scenarios and two properties, across their epoch boundaries.
+  - Incomplete (CNF-2): the mempool suites build their transactions with bytes, but the node's mempool judges
+    them with the flat rules (`MempoolLedger`) until the Conway switch (below), so they run the flat LEDGER only
     (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7056445357); LEDGERS is compared in sequence
     on recorded blocks only from a state built from their transactions' recorded outputs, as the repository holds
     no ledger state of a chain at a recorded Conway block with transactions, and not on blocks whose transactions
