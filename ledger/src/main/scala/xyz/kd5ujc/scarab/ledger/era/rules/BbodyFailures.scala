@@ -7,8 +7,9 @@ import xyz.kd5ujc.scarab.ledger.state.{Conway, Dijkstra, EraTag, Hash32}
 import xyz.kd5ujc.scarab.plutus.ExUnits
 
 // The failures and events of BBODY as the reference declares them (cardano-ledger 9df9f98c, the
-// `Rules/Bbody.hs` of Shelley, Alonzo, Conway and Dijkstra), with the injections of every rule
-// below BBODY into Dijkstra's and the embedding of LEDGERS in BBODY. A size is the reference's
+// `Rules/Bbody.hs` of Shelley, Alonzo, Conway and Dijkstra; Conway's at f649f975, the same but for
+// derived `Ord` instances and the units' `OrdExUnits`), with the injections of every rule below
+// BBODY into Conway's and Dijkstra's and the embedding of LEDGERS in BBODY. A size is the reference's
 // `Int` (a `Long` here), a header's version word a `Word32` (a `Long` the header's reader bounds),
 // and a block's units (`OrdExUnits`) the node's, as UTXO's failures hold them.
 
@@ -29,8 +30,9 @@ enum AlonzoBbodyPredFailure[E <: EraTag]:
   /** The units of the block's transactions (supplied) and the parameters' limit (expected). */
   case TooManyExUnits(mismatch: Mismatch[ExUnits])
 
-/** `data ConwayBbodyPredFailure era` (`Conway/Rules/Bbody.hs:106-114`, cardano-ledger 9df9f98c),
-  * its constructors in the order of their tags.
+/** `data ConwayBbodyPredFailure era` (`Conway/Rules/Bbody.hs:97-105`, cardano-ledger f649f975;
+  * `:106-114` at 9df9f98c, whose units are `OrdExUnits`, the same units with an order), its
+  * constructors in the order of their tags (0 to 5, `:125-132` at f649f975).
   */
 enum ConwayBbodyPredFailure[E <: EraTag]:
   case WrongBlockBodySizeBBODY(mismatch: Mismatch[Long])
@@ -61,8 +63,8 @@ enum DijkstraBbodyPredFailure[E <: EraTag]:
     */
   case HeaderProtVerTooLow(mismatch: Mismatch[Long])
 
-/** `EraRuleFailure "BBODY" era`: Conway's (`Conway/Rules/Bbody.hs:162`) and Dijkstra's
-  * (`Dijkstra/Rules/Bbody.hs:146`, cardano-ledger 9df9f98c), each its own.
+/** `EraRuleFailure "BBODY" era`: Conway's (`Conway/Rules/Bbody.hs:149`, cardano-ledger f649f975)
+  * and Dijkstra's (`Dijkstra/Rules/Bbody.hs:146`, cardano-ledger 9df9f98c), each its own.
   */
 type BbodyPredFailure[E <: EraTag] = E match
   case Conway   => ConwayBbodyPredFailure[Conway]
@@ -76,8 +78,8 @@ enum ShelleyBbodyEvent[E <: EraTag]:
 enum AlonzoBbodyEvent[E <: EraTag]:
   case ShelleyInAlonzoEvent(event: ShelleyBbodyEvent[E])
 
-/** `EraRuleEvent "BBODY" era`: Alonzo's at Conway (`Conway/Rules/Bbody.hs:164`) and at Dijkstra
-  * (`Dijkstra/Rules/Bbody.hs:148`, cardano-ledger 9df9f98c).
+/** `EraRuleEvent "BBODY" era`: Alonzo's at Conway (`Conway/Rules/Bbody.hs:151`, cardano-ledger
+  * f649f975) and at Dijkstra (`Dijkstra/Rules/Bbody.hs:148`, cardano-ledger 9df9f98c).
   */
 type BbodyEvent[E <: EraTag] = E match
   case Conway   => AlonzoBbodyEvent[Conway]
@@ -95,7 +97,8 @@ object ConwayBbodyPredFailure:
   given [E <: EraTag]: CanEqual[ConwayBbodyPredFailure[E], ConwayBbodyPredFailure[E]] =
     CanEqual.derived
 
-  /** `shelleyToConwayBbodyPredFailure` (`Conway/Rules/Bbody.hs:231-241`, cardano-ledger 9df9f98c).
+  /** `shelleyToConwayBbodyPredFailure` (`Conway/Rules/Bbody.hs:218-228`, cardano-ledger f649f975;
+    * `:231-241` at 9df9f98c).
     */
   def shelleyToConwayBbodyPredFailure[E <: EraTag](
       failure: ShelleyBbodyPredFailure[E]
@@ -104,7 +107,8 @@ object ConwayBbodyPredFailure:
     case ShelleyBbodyPredFailure.InvalidBodyHashBBODY(m)    => InvalidBodyHashBBODY(m)
     case ShelleyBbodyPredFailure.LedgersFailure(x)          => LedgersFailure(x)
 
-  /** `alonzoToConwayBbodyPredFailure` (`Conway/Rules/Bbody.hs:243-248`, cardano-ledger 9df9f98c).
+  /** `alonzoToConwayBbodyPredFailure` (`Conway/Rules/Bbody.hs:230-235`, cardano-ledger f649f975;
+    * `:243-248` at 9df9f98c).
     */
   def alonzoToConwayBbodyPredFailure[E <: EraTag](
       failure: AlonzoBbodyPredFailure[E]
@@ -147,15 +151,42 @@ def conwayToDijkstraBbodyPredFailure[E <: EraTag](
   case ConwayBbodyPredFailure.BodyRefScriptsSizeTooBig(m) =>
     DijkstraBbodyPredFailure.BodyRefScriptsSizeTooBig(m)
 
-/** `InjectRuleFailure "BBODY" f era` (`Dijkstra/Rules/Bbody.hs:150-296`, cardano-ledger 9df9f98c):
-  * how era `E` 's BBODY reports a failure `F` of its own or of a rule below it. Contravariant in
-  * `F`, as [[InjectLedgerFailure]] is, so that an instance over a whole type or a union of
-  * constructors serves a predicate declaring one of them.
+/** `InjectRuleFailure "BBODY" f era` (`Conway/Rules/Bbody.hs:153-216`, cardano-ledger f649f975;
+  * `Dijkstra/Rules/Bbody.hs:150-296`, cardano-ledger 9df9f98c): how era `E` 's BBODY reports a
+  * failure `F` of its own or of a rule below it. Contravariant in `F`, as [[InjectLedgerFailure]]
+  * is, so that an instance over a whole type or a union of constructors serves a predicate
+  * declaring one of them.
   */
 trait InjectBbodyFailure[-F, E <: EraTag]:
   def injectFailure(failure: F): BbodyPredFailure[E]
 
 object InjectBbodyFailure:
+  /** `Conway/Rules/Bbody.hs:153`, cardano-ledger f649f975: the identity, the class's default. */
+  given conway: InjectBbodyFailure[ConwayBbodyPredFailure[Conway], Conway] with
+    def injectFailure(failure: ConwayBbodyPredFailure[Conway]): BbodyPredFailure[Conway] = failure
+
+  /** `Conway/Rules/Bbody.hs:155-156`, cardano-ledger f649f975: `alonzoToConwayBbodyPredFailure`. */
+  given conwayAlonzo: InjectBbodyFailure[AlonzoBbodyPredFailure[Conway], Conway] with
+    def injectFailure(failure: AlonzoBbodyPredFailure[Conway]): BbodyPredFailure[Conway] =
+      ConwayBbodyPredFailure.alonzoToConwayBbodyPredFailure(failure)
+
+  /** `Conway/Rules/Bbody.hs:158-159`, cardano-ledger f649f975: `shelleyToConwayBbodyPredFailure`.
+    */
+  given conwayShelley: InjectBbodyFailure[ShelleyBbodyPredFailure[Conway], Conway] with
+    def injectFailure(failure: ShelleyBbodyPredFailure[Conway]): BbodyPredFailure[Conway] =
+      ConwayBbodyPredFailure.shelleyToConwayBbodyPredFailure(failure)
+
+  /** `Conway/Rules/Bbody.hs:161-216`, cardano-ledger f649f975: LEDGERS's failure and each failure
+    * below it, `shelleyToConwayBbodyPredFailure . Shelley.LedgersFailure . injectFailure`, which is
+    * Conway's `LedgersFailure` of LEDGERS's injection: one instance over LEDGERS's
+    * ([[InjectLedgersFailure]]), the ones the reference lists here.
+    */
+  given conwayLedgers[F](using
+      inject: InjectLedgersFailure[F, Conway]
+  ): InjectBbodyFailure[F, Conway] with
+    def injectFailure(failure: F): BbodyPredFailure[Conway] =
+      ConwayBbodyPredFailure.LedgersFailure(inject.injectFailure(failure))
+
   /** `Dijkstra/Rules/Bbody.hs:150`, cardano-ledger 9df9f98c: the identity, the class's default. */
   given dijkstra: InjectBbodyFailure[DijkstraBbodyPredFailure[Dijkstra], Dijkstra] with
     def injectFailure(failure: DijkstraBbodyPredFailure[Dijkstra]): BbodyPredFailure[Dijkstra] =
@@ -213,6 +244,13 @@ trait EmbedLedgersInBbody[E <: EraTag]:
   def wrapEvent(event: LedgersEvent[E]): BbodyEvent[E]
 
 object EmbedLedgersInBbody:
+  /** `Embed ledgers (BBODY era)` (`Conway/Rules/Bbody.hs:318-327`, cardano-ledger f649f975). */
+  given conway: EmbedLedgersInBbody[Conway] with
+    def wrapFailed(failure: LedgersPredFailure[Conway]): BbodyPredFailure[Conway] =
+      ConwayBbodyPredFailure.LedgersFailure(failure)
+    def wrapEvent(event: LedgersEvent[Conway]): BbodyEvent[Conway] =
+      AlonzoBbodyEvent.ShelleyInAlonzoEvent(ShelleyBbodyEvent.LedgersEvent(event))
+
   given dijkstra: EmbedLedgersInBbody[Dijkstra] with
     def wrapFailed(failure: LedgersPredFailure[Dijkstra]): BbodyPredFailure[Dijkstra] =
       DijkstraBbodyPredFailure.LedgersFailure(failure)

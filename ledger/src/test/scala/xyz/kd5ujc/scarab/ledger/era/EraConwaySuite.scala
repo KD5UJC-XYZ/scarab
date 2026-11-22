@@ -1179,7 +1179,8 @@ class EraConwaySuite extends munit.FunSuite:
 
   test("no Conway value that keeps its bytes has a Mirror to build it from other fields") {
     // a case class's derived `Mirror.ProductOf` builds one from any fields (`fromProduct`), so
-    // these are plain classes: their only way in is their decoder
+    // these are plain classes: their only way in is their decoder (a block's body and header among
+    // them, whose fields are those of the bytes the block decoder read)
     Vector(
       compileErrors(
         "summon[scala.deriving.Mirror.ProductOf[xyz.kd5ujc.scarab.ledger.era.conway.ConwayTxBody]]"
@@ -1192,6 +1193,12 @@ class EraConwaySuite extends munit.FunSuite:
       ),
       compileErrors(
         "summon[scala.deriving.Mirror.ProductOf[xyz.kd5ujc.scarab.ledger.era.conway.ConwayTx]]"
+      ),
+      compileErrors(
+        "summon[scala.deriving.Mirror.ProductOf[xyz.kd5ujc.scarab.ledger.era.conway.ConwayBlockBody]]"
+      ),
+      compileErrors(
+        "summon[scala.deriving.Mirror.ProductOf[xyz.kd5ujc.scarab.ledger.era.conway.ConwayBlockHeader]]"
       ),
       compileErrors(
         "summon[scala.deriving.Mirror.ProductOf[xyz.kd5ujc.scarab.ledger.era.TxDats]]"
