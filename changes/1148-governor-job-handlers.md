@@ -1,8 +1,9 @@
 ### Fixed (network, #1148)
 
 - A peer governor job that raises now ends with a completion, instead of ending its fiber with none
-  and leaving its peer in the state the job was started for; a connect left the peer connecting,
-  and a reload of the roots kept it so. A connect that raises leaves the peer cold for the cold
+  and leaving its peer in the state the job was started for (a connect left the peer connecting,
+  and a reload of the roots kept it so). The completion takes effect while the peer is still in that
+  job's state, as a typed completion does. A connect that raises leaves the peer cold for the cold
   back-off; an activation closes its connection, waits for its release up to the demotion timeout
   and leaves the peer cold for the error delay after the one-second pause, or cooling if the close
   raises or the release does not come; a deactivation or a close waits for the release up to the

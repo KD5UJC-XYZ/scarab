@@ -136,10 +136,10 @@ enum Outcome[A]:
   case ActivateFailed(peer: A, failure: FailureClass)
 
   /** The activation raised, and its connection may still be held, its state unknown: the close
-    * raised, or neither it nor the wait for the release showed it released within the timeout; the
-    * peer is established and cooling until its release is seen, as the reference's monitor takes a
-    * connection it reads cooling (`PeerCooling`, ouroboros-network c45735a5 `Governor/Monitor.hs`
-    * 292-296).
+    * raised, the wait for the release raised, or the connection was not seen cold within the
+    * demotion timeout (even after a close that reported it released); the peer is established and
+    * cooling until its release is seen, as the reference's monitor takes a connection it reads
+    * cooling (`PeerCooling`, ouroboros-network c45735a5 `Governor/Monitor.hs` 292-296).
     */
   case ActivateFailedLingering(peer: A, failure: FailureClass)
   case Deactivated(peer: A)
