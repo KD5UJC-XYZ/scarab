@@ -256,3 +256,8 @@
 {"event":"referenceBuild","at":"2026-10-16T12:00:00Z","build":"leios-b004fe0c","stability":"unstable","node":"b004fe0c50913dcdaa827a98e68a43d0ccce152a","ledger":"9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c","ledgerBinary":"9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c","consensus":"2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b"}
 {"event":"unstableReferenceBuild","at":"2026-10-16T12:00:00Z","build":"leios-b004fe0c","experimentalHardForksEnabled":false}
 {"event":"configKeysIgnored","at":"2026-10-16T12:00:00Z","keys":["MinNodeVersion","TraceOptions"]}
+{"event":"leiosNotifyAnnouncement","at":"2026-10-16T12:00:00Z","connection":3,"slot":2425,"ebHash":"2525252525252525252525252525252525252525252525252525252525252525","relayed":true,"ageMillis":34}
+{"event":"leiosNotifyOffer","at":"2026-10-16T12:00:00Z","connection":3,"slot":2425,"ebHash":"2525252525252525252525252525252525252525252525252525252525252525","part":"body","ebSize":149}
+{"event":"leiosNotifyOffer","at":"2026-10-16T12:00:00Z","connection":3,"slot":2425,"ebHash":"2525252525252525252525252525252525252525252525252525252525252525","part":"closure"}
+{"event":"leiosVoteAcquired","at":"2026-10-16T12:00:00Z","connection":3,"rbHash":"d9dadbdcdddedfe0e1e2e3e4e5e6e7e8e9eaebecedeeeff0f1f2f3f4f5f6f7f8","seat":2,"weight":"1/4","tally":"3/4","threshold":"3/4"}
+{"event":"leiosCertified","at":"2026-10-16T12:00:00Z","rbHash":"d9dadbdcdddedfe0e1e2e3e4e5e6e7e8e9eaebecedeeeff0f1f2f3f4f5f6f7f8"}
