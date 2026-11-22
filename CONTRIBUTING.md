@@ -178,8 +178,10 @@ rejected and why). A review by the agent that wrote the change does not replace 
 empty run is no review. The body's "Independent review" section links that comment and summarises the verdict and
 the disposition of each finding. Fixes that change more than wording get a second review, scoped to the fix
 commits. The recipe is [Get an independent review](docs/playbooks/review-a-change.md). `scripts/pr_policy.py`
-refuses a pull request that is not a draft unless the section is there with a link in it; a draft passes, so a pull
-request stays a draft until its review is posted.
+refuses a pull request that is not a draft unless the section links a comment or a review of that pull request
+(`https://github.com/<repository>/pull/<number>#issuecomment-<id>`, or `#pullrequestreview-<id>`); another link, such
+as the attribution line a body ends with, does not count. A draft passes, so a pull request stays a draft until its
+review is posted.
 
 ### The one scenario per area
 

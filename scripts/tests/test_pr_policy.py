@@ -73,7 +73,7 @@ class PrPolicyTests(unittest.TestCase):
 
 
 REVIEWED = ("## Independent review\n\nCodex, no P1 or P2; the two P3 findings fixed in a1b2c3d: "
-            "https://github.com/KD5UJC-XYZ/scarab/pull/8#issuecomment-1\n")
+            "https://github.com/example/scarab/pull/8#issuecomment-1\n")
 
 
 def body_of(level, deviations=None, gaps=None, review=REVIEWED):
@@ -157,9 +157,9 @@ class PrBodyTests(unittest.TestCase):
             with self.subTest(review=review, draft=True):
                 self.assertEqual(policy.check_body(pr), 1)
         pr["draft"] = False
-        for review in [None, "## Independent review\n\n<!-- https://github.com/o/r/pull/8#issuecomment-1 -->\n",
+        for review in [None, "## Independent review\n\n<!-- https://github.com/example/scarab/pull/8#issuecomment-1 -->\n",
                        "## Independent review\n\nCodex found nothing; see the comment below.\n",
-                       "## Independent reviews\n\nhttps://github.com/o/r/pull/8#issuecomment-1\n"]:
+                       "## Independent reviews\n\nhttps://github.com/example/scarab/pull/8#issuecomment-1\n"]:
             pr["body"] = body_of(1, "None", "None", review)
             with self.subTest(review=review, draft=False), self.assertRaisesRegex(
                     policy.PolicyError, 'not a draft needs an "## Independent review" section'):
@@ -169,7 +169,7 @@ class PrBodyTests(unittest.TestCase):
             policy.check_body(pr)
         pr["body"] = body_of(0)
         self.assertEqual(policy.check_body(pr), 0)
-        link = "https://github.com/o/r/pull/8#issuecomment-1"
+        link = "https://github.com/example/scarab/pull/8#issuecomment-1"
         for review in [f"## Independent review\n\n`{link}`\n",
                        f"## Independent review\n\n` a``b````{link} `\n",
                        f"## Independent review\n\nThe review:\n\n    {link}\n",
@@ -197,6 +197,38 @@ class PrBodyTests(unittest.TestCase):
             pr["body"] = body_of(0, review=None)
             with self.assertRaisesRegex(policy.PolicyError, "Independent review"):
                 policy.check_body(pr)
+
+    def test_the_review_link_names_a_comment_or_a_review_of_this_pull_request(self):
+        pr = pull_request(head="feature")
+        pr["user"], pr["draft"] = {"type": "User"}, False
+        footer = "\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n"
+        for review in ["## Independent review\n\nCodex, clean: https://github.com/example/scarab/pull/8#issuecomment-7076\n",
+                       "## Independent review\n\n[the review](https://github.com/example/scarab/pull/8#pullrequestreview-9).\n",
+                       "## Independent review\n\n<https://github.com/Example/Scarab/pull/8#issuecomment-1>\n",
+                       "## Independent review\n\nClean: [review].\n\n[review]: https://github.com/example/scarab/pull/8#issuecomment-1\n",
+                       REVIEWED + footer]:
+            pr["body"] = body_of(1, "None", "None", review)
+            with self.subTest(review=review):
+                self.assertEqual(policy.check_body(pr), 1)
+        for review in ["## Independent review\n\nPending.\n" + footer,
+                       "## Independent review\n\nPending.\n",
+                       "## Independent review\n\nhttps://github.com/example/scarab/pull/8\n",
+                       "## Independent review\n\nhttps://github.com/example/scarab/pull/80#issuecomment-1\n",
+                       "## Independent review\n\nhttps://github.com/example/scarab/pull/7#issuecomment-1\n",
+                       "## Independent review\n\nhttps://github.com/example/scarab/issues/8#issuecomment-1\n",
+                       "## Independent review\n\nhttps://github.com/fork/scarab/pull/8#issuecomment-1\n",
+                       "## Independent review\n\nhttps://github.com/example/scarab/pull/8#issuecomment-1x\n",
+                       "## Independent review\n\nhttps://example.org/github.com/example/scarab/pull/8#issuecomment-1\n",
+                       "## Independent review\n\n[review]: https://github.com/example/scarab/pull/8#issuecomment-1\n",
+                       "## Independent review\n\nSee https://github.com/IntersectMBO/ouroboros-consensus/blob/82ecba329/A.hs#L343\n"]:
+            pr["body"] = body_of(1, "None", "None", review)
+            with self.subTest(review=review), self.assertRaisesRegex(policy.PolicyError, "a comment or a review of this "
+                                                                     "pull request"):
+                policy.check_body(pr)
+        pr["body"] = body_of(1, "None", "None")
+        for broken in [{"number": None}, {"base": {"ref": "main", "repo": {"id": 42}}}]:
+            with self.subTest(broken=broken), self.assertRaisesRegex(policy.PolicyError, "Independent review"):
+                policy.check_body(dict(pr, **broken))
 
     def test_a_bot_and_a_promotion_need_no_review_section(self):
         pr = pull_request()

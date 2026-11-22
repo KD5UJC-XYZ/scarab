@@ -7,8 +7,10 @@ pull request of level 1 or higher carries the two sections CONTRIBUTING.md asks 
 "Deviations from the reference" (`None`, or a table of behaviour, the pinned reference, what Scarab does and the
 approval link) and "Gaps" (`None`, or bullets that each start with an issue link). A section that opens with
 `None` may go on in prose. A pull request that is not a draft (the event's `draft` flag) also carries an
-"Independent review" section with a link, to the review of its final diff posted on it (CONTRIBUTING.md,
-"Independent review"); a draft passes without it. The stated level has floors from the changed files (`--files`, the pull request's file
+"Independent review" section that links the review of its final diff posted on it, a comment or a review of that pull
+request (`https://github.com/<repository>/pull/<number>#issuecomment-<id>` or `#pullrequestreview-<id>`;
+CONTRIBUTING.md, "Independent review"); any other link, such as an attribution line after the section, is not one,
+and a draft passes without it. The stated level has floors from the changed files (`--files`, the pull request's file
 list): a file that is not documentation makes it at least 1, and the persisted-format register at least 3, as the
 levels table of CONTRIBUTING.md defines them. A bot's pull request (a release
 proposal, a dependency update) and a promotion of `dev` to `main` are not checked for these. The promotion controller
@@ -162,25 +164,40 @@ def without_code_spans(text):
     return "".join(out)
 
 
-def has_link(text):
-    """Whether `text` renders a link: an inline link, an autolink or a bare URL outside link reference definitions,
-    or a reference link whose label one of them defines with a URL."""
+def link_targets(text):
+    """The targets of the links `text` renders: each inline link, autolink or bare URL outside link reference
+    definitions (from its scheme to the next space), and the URL of each reference link whose label a definition
+    gives one."""
     defined = {label.strip().lower(): target for label, target in REFERENCE_DEFINITION.findall(text)}
     rest = REFERENCE_DEFINITION.sub("", text)
-    if LINK.search(rest):
-        return True
-    return any(LINK.match(defined.get((ref or label).strip().lower(), "")) for label, ref in REFERENCE.findall(rest))
+    referenced = (defined.get((ref or label).strip().lower(), "") for label, ref in REFERENCE.findall(rest))
+    return LINK.findall(rest) + [target for target in referenced if LINK.match(target)]
+
+
+def review_link(pr):
+    """The links that name a comment or a review of the pull request itself, as GitHub writes them; none when the
+    pull request's number or repository is missing."""
+    number, repository = pr.get("number"), ((pr.get("base") or {}).get("repo") or {}).get("full_name")
+    if type(number) is not int or not isinstance(repository, str) or not REPOSITORY.fullmatch(repository):
+        return None
+    return re.compile(rf"https://github\.com/{re.escape(repository)}/pull/{number}"
+                      rf"#(?:issuecomment|pullrequestreview)-\d+(?![\w-])", re.IGNORECASE)
 
 
 def check_review(pr):
     """A pull request that is not a draft links the independent review of its final diff: a link GitHub renders
-    (`has_link`), in the section as `rendered_section` reads it, outside code spans."""
+    (`link_targets`), in the section as `rendered_section` reads it, outside code spans, to a comment or a review of
+    that pull request (`review_link`). Another link, such as the attribution line a body ends with, which falls in
+    its last section, is not a review."""
     if pr.get("draft") is True:
         return
-    text = rendered_section(pr.get("body"), REVIEW)
-    require(text is not None and has_link(without_code_spans(text)),
+    text, link = rendered_section(pr.get("body"), REVIEW), review_link(pr)
+    require(text is not None and link is not None
+            and any(link.match(target) for target in link_targets(without_code_spans(text))),
             'a pull request that is not a draft needs an "## Independent review" section that links the review of its '
-            "final diff posted on it (CONTRIBUTING.md, \"Independent review\"); keep it a draft until then")
+            "final diff posted on it, a comment or a review of this pull request (https://github.com/<repository>/pull/"
+            "<number>#issuecomment-<id> or #pullrequestreview-<id>; CONTRIBUTING.md, \"Independent review\"); keep it "
+            "a draft until then")
 
 
 def level_floor(files):
