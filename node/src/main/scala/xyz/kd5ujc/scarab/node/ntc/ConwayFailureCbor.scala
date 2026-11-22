@@ -419,7 +419,8 @@ object ConwayFailureCbor:
         })
       case WrongNetworkWithdrawal(network, accounts) =>
         Right(build { w =>
-          w.array(3).uint(8).uint(network.wire); set(w, accounts.toSortedSet)(rewardAccount)
+          w.array(3).uint(8).uint(network.wire)
+          set(w, accounts.toSortedSet)((k, a) => { account(k, a); () })
         })
       case OutputTooSmallUTxO(os)        => outs(9, os)
       case OutputBootAddrAttrsTooBig(os) => outs(10, os)
@@ -617,7 +618,7 @@ object ConwayFailureCbor:
     case ConwayPlutusPurpose.ConwayCertifying(AsItem(c)) => certificate(c).map(sum(2))
     case ConwayPlutusPurpose.ConwayWithdrawing(AsItem(a)) =>
       Right(build { w =>
-        w.array(2).uint(3); rewardAccount(w, a); ()
+        w.array(2).uint(3); account(w, a); ()
       })
     case ConwayPlutusPurpose.ConwayVoting(AsItem(v)) =>
       Right(build { w =>

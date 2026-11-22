@@ -245,7 +245,7 @@ class ConwayFailureCborSuite extends FunSuite:
       ConwayPlutusPurpose.ConwaySpending(AsIxItem(u32(0), txIn(1))),
       ConwayPlutusPurpose.ConwayMinting(AsIxItem(u32(0), h28(4))),
       ConwayPlutusPurpose.ConwayWithdrawing(
-        AsIxItem(u32(0), flatAccount(0, FlatCredential.Script(h28(4))))
+        AsIxItem(u32(0), account(0, FlatCredential.Script(h28(4))))
       ),
       ConwayPlutusPurpose.ConwayVoting(AsIxItem(u32(0), voterKey))
     ) ++ certificates.zipWithIndex.map((c, i) =>
@@ -393,7 +393,7 @@ class ConwayFailureCborSuite extends FunSuite:
       utxo(
         WrongNetworkWithdrawal(
           Network.Testnet,
-          NonEmptySet.fromSetUnsafe(SortedSet.from(accounts.map(Convert.rewardAccountBack)))
+          NonEmptySet.fromSetUnsafe(SortedSet.from(accounts))
         )
       )
     )
@@ -578,7 +578,12 @@ class ConwayFailureCborSuite extends FunSuite:
       FlatCredential.Key(kh("471db3352ca9d734922746e1b842782ba42ce45014b38408e77f6df6"))
     )
     val wrong =
-      utxo(ConwayUtxoPredFailure.WrongNetworkWithdrawal(Network.Testnet, nes(wrongAccount)))
+      utxo(
+        ConwayUtxoPredFailure.WrongNetworkWithdrawal(
+          Network.Testnet,
+          nes(right("account")(Convert.accountAddress(wrongAccount)))
+        )
+      )
     assertEquals(
       direct(wrong),
       "8182068182018200830800d9010281581de1471db3352ca9d734922746e1b842782ba42ce45014b38408e77f6df6"
