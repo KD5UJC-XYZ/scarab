@@ -85,10 +85,11 @@ object DijkstraBlockRun:
     * state and the proposals after. The context of its transactions' rules is made here from
     * `globals`, as the reference's rules read it from theirs: the network (`liftSTS $ asks
     * networkId`, `Dijkstra/Rules/Utxo.hs:400`, cardano-ledger 9df9f98c; one outside `Network` is a
-    * defect, [[LedgerFailure.Vocab]]), with the system start and the epoch information the node's
-    * `Globals` does not hold (`systemStart`, `epochInfo`), and every check validated, so that no
-    * caller runs the block's rules under another policy or on another network. Dijkstra's injection
-    * of Shelley's failures is the era's given, not the build's ([[DijkstraUtxoContext]]).
+    * defect, [[LedgerFailure.Vocab]]), with the system start and the epoch information the caller
+    * gives (`systemStart`, `epochInfo`, the latter depending on the tip), and every check validated
+    * as the reference's application does (`ValidateAll`; its reapplication validates none), so that
+    * no caller runs the block's rules under another policy or on another network. Dijkstra's
+    * injection of Shelley's failures is the era's given, not the build's ([[DijkstraUtxoContext]]).
     */
   def bbody[H](
       globals: Globals,

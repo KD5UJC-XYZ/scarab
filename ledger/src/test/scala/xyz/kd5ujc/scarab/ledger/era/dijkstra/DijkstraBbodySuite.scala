@@ -582,7 +582,8 @@ class DijkstraBbodySuite extends FunSuite:
 
   test("no Dijkstra block value that keeps its bytes has a Mirror to build it from other fields") {
     // a case class's derived `Mirror.ProductOf` builds one from any fields (`fromProduct`), so the
-    // block's body and header are plain classes: their only way in is the block decoder
+    // block's body and header are plain classes: the body is made only by the block decoder, and
+    // the header's fields only as projections of the header it is made from (`fromHeader`)
     Vector(
       compileErrors("summon[scala.deriving.Mirror.ProductOf[DijkstraBlockBody]]"),
       compileErrors("summon[scala.deriving.Mirror.ProductOf[DijkstraBlockHeader]]")
