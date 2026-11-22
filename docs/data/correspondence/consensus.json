@@ -2674,6 +2674,539 @@
    ],
    "note": "shelleyCumulativeTxBytes after a Dijkstra block: the closure's bytes, which applyLeiosClosure adds to the unticked state, and the block's, which applyHelper adds, given as one sum modulo 2^64",
    "digest": "cccc217e11d452ee"
+  },
+  "class consensus.leios.LeiosVoteState": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosVoteState.hs",
+     "symbol": "newLeiosVoteState",
+     "lines": [
+      146,
+      156
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the state newLeiosVoteState's two TVars hold: the tallies by announcing block and the first-seen order of their blocks",
+   "digest": "78755c8cdbadea50"
+  },
+  "object consensus.leios.LeiosVoteState": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosVoteState.hs",
+     "symbol": "newLeiosVoteState",
+     "lines": [
+      146,
+      156
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the empty state and the bound of the window",
+   "digest": "07959adc0a890da2"
+  },
+  "val consensus.leios.LeiosVoteState.empty": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosVoteState.hs",
+     "symbol": "newLeiosVoteState",
+     "lines": [
+      151,
+      154
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the empty map and order newLeiosVoteState starts from",
+   "digest": "1173dd4d15b1d555"
+  },
+  "val consensus.leios.LeiosVoteState.Window": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosTxCache/API.hs",
+     "symbol": "maxAnnouncementCount",
+     "lines": [
+      154,
+      155
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the bound boundPoints keeps, 128",
+   "digest": "33741e2151b67235"
+  },
+  "def consensus.leios.LeiosVoteState#seen": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosVoteState.hs",
+     "symbol": "seenIn",
+     "lines": [
+      113,
+      115
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "a vote counted already: its block's tally holds its seat, as the Set of votes ordered by hash and seat does",
+   "digest": "575b39a37553df77"
+  },
+  "def consensus.leios.LeiosVoteState#add": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosVoteState.hs",
+     "symbol": "addVote",
+     "lines": [
+      157,
+      234
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosVoteState.hs",
+     "symbol": "boundPoints",
+     "lines": [
+      131,
+      143
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "addVote's transaction once the vote is validated: the seen check again, boundPoints before the insertion, the seat's weight replacing any earlier one, the certificate aggregated by aggregateLeiosCert (seats range-checked only) the first time the total reaches the threshold and kept; the reference's error on a failed aggregation is a typed defect",
+   "digest": "c3fc5ab47b6a6c38"
+  },
+  "def consensus.leios.LeiosVoteState#certificate": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosVoteState.hs",
+     "symbol": "queryCert",
+     "lines": [
+      241,
+      243
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the certificate of a block's tally, if assembled",
+   "digest": "41d21a02750aca02"
+  },
+  "def consensus.leios.LeiosVoteState#voters": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosVoteState.hs",
+     "symbol": "queryVoters",
+     "lines": [
+      244,
+      246
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the weight of each seat counted",
+   "digest": "62b0749d8d383fd3"
+  },
+  "class consensus.leios.PointVotes": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosVoteState.hs",
+     "symbol": "PointState",
+     "lines": [
+      92,
+      107
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "psVoters, psTotal and psCert; psSeen, a Set of votes whose Ord compares hash and seat only, is within one block the set of seats counted, which the voters' keys are",
+   "digest": "64e6f4b587b40138"
+  },
+  "object consensus.leios.PointVotes": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosVoteState.hs",
+     "symbol": "emptyPointState",
+     "lines": [
+      109,
+      110
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "its companion",
+   "digest": "4231db15fd2737ec"
+  },
+  "val consensus.leios.PointVotes.empty": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosVoteState.hs",
+     "symbol": "emptyPointState",
+     "lines": [
+      109,
+      110
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "no voter, no weight, no certificate",
+   "digest": "71e17ed94ac2b114"
+  },
+  "class consensus.leios.VoteTally": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosVoteState.hs",
+     "symbol": "VoteTally",
+     "lines": [
+      75,
+      85
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the vote's weight, the running tally and the threshold",
+   "digest": "ca2a24a61a1d0efb"
+  },
+  "enum consensus.leios.AddVoteResult": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosVoteState.hs",
+     "symbol": "AddVoteResult",
+     "lines": [
+      57,
+      68
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the four answers of addVote",
+   "digest": "278fb1f7b5ff4338"
+  },
+  "enum consensus.leios.VoteInvalid": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoTypes.hs",
+     "symbol": "VoteInvalid",
+     "lines": [
+      1421,
+      1425
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the three reasons a vote does not count",
+   "digest": "14c3d7a5e96421c4"
+  },
+  "object consensus.leios.VoteInvalid": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoTypes.hs",
+     "symbol": "validateLeiosVote",
+     "lines": [
+      1409,
+      1419
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "its companion, with validateLeiosVote",
+   "digest": "30f7b9a4d238c447"
+  },
+  "def consensus.leios.VoteInvalid.validate": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoTypes.hs",
+     "symbol": "validateLeiosVote",
+     "lines": [
+      1409,
+      1419
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the seat, its key, then the signature; a native library failure stays a defect, no verdict",
+   "digest": "bab36ec0c8ce7112"
+  },
+  "class consensus.leios.LeiosVoteTiming": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoTypes.hs",
+     "symbol": "LeiosVoteTiming",
+     "lines": [
+      2806,
+      2813
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the equivocation wait and the window, as durations",
+   "digest": "9e6d3f68a598567c"
+  },
+  "object consensus.leios.LeiosVoteTiming": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoTypes.hs",
+     "symbol": "leiosVoteTiming",
+     "lines": [
+      2815,
+      2826
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the default timing and the parameters' timing",
+   "digest": "1b6b466b7ca7f590"
+  },
+  "val consensus.leios.LeiosVoteTiming.default": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoTypes.hs",
+     "symbol": "defaultLeiosVoteTiming",
+     "lines": [
+      2815,
+      2816
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "3 s and 4 s",
+   "digest": "181dc39fcde75fbb"
+  },
+  "def consensus.leios.LeiosVoteTiming.of": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoTypes.hs",
+     "symbol": "leiosVoteTiming",
+     "lines": [
+      2819,
+      2826
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "three announcement periods and one vote period, in milliseconds",
+   "digest": "e81afe4826a22ce2"
+  },
+  "def consensus.leios.LeiosVoteTiming#windowFrom": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosVoting.hs",
+     "symbol": "newVoteTimers",
+     "lines": [
+      174,
+      211
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "voteAt and voteDeadline from the announcing slot's onset; the timers themselves are not built yet (#54)",
+   "digest": "6683975ccc3735ce"
+  },
+  "enum consensus.leios.LeiosNotVotedReason": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoTypes.hs",
+     "symbol": "LeiosNotVotedReason",
+     "lines": [
+      1839,
+      1860
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the six reasons in the reference's order; the ledger's rejection, the unreadable closure and the vote state's answers stay typed where the reference renders text",
+   "digest": "800512561bdfc501"
+  },
+  "enum consensus.leios.EbClosureVerdict": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosVoting.hs",
+     "symbol": "EbClosureVerdict",
+     "lines": [
+      432,
+      444
+     ]
+    }
+   ],
+   "class": "Gap",
+   "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/54#issuecomment-7071535058",
+   "note": "valid, invalid, unreadable; the valid case carries none of the reapplied and applied counts and the measure the reference traces, which come with validateEbClosure",
+   "digest": "403ca8d4be8d642e"
+  },
+  "def consensus.leios.LeiosVoting.tipAnnouncerFor": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosVoting.hs",
+     "symbol": "tipAnnouncerFor",
+     "lines": [
+      571,
+      590
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the tip's hash when the last applied header's announcement is the point",
+   "digest": "209a35dfd0c205f4"
+  },
+  "def consensus.leios.LeiosVoting.seats": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosVoting.hs",
+     "symbol": "getLeiosSeatId",
+     "lines": [
+      342,
+      347
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "each key's seat by getLeiosSeatId, in the keys' order",
+   "digest": "a1ed32f80255de0b"
+  },
+  "def consensus.leios.LeiosVoting.vote": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosVoting.hs",
+     "symbol": "goVote",
+     "lines": [
+      309,
+      419
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the deadline, the tip announcing the point, the committee and seats, the closure's verdict, the deadline again, then one signed vote per seat added to the vote state, every vote refused being VoteRejected; over a capability for the clock, the forker at the volatile tip, the closure validation and addVote",
+   "digest": "996e1bf0d28bb64f"
+  },
+  "def consensus.leios.LeiosVoting.decideLeiosCertify": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus-diffusion/src/ouroboros-consensus-diffusion/Ouroboros/Consensus/NodeKernel/Forge.hs",
+     "symbol": "decideLeiosCertify",
+     "lines": [
+      324,
+      397
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the ticked announcement and the era's gap, the Word64 slot difference against the gap, the closure lookup, the genesis error as a defect, then queryCert of the tip; a typed outcome where the reference returns Nothing and traces",
+   "digest": "88eb41e07bf11afa"
+  },
+  "def consensus.leios.LeiosVoting.minCertificationGap": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoTypes.hs",
+     "symbol": "minCertificationGap",
+     "lines": [
+      2834,
+      2841
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the gap of the era's slot length and the three periods",
+   "digest": "8ffc2cbd2dc7155b"
+  },
+  "def consensus.Praos2.certificationGap": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoTypes.hs",
+     "symbol": "certificationGapOfPeriods",
+     "lines": [
+      2843,
+      2853
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "3 announcement + vote + diffusion milliseconds over the slot length, rounded up; the zero slot length's error is a defect",
+   "digest": "b6d8c749927746ab"
   }
  },
  "glue": [
@@ -2766,6 +3299,24 @@
    "reason": "the routing of a Dijkstra block's defects to the follower's no verdict, where valid peer input can meet a limit of this build, or to a stop (BlockNoVerdict.ofDijkstra, #54): the node's own, as BlockNoVerdict is (issue 567); the reference has no path without a verdict",
    "definitions": [
     "def consensus.BlockNoVerdict.ofDijkstra"
+   ]
+  },
+  {
+   "reason": "the Leios voting's Scala plumbing with no counterpart of its own: the companion of the decisions, a voting key kept with the verification key derived from it once (deriveVerKeyDSIGN in goVote), the capability goVote runs over and the view of the selection it reads (the reference's forker at the volatile tip), the typed outcome of decideLeiosCertify (the reference returns Maybe and traces), and the defects that are the reference's error calls or a native library failure (#54)",
+   "definitions": [
+    "object consensus.leios.LeiosVoting",
+    "class consensus.leios.VotingKey",
+    "object consensus.leios.VotingKey",
+    "def consensus.leios.VotingKey.of",
+    "trait consensus.leios.LeiosVotingEnv",
+    "def consensus.leios.LeiosVotingEnv#now",
+    "def consensus.leios.LeiosVotingEnv#selection",
+    "def consensus.leios.LeiosVotingEnv#validateClosure",
+    "def consensus.leios.LeiosVotingEnv#addVote",
+    "class consensus.leios.SelectionView",
+    "enum consensus.leios.CertifyDecision",
+    "enum consensus.leios.LeiosVotingDefect",
+    "class consensus.leios.VoteAggregationDefect"
    ]
   }
  ]
