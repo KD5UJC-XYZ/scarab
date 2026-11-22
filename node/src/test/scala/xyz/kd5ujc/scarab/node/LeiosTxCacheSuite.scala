@@ -2,15 +2,16 @@
 package xyz.kd5ujc.scarab.node
 
 import cats.data.NonEmptyVector
-import cats.effect.IO
+import cats.effect.{Deferred, IO}
 import cats.mtl.Raise
 import cats.syntax.all.*
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.leios.{EbClosureVerdict, ProtVerParity}
 import xyz.kd5ujc.scarab.crypto.bls.BlsFixtures.rbHash
-import xyz.kd5ujc.scarab.ledger.{StorageError, WitnessCheck}
+import xyz.kd5ujc.scarab.ledger.{StorageError, TxIn, TxOut, WitnessCheck}
 import xyz.kd5ujc.scarab.ledger.era.rules.{
+  DijkstraClosure,
   DijkstraLedgerPredFailure,
   DijkstraMempoolPredFailure,
   DijkstraUtxowPredFailure,
@@ -19,7 +20,7 @@ import xyz.kd5ujc.scarab.ledger.era.rules.{
 import xyz.kd5ujc.scarab.ledger.state.SlotNo
 import xyz.kd5ujc.scarab.node.mempool.{DijkstraState, Rejection}
 import xyz.kd5ujc.scarab.protocol.LeiosTxHash
-import xyz.kd5ujc.scarab.storage.LeiosEb
+import xyz.kd5ujc.scarab.storage.{LeiosEb, MemoryUtxoStore, UtxoReadView}
 
 /** The closure check with the node's LeiosTxCache (`validateEbClosure`, `LeiosVoting.hs:446-565` at
   * ouroboros-consensus 2416493b), on the testnet's recorded closure of 323 transactions
@@ -200,6 +201,112 @@ class LeiosTxCacheSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         refusedWitness(forgedParallel)
         assertEquals(forgedParallel, forgedSerial)
         assertEquals(after, before)
+    }
+  }
+
+  /** The recorded state without the outputs of it the closure spends, and those outputs. */
+  private lazy val split: (DijkstraState, Map[TxIn, TxOut]) =
+    val txs = DijkstraClosure
+      .resolveLeiosClosure(r.point.hash, Some(r.stored))
+      .fold(e => fail(e.toString), _.map(_._2))
+    val inputs = MirrorDijkstra.inputs(txs)
+    val held = state.utxo
+    // the closure also spends outputs earlier transactions of it make, which no state holds
+    val spent = inputs.flatMap(i => held.get(i).map(i -> _)).toMap
+    assert(spent.nonEmpty, "the state holds outputs the closure spends")
+    (
+      state.withUtxo(
+        held.copy(diff = held.diff -- spent.keySet, resident = held.resident -- spent.keySet)
+      ),
+      spent
+    )
+
+  /** A storage error raised as an exception, so that a test can tell the check's own failure. */
+  private final case class Stopped(error: StorageError) extends Exception
+
+  /** `under`, whose reads signal `reading` and then wait for `release`. */
+  private final class Gated(
+      under: UtxoReadView[IO],
+      reading: Deferred[IO, Unit],
+      release: Deferred[IO, Unit]
+  ) extends UtxoReadView[IO]:
+    def read(keys: Iterable[TxIn])(using Raise[IO, StorageError]): IO[Map[TxIn, TxOut]] =
+      reading.complete(()) *> release.get *> under.read(keys)
+    def stamp(using Raise[IO, StorageError]): IO[Long] = under.stamp
+    def all(using Raise[IO, StorageError]): IO[Map[TxIn, TxOut]] = under.all
+    def select(keep: TxOut => Boolean)(using Raise[IO, StorageError]): IO[Map[TxIn, TxOut]] =
+      under.select(keep)
+    def selectAddresses(addresses: Set[Bytes])(using
+        Raise[IO, StorageError]
+    ): IO[Map[TxIn, TxOut]] = under.selectAddresses(addresses)
+
+  test(
+    "the steps are decided on the cache as it is once the outputs are read, as the reference reads it"
+  ) {
+    val (stripped, spent) = split
+    VerificationCache.resource[IO](4).use { witnesses =>
+      for
+        store <- MemoryUtxoStore[IO]
+        _ <- store.write(spent.view.mapValues(Some(_)).toMap, 0L)
+        reading <- Deferred[IO, Unit]
+        release <- Deferred[IO, Unit]
+        cache <- cacheOf(r.stored, Vector.empty, parity)
+        running <- LeiosClosureCheck
+          .validateEbClosure[IO](
+            _ => IO.pure(Some(r.stored)),
+            Some(Gated(store, reading, release)),
+            cache,
+            witnesses.warmWitnesses[IO],
+            r.point,
+            stripped,
+            r.env.copy(verdicts = witnesses)
+          )
+          .start
+        _ <- reading.get
+        // tagged while the outputs are read, after the warming chose what to verify ahead
+        _ <- cache.insertApplied(Vector(r.stored(0)._1), parity)
+        _ <- release.complete(())
+        verdict <- running.joinWithNever
+      yield assertEquals(verdict, EbClosureVerdict.Valid(1, 322))
+    }
+  }
+
+  test("a failed read of the outputs ends the check while other warming holds every permit") {
+    given Raise[IO, StorageError] with
+      def functor = cats.Functor[IO]
+      def raise[E <: StorageError, A](error: E): IO[A] = IO.raiseError(Stopped(error))
+    val (stripped, _) = split
+    val failing = new UtxoReadView[IO]:
+      def read(keys: Iterable[TxIn])(using
+          raise: Raise[IO, StorageError]
+      ): IO[Map[TxIn, TxOut]] = raise.raise(StorageError.DatabaseInUse("the test's store"))
+      def stamp(using Raise[IO, StorageError]): IO[Long] = IO.pure(0L)
+      def all(using Raise[IO, StorageError]): IO[Map[TxIn, TxOut]] = IO.pure(Map.empty)
+      def select(keep: TxOut => Boolean)(using Raise[IO, StorageError]): IO[Map[TxIn, TxOut]] =
+        IO.pure(Map.empty)
+      def selectAddresses(addresses: Set[Bytes])(using
+          Raise[IO, StorageError]
+      ): IO[Map[TxIn, TxOut]] = IO.pure(Map.empty)
+    VerificationCache.resource[IO](1).use { witnesses =>
+      IO.blocking(witnesses.running.acquire())
+        .bracket { _ =>
+          for
+            cache <- cacheOf(r.stored, Vector.empty, parity)
+            ended <- LeiosClosureCheck
+              .validateEbClosure[IO](
+                _ => IO.pure(Some(r.stored)),
+                Some(failing),
+                cache,
+                witnesses.warmWitnesses[IO],
+                r.point,
+                stripped,
+                r.env.copy(verdicts = witnesses)
+              )
+              .attempt
+          yield ended match
+            case Left(Stopped(StorageError.DatabaseInUse(_))) => ()
+            case other => fail(s"not the store's error: $other")
+        }(_ => IO.delay(witnesses.running.release()))
     }
   }
 

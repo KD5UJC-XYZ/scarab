@@ -303,7 +303,7 @@ final class VerificationCache private (val parallelism: Int, direct: Verdicts) e
   // Ranges are warmed concurrently (one `warm` per fetched range): all of them together run at most
   // `parallelism` chunks at once, so that several single-block batches do not put several times
   // as many runnable threads as CPUs on the machine.
-  private val running = new java.util.concurrent.Semaphore(parallelism)
+  private[node] val running = new java.util.concurrent.Semaphore(parallelism)
 
   /** A block whose checks are running: the decoded block is offered to the rules (`prepared`) when
     * the last of its jobs is done, so that the rules find the verdicts together with the block.
@@ -397,13 +397,18 @@ final class VerificationCache private (val parallelism: Int, direct: Verdicts) e
         .flatMap(jobs => run(jobs.flatten, parallelism))
 
   /** `jobs` in [[chunked]] chunks on up to `parallelism` `blocking` threads, under the bound all
-    * warming shares ([[running]]).
+    * warming shares ([[running]]). Waiting for a permit is cancelable (the thread is interrupted,
+    * and a permit not acquired is not released), so a caller cancelled while other warming holds
+    * every permit, as the closure check is when its read of the outputs fails, is not held behind
+    * that work.
     */
   private def run[F[_]: Async](jobs: Vector[Job], parallelism: Int): F[Unit] =
     chunked(jobs, parallelism)
       .parTraverseN(parallelism)(chunk =>
         Resource
-          .make(Async[F].blocking(running.acquire()))(_ => Async[F].delay(running.release()))
+          .makeFull[F, Unit](poll => poll(Async[F].interruptible(running.acquire())))(_ =>
+            Async[F].delay(running.release())
+          )
           .surround(Async[F].blocking(chunk.foreach(_())))
       )
       .void

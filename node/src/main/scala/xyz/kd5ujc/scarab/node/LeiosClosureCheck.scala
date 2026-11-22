@@ -7,7 +7,7 @@ import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.leios.{EbClosureVerdict, ProtVerParity}
 import xyz.kd5ujc.scarab.ledger.{StorageError, WitnessCheck}
-import xyz.kd5ujc.scarab.ledger.era.{BothLevels, EraTx, Tx, TxLevel}
+import xyz.kd5ujc.scarab.ledger.era.{BothLevels, EraTx, EraTxBody, Tx, TxLevel}
 import xyz.kd5ujc.scarab.ledger.era.rules.{DijkstraClosure, LeiosClosureDefect, ShelleyUtxow}
 import xyz.kd5ujc.scarab.ledger.rules.{Globals, Sts, Tick, TickFailure}
 import xyz.kd5ujc.scarab.ledger.state.{Dijkstra, NewEpochState, ShelleyBasedEra, SlotNo}
@@ -109,22 +109,36 @@ object LeiosClosureCheck:
   ): EbClosureVerdict[Rejection, Nothing] =
     goValidate(closure.map((h, t) => (h, t, Step.Apply)), state, env).verdict
 
+  /** The witness signature checks applying `tx` in full asks for: its own (UTXOW,
+    * [[ShelleyUtxow.verifiedWitsAsked]] at the top level), then each sub-transaction's in the order
+    * read, each of its own body's hash (SUBUTXOW, at the sub-transaction level).
+    */
+  def witnessChecks(tx: Tx[TxLevel.Top, Dijkstra]): Vector[WitnessCheck] =
+    val t = EraTx.dijkstra
+    ShelleyUtxow.verifiedWitsAsked[Dijkstra, TxLevel.Top](tx)(using t, BothLevels.Top) ++
+      EraTxBody.dijkstra
+        .subTransactions(t.body[TxLevel.Top](tx)(using BothLevels.Top))
+        .toVector
+        .flatMap(sub =>
+          ShelleyUtxow.verifiedWitsAsked[Dijkstra, TxLevel.Sub](sub)(using t, BothLevels.Sub)
+        )
+
   /** `validateEbClosure` (`LeiosVoting.hs:457-490` at 2416493b) of the endorser block at `point` on
     * `state`, the announcing block's ticked to its slot ([[ticked]]): the closure from `lookup`
     * (`lookupEbClosure`), resolved ([[DijkstraClosure.resolveLeiosClosure]]), which is
     * [[EbClosureVerdict.Unreadable]] when it is missing or a transaction does not decode
-    * (`EbClosureUnreadable`, `:475-476`); then each transaction's step decided against one read of
-    * `cache` under the state's parity; then the stored outputs every transaction's inputs name read
-    * from `utxoStore` (`getTransactionKeySets` of all of them, and `resolveValues`, `:478-485`);
-    * then [[goValidate]], and the transactions it validated in full recorded in `cache` in one
-    * update, whatever the verdict.
+    * (`EbClosureUnreadable`, `:475-476`); then the stored outputs every transaction's inputs name
+    * read from `utxoStore` (`getTransactionKeySets` of all of them, and `resolveValues`,
+    * `:478-485`); then each transaction's step decided against one read of `cache` under the
+    * state's parity, [[goValidate]], and the transactions it validated in full recorded in `cache`
+    * in one update, whatever the verdict.
     *
-    * While the outputs are read, `warm` is given the witness signature checks of the transactions
-    * to be applied in full ([[ShelleyUtxow.verifiedWitsAsked]]; a reapplied one checks no witness),
-    * so that a node verifies them in parallel ahead of the sequential application and `env` 's
-    * verdicts hand them over ([[VerificationCache.warmWitnesses]]). The verdicts are the same: the
-    * order of the application, the first refusal and the transactions validated do not depend on
-    * `warm`, only how long the check takes.
+    * While the outputs are read, `warm` is given the witness signature checks ([[witnessChecks]])
+    * of the transactions an earlier read of `cache` would apply in full (a reapplied one checks no
+    * witness), so that a node verifies them in parallel ahead of the sequential application and
+    * `env` 's verdicts hand them over ([[VerificationCache.warmWitnesses]]). The verdicts are the
+    * same: the order of the application, the first refusal and the transactions validated do not
+    * depend on `warm`, only how long the check takes.
     */
   def validateEbClosure[F[_]: Async](
       lookup: EbHash => F[Option[Vector[(LeiosTxHash, Bytes)]]],
@@ -142,18 +156,20 @@ object LeiosClosureCheck:
         case Right(closure) =>
           val parity = parityOf(state)
           for
-            cached <- cache.lookup
-            decided = closure.map((h, t) => (h, t, Step.of(cached(h), parity)))
+            // only which signatures to verify ahead: the steps are decided on the read after the
+            // outputs, as the reference reads its cache (`LeiosVoting.hs:483-489`). A transaction
+            // tagged in between is reapplied and its warmed verdicts go unused; one untagged in
+            // between is applied in full and its signatures verified in place
+            early <- cache.lookup
             // the spent outputs and the witnesses' verdicts need nothing of each other: both at once
             (utxo, _) <- Async[F].both(
               UtxoStore.complete(utxoStore, state.utxo, MirrorDijkstra.inputs(closure.map(_._2))),
-              warm(decided.collect { case (_, tx, Step.Apply) =>
-                ShelleyUtxow.verifiedWitsAsked[Dijkstra, TxLevel.Top](tx)(using
-                  EraTx.dijkstra,
-                  BothLevels.Top
-                )
+              warm(closure.collect {
+                case (h, tx) if Step.of(early(h), parity) == Step.Apply => witnessChecks(tx)
               }.flatten)
             )
+            cached <- cache.lookup
+            decided = closure.map((h, t) => (h, t, Step.of(cached(h), parity)))
             checked <- Async[F].blocking(goValidate(decided, state.withUtxo(utxo), env))
             _ <- cache.insertApplied(checked.validated, parity).whenA(checked.validated.nonEmpty)
           yield checked.verdict
