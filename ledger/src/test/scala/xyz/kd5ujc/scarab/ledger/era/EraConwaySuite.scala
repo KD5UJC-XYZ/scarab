@@ -1180,7 +1180,9 @@ class EraConwaySuite extends munit.FunSuite:
   test("no Conway value that keeps its bytes has a Mirror to build it from other fields") {
     // a case class's derived `Mirror.ProductOf` builds one from any fields (`fromProduct`), so
     // these are plain classes: their only way in is their decoder (a block's body and header among
-    // them, whose fields are those of the bytes the block decoder read)
+    // them, whose fields are those of the bytes the block decoder read), and what a transaction is
+    // held with, which only an admission makes (`ValidatedTx`, whose constructor the reference
+    // does not export)
     Vector(
       compileErrors(
         "summon[scala.deriving.Mirror.ProductOf[xyz.kd5ujc.scarab.ledger.era.conway.ConwayTxBody]]"
@@ -1205,8 +1207,31 @@ class EraConwaySuite extends munit.FunSuite:
       ),
       compileErrors(
         "summon[scala.deriving.Mirror.ProductOf[xyz.kd5ujc.scarab.ledger.era.Redeemers[Int]]]"
+      ),
+      compileErrors(
+        "summon[scala.deriving.Mirror.ProductOf[xyz.kd5ujc.scarab.ledger.era.rules.ConwayMempoolRun.ValidatedTx]]"
       )
     ).foreach(errs => assert(errs.contains("No given instance"), errs))
+    // nor is it built or copied but by an admission, or by the factory the reference keeps for
+    // tests (`unsafeMakeValidatedTx`)
+    Vector(
+      compileErrors(
+        "(v: xyz.kd5ujc.scarab.ledger.era.rules.ConwayMempoolRun.ValidatedTx) => xyz.kd5ujc.scarab.ledger.era.rules.ConwayMempoolRun.ValidatedTx(v.stAnnTx, v.protocolVersion, v.slot)"
+      ),
+      compileErrors(
+        "(v: xyz.kd5ujc.scarab.ledger.era.rules.ConwayMempoolRun.ValidatedTx) => new xyz.kd5ujc.scarab.ledger.era.rules.ConwayMempoolRun.ValidatedTx(v.stAnnTx, v.protocolVersion, v.slot)"
+      ),
+      compileErrors(
+        "(v: xyz.kd5ujc.scarab.ledger.era.rules.ConwayMempoolRun.ValidatedTx) => v.copy(slot = 0)"
+      )
+    ).foreach(errs => assert(errs.nonEmpty, "built outside an admission"))
+    // its fields are read, as the reference's getters read them
+    assertEquals(
+      compileErrors(
+        "(v: xyz.kd5ujc.scarab.ledger.era.rules.ConwayMempoolRun.ValidatedTx) => (v.stAnnTx, v.protocolVersion, v.slot, v.tx)"
+      ),
+      ""
+    )
     // the same summon compiles for a case class
     assertEquals(
       compileErrors(
