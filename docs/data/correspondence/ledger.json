@@ -47703,9 +47703,10 @@
      ]
     }
    ],
-   "class": "Mirror",
-   "structure": "same",
-   "note": "the ledger's SystemStart, the systemStart of Globals that mkShelleyGlobals takes from sgSystemStart; a java.time.Instant to the nanosecond the genesis reader keeps for the UTCTime; the hard-fork combinator's start is EpochGeometry.systemStart",
+   "class": "Gap",
+   "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1233#issuecomment-7081078289",
+   "note": "the ledger's SystemStart, the systemStart of Globals that mkShelleyGlobals takes from sgSystemStart, a java.time.Instant; the hard-fork combinator's start is EpochGeometry.systemStart. The genesis's text is read with Instant.parse (Genesis.shelley, and again by the node-to-client GenesisConfig.fields), not with aeson's UTCTime reader: a leap second (23:59:60Z) is 23:59:59 here and the next midnight in the reference's POSIX conversion, 1000 ms apart, and a fraction of more than nine digits, which the reference reads to twelve, is refused here",
    "digest": "341bb69a19a29c50"
   },
   "def ledger.SystemStart#posixMillis": {
