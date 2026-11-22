@@ -2199,7 +2199,10 @@ object Main extends IOApp:
           cats.effect.std.Random.scalaUtilRandom[IO].flatMap(_.nextLong),
           chain.ref.get.map(_.anchor.block.map(_.slot).getOrElse(BigInt(0)))
         ).flatMapN { (seed, tip) =>
-          // a slot past every `Word64` has no endorser block at or after it, and prunes all
+          // a slot past every `Word64` has no endorser block at or after it, and prunes all; a
+          // body's transactions are pulled from the mempool's index of them by the hash an endorser
+          // block lists them by (`mkMempoolPull` of `getLeiosTxIndex`, `NodeToNode.hs:950-952` at
+          // 2416493b)
           LeiosFetchNode.create[IO](
             store,
             xyz.kd5ujc.scarab.consensus.leios.StdGen.mk(seed),
@@ -2212,7 +2215,8 @@ object Main extends IOApp:
             immutableTipSlot,
             setup.config.settings.leios.minOfferLead.fold(LeiosMinOfferLead.Default)(lead =>
               LeiosMinOfferLead(xyz.kd5ujc.scarab.protocol.LeiosWord.Word64.clamped(lead.toBigInt))
-            )
+            ),
+            LeiosMempoolPull.of(chain.mempool.leiosTxIndex)
           )(using summon, LeiosStorage.lifted[IO])
         }
       }

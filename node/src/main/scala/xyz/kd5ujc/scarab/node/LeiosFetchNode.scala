@@ -263,7 +263,9 @@ object LeiosFetchNode:
     * `fatal`, and an exception in one of them to `defect`, each of which stops the node. `onset`
     * places a slot on the wall clock since the system start. Its LeiosNotify servers ([[notifier]])
     * offer from `notifications`, the store's, held to `lead` from the slot of the immutable tip
-    * `immutableTipNow` reads.
+    * `immutableTipNow` reads. A body's transactions are pulled from the node's mempool through
+    * `pull` ([[LeiosMempoolPull]]), as the reference's fetch clients pull them
+    * (`Ouroboros/Consensus/Network/NodeToNode.hs` 950-952 at 2416493b).
     */
   def create[F[_]: Async](
       store: LeiosStore[F],
@@ -275,7 +277,8 @@ object LeiosFetchNode:
       onset: BigInt => F[Option[FiniteDuration]],
       notifications: Resource[F, Queue[F, LeiosEbNotification]],
       immutableTipNow: F[Option[Word64]],
-      lead: LeiosMinOfferLead
+      lead: LeiosMinOfferLead,
+      pull: LeiosMempoolPull[F]
   )(using Raise[F, LeiosStoreError]): F[LeiosFetchNode[F]] =
     (
       LeiosFetchKernel
@@ -292,7 +295,8 @@ object LeiosFetchNode:
           LeiosFetchStaticEnv.demo,
           fatal,
           settling => supervisor.supervise(settling.handleErrorWith(defect)).void,
-          slots
+          slots,
+          pull
         ),
         store,
         central,

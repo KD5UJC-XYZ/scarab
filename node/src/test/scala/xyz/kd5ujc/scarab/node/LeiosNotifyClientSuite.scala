@@ -156,7 +156,8 @@ class LeiosNotifyClientSuite extends FailsOnUncaught:
             _ => IO.pure(None),
             acquired.notifications.subscribe,
             IO.pure(None),
-            LeiosMinOfferLead(Word64.fromUnsigned(0L))
+            LeiosMinOfferLead(Word64.fromUnsigned(0L)),
+            LeiosMempoolPull.none[IO]
           )
         ).map(_ -> rocks)
       }

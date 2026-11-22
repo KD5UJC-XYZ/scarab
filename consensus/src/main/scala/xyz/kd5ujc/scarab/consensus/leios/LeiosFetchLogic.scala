@@ -437,6 +437,18 @@ object LeiosFetchLogic:
       Left(LeiosTxsReplyFault.JobRootHashMismatch(id))
     else Right(hashed)
 
+  /** The pull of `mkMempoolPull` (`LeiosDemoLogic.hs` 1186-1200), from the mempool's index read
+    * once: the misses whose hash the index does not hold, still to fetch from peers, and the bytes
+    * of those it does, by hash. The index holds only transactions it has bytes for, so every miss
+    * it holds is a hit.
+    */
+  def mempoolPull(
+      index: collection.Map[LeiosTxHash, Bytes],
+      misses: SortedMap[Int, (LeiosTxHash, BytesSize)]
+  ): (SortedMap[Int, (LeiosTxHash, BytesSize)], Map[LeiosTxHash, Bytes]) =
+    val hits = misses.valuesIterator.flatMap((h, _) => index.get(h).map(h -> _)).toMap
+    (misses.filterNot((_, missed) => hits.contains(missed._1)), hits)
+
   private def onPool(st: EbState)(f: LeiosJobPool => LeiosJobPool): EbState = st.fetch match
     case EbFetchState.BodyAcquired(pool) => st.copy(fetch = EbFetchState.BodyAcquired(f(pool)))
     case EbFetchState.NoBody | EbFetchState.BodyImminent => st

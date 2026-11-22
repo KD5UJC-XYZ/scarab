@@ -2347,6 +2347,27 @@
    ],
    "digest": "52b1434b33c7ee11"
   },
+  "def consensus.leios.LeiosFetchLogic.mempoolPull": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic.hs",
+     "symbol": "mkMempoolPull",
+     "lines": [
+      1186,
+      1200
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "LeiosFetchLogicSuite"
+   ],
+   "note": "the pure step after the index is read; the index holds only transactions with bytes, so the reference's toBytes is the identity here",
+   "digest": "9b28653a9d6af1ad"
+  },
   "class consensus.leios.AnnouncingHeader": {
    "upstream": [
     {
