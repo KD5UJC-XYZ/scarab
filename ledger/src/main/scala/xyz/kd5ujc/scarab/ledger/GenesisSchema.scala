@@ -93,14 +93,18 @@ object GenesisSchema:
   /** `systemStart`, the text `FromJSON UTCTime` reads (`sgSystemStart`,
     * `Shelley/Genesis.hs:308,498`, cardano-ledger f649f975), refused as [[shelley]] refuses it:
     * [[Genesis.shelley]] reads it first, in the reference's order, so a missing start, or one that
-    * is not a string, is refused before any other field. The text's reading as a time is the
-    * reader's.
+    * is not a string, is refused before any other field. A genesis that is not an object is refused
+    * at its root first, as `withObject "ShelleyGenesis"` refuses it before it reads a field
+    * (`:496`). The text's reading as a time is the reader's.
     */
   def systemStart(shelley: Json): Either[ConfigError, String] =
     val path = Vector("systemStart")
-    at(GenesisFile.Shelley, shelley.hcursor.downField("systemStart"), path).flatMap(json =>
-      string(json).leftMap(fieldError(GenesisFile.Shelley, path, _))
-    )
+    anObjectOf(shelley)
+      .leftMap(fieldError(GenesisFile.Shelley, Vector.empty, _))
+      .flatMap(_ =>
+        at(GenesisFile.Shelley, shelley.hcursor.downField("systemStart"), path)
+          .flatMap(json => string(json).leftMap(fieldError(GenesisFile.Shelley, path, _)))
+      )
 
   /** `networkMagic`, a `Word32` (`sgNetworkMagic`, `Shelley/Genesis.hs:309,499`, cardano-ledger
     * f649f975), refused as [[shelley]] refuses it: [[Genesis.shelley]] reads it before `networkId`,

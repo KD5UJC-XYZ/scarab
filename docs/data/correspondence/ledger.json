@@ -47776,8 +47776,8 @@
    "evidence": [
     "SystemStartSuite"
    ],
-   "note": "the Shelley genesis's systemStart read first, as parseJSON reads it, refused as GenesisSchema.shelley refuses the field (missing, or not a string); its reading as a UTCTime is Genesis.shelley's",
-   "digest": "055599b40eacb40d"
+   "note": "the Shelley genesis's systemStart read first, as parseJSON reads it, after the root is checked to be an object (withObject), refused as GenesisSchema.shelley refuses the root and the field (missing, or not a string); its reading as a UTCTime is Genesis.shelley's",
+   "digest": "28fe885cb5de0ff9"
   },
   "def ledger.rules.Globals#systemStart": {
    "upstream": [

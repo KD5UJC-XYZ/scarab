@@ -154,6 +154,21 @@ class SystemStartSuite extends FunSuite:
     }
   }
 
+  test("a genesis that is not an object is refused at its root, before its systemStart is read") {
+    def root(found: JsonKind) = ConfigProblem.GenesisField(
+      GenesisFile.Shelley,
+      Vector.empty,
+      GenesisFieldError.Kind(JsonKind.Object, found)
+    )
+    List(
+      Json.arr() -> root(JsonKind.Array),
+      Json.fromString(byronStart.toString) -> root(JsonKind.String)
+    ).foreach { (edited, expected) =>
+      assertEquals(refusal(edited), expected)
+      assertEquals(GenesisSchema.shelley(edited).left.map(_.problem), Left(expected))
+    }
+  }
+
   // on the public networks and the Leios testnet the two starts agree, so the ledger's start is
   // the slot clock's, as it was before #1337
   List(
