@@ -179,9 +179,10 @@ empty run is no review. The body's "Independent review" section links that comme
 the disposition of each finding. Fixes that change more than wording get a second review, scoped to the fix
 commits. The recipe is [Get an independent review](docs/playbooks/review-a-change.md). `scripts/pr_policy.py`
 refuses a pull request that is not a draft unless the section links a comment or a review of that pull request
-(`https://github.com/<repository>/pull/<number>#issuecomment-<id>`, or `#pullrequestreview-<id>`); another link, such
-as the attribution line a body ends with, does not count. A draft passes, so a pull request stays a draft until its
-review is posted.
+(`https://github.com/<repository>/pull/<number>#issuecomment-<id>`, or `#pullrequestreview-<id>`), or holds the
+review itself, written in the section (at least 25 words besides the attribution line); another link, such as the
+attribution line a body ends with, does not count. A draft passes, so a pull request stays a draft until its review
+is posted.
 
 ### The one scenario per area
 

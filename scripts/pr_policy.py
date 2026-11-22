@@ -208,20 +208,33 @@ def review_link(pr):
                       rf"#(?:issuecomment|pullrequestreview)-\d+(?![\w-])", re.IGNORECASE)
 
 
+ATTRIBUTION = re.compile(r"^.*Generated with \[Claude Code\]\(https://claude\.com/claude-code\).*$", re.M)
+INLINE_REVIEW_WORDS = 25
+
+
+def inline_review(text):
+    """Whether the section carries the review itself, written in the body: at least `INLINE_REVIEW_WORDS` words
+    outside code spans once the attribution line is removed, so "Pending" or a bare footer is not a review."""
+    return len(re.findall(r"\w+", ATTRIBUTION.sub("", without_code_spans(text)))) >= INLINE_REVIEW_WORDS
+
+
 def check_review(pr):
-    """A pull request that is not a draft links the independent review of its final diff: a link GitHub renders
-    (`link_targets`: its destination, with reference definitions read from the whole body), in the section as
-    `rendered_section` reads it, outside code spans, to a comment or a review of that pull request (`review_link`).
-    Another link, such as the attribution line a body ends with, which falls in its last section, is not a review."""
+    """A pull request that is not a draft records the independent review of its final diff in its "Independent
+    review" section, as `rendered_section` reads it: either a link GitHub renders (`link_targets`: its destination,
+    with reference definitions read from the whole body), outside code spans, to a comment or a review of that pull
+    request (`review_link`), or the review written in the section itself (`inline_review`). Another link, such as
+    the attribution line a body ends with, which falls in its last section, is not a review."""
     if pr.get("draft") is True:
         return
     text, link = rendered_section(pr.get("body"), REVIEW), review_link(pr)
-    require(text is not None and link is not None
-            and any(link.match(target) for target in link_targets(without_code_spans(text), pr.get("body"))),
+    linked = text is not None and link is not None and any(
+        link.match(target) for target in link_targets(without_code_spans(text), pr.get("body")))
+    require(linked or (text is not None and inline_review(text)),
             'a pull request that is not a draft needs an "## Independent review" section that links the review of its '
             "final diff posted on it, a comment or a review of this pull request (https://github.com/<repository>/pull/"
-            "<number>#issuecomment-<id> or #pullrequestreview-<id>; CONTRIBUTING.md, \"Independent review\"); keep it "
-            "a draft until then")
+            "<number>#issuecomment-<id> or #pullrequestreview-<id>), or holds that review written in the section "
+            f"(at least {INLINE_REVIEW_WORDS} words besides the attribution line; CONTRIBUTING.md, \"Independent "
+            'review"); keep it a draft until then')
 
 
 def level_floor(files):

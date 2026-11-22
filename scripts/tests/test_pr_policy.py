@@ -230,6 +230,23 @@ class PrBodyTests(unittest.TestCase):
             with self.subTest(broken=broken), self.assertRaisesRegex(policy.PolicyError, "Independent review"):
                 policy.check_body(dict(pr, **broken))
 
+    def test_a_review_written_in_the_section_passes_without_a_link(self):
+        pr = pull_request(head="feature")
+        pr["user"], pr["draft"] = {"type": "User"}, False
+        footer = "\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n"
+        inline = ("## Independent review\n\nCodex (read-only), two rounds. Round 1 found a missing bound on the "
+                  "queue and a stale comment; both are fixed in the second commit. Round 2 at the final head found "
+                  "no P0 to P3 findings and confirmed the bound holds on every path.\n")
+        for review in [inline, inline + footer]:
+            pr["body"] = body_of(1, "None", "None", review)
+            with self.subTest(review=review):
+                self.assertEqual(policy.check_body(pr), 1)
+        short = "## Independent review\n\nCodex: clean, nothing found at the final head.\n"
+        for review in [short, short + footer, "## Independent review\n\n`" + "word " * 30 + "`\n" + footer]:
+            pr["body"] = body_of(1, "None", "None", review)
+            with self.subTest(review=review), self.assertRaisesRegex(policy.PolicyError, "written in the section"):
+                policy.check_body(pr)
+
     def test_the_review_link_is_read_by_its_destination_never_its_visible_text(self):
         pr = pull_request(head="feature")
         pr["user"], pr["draft"] = {"type": "User"}, False
