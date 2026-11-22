@@ -9,7 +9,13 @@ import fs2.io.file.{Files, Path}
 import org.scalacheck.Gen
 import org.scalacheck.rng.Seed
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.consensus.leios.{BytesSize, JobRootHash, LeiosFetchRequest, LeiosJob}
+import xyz.kd5ujc.scarab.consensus.leios.{
+  BytesSize,
+  JobRootHash,
+  LeiosFetchRequest,
+  LeiosJob,
+  LeiosJobPoolId
+}
 import xyz.kd5ujc.scarab.network.{
   FailsOnUncaught,
   Fibers,
@@ -259,7 +265,11 @@ class LeiosFetchProtocolSuite extends FailsOnUncaught:
       )
     val p = EbPoint(slot(1), EbHash.fromBytes(Bytes(Vector.fill(32)(1))))
     val request: LeiosFetchRequest.BlockTxs =
-      LeiosFetchRequest.BlockTxs(p, NonEmptyMap.of(0 -> job(0, 63), 1 -> job(64, 130)))
+      LeiosFetchRequest.BlockTxs(
+        p,
+        LeiosJobPoolId.first,
+        NonEmptyMap.of(0 -> job(0, 63), 1 -> job(64, 130))
+      )
     assertEquals(LeiosFetchJobs.bitmaps(request), Right(bitmaps(0, 63, 64, 130)))
     LeiosFetchJobs.of[IO](request, (_, _) => IO.unit, (_, _) => IO.unit) match
       case Right(LeiosFetchJob.BlockTxs(point, b, _)) =>

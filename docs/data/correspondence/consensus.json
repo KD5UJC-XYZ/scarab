@@ -1539,12 +1539,15 @@
      ]
     }
    ],
-   "class": "Mirror",
-   "structure": "same",
+   "class": "Improvement",
+   "structure": "differs",
    "evidence": [
+    "LeiosFetchArrivalSuite",
     "LeiosFetchLogicSuite"
    ],
-   "digest": "7d1507b5c1fb1f1d"
+   "digest": "43d42331e58d6079",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/54#issuecomment-7076220269",
+   "note": "BodyAcquired holds, beside the pool, the id of that pool (LeiosJobPoolId), which the transactions requests picked from it name; an Improvement approved on 2026-11-22: a reply after its endorser block was pruned and acquired again with another pool no longer matches that pool's jobs by number"
   },
   "class consensus.leios.EbState": {
    "upstream": [
@@ -1585,7 +1588,7 @@
    "evidence": [
     "LeiosFetchLogicSuite"
    ],
-   "digest": "a7f6e80aa5818bd0"
+   "digest": "092674372b4e77e6"
   },
   "def consensus.leios.EbState#wantsBody": {
    "upstream": [
@@ -1605,7 +1608,7 @@
    "evidence": [
     "LeiosFetchLogicSuite"
    ],
-   "digest": "0b3f0288645c5083"
+   "digest": "745e79d09f582f18"
   },
   "enum consensus.leios.LeiosFetchRequest": {
    "upstream": [
@@ -1620,13 +1623,15 @@
      ]
     }
    ],
-   "class": "Mirror",
-   "structure": "same",
+   "class": "Improvement",
+   "structure": "differs",
    "evidence": [
+    "LeiosFetchArrivalSuite",
     "LeiosFetchLogicSuite"
    ],
-   "note": "the two constructors with the fields of LeiosBlockRequest and LeiosBlockTxsRequest",
-   "digest": "701c6fa0fab0ade9"
+   "note": "the two constructors with the fields of LeiosBlockRequest and LeiosBlockTxsRequest; BlockTxs also names the pool its jobs were picked from (LeiosJobPoolId), never sent; an Improvement approved on 2026-11-22: a reply after its endorser block was pruned and acquired again with another pool no longer matches that pool's jobs by number",
+   "digest": "5e85ec98159b1ffa",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/54#issuecomment-7076220269"
   },
   "class consensus.leios.LeiosFetchStaticEnv": {
    "upstream": [
@@ -1762,13 +1767,15 @@
      ]
     }
    ],
-   "class": "Mirror",
-   "structure": "same",
+   "class": "Improvement",
+   "structure": "differs",
    "evidence": [
+    "LeiosFetchArrivalSuite",
     "LeiosFetchLogicSuite"
    ],
-   "note": "over the peers' identifiers; the reference's PeerId newtype is the identifier itself",
-   "digest": "2decf3af61665049"
+   "note": "over the peers' identifiers; the reference's PeerId newtype is the identifier itself; requestedJobsPerPeer keyed by the endorser block and the pool (LeiosJobPoolOf) where the reference keys it by the endorser block alone; and nextJobPool, the id the next pool installed takes, which no prune resets; an Improvement approved on 2026-11-22: a reply after its endorser block was pruned and acquired again with another pool no longer matches that pool's jobs by number",
+   "digest": "bcb63ef1713cc7bb",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/54#issuecomment-7076220269"
   },
   "def consensus.leios.LeiosOutstanding#isFocused": {
    "upstream": [
@@ -1803,12 +1810,15 @@
      ]
     }
    ],
-   "class": "Mirror",
-   "structure": "same",
+   "class": "Improvement",
+   "structure": "differs",
    "evidence": [
+    "LeiosFetchArrivalSuite",
     "LeiosFetchLogicSuite"
    ],
-   "digest": "c08c9b12ed7fd866"
+   "digest": "e84f1550753b1fa7",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/54#issuecomment-7076220269",
+   "note": "the pool installed takes the id nextJobPool holds, and the count moves on; a write that installs nothing takes none; an Improvement approved on 2026-11-22: a reply after its endorser block was pruned and acquired again with another pool no longer matches that pool's jobs by number"
   },
   "def consensus.leios.LeiosOutstanding#markBodyImminent": {
    "upstream": [
@@ -1828,7 +1838,8 @@
    "evidence": [
     "LeiosFetchLogicSuite"
    ],
-   "digest": "a1e62fdcf18b86da"
+   "digest": "4a0f39ab899053a4",
+   "note": "the emptied pool keeps its id (LeiosJobPoolId)"
   },
   "def consensus.leios.LeiosOutstanding#recordMaxAnnouncementSlot": {
    "upstream": [
@@ -1999,7 +2010,8 @@
    "evidence": [
     "LeiosFetchLogicSuite"
    ],
-   "digest": "f1bfa8356b915b75"
+   "digest": "e6f78547641b36c4",
+   "note": "no pool installed yet: nextJobPool at its first id (LeiosJobPoolId)"
   },
   "def consensus.leios.LeiosOutstanding.initialized": {
    "upstream": [
@@ -2153,7 +2165,8 @@
    "evidence": [
     "LeiosFetchLogicSuite"
    ],
-   "digest": "99e4bb220ca8367d"
+   "digest": "b93138e64be24cd0",
+   "note": "each request also names the pool its jobs were picked from (LeiosJobPoolId)"
   },
   "def consensus.leios.LeiosFetchLogic.offsetsToBitmap": {
    "upstream": [
@@ -2229,12 +2242,14 @@
      ]
     }
    ],
-   "class": "Mirror",
-   "structure": "same",
+   "class": "Improvement",
+   "structure": "differs",
    "evidence": [
     "LeiosFetchLogicSuite"
    ],
-   "digest": "c5b3b75b64cacf5e"
+   "digest": "f4b1e09edad11a86",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/54#issuecomment-7076220269",
+   "note": "the peer's jobs in flight are unpicked in the held pool only where it is the pool they were picked from; an Improvement approved on 2026-11-22: a reply after its endorser block was pruned and acquired again with another pool no longer matches that pool's jobs by number"
   },
   "def consensus.leios.LeiosFetchLogic.refundEbRequest": {
    "upstream": [
@@ -2299,12 +2314,38 @@
      ]
     }
    ],
-   "class": "Mirror",
-   "structure": "same",
+   "class": "Improvement",
+   "structure": "differs",
    "evidence": [
+    "LeiosFetchArrivalSuite",
     "LeiosFetchLogicSuite"
    ],
-   "digest": "0b7e9eb835c39106"
+   "digest": "8578cf5c584d9d81",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/54#issuecomment-7076220269",
+   "note": "the jobs are completed in the held pool only where it is the pool the request names, and only the peer's jobs in flight from that pool are dropped; an Improvement approved on 2026-11-22: a reply after its endorser block was pruned and acquired again with another pool no longer matches that pool's jobs by number"
+  },
+  "def consensus.leios.LeiosFetchLogic.pendingJobs": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic.hs",
+     "symbol": "pendingJobs",
+     "lines": [
+      1469,
+      1478
+     ]
+    }
+   ],
+   "class": "Improvement",
+   "structure": "differs",
+   "evidence": [
+    "LeiosFetchArrivalSuite",
+    "LeiosFetchLogicSuite"
+   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/54#issuecomment-7076220269",
+   "note": "the let binding of processLeiosBlockTxs's ReceivedTxsFrom over the state read once, as a pure function: restrictToPending over the held pool only where it is the pool the request names, none otherwise; an Improvement approved on 2026-11-22: a reply after its endorser block was pruned and acquired again with another pool no longer matches that pool's jobs by number",
+   "digest": "0e62c319ba40d3e5"
   },
   "def consensus.leios.LeiosFetchLogic.checkJobSize": {
    "upstream": [
@@ -3600,6 +3641,16 @@
     "object consensus.leios.LeiosOutstanding",
     "class consensus.leios.LeiosFetchDecision",
     "object consensus.leios.LeiosFetchLogic"
+   ]
+  },
+  {
+   "reason": "the id of a pool of an endorser block's jobs and the key of a peer's jobs in flight by endorser block and pool, the Improvement approved on 2026-11-22 (https://github.com/KD5UJC-XYZ/scarab/issues/54#issuecomment-7076220269): the reference's transactions request names its jobs by number alone and keys a peer's jobs in flight by the endorser block alone, so these types, the first id and the equality have no counterpart (#54)",
+   "definitions": [
+    "type consensus.leios.LeiosJobPoolId",
+    "object consensus.leios.LeiosJobPoolId",
+    "val consensus.leios.LeiosJobPoolId.first",
+    "given consensus.leios.LeiosJobPoolId.given_CanEqual_LeiosJobPoolId_LeiosJobPoolId",
+    "class consensus.leios.LeiosJobPoolOf"
    ]
   },
   {

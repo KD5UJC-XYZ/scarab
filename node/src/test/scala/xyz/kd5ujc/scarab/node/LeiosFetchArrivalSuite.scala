@@ -9,12 +9,14 @@ import cats.mtl.Raise
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
 import fs2.io.file.{Files, Path}
+import scala.collection.immutable.SortedMap
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.leios.{
   AnnouncementFields,
   BytesSize,
   EbFetchState,
   ElId,
+  IsBigLedgerPeer,
   LeiosFetchLogic,
   LeiosFetchRequest,
   LeiosFetchStaticEnv,
@@ -23,6 +25,7 @@ import xyz.kd5ujc.scarab.consensus.leios.{
   StdGen,
   WhetherTxsClosureOffered
 }
+import xyz.kd5ujc.scarab.consensus.leios.LeiosOrders.given
 import xyz.kd5ujc.scarab.network.{
   FailsOnUncaught,
   Fibers,
@@ -35,7 +38,7 @@ import xyz.kd5ujc.scarab.network.{
   Protocols
 }
 import xyz.kd5ujc.scarab.protocol.{EbPoint, LeiosFetch, LeiosFetchFault, LeiosTxHash, TxBitmaps}
-import xyz.kd5ujc.scarab.protocol.LeiosWord.Word32
+import xyz.kd5ujc.scarab.protocol.LeiosWord.{Word32, Word64}
 import xyz.kd5ujc.scarab.storage.{
   BodyWritten,
   LeiosEb,
@@ -76,18 +79,20 @@ class LeiosFetchArrivalSuite extends FailsOnUncaught:
   private def pointOf(eb: LeiosEb, at: Long): EbPoint =
     EbPoint(slot(at), LeiosEb.hashOf(eb.transactions.toVector))
 
-  /** The state that has asked the peer for `eb` 's body, offered at `offered` and bounded by
-    * `bound`, as the decision asks: an announcement focuses it and the peer offers it.
+  /** The state, from `from`, that has asked the peer for `eb` 's body announced at slot `at`,
+    * offered at `offered` and bounded by `bound`, as the decision asks: an announcement focuses it
+    * and the peer offers it.
     */
   private def asked(
       eb: LeiosEb,
       offered: BytesSize,
-      bound: BytesSize
+      bound: BytesSize,
+      from: LeiosOutstanding[Int] = LeiosOutstanding.empty[Int](StdGen.mk(4), slot(0)),
+      at: Long = 10
   ): (LeiosOutstanding[Int], LeiosFetchRequest.Block) =
-    val p = pointOf(eb, 10)
-    val (announced, _) = LeiosOutstanding
-      .empty[Int](StdGen.mk(4), slot(0))
-      .announced(AnnouncementFields(ElId(p.slot, issuer), p.hash, offered), None)
+    val p = pointOf(eb, at)
+    val (announced, _) =
+      from.announced(AnnouncementFields(ElId(p.slot, issuer), p.hash, offered), None)
     val decision = LeiosFetchLogic.iteration[Int, Unit](
       env,
       _ => Left(()),
@@ -142,7 +147,8 @@ class LeiosFetchArrivalSuite extends FailsOnUncaught:
       store: LeiosStore[IO],
       initial: LeiosOutstanding[Int],
       depth: Long = LeiosFetchArrival.WriterQueueDepth,
-      pull: LeiosMempoolPull[IO] = LeiosMempoolPull.none[IO]
+      pull: LeiosMempoolPull[IO] = LeiosMempoolPull.none[IO],
+      limits: LeiosFetchStaticEnv = env
   ): IO[Rig] =
     for
       shared <- LeiosFetchShared.create[IO, Int](initial)
@@ -156,7 +162,7 @@ class LeiosFetchArrivalSuite extends FailsOnUncaught:
       LeiosFetchArrival(
         shared,
         acquired.notifying(store),
-        env,
+        limits,
         e => fatal.complete(e).void,
         settling => settling.guarantee(settled.offer(())).start.void,
         slots,
@@ -202,13 +208,13 @@ class LeiosFetchArrivalSuite extends FailsOnUncaught:
           // the peer's bytes for the body are released, the body held with jobs over every offset
           assert(!afterBody.requestedBytesSizePerPeer.contains(peer))
           held(afterBody, p) match
-            case Some(EbFetchState.BodyAcquired(pool)) => assert(!pool.isEmpty)
-            case other                                 => fail(s"not acquired: $other")
+            case Some(EbFetchState.BodyAcquired(pool, _)) => assert(!pool.isEmpty)
+            case other                                    => fail(s"not acquired: $other")
           assert(requests.nonEmpty)
           assertEquals(txsResults, requests.map(_ => Right(())))
           held(after, p) match
-            case Some(EbFetchState.BodyAcquired(pool)) => assert(pool.isEmpty)
-            case other                                 => fail(s"not acquired: $other")
+            case Some(EbFetchState.BodyAcquired(pool, _)) => assert(pool.isEmpty)
+            case other                                    => fail(s"not acquired: $other")
           assert(after.requestedJobsPerPeer.isEmpty)
           assert(!after.requestedBytesSizePerPeer.contains(peer))
           assertEquals(completed, p)
@@ -218,8 +224,11 @@ class LeiosFetchArrivalSuite extends FailsOnUncaught:
   }
 
   /** The mempool's index of `txs`: each by the hash an endorser block lists it by. */
+  private def indexOf(txs: Vector[Bytes]): Map[LeiosTxHash, Bytes] =
+    txs.map(t => LeiosEb.hashTx(t) -> t).toMap
+
   private def mempoolOf(txs: Vector[Bytes]): LeiosMempoolPull[IO] =
-    LeiosMempoolPull.of(IO.pure(txs.map(t => LeiosEb.hashTx(t) -> t).toMap))
+    LeiosMempoolPull.of(IO.pure(indexOf(txs)))
 
   dirs.test("a body whose closure the mempool holds is acquired with it, and nothing is fetched") {
     dir =>
@@ -243,8 +252,8 @@ class LeiosFetchArrivalSuite extends FailsOnUncaught:
           assertEquals(result, Right(()))
           // held with nothing to fetch: the next decision asks the peer for no transaction
           held(after, p) match
-            case Some(EbFetchState.BodyAcquired(pool)) => assert(pool.isEmpty)
-            case other                                 => fail(s"not acquired: $other")
+            case Some(EbFetchState.BodyAcquired(pool, _)) => assert(pool.isEmpty)
+            case other                                    => fail(s"not acquired: $other")
           assertEquals(closureRequests(after, p)._2, Vector.empty)
           assertEquals(completed, p)
           assertEquals(whole.map(_.map(_._2)), Some(txs))
@@ -389,8 +398,8 @@ class LeiosFetchArrivalSuite extends FailsOnUncaught:
         )
         assertEquals(body, None)
         held(after, request.point) match
-          case Some(EbFetchState.BodyAcquired(pool)) => assert(pool.isEmpty)
-          case other                                 => fail(s"not held: $other")
+          case Some(EbFetchState.BodyAcquired(pool, _)) => assert(pool.isEmpty)
+          case other                                    => fail(s"not held: $other")
     }
   }
 
@@ -515,6 +524,196 @@ class LeiosFetchArrivalSuite extends FailsOnUncaught:
       }
   }
 
+  /** Jobs of at most two transactions: a closure of four is two jobs, which one request covers. */
+  private val pairs = env.copy(maxJobTxCount = 2)
+
+  /** `eb` 's body, held by `r` from its announcement at slot 10, pruned with the immutable tip at
+    * slot 11 and announced again at slot 20; `stock` fills the mempool, and the body arrives again.
+    * Its new request is returned.
+    */
+  private def reacquired(r: Rig, eb: LeiosEb, stock: IO[Unit]): IO[LeiosFetchRequest.Block] =
+    for
+      _ <- r.shared.outstanding.update(_.prunedToImmTip(slot(11))._2)
+      pruned <- r.shared.outstanding.get
+      (reasking, again) = asked(eb, size(eb), closure(eb), pruned, 20)
+      _ <- r.shared.outstanding.set(reasking)
+      _ <- stock
+      result <- typed(r.arrival.block(peer, again, eb.transactions.toVector)) <* r.settled.take
+    yield
+      assertEquals(result, Right(()))
+      again
+
+  dirs.test("a reply to a pool since replaced retires none of the new pool's jobs, left to fetch") {
+    dir =>
+      // the request for both jobs is in flight while the body is pruned and announced again; the
+      // mempool now holds the first job's transactions, so the new pool's job 0 is the old job 1's
+      val txs = Vector.tabulate(4)(tx)
+      val eb = body(txs)
+      val (asking, request) = asked(eb, size(eb), closure(eb))
+      stored(dir / "leios").use { rocks =>
+        TestControl.executeEmbed(
+          for
+            log <- Ref.of[IO, Vector[Written]](Vector.empty)
+            index <- Ref.of[IO, Map[LeiosTxHash, Bytes]](Map.empty)
+            r <- rig(
+              new Recording(rocks, log),
+              asking,
+              pull = LeiosMempoolPull.of(index.get),
+              limits = pairs
+            )
+            stale <- acquired(r, eb, request)
+            again <- reacquired(r, eb, index.set(indexOf(txs.take(2))))
+            replaced <- r.shared.outstanding.get
+            _ <- log.set(Vector.empty)
+            late <- stale.traverse(req =>
+              typed(r.arrival.blockTxs(peer, req, offsetsOf(req).map(txs))) <* r.settled.take
+            )
+            afterLate <- r.shared.outstanding.get
+            lateWrites <- log.get
+            (deciding, fresh) = closureRequests(afterLate, again.point)
+            _ <- r.shared.outstanding.set(deciding)
+            fetched <- fresh.traverse(req =>
+              typed(r.arrival.blockTxs(peer, req, offsetsOf(req).map(txs))) <* r.settled.take
+            )
+            after <- r.shared.outstanding.get
+            whole <- ok(rocks.lookupEbClosure(again.point.hash))
+          yield
+            assertEquals(stale.map(_.jobs.length), Vector(2), "one request covers both jobs")
+            assertEquals(late, Vector(Right(())), "the peer answered what it was asked")
+            assertEquals(lateWrites, Vector(Written.Txs(Vector.empty)), "nothing of it is ingested")
+            this.held(replaced, again.point) match
+              case Some(EbFetchState.BodyAcquired(pool, _)) => assert(!pool.isEmpty)
+              case other                                    => fail(s"not acquired: $other")
+            assertEquals(held(afterLate, again.point), held(replaced, again.point))
+            assert(afterLate.requestedJobsPerPeer.isEmpty, "its jobs are no longer in flight")
+            assert(!afterLate.requestedBytesSizePerPeer.contains(peer), "its bytes are refunded")
+            assertEquals(fresh.flatMap(offsetsOf), Vector(2, 3))
+            assertEquals(fetched, fresh.map(_ => Right(())))
+            this.held(after, again.point) match
+              case Some(EbFetchState.BodyAcquired(pool, _)) => assert(pool.isEmpty, "jobs retired")
+              case other                                    => fail(s"not acquired: $other")
+            assertEquals(whole.map(_.map(_._2)), Some(txs))
+        )
+      }
+  }
+
+  /** The requests the kernel queued for `vars`, taken. */
+  private def queued(vars: LeiosPeerVars[IO]): IO[Vector[LeiosFetchRequest]] =
+    Vector
+      .empty[LeiosFetchRequest]
+      .tailRecM(taken =>
+        vars.requestsToSend.tryTake.map {
+          case Some(LeiosRequestsToSend.Taken.Request(r))  => Left(taken :+ r)
+          case Some(LeiosRequestsToSend.Taken.Stop) | None => Right(taken)
+        }
+      )
+
+  dirs.test(
+    "a peer that owes a replaced pool's jobs is asked at once for the new pool's same-numbered job"
+  ) { dir =>
+    // the peer still owes the old pool's jobs 0 and 1 and is the only one to offer the closure
+    // again; the new pool's job 0 is another job, and the kernel's decision asks the peer for it
+    // before the late reply comes, so no new offer is needed once the decision drops this one
+    val txs = Vector.tabulate(4)(tx)
+    val eb = body(txs)
+    val (asking, request) = asked(eb, size(eb), closure(eb))
+    stored(dir / "leios").use { rocks =>
+      TestControl.executeEmbed(
+        for
+          index <- Ref.of[IO, Map[LeiosTxHash, Bytes]](Map.empty)
+          r <- rig(rocks, asking, pull = LeiosMempoolPull.of(index.get), limits = pairs)
+          stale <- acquired(r, eb, request)
+          again <- reacquired(r, eb, index.set(indexOf(txs.take(2))))
+          vars <- LeiosPeerVars.create[IO](IsBigLedgerPeer.NotBigLedgerPeer)
+          _ <- vars.offerings.set(
+            SortedMap(again.point -> PeerOffer(None, None, WhetherTxsClosureOffered.Offered))
+          )
+          _ <- r.shared.peers.update(_.updated(peer, vars))
+          _ <- LeiosFetchKernel.step(
+            r.shared,
+            pairs,
+            IO.pure(Some(again.point.slot)),
+            IO.pure((_: Word64) => Left(()))
+          )
+          fresh <- queued(vars).map(_.collect { case t: LeiosFetchRequest.BlockTxs => t })
+          offersLeft <- vars.offerings.get
+          late <- stale.traverse(req =>
+            typed(r.arrival.blockTxs(peer, req, offsetsOf(req).map(txs))) <* r.settled.take
+          )
+          fetched <- fresh.traverse(req =>
+            typed(r.arrival.blockTxs(peer, req, offsetsOf(req).map(txs))) <* r.settled.take
+          )
+          after <- r.shared.outstanding.get
+          whole <- ok(rocks.lookupEbClosure(again.point.hash))
+        yield
+          assertEquals(fresh.flatMap(offsetsOf), Vector(2, 3), "the new pool's job is asked for")
+          assertEquals(offersLeft, SortedMap.empty[EbPoint, PeerOffer], "its offer is spent")
+          assertEquals(late, stale.map(_ => Right(())))
+          assertEquals(fetched, fresh.map(_ => Right(())))
+          this.held(after, again.point) match
+            case Some(EbFetchState.BodyAcquired(pool, _)) => assert(pool.isEmpty, "jobs retired")
+            case other                                    => fail(s"not acquired: $other")
+          assert(after.requestedJobsPerPeer.isEmpty, "nothing is in flight")
+          assertEquals(whole.map(_.map(_._2)), Some(txs), "the closure completes")
+      )
+    }
+  }
+
+  dirs.test("a reply whose write lands after its pool is replaced retires none of the new jobs") {
+    dir =>
+      // the reply is taken while its pool is current, both jobs pending; its write waits at the
+      // gate while the body is pruned, announced again and held with a new pool
+      val txs = Vector.tabulate(4)(tx)
+      val eb = body(txs)
+      val (asking, request) = asked(eb, size(eb), closure(eb))
+      stored(dir / "leios").use { rocks =>
+        TestControl.executeEmbed(
+          for
+            gate <- (Deferred[IO, Unit], Deferred[IO, Unit]).mapN(TxsGate.apply)
+            first <- Ref.of[IO, Option[TxsGate]](Some(gate))
+            index <- Ref.of[IO, Map[LeiosTxHash, Bytes]](Map.empty)
+            r <- rig(
+              new GatedTxs(rocks, first),
+              asking,
+              pull = LeiosMempoolPull.of(index.get),
+              limits = pairs
+            )
+            stale <- acquired(r, eb, request)
+            replies <- stale.traverse(req =>
+              typed(r.arrival.blockTxs(peer, req, offsetsOf(req).map(txs)))
+            )
+            _ <- gate.reached.get
+            again <- reacquired(r, eb, index.set(indexOf(txs.take(2))))
+            replaced <- r.shared.outstanding.get
+            _ <- gate.open.complete(())
+            _ <- r.settled.take
+            landed <- r.shared.outstanding.get
+            (deciding, fresh) = closureRequests(landed, again.point)
+            _ <- r.shared.outstanding.set(deciding)
+            fetched <- fresh.traverse(req =>
+              typed(r.arrival.blockTxs(peer, req, offsetsOf(req).map(txs))) <* r.settled.take
+            )
+            after <- r.shared.outstanding.get
+            whole <- ok(rocks.lookupEbClosure(again.point.hash))
+          yield
+            assertEquals(stale.map(_.jobs.length), Vector(2), "one request covers both jobs")
+            assertEquals(replies, Vector(Right(())))
+            this.held(replaced, again.point) match
+              case Some(EbFetchState.BodyAcquired(pool, _)) => assert(!pool.isEmpty)
+              case other                                    => fail(s"not acquired: $other")
+            assertEquals(held(landed, again.point), held(replaced, again.point))
+            assert(landed.requestedJobsPerPeer.isEmpty, "its jobs are no longer in flight")
+            assert(!landed.requestedBytesSizePerPeer.contains(peer), "its bytes are refunded")
+            assertEquals(fresh.flatMap(offsetsOf), Vector(2, 3))
+            assertEquals(fetched, fresh.map(_ => Right(())))
+            this.held(after, again.point) match
+              case Some(EbFetchState.BodyAcquired(pool, _)) => assert(pool.isEmpty, "jobs retired")
+              case other                                    => fail(s"not acquired: $other")
+            assertEquals(whole.map(_.map(_._2)), Some(txs))
+        )
+      }
+  }
+
   dirs.test("a job whose transactions the store drops is retired, its closure left incomplete") {
     dir =>
       // the body declares the first two sizes swapped, their sum the same, and lists a third
@@ -544,8 +743,8 @@ class LeiosFetchArrivalSuite extends FailsOnUncaught:
           assert(requests.nonEmpty)
           assertEquals(results, requests.map(_ => Right(())), "the peer is not at fault")
           this.held(after, request.point) match
-            case Some(EbFetchState.BodyAcquired(pool)) => assert(pool.isEmpty, "jobs retired")
-            case other                                 => fail(s"not acquired: $other")
+            case Some(EbFetchState.BodyAcquired(pool, _)) => assert(pool.isEmpty, "jobs retired")
+            case other                                    => fail(s"not acquired: $other")
           assert(after.requestedJobsPerPeer.isEmpty)
           assert(!after.requestedBytesSizePerPeer.contains(peer))
           assert(held.forall((_, t) => !LeiosEb.written(t)), "nothing written")
@@ -726,6 +925,23 @@ class LeiosFetchArrivalSuite extends FailsOnUncaught:
     def writeEbBody(point: EbPoint, body: LeiosEb, fills: Vector[LocalFill])(using
         Raise[IO, LeiosStoreError]
     ): IO[BodyWritten] = gate.get *> underlying.writeEbBody(point, body, fills)
+
+  /** A gate of [[GatedTxs]]: completed when a write reaches it, and the write's wait. */
+  private final case class TxsGate(reached: Deferred[IO, Unit], open: Deferred[IO, Unit])
+
+  /** A store whose first write of transactions says it has reached the gate `first` holds, and
+    * waits there until it opens.
+    */
+  private final class GatedTxs(underlying: LeiosStore[IO], first: Ref[IO, Option[TxsGate]])
+      extends LeiosStore[IO]:
+    export underlying.{writeEbPoint, writeEbBody, lookupEbBody, lookupEbClosure, batchRetrieveTxs}
+    export underlying.{scanEbPoints, scanCompleteEbClosuresNotOlderThanSlot, garbageCollect}
+    export underlying.promoteToImmutable
+    def writeTxs(point: EbPoint, txs: Vector[(Int, Bytes)])(using
+        Raise[IO, LeiosStoreError]
+    ): IO[Vector[EbPoint]] =
+      first.getAndSet(None).flatMap(_.traverse_(g => g.reached.complete(()) *> g.open.get)) *>
+        underlying.writeTxs(point, txs)
 
   /** A write of [[Recording]]: a point, a body, or transactions at their offsets. */
   private enum Written derives CanEqual:

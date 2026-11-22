@@ -5,7 +5,7 @@ import cats.data.NonEmptySet
 import scala.collection.immutable.{SortedMap, SortedSet}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.Blake2b
-import xyz.kd5ujc.scarab.protocol.LeiosTxHash
+import xyz.kd5ujc.scarab.protocol.{EbHash, LeiosTxHash}
 
 /** A job's commitment to the transactions it covers: the Blake2b-256 of their hashes concatenated
   * in ascending offset order (`JobRootHash`, `jobRootHashOfTxHashes`, `LeiosDemoTypes/LeiosJobs.hs`
@@ -21,13 +21,46 @@ object JobRootHash:
   given CanEqual[JobRootHash, JobRootHash] = CanEqual.derived
 
 /** The id of a job in its pool: 0-based, stable for the pool's lifetime (`LeiosJobId`,
-  * `LeiosJobs.hs` 72-73 at 2416493b).
+  * `LeiosJobs.hs` 72-73 at 2416493b). Another pool of the same endorser block numbers its own jobs
+  * from 0 again, so an id means a job only together with its pool's [[LeiosJobPoolId]].
   */
 opaque type LeiosJobId = Int
 
 object LeiosJobId:
   def apply(id: Int): LeiosJobId = id
   extension (id: LeiosJobId) def toInt: Int = id
+
+/** Which pool of jobs the fetch logic installed for an endorser block's body: each pool takes the
+  * next, from a count that no prune resets ([[LeiosOutstanding.nextJobPool]]). A transactions
+  * request names the pool its jobs were picked from, and its reply ingests and retires only that
+  * pool's jobs.
+  *
+  * An Improvement over the reference, approved by the owner on 2026-11-22
+  * (https://github.com/KD5UJC-XYZ/scarab/issues/54#issuecomment-7076220269): the reference's
+  * request carries the jobs' ids alone (`LeiosBlockTxsRequest`, `LeiosDemoTypes.hs` 343-353 at
+  * 2416493b). Once an endorser block is pruned while a request for it is in flight, announced again
+  * and its body acquired with other mempool hits, the new pool numbers other offsets from 0, and
+  * the late reply ingests the old job's offsets and retires the new pool's jobs of the same
+  * numbers, whose transactions are then never fetched (`restrictToPending` and `completeTxRequest`,
+  * `LeiosDemoLogic.hs` 1469-1478 and 1299-1333).
+  */
+opaque type LeiosJobPoolId = BigInt
+
+object LeiosJobPoolId:
+  /** The id the first pool takes. */
+  val first: LeiosJobPoolId = BigInt(0)
+
+  extension (id: LeiosJobPoolId) private[leios] def next: LeiosJobPoolId = id + 1
+
+  given CanEqual[LeiosJobPoolId, LeiosJobPoolId] = CanEqual.derived
+
+/** One pool of one endorser block's jobs: what a peer's jobs in flight are keyed by
+  * ([[LeiosOutstanding.requestedJobsPerPeer]]), so the ids a peer owes one pool are never taken for
+  * another's jobs of the same numbers. The reference keys them by the endorser block alone
+  * (`requestedJobsPerPeer`, `LeiosDemoTypes.hs` 585 at 2416493b); an Improvement with
+  * [[LeiosJobPoolId]].
+  */
+final case class LeiosJobPoolOf(eb: EbHash, pool: LeiosJobPoolId) derives CanEqual
 
 /** A unit of transaction-fetch work: the body offsets one `MsgLeiosBlockTxsRequest` fetches, the
   * size on the wire of those transactions and the commitment the answer is checked against

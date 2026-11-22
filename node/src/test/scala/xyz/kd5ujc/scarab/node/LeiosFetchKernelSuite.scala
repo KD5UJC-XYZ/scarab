@@ -273,8 +273,10 @@ class LeiosFetchKernelSuite extends FailsOnUncaught:
             assertEquals(o.outstandingPrunedSlot, slot(10))
             assertEquals(o.ebState.get(h).map(_.slot), Some(slot(12)))
             assertEquals(
-              o.ebState.get(h).map(_.fetch),
-              Some(EbFetchState.BodyAcquired(LeiosJobPool.empty))
+              o.ebState.get(h).map(_.fetch).collect { case EbFetchState.BodyAcquired(jobs, _) =>
+                jobs
+              },
+              Some(LeiosJobPool.empty)
             )
         }
   }
