@@ -181,10 +181,37 @@ class ConwayBbodySuite extends FunSuite:
       flatBbodyAdmits: Boolean,
       eraFailures: Vector[BbodyPredFailure[Conway]],
       eraEvaluated: Int,
-      flatEvaluated: Int
+      flatEvaluated: Int,
+      eraObserved: Vector[Phase2.Observation],
+      flatObserved: Vector[Phase2.Observation]
   ):
     /** The era run's verdict, where it reached one. */
     def era: Verdict = eraRun.fold(defect => fail(s"era defect $defect"), identity)
+
+  /** An observation with each script's failure as its text: a machine's failure holds what the
+    * machine stopped at, which compares by identity.
+    */
+  private def comparable(o: Phase2.Observation): Any =
+    def result(r: EvalResult): Any = r match
+      case EvalResult.Success(used, logs)         => (used, logs)
+      case EvalResult.Failure(reason, used, logs) => (reason.message, used, logs)
+    def evaluations(report: Phase2.Report): Vector[Any] =
+      report.evaluations.map(e => (e.redeemer, e.request, result(e.result)))
+    val outcome = o.outcome.map {
+      case Phase2.Outcome.Passed(report) => evaluations(report)
+      case Phase2.Outcome.Failed(report, failures) =>
+        (evaluations(report), failures.toVector.map(f => (f.redeemer, f.request, f.reason.message)))
+      case Phase2.Outcome.Unavailable(report, redeemer, reason) =>
+        (evaluations(report), redeemer, reason)
+    }
+    (o.tx, o.params, o.slot, o.spent, o.references, o.clock, outcome)
+
+  /** The phase-2 observations a side's observer is told (`--plutus-cases`), in order. */
+  private final class Observations:
+    private val told =
+      new java.util.concurrent.atomic.AtomicReference(Vector.empty[Phase2.Observation])
+    def observe(o: Phase2.Observation): Unit = { val _ = told.updateAndGet(_ :+ o); () }
+    def all: Vector[Phase2.Observation] = told.get
 
   /** The node's evaluator, counting the scripts it is asked to run, and giving no verdict on the
     * `unsupportedAt` th, as an evaluator's limit does (`EvalFailure.Unsupported`).
@@ -229,13 +256,18 @@ class ConwayBbodySuite extends FunSuite:
       geometry
     )
     val (flatEvaluator, eraEvaluator) = (Counting(unsupportedAt), Counting(unsupportedAt))
+    val (flatObserved, eraObserved) = (Observations(), Observations())
+    // one clock, which both sides' observations hold
+    val clock = PosixClock.total(globals.systemStart, geometry)
     val ctx = EraBlock.Context(
       globals,
       setup.praos.forks.transition(geometry.k),
       MirrorStep.afterVotingOf(before.mirror),
       verdicts = Verdicts.Direct,
       evaluator = flatEvaluator,
-      decoder = ScarabEvaluator.defaultDecoder
+      observer = Some(flatObserved.observe),
+      decoder = ScarabEvaluator.defaultDecoder,
+      clock = Some(clock)
     )
     val nes = MirrorStep.nesOf(before.mirror).getOrElse(fail(s"${before.name}: no Shelley state"))
     val stamped = EraNes.mapUtxo(nes)(_.at(header.blockNo.toLong))
@@ -289,7 +321,6 @@ class ConwayBbodySuite extends FunSuite:
       ),
       ticked.bcur
     )
-    val clock = PosixClock.total(globals.systemStart, geometry)
     // the network, the validation policy and the build's injection are the run's own, from the
     // globals; the system start the globals' (the Shelley genesis's), and the epoch information
     // of one era from the cluster's start
@@ -317,7 +348,8 @@ class ConwayBbodySuite extends FunSuite:
         eraEvaluator,
         Verdicts.Direct,
         ScarabEvaluator.defaultDecoder,
-        clock.posix
+        clock.posix,
+        Some(ConwayBlockRun.Observing(eraObserved.observe, Some(clock)))
       )
     val judged = run.toOption
     val era: Either[ConwayRuleDefect, Verdict] = run.map {
@@ -336,7 +368,9 @@ class ConwayBbodySuite extends FunSuite:
       ,
       judged.flatMap(_.left.toOption).fold(Vector.empty)(_.toChain.toVector),
       eraEvaluator.count,
-      flatEvaluator.count
+      flatEvaluator.count,
+      eraObserved.all,
+      flatObserved.all
     )
 
   /** The era BBODY's failures in the node's flat form, in their order; LEDGERS's, which the flat
@@ -1131,6 +1165,9 @@ class ConwayBbodySuite extends FunSuite:
       same(what, j.era, j.flat)
       assertEquals(j.flatPlutus, Some(expected), what)
       assertEquals(j.eraPlutus, j.flatPlutus, what)
+      // the phase-2 observations (`--plutus-cases`), one by transaction whose scripts ran
+      assertEquals(j.flatObserved.size, txs.count(_ != datumOnly), what)
+      assertEquals(j.eraObserved.map(comparable), j.flatObserved.map(comparable), what)
     }
   }
 
@@ -1161,6 +1198,9 @@ class ConwayBbodySuite extends FunSuite:
       assertEquals(j.eraRun.left.toOption, Some(ConwayRuleDefect.ScriptUnavailable(failure)), s"$n")
       // the evaluation stops at the script with no verdict on both sides
       assertEquals((j.eraEvaluated, j.flatEvaluated), (n, n), s"$n")
+      // the transactions observed, the last with no verdict on the script
+      assertEquals(j.flatObserved.size, if n <= 2 then 1 else 2, s"$n")
+      assertEquals(j.eraObserved.map(comparable), j.flatObserved.map(comparable), s"$n")
       (failure.txId, failure.location)
     }
     // each of the four scripts named once, the first two of the valid transaction

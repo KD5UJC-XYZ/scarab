@@ -49083,19 +49083,24 @@
    ]
   },
   {
-   "reason": "the run of Conway's era rules on a block as the node is to apply it at the Conway switch (#85), BBODY with every failure accumulated and every check validated, the context of its transactions' rules made from the judgment's Globals (network, the build's injection), on the fused interpreter with the events discarded but for what the node's phase-2 counters read (applyBlockEither with ValidateAll, ComputeLedgerEvents off), the proposals held beside the BBODY state, read from the node's record once a block and written back once, its defects, and what an admitted block comes to with its counters",
+   "reason": "the run of Conway's era rules on a block as the node is to apply it at the Conway switch (#85), BBODY with every failure accumulated and every check validated, the context of its transactions' rules made from the judgment's Globals (network, the build's injection), on the fused interpreter with the events discarded but for what the node's phase-2 counters read (applyBlockEither with ValidateAll, ComputeLedgerEvents off), the proposals held beside the BBODY state, read from the node's record once a block and written back once, its defects, what an admitted block comes to with its counters, and the node's phase-2 observer of its scripts (Observing)",
    "definitions": [
     "class ledger.era.rules.ConwayBlockRun.Applied",
+    "class ledger.era.rules.ConwayBlockRun.Observing",
     "def ledger.era.rules.ConwayBlockRun.bbody",
     "enum ledger.era.rules.ConwayRuleDefect",
     "object ledger.era.rules.ConwayBlockRun"
    ]
   },
   {
-   "reason": "the node's phase-2 observations (Scarab's own, which the reference has none of) of a Conway block the era rules judge (#85): a script with no verdict named by its transaction and redeemer as the flat rules name it (LedgerFailure.Unavailable), so that the node withholds the block as it does the flat rules', its context collected again one purpose at a time and compared; and the phase-2 counters (PlutusStats) of a block the rules admitted: what of BBODY's events they read (ScriptsTold, UTXOS's passed and failed scripts and UTXO's change of the deposits a valid transaction tells after them) and their count by transaction, integrityChecked the bodies that declare a script integrity hash, as the flat rules count them from their evaluations (TxChecks.phase2, EraBlock.Plan)",
+   "reason": "the node's phase-2 observations (Scarab's own, which the reference has none of) of a Conway block the era rules judge (#85): a script located among the block's transactions (Located, locate: its context collected again one purpose at a time in the ledger state the rules ran it in and compared); a script with no verdict named by its transaction and redeemer as the flat rules name it (LedgerFailure.Unavailable), so that the node withholds the block as it does the flat rules'; the phase-2 observation of a transaction's scripts (--plutus-cases) as the flat rules make it (Phase2.Observation of the flat transaction, flatTx, and outcome); and the phase-2 counters (PlutusStats) of a block the rules admitted: what of BBODY's events they read (ScriptsTold, UTXOS's passed and failed scripts and UTXO's change of the deposits a valid transaction tells after them) and their count by transaction, integrityChecked the bodies that declare a script integrity hash, as the flat rules count them from their evaluations (TxChecks.phase2, EraBlock.Plan)",
    "definitions": [
+    "class ledger.era.rules.ConwayPhase2.Located",
     "def ledger.era.rules.ConwayPhase2.counted",
+    "def ledger.era.rules.ConwayPhase2.flatTx",
+    "def ledger.era.rules.ConwayPhase2.locate",
     "def ledger.era.rules.ConwayPhase2.named",
+    "def ledger.era.rules.ConwayPhase2.outcome",
     "def ledger.era.rules.ScriptsTold.of",
     "enum ledger.era.rules.ScriptsTold",
     "object ledger.era.rules.ConwayPhase2",
