@@ -47659,8 +47659,8 @@
    ],
    "class": "Mirror",
    "structure": "same",
-   "note": "the genesis's networkId read by the derived FromJSON Network, its two constructors by name; GenesisStart's injections and the ledger's Globals (mkShelleyGlobals) read it here",
-   "digest": "03f4fe5f1e0dcb96"
+   "note": "the genesis's networkId read by the derived FromJSON Network, its two constructors by name, refused as GenesisSchema refuses the field; GenesisStart's injections and the ledger's Globals (mkShelleyGlobals) read it here",
+   "digest": "991f5d2c8c5309a7"
   }
  },
  "glue": [

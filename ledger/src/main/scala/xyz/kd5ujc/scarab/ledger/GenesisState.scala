@@ -24,17 +24,25 @@ object GenesisState:
 
   /** `sgNetworkId`, read by the derived `FromJSON Network` (`BaseTypes.hs:878-881`, cardano-ledger
     * f649f975; `Shelley/Genesis.hs:500`): the constructor's name, `Testnet` or `Mainnet`. The
-    * ledger's network is this field, never one decided from the network magic.
+    * ledger's network is this field, never one decided from the network magic. A refusal is the one
+    * [[GenesisSchema.shelley]] gives for the field, so a genesis read here first is refused as the
+    * check refuses it.
     */
   def networkId(c: ACursor): Either[ConfigError, state.Network] =
+    def refused(cause: GenesisFieldError) =
+      ConfigError(ConfigProblem.GenesisField(GenesisFile.Shelley, Vector("networkId"), cause))
     c.downField("networkId")
-      .as[String]
-      .leftMap(e => ConfigError(ConfigProblem.JsonField("genesis", "networkId", e)))
+      .focus
+      .toRight(refused(GenesisFieldError.Missing))
+      .flatMap(value =>
+        value.asString.toRight(
+          refused(GenesisFieldError.Kind(json.JsonKind.String, json.JsonKind.of(value)))
+        )
+      )
       .flatMap {
         case "Testnet" => Right(state.Network.Testnet)
         case "Mainnet" => Right(state.Network.Mainnet)
-        case other =>
-          Left(ConfigError(ConfigProblem.Selection("networkId", other, Set("Mainnet", "Testnet"))))
+        case other => Left(refused(GenesisFieldError.Choice(other, Vector("Mainnet", "Testnet"))))
       }
 
   /** Network constants from the genesis files: the `Globals` the reference makes of the Shelley

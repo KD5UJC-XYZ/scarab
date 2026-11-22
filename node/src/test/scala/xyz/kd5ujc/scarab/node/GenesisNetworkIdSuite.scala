@@ -4,7 +4,14 @@ package xyz.kd5ujc.scarab.node
 import io.circe.{Json, parser}
 import java.nio.file.{Files, Path}
 import munit.FunSuite
-import xyz.kd5ujc.scarab.ledger.Genesis
+import xyz.kd5ujc.scarab.ledger.{
+  ConfigProblem,
+  Genesis,
+  GenesisFieldError,
+  GenesisFile,
+  GenesisSchema
+}
+import xyz.kd5ujc.scarab.ledger.json.JsonKind
 import xyz.kd5ujc.scarab.ledger.state.Network
 import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 
@@ -76,5 +83,37 @@ class GenesisNetworkIdSuite extends FunSuite:
         network == Network.Mainnet,
         s"magic ${genesis.networkMagic}"
       )
+    }
+  }
+
+  // `Genesis.shelley` reads `networkId` before `GenesisSchema.shelley` checks the file: a refusal of
+  // the field is the check's, whichever reads it first.
+  private val shelley: Json =
+    parser
+      .parse(new String(Files.readAllBytes(dir.resolve("shelley-genesis.json")), "UTF-8"))
+      .fold(e => fail(e.message), identity)
+
+  private def refusal(edited: Json): ConfigProblem =
+    def read(name: String): Option[Array[Byte]] =
+      Option.when(Files.exists(dir.resolve(name))) {
+        if name == "shelley-genesis.json" then edited.noSpaces.getBytes("UTF-8")
+        else Files.readAllBytes(dir.resolve(name))
+      }
+    NodeSetup.fromFiles(ReferenceBuild.Default)(read).fold(_.problem, _ => fail("accepted"))
+
+  test(
+    "a genesis without networkId, or with one of another name or type, is refused at the field"
+  ) {
+    def at(cause: GenesisFieldError) =
+      ConfigProblem.GenesisField(GenesisFile.Shelley, Vector("networkId"), cause)
+    List(
+      shelley.mapObject(_.remove("networkId")) -> at(GenesisFieldError.Missing),
+      shelley.deepMerge(Json.obj("networkId" -> Json.fromString("Preview"))) ->
+        at(GenesisFieldError.Choice("Preview", Vector("Mainnet", "Testnet"))),
+      shelley.deepMerge(Json.obj("networkId" -> Json.fromInt(1))) ->
+        at(GenesisFieldError.Kind(JsonKind.String, JsonKind.Number))
+    ).foreach { (edited, expected) =>
+      assertEquals(refusal(edited), expected)
+      assertEquals(GenesisSchema.shelley(edited).left.map(_.problem), Left(expected))
     }
   }
