@@ -15,7 +15,11 @@ import xyz.kd5ujc.scarab.consensus.leios.{
 }
 import xyz.kd5ujc.scarab.consensus.state.{ChainDepState, MirrorState}
 import xyz.kd5ujc.scarab.crypto.bls.{Certificate, RbHash, Signers, VerificationError, Weight}
-import xyz.kd5ujc.scarab.ledger.{Header, LeiosBlock}
+import cats.mtl.Raise
+import xyz.kd5ujc.scarab.consensus.leios.CertifyDecision
+import xyz.kd5ujc.scarab.ledger.{Header, LeiosBlock, LeiosHeader, NodeError, StorageError}
+import xyz.kd5ujc.scarab.node.forge.{BlockBuilder, DijkstraForge, DijkstraParent, LeiosCertifying}
+import xyz.kd5ujc.scarab.protocol.EbHash
 import xyz.kd5ujc.scarab.ledger.state.{Dijkstra, NewEpochState, ShelleyBasedEra, SlotNo, WithOrigin}
 import xyz.kd5ujc.scarab.node.read.InEra
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
@@ -237,6 +241,91 @@ class LeiosCertificateFixtureSuite extends munit.FunSuite:
       LeiosCertification
         .check(ChainDepState.Praos2(parent), certifying.header.prevHash, None, cert),
       Right(Left(LeiosExtValidationError.LeiosMissingCommittee(point, cert)))
+    )
+  }
+  // the forger's decision on the parent and the block it assembles of it (`decideLeiosCertify`,
+  // `mkBody`, `mkHeader`: ouroboros-consensus 2416493b `NodeKernel/Forge.hs:324-396`,
+  // `Shelley/Ledger/Forge.hs:90-160`): what the fixtures hold of 97,276 is reproduced; its KES
+  // signature, the leader proof and the endorser block it announces (whose transactions the
+  // fixtures do not hold) are the recorded ones, not made here
+  test("the forger's decision on the parent and its body reproduce block 97,276, byte for byte") {
+    type F[A] = Either[Fatal, A]
+    given Raise[F, StorageError] = new Raise[F, StorageError]:
+      def functor = cats.Functor[F]
+      def raise[E <: StorageError, A](e: E): F[A] = Left(Fatal.Storage(e))
+    val raw =
+      rows("blocks-after-2168639.tsv").headOption.map(r => hex(r(5))).getOrElse(fail("no row"))
+    val header = certifying.header
+    val parentRef = BlockRef(BigInt(2168669), toParent(1).hash, BigInt(97275))
+    val nes: NewEpochState[Dijkstra] = anchor.ledger(None).toOption.flatten match
+      case Some(i: InEra.Of[e]) =>
+        i.era match
+          case ShelleyBasedEra.SDijkstra => i.read.nes.fold(e => fail(e.toString), identity)
+          case other                     => fail(s"not in Dijkstra: $other")
+      case other => fail(s"no Shelley-based ledger: $other")
+    // the vote state holds the recorded certificate for the parent, the store the closure
+    val certifyingSource = new LeiosCertifying[F, MirrorState]:
+      def closureHeld(eb: EbHash)(using Raise[F, StorageError]): F[Boolean] = Right(true)
+      def certificate(rb: RbHash): F[Option[Certificate]] =
+        Right(Option.when(Some(rb.bytes) == header.prevHash)(cert))
+      def closed(
+          chain: MirrorState,
+          t: Option[BlockRef],
+          p: NewEpochState[Dijkstra],
+          point: EbPoint,
+          slot: BigInt
+      )(using Raise[F, StorageError]): F[Either[NodeError, NewEpochState[Dijkstra]]] =
+        Right(Right(p))
+    // the parent's ledger state is 97,273's within its epoch for what the decision reads of it:
+    // the parameters, and so the certification gap
+    val parentOf = DijkstraParent(
+      anchor,
+      Some(parentRef),
+      nes,
+      nes,
+      LeiosCertification.announcement(ChainDepState.Praos2(parent))
+    )
+    val point = parentOf.announced.getOrElse(fail("the parent announced nothing"))
+    assertEquals(
+      DijkstraForge.decide[F, MirrorState](
+        header.slot,
+        BigInt(setup.geometry.slotLengthMillis),
+        parentOf,
+        certifyingSource
+      ),
+      Right(CertifyDecision.Certify(cert, point))
+    )
+    // a slot short of the testnet's gap of 14 slots, too early
+    assertEquals(
+      DijkstraForge.decide[F, MirrorState](
+        point.slot.toBigInt + 13,
+        BigInt(setup.geometry.slotLengthMillis),
+        parentOf,
+        certifyingSource
+      ),
+      Right(CertifyDecision.TooEarly(point, BigInt(14)))
+    )
+    val body = BlockBuilder.Assembly.dijkstra(Vector.empty, Some(cert), None) match
+      case BlockBuilder.Assembly.InDijkstra(b, _) => b
+      case other                                  => fail(s"not a Dijkstra body: $other")
+    assertEquals(body.size, certifying.bodySize)
+    assertEquals(body.hash, header.bodyHash)
+    val headerBody = BlockBuilder.leiosHeaderBody(
+      header.blockNo,
+      header.slot,
+      header.prevHash,
+      header.issuerVkey,
+      header.vrfVkey,
+      header.vrf,
+      body,
+      header.leios.announcement,
+      header.opCert,
+      (header.leios.versionInfo.highestSupportedMajor, header.leios.versionInfo.softwareTag)
+    )
+    assertEquals(headerBody.encode, header.signable)
+    assertEquals(
+      LeiosBlock.encode(LeiosHeader.signed(headerBody.encode, header.kesSignature), body.encode),
+      raw
     )
   }
 end LeiosCertificateFixtureSuite
