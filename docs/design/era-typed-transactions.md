@@ -2956,12 +2956,18 @@ Conway's rules on the classes follow as the rest of stage 2.
     (`unelectedCommitteeVoters` of the governance state's committee and the certificate state's committee state) are
     MEMPOOL's failure (`MempoolProblem.UnelectedCommittee`, the voters as the reference's set lists them); then Conway's
     LEDGER one level down. The proposals are the node's record in the governance state, as LEDGER reads them
-    (`ProposalsRecord`).
+    (`ProposalsRecord`). The reference's `AlonzoStAnnTx` is strict in the transaction alone (`Alonzo/Tx.hs:556-565`),
+    so the fields it derives from the UTxO set are not made for a transaction MEMPOOL refuses as a duplicate; the node
+    makes them from the stored outputs read into the era, which can fail where the reference's typed set cannot, so the
+    run's annotation is an effect forced where LEDGER first reads it (`mempoolTransitionAnnotating`): a stored output
+    the era cannot read is no defect of a duplicate.
   - The run (`ConwayMempoolRun`), on the fused interpreter, every failure accumulated and the events discarded
     (`ruleApplyTxValidation`, `asoEvents = EPDiscard`): `applyTx` is `applyTxWithFullValidation`, the transaction
     annotated against the stored outputs of its inputs, reference inputs and collateral with the environment's
     parameters and an empty cache, then MEMPOOL with every check, giving the state after and what it was validated with
-    (`ConwayValidated`, the reference's `ValidatedTx`: the annotation, the environment's protocol version and the slot);
+    (`ConwayMempoolRun.ValidatedTx`, the reference's `ValidatedTx`: the annotation, the environment's protocol version
+    and the slot; a plain class whose constructor only the admission reaches, as the reference exports none, `:27`, and
+    its test factory `unsafeMakeValidatedTx`, `:131-151`);
     `mkMempoolEnv` is the reference's (no epoch, the least index). `reapply` is the function the build's consensus
     calls, an exhaustive match on the build of the judgment's `Globals` (REF-3), which also selects UTXO's injection of
     Shelley's failures: under 11.1, the ledger's `reapplyTx` (ouroboros-consensus 82ecba32 `Shelley/Ledger/Mempool.hs:325-348`;
@@ -2973,12 +2979,16 @@ Conway's rules on the classes follow as the rest of stage 2.
     - on every Conway case of the refusal corpus, at its recorded protocol version and at 9, 10 and 11, under each
       build, `applyTx` and `reapply` (of the transaction held as validated in that state: under 11.2 and the Leios
       build on the annotation of its validation) give the flat MEMPOOL's (`MempoolLedger.submit` and `reapply`)
-      failures in the same order, through the flat projection, or the same ledger state; where the 11.2 and Leios builds refuse a
-      withdrawal in LEDGER below version 11, the three cases of the moved withdrawals, every other failure is the
-      same (the named difference of [#85](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7055304484),
-      which `ConwayLedgerChecksSuite` compares in the reference's form);
-    - at the root, as the mempool runs it, `applyTx`'s refusal of every corpus case but the three the measure refuses
-      first (`all-inputs-spent`, MEMPOOL's own, among them) encodes to the reference's refusal byte for byte;
+      failures in the same order, through the flat projection, or the same ledger state; where the 11.2 and Leios builds
+      refuse a withdrawal in LEDGER below version 11, the three cases of the moved withdrawals (the named difference
+      of [#85](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7055304484)), the complete ordered list is
+      the flat one with CERTS's refusal replaced, in its place, by the reference's LEDGER failure with its account,
+      amount and balance (`MovedWithdrawals.expected`, which `ConwayLedgerChecksSuite` also reads);
+    - at the root, as the mempool runs it, `applyTx`'s refusal of 81 of the corpus's 84 Conway cases, each under its
+      recorded build, encodes to the reference's refusal byte for byte (`all-inputs-spent`, MEMPOOL's own, among
+      them); the three left out are those the measure refuses first (`tx-too-large`, `tx-too-large-spent-inputs` and
+      `utxo-mint-units-too-big`). No recording holds a reapplication's refusal, so `reapply` is bound by the
+      differential and the tests below, not by the reference's bytes;
     - on the pool suites' transactions (`TxKit`: a payment, one after another, a fee too small, inputs all spent, a
       double spend, a missing witness, a signature that does not verify, an expired and a live validity interval, a
       reference input, an output with a Plutus reference script, a stake registration, an unelected voter), at each
@@ -2989,7 +2999,15 @@ Conway's rules on the classes follow as the rest of stage 2.
       reference's bytes;
     - a transaction that only the static checks refuse (a signature that does not verify), held as validated at
       version 10 and applied again at 11, is admitted under 11.1 and refused under 11.2 and the Leios build with the full
-      application's failures; held at 11, it is admitted under every build.
+      application's failures; held at 11, it is admitted under every build;
+    - a payment admitted by `applyTx`, applied again in a crafted state where its input's output is locked by a native
+      script it does not provide (an output never changes on a chain, so only a crafted state tells the two
+      annotations apart), is admitted under 11.2 and the Leios build, which keep the admission's annotation (no script
+      needed), and refused under 11.1, which annotates it again (the script needed and missing), as the flat pool
+      refuses it; at another major version 11.2 and the Leios build refuse it with the full application's failures;
+    - a transaction whose only input the state does not hold and whose reference input's stored output the era cannot
+      read is refused with `AllInputsSpent` alone by `applyTx` and `reapply` under every build, as the flat MEMPOOL
+      refuses it; with an input the state holds, LEDGER reads that output and the run stops with the state's defect.
   - A difference of the flat path, recorded and not decided: the flat pool's `MempoolLedger.reapply` is 11.1's
     `reapplyTx` under every build, so under 11.2 and the Leios build it admits again a held transaction whose major
     version changed, which their `reapplyValidatedTx` validates in full (the suite asserts it). The node keeps the flat
