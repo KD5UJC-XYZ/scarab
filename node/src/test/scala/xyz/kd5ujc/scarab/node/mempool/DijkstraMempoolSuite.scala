@@ -8,7 +8,7 @@ import cats.syntax.all.*
 import io.circe.parser
 import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*
-import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.codec.{Bytes, Value}
 import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.consensus.state.{MirrorState, MirrorStep}
 import xyz.kd5ujc.scarab.ledger.{
@@ -22,7 +22,9 @@ import xyz.kd5ujc.scarab.ledger.{
   ProtocolParams,
   StorageError
 }
-import xyz.kd5ujc.scarab.ledger.era.IsPhase2Valid
+import xyz.kd5ujc.scarab.ledger.{TxIn, TxOut}
+import xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraTxIn as FlatTxIn
+import xyz.kd5ujc.scarab.ledger.era.{BothLevels, EraTx, IsPhase2Valid, StoredTxOut, TxLevel}
 import xyz.kd5ujc.scarab.ledger.era.rules.{
   ConwayUtxosPredFailure,
   DijkstraLedgerPredFailure,
@@ -40,7 +42,8 @@ import xyz.kd5ujc.scarab.node.forge.{BlockBuilder, DijkstraSnapshots}
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.node.read.ConwayView
 import xyz.kd5ujc.scarab.node.{MirrorDijkstra, MirrorRules, NodeSetup}
-import xyz.kd5ujc.scarab.plutus.PlutusBackend
+import xyz.kd5ujc.scarab.plutus.{ExUnits, PlutusBackend}
+import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.protocol.{Era, LeiosFetch, ReferenceBuild}
 
 /** The pool's Dijkstra ledger under the Leios build (#54): the devnet's recorded Dijkstra
@@ -167,6 +170,10 @@ class DijkstraMempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
 
   private val dijkstra = Submission(Era.Dijkstra.index, _: Bytes)
 
+  private def refusedOf(r: Rejection) = r match
+    case Rejection.DijkstraRefused(_, failures) => failures.toChain.toVector
+    case other                                  => fail(s"not Dijkstra's refusal: $other")
+
   private def refusals(r: Either[Rejection, (MempoolState, Entry)]) = r match
     case Left(Rejection.DijkstraRefused(_, failures)) => failures.toChain.toVector
     case other                                        => fail(s"not Dijkstra's refusal: $other")
@@ -197,6 +204,18 @@ class DijkstraMempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       remote.held match
         case Held.InDijkstra(h) => assertEquals(h.read.isValid, IsPhase2Valid.Phase2Valid)
         case other              => fail(s"not a Dijkstra transaction: $other")
+    }
+  }
+
+  test("admitted on the last Conway tip, ticked into Dijkstra by the hard-fork combinator") {
+    states.map { s =>
+      // block 32's state: its next slot is Dijkstra's, so its pool is Dijkstra's, of a Conway tip
+      val tip = tipOf(32)
+      assertEquals(MirrorStep.nesOf(s(33)).map(_.toEra), Some(Era.Conway))
+      val (_, entry) = pool(ledgerOf(s(33), tip), tip)
+        .add(dijkstra(submitted), envOf(s(33), tip), Source.Local)
+        .fold(r => fail(r.message), identity)
+      assertEquals((entry.era, entry.id), (Era.Dijkstra, inBlock.id))
     }
   }
 
@@ -279,6 +298,101 @@ class DijkstraMempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         Vector(
           InjectMempoolFailureOf.utxo(
             DijkstraUtxoPredFailure.MaxTxSizeUTxO[Dijkstra](Mismatch(size, size - 1))
+          )
+        )
+      )
+    }
+  }
+
+  /** The public testnet's chain transactions with the outputs their inputs spend
+    * (`fixtures/reference/leios-testnet-chain-contexts`): each in its mempool form, its block
+    * form's parts with the flag left out, and those outputs in the node's record.
+    */
+  private lazy val testnet: Vector[(DijkstraRead, Vector[(TxIn, TxOut)])] =
+    import xyz.kd5ujc.scarab.ledger.era.dijkstra.{DijkstraCorpus, DijkstraTxOut}
+    DijkstraCorpus.chainContextCases.map { c =>
+      val parts =
+        DijkstraCorpus.node(DijkstraCorpus.hex(DijkstraCorpus.str(c, "bytes"))).value match
+          case Value.Arr(items) => items.take(3).map(_.original)
+          case other            => fail(s"not a transaction: $other")
+      val read = DijkstraRead
+        .submitted(parts.foldLeft(Bytes.fromArray(Array(0x83.toByte)))(_ ++ _))
+        .fold(e => fail(e.toString), identity)
+      val outputs = c.hcursor
+        .get[Vector[(String, String)]]("utxo")
+        .fold(e => fail(e.message), identity)
+        .map { (i, o) =>
+          val in = FlatTxIn
+            .decode(DijkstraCorpus.node(DijkstraCorpus.hex(i)))
+            .fold(e => fail(e.toString), x => TxIn(x.id, BigInt(x.index)))
+          val out = DijkstraTxOut
+            .decode(DijkstraCorpus.node(DijkstraCorpus.hex(o)))
+            .fold(e => fail(e.toString), StoredTxOut.dijkstra.toStored)
+          in -> out
+        }
+      (read, outputs)
+    }
+
+  private def unitsOf(read: DijkstraRead): ExUnits =
+    EraTx.dijkstra.getTotalExUnits[TxLevel.Top](read.tx)(using BothLevels.Top)
+
+  test("maxTxExUnits at its boundary, and both limits refused together, the size first") {
+    states.map { s =>
+      val tip = tipOf(36)
+      val read = testnet.map(_._1).find(r => unitsOf(r).mem > 0).getOrElse(fail("no redeemer"))
+      val units = unitsOf(read)
+      val size = BigInt(read.size)
+      def at(maxTxSize: BigInt, maxTxExUnits: ExUnits) =
+        withParams(s(37), tip, ReferenceBuild.LeiosB004fe0c)(
+          _.copy(maxTxSize = maxTxSize, maxTxExUnits = maxTxExUnits)
+        ) match
+          case Right(Right(l: DijkstraLedger)) => l.phase1(read)
+          case other                           => fail(s"no Dijkstra ledger: $other")
+      assertEquals(at(size, units), Right(TxMeasure(read.size + 4L, units.mem, units.steps, 0L)))
+      val under = ExUnits(units.mem - 1, units.steps)
+      val tooMuch = InjectMempoolFailureOf.utxo(
+        DijkstraUtxoPredFailure.ExUnitsTooBigUTxO[Dijkstra](Mismatch(units, under))
+      )
+      assertEquals(at(size, under).left.map(refusedOf), Left(Vector(tooMuch)))
+      assertEquals(
+        at(size - 1, under).left.map(refusedOf),
+        Left(
+          Vector(
+            InjectMempoolFailureOf.utxo(
+              DijkstraUtxoPredFailure.MaxTxSizeUTxO[Dijkstra](Mismatch(size, size - 1))
+            ),
+            tooMuch
+          )
+        )
+      )
+    }
+  }
+
+  test(
+    "maxRefScriptSizePerTx at its boundary, over the reference scripts of the outputs it reads"
+  ) {
+    states.map { s =>
+      val tip = tipOf(36)
+      def at(limit: BigInt, read: DijkstraRead, outputs: Vector[(TxIn, TxOut)]) =
+        withParams(s(37), tip, ReferenceBuild.LeiosB004fe0c)(
+          _.copy(maxRefScriptSizePerTx = limit)
+        ) match
+          case Right(Right(l: DijkstraLedger)) => l.withUtxo(l.utxo ++ outputs).phase2(read)
+          case other                           => fail(s"no Dijkstra ledger: $other")
+      val (read, outputs, size) = testnet.iterator
+        .map((r, o) => (r, o, at(BigInt(1) << 24, r, o).fold(e => fail(e.message), identity)))
+        .find(_._3 > 0)
+        .getOrElse(fail("no transaction reads a reference script"))
+      assertEquals(at(BigInt(size), read, outputs), Right(size))
+      assertEquals(
+        at(BigInt(size - 1), read, outputs).left.map(refusedOf),
+        Left(
+          Vector(
+            DijkstraMempoolPredFailure.LedgerFailure[Dijkstra](
+              DijkstraLedgerPredFailure.DijkstraTxRefScriptsSizeTooBig[Dijkstra](
+                Mismatch(size, size - 1)
+              )
+            )
           )
         )
       )
@@ -459,6 +573,14 @@ class DijkstraMempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       val ranking = BlockBuilder.partition(snapshot, Capacity.dijkstraBlockUnit(params), eb)
       assertEquals(ranking.ranking.transactions.map(_.id), Vector(inBlock.id))
       assertEquals(ranking.endorsing(slot), None)
+      // the body the forger builds of the snapshot is block 37's: its hash the header commits to
+      val recorded = LeiosBlock.decode(chain(37)._2).fold(e => fail(e.message), identity)
+      assertEquals(
+        Blake2b.hash256.hash(
+          xyz.kd5ujc.scarab.ledger.LeiosBlockBody(ranking.ranking.transactions, None, None).encode
+        ),
+        recorded.bodyHash
+      )
       // a ranking block that takes nothing leaves it to the endorser block it announces
       val endorsing = BlockBuilder.partition(snapshot, TxMeasure.zero, eb)
       assertEquals(endorsing.ranking.transactions, Vector.empty)
@@ -473,6 +595,11 @@ class DijkstraMempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       assertEquals(leios.read(submitted, Era.Dijkstra), Right(body))
       assertEquals(leios.body(submitted, Era.Dijkstra), Right(body))
       assert(leios.read(submitted.drop(1), Era.Dijkstra).isLeft)
+      // another era's body is read as the release builds read it
+      assertEquals(
+        leios.body(submitted, Era.Conway),
+        RelayedTransactions.body(submitted, Era.Conway)
+      )
       // Dijkstra's refusal has no encoding here: no reply (#796)
       val tip = tipOf(37)
       val refused = pool(ledgerOf(s(38), tip), tip)
