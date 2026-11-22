@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.consensus.leios
 
-import scala.collection.immutable.SortedMap
+import scala.collection.immutable.{SortedMap, SortedSet}
 import xyz.kd5ujc.scarab.crypto.bls.RbHash
 import xyz.kd5ujc.scarab.protocol.{EbHash, LeiosTxHash}
 
@@ -102,8 +102,8 @@ final case class InsertBodySummary(
 final case class LeiosTxCacheIndex[A, V, B] private (
     announcementState: SortedMap[BigInt, SortedMap[RbHash, EbHash]],
     announcementCount: Int,
-    bodyState: Map[EbHash, BodyState[B]],
-    txState: Map[LeiosTxHash, TxState[A, V]],
+    bodyState: SortedMap[EbHash, BodyState[B]],
+    txState: SortedMap[LeiosTxHash, TxState[A, V]],
     prunedSlot: BigInt
 ):
   import LeiosTxCacheIndex.given
@@ -115,9 +115,9 @@ final case class LeiosTxCacheIndex[A, V, B] private (
     */
   def insertAnnouncement(slot: BigInt, rb: RbHash, eb: EbHash)(using
       ReferencesTxsByHash[B]
-  ): (LeiosTxCacheIndex[A, V, B], Set[EbHash], Set[LeiosTxHash]) =
+  ): (LeiosTxCacheIndex[A, V, B], SortedSet[EbHash], SortedSet[LeiosTxHash]) =
     val present = announcementState.get(slot).exists(_.contains(rb))
-    if slot < prunedSlot || present then (this, Set.empty, Set.empty)
+    if slot < prunedSlot || present then (this, SortedSet.empty, SortedSet.empty)
     else
       copy(
         announcementState = announcementState.updated(
@@ -140,7 +140,7 @@ final case class LeiosTxCacheIndex[A, V, B] private (
     */
   def evictOlderThan(boundary: BigInt)(using
       ReferencesTxsByHash[B]
-  ): (LeiosTxCacheIndex[A, V, B], Set[EbHash], Set[LeiosTxHash]) =
+  ): (LeiosTxCacheIndex[A, V, B], SortedSet[EbHash], SortedSet[LeiosTxHash]) =
     val advanced = copy(prunedSlot = prunedSlot.max(boundary))
     advanced.evictWhile(_.announcementState.headOption.exists(_._1 < advanced.prunedSlot))
 
@@ -149,38 +149,39 @@ final case class LeiosTxCacheIndex[A, V, B] private (
     */
   private def evictWhile(shouldEvict: LeiosTxCacheIndex[A, V, B] => Boolean)(using
       ReferencesTxsByHash[B]
-  ): (LeiosTxCacheIndex[A, V, B], Set[EbHash], Set[LeiosTxHash]) =
+  ): (LeiosTxCacheIndex[A, V, B], SortedSet[EbHash], SortedSet[LeiosTxHash]) =
     Iterator
-      .iterate((this, Set.empty[EbHash], Set.empty[LeiosTxHash])) { (idx, ebs, txs) =>
+      .iterate((this, SortedSet.empty[EbHash], SortedSet.empty[LeiosTxHash])) { (idx, ebs, txs) =>
         val (next, ebs1, txs1) = idx.evictOldest
         (next, ebs ++ ebs1, txs ++ txs1)
       }
       .find((idx, _, _) => idx.announcementState.isEmpty || !shouldEvict(idx))
-      .getOrElse((this, Set.empty, Set.empty))
+      .getOrElse((this, SortedSet.empty, SortedSet.empty))
 
   /** `evictOldest` (`Reference.hs:277-319` at 2416493b): the announcement of the least slot, then
     * the least header, removed, and its body's count decremented ([[decBody]]).
     */
   private def evictOldest(using
       ReferencesTxsByHash[B]
-  ): (LeiosTxCacheIndex[A, V, B], Set[EbHash], Set[LeiosTxHash]) =
+  ): (LeiosTxCacheIndex[A, V, B], SortedSet[EbHash], SortedSet[LeiosTxHash]) =
     announcementState.headOption
       .flatMap((slot, byHeader) => byHeader.headOption.map(oldest => (slot, byHeader, oldest)))
-      .fold((this, Set.empty[EbHash], Set.empty[LeiosTxHash])) { case (slot, byHeader, (rb, eb)) =>
-        val rest = byHeader - rb
-        val (bodies, txs, ebs, evicted) = decBody(eb)
-        (
-          copy(
-            announcementState =
-              if rest.isEmpty then announcementState - slot
-              else announcementState.updated(slot, rest),
-            announcementCount = announcementCount - 1,
-            bodyState = bodies,
-            txState = txs
-          ),
-          ebs,
-          evicted
-        )
+      .fold((this, SortedSet.empty[EbHash], SortedSet.empty[LeiosTxHash])) {
+        case (slot, byHeader, (rb, eb)) =>
+          val rest = byHeader - rb
+          val (bodies, txs, ebs, evicted) = decBody(eb)
+          (
+            copy(
+              announcementState =
+                if rest.isEmpty then announcementState - slot
+                else announcementState.updated(slot, rest),
+              announcementCount = announcementCount - 1,
+              bodyState = bodies,
+              txState = txs
+            ),
+            ebs,
+            evicted
+          )
       }
 
   /** `decBody` (`Reference.hs:319-349` at 2416493b): the body's count decremented; at zero it is
@@ -189,21 +190,26 @@ final case class LeiosTxCacheIndex[A, V, B] private (
     */
   private def decBody(eb: EbHash)(using
       refs: ReferencesTxsByHash[B]
-  ): (Map[EbHash, BodyState[B]], Map[LeiosTxHash, TxState[A, V]], Set[EbHash], Set[LeiosTxHash]) =
+  ): (
+      SortedMap[EbHash, BodyState[B]],
+      SortedMap[LeiosTxHash, TxState[A, V]],
+      SortedSet[EbHash],
+      SortedSet[LeiosTxHash]
+  ) =
     bodyState.get(eb) match
-      case None => (bodyState, txState, Set.empty, Set.empty)
+      case None => (bodyState, txState, SortedSet.empty, SortedSet.empty)
       case Some(body) =>
         body.refs.dec match
           case Some(rc) =>
             val kept = body match
               case BodyState.NotYetInserted(_)     => BodyState.NotYetInserted(rc)
               case BodyState.AlreadyInserted(_, b) => BodyState.AlreadyInserted(rc, b)
-            (bodyState.updated(eb, kept), txState, Set.empty, Set.empty)
+            (bodyState.updated(eb, kept), txState, SortedSet.empty, SortedSet.empty)
           case None =>
             val (txs, evicted) = body match
-              case BodyState.NotYetInserted(_) => (txState, Set.empty[LeiosTxHash])
+              case BodyState.NotYetInserted(_) => (txState, SortedSet.empty[LeiosTxHash])
               case BodyState.AlreadyInserted(_, b) =>
-                refs.txReferences(b).foldLeft((txState, Set.empty[LeiosTxHash])) {
+                refs.txReferences(b).foldLeft((txState, SortedSet.empty[LeiosTxHash])) {
                   case ((ts, ev), txh) =>
                     ts.get(txh) match
                       case None => (ts, ev)
@@ -212,7 +218,7 @@ final case class LeiosTxCacheIndex[A, V, B] private (
                           (ts.updated(txh, tx.withRefs(rc)), ev)
                         )
                 }
-            (bodyState - eb, txs, Set(eb), evicted)
+            (bodyState - eb, txs, SortedSet(eb), evicted)
 
   /** `insertBody` (`Reference.hs:351-412` at 2416493b, without the fold over locations): the body
     * of `eb` held, bumping the count of each transaction it references, with the summary of what
@@ -290,8 +296,29 @@ object LeiosTxCacheIndex:
     */
   val MaxAnnouncementCount: Int = LeiosVoteState.Window
 
-  private given Ordering[RbHash] = Ordering.by[RbHash, xyz.kd5ujc.scarab.codec.Bytes](_.bytes)
+  /** The hashes are ordered by their bytes, as the reference's `Map` s order them, never hashed: a
+    * body lists any hashes its producer chooses, and `Bytes.hashCode` collisions are cheap to make,
+    * so a hash map of them could be made to take time quadratic in a body's size under the fetch
+    * logic's lock.
+    */
+  given Ordering[RbHash] = Ordering.by[RbHash, xyz.kd5ujc.scarab.codec.Bytes](_.bytes)
+  given Ordering[EbHash] = Ordering.by[EbHash, xyz.kd5ujc.scarab.codec.Bytes](_.bytes)
+  given Ordering[LeiosTxHash] = Ordering.by[LeiosTxHash, xyz.kd5ujc.scarab.codec.Bytes](_.bytes)
 
   /** `emptyLeiosTxCacheIndex` (`Reference.hs:127-138` at 2416493b). */
-  def empty[A, V, B]: LeiosTxCacheIndex[A, V, B] =
-    LeiosTxCacheIndex(SortedMap.empty, 0, Map.empty, Map.empty, BigInt(0))
+  def empty[A, V, B]: LeiosTxCacheIndex[A, V, B] = ordered(summon, summon)
+
+  /** The empty index whose maps are ordered by `ebs` and `txs`: [[empty]], or, in tests, orderings
+    * that count their comparisons.
+    */
+  def ordered[A, V, B](
+      ebs: Ordering[EbHash],
+      txs: Ordering[LeiosTxHash]
+  ): LeiosTxCacheIndex[A, V, B] =
+    LeiosTxCacheIndex(
+      SortedMap.empty,
+      0,
+      SortedMap.empty[EbHash, BodyState[B]](using ebs),
+      SortedMap.empty[LeiosTxHash, TxState[A, V]](using txs),
+      BigInt(0)
+    )

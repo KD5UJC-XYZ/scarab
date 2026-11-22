@@ -3615,7 +3615,7 @@
     "LeiosTxCacheIndexSuite",
     "LeiosTxCacheSuite"
    ],
-   "digest": "468c1cc68a371925"
+   "digest": "f28f159a823ebeff"
   },
   "def consensus.leios.BodyState#refs": {
    "upstream": [
@@ -3651,7 +3651,7 @@
    "class": "Mirror",
    "structure": "same",
    "note": "the boundary advanced monotonically, then the stale announcements evicted",
-   "digest": "7480f974d8ea0a7b"
+   "digest": "a815dc6b6367e6fb"
   },
   "def consensus.leios.LeiosTxCacheIndex#insertAnnouncement": {
    "upstream": [
@@ -3669,7 +3669,7 @@
    "class": "Mirror",
    "structure": "same",
    "note": "the announcement, no-op when present or older than the pruned slot, then evictIfNeeded; evictWhile, evictIfNeeded, evictOldest and decBody are its private helpers",
-   "digest": "039c0b7782db047f"
+   "digest": "5d45de17a5706248"
   },
   "def consensus.leios.LeiosTxCacheIndex#insertAppliedTx": {
    "upstream": [
@@ -3781,7 +3781,7 @@
    "class": "Mirror",
    "structure": "same",
    "note": "without the locations",
-   "digest": "955e0de38c836fe3"
+   "digest": "723ff9a017f03677"
   },
   "def consensus.leios.ProtVerParity.of": {
    "upstream": [
@@ -4001,7 +4001,7 @@
    "class": "Mirror",
    "structure": "same",
    "note": "the companion: the empty index and the bound",
-   "digest": "6cdd0376bd80eeec"
+   "digest": "a7c1c7a320bb614c"
   },
   "object consensus.leios.ProtVerParity": {
    "upstream": [
@@ -4118,6 +4118,60 @@
    "structure": "same",
    "note": "MkRefCount 1, the count of a new entry",
    "digest": "3a0fad9562799cdb"
+  },
+  "given consensus.leios.LeiosTxCacheIndex.given_Ordering_EbHash": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Leios/Types.hs",
+     "symbol": "EbHash",
+     "lines": [
+      88,
+      89
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the derived Ord of the hash's bytes, which orders the index's bodies",
+   "digest": "f3c421c0c8119a10"
+  },
+  "given consensus.leios.LeiosTxCacheIndex.given_Ordering_LeiosTxHash": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Leios/Types.hs",
+     "symbol": "TxHash",
+     "lines": [
+      147,
+      148
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the derived Ord of the hash's bytes, which orders the index's transactions",
+   "digest": "3cb09c1a090ac7be"
+  },
+  "given consensus.leios.LeiosTxCacheIndex.given_Ordering_RbHash": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Leios/Types.hs",
+     "symbol": "RbHash",
+     "lines": [
+      116,
+      117
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the derived Ord of the header hash's bytes, which orders an announcement slot's headers",
+   "digest": "a8467e60415129a2"
   }
  },
  "glue": [
@@ -4251,6 +4305,12 @@
     "given consensus.state.RestoredParams.given_Eq_RestoredParams",
     "given consensus.state.RestoredParams.given_Show_RestoredParams",
     "given consensus.state.RestoredParams.given_Diff_RestoredParams"
+   ]
+  },
+  {
+   "reason": "The LeiosTxCache index's empty index over orderings it is given, so that a test can count the comparisons of its maps; the node takes the byte orderings (#54).",
+   "definitions": [
+    "def consensus.leios.LeiosTxCacheIndex.ordered"
    ]
   }
  ]

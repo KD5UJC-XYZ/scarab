@@ -114,3 +114,53 @@ class LeiosTxCacheIndexSuite extends FunSuite:
     assertEquals((ebs2, txs2), (Set(eb(1)), Set(tx(1))))
     assertEquals(twice.lookupTx(tx(1)), None)
   }
+
+  /** `n` distinct transaction hashes with one `hashCode`: `Bytes.hashCode` is the polynomial of
+    * base 31 over the signed bytes, so a pair of adjacent bytes `(k, 124 - 31 k)` contributes the
+    * same for every `k` in `0..7`; sixteen pairs give `8^16` such hashes.
+    */
+  private def colliding(n: Int): Vector[LeiosTxHash] =
+    Vector.tabulate(n) { i =>
+      val digits = Vector.tabulate(16)(p => (i >> (3 * p)) & 7)
+      LeiosTxHash.fromBytes(
+        Bytes(digits.flatMap(k => Vector(k.toByte, (124 - 31 * k).toByte)))
+      )
+    }
+
+  /** An ordering of hashes by their bytes that counts its comparisons in `count`. */
+  private def counting[H](
+      count: java.util.concurrent.atomic.AtomicLong,
+      bytes: H => Bytes
+  ): Ordering[H] =
+    (a, b) =>
+      count.incrementAndGet()
+      bytes(a).compareTo(bytes(b))
+
+  test(
+    "references a producer chose with one hashCode: insertion, lookup and eviction stay bounded"
+  ) {
+    val n = 4096
+    val refs = colliding(n)
+    assertEquals(refs.map(_.bytes.hashCode).distinct.size, 1)
+    assertEquals(refs.distinct.size, n)
+    val comparisons = new java.util.concurrent.atomic.AtomicLong(0)
+    val start: Index =
+      LeiosTxCacheIndex.ordered(counting(comparisons, _.bytes), counting(comparisons, _.bytes))
+    val (held, summary) = announced(start, 10, 1).insertBody(eb(1), Body(refs))
+    assertEquals(summary.map(_.cacheTxCount), Some(n))
+    val tagged = refs.foldLeft(held)(_.insertAppliedTx(_, ProtVerParity.Even))
+    assertEquals(refs.map(tagged.lookupTx).distinct, Vector(Some(Right(ProtVerParity.Even))))
+    val (evicted, ebs, txs) = tagged.evictOlderThan(BigInt(11))
+    assertEquals(ebs.toVector, Vector(eb(1)))
+    assertEquals(txs.size, n)
+    assertEquals(evicted.txState.size, 0)
+    // eight map operations a reference over the four passes (insert: two lookups and an update;
+    // tag: a lookup and an update; look up; evict: a lookup and a removal), each at most the depth
+    // of a red-black tree, 2 log2 n + 2 comparisons: 8 n (2 log2 n + 2), about 0.9 million for
+    // 4,096, where keys of one hash in a hash map cost O(n^2), some 8 million
+    val log2 = 32 - Integer.numberOfLeadingZeros(n)
+    val bound = 8L * n * (2L * log2 + 2)
+    assert(comparisons.get <= bound, clue((comparisons.get, bound)))
+    // and the maps are the ordered ones: every reference was placed by comparison, none hashed
+    assert(comparisons.get >= 4L * n, clue(comparisons.get))
+  }
