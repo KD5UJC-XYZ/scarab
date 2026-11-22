@@ -231,7 +231,8 @@ forger.
   outputs, while Babbage and later eras refuse them. V3 `TxInfo`
   and `ScriptContext` (plain transaction ids, ledger-order withdrawals, redeemer and `ScriptInfo`,
   votes, proposals, donation and treasury). Validity intervals are converted to POSIX milliseconds with
-  the era history and the system start (`EpochGeometry.slotStart`); the upper bound of an interval
+  the era history and the ledger's system start, the Shelley genesis's `systemStart` as the reference's `Globals`
+  take it, cut to the millisecond after the slot's offset is added (`SystemStart.posixMillis`, #1337); the upper bound of an interval
   without a lower bound is inclusive before Conway and exclusive from it. Purposes are spending,
   minting, certifying, rewarding, voting and proposing, in the ledger's orders. Alonzo and Babbage
   reuse a duplicate certificate's first pointer; Conway and Dijkstra use its own position. The

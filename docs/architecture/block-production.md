@@ -185,7 +185,9 @@ The slot clock starts at the Byron genesis' `startTime` (whole seconds) when the
 file, as the reference's hard-fork combinator does, and at the Shelley `systemStart` otherwise
 (`Genesis.withSystemStart`; the `started` line logs the instant as `systemStart`). The two files agree on
 the public networks, but a hand-made network can write them apart, and a node that used the Shelley value
-then runs its slots a whole number of seconds away from the network's (roadmap H6).
+then runs its slots a whole number of seconds away from the network's (roadmap H6). The Plutus script
+contexts' times are the ledger's and count from the Shelley `systemStart` whatever the Byron `startTime` is
+(`LedgerGlobals.systemStart`, as the reference's `Globals` take it; #1337).
 
 Counters (`ForgeStats`, per epoch; roadmap H5) are folded over the published traces, so the log, `GET /forging`
 and the metrics cannot disagree: slots checked (`slotsChecked`, the reference's `Forge.about-to-lead`, every slot
