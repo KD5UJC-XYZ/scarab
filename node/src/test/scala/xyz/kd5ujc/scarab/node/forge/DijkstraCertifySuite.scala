@@ -42,8 +42,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
   SnapShots,
   StakePool,
   VRFVerKeyHash,
-  Word64,
-  update
+  Word64
 }
 import xyz.kd5ujc.scarab.node.{
   Fatal,
@@ -203,16 +202,18 @@ class DijkstraCertifySuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         SnapShots.Layout.Leios(epoch, size, age, committee)
       case SnapShots.Layout.Node11_1 => fail("not the Leios layout")
     val ls = nes.es.ls
-    val gov = ShelleyBasedEra.SDijkstra.gov.update(ls.utxo.gov)(
-      identity,
-      g =>
-        g.copy(curPParams =
-          g.curPParams.copy(
-            leiosAnnouncementPeriodLength = periodMillis,
-            leiosVotePeriodLength = periodMillis,
-            leiosDiffusionPeriodLength = periodMillis
-          )
-        )
+    val g = ls.utxo.gov
+    val shortened = xyz.kd5ujc.scarab.ledger.era.GovStateRecord
+      .view(g.cgsCurPParams)
+      .copy(
+        leiosAnnouncementPeriodLength = periodMillis,
+        leiosVotePeriodLength = periodMillis,
+        leiosDiffusionPeriodLength = periodMillis
+      )
+    val gov = g.copy(cgsCurPParams =
+      xyz.kd5ujc.scarab.ledger.era.GovStateRecord.dijkstra
+        .pparams(shortened)
+        .fold(e => fail(e.toString), identity)
     )
     nes.copy(es =
       nes.es.copy(
