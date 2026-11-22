@@ -2584,9 +2584,8 @@ object Forger:
 
   /** The ledger state the block of the led slot `slot` is built on: the tip's state
     * `crossed.ledger`, the block's parent's, ticked once to the slot ([[tickedTo]], [[crossed]]), a
-    * Conway state as the mempool's ledger, a Dijkstra state (the Leios build only) as it is, with the
-    * parent's unticked beside it ([[Ticked.InDijkstra]]). The
-    * only tick of an attempt's block.
+    * Conway state as the mempool's ledger, a Dijkstra state (the Leios build only) as it is, with
+    * the parent's unticked beside it ([[Ticked.InDijkstra]]). The only tick of an attempt's block.
     */
   private[forge] def blockLedger(
       globals: Globals,

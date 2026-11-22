@@ -306,7 +306,7 @@ class DijkstraCertifySuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   /** The vote state of the announcing state's committee, with the votes of `seats` added. */
   private def votes(state: MirrorState, rb: Bytes, seats: Vector[Int]): IO[LeiosVotes[IO]] =
     val rbHash = RbHash.fromBytes(rb).getOrElse(fail("not a ranking block hash"))
-    LeiosVotes.create[IO](IO.pure(Some(committeeOf(state)))).flatTap { vs =>
+    LeiosVotes.create[IO](IO.pure(Right(Some(committeeOf(state))))).flatTap { vs =>
       seats.traverse_ { i =>
         val vote = right(Vote.sign(voters(i)._1, right(SeatId.fromInt(i)), rbHash))
         vs.add(vote)

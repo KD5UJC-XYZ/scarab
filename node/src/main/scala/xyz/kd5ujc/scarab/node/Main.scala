@@ -1864,7 +1864,8 @@ object Main extends IOApp:
           globals,
           opened.state.geometry(genesis.geometry),
           supply.leios,
-          supply.leiosFetch
+          supply.leiosFetch,
+          supply.leiosVotes
         )
         ended <- ran(run, instruments, rules, chain, supply, connections, services, opened.received)
       yield ended
@@ -2575,7 +2576,8 @@ object Main extends IOApp:
       globals: xyz.kd5ujc.scarab.ledger.LedgerGlobals,
       geometry: xyz.kd5ujc.scarab.ledger.EpochGeometry,
       leiosStore: Option[LeiosStore[IO]],
-      leiosFetch: Option[LeiosFetchNode[IO]]
+      leiosFetch: Option[LeiosFetchNode[IO]],
+      leiosVotes: Option[LeiosVotes[IO]]
   )(using
       Log[IO],
       Metrics[IO],
@@ -2651,13 +2653,13 @@ object Main extends IOApp:
             // holds the closure and the vote state a certificate for the parent
             // (`decideLeiosCertify`, `partitionMempool`, `NodeKernel/Forge.hs:324-396, 760-869`
             // at ouroboros-consensus 2416493b)
-            val certifying = (leiosStore, leiosFetch).tupled.map { (leios, node) =>
+            val certifying = (leiosStore, leiosVotes).tupled.map { (leios, votes) =>
               LeiosCertifier[IO](
                 hash =>
                   leios.lookupEbClosure(hash)(using
                     summon[Raise[IO, StorageError]].contramap(StorageError.LeiosStore(_))
                   ),
-                node.votes.certificate,
+                votes.certificate,
                 Some(store),
                 (state, slot) =>
                   MirrorDijkstra.envAt(
