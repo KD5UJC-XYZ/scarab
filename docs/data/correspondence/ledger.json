@@ -9310,8 +9310,8 @@
     "PoolParamsLayoutSuite",
     "UpstreamPoolConformanceSuite"
    ],
-   "note": "the reward account's network compared as the state's Network, the node's read into it; RegisterPool and ReregisterPool told where the reference tells them; a pool registers in the layout of the build the node follows, parameters of another refused as a defect the reference, one build, never meets",
-   "digest": "5b139b5de57ac9b4"
+   "note": "the reward account's network compared as the state's Network with the Globals' own (the Shelley genesis's networkId, #1334); RegisterPool and ReregisterPool told where the reference tells them; a pool registers in the layout of the build the node follows, parameters of another refused as a defect the reference, one build, never meets",
+   "digest": "8fefa9f67a967474"
   },
   "type ledger.era.EraAccounts.Undrained": {
    "upstream": [
@@ -32875,7 +32875,7 @@
    "evidence": [
     "ConwayLedgerChecksSuite"
    ],
-   "digest": "e687be50414f66fa"
+   "digest": "84fa77bf4f21905d"
   },
   "def ledger.era.rules.ShelleyLedgers.ledgersTransition": {
    "upstream": [
@@ -34990,8 +34990,8 @@
     "DijkstraRulesOracleSuite",
     "DijkstraCertsSuite"
    ],
-   "note": "generic in its era, where the reference is generic in its rule too (SUBPOOL reuses it, D7c); the reward account's network compared as the state's Network, the node's read into it; RegisterPool and ReregisterPool told where the reference tells them; the proof of possession checked only under a policy that runs the static checks, a parameter (CertRule.dijkstra), a key it cannot check POOL's own defect raised through its own capability (PoolDefect); a new pool registers in the layout of the build the node follows and a re-registration waits in its pool state's, parameters of another layout refused as a defect the reference, one build, never meets (LedgerFailure.PoolParamsLayout)",
-   "digest": "f3e92eb5a7ce13a2"
+   "note": "generic in its era, where the reference is generic in its rule too (SUBPOOL reuses it, D7c); the reward account's network compared as the state's Network with the Globals' own (the Shelley genesis's networkId, #1334); RegisterPool and ReregisterPool told where the reference tells them; the proof of possession checked only under a policy that runs the static checks, a parameter (CertRule.dijkstra), a key it cannot check POOL's own defect raised through its own capability (PoolDefect); a new pool registers in the layout of the build the node follows and a re-registration waits in its pool state's, parameters of another layout refused as a defect the reference, one build, never meets (LedgerFailure.PoolParamsLayout)",
+   "digest": "c8262e690dfc85bf"
   },
   "def ledger.era.rules.DijkstraPOOL.invalid": {
    "upstream": [
@@ -36013,7 +36013,7 @@
     "DijkstraCertsSuite"
    ],
    "note": "written at Dijkstra, the one era with the rule, as Dijkstra's UTXO is; the body's direct deposits and balance intervals read into the reference's AccountAddress keys, a value outside the vocabulary raised (LedgerFailure.Vocab), which no decoded body gives, and its withdrawals the body's Withdrawals; the tests run in the reference's order, the check against the current accounts only when nothing failed (whenFailureFree); CERTS a sub-rule (Judge.nest) whose failures and events are embedded (EmbedCertsInEntities), with Dijkstra's CERT under the judgment's validation policy (CertRule.dijkstra); POOL's defects raised as they are (PoolDefect); CERTS's environment holds the 11.1 build's transaction field, which only the 11.1 build's base case reads and Dijkstra's CERTS does not have (CertsBaseCase). The evidence is a component check, not the reference's verdicts: the oracle's one accepted devnet transaction, from its block's state; DijkstraCertsSuite's 200 chain transactions from the empty state, whose complete ordered failures and certificate state equal those that CERTS alone and ENTITIES' predicates derive (the reference judged them on the chain's state, which the fixture does not record, CNF-2), crafted states for the withdrawals' order and whenFailureFree, and a direct deposit to an account the same body registers, checked and added after CERTS",
-   "digest": "aa38bac0e4deebb0"
+   "digest": "3cfedf6a8a42a294"
   },
   "def ledger.era.rules.ENTITIES.shelleyUtxoToDijkstraEntitiesPredFailure": {
    "upstream": [
@@ -38704,7 +38704,7 @@
     "DijkstraCertsSuite"
    ],
    "note": "the body's direct deposits and balance intervals read into AccountAddress keys, a value outside the vocabulary raised; the withdrawals the body's Withdrawals; the wrong-network withdrawals through ENTITIES' injection, recorded first with the other tests; SUBCERTS as its sub-rule under the judgment's validation policy",
-   "digest": "41f3094baa8bd936"
+   "digest": "ca34b071dc62aa49"
   },
   "def ledger.era.rules.ENTITIES.withdrawalsMissingAccounts": {
    "upstream": [
@@ -47274,8 +47274,8 @@
    "evidence": [
     "ConwayBbodySuite"
    ],
-   "note": "the network the judgment's Globals', as the reference reads it (one outside Network a raised defect); the gate of the header's version by build (HeaderProtVerGate); the UTxO set the stored outputs of the block's inputs and reference inputs before LEDGERS, read into the era; ConwayBbodySuite compares it with the flat BBODY; its expectations are the reference's own only on the 53 recorded Conway blocks the reference accepted",
-   "digest": "2d841d74d5708162"
+   "note": "the network the judgment's Globals', as the reference reads it (the Shelley genesis's networkId); the gate of the header's version by build (HeaderProtVerGate); the UTxO set the stored outputs of the block's inputs and reference inputs before LEDGERS, read into the era; ConwayBbodySuite compares it with the flat BBODY; its expectations are the reference's own only on the 53 recorded Conway blocks the reference accepted",
+   "digest": "666466678d94b0aa"
   },
   "def ledger.era.rules.ConwayBbody.conwayBbody": {
    "upstream": [
@@ -47633,6 +47633,62 @@
    "evidence": [
     "DijkstraRulesOracleSuite"
    ]
+  },
+  "def ledger.GenesisState.networkId": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "symbol": "Network",
+     "lines": [
+      878,
+      881
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Genesis.hs",
+     "symbol": "parseJSON",
+     "lines": [
+      494,
+      518
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the genesis's networkId read by the derived FromJSON Network, its two constructors by name, refused as GenesisSchema refuses the field; GenesisStart's injections and the ledger's Globals (mkShelleyGlobals) read it here",
+   "digest": "991f5d2c8c5309a7"
+  },
+  "def ledger.GenesisSchema.networkMagic": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Genesis.hs",
+     "symbol": "sgNetworkMagic",
+     "lines": [
+      309,
+      309
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Genesis.hs",
+     "symbol": "parseJSON",
+     "lines": [
+      494,
+      518
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the genesis's networkMagic read as FromJSON ShelleyGenesis reads it, a Word32 (FromJSON Word32, parseBoundedIntegral), refused as GenesisSchema.shelley refuses the field, so Genesis.shelley refuses it before networkId (#1334)",
+   "digest": "75b728dedfdb68d6"
   }
  },
  "glue": [

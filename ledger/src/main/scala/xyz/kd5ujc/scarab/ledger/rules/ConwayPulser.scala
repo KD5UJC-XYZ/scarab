@@ -105,7 +105,7 @@ object ConwayPulser:
       epoch = epoch.toBigInt,
       committeeState = committeeState,
       accounts = flatAccounts,
-      pools = FlatView.pools(globals.networkId, cert.pState.stakePools)
+      pools = FlatView.pools(globals.networkId.wire, cert.pState.stakePools)
     )
     val enact = node.EnactState(
       committee = gov.committee,

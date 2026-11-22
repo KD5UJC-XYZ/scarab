@@ -238,7 +238,7 @@ class DijkstraCertsSuite extends FunSuite:
 
   test("POOL judges every recorded registration as the era decoder reads it, a component check") {
     // their reward accounts are on Mainnet
-    val mainnet = leios.copy(ledger = leios.ledger.copy(network = 1))
+    val mainnet = leios.copy(ledger = leios.ledger.copy(network = Network.Mainnet))
     val judged = recordedRegistrations.map { (name, p) =>
       (
         name,
@@ -367,8 +367,7 @@ class DijkstraCertsSuite extends FunSuite:
     }
   }
 
-  private lazy val network: Network =
-    Network.of(BigInt(leios.networkId)).getOrElse(fail(s"network ${leios.networkId}"))
+  private lazy val network: Network = leios.networkId
 
   private def failuresOf[A](test: RuleTest[A]): Vector[A] =
     RuleTest.failures(test).toVector.flatMap(_.toChain.toVector)

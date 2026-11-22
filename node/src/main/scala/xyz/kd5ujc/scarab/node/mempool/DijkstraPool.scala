@@ -127,7 +127,7 @@ object DijkstraPoolEnv:
     DijkstraPoolEnv(
       slot,
       env.rules,
-      Network.of(BigInt(env.globals.network)).getOrElse(Network.Testnet),
+      env.globals.network,
       env.clock.fold(PosixClock.total(env.geometry))(_(Era.Dijkstra)),
       env.evaluator,
       env.decoder,

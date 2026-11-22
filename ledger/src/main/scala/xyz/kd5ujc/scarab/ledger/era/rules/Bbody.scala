@@ -20,7 +20,6 @@ import xyz.kd5ujc.scarab.ledger.state.{
   LedgerState,
   Network,
   StakePool,
-  VocabError,
   Word64
 }
 import xyz.kd5ujc.scarab.plutus.{ExUnits, ScriptDecoder, ScriptEvaluator}
@@ -272,8 +271,8 @@ object ConwayBbody:
     *   - the header's major version at most the one after the parameters' (`succVersion`,
     *     `Binary/Version.hs:153-157`; `checkHeaderProtVerTooHigh`, `:293-305`), where the build's
     *     gate checks it ([[HeaderProtVerGate]], `:308-312`) on the network of the judgment's
-    *     `Globals` (`liftSTS $ asks networkId`, `:306`; one outside `Network` is raised,
-    *     [[LedgerFailure.Vocab]]); a major with no version after it (`maxBound`) is never too high;
+    *     `Globals` (`liftSTS $ asks networkId`, `:306`, the Shelley genesis's); a major with no
+    *     version after it (`maxBound`) is never too high;
     *   - the block's reference scripts against the UTxO set before LEDGERS (`ls ^. utxoL`, `:314`):
     *     the stored outputs of the transactions' inputs and reference inputs, the only ones
     *     `totalRefScriptSizeInBlock` looks up, read into the era (one the era does not read is
@@ -295,8 +294,7 @@ object ConwayBbody:
       state: Stateful[F, ShelleyBbodyState[E]],
       judge: Judge[F, BbodyPredFailure[E]],
       conway: InjectBbodyFailure[ConwayBbodyPredFailure[E], E],
-      stateDefect: Raise[F, UtxoStateDefect],
-      defect: Raise[F, LedgerDefect]
+      stateDefect: Raise[F, UtxoStateDefect]
   ): F[Unit] =
     val pp = env.bbodyPp
     val curProtVerMajor = p.ppProtocolVersionL.get(pp).pvMajor
@@ -309,15 +307,7 @@ object ConwayBbody:
     val txs = bb.txSeqBlockBody(block.blockBody)
     for
       globals <- ask.ask[Globals]
-      netId <- Sts.lift[F, LedgerDefect, Network](
-        Network
-          .of(BigInt(globals.networkId))
-          .toRight(
-            LedgerFailure.Vocab(
-              VocabError.OutOfRange(VocabError.Kind.Network, BigInt(globals.networkId))
-            )
-          )
-      )
+      netId = globals.networkId
       _ <-
         if HeaderProtVerGate.of(globals.ledger.referenceBuild).checks(netId, curProtVerMajor) then
           bbodyTest(

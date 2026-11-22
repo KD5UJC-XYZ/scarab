@@ -145,7 +145,7 @@ object Ledger extends JudgedSts[LedgerEnv, ConwayLedger, Tx, PredicateFailure, L
     val accounts = CertLens.accounts.get(certBefore)
     for
       globals <- Sts.globals[F]
-      network = globals.networkId
+      network = globals.networkId.wire
       _ <- Sts.runTest[F, PredicateFailure](treasuryValue(tx, env.treasury.value))
       _ <- Sts.runTest[F, PredicateFailure](refScriptSize(RefScripts.refScriptsSize(utxo, body)))
       // `unless (hardforkConwayBootstrapPhase pv)` (`Conway/Rules/Ledger.hs:379-380`,

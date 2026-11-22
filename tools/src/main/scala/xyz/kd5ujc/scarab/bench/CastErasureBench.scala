@@ -213,7 +213,7 @@ object CastErasureBench:
       TestLedger.Supply,
       100,
       Rational(1, 2),
-      network = 0,
+      network = xyz.kd5ujc.scarab.ledger.state.Network.Testnet,
       updateQuorum = 2,
       kes = xyz.kd5ujc.scarab.ledger.KesParameters.Mainnet
     ),

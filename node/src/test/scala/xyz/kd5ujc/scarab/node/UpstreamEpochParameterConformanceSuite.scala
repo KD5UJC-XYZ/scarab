@@ -28,7 +28,7 @@ class UpstreamEpochParameterConformanceSuite extends FunSuite:
       BigInt("45000000000000000"),
       BigInt(100),
       Rational(9, 10),
-      network = 0,
+      network = Network.Testnet,
       updateQuorum = 5,
       kes = xyz.kd5ujc.scarab.ledger.KesParameters.Mainnet
     ),

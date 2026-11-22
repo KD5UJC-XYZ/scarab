@@ -261,7 +261,7 @@ object NodeRules:
           params.maxBlockHeaderSize,
           bodySize,
           params.maxBlockBodySize,
-          mainnet = globals.network == 1
+          mainnet = globals.network == xyz.kd5ujc.scarab.ledger.state.Network.Mainnet
         )
         .leftMap(BlockFailure.Envelope(_))
       validated <-

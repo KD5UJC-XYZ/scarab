@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
+import xyz.kd5ujc.scarab.ledger.state.Network
 import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.plutus.ExUnits
 import java.security.{KeyPair, KeyPairGenerator, Signature}
@@ -137,7 +138,7 @@ object TestLedger:
         Supply,
         100,
         Rational(1, 2),
-        network = 0,
+        network = Network.Testnet,
         updateQuorum = 2,
         kes = xyz.kd5ujc.scarab.ledger.KesParameters.Mainnet
       ),

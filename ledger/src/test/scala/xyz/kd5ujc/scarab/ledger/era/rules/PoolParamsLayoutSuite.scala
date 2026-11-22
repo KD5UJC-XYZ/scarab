@@ -41,7 +41,7 @@ class PoolParamsLayoutSuite extends FunSuite:
     BigInt(340000000),
     Rational(1, 100),
     node.RewardAccount(
-      TestLedger.globals.networkId,
+      TestLedger.globals.networkId.wire,
       node.Credential.Key(Bytes(Vector.fill(28)(7.toByte)))
     ),
     Set.empty,

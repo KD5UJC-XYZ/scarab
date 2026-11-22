@@ -6,14 +6,7 @@ import cats.data.{Chain, NonEmptyChain}
 import cats.mtl.{Raise, Stateful, Tell}
 import cats.syntax.all.*
 import monocle.Lens
-import xyz.kd5ujc.scarab.ledger.{
-  Horizon,
-  LedgerDefect,
-  LedgerFailure,
-  TranslationError,
-  TxEnv,
-  Verdicts
-}
+import xyz.kd5ujc.scarab.ledger.{Horizon, LedgerDefect, TranslationError, TxEnv, Verdicts}
 import xyz.kd5ujc.scarab.ledger.era.{
   Block,
   EraBlockHeader,
@@ -24,7 +17,7 @@ import xyz.kd5ujc.scarab.ledger.era.{
   TxLevel
 }
 import xyz.kd5ujc.scarab.ledger.rules.{Globals, Judgment, RuleT, contramap, focus}
-import xyz.kd5ujc.scarab.ledger.state.{BlocksMade, Dijkstra, LedgerState, Network, VocabError}
+import xyz.kd5ujc.scarab.ledger.state.{BlocksMade, Dijkstra, LedgerState}
 import xyz.kd5ujc.scarab.plutus.{ScriptDecoder, ScriptEvaluator}
 
 /** What ends a run of Dijkstra's rules on a block without a verdict: the defects the rules raise,
@@ -84,12 +77,12 @@ object DijkstraBlockRun:
   /** BBODY on `block` from `state` and `proposals`: a defect, the refusal's failures, or the BBODY
     * state and the proposals after. The context of its transactions' rules is made here from
     * `globals`, as the reference's rules read it from theirs: the network (`liftSTS $ asks
-    * networkId`, `Dijkstra/Rules/Utxo.hs:400`, cardano-ledger 9df9f98c; one outside `Network` is a
-    * defect, [[LedgerFailure.Vocab]]), with the system start and the epoch information the caller
-    * gives (`systemStart`, `epochInfo`, the latter depending on the tip), and every check validated
-    * as the reference's application does (`ValidateAll`; its reapplication validates none), so that
-    * no caller runs the block's rules under another policy or on another network. Dijkstra's
-    * injection of Shelley's failures is the era's given, not the build's ([[DijkstraUtxoContext]]).
+    * networkId`, `Dijkstra/Rules/Utxo.hs:400`, cardano-ledger 9df9f98c, the Shelley genesis's),
+    * with the system start and the epoch information the caller gives (`systemStart`, `epochInfo`,
+    * the latter depending on the tip), and every check validated as the reference's application
+    * does (`ValidateAll`; its reapplication validates none), so that no caller runs the block's
+    * rules under another policy or on another network. Dijkstra's injection of Shelley's failures
+    * is the era's given, not the build's ([[DijkstraUtxoContext]]).
     */
   def bbody[H](
       globals: Globals,
@@ -108,31 +101,22 @@ object DijkstraBlockRun:
       LeiosEraBlockHeader[H, Dijkstra]
   ): Either[DijkstraRuleDefect, Either[NonEmptyChain[BbodyPredFailure[Dijkstra]], After]] =
     given ScriptEvaluator[F] = lifted(evaluator)
-    val network = BigInt(globals.networkId)
-    Network
-      .of(network)
-      .toRight(
-        DijkstraRuleDefect.Ledger(
-          LedgerFailure.Vocab(VocabError.OutOfRange(VocabError.Kind.Network, network))
-        )
-      )
-      .flatMap { netId =>
-        val context =
-          DijkstraUtxoContext(netId, systemStart, epochInfo, TxEnv.Validation.All)
-        Judgment
-          .judge(
-            DijkstraBbody.dijkstraBbodyTransition[F, H](
-              env,
-              block,
-              context,
-              verdicts,
-              decoder,
-              slotToPOSIXTime
-            ),
-            RuleT.Policy.Accumulate
-          )(globals, (state, proposals))
-          .map(_.map(_._1))
-      }
+    val netId = globals.networkId
+    val context =
+      DijkstraUtxoContext(netId, systemStart, epochInfo, TxEnv.Validation.All)
+    Judgment
+      .judge(
+        DijkstraBbody.dijkstraBbodyTransition[F, H](
+          env,
+          block,
+          context,
+          verdicts,
+          decoder,
+          slotToPOSIXTime
+        ),
+        RuleT.Policy.Accumulate
+      )(globals, (state, proposals))
+      .map(_.map(_._1))
 
   /** The closure `txs` applied with `env` to `state` and `proposals`
     * ([[DijkstraClosure.applyLeiosClosure]]): a defect, the refusal's failures, or the ledger state

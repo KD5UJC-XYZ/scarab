@@ -252,7 +252,7 @@ final case class MempoolEnv(
     TxEnv(
       slot = slot,
       epoch = ledger.epoch,
-      network = globals.network,
+      network = globals.network.wire,
       firstSlotNextEpoch = geometry.firstSlot(ledger.epoch + 1),
       stabilityWindow = geometry.stabilityWindow.toBigInt,
       txIndex = 0,

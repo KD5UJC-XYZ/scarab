@@ -52,7 +52,7 @@ class UpstreamFreshLedgerConformanceSuite extends FunSuite:
       BigInt("45000000000000000"),
       4320,
       Rational(1, 5),
-      0,
+      Network.Testnet,
       kes = xyz.kd5ujc.scarab.ledger.KesParameters.Mainnet
     ),
     geometry

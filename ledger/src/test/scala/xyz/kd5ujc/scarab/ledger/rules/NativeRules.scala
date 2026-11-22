@@ -79,7 +79,12 @@ object NativeRules:
     */
   def globalsOf(ctx: TxEnv): Globals =
     TestLedger.globals.copy(ledger =
-      TestLedger.globals.ledger.copy(network = ctx.network, updateQuorum = ctx.updateQuorum)
+      TestLedger.globals.ledger.copy(
+        network = Network
+          .of(BigInt(ctx.network))
+          .getOrElse(munit.Assertions.fail(s"network ${ctx.network}")),
+        updateQuorum = ctx.updateQuorum
+      )
     )
 
   /** The LEDGER rules of the era on one transaction: the state after it, or its refusal. */
@@ -164,7 +169,7 @@ object NativeRules:
       TestLedger.Supply,
       100,
       Rational(1, 2),
-      network = 0,
+      network = Network.Testnet,
       updateQuorum = 2,
       kes = xyz.kd5ujc.scarab.ledger.KesParameters.Mainnet
     )

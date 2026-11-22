@@ -11,6 +11,7 @@ import xyz.kd5ujc.scarab.ledger.rules.{EraNes, Globals, Hfc}
 import xyz.kd5ujc.scarab.ledger.state.{
   BlockNo,
   EraTag,
+  Network,
   ShelleyBasedEra,
   SlotNo,
   VocabError,
@@ -201,7 +202,7 @@ private[node] final class ShelleyHeaderForecast[S](config: PraosConfig, globals:
             params.maxBlockHeaderSize,
             h.bodySize,
             params.maxBlockBodySize,
-            mainnet = glob.network == 1
+            mainnet = glob.network == Network.Mainnet
           )
           .leftMap(HeaderError.Envelope(_))
       val nonceWindow =

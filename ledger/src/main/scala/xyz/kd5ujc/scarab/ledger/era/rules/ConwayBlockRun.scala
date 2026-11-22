@@ -5,14 +5,7 @@ import cats.{Functor, Id, Monad}
 import cats.data.{Chain, NonEmptyChain}
 import cats.mtl.{Raise, Tell}
 import cats.syntax.all.*
-import xyz.kd5ujc.scarab.ledger.{
-  Horizon,
-  LedgerDefect,
-  LedgerFailure,
-  TranslationError,
-  TxEnv,
-  Verdicts
-}
+import xyz.kd5ujc.scarab.ledger.{Horizon, LedgerDefect, TranslationError, TxEnv, Verdicts}
 import xyz.kd5ujc.scarab.ledger.era.{
   Block,
   EraBlockHeader,
@@ -22,7 +15,7 @@ import xyz.kd5ujc.scarab.ledger.era.{
   ScriptVerdictUnavailable
 }
 import xyz.kd5ujc.scarab.ledger.rules.{Globals, Judgment, RuleT, contramap}
-import xyz.kd5ujc.scarab.ledger.state.{Conway, Network, VocabError}
+import xyz.kd5ujc.scarab.ledger.state.Conway
 import xyz.kd5ujc.scarab.plutus.{ScriptDecoder, ScriptEvaluator}
 
 /** What ends a run of Conway's rules on a block without a verdict: the defects the rules raise,
@@ -72,11 +65,11 @@ object ConwayBlockRun:
 
   /** BBODY on `block` from `state`: a defect, the refusal's failures, or the BBODY state after. The
     * context of its transactions' rules is made here from `globals`, as the reference's rules read
-    * it from theirs: the network (`networkId`; one outside `Network` is a defect,
-    * [[LedgerFailure.Vocab]]) and the build's injection of Shelley's UTXO failures
-    * ([[ConwayUtxo.injectShelleyFailure]]), with the system start and the epoch information the
-    * node's `Globals` does not hold (`systemStart`, `epochInfo`), and every check validated, so
-    * that no caller runs the block's rules under another policy or on another network.
+    * it from theirs: the network (`networkId`, the Shelley genesis's) and the build's injection of
+    * Shelley's UTXO failures ([[ConwayUtxo.injectShelleyFailure]]), with the system start and the
+    * epoch information the node's `Globals` does not hold (`systemStart`, `epochInfo`), and every
+    * check validated, so that no caller runs the block's rules under another policy or on another
+    * network.
     */
   def bbody[H](
       globals: Globals,
@@ -97,26 +90,17 @@ object ConwayBlockRun:
     ShelleyBbodyState[Conway]
   ]] =
     given ScriptEvaluator[F] = lifted(evaluator)
-    val network = BigInt(globals.networkId)
-    Network
-      .of(network)
-      .toRight(
-        ConwayRuleDefect.Ledger(
-          LedgerFailure.Vocab(VocabError.OutOfRange(VocabError.Kind.Network, network))
-        )
-      )
-      .flatMap { netId =>
-        val context = UtxoContext[Conway](
-          netId,
-          systemStart,
-          epochInfo,
-          TxEnv.Validation.All,
-          ConwayUtxo.injectShelleyFailure(globals.ledger.referenceBuild)
-        )
-        Judgment
-          .judge(
-            ConwayBbody.conwayBbody[F, H](env, block, context, verdicts, decoder, slotToPOSIXTime),
-            RuleT.Policy.Accumulate
-          )(globals, state)
-          .map(_.map(_._1))
-      }
+    val netId = globals.networkId
+    val context = UtxoContext[Conway](
+      netId,
+      systemStart,
+      epochInfo,
+      TxEnv.Validation.All,
+      ConwayUtxo.injectShelleyFailure(globals.ledger.referenceBuild)
+    )
+    Judgment
+      .judge(
+        ConwayBbody.conwayBbody[F, H](env, block, context, verdicts, decoder, slotToPOSIXTime),
+        RuleT.Policy.Accumulate
+      )(globals, state)
+      .map(_.map(_._1))

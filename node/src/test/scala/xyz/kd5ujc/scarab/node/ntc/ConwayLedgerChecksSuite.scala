@@ -103,7 +103,8 @@ class ConwayLedgerChecksSuite extends FunSuite:
         xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default,
         xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder
       )
-      val network = setup.globals.network
+      val netId = setup.globals.network
+      val network = netId.wire
       c.cases.map { rc =>
         val what = s"${c.path}/${rc.label}"
         val bytes: Bytes = right(s"$what item")(LocalSubmission.unwrap(rc.item)).raw
@@ -123,7 +124,7 @@ class ConwayLedgerChecksSuite extends FunSuite:
           bytes,
           env.rules,
           network,
-          Network.of(BigInt(network)).getOrElse(fail(s"$what network $network")),
+          netId,
           right(s"$what flat")(Tx.fromEnvelope(bytes, Era.Conway)),
           right(s"$what typed")(ConwayTx.fromEnvelope(bytes, StateLayout.Node11_1)),
           stored,

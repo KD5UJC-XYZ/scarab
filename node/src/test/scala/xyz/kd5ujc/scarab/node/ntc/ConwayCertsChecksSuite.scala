@@ -127,7 +127,7 @@ class ConwayCertsChecksSuite extends FunSuite:
         Seen(
           what,
           env.rules,
-          setup.globals.network,
+          setup.globals.network.wire,
           bytes,
           right(s"$what flat")(Tx.fromEnvelope(bytes, Era.Conway)),
           right(s"$what typed")(ConwayTx.fromEnvelope(bytes, StateLayout.Node11_1)),

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.forge
 
+import xyz.kd5ujc.scarab.ledger.state.Network
 import xyz.kd5ujc.scarab.node.assertions.Assertions
 import xyz.kd5ujc.scarab.node.ConfigSettings
 import xyz.kd5ujc.scarab.ledger.TestGeometry
@@ -66,7 +67,7 @@ trait ForgeFixture:
       TestLedger.Supply,
       1000,
       Rational(1, 2),
-      network = 0,
+      network = Network.Testnet,
       updateQuorum = 2,
       kes = xyz.kd5ujc.scarab.ledger.KesParameters.Mainnet
     )
@@ -107,7 +108,7 @@ trait ForgeFixture:
 
   /** What the mirror reads of this configuration. */
   lazy val mirrorEnv: ConsensusMirrorEnv = ConsensusMirrorEnv(
-    MirrorEnv(globals.network, geometry, globals.updateQuorum),
+    MirrorEnv(globals.network.wire, geometry, globals.updateQuorum),
     config.forks,
     EraHistory.ByronParams(
       geometry.k * 10,
@@ -169,7 +170,7 @@ trait ForgeFixture:
       enabled: Boolean = true,
       protocolVersion: (BigInt, BigInt) =
         ConfigSettings().protocolVersion(xyz.kd5ujc.scarab.protocol.ReferenceBuild.Release11_1),
-      network: Int = globals.network,
+      network: Network = globals.network,
       assertions: Assertions[IO] = Assertions.noop[IO],
       pause: Option[Forger.Point => IO[Unit]] = None,
       praos: PraosConfig = config,

@@ -141,7 +141,7 @@ object ShelleyLedger:
       judge: Judge[F, LedgerPredFailure[E]]
   ): F[Unit] =
     for
-      network <- ask.ask[Globals].map(_.networkId)
+      network <- ask.ask[Globals].map(_.networkId.wire)
       (missingWithdrawals, incompleteWithdrawals) = EraAccounts
         .withdrawalsThatDoNotDrainAccounts[E](withdrawals, network, accounts)
         .fold((Map.empty[AccountAddress, Coin], Map.empty[AccountAddress, Mismatch[RelEQ, Coin]]))(

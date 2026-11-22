@@ -73,7 +73,6 @@ import xyz.kd5ujc.scarab.ledger.rules.{EraBlock, EraNes, Globals}
 import xyz.kd5ujc.scarab.ledger.state.{
   Dijkstra,
   LeiosCommittee,
-  Network,
   NewEpochState,
   NodeExtras,
   ShelleyBasedEra,
@@ -577,7 +576,7 @@ private[node] object MirrorDijkstra:
       slot,
       Globals(globals, geometry),
       DijkstraUtxoContext(
-        Network.of(BigInt(globals.network)).getOrElse(Network.Testnet),
+        globals.network,
         BigInt(geometry.systemStart.toEpochMilli),
         MirrorClock.horizon(state, placement, era, slot),
         TxEnv.Validation.All

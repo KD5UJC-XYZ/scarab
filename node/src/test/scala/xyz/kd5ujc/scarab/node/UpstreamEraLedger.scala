@@ -20,7 +20,6 @@ import xyz.kd5ujc.scarab.ledger.era.{
   EraTxBody,
   EraTxError,
   EraUTxO,
-  Network,
   PParams,
   PParamsError,
   TxLevel,
@@ -62,7 +61,6 @@ private[node] object UpstreamEraLedger:
     case Transaction(cause: EraTxError)
     case Parameters(cause: PParamsError)
     case Outputs(cause: EraTxError)
-    case Network(id: Int)
     case Index(index: Int)
 
   /** A transaction of four original parts (body, witnesses, validity flag, auxiliary data). */
@@ -99,18 +97,15 @@ private[node] object UpstreamEraLedger:
     )
 
   private def context(globals: Globals): Either[Unread, UtxoContext[Conway]] =
-    Network
-      .of(BigInt(globals.networkId))
-      .toRight(Unread.Network(globals.networkId))
-      .map(net =>
-        UtxoContext[Conway](
-          net,
-          BigInt(globals.geometry.systemStart.toEpochMilli),
-          epochInfo(globals.geometry),
-          TxEnv.Validation.All,
-          ConwayUtxo.injectShelleyFailure(globals.ledger.referenceBuild)
-        )
+    Right(
+      UtxoContext[Conway](
+        globals.networkId,
+        BigInt(globals.geometry.systemStart.toEpochMilli),
+        epochInfo(globals.geometry),
+        TxEnv.Validation.All,
+        ConwayUtxo.injectShelleyFailure(globals.ledger.referenceBuild)
       )
+    )
 
   private def params(flat: xyz.kd5ujc.scarab.ledger.ProtocolParams) =
     ConwayPParams.fromStored(flat).map(PParams[Conway](_)).leftMap(Unread.Parameters(_))

@@ -74,7 +74,7 @@ object ShelleyLedger:
                   Withdrawals.viewOf(
                     ShelleyCertLens.states.get(certBefore),
                     tx.body.withdrawals,
-                    globals.networkId
+                    globals.networkId.wire
                   )(_.balance.toBigInt)
                 )
                 _ <- Withdrawals.record[F](view)

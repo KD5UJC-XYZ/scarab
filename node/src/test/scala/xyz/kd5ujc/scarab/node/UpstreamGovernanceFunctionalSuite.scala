@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.ledger.state.Network
 import xyz.kd5ujc.scarab.ledger.TestGeometry
 import xyz.kd5ujc.scarab.ledger.testByteStrings
 import java.nio.file.{Files, Path}
@@ -123,7 +124,7 @@ class UpstreamGovernanceFunctionalSuite extends FunSuite:
       BigInt(0),
       BigInt(1),
       Rational.zero,
-      network = 0,
+      network = Network.Testnet,
       kes = xyz.kd5ujc.scarab.ledger.KesParameters.Mainnet
     ),
     EpochGeometry(Instant.EPOCH, 1000L, 1L, TestGeometry.k(1), TestGeometry.f("0.1"))

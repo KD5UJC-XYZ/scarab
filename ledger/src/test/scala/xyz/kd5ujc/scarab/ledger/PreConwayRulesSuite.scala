@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
+import xyz.kd5ujc.scarab.ledger.state.Network
 import munit.ScalaCheckSuite
 import org.scalacheck.Gen
 import org.scalacheck.Prop.*
@@ -71,7 +72,7 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     Supply,
     10000,
     Rational(1, 20),
-    0,
+    Network.Testnet,
     updateQuorum = 2,
     kes = xyz.kd5ujc.scarab.ledger.KesParameters.Mainnet
   )
@@ -782,7 +783,7 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
       Supply,
       10000,
       Rational(1, 20),
-      0,
+      Network.Testnet,
       updateQuorum = 2,
       kes = xyz.kd5ujc.scarab.ledger.KesParameters.Mainnet
     )
@@ -922,7 +923,7 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
       Supply,
       10000,
       Rational(1, 20),
-      0,
+      Network.Testnet,
       updateQuorum = 2,
       kes = xyz.kd5ujc.scarab.ledger.KesParameters.Mainnet
     )
@@ -1011,7 +1012,7 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
         Supply,
         100,
         Rational(1, 2),
-        0,
+        Network.Testnet,
         kes = xyz.kd5ujc.scarab.ledger.KesParameters.Mainnet
       )
       // each epoch makes its reward update (a block after the start of rewards creates it) and

@@ -238,7 +238,10 @@ class PreConwayUtxoPredicatesSuite extends FunSuite:
     val funded = initial.copy[E](utxo = initial.utxo.copy[E](utxo = UtxoTables(utxo)))
     def admit(tx: Tx, network: Int = 0) =
       JudgedSts(ShelleyLedger.sts[E])(LedgerFailure.Rejected(tx.body.id, _))(
-        TestLedger.globals.copy(ledger = TestLedger.globals.ledger.copy(network = network)),
+        TestLedger.globals.copy(ledger =
+          TestLedger.globals.ledger
+            .copy(network = Network.of(BigInt(network)).getOrElse(fail(s"network $network")))
+        ),
         ShelleyLedgerEnv(
           TestLedger.env.copy(network = network),
           ChainAccountState(Coin.zero, Coin.zero)

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
+import xyz.kd5ujc.scarab.ledger.state.Network
 import scala.collection.immutable.SortedMap
 import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.crypto.Blake2b
@@ -59,7 +60,7 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
     Supply,
     100,
     Rational(1, 20),
-    network = 0,
+    network = Network.Testnet,
     kes = xyz.kd5ujc.scarab.ledger.KesParameters.Mainnet
   )
 

@@ -456,10 +456,10 @@ object Pool extends JudgedSts[CertEnv, PState, PoolCert, PredicateFailure, Ledge
         for
           globals <- Sts.globals[F]
           _ <- Sts.predicate[F, PredicateFailure](
-            !pp.validatesPoolRewardAccountNetwork || params.rewardAccount.network == globals.networkId,
+            !pp.validatesPoolRewardAccountNetwork || params.rewardAccount.network == globals.networkId.wire,
             PredicateFailure.pool(
               PoolFailure.WrongNetworkPool(
-                Mismatch(params.rewardAccount.network, globals.networkId),
+                Mismatch(params.rewardAccount.network, globals.networkId.wire),
                 params.operator
               )
             )
@@ -930,7 +930,7 @@ object Certs
       globals <- Sts.globals[F]
       s <- st.get
       view <- Refuse.vocab[F, Withdrawals.View](
-        Withdrawals.view(CertLens.accounts.get(s), env.tx.body.withdrawals, globals.networkId)
+        Withdrawals.view(CertLens.accounts.get(s), env.tx.body.withdrawals, globals.networkId.wire)
       )
       // `failOnJust (withdrawalsThatDoNotDrainAccounts ...)` (`Certs.hs:226-233`)
       _ <- Sts.predicate[F, PredicateFailure](

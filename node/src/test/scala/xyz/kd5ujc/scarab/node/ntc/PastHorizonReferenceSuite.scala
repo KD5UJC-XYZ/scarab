@@ -22,7 +22,6 @@ import xyz.kd5ujc.scarab.ledger.era.{
   EraTxBody,
   EraUTxO,
   EraUtxoRun,
-  Network,
   PParams,
   TxLevel
 }
@@ -228,7 +227,7 @@ class PastHorizonReferenceSuite extends FunSuite:
     val txEnv = TxEnv(
       slot = slot.toBigInt,
       epoch = ticked.epoch.toBigInt,
-      network = env.globals.network,
+      network = env.globals.network.wire,
       firstSlotNextEpoch = env.geometry.firstSlot(ticked.epoch.toBigInt + 1),
       stabilityWindow = env.geometry.stabilityWindow.toBigInt,
       txIndex = 0,
@@ -417,9 +416,7 @@ class PastHorizonReferenceSuite extends FunSuite:
         .fromEnvelope(raw, StateLayout.Node11_1)
         .fold(e => fail(s"${r.label}: $e"), identity)
       val utxo = ConwayUTxO.fromStored(stored).fold(e => fail(s"${r.label}: $e"), identity)
-      val network = Network
-        .of(BigInt(setup.globals.network))
-        .getOrElse(fail(s"${r.label}: network ${setup.globals.network}"))
+      val network = setup.globals.network
       val result = EraUtxoRun.run(
         UtxoEnv(r.tip + 1, pp, ConwayLedgerState.cert.get(ls)),
         AlonzoStAnnTx.mkAlonzoStAnnTx[Conway](clock.posix, pp, utxo, Map.empty, tx),
@@ -495,9 +492,7 @@ class PastHorizonReferenceSuite extends FunSuite:
       val utxo = ConwayUTxO
         .fromStored(ledger.ls.utxo.utxo.utxo.toMap)
         .fold(e => fail(s"${r.label}: $e"), identity)
-      val network = Network
-        .of(BigInt(setup.globals.network))
-        .getOrElse(fail(s"${r.label}: network ${setup.globals.network}"))
+      val network = setup.globals.network
       val judged = EraLedgerRun.ledger(
         env.rules,
         LedgerEnv[Conway](

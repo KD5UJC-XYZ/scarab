@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.ledger
 
 import xyz.kd5ujc.scarab.codec.Rational
-import xyz.kd5ujc.scarab.ledger.state.Word64
+import xyz.kd5ujc.scarab.ledger.state.{Network, Word64}
 import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 
 /** The KES constants of the network: `maxKESEvo` and `slotsPerKESPeriod` of `Globals`
@@ -43,6 +43,9 @@ final case class ConwayParams(
 
 /** Network constants the epoch rules depend on. `stabilityWindow` is 3k/f and `startRewards` the
   * number of slots into an epoch after which the reward calculation starts.
+  * @param network
+  *   `networkId` of `Globals`: the Shelley genesis's `networkId` (`mkShelleyGlobals`,
+  *   cardano-ledger 9df9f98c `Shelley/Genesis.hs:775`), never one decided from the network magic.
   * @param alonzoCoinsPerUTxOWord
   *   `lovelacePerUTxOWord` of the Alonzo genesis: the parameter the Mary to Alonzo translation
   *   introduces (`upgradePParams`, `Alonzo/PParams.hs`), which the era-indexed parameters of the
@@ -67,7 +70,7 @@ final case class LedgerGlobals(
     maxSupply: BigInt,
     epochLength: BigInt,
     activeSlotsCoeff: Rational,
-    network: Int,
+    network: Network,
     updateQuorum: Int = 5,
     stabilityWindow: BigInt = 0,
     startRewards: BigInt = 0,

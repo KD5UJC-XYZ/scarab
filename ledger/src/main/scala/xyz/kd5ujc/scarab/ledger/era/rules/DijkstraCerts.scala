@@ -96,11 +96,7 @@ object DijkstraPOOL:
         val sppCost = stakePoolParams.cost
         for
           globals <- ask.ask[Globals]
-          actualNetID <- vocab[F, Network](
-            Network
-              .of(BigInt(globals.networkId))
-              .toRight(VocabError.OutOfRange(VocabError.Kind.Network, BigInt(globals.networkId)))
-          )
+          actualNetID = globals.networkId
           _ <- Sts.predicate[F, PoolPredFailure[E]](
             actualNetID == suppliedNetID,
             fail(
@@ -727,11 +723,7 @@ object ENTITIES:
       certState <- st.get
       accounts = accountsL.get(certState)
       globals <- ask.ask[Globals]
-      network <- vocab[F, Network](
-        Network
-          .of(BigInt(globals.networkId))
-          .toRight(VocabError.OutOfRange(VocabError.Kind.Network, BigInt(globals.networkId)))
-      )
+      network = globals.networkId
       topTxWithdrawals = b.withdrawals[TxLevel.Top](txBody)
       sumOfSubTxWithdrawals = b
         .subTransactions(txBody)

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
+import xyz.kd5ujc.scarab.ledger.state.Network
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
 import xyz.kd5ujc.scarab.ledger.rules.{Convert, EraLedger, EraNes, Hfc, NativeRules, Translate}
@@ -27,7 +28,7 @@ class ProtocolParamProposalTranslationGapSuite extends FunSuite:
       Supply,
       10000,
       Rational(1, 20),
-      0,
+      Network.Testnet,
       updateQuorum = 2,
       kes = xyz.kd5ujc.scarab.ledger.KesParameters.Mainnet
     )

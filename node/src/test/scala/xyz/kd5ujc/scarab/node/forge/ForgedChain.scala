@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.forge
 
+import xyz.kd5ujc.scarab.ledger.state.Network
 import xyz.kd5ujc.scarab.node.MirrorSteps.verdict
 import xyz.kd5ujc.scarab.node.assertions.Assertions
 import xyz.kd5ujc.scarab.node.ConfigSettings
@@ -106,7 +107,7 @@ class ForgedChainSetup(val geometry: EpochGeometry):
       TestLedger.Supply,
       geometry.epochLength,
       Rational(1, 2),
-      network = 0,
+      network = Network.Testnet,
       updateQuorum = 2,
       kes = xyz.kd5ujc.scarab.ledger.KesParameters.Mainnet
     )
@@ -117,7 +118,7 @@ class ForgedChainSetup(val geometry: EpochGeometry):
 
   /** What the mirror reads of this configuration. */
   val mirrorEnv: ConsensusMirrorEnv = ConsensusMirrorEnv(
-    MirrorEnv(globals.network, geometry, globals.updateQuorum),
+    MirrorEnv(globals.network.wire, geometry, globals.updateQuorum),
     config.forks,
     EraHistory.ByronParams(
       geometry.k * 10,
