@@ -9,7 +9,6 @@ import xyz.kd5ujc.scarab.ledger.{
   ByteStrings,
   DecodeField,
   LedgerDecodeError,
-  RewardAccount,
   ScriptKind,
   TxIn,
   Unsigned,
@@ -57,7 +56,15 @@ import xyz.kd5ujc.scarab.ledger.era.babbage.{
   BabbageTimelock,
   BabbageTxOut
 }
-import xyz.kd5ujc.scarab.ledger.state.{Coin, Conway, KeyHash, StakePool}
+import xyz.kd5ujc.scarab.ledger.state.{
+  AccountAddress,
+  Coin,
+  Conway,
+  KeyHash,
+  StakePool,
+  Withdrawals
+}
+import xyz.kd5ujc.scarab.ledger.rules.Convert
 import xyz.kd5ujc.scarab.plutus.PlutusData
 import xyz.kd5ujc.scarab.protocol.{Era, StateLayout}
 
@@ -231,11 +238,11 @@ object ConwayScript:
           ConwayPlutusPurpose.ConwayProposing(_) =>
         None
     override def mkWithdrawingPurpose[F[_, _]](
-        account: F[Unsigned[Unsigned.Width.W32], RewardAccount]
+        account: F[Unsigned[Unsigned.Width.W32], AccountAddress]
     ): ConwayPlutusPurpose[F] = ConwayPlutusPurpose.ConwayWithdrawing(account)
     override def toWithdrawingPurpose[F[_, _]](
         purpose: ConwayPlutusPurpose[F]
-    ): Option[F[Unsigned[Unsigned.Width.W32], RewardAccount]] = purpose match
+    ): Option[F[Unsigned[Unsigned.Width.W32], AccountAddress]] = purpose match
       case ConwayPlutusPurpose.ConwayWithdrawing(i) => Some(i)
       case ConwayPlutusPurpose.ConwaySpending(_) | ConwayPlutusPurpose.ConwayMinting(_) |
           ConwayPlutusPurpose.ConwayCertifying(_) | ConwayPlutusPurpose.ConwayVoting(_) |
@@ -376,7 +383,7 @@ final class ConwayTxBody private (
     val collateralReturn: Option[Sized[ConwayTxOut]],
     val totalCollateral: Option[Coin],
     val certs: OSet[ConwayTxCert],
-    val withdrawals: Map[RewardAccount, Coin],
+    val withdrawals: Withdrawals,
     val fee: Coin,
     val validity: ValidityInterval,
     val reqSignerHashes: SortedSet[Bytes],
@@ -424,8 +431,11 @@ object ConwayTxBody:
 
   /** A Conway body from its bytes: Conway's decoder (the flat decoder at Conway), its outputs read
     * as Conway outputs and its certificates as Conway certificates, a pool's parameters in
-    * `layout`, the layout of the build that reads it ([[ConwayTxCert.fromFlat]]). A
-    * protocol-parameter update, which Conway's decoder does not read, is refused.
+    * `layout`, the layout of the build that reads it ([[ConwayTxCert.fromFlat]]), and its
+    * withdrawals as the reference's `Withdrawals` (`ctbrWithdrawals`, `Conway/TxBody.hs:131`,
+    * cardano-ledger f649f975), each account the `AccountAddress` the decoder read
+    * ([[Convert.withdrawals]]). A protocol-parameter update, which Conway's decoder does not read,
+    * is refused.
     */
   def decode(raw: Bytes, layout: StateLayout): Either[EraTxError, ConwayTxBody] =
     xyz.kd5ujc.scarab.ledger.TxBody
@@ -446,6 +456,7 @@ object ConwayTxBody:
       outputs <- b.outputs.traverse(sized)
       collateralReturn <- b.collateralReturn.traverse(sized)
       certs <- b.certificates.traverse(ConwayTxCert.fromFlat(_, layout))
+      withdrawals <- Convert.withdrawals(b.withdrawals).leftMap(EraTxError.Vocab(_))
       proposals <- b.proposals.traverse(ConwayProcedures.proposal)
       network <- b.networkId.traverse(v =>
         Network
@@ -467,7 +478,7 @@ object ConwayTxBody:
       collateralReturn,
       b.totalCollateral.map(Coin(_)),
       OSet.decoded(certs),
-      b.withdrawals,
+      withdrawals,
       Coin(b.fee),
       ValidityInterval(b.validityStart, b.ttl),
       SortedSet.from(b.requiredSigners),
@@ -498,7 +509,9 @@ object ConwayTxBody:
       case ConwaySpending(idx) =>
         Indexable.fromIndexSet(idx, txBody.spendInputs).map(ConwaySpending(_))
       case ConwayWithdrawing(idx) =>
-        Indexable.fromIndexMap(idx, txBody.withdrawals).map(ConwayWithdrawing(_))
+        Indexable
+          .fromIndexMap(idx, txBody.withdrawals.unWithdrawals)
+          .map(ConwayWithdrawing(_))
       case ConwayCertifying(idx) =>
         Indexable.fromIndexOSet(idx, txBody.certs).map(ConwayCertifying(_))
       case ConwayVoting(idx) =>
@@ -541,7 +554,7 @@ object ConwayTxBody:
       override def fee(body: ConwayTxBody): Coin = body.fee
       override def withdrawals[L <: TxLevel](body: TxBody[L, Conway])(using
           l: TopOnly[L]
-      ): Map[RewardAccount, Coin] =
+      ): Withdrawals =
         l match
           case TopOnly.Top => body.withdrawals
       override def auxDataHash[L <: TxLevel](body: TxBody[L, Conway])(using

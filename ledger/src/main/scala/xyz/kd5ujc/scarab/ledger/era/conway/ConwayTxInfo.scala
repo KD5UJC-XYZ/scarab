@@ -169,7 +169,7 @@ object ConwayTxInfo:
       b: EraTxBody[E],
       l: b.Level[T]
   ): AssocMap[PV1.Credential, PV1.Lovelace] =
-    transMap(transAccountAddress, transCoinToLovelace)(b.withdrawals[T](txBody))
+    transMap(transAccountAddress, transCoinToLovelace)(b.withdrawals[T](txBody).unWithdrawals)
 
   /** `transTxCert` (`Conway/TxInfo.hs:559-597`, cardano-ledger f649f975): a certificate in the V3
     * form. At protocol version 9 a registration's deposit and an unregistration's refund are left
@@ -333,7 +333,7 @@ object ConwayTxInfo:
         )
       case GovAction.TreasuryWithdrawals(withdrawals, govPolicy) =>
         PV3.GovernanceAction.TreasuryWithdrawals(
-          transMap(transAccountAddress, transCoinToLovelace)(withdrawals),
+          transMap(transAccountAddressFlat, transCoinToLovelace)(withdrawals),
           transGovPolicy(govPolicy)
         )
       case GovAction.NoConfidence(pGovActionId) =>
@@ -376,7 +376,7 @@ object ConwayTxInfo:
   ): PV3.ProposalProcedure =
     PV3.ProposalProcedure(
       transCoinToLovelace(p.pProcDeposit),
-      transAccountAddress(p.pProcReturnAddr),
+      transAccountAddressFlat(p.pProcReturnAddr),
       transGovAction(p.pProcGovAction)
     )
 

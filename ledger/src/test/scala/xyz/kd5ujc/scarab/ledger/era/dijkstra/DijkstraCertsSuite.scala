@@ -43,6 +43,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
   StakePool,
   StakePoolParams,
   Staking,
+  Withdrawals,
   Word64
 }
 import xyz.kd5ujc.scarab.protocol.ReferenceBuild
@@ -89,12 +90,6 @@ class DijkstraCertsSuite extends FunSuite:
   private val b = EraTxBody.dijkstra
   private val c = EraCertState.dijkstra
   private given ConwayEraAccounts[Dijkstra] = c.accountsOf
-  private given cats.Order[AccountAddress] =
-    cats.Order.by[AccountAddress, flat.RewardAccount](Convert.rewardAccountBack)(using
-      cats.Order.fromOrdering
-    )
-  private given Ordering[AccountAddress] = summon[cats.Order[AccountAddress]].toOrdering
-  private given cats.Order[flat.RewardAccount] = cats.Order.fromOrdering
 
   private val leios: Globals =
     TestLedger.globals.copy(ledger =
@@ -398,17 +393,18 @@ class DijkstraCertsSuite extends FunSuite:
     val name = str(j, "name")
     val body = eraTx(j).body
     val none = accountsOf(empty)
-    val top = ok(ENTITIES.keyed(b.withdrawals[TxLevel.Top](body)))
-    val sub = b
-      .subTransactions(body)
-      .toVector
-      .flatMap(st => ok(ENTITIES.keyed(b.withdrawals[TxLevel.Sub](st.body)(using BothLevels.Sub))))
-      .groupMapReduce(_._1)(_._2)((x, y) => Coin(x.value + y.value))
+    val top = b.withdrawals[TxLevel.Top](body)
+    val sub = Withdrawals(
+      b.subTransactions(body)
+        .toVector
+        .flatMap(st => b.withdrawals[TxLevel.Sub](st.body)(using BothLevels.Sub).unWithdrawals)
+        .groupMapReduce(_._1)(_._2)((x, y) => Coin(x.value + y.value))
+    )
     val deposits = ok(ENTITIES.keyed(b.directDeposits[TxLevel.Top](body)))
     val legacy = EraUTxO.dijkstra.plutusLegacyModeStAnnTx(annotated(j))
     val wrongNetwork = failuresOf(
       ShelleyUtxo.validateWrongNetworkWithdrawal[Dijkstra, TxLevel.Top](network, body)
-    ).map(f => ok(ENTITIES.shelleyUtxoToDijkstraEntitiesPredFailure(f)))
+    ).map(ENTITIES.shelleyUtxoToDijkstraEntitiesPredFailure)
     val checks = failuresOf(
       RuleTest.all(
         ENTITIES.validateWrongNetworkInDirectDeposit(network, deposits),
@@ -425,7 +421,7 @@ class DijkstraCertsSuite extends FunSuite:
         ENTITIES.validateWithdrawalsAgainstOriginalAccounts(
           legacy,
           top,
-          SortedMap.from(sub),
+          sub,
           network,
           none
         )
@@ -483,7 +479,7 @@ class DijkstraCertsSuite extends FunSuite:
     chain.iterator
       .flatMap { j =>
         val body = eraTx(j).body
-        val plain = b.withdrawals[TxLevel.Top](body).isEmpty &&
+        val plain = b.withdrawals[TxLevel.Top](body).unWithdrawals.isEmpty &&
           b.directDeposits[TxLevel.Top](body).isEmpty &&
           b.accountBalanceIntervals[TxLevel.Top](body).isEmpty &&
           b.startingAccountBalanceIntervals(body).isEmpty
@@ -573,13 +569,13 @@ class DijkstraCertsSuite extends FunSuite:
   test("ENTITIES applies a withdrawal before CERTS, and a withdrawal past the balance wraps") {
     val j = withdrawAndUnregister
     val body = eraTx(j).body
-    val withdrawals = b.withdrawals[TxLevel.Top](body).toVector
-    val (account1, amount) = withdrawals.headOption.getOrElse(fail("no withdrawal"))
+    val withdrawals = b.withdrawals[TxLevel.Top](body).unWithdrawals.toVector
+    val (withdrawn, amount) = withdrawals.headOption.getOrElse(fail("no withdrawal"))
     val creds = b.certs[TxLevel.Top](body).collect { case DijkstraTxCert.DijkstraTxCertDeleg(d) =>
       d.credential
     }
     assertEquals(creds.size, 2)
-    val cred1 = ok(Convert.credential[Staking](account1.credential))
+    val cred1 = withdrawn.id.credential
     val cred2 = creds.find(_ != cred1).getOrElse(fail("one credential"))
     def state(balance: BigInt) = withAccounts(account(cred1, balance).andThen(account(cred2, 0)))
     // the withdrawal drains the account, which then unregisters with no balance
@@ -593,7 +589,6 @@ class DijkstraCertsSuite extends FunSuite:
     // reports those of the rule it applies, the last first
     val short = state(amount.value - 1000000)
     val wrapped = Coin(BigInt(2).pow(64) - 1000000)
-    val withdrawn = ok(Convert.accountAddress(account1))
     assertEquals(
       entities(j, short, accountsOf(short)).map(_.left.map(_.toChain.toVector)),
       Right(
@@ -695,8 +690,8 @@ class DijkstraCertsSuite extends FunSuite:
     assertEquals(ent(certs), EntitiesPredFailure.CertsFailure[Dijkstra](certs))
     val own = EntitiesPredFailure.WithdrawalAccountsMissing[Dijkstra](Map.empty)
     assertEquals(ent(own), own)
-    // Shelley's one constructor ENTITIES reaches, its accounts read into `AccountAddress`
-    val mainnet = flat.RewardAccount(1, flat.Credential.Key(Bytes(Vector.fill(28)(4.toByte))))
+    // Shelley's one constructor ENTITIES reaches, its accounts as they are
+    val mainnet = address(4, Network.Mainnet)
     assertEquals(
       ENTITIES.shelleyUtxoToDijkstraEntitiesPredFailure(
         ShelleyUtxoPredFailure.WrongNetworkWithdrawal[Dijkstra](
@@ -704,11 +699,9 @@ class DijkstraCertsSuite extends FunSuite:
           NonEmptySet.one(mainnet)
         )
       ),
-      Right(
-        new EntitiesPredFailure.WithdrawalAddressesWithWrongNetwork[Dijkstra](
-          Network.Testnet,
-          NonEmptySet.one(ok(Convert.accountAddress(mainnet)))
-        )
+      new EntitiesPredFailure.WithdrawalAddressesWithWrongNetwork[Dijkstra](
+        Network.Testnet,
+        NonEmptySet.one(mainnet)
       )
     )
   }
@@ -765,7 +758,7 @@ class DijkstraCertsSuite extends FunSuite:
       compileErrors(
         "ENTITIES.shelleyUtxoToDijkstraEntitiesPredFailure(" +
           "ShelleyUtxoPredFailure.WrongNetworkWithdrawal[Dijkstra](Network.Testnet, " +
-          "NonEmptySet.one(flat.RewardAccount(0, flat.Credential.Key(Bytes.empty)))))"
+          "NonEmptySet.one(address(0, Network.Mainnet))))"
       ),
       ""
     )
@@ -891,8 +884,8 @@ class DijkstraCertsSuite extends FunSuite:
   }
 
   test("the withdrawals against the original accounts in either mode, and against the current") {
-    val top = SortedMap(address(1) -> Coin(6), address(3) -> Coin(1))
-    val sub = SortedMap(address(1) -> Coin(5))
+    val top = Withdrawals(Map(address(1) -> Coin(6), address(3) -> Coin(1)))
+    val sub = Withdrawals(Map(address(1) -> Coin(5)))
     assertEquals(
       ENTITIES
         .validateWithdrawalsAgainstOriginalAccounts(
@@ -1159,16 +1152,14 @@ class DijkstraCertsSuite extends FunSuite:
       )
     )
     // Shelley's, through ENTITIES' function (`:203-204`)
-    val mainnet = flat.RewardAccount(1, flat.Credential.Key(Bytes(Vector.fill(28)(4.toByte))))
+    val mainnet = address(4, Network.Mainnet)
     assertEquals(
       DijkstraSubEntities.shelleyUtxoToDijkstraSubEntitiesPredFailure(
         new ShelleyUtxoPredFailure.WrongNetworkWithdrawal[Dijkstra](net, NonEmptySet.one(mainnet))
       ),
-      Right(
-        SubEntitiesPredFailure.SubWithdrawalAddressesWithWrongNetwork[Dijkstra](
-          net,
-          NonEmptySet.one(ok(Convert.accountAddress(mainnet)))
-        )
+      SubEntitiesPredFailure.SubWithdrawalAddressesWithWrongNetwork[Dijkstra](
+        net,
+        NonEmptySet.one(mainnet)
       )
     )
     // the control: a constructor SUBENTITIES reaches has an injection, in the same form
@@ -1228,7 +1219,7 @@ class DijkstraCertsSuite extends FunSuite:
     )
 
   private def subWithdrawals(tx: DijkstraTx[TxLevel.Sub]): SortedMap[AccountAddress, Coin] =
-    ok(ENTITIES.keyed(b.withdrawals[TxLevel.Sub](tx.body)))
+    b.withdrawals[TxLevel.Sub](tx.body).unWithdrawals
 
   /** What SUBENTITIES did with a chain sub-transaction from the empty state. */
   private enum SubEntitiesOutcome derives CanEqual:
@@ -1326,7 +1317,7 @@ class DijkstraCertsSuite extends FunSuite:
     chainSubTxsAt
       .collectFirst {
         case (j, i, t)
-            if b.withdrawals[TxLevel.Sub](t.body).isEmpty &&
+            if b.withdrawals[TxLevel.Sub](t.body).unWithdrawals.isEmpty &&
               b.certs[TxLevel.Sub](t.body).isEmpty &&
               b.directDeposits[TxLevel.Sub](t.body).isEmpty &&
               b.accountBalanceIntervals[TxLevel.Sub](t.body).isEmpty &&
@@ -1478,7 +1469,8 @@ class DijkstraCertsSuite extends FunSuite:
   test("SUBENTITIES checks and adds a direct deposit after SUBCERTS registers its account") {
     val (j, index, registering) = chainSubTxsAt
       .find((_, _, t) =>
-        b.certs[TxLevel.Sub](t.body).nonEmpty && b.withdrawals[TxLevel.Sub](t.body).isEmpty
+        b.certs[TxLevel.Sub](t.body).nonEmpty &&
+          b.withdrawals[TxLevel.Sub](t.body).unWithdrawals.isEmpty
       )
       .getOrElse(fail("no sub-transaction registers an account"))
     val cred = b

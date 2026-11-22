@@ -50,6 +50,17 @@ object Convert:
       credential[Staking](r.credential)
     ).mapN((network, c) => AccountAddress(network, AccountId(c)))
 
+  /** The reference's `Withdrawals` (`Address.hs:980-982`, cardano-ledger f649f975) of a body's
+    * withdrawals as the node's decoders read them: each account read into `AccountAddress`
+    * ([[accountAddress]]). Every account a decoder reads is one: they read it as
+    * `decodeAccountAddress` does (`RewardAccount.decode`), whose header leaves the network one bit
+    * and whose hash is 28 bytes.
+    */
+  def withdrawals(m: Iterable[(node.RewardAccount, Coin)]): Either[VocabError, Withdrawals] =
+    m.toVector
+      .traverse((account, amount) => accountAddress(account).map(_ -> amount))
+      .map(read => Withdrawals(read.toMap))
+
   /** The node's reward account of an account address. */
   def rewardAccountBack(a: AccountAddress): node.RewardAccount =
     node.RewardAccount(a.networkId.wire, back(a.id.credential))

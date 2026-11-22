@@ -6,12 +6,20 @@ import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.ledger.{
   Credential as FlatCredential,
   NativeScript as FlatNativeScript,
-  RewardAccount,
   TxIn,
   Unsigned,
   Voter
 }
-import xyz.kd5ujc.scarab.ledger.state.{Allegra, Babbage, Conway, Dijkstra, EraTag, Mary, ScriptHash}
+import xyz.kd5ujc.scarab.ledger.state.{
+  AccountAddress,
+  Allegra,
+  Babbage,
+  Conway,
+  Dijkstra,
+  EraTag,
+  Mary,
+  ScriptHash
+}
 
 /** The scripts of era `E` (`EraScript`, cardano-ledger f649f975
   * `libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs:557-597`): the native scripts among them,
@@ -163,13 +171,13 @@ trait ConwayEraScript[E <: EraTag] extends AlonzoEraScript[E]:
 
   /** `mkWithdrawingPurpose`, of an account. */
   def mkWithdrawingPurpose[F[_, _]](
-      account: F[Unsigned[Unsigned.Width.W32], RewardAccount]
+      account: F[Unsigned[Unsigned.Width.W32], AccountAddress]
   ): PlutusPurpose[F, E]
 
   /** `toWithdrawingPurpose`. */
   def toWithdrawingPurpose[F[_, _]](
       purpose: PlutusPurpose[F, E]
-  ): Option[F[Unsigned[Unsigned.Width.W32], RewardAccount]]
+  ): Option[F[Unsigned[Unsigned.Width.W32], AccountAddress]]
 
 /** The guarding purpose and the guard script from Dijkstra (`DijkstraEraScript`, cardano-ledger
   * 9df9f98c `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Scripts.hs:567-572`), in any form `F`

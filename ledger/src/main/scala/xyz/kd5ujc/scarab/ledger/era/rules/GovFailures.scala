@@ -222,11 +222,3 @@ private[rules] given coldCommitteeOrdering: Ordering[Credential[ColdCommittee]] 
   cats.Order[Credential[ColdCommittee]].toOrdering
 given drepCredentialOrdering: Ordering[Credential[DRepRole]] =
   cats.Order[Credential[DRepRole]].toOrdering
-
-/** The derived `Ord AccountAddress` (`Address.hs:183-187`, cardano-ledger f649f975): the network,
-  * then the credential, the order of the node's reward account it is.
-  */
-private[rules] given accountAddressOrdering: Ordering[AccountAddress] =
-  Ordering.by[AccountAddress, RewardAccount](Convert.rewardAccountBack)
-private[rules] given accountAddressOrder: cats.Order[AccountAddress] =
-  cats.Order.fromOrdering(using accountAddressOrdering)

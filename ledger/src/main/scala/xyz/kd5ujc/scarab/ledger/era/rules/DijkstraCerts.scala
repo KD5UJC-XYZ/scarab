@@ -47,6 +47,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
   Staking,
   VRFVerKeyHash,
   VocabError,
+  Withdrawals,
   Word64,
   addInterval
 }
@@ -348,25 +349,18 @@ object ENTITIES:
   /** `shelleyUtxoToDijkstraEntitiesPredFailure` (`Dijkstra/Rules/Entities.hs:428-443`,
     * cardano-ledger 9df9f98c), on the one constructor of Shelley's failure ENTITIES reaches, the
     * one its predicate declares (`validateWrongNetworkWithdrawal`): the reference calls every other
-    * impossible, and here they do not compile. The accounts are read into the reference's
-    * `AccountAddress`, which every decoded reward account is; the body's withdrawals are keyed by
-    * the node's reward account
-    * (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7058657335).
+    * impossible, and here they do not compile.
     */
   def shelleyUtxoToDijkstraEntitiesPredFailure(
       failure: ShelleyUtxoPredFailure.WrongNetworkWithdrawal[Dijkstra]
-  ): Either[VocabError, EntitiesPredFailure.WithdrawalAddressesWithWrongNetwork[Dijkstra]] =
-    failure.accounts.toNonEmptyList
-      .traverse(Convert.accountAddress)
-      .map(accounts =>
-        new EntitiesPredFailure.WithdrawalAddressesWithWrongNetwork[Dijkstra](
-          failure.expected,
-          accounts.toNes
-        )
-      )
+  ): EntitiesPredFailure.WithdrawalAddressesWithWrongNetwork[Dijkstra] =
+    new EntitiesPredFailure.WithdrawalAddressesWithWrongNetwork[Dijkstra](
+      failure.expected,
+      failure.accounts
+    )
 
-  /** A body's map keyed by the node's reward account, read into the reference's `AccountAddress`
-    * keys, which every decoded reward account is.
+  /** A body's map keyed by the node's reward account (its direct deposits and balance intervals),
+    * read into the reference's `AccountAddress` keys, which every decoded reward account is.
     */
   def keyed[V](m: Map[RewardAccount, V]): Either[VocabError, SortedMap[AccountAddress, V]] =
     m.toVector.traverse((k, v) => Convert.accountAddress(k).map(_ -> v)).map(SortedMap.from(_))
@@ -389,11 +383,11 @@ object ENTITIES:
     * its account's balance.
     */
   private def categorizeWithdrawals(acceptable: (Coin, Coin) => Boolean)(
-      withdrawals: SortedMap[AccountAddress, Coin],
+      withdrawals: Withdrawals,
       network: Network,
       accounts: Accounts[Dijkstra]
-  ): Option[(SortedMap[AccountAddress, Coin], SortedMap[AccountAddress, Mismatch[Coin]])] =
-    val found = withdrawals.map((address, amount) =>
+  ): Option[(Withdrawals, SortedMap[AccountAddress, Mismatch[Coin]])] =
+    val found = withdrawals.unWithdrawals.map((address, amount) =>
       (address, amount, lookupAccount(address, network, accounts).map(balance))
     )
     val missing = SortedMap.from(found.collect { case (address, amount, None) =>
@@ -403,7 +397,7 @@ object ENTITIES:
       case (address, amount, Some(bal)) if !acceptable(amount, bal) =>
         address -> Mismatch(amount, bal)
     })
-    Option.when(missing.nonEmpty || bad.nonEmpty)((missing, bad))
+    Option.when(missing.nonEmpty || bad.nonEmpty)((Withdrawals(missing), bad))
 
   private def balance(account: AccountState[Dijkstra]): Coin =
     a.balanceAccountStateL.get(account).toCoin
@@ -413,27 +407,27 @@ object ENTITIES:
     * Dijkstra's SUBENTITIES reports.
     */
   def withdrawalsMissingAccounts(
-      withdrawals: SortedMap[AccountAddress, Coin],
+      withdrawals: Withdrawals,
       network: Network,
       accounts: Accounts[Dijkstra]
-  ): Option[SortedMap[AccountAddress, Coin]] =
+  ): Option[Withdrawals] =
     categorizeWithdrawals((_, _) => true)(withdrawals, network, accounts).map(_._1)
 
   /** `withdrawalsThatDoNotDrainAccounts` (`State/Account.hs:203-217`, cardano-ledger 9df9f98c). */
   def withdrawalsThatDoNotDrainAccounts(
-      withdrawals: SortedMap[AccountAddress, Coin],
+      withdrawals: Withdrawals,
       network: Network,
       accounts: Accounts[Dijkstra]
-  ): Option[(SortedMap[AccountAddress, Coin], SortedMap[AccountAddress, Mismatch[Coin]])] =
+  ): Option[(Withdrawals, SortedMap[AccountAddress, Mismatch[Coin]])] =
     categorizeWithdrawals(Order[Coin].eqv)(withdrawals, network, accounts)
 
   /** `withdrawalsThatExceedAccountBalance` (`State/Account.hs:219-228`, cardano-ledger 9df9f98c).
     */
   def withdrawalsThatExceedAccountBalance(
-      withdrawals: SortedMap[AccountAddress, Coin],
+      withdrawals: Withdrawals,
       network: Network,
       accounts: Accounts[Dijkstra]
-  ): Option[(SortedMap[AccountAddress, Coin], SortedMap[AccountAddress, Mismatch[Coin]])] =
+  ): Option[(Withdrawals, SortedMap[AccountAddress, Mismatch[Coin]])] =
     categorizeWithdrawals(Order[Coin].lteqv)(withdrawals, network, accounts)
 
   /** `updateAccountBalances` (`State/Account.hs:312-330`, cardano-ledger 9df9f98c): `update` of
@@ -461,10 +455,13 @@ object ENTITIES:
     * from its account's balance in `Word64` arithmetic that wraps (`subtractCompactCoin`).
     */
   def applyWithdrawals(
-      withdrawals: SortedMap[AccountAddress, Coin],
+      withdrawals: Withdrawals,
       accounts: Accounts[Dijkstra]
   ): Either[VocabError, Accounts[Dijkstra]] =
-    updateAccountBalances((amount, bal) => bal.subtract(amount))(withdrawals, accounts)
+    updateAccountBalances((amount, bal) => bal.subtract(amount))(
+      withdrawals.unWithdrawals,
+      accounts
+    )
 
   /** `applyDirectDeposits` (`State/Account.hs:297-305`, cardano-ledger 9df9f98c): each amount added
     * to its account's balance in `Word64` arithmetic that wraps (`addCompactCoin`).
@@ -512,22 +509,11 @@ object ENTITIES:
       new EntitiesPredFailure.DirectDepositAccountsMissing[Dijkstra](missing)
     )
 
-  /** The withdrawals of a level, keyed by `AccountAddress`, as the reference's `Withdrawals`. */
-  private type Withdrawals = SortedMap[AccountAddress, Coin]
-
-  /** `Withdrawals` 's `<>` (`Address.hs:984-985`, cardano-ledger 9df9f98c): the amounts of an
-    * account summed.
-    */
-  private def combine(x: Withdrawals, y: Withdrawals): Withdrawals =
-    y.foldLeft(x)((m, entry) =>
-      m.updatedWith(entry._1)(v => Some(v.fold(entry._2)(w => Coin(w.value + entry._2.value))))
-    )
-
   private def failWithdrawals(
       m: Withdrawals
   )(mk: Map[AccountAddress, Coin] => EntitiesPredFailure[Dijkstra]): Test[
     EntitiesPredFailure[Dijkstra]
-  ] = Test.failureUnless(m.isEmpty, mk(m))
+  ] = Test.failureUnless(m.unWithdrawals.isEmpty, mk(m.unWithdrawals))
 
   private def failMismatches(m: SortedMap[AccountAddress, Mismatch[Coin]])(
       mk: NonEmptyMap[AccountAddress, Mismatch[Coin]] => EntitiesPredFailure[Dijkstra]
@@ -549,11 +535,15 @@ object ENTITIES:
     legacyMode match
       case PlutusLegacyMode.NotLegacy =>
         withdrawalsThatExceedAccountBalance(
-          combine(topTxWithdrawals, sumOfSubTxWithdrawals),
+          topTxWithdrawals |+| sumOfSubTxWithdrawals,
           network,
           originalAccounts
         ).fold(Test.pass[EntitiesPredFailure[Dijkstra]]) { (missingAccounts, exceedingBalances) =>
-          val topMissingAccounts = topTxWithdrawals.filter((k, _) => missingAccounts.contains(k))
+          val topMissingAccounts = Withdrawals(
+            topTxWithdrawals.unWithdrawals.filter((k, _) =>
+              missingAccounts.unWithdrawals.contains(k)
+            )
+          )
           Test.all(
             failWithdrawals(topMissingAccounts)(
               EntitiesPredFailure.WithdrawalAccountsMissingFromOriginal[Dijkstra](_)
@@ -704,8 +694,9 @@ object ENTITIES:
     * left the current accounts underflowed), against the current ones. Then the DReps' expiries are
     * updated and the top level's withdrawals applied, CERTS runs as a sub-rule on that state, its
     * failures and events embedded ([[EmbedCertsInEntities]]); the direct deposits are checked
-    * against the accounts after CERTS and added to them. Each account of the body is read into the
-    * reference's `AccountAddress`, which every decoded one is; a value outside the vocabulary is
+    * against the accounts after CERTS and added to them. The withdrawals are the body's
+    * `Withdrawals`; each account of its direct deposits and balance intervals is read into the
+    * reference's `AccountAddress`, which every decoded one is, a value outside the vocabulary
     * raised ([[LedgerFailure.Vocab]]).
     *
     * `validation` is the policy the judgment runs under, which POOL's static check reads
@@ -741,15 +732,11 @@ object ENTITIES:
           .of(BigInt(globals.networkId))
           .toRight(VocabError.OutOfRange(VocabError.Kind.Network, BigInt(globals.networkId)))
       )
-      topTxWithdrawals <- vocab[F, Withdrawals](keyed(b.withdrawals[TxLevel.Top](txBody)))
-      subTxWithdrawals <- vocab[F, Vector[Withdrawals]](
-        b.subTransactions(txBody)
-          .toVector
-          .traverse(sub => keyed(b.withdrawals[TxLevel.Sub](sub.body)(using BothLevels.Sub)))
-      )
-      sumOfSubTxWithdrawals = subTxWithdrawals.foldLeft(SortedMap.empty[AccountAddress, Coin])(
-        combine
-      )
+      topTxWithdrawals = b.withdrawals[TxLevel.Top](txBody)
+      sumOfSubTxWithdrawals = b
+        .subTransactions(txBody)
+        .toVector
+        .foldMap(sub => b.withdrawals[TxLevel.Sub](sub.body)(using BothLevels.Sub))
       directDeposits <- vocab[F, SortedMap[AccountAddress, Coin]](
         keyed(b.directDeposits[TxLevel.Top](txBody))
       )
@@ -759,18 +746,11 @@ object ENTITIES:
       startingIntervals <- vocab[F, SortedMap[AccountAddress, AccountBalanceInterval]](
         keyed(b.startingAccountBalanceIntervals(txBody))
       )
-      wrongNetworkWithdrawals <- vocab[F, Option[
-        cats.data.NonEmptyChain[EntitiesPredFailure[Dijkstra]]
-      ]](
-        Test
-          .failures(
-            ShelleyUtxo.validateWrongNetworkWithdrawal[Dijkstra, TxLevel.Top](network, txBody)
-          )
-          .traverse(_.traverse(shelleyUtxoToDijkstraEntitiesPredFailure))
-      )
-      _ <- wrongNetworkWithdrawals.traverse_(fs => judge.tell(fs.toChain))
       _ <- Sts.runTest[F, EntitiesPredFailure[Dijkstra]](
         Test.all[EntitiesPredFailure[Dijkstra]](
+          ShelleyUtxo
+            .validateWrongNetworkWithdrawal[Dijkstra, TxLevel.Top](network, txBody)
+            .leftMap(_.map(shelleyUtxoToDijkstraEntitiesPredFailure)),
           validateWrongNetworkInDirectDeposit(network, directDeposits),
           validateAccountBalanceIntervals(network, accounts, intervals),
           validateStartingAccountBalanceIntervals(network, env.originalAccounts, startingIntervals),

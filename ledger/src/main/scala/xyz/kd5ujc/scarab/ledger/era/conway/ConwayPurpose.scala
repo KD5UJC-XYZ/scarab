@@ -3,9 +3,10 @@ package xyz.kd5ujc.scarab.ledger.era.conway
 
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.{Purpose, RewardAccount, TxIn, Unsigned, Voter}
+import xyz.kd5ujc.scarab.ledger.{Purpose, TxIn, Unsigned, Voter}
 import xyz.kd5ujc.scarab.ledger.era.{AsIx, AsIxItem, ProposalProcedure, UTxO}
-import xyz.kd5ujc.scarab.ledger.state.Conway
+import xyz.kd5ujc.scarab.ledger.rules.Convert
+import xyz.kd5ujc.scarab.ledger.state.{AccountAddress, Conway}
 
 /** A Conway Plutus purpose in the form `F` (`data ConwayPlutusPurpose f era`, cardano-ledger
   * f649f975 `eras/conway/impl/src/Cardano/Ledger/Conway/Scripts.hs:202-208`): what a script is run
@@ -16,7 +17,7 @@ enum ConwayPlutusPurpose[F[_, _]]:
   case ConwaySpending(purpose: F[Unsigned[Unsigned.Width.W32], TxIn])
   case ConwayMinting(purpose: F[Unsigned[Unsigned.Width.W32], Bytes])
   case ConwayCertifying(purpose: F[Unsigned[Unsigned.Width.W32], ConwayTxCert])
-  case ConwayWithdrawing(purpose: F[Unsigned[Unsigned.Width.W32], RewardAccount])
+  case ConwayWithdrawing(purpose: F[Unsigned[Unsigned.Width.W32], AccountAddress])
   case ConwayVoting(purpose: F[Unsigned[Unsigned.Width.W32], Voter])
   case ConwayProposing(purpose: F[Unsigned[Unsigned.Width.W32], ProposalProcedure[Conway]])
 
@@ -74,8 +75,9 @@ object ConwayPlutusPurpose:
       case ConwayMinting(AsIxItem(ix, policy)) => index(ix).map(Purpose.Minting(_, policy))
       case ConwayCertifying(AsIxItem(ix, cert)) =>
         index(ix).map(Purpose.Certifying(_, ConwayTxCert.toStored(cert)))
-      case ConwayWithdrawing(AsIxItem(ix, account)) => index(ix).map(Purpose.Rewarding(_, account))
-      case ConwayVoting(AsIxItem(ix, voter))        => index(ix).map(Purpose.Voting(_, voter))
+      case ConwayWithdrawing(AsIxItem(ix, account)) =>
+        index(ix).map(Purpose.Rewarding(_, Convert.rewardAccountBack(account)))
+      case ConwayVoting(AsIxItem(ix, voter)) => index(ix).map(Purpose.Voting(_, voter))
       case ConwayProposing(AsIxItem(ix, proposal)) =>
         index(ix).map(Purpose.Proposing(_, proposal.read))
 

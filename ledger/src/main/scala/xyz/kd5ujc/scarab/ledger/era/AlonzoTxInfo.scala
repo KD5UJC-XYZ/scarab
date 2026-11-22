@@ -4,8 +4,8 @@ package xyz.kd5ujc.scarab.ledger.era
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import scala.collection.immutable.{SortedMap, TreeMap}
-import xyz.kd5ujc.scarab.ledger.{Address, DataSite, RewardAccount, TranslationError, TxIn}
-import xyz.kd5ujc.scarab.ledger.state.{Coin, EraTag}
+import xyz.kd5ujc.scarab.ledger.{Address, DataSite, TranslationError, TxIn}
+import xyz.kd5ujc.scarab.ledger.state.{Coin, EraTag, Withdrawals}
 import xyz.kd5ujc.scarab.plutus.PlutusData
 
 /** Why Alonzo's translation of a transaction to a script context fails (`data AlonzoContextError
@@ -147,11 +147,8 @@ object AlonzoTxInfo:
     * staking credential of each account, folded in the accounts' order, so a later account of the
     * same credential replaces an earlier one's amount.
     */
-  def transWithdrawals(
-      withdrawals: Map[RewardAccount, Coin]
-  ): TreeMap[PV1.StakingCredential, BigInt] =
-    withdrawals.toVector
-      .sortBy(_._1)
+  def transWithdrawals(withdrawals: Withdrawals): TreeMap[PV1.StakingCredential, BigInt] =
+    withdrawals.unWithdrawals
       .foldLeft(TreeMap.empty[PV1.StakingCredential, BigInt]) { case (ans, (accountAddress, n)) =>
         ans.updated(PV1.StakingCredential.StakingHash(transAccountAddress(accountAddress)), n.value)
       }

@@ -345,7 +345,11 @@ class DijkstraTxSuite extends FunSuite:
       assertEquals(b.certsOf.getVKeyWitnessTxCert(c), certKey(f), what)
       assertEquals(b.certsOf.getScriptWitnessTxCert(c), DijkstraPurposes.certificateScript(f), what)
     }
-    assertEquals(b.withdrawals(era), flat.withdrawals.map((a, c) => a -> Coin(c)).toMap, what)
+    assertEquals(
+      b.withdrawals(era).unWithdrawals.toVector.map((a, c) => Convert.rewardAccountBack(a) -> c),
+      flat.withdrawals.map((a, c) => a -> Coin(c)).sortBy(_._1),
+      what
+    )
     assertEquals(b.vldt(era), ValidityInterval(flat.validityStart, flat.ttl), what)
     assertEquals(b.guards(era).toVector.map(FlatView.credBack), flat.guards, what)
     assertEquals(b.reqSignerHashes(era).toVector, flat.guards.flatMap(keyOf).distinct.sorted, what)

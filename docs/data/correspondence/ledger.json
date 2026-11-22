@@ -4630,7 +4630,7 @@
     "DijkstraCertsSuite"
    ],
    "note": "the reference's predicate generic in its era over the reference's classes; it reports its era's own failure type (ShelleyUtxoPredFailure), which the rule injects into its own; its verdict is compared with the flat rule's through ConwayUtxoPredFailure.toStored; its result type is the one constructor it reports, which Dijkstra's ENTITIES injects alone",
-   "digest": "4360b36e89fb1723"
+   "digest": "d8f4a3441eb1b43f"
   },
   "given ledger.era.AlonzoEraPParams.conway": {
    "upstream": [
@@ -6778,7 +6778,7 @@
     "ConwayUtxoChecksSuite"
    ],
    "note": "the constraint `Value era ~ MaryValue` as evidence `Value[E] =:= MultiAssetValue`",
-   "digest": "251586eedc3ced81"
+   "digest": "4d819ca083a31416"
   },
   "def ledger.era.MaryUTxO.getProducedMaryValue": {
    "upstream": [
@@ -8994,7 +8994,7 @@
    "evidence": [
     "ConwayCertsChecksSuite"
    ],
-   "digest": "ef209868f3c906be"
+   "digest": "ddb6e4e84daabc71"
   },
   "def ledger.era.EraAccounts.withdrawalsThatDoNotDrainAccounts": {
    "upstream": [
@@ -9024,8 +9024,8 @@
    "evidence": [
     "ConwayCertsChecksSuite"
    ],
-   "note": "categorizeWithdrawals with the draining test; each withdrawal's credential is read into the state's vocabulary first, refused as a Vocab defect as the flat rule does, which no decoded withdrawal is",
-   "digest": "e8df8499b3b1f765"
+   "note": "categorizeWithdrawals with the draining test, over the body's Withdrawals; the network is Globals' wire value, which each account's network is compared with",
+   "digest": "7cd59bd010036bac"
   },
   "def ledger.era.EraCertState.unDelegReDelegStakePool": {
    "upstream": [
@@ -9111,7 +9111,7 @@
     "DijkstraRulesOracleSuite",
     "UpstreamCertsCoverageSuite"
    ],
-   "note": "the recursion on the prefix as a fold, each step a sub-rule over the previous, which the interpreter runs in constant stack; the base case the era's (CertsBaseCase): Conway's the 11.1 build's, run where the build the judgment's Globals name leaves the withdrawals to CERTS (WithdrawalsRule: 11.1 below version 11), its failure WithdrawalsNotInRewardsCERTS over the reference's Withdrawals, and Dijkstra's the later builds' Empty -> pure certState, by its type; the withdrawals' and votes' credentials are read into the state's vocabulary, refused as a Vocab defect as the flat rule does, which no decoded body is; each certificate judged by the era's CERT (CertRule, the type family EraRule at CERT), whose own defects are raised through a capability of their own; Dijkstra's CERTS is this transition with Dijkstra's CERT (Dijkstra/Rules/Certs.hs:20-22 at 9df9f98c)",
+   "note": "the recursion on the prefix as a fold, each step a sub-rule over the previous, which the interpreter runs in constant stack; the base case the era's (CertsBaseCase): Conway's the 11.1 build's, run where the build the judgment's Globals name leaves the withdrawals to CERTS (WithdrawalsRule: 11.1 below version 11), its failure WithdrawalsNotInRewardsCERTS over the reference's Withdrawals, and Dijkstra's the later builds' Empty -> pure certState, by its type; the votes' credentials are read into the state's vocabulary, refused as a Vocab defect as the flat rule does, which no decoded body is; each certificate judged by the era's CERT (CertRule, the type family EraRule at CERT), whose own defects are raised through a capability of their own; Dijkstra's CERTS is this transition with Dijkstra's CERT (Dijkstra/Rules/Certs.hs:20-22 at 9df9f98c)",
    "digest": "d8d39f2d0a9d00be"
   },
   "def ledger.era.rules.CERTS.updateDormantDRepExpiries": {
@@ -9332,7 +9332,7 @@
     "ConwayCertsChecksSuite"
    ],
    "note": "the result of withdrawalsThatDoNotDrainAccounts",
-   "digest": "3f33403acacec8ea"
+   "digest": "9ae5797e524a7a1a"
   },
   "def ledger.era.rules.binOpEpochNo": {
    "upstream": [
@@ -9691,7 +9691,7 @@
     "DijkstraPlutusPurposeSuite"
    ],
    "note": "the minting purpose's policy is the node's bytes, as Conway's purpose holds it, not the reference's PolicyID",
-   "digest": "8ea08de46860e0d6"
+   "digest": "058361853fe63bc8"
   },
   "def ledger.era.dijkstra.DijkstraPlutusPurpose#tag": {
    "upstream": [
@@ -10387,7 +10387,7 @@
     "EraUtxowSuite"
    ],
    "note": "each purpose built through the script class's builder (`mkSpendingPurpose` and the others), a member of ConwayEraScript here, as hoistPlutusPurpose is (#85's item on AlonzoEraScript's purposes); the same at 9df9f98c",
-   "digest": "db72324c6c48f383"
+   "digest": "eda4d833d387f39e"
   },
   "def ledger.era.AlonzoUTxO.getMintingScriptsNeeded": {
    "upstream": [
@@ -10753,7 +10753,7 @@
    "evidence": [
     "ConwayUtxowChecksSuite"
    ],
-   "digest": "0ea10563cb8540f0"
+   "digest": "7547b9d5cae3b385"
   },
   "def ledger.era.conway.ConwayUTxO.getConwayWitsVKeyNeeded": {
    "upstream": [
@@ -14909,7 +14909,7 @@
     "EraPlutusContextSuite"
    ],
    "note": "the policies minted read in their order, as the set `mintedTxBodyF` is",
-   "digest": "e5081b0a784cd4d8"
+   "digest": "ecc1fa6a98f6d4e2"
   },
   "def ledger.era.AlonzoEraUTxO#getSpendingDatum": {
    "upstream": [
@@ -15155,7 +15155,28 @@
    "evidence": [
     "EraPlutusContextSuite"
    ],
-   "digest": "16efecf5b3641856"
+   "digest": "9a01a4e4eda106a9"
+  },
+  "def ledger.era.PlutusTxInfos.transAccountAddressFlat": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/TxInfo.hs",
+     "symbol": "transAccountAddress",
+     "lines": [
+      157,
+      158
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "of an account the node holds untyped (a governance action's)",
+   "digest": "05e17b07c02e18b7"
   },
   "def ledger.era.PlutusTxInfos.transTxId": {
    "upstream": [
@@ -15998,7 +16019,7 @@
    "evidence": [
     "EraPlutusContextSuite"
    ],
-   "digest": "665e6d65c19d7012"
+   "digest": "017286cb868034c6"
   },
   "def ledger.era.conway.ConwayTxInfo.transTxCert": {
    "upstream": [
@@ -16220,7 +16241,7 @@
    "evidence": [
     "EraPlutusContextSuite"
    ],
-   "digest": "425dd23da4244ffe"
+   "digest": "ac510b69aa77d462"
   },
   "def ledger.era.conway.ConwayTxInfo.transMap": {
    "upstream": [
@@ -16322,7 +16343,7 @@
    "evidence": [
     "EraPlutusContextSuite"
    ],
-   "digest": "e509335b853e6a3a"
+   "digest": "dab4b6c7a84e7f8e"
   },
   "def ledger.era.conway.ConwayTxInfo.transProtVer": {
    "upstream": [
@@ -20412,7 +20433,7 @@
     "ConwayPlutusContextRefusalsSuite"
    ],
    "note": "the accounts folded in their order into a map by staking credential, a later account of a credential replacing an earlier one's amount",
-   "digest": "577057577208df8a"
+   "digest": "575c87f722e3d605"
   },
   "def ledger.era.AlonzoTxInfo.transTxBodyWithdrawals": {
    "upstream": [
@@ -23124,8 +23145,8 @@
    "evidence": [
     "DijkstraTxSuite"
    ],
-   "note": "the reference's `Withdrawals` newtype is its map",
-   "digest": "342b7016a4a8dc62"
+   "note": "the reference's Withdrawals",
+   "digest": "1573662005963077"
   },
   "def ledger.era.dijkstra.DijkstraTxBody#validity": {
    "upstream": [
@@ -23774,7 +23795,7 @@
    "evidence": [
     "DijkstraTxSuite"
    ],
-   "digest": "7d42833d27b40ca3"
+   "digest": "6f970b3db7c50779"
   },
   "def ledger.era.dijkstra.DijkstraTxBody.topOf": {
    "upstream": [
@@ -23887,7 +23908,7 @@
     "DijkstraTxSuite"
    ],
    "note": "the class instances of both levels, the level the evidence's (`BothLevels`); there is no required signers' field (`notSupportedInThisEraL`, `:1416`), and the getter is the guards' keys (`:1419-1423`); `allInputsTxBodyF`, a member of `EraTx` at 9df9f98c, is a member of `EraTxBody` here, as at f649f975, and is `dijkstraAllInputsTxBodyF`",
-   "digest": "e7897de75218cdc8"
+   "digest": "de67d2a143e872d5"
   },
   "trait ledger.era.DijkstraEraTxBody": {
    "upstream": [
@@ -25938,8 +25959,8 @@
     "DijkstraPlutusPurposeSuite",
     "DijkstraTxSuite"
    ],
-   "note": "the reference's `AlonzoEraScript` member, here a member from Conway, as hoistPlutusPurpose is, since Babbage's purposes are not among the era types (#85's item on AlonzoEraScript's purposes, https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6888255792); Conway's and Dijkstra's instances are the reference's (`Conway/Scripts.hs:119-137` at f649f975, `Dijkstra/Scripts.hs:508-526` at 9df9f98c); the account is the node's flat `RewardAccount` where the reference's is an `AccountAddress`, as the withdrawing purpose holds it, a difference of representation (#85's item on the reference's nominal types, https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6888273413)",
-   "digest": "f176dd7ad4f9b848"
+   "note": "the reference's `AlonzoEraScript` member, here a member from Conway, as hoistPlutusPurpose is, since Babbage's purposes are not among the era types (#85's item on AlonzoEraScript's purposes, https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6888255792); Conway's and Dijkstra's instances are the reference's (`Conway/Scripts.hs:119-137` at f649f975, `Dijkstra/Scripts.hs:508-526` at 9df9f98c)",
+   "digest": "1c599dfc447360dc"
   },
   "def ledger.era.ConwayEraScript#toWithdrawingPurpose": {
    "upstream": [
@@ -25971,8 +25992,8 @@
     "DijkstraPlutusPurposeSuite",
     "DijkstraTxSuite"
    ],
-   "note": "the reference's `AlonzoEraScript` member, here a member from Conway, as hoistPlutusPurpose is, since Babbage's purposes are not among the era types (#85's item on AlonzoEraScript's purposes, https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6888255792); Conway's and Dijkstra's instances are the reference's (`Conway/Scripts.hs:119-137` at f649f975, `Dijkstra/Scripts.hs:508-526` at 9df9f98c); the account is the node's flat `RewardAccount` where the reference's is an `AccountAddress`, as the withdrawing purpose holds it, a difference of representation (#85's item on the reference's nominal types, https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6888273413)",
-   "digest": "9d52a885448f3fa3"
+   "note": "the reference's `AlonzoEraScript` member, here a member from Conway, as hoistPlutusPurpose is, since Babbage's purposes are not among the era types (#85's item on AlonzoEraScript's purposes, https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6888255792); Conway's and Dijkstra's instances are the reference's (`Conway/Scripts.hs:119-137` at f649f975, `Dijkstra/Scripts.hs:508-526` at 9df9f98c)",
+   "digest": "802cfd177073160f"
   },
   "class ledger.era.dijkstra.DijkstraStAnnTx": {
    "upstream": [
@@ -26498,7 +26519,7 @@
    "evidence": [
     "DijkstraPlutusContextSuite"
    ],
-   "digest": "904736ae57f8eb1d"
+   "digest": "3e04b3e7d70b5ce8"
   },
   "def ledger.era.dijkstra.DijkstraTxInfo.transAccountAddressToCredential": {
    "upstream": [
@@ -26518,7 +26539,28 @@
    "evidence": [
     "DijkstraPlutusContextSuite"
    ],
-   "digest": "ca8de2659dd54457"
+   "digest": "feaebd3afe853732"
+  },
+  "def ledger.era.dijkstra.DijkstraTxInfo.transAccountAddressToCredentialFlat": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxInfo.hs",
+     "symbol": "transAccountAddressToCredential",
+     "lines": [
+      741,
+      742
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraPlutusContextSuite"
+   ],
+   "note": "of an account the node holds untyped (a direct deposit's)",
+   "digest": "ddeb24e360454168"
   },
   "def ledger.era.dijkstra.DijkstraTxInfo.transAccountBalanceInterval": {
    "upstream": [
@@ -26621,7 +26663,7 @@
     "DijkstraPlutusContextSuite"
    ],
    "note": "of the body's map",
-   "digest": "a88aa2ff0360dbc7"
+   "digest": "944514a50258a8c8"
   },
   "def ledger.era.dijkstra.DijkstraTxInfo.transGovAction": {
    "upstream": [
@@ -26641,7 +26683,7 @@
    "evidence": [
     "DijkstraPlutusContextSuite"
    ],
-   "digest": "277d9e90f17bcacc"
+   "digest": "ecb3b9e9f9f56898"
   },
   "def ledger.era.dijkstra.DijkstraTxInfo.transGovActionId": {
    "upstream": [
@@ -26682,7 +26724,7 @@
     "DijkstraPlutusContextSuite"
    ],
    "note": "written for Dijkstra, the one era with Plutus V4; the reference's is for any era with Dijkstra's classes; the batch's fields are read from each level's body once (`BatchTx`) and combined by the reference's semigroups: withdrawals and direct deposits summed, validity intervals intersected, votes right-biased, datums left-biased, mints and burns filtered per transaction then summed, and the current treasury amount the first present, the sub-transactions' in order before the top level's. The refusals fixture's four guard cases compare the votes' union (one voter's votes on an action at three levels, other voters and actions at two) and the treasury amount (given by a sub-transaction only, and at two levels) with the reference's",
-   "digest": "cd5bfec433621fce"
+   "digest": "745c986c5552af31"
   },
   "def ledger.era.dijkstra.DijkstraTxInfo.transPlutusPurposeV4": {
    "upstream": [
@@ -26723,7 +26765,7 @@
    "evidence": [
     "DijkstraPlutusContextSuite"
    ],
-   "digest": "57dfd7ee6e5009a3"
+   "digest": "c034ada8c567a54c"
   },
   "def ledger.era.dijkstra.DijkstraTxInfo.transProtVer": {
    "upstream": [
@@ -26928,7 +26970,7 @@
     "DijkstraPlutusContextSuite"
    ],
    "note": "of the body's map",
-   "digest": "56d64a148473f67b"
+   "digest": "635954e320da26af"
   },
   "given ledger.era.EraPlutusContext.dijkstra": {
    "upstream": [
@@ -28758,7 +28800,7 @@
     "ConwayUtxoChecksSuite"
    ],
    "note": "its fields at the node's types: a Word32 size and a slot as BigInt, the non-empty sets and lists as cats' NonEmptySet and NonEmptyList, an address by the bytes it was read from (#796)",
-   "digest": "d6fd15e9cb3248d6"
+   "digest": "782f3b2fbc40ddf1"
   },
   "enum ledger.era.rules.AllegraUtxoPredFailure": {
    "upstream": [
@@ -28779,7 +28821,7 @@
     "ConwayUtxoChecksSuite"
    ],
    "note": "its fields at the node's types, as ShelleyUtxoPredFailure's",
-   "digest": "284ca4c2578dc029"
+   "digest": "77120c8727fe1177"
   },
   "enum ledger.era.rules.AlonzoUtxoPredFailure": {
    "upstream": [
@@ -28800,7 +28842,7 @@
     "ConwayUtxoChecksSuite"
    ],
    "note": "its fields at the node's types, as ShelleyUtxoPredFailure's, a DeltaCoin and a Word16 count as integers",
-   "digest": "91b98e4415980b84"
+   "digest": "78219f6afa894d87"
   },
   "enum ledger.era.rules.BabbageUtxoPredFailure": {
    "upstream": [
@@ -28843,7 +28885,7 @@
     "ConwayUtxoChecksSuite"
    ],
    "note": "its constructors in the reference's order, its fields at the node's types, as ShelleyUtxoPredFailure's; 29a7d656 and 9df9f98c hold the units as OrdExUnits, for an Ord instance this type does not have. No encoder of its own yet: its refusal is compared with the reference's bytes through ConwayUtxoPredFailure.toStored and the node's encoder where only UTXO failed (ConwayUtxoChecksSuite), and UTXOS's CollectErrors by kind (CNF-2, #796)",
-   "digest": "3dba5926e7828524"
+   "digest": "a430d662d7306215"
   },
   "type ledger.era.rules.UtxoPredFailure": {
    "upstream": [
@@ -31453,7 +31495,7 @@
     "ConwayCertsChecksSuite",
     "DijkstraCertsSuite"
    ],
-   "note": "its constructors in the order of their tags (:166-167); WithdrawalsNotInRewardsCERTS is the 11.1 build's, which 29a7d656 and 9df9f98c remove with the base case (WithdrawalsRule), and has no value at Dijkstra (CertsWithdrawals), whose CERTS at 9df9f98c has CertFailure alone; its withdrawals are the reference's Withdrawals, Map AccountAddress Coin (Address.hs:980), each body account read into the state's AccountAddress, an account outside it a Vocab defect",
+   "note": "its constructors in the order of their tags (:166-167); WithdrawalsNotInRewardsCERTS is the 11.1 build's, which 29a7d656 and 9df9f98c remove with the base case (WithdrawalsRule), and has no value at Dijkstra (CertsWithdrawals), whose CERTS at 9df9f98c has CertFailure alone; its withdrawals are the reference's Withdrawals, Map AccountAddress Coin (Address.hs:980), as the era bodies hold them",
    "digest": "7dfbc1ac7aed6279"
   },
   "enum ledger.era.rules.PoolEvent": {
@@ -32729,7 +32771,7 @@
     "ConwayLedgerChecksSuite"
    ],
    "note": "the reference's transition generic in its era over the reference's classes, the sub-rules UTXOW, CERTS and GOV called as UTXOW calls UTXO, each a sub-rule (Judge.nest) whose failures and events are embedded (EmbedInLedger); the withdrawals' move by the build the judgment's Globals name (WithdrawalsRule); GOV's state the node's record of the proposals read into the era's and written back (ProposalsRecord), a record the era cannot read a raised ProposalsReadError, proposals the record cannot hold a raised ProposalsWriteError; the UTxO set the reference-script size reads is the stored outputs of the body's inputs, collateral and reference inputs; the defects of the sub-rules stay their own raises; the epoch, where the environment has none, is the total epochOf of Globals' geometry, where the reference's epochFromSlot (Slot.hs:66-69) reads its Globals' epoch information and fails outside a bounded history: the suites show the result within the history only (CNF-2)",
-   "digest": "7eb691899e5ec924"
+   "digest": "b8922f4fa8609c88"
   },
   "def ledger.era.rules.ConwayLedger.shelleyToConwayLedgerPredFailure": {
    "upstream": [
@@ -32808,12 +32850,12 @@
     }
    ],
    "class": "Mirror",
-   "structure": "differs",
+   "structure": "same",
    "evidence": [
     "ConwayLedgerChecksSuite"
    ],
-   "note": "the withdrawals in the order of their AccountAddress keys, as Map.toList gives them; each key hash read into the state's vocabulary, refused as a Vocab defect, which no decoded body is",
-   "digest": "ee5bebb72594b1ae"
+   "note": "the withdrawals in the order of their AccountAddress keys, as Map.toList gives them",
+   "digest": "eb8f6107d3b49ffb"
   },
   "def ledger.era.rules.ShelleyLedger.testIncompleteAndMissingWithdrawals": {
    "upstream": [
@@ -32829,12 +32871,11 @@
     }
    ],
    "class": "Mirror",
-   "structure": "differs",
+   "structure": "same",
    "evidence": [
     "ConwayLedgerChecksSuite"
    ],
-   "note": "each account read into the reference's AccountAddress, an account outside the vocabulary a Vocab defect",
-   "digest": "2d968fed090c5bc0"
+   "digest": "fef0ec7810e9ac1f"
   },
   "def ledger.era.rules.ShelleyLedgers.ledgersTransition": {
    "upstream": [
@@ -35824,8 +35865,8 @@
    "evidence": [
     "DijkstraCertsSuite"
    ],
-   "note": "over the levels' withdrawals read into AccountAddress keys and the legacy mode, which the rule reads from the annotated transaction, not the annotated transaction itself",
-   "digest": "b4dc85bc4b57749e"
+   "note": "over the levels' Withdrawals and the legacy mode, which the rule reads from the annotated transaction, not the annotated transaction itself",
+   "digest": "4fc1ac065534a062"
   },
   "def ledger.era.rules.ENTITIES.validateWithdrawalsAgainstCurrentAccounts": {
    "upstream": [
@@ -35845,7 +35886,7 @@
    "evidence": [
     "DijkstraCertsSuite"
    ],
-   "note": "over the top level's withdrawals read into AccountAddress keys and the legacy mode, not the annotated transaction",
+   "note": "over the top level's Withdrawals and the legacy mode, not the annotated transaction",
    "digest": "c2a5ecc025d6dd8f"
   },
   "def ledger.era.rules.ENTITIES.withdrawalsThatDoNotDrainAccounts": {
@@ -35866,8 +35907,8 @@
    "evidence": [
     "DijkstraCertsSuite"
    ],
-   "note": "by categorizeWithdrawals (State/Account.hs:230-264), at Dijkstra over AccountAddress keys",
-   "digest": "26f3d0cc143fb88b"
+   "note": "by categorizeWithdrawals (State/Account.hs:230-264), at Dijkstra",
+   "digest": "2cf155507c69fc82"
   },
   "def ledger.era.rules.ENTITIES.withdrawalsThatExceedAccountBalance": {
    "upstream": [
@@ -35887,8 +35928,8 @@
    "evidence": [
     "DijkstraCertsSuite"
    ],
-   "note": "by categorizeWithdrawals (State/Account.hs:230-264), at Dijkstra over AccountAddress keys",
-   "digest": "daf84c1584fe5671"
+   "note": "by categorizeWithdrawals (State/Account.hs:230-264), at Dijkstra",
+   "digest": "4a9ed3401558dbc6"
   },
   "def ledger.era.rules.ENTITIES.applyWithdrawals": {
    "upstream": [
@@ -35909,7 +35950,7 @@
     "DijkstraCertsSuite"
    ],
    "note": "by updateAccountBalances (:312-330): Word64 arithmetic that wraps (subtractCompactCoin), an amount outside CompactForm Coin, which no decoded one is, a raised defect where the reference calls compactCoinOrError",
-   "digest": "d3cc8fe28bd91539"
+   "digest": "15f9698daf950d4d"
   },
   "def ledger.era.rules.ENTITIES.applyDirectDeposits": {
    "upstream": [
@@ -35971,8 +36012,8 @@
     "DijkstraRulesOracleSuite",
     "DijkstraCertsSuite"
    ],
-   "note": "written at Dijkstra, the one era with the rule, as Dijkstra's UTXO is; each map of the body read into the reference's AccountAddress keys, a value outside the vocabulary raised (LedgerFailure.Vocab), which no decoded body gives; the tests run in the reference's order, the check against the current accounts only when nothing failed (whenFailureFree); CERTS a sub-rule (Judge.nest) whose failures and events are embedded (EmbedCertsInEntities), with Dijkstra's CERT under the judgment's validation policy (CertRule.dijkstra); POOL's defects raised as they are (PoolDefect); CERTS's environment holds the 11.1 build's transaction field, which only the 11.1 build's base case reads and Dijkstra's CERTS does not have (CertsBaseCase). The evidence is a component check, not the reference's verdicts: the oracle's one accepted devnet transaction, from its block's state; DijkstraCertsSuite's 200 chain transactions from the empty state, whose complete ordered failures and certificate state equal those that CERTS alone and ENTITIES' predicates derive (the reference judged them on the chain's state, which the fixture does not record, CNF-2), crafted states for the withdrawals' order and whenFailureFree, and a direct deposit to an account the same body registers, checked and added after CERTS",
-   "digest": "a948e1c2002f7760"
+   "note": "written at Dijkstra, the one era with the rule, as Dijkstra's UTXO is; the body's direct deposits and balance intervals read into the reference's AccountAddress keys, a value outside the vocabulary raised (LedgerFailure.Vocab), which no decoded body gives, and its withdrawals the body's Withdrawals; the tests run in the reference's order, the check against the current accounts only when nothing failed (whenFailureFree); CERTS a sub-rule (Judge.nest) whose failures and events are embedded (EmbedCertsInEntities), with Dijkstra's CERT under the judgment's validation policy (CertRule.dijkstra); POOL's defects raised as they are (PoolDefect); CERTS's environment holds the 11.1 build's transaction field, which only the 11.1 build's base case reads and Dijkstra's CERTS does not have (CertsBaseCase). The evidence is a component check, not the reference's verdicts: the oracle's one accepted devnet transaction, from its block's state; DijkstraCertsSuite's 200 chain transactions from the empty state, whose complete ordered failures and certificate state equal those that CERTS alone and ENTITIES' predicates derive (the reference judged them on the chain's state, which the fixture does not record, CNF-2), crafted states for the withdrawals' order and whenFailureFree, and a direct deposit to an account the same body registers, checked and added after CERTS",
+   "digest": "aa38bac0e4deebb0"
   },
   "def ledger.era.rules.ENTITIES.shelleyUtxoToDijkstraEntitiesPredFailure": {
    "upstream": [
@@ -35992,8 +36033,8 @@
    "evidence": [
     "DijkstraCertsSuite"
    ],
-   "note": "the reference's injection calls `error \"Impossible\"` on every constructor of Shelley's UTXO failure but WrongNetworkWithdrawal, which ENTITIES never reaches; here it is over the one constructor the predicate declares (validateWrongNetworkWithdrawal), so the impossible ones do not compile; the accounts are read into AccountAddress, a conversion total on decoded bodies but not by type, as the era bodies hold withdrawals keyed by the node's reward account (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7058657335); a value outside the vocabulary is the rule's raised defect; its failures the constructors it reports, declared as its result type, so that SUBENTITIES' injection over the constructors it reaches serves it (#85)",
-   "digest": "6768ce613aa72d37"
+   "note": "the reference's injection calls `error \"Impossible\"` on every constructor of Shelley's UTXO failure but WrongNetworkWithdrawal, which ENTITIES never reaches; here it is over the one constructor the predicate declares (validateWrongNetworkWithdrawal), so the impossible ones do not compile; its failures the constructors it reports, declared as its result type, so that SUBENTITIES' injection over the constructors it reaches serves it (#85)",
+   "digest": "c316e6cdb14f22bc"
   },
   "type ledger.era.rules.CertsWithdrawals": {
    "upstream": [
@@ -38599,8 +38640,8 @@
    "evidence": [
     "DijkstraCertsSuite"
    ],
-   "note": "entitiesToSubEntitiesPredFailure after ENTITIES' injection, on the one constructor its predicate declares; a function whose Left the rule raises, as ENTITIES' reads the accounts into AccountAddress (#85)",
-   "digest": "052adf53e242a460"
+   "note": "entitiesToSubEntitiesPredFailure after ENTITIES' injection, on the one constructor its predicate declares (#85)",
+   "digest": "21fb0631c34f9b13"
   },
   "def ledger.era.rules.DijkstraSubEntities.validateMissingOriginalAccountsInWithdrawals": {
    "upstream": [
@@ -38620,8 +38661,8 @@
    "evidence": [
     "DijkstraCertsSuite"
    ],
-   "note": "over the withdrawals read into AccountAddress keys; its failure the constructor it reports",
-   "digest": "051f8da125bbb3f3"
+   "note": "its failure the constructor it reports, which holds the Withdrawals' map",
+   "digest": "0172c1db7ab5d3ee"
   },
   "def ledger.era.rules.DijkstraSubEntities.validateMissingAccountsInWithdrawals": {
    "upstream": [
@@ -38641,8 +38682,8 @@
    "evidence": [
     "DijkstraCertsSuite"
    ],
-   "note": "over the withdrawals read into AccountAddress keys; its failure the constructor it reports",
-   "digest": "a34163ef9688838b"
+   "note": "its failure the constructor it reports, which holds the Withdrawals' map",
+   "digest": "71a23809eb8fd9f9"
   },
   "def ledger.era.rules.DijkstraSubEntities.dijkstraSubEntitiesTransition": {
    "upstream": [
@@ -38662,8 +38703,8 @@
    "evidence": [
     "DijkstraCertsSuite"
    ],
-   "note": "the body's maps read into AccountAddress keys, a value outside the vocabulary raised; the wrong-network withdrawals through ENTITIES' function; SUBCERTS as its sub-rule under the judgment's validation policy",
-   "digest": "6486948e9e7f98df"
+   "note": "the body's direct deposits and balance intervals read into AccountAddress keys, a value outside the vocabulary raised; the withdrawals the body's Withdrawals; the wrong-network withdrawals through ENTITIES' injection, recorded first with the other tests; SUBCERTS as its sub-rule under the judgment's validation policy",
+   "digest": "41f3094baa8bd936"
   },
   "def ledger.era.rules.ENTITIES.withdrawalsMissingAccounts": {
    "upstream": [
@@ -38683,8 +38724,8 @@
    "evidence": [
     "DijkstraCertsSuite"
    ],
-   "note": "over AccountAddress keys, at Dijkstra, as categorizeWithdrawals here is",
-   "digest": "73fb64dc05e205d5"
+   "note": "at Dijkstra, as categorizeWithdrawals here is",
+   "digest": "b6a1af5bd5c03f1a"
   },
   "class ledger.era.rules.DijkstraSubGovPredFailure": {
    "upstream": [
@@ -47053,7 +47094,6 @@
     "def ledger.era.rules.injected",
     "def ledger.era.rules.wire",
     "given ledger.era.StoredTxOut.conway",
-    "given ledger.era.rules.accountOrder",
     "given ledger.era.rules.addressOrder",
     "given ledger.era.rules.txInOrder",
     "object ledger.era.StoredTxOut",
@@ -47443,7 +47483,7 @@
    ]
   },
   {
-   "reason": "the conversions between the node's flat pool parameters and reward accounts and the state's (the flat rules and decoders read the node's, and the state holds the reference's types), each refusal the vocabulary's; and the instances and rendering that hold the state's pool parameters', metadata's and withdrawals' equality, the reference's derived Eq; the metadata of a term a decoder already read, as POOL reads its hash again (held); the decoder version of a stored record's ProtVer; and POOL's refusal of parameters of another layout than the state they go into, a defect the reference, one build, never meets",
+   "reason": "the conversions between the node's flat pool parameters, reward accounts and withdrawals and the state's (the flat rules and decoders read the node's, and the state holds the reference's types), each refusal the vocabulary's; and the instances and rendering that hold the state's pool parameters', metadata's and withdrawals' equality, the reference's derived Eq; the metadata of a term a decoder already read, as POOL reads its hash again (held); the decoder version of a stored record's ProtVer; and POOL's refusal of parameters of another layout than the state they go into, a defect the reference, one build, never meets",
    "definitions": [
     "def ledger.rules.Convert.accountAddress",
     "def ledger.rules.Convert.rewardAccountBack",
@@ -47461,6 +47501,7 @@
     "def ledger.DecoderVersion.ofMajor",
     "def ledger.era.rules.sameLayout",
     "class ledger.LedgerFailure.PoolParamsLayout",
+    "def ledger.rules.Convert.withdrawals",
     "given ledger.state.Withdrawals.given_CanEqual_Withdrawals_Withdrawals",
     "given ledger.state.Withdrawals.given_Eq_Withdrawals",
     "given ledger.state.Withdrawals.given_Show_Withdrawals"
@@ -47553,8 +47594,6 @@
   {
    "reason": "the reference's derived Ord instances of the sets and maps GOV's failures and events hold",
    "definitions": [
-    "given ledger.era.rules.accountAddressOrder",
-    "given ledger.era.rules.accountAddressOrdering",
     "given ledger.era.rules.coldCommitteeOrdering",
     "given ledger.era.rules.drepCredentialOrdering",
     "given ledger.era.rules.voterVoteOrdering"
@@ -47693,7 +47732,7 @@
    ]
   },
   {
-   "reason": "ENTITIES reads each map of a Dijkstra body, keyed by the node's reward account, into the reference's AccountAddress keys (Withdrawals, DirectDeposits, AccountBalanceIntervals), which every decoded one is; the era bodies hold the node's reward account (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7058657335)",
+   "reason": "ENTITIES reads the direct deposits and balance intervals of a Dijkstra body, keyed by the node's reward account, into the reference's AccountAddress keys (DirectDeposits, AccountBalanceIntervals), which every decoded one is; the era bodies hold those maps by the node's reward account, where their withdrawals are the reference's Withdrawals (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7058657335)",
    "definitions": [
     "def ledger.era.rules.ENTITIES.keyed"
    ]

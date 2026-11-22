@@ -182,7 +182,7 @@ object ShelleyUtxo:
       b: EraTxBody[E],
       l: b.Level[L]
   ): Test[ShelleyUtxoPredFailure.WrongNetworkWithdrawal[E]] =
-    val wrong = b.withdrawals(body).keySet.filter(_.network != wire(netId)).to(SortedSet)
+    val wrong = b.withdrawals(body).unWithdrawals.keySet.filter(_.networkId != netId)
     Test.failureOnJust(NonEmptySet.fromSet(wrong))(
       new ShelleyUtxoPredFailure.WrongNetworkWithdrawal[E](netId, _)
     )

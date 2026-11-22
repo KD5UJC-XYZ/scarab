@@ -13,20 +13,21 @@ import xyz.kd5ujc.scarab.ledger.{
   LedgerFailure,
   Mismatch,
   Proposals as StoredProposals,
-  RewardAccount,
   Verdicts
 }
 import xyz.kd5ujc.scarab.plutus.{ScriptDecoder, ScriptEvaluator}
 import xyz.kd5ujc.scarab.ledger.era.*
 import xyz.kd5ujc.scarab.ledger.era.conway.{ConwayProposals, ConwayTxCert, ConwayUTxO}
-import xyz.kd5ujc.scarab.ledger.rules.{Convert, Globals, Judge, Sts, Test, focus}
+import xyz.kd5ujc.scarab.ledger.rules.{Globals, Judge, Sts, Test, focus}
 import xyz.kd5ujc.scarab.ledger.state.{
   AccountAddress,
+  AccountId,
   CertState,
   ChainAccountState,
   Coin,
   Conway,
   ConwayGovState,
+  Credential,
   EpochNo,
   EraTag,
   GovState,
@@ -34,10 +35,10 @@ import xyz.kd5ujc.scarab.ledger.state.{
   KeyHash,
   LedgerState,
   ScriptHash,
-  Staking,
   TxIx,
   UTxOState,
-  VocabError
+  VocabError,
+  Withdrawals
 }
 
 // Conway's LEDGER and the LEDGERS it runs in, as the reference writes them (cardano-ledger
@@ -128,31 +129,24 @@ object ProposalsRecord:
 object ShelleyLedger:
   /** `testIncompleteAndMissingWithdrawals` (`Shelley/Rules/Ledger.hs:341-359`, cardano-ledger
     * f649f975): the withdrawals of an account that is not registered or is on another network, then
-    * those that do not take the account's whole balance. Each account is read into the reference's
-    * `AccountAddress`, which every decoded reward account is.
+    * those that do not take the account's whole balance.
     */
   def testIncompleteAndMissingWithdrawals[F[_]: Monad, E <: EraTag](
       accounts: xyz.kd5ujc.scarab.ledger.state.Accounts[E],
-      withdrawals: Map[RewardAccount, Coin]
+      withdrawals: Withdrawals
   )(using
       a: EraAccounts[E],
       inject: InjectLedgerFailure[ShelleyLedgerPredFailure[E], E],
       ask: Ask[F, Globals],
-      defect: Raise[F, LedgerDefect],
       judge: Judge[F, LedgerPredFailure[E]]
   ): F[Unit] =
-    def keyed[V](m: Map[RewardAccount, V]): F[Map[AccountAddress, V]] =
-      vocabDefect[F, Map[AccountAddress, V]](
-        m.toVector.traverse((k, v) => Convert.accountAddress(k).map(_ -> v)).map(_.toMap)
-      )
     for
       network <- ask.ask[Globals].map(_.networkId)
-      undrained <- vocabDefect[F, Option[EraAccounts.Undrained]](
-        EraAccounts.withdrawalsThatDoNotDrainAccounts[E](withdrawals, network, accounts)
-      )
-      (missing, incomplete) = undrained.getOrElse((Map.empty, Map.empty))
-      missingWithdrawals <- keyed(missing)
-      incompleteWithdrawals <- keyed(incomplete)
+      (missingWithdrawals, incompleteWithdrawals) = EraAccounts
+        .withdrawalsThatDoNotDrainAccounts[E](withdrawals, network, accounts)
+        .fold((Map.empty[AccountAddress, Coin], Map.empty[AccountAddress, Mismatch[Coin]]))(
+          (missing, incomplete) => (missing.unWithdrawals, incomplete)
+        )
       _ <-
         if missingWithdrawals.isEmpty then Monad[F].unit
         else
@@ -232,29 +226,20 @@ object ConwayLedger:
     */
   def validateWithdrawalsDelegated[E <: EraTag](
       accounts: xyz.kd5ujc.scarab.ledger.state.Accounts[E],
-      withdrawals: Map[RewardAccount, Coin]
-  )(using a: ConwayEraAccounts[E]): Either[VocabError, Test[ConwayLedgerPredFailure[E]]] =
-    withdrawals.keys.toVector.sorted
-      .collect { case RewardAccount(_, xyz.kd5ujc.scarab.ledger.Credential.Key(h)) => h }
-      .traverse(h =>
-        for
-          kh <- KeyHash.fromBytes[Staking](h)
-          cred <- Convert.credential[Staking](xyz.kd5ujc.scarab.ledger.Credential.Key(h))
-        yield kh -> cred
-      )
-      .map { keyHashes =>
-        val nonExistentDelegations = keyHashes.collect {
-          case (kh, cred)
-              if EraAccounts
-                .lookupAccountState[E](cred, accounts)
-                .flatMap(a.dRepDelegationAccountStateL.get)
-                .isEmpty =>
-            kh
-        }
-        Test.failureOnJust(NonEmptyList.fromList(nonExistentDelegations.toList))(
-          ConwayLedgerPredFailure.ConwayWdrlNotDelegatedToDRep(_)
-        )
-      }
+      withdrawals: Withdrawals
+  )(using a: ConwayEraAccounts[E]): Test[ConwayLedgerPredFailure[E]] =
+    val wdrlsKeyHashes = withdrawals.unWithdrawals.keys.toVector.collect {
+      case AccountAddress(_, AccountId(Credential.KeyHashObj(kh))) => kh
+    }
+    val nonExistentDelegations = wdrlsKeyHashes.filter(keyHash =>
+      EraAccounts
+        .lookupAccountState[E](Credential.KeyHashObj(keyHash), accounts)
+        .flatMap(a.dRepDelegationAccountStateL.get)
+        .isEmpty
+    )
+    Test.failureOnJust(NonEmptyList.fromList(nonExistentDelegations.toList))(
+      ConwayLedgerPredFailure.ConwayWdrlNotDelegatedToDRep(_)
+    )
 
   /** `conwayLedgerTransitionTRC` (`Conway/Rules/Ledger.hs:350-440`, cardano-ledger f649f975). For a
     * transaction whose scripts pass: the treasury value, the reference scripts' size and, after the
@@ -374,10 +359,7 @@ object ConwayLedger:
         _ <- test(validateRefScriptSize[E, TxLevel.Top](pp, utxo, tx)(using t, b, pc, top, b.top))
         _ <-
           if ConwayEra.hardforkConwayBootstrapPhase(pv) then Monad[F].unit
-          else
-            vocabDefect[F, Test[ConwayLedgerPredFailure[E]]](
-              validateWithdrawalsDelegated[E](accounts, withdrawals)
-            ).flatMap(test)
+          else test(validateWithdrawalsDelegated[E](accounts, withdrawals))
         // `hardforkConwayMoveWithdrawalsAndDRepChecksToLedgerRule` of the build the judgment
         // follows (`Conway/Era.hs:283-284`, cardano-ledger f649f975; at every version at 29a7d656
         // and 9df9f98c, `Conway/Rules/Ledger.hs:397-403` at 29a7d656), which the flat rules gate
@@ -393,7 +375,6 @@ object ConwayLedger:
                 c.accountsOf,
                 injectShelley,
                 ask,
-                defect,
                 judge
               )
               voted <- vocabDefect[F, CertState[E]](
