@@ -25,19 +25,6 @@ import xyz.kd5ujc.scarab.ledger.state.{ChainAccountState, Conway, LedgerState, N
 import xyz.kd5ujc.scarab.plutus.{ScriptDecoder, ScriptEvaluator}
 import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 
-/** `ValidatedTx ConwayEra` (`Shelley/API/Mempool.hs:81-88`, cardano-ledger f649f975): the
-  * annotation the transaction was admitted with (`vtStAnnTx`), the protocol version of the
-  * environment's parameters then (`vtProtocolVersion`) and the slot (`vtSlotNo`).
-  */
-final case class ConwayValidated(
-    stAnnTx: StAnnTx[TxLevel.Top, Conway],
-    protocolVersion: ProtVer,
-    slot: BigInt
-):
-  /** `extractValidatedTx` (`Shelley/API/Mempool.hs:108-109`, cardano-ledger f649f975). */
-  def tx: Tx[TxLevel.Top, Conway] =
-    EraTx.conway.txStAnnTx[TxLevel.Top](stAnnTx)(using EraTx.conway.bodyOf.top)
-
 /** Conway's MEMPOOL on a transaction, run as the node's mempool applies one: `instance ApplyTx
   * ConwayEra` (`eras/conway/impl/src/Cardano/Ledger/Conway.hs:50-59`, cardano-ledger f649f975),
   * whose application and reapplication are the defaults over MEMPOOL
@@ -52,7 +39,8 @@ final case class ConwayValidated(
   * The held transaction is applied again by the function the build's consensus calls ([[Reapply]]),
   * chosen by the build the judgment follows (`Globals`' reference build, REF-3), the build that
   * also selects UTXO's injection of Shelley's failures ([[ConwayUtxo.injectShelleyFailure]]), so
-  * that the two cannot disagree.
+  * that the two cannot disagree. Its defects are those of Conway's run on a block
+  * ([[ConwayRuleDefect]]).
   */
 object ConwayMempoolRun:
   private type F[A] = RuleT[MempoolPredFailure[Conway], ConwayRuleDefect, LedgerState[Conway], A]
@@ -81,6 +69,28 @@ object ConwayMempoolRun:
 
   /** A judgment's outcome: a defect, the refusal, or what the transaction leaves. */
   type Outcome[A] = Either[ConwayRuleDefect, Either[ConwayApplyTxError, A]]
+
+  /** `ValidatedTx ConwayEra` (`Shelley/API/Mempool.hs:81-88`, cardano-ledger f649f975), whose
+    * constructor the reference does not export (`:27`): the annotation the transaction was admitted
+    * with (`vtStAnnTx`, `getValidatedTxStAnnTx`), the protocol version of the environment's
+    * parameters then (`vtProtocolVersion`) and the slot (`vtSlotNo`). Only an admission makes one
+    * ([[applyTxWithValidation]]), or, for tests, [[unsafeMakeValidatedTx]], as the reference's own;
+    * a plain class, so that no `Mirror` builds or copies one from other fields.
+    */
+  final class ValidatedTx private[ConwayMempoolRun] (
+      val stAnnTx: StAnnTx[TxLevel.Top, Conway],
+      val protocolVersion: ProtVer,
+      val slot: BigInt
+  ):
+    /** `extractValidatedTx` (`Shelley/API/Mempool.hs:108-109`, cardano-ledger f649f975). */
+    def tx: Tx[TxLevel.Top, Conway] =
+      EraTx.conway.txStAnnTx[TxLevel.Top](stAnnTx)(using EraTx.conway.bodyOf.top)
+
+  /** What `tx`, annotated as `stAnnTx`, is held with after its validation in `env`
+    * (`ruleApplyTxValidation`, `Shelley/API/Mempool.hs:254-261`, cardano-ledger f649f975).
+    */
+  private def validatedIn(env: LedgerEnv[Conway], stAnnTx: StAnnTx[TxLevel.Top, Conway]) =
+    ValidatedTx(stAnnTx, EraPParams.conway.ppProtocolVersionL.get(env.ledgerPp), env.ledgerSlotNo)
 
   /** What a transaction is judged with besides the environment and the state, the reference's
     * `Globals` and the UTXO rules' context but for its validation: the constants of the rules, the
@@ -151,18 +161,23 @@ object ConwayMempoolRun:
       validation: TxEnv.Validation,
       state: LedgerState[Conway]
   ): Outcome[LedgerState[Conway]] =
+    judged(judging, state)(
+      ConwayMempool.mempoolTransition[F](
+        env,
+        stAnnTx,
+        judging.context(validation),
+        judging.verdicts,
+        judging.decoder
+      )
+    )
+
+  /** `program` judged from `state`, every failure accumulated. */
+  private def judged(judging: Judging, state: LedgerState[Conway])(
+      program: ScriptEvaluator[F] ?=> F[Unit]
+  ): Outcome[LedgerState[Conway]] =
     given ScriptEvaluator[F] = lifted(judging.evaluator)
     Judgment
-      .judge(
-        ConwayMempool.mempoolTransition[F](
-          env,
-          stAnnTx,
-          judging.context(validation),
-          judging.verdicts,
-          judging.decoder
-        ),
-        RuleT.Policy.Accumulate
-      )(judging.globals, state)
+      .judge(program, RuleT.Policy.Accumulate)(judging.globals, state)
       .map(_.bimap(ConwayApplyTxError(_), _._1))
 
   /** The stored outputs of the transaction's inputs, reference inputs and collateral
@@ -204,8 +219,10 @@ object ConwayMempoolRun:
   /** `internalApplyTxWithValidation` of Conway, `defaultApplyTxWithValidation @"MEMPOOL"`
     * (`Conway.hs:57`; `Shelley/API/Mempool.hs:283-296`, cardano-ledger f649f975): `tx` annotated
     * against the state's UTxO set ([[annotate]]), then MEMPOOL with `validation`; the ledger state
-    * after it, and what the transaction was validated with (`ruleApplyTxValidation`, `:254-261`):
-    * its annotation, the protocol version of the environment's parameters and its slot.
+    * after it, and what the transaction was validated with ([[ValidatedTx]]). The annotation is
+    * made where LEDGER first reads it ([[ConwayMempool.mempoolTransitionAnnotating]]), as the
+    * reference's lazy fields are, so that a stored output the era cannot read is no defect of a
+    * transaction MEMPOOL refuses as a duplicate.
     */
   def applyTxWithValidation(
       judging: Judging,
@@ -213,16 +230,42 @@ object ConwayMempoolRun:
       state: LedgerState[Conway],
       tx: Tx[TxLevel.Top, Conway],
       validation: TxEnv.Validation
-  ): Outcome[(LedgerState[Conway], ConwayValidated)] =
-    utxoOf(state, tx).leftMap(ConwayRuleDefect.UtxoState(_)).flatMap { utxo =>
-      val stAnnTx = annotate(judging.slotToPOSIXTime, env.ledgerPp, utxo, tx)
-      val validated = ConwayValidated(
-        stAnnTx,
-        EraPParams.conway.ppProtocolVersionL.get(env.ledgerPp),
-        env.ledgerSlotNo
+  ): Outcome[(LedgerState[Conway], ValidatedTx)] =
+    val annotated: Either[ConwayRuleDefect, StAnnTx[TxLevel.Top, Conway]] =
+      utxoOf(state, tx)
+        .bimap(
+          ConwayRuleDefect.UtxoState(_),
+          annotate(judging.slotToPOSIXTime, env.ledgerPp, _, tx)
+        )
+    judged(judging, state)(
+      ConwayMempool.mempoolTransitionAnnotating[F](
+        env,
+        tx,
+        annotated.fold(
+          d =>
+            summon[Raise[F, ConwayRuleDefect]]
+              .raise[ConwayRuleDefect, StAnnTx[TxLevel.Top, Conway]](d),
+          Monad[F].pure
+        ),
+        judging.context(validation),
+        judging.verdicts,
+        judging.decoder
       )
-      mempool(judging, env, stAnnTx, validation, state).map(_.map(_ -> validated))
-    }
+    ).flatMap(_.traverse(after => annotated.map(stAnnTx => after -> validatedIn(env, stAnnTx))))
+
+  /** `unsafeMakeValidatedTx` (`Shelley/API/Mempool.hs:131-151`, cardano-ledger f649f975), which the
+    * reference keeps for tests: `tx` held as if validated in `env` and `state`, annotated against
+    * the state's UTxO set, without running MEMPOOL. Nothing but a test calls it.
+    */
+  def unsafeMakeValidatedTx(
+      judging: Judging,
+      env: LedgerEnv[Conway],
+      state: LedgerState[Conway],
+      tx: Tx[TxLevel.Top, Conway]
+  ): Either[UtxoStateDefect, ValidatedTx] =
+    utxoOf(state, tx).map(utxo =>
+      validatedIn(env, annotate(judging.slotToPOSIXTime, env.ledgerPp, utxo, tx))
+    )
 
   /** `applyTxWithFullValidation` (`Shelley/API/Mempool.hs:406-413`, cardano-ledger f649f975):
     * [[applyTxWithValidation]] with every check (`ValidateAll`).
@@ -232,7 +275,7 @@ object ConwayMempoolRun:
       env: LedgerEnv[Conway],
       state: LedgerState[Conway],
       tx: Tx[TxLevel.Top, Conway]
-  ): Outcome[(LedgerState[Conway], ConwayValidated)] =
+  ): Outcome[(LedgerState[Conway], ValidatedTx)] =
     applyTxWithValidation(judging, env, state, tx, TxEnv.Validation.All)
 
   /** `reapplyTx` (`Shelley/API/Mempool.hs:465-473`, cardano-ledger f649f975): the held transaction,
@@ -244,7 +287,7 @@ object ConwayMempoolRun:
       judging: Judging,
       env: LedgerEnv[Conway],
       state: LedgerState[Conway],
-      held: ConwayValidated
+      held: ValidatedTx
   ): Outcome[LedgerState[Conway]] =
     applyTxWithValidation(judging, env, state, held.tx, TxEnv.Validation.NonStatic).map(_.map(_._1))
 
@@ -258,7 +301,7 @@ object ConwayMempoolRun:
       judging: Judging,
       env: LedgerEnv[Conway],
       state: LedgerState[Conway],
-      held: ConwayValidated
+      held: ValidatedTx
   ): Outcome[LedgerState[Conway]] =
     if BigInt(held.protocolVersion.pvMajor.value) == state.utxo.gov.curPParams.protocolMajor then
       mempool(judging, env, held.stAnnTx, TxEnv.Validation.NonStatic, state)
@@ -271,7 +314,7 @@ object ConwayMempoolRun:
       judging: Judging,
       env: LedgerEnv[Conway],
       state: LedgerState[Conway],
-      held: ConwayValidated
+      held: ValidatedTx
   ): Outcome[LedgerState[Conway]] =
     Reapply.of(judging.build) match
       case Reapply.ReapplyTx          => reapplyTx(judging, env, state, held)

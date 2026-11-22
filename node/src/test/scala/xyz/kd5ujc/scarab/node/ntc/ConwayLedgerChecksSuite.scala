@@ -317,61 +317,6 @@ class ConwayLedgerChecksSuite extends FunSuite:
         }
       case Whole.Admitted(_, _) => false)
 
-  /** What the reference's LEDGER makes of a case's one withdrawal under the moved withdrawals
-    * (`testIncompleteAndMissingWithdrawals`, `Shelley/Rules/Ledger.hs:341-359`, cardano-ledger
-    * f649f975): an account the chain does not hold, or holds on another network, is missing, with
-    * the amount; one it holds whose balance the amount does not drain is incomplete, the amount
-    * supplied against the balance.
-    */
-  private enum MovedWithdrawal:
-    case Missing
-    case Incomplete
-
-  /** The corpus cases whose withdrawal the 11.2 and Leios builds refuse in LEDGER below version 11.
-    */
-  private val Moved: Map[String, MovedWithdrawal] = Map(
-    "conway-devnet/withdrawal-more-than-balance" -> MovedWithdrawal.Incomplete,
-    "conway-devnet/withdrawal-unregistered-account" -> MovedWithdrawal.Missing,
-    "conway-devnet/withdrawal-network-flag-true" -> MovedWithdrawal.Missing
-  )
-
-  /** The era LEDGER's failures on a case of the moved withdrawals: the flat LEDGER's, in their
-    * order, with CERTS's refusal of the withdrawal in its place replaced by LEDGER's, the account
-    * and amount the transaction withdraws, and an incomplete one's balance the chain's.
-    */
-  private def movedExpected(
-      s: Seen,
-      base: String,
-      flat: List[EraUtxoRun.Failure]
-  ): List[EraUtxoRun.Failure] =
-    val (account, amount) = s.flat.body.withdrawals.toVector match
-      case Vector(one) => one
-      case other       => fail(s"${s.label}: withdrawals $other")
-    val ledgers =
-      Moved.getOrElse(base, fail(s"${s.label}: not a case of the moved withdrawals")) match
-        case MovedWithdrawal.Missing =>
-          PredicateFailure.WithdrawalsMissingAccounts(Map(account -> amount.value))
-        case MovedWithdrawal.Incomplete =>
-          val credential = right("credential")(
-            xyz.kd5ujc.scarab.ledger.rules.Convert
-              .credential[xyz.kd5ujc.scarab.ledger.state.Staking](account.credential)
-          )
-          val balance = xyz.kd5ujc.scarab.ledger.rules.EraLedger
-            .accounts(s.ledger.ls)
-            .collectFirst { case (`credential`, view) => view.balance.toBigInt }
-            .getOrElse(fail(s"${s.label}: the account is not held"))
-          assert(amount.value < balance, s"${s.label}: $amount of $balance")
-          PredicateFailure.IncompleteWithdrawals(
-            Map(account -> xyz.kd5ujc.scarab.ledger.Mismatch(amount.value, balance))
-          )
-    val certs: EraUtxoRun.Failure = EraUtxoRun.Failure.Utxo(
-      PredicateFailure.Certs(
-        xyz.kd5ujc.scarab.ledger.CertsFailure.WithdrawalsNotInRewards(Map(account -> amount.value))
-      )
-    )
-    assertEquals(flat.count(_ == certs), 1, s"${s.label}: the flat CERTS's refusal")
-    flat.map(f => if f == certs then EraUtxoRun.Failure.Utxo(ledgers) else f)
-
   test("the corpus has Conway cases, each read by both paths"):
     assert(clue(seen.size) > 40)
 
@@ -395,7 +340,11 @@ class ConwayLedgerChecksSuite extends FunSuite:
           // in the same order
           (era, flat) match
             case (Whole.Refused(ours), Whole.Refused(theirs)) =>
-              assertEquals(ours, movedExpected(s, base, theirs), what)
+              assertEquals(
+                ours,
+                MovedWithdrawals.expected(s.label, base, s.flat, s.ledger.ls, theirs),
+                what
+              )
             case _ => fail(s"$what: $era against $flat")
           (era, Some(base))
         case (era, flat) =>
@@ -412,9 +361,13 @@ class ConwayLedgerChecksSuite extends FunSuite:
     // every case of the moved withdrawals, at the versions below 11 under the 11.2 and Leios
     // builds and each policy, and only those
     val moved = outcomes.collect { case (_, Some(label)) => label }
-    assertEquals(moved.toSet, Moved.keySet, "the cases of the moved withdrawals")
+    assertEquals(moved.toSet, MovedWithdrawals.Cases.keySet, "the cases of the moved withdrawals")
     // each at its recorded version (below 11), 9 and 10, under two builds and two policies
-    assertEquals(moved.size, Moved.size * 3 * 2 * 2, "the judgments of the moved withdrawals")
+    assertEquals(
+      moved.size,
+      MovedWithdrawals.Cases.size * 3 * 2 * 2,
+      "the judgments of the moved withdrawals"
+    )
 
   /** The cases the mempool refuses before or beside LEDGER: its measure's (`txMeasureAlonzo`,
     * `Shelley/Ledger/Mempool.hs:590-612`, ouroboros-consensus 82ecba32) and MEMPOOL's own

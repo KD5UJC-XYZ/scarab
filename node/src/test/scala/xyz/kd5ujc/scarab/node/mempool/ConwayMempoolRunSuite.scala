@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.node.mempool
 
 import java.nio.file.Path
-import cats.data.NonEmptyVector
+import cats.data.{NonEmptyChain, NonEmptyVector}
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.Blake2b
@@ -16,7 +16,6 @@ import xyz.kd5ujc.scarab.ledger.{
   TxEnv,
   TxIn,
   TxOut,
-  Unsigned,
   Utxo
 }
 import xyz.kd5ujc.scarab.ledger.era.{
@@ -27,11 +26,8 @@ import xyz.kd5ujc.scarab.ledger.era.{
   EraUtxoRun,
   Network,
   PParams,
-  EraPParams,
-  ProtVer,
   TxLevel,
-  UTxO,
-  Version
+  UTxO
 }
 import xyz.kd5ujc.scarab.ledger.era.conway.{ConwayPParams, ConwayTx}
 import xyz.kd5ujc.scarab.ledger.era.rules.{
@@ -39,8 +35,9 @@ import xyz.kd5ujc.scarab.ledger.era.rules.{
   ConwayGovPredFailure,
   ConwayLedgerPredFailure,
   ConwayMempoolRun,
+  ConwayRuleDefect,
   ConwayUtxowPredFailure,
-  ConwayValidated
+  UtxoStateDefect
 }
 import xyz.kd5ujc.scarab.ledger.rules.Globals
 import xyz.kd5ujc.scarab.ledger.state.{
@@ -53,7 +50,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
   UtxoTables
 }
 import xyz.kd5ujc.scarab.node.NodeSetup
-import xyz.kd5ujc.scarab.node.ntc.{PredicateFailureCbor, ReferenceRefusalSuite}
+import xyz.kd5ujc.scarab.node.ntc.{MovedWithdrawals, PredicateFailureCbor, ReferenceRefusalSuite}
 import xyz.kd5ujc.scarab.protocol.{Era, ReferenceBuild, StateLayout}
 import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellState, UtxoCodecs}
 
@@ -268,19 +265,14 @@ class ConwayMempoolRunSuite extends FunSuite:
       flatWhole(what)(s.ledger.reapply(s.flat, txEnv(s, TxEnv.Validation.NonStatic), s.globals))
     )
 
-  /** `s` 's transaction as held after a validation at `version`, the environment's by default
+  /** `s` 's transaction held as if validated in its environment and state, whatever its verdict
     * (`unsafeMakeValidatedTx`, `Shelley/API/Mempool.hs:131-151`, cardano-ledger f649f975, which the
-    * reference keeps for tests): annotated against the state, whatever its verdict.
+    * reference keeps for tests).
     */
-  private def held(s: Seen, version: Option[ProtVer] = None): ConwayValidated =
-    val pp = s.env.ledgerPp
-    ConwayValidated(
-      ConwayMempoolRun.annotate(s.judging.slotToPOSIXTime, pp, s.utxo, s.typed),
-      version.getOrElse(EraPParams.conway.ppProtocolVersionL.get(pp)),
-      s.slot
+  private def held(s: Seen): ConwayMempoolRun.ValidatedTx =
+    right(s"${s.label}: held")(
+      ConwayMempoolRun.unsafeMakeValidatedTx(s.judging, s.env, s.ledger.ls, s.typed)
     )
-
-  private def major(v: Version): ProtVer = ProtVer(v, Unsigned.lit[Unsigned.Width.W32](0))
 
   /** The 11.2 and Leios builds check the withdrawals in LEDGER at every version, the flat rules in
     * CERTS below 11 under every build: the named difference
@@ -294,13 +286,6 @@ class ConwayMempoolRunSuite extends FunSuite:
       true
     case _ => false
 
-  private def isLedgerWithdrawal(f: EraUtxoRun.Failure): Boolean = f match
-    case EraUtxoRun.Failure.Utxo(
-          PredicateFailure.WithdrawalsMissingAccounts(_) | PredicateFailure.IncompleteWithdrawals(_)
-        ) =>
-      true
-    case _ => false
-
   private def moved(s: Seen, flat: Whole): Boolean =
     s.build != ReferenceBuild.Release11_1 && s.ledger.params.protocolMajor < 11 && (flat match
       case Whole.Refused(fs) => fs.exists(isCertsWithdrawal)
@@ -310,17 +295,21 @@ class ConwayMempoolRunSuite extends FunSuite:
   private enum Agreed derives CanEqual:
     case Admitted, Refused, Moved
 
-  /** `era` and `flat` agree: the same failures in the same order, or the same state; where the
-    * withdrawals moved, every failure but the moved one's.
+  /** `era` and `flat` agree on `s`, a judgment of the case `base`: the same failures in the same
+    * order, or the same state; where the withdrawals moved, the flat failures with CERTS's refusal
+    * of the withdrawal replaced, in its place, by LEDGER's (`MovedWithdrawals.expected`).
     */
-  private def agree(s: Seen, what: String)(era: Whole, flat: Whole): Agreed =
+  private def agree(s: Seen, base: String, what: String)(era: Whole, flat: Whole): Agreed =
     (era, flat) match
       case (Whole.Admitted(ours), Whole.Admitted(theirs)) =>
         assert(cats.Eq[LedgerState[Conway]].eqv(ours, theirs), s"$what: the states")
         Agreed.Admitted
       case (Whole.Refused(ours), Whole.Refused(theirs)) if moved(s, flat) =>
-        assertEquals(ours.count(isLedgerWithdrawal), 1, s"$what: LEDGER's withdrawal")
-        assertEquals(ours.filterNot(isLedgerWithdrawal), theirs.filterNot(isCertsWithdrawal), what)
+        assertEquals(
+          ours,
+          MovedWithdrawals.expected(s.label, base, s.flat, s.ledger.ls, theirs),
+          what
+        )
         Agreed.Moved
       case _ =>
         assertEquals(era, flat, what)
@@ -341,7 +330,7 @@ class ConwayMempoolRunSuite extends FunSuite:
         s"${s.label} under ${build.name}, applyTx" -> submitted(s),
         s"${s.label} under ${build.name}, reapply" -> reapplied(s)
       )
-    yield (s0.label, what, agree(s, what)(era, flat), era)
+    yield (s0.label, what, agree(s, s0.label, what)(era, flat), era)
     assert(judged.exists(_._3 == Agreed.Admitted), "no admitted case")
     assert(
       judged.exists {
@@ -354,14 +343,7 @@ class ConwayMempoolRunSuite extends FunSuite:
     // the moved withdrawals: three cases, each at its recorded version (below 11), 9 and 10,
     // under two builds and by both applications
     val moved = judged.filter(_._3 == Agreed.Moved)
-    assertEquals(
-      moved.map(_._1).toSet,
-      Set(
-        "conway-devnet/withdrawal-more-than-balance",
-        "conway-devnet/withdrawal-unregistered-account",
-        "conway-devnet/withdrawal-network-flag-true"
-      )
-    )
+    assertEquals(moved.map(_._1).toSet, MovedWithdrawals.Cases.keySet)
     assertEquals(moved.size, 3 * 3 * 2 * 2)
 
   /** The cases the mempool refuses by its measure (`txMeasureAlonzo`, ouroboros-consensus 82ecba32
@@ -377,6 +359,7 @@ class ConwayMempoolRunSuite extends FunSuite:
     val (left, compared) =
       corpus.partition(s => Capacity.phase1(s.flat, s.ledger.params).isLeft)
     assertEquals(left.map(_.label).toSet, Measured, "the cases the measure refuses")
+    assertEquals((corpus.size, compared.size), (84, 81), "the Conway cases, and those compared")
     assert(compared.exists(_.families == Vector(Family.MEMPOOL)), "no case of MEMPOOL's own")
     compared.foreach { recorded =>
       // under the corpus's own build
@@ -568,7 +551,7 @@ class ConwayMempoolRunSuite extends FunSuite:
         s"${s.label} under ${build.name}, applyTx" -> submitted(s),
         s"${s.label} under ${build.name}, reapply" -> reapplied(s)
       )
-    yield (s0.label, agree(s, what)(era, flat))
+    yield (s0.label, agree(s, s0.label, what)(era, flat))
     // each transaction's verdict, the same at every version and under every build, but the forged
     // signature's: refused by the static check alone, it is admitted by both reapplications
     val verdicts = judged.groupMapReduce(_._1)(j => Set(j._2))(_ ++ _)
@@ -637,47 +620,172 @@ class ConwayMempoolRunSuite extends FunSuite:
       )
     )
 
+  // ---- the annotation, made where LEDGER first reads it
+
+  test(
+    "all inputs spent: MEMPOOL's failure alone, though a reference input's stored output is one the era cannot read"
+  ):
+    // an output with a reference script, created by a payment, then kept with a script hash that
+    // is not its bytes' (an output only a damaged store holds)
+    val l3 = TxKit.ledger(3)
+    val (created, _) = tx(
+      Vector(txIn(1)),
+      Vector(bob.address() -> (99 * ada)),
+      ada,
+      Vector(alice),
+      referenceScript = Some(plutusScript)
+    )
+    val withScript =
+      l3.applied(FlatTx.fromEnvelope(created, Era.Conway).getOrElse(fail("created")), kitSlot)
+    val (scripted, out) = withScript.utxo.toMap
+      .collectFirst { case (in, o) if o.scriptRef.nonEmpty => in -> o }
+      .getOrElse(fail("no output with a reference script"))
+    val damaged = withScript.withUtxo(
+      withScript.utxo.updated(
+        scripted,
+        out.copy(scriptRef = out.scriptRef.map(_.copy(hash = Bytes(Vector.fill(28)(7.toByte)))))
+      )
+    )
+    def referencing(spent: TxIn, l: MempoolLedger): Seen =
+      kit(
+        s"spends ${spent.index}",
+        tx(
+          Vector(spent),
+          Vector(bob.address() -> (99 * ada)),
+          ada,
+          Vector(alice),
+          referenceInputs = Vector(scripted)
+        )._1,
+        l
+      )
+    // the transaction's only input is not in the state: a duplicate, whose annotation would read
+    // the reference input's output, which the era cannot read
+    val duplicate = referencing(txIn(9), damaged)
+    ConwayMempoolRun.utxoOf(duplicate.ledger.ls, duplicate.typed) match
+      case Left(UtxoStateDefect.StoredOutput(`scripted`, _)) => ()
+      case other => fail(s"the stored output is read: $other")
+    val allSpent = ConwayApplyTxError(
+      NonEmptyChain.one(ConwayLedgerPredFailure.ConwayMempoolFailure(MempoolProblem.AllInputsSpent))
+    )
+    // held from the state before the damage, as admitted there
+    val heldBefore = held(referencing(txIn(9), withScript))
+    ReferenceBuild.values.foreach { build =>
+      val s = duplicate.under(build)
+      assertEquals(
+        ConwayMempoolRun.applyTx(s.judging, s.env, s.ledger.ls, s.typed).map(_.map(_._1)),
+        Right(Left(allSpent)),
+        build.name
+      )
+      assertEquals(
+        ConwayMempoolRun.reapply(s.judging, s.env, s.ledger.ls, heldBefore),
+        Right(Left(allSpent)),
+        s"${build.name}: reapply"
+      )
+      // the flat MEMPOOL's refusal, the same
+      s.ledger.submit(s.flat, txEnv(s, TxEnv.Validation.All), s.globals) match
+        case Left(LedgerFailure.Rejected(_, fs)) =>
+          assertEquals(
+            fs.toChain.toList,
+            List(PredicateFailure.Mempool(MempoolProblem.AllInputsSpent)),
+            s"${build.name}: the flat MEMPOOL"
+          )
+        case other => fail(s"${build.name}: the flat MEMPOOL: $other")
+      // with an input the state holds, LEDGER runs and reads the output: the node's defect
+      val live = referencing(txIn(2), damaged).under(build)
+      ConwayMempoolRun.applyTx(live.judging, live.env, live.ledger.ls, live.typed) match
+        case Left(ConwayRuleDefect.UtxoState(UtxoStateDefect.StoredOutput(`scripted`, _))) => ()
+        case other => fail(s"${build.name}: not the stored output's defect: $other")
+    }
+
   // ---- the reapplication by build
 
   test("reapply: each build's consensus, which differ where the major version changed"):
     // a transaction only the static checks refuse (a signature that does not verify), held as
-    // if validated: the mempool's reapplication skips them
+    // if validated (`unsafeMakeValidatedTx`): the mempool's reapplication skips them
     val base = kitCases.find(_.label == "forged-signature").getOrElse(fail("no case"))
     assert(submitted(base)._1.isInstanceOf[Whole.Refused], "refused by the full application")
-    def again(s: Seen, at: Version): Whole =
-      eraWhole(s, s"${s.label} under ${s.build.name}, held at ${at.value}")(
-        ConwayMempoolRun.reapply(s.judging, s.env, s.ledger.ls, held(s, Some(major(at))))
+    def again(at: Seen, on: Seen): Whole =
+      eraWhole(on, s"${on.label} under ${on.build.name}, held at ${at.label}")(
+        ConwayMempoolRun.reapply(on.judging, on.env, on.ledger.ls, held(at))
       )
-    val at11 = base.atVersion(11)
     val outcomes = ReferenceBuild.values.toVector.map { build =>
-      val s = at11.under(build)
+      val at10 = base.atVersion(10).under(build)
+      val at11 = base.atVersion(11).under(build)
       assertEquals(
         ConwayMempoolRun.Reapply.of(build) == ConwayMempoolRun.Reapply.ReapplyTx,
         build == ReferenceBuild.Release11_1
       )
       // the same major version: the static checks skipped under every build
-      assert(again(s, Version.lit(11)).isInstanceOf[Whole.Admitted], s"${build.name}: at 11")
-      build -> again(s, Version.lit(10))
+      assert(again(at11, at11).isInstanceOf[Whole.Admitted], s"${build.name}: at 11")
+      build -> again(at10, at11)
     }.toMap
     // another major version: 11.1's `reapplyTx` skips the static checks whatever the version;
-    // 11.2's and Leios's `reapplyValidatedTx` validates in full, and the witness is missing
+    // 11.2's and Leios's `reapplyValidatedTx` validates in full, and the signature fails
     assert(outcomes(ReferenceBuild.Release11_1).isInstanceOf[Whole.Admitted])
     Vector(ReferenceBuild.Release11_2, ReferenceBuild.LeiosB004fe0c).foreach { build =>
-      outcomes(build) match
-        case Whole.Refused(fs) =>
-          val s = at11.under(build)
-          // the full application's refusal
-          assertEquals(
-            fs,
-            submitted(s)._1 match
-              case Whole.Refused(gs) => gs
-              case other             => fail(s"${build.name}: $other")
-          )
-        case other => fail(s"${build.name}: $other")
+      assertEquals(outcomes(build), submitted(base.atVersion(11).under(build))._1, build.name)
+      assert(outcomes(build).isInstanceOf[Whole.Refused], build.name)
     }
     // the flat pool's reapplication is 11.1's under every build: it admits the transaction held
     // at another major version, where 11.2 and Leios refuse it
     ReferenceBuild.values.foreach { build =>
-      val s = at11.under(build)
+      val s = base.atVersion(11).under(build)
       assert(reapplied(s)._2.isInstanceOf[Whole.Admitted], s"${build.name}: flat reapply")
+    }
+
+  test(
+    "reapply: an admission's annotation is kept by 11.2 and Leios at its major version, made again by 11.1"
+  ):
+    // alice pays from txIn(1), admitted by `applyTx`: its annotation needs no script
+    val (raw, _) = TxKit.pay(1)
+    val l3 = TxKit.ledger(3)
+    // the state it is applied again in holds txIn(1)'s output locked by a native script the
+    // transaction does not provide: an output never changes on a chain, so only a crafted state
+    // tells the held annotation (no script needed) from one made again (the script needed and
+    // missing), the scripts being run by neither reapplication
+    val locked = xyz.kd5ujc.scarab.ledger.Address
+      .decode(Bytes(0x70.toByte +: Vector.fill(28)(5.toByte)))
+      .fold(e => fail(e.toString), identity)
+    val changed = l3.withUtxo(
+      l3.utxo.updated(txIn(1), xyz.kd5ujc.scarab.ledger.TestLedger.out(locked, 100 * ada))
+    )
+    val needed = (stAnnTx: xyz.kd5ujc.scarab.ledger.era.StAnnTx[TxLevel.Top, Conway]) =>
+      EraUTxO.conway.getScriptsHashesNeeded(
+        EraUTxO.conway.scriptsNeededStAnnTx[TxLevel.Top](stAnnTx)(using
+          EraUTxO.conway.txOf.bodyOf.top
+        )
+      )
+    ReferenceBuild.values.foreach { build =>
+      val s = kit("admitted", raw, l3).under(build)
+      val admitted = ConwayMempoolRun.applyTx(s.judging, s.env, s.ledger.ls, s.typed) match
+        case Right(Right((_, validated))) => validated
+        case other                        => fail(s"${build.name}: not admitted: $other")
+      assert(needed(admitted.stAnnTx).isEmpty, s"${build.name}: the admission's annotation")
+      val r = s.withLedger(changed)
+      assert(needed(held(r).stAnnTx).nonEmpty, s"${build.name}: an annotation made again")
+      val ours = eraWhole(r, s"${build.name}: reapplied")(
+        ConwayMempoolRun.reapply(r.judging, r.env, r.ledger.ls, admitted)
+      )
+      val again = eraWhole(r, s"${build.name}: annotated again")(
+        ConwayMempoolRun.reapplyTx(r.judging, r.env, r.ledger.ls, admitted)
+      )
+      val flat = reapplied(r)._2
+      // made again, the annotation needs the missing script: the flat pool's refusal
+      assert(again.isInstanceOf[Whole.Refused], s"${build.name}: $again")
+      assertEquals(again, flat, s"${build.name}: the flat pool's")
+      build match
+        case ReferenceBuild.Release11_1 =>
+          assertEquals(ours, again, "11.1 annotates again")
+        case ReferenceBuild.Release11_2 | ReferenceBuild.LeiosB004fe0c =>
+          // the admission's annotation, at the version it was validated at
+          assert(ours.isInstanceOf[Whole.Admitted], s"${build.name}: $ours")
+          // at another major version, annotated again with every check
+          val r11 = r.atVersion(11)
+          assertEquals(
+            eraWhole(r11, s"${build.name}: at 11")(
+              ConwayMempoolRun.reapply(r11.judging, r11.env, r11.ledger.ls, admitted)
+            ),
+            submitted(r11)._1,
+            s"${build.name}: at 11"
+          )
     }

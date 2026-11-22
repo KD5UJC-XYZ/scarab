@@ -74,9 +74,46 @@ object ConwayMempool:
       readError: Raise[F, ProposalsReadError],
       writeError: Raise[F, ProposalsWriteError]
   ): F[Unit] =
+    mempoolTransitionAnnotating[F](
+      env,
+      t.txStAnnTx[TxLevel.Top](stAnnTx)(using t.bodyOf.top),
+      Monad[F].pure(stAnnTx),
+      context,
+      verdicts,
+      decoder
+    )
+
+  /** [[mempoolTransition]] on `tx`, whose annotation `annotated` is made only where LEDGER first
+    * reads it, as the reference's is: its `AlonzoStAnnTx` is strict in the transaction alone
+    * (`Alonzo/Tx.hs:556-565`, cardano-ledger f649f975), so the fields derived from the UTxO set are
+    * not made for a transaction MEMPOOL refuses as a duplicate. The node makes them from the stored
+    * outputs read into the era, which can fail where the reference's typed UTxO set cannot
+    * ([[UtxoStateDefect]]): that defect is raised where LEDGER would read the same outputs (its own
+    * reading, `ShelleyUtxo.readStored` of the same inputs, raises the same one), never before
+    * MEMPOOL's own check.
+    */
+  def mempoolTransitionAnnotating[F[_]: Monad](
+      env: LedgerEnv[Conway],
+      tx: Tx[TxLevel.Top, Conway],
+      annotated: F[StAnnTx[TxLevel.Top, Conway]],
+      context: UtxoContext[Conway],
+      verdicts: Verdicts,
+      decoder: ScriptDecoder[Id]
+  )(using
+      ask: Ask[F, Globals],
+      state: Stateful[F, LedgerState[Conway]],
+      judge: Judge[F, MempoolPredFailure[Conway]],
+      events: Tell[F, Chain[MempoolEvent[Conway]]],
+      evaluator: ScriptEvaluator[F],
+      unavailable: Raise[F, ScriptVerdictUnavailable],
+      stateDefect: Raise[F, UtxoStateDefect],
+      defect: Raise[F, LedgerDefect],
+      govDefect: Raise[F, GovDefect],
+      readError: Raise[F, ProposalsReadError],
+      writeError: Raise[F, ProposalsWriteError]
+  ): F[Unit] =
     val embed = EmbedLedgerInMempool.conway
     val top = t.bodyOf.top
-    val tx = t.txStAnnTx[TxLevel.Top](stAnnTx)(using top)
     val txBody = t.body[TxLevel.Top](tx)(using top)
     val inputs = b.inputs[TxLevel.Top](txBody)(using b.top)
     val protVer = EraPParams.conway.ppProtocolVersionL.get(env.ledgerPp)
@@ -108,9 +145,11 @@ object ConwayMempool:
                   .ConwayMempoolFailure[Conway](MempoolProblem.UnelectedCommittee(voters))
               )
           _ <- judge.nest(
-            ledger[F](env, stAnnTx, context, verdicts, decoder)(using
-              judge.contramap(embed.wrapFailed),
-              told(events)(embed.wrapEvent)
+            annotated.flatMap(stAnnTx =>
+              ledger[F](env, stAnnTx, context, verdicts, decoder)(using
+                judge.contramap(embed.wrapFailed),
+                told(events)(embed.wrapEvent)
+              )
             )
           )
         yield ()
