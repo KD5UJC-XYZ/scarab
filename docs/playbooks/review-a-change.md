@@ -18,19 +18,34 @@ this is the order of work.
      facts that are true at the head; and any question the change raises of its own;
    - the output: findings ranked P1, P2 and P3, each with file and line, evidence and a suggested fix, or that
      there are none and what was checked.
-3. Run the review read-only on the worktree with the brief as its prompt: Codex in its read-only sandbox
-   (`codex exec --sandbox read-only`), or an agent tool's Codex integration given the same brief. A review takes
-   minutes; run it in the background rather than block on it.
-4. Accept the result only if the run completed, exited successfully and produced findings or an explicit "none".
-   A failed, cancelled or empty run is no review: run it again, and never report it as a clean one.
+3. Run the review with `python3 scripts/codex_review.py --level <the body's level> --brief <brief> --out <review
+   file outside the worktree>` from the worktree, with everything committed. It runs Codex with the pinned model, at
+   the lowest effort the change allows (CONTRIBUTING.md, "Independent review") or at a higher one given with
+   `--effort`. The reviewer has the network, to read the reference at its pin, and a read-only file system; with
+   approvals and exec-policy rules off, its commands run only in that sandbox, and live web search is requested. To
+   review someone else's change, run the base branch's copy (`git show origin/main:scripts/codex_review.py` into a
+   scratch file) with `python3 -I` and `--cd` naming the worktree, so no code of the change runs before the sandbox
+   does. A review takes minutes at `high` and
+   longer at `xhigh`; run it in the background rather than block on it. Do not run the review through an agent
+   tool's Codex integration: it cannot set the effort, and the model's default effort is below every floor.
+4. The script accepts the run only if Codex completed its turn with a final message, its session file records the
+   pinned model and the effort in every turn with no reroute, the read-only sandbox and the network, and the
+   worktree's HEAD and status are unchanged; it then writes the review with its stamp on the first line. A refused,
+   failed, cancelled or empty run is no review: run it again, and never report it as a clean one.
 5. Check each finding against the code before acting on it: the reviewer can be wrong. Fix the real findings and
    write down why each of the others is rejected.
-6. Post the review on the pull request (`gh pr comment <number> --body-file <file>`): each finding quoted, and its
-   disposition, fixed in which commit or rejected and why.
+6. Post the review on the pull request (`gh pr comment <number> --body-file <file>`), starting with the file the
+   script wrote, stamp included: each finding quoted, and its disposition, fixed in which commit or rejected and
+   why.
 7. Fill in the body's "Independent review" section: the link to that comment, the verdict, and the disposition of
    each finding in a line.
-8. If the fixes changed more than wording, run a second, shorter review scoped to the fix commits, and post and
-   link it the same way. After a rebase that changes the diff, the review covers the new head.
+8. If the fixes changed more than wording, run a second, shorter review scoped to the fix commits, through the
+   script at the same level with `--base <the head the last review covered>` (the floor still comes from the whole
+   pull request), and post it and link it beside the first. After a rebase that changes the diff, the review covers the
+   new head; after one that does not, or a wording fix, add `Since the review: <head commit> <what changed>` to the
+   section instead.
 
-A contributor who is not an agent asks a maintainer or another contributor for the review, who posts it on the
-pull request; steps 5 to 8 are the same.
+A contributor who is not an agent asks a maintainer or another contributor for the review, who submits it as a
+GitHub review of the pull request (`gh pr review`), not a comment; its link (`#pullrequestreview-<id>`) goes in the
+section, the author records the dispositions in the pull request body, and steps 5 and 7 are the same. A second
+review after fixes is another submitted GitHub review, of the new head.
