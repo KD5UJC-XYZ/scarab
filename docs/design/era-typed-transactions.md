@@ -2548,6 +2548,44 @@ Conway's rules on the classes follow as the rest of stage 2.
     - the failures are compared through the flat form and the suite's encoder: the era failures have no encoder yet
       (#796).
   - Not yet (#85): the node's mempool and block body run the flat rules until the era rules are wired in (D8).
+- **Conway's BBODY** (`era/rules/Bbody.scala`, `era/rules/ConwayBlockRun.scala`, `era/conway/ConwayBlock.scala`,
+  `era/EraBlock.scala`, `era/rules/BbodyFailures.scala`; `eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Bbody.hs`,
+  cardano-ledger f649f975, with the Alonzo and Shelley BBODY functions it runs):
+  - `ConwayBbody.conwayBbody` is the reference's `conwayBbodyTransition >> alonzoBbodyTransition` (`:268`), every failure
+    recorded, in its order: the header's major version at most the one after the parameters' (`HeaderProtVerTooHigh`,
+    `:293-312`); the block's reference scripts against the UTxO set before LEDGERS (`:314`); then Alonzo's
+    `alonzoBbodyTransition` (`Alonzo/Rules/Bbody.hs:169-214`), generic in its era, with the era's LEDGERS given to it:
+    the body's size and hash against its header's, LEDGERS (Conway's `ShelleyLedgers.ledgersTransition`, embedded),
+    the block's units, and the block counted for its issuer. The Shelley, Alonzo and Conway predicates are the ones
+    Dijkstra's BBODY runs, moved beside it, each cited at both pins. `ConwayBlockRun` runs it in one judgment, as
+    `DijkstraBlockRun` runs Dijkstra's; the node does not run it yet (the Conway switch).
+  - Conway's block is `AlonzoBlockBody` (`BlockBody`'s Conway case, `Conway/BlockBody.hs:14-15`), made only from a
+    block's bytes (its decoder, `ConwayBlock`), its size and hash those of the segments the flat decoder read
+    (`hashAlonzoSegWits`, `Alonzo/BlockBody/Internal.hs:188-210`), and the header's instance that of the Praos header.
+    The protocol version is 9df9f98c's `PraosEraBlockHeader` (`Block.hs:129-130`); f649f975 has the member in
+    `EraBlockHeader` (`Block.hs:146-152`), and a class of its own leaves Dijkstra's header without it, as the
+    Leios header of 9df9f98c has no protocol version.
+  - The pins differ in where the header's version is checked: on mainnet at 29a7d656 and 9df9f98c
+    (`Conway/Rules/Bbody.hs:326`), on mainnet or from parameters at major 12 at f649f975 (`:310`), a function of the
+    build (`HeaderProtVerGate`), as `WithdrawalsRule` is. The second clause never fails: from 12 the version after it
+    is 13, `MaxVersion`, past which no header's major decodes. `ConwayBbodyPredFailure` is the same at both pins but
+    for derived `Ord` and the units' `OrdExUnits` at 9df9f98c.
+  - `ConwayBbodySuite` (node) runs the era BBODY and the flat BBODY (`EraBlock.body`) from the state `MirrorRules`
+    ticks: on the 53 recorded Conway blocks of `fixtures/eras` and `fixtures/chain-dep`, which the reference accepted,
+    both admit each with the same ledger state and blocks made, and as on mainnet both refuse each for its header's
+    version (the clusters' headers declare major 11 over parameters at 9), the flat side in its envelope; crafted from
+    a recorded block's bytes, another declared size, another declared hash and a major past the next on mainnet are
+    refused by both with equal failures in the node's flat form, the boundaries admitted; built transactions on the
+    third block's state refuse for the reference scripts past 1,048,576 bytes at versions 9, 10 and 11, for the units
+    past `maxBlockExUnits` in either component after a Plutus V3 script runs, and for LEDGERS's missing input, each as
+    the flat side does, and within the limits leave the flat side's state; a reference script made in the block counts
+    from version 11 and not at 10 on both. Every recorded Conway block, the Preview blocks' 62 transactions among them,
+    reads into the era's types as the flat decoder reads it, with the flat rules' units.
+  - Incomplete (CNF-2): no recording holds a Conway block's refusal, or a Conway block with transactions with the
+    state before it, so the refusals are crafted and the built blocks are compared with the flat rules only; the flat
+    BBODY stops at its first failure (#412) and its form of a size or hash failure holds neither, so each refusal fails
+    one check, and a named difference pins the two on a block whose declared size and hash both differ (the era rule's
+    two failures, the flat rule's one).
 - **Dijkstra's BBODY** (`era/EraBlock.scala`, `era/dijkstra/DijkstraBlock.scala`, `era/rules/BbodyFailures.scala`,
   `era/rules/DijkstraBbody.scala`; `Rules/Bbody.hs` of `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/`, cardano-ledger
   9df9f98c, with the predicates of Shelley's, Alonzo's and Conway's BBODY it runs):
