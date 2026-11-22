@@ -83,10 +83,12 @@ began, which records what existed and approves nothing.
 
 `FORMAT_CHANGE_PATHS` is the one list of the paths a storage format change may touch, beside the paths of a one-off
 exception the owner approved for one pull request (`ONE_OFF_PATHS`, by its number, read from the policy check's
-event), and `FREEZE_PATHS` the paths
-whose change makes a pull request one: `scripts/pr_policy.py` refuses such a pull request unless it follows FMT-1,
-and touches nothing outside the list, because a storage format change is a pull request of its own. Every path the
-surface reads is in the list. The guard is self-contained, so that no other script's change alters what it sees.
+event). The policy check runs this guard as `main` holds it, so an exception lands first, as a storage format change
+of its own, and a follow-up pull request removes its entry once its pull request merges, as FMT-1's procedure
+says. `FREEZE_PATHS` holds the paths whose change makes a pull request a storage format change:
+`scripts/pr_policy.py` refuses such a pull request unless it follows FMT-1, and touches nothing outside the list,
+because a storage format change is a pull request of its own. Every path the surface reads is in the list. The guard
+is self-contained, so that no other script's change alters what it sees.
 
     python3 scripts/check_storage_format.py                   check (the default)
     python3 scripts/check_storage_format.py --print-surface   print the surface and its digest as JSON
@@ -307,147 +309,8 @@ REQUIRED_BY_OTHER_GATES = (
 FORMAT_CHANGE_PATHS = OWNER_NAMED_PATHS + REQUIRED_BY_OTHER_GATES
 # Paths one storage format change may touch beyond FORMAT_CHANGE_PATHS, by the number of its pull request: an
 # exception the owner approved for that pull request only, which no other pull request gets. The number is read
-# from the event of the policy check (`GITHUB_EVENT_PATH`), which GitHub writes and the trusted policy reads. A path
-# that FORMAT_CHANGE_PATHS came to hold later is dropped from its exception: the codecs of the Haskell state
-# (`HASKELL_STATE_SOURCES`), which #1127 and #1173 touched.
-ONE_OFF_PATHS = {
-    # #1127: PlutusV4 among the kinds of a stored script, V10 changed in place (#85, #54; approved
-    # 2026-11-17T01:35:35Z). `ScriptKind` is declared in `Scripts.scala`, and the other files match on it
-    # exhaustively (`ConwayCodecs.scala`, one of them, is now on the general list).
-    1127: (
-        'ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/Scripts.scala',
-        'ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/Phase2.scala',
-        'ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/TxChecks.scala',
-        'ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/babbage/BabbageTypes.scala',
-        'ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/conway/ConwayTypes.scala',
-        'ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/mempack/TxOutMemPack.scala',
-    ),
-    # #1173: Praos2 among the chain-dependent states, V10 changed in place (#826; approved 2026-11-17T21:13:31Z,
-    # these paths 2026-11-17T21:53:53Z). `ChainDepState` is declared in `ChainDepState.scala`; seven files match on it
-    # exhaustively (`ConsensusCodecs.scala`, one of them, is now on the general list), `Praos2.scala` gives its state
-    # the equality and rendering the enum derives, and the rest are the case's generator, its evidence and tests, and a
-    # sentence of `docs/leios.md` the change makes false.
-    1173: (
-        'consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/Praos.scala',
-        'consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/Praos2.scala',
-        'consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/TPraos.scala',
-        'consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/state/ChainDepState.scala',
-        'consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/state/ProtocolState.scala',
-        'consensus/src/test/scala/xyz/kd5ujc/scarab/consensus/state/StateGen.scala',
-        'docs/leios.md',
-        'node/src/main/scala/xyz/kd5ujc/scarab/node/NodeHeaderRules.scala',
-        'node/src/main/scala/xyz/kd5ujc/scarab/node/ntc/QueryAnswers.scala',
-        'node/src/test/scala/xyz/kd5ujc/scarab/consensus/DijkstraCrossingSuite.scala',
-        'storage/src/test/scala/xyz/kd5ujc/scarab/storage/haskell/state/LeiosLayoutSuite.scala',
-        'tools/src/main/scala/xyz/kd5ujc/scarab/node/HaskellScalaCompareMain.scala',
-    ),
-    # #1244: the BLS-key format change of the Leios build's future pool parameters (#54; approved
-    # 2026-11-20T04:09:53Z): its tests of the state codecs and the epoch state, the refusal it narrows, and the two
-    # documents that describe the layout. Its codec files are on the general list.
-    1244: (
-        'docs/compatibility/dijkstra.md',
-        'docs/design/haskell-snapshots.md',
-        'node/src/test/scala/xyz/kd5ujc/scarab/node/DijkstraEpochReferenceSuite.scala',
-        'protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/DijkstraNotYet.scala',
-        'storage/src/test/scala/xyz/kd5ujc/scarab/storage/haskell/state/DijkstraEpochStateSuite.scala',
-        'storage/src/test/scala/xyz/kd5ujc/scarab/storage/haskell/state/FuturePoolParamsCodecSuite.scala',
-    ),
-    # #1313: Dijkstra's governance state
-    # held as the era's record, V10 changed in place (#826; approved 2026-11-21T14:35:51Z, 15:53:11Z and 16:39:18Z,
-    # its snapshot sidecar 2026-11-22T04:37:46Z).
-    # `state.GovState`'s Dijkstra case is declared in `Eras.scala`; the files that dispatch on the family, read the
-    # flat parameters of a Dijkstra state or wrote its record back follow it, with the tests of each and the documents
-    # the change makes false; the mirror keeps a restored Dijkstra sidecar's records, so its constructors follow too.
-    # This exception's 86 paths: approved 2026-11-22T06:21:18Z (85) and 06:29:42Z (scripts/ci_test_skips.json).
-    1313: (
-        'consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/BlockRules.scala',
-        'consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/DijkstraCrossing.scala',
-        'consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/state/ByronMirror.scala',
-        'consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/state/GenesisMirror.scala',
-        'consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/state/MirrorStep.scala',
-        'consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/state/StateMirror.scala',
-        'consensus/src/test/scala/xyz/kd5ujc/scarab/consensus/leios/LeiosCertificationSuite.scala',
-        'consensus/src/test/scala/xyz/kd5ujc/scarab/consensus/state/StateGen.scala',
-        'docs/compatibility/dijkstra.md',
-        'docs/data/correspondence-baseline.json',
-        'docs/design/era-typed-transactions.md',
-        'docs/design/haskell-snapshots.md',
-        'docs/leios.md',
-        'ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/DijkstraBlockDefect.scala',
-        'ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/NodeError.scala',
-        'ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/ProtocolParams.scala',
-        'ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/Families.scala',
-        'ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/GovStateRecord.scala',
-        'ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/Governance.scala',
-        'ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/StoredGov.scala',
-        'ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/conway/ConwayProposals.scala',
-        'ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/dijkstra/DijkstraProposals.scala',
-        'ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/rules/DijkstraLedger.scala',
-        'ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/rules/DijkstraSubLedger.scala',
-        'ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/rules/Epoch.scala',
-        'ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/rules/Ledger.scala',
-        'ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/rules/Tick.scala',
-        'ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/ConwayEpoch.scala',
-        'ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/ConwayPulser.scala',
-        'ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/DijkstraLedger.scala',
-        'ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/Epoch.scala',
-        'ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/EraLedger.scala',
-        'ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/GenesisStart.scala',
-        'ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/NewEpoch.scala',
-        'ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/Tick.scala',
-        'ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/TickFailure.scala',
-        'ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/Translate.scala',
-        'ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/state/Empty.scala',
-        'ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/state/EpochState.scala',
-        'ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/state/Eras.scala',
-        'ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/PreConwayRulesSuite.scala',
-        'ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/era/dijkstra/DijkstraBbodyImpSuite.scala',
-        'ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/era/dijkstra/DijkstraBbodySuite.scala',
-        'ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/era/dijkstra/DijkstraClosureSuite.scala',
-        'ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/era/dijkstra/DijkstraLedgerSuite.scala',
-        'ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/era/dijkstra/DijkstraSubLedgerSuite.scala',
-        'ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/era/dijkstra/DijkstraSubUtxowSuite.scala',
-        'ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/era/dijkstra/DijkstraUtxowSuite.scala',
-        'ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/rules/CompactCoinRulesSuite.scala',
-        'ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/rules/DijkstraPoolReapSuite.scala',
-        'ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/rules/DijkstraRulesSuite.scala',
-        'ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/rules/DijkstraTranslationSuite.scala',
-        'ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/rules/DuplicateWithdrawalsLedgerSuite.scala',
-        'ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/rules/EraNotVersionUtxoSuite.scala',
-        'ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/rules/NativeRewardFixture.scala',
-        'ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/rules/PreConwayUtxoPredicatesSuite.scala',
-        'ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/rules/ShelleyBbodySuite.scala',
-        'ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/rules/ValueConservationSuite.scala',
-        'ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/state/Build.scala',
-        'ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/state/EmptySuite.scala',
-        'ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/state/ErasSuite.scala',
-        'node/src/main/scala/xyz/kd5ujc/scarab/node/MirrorDijkstra.scala',
-        'node/src/main/scala/xyz/kd5ujc/scarab/node/Query.scala',
-        'node/src/main/scala/xyz/kd5ujc/scarab/node/log/Traced.scala',
-        'node/src/main/scala/xyz/kd5ujc/scarab/node/mempool/DijkstraPool.scala',
-        'node/src/main/scala/xyz/kd5ujc/scarab/node/mempool/Mempool.scala',
-        'node/src/main/scala/xyz/kd5ujc/scarab/node/mempool/PoolLedger.scala',
-        'node/src/main/scala/xyz/kd5ujc/scarab/node/ntc/QueryAnswers.scala',
-        'node/src/main/scala/xyz/kd5ujc/scarab/node/read/EraRead.scala',
-        'node/src/main/scala/xyz/kd5ujc/scarab/node/read/EraViews.scala',
-        'node/src/test/scala/xyz/kd5ujc/scarab/node/DijkstraEpochReferenceSuite.scala',
-        'node/src/test/scala/xyz/kd5ujc/scarab/node/DijkstraEraEpochGovSuite.scala',
-        'node/src/test/scala/xyz/kd5ujc/scarab/node/DijkstraGovStateBytes.scala',
-        'node/src/test/scala/xyz/kd5ujc/scarab/node/EraDijkstraTick.scala',
-        'node/src/test/scala/xyz/kd5ujc/scarab/node/ForgedProtocolVersionSuite.scala',
-        'node/src/test/scala/xyz/kd5ujc/scarab/node/MirrorDijkstraSuite.scala',
-        'node/src/test/scala/xyz/kd5ujc/scarab/node/SessionFailureSuite.scala',
-        'node/src/test/scala/xyz/kd5ujc/scarab/node/mempool/DijkstraMempoolSuite.scala',
-        'node/src/test/scala/xyz/kd5ujc/scarab/node/ntc/DijkstraGovernanceAnswersSuite.scala',
-        'node/src/test/scala/xyz/kd5ujc/scarab/node/ntc/DijkstraRulesOracleSuite.scala',
-        'node/src/test/scala/xyz/kd5ujc/scarab/node/ntc/MirrorAnswersSuite.scala',
-        'node/src/test/scala/xyz/kd5ujc/scarab/node/ntc/RemainingPredicateReferenceSuite.scala',
-        'scripts/ci_test_skips.json',
-        'storage/src/test/scala/xyz/kd5ujc/scarab/storage/haskell/state/Derivations.scala',
-        'storage/src/test/scala/xyz/kd5ujc/scarab/storage/haskell/state/StateGen.scala',
-        'tools/src/test/scala/xyz/kd5ujc/scarab/node/tools/LeiosReplayMainSuite.scala',
-    ),
-}
+# from the event of the policy check (`GITHUB_EVENT_PATH`), which GitHub writes and the trusted policy reads.
+ONE_OFF_PATHS: dict[int, tuple[str, ...]] = {}
 # A pull request that changes one of these is a storage format change (scripts/pr_policy.py): the manifest, and the
 # guard and its tests, so that weakening the guard is as loud as a format change.
 FREEZE_PATHS = (MANIFEST, GUARD, GUARD_TESTS)
