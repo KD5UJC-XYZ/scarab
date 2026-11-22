@@ -2,7 +2,9 @@
 name: PR policy
 
 # Evaluate metadata using trusted default-branch code. No PR checkout, cache, secret or build; the only network use is
-# a read of the pull request's changed paths, for the level floors of scripts/pr_policy.py.
+# a read of the pull request's changed paths, for the path checks of scripts/pr_policy.py: the merge base from the
+# compare API, and the head and merge-base commits and trees (no file content) fetched into a bare repository outside
+# the checkout, whose names `git diff` lists; nothing of the pull request is checked out or run.
 on:
   pull_request_target:
     types: [opened, reopened, synchronize, edited, ready_for_review]
@@ -26,14 +28,28 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
+      # The changed paths are read from git at the event's own commits, never from the live pull request: the merge
+      # base of the event's base and head SHAs (compare API) and the head, fetched with depth 1 and no blobs (commits
+      # and trees only) into a bare repository in RUNNER_TEMP, and `git diff --name-only --no-renames -z` between them,
+      # which names both sides of a rename and keeps each path whole, NUL-delimited, into scripts/pr_policy.py.
+      # Nothing of the pull request is checked out or run, and a read that fails fails the job.
       - name: Read the changed paths
         env:
           GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
-          gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files" --jq '.[].filename' \
-            > "$RUNNER_TEMP/files.txt"
+          [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ && "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          base=$(gh api "repos/${GITHUB_REPOSITORY}/compare/${BASE_SHA}...${HEAD_SHA}" --jq '.merge_base_commit.sha')
+          [[ "$base" =~ ^[0-9a-f]{40}$ ]]
+          repo="$RUNNER_TEMP/changed-paths.git"
+          git init -q --bare "$repo"
+          auth=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)
+          GIT_TERMINAL_PROMPT=0 GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=http.https://github.com/.extraheader \
+            GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $auth" git -C "$repo" fetch -q --no-tags --depth=1 \
+            --filter=blob:none "https://github.com/${GITHUB_REPOSITORY}.git" "$HEAD_SHA" "$base"
+          git -C "$repo" diff --name-only --no-renames -z "$base" "$HEAD_SHA" > "$RUNNER_TEMP/files.nul"
       - name: Validate event metadata
         env:
           SCARAB_PROMOTION_POLICY: ${{ vars.SCARAB_PROMOTION_POLICY }}
-        run: python3 scripts/pr_policy.py --files "$RUNNER_TEMP/files.txt"
+        run: python3 scripts/pr_policy.py --files-nul "$RUNNER_TEMP/files.nul"

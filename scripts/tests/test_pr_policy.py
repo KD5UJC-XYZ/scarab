@@ -2,8 +2,11 @@
 import copy
 from datetime import datetime, timezone
 from pathlib import Path
+import json
 import re
+import subprocess
 import sys
+import tempfile
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -433,6 +436,144 @@ class StorageFormatTests(unittest.TestCase):
             with self.subTest(hidden=hidden[:30]), self.assertRaisesRegex(policy.PolicyError, "section|is missing"):
                 self.check(self.pr(body=base + hidden))
         self.assertTrue(self.check(self.pr(body=base + RECORD + "---\n\nmore prose\n")))
+
+
+WORKFLOW = Path(__file__).resolve().parents[2] / ".github" / "workflows" / "pr-policy.yml"
+HEAD, BASE, MERGE_BASE = "a" * 40, "b" * 40, "c" * 40
+
+
+def paths_step():
+    import check_ci_parity
+    steps = check_ci_parity.read_yaml(WORKFLOW.read_text(encoding="utf-8"))["jobs"]["metadata"]["steps"]
+    return next(step for step in steps if step.get("name") == "Read the changed paths")
+
+
+class FileListTests(unittest.TestCase):
+    """The path checks decide on every changed path, read from git at the event's commits, or the policy fails."""
+
+    def pr(self, changed, head="feature", body=None):
+        pr = pull_request(head=head)
+        pr["title"], pr["user"] = "fix(node): repair", {"type": "User"}
+        pr["body"], pr["changed_files"] = body_of(1, "None", "None") if body is None else body, changed
+        return pr
+
+    def test_a_list_shorter_than_the_pull_request_fails(self):
+        listed = [f"node/src/main/scala/A{i}.scala" for i in range(3000)]
+        with self.assertRaisesRegex(policy.PolicyError, "changes 3001 files, but the policy read 3000 changed paths"):
+            policy.check_file_list(self.pr(3001), listed)
+        for count in [None, "3000"]:
+            with self.subTest(count=count), self.assertRaisesRegex(policy.PolicyError, "changed paths"):
+                policy.check_file_list(self.pr(count), listed)
+
+    def test_a_complete_list_passes_and_both_sides_of_a_rename_may_make_it_longer(self):
+        listed = [f"node/src/main/scala/A{i}.scala" for i in range(3000)]
+        policy.check_file_list(self.pr(3000), listed)
+        policy.check_file_list(self.pr(2999), listed)
+        policy.check_file_list(self.pr(0), [])
+
+    def test_a_promotion_of_dev_reads_no_path_and_is_not_checked(self):
+        policy.check_file_list(self.pr(5000, head="dev"), [])
+
+    def test_the_list_is_read_as_bytes_split_on_nul_so_a_newline_stays_in_its_path(self):
+        data = b"docs/a b.md\0" + b"node/x\n" + fmt.MANIFEST.encode() + b"\0README.md\0"
+        paths = policy.changed_paths(data)
+        self.assertEqual(paths, ["docs/a b.md", "node/x\n" + fmt.MANIFEST, "README.md"])
+        # one path that looks like two lines is neither the manifest nor a second path
+        self.assertFalse(policy.touches_freeze(paths))
+        policy.check_file_list(self.pr(3), paths)
+        with self.assertRaisesRegex(policy.PolicyError, "changes 4 files, but the policy read 3"):
+            policy.check_file_list(self.pr(4), paths)
+        self.assertEqual(policy.changed_paths(b""), [])
+        self.assertEqual(policy.changed_paths(b"docs/caf\xe9.md\0"), ["docs/caf\udce9.md"])
+
+    def test_a_renamed_protected_file_keeps_its_level_floor(self):
+        # `git diff --no-renames` names the rename's source: the register moved away still sets level 3
+        renamed = [policy.PERSISTED_FORMAT, "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/Formats.scala"]
+        self.assertEqual(policy.level_floor(renamed), 3)
+        with self.assertRaisesRegex(policy.PolicyError, "level 1 is below 3"):
+            policy.check_body(self.pr(1), renamed)
+        self.assertEqual(policy.check_body(self.pr(1, body=body_of(3, "None", "None")), renamed), 3)
+
+    def test_the_command_line_refuses_a_short_list_and_checks_a_complete_one(self):
+        # A pull request of 3,001 files whose 3,001st is the storage format manifest: a list without it is refused;
+        # the complete list makes it a storage format change, which this title is not.
+        script = Path(__file__).resolve().parents[1] / "pr_policy.py"
+        listed = [f"node/src/main/scala/A{i}.scala" for i in range(3000)]
+        with tempfile.TemporaryDirectory() as tmp:
+            event = Path(tmp) / "event.json"
+            event.write_text(json.dumps({"repository": {"id": 42}, "pull_request": self.pr(3001)}), encoding="utf-8")
+            def run(paths):
+                files = Path(tmp) / "files.nul"
+                files.write_bytes(b"".join(f.encode() + b"\0" for f in paths))
+                argv = [sys.executable, str(script), "--event", str(event), "--repository", "example/scarab",
+                        "--repository-id", "42", "--files-nul", str(files)]
+                return subprocess.run(argv, capture_output=True, text=True, env={})
+            short = run(listed)
+            self.assertNotEqual(short.returncode, 0)
+            self.assertIn("changes 3001 files, but the policy read 3000 changed paths", short.stderr)
+            complete = run(listed + [fmt.MANIFEST])
+            self.assertNotEqual(complete.returncode, 0)
+            self.assertIn("a storage format change (FMT-1) needs a title", complete.stderr)
+            plain = run(listed + ["node/src/main/scala/B.scala"])
+            self.assertEqual(plain.returncode, 0, plain.stderr)
+            self.assertEqual(json.loads(plain.stdout)["level"], 1)
+
+
+class PathsStepTests(unittest.TestCase):
+    """The workflow's step reads the paths from git at the event's SHAs, and fails the job when it cannot."""
+
+    def run_step(self, tmp, head=HEAD, base=BASE, fail=""):
+        bin_dir = Path(tmp) / "bin"
+        bin_dir.mkdir(exist_ok=True)
+        log = Path(tmp) / "calls.log"
+        (bin_dir / "gh").write_text(
+            "#!/bin/bash\n" f'echo "gh $*" >> "{log}"\n' f'[ "{fail}" = gh ] && exit 1\n' f'echo {MERGE_BASE}\n',
+            encoding="utf-8")
+        (bin_dir / "git").write_text(
+            "#!/bin/bash\n" f'echo "git $* GIT_CONFIG_KEY_0=$GIT_CONFIG_KEY_0" >> "{log}"\n'
+            'case " $* " in\n'
+            f'  *" fetch "*) [ "{fail}" = fetch ] && exit 128; exit 0;;\n'
+            f'  *" diff "*) [ "{fail}" = diff ] && exit 128; printf \'%s\\0\' docs/a.md "odd\nname.md"; exit 0;;\n'
+            "  *) exit 0;;\nesac\n", encoding="utf-8")
+        for tool in ("gh", "git"):
+            (bin_dir / tool).chmod(0o755)
+        step = paths_step()
+        env = {"PATH": f"{bin_dir}:/usr/bin:/bin", "RUNNER_TEMP": tmp, "GITHUB_REPOSITORY": "example/scarab",
+               "GH_TOKEN": "token", "HEAD_SHA": head, "BASE_SHA": base}
+        run = subprocess.run(["bash", "-e", "-c", step["run"]], capture_output=True, text=True, env=env)
+        return run, (log.read_text(encoding="utf-8") if log.exists() else ""), Path(tmp) / "files.nul"
+
+    def test_the_step_takes_its_shas_from_the_event_and_no_expression_reaches_the_script(self):
+        step = paths_step()
+        self.assertEqual(step["env"]["HEAD_SHA"], "${{ github.event.pull_request.head.sha }}")
+        self.assertEqual(step["env"]["BASE_SHA"], "${{ github.event.pull_request.base.sha }}")
+        self.assertNotIn("${{", step["run"])
+        self.assertNotIn("pulls/", step["run"])
+
+    def test_the_step_lists_the_paths_of_the_event_commits_nul_delimited(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run, calls, files = self.run_step(tmp)
+            self.assertEqual(run.returncode, 0, run.stderr)
+            self.assertIn(f"gh api repos/example/scarab/compare/{BASE}...{HEAD}", calls)
+            fetch = next(line for line in calls.splitlines() if " fetch " in line)
+            self.assertIn("--depth=1 --filter=blob:none https://github.com/example/scarab.git", fetch)
+            self.assertIn(f"{HEAD} {MERGE_BASE}", fetch)
+            self.assertIn("GIT_CONFIG_KEY_0=http.https://github.com/.extraheader", fetch)
+            self.assertNotIn("token", fetch.split("GIT_CONFIG_KEY_0")[0])
+            diff = next(line for line in calls.splitlines() if " diff " in line)
+            self.assertIn(f"diff --name-only --no-renames -z {MERGE_BASE} {HEAD}", diff)
+            self.assertEqual(policy.changed_paths(files.read_bytes()), ["docs/a.md", "odd\nname.md"])
+
+    def test_a_failed_read_fails_the_job(self):
+        for fail in ["gh", "fetch", "diff"]:
+            with self.subTest(fail=fail), tempfile.TemporaryDirectory() as tmp:
+                run, _, _ = self.run_step(tmp, fail=fail)
+                self.assertNotEqual(run.returncode, 0)
+        for head, base in [("HEAD", BASE), (HEAD, "main"), ("", BASE)]:
+            with self.subTest(head=head, base=base), tempfile.TemporaryDirectory() as tmp:
+                run, calls, _ = self.run_step(tmp, head=head, base=base)
+                self.assertNotEqual(run.returncode, 0)
+                self.assertEqual(calls, "")
 
 
 if __name__ == "__main__":
