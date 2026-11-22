@@ -1170,11 +1170,11 @@ class MirrorAnswersSuite extends FunSuite:
   test("a Byron state has no new-epoch state to answer") {
     val (block, state) = states.find(_._1.era == Era.Byron).getOrElse(fail("no Byron block"))
     assertEquals(
-      MirrorAnswers.newEpochState(view(block, state)).left.toOption,
+      MirrorAnswers.newEpochState(view(block, state), StateLayout.Node11_1).left.toOption,
       Some(Unanswered.Unsupported)
     )
     assertEquals(
-      MirrorAnswers.epochState(view(block, state)).left.toOption,
+      MirrorAnswers.epochState(view(block, state), StateLayout.Node11_1).left.toOption,
       Some(Unanswered.Unsupported)
     )
   }
