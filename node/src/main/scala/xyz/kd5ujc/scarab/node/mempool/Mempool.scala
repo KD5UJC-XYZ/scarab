@@ -26,6 +26,7 @@ import xyz.kd5ujc.scarab.node.{Fatal, StorageBoundary}
 import xyz.kd5ujc.scarab.node.assertions.{Assertions, Property}
 import xyz.kd5ujc.scarab.protocol.{Era, TxSubmission2}
 import xyz.kd5ujc.scarab.storage.UtxoStore
+import xyz.kd5ujc.scarab.ledger.era.rules.DijkstraRuleDefect
 
 import Capacity.fits
 
@@ -223,6 +224,23 @@ object Mempool:
         Some(NetworkError.ServingDefect(Protocols.TxSubmission2, cause))
       case Rejection.TimedOut(timeout) =>
         Some(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(timeout)))
+      // no verdict on a Dijkstra transaction where a provider failed on it (a script the evaluator
+      // cannot judge, a BLS key the library cannot verify) or the node's two readings of it
+      // disagree: the connection closes as for the flat eras', not charged; the node's other
+      // limits and defects (an update the record cannot hold, #826; the state's own defects) leave
+      // the peer's connection as it is, the transaction not held
+      case Rejection.DijkstraUnjudged(_, cause) =>
+        cause match
+          case DijkstraUnjudged.Rules(
+                DijkstraRuleDefect.Unavailable(_) | DijkstraRuleDefect.Pool(_)
+              ) | DijkstraUnjudged.Projection(_) =>
+            Some(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(cause)))
+          case DijkstraUnjudged.Rules(
+                DijkstraRuleDefect.UtxoState(_) | DijkstraRuleDefect.Ledger(_) |
+                DijkstraRuleDefect.Gov(_)
+              ) | DijkstraUnjudged.UtxoState(_) | DijkstraUnjudged.Parameters(_) |
+              DijkstraUnjudged.Proposals(_) | DijkstraUnjudged.Unstorable(_) =>
+            None
       case _ => None
 
   /** The refusal of a validation that took `took` in the era of the pool's ledger, `ledger`, if the
@@ -331,15 +349,17 @@ object Mempool:
         Mempool.Lines((-remote).max(0).toInt, (-common).max(0).toInt)
       )
 
+      private val build = env.globals.referenceBuild
+
       def add(raw: Bytes, source: Source)(using Raise[F, StorageError]) =
         // a transaction of the pool's own era, whichever it is when its turn comes
         added(
-          s => MempoolState.read(Submission(s.era.fold(Era.Conway.index)(_.index), raw)),
+          s => MempoolState.read(Submission(s.era.fold(Era.Conway.index)(_.index), raw), build),
           source
         ).map(_.leftMap(_.rejection))
 
       def submit(submission: Submission, source: Source)(using Raise[F, StorageError]) =
-        added(_ => MempoolState.read(submission), source)
+        added(_ => MempoolState.read(submission, build), source)
 
       def submitRead(read: MempoolState.Read, source: Source)(using Raise[F, StorageError]) =
         added(_ => Right(read), source)
@@ -381,7 +401,7 @@ object Mempool:
           held <- state.get
           // the submission as read in the era it names: its id and inputs, whatever its era
           submission = of(held)
-          read = submission.toOption.collect { case MempoolState.Read.Decoded(_, transaction) =>
+          read = submission.toOption.collect { case MempoolState.Read.Decoded(transaction) =>
             transaction
           }
           current <- read match
@@ -390,14 +410,14 @@ object Mempool:
                 _ => F.pure(held),
                 current =>
                   UtxoStore
-                    .complete(utxoStore, current.utxo, UtxoStore.readSet(Some(transaction.tx)))
+                    .complete(utxoStore, current.utxo, MempoolState.readSet(Some(transaction)))
                     .map(u => held.copy(current = Right(current.withUtxo(u))))
               )
             case None => F.pure(held)
           activeEnv <- readEnv
           measured <- F.blocking(submission.flatMap(current.measure(_, activeEnv)))
           out <- measured.fold(
-            answer(current, read.map(_.parts.id), _),
+            answer(current, read.map(_.id), _),
             validated(current, _, activeEnv, source)
           )
         yield out
@@ -445,7 +465,8 @@ object Mempool:
                   MempoolState.Tried.Done(
                     Left(
                       failure @ (Rejection.RulesDefect(_) | Rejection.InputDefect(_) | Rejection
-                        .Ledger(_: LedgerFailure.Unavailable | _: LedgerFailure.Unverifiable))
+                        .Ledger(_: LedgerFailure.Unavailable | _: LedgerFailure.Unverifiable) |
+                      Rejection.DijkstraUnjudged(_, _))
                     )
                   ),
                   _
@@ -536,7 +557,7 @@ object Mempool:
           current <- state.get
           completed <- target.ledger.traverse(l =>
             UtxoStore
-              .complete(utxoStore, l.utxo, UtxoStore.readSet(current.entries.map(_.tx)))
+              .complete(utxoStore, l.utxo, MempoolState.readSet(current.entries.map(_.held.in)))
               .map(l.withUtxo)
           )
           activeEnv <- readEnv
@@ -579,7 +600,7 @@ object Mempool:
                 for
                   completed <- current.base.traverse(l =>
                     UtxoStore
-                      .complete(utxoStore, l.utxo, UtxoStore.readSet(kept.map(_.tx)))
+                      .complete(utxoStore, l.utxo, MempoolState.readSet(kept.map(_.held.in)))
                       .map(l.withUtxo)
                   )
                   activeEnv <- readEnv
@@ -618,11 +639,11 @@ object Mempool:
         // the transaction as it is held now, in the era of the pool's ledger
         def body(id: Bytes) =
           state.get.map(_.entries.find(_.id == id).map(e => TxSubmission2.EraTx(e.era, e.raw)))
-        def reader = RelayedTransactions
+        def reader = RelayedTransactions.of(build)
 
       def sink(fatal: Fatal => F[Unit]): TxSubmissionServer.Sink[F] =
         new TxSubmissionServer.Sink[F]:
-          def reader = RelayedTransactions
+          def reader = RelayedTransactions.of(build)
           def known(id: Bytes) =
             // NodeKernel's mempoolHasTx checks the current snapshot only. TxSubmission2 owns
             // its in-flight IDs; a previous rejection or adoption must not suppress a re-offer.
@@ -644,7 +665,8 @@ object Mempool:
               StorageBoundary
                 .run(fatal)(
                   added(
-                    _ => MempoolState.read(Submission(original.era.index, original.original)),
+                    _ =>
+                      MempoolState.read(Submission(original.era.index, original.original), build),
                     Source.Remote
                   )
                 )

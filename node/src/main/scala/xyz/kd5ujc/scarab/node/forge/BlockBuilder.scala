@@ -18,7 +18,7 @@ import cats.Id
 import xyz.kd5ujc.scarab.protocol.Era
 import scala.annotation.tailrec
 import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.TxMeasure
-import xyz.kd5ujc.scarab.node.mempool.{Capacity, EbMeasure, Entry, MempoolLedger}
+import xyz.kd5ujc.scarab.node.mempool.{Capacity, EbMeasure, Entry, Held, MempoolLedger}
 import xyz.kd5ujc.scarab.ledger.{EbAnnouncement, ForgeDefect}
 import xyz.kd5ujc.scarab.protocol.LeiosFetch
 import cats.data.NonEmptyVector
@@ -227,8 +227,7 @@ object BlockBuilder:
       case Nil => acc
       // a Conway block takes Conway transactions: the pool's ledger is of the era of the slot
       // after the tip, and the forger forges only on a Conway tip, so the pool it reads is Conway's
-      case entry :: more if entry.era != Era.Conway => go(more, acc)
-      case entry :: more =>
+      case (entry @ Entry(Held.Flat(Era.Conway, _, tx), _, _, _)) :: more =>
         val env = TxEnv(
           slot,
           epoch,
@@ -246,7 +245,7 @@ object BlockBuilder:
           case None => Right(None)
           case Some(p) =>
             acc.state
-              .reapply(entry.tx, env, rules)
+              .reapply(tx, env, rules)
               .fold(
                 {
                   // no verdict on the transaction (evaluator, crypto provider) or a quantity of the
@@ -267,6 +266,8 @@ object BlockBuilder:
             if used.fits(capacity) then
               go(more, acc.copy(state = next, chosen = acc.chosen :+ (entry -> p), used = used))
             else acc
+      // the transactions of the other eras, which a pool behind or past the crossing holds
+      case Entry(Held.Flat(_, _, _) | Held.InDijkstra(_), _, _, _) :: more => go(more, acc)
     val done = go(candidates.toList, Acc(ticked, Vector.empty, Vector.empty, TxMeasure.zero))
     Selection(done.chosen, done.withheld)
 

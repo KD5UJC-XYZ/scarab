@@ -13,7 +13,11 @@ import xyz.kd5ujc.scarab.plutus.{ScriptDecoder, ScriptEvaluator}
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node}
 import xyz.kd5ujc.scarab.node.read.ConwayView
-import xyz.kd5ujc.scarab.protocol.Era
+import xyz.kd5ujc.scarab.protocol.{Era, ReferenceBuild}
+import cats.data.NonEmptyChain
+import xyz.kd5ujc.scarab.ledger.era.EraTxError
+import xyz.kd5ujc.scarab.ledger.era.rules.DijkstraMempoolPredFailure
+import xyz.kd5ujc.scarab.ledger.state.Dijkstra
 import xyz.kd5ujc.scarab.ledger.{Block, DetachedRecords, EpochGeometry, PosixClock}
 import xyz.kd5ujc.scarab.ledger.{
   Credential,
@@ -93,6 +97,18 @@ enum Rejection:
     */
   case TimedOut(timeout: MempoolTimeout)
 
+  /** Dijkstra's refusal of the transaction `id` (`DijkstraApplyTxError`, cardano-ledger 9df9f98c
+    * `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra.hs:88-89`): MEMPOOL's failures in the
+    * reference's order, or a measure's (`txMeasurePhase1`, `txMeasurePhase2`), each in the era's
+    * types.
+    */
+  case DijkstraRefused(id: Bytes, failures: NonEmptyChain[DijkstraMempoolPredFailure[Dijkstra]])
+
+  /** No verdict on a Dijkstra transaction, its id when it was read: the node's own limit or defect
+    * ([[DijkstraUnjudged]]), which no peer is charged for.
+    */
+  case DijkstraUnjudged(id: Option[Bytes], cause: xyz.kd5ujc.scarab.node.mempool.DijkstraUnjudged)
+
   def message: String = this match
     case Malformed(d)    => s"malformed transaction: ${d.message}"
     case AlreadyHeld(id) => s"tx ${id.hex.take(16)} is already in the mempool"
@@ -106,6 +122,10 @@ enum Rejection:
     case RulesDefect(t) => s"the ledger rules threw on the transaction: $t"
     case TooSlow(id, era, took) => MempoolProblem.TooSlow(took, era, id).message
     case TimedOut(timeout)      => timeout.message
+    case DijkstraRefused(id, fs) =>
+      s"tx ${id.hex.take(16)} is refused by Dijkstra's rules: ${fs.toChain.toVector.mkString("; ")}"
+    case DijkstraUnjudged(id, cause) =>
+      s"no verdict on ${id.fold("the transaction")(i => s"tx ${i.hex.take(16)}")}: $cause"
 
 object Rejection:
   extension (full: Full)
@@ -133,32 +153,60 @@ enum Source:
     */
   case Remote
 
-/** A held transaction of `era`, the era of the pool's ledger: its parts, with the flag of the
-  * verdict, and the transaction they make in that era. `ticket` grows with arrival order and is how
-  * peers are given each transaction once. `refScriptBytes` is the size of the reference scripts the
-  * transaction names (the union of its spent and reference inputs, each output once, as the
-  * ledger's `txNonDistinctRefScriptsSize`), measured against the state it was added to in Conway,
-  * and zero before (the measure of those eras has no such component, [[Capacity]]); LocalTxMonitor
-  * reports it. `validation` is how long its admission's timed validation took
+/** A held transaction, of the era of the pool's ledger: one of an era from Shelley to Conway, its
+  * parts with the flag of the verdict and the transaction they make in that era ([[Held.Flat]]), or
+  * one of Dijkstra with what it was validated with ([[Held.InDijkstra]]).
+  */
+enum Held:
+  case Flat(of: Era, parts: Block.Transaction, tx: Tx)
+  case InDijkstra(held: DijkstraAdmitted)
+
+  def era: Era = this match
+    case Flat(era, _, _) => era
+    case InDijkstra(_)   => Era.Dijkstra
+
+  /** The transaction as it was read, in its era. */
+  def in: InEra = this match
+    case Flat(era, parts, tx) => InEra.Flat(era, EraTx(parts, tx))
+    case InDijkstra(held)     => InEra.InDijkstra(held.read)
+
+/** A held transaction ([[Held]]). `ticket` grows with arrival order and is how peers are given each
+  * transaction once. `refScriptBytes` is the size of the reference scripts the transaction names
+  * (the union of its spent and reference inputs, each output once, as the ledger's
+  * `txNonDistinctRefScriptsSize`), measured against the state it was added to from Conway, and zero
+  * before (the measure of those eras has no such component, [[Capacity]]); LocalTxMonitor reports
+  * it. `validation` is how long its admission's timed validation took
   * ([[MempoolState.validationTime]]), which the reference records with each held transaction and
   * keeps when the pool is validated again (ouroboros-consensus 82ecba32 `Mempool/Impl/Common.hs`
   * 368-376, 444-445); zero for a transaction held without a clock ([[MempoolState.add]]).
   */
 final case class Entry(
-    era: Era,
-    parts: Block.Transaction,
-    tx: Tx,
+    held: Held,
     ticket: Long,
-    refScriptBytes: Long = 0L,
-    validation: FiniteDuration = Duration.Zero
+    refScriptBytes: Long,
+    validation: FiniteDuration
 ):
-  /** The id: the hash of the body. */
-  def id: Bytes = parts.id
+  /** The era of the pool's ledger it is held in. */
+  def era: Era = held.era
 
-  /** The transaction as the reference holds, lists and relays it ([[EraInjection.envelope]]). */
-  lazy val raw: Bytes = EraInjection.envelope(parts, era)
+  /** The id: the hash of the body. */
+  def id: Bytes = held.in.id
+
+  /** The transaction as the reference holds, lists and relays it ([[InEra.raw]]). */
+  lazy val raw: Bytes = held.in.raw
 
   def size: Int = raw.size
+
+object Entry:
+  /** A held transaction of an era from Shelley to Conway. */
+  def apply(
+      era: Era,
+      parts: Block.Transaction,
+      tx: Tx,
+      ticket: Long,
+      refScriptBytes: Long = 0L,
+      validation: FiniteDuration = Duration.Zero
+  ): Entry = Entry(Held.Flat(era, parts, tx), ticket, refScriptBytes, validation)
 
 /** What the transaction rules need besides the ledger state. `clock` is the slot to time
   * translation of the era history at the chain tip the pool is judged against, with its forecast
@@ -298,7 +346,7 @@ final case class MempoolState(
       env: MempoolEnv,
       source: Source
   ): Either[Rejection, (MempoolState, Entry)] =
-    MempoolState.read(submission).flatMap(add(_, env, source))
+    MempoolState.read(submission, env.globals.referenceBuild).flatMap(add(_, env, source))
 
   /** [[add]] of a submission already read in its era ([[MempoolState.read]]), with no clock: the
     * entry records no validation time.
@@ -342,8 +390,7 @@ final case class MempoolState(
       phase1 <- MempoolState.judging(
         for
           phase1 <- matched match
-            case MempoolState.Measured.Matched(_, in) =>
-              Capacity.phase1(in.tx, ledger).leftMap(Rejection.Limits(in.parts.id, _))
+            case MempoolState.Measured.Matched(_, in) => MempoolState.phase1(ledger, in)
             // `txMeasurePhase1` of a transaction of another era: `Measure.zero`
             // (`HardFork/Combinator/Mempool.hs` 376, ouroboros-consensus 82ecba32)
             case MempoolState.Measured.Unmatched(_, _) => Right(TxMeasure.zero)
@@ -383,10 +430,7 @@ final case class MempoolState(
     MempoolState.judging(
       for
         refScriptBytes <- measured.matched match
-          case MempoolState.Measured.Matched(_, in) =>
-            Capacity
-              .phase2(measured.ledger, in.tx)
-              .leftMap(f => Rejection.Ledger(LedgerFailure.Rejected(in.parts.id, f)))
+          case MempoolState.Measured.Matched(_, in)  => MempoolState.phase2(measured.ledger, in)
           case MempoolState.Measured.Unmatched(_, _) => Right(0L)
         _ <- room(measured.phase1.copy(refScriptsBytes = refScriptBytes))
       yield refScriptBytes
@@ -408,39 +452,22 @@ final case class MempoolState(
     measured.matched match
       case MempoolState.Measured.Unmatched(mismatch, _) => Left(mismatch)
       case MempoolState.Measured.Matched(_, in) =>
-        val id = in.parts.id
         MempoolState.judging(
           for
             _ <- Either.cond(
-              measured.ledger.era != Era.Conway || !contains(id),
+              measured.ledger.era != Era.Conway || !contains(in.id),
               (),
-              Rejection.AlreadyHeld(id)
+              Rejection.AlreadyHeld(in.id)
             )
-            admitted <- measured.ledger
-              .admit(in.tx, env.txEnv(tipSlot, measured.base), env.rules, source)
-              .bimap(
-                Rejection.Ledger(_),
-                (next, held) =>
-                  MempoolState.Admitted(measured.ledger.era, in, refScriptBytes, next, held)
-              )
+            admitted <- MempoolState
+              .admit(measured.ledger, in, env, tipSlot, measured.base, source)
+              .map((next, held) => MempoolState.Admitted(next, held, refScriptBytes))
           yield admitted
         )
 
   /** The pool holding an admitted transaction whose validation took `took`. */
   def hold(admitted: MempoolState.Admitted, took: FiniteDuration): (MempoolState, Entry) =
-    import admitted.{held, in, refScriptBytes}
-    // The flag is neither hashed nor signed (the id is the hash of the body alone), so the
-    // transaction is relayed with its other parts as received and the flag of the verdict, as
-    // the reference relays the transaction it rebuilt.
-    val entry =
-      Entry(
-        admitted.era,
-        in.parts.copy(isValid = held.isValid),
-        held,
-        nextTicket,
-        refScriptBytes,
-        took
-      )
+    val entry = Entry(admitted.held, nextTicket, admitted.refScriptBytes, took)
     (
       copy(
         current = Right(admitted.next),
@@ -561,6 +588,18 @@ object MempoolState:
   def refScriptBytes(ledger: MempoolLedger, tx: Tx): Long =
     RefScripts.refScriptsSize(ledger.utxo, tx.body)
 
+  /** The inputs whose stored outputs the rules of `txs` read, the pool fetching them from the UTxO
+    * store as the block path does: of a flat transaction its spent, reference and collateral inputs
+    * ([[xyz.kd5ujc.scarab.storage.UtxoStore.readSet]]); of a Dijkstra one every level's
+    * ([[DijkstraLedger.readSet]]).
+    */
+  def readSet(txs: Iterable[InEra]): Vector[xyz.kd5ujc.scarab.ledger.TxIn] =
+    val (flat, dijkstra) = txs.toVector.partitionMap {
+      case InEra.Flat(_, t)       => Left(t.tx)
+      case InEra.InDijkstra(read) => Right(read)
+    }
+    xyz.kd5ujc.scarab.storage.UtxoStore.readSet(flat) ++ DijkstraLedger.readSet(dijkstra)
+
   def empty(
       ledger: Either[ConwayView.Unavailable, PoolLedger],
       tipSlot: BigInt,
@@ -569,28 +608,32 @@ object MempoolState:
   ): MempoolState =
     MempoolState(ledger, tipSlot, ledger, Vector.empty, 0L, 1L, capacityOverride, tipHash)
 
-  /** A submission as read before the ledger is consulted: a transaction of a Shelley-based era up
-    * to Conway, decoded in that era, or the index of an era whose transactions the pool does not
+  /** A submission as read before the ledger is consulted: a transaction of a Shelley-based era,
+    * decoded in that era ([[InEra]]), or the index of an era whose transactions the pool does not
     * take, which is refused with the era mismatch: Byron, whose payload its decoder has read whole,
-    * Dijkstra, whose transaction is not read, or no era of the combinator's list.
+    * Dijkstra outside the Leios build, whose transaction is not read, or no era of the combinator's
+    * list.
     */
   enum Read:
-    case Decoded(era: Era, transaction: EraTx)
+    case Decoded(transaction: InEra)
     case Foreign(index: Int)
 
-  /** The submission read in the era it names ([[Read]]): a transaction of an era from Shelley to
-    * Conway by that era's decoders ([[parseIn]]), and Byron's `MempoolPayload` whole by the decoder
-    * of its kind, as the reference's `decodeByronGenTx` reads it
+  /** The submission read in the era it names under `build` ([[Read]]): a transaction of an era from
+    * Shelley to Conway by that era's decoders ([[parseIn]]), Dijkstra's by its mempool decoder in
+    * the Leios build (`decodeDijkstraTopTx`, [[DijkstraRead.submitted]]), and Byron's
+    * `MempoolPayload` whole by the decoder of its kind, as the reference's `decodeByronGenTx` reads
+    * it
     * (`ouroboros-consensus-cardano/src/byron/Ouroboros/Consensus/Byron/Ledger/Mempool.hs:338-339`,
     * ouroboros-consensus 82ecba32; [[ByronTransport.mempoolPayload]]), a payload it refuses being
-    * malformed. A Dijkstra transaction is not read.
+    * malformed. The release builds do not read a Dijkstra transaction: their node never enters the
+    * era (REF-3).
     */
-  def read(submission: Submission): Either[Rejection, Read] =
+  def read(submission: Submission, build: ReferenceBuild): Either[Rejection, Read] =
     Era.fromIndex(BigInt(submission.era)) match
       case Some(
             era @ (Era.Shelley | Era.Allegra | Era.Mary | Era.Alonzo | Era.Babbage | Era.Conway)
           ) =>
-        parseIn(submission.raw, era).map(p => Read.Decoded(era, EraTx(p.parts, p.tx)))
+        parseIn(submission.raw, era).map(p => Read.Decoded(InEra.Flat(era, EraTx(p.parts, p.tx))))
       case Some(Era.Byron) =>
         decoding(
           ByronTransport
@@ -600,22 +643,96 @@ object MempoolState:
               _ => Read.Foreign(submission.era)
             )
         )
-      case Some(Era.Dijkstra) | None => Right(Read.Foreign(submission.era))
+      case Some(Era.Dijkstra) =>
+        build match
+          case ReferenceBuild.LeiosB004fe0c =>
+            decoding(
+              DijkstraRead
+                .submitted(submission.raw)
+                .bimap(dijkstraUnread, r => Read.Decoded(InEra.InDijkstra(r)))
+            )
+          case ReferenceBuild.Release11_1 | ReferenceBuild.Release11_2 =>
+            Right(Read.Foreign(submission.era))
+      case None => Right(Read.Foreign(submission.era))
+
+  /** Why a Dijkstra transaction is not read, by whose the failure is, as a block's
+    * (`DijkstraBlockError.of`): the bytes', which the reference's decoder refuses too; or the
+    * node's own, whose readings disagree, which is no verdict.
+    */
+  private def dijkstraUnread(cause: EraTxError): Rejection = cause match
+    case EraTxError.Decode(e) => Rejection.Malformed(TransactionDecodeProblem.Ledger(e))
+    case EraTxError.NotInEra(field) =>
+      Rejection.Malformed(TransactionDecodeProblem.DijkstraField(field))
+    case EraTxError.ScriptsReadAgain | EraTxError.WitnessDataReadAgain | EraTxError.OtherLevel |
+        EraTxError.NoDelegatee | EraTxError.Vocab(_) | EraTxError.PParams(_) |
+        EraTxError.StoredOutputDiffers | EraTxError.TranslationReadBack(_) =>
+      Rejection.DijkstraUnjudged(None, DijkstraUnjudged.Projection(cause))
 
   /** The transaction read, in the ledger's era `to`, or the era mismatch. */
   private[mempool] def inject(
       read: Read,
       injection: EraInjection,
       to: Era
-  ): Either[Rejection, (Era, EraTx)] =
+  ): Either[Rejection, (Era, InEra)] =
     read match
       case Read.Foreign(index) => Left(Rejection.WrongEra(index, to))
-      case Read.Decoded(from, transaction) =>
+      case Read.Decoded(transaction) =>
         decoding(
           injection
-            .into(transaction, from, to)
-            .bimap(e => Rejection.WrongEra(e.index, to), from -> _)
+            .into(transaction, to)
+            .bimap(e => Rejection.WrongEra(e.index, to), transaction.era -> _)
         )
+
+  /** The first measure of `in` against `ledger` ([[Capacity.phase1]], [[DijkstraLedger.phase1]]): a
+    * transaction of another era than the ledger's is the era mismatch.
+    */
+  private def phase1(ledger: PoolLedger, in: InEra): Either[Rejection, TxMeasure] =
+    (ledger, in) match
+      case (flat: FlatLedger, InEra.Flat(_, t)) =>
+        Capacity.phase1(t.tx, flat).leftMap(Rejection.Limits(t.parts.id, _))
+      case (d: DijkstraLedger, InEra.InDijkstra(t)) => d.phase1(t)
+      case (_: FlatLedger, InEra.InDijkstra(_)) | (_: DijkstraLedger, InEra.Flat(_, _)) =>
+        Left(Rejection.WrongEra(in.era.index, ledger.era))
+
+  /** The second measure of `in` against `ledger` ([[Capacity.phase2]], [[DijkstraLedger.phase2]]).
+    */
+  private def phase2(ledger: PoolLedger, in: InEra): Either[Rejection, Long] =
+    (ledger, in) match
+      case (flat: FlatLedger, InEra.Flat(_, t)) =>
+        Capacity
+          .phase2(flat, t.tx)
+          .leftMap(f => Rejection.Ledger(LedgerFailure.Rejected(t.parts.id, f)))
+      case (d: DijkstraLedger, InEra.InDijkstra(t)) => d.phase2(t)
+      case (_: FlatLedger, InEra.InDijkstra(_)) | (_: DijkstraLedger, InEra.Flat(_, _)) =>
+        Left(Rejection.WrongEra(in.era.index, ledger.era))
+
+  /** `in` admitted from `source` by `ledger` 's rule, the pool's base `base` ticked to the
+    * successor of `tipSlot`, with the transaction as it is to be held. A flat transaction is held
+    * with its other parts as received and the flag of the verdict: the flag is neither hashed nor
+    * signed (the id is the hash of the body alone), as the reference relays the transaction it
+    * rebuilt.
+    */
+  private def admit(
+      ledger: PoolLedger,
+      in: InEra,
+      env: MempoolEnv,
+      tipSlot: BigInt,
+      base: PoolLedger,
+      source: Source
+  ): Either[Rejection, (PoolLedger, Held)] =
+    (ledger, in) match
+      case (flat: FlatLedger, InEra.Flat(era, t)) =>
+        flat
+          .admit(t.tx, env.txEnv(tipSlot, base), env.rules, source)
+          .bimap(
+            Rejection.Ledger(_),
+            (next, held) => next -> Held.Flat(era, t.parts.copy(isValid = held.isValid), held)
+          )
+      case (d: DijkstraLedger, InEra.InDijkstra(t)) =>
+        d.admit(t, DijkstraPoolEnv.of(env, tipSlot + 1), source)
+          .map((next, held) => next -> Held.InDijkstra(held))
+      case (_: FlatLedger, InEra.InDijkstra(_)) | (_: DijkstraLedger, InEra.Flat(_, _)) =>
+        Left(Rejection.WrongEra(in.era.index, ledger.era))
 
   /** A transaction past the steps of an admission before the timed one ([[MempoolState.measure]]):
     * the ledger and its base, the transaction in the ledger's era or the era mismatch the rules
@@ -632,12 +749,12 @@ object MempoolState:
 
     /** The era the transaction was submitted in and its id, when it was read. */
     def named: Option[(Era, Bytes)] = matched match
-      case Measured.Matched(submitted, in)  => Some(submitted -> in.parts.id)
+      case Measured.Matched(submitted, in)  => Some(submitted -> in.id)
       case Measured.Unmatched(_, submitted) => submitted
 
   object Measured:
     /** The transaction in the ledger's era, read in `submitted`. */
-    final case class Matched(submitted: Era, in: EraTx)
+    final case class Matched(submitted: Era, in: InEra)
 
     /** A transaction that does not reach the ledger's era, where the selected build measures it as
       * nothing and the rules refuse it ([[EraInjection.Mismatch.InRules]]); `submitted` is the era
@@ -647,19 +764,13 @@ object MempoolState:
 
   /** The era a submission was read in and its id, when the pool reads transactions of that era. */
   private def named(read: Read): Option[(Era, Bytes)] = read match
-    case Read.Decoded(era, transaction) => Some(era -> transaction.parts.id)
-    case Read.Foreign(_)                => None
+    case Read.Decoded(transaction) => Some(transaction.era -> transaction.id)
+    case Read.Foreign(_)           => None
 
-  /** A transaction the rules admit, in the ledger's era `era`: the reference-script bytes, the
-    * ledger after it and the transaction as held.
+  /** A transaction the rules admit: the ledger after it, the transaction as held and its
+    * reference-script bytes.
     */
-  final case class Admitted(
-      era: Era,
-      in: EraTx,
-      refScriptBytes: Long,
-      next: PoolLedger,
-      held: Tx
-  )
+  final case class Admitted(next: PoolLedger, held: Held, refScriptBytes: Long)
 
   /** What the timed step of an admission gives ([[MempoolState.tryAdd]]), the reference's
     * `TriedToAddTx` (ouroboros-consensus 82ecba32 `Mempool/Update.hs` 133-143): the transaction
@@ -683,29 +794,73 @@ object MempoolState:
       env: MempoolEnv,
       slot: BigInt
   ): Either[Rejection, (PoolLedger, Entry)] =
-    val txEnv = env.txEnv(slot, ledger)
-    if entry.era == ledger.era then
-      current.reapply(entry.tx, txEnv, env.rules).bimap(Rejection.Ledger(_), _ -> entry)
-    else
-      for
-        in <- decoding(
-          env.injection
-            .into(EraTx(entry.parts, entry.tx), entry.era, ledger.era)
-            .leftMap(e => Rejection.WrongEra(e.index, ledger.era))
-        )
-        moved = entry.copy(era = ledger.era, parts = in.parts, tx = in.tx)
-        out <- env.injection.revalidation match
-          case EraInjection.Revalidation.Reapply =>
-            current.reapply(in.tx, txEnv, env.rules).bimap(Rejection.Ledger(_), _ -> moved)
-          case EraInjection.Revalidation.Apply =>
-            current
-              .admit(in.tx, txEnv, env.rules, Source.Remote)
-              .bimap(
-                Rejection.Ledger(_),
-                (next, held) =>
-                  next -> moved.copy(parts = in.parts.copy(isValid = held.isValid), tx = held)
-              )
-      yield out
+    (current, entry.held) match
+      case (flat: FlatLedger, Held.Flat(era, _, tx)) if era == ledger.era =>
+        flat
+          .reapply(tx, env.txEnv(slot, ledger), env.rules)
+          .bimap(Rejection.Ledger(_), _ -> entry)
+      case (d: DijkstraLedger, Held.InDijkstra(held)) =>
+        d.reapply(held, DijkstraPoolEnv.of(env, slot + 1)).map(_ -> entry)
+      case _ =>
+        for
+          in <- decoding(
+            env.injection
+              .into(entry.held.in, ledger.era)
+              .leftMap(e => Rejection.WrongEra(e.index, ledger.era))
+          )
+          out <- env.injection.revalidation match
+            case EraInjection.Revalidation.Reapply =>
+              (current, in) match
+                case (flat: FlatLedger, InEra.Flat(era, t)) =>
+                  flat
+                    .reapply(t.tx, env.txEnv(slot, ledger), env.rules)
+                    .bimap(
+                      Rejection.Ledger(_),
+                      _ -> entry.copy(held = Held.Flat(era, t.parts, t.tx))
+                    )
+                // a transaction translated into Dijkstra: none is, [[EraInjection.Translate]]
+                // stops short of it
+                case (_, _) => Left(Rejection.WrongEra(entry.era.index, ledger.era))
+            case EraInjection.Revalidation.Apply =>
+              admit(current, in, env, slot, ledger, Source.Remote)
+                .map((next, held) => next -> entry.copy(held = held))
+        yield out
+
+  /** The held Dijkstra transactions of `entries` that still apply on `state`, the ledger state
+    * ticked to the slot being forged, in order, each reapplied at that slot (`env`) on the state
+    * the ones before it left (`getSnapshotFor`, ouroboros-consensus 2416493b
+    * `ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Mempool/API.hs:187-203`,
+    * `computeSnapshot`, `Mempool/Query.hs:138-155`, with `reapplyTx`), and those the rules have no
+    * verdict on, which the forger withdraws from the pool, as it withdraws a Conway one (issue
+    * 584). A refused transaction is left out of the snapshot and stays in the pool, which its next
+    * revalidation drops. The reference keeps the pool's own snapshot when the slot and the tip are
+    * the pool's (`Query.hs:91-128`, its `cheapTick`); this always revalidates.
+    */
+  def dijkstraSnapshot(
+      entries: Vector[Entry],
+      state: DijkstraState,
+      env: DijkstraPoolEnv
+  ): (Vector[(Entry, DijkstraAdmitted)], Vector[(Entry, Rejection)]) =
+    final case class Acc(
+        state: DijkstraState,
+        kept: Vector[(Entry, DijkstraAdmitted)],
+        withheld: Vector[(Entry, Rejection)]
+    )
+    val done = entries.foldLeft(Acc(state, Vector.empty, Vector.empty)) { (acc, entry) =>
+      entry.held match
+        case Held.InDijkstra(admitted) =>
+          judging(acc.state.reapply(admitted, env)) match
+            case Right(next) => acc.copy(state = next, kept = acc.kept :+ (entry -> admitted))
+            case Left(
+                  noVerdict @ (Rejection.DijkstraUnjudged(_, _) | Rejection.RulesDefect(_))
+                ) =>
+              acc.copy(withheld = acc.withheld :+ (entry -> noVerdict))
+            case Left(_) => acc
+        // a Dijkstra block takes Dijkstra transactions: the pool's ledger is of the era of the slot
+        // after the tip, so a pool behind a crossing holds none yet
+        case Held.Flat(_, _, _) => acc
+    }
+    (done.kept, done.withheld)
 
   /** A submitted transaction is read as the reference's mempool reads it, with no budget but its
     * size (`unwrapCBORinCBOR (eraDecoder @era decCBOR)`, `Shelley/Ledger/Mempool.hs:261-266`,

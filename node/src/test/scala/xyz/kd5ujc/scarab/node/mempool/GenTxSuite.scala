@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.mempool
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
+
 import xyz.kd5ujc.scarab.network.recvPrefix
 import cats.effect.{IO, Resource}
 import cats.mtl.Handle
@@ -219,7 +221,7 @@ class GenTxSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaChe
     // a transaction that is `0`
     assertEquals(LocalSubmission.unwrap(hex("8200820000")), Right(Submission(0, hex("820000"))))
     assertEquals(
-      MempoolState.read(Submission(0, hex("820000"))),
+      MempoolState.read(Submission(0, hex("820000")), ReferenceBuild.Release11_2),
       Left(
         Rejection.Malformed(
           TransactionDecodeProblem.ByronPayload(
@@ -313,7 +315,9 @@ class GenTxSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaChe
             .accept(
               serverEnd,
               magic,
-              LocalSubmission.handler(mempool)(failure => IO(fail(s"unexpected fatal: $failure"))),
+              LocalSubmission.handler(mempool, ReferenceBuild.Release11_2)(failure =>
+                IO(fail(s"unexpected fatal: $failure"))
+              ),
               GenTx.reader,
               txMonitor = Some(LocalMonitor.source(mempool))
             )
@@ -418,7 +422,7 @@ class GenTxSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaChe
     * it.
     */
   private def malformed(era: Era, raw: Bytes): TransactionDecodeProblem =
-    MempoolState.read(Submission(era.index, raw)) match
+    MempoolState.read(Submission(era.index, raw), ReferenceBuild.Release11_2) match
       case Left(Rejection.Malformed(problem)) => problem
       case other                              => fail(s"not malformed in $era: $other")
 

@@ -10,7 +10,7 @@ import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.crypto.kes.Sum6KesSigning
 import xyz.kd5ujc.scarab.ledger.{ChainError, ForgeError, ForgeKeyProblem, NodeError, StorageError}
 import xyz.kd5ujc.scarab.node.Fatal
-import xyz.kd5ujc.scarab.node.mempool.Source
+import xyz.kd5ujc.scarab.node.mempool.{Held, Source}
 
 class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ForgeFixture:
   private def unreadable =
@@ -671,7 +671,13 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
         Vector(id)
       )
     }
-    val invalid = entry.copy(tx = parsed.tx.copy(body = parsed.tx.body.copy(fee = -1)))
+    val invalid = entry.copy(held =
+      Held.Flat(
+        xyz.kd5ujc.scarab.protocol.Era.Conway,
+        parsed.parts,
+        parsed.tx.copy(body = parsed.tx.body.copy(fee = -1))
+      )
+    )
     assertEquals(
       BlockBuilder.select(base, 1001, 1, geometry, globals, Vector(invalid), limit)(
         xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder,

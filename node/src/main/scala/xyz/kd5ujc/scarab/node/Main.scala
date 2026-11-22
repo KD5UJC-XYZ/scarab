@@ -22,7 +22,6 @@ import xyz.kd5ujc.scarab.ledger.{
   NativeLibraryError,
   NativeLibraryProblem,
   NodeError,
-  ChainError,
   StorageError
 }
 import cats.data.EitherT
@@ -87,6 +86,7 @@ import xyz.kd5ujc.scarab.network.{
 }
 import xyz.kd5ujc.scarab.node.forge.{
   BlockForgingState,
+  DijkstraSnapshots,
   ForgeEvent,
   ForgeEvents,
   Forger,
@@ -258,9 +258,12 @@ object Main extends IOApp:
                 IO.delay(raws.traverse(Block.decode(_, epochSlots)))
               )
               blocks <- decoded.fold(error => summon[Raise[IO, NodeError]].raise(error), IO.pure)
+              // a ranking block's own transactions; a certifying block's closure is not read here
+              // from the endorser-block store, so its held transactions leave as dropped (#54)
               adopted = blocks.flatMap {
-                case block: Block.Shelley => block.transactions.map(_.id)
-                case _                    => Vector.empty
+                case block: Block.Shelley  => block.transactions.map(_.id)
+                case block: Block.Dijkstra => block.block.transactions.map(_.id)
+                case _                     => Vector.empty
               }.toSet
               environment <- Ask[IO, MempoolEnv].ask
               ledger <- scheduling.compute
@@ -273,7 +276,7 @@ object Main extends IOApp:
                         environment.copy(geometry = chain.state.geometry(environment.geometry)),
                         transition
                       )
-                      .leftMap(ChainError.MempoolTick(chain.tipRef.fold(BigInt(0))(_.slot + 1), _))
+                      .leftMap(_.stop(chain.tipRef.fold(BigInt(0))(_.slot + 1)))
                   )
                 )
                 .flatMap(Raise[IO, NodeError].fromEither(_))
@@ -1942,7 +1945,7 @@ object Main extends IOApp:
               setup.praos.forks.transition(genesis.geometry.k)
             )
             .left
-            .map(ChainError.MempoolTick(tip.fold(BigInt(0))(_.slot + 1), _))
+            .map(_.stop(tip.fold(BigInt(0))(_.slot + 1)))
         })
         .flatMap(_.fold(fail, IO.pure))
       mempool <- Mempool.create[IO](
@@ -2505,7 +2508,7 @@ object Main extends IOApp:
       options.localSocket.fold(Resource.pure[IO, IO[DiffusionFailure]](IO.never))(path =>
         localServer(LocalSockets.jdk[IO], path, genesis.networkMagic, logged)(ends =>
           LocalBackends(
-            LocalSubmission.handler(mempool)(ends),
+            LocalSubmission.handler(mempool, globals.referenceBuild)(ends),
             Some(
               StateQuerySource[IO, MirrorState](ref, queryEnv, store, chainGate, run.layout.layout)
             ),
@@ -2527,6 +2530,8 @@ object Main extends IOApp:
           )
           forger <- {
             given TxClock[MirrorState] = chain.txClock
+            // the pool's snapshot of a Dijkstra slot (`getSnapshotFor`) is its held transactions
+            // revalidated on the ticked state of the slot (`DijkstraSnapshots.ofPool`);
             // the endorser blocks it forges go to the fetch's handlers and store; the node does not
             // adapt their capacity (`LeiosAdaptiveEndorsements`, #54)
             Forger.create[IO, MirrorState](
@@ -2541,6 +2546,13 @@ object Main extends IOApp:
               utxoStore = Some(store),
               source = Some(source),
               enabled = !options.startsNonProducing(setup.config.settings),
+              dijkstraSnapshots = Some(
+                DijkstraSnapshots.ofPool[IO](
+                  mempool,
+                  Some(store),
+                  chain.mempoolEnvironment.ask[MempoolEnv]
+                )
+              ),
               onForgedEb = leiosFetch.map(_.onForged)
             )
           }

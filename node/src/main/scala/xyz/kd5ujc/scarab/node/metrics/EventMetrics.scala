@@ -143,7 +143,8 @@ final class EventMetrics[F[_]: Sync] private (
           case Rejection.TimedOut(_)      => metrics.inc(txsMempoolTimeoutHard)
           case Rejection.Malformed(_) | Rejection.AlreadyHeld(_) | Rejection.Ledger(_) |
               Rejection.Limits(_, _) | Rejection.Full(_, _) | Rejection.WrongEra(_, _) |
-              Rejection.NoLedger(_) | Rejection.InputDefect(_) | Rejection.RulesDefect(_) =>
+              Rejection.NoLedger(_) | Rejection.InputDefect(_) | Rejection.RulesDefect(_) |
+              Rejection.DijkstraRefused(_, _) | Rejection.DijkstraUnjudged(_, _) =>
             Sync[F].unit)
       case MempoolEvent.Waiting(_, _, _)        => Sync[F].unit
       case MempoolEvent.WaitingForTime(_, _, _) => Sync[F].unit

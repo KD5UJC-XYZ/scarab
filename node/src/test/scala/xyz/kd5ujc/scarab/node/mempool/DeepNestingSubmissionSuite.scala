@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.mempool
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
+
 import xyz.kd5ujc.scarab.network.recvPrefix
 import xyz.kd5ujc.scarab.node.assertions.Assertions
 import xyz.kd5ujc.scarab.ledger.TestGeometry
@@ -99,7 +101,9 @@ class DeepNestingSubmissionSuite extends CatsEffectSuite:
             .accept(
               serverEnd,
               magic,
-              LocalSubmission.handler(mempool)(failure => IO(fail(s"unexpected fatal: $failure"))),
+              LocalSubmission.handler(mempool, ReferenceBuild.Release11_2)(failure =>
+                IO(fail(s"unexpected fatal: $failure"))
+              ),
               GenTx.reader
             )
             .map(_.message)

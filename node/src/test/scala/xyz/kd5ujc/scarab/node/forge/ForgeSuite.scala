@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.forge
 
+import xyz.kd5ujc.scarab.node.mempool.FlatEntries.tx
 import scala.annotation.unused
 import cats.effect.{IO, Ref}
 import cats.effect.testkit.TestControl

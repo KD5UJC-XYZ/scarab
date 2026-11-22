@@ -133,7 +133,7 @@ class ServiceStorageScopeSuite extends FailsOnUncaught:
       _ <- pendingFatal(report =>
         // [6, 24(h'tx')], as `cardano-cli` sends it
         LocalSubmission
-          .handler(pool)(report)
+          .handler(pool, ReferenceBuild.Release11_2)(report)
           .apply(Bytes(Vector(0x82, 0x06, 0xd8, 0x18).map(_.toByte) ++ TxKit.bstr(raw)))
       )
     yield ()

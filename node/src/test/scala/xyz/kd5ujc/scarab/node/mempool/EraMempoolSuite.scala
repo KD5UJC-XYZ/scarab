@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.mempool
 
+import xyz.kd5ujc.scarab.node.mempool.FlatEntries.tx
 import cats.effect.{IO, Ref}
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.ledger.StorageError
@@ -84,7 +85,7 @@ class EraMempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     */
   private val update: (Int, Vector[Byte]) = 6 -> (head(4, 2) ++ head(5, 0) ++ head(0, 5))
 
-  private def earlier[E <: EraTag](major: Int)(using pre: PreConway[E]): PoolLedger =
+  private def earlier[E <: EraTag](major: Int)(using pre: PreConway[E]): FlatLedger =
     given ShelleyBasedEra[E] = pre.era
     val nes = NativeRules.stateIn[E](major, (1 to 2).toVector.map(i => txIn(i) -> funds))
     EarlierLedger(pre, nes.es.ls, nes.es.chainAccount, nes.epoch.toBigInt)
@@ -92,7 +93,7 @@ class EraMempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   private def funds = out(alice.address(), 100 * ada)
 
   /** A ledger of `era` with two outputs of 100 ada for alice, at txIn(1) and txIn(2). */
-  private def ledger(era: Era): PoolLedger = era match
+  private def ledger(era: Era): FlatLedger = era match
     case Era.Shelley                           => earlier[Shelley](2)
     case Era.Allegra                           => earlier[Allegra](3)
     case Era.Mary                              => earlier[Mary](4)

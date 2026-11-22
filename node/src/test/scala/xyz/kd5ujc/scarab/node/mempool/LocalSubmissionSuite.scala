@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.node.mempool
 
 import xyz.kd5ujc.scarab.network.recvPrefix
-import xyz.kd5ujc.scarab.protocol.Era
+import xyz.kd5ujc.scarab.protocol.{Era, ReferenceBuild}
 import xyz.kd5ujc.scarab.node.assertions.Assertions
 import xyz.kd5ujc.scarab.node.mempool.LocalSubmission.message
 import cats.Functor
@@ -85,7 +85,9 @@ class LocalSubmissionSuite extends FailsOnUncaught:
                     bearer,
                     magic,
                     LocalSubmission
-                      .handler(mempool)(failure => IO(fail(s"unexpected fatal: $failure"))),
+                      .handler(mempool, ReferenceBuild.Release11_2)(failure =>
+                        IO(fail(s"unexpected fatal: $failure"))
+                      ),
                     GenTx.reader
                   )
                   .map(_.message)
@@ -164,7 +166,9 @@ class LocalSubmissionSuite extends FailsOnUncaught:
                     serverEnd,
                     magic,
                     LocalSubmission
-                      .handler(mempool)(failure => IO(fail(s"unexpected fatal: $failure"))),
+                      .handler(mempool, ReferenceBuild.Release11_2)(failure =>
+                        IO(fail(s"unexpected fatal: $failure"))
+                      ),
                     GenTx.reader
                   )
                   .map(_.message)
@@ -253,7 +257,9 @@ class LocalSubmissionSuite extends FailsOnUncaught:
                 bearer,
                 magic,
                 LocalSubmission
-                  .handler(mempool)(failure => IO(fail(s"unexpected fatal: $failure"))),
+                  .handler(mempool, ReferenceBuild.Release11_2)(failure =>
+                    IO(fail(s"unexpected fatal: $failure"))
+                  ),
                 GenTx.reader
               )
             )
@@ -365,7 +371,9 @@ class LocalSubmissionSuite extends FailsOnUncaught:
                           IO.pure(LocalSubmission.response(Refused(rejection, Some(Era.Conway))))
                         case false =>
                           LocalSubmission
-                            .handler(mempool)(fatal => IO(fail(s"unexpected fatal: $fatal")))(item)
+                            .handler(mempool, ReferenceBuild.Release11_2)(fatal =>
+                              IO(fail(s"unexpected fatal: $fatal"))
+                            )(item)
                       },
                     GenTx.reader
                   )
