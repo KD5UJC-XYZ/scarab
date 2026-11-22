@@ -32875,7 +32875,7 @@
    "evidence": [
     "ConwayLedgerChecksSuite"
    ],
-   "digest": "fef0ec7810e9ac1f"
+   "digest": "e687be50414f66fa"
   },
   "def ledger.era.rules.ShelleyLedgers.ledgersTransition": {
    "upstream": [
