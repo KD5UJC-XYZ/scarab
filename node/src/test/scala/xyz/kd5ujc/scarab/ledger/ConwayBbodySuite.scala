@@ -36,14 +36,12 @@ import xyz.kd5ujc.scarab.ledger.era.rules.{
   ConwayBbody,
   ConwayBbodyPredFailure,
   ConwayBlockRun,
-  ConwayUtxo,
   HeaderProtVerGate,
   InjectBbodyFailure,
   ShelleyBbody,
   ShelleyBbodyPredFailure,
   ShelleyBbodyState,
-  ShelleyLedgersPredFailure,
-  UtxoContext
+  ShelleyLedgersPredFailure
 }
 import xyz.kd5ujc.scarab.ledger.rules.{Bbody as FlatBbody, EraBlock, EraNes, Globals}
 import xyz.kd5ujc.scarab.ledger.state.{
@@ -56,7 +54,14 @@ import xyz.kd5ujc.scarab.ledger.state.{
   ShelleyBasedEra,
   UtxoTables
 }
-import xyz.kd5ujc.scarab.plutus.{ExUnits, PlutusLanguage, ScarabEvaluator}
+import xyz.kd5ujc.scarab.plutus.{
+  EvalRequest,
+  EvalResult,
+  ExUnits,
+  PlutusLanguage,
+  ScarabEvaluator,
+  ScriptEvaluator
+}
 import xyz.kd5ujc.scarab.node.{MirrorSteps, NodeSetup}
 import xyz.kd5ujc.scarab.protocol.{Era, ReferenceBuild, StateLayout}
 
@@ -161,14 +166,27 @@ class ConwayBbodySuite extends FunSuite:
         assertEquals(made, flatMade, s"$name: blocks made")
       case _ => assertEquals(era, flat, name)
 
-  /** The ticked Conway state of a block and what each side reads of the run. */
+  /** The ticked Conway state of a block and what each side reads of the run: the era BBODY's own
+    * failures as well as their flat form, and the scripts each side's evaluator ran.
+    */
   private final case class Judged(
       era: Verdict,
       flat: Verdict,
       ticked: NewEpochState[Conway],
       flatPlutus: Option[PlutusStats],
-      flatBbodyAdmits: Boolean
+      flatBbodyAdmits: Boolean,
+      eraFailures: Vector[BbodyPredFailure[Conway]],
+      eraEvaluated: Int,
+      flatEvaluated: Int
   )
+
+  /** The node's evaluator, counting the scripts it is asked to run. */
+  private final class Counting extends ScriptEvaluator[cats.Id]:
+    private val runs = new java.util.concurrent.atomic.AtomicInteger(0)
+    def evaluate(request: EvalRequest): EvalResult =
+      runs.incrementAndGet()
+      ScarabEvaluator.default.evaluate(request)
+    def count: Int = runs.get
 
   /** The state of `before` ticked to the block `raw` as `MirrorRules` ticks it (stamped with the
     * block's number, then the combinator's tick), changed by `change`; then the era BBODY and the
@@ -193,12 +211,13 @@ class ConwayBbodySuite extends FunSuite:
       setup.globals.copy(network = network.wire, referenceBuild = build),
       geometry
     )
+    val (flatEvaluator, eraEvaluator) = (Counting(), Counting())
     val ctx = EraBlock.Context(
       globals,
       setup.praos.forks.transition(geometry.k),
       MirrorStep.afterVotingOf(before.mirror),
       verdicts = Verdicts.Direct,
-      evaluator = ScarabEvaluator.default,
+      evaluator = flatEvaluator,
       decoder = ScarabEvaluator.defaultDecoder
     )
     val nes = MirrorStep.nesOf(before.mirror).getOrElse(fail(s"${before.name}: no Shelley state"))
@@ -254,40 +273,38 @@ class ConwayBbodySuite extends FunSuite:
       ticked.bcur
     )
     val clock = PosixClock.total(geometry)
-    val context = UtxoContext[Conway](
-      network,
-      BigInt(geometry.systemStart.toEpochMilli),
-      Horizon(
-        cats.data.NonEmptyVector.one(
-          Horizon.Era(
-            Horizon.Edge(0, 0, 0),
-            None,
-            Horizon.Params(
-              geometry.epochLength,
-              geometry.slotLengthMillis,
-              geometry.stabilityWindow.toBigInt,
-              geometry.stabilityWindow.toBigInt
+    // the network, the validation policy and the build's injection are the run's own, from the
+    // globals; the system start and the epoch information of one era from the cluster's start
+    val judged = ConwayBlockRun
+      .bbody(
+        globals,
+        BbodyEnv[Conway](pp, ticked.es.chainAccount),
+        eraBlock,
+        BigInt(geometry.systemStart.toEpochMilli),
+        Horizon(
+          cats.data.NonEmptyVector.one(
+            Horizon.Era(
+              Horizon.Edge(0, 0, 0),
+              None,
+              Horizon.Params(
+                geometry.epochLength,
+                geometry.slotLengthMillis,
+                geometry.stabilityWindow.toBigInt,
+                geometry.stabilityWindow.toBigInt
+              )
             )
           )
-        )
-      ),
-      TxEnv.Validation.All,
-      ConwayUtxo.injectShelleyFailure(build)
-    )
-    val era: Verdict = ConwayBlockRun.bbody(
-      globals,
-      BbodyEnv[Conway](pp, ticked.es.chainAccount),
-      eraBlock,
-      context,
-      state,
-      ScarabEvaluator.default,
-      Verdicts.Direct,
-      ScarabEvaluator.defaultDecoder,
-      clock.posix
-    ) match
-      case Left(defect)        => fail(s"${before.name}: era defect $defect")
-      case Right(Left(fs))     => Left(flatOf(before.name, fs, block))
-      case Right(Right(after)) => Right((after.ls, after.blocksMade))
+        ),
+        state,
+        eraEvaluator,
+        Verdicts.Direct,
+        ScarabEvaluator.defaultDecoder,
+        clock.posix
+      )
+      .fold(defect => fail(s"${before.name}: era defect $defect"), identity)
+    val era: Verdict = judged match
+      case Left(fs)     => Left(flatOf(before.name, fs, block))
+      case Right(after) => Right((after.ls, after.blocksMade))
     Judged(
       era,
       flat,
@@ -296,6 +313,10 @@ class ConwayBbodySuite extends FunSuite:
       body match
         case EraBlock.Outcome.Applied(_, _) => true
         case _                              => false
+      ,
+      judged.left.toOption.fold(Vector.empty)(_.toChain.toVector),
+      eraEvaluator.count,
+      flatEvaluator.count
     )
 
   /** The era BBODY's failures in the node's flat form, in their order; LEDGERS's, which the flat
@@ -398,16 +419,25 @@ class ConwayBbodySuite extends FunSuite:
   // ---- the recorded blocks ---------------------------------------------------------------------------
 
   test(
-    "the captures hold Conway blocks, each read by the era decoder as the flat decoder reads it"
+    "every recorded Conway block of the captures and of fixtures/preview: read by the era decoder as the flat decoder reads it"
   ) {
     assertEquals(eras.size, 3)
     assertEquals(chainDep.size, 50)
-    val preview =
-      Vector("conway", "conway-governance").flatMap(n =>
-        lines(Path.of("fixtures", "preview", s"$n.hex")).zipWithIndex.map((raw, i) =>
-          (s"$n $i", raw)
-        )
-      )
+    // every Conway block (tag 7) of every block file of fixtures/preview
+    val previewFiles = Files
+      .list(Path.of("fixtures", "preview"))
+      .iterator
+      .asScala
+      .toVector
+      .filter(_.getFileName.toString.endsWith(".hex"))
+      .sortBy(_.getFileName.toString)
+    val preview = previewFiles.flatMap(f =>
+      lines(f).zipWithIndex.collect {
+        case (raw, i) if FlatBlock.decodeShelley(raw).exists(_.era == Era.Conway) =>
+          (s"${f.getFileName} $i", raw)
+      }
+    )
+    assertEquals(preview.size, 58)
     val recorded = (eras ++ chainDep).map(b => (b.name, b.raw)) ++ preview
     val withTxs = recorded.map { (name, raw) =>
       val flat = FlatBlock.decodeShelley(raw) match
@@ -459,7 +489,7 @@ class ConwayBbodySuite extends FunSuite:
       txs.size
     }
     // the Preview blocks hold transactions, some with redeemers
-    assertEquals(withTxs.sum, 62)
+    assertEquals(withTxs.sum, 76)
   }
 
   test(
@@ -556,6 +586,30 @@ class ConwayBbodySuite extends FunSuite:
     val j = judge(first, both)
     assertEquals(j.flat, Left(Vector(BlockFailure.BodyCommitment)))
     assertEquals(j.era, Left(Vector(BlockFailure.BodyCommitment, BlockFailure.BodyCommitment)))
+    // the era rule's own failures, before their flat form: the size is checked before the hash, and
+    // the root's list is the reverse of the order its predicates recorded (each failure put in
+    // front, `Extended.hs:708`, cardano-ledger f649f975; `Judgment.flatten`), so the hash's first,
+    // as the reference returns the same pair for Dijkstra's BBODY (`DijkstraBbodySuite`,
+    // `DijkstraRulesOracleSuite`'s `bbody/other-body-size-and-hash`)
+    val actual = FlatBlock.decodeShelley(first.raw) match
+      case Right(b: FlatBlock.Shelley) => b
+      case other                       => fail(s"$other")
+    assertEquals(
+      j.eraFailures,
+      Vector[BbodyPredFailure[Conway]](
+        new ConwayBbodyPredFailure.InvalidBodyHashBBODY[Conway](
+          Mismatch(
+            ok("hash")(xyz.kd5ujc.scarab.ledger.state.Hash32.fromBytes(actual.bodyHash)),
+            ok("hash")(
+              xyz.kd5ujc.scarab.ledger.state.Hash32.fromBytes(Bytes(Vector.fill(32)(7.toByte)))
+            )
+          )
+        ),
+        new ConwayBbodyPredFailure.WrongBlockBodySizeBBODY[Conway](
+          Mismatch(actual.bodySize, actual.bodySize + 1)
+        )
+      )
+    )
   }
 
   /** The body size of the block `raw`, as the flat decoder computes it. */
@@ -794,6 +848,69 @@ class ConwayBbodySuite extends FunSuite:
   }
 
   test(
+    "reference scripts made in the block alone past the block's limit: admitted at version 10, refused at 11 by both"
+  ) {
+    // the version switch of `totalRefScriptSizeInBlock` (`Conway/Rules/Bbody.hs:360-370`,
+    // cardano-ledger f649f975) through BBODY: up to 10 each transaction is measured against the set
+    // before the block, which holds none of the scripts; from 11 the outputs of the transactions
+    // before it count too. Producers of 100 outputs holding the script each, then as many
+    // transactions referencing a producer's 100 outputs each, together past the limit
+    val script = B.purposeIsWellformedNoDatumV3
+    val scriptSize = script.size.toLong
+    val perTx = 100
+    val limit = 1024L * 1024
+    val count = (limit / (perTx * scriptSize) + 1).toInt
+    val fund = BigInt(600000000)
+    val funds = funded(Vector.fill(2 * count)(paid(fund)))
+    val producers = (0 until count).toVector.map { i =>
+      val body = B.body(
+        0 -> B.set(in(funds, i)),
+        1 -> B.arr(
+          (Vector.fill(perTx)(B.refScriptOut(B.keyAddress(payer), 5000000, script)) :+
+            paid(fund - perTx * 5000000 - 3000000))*
+        ),
+        2 -> B.uint(3000000)
+      )
+      built(body, B.witnesses(body, Vector(payer)))
+    }
+    val consumers = (0 until count).toVector.map { i =>
+      val body = B.body(
+        0 -> B.set(in(funds, count + i)),
+        1 -> B.arr(paid(fund - 3000000)),
+        2 -> B.uint(3000000),
+        18 -> B.set((0 until perTx).map(j => B.arr(B.bytes(producers(i).id), B.uint(j)))*)
+      )
+      built(body, B.witnesses(body, Vector(payer)))
+    }
+    val total = count * perTx * scriptSize
+    assert(total > limit, s"$total")
+    val raw = blockOf(producers ++ consumers)
+    // the producers' bodies are past the cluster's transaction size, and the block past its body
+    // size, which the flat side's envelope checks before its BBODY: limits that hold them (BBODY
+    // reads neither)
+    def world(major: Int) = holding(
+      funds,
+      _.copy(
+        protocolMajor = major,
+        maxTxSize = BigInt(128 * 1024),
+        maxBlockBodySize = BigInt(4 * 1024 * 1024)
+      )
+    )
+    val at10 = judge(third, raw, change = world(10))
+    assert(at10.era.isRight, s"${at10.era}")
+    same("10", at10.era, at10.flat)
+    val at11 = judge(third, raw, change = world(11))
+    assertEquals(
+      at11.eraFailures,
+      Vector[BbodyPredFailure[Conway]](
+        new ConwayBbodyPredFailure.BodyRefScriptsSizeTooBig[Conway](Mismatch(total, limit))
+      )
+    )
+    assertEquals(at11.flat, Left(Vector(BlockFailure.RefScriptsTooLarge(Mismatch(total, limit)))))
+    same("11", at11.era, at11.flat)
+  }
+
+  test(
     "the block's units past maxBlockExUnits, in either component: refused by both with equal failures; within, the script run and the same state"
   ) {
     val datum = B.uint(0)
@@ -850,6 +967,7 @@ class ConwayBbodySuite extends FunSuite:
     assert(admitted.era.isRight, s"${admitted.era}")
     same("admitted", admitted.era, admitted.flat)
     // the script ran, as the flat rules count it, and its output is spent
+    assertEquals((admitted.eraEvaluated, admitted.flatEvaluated), (1, 1))
     assertEquals(
       admitted.flatPlutus.map(p => (p.succeeded, p.failed, p.scripts)),
       Some((1L, 0L, 1L))
@@ -883,9 +1001,42 @@ class ConwayBbodySuite extends FunSuite:
     )
     assert(j.flat.isLeft, s"${j.flat}")
     same("missing input", j.era, j.flat)
+    // the input LEDGERS refuses, as UTXO's `BadInputsUTxO` names it
+    val missing = TxIn(B.fresh(0x77).txId, 0)
+    assertEquals(
+      j.eraFailures.collect {
+        case ConwayBbodyPredFailure.LedgersFailure(
+              ShelleyLedgersPredFailure.LedgerFailure(
+                xyz.kd5ujc.scarab.ledger.era.rules.ConwayLedgerPredFailure.ConwayUtxowFailure(
+                  xyz.kd5ujc.scarab.ledger.era.rules.ConwayUtxowPredFailure.UtxoFailure(
+                    xyz.kd5ujc.scarab.ledger.era.rules.ConwayUtxoPredFailure.BadInputsUTxO(ins)
+                  )
+                )
+              )
+            ) =>
+          ins.toSortedSet.toSet
+      },
+      Vector(Set(missing))
+    )
   }
 
   test("the injections into Conway's BBODY are the reference's compositions") {
+    // LEDGERS's and below, `shelleyToConwayBbodyPredFailure . Shelley.LedgersFailure .
+    // injectFailure` (`Conway/Rules/Bbody.hs:164-165`, cardano-ledger f649f975), through LEDGERS's
+    // own injection
+    val treasury =
+      new xyz.kd5ujc.scarab.ledger.era.rules.ConwayLedgerPredFailure.ConwayTreasuryValueMismatch[
+        Conway
+      ](Mismatch(xyz.kd5ujc.scarab.ledger.state.Coin(1), xyz.kd5ujc.scarab.ledger.state.Coin(2)))
+    assertEquals(
+      summon[InjectBbodyFailure[
+        xyz.kd5ujc.scarab.ledger.era.rules.ConwayLedgerPredFailure[Conway],
+        Conway
+      ]].injectFailure(treasury),
+      ConwayBbodyPredFailure.LedgersFailure[Conway](
+        ShelleyLedgersPredFailure.LedgerFailure(treasury)
+      )
+    )
     val m = Mismatch(1L, 2L)
     assertEquals(
       summon[InjectBbodyFailure[ShelleyBbodyPredFailure[Conway], Conway]]

@@ -68,14 +68,17 @@ object ConwayBlockBody:
   * `PraosEraBlockHeader (Header c) era` of the Praos header): the header the block decoder read,
   * with the fields the classes give in their types, read once by [[fromHeader]].
   */
-final case class ConwayBlockHeader private (
-    header: Header.Shelley,
-    issuer: KeyHash[BlockIssuer],
-    slot: SlotNo,
-    bodySize: Long,
-    bodyHash: Hash32,
-    protVer: ProtVer
-)
+final class ConwayBlockHeader private (
+    val header: Header.Shelley,
+    val issuer: KeyHash[BlockIssuer],
+    val slot: SlotNo,
+    val bodySize: Long,
+    val bodyHash: Hash32,
+    val protVer: ProtVer
+):
+  // Not a case class: its derived `Mirror` would make one whose fields are not its header's.
+  override def toString: String =
+    s"ConwayBlockHeader($issuer, $slot, $bodySize, $bodyHash, $protVer)"
 
 object ConwayBlockHeader:
   private val Word32Max: BigInt = BigInt(0xffffffffL)
@@ -107,7 +110,7 @@ object ConwayBlockHeader:
             .from[Unsigned.Width.W32](minor)
             .toRight(VocabError.OutOfRange(VocabError.Kind.ProtocolMinor, minor))
         ).mapN(ProtVer(_, _))
-      ).mapN(ConwayBlockHeader(header, _, _, _, _, _))
+      ).mapN(new ConwayBlockHeader(header, _, _, _, _, _))
         .leftMap(e => ConwayBlockError.Projection(EraTxError.Vocab(e)))
 
   /** The Praos header's instances of the two classes (`EraBlockHeader (Header c) era`,

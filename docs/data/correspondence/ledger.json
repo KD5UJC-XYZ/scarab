@@ -47274,8 +47274,8 @@
    "evidence": [
     "ConwayBbodySuite"
    ],
-   "note": "the network the caller's (UTXO's context, gathered from Globals); the gate of the header's version by build (HeaderProtVerGate); the UTxO set the stored outputs of the block's inputs and reference inputs before LEDGERS, read into the era; ConwayBbodySuite compares it with the flat BBODY; its expectations are the reference's own only on the 53 recorded Conway blocks the reference accepted",
-   "digest": "7fa4fef3bbef9e7c"
+   "note": "the network the judgment's Globals', as the reference reads it (one outside Network a raised defect); the gate of the header's version by build (HeaderProtVerGate); the UTxO set the stored outputs of the block's inputs and reference inputs before LEDGERS, read into the era; ConwayBbodySuite compares it with the flat BBODY; its expectations are the reference's own only on the 53 recorded Conway blocks the reference accepted",
+   "digest": "396caa2b3c558598"
   },
   "def ledger.era.rules.ConwayBbody.conwayBbody": {
    "upstream": [
@@ -47306,7 +47306,7 @@
     "ConwayBbodySuite"
    ],
    "note": "conwayBbodyTransition >> alonzoBbodyTransition on Conway's LEDGERS, its failures and events embedded; the parameters of LEDGERS's transactions (context, verdicts, decoder, the clock) given by the caller; ConwayBbodySuite compares it with the flat BBODY; its expectations are the reference's own only on the 53 recorded Conway blocks the reference accepted",
-   "digest": "bee8336acc2bb63b"
+   "digest": "5ce7872da882ba5a"
   },
   "enum ledger.era.rules.HeaderProtVerGate": {
    "upstream": [
@@ -47451,7 +47451,7 @@
    "evidence": [
     "ConwayBbodySuite"
    ],
-   "note": "the reference's twenty instances from LEDGERS down as one instance over LEDGERS's injection; ConwayBbodySuite compares it with the flat BBODY; its expectations are the reference's own only on the 53 recorded Conway blocks the reference accepted",
+   "note": "the reference's nineteen instances from LEDGERS down (Conway/Rules/Bbody.hs:161-216) as one instance over LEDGERS's injection; ConwayBbodySuite compares it with the flat BBODY; its expectations are the reference's own only on the 53 recorded Conway blocks the reference accepted",
    "digest": "ba8a15698476ea1f"
   },
   "given ledger.era.rules.EmbedLedgersInBbody.conway": {
@@ -48700,12 +48700,13 @@
    ]
   },
   {
-   "reason": "the companions and readers of Conway's block in the era's types, as Dijkstra's: the header's fields read once in the classes' types (ConwayBlockHeader and its reader), the evidence that a flat block is one the block decoder read (ConwayBlock.Decoded, which only ConwayBlock.decode makes), why a block's bytes are not a Conway block in the era's types, by whose the failure is (ConwayBlockError and its total classification ConwayBlockError.of), a body's rendering, the object of the Praos header class; the gate of the header's version from the build (HeaderProtVerGate.of), as WithdrawalsRule.of; and a BBODY test's failures injected into the rule's (bbodyTest), which the reference's ?! injectFailure does",
+   "reason": "the companions and readers of Conway's block in the era's types, as Dijkstra's: the header's fields read once in the classes' types (ConwayBlockHeader, a plain class so that no Mirror builds one whose fields are not its header's, its fields, rendering and reader), the evidence that a flat block is one the block decoder read (ConwayBlock.Decoded, which only ConwayBlock.decode makes), why a block's bytes are not a Conway block in the era's types, by whose the failure is (ConwayBlockError and its total classification ConwayBlockError.of), a body's rendering, the object of the Praos header class; the gate of the header's version from the build (HeaderProtVerGate.of), as WithdrawalsRule.of; and a BBODY test's failures injected into the rule's (bbodyTest), which the reference's ?! injectFailure does",
    "definitions": [
     "class ledger.era.conway.ConwayBlock.Decoded",
     "class ledger.era.conway.ConwayBlockHeader",
     "def ledger.era.conway.ConwayBlockBody#toString",
     "def ledger.era.conway.ConwayBlockError.of",
+    "def ledger.era.conway.ConwayBlockHeader#toString",
     "def ledger.era.conway.ConwayBlockHeader.fromHeader",
     "def ledger.era.rules.HeaderProtVerGate.of",
     "def ledger.era.rules.bbodyTest",
@@ -48715,11 +48716,17 @@
     "object ledger.era.conway.ConwayBlockBody",
     "object ledger.era.conway.ConwayBlockError",
     "object ledger.era.conway.ConwayBlockHeader",
-    "object ledger.era.rules.HeaderProtVerGate"
+    "object ledger.era.rules.HeaderProtVerGate",
+    "val ledger.era.conway.ConwayBlockHeader#bodyHash",
+    "val ledger.era.conway.ConwayBlockHeader#bodySize",
+    "val ledger.era.conway.ConwayBlockHeader#header",
+    "val ledger.era.conway.ConwayBlockHeader#issuer",
+    "val ledger.era.conway.ConwayBlockHeader#protVer",
+    "val ledger.era.conway.ConwayBlockHeader#slot"
    ]
   },
   {
-   "reason": "the run of Conway's era rules on a block as the node is to apply it at the Conway switch (#85), BBODY with every failure accumulated, on the fused interpreter with the events discarded (applyBlockEither with ValidateAll, ComputeLedgerEvents off), and its defects",
+   "reason": "the run of Conway's era rules on a block as the node is to apply it at the Conway switch (#85), BBODY with every failure accumulated and every check validated, the context of its transactions' rules made from the judgment's Globals (network, the build's injection), on the fused interpreter with the events discarded (applyBlockEither with ValidateAll, ComputeLedgerEvents off), and its defects",
    "definitions": [
     "def ledger.era.rules.ConwayBlockRun.bbody",
     "enum ledger.era.rules.ConwayRuleDefect",

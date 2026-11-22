@@ -26,6 +26,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
   LedgerState,
   Network,
   StakePool,
+  VocabError,
   Word64
 }
 import xyz.kd5ujc.scarab.plutus.{ExUnits, ScriptDecoder, ScriptEvaluator}
@@ -276,9 +277,9 @@ object ConwayBbody:
     * failure recorded and injected into BBODY's ([[InjectBbodyFailure]]), in the reference's order:
     *   - the header's major version at most the one after the parameters' (`succVersion`,
     *     `Binary/Version.hs:153-157`; `checkHeaderProtVerTooHigh`, `:293-305`), where the build's
-    *     gate checks it ([[HeaderProtVerGate]], `:308-312`) on `netId`, the network of `Globals`
-    *     (`liftSTS $ asks networkId`, `:306`), which the caller gives as UTXO's context has it; a
-    *     major with no version after it (`maxBound`) is never too high;
+    *     gate checks it ([[HeaderProtVerGate]], `:308-312`) on the network of the judgment's
+    *     `Globals` (`liftSTS $ asks networkId`, `:306`; one outside `Network` is raised,
+    *     [[LedgerFailure.Vocab]]); a major with no version after it (`maxBound`) is never too high;
     *   - the block's reference scripts against the UTxO set before LEDGERS (`ls ^. utxoL`, `:314`):
     *     the stored outputs of the transactions' inputs and reference inputs, the only ones
     *     `totalRefScriptSizeInBlock` looks up, read into the era (one the era does not read is
@@ -286,8 +287,7 @@ object ConwayBbody:
     */
   def conwayBbodyTransition[F[_]: Monad, H, E <: EraTag](
       env: BbodyEnv[E],
-      block: Block[H, E],
-      netId: Network
+      block: Block[H, E]
   )(using
       h: PraosEraBlockHeader[H, E],
       bb: EraBlockBody[E],
@@ -301,7 +301,8 @@ object ConwayBbody:
       state: Stateful[F, ShelleyBbodyState[E]],
       judge: Judge[F, BbodyPredFailure[E]],
       conway: InjectBbodyFailure[ConwayBbodyPredFailure[E], E],
-      stateDefect: Raise[F, UtxoStateDefect]
+      stateDefect: Raise[F, UtxoStateDefect],
+      defect: Raise[F, LedgerDefect]
   ): F[Unit] =
     val pp = env.bbodyPp
     val curProtVerMajor = p.ppProtocolVersionL.get(pp).pvMajor
@@ -314,6 +315,15 @@ object ConwayBbody:
     val txs = bb.txSeqBlockBody(block.blockBody)
     for
       globals <- ask.ask[Globals]
+      netId <- Sts.lift[F, LedgerDefect, Network](
+        Network
+          .of(BigInt(globals.networkId))
+          .toRight(
+            LedgerFailure.Vocab(
+              VocabError.OutOfRange(VocabError.Kind.Network, BigInt(globals.networkId))
+            )
+          )
+      )
       _ <-
         if HeaderProtVerGate.of(globals.ledger.referenceBuild).checks(netId, curProtVerMajor) then
           bbodyTest(
@@ -347,9 +357,9 @@ object ConwayBbody:
     * which `EraRule "LEDGERS" ConwayEra` names), with `context`, `verdicts`, `decoder` and
     * `slotToPOSIXTime` for its transactions, its failures and events embedded
     * ([[EmbedLedgersInBbody]], `Embed ledgers (BBODY era)`, `:318-327`). The network the header's
-    * version is checked on is the context's (`UtxoContext.netId`). The signal is the reference's
-    * `BbodySignal`: a block whose header `H` has the two header classes. LEDGERS raises its own
-    * defects.
+    * version is checked on is the judgment's `Globals` ', as the reference reads it; the context's
+    * is LEDGERS's alone. The signal is the reference's `BbodySignal`: a block whose header `H` has
+    * the two header classes. LEDGERS raises its own defects.
     */
   def conwayBbody[F[_]: Monad, H](
       env: BbodyEnv[Conway],
@@ -377,7 +387,7 @@ object ConwayBbody:
     given t.bodyOf.Level[TxLevel.Top] = t.bodyOf.top
     given EraBlockBody[Conway] = bb
     for
-      _ <- conwayBbodyTransition[F, H, Conway](env, block, context.netId)
+      _ <- conwayBbodyTransition[F, H, Conway](env, block)
       _ <- AlonzoBbody.alonzoBbodyTransition[F, H, Conway](env, block) { (ledgersEnv, txs) =>
         given Stateful[F, LedgerState[Conway]] = state.focus(ShelleyBbodyState.ls[Conway])
         given Judge[F, LedgersPredFailure[Conway]] = judge.contramap(embed.wrapFailed)
