@@ -243,48 +243,53 @@ private[node] object LeiosNotifyRelay:
           .modify(o => o.next.fold((o, Option.empty[Reply]))((reply, rest) => (rest, Some(reply))))
           .flatMap(_.fold(queue.waitUntil(_.messages.nonEmpty) *> next)(F.pure))
 
-      // `pumpNext`'s `readTChan chan <|> getNextVote` (`NodeToNode.hs` 838-859): a pending
-      // notification before a pending vote, each taken once
-      def pump: F[Unit] =
-        pending
-          .flatMap(_.traverse_ { next =>
-            immutableTip.flatMap(tip =>
-              queue.update { outgoing =>
-                val pruned = outgoing.prunedTo(tip)
-                next match
-                  case Left(notification) =>
-                    val (point, part, reply) = LeiosNotifyOutgoing.offer(notification)
-                    pruned.offering(point, part, reply, lead.decision(tip, point.slot))
-                  case Right(vote) => pruned.voting(vote)
-              }
-            )
-          })
-          .foreverM[Unit]
+      // `pumpNext`'s `readTChan chan <|> getNextVote` (`NodeToNode.hs` 838-859): a notification
+      // whenever one is ready, a vote only when none is, each taken once
+      def pump: F[Unit] = F.tailRecM(Option.empty[Vote])(held => step(held).map(Left(_)))
 
-      /** The next of the two sources, the store's notification first where both hold one; with
-        * neither, the first to arrive. Waiting on both, a take the other's arrival cancels may have
-        * taken already: its element is kept, in the left-biased order, never dropped.
+      /** One turn of the pump, with the vote taken already and not yet given its turn, `held`: a
+        * notification ready is moved first and the vote kept; with none, the held vote, or a vote
+        * ready, is moved. With neither source ready, the pump waits for either; a vote the wait
+        * takes is held, so that the notifications ready by then go before it, as the reference's
+        * left-biased choice, read again in each transaction, has them. No item is dropped here:
+        * only a peer without a credit drops one (the pump's `when (c > 0)`).
         */
-      private def pending: F[List[Either[LeiosEbNotification, Vote]]] =
+      private def step(held: Option[Vote]): F[Option[Vote]] =
         subscription.tryTake.flatMap {
-          case Some(notification) => F.pure(List(Left(notification)))
+          case Some(notification) => moved(Left(notification)).as(held)
           case None =>
-            voted.tryTake.flatMap {
-              case Some(vote) => F.pure(List(Right(vote)))
+            held match
+              case Some(vote) => moved(Right(vote)).as(None)
               case None =>
-                def both(
-                    notification: Option[LeiosEbNotification],
-                    vote: Option[Vote]
-                ): List[Either[LeiosEbNotification, Vote]] =
-                  notification.map(Left(_)).toList ++ vote.map(Right(_)).toList
-                F.racePair(subscription.take, voted.take).flatMap {
-                  case Left((won, other)) =>
-                    (settled(won), other.cancel *> other.join.flatMap(settled)).mapN(both)
-                  case Right((other, won)) =>
-                    (other.cancel *> other.join.flatMap(settled), settled(won)).mapN(both)
+                voted.tryTake.flatMap {
+                  // held for one more look at the notifications
+                  case Some(vote) => F.pure(Some(vote))
+                  case None =>
+                    F.racePair(subscription.take, voted.take)
+                      .flatMap {
+                        case Left((won, other)) =>
+                          (settled(won), other.cancel *> other.join.flatMap(settled)).tupled
+                        case Right((other, won)) =>
+                          (other.cancel *> other.join.flatMap(settled), settled(won)).tupled
+                      }
+                      .flatMap((notification, vote) =>
+                        notification.traverse_(n => moved(Left(n))).as(vote)
+                      )
                 }
-            }
         }
+
+      /** The notification or the vote into the peer's queue, the announced points pruned first. */
+      private def moved(next: Either[LeiosEbNotification, Vote]): F[Unit] =
+        immutableTip.flatMap(tip =>
+          queue.update { outgoing =>
+            val pruned = outgoing.prunedTo(tip)
+            next match
+              case Left(notification) =>
+                val (point, part, reply) = LeiosNotifyOutgoing.offer(notification)
+                pruned.offering(point, part, reply, lead.decision(tip, point.slot))
+              case Right(vote) => pruned.voting(vote)
+          }
+        )
 
       private def settled[A](outcome: Outcome[F, Throwable, A]): F[Option[A]] = outcome match
         case Outcome.Succeeded(fa) => fa.map(Some(_))
