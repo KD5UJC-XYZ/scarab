@@ -8,7 +8,9 @@ Run from the repository root:  python3 -m unittest discover -s scripts/tests -v
 import json
 import pathlib
 import sys
+import tempfile
 import unittest
+from unittest import mock
 from unittest.mock import patch
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
@@ -246,6 +248,77 @@ class VotingTest(unittest.TestCase):
         roots = dijkstra.topology(2, 3, (lt.VOTER_PORT,))["localRoots"][0]
         self.assertEqual([a["port"] for a in roots["accessPoints"]], [3001, 3003, lt.VOTER_PORT])
         self.assertEqual(roots["valency"], 3)
+
+
+class ForgingTest(unittest.TestCase):
+    """`--follow-forge`: the follower's ranking, endorser and certifying blocks on every reference node's chain."""
+
+    @staticmethod
+    def block(no, era="dijkstra", announces=None, certifies=False, prev=None):
+        return {"era": era, "blockNo": no, "slot": 10 * no, "hash": f"h{no}", "prevHash": prev,
+                "announces": announces, "ebSize": 1 if announces else None, "certifies": certifies,
+                "signers": 4 if certifies else None}
+
+    def chains(self):
+        chain = [self.block(1, era="conway"), self.block(2, announces="e2"), self.block(3, certifies=True, prev="h2"),
+                 self.block(4)]
+        return {1: chain, 2: chain[:3]}
+
+    events = [{"event": "forged", "hash": "h2", "slot": 20}, {"event": "forged", "hash": "h3", "slot": 30},
+              {"event": "leiosBlockForged", "hash": "e2"}, {"event": "leiosBlockCertified", "atSlot": 30},
+              {"event": "leiosVoted", "vote": {"rbHash": "h2", "voterId": 4}}]
+
+    def test_the_followers_blocks_on_every_chain_with_the_closure_everywhere_pass(self):
+        verdict = lt.forging_verdict(self.chains(), {1: {"e2"}, 2: {"e2"}}, self.events)
+        self.assertEqual(verdict["verdict"], "passed", verdict)
+        self.assertEqual((verdict["dijkstraOnChain"], verdict["endorserBlocksEverywhere"],
+                          verdict["certifyingOnChain"]), (2, 1, 1))
+        self.assertEqual(verdict["lines"], {"forged": 2, "leiosBlockForged": 1, "leiosBlockCertified": 1,
+                                            "leiosVoted": 1})
+
+    def test_a_closure_one_node_lacks_fails(self):
+        verdict = lt.forging_verdict(self.chains(), {1: {"e2"}, 2: set()}, self.events)
+        self.assertEqual(verdict["verdict"], "failed")
+
+    def test_no_certifying_block_forged_is_incomplete_and_one_off_the_chain_fails(self):
+        uncertified = [e for e in self.events if e["event"] != "leiosBlockCertified"]
+        self.assertEqual(lt.forging_verdict(self.chains(), {1: {"e2"}, 2: {"e2"}}, uncertified)["verdict"],
+                         "incomplete")
+        lost = [e for e in self.events if e.get("hash") != "h3"]
+        self.assertEqual(lt.forging_verdict(self.chains(), {1: {"e2"}, 2: {"e2"}}, lost)["verdict"], "failed")
+
+    def test_the_reference_nodes_must_forge_the_certifying_blocks_asked_for(self):
+        kinds = {1: {"LeiosBlockCertified": 1, "LeiosVoted": 3}, 2: {"LeiosVoted": 3}, 3: {"LeiosBlockCertified": 1}}
+        self.assertEqual(lt.reference_certifying(kinds, 2), {"verdict": "passed", "forged": 2, "problems": []})
+        # the follower's certifying block on the chain does not count: its log is not among the reference nodes'
+        short = lt.reference_certifying({1: {"LeiosVoted": 3}, 2: {}}, 1)
+        self.assertEqual((short["verdict"], short["forged"]), ("incomplete", 0))
+        self.assertIn("fewer than the 1 asked for", short["problems"][0])
+
+    def test_only_the_followers_certifying_block_on_the_chain_is_incomplete_not_a_pass(self):
+        # the chain's one certifying block is the follower's: the chain judge passes it, the reference count does not
+        chains = self.chains()
+        self.assertTrue(lt.judge(chains, {1: {"e2"}, 2: {"e2"}}, certificates=1)["pass"])
+        self.assertTrue(lt.forging_verdict(chains, {1: {"e2"}, 2: {"e2"}}, self.events)["verdict"] == "passed")
+        self.assertEqual(lt.reference_certifying({1: {"LeiosVoted": 2}, 2: {"LeiosVoted": 2}}, 1)["verdict"],
+                         "incomplete")
+
+    def test_a_lost_slot_battle_is_no_failure_of_a_forging_follower(self):
+        kinds = lt.forging_severities({"didntAdoptBlock": "Error", "fatal": "Critical"})
+        self.assertEqual(kinds, {"didntAdoptBlock": "Warning", "fatal": "Critical"})
+
+    def test_the_forging_pools_node_is_not_started(self):
+        calls = []
+        args = type("A", (), {"name": "n", "pools": 3})()
+        with tempfile.TemporaryDirectory() as d:
+            root = pathlib.Path(d)
+            (root / "genesis").mkdir()
+            with mock.patch.object(dijkstra, "in_ref"), mock.patch.object(dijkstra, "put_file"), \
+                    mock.patch.object(dijkstra, "docker", side_effect=lambda *a: calls.append(a)), \
+                    mock.patch.object(dijkstra.subprocess, "run", return_value=mock.Mock(stdout=b"{}")):
+                ports = dijkstra.start_nodes(args, root, skip=2)
+        self.assertEqual(ports, {1: 3001, 3: 3003})
+        self.assertEqual(len(calls), 2)
 
 
 class CliTest(unittest.TestCase):

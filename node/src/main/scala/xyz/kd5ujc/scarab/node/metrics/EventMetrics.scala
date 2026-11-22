@@ -120,7 +120,7 @@ final class EventMetrics[F[_]: Sync] private (
         metrics.set(forgedSlotLast, number(slot))
       case ForgeEvent.Adopted(_, latency) =>
         latency.traverse_(ms => metrics.observe(forgeAdoptionSeconds, ms / 1000.0))
-      case ForgeEvent.Loop(_) | ForgeEvent.Clock(_) |
+      case ForgeEvent.Loop(_) | ForgeEvent.Clock(_) | ForgeEvent.Leios(_) |
           ForgeEvent.Forged(_, _, _, _, _, _, _, _, _, _, _, _) | ForgeEvent.KesEvolved(_, _) |
           ForgeEvent.Lost(_, _, _) | ForgeEvent.NotKept(_, _, _) | ForgeEvent.Failed(_, _) |
           ForgeEvent.Defect(_, _, _) | ForgeEvent.EpochSummary(_, _) |

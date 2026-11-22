@@ -188,6 +188,13 @@
 {"event":"forgeDiscarded","at":"2026-10-16T12:00:00Z","slot":4209,"reason":"credentials","hash":"abababababababababababababababababababababababababababababababab"}
 {"event":"forgeDiscarded","at":"2026-10-16T12:00:00Z","slot":4210,"reason":"refused","hash":null}
 {"event":"forgeDiscarded","at":"2026-10-16T12:00:00Z","slot":4211,"reason":"notLeader","hash":null}
+{"event":"forgeDiscarded","at":"2026-10-16T12:00:00Z","slot":4212,"reason":"certificate","hash":"abababababababababababababababababababababababababababababababab"}
+{"event":"leiosKernelMsg","at":"2026-10-16T12:00:00Z","message":"EB not yet downloaded: 4200@abababababababababababababababababababababababababababababababab"}
+{"event":"leiosKernelMsg","at":"2026-10-16T12:00:00Z","message":"EB downloaded but no certificate: 4200@abababababababababababababababababababababababababababababababab"}
+{"event":"leiosBlockCertified","at":"2026-10-16T12:00:00Z","atSlot":4214,"ebSlot":4200,"ebHash":"abababababababababababababababababababababababababababababababab"}
+{"event":"leiosBlockForged","at":"2026-10-16T12:00:00Z","slot":4214,"hash":"abababababababababababababababababababababababababababababababab","numTxs":3,"ebSize":120,"closureSize":42000,"mempoolRestSize":0}
+{"event":"leiosBlockAnnounced","at":"2026-10-16T12:00:00Z","rbHash":"abababababababababababababababababababababababababababababababab","ebSlot":4200,"ebHash":"abababababababababababababababababababababababababababababababab"}
+{"event":"leiosCertifiedAndAnnounced","at":"2026-10-16T12:00:00Z","slotNo":4214,"rbHash":"abababababababababababababababababababababababababababababababab"}
 {"event":"connected","at":"2026-10-16T12:00:00Z","intersection":{"origin":true}}
 {"event":"connected","at":"2026-10-16T12:00:00Z","intersection":{"slot":4200,"hash":"abababababababababababababababababababababababababababababababab"}}
 {"event":"extended","at":"2026-10-16T12:00:00Z","block":{"slot":4200,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab"},"epoch":3,"era":"Conway","peerTip":{"slot":4200,"hash":"abababababababababababababababababababababababababababababababab"}}

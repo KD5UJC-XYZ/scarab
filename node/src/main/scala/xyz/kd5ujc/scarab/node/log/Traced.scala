@@ -17,7 +17,8 @@ import xyz.kd5ujc.scarab.node.forge.{
   ClockTrace,
   ForgeTrace,
   KesEvolutionError,
-  KesInfo
+  KesInfo,
+  LeiosForgeTrace
 }
 import xyz.kd5ujc.scarab.node.mempool.{MempoolEvent, Rejection}
 import xyz.kd5ujc.scarab.node.LeiosKernelEvent
@@ -535,6 +536,7 @@ object Traced:
       )
     case ForgeEvent.Loop(trace)  => Traced[ForgeTrace].line(trace)
     case ForgeEvent.Clock(trace) => Traced[ClockTrace].line(trace)
+    case ForgeEvent.Leios(trace) => Traced[LeiosForgeTrace].line(trace)
     // the label of the reference's one block forging for all eras (consensus 82ecba329
     // `Cardano/Node.hs` 1024), ahead of the key's fields (`TraceLabelCreds`, `Consensus.hs` 104-106)
     case ForgeEvent.StateInfo(info) =>
@@ -587,6 +589,7 @@ object Traced:
         case DiscardReason.Credentials  => "credentials"
         case DiscardReason.Refused      => "refused"
         case DiscardReason.NotLed       => "notLeader"
+        case DiscardReason.Certificate  => "certificate"
       EventKind.ForgeDiscarded.line(
         "slot" -> slot.asJson,
         "reason" -> why.asJson,
@@ -664,6 +667,46 @@ object Traced:
       EventKind.ForgeDefect.line(
         (List("slot" -> slot.asJson, "kind" -> defect.productPrefix.asJson) ++ detail :+
           ("evicted" -> evicted.map(_.hex).asJson))*
+      )
+
+  /** The forge loop's Leios lines (`TraceLeiosKernel` 's `ToJSON`, `LeiosDemoTypes.hs:1980-1984,
+    * 2019-2047, 2133-2137` at ouroboros-consensus 2416493b): hashes in hex, the kernel messages in
+    * the reference's words with the point as the voting thread's lines show it.
+    */
+  given Traced[LeiosForgeTrace] =
+    case LeiosForgeTrace.NotDownloaded(point) =>
+      EventKind.LeiosKernelMsg.line(
+        "message" -> s"EB not yet downloaded: ${leiosPoint(point)}".asJson
+      )
+    case LeiosForgeTrace.NoCertificate(point) =>
+      EventKind.LeiosKernelMsg.line(
+        "message" -> s"EB downloaded but no certificate: ${leiosPoint(point)}".asJson
+      )
+    case LeiosForgeTrace.BlockCertified(atSlot, point) =>
+      EventKind.LeiosBlockCertified.line(
+        "atSlot" -> atSlot.asJson,
+        "ebSlot" -> point.slot.toBigInt.asJson,
+        "ebHash" -> point.hash.bytes.hex.asJson
+      )
+    case LeiosForgeTrace.BlockForged(slot, point, txs, ebSize, closureSize) =>
+      EventKind.LeiosBlockForged.line(
+        "slot" -> slot.asJson,
+        "hash" -> point.hash.bytes.hex.asJson,
+        "numTxs" -> txs.asJson,
+        "ebSize" -> ebSize.asJson,
+        "closureSize" -> closureSize.asJson,
+        "mempoolRestSize" -> 0.asJson
+      )
+    case LeiosForgeTrace.BlockAnnounced(rbHash, point) =>
+      EventKind.LeiosBlockAnnounced.line(
+        "rbHash" -> rbHash.hex.asJson,
+        "ebSlot" -> point.slot.toBigInt.asJson,
+        "ebHash" -> point.hash.bytes.hex.asJson
+      )
+    case LeiosForgeTrace.CertifiedAndAnnounced(atSlot, rbHash) =>
+      EventKind.LeiosCertifiedAndAnnounced.line(
+        "slotNo" -> atSlot.asJson,
+        "rbHash" -> rbHash.hex.asJson
       )
 
   /** The voting thread's lines (`TraceLeiosKernel`'s `ToJSON`, `LeiosDemoTypes.hs:1975-2090`,

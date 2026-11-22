@@ -193,9 +193,10 @@ class DijkstraForgeSuite extends munit.FunSuite:
         slot
       )
       .fold(e => fail(e.message), identity)
-    ticked match
-      case Forger.TipLedger.InDijkstra(nes) => (slot, cert, Forger.Ticked.InDijkstra(nes))
-      case other                            => fail(s"ticked out of Dijkstra: $other")
+    (ticked, ledger) match
+      case (Forger.TipLedger.InDijkstra(nes), Forger.TipLedger.InDijkstra(parent)) =>
+        (slot, cert, Forger.Ticked.InDijkstra(nes, parent))
+      case other => fail(s"ticked out of Dijkstra: $other")
 
   /** The block of `body` forged in the test pool's slot, as [[Forger]]'s `assemble` builds it. */
   private def forge(body: BlockBuilder.Assembly): Forged =

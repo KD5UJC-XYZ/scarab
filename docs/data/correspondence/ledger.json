@@ -47792,6 +47792,12 @@
     "def ledger.era.rules.DijkstraMempoolRun.utxoOf",
     "object ledger.era.rules.DijkstraMempoolRun"
    ]
+  },
+  {
+   "reason": "the forger's typed stop for a certification it decided on and cannot carry out, the reference's error calls in decideLeiosCertify (genesis) and partitionMempool (applyLeiosClosure failed), with the parent's hash width and the certification gap's slot-length defect, which the reference meets as toRawHash and minCertificationGap's error (#54)",
+   "definitions": [
+    "enum ledger.ForgeCertifyProblem"
+   ]
   }
  ]
 }

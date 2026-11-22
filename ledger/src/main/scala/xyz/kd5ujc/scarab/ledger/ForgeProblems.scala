@@ -70,6 +70,35 @@ enum ForgeDefect:
     */
   case EndorserBlockSize(actual: Long, maximum: Int)
 
+/** Why the forger cannot carry out the certification it decided on: each is the reference's
+  * `error`, a defect of the node's own that stops it, never a verdict on a block
+  * (ouroboros-consensus 2416493b `NodeKernel/Forge.hs`).
+  */
+enum ForgeCertifyProblem:
+  /** A block that certifies would extend genesis (`decideLeiosCertify` 's `error`,
+    * `NodeKernel/Forge.hs:366`, ouroboros-consensus 2416493b), unreachable, since the announcing
+    * block is the parent.
+    */
+  case OnGenesis
+
+  /** The parent's hash is not the width of a ranking block's (`toRawHash`,
+    * `NodeKernel/Forge.hs:368-370`, ouroboros-consensus 2416493b).
+    */
+  case TipHashWidth(size: Int)
+
+  /** The certification gap of the parent's parameters (`getMinCertificationGap`,
+    * `Shelley/Ledger/Ledger.hs:969-973`, ouroboros-consensus 2416493b) cannot be computed: a slot
+    * length of no millisecond.
+    */
+  case Gap(cause: Praos2Defect)
+
+  /** The certified endorser block's closure does not apply to the parent
+    * (`resolveAndApplyLeiosClosure`, `NodeKernel/Forge.hs:827-835`, ouroboros-consensus 2416493b):
+    * the reference's `error` "applyLeiosClosure failed" (`:837-841`), since a quorum of the
+    * committee applied it before it voted.
+    */
+  case ClosureRefused(eb: xyz.kd5ujc.scarab.protocol.EbHash, failure: BlockFailure)
+
 enum ForgeLedgerProblem:
   case Vocabulary(cause: VocabError)
   case Tick(cause: TickFailure)

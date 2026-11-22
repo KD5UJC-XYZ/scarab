@@ -114,10 +114,11 @@ def selected_chain(events):
     return follower_chain(events)[0]
 
 
-def follower_command(name, node, scala_cpus, voter=None):
+def follower_command(name, node, scala_cpus, voter=None, forges=False):
     """The `devnet.py follow` process of the follower of the Leios cluster; with `voter` (its listening address and
-    the directory of a pool's keys) it listens and votes."""
+    the directory of a pool's keys) it listens and votes, and with `forges` it also forges."""
     extra = [] if voter is None else ["--listen", voter[0], "--voter-keys", str(voter[1])]
+    extra += ["--voter-forges"] if voter is not None and forges else []
     return [sys.executable, str(ENTRY), "--name", name, "follow", "--reference-build", BUILD, "--db",
             "--local-socket", "--node", str(node), "--scala-cpus", str(scala_cpus), *extra]
 
@@ -258,10 +259,10 @@ def whole_verdict(whole):
 
 # ---------------------------------------------------------------- the follower's run
 
-def start(args, voter=None):
+def start(args, voter=None, forges=False):
     """Start the follower; returns its `devnet.py follow` process. Its output goes to its own log in the run
     directory (`follower.jsonl`), which `follow` writes."""
-    return subprocess.Popen(follower_command(args.name, args.follow_node, args.scala_cpus, voter),
+    return subprocess.Popen(follower_command(args.name, args.follow_node, args.scala_cpus, voter, forges),
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 

@@ -18,7 +18,7 @@ import xyz.kd5ujc.scarab.protocol.LeiosWord.Word64
 
 /** The decisions of Leios voting and certifying (ouroboros-consensus 2416493b): `goVote`
   * (`LeiosVoting.hs:309-419`) in the order of its checks, `tipAnnouncerFor`, the seats of the
-  * node's keys, the vote timing and `decideLeiosCertify` (`NodeKernel/Forge.hs:324-397`) at its
+  * node's keys, the vote timing and `decideLeiosCertify` (`NodeKernel/Forge.hs:324-396`) at its
   * boundaries.
   */
 class LeiosVotingSuite extends ScalaCheckSuite:
@@ -211,7 +211,7 @@ class LeiosVotingSuite extends ScalaCheckSuite:
         Map(seat(0) -> right(Vote.sign(keys(0)._1, seat(0), announcing)).signature)
       )
     )
-  type G[A] = Either[LeiosVotingDefect, A]
+  type G[A] = Either[CertifyDefect, A]
 
   private def decide(
       at: Long,
@@ -232,8 +232,8 @@ class LeiosVotingSuite extends ScalaCheckSuite:
 
   test("decideLeiosCertify: one slot short of the gap is too early, at the gap it certifies") {
     assertEquals(decide(slot + 13), Right(CertifyDecision.TooEarly(point, 14)))
-    assertEquals(decide(slot + 14), Right(CertifyDecision.Certify(cert, ebHash)))
-    assertEquals(decide(slot + 15), Right(CertifyDecision.Certify(cert, ebHash)))
+    assertEquals(decide(slot + 14), Right(CertifyDecision.Certify(cert, point)))
+    assertEquals(decide(slot + 15), Right(CertifyDecision.Certify(cert, point)))
   }
 
   test("decideLeiosCertify: nothing announced, or no Leios gap, is nothing to certify") {
@@ -251,11 +251,11 @@ class LeiosVotingSuite extends ScalaCheckSuite:
       decide(slot + 20, certs = Map(rbHash(77) -> cert)),
       Right(CertifyDecision.NoCertificate(point))
     )
-    assertEquals(decide(slot + 20, tipHash = None), Left(LeiosVotingDefect.CertifyOnGenesis))
+    assertEquals(decide(slot + 20, tipHash = None), Left(CertifyDefect.OnGenesis))
   }
 
   test("decideLeiosCertify: the slots are subtracted as Word64s, so a slot before wraps") {
-    assertEquals(decide(slot - 1), Right(CertifyDecision.Certify(cert, ebHash)))
+    assertEquals(decide(slot - 1), Right(CertifyDecision.Certify(cert, point)))
   }
 
   property("tipAnnouncerFor: the tip's hash exactly when the last header announced the point") {

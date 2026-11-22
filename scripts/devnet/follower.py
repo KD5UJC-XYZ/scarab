@@ -64,10 +64,12 @@ def follow(args):
         program += ["--listen", args.listen]
     voter = getattr(args, "voter_keys", None)
     if voter:
-        # a pool's throwaway keys of the run: credentials read at start, no block forged, votes cast with the BLS key
+        # a pool's throwaway keys of the run: credentials read at start, votes cast with the BLS key, and blocks
+        # forged only with --voter-forges
         program += ["--forge", "--vrf-skey", "/voter/vrf.skey", "--kes-skey", "/voter/kes.skey",
-                    "--opcert", "/voter/opcert.cert", "--shelley-bls-key", "/voter/bls.skey",
-                    "--start-as-non-producing-node"]
+                    "--opcert", "/voter/opcert.cert", "--shelley-bls-key", "/voter/bls.skey"]
+        if not getattr(args, "voter_forges", False):
+            program += ["--start-as-non-producing-node"]
         mounts.append(f"{voter}:/voter")
     if getattr(args, "dump_state", False):
         # state digests at every epoch boundary for the db-analyser comparison (`devnet.py oracle`)

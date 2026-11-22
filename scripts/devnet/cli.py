@@ -234,6 +234,11 @@ def main():
     lt.add_argument("--quiet-pool", type=int, action="append", default=[], metavar="POOL",
                     help="with --follow-vote: pool POOL's reference node also runs without its BLS key (repeatable), "
                          "so that a quorum needs the follower's seat and every certificate must count it")
+    lt.add_argument("--follow-forge", type=int, metavar="POOL",
+                    help="with --follow: the follower is pool POOL, forging and voting with that pool's throwaway "
+                         "keys of the run (`--forge --shelley-bls-key`), and pool POOL's reference node is not "
+                         "started; the reference nodes dial it, and the judge requires its ranking blocks, endorser "
+                         "blocks, votes and certifying blocks on every reference node's chain")
     lt.set_defaults(run=leios_traffic)
     sc = sub.add_parser("sample-chain-dep", help="next to up-eras: record the reference's DebugChainDepState answers at chosen tips")
     sc.add_argument("--out", required=True, help="JSON file of the recorded points")
@@ -292,6 +297,8 @@ def main():
                    help="a directory of a pool's `vrf.skey`, `kes.skey`, `opcert.cert` and `bls.skey`: the follower "
                         "is given them with --forge and --start-as-non-producing-node, so it votes with the BLS key "
                         "and forges nothing")
+    f.add_argument("--voter-forges", action="store_true",
+                   help="with --voter-keys: start forging at once (no --start-as-non-producing-node)")
     f.set_defaults(run=follow)
     ld = sub.add_parser("load", help="submit randomized ADA transfers, staking and certificates")
     ld.add_argument("--seconds", type=int, help="stop after this long (default: until killed)")

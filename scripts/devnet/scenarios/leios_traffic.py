@@ -49,6 +49,16 @@ against; with `--follow`, the Scala node follows the cluster from its start and 
   incomplete (CNF-2), none counted fails. A certificate is assembled when the tally first reaches the quorum, so
   it counts the follower's seat only if its vote was among the first; with `--quiet-pool` further pools run without
   their keys, the quorum needs the follower's seat, and every certificate on the chain must count it.
+- **A forging follower.** With `--follow-forge POOL` the follower is pool POOL: it is given the same keys without
+  `--start-as-non-producing-node`, so it forges and votes from its start, and pool POOL's reference node is not
+  started at all. The reference nodes dial it as for `--follow-vote`, so they take its ranking blocks by ChainSync
+  and BlockFetch, its endorser blocks by LeiosFetch and its votes by LeiosNotify. The load runs until it has forged a
+  certifying block, as well as the reference's. The judge (`forging_verdict`) requires, on the chain every reference
+  node holds, one of its Dijkstra ranking blocks, one that announces an endorser block it forged whose closure every
+  reference node's LeiosDB holds, and one of its certifying blocks, besides a vote acquired; none forged of a kind
+  is incomplete, forged and not there fails.
+  The certifying blocks `--certificates` asks for are counted in the reference nodes' own logs
+  (`reference_certifying`), so the follower's on the chain never stand in for them; fewer is incomplete.
 
 The judge (`judge`) reads each node's ImmutableDB after the nodes stop, and requires on the chain every node holds:
 an RB that announces an EB, and a certifying RB whose parent is the announcing RB; every node applied that block
@@ -385,6 +395,74 @@ def voting_verdict(cast, acquired, certificates=0, with_seat=0, needed=False):
     return {"verdict": "passed", "problems": []}
 
 
+# the follower's own lines a forging pool is judged by (`EventKind.scala`: `Forged`, the forge loop's Leios kinds)
+SCARAB_FORGE_EVENTS = ("forged", "leiosBlockForged", "leiosBlockAnnounced", "leiosBlockCertified",
+                       "leiosCertifiedAndAnnounced", "leiosVoted")
+
+
+def scarab_counts(events):
+    """{event: count} of the follower's forging lines (`SCARAB_FORGE_EVENTS`)."""
+    counts = {}
+    for e in events:
+        if e.get("event") in SCARAB_FORGE_EVENTS:
+            counts[e["event"]] = counts.get(e["event"], 0) + 1
+    return counts
+
+
+def reference_certifying(kinds, certificates):
+    """The verdict on the certifying blocks the reference nodes forged, from their final logs ({node: {kind: n}},
+    `trace_kinds`): each forged one is a `LeiosBlockCertified` of its forger's log, which a follower's log is not
+    among. Fewer than `certificates` is incomplete (CNF-2): the load or the time ran out first, and the run did not
+    show what it was asked to."""
+    forged = sum(k.get("LeiosBlockCertified", 0) for k in kinds.values())
+    if forged >= certificates:
+        return {"verdict": "passed", "forged": forged, "problems": []}
+    return {"verdict": "incomplete", "forged": forged,
+            "problems": [f"the reference nodes forged {forged} certifying blocks, fewer than the {certificates} asked "
+                         "for: the load or the time ran out first"]}
+
+
+def forging_severities(kinds):
+    """The follower's severities for a forging follower: a block of its own that its chain selection did not adopt
+    (`didntAdoptBlock`, Error as the reference's `TraceDidntAdoptBlock`) is a lost slot battle in a cluster of
+    several pools, not a failure of the node; `forging_verdict` judges its blocks by the reference nodes' chains."""
+    return {**kinds, "didntAdoptBlock": "Warning"}
+
+
+def forging_verdict(chains, closures, events):
+    """The verdict on a forging follower: its ranking blocks (`forged` lines, by hash), the endorser blocks it forged
+    (`leiosBlockForged`, by hash) and its certifying blocks, on the chain every reference node holds
+    (`common_chain`), each endorser block's closure in every reference node's LeiosDB. None forged of a kind is
+    incomplete (CNF-2); forged and none on every node's chain fails. Its votes are judged by `voting_verdict`."""
+    common = common_chain(chains)
+    ours = {e["hash"]: e["slot"] for e in events if e.get("event") == "forged" and "hash" in e}
+    ebs = {e["hash"] for e in events if e.get("event") == "leiosBlockForged" and "hash" in e}
+    certified_at = {e["atSlot"] for e in events if e.get("event") == "leiosBlockCertified" and "atSlot" in e}
+    on_chain = [b for b in common if b["hash"] in ours]
+    dijkstra = [b for b in on_chain if b["era"] == "dijkstra"]
+    announcing = [b for b in on_chain if b["announces"] in ebs]
+    everywhere = [b for b in announcing if all(b["announces"] in closures.get(n, set()) for n in chains)]
+    certifying = [b for b in on_chain if b["certifies"]]
+    first = min((b["slot"] for b in common if b["era"] == "dijkstra"), default=None)
+    forged_dijkstra = [h for h, slot in ours.items() if first is not None and slot >= first]
+    problems, incomplete = [], []
+    for kind, made, held in (("Dijkstra ranking block", forged_dijkstra, dijkstra),
+                             ("endorser block", ebs, everywhere),
+                             ("certifying block", certified_at, certifying)):
+        if not made:
+            incomplete.append(f"the follower forged no {kind}")
+        elif not held:
+            problems.append(f"none of the follower's {len(made)} {kind}s is on every reference node's chain"
+                            + (" with its closure in every LeiosDB" if kind == "endorser block" else ""))
+    verdict = "failed" if problems else "incomplete" if incomplete else "passed"
+    return {"verdict": verdict, "problems": problems + incomplete, "forged": len(ours),
+            "onChain": len(on_chain), "dijkstraOnChain": len(dijkstra), "endorserBlocksForged": len(ebs),
+            "endorserBlocksEverywhere": len(everywhere), "certifyingForged": len(certified_at),
+            "certifyingOnChain": len(certifying), "lines": scarab_counts(events),
+            "certifying": [{"blockNo": b["blockNo"], "slot": b["slot"], "hash": b["hash"],
+                            "signers": b["signers"]} for b in certifying]}
+
+
 def kind_counts(text):
     """{kind: count} from the `uniq -c` lines of `KIND_COUNT_COMMAND` (`   3 "kind":"LeiosVoted"`)."""
     counts = {}
@@ -482,14 +560,18 @@ def _drive(args, root, started):
                  config_extra={"LeiosMinOfferLead": args.min_offer_lead})
     for n in range(1, args.pools + 1):
         in_ref(args.name, bls_keygen_command(n))
-    voting = getattr(args, "follow_vote", None)
+    forging = getattr(args, "follow_forge", None)
+    voting = forging if forging is not None else getattr(args, "follow_vote", None)
     quiet = set(getattr(args, "quiet_pool", None) or ())
     if quiet and (voting is None or voting in quiet or not quiet <= set(range(1, args.pools + 1))):
         raise SystemExit("--quiet-pool needs --follow-vote, pools 1..N other than the follower's")
     voter = None
+    if forging is not None and (forging in (1, args.follow_node) or getattr(args, "follow_vote", None) is not None):
+        # node 1 answers the scenario's queries, and the follower follows `--follow-node`: neither can be absent
+        raise SystemExit(f"--follow-forge {forging} needs a pool other than 1 and --follow-node, and no --follow-vote")
     if voting is not None:
         if not getattr(args, "follow", False) or not 1 <= voting <= args.pools:
-            raise SystemExit(f"--follow-vote {voting} needs --follow and a pool 1..{args.pools}")
+            raise SystemExit(f"--follow-vote/--follow-forge {voting} needs --follow and a pool 1..{args.pools}")
         # the pool's throwaway keys of this run, for the follower; its reference node runs without its BLS key
         keys = root / "voter"
         keys.mkdir(mode=0o700)
@@ -501,11 +583,13 @@ def _drive(args, root, started):
         voter = (f"127.0.0.1:{VOTER_PORT}", keys)
     ports = start_nodes(args, root,
                         bls_key=lambda n: None if n == voting or n in quiet else f"{ENV}/pools-keys/pool{n}/bls.skey",
-                        extra_roots=lambda n: (VOTER_PORT,) if voting is not None else ())
+                        extra_roots=lambda n: (VOTER_PORT,) if voting is not None else (), skip=forging)
 
     deadline = started + args.timeout
     following = getattr(args, "follow", False)
     severities = leios_follow.severities(leios_follow.EVENT_KINDS.read_text()) if following else {}
+    if forging is not None:
+        severities = forging_severities(severities)
     follower, follower_failure = None, None
     net = f"--testnet-magic {MAGIC} --socket-path {socket()}"
 
@@ -523,7 +607,7 @@ def _drive(args, root, started):
     if following:
         # from the cluster's first answer, so the follower crosses from Conway into Dijkstra live
         first = wait_for(f"node {args.follow_node}'s first answer", lambda t: t, poll=0.5)
-        follower = leios_follow.start(args, voter)
+        follower = leios_follow.start(args, voter, forges=forging is not None)
         log({"followerStarted": {"node": args.follow_node, "port": ports[args.follow_node], "referenceTip": first}})
     entered = wait_for("Dijkstra", lambda t: t if t.get("era", "").lower() == "dijkstra" else None)
     log({"dijkstra": entered})
@@ -606,7 +690,12 @@ def _drive(args, root, started):
                 if follower_failure:
                     log({"followerFailed": follower_failure})
                     break
-            if counts.get("LeiosBlockCertified", 0) >= args.certificates:
+            if forging is not None:
+                # the follower's own certifying blocks: the run goes on until it forged one
+                counts["scarab"] = scarab_counts(leios_follow.final_log(root)[0])
+                log({"scarab": counts["scarab"]})
+            if counts.get("LeiosBlockCertified", 0) >= args.certificates and (
+                    forging is None or counts["scarab"].get("leiosBlockCertified", 0) >= 1):
                 break
         time.sleep(0.5)
     deep = max(t["block"] for t in (tip(args.name, n) for n in ports) if t) + args.security_param + 2
@@ -638,6 +727,9 @@ def _drive(args, root, started):
                                capture_output=True, text=True, check=True).stdout.splitlines()
         kinds[n], reasons[n] = trace_kinds(lines)
     verdict = judge(chains, closures, kinds, certificates=args.certificates)
+    # the certifying blocks the reference nodes forged, apart from the follower's: those on the chain may be all
+    # a forging follower's
+    reference = reference_certifying(kinds, args.certificates)
     if following:
         common = common_chain(chains)
         events, other = leios_follow.final_log(root)
@@ -666,6 +758,13 @@ def _drive(args, root, started):
             follow["voting"] = {"pool": voting, "quietPools": sorted(quiet), "cast": len(cast), "seats": seats,
                                 "acquiredByNode": acquired, "certificatesWithSeat": with_seat,
                                 "certificates": certificates, **voted}
+            if forging is not None:
+                forged = forging_verdict(chains, closures, events)
+                follow["forging"] = {"pool": forging, **forged}
+                if forged["verdict"] == "failed":
+                    voted = {"verdict": "failed", "problems": voted["problems"] + forged["problems"]}
+                elif forged["verdict"] == "incomplete" and voted["verdict"] != "failed":
+                    voted = {"verdict": "incomplete", "problems": voted["problems"] + forged["problems"]}
             if voted["verdict"] == "failed":
                 judged["problems"] = judged["problems"] + voted["problems"]
                 judged["verdict"] = "failed"
@@ -673,7 +772,8 @@ def _drive(args, root, started):
                 judged["incomplete"] = judged["incomplete"] + voted["problems"]
                 judged["verdict"] = "incomplete"
     summary = {"referenceOnly": True, "image": LEIOS_IMAGE, "seconds": round(time.monotonic() - started),
-               "verdict": verdict, "follower": follow, "traces": kinds, "notVotedReasons": reasons,
+               "verdict": verdict, "referenceCertifying": reference, "follower": follow, "traces": kinds,
+               "notVotedReasons": reasons,
                "loadSubmitted": submitted, "loadRejected": rejected,
                "ebClosuresPerNode": {n: len(c) for n, c in closures.items()},
                "cluster": {"pools": args.pools, "epochLength": args.epoch_length, "slotLength": args.slot_length,
@@ -688,6 +788,8 @@ def _drive(args, root, started):
         raise SystemExit(f"leios-traffic failed: {verdict['problems']}")
     if follow is not None and follow["verdict"]["verdict"] == "failed":
         raise SystemExit(f"leios-traffic --follow failed: {follow['verdict']['problems']}")
+    if reference["verdict"] == "incomplete":
+        raise SystemExit(f"INCOMPLETE: leios-traffic: {reference['problems']}")
     if follow is not None and follow["verdict"]["verdict"] == "incomplete":
         raise SystemExit(f"INCOMPLETE: leios-traffic --follow: {follow['verdict']['incomplete']}")
 

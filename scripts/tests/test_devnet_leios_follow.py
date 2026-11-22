@@ -313,6 +313,11 @@ class CliTest(unittest.TestCase):
         self.assertEqual(command[-4:], ["--listen", "127.0.0.1:3101", "--voter-keys", "/run/voter"])
         self.assertNotIn("--listen", lf.follower_command("n", 2, 2))
 
+    def test_a_forging_follower_is_not_started_as_non_producing(self):
+        command = lf.follower_command("n", 2, 2, ("127.0.0.1:3101", "/run/voter"), forges=True)
+        self.assertEqual(command[-5:], ["--listen", "127.0.0.1:3101", "--voter-keys", "/run/voter", "--voter-forges"])
+        self.assertNotIn("--voter-forges", lf.follower_command("n", 2, 2, ("127.0.0.1:3101", "/run/voter")))
+
 
 if __name__ == "__main__":
     unittest.main()
