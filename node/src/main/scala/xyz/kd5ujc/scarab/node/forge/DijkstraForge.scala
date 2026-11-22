@@ -49,12 +49,12 @@ final case class DijkstraPartition(
   */
 object DijkstraForge:
 
-  /** `decideLeiosCertify` (`NodeKernel/Forge.hs:324-396`) of the block forged in `slot` on
-    * `parent`: what the parent announced, the certification gap of its unticked state's parameters
-    * at the era's slot length `slotMillis` (`getMinCertificationGap`, `Shelley/Ledger/Ledger.hs:
-    * 969-973`), the store's closure and the vote state's certificate for the parent
-    * ([[LeiosVoting.decideLeiosCertify]]). A gap that cannot be computed, a parent hash of another
-    * width and a certificate on genesis stop the node, as the reference's `error` s do.
+  /** `decideLeiosCertify` (`NodeKernel/Forge.hs:324-396`, ouroboros-consensus 2416493b) of the
+    * block forged in `slot` on `parent`: what the parent announced, the certification gap of its
+    * unticked state's parameters at the era's slot length `slotMillis` (`getMinCertificationGap`,
+    * `Shelley/Ledger/Ledger.hs: 969-973`), the store's closure and the vote state's certificate for
+    * the parent ([[LeiosVoting.decideLeiosCertify]]). A gap that cannot be computed, a parent hash
+    * of another width and a certificate on genesis stop the node, as the reference's `error` s do.
     */
   def decide[F[_]: Monad, S](
       slot: BigInt,
@@ -90,8 +90,8 @@ object DijkstraForge:
           certifying.certificate
         )
 
-  /** `partitionMempool` (`NodeKernel/Forge.hs:760-869`) of the block forged in `slot` on `parent`,
-    * by `decision`:
+  /** `partitionMempool` (`NodeKernel/Forge.hs:760-869`, ouroboros-consensus 2416493b) of the block
+    * forged in `slot` on `parent`, by `decision`:
     *   - without a certificate, the pool's snapshot of the slot on the parent ticked to it
     *     (`getSnapshotFor`, `:792-797`), its longest prefix that fits the ranking block's
     *     `blockLimit` for the block and the run after it that fits `ebLimit` for its endorser block
@@ -147,7 +147,8 @@ object DijkstraForge:
         }
 
   /** The lines `decideLeiosCertify` traces of `decision` for the block of `slot`
-    * (`NodeKernel/Forge.hs:356-383`): the two kernel messages and `TraceLeiosBlockCertified`.
+    * (`NodeKernel/Forge.hs:356-383`, ouroboros-consensus 2416493b): the two kernel messages and
+    * `TraceLeiosBlockCertified`.
     */
   def decided(slot: BigInt, decision: CertifyDecision): Vector[LeiosForgeTrace] = decision match
     case CertifyDecision.ClosureNotDownloaded(point) => Vector(LeiosForgeTrace.NotDownloaded(point))
@@ -156,9 +157,10 @@ object DijkstraForge:
     case CertifyDecision.NothingAnnounced | CertifyDecision.TooEarly(_, _) => Vector.empty
 
   /** The lines `forgeShelleyBlock` traces of the block `rbHash` forged in `slot` with `body`
-    * (`Shelley/Ledger/Forge.hs:124-138, 202-208`): for an endorser block forged with it, its
-    * `TraceLeiosBlockForged` and `TraceLeiosBlockAnnounced`, and `TraceLeiosCertifiedAndAnnounced`
-    * when the block also certifies; nothing for a block that announces none.
+    * (`Shelley/Ledger/Forge.hs:124-138, 202-208`, ouroboros-consensus 2416493b): for an endorser
+    * block forged with it, its `TraceLeiosBlockForged` and `TraceLeiosBlockAnnounced`, and
+    * `TraceLeiosCertifiedAndAnnounced` when the block also certifies; nothing for a block that
+    * announces none.
     */
   def forged(slot: BigInt, rbHash: Bytes, body: BlockBuilder.Assembly): Vector[LeiosForgeTrace] =
     body match
