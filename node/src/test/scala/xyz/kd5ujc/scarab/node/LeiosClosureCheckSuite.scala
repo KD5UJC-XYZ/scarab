@@ -29,6 +29,35 @@ import xyz.kd5ujc.scarab.plutus.PlutusBackend
 import xyz.kd5ujc.scarab.protocol.{EbHash, EbPoint, Era, LeiosTxHash, ReferenceBuild}
 import xyz.kd5ujc.scarab.protocol.LeiosWord.Word64
 import xyz.kd5ujc.scarab.storage.MemoryUtxoStore
+import xyz.kd5ujc.scarab.ledger.{EpochGeometry, TestGeometry, Utxo}
+import xyz.kd5ujc.scarab.ledger.era.{
+  BothLevels,
+  ConwayEraAccounts,
+  CostModels,
+  EraCertState,
+  EraPParams,
+  EraStake,
+  EraTxBody,
+  GovAction,
+  GovRelation,
+  Identity,
+  PParams,
+  Proposals,
+  StoredTxOut,
+  UTxO
+}
+import xyz.kd5ujc.scarab.ledger.rules.Convert
+import xyz.kd5ujc.scarab.ledger.state.{
+  Accounts,
+  Build,
+  Coin,
+  CompactCoin,
+  DState,
+  EpochNo,
+  UtxoTables
+}
+import xyz.kd5ujc.scarab.node.mempool.DijkstraState
+import xyz.kd5ujc.scarab.plutus.PlutusLanguage
 
 /** The closure check a voter runs before it votes (`validateEbClosure`, ouroboros-consensus
   * 2416493b `LeiosVoting.hs:446-565`), on the devnet's recorded Dijkstra transaction
@@ -288,4 +317,232 @@ class LeiosClosureCheckSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
 
   test("an empty closure is valid, as `goValidate` 's `[]` is") {
     checked(Vector.empty).map(v => assertEquals(v, EbClosureVerdict.Valid))
+  }
+
+  // ---- the testnet's parameter change in a closure -----------------------------------------------
+
+  /** The testnet's endorser-block transaction `e57ccb64…` of block 69322
+    * (`fixtures/reference/leios-testnet-chain-contexts`, recorded with the outputs it spends): a
+    * parameter change of keys 47 and 48, whose parent is the testnet's first parameter change.
+    */
+  private lazy val proposalCase: io.circe.Json =
+    DijkstraCorpus.chainContextCases
+      .find(c => DijkstraCorpus.str(c, "name").startsWith("e57ccb64"))
+      .getOrElse(fail("no e57ccb64 in the chain contexts"))
+
+  private lazy val chainFixture: io.circe.Json =
+    DijkstraCorpus.json("fixtures/reference/leios-testnet-chain-contexts/cases.json")
+
+  private def field[A: io.circe.Decoder](j: io.circe.Json, name: String): A =
+    j.hcursor.get[A](name).fold(e => fail(e.message), identity)
+
+  private lazy val proposalTx: Tx[TxLevel.Top, Dijkstra] =
+    DijkstraTx
+      .inBlock(DijkstraCorpus.node(DijkstraCorpus.hex(DijkstraCorpus.str(proposalCase, "bytes"))))
+      .fold(e => fail(e.toString), identity)
+
+  /** The testnet's parameters of its genesis, with the cost models it ran (the fixture's), as the
+    * ledger's own chain suite reads them (`DijkstraLedgerSuite`).
+    */
+  private lazy val testnetStored: xyz.kd5ujc.scarab.ledger.ProtocolParams =
+    def genesis(era: String) =
+      DijkstraCorpus.json(s"fixtures/leios/testnet/config/$era-genesis.json")
+    xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraFixture.genesis.upgrade(
+      xyz.kd5ujc.scarab.ledger.ProtocolParams
+        .fromGenesis(genesis("shelley"), genesis("alonzo"), Some(genesis("conway")))
+        .fold(e => fail(e.toString), identity)
+    )
+
+  private lazy val testnetPp: PParams[Dijkstra] =
+    val languages = PlutusLanguage.values.map(l => s"Plutus$l" -> l).toMap
+    val models = field[Map[String, Vector[BigInt]]](chainFixture, "costModels")
+      .map((name, values) => languages.getOrElse(name, fail(name)).id -> values)
+    PParams
+      .lensHKD[Dijkstra]
+      .andThen(EraPParams.dijkstra.hkdCostModelsL[Identity])
+      .replace(CostModels.from(models).fold(e => fail(e.toString), identity))(
+        DijkstraCorpus.era(testnetStored)
+      )
+
+  private lazy val testnetGeometry: EpochGeometry =
+    EpochGeometry
+      .checked(
+        java.time.Instant.parse(DijkstraCorpus.str(chainFixture, "systemStart")),
+        (field[BigInt](chainFixture, "slotLength") * 1000).toLong,
+        field[BigInt](chainFixture, "epochSize").toLong,
+        TestGeometry.k(2),
+        TestGeometry.f("0.5")
+      )
+      .fold(e => fail(e.message), identity)
+
+  private lazy val proposalSlot: BigInt = field[BigInt](proposalCase, "slot")
+
+  private lazy val proposalEnv: DijkstraPoolEnv =
+    DijkstraPoolEnv.of(
+      MempoolEnv(
+        setup.globals,
+        testnetGeometry,
+        PlutusBackend.default.evaluator,
+        PlutusBackend.default.decoder
+      ),
+      proposalSlot
+    )
+
+  /** The least state the transaction needs, as the chain suite seeds it: the testnet's genesis
+    * state with its parameters, its constitution (whose guardrails script the proposal names), the
+    * proposals rooted at the proposal's parent, as when that change was enacted, the proposal's
+    * return account registered with 2 ada, and the recorded outputs.
+    */
+  private lazy val proposalState: DijkstraState =
+    val bodies = EraTxBody.dijkstra
+    val procedures = bodies.proposalProcedures[TxLevel.Top](proposalTx.body)(using BothLevels.Top)
+    val parent = procedures.toVector.flatMap(_.pProcGovAction match
+      case GovAction.ParameterChange(parent, _, _) => parent
+      case _                                       => None)
+    val returns = procedures.toVector.map(p =>
+      Convert.accountAddress(p.pProcReturnAddr).fold(e => fail(e.toString), _.id.credential)
+    )
+    val outputs = field[Vector[(String, String)]](proposalCase, "utxo").map { (i, o) =>
+      val in = xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraTxIn
+        .decode(DijkstraCorpus.node(DijkstraCorpus.hex(i)))
+        .fold(e => fail(e.toString), DijkstraCorpus.txIn)
+      in -> xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraTxOut
+        .decode(DijkstraCorpus.node(DijkstraCorpus.hex(o)))
+        .fold(e => fail(e.toString), identity)
+    }
+    val nes = Build.dijkstra(EpochNo.fromUnsigned(0L), testnetStored)
+    val ls = nes.es.ls
+    val c = EraCertState.dijkstra
+    given ConwayEraAccounts[Dijkstra] = c.accountsOf
+    val accountsL = c.certDStateL.andThen(DState.accounts[Accounts[Dijkstra]])
+    val deposit = CompactCoin.fromCoin(Coin(2000000)).fold(e => fail(e.toString), identity)
+    val cert = returns.foldLeft(ls.cert)((st, cred) =>
+      accountsL
+        .modify(ConwayEraAccounts.registerConwayAccount[Dijkstra](cred, deposit, None, _))(st)
+    )
+    val utxo = UTxO[Dijkstra](outputs.toMap)
+    val conway = DijkstraCorpus
+      .json("fixtures/leios/testnet/config/conway-genesis.json")
+      .hcursor
+      .downField("constitution")
+    val constitution = xyz.kd5ujc.scarab.ledger.Constitution(
+      ls.utxo.gov.cgsConstitution.anchor,
+      Some(DijkstraCorpus.hex(conway.get[String]("script").fold(e => fail(e.message), identity)))
+    )
+    val seeded = ls.copy[Dijkstra](
+      cert = cert,
+      utxo = ls.utxo.copy[Dijkstra](
+        utxo = UtxoTables(
+          Utxo(outputs.map((i, o) => i -> StoredTxOut.dijkstra.toStored(o)).toMap)
+        ),
+        instantStake = EraStake.dijkstra
+          .addInstantStake(utxo, ls.utxo.instantStake)
+          .fold(e => fail(e.toString), identity),
+        gov = ls.utxo.gov.copy(
+          cgsCurPParams = testnetPp,
+          cgsConstitution = constitution,
+          cgsProposals =
+            Proposals.empty[Dijkstra](GovRelation[Option](parent.headOption, None, None, None))
+        )
+      )
+    )
+    DijkstraState.of(nes.copy[Dijkstra](es = nes.es.copy[Dijkstra](ls = seeded)))
+
+  private def heldProposal(state: DijkstraState): Boolean =
+    Proposals
+      .proposalsActionsMap(state.ls.utxo.gov.cgsProposals)
+      .keys
+      .exists(_.txId == proposalTx.id)
+
+  test("a closure with the testnet's parameter change of keys 47 and 48 is valid") {
+    assert(!heldProposal(proposalState), "the proposal is not held before")
+    assertEquals(
+      LeiosClosureCheck.applyClosure(Vector(entry(proposalTx)), proposalState, proposalEnv),
+      EbClosureVerdict.Valid
+    )
+  }
+
+  test("the state the closure's next transaction meets holds the accepted proposal") {
+    // the closure is folded over this step: each transaction applies to the state the one before
+    // it left, its governance state's proposals included (`goValidate`, `LeiosVoting.hs:504-542` at ouroboros-consensus 2416493b)
+    val after = proposalState
+      .applyIntervening(proposalTx, proposalEnv)
+      .fold(r => fail(r.message), identity)
+    assert(heldProposal(after), "the proposal is held after")
+    // and a second application on it is MEMPOOL's refusal of spent inputs, not a governance one
+    assertEquals(
+      refused(
+        LeiosClosureCheck
+          .applyClosure(Vector(entry(proposalTx), entry(proposalTx)), proposalState, proposalEnv)
+      ),
+      (proposalTx.id, Vector(DijkstraMempoolPredFailure.AllInputsAreSpent[Dijkstra]()))
+    )
+  }
+
+  test("the voter casts its vote on the closure with the parameter change") {
+    import xyz.kd5ujc.scarab.consensus.leios.{
+      AddVoteResult,
+      LeiosVoting,
+      LeiosVotingDefect,
+      LeiosVotingEnv,
+      SelectionView,
+      TipCommittee,
+      VotingKey
+    }
+    import xyz.kd5ujc.scarab.crypto.bls.{Committee, RbHash, Seat, Vote, Weight}
+    import xyz.kd5ujc.scarab.crypto.bls.BlsFixtures.{key, rbHash, right}
+    // a throwaway key made here, the committee's one seat
+    val k = key(4711)
+    val committee = TipCommittee(
+      right(
+        Committee.honoured(Vector(Seat(Weight(xyz.kd5ujc.scarab.codec.Rational(1)), Some(k._2))))
+      ),
+      Weight(xyz.kd5ujc.scarab.codec.Rational(3, 4))
+    )
+    val announcing: RbHash = rbHash(47)
+    val p = EbPoint(Word64.fromUnsigned(proposalSlot.toLong), EbHash.fromBytes(rbHash(48).bytes))
+    val fixed = org.scalacheck.rng.Seed(47L)
+    val praos = xyz.kd5ujc.scarab.consensus.state.StateGen.praosState
+      .pureApply(org.scalacheck.Gen.Parameters.default, fixed)
+      .copy(lastSlot =
+        xyz.kd5ujc.scarab.ledger.state.WithOrigin.At(SlotNo.fromUnsigned(proposalSlot.toLong))
+      )
+    val announced = xyz.kd5ujc.scarab.consensus.state.StateGen.announcedBy
+      .pureApply(org.scalacheck.Gen.Parameters.default, fixed)
+    val chainDep = xyz.kd5ujc.scarab.consensus.state.ChainDepState.Praos2(
+      xyz.kd5ujc.scarab.consensus.Praos2.State(
+        praos,
+        Some(announced.copy(announcement = announced.announcement.copy(hash = p.hash)))
+      )
+    )
+    for
+      votes <- LeiosVotes.create[IO](IO.pure(Right(Some(committee))))
+      env = new LeiosVotingEnv[IO, DijkstraState, Rejection, LeiosClosureDefect]:
+        def now: IO[scala.concurrent.duration.FiniteDuration] =
+          IO.pure(scala.concurrent.duration.Duration.Zero)
+        def selection: IO[Option[SelectionView[DijkstraState]]] =
+          IO.pure(Some(SelectionView(chainDep, Some(announcing), Some(committee), proposalState)))
+        def validateClosure(point: EbPoint, ledger: DijkstraState) =
+          IO.pure(LeiosClosureCheck.applyClosure(Vector(entry(proposalTx)), ledger, proposalEnv))
+        def addVote(vote: Vote): IO[AddVoteResult] =
+          Handle
+            .allow[LeiosVotesDefect](votes.add(vote))
+            .rescue(e => IO.raiseError(new AssertionError(e.toString)))
+      voted <- Handle
+        .allow[LeiosVotingDefect](
+          LeiosVoting.vote(
+            env,
+            Vector(right(VotingKey.of(k._1))),
+            p,
+            scala.concurrent.duration.Duration(1, "s")
+          )
+        )
+        .rescue(e => IO.raiseError(new AssertionError(e.toString)))
+      cert <- votes.certificate(announcing)
+    yield
+      voted match
+        case Right(answers) =>
+          assert(answers.forall(_._2.isInstanceOf[AddVoteResult.Added]), s"$answers")
+        case Left(reason) => fail(s"no vote: $reason")
+      assert(cert.isDefined, "the one seat's vote makes the certificate")
   }
