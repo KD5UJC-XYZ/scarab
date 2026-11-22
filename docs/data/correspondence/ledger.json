@@ -9111,7 +9111,7 @@
     "DijkstraRulesOracleSuite",
     "UpstreamCertsCoverageSuite"
    ],
-   "note": "the recursion on the prefix as a fold, each step a sub-rule over the previous, which the interpreter runs in constant stack; the base case the era's (CertsBaseCase): Conway's the 11.1 build's, run where the build the judgment's Globals name leaves the withdrawals to CERTS (WithdrawalsRule: 11.1 below version 11), its failure WithdrawalsNotInRewardsCERTS over the reference's Withdrawals, and Dijkstra's the later builds' Empty -> pure certState, by its type; the votes' credentials are read into the state's vocabulary, refused as a Vocab defect as the flat rule does, which no decoded body is; each certificate judged by the era's CERT (CertRule, the type family EraRule at CERT), whose own defects are raised through a capability of their own; Dijkstra's CERTS is this transition with Dijkstra's CERT (Dijkstra/Rules/Certs.hs:20-22 at 9df9f98c)",
+   "note": "the recursion on the prefix as a fold, each step a sub-rule over the previous, which the interpreter runs in constant stack; the base case the era's (CertsBaseCase): Conway's the 11.1 build's, run where the build the judgment's Globals name leaves the withdrawals to CERTS (WithdrawalsRule: 11.1 below version 11), its failure WithdrawalsNotInRewardsCERTS over the map of the reference's Withdrawals (Certs.hs:233-235 wraps it), and Dijkstra's the later builds' Empty -> pure certState, by its type; the votes' credentials are read into the state's vocabulary, refused as a Vocab defect as the flat rule does, which no decoded body is; each certificate judged by the era's CERT (CertRule, the type family EraRule at CERT), whose own defects are raised through a capability of their own; Dijkstra's CERTS is this transition with Dijkstra's CERT (Dijkstra/Rules/Certs.hs:20-22 at 9df9f98c)",
    "digest": "d8d39f2d0a9d00be"
   },
   "def ledger.era.rules.CERTS.updateDormantDRepExpiries": {
@@ -31495,7 +31495,7 @@
     "ConwayCertsChecksSuite",
     "DijkstraCertsSuite"
    ],
-   "note": "its constructors in the order of their tags (:166-167); WithdrawalsNotInRewardsCERTS is the 11.1 build's, which 29a7d656 and 9df9f98c remove with the base case (WithdrawalsRule), and has no value at Dijkstra (CertsWithdrawals), whose CERTS at 9df9f98c has CertFailure alone; its withdrawals are the reference's Withdrawals, Map AccountAddress Coin (Address.hs:980), as the era bodies hold them",
+   "note": "its constructors in the order of their tags (:166-167); WithdrawalsNotInRewardsCERTS is the 11.1 build's, which 29a7d656 and 9df9f98c remove with the base case (WithdrawalsRule), and has no value at Dijkstra (CertsWithdrawals), whose CERTS at 9df9f98c has CertFailure alone; its withdrawals are keyed by AccountAddress, as the era bodies' Withdrawals are, but held as the map Map AccountAddress Coin, where the reference wraps the union in Withdrawals (Certs.hs:233-235, Address.hs:980)",
    "digest": "7dfbc1ac7aed6279"
   },
   "enum ledger.era.rules.PoolEvent": {
@@ -36065,7 +36065,7 @@
     "ConwayCertsChecksSuite",
     "DijkstraCertsSuite"
    ],
-   "note": "the withdrawals of CERTS's WithdrawalsNotInRewardsCERTS by era: the reference's Withdrawals at Conway, whose era types follow the 11.1 build's ledger, and Nothing at Dijkstra, whose CERTS at 9df9f98c has CertFailure alone. Its observable behaviour is the reference's: Dijkstra's CERTS reports no such failure in either, and the compiler refuses the constructor there, as MirSigners does at Conway.",
+   "note": "the withdrawals of CERTS's WithdrawalsNotInRewardsCERTS by era: the map of the reference's Withdrawals, keyed by AccountAddress, at Conway (the reference wraps it in Withdrawals, Certs.hs:233-235), whose era types follow the 11.1 build's ledger, and Nothing at Dijkstra, whose CERTS at 9df9f98c has CertFailure alone. Its observable behaviour is the reference's: Dijkstra's CERTS reports no such failure in either, and the compiler refuses the constructor there, as MirSigners does at Conway.",
    "digest": "fe9fcf6a62fb0960"
   },
   "enum ledger.era.rules.CertsBaseCase": {

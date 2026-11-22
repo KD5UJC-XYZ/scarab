@@ -1658,8 +1658,9 @@ Conway's rules on the classes follow as the rest of stage 2.
     (`hardforkConwayMoveWithdrawalsAndDRepChecksToLedgerRule`, `Conway/Era.hs:283-284`); at 29a7d656 and 9df9f98c
     LEDGER at every version, the base case gone (`Conway/Rules/Certs.hs:220` at both) and the constructor with
     it. Crafted withdrawals at 9, 10 and 11, under each of the three builds through CERTS's entry point, show the
-    base case running only under 11.1 below 11 (`ConwayCertsChecksSuite`). The failure's withdrawals are the
-    reference's `Withdrawals`, keyed by `AccountAddress` (`Address.hs:980`), as the era bodies hold them.
+    base case running only under 11.1 below 11 (`ConwayCertsChecksSuite`). The failure's withdrawals are keyed by
+    `AccountAddress`, as the era bodies' are, but the failure holds the map, where the reference wraps it in
+    `Withdrawals` (`Certs.hs:233-235`, `Address.hs:980`).
   - On the 33 upstream judgments of the 11.1 conformance export (1 CERT, 1 CERTS, 5 DELEG, 5 POOL and 21
     GOVCERT), the era rules, from the same inputs, leave the reference's full post-state
     (`UpstreamCertConformanceSuite`, `UpstreamCertsCoverageSuite`, `UpstreamDelegConformanceSuite`,
