@@ -71,7 +71,8 @@ object LeiosNotifyPipelined:
       NetworkError.IllegalTransition(id, cause).raise[F, B]
     def send(message: LeiosNotify.Message)(using Raise[F, NetworkError]): F[Unit] =
       LeiosNotify.encode(message).fold(e => illegal(ProtocolError.Leios(e)), channel.send)
-    def receive(state: LeiosNotify.State): F[LeiosNotify.Message] =
+    // through the capability of the fiber that receives, so a reply's refusal is that fiber's
+    def receive(state: LeiosNotify.State)(using Raise[F, NetworkError]): F[LeiosNotify.Message] =
       channel.recv(LeiosNotify.SmallByteLimit)(LeiosNotify.incremental(state))
     SignallingRef.of[F, Pipe](Pipe(0, draining = false)).flatMap { pipe =>
       val sender = Fibers.scoped[F, NetworkError, Unit](NetworkError.Defect(_)) {

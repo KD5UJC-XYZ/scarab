@@ -247,3 +247,39 @@ class LeiosNotifyPipelinedSuite extends FailsOnUncaught:
       }
     yield outcome).map(result => assertEquals(result, Right(Left(refused))))
   }
+
+  test("a reply the Busy decoder does not admit ends the client with the decoder's refusal") {
+    typed(linked(protocols = Set(Protocols.LeiosNotify)).use { (clientMux, serverMux) =>
+      for
+        ours <- clientMux.channel(Protocols.LeiosNotify)
+        theirs <- serverMux.channel(Protocols.LeiosNotify)
+        stop <- Deferred[IO, Unit]
+        // `MsgDone` answers a request: a message of Quit, not of Busy
+        server = receiveIdle(theirs) *> send(theirs, LeiosNotify.Message.Done)
+        outcome <- (
+          typed(
+            LeiosNotifyPipelined.run[IO](
+              ours,
+              stop,
+              IO.unit,
+              _ => IO.unit,
+              LeiosNotifyPipelined.Settings(depth = 1)
+            )
+          ),
+          server
+        ).parTupled
+      yield outcome._1
+    }).map(result =>
+      assertEquals(
+        result,
+        Right(
+          Left(
+            NetworkError.Decode(
+              Protocols.LeiosNotify,
+              ProtocolError.Leios(LeiosWireError.NotAdmitted(0))
+            )
+          )
+        )
+      )
+    )
+  }
