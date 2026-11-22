@@ -17,6 +17,7 @@ import xyz.kd5ujc.scarab.ledger.rules.{
   NativeRules,
   StakeDistribution
 }
+import xyz.kd5ujc.scarab.ledger.era.conway.ConwayTestKit
 import xyz.kd5ujc.scarab.ledger.state as native
 import xyz.kd5ujc.scarab.ledger.state.{
   Build,
@@ -128,10 +129,13 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
       */
     def initial: Step =
       val stakeUtxos = stakes.zipWithIndex.map { case (sk, i) =>
-        txIn(100 + i) -> out(payer.baseAddress(sk), 1000 * ada)
+        txIn(100 + i) -> ConwayTestKit.out(payer.baseAddress(sk), 1000 * ada)
       }
       val funded =
-        NativeRules.stateIn[Conway](pv, stakeUtxos :+ (fundIn -> out(payer.address(), fundCoin)))
+        NativeRules.stateIn[Conway](
+          pv,
+          stakeUtxos :+ (fundIn -> ConwayTestKit.out(payer.address(), fundCoin))
+        )
       val registered =
         pools.foldLeft(funded)((nes, p) => Build.pool(nes, poolParams(p), params.poolDeposit))
       val delegations = stakes.zipWithIndex.map { case (sk, i) =>
@@ -266,22 +270,31 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
       refunds: BigInt = 0,
       withdrawals: Map[RewardAccount, BigInt] = Map.empty
   ): Either[LedgerFailure, Step] =
-    val fee = BigInt(200)
+    val fee = ConwayTestKit.maxFee(st.params)
     val change = st.fundCoin - fee - deposits + refunds - donation + withdrawals.map(_._2).sum
-    val b = body(
-      s"gov-${st.nonce}",
-      Vector(st.fund),
-      Vector(out(w.payer.address(), change)),
-      fee,
-      certificates = certs,
-      withdrawals = withdrawals,
-      votes = votes,
-      proposals = proposals,
-      donation = donation
+    val built = ConwayTestKit.tx(
+      ConwayTestKit.Body(
+        Vector(st.fund),
+        Vector(ConwayTestKit.out(w.payer.address(), change)),
+        fee,
+        certificates = certs,
+        withdrawals = withdrawals,
+        votes = votes,
+        proposals = proposals,
+        donation = donation
+      ),
+      w.payer +: signers
     )
-    NativeRules
-      .txIn[Conway](st.nes, tx(b, w.payer +: signers), env(st, st.nonce))
-      .map(next => Step(next.state, TxIn(b.id, 0), change, st.nonce + 1))
+    judge(st.nes, built, env(st, st.nonce))
+      .map(next => Step(next, TxIn(built.id, 0), change, st.nonce + 1))
+
+  /** LEDGER on a transaction built with true bytes ([[ConwayTestKit]]). */
+  private def judge(
+      nes: NewEpochState[Conway],
+      built: ConwayTestKit.Built,
+      ctx: TxEnv
+  ): Either[LedgerFailure, NewEpochState[Conway]] =
+    NativeRules.txIn[Conway](nes, built.flat, ctx).map(_.state)
 
   private def ok[A](r: Either[LedgerFailure, A]): A = r.fold(f => fail(f.message), identity)
 
@@ -335,9 +348,10 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
     )
     assertEquals(st.nes.es.ls.utxo.instantStake, instant, s"$label: instant stake")
 
-  /** The id of governance action `index` of the last transaction submitted. */
-  private def idOf(st: Step, index: Int): GovActionId =
-    GovActionId(Blake2b.hash256.hash(Bytes(s"gov-${st.nonce - 1}".getBytes.toVector)), index)
+  /** The id of governance action `index` of the last transaction submitted, which made the step's
+    * funding output.
+    */
+  private def idOf(st: Step, index: Int): GovActionId = GovActionId(st.fund.id, index)
 
   // ---------------------------------------------------------------------------------------------
 
@@ -705,25 +719,22 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
   test("a transaction names the treasury only if it is right") {
     val w = World(10)
     val s0 = w.initial
-    val b = body(
-      "t",
-      Vector(s0.fund),
-      Vector(out(w.payer.address(), s0.fundCoin - 200)),
-      200,
-      currentTreasury = Some(5)
-    )
+    val fee = ConwayTestKit.maxFee(s0.params)
+    def naming(treasury: BigInt) =
+      ConwayTestKit.tx(
+        ConwayTestKit.Body(
+          Vector(s0.fund),
+          Vector(ConwayTestKit.out(w.payer.address(), s0.fundCoin - fee)),
+          fee,
+          currentTreasury = Some(treasury)
+        ),
+        Vector(w.payer)
+      )
     assertEquals(
-      refusal(NativeRules.txIn[Conway](s0.nes, tx(b, Vector(w.payer)), env(s0, 0))),
+      refusal(judge(s0.nes, naming(5), env(s0, 0))),
       Some(PredicateFailure.TreasuryValueMismatch(Mismatch(BigInt(5), s0.treasury)))
     )
-    val right = body(
-      "t2",
-      Vector(s0.fund),
-      Vector(out(w.payer.address(), s0.fundCoin - 200)),
-      200,
-      currentTreasury = Some(s0.treasury)
-    )
-    assert(NativeRules.txIn[Conway](s0.nes, tx(right, Vector(w.payer)), env(s0, 0)).isRight)
+    assert(judge(s0.nes, naming(s0.treasury), env(s0, 0)).isRight)
   }
 
   test("the reference-script fee grows by 1.2 for every 25 KiB") {
