@@ -152,7 +152,29 @@ object DijkstraTx:
     * a peer submits it, valid.
     */
   def fromSubmission(raw: Bytes): Either[EraTxError, DijkstraTx[TxLevel.Top]] =
-    FlatDijkstraTx.fromSubmission(raw).leftMap(EraTxError.Decode(_)).flatMap(decode)
+    submitted(raw).map(_._2)
+
+  /** [[fromSubmission]] with the flat transaction the block decoder read it from, from one read of
+    * `raw`: the bridge of the node's mempool to the forger's Dijkstra path, which builds blocks of
+    * the flat transaction ([[xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraTx]]) until it takes the
+    * era's (#54). The two are of the same bytes, the era's projected from the flat one.
+    */
+  def submitted(raw: Bytes): Either[EraTxError, (FlatDijkstraTx, DijkstraTx[TxLevel.Top])] =
+    FlatDijkstraTx
+      .fromSubmission(raw)
+      .leftMap(EraTxError.Decode(_))
+      .flatMap(flat => decode(flat).map(flat -> _))
+
+  /** The setter of `isPhase2ValidTxL` (`isPhase2ValidDijkstraTxL`, `Tx.hs:279-283`, cardano-ledger
+    * 9df9f98c): the top-level transaction with its phase-two flag set to `isValid`, its body,
+    * witnesses and auxiliary data as they are, which the flag is not part of. The mempool sets it
+    * on a transaction from a peer (`tx & isPhase2ValidTxL .~ Phase2Valid`, and `Phase2Invalid` when
+    * only the flag is refused, `applyAlonzoBasedTx`, ouroboros-consensus 2416493b
+    * `ouroboros-consensus-cardano/src/shelley/Ouroboros/Consensus/Shelley/Eras.hs:291-342`).
+    */
+  def withIsValid(tx: DijkstraTx[TxLevel.Top], isValid: IsPhase2Valid): DijkstraTx[TxLevel.Top] =
+    tx match
+      case t: TopTx => TopTx(t.body, t.wits, isValid, t.auxData)
 
   /** A sub-transaction the flat decoder read (`DecCBOR (Annotator (DijkstraTx SubTx era))`,
     * `Tx.hs:184-192`, cardano-ledger 9df9f98c), its body at the sub-transaction level.

@@ -43,6 +43,11 @@ enum TransactionDecodeProblem extends DomainError:
   /** Not the definite list of two, era and transaction, that `enforceSize` reads. */
   case EraEnvelope(cause: Node.NotSized)
 
+  /** A Dijkstra transaction with a field the era does not have, which the era's types refuse
+    * (`EraTxError.NotInEra`), as the reference's decoder of the era has no such field.
+    */
+  case DijkstraField(field: xyz.kd5ujc.scarab.ledger.era.EraField)
+
   def message: String = this match
     case Syntax(cause)        => cause.message
     case Ledger(cause)        => cause.message
@@ -56,6 +61,7 @@ enum TransactionDecodeProblem extends DomainError:
     case ByronConstructor(_)  => "Byron's constructor is not one from 0 to 3"
     case ByronPayload(cause)  => s"Byron's payload: ${cause.message}"
     case EraEnvelope(_)       => "expected [era, transaction]"
+    case DijkstraField(field) => s"a Dijkstra transaction has no $field field"
 
 enum MempoolProblem:
   case AllInputsSpent

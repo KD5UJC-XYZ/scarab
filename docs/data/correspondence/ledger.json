@@ -24184,8 +24184,102 @@
    "evidence": [
     "DijkstraTxSuite"
    ],
-   "note": "the flat decoder's reading of the bytes, projected to the era's types by the object's private projection, its sub-transactions at the sub-transaction level in the order read and by id; the flat decoder refused an id twice (`decodeNonEmptySetLikeEnforceNoDuplicatesAnn (flip OMap.|>)`, `TxBody.hs:467-471`), and the ordered map refuses it again",
-   "digest": "eeee96b1efa85803"
+   "note": "the flat decoder's reading of the bytes, projected to the era's types by the object's private projection, its sub-transactions at the sub-transaction level in the order read and by id; the flat decoder refused an id twice (`decodeNonEmptySetLikeEnforceNoDuplicatesAnn (flip OMap.|>)`, `TxBody.hs:467-471`), and the ordered map refuses it again; the era's half of the one read the mempool takes (submitted)",
+   "digest": "9ddd10a7c7c1736b"
+  },
+  "def ledger.era.dijkstra.DijkstraTx.submitted": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Tx.hs",
+     "symbol": "decodeDijkstraTopTx",
+     "lines": [
+      152,
+      169
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraMempoolSuite"
+   ],
+   "note": "fromSubmission's read with the flat transaction it was projected from, both of one read of the bytes: the bridge the node's mempool hands the forger, whose Dijkstra path builds blocks of the flat transaction until it takes the era's (#85)",
+   "digest": "ab1a78fad48e2574"
+  },
+  "def ledger.era.dijkstra.DijkstraTx.withIsValid": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Tx.hs",
+     "symbol": "isPhase2ValidDijkstraTxL",
+     "lines": [
+      279,
+      283
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraMempoolSuite"
+   ],
+   "note": "the lens's setter on a top-level transaction; the era's transaction keeps no bytes of the whole, so its parts' memoised bytes, its size and its id are unchanged",
+   "digest": "3009519f1be255e1"
+  },
+  "def ledger.era.rules.DijkstraMempoolRun.annotate": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/API/Mempool.hs",
+     "symbol": "defaultApplyTxWithValidation",
+     "lines": [
+      283,
+      296
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraMempoolSuite"
+   ],
+   "note": "mkStAnnTx with an empty cache, as the default application annotates a submitted transaction",
+   "digest": "16cbd7a22e7ae94f"
+  },
+  "def ledger.era.rules.DijkstraMempoolRun.mempool": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/API/Mempool.hs",
+     "symbol": "ruleApplyTxValidation",
+     "lines": [
+      230,
+      262
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra.hs",
+     "symbol": "internalApplyTxWithValidation",
+     "lines": [
+      87,
+      96
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraMempoolSuite"
+   ],
+   "note": "MEMPOOL on the fused interpreter, every failure accumulated, the events discarded (EPDiscard), the validation policy the UTXO context's (All for applyTx, NonStatic for reapplyTx); the proposals are their own state beside the ledger's, as DijkstraBlockRun keeps them",
+   "digest": "9aaaa00bef9c644c"
   },
   "class ledger.era.dijkstra.DijkstraTxWits": {
    "upstream": [
@@ -47555,6 +47649,13 @@
     "val ledger.era.rules.DijkstraEpoch.onRecord",
     "val ledger.era.rules.DijkstraNewEpoch.onRecord",
     "val ledger.era.rules.DijkstraTick.onRecord"
+   ]
+  },
+  {
+   "reason": "the run of Dijkstra's MEMPOOL as the node's pool applies a transaction, on the fused interpreter, and the read of the stored outputs of a transaction's inputs at every level into the era, which the reference's mempool takes from its ledger tables (getTransactionKeySets, ouroboros-consensus 2416493b Shelley/Ledger/Mempool.hs:226-230) (#54)",
+   "definitions": [
+    "def ledger.era.rules.DijkstraMempoolRun.utxoOf",
+    "object ledger.era.rules.DijkstraMempoolRun"
    ]
   }
  ]
