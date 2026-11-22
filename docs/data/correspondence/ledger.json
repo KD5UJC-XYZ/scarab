@@ -377,26 +377,6 @@
    ],
    "digest": "044607c72d119574"
   },
-  "object ledger.rules.DijkstraEpoch": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Epoch.hs",
-     "symbol": "epochTransition",
-     "lines": [
-      128,
-      244
-     ]
-    }
-   ],
-   "class": "Mirror",
-   "structure": "same",
-   "evidence": [
-    "DijkstraEpochReferenceSuite"
-   ],
-   "digest": "214387b6c20232e0"
-  },
   "object ledger.rules.DijkstraPoolReap": {
    "upstream": [
     {
@@ -436,26 +416,6 @@
     "DijkstraEpochReferenceSuite"
    ],
    "digest": "960c9a58e08d8f69"
-  },
-  "val ledger.rules.DijkstraEpoch.sts": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Epoch.hs",
-     "symbol": "epochTransition",
-     "lines": [
-      128,
-      244
-     ]
-    }
-   ],
-   "class": "Mirror",
-   "structure": "same",
-   "evidence": [
-    "DijkstraEpochReferenceSuite"
-   ],
-   "digest": "d77bcc16bec3b006"
   },
   "val ledger.rules.DijkstraPoolReap.adopt": {
    "upstream": [
@@ -537,7 +497,7 @@
    "evidence": [
     "DijkstraEpochReferenceSuite"
    ],
-   "digest": "cae8097f6a11a474"
+   "digest": "98fd8cd2493093c7"
   },
   "val ledger.rules.PoolReap.shelleyAdopt": {
    "upstream": [
@@ -46339,8 +46299,8 @@
     "DijkstraEpochReferenceSuite",
     "DijkstraEraEpochGovSuite"
    ],
-   "note": "the state is the node's epoch state with the era's governance state beside it (EpochGovState), until the ledger state holds the era's record (#85); POOLREAP, HARDFORK and SNAP are the node's rules, SNAP reading the era's current parameters through the node's parameter record; no event is kept, as the node's EPOCH keeps none; a succ or compactCoinOrError the reference calls error on is a VocabError",
-   "digest": "4149729d66dd8de7"
+   "note": "the state is the node's epoch state with the era's governance state beside it (EpochGovState), until the ledger state holds the era's record (#85); POOLREAP, HARDFORK and SNAP are the node's rules, SNAP given the era's current parameters as SnapEnv holds them; no event is kept, as the node's EPOCH keeps none; a succ or compactCoinOrError the reference calls error on is a VocabError",
+   "digest": "8a554935a825845d"
   },
   "enum ledger.LeiosExtValidationError": {
    "upstream": [
@@ -46362,6 +46322,70 @@
    ],
    "note": "the four constructors applyBlock raises, with their fields in the reference's order (LeiosPoint as EbPoint, LeiosCert as the BLS layer's Certificate); LeiosCertificateForecastRejected, chain selection's verdict, is not a case of block application and is not here",
    "digest": "90875d862bf717b6"
+  },
+  "val ledger.era.rules.DijkstraTick.sts": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Tick.hs",
+     "symbol": "bheadTransition",
+     "lines": [
+      246,
+      279
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Tick.hs",
+     "symbol": "validatingTickTransition",
+     "lines": [
+      163,
+      185
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Tick.hs",
+     "symbol": "solidifyNextEpochPParams",
+     "lines": [
+      147,
+      159
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraEpochReferenceSuite",
+    "DijkstraEraEpochGovSuite"
+   ],
+   "note": "the state is the node's new-epoch state with the era's governance state beside it (NewEpochGovState), until the ledger state holds the era's record (#85); RUPD is the node's rule, given the era's current and previous parameters written over the node's record (StoredGov.synced); the mark snapshot's forcing has no counterpart in a strict state; no event is kept",
+   "digest": "1c7d448b64d82a0c"
+  },
+  "val ledger.era.rules.DijkstraNewEpoch.sts": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/NewEpoch.hs",
+     "symbol": "newEpochTransition",
+     "lines": [
+      153,
+      184
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraEpochReferenceSuite",
+    "DijkstraEraEpochGovSuite"
+   ],
+   "note": "the state is the node's new-epoch state with the era's governance state beside it (NewEpochGovState), until the ledger state holds the era's record (#85); pulseDRepPulsingState is the identity on the complete pulser the node holds; the reward update is the node's, given the era's parameters written over the node's record (StoredGov.synced); the layout's own fields are set as the node's NEWEPOCH sets them; no event is kept",
+   "digest": "d997044ea12877fd"
   }
  },
  "glue": [
@@ -47504,6 +47528,33 @@
    "reason": "why the Leios build's follow has no endorser-block store to open, which the configuration's refusal names (ConfigProblem.LeiosStoreRequired, #54): the reference has an in-memory LeiosDB this build does not, so it has no such refusal",
    "definitions": [
     "enum ledger.LeiosStoreMissing"
+   ]
+  },
+  {
+   "reason": "Dijkstra's tick on the node's path until the ledger state holds the era's governance record (#85): the one place it reads the node's flat governance record into the era's state and writes it back over the record it was read from (StoredGov, its errors and its Dijkstra instance), the rules on the node's records that read and write it (onRecord), the new-epoch state with the era's governance state beside it and its lenses, the module objects of TICK and NEWEPOCH, whose rules are each mapped by themselves, and the node's layout fields of the new-epoch state that NEWEPOCH sets",
+   "definitions": [
+    "class ledger.era.rules.NewEpochGovState",
+    "def ledger.era.StoredGov#read",
+    "def ledger.era.StoredGov#synced",
+    "def ledger.era.StoredGov#write",
+    "def ledger.era.StoredGov.onRecord",
+    "def ledger.era.StoredGov.recordOf",
+    "def ledger.era.rules.NewEpochGovState.epoch",
+    "def ledger.era.rules.NewEpochGovState.gov",
+    "def ledger.era.rules.NewEpochGovState.nes",
+    "def ledger.era.rules.NewEpochGovState.record",
+    "def ledger.era.rules.NewEpochGovState.ru",
+    "def ledger.rules.NewEpoch.boundaryLayout",
+    "enum ledger.era.StoredGovError",
+    "given ledger.era.StoredGov.dijkstra",
+    "object ledger.era.StoredGov",
+    "object ledger.era.rules.DijkstraNewEpoch",
+    "object ledger.era.rules.DijkstraTick",
+    "object ledger.era.rules.NewEpochGovState",
+    "trait ledger.era.StoredGov",
+    "val ledger.era.rules.DijkstraEpoch.onRecord",
+    "val ledger.era.rules.DijkstraNewEpoch.onRecord",
+    "val ledger.era.rules.DijkstraTick.onRecord"
    ]
   }
  ]

@@ -741,8 +741,9 @@ object ChainStorage:
                 // a verdict of an earlier run, so a failure of the node's own is no refusal: a
                 // crypto provider that fails (Fatal.Unverifiable, as the exception ends the
                 // reference's linked thread), an evaluator that cannot judge a script, a storage
-                // error, a closure the store cannot give, a ledger state out of range or any
-                // other failure of the chain model stops the start, and nothing is rolled back.
+                // error, a closure the store cannot give, a ledger state out of range, a governance
+                // record that does not hold Dijkstra's state or any other failure of the chain
+                // model stops the start, and nothing is rolled back.
                 case Left(e: ValidationError) =>
                   e.unverifiable match
                     case Some(defect) => handle.raise[NodeError, Vector[Resumed[S]]](defect)

@@ -9,7 +9,10 @@ import xyz.kd5ujc.scarab.ledger.state.*
 
 /** EPOCH of the era `E` (`Shelley/Rules/Epoch.hs`, `Conway/Rules/Epoch.hs`, cardano-ledger 9df9f98c
   * `Dijkstra/Rules/Epoch.hs`): the Shelley rule before Conway, Conway's in Conway and Dijkstra's
-  * own in Dijkstra, chosen by the witness as `EraRule "EPOCH" era` chooses it.
+  * own in Dijkstra, chosen by the witness as `EraRule "EPOCH" era` chooses it. Dijkstra's is the
+  * rule on the era types, on the node's governance record read and written back
+  * ([[xyz.kd5ujc.scarab.ledger.era.rules.DijkstraEpoch.onRecord]]); the node's tick runs it within
+  * Dijkstra's own TICK ([[Tick]]).
   */
 object Epoch:
   def sts[E <: EraTag](using
@@ -21,8 +24,9 @@ object Epoch:
           es: Stateful[F, EpochState[E]],
           failures: Raise[F, TickFailure]
       ): F[Unit] = era match
-        case ShelleyBasedEra.SConway   => ConwayEpoch.sts.transition[F](env, epoch)
-        case ShelleyBasedEra.SDijkstra => DijkstraEpoch.sts.transition[F](env, epoch)
+        case ShelleyBasedEra.SConway => ConwayEpoch.sts.transition[F](env, epoch)
+        case ShelleyBasedEra.SDijkstra =>
+          xyz.kd5ujc.scarab.ledger.era.rules.DijkstraEpoch.onRecord.transition[F](env, epoch)
         case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
             ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage =>
           shelley[E].transition[F](env, epoch)

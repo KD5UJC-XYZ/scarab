@@ -13,7 +13,6 @@ import xyz.kd5ujc.scarab.ledger.rules.{
   DijkstraPoolReap,
   DijkstraSnap,
   Embed,
-  EraLedger,
   Globals,
   HardFork,
   PoolreapState,
@@ -33,7 +32,6 @@ import xyz.kd5ujc.scarab.ledger.state.{
   EpochState,
   EraTag,
   PoolDistr,
-  ShelleyBasedEra,
   SnapShots,
   Sorted,
   Staking,
@@ -153,9 +151,8 @@ object ConwayEpoch:
     CommitteeState(committeeState.creds.filter((cold, _) => members.contains(Convert.back(cold))))
 
 /** Dijkstra's EPOCH on the era types (cardano-ledger 9df9f98c
-  * `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Epoch.hs:153-244`, `epochTransition`), not
-  * yet the node's ([[xyz.kd5ujc.scarab.ledger.rules.DijkstraEpoch]] is, #85). In the reference's
-  * order:
+  * `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Epoch.hs:153-244`, `epochTransition`), the
+  * node's, which its NEWEPOCH runs ([[DijkstraNewEpoch]]). In the reference's order:
   *
   *   1. POOLREAP, Dijkstra's ([[DijkstraPoolReap]]);
   *   2. the ratification the pulser reached (`extractDRepPulsingState`), its withdrawals applied
@@ -175,15 +172,12 @@ object ConwayEpoch:
   *      ([[DRepPulser.setFreshDRepPulsingState]]), computed to completion.
   *
   * POOLREAP, HARDFORK and SNAP are the node's rules on the node's records, which read no governance
-  * state; SNAP reads the parameters now current through the node's parameter record, the era's
-  * fields written over the record's current one ([[GovStateRecord.storedPParams]]), whose other
-  * eras' fields SNAP does not read. The rule raises no failure of its own (`Void`); what it raises
-  * is a [[TickFailure]] of those rules, or a [[VocabError]] where the reference calls `error`. The
-  * reference's events are not kept, as the node's rule keeps none.
+  * state; SNAP is given the era's parameters now current, as `SnapEnv` holds them. The rule raises
+  * no failure of its own (`Void`); what it raises is a [[TickFailure]] of those rules, or a
+  * [[VocabError]] where the reference calls `error`. The reference's events are not kept, as the
+  * node's rule keeps none.
   */
 object DijkstraEpoch:
-  private given ShelleyBasedEra[Dijkstra] = ShelleyBasedEra.SDijkstra
-
   private def poolreap: Lens[EpochGovState[Dijkstra], PoolreapState[Dijkstra]] =
     EpochGovState.es[Dijkstra].andThen(PoolreapState.lens[Dijkstra])
 
@@ -295,25 +289,18 @@ object DijkstraEpoch:
               vocab(HardFork(globals.ledger.referenceBuild, epochState1, curPv.pvMajor.value))
             else Monad[F].pure(epochState1)
           _ <- st.set(EpochGovState(epochState2, govState1))
-          snapParams = GovStateRecord.dijkstra.storedPParams(
-            govState1.cgsCurPParams,
-            EraLedger.curPParams(epochState2.ls.utxo.gov)
-          )
           _ <- {
             given Embed[SnapShots, EpochGovState[Dijkstra], TickFailure, TickFailure] =
               Embed(snapshots, identity[TickFailure])
             Sts.trans[
               F,
-              (
-                  xyz.kd5ujc.scarab.ledger.state.LedgerState[Dijkstra],
-                  xyz.kd5ujc.scarab.ledger.ProtocolParams
-              ),
+              (xyz.kd5ujc.scarab.ledger.state.LedgerState[Dijkstra], PParams[Dijkstra]),
               SnapShots,
               EpochGovState[Dijkstra],
               EpochNo,
               TickFailure,
               TickFailure
-            ](DijkstraSnap.sts, (epochState2.ls, snapParams), eNo)
+            ](DijkstraSnap.sts, (epochState2.ls, govState1.cgsCurPParams), eNo)
           }
           snapped <- st.get
           epochState3 = snapped.es
@@ -328,3 +315,14 @@ object DijkstraEpoch:
           )
           _ <- st.set(EpochGovState(epochState3, govState2))
         yield ()
+
+  /** [[sts]] on the node's epoch state, its governance record read before and written back after
+    * ([[StoredGov.onRecord]]).
+    */
+  val onRecord: Sts[Unit, EpochState[Dijkstra], EpochNo, TickFailure] =
+    StoredGov.onRecord[Dijkstra, EpochState[Dijkstra], EpochGovState[Dijkstra], EpochNo](
+      sts,
+      StoredGov.recordOf[Dijkstra],
+      EpochGovState(_, _),
+      s => (s.es, s.gov)
+    )

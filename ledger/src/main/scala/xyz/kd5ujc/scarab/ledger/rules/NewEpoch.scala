@@ -18,6 +18,9 @@ import xyz.kd5ujc.scarab.ledger.state.*
   * epoch Conway predicts the future parameters again (`Conway/Rules/NewEpoch.hs:161-166`) and the
   * earlier eras change nothing.
   *
+  * Dijkstra's is Conway's on the era types, on the node's governance record read and written back
+  * ([[xyz.kd5ujc.scarab.ledger.era.rules.DijkstraNewEpoch.onRecord]]).
+  *
   * For an epoch that is not the next one the reference does nothing (`pure src`; Conway also
   * predicts the future parameters again and pulses the DRep pulser). [[Hfc]] runs the tick once, so
   * a state is never carried across an epoch with no block, as in the reference.
@@ -32,11 +35,16 @@ object NewEpoch:
           nes: Stateful[F, NewEpochState[E]],
           failures: Raise[F, TickFailure]
       ): F[Unit] =
-        nes.get.flatMap { current =>
-          withinEpoch(current.epoch, epoch, current.es).fold(boundary(current, epoch))(es =>
-            nes.set(current.copy(es = es))
-          )
-        }
+        era match
+          case ShelleyBasedEra.SDijkstra =>
+            xyz.kd5ujc.scarab.ledger.era.rules.DijkstraNewEpoch.onRecord.transition[F](env, epoch)
+          case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
+              ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage | ShelleyBasedEra.SConway =>
+            nes.get.flatMap { current =>
+              withinEpoch(current.epoch, epoch, current.es).fold(boundary(current, epoch))(es =>
+                nes.set(current.copy(es = es))
+              )
+            }
 
       private def boundary[F[_]: Monad](before: NewEpochState[E], epoch: EpochNo)(using
           ask: Ask[F, Globals],
@@ -77,7 +85,7 @@ object NewEpoch:
     * `Shelley/Rules/NewEpoch.hs:147-175`, `Conway/Rules/NewEpoch.hs:153-184`: the boundary sets the
     * epoch, the blocks, the epoch state and the reward update only).
     */
-  private def boundaryLayout[E <: EraTag](before: NewEpochState[E]): NewEpochState.Layout =
+  private[ledger] def boundaryLayout[E <: EraTag](before: NewEpochState[E]): NewEpochState.Layout =
     before.layout match
       case NewEpochState.Layout.Node11_1(_) =>
         NewEpochState.Layout.Node11_1(before.es.snapshots.markPoolDistr)

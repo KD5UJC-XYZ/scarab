@@ -33,6 +33,7 @@ import xyz.kd5ujc.scarab.crypto.opcert.OperationalCertificate
 import xyz.kd5ujc.scarab.crypto.vrf.PraosVrfCertificate as Vrf
 import xyz.kd5ujc.scarab.crypto.witness.VerificationError
 import xyz.kd5ujc.scarab.ledger.byron.ByronSig
+import xyz.kd5ujc.scarab.ledger.era.{GovStateReadError, ProposalsWriteError, StoredGovError}
 import xyz.kd5ujc.scarab.ledger.rules.TickFailure
 import xyz.kd5ujc.scarab.ledger.state.VocabError
 import xyz.kd5ujc.scarab.protocol.ChainSync
@@ -96,6 +97,7 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       held: Option[Int] = None,
       unverifiable: Option[(Int, BlockFailure)] = None,
       outOfRange: Option[Int] = None,
+      govRecord: Option[Int] = None,
       closureMissing: Option[Int] = None,
       dijkstra: Option[(Int, xyz.kd5ujc.scarab.ledger.DijkstraBlockDefect)] = None
   ): IO[Result] =
@@ -168,6 +170,10 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
             Raise[IO, ChainError].raise[ChainError, BigInt](
               ChainError.StateOutOfRange(header.slot, pot)
             )
+          else if govRecord.contains(header.blockNo.toInt) then
+            Raise[IO, ChainError].raise[ChainError, BigInt](
+              ChainError.GovRecord(header.slot, unreadRecord)
+            )
           else if held.contains(header.blockNo.toInt) then
             Raise[IO, ValidationError].raise[ValidationError, BigInt](
               ValidationError(header.point, BlockFailure.Tx(heldFailure))
@@ -236,6 +242,23 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
 
   /** A pot that left the range of its type. */
   private val pot: VocabError = VocabError.OutOfRange(VocabError.Kind.CompactCoin, BigInt(1) << 64)
+
+  /** A governance record Dijkstra's tick cannot read into the era's: a withdrawal's credential of
+    * another length than a stake credential's.
+    */
+  private val unreadRecord: StoredGovError =
+    StoredGovError.Read(
+      GovStateReadError.Withdrawal(VocabError.WrongHashLength(VocabError.Kind.KeyHash, 28, 27))
+    )
+
+  /** A state the record cannot hold: an update of keys Dijkstra adds. */
+  private val unstorable: StoredGovError =
+    StoredGovError.Write(
+      ProposalsWriteError.UnstorableUpdate(
+        xyz.kd5ujc.scarab.ledger.GovActionId(Bytes(Vector.fill(32)(6.toByte)), BigInt(0)),
+        cats.data.NonEmptySet.of(BigInt(47), BigInt(48))
+      )
+    )
 
   private def blockNos(blocks: Vector[BlockRef]) = blocks.map(_.blockNo.toInt)
 
@@ -557,6 +580,31 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       None
     )
     assertEquals(MirrorRules.stateOutOfRange(header, BlockFailure.HeaderDiffers), None)
+  }
+
+  // the reference holds Dijkstra's governance state as the era's record (cardano-ledger 9df9f98c
+  // `Dijkstra/Governance.hs:29`): a node's record that does not hold it is the node's state, no
+  // fault of the block, so it is no verdict, as a state out of range is
+  test(
+    "a governance record that does not hold Dijkstra's state is a stop, read or written: no refusal"
+  ) {
+    val header = headers(2)
+    Vector(unreadRecord, unstorable).foreach { cause =>
+      assertEquals(
+        MirrorRules.stateOutOfRange(header, BlockFailure.Tick(TickFailure.GovRecord(cause))),
+        Some(ChainError.GovRecord(header.slot, cause))
+      )
+    }
+  }
+
+  test(
+    "a governance record that does not hold Dijkstra's state withholds the block: no record, no blame, no stop"
+  ) {
+    session(govRecord = Some(2)).map { left =>
+      withheld(left, 2) { case BlockNoVerdict.StateOutOfRange(fault) =>
+        assertEquals(fault, ChainError.GovRecord(headers(2).slot, unreadRecord))
+      }
+    }
   }
 
   // the per-epoch transition counter of the consensus state is a Word32 whose `succ` throws at

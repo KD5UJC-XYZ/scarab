@@ -1356,7 +1356,7 @@ Conway's rules on the classes follow as the rest of stage 2.
   `era/Proposals.scala`, `era/Governance.scala`, `era/EraAccounts.scala`, `era/EraStake.scala` and `era/OMap.scala`;
   `Dijkstra/Rules/Epoch.hs:128-244`, `Conway/Rules/Epoch.hs:183-246, 423-427`, `Governance/Proposals.hs:431-580`,
   `Governance/DRepPulser.hs:200-242, 388-430, 512-517`, `Conway/Governance.hs:300-339, 460-520` and
-  `State/Governance.hs:116-140`, cardano-ledger 9df9f98c), not yet called by the node:
+  `State/Governance.hs:116-140`, cardano-ledger 9df9f98c), the node's from the next bullet's tick:
   - `DijkstraEpoch.sts` is Dijkstra's `epochTransition` over `EpochGovState[Dijkstra]`: the node's epoch state and
     the era's `ConwayGovState[Dijkstra]` beside it, until the ledger state holds the era's record. The rule does not
     write the epoch state's governance record, which is stale after it, and reads it only as the record SNAP's
@@ -1385,7 +1385,7 @@ Conway's rules on the classes follow as the rest of stage 2.
     a return account read at the stake credential's type is one too. The reference's events are not kept, as the
     node's EPOCH keeps none. `solidifyFuturePParams` (TICK, `Shelley/Rules/Tick.hs:144-160`) and
     `predictFuturePParams` (NEWEPOCH inside an epoch, `Conway/Rules/NewEpoch.hs:160-165`) are on the era's records
-    too; the tick that calls them is the next stage's.
+    too; the next bullet's tick calls them.
   - Evidence (`DijkstraEpochReferenceSuite`, `DijkstraEraEpochGovSuite`, `EraEpochGovSuite`). The tests run TICK
     with the era's EPOCH in the node's EPOCH's place (`EraDijkstraTick`, test code: the node's TICK and NEWEPOCH
     with the governance state held as the era's record, the node's rules that read it, RUPD and the reward
@@ -1437,17 +1437,88 @@ Conway's rules on the classes follow as the rest of stage 2.
       `applyEnactment`'s proposals and removed actions; 10,000 descendants are removed on a 256 KiB stack (STK-3).
       `returnProposalDeposits`, `applyEnactedWithdrawals`, `updateNumDormantEpochs`, the future parameters'
       functions and `nextEpochPParams` have unit cases.
-  - Left for the next stages: Dijkstra's tick on these records, which `EraDijkstraTick` drafts in test code (#85);
-    the stored record's flip to the era's, its codec and the reading of a state's actions it gives, which the test
-    reader stands in for (FMT-1). The flat `DijkstraEpoch` stays on the node's path. When the tick is wired:
-    - a `VocabError` the era's EPOCH raises (`TickFailure.Vocab`) is where the reference calls `error`, which no
-      predicate failure of EPOCH answers, so it is a no-verdict that keeps its typed cause, never a refusal of the
-      block, as the node's route already treats it (`BlockFailure.stateOutOfRange`, `ChainError.StateOutOfRange`,
-      and the follower's `BlockNoVerdict.StateOutOfRange`);
-    - the node's rules that read the governance record, the reward update applied at the boundary and RUPD, are
-      given the era's `cgsPrevPParams`: the reward update's from the state the tick starts from, and RUPD's from
-      that pre-tick epoch state with its `bprev`, even where the tick crosses a boundary, as `EraDijkstraTick`
-      gives them.
+  - Left for the next stages: Dijkstra's tick on these records, the next bullet's; the stored record's flip to the
+    era's, its codec and the reading of a state's actions it gives, which the test reader stands in for (FMT-1).
+- **Dijkstra's tick on the node's path** (`era/rules/Tick.scala`, `era/StoredGov.scala`; `Shelley/Rules/Tick.hs:147-185,
+  246-279` and `Conway/Rules/NewEpoch.hs:153-184`, cardano-ledger 9df9f98c):
+  - Every tick of a Dijkstra state runs the era's EPOCH, with the ratification and enactment the pulser reaches:
+    `rules.Tick.sts` of a Dijkstra state is `DijkstraTick.onRecord`, so the block's tick (`EraBlock.ticked`, through
+    `Hfc.tick`, which D8(c)'s Dijkstra blocks reach too), the mempool's (`PoolLedger.ticked`, through `Hfc.tick`), the
+    forger's (`Forger.tickedTo`, through `Hfc.tick`) take it; `MempoolLedger.tick` ticks Conway only. The forger
+    ticks a Dijkstra block's ledger once, from its parent's state to its slot (`Forger.blockBase`), as block
+    application ticks it, so its snapshot provider is given the state the block is validated against; it ticked
+    to the epoch's first slot and then to the slot before, which past the new epoch's slot of no return
+    solidifies the future parameters the boundary made (#1291's; a Conway block's ledger, read only for the
+    mempool's transactions, is still ticked so). The
+    node-to-client code calls no tick: a submission reaches one through the mempool's ledger (`PoolLedger.at`). The
+    flat `DijkstraEpoch` is removed, and the flat EPOCH and NEWEPOCH of a Dijkstra state run the era's rules too
+    (`DijkstraEpoch.onRecord`, `DijkstraNewEpoch.onRecord`). Conway's tick and the eras before it are unchanged, and
+    the release builds never enter Dijkstra (`HardForkConfig.transition`).
+  - `DijkstraTick.sts` is `bheadTransition` with `validatingTickTransition` over `NewEpochGovState[Dijkstra]` (the
+    node's new-epoch state with the era's governance state beside it, until the ledger state holds the era's
+    record): `solidifyFuturePParams` from the slot of no return; NEWEPOCH (`DijkstraNewEpoch.sts`, Conway's: inside
+    an epoch `predictFuturePParams`, the pulser's `pulseDRepPulsingState` the identity on the complete pulser the
+    node holds; at the boundary the reward update completed and applied, the era's EPOCH, the new epoch, the
+    blocks moved, no reward update and the layout's fields as the node's NEWEPOCH sets them); `adoptGenesisDelegs`;
+    and RUPD with `RupdEnv bprev es` of the state the tick began with. The reward update and RUPD are the node's
+    rules, which read the previous parameters from the node's record; they are given the era's, written over the
+    record (`StoredGov.synced`), from the state the tick began with even where it crosses the boundary.
+  - One seam reads and writes the governance record (`StoredGov`, its one instance Dijkstra's): before the tick the
+    node's record is read into the era's (`GovStateRecord.fromStored`), after it the era's state is written back over
+    the positions of the record it was read from (`toStored`, `GovStateBases.of`). The rules work on the era's state
+    alone, so the format change that stores the era's record makes the seam's read and write the identity there and
+    changes nothing else; SNAP is given the era's current parameters (`SnapEnv ls pp`), so EPOCH reads no flat
+    record. Over the flat record the seam is glue and lossless: it reads every state the record holds, and its write
+    gives the record it read. An action's proposal never changes, and the record keeps the original encoding of each
+    field of an update, which the era's values do not, and may hold another for the same action in each place, so
+    an action carried through the tick is written back with the proposal the record held for it in the same place:
+    the proposals' own, and the pulser's snapshot's and enacted actions' own where the tick carried the pulser, the
+    proposals' where the boundary started a fresh one.
+  - Failures. A `VocabError` the era's EPOCH raises is `TickFailure.Vocab`, the no-verdict that keeps its typed cause
+    on the node's route (`BlockFailure.stateOutOfRange`, `ChainError.StateOutOfRange`, `BlockNoVerdict.StateOutOfRange`).
+    A record the era does not read (`GovStateReadError`), which only a damaged record gives, and a state the record
+    cannot hold (`ProposalsWriteError`) are `TickFailure.GovRecord` with the cause (`StoredGovError`), on the same
+    route as `ChainError.GovRecord`, as a Leios committee SNAP cannot seat is (`ChainError.LeiosCommittee`): never a
+    refusal. The second is unreachable here: the tick adds no action, so every action it writes back is one it read
+    from the record, which holds no update of keys 34 to 56 (the codec refuses one), and D8(c) withholds a block that
+    would propose one.
+  - Evidence:
+    - `DijkstraEpochReferenceSuite`'s 28 cases run the node's tick (`Tick.sts`, the seam at every tick): every state
+      equals the build's TICK byte for byte. The seam is lossless on each case's start state, its parameters written
+      for RUPD equal to the record's own, and a record the era does not read (a withdrawal of a short credential)
+      stops the tick with `TickFailure.GovRecord` and that cause. An action whose update holds a fee coefficient of 1
+      encoded as `18 01` reads and writes back to the same record, and the tick keeps that proposal inside the epoch
+      and across the boundary, in the proposals and the fresh pulser's snapshot; without the proposals kept, it
+      fails. An action held as `01` in the proposals and as `18 01` in the pulser's snapshot, as an accepted
+      block's write of the proposals leaves it, reads and writes back to the same record, and an in-epoch tick
+      keeps each in its place.
+    - No tick of the build's fixture crosses a boundary to a slot past the start of the new epoch's reward update,
+      where RUPD reads its environment: a tick there starts the update from the blocks and epoch state the tick began
+      with, and the boundary's environment gives another update (no reference state of that case is recorded).
+    - `DijkstraForgeSuite`: a Dijkstra block's ledger, from the testnet's state to the next epoch's slot of no return,
+      is the parent's ticked once to the slot, the state block application reaches; the two ticks the forger made
+      before give another state there.
+    - The `ratify`, `remove-branches` and `deposit-credit` cases and two of window G's three pairs (from 1,555,188
+      and 1,576,750) hold an update of keys 47 and 48, which the node's record cannot hold, so they run the main
+      code's `DijkstraTick.sts` with the era's record carried from tick to tick (`EraDijkstraTick`, a caller of it):
+      every state is the build's as before. The ratify case's state written to the record is refused with its action
+      and keys (`UnstorableUpdate`). Window G's first pair, from 1,533,582, before proposal 2, is read by the node's
+      codec and also runs the node's tick, the seam included, to the bytes of the carried tick. Incomplete (CNF-2):
+      the other states reach the node's path, seam included, only once the record holds the era's.
+    - The node's NEWEPOCH and EPOCH of a Dijkstra state, which its tick does not call, give the era's rules' states
+      written back over the record (`DijkstraNewEpoch.onRecord`, `DijkstraEpoch.onRecord`).
+    - `SessionFailureSuite`: both causes of `TickFailure.GovRecord` are no-verdicts, and the follower withholds the
+      block with no record and no blame.
+    - G1, the jump gate (`LeiosReplayMain`, docs/leios.md §13), with D8(c) and the harness, through the node's tick:
+      from slot 1,943,999 to 2,168,639, across the 11 epoch boundaries of epochs 89 to 100, the 10,245 ranking blocks
+      applied give `matched` on `state`, `tables` and `meta` (exit 0), as before (a local run of 2026-11-21 on the
+      private recorded database, not published).
+      Window P's three hops (1,015,165 to 1,036,794, 1,058,391 and 1,079,994, a fresh database each, Plutus among
+      their blocks) each give `matched` on all three files (exit 0), with the 985, 1,010 and 983 blocks applied.
+    - A live follow of a Leios-build devnet with D8(c) (`devnet.py up-dijkstra`, then `follow --reference-build
+      leios-b004fe0c --db --seconds 180`, 2026-11-21): the node extended its chain by 421 blocks from Conway into
+      Dijkstra and across the nine Dijkstra boundaries of epochs 1 to 10 on this tick, refusing none and withholding
+      none.
 - **LEDGER and LEDGERS whole, with the reference's failures** (`era/rules/Ledger.scala`,
   `era/rules/LedgerFailures.scala`; `Conway/Rules/Ledger.hs`, `Conway/Rules/Ledgers.hs` and Shelley's
   `Rules/Ledger.hs` and `Rules/Ledgers.hs`, cardano-ledger f649f975, where 29a7d656 and 9df9f98c differ in derived

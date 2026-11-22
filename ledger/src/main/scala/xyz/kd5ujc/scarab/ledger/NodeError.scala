@@ -383,6 +383,14 @@ enum ChainError extends NodeError:
     */
   case LeiosCommittee(slot: BigInt, cause: xyz.kd5ujc.scarab.ledger.state.LeiosCommitteeError)
 
+  /** Dijkstra's tick for `slot` met a governance record that does not hold the era's state it works
+    * on ([[rules.TickFailure.GovRecord]]): a record the era's types do not read, or a state the
+    * record cannot hold. The reference holds the era's record itself, so it meets neither: this is
+    * neither a verdict on a block nor a fault of the peer that sent it, as a state out of range is
+    * not ([[StateOutOfRange]]).
+    */
+  case GovRecord(slot: BigInt, cause: xyz.kd5ujc.scarab.ledger.era.StoredGovError)
+
   /** The node cannot apply the Dijkstra block of `slot` ([[DijkstraBlockDefect]]): a missing or
     * undecodable closure, which the reference meets with `error` (ouroboros-consensus 2416493b
     * `Storage/LedgerDB/Forker.hs:1048-1052, 1084-1087`), or another state of its own it cannot
@@ -399,6 +407,8 @@ enum ChainError extends NodeError:
       s"the node's own code threw while committing a chain: ${NetworkError.describe(cause)}"
     case LeiosCommittee(slot, cause) =>
       s"no Leios committee for the snapshots rotated at slot $slot: $cause"
+    case GovRecord(slot, cause) =>
+      s"the governance record does not hold Dijkstra's state at slot $slot: $cause"
     case StateOutOfRange(slot, cause) =>
       s"the ledger state in the rules for slot $slot is out of range: ${cats.Show[xyz.kd5ujc.scarab.ledger.state.VocabError].show(cause)}"
     case StateAcquire(cause) => cause.message

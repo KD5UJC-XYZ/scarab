@@ -67,6 +67,15 @@ enum TickFailure derives Eq, Show:
     */
   case LayoutNotYet(cause: xyz.kd5ujc.scarab.protocol.ReferenceBuildNotYet)
 
+  /** The node's record of the governance state does not hold the era's state Dijkstra's tick works
+    * on ([[xyz.kd5ujc.scarab.ledger.era.StoredGovError]]): a record that does not read into the
+    * era's, which only a damaged record gives, or a state the record cannot hold, which the tick
+    * never leaves. The reference holds the era's record itself, so this is no verdict on the block
+    * ([[xyz.kd5ujc.scarab.ledger.ChainError.GovRecord]]): the block is not recorded as invalid and
+    * no peer is blamed.
+    */
+  case GovRecord(cause: xyz.kd5ujc.scarab.ledger.era.StoredGovError)
+
 object TickFailure:
   private given Eq[VocabError] = Eq.fromUniversalEquals
   private given Show[VocabError] = Show.fromToString
@@ -78,3 +87,5 @@ object TickFailure:
   private given Show[xyz.kd5ujc.scarab.protocol.ReferenceBuildNotYet] = Show.show(_.message)
   private given Eq[xyz.kd5ujc.scarab.ledger.state.LeiosCommitteeError] = Eq.fromUniversalEquals
   private given Show[xyz.kd5ujc.scarab.ledger.state.LeiosCommitteeError] = Show.fromToString
+  private given Eq[xyz.kd5ujc.scarab.ledger.era.StoredGovError] = Eq.fromUniversalEquals
+  private given Show[xyz.kd5ujc.scarab.ledger.era.StoredGovError] = Show.fromToString

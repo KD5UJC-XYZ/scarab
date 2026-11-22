@@ -22,9 +22,24 @@ import xyz.kd5ujc.scarab.ledger.state.*
   * The environment is `()` and the signal the slot, as in Haskell (`type Environment (TICK era) =
   * ()`, `Signal = SlotNo`). Era changes are not this rule's: the hard-fork combinator translates
   * the state before it ticks into the new era ([[Hfc]]).
+  *
+  * Dijkstra's is the same rule on the era's governance state, the node's record of it read before
+  * the tick and written back after it
+  * ([[xyz.kd5ujc.scarab.ledger.era.rules.DijkstraTick.onRecord]]): every tick of a Dijkstra state
+  * (a block's, the mempool's, the forger's) runs Dijkstra's EPOCH on the era types there.
   */
 object Tick:
   def sts[E <: EraTag](using
+      era: ShelleyBasedEra[E]
+  ): Sts[Unit, NewEpochState[E], SlotNo, TickFailure] =
+    era match
+      case ShelleyBasedEra.SDijkstra => xyz.kd5ujc.scarab.ledger.era.rules.DijkstraTick.onRecord
+      case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
+          ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage | ShelleyBasedEra.SConway =>
+        node[E]
+
+  /** TICK on the node's records, of every era before Dijkstra. */
+  private def node[E <: EraTag](using
       ShelleyBasedEra[E]
   ): Sts[Unit, NewEpochState[E], SlotNo, TickFailure] =
     new Sts[Unit, NewEpochState[E], SlotNo, TickFailure]:
