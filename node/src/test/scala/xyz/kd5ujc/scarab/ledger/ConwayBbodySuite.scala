@@ -243,7 +243,8 @@ class ConwayBbodySuite extends FunSuite:
       network: Network = Network.Testnet,
       build: ReferenceBuild = ReferenceBuild.Release11_1,
       change: NewEpochState[Conway] => NewEpochState[Conway] = identity,
-      unsupportedAt: Option[Int] = None
+      unsupportedAt: Option[Int] = None,
+      observe: Boolean = false
   ): Judged =
     val setup = before.setup
     val block = FlatBlock.decodeShelley(raw) match
@@ -265,7 +266,7 @@ class ConwayBbodySuite extends FunSuite:
       MirrorStep.afterVotingOf(before.mirror),
       verdicts = Verdicts.Direct,
       evaluator = flatEvaluator,
-      observer = Some(flatObserved.observe),
+      observer = Option.when(observe)(flatObserved.observe),
       decoder = ScarabEvaluator.defaultDecoder,
       clock = Some(clock)
     )
@@ -349,7 +350,7 @@ class ConwayBbodySuite extends FunSuite:
         Verdicts.Direct,
         ScarabEvaluator.defaultDecoder,
         clock.posix,
-        Some(ConwayBlockRun.Observing(eraObserved.observe, Some(clock)))
+        Option.when(observe)(ConwayBlockRun.Observing(eraObserved.observe, Some(clock)))
       )
     val judged = run.toOption
     val era: Either[ConwayRuleDefect, Verdict] = run.map {
@@ -1166,9 +1167,13 @@ class ConwayBbodySuite extends FunSuite:
       same(what, j.era, j.flat)
       assertEquals(j.flatPlutus, Some(expected), what)
       assertEquals(j.eraPlutus, j.flatPlutus, what)
-      // the phase-2 observations (`--plutus-cases`), one by transaction whose scripts ran
-      assertEquals(j.flatObserved.size, txs.count(_ != datumOnly), what)
-      assertEquals(j.eraObserved.map(comparable), j.flatObserved.map(comparable), what)
+      // the phase-2 observations (`--plutus-cases`), one by transaction whose scripts ran, and
+      // with the observer the same verdict and counters
+      val o = judge(third, blockOf(txs, invalid = invalid), change = holding(utxo), observe = true)
+      assertEquals(o.flatObserved.size, txs.count(_ != datumOnly), what)
+      assertEquals(o.eraObserved.map(comparable), o.flatObserved.map(comparable), what)
+      same(what, o.era, j.era)
+      assertEquals(o.eraPlutus, j.eraPlutus, what)
     }
   }
 
@@ -1199,9 +1204,13 @@ class ConwayBbodySuite extends FunSuite:
       assertEquals(j.eraRun.left.toOption, Some(ConwayRuleDefect.ScriptUnavailable(failure)), s"$n")
       // the evaluation stops at the script with no verdict on both sides
       assertEquals((j.eraEvaluated, j.flatEvaluated), (n, n), s"$n")
-      // the transactions observed, the last with no verdict on the script
-      assertEquals(j.flatObserved.size, if n <= 2 then 1 else 2, s"$n")
-      assertEquals(j.eraObserved.map(comparable), j.flatObserved.map(comparable), s"$n")
+      // the transactions observed, the last with no verdict on the script, and with the observer
+      // the same naming
+      val o =
+        judge(third, raw, change = holding(utxo), unsupportedAt = Some(n), observe = true)
+      assertEquals(o.flatObserved.size, if n <= 2 then 1 else 2, s"$n")
+      assertEquals(o.eraObserved.map(comparable), o.flatObserved.map(comparable), s"$n")
+      assertEquals(o.eraRun.left.toOption, j.eraRun.left.toOption, s"$n")
       (failure.txId, failure.location)
     }
     // each of the four scripts named once, the first two of the valid transaction

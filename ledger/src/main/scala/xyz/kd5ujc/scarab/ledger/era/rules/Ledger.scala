@@ -102,8 +102,8 @@ object ProposalsRecord:
   /** The proposals of the ledger state's governance record, read into the era's on every `get` and
     * written back on every `set`: a record the era cannot read is raised (`readError`), and
     * proposals it cannot hold (`writeError`). For a judgment of one transaction, whose LEDGER reads
-    * them once; a run over many holds them once beside the ledger state instead
-    * ([[ConwayBlockRun]]).
+    * them for CERTS's committee actions and for GOV; a run over many holds them once beside the
+    * ledger state instead ([[ConwayBlockRun]]).
     */
   def stateful[F[_]: Monad, E <: EraTag](using
       state: Stateful[F, LedgerState[E]],
