@@ -6,7 +6,14 @@ import cats.data.{Chain, NonEmptyChain}
 import cats.mtl.{Raise, Stateful, Tell}
 import cats.syntax.all.*
 import monocle.Lens
-import xyz.kd5ujc.scarab.ledger.{Horizon, LedgerDefect, TranslationError, TxEnv, Verdicts}
+import xyz.kd5ujc.scarab.ledger.{
+  Horizon,
+  LedgerDefect,
+  SystemStart,
+  TranslationError,
+  TxEnv,
+  Verdicts
+}
 import xyz.kd5ujc.scarab.ledger.era.{
   Block,
   EraBlockHeader,
@@ -88,7 +95,7 @@ object DijkstraBlockRun:
       globals: Globals,
       env: BbodyEnv[Dijkstra],
       block: Block[H, Dijkstra],
-      systemStart: BigInt,
+      systemStart: SystemStart,
       epochInfo: Horizon,
       state: ShelleyBbodyState[Dijkstra],
       proposals: Proposals[Dijkstra],

@@ -547,7 +547,7 @@ class DijkstraBbodySuite extends FunSuite:
       on,
       BbodyEnv[Dijkstra](testnetPParams, ChainAccountState(Coin(0), Coin(0))),
       ok(DijkstraBlock.decode(raw)),
-      0,
+      xyz.kd5ujc.scarab.ledger.SystemStart(java.time.Instant.EPOCH),
       history,
       state,
       EraGovRun.dijkstraEmpty,
@@ -565,7 +565,17 @@ class DijkstraBbodySuite extends FunSuite:
       case Right(Right((after, _))) => Right(after)
       case Left(d)                  => fail(s"a defect: $d")
     def judgedOn(network: Network, validation: flat.TxEnv.Validation) =
-      run(raw, testnetPParams, seeded, DijkstraUtxoContext(network, 0, history, validation)) match
+      run(
+        raw,
+        testnetPParams,
+        seeded,
+        DijkstraUtxoContext(
+          network,
+          xyz.kd5ujc.scarab.ledger.SystemStart(java.time.Instant.EPOCH),
+          history,
+          validation
+        )
+      ) match
         case Right(Left(fs))             => Left(fs.toChain.toVector)
         case Right(Right((after, _, _))) => Right(after)
         case Left(d)                     => fail(s"a defect: $d")
