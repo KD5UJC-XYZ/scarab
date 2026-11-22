@@ -181,9 +181,11 @@ class JobHandlersSuite extends FailsOnUncaught:
       refusals: Int = 1,
       alongside: Queue[IO, Event[Int]] => IO[Unit] = _ => IO.unit,
       reacting: Event[Int] => Option[Event[Int]] = _ => None,
-      onApplied: Event[Int] => IO[Unit] = _ => IO.unit
+      onApplied: Event[Int] => IO[Unit] = _ => IO.unit,
+      beforeApplied: Event[Int] => IO[Unit] = _ => IO.unit,
+      embed: IO[Applied] => IO[Applied] = TestControl.executeEmbed(_)
   )(until: (Event[Int], GovernorState[Int]) => Boolean): IO[Applied] =
-    TestControl.executeEmbed(Supervisor[IO](await = false).use { supervisor =>
+    embed(Supervisor[IO](await = false).use { supervisor =>
       for
         current <- Ref.of[IO, GovernorState[Int]](initial)
         queue <- Queue.unbounded[IO, Event[Int]]
@@ -211,6 +213,7 @@ class JobHandlersSuite extends FailsOnUncaught:
                 events,
                 supervisor,
                 sharing,
+                beforeEventApplied = Some(beforeApplied),
                 onEventApplied = Some(event =>
                   onApplied(event) *> reacting(event).traverse_(events.offer) *> current.get
                     .flatMap(st =>
@@ -594,7 +597,7 @@ class JobHandlersSuite extends FailsOnUncaught:
             case Status.Cold(_) => true
             case _              => false)
       case _ => false
-    }.map(applied =>
+    }.map { applied =>
       assert(
         applied.outputs.contains(
           Output.Traced(
@@ -865,6 +868,54 @@ class JobHandlersSuite extends FailsOnUncaught:
         s"the second phase should wait its whole time, ended at ${applied.at}"
       )
       assertEquals(applied.state.sharing.batches, Map.empty[Long, PeerShare.Batch[Int]])
+    }
+  }
+
+  // On virtual time the test drives: the first phase's completion comes at the batch wait (3 s),
+  // and its application is held until 8 s; the second phase starts then, as the governor forks a
+  // completion's `decisionJobs` after applying it (Governor.hs 614-638 at c45735a5), so its whole
+  // wait ends at 15 s, not at 10 s.
+  test("a peer-share second phase starts only once the governor has applied the first") {
+    val sharing = new PeerSharingActions[IO, Int]:
+      def inbound = IO.pure(Map.empty[Int, Boolean])
+      def request(peer: Int, amount: PeerSharing.Amount) =
+        if peer == Peer then IO.pure(PeerShare.Result.Peers(Vector.empty[Int])) else IO.never
+      def publish(state: GovernorState[Int]) = IO.unit
+    Deferred[IO, Unit].flatMap { held =>
+      TestControl
+        .execute(
+          watch(
+            twoSharing,
+            actions(),
+            cold = IO.unit,
+            sharing = Some(sharing),
+            reads = PeerStatus.Warm,
+            beforeApplied = {
+              case Event.Completed(Outcome.Shared(_, results)) if results.exists(_._1 == Peer) =>
+                held.get
+              case _ => IO.unit
+            },
+            embed = identity
+          ) {
+            case (Event.Completed(Outcome.Shared(_, results)), _) => results.exists(_._1 == Other)
+            case _                                                => false
+          }
+        )
+        .flatMap { control =>
+          for
+            _ <- control.tickFor(8.seconds)
+            _ <- held.complete(())
+            _ <- control.tickAll
+            result <- control.results
+          yield result match
+            case Some(cats.effect.Outcome.Succeeded(applied)) =>
+              assert(
+                applied.at >=
+                  8.seconds + policy.peerShareOverallTimeout - policy.peerShareBatchWaitTime,
+                s"the second phase should start once the first is applied, ended at ${applied.at}"
+              )
+            case other => fail(s"the run did not end with the second phase: $other")
+        }
     }
   }
 
