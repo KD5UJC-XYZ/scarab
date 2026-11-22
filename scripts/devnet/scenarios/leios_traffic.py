@@ -3,8 +3,10 @@
 
 `up-dijkstra`'s cluster never announces an endorser block (EB): its pools have no BLS key, and its load never fills
 the ranking block (RB). This scenario starts the same cluster (`dijkstra.make_network`, `dijkstra.start_nodes`) and
-adds what the reference needs for each step of Linear Leios, then judges the reference nodes' chains. Scarab runs no
-node here; the run is the private judge its Leios follower and forger will be checked against.
+adds what the reference needs for each step of Linear Leios, then judges the reference nodes' chains. Without
+`--follow`, Scarab runs no node here, and the run is the private judge its Leios follower and forger are checked
+against; with `--follow`, the Scala node follows the cluster from its start and is judged against it as well
+(`leios_follow.py`).
 
 - **BLS keys.** Each pool makes a BLS key pair (`cardano-cli dijkstra node key-gen-BLS`) and its node is started with
   the signing key (`--shelley-bls-key`, cardano-node b004fe0c `Cardano/Node/Protocol/Shelley.hs:190-192`). Once the
@@ -57,6 +59,7 @@ from ..dijkstra import (BLOCK_TAG_ERA, IMAGE_CONFIG, LEIOS_IMAGE, blake2b_256, d
                         split_chunk, start_nodes, start_reference, tip, tx_spent)
 from ..load import submit_all_script, submit_results
 from ..util import ENV, MAGIC, data_root, in_ref, put_file, read_json, ref
+from . import leios_follow
 
 CLI = "cardano-cli dijkstra"
 LEIOS_PERIODS = ("leiosAnnouncementPeriodLength", "leiosVotePeriodLength", "leiosDiffusionPeriodLength")
@@ -233,6 +236,13 @@ def describe_leios_block(raw):
     return described
 
 
+def common_chain(chains):
+    """The part of the nodes' immutable chains ({node: [described block]}) that every node holds: the longest one's
+    prefix of the shortest one's length (the judge requires each chain to be a prefix of the longest)."""
+    longest = max((chains[n] for n in sorted(chains)), key=len, default=[])
+    return longest[:min((len(c) for c in chains.values()), default=0)]
+
+
 def judge(chains, closures=None, kinds=None, certificates=1):
     """The verdict on the nodes' immutable chains ({node: [describe_leios_block]}), the EB closures each node's
     LeiosDB holds ({node: set of EB hashes}) and the trace counts of each node's log ({node: {kind: n}}).
@@ -246,7 +256,7 @@ def judge(chains, closures=None, kinds=None, certificates=1):
     for n in order:
         if [b["hash"] for b in chains[n]] != [b["hash"] for b in longest[:len(chains[n])]]:
             problems.append(f"node {n}'s immutable chain is not a prefix of the longest")
-    common = longest[:min((len(chains[n]) for n in order), default=0)]
+    common = common_chain(chains)
     by_hash = {b["hash"]: b for b in common}
     announcing = [b for b in common if b["announces"]]
     certifying = [b for b in common if b["certifies"]]
@@ -375,6 +385,8 @@ def leios_traffic(args):
     try:
         _drive(args, root, started)
     finally:
+        if getattr(args, "follow", False):
+            leios_follow.remove(args.name)  # it lives in the reference container's network namespace
         _remove_reference(args.name, root, args.pools)
 
 
@@ -405,6 +417,9 @@ def _drive(args, root, started):
     ports = start_nodes(args, root, bls_key=lambda n: f"{ENV}/pools-keys/pool{n}/bls.skey")
 
     deadline = started + args.timeout
+    following = getattr(args, "follow", False)
+    severities = leios_follow.severities(leios_follow.EVENT_KINDS.read_text()) if following else {}
+    follower, follower_failure = None, None
     net = f"--testnet-magic {MAGIC} --socket-path {socket()}"
 
     def wait_for(what, done, poll=1.0):
@@ -418,6 +433,11 @@ def _drive(args, root, started):
                 raise SystemExit(f"{what} did not happen within {args.timeout} s (tip {t})")
             time.sleep(poll)
 
+    if following:
+        # from the cluster's first answer, so the follower crosses from Conway into Dijkstra live
+        first = wait_for(f"node {args.follow_node}'s first answer", lambda t: t, poll=0.5)
+        follower = leios_follow.start(args)
+        log({"followerStarted": {"node": args.follow_node, "port": ports[args.follow_node], "referenceTip": first}})
     entered = wait_for("Dijkstra", lambda t: t if t.get("era", "").lower() == "dijkstra" else None)
     log({"dijkstra": entered})
     pparams = _json(args.name, f"{CLI} query protocol-parameters {net}")
@@ -494,6 +514,11 @@ def _drive(args, root, started):
             log({"submitted": submitted, "left": len(left), **window, "traces": counts})
             window = {"passes": 0, "waves": 0, "mempoolMin": None, "mempoolMax": 0}
             last_check = time.monotonic()
+            if following:
+                follower_failure = leios_follow.problem(root, follower, severities)
+                if follower_failure:
+                    log({"followerFailed": follower_failure})
+                    break
             if counts.get("LeiosBlockCertified", 0) >= args.certificates:
                 break
         time.sleep(0.5)
@@ -506,6 +531,16 @@ def _drive(args, root, started):
             return t if t is not None and t.get("block", 0) >= deep else None
         wait_for(f"node {n}'s block {deep}", reached)
 
+    follow = None
+    if following:
+        follow = _follow_end(args, root, follower, severities, deep, follower_failure, log)
+        last = follow["lastBlock"] if follow["lastBlock"] is not None else 0
+        past = last + args.security_param + 2
+        for n in ports:
+            def beyond(_, n=n):
+                t = tip(args.name, n)
+                return t if t is not None and t.get("block", 0) >= past else None
+            wait_for(f"node {n}'s block {past}", beyond)
     stop_nodes(args.name)
     chains = {n: immutable_chain(args.name, n) for n in ports}
     with tempfile.TemporaryDirectory(dir=root) as scratch:
@@ -516,8 +551,21 @@ def _drive(args, root, started):
                                capture_output=True, text=True, check=True).stdout.splitlines()
         kinds[n], reasons[n] = trace_kinds(lines)
     verdict = judge(chains, closures, kinds, certificates=args.certificates)
+    if following:
+        common = common_chain(chains)
+        events, other = leios_follow.final_log(root)
+        scala = leios_follow.selected_chain(events)
+        tip_no = scala[-1]["blockNo"] if scala else -1
+        hashes = sorted({b["announces"] for b in common if b["announces"] and b["blockNo"] <= tip_no})
+        store, store_problems = leios_follow.store_check(args, root, hashes)
+        judged = leios_follow.judge_follower(common, scala, store, events, other, severities, args.security_param,
+                                             whole=follow["ledgerState"], exit_code=follow["exit"])
+        judged["problems"] = ([follow["failure"]] if follow["failure"] else []) + store_problems + judged["problems"]
+        if judged["problems"]:
+            judged["verdict"] = "failed"
+        follow = {**follow, "verdict": judged, "storeChecked": len(hashes)}
     summary = {"referenceOnly": True, "image": LEIOS_IMAGE, "seconds": round(time.monotonic() - started),
-               "verdict": verdict, "traces": kinds, "notVotedReasons": reasons,
+               "verdict": verdict, "follower": follow, "traces": kinds, "notVotedReasons": reasons,
                "loadSubmitted": submitted, "loadRejected": rejected,
                "ebClosuresPerNode": {n: len(c) for n, c in closures.items()},
                "cluster": {"pools": args.pools, "epochLength": args.epoch_length, "slotLength": args.slot_length,
@@ -530,3 +578,24 @@ def _drive(args, root, started):
     print(json.dumps(summary), flush=True)
     if not verdict["pass"]:
         raise SystemExit(f"leios-traffic failed: {verdict['problems']}")
+    if follow is not None and follow["verdict"]["verdict"] == "failed":
+        raise SystemExit(f"leios-traffic --follow failed: {follow['verdict']['problems']}")
+    if follow is not None and follow["verdict"]["verdict"] == "incomplete":
+        raise SystemExit(f"INCOMPLETE: leios-traffic --follow: {follow['verdict']['incomplete']}")
+
+
+def _follow_end(args, root, follower, severities, deep, failure, log):
+    """The follower's end (`leios_follow`): its catch-up to block `deep`, unless it failed already; the same-point
+    ledger state while both run; its stop. Never raises, so the judge always runs."""
+    started = time.monotonic()
+    if failure is None:
+        failure = leios_follow.catch_up(root, follower, severities, deep, args.follow_catch_up, log)
+    caught_up = round(time.monotonic() - started)
+    whole = leios_follow.ledger_state(args) if failure is None else None
+    log({"followerLedgerState": leios_follow.whole_verdict(whole)})
+    status = leios_follow.stop(args, follower)
+    events, _ = leios_follow.final_log(root)
+    last = leios_follow.tip_block(events)
+    log({"followerStopped": status, "lastBlock": last, "failure": failure})
+    return {"node": args.follow_node, "target": deep, "lastBlock": last, "failure": failure,
+            "catchUpSeconds": caught_up, "ledgerState": whole, "exit": status}

@@ -228,7 +228,7 @@ class WholeStateAnchorTest(unittest.TestCase):
         utxo = cbor.enc([4, [{}]])
 
         class Session:
-            def __init__(self, container, socket, magic, host=False, deadline=None):
+            def __init__(self, container, socket, magic, host=False, deadline=None, relay="socat"):
                 self.side = "scala" if host else "reference"
                 self.last_raw = None
                 self.asked = 0
@@ -363,7 +363,7 @@ class WholeStateForkTest(unittest.TestCase):
         utxo = cbor.enc([4, [{}]])
 
         class Session:
-            def __init__(self, container, socket, magic, host=False, deadline=None):
+            def __init__(self, container, socket, magic, host=False, deadline=None, relay="socat"):
                 self.side, self.asked = ("scala" if host else "reference"), 0
 
             def __enter__(self):

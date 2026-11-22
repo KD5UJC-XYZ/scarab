@@ -37,9 +37,10 @@
     devnet.py up-dijkstra          REFERENCE ONLY: a cluster of the Leios testnet build (rc-2026w44) that starts in
                                    Conway, forks into Dijkstra and includes one Dijkstra transaction; no Scala node
     devnet.py capture-dijkstra     REFERENCE ONLY: capture the up-dijkstra chain as fixtures (fixtures/dijkstra-devnet)
-    devnet.py leios-traffic        REFERENCE ONLY: the up-dijkstra cluster with BLS-registered pools and a load past the
-                                   ranking block; requires an endorser block announced, votes and a certifying block
-                                   on every node's chain
+    devnet.py leios-traffic        the up-dijkstra cluster with BLS-registered pools and a load past the ranking block;
+                                   requires an endorser block announced, votes and a certifying block on every node's
+                                   chain; reference only, unless --follow: then the Scala node follows the cluster too,
+                                   and its chain, endorser-block store, log and ledger state are judged
     devnet.py e2e [--keep]         up-eras + Scala follower from Origin; assert every era and
                                    era transition was followed with no validation error
     devnet.py refusal-corpus       the reference-refusal corpus (#401): each transaction of `refusalcases` submitted to the
@@ -190,8 +191,9 @@ def main():
     cd.add_argument("--out", default=str(DIJKSTRA_OUT), help="fixture directory")
     cd.add_argument("--blocks-after", type=int, default=3, help="blocks kept past the Dijkstra transaction's")
     cd.set_defaults(run=capture_dijkstra)
-    lt = sub.add_parser("leios-traffic", help="REFERENCE ONLY: a Leios-build cluster whose BLS-registered pools "
-                        "announce, vote on and certify endorser blocks under a load past the ranking block")
+    lt = sub.add_parser("leios-traffic",
+                        help="a Leios-build cluster whose BLS-registered pools announce, vote on and certify endorser "
+                             "blocks under a load past the ranking block; reference only unless --follow")
     lt.add_argument("--pools", type=int, default=5, help="block-producing reference pools, each with a BLS key "
                     "(any four of five equal pools reach the 0.75 quorum)")
     lt.add_argument("--epoch-length", type=int, default=800, help="slots per epoch (twice 4k/f)")
@@ -214,6 +216,15 @@ def main():
     lt.add_argument("--cpus", type=int, default=6, help="CPUs of the reference container")
     lt.add_argument("--memory", default="12g", help="memory of the reference container")
     lt.add_argument("--work-size", default="4g", help="size of the reference container's /work tmpfs")
+    lt.add_argument("--follow", action="store_true",
+                    help="the Scala node follows the cluster (--reference-build leios-b004fe0c, --db, --local-socket) "
+                         "and is judged against it: its chain, the closures of the certified endorser blocks in its "
+                         "store, its log and the same-point ledger state")
+    lt.add_argument("--follow-node", type=int, default=1, help="with --follow: the reference node it follows")
+    lt.add_argument("--scala-cpus", type=float, default=2, help="with --follow: CPUs of the Scala node's container")
+    lt.add_argument("--follow-catch-up", type=int, default=300,
+                    help="with --follow: seconds the follower may take to reach the block the reference nodes are "
+                         "waited for once the load stops")
     lt.set_defaults(run=leios_traffic)
     sc = sub.add_parser("sample-chain-dep", help="next to up-eras: record the reference's DebugChainDepState answers at chosen tips")
     sc.add_argument("--out", required=True, help="JSON file of the recorded points")
