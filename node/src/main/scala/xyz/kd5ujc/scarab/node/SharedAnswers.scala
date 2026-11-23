@@ -63,7 +63,8 @@ object SharedAnswers:
       ending match
         case Ending.Answered(answer) if current.contains(at(key)) =>
           copy(entries = entries.updated(key, Entry.Built(answer)))
-        case _ => copy(entries = entries.removed(key))
+        case Ending.Answered(_) | Ending.Failed(_) | Ending.Abandoned =>
+          copy(entries = entries.removed(key))
 
     def moved(point: P, at: K => P): Table[P, K, D, A] =
       Table(
@@ -109,8 +110,9 @@ object SharedAnswers:
 
           def moved(point: P): F[Unit] = table.update(_.moved(point, at))
 
+          // the waiters are answered whatever becomes of the table's update
           private def end(key: K, mine: Deferred[F, Ending[A]], ending: Ending[A]): F[Unit] =
-            table.update(_.settle(key, ending, at)) *> mine.complete(ending).void
+            table.update(_.settle(key, ending, at)).guarantee(mine.complete(ending).void)
     }
 
   /** Answers kept for the points of `points`, for the life of the resource. An exception in the

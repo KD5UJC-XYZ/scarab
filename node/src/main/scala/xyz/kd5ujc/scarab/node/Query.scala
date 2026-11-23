@@ -701,7 +701,8 @@ object QueryServer:
       view match
         case UtxoView.Full if s.utxo.count > MaxFullUtxo =>
           PayloadTooLarge(s"the UTxO set has more than $MaxFullUtxo entries")
-        case _ => answers.answer(StateKey(p, view))(built(view, p, s))
+        case UtxoView.Summary | UtxoView.Full =>
+          answers.answer(StateKey(p, view))(built(view, p, s))
     def built(view: UtxoView, p: ChainSync.Point, s: S): F[Response[F]] =
       view match
         case UtxoView.Summary =>

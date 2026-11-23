@@ -9,7 +9,7 @@ import com.comcast.ip4s.Port
 import java.net.Socket
 import java.nio.charset.StandardCharsets
 import java.nio.file.Path
-import munit.CatsEffectSuite
+import xyz.kd5ujc.scarab.network.FailsOnUncaught
 import org.http4s.circe.jsonOf
 import fs2.Stream
 import org.http4s.{EntityDecoder, HttpApp, Method, Request, Response, Status, Uri}
@@ -19,7 +19,7 @@ import xyz.kd5ujc.scarab.node.read.ChainRead
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.protocol.ChainSync.{Point, UInt64}
 
-class QueryServerSuite extends CatsEffectSuite:
+class QueryServerSuite extends FailsOnUncaught:
   private val setup = NodeSetup
     .fromDirectory(ReferenceBuild.Default)(Path.of("fixtures/devnet/lsq/genesis"))
     .fold(e => fail(e.message), identity)
@@ -55,6 +55,12 @@ class QueryServerSuite extends CatsEffectSuite:
     SharedAnswers
       .of[IO, Point, QueryServer.StateKey, Response[IO]](_.point)
       .flatTap(answers => tip.traverse_(answers.moved))
+
+  /** Answers that count the builds they run. */
+  private def counting(inner: Answers, builds: Ref[IO, Int]): Answers = new Answers:
+    def answer(key: QueryServer.StateKey)(build: => IO[Response[IO]]) =
+      inner.answer(key)(builds.update(_ + 1) *> build)
+    def moved(point: Point) = inner.moved(point)
 
   private def app[S: ChainRead](view: ChainView[IO, S], answers: Answers): HttpApp[IO] =
     QueryServer.routes(view, answers)(failure => IO(fail(s"unexpected fatal: $failure"))).orNotFound
@@ -177,28 +183,64 @@ class QueryServerSuite extends CatsEffectSuite:
   // sharing; these are its keys and keeping through the routes.
 
   test("state's answer at the tip is kept until the tip moves, and the new tip's is then built") {
+    val next = Point.Block(
+      UInt64.saturating(18),
+      Bytes.fromHex("cd" * 32).fold(e => fail(e.message), identity)
+    )
     for
-      current <- Ref.of[IO, Point](Point.Origin)
-      answers <- answersAt(Some(Point.Origin))
+      current <- Ref.of[IO, Point](retained)
+      answers <- answersAt(Some(retained))
       moving = new ChainView[IO, MirrorState]:
         def tip: IO[(Point, MirrorState)] = current.get.map(_ -> setup.mirrorStart)
-        def at(point: Point): IO[Option[MirrorState]] = IO.pure(None)
+        def at(point: Point): IO[Option[MirrorState]] =
+          IO.pure(Option.when(point == retained || point == next)(setup.mirrorStart))
       run = app(moving, answers).run
       first <- run(request("/state"))
       kept <- run(request("/state"))
-      _ <- current.set(retained) *> answers.moved(retained)
+      _ <- current.set(next) *> answers.moved(next)
       moved <- run(request("/state"))
-      points <- List(first, moved).traverse(
+      movedKept <- run(request("/state"))
+      old <- run(request(s"/state?slot=17&hash=$hash"))
+      points <- List(first, moved, old).traverse(
         _.as[io.circe.Json].map(_.hcursor.downField("point").focus)
       )
     yield
       assertEquals(first.status, Status.Ok)
       assert(kept eq first, "the second request at the tip is answered with the kept answer")
       assert(moved ne first, "the new tip's answer is built")
+      assert(movedKept eq moved, "and kept in turn")
+      assert(
+        old ne first,
+        "the old tip's answer was dropped: asked for by its point, it is built again"
+      )
       assertEquals(
         points,
-        List(Some(Projection.point(Point.Origin)), Some(Projection.point(retained)))
+        List(
+          Some(Projection.point(retained)),
+          Some(Projection.point(next)),
+          Some(Projection.point(retained))
+        )
       )
+  }
+
+  test("state's two views of the tip are kept apart") {
+    for
+      reads <- Ref.of[IO, Reads](Reads(0, Vector.empty))
+      builds <- Ref.of[IO, Int](0)
+      answers <- answersAt(Some(Point.Origin)).map(counting(_, builds))
+      run = app(view(reads), answers).run
+      summary <- run(request("/state"))
+      full <- run(request("/state?utxo=full"))
+      summaryAgain <- run(request("/state"))
+      fullAgain <- run(request("/state?utxo=full"))
+      bodies <- List(summary, full).traverse(_.as[io.circe.Json])
+      built <- builds.get
+    yield
+      assert(summaryAgain eq summary, "the summary is kept")
+      assert(fullAgain eq full, "the full view is kept")
+      assert(bodies(0).hcursor.downField("utxoSummary").succeeded, "the summary is the summary")
+      assert(bodies(1).hcursor.downField("utxo").succeeded, "the full view is the full view")
+      assertEquals(built, 2, "one build of each view")
   }
 
   test("state's answer at an explicit point that is not the tip is built for each request") {
@@ -222,7 +264,9 @@ class QueryServerSuite extends CatsEffectSuite:
       def tip: IO[(Point, QueryServerSuite.Sized)] = IO.pure(Point.Origin -> large)
       def at(point: Point): IO[Option[QueryServerSuite.Sized]] = IO.pure(None)
     for
-      run <- served(sized, tip = Some(Point.Origin)).map(_.run)
+      builds <- Ref.of[IO, Int](0)
+      answers <- answersAt(Some(Point.Origin)).map(counting(_, builds))
+      run = app(sized, answers).run
       summary <- run(request("/state"))
       entries <- summary
         .as[io.circe.Json]
@@ -230,10 +274,12 @@ class QueryServerSuite extends CatsEffectSuite:
           _.hcursor.downField("utxoSummary").downField("entries").as[Long]
         )
       full <- run(request("/state?utxo=full"))
+      built <- builds.get
     yield
       assertEquals(summary.status, Status.Ok)
       assertEquals(entries, Right(QueryServer.MaxFullUtxo + 1))
       assertEquals(full.status, Status.PayloadTooLarge)
+      assertEquals(built, 1, "the full view is refused before any build")
   }
 
 object QueryServerSuite:

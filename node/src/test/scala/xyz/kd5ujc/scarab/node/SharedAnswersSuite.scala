@@ -189,13 +189,12 @@ class SharedAnswersSuite extends FailsOnUncaught with ScalaCheckSuite:
       build = began.offer(()) *> builds.updateAndGet(_ + 1).flatMap(n => gate.get.as(s"answer $n"))
       control <- TestControl.execute(
         SharedAnswers.of[IO, Int, Key, String](_.point).flatMap { answers =>
-          for
-            first <- IO.race(stop.get, answers.answer(Key(1, 0))(build)).start
-            _ <- began.take
-            second <- answers.answer(Key(1, 0))(build).start
-            cancelled <- first.joinWithNever
-            answered <- second.joinWithNever
-          yield (cancelled, answered)
+          // each worker is a resource, so it is cancelled however the program ends (TST-5)
+          IO.race(stop.get, answers.answer(Key(1, 0))(build)).background.use { first =>
+            began.take *> answers.answer(Key(1, 0))(build).background.use { second =>
+              (first.flatMap(_.embedNever), second.flatMap(_.embedNever)).tupled
+            }
+          }
         }
       )
       _ <- control.tick
