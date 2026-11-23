@@ -281,7 +281,11 @@ object PV1:
       txInfoSignatories: Vector[PubKeyHash],
       txInfoData: Vector[(DatumHash, Datum)],
       txInfoId: TxId
-  )
+  ):
+    /** The info as data (`toData`), made once however many of its transaction's scripts read it in
+      * their contexts: each script's context holds the transaction's one info (#85).
+      */
+    lazy val data: PlutusData = txInfo.toBuiltinData(this)
 
   /** `data ScriptContext` of V1 (`V1/Contexts.hs:154-158,314`, plutus 507cab8c). */
   final case class ScriptContext(scriptContextTxInfo: TxInfo, scriptContextPurpose: ScriptPurpose)
@@ -323,7 +327,7 @@ object PV1:
     )
 
   given scriptContext: ToData[ScriptContext] = c =>
-    PlutusData.constr(0, c.scriptContextTxInfo.toData, c.scriptContextPurpose.toData)
+    PlutusData.constr(0, c.scriptContextTxInfo.data, c.scriptContextPurpose.toData)
 
 /** The types of `PlutusLedgerApi.V2` (plutus 507cab8c) that V1 lacks. */
 object PV2:
@@ -375,7 +379,11 @@ object PV2:
       txInfoRedeemers: AssocMap[PV1.ScriptPurpose, PV1.Redeemer],
       txInfoData: AssocMap[PV1.DatumHash, PV1.Datum],
       txInfoId: PV1.TxId
-  )
+  ):
+    /** The info as data (`toData`), made once however many of its transaction's scripts read it in
+      * their contexts: each script's context holds the transaction's one info (#85).
+      */
+    lazy val data: PlutusData = txInfo.toBuiltinData(this)
 
   /** `data ScriptContext` of V2 (`V2/Contexts.hs:155-159,281`, plutus 507cab8c), its purpose V1's.
     */
@@ -405,7 +413,7 @@ object PV2:
     )
 
   given scriptContext: ToData[ScriptContext] = c =>
-    PlutusData.constr(0, c.scriptContextTxInfo.toData, c.scriptContextPurpose.toData)
+    PlutusData.constr(0, c.scriptContextTxInfo.data, c.scriptContextPurpose.toData)
 
 /** The types of `PlutusLedgerApi.V3` (plutus 507cab8c, `V3/Contexts.hs`, `V3/Tx.hs`,
   * `V3/MintValue.hs`).
@@ -585,7 +593,11 @@ object PV3:
       txInfoProposalProcedures: Vector[ProposalProcedure],
       txInfoCurrentTreasuryAmount: Option[PV1.Lovelace],
       txInfoTreasuryDonation: Option[PV1.Lovelace]
-  )
+  ):
+    /** The info as data (`toData`), made once however many of its transaction's scripts read it in
+      * their contexts: each script's context holds the transaction's one info (#85).
+      */
+    lazy val data: PlutusData = txInfo.toBuiltinData(this)
 
   /** `data ScriptContext` of V3 (`V3/Contexts.hs:485-491,748`, plutus 507cab8c). */
   final case class ScriptContext(
@@ -712,7 +724,7 @@ object PV3:
   given scriptContext: ToData[ScriptContext] = c =>
     PlutusData.constr(
       0,
-      c.scriptContextTxInfo.toData,
+      c.scriptContextTxInfo.data,
       c.scriptContextRedeemer.toData,
       c.scriptContextScriptInfo.toData
     )
