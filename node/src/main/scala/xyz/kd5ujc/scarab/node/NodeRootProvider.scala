@@ -32,9 +32,12 @@ enum LocalRootsTrace:
   *     counts.
   *
   * A ledger relay is a peer address: an IP address, host name, or SRV name resolved by [[PeerDns]].
-  * The answer of the ledger is good for [[LedgerPeerStake.ReRequestInterval]], the time the
-  * governor waits before it asks again; configured topology roots refresh each DNS source at its
-  * own TTL or error retry interval.
+  * The answer of the ledger is good for [[LedgerPeerStake.ReRequestInterval]], whatever the TTLs of
+  * the lookups behind it (`ttl = 5`, `LedgerPeers.hs` 315, ouroboros-network c45735a5): the time
+  * the governor waits before it asks again when the answer added peers and it still needs more (an
+  * answer that added none backs off instead). A request for the topology's public or bootstrap
+  * roots, and the fallback to them, is good for its lookups' longest TTL (60 s when none
+  * succeeded); each local-root DNS source refreshes at its own TTL or error retry interval.
   */
 object NodeRootProvider:
   type Addr = SocketAddress[Host]
@@ -156,9 +159,11 @@ object NodeRootProvider:
                   )
               }
             case LedgerAnswer.Picked(relays, _) =>
-              resolveLedger(relays, dns, rng).map { case (addresses, ttl) =>
-                Some(PublicRoots(Set.empty, Set.empty, addresses) -> ttl)
-              }
+              resolveLedger(relays, dns, rng).map(addresses =>
+                Some(
+                  PublicRoots(Set.empty, Set.empty, addresses) -> LedgerPeerStake.ReRequestInterval
+                )
+              )
           }
       }
 
@@ -180,12 +185,14 @@ object NodeRootProvider:
                 )
               }
           case LedgerAnswer.Picked(relays, _) =>
-            resolveLedger(relays, dns, rng).map { case (addresses, ttl) =>
+            resolveLedger(relays, dns, rng).map(addresses =>
               Some(
-                BigLedgerRoots
-                  .fromLedger(Some(addresses), PublicRoots(Set.empty[Addr], Set.empty[Addr])) -> ttl
+                BigLedgerRoots.fromLedger(
+                  Some(addresses),
+                  PublicRoots(Set.empty[Addr], Set.empty[Addr])
+                ) -> LedgerPeerStake.ReRequestInterval
               )
-            }
+            )
         }
       }
 
@@ -390,14 +397,15 @@ object NodeRootProvider:
     * is. The addresses of each drawn domain are put together from every drawn relay of it, a failed
     * lookup adding none, and one of them is drawn at random (`pickDomainAddrs`): a drawn domain
     * gives at most one address, however many its DNS answers hold. The lookups still run one after
-    * another and the TTL is still the answers' ([[PeerDns.ttlForResults]]).
+    * another. Their TTLs are not the answer's: the reference gives every ledger answer the fixed
+    * re-request interval (`ttl = 5`, `LedgerPeers.hs` 315, ouroboros-network c45735a5), which the
+    * providers attach ([[LedgerPeerStake.ReRequestInterval]]).
     */
   private[node] def resolveLedger[F[_]: Async](
       relays: Vector[LedgerRelay],
       dns: PeerDns[F],
       rng: Ref[F, Rng]
-  ): F[(Set[Addr], FiniteDuration)] =
-    val none = Vector.empty[FiniteDuration]
+  ): F[Set[Addr]] =
     rng
       .modify { current =>
         val (rest, resolver) = current.split
@@ -410,27 +418,24 @@ object NodeRootProvider:
             case LedgerRelay.Srv(name) =>
               val domain = LedgerDomain(s"$LedgerSrvPrefix.$name")
               DnsName.from(domain.bytes) match
-                case Left(_) => Async[F].pure(Option.empty[Drawn] -> none)
+                case Left(_) => Async[F].pure(Option.empty[Drawn])
                 case Right(query) =>
                   serviceAddresses(
                     query,
                     dns,
                     records =>
                       Async[F].pure(PeerDns.selectService(records, resolver).toOption.map(_._1))
-                  ).map { case (addresses, ttls) =>
-                    Some(Drawn.Named(domain, addresses)) -> ttls
-                  }
+                  ).map((addresses, _) => Some(Drawn.Named(domain, addresses)))
             case relay @ LedgerRelay.Address(_, _) =>
-              Async[F].pure(Some(Drawn.Address(address(relay))) -> none)
+              Async[F].pure(Some(Drawn.Address(address(relay))))
             case relay @ LedgerRelay.Domain(name, _) =>
-              address(relay).fold(Async[F].pure(Option.empty[Drawn] -> none)) { peer =>
-                resolveOne(peer, dns).map { case (addresses, ttls) =>
-                  Some(Drawn.Named(LedgerDomain(name), addresses)) -> ttls
-                }
+              address(relay).fold(Async[F].pure(Option.empty[Drawn])) { peer =>
+                resolveOne(peer, dns)
+                  .map((addresses, _) => Some(Drawn.Named(LedgerDomain(name), addresses)))
               }
           }
           .map { results =>
-            val drawn = results.flatMap(_._1)
+            val drawn = results.flatten
             val plain = drawn.flatMap {
               case Drawn.Address(peer) => peer.toVector
               case Drawn.Named(_, _)   => Vector.empty
@@ -446,13 +451,12 @@ object NodeRootProvider:
               .flatMap(domain =>
                 NonEmptyVector.fromVector(byDomain.getOrElse(domain, Vector.empty).flatten.distinct)
               )
-            val picked = candidates
+            candidates
               .foldLeft(picking -> plain.toSet) { case ((generator, picked), addresses) =>
                 val (index, next) = generator.uniformR(0L, addresses.length - 1L)
                 next -> (picked ++ addresses.toVector.lift(index.toInt))
               }
               ._2
-            picked -> PeerDns.ttlForResults(results.flatMap(_._2))
           }
       }
 

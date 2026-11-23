@@ -110,9 +110,10 @@ generation, so a late answer cannot replace a newer topology or answer.
 SRV queries for topology and ledger relay names use `_cardano._tcp.<domain>`. Scarab follows the pinned
 `ouroboros-network` behavior: discard target `.`, retain the numerically lowest priority, choose by advertised
 weight within that priority, resolve all A/AAAA records for the chosen target, and use the chosen SRV record's
-TTL instead of target-address TTLs. Successful RR TTLs are clipped to 60–900 seconds; the refresh interval is
-the maximum successful clipped TTL, or 60 seconds if there are no successful answers. Fixed IP roots do not
-contribute a DNS TTL. DNSSEC validation is not implemented or claimed.
+TTL instead of target-address TTLs. Successful RR TTLs are clipped to 60–900 seconds. A request for public or
+bootstrap roots, and the fallback to them, returns the maximum successful clipped TTL, or 60 seconds if no lookup
+succeeded; each local-root source keeps its own deadline, as above. Fixed IP roots do not contribute a DNS TTL. An answer of ledger peers is good for 5 s whatever its lookups' TTLs
+([G1.3 as built](g1-3-as-built.md), `LedgerPeerStake.ReRequestInterval`). DNSSEC validation is not implemented or claimed.
 
 Reference: `ouroboros-network` pin `c45735a56c567fa977969173d18943bac6bb3821`,
 [`RootPeersDNS/DNSActions.hs`](https://github.com/IntersectMBO/ouroboros-network/blob/c45735a56c567fa977969173d18943bac6bb3821/ouroboros-network/src/Ouroboros/Network/PeerSelection/RootPeersDNS/DNSActions.hs#L406-L460)

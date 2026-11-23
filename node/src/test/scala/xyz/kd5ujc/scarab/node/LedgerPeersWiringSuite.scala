@@ -598,3 +598,83 @@ class LedgerPeersWiringSuite extends FailsOnUncaught:
       )
     )
   }
+
+  /** A dynamic provider over a topology of the given public roots, a worker that uses the ledger as
+    * `use` says, and a resolver that answers every name with `answer` at `ttl`.
+    */
+  private def dynamicProvider(
+      use: UseLedgerPeers,
+      public: Set[Addr],
+      answer: com.comcast.ip4s.IpAddress,
+      ttl: FiniteDuration
+  ): IO[RootProvider[IO, Addr]] =
+    for
+      built <- worker(use, WithOrigin.At(BigInt(10)), two)
+      (w, _, _) = built
+      canceled <- Deferred[IO, Unit]
+      runtime <- Ref.of[IO, PeerNetwork.Runtime[IO]](
+        PeerNetwork.Runtime(
+          generation = BigInt(0),
+          roots = PeerNetwork.Roots(Nil, public, None, use),
+          resolvedLocalRoots = Nil,
+          localDnsCache = LocalRootDnsCache.empty[NodeRootProvider.LocalDnsKey, Addr],
+          worker = w,
+          association = AssociationMode.Unrestricted,
+          churn = ChurnLoop.Config(Targets.relay, Regime.kind(_, false)),
+          snapshotCheckCanceled = canceled
+        )
+      )
+      rng <- Ref.of[IO, Rng](Rng(1L))
+      dns = new PeerDns[IO]:
+        def addresses(name: DnsName) =
+          IO.pure(DnsAddressAnswer(Vector(DnsAddressRecord(answer, ttl)), Vector.empty))
+        def services(name: DnsName) = IO.raiseError(new AssertionError("no SRV name configured"))
+    yield NodeRootProvider.dynamic(runtime, dns, rng)
+
+  test("the dynamic provider's ledger answers are good for 5 s, whatever their lookups' TTLs") {
+    // `ttl = 5` for every ledger answer, ordinary and big (`LedgerPeers.hs` 315, ouroboros-network
+    // c45735a5); b.example, drawn in both, answers with 900 s, the longest TTL a lookup can give
+    val resolved = SocketAddress[Host](ip"10.0.0.2", port"3001")
+    val drawn = Set(SocketAddress[Host](ip"10.0.0.1", port"3001"), resolved)
+    for
+      provider <- dynamicProvider(
+        UseLedgerPeers.Use(AfterSlot.Always),
+        Set.empty,
+        ip"10.0.0.2",
+        900.seconds
+      )
+      ordinary <- provider.request(5, false)
+      big <- provider.requestBigLedger(5)
+    yield
+      ordinary match
+        case Some((roots, ttl)) =>
+          assert(roots.ledger.contains(resolved), roots.ledger.toString)
+          assert(roots.ledger.subsetOf(drawn), roots.ledger.toString)
+          assertEquals(ttl, 5.seconds)
+        case None => fail("no ordinary answer")
+      big match
+        case Some((BigLedgerRoots.Ledger(peers), ttl)) =>
+          assert(peers.contains(resolved), peers.toString)
+          assert(peers.subsetOf(drawn), peers.toString)
+          assertEquals(ttl, 5.seconds)
+        case other => fail(s"no big ledger answer: $other")
+  }
+
+  test("the dynamic provider's fallback to the public roots keeps their DNS TTL") {
+    // with no ledger answer the public roots are resolved and their TTL is the refresh interval
+    // (`PeerSelectionActions.hs` 160-163, ouroboros-network c45735a5)
+    val root = SocketAddress[Host](host"root.example", port"3001")
+    val resolved = SocketAddress[Host](ip"10.0.0.3", port"3001")
+    for
+      provider <- dynamicProvider(UseLedgerPeers.Disabled, Set(root), ip"10.0.0.3", 75.seconds)
+      ordinary <- provider.request(5, false)
+      big <- provider.requestBigLedger(5)
+    yield
+      assertEquals(ordinary.map(_._1.ordinary), Some(Set(resolved)))
+      assertEquals(ordinary.map(_._2), Some(75.seconds))
+      big match
+        case Some((BigLedgerRoots.Fallback(roots), ttl)) =>
+          assertEquals(roots.ordinary, Set(resolved))
+          assertEquals(ttl, 75.seconds)
+        case other => fail(s"no fallback answer: $other")
+  }
