@@ -318,16 +318,12 @@ object ConwayBbody:
           )
         else Monad[F].unit
       before <- state.get
-      utxo <- stored.read(
-        ShelleyUtxo
-          .restrictKeys(
-            before.ls.utxo.utxo.utxo,
-            txs.foldLeft(Set.empty[TxIn]) { (keys, tx) =>
-              val txBody = t.body[TxLevel.Top](tx)
-              keys ++ t.bodyOf.inputs[TxLevel.Top](txBody) ++
-                b.referenceInputs[TxLevel.Top](txBody)
-            }
-          )
+      utxo <- stored.readAt(
+        before.ls.utxo.utxo.utxo,
+        txs.foldLeft(Set.empty[TxIn]) { (keys, tx) =>
+          val txBody = t.body[TxLevel.Top](tx)
+          keys ++ t.bodyOf.inputs[TxLevel.Top](txBody) ++ b.referenceInputs[TxLevel.Top](txBody)
+        }
       )
       _ <- bbodyTest(validateBodyRefScriptsSizeTooBig[E](pp, txs, utxo))
     yield ()

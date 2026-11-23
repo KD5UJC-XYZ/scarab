@@ -133,6 +133,10 @@ enum UtxoStateDefect:
 trait StoredOutputs[F[_], E <: EraTag]:
   def read(stored: Map[TxIn, xyz.kd5ujc.scarab.ledger.TxOut]): F[UTxO[E]]
 
+  /** The outputs the stored set `utxo` holds at `keys`, read ([[ShelleyUtxo.restrictKeys]]). */
+  def readAt(utxo: xyz.kd5ujc.scarab.ledger.Utxo, keys: Iterable[TxIn]): F[UTxO[E]] =
+    read(ShelleyUtxo.restrictKeys(utxo, keys))
+
 object StoredOutputs:
   /** Each stored output read where it is asked for. */
   given direct[F[_]: Monad, E <: EraTag](using
@@ -1145,7 +1149,7 @@ object ConwayUtxo:
       def tell(l: Chain[UtxosEvent[E]]): F[Unit] = events.tell(l.map(embed.wrapEvent))
     for
       utxoState <- state.get
-      utxo <- stored.read(ShelleyUtxo.restrictKeys(utxoState.utxo.utxo, b.allInputs(txBody)))
+      utxo <- stored.readAt(utxoState.utxo.utxo, b.allInputs(txBody))
       _ <- Sts.runTest[F, UtxoPredFailure[E]](
         BabbageUtxo.babbageUtxoValidation[E](env, utxo, tx, context)
       )

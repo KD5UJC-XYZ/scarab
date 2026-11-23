@@ -494,24 +494,37 @@ object ConwayBlockRun:
     * read a transaction's inputs at BBODY, LEDGERS, LEDGER, UTXOW, UTXO and the set's update, each
     * read the same (#85).
     */
-  private given StoredOutputs[F, Conway] = stored =>
-    val state = summon[Stateful[F, S]]
-    state.get.flatMap { s =>
-      val (known, unread) = stored.partitionMap((in, out) =>
-        s.read.get(in) match
-          case Some((held, read)) if held eq out => Left(in -> read)
-          case _                                 => Right(in -> out)
-      )
-      if unread.isEmpty then Monad[F].pure(UTxO[Conway](known.toMap))
-      else
-        ShelleyUtxo.readStored[F, Conway](unread.toMap).flatMap { fresh =>
-          val kept =
-            unread.flatMap((in, out) => fresh.unUTxO.get(in).map(read => in -> (out, read)))
-          state
-            .modify(now => now.copy(read = now.read ++ kept))
-            .as(UTxO[Conway](fresh.unUTxO ++ known))
-        }
-    }
+  private given StoredOutputs[F, Conway] with
+    def read(stored: Map[TxIn, FlatTxOut]): F[UTxO[Conway]] = kept(stored.iterator)
+
+    // the set's entries at the keys looked up as they are sorted into those read and the others,
+    // not first gathered into a map of their own
+    override def readAt(
+        utxo: xyz.kd5ujc.scarab.ledger.Utxo,
+        keys: Iterable[TxIn]
+    ): F[UTxO[Conway]] =
+      kept(keys.iterator.flatMap(in => utxo.get(in).map(in -> _)))
+
+    private def kept(stored: Iterator[(TxIn, FlatTxOut)]): F[UTxO[Conway]] =
+      val state = summon[Stateful[F, S]]
+      state.get.flatMap { s =>
+        val (known, unread) =
+          stored.foldLeft((Map.empty[TxIn, TxOut[Conway]], Map.empty[TxIn, FlatTxOut])) {
+            case ((known, unread), (in, out)) =>
+              s.read.get(in) match
+                case Some((held, read)) if held eq out => (known.updated(in, read), unread)
+                case _                                 => (known, unread.updated(in, out))
+          }
+        if unread.isEmpty then Monad[F].pure(UTxO[Conway](known))
+        else
+          ShelleyUtxo.readStored[F, Conway](unread).flatMap { fresh =>
+            val kept =
+              unread.flatMap((in, out) => fresh.unUTxO.get(in).map(read => in -> (out, read)))
+            state
+              .modify(now => now.copy(read = now.read ++ kept))
+              .as(UTxO[Conway](fresh.unUTxO ++ known))
+          }
+      }
 
   /** The BBODY state with the proposals the run holds written back into the node's record
     * ([[ProposalsRecord.write]]; ones it cannot hold are a defect), the record as it was if the

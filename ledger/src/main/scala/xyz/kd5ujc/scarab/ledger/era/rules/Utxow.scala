@@ -548,7 +548,7 @@ object BabbageUtxow:
       def tell(l: Chain[AlonzoUtxoEvent[E]]): F[Unit] = events.tell(l.map(embedUtxo.wrapEvent))
     for
       utxoState <- state.get
-      utxo <- stored.read(ShelleyUtxo.restrictKeys(utxoState.utxo.utxo, b.allInputs(txBody)))
+      utxo <- stored.readAt(utxoState.utxo.utxo, b.allInputs(txBody))
       _ <- test(
         validateFailedBabbageScripts[E, TxLevel.Top](tx, scriptsProvided, scriptHashesNeeded)(using
           t,

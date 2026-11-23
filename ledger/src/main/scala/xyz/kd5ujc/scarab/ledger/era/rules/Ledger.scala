@@ -362,7 +362,7 @@ object ConwayLedger:
         _ <- test(
           validateTreasuryValue[E, TxLevel.Top](txBody, env.ledgerAccount.treasury)(using b, b.top)
         )
-        utxo <- stored.read(ShelleyUtxo.restrictKeys(utxoState.utxo.utxo, b.allInputs(txBody)))
+        utxo <- stored.readAt(utxoState.utxo.utxo, b.allInputs(txBody))
         _ <- test(validateRefScriptSize[E, TxLevel.Top](pp, utxo, tx)(using t, b, pc, top, b.top))
         _ <-
           if ConwayEra.hardforkConwayBootstrapPhase(pv) then Monad[F].unit
@@ -546,9 +546,7 @@ object ShelleyLedgers:
         for
           current <- state.get
           txBody = t.body[TxLevel.Top](tx)(using t.bodyOf.top)
-          utxo <- stored.read(
-            ShelleyUtxo.restrictKeys(current.utxo.utxo.utxo, t.bodyOf.allInputs(txBody))
-          )
+          utxo <- stored.readAt(current.utxo.utxo.utxo, t.bodyOf.allInputs(txBody))
           stAnnTx = annotate(utxo, cache, tx)
           _ <- judge.nest(
             ledger(
