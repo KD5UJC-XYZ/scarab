@@ -291,12 +291,11 @@ object ConwayBbody:
       p: ConwayEraPParams[E],
       lt: t.bodyOf.Level[TxLevel.Top],
       lb: b.Level[TxLevel.Top],
-      s: StoredTxOut[E],
       ask: Ask[F, Globals],
       state: Stateful[F, ShelleyBbodyState[E]],
       judge: Judge[F, BbodyPredFailure[E]],
       conway: InjectBbodyFailure[ConwayBbodyPredFailure[E], E],
-      stateDefect: Raise[F, UtxoStateDefect]
+      stored: StoredOutputs[F, E]
   ): F[Unit] =
     val pp = env.bbodyPp
     val curProtVerMajor = p.ppProtocolVersionL.get(pp).pvMajor
@@ -319,7 +318,7 @@ object ConwayBbody:
           )
         else Monad[F].unit
       before <- state.get
-      utxo <- ShelleyUtxo.readStored[F, E](
+      utxo <- stored.read(
         ShelleyUtxo
           .restrictKeys(
             before.ls.utxo.utxo.utxo,
@@ -367,7 +366,8 @@ object ConwayBbody:
       stateDefect: Raise[F, UtxoStateDefect],
       defect: Raise[F, LedgerDefect],
       govDefect: Raise[F, GovDefect],
-      proposals: Stateful[F, Proposals[Conway]]
+      proposals: Stateful[F, Proposals[Conway]],
+      stored: StoredOutputs[F, Conway]
   ): F[Unit] =
     val embed = EmbedLedgersInBbody.conway
     given t.bodyOf.Level[TxLevel.Top] = t.bodyOf.top

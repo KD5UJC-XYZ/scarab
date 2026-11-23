@@ -123,6 +123,23 @@ enum UtxoStateDefect:
   /** An output's stake credential or lovelace outside the state's vocabulary ([[EraStake]]). */
   case Vocab(error: VocabError)
 
+/** How the rules read stored outputs into era `E` ([[ShelleyUtxo.readStored]]): the first, in input
+  * order, the era does not read raised. Reading a stored output is a function of the output alone,
+  * so a run of the rules may keep what it read and give it again where the same stored output is
+  * read again ([[ConwayBlockRun]]: a block's rules read a transaction's inputs at LEDGERS, LEDGER,
+  * UTXOW, UTXO and the update of the set, #85); [[StoredOutputs.direct]] reads each where it is
+  * asked.
+  */
+trait StoredOutputs[F[_], E <: EraTag]:
+  def read(stored: Map[TxIn, xyz.kd5ujc.scarab.ledger.TxOut]): F[UTxO[E]]
+
+object StoredOutputs:
+  /** Each stored output read where it is asked for. */
+  given direct[F[_]: Monad, E <: EraTag](using
+      StoredTxOut[E],
+      Raise[F, UtxoStateDefect]
+  ): StoredOutputs[F, E] = ShelleyUtxo.readStored[F, E](_)
+
 /** Shelley's predicates of UTXO (`eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Utxo.hs`,
   * cardano-ledger f649f975).
   */
@@ -275,7 +292,8 @@ object ShelleyUtxo:
       c: EraCertState[E],
       k: EraStake[E],
       s: StoredTxOut[E],
-      raise: Raise[F, UtxoStateDefect]
+      raise: Raise[F, UtxoStateDefect],
+      stored: StoredOutputs[F, E]
   ): F[UTxOState[E]] =
     for
       withDeposits <- updateUTxOStateDeposits[F, E](
@@ -289,7 +307,11 @@ object ShelleyUtxo:
         using
         summon[Monad[F]],
         b,
-        b.top
+        b.top,
+        k,
+        s,
+        raise,
+        stored
       )
     yield withUtxo.copy(fees = Coin(withUtxo.fees.value + b.fee(txBody).value))
 
@@ -308,12 +330,13 @@ object ShelleyUtxo:
       l: b.Level[L],
       k: EraStake[E],
       s: StoredTxOut[E],
-      raise: Raise[F, UtxoStateDefect]
+      raise: Raise[F, UtxoStateDefect],
+      stored: StoredOutputs[F, E]
   ): F[UTxOState[E]] =
     val utxoAdd = UTxOs.txouts[E, L](txBody)
     val (utxoWithout, utxoDel) = extractKeys(utxoState.utxo.utxo, b.inputs[L](txBody))
     for
-      deletedUtxo <- readStored[F, E](utxoDel)
+      deletedUtxo <- stored.read(utxoDel)
       newInstantStake <- vocab[F, xyz.kd5ujc.scarab.ledger.state.InstantStake[E]](
         k.addInstantStake(utxoAdd, utxoState.instantStake)
           .flatMap(k.deleteInstantStake(deletedUtxo, _))
@@ -910,7 +933,8 @@ object BabbageUtxo:
       k: EraStake[E],
       s: StoredTxOut[E],
       events: Tell[F, Chain[AlonzoUtxoEvent[E]]],
-      raise: Raise[F, UtxoStateDefect]
+      raise: Raise[F, UtxoStateDefect],
+      stored: StoredOutputs[F, E]
   ): F[UTxOState[E]] =
     val txBody = t.body[TxLevel.Top](tx)(using t.bodyOf.top)
     t.isValid(tx) match
@@ -934,7 +958,7 @@ object BabbageUtxo:
           ShelleyUtxo.extractKeys(utxoState.utxo.utxo, b.collateralInputs(txBody))
         val collouts = collOuts(txBody)
         for
-          deleted <- ShelleyUtxo.readStored[F, E](utxoDel)
+          deleted <- stored.read(utxoDel)
           collateralFees = collAdaBalance(txBody, deleted.unUTxO)
           instantStake <- ShelleyUtxo.vocab[F, xyz.kd5ujc.scarab.ledger.state.InstantStake[E]](
             k.addInstantStake(collouts, utxoState.instantStake)
@@ -1110,7 +1134,8 @@ object ConwayUtxo:
       evaluator: ScriptEvaluator[F],
       unavailable: Raise[F, ScriptVerdictUnavailable],
       deferral: Phase2Deferral[F, E],
-      defect: Raise[F, UtxoStateDefect]
+      defect: Raise[F, UtxoStateDefect],
+      stored: StoredOutputs[F, E]
   ): F[Unit] =
     val tx = t.txStAnnTx[TxLevel.Top](stAnnTx)(using t.bodyOf.top)
     val txBody = t.body[TxLevel.Top](tx)(using t.bodyOf.top)
@@ -1120,9 +1145,7 @@ object ConwayUtxo:
       def tell(l: Chain[UtxosEvent[E]]): F[Unit] = events.tell(l.map(embed.wrapEvent))
     for
       utxoState <- state.get
-      utxo <- ShelleyUtxo.readStored[F, E](
-        ShelleyUtxo.restrictKeys(utxoState.utxo.utxo, b.allInputs(txBody))
-      )
+      utxo <- stored.read(ShelleyUtxo.restrictKeys(utxoState.utxo.utxo, b.allInputs(txBody)))
       _ <- Sts.runTest[F, UtxoPredFailure[E]](
         BabbageUtxo.babbageUtxoValidation[E](env, utxo, tx, context)
       )

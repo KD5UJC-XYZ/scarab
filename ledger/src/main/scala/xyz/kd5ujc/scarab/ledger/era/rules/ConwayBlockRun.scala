@@ -17,6 +17,8 @@ import xyz.kd5ujc.scarab.ledger.{
   Redeemer,
   TranslationError,
   TxEnv,
+  TxIn,
+  TxOut as FlatTxOut,
   Verdicts
 }
 import xyz.kd5ujc.scarab.ledger.era.{
@@ -36,7 +38,9 @@ import xyz.kd5ujc.scarab.ledger.era.{
   ScriptResult,
   ScriptVerdictUnavailable,
   Tx,
-  TxLevel
+  TxLevel,
+  TxOut,
+  UTxO
 }
 import xyz.kd5ujc.scarab.ledger.rules.{Globals, Judgment, RuleT, TxDependencies, contramap, focus}
 import xyz.kd5ujc.scarab.ledger.state.{Conway, LedgerState, UTxOState}
@@ -106,9 +110,11 @@ object ConwayBlockRun:
     case Event(told: ScriptsTold)
     case At(job: Deferred)
 
-  /** The state of a run: BBODY's, the proposals it holds, what of its events its result reads
-    * ([[Told]]), the scripts it observes, how many scripts of the transaction whose scripts run now
-    * ran so far (`ran`), and the results it is answered with (`answers`): a transaction's UTXOS
+  /** The state of a run: BBODY's, the proposals it holds, the stored outputs it read into the era
+    * (`read`, each with the stored output it read, [[StoredOutputs]]), what of its events its
+    * result reads ([[Told]]), the scripts it observes, how many scripts of the transaction whose
+    * scripts run now ran so far (`ran`), and the results it is answered with (`answers`): a
+    * transaction's UTXOS
     * runs its scripts in the order its annotation collects them (`evalPlutusScripts`,
     * `Alonzo/Plutus/Evaluate.hs:188-207`, cardano-ledger f649f975) and then tells them
     * ([[ScriptsTold]]), which ends them; one whose scripts it does not tell records a failure,
@@ -118,6 +124,7 @@ object ConwayBlockRun:
   private final case class S(
       bbody: ShelleyBbodyState[Conway],
       held: Held,
+      read: Map[TxIn, (FlatTxOut, TxOut[Conway])],
       told: Chain[Told],
       observed: Observed,
       ran: Int,
@@ -481,6 +488,31 @@ object ConwayBlockRun:
     def set(proposals: Proposals[Conway]): F[Unit] =
       summon[Stateful[F, S]].modify(_.copy(held = Held.Read(proposals)))
 
+  /** The stored outputs the rules read, each read into the era once in a run: a stored output the
+    * run read before is given as it was read, where the set holds the very output it read; the
+    * others are read ([[ShelleyUtxo.readStored]]), the first, in input order, the era does not read
+    * raised, which is the first of all of them, since those read before were read. A block's rules
+    * read a transaction's inputs at BBODY, LEDGERS, LEDGER, UTXOW, UTXO and the set's update, each
+    * read the same (#85).
+    */
+  private given StoredOutputs[F, Conway] = stored =>
+    val state = summon[Stateful[F, S]]
+    state.get.flatMap { s =>
+      val (known, unread) = stored.partitionMap((in, out) =>
+        s.read.get(in) match
+          case Some((held, read)) if held eq out => Left(in -> read)
+          case _                                 => Right(in -> out)
+      )
+      if unread.isEmpty then Monad[F].pure(UTxO[Conway](known.toMap))
+      else
+        ShelleyUtxo.readStored[F, Conway](unread.toMap).flatMap { fresh =>
+          val kept = unread.flatMap((in, out) => fresh.unUTxO.get(in).map(read => in -> (out, read)))
+          state
+            .modify(now => now.copy(read = now.read ++ kept))
+            .as(UTxO[Conway](fresh.unUTxO ++ known))
+        }
+    }
+
   /** The BBODY state with the proposals the run holds written back into the node's record
     * ([[ProposalsRecord.write]]; ones it cannot hold are a defect), the record as it was if the
     * rules never read them.
@@ -609,7 +641,7 @@ object ConwayBlockRun:
         .judge(
           ConwayBbody.conwayBbody[F, H](env, block, context, verdicts, decoder, slotToPOSIXTime),
           RuleT.Policy.Accumulate
-        )(globals, S(state, Held.Unread, Chain.empty, Observed.Between, 0, answers))
+        )(globals, S(state, Held.Unread, Map.empty, Chain.empty, Observed.Between, 0, answers))
         .flatMap(_.traverse((after, _) => written(after).map(_ -> after.told)))
     Body(txs, evaluator, observing, run)
 
