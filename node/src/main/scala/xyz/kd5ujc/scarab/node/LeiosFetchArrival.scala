@@ -73,7 +73,8 @@ final class LeiosFetchArrival[F[_], P](
     fatal: LeiosStoreError => F[Unit],
     settle: F[Unit] => F[Unit],
     slots: Semaphore[F],
-    pull: LeiosMempoolPull[F]
+    pull: LeiosMempoolPull[F],
+    prevalidate: Option[(EbPoint, Vector[(LeiosTxHash, Bytes)]) => F[Unit]] = None
 )(using F: Async[F]):
   /** `processLeiosBlock` of a body `peer` sent for `request`. */
   def block(peer: P, request: LeiosFetchRequest.Block, txs: Vector[(LeiosTxHash, Word32)])(using
@@ -188,6 +189,9 @@ final class LeiosFetchArrival[F[_], P](
       // the peer's transactions in the transaction cache, unapplied, once their write is queued
       // (`withLockedInsertUnappliedTx` of `ReceivedTxsFrom`, `LeiosDemoLogic.hs` 1561-1564)
       _ <- shared.txCache.insertUnapplied(ingested.map(_._2))
+      // and offered for pre-validation, on a voting node ([[LeiosPrevalidation]], an Improvement,
+      // #79): the offer only queues them, it never waits for their validation
+      _ <- prevalidate.traverse_(_(point, ingested.map((_, h, bytes) => h -> bytes)))
       _ <- shared.outstanding.update(LeiosFetchLogic.refundTxRequest(peer, batchBytes, _))
       _ <- shared.wake
     yield ()

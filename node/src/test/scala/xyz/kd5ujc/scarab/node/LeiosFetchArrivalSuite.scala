@@ -148,7 +148,8 @@ class LeiosFetchArrivalSuite extends FailsOnUncaught:
       initial: LeiosOutstanding[Int],
       depth: Long = LeiosFetchArrival.WriterQueueDepth,
       pull: LeiosMempoolPull[IO] = LeiosMempoolPull.none[IO],
-      limits: LeiosFetchStaticEnv = env
+      limits: LeiosFetchStaticEnv = env,
+      prevalidate: Option[(EbPoint, Vector[(LeiosTxHash, Bytes)]) => IO[Unit]] = None
   ): IO[Rig] =
     for
       shared <- LeiosFetchShared.create[IO, Int](initial)
@@ -166,7 +167,8 @@ class LeiosFetchArrivalSuite extends FailsOnUncaught:
         e => fatal.complete(e).void,
         settling => settling.guarantee(settled.offer(())).start.void,
         slots,
-        pull
+        pull,
+        prevalidate
       ),
       shared,
       acquired,
@@ -221,6 +223,60 @@ class LeiosFetchArrivalSuite extends FailsOnUncaught:
           assertEquals(whole.map(_.map(_._2)), Some(txs))
           assertEquals(woken, Some(()))
       }
+  }
+
+  dirs.test(
+    "each reply's transactions are offered for pre-validation, once the cache holds them unapplied"
+  ) { dir =>
+    val txs = Vector.tabulate(70)(tx)
+    val eb = body(txs)
+    val (asking, request) = asked(eb, size(eb), closure(eb))
+    val p = request.point
+    stored(dir / "leios").use { store =>
+      for
+        offers <- Ref.of[IO, Vector[
+          (
+              EbPoint,
+              LeiosTxHash,
+              Option[Either[Unit, xyz.kd5ujc.scarab.consensus.leios.ProtVerParity]]
+          )
+        ]](Vector.empty)
+        cacheOf <- Deferred[IO, LeiosTxCache[IO]]
+        r <- rig(
+          store,
+          asking,
+          prevalidate = Some((point, offered) =>
+            cacheOf.get
+              .flatMap(_.lookup)
+              .flatMap(look => offers.update(_ ++ offered.map((h, _) => (point, h, look(h)))))
+          )
+        )
+        _ <- cacheOf.complete(r.shared.txCache)
+        // announced first, as the node takes an announcement before it fetches its body, so the
+        // cache tracks the body's transactions
+        _ <- r.shared.txCache.insertAnnouncement(
+          p.slot.toBigInt,
+          xyz.kd5ujc.scarab.crypto.bls.BlsFixtures.rbHash(1),
+          p.hash
+        )
+        _ <- typed(r.arrival.block(peer, request, eb.transactions.toVector)) <* r.settled.take
+        afterBody <- r.shared.outstanding.get
+        (deciding, requests) = closureRequests(afterBody, p)
+        _ <- r.shared.outstanding.set(deciding)
+        _ <- requests.traverse(req =>
+          typed(r.arrival.blockTxs(peer, req, offsetsOf(req).map(txs))) <* r.settled.take
+        )
+        seen <- offers.get
+      yield
+        // every fetched transaction offered once, with its endorser block's point, after the
+        // reference's own unapplied tag (`withLockedInsertUnappliedTx`)
+        assertEquals(
+          seen.map(_._2).sortBy(_.bytes.hex),
+          txs.map(LeiosEb.hashTx).sortBy(_.bytes.hex)
+        )
+        assert(seen.forall(_._1 == p), s"$seen")
+        assert(seen.forall(_._3 == Some(Left(()))), s"$seen")
+    }
   }
 
   /** The mempool's index of `txs`: each by the hash an endorser block lists it by. */
