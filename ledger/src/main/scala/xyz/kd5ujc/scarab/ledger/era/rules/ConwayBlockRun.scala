@@ -43,7 +43,7 @@ import xyz.kd5ujc.scarab.ledger.era.{
   TxOut,
   UTxO
 }
-import xyz.kd5ujc.scarab.ledger.rules.{Globals, Judgment, RuleT, TxDependencies, contramap, focus}
+import xyz.kd5ujc.scarab.ledger.rules.{Globals, RuleT, TxDependencies, contramap, focus}
 import xyz.kd5ujc.scarab.ledger.state.{Conway, LedgerState, UTxOState}
 import xyz.kd5ujc.scarab.plutus.{
   EvalFailure,
@@ -172,20 +172,34 @@ object ConwayBlockRun:
     */
   final case class Applied(state: ShelleyBbodyState[Conway], plutus: PlutusStats)
 
-  /** What a run on a block comes to: a defect, the refusal's failures, or the block admitted. */
-  type Result = Either[ConwayRuleDefect, Either[NonEmptyChain[BbodyPredFailure[Conway]], Applied]]
+  /** Why the rules refused a block: its failures, every one the rules recorded, or those recorded
+    * before a defect of this implementation stopped the run.
+    */
+  enum Refusal:
+    def failures: NonEmptyChain[BbodyPredFailure[Conway]]
+
+    /** The rules ran to the end of the block and recorded `failures`. */
+    case Failed(failures: NonEmptyChain[BbodyPredFailure[Conway]])
+
+    /** The rules recorded `failures`, then raised `defect`, which ended the run (#85): the block is
+      * refused on those failures, as the reference, which has no such defect, refuses it. The
+      * failures end where the defect stopped the run; what the rules would have recorded after it
+      * is not known. The defect is this implementation's, kept to be logged, not a failure of the
+      * block. A defect with nothing recorded before it leaves no verdict ([[Result]]'s `Left`). The
+      * node routes neither yet: the Conway switch routes this as any refused block, the peer that
+      * served it treated as for any invalid block, beside the follower's routing of the flat rules'
+      * verdicts (`Follower.judge`'s `Judged`).
+      */
+    case Stopped(failures: NonEmptyChain[BbodyPredFailure[Conway]], defect: ConwayRuleDefect)
+
+  /** What a run on a block comes to: a defect with no failure recorded before it, the refusal
+    * ([[Refusal]]), or the block admitted.
+    */
+  type Result = Either[ConwayRuleDefect, Either[Refusal, Applied]]
 
   /** A run before its counters: the BBODY state after an admitted block with its events. */
   private type Ran =
-    Either[ConwayRuleDefect, Either[
-      NonEmptyChain[BbodyPredFailure[Conway]],
-      (
-          ShelleyBbodyState[
-            Conway
-          ],
-          Chain[Told]
-      )
-    ]]
+    Either[ConwayRuleDefect, Either[Refusal, (ShelleyBbodyState[Conway], Chain[Told])]]
 
   private given Raise[F, UtxoStateDefect] =
     summon[Raise[F, ConwayRuleDefect]].contramap(ConwayRuleDefect.UtxoState(_))
@@ -549,14 +563,16 @@ object ConwayBlockRun:
                 .modify(_.copy(proposals = stored))(bbody)
           )
 
-  /** BBODY on `block` from `state`: a defect, the refusal's failures, or the BBODY state after with
-    * the block's phase-2 counters ([[Applied]]). The context of its transactions' rules is made
-    * here from `globals`, as the reference's rules read it from theirs: the network (`networkId`,
-    * the Shelley genesis's) and the build's injection of Shelley's UTXO failures
-    * ([[ConwayUtxo.injectShelleyFailure]]), with the system start and the epoch information the
-    * caller gives (`systemStart`, `epochInfo`), and every check validated, so that no caller runs
-    * the block's rules under another policy or on another network. A script the evaluator gives no
-    * verdict for is named by its transaction and redeemer where the rules met it
+  /** BBODY on `block` from `state`: a defect, the refusal ([[Refusal]]), or the BBODY state after
+    * with the block's phase-2 counters ([[Applied]]). Every failure is accumulated, and a defect
+    * raised after a failure was recorded refuses the block on the failures recorded before it
+    * ([[Refusal.Stopped]]); one raised before any leaves no verdict. The context of its
+    * transactions' rules is made here from `globals`, as the reference's rules read it from theirs:
+    * the network (`networkId`, the Shelley genesis's) and the build's injection of Shelley's UTXO
+    * failures ([[ConwayUtxo.injectShelleyFailure]]), with the system start and the epoch
+    * information the caller gives (`systemStart`, `epochInfo`), and every check validated, so that
+    * no caller runs the block's rules under another policy or on another network. A script the
+    * evaluator gives no verdict for is named by its transaction and redeemer where the rules met it
     * ([[ConwayRuleDefect.ScriptUnavailable]]).
     */
   def bbody[H](
@@ -653,12 +669,19 @@ object ConwayBlockRun:
       val answers = mode match
         case Mode.Evaluating(answers) => answers
         case Mode.Preparing(_)        => Nil
-      Judgment
+      ConwayBbody
+        .conwayBbody[F, H](env, block, context, verdicts, decoder, slotToPOSIXTime)
         .judge(
-          ConwayBbody.conwayBbody[F, H](env, block, context, verdicts, decoder, slotToPOSIXTime),
-          RuleT.Policy.Accumulate
-        )(globals, S(state, Held.Unread, Map.empty, Chain.empty, Observed.Between, 0, answers))
-        .flatMap(_.traverse((after, _) => written(after).map(_ -> after.told)))
+          RuleT.Policy.Accumulate,
+          globals,
+          S(state, Held.Unread, Map.empty, Chain.empty, Observed.Between, 0, answers)
+        ) match
+        case RuleT.Outcome.Raised(defect) => Left(defect)
+        // an established refusal wins over a later defect of ours (#85)
+        case RuleT.Outcome.Halted(failures, defect) =>
+          Right(Left(Refusal.Stopped(failures, defect)))
+        case RuleT.Outcome.Refused(failures) => Right(Left(Refusal.Failed(failures)))
+        case RuleT.Outcome.Passed(after, _)  => written(after).map(s => Right(s -> after.told))
     Body(txs, evaluator, observing, run)
 
   /** Conway's run on a block as a body program (`Phase2.Program`): [[serial]] is the run with every
@@ -697,7 +720,8 @@ object ConwayBlockRun:
     * its result, which lands each job's verdict in order:
     *   - while every verdict is the one its flag announces, the preparation went as the serial run
     *     goes, so its result is the serial run's: its counters from each job's verdict told where
-    *     it was deferred, its observations made in order, or the raw defect it ended in;
+    *     it was deferred, its observations made in order, its refusal, with the defect that stopped
+    *     it if one did ([[Refusal.Stopped]]), or the raw defect it ended in;
     *   - a raw defect a job's scripts ended in is the serial run's, which reaches them: the jobs
     *     before it observed, the defect raised as it is, never evaluated again;
     *   - at the first verdict that is not the one its flag announces, or a script with no verdict,
