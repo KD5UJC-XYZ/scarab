@@ -362,7 +362,7 @@ object ConwayLedger:
           validateTreasuryValue[E, TxLevel.Top](txBody, env.ledgerAccount.treasury)(using b, b.top)
         )
         utxo <- ShelleyUtxo.readStored[F, E](
-          ShelleyUtxo.extractKeys(utxoState.utxo.utxo, b.allInputs(txBody))._2
+          ShelleyUtxo.restrictKeys(utxoState.utxo.utxo, b.allInputs(txBody))
         )
         _ <- test(validateRefScriptSize[E, TxLevel.Top](pp, utxo, tx)(using t, b, pc, top, b.top))
         _ <-
@@ -549,7 +549,7 @@ object ShelleyLedgers:
           current <- state.get
           txBody = t.body[TxLevel.Top](tx)(using t.bodyOf.top)
           utxo <- ShelleyUtxo.readStored[F, E](
-            ShelleyUtxo.extractKeys(current.utxo.utxo.utxo, t.bodyOf.allInputs(txBody))._2
+            ShelleyUtxo.restrictKeys(current.utxo.utxo.utxo, t.bodyOf.allInputs(txBody))
           )
           stAnnTx = annotate(utxo, cache, tx)
           _ <- judge.nest(

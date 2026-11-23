@@ -548,7 +548,7 @@ object BabbageUtxow:
     for
       utxoState <- state.get
       utxo <- ShelleyUtxo.readStored[F, E](
-        ShelleyUtxo.extractKeys(utxoState.utxo.utxo, b.allInputs(txBody))._2
+        ShelleyUtxo.restrictKeys(utxoState.utxo.utxo, b.allInputs(txBody))
       )
       _ <- test(
         validateFailedBabbageScripts[E, TxLevel.Top](tx, scriptsProvided, scriptHashesNeeded)(using

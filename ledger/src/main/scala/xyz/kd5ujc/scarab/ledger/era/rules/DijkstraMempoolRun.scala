@@ -104,12 +104,11 @@ object DijkstraMempoolRun:
       def raise[E2 <: UtxoStateDefect, A](e: E2): G[A] = Left(e)
     ShelleyUtxo.readStored[G, Dijkstra](
       ShelleyUtxo
-        .extractKeys(
+        .restrictKeys(
           state.utxo.utxo.utxo,
           EraTx.dijkstra.bodyOf
             .allInputs(EraTx.dijkstra.body[TxLevel.Top](tx)(using BothLevels.Top))
         )
-        ._2
     )
 
   /** `mkStAnnTx` of Dijkstra (`mkDijkstraStAnnTopTx`, `Dijkstra.hs:90, 111-169`, cardano-ledger

@@ -220,12 +220,11 @@ object ConwayMempoolRun:
       def raise[E2 <: UtxoStateDefect, A](e: E2): G[A] = Left(e)
     ShelleyUtxo.readStored[G, Conway](
       ShelleyUtxo
-        .extractKeys(
+        .restrictKeys(
           state.utxo.utxo.utxo,
           EraTx.conway.bodyOf
             .allInputs(EraTx.conway.body[TxLevel.Top](tx)(using EraTx.conway.bodyOf.top))
         )
-        ._2
     )
 
   /** `mkStAnnTx` of Conway (`mkAlonzoStAnnTx`, `Conway.hs:55`, cardano-ledger f649f975) as

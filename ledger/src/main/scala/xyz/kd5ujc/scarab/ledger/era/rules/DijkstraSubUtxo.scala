@@ -370,7 +370,7 @@ object DijkstraSubUtxo:
     for
       utxoState <- state.get
       current <- ShelleyUtxo.readStored[F, Dijkstra](
-        ShelleyUtxo.extractKeys(utxoState.utxo.utxo, b.inputs[TxLevel.Sub](txBody))._2
+        ShelleyUtxo.restrictKeys(utxoState.utxo.utxo, b.inputs[TxLevel.Sub](txBody))
       )
       _ <- Sts.runTest[F, SubUtxoPredFailure[Dijkstra]](
         dijkstraSubUtxoValidation(env, current, stAnnTx, context)

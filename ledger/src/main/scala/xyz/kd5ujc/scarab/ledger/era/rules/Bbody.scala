@@ -319,7 +319,7 @@ object ConwayBbody:
       before <- state.get
       utxo <- ShelleyUtxo.readStored[F, E](
         ShelleyUtxo
-          .extractKeys(
+          .restrictKeys(
             before.ls.utxo.utxo.utxo,
             txs.foldLeft(Set.empty[TxIn]) { (keys, tx) =>
               val txBody = t.body[TxLevel.Top](tx)
@@ -327,7 +327,6 @@ object ConwayBbody:
                 b.referenceInputs[TxLevel.Top](txBody)
             }
           )
-          ._2
       )
       _ <- bbodyTest(validateBodyRefScriptsSizeTooBig[E](pp, txs, utxo))
     yield ()
