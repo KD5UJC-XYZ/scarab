@@ -134,20 +134,21 @@ object DijkstraPoolEnv:
       env.verdicts
     )
 
-  private def horizonOf(clock: PosixClock, rules: Globals): (SystemStart, Horizon) = clock match
-    case PosixClock.Forecast(start, horizon)                         => (start, horizon)
-    case PosixClock.Extended(_, PosixClock.Forecast(start, horizon)) => (start, horizon)
-    case PosixClock.Total(_) =>
-      val g = rules.geometry
-      (
-        rules.systemStart,
-        Horizon(
-          NonEmptyVector.one(
-            Horizon.Era(
-              Horizon.Edge(0, 0, 0),
-              None,
-              Horizon.Params(g.epochLength, g.slotLengthMillis, 0, 0)
+  private[mempool] def horizonOf(clock: PosixClock, rules: Globals): (SystemStart, Horizon) =
+    clock match
+      case PosixClock.Forecast(start, horizon)                         => (start, horizon)
+      case PosixClock.Extended(_, PosixClock.Forecast(start, horizon)) => (start, horizon)
+      case PosixClock.Total(_) =>
+        val g = rules.geometry
+        (
+          rules.systemStart,
+          Horizon(
+            NonEmptyVector.one(
+              Horizon.Era(
+                Horizon.Edge(0, 0, 0),
+                None,
+                Horizon.Params(g.epochLength, g.slotLengthMillis, 0, 0)
+              )
             )
           )
         )
-      )

@@ -205,6 +205,7 @@ object Capacity:
     case Held.Flat(_, _, tx) =>
       val units = tx.witnesses.totalExUnits
       TxMeasure(tx.size + PerTxOverhead, units.mem, units.steps, entry.refScriptBytes)
+    case Held.InConway(held)   => held.read.measure.copy(refScriptsBytes = entry.refScriptBytes)
     case Held.InDijkstra(held) => dijkstraMeasure(held.read.flat, entry.refScriptBytes)
 
   /** The first phase (`txMeasurePhase1`, `txMeasureAlonzo`): the transaction's size against the

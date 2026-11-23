@@ -12,20 +12,25 @@ import xyz.kd5ujc.scarab.protocol.{Era, ReferenceBuild}
 final case class EraTx(parts: Block.Transaction, tx: Tx)
 
 /** A transaction in an era whose transactions the pool takes: one of an era from Shelley to Conway
-  * with the era it is of ([[Flat]]), or one of Dijkstra in the era's types ([[InDijkstra]]).
+  * as the flat decoders read it, with the era it is of ([[Flat]]); one of Conway read into the
+  * era's types too, in the layout of a Conway ledger ([[InConway]]); or one of Dijkstra in the
+  * era's types ([[InDijkstra]]).
   */
 enum InEra:
   case Flat(of: Era, transaction: EraTx)
+  case InConway(transaction: ConwayRead)
   case InDijkstra(transaction: DijkstraRead)
 
   /** The era it is of. */
   def era: Era = this match
     case Flat(era, _)  => era
+    case InConway(_)   => Era.Conway
     case InDijkstra(_) => Era.Dijkstra
 
   /** The id, the hash of the body. */
   def id: Bytes = this match
     case Flat(_, t)       => t.parts.id
+    case InConway(read)   => read.id
     case InDijkstra(read) => read.id
 
   /** The transaction as the reference writes it in its era, to relay, to list and to read again in
@@ -33,6 +38,7 @@ enum InEra:
     */
   def raw: Bytes = this match
     case Flat(era, t)     => EraInjection.envelope(t.parts, era)
+    case InConway(read)   => read.raw
     case InDijkstra(read) => read.raw
 
 /** How the mempool takes a transaction of another era than its ledger's, a submitted one or one it

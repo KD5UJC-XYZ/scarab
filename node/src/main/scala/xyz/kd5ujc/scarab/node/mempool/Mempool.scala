@@ -257,6 +257,16 @@ object Mempool:
                 DijkstraRuleDefect.Gov(_)
               ) | DijkstraUnjudged.UtxoState(_) =>
             None
+      // no verdict on a Conway transaction, as on a Dijkstra one: a script the evaluator cannot
+      // judge, as the flat rules' unavailable script, or the node's two readings of it that
+      // disagree close the connection, not charged; the state's own defects leave it as it is
+      case Rejection.ConwayUnjudged(_, cause) =>
+        cause match
+          case ConwayUnjudged.Unavailable(_) | ConwayUnjudged.Projection(_) =>
+            Some(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(cause)))
+          case ConwayUnjudged.UtxoState(_) | ConwayUnjudged.Gov(_) |
+              ConwayUnjudged.ProposalsRead(_) | ConwayUnjudged.ProposalsWrite(_) =>
+            None
       case _ => None
 
   /** The refusal of a validation that took `took` in the era of the pool's ledger, `ledger`, if the
@@ -483,7 +493,7 @@ object Mempool:
                     Left(
                       failure @ (Rejection.RulesDefect(_) | Rejection.InputDefect(_) | Rejection
                         .Ledger(_: LedgerFailure.Unavailable | _: LedgerFailure.Unverifiable) |
-                      Rejection.DijkstraUnjudged(_, _))
+                      Rejection.DijkstraUnjudged(_, _) | Rejection.ConwayUnjudged(_, _))
                     )
                   ),
                   _

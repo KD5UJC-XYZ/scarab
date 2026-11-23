@@ -17,8 +17,8 @@ import xyz.kd5ujc.scarab.protocol.{Era, LeiosTxHash, ReferenceBuild}
 import xyz.kd5ujc.scarab.storage.LeiosEb
 import cats.data.NonEmptyChain
 import xyz.kd5ujc.scarab.ledger.era.EraTxError
-import xyz.kd5ujc.scarab.ledger.era.rules.DijkstraMempoolPredFailure
-import xyz.kd5ujc.scarab.ledger.state.Dijkstra
+import xyz.kd5ujc.scarab.ledger.era.rules.{ConwayLedgerPredFailure, DijkstraMempoolPredFailure}
+import xyz.kd5ujc.scarab.ledger.state.{Conway, Dijkstra}
 import xyz.kd5ujc.scarab.ledger.{Block, DetachedRecords, EpochGeometry, PosixClock}
 import xyz.kd5ujc.scarab.ledger.{
   Credential,
@@ -110,6 +110,17 @@ enum Rejection:
     */
   case DijkstraUnjudged(id: Option[Bytes], cause: xyz.kd5ujc.scarab.node.mempool.DijkstraUnjudged)
 
+  /** Conway's refusal of the transaction `id` (`ConwayApplyTxError`, cardano-ledger f649f975
+    * `eras/conway/impl/src/Cardano/Ledger/Conway.hs:50-53`): MEMPOOL's failures in the reference's
+    * order, or a measure's (`txMeasurePhase1`, `txMeasurePhase2`), each in the era's types.
+    */
+  case ConwayRefused(id: Bytes, failures: NonEmptyChain[ConwayLedgerPredFailure[Conway]])
+
+  /** No verdict on a Conway transaction, its id when it was read: the node's own limit or defect
+    * ([[ConwayUnjudged]]), which no peer is charged for.
+    */
+  case ConwayUnjudged(id: Option[Bytes], cause: xyz.kd5ujc.scarab.node.mempool.ConwayUnjudged)
+
   def message: String = this match
     case Malformed(d)    => s"malformed transaction: ${d.message}"
     case AlreadyHeld(id) => s"tx ${id.hex.take(16)} is already in the mempool"
@@ -127,6 +138,10 @@ enum Rejection:
       s"tx ${id.hex.take(16)} is refused by Dijkstra's rules: ${fs.toChain.toVector.mkString("; ")}"
     case DijkstraUnjudged(id, cause) =>
       s"no verdict on ${id.fold("the transaction")(i => s"tx ${i.hex.take(16)}")}: $cause"
+    case ConwayRefused(id, fs) =>
+      s"tx ${id.hex.take(16)} is refused by Conway's rules: ${fs.toChain.toVector.mkString("; ")}"
+    case ConwayUnjudged(id, cause) =>
+      s"no verdict on ${id.fold("the transaction")(i => s"tx ${i.hex.take(16)}")}: ${cause.message}"
 
 object Rejection:
   extension (full: Full)
@@ -154,21 +169,25 @@ enum Source:
     */
   case Remote
 
-/** A held transaction, of the era of the pool's ledger: one of an era from Shelley to Conway, its
-  * parts with the flag of the verdict and the transaction they make in that era ([[Held.Flat]]), or
-  * one of Dijkstra with what it was validated with ([[Held.InDijkstra]]).
+/** A held transaction, of the era of the pool's ledger: one of an era from Shelley to Conway that
+  * the flat rules judged, its parts with the flag of the verdict and the transaction they make in
+  * that era ([[Held.Flat]]); one of Conway that Conway's rules judged ([[Held.InConway]]), or one
+  * of Dijkstra ([[Held.InDijkstra]]), with what it was validated with.
   */
 enum Held:
   case Flat(of: Era, parts: Block.Transaction, tx: Tx)
+  case InConway(held: ConwayAdmitted)
   case InDijkstra(held: DijkstraAdmitted)
 
   def era: Era = this match
     case Flat(era, _, _) => era
+    case InConway(_)     => Era.Conway
     case InDijkstra(_)   => Era.Dijkstra
 
   /** The transaction as it was read, in its era. */
   def in: InEra = this match
     case Flat(era, parts, tx) => InEra.Flat(era, EraTx(parts, tx))
+    case InConway(held)       => InEra.InConway(held.read)
     case InDijkstra(held)     => InEra.InDijkstra(held.read)
 
 /** A held transaction ([[Held]]). `ticket` grows with arrival order and is how peers are given each
@@ -212,7 +231,7 @@ final case class Entry(
     case Held.InDijkstra(admitted) =>
       val bytes = admitted.read.flat.forBlockInclusion
       Some(LeiosEb.hashTx(bytes) -> bytes)
-    case Held.Flat(_, _, _) => None
+    case Held.Flat(_, _, _) | Held.InConway(_) => None
 
 object Entry:
   /** A held transaction of an era from Shelley to Conway. */
@@ -647,6 +666,7 @@ object MempoolState:
   def readSet(txs: Iterable[InEra]): Vector[xyz.kd5ujc.scarab.ledger.TxIn] =
     val (flat, dijkstra) = txs.toVector.partitionMap {
       case InEra.Flat(_, t)       => Left(t.tx)
+      case InEra.InConway(read)   => Left(read.flat)
       case InEra.InDijkstra(read) => Right(read)
     }
     xyz.kd5ujc.scarab.storage.UtxoStore.readSet(flat) ++ DijkstraLedger.readSet(dijkstra)
@@ -752,7 +772,8 @@ object MempoolState:
       case (flat: FlatLedger, InEra.Flat(_, t)) =>
         Capacity.phase1(t.tx, flat).leftMap(Rejection.Limits(t.parts.id, _))
       case (d: DijkstraLedger, InEra.InDijkstra(t)) => d.phase1(t)
-      case (_: FlatLedger, InEra.InDijkstra(_)) | (_: DijkstraLedger, InEra.Flat(_, _)) =>
+      case (_: FlatLedger, InEra.InDijkstra(_) | InEra.InConway(_)) |
+          (_: DijkstraLedger, InEra.Flat(_, _) | InEra.InConway(_)) =>
         Left(Rejection.WrongEra(in.era.index, ledger.era))
 
   /** The second measure of `in` against `ledger` ([[Capacity.phase2]], [[DijkstraLedger.phase2]]).
@@ -764,7 +785,8 @@ object MempoolState:
           .phase2(flat, t.tx)
           .leftMap(f => Rejection.Ledger(LedgerFailure.Rejected(t.parts.id, f)))
       case (d: DijkstraLedger, InEra.InDijkstra(t)) => d.phase2(t)
-      case (_: FlatLedger, InEra.InDijkstra(_)) | (_: DijkstraLedger, InEra.Flat(_, _)) =>
+      case (_: FlatLedger, InEra.InDijkstra(_) | InEra.InConway(_)) |
+          (_: DijkstraLedger, InEra.Flat(_, _) | InEra.InConway(_)) =>
         Left(Rejection.WrongEra(in.era.index, ledger.era))
 
   /** `in` admitted from `source` by `ledger` 's rule, the pool's base `base` ticked to the
@@ -792,7 +814,8 @@ object MempoolState:
       case (d: DijkstraLedger, InEra.InDijkstra(t)) =>
         d.admit(t, DijkstraPoolEnv.of(env, tipSlot + 1), source)
           .map((next, held) => next -> Held.InDijkstra(held))
-      case (_: FlatLedger, InEra.InDijkstra(_)) | (_: DijkstraLedger, InEra.Flat(_, _)) =>
+      case (_: FlatLedger, InEra.InDijkstra(_) | InEra.InConway(_)) |
+          (_: DijkstraLedger, InEra.Flat(_, _) | InEra.InConway(_)) =>
         Left(Rejection.WrongEra(in.era.index, ledger.era))
 
   /** A transaction past the steps of an admission before the timed one ([[MempoolState.measure]]):
@@ -919,7 +942,7 @@ object MempoolState:
             case Left(_) => acc
         // a Dijkstra block takes Dijkstra transactions: the pool's ledger is of the era of the slot
         // after the tip, so a pool behind a crossing holds none yet
-        case Held.Flat(_, _, _) => acc
+        case Held.Flat(_, _, _) | Held.InConway(_) => acc
     }
     (done.kept, done.withheld)
 

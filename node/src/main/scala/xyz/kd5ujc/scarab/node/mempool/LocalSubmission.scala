@@ -10,7 +10,11 @@ import cats.data.NonEmptyChain
 import xyz.kd5ujc.scarab.ledger.era.rules.DijkstraMempoolPredFailure
 import xyz.kd5ujc.scarab.ledger.state.Dijkstra
 import xyz.kd5ujc.scarab.ledger.{LedgerFailure, PredicateFailure}
-import xyz.kd5ujc.scarab.node.ntc.{PredicateFailureCbor, RefusalPresentationError}
+import xyz.kd5ujc.scarab.node.ntc.{
+  ConwayFailureCbor,
+  PredicateFailureCbor,
+  RefusalPresentationError
+}
 import xyz.kd5ujc.scarab.node.{Fatal, StorageBoundary}
 import xyz.kd5ujc.scarab.network.LocalTxSubmissionServer
 
@@ -23,11 +27,13 @@ object LocalSubmission:
   /** What has no rejection bytes to send: a transaction its decoder refuses (the reference's codec
     * ends the connection), an implementation limit, a crypto provider that failed on a witness, a
     * decoder or the rules that threw on the transaction, a validation the hard time limit cut off
-    * in an era with no error for it, or a refusal this build has no encoding for.
+    * in an era with no error for it, no verdict on a Conway or a Dijkstra transaction, or a refusal
+    * this build has no encoding for.
     */
   type NoReply = Rejection.Malformed | LedgerFailure.Unavailable | LedgerFailure.Unverifiable |
     Rejection.InputDefect | Rejection.RulesDefect | Rejection.TimedOut | RefusalPresentationError |
-    NoEncoding | DijkstraNoEncoding | Rejection.DijkstraUnjudged
+    NoEncoding | DijkstraNoEncoding | Rejection.DijkstraUnjudged | Rejection.ConwayUnjudged |
+    ConwayFailureCbor.NoReferenceEncoding
 
   /** A refusal under a Dijkstra ledger that this build cannot write: Dijkstra's `ApplyTxError` of
     * MEMPOOL's failures (`DijkstraApplyTxError`, cardano-ledger 9df9f98c
@@ -55,16 +61,18 @@ object LocalSubmission:
 
   extension (reason: NoReply)
     def message: String = reason match
-      case m: Rejection.Malformed        => m.message
-      case f: LedgerFailure.Unavailable  => f.message
-      case f: LedgerFailure.Unverifiable => f.message
-      case d: Rejection.InputDefect      => d.message
-      case d: Rejection.RulesDefect      => d.message
-      case d: Rejection.TimedOut         => d.message
-      case d: RefusalPresentationError   => d.message
-      case d: NoEncoding                 => d.message
-      case d: DijkstraNoEncoding         => d.message
-      case d: Rejection.DijkstraUnjudged => d.message
+      case m: Rejection.Malformed                   => m.message
+      case f: LedgerFailure.Unavailable             => f.message
+      case f: LedgerFailure.Unverifiable            => f.message
+      case d: Rejection.InputDefect                 => d.message
+      case d: Rejection.RulesDefect                 => d.message
+      case d: Rejection.TimedOut                    => d.message
+      case d: RefusalPresentationError              => d.message
+      case d: NoEncoding                            => d.message
+      case d: DijkstraNoEncoding                    => d.message
+      case d: Rejection.DijkstraUnjudged            => d.message
+      case d: Rejection.ConwayUnjudged              => d.message
+      case d: ConwayFailureCbor.NoReferenceEncoding => d.message
 
   val ConwayEra = 6
 
@@ -158,7 +166,12 @@ object LocalSubmission:
       case defect: Rejection.RulesDefect                       => Left(defect)
       case cutOff: Rejection.TimedOut                          => Left(cutOff)
       case unjudged: Rejection.DijkstraUnjudged                => Left(unjudged)
+      case unjudged: Rejection.ConwayUnjudged                  => Left(unjudged)
       case Rejection.DijkstraRefused(_, failures) => Left(DijkstraNoEncoding.Refused(failures))
+      // Conway's refusal in the era's types, by its own encoder (`EncCBOR (ApplyTxError
+      // ConwayEra)`, `Conway.hs:50-53`, cardano-ledger f649f975)
+      case Rejection.ConwayRefused(_, failures) =>
+        ConwayFailureCbor.applyTxError(failures.toNonEmptyList).leftMap[NoReply](identity)
       // Conway's `ConwayMempoolFailure` with the reference's text (`Mempool/Update.hs` 278-283)
       case Rejection.TooSlow(id, submitted, took) =>
         text(era, MempoolProblem.TooSlow(took, submitted, id))
@@ -240,6 +253,23 @@ object LocalSubmission:
           LocalTxSubmissionServer.Response.ServiceUnavailable(
             LocalTxSubmissionServer.Unavailable.Presentation(error)
           )
+        case error: ConwayFailureCbor.NoReferenceEncoding =>
+          LocalTxSubmissionServer.Response.ServiceUnavailable(
+            LocalTxSubmissionServer.Unavailable.Presentation(error)
+          )
+        // no verdict on a Conway transaction: a script the evaluator cannot judge is answered as
+        // the flat rules' unavailable script is; the node's other limits and defects give no
+        // reply, the client's connection ending, as for a Dijkstra transaction
+        case unjudged: Rejection.ConwayUnjudged =>
+          unjudged.cause match
+            case cause: ConwayUnjudged.Unavailable =>
+              LocalTxSubmissionServer.Response.ServiceUnavailable(
+                LocalTxSubmissionServer.Unavailable.ScriptEvaluation(cause)
+              )
+            case cause @ (ConwayUnjudged.UtxoState(_) | ConwayUnjudged.Gov(_) |
+                ConwayUnjudged.ProposalsRead(_) | ConwayUnjudged.ProposalsWrite(_) |
+                ConwayUnjudged.Projection(_)) =>
+              LocalTxSubmissionServer.Response.Aborted(cause)
         // no verdict on a Dijkstra transaction: no reply, the client's connection ends, as a
         // provider's failure ends it for the other eras
         case unjudged: Rejection.DijkstraUnjudged =>
