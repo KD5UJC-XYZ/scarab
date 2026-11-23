@@ -129,7 +129,9 @@ The round sums ranged 16.3–17.6 s and 14.7–15.7 s for the flat rules, 22.1�
 for the era run. The prepared era run keeps the flat path's relative gain, but the era BBODY
 itself takes about 1.37 to 1.38 times the flat one's time, so applying Conway blocks with it at
 four workers would cost about 5.4 s more over this window (6.3 s serial); the 3,005 blocks with
-more than one redeemer-bearing transaction account for 5.6 s of the serial difference. The harness
+more than one redeemer-bearing transaction account for 5.6 s of the serial difference; closing
+that gap is tracked for before the switch
+(https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7088622558). The harness
 ran for 517 s, comparisons and the reference advance included. These are body timings (the tick,
 decoding and store reads excluded; a serial way's timing includes making its program, including the
 era history, which a parallel way's makes before its timer, at most about 1% of the ratio), not
