@@ -2139,6 +2139,68 @@
    "structure": "same",
    "note": "a message read from its start",
    "digest": "b4f7cdaa9cf17553"
+  },
+  "def network.selection.BigLedgerGuards#request": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/lib/Ouroboros/Network/PeerSelection/Governor/BigLedgerPeers.hs",
+     "symbol": "belowTarget",
+     "lines": [
+      62,
+      102
+     ]
+    }
+   ],
+   "class": "Improvement",
+   "structure": "differs",
+   "evidence": [
+    "BigLedgerSuite"
+   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/474#issuecomment-6880015076",
+   "note": "the reference's guards, state, job and trace; before the retry time it skips with the retry time as its wake-up, where the reference's otherwise is GuardedSkip Nothing (BigLedgerPeers.hs 93), so after a request that leaves it below the known big ledger target the reference asks again only when an unrelated event wakes the governor; its public-root request names its retry time (GuardedSkip (Just publicRootRetryTime), RootPeers.hs 79-82); unchanged at 4646039f (11.2.1) and 2f1c154f (the Leios testnet build). An Improvement under REF-2 (a), shown by reading the pinned source, with I1 to I4 holding: the stored retry time is added to the times the governor wakes at, and the request is unchanged; BigLedgerSuite checks the wake-up",
+   "digest": "0872577c66b8558f"
+  },
+  "def network.selection.BigLedgerGuards#close": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/lib/Ouroboros/Network/PeerSelection/Governor/EstablishedPeers.hs",
+     "symbol": "aboveTargetBigLedgerPeers",
+     "lines": [
+      780,
+      882
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "inProgressDemoteWarm, inProgressPromoteWarm and inProgressDemoteToCold are the Closing, Activating and Cooling peers; the number to close subtracts the closes and activations in flight of all peers, ordinary and big ledger, and the lingering peers among the warm big ledger peers only (844-849)",
+   "digest": "18c0e5e782ce00cc"
+  },
+  "def network.selection.BigLedgerGuards#deactivate": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/lib/Ouroboros/Network/PeerSelection/Governor/ActivePeers.hs",
+     "symbol": "aboveTargetBigLedgerPeers",
+     "lines": [
+      679,
+      754
+     ]
+    }
+   ],
+   "class": "Deviation",
+   "structure": "differs",
+   "evidence": [
+    "BigLedgerSuite"
+   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/956#issuecomment-6874322050",
+   "note": "the number to deactivate and the peers picked mirror the reference: it subtracts the big ledger peers being deactivated only (numberOfActiveBigLedgerPeersDemotions); the reference's lingering active big ledger peers (inProgressDemoteToCold within activeBigLedger) are none here, since a Cooling peer is not active, as Monitor.connections takes a peer out of activePeers when it starts to linger; local roots, which the reference also leaves out, are never big ledger peers. The trace also carries, for each peer that could be demoted, its score where the metrics have one, the approved Deviation D5 of ADR 0008, where TraceDemoteHotBigLedgerPeers carries the target, the count and the peers picked",
+   "digest": "6cdc3b1fe2602193"
   }
  },
  "glue": [

@@ -24,10 +24,8 @@ import xyz.kd5ujc.scarab.protocol.ConnectionState.Provenance
   * A separate file from [[PeerSelection]] on purpose: `decide` lists these families in the
   * reference's order and nothing else of it knows what is in them.
   *
-  * Deviations: the number of warm big ledger peers to close and of hot ones to deactivate takes the
-  * transitions in progress *among the big ledger peers* where the reference subtracts those of all
-  * peers (`EstablishedPeers.hs` 848-849), so an ordinary demotion in flight does not delay a big
-  * one.
+  * Improvement: the request for big ledger peers wakes the governor at its retry time
+  * ([[request]]).
   */
 private[selection] final class BigLedgerGuards[A](
     st: GovernorState[A],
@@ -48,10 +46,15 @@ private[selection] final class BigLedgerGuards[A](
       m.updated(p, m(p).copy(status = status))
     })
 
-  /** `BigLedgerPeers.belowTarget`: below the known target, ask for more, not while a request is in
-    * flight and not before the retry time. (The reference does not name the retry time as a
-    * wake-up, `GuardedSkip Nothing`; the governor here would otherwise wait for an unrelated event
-    * to ask again.)
+  /** `BigLedgerPeers.belowTarget` (62-102): below the known target, ask for more, not while a
+    * request is in flight and not before the retry time.
+    *
+    * Improvement (REF-2 (a), #474): before the retry time this skips with the retry time as its
+    * wake-up. The reference skips with none there (`GuardedSkip Nothing`, `BigLedgerPeers.hs` 93),
+    * so after a request that leaves it below its target it asks again only when an unrelated event
+    * wakes the governor, and without one it stays below its target; its request for public roots
+    * names its retry time (`GuardedSkip (Just publicRootRetryTime)`, `RootPeers.hs` 79-82). This
+    * adds the stored retry time to the times the governor wakes at; the request is unchanged.
     */
   def request: Guard[A] =
     val missing = st.targets.knownBig - big.known.size
@@ -125,14 +128,17 @@ private[selection] final class BigLedgerGuards[A](
     else Skip(None)
 
   /** `EstablishedPeers.aboveTargetBigLedgerPeers`: above the established target, close warm big
-    * ledger peers that are not being promoted, demoted already or lingering; the number is the
-    * smaller of the excess over the target and the warm peers there are.
+    * ledger peers that are not being promoted, demoted already or lingering. The number is the
+    * smaller of the excess over the target and the warm peers there are, less every peer being
+    * closed or activated, the ordinary ones too, and less the warm big ledger peers that linger
+    * (844-849): an ordinary close or activation in flight delays a big one, as in the reference.
     */
   def close: Guard[A] =
     val warm = big.established -- big.active
     val demotable = (big.established.size - st.targets.establishedBig)
       .min(big.established.size - big.active.size) -
-      big.closing.size - big.activating.size - warm.intersect(big.cooling).size
+      (view.closing.size + big.closing.size) - (view.activating.size + big.activating.size) -
+      warm.intersect(big.cooling).size
     val available = warm -- big.closing -- big.activating -- big.cooling
     if demotable > 0 && available.nonEmpty then
       val (picked, next) =
@@ -180,7 +186,12 @@ private[selection] final class BigLedgerGuards[A](
     else Skip(None)
 
   /** `ActivePeers.aboveTargetBigLedgerPeers`: above the active target, deactivate hot big ledger
-    * peers, the least useful first by the peer metrics.
+    * peers, the least useful first by the peer metrics. The number is the excess over the target
+    * less the peers being deactivated, unlike [[close]] only the big ledger ones (699-711,
+    * `numberOfActiveBigLedgerPeersDemotions`, `Types.hs` 1253-1254). The reference also subtracts
+    * the active big ledger peers that linger, of which there are none: it takes a peer out of the
+    * active set when it starts to linger (`Monitor.hs` 166-167 and 214-216), and here a lingering
+    * peer is not active.
     */
   def deactivate: Guard[A] =
     val excess = big.active.size - st.targets.activeBig - big.deactivating.size
