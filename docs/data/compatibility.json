@@ -1754,7 +1754,7 @@
       "id": "block-forging",
       "component": "Block forging",
       "status": "implemented",
-      "summary": "Praos (Conway) forging from a per-epoch leader schedule (#1101), with the reference's leader decision and certificate in every slot, a led slot checked again and forged ahead of its onset (at the onset in the first slot of a KES period), the proof built for a won slot only, the forged body encoded as the reference encodes it, exact KES evolution targets, typed terminal outcomes after key-update failure, forge defects that end the slot without stopping the node, and dynamic block forging (SIGHUP, --start-as-non-producing-node)",
+      "summary": "Praos (Conway) forging from a per-epoch leader schedule (#1101), with the reference's leader decision and certificate in every slot, a led slot checked again and forged ahead of its onset (at the onset in the first slot of a KES period), the proof built for a won slot only, the forged body encoded as the reference encodes it, exact KES evolution targets, typed terminal outcomes after key-update failure, forge defects that end the slot without stopping the node, and dynamic block forging; Conway blocks from the pool's snapshot, on the era rules (#85)",
       "evidence": {
         "suites": [
           "Sum6KesSigningSuite",
@@ -1775,10 +1775,13 @@
           "ScheduledForgerSuite",
           "ForgeInterleavingSuite",
           "KesWriteBackClockSuite",
-          "KesConfirmedWriteBackSuite"
+          "KesConfirmedWriteBackSuite",
+          "ConwaySnapshotSuite",
+          "ConwayForgeTickSuite"
         ],
         "issues": [
           82,
+          85,
           474,
           906,
           918,
