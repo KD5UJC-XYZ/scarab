@@ -202,6 +202,40 @@ class LeiosNotifyPipelinedSuite extends FailsOnUncaught:
         case other => fail(s"the conversation did not end: $other")
   }
 
+  test("a failure of the stop's wait ends the client with a defect") {
+    // the wait for the stop is a body of the client's own, whose end is the client's: a failure
+    // there ends the conversation, where a dropped one would leave the sender waiting at the depth
+    val unreadable = new IllegalStateException("the stop cannot be read")
+    typed(linked(protocols = Set(Protocols.LeiosNotify)).use { (clientMux, serverMux) =>
+      for
+        ours <- clientMux.channel(Protocols.LeiosNotify)
+        theirs <- serverMux.channel(Protocols.LeiosNotify)
+        queued <- Queue.unbounded[IO, Reply]
+        counted <- SignallingRef.of[IO, Int](0)
+        replies <- scripted(queued, counted, depth = 1)
+        recorded <- Deferred[IO, Unit]
+        stop = new Deferred[IO, Unit]:
+          def get: IO[Unit] = IO.raiseError(unreadable)
+          def tryGet: IO[Option[Unit]] = recorded.tryGet
+          def complete(a: Unit): IO[Boolean] = recorded.complete(a)
+        server <- LeiosNotifyServer.run(theirs, replies).attempt.start
+        client <- typed(
+          LeiosNotifyPipelined.run[IO](
+            ours,
+            stop,
+            Signal.constant[IO, Boolean](true),
+            _ => IO.unit,
+            LeiosNotifyPipelined.Settings(depth = 1)
+          )
+        )
+        _ <- server.cancel
+      yield client
+    }).map {
+      case Right(Left(NetworkError.Defect(cause))) => assert(cause eq unreadable)
+      case other => fail(s"the client did not end with the defect: $other")
+    }
+  }
+
   test("once the gate opens, the client requests to the depth") {
     typed(for
       queued <- Queue.unbounded[IO, Reply]

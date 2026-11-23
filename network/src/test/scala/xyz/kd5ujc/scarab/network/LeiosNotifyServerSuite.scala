@@ -114,9 +114,14 @@ class LeiosNotifyServerSuite extends FailsOnUncaught:
 
   test("a reply the next gives once the client has quit is answered with MsgCanceled") {
     // the quit checked again once `next` has given its reply: `orElse` decides at its commit, the
-    // quit first, so a reply that comes with the quit is no answer
+    // quit first, so a reply that comes with the quit is no answer. The quit's wait never ends
+    // here, so `next` wins the race and only the check after it can answer `MsgCanceled`
     for
-      quit <- Deferred[IO, Unit]
+      recorded <- Deferred[IO, Unit]
+      quit = new Deferred[IO, Unit]:
+        def get: IO[Unit] = IO.never
+        def tryGet: IO[Option[Unit]] = recorded.tryGet
+        def complete(a: Unit): IO[Boolean] = recorded.complete(a)
       answered <- LeiosNotifyServer.answer(
         quit,
         answering(IO.pure(None), quit.complete(()).as(Reply.BlockTxsOffer(point)))
