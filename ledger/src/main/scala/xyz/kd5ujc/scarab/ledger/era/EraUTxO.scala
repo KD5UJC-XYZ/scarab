@@ -283,9 +283,17 @@ object UTxOs:
   ): UTxO[E] =
     UTxO(TxIn.txouts(b.id[L](txBody), b.outputs[L](txBody)).toMap)
 
-  /** `txInsFilter` (`State/UTxO.hs:168-174`, cardano-ledger f649f975): the outputs of `txIns`. */
+  /** `txInsFilter` (`State/UTxO.hs:168-174`, cardano-ledger f649f975): the outputs of `txIns`.
+    * The reference restricts the map to the inputs (`Map.restrictKeys`, in time of the smaller of
+    * the two); so here, each input looked up where they are fewer than the set's entries, which a
+    * block's growing set of outputs is (`totalRefScriptSizeInBlock`, #85). The same entries either
+    * way.
+    */
   def txInsFilter[E <: EraTag](utxo: UTxO[E], txIns: Set[TxIn]): UTxO[E] =
-    UTxO(utxo.unUTxO.filter((in, _) => txIns.contains(in)))
+    val entries = utxo.unUTxO
+    if txIns.sizeIs < entries.size then
+      UTxO(txIns.iterator.flatMap(in => entries.get(in).map(in -> _)).toMap)
+    else UTxO(entries.filter((in, _) => txIns.contains(in)))
 
   /** `sumAllValue` (`State/UTxO.hs:199-200`, cardano-ledger f649f975). */
   def sumAllValue[E <: EraTag](outs: Iterable[TxOut[E]])(using o: EraTxOut[E]): Value[E] =
@@ -438,13 +446,21 @@ object BabbageUTxO:
   def getReferenceScriptsNonDistinct[E <: EraTag](utxo: UTxO[E], inputs: Set[TxIn])(using
       o: BabbageEraTxOut[E]
   ): Vector[(xyz.kd5ujc.scarab.codec.Bytes, Script[E])] =
+    referenceScriptsNonDistinct(utxo, inputs).map(script => (o.scripts.hashScript(script), script))
+
+  /** The scripts of [[getReferenceScriptsNonDistinct]] without their hashes, for a reader of the
+    * scripts alone (`txNonDistinctRefScriptsSize`), which never forces the reference's lazy hashes:
+    * so a script is not hashed to be measured (#85).
+    */
+  def referenceScriptsNonDistinct[E <: EraTag](utxo: UTxO[E], inputs: Set[TxIn])(using
+      o: BabbageEraTxOut[E]
+  ): Vector[Script[E]] =
     UTxOs
       .txInsFilter(utxo, inputs)
       .unUTxO
       .toVector
       .sortBy(_._1)
       .flatMap((_, out) => o.referenceScript(out))
-      .map(script => (o.scripts.hashScript(script), script))
 
   /** `getReferenceScripts` (`Babbage/UTxO.hs:150-155`, cardano-ledger f649f975): the reference
     * scripts of `inputs` ' outputs by hash (`Map.fromList`, a later one of a hash kept).

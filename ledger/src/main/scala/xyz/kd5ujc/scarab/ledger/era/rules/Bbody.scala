@@ -239,7 +239,9 @@ object ConwayBbody:
           val toAdd = t.isValid(tx) match
             case IsPhase2Valid.Phase2Valid   => UTxOs.txouts[E, TxLevel.Top](txBody)
             case IsPhase2Valid.Phase2Invalid => BabbageUtxo.collOuts[E](txBody)
-          val updatedUtxo = toAdd.unUTxO ++ accUtxo
+          // `Map.union` biased to the set: the outputs it has no entry for added to it, not the set
+          // added to them, which would copy the block's set so far at each transaction (#85)
+          val updatedUtxo = accUtxo ++ toAdd.unUTxO.filterNot((in, _) => accUtxo.contains(in))
           (updatedUtxo, accSum + ConwayUTxO.txNonDistinctRefScriptsSize(UTxO(accUtxo), tx))
         }
         ._2

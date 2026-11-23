@@ -89,8 +89,8 @@ object ConwayUTxO:
     val inputs: Set[TxIn] = b.referenceInputs[L](body) ++ b.inputs[L](body)
     val o = b.outputsOf
     BabbageUTxO
-      .getReferenceScriptsNonDistinct(utxo, inputs)(using o)
-      .map((_, script) => o.scripts.originalBytes(script).size.toLong)
+      .referenceScriptsNonDistinct(utxo, inputs)(using o)
+      .map(script => o.scripts.originalBytes(script).size.toLong)
       .sum
 
   /** `getConwayMinFeeTxUtxo` (`Conway/UTxO.hs:146-158`, cardano-ledger f649f975, the same at
