@@ -1,15 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.log
 
-import xyz.kd5ujc.scarab.node.LeiosPrevalidation
-
 import cats.syntax.all.*
 import io.circe.Json
 import io.circe.syntax.*
 import xyz.kd5ujc.scarab.consensus.{BlockRef, FollowerEvent, SchedulingReport}
 import xyz.kd5ujc.scarab.network.{ConnectionEvent, DiffTime}
 import xyz.kd5ujc.scarab.ledger.{ForgeDefect, ForgeKeyProblem}
-import xyz.kd5ujc.scarab.node.Reports
+import xyz.kd5ujc.scarab.node.{LeiosPrevalidation, Reports}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.node.forge.{
   NoExchange,
