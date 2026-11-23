@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.node.mempool
 
 import cats.data.{NonEmptyChain, NonEmptySet}
+import cats.syntax.all.*
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{GovActionId, LedgerDefect, LedgerFailure, TxDefect, TxIn}
@@ -138,6 +139,20 @@ class ConwayHeldSuite extends FunSuite:
     ledgerDefects.foreach(d =>
       assertEquals(ConwayUnjudged.rejection(id, ConwayRuleDefect.Ledger(d)), Rejection.Ledger(d))
     )
+    // a script with no verdict named by its redeemer keeps the flat rules' route
+    val named = LedgerFailure.Unavailable(
+      id,
+      xyz.kd5ujc.scarab.ledger.ScriptLocation.Phase2(
+        xyz.kd5ujc.scarab.ledger.Redeemer(0, 0, Bytes.empty, xyz.kd5ujc.scarab.plutus.ExUnits.zero)
+      ),
+      xyz.kd5ujc.scarab.plutus.EvalFailure.Unsupported(
+        xyz.kd5ujc.scarab.plutus.BackendFailure.StackExhausted
+      )
+    )
+    assertEquals(
+      ConwayUnjudged.rejection(id, ConwayRuleDefect.ScriptUnavailable(named)),
+      Rejection.Ledger(named)
+    )
     val cases = Vector[(ConwayRuleDefect, Rejection)](
       ConwayRuleDefect.UtxoState(UtxoStateDefect.Vocab(pot)) ->
         Rejection.Ledger(LedgerFailure.StateOutOfRange(id, pot)),
@@ -209,4 +224,73 @@ class ConwayHeldSuite extends FunSuite:
     )
     assertEquals(Mempool.peerConnectionEnd(rejection), None)
     assertEquals(RejectionLabel.of(rejection), RejectionLabel.Ledger)
+  }
+
+  test("parameters in force that are not Conway's: the pool has no ledger, answered as none") {
+    val nes = TxKit.native(1)
+    val gov = nes.es.ls.utxo.gov
+    val broken = xyz.kd5ujc.scarab.ledger.state.NewEpochState
+      .ledger[Conway]
+      .modify(ls =>
+        ls.copy[Conway](utxo =
+          ls.utxo.copy(gov = gov.copy(curPParams = gov.curPParams.copy(minFeeA = BigInt(-1))))
+        )
+      )(nes)
+    val ledger = PoolLedger.of(
+      xyz.kd5ujc.scarab.ledger.rules.EraNes
+        .InEra(xyz.kd5ujc.scarab.ledger.state.ShelleyBasedEra.SConway, broken),
+      xyz.kd5ujc.scarab.protocol.ReferenceBuild.Release11_1
+    )
+    val why = ledger match
+      case Right(Left(why @ xyz.kd5ujc.scarab.node.read.ConwayView.Unavailable.Params(_))) => why
+      case other => fail(s"expected no ledger for the parameters, got $other")
+    val pool = MempoolState.empty(Left(why), 1000, None)
+    pool.add(raw, env, Source.Local) match
+      case Left(rejection @ Rejection.NoLedger(`why`)) =>
+        // the node's own text, as for a chain with no Conway ledger
+        assert(LocalSubmission.reasonItem(rejection, None).isRight)
+      case other => fail(s"expected no ledger, got $other")
+  }
+
+  test("a failure the reference has no constructor for is sent as Conway's free text of it") {
+    // a context error of the node's own: a time with no era history to translate it
+    val failure: ConwayLedgerPredFailure[Conway] =
+      ConwayLedgerPredFailure.ConwayUtxowFailure(
+        xyz.kd5ujc.scarab.ledger.era.rules.ConwayUtxowPredFailure.UtxoFailure(
+          xyz.kd5ujc.scarab.ledger.era.rules.ConwayUtxoPredFailure.UtxosFailure(
+            xyz.kd5ujc.scarab.ledger.era.rules.ConwayUtxosPredFailure.CollectErrors(
+              cats.data.NonEmptyList.one(
+                xyz.kd5ujc.scarab.ledger.era.CollectError.BadTranslation(
+                  xyz.kd5ujc.scarab.ledger.era.conway.ConwayContextError.BabbageContextError(
+                    xyz.kd5ujc.scarab.ledger.era.BabbageContextError.AlonzoContextError(
+                      xyz.kd5ujc.scarab.ledger.era.AlonzoContextError.TimeTranslationPastHorizon(
+                        xyz.kd5ujc.scarab.ledger.TranslationError.NoEraHistory
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    val other = ConwayLedgerPredFailure.ConwayTxRefScriptsSizeTooBig[Conway](
+      Mismatch[RelLTEQ, Long](204801L, 204800L)
+    )
+    val failures = NonEmptyChain(other, failure)
+    assert(ConwayFailureCbor.applyTxError(failures.toNonEmptyList).isLeft)
+    // in its place, Conway's free-text failure of it; the other failure in its own bytes
+    val sent = ConwayFailureCbor.applyTxError(
+      cats.data.NonEmptyList.of(
+        other,
+        ConwayLedgerPredFailure.ConwayMempoolFailure[Conway](
+          xyz.kd5ujc.scarab.ledger.MempoolProblem.ConwayRule(failure)
+        )
+      )
+    )
+    assert(sent.isRight, s"$sent")
+    assertEquals(
+      LocalSubmission.reasonItem(Rejection.ConwayRefused(id, failures), Some(Era.Conway)),
+      sent.leftMap[LocalSubmission.NoReply](identity)
+    )
   }

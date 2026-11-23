@@ -177,22 +177,14 @@ object BlockBuilder:
       Limits(params.maxBlockBodySize.toLong, params.maxBlockExUnits)
 
   /** The flat transaction a Conway block takes of a held one, none of another era's: a Conway
-    * transaction is applied again here as the flat transaction it was read with, whichever rules
-    * admitted it, until the forger's Conway path takes the era's (#85). A total match with no
+    * transaction, which Conway's rules admitted, is applied again here as the flat transaction it
+    * was read with, until the forger's Conway path takes the era's (#85). A total match with no
     * default, so that a new kind of held transaction is placed here, never left out of every block
     * by a default.
     */
   private[forge] def conwayTx(held: Held): Option[Tx] = held match
-    case Held.InConway(admitted)      => Some(admitted.read.flat)
-    case Held.Flat(Era.Conway, _, tx) => Some(tx)
-    case Held.Flat(
-          Era.Byron | Era.Shelley | Era.Allegra | Era.Mary | Era.Alonzo | Era.Babbage |
-          Era.Dijkstra,
-          _,
-          _
-        ) =>
-      None
-    case Held.InDijkstra(_) => None
+    case Held.InConway(admitted)                 => Some(admitted.read.flat)
+    case Held.Flat(_, _, _) | Held.InDijkstra(_) => None
 
   /** The transactions of the block, as the reference takes them from its mempool (consensus
     * 82ecba329 `NodeKernel.hs` 693-715): the held transactions are revalidated in order against the

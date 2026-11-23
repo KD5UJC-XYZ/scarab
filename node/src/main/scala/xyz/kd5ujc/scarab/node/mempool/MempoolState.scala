@@ -26,7 +26,6 @@ import xyz.kd5ujc.scarab.ledger.{
   LedgerFailure,
   LedgerGlobals,
   PredicateFailure,
-  RefScripts,
   Tx,
   TxEnv
 }
@@ -169,10 +168,10 @@ enum Source:
     */
   case Remote
 
-/** A held transaction, of the era of the pool's ledger: one of an era from Shelley to Conway that
-  * the flat rules judged, its parts with the flag of the verdict and the transaction they make in
-  * that era ([[Held.Flat]]); one of Conway that Conway's rules judged ([[Held.InConway]]), or one
-  * of Dijkstra ([[Held.InDijkstra]]), with what it was validated with.
+/** A held transaction, of the era of the pool's ledger: one of an era from Shelley to Babbage, its
+  * parts with the flag of the verdict and the transaction they make in that era ([[Held.Flat]]);
+  * one of Conway ([[Held.InConway]]) or of Dijkstra ([[Held.InDijkstra]]), each judged by its era's
+  * rules, with what it was validated with.
   */
 enum Held:
   case Flat(of: Era, parts: Block.Transaction, tx: Tx)
@@ -234,7 +233,7 @@ final case class Entry(
     case Held.Flat(_, _, _) | Held.InConway(_) => None
 
 object Entry:
-  /** A held transaction of an era from Shelley to Conway. */
+  /** A held transaction of an era from Shelley to Babbage. */
   def apply(
       era: Era,
       parts: Block.Transaction,
@@ -474,7 +473,8 @@ final case class MempoolState private (
       ledger <- current.leftMap(Rejection.NoLedger(_))
       baseLedger <- base.leftMap(Rejection.NoLedger(_))
       matched <- MempoolState.inject(read, env.injection, ledger.era) match
-        case Right((submitted, in)) => Right(MempoolState.Measured.Matched(submitted, in))
+        case Right((submitted, in)) =>
+          MempoolState.projected(ledger, in).map(MempoolState.Measured.Matched(submitted, _))
         case Left(mismatch: Rejection.WrongEra) =>
           env.mismatch match
             case EraInjection.Mismatch.InMeasure => Left(mismatch)
@@ -649,15 +649,6 @@ object MempoolState:
     case Credential.Key(h)    => "KeyHashObj (KeyHash {unKeyHash = \"" + h.hex + "\"})"
     case Credential.Script(h) => "ScriptHashObj (ScriptHash \"" + h.hex + "\")"
 
-  /** The reference-script bytes of the transaction's inputs and reference inputs in `ledger`: the
-    * ledger's measure over their union ([[RefScripts.refScriptsSize]]), so an output that is both
-    * spent and a reference input counts once, as `txMeasureRefScripts` measures it with
-    * `txNonDistinctRefScriptsSize` (`Shelley/Ledger/Mempool.hs:714-726`, ouroboros-consensus
-    * 82ecba32; `Conway/UTxO.hs:164-170`, cardano-ledger f649f975).
-    */
-  def refScriptBytes(ledger: MempoolLedger, tx: Tx): Long =
-    RefScripts.refScriptsSize(ledger.utxo, tx.body)
-
   /** The inputs whose stored outputs the rules of `txs` read, the pool fetching them from the UTxO
     * store as the block path does: of a flat transaction its spent, reference and collateral inputs
     * ([[xyz.kd5ujc.scarab.storage.UtxoStore.readSet]]); of a Dijkstra one every level's
@@ -764,6 +755,17 @@ object MempoolState:
             .bimap(e => Rejection.WrongEra(e.index, to), transaction.era -> _)
         )
 
+  /** `in`, a transaction of the ledger's era, as the ledger's rules read it: a Conway one read into
+    * Conway's types too, in the layout of the Conway ledger ([[ConwayPoolLedger.read]]); any other
+    * as it is.
+    */
+  private def projected(ledger: PoolLedger, in: InEra): Either[Rejection, InEra] =
+    (ledger, in) match
+      case (c: ConwayPoolLedger, InEra.Flat(_, t)) => decoding(c.read(t)).map(InEra.InConway(_))
+      case (_: FlatLedger | _: DijkstraLedger, _) |
+          (_: ConwayPoolLedger, InEra.InConway(_) | InEra.InDijkstra(_)) =>
+        Right(in)
+
   /** The first measure of `in` against `ledger` ([[Capacity.phase1]], [[DijkstraLedger.phase1]]): a
     * transaction of another era than the ledger's is the era mismatch.
     */
@@ -771,21 +773,25 @@ object MempoolState:
     (ledger, in) match
       case (flat: FlatLedger, InEra.Flat(_, t)) =>
         Capacity.phase1(t.tx, flat).leftMap(Rejection.Limits(t.parts.id, _))
+      case (c: ConwayPoolLedger, InEra.InConway(t)) => c.phase1(t)
       case (d: DijkstraLedger, InEra.InDijkstra(t)) => d.phase1(t)
       case (_: FlatLedger, InEra.InDijkstra(_) | InEra.InConway(_)) |
+          (_: ConwayPoolLedger, InEra.Flat(_, _) | InEra.InDijkstra(_)) |
           (_: DijkstraLedger, InEra.Flat(_, _) | InEra.InConway(_)) =>
         Left(Rejection.WrongEra(in.era.index, ledger.era))
 
-  /** The second measure of `in` against `ledger` ([[Capacity.phase2]], [[DijkstraLedger.phase2]]).
+  /** The second measure of `in` against `ledger`: the reference-script bytes in Conway
+    * ([[ConwayPoolLedger.phase2]]) and in Dijkstra ([[DijkstraLedger.phase2]]); before Conway the
+    * phase is trivial (`TrivialTxMeasurePhase2`, `Shelley/Ledger/Mempool.hs:522-544, 668-677,
+    * 751-761`, ouroboros-consensus 82ecba32, Babbage's included): nothing is measured.
     */
   private def phase2(ledger: PoolLedger, in: InEra): Either[Rejection, Long] =
     (ledger, in) match
-      case (flat: FlatLedger, InEra.Flat(_, t)) =>
-        Capacity
-          .phase2(flat, t.tx)
-          .leftMap(f => Rejection.Ledger(LedgerFailure.Rejected(t.parts.id, f)))
+      case (_: FlatLedger, InEra.Flat(_, _))        => Right(0L)
+      case (c: ConwayPoolLedger, InEra.InConway(t)) => c.phase2(t)
       case (d: DijkstraLedger, InEra.InDijkstra(t)) => d.phase2(t)
       case (_: FlatLedger, InEra.InDijkstra(_) | InEra.InConway(_)) |
+          (_: ConwayPoolLedger, InEra.Flat(_, _) | InEra.InDijkstra(_)) |
           (_: DijkstraLedger, InEra.Flat(_, _) | InEra.InConway(_)) =>
         Left(Rejection.WrongEra(in.era.index, ledger.era))
 
@@ -811,10 +817,14 @@ object MempoolState:
             Rejection.Ledger(_),
             (next, held) => next -> Held.Flat(era, t.parts.copy(isValid = held.isValid), held)
           )
+      case (c: ConwayPoolLedger, InEra.InConway(t)) =>
+        c.admit(t, ConwayPoolEnv.of(env, tipSlot + 1), source)
+          .map((next, held) => next -> Held.InConway(held))
       case (d: DijkstraLedger, InEra.InDijkstra(t)) =>
         d.admit(t, DijkstraPoolEnv.of(env, tipSlot + 1), source)
           .map((next, held) => next -> Held.InDijkstra(held))
       case (_: FlatLedger, InEra.InDijkstra(_) | InEra.InConway(_)) |
+          (_: ConwayPoolLedger, InEra.Flat(_, _) | InEra.InDijkstra(_)) |
           (_: DijkstraLedger, InEra.Flat(_, _) | InEra.InConway(_)) =>
         Left(Rejection.WrongEra(in.era.index, ledger.era))
 
@@ -883,15 +893,18 @@ object MempoolState:
         flat
           .reapply(tx, env.txEnv(slot, ledger), env.rules)
           .bimap(Rejection.Ledger(_), _ -> entry)
+      case (c: ConwayPoolLedger, Held.InConway(held)) =>
+        c.reapply(held, ConwayPoolEnv.of(env, slot + 1)).map(_ -> entry)
       case (d: DijkstraLedger, Held.InDijkstra(held)) =>
         d.reapply(held, DijkstraPoolEnv.of(env, slot + 1)).map(_ -> entry)
       case _ =>
         for
-          in <- decoding(
+          into <- decoding(
             env.injection
               .into(entry.held.in, ledger.era)
               .leftMap(e => Rejection.WrongEra(e.index, ledger.era))
           )
+          in <- projected(current, into)
           out <- env.injection.revalidation match
             case EraInjection.Revalidation.Reapply =>
               (current, in) match
@@ -902,6 +915,11 @@ object MempoolState:
                       Rejection.Ledger(_),
                       _ -> entry.copy(held = Held.Flat(era, t.parts, t.tx))
                     )
+                // a transaction of the era before translated into Conway, still held as validated
+                // ([[ConwayPoolLedger.reapplyTranslated]])
+                case (c: ConwayPoolLedger, InEra.InConway(t)) =>
+                  c.reapplyTranslated(t, ConwayPoolEnv.of(env, slot + 1))
+                    .map((next, held) => next -> entry.copy(held = Held.InConway(held)))
                 // a transaction translated into Dijkstra: none is, [[EraInjection.Translate]]
                 // stops short of it
                 case (_, _) => Left(Rejection.WrongEra(entry.era.index, ledger.era))

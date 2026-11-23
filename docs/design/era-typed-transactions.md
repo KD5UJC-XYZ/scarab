@@ -1648,17 +1648,15 @@ Conway's rules on the classes follow as the rest of stage 2.
     failures in the node's flat form (`EraLedgerRun.flat`), gives the suite's expected values, and the flat
     LEDGER on the same bytes from the same state gives the same failures in the same order or the same ledger
     state, on every transaction the suite submits, across its epoch boundaries.
-  - Incomplete (CNF-2): the mempool suites build their transactions with bytes, but the node's mempool judges
-    them with the flat rules (`MempoolLedger`) until the Conway switch (below), so they run the flat LEDGER only
-    (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7077088645); LEDGERS is compared in sequence
+  - Incomplete (CNF-2): LEDGERS is compared in sequence
     on recorded blocks only from a state built from their transactions' recorded outputs, as the repository holds
     no ledger state of a chain at a recorded Conway block with transactions, and not on blocks whose transactions
     spend what an earlier one of the block made
     (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7076811330); the epoch from the slot is compared
     within an era history only, as every suite's slot is in its history, not where the reference's
     `epochFromSlot` fails.
-  - Not yet (#85): the node's mempool runs the flat LEDGER until its switch (the plan's PR6); the node's block body
-    and phase-2 counters run Conway's era run (below).
+  - The node's mempool, its block body and its phase-2 counters run Conway's era rules (the switches, below); the
+    mempool suites judge their transactions by them.
 - **Conway's era failure encoder** (`node/.../ntc/ConwayFailureCbor.scala`; `Conway.hs:50-53` and the `EncCBOR`
   instances of `Conway/Rules/{Ledger,Utxow,Utxo,Utxos,Certs,Cert,Deleg,GovCert,Gov}.hs`, Shelley's `Rules/Pool.hs`,
   `Alonzo/Plutus/Context.hs`, `Alonzo/Rules/Utxos.hs`, the context errors of `Conway/TxInfo.hs` and
@@ -1671,7 +1669,7 @@ Conway's rules on the classes follow as the rest of stage 2.
   by the writers the flat encoder uses. A `Coin`, a failure's value (`EncCBOR MaryValue`, its coin and quantities
   `Integer`s) and its units (`Natural`s) are `encodeInteger`'s, a bignum past 64 bits, where the flat encoder's
   writers fail or keep the low 64 bits; a set of addresses is in the reference's order of addresses (the derived
-  `Ord Addr`), not their bytes'. Not wired: `LocalSubmission` sends the flat failures' bytes until the switch.
+  `Ord Addr`), not their bytes'. `LocalSubmission` sends a Conway refusal by it since the mempool's switch (below).
   - Evidence: beside each comparison of the era rules' refusals with the reference's bytes through the flat form
     (`ConwayLedgerChecksSuite`'s LEDGER cases, `RedeemerIndexReferenceSuite`, `ContextRefusalReasonSuite`,
     `PastHorizonReferenceSuite`, the upstream LEDGER and LEDGERS judgments), the era failures written by the
@@ -1686,8 +1684,9 @@ Conway's rules on the classes follow as the rest of stage 2.
   - What the reference has no constructor for has no bytes (`NoReferenceEncoding`), where the flat encoder sends
     the flat failure's text as `ConwayMempoolFailure`: an `Undecodable` context, a time past the horizon whose cause
     is not the clock's `PastHorizon`, Alonzo's unsupported certificate, unsupported purpose and impossible context,
-    and a pool registration whose relays or metadata do not read as the reference's; a decision of the switch
-    (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7078449515). Alonzo's three are 9df9f98c's alone,
+    and a pool registration whose relays or metadata do not read as the reference's. Local submission sends such a
+    failure in its place as `ConwayMempoolFailure` 's text of the era failure (`MempoolProblem.ConwayRule`), as the
+    flat encoder sent its flat failure (the mempool's switch, below). Alonzo's three are 9df9f98c's alone,
     where they have encodings even at version 9 (`[8, [8, [9 | 10 | 11, payload]]]` at Conway's context error,
     `Babbage/TxInfo.hs:315-316` there); Conway's injection lifts the first two to Conway's own errors and only
     Dijkstra's contexts raise the third, so none is a Conway value. The encoder writes Conway's CERTS tag 0
@@ -2746,7 +2745,47 @@ Conway's rules on the classes follow as the rest of stage 2.
   - The flat BBODY and MEMPOOL stay (owner decision 4) and the comparison stays in the tests: `ConwayBodiesReplaySuite`
     asserts the era run's state and counters equal to the flat rules' on every Conway block of the preprod window,
     and `SessionFailureSuite` pins each outcome's route through the follower. The forger selects with the flat rules
-    and the mempool admits with them until their switches (the plan's PR6 and PR7).
+    until its switch (the plan's PR7).
+- **The mempool's switch: the pool, local submission and TxSubmission2 on Conway's era rules**
+  (`node/.../mempool/ConwayPool.scala`, `PoolLedger.scala`, `MempoolState.scala`, `LocalSubmission.scala`,
+  `Mempool.scala`; `ledger/.../era/rules/ConwayMempoolRun.scala`; the plan's PR6). The pool's ledger of a Conway
+  state is `ConwayPoolLedger`: the ledger state ticked to the slot after the tip, its chain account, its parameters
+  read into Conway's once (parameters that do not read give the pool no ledger, `ConwayView.Unavailable.Params`,
+  answered as any missing ledger) and the state's layout.
+  - A submitted Conway transaction is read by the flat decoders, as before, and then into Conway's types in the
+    ledger's layout (`ConwayRead`: the parts, the flat transaction and the era's, one flag for the three); readings
+    that disagree are no verdict (`ConwayUnjudged.Projection`). Its measures are Conway's (`txMeasureAlonzo` and
+    `txMeasureRefScripts`, on `sizeTxF`, `totExUnits` and `txNonDistinctRefScriptsSize`), their refusals UTXO's
+    and LEDGER's era failures; then `ConwayMempoolRun.applyTx`, a peer's transaction again with its flag
+    `Phase2Invalid` where the only failure is UTXOS's `ValidationTagMismatch` (`isIncorrectClaimedFlag`, any flag).
+    The pool holds `Held.InConway(ConwayAdmitted)`: the reading and its `ValidatedTx`. The era rules sum the
+    outputs a transaction spends as the flat rules do, in sorted maps (`Val.sumAll`, `mconcat`, which
+    `sumAllValue` is), so names of one hash code cost their comparisons (`SharedHashCodeSuite`); a block's run
+    sums them so too.
+  - Revalidation applies a held transaction again as the build's consensus does (`ConwayMempoolRun.reapply`: 11.1's
+    `reapplyTx`, 11.2's and the Leios build's `reapplyValidatedTx`, which validates it in full where the major
+    version changed). Across the Babbage to Conway crossing, 11.1 keeps a held transaction validated, translated
+    (`ConwayMempoolRun.reapplyTranslated`, `translateValidatedTxBabbageToConwayWrapper`); 11.2 and the Leios build
+    apply it again with every check, as from a peer.
+  - The refusal is `Rejection.ConwayRefused`, sent by Conway's era encoder (`ConwayFailureCbor`); so GOV's vote and
+    withdrawal failures are in key order, and under 11.2 and the Leios build below version 11 a withdrawal is refused
+    at LEDGER, not CERTS, and the encoder's own differences from the flat one reach the wire (above). A defect of
+    Conway's rules is placed by a total match (`ConwayUnjudged.rejection`): a defect the flat rules raise too keeps its
+    route, and so does a quantity of the state out of range; an unnamed script with no verdict is answered as the flat
+    rules' unavailable script; a stored output the era does not read, too many proposals and a record of the
+    proposals that does not read or write are no verdict, as on Dijkstra (no reply, the client's connection ending;
+    a peer's connection kept and not charged; the disagreeing readings close it).
+  - What every reader takes of a held Conway transaction (the relayed bytes, LocalTxMonitor, the measure, the read
+    set) is what it took of the flat one. The forger takes its flat transaction (`BlockBuilder.conwayTx`, a total
+    match) and applies it again on the flat `MempoolLedger` until the plan's PR7; the flat MEMPOOL stays for the
+    suites that compare the two and for `tools` (owner decision 4).
+  - Evidence: `ReferenceRefusalSuite` replays every Conway case of the refusal corpus through the pool
+    (`ConwayPoolLedger`) and `LocalSubmission`, byte-equal to the reference's; replayed under the Leios build's rules,
+    the three moved-withdrawal cases recorded by 11.1 at version 10 are not their recorded refusal; the mempool suites
+    compare their refusals' bytes with the flat form's; `ConwayHeldSuite` pins each reader, the forger's selection and
+    each defect's route; `EraMempoolSuite` the crossing under each build. Recorded in neither corpus: GOV's key order
+    (its source and `ConwayGovChecksSuite`'s crafted cases), and 11.2's moved withdrawals (its source, through
+    `MovedWithdrawals`).
 - **Dijkstra's BBODY** (`era/EraBlock.scala`, `era/dijkstra/DijkstraBlock.scala`, `era/rules/BbodyFailures.scala`,
   `era/rules/DijkstraBbody.scala`; `Rules/Bbody.hs` of `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/`, cardano-ledger
   9df9f98c, with the predicates of Shelley's, Alonzo's and Conway's BBODY it runs):
@@ -3082,10 +3121,9 @@ Conway's rules on the classes follow as the rest of stage 2.
       refused with `AllInputsSpent` by `applyTx` and `reapply` under every build without being annotated: the
       judgment's annotation (`Judging.annotation`, Conway's `mkStAnnTx` in the node) is one that fails if made, which
       a transaction MEMPOOL does not refuse makes.
-  - A difference of the flat path, recorded and not decided: the flat pool's `MempoolLedger.reapply` is 11.1's
-    `reapplyTx` under every build, so under 11.2 and the Leios build it admits again a held transaction whose major
-    version changed, which their `reapplyValidatedTx` validates in full (the suite asserts it). The node keeps the flat
-    path until the mempool is wired to the era rules (the plan's PR6).
+  - The flat pool's `MempoolLedger.reapply` was 11.1's `reapplyTx` under every build, so under 11.2 and the Leios
+    build it admitted again a held transaction whose major version changed, which their `reapplyValidatedTx`
+    validates in full (the suite asserts it); the pool reapplies by the build since its switch (above).
 - **Next, Conway's rules.** The first rule ported is one that needs no parameters, the second one that
   does, each under a differential against the flat rule on the recorded blocks and the refusal corpus.
 - The body is read through the flat decoder for now. What only the projection refuses (an update, genesis

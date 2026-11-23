@@ -48479,6 +48479,88 @@
    ],
    "note": "`mconcat` of the monoid of the superclass `Abelian t` as a member, the fold of `plus` by default; MaryValue's sums its maps as `canonicalMapUnion` does, in sorted maps (`Value.sum`), so a sum of keys sharing a hash code costs their comparisons",
    "digest": "edaec20b042db601"
+  },
+  "def ledger.era.conway.ConwayTx#withIsValid": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Tx.hs",
+     "symbol": "isPhase2ValidTxL",
+     "lines": [
+      145,
+      146
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Tx.hs",
+     "symbol": "isPhase2ValidAlonzoTxL",
+     "lines": [
+      334,
+      339
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ConwayHeldSuite"
+   ],
+   "note": "the lens's setter on a top-level transaction; the era's transaction keeps no bytes of the whole, so its parts' memoised bytes, its size and its id are unchanged",
+   "digest": "3ef986c86255a587"
+  },
+  "def ledger.era.rules.ConwayMempoolRun.reapplyTranslated": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus-cardano/src/ouroboros-consensus-cardano/Ouroboros/Consensus/Cardano/CanHardFork.hs",
+     "symbol": "translateValidatedTxBabbageToConwayWrapper",
+     "lines": [
+      803,
+      811
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus-cardano/src/shelley/Ouroboros/Consensus/Shelley/ShelleyHFC.hs",
+     "symbol": "translateEra",
+     "lines": [
+      408,
+      422
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/API/Mempool.hs",
+     "symbol": "translateValidated",
+     "lines": [
+      157,
+      163
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/API/Mempool.hs",
+     "symbol": "reapplyTx",
+     "lines": [
+      465,
+      473
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraMempoolSuite"
+   ],
+   "note": "11.1's held transaction across the crossing: translateValidated wraps the translated transaction (the node's translation is EraInjection.translate's, then Conway's decoders), deciding nothing, and reapplyTx applies it without the static checks; the ValidatedTx returned is what the pool holds from then on, whose transaction alone 11.1's reapplyTx reads",
+   "digest": "9c60cf017363f328"
   }
  },
  "glue": [

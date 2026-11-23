@@ -29,7 +29,7 @@ class BootstrapDuplicateSubmissionSuite extends FunSuite:
   private def judged(raw: Bytes) =
     Source.values.toVector.map(source =>
       source -> MempoolState
-        .empty(Right(TxKit.ledger(1)), 1000, None)
+        .empty(Right(TxKit.ledger(1).toPool), 1000, None)
         .add(raw, TxKit.env, source)
         .map((pool, entry) => (pool.entries.size, entry.id))
     )
@@ -44,7 +44,7 @@ class BootstrapDuplicateSubmissionSuite extends FunSuite:
       invalidBootstraps = invalid
     )
 
-  private def invalidWitnesses(id: Bytes, keys: Key*) =
+  private def invalidWitnesses(id: Bytes, keys: Key*): Either[Rejection, (Int, Bytes)] =
     Left(
       Rejection.Ledger(
         LedgerFailure.Rejected(
@@ -66,13 +66,17 @@ class BootstrapDuplicateSubmissionSuite extends FunSuite:
   test("a valid bootstrap witness followed by an invalid one of its root is refused") {
     val (raw, id) = payment(Vector(carol, carol), Set(1))
     for (source, answer) <- judged(raw) do
-      assertEquals(answer, invalidWitnesses(id, carol), s"$source")
+      assertEquals(answered(answer), answered(invalidWitnesses(id, carol)), s"$source")
   }
 
   test("the last of three witnesses of one root decides, a repeated copy of the first included") {
     val (refused, refusedId) = payment(Vector(carol, carol, carol), Set(0, 2))
     for (source, answer) <- judged(refused) do
-      assertEquals(answer, invalidWitnesses(refusedId, carol), s"$source, invalid last")
+      assertEquals(
+        answered(answer),
+        answered(invalidWitnesses(refusedId, carol)),
+        s"$source, invalid last"
+      )
     val (admitted, admittedId) = payment(Vector(carol, carol, carol), Set(1))
     for (source, answer) <- judged(admitted) do
       assertEquals(answer, Right((1, admittedId)), s"$source, valid last")
@@ -83,5 +87,9 @@ class BootstrapDuplicateSubmissionSuite extends FunSuite:
       val keys = if invalid == 0 then Vector(dave, carol) else Vector(carol, dave)
       val (raw, id) = payment(keys, Set(invalid))
       for (source, answer) <- judged(raw) do
-        assertEquals(answer, invalidWitnesses(id, dave), s"$source, the invalid one at $invalid")
+        assertEquals(
+          answered(answer),
+          answered(invalidWitnesses(id, dave)),
+          s"$source, the invalid one at $invalid"
+        )
   }

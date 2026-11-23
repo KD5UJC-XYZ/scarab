@@ -39,7 +39,7 @@ class LocalMonitorSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with S
       fail(error.message)
     )
   private def pool(capacityOverride: Option[Long] = None) =
-    MempoolState.empty(Right(ledger(4)), 1000, capacityOverride.map(word32))
+    MempoolState.empty(Right(ledger(4).toPool), 1000, capacityOverride.map(word32))
 
   private def held(raws: Bytes*): MempoolState =
     raws.foldLeft(pool())((s, raw) =>
@@ -546,7 +546,8 @@ class LocalMonitorSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with S
     val (t1, id1) = pay(1)
     Settled { settle =>
       for
-        mempool <- Mempool.create[IO](Right(ledger(4)), 1000, env, None, MempoolEvents.none[IO])
+        mempool <- Mempool
+          .create[IO](Right(ledger(4).toPool), 1000, env, None, MempoolEvents.none[IO])
         source = LocalMonitor.source(mempool)
         first <- source.acquire
         waiting <- source.awaitChange(first).start
@@ -556,7 +557,7 @@ class LocalMonitorSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with S
         second <- waiting.joinWithNever
         again <- source.awaitChange(second).start
         _ <- settle
-        _ <- mempool.sync(Right(ledger(4)), 1001)
+        _ <- mempool.sync(Right(ledger(4).toPool), 1001)
         third <- again.joinWithNever
       yield
         assertEquals(first.txs.size, 0)
@@ -572,7 +573,8 @@ class LocalMonitorSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with S
   test("awaiting a snapshot the pool already differs from returns at once") {
     val (t1, _) = pay(1)
     for
-      mempool <- Mempool.create[IO](Right(ledger(4)), 1000, env, None, MempoolEvents.none[IO])
+      mempool <- Mempool
+        .create[IO](Right(ledger(4).toPool), 1000, env, None, MempoolEvents.none[IO])
       source = LocalMonitor.source(mempool)
       stale <- source.acquire
       _ <- mempool.add(t1, Source.Local)

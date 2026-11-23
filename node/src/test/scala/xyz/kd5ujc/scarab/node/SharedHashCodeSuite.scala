@@ -7,6 +7,11 @@ import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, CollidingBytes, Node, Value as CborValue}
 import xyz.kd5ujc.scarab.ledger.*
 import xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraWitnesses
+import xyz.kd5ujc.scarab.ledger.era.rules.{
+  ConwayLedgerPredFailure,
+  ConwayUtxoPredFailure,
+  ConwayUtxowPredFailure
+}
 import xyz.kd5ujc.scarab.node.mempool.{Rejection, Source, TxKit}
 import xyz.kd5ujc.scarab.node.ntc.NtcQuery
 import xyz.kd5ujc.scarab.protocol.{NtcVersion, StateLayout}
@@ -114,13 +119,16 @@ class SharedHashCodeSuite extends CatsEffectSuite:
   test("an unbalanced transaction spending names of one hash code is refused by the ledger") {
     val (pool, raw) = unbalanced(colliding, 80)
     within(pool.add(raw, TxKit.env, Source.Remote)).map {
-      case Left(Rejection.Ledger(LedgerFailure.Rejected(_, failures))) =>
+      case Left(Rejection.ConwayRefused(_, failures)) =>
         assert(
           failures.exists {
-            case PredicateFailure.Utxow(UtxowFailure.Utxo(UtxoFailure.ValueNotConserved(_))) => true
+            case ConwayLedgerPredFailure.ConwayUtxowFailure(
+                  ConwayUtxowPredFailure.UtxoFailure(ConwayUtxoPredFailure.ValueNotConservedUTxO(_))
+                ) =>
+              true
             case _ => false
           },
-          s"expected the value not to be conserved, got ${failures.map(_.productPrefix)}"
+          s"expected the value not to be conserved, got ${failures.map(_.toString.take(80))}"
         )
       case other => fail(s"expected a ledger refusal, got $other")
     }

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.node.mempool.toPool
 import java.nio.file.{Files, Path}
 import munit.Assertions.fail
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value as CborValue}
@@ -159,7 +160,7 @@ object SharedHashCodeInputs:
         ada,
         Vector(alice)
       )
-    (MempoolState.empty(Right(ledger), 1000, None), raw)
+    (MempoolState.empty(Right(ledger.toPool), 1000, None), raw)
 
   /** A transaction as a peer relays it, `[body, {4: [* datum]}, true, null]`, whose witness set
     * holds `n` datums of six bytes: 9,300 of them make 65,192 bytes, under the 65,536 a reply's

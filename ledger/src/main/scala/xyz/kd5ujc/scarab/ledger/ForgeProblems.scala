@@ -114,6 +114,11 @@ enum ForgeProtocolProblem:
   case Earlier(era: Era)
   case Mirror(cause: MirrorError)
 
+  /** The parameters in force of a Conway state do not read into Conway's types, which only a
+    * damaged state gives.
+    */
+  case ConwayParams(cause: xyz.kd5ujc.scarab.ledger.era.PParamsError)
+
   /** The parameters' `maxEndorserBlockReferencesSize` is more than a LeiosFetch message carries
     * (`wire`, `maxLeiosEbBytesSize`): `guardLeiosWireLimit` (ouroboros-consensus 2416493b
     * `Shelley/Ledger/Mempool.hs:915-939`) fails hard on it, and the node stops.

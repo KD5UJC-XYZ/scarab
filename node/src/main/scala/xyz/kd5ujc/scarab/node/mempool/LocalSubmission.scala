@@ -6,9 +6,9 @@ import cats.effect.Async
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, DomainError, Node, Value}
 import xyz.kd5ujc.scarab.protocol.{Era, ReferenceBuild}
-import cats.data.NonEmptyChain
-import xyz.kd5ujc.scarab.ledger.era.rules.DijkstraMempoolPredFailure
-import xyz.kd5ujc.scarab.ledger.state.Dijkstra
+import cats.data.{NonEmptyChain, NonEmptyList}
+import xyz.kd5ujc.scarab.ledger.era.rules.{ConwayLedgerPredFailure, DijkstraMempoolPredFailure}
+import xyz.kd5ujc.scarab.ledger.state.{Conway, Dijkstra}
 import xyz.kd5ujc.scarab.ledger.{LedgerFailure, PredicateFailure}
 import xyz.kd5ujc.scarab.node.ntc.{
   ConwayFailureCbor,
@@ -168,10 +168,7 @@ object LocalSubmission:
       case unjudged: Rejection.DijkstraUnjudged                => Left(unjudged)
       case unjudged: Rejection.ConwayUnjudged                  => Left(unjudged)
       case Rejection.DijkstraRefused(_, failures) => Left(DijkstraNoEncoding.Refused(failures))
-      // Conway's refusal in the era's types, by its own encoder (`EncCBOR (ApplyTxError
-      // ConwayEra)`, `Conway.hs:50-53`, cardano-ledger f649f975)
-      case Rejection.ConwayRefused(_, failures) =>
-        ConwayFailureCbor.applyTxError(failures.toNonEmptyList).leftMap[NoReply](identity)
+      case Rejection.ConwayRefused(_, failures)   => conwayRefusal(failures.toNonEmptyList)
       // Conway's `ConwayMempoolFailure` with the reference's text (`Mempool/Update.hs` 278-283)
       case Rejection.TooSlow(id, submitted, took) =>
         text(era, MempoolProblem.TooSlow(took, submitted, id))
@@ -200,6 +197,8 @@ object LocalSubmission:
             MempoolLedgerProblem.Earlier(era)
           case xyz.kd5ujc.scarab.node.read.ConwayView.Unavailable.Refused(error) =>
             MempoolLedgerProblem.Refused(error)
+          case xyz.kd5ujc.scarab.node.read.ConwayView.Unavailable.Params(error) =>
+            MempoolLedgerProblem.Params(error)
         text(era, MempoolProblem.NoLedger(cause))
 
   /** The `ApplyTxErr` of `failures` in the ledger's era: Conway's, with its free text for a failure
@@ -215,6 +214,30 @@ object LocalSubmission:
           .flatMap(_.toRight[NoReply](NoEncoding(e, failures)))
       case Some(Era.Byron | Era.Conway | Era.Dijkstra) | None =>
         PredicateFailureCbor.applyTxError(failures)
+
+  /** Conway's refusal in the era's types, by its own encoder (`EncCBOR (ApplyTxError ConwayEra)`,
+    * `Conway.hs:50-53`, cardano-ledger f649f975). A failure the reference has no constructor for
+    * ([[ConwayFailureCbor.NoReferenceEncoding]]: a context error of the node's own, a pool
+    * registration that does not read as the reference's) is sent in its place as Conway's free-text
+    * `ConwayMempoolFailure` of it ([[MempoolProblem.ConwayRule]]), as the flat encoder sends such a
+    * failure (#85).
+    */
+  private def conwayRefusal(
+      failures: NonEmptyList[ConwayLedgerPredFailure[Conway]]
+  ): Either[NoReply, Bytes] =
+    ConwayFailureCbor.applyTxError(failures) match
+      case Left(_: ConwayFailureCbor.NoReferenceEncoding) =>
+        ConwayFailureCbor
+          .applyTxError(
+            failures.map(f =>
+              ConwayFailureCbor.applyTxError(NonEmptyList.one(f)) match
+                case Left(_: ConwayFailureCbor.NoReferenceEncoding) =>
+                  ConwayLedgerPredFailure.ConwayMempoolFailure[Conway](MempoolProblem.ConwayRule(f))
+                case Left(_: RefusalPresentationError) | Right(_) => f
+            )
+          )
+          .leftMap[NoReply](identity)
+      case other => other.leftMap[NoReply](identity)
 
   /** Conway's free-text `ConwayMempoolFailure` of `message`; under a Dijkstra ledger, none
     * ([[DijkstraNoEncoding.Text]]).

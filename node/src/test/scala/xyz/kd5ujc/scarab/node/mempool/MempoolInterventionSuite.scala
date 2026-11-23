@@ -45,7 +45,7 @@ class MempoolInterventionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught
       if indefinite then
         Bytes.fromArray(Array(0x9f.toByte)) ++ items ++ Bytes.fromArray(Array(0xff.toByte))
       else Bytes.fromArray(Array(0x83.toByte)) ++ items
-    def pool: MempoolState = MempoolState.empty(Right(ledger), tipSlot, None)
+    def pool: MempoolState = MempoolState.empty(Right(ledger.toPool), tipSlot, None)
 
   private def hex(j: io.circe.Json, field: String): Option[Bytes] =
     j.hcursor
@@ -85,6 +85,9 @@ class MempoolInterventionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught
 
   private def flagByte(raw: Bytes): Option[Byte] = raw.lift(raw.size - 2)
 
+  /** The refusal of a flag its scripts contradict, UTXOS's `ValidationTagMismatch` of the flag
+    * `flag` alone: an earlier era's, in the flat form, or Conway's.
+    */
   private def tagMismatch(flag: Boolean): PartialFunction[Any, Boolean] =
     case Left(
           Rejection.Ledger(
@@ -97,6 +100,17 @@ class MempoolInterventionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught
           )
         ) =>
       true
+    case Left(Rejection.ConwayRefused(_, failures)) if failures.length == 1 =>
+      failures.head match
+        case era.rules.ConwayLedgerPredFailure.ConwayUtxowFailure(
+              era.rules.ConwayUtxowPredFailure.UtxoFailure(
+                era.rules.ConwayUtxoPredFailure.UtxosFailure(
+                  era.rules.ConwayUtxosPredFailure.ValidationTagMismatch(claimed, _)
+                )
+              )
+            ) =>
+          claimed == era.IsPhase2Valid.of(flag)
+        case _ => false
 
   private val failing = scenario("raw-dst-fail-valid-true")
   private val passing = scenario("raw-dst-pass-valid-false")
@@ -186,7 +200,7 @@ class MempoolInterventionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught
       .add(failing.raw(true), mempoolEnv, Source.Remote)
       .fold(r => fail(r.message), _._1)
     val (synced, dropped) = held
-      .sync(Right(failing.ledger), failing.tipSlot, mempoolEnv)
+      .sync(Right(failing.ledger.toPool), failing.tipSlot, mempoolEnv)
     assertEquals(dropped, Vector.empty)
     assertEquals(synced.entries.map(_.raw), held.entries.map(_.raw))
     assertEquals(synced.entries.map(_.tx.isValid), Vector(false))
@@ -222,7 +236,7 @@ class MempoolInterventionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught
   ) {
     for
       pool <- Mempool.create[IO](
-        Right(failing.ledger),
+        Right(failing.ledger.toPool),
         failing.tipSlot,
         mempoolEnv,
         None,
@@ -269,7 +283,7 @@ class MempoolInterventionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught
     val admitted = counts
     assert(admitted._1 > 0 && admitted._2 > 0 && admitted._3 > 0, admitted.toString)
     val (synced, dropped) = held
-      .sync(Right(ok.ledger), ok.tipSlot, counted)
+      .sync(Right(ok.ledger.toPool), ok.tipSlot, counted)
     assertEquals(dropped, Vector.empty)
     assertEquals(synced.entries.map(_.id), held.entries.map(_.id))
     val (kept, _) = synced

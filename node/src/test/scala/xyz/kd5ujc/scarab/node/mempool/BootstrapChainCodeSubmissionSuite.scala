@@ -28,7 +28,7 @@ class BootstrapChainCodeSubmissionSuite extends FunSuite:
   private def admitted(raw: Bytes) =
     Source.values.toVector.map(source =>
       source -> MempoolState
-        .empty(Right(TxKit.ledger(1)), 1000, None)
+        .empty(Right(TxKit.ledger(1).toPool), 1000, None)
         .add(raw, TxKit.env, source)
         .map((pool, entry) => (pool.entries.size, entry.id))
     )
@@ -53,7 +53,7 @@ class BootstrapChainCodeSubmissionSuite extends FunSuite:
       // past the decoder the ledger rules judge it, and refuse it: its inputs are not unspent
       for (source, answer) <- admitted(row.raw) do
         answer match
-          case Left(Rejection.Ledger(_)) => ()
+          case Left(Rejection.ConwayRefused(_, _)) => ()
           case other => fail(s"$source: the ledger rules must answer it, the mempool gave $other")
     }
 

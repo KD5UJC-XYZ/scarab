@@ -20,6 +20,7 @@ import xyz.kd5ujc.scarab.ledger.era.rules.{
   UtxoStateDefect
 }
 import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.TxMeasure
+import xyz.kd5ujc.scarab.plutus.ExUnits
 import xyz.kd5ujc.scarab.protocol.{Era, StateLayout}
 
 /** A Conway transaction as a client or a peer submitted it, read into the era's types in the layout
@@ -45,16 +46,22 @@ final case class ConwayRead private (parts: Block.Transaction, flat: Tx, tx: Con
     */
   lazy val raw: Bytes = EraInjection.envelope(parts, Era.Conway)
 
-  /** `txMeasureAlonzo` 's components but the reference scripts' (`Shelley/Ledger/Mempool.hs:
-    * 590-612`, ouroboros-consensus 82ecba32): `sizeTxF` (`sizeAlonzoTxF`, the flag left out) plus
-    * [[Capacity.PerTxOverhead]], and the execution units of the redeemers (`totExUnits`,
-    * `Alonzo/Tx.hs:460-464`, cardano-ledger f649f975).
+  /** `sizeTxF` (`sizeAlonzoTxF`, `Alonzo/Tx.hs:323-332`, cardano-ledger f649f975): the bytes of the
+    * body, the witnesses and the auxiliary data in a three-element list, the flag left out.
     */
-  def measure: TxMeasure =
-    val t = EraTxOf.conway
-    val size = t.sizeTxF[TxLevel.Top](tx)(using t.bodyOf.top)
-    val units = t.getTotalExUnits[TxLevel.Top](tx)(using t.bodyOf.top)
-    TxMeasure(size + Capacity.PerTxOverhead, units.mem, units.steps, 0L)
+  def size: Long = EraTxOf.conway.sizeTxF[TxLevel.Top](tx)(using EraTxOf.conway.bodyOf.top)
+
+  /** The execution units of the redeemers (`totExUnits`, `Alonzo/Tx.hs:460-464`, cardano-ledger
+    * f649f975).
+    */
+  def units: ExUnits =
+    EraTxOf.conway.getTotalExUnits[TxLevel.Top](tx)(using EraTxOf.conway.bodyOf.top)
+
+  /** `txMeasureAlonzo` 's components but the reference scripts' (`Shelley/Ledger/Mempool.hs:
+    * 590-612`, ouroboros-consensus 82ecba32): [[size]] plus [[Capacity.PerTxOverhead]], and
+    * [[units]].
+    */
+  def measure: TxMeasure = TxMeasure(size + Capacity.PerTxOverhead, units.mem, units.steps, 0L)
 
 object ConwayRead:
   /** The transaction `t`, read by the flat decoders, read again by Conway's in `layout`: the

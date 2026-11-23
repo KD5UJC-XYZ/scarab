@@ -3,6 +3,7 @@ package xyz.kd5ujc.scarab.node.read
 
 import cats.Show
 import xyz.kd5ujc.scarab.consensus.BlockRef
+import xyz.kd5ujc.scarab.ledger.era.PParamsError
 import xyz.kd5ujc.scarab.ledger.rules.EraNes
 import xyz.kd5ujc.scarab.ledger.state.{Conway, MirrorError, NewEpochState, ShelleyBasedEra}
 import xyz.kd5ujc.scarab.protocol.Era
@@ -23,11 +24,19 @@ object ConwayView:
     /** The supplied [[ChainRead]] or [[EraRead]] refused the ledger state. */
     case Refused(error: MirrorError)
 
+    /** The parameters in force of a Conway state do not read into Conway's types
+      * ([[PParamsError]]), which only a damaged state gives: the mempool, which judges Conway's
+      * transactions by Conway's rules, has no ledger of it
+      * ([[xyz.kd5ujc.scarab.node.mempool.ConwayPoolLedger]]).
+      */
+    case Params(error: PParamsError)
+
   object Unavailable:
     given Show[Unavailable] = Show.show {
       case InByron      => "the chain is in Byron"
       case InEarlier(e) => s"the chain is in $e, before Conway"
       case Refused(e)   => s"the ledger state cannot be read: $e"
+      case Params(e)    => s"the parameters in force are not Conway's: $e"
     }
 
   /** The Conway ledger state at the tip `at` of the chain whose state is `s`. */
