@@ -53,6 +53,19 @@ object MirrorClock:
       Option.when(era == Era.Alonzo)(slot)
     )
 
+  /** [[of]] for a Conway block at `slot` applied on `state`: the era history at its transition, not
+    * extended, from `start` (Babbage and Conway take the epoch info as it is). Conway's era rules
+    * read their system start, their epoch information and their slot to time translation from this
+    * one value, and the node's phase-2 observations hold it (#85).
+    */
+  def conway(
+      start: SystemStart,
+      state: MirrorState,
+      placement: Placement,
+      slot: BigInt
+  ): PosixClock.Forecast =
+    PosixClock.Forecast(start, horizon(state, placement, Era.Conway, slot))
+
   /** The era history [[of]] reads, at its transition: the `EpochInfo` of the ledger's `Globals` a
     * rule of `era` asks for at `slot` (`epochInfo`, as the clock's horizon).
     */

@@ -164,6 +164,7 @@ object Traced:
       case xyz.kd5ujc.scarab.consensus.BlockNoVerdict.Projection(_)        => "defect"
       case xyz.kd5ujc.scarab.consensus.BlockNoVerdict.Verification(_)      => "verification"
       case xyz.kd5ujc.scarab.consensus.BlockNoVerdict.StateOutOfRange(_)   => "stateOutOfRange"
+      case xyz.kd5ujc.scarab.consensus.BlockNoVerdict.ConwayRules(_)       => "defect"
       case xyz.kd5ujc.scarab.consensus.BlockNoVerdict.Defect(_)            => "defect"
 
   given Traced[StorageEvent] =

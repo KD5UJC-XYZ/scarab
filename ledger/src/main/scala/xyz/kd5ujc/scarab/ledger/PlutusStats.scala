@@ -15,3 +15,16 @@ final case class PlutusStats(
 
 object PlutusStats:
   val zero: PlutusStats = PlutusStats(0, 0, 0, 0)
+
+  /** Counters added field by field: the node's running counters and a block's (Conway's era run
+    * counts each block's from zero, `ConwayPhase2.counted`).
+    */
+  given cats.Monoid[PlutusStats] with
+    def empty: PlutusStats = zero
+    def combine(a: PlutusStats, b: PlutusStats): PlutusStats =
+      PlutusStats(
+        a.succeeded + b.succeeded,
+        a.failed + b.failed,
+        a.scripts + b.scripts,
+        a.integrityChecked + b.integrityChecked
+      )

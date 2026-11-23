@@ -433,8 +433,15 @@ enum ChainError extends NodeError:
     */
   case DijkstraBlock(slot: BigInt, cause: DijkstraBlockDefect)
 
+  /** The node reaches no verdict on the Conway block of `slot`, which its era rules apply
+    * ([[ConwayBlockDefect]]). This is neither a verdict on the block nor a fault of the peer that
+    * sent it: the follower withholds the block and goes on (`BlockNoVerdict.ofConway`, issue 567).
+    */
+  case ConwayBlock(slot: BigInt, cause: ConwayBlockDefect)
+
   def message: String = this match
     case DijkstraBlock(slot, cause) => s"the Dijkstra block of slot $slot: ${cause.message}"
+    case ConwayBlock(slot, cause)   => s"the Conway block of slot $slot: ${cause.message}"
     case MempoolTick(slot, cause)   => s"cannot tick mempool ledger to slot $slot: $cause"
     case CommitDefect(cause) =>
       s"the node's own code threw while committing a chain: ${NetworkError.describe(cause)}"
