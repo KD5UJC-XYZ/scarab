@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.tools
 
+import cats.data.NonEmptyVector
 import cats.effect.{Deferred, ExitCode, IO, IOApp, Ref}
 import cats.mtl.Handle
 import cats.syntax.all.*
@@ -25,21 +26,21 @@ import xyz.kd5ujc.scarab.protocol.{Era, Handshake, ProtocolError, ReferenceBuild
 
 /** Hands signed transactions to one peer over node-to-node, as a relay passes transactions on: the
   * handshake as an initiator-only peer, KeepAlive, and TxSubmission2 as the side that owns the
-  * transactions, offering them in the order given until the peer has asked for every body, or the
-  * time runs out.
+  * transactions, offering them in the order given until the body of every one has been sent, the
+  * connection ends, or the time runs out.
   *
   * It sends transactions into the network through a pool other than the node under test, so they
   * reach that node only by diffusion, as other people's transactions do (#79): a test load
   * submitted to the node's own relay sits in that node's mempool before its endorser block, and its
   * closure check reapplies it.
   *
-  * The transactions are the text envelopes `cardano-cli ... transaction sign` writes (`cborHex`),
-  * read from the files given, or from the `.tx` files of a directory in name order; a chain of
-  * transactions spending each other's outputs is offered in that order, so the peer's mempool takes
-  * each after the one it spends. Each id is the hash of the body as the node's own reader of the
-  * build's relayed transactions reads it ([[RelayedTransactions.of]]). Whether the peer admits a
-  * transaction it asked for is its mempool's verdict, which TxSubmission2 does not report: confirm
-  * on the chain.
+  * The transactions are the text envelopes `cardano-cli ... transaction sign` writes, read from the
+  * files given, or from the `.tx` files of a directory in name order; a chain of transactions
+  * spending each other's outputs is offered in that order, so the peer's mempool takes each after
+  * the one it spends. An envelope's `type` must name the era given, and no two transactions may
+  * share a body. Each id is the hash of the body as the node's own reader of the build's relayed
+  * transactions reads it ([[RelayedTransactions.of]]). Whether the peer admits a transaction it
+  * asked for is its mempool's verdict, which TxSubmission2 does not report: confirm on the chain.
   *
   * Run, inside the build container: `tools/runMain xyz.kd5ujc.scarab.node.tools.TxSubmitPeer <host>
   * <port> <magic> <build> <era> <seconds> <tx file or directory>...`, for example
@@ -47,25 +48,56 @@ import xyz.kd5ujc.scarab.protocol.{Era, Handshake, ProtocolError, ReferenceBuild
   * part of the node, not run by `check`.
   */
 object TxSubmitPeer extends IOApp:
-  /** `<era>`'s values: the Shelley-based eras whose transactions a peer relays. */
-  private val eras: Map[String, Era] =
-    Map("conway" -> Era.Conway, "dijkstra" -> Era.Dijkstra)
+  /** An era a peer relays transactions of, with the era name its `cardano-cli` envelopes carry. */
+  final case class TxEra(era: Era, envelopeName: String):
+    /** The envelope types `cardano-cli` writes for a signed transaction of this era. */
+    def envelopeTypes: Set[String] = Set(s"Tx $envelopeName", s"Witnessed Tx $envelopeName")
+
+  /** `<era>`'s values. */
+  val eras: Map[String, TxEra] = Map(
+    "conway" -> TxEra(Era.Conway, "ConwayEra"),
+    "dijkstra" -> TxEra(Era.Dijkstra, "DijkstraEra")
+  )
 
   /** A signed transaction as it is offered: its file, its bytes and its id. */
   final case class Signed(file: Path, original: Bytes, id: Bytes)
 
-  /** Why a transaction file is not offered. */
+  /** Why the transactions are not offered. */
   enum Unreadable:
     case NotEnvelope(file: Path, cause: io.circe.Error)
+    case OtherEra(file: Path, envelopeType: String)
     case NotHex(file: Path)
     case NotTransaction(file: Path, cause: ProtocolError)
+    case SameBody(first: Path, second: Path)
+    case Empty
 
     def message: String = this match
       case NotEnvelope(file, cause) =>
-        s"$file: not a text envelope with cborHex (${cause.getMessage})"
-      case NotHex(file) => s"$file: cborHex is not hex"
+        s"$file: not a text envelope with type and cborHex (${cause.getMessage})"
+      case OtherEra(file, envelopeType) => s"$file: a $envelopeType, not of the era given"
+      case NotHex(file)                 => s"$file: cborHex is not hex"
       case NotTransaction(file, cause) =>
         s"$file: not a transaction of the era: ${cause.message}"
+      case SameBody(first, second) => s"$first and $second have the same body"
+      case Empty                   => "no transactions"
+
+  /** The transactions to offer, at least one, no two with the same id, in offering order. */
+  final class Batch private (val txs: NonEmptyVector[Signed]):
+    /** The bytes of every body, which the replies send in all. */
+    def bytes: Long = txs.foldLeft(0L)(_ + _.original.size)
+
+  object Batch:
+    def of(txs: Vector[Signed]): Either[Unreadable, Batch] =
+      NonEmptyVector.fromVector(txs).toRight(Unreadable.Empty).flatMap { all =>
+        txs
+          .foldLeft(Map.empty[Bytes, Path].asRight[Unreadable]) { (seen, t) =>
+            seen.flatMap(m =>
+              m.get(t.id)
+                .fold(m.updated(t.id, t.file).asRight)(f => Unreadable.SameBody(f, t.file).asLeft)
+            )
+          }
+          .as(Batch(all))
+      }
 
   /** The `.tx` files of `path` in name order, or `path` itself when it is a file. */
   private def files(path: Path): IO[Vector[Path]] =
@@ -81,41 +113,63 @@ object TxSubmitPeer extends IOApp:
       else Vector(path)
     )
 
-  /** The transaction of a text envelope, and its id under `reader`. */
+  /** The transaction of a text envelope of `era`, and its id under `reader`. */
   def signed(
       file: Path,
       text: String,
       reader: TxSubmission2.TransactionReader,
-      era: Era
+      era: TxEra
   ): Either[Unreadable, Signed] =
     for
-      hex <- parser
-        .parse(text)
-        .flatMap(_.hcursor.downField("cborHex").as[String])
+      json <- parser.parse(text).leftMap(Unreadable.NotEnvelope(file, _))
+      envelopeType <- json.hcursor
+        .downField("type")
+        .as[String]
         .leftMap(Unreadable.NotEnvelope(file, _))
+      _ <- Either.cond(era.envelopeTypes(envelopeType), (), Unreadable.OtherEra(file, envelopeType))
+      hex <- json.hcursor.downField("cborHex").as[String].leftMap(Unreadable.NotEnvelope(file, _))
       original <- Bytes.fromHex(hex).leftMap(_ => Unreadable.NotHex(file))
-      body <- reader.body(original, era).leftMap(Unreadable.NotTransaction(file, _))
+      body <- reader.body(original, era.era).leftMap(Unreadable.NotTransaction(file, _))
     yield Signed(file, original, Blake2b.hash256.hash(body))
 
-  /** The transactions as a source: ticket `i + 1` for the `i` -th, offered once each, oldest first;
-    * `asked` is told each id whose body the peer asks for.
+  /** The batch as a source: ticket `i + 1` for the `i` -th transaction, offered once each, oldest
+    * first.
     */
   def source(
-      txs: Vector[Signed],
+      batch: Batch,
       era: Era,
-      txReader: TxSubmission2.TransactionReader,
-      asked: Bytes => IO[Unit]
+      txReader: TxSubmission2.TransactionReader
   ): TxSubmissionClient.Source[IO] =
-    val held =
-      txs.zipWithIndex.map((t, i) => TxSubmissionClient.Held(t.id, t.original.size, i + 1L, era))
-    val byId = txs.map(t => t.id -> t).toMap
+    val held = batch.txs.toVector.zipWithIndex.map((t, i) =>
+      TxSubmissionClient.Held(t.id, t.original.size, i + 1L, era)
+    )
+    val byId = batch.txs.toVector.map(t => t.id -> t).toMap
     new TxSubmissionClient.Source[IO]:
-      def after(ticket: Long, max: Int) = IO.pure(held.filter(_.ticket > ticket).take(max))
+      // tickets are 1..n in order, so those after `ticket` start at index `ticket`
+      def after(ticket: Long, max: Int) =
+        IO.pure(
+          if ticket < 0L || ticket >= held.size then Vector.empty
+          else held.slice(ticket.toInt, ticket.toInt + max.max(0))
+        )
       // nothing is added after the start, so a wait past the last ticket never ends
-      def awaitAfter(ticket: Long) = if ticket < txs.size then IO.unit else IO.never
-      def body(id: Bytes) =
-        byId.get(id).traverse(t => asked(id).as(TxSubmission2.EraTx(era, t.original)))
+      def awaitAfter(ticket: Long) = if ticket < held.size then IO.unit else IO.never
+      def body(id: Bytes) = IO.pure(byId.get(id).map(t => TxSubmission2.EraTx(era, t.original)))
       def reader = txReader
+
+  /** How an offering ended. */
+  enum Outcome:
+    /** Every body was sent; the protocol then ended with `MsgDone`, or the peer did not let it. */
+    case Sent(ended: Boolean)
+
+    /** The protocol or the connection ended first. */
+    case Ended(result: Either[NetworkError, Unit])
+
+    /** The time ran out with `sent` bytes of the batch's bodies sent. */
+    case TimedOut(sent: Long)
+
+    def exitCode: ExitCode = this match
+      case Sent(_)                => ExitCode.Success
+      case Ended(_) | TimedOut(_) => ExitCode.Error
 
   def run(args: List[String]): IO[ExitCode] = args match
     case host :: port :: magic :: build :: era :: seconds :: paths if paths.nonEmpty =>
@@ -149,33 +203,57 @@ object TxSubmitPeer extends IOApp:
       peer: SocketAddress[Host],
       magic: Long,
       reader: TxSubmission2.TransactionReader,
-      era: Era,
+      era: TxEra,
       limit: FiniteDuration,
       paths: List[Path]
   ): IO[ExitCode] =
     paths
       .flatTraverse(p => files(p).map(_.toList))
       .flatMap(_.traverse(f => IO.blocking(Files.readString(f)).map(signed(f, _, reader, era))))
-      .flatMap(_.sequence match
-        case Left(unreadable)          => IO.println(unreadable.message).as(ExitCode.Error)
-        case Right(txs) if txs.isEmpty => IO.println("no transactions").as(ExitCode.Error)
-        case Right(txs)                => offer(peer, magic, reader, era, limit, txs.toVector))
+      .map(_.sequence.flatMap(txs => Batch.of(txs.toVector)))
+      .flatMap {
+        case Left(unreadable) => IO.println(unreadable.message).as(ExitCode.Error)
+        case Right(batch) =>
+          IO.monotonic.flatMap(start =>
+            offer(peer, magic, reader, era.era, limit, batch).flatMap(outcome =>
+              IO.monotonic.flatMap(end => report(batch, outcome, end - start)).as(outcome.exitCode)
+            )
+          )
+      }
 
+  private def report(batch: Batch, outcome: Outcome, took: FiniteDuration): IO[Unit] =
+    IO.println(
+      s"offered ${batch.txs.length} transactions (${batch.bytes} bytes) in ${took.toMillis} ms: " +
+        (outcome match
+          case Outcome.Sent(true)       => "every body sent, protocol ended"
+          case Outcome.Sent(false)      => "every body sent; the peer did not let the protocol end"
+          case Outcome.Ended(Right(())) => "the peer ended the protocol before every body was asked"
+          case Outcome.Ended(Left(error)) => s"the connection failed: ${error.message}"
+          case Outcome.TimedOut(sent) =>
+            s"time ran out with $sent of ${batch.bytes} body bytes sent")
+    )
+
+  /** One deadline, `limit`, for the whole offering: the replies, then the protocol's end. */
   private def offer(
       peer: SocketAddress[Host],
       magic: Long,
       reader: TxSubmission2.TransactionReader,
       era: Era,
       limit: FiniteDuration,
-      txs: Vector[Signed]
-  ): IO[ExitCode] =
-    (Ref.of[IO, Set[Bytes]](Set.empty), Deferred[IO, Unit], IO.monotonic).flatMapN {
-      (asked, all, start) =>
-        val tell = (id: Bytes) =>
-          asked
-            .updateAndGet(_ + id)
-            .flatMap(s => all.complete(()).void.whenA(s.size == txs.size))
+      batch: Batch
+  ): IO[Outcome] =
+    (
+      Ref.of[IO, Long](0L),
+      Deferred[IO, Unit],
+      Deferred[IO, Either[NetworkError, Unit]],
+      IO.monotonic
+    )
+      .flatMapN { (sent, all, ended, start) =>
+        // told after each reply is sent, so the last body counts only once it has gone
+        val served = (bytes: Long) =>
+          sent.updateAndGet(_ + bytes).flatMap(s => all.complete(()).void.whenA(s >= batch.bytes))
         val protocols = Set(Protocols.Handshake, Protocols.KeepAlive, Protocols.TxSubmission2)
+        val remaining = IO.monotonic.map(now => (limit - (now - start)).max(Duration.Zero))
         Handle
           .allow[NetworkError] {
             (for
@@ -190,28 +268,30 @@ object TxSubmitPeer extends IOApp:
                 )
                 _ <- IO.println(s"handshake with $peer: version ${agreed.version}")
                 ka <- mux.channel(Protocols.KeepAlive)
-                finished <- (
+                outcome <- (
                   KeepAliveClient.background[IO](ka, mux),
-                  TxSubmissionClient.backgroundFinishing[IO](mux, source(txs, era, reader, tell))
+                  TxSubmissionClient.backgroundFinishing[IO](
+                    mux,
+                    source(batch, era, reader),
+                    completed = Some(result => ended.complete(result).void),
+                    served = Some(served)
+                  )
                 ).tupled.use { (_, running) =>
-                  all.get
-                    .as(true)
-                    .timeoutTo(limit, IO.pure(false))
-                    .flatTap(_ => running.finish(30.seconds))
+                  remaining.flatMap(left =>
+                    IO.race(all.get, ended.get)
+                      .map(Some(_))
+                      .timeoutTo(left, IO.pure(None))
+                      .flatMap {
+                        case Some(Left(())) =>
+                          remaining.flatMap(running.finish).map(Outcome.Sent(_))
+                        case Some(Right(result)) => IO.pure(Outcome.Ended(result))
+                        case None                => sent.get.map(Outcome.TimedOut(_))
+                      }
+                  )
                 }
-              yield finished
+              yield outcome
             }
           }
-          .rescue(e => IO.println(s"ERROR ${e.message}").as(false))
-          .flatMap { finished =>
-            (asked.get, IO.monotonic).flatMapN { (ids, end) =>
-              val notAsked = txs.filterNot(t => ids.contains(t.id))
-              IO.println(
-                s"offered ${txs.size}, bodies asked ${ids.size}, in ${(end - start).toMillis} ms" +
-                  (if finished then ""
-                   else s"; not asked: ${notAsked.map(_.file.getFileName).take(10).mkString(", ")}")
-              ).as(if finished then ExitCode.Success else ExitCode.Error)
-            }
-          }
-    }
+          .rescue(e => IO.pure(Outcome.Ended(Left(e))))
+      }
 end TxSubmitPeer

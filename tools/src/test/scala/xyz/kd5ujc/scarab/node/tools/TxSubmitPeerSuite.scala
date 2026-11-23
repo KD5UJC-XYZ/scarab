@@ -1,23 +1,26 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.tools
 
-import cats.effect.{IO, Ref}
+import cats.effect.ExitCode
 import java.nio.file.{Files, Path}
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.network.FailsOnUncaught
+import xyz.kd5ujc.scarab.network.{FailsOnUncaught, NetworkError}
 import xyz.kd5ujc.scarab.node.mempool.RelayedTransactions
 import xyz.kd5ujc.scarab.protocol.{Era, ReferenceBuild, TxSubmission2}
-import TxSubmitPeer.{Signed, Unreadable}
+
+import TxSubmitPeer.{Batch, Outcome, Signed, Unreadable}
 
 /** What [[TxSubmitPeer]] offers: a transaction read from the text envelope `cardano-cli` writes,
-  * with its id as the node reads it, and the source that hands each one out once, in order.
+  * with its id as the node reads it, the batch that refuses duplicates, the source that hands each
+  * transaction out once, in order, and the exit each outcome gives.
   */
 class TxSubmitPeerSuite extends FailsOnUncaught:
   private def hex(s: String): Bytes = Bytes.fromHex(s).fold(e => fail(e.toString), identity)
   private val devnet = Path.of("fixtures", "dijkstra-devnet")
   private val leios = RelayedTransactions.of(ReferenceBuild.LeiosB004fe0c)
-  private def envelope: String = Files.readString(devnet.resolve("transaction.json"))
+  private val dijkstra = TxSubmitPeer.eras("dijkstra")
   private val file = devnet.resolve("transaction.json")
+  private def envelope: String = Files.readString(file)
 
   /** The id `manifest.json` records for the devnet's transaction. */
   private def recordedId: String =
@@ -26,58 +29,79 @@ class TxSubmitPeerSuite extends FailsOnUncaught:
       .map(_.group(1))
       .getOrElse(fail("no transaction id in manifest.json"))
 
+  private def tx: Signed =
+    TxSubmitPeer.signed(file, envelope, leios, dijkstra).fold(u => fail(u.message), identity)
+
   test("a cardano-cli text envelope gives its transaction and the id the devnet recorded") {
-    TxSubmitPeer.signed(file, envelope, leios, Era.Dijkstra) match
-      case Right(Signed(_, original, id)) =>
-        assertEquals(id.hex, recordedId)
-        assert(original.size > 0)
-      case Left(unreadable) => fail(unreadable.message)
+    assertEquals(tx.id.hex, recordedId)
+    assert(tx.original.size > 0)
   }
 
-  test("a file that is not an envelope, not hex or not a transaction of the era is refused") {
+  test("an envelope of another era, not an envelope, not hex or not a transaction is refused") {
+    assertEquals(
+      TxSubmitPeer.signed(file, envelope, leios, TxSubmitPeer.eras("conway")),
+      Left(Unreadable.OtherEra(file, "Tx DijkstraEra"))
+    )
     assert(
-      TxSubmitPeer.signed(file, "{}", leios, Era.Dijkstra) match
+      TxSubmitPeer.signed(file, "{}", leios, dijkstra) match
         case Left(Unreadable.NotEnvelope(`file`, _)) => true
         case _                                       => false
     )
     assertEquals(
-      TxSubmitPeer.signed(file, """{"cborHex":"zz"}""", leios, Era.Dijkstra),
+      TxSubmitPeer.signed(file, """{"type":"Tx DijkstraEra","cborHex":"zz"}""", leios, dijkstra),
       Left(Unreadable.NotHex(file))
     )
     assert(
-      TxSubmitPeer.signed(file, """{"cborHex":"00"}""", leios, Era.Dijkstra) match
+      TxSubmitPeer.signed(
+        file,
+        """{"type":"Tx DijkstraEra","cborHex":"00"}""",
+        leios,
+        dijkstra
+      ) match
         case Left(Unreadable.NotTransaction(`file`, _)) => true
         case _                                          => false
     )
   }
 
-  test("the source offers the transactions in order, once, and tells each body asked") {
-    val tx =
-      TxSubmitPeer.signed(file, envelope, leios, Era.Dijkstra).fold(u => fail(u.message), identity)
-    val other = Signed(file, hex("01"), hex("ab" * 32))
+  test("a batch is not empty and holds no two transactions with the same body") {
+    val again = file.resolveSibling("again.tx")
+    assertEquals(Batch.of(Vector.empty).map(_.txs.length), Left(Unreadable.Empty))
+    assertEquals(
+      Batch.of(Vector(tx, tx.copy(file = again))).map(_.txs.length),
+      Left(Unreadable.SameBody(file, again))
+    )
+    // the same body under other witnesses has the same id
+    assertEquals(
+      Batch.of(Vector(tx, Signed(again, hex("00"), tx.id))).map(_.txs.length),
+      Left(Unreadable.SameBody(file, again))
+    )
+  }
+
+  test("the source offers the batch in order, each once, and its bodies on request") {
+    val other = Signed(file.resolveSibling("other.tx"), hex("01"), hex("ab" * 32))
+    val third = Signed(file.resolveSibling("third.tx"), hex("02"), hex("cd" * 32))
+    val batch = Batch.of(Vector(tx, other, third)).fold(u => fail(u.message), identity)
+    val source = TxSubmitPeer.source(batch, Era.Dijkstra, leios)
     for
-      asked <- Ref.of[IO, Vector[Bytes]](Vector.empty)
-      source = TxSubmitPeer.source(
-        Vector(tx, other),
-        Era.Dijkstra,
-        leios,
-        id => asked.update(_ :+ id)
-      )
-      first <- source.after(0L, 10)
-      rest <- source.after(1L, 10)
-      none <- source.after(2L, 10)
-      _ <- source.awaitAfter(1L)
-      body <- source.body(tx.id)
-      unknown <- source.body(hex("cd" * 32))
-      told <- asked.get
+      first <- source.after(0L, 2)
+      rest <- source.after(2L, 8)
+      none <- source.after(3L, 8)
+      _ <- source.awaitAfter(2L)
+      body <- source.body(other.id)
+      unknown <- source.body(hex("ef" * 32))
     yield
-      assertEquals(
-        first.map(h => (h.id, h.ticket, h.era)),
-        Vector((tx.id, 1L, Era.Dijkstra), (other.id, 2L, Era.Dijkstra))
-      )
-      assertEquals(rest.map(_.id), Vector(other.id))
+      assertEquals(first.map(h => (h.id, h.ticket)), Vector((tx.id, 1L), (other.id, 2L)))
+      assertEquals(rest.map(h => (h.id, h.ticket)), Vector((third.id, 3L)))
       assertEquals(none, Vector.empty)
-      assertEquals(body, Some(TxSubmission2.EraTx(Era.Dijkstra, tx.original)))
+      assert(first.forall(_.era == Era.Dijkstra))
+      assertEquals(body, Some(TxSubmission2.EraTx(Era.Dijkstra, other.original)))
       assertEquals(unknown, None)
-      assertEquals(told, Vector(tx.id))
+  }
+
+  test("only an offering whose every body was sent ends in success") {
+    assertEquals(Outcome.Sent(ended = true).exitCode, ExitCode.Success)
+    assertEquals(Outcome.Sent(ended = false).exitCode, ExitCode.Success)
+    assertEquals(Outcome.Ended(Right(())).exitCode, ExitCode.Error)
+    assertEquals(Outcome.Ended(Left(NetworkError.IngressLimit(4, 1L))).exitCode, ExitCode.Error)
+    assertEquals(Outcome.TimedOut(10L).exitCode, ExitCode.Error)
   }
