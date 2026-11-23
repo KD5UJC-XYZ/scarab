@@ -84,9 +84,11 @@ era rules accumulate every failure, and a recorded mismatch changes what follows
 are not run (`whenFailureFree`) and a script with no verdict is named in the state at its raise.
 So at the first verdict that is not its flag's, or no verdict, the plan's result is the serial run
 itself, every script answered in order by the landed results where the request is the one
-answered (the evaluator is a function of the request), and evaluated only where it is not. That
-second ordered pass is paid only for a block the node refuses or withholds, never for one it
-applies. Missing or foreign completions are evaluated locally. The era rules use no recovery that
+answered (the evaluator is a function of the request), and evaluated only where it is not. A raw
+defect the preparation ended in after that point is not landed from the preparation: the second
+pass runs the rules again and raises what they raise, which after a mismatch is the same defect
+(the rules go on) and after a script with no verdict is that script's naming. That second ordered
+pass is paid only for a block the node refuses or withholds, never for one it applies. Missing or foreign completions are evaluated locally. The era rules use no recovery that
 could discard a recorded job.
 
 Dijkstra's UTXOS is the same function and takes the same capability; its run evaluates where the
@@ -100,7 +102,9 @@ footprints equal the flat ones. Its dependent block (a spend of an earlier outpu
 sibling as collateral and as a reference input, then consumed) is batched `[0] [1, 2] [3]`, and is
 run with no verdict at each script, with verdicts that are not the flags', through `ParallelPlutus`
 at one, two and four workers, with a raw evaluator defect (the same instance, after the same
-observations) and one the serial run never reaches, and with missing or foreign completions.
+observations) and one the serial run never reaches, with a raw defect of the rules after deferred
+scripts that pass, after a verdict that is not its flag's and after a script with no verdict, and
+with missing or foreign completions.
 
 `ConwayBodiesReplaySuite` takes the inputs of `PlutusReplaySuite` and times each Conway block's body
 four ways from the state the mirror ticks it to: the flat `EraBlock.Body` and the era run, each
@@ -127,8 +131,11 @@ itself takes about 1.37 to 1.38 times the flat one's time, so applying Conway bl
 four workers would cost about 5.4 s more over this window (6.3 s serial); the 3,005 blocks with
 more than one redeemer-bearing transaction account for 5.6 s of the serial difference. The harness
 ran for 517 s, comparisons and the reference advance included. These are body timings (the tick,
-decoding and store reads excluded), not full validation or follower throughput, and the raw run
-output is not published.
+decoding and store reads excluded; a serial way's timing includes making its program, including the
+era history, which a parallel way's makes before its timer, at most about 1% of the ratio), not
+full validation or follower throughput, so they are not comparable with the full-validation table
+[recorded for D2](../performance/rewards-and-evaluation.md#bounded-parallel-plutus-after-ordered-preparation-d2-2026-10-18)
+(1.29× at four workers, an earlier source); the raw run output is not published.
 
 ## Reference correspondence
 
