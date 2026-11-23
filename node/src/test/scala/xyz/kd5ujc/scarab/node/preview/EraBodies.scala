@@ -45,6 +45,15 @@ object EraBodies:
   enum Way:
     case FlatSerial, FlatParallel, EraSerial, EraParallel
 
+  /** What a body came to, as a reader of the timings sees it: its counters, or its refusal. */
+  private def described(result: Either[EraBlock.Outcome, ConwayBlockRun.Result]): String =
+    result match
+      case Left(EraBlock.Outcome.Applied(_, plutus)) => s"applied $plutus"
+      case Left(other)                               => s"$other".take(2000)
+      case Right(Right(Right(applied)))              => s"applied ${applied.plutus}"
+      case Right(Right(Left(failures)))              => s"refused $failures".take(2000)
+      case Right(Left(defect))                       => s"defect $defect".take(2000)
+
   private def timed[A](fa: IO[A]): IO[(A, Long)] =
     for
       began <- IO.monotonic
@@ -72,17 +81,23 @@ object EraBodies:
       store.read(state.utxo.missing(inputs)).flatMap { fetched =>
         IO.defer {
           val resident = MirrorStep.mapUtxo(state)(_.withResident(fetched))
-          val geometry = setup.praos.geometry
-          val placement = Placement(geometry, setup.byronHistory, setup.praos.forks)
+          // the configuration and constants of the chain within Shelley, its geometry resolved
+          // from the first Shelley epoch, as `MirrorRules` takes them (`NodeRules.entry`)
+          val entry = NodeRules
+            .entry(resident.consensus.byron, header, setup.praos, setup.globals, setup.byronConfig)
+            .fold(e => fail(s"entry: $e"), identity)
+          val (config, constants) = (entry.configuration, entry.constants)
+          val geometry = config.geometry
+          val placement = Placement(geometry, setup.byronHistory, config.forks)
           val clock =
-            MirrorClock.of(setup.globals.systemStart, resident, placement, Era.Conway, header.slot)
+            MirrorClock.of(constants.systemStart, resident, placement, Era.Conway, header.slot)
           val backend = PlutusBackend.default
-          val globals = Globals(setup.globals, geometry)
+          val globals = Globals(constants, geometry)
           val ctx = EraBlock.Context(
             globals,
-            setup.praos.forks.transition(geometry.k),
+            config.forks.transition(geometry.k),
             MirrorStep.afterVotingOf(resident),
-            verdicts = setup.praos.verdicts,
+            verdicts = config.verdicts,
             evaluator = backend.evaluator,
             decoder = backend.decoder,
             clock = Some(clock)
@@ -126,7 +141,7 @@ object EraBodies:
               MirrorClock.horizon(resident, placement, Era.Conway, header.slot),
               bbody,
               backend.evaluator,
-              setup.praos.verdicts,
+              config.verdicts,
               backend.decoder,
               clock.posix
             )
@@ -173,6 +188,15 @@ object EraBodies:
                   "transactions" -> txs.size.asJson,
                   "redeeming" -> redeeming.asJson,
                   "eraAgreesWithFlat" -> sameAsFlat.asJson,
+                  // where they differ, what each came to, for the reader
+                  "differs" -> Option
+                    .when(sameAsFlat.contains(false))(
+                      Json.obj(
+                        "flat" -> described(by(Way.FlatSerial)._1).asJson,
+                        "era" -> described(by(Way.EraSerial)._1).asJson
+                      )
+                    )
+                    .asJson,
                   "nanos" -> Json.obj(ways.map(w => w.toString -> by(w)._2.asJson)*)
                 )
               }
