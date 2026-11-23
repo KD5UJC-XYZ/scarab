@@ -520,7 +520,7 @@ snapshots, rendered as JSON. Before #1150 each request built its own, with nothi
 Since #1150 one answer is built at a time, a request for the point and view of an answer being built waits for that
 build, and the answers at the tip are kept, rendered, until the committed tip moves (`SharedAnswers`).
 `StateRequestMain` (`tools`) loads a native snapshot and sends requests through the query server's routes as the node
-serves them. The state is a mainnet node's snapshot at slot 203,817,634 (10,819,125 UTxO entries; the summary reads
+serves them, in process: the tip is fixed, and each body is counted, not written to a socket. The state is a mainnet node's snapshot at slot 203,817,634 (10,819,125 UTxO entries; the summary reads
 only the UTxO set's totals); raw run artifacts are not published. Each mode ran once in its own JVM, in the JDK build
 container (`--cpus 4 --memory 28g`, no network) on a shared 16-thread x86-64 host (load average 3.5 to 10 from other
 work), with the mainnet node's heap settings (`java -Xms8g -Xmx24g -XX:+UseG1GC -XX:MaxGCPauseMillis=50

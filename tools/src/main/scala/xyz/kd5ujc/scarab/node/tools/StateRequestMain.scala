@@ -65,7 +65,7 @@ object StateRequestMain extends IOApp:
 
   def run(args: List[String]): IO[ExitCode] = args match
     case snapshot :: genesis :: mode :: rest =>
-      NodeSetup.fromDirectory(ReferenceBuild.Default)(Path.of(genesis)) match
+      IO.blocking(NodeSetup.fromDirectory(ReferenceBuild.Default)(Path.of(genesis))).flatMap {
         case Left(error) => IO.println(error.message).as(ExitCode(1))
         case Right(setup) =>
           NativeSnapshots.read[IO](Path.of(snapshot), setup.mirrorEnv()).flatMap {
@@ -75,6 +75,7 @@ object StateRequestMain extends IOApp:
               val requests = rest.headOption.flatMap(_.toIntOption).getOrElse(4)
               measure(mode, here, read.state, requests)
           }
+      }
     case _ =>
       IO.println("arguments: <snapshot> <genesis dir> kept|shared|unshared [requests]")
         .as(ExitCode(2))
