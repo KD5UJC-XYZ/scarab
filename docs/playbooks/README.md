@@ -18,6 +18,7 @@ JDK image, as [CONTRIBUTING](../../CONTRIBUTING.md#build-docker-only) shows; the
 | Get an independent review of a pull request | [review-a-change.md](review-a-change.md) | any |
 | Raise a deviation question or an audit finding | [raise-a-deviation-or-audit-finding.md](raise-a-deviation-or-audit-finding.md) | any |
 | Rebase after a squash merge | [rebase-after-a-squash-merge.md](rebase-after-a-squash-merge.md) | any |
+| Audit the open issues, close what is done and pick up work | [audit-the-open-issues.md](audit-the-open-issues.md) | any |
 
 `python3 scripts/status.py --issue N` lists the playbooks whose areas match the issue's `area:` labels, and those
 for any area. A persisted-format change needs the owner's approval first ([FMT-1](../design-rules.md#fmt-1)); an

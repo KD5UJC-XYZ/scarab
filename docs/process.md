@@ -138,6 +138,9 @@ Nightly, the triage report; at each release, and whenever the list feels stale:
 - every document's status line is still true (current, proposal, spike or historical);
 - CI is green, including the nightly scenarios, and dependency updates (`dependencyUpdates`) are reviewed.
 
+Which open issues are already done, and what to pick up next, is the
+[audit playbook](playbooks/audit-the-open-issues.md).
+
 ## Definition of done
 
 An item is closed as done when all of these hold:
