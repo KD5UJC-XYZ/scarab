@@ -51,8 +51,11 @@ object EraBodies:
       case Left(EraBlock.Outcome.Applied(_, plutus)) => s"applied $plutus"
       case Left(other)                               => s"$other".take(2000)
       case Right(Right(Right(applied)))              => s"applied ${applied.plutus}"
-      case Right(Right(Left(failures)))              => s"refused $failures".take(2000)
-      case Right(Left(defect))                       => s"defect $defect".take(2000)
+      case Right(Right(Left(ConwayBlockRun.Refusal.Failed(failures)))) =>
+        s"refused $failures".take(2000)
+      case Right(Right(Left(ConwayBlockRun.Refusal.Stopped(failures, defect)))) =>
+        s"refused $failures, stopped by defect $defect".take(2000)
+      case Right(Left(defect)) => s"defect $defect".take(2000)
 
   private def timed[A](fa: IO[A]): IO[(A, Long)] =
     for

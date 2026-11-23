@@ -119,11 +119,21 @@ object RuleT:
   enum Policy:
     case Accumulate, FirstFailure
 
-  /** How a judgment ended: a raised failure, a refusal with the failures it recorded in the order
-    * the reference reports them ([[Judgment.flatten]]), or the state and the value.
+  /** How a judgment ended: a raised failure with nothing recorded before it, a raised failure after
+    * the failures recorded to it ([[Halted]]), a refusal with the failures it recorded, or the
+    * state and the value. Failures are in the order the reference reports them
+    * ([[Judgment.flatten]]).
     */
   enum Outcome[+Rec, +Fail, +S, +A]:
     case Raised(failure: Fail)
+
+    /** A raised failure not recovered, after failures were recorded: those failures, in the order
+      * the reference would report them had the judgment ended there, and the raise. The reference
+      * has no raise, so what was recorded after it is not known; a caller decides which of the two
+      * stands ([[Judgment.judge]] keeps the raise; a block's run under accumulation, the refusal).
+      * Under `FirstFailure` the first recorded failure ends the judgment, so it never halts.
+      */
+    case Halted(failures: NonEmptyChain[Rec], failure: Fail)
     case Refused(failures: NonEmptyChain[Rec])
     case Passed(state: S, value: A)
 
@@ -131,7 +141,8 @@ object RuleT:
 
   extension [Rec, Fail, S, A](rule: RuleT[Rec, Fail, S, A])
     /** Runs the rule under `policy`: how it ended. A raised failure not recovered ends it whatever
-      * was recorded before (the reference has no raise; this is the defect that leaves no verdict).
+      * was recorded before (the reference has no raise; this is the defect that leaves no verdict),
+      * with what was recorded to it if anything was ([[Outcome.Halted]]).
       */
     def judge(policy: Policy, globals: Globals, state: S): Outcome[Rec, Fail, S, A] =
       val first = policy == Policy.FirstFailure
@@ -156,7 +167,11 @@ object RuleT:
         current match
           case Left(e) =>
             frames match
-              case Frames.Done() => Outcome.Raised(e)
+              case Frames.Done() =>
+                // the nests left on the way out closed into the root's trace
+                NonEmptyChain
+                  .fromChain(Judgment.flatten(trace))
+                  .fold(Outcome.Raised(e))(Outcome.Halted(_, e))
               case Frames.Cons(head, tail) =>
                 head match
                   case Frame.Next(_)        => go(Left(e), g, s, trace, failing, tail)
@@ -232,7 +247,9 @@ object RuleT:
       rule.judge(Policy.FirstFailure, globals, state) match
         case Outcome.Passed(s, a) => Right((s, a))
         case Outcome.Raised(e)    => Left(e)
-        // Nothing is recorded, so a refusal holds no value: its head is of type `Nothing`.
+        // Nothing is recorded, so neither a refusal nor a halt holds a value: their failures are
+        // of type `Nothing`.
+        case Outcome.Halted(_, e)      => Left(e)
         case Outcome.Refused(failures) => Left(failures.head)
 
   private def step[Rec, Fail, S, A](

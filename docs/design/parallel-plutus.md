@@ -80,7 +80,11 @@ the preparation went as the serial run goes: its result (state, failures, rule d
 defect) is the serial run's, its counters are counted from its events with each job's verdict told
 at its marker as UTXOS tells it, and its observations are made from the ledger state each job was
 deferred in, as the serial observer makes them. A job's raw defect is raised as itself after the
-earlier jobs are observed; the serial run reaches it in the same place. Unlike the flat rules, the
+earlier jobs are observed; the serial run reaches it in the same place. A rule defect raised after
+a failure was recorded ends the run in a refusal on the failures recorded before it, the defect kept
+beside them (`ConwayBlockRun.Refusal.Stopped`, #85); the serial run and the preparation map the
+judgment's outcome the same way, so the preparation's refusal is the serial run's, and where a job's
+verdict is not its flag's the serial run below records that failure before the defect. Unlike the flat rules, the
 era rules accumulate every failure, and a recorded mismatch changes what follows it: later scripts
 are not run (`whenFailureFree`) and a script with no verdict is named in the state at its raise.
 So at the first verdict that is not its flag's, or no verdict, the plan's result is the serial run

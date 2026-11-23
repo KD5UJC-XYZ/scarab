@@ -46,7 +46,8 @@ import xyz.kd5ujc.scarab.ledger.era.rules.{
   ShelleyBbody,
   ShelleyBbodyPredFailure,
   ShelleyBbodyState,
-  ShelleyLedgersPredFailure
+  ShelleyLedgersPredFailure,
+  UtxoStateDefect
 }
 import xyz.kd5ujc.scarab.ledger.rules.{
   Bbody as FlatBbody,
@@ -77,6 +78,8 @@ import xyz.kd5ujc.scarab.plutus.{
   ExUnits,
   PlutusLanguage,
   ScarabEvaluator,
+  ScriptDecodeFailure,
+  ScriptDecoder,
   ScriptEvaluator,
   ScriptFailure
 }
@@ -197,6 +200,7 @@ class ConwayBbodySuite extends FailsOnUncaught:
       flatPlutus: Option[PlutusStats],
       eraPlutus: Option[PlutusStats],
       flatBbodyAdmits: Boolean,
+      eraRefusal: Option[ConwayBlockRun.Refusal],
       eraFailures: Vector[BbodyPredFailure[Conway]],
       eraEvaluated: Int,
       flatEvaluated: Int,
@@ -370,7 +374,8 @@ class ConwayBbodySuite extends FailsOnUncaught:
       build: ReferenceBuild = ReferenceBuild.Release11_1,
       change: NewEpochState[Conway] => NewEpochState[Conway] = identity,
       unsupportedAt: Option[Int] = None,
-      observe: Boolean = false
+      observe: Boolean = false,
+      decoder: ScriptDecoder[cats.Id] = ScarabEvaluator.defaultDecoder
   ): Judged =
     val setup = before.setup
     val block = FlatBlock.decodeShelley(raw) match
@@ -393,7 +398,7 @@ class ConwayBbodySuite extends FailsOnUncaught:
       verdicts = Verdicts.Direct,
       evaluator = flatEvaluator,
       observer = Option.when(observe)(flatObserved.observe),
-      decoder = ScarabEvaluator.defaultDecoder,
+      decoder = decoder,
       clock = Some(clock)
     )
     val nes = MirrorStep.nesOf(before.mirror).getOrElse(fail(s"${before.name}: no Shelley state"))
@@ -478,7 +483,7 @@ class ConwayBbodySuite extends FailsOnUncaught:
         state,
         evaluator,
         verdicts,
-        ScarabEvaluator.defaultDecoder,
+        decoder,
         clock.posix,
         observing
       )
@@ -517,8 +522,8 @@ class ConwayBbodySuite extends FailsOnUncaught:
       }
     val judged = run.toOption
     val era: Either[ConwayRuleDefect, Verdict] = run.map {
-      case Left(fs)     => Left(flatOf(before.name, fs, block))
-      case Right(after) => Right((after.state.ls, after.state.blocksMade))
+      case Left(refusal) => Left(flatOf(before.name, refusal.failures, block))
+      case Right(after)  => Right((after.state.ls, after.state.blocksMade))
     }
     Judged(
       era,
@@ -530,7 +535,8 @@ class ConwayBbodySuite extends FailsOnUncaught:
         case EraBlock.Outcome.Applied(_, _) => true
         case _                              => false
       ,
-      judged.flatMap(_.left.toOption).fold(Vector.empty)(_.toChain.toVector),
+      judged.flatMap(_.left.toOption),
+      judged.flatMap(_.left.toOption).fold(Vector.empty)(_.failures.toChain.toVector),
       eraEvaluator.count,
       flatEvaluator.count,
       eraObserved.all,
@@ -1798,6 +1804,231 @@ class ConwayBbodySuite extends FailsOnUncaught:
       },
       Vector(Set(missing))
     )
+  }
+
+  // ---- a defect of ours after an established refusal (#85) --------------------------------------------
+
+  /** The outputs of the blocks of a later defect: 0 to 2 key outputs, 3 a key output with a
+    * reference script that only a damaged store holds (its script hash not its bytes'), which the
+    * era does not read, 4 an output at the script that passes, 5 and 6 key outputs.
+    */
+  private lazy val withDamaged: Vector[(TxIn, TxOut)] =
+    val utxo = funded(
+      Vector(
+        paid(20000000),
+        paid(20000000),
+        paid(30000000),
+        B.refScriptOut(B.keyAddress(payer), 10000000, B.purposeIsWellformedNoDatumV3),
+        locked(alwaysSucceedsWithDatumV3, 10000000),
+        paid(30000000),
+        paid(30000000)
+      )
+    )
+    val (in, out) = utxo(3)
+    utxo.updated(
+      3,
+      in -> out.copy(scriptRef = out.scriptRef.map(_.copy(hash = Bytes(Vector.fill(28)(7.toByte)))))
+    )
+
+  /** A payment whose input 0x77 no output holds: UTXO's `BadInputsUTxO`. */
+  private lazy val missingInput: Built =
+    val body = B.body(
+      0 -> B.set(in(withDamaged, 0), B.fresh(0x77).node),
+      1 -> B.arr(paid(17000000)),
+      2 -> B.uint(3000000)
+    )
+    built(body, B.witnesses(body, Vector(payer)))
+
+  /** A payment whose collateral is the damaged output: LEDGERS reads it into the era where it reads
+    * the transaction's inputs, collateral and reference inputs, and BBODY's read before LEDGERS
+    * (inputs and reference inputs alone) does not.
+    */
+  private lazy val damagedCollateral: Built =
+    val body = B.body(
+      0 -> B.set(in(withDamaged, 1)),
+      1 -> B.arr(paid(17000000)),
+      2 -> B.uint(3000000),
+      13 -> B.set(in(withDamaged, 3))
+    )
+    built(body, B.witnesses(body, Vector(payer)))
+
+  /** A payment reading the damaged output as a reference input, which BBODY reads into the era
+    * before LEDGERS, for the reference scripts' size.
+    */
+  private lazy val damagedReference: Built =
+    val body = B.body(
+      0 -> B.set(in(withDamaged, 1)),
+      1 -> B.arr(paid(17000000)),
+      2 -> B.uint(3000000),
+      18 -> B.set(in(withDamaged, 3))
+    )
+    built(body, B.witnesses(body, Vector(payer)))
+
+  /** A payment creating an output with a reference script, which UTXOW asks the decoder about. */
+  private lazy val referenceScriptOut: Built =
+    val body = B.body(
+      0 -> B.set(in(withDamaged, 2)),
+      1 -> B.arr(
+        B.refScriptOut(B.keyAddress(payer), 10000000, B.purposeIsWellformedNoDatumV3),
+        paid(17000000)
+      ),
+      2 -> B.uint(3000000)
+    )
+    built(body, B.witnesses(body, Vector(payer)))
+
+  /** A transaction of a script that passes, with its fee and collateral. */
+  private lazy val passingScript: Built =
+    spending(withDamaged, Vector(4, 5), Vector(4 -> alwaysSucceedsWithDatumV3), Some(6), 37000000)
+
+  /** The stored output the era does not read, as the run raises it. */
+  private val unreadable: ConwayRuleDefect => Boolean =
+    case ConwayRuleDefect.UtxoState(UtxoStateDefect.StoredOutput(input, _)) =>
+      input == withDamaged(3)._1
+    case _ => false
+
+  /** The refusal of `j`'s run, stopped by a defect `defect` accepts, on the failures `failures`. */
+  private def stopped(
+      what: String,
+      j: Judged,
+      failures: Vector[BbodyPredFailure[Conway]],
+      defect: ConwayRuleDefect => Boolean
+  ): Unit =
+    j.eraRun match
+      case Right(Left(_)) =>
+        j.eraRefusal match
+          case Some(ConwayBlockRun.Refusal.Stopped(fs, raised)) =>
+            assertEquals(fs.toChain.toVector, failures, what)
+            assert(defect(raised), s"$what: stopped by $raised")
+          case other => fail(s"$what: not stopped by a defect: $other")
+      case other => fail(s"$what: no refusal: $other")
+
+  /** The failures of the block of `txs` (the one before a defect, alone), flagged by `invalid`. */
+  private def failuresOf(
+      txs: Vector[Built],
+      invalid: Vector[Int] = Vector.empty
+  ): Vector[BbodyPredFailure[Conway]] =
+    judge(third, blockOf(txs, invalid = invalid), change = holding(withDamaged)).eraRefusal match
+      case Some(ConwayBlockRun.Refusal.Failed(fs)) => fs.toChain.toVector
+      case other                                   => fail(s"not refused: $other")
+
+  test(
+    "an earlier transaction refused, then a later one's stored output the era does not read: the block refused on the earlier failure, the defect recorded as ours"
+  ) {
+    val earlier = failuresOf(Vector(missingInput))
+    // the earlier transaction's refusal alone, UTXO's missing input
+    assert(
+      earlier.exists {
+        case ConwayBbodyPredFailure.LedgersFailure(_) => true
+        case _                                        => false
+      },
+      s"$earlier"
+    )
+    val j = judge(
+      third,
+      blockOf(Vector(missingInput, damagedCollateral)),
+      change = holding(withDamaged)
+    )
+    // the earlier failure, and none after the defect; the flat rules refuse the block too
+    stopped("refused, then a defect", j, earlier, unreadable)
+    assertEquals(j.eraFailures, earlier)
+    assert(j.flat.isLeft, s"${j.flat}")
+    // the defect at the first transaction, nothing recorded before it: no verdict, even though a
+    // later transaction would be refused
+    Vector(Vector(damagedCollateral), Vector(damagedCollateral, missingInput)).foreach { txs =>
+      val alone = judge(third, blockOf(txs), change = holding(withDamaged))
+      assert(alone.eraRun.left.exists(unreadable), s"${txs.size}: ${alone.eraRun}")
+      assertEquals(alone.eraRefusal, None, s"${txs.size}")
+    }
+    // a gap: the damaged output as a later transaction's reference input (or input) is read by
+    // BBODY before LEDGERS judges any transaction, so nothing is recorded before the defect and the
+    // block is withheld, though the reference refuses it on the earlier transaction
+    val early = judge(
+      third,
+      blockOf(Vector(missingInput, damagedReference)),
+      change = holding(withDamaged)
+    )
+    assert(early.eraRun.left.exists(unreadable), s"${early.eraRun}")
+    assertEquals(early.eraRefusal, None)
+    // the prepared plan's result is the serial run's in each (`judge`'s `samePlanned`)
+  }
+
+  test(
+    "an earlier transaction refused, then a later one's script the decoder cannot judge: the block refused on the earlier failure, the defect recorded as ours"
+  ) {
+    // the decoder gives no verdict on any script, so on the reference script the third
+    // transaction's output holds; the earlier transactions hold none
+    val noVerdict: ScriptDecoder[cats.Id] = (_, _, _) =>
+      Left(ScriptDecodeFailure.Unavailable(xyz.kd5ujc.scarab.plutus.BackendFailure.StackExhausted))
+    val undecided: ConwayRuleDefect => Boolean =
+      case ConwayRuleDefect.Ledger(LedgerFailure.Unavailable(txId, _, _)) =>
+        txId == referenceScriptOut.id
+      case _ => false
+    val earlier = failuresOf(Vector(missingInput))
+    val j = judge(
+      third,
+      blockOf(Vector(missingInput, referenceScriptOut)),
+      change = holding(withDamaged),
+      decoder = noVerdict
+    )
+    stopped("refused, then a defect", j, earlier, undecided)
+    val alone = judge(
+      third,
+      blockOf(Vector(referenceScriptOut, missingInput)),
+      change = holding(withDamaged),
+      decoder = noVerdict
+    )
+    assert(alone.eraRun.left.exists(undecided), s"${alone.eraRun}")
+  }
+
+  test(
+    "a later defect after deferred scripts: the prepared era run comes to the serial run's refusal or no verdict"
+  ) {
+    // the script transaction flagged valid: no failure before the defect, so no verdict; flagged
+    // invalid, its script passes, a failure the preparation does not record (its verdict lands
+    // later), so the plan's result is the serial run's refusal, stopped by the defect; and a
+    // phase-1 refusal after it, which the preparation records too; and both, the mismatch, which
+    // only the serial run records, before the phase-1 refusal
+    val mismatch = failuresOf(Vector(passingScript), invalid = Vector(0))
+    val missing = failuresOf(Vector(passingScript, missingInput))
+    val both = failuresOf(Vector(passingScript, missingInput), invalid = Vector(0))
+    Vector[(String, Vector[Built], Vector[Int], Option[Vector[BbodyPredFailure[Conway]]])](
+      ("flagged valid", Vector(passingScript, damagedCollateral), Vector.empty, None),
+      ("flagged invalid", Vector(passingScript, damagedCollateral), Vector(0), Some(mismatch)),
+      (
+        "a phase-1 refusal",
+        Vector(passingScript, missingInput, damagedCollateral),
+        Vector.empty,
+        Some(missing)
+      ),
+      (
+        "flagged invalid, then a phase-1 refusal",
+        Vector(passingScript, missingInput, damagedCollateral),
+        Vector(0),
+        Some(both)
+      )
+    ).traverse_ { (what, txs, invalid, failures) =>
+      val j = judge(
+        third,
+        blockOf(txs, invalid = invalid),
+        change = holding(withDamaged),
+        observe = true
+      )
+      assertEquals(j.deferred.flatten, Vector(0), what)
+      failures match
+        case None     => assert(j.eraRun.left.exists(unreadable), s"$what: ${j.eraRun}")
+        case Some(fs) => stopped(what, j, fs, unreadable)
+      val serial = j.replayed(None).serial
+      // each block has one redeeming transaction, under the workers' threshold (`Body.worthwhile`),
+      // so the workers' entry runs it serially: this checks that entry's result, not the batches,
+      // which `judge` covers by preparing and resolving the plan against the serial run
+      Vector(1, 2, 4).traverse_ { n =>
+        ParallelPlutus.Workers
+          .from(n)
+          .fold(e => IO(fail(s"$e")), ParallelPlutus.create[IO](_))
+          .flatMap(_(j.replayed(None)))
+          .map(result => samePlanned(s"$what at $n workers", serial, Right(result)))
+      }
+    }
   }
 
   test(

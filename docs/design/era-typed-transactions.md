@@ -2672,12 +2672,34 @@ Conway's rules on the classes follow as the rest of stage 2.
     certificates 0 and 2; the observations on the same blocks; the proposals of two transactions of one block.
   - Differences from the flat rules: the flat rules observe a transaction whose scripts' contexts cannot be collected
     (`Left` of the collection's errors); the era run observes only scripts it runs, so a collection's failure is not
-    observed (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7084208368). Under every failure accumulated (`ValidateAll`, #1328's run), a defect raised by a later
-    transaction of a block the flat rules refuse at an earlier one (a phase-1 script the decoder cannot judge, a
-    stored output the era does not read) ends the era run without a verdict, where the flat rules refuse the block;
-    a phase-2 script is not evaluated once a failure is recorded (`whenFailureFree`), so it does not. No suite
-    exercises the second; it is open for the switch, beside the accumulated refusals (#412,
-    https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7084209535).
+    observed (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7084208368).
+  - A defect of this implementation after a recorded failure (decided in
+    https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7104253607, point 2, on the gap of
+    https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7084209535): under every failure accumulated
+    (`ValidateAll`, #1328's run), a later transaction of a block can raise a defect after an earlier one was refused:
+    a stored output the era does not read where LEDGERS first reads it (a collateral input), a phase-1 script the
+    decoder cannot judge, a ledger or governance defect. A phase-2 script is not
+    evaluated once a failure is recorded (`whenFailureFree`), so a script with no verdict never follows one. The
+    established refusal wins: the run refuses the block on the failures recorded up to the defect
+    (`ConwayBlockRun.Refusal.Stopped`), as the reference, which has no such defect, refuses it, and keeps the defect,
+    typed, to be logged as ours, not as a failure of the block. Its failures end where the defect stopped the run;
+    the reference would go on recording the later transactions', which the run does not invent. A defect with no
+    failure before it leaves no verdict, as before. The judgment interpreter reports what was recorded before an
+    unrecovered raise (`RuleT.Outcome.Halted`); only the block run lets it stand, and `Judgment.judge`, the
+    mempool's run and the flat rules keep the raise. The prepared plan maps the outcome through the same run, so its
+    result is the serial run's, the refusal included: with scripts deferred before the defect whose verdicts are
+    their flags', the preparation's own; with one that is not, the serial run's, which records that failure first.
+    `ConwayBbodySuite` shows it with an earlier missing input and then a damaged collateral output or a reference
+    script the decoder gives no verdict on, each alone first (no verdict), and after deferred scripts flagged valid
+    and invalid, the prepared plan's result compared with the serial run's (each of these blocks has one
+    redeeming transaction, under the bounded workers' threshold, so the workers run it serially). The node routes
+    neither yet; the switch routes the
+    refusal as any refused block. Remaining difference: BBODY reads every transaction's inputs and reference inputs
+    into the era before LEDGERS judges any (for the reference scripts' size), so a later transaction's input or
+    reference input the era does not read is raised before any transaction's failure is recorded and the block is
+    withheld (refused only on a header failure BBODY recorded first), where the reference refuses it on the earlier
+    transaction; `ConwayBbodySuite` pins it
+    ([#85](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7105195571)).
 - **Dijkstra's BBODY** (`era/EraBlock.scala`, `era/dijkstra/DijkstraBlock.scala`, `era/rules/BbodyFailures.scala`,
   `era/rules/DijkstraBbody.scala`; `Rules/Bbody.hs` of `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/`, cardano-ledger
   9df9f98c, with the predicates of Shelley's, Alonzo's and Conway's BBODY it runs):

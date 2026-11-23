@@ -70,7 +70,9 @@ object Judgment:
 
   /** Runs a judged program under `policy`: a raised defect, or the refusal's predicate failures in
     * the reference's order, or the state and the value. A defect raised after failures were
-    * recorded wins: the implementation has no verdict for the transaction.
+    * recorded wins: the implementation has no verdict for the transaction. A block's run that lets
+    * the failures recorded before the defect stand reads the judgment's [[RuleT.Outcome]] itself
+    * (`ConwayBlockRun`).
     */
   def judge[Rec, Defect, S, A](program: RuleT[Rec, Defect, S, A], policy: Policy)(
       globals: Globals,
@@ -78,6 +80,7 @@ object Judgment:
   ): Either[Defect, Either[NonEmptyChain[Rec], (S, A)]] =
     program.judge(policy, globals, state) match
       case RuleT.Outcome.Raised(defect)    => Left(defect)
+      case RuleT.Outcome.Halted(_, defect) => Left(defect)
       case RuleT.Outcome.Refused(failures) => Right(Left(failures))
       case RuleT.Outcome.Passed(s, a)      => Right(Right((s, a)))
 
@@ -95,5 +98,6 @@ object Judgment:
       .transition[RuleT.Judged[P, Fail, S]](env, signal)
       .judge(policy, globals, state) match
       case RuleT.Outcome.Raised(raised)    => refusal.split(raised).map(Left(_))
+      case RuleT.Outcome.Halted(_, raised) => refusal.split(raised).map(Left(_))
       case RuleT.Outcome.Refused(failures) => Right(Left(failures))
       case RuleT.Outcome.Passed(after, _)  => Right(Right(after))
