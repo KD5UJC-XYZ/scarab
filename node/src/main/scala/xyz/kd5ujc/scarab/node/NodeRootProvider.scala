@@ -35,9 +35,9 @@ enum LocalRootsTrace:
   * The answer of the ledger is good for [[LedgerPeerStake.ReRequestInterval]], whatever the TTLs of
   * the lookups behind it (`ttl = 5`, `LedgerPeers.hs` 315, ouroboros-network c45735a5): the time
   * the governor waits before it asks again when the answer added peers and it still needs more (an
-  * answer that added none backs off instead). The configured topology roots, and the fallback to
-  * them, are good for their lookups' TTL, and each DNS source refreshes at its own TTL or error
-  * retry interval.
+  * answer that added none backs off instead). A request for the topology's public or bootstrap
+  * roots, and the fallback to them, is good for its lookups' longest TTL (60 s when none
+  * succeeded); each local-root DNS source refreshes at its own TTL or error retry interval.
   */
 object NodeRootProvider:
   type Addr = SocketAddress[Host]
