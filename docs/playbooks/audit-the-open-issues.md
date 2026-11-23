@@ -12,7 +12,8 @@ follow-ups, changing course), [REF-4](../design-rules.md#ref-4), [FMT-1](../desi
    worktrees that name the issue, open pull requests, comments of the last two days. Leave those alone, or ask
    whoever holds them.
 2. **Gather leads, per issue:** the unticked checklist lines, the later comments (scope often moved there), the
-   commits that name it (`git log origin/main --oneline --grep '#N'`), and the pull requests that cross-reference it:
+   commits that name it (`git log origin/main --oneline -E --grep '#N([^0-9]|$)'`), and the pull requests that
+   cross-reference it:
    `gh api --paginate "repos/{owner}/{repo}/issues/N/timeline" --jq '.[] | select(.event == "cross-referenced" and .source.issue.pull_request) | [.source.issue.html_url, .source.issue.state, .source.issue.pull_request.merged_at] | @tsv'`.
 3. **Assess.** One verdict per issue: done; mostly done (what remains); partial; not started; superseded (by
    what); waiting on the owner (for what). Each claim cites the file and line at `origin/main`, or the merged pull
@@ -20,24 +21,27 @@ follow-ups, changing course), [REF-4](../design-rules.md#ref-4), [FMT-1](../desi
    A large band can be split by theme across read-only reviewers that use the same verdicts.
 4. **Verify before acting.** Check every "done" and every "done but unticked" claim against `origin/main` yourself.
    Reviewers misplace lines and miss dependencies, such as an item that waits on another issue's result.
-5. **Ask before acting where a rule needs the owner's approval:** a difference from the reference not shown to be
-   a Mirror or an Improvement (REF-4; [raise a deviation](raise-a-deviation-or-audit-finding.md)), and any storage
-   format change (FMT-1). Check [decisions.md](../decisions.md) first for an answer already given. The question and
-   the decision are recorded as what approval is says; a subagent reports to its lead, which asks. Repository
-   settings are the maintainer's, never an agent's.
+5. **Ask before acting where a rule needs the owner's approval.** By REF-4 a difference from the reference is a
+   Mirror, an Improvement, a Gap (unintended: it gets an issue and a fix) or a Deviation, and anything not shown
+   to be one of the first two is a Deviation until settled: check [decisions.md](../decisions.md) for a decision
+   that covers it, else ask ([raise a deviation](raise-a-deviation-or-audit-finding.md)). Any storage format change
+   needs the owner's answer in the current chat session (FMT-1). The question and the decision are recorded as what
+   approval is says; a subagent reports to its lead, which asks. Repository settings are never an agent's.
 6. **Act, each by its rule in process.md:**
    - *Done:* it closes as completed only when the whole definition of done holds. Move every follow-up first:
      `python3 scripts/file_issue.py --title T --body-file F --priority P2 --parent N` for an open parent's
      checklist, an issue of its own (`--own-issue REASON`; `--help` gives its labels and milestone), or a roadmap
-     item; mark the old line "moved to #M". The closing comment gives what was done, the commit and the evidence.
+     item; mark the old line "moved to #M" or to the roadmap item. The closing comment gives what was done, the
+     commit, the evidence and where each gap now lives.
    - *Done but unticked:* tick the line and append "done in #PR". Read the body just before the edit and check it
      after: other sessions edit epics too.
-   - *The rest lives in another issue:* fold it, closing with a pointer once that issue is shown to cover it.
+   - *The rest lives in another issue:* fold it as process.md says, closing with a pointer to where the item now
+     lives, once that issue is shown to cover it.
    - *A change of priority:* a label or milestone change, with one sentence on why.
    - *Paused on purpose:* replace its status with `status:parked`, remove its milestone, and comment what is done,
      where the work is and how to resume.
-   - *A table of audit rows:* it closes when every row has an outcome: aligned, recorded in decisions.md, tracked by
-     an issue, or filed.
+   - *A table of audit rows:* it closes as completed under the same definition of done, once every row has an
+     outcome: aligned (with its evidence), recorded in decisions.md, tracked by an issue, or filed.
 7. **Pick up work** as process.md's "Now, next, later" orders it: the `status:backlog` issues of each milestone in
    the roadmap's [order of work](../roadmap.md#order-of-work), then by priority, with at most 20 issues in progress.
    A started item follows AGENTS.md "Before you start" and gets `status:in-progress`.
