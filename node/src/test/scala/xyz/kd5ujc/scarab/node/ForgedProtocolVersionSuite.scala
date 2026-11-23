@@ -25,18 +25,20 @@ import xyz.kd5ujc.scarab.ledger.rules.{
   Judgment
 }
 import xyz.kd5ujc.scarab.ledger.state.{BlocksMade, Coin, Dijkstra, NewEpochState, ShelleyBasedEra}
+import xyz.kd5ujc.scarab.node.forge.ProducerSignal
 import xyz.kd5ujc.scarab.node.read.InEra
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.protocol.{HfcHeader, ReferenceBuild, StateLayout}
 import xyz.kd5ujc.scarab.storage.haskell.state.HaskellLedgerFile
 
 /** The protocol version the node's forged headers carry, by build (`cardanoProtocolVersion`,
-  * `Cardano.Node.Protocol.Cardano` lines 192-194 of cardano-node 11.1.3 and b004fe0c), and what the
-  * public Leios testnet makes of it (#54): its configuration sets `ExperimentalHardForksEnabled`,
-  * so the node writes 12.0, the version info of the headers the reference's forgers wrote there
-  * after slot 2,168,639 (`fixtures/leios/testnet`; `docs/leios.md` section 11.3 counts the
-  * testnet's other version info, `[12, 67]`, in older headers), and Dijkstra's BBODY accepts it
-  * against the testnet's parameters, where the version without the flag is refused
+  * `Cardano.Node.Protocol.Cardano` lines 192-194 of cardano-node 11.1.3 and b004fe0c), with the
+  * producer signal as its minor (CIP-0203, #1348), and what the public Leios testnet makes of it
+  * (#54): its configuration sets `ExperimentalHardForksEnabled`, so the node writes the major 12 of
+  * the headers the reference's forgers wrote there after slot 2,168,639 (`fixtures/leios/testnet`;
+  * `docs/leios.md` section 11.3 counts the testnet's other version info, `[12, 67]`, another
+  * implementation's identifier, in older headers), and Dijkstra's BBODY accepts it with either
+  * signal against the testnet's parameters, where the major without the flag is refused
   * (`HeaderProtVerTooLow`, cardano-ledger 9df9f98c `Dijkstra/Rules/Bbody.hs:366-376`).
   *
   * The node does not forge a Dijkstra block yet (its forger forges Conway blocks only), so the
@@ -74,16 +76,23 @@ class ForgedProtocolVersionSuite extends FunSuite:
     .fromConfigFile(ReferenceBuild.LeiosB004fe0c)(testnet.resolve("testnet/config/config.json"))
     .fold(e => fail(e.message), identity)
 
-  test("under the testnet's configuration the node forges 12.0, its maximum major follows it") {
+  test("under the testnet's configuration the node forges 12.42, its maximum major follows it") {
     assertEquals(testnetSetup.config.settings.experimentalHardForksEnabled, true)
-    assertEquals(testnetSetup.forgedProtocolVersion, (BigInt(12), BigInt(0)))
+    assertEquals(
+      testnetSetup.forgedProtocolVersion(ProducerSignal.Default),
+      (BigInt(12), BigInt(42))
+    )
+    assertEquals(
+      testnetSetup.forgedProtocolVersion(ProducerSignal.OptedOut),
+      (BigInt(12), BigInt(255))
+    )
     assertEquals(
       BigInt(testnetSetup.praos.forks.maxMajorProtVer),
-      testnetSetup.forgedProtocolVersion._1
+      testnetSetup.forgedProtocolVersion(ProducerSignal.Default)._1
     )
   }
 
-  test("the testnet headers after slot 2,168,639 carry the version info the node forges") {
+  test("the testnet headers after slot 2,168,639 carry the reference's version, the major forged") {
     val headers = rows(testnet.resolve("testnet/headers-after-2168639.tsv")).map(r =>
       HfcHeader.decode(hex(r(4))) match
         case Right(HfcHeader.Dijkstra(raw)) =>
@@ -91,10 +100,11 @@ class ForgedProtocolVersionSuite extends FunSuite:
         case other => fail(other.toString)
     )
     assertEquals(headers.size, 8)
-    val (major, minor) = testnetSetup.forgedProtocolVersion
+    val (major, minor) = testnetSetup.config.settings.protocolVersion(ReferenceBuild.LeiosB004fe0c)
     headers.foreach(h =>
       assertEquals(h.leios.versionInfo, HeaderVersionInfo(major, minor), h.slot.toString)
     )
+    assertEquals(testnetSetup.forgedProtocolVersion(ProducerSignal.Default)._1, major)
   }
 
   /** The testnet's ledger state at slot 2,168,639, in the Leios layout. */
@@ -141,14 +151,18 @@ class ForgedProtocolVersionSuite extends FunSuite:
       )
       .map(_.left.map(_.toChain.toVector))
 
-  test("Dijkstra's BBODY takes the forged version on the testnet; the one without the flag not") {
+  test(
+    "Dijkstra's BBODY takes the forged version with either signal; the one without the flag not"
+  ) {
     assertEquals(
       xyz.kd5ujc.scarab.ledger.era.GovStateRecord
         .view(testnetState.es.ls.utxo.gov.cgsCurPParams)
         .protocolMajor,
       BigInt(12)
     )
-    assert(bbody(testnetSetup.forgedProtocolVersion).exists(_.isRight))
+    ProducerSignal.values.foreach(signal =>
+      assert(bbody(testnetSetup.forgedProtocolVersion(signal)).exists(_.isRight), signal.toString)
+    )
     assertEquals(
       bbody(forged(ReferenceBuild.LeiosB004fe0c, experimental = false)),
       Right(

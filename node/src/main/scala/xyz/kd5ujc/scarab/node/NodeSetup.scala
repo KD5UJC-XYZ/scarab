@@ -97,13 +97,14 @@ final case class NodeSetup(
 
   def retainedHeaders: Int = GenesisRuntime.retainedHeaders(geometry, BigInt(chainStoreK.blocks))
 
-  /** The protocol version the node's forged headers carry: the configured one of the build whose
-    * rules the ledger follows ([[ConfigSettings.protocolVersion]]), as `forgeShelleyBlock` takes
-    * `shelleyProtocolVersion` of the block config (ouroboros-consensus 2416493b
-    * `Shelley/Ledger/Forge.hs:144`).
+  /** The protocol version the node's forged headers carry: the major of the configured one of the
+    * build whose rules the ledger follows ([[ConfigSettings.protocolVersion]]), as
+    * `forgeShelleyBlock` takes `shelleyProtocolVersion` of the block config (ouroboros-consensus
+    * 2416493b `Shelley/Ledger/Forge.hs:144`), and the minor `signal` makes of it, where the
+    * reference keeps its own minor (a Deviation, [[forge.ProducerSignal]]).
     */
-  def forgedProtocolVersion: (BigInt, BigInt) =
-    config.settings.protocolVersion(globals.referenceBuild)
+  def forgedProtocolVersion(signal: forge.ProducerSignal): (BigInt, BigInt) =
+    (config.settings.protocolVersion(globals.referenceBuild)._1, signal.minor)
 
   /** This setup with its ledger following the rules of `build` ([[LedgerGlobals.referenceBuild]]).
     */

@@ -14,6 +14,11 @@ blocks are forged. Keep key files outside the repository and readable only by th
 key file must be writable by the node (mode 0600, in a directory it can write): the node writes the evolved
 key back (see below); the VRF key and the certificate can stay read-only.
 
+The headers the node forges carry the reference's major protocol version and, as their minor, Scarab's block
+producer identifier 42 under the layout CIP-0203 proposes (cardano-foundation/CIPs#1276), where cardano-node writes
+its own release minor: an approved Deviation (#1348). `--producer-id opt-out` writes the opt-out identifier 255
+instead ([flags](flags.md)).
+
 At start the node checks the VRF key file as `cardano-node` does ([IN-83](../implementer-notes.md)): a file with any
 "other" permission bit (`0o007`, for example 0644) is refused with a typed `ConfigError`-style key-file error, a file with
 a "group" bit (for example 0640) starts with a `keyFileGroupAccess` warning, and 0600 or 0400 passes. Only the VRF

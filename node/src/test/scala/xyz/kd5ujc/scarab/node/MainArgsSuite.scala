@@ -140,6 +140,20 @@ class MainArgsSuite extends munit.FunSuite:
     assert(Main.parse(base ++ List("--key-lock", "maybe")).isLeft)
   }
 
+  test("--producer-id defaults to Scarab's identifier and refuses other values (#1348)") {
+    import xyz.kd5ujc.scarab.node.forge.ProducerSignal
+    assertEquals(Main.parse(base).map(_.producerSignal), Right(ProducerSignal.Identified))
+    assertEquals(
+      Main.parse(base ++ List("--producer-id", "opt-out")).map(_.producerSignal),
+      Right(ProducerSignal.OptedOut)
+    )
+    assertEquals(
+      Main.parse(base ++ List("--producer-id", "scarab")).map(_.producerSignal),
+      Right(ProducerSignal.Identified)
+    )
+    assert(Main.parse(base ++ List("--producer-id", "42")).isLeft)
+  }
+
   test(
     "--header-first and --max-inbound have defaults and refuse bad values; --inbound-sync is gone"
   ) {
