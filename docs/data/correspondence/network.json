@@ -1990,7 +1990,7 @@
    "class": "Mirror",
    "structure": "same",
    "note": "the pipelined client",
-   "digest": "2451e48a44721c8e"
+   "digest": "408209ca7f5bfd3b"
   },
   "val network.LeiosNotifyPipelined.PipelineDepth": {
    "upstream": [
@@ -2042,9 +2042,12 @@
     }
    ],
    "class": "Mirror",
-   "structure": "same",
-   "note": "the depth checkDone gives and the Quit limit",
-   "digest": "c3ebe8455436eed2"
+   "structure": "differs",
+   "note": "the depth checkDone gives and the Quit limit, and how many replies may be read ahead of the one handed on (Scarab's, Handling)",
+   "digest": "026972193a8fe6b8",
+   "evidence": [
+    "LeiosNotifyPipelinedSuite"
+   ]
   },
   "def network.LeiosNotifyPipelined.run": {
    "upstream": [
@@ -2075,8 +2078,8 @@
     "LeiosNotifyPipelinedSuite",
     "LeiosNotifyClientSuite"
    ],
-   "note": "checkDone (the stop, then the forecast, awaitImmTipCanForecastNow, then the depth) and the wait for a reply at the depth are one transaction there that retries until they hold; here, before each request, the stop, then a place below the depth, then the gate, read once there is room, an open gate not waited for and a closed one waited for against the stop. The room is a wake for each reply collected (arrived), which a stop also wakes, from a body of its own; told to stop MsgQuit at once, the outstanding replies collected unhandled (AlreadyDraining), then MsgDone, expected after every reply requested; a sender and a receiver, as the pipelined driver's receiver queue, each reply handed on in order and counted as arrived after",
-   "digest": "e06409f702975761"
+   "note": "checkDone (the stop, then the forecast, awaitImmTipCanForecastNow, then the depth) and the wait for a reply at the depth are one transaction there that retries until they hold; here, before each request, the stop, then a place below the depth, then the gate, read once there is room, an open gate not waited for and a closed one waited for against the stop. The room is a wake for each reply collected (arrived), which a stop also wakes, from a body of its own; told to stop MsgQuit at once, the outstanding replies collected unhandled (AlreadyDraining), then MsgDone, expected after every reply requested; a sender and a receiver, as the pipelined driver's receiver queue, each reply prepared as it arrives (Handling: what is read ahead runs alone, at most lookahead replies received ahead of their handing on, and a reading not ended by its reply's turn, or failed, is replaced by what was given for that without the turn waiting, and none is started once the client has quit), then handed on in the order the replies arrived and counted as arrived after, its turn coming where a client that handles each reply as it receives it would receive it and deciding there, before it waits for anything read ahead, whether the client has quit (AlreadyDraining, as there); a failure to receive, typed or a defect, raised in its turn, after the replies before it are handed on, and MsgDone waited for under its limit only once they are, as a client that handles each reply as it receives it waits",
+   "digest": "ddacfa91cb88a61e"
   },
   "def network.LeiosNotifyPipelined.tag": {
    "upstream": [
@@ -2265,6 +2268,28 @@
    "record": "https://github.com/KD5UJC-XYZ/scarab/issues/956#issuecomment-6874322050",
    "note": "the number to deactivate and the peers picked mirror the reference: it subtracts the big ledger peers being deactivated only (numberOfActiveBigLedgerPeersDemotions); the reference's lingering active big ledger peers (inProgressDemoteToCold within activeBigLedger) are none here, since a Cooling peer is not active, as Monitor.connections takes a peer out of activePeers when it starts to linger; local roots, which the reference also leaves out, are never big ledger peers. The trace also carries, for each peer that could be demoted, its score where the metrics have one, the approved Deviation D5 of ADR 0008, where TraceDemoteHotBigLedgerPeers carries the target, the count and the peers picked",
    "digest": "6cdc3b1fe2602193"
+  },
+  "class network.LeiosNotifyPipelined.Handling": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoOnlyTestNotify.hs",
+     "symbol": "leiosNotifyClientPeerPipelined",
+     "lines": [
+      529,
+      537
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "LeiosNotifyPipelinedSuite",
+    "LeiosVotesSuite"
+   ],
+   "note": "the handler the client is given (k0), as two parts: prepare reads ahead of a reply's turn what changes nothing its turn relies on, with what to take where that reading has not ended by the reply's turn or failed, and handle takes the replies in order with it; with nothing read ahead (Handling.inOrder) it is k0 itself. LeiosVotesSuite shows that a vote checked ahead and committed in its turn counts as adding it in its turn counts it",
+   "digest": "9d3b0130e9850772"
   }
  },
  "glue": [
@@ -2627,6 +2652,15 @@
    "definitions": [
     "val protocol.ReferenceBuild.renamed",
     "def protocol.ReferenceBuild.recorded"
+   ]
+  },
+  {
+   "reason": "the read-ahead of the pipelined LeiosNotify client, which the reference's client does not do: what a reply's handling reads ahead of its turn (Prepared), the handling that reads nothing ahead (Handling.inOrder), and how far ahead replies are read (Lookahead) (#1349)",
+   "definitions": [
+    "enum network.LeiosNotifyPipelined.Prepared",
+    "object network.LeiosNotifyPipelined.Handling",
+    "def network.LeiosNotifyPipelined.Handling.inOrder",
+    "val network.LeiosNotifyPipelined.Lookahead"
    ]
   }
  ]

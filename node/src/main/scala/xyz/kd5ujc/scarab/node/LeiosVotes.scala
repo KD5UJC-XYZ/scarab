@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.node
 
 import cats.effect.{Concurrent, Ref, Resource, Unique}
-import cats.effect.std.Queue
+import cats.effect.std.{Queue, Semaphore}
 import cats.mtl.Raise
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.consensus.leios.{
@@ -12,7 +12,7 @@ import xyz.kd5ujc.scarab.consensus.leios.{
   VoteAggregationDefect,
   VoteInvalid
 }
-import xyz.kd5ujc.scarab.crypto.bls.{BlsError, Certificate, RbHash, SeatId, Vote, Weight}
+import xyz.kd5ujc.scarab.crypto.bls.{BlsError, Certificate, Committee, RbHash, SeatId, Vote, Weight}
 import xyz.kd5ujc.scarab.ledger.LeiosCertificationDefect
 
 /** Why the vote state reached no answer on a vote: a failure of this node, never a verdict on the
@@ -39,8 +39,11 @@ enum LeiosVotesDefect:
 final class LeiosVotes[F[_]] private (
     held: Ref[F, LeiosVotes.Held[F]],
     committee: F[Either[LeiosCertificationDefect, Option[TipCommittee]]],
-    votable: F[RbHash => Boolean]
+    votable: F[RbHash => Boolean],
+    checks: Semaphore[F],
+    val checksAtOnce: Int
 )(using F: Concurrent[F]):
+  import LeiosVotes.Verified
 
   /** `addVote` (`LeiosVoteState.hs:168-247`, ouroboros-consensus d91b3557): a vote whose block is
     * not `votable` is `NotVotable`, and one counted already `AlreadyKnown`, before any check, read
@@ -52,7 +55,18 @@ final class LeiosVotes[F[_]] private (
     * and writes it to its broadcast channel in one transaction: a vote is never counted while a
     * subscriber misses it, which a later copy, `AlreadyKnown`, would never make good.
     */
-  def add(vote: Vote)(using defect: Raise[F, LeiosVotesDefect]): F[AddVoteResult] =
+  def add(vote: Vote)(using Raise[F, LeiosVotesDefect]): F[AddVoteResult] =
+    commit(Verified.unread(vote))
+
+  /** [[add]] of a vote whose signature may have been checked ahead of its turn ([[verify]]): every
+    * step of `addVote` is taken here, at the vote's turn, in its order: whether its block is one we
+    * take votes for and whether it counted already, then the committee in force now, then the
+    * check, which is the one made ahead only where it was made against this same committee, and
+    * otherwise made here; then the update. So a vote checked ahead counts exactly as [[add]] would
+    * count it now, whatever changed since its check.
+    */
+  def commit(verified: Verified)(using defect: Raise[F, LeiosVotesDefect]): F[AddVoteResult] =
+    val vote = verified.vote
     (votable.map(_(vote.announcingRbHash)), held.get.map(_.state.seen(vote))).tupled.flatMap {
       case (false, _)   => F.pure(AddVoteResult.NotVotable)
       case (true, true) => F.pure(AddVoteResult.AlreadyKnown)
@@ -61,8 +75,8 @@ final class LeiosVotes[F[_]] private (
           case Left(failed) =>
             defect.raise[LeiosVotesDefect, AddVoteResult](LeiosVotesDefect.Committee(failed))
           case Right(None) => F.pure(AddVoteResult.NoCommittee)
-          case Right(Some(TipCommittee(members, threshold))) =>
-            VoteInvalid.validate(members, vote) match
+          case Right(Some(tip @ TipCommittee(members, threshold))) =>
+            verified.verdict(tip).fold(VoteInvalid.validate(members, vote))(Right(_)) match
               case Left(native) =>
                 defect.raise[LeiosVotesDefect, AddVoteResult](LeiosVotesDefect.Verification(native))
               case Right(Left(reason)) => F.pure(AddVoteResult.Invalid(reason))
@@ -92,6 +106,26 @@ final class LeiosVotes[F[_]] private (
                 )
         }
     }
+
+  /** `vote` 's signature checked ahead of its turn against the committee in force now, at most as
+    * many at once as the node allows, the committee read included, as its first read in an epoch
+    * decodes every seat's key: the costly part of [[add]], made where it changes nothing a turn
+    * relies on, since [[commit]] reads everything again at the vote's turn. A vote whose block is
+    * not one we take votes for or that counted already, a committee that cannot be read or none, a
+    * failure of the native library, or a failure of this reading leaves the vote unread, for its
+    * turn to check.
+    */
+  def verify(vote: Vote): F[Verified] =
+    (votable.map(_(vote.announcingRbHash)), held.get.map(_.state.seen(vote))).tupled
+      .flatMap {
+        case (true, false) =>
+          checks.permit.surround(committee.map {
+            case Right(Some(tip))      => Verified.against(tip, vote)
+            case Left(_) | Right(None) => Verified.unread(vote)
+          })
+        case (false, _) | (true, true) => F.pure(Verified.unread(vote))
+      }
+      .handleError(_ => Verified.unread(vote))
 
   /** The votes of one `MsgLeiosVotes` from a peer, each added in turn (`NodeToNode.hs:717-766`,
     * ouroboros-consensus 2416493b); a vote that does not count is dropped, as there, and the
@@ -136,14 +170,47 @@ object LeiosVotes:
   /** @param votable
     *   Whether a block is one we take votes for: among the newest [[LeiosVoteState.VoteWindow]] of
     *   the selection (`withinVoteWindow`, `NodeKernel.hs:986-998` at ouroboros-consensus d91b3557).
+    * @param checks
+    *   How many votes' signatures may be checked ahead of their turn at once, node-wide; at least
+    *   one ([[LeiosVotes.verify]]).
     */
   def create[F[_]: Concurrent](
       committee: F[Either[LeiosCertificationDefect, Option[TipCommittee]]],
-      votable: F[RbHash => Boolean]
+      votable: F[RbHash => Boolean],
+      checks: Int = 1
   ): F[LeiosVotes[F]] =
-    Ref
-      .of[F, Held[F]](Held(LeiosVoteState.empty, Map.empty))
-      .map(new LeiosVotes(_, committee, votable))
+    val atOnce = math.max(1, checks)
+    (
+      Ref.of[F, Held[F]](Held(LeiosVoteState.empty, Map.empty)),
+      Semaphore[F](atOnce.toLong)
+    ).mapN(new LeiosVotes(_, committee, votable, _, atOnce))
+
+  /** A vote with its signature checked ahead of its turn against a committee, or with nothing
+    * checked ([[Verified.unread]]). The check is `validateLeiosVote` ([[VoteInvalid.validate]])
+    * itself, made where the value is made, so a verdict is always that committee's on the vote; a
+    * vote's turn uses it only against that same committee ([[verdict]]).
+    */
+  final class Verified private (
+      val vote: Vote,
+      checked: Option[(Committee, Either[VoteInvalid, Weight])]
+  ):
+    /** The verdict of the check where it was made against `tip` 's own committee, the value whose
+      * seats the check read, which `validate` would give again.
+      */
+    def verdict(tip: TipCommittee): Option[Either[VoteInvalid, Weight]] =
+      checked.collect { case (members, verdict) if members eq tip.committee => verdict }
+
+  object Verified:
+    /** A vote with nothing checked: its turn checks it, as [[LeiosVotes.add]] does. */
+    def unread(vote: Vote): Verified = new Verified(vote, None)
+
+    /** `vote` checked against `tip` 's committee; a failure of the native library is no verdict on
+      * the vote, and leaves it unread.
+      */
+    def against(tip: TipCommittee, vote: Vote): Verified =
+      VoteInvalid
+        .validate(tip.committee, vote)
+        .fold(_ => unread(vote), verdict => new Verified(vote, Some((tip.committee, verdict))))
 
   /** The vote state and the subscribers, in one cell, so that a vote's count and the subscribers it
     * goes to are read in one update.

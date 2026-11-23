@@ -2,8 +2,8 @@
 package xyz.kd5ujc.scarab.network
 
 import cats.effect.{Async, Deferred}
-import cats.effect.std.Queue
-import cats.mtl.Raise
+import cats.effect.std.{Queue, Semaphore, Supervisor}
+import cats.mtl.{Handle, Raise}
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
 import fs2.concurrent.Signal
@@ -36,9 +36,16 @@ enum LeiosNotification:
   *     not, and the replies still outstanding are collected and not handed on (`AlreadyDraining`),
   *     then the server's `MsgDone` ends it.
   *   - Each reply is received by a receiver of its own, as the driver's receiver queue receives
-  *     them, handed to `handle` in the order they arrive, and counted as arrived only after. The
-  *     handler raises through the receiver's capability, so a reply it refuses ends the connection
-  *     as the reference's thread death does.
+  *     them, and prepared as it arrives ([[Handling]]): what is read ahead of its turn is read in a
+  *     fiber of its own, at most `lookahead` replies received ahead of their handing on. The
+  *     replies are handed to `handle` in the order they arrived, each with what was prepared for
+  *     it, and counted as arrived only after. A reply's turn comes where a client that handles each
+  *     reply as it receives it would receive it, and decides there whether the client has quit; a
+  *     failure to receive, typed or not, is raised in its turn, after the replies before it are
+  *     handed on; and `MsgDone` is waited for, under its limit, only once every reply before it is:
+  *     the decisions, the waits and the requests are those of such a client. The handler raises
+  *     through the capability of the fiber that hands the replies on, so a reply it refuses ends
+  *     the connection as the reference's thread death does.
   *
   * Busy waits forever and Quit `longWait`, each under `smallByteLimit` (`timeLimitsLeiosNotify` and
   * `byteLimitsLeiosNotify`, `:241-255`); the decoder reads a message in steps
@@ -51,7 +58,56 @@ object LeiosNotifyPipelined:
   /** `longWait`, the time limit of Quit. */
   val QuitTimeout: FiniteDuration = 60.seconds
 
-  final case class Settings(depth: Int = PipelineDepth, quitTimeout: FiniteDuration = QuitTimeout)
+  /** How many replies may be received and prepared ahead of their handing on, at most. */
+  val Lookahead: Int = 64
+
+  final case class Settings(
+      depth: Int = PipelineDepth,
+      quitTimeout: FiniteDuration = QuitTimeout,
+      lookahead: Int = Lookahead
+  )
+
+  /** What a reply's handling reads ahead of the reply's turn: nothing, with the value its turn
+    * takes (`Ready`), or `reading`, run ahead in a fiber of its own while the replies before it are
+    * still handed on (`Ahead`), whose turn takes what it gave where it has ended by then, and
+    * `otherwise` where it has not, failed or was cancelled; a reading never holds its turn up, and
+    * none is started once the client is seen to have quit (one started as it quits is let go of in
+    * its turn). A reading is only a head start: it reads nothing an earlier reply's handling
+    * changes, or its turn reads that again, and its turn with `otherwise` comes to what it would
+    * have come to with the reading. It raises through no capability, a failure being only the head
+    * start lost, and it ends soon once cancelled, as the conversation's end waits for that.
+    */
+  enum Prepared[F[_], P]:
+    case Ready(value: P)
+    case Ahead(reading: F[P], otherwise: P)
+
+  /** How the replies are handled: each is prepared as it arrives ([[Prepared]]), then handed to
+    * `handle` with what was prepared for it, in the order the replies arrived.
+    */
+  final case class Handling[F[_], P](
+      prepare: LeiosNotification => Prepared[F, P],
+      handle: P => Raise[F, NetworkError] ?=> F[Unit]
+  )
+
+  object Handling:
+    /** Each reply handed to `handle` as it is, nothing read ahead. */
+    def inOrder[F[_]](
+        handle: LeiosNotification => Raise[F, NetworkError] ?=> F[Unit]
+    ): Handling[F, LeiosNotification] =
+      Handling(Prepared.Ready[F, LeiosNotification](_), handle)
+
+  /** What the receiver passes on, in the order it received it: a reply, with what its turn takes
+    * and how to let go of what it reads ahead where its turn finds the client quit; a reply whose
+    * preparation failed, which fails the connection where its turn hands it on; the wait of
+    * `MsgDone` for every reply before it to be handed on; the failure that ended the receiving; or
+    * its end at `MsgDone`.
+    */
+  private enum Received[F[_], P]:
+    case Reply(taken: F[P], released: F[Unit])
+    case Unprepared(defect: Throwable)
+    case Reached(turn: Deferred[F, Unit])
+    case Failed(error: NetworkError)
+    case Ended()
 
   /** What wakes the sender: a place below the depth, one for each reply collected and `depth` at
     * the start, or the stop.
@@ -69,11 +125,11 @@ object LeiosNotifyPipelined:
   private enum Gated derives CanEqual:
     case Open, Stopped
 
-  def run[F[_]](
+  def run[F[_], P](
       channel: MuxChannel[F],
       stop: Deferred[F, Unit],
       gate: Signal[F, Boolean],
-      handle: LeiosNotification => Raise[F, NetworkError] ?=> F[Unit],
+      handling: Handling[F, P],
       settings: Settings = Settings()
   )(using
       F: Async[F],
@@ -88,8 +144,15 @@ object LeiosNotifyPipelined:
     // through the capability of the fiber that receives, so a reply's refusal is that fiber's
     def receive(state: LeiosNotify.State)(using Raise[F, NetworkError]): F[LeiosNotify.Message] =
       channel.recv(LeiosNotify.SmallByteLimit)(LeiosNotify.incremental(state))
-    (Queue.unbounded[F, Wake], Queue.unbounded[F, Expect], Deferred[F, Unit]).flatMapN {
-      (wakes, expected, quitting) =>
+    // the fibers that read ahead end with the conversation
+    Supervisor[F](await = false).use { supervisor =>
+      (
+        Queue.unbounded[F, Wake],
+        Queue.unbounded[F, Expect],
+        Deferred[F, Unit],
+        Queue.unbounded[F, Received[F, P]],
+        Semaphore[F](math.max(1, settings.lookahead).toLong)
+      ).flatMapN { (wakes, expected, quitting, staged, ahead) =>
         val sender = Fibers.scoped[F, NetworkError, Unit](NetworkError.Defect(_)) {
           // `checkDone` (the stop, then the forecast, then the depth) and the wait for a reply at the
           // depth, which the reference reads in one transaction that retries until they hold
@@ -135,28 +198,99 @@ object LeiosNotifyPipelined:
           stop.get *> wakes.offer(Wake.Stop)
         }
         val receiver = Fibers.scoped[F, NetworkError, Unit](NetworkError.Defect(_)) {
+          // a failure to receive, typed or a defect, is passed on in its turn, so the replies before
+          // it are handed on first, and the receiving ends
+          def received[A](fa: F[A])(next: A => F[Unit]): F[Unit] =
+            summon[Handle[F, NetworkError]].attempt(F.defer(fa)).attempt.flatMap {
+              case Right(Right(a)) => next(a)
+              case Right(Left(e))  => staged.offer(Received.Failed(e))
+              case Left(defect)    => staged.offer(Received.Failed(NetworkError.Defect(defect)))
+            }
+          // a reading ahead runs alone and ends with a value; its turn takes it where it has ended,
+          // and otherwise lets it go, cancelled without the turn waiting for that
+          def started(p: Prepared[F, P]): F[Received[F, P]] = p match
+            case Prepared.Ready(value) => F.pure(Received.Reply(F.pure(value), F.unit))
+            case Prepared.Ahead(reading, otherwise) =>
+              quitting.tryGet.flatMap {
+                // the reply's turn will find the client quit and hand nothing on
+                case Some(_) => F.pure(Received.Reply(F.pure(otherwise), F.unit))
+                case None =>
+                  Deferred[F, Either[Throwable, P]].flatMap { read =>
+                    supervisor.supervise(reading.attempt.flatMap(read.complete).void).map { fiber =>
+                      val released = supervisor.supervise(fiber.cancel).void
+                      // the turn takes the reading where it has ended, and otherwise lets it go
+                      Received.Reply(
+                        read.tryGet.flatMap {
+                          case Some(Right(value)) => F.pure(value)
+                          case Some(Left(_))      => F.pure(otherwise)
+                          case None               => released.as(otherwise)
+                        },
+                        released
+                      )
+                    }
+                  }
+              }
+          // a preparation that fails is the handler's failure, in the reply's turn
+          def staging(n: LeiosNotification): F[Unit] =
+            F.delay(handling.prepare(n)).attempt.flatMap {
+              case Right(prepared) => started(prepared).flatMap(staged.offer)
+              case Left(defect)    => staged.offer(Received.Unprepared(defect))
+            }
           def loop: F[Unit] =
             expected.take.flatMap {
               case Expect.Reply =>
-                receive(LeiosNotify.State.Busy)
-                  .flatMap(notification)
-                  .flatMap(n => quitting.tryGet.flatMap(q => handle(n).whenA(q.isEmpty))) *>
-                  wakes.offer(Wake.Room) *> loop
+                ahead.acquire *> received(
+                  receive(LeiosNotify.State.Busy).flatMap(notification)
+                )(n => staging(n) *> loop)
               case Expect.Done =>
-                Timed
-                  .within(settings.quitTimeout, id, "Quit")(receive(LeiosNotify.State.Quit))
-                  .flatMap {
-                    case LeiosNotify.Message.Done => F.unit
-                    case other =>
-                      illegal(ProtocolError.Leios(LeiosWireError.NotAdmitted(tag(other))))
-                  }
+                // `MsgDone` waited for, under its limit, once every reply before it is handed on
+                Deferred[F, Unit].flatMap(turn =>
+                  staged.offer(Received.Reached(turn)) *> turn.get
+                ) *>
+                  received(
+                    Timed
+                      .within(settings.quitTimeout, id, "Quit")(receive(LeiosNotify.State.Quit))
+                      .flatMap {
+                        case LeiosNotify.Message.Done => F.unit
+                        case other =>
+                          illegal[Unit](
+                            ProtocolError.Leios(LeiosWireError.NotAdmitted(tag(other)))
+                          )
+                      }
+                  )(_ => staged.offer(Received.Ended()))
+            }
+          loop
+        }
+        // the replies handed on in the order they arrived, each counted as arrived once handed on.
+        // A reply's turn comes where a client that handles each reply as it receives it would
+        // receive it, after the reply before it is handled, and it decides there, before it waits
+        // for anything read ahead: once the client has quit, the reply is collected and not handed
+        // on (`AlreadyDraining`). The handler refuses a reply through this fiber's capability
+        val handing = Fibers.scoped[F, NetworkError, Unit](NetworkError.Defect(_)) {
+          val arrived: F[Unit] = ahead.release *> wakes.offer(Wake.Room)
+          def loop: F[Unit] =
+            staged.take.flatMap {
+              case Received.Reply(taken, released) =>
+                quitting.tryGet.flatMap {
+                  case Some(_) => released *> arrived *> loop
+                  case None    => taken.flatMap(handling.handle(_)) *> arrived *> loop
+                }
+              case Received.Unprepared(defect) =>
+                quitting.tryGet.flatMap {
+                  case Some(_) => arrived *> loop
+                  case None    => NetworkError.Defect(defect).raise[F, Unit]
+                }
+              case Received.Reached(turn) => turn.complete(()) *> loop
+              case Received.Failed(error) => error.raise[F, Unit]
+              case Received.Ended()       => F.unit
             }
           loop
         }
         wakes.offer(Wake.Room).replicateA_(settings.depth) *>
           Fibers
-            .failFast(List(sender, receiver, stopping))
+            .failFast(List(sender, receiver, handing, stopping))
             .flatMap(_.fold(_.raise[F, Unit], F.pure))
+      }
     }
 
   /** A message the Busy decoder admitted, as the reply it is; the decoder admits no other, so

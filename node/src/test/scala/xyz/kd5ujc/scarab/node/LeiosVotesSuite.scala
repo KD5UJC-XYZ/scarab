@@ -4,10 +4,13 @@ package xyz.kd5ujc.scarab.node
 import cats.effect.{IO, Ref}
 import cats.mtl.Handle
 import cats.syntax.all.*
+import org.scalacheck.Gen
+import org.scalacheck.rng.Seed
 import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.consensus.leios.{AddVoteResult, TipCommittee, VoteInvalid}
-import xyz.kd5ujc.scarab.crypto.bls.{Certificate, Committee, Seat, SeatId, Vote, Weight}
+import xyz.kd5ujc.scarab.crypto.bls.{Certificate, Committee, RbHash, Seat, SeatId, Vote, Weight}
 import xyz.kd5ujc.scarab.crypto.bls.BlsFixtures.{key, rbHash, right}
+import xyz.kd5ujc.scarab.ledger.LeiosCertificationDefect
 import xyz.kd5ujc.scarab.network.FailsOnUncaught
 
 /** The node's vote state, `newLeiosVoteState` (ouroboros-consensus 2416493b
@@ -225,6 +228,207 @@ class LeiosVotesSuite extends FailsOnUncaught:
         // what reaches the subscribers that relay votes: exactly the votes taken, once each
         assertEquals(relayed.toVector, published, s"seed $seed: relayed")
     }
+  }
+
+  // --- votes checked ahead of their turn ---
+
+  /** The committee a scenario reads at a step: one of two layouts, the first again as a new value,
+    * none, or one that cannot be read.
+    */
+  private enum Basis derives CanEqual:
+    case First, FirstAgain, Rotated, Absent, Unreadable
+
+  /** Which blocks a scenario takes votes for at a step: every block, none, or every block but the
+    * first of the few.
+    */
+  private enum Votable derives CanEqual:
+    case Every, NoBlock, AllButFirst
+
+  private def admits(votable: Votable)(block: RbHash): Boolean = votable match
+    case Votable.Every       => true
+    case Votable.NoBlock     => false
+    case Votable.AllButFirst => block != rbHash(60)
+
+  /** A step of a scenario: a vote arrives, the committee in force changes, or the blocks votes are
+    * taken for change.
+    */
+  private enum Step:
+    case Arrives(vote: Vote)
+    case Changes(to: Basis)
+    case Admits(votable: Votable)
+
+  /** Six seats of equal weight and a quorum of four; `Rotated` seats each key one seat later, so a
+    * vote signed for one layout is invalid under the other.
+    */
+  private lazy val six = Vector.tabulate(6)(i => key(940 + i))
+  private def layout(shift: Int): TipCommittee = TipCommittee(
+    right(
+      Committee.honoured(
+        Vector.tabulate(6)(i => Seat(Weight(Rational(1, 6)), Some(six((i + shift) % 6)._2)))
+      )
+    ),
+    Weight(Rational(2, 3))
+  )
+  private lazy val first = layout(0)
+  private lazy val firstAgain = layout(0)
+  private lazy val rotated = layout(1)
+
+  private def read(basis: Basis): Either[LeiosCertificationDefect, Option[TipCommittee]] =
+    basis match
+      case Basis.First      => Right(Some(first))
+      case Basis.FirstAgain => Right(Some(firstAgain))
+      case Basis.Rotated    => Right(Some(rotated))
+      case Basis.Absent     => Right(None)
+      case Basis.Unreadable => Left(LeiosCertificationDefect.CommitteeOfNode11_1)
+
+  /** Votes of each seat for `blocks`, signed for either layout. */
+  private def signedFor(blocks: Vector[RbHash], seats: Int): Vector[Vote] =
+    for
+      block <- blocks
+      seat <- (0 until seats).toVector
+      shift <- Vector(0, 1)
+    yield right(Vote.sign(six((seat + shift) % 6)._1, right(SeatId.fromInt(seat)), block))
+
+  /** Three blocks, every seat, both layouts: duplicates, invalid votes and certificates. */
+  private lazy val few = signedFor(Vector.tabulate(3)(i => rbHash(60 + i)), 6)
+
+  /** 140 blocks, two seats, both layouts: more blocks than the vote state holds, so blocks leave it
+    * between a vote's check and its turn, and their votes count again.
+    */
+  private lazy val many = signedFor(Vector.tabulate(140)(i => rbHash(1000 + i)), 2)
+
+  private val basis: Gen[Basis] = Gen.oneOf(Basis.values.toSeq)
+
+  private def steps(pool: Vector[Vote], length: Int): Gen[Vector[Step]] =
+    Gen
+      .listOfN(
+        length,
+        Gen.frequency(
+          18 -> Gen.oneOf(pool).map(Step.Arrives(_)),
+          2 -> basis.map(Step.Changes(_)),
+          1 -> Gen.oneOf(Votable.values.toSeq).map(Step.Admits(_))
+        )
+      )
+      .map(_.toVector)
+
+  /** A scenario: the committee in force at the start, the one in force while every vote is checked
+    * ahead, and the steps.
+    */
+  private def scenario(pool: Vector[Vote], length: Int): Gen[(Basis, Basis, Vector[Step])] =
+    for
+      start <- basis
+      ahead <- basis
+      taken <- steps(pool, length)
+    yield (start, ahead, taken)
+
+  /** A scenario past the window: both seats' votes for each of the 140 blocks in order, the
+    * committee changing only between layouts under which they count, so more blocks than the window
+    * holds are counted and the first ones leave it; then votes for the first blocks again, under
+    * any committee.
+    */
+  private val wide: Gen[(Basis, Basis, Vector[Step])] =
+    val counting = Gen.oneOf(Basis.First, Basis.FirstAgain)
+    def slot(block: Int): Gen[Vector[Step]] =
+      Gen
+        .frequency(
+          19 -> Gen.const(Vector.empty[Step]),
+          1 -> counting.map(b => Vector(Step.Changes(b)))
+        )
+        .map(_ ++ Vector(Step.Arrives(many(4 * block)), Step.Arrives(many(4 * block + 2))))
+    for
+      ahead <- basis
+      sweep <- Gen.sequence[List[Vector[Step]], Vector[Step]]((0 until 140).map(slot))
+      again <- steps(many.take(4 * 20), 60)
+    yield (Basis.First, ahead, sweep.toVector.flatten ++ again)
+
+  /** What a run shows: each vote's answer or the vote state's defect, the votes each subscriber was
+    * given in order, and each block's certificate and voters at the end.
+    */
+  private type Shown = (
+      Vector[Either[LeiosVotesDefect, AddVoteResult]],
+      Vector[Vote],
+      Vector[(Option[Certificate], Map[SeatId, Weight])]
+  )
+
+  /** The steps run against a vote state whose committee starts as `start` 's: every vote checked
+    * ahead under `ahead` 's committee and then committed in its turn, or, without `ahead`, each
+    * taken in its turn with nothing checked ahead, as [[LeiosVotes.add]] takes it.
+    */
+  private def run(
+      start: Basis,
+      ahead: Option[Basis],
+      steps: Vector[Step]
+  ): IO[Shown] =
+    for
+      in <- Ref.of[IO, Basis](start)
+      taking <- Ref.of[IO, Votable](Votable.Every)
+      votes <- LeiosVotes.create[IO](in.get.map(read), taking.get.map(admits), checks = 2)
+      handedOn <- Ref.of[IO, Vector[Vote]](Vector.empty)
+      shown <- votes.subscribeWith(v => handedOn.update(_ :+ v)).use { _ =>
+        val arriving = steps.collect { case Step.Arrives(v) => v }
+        // every vote checked ahead under the `ahead` committee, before the first turn, the farthest
+        // a check can be from its turn; or none checked ahead, which is `add`
+        val checked: IO[Vector[LeiosVotes.Verified]] = ahead.fold(
+          IO.pure(arriving.map(LeiosVotes.Verified.unread))
+        )(b => in.set(b) *> arriving.traverse(votes.verify) <* in.set(start))
+        checked.flatMap { verified =>
+          steps
+            .foldLeftM((verified, Vector.empty[Either[LeiosVotesDefect, AddVoteResult]])) {
+              case ((next, answers), Step.Changes(to)) => in.set(to).as((next, answers))
+              case ((next, answers), Step.Admits(v))   => taking.set(v).as((next, answers))
+              case ((next, answers), Step.Arrives(_)) =>
+                Handle
+                  .allow[LeiosVotesDefect](
+                    votes.commit(next.head).map(_.asRight[LeiosVotesDefect])
+                  )
+                  .rescue(d => IO.pure(d.asLeft[AddVoteResult]))
+                  .map(answer => (next.tail, answers :+ answer))
+            }
+            .map(_._2)
+        }
+      }
+      blocks = steps.collect { case Step.Arrives(v) => v.announcingRbHash }.distinct
+      ends <- blocks.traverse(b => (votes.certificate(b), votes.voters(b)).tupled)
+      delivered <- handedOn.get
+    yield (shown, delivered, ends)
+
+  test("a vote checked ahead of its turn counts as adding it in its turn counts it") {
+    // the model is `add` (`addVote`, LeiosVoteState.hs:157-234 at ouroboros-consensus 2416493b):
+    // checking every vote ahead, against any committee, changes no answer, no delivery and no tally,
+    // whatever the committee, the window and the counted votes become before each vote's turn
+    val cases =
+      Gen
+        .listOfN(60, scenario(few, 30))
+        .apply(Gen.Parameters.default, Seed(1349L))
+        .toList
+        .flatten ++
+        Gen
+          .listOfN(3, wide)
+          .apply(Gen.Parameters.default, Seed(1355L))
+          .toList
+          .flatten
+    cases
+      .traverse { (start, ahead, steps) =>
+        (run(start, None, steps), run(start, Some(ahead), steps)).tupled
+          .map((added, committed) => ((start, ahead, steps.size), added, committed))
+      }
+      .map { runs =>
+        assertEquals(runs.size, 63)
+        runs
+          .foreach((label, added, committed) => assertEquals(committed, added, s"scenario $label"))
+        // the scenarios reach every answer, and leave blocks certified
+        val answers = runs.flatMap(_._2._1)
+        assert(answers.exists(_.exists(_.isInstanceOf[AddVoteResult.Added])), "no vote counted")
+        assert(answers.contains(Right(AddVoteResult.AlreadyKnown)), "no vote known")
+        assert(answers.contains(Right(AddVoteResult.NotVotable)), "no vote for a block not taken")
+        assert(answers.contains(Right(AddVoteResult.NoCommittee)), "no vote without a committee")
+        assert(
+          answers.contains(Right(AddVoteResult.Invalid(VoteInvalid.InvalidSignature))),
+          "no invalid vote"
+        )
+        assert(answers.exists(_.isLeft), "no committee unread")
+        assert(runs.exists(_._2._3.exists(_._1.isDefined)), "no block certified")
+      }
   }
 
 object LeiosVotesSuite:

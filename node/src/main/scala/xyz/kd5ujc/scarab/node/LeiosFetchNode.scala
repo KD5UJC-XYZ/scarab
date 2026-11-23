@@ -104,12 +104,19 @@ final class LeiosFetchNode[F[_]] private (
             .flatMapN { (stop, peerState) =>
               val handling = notifyHandling(connection, vars, client, peerState)
               given LeiosNotify.AnnouncementReader = client.reader
+              // enough replies read ahead to keep the node's signature checks busy
+              val settings =
+                LeiosNotifyPipelined.Settings(lookahead = 2 * client.votes.checksAtOnce)
               onStop(stop.complete(()).void).surround(
-                LeiosNotifyPipelined.run[F](
+                LeiosNotifyPipelined.run[F, LeiosNotifyArrival](
                   channel,
                   stop,
                   client.view.gate,
-                  notification => LeiosNotifyHandling.ending(handling.handle(notification))
+                  LeiosNotifyPipelined.Handling(
+                    handling.prepare,
+                    arrival => LeiosNotifyHandling.ending(handling.arrived(arrival))
+                  ),
+                  settings
                 )
               )
             }

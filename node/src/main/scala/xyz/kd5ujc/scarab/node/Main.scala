@@ -2251,7 +2251,9 @@ object Main extends IOApp:
       }
       // the vote state of the Leios build, of the committee of the selection's tip, read for each
       // vote, taking votes only for the newest blocks of the selection (`newLeiosVoteState`,
-      // `withinVoteWindow`, `NodeKernel.hs:986-998` at ouroboros-consensus d91b3557)
+      // `withinVoteWindow`, `NodeKernel.hs:986-998` at ouroboros-consensus d91b3557); half the
+      // processors may check votes' signatures ahead of their turn at once, as the closures'
+      // pre-validation is bounded
       leiosVotes <- leiosFetch.traverse(_ =>
         LeiosVotes.create[IO](
           chain.ref.get
@@ -2264,7 +2266,8 @@ object Main extends IOApp:
                 .flatMap(b => xyz.kd5ujc.scarab.crypto.bls.RbHash.fromBytes(b._1.hash))
                 .toVector
             )
-          )
+          ),
+          math.max(1, VerificationCache.defaultParallelism / 2)
         )
       )
       // the voting thread of a Leios build, over the node's one vote state, with the voting keys of the credentials read at

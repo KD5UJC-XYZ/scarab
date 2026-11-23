@@ -29,7 +29,7 @@ import xyz.kd5ujc.scarab.ledger.{
   PeerError,
   VerificationDefect
 }
-import xyz.kd5ujc.scarab.network.{LeiosNotification, NetworkError}
+import xyz.kd5ujc.scarab.network.{LeiosNotification, LeiosNotifyPipelined, NetworkError}
 import xyz.kd5ujc.scarab.protocol.{EbPoint, HfcHeader}
 import xyz.kd5ujc.scarab.protocol.LeiosWord.Word64
 import xyz.kd5ujc.scarab.storage.{LeiosStore, LeiosStoreError}
@@ -66,6 +66,25 @@ enum LeiosNotifyEvent:
   case VoteAcquired(connection: Long, vote: Vote, tally: VoteTally)
   case Certified(rbHash: RbHash)
 
+/** A LeiosNotify reply as its handling takes it: votes, each with its signature checked ahead of
+  * its turn or not ([[LeiosVotes.Verified]]), or another reply as it came. Votes are never another
+  * reply, so every vote is taken through the vote state's [[LeiosVotes.commit]].
+  */
+enum LeiosNotifyArrival:
+  case Votes(votes: Vector[LeiosVotes.Verified])
+  case Other(
+      notification: LeiosNotification.Announcement | LeiosNotification.BlockOffer |
+        LeiosNotification.BlockTxsOffer | LeiosNotification.Canceled.type
+  )
+
+object LeiosNotifyArrival:
+  /** `notification` with nothing checked ahead. */
+  def unread(notification: LeiosNotification): LeiosNotifyArrival = notification match
+    case LeiosNotification.Votes(vs) => Votes(vs.map(LeiosVotes.Verified.unread))
+    case other @ (_: LeiosNotification.Announcement | _: LeiosNotification.BlockOffer |
+        _: LeiosNotification.BlockTxsOffer | LeiosNotification.Canceled) =>
+      Other(other)
+
 /** The handling of one connection's LeiosNotify replies (`hLeiosNotifyClient`,
   * `Ouroboros/Consensus/Network/NodeToNode.hs` 615-768 at ouroboros-consensus 2416493b), over the
   * fetch logic's `shared` state, the peer's `vars`, the node's `central` announcements, its store
@@ -89,8 +108,38 @@ private[node] final class LeiosNotifyHandling[F[_]](
 )(using F: Async[F]):
   import LeiosNotifyHandling.{Validated, refused}
 
+  /** What is read of a reply ahead of its turn: the signature of a reply's one vote, checked
+    * against the committee in force ([[LeiosVotes.verify]]), which the vote's turn uses only if
+    * that committee is still in force, the vote unread where the check is lost; nothing of another
+    * reply.
+    */
+  def prepare(
+      notification: LeiosNotification
+  ): LeiosNotifyPipelined.Prepared[F, LeiosNotifyArrival] =
+    notification match
+      // a reply of one vote, as the relays send them, checked ahead; a reply of several is taken
+      // in its turn, each vote checked as it is counted, so that none waits for another's check
+      case LeiosNotification.Votes(vs) if vs.sizeIs == 1 =>
+        LeiosNotifyPipelined.Prepared.Ahead(
+          vs.traverse(votes.verify).map(LeiosNotifyArrival.Votes(_)),
+          LeiosNotifyArrival.unread(notification)
+        )
+      case other => LeiosNotifyPipelined.Prepared.Ready(LeiosNotifyArrival.unread(other))
+
   /** One reply, refused through `Raise[F, PeerError]`; the caller ends the connection with it. */
   def handle(notification: LeiosNotification)(using Raise[F, PeerError]): F[Unit] =
+    arrived(LeiosNotifyArrival.unread(notification))
+
+  /** One reply in its turn, with what was read of it ahead ([[prepare]]); refused as [[handle]]. */
+  def arrived(arrival: LeiosNotifyArrival)(using Raise[F, PeerError]): F[Unit] =
+    arrival match
+      case LeiosNotifyArrival.Votes(vs)    => vs.traverse_(vote)
+      case LeiosNotifyArrival.Other(other) => answered(other)
+
+  private def answered(
+      notification: LeiosNotification.Announcement | LeiosNotification.BlockOffer |
+        LeiosNotification.BlockTxsOffer | LeiosNotification.Canceled.type
+  )(using Raise[F, PeerError]): F[Unit] =
     notification match
       case LeiosNotification.Announcement(bytes) =>
         // a header relayed as an announcement must carry one; another era's header carries none
@@ -109,8 +158,7 @@ private[node] final class LeiosNotifyHandling[F[_]](
         checkOffer(_.closureOffer(point)) *>
           recordOffer(point, PeerOffer(None, None, WhetherTxsClosureOffered.Offered)) *>
           events(LeiosNotifyEvent.BlockTxsOffered(connection, point))
-      case LeiosNotification.Votes(vs) => vs.traverse_(vote)
-      case LeiosNotification.Canceled  => refused(LeiosNotifyFault.UnexpectedCancel)
+      case LeiosNotification.Canceled => refused(LeiosNotifyFault.UnexpectedCancel)
 
   /** `MsgLeiosBlockAnnouncement` (`NodeToNode.hs` 661-706): counted against this peer's
     * announcements and validated ([[LeiosNotifyPeerState.onAnnouncement]], [[validity]]); a new one
@@ -209,13 +257,15 @@ private[node] final class LeiosNotifyHandling[F[_]](
   private def recordOffer(point: EbPoint, offer: PeerOffer): F[Unit] =
     vars.offerings.update(LeiosRollForward.recordOffer(_, point, offer)) *> shared.wake
 
-  /** One vote of `MsgLeiosVotes` (`NodeToNode.hs` 717-766): added to the vote state, where a vote
-    * that does not count is dropped, as there; a vote counted is told, and the certificate it
-    * completed. The vote state's defect is the node's, never a verdict on the vote.
+  /** One vote of `MsgLeiosVotes` (`NodeToNode.hs` 717-766): added to the vote state in its turn
+    * ([[LeiosVotes.commit]]), where a vote that does not count is dropped, as there; a vote counted
+    * is told, and its block's certificate where the block has one. The vote state's defect is the
+    * node's, never a verdict on the vote.
     */
-  private def vote(v: Vote)(using Raise[F, PeerError]): F[Unit] =
+  private def vote(verified: LeiosVotes.Verified)(using Raise[F, PeerError]): F[Unit] =
+    val v = verified.vote
     Handle
-      .allow[LeiosVotesDefect](votes.add(v).map(_.asRight[LeiosVotesDefect]))
+      .allow[LeiosVotesDefect](votes.commit(verified).map(_.asRight[LeiosVotesDefect]))
       .rescue(d => F.pure(d.asLeft[AddVoteResult]))
       .flatMap {
         case Left(LeiosVotesDefect.Verification(native)) =>
