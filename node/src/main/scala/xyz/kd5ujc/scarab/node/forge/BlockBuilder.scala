@@ -1,33 +1,29 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.forge
 
-import xyz.kd5ujc.scarab.ledger.{DetachedRecords, ForgeAssemblyProblem, Tx}
-import cats.syntax.all.*
 import xyz.kd5ujc.scarab.crypto.Blake2b
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node}
-import xyz.kd5ujc.scarab.ledger.{EpochGeometry, ForgeError, Header, LedgerFailure, VrfCert}
+import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.ledger.{Header, VrfCert}
 import xyz.kd5ujc.scarab.ledger.{HeaderBodyEncoding, HeaderVersionInfo, HeaderVrf}
 import xyz.kd5ujc.scarab.ledger.{LeiosBlock, LeiosBlockBody, LeiosHeader}
 import xyz.kd5ujc.scarab.ledger.{LeiosHeaderBody, LeiosHeaderFields}
-import xyz.kd5ujc.scarab.ledger.{LedgerGlobals, PosixClock, ProtocolParams, RefScripts, TxEnv}
-import xyz.kd5ujc.scarab.ledger.rules.Globals
+import xyz.kd5ujc.scarab.ledger.{ProtocolParams, RefScripts}
 import xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraTx
 import xyz.kd5ujc.scarab.crypto.bls.Certificate
-import xyz.kd5ujc.scarab.plutus.{ExUnits, ScriptDecoder, ScriptEvaluator}
-import cats.Id
-import xyz.kd5ujc.scarab.protocol.Era
+import xyz.kd5ujc.scarab.plutus.ExUnits
 import scala.annotation.tailrec
 import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.TxMeasure
-import xyz.kd5ujc.scarab.node.mempool.{Capacity, EbMeasure, Entry, Held, MempoolLedger}
+import xyz.kd5ujc.scarab.node.mempool.{Capacity, ConwayAdmitted, EbMeasure}
 import xyz.kd5ujc.scarab.ledger.{EbAnnouncement, ForgeDefect}
 import xyz.kd5ujc.scarab.protocol.LeiosFetch
 import cats.data.NonEmptyVector
 
 /** Block assembly, pure: choose the transactions that fit the protocol limits, encode the body, the
-  * header body and the block. Conway's as below; in the Leios build also Dijkstra's ranking block,
-  * its transactions taken from the pool's snapshot with the endorser block of those after them
-  * ([[partition]], [[Assembly]], [[leiosHeaderBody]]). Every function is deterministic in its
-  * arguments; the effects (clock, mempool, KES evolution, adoption) live in [[Forger]].
+  * header body and the block. Conway's as below, its transactions taken from the pool's snapshot
+  * ([[take]]); in the Leios build also Dijkstra's ranking block, its transactions taken from the
+  * pool's snapshot with the endorser block of those after them ([[partition]], [[Assembly]],
+  * [[leiosHeaderBody]]). Every function is deterministic in its arguments; the effects (clock,
+  * mempool, KES evolution, adoption) live in [[Forger]].
   *
   * The encodings are the reference's: the block is `[7, [header, [tx_body], [witness_set], {index:
   * auxiliary_data}, [invalid_index]]]`, the header `[header_body, kes_sig]` and `header_body` the
@@ -85,23 +81,16 @@ object BlockBuilder:
       valid: Boolean
   )
 
-  // a held transaction is read again as the mempool read it, with no budget but its size (#749)
-  private val limits = Cbor.Limits.Unbounded
-
-  /** The parts of a held transaction, read as the mempool read it: one holding a `RecD` record
-    * written as an empty indefinite list spans the fields after it (`DetachedRecords`).
+  /** The parts of a held Conway transaction as its block takes them: the transaction as it was
+    * validated (`extractTx` of the snapshot's `Validated` transaction, ouroboros-consensus 82ecba32
+    * `Shelley/Ledger/Forge.hs:85-92`; `extractValidatedTx` at 2416493b, `:146-160`), whose parts
+    * the block body writes as their original bytes (`mkBasicBlockBody`, cardano-ledger f649f975
+    * `Alonzo/BlockBody/Internal.hs:128-149`): the bytes they were received in, with the flag of its
+    * verdict ([[ConwayRead.withIsValid]]), never read again.
     */
-  def piece(entry: Entry): Either[ForgeError, Piece] =
-    DetachedRecords.read(entry.raw, limits, DetachedRecords.Shapes.transaction(Era.Conway))(e =>
-      ForgeError.Assembly(ForgeAssemblyProblem.Cbor(e))
-    )(parts(entry, _))
-
-  private def parts(entry: Entry, root: Node): Either[ForgeError, Piece] =
-    Tx.envelopeParts(root, Era.Conway)
-      .bimap(
-        e => ForgeError.Assembly(ForgeAssemblyProblem.Envelope(entry.id, e)),
-        t => Piece(entry.id, t.body, t.witnesses, t.auxiliaryData, t.isValid)
-      )
+  def piece(held: ConwayAdmitted): Piece =
+    val parts = held.read.parts
+    Piece(held.read.id, parts.body, parts.witnesses, parts.auxiliaryData, parts.isValid)
 
   /** The four encoded body components and what the header commits to. */
   final case class Body(
@@ -143,18 +132,6 @@ object BlockBuilder:
       containerOverhead(aux.size) + aux.map((i, a) => headLength(i) + a.size).sum +
       containerOverhead(invalid.size) + invalid.map(i => headLength(i)).sum
 
-  /** No verdict of ours on a held transaction: missing evaluator support or a crypto provider that
-    * failed on a witness, or a quantity of the ledger state outside its vocabulary type, which the
-    * reference's `compactCoinOrError` throws on in the forging thread (the reference's stop).
-    */
-  type NoVerdict =
-    LedgerFailure.Unavailable | LedgerFailure.Unverifiable | LedgerFailure.StateOutOfRange
-
-  /** The transactions of the block, and the held ones it was built without because the node has no
-    * verdict on them ([[NoVerdict]]): those leave the pool.
-    */
-  final case class Selection(chosen: Vector[(Entry, Piece)], withheld: Vector[(Entry, NoVerdict)])
-
   /** The protocol's block limits for a block on top of `ticked`: its maximum body size and its
     * maximum execution units.
     */
@@ -176,116 +153,15 @@ object BlockBuilder:
     def of(params: ProtocolParams): Limits =
       Limits(params.maxBlockBodySize.toLong, params.maxBlockExUnits)
 
-  /** The flat transaction a Conway block takes of a held one, none of another era's: a Conway
-    * transaction, which Conway's rules admitted, is applied again here as the flat transaction it
-    * was read with, until the forger's Conway path takes the era's (#85). A total match with no
-    * default, so that a new kind of held transaction is placed here, never left out of every block
-    * by a default.
+  /** The transactions of a Conway block, from the pool's snapshot of its slot ([[ConwaySnapshot]]):
+    * `snapshotTake` (ouroboros-consensus 82ecba32 `NodeKernel.hs:697-707`, `splitAfterTxSize` of
+    * `Mempool/TxSeq.hs:205-215`), the longest prefix of the snapshot, oldest first, whose measures,
+    * each the one its transaction was admitted with ([[Capacity.measure]]), add up to no more than
+    * `capacity` in every component, the block's `blockCapacityTxMeasure` ([[Limits.capacity]]). The
+    * first transaction that does not fit ends the block, however small the ones after it.
     */
-  private[forge] def conwayTx(held: Held): Option[Tx] = held match
-    case Held.InConway(admitted)                 => Some(admitted.read.flat)
-    case Held.Flat(_, _, _) | Held.InDijkstra(_) => None
-
-  /** The transactions of the block, as the reference takes them from its mempool (consensus
-    * 82ecba329 `NodeKernel.hs` 693-715): the held transactions are revalidated in order against the
-    * ticked ledger in the block's own environment (`getSnapshotFor`, `Mempool/Query.hs` 29-50, and
-    * `computeSnapshot`, `Mempool/Impl/Common.hs` 459-484, which drops the ones that no longer apply
-    * without counting them), and of those that still apply the longest prefix whose measures add up
-    * to no more than the block's capacity in every component is taken (`snapshotTake`,
-    * `splitAfterTxSize` of `Mempool/TxSeq.hs` 205-215): the first one that does not fit ends the
-    * selection. Each transaction counts for the measure it was admitted with ([[Capacity.measure]],
-    * the ticket's measure the reference keeps).
-    *
-    * A transaction was validated when the pool admitted it, so it is applied again as the
-    * reference's forging snapshot applies it (`revalidateTxsFor` and `reapplyTx`,
-    * [[MempoolLedger.reapply]]): MEMPOOL and LEDGER of Conway on the era-indexed state without
-    * their static checks, so no signature is verified and no script is evaluated again.
-    *
-    * A transaction the node has no verdict on ([[NoVerdict]]) is withheld: the block is built from
-    * the rest and the transaction leaves the pool with its reason. The reference has no such case:
-    * the exception ends its linked forging thread and the node stops (consensus 82ecba32
-    * `NodeKernel.hs` `forkBlockForging`). This is the owner's explicit decision of 2026-10-28
-    * (issue 584, ADR 0017).
-    *
-    * `decoder` and `evaluator` are the node's backend (`PlutusBackend`), passed on every path; the
-    * static checks they serve do not run on a reapplication.
-    */
-  def select(
-      ticked: MempoolLedger,
-      slot: BigInt,
-      epoch: BigInt,
-      geometry: EpochGeometry,
-      globals: LedgerGlobals,
-      candidates: Vector[Entry],
-      limit: Limits,
-      clock: Option[PosixClock] = None
-  )(
-      decoder: ScriptDecoder[Id],
-      evaluator: ScriptEvaluator[Id]
-  ): Selection =
-    import Capacity.fits
-    final case class Acc(
-        state: MempoolLedger,
-        chosen: Vector[(Entry, Piece)],
-        withheld: Vector[(Entry, NoVerdict)],
-        used: TxMeasure
-    )
-    val rules = Globals(globals, geometry)
-    val capacity = limit.capacity
-    // a Conway block takes Conway transactions: the pool's ledger is of the era of the slot after
-    // the tip, and the forger forges only on a Conway tip, so the pool it reads is Conway's. The
-    // selection after `entry`, whose flat transaction is `tx`, or none where it does not fit
-    def taken(entry: Entry, tx: Tx, acc: Acc): Option[Acc] =
-      val env = TxEnv(
-        slot,
-        epoch,
-        globals.network.wire,
-        firstSlotNextEpoch = geometry.firstSlot(epoch + 1),
-        stabilityWindow = geometry.stabilityWindow.toBigInt,
-        txIndex = acc.chosen.size,
-        updateQuorum = globals.updateQuorum,
-        clock = Some(clock.getOrElse(PosixClock.total(globals.systemStart, geometry))),
-        decoder = decoder,
-        evaluator = evaluator,
-        referenceBuild = globals.referenceBuild
-      )
-      val applied: Either[NoVerdict, Option[(MempoolLedger, Piece)]] = piece(entry).toOption match
-        case None => Right(None)
-        case Some(p) =>
-          acc.state
-            .reapply(tx, env, rules)
-            .fold(
-              {
-                // no verdict on the transaction (evaluator, crypto provider) or a quantity of the
-                // state out of range: it is withheld and the selection goes on
-                case unavailable: LedgerFailure.Unavailable    => Left(unavailable)
-                case unverifiable: LedgerFailure.Unverifiable  => Left(unverifiable)
-                case outOfRange: LedgerFailure.StateOutOfRange => Left(outOfRange)
-                case _                                         => Right(None)
-              },
-              next => Right(Some((next, p)))
-            )
-      applied match
-        case Left(noVerdict) => Some(acc.copy(withheld = acc.withheld :+ (entry -> noVerdict)))
-        case Right(None)     => Some(acc)
-        case Right(Some((next, p))) =>
-          val used = acc.used + Capacity.measure(entry)
-          Option.when(used.fits(capacity))(
-            acc.copy(state = next, chosen = acc.chosen :+ (entry -> p), used = used)
-          )
-    @tailrec
-    def go(rest: List[Entry], acc: Acc): Acc = rest match
-      case Nil => acc
-      case entry :: more =>
-        conwayTx(entry.held) match
-          // the transactions of the other eras, which a pool behind or past the crossing holds
-          case None => go(more, acc)
-          case Some(tx) =>
-            taken(entry, tx, acc) match
-              case Some(next) => go(more, next)
-              case None       => acc
-    val done = go(candidates.toList, Acc(ticked, Vector.empty, Vector.empty, TxMeasure.zero))
-    Selection(done.chosen, done.withheld)
+  def take(snapshot: ConwaySnapshot, capacity: TxMeasure): Vector[ConwayHeld] =
+    splitAfterSize(snapshot.held, capacity)(_.measure)._1
 
   /** The ten-element Praos `header_body`, encoded as the reference encodes it to check the KES
     * signature ([[HeaderBodyEncoding]]): the bytes the KES key signs, and the block holds them as

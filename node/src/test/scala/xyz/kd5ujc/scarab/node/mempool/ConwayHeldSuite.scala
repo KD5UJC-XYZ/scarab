@@ -62,14 +62,14 @@ class ConwayHeldSuite extends FunSuite:
   /** `read` held as if validated in TxKit's ledger (`unsafeMakeValidatedTx`, which the reference
     * keeps for tests).
     */
-  private def admitted(ledger: MempoolLedger): ConwayAdmitted =
+  private def admitted(ledger: MempoolLedger, r: ConwayRead = read): ConwayAdmitted =
     val judging = ConwayPoolEnv.of(env, slot).judging
     val pp = PParams[Conway](right("parameters")(ConwayPParams.fromStored(ledger.params)))
     val menv =
       ConwayMempoolRun.mkMempoolEnv(slot, pp, ChainAccountState(ledger.treasury, Coin.zero))
     ConwayAdmitted(
-      read,
-      right("held")(ConwayMempoolRun.unsafeMakeValidatedTx(judging, menv, ledger.ls, read.tx))
+      r,
+      right("held")(ConwayMempoolRun.unsafeMakeValidatedTx(judging, menv, ledger.ls, r.tx))
     )
 
   private type Conway = xyz.kd5ujc.scarab.ledger.state.Conway
@@ -115,18 +115,54 @@ class ConwayHeldSuite extends FunSuite:
     val entry =
       Entry(Held.InConway(admitted(ledger)), 1L, 0L, scala.concurrent.duration.Duration.Zero)
     val limit = BlockBuilder.Limits(65536, xyz.kd5ujc.scarab.plutus.ExUnits(14000000, 10000000000L))
-    val selection = BlockBuilder.select(
-      ledger,
-      slot,
-      5,
-      env.geometry,
-      env.globals,
-      Vector(entry),
-      limit
-    )(env.decoder, env.evaluator)
-    assertEquals(selection.chosen.map(_._1.id), Vector(id))
-    assertEquals(selection.withheld, Vector.empty)
-    assertEquals(BlockBuilder.piece(entry).map(_.body), Right(parsed.parts.body))
+    // a pool that holds a transaction the ledger takes gives a block that takes it
+    val (chosen, withheld) = ledger.toPool.selected(Vector(entry), slot, env, limit)
+    assertEquals(chosen.map(_.admitted.read.id), Vector(id))
+    assertEquals(withheld, Vector.empty)
+  }
+
+  test(
+    "a Conway block's body is its held transactions' parts as they were received, each with its verdict's flag"
+  ) {
+    val ledger = TxKit.ledger(2)
+    Vector(IsPhase2Valid.Phase2Valid, IsPhase2Valid.Phase2Invalid).foreach { flag =>
+      val held = admitted(ledger, read.withIsValid(flag))
+      val valid = flag == IsPhase2Valid.Phase2Valid
+      val piece = BlockBuilder.piece(held)
+      assertEquals(
+        piece,
+        BlockBuilder.Piece(
+          id,
+          parsed.parts.body,
+          parsed.parts.witnesses,
+          parsed.parts.auxiliaryData,
+          valid
+        ),
+        flag
+      )
+      // the transaction the parts make is the one held, relayed and listed, byte for byte
+      assertEquals(
+        EraInjection.envelope(
+          xyz.kd5ujc.scarab.ledger.Block
+            .Transaction(piece.body, piece.witnesses, piece.aux, piece.valid),
+          Era.Conway
+        ),
+        Entry(Held.InConway(held), 1L, 0L, scala.concurrent.duration.Duration.Zero).raw,
+        flag
+      )
+      // and the body writes them as they are: a list of one body and of one witness set, and the
+      // index of an invalid transaction
+      val body = BlockBuilder.body(Vector(piece))
+      val one = Bytes.fromArray(Array(0x81.toByte))
+      assertEquals(body.bodies, one ++ parsed.parts.body, flag)
+      assertEquals(body.witnesses, one ++ parsed.parts.witnesses, flag)
+      assertEquals(
+        body.invalid,
+        if valid then Bytes.fromArray(Array(0x80.toByte))
+        else Bytes.fromArray(Array(0x81.toByte, 0x00.toByte)),
+        flag
+      )
+    }
   }
 
   private val pot: VocabError =

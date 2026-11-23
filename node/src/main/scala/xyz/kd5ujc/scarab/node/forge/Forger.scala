@@ -31,7 +31,7 @@ import xyz.kd5ujc.scarab.ledger.rules.{EraNes, Globals, Hfc}
 import xyz.kd5ujc.scarab.ledger.state.{Conway, Dijkstra, NewEpochState, ShelleyBasedEra, SlotNo}
 import xyz.kd5ujc.scarab.node.read.{ChainRead, ConwayView, InEra, TxClock}
 import xyz.kd5ujc.scarab.node.read.MirrorEraRead
-import xyz.kd5ujc.scarab.node.mempool.{Capacity, Entry, Mempool, MempoolLedger, MempoolState}
+import xyz.kd5ujc.scarab.node.mempool.{Capacity, ConwayPoolLedger, Mempool, MempoolEnv}
 import xyz.kd5ujc.scarab.node.mempool.{EbCapacityScale, EbMeasure, Rejection}
 import xyz.kd5ujc.scarab.consensus.leios.{
   AnnouncingHeader,
@@ -274,13 +274,8 @@ trait ForgeEvents[F[_]]:
   *   Whether the era history at the tip of a chain translates a slot ([[Forger.withinHorizon]]).
   * @param viewed
   *   The leader views derived lately, by the tip they were derived from and their epoch.
-  * @param utxoStore
-  *   The backing store of the UTxO set: the read set of the candidates is fetched from it.
   * @param stats
   *   Per-epoch counters (H5) and the reference's `ForgingStats`, folded over the traces.
-  * @param plutus
-  *   The node's Plutus backend ([[PlutusBackend]]), with which the block's transactions are applied
-  *   again.
   * @param chains
   *   The committed chain as it changes, from which the schedule's inputs are derived.
   * @param shared
@@ -288,10 +283,10 @@ trait ForgeEvents[F[_]]:
   *   its update of each period.
   * @param pause
   *   Called at the points where a test suspends a fiber ([[Forger.Point]]); nothing by default.
-  * @param selectionLedger
-  *   The ledger a block's transactions in a slot on a predecessor are selected against: the ticked
-  *   ledger itself, but in a test that needs one no chain state holds (a parameter beyond the
-  *   state's range, so that the selection withholds a transaction).
+  * @param conwaySnapshots
+  *   The pool's snapshot of a slot a Conway block takes its transactions from, its held Conway
+  *   transactions applied again on the ledger of the slot ([[ConwaySnapshots.ofPool]]): the node's
+  *   pool, or another for a forger of tests ([[ConwaySnapshots.unadmitted]]).
   * @param dijkstraSnapshots
   *   The pool's snapshot of a slot a Dijkstra ranking block takes its transactions from, with the
   *   endorser block of those after them ([[BlockBuilder.partition]]): the node's pool
@@ -312,7 +307,6 @@ trait ForgeEvents[F[_]]:
 final class Forger[F[_]: Async, S](
     config: PraosConfig,
     globals: LedgerGlobals,
-    plutus: PlutusBackend,
     protocolVersion: (BigInt, BigInt),
     credentials: PoolCredentials,
     val hot: HotKeys[F],
@@ -327,13 +321,12 @@ final class Forger[F[_]: Async, S](
     cache: Ref[F, Option[Forger.Crossed]],
     viewed: Ref[F, Vector[((Option[Bytes], BigInt), Forger.LeaderView)]],
     pending: Ref[F, Vector[Forger.Forged]],
-    utxoStore: Option[UtxoStore[F]],
     val stats: ForgeStats[F],
     val schedule: LeaderSchedule[F],
     chains: Signal[F, VolatileChain[S]],
     shared: Forger.Shared[F],
     pause: Forger.Point => F[Unit],
-    selectionLedger: (BigInt, ChainSync.Point, MempoolLedger) => MempoolLedger,
+    conwaySnapshots: ConwaySnapshots[F],
     dijkstraSnapshots: DijkstraSnapshots[F],
     onForgedEb: Option[OnForgedLeiosEb[F]],
     ebCapacityScale: F[EbCapacityScale],
@@ -1481,10 +1474,16 @@ final class Forger[F[_]: Async, S](
       )
       snapshot <- perform(mempool.snapshot)
       selected <- ticked match
+        // the pool's snapshot of the slot, on the ticked ledger, and the longest prefix of it the
+        // block's capacity takes (`getSnapshotFor` and `snapshotTake`, `NodeKernel.hs:697-707` at
+        // ouroboros-consensus 82ecba32; `partitionMempool` with no endorser block for Conway,
+        // `NodeKernel/Forge.hs:786-801` at 2416493b)
         case Forger.Ticked.InConway(ledger) =>
-          perform(select(context.base, slot, epoch, ledger, snapshot)).map((chosen, withheld) =>
+          perform(select(context.base, slot, ledger)).map((chosen, withheld) =>
             (
-              BlockBuilder.Assembly.InConway(BlockBuilder.body(chosen.map(_._2))),
+              BlockBuilder.Assembly.InConway(
+                BlockBuilder.body(chosen.map(h => BlockBuilder.piece(h.admitted)))
+              ),
               withheld,
               Option.empty[CertifyDecision]
             )
@@ -1752,42 +1751,26 @@ final class Forger[F[_]: Async, S](
   private def lift[A](e: Either[NodeError, A])(using Handle[F, NodeError]): F[A] =
     e.fold(_.raise[F, A], F.pure)
 
-  /** The transactions of the block, from the mempool's held ones ([[BlockBuilder.select]]). */
+  /** The transactions of a Conway block in `slot` on `base`, and the held ones the rules have no
+    * verdict on: the pool's snapshot of the slot on `ticked`, the parent's ledger ticked to it,
+    * with the clock of a transaction in a block of the slot on `base` (`getSnapshotFor`,
+    * [[ConwaySnapshots]]), cut to the block's capacity ([[BlockBuilder.take]]). Those with no
+    * verdict leave the pool with their reason, and the block is built from the rest: the owner's
+    * decision of 2026-10-28 (issue 584), where the reference's linked forging thread stops the node
+    * (consensus 82ecba32 Node/NodeKernel.hs `forkBlockForging`); they leave it only once the
+    * attempt counts (#1101).
+    */
   private def select(
       base: VolatileChain[S],
       slot: BigInt,
-      epoch: BigInt,
-      ticked: MempoolLedger,
-      held: MempoolState
-  )(using
-      Handle[F, NodeError]
-  ): F[(Vector[(Entry, BlockBuilder.Piece)], Map[Bytes, Rejection])] =
-    for
-      readable <- UtxoStore.complete(
-        utxoStore,
-        ticked.utxo,
-        MempoolState.readSet(held.entries.map(_.held.in))
+      ticked: ConwayPoolLedger
+  )(using Handle[F, NodeError]): F[(Vector[ConwayHeld], Map[Bytes, Rejection])] =
+    conwaySnapshots
+      .forSlot(ticked, base.tip, slot, clock.at(base.state, Era.Conway, slot))
+      .map(snapshot =>
+        BlockBuilder.take(snapshot, BlockBuilder.Limits.of(ticked.params).capacity) ->
+          snapshot.withheld
       )
-      selection <- F.blocking(
-        BlockBuilder.select(
-          selectionLedger(slot, base.tip, ticked.withUtxo(readable)),
-          slot,
-          epoch,
-          geometry,
-          globals,
-          held.entries,
-          BlockBuilder.Limits.of(ticked.params),
-          Some(clock.at(base.state, Era.Conway, slot))
-        )(plutus.decoder, plutus.evaluator)
-      )
-    // the held transactions we have no verdict on leave the pool with their reason, and the block
-    // is built from the rest: the owner's decision of 2026-10-28 (issue 584), where the reference's
-    // linked forging thread stops the node (consensus 82ecba32 Node/NodeKernel.hs
-    // `forkBlockForging`); they leave it only once the attempt counts (#1101)
-    yield (
-      selection.chosen,
-      selection.withheld.map((entry, failure) => entry.id -> Rejection.Ledger(failure)).toMap
-    )
 
   /** The capacity of the endorser block forged in a slot: `leiosEndorserBlockCapacity` scaled by
     * the share read for the slot (`scaleEbCapacity` of `readEbCapacityScale`,
@@ -2585,8 +2568,11 @@ object Forger:
 
   /** The ledger state the block of the led slot `slot` is built on: the tip's state
     * `crossed.ledger`, the block's parent's, ticked once to the slot ([[tickedTo]], [[crossed]]), a
-    * Conway state as the mempool's ledger, a Dijkstra state (the Leios build only) as it is, with
-    * the parent's unticked beside it ([[Ticked.InDijkstra]]). The only tick of an attempt's block.
+    * Conway state as the pool's ledger of Conway ([[ConwayPoolLedger]]), whose parameters in force
+    * that do not read into Conway's give none ([[ForgeProtocolProblem.ConwayParams]]: the slot ends
+    * without a block, as it does for a chain the forger has no ledger of), a Dijkstra state (the
+    * Leios build only) as it is, with the parent's unticked beside it ([[Ticked.InDijkstra]]). The
+    * only tick of an attempt's block.
     */
   private[forge] def blockLedger(
       globals: Globals,
@@ -2596,7 +2582,13 @@ object Forger:
   ): Either[NodeError, Ticked] =
     tickedTo(globals, transition, crossed.ledger, slot).flatMap { t =>
       (t, crossed.ledger) match
-        case (TipLedger.InConway(nes), _) => Right(Ticked.InConway(MempoolLedger.of(nes)))
+        case (TipLedger.InConway(nes), _) =>
+          ConwayPoolLedger
+            .of(nes)
+            .bimap(
+              e => ForgeError.UnsupportedProtocol(ForgeProtocolProblem.ConwayParams(e)),
+              Ticked.InConway(_)
+            )
         case (TipLedger.InDijkstra(nes), TipLedger.InDijkstra(parent)) =>
           Right(Ticked.InDijkstra(nes, parent))
         case (TipLedger.InDijkstra(_), TipLedger.InConway(_)) =>
@@ -2645,7 +2637,7 @@ object Forger:
     * on and its limits read from ([[Forger.tickedTo]]).
     */
   enum Ticked:
-    case InConway(ledger: MempoolLedger)
+    case InConway(ledger: ConwayPoolLedger)
 
     /** The Dijkstra state of the slot, `nes`, and the parent's it was ticked from, unticked, which
       * a certified closure is applied to (`partitionMempool` 's `unticked`, ouroboros-consensus
@@ -2832,6 +2824,10 @@ object Forger:
     * @param enabled
     *   Forge from the start; false starts with forging disabled (`--start-as-non-producing-node`,
     *   see [[HotKeys.create]]).
+    * @param conwaySnapshots
+    *   Where a Conway block's transactions come from ([[ConwaySnapshots.ofPool]] in the node, with
+    *   the node's environment); none: the pool's snapshot ([[ConwaySnapshots.ofPool]]) in the
+    *   forger's environment, its constants and Plutus backend.
     * @param dijkstraSnapshots
     *   Where a Dijkstra ranking block's transactions come from ([[DijkstraSnapshots.ofPool]] in the
     *   node); none: empty snapshots, [[DijkstraSnapshots.unadmitted]].
@@ -2865,7 +2861,7 @@ object Forger:
       enabled: Boolean = true,
       chains: Option[Signal[F, VolatileChain[S]]] = None,
       pause: Option[Point => F[Unit]] = None,
-      selectionLedger: Option[(BigInt, ChainSync.Point, MempoolLedger) => MempoolLedger] = None,
+      conwaySnapshots: Option[ConwaySnapshots[F]] = None,
       dijkstraSnapshots: Option[DijkstraSnapshots[F]] = None,
       onForgedEb: Option[OnForgedLeiosEb[F]] = None,
       ebCapacityScale: Option[F[EbCapacityScale]] = None,
@@ -2890,7 +2886,6 @@ object Forger:
       new Forger[F, S](
         config,
         globals,
-        plutus,
         protocolVersion,
         credentials,
         hot,
@@ -2905,13 +2900,18 @@ object Forger:
         cache,
         viewed,
         pending,
-        utxoStore,
         stats,
         schedule,
         chains.getOrElse(follower.committedChain),
         shared,
         pause.getOrElse(_ => Async[F].unit),
-        selectionLedger.getOrElse((_, _, ticked) => ticked),
+        conwaySnapshots.getOrElse(
+          ConwaySnapshots.ofPool[F](
+            mempool,
+            utxoStore,
+            Async[F].pure(MempoolEnv(globals, config.geometry, plutus.evaluator, plutus.decoder))
+          )
+        ),
         dijkstraSnapshots.getOrElse(DijkstraSnapshots.unadmitted[F]),
         onForgedEb,
         ebCapacityScale.getOrElse(Async[F].pure(EbCapacityScale.full)),

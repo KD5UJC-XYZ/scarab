@@ -178,9 +178,7 @@ trait ForgeFixture:
       pause: Option[Forger.Point => IO[Unit]] = None,
       praos: PraosConfig = config,
       committedChain: Boolean = false,
-      selectionLedger: Option[
-        (BigInt, xyz.kd5ujc.scarab.protocol.ChainSync.Point, MempoolLedger) => MempoolLedger
-      ] = None,
+      conwaySnapshots: Option[ConwaySnapshots[IO] => ConwaySnapshots[IO]] = None,
       rulesPause: Header => IO[Unit] = _ => IO.unit
   )(using Handle[IO, NodeError]): IO[Harness] =
     given Assertions[IO] = assertions
@@ -301,6 +299,19 @@ trait ForgeFixture:
         def emit(e: ForgeEvent) = reported(e)
         override def emitAt(at: Instant, e: ForgeEvent) =
           stamped.update(_ :+ (at -> e)) *> reported(e)
+      // a test's Conway snapshots are the pool's, changed as it says
+      pooled = ConwaySnapshots.ofPool[IO](
+        mempool,
+        None,
+        IO.pure(
+          MempoolEnv(
+            rulesGlobals,
+            geometry,
+            xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default,
+            xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder
+          )
+        )
+      )
       // `live` drives the real loop on the test clock from slot 5000; otherwise steps are manual.
       // horizon: a live loop over a chain left at genesis while the clock is thousands of slots on:
       // the era history at that tip would not translate the slot, so such tests lift the horizon
@@ -328,7 +339,7 @@ trait ForgeFixture:
         enabled = enabled,
         chains = Option.unless(committedChain)(ref),
         pause = pause,
-        selectionLedger = selectionLedger
+        conwaySnapshots = conwaySnapshots.map(_(pooled))
       )
     yield new Harness(follower, forger, ref, mempool, seen, raws, stamped)
 

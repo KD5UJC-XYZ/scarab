@@ -65,7 +65,6 @@ import xyz.kd5ujc.scarab.ledger.state.{
   UtxoTables
 }
 import xyz.kd5ujc.scarab.node.NodeSetup
-import xyz.kd5ujc.scarab.node.forge.BlockBuilder
 import xyz.kd5ujc.scarab.node.mempool.{
   ConwayPoolEnv,
   Entry,
@@ -318,26 +317,15 @@ class PastHorizonReferenceSuite extends FunSuite:
         0L,
         scala.concurrent.duration.Duration.Zero
       )
-      val limits =
-        BlockBuilder.Limits(ledger.params.maxBlockBodySize.toLong, ledger.params.maxBlockExUnits)
+      // the pool's snapshot of the next slot, judged with the clock a forger gives it
       def chosen(clock: PosixClock) =
-        BlockBuilder
-          .select(
-            ledger,
-            r.tip + 1,
-            ledger.epoch,
-            setup.geometry,
-            setup.globals,
-            Vector(entry),
-            limits,
-            Some(clock)
-          )(
-            xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder,
-            xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default
-          )
-          .match
-            case BlockBuilder.Selection(chosen, Vector()) => chosen.size
-            case other                                    => fail(s"withheld: ${other.withheld}")
+        MempoolState.conwaySnapshot(
+          Vector(entry),
+          pool,
+          ConwayPoolEnv.of(env, r.tip + 1, clock)
+        ) match
+          case (kept, Vector()) => kept.size
+          case (_, withheld)    => fail(s"withheld: $withheld")
       assertEquals(chosen(bounded), 0)
       assertEquals(chosen(PosixClock.total(setup.globals.systemStart, setup.geometry)), 1)
     }

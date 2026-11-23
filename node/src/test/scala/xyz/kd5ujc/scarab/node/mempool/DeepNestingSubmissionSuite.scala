@@ -183,26 +183,24 @@ class DeepNestingSubmissionSuite extends CatsEffectSuite:
   test("the forger includes it in a block, which decodes back to the same transaction") {
     val entry = MempoolStateFixture.entry(tx)
     val limit = BlockBuilder.Limits(65536, xyz.kd5ujc.scarab.plutus.ExUnits(14000000, 10000000000L))
-    val chosen = onSmallStack(
-      BlockBuilder.select(
-        TxKit.conway(PreprodDeepTx.ledger),
-        PreprodDeepTx.Slot,
-        PreprodDeepTx.Epoch,
-        geometry,
-        globals,
-        Vector(entry),
-        limit
-      )(
-        xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder,
-        xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default
-      )
+    val env = MempoolEnv(
+      globals,
+      geometry,
+      xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default,
+      xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder
     )
-    val selected = chosen match
-      case BlockBuilder.Selection(picked, Vector()) => picked
-      case other                                    => fail(s"withheld: ${other.withheld}")
-    assertEquals(selected.map(_._1.id.hex), Vector(PreprodDeepTx.Id))
-    val body = BlockBuilder.body(selected.map(_._2))
-    assertEquals(BlockBuilder.bodySize(selected.map(_._2)), body.size)
+    val selected = onSmallStack(
+      TxKit
+        .conway(PreprodDeepTx.ledger)
+        .toPool
+        .selected(Vector(entry), PreprodDeepTx.Slot, env, limit)
+    ) match
+      case (picked, Vector()) => picked
+      case (_, withheld)      => fail(s"withheld: $withheld")
+    assertEquals(selected.map(_.admitted.read.id.hex), Vector(PreprodDeepTx.Id))
+    val pieces = selected.map(h => BlockBuilder.piece(h.admitted))
+    val body = BlockBuilder.body(pieces)
+    assertEquals(BlockBuilder.bodySize(pieces), body.size)
     val block = BlockBuilder.block(
       BlockBuilder.headerBody(
         1,

@@ -43,12 +43,37 @@ extension (l: ConwayPoolLedger)
         .fold(d => munit.Assertions.fail(s"a stored output the era cannot read: $d"), identity)
     )
 
+  /** The transactions a Conway block in `slot` takes of `entries` on this ledger, and the held ones
+    * withheld for want of a verdict, as the forger takes them: the pool's snapshot of the slot
+    * ([[MempoolState.conwaySnapshot]], judged with `env` 's clock) cut to the capacity of `limits`
+    * ([[xyz.kd5ujc.scarab.node.forge.BlockBuilder.take]]).
+    */
+  def selected(
+      entries: Vector[Entry],
+      slot: BigInt,
+      env: MempoolEnv,
+      limits: xyz.kd5ujc.scarab.node.forge.BlockBuilder.Limits
+  ): (Vector[xyz.kd5ujc.scarab.node.forge.ConwayHeld], Vector[(Entry, Rejection)]) =
+    val (kept, withheld) = MempoolState.conwaySnapshot(entries, l, ConwayPoolEnv.of(env, slot))
+    val snapshot = xyz.kd5ujc.scarab.node.forge.ConwaySnapshot(
+      kept.map((e, a) => xyz.kd5ujc.scarab.node.forge.ConwayHeld(a, Capacity.measure(e))),
+      withheld.map((e, r) => e.id -> r).toMap
+    )
+    (xyz.kd5ujc.scarab.node.forge.BlockBuilder.take(snapshot, limits.capacity), withheld)
+
   /** The raw transaction `raw` read as the pool reads it in this ledger. */
   def readOf(raw: xyz.kd5ujc.scarab.codec.Bytes): ConwayRead =
     MempoolState
       .parseParts(raw)
       .flatMap(p => l.read(EraTx(p.parts, p.tx)))
       .fold(r => munit.Assertions.fail(r.message), identity)
+
+extension (e: Entry)
+  /** The held Conway transaction of `e`, which the suite holds as one. */
+  def conwayAdmitted: ConwayAdmitted = e.held match
+    case Held.InConway(held) => held
+    case other @ (Held.Flat(_, _, _) | Held.InDijkstra(_)) =>
+      munit.Assertions.fail(s"not a Conway transaction: ${other.era}")
 
 /** Held Conway transactions for the forger's suites, which take of a held one its flat form, its
   * bytes and its measure: read as the pool reads them, and held as if validated in a ledger of

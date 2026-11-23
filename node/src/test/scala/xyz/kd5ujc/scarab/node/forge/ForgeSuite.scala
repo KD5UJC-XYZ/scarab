@@ -21,7 +21,7 @@ import xyz.kd5ujc.scarab.consensus.{ChainSelection, SelectView}
 import xyz.kd5ujc.scarab.ledger.state.{Network, NewEpochState, PoolDistr}
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.ledger.*
-import xyz.kd5ujc.scarab.node.mempool.{Source, TxKit}
+import xyz.kd5ujc.scarab.node.mempool.{Source, TxKit, conwayAdmitted, selected, toPool}
 import xyz.kd5ujc.scarab.crypto.vrf.{Draft03Prover, PraosLeaderThreshold as Leader}
 
 /** Forging against the real block rules: whatever the forger builds must pass the same `NodeRules`
@@ -77,6 +77,23 @@ class ForgeSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ForgeFix
         assert(!chain.state.utxo.contains(TestLedger.txIn(1)))
         assert(!chain.state.utxo.contains(TestLedger.txIn(2)))
         assert(chain.state.utxo.contains(TestLedger.txIn(3)))
+    }
+  }
+
+  test(
+    "a Conway block's transactions are selected with the clock the block rules judge them with"
+  ) {
+    // the forger's snapshot is judged with `TxClock.at` of the chain it forges on; the block rules
+    // judge the block's transactions with `MirrorClock.conway` of that chain (`MirrorRules`)
+    import xyz.kd5ujc.scarab.consensus.state.{MirrorClock, Placement}
+    val state = mirrorState(ledgerWith(pool(50), 1))
+    val placement = Placement(geometry, mirrorEnv.byron, config.forks)
+    Vector[BigInt](1, 999, 1000, 1001, 4999, 5000, 5100, 20000).foreach { slot =>
+      assertEquals(
+        summon[xyz.kd5ujc.scarab.node.read.TxClock[MirrorState]].at(state, Era.Conway, slot),
+        MirrorClock.conway(globals.systemStart, state, placement, slot),
+        slot
+      )
     }
   }
 
@@ -1095,13 +1112,10 @@ class ForgeSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ForgeFix
     val units = xyz.kd5ujc.scarab.plutus.ExUnits(14000000, 10000000000L)
     def bytes(e: xyz.kd5ujc.scarab.node.mempool.Entry) = Capacity.measure(e).bytes
     def pick(entries: Vector[xyz.kd5ujc.scarab.node.mempool.Entry], room: Long) =
-      BlockBuilder
-        .select(base, 1001, 1, geometry, globals, entries, BlockBuilder.Limits(room + 1024, units))(
-          xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder,
-          xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default
-        )
-        .chosen
-        .map(_._1.id)
+      base.toPool
+        .selected(entries, 1001, TxKit.env, BlockBuilder.Limits(room + 1024, units))
+        ._1
+        .map(_.admitted.read.id)
     assert(bytes(large) > bytes(small3))
     // the capacity is the body size less 1024, and each transaction counts its size plus 4
     assertEquals(bytes(small1), small1.tx.size + 4L)
@@ -1175,7 +1189,7 @@ class ForgeSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ForgeFix
   ) {
     def entry(raw: Bytes) = MempoolStateFixture.entry(raw)
     val pieces =
-      Vector.tabulate(24)(i => BlockBuilder.piece(entry(TxKit.pay(i + 1)._1)).toOption.get)
+      Vector.tabulate(24)(i => BlockBuilder.piece(entry(TxKit.pay(i + 1)._1).conwayAdmitted))
     val body = BlockBuilder.body(pieces)
     assertEquals(BlockBuilder.bodySize(pieces), body.size)
     val p = pool(50)
@@ -1202,7 +1216,7 @@ class ForgeSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ForgeFix
     val (t1, _) = TxKit.pay(1)
     val (t2, _) = TxKit.pay(2)
     def entry(raw: Bytes) = MempoolStateFixture.entry(raw)
-    val pieces = Vector(t1, t2).map(r => BlockBuilder.piece(entry(r)).toOption.get)
+    val pieces = Vector(t1, t2).map(r => BlockBuilder.piece(entry(r).conwayAdmitted))
     List(Vector.empty, pieces.take(1), pieces).foreach { ps =>
       val body = BlockBuilder.body(ps)
       assertEquals(BlockBuilder.bodySize(ps), body.size)
