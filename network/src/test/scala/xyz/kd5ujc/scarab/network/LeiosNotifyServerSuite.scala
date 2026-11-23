@@ -45,6 +45,7 @@ class LeiosNotifyServerSuite extends FailsOnUncaught:
         new Replies[IO]:
           def requested: IO[Requested] = counted.requested
           def next: IO[Reply] = queued.take
+          def poll: IO[Option[Reply]] = queued.tryTake
           def pump: IO[Unit] = pumping
       )
 

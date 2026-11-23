@@ -5,7 +5,7 @@ import cats.effect.{Deferred, IO, Ref}
 import cats.effect.std.Queue
 import cats.mtl.Raise
 import cats.syntax.all.*
-import fs2.concurrent.SignallingRef
+import fs2.concurrent.{Signal, SignallingRef}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.{
   ChainSync,
@@ -51,6 +51,8 @@ class LeiosNotifyPipelinedSuite extends FailsOnUncaught:
               else (n + 1, Requested.NotExcessive)
             ) <* counted.update(_ + 1)
           def next: IO[Reply] = queued.take <* credits.update(_ - 1)
+          def poll: IO[Option[Reply]] =
+            queued.tryTake.flatTap(_.traverse_(_ => credits.update(_ - 1)))
           def pump: IO[Unit] = IO.unit
       )
 
@@ -58,7 +60,7 @@ class LeiosNotifyPipelinedSuite extends FailsOnUncaught:
   private def conversing(
       replies: Replies[IO],
       stop: Deferred[IO, Unit],
-      ready: IO[Unit],
+      gate: Signal[IO, Boolean],
       handle: LeiosNotification => Raise[IO, NetworkError] ?=> IO[Unit],
       depth: Int
   )(using Net): IO[(Either[Throwable, Unit], Either[NetworkError, Unit])] =
@@ -71,7 +73,7 @@ class LeiosNotifyPipelinedSuite extends FailsOnUncaught:
           LeiosNotifyPipelined.run[IO](
             ours,
             stop,
-            ready,
+            gate,
             handle,
             LeiosNotifyPipelined.Settings(depth = depth)
           )
@@ -89,7 +91,13 @@ class LeiosNotifyPipelinedSuite extends FailsOnUncaught:
       handled <- Ref.of[IO, Vector[LeiosNotification]](Vector.empty)
       stop <- Deferred[IO, Unit]
       outcome <- (
-        conversing(replies, stop, IO.unit, n => handled.update(_ :+ n), depth = 3),
+        conversing(
+          replies,
+          stop,
+          Signal.constant[IO, Boolean](true),
+          n => handled.update(_ :+ n),
+          depth = 3
+        ),
         counted.waitUntil(_ == 3) *> queued.offer(Reply.BlockOffer(point, Word32.wrap(9))) *>
           counted.waitUntil(_ == 4) *> handled.get.flatTap(_ => stop.complete(()))
       ).parTupled
@@ -119,7 +127,13 @@ class LeiosNotifyPipelinedSuite extends FailsOnUncaught:
         replies <- scripted(queued, counted, depth = 3)
         stop <- Deferred[IO, Unit]
         _ <- stop.complete(())
-        outcome <- conversing(replies, stop, IO.never, _ => IO.unit, depth = 3)
+        outcome <- conversing(
+          replies,
+          stop,
+          Signal.constant[IO, Boolean](false),
+          _ => IO.unit,
+          depth = 3
+        )
         requests <- counted.get
       yield (outcome, requests)
     ).map(result => assertEquals(result, Right(((Right(()), Right(())), 0))))
@@ -130,14 +144,14 @@ class LeiosNotifyPipelinedSuite extends FailsOnUncaught:
       queued <- Queue.unbounded[IO, Reply]
       counted <- SignallingRef.of[IO, Int](0)
       replies <- scripted(queued, counted, depth = 2)
-      gate <- Deferred[IO, Unit]
+      gate <- SignallingRef.of[IO, Boolean](false)
       stop <- Deferred[IO, Unit]
       handled <- Ref.of[IO, Vector[LeiosNotification]](Vector.empty)
       _ <- queued.offer(Reply.BlockTxsOffer(point))
       before <- counted.get
       outcome <- (
-        conversing(replies, stop, gate.get, n => handled.update(_ :+ n), depth = 2),
-        gate.complete(()) *> counted.waitUntil(_ == 3) *> stop.complete(())
+        conversing(replies, stop, gate, n => handled.update(_ :+ n), depth = 2),
+        gate.set(true) *> counted.waitUntil(_ == 3) *> stop.complete(())
       ).parTupled
       after <- handled.get
     yield (before, outcome._1, after)).map(result =>
@@ -196,7 +210,7 @@ class LeiosNotifyPipelinedSuite extends FailsOnUncaught:
           LeiosNotifyPipelined.run[IO](
             ours,
             stop,
-            IO.unit,
+            Signal.constant[IO, Boolean](true),
             n => handled.update(_ :+ n),
             LeiosNotifyPipelined.Settings(depth = 2)
           ),
@@ -238,7 +252,7 @@ class LeiosNotifyPipelinedSuite extends FailsOnUncaught:
             LeiosNotifyPipelined.run[IO](
               ours,
               stop,
-              IO.unit,
+              Signal.constant[IO, Boolean](true),
               _ => summon[Raise[IO, NetworkError]].raise(refused),
               LeiosNotifyPipelined.Settings(depth = 2)
             )
@@ -261,7 +275,7 @@ class LeiosNotifyPipelinedSuite extends FailsOnUncaught:
             LeiosNotifyPipelined.run[IO](
               ours,
               stop,
-              IO.unit,
+              Signal.constant[IO, Boolean](true),
               _ => IO.unit,
               LeiosNotifyPipelined.Settings(depth = 1)
             )
@@ -303,13 +317,14 @@ class LeiosNotifyPipelinedSuite extends FailsOnUncaught:
         replies = new Replies[IO]:
           def requested = gate.get.flatMap(g => seen.update(_ :+ g)) *> credits.requested
           def next = credits.next
+          def poll = credits.poll
           def pump = credits.pump
         stop <- Deferred[IO, Unit]
         outcome <- (
           conversing(
             replies,
             stop,
-            gate.waitUntil(identity),
+            gate,
             n => handled.update(_ :+ n),
             depth = 1
           ),

@@ -108,7 +108,7 @@ final class LeiosFetchNode[F[_]] private (
                 LeiosNotifyPipelined.run[F](
                   channel,
                   stop,
-                  client.view.ready,
+                  client.view.gate,
                   notification => LeiosNotifyHandling.ending(handling.handle(notification))
                 )
               )

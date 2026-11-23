@@ -205,8 +205,8 @@ class LeiosNotifyRelaySuite extends FailsOnUncaught:
 
   // --- the central relay ---
 
-  private def queue(credits: Int): IO[SignallingRef[IO, LeiosNotifyOutgoing]] =
-    SignallingRef.of[IO, LeiosNotifyOutgoing](LeiosNotifyOutgoing.empty.copy(credits = credits))
+  private def queue(credits: Int): IO[LeiosNotifyOutgoing.Cell[IO]] =
+    LeiosNotifyOutgoing.Cell.of[IO](LeiosNotifyOutgoing.empty.copy(credits = credits))
 
   test("an election's first announcement goes to every peer with a credit, its second to those") {
     for
@@ -658,6 +658,7 @@ class LeiosNotifyRelaySuite extends FailsOnUncaught:
             new LeiosNotifyServer.Replies[IO]:
               def requested = r.requested <* requests.update(_ + 1)
               def next = r.next
+              def poll = r.poll
               def pump = r.pump
           )
         handlers = ServerHandlers[IO, Bytes](

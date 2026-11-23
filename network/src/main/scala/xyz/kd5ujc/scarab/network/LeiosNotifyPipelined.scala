@@ -2,10 +2,12 @@
 package xyz.kd5ujc.scarab.network
 
 import cats.effect.{Async, Deferred}
+import cats.effect.std.Queue
+import cats.effect.syntax.all.*
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
-import fs2.concurrent.SignallingRef
+import fs2.concurrent.Signal
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.bls.Vote
@@ -29,8 +31,8 @@ enum LeiosNotification:
   * (`runPipelinedPeerWithLimits`, `aLeiosNotifyClient`, `NodeToNode.hs` 1866-1889).
   *
   *   - Before each request the client waits until it is told to stop, or until there is room below
-  *     `depth` and then `ready`, the node's own gate (`awaitImmTipCanForecastNow`), holds; a stop
-  *     comes first, during either wait.
+  *     `depth` and then `gate`, the node's own (`awaitImmTipCanForecastNow`), holds; a stop comes
+  *     first, during either wait.
   *   - Told to stop (`checkDone`'s `Left`), it sends `MsgQuit` at once, outstanding requests or
   *     not, and the replies still outstanding are collected and not handed on (`AlreadyDraining`),
   *     then the server's `MsgDone` ends it.
@@ -52,13 +54,22 @@ object LeiosNotifyPipelined:
 
   final case class Settings(depth: Int = PipelineDepth, quitTimeout: FiniteDuration = QuitTimeout)
 
-  /** The requests outstanding, and whether the client has quit. */
-  private final case class Pipe(outstanding: Int, draining: Boolean)
+  /** What wakes the sender: a place below the depth, one for each reply collected and `depth` at
+    * the start, or the stop.
+    */
+  private enum Wake derives CanEqual:
+    case Room, Stop
+
+  /** What the receiver collects next, in the order the sender sent it: the reply to a request, or,
+    * after every request sent before the quit, the server's `MsgDone`.
+    */
+  private enum Expect derives CanEqual:
+    case Reply, Done
 
   def run[F[_]](
       channel: MuxChannel[F],
       stop: Deferred[F, Unit],
-      ready: F[Unit],
+      gate: Signal[F, Boolean],
       handle: LeiosNotification => Raise[F, NetworkError] ?=> F[Unit],
       settings: Settings = Settings()
   )(using
@@ -74,53 +85,65 @@ object LeiosNotifyPipelined:
     // through the capability of the fiber that receives, so a reply's refusal is that fiber's
     def receive(state: LeiosNotify.State)(using Raise[F, NetworkError]): F[LeiosNotify.Message] =
       channel.recv(LeiosNotify.SmallByteLimit)(LeiosNotify.incremental(state))
-    SignallingRef.of[F, Pipe](Pipe(0, draining = false)).flatMap { pipe =>
-      val sender = Fibers.scoped[F, NetworkError, Unit](NetworkError.Defect(_)) {
-        // `checkDone` and the wait for a reply at the depth, which the reference reads in one
-        // transaction: the stop before either; the gate read once there is room, so a request is
-        // sent only while the gate holds as the room comes. Only this fiber adds to what is
-        // outstanding, so the room found stays while the gate is read
-        val next: F[Boolean] =
-          F.race(stop.get, pipe.waitUntil(_.outstanding < settings.depth) *> ready).map(_.isLeft)
-        def loop: F[Unit] =
-          stop.tryGet.flatMap {
-            case Some(_) => quit
-            case None =>
-              next.flatMap { stopped =>
-                if stopped then quit
-                else
-                  stop.tryGet.flatMap {
-                    case Some(_) => quit
-                    case None =>
-                      pipe.update(p => p.copy(outstanding = p.outstanding + 1)) *>
-                        send(LeiosNotify.Message.RequestNext) *> loop
-                  }
-              }
+    (Queue.unbounded[F, Wake], Queue.unbounded[F, Expect], Deferred[F, Unit]).flatMapN {
+      (wakes, expected, quitting) =>
+        val sender = Fibers.scoped[F, NetworkError, Unit](NetworkError.Defect(_)) {
+          // `checkDone` and the wait for a reply at the depth, which the reference reads in one
+          // transaction: the stop before either; the gate read once there is room, so a request
+          // is sent only while the gate holds as the room comes. A closed gate is waited for
+          // against the stop; an open one is not waited for
+          val gated: F[Boolean] = gate.get.flatMap { open =>
+            if open then F.pure(false)
+            else F.race(stop.get, gate.waitUntil(identity)).map(_.isLeft)
           }
-        // the draining flag set before `MsgQuit` goes out, so no reply after it is handed on
-        def quit: F[Unit] =
-          pipe.update(_.copy(draining = true)) *> send(LeiosNotify.Message.Quit)
-        loop
-      }
-      val receiver = Fibers.scoped[F, NetworkError, Unit](NetworkError.Defect(_)) {
-        def loop: F[Unit] =
-          pipe.waitUntil(p => p.outstanding > 0 || p.draining) *> pipe.get.flatMap { p =>
-            if p.outstanding > 0 then
-              receive(LeiosNotify.State.Busy)
-                .flatMap(notification)
-                .flatMap(n => pipe.get.flatMap(now => handle(n).unlessA(now.draining))) *>
-                pipe.update(q => q.copy(outstanding = q.outstanding - 1)) *> loop
-            else
-              Timed
-                .within(settings.quitTimeout, id, "Quit")(receive(LeiosNotify.State.Quit))
-                .flatMap {
-                  case LeiosNotify.Message.Done => F.unit
-                  case other => illegal(ProtocolError.Leios(LeiosWireError.NotAdmitted(tag(other))))
+          def loop: F[Unit] =
+            stop.tryGet.flatMap {
+              case Some(_) => quit
+              case None =>
+                wakes.take.flatMap {
+                  case Wake.Stop => quit
+                  case Wake.Room =>
+                    gated.flatMap { stopped =>
+                      if stopped then quit
+                      else
+                        stop.tryGet.flatMap {
+                          case Some(_) => quit
+                          case None =>
+                            expected.offer(Expect.Reply) *>
+                              send(LeiosNotify.Message.RequestNext) *> loop
+                        }
+                    }
                 }
-          }
-        loop
-      }
-      Fibers.failFast(List(sender, receiver)).flatMap(_.fold(_.raise[F, Unit], F.pure))
+            }
+          // the quit recorded before `MsgQuit` goes out, so no reply after it is handed on, and
+          // `MsgDone` expected after every reply outstanding
+          def quit: F[Unit] =
+            quitting.complete(()) *> expected.offer(Expect.Done) *>
+              send(LeiosNotify.Message.Quit)
+          // the stop wakes a sender that waits for room; this fiber ends with the sender's run
+          wakes.offer(Wake.Room).replicateA_(settings.depth) *>
+            (stop.get *> wakes.offer(Wake.Stop)).background.surround(loop)
+        }
+        val receiver = Fibers.scoped[F, NetworkError, Unit](NetworkError.Defect(_)) {
+          def loop: F[Unit] =
+            expected.take.flatMap {
+              case Expect.Reply =>
+                receive(LeiosNotify.State.Busy)
+                  .flatMap(notification)
+                  .flatMap(n => quitting.tryGet.flatMap(q => handle(n).whenA(q.isEmpty))) *>
+                  wakes.offer(Wake.Room) *> loop
+              case Expect.Done =>
+                Timed
+                  .within(settings.quitTimeout, id, "Quit")(receive(LeiosNotify.State.Quit))
+                  .flatMap {
+                    case LeiosNotify.Message.Done => F.unit
+                    case other =>
+                      illegal(ProtocolError.Leios(LeiosWireError.NotAdmitted(tag(other))))
+                  }
+            }
+          loop
+        }
+        Fibers.failFast(List(sender, receiver)).flatMap(_.fold(_.raise[F, Unit], F.pure))
     }
 
   /** A message the Busy decoder admitted, as the reply it is; the decoder admits no other, so
