@@ -64,6 +64,13 @@ enum AddVoteResult derives CanEqual:
   /** A vote of this seat for this announcing block was counted already. */
   case AlreadyKnown
 
+  /** The vote's announcing block left the window ([[LeiosVoteState.Window]]) and is among the
+    * [[LeiosVoteState.RetiredWindow]] last to leave it: the vote is not counted and not relayed. An
+    * Improvement (#1355): the reference counts such a vote again as its block's first, so votes for
+    * more blocks than the window cycle between its nodes without end.
+    */
+  case Retired
+
   /** Counted; the certificate is present whenever the tally is at or above the quorum. */
   case Added(tally: VoteTally, certificate: Option[Certificate])
 
@@ -95,10 +102,19 @@ object PointVotes:
   * Only the [[LeiosVoteState.Window]] most recently first seen are kept (`boundPoints`,
   * `LeiosVoteState.hs:131-143`), a bound the reference marks unsafe: a vote names no slot, so
   * recency is arrival, not the chain.
+  *
+  * The blocks that left the window are remembered too, the [[LeiosVoteState.RetiredWindow]] last to
+  * leave it, and a vote for one of them is [[AddVoteResult.Retired]] (an Improvement, #1355). The
+  * reference keeps no such record: a vote for a block that left its window counts again as that
+  * block's first and is relayed again, and once votes for more blocks than the window circulate,
+  * each evicts another block whose votes then count again, so they cycle between its nodes and
+  * crowd out the announcements on the same streams (observed on the public Leios testnet on
+  * 2026-11-23).
   */
 final case class LeiosVoteState private (
     points: SortedMap[RbHash, PointVotes],
-    order: Vector[RbHash]
+    order: Vector[RbHash],
+    retired: LeiosVoteState.Retired
 ):
 
   /** `seenIn` (`LeiosVoteState.hs:113-115`, ouroboros-consensus 2416493b): this seat's vote for
@@ -106,6 +122,14 @@ final case class LeiosVoteState private (
     */
   def seen(vote: Vote): Boolean =
     points.get(vote.announcingRbHash).exists(_.voters.contains(vote.voter))
+
+  /** The vote's announcing block left the window and is remembered as having left it (#1355). */
+  def isRetired(vote: Vote): Boolean = retired.contains(vote.announcingRbHash)
+
+  /** Why the vote is not counted before any check of it: counted already, or its block retired. */
+  def known(vote: Vote): Option[AddVoteResult] =
+    if seen(vote) then Some(AddVoteResult.AlreadyKnown)
+    else Option.when(isRetired(vote))(AddVoteResult.Retired)
 
   /** `queryCert` (`LeiosVoteState.hs:241-243`, ouroboros-consensus 2416493b). */
   def certificate(rbHash: RbHash): Option[Certificate] = points.get(rbHash).flatMap(_.certificate)
@@ -127,10 +151,9 @@ final case class LeiosVoteState private (
       committee: Committee,
       threshold: Weight
   ): Either[VoteAggregationDefect, (LeiosVoteState, AddVoteResult)] =
-    if seen(vote) then Right((this, AddVoteResult.AlreadyKnown))
-    else
+    known(vote).fold {
       val rbHash = vote.announcingRbHash
-      val (bounded, nextOrder) = LeiosVoteState.boundPoints(rbHash, points, order)
+      val (bounded, nextOrder, left) = LeiosVoteState.boundPoints(rbHash, points, order)
       val point = bounded.getOrElse(rbHash, PointVotes.empty)
       // `insertLookupWithKey` replaces the seat's earlier entry, so its weight leaves the total;
       // with `seen` above no seat is counted twice, as there
@@ -150,29 +173,52 @@ final case class LeiosVoteState private (
       assembled.map { cert =>
         val next = LeiosVoteState(
           bounded.updated(rbHash, PointVotes(voters, total, cert)),
-          nextOrder
+          nextOrder,
+          left.fold(retired)(retired.including)
         )
         (next, AddVoteResult.Added(VoteTally(weight, total, threshold), cert))
       }
+    }(result => Right((this, result)))
 
 object LeiosVoteState:
   /** `maxAnnouncementCount` (`LeiosTxCache/API.hs:154-155`, ouroboros-consensus 2416493b). */
   val Window: Int = 128
 
-  val empty: LeiosVoteState = LeiosVoteState(SortedMap.empty, Vector.empty)
+  /** How many blocks that left the window are remembered (#1355): at one ranking block every 20 s,
+    * about 23 hours of the chain, against the window's 128, about 43 minutes.
+    */
+  val RetiredWindow: Int = 4096
+
+  /** The blocks that left the window, the [[RetiredWindow]] last to leave it, oldest first. */
+  final case class Retired private (order: Vector[RbHash], members: Set[RbHash]):
+    def contains(rbHash: RbHash): Boolean = members.contains(rbHash)
+
+    /** `rbHash` left the window; the first to have left is forgotten past [[RetiredWindow]]. */
+    def including(rbHash: RbHash): Retired =
+      val grown = order :+ rbHash
+      grown.headOption match
+        case Some(oldest) if grown.sizeIs > RetiredWindow =>
+          Retired(grown.drop(1), members - oldest + rbHash)
+        case _ => Retired(grown, members + rbHash)
+
+  object Retired:
+    val empty: Retired = Retired(Vector.empty, Set.empty)
+
+  val empty: LeiosVoteState = LeiosVoteState(SortedMap.empty, Vector.empty, Retired.empty)
 
   /** `boundPoints` (`LeiosVoteState.hs:131-143`, ouroboros-consensus 2416493b): a block already
     * tallied keeps its place; a new one goes last, and the first seen is dropped once more than
-    * [[Window]] are held.
+    * [[Window]] are held, and returned, to be retired (#1355).
     */
   private def boundPoints(
       rbHash: RbHash,
       points: SortedMap[RbHash, PointVotes],
       order: Vector[RbHash]
-  ): (SortedMap[RbHash, PointVotes], Vector[RbHash]) =
-    if points.contains(rbHash) then (points, order)
+  ): (SortedMap[RbHash, PointVotes], Vector[RbHash], Option[RbHash]) =
+    if points.contains(rbHash) then (points, order, None)
     else
       val grown = order :+ rbHash
       grown.headOption match
-        case Some(oldest) if grown.sizeIs > Window => (points - oldest, grown.drop(1))
-        case _                                     => (points, grown)
+        case Some(oldest) if grown.sizeIs > Window =>
+          (points - oldest, grown.drop(1), Some(oldest))
+        case _ => (points, grown, None)
