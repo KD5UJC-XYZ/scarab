@@ -7330,7 +7330,7 @@
     "EraUtxowSuite"
    ],
    "note": "over the classes the reference names: EraTx, AlonzoEraPParams and AlonzoEraTxWits",
-   "digest": "c0bc1d1a5f7927df"
+   "digest": "e831f304898a5f9f"
   },
   "class ledger.era.LangDepView": {
    "upstream": [
@@ -22251,7 +22251,7 @@
     "EraPlutusContextSuite"
    ],
    "note": "with its `merge`, the successes and the failures each in reverse order",
-   "digest": "00c9a8ff445b3cbb"
+   "digest": "2e0a259f4ce7d2b6"
   },
   "def ledger.era.AlonzoPlutusEvaluate.collectPlutusScriptsWithContext": {
    "upstream": [
@@ -22344,7 +22344,7 @@
     "EraPlutusContextSuite"
    ],
    "note": "`Map.lookup lang (costModelsValid costModels)` at the language `L` of the script: the era's `CostModels` holds the valid and the unknown models in one map by tag, so the valid model of a known language is the one under its tag: a known language's model is always valid after decoding, as `mkCostModelsLenient` (`CostModels.hs:426-440`) refuses one `mkCostModel` refuses and, from version 9, `mkCostModel` refuses no list of `Int64` (`CostModelDecode`); the split of the two maps is #85's item on the reference's order of the parameters",
-   "digest": "17786cc96cde3c62"
+   "digest": "4a587c2b4b37bd1e"
   },
   "def ledger.era.PlutusRunnable#equals": {
    "upstream": [
@@ -29254,7 +29254,7 @@
     "ConwayUtxoChecksSuite"
    ],
    "note": "the environment, the annotated transaction and UtxoContext (what it reads from Globals and the policy) are arguments; the state, the judgment, the events, the evaluator, where the scripts are evaluated (Phase2Deferral) and the defects are capabilities; UTXOS runs as a sub-rule (Judge.nest), its failures and events embedded by EmbedUtxosInUtxo; the UTxO set the predicates read is the outputs of the body's inputs, collateral inputs and reference inputs, read from the store into the era (design §3.6), every output a predicate reads; a script with no verdict, a damaged store and an output outside the state's vocabulary are raised",
-   "digest": "f34d4c0af66ddaee"
+   "digest": "7db10928b412bbc3"
   },
   "given ledger.era.rules.InjectUtxoFailure.conwayAlonzoUtxos": {
    "upstream": [
@@ -29381,7 +29381,7 @@
     "RedeemerIndexReferenceSuite"
    ],
    "note": "the environment, the annotated transaction, UtxoContext (Globals and the policy), the signature verdicts and the script decoder are arguments; the state, judgment, events, evaluator, where the scripts are evaluated (Phase2Deferral) and defects are capabilities; UTXO runs as a sub-rule (Judge.nest), its failures and events embedded by EmbedUtxoInUtxow; the UTxO set the predicates read is the outputs of the body's inputs, collateral inputs and reference inputs read from the store, as UTXO's; a signature check or a script decoding with no verdict is raised as the node's LedgerDefect",
-   "digest": "9e841106c92830da"
+   "digest": "ffbaed8d1764f066"
   },
   "def ledger.era.rules.BabbageUtxow.validateFailedBabbageScripts": {
    "upstream": [
@@ -32771,7 +32771,7 @@
     "ConwayLedgerChecksSuite"
    ],
    "note": "the reference's transition generic in its era over the reference's classes, the sub-rules UTXOW, CERTS and GOV called as UTXOW calls UTXO, each a sub-rule (Judge.nest) whose failures and events are embedded (EmbedInLedger); the withdrawals' move by the build the judgment's Globals name (WithdrawalsRule); GOV's state the era's proposals in their own capability beside the ledger state, as DijkstraLedger's, held by the caller (ConwayBlockRun reads the node's record once a block and writes it back once; ProposalsRecord.stateful on every read and write); the committee's actions CERTS reads are those of the proposals before the transaction (proposalsWithPurpose grCommitteeL, :367-370), each as the node records it (ProposalsRecord.storedAction); the UTxO set the reference-script size reads is the stored outputs of the body's inputs, collateral and reference inputs; the defects of the sub-rules stay their own raises; the epoch, where the environment has none, is the total epochOf of Globals' geometry, where the reference's epochFromSlot (Slot.hs:66-69) reads its Globals' epoch information and fails outside a bounded history: the suites show the result within the history only (CNF-2)",
-   "digest": "48bd5708d9c5095c"
+   "digest": "13baa8765f836733"
   },
   "def ledger.era.rules.ConwayLedger.shelleyToConwayLedgerPredFailure": {
    "upstream": [
@@ -40975,7 +40975,7 @@
     "ConwayLedgerChecksSuite"
    ],
    "note": "the fold of Babbage's ledgersTransition, its era's mkStAnnTx and LEDGER given, which Conway's and Dijkstra's LEDGERS share; the UTxO set the stored outputs of the transaction's inputs; the cache each annotation leaves handed to the next, the first given the empty one (mempty); the index by TxIx.enumerate, zip [minBound ..]",
-   "digest": "ebfa33db113c0053"
+   "digest": "0e31fdd29b0913f5"
   },
   "enum ledger.era.rules.DijkstraMempoolPredFailure": {
    "upstream": [
@@ -47329,7 +47329,7 @@
     "ConwayBbodySuite"
    ],
    "note": "the network the judgment's Globals', as the reference reads it (the Shelley genesis's networkId); the gate of the header's version by build (HeaderProtVerGate); the UTxO set the stored outputs of the block's inputs and reference inputs before LEDGERS, read into the era; ConwayBbodySuite compares it with the flat BBODY; its expectations are the reference's own only on the 53 recorded Conway blocks the reference accepted",
-   "digest": "0daa6ca55b6731c2"
+   "digest": "76a69b58642bce17"
   },
   "def ledger.era.rules.ConwayBbody.conwayBbody": {
    "upstream": [
@@ -49178,7 +49178,8 @@
     "trait ledger.era.rules.StoredOutputs",
     "object ledger.era.rules.StoredOutputs",
     "def ledger.era.rules.StoredOutputs#read",
-    "given ledger.era.rules.StoredOutputs.given_direct_F___Monad_E_EraTag_using"
+    "given ledger.era.rules.StoredOutputs.given_direct_F___Monad_E_EraTag_using",
+    "def ledger.era.rules.StoredOutputs#readAt"
    ]
   },
   {
@@ -49774,13 +49775,20 @@
    ]
   },
   {
-   "reason": "values the reference computes lazily or shares, made once here (#85): the scripts of getReferenceScriptsNonDistinct without their hashes, which txNonDistinctRefScriptsSize reads without forcing the lazy hashes; and each script context's info as data (TxInfo's toData), made once for the scripts of a transaction that hold its one info",
+   "reason": "values the reference computes lazily or shares, made once here (#85): the scripts of getReferenceScriptsNonDistinct without their hashes, which txNonDistinctRefScriptsSize reads without forcing the lazy hashes; and each script context's info as data (TxInfo's toData), made once for the scripts of a transaction that hold its one info; each language's view of one set of parameters, encoded once for the rules of a block (LanguageViews, mkScriptIntegrity with them, which getLanguageView's are by default); and each language's cost model read once for a transaction's scripts (lookupCostModel in a reading of the models)",
    "definitions": [
     "def ledger.era.BabbageUTxO.referenceScriptsNonDistinct",
     "val ledger.era.PV1.TxInfo#data",
     "val ledger.era.PV2.TxInfo#data",
     "val ledger.era.PV3.TxInfo#data",
-    "val ledger.era.PV4.TxInfo#data"
+    "val ledger.era.PV4.TxInfo#data",
+    "trait ledger.era.LanguageViews",
+    "object ledger.era.LanguageViews",
+    "def ledger.era.LanguageViews#view",
+    "def ledger.era.LanguageViews.direct",
+    "def ledger.era.LanguageViews.of",
+    "def ledger.era.ScriptIntegrity.mkScriptIntegrityWith",
+    "def ledger.era.CostModel.lookupCostModelIn"
    ]
   }
  ]
