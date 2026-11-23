@@ -203,10 +203,12 @@ The node-owned `PeerDns` resource resolves topology and ledger host names to eve
 of the addresses of a drawn ledger relay name the root provider keeps one, drawn at random (`pickDomainAddrs`).
 Local groups are re-resolved at independent per-source deadlines and installed through the acknowledged
 `RootsConfigured` owner event; a failed lookup retains the last successful addresses, while a successful empty
-answer removes them. Public and bootstrap requests return a refresh TTL to the governor. SRV names query `_cardano._tcp.<domain>`, retain
+answer removes them. Public and bootstrap requests return a refresh TTL to the governor: the configured roots' DNS
+TTL, and for an answer of ledger peers the fixed 5 s (`LedgerPeerStake.ReRequestInterval`), whatever its lookups'
+TTLs. SRV names query `_cardano._tcp.<domain>`, retain
 only the lowest priority group, choose within that group by SRV weight, discard target `.`, resolve every address of
-the selected target, and use the selected SRV TTL for those addresses. Lookup failures produce no addresses and the
-reference's 60-second empty-answer retry.
+the selected target, and use the selected SRV TTL for those addresses. A configured root's lookup failures produce
+no addresses and the reference's 60-second empty-answer retry.
 
 ### 4.7 Configuration
 
