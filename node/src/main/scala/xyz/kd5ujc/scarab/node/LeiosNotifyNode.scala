@@ -35,9 +35,9 @@ import xyz.kd5ujc.scarab.protocol.LeiosWord.Word64
 import xyz.kd5ujc.scarab.storage.{LeiosStore, LeiosStoreError}
 
 /** What a LeiosNotify client of the Leios build reads of the node: the immutable tip, read once for
-  * each reply, as the reference's handler reads the immutable ledger once
-  * (`ChainDB.getImmutableLedger`, `NodeToNode.hs` 640 and 670 at ouroboros-consensus 2416493b), and
-  * whether the immutable tip can forecast the current slot, as it changes
+  * each announcement and each offer, as the reference's handler reads the immutable ledger once for
+  * each (`ChainDB.getImmutableLedger`, `NodeToNode.hs` 667 and 638 at ouroboros-consensus
+  * 2416493b), and whether the immutable tip can forecast the current slot, as it changes
   * (`awaitImmTipCanForecastNow`, `LeiosDemoLogic.hs` 2012-2045).
   */
 trait LeiosNotifyView[F[_]]:

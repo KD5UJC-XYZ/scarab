@@ -203,6 +203,27 @@ class LeiosNotifyRelaySuite extends FailsOnUncaught:
     assertEquals(held.prunedTo(None).announced.keySet, Set(p))
   }
 
+  test("a wake left by a reply already taken does not hide a reply queued after it") {
+    // `next` retries until a reply is queued (`NodeToNode.hs` 830-836 at ouroboros-consensus
+    // 2416493b): the first reply is taken without a wait, leaving its wake, which a later `next`
+    // consumes and looks again; the second reply still reaches it
+    val p = first.fields.point
+    val queued =
+      (o: LeiosNotifyOutgoing, r: Reply) => (o.copy(messages = o.messages.enqueue(r)), ())
+    for
+      cell <- LeiosNotifyOutgoing.Cell.of[IO](one)
+      _ <- cell.modify(queued(_, Reply.BlockOffer(p, word32(5))))
+      taken <- cell.poll
+      waiting <- cell.next.start
+      _ <- cell.modify(queued(_, Reply.BlockTxsOffer(p)))
+      second <- waiting.joinWithNever
+      empty <- cell.poll
+    yield
+      assertEquals(taken, Some(Reply.BlockOffer(p, word32(5))))
+      assertEquals(second, Reply.BlockTxsOffer(p))
+      assertEquals(empty, None)
+  }
+
   // --- the central relay ---
 
   private def queue(credits: Int): IO[LeiosNotifyOutgoing.Cell[IO]] =

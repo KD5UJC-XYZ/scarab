@@ -36,12 +36,13 @@ import xyz.kd5ujc.scarab.storage.LeiosEbNotification
 /** The cost of a vote through the LeiosNotify plumbing (#1349): `votes` signed votes from the
   * node's relay server ([[LeiosNotifyRelay.server]] under [[LeiosNotifyServer.run]]) to its
   * pipelined client ([[LeiosNotifyPipelined.run]]), over an in-memory bearer, the client's handler
-  * counting each vote and doing nothing else. The producer keeps at most `window` votes ahead of
-  * the handler, below the client's depth, and runs until `votes` are counted: a vote the relay
-  * drops for want of a credit, as the reference's pump drops it, keeps its place in the window. Not
-  * part of `check`: run it from the tools classpath, with `-Dcats.effect.tracing.mode=none` or
-  * without; it prints the median wall and process CPU microseconds per vote, and one signature
-  * check's, for scale.
+  * counting each vote and doing nothing else. The producer offers a vote only for a request the
+  * server has counted, so the relay, which drops a vote when the peer holds no credit as the
+  * reference's pump does, never drops one; and it keeps at most `window` votes ahead of the
+  * handler, so that the client waits for its replies as a client whose handler checks each vote's
+  * signature does. Not part of `check`: run it from the tools classpath, with
+  * `-Dcats.effect.tracing.mode=none` or without; it prints the median wall and process CPU
+  * microseconds per vote, and one signature check's, for scale.
   */
 object LeiosNotifyVoteBench extends IOApp.Simple:
   private given LeiosNotify.AnnouncementReader = _ => Right(())
@@ -70,14 +71,19 @@ object LeiosNotifyVoteBench extends IOApp.Simple:
       committee <- Committee.honoured(vks.map(vk => Seat(Weight.zero, Some(vk))))
     yield (votes, committee)).leftMap(e => new IllegalStateException(e.toString))
 
-  /** The votes of `pool` in turn, each once the window has room for it. */
+  /** Votes `from` to `votes` of `pool` in turn, each once the server has counted a request for it
+    * and the window has room for it.
+    */
   private def produced(
+      counted: Semaphore[IO],
       ahead: Semaphore[IO],
       acquired: Queue[IO, Vote],
       pool: Vector[Vote],
-      i: Int
+      from: Int,
+      votes: Int
   ): IO[Unit] =
-    ahead.acquire *> acquired.offer(pool(i)) >> produced(ahead, acquired, pool, (i + 1) % pool.size)
+    (counted.acquire *> ahead.acquire *> acquired.offer(pool(from % pool.size)) >>
+      produced(counted, ahead, acquired, pool, from + 1, votes)).whenA(from < votes)
 
   /** One round: microseconds of wall and of process CPU per vote. */
   private def round(pool: Vector[Vote], votes: Int, window: Int): IO[(Double, Double)] =
@@ -94,6 +100,7 @@ object LeiosNotifyVoteBench extends IOApp.Simple:
               central <- AtomicCell[IO].of(LeiosCentral.empty[IO])
               acquired <- Queue.unbounded[IO, Vote]
               ahead <- Semaphore[IO](window.toLong)
+              counted <- Semaphore[IO](0L)
               delivered <- Ref.of[IO, Int](0)
               stop <- Deferred[IO, Unit]
               gate <- SignallingRef.of[IO, Boolean](true)
@@ -106,7 +113,7 @@ object LeiosNotifyVoteBench extends IOApp.Simple:
               )
               server <- Fibers
                 .scoped[IO, NetworkError, Unit](NetworkError.Defect(_))(
-                  replies.use(r => LeiosNotifyServer.run(theirs, r))
+                  replies.use(r => LeiosNotifyServer.run(theirs, countingRequests(r, counted)))
                 )
                 .start
               handle: (LeiosNotification => Raise[IO, NetworkError] ?=> IO[Unit]) = n =>
@@ -121,33 +128,11 @@ object LeiosNotifyVoteBench extends IOApp.Simple:
                   LeiosNotifyPipelined.run[IO](ours, stop, gate, handle)
                 )
                 .start
-              // every request counted by the server before the first vote, so none is dropped
-              _ <- central.get
-                .flatMap(_.queues.values.toList.traverse(_.get))
-                .map(_.exists(_.credits == LeiosNotifyServer.PipelineDepth))
-                .flatTap(_ => IO.cede)
-                .iterateUntil(identity)
-                .timeout(30.seconds)
               (began, cpu) <- (IO.monotonic, cpuNanos).tupled
-              // a vote the relay drops for want of a credit, as the reference's pump does, keeps its
-              // place in the window, so the producer runs until the votes are counted
-              producer <- produced(ahead, acquired, pool, 0).start
-              _ <- stop.get
-                .timeout(20.seconds)
-                .handleErrorWith(e =>
-                  (
-                    delivered.get,
-                    acquired.size,
-                    central.get.flatMap(_.queues.values.toList.traverse(_.get))
-                  ).flatMapN((d, waiting, outs) =>
-                    IO.println(
-                      s"STUCK delivered $d, waiting $waiting, outgoing " +
-                        outs.map(o => (o.credits, o.messages.size)).mkString(",")
-                    )
-                  ) *> IO.raiseError(e)
-                )
+              producer <- produced(counted, ahead, acquired, pool, 0, votes).start
+              _ <- stop.get.timeout(120.seconds)
               (ended, cpuEnd) <- (IO.monotonic, cpuNanos).tupled
-              _ <- producer.cancel
+              _ <- producer.joinWithNever
               _ <- client.joinWithNever.flatMap(Fibers.land(_))
               _ <- server.joinWithNever.flatMap(Fibers.land(_))
             yield (
@@ -158,6 +143,21 @@ object LeiosNotifyVoteBench extends IOApp.Simple:
         }
       }
       .rescue(e => IO.raiseError(NetworkError.InternalFailure(e)))
+
+  /** The server's replies, each request it counts released to the producer as a credit. */
+  private def countingRequests(
+      replies: LeiosNotifyServer.Replies[IO],
+      counted: Semaphore[IO]
+  ): LeiosNotifyServer.Replies[IO] =
+    new LeiosNotifyServer.Replies[IO]:
+      def requested: IO[LeiosNotifyServer.Requested] =
+        replies.requested.flatTap {
+          case LeiosNotifyServer.Requested.NotExcessive => counted.release
+          case LeiosNotifyServer.Requested.Excessive(_) => IO.unit
+        }
+      def next: IO[LeiosNotifyServer.Reply] = replies.next
+      def poll: IO[Option[LeiosNotifyServer.Reply]] = replies.poll
+      def pump: IO[Unit] = replies.pump
 
   private def median(xs: List[Double]): Double = xs.sorted.apply(xs.size / 2)
 

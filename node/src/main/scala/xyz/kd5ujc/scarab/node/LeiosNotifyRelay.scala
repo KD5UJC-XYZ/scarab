@@ -114,9 +114,9 @@ object LeiosNotifyOutgoing:
   val empty: LeiosNotifyOutgoing = LeiosNotifyOutgoing(0, Fifo.empty, SortedMap.empty)
 
   /** One peer's queue, the `TVar` of `OutgoingLeiosNotify` (`NodeToNode.hs` 408-428): changed only
-    * through [[modify]], which wakes a [[next]] that waits whenever it leaves a reply queued, so a
-    * reply queued is never missed. A wake left over makes a later wait look again, and find what
-    * the state holds.
+    * through [[modify]], which wakes a [[next]] that waits whenever it leaves a reply queued, in
+    * the same step as the change, which no cancellation splits, so a reply queued is never missed.
+    * A wake left over makes a later wait look again, and find what the state holds.
     */
   final class Cell[F[_]] private (state: Ref[F, LeiosNotifyOutgoing], wake: Queue[F, Unit])(using
       F: Concurrent[F]
@@ -124,12 +124,10 @@ object LeiosNotifyOutgoing:
     def get: F[LeiosNotifyOutgoing] = state.get
 
     def modify[A](f: LeiosNotifyOutgoing => (LeiosNotifyOutgoing, A)): F[A] =
-      state
-        .modify { o =>
-          val (next, a) = f(o)
-          (next, (a, next.messages.nonEmpty))
-        }
-        .flatMap((a, queued) => wake.tryOffer(()).whenA(queued).as(a))
+      state.flatModify { o =>
+        val (next, a) = f(o)
+        (next, wake.tryOffer(()).whenA(next.messages.nonEmpty).as(a))
+      }
 
     def update(f: LeiosNotifyOutgoing => LeiosNotifyOutgoing): F[Unit] = modify(o => (f(o), ()))
 

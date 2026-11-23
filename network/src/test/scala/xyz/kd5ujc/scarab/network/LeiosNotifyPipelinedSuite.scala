@@ -139,6 +139,69 @@ class LeiosNotifyPipelinedSuite extends FailsOnUncaught:
     ).map(result => assertEquals(result, Right(((Right(()), Right(())), 0))))
   }
 
+  test("told to stop while the gate is closed, the client quits without a request") {
+    // `checkDone` retries until the stop or the forecast (NodeToNode.hs 645-659 at
+    // ouroboros-consensus 2416493b): the stop ends the wait at a closed gate
+    for
+      gate <- SignallingRef.of[IO, Boolean](false)
+      counted <- SignallingRef.of[IO, Int](0)
+      stop <- Deferred[IO, Unit]
+      program = typed(for
+        queued <- Queue.unbounded[IO, Reply]
+        replies <- scripted(queued, counted, depth = 2)
+        outcome <- conversing(replies, stop, gate, _ => IO.unit, depth = 2)
+      yield outcome)
+      control <- cats.effect.testkit.TestControl.execute(program)
+      // every fiber runs to where it waits: the sender at the closed gate
+      _ <- control.tick
+      _ <- stop.complete(())
+      _ <- control.tick
+      result <- control.results
+      requests <- counted.get
+    yield
+      assertEquals(requests, 0)
+      result match
+        case Some(cats.effect.Outcome.Succeeded(ended)) =>
+          assertEquals(ended, Right((Right(()), Right(()))))
+        case other => fail(s"the conversation did not end: $other")
+  }
+
+  test("told to stop while it waits for room at the depth, the client quits") {
+    // the depth's wait is read with the stop in one transaction (LeiosDemoOnlyTestNotify.hs 549-582
+    // at ouroboros-consensus 2416493b): the stop wakes a sender with no room, and the reply still
+    // outstanding is collected and not handed on
+    for
+      counted <- SignallingRef.of[IO, Int](0)
+      handled <- Ref.of[IO, Vector[LeiosNotification]](Vector.empty)
+      stop <- Deferred[IO, Unit]
+      program = typed(for
+        queued <- Queue.unbounded[IO, Reply]
+        replies <- scripted(queued, counted, depth = 1)
+        outcome <- conversing(
+          replies,
+          stop,
+          Signal.constant[IO, Boolean](true),
+          n => handled.update(_ :+ n),
+          depth = 1
+        )
+      yield outcome)
+      control <- cats.effect.testkit.TestControl.execute(program)
+      // every fiber runs to where it waits: one request outstanding, the sender without room
+      _ <- control.tick
+      parked <- counted.get
+      _ <- stop.complete(())
+      _ <- control.tick
+      result <- control.results
+      after <- handled.get
+    yield
+      assertEquals(parked, 1)
+      assertEquals(after, Vector.empty)
+      result match
+        case Some(cats.effect.Outcome.Succeeded(ended)) =>
+          assertEquals(ended, Right((Right(()), Right(()))))
+        case other => fail(s"the conversation did not end: $other")
+  }
+
   test("once the gate opens, the client requests to the depth") {
     typed(for
       queued <- Queue.unbounded[IO, Reply]

@@ -1676,8 +1676,8 @@
     "LeiosFetchRegistrationSuite",
     "LeiosNotifyRelaySuite"
    ],
-   "note": "each request counted by the replies' incr and held, the client's next message read ahead, a sender answering the held requests in order with the replies' next, or MsgCanceled once the client quit (responder's orElse, the quit first), a reply queued already taken without a wait (poll); MsgQuit answered once every held request is (drain) by MsgDone; incr's ExcessiveRequests a typed end; the pump raced with the conversation, as withAsync pump with link runs it (aLeiosNotifyServer, NodeToNode.hs 1891-1909)",
-   "digest": "329a5d58b0edee48"
+   "note": "each request counted by the replies' incr and held, the client's next message read ahead, a sender answering the held requests in order with the replies' next, or MsgCanceled once the client quit (responder's orElse, the quit first), a reply queued already taken without a wait (poll) and any reply taken sent only if the quit has not come by then, as orElse decides at its commit; MsgQuit answered once every held request is (drain) by MsgDone; incr's ExcessiveRequests a typed end; the pump raced with the conversation, as withAsync pump with link runs it (aLeiosNotifyServer, NodeToNode.hs 1891-1909)",
+   "digest": "9afb57e0ef9da7c4"
   },
   "val network.LeiosNotifyServer.PipelineDepth": {
    "upstream": [
@@ -1948,7 +1948,7 @@
    "class": "Mirror",
    "structure": "same",
    "note": "the pipelined client",
-   "digest": "3cf6f3e3a74a5296"
+   "digest": "2451e48a44721c8e"
   },
   "val network.LeiosNotifyPipelined.PipelineDepth": {
    "upstream": [
@@ -2033,8 +2033,8 @@
     "LeiosNotifyPipelinedSuite",
     "LeiosNotifyClientSuite"
    ],
-   "note": "before each request the stop, then the depth, then the gate (awaitImmTipCanForecastNow), so that the gate is read once there is room, as checkDone and the arrival share one transaction; told to stop MsgQuit at once, the outstanding replies collected unhandled (AlreadyDraining), then MsgDone; a sender and a receiver, as the pipelined driver's receiver queue, each reply handed on in order and counted as arrived after; the room is a wake for each reply collected (arrived), which a stop also wakes, the replies are expected in the order requested and MsgDone after them, and an open gate is read where a closed one is waited for against the stop, as checkDone retries",
-   "digest": "9e206158e7c5c4cb"
+   "note": "checkDone (the stop, then the forecast, awaitImmTipCanForecastNow, then the depth) and the wait for a reply at the depth are one transaction there that retries until they hold; here, before each request, the stop, then a place below the depth, then the gate, read once there is room, an open gate not waited for and a closed one waited for against the stop. The room is a wake for each reply collected (arrived), which a stop also wakes, from a body of its own; told to stop MsgQuit at once, the outstanding replies collected unhandled (AlreadyDraining), then MsgDone, expected after every reply requested; a sender and a receiver, as the pipelined driver's receiver queue, each reply handed on in order and counted as arrived after",
+   "digest": "e06409f702975761"
   },
   "def network.LeiosNotifyPipelined.tag": {
    "upstream": [

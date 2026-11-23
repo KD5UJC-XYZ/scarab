@@ -3,7 +3,6 @@ package xyz.kd5ujc.scarab.network
 
 import cats.effect.{Async, Deferred}
 import cats.effect.std.Queue
-import cats.effect.syntax.all.*
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
@@ -66,6 +65,10 @@ object LeiosNotifyPipelined:
   private enum Expect derives CanEqual:
     case Reply, Done
 
+  /** What the gate's turn found: the gate open, or the stop first. */
+  private enum Gated derives CanEqual:
+    case Open, Stopped
+
   def run[F[_]](
       channel: MuxChannel[F],
       stop: Deferred[F, Unit],
@@ -88,13 +91,17 @@ object LeiosNotifyPipelined:
     (Queue.unbounded[F, Wake], Queue.unbounded[F, Expect], Deferred[F, Unit]).flatMapN {
       (wakes, expected, quitting) =>
         val sender = Fibers.scoped[F, NetworkError, Unit](NetworkError.Defect(_)) {
-          // `checkDone` and the wait for a reply at the depth, which the reference reads in one
-          // transaction: the stop before either; the gate read once there is room, so a request
-          // is sent only while the gate holds as the room comes. A closed gate is waited for
-          // against the stop; an open one is not waited for
-          val gated: F[Boolean] = gate.get.flatMap { open =>
-            if open then F.pure(false)
-            else F.race(stop.get, gate.waitUntil(identity)).map(_.isLeft)
+          // `checkDone` (the stop, then the forecast, then the depth) and the wait for a reply at the
+          // depth, which the reference reads in one transaction that retries until they hold
+          // (`NodeToNode.hs` 645-659 and `LeiosDemoOnlyTestNotify.hs` 549-582). Here the stop first,
+          // then a place below the depth, then the gate, read once there is room, so a request is
+          // sent only while the gate holds as the room comes; a closed gate is waited for against
+          // the stop, an open one is not waited for
+          val gated: F[Gated] = gate.get.flatMap { open =>
+            if open then F.pure(Gated.Open)
+            else
+              F.race(stop.get, gate.waitUntil(identity))
+                .map(_.fold(_ => Gated.Stopped, _ => Gated.Open))
           }
           def loop: F[Unit] =
             stop.tryGet.flatMap {
@@ -103,9 +110,9 @@ object LeiosNotifyPipelined:
                 wakes.take.flatMap {
                   case Wake.Stop => quit
                   case Wake.Room =>
-                    gated.flatMap { stopped =>
-                      if stopped then quit
-                      else
+                    gated.flatMap {
+                      case Gated.Stopped => quit
+                      case Gated.Open =>
                         stop.tryGet.flatMap {
                           case Some(_) => quit
                           case None =>
@@ -120,9 +127,12 @@ object LeiosNotifyPipelined:
           def quit: F[Unit] =
             quitting.complete(()) *> expected.offer(Expect.Done) *>
               send(LeiosNotify.Message.Quit)
-          // the stop wakes a sender that waits for room; this fiber ends with the sender's run
-          wakes.offer(Wake.Room).replicateA_(settings.depth) *>
-            (stop.get *> wakes.offer(Wake.Stop)).background.surround(loop)
+          loop
+        }
+        // the stop wakes a sender that waits for room; the sender quits only once the stop has come,
+        // so this body ends before the conversation does
+        val stopping = Fibers.scoped[F, NetworkError, Unit](NetworkError.Defect(_)) {
+          stop.get *> wakes.offer(Wake.Stop)
         }
         val receiver = Fibers.scoped[F, NetworkError, Unit](NetworkError.Defect(_)) {
           def loop: F[Unit] =
@@ -143,7 +153,10 @@ object LeiosNotifyPipelined:
             }
           loop
         }
-        Fibers.failFast(List(sender, receiver)).flatMap(_.fold(_.raise[F, Unit], F.pure))
+        wakes.offer(Wake.Room).replicateA_(settings.depth) *>
+          Fibers
+            .failFast(List(sender, receiver, stopping))
+            .flatMap(_.fold(_.raise[F, Unit], F.pure))
     }
 
   /** A message the Busy decoder admitted, as the reply it is; the decoder admits no other, so
