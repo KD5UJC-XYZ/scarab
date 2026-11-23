@@ -140,8 +140,9 @@ closing that gap is tracked for before the switch
 ran for 517 s, comparisons and the reference advance included.
 
 On 2026-11-23 the same harness, inputs and container limits timed the era run before and after
-the changes that read each stored output into the era once a run and build each transaction's
-script data and the parameters' language views once (#85). Median of three rotated rounds, summed
+the changes that let the rules reuse a stored output's reading into the era within a run, let
+a transaction's scripts of one language share their encoded `TxInfo`, and encode the parameters'
+language views once a run (#85). Median of three rotated rounds, summed
 over the blocks, era run against flat rules; all 5,683 blocks agreed in both runs:
 
 | Source | Serial (era / flat) | Ratio | Four workers (era / flat) | Ratio |

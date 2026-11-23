@@ -496,17 +496,18 @@ object ConwayBlockRun:
     * read the same (#85).
     */
   private given StoredOutputs[F, Conway] with
-    def read(stored: Map[TxIn, FlatTxOut]): F[UTxO[Conway]] = kept(stored.iterator)
+    def read(stored: Map[TxIn, FlatTxOut]): F[UTxO[Conway]] = kept(stored)
 
     // the set's entries at the keys looked up as they are sorted into those read and the others,
-    // not first gathered into a map of their own
+    // not first gathered into a map of their own; a view, so each run of the step looks them up
+    // again
     override def readAt(
         utxo: xyz.kd5ujc.scarab.ledger.Utxo,
         keys: Iterable[TxIn]
     ): F[UTxO[Conway]] =
-      kept(keys.iterator.flatMap(in => utxo.get(in).map(in -> _)))
+      kept(keys.view.flatMap(in => utxo.get(in).map(in -> _)))
 
-    private def kept(stored: Iterator[(TxIn, FlatTxOut)]): F[UTxO[Conway]] =
+    private def kept(stored: Iterable[(TxIn, FlatTxOut)]): F[UTxO[Conway]] =
       val state = summon[Stateful[F, S]]
       state.get.flatMap { s =>
         val (known, unread) =
