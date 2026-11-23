@@ -117,7 +117,8 @@ scripts that pass, after a verdict that is not its flag's and after a script wit
 with missing completions, and another plan's completions do not type-check. A block of a
 transaction whose script context cannot be built, after or before one whose script runs, is
 observed in the flat rules' order through the plan and at four workers, also where the first's
-verdict is not its flag's and the serial run, replayed, does not observe the second.
+verdict is not its flag's and the serial run, replayed, does not observe the second; where the
+first's script ends in a raw defect, neither the serial run nor the plan observes the second.
 
 `ConwayBodiesReplaySuite` takes the inputs of `PlutusReplaySuite` (`SCARAB_PLUTUS_CAPTURE` and
 `SCARAB_PLUTUS_BASELINE`, mounted read-only), writes to a fresh directory of its own named by

@@ -1919,6 +1919,36 @@ class ConwayBbodySuite extends FailsOnUncaught:
     }
   }
 
+  test(
+    "a raw defect of the evaluated transaction's script before one whose context cannot be built: neither the serial run nor the plan observes the later one"
+  ) {
+    val Uncollectable(utxo, txs) = uncollectable
+    val admitted = judge(third, blockOf(txs), change = holding(utxo), observe = true)
+    // the first transaction's script ends in a defect: the serial run raises it before it reaches
+    // the second, and observes nothing; the plan recorded the second's observation after the
+    // first's scripts, and tells nothing past the job whose defect it raises
+    val defective = Defective(requestOf(admitted, 0))
+    val (serialSeen, planSeen) = (Observations(), Observations())
+    val serial = Either.catchNonFatal(
+      admitted
+        .program(
+          defective,
+          Some(ConwayBlockRun.Observing(serialSeen.observe, None)),
+          Verdicts.Direct
+        )
+        .serial
+    )
+    assert(serial.left.exists(_ eq defective.defect), s"$serial")
+    val plan = admitted
+      .program(defective, Some(ConwayBlockRun.Observing(planSeen.observe, None)), Verdicts.Direct)
+      .prepare
+    assertEquals(plan.jobs.map(_.index), Vector(0))
+    val planned = plan.resolve(plan.batches.flatten.map(plan.execute))
+    assert(planned.left.exists(_.cause eq defective.defect), s"$planned")
+    assertEquals(serialSeen.all, Vector.empty)
+    assertEquals(planSeen.all, Vector.empty)
+  }
+
   test("a transaction whose input is missing: LEDGERS's refusal, embedded, the flat LEDGER's") {
     val utxo = funded(Vector(paid(20000000)))
     val body = B.body(
