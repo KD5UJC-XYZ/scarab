@@ -131,13 +131,27 @@ three rotated rounds, summed over the blocks:
 | Era run (`ConwayBlockRun.Body`) | 22.856 s | 20.013 s | 1.14× |
 
 The round sums ranged 16.3–17.6 s and 14.7–15.7 s for the flat rules, 22.1–24.2 s and 20.0–21.3 s
-for the era run. The prepared era run keeps the flat path's relative gain, but the era BBODY
-itself takes about 1.37 to 1.38 times the flat one's time, so applying Conway blocks with it at
-four workers would cost about 5.4 s more over this window (6.3 s serial); the 3,005 blocks with
-more than one redeemer-bearing transaction account for 5.6 s of the serial difference; closing
-that gap is tracked for before the switch
+for the era run. The prepared era run kept the flat path's relative gain, but the era BBODY
+itself took about 1.37 to 1.38 times the flat one's time, so applying Conway blocks with it at
+four workers would have cost about 5.4 s more over this window (6.3 s serial); the 3,005 blocks
+with more than one redeemer-bearing transaction accounted for 5.6 s of the serial difference;
+closing that gap is tracked for before the switch
 (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7088622558). The harness
-ran for 517 s, comparisons and the reference advance included. These are body timings (the tick,
+ran for 517 s, comparisons and the reference advance included.
+
+On 2026-11-23 the same harness, inputs and container limits timed the era run before and after
+the changes that read each stored output into the era once a run and build each transaction's
+script data and the parameters' language views once (#85). Median of three rotated rounds, summed
+over the blocks, era run against flat rules; all 5,683 blocks agreed in both runs:
+
+| Source | Serial (era / flat) | Ratio | Four workers (era / flat) | Ratio |
+|---|---:|---:|---:|---:|
+| Before (the 2026-11-22 source) | 20.764 s / 15.106 s | 1.37× | 18.493 s / 13.736 s | 1.35× |
+| After | 17.610 s / 15.045 s | 1.17× | 15.527 s / 13.698 s | 1.13× |
+
+The serial difference fell from 5.7 s to 2.6 s, of which the 3,005 blocks with more than one
+redeemer-bearing transaction account for 2.1 s; the rest of the gap is tracked at the same link.
+These are body timings (the tick,
 decoding and store reads excluded; a serial way's timing includes making its program, including the
 era history, which a parallel way's makes before its timer, at most about 1% of the ratio), not
 full validation or follower throughput, so they are not comparable with the full-validation table
