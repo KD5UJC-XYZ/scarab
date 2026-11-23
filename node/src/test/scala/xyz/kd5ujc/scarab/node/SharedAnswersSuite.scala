@@ -42,13 +42,13 @@ class SharedAnswersSuite extends FailsOnUncaught with ScalaCheckSuite:
       )
       val run = ops.foldLeft(Run(Table.empty, Vector.empty, 0)) { (r, op) =>
         op match
-          case OneAtATime.Move(p) => r.copy(table = r.table.moved(p, _.point))
+          case OneAtATime.Move(p) => r.copy(table = r.table.moved(p))
           case OneAtATime.Ask(key) =>
-            r.table.ask(key, r.builds) match
+            r.table.ask(key, key.point, r.builds) match
               case (t, Step.Kept(a)) => Run(t, r.answers :+ a, r.builds)
               case (t, Step.Build) =>
                 val a = s"$key#${r.builds}"
-                Run(t.settle(key, Ending.Answered(a), _.point), r.answers :+ a, r.builds + 1)
+                Run(t.settle(key, Ending.Answered(a)), r.answers :+ a, r.builds + 1)
               case (t, Step.Wait(_)) => Run(t, r.answers :+ "waited", r.builds)
       }
       val model = ops.foldLeft(Model(None, Map.empty, Vector.empty, 0)) { (m, op) =>
@@ -63,7 +63,7 @@ class SharedAnswersSuite extends FailsOnUncaught with ScalaCheckSuite:
                 val kept = if m.current.contains(key.point) then m.kept.updated(key, a) else m.kept
                 Model(m.current, kept, m.answers :+ a, m.builds + 1)
       }
-      val built = run.table.entries.collect { case (k, Entry.Built(a)) => k -> a }
+      val built = run.table.entries.collect { case (k, Entry.Built(_, a)) => k -> a }
       (run.answers ?= model.answers) &&
       (run.builds ?= model.builds) &&
       (built ?= model.kept) &&
@@ -87,9 +87,9 @@ class SharedAnswersSuite extends FailsOnUncaught with ScalaCheckSuite:
       )
       val end = ops.foldLeft(Run(Table.empty, Vector.empty, 0, Vector.empty)) { (r, op) =>
         val next = op match
-          case Op.Move(p) => r.copy(table = r.table.moved(p, _.point))
+          case Op.Move(p) => r.copy(table = r.table.moved(p))
           case Op.Ask(key) =>
-            r.table.ask(key, r.next) match
+            r.table.ask(key, key.point, r.next) match
               case (t, Step.Build) =>
                 Run(t, r.underWay :+ (r.next -> key), r.next + 1, r.checks :+ true)
               case (t, Step.Wait(id)) =>
@@ -103,14 +103,16 @@ class SharedAnswersSuite extends FailsOnUncaught with ScalaCheckSuite:
                 case 1 => Ending.Failed(Boom)
                 case _ => Ending.Abandoned
               r.copy(
-                table = r.table.settle(key, ending, _.point),
+                table = r.table.settle(key, ending),
                 underWay = r.underWay.patch(i, Nil, 1)
               )
             }
-        val building = next.table.entries.collect { case (k, Entry.Building(id)) => id -> k }.toSet
+        val building = next.table.entries.collect { case (k, Entry.Building(_, id)) =>
+          id -> k
+        }.toSet
         val builtAtCurrent = next.table.entries.forall {
-          case (k, Entry.Built(_)) => next.table.current.contains(k.point)
-          case _                   => true
+          case (k, Entry.Built(at, _)) => next.table.current.contains(at) && at == k.point
+          case _                       => true
         }
         next.copy(checks = next.checks :+ (building == next.underWay.toSet) :+ builtAtCurrent)
       }
@@ -260,6 +262,25 @@ class SharedAnswersSuite extends FailsOnUncaught with ScalaCheckSuite:
       assertEquals(other, "Key(1,1)#3", "the other view of the point is an answer of its own")
       assertEquals(dropped, "Key(1,0)#4", "dropped when the point moved")
       assertEquals(total, 4)
+  }
+
+  test("a key whose point cannot be read fails its request alone, and reserves nothing") {
+    val at = (key: Key) => if key.view == 9 then throw Boom else key.point
+    for
+      builds <- Ref.of[IO, Int](0)
+      build = builds.updateAndGet(_ + 1).map(n => s"answer $n")
+      answers <- SharedAnswers.of[IO, Int, Key, String](at)
+      _ <- answers.moved(1)
+      unread <- answers.answer(Key(1, 9))(build).attempt
+      again <- answers.answer(Key(1, 9))(build).attempt
+      other <- answers.answer(Key(1, 0))(build)
+      kept <- answers.answer(Key(1, 0))(build)
+      total <- builds.get
+    yield
+      assertEquals(unread, Left(Boom))
+      assertEquals(again, Left(Boom), "asked again, it fails again: no entry was left for it")
+      assertEquals((other, kept), ("answer 1", "answer 1"))
+      assertEquals(total, 1, "the unread key ran no build")
   }
 
   test("following a stream of points keeps the answers at the last one") {

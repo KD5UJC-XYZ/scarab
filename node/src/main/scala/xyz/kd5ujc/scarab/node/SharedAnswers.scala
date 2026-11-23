@@ -32,10 +32,12 @@ object SharedAnswers:
     /** The request that ran the build was cancelled: a request that waited for it asks again. */
     case Abandoned
 
-  /** A key's answer: being built, with the end of the build to wait on, or built and kept. */
-  private[node] enum Entry[+D, +A]:
-    case Building(ending: D)
-    case Built(answer: A)
+  /** A key's answer, at the point `at`: being built, with the end of the build to wait on, or built
+    * and kept.
+    */
+  private[node] enum Entry[+P, +D, +A]:
+    case Building(at: P, ending: D)
+    case Built(at: P, answer: A)
 
   /** What a request does: take the kept answer, wait for the build under way, or build. */
   private[node] enum Step[+D, +A]:
@@ -45,33 +47,40 @@ object SharedAnswers:
 
   /** The answers, and the point they are kept for. A key has one entry at most, so at most one
     * build of a key is under way; a built entry is at `current`, since [[moved]] drops the others
-    * and [[settle]] keeps an answer only at `current`. `D` is what a waiting request waits on.
+    * and [[settle]] keeps an answer only at `current`. Each entry holds its point, so neither reads
+    * a key again. `D` is what a waiting request waits on.
     */
   private[node] final case class Table[P, K, D, A](
       current: Option[P],
-      entries: Map[K, Entry[D, A]]
+      entries: Map[K, Entry[P, D, A]]
   ):
-    /** A request for `key`; if it is to build, the key's entry is `mine` until it is settled. */
-    def ask(key: K, mine: D): (Table[P, K, D, A], Step[D, A]) =
+    /** A request for `key`, whose answer is at `at`; if it is to build, the key's entry is `mine`
+      * until it is settled.
+      */
+    def ask(key: K, at: P, mine: D): (Table[P, K, D, A], Step[D, A]) =
       entries.get(key) match
-        case Some(Entry.Built(answer))    => (this, Step.Kept(answer))
-        case Some(Entry.Building(theirs)) => (this, Step.Wait(theirs))
-        case None => (copy(entries = entries.updated(key, Entry.Building(mine))), Step.Build)
+        case Some(Entry.Built(_, answer))    => (this, Step.Kept(answer))
+        case Some(Entry.Building(_, theirs)) => (this, Step.Wait(theirs))
+        case None => (copy(entries = entries.updated(key, Entry.Building(at, mine))), Step.Build)
 
     /** The build of `key` ended with `ending`: its answer is kept if it is at the current point. */
-    def settle(key: K, ending: Ending[A], at: K => P): Table[P, K, D, A] =
-      ending match
-        case Ending.Answered(answer) if current.contains(at(key)) =>
-          copy(entries = entries.updated(key, Entry.Built(answer)))
-        case Ending.Answered(_) | Ending.Failed(_) | Ending.Abandoned =>
-          copy(entries = entries.removed(key))
+    def settle(key: K, ending: Ending[A]): Table[P, K, D, A] =
+      entries.get(key) match
+        case Some(Entry.Building(at, _)) =>
+          ending match
+            case Ending.Answered(answer) if current.contains(at) =>
+              copy(entries = entries.updated(key, Entry.Built(at, answer)))
+            case Ending.Answered(_) | Ending.Failed(_) | Ending.Abandoned =>
+              copy(entries = entries.removed(key))
+        // no build of the key is under way: there is nothing to settle
+        case Some(Entry.Built(_, _)) | None => this
 
-    def moved(point: P, at: K => P): Table[P, K, D, A] =
+    def moved(point: P): Table[P, K, D, A] =
       Table(
         Some(point),
         entries.filter {
-          case (_, Entry.Building(_)) => true
-          case (key, Entry.Built(_))  => at(key) == point
+          case (_, Entry.Building(_, _)) => true
+          case (_, Entry.Built(at, _))   => at == point
         }
       )
 
@@ -85,11 +94,13 @@ object SharedAnswers:
     (Ref.of[F, Table[P, K, Deferred[F, Ending[A]], A]](Table.empty), Mutex[F]).mapN {
       (table, lock) =>
         new SharedAnswers[F, P, K, A]:
+          // the key's point is read once, before anything is reserved, so that a failure to read
+          // it fails only this request
           def answer(key: K)(build: => F[A]): F[A] =
-            Deferred[F, Ending[A]]
-              .flatMap { mine =>
+            (Async[F].delay(at(key)), Deferred[F, Ending[A]]).tupled
+              .flatMap { (point, mine) =>
                 Async[F].uncancelable { poll =>
-                  table.modify(_.ask(key, mine)).flatMap {
+                  table.modify(_.ask(key, point, mine)).flatMap {
                     case Step.Kept(answer) => Async[F].pure(Ending.Answered(answer))
                     case Step.Wait(theirs) => poll(theirs.get)
                     case Step.Build =>
@@ -108,11 +119,11 @@ object SharedAnswers:
                 case Ending.Abandoned        => answer(key)(build)
               }
 
-          def moved(point: P): F[Unit] = table.update(_.moved(point, at))
+          def moved(point: P): F[Unit] = table.update(_.moved(point))
 
           // the waiters are answered whatever becomes of the table's update
           private def end(key: K, mine: Deferred[F, Ending[A]], ending: Ending[A]): F[Unit] =
-            table.update(_.settle(key, ending, at)).guarantee(mine.complete(ending).void)
+            table.update(_.settle(key, ending)).guarantee(mine.complete(ending).void)
     }
 
   /** Answers kept for the points of `points`, for the life of the resource. An exception in the
