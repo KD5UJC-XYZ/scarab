@@ -2884,6 +2884,7 @@ object Main extends IOApp:
             .resource[IO, MirrorState](
               ChainView.fromRef(ref),
               options.query,
+              follower.committedChain.discrete.map(_.tip),
               Some(store),
               Some(scheduling.stats.total.map(Reports.schedulingTotal)),
               Some(

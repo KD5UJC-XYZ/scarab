@@ -9,7 +9,7 @@ import cats.effect.std.Mutex
 import cats.mtl.Raise
 import java.io.IOException
 import java.nio.file.Path
-import org.http4s.{Method, Request, Uri}
+import org.http4s.{Method, Request, Response, Uri}
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.{Anchor, VolatileChain}
@@ -146,9 +146,10 @@ class ServiceStorageScopeSuite extends FailsOnUncaught:
       chain <- Ref.of[IO, VolatileChain[MirrorState]](
         VolatileChain(5, Anchor(None, setup.mirrorStart), Vector.empty)
       )
+      answers <- SharedAnswers.of[IO, Point, QueryServer.StateKey, Response[IO]](_.point)
       _ <- pendingFatal(report =>
         QueryServer
-          .routes(ChainView.fromRef(chain), Some(broken(store, enabled)))(report)
+          .routes(ChainView.fromRef(chain), answers, Some(broken(store, enabled)))(report)
           .orNotFound
           .run(Request[IO](Method.GET, Uri.unsafeFromString("/state?utxo=full")))
       )

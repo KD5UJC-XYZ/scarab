@@ -5026,6 +5026,116 @@
     }
    ],
    "listings": []
+  },
+  {
+   "id": "perf-67",
+   "section": "61",
+   "heading": "61. GET /state on a mainnet state: one build at a time, and the kept answer (#1150)",
+   "subject": "GET /state on a mainnet state: one build at a time, and the kept answer (#1150)",
+   "date": "2026-11-23",
+   "dateSource": "text",
+   "issues": [
+    "#1150"
+   ],
+   "commits": [
+    "f20f337ff",
+    "7b74472f0"
+   ],
+   "links": [],
+   "page": "memory-and-snapshots",
+   "results": [
+    {
+     "id": "perf-67.t1",
+     "header": [
+      "One request at a time at the tip",
+      "Time",
+      "Heap after a full collection, MiB",
+      "Over the loaded state, MiB"
+     ],
+     "separator": "|---|---:|---:|---:|",
+     "rows": [
+      [
+       "the state loaded",
+       "",
+       "2,357",
+       ""
+      ],
+      [
+       "before #1150 (`30fd188ba`): a first request, which builds (a body of 1,062,941,894 bytes)",
+       "32.3 s",
+       "",
+       ""
+      ],
+      [
+       "before #1150: a second request, built again",
+       "34.0 s",
+       "",
+       ""
+      ],
+      [
+       "since #1150: the first request, which builds (a body of the same size)",
+       "35.6 s (37.7 s in an earlier run)",
+       "",
+       ""
+      ],
+      [
+       "since #1150: the answer kept",
+       "",
+       "3,480",
+       "1,122.7"
+      ],
+      [
+       "since #1150: a second request, answered with the kept answer",
+       "under 1 ms",
+       "",
+       ""
+      ],
+      [
+       "since #1150: the answers moved past the tip (`moved`), the state still reachable",
+       "",
+       "2,360",
+       "2.7"
+      ]
+     ]
+    },
+    {
+     "id": "perf-67.t2",
+     "header": [
+      "Requests at the tip",
+      "Time",
+      "Builds",
+      "Heap in use when a collection began, most, MiB"
+     ],
+     "separator": "|---|---:|---:|---:|",
+     "rows": [
+      [
+       "one, since #1150",
+       "35.6 s",
+       "1",
+       "11,616"
+      ],
+      [
+       "four at once, before #1150 (`30fd188ba`)",
+       "none: `OutOfMemoryError` about 2 minutes in",
+       "4 (each request builds its own)",
+       "23,847 of 24,576"
+      ],
+      [
+       "four at once, each with answers of its own (since #1150, `unshared 4`)",
+       "none: `OutOfMemoryError` about 2 minutes in",
+       "4 (each request builds its own)",
+       "24,030 of 24,576"
+      ],
+      [
+       "four at once, sharing (since #1150, `shared 4`)",
+       "33.5 s",
+       "1",
+       "11,591"
+      ]
+     ]
+    }
+   ],
+   "listings": []
   }
  ]
 }

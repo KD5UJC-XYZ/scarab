@@ -5,6 +5,7 @@ import xyz.kd5ujc.scarab.consensus.VolatileChain
 import cats.effect.{Async, Ref, Resource}
 import cats.syntax.all.*
 import com.comcast.ip4s.{ipv4, port, Host, Port, SocketAddress}
+import fs2.Stream
 import fs2.io.net.Network
 import io.circe.Json
 import io.circe.syntax.*
@@ -584,7 +585,14 @@ object QueryServer:
     */
   val MaxFullUtxo: Long = 100000L
 
-  /** @param scheduling
+  /** What a `GET /state` answer is of: the point of the state, and how much of the UTxO set it
+    * carries.
+    */
+  private[node] final case class StateKey(point: ChainSync.Point, utxo: UtxoView)
+
+  /** @param tips
+    *   The tip each time it moves: the `GET /state` answers at it are kept until it moves again.
+    * @param scheduling
     *   The whole-run scheduling measurements, served at `/scheduling`.
     * @param connections
     *   The connection manager's table and the inbound sessions, served at `/connections`.
@@ -598,6 +606,7 @@ object QueryServer:
   def resource[F[_]: Async, S](
       view: ChainView[F, S],
       listen: QueryListen,
+      tips: Stream[F, ChainSync.Point],
       utxoStore: Option[xyz.kd5ujc.scarab.storage.UtxoStore[F]] = None,
       scheduling: Option[F[Json]] = None,
       connections: Option[F[Json]] = None,
@@ -607,15 +616,25 @@ object QueryServer:
     listen match
       case QueryListen.Off => Resource.pure(None)
       case QueryListen.Loopback(port) =>
-        EmberServerBuilder
-          .default[F](using Async[F], httpNetwork[F])
-          .withHost(ipv4"127.0.0.1")
-          .withPort(port)
-          .withHttpApp(
-            routes(view, utxoStore, scheduling, connections, forging, metrics)(fatal).orNotFound
+        SharedAnswers
+          .following[F, ChainSync.Point, StateKey, Response[F]](
+            tips,
+            _.point,
+            cause => fatal(Fatal.Defect(cause))
           )
-          .build
-          .map(Some(_))
+          .flatMap { answers =>
+            EmberServerBuilder
+              .default[F](using Async[F], httpNetwork[F])
+              .withHost(ipv4"127.0.0.1")
+              .withPort(port)
+              .withHttpApp(
+                routes(view, answers, utxoStore, scheduling, connections, forging, metrics)(
+                  fatal
+                ).orNotFound
+              )
+              .build
+              .map(Some(_))
+          }
 
   private enum StateTarget:
     case Tip
@@ -654,8 +673,10 @@ object QueryServer:
         _ <- Either.cond(hash.size == 32, (), PointError.Hash)
       yield StateTarget.At(ChainSync.Point.Block(slot, hash))
 
+  /** The routes; `answers` builds the answers of `GET /state` one at a time (#1150). */
   private[node] def routes[F[_]: Async, S](
       view: ChainView[F, S],
+      answers: SharedAnswers[F, ChainSync.Point, StateKey, Response[F]],
       utxoStore: Option[xyz.kd5ujc.scarab.storage.UtxoStore[F]] = None,
       scheduling: Option[F[Json]] = None,
       connections: Option[F[Json]] = None,
@@ -674,7 +695,15 @@ object QueryServer:
             .map(xyz.kd5ujc.scarab.ledger.Utxo.fromMap)
         }
       }
+    // The projection of `s` and its rendering, which the answer holds as bytes; at most one is built
+    // at a time, and a request for the point and view of one being built shares it.
     def projected(view: UtxoView, p: ChainSync.Point, s: S): F[Response[F]] =
+      view match
+        case UtxoView.Full if s.utxo.count > MaxFullUtxo =>
+          PayloadTooLarge(s"the UTxO set has more than $MaxFullUtxo entries")
+        case UtxoView.Summary | UtxoView.Full =>
+          answers.answer(StateKey(p, view))(built(view, p, s))
+    def built(view: UtxoView, p: ChainSync.Point, s: S): F[Response[F]] =
       view match
         case UtxoView.Summary =>
           // no entry is read: the counts are the state's own totals, so memory stays bounded
@@ -689,8 +718,6 @@ object QueryServer:
                 )
               )
             case Left(refused) => InternalServerError(s"the state cannot be projected: $refused")
-        case UtxoView.Full if s.utxo.count > MaxFullUtxo =>
-          PayloadTooLarge(s"the UTxO set has more than $MaxFullUtxo entries")
         case UtxoView.Full =>
           complete(s).flatMap { utxo =>
             Projection.node(p, s, utxo) match

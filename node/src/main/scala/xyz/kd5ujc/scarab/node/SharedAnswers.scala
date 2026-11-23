@@ -1,0 +1,141 @@
+// SPDX-License-Identifier: Apache-2.0
+package xyz.kd5ujc.scarab.node
+
+import cats.effect.{Async, Deferred, Ref, Resource}
+import cats.effect.std.Mutex
+import cats.effect.syntax.all.*
+import cats.syntax.all.*
+import fs2.Stream
+
+/** Answers that are costly to build, built one at a time and shared: the HTTP query server's
+  * `GET /state` (#1150). A request for a key whose answer is being built waits for that build and
+  * gets its answer. The answer at the current point is kept until the point moves, so asking again
+  * builds nothing; an answer at any other point goes to the requests that waited for it and is not
+  * kept.
+  */
+trait SharedAnswers[F[_], P, K, A]:
+  /** The answer for `key`: the kept one, the one being built, or the one `build` gives, run once no
+    * other build runs. A build that fails fails every request that waited for it, and is not kept.
+    * When the request that runs a build is cancelled, a request that waited for it asks again.
+    */
+  def answer(key: K)(build: => F[A]): F[A]
+
+  /** The current point is now `point`: the answers at any other point are dropped. */
+  def moved(point: P): F[Unit]
+
+object SharedAnswers:
+  /** How a build ended, for the requests that waited for it. */
+  private[node] enum Ending[+A]:
+    case Answered(answer: A)
+    case Failed(cause: Throwable)
+
+    /** The request that ran the build was cancelled: a request that waited for it asks again. */
+    case Abandoned
+
+  /** A key's answer, at the point `at`: being built, with the end of the build to wait on, or built
+    * and kept.
+    */
+  private[node] enum Entry[+P, +D, +A]:
+    case Building(at: P, ending: D)
+    case Built(at: P, answer: A)
+
+  /** What a request does: take the kept answer, wait for the build under way, or build. */
+  private[node] enum Step[+D, +A]:
+    case Kept(answer: A)
+    case Wait(ending: D)
+    case Build
+
+  /** The answers, and the point they are kept for. A key has one entry at most, so at most one
+    * build of a key is under way; a built entry is at `current`, since [[moved]] drops the others
+    * and [[settle]] keeps an answer only at `current`. Each entry holds its point, so neither reads
+    * a key again. `D` is what a waiting request waits on.
+    */
+  private[node] final case class Table[P, K, D, A](
+      current: Option[P],
+      entries: Map[K, Entry[P, D, A]]
+  ):
+    /** A request for `key`, whose answer is at `at`; if it is to build, the key's entry is `mine`
+      * until it is settled.
+      */
+    def ask(key: K, at: P, mine: D): (Table[P, K, D, A], Step[D, A]) =
+      entries.get(key) match
+        case Some(Entry.Built(_, answer))    => (this, Step.Kept(answer))
+        case Some(Entry.Building(_, theirs)) => (this, Step.Wait(theirs))
+        case None => (copy(entries = entries.updated(key, Entry.Building(at, mine))), Step.Build)
+
+    /** The build of `key` ended with `ending`: its answer is kept if it is at the current point. */
+    def settle(key: K, ending: Ending[A]): Table[P, K, D, A] =
+      entries.get(key) match
+        case Some(Entry.Building(at, _)) =>
+          ending match
+            case Ending.Answered(answer) if current.contains(at) =>
+              copy(entries = entries.updated(key, Entry.Built(at, answer)))
+            case Ending.Answered(_) | Ending.Failed(_) | Ending.Abandoned =>
+              copy(entries = entries.removed(key))
+        // no build of the key is under way: there is nothing to settle
+        case Some(Entry.Built(_, _)) | None => this
+
+    def moved(point: P): Table[P, K, D, A] =
+      Table(
+        Some(point),
+        entries.filter {
+          case (_, Entry.Building(_, _)) => true
+          case (_, Entry.Built(at, _))   => at == point
+        }
+      )
+
+  private[node] object Table:
+    def empty[P, K, D, A]: Table[P, K, D, A] = Table(None, Map.empty)
+
+  /** Answers kept for no point until the first [[SharedAnswers.moved]]; `at` is the point of a
+    * key's answer.
+    */
+  def of[F[_]: Async, P, K, A](at: K => P): F[SharedAnswers[F, P, K, A]] =
+    (Ref.of[F, Table[P, K, Deferred[F, Ending[A]], A]](Table.empty), Mutex[F]).mapN {
+      (table, lock) =>
+        new SharedAnswers[F, P, K, A]:
+          // the key's point is read once, before anything is reserved, so that a failure to read
+          // it fails only this request
+          def answer(key: K)(build: => F[A]): F[A] =
+            (Async[F].delay(at(key)), Deferred[F, Ending[A]]).tupled
+              .flatMap { (point, mine) =>
+                Async[F].uncancelable { poll =>
+                  table.modify(_.ask(key, point, mine)).flatMap {
+                    case Step.Kept(answer) => Async[F].pure(Ending.Answered(answer))
+                    case Step.Wait(theirs) => poll(theirs.get)
+                    case Step.Build =>
+                      poll(lock.lock.surround(Async[F].defer(build)).attempt)
+                        .onCancel(end(key, mine, Ending.Abandoned))
+                        .flatMap { result =>
+                          val ending = result.fold(Ending.Failed(_), Ending.Answered(_))
+                          end(key, mine, ending).as(ending)
+                        }
+                  }
+                }
+              }
+              .flatMap {
+                case Ending.Answered(answer) => Async[F].pure(answer)
+                case Ending.Failed(cause)    => Async[F].raiseError(cause)
+                case Ending.Abandoned        => answer(key)(build)
+              }
+
+          def moved(point: P): F[Unit] = table.update(_.moved(point))
+
+          // the waiters are answered whatever becomes of the table's update
+          private def end(key: K, mine: Deferred[F, Ending[A]], ending: Ending[A]): F[Unit] =
+            table.update(_.settle(key, ending)).guarantee(mine.complete(ending).void)
+    }
+
+  /** Answers kept for the points of `points`, for the life of the resource. An exception in the
+    * fiber that follows them goes to `defect`, which stops the node.
+    */
+  def following[F[_]: Async, P, K, A](
+      points: Stream[F, P],
+      at: K => P,
+      defect: Throwable => F[Unit]
+  ): Resource[F, SharedAnswers[F, P, K, A]] =
+    Resource
+      .eval(of[F, P, K, A](at))
+      .flatTap(answers =>
+        points.evalMap(answers.moved).compile.drain.handleErrorWith(defect).background
+      )
