@@ -84,7 +84,10 @@ Changing your mind is normal, not a failure of planning:
 
 - **A new idea** becomes an issue with `status:idea` (or a line to the maintainer, who files it). It is
   shaped and placed at the next triage, not necessarily started.
-- **A change of priority** is a label or milestone change, with one sentence on why.
+- **A change of priority** is a label or milestone change, with one sentence on why. Lowering the priority of a P0
+  or P1 issue, parking it, closing it as not planned, or folding it into an issue of lower priority needs the owner's
+  approval first, asked in the chat session doing the work ([what approval is](design-rules.md#approval)); such an
+  issue still closes as completed under the definition of done without it (owner decision, 2026-11-23).
 - **An interruption** parks the current item: push or record the branch, write the resume comment,
   label it `status:parked`. Parked work is resumed from the comment, not from memory.
 - **A reversed decision** gets a new ADR that supersedes the old one; the old one is kept and marked.
