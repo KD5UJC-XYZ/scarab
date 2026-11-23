@@ -2740,8 +2740,9 @@ Conway's rules on the classes follow as the rest of stage 2.
     reclassifies nothing; the rest, an unnamed script, the node's readings that disagree, parameters that are not
     Conway's, a stored output the era does not read, too many proposals and a record of the proposals that does not
     read or write, withhold the block and never stop the node (`ChainError.ConwayBlock`, `BlockNoVerdict.ofConway`,
-    issue 567). A stored block replayed at a restart keeps its routes: a refusal cuts the stored tail back, no verdict
-    stops the start, as for every cause of no verdict.
+    issue 567). A stored block replayed at a restart keeps its routes: in the volatile tail's recovery a refusal cuts the
+    stored tail back, and in the immutable replay it stops the start; no verdict stops the start, as for every
+    cause of no verdict.
   - The flat BBODY and MEMPOOL stay (owner decision 4) and the comparison stays in the tests: `ConwayBodiesReplaySuite`
     asserts the era run's state and counters equal to the flat rules' on every Conway block of the preprod window,
     and `SessionFailureSuite` pins each outcome's route through the follower. The forger selects with the flat rules
