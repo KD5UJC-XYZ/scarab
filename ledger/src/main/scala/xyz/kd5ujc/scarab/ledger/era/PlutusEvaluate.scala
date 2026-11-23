@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.ledger.era
 
 import scala.annotation.unused
-import cats.{Eval, Monad, Monoid}
+import cats.{Applicative, Eval, Monad, Monoid}
 import cats.data.NonEmptyList
 import cats.mtl.Raise
 import cats.syntax.all.*
@@ -526,7 +526,10 @@ object PlutusEvaluation:
   * cardano-ledger f649f975). A block run evaluates them there too ([[Phase2Deferral.now]]), but
   * while the node prepares a block whose scripts it evaluates in bounded parallel workers (ADR
   * 0018) the run records them and evaluates none, which supplies no verdict: the rules go on as the
-  * transaction's flag announces, and the block's plan checks every verdict after, in order.
+  * transaction's flag announces, and the block's plan checks every verdict after, in order. UTXOS
+  * also tells it of a transaction whose scripts it could not collect, before it records why
+  * ([[uncollected]]), so that a block run observes that transaction for the node as it observes one
+  * whose scripts ran.
   */
 trait Phase2Deferral[F[_], E <: EraTag]:
   /** The scripts `scripts` of `tx`, which `now` evaluates and checks. */
@@ -534,9 +537,18 @@ trait Phase2Deferral[F[_], E <: EraTag]:
       now: F[Unit]
   ): F[Unit]
 
+  /** `tx`, whose scripts UTXOS could not collect with their contexts, told before UTXOS records
+    * their collection's failures (`CollectErrors`): what the run does with it changes no rule's
+    * result.
+    */
+  def uncollected(tx: Tx[TxLevel.Top, E]): F[Unit]
+
 object Phase2Deferral:
-  /** The scripts evaluated where they are collected, as the reference evaluates them. */
-  def now[F[_], E <: EraTag]: Phase2Deferral[F, E] = new Phase2Deferral[F, E]:
+  /** The scripts evaluated where they are collected, as the reference evaluates them, and a
+    * transaction whose scripts could not be collected told to no one.
+    */
+  def now[F[_]: Applicative, E <: EraTag]: Phase2Deferral[F, E] = new Phase2Deferral[F, E]:
     def evalScripts(tx: Tx[TxLevel.Top, E], scripts: NonEmptyList[PlutusWithContext])(
         now: F[Unit]
     ): F[Unit] = now
+    def uncollected(tx: Tx[TxLevel.Top, E]): F[Unit] = Applicative[F].unit

@@ -2664,15 +2664,22 @@ Conway's rules on the classes follow as the rest of stage 2.
     decoder reads (Plutus V1, V2 and V3, every purpose).
   - The phase-2 observer (`--plutus-cases`): given one (`ConwayBlockRun.Observing`), the run locates each script the
     evaluator runs the same way, by its transaction and its place, and tells the flat rules' `Phase2.Observation` of a transaction once its last script
-    ran or one had no verdict.
+    ran or one had no verdict. A transaction whose scripts UTXOS cannot collect with their contexts is told to the
+    run by UTXOS before it records `CollectErrors` (`Phase2Deferral.uncollected`, Scarab's own; the mempool and
+    Dijkstra's run tell no one), and the run observes it as `TxChecks.phase2` does: only where nothing failed before
+    in the judgment, with the flat rules' collection's failures (`ConwayPhase2.uncollected`, since a context's
+    failure to translate has no projection from the era's into the observation's vocabulary). The judgment is
+    failing after it, so no script runs and the run observes nothing more (`Observed.Ended`); a prepared block
+    records the observation in order beside its deferred scripts and tells it at its place
+    ([parallel Plutus](parallel-plutus.md#era-block-runs)). Observing changes no rule's result.
   - `ConwayBbodySuite` compares each with the flat rules: the counters on the 53 recorded blocks (zero on both, as no
     script runs in them) and on built blocks of valid and invalid script transactions and a datum-only integrity
     hash; the naming of each of the four scripts of a block of a valid and an invalid transaction, with the
     evaluator giving no verdict on each in turn, and of two V1 scripts of one transaction with equal requests at
-    certificates 0 and 2; the observations on the same blocks; the proposals of two transactions of one block.
-  - Differences from the flat rules: the flat rules observe a transaction whose scripts' contexts cannot be collected
-    (`Left` of the collection's errors); the era run observes only scripts it runs, so a collection's failure is not
-    observed (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7084208368).
+    certificates 0 and 2; the observations on the same blocks, and on blocks of a phase-1-valid Plutus V1
+    transaction creating an output with an inline datum, whose context cannot be built, alone and after or before a
+    Plutus V3 transaction whose script passes (flagged valid or not), the plan's and four workers' observations the
+    serial run's; the proposals of two transactions of one block.
   - A defect of this implementation after a recorded failure (decided in
     https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7104253607, point 2, on the gap of
     https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7084209535): under every failure accumulated
