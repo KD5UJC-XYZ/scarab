@@ -131,7 +131,7 @@ already follows (issue 130). A job's failure is a value, not an exception: `Job.
 own typed errors (`PeerError`, `ConnectionError`) and returns the failure completion the reference's `handler`
 returns (for example `ActivePeers.hs:465-558`). The only errors that reach the loop's `Raise` are
 `GovernorError.InvariantBroken` and, from G1.1, `BootstrapPeersCriticalTimeout` (15 minutes,
-`Types.hs:1863-1869`). A demotion whose connection is not released within the 600 s wait (`Types.hs:268-274`) is
+`Types.hs:1863-1869`). A close whose connection is not released within the 600 s wait (`Types.hs:268-274`) is
 no error: the job's outcome is `CloseTimedOut`, the peer lingers (`Status.Cooling`, still established, neither
 promoted nor demoted) and the governor traces `DemoteFailed` with `timedOut = true` and goes on, as the
 reference's handler traces the failure and keeps the peer established (`EstablishedPeers.hs:911-967`). `IO`
