@@ -66,8 +66,8 @@ class ConwayBodiesReplaySuite extends FailsOnUncaught:
         }
         way.toString -> (nanos.sum / 1e9).asJson
       }
-      disagreeing = rows.filterNot(
-        _.hcursor.downField("eraAgreesWithFlat").as[Boolean].contains(true)
+      disagreeing = rows.filter(
+        _.hcursor.downField("eraAgreesWithFlat").as[Boolean].contains(false)
       )
       report = Json.obj(
         "replay" -> summary,

@@ -34,8 +34,8 @@ import xyz.kd5ujc.scarab.storage.UtxoStore
   * era block are decoded, and the inputs read from the store, outside the timings. The era run's
   * result through the workers is checked against its serial result, the flat rules' through the
   * workers against theirs, and the era run's against the flat rules' (the same ledger state and
-  * counters), which is reported, not asserted: the node does not apply Conway blocks with the era
-  * run yet (#85).
+  * counters), on the first round, as reading the whole state costs; the last is reported, not
+  * asserted: the node does not apply Conway blocks with the era run yet (#85).
   */
 object EraBodies:
   /** The bound of the node's workers the two parallel ways run at, and the rounds of each block. */
@@ -144,25 +144,28 @@ object EraBodies:
               .traverse(way => run(way).map(way -> _))
               .map { results =>
                 val by = results.toMap
-                val flatSerial = by(Way.FlatSerial)._1
-                val eraSerial = by(Way.EraSerial)._1
-                assertEquals(by(Way.FlatParallel)._1, flatSerial, s"flat: slot ${header.slot}")
-                val agrees = (eraSerial, by(Way.EraParallel)._1) match
-                  case (Right(Right(Right(s))), Right(Right(Right(p)))) =>
-                    cats.Eq[LedgerState[Conway]].eqv(s.state.ls, p.state.ls) &&
-                    s.state.blocksMade == p.state.blocksMade && s.plutus == p.plutus
-                  case (s, p) => s == p
-                assert(agrees, s"era: slot ${header.slot}")
-                val sameAsFlat = (flatSerial, eraSerial) match
-                  case (Left(EraBlock.Outcome.Applied(after, plutus)), Right(Right(Right(e)))) =>
-                    after match
-                      case i: EraNes.InEra[x] =>
-                        i.era match
-                          case ShelleyBasedEra.SConway =>
-                            cats.Eq[LedgerState[Conway]].eqv(i.nes.es.ls, e.state.ls) &&
-                            i.nes.bcur == e.state.blocksMade && plutus == e.plutus
-                          case _ => false
-                  case _ => false
+                // the results compared on the first round only: a comparison reads the whole state
+                val sameAsFlat = Option.when(round == 0) {
+                  val flatSerial = by(Way.FlatSerial)._1
+                  val eraSerial = by(Way.EraSerial)._1
+                  assertEquals(by(Way.FlatParallel)._1, flatSerial, s"flat: slot ${header.slot}")
+                  val agrees = (eraSerial, by(Way.EraParallel)._1) match
+                    case (Right(Right(Right(s))), Right(Right(Right(p)))) =>
+                      cats.Eq[LedgerState[Conway]].eqv(s.state.ls, p.state.ls) &&
+                      s.state.blocksMade == p.state.blocksMade && s.plutus == p.plutus
+                    case (s, p) => s == p
+                  assert(agrees, s"era: slot ${header.slot}")
+                  (flatSerial, eraSerial) match
+                    case (Left(EraBlock.Outcome.Applied(after, plutus)), Right(Right(Right(e)))) =>
+                      after match
+                        case i: EraNes.InEra[x] =>
+                          i.era match
+                            case ShelleyBasedEra.SConway =>
+                              cats.Eq[LedgerState[Conway]].eqv(i.nes.es.ls, e.state.ls) &&
+                              i.nes.bcur == e.state.blocksMade && plutus == e.plutus
+                            case _ => false
+                    case _ => false
+                }
                 Json.obj(
                   "slot" -> header.slot.asJson,
                   "block" -> header.blockNo.asJson,
