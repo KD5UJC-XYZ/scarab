@@ -53,6 +53,7 @@ import xyz.kd5ujc.scarab.node.{
   InboundEvent,
   DnsName,
   LedgerPeersTrace,
+  LeiosPrevalidation,
   LocalRootsTrace,
   NodeSetup,
   PeerSnapshotError,
@@ -805,6 +806,17 @@ object LogSamples:
       LeiosKernelEvent.VotingDisabled,
       LeiosKernelEvent.VoteScheduled(point, 3.seconds, 7.seconds),
       LeiosKernelEvent.EbValidated(point, 300, 23, 1500.millis),
+      LeiosKernelEvent.TxsPrevalidated(point, 323, 296, 290, 700.millis),
+      LeiosKernelEvent.PrevalidationSkipped(point, LeiosPrevalidation.Skip.NoDijkstraTip),
+      LeiosKernelEvent.PrevalidationSkipped(point, LeiosPrevalidation.Skip.OtherEpoch(143, 144)),
+      LeiosKernelEvent.PrevalidationSkipped(
+        point,
+        LeiosPrevalidation.Skip.Tick(xyz.kd5ujc.scarab.ledger.rules.TickFailure.NoDijkstraGenesis)
+      ),
+      LeiosKernelEvent.PrevalidationSkipped(
+        point,
+        LeiosPrevalidation.Skip.Store(StorageError.DatabaseInUse("utxo"))
+      ),
       LeiosKernelEvent.NoVoteOnset(point),
       LeiosKernelEvent.Voted(vote, tally.weight),
       LeiosKernelEvent.VoteAcquired(vote, tally),

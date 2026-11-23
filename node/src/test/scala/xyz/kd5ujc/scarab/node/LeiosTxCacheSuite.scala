@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.node
 
 import cats.data.NonEmptyVector
-import cats.effect.{Deferred, IO}
+import cats.effect.{Deferred, IO, Ref}
 import cats.mtl.Raise
 import cats.syntax.all.*
 import scala.concurrent.duration.*
@@ -17,7 +17,8 @@ import xyz.kd5ujc.scarab.ledger.era.rules.{
   DijkstraUtxowPredFailure,
   LeiosClosureDefect
 }
-import xyz.kd5ujc.scarab.ledger.state.SlotNo
+import xyz.kd5ujc.scarab.ledger.era.{BothLevels, EraTx, Tx, TxLevel}
+import xyz.kd5ujc.scarab.ledger.state.{Dijkstra, SlotNo}
 import xyz.kd5ujc.scarab.node.mempool.{DijkstraState, Rejection}
 import xyz.kd5ujc.scarab.protocol.LeiosTxHash
 import xyz.kd5ujc.scarab.storage.{LeiosEb, MemoryUtxoStore, UtxoReadView}
@@ -321,6 +322,162 @@ class LeiosTxCacheSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         case other                                        => fail(s"not the store's error: $other")
       // the cancelled wait took no permit: the cache warms at its full parallelism again
       assertEquals(free, 1)
+  }
+
+  /** The recorded closure decoded. */
+  private lazy val decoded: Vector[(LeiosTxHash, Tx[TxLevel.Top, Dijkstra])] =
+    DijkstraClosure
+      .resolveLeiosClosure(r.point.hash, Some(r.stored))
+      .fold(e => fail(e.toString), identity)
+
+  /** Pre-validation of `closure` on the recorded state at the closure's slot, with `cache`, after
+    * the cache records its transactions as fetched, as the arrival does before it offers them; the
+    * events it traced.
+    */
+  private def prevalidated(
+      closure: Vector[(LeiosTxHash, Bytes)],
+      cache: LeiosTxCache[IO],
+      store: Option[UtxoReadView[IO]] = None,
+      on: DijkstraState = state
+  ): IO[Vector[LeiosKernelEvent[Nothing, Nothing]]] =
+    Ref
+      .of[IO, Vector[LeiosKernelEvent[Nothing, Nothing]]](Vector.empty)
+      .flatMap(events =>
+        cache.insertUnapplied(closure.map(_._1)) *> LeiosPrevalidation
+          .prevalidateOn[IO](
+            LeiosPrevalidation.Work(store, cache, 4, e => events.update(_ :+ e)),
+            LeiosPrevalidation.Arrived(r.point, closure),
+            LeiosPrevalidation.Base(on, r.env, parity),
+            Duration.Zero
+          ) *> events.get
+      )
+
+  test("the recorded closure's independent transactions: 296 of 323, 27 spend another's output") {
+    // the fixture's own structure: 27 transactions spend an output of an earlier one of the closure,
+    // which an input names by its body's id, not by the hash an endorser block lists it by
+    val ids = decoded
+      .map((_, tx) =>
+        EraTx.dijkstra.bodyOf
+          .id[TxLevel.Top](EraTx.dijkstra.body[TxLevel.Top](tx)(using BothLevels.Top))(using
+            EraTx.dijkstra.bodyOf.top
+          )
+      )
+      .toSet
+    val dependent =
+      decoded.filter((_, tx) => MirrorDijkstra.inputs(Vector(tx)).exists(i => ids(i.id)))
+    assertEquals(dependent.size, 27)
+    assertEquals(LeiosPrevalidation.independent(decoded, state.utxo).size, 296)
+    assert(
+      LeiosPrevalidation.independent(dependent, state.utxo).isEmpty,
+      "no transaction fed by the closure is independent"
+    )
+  }
+
+  test(
+    "pre-validation tags the independent transactions that pass; the check reapplies those, same verdict"
+  ) {
+    for
+      cache <- cacheOf(r.stored, Vector.empty, parity)
+      events <- prevalidated(r.stored, cache)
+      held <- validated(cache, r.stored)
+      verdict <- check(r.stored, cache)
+    yield
+      assertEquals(held.count(_.contains(Right(parity))), 296)
+      // the 27 fed by the closure are left as they were, for the check to validate in full
+      assertEquals(verdict, EbClosureVerdict.Valid(296, 27))
+      events match
+        case Vector(LeiosKernelEvent.TxsPrevalidated(p, offered, independent, tagged, _)) =>
+          assertEquals((p, offered, independent, tagged), (r.point, 323, 296, 296))
+        case other => fail(s"not one TxsPrevalidated: $other")
+  }
+
+  test("a forged transaction is not tagged, and the check refuses the closure as it does without") {
+    for
+      cache <- cacheOf(withForged, Vector.empty, parity)
+      _ <- prevalidated(withForged, cache)
+      look <- cache.lookup
+      verdict <- check(withForged, cache)
+      plain <- cacheOf(withForged, Vector.empty, parity).flatMap(check(withForged, _))
+    yield
+      // its signature fails, so pre-validation leaves it as the cache held it: not validated
+      assert(!look(forged._1).contains(Right(parity)), "the forged transaction is not tagged")
+      refusedWitness(verdict)
+      assertEquals(verdict, plain)
+  }
+
+  test("a reply whose endorser block was evicted while it waited is not validated at all") {
+    for
+      cache <- cacheOf(r.stored, Vector.empty, parity)
+      _ <- cache.evictOlderThan(r.point.slot.toBigInt + 1)
+      events <- prevalidated(r.stored, cache)
+      held <- validated(cache, r.stored)
+    yield
+      assertEquals(held, Vector.fill(323)(None))
+      events match
+        case Vector(LeiosKernelEvent.TxsPrevalidated(_, offered, independent, tagged, _)) =>
+          assertEquals((offered, independent, tagged), (323, 0, 0))
+        case other => fail(s"not one TxsPrevalidated: $other")
+  }
+
+  test("tags count only what the cache newly holds: none once evicted, none already held") {
+    val txs = r.stored.map(_._1)
+    for
+      cache <- cacheOf(r.stored, Vector.empty, parity)
+      first <- cache.insertAppliedCounted(txs.take(10), parity)
+      again <- cache.insertAppliedCounted(txs.take(20), parity)
+      // evicted between the validation and the tagging
+      _ <- cache.evictOlderThan(r.point.slot.toBigInt + 1)
+      evicted <- cache.insertAppliedCounted(txs, parity)
+    yield assertEquals((first, again, evicted), (10, 10, 0))
+  }
+
+  test("a failed read of the outputs pre-validates nothing and says why") {
+    val (stripped, _) = split
+    val failing = new UtxoReadView[IO]:
+      def read(keys: Iterable[TxIn])(using
+          raise: Raise[IO, StorageError]
+      ): IO[Map[TxIn, TxOut]] = raise.raise(StorageError.DatabaseInUse("the test's store"))
+      def stamp(using Raise[IO, StorageError]): IO[Long] = IO.pure(0L)
+      def all(using Raise[IO, StorageError]): IO[Map[TxIn, TxOut]] = IO.pure(Map.empty)
+      def select(keep: TxOut => Boolean)(using Raise[IO, StorageError]): IO[Map[TxIn, TxOut]] =
+        IO.pure(Map.empty)
+      def selectAddresses(addresses: Set[Bytes])(using
+          Raise[IO, StorageError]
+      ): IO[Map[TxIn, TxOut]] = IO.pure(Map.empty)
+    for
+      cache <- cacheOf(r.stored, Vector.empty, parity)
+      events <- prevalidated(r.stored, cache, Some(failing), stripped)
+      held <- validated(cache, r.stored)
+    yield
+      assertEquals(held.count(_.contains(Right(parity))), 0)
+      events match
+        case Vector(
+              LeiosKernelEvent.PrevalidationSkipped(_, LeiosPrevalidation.Skip.Store(_))
+            ) =>
+          ()
+        case other => fail(s"not a store skip: $other")
+  }
+
+  test("only a block of the tip's epoch is pre-validated, at its slot or the tip's") {
+    val g = r.env.rules.geometry
+    val epoch = g.epochOf(r.slot)
+    val first = g.firstSlot(epoch)
+    val last = g.firstSlot(epoch + 1) - 1
+    // the tip before the block or at it: the block's slot; the tip past it: the tip's
+    assertEquals(LeiosPrevalidation.slotFor(g, first, first + 10), Right(first + 10))
+    assertEquals(LeiosPrevalidation.slotFor(g, first + 10, first + 10), Right(first + 10))
+    assertEquals(LeiosPrevalidation.slotFor(g, first + 20, first + 10), Right(first + 20))
+    // a block announced at the epoch's last slot, by the tip
+    assertEquals(LeiosPrevalidation.slotFor(g, last, last), Right(last))
+    // a tip of the epoch before and a tip of the epoch after
+    assertEquals(
+      LeiosPrevalidation.slotFor(g, first - 1, first + 10),
+      Left(LeiosPrevalidation.Skip.OtherEpoch(epoch - 1, epoch))
+    )
+    assertEquals(
+      LeiosPrevalidation.slotFor(g, last + 1, first + 10),
+      Left(LeiosPrevalidation.Skip.OtherEpoch(epoch + 1, epoch))
+    )
   }
 
   test("a transaction only the mempool held and a fetched one: applied and unapplied") {

@@ -318,6 +318,8 @@ enum EventKind(val area: Area, val severity: Severity):
   case LeiosKernelMsg extends EventKind(Area.Chain, Severity.Info)
   case LeiosVoteScheduled extends EventKind(Area.Chain, Severity.Info)
   case LeiosEbValidated extends EventKind(Area.Chain, Severity.Info)
+  case LeiosTxsPrevalidated extends EventKind(Area.Chain, Severity.Info)
+  case LeiosPrevalidationSkipped extends EventKind(Area.Chain, Severity.Info)
   case LeiosVoted extends EventKind(Area.Chain, Severity.Info)
   case LeiosNotVoted extends EventKind(Area.Chain, Severity.Info)
 

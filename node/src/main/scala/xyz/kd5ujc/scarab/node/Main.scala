@@ -2206,6 +2206,14 @@ object Main extends IOApp:
       immutableTipSlot = chain.ref.get.map(
         _.anchor.block.map(b => xyz.kd5ujc.scarab.protocol.LeiosWord.Word64.clamped(b.slot))
       )
+      // a voting node's queue of fetched closure transactions to pre-validate ([[LeiosPrevalidation]],
+      // an Improvement, #79); a node that never votes pre-validates nothing
+      prevalidation <- Option
+        .when(leios.isDefined && run.credentials.exists(_.voting.nonEmpty))(())
+        .traverse(_ =>
+          cats.effect.std.Queue
+            .bounded[IO, LeiosPrevalidation.Arrived](LeiosPrevalidation.QueueDepth)
+        )
       leiosFetch <- leios.traverse { store =>
         (
           cats.effect.std.Random.scalaUtilRandom[IO].flatMap(_.nextLong),
@@ -2229,7 +2237,8 @@ object Main extends IOApp:
               LeiosMinOfferLead(xyz.kd5ujc.scarab.protocol.LeiosWord.Word64.clamped(lead.toBigInt))
             ),
             LeiosMempoolPull.of(chain.mempool.leiosTxIndex),
-            run.txCache
+            run.txCache,
+            prevalidation.map(LeiosPrevalidation.offer[IO])
           )(using summon, LeiosStorage.lifted[IO])
         }
       }
@@ -2293,7 +2302,43 @@ object Main extends IOApp:
           .background
           .void
       }
-    yield Supply(blockPool, genesisRuntime, leios, leiosFetch, leiosVotes, voting)
+      // the pre-validation fiber beside the voting thread, on the queue the fetch logic offers to;
+      // an exception of the rules is no verdict there (`LeiosPrevalidation`), any other stops the
+      // node as the voting thread's does
+      prevalidating = prevalidation.fold(Resource.unit[IO])(queue =>
+        LeiosPrevalidation
+          .run[IO](
+            LeiosPrevalidation.Env(
+              chain.ref.get,
+              chain.mempoolEnvironment.ask[MempoolEnv],
+              chain.txClock,
+              LeiosPrevalidation.Work(
+                Some(run.store),
+                run.txCache,
+                math.max(1, VerificationCache.defaultParallelism / 2),
+                event =>
+                  Log[IO].emit(
+                    event: LeiosKernelEvent[
+                      xyz.kd5ujc.scarab.node.mempool.Rejection,
+                      xyz.kd5ujc.scarab.ledger.era.rules.LeiosClosureDefect
+                    ]
+                  )
+              )
+            ),
+            queue
+          )
+          .handleErrorWith(cause => fatalSink(Fatal.Defect(cause)))
+          .background
+          .void
+      )
+    yield Supply(
+      blockPool,
+      genesisRuntime,
+      leios,
+      leiosFetch,
+      leiosVotes,
+      voting.flatMap(_ => prevalidating)
+    )
 
   /** The node's connections: the manager, the inbound governor, the outbound peer network and the
     * relay's listener.

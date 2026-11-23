@@ -25,7 +25,8 @@ import xyz.kd5ujc.scarab.network.{
   MuxChannel,
   NetworkError
 }
-import xyz.kd5ujc.scarab.protocol.LeiosNotify
+import xyz.kd5ujc.scarab.protocol.{EbPoint, LeiosNotify, LeiosTxHash}
+import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.node.forge.{ForgedLeiosEb, OnForgedLeiosEb}
 import xyz.kd5ujc.scarab.protocol.LeiosWord.{Word32, Word64}
 import xyz.kd5ujc.scarab.storage.{LeiosEbNotification, LeiosStore, LeiosStoreError}
@@ -283,7 +284,8 @@ object LeiosFetchNode:
       immutableTipNow: F[Option[Word64]],
       lead: LeiosMinOfferLead,
       pull: LeiosMempoolPull[F],
-      txCache: LeiosTxCache[F]
+      txCache: LeiosTxCache[F],
+      prevalidate: Option[(EbPoint, Vector[(LeiosTxHash, Bytes)]) => F[Unit]] = None
   )(using Raise[F, LeiosStoreError]): F[LeiosFetchNode[F]] =
     (
       LeiosFetchKernel
@@ -301,7 +303,8 @@ object LeiosFetchNode:
           fatal,
           settling => supervisor.supervise(settling.handleErrorWith(defect)).void,
           slots,
-          pull
+          pull,
+          prevalidate
         ),
         store,
         central,

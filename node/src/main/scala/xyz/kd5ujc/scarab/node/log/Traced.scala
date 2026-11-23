@@ -7,7 +7,7 @@ import io.circe.syntax.*
 import xyz.kd5ujc.scarab.consensus.{BlockRef, FollowerEvent, SchedulingReport}
 import xyz.kd5ujc.scarab.network.{ConnectionEvent, DiffTime}
 import xyz.kd5ujc.scarab.ledger.{ForgeDefect, ForgeKeyProblem}
-import xyz.kd5ujc.scarab.node.Reports
+import xyz.kd5ujc.scarab.node.{LeiosPrevalidation, Reports}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.node.forge.{
   NoExchange,
@@ -738,6 +738,28 @@ object Traced:
         "reapplied" -> reapplied.asJson,
         "applied" -> applied.asJson,
         "duration" -> durationSeconds(duration).asJson
+      )
+    case LeiosKernelEvent.TxsPrevalidated(point, offered, independent, validated, duration) =>
+      EventKind.LeiosTxsPrevalidated.line(
+        "ebHash" -> point.hash.bytes.hex.asJson,
+        "ebSlot" -> point.slot.toBigInt.asJson,
+        "offered" -> offered.asJson,
+        "independent" -> independent.asJson,
+        "validated" -> validated.asJson,
+        "duration" -> durationSeconds(duration).asJson
+      )
+    case LeiosKernelEvent.PrevalidationSkipped(point, reason) =>
+      val (kind, detail) = reason match
+        case LeiosPrevalidation.Skip.NoDijkstraTip => ("noDijkstraTip", None)
+        case LeiosPrevalidation.Skip.OtherEpoch(tip, block) =>
+          ("otherEpoch", Some(s"tip epoch $tip, block epoch $block"))
+        case LeiosPrevalidation.Skip.Tick(cause)  => ("tick", Some(cause.show))
+        case LeiosPrevalidation.Skip.Store(cause) => ("store", Some(cause.message))
+      EventKind.LeiosPrevalidationSkipped.line(
+        "ebHash" -> point.hash.bytes.hex.asJson,
+        "ebSlot" -> point.slot.toBigInt.asJson,
+        "reason" -> kind.asJson,
+        "detail" -> detail.asJson
       )
     case LeiosKernelEvent.Voted(vote, weight) =>
       EventKind.LeiosVoted.line(

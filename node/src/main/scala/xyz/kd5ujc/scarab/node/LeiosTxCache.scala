@@ -64,6 +64,20 @@ final class LeiosTxCache[F[_]: Sync] private (index: Ref[F, LeiosTxCache.Index])
   def insertApplied(txs: Iterable[LeiosTxHash], parity: ProtVerParity): F[Unit] =
     index.update(i => txs.foldLeft(i)(_.insertAppliedTx(_, parity)))
 
+  /** [[insertApplied]], and how many of `txs` it newly records as validated under `parity`: not one
+    * the index no longer tracks (its endorser blocks evicted), which `insertAppliedTx` leaves out,
+    * nor one it already held so.
+    */
+  def insertAppliedCounted(txs: Iterable[LeiosTxHash], parity: ProtVerParity): F[Int] =
+    index.modify { before =>
+      val after = txs.foldLeft(before)(_.insertAppliedTx(_, parity))
+      val held = Right(parity)
+      (
+        after,
+        txs.count(h => after.lookupTx(h).contains(held) && !before.lookupTx(h).contains(held))
+      )
+    }
+
   /** `withLookupTx`: the index as one read sees it, to look transactions up in. */
   def lookup: F[LeiosTxHash => Option[Either[Unit, ProtVerParity]]] =
     index.get.map(i => i.lookupTx)

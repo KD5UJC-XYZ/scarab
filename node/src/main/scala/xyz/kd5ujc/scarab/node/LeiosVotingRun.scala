@@ -48,6 +48,22 @@ enum LeiosKernelEvent[+I, +U]:
     */
   case EbValidated(point: EbPoint, reapplied: Int, applied: Int, duration: FiniteDuration)
 
+  /** A peer's transactions of an endorser block's closure pre-validated ([[LeiosPrevalidation]], an
+    * Improvement, #79): of the `offered` ones, those `independent` of transactions off the chain,
+    * and those of them `validated` in full and so newly tagged in the transaction cache (none whose
+    * endorser blocks were evicted meanwhile), and how long it took.
+    */
+  case TxsPrevalidated(
+      point: EbPoint,
+      offered: Int,
+      independent: Int,
+      validated: Int,
+      duration: FiniteDuration
+  )
+
+  /** None of a reply's transactions pre-validated, and why ([[LeiosPrevalidation.Skip]], #79). */
+  case PrevalidationSkipped(point: EbPoint, reason: LeiosPrevalidation.Skip)
+
   /** A vote of ours counted (`TraceLeiosVoted`, `LeiosVoting.hs:397` at 2416493b). */
   case Voted(vote: Vote, weight: Weight)
 
