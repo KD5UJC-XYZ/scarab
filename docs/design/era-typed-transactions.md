@@ -678,9 +678,9 @@ Conway's rules on the classes follow as the rest of stage 2.
     - the bound of `txouts` and the clamp of `mkCollateralTxIn` are `TxOutsBoundSuite`'s, and the two
       `UtxoStateDefect`s, which only a damaged store or an output outside the state's vocabulary gives, are
       not reached.
-  - Not yet (#85): Alonzo's and Babbage's own UTXOS transitions, which run PPUP; and the node's phase-2
-    counters (`PlutusStats`) and its preparation of a block's evaluations, which the events stand for until
-    the switch.
+  - Not yet (#85): Alonzo's and Babbage's own UTXOS transitions, which run PPUP. The node's phase-2 counters
+    (`PlutusStats`) and its preparation of a Conway block's evaluations come from the events since the Conway
+    switch (below).
 - **UTXO whole, with the reference's failures** (`era/rules/Utxo.scala`, `era/rules/UtxoFailures.scala`; the
   `Rules/Utxo.hs` of Shelley, Allegra, Alonzo, Babbage and Conway, cardano-ledger f649f975, where 29a7d656 and
   9df9f98c differ in derived `Ord` instances, Alonzo's and Conway's units as `OrdExUnits`, the units read
@@ -742,11 +742,11 @@ Conway's rules on the classes follow as the rest of stage 2.
     (`fixtures/devnet/redeemer-index.jsonl`) are UTXOW's, run with its transition (UTXOW whole, below); the forecast
     corpus's Alonzo and Babbage cases, and the pre-Conway predicates of `remaining-predicates` and
     `instant-stake`, are of eras whose UTXO is not typed yet.
-  - UTXOW's transition with UTXO embedded and the failing native scripts came after (UTXOW whole, below). Not
-    yet (#85): the node's phase-2 counters (`PlutusStats`), which the events stand for until the Conway
-    switch. The defects stay typed raises
-    until then too: the node's `LedgerFailure.Unavailable` names a script by its flat redeemer, which a
-    `PlutusWithContext` does not carry, and has no case for a stored output the era does not read.
+  - UTXOW's transition with UTXO embedded and the failing native scripts came after (UTXOW whole, below). The
+    node's phase-2 counters (`PlutusStats`) come from the events since the Conway switch, and its defects stay
+    typed raises, which the switch routes (below): a script is named by its flat redeemer where the run can
+    locate it (`ConwayPhase2.named`), and a stored output the era does not read is the node's own
+    (`ConwayBlockDefect.UtxoState`).
 - **Conway's rules, the first predicates of UTXOW** (`era/rules/Utxow.scala`): six of the predicates
   Babbage's UTXOW runs (`babbageUtxowTransition`, `Babbage/Rules/Utxow.hs:308-391`), the ones whose own
   arguments the era types have: `validateVerifiedWits`, `babbageMissingScripts`, `missingRequiredDatums`,
@@ -1138,7 +1138,8 @@ Conway's rules on the classes follow as the rest of stage 2.
     form, one with none failing the comparison, and a missing script by its hash; the refusals are compared
     through the flat form and the node's encoder (#796); the redeemer-index cases of Alonzo and Babbage are of
     eras whose UTXOW is not typed yet.
-  - Not yet (#85): LEDGER and the mempool on the era types, and the node's phase-2 counters (`PlutusStats`).
+  - Not yet (#85): the mempool on the era types. The node's phase-2 counters (`PlutusStats`) come from the era
+    run since the Conway switch (below).
 - **Proposals and votes** (`era/Procedures.scala`, `conway/ConwayProcedures.scala`): `GovAction[E]`,
   `ProposalProcedure[E]` and `VotingProcedures[E]` are data types parameterised by the era, as the reference's
   `data GovAction era` and the others are, not families (decided 2026-11-16, #85): a family with one case reduces, in

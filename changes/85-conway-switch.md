@@ -6,6 +6,7 @@
 - A refused Conway block names every failure its rules record, in the reference's order, where it named the
   first. A block refused on failures recorded before a defect of this node is refused as the reference refuses
   it, the defect named in the refusal's reason.
-- A Conway block whose rules meet a state, a store or a limit of this node's own (an unnamed script with no
-  verdict, a stored output or a record of the proposals that does not read, too many proposals) is withheld
-  (`blockNoVerdict`, kind `defect`); nobody is blamed and the node goes on.
+- A Conway block whose rules meet a state, a store or a limit of this node's own is withheld
+  (`blockNoVerdict`): kind `evaluation` for a script the evaluator gives no verdict for, kind `defect` for a
+  stored output or a record of the proposals that does not read, too many proposals or the node's readings of
+  the block that disagree; nobody is blamed and the node goes on.
