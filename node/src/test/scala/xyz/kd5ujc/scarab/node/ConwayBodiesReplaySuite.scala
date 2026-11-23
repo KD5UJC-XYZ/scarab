@@ -10,11 +10,12 @@ import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.network.FailsOnUncaught
 import xyz.kd5ujc.scarab.node.preview.{EraBodies, RecordedReplay, ReplayInputs}
 
-/** The preprod capture of `PlutusReplaySuite` (the same inputs, environment variables and pinned
-  * baseline), each Conway block's BBODY timed four ways from the state the mirror ticks it to: the
-  * flat rules' and Conway's era run's, each serial and through four of the node's workers
-  * (`EraBodies`). The reference state advances by the original serial interpreter, timed once a
-  * block. Opt-in offline evidence, as `PlutusReplaySuite` is.
+/** The preprod capture of `PlutusReplaySuite` (the same inputs, `SCARAB_PLUTUS_CAPTURE` and
+  * `SCARAB_PLUTUS_BASELINE`, and the pinned baseline, with a fresh output directory of its own,
+  * `SCARAB_ERA_BODIES_OUTPUT`), each Conway block's BBODY timed four ways from the state the mirror
+  * ticks it to: the flat rules' and Conway's era run's, each serial and through four of the node's
+  * workers (`EraBodies`). The reference state advances by the original serial interpreter, timed
+  * once a block. Opt-in offline evidence, as `PlutusReplaySuite` is.
   */
 class ConwayBodiesReplaySuite extends FailsOnUncaught:
   override def munitIOTimeout: Duration = 40.minutes
@@ -24,7 +25,8 @@ class ConwayBodiesReplaySuite extends FailsOnUncaught:
   ) {
     assume(sys.env.contains("SCARAB_PLUTUS_CAPTURE"), "requires an offline captured window")
     val baseline = Path.of(sys.env("SCARAB_PLUTUS_BASELINE"))
-    val output = Path.of(sys.env("SCARAB_PLUTUS_OUTPUT"))
+    // an output directory of its own, so that it and `PlutusReplaySuite` each find theirs fresh
+    val output = Path.of(sys.env("SCARAB_ERA_BODIES_OUTPUT"))
     val name = "snapshot-00000000000136511997-5300868"
     val workers = ParallelPlutus.Workers.from(4).fold(e => fail(e.toString), identity)
     val config = ReplayInputs.Config(
