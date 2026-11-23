@@ -2691,11 +2691,15 @@ Conway's rules on the classes follow as the rest of stage 2.
     their flags', the preparation's own; with one that is not, the serial run's, which records that failure first.
     `ConwayBbodySuite` shows it with an earlier missing input and then a damaged collateral output or a reference
     script the decoder gives no verdict on, each alone first (no verdict), and after deferred scripts flagged valid
-    and invalid, through the node's bounded workers too. The node routes neither yet; the switch routes the
+    and invalid, the prepared plan's result compared with the serial run's (each of these blocks has one
+    redeeming transaction, under the bounded workers' threshold, so the workers run it serially). The node routes
+    neither yet; the switch routes the
     refusal as any refused block. Remaining difference: BBODY reads every transaction's inputs and reference inputs
     into the era before LEDGERS judges any (for the reference scripts' size), so a later transaction's input or
-    reference input the era does not read is raised with nothing recorded and the block is withheld, where the
-    reference refuses it on the earlier transaction; `ConwayBbodySuite` pins it.
+    reference input the era does not read is raised before any transaction's failure is recorded and the block is
+    withheld (refused only on a header failure BBODY recorded first), where the reference refuses it on the earlier
+    transaction; `ConwayBbodySuite` pins it
+    ([#85](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7105195571)).
 - **Dijkstra's BBODY** (`era/EraBlock.scala`, `era/dijkstra/DijkstraBlock.scala`, `era/rules/BbodyFailures.scala`,
   `era/rules/DijkstraBbody.scala`; `Rules/Bbody.hs` of `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/`, cardano-ledger
   9df9f98c, with the predicates of Shelley's, Alonzo's and Conway's BBODY it runs):

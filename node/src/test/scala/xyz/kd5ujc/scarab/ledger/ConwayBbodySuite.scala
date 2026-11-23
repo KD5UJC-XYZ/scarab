@@ -1981,7 +1981,7 @@ class ConwayBbodySuite extends FailsOnUncaught:
   }
 
   test(
-    "a later defect after deferred scripts: the prepared era run comes to the serial run's refusal or no verdict, through the node's bounded workers too"
+    "a later defect after deferred scripts: the prepared era run comes to the serial run's refusal or no verdict"
   ) {
     // the script transaction flagged valid: no failure before the defect, so no verdict; flagged
     // invalid, its script passes, a failure the preparation does not record (its verdict lands
@@ -2018,6 +2018,9 @@ class ConwayBbodySuite extends FailsOnUncaught:
         case None     => assert(j.eraRun.left.exists(unreadable), s"$what: ${j.eraRun}")
         case Some(fs) => stopped(what, j, fs, unreadable)
       val serial = j.replayed(None).serial
+      // each block has one redeeming transaction, under the workers' threshold (`Body.worthwhile`),
+      // so the workers' entry runs it serially: this checks that entry's result, not the batches,
+      // which `judge` covers by preparing and resolving the plan against the serial run
       Vector(1, 2, 4).traverse_ { n =>
         ParallelPlutus.Workers
           .from(n)

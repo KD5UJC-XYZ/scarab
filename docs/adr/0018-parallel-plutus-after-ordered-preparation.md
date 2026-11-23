@@ -81,5 +81,5 @@ block on the failures its rules recorded before a defect of this implementation 
 with the defect kept beside them, and leaves no verdict only where nothing was recorded before it
 ([#85](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7104253607)). The contract above
 is unchanged: the preparation's result, that refusal included, is the serial run's while every
-reached verdict is its flag's, and the serial run itself otherwise, which records the mismatch
-before the defect. The [as-built design](../design/parallel-plutus.md#era-block-runs) has the detail.
+reached verdict is its flag's, and the serial run itself otherwise: one that records a mismatch records
+it before the defect, and one that reaches a script with no verdict ends there, before the defect. The [as-built design](../design/parallel-plutus.md#era-block-runs) has the detail.
