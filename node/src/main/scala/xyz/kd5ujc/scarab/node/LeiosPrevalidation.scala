@@ -29,12 +29,13 @@ import xyz.kd5ujc.scarab.storage.{UtxoReadView, UtxoStore}
   * The reference records a fetched transaction in its LeiosTxCache as unapplied
   * (`withLockedInsertUnappliedTx`, `LeiosDemoLogic.hs:1561-1564` at ouroboros-consensus 2416493b),
   * so its closure check validates it in full (`validateEbClosure`, `LeiosVoting.hs:495-542`).
-  * Reapplying (`reapplyTx`) skips only the static checks (witnesses, scripts, metadata and
-  * integrity hashes) and runs every state-dependent one again against the closure's own state. The
-  * static checks are a function of the transaction's bytes, the outputs its inputs resolve to and
-  * the epoch's protocol parameters: an input names one output forever, and the parameters change
-  * only at an epoch boundary. So a transaction is tagged validated here, under the state's
-  * protocol-version parity, only when:
+  * Reapplying (`reapplyTx`) skips only the static checks (witness verification and the scripts'
+  * execution, among them) and runs every other one again against the closure's own state, the
+  * script integrity hash recomputed against its parameters' language views among them. The static
+  * checks are a function of the transaction's bytes, the outputs its inputs resolve to and the
+  * protocol parameters: an input names one output forever, and the parameters change only at an
+  * epoch boundary. So a transaction is tagged validated here, under the state's protocol-version
+  * parity, only when:
   *   - it is independent: every input its rules read, of it and of its sub-transactions
   *     ([[MirrorDijkstra.inputs]]), resolves in the selection tip's UTxO set, none an output of a
   *     transaction not yet on the chain;
@@ -180,10 +181,11 @@ object LeiosPrevalidation:
   ): F[Unit] =
     for
       cached <- env.cache.lookup
-      // a transaction the cache already holds validated under this parity needs nothing; one that
+      // only a transaction the cache tracks and does not yet hold validated under this parity: one
+      // whose endorser blocks were evicted while the reply waited would not be recorded; one that
       // does not decode is the closure check's to report
       decoded = arrived.txs
-        .filterNot((h, _) => cached(h).contains(Right(b.parity)))
+        .filter((h, _) => cached(h).exists(_ != Right(b.parity)))
         .flatMap((h, raw) => DijkstraClosure.deserializeTxForLeios(raw).toOption.map(h -> _))
       read <- Handle
         .allow[StorageError](
@@ -215,15 +217,14 @@ object LeiosPrevalidation:
           Either.catchNonFatal(on.applyIntervening(tx, b.env)).toOption.flatMap(_.toOption).as(h)
         )
       )
-      tagged = passed.flatten
-      _ <- env.cache.insertApplied(tagged, b.parity).whenA(tagged.nonEmpty)
+      tagged <- env.cache.insertAppliedCounted(passed.flatten, b.parity)
       end <- Clock[F].monotonic
       _ <- env.trace(
         LeiosKernelEvent.TxsPrevalidated(
           arrived.point,
           arrived.txs.size,
           ready.size,
-          tagged.size,
+          tagged,
           end - start
         )
       )

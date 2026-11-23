@@ -50,8 +50,8 @@ enum LeiosKernelEvent[+I, +U]:
 
   /** A peer's transactions of an endorser block's closure pre-validated ([[LeiosPrevalidation]], an
     * Improvement, #79): of the `offered` ones, those `independent` of transactions off the chain,
-    * and those of them `validated` in full and so tagged in the transaction cache, and how long it
-    * took.
+    * and those of them `validated` in full and so newly tagged in the transaction cache (none whose
+    * endorser blocks were evicted meanwhile), and how long it took.
     */
   case TxsPrevalidated(
       point: EbPoint,

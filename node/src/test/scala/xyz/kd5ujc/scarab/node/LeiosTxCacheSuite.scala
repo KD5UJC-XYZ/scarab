@@ -330,7 +330,8 @@ class LeiosTxCacheSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       .resolveLeiosClosure(r.point.hash, Some(r.stored))
       .fold(e => fail(e.toString), identity)
 
-  /** Pre-validation of `closure` on the recorded state at the closure's slot, with `cache`; the
+  /** Pre-validation of `closure` on the recorded state at the closure's slot, with `cache`, after
+    * the cache records its transactions as fetched, as the arrival does before it offers them; the
     * events it traced.
     */
   private def prevalidated(
@@ -342,7 +343,7 @@ class LeiosTxCacheSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     Ref
       .of[IO, Vector[LeiosKernelEvent[Nothing, Nothing]]](Vector.empty)
       .flatMap(events =>
-        LeiosPrevalidation
+        cache.insertUnapplied(closure.map(_._1)) *> LeiosPrevalidation
           .prevalidateOn[IO](
             LeiosPrevalidation.Work(store, cache, 4, e => events.update(_ :+ e)),
             LeiosPrevalidation.Arrived(r.point, closure),
@@ -402,6 +403,32 @@ class LeiosTxCacheSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       assert(!look(forged._1).contains(Right(parity)), "the forged transaction is not tagged")
       refusedWitness(verdict)
       assertEquals(verdict, plain)
+  }
+
+  test("a reply whose endorser block was evicted while it waited is not validated at all") {
+    for
+      cache <- cacheOf(r.stored, Vector.empty, parity)
+      _ <- cache.evictOlderThan(r.point.slot.toBigInt + 1)
+      events <- prevalidated(r.stored, cache)
+      held <- validated(cache, r.stored)
+    yield
+      assertEquals(held, Vector.fill(323)(None))
+      events match
+        case Vector(LeiosKernelEvent.TxsPrevalidated(_, offered, independent, tagged, _)) =>
+          assertEquals((offered, independent, tagged), (323, 0, 0))
+        case other => fail(s"not one TxsPrevalidated: $other")
+  }
+
+  test("tags count only what the cache newly holds: none once evicted, none already held") {
+    val txs = r.stored.map(_._1)
+    for
+      cache <- cacheOf(r.stored, Vector.empty, parity)
+      first <- cache.insertAppliedCounted(txs.take(10), parity)
+      again <- cache.insertAppliedCounted(txs.take(20), parity)
+      // evicted between the validation and the tagging
+      _ <- cache.evictOlderThan(r.point.slot.toBigInt + 1)
+      evicted <- cache.insertAppliedCounted(txs, parity)
+    yield assertEquals((first, again, evicted), (10, 10, 0))
   }
 
   test("a failed read of the outputs pre-validates nothing and says why") {
