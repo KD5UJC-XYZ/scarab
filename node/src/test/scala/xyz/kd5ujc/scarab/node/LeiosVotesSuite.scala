@@ -200,22 +200,30 @@ class LeiosVotesSuite extends FailsOnUncaught:
         }
         ._2
       val votablePoints = votable.map(point)
+      // the votes taken, in arrival order: each one's first arrival, when votable and well signed
+      val published = arrivals.zip(expected).collect { case (i, "added") => goodVotes(i) }
       for
         votes <- LeiosVotes.create[IO](IO.pure(Right(Some(committee))), IO.pure(votablePoints))
-        answers <- allowed(
-          arrivals.traverse(i => votes.add(if bad(i) then badVotes(i) else goodVotes(i)))
+        outcome <- votes.subscribe.use(q =>
+          allowed(arrivals.traverse(i => votes.add(if bad(i) then badVotes(i) else goodVotes(i))))
+            .product(q.tryTakeN(None))
         )
-      yield assertEquals(
-        answers.map {
-          case AddVoteResult.NotVotable   => "notVotable"
-          case AddVoteResult.Invalid(_)   => "invalid"
-          case AddVoteResult.AlreadyKnown => "known"
-          case AddVoteResult.Added(_, _)  => "added"
-          case AddVoteResult.NoCommittee  => "noCommittee"
-        },
-        expected,
-        s"seed $seed"
-      )
+      yield
+        val (answers, relayed) = outcome
+        assertEquals(
+          answers.map {
+            case AddVoteResult.NotVotable                            => "notVotable"
+            case AddVoteResult.Invalid(VoteInvalid.InvalidSignature) => "invalid"
+            case AddVoteResult.Invalid(other)                        => s"invalid $other"
+            case AddVoteResult.AlreadyKnown                          => "known"
+            case AddVoteResult.Added(_, _)                           => "added"
+            case AddVoteResult.NoCommittee                           => "noCommittee"
+          },
+          expected,
+          s"seed $seed"
+        )
+        // what reaches the subscribers that relay votes: exactly the votes taken, once each
+        assertEquals(relayed.toVector, published, s"seed $seed: relayed")
     }
   }
 
