@@ -6,6 +6,11 @@ import xyz.kd5ujc.scarab.ledger.{OCertError, OCertRules}
 import xyz.kd5ujc.scarab.crypto.vrf.PraosVrfCertificate as Vrf
 import xyz.kd5ujc.scarab.crypto.witness.StrictEd25519
 
+/** One witness signature check the rules ask [[Verdicts.witness]] for: `signature` of `message` (a
+  * body's hash) under `vkey`.
+  */
+final case class WitnessCheck(vkey: Bytes, signature: Bytes, message: Bytes) derives CanEqual
+
 /** The pure read side of signature verification: what the rules ask for. Every method is a function
   * of its arguments; an implementation may remember verdicts ([[VerificationCache]]) but must
   * return exactly what [[Verdicts.Direct]] returns. That is the contract the property test checks.

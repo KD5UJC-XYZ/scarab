@@ -130,12 +130,16 @@ object LeiosVoter:
   /** The closure check of the endorser block at `point` on the tip `tip` (`validateEbClosure`,
     * [[LeiosClosureCheck]]): the tip's state ticked to the block's slot, then the closure from
     * `lookup` applied to it at that slot, reapplying what `cache` holds validated, with the
-    * mempool's environment and the clock of a transaction of that slot on the tip's state.
+    * mempool's environment and the clock of a transaction of that slot on the tip's state. The
+    * witness signatures of the transactions applied in full are verified in parallel by `witnesses`
+    * first, which then hands the verdicts to the rules as their verifier
+    * ([[VerificationCache.warmWitnesses]]).
     */
   def validateClosure[F[_]: Async](
       lookup: EbHash => F[Option[Vector[(LeiosTxHash, Bytes)]]],
       utxoStore: Option[UtxoReadView[F]],
       cache: LeiosTxCache[F],
+      witnesses: VerificationCache,
       poolEnv: F[MempoolEnv],
       txClock: TxClock[MirrorState]
   )(point: xyz.kd5ujc.scarab.protocol.EbPoint, tip: VotingTip)(using
@@ -154,9 +158,12 @@ object LeiosVoter:
         lookup,
         utxoStore,
         cache,
+        witnesses.warmWitnesses[F],
         point,
         at,
-        DijkstraPoolEnv.of(env, slot).copy(clock = txClock.at(tip.state, Era.Dijkstra, slot))
+        DijkstraPoolEnv
+          .of(env, slot)
+          .copy(clock = txClock.at(tip.state, Era.Dijkstra, slot), verdicts = witnesses)
       )
     yield verdict
 

@@ -2,15 +2,16 @@
 package xyz.kd5ujc.scarab.node
 
 import cats.data.NonEmptyVector
-import cats.effect.IO
+import cats.effect.{Deferred, IO}
 import cats.mtl.Raise
 import cats.syntax.all.*
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.leios.{EbClosureVerdict, ProtVerParity}
 import xyz.kd5ujc.scarab.crypto.bls.BlsFixtures.rbHash
-import xyz.kd5ujc.scarab.ledger.StorageError
+import xyz.kd5ujc.scarab.ledger.{StorageError, TxIn, TxOut, WitnessCheck}
 import xyz.kd5ujc.scarab.ledger.era.rules.{
+  DijkstraClosure,
   DijkstraLedgerPredFailure,
   DijkstraMempoolPredFailure,
   DijkstraUtxowPredFailure,
@@ -19,7 +20,7 @@ import xyz.kd5ujc.scarab.ledger.era.rules.{
 import xyz.kd5ujc.scarab.ledger.state.SlotNo
 import xyz.kd5ujc.scarab.node.mempool.{DijkstraState, Rejection}
 import xyz.kd5ujc.scarab.protocol.LeiosTxHash
-import xyz.kd5ujc.scarab.storage.LeiosEb
+import xyz.kd5ujc.scarab.storage.{LeiosEb, MemoryUtxoStore, UtxoReadView}
 
 /** The closure check with the node's LeiosTxCache (`validateEbClosure`, `LeiosVoting.hs:446-565` at
   * ouroboros-consensus 2416493b), on the testnet's recorded closure of 323 transactions
@@ -89,17 +90,22 @@ class LeiosTxCacheSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       _ <- cache.insertApplied(applied, under)
     yield cache
 
+  /** The check of `closure` with `cache`; with `witnesses`, its witness signatures verified in
+    * parallel first and handed to the rules by that cache, as the node runs it.
+    */
   private def check(
       closure: Vector[(LeiosTxHash, Bytes)],
-      cache: LeiosTxCache[IO]
+      cache: LeiosTxCache[IO],
+      witnesses: Option[VerificationCache] = None
   ): IO[EbClosureVerdict[Rejection, LeiosClosureDefect]] =
     LeiosClosureCheck.validateEbClosure[IO](
       _ => IO.pure(Some(closure)),
       None,
       cache,
+      witnesses.fold((_: Vector[WitnessCheck]) => IO.unit)(_.warmWitnesses[IO]),
       r.point,
       state,
-      r.env
+      witnesses.fold(r.env)(w => r.env.copy(verdicts = w))
     )
 
   private def validated(cache: LeiosTxCache[IO], closure: Vector[(LeiosTxHash, Bytes)]) =
@@ -169,6 +175,154 @@ class LeiosTxCacheSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       assertEquals(held.drop(6), Vector.fill(317)(None))
   }
 
+  test(
+    "witnesses verified in parallel ahead of the application: the same verdicts, each one taken"
+  ) {
+    VerificationCache.resource[IO](4).use { witnesses =>
+      for
+        parallel <- cacheOf(r.stored, Vector.empty, parity).flatMap(
+          check(r.stored, _, Some(witnesses))
+        )
+        taken = (witnesses.witnessStats.hits.sum, witnesses.witnessStats.misses.sum)
+        forgedParallel <- cacheOf(withForged, Vector.empty, parity).flatMap(
+          check(withForged, _, Some(witnesses))
+        )
+        forgedSerial <- cacheOf(withForged, Vector.empty, parity).flatMap(check(withForged, _))
+        // a hit is reapplied and checks no witness: none of its signatures is verified ahead
+        before = witnesses.warmedStats.misses.sum
+        _ <- cacheOf(r.stored, r.stored.map(_._1), parity).flatMap(
+          check(r.stored, _, Some(witnesses))
+        )
+        after = witnesses.warmedStats.misses.sum
+      yield
+        assertEquals(parallel, EbClosureVerdict.Valid(0, 323))
+        // every one of the 323 key witnesses the rules asked for was there, none computed again
+        assertEquals(taken, (323L, 0L))
+        refusedWitness(forgedParallel)
+        assertEquals(forgedParallel, forgedSerial)
+        assertEquals(after, before)
+    }
+  }
+
+  /** The recorded state without the outputs of it the closure spends, and those outputs. */
+  private lazy val split: (DijkstraState, Map[TxIn, TxOut]) =
+    val txs = DijkstraClosure
+      .resolveLeiosClosure(r.point.hash, Some(r.stored))
+      .fold(e => fail(e.toString), _.map(_._2))
+    val inputs = MirrorDijkstra.inputs(txs)
+    val held = state.utxo
+    // the closure also spends outputs earlier transactions of it make, which no state holds
+    val spent = inputs.flatMap(i => held.get(i).map(i -> _)).toMap
+    assert(spent.nonEmpty, "the state holds outputs the closure spends")
+    (
+      state.withUtxo(
+        held.copy(diff = held.diff -- spent.keySet, resident = held.resident -- spent.keySet)
+      ),
+      spent
+    )
+
+  /** A storage error raised as an exception, so that a test can tell the check's own failure. */
+  private final case class Stopped(error: StorageError) extends Exception
+
+  /** `under`, whose reads signal `reading` and then wait for `release`. */
+  private final class Gated(
+      under: UtxoReadView[IO],
+      reading: Deferred[IO, Unit],
+      release: Deferred[IO, Unit]
+  ) extends UtxoReadView[IO]:
+    def read(keys: Iterable[TxIn])(using Raise[IO, StorageError]): IO[Map[TxIn, TxOut]] =
+      reading.complete(()) *> release.get *> under.read(keys)
+    def stamp(using Raise[IO, StorageError]): IO[Long] = under.stamp
+    def all(using Raise[IO, StorageError]): IO[Map[TxIn, TxOut]] = under.all
+    def select(keep: TxOut => Boolean)(using Raise[IO, StorageError]): IO[Map[TxIn, TxOut]] =
+      under.select(keep)
+    def selectAddresses(addresses: Set[Bytes])(using
+        Raise[IO, StorageError]
+    ): IO[Map[TxIn, TxOut]] = under.selectAddresses(addresses)
+
+  test(
+    "the steps are decided on the cache as it is once the outputs are read, as the reference reads it"
+  ) {
+    val (stripped, spent) = split
+    VerificationCache.resource[IO](4).use { witnesses =>
+      for
+        store <- MemoryUtxoStore[IO]
+        _ <- store.write(spent.view.mapValues(Some(_)).toMap, 0L)
+        reading <- Deferred[IO, Unit]
+        release <- Deferred[IO, Unit]
+        cache <- cacheOf(r.stored, Vector.empty, parity)
+        running <- LeiosClosureCheck
+          .validateEbClosure[IO](
+            _ => IO.pure(Some(r.stored)),
+            Some(Gated(store, reading, release)),
+            cache,
+            witnesses.warmWitnesses[IO],
+            r.point,
+            stripped,
+            r.env.copy(verdicts = witnesses)
+          )
+          .start
+        _ <- reading.get
+        // tagged while the outputs are read, after the warming chose what to verify ahead
+        _ <- cache.insertApplied(Vector(r.stored(0)._1), parity)
+        _ <- release.complete(())
+        verdict <- running.joinWithNever
+      yield assertEquals(verdict, EbClosureVerdict.Valid(1, 322))
+    }
+  }
+
+  test("a failed read of the outputs ends the check while other warming holds every permit") {
+    given Raise[IO, StorageError] with
+      def functor = cats.Functor[IO]
+      def raise[E <: StorageError, A](error: E): IO[A] = IO.raiseError(Stopped(error))
+    val (stripped, _) = split
+    // the cache's one permit, whose waits trip a latch: a warming chunk has come to wait for it
+    val waiting = new java.util.concurrent.CountDownLatch(1)
+    val permits = new java.util.concurrent.Semaphore(1):
+      override def acquire(): Unit =
+        waiting.countDown()
+        super.acquire()
+    val witnesses = VerificationCache.unsafe(1, running = Some(permits))
+    // fails only once the check's warming waits behind the held permit
+    val failing = new UtxoReadView[IO]:
+      def read(keys: Iterable[TxIn])(using
+          raise: Raise[IO, StorageError]
+      ): IO[Map[TxIn, TxOut]] =
+        IO.blocking(waiting.await()) *> raise.raise(StorageError.DatabaseInUse("the test's store"))
+      def stamp(using Raise[IO, StorageError]): IO[Long] = IO.pure(0L)
+      def all(using Raise[IO, StorageError]): IO[Map[TxIn, TxOut]] = IO.pure(Map.empty)
+      def select(keep: TxOut => Boolean)(using Raise[IO, StorageError]): IO[Map[TxIn, TxOut]] =
+        IO.pure(Map.empty)
+      def selectAddresses(addresses: Set[Bytes])(using
+          Raise[IO, StorageError]
+      ): IO[Map[TxIn, TxOut]] = IO.pure(Map.empty)
+    for
+      ended <- IO
+        .delay(assert(permits.tryAcquire(), "the test holds the permit"))
+        .bracket { _ =>
+          cacheOf(r.stored, Vector.empty, parity).flatMap(cache =>
+            LeiosClosureCheck
+              .validateEbClosure[IO](
+                _ => IO.pure(Some(r.stored)),
+                Some(failing),
+                cache,
+                witnesses.warmWitnesses[IO],
+                r.point,
+                stripped,
+                r.env.copy(verdicts = witnesses)
+              )
+              .attempt
+          )
+        }(_ => IO.delay(permits.release()))
+      free <- IO.delay(permits.availablePermits())
+    yield
+      ended match
+        case Left(Stopped(StorageError.DatabaseInUse(_))) => ()
+        case other                                        => fail(s"not the store's error: $other")
+      // the cancelled wait took no permit: the cache warms at its full parallelism again
+      assertEquals(free, 1)
+  }
+
   test("a transaction only the mempool held and a fetched one: applied and unapplied") {
     for
       cache <- cacheOf(r.stored, Vector(r.stored(0)._1), parity)
@@ -211,12 +365,19 @@ class LeiosTxCacheSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       (warm, warmVerdicts) <- best(
         cacheOf(r.stored, r.stored.map(_._1), parity).flatMap(check(r.stored, _))
       )
+      (parallel, parallelVerdicts) <- VerificationCache
+        .resource[IO](4)
+        .use(w =>
+          best(cacheOf(r.stored, Vector.empty, parity).flatMap(check(r.stored, _, Some(w))))
+        )
       _ <- IO.println(
         f"LeiosTxCacheSuite: 323 transactions, cold ${cold.toMicros / 1000.0}%.1f ms, " +
+          f"cold with witnesses on 4 threads ${parallel.toMicros / 1000.0}%.1f ms, " +
           f"warm ${warm.toMicros / 1000.0}%.1f ms, ${cold.toNanos.toDouble / warm.toNanos}%.1fx"
       )
     yield
       assertEquals(coldVerdicts.distinct, Vector(EbClosureVerdict.Valid(0, 323)))
+      assertEquals(parallelVerdicts.distinct, Vector(EbClosureVerdict.Valid(0, 323)))
       assertEquals(warmVerdicts.distinct, Vector(EbClosureVerdict.Valid(323, 0)))
       assert(warm < 1.second, s"warm $warm")
       assert(warm < cold, s"warm $warm, cold $cold")

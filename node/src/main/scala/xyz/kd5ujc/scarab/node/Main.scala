@@ -2274,6 +2274,7 @@ object Main extends IOApp:
                   store.lookupEbClosure(_),
                   Some(run.store),
                   run.txCache,
+                  run.cache,
                   chain.mempoolEnvironment.ask[MempoolEnv],
                   chain.txClock
                 ),

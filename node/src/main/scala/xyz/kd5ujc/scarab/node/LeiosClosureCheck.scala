@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import cats.effect.Sync
+import cats.effect.Async
 import cats.mtl.Raise
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.leios.{EbClosureVerdict, ProtVerParity}
-import xyz.kd5ujc.scarab.ledger.StorageError
-import xyz.kd5ujc.scarab.ledger.era.{Tx, TxLevel}
-import xyz.kd5ujc.scarab.ledger.era.rules.{DijkstraClosure, LeiosClosureDefect}
+import xyz.kd5ujc.scarab.ledger.{StorageError, WitnessCheck}
+import xyz.kd5ujc.scarab.ledger.era.{BothLevels, EraTx, EraTxBody, Tx, TxLevel}
+import xyz.kd5ujc.scarab.ledger.era.rules.{DijkstraClosure, LeiosClosureDefect, ShelleyUtxow}
 import xyz.kd5ujc.scarab.ledger.rules.{Globals, Sts, Tick, TickFailure}
 import xyz.kd5ujc.scarab.ledger.state.{Dijkstra, NewEpochState, ShelleyBasedEra, SlotNo}
 import xyz.kd5ujc.scarab.node.mempool.{DijkstraPoolEnv, DijkstraState, Rejection}
@@ -109,6 +109,20 @@ object LeiosClosureCheck:
   ): EbClosureVerdict[Rejection, Nothing] =
     goValidate(closure.map((h, t) => (h, t, Step.Apply)), state, env).verdict
 
+  /** The witness signature checks applying `tx` in full asks for: its own (UTXOW,
+    * [[ShelleyUtxow.verifiedWitsAsked]] at the top level), then each sub-transaction's in the order
+    * read, each of its own body's hash (SUBUTXOW, at the sub-transaction level).
+    */
+  def witnessChecks(tx: Tx[TxLevel.Top, Dijkstra]): Vector[WitnessCheck] =
+    val t = EraTx.dijkstra
+    ShelleyUtxow.verifiedWitsAsked[Dijkstra, TxLevel.Top](tx)(using t, BothLevels.Top) ++
+      EraTxBody.dijkstra
+        .subTransactions(t.body[TxLevel.Top](tx)(using BothLevels.Top))
+        .toVector
+        .flatMap(sub =>
+          ShelleyUtxow.verifiedWitsAsked[Dijkstra, TxLevel.Sub](sub)(using t, BothLevels.Sub)
+        )
+
   /** `validateEbClosure` (`LeiosVoting.hs:457-490` at 2416493b) of the endorser block at `point` on
     * `state`, the announcing block's ticked to its slot ([[ticked]]): the closure from `lookup`
     * (`lookupEbClosure`), resolved ([[DijkstraClosure.resolveLeiosClosure]]), which is
@@ -118,11 +132,19 @@ object LeiosClosureCheck:
     * `:478-485`); then each transaction's step decided against one read of `cache` under the
     * state's parity, [[goValidate]], and the transactions it validated in full recorded in `cache`
     * in one update, whatever the verdict.
+    *
+    * While the outputs are read, `warm` is given the witness signature checks ([[witnessChecks]])
+    * of the transactions an earlier read of `cache` would apply in full (a reapplied one checks no
+    * witness), so that a node verifies them in parallel ahead of the sequential application and
+    * `env` 's verdicts hand them over ([[VerificationCache.warmWitnesses]]). The verdicts are the
+    * same: the order of the application, the first refusal and the transactions validated do not
+    * depend on `warm`, only how long the check takes.
     */
-  def validateEbClosure[F[_]: Sync](
+  def validateEbClosure[F[_]: Async](
       lookup: EbHash => F[Option[Vector[(LeiosTxHash, Bytes)]]],
       utxoStore: Option[UtxoReadView[F]],
       cache: LeiosTxCache[F],
+      warm: Vector[WitnessCheck] => F[Unit],
       point: EbPoint,
       state: DijkstraState,
       env: DijkstraPoolEnv
@@ -130,18 +152,26 @@ object LeiosClosureCheck:
     lookup(point.hash).flatMap { stored =>
       DijkstraClosure.resolveLeiosClosure(point.hash, stored) match
         case Left(unreadable) =>
-          Sync[F].pure(EbClosureVerdict.Unreadable(unreadable))
+          Async[F].pure(EbClosureVerdict.Unreadable(unreadable))
         case Right(closure) =>
           val parity = parityOf(state)
           for
-            utxo <- UtxoStore.complete(
-              utxoStore,
-              state.utxo,
-              MirrorDijkstra.inputs(closure.map(_._2))
+            // only which signatures to verify ahead: the steps are decided on the read after the
+            // outputs, as the reference reads its cache (`LeiosVoting.hs:483-489`,
+            // ouroboros-consensus 2416493b). A transaction tagged in between is reapplied and its
+            // warmed verdicts go unused; one untagged in between is applied in full and its
+            // signatures verified in place
+            early <- cache.lookup
+            // the spent outputs and the witnesses' verdicts need nothing of each other: both at once
+            (utxo, _) <- Async[F].both(
+              UtxoStore.complete(utxoStore, state.utxo, MirrorDijkstra.inputs(closure.map(_._2))),
+              warm(closure.collect {
+                case (h, tx) if Step.of(early(h), parity) == Step.Apply => witnessChecks(tx)
+              }.flatten)
             )
             cached <- cache.lookup
             decided = closure.map((h, t) => (h, t, Step.of(cached(h), parity)))
-            checked <- Sync[F].blocking(goValidate(decided, state.withUtxo(utxo), env))
+            checked <- Async[F].blocking(goValidate(decided, state.withUtxo(utxo), env))
             _ <- cache.insertApplied(checked.validated, parity).whenA(checked.validated.nonEmpty)
           yield checked.verdict
     }

@@ -7199,8 +7199,8 @@
     "EraUtxowSuite",
     "DijkstraSubUtxowSuite"
    ],
-   "note": "the reference's predicate generic in its era over the reference's classes, the failing key witnesses' keys in their set's order as the reference lists them, the bootstrap witnesses' in the order of bootAddrTxWits, a sequence the decoder keeps in the reference's set order (Ord BootstrapWitness, by address root); the signature checks are the node's Verdicts, given as an argument, and a check that gives no verdict is a provider defect (Left), as in the flat check. It reports Shelley's failure type (ShelleyUtxowPredFailure), which the rule injects into its own; its verdict is compared with the flat rule's through ConwayUtxowPredFailure.toStored; its failures the constructors it reports, declared as its result type, so that an injection over the constructors a rule reaches serves it (Dijkstra's SUBUTXOW, whose reference injections are partial, #85)",
-   "digest": "941f60c9d4943d85"
+   "note": "the reference's predicate generic in its era over the reference's classes, the failing key witnesses' keys in their set's order as the reference lists them, the bootstrap witnesses' in the order of bootAddrTxWits, a sequence the decoder keeps in the reference's set order (Ord BootstrapWitness, by address root); the signature checks are the node's Verdicts, given as an argument, asked for the checks verifiedWitsAsked lists in that order (each key witness, then each bootstrap witness, of the body's hash; the key witnesses' failures before the bootstrap witnesses', the first defect the first met, as the reference's two lists concatenated), and a check that gives no verdict is a provider defect (Left), as in the flat check. It reports Shelley's failure type (ShelleyUtxowPredFailure), which the rule injects into its own; its verdict is compared with the flat rule's through ConwayUtxowPredFailure.toStored; its failures the constructors it reports, declared as its result type, so that an injection over the constructors a rule reaches serves it (Dijkstra's SUBUTXOW, whose reference injections are partial, #85)",
+   "digest": "3fd6fc7a1602d94e"
   },
   "def ledger.era.rules.AlonzoUtxow.checkScriptIntegrityHash": {
    "upstream": [
@@ -49701,6 +49701,13 @@
     "trait ledger.era.rules.ConwayMempoolRun.Annotation",
     "type ledger.era.rules.ConwayMempoolRun.Outcome",
     "val ledger.era.rules.ConwayMempoolRun.Annotation.mkStAnnTx"
+   ]
+  },
+  {
+   "reason": "the witness signature checks validateVerifiedWits asks Verdicts for, listed as values (WitnessCheck, ShelleyUtxow.verifiedWitsAsked), so that the node's VerificationCache verifies exactly those ahead of the rules in the Leios closure check (#79); the reference has no such list, it verifies each signature when its predicate reaches it",
+   "definitions": [
+    "class ledger.WitnessCheck",
+    "def ledger.era.rules.ShelleyUtxow.verifiedWitsAsked"
    ]
   }
  ]

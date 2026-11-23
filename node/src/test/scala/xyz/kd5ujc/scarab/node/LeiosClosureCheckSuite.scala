@@ -11,8 +11,8 @@ import xyz.kd5ujc.scarab.codec.{Bytes, Value}
 import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.consensus.leios.EbClosureVerdict
 import xyz.kd5ujc.scarab.consensus.state.{MirrorState, MirrorStep}
-import xyz.kd5ujc.scarab.ledger.{Block, Header, NodeError, StorageError}
-import xyz.kd5ujc.scarab.ledger.era.{IsPhase2Valid, Tx, TxLevel}
+import xyz.kd5ujc.scarab.ledger.{Block, Header, NodeError, StorageError, WitnessCheck}
+import xyz.kd5ujc.scarab.ledger.era.{EraTx, IsPhase2Valid, Tx, TxLevel}
 import xyz.kd5ujc.scarab.ledger.era.dijkstra.{DijkstraCorpus, DijkstraTx}
 import xyz.kd5ujc.scarab.ledger.era.rules.{
   ConwayUtxosPredFailure,
@@ -21,7 +21,8 @@ import xyz.kd5ujc.scarab.ledger.era.rules.{
   DijkstraMempoolPredFailure,
   DijkstraUtxoPredFailure,
   DijkstraUtxowPredFailure,
-  LeiosClosureDefect
+  LeiosClosureDefect,
+  ShelleyUtxow
 }
 import xyz.kd5ujc.scarab.ledger.state.{Dijkstra, NewEpochState, SlotNo}
 import xyz.kd5ujc.scarab.node.mempool.{DijkstraPoolEnv, DijkstraRead, MempoolEnv, Rejection}
@@ -262,6 +263,7 @@ class LeiosClosureCheckSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
               h => IO(assertEquals(h, p.hash)).as(answer),
               None,
               cache,
+              (_: Vector[WitnessCheck]) => IO.unit,
               p,
               state,
               envOf(s)
@@ -277,6 +279,47 @@ class LeiosClosureCheckSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
               assertEquals((eb, txh), (p.hash, garbled.head._1))
             case other => fail(s"not undecodable: $other")
       }
+    }
+  }
+
+  test(
+    "the checks warmed for a batch are its own and its sub-transactions', as SUBUTXOW asks them"
+  ) {
+    val batches = DijkstraCorpus.chainContextCases
+      .map(c =>
+        DijkstraTx
+          .inBlock(DijkstraCorpus.node(DijkstraCorpus.hex(DijkstraCorpus.str(c, "bytes"))))
+          .fold(e => fail(e.toString), identity)
+      )
+      .filter(tx => EraTxBody.dijkstra.subTransactions(tx.body).toVector.nonEmpty)
+    assert(batches.nonEmpty, "the recorded chain holds batches")
+    val subs = batches.flatMap(tx => EraTxBody.dijkstra.subTransactions(tx.body).toVector)
+    val subWitnesses = subs
+      .map(sub =>
+        ShelleyUtxow.verifiedWitsAsked[Dijkstra, TxLevel.Sub](sub)(using
+          EraTx.dijkstra,
+          BothLevels.Sub
+        )
+      )
+      .map(_.size)
+      .sum
+    assert(subWitnesses > 0, "the batches' sub-transactions carry key witnesses")
+    VerificationCache.resource[IO](2).use { witnesses =>
+      batches.traverse_(tx => witnesses.warmWitnesses[IO](LeiosClosureCheck.witnessChecks(tx))) *>
+        IO {
+          val judged = subs.map(sub =>
+            ShelleyUtxow.validateVerifiedWits[Dijkstra, TxLevel.Sub](sub, witnesses)(using
+              EraTx.dijkstra,
+              BothLevels.Sub
+            )
+          )
+          assert(judged.forall(_.isRight), s"$judged")
+          // every sub-transaction witness SUBUTXOW asked for was warmed, none computed in place
+          assertEquals(
+            (witnesses.witnessStats.hits.sum, witnesses.witnessStats.misses.sum),
+            (subWitnesses.toLong, 0L)
+          )
+        }
     }
   }
 
@@ -301,6 +344,7 @@ class LeiosClosureCheckSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           _ => IO.pure(Some(stored)),
           Some(store),
           cache,
+          (_: Vector[WitnessCheck]) => IO.unit,
           p,
           state.withUtxo(stripped),
           envOf(s)
@@ -310,6 +354,7 @@ class LeiosClosureCheckSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           _ => IO.pure(Some(stored)),
           None,
           fresh,
+          (_: Vector[WitnessCheck]) => IO.unit,
           p,
           state.withUtxo(stripped),
           envOf(s)
