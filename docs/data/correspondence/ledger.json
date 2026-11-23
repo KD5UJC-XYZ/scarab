@@ -6736,8 +6736,8 @@
    "evidence": [
     "ConwayUtxoChecksSuite"
    ],
-   "note": "the outputs as an `Iterable`, Scala's form of the reference's `Foldable f`",
-   "digest": "f52e4666f2520c28"
+   "note": "the outputs as an `Iterable`, Scala's form of the reference's `Foldable f`; `foldMap` is the values' `mconcat` (`Val#sumAll`)",
+   "digest": "97f82f70e9f65a1a"
   },
   "def ledger.era.ShelleyUTxO.shelleyProducedValue": {
    "upstream": [
@@ -48437,6 +48437,48 @@
    "structure": "same",
    "note": "every input of the block's transactions (allInputsTxBodyF) less those a transaction of the block creates; the node's read set of a Conway block from the store",
    "digest": "95ed84baa3a44ad0"
+  },
+  "def ledger.era.Val#sumAll": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Val.hs",
+     "symbol": "Val",
+     "lines": [
+      30,
+      44
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/mary/impl/src/Cardano/Ledger/Mary/Value.hs",
+     "symbol": "Monoid MaryValue",
+     "lines": [
+      165,
+      198
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-data/src/Data/CanonicalMaps.hs",
+     "symbol": "canonicalMapUnion",
+     "lines": [
+      41,
+      66
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "SharedHashCodeSuite",
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "`mconcat` of the monoid of the superclass `Abelian t` as a member, the fold of `plus` by default; MaryValue's sums its maps as `canonicalMapUnion` does, in sorted maps (`Value.sum`), so a sum of keys sharing a hash code costs their comparisons",
+   "digest": "edaec20b042db601"
   }
  },
  "glue": [

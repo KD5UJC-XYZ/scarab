@@ -21,6 +21,13 @@ trait Val[V]:
   def zero: V
   def plus(a: V, b: V): V
 
+  /** `mconcat` of the monoid of the superclass `Abelian t` (`Val.hs:35`, cardano-ledger f649f975),
+    * the sum of `values`, the fold of [[plus]] from [[zero]]. A value whose maps the fold would
+    * grow at the cost of the square of keys that share a hash code sums them as the reference's
+    * `Data.Map` s add up, by the comparisons of the keys ([[MultiAssetValue]]).
+    */
+  def sumAll(values: IterableOnce[V]): V = values.iterator.foldLeft(zero)(plus)
+
   /** `<->`: `a` less `b`. */
   def minus(a: V, b: V): V
 
@@ -151,6 +158,13 @@ object MultiAssetValue:
     def eqv(a: MultiAssetValue, b: MultiAssetValue): Boolean = a == b
     def zero: MultiAssetValue = xyz.kd5ujc.scarab.ledger.Value(0, Map.empty)
     def plus(a: MultiAssetValue, b: MultiAssetValue): MultiAssetValue = a + b
+
+    /** The sum in sorted maps ([[xyz.kd5ujc.scarab.ledger.Value.sum]], `canonicalMapUnion`,
+      * `Data/CanonicalMaps.hs:41-66`, cardano-ledger f649f975), which the flat rules sum a
+      * transaction's spent outputs with: canonical, as the fold of `plus` is.
+      */
+    override def sumAll(values: IterableOnce[MultiAssetValue]): MultiAssetValue =
+      xyz.kd5ujc.scarab.ledger.Value.sum(values)
     def minus(a: MultiAssetValue, b: MultiAssetValue): MultiAssetValue = a - b
     def scale(n: BigInt, v: MultiAssetValue): MultiAssetValue =
       xyz.kd5ujc.scarab.ledger.Value(

@@ -295,9 +295,11 @@ object UTxOs:
       UTxO(txIns.iterator.flatMap(in => entries.get(in).map(in -> _)).toMap)
     else UTxO(entries.filter((in, _) => txIns.contains(in)))
 
-  /** `sumAllValue` (`State/UTxO.hs:199-200`, cardano-ledger f649f975). */
+  /** `sumAllValue` (`State/UTxO.hs:199-200`, cardano-ledger f649f975): `foldMap`, the values'
+    * `mconcat` ([[Val.sumAll]]).
+    */
   def sumAllValue[E <: EraTag](outs: Iterable[TxOut[E]])(using o: EraTxOut[E]): Value[E] =
-    outs.foldLeft(o.valueOps.zero)((total, out) => o.valueOps.plus(total, o.value(out)))
+    o.valueOps.sumAll(outs.iterator.map(o.value))
 
   /** `sumUTxO` (`State/UTxO.hs:185-186`, cardano-ledger f649f975). */
   def sumUTxO[E <: EraTag](utxo: UTxO[E])(using EraTxOut[E]): Value[E] =
