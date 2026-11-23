@@ -316,6 +316,18 @@ class EraUtxowSuite extends munit.FunSuite:
     }
   }
 
+  test("a run's language views are getLanguageView's, for its parameters and for others") {
+    val all =
+      withModels(Map(0 -> Vector(1, 2, 3), 1 -> Vector(4, 5, 6, 7), 2 -> Vector(8, -1, 300)))
+    val other = withModels(Map(1 -> Vector(9)))
+    val none = withModels(Map.empty)
+    val views = LanguageViews.of(all)
+    for
+      pp <- Vector(all, other, none, all)
+      lang <- PlutusLanguage.values.toVector
+    do assertEquals(views.view(pp, lang), LangDepView.getLanguageView(pp, lang), s"$lang")
+  }
+
   test("views of one tag are encoded in their derived order, whatever order the set was built in") {
     // `Set.toList` of the views in the derived (tag, parameters) order, then the stable sort by tag
     // (`Alonzo/PParams.hs:547-548, 587-597`, cardano-ledger f649f975)

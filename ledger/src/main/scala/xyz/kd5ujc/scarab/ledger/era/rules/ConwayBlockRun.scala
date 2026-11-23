@@ -27,6 +27,7 @@ import xyz.kd5ujc.scarab.ledger.era.{
   EraBlockHeader,
   EraTx,
   IsPhase2Valid,
+  LanguageViews,
   PParams,
   Phase2Deferral,
   PlutusEvaluation,
@@ -645,7 +646,8 @@ object ConwayBlockRun:
         systemStart,
         epochInfo,
         TxEnv.Validation.All,
-        ConwayUtxo.injectShelleyFailure(globals.ledger.referenceBuild)
+        ConwayUtxo.injectShelleyFailure(globals.ledger.referenceBuild),
+        LanguageViews.of(env.bbodyPp)
       )
       val answers = mode match
         case Mode.Evaluating(answers) => answers

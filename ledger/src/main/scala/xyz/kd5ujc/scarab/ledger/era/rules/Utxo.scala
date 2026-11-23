@@ -73,13 +73,16 @@ final class InjectShelleyUtxoFailure[E <: EraTag] private[rules] (
   *   - `validation`, the policy under which `runTestOnSignal` skips its tests;
   *   - `injectShelley`, the era's injection of the failures of Shelley's predicates, which differs
   *     by reference build ([[ConwayUtxo.injectShelleyFailure]]).
+  *   - `languageViews`, how UTXOW's script integrity takes each language's view of the parameters
+  *     ([[LanguageViews]]): encoded where asked, or once a block in Conway's run (#85).
   */
 final case class UtxoContext[E <: EraTag](
     netId: Network,
     systemStart: SystemStart,
     epochInfo: Horizon,
     validation: TxEnv.Validation,
-    injectShelley: InjectShelleyUtxoFailure[E]
+    injectShelley: InjectShelleyUtxoFailure[E],
+    languageViews: LanguageViews[E] = LanguageViews.direct[E]
 ):
   /** `runTestOnSignal` (`Rules/ValidationMode.hs:88-89`, cardano-ledger f649f975): `test` when the
     * policy validates the signal, a pass otherwise.

@@ -103,6 +103,41 @@ object LangDepView:
     def intItem(n: BigInt): Array[Byte] = if n >= 0 then headItem(0, n) else headItem(1, -1 - n)
     def bytes(b: Bytes): Bytes = head(2, BigInt(b.size)) ++ b
 
+/** The languages' views of the protocol parameters ([[LangDepView.getLanguageView]]), a function of
+  * the parameters' cost models and the language alone: [[LanguageViews.direct]] encodes each where
+  * it is asked; [[LanguageViews.of]] encodes each of one set of parameters' once, for the rules of
+  * a block that every transaction with scripts asks again (#85).
+  */
+trait LanguageViews[E <: EraTag]:
+  def view(pp: PParams[E], lang: PlutusLanguage)(using AlonzoEraPParams[E]): LangDepView
+
+object LanguageViews:
+  /** Each view encoded where it is asked for. */
+  def direct[E <: EraTag]: LanguageViews[E] = new LanguageViews[E]:
+    def view(pp: PParams[E], lang: PlutusLanguage)(using AlonzoEraPParams[E]): LangDepView =
+      LangDepView.getLanguageView(pp, lang)
+
+  /** The views of `pp`, each encoded the first time it is asked for, and given again for parameters
+    * with the same cost models; other parameters' encoded where they are asked for.
+    */
+  def of[E <: EraTag](pp: PParams[E])(using p: AlonzoEraPParams[E]): LanguageViews[E] =
+    def models(of: PParams[E]): Map[Int, Vector[BigInt]] =
+      PParams.lensHKD[E].andThen(p.hkdCostModelsL[Identity]).get(of).models
+    new LanguageViews[E]:
+      private val held = models(pp)
+      private lazy val v1 = LangDepView.getLanguageView(pp, PlutusLanguage.V1)
+      private lazy val v2 = LangDepView.getLanguageView(pp, PlutusLanguage.V2)
+      private lazy val v3 = LangDepView.getLanguageView(pp, PlutusLanguage.V3)
+      private lazy val v4 = LangDepView.getLanguageView(pp, PlutusLanguage.V4)
+      def view(at: PParams[E], lang: PlutusLanguage)(using AlonzoEraPParams[E]): LangDepView =
+        if models(at) == held then
+          lang match
+            case PlutusLanguage.V1 => v1
+            case PlutusLanguage.V2 => v2
+            case PlutusLanguage.V3 => v3
+            case PlutusLanguage.V4 => v4
+        else LangDepView.getLanguageView(at, lang)
+
 /** What a transaction's script integrity hash is over (`data ScriptIntegrity era`, cardano-ledger
   * f649f975 `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Tx.hs:375-382`): the witness set's
   * redeemers and datums, and the views of the languages the transaction uses.
@@ -150,7 +185,22 @@ object ScriptIntegrity:
       w: AlonzoEraTxWits[E],
       l: t.bodyOf.Level[L]
   ): Option[ScriptIntegrity[E]] =
-    val langViews = langs.map(LangDepView.getLanguageView(pp, _))
+    mkScriptIntegrityWith[E, L](LanguageViews.direct[E])(pp, tx, langs)
+
+  /** [[mkScriptIntegrity]] with each language's view from `views`, which gives
+    * [[LangDepView.getLanguageView]]'s.
+    */
+  def mkScriptIntegrityWith[E <: EraTag, L <: TxLevel](views: LanguageViews[E])(
+      pp: PParams[E],
+      tx: Tx[L, E],
+      langs: Set[PlutusLanguage]
+  )(using
+      t: EraTx[E],
+      p: AlonzoEraPParams[E],
+      w: AlonzoEraTxWits[E],
+      l: t.bodyOf.Level[L]
+  ): Option[ScriptIntegrity[E]] =
+    val langViews = langs.map(views.view(pp, _))
     val txWits = t.wits[L](tx)
     val txRedeemers = w.rdmrsTxWits(txWits)
     val txDats = w.datsTxWits(txWits)

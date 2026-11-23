@@ -596,7 +596,7 @@ object BabbageUtxow:
         AlonzoUtxow.checkScriptIntegrityHash[E, TxLevel.Top](
           tx,
           pp,
-          ScriptIntegrity.mkScriptIntegrity[E, TxLevel.Top](
+          ScriptIntegrity.mkScriptIntegrityWith[E, TxLevel.Top](context.languageViews)(
             pp,
             tx,
             u.plutusLanguagesUsedStAnnTx[TxLevel.Top](stAnnTx)(using u.txOf.bodyOf.top)
