@@ -43,7 +43,7 @@ import xyz.kd5ujc.scarab.ledger.era.{
   TxOut,
   UTxO
 }
-import xyz.kd5ujc.scarab.ledger.rules.{Globals, RuleT, TxDependencies, contramap, focus}
+import xyz.kd5ujc.scarab.ledger.rules.{Globals, Judge, RuleT, TxDependencies, contramap, focus}
 import xyz.kd5ujc.scarab.ledger.state.{Conway, LedgerState, UTxOState}
 import xyz.kd5ujc.scarab.plutus.{
   EvalFailure,
@@ -97,11 +97,14 @@ object ConwayBlockRun:
     case Read(proposals: Proposals[Conway])
 
   /** The scripts of the transaction a run observes ([[Observing]]): none between two transactions,
-    * or the transaction's, located, with the evaluations of those run so far.
+    * or the transaction's, located, with the evaluations of those run so far; or none ever again,
+    * once a transaction whose scripts UTXOS could not collect was observed ([[uncollecting]]),
+    * after which the judgment is failing, and so no script runs (`whenFailureFree`).
     */
   private enum Observed:
     case Between
     case In(located: ConwayPhase2.Located, done: Vector[Phase2.Evaluation])
+    case Ended
 
   /** What of a run's events its result reads, in their order: those the counters read
     * ([[ScriptsTold]]), and, in a block the node prepares, the place of each transaction whose
@@ -134,14 +137,25 @@ object ConwayBlockRun:
   /** How a run evaluates its scripts: where UTXOS collects them, each answered in turn by `answers`
     * where its request is the one answered (a prepared block's results, which the evaluator, a
     * function of the request, gives again) and by the evaluator otherwise; or, a block prepared,
-    * deferred into the plan's recorder ([[Deferred]]).
+    * deferred into the plan's recorder ([[Recorded]]).
     */
   private enum Mode:
     case Evaluating(answers: List[(EvalRequest, EvalResult)])
-    case Preparing(recorder: Phase2.Recorder[Deferred])
+    case Preparing(recorder: Phase2.Recorder[Recorded])
+
+  /** What a prepared block's run records, in the order the rules reach it: the scripts of a
+    * transaction it deferred ([[Deferred]]), and, the block observed, the observation of a
+    * transaction whose scripts UTXOS could not collect ([[uncollecting]]), which the plan tells at
+    * its place among the deferred scripts' observations.
+    */
+  private[ConwayBlockRun] enum Recorded:
+    case Scripts(job: Deferred)
+    case Uncollected(observation: Phase2.Observation)
 
   /** The node's phase-2 observer (`--plutus-cases`) of a run, as the flat rules call it
-    * (`EraBlock.Context.observer`, `Phase2.Observation`), with the clock its observations hold.
+    * (`EraBlock.Context.observer`, `Phase2.Observation`), with the clock its observations hold:
+    * told of each transaction whose scripts the run evaluates ([[observed]]) and of one whose
+    * scripts UTXOS could not collect ([[uncollecting]]), as the flat rules tell it of each.
     */
   final case class Observing(observer: Phase2.Observation => Unit, clock: Option[PosixClock])
 
@@ -252,7 +266,7 @@ object ConwayBlockRun:
       outcome: Phase2.Outcome
   ): Option[Phase2.Observation] =
     ConwayPhase2
-      .flatTx(located)
+      .flatTx(located.tx)
       .map(tx =>
         Phase2.Observation(
           tx,
@@ -289,20 +303,20 @@ object ConwayBlockRun:
     request =>
       (state.get <* oneRan).flatMap { s =>
         answered(evaluator)(request).flatMap { result =>
+          def fresh: Option[(ConwayPhase2.Located, Vector[Phase2.Evaluation], Redeemer)] =
+            ConwayPhase2
+              .locate(txs, s.bbody.ls, pp, slotToPOSIXTime)(pwc =>
+                PlutusWithContext.evalRequest(pwc) == request
+              )
+              .flatMap(located =>
+                redeemerOf(located, s.ran, request).map(r => (located, Vector.empty, r))
+              )
           val current = s.observed match
             case Observed.In(located, done) =>
-              redeemerOf(located, s.ran, request).map(r => (located, done, r))
-            case Observed.Between => None
+              redeemerOf(located, s.ran, request).map(r => (located, done, r)).orElse(fresh)
+            case Observed.Between => fresh
+            case Observed.Ended   => None
           current
-            .orElse(
-              ConwayPhase2
-                .locate(txs, s.bbody.ls, pp, slotToPOSIXTime)(pwc =>
-                  PlutusWithContext.evalRequest(pwc) == request
-                )
-                .flatMap(located =>
-                  redeemerOf(located, s.ran, request).map(r => (located, Vector.empty, r))
-                )
-            )
             .fold(Monad[F].pure(result)) { (located, done, redeemer) =>
               val between = state.modify(_.copy(observed = Observed.Between))
               result match
@@ -317,6 +331,36 @@ object ConwayBlockRun:
             }
         }
       }
+
+  /** UTXOS's notice of a transaction `tx` whose scripts it could not collect
+    * ([[Phase2Deferral.uncollected]]), observed by `observing` as the flat rules observe it
+    * (`TxChecks.phase2`, [[ConwayPhase2.uncollected]]), in the ledger state the rules judge it in,
+    * and told by `tell`: once, where the run observes no transaction's scripts ([[Observed]]), and
+    * only if nothing failed so far in the judgment, which the flat rules evaluate a transaction's
+    * scripts under (`whenFailureFree`) and observe it only then. Its failures recorded after it,
+    * the judgment is failing, so no script runs after it, and the run observes nothing more
+    * ([[Observed.Ended]]).
+    */
+  private def uncollecting(
+      observing: Option[Observing],
+      slot: BigInt,
+      slotToPOSIXTime: BigInt => Either[TranslationError, BigInt],
+      tell: Phase2.Observation => Unit
+  )(tx: Tx[TxLevel.Top, Conway]): F[Unit] =
+    val state = summon[Stateful[F, S]]
+    observing.fold(Monad[F].unit) { o =>
+      (summon[Judge[F, BbodyPredFailure[Conway]]].failing, state.get).tupled.flatMap {
+        (failing, s) =>
+          s.observed match
+            case Observed.Between if !failing =>
+              Monad[F].unit.map(_ =>
+                ConwayPhase2
+                  .uncollected(tx, s.bbody.ls, slot, slotToPOSIXTime, o.clock)
+                  .foreach(tell)
+              ) *> state.set(s.copy(observed = Observed.Ended))
+            case Observed.Between | Observed.In(_, _) | Observed.Ended => Monad[F].unit
+      }
+    }
 
   /** The scripts of a transaction a prepared block deferred ([[Mode.Preparing]]): its place among
     * the block's transactions, its flag, its scripts in the order UTXOS runs them, and, the block
@@ -410,10 +454,12 @@ object ConwayBlockRun:
   /** Where a block's preparation defers the scripts of a transaction of `txs`: recorded into
     * `recorder` and at their place among the run's events, none run, so that the rules go on as its
     * flag announces; observed by `observing`, with how its observation is made. A transaction the
-    * block does not hold, which the rules never run the scripts of, has them run there.
+    * block does not hold, which the rules never run the scripts of, has them run there. A
+    * transaction whose scripts UTXOS could not collect has its observation recorded into `recorder`
+    * ([[uncollecting]]), for the plan to tell in order.
     */
   private def deferring(
-      recorder: Phase2.Recorder[Deferred],
+      recorder: Phase2.Recorder[Recorded],
       txs: Vector[Tx[TxLevel.Top, Conway]],
       observing: Option[Observing],
       pp: PParams[Conway],
@@ -436,10 +482,19 @@ object ConwayBlockRun:
               observing
                 .map(o => deferredObservation(o, txs, ls, pp, slot, slotToPOSIXTime, scripts))
             )
-            Monad[F].unit.map(_ => recorder.append(job)) *>
+            Monad[F].unit.map(_ => recorder.append(Recorded.Scripts(job))) *>
               state.set(s.copy(told = s.told :+ Told.At(job)))
           }
         }
+      def uncollected(tx: Tx[TxLevel.Top, Conway]): F[Unit] =
+        uncollecting(
+          observing,
+          slot,
+          slotToPOSIXTime,
+          o => recorder.append(Recorded.Uncollected(o))
+        )(
+          tx
+        )
 
   /** How the observation of deferred scripts is made once they ran, as [[observed]] makes it: the
     * transaction located in `ls` by its first script, each result named by its script's place.
@@ -634,7 +689,16 @@ object ConwayBlockRun:
           )
         case Mode.Preparing(_) => lifted(evaluator)
       given Phase2Deferral[F, Conway] = mode match
-        case Mode.Evaluating(_) => Phase2Deferral.now
+        case Mode.Evaluating(_) =>
+          new Phase2Deferral[F, Conway]:
+            def evalScripts(
+                tx: Tx[TxLevel.Top, Conway],
+                scripts: NonEmptyList[PlutusWithContext]
+            )(now: F[Unit]): F[Unit] = now
+            def uncollected(tx: Tx[TxLevel.Top, Conway]): F[Unit] =
+              uncollecting(observing, slot, slotToPOSIXTime, o => observing.foreach(_.observer(o)))(
+                tx
+              )
         case Mode.Preparing(recorder) =>
           deferring(recorder, txs, observing, env.bbodyPp, slot, slotToPOSIXTime)
       // a script with no verdict, named by its transaction and redeemer in the ledger state the
@@ -698,11 +762,11 @@ object ConwayBlockRun:
     def hasScripts: Boolean = txs.exists(ConwayPhase2.redeeming)
     def worthwhile: Boolean = txs.count(ConwayPhase2.redeeming) > 1
     def prepare: Plan =
-      val (tentative, jobs) =
-        Phase2.captured[Deferred, Ran](recorder => run(Mode.Preparing(recorder)))
+      val (tentative, recorded) =
+        Phase2.captured[Recorded, Ran](recorder => run(Mode.Preparing(recorder)))
       Plan(
         tentative,
-        jobs,
+        recorded,
         txs,
         evaluator,
         observing,
@@ -720,10 +784,12 @@ object ConwayBlockRun:
     * its result, which lands each job's verdict in order:
     *   - while every verdict is the one its flag announces, the preparation went as the serial run
     *     goes, so its result is the serial run's: its counters from each job's verdict told where
-    *     it was deferred, its observations made in order, its refusal, with the defect that stopped
-    *     it if one did ([[Refusal.Stopped]]), or the raw defect it ended in;
-    *   - a raw defect a job's scripts ended in is the serial run's, which reaches them: the jobs
-    *     before it observed, the defect raised as it is, never evaluated again;
+    *     it was deferred, its observations made in the order the preparation recorded them
+    *     ([[Recorded]]), a transaction whose scripts UTXOS could not collect among them, its
+    *     refusal, with the defect that stopped it if one did ([[Refusal.Stopped]]), or the raw
+    *     defect it ended in;
+    *   - a raw defect a job's scripts ended in is the serial run's, which reaches them: what was
+    *     recorded before it observed, the defect raised as it is, never evaluated again;
     *   - at the first verdict that is not the one its flag announces, or a script with no verdict,
     *     the serial run's result differs from the preparation's (the failure recorded, every later
     *     script left to `whenFailureFree`, the script named in the state of the raise): the serial
@@ -734,13 +800,16 @@ object ConwayBlockRun:
     */
   final class Plan private[ConwayBlockRun] (
       tentative: Either[Phase2.Defect, Ran],
-      val jobs: Vector[Deferred],
+      recorded: Vector[Recorded],
       txs: Vector[Tx[TxLevel.Top, Conway]],
       evaluator: ScriptEvaluator[Id],
       observing: Option[Observing],
       replay: List[(EvalRequest, EvalResult)] => Result
   ) extends Phase2.Plan[Result]:
     type Job = Deferred
+
+    /** The deferred scripts, in the order the preparation deferred them. */
+    val jobs: Vector[Deferred] = recorded.collect { case Recorded.Scripts(job) => job }
 
     /** A worker's value: a deferred transaction's scripts run by this plan's evaluator, or the raw
       * defect that ended them. It is this plan's own type: a value another plan executed, with its
@@ -757,10 +826,22 @@ object ConwayBlockRun:
 
     def resolve(completed: Vector[Completed]): Either[Phase2.Defect, Result] =
       val values = completed.iterator.map(c => c.job -> c.outcome).toMap
+      // what the preparation recorded, observed in its order up to the first job not landed
       def observe(landed: Vector[(Deferred, Evaluated)]): Unit =
-        observing.foreach(o =>
-          landed.foreach((job, e) => job.observation.flatMap(_(e)).foreach(o.observer))
-        )
+        observing.foreach { o =>
+          val evaluated = landed.toMap
+          recorded.iterator
+            .takeWhile {
+              case Recorded.Scripts(job)   => evaluated.contains(job)
+              case Recorded.Uncollected(_) => true
+            }
+            .flatMap {
+              case Recorded.Scripts(job) =>
+                evaluated.get(job).flatMap(e => job.observation.flatMap(_(e)))
+              case Recorded.Uncollected(observation) => Some(observation)
+            }
+            .foreach(o.observer)
+        }
       type Landing[A] = Either[Stop, A]
       jobs
         .foldLeftM[Landing, Vector[(Deferred, Evaluated, ScriptResult)]](Vector.empty) {

@@ -9,9 +9,11 @@ import xyz.kd5ujc.scarab.ledger.{
   LedgerFailure,
   Phase2,
   PlutusStats,
+  PosixClock,
   Redeemer,
   ScriptLocation,
   TranslationError,
+  TxChecks,
   TxIn,
   Tx as FlatTx,
   TxOut as FlatTxOut
@@ -19,7 +21,7 @@ import xyz.kd5ujc.scarab.ledger.{
 import xyz.kd5ujc.scarab.ledger.era.*
 import xyz.kd5ujc.scarab.ledger.era.conway.ConwayPlutusPurpose
 import xyz.kd5ujc.scarab.ledger.rules.TxDependencies
-import xyz.kd5ujc.scarab.ledger.state.{Conway, LedgerState}
+import xyz.kd5ujc.scarab.ledger.state.{Conway, LedgerState, ShelleyBasedEra}
 import xyz.kd5ujc.scarab.plutus.{EvalFailure, EvalResult}
 import xyz.kd5ujc.scarab.protocol.Era
 
@@ -216,12 +218,11 @@ object ConwayPhase2:
       }
     )
 
-  /** The transaction `located` as the flat rules read it, from its bytes (`Tx.fromBlock`), which
-    * the node's phase-2 observation holds; none for bytes the flat decoder refuses, which a
-    * transaction the era decoder read never has.
+  /** The transaction `tx` as the flat rules read it, from its bytes (`Tx.fromBlock`), which the
+    * node's phase-2 observation holds; none for bytes the flat decoder refuses, which a transaction
+    * the era decoder read never has.
     */
-  def flatTx(located: Located): Option[FlatTx] =
-    val tx = located.tx
+  def flatTx(tx: Tx[TxLevel.Top, Conway]): Option[FlatTx] =
     FlatTx
       .fromBlock(
         Block.Transaction(
@@ -233,6 +234,46 @@ object ConwayPhase2:
         Era.Conway
       )
       .toOption
+
+  /** The node's phase-2 observation of the transaction `tx` of a block at `slot`, whose scripts
+    * UTXOS could not collect with their contexts in the ledger state `ls`, as the flat rules make
+    * it where they refuse it (`TxChecks.phase2`): the transaction as they read it ([[flatTx]]), the
+    * parameters as the node records them, the outputs its inputs and reference inputs spend and
+    * read, the `clock` it holds, and the flat rules' collection's failures (`Phase2.collect`, with
+    * the scripts the transaction provides and the clock `slotToPOSIXTime` the rules collected
+    * with), in the vocabulary the observation holds, which a context's failure to translate has no
+    * projection into from the era's. None where the flat rules collect every script: a difference
+    * of the two collections, which no observation shows.
+    */
+  def uncollected(
+      tx: Tx[TxLevel.Top, Conway],
+      ls: LedgerState[Conway],
+      slot: BigInt,
+      slotToPOSIXTime: BigInt => Either[TranslationError, BigInt],
+      clock: Option[PosixClock]
+  ): Option[Phase2.Observation] =
+    val t = EraTx.conway
+    val b = EraTxBody.conway
+    given t.bodyOf.Level[TxLevel.Top] = t.bodyOf.top
+    val body = t.body[TxLevel.Top](tx)
+    val stored = ls.utxo.utxo.utxo
+    val spent = ShelleyUtxo.restrictKeys(stored, b.inputs[TxLevel.Top](body))
+    val references = ShelleyUtxo.restrictKeys(stored, b.referenceInputs[TxLevel.Top](body))
+    val pp = ls.utxo.gov.curPParams
+    flatTx(tx).flatMap { flat =>
+      Phase2
+        .collect[Conway](
+          flat,
+          pp,
+          TxChecks.providedScripts(flat.witnesses, (spent.values ++ references.values).toVector),
+          spent,
+          references,
+          slotToPOSIXTime
+        )(using ShelleyBasedEra.SConway)
+        .left
+        .toOption
+        .map(errors => Phase2.Observation(flat, pp, slot, spent, references, clock, Left(errors)))
+    }
 
   /** What the node's phase-2 observation of a transaction holds of its scripts' evaluations
     * (`Phase2.Outcome`, as `Phase2.run` makes it): those run, in order, their failures, or the one
