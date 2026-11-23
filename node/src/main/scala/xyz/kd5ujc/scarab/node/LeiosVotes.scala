@@ -42,19 +42,18 @@ final class LeiosVotes[F[_]] private (
 )(using F: Concurrent[F]):
 
   /** `addVote` (`LeiosVoteState.hs:157-234`, ouroboros-consensus 2416493b): a vote counted already
-    * is `AlreadyKnown`, and one whose block left the window is `Retired` (#1355), before any check;
-    * then the committee in force, read once (`NoCommittee` without one); then the vote is validated
-    * against it outside the update, the pairing being the costly part; then, in one update, counted
-    * unless a concurrent add counted it first, and given to each subscriber registered at that
-    * update, once. The count and the delivery are one step that a cancellation does not split, as
-    * the reference counts the vote and writes it to its broadcast channel in one transaction: a
-    * vote is never counted while a subscriber misses it, which a later copy, `AlreadyKnown`, would
-    * never make good.
+    * is `AlreadyKnown` before any check; then the committee in force, read once (`NoCommittee`
+    * without one); then the vote is validated against it outside the update, the pairing being the
+    * costly part; then, in one update, counted unless a concurrent add counted it first, and given
+    * to each subscriber registered at that update, once. The count and the delivery are one step
+    * that a cancellation does not split, as the reference counts the vote and writes it to its
+    * broadcast channel in one transaction: a vote is never counted while a subscriber misses it,
+    * which a later copy, `AlreadyKnown`, would never make good.
     */
   def add(vote: Vote)(using defect: Raise[F, LeiosVotesDefect]): F[AddVoteResult] =
-    held.get.map(_.state.known(vote)).flatMap {
-      case Some(known) => F.pure(known)
-      case None =>
+    held.get.map(_.state.seen(vote)).flatMap {
+      case true => F.pure(AddVoteResult.AlreadyKnown)
+      case false =>
         committee.flatMap {
           case Left(failed) =>
             defect.raise[LeiosVotesDefect, AddVoteResult](LeiosVotesDefect.Committee(failed))

@@ -230,11 +230,7 @@ object LeiosVoting:
   ): Either[LeiosNotVotedReason[I, U], NonEmptyVector[(Vote, AddVoteResult)]] =
     val accepted = answers.exists {
       case (_, AddVoteResult.Added(_, _)) => true
-      case (
-            _,
-            AddVoteResult.NoCommittee | AddVoteResult.Invalid(_) | AddVoteResult.AlreadyKnown |
-            AddVoteResult.Retired
-          ) =>
+      case (_, AddVoteResult.NoCommittee | AddVoteResult.Invalid(_) | AddVoteResult.AlreadyKnown) =>
         false
     }
     Either.cond(accepted, answers, LeiosNotVotedReason.VoteRejected(answers))

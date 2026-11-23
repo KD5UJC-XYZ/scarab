@@ -2772,14 +2772,10 @@
      ]
     }
    ],
-   "class": "Improvement",
-   "structure": "differs",
-   "note": "the state newLeiosVoteState's two TVars hold: the tallies by announcing block and the first-seen order of their blocks; and the blocks that left the window; an Improvement approved on 2026-11-23 (#1355): the state remembers the last 4096 announcing blocks to leave the window, and a vote for one is Retired, not counted and not relayed; the reference counts it again as its block's first, so votes for more blocks than the window cycle between nodes without end",
-   "digest": "4cdd87928c22faa3",
-   "evidence": [
-    "LeiosVoteStateSuite"
-   ],
-   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1355#issuecomment-7106590538"
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the state newLeiosVoteState's two TVars hold: the tallies by announcing block and the first-seen order of their blocks",
+   "digest": "eea49a7f4808bd69"
   },
   "object consensus.leios.LeiosVoteState": {
    "upstream": [
@@ -2794,14 +2790,10 @@
      ]
     }
    ],
-   "class": "Improvement",
-   "structure": "differs",
-   "note": "the empty state and the bound of the window; and the bound and record of the retired blocks; an Improvement approved on 2026-11-23 (#1355): the state remembers the last 4096 announcing blocks to leave the window, and a vote for one is Retired, not counted and not relayed; the reference counts it again as its block's first, so votes for more blocks than the window cycle between nodes without end",
-   "digest": "f0d677a76ff56616",
-   "evidence": [
-    "LeiosVoteStateSuite"
-   ],
-   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1355#issuecomment-7106590538"
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the empty state and the bound of the window",
+   "digest": "97429f210a38b009"
   },
   "val consensus.leios.LeiosVoteState.empty": {
    "upstream": [
@@ -2816,14 +2808,10 @@
      ]
     }
    ],
-   "class": "Improvement",
-   "structure": "differs",
-   "note": "the empty map and order newLeiosVoteState starts from; with no block retired; an Improvement approved on 2026-11-23 (#1355): the state remembers the last 4096 announcing blocks to leave the window, and a vote for one is Retired, not counted and not relayed; the reference counts it again as its block's first, so votes for more blocks than the window cycle between nodes without end",
-   "digest": "09753bf3fea8fa91",
-   "evidence": [
-    "LeiosVoteStateSuite"
-   ],
-   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1355#issuecomment-7106590538"
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the empty map and order newLeiosVoteState starts from",
+   "digest": "e4836034632a54b7"
   },
   "val consensus.leios.LeiosVoteState.Window": {
    "upstream": [
@@ -2884,14 +2872,10 @@
      ]
     }
    ],
-   "class": "Improvement",
-   "structure": "differs",
-   "note": "addVote's transaction once the vote is validated: the seen check again, boundPoints before the insertion, the seat's weight replacing any earlier one, the certificate aggregated by aggregateLeiosCert (seats range-checked only) the first time the total reaches the threshold and kept; the reference's error on a failed aggregation is a typed defect; a vote whose block is retired is Retired before anything is counted, and the block the window drops is retired; an Improvement approved on 2026-11-23 (#1355): the state remembers the last 4096 announcing blocks to leave the window, and a vote for one is Retired, not counted and not relayed; the reference counts it again as its block's first, so votes for more blocks than the window cycle between nodes without end",
-   "digest": "fb1b2f401096d09c",
-   "evidence": [
-    "LeiosVoteStateSuite"
-   ],
-   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1355#issuecomment-7106590538"
+   "class": "Mirror",
+   "structure": "same",
+   "note": "addVote's transaction once the vote is validated: the seen check again, boundPoints before the insertion, the seat's weight replacing any earlier one, the certificate aggregated by aggregateLeiosCert (seats range-checked only) the first time the total reaches the threshold and kept; the reference's error on a failed aggregation is a typed defect",
+   "digest": "c3fc5ab47b6a6c38"
   },
   "def consensus.leios.LeiosVoteState#certificate": {
    "upstream": [
@@ -3014,14 +2998,10 @@
      ]
     }
    ],
-   "class": "Improvement",
-   "structure": "differs",
-   "note": "the four answers of addVote; and a fifth, Retired; an Improvement approved on 2026-11-23 (#1355): the state remembers the last 4096 announcing blocks to leave the window, and a vote for one is Retired, not counted and not relayed; the reference counts it again as its block's first, so votes for more blocks than the window cycle between nodes without end",
-   "digest": "d34f27b97f6f2bc3",
-   "evidence": [
-    "LeiosVoteStateSuite"
-   ],
-   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1355#issuecomment-7106590538"
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the four answers of addVote",
+   "digest": "278fb1f7b5ff4338"
   },
   "enum consensus.leios.VoteInvalid": {
    "upstream": [
@@ -4192,182 +4172,6 @@
    "structure": "same",
    "note": "the derived Ord of the header hash's bytes, which orders an announcement slot's headers",
    "digest": "a8467e60415129a2"
-  },
-  "val consensus.leios.LeiosVoteState.RetiredWindow": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/ouroboros-consensus",
-     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
-     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosVoteState.hs",
-     "symbol": "boundPoints",
-     "lines": [
-      131,
-      143
-     ]
-    }
-   ],
-   "class": "Improvement",
-   "structure": "differs",
-   "evidence": [
-    "LeiosVoteStateSuite"
-   ],
-   "digest": "a0651d8ed652ba23",
-   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1355#issuecomment-7106590538",
-   "note": "how many blocks dropped from the window are remembered, 4096; the reference remembers none; an Improvement approved on 2026-11-23 (#1355): the state remembers the last 4096 announcing blocks to leave the window, and a vote for one is Retired, not counted and not relayed; the reference counts it again as its block's first, so votes for more blocks than the window cycle between nodes without end"
-  },
-  "class consensus.leios.LeiosVoteState.Retired": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/ouroboros-consensus",
-     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
-     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosVoteState.hs",
-     "symbol": "boundPoints",
-     "lines": [
-      131,
-      143
-     ]
-    }
-   ],
-   "class": "Improvement",
-   "structure": "differs",
-   "evidence": [
-    "LeiosVoteStateSuite"
-   ],
-   "digest": "ec39f165047c2837",
-   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1355#issuecomment-7106590538",
-   "note": "the blocks boundPoints dropped, oldest first, with their set for membership; an Improvement approved on 2026-11-23 (#1355): the state remembers the last 4096 announcing blocks to leave the window, and a vote for one is Retired, not counted and not relayed; the reference counts it again as its block's first, so votes for more blocks than the window cycle between nodes without end"
-  },
-  "object consensus.leios.LeiosVoteState.Retired": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/ouroboros-consensus",
-     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
-     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosVoteState.hs",
-     "symbol": "boundPoints",
-     "lines": [
-      131,
-      143
-     ]
-    }
-   ],
-   "class": "Improvement",
-   "structure": "differs",
-   "evidence": [
-    "LeiosVoteStateSuite"
-   ],
-   "digest": "5d79600e79aedf2e",
-   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1355#issuecomment-7106590538",
-   "note": "the record of dropped blocks' companion; an Improvement approved on 2026-11-23 (#1355): the state remembers the last 4096 announcing blocks to leave the window, and a vote for one is Retired, not counted and not relayed; the reference counts it again as its block's first, so votes for more blocks than the window cycle between nodes without end"
-  },
-  "val consensus.leios.LeiosVoteState.Retired.empty": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/ouroboros-consensus",
-     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
-     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosVoteState.hs",
-     "symbol": "newLeiosVoteState",
-     "lines": [
-      151,
-      154
-     ]
-    }
-   ],
-   "class": "Improvement",
-   "structure": "differs",
-   "evidence": [
-    "LeiosVoteStateSuite"
-   ],
-   "digest": "ed32b4029ba5ac09",
-   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1355#issuecomment-7106590538",
-   "note": "no block dropped yet; an Improvement approved on 2026-11-23 (#1355): the state remembers the last 4096 announcing blocks to leave the window, and a vote for one is Retired, not counted and not relayed; the reference counts it again as its block's first, so votes for more blocks than the window cycle between nodes without end"
-  },
-  "def consensus.leios.LeiosVoteState.Retired#contains": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/ouroboros-consensus",
-     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
-     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosVoteState.hs",
-     "symbol": "boundPoints",
-     "lines": [
-      131,
-      143
-     ]
-    }
-   ],
-   "class": "Improvement",
-   "structure": "differs",
-   "evidence": [
-    "LeiosVoteStateSuite"
-   ],
-   "digest": "99f599b006912137",
-   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1355#issuecomment-7106590538",
-   "note": "whether a block was dropped from the window and is still remembered; an Improvement approved on 2026-11-23 (#1355): the state remembers the last 4096 announcing blocks to leave the window, and a vote for one is Retired, not counted and not relayed; the reference counts it again as its block's first, so votes for more blocks than the window cycle between nodes without end"
-  },
-  "def consensus.leios.LeiosVoteState.Retired#including": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/ouroboros-consensus",
-     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
-     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosVoteState.hs",
-     "symbol": "boundPoints",
-     "lines": [
-      131,
-      143
-     ]
-    }
-   ],
-   "class": "Improvement",
-   "structure": "differs",
-   "evidence": [
-    "LeiosVoteStateSuite"
-   ],
-   "digest": "172c73e2051fa7e7",
-   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1355#issuecomment-7106590538",
-   "note": "a block dropped from the window remembered, the first remembered forgotten past RetiredWindow; an Improvement approved on 2026-11-23 (#1355): the state remembers the last 4096 announcing blocks to leave the window, and a vote for one is Retired, not counted and not relayed; the reference counts it again as its block's first, so votes for more blocks than the window cycle between nodes without end"
-  },
-  "def consensus.leios.LeiosVoteState#isRetired": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/ouroboros-consensus",
-     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
-     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosVoteState.hs",
-     "symbol": "seenIn",
-     "lines": [
-      113,
-      115
-     ]
-    }
-   ],
-   "class": "Improvement",
-   "structure": "differs",
-   "evidence": [
-    "LeiosVoteStateSuite"
-   ],
-   "digest": "5e97ac6f3007b2ab",
-   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1355#issuecomment-7106590538",
-   "note": "the vote's block was dropped from the window and is remembered; an Improvement approved on 2026-11-23 (#1355): the state remembers the last 4096 announcing blocks to leave the window, and a vote for one is Retired, not counted and not relayed; the reference counts it again as its block's first, so votes for more blocks than the window cycle between nodes without end"
-  },
-  "def consensus.leios.LeiosVoteState#known": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/ouroboros-consensus",
-     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
-     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosVoteState.hs",
-     "symbol": "addVote",
-     "lines": [
-      157,
-      234
-     ]
-    }
-   ],
-   "class": "Improvement",
-   "structure": "differs",
-   "evidence": [
-    "LeiosVoteStateSuite"
-   ],
-   "digest": "528ff6ce1d2322d4",
-   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1355#issuecomment-7106590538",
-   "note": "why a vote is not counted before any check: seenIn's AlreadyKnown, or Retired; an Improvement approved on 2026-11-23 (#1355): the state remembers the last 4096 announcing blocks to leave the window, and a vote for one is Retired, not counted and not relayed; the reference counts it again as its block's first, so votes for more blocks than the window cycle between nodes without end"
   }
  },
  "glue": [
