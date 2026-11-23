@@ -75,3 +75,11 @@ pass happens only for a block the node refuses or withholds. Dijkstra's run eval
 scripts where UTXOS collects them until it adopts the same program. The serial era runs remain the
 executable reference; the [as-built design](../design/parallel-plutus.md#era-block-runs) has the
 detail.
+
+**Amendment (2026-11-23): a rule defect after a recorded failure.** Conway's era block run refuses a
+block on the failures its rules recorded before a defect of this implementation stopped the run,
+with the defect kept beside them, and leaves no verdict only where nothing was recorded before it
+([#85](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7104253607)). The contract above
+is unchanged: the preparation's result, that refusal included, is the serial run's while every
+reached verdict is its flag's, and the serial run itself otherwise, which records the mismatch
+before the defect. The [as-built design](../design/parallel-plutus.md#era-block-runs) has the detail.
