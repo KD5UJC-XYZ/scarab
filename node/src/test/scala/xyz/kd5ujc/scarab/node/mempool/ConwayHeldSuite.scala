@@ -202,13 +202,15 @@ class ConwayHeldSuite extends FunSuite:
     }
   }
 
-  test("no verdict on a peer's Conway transaction charges nothing; a disagreeing reading closes") {
+  test(
+    "no verdict on a peer's Conway transaction charges nothing; an unavailable script or a disagreeing reading closes"
+  ) {
     unjudged.foreach { cause =>
       val expected = cause match
-        case ConwayUnjudged.Projection(_) =>
+        case ConwayUnjudged.Unavailable(_) | ConwayUnjudged.Projection(_) =>
           Some(NetworkError.Unjudged(xyz.kd5ujc.scarab.protocol.Protocols.TxSubmission2, cause))
-        case ConwayUnjudged.Unavailable(_) | ConwayUnjudged.UtxoState(_) | ConwayUnjudged.Gov(_) |
-            ConwayUnjudged.ProposalsRead(_) | ConwayUnjudged.ProposalsWrite(_) =>
+        case ConwayUnjudged.UtxoState(_) | ConwayUnjudged.Gov(_) | ConwayUnjudged.ProposalsRead(_) |
+            ConwayUnjudged.ProposalsWrite(_) =>
           None
       assertEquals(
         Mempool.peerConnectionEnd(Rejection.ConwayUnjudged(Some(id), cause)),

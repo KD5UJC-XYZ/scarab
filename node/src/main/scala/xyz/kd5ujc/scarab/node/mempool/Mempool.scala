@@ -270,7 +270,18 @@ object Mempool:
           case ConwayUnjudged.UtxoState(_) | ConwayUnjudged.Gov(_) |
               ConwayUnjudged.ProposalsRead(_) | ConwayUnjudged.ProposalsWrite(_) =>
             None
-      case _ => None
+      // a refusal, or a defect of the state's own, ends nothing: named one by one, so that a new
+      // kind of rejection is placed here by the compiler, not left open by a default
+      case Rejection.Ledger(
+            _: LedgerFailure.Rejected | _: LedgerFailure.Undecodable | _: LedgerFailure.Vocab |
+            _: LedgerFailure.StateOutOfRange | _: LedgerFailure.LayoutNotYet |
+            _: LedgerFailure.PoolParamsLayout | _: LedgerFailure.NativeScriptUnread
+          ) =>
+        None
+      case _: Rejection.Malformed | _: Rejection.AlreadyHeld | _: Rejection.Limits |
+          _: Rejection.Full | _: Rejection.WrongEra | _: Rejection.NoLedger | _: Rejection.TooSlow |
+          _: Rejection.DijkstraRefused | _: Rejection.ConwayRefused =>
+        None
 
   /** The refusal of a validation that took `took` in the era of the pool's ledger, `ledger`, if the
     * era has an error for it, as `mkMempoolApplyTxError` makes one: only Conway's
