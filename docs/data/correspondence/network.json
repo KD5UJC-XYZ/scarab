@@ -2139,6 +2139,42 @@
    "structure": "same",
    "note": "a message read from its start",
    "digest": "b4f7cdaa9cf17553"
+  },
+  "def network.selection.BigLedgerGuards#close": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/lib/Ouroboros/Network/PeerSelection/Governor/EstablishedPeers.hs",
+     "symbol": "aboveTargetBigLedgerPeers",
+     "lines": [
+      780,
+      882
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "inProgressDemoteWarm, inProgressPromoteWarm and inProgressDemoteToCold are the Closing, Activating and Cooling peers; the number to close subtracts the closes and activations in flight of all peers, ordinary and big ledger, and the lingering peers among the warm big ledger peers only (844-849)",
+   "digest": "18c0e5e782ce00cc"
+  },
+  "def network.selection.BigLedgerGuards#deactivate": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/lib/Ouroboros/Network/PeerSelection/Governor/ActivePeers.hs",
+     "symbol": "aboveTargetBigLedgerPeers",
+     "lines": [
+      679,
+      754
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the number to deactivate subtracts the big ledger peers being deactivated only (numberOfActiveBigLedgerPeersDemotions); the reference's lingering active big ledger peers (inProgressDemoteToCold within activeBigLedger) are none here, since a Cooling peer is not active, as Monitor.connections takes a peer out of activePeers when it starts to linger; local roots, which the reference also leaves out, are never big ledger peers",
+   "digest": "6cdc3b1fe2602193"
   }
  },
  "glue": [

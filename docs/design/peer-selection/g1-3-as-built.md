@@ -170,8 +170,10 @@ a pool whose relays do not decode skipped and reported (`poolSkipped`), stable s
    disables known-peer advertisement even if the fallback root's configuration allows it.
 3. *The retry time of the request for big ledger peers is a wake-up* (`Skip(Some(retryAt))`); the reference's `GuardedSkip Nothing` waits for
    an unrelated event.
-4. *Close and deactivate subtract the transitions in progress among the big ledger peers*; the reference subtracts those of all peers
-   (`EstablishedPeers.hs` 848-849), so an ordinary demotion in flight delays a big one there.
+4. **Resolved ([#474](https://github.com/KD5UJC-XYZ/scarab/issues/474)).** *Close subtracts the closes and activations in flight of all
+   peers*, as the reference's `EstablishedPeers.aboveTargetBigLedgerPeers` does (`EstablishedPeers.hs` 844-849), and the lingering
+   peers among the warm big ledger peers only, so an ordinary close or activation in flight delays a big one. Deactivate subtracts only
+   the big ledger peers being deactivated, as `ActivePeers.aboveTargetBigLedgerPeers` does (`ActivePeers.hs` 699-711).
 5. **Resolved.** *DNS root addresses are resolved by the provider.* Of the addresses of each drawn ledger relay domain, from all its
    drawn relays (an SRV domain's from its selected target), the provider keeps one, drawn at random, as the reference's `pickDomainAddrs`
    does (`LedgerPeers.hs` 334-368 at ouroboros-network `c45735a5`). The domains are keyed as the ledger spells them, an SRV domain always
