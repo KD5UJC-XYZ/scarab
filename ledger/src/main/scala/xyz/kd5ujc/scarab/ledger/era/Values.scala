@@ -120,11 +120,12 @@ opaque type MultiAssetValue = xyz.kd5ujc.scarab.ledger.Value
 
 object MultiAssetValue:
   /** `v` with its assets canonical, as the reference's `MultiAsset` always is (`canonicalMap`,
-    * `Data/CanonicalMaps.hs`, cardano-ledger f649f975): no zero quantity and no empty policy. `v`
-    * is added to the empty value, and the flat sum drops what is zero.
+    * `Data/CanonicalMaps.hs`, cardano-ledger f649f975): no zero quantity and no empty policy. The
+    * empty value is added to `v`, and the flat sum drops what is zero: of assets with none, it
+    * keeps them as they are, where adding `v` to the empty value builds each policy again (#85).
     */
   def of(v: xyz.kd5ujc.scarab.ledger.Value): MultiAssetValue =
-    xyz.kd5ujc.scarab.ledger.Value.zero + v
+    v + xyz.kd5ujc.scarab.ledger.Value.zero
 
   def ofAda(lovelace: BigInt): MultiAssetValue =
     xyz.kd5ujc.scarab.ledger.Value(lovelace, Map.empty)
