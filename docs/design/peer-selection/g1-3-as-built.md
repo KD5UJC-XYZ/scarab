@@ -172,8 +172,8 @@ a pool whose relays do not decode skipped and reported (`poolSkipped`), stable s
    *The retry time of the request for big ledger peers is a wake-up* (`Skip(Some(retryAt))`). Before the retry time the reference's
    `BigLedgerPeers.belowTarget` skips with no wake-up (`GuardedSkip Nothing`, `BigLedgerPeers.hs` 93 at ouroboros-network `c45735a5`),
    so a node below its big ledger target asks again only when an unrelated event wakes the governor; its request for public roots
-   names its retry time (`GuardedSkip (Just publicRootRetryTime)`, `RootPeers.hs` 79-82). Only whether the governor wakes at the retry
-   time differs, not the request or that time.
+   names its retry time (`GuardedSkip (Just publicRootRetryTime)`, `RootPeers.hs` 79-82). The stored retry time is added to the times
+   the governor wakes at; the request is unchanged.
 4. **Resolved ([#474](https://github.com/KD5UJC-XYZ/scarab/issues/474)).** *Close subtracts the closes and activations in flight of all
    peers*, as the reference's `EstablishedPeers.aboveTargetBigLedgerPeers` does (`EstablishedPeers.hs` 844-849), and the lingering
    peers among the warm big ledger peers only, so an ordinary close or activation in flight delays a big one. Deactivate subtracts only

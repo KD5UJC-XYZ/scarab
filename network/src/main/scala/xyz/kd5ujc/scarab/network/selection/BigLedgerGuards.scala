@@ -54,7 +54,7 @@ private[selection] final class BigLedgerGuards[A](
     * so after a request that leaves it below its target it asks again only when an unrelated event
     * wakes the governor, and without one it stays below its target; its request for public roots
     * names its retry time (`GuardedSkip (Just publicRootRetryTime)`, `RootPeers.hs` 79-82). This
-    * changes only whether the governor wakes at the retry time, not the request or that time.
+    * adds the stored retry time to the times the governor wakes at; the request is unchanged.
     */
   def request: Guard[A] =
     val missing = st.targets.knownBig - big.known.size
