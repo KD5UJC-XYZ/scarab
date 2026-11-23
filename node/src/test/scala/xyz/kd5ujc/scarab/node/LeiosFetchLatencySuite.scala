@@ -163,24 +163,25 @@ class LeiosFetchLatencySuite extends FailsOnUncaught:
       }
   }
 
-  dirs.test("a closure fetched from the peer takes the decision's next round, one loop interval on") {
-    dir =>
-      stored(dir / "leios").use { store =>
-        TestControl
-          .executeEmbed(offered(store, LeiosMempoolPull.none[IO]))
-          .map(run =>
-            assertEquals(
-              run,
-              Run(
-                Vector(
-                  Asked.Body(Duration.Zero),
-                  Asked.Txs(LeiosFetchKernel.LoopInterval, txs.indices.toVector)
-                ),
-                LeiosFetchKernel.LoopInterval
-              )
+  dirs.test(
+    "a closure fetched from the peer takes the decision's next round, one loop interval on"
+  ) { dir =>
+    stored(dir / "leios").use { store =>
+      TestControl
+        .executeEmbed(offered(store, LeiosMempoolPull.none[IO]))
+        .map(run =>
+          assertEquals(
+            run,
+            Run(
+              Vector(
+                Asked.Body(Duration.Zero),
+                Asked.Txs(LeiosFetchKernel.LoopInterval, txs.indices.toVector)
+              ),
+              LeiosFetchKernel.LoopInterval
             )
           )
-      }
+        )
+    }
   }
 
   dirs.test("a closure the mempool holds in part fetches only the rest, in the next round") { dir =>
