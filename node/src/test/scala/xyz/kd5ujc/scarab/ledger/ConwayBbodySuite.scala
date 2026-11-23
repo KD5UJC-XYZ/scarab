@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
-import cats.data.NonEmptyChain
+import cats.data.{NonEmptyChain, NonEmptyVector}
 import java.nio.file.{Files, Path}
 import cats.effect.IO
 import cats.syntax.all.*
@@ -1229,7 +1229,8 @@ class ConwayBbodySuite extends FailsOnUncaught:
   /** A transaction spending the inputs at `inputs` of `utxo` (the script outputs among them by
     * `scripts`, each with a redeemer for its place among the sorted inputs and `lockDatum` in the
     * witnesses), paying `out` with a fee of 3 ada and the collateral at `collateral` if any, its
-    * script integrity hash the one its witnesses make with Plutus V3 if `languages` holds it.
+    * script integrity hash the one its witnesses make with the languages `languages`, its scripts
+    * in the witnesses under `scriptWitness` (7 for Plutus V3, 3 for Plutus V1).
     */
   private def spending(
       utxo: Vector[(TxIn, TxOut)],
@@ -1240,7 +1241,8 @@ class ConwayBbodySuite extends FailsOnUncaught:
       outputs: Vector[Node] = Vector.empty,
       datums: Vector[Node] = Vector(lockDatum),
       languages: Set[PlutusLanguage] = Set(PlutusLanguage.V3),
-      references: Vector[Int] = Vector.empty
+      references: Vector[Int] = Vector.empty,
+      scriptWitness: Int = 7
   ): Built =
     val params = ConwayNewEpochState.gov.get(judge(third, third.raw).ticked).curPParams
     val pp = PParams[Conway](ok("parameters")(ConwayPParams.fromStored(params)))
@@ -1254,7 +1256,9 @@ class ConwayBbodySuite extends FailsOnUncaught:
     val more = Vector(
       Option.when(datums.nonEmpty)(4 -> B.set(datums*)),
       Option.when(redeemers.nonEmpty)(5 -> B.cmap(redeemers*)),
-      Option.when(scripts.nonEmpty)(7 -> B.set(scripts.map(s => B.bytes(s._2)).distinct*))
+      Option.when(scripts.nonEmpty)(
+        scriptWitness -> B.set(scripts.map(s => B.bytes(s._2)).distinct*)
+      )
     ).flatten
     def withHash(integrity: Bytes): Built =
       val body = B.body(
@@ -1770,6 +1774,148 @@ class ConwayBbodySuite extends FailsOnUncaught:
         s"$invalid: $withheldSerial"
       )
       samePlanned(s"$invalid withheld", withheldSerial, withheldPlan.resolve(Vector.empty))
+    }
+  }
+
+  // ---- a transaction whose scripts UTXOS cannot collect ------------------------------------------------
+
+  /** A Plutus V1 script (the certificate test's), never run here: the transactions that spend it
+    * create an output with an inline datum, which a V1 context cannot show.
+    */
+  private val plutusV1: Bytes = hex("4d01000033222220051200120011")
+
+  /** The failure of the collection of [[uncollectable]]'s scripts, as the flat rules give it: its
+    * first output's inline datum.
+    */
+  private val inlineDatumRefused: NonEmptyVector[CollectError] = NonEmptyVector.one(
+    CollectError.BadTranslation(
+      TranslationError.InlineDatumsNotSupported(TxOutSource.TxOutFromOutput(0))
+    )
+  )
+
+  /** A Plutus V3 transaction whose script passes, then a phase-1-valid Plutus V1 one whose script's
+    * context cannot be built (the gap of #85's era observations): it spends an output locked by the
+    * V1 script and creates an output with an inline datum.
+    */
+  private final case class Uncollectable(utxo: Vector[(TxIn, TxOut)], txs: Vector[Built])
+
+  private lazy val uncollectable: Uncollectable =
+    // 0, 1: script outputs; 2 to 5: fees and collateral
+    val utxo = funded(
+      Vector(
+        locked(alwaysSucceedsWithDatumV3, 10000000),
+        B.datumHashOut(
+          B.scriptAddress(B.scriptHash(1, plutusV1)),
+          10000000,
+          B.dataHash(lockDatum)
+        )
+      ) ++ Vector.fill(4)(paid(30000000))
+    )
+    val inline = B.cmap(
+      B.uint(0) -> B.bytes(B.keyAddress(payer)),
+      B.uint(1) -> B.uint(10000000),
+      B.uint(2) -> B.arr(B.uint(1), B.tagged(24, B.bytes(B.encode(lockDatum))))
+    )
+    Uncollectable(
+      utxo,
+      Vector(
+        spending(utxo, Vector(0, 2), Vector(0 -> alwaysSucceedsWithDatumV3), Some(3), 37000000),
+        spending(
+          utxo,
+          Vector(1, 4),
+          Vector(1 -> plutusV1),
+          Some(5),
+          27000000,
+          outputs = Vector(inline),
+          languages = Set(PlutusLanguage.V1),
+          scriptWitness = 3
+        )
+      )
+    )
+
+  /** Which outcome an observation's scripts came to, once collected. */
+  private enum Came derives CanEqual:
+    case Passed, Failed, Unavailable
+
+  /** The outcomes of observations, in order: the collection's failures, or what the scripts came
+    * to.
+    */
+  private def outcomes(observed: Vector[Phase2.Observation]): Vector[Phase2.Collected[Came]] =
+    observed.map(_.outcome.map {
+      case Phase2.Outcome.Passed(_)            => Came.Passed
+      case Phase2.Outcome.Failed(_, _)         => Came.Failed
+      case Phase2.Outcome.Unavailable(_, _, _) => Came.Unavailable
+    })
+
+  test(
+    "a V1 script transaction whose context cannot be built: refused by both, and observed by the era run, serial and prepared, as the flat rules observe it"
+  ) {
+    val Uncollectable(utxo, txs) = uncollectable
+    val tx = txs(1)
+    val raw = blockOf(Vector(tx))
+    val j = judge(third, raw, change = holding(utxo))
+    val refusal = Left(
+      Vector(
+        BlockFailure.Tx(
+          LedgerFailure.Rejected(
+            tx.id,
+            PredicateFailure.utxo(UtxoFailure.Utxos(UtxosFailure.CollectErrors(inlineDatumRefused)))
+          )
+        )
+      )
+    )
+    assertEquals(j.flat, refusal)
+    same("refused", j.era, j.flat)
+    // observed, with the same verdict; the plan's observations are the serial run's (`judge`)
+    val o = judge(third, raw, change = holding(utxo), observe = true)
+    assertEquals(outcomes(o.flatObserved), Vector(Left(inlineDatumRefused)))
+    assertEquals(o.eraObserved.map(comparable), o.flatObserved.map(comparable))
+    assertEquals(o.eraRefusal, j.eraRefusal)
+    assertEquals(o.flat, refusal)
+  }
+
+  test(
+    "a block of an evaluated transaction and one whose context cannot be built: the era run observes them in the flat rules' order, serial, prepared and at four workers"
+  ) {
+    val Uncollectable(utxo, txs) = uncollectable
+    // each block's transactions, those flagged invalid, and the outcomes the flat rules observe:
+    // both; the first's verdict not its flag's, after which the second is not observed (the flat
+    // rules stop at the first refused transaction, the era's record the second's collection's
+    // failures with the judgment failing); the second first, after which the first's scripts are
+    // not run (`whenFailureFree`)
+    Vector[(String, Vector[Built], Vector[Int], Vector[Phase2.Collected[Came]])](
+      (
+        "evaluated, then not collected",
+        txs,
+        Vector.empty,
+        Vector(Right(Came.Passed), Left(inlineDatumRefused))
+      ),
+      ("not the flag's, then not collected", txs, Vector(0), Vector(Right(Came.Passed))),
+      ("not collected, then evaluated", txs.reverse, Vector.empty, Vector(Left(inlineDatumRefused)))
+    ).traverse_ { (what, block, invalid, expected) =>
+      val raw = blockOf(block, invalid = invalid)
+      val j = judge(third, raw, change = holding(utxo))
+      val o = judge(third, raw, change = holding(utxo), observe = true)
+      assert(o.flat.isLeft, s"$what: ${o.flat}")
+      assertEquals(outcomes(o.flatObserved), expected, what)
+      assertEquals(o.eraObserved.map(comparable), o.flatObserved.map(comparable), what)
+      assertEquals(o.eraRefusal, j.eraRefusal, what)
+      // through the node's bounded workers, with the serial run's results: the serial run's
+      // result and observations, both observed without a clock
+      val (serialSeen, workersSeen) = (Observations(), Observations())
+      val serial =
+        o.replayed(Some(ConwayBlockRun.Observing(serialSeen.observe, None))).serial
+      val body = o.replayed(Some(ConwayBlockRun.Observing(workersSeen.observe, None)))
+      assert(body.worthwhile, what)
+      ParallelPlutus.Workers
+        .from(4)
+        .fold(e => IO(fail(s"$e")), ParallelPlutus.create[IO](_))
+        .flatMap(_(body))
+        .map { result =>
+          samePlanned(s"$what at four workers", serial, Right(result))
+          assertEquals(serialSeen.all.size, expected.size, what)
+          assertEquals(workersSeen.all.map(comparable), serialSeen.all.map(comparable), what)
+        }
     }
   }
 
