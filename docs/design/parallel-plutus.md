@@ -59,6 +59,77 @@ latency includes the remaining metered machine execution. A rejected block can p
 later evaluations within the existing block budget. Calls outside the node's mirror (for example
 single-transaction mempool admission) retain their serial interpreter.
 
+## Era block runs
+
+An era block run is a body program of the same kind (`Phase2.Program`, whose `Phase2.Plan` gives
+batches, executes a job into a value and resolves the values), so `ParallelPlutus` schedules it
+with the same bound and the same serial shortcut. Conway's is `ConwayBlockRun.program`; its
+`serial` is `ConwayBlockRun.bbody`, the executable reference. The rules reach the scripts of a
+transaction in `BabbageUtxos.evalScripts` (`evalPlutusScripts` and the check against the flag,
+[Babbage/Rules/Utxos.hs, lines 130–155 and 192–222](https://github.com/IntersectMBO/cardano-ledger/blob/f649f9751074d2ab3de033fc3912f29c9862c1f5/eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Utxos.hs#L130)),
+after the collection failures are recorded and only while the judgment has none
+(`whenFailureFree`). There they hand the non-empty script list and that program to the run's
+`Phase2Deferral`: the serial run's runs the program, a preparation's records a job (the
+transaction's place, flag and scripts) in the sealed recorder and a marker at that place among
+the run's events, and runs nothing. A worker runs a job's scripts with the reference's
+`evalPlutusScripts`, which stops at the first with no verdict.
+
+Resolution lands the jobs in transaction order. While every verdict is the one its flag announces,
+the preparation went as the serial run goes: its result (state, failures, rule defect or raw
+defect) is the serial run's, its counters are counted from its events with each job's verdict told
+at its marker as UTXOS tells it, and its observations are made from the ledger state each job was
+deferred in, as the serial observer makes them. A job's raw defect is raised as itself after the
+earlier jobs are observed; the serial run reaches it in the same place. Unlike the flat rules, the
+era rules accumulate every failure, and a recorded mismatch changes what follows it: later scripts
+are not run (`whenFailureFree`) and a script with no verdict is named in the state at its raise.
+So at the first verdict that is not its flag's, or no verdict, the plan's result is the serial run
+itself, every script answered in order by the landed results where the request is the one
+answered (the evaluator is a function of the request), and evaluated only where it is not. That
+second ordered pass is paid only for a block the node refuses or withholds, never for one it
+applies. Missing or foreign completions are evaluated locally. The era rules use no recovery that
+could discard a recorded job.
+
+Dijkstra's UTXOS is the same function and takes the same capability; its run evaluates where the
+scripts are collected until `DijkstraBlockRun` adopts the program (#85). The node does not apply
+Conway blocks with the era run yet; the Conway switch does.
+
+`ConwayBbodySuite` prepares every era run it makes and resolves the plan, its jobs run last batch
+first, with the serial run's results: the same state, blocks made, counters, failures, naming and
+observations on the recorded Conway blocks, the crafted refusals and every built block, and the era
+footprints equal the flat ones. Its dependent block (a spend of an earlier output, that output's
+sibling as collateral and as a reference input, then consumed) is batched `[0] [1, 2] [3]`, and is
+run with no verdict at each script, with verdicts that are not the flags', through `ParallelPlutus`
+at one, two and four workers, with a raw evaluator defect (the same instance, after the same
+observations) and one the serial run never reaches, and with missing or foreign completions.
+
+`ConwayBodiesReplaySuite` takes the inputs of `PlutusReplaySuite` and times each Conway block's body
+four ways from the state the mirror ticks it to: the flat `EraBlock.Body` and the era run, each
+serial and through four workers, rotated within each block (`SCARAB_PLUTUS_ROUNDS`, default three).
+Timings exclude decoding and store reads. It checks each parallel result against its serial one and
+reports, without asserting, any block where the era run's state or counters differ from the flat
+rules'.
+
+On the preprod capture and pinned baseline of `PlutusReplaySuite` (2026-11-22, the source that
+added the prepared era run under [#85](https://github.com/KD5UJC-XYZ/scarab/issues/85), the Docker
+JDK image capped at 8 CPUs and 24 GB, `scripts/sbtw`'s four-processor JVM), all 5,683 Conway blocks (43,061
+transactions, 27,461 with redeemers, 104,392 scripts) were admitted by both sides with the same
+ledger state, blocks made and counters, and each parallel result equalled its serial one. Median of
+three rotated rounds, summed over the blocks:
+
+| Body | Serial | Four workers | Speedup |
+|---|---:|---:|---:|
+| Flat rules (`EraBlock.Body`) | 16.519 s | 14.602 s | 1.13× |
+| Era run (`ConwayBlockRun.Body`) | 22.856 s | 20.013 s | 1.14× |
+
+The round sums ranged 16.3–17.6 s and 14.7–15.7 s for the flat rules, 22.1–24.2 s and 20.0–21.3 s
+for the era run. The prepared era run keeps the flat path's relative gain, but the era BBODY
+itself takes about 1.37 to 1.38 times the flat one's time, so applying Conway blocks with it at
+four workers would cost about 5.4 s more over this window (6.3 s serial); the 3,005 blocks with
+more than one redeemer-bearing transaction account for 5.6 s of the serial difference. The harness
+ran for 517 s, comparisons and the reference advance included. These are body timings (the tick,
+decoding and store reads excluded), not full validation or follower throughput, and the raw run
+output is not published.
+
 ## Reference correspondence
 
 Pinned ledger source: `f649f9751074d2ab3de033fc3912f29c9862c1f5`,
