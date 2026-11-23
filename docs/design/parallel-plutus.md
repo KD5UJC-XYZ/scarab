@@ -73,14 +73,18 @@ after the collection failures are recorded and only while the judgment has none
 `Phase2Deferral`: the serial run's runs the program, a preparation's records a job (the
 transaction's place, flag and scripts) in the sealed recorder and a marker at that place among
 the run's events, and runs nothing. A worker runs a job's scripts with the reference's
-`evalPlutusScripts`, which stops at the first with no verdict.
+`evalPlutusScripts`, which stops at the first with no verdict. Observed, a transaction whose
+scripts cannot be collected is told to the capability before the failures are recorded: the serial
+run observes it there, a preparation records its observation in the recorder in order beside the
+jobs.
 
 Resolution lands the jobs in transaction order. While every verdict is the one its flag announces,
 the preparation went as the serial run goes: its result (state, failures, rule defect or raw
 defect) is the serial run's, its counters are counted from its events with each job's verdict told
 at its marker as UTXOS tells it, and its observations are made from the ledger state each job was
-deferred in, as the serial observer makes them. A job's raw defect is raised as itself after the
-earlier jobs are observed; the serial run reaches it in the same place. A rule defect raised after
+deferred in, as the serial observer makes them, a recorded observation of a transaction whose
+scripts were not collected told at its place among them. A job's raw defect is raised as itself
+after what was recorded before it is observed; the serial run reaches it in the same place. A rule defect raised after
 a failure was recorded ends the run in a refusal on the failures recorded before it, the defect kept
 beside them (`ConwayBlockRun.Refusal.Stopped`, #85); the serial run and the preparation map the
 judgment's outcome the same way, so the preparation's refusal is the serial run's, and where a job's
@@ -110,7 +114,10 @@ run with no verdict at each script, with verdicts that are not the flags', throu
 at one, two and four workers, with a raw evaluator defect (the same instance, after the same
 observations) and one the serial run never reaches, with a raw defect of the rules after deferred
 scripts that pass, after a verdict that is not its flag's and after a script with no verdict, and
-with missing completions, and another plan's completions do not type-check.
+with missing completions, and another plan's completions do not type-check. A block of a
+transaction whose script context cannot be built, after or before one whose script runs, is
+observed in the flat rules' order through the plan and at four workers, also where the first's
+verdict is not its flag's and the serial run, replayed, does not observe the second.
 
 `ConwayBodiesReplaySuite` takes the inputs of `PlutusReplaySuite` (`SCARAB_PLUTUS_CAPTURE` and
 `SCARAB_PLUTUS_BASELINE`, mounted read-only), writes to a fresh directory of its own named by
