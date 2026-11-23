@@ -2140,6 +2140,28 @@
    "note": "a message read from its start",
    "digest": "b4f7cdaa9cf17553"
   },
+  "def network.selection.BigLedgerGuards#request": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/lib/Ouroboros/Network/PeerSelection/Governor/BigLedgerPeers.hs",
+     "symbol": "belowTarget",
+     "lines": [
+      62,
+      102
+     ]
+    }
+   ],
+   "class": "Improvement",
+   "structure": "differs",
+   "evidence": [
+    "BigLedgerPropertiesSuite"
+   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/474",
+   "note": "the reference's guards, state, job and trace; before the retry time it skips with the retry time as its wake-up, where the reference's otherwise is GuardedSkip Nothing (BigLedgerPeers.hs 93), so after a request that leaves it below the known big ledger target the reference asks again only when an unrelated event wakes the governor; its public-root request names its retry time (GuardedSkip (Just publicRootRetryTime), RootPeers.hs 79-82); unchanged at 4646039f (11.2.1) and 2f1c154f (the Leios testnet build). An Improvement under REF-2 (a), I1 to I4 holding: the same request, peers and back-off, only when it is retried differs",
+   "digest": "0872577c66b8558f"
+  },
   "def network.selection.BigLedgerGuards#close": {
    "upstream": [
     {

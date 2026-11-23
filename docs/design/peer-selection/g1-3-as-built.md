@@ -168,8 +168,12 @@ a pool whose relays do not decode skipped and reported (`poolSkipped`), stable s
    answers and configured fallback extras. Fallback extras become ordinary public roots, count as discovery
    progress for retry/backoff, and never increase big-ledger population. The native big-ledger completion
    disables known-peer advertisement even if the fallback root's configuration allows it.
-3. *The retry time of the request for big ledger peers is a wake-up* (`Skip(Some(retryAt))`); the reference's `GuardedSkip Nothing` waits for
-   an unrelated event.
+3. **Improvement ([REF-2](../../design-rules.md#ref-2) (a), [#474](https://github.com/KD5UJC-XYZ/scarab/issues/474)).**
+   *The retry time of the request for big ledger peers is a wake-up* (`Skip(Some(retryAt))`). Before the retry time the reference's
+   `BigLedgerPeers.belowTarget` skips with no wake-up (`GuardedSkip Nothing`, `BigLedgerPeers.hs` 93 at ouroboros-network `c45735a5`),
+   so a node below its big ledger target asks again only when an unrelated event wakes the governor; its request for public roots
+   names its retry time (`GuardedSkip (Just publicRootRetryTime)`, `RootPeers.hs` 79-82). The request, its peers and its back-off are
+   the reference's.
 4. **Resolved ([#474](https://github.com/KD5UJC-XYZ/scarab/issues/474)).** *Close subtracts the closes and activations in flight of all
    peers*, as the reference's `EstablishedPeers.aboveTargetBigLedgerPeers` does (`EstablishedPeers.hs` 844-849), and the lingering
    peers among the warm big ledger peers only, so an ordinary close or activation in flight delays a big one. Deactivate subtracts only

@@ -5089,7 +5089,6 @@
    "def network.selection.BigLedgerGuards#activate": null,
    "def network.selection.BigLedgerGuards#connect": null,
    "def network.selection.BigLedgerGuards#forget": null,
-   "def network.selection.BigLedgerGuards#request": null,
    "def network.selection.BigLedgerRoots#offered": null,
    "def network.selection.BigLedgerRoots#origin": null,
    "def network.selection.BigLedgerRoots.fromLedger": null,
