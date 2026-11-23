@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
-import cats.effect.IO
+import cats.effect.{Deferred, IO}
 import cats.effect.std.Queue
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -45,6 +45,7 @@ class LeiosNotifyServerSuite extends FailsOnUncaught:
         new Replies[IO]:
           def requested: IO[Requested] = counted.requested
           def next: IO[Reply] = queued.take
+          def poll: IO[Option[Reply]] = queued.tryTake
           def pump: IO[Unit] = pumping
       )
 
@@ -81,6 +82,44 @@ class LeiosNotifyServerSuite extends FailsOnUncaught:
         ended <- server.joinWithNever
       yield (ended, result)
     }
+
+  test("a reply taken after the client quit is answered with MsgCanceled") {
+    // `responder`'s `orElse` tries the quit before `next` in the one transaction that commits the
+    // answer (LeiosDemoOnlyTestNotify.hs 647-655 at ouroboros-consensus 2416493b): the sender finds
+    // no quit, the quit comes, and only then is a reply there to take
+    for
+      quitting <- Deferred[IO, Unit]
+      ready <- Deferred[IO, Unit]
+      program = typed(for
+        counted <- LeiosNotifyServer.silent[IO]()
+        replies = new Replies[IO]:
+          def requested: IO[Requested] = counted.requested
+          def next: IO[Reply] = IO.never
+          def poll: IO[Option[Reply]] = ready.get.as(Some(Reply.BlockTxsOffer(point)))
+          def pump: IO[Unit] = IO.never
+        outcome <- conversing(replies)(c =>
+          send(c, LeiosNotify.Message.RequestNext) *> quitting.get *>
+            send(c, LeiosNotify.Message.Quit) *>
+            (receive(c, LeiosNotify.State.Busy), receive(c, LeiosNotify.State.Quit)).tupled
+        )
+      yield outcome)
+      control <- cats.effect.testkit.TestControl.execute(program)
+      // the request held and its answer begun, the sender waiting for a reply to take
+      _ <- control.tick
+      _ <- quitting.complete(())
+      // the quit read and recorded
+      _ <- control.tick
+      _ <- ready.complete(())
+      _ <- control.tick
+      result <- control.results
+    yield result match
+      case Some(cats.effect.Outcome.Succeeded(ended)) =>
+        assertEquals(
+          ended,
+          Right((Right(()), (LeiosNotify.Message.Canceled, LeiosNotify.Message.Done)))
+        )
+      case other => fail(s"the conversation did not end: $other")
+  }
 
   test("held requests are answered in order with the queue's replies; the quit cancels the rest") {
     typed(for

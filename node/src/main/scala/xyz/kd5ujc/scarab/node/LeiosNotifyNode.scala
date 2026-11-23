@@ -5,6 +5,7 @@ import cats.effect.{Async, Ref}
 import cats.mtl.{Handle, Raise}
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
+import fs2.concurrent.Signal
 import java.time.Instant
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.consensus.HeaderRules
@@ -34,14 +35,14 @@ import xyz.kd5ujc.scarab.protocol.LeiosWord.Word64
 import xyz.kd5ujc.scarab.storage.{LeiosStore, LeiosStoreError}
 
 /** What a LeiosNotify client of the Leios build reads of the node: the immutable tip, read once for
-  * each reply, as the reference's handler reads the immutable ledger once
-  * (`ChainDB.getImmutableLedger`, `NodeToNode.hs` 640 and 670 at ouroboros-consensus 2416493b), and
-  * the wait until the immutable tip can forecast the current slot (`awaitImmTipCanForecastNow`,
-  * `LeiosDemoLogic.hs` 2012-2045).
+  * each announcement and each offer, as the reference's handler reads the immutable ledger once for
+  * each (`ChainDB.getImmutableLedger`, `NodeToNode.hs` 667 and 638 at ouroboros-consensus
+  * 2416493b), and whether the immutable tip can forecast the current slot, as it changes
+  * (`awaitImmTipCanForecastNow`, `LeiosDemoLogic.hs` 2012-2045).
   */
 trait LeiosNotifyView[F[_]]:
   def immutable: F[LeiosImmutableTip]
-  def ready: F[Unit]
+  def gate: Signal[F, Boolean]
 
 /** The immutable tip as one read of it: its slot, the onset of an announced slot as its era history
   * places it (`judgeHeaderArrival`), and the out-of-context check of an announcing header against

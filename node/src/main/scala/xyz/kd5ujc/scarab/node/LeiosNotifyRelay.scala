@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import cats.effect.{Async, Outcome, Resource, Unique}
+import cats.effect.{Async, Concurrent, Outcome, Ref, Resource, Unique}
 import cats.effect.std.{AtomicCell, Queue}
 import cats.syntax.all.*
-import fs2.concurrent.SignallingRef
 import scala.collection.immutable.{Queue as Fifo, SortedMap}
 import xyz.kd5ujc.scarab.consensus.leios.{AnnouncingHeader, ElId, ElState, LeiosAnnouncements}
 import xyz.kd5ujc.scarab.consensus.leios.LeiosOrders.given
@@ -114,6 +113,35 @@ object LeiosNotifyOutgoing:
   /** `emptyOutgoingLeiosNotify`, with no credit. */
   val empty: LeiosNotifyOutgoing = LeiosNotifyOutgoing(0, Fifo.empty, SortedMap.empty)
 
+  /** One peer's queue, the `TVar` of `OutgoingLeiosNotify` (`NodeToNode.hs` 408-428): changed only
+    * through [[modify]], which wakes a [[next]] that waits whenever it leaves a reply queued, in
+    * the same step as the change, which no cancellation splits, so a reply queued is never missed.
+    * A wake left over makes a later wait look again, and find what the state holds.
+    */
+  final class Cell[F[_]] private (state: Ref[F, LeiosNotifyOutgoing], wake: Queue[F, Unit])(using
+      F: Concurrent[F]
+  ):
+    def get: F[LeiosNotifyOutgoing] = state.get
+
+    def modify[A](f: LeiosNotifyOutgoing => (LeiosNotifyOutgoing, A)): F[A] =
+      state.flatModify { o =>
+        val (next, a) = f(o)
+        (next, wake.tryOffer(()).whenA(next.messages.nonEmpty).as(a))
+      }
+
+    def update(f: LeiosNotifyOutgoing => LeiosNotifyOutgoing): F[Unit] = modify(o => (f(o), ()))
+
+    /** The first queued reply, taken only if there is one. */
+    def poll: F[Option[Reply]] =
+      state.modify(o => o.next.fold((o, Option.empty[Reply]))((reply, rest) => (rest, Some(reply))))
+
+    /** The first queued reply, waiting for one. */
+    def next: F[Reply] = poll.flatMap(_.fold(wake.take *> next)(F.pure))
+
+  object Cell:
+    def of[F[_]: Concurrent](initial: LeiosNotifyOutgoing): F[Cell[F]] =
+      (Ref.of[F, LeiosNotifyOutgoing](initial), Queue.bounded[F, Unit](1)).mapN(new Cell(_, _))
+
   /** The reply a store notification is offered as, and the part it offers (`pumpNext`,
     * `NodeToNode.hs` 838-856).
     */
@@ -131,7 +159,7 @@ object LeiosNotifyOutgoing:
   */
 final case class LeiosCentral[F[_]](
     selfPeer: LeiosAnnouncements[AnnouncingHeader],
-    queues: Map[Unique.Token, SignallingRef[F, LeiosNotifyOutgoing]],
+    queues: Map[Unique.Token, LeiosNotifyOutgoing.Cell[F]],
     gate: SortedMap[ElId, Set[Unique.Token]]
 ):
   /** `pruneCentralState` (`Announcements.hs` 284-293): the elections below the immutable tip go. */
@@ -142,7 +170,7 @@ final case class LeiosCentral[F[_]](
     )
 
   /** `insertPeerCentral` (`Announcements.hs` 295-306). */
-  def inserted(peer: Unique.Token, queue: SignallingRef[F, LeiosNotifyOutgoing]): LeiosCentral[F] =
+  def inserted(peer: Unique.Token, queue: LeiosNotifyOutgoing.Cell[F]): LeiosCentral[F] =
     copy(queues = queues.updated(peer, queue))
 
   /** `deletePeerCentral` (`Announcements.hs` 308-318): its queue, and the peer from the gate. */
@@ -169,7 +197,7 @@ object LeiosCentral:
       publishLocally: F[Unit]
   )(using F: Async[F]): F[Unit] =
     val el = anc.fields.election
-    def tryEnqueue(queue: SignallingRef[F, LeiosNotifyOutgoing]): F[Boolean] =
+    def tryEnqueue(queue: LeiosNotifyOutgoing.Cell[F]): F[Boolean] =
       queue.modify(o => o.announcing(anc).fold((o, false))((_, true)))
     def send(st: LeiosCentral[F], elSt: ElState[AnnouncingHeader]): F[Set[Unique.Token]] =
       elSt match
@@ -226,7 +254,7 @@ private[node] object LeiosNotifyRelay:
     for
       subscription <- notifications
       voted <- votes
-      queue <- Resource.eval(SignallingRef.of[F, LeiosNotifyOutgoing](LeiosNotifyOutgoing.empty))
+      queue <- Resource.eval(LeiosNotifyOutgoing.Cell.of[F](LeiosNotifyOutgoing.empty))
       peer <- Resource.eval(F.unique)
       _ <- Resource.make(central.update(_.inserted(peer, queue)))(_ =>
         central.update(_.deleted(peer))
@@ -238,10 +266,9 @@ private[node] object LeiosNotifyRelay:
             .fold((o, Requested.Excessive(depth): Requested))((_, Requested.NotExcessive))
         )
 
-      def next: F[Reply] =
-        queue
-          .modify(o => o.next.fold((o, Option.empty[Reply]))((reply, rest) => (rest, Some(reply))))
-          .flatMap(_.fold(queue.waitUntil(_.messages.nonEmpty) *> next)(F.pure))
+      def next: F[Reply] = queue.next
+
+      def poll: F[Option[Reply]] = queue.poll
 
       // `pumpNext`'s `readTChan chan <|> getNextVote` (`NodeToNode.hs` 838-859): a notification
       // whenever one is ready, a vote only when none is, each taken once

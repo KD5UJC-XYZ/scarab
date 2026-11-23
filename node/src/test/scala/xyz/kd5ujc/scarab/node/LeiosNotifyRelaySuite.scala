@@ -203,10 +203,31 @@ class LeiosNotifyRelaySuite extends FailsOnUncaught:
     assertEquals(held.prunedTo(None).announced.keySet, Set(p))
   }
 
+  test("a wake left by a reply already taken does not hide a reply queued after it") {
+    // `next` retries until a reply is queued (`NodeToNode.hs` 830-836 at ouroboros-consensus
+    // 2416493b): the first reply is taken without a wait, leaving its wake, which a later `next`
+    // consumes and looks again; the second reply still reaches it
+    val p = first.fields.point
+    val queued =
+      (o: LeiosNotifyOutgoing, r: Reply) => (o.copy(messages = o.messages.enqueue(r)), ())
+    for
+      cell <- LeiosNotifyOutgoing.Cell.of[IO](one)
+      _ <- cell.modify(queued(_, Reply.BlockOffer(p, word32(5))))
+      taken <- cell.poll
+      waiting <- cell.next.start
+      _ <- cell.modify(queued(_, Reply.BlockTxsOffer(p)))
+      second <- waiting.joinWithNever
+      empty <- cell.poll
+    yield
+      assertEquals(taken, Some(Reply.BlockOffer(p, word32(5))))
+      assertEquals(second, Reply.BlockTxsOffer(p))
+      assertEquals(empty, None)
+  }
+
   // --- the central relay ---
 
-  private def queue(credits: Int): IO[SignallingRef[IO, LeiosNotifyOutgoing]] =
-    SignallingRef.of[IO, LeiosNotifyOutgoing](LeiosNotifyOutgoing.empty.copy(credits = credits))
+  private def queue(credits: Int): IO[LeiosNotifyOutgoing.Cell[IO]] =
+    LeiosNotifyOutgoing.Cell.of[IO](LeiosNotifyOutgoing.empty.copy(credits = credits))
 
   test("an election's first announcement goes to every peer with a credit, its second to those") {
     for
@@ -658,6 +679,7 @@ class LeiosNotifyRelaySuite extends FailsOnUncaught:
             new LeiosNotifyServer.Replies[IO]:
               def requested = r.requested <* requests.update(_ + 1)
               def next = r.next
+              def poll = r.poll
               def pump = r.pump
           )
         handlers = ServerHandlers[IO, Bytes](

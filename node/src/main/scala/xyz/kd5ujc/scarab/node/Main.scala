@@ -2493,7 +2493,7 @@ object Main extends IOApp:
                   def validate(header: xyz.kd5ujc.scarab.ledger.LeiosHeader) =
                     check(c.anchor.state, c.anchor.block, header)
               )
-              def ready = leiosGate.ready
+              def gate = leiosGate.gate
             ,
             headers.slotClock,
             event => logged(NodeEvent.LeiosNotify(event)),

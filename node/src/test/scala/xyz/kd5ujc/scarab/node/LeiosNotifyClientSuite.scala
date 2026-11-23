@@ -6,7 +6,7 @@ import cats.effect.std.Supervisor
 import cats.mtl.{Handle, Raise}
 import cats.syntax.all.*
 import fs2.Stream
-import fs2.concurrent.SignallingRef
+import fs2.concurrent.{Signal, SignallingRef}
 import fs2.io.file.{Files, Path}
 import java.time.Instant
 import scala.concurrent.duration.*
@@ -126,7 +126,7 @@ class LeiosNotifyClientSuite extends FailsOnUncaught:
       def onset(header: LeiosHeader) =
         HeaderRules.TimeForecast.Known(picos(now) - BigInt(age.toNanos) * 1000)
       def validate(header: LeiosHeader) = check)
-    def ready = IO.unit
+    def gate = Signal.constant[IO, Boolean](true)
 
   private lazy val keys = Vector.tabulate(4)(i => key(950 + i))
   private lazy val committee = TipCommittee(
@@ -413,7 +413,7 @@ class LeiosNotifyClientSuite extends FailsOnUncaught:
                   HeaderRules.TimeForecast.Known(picos(at) + BigInt(by.toNanos) * 1000)
                 def validate(header: LeiosHeader) =
                   AnnouncementCheck.Checked(Right(Praos2.OcinStaleness.Fresh)))
-              def ready = IO.unit
+              def gate = Signal.constant[IO, Boolean](true)
             ,
             at.plusNanos(by.toNanos)
           )
@@ -597,6 +597,7 @@ class LeiosNotifyClientSuite extends FailsOnUncaught:
             new LeiosNotifyServer.Replies[IO]:
               def requested = r.requested <* requests.update(_ + 1)
               def next = r.next
+              def poll = r.poll
               def pump = r.pump
           )
         handlers = ServerHandlers[IO, Bytes](
@@ -701,6 +702,7 @@ class LeiosNotifyClientSuite extends FailsOnUncaught:
           new LeiosNotifyServer.Replies[IO]:
             def requested = IO.pure(LeiosNotifyServer.Requested.NotExcessive)
             def next = IO.pure(Reply.BlockOffer(unannounced, Word32.wrap(2000)))
+            def poll = next.map(Some(_))
             def pump = IO.unit
         )
         handlers = ServerHandlers[IO, Bytes](

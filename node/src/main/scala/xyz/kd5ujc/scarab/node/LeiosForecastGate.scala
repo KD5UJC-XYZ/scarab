@@ -5,7 +5,7 @@ import cats.effect.{Async, Resource}
 import cats.effect.syntax.all.*
 import cats.syntax.all.*
 import fs2.Stream
-import fs2.concurrent.SignallingRef
+import fs2.concurrent.{Signal, SignallingRef}
 
 /** `awaitImmTipCanForecastNow` (`LeiosDemoLogic.hs` 2012-2045 at ouroboros-consensus 2416493b) as
   * one signal the node's LeiosNotify clients share: whether the ledger view forecast from the
@@ -14,8 +14,8 @@ import fs2.concurrent.SignallingRef
   * the immutable tip's ledger; here the signal is read again each time either moves.
   */
 final class LeiosForecastGate[F[_]] private (open: SignallingRef[F, Boolean])(using F: Async[F]):
-  /** Wait until the immutable tip can forecast the current slot. */
-  def ready: F[Unit] = open.waitUntil(identity)
+  /** Whether the immutable tip can forecast the current slot, read only. */
+  def gate: Signal[F, Boolean] = open
 
   /** The gate kept for the life of the resource from the slot `time` publishes and the immutable
     * tip's slots, `immutable`; `forecasts` says whether the immutable tip as it stands forecasts to

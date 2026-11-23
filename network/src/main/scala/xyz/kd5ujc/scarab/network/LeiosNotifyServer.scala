@@ -48,13 +48,14 @@ object LeiosNotifyServer:
     case Votes(votes: Vector[Vote])
 
   /** One run's replies (`hLeiosNotifyServer`, `NodeToNode.hs` 769-936 at 2416493b): `requested`
-    * counts a request (`incr`), `next` takes the queue's next reply, waiting for one (`next`), and
-    * `pump` feeds the queue for as long as the server runs, which its failure ends (`withAsync pump
-    * ... link`, `:1898-1909`).
+    * counts a request (`incr`), `next` takes the queue's next reply, waiting for one (`next`),
+    * `poll` takes it only when one is queued, and `pump` feeds the queue for as long as the server
+    * runs, which its failure ends (`withAsync pump ... link`, `:1898-1909`).
     */
   trait Replies[F[_]]:
     def requested: F[Requested]
     def next: F[Reply]
+    def poll: F[Option[Reply]]
     def pump: F[Unit]
 
   /** Replies with nothing to notify: the requests are counted and none is answered. */
@@ -66,6 +67,7 @@ object LeiosNotifyServer:
             if n == depth then (n, Requested.Excessive(depth)) else (n + 1, Requested.NotExcessive)
           )
         def next: F[Reply] = F.never
+        def poll: F[Option[Reply]] = F.pure(None)
         def pump: F[Unit] = F.unit
     }
 
@@ -88,13 +90,21 @@ object LeiosNotifyServer:
       case Reply.Votes(votes) => F.pure(LeiosNotify.Message.Votes(votes, votes.map(_.encode)))
     (Deferred[F, Unit], Queue.unbounded[F, Unit], SignallingRef.of[F, Long](0L)).flatMapN {
       (quit, held, answered) =>
-        // `responder`: once the client quit, `MsgCanceled`; else the next reply, or `MsgCanceled`
-        // if the quit comes first
+        // `responder`: once the client quit, `MsgCanceled`; else a reply queued already, or the next
+        // reply, or `MsgCanceled` if the quit comes first. A reply taken is sent only if the quit has
+        // not come by then, so the quit wins as `orElse` 's first branch does at its commit; the reply
+        // it displaces goes with the queue, which no request reads after the quit
+        def unlessQuit(taken: Reply): F[LeiosNotify.Message] =
+          quit.tryGet.flatMap(_.fold(message(taken))(_ => F.pure(LeiosNotify.Message.Canceled)))
         val reply: F[LeiosNotify.Message] = quit.tryGet.flatMap {
           case Some(_) => F.pure(LeiosNotify.Message.Canceled)
           case None =>
-            F.race(quit.get, replies.next)
-              .flatMap(_.fold(_ => F.pure(LeiosNotify.Message.Canceled), message))
+            replies.poll.flatMap {
+              case Some(queued) => unlessQuit(queued)
+              case None =>
+                F.race(quit.get, replies.next)
+                  .flatMap(_.fold(_ => F.pure(LeiosNotify.Message.Canceled), unlessQuit))
+            }
         }
         // the sender thread: one reply per held request, in the order they arrived
         val sender: F[Unit] =
