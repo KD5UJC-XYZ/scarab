@@ -183,7 +183,11 @@ object PV4:
       txInfoProposalProcedures: Vector[ProposalProcedure],
       txInfoCurrentTreasuryAmount: Option[PV1.Lovelace],
       txInfoTreasuryDonation: PV1.Lovelace
-  )
+  ):
+    /** The info as data (`toData`), made once however many of its transaction's scripts read it in
+      * their contexts: each script's context holds the transaction's one info (#85).
+      */
+    lazy val data: PlutusData = txInfo.toBuiltinData(this)
 
   /** `data TopTxInfoSimplified` (`V4/Contexts.hs:397-447,658`, plutus 261766ad): the whole
     * transaction, its sub-transactions and its top level put together, a list.
@@ -384,7 +388,7 @@ object PV4:
 
   given scriptContext: ToData[ScriptContext] = c =>
     list(
-      c.scriptContextTxInfo.toData,
+      c.scriptContextTxInfo.data,
       c.scriptContextRedeemer.toData,
       c.scriptContextScriptInfo.toData,
       c.scriptContextScriptHash.toData

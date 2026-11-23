@@ -519,7 +519,8 @@ object BabbageUtxow:
       unavailable: Raise[F, ScriptVerdictUnavailable],
       deferral: Phase2Deferral[F, E],
       stateDefect: Raise[F, UtxoStateDefect],
-      defect: Raise[F, LedgerDefect]
+      defect: Raise[F, LedgerDefect],
+      stored: StoredOutputs[F, E]
   ): F[Unit] =
     val top = t.bodyOf.top
     val tx = t.txStAnnTx[TxLevel.Top](stAnnTx)(using top)
@@ -547,9 +548,7 @@ object BabbageUtxow:
       def tell(l: Chain[AlonzoUtxoEvent[E]]): F[Unit] = events.tell(l.map(embedUtxo.wrapEvent))
     for
       utxoState <- state.get
-      utxo <- ShelleyUtxo.readStored[F, E](
-        ShelleyUtxo.extractKeys(utxoState.utxo.utxo, b.allInputs(txBody))._2
-      )
+      utxo <- stored.readAt(utxoState.utxo.utxo, b.allInputs(txBody))
       _ <- test(
         validateFailedBabbageScripts[E, TxLevel.Top](tx, scriptsProvided, scriptHashesNeeded)(using
           t,
@@ -597,7 +596,7 @@ object BabbageUtxow:
         AlonzoUtxow.checkScriptIntegrityHash[E, TxLevel.Top](
           tx,
           pp,
-          ScriptIntegrity.mkScriptIntegrity[E, TxLevel.Top](
+          ScriptIntegrity.mkScriptIntegrityWith[E, TxLevel.Top](context.languageViews)(
             pp,
             tx,
             u.plutusLanguagesUsedStAnnTx[TxLevel.Top](stAnnTx)(using u.txOf.bodyOf.top)

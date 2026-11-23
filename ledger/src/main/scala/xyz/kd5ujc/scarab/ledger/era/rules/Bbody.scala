@@ -239,7 +239,9 @@ object ConwayBbody:
           val toAdd = t.isValid(tx) match
             case IsPhase2Valid.Phase2Valid   => UTxOs.txouts[E, TxLevel.Top](txBody)
             case IsPhase2Valid.Phase2Invalid => BabbageUtxo.collOuts[E](txBody)
-          val updatedUtxo = toAdd.unUTxO ++ accUtxo
+          // `Map.union` biased to the set: the outputs it has no entry for added to it, not the set
+          // added to them, which would copy the block's set so far at each transaction (#85)
+          val updatedUtxo = accUtxo ++ toAdd.unUTxO.filterNot((in, _) => accUtxo.contains(in))
           (updatedUtxo, accSum + ConwayUTxO.txNonDistinctRefScriptsSize(UTxO(accUtxo), tx))
         }
         ._2
@@ -289,12 +291,11 @@ object ConwayBbody:
       p: ConwayEraPParams[E],
       lt: t.bodyOf.Level[TxLevel.Top],
       lb: b.Level[TxLevel.Top],
-      s: StoredTxOut[E],
       ask: Ask[F, Globals],
       state: Stateful[F, ShelleyBbodyState[E]],
       judge: Judge[F, BbodyPredFailure[E]],
       conway: InjectBbodyFailure[ConwayBbodyPredFailure[E], E],
-      stateDefect: Raise[F, UtxoStateDefect]
+      stored: StoredOutputs[F, E]
   ): F[Unit] =
     val pp = env.bbodyPp
     val curProtVerMajor = p.ppProtocolVersionL.get(pp).pvMajor
@@ -317,17 +318,12 @@ object ConwayBbody:
           )
         else Monad[F].unit
       before <- state.get
-      utxo <- ShelleyUtxo.readStored[F, E](
-        ShelleyUtxo
-          .extractKeys(
-            before.ls.utxo.utxo.utxo,
-            txs.foldLeft(Set.empty[TxIn]) { (keys, tx) =>
-              val txBody = t.body[TxLevel.Top](tx)
-              keys ++ t.bodyOf.inputs[TxLevel.Top](txBody) ++
-                b.referenceInputs[TxLevel.Top](txBody)
-            }
-          )
-          ._2
+      utxo <- stored.readAt(
+        before.ls.utxo.utxo.utxo,
+        txs.foldLeft(Set.empty[TxIn]) { (keys, tx) =>
+          val txBody = t.body[TxLevel.Top](tx)
+          keys ++ t.bodyOf.inputs[TxLevel.Top](txBody) ++ b.referenceInputs[TxLevel.Top](txBody)
+        }
       )
       _ <- bbodyTest(validateBodyRefScriptsSizeTooBig[E](pp, txs, utxo))
     yield ()
@@ -366,7 +362,8 @@ object ConwayBbody:
       stateDefect: Raise[F, UtxoStateDefect],
       defect: Raise[F, LedgerDefect],
       govDefect: Raise[F, GovDefect],
-      proposals: Stateful[F, Proposals[Conway]]
+      proposals: Stateful[F, Proposals[Conway]],
+      stored: StoredOutputs[F, Conway]
   ): F[Unit] =
     val embed = EmbedLedgersInBbody.conway
     given t.bodyOf.Level[TxLevel.Top] = t.bodyOf.top

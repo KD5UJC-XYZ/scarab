@@ -43,15 +43,18 @@ object LangDepView:
 
   /** `encodeCostModel` (`Alonzo/PParams.hs:550-564`, cardano-ledger f649f975): PlutusV1's
     * parameters as an indefinite list (the Alonzo encoding, kept), the later languages' as a
-    * definite one.
+    * definite one. The parameters' encodings are joined once, not each appended to a copy of the
+    * ones before it: a block's every transaction with scripts encodes its languages' models, a few
+    * hundred integers each (#85).
     */
   private def encodeCostModel(lang: PlutusLanguage, params: Vector[BigInt]): Bytes =
-    val items = params.foldLeft(Bytes.empty)(_ ++ Cbor.int(_))
-    lang match
+    val items = params.map(Cbor.intItem)
+    val encoded = lang match
       case PlutusLanguage.V1 =>
-        Bytes(Vector(0x9f.toByte)) ++ items ++ Bytes(Vector(0xff.toByte))
+        Array(0x9f.toByte) +: items :+ Array(0xff.toByte)
       case PlutusLanguage.V2 | PlutusLanguage.V3 | PlutusLanguage.V4 =>
-        Cbor.head(4, BigInt(params.size)) ++ items
+        Cbor.headItem(4, BigInt(params.size)) +: items
+    Bytes.wrap(Array.concat(encoded*))
 
   /** `encodeLangViews` (`Alonzo/PParams.hs:587-597`, cardano-ledger f649f975): a definite map of
     * each view's tag to its parameters, already encoded, in the short-lex order of the tags. The
@@ -72,24 +75,68 @@ object LangDepView:
   private object Cbor:
     val Null: Bytes = Bytes(Vector(0xf6.toByte))
 
-    def head(major: Int, n: BigInt): Bytes =
+    def head(major: Int, n: BigInt): Bytes = Bytes.wrap(headItem(major, n))
+
+    /** A head's bytes: its argument, in the fewest of one, two, four or eight bytes after the
+      * initial byte, read from a `Long` where it is one (every cost model parameter is), so that an
+      * argument in range takes no `BigInt` arithmetic.
+      */
+    def headItem(major: Int, n: BigInt): Array[Byte] =
+      if n.isValidLong then headOf(major, n.longValue)
+      else if n < 24 then Array(((major << 5) | n.toInt).toByte)
+      // its low 64 bits, as the eight bytes of a wider argument were written
+      else Array(((major << 5) | 27).toByte) ++ bigEndian(n.longValue, 8)
+
+    private def headOf(major: Int, n: Long): Array[Byte] =
       val initial = major << 5
-      if n < 24 then Bytes(Vector((initial | n.toInt).toByte))
-      else
-        val width =
-          if n < 256 then 1 else if n < 65536 then 2 else if n < (BigInt(1) << 32) then 4 else 8
-        val ai = width match
-          case 1 => 24
-          case 2 => 25
-          case 4 => 26
-          case _ => 27
-        Bytes(
-          (initial | ai).toByte +: Vector.tabulate(width)(i => (n >> (8 * (width - 1 - i))).toByte)
-        )
+      if n < 24 then Array((initial | n.toInt).toByte)
+      else if n < 256 then Array((initial | 24).toByte, n.toByte)
+      else if n < 65536 then Array((initial | 25).toByte) ++ bigEndian(n, 2)
+      else if n < (1L << 32) then Array((initial | 26).toByte) ++ bigEndian(n, 4)
+      else Array((initial | 27).toByte) ++ bigEndian(n, 8)
+
+    /** The low `width` bytes of `n`, the most significant first. */
+    private def bigEndian(n: Long, width: Int): Array[Byte] =
+      Array.tabulate(width)(i => (n >>> (8 * (width - 1 - i))).toByte)
 
     def uint(n: BigInt): Bytes = head(0, n)
-    def int(n: BigInt): Bytes = if n >= 0 then head(0, n) else head(1, -1 - n)
+    def intItem(n: BigInt): Array[Byte] = if n >= 0 then headItem(0, n) else headItem(1, -1 - n)
     def bytes(b: Bytes): Bytes = head(2, BigInt(b.size)) ++ b
+
+/** The languages' views of the protocol parameters ([[LangDepView.getLanguageView]]), a function of
+  * the parameters' cost models and the language alone: [[LanguageViews.direct]] encodes each where
+  * it is asked; [[LanguageViews.of]] encodes each of one set of parameters' once, for the rules of
+  * a block that every transaction with scripts asks again (#85).
+  */
+trait LanguageViews[E <: EraTag]:
+  def view(pp: PParams[E], lang: PlutusLanguage)(using AlonzoEraPParams[E]): LangDepView
+
+object LanguageViews:
+  /** Each view encoded where it is asked for. */
+  def direct[E <: EraTag]: LanguageViews[E] = new LanguageViews[E]:
+    def view(pp: PParams[E], lang: PlutusLanguage)(using AlonzoEraPParams[E]): LangDepView =
+      LangDepView.getLanguageView(pp, lang)
+
+  /** The views of `pp`, each encoded the first time it is asked for, and given again for parameters
+    * with the same cost models; other parameters' encoded where they are asked for.
+    */
+  def of[E <: EraTag](pp: PParams[E])(using p: AlonzoEraPParams[E]): LanguageViews[E] =
+    def models(of: PParams[E]): Map[Int, Vector[BigInt]] =
+      PParams.lensHKD[E].andThen(p.hkdCostModelsL[Identity]).get(of).models
+    new LanguageViews[E]:
+      private val held = models(pp)
+      private lazy val v1 = LangDepView.getLanguageView(pp, PlutusLanguage.V1)
+      private lazy val v2 = LangDepView.getLanguageView(pp, PlutusLanguage.V2)
+      private lazy val v3 = LangDepView.getLanguageView(pp, PlutusLanguage.V3)
+      private lazy val v4 = LangDepView.getLanguageView(pp, PlutusLanguage.V4)
+      def view(at: PParams[E], lang: PlutusLanguage)(using AlonzoEraPParams[E]): LangDepView =
+        if models(at) == held then
+          lang match
+            case PlutusLanguage.V1 => v1
+            case PlutusLanguage.V2 => v2
+            case PlutusLanguage.V3 => v3
+            case PlutusLanguage.V4 => v4
+        else LangDepView.getLanguageView(at, lang)
 
 /** What a transaction's script integrity hash is over (`data ScriptIntegrity era`, cardano-ledger
   * f649f975 `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Tx.hs:375-382`): the witness set's
@@ -138,7 +185,22 @@ object ScriptIntegrity:
       w: AlonzoEraTxWits[E],
       l: t.bodyOf.Level[L]
   ): Option[ScriptIntegrity[E]] =
-    val langViews = langs.map(LangDepView.getLanguageView(pp, _))
+    mkScriptIntegrityWith[E, L](LanguageViews.direct[E])(pp, tx, langs)
+
+  /** [[mkScriptIntegrity]] with each language's view from `views`, which gives
+    * [[LangDepView.getLanguageView]]'s.
+    */
+  def mkScriptIntegrityWith[E <: EraTag, L <: TxLevel](views: LanguageViews[E])(
+      pp: PParams[E],
+      tx: Tx[L, E],
+      langs: Set[PlutusLanguage]
+  )(using
+      t: EraTx[E],
+      p: AlonzoEraPParams[E],
+      w: AlonzoEraTxWits[E],
+      l: t.bodyOf.Level[L]
+  ): Option[ScriptIntegrity[E]] =
+    val langViews = langs.map(views.view(pp, _))
     val txWits = t.wits[L](tx)
     val txRedeemers = w.rdmrsTxWits(txWits)
     val txDats = w.datsTxWits(txWits)

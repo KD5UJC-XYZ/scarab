@@ -526,7 +526,7 @@ object DijkstraUtxo:
     for
       utxoState <- state.get
       current <- ShelleyUtxo.readStored[F, Dijkstra](
-        ShelleyUtxo.extractKeys(utxoState.utxo.utxo, b.inputs[TxLevel.Top](txBody))._2
+        ShelleyUtxo.restrictKeys(utxoState.utxo.utxo, b.inputs[TxLevel.Top](txBody))
       )
       _ <- Sts.runTest[F, UtxoPredFailure[Dijkstra]](
         dijkstraUtxoValidation(env, current, stAnnTx, context)

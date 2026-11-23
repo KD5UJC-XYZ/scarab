@@ -179,11 +179,10 @@ object DijkstraClosure:
         current <- state.get
         utxo <- ShelleyUtxo.readStored[F, Dijkstra](
           ShelleyUtxo
-            .extractKeys(
+            .restrictKeys(
               current.utxo.utxo.utxo,
               bodies.allInputs(EraTx.dijkstra.body[TxLevel.Top](tx)(using BothLevels.Top))
             )
-            ._2
         )
         // the script-decoding cache only saves work, and no script is evaluated: empty
         // (`Leios.hs:249-251`, ouroboros-consensus 2416493b)

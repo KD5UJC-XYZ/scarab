@@ -137,7 +137,7 @@ object ConwayPhase2:
     val costModels =
       PParams.lensHKD[Conway].andThen(AlonzoEraPParams.conway.hkdCostModelsL[Identity]).get(pp)
     val stored = ls.utxo.utxo.utxo
-    def outputs(ins: Iterable[TxIn]): Map[TxIn, FlatTxOut] = ShelleyUtxo.extractKeys(stored, ins)._2
+    def outputs(ins: Iterable[TxIn]): Map[TxIn, FlatTxOut] = ShelleyUtxo.restrictKeys(stored, ins)
     txs.iterator
       .flatMap { tx =>
         val body = t.body[TxLevel.Top](tx)

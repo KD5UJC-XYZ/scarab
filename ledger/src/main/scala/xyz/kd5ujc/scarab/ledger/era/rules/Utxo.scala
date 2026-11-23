@@ -73,13 +73,16 @@ final class InjectShelleyUtxoFailure[E <: EraTag] private[rules] (
   *   - `validation`, the policy under which `runTestOnSignal` skips its tests;
   *   - `injectShelley`, the era's injection of the failures of Shelley's predicates, which differs
   *     by reference build ([[ConwayUtxo.injectShelleyFailure]]).
+  *   - `languageViews`, how UTXOW's script integrity takes each language's view of the parameters
+  *     ([[LanguageViews]]): encoded where asked, or once a block in Conway's run (#85).
   */
 final case class UtxoContext[E <: EraTag](
     netId: Network,
     systemStart: SystemStart,
     epochInfo: Horizon,
     validation: TxEnv.Validation,
-    injectShelley: InjectShelleyUtxoFailure[E]
+    injectShelley: InjectShelleyUtxoFailure[E],
+    languageViews: LanguageViews[E] = LanguageViews.direct[E]
 ):
   /** `runTestOnSignal` (`Rules/ValidationMode.hs:88-89`, cardano-ledger f649f975): `test` when the
     * policy validates the signal, a pass otherwise.
@@ -122,6 +125,27 @@ enum UtxoStateDefect:
 
   /** An output's stake credential or lovelace outside the state's vocabulary ([[EraStake]]). */
   case Vocab(error: VocabError)
+
+/** How the rules read stored outputs into era `E` ([[ShelleyUtxo.readStored]]): the first, in input
+  * order, the era does not read raised. Reading a stored output is a function of the output alone,
+  * so a run of the rules may keep what it read and give it again where the same stored output is
+  * read again ([[ConwayBlockRun]]: a block's rules read a transaction's inputs at LEDGERS, LEDGER,
+  * UTXOW, UTXO and the update of the set, #85); [[StoredOutputs.direct]] reads each where it is
+  * asked.
+  */
+trait StoredOutputs[F[_], E <: EraTag]:
+  def read(stored: Map[TxIn, xyz.kd5ujc.scarab.ledger.TxOut]): F[UTxO[E]]
+
+  /** The outputs the stored set `utxo` holds at `keys`, read ([[ShelleyUtxo.restrictKeys]]). */
+  def readAt(utxo: xyz.kd5ujc.scarab.ledger.Utxo, keys: Iterable[TxIn]): F[UTxO[E]] =
+    read(ShelleyUtxo.restrictKeys(utxo, keys))
+
+object StoredOutputs:
+  /** Each stored output read where it is asked for. */
+  given direct[F[_]: Monad, E <: EraTag](using
+      StoredTxOut[E],
+      Raise[F, UtxoStateDefect]
+  ): StoredOutputs[F, E] = ShelleyUtxo.readStored[F, E](_)
 
 /** Shelley's predicates of UTXO (`eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Utxo.hs`,
   * cardano-ledger f649f975).
@@ -275,7 +299,8 @@ object ShelleyUtxo:
       c: EraCertState[E],
       k: EraStake[E],
       s: StoredTxOut[E],
-      raise: Raise[F, UtxoStateDefect]
+      raise: Raise[F, UtxoStateDefect],
+      stored: StoredOutputs[F, E]
   ): F[UTxOState[E]] =
     for
       withDeposits <- updateUTxOStateDeposits[F, E](
@@ -289,7 +314,11 @@ object ShelleyUtxo:
         using
         summon[Monad[F]],
         b,
-        b.top
+        b.top,
+        k,
+        s,
+        raise,
+        stored
       )
     yield withUtxo.copy(fees = Coin(withUtxo.fees.value + b.fee(txBody).value))
 
@@ -308,12 +337,13 @@ object ShelleyUtxo:
       l: b.Level[L],
       k: EraStake[E],
       s: StoredTxOut[E],
-      raise: Raise[F, UtxoStateDefect]
+      raise: Raise[F, UtxoStateDefect],
+      stored: StoredOutputs[F, E]
   ): F[UTxOState[E]] =
     val utxoAdd = UTxOs.txouts[E, L](txBody)
     val (utxoWithout, utxoDel) = extractKeys(utxoState.utxo.utxo, b.inputs[L](txBody))
     for
-      deletedUtxo <- readStored[F, E](utxoDel)
+      deletedUtxo <- stored.read(utxoDel)
       newInstantStake <- vocab[F, xyz.kd5ujc.scarab.ledger.state.InstantStake[E]](
         k.addInstantStake(utxoAdd, utxoState.instantStake)
           .flatMap(k.deleteInstantStake(deletedUtxo, _))
@@ -350,7 +380,17 @@ object ShelleyUtxo:
       utxo: xyz.kd5ujc.scarab.ledger.Utxo,
       keys: Iterable[TxIn]
   ): (xyz.kd5ujc.scarab.ledger.Utxo, Map[TxIn, xyz.kd5ujc.scarab.ledger.TxOut]) =
-    (utxo -- keys, keys.iterator.flatMap(in => utxo.get(in).map(in -> _)).toMap)
+    (utxo -- keys, restrictKeys(utxo, keys))
+
+  /** `restrictKeys` (`Data.Map`): the stored set's entries at `keys`, the second of
+    * [[extractKeys]], for a rule that reads them and keeps the set: without the set less `keys`,
+    * whose removal adjusts the stake and coin it tracks for each key (#85).
+    */
+  private[rules] def restrictKeys(
+      utxo: xyz.kd5ujc.scarab.ledger.Utxo,
+      keys: Iterable[TxIn]
+  ): Map[TxIn, xyz.kd5ujc.scarab.ledger.TxOut] =
+    keys.iterator.flatMap(in => utxo.get(in).map(in -> _)).toMap
 
   /** `Map.union` of the stored set and `added`, which is left-biased: the stored set's entry is
     * kept where both have one.
@@ -363,21 +403,17 @@ object ShelleyUtxo:
       case (in, out) if !utxo.contains(in) => in -> s.toStored(out)
     }
 
-  /** The stored outputs `stored`, read into the era. */
+  /** The stored outputs `stored`, read into the era: the first, in input order, the era does not
+    * read raised. They are read as a value and the result lifted once, not each read a step of the
+    * rules' program (#85).
+    */
   private[rules] def readStored[F[_], E <: EraTag](
       stored: Map[TxIn, xyz.kd5ujc.scarab.ledger.TxOut]
   )(using F: Monad[F], s: StoredTxOut[E], raise: Raise[F, UtxoStateDefect]): F[UTxO[E]] =
     stored.toVector
       .sortBy(_._1)
-      .traverse((in, out) =>
-        s.fromStored(out)
-          .fold(
-            e =>
-              raise.raise[UtxoStateDefect, (TxIn, TxOut[E])](UtxoStateDefect.StoredOutput(in, e)),
-            o => F.pure(in -> o)
-          )
-      )
-      .map(outs => UTxO[E](outs.toMap))
+      .traverse((in, out) => s.fromStored(out).bimap(UtxoStateDefect.StoredOutput(in, _), in -> _))
+      .fold(raise.raise[UtxoStateDefect, UTxO[E]], outs => F.pure(UTxO[E](outs.toMap)))
 
   /** A change of the instant stake, or its refusal raised. */
   private[rules] def vocab[F[_], A](result: Either[VocabError, A])(using
@@ -904,7 +940,8 @@ object BabbageUtxo:
       k: EraStake[E],
       s: StoredTxOut[E],
       events: Tell[F, Chain[AlonzoUtxoEvent[E]]],
-      raise: Raise[F, UtxoStateDefect]
+      raise: Raise[F, UtxoStateDefect],
+      stored: StoredOutputs[F, E]
   ): F[UTxOState[E]] =
     val txBody = t.body[TxLevel.Top](tx)(using t.bodyOf.top)
     t.isValid(tx) match
@@ -928,7 +965,7 @@ object BabbageUtxo:
           ShelleyUtxo.extractKeys(utxoState.utxo.utxo, b.collateralInputs(txBody))
         val collouts = collOuts(txBody)
         for
-          deleted <- ShelleyUtxo.readStored[F, E](utxoDel)
+          deleted <- stored.read(utxoDel)
           collateralFees = collAdaBalance(txBody, deleted.unUTxO)
           instantStake <- ShelleyUtxo.vocab[F, xyz.kd5ujc.scarab.ledger.state.InstantStake[E]](
             k.addInstantStake(collouts, utxoState.instantStake)
@@ -1104,7 +1141,8 @@ object ConwayUtxo:
       evaluator: ScriptEvaluator[F],
       unavailable: Raise[F, ScriptVerdictUnavailable],
       deferral: Phase2Deferral[F, E],
-      defect: Raise[F, UtxoStateDefect]
+      defect: Raise[F, UtxoStateDefect],
+      stored: StoredOutputs[F, E]
   ): F[Unit] =
     val tx = t.txStAnnTx[TxLevel.Top](stAnnTx)(using t.bodyOf.top)
     val txBody = t.body[TxLevel.Top](tx)(using t.bodyOf.top)
@@ -1114,9 +1152,7 @@ object ConwayUtxo:
       def tell(l: Chain[UtxosEvent[E]]): F[Unit] = events.tell(l.map(embed.wrapEvent))
     for
       utxoState <- state.get
-      utxo <- ShelleyUtxo.readStored[F, E](
-        ShelleyUtxo.extractKeys(utxoState.utxo.utxo, b.allInputs(txBody))._2
-      )
+      utxo <- stored.readAt(utxoState.utxo.utxo, b.allInputs(txBody))
       _ <- Sts.runTest[F, UtxoPredFailure[E]](
         BabbageUtxo.babbageUtxoValidation[E](env, utxo, tx, context)
       )

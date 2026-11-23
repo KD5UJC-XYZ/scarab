@@ -295,6 +295,39 @@ class EraUtxowSuite extends munit.FunSuite:
     assertEquals(LangDepView.encodeLangViews(Set.empty), hex("a0"))
   }
 
+  test(
+    "a cost model's integers are encoded in their shortest heads, as the flat views encode them"
+  ) {
+    // every width of head, each side of its bounds, positive and negative, to the ends of the
+    // `Int64` a parameter is
+    val bounds = Vector[BigInt](0, 23, 24, 255, 256, 65535, 65536, (BigInt(1) << 32) - 1)
+      .flatMap(b => Vector(b, b + 1))
+      .appended(BigInt(Long.MaxValue))
+    val model: Vector[BigInt] =
+      bounds ++ bounds.map(-1 - _) ++ Vector.tabulate(300)(i => BigInt(i) * 997 - 4000)
+    val pp = withModels(Map(0 -> model, 1 -> model, 2 -> model))
+    val flatPp = TestLedger.params(9).copy(costModels = Map(0 -> model, 1 -> model, 2 -> model))
+    languageSets.foreach { langs =>
+      assertEquals(
+        LangDepView.encodeLangViews(langs.map(LangDepView.getLanguageView(pp, _))),
+        Bytes(FlatScriptIntegrity.plutusLanguageViews(flatPp, langs)),
+        langs.toString
+      )
+    }
+  }
+
+  test("a run's language views are getLanguageView's, for its parameters and for others") {
+    val all =
+      withModels(Map(0 -> Vector(1, 2, 3), 1 -> Vector(4, 5, 6, 7), 2 -> Vector(8, -1, 300)))
+    val other = withModels(Map(1 -> Vector(9)))
+    val none = withModels(Map.empty)
+    val views = LanguageViews.of(all)
+    for
+      pp <- Vector(all, other, none, all)
+      lang <- PlutusLanguage.values.toVector
+    do assertEquals(views.view(pp, lang), LangDepView.getLanguageView(pp, lang), s"$lang")
+  }
+
   test("views of one tag are encoded in their derived order, whatever order the set was built in") {
     // `Set.toList` of the views in the derived (tag, parameters) order, then the stable sort by tag
     // (`Alonzo/PParams.hs:547-548, 587-597`, cardano-ledger f649f975)

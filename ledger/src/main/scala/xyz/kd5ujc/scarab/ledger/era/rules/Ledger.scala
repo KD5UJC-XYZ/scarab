@@ -326,7 +326,8 @@ object ConwayLedger:
       stateDefect: Raise[F, UtxoStateDefect],
       defect: Raise[F, LedgerDefect],
       govDefect: Raise[F, GovDefect],
-      proposals: Stateful[F, Proposals[E]]
+      proposals: Stateful[F, Proposals[E]],
+      stored: StoredOutputs[F, E]
   ): F[Unit] =
     given acc: ConwayEraAccounts[E] = c.accountsOf
     val top = t.bodyOf.top
@@ -361,9 +362,7 @@ object ConwayLedger:
         _ <- test(
           validateTreasuryValue[E, TxLevel.Top](txBody, env.ledgerAccount.treasury)(using b, b.top)
         )
-        utxo <- ShelleyUtxo.readStored[F, E](
-          ShelleyUtxo.extractKeys(utxoState.utxo.utxo, b.allInputs(txBody))._2
-        )
+        utxo <- stored.readAt(utxoState.utxo.utxo, b.allInputs(txBody))
         _ <- test(validateRefScriptSize[E, TxLevel.Top](pp, utxo, tx)(using t, b, pc, top, b.top))
         _ <-
           if ConwayEra.hardforkConwayBootstrapPhase(pv) then Monad[F].unit
@@ -537,10 +536,9 @@ object ShelleyLedgers:
       ledger: (LedgerEnv[E], StAnnTx[TxLevel.Top, E]) => F[Unit]
   )(using
       t: EraTx[E],
-      s: StoredTxOut[E],
       state: Stateful[F, LedgerState[E]],
       judge: Judge[F, LedgersPredFailure[E]],
-      stateDefect: Raise[F, UtxoStateDefect]
+      stored: StoredOutputs[F, E]
   ): F[Unit] =
     TxIx
       .enumerate(txs)
@@ -548,9 +546,7 @@ object ShelleyLedgers:
         for
           current <- state.get
           txBody = t.body[TxLevel.Top](tx)(using t.bodyOf.top)
-          utxo <- ShelleyUtxo.readStored[F, E](
-            ShelleyUtxo.extractKeys(current.utxo.utxo.utxo, t.bodyOf.allInputs(txBody))._2
-          )
+          utxo <- stored.readAt(current.utxo.utxo.utxo, t.bodyOf.allInputs(txBody))
           stAnnTx = annotate(utxo, cache, tx)
           _ <- judge.nest(
             ledger(
@@ -635,7 +631,8 @@ object ShelleyLedgers:
       scripts: ConwayEraScript[E],
       plutusContext: EraPlutusContext[E],
       annotated: AlonzoStAnnTx[E] =:= StAnnTx[TxLevel.Top, E],
-      embedLedger: EmbedLedgerInLedgers[E]
+      embedLedger: EmbedLedgerInLedgers[E],
+      stored: StoredOutputs[F, E]
   ): F[Unit] =
     given Judge[F, LedgerPredFailure[E]] = judge.contramap(embedLedger.wrapFailed)
     given Tell[F, Chain[LedgerEvent[E]]] = toldIn(events)(embedLedger.wrapEvent)

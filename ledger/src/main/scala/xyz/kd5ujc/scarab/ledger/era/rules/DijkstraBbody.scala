@@ -140,7 +140,7 @@ object DijkstraBbody:
       )
       utxo <- ShelleyUtxo.readStored[F, Dijkstra](
         ShelleyUtxo
-          .extractKeys(
+          .restrictKeys(
             ls.utxo.utxo.utxo,
             txs.foldLeft(Set.empty[TxIn]) { (keys, tx) =>
               val txBody = t.body[TxLevel.Top](tx)
@@ -148,7 +148,6 @@ object DijkstraBbody:
                 t.bodyOf.referenceInputs[TxLevel.Top](txBody)
             }
           )
-          ._2
       )
       _ <- test(ConwayBbody.validateBodyRefScriptsSizeTooBig[Dijkstra](pp, txs, utxo))
       _ <- bb

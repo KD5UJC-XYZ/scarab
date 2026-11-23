@@ -288,7 +288,7 @@ object DijkstraLedger:
     for
       ledgerState <- state.get
       originalUtxo <- ShelleyUtxo.readStored[F, Dijkstra](
-        ShelleyUtxo.extractKeys(ledgerState.utxo.utxo.utxo, b.allInputs(txBody))._2
+        ShelleyUtxo.restrictKeys(ledgerState.utxo.utxo.utxo, b.allInputs(txBody))
       )
       originalAccounts = accountsL.get(ledgerState.cert)
       _ <- judge.nest(
