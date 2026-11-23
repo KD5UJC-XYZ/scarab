@@ -2315,7 +2315,6 @@ object Main extends IOApp:
               LeiosPrevalidation.Work(
                 Some(run.store),
                 run.txCache,
-                run.cache,
                 math.max(1, VerificationCache.defaultParallelism / 2),
                 event =>
                   Log[IO].emit(

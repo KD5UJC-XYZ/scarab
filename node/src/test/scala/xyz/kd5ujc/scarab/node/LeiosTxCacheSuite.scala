@@ -336,7 +336,6 @@ class LeiosTxCacheSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   private def prevalidated(
       closure: Vector[(LeiosTxHash, Bytes)],
       cache: LeiosTxCache[IO],
-      witnesses: VerificationCache,
       store: Option[UtxoReadView[IO]] = None,
       on: DijkstraState = state
   ): IO[Vector[LeiosKernelEvent[Nothing, Nothing]]] =
@@ -345,9 +344,9 @@ class LeiosTxCacheSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       .flatMap(events =>
         LeiosPrevalidation
           .prevalidateOn[IO](
-            LeiosPrevalidation.Work(store, cache, witnesses, 4, e => events.update(_ :+ e)),
+            LeiosPrevalidation.Work(store, cache, 4, e => events.update(_ :+ e)),
             LeiosPrevalidation.Arrived(r.point, closure),
-            LeiosPrevalidation.Base(on, r.env.copy(verdicts = witnesses), parity),
+            LeiosPrevalidation.Base(on, r.env, parity),
             Duration.Zero
           ) *> events.get
       )
@@ -376,37 +375,33 @@ class LeiosTxCacheSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   test(
     "pre-validation tags the independent transactions that pass; the check reapplies those, same verdict"
   ) {
-    VerificationCache.resource[IO](4).use { witnesses =>
-      for
-        cache <- cacheOf(r.stored, Vector.empty, parity)
-        events <- prevalidated(r.stored, cache, witnesses)
-        held <- validated(cache, r.stored)
-        verdict <- check(r.stored, cache)
-      yield
-        assertEquals(held.count(_.contains(Right(parity))), 296)
-        // the 27 fed by the closure are left as they were, for the check to validate in full
-        assertEquals(verdict, EbClosureVerdict.Valid(296, 27))
-        events match
-          case Vector(LeiosKernelEvent.TxsPrevalidated(p, offered, independent, tagged, _)) =>
-            assertEquals((p, offered, independent, tagged), (r.point, 323, 296, 296))
-          case other => fail(s"not one TxsPrevalidated: $other")
-    }
+    for
+      cache <- cacheOf(r.stored, Vector.empty, parity)
+      events <- prevalidated(r.stored, cache)
+      held <- validated(cache, r.stored)
+      verdict <- check(r.stored, cache)
+    yield
+      assertEquals(held.count(_.contains(Right(parity))), 296)
+      // the 27 fed by the closure are left as they were, for the check to validate in full
+      assertEquals(verdict, EbClosureVerdict.Valid(296, 27))
+      events match
+        case Vector(LeiosKernelEvent.TxsPrevalidated(p, offered, independent, tagged, _)) =>
+          assertEquals((p, offered, independent, tagged), (r.point, 323, 296, 296))
+        case other => fail(s"not one TxsPrevalidated: $other")
   }
 
   test("a forged transaction is not tagged, and the check refuses the closure as it does without") {
-    VerificationCache.resource[IO](4).use { witnesses =>
-      for
-        cache <- cacheOf(withForged, Vector.empty, parity)
-        _ <- prevalidated(withForged, cache, witnesses)
-        look <- cache.lookup
-        verdict <- check(withForged, cache)
-        plain <- cacheOf(withForged, Vector.empty, parity).flatMap(check(withForged, _))
-      yield
-        // its signature fails, so pre-validation leaves it as the cache held it: not validated
-        assert(!look(forged._1).contains(Right(parity)), "the forged transaction is not tagged")
-        refusedWitness(verdict)
-        assertEquals(verdict, plain)
-    }
+    for
+      cache <- cacheOf(withForged, Vector.empty, parity)
+      _ <- prevalidated(withForged, cache)
+      look <- cache.lookup
+      verdict <- check(withForged, cache)
+      plain <- cacheOf(withForged, Vector.empty, parity).flatMap(check(withForged, _))
+    yield
+      // its signature fails, so pre-validation leaves it as the cache held it: not validated
+      assert(!look(forged._1).contains(Right(parity)), "the forged transaction is not tagged")
+      refusedWitness(verdict)
+      assertEquals(verdict, plain)
   }
 
   test("a failed read of the outputs pre-validates nothing and says why") {
@@ -422,31 +417,32 @@ class LeiosTxCacheSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       def selectAddresses(addresses: Set[Bytes])(using
           Raise[IO, StorageError]
       ): IO[Map[TxIn, TxOut]] = IO.pure(Map.empty)
-    VerificationCache.resource[IO](2).use { witnesses =>
-      for
-        cache <- cacheOf(r.stored, Vector.empty, parity)
-        events <- prevalidated(r.stored, cache, witnesses, Some(failing), stripped)
-        held <- validated(cache, r.stored)
-      yield
-        assertEquals(held.count(_.contains(Right(parity))), 0)
-        events match
-          case Vector(
-                LeiosKernelEvent.PrevalidationSkipped(_, LeiosPrevalidation.Skip.Store(_))
-              ) =>
-            ()
-          case other => fail(s"not a store skip: $other")
-    }
+    for
+      cache <- cacheOf(r.stored, Vector.empty, parity)
+      events <- prevalidated(r.stored, cache, Some(failing), stripped)
+      held <- validated(cache, r.stored)
+    yield
+      assertEquals(held.count(_.contains(Right(parity))), 0)
+      events match
+        case Vector(
+              LeiosKernelEvent.PrevalidationSkipped(_, LeiosPrevalidation.Skip.Store(_))
+            ) =>
+          ()
+        case other => fail(s"not a store skip: $other")
   }
 
-  test("only a block of the tip's epoch is pre-validated, at its slot or the one after the tip") {
+  test("only a block of the tip's epoch is pre-validated, at its slot or the tip's") {
     val g = r.env.rules.geometry
     val epoch = g.epochOf(r.slot)
     val first = g.firstSlot(epoch)
     val last = g.firstSlot(epoch + 1) - 1
-    // the tip before the block: the block's slot; the tip at or past it: the slot after the tip
+    // the tip before the block or at it: the block's slot; the tip past it: the tip's
     assertEquals(LeiosPrevalidation.slotFor(g, first, first + 10), Right(first + 10))
-    assertEquals(LeiosPrevalidation.slotFor(g, first + 20, first + 10), Right(first + 21))
-    // a tip of the epoch before, a tip of the epoch after, and a tick that would leave the epoch
+    assertEquals(LeiosPrevalidation.slotFor(g, first + 10, first + 10), Right(first + 10))
+    assertEquals(LeiosPrevalidation.slotFor(g, first + 20, first + 10), Right(first + 20))
+    // a block announced at the epoch's last slot, by the tip
+    assertEquals(LeiosPrevalidation.slotFor(g, last, last), Right(last))
+    // a tip of the epoch before and a tip of the epoch after
     assertEquals(
       LeiosPrevalidation.slotFor(g, first - 1, first + 10),
       Left(LeiosPrevalidation.Skip.OtherEpoch(epoch - 1, epoch))
@@ -454,10 +450,6 @@ class LeiosTxCacheSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     assertEquals(
       LeiosPrevalidation.slotFor(g, last + 1, first + 10),
       Left(LeiosPrevalidation.Skip.OtherEpoch(epoch + 1, epoch))
-    )
-    assertEquals(
-      LeiosPrevalidation.slotFor(g, last, last),
-      Left(LeiosPrevalidation.Skip.OtherEpoch(epoch, epoch))
     )
   }
 
