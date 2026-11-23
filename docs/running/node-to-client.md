@@ -213,6 +213,11 @@ adds every entry under `utxo` for a set of at most 100,000 entries; a larger set
 built in memory. Any other or repeated `utxo` value returns HTTP 400. The devnet comparator asks for `utxo=full`.
 `--query-listen off` leaves the server off.
 
+The server builds one `GET /state` answer at a time, whatever the size of the state; the summary is never refused.
+A request for the point and `utxo` view of an answer being built waits for that build and gets the same answer.
+The answers at the tip are kept, rendered, until the tip moves, so asking again at the same tip builds nothing; an
+answer at an explicit point that is not the tip is built for each request.
+
 The slot clock starts at the Byron genesis' `startTime` when `byron-genesis.json` has one (as the
 reference's does), else at the Shelley `systemStart`; the `started` line logs it as `systemStart`.
 Write both identically in a network you make yourself.
