@@ -522,12 +522,14 @@ build, and the answers at the tip are kept, rendered, until the node publishes i
 (`SharedAnswers`). `StateRequestMain` (`tools`) loads a native snapshot and sends requests through the query server's
 routes as the node serves them, in process: the tip is fixed, and each body is counted, not written to a socket. The
 rows before #1150 ran the same requests through the routes of `30fd188ba`, the base of the change, with a copy of the
-program that calls them (not kept). The state is a mainnet node's snapshot at slot 203,817,634 (10,819,125 UTxO
+program that calls them (not kept), and are of a base that has no shared answers, so each of its requests builds.
+The probe counts each body's bytes and builds only when a batch ends; the four-request runs that ran out of memory
+ended before that count. The state is a mainnet node's snapshot at slot 203,817,634 (10,819,125 UTxO
 entries; the summary reads only the UTxO set's totals); raw run artifacts are not published. Each mode ran once in its
 own JVM, in the JDK build container (`--cpus 4 --memory 28g`, no network) on a shared 16-thread x86-64 host (load
 average 3.5 to 10 from other work), with the mainnet node's heap settings (`java -Xms8g -Xmx24g -XX:+UseG1GC
--XX:MaxGCPauseMillis=50 -XX:+ExitOnOutOfMemoryError`), at the build of `f92bc0557` and `fdffeebf8` (measured before
-their rebase onto `301fb6244`, which changes neither the route nor the projection). The times are of a loaded host:
+-XX:MaxGCPauseMillis=50 -XX:+ExitOnOutOfMemoryError`), at the build of the change's first two commits on `30fd188ba`
+(its later commits and its rebases change neither how an answer is built nor the projection). The times are of a loaded host:
 they show the order of the cost, not a figure to compare across machines.
 
 One request at a time: a build takes about half a minute, before as since; since #1150 a second request at the same
@@ -539,14 +541,14 @@ tip costs nothing, and the kept answer holds about 1.1 times the body's size unt
 | the state loaded |  | 2,357 |  |
 | before #1150 (`30fd188ba`): a first request, which builds (a body of 1,062,941,894 bytes) | 32.3 s |  |  |
 | before #1150: a second request, built again | 34.0 s |  |  |
-| since #1150: the first request, which builds (the same body) | 35.6 s (37.7 s in an earlier run) |  |  |
+| since #1150: the first request, which builds (a body of the same size) | 35.6 s (37.7 s in an earlier run) |  |  |
 | since #1150: the answer kept |  | 3,480 | 1,122.7 |
 | since #1150: a second request, answered with the kept answer | under 1 ms |  |  |
-| since #1150: the tip moved |  | 2,360 | 2.7 |
+| since #1150: the answers moved past the tip (`moved`), the state still reachable |  | 2,360 | 2.7 |
 <!-- /register -->
 
 Requests at once. The last column is the most heap in use when a collection began (`-Xlog:gc`), garbage included: it
-bounds the live heap from above, and it varies with when G1 collects (two builds one after the other before #1150
+bounds from above the live heap at the collections logged, and it varies with when G1 collects (two builds one after the other before #1150
 reached 21,438 MiB on it). The runs that ran out of memory ended in full compactions that left 23,037 MiB live in the
 24,576 MiB heap: four builds at once do not fit, and `-XX:+ExitOnOutOfMemoryError` ends the node. Four requests that
 share cost one build.
@@ -555,8 +557,8 @@ share cost one build.
 | Requests at the tip | Time | Builds | Heap in use when a collection began, most, MiB |
 |---|---:|---:|---:|
 | one, since #1150 | 35.6 s | 1 | 11,616 |
-| four at once, before #1150 (`30fd188ba`) | none: `OutOfMemoryError` about 2 minutes in | 4 started | 23,847 of 24,576 |
-| four at once, each with answers of its own (since #1150, `unshared 4`) | none: `OutOfMemoryError` about 2 minutes in | 4 started | 24,030 of 24,576 |
+| four at once, before #1150 (`30fd188ba`) | none: `OutOfMemoryError` about 2 minutes in | 4 (each request builds its own) | 23,847 of 24,576 |
+| four at once, each with answers of its own (since #1150, `unshared 4`) | none: `OutOfMemoryError` about 2 minutes in | 4 (each request builds its own) | 24,030 of 24,576 |
 | four at once, sharing (since #1150, `shared 4`) | 33.5 s | 1 | 11,591 |
 <!-- /register -->
 

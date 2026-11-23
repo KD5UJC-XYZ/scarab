@@ -5038,8 +5038,8 @@
     "#1150"
    ],
    "commits": [
-    "f92bc0557",
-    "fdffeebf8"
+    "f20f337ff",
+    "7b74472f0"
    ],
    "links": [],
    "page": "memory-and-snapshots",
@@ -5073,7 +5073,7 @@
        ""
       ],
       [
-       "since #1150: the first request, which builds (the same body)",
+       "since #1150: the first request, which builds (a body of the same size)",
        "35.6 s (37.7 s in an earlier run)",
        "",
        ""
@@ -5091,7 +5091,7 @@
        ""
       ],
       [
-       "since #1150: the tip moved",
+       "since #1150: the answers moved past the tip (`moved`), the state still reachable",
        "",
        "2,360",
        "2.7"
@@ -5117,13 +5117,13 @@
       [
        "four at once, before #1150 (`30fd188ba`)",
        "none: `OutOfMemoryError` about 2 minutes in",
-       "4 started",
+       "4 (each request builds its own)",
        "23,847 of 24,576"
       ],
       [
        "four at once, each with answers of its own (since #1150, `unshared 4`)",
        "none: `OutOfMemoryError` about 2 minutes in",
-       "4 started",
+       "4 (each request builds its own)",
        "24,030 of 24,576"
       ],
       [
