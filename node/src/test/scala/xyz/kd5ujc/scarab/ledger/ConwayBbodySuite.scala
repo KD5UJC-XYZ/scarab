@@ -204,7 +204,12 @@ class ConwayBbodySuite extends FailsOnUncaught:
       flatObserved: Vector[Phase2.Observation],
       deferred: Vector[Vector[Int]],
       replayed: Option[ConwayBlockRun.Observing] => ConwayBlockRun.Body,
-      program: (ScriptEvaluator[cats.Id], Option[ConwayBlockRun.Observing]) => ConwayBlockRun.Body
+      program: (
+          ScriptEvaluator[cats.Id],
+          Option[ConwayBlockRun.Observing],
+          Verdicts
+      ) => ConwayBlockRun.Body,
+      replaying: () => ScriptEvaluator[cats.Id]
   ):
     /** The era run's verdict, where it reached one. */
     def era: Verdict = eraRun.fold(defect => fail(s"era defect $defect"), identity)
@@ -448,7 +453,8 @@ class ConwayBbodySuite extends FailsOnUncaught:
     // of one era from the cluster's start
     def programOf(
         evaluator: ScriptEvaluator[cats.Id],
-        observing: Option[ConwayBlockRun.Observing]
+        observing: Option[ConwayBlockRun.Observing],
+        verdicts: Verdicts = Verdicts.Direct
     ): ConwayBlockRun.Body = ConwayBlockRun
       .program(
         globals,
@@ -471,7 +477,7 @@ class ConwayBbodySuite extends FailsOnUncaught:
         ),
         state,
         evaluator,
-        Verdicts.Direct,
+        verdicts,
         ScarabEvaluator.defaultDecoder,
         clock.posix,
         observing
@@ -531,7 +537,8 @@ class ConwayBbodySuite extends FailsOnUncaught:
       flatObserved.all,
       plan.batches.map(_.map(_.index)),
       o => programOf(eraEvaluator.replaying, o),
-      programOf
+      programOf,
+      () => eraEvaluator.replaying
     )
 
   /** The era BBODY's failures in the node's flat form, in their order; LEDGERS's, which the flat
@@ -1625,11 +1632,19 @@ class ConwayBbodySuite extends FailsOnUncaught:
     val (serialSeen, planSeen) = (Observations(), Observations())
     val serial =
       Either.catchNonFatal(
-        admitted.program(defective, Some(ConwayBlockRun.Observing(serialSeen.observe, None))).serial
+        admitted
+          .program(
+            defective,
+            Some(ConwayBlockRun.Observing(serialSeen.observe, None)),
+            Verdicts.Direct
+          )
+          .serial
       )
     assert(serial.left.exists(_ eq defective.defect), s"$serial")
     val plan =
-      admitted.program(defective, Some(ConwayBlockRun.Observing(planSeen.observe, None))).prepare
+      admitted
+        .program(defective, Some(ConwayBlockRun.Observing(planSeen.observe, None)), Verdicts.Direct)
+        .prepare
     val planned = plan.resolve(plan.batches.flatten.map(plan.execute))
     assert(planned.left.exists(_.cause eq defective.defect), s"$planned")
     assertEquals(planSeen.all.map(comparable), serialSeen.all.map(comparable))
@@ -1638,14 +1653,74 @@ class ConwayBbodySuite extends FailsOnUncaught:
     // run records that failure and runs no later script, so the plan's result is the refusal
     val refused = judge(third, blockOf(txs, invalid = Vector(1, 2)), change = holding(utxo))
     val late = Defective(requestOf(admitted, 3))
-    val serialRefusal = refused.program(late, None).serial
+    val serialRefusal = refused.program(late, None, Verdicts.Direct).serial
     assert(serialRefusal.exists(_.isLeft), s"$serialRefusal")
-    val latePlan = refused.program(late, None).prepare
+    val latePlan = refused.program(late, None, Verdicts.Direct).prepare
     samePlanned(
       "late",
       serialRefusal,
       latePlan.resolve(latePlan.batches.flatten.map(latePlan.execute))
     )
+  }
+
+  test(
+    "a raw defect of the rules after deferred scripts: the prepared era run comes to the serial run's result, whether the scripts before it pass, one's verdict is not its flag's, or one has none"
+  ) {
+    val Dependent(utxo, txs) = dependent
+    // the signature check of the third transaction ends in a defect, after the first two
+    // transactions' scripts were deferred
+    val defect = new IllegalStateException("a verdict provider defect")
+    val verdicts = new Verdicts:
+      export Verdicts.Direct.{opCert, praosVrf, tpraosVrf, keyHash, takePrepared}
+      def witness(
+          key: Bytes,
+          signature: Bytes,
+          message: Bytes
+      ): Either[xyz.kd5ujc.scarab.ledger.ProviderDefect, Boolean] =
+        if message == txs(2).id then throw defect
+        else Verdicts.Direct.witness(key, signature, message)
+    Vector[(String, Vector[Int], Option[Int])](
+      ("passing", Vector(2), None),
+      ("not the flag's", Vector(1, 2), None),
+      ("no verdict", Vector(2), Some(2))
+    ).foreach { (what, invalid, unsupportedAt) =>
+      val j = judge(
+        third,
+        blockOf(txs, invalid = invalid),
+        change = holding(utxo),
+        unsupportedAt = unsupportedAt
+      )
+      val (serialSeen, planSeen) = (Observations(), Observations())
+      val serial = Either.catchNonFatal(
+        j.program(
+          j.replaying(),
+          Some(ConwayBlockRun.Observing(serialSeen.observe, None)),
+          verdicts
+        ).serial
+      )
+      val plan = j
+        .program(j.replaying(), Some(ConwayBlockRun.Observing(planSeen.observe, None)), verdicts)
+        .prepare
+      assertEquals(plan.jobs.map(_.index), Vector(0, 1), what)
+      val planned = plan.resolve(plan.batches.flatten.map(plan.execute))
+      (serial, planned) match
+        case (Left(raised), Left(landed)) => assert(landed.cause eq raised, what)
+        case (Right(result), _)           => samePlanned(what, result, planned)
+        case other                        => fail(s"$what: $other")
+      assertEquals(planSeen.all.map(comparable), serialSeen.all.map(comparable), what)
+      // with every script passing, and with a verdict that is not its flag's, the serial run
+      // reaches the defect (the rules accumulate every failure); with no verdict it stops there
+      unsupportedAt match
+        case None => assert(serial.left.exists(_ eq defect), s"$what: $serial")
+        case Some(_) =>
+          assert(
+            serial.exists(_.left.exists {
+              case ConwayRuleDefect.ScriptUnavailable(_) => true
+              case _                                     => false
+            }),
+            s"$what: $serial"
+          )
+    }
   }
 
   test(
