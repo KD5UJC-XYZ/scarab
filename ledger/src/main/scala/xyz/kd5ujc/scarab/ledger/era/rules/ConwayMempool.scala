@@ -180,4 +180,6 @@ object ConwayMempool:
       Raise[F, ProposalsWriteError]
   ): F[Unit] =
     given Stateful[F, Proposals[Conway]] = ProposalsRecord.stateful[F, Conway]
+    // the pool evaluates a transaction's scripts where UTXOS collects them, as the reference does
+    given Phase2Deferral[F, Conway] = Phase2Deferral.now
     ConwayLedger.conwayLedgerTransition[F, Conway](env, stAnnTx, context, verdicts, decoder)

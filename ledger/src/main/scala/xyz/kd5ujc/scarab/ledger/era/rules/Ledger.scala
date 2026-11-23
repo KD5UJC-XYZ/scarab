@@ -322,6 +322,7 @@ object ConwayLedger:
       events: Tell[F, Chain[LedgerEvent[E]]],
       evaluator: ScriptEvaluator[F],
       unavailable: Raise[F, ScriptVerdictUnavailable],
+      deferral: Phase2Deferral[F, E],
       stateDefect: Raise[F, UtxoStateDefect],
       defect: Raise[F, LedgerDefect],
       govDefect: Raise[F, GovDefect],
@@ -504,6 +505,7 @@ object ConwayLedger:
           toldIn(events)(embed.wrapUtxowEvent),
           evaluator,
           unavailable,
+          deferral,
           stateDefect,
           defect
         )
@@ -625,6 +627,7 @@ object ShelleyLedgers:
       events: Tell[F, Chain[LedgersEvent[E]]],
       evaluator: ScriptEvaluator[F],
       unavailable: Raise[F, ScriptVerdictUnavailable],
+      deferral: Phase2Deferral[F, E],
       stateDefect: Raise[F, UtxoStateDefect],
       defect: Raise[F, LedgerDefect],
       govDefect: Raise[F, GovDefect],

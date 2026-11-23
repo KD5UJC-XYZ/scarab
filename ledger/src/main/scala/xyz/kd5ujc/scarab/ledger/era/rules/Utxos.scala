@@ -11,6 +11,7 @@ import xyz.kd5ujc.scarab.ledger.era.{
   AlonzoEraUTxO,
   CollectError,
   IsPhase2Valid,
+  Phase2Deferral,
   PlutusEvaluation,
   PlutusWithContext,
   ScriptFailure,
@@ -162,6 +163,8 @@ object BabbageUtxos:
     * recorded (`?!:`, `CollectErrors`), and the scripts evaluated with `run` only under the policy
     * that validates every check (`when2Phase`) and only if nothing failed so far in the judgment
     * (`whenFailureFree`): the steps `expectScriptsToPass` and `babbageEvalScriptsTxInvalid` share.
+    * Where they are evaluated is the run's ([[Phase2Deferral]]): a block the node prepares defers
+    * them, so that neither their verdict nor `run` is reached before its plan checks them.
     */
   private def evalScripts[F[_]: Monad, E <: EraTag](
       stAnnTx: StAnnTx[TxLevel.Top, E],
@@ -171,7 +174,8 @@ object BabbageUtxos:
       inject: InjectAlonzoUtxos[E],
       judge: Judge[F, UtxosPredFailure[E]],
       evaluator: ScriptEvaluator[F],
-      raise: Raise[F, ScriptVerdictUnavailable]
+      raise: Raise[F, ScriptVerdictUnavailable],
+      deferral: Phase2Deferral[F, E]
   ): F[Unit] =
     val scriptsWithContextEither =
       u.plutusScriptsWithContextStAnnTx[TxLevel.Top](stAnnTx)(using u.txOf.bodyOf.top)
@@ -181,9 +185,17 @@ object BabbageUtxos:
       )
       _ <- AlonzoUtxos.when2Phase[F](validation)(
         Sts.whenFailureFree[F, UtxosPredFailure[E]](
-          scriptsWithContextEither.toOption.traverse_(scriptsWithContext =>
-            PlutusEvaluation.evalPlutusScripts[F](scriptsWithContext).flatMap(run)
-          )
+          scriptsWithContextEither.toOption.traverse_ { scriptsWithContext =>
+            val now = PlutusEvaluation.evalPlutusScripts[F](scriptsWithContext).flatMap(run)
+            NonEmptyList
+              .fromList(scriptsWithContext)
+              .fold(now)(
+                deferral.evalScripts(
+                  u.txOf.txStAnnTx[TxLevel.Top](stAnnTx)(using u.txOf.bodyOf.top),
+                  _
+                )(now)
+              )
+          }
         )
       )
     yield ()
@@ -215,7 +227,8 @@ object BabbageUtxos:
       judge: Judge[F, UtxosPredFailure[E]],
       events: Tell[F, Chain[UtxosEvent[E]]],
       evaluator: ScriptEvaluator[F],
-      raise: Raise[F, ScriptVerdictUnavailable]
+      raise: Raise[F, ScriptVerdictUnavailable],
+      deferral: Phase2Deferral[F, E]
   ): F[Unit] =
     val tx = t.txStAnnTx[TxLevel.Top](stAnnTx)(using t.bodyOf.top)
     evalScripts[F, E](stAnnTx, validation) {
@@ -248,7 +261,8 @@ object BabbageUtxos:
       judge: Judge[F, UtxosPredFailure[E]],
       events: Tell[F, Chain[UtxosEvent[E]]],
       evaluator: ScriptEvaluator[F],
-      raise: Raise[F, ScriptVerdictUnavailable]
+      raise: Raise[F, ScriptVerdictUnavailable],
+      deferral: Phase2Deferral[F, E]
   ): F[Unit] =
     val tx = t.txStAnnTx[TxLevel.Top](stAnnTx)(using t.bodyOf.top)
     evalScripts[F, E](stAnnTx, validation) {
@@ -311,7 +325,8 @@ object ConwayUtxos:
       judge: Judge[F, UtxosPredFailure[E]],
       events: Tell[F, Chain[UtxosEvent[E]]],
       evaluator: ScriptEvaluator[F],
-      raise: Raise[F, ScriptVerdictUnavailable]
+      raise: Raise[F, ScriptVerdictUnavailable],
+      deferral: Phase2Deferral[F, E]
   ): F[Unit] =
     t.isValid(t.txStAnnTx[TxLevel.Top](stAnnTx)(using t.bodyOf.top)) match
       case IsPhase2Valid.Phase2Valid => conwayEvalScriptsTxValid[F, E](stAnnTx, validation)
@@ -331,6 +346,7 @@ object ConwayUtxos:
       judge: Judge[F, UtxosPredFailure[E]],
       events: Tell[F, Chain[UtxosEvent[E]]],
       evaluator: ScriptEvaluator[F],
-      raise: Raise[F, ScriptVerdictUnavailable]
+      raise: Raise[F, ScriptVerdictUnavailable],
+      deferral: Phase2Deferral[F, E]
   ): F[Unit] =
     BabbageUtxos.expectScriptsToPass[F, E](stAnnTx, validation)

@@ -1103,6 +1103,7 @@ object ConwayUtxo:
       events: Tell[F, Chain[AlonzoUtxoEvent[E]]],
       evaluator: ScriptEvaluator[F],
       unavailable: Raise[F, ScriptVerdictUnavailable],
+      deferral: Phase2Deferral[F, E],
       defect: Raise[F, UtxoStateDefect]
   ): F[Unit] =
     val tx = t.txStAnnTx[TxLevel.Top](stAnnTx)(using t.bodyOf.top)

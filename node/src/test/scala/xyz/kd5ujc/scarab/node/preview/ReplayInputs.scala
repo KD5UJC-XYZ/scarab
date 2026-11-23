@@ -171,7 +171,8 @@ object ReplayInputs:
       expectedFailures: Option[Path] = None,
       trace: Boolean = true,
       legacyOutputs: Boolean = false,
-      schedule: Schedule = Schedule.Comparison
+      schedule: Schedule = Schedule.Comparison,
+      eraBodies: Option[EraBodies.Timing] = None
   )
 
   private def pathOf(value: String): Either[Error, Path] =

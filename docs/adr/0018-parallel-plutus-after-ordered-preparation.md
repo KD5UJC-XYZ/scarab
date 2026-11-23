@@ -54,3 +54,24 @@ complete under [#21](https://github.com/KD5UJC-XYZ/scarab/issues/21), closed aft
 The [recorded acceptance](../design/parallel-plutus.md#preview-reconciliation-gates)
 retains projection exclusions and responsiveness warnings; nightly CI remains the continuing
 safety net.
+
+**Amendment (2026-11-22): the era block runs.** An era block run is a body program under the same
+contract, run by the same node-wide scheduler and bound ([#85](https://github.com/KD5UJC-XYZ/scarab/issues/85),
+Conway's first). Its preparation runs the era rules once, in order: UTXOS hands the scripts it
+collected for each transaction to the run's deferral capability, which records them in the sealed
+recorder and supplies no verdict, and the rules continue as the transaction's flag announces. The
+dependency batches read the same footprints as the flat rules' (normal, reference and collateral
+reads, consumes and creates by the flag). Results and observations land in transaction order, and
+while every reached verdict is its flag's, the preparation's result, with counters told from the
+landed verdicts where each job was deferred, is the serial run's. A job's raw defect lands as
+itself after the jobs before it. The era rules accumulate every failure (`ValidateAll`) and a
+recorded mismatch changes what follows it (`whenFailureFree`, the state a no-verdict is named in),
+so at the first verdict that is not its flag's, or no verdict, the result is the serial run itself,
+every script answered in order by the landed results rather than evaluated again. A raw defect the
+preparation ended in after that point is then the serial rules' to reach again: that pass runs them,
+and a defect it meets is raised from it, as the serial run raises it (after a mismatch it still
+does, since the rules go on; after a script with no verdict it never does). That extra ordered
+pass happens only for a block the node refuses or withholds. Dijkstra's run evaluates its
+scripts where UTXOS collects them until it adopts the same program. The serial era runs remain the
+executable reference; the [as-built design](../design/parallel-plutus.md#era-block-runs) has the
+detail.

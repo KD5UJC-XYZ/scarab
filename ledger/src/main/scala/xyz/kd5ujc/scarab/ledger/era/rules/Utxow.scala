@@ -517,6 +517,7 @@ object BabbageUtxow:
       events: Tell[F, Chain[UtxowEvent[E]]],
       evaluator: ScriptEvaluator[F],
       unavailable: Raise[F, ScriptVerdictUnavailable],
+      deferral: Phase2Deferral[F, E],
       stateDefect: Raise[F, UtxoStateDefect],
       defect: Raise[F, LedgerDefect]
   ): F[Unit] =

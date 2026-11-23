@@ -313,6 +313,7 @@ class EraUtxosSuite extends munit.FunSuite:
       failedBefore: Boolean
   ): Either[ScriptVerdictUnavailable, Either[NonEmptyChain[Rec], Events]] =
     given ScriptEvaluator[F] = lifted[F](evaluator)
+    given Phase2Deferral[F, Conway] = Phase2Deferral.now
     val judge = summon[Judge[F, Rec]]
     val program =
       (if failedBefore then judge.fail(earlier) else Monad[F].unit) *>
@@ -598,6 +599,7 @@ class EraUtxosSuite extends munit.FunSuite:
       evaluator: ScriptEvaluator[R]
   ): Either[(ScriptVerdictUnavailable, Seen), Seen] =
     given ScriptEvaluator[R] = evaluator
+    given Phase2Deferral[R, Conway] = Phase2Deferral.now
     ConwayUtxos
       .utxosTransition[R, Conway](stAnnTx(c), TxEnv.Validation.All)
       .runS(Seen(Chain.empty, Chain.empty, Vector.empty))

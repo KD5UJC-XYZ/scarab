@@ -28172,8 +28172,8 @@
    "evidence": [
     "EraUtxosSuite"
    ],
-   "note": "the judgment, the events and the evaluator are capabilities (Judge, Tell, ScriptEvaluator); the validation policy is an argument (when2Phase); no Debug.traceEvent markers",
-   "digest": "04ea3b6876f21809"
+   "note": "the judgment, the events and the evaluator are capabilities (Judge, Tell, ScriptEvaluator), and where the collected scripts are evaluated is the run's (Phase2Deferral: there, or deferred into a prepared block's plan, ADR 0018); the validation policy is an argument (when2Phase); no Debug.traceEvent markers",
+   "digest": "80c53e34c15053a8"
   },
   "def ledger.era.rules.BabbageUtxos.babbageEvalScriptsTxInvalid": {
    "upstream": [
@@ -28194,7 +28194,7 @@
     "EraUtxosSuite"
    ],
    "note": "as expectScriptsToPass; no Debug.traceEvent markers",
-   "digest": "e488e73b886ce85f"
+   "digest": "24ee9df076d8f5d7"
   },
   "def ledger.era.rules.ConwayUtxo.updateTreasuryDonation": {
    "upstream": [
@@ -28276,8 +28276,8 @@
    "evidence": [
     "EraUtxosSuite"
    ],
-   "note": "the environment and the state are () and dropped; the policy is an argument; the judgment, events and evaluator are capabilities",
-   "digest": "d37160f3ab6b0dee"
+   "note": "the environment and the state are () and dropped; the policy is an argument; the judgment, events and evaluator are capabilities, with where the scripts are evaluated (Phase2Deferral)",
+   "digest": "2e08975ecb30c48e"
   },
   "def ledger.era.rules.ConwayUtxos.conwayEvalScriptsTxValid": {
    "upstream": [
@@ -28298,7 +28298,7 @@
     "EraUtxosSuite"
    ],
    "note": "as utxosTransition; no Debug.traceEvent markers",
-   "digest": "bb29973fbfa4e26a"
+   "digest": "403307a8b7951354"
   },
   "def ledger.era.rules.FailureDescription.scriptFailureToFailureDescription": {
    "upstream": [
@@ -29253,8 +29253,8 @@
     "EraUtxoSuite",
     "ConwayUtxoChecksSuite"
    ],
-   "note": "the environment, the annotated transaction and UtxoContext (what it reads from Globals and the policy) are arguments; the state, the judgment, the events, the evaluator and the defects are capabilities; UTXOS runs as a sub-rule (Judge.nest), its failures and events embedded by EmbedUtxosInUtxo; the UTxO set the predicates read is the outputs of the body's inputs, collateral inputs and reference inputs, read from the store into the era (design §3.6), every output a predicate reads; a script with no verdict, a damaged store and an output outside the state's vocabulary are raised",
-   "digest": "46333a9413ad523e"
+   "note": "the environment, the annotated transaction and UtxoContext (what it reads from Globals and the policy) are arguments; the state, the judgment, the events, the evaluator, where the scripts are evaluated (Phase2Deferral) and the defects are capabilities; UTXOS runs as a sub-rule (Judge.nest), its failures and events embedded by EmbedUtxosInUtxo; the UTxO set the predicates read is the outputs of the body's inputs, collateral inputs and reference inputs, read from the store into the era (design §3.6), every output a predicate reads; a script with no verdict, a damaged store and an output outside the state's vocabulary are raised",
+   "digest": "54c8ce686b71facc"
   },
   "given ledger.era.rules.InjectUtxoFailure.conwayAlonzoUtxos": {
    "upstream": [
@@ -29380,8 +29380,8 @@
     "ConwayUtxoChecksSuite",
     "RedeemerIndexReferenceSuite"
    ],
-   "note": "the environment, the annotated transaction, UtxoContext (Globals and the policy), the signature verdicts and the script decoder are arguments; the state, judgment, events, evaluator and defects are capabilities; UTXO runs as a sub-rule (Judge.nest), its failures and events embedded by EmbedUtxoInUtxow; the UTxO set the predicates read is the outputs of the body's inputs, collateral inputs and reference inputs read from the store, as UTXO's; a signature check or a script decoding with no verdict is raised as the node's LedgerDefect",
-   "digest": "ba090b8aad03918f"
+   "note": "the environment, the annotated transaction, UtxoContext (Globals and the policy), the signature verdicts and the script decoder are arguments; the state, judgment, events, evaluator, where the scripts are evaluated (Phase2Deferral) and defects are capabilities; UTXO runs as a sub-rule (Judge.nest), its failures and events embedded by EmbedUtxoInUtxow; the UTxO set the predicates read is the outputs of the body's inputs, collateral inputs and reference inputs read from the store, as UTXO's; a signature check or a script decoding with no verdict is raised as the node's LedgerDefect",
+   "digest": "f4c066d4a897894c"
   },
   "def ledger.era.rules.BabbageUtxow.validateFailedBabbageScripts": {
    "upstream": [
@@ -32771,7 +32771,7 @@
     "ConwayLedgerChecksSuite"
    ],
    "note": "the reference's transition generic in its era over the reference's classes, the sub-rules UTXOW, CERTS and GOV called as UTXOW calls UTXO, each a sub-rule (Judge.nest) whose failures and events are embedded (EmbedInLedger); the withdrawals' move by the build the judgment's Globals name (WithdrawalsRule); GOV's state the era's proposals in their own capability beside the ledger state, as DijkstraLedger's, held by the caller (ConwayBlockRun reads the node's record once a block and writes it back once; ProposalsRecord.stateful on every read and write); the committee's actions CERTS reads are those of the proposals before the transaction (proposalsWithPurpose grCommitteeL, :367-370), each as the node records it (ProposalsRecord.storedAction); the UTxO set the reference-script size reads is the stored outputs of the body's inputs, collateral and reference inputs; the defects of the sub-rules stay their own raises; the epoch, where the environment has none, is the total epochOf of Globals' geometry, where the reference's epochFromSlot (Slot.hs:66-69) reads its Globals' epoch information and fails outside a bounded history: the suites show the result within the history only (CNF-2)",
-   "digest": "1d457d2dfad07f09"
+   "digest": "9b5f7c94f9c4cd94"
   },
   "def ledger.era.rules.ConwayLedger.shelleyToConwayLedgerPredFailure": {
    "upstream": [
@@ -32896,7 +32896,7 @@
     "ConwayLedgerChecksSuite"
    ],
    "note": "Conway's LEDGERS, Babbage's (Conway/Era.hs:244), through the fold it shares with Dijkstra's (ledgersFold); mkStAnnTx is Alonzo's mkAlonzoStAnnTx given the cache the annotation before left, its epoch information and system start one function, the UTxO set the stored outputs of the transaction's inputs; the index by TxIx.enumerate, zip [minBound ..]; the proposals the caller's capability, which each transaction's LEDGER judges",
-   "digest": "5e51746c4f8659d5"
+   "digest": "f7999ebe8a03c66a"
   },
   "enum ledger.era.rules.ConwayLedgerPredFailure": {
    "upstream": [
@@ -34275,8 +34275,8 @@
     "DijkstraRulesOracleSuite",
     "DijkstraUtxowSuite"
    ],
-   "note": "as Conway's conwayUtxoTransition: the threaded state's outputs read from the store into the era, a damaged store, an output outside the state's vocabulary and a script with no verdict raised as typed defects",
-   "digest": "a6da1879b1bed27f"
+   "note": "as Conway's conwayUtxoTransition: the threaded state's outputs read from the store into the era, a damaged store, an output outside the state's vocabulary and a script with no verdict raised as typed defects; its scripts evaluated where UTXOS collects them (Phase2Deferral.now)",
+   "digest": "8ea13289883bda01"
   },
   "def ledger.era.dijkstra.DijkstraUTxO.dijkstraConsumedWithoutSubTransactions": {
    "upstream": [
@@ -47360,7 +47360,7 @@
     "ConwayBbodySuite"
    ],
    "note": "conwayBbodyTransition >> alonzoBbodyTransition on Conway's LEDGERS, its failures and events embedded; the parameters of LEDGERS's transactions (context, verdicts, decoder, the clock) and the proposals GOV judges, a capability beside the BBODY state, given by the caller; ConwayBbodySuite compares it with the flat BBODY; its expectations are the reference's own only on the 53 recorded Conway blocks the reference accepted",
-   "digest": "454e0b7264e213ac"
+   "digest": "21c8f08cf6cafad3"
   },
   "enum ledger.era.rules.HeaderProtVerGate": {
    "upstream": [
@@ -49660,17 +49660,40 @@
    ]
   },
   {
-   "reason": "the run of Conway's era rules on a block as the node is to apply it at the Conway switch (#85), BBODY with every failure accumulated and every check validated, the context of its transactions' rules made from the judgment's Globals (network, the build's injection), on the fused interpreter with the events discarded but for what the node's phase-2 counters read (applyBlockEither with ValidateAll, ComputeLedgerEvents off), the proposals held beside the BBODY state, read from the node's record once a block and written back once, its defects, what an admitted block comes to with its counters, and the node's phase-2 observer of its scripts (Observing)",
+   "reason": "the run of Conway's era rules on a block as the node is to apply it at the Conway switch (#85), BBODY with every failure accumulated and every check validated, the context of its transactions' rules made from the judgment's Globals (network, the build's injection), on the fused interpreter with the events discarded but for what the node's phase-2 counters read (applyBlockEither with ValidateAll, ComputeLedgerEvents off), the proposals held beside the BBODY state, read from the node's record once a block and written back once, its defects, what an admitted block comes to with its counters, and the node's phase-2 observer of its scripts (Observing); and the same run as a body program (program, Body, its Plan, a transaction's deferred scripts, Deferred, run by a worker, Evaluated and Finished), which the node can evaluate in bounded parallel workers after an ordered preparation under ADR 0018, its result the serial run's",
    "definitions": [
     "class ledger.era.rules.ConwayBlockRun.Applied",
     "class ledger.era.rules.ConwayBlockRun.Observing",
     "def ledger.era.rules.ConwayBlockRun.bbody",
     "enum ledger.era.rules.ConwayRuleDefect",
-    "object ledger.era.rules.ConwayBlockRun"
+    "object ledger.era.rules.ConwayBlockRun",
+    "class ledger.era.rules.ConwayBlockRun.Body",
+    "class ledger.era.rules.ConwayBlockRun.Deferred",
+    "class ledger.era.rules.ConwayBlockRun.Evaluated",
+    "class ledger.era.rules.ConwayBlockRun.Plan#Completed",
+    "class ledger.era.rules.ConwayBlockRun.Plan",
+    "def ledger.era.rules.ConwayBlockRun.Body#hasScripts",
+    "def ledger.era.rules.ConwayBlockRun.Body#prepare",
+    "def ledger.era.rules.ConwayBlockRun.Body#serial",
+    "def ledger.era.rules.ConwayBlockRun.Body#worthwhile",
+    "def ledger.era.rules.ConwayBlockRun.Deferred#requests",
+    "def ledger.era.rules.ConwayBlockRun.Plan#batches",
+    "def ledger.era.rules.ConwayBlockRun.Plan#execute",
+    "def ledger.era.rules.ConwayBlockRun.Plan#resolve",
+    "def ledger.era.rules.ConwayBlockRun.program",
+    "type ledger.era.rules.ConwayBlockRun.Plan#Job",
+    "type ledger.era.rules.ConwayBlockRun.Result",
+    "val ledger.era.rules.ConwayBlockRun.Deferred#flag",
+    "val ledger.era.rules.ConwayBlockRun.Deferred#index",
+    "val ledger.era.rules.ConwayBlockRun.Deferred#observation",
+    "val ledger.era.rules.ConwayBlockRun.Deferred#scripts",
+    "val ledger.era.rules.ConwayBlockRun.Plan#Completed#job",
+    "val ledger.era.rules.ConwayBlockRun.Plan#Completed#outcome",
+    "val ledger.era.rules.ConwayBlockRun.Plan#jobs"
    ]
   },
   {
-   "reason": "the node's phase-2 observations (Scarab's own, which the reference has none of) of a Conway block the era rules judge (#85): a script located among the block's transactions (Located, locate: its context collected again one purpose at a time in the ledger state the rules ran it in and compared); a script with no verdict named by its transaction and redeemer as the flat rules name it (LedgerFailure.Unavailable), so that the node withholds the block as it does the flat rules'; the phase-2 observation of a transaction's scripts (--plutus-cases) as the flat rules make it (Phase2.Observation of the flat transaction, flatTx, and outcome); and the phase-2 counters (PlutusStats) of a block the rules admitted: what of BBODY's events they read (ScriptsTold, UTXOS's passed and failed scripts and UTXO's change of the deposits a valid transaction tells after them) and their count by transaction, integrityChecked the bodies that declare a script integrity hash, as the flat rules count them from their evaluations (TxChecks.phase2, EraBlock.Plan)",
+   "reason": "the node's phase-2 observations (Scarab's own, which the reference has none of) of a Conway block the era rules judge (#85): a script located among the block's transactions (Located, locate: its context collected again one purpose at a time in the ledger state the rules ran it in and compared); a script with no verdict named by its transaction and redeemer as the flat rules name it (LedgerFailure.Unavailable), so that the node withholds the block as it does the flat rules'; the phase-2 observation of a transaction's scripts (--plutus-cases) as the flat rules make it (Phase2.Observation of the flat transaction, flatTx, and outcome); and the phase-2 counters (PlutusStats) of a block the rules admitted: what of BBODY's events they read (ScriptsTold, UTXOS's passed and failed scripts and UTXO's change of the deposits a valid transaction tells after them) and their count by transaction, integrityChecked the bodies that declare a script integrity hash, as the flat rules count them from their evaluations (TxChecks.phase2, EraBlock.Plan); and what a prepared block reads of its transactions: a transaction's id, its place among the block's transactions, whether it holds a redeemer, and its footprint in the dependency graph (TxDependencies.Footprint), the flat transaction's",
    "definitions": [
     "class ledger.era.rules.ConwayPhase2.Located",
     "def ledger.era.rules.ConwayPhase2.counted",
@@ -49681,7 +49704,42 @@
     "def ledger.era.rules.ScriptsTold.of",
     "enum ledger.era.rules.ScriptsTold",
     "object ledger.era.rules.ConwayPhase2",
-    "object ledger.era.rules.ScriptsTold"
+    "object ledger.era.rules.ScriptsTold",
+    "def ledger.era.rules.ConwayPhase2.footprint",
+    "def ledger.era.rules.ConwayPhase2.places",
+    "def ledger.era.rules.ConwayPhase2.redeeming",
+    "def ledger.era.rules.ConwayPhase2.txId"
+   ]
+  },
+  {
+   "reason": "the contract of a block body whose Plutus scripts the node evaluates in bounded parallel workers after an ordered preparation (ADR 0018, Scarab's own: the reference evaluates them where it collects them): a body program and its plan (Phase2.Program, Phase2.Plan) that the node's one scheduler runs, each plan's completions of its own type so that another plan's do not type-check, the sealed recorder of a preparation's jobs (Phase2.Recorder, captured, the flat rules' Preparation), the dependency graph over transactions' footprints (TxDependencies.Footprint, levelsOf, scheduled), and the capability through which an era's UTXOS evaluates a transaction's collected scripts, now or deferred into a preparation with no verdict (Phase2Deferral, #85)",
+   "definitions": [
+    "class ledger.Phase2.Recorder",
+    "class ledger.rules.TxDependencies.Footprint",
+    "def ledger.Phase2.Plan#batches",
+    "def ledger.Phase2.Plan#execute",
+    "def ledger.Phase2.Plan#resolve",
+    "def ledger.Phase2.Program#hasScripts",
+    "def ledger.Phase2.Program#prepare",
+    "def ledger.Phase2.Program#serial",
+    "def ledger.Phase2.Program#worthwhile",
+    "def ledger.Phase2.Recorder#append",
+    "def ledger.Phase2.captured",
+    "def ledger.era.Phase2Deferral#evalScripts",
+    "def ledger.era.Phase2Deferral.now",
+    "def ledger.rules.TxDependencies.Footprint.of",
+    "def ledger.rules.TxDependencies.levelsOf",
+    "def ledger.rules.TxDependencies.scheduled",
+    "object ledger.era.Phase2Deferral",
+    "object ledger.rules.TxDependencies.Footprint",
+    "trait ledger.Phase2.Plan",
+    "trait ledger.Phase2.Program",
+    "trait ledger.era.Phase2Deferral",
+    "type ledger.Phase2.Plan#Completed",
+    "type ledger.Phase2.Plan#Job",
+    "type ledger.Phase2.Preparation",
+    "class ledger.rules.EraBlock.Plan#Completed",
+    "type ledger.rules.EraBlock.Plan#Job"
    ]
   },
   {

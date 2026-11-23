@@ -6,25 +6,27 @@ import cats.effect.std.Semaphore
 import cats.syntax.all.*
 import cats.effect.syntax.all.*
 import xyz.kd5ujc.scarab.codec.DomainError
-import xyz.kd5ujc.scarab.ledger.rules.EraBlock
+import xyz.kd5ujc.scarab.ledger.Phase2
 
 /** One node-wide admission bound, shared by all callers. Only immutable evaluator requests enter
-  * workers; ledger changes and observations land in transaction order in the caller's fiber.
+  * workers; ledger changes and observations land in transaction order in the caller's fiber. Any
+  * body program ([[Phase2.Program]]) runs here: the flat rules' (`EraBlock.Body`) and an era block
+  * run's (`ConwayBlockRun.Body`).
   */
 final class ParallelPlutus[F[_]: Async] private (
     workers: ParallelPlutus.Workers,
     permits: Semaphore[F]
 ):
-  private def serial(body: EraBlock.Body): F[EraBlock.Outcome] =
+  private def serial[A](body: Phase2.Program[A]): F[A] =
     if body.hasScripts then permits.permit.use(_ => Async[F].blocking(body.serial))
     else Async[F].delay(body.serial)
 
-  def apply(body: EraBlock.Body): F[EraBlock.Outcome] =
+  def apply[A](body: Phase2.Program[A]): F[A] =
     if workers.value == 1 || !body.worthwhile then serial(body)
     else
       Async[F].delay(body.prepare).flatMap { plan =>
         plan.batches
-          .foldLeftM(Vector.empty[xyz.kd5ujc.scarab.ledger.Phase2.Completed]) { (done, batch) =>
+          .foldLeftM(Vector.empty[plan.Completed]) { (done, batch) =>
             batch
               .parTraverseN(workers.value) { job =>
                 // blocking, rather than interruptible: cancellation joins the VM before giving

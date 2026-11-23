@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.preview
 
-import xyz.kd5ujc.scarab.protocol.ReferenceBuild
+import xyz.kd5ujc.scarab.protocol.{ReferenceBuild, StateLayout}
 import cats.effect.IO
 import cats.mtl.Handle
 import cats.syntax.all.*
@@ -288,6 +288,11 @@ object RecordedReplay extends munit.Assertions:
                   .traverse(n => ParallelPlutus.create[IO](n).map(n.value -> _))
                 modes = (0 -> Option.empty[ParallelPlutus[IO]]) +: services
                   .map((n, s) => n -> Some(s))
+                bodies <- config.eraBodies
+                  .traverse(timing => ParallelPlutus.create[IO](timing.workers).map(timing -> _))
+                layout <- IO(
+                  StateLayout.of(ReferenceBuild.Default).fold(e => fail(e.toString), identity)
+                )
                 finalPair <- selected.zipWithIndex.foldLeftM(
                   (
                     initial.state,
@@ -311,6 +316,24 @@ object RecordedReplay extends munit.Assertions:
                     _ <- IO(
                       record.check(block.header, blockSha).fold(e => fail(e.toString), identity)
                     )
+                    // the bodies first, on the store as it is before the block
+                    _ <- bodies.traverse_ { (timing, service) =>
+                      EraBodies
+                        .measure(
+                          setup,
+                          layout,
+                          store,
+                          state,
+                          block,
+                          raw,
+                          service,
+                          timing.rounds,
+                          index
+                        )
+                        .flatMap(
+                          _.traverse_(writeLine(config.output.resolve("era-bodies.jsonl"), _))
+                        )
+                    }
                     original <- validate(setup, store, state, block, raw, None, config.trace)
                     (serialState, trace, originalNanos) = original
                     measuredModes = config.schedule match

@@ -18,6 +18,7 @@ import xyz.kd5ujc.scarab.ledger.{
 }
 import xyz.kd5ujc.scarab.ledger.era.*
 import xyz.kd5ujc.scarab.ledger.era.conway.ConwayPlutusPurpose
+import xyz.kd5ujc.scarab.ledger.rules.TxDependencies
 import xyz.kd5ujc.scarab.ledger.state.{Conway, LedgerState}
 import xyz.kd5ujc.scarab.plutus.{EvalFailure, EvalResult}
 import xyz.kd5ujc.scarab.protocol.Era
@@ -251,3 +252,51 @@ object ConwayPhase2:
               Phase2.Failure(r, request, reason)
           })
           .fold[Phase2.Outcome](Phase2.Outcome.Passed(report))(Phase2.Outcome.Failed(report, _))
+
+  /** The id of `tx`, its body's hash. */
+  def txId(tx: Tx[TxLevel.Top, Conway]): Bytes =
+    val t = EraTx.conway
+    EraTxBody.conway.id[TxLevel.Top](t.body[TxLevel.Top](tx)(using t.bodyOf.top))(using
+      t.bodyOf.top
+    )
+
+  /** The place of each transaction of `txs` among them by its id, the first where two share one,
+    * which a block whose rules defer the second's scripts never has: its inputs were spent.
+    */
+  def places(txs: Vector[Tx[TxLevel.Top, Conway]]): Map[Bytes, Int] =
+    txs.zipWithIndex.foldLeft(Map.empty[Bytes, Int]) { case (places, (tx, index)) =>
+      val id = txId(tx)
+      if places.contains(id) then places else places.updated(id, index)
+    }
+
+  /** Whether `tx` 's witnesses hold a redeemer: a transaction whose scripts a block's preparation
+    * can defer.
+    */
+  def redeeming(tx: Tx[TxLevel.Top, Conway]): Boolean =
+    val t = EraTx.conway
+    t.witsOf.rdmrsTxWits(t.wits[TxLevel.Top](tx)(using t.bodyOf.top)).entries.nonEmpty
+
+  /** What `tx` does to the UTxO set, as the dependency graph of a prepared block reads it
+    * (`TxDependencies.Footprint`, the flat transaction's `Footprint.of`): its inputs, reference
+    * inputs and collateral inputs read; flagged valid, its inputs consumed and its outputs created,
+    * flagged invalid its collateral consumed and its collateral return created
+    * (`mkCollateralTxIn`).
+    */
+  def footprint(tx: Tx[TxLevel.Top, Conway]): TxDependencies.Footprint =
+    val t = EraTx.conway
+    val b = EraTxBody.conway
+    given t.bodyOf.Level[TxLevel.Top] = t.bodyOf.top
+    val body = t.body[TxLevel.Top](tx)
+    val id = b.id[TxLevel.Top](body)
+    val (inputs, collateral) = (b.inputs[TxLevel.Top](body), b.collateralInputs(body))
+    val outputs = b.outputs[TxLevel.Top](body)
+    val reads = inputs ++ b.referenceInputs[TxLevel.Top](body) ++ collateral
+    t.isValid(tx) match
+      case IsPhase2Valid.Phase2Valid =>
+        TxDependencies.Footprint(reads, inputs, TxIn.txouts(id, outputs).map(_._1))
+      case IsPhase2Valid.Phase2Invalid =>
+        TxDependencies.Footprint(
+          reads,
+          collateral,
+          TxIn.collOuts(id, outputs.size, b.collateralReturn(body)).toVector.map(_._1)
+        )
