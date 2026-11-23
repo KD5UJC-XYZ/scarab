@@ -2677,8 +2677,8 @@ Conway's rules on the classes follow as the rest of stage 2.
     https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7104253607, point 2, on the gap of
     https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7084209535): under every failure accumulated
     (`ValidateAll`, #1328's run), a later transaction of a block can raise a defect after an earlier one was refused:
-    a stored output the era does not read where LEDGERS reads the transaction's inputs, collateral and reference
-    inputs, a phase-1 script the decoder cannot judge, a ledger or governance defect. A phase-2 script is not
+    a stored output the era does not read where LEDGERS first reads it (a collateral input), a phase-1 script the
+    decoder cannot judge, a ledger or governance defect. A phase-2 script is not
     evaluated once a failure is recorded (`whenFailureFree`), so a script with no verdict never follows one. The
     established refusal wins: the run refuses the block on the failures recorded up to the defect
     (`ConwayBlockRun.Refusal.Stopped`), as the reference, which has no such defect, refuses it, and keeps the defect,
@@ -2692,7 +2692,10 @@ Conway's rules on the classes follow as the rest of stage 2.
     `ConwayBbodySuite` shows it with an earlier missing input and then a damaged collateral output or a reference
     script the decoder gives no verdict on, each alone first (no verdict), and after deferred scripts flagged valid
     and invalid, through the node's bounded workers too. The node routes neither yet; the switch routes the
-    refusal as any refused block.
+    refusal as any refused block. Remaining difference: BBODY reads every transaction's inputs and reference inputs
+    into the era before LEDGERS judges any (for the reference scripts' size), so a later transaction's input or
+    reference input the era does not read is raised with nothing recorded and the block is withheld, where the
+    reference refuses it on the earlier transaction; `ConwayBbodySuite` pins it.
 - **Dijkstra's BBODY** (`era/EraBlock.scala`, `era/dijkstra/DijkstraBlock.scala`, `era/rules/BbodyFailures.scala`,
   `era/rules/DijkstraBbody.scala`; `Rules/Bbody.hs` of `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/`, cardano-ledger
   9df9f98c, with the predicates of Shelley's, Alonzo's and Conway's BBODY it runs):

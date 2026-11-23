@@ -1852,6 +1852,18 @@ class ConwayBbodySuite extends FailsOnUncaught:
     )
     built(body, B.witnesses(body, Vector(payer)))
 
+  /** A payment reading the damaged output as a reference input, which BBODY reads into the era
+    * before LEDGERS, for the reference scripts' size.
+    */
+  private lazy val damagedReference: Built =
+    val body = B.body(
+      0 -> B.set(in(withDamaged, 1)),
+      1 -> B.arr(paid(17000000)),
+      2 -> B.uint(3000000),
+      18 -> B.set(in(withDamaged, 3))
+    )
+    built(body, B.witnesses(body, Vector(payer)))
+
   /** A payment creating an output with a reference script, which UTXOW asks the decoder about. */
   private lazy val referenceScriptOut: Built =
     val body = B.body(
@@ -1927,6 +1939,16 @@ class ConwayBbodySuite extends FailsOnUncaught:
       assert(alone.eraRun.left.exists(unreadable), s"${txs.size}: ${alone.eraRun}")
       assertEquals(alone.eraRefusal, None, s"${txs.size}")
     }
+    // a gap: the damaged output as a later transaction's reference input (or input) is read by
+    // BBODY before LEDGERS judges any transaction, so nothing is recorded before the defect and the
+    // block is withheld, though the reference refuses it on the earlier transaction
+    val early = judge(
+      third,
+      blockOf(Vector(missingInput, damagedReference)),
+      change = holding(withDamaged)
+    )
+    assert(early.eraRun.left.exists(unreadable), s"${early.eraRun}")
+    assertEquals(early.eraRefusal, None)
     // the prepared plan's result is the serial run's in each (`judge`'s `samePlanned`)
   }
 
@@ -1964,9 +1986,11 @@ class ConwayBbodySuite extends FailsOnUncaught:
     // the script transaction flagged valid: no failure before the defect, so no verdict; flagged
     // invalid, its script passes, a failure the preparation does not record (its verdict lands
     // later), so the plan's result is the serial run's refusal, stopped by the defect; and a
-    // phase-1 refusal after it, which the preparation records too
+    // phase-1 refusal after it, which the preparation records too; and both, the mismatch, which
+    // only the serial run records, before the phase-1 refusal
     val mismatch = failuresOf(Vector(passingScript), invalid = Vector(0))
     val missing = failuresOf(Vector(passingScript, missingInput))
+    val both = failuresOf(Vector(passingScript, missingInput), invalid = Vector(0))
     Vector[(String, Vector[Built], Vector[Int], Option[Vector[BbodyPredFailure[Conway]]])](
       ("flagged valid", Vector(passingScript, damagedCollateral), Vector.empty, None),
       ("flagged invalid", Vector(passingScript, damagedCollateral), Vector(0), Some(mismatch)),
@@ -1975,9 +1999,20 @@ class ConwayBbodySuite extends FailsOnUncaught:
         Vector(passingScript, missingInput, damagedCollateral),
         Vector.empty,
         Some(missing)
+      ),
+      (
+        "flagged invalid, then a phase-1 refusal",
+        Vector(passingScript, missingInput, damagedCollateral),
+        Vector(0),
+        Some(both)
       )
     ).traverse_ { (what, txs, invalid, failures) =>
-      val j = judge(third, blockOf(txs, invalid = invalid), change = holding(withDamaged))
+      val j = judge(
+        third,
+        blockOf(txs, invalid = invalid),
+        change = holding(withDamaged),
+        observe = true
+      )
       assertEquals(j.deferred.flatten, Vector(0), what)
       failures match
         case None     => assert(j.eraRun.left.exists(unreadable), s"$what: ${j.eraRun}")
