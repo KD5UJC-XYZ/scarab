@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.node
 
 import xyz.kd5ujc.scarab.ledger.OfferedPart
-import cats.effect.{IO, Resource}
+import cats.effect.{Deferred, IO, Resource}
 import cats.effect.std.AtomicCell
 import cats.mtl.{Handle, Raise}
 import cats.syntax.all.*
@@ -205,23 +205,35 @@ class LeiosNotifyRelaySuite extends FailsOnUncaught:
 
   test("a wake left by a reply already taken does not hide a reply queued after it") {
     // `next` retries until a reply is queued (`NodeToNode.hs` 830-836 at ouroboros-consensus
-    // 2416493b): the first reply is taken without a wait, leaving its wake, which a later `next`
-    // consumes and looks again; the second reply still reaches it
+    // 2416493b): the first reply is taken without a wait, leaving its wake; a later `next` finds the
+    // queue empty, takes that wake, looks again and waits, and the second reply still reaches it
     val p = first.fields.point
     val queued =
       (o: LeiosNotifyOutgoing, r: Reply) => (o.copy(messages = o.messages.enqueue(r)), ())
     for
-      cell <- LeiosNotifyOutgoing.Cell.of[IO](one)
-      _ <- cell.modify(queued(_, Reply.BlockOffer(p, word32(5))))
-      taken <- cell.poll
-      waiting <- cell.next.start
-      _ <- cell.modify(queued(_, Reply.BlockTxsOffer(p)))
-      second <- waiting.joinWithNever
-      empty <- cell.poll
-    yield
-      assertEquals(taken, Some(Reply.BlockOffer(p, word32(5))))
-      assertEquals(second, Reply.BlockTxsOffer(p))
-      assertEquals(empty, None)
+      release <- Deferred[IO, Unit]
+      program = for
+        cell <- LeiosNotifyOutgoing.Cell.of[IO](one)
+        _ <- cell.modify(queued(_, Reply.BlockOffer(p, word32(5))))
+        taken <- cell.poll
+        waiting <- cell.next.start
+        _ <- release.get
+        _ <- cell.modify(queued(_, Reply.BlockTxsOffer(p)))
+        second <- waiting.joinWithNever
+        empty <- cell.poll
+      yield (taken, second, empty)
+      control <- cats.effect.testkit.TestControl.execute(program)
+      // every fiber runs to where it waits: `next` past the stale wake, at an empty queue
+      _ <- control.tick
+      _ <- release.complete(())
+      _ <- control.tick
+      result <- control.results
+    yield result match
+      case Some(cats.effect.Outcome.Succeeded((taken, second, empty))) =>
+        assertEquals(taken, Some(Reply.BlockOffer(p, word32(5))))
+        assertEquals(second, Reply.BlockTxsOffer(p))
+        assertEquals(empty, None)
+      case other => fail(s"the program did not end: $other")
   }
 
   // --- the central relay ---

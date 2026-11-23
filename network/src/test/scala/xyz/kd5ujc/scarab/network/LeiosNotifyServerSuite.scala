@@ -83,6 +83,47 @@ class LeiosNotifyServerSuite extends FailsOnUncaught:
       yield (ended, result)
     }
 
+  /** Replies whose `poll` and `next` are given, which count no request and pump nothing. */
+  private def answering(polled: IO[Option[Reply]], nexted: IO[Reply]): Replies[IO] =
+    new Replies[IO]:
+      def requested: IO[Requested] = IO.pure(Requested.NotExcessive)
+      def next: IO[Reply] = nexted
+      def poll: IO[Option[Reply]] = polled
+      def pump: IO[Unit] = IO.never
+
+  private val untouched: IO[Nothing] = IO.raiseError(new AssertionError("the queue was read"))
+
+  test("once the client quit, the responder answers MsgCanceled without reading the queue") {
+    // `orElse` 's first branch (LeiosDemoOnlyTestNotify.hs 647-655 at ouroboros-consensus 2416493b)
+    for
+      quit <- Deferred[IO, Unit]
+      _ <- quit.complete(())
+      answered <- LeiosNotifyServer.answer(quit, answering(untouched, untouched))
+    yield assertEquals(answered, LeiosNotifyServer.Answer.Canceled)
+  }
+
+  test("with no quit, a reply already queued is answered without waiting for the next") {
+    for
+      quit <- Deferred[IO, Unit]
+      answered <- LeiosNotifyServer.answer(
+        quit,
+        answering(IO.pure(Some(Reply.BlockTxsOffer(point))), untouched)
+      )
+    yield assertEquals(answered, LeiosNotifyServer.Answer.Replied(Reply.BlockTxsOffer(point)))
+  }
+
+  test("a reply the next gives once the client has quit is answered with MsgCanceled") {
+    // the quit checked again once `next` has given its reply: `orElse` decides at its commit, the
+    // quit first, so a reply that comes with the quit is no answer
+    for
+      quit <- Deferred[IO, Unit]
+      answered <- LeiosNotifyServer.answer(
+        quit,
+        answering(IO.pure(None), quit.complete(()).as(Reply.BlockTxsOffer(point)))
+      )
+    yield assertEquals(answered, LeiosNotifyServer.Answer.Canceled)
+  }
+
   test("a reply taken after the client quit is answered with MsgCanceled") {
     // `responder`'s `orElse` tries the quit before `next` in the one transaction that commits the
     // answer (LeiosDemoOnlyTestNotify.hs 647-655 at ouroboros-consensus 2416493b): the sender finds

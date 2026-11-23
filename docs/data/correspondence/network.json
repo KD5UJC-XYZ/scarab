@@ -1676,8 +1676,50 @@
     "LeiosFetchRegistrationSuite",
     "LeiosNotifyRelaySuite"
    ],
-   "note": "each request counted by the replies' incr and held, the client's next message read ahead, a sender answering the held requests in order with the replies' next, or MsgCanceled once the client quit (responder's orElse, the quit first), a reply queued already taken without a wait (poll) and any reply taken sent only if the quit has not come by then, as orElse decides at its commit; MsgQuit answered once every held request is (drain) by MsgDone; incr's ExcessiveRequests a typed end; the pump raced with the conversation, as withAsync pump with link runs it (aLeiosNotifyServer, NodeToNode.hs 1891-1909)",
-   "digest": "9afb57e0ef9da7c4"
+   "note": "each request counted by the replies' incr and held, the client's next message read ahead, a sender answering the held requests in order with what answer chooses for each (responder); MsgQuit answered once every held request is (drain) by MsgDone; incr's ExcessiveRequests a typed end; the pump raced with the conversation, as withAsync pump with link runs it (aLeiosNotifyServer, NodeToNode.hs 1891-1909)",
+   "digest": "7a519e242782314a"
+  },
+  "enum network.LeiosNotifyServer.Answer": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoOnlyTestNotify.hs",
+     "symbol": "responder",
+     "lines": [
+      647,
+      655
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "LeiosNotifyServerSuite"
+   ],
+   "note": "the two SenderYield branches of responder, MsgCanceled or a reply of the queue, as a value answer gives the sender",
+   "digest": "3e6feced7325e8ed"
+  },
+  "def network.LeiosNotifyServer.answer": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoOnlyTestNotify.hs",
+     "symbol": "responder",
+     "lines": [
+      647,
+      655
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "LeiosNotifyServerSuite"
+   ],
+   "note": "responder's orElse as effects: MsgCanceled once the client quit, else a reply queued already (poll), else the next reply raced with the quit; any reply taken answered only if the quit has not come by then, so the quit wins as orElse decides at its commit",
+   "digest": "62166869c227efd4"
   },
   "val network.LeiosNotifyServer.PipelineDepth": {
    "upstream": [

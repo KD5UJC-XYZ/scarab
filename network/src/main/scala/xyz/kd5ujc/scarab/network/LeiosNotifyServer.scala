@@ -58,6 +58,33 @@ object LeiosNotifyServer:
     def poll: F[Option[Reply]]
     def pump: F[Unit]
 
+  /** What `responder` answers a held request with (`LeiosDemoOnlyTestNotify.hs` 647-655 at
+    * ouroboros-consensus 2416493b): `MsgCanceled`, or a reply of the queue.
+    */
+  private[network] enum Answer derives CanEqual:
+    case Canceled
+    case Replied(reply: Reply)
+
+  /** `responder` 's choice: once the client quit, `MsgCanceled`; else a reply queued already, or
+    * the next reply, or `MsgCanceled` if the quit comes first. A reply taken is answered only if
+    * the quit has not come by then, so the quit wins as `orElse` 's first branch does at its
+    * commit; the reply it displaces goes with the queue, which no request reads after the quit.
+    */
+  private[network] def answer[F[_]](quit: Deferred[F, Unit], replies: Replies[F])(using
+      F: Concurrent[F]
+  ): F[Answer] =
+    def unlessQuit(taken: Reply): F[Answer] =
+      quit.tryGet.map(_.fold(Answer.Replied(taken))(_ => Answer.Canceled))
+    quit.tryGet.flatMap {
+      case Some(_) => F.pure(Answer.Canceled)
+      case None =>
+        replies.poll.flatMap {
+          case Some(queued) => unlessQuit(queued)
+          case None =>
+            F.race(quit.get, replies.next).flatMap(_.fold(_ => F.pure(Answer.Canceled), unlessQuit))
+        }
+    }
+
   /** Replies with nothing to notify: the requests are counted and none is answered. */
   def silent[F[_]](depth: Int = PipelineDepth)(using F: Concurrent[F]): F[Replies[F]] =
     Ref.of[F, Int](0).map { credits =>
@@ -90,21 +117,9 @@ object LeiosNotifyServer:
       case Reply.Votes(votes) => F.pure(LeiosNotify.Message.Votes(votes, votes.map(_.encode)))
     (Deferred[F, Unit], Queue.unbounded[F, Unit], SignallingRef.of[F, Long](0L)).flatMapN {
       (quit, held, answered) =>
-        // `responder`: once the client quit, `MsgCanceled`; else a reply queued already, or the next
-        // reply, or `MsgCanceled` if the quit comes first. A reply taken is sent only if the quit has
-        // not come by then, so the quit wins as `orElse` 's first branch does at its commit; the reply
-        // it displaces goes with the queue, which no request reads after the quit
-        def unlessQuit(taken: Reply): F[LeiosNotify.Message] =
-          quit.tryGet.flatMap(_.fold(message(taken))(_ => F.pure(LeiosNotify.Message.Canceled)))
-        val reply: F[LeiosNotify.Message] = quit.tryGet.flatMap {
-          case Some(_) => F.pure(LeiosNotify.Message.Canceled)
-          case None =>
-            replies.poll.flatMap {
-              case Some(queued) => unlessQuit(queued)
-              case None =>
-                F.race(quit.get, replies.next)
-                  .flatMap(_.fold(_ => F.pure(LeiosNotify.Message.Canceled), unlessQuit))
-            }
+        val reply: F[LeiosNotify.Message] = answer(quit, replies).flatMap {
+          case Answer.Canceled       => F.pure(LeiosNotify.Message.Canceled)
+          case Answer.Replied(taken) => message(taken)
         }
         // the sender thread: one reply per held request, in the order they arrived
         val sender: F[Unit] =

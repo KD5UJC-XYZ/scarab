@@ -94,9 +94,9 @@ object LeiosNotifyPipelined:
           // `checkDone` (the stop, then the forecast, then the depth) and the wait for a reply at the
           // depth, which the reference reads in one transaction that retries until they hold
           // (`NodeToNode.hs` 645-659 and `LeiosDemoOnlyTestNotify.hs` 549-582). Here the stop first,
-          // then a place below the depth, then the gate, read once there is room, so a request is
-          // sent only while the gate holds as the room comes; a closed gate is waited for against
-          // the stop, an open one is not waited for
+          // then a place below the depth, then the gate, observed open once there is room: a closed
+          // gate is waited for against the stop, an open one is not waited for, and it may close
+          // again before the request goes, as it may in the reference once its transaction commits
           val gated: F[Gated] = gate.get.flatMap { open =>
             if open then F.pure(Gated.Open)
             else

@@ -113,10 +113,11 @@ object LeiosNotifyOutgoing:
   /** `emptyOutgoingLeiosNotify`, with no credit. */
   val empty: LeiosNotifyOutgoing = LeiosNotifyOutgoing(0, Fifo.empty, SortedMap.empty)
 
-  /** One peer's queue, the `TVar` of `OutgoingLeiosNotify` (`NodeToNode.hs` 408-428): changed only
-    * through [[modify]], which wakes a [[next]] that waits whenever it leaves a reply queued, in
-    * the same step as the change, which no cancellation splits, so a reply queued is never missed.
-    * A wake left over makes a later wait look again, and find what the state holds.
+  /** One peer's queue, the `TVar` of `OutgoingLeiosNotify` (`NodeToNode.hs` 408-428): a reply is
+    * queued only through [[modify]], which wakes a [[next]] that waits whenever it leaves a reply
+    * queued, in the same step as the change, which no cancellation splits, so a reply queued is
+    * never missed; [[poll]] and [[next]] take one. A wake left over makes a later wait look again,
+    * and find what the state holds.
     */
   final class Cell[F[_]] private (state: Ref[F, LeiosNotifyOutgoing], wake: Queue[F, Unit])(using
       F: Concurrent[F]
