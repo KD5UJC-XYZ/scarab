@@ -98,9 +98,9 @@ class TxSubmitPeerSuite extends FailsOnUncaught:
       assertEquals(unknown, None)
   }
 
-  test("only an offering whose every body was sent ends in success") {
-    assertEquals(Outcome.Sent(ended = true).exitCode, ExitCode.Success)
-    assertEquals(Outcome.Sent(ended = false).exitCode, ExitCode.Success)
+  test("only an offering the peer confirmed by the protocol's end succeeds") {
+    assertEquals(Outcome.Sent.exitCode, ExitCode.Success)
+    assertEquals(Outcome.Unconfirmed.exitCode, ExitCode.Error)
     assertEquals(Outcome.Ended(Right(())).exitCode, ExitCode.Error)
     assertEquals(Outcome.Ended(Left(NetworkError.IngressLimit(4, 1L))).exitCode, ExitCode.Error)
     assertEquals(Outcome.TimedOut(10L).exitCode, ExitCode.Error)

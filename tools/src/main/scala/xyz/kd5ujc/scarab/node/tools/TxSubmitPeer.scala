@@ -84,7 +84,7 @@ object TxSubmitPeer extends IOApp:
   /** The transactions to offer, at least one, no two with the same id, in offering order. */
   final class Batch private (val txs: NonEmptyVector[Signed]):
     /** The bytes of every body, which the replies send in all. */
-    def bytes: Long = txs.foldLeft(0L)(_ + _.original.size)
+    val bytes: Long = txs.foldLeft(0L)(_ + _.original.size)
 
   object Batch:
     def of(txs: Vector[Signed]): Either[Unreadable, Batch] =
@@ -158,8 +158,15 @@ object TxSubmitPeer extends IOApp:
 
   /** How an offering ended. */
   enum Outcome:
-    /** Every body was sent; the protocol then ended with `MsgDone`, or the peer did not let it. */
-    case Sent(ended: Boolean)
+    /** Every body was sent and the protocol then ended with `MsgDone`, which the peer allows only
+      * from a blocking request: it read every reply before it.
+      */
+    case Sent
+
+    /** Every body was queued, but the protocol's end, which would confirm the peer read them, did
+      * not come in time.
+      */
+    case Unconfirmed
 
     /** The protocol or the connection ended first. */
     case Ended(result: Either[NetworkError, Unit])
@@ -168,8 +175,8 @@ object TxSubmitPeer extends IOApp:
     case TimedOut(sent: Long)
 
     def exitCode: ExitCode = this match
-      case Sent(_)                => ExitCode.Success
-      case Ended(_) | TimedOut(_) => ExitCode.Error
+      case Sent                                 => ExitCode.Success
+      case Unconfirmed | Ended(_) | TimedOut(_) => ExitCode.Error
 
   def run(args: List[String]): IO[ExitCode] = args match
     case host :: port :: magic :: build :: era :: seconds :: paths if paths.nonEmpty =>
@@ -225,15 +232,17 @@ object TxSubmitPeer extends IOApp:
     IO.println(
       s"offered ${batch.txs.length} transactions (${batch.bytes} bytes) in ${took.toMillis} ms: " +
         (outcome match
-          case Outcome.Sent(true)       => "every body sent, protocol ended"
-          case Outcome.Sent(false)      => "every body sent; the peer did not let the protocol end"
+          case Outcome.Sent        => "every body sent, protocol ended"
+          case Outcome.Unconfirmed => "every body queued; the protocol's end did not come in time"
           case Outcome.Ended(Right(())) => "the peer ended the protocol before every body was asked"
           case Outcome.Ended(Left(error)) => s"the connection failed: ${error.message}"
           case Outcome.TimedOut(sent) =>
             s"time ran out with $sent of ${batch.bytes} body bytes sent")
     )
 
-  /** One deadline, `limit`, for the whole offering: the replies, then the protocol's end. */
+  /** One deadline, `limit`, for the whole offering: the connection, the handshake, the replies and
+    * the protocol's end. The connection's closure is watched throughout.
+    */
   private def offer(
       peer: SocketAddress[Host],
       magic: Long,
@@ -277,21 +286,20 @@ object TxSubmitPeer extends IOApp:
                     served = Some(served)
                   )
                 ).tupled.use { (_, running) =>
-                  remaining.flatMap(left =>
-                    IO.race(all.get, ended.get)
-                      .map(Some(_))
-                      .timeoutTo(left, IO.pure(None))
-                      .flatMap {
-                        case Some(Left(())) =>
-                          remaining.flatMap(running.finish).map(Outcome.Sent(_))
-                        case Some(Right(result)) => IO.pure(Outcome.Ended(result))
-                        case None                => sent.get.map(Outcome.TimedOut(_))
-                      }
-                  )
+                  val stopped: IO[Either[NetworkError, Unit]] =
+                    IO.race(ended.get, mux.closed).map(_.fold(identity, Left(_)))
+                  IO.race(all.get, stopped).flatMap {
+                    case Left(()) =>
+                      remaining
+                        .flatMap(running.finish)
+                        .map(if _ then Outcome.Sent else Outcome.Unconfirmed)
+                    case Right(result) => IO.pure(Outcome.Ended(result))
+                  }
                 }
               yield outcome
             }
           }
           .rescue(e => IO.pure(Outcome.Ended(Left(e))))
+          .timeoutTo(limit, sent.get.map(Outcome.TimedOut(_)))
       }
 end TxSubmitPeer
