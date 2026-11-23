@@ -181,6 +181,7 @@ object EraBodies:
                             case _ => false
                     case _ => false
                 }
+                // where the two sides differ, the row says what each came to, for the reader
                 Json.obj(
                   "slot" -> header.slot.asJson,
                   "block" -> header.blockNo.asJson,
@@ -188,7 +189,6 @@ object EraBodies:
                   "transactions" -> txs.size.asJson,
                   "redeeming" -> redeeming.asJson,
                   "eraAgreesWithFlat" -> sameAsFlat.asJson,
-                  // where they differ, what each came to, for the reader
                   "differs" -> Option
                     .when(sameAsFlat.contains(false))(
                       Json.obj(
