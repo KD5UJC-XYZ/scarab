@@ -964,6 +964,44 @@ object MempoolState:
     }
     (done.kept, done.withheld)
 
+  /** The held Conway transactions of `entries` that still apply on `ledger`, the ledger state
+    * ticked to the slot being forged, in order, each applied again at that slot (`env`) as the
+    * build's consensus applies it ([[ConwayPoolLedger.reapplied]]: 11.1's `reapplyTx`, 11.2's and
+    * the Leios build's `reapplyValidatedTx`) on the state the ones before it left
+    * (`implGetSnapshotFor`, ouroboros-consensus 82ecba32 `Mempool/Query.hs:14-55`, and
+    * `computeSnapshot`, `Mempool/Impl/Common.hs:459-484`, whose `reapplyTxs @Discard` leaves out
+    * the transactions that no longer apply), and those the rules have no verdict on, which the
+    * forger withdraws from the pool (issue 584). Which is which is the type of the run's outcome: a
+    * defect of Conway's rules or an exception of the rules ([[Rejection.RulesDefect]]) is no
+    * verdict, a refusal leaves the transaction out of the snapshot and in the pool, which its next
+    * revalidation drops. The reference keeps the pool's own snapshot when the slot and the tip are
+    * the pool's (`Query.hs:29-36`); this always revalidates, as [[dijkstraSnapshot]] does.
+    */
+  def conwaySnapshot(
+      entries: Vector[Entry],
+      ledger: ConwayPoolLedger,
+      env: ConwayPoolEnv
+  ): (Vector[(Entry, ConwayAdmitted)], Vector[(Entry, Rejection)]) =
+    final case class Acc(
+        ledger: ConwayPoolLedger,
+        kept: Vector[(Entry, ConwayAdmitted)],
+        withheld: Vector[(Entry, Rejection)]
+    )
+    val done = entries.foldLeft(Acc(ledger, Vector.empty, Vector.empty)) { (acc, entry) =>
+      entry.held match
+        case Held.InConway(admitted) =>
+          judging(acc.ledger.reapplied(admitted, env)) match
+            case Right(Right(next)) =>
+              acc.copy(ledger = next, kept = acc.kept :+ (entry -> admitted))
+            case Right(Left(_))  => acc
+            case Left(noVerdict) => acc.copy(withheld = acc.withheld :+ (entry -> noVerdict))
+        // a Conway block takes Conway transactions: the pool's ledger is of the era of the slot
+        // after the tip, so a pool behind the crossing holds those of the era before, and one in
+        // Dijkstra (the Leios build) none of Conway
+        case Held.Flat(_, _, _) | Held.InDijkstra(_) => acc
+    }
+    (done.kept, done.withheld)
+
   /** A submitted transaction is read as the reference's mempool reads it, with no budget but its
     * size (`unwrapCBORinCBOR (eraDecoder @era decCBOR)`, `Shelley/Ledger/Mempool.hs:261-266`,
     * ouroboros-consensus 82ecba32): its channel bounds the bytes and the rules its size

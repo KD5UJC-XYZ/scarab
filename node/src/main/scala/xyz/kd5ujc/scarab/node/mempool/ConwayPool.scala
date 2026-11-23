@@ -24,10 +24,12 @@ import xyz.kd5ujc.scarab.plutus.ExUnits
 import xyz.kd5ujc.scarab.protocol.{Era, StateLayout}
 
 /** A Conway transaction as a client or a peer submitted it, read into the era's types in the layout
-  * of the pool's ledger: its parts as they were received, with the flag, the flat transaction they
-  * make (`Tx.fromBlock`), which the forger builds blocks of until its Conway path takes the era's
-  * (the switch's PR7, #85), and the transaction in Conway's types (`ConwayTx.decode`), which the
-  * rules judge. The three are set together ([[withIsValid]]), so they hold the same flag.
+  * of the pool's ledger: its parts as they were received, with the flag, which a block takes as
+  * they are ([[xyz.kd5ujc.scarab.node.forge.BlockBuilder.piece]]), the flat transaction they make
+  * (`Tx.fromBlock`), whose inputs the pool's read set takes ([[MempoolState.readSet]]) until the
+  * switch's last step removes the flat Conway wiring (#85), and the transaction in Conway's types
+  * (`ConwayTx.decode`), which the rules judge. The three are set together ([[withIsValid]]), so
+  * they hold the same flag.
   */
 final case class ConwayRead private (parts: Block.Transaction, flat: Tx, tx: ConwayTx):
   /** The id, the hash of the body. */
@@ -159,8 +161,18 @@ object ConwayPoolEnv:
     * geometry's slots ([[DijkstraPoolEnv.horizonOf]]).
     */
   def of(env: MempoolEnv, slot: BigInt): ConwayPoolEnv =
-    val clock =
+    of(
+      env,
+      slot,
       env.clock.fold(PosixClock.total(env.globals.systemStart, env.geometry))(_(Era.Conway))
+    )
+
+  /** The environment of a transaction judged at `slot` with the clock `clock`, which a forging
+    * snapshot gives: the era history of the chain the block of `slot` is forged on, as the block
+    * rules translate that block's time (`getSnapshotFor` of the ticked ledger state of the slot,
+    * ouroboros-consensus 82ecba32 `Mempool/Query.hs:14-55`).
+    */
+  def of(env: MempoolEnv, slot: BigInt, clock: PosixClock): ConwayPoolEnv =
     val (start, horizon) = DijkstraPoolEnv.horizonOf(clock, env.rules)
     ConwayPoolEnv(
       slot,
