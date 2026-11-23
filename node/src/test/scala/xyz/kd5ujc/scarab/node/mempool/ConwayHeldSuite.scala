@@ -5,7 +5,14 @@ import cats.data.{NonEmptyChain, NonEmptySet}
 import cats.syntax.all.*
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.{GovActionId, LedgerDefect, LedgerFailure, TxDefect, TxIn}
+import xyz.kd5ujc.scarab.ledger.{
+  GovActionId,
+  LedgerDefect,
+  LedgerFailure,
+  PeerError,
+  TxDefect,
+  TxIn
+}
 import xyz.kd5ujc.scarab.ledger.era.{
   EraTxError,
   IsPhase2Valid,
@@ -25,6 +32,8 @@ import xyz.kd5ujc.scarab.ledger.era.rules.{
 }
 import xyz.kd5ujc.scarab.ledger.state.{ChainAccountState, Coin, VocabError}
 import xyz.kd5ujc.scarab.network.{LocalTxSubmissionServer, NetworkError}
+import xyz.kd5ujc.scarab.network.selection.FailureClass
+import xyz.kd5ujc.scarab.node.{Disposition, FailurePolicy, Fault, Peer, SessionEnd}
 import xyz.kd5ujc.scarab.node.forge.BlockBuilder
 import xyz.kd5ujc.scarab.node.metrics.RejectionLabel
 import xyz.kd5ujc.scarab.node.ntc.ConwayFailureCbor
@@ -197,7 +206,7 @@ class ConwayHeldSuite extends FunSuite:
     unjudged.foreach { cause =>
       val expected = cause match
         case ConwayUnjudged.Projection(_) =>
-          Some(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(cause)))
+          Some(NetworkError.Unjudged(xyz.kd5ujc.scarab.protocol.Protocols.TxSubmission2, cause))
         case ConwayUnjudged.Unavailable(_) | ConwayUnjudged.UtxoState(_) | ConwayUnjudged.Gov(_) |
             ConwayUnjudged.ProposalsRead(_) | ConwayUnjudged.ProposalsWrite(_) =>
           None
@@ -207,6 +216,49 @@ class ConwayHeldSuite extends FunSuite:
         cause
       )
     }
+  }
+
+  test("every no verdict of ours that ends a peer's connection counts nothing against the peer") {
+    val named = LedgerFailure.Unavailable(
+      id,
+      xyz.kd5ujc.scarab.ledger.ScriptLocation.Phase2(
+        xyz.kd5ujc.scarab.ledger.Redeemer(0, 0, Bytes.empty, xyz.kd5ujc.scarab.plutus.ExUnits.zero)
+      ),
+      xyz.kd5ujc.scarab.plutus.EvalFailure.Unsupported(
+        xyz.kd5ujc.scarab.plutus.BackendFailure.StackExhausted
+      )
+    )
+    val unverifiable = LedgerFailure.Unverifiable(
+      id,
+      xyz.kd5ujc.scarab.ledger.ProviderDefect.Ed25519(
+        xyz.kd5ujc.scarab.crypto.witness.VerificationError.ImplementationFailure(
+          new IllegalStateException("provider broke")
+        )
+      )
+    )
+    // the flat eras' (a script the evaluator cannot judge, a crypto provider's failure), Dijkstra's
+    // and Conway's (the node's readings that disagree); Conway's unnamed script with no verdict is
+    // followed from the evaluator through the pool in `MempoolTimeoutsSuite`
+    Vector[Rejection](
+      Rejection.Ledger(named),
+      Rejection.Ledger(unverifiable),
+      Rejection.DijkstraUnjudged(
+        Some(id),
+        DijkstraUnjudged.Projection(EraTxError.ScriptsReadAgain)
+      ),
+      Rejection.ConwayUnjudged(Some(id), ConwayUnjudged.Projection(EraTxError.ScriptsReadAgain))
+    ).foreach { rejection =>
+      Mempool.peerConnectionEnd(rejection) match
+        case Some(closed @ NetworkError.Unjudged(_, _)) => ConwayHeldSuite.chargedTo(closed)
+        case other => fail(s"$rejection ends the connection with $other")
+    }
+    // the hard time limit ends it as the reference's `ExnMempoolTimeout` does, which its rethrow
+    // policy leaves to `ShutdownPeer`: the peer tried again after the error delay
+    val cut = MempoolTimeout(Some(id), scala.concurrent.duration.FiniteDuration(1, "s"))
+    Mempool.peerConnectionEnd(Rejection.TimedOut(cut)).map(Peer.networkFault) match
+      case Some(Fault.Failed(error)) =>
+        assertEquals(FailurePolicy.classify(error), FailureClass.Transient)
+      case other => fail(s"the cut-off ends the connection with $other")
   }
 
   test("Conway's refusal is sent in the era's encoding, and charges nothing") {
@@ -294,3 +346,18 @@ class ConwayHeldSuite extends FunSuite:
       sent.leftMap[LocalSubmission.NoReply](identity)
     )
   }
+
+object ConwayHeldSuite:
+  /** A connection ended by no verdict of the node's own, followed through the governor
+    * (`Peer.networkFault`, `FailurePolicy`): it counts nothing against the peer, and the session
+    * ends as for a backoff.
+    */
+  def chargedTo(closed: NetworkError.Unjudged)(using munit.Location): Unit =
+    Peer.networkFault(closed) match
+      case Fault.Failed(error @ PeerError.Unjudged(`closed`)) =>
+        munit.Assertions.assertEquals(FailurePolicy.classify(error), FailureClass.NotThePeers)
+        munit.Assertions.assertEquals(
+          FailurePolicy.disposition(SessionEnd.Failed(error)),
+          Disposition.Backoff
+        )
+      case other => munit.Assertions.fail(s"$closed is $other")

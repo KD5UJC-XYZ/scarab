@@ -49,6 +49,15 @@ enum NetworkError extends DomainError:
     */
   case NotKept(protocol: Int, after: ChainSync.Point)
 
+  /** The node reached no verdict on what the peer sent on `protocol` for a limit or a defect of its
+    * own (`cause`): a script its evaluator cannot judge, a crypto provider that failed, the node's
+    * two readings of a transaction that disagree. The connection closes, as the exception ends that
+    * mini-protocol's thread in the reference (network `RethrowPolicy.hs`: `ShutdownPeer`), and the
+    * node goes on; the peer, shown to have done nothing wrong, is not charged (owner decision
+    * 2026-10-28, issue 567), as for [[ServingDefect]].
+    */
+  case Unjudged(protocol: Int, cause: DomainError)
+
   /** Our BlockFetch server ended the connection over a range the peer asked for, for `refusal`, as
     * the reference's server throws for it (ouroboros-consensus 82ecba32,
     * `MiniProtocol/BlockFetch/Server.hs` 107-146): its mux stops on the exception and the
@@ -127,6 +136,8 @@ enum NetworkError extends DomainError:
     case StateAcquireFailure(point, flushed, pinned, selected) =>
       s"${Protocols.name(Protocols.LocalStateQuery)} acquired UTxO view at $point with stamp $pinned; expected $flushed..$selected"
     case BearerClosed(r) => s"connection closed: ${r.message}"
+    case Unjudged(p, cause) =>
+      s"${Protocols.name(p)}: the node has no verdict on the peer's message: $cause"
     case NotKept(p, after) =>
       s"${Protocols.name(p)}: the block after ${NetworkError.pointText(after)} is not kept: the node keeps no chain database"
     case RangeRefused(refusal) =>

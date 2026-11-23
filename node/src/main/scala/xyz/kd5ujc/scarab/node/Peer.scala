@@ -440,6 +440,9 @@ object Peer:
     // our own ChainSync server could not serve the peer's next block on this connection (#924):
     // the connection ends, and the peer is not charged (`FailurePolicy`)
     case cause: NetworkError.NotKept => Fault.Failed(PeerError.NotKept(cause))
+    // the node reached no verdict on the peer's message, for a limit or a defect of its own: the
+    // connection ends, and the peer is not charged (`FailurePolicy`)
+    case cause: NetworkError.Unjudged => Fault.Failed(PeerError.Unjudged(cause))
     // our own BlockFetch server ended the connection over the peer's range, as the reference's
     // server throws for it (`FailurePolicy`)
     case cause: NetworkError.RangeRefused => Fault.Failed(PeerError.RangeRefused(cause))

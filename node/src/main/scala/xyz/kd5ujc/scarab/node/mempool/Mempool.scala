@@ -225,16 +225,19 @@ object Mempool:
 
   /** How a peer's transaction ends its TxSubmission2 session, when it does: no verdict on it, so
     * the connection closes and the node goes on. A crypto provider or the evaluator that fails on
-    * it closes the connection with the failure; a decoder that threw is the connection's input
-    * defect (issue 465); rules that threw are the node's own failure while serving the peer, which
-    * is not charged (issue 564). A refusal, or any other answer, ends nothing.
+    * it, or the node's two readings of it that disagree, close the connection with no verdict of
+    * the node's own ([[NetworkError.Unjudged]]), which charges the peer nothing (issue 567); a
+    * decoder that threw is the connection's input defect (issue 465); rules that threw are the
+    * node's own failure while serving the peer, which is not charged (issue 564); the hard time
+    * limit closes it as the reference's `ExnMempoolTimeout` does. A refusal, or any other answer,
+    * ends nothing.
     */
   private[mempool] def peerConnectionEnd(rejection: Rejection): Option[NetworkError] =
     rejection match
       case Rejection.Ledger(
             defect @ (_: LedgerFailure.Unverifiable | _: LedgerFailure.Unavailable)
           ) =>
-        Some(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(defect)))
+        Some(NetworkError.Unjudged(Protocols.TxSubmission2, defect))
       case Rejection.InputDefect(cause) =>
         Some(NetworkError.DecoderDefect(Protocols.TxSubmission2, cause))
       case Rejection.RulesDefect(cause) =>
@@ -251,7 +254,7 @@ object Mempool:
           case DijkstraUnjudged.Rules(
                 DijkstraRuleDefect.Unavailable(_) | DijkstraRuleDefect.Pool(_)
               ) | DijkstraUnjudged.Projection(_) =>
-            Some(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(cause)))
+            Some(NetworkError.Unjudged(Protocols.TxSubmission2, cause))
           case DijkstraUnjudged.Rules(
                 DijkstraRuleDefect.UtxoState(_) | DijkstraRuleDefect.Ledger(_) |
                 DijkstraRuleDefect.Gov(_)
@@ -263,7 +266,7 @@ object Mempool:
       case Rejection.ConwayUnjudged(_, cause) =>
         cause match
           case ConwayUnjudged.Unavailable(_) | ConwayUnjudged.Projection(_) =>
-            Some(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(cause)))
+            Some(NetworkError.Unjudged(Protocols.TxSubmission2, cause))
           case ConwayUnjudged.UtxoState(_) | ConwayUnjudged.Gov(_) |
               ConwayUnjudged.ProposalsRead(_) | ConwayUnjudged.ProposalsWrite(_) =>
             None

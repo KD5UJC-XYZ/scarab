@@ -11,3 +11,6 @@
 - A submission whose stored output, proposals record or proposal count the era rules cannot handle, or whose two
   readings by the node disagree, gets no reply and costs the peer nothing; parameters in force that do not read
   into Conway's leave the mempool without a ledger.
+- A peer whose relayed transaction this node reaches no verdict on, its evaluator or a crypto provider having
+  failed or its two readings of the transaction disagreeing, in any era, is no longer counted a failure by the
+  governor: the connection still closes, as for a defect of the node's own.

@@ -78,11 +78,13 @@ class MempoolProviderDefectSuite extends CatsEffectSuite:
     yield
       ended match
         case Some(
-              NetworkError.BearerClosed(
-                NetworkError.Closure.AbortedBy(LedgerFailure.Unverifiable(`id`, `defect`))
+              closed @ NetworkError.Unjudged(
+                xyz.kd5ujc.scarab.protocol.Protocols.TxSubmission2,
+                LedgerFailure.Unverifiable(`id`, `defect`)
               )
             ) =>
-          ()
+          // our provider's failure: the governor counts nothing against the peer
+          ConwayHeldSuite.chargedTo(closed)
         case other => fail(s"unexpected $other")
       assertEquals(held.entries, Vector.empty)
       assert(!held.contains(id2))

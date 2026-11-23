@@ -617,12 +617,9 @@ class MempoolTimeoutsSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           )
         case other => fail(s"no verdict refused as too slow, or otherwise: $other")
       ended match
-        case Some(
-              NetworkError.BearerClosed(
-                NetworkError.Closure.AbortedBy(ConwayUnjudged.Unavailable(_))
-              )
-            ) =>
-          ()
+        case Some(closed @ NetworkError.Unjudged(_, ConwayUnjudged.Unavailable(_))) =>
+          // our evaluator's no verdict: the governor counts nothing against the peer
+          ConwayHeldSuite.chargedTo(closed)
         case other => fail(s"the peer's connection did not end with the cause: $other")
       threw match
         case Left(Rejection.RulesDefect(_)) => ()

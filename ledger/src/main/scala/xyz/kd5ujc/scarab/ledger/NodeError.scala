@@ -105,6 +105,11 @@ enum PeerError extends NodeError:
     */
   case NotKept(cause: NetworkError.NotKept)
 
+  /** The node reached no verdict on the peer's message for a limit or a defect of its own
+    * ([[NetworkError.Unjudged]]): the connection closes and the peer is not charged.
+    */
+  case Unjudged(cause: NetworkError.Unjudged)
+
   /** Our BlockFetch server ended this connection over a range the peer asked for
     * ([[NetworkError.RangeRefused]]): an Origin end, bounds that are not a range, or a block of the
     * batch collected since it started. The connection closes and the node goes on, and the peer is
@@ -191,6 +196,7 @@ enum PeerError extends NodeError:
     case Unverifiable(e)                     => e.message
     case HeaderUndecided(p, d)               => s"${Points.show(p)} has no verdict: ${d.message}"
     case NotKept(cause)                      => cause.message
+    case Unjudged(cause)                     => cause.message
     case RangeRefused(cause)                 => cause.message
     case LeiosFetchRefused(cause)            => cause.message
     case LeiosFetchInvalidReply(cause)       => cause.message
