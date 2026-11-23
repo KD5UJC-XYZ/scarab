@@ -114,12 +114,11 @@ object ConwayBlockRun:
     * (`read`, each with the stored output it read, [[StoredOutputs]]), what of its events its
     * result reads ([[Told]]), the scripts it observes, how many scripts of the transaction whose
     * scripts run now ran so far (`ran`), and the results it is answered with (`answers`): a
-    * transaction's UTXOS
-    * runs its scripts in the order its annotation collects them (`evalPlutusScripts`,
-    * `Alonzo/Plutus/Evaluate.hs:188-207`, cardano-ledger f649f975) and then tells them
-    * ([[ScriptsTold]]), which ends them; one whose scripts it does not tell records a failure,
-    * after which no script runs (`whenFailureFree`). So the `ran` th script of the transaction is
-    * the one running, which two scripts with the same request tell apart.
+    * transaction's UTXOS runs its scripts in the order its annotation collects them
+    * (`evalPlutusScripts`, `Alonzo/Plutus/Evaluate.hs:188-207`, cardano-ledger f649f975) and then
+    * tells them ([[ScriptsTold]]), which ends them; one whose scripts it does not tell records a
+    * failure, after which no script runs (`whenFailureFree`). So the `ran` th script of the
+    * transaction is the one running, which two scripts with the same request tell apart.
     */
   private final case class S(
       bbody: ShelleyBbodyState[Conway],
@@ -506,7 +505,8 @@ object ConwayBlockRun:
       if unread.isEmpty then Monad[F].pure(UTxO[Conway](known.toMap))
       else
         ShelleyUtxo.readStored[F, Conway](unread.toMap).flatMap { fresh =>
-          val kept = unread.flatMap((in, out) => fresh.unUTxO.get(in).map(read => in -> (out, read)))
+          val kept =
+            unread.flatMap((in, out) => fresh.unUTxO.get(in).map(read => in -> (out, read)))
           state
             .modify(now => now.copy(read = now.read ++ kept))
             .as(UTxO[Conway](fresh.unUTxO ++ known))

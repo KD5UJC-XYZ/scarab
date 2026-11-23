@@ -78,8 +78,8 @@ object LangDepView:
     def head(major: Int, n: BigInt): Bytes = Bytes.wrap(headItem(major, n))
 
     /** A head's bytes: its argument, in the fewest of one, two, four or eight bytes after the
-      * initial byte, read from a `Long` where it is one (every cost model parameter is), so that
-      * an argument in range takes no `BigInt` arithmetic.
+      * initial byte, read from a `Long` where it is one (every cost model parameter is), so that an
+      * argument in range takes no `BigInt` arithmetic.
       */
     def headItem(major: Int, n: BigInt): Array[Byte] =
       if n.isValidLong then headOf(major, n.longValue)

@@ -397,8 +397,8 @@ object ShelleyUtxo:
     }
 
   /** The stored outputs `stored`, read into the era: the first, in input order, the era does not
-    * read raised. They are read as a value and the result lifted once, not each read a step of
-    * the rules' program (#85).
+    * read raised. They are read as a value and the result lifted once, not each read a step of the
+    * rules' program (#85).
     */
   private[rules] def readStored[F[_], E <: EraTag](
       stored: Map[TxIn, xyz.kd5ujc.scarab.ledger.TxOut]

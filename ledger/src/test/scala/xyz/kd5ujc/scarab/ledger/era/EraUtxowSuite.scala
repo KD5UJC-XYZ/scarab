@@ -295,7 +295,9 @@ class EraUtxowSuite extends munit.FunSuite:
     assertEquals(LangDepView.encodeLangViews(Set.empty), hex("a0"))
   }
 
-  test("a cost model's integers are encoded in their shortest heads, as the flat views encode them") {
+  test(
+    "a cost model's integers are encoded in their shortest heads, as the flat views encode them"
+  ) {
     // every width of head, each side of its bounds, positive and negative, to the ends of the
     // `Int64` a parameter is
     val bounds = Vector[BigInt](0, 23, 24, 255, 256, 65535, 65536, (BigInt(1) << 32) - 1)

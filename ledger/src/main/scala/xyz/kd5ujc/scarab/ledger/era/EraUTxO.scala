@@ -283,9 +283,9 @@ object UTxOs:
   ): UTxO[E] =
     UTxO(TxIn.txouts(b.id[L](txBody), b.outputs[L](txBody)).toMap)
 
-  /** `txInsFilter` (`State/UTxO.hs:168-174`, cardano-ledger f649f975): the outputs of `txIns`.
-    * The reference restricts the map to the inputs (`Map.restrictKeys`, in time of the smaller of
-    * the two); so here, each input looked up where they are fewer than the set's entries, which a
+  /** `txInsFilter` (`State/UTxO.hs:168-174`, cardano-ledger f649f975): the outputs of `txIns`. The
+    * reference restricts the map to the inputs (`Map.restrictKeys`, in time of the smaller of the
+    * two); so here, each input looked up where they are fewer than the set's entries, which a
     * block's growing set of outputs is (`totalRefScriptSizeInBlock`, #85). The same entries either
     * way.
     */
