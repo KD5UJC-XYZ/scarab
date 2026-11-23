@@ -75,11 +75,9 @@ class LedgerRelayResolutionSuite extends FailsOnUncaught:
   test("a drawn name gives one of its addresses, however many its answer holds"):
     val all = records(0, 4000)
     resolve(Vector(domain("relay.example", 3001)), dns(Map(name("relay.example") -> all)))
-      .map { (addresses, ttl) =>
+      .map { addresses =>
         assertEquals(addresses.size, 1, addresses.toString)
         assert(addresses.subsetOf((0 until 4000).map(at(_, 3001)).toSet), addresses.toString)
-        // the re-request interval is still the answer's TTL
-        assertEquals(ttl, 900.seconds)
       }
 
   test("every drawn relay of one name shares one draw, whatever its port"):
@@ -88,7 +86,7 @@ class LedgerRelayResolutionSuite extends FailsOnUncaught:
     resolve(
       Vector(domain("relay.example", 3001), domain("relay.example", 3002)),
       dns(Map(name("relay.example") -> answer))
-    ).map { (addresses, _) =>
+    ).map { addresses =>
       assertEquals(addresses.size, 1, addresses.toString)
       assert(addresses.subsetOf(candidates), addresses.toString)
     }
@@ -101,7 +99,7 @@ class LedgerRelayResolutionSuite extends FailsOnUncaught:
     resolve(
       Vector(domain("a.example", 3001), domain("b.example", 3001)) ++ ipRelays,
       dns(Map(name("a.example") -> records(0, 10), name("b.example") -> records(100, 10)))
-    ).map { (addresses, _) =>
+    ).map { addresses =>
       val fromA = (0 until 10).map(at(_, 3001)).toSet
       val fromB = (100 until 110).map(at(_, 3001)).toSet
       val fixed = Set(
@@ -123,17 +121,16 @@ class LedgerRelayResolutionSuite extends FailsOnUncaught:
         Map(target -> records(0, 50)),
         Map(name("_cardano._tcp.pool.example") -> Vector(service))
       )
-    ).map { (addresses, ttl) =>
+    ).map { addresses =>
       assertEquals(addresses.size, 1, addresses.toString)
       assert(addresses.subsetOf((0 until 50).map(at(_, 4000)).toSet), addresses.toString)
-      assertEquals(ttl, 300.seconds)
     }
 
   test("a drawn name whose lookup gives nothing adds no address"):
     resolve(
       Vector(domain("gone.example", 3001), domain("relay.example", 3001)),
       dns(Map(name("relay.example") -> records(0, 5)))
-    ).map((addresses, _) => assertEquals(addresses.size, 1, addresses.toString))
+    ).map(addresses => assertEquals(addresses.size, 1, addresses.toString))
 
   test("the address is drawn uniformly from the distinct addresses of the answer"):
     // nine copies of one record and one of another: the second is drawn about half the time
@@ -141,7 +138,7 @@ class LedgerRelayResolutionSuite extends FailsOnUncaught:
       DnsAddressRecord(ip(2), 60.seconds)
     val peers = dns(Map(name("relay.example") -> answer))
     (0L until 200L).toList
-      .traverse(seed => resolve(Vector(domain("relay.example", 3001)), peers, seed).map(_._1))
+      .traverse(seed => resolve(Vector(domain("relay.example", 3001)), peers, seed))
       .map { draws =>
         val others = draws.count(_.size != 1)
         assertEquals(others, 0, s"$others of 200 resolutions gave other than one address")
@@ -154,7 +151,7 @@ class LedgerRelayResolutionSuite extends FailsOnUncaught:
     resolve(
       Vector(domain("relay.example", 3001), domain("relay.example.", 3002)),
       dns(Map(name("relay.example") -> records(0, 1)))
-    ).map((addresses, _) => assertEquals(addresses, Set(at(0, 3001), at(0, 3002))))
+    ).map(addresses => assertEquals(addresses, Set(at(0, 3001), at(0, 3002))))
 
   test("two spellings of one SRV domain, with and without the final dot, are two drawn domains"):
     val target = "relay1.pool.example"
@@ -168,9 +165,9 @@ class LedgerRelayResolutionSuite extends FailsOnUncaught:
         seed = 3L
       )
     yield
-      assertEquals(once._1.size, 1, once._1.toString)
-      assertEquals(twice._1.size, 2, twice._1.toString)
-      assert(twice._1.subsetOf((0 until 1000).map(at(_, 4000)).toSet), twice._1.toString)
+      assertEquals(once.size, 1, once.toString)
+      assertEquals(twice.size, 2, twice.toString)
+      assert(twice.subsetOf((0 until 1000).map(at(_, 4000)).toSet), twice.toString)
 
   test("a ledger SRV domain is always prefixed, even one that starts with the prefix"):
     scripted(Map.empty)
@@ -194,7 +191,7 @@ class LedgerRelayResolutionSuite extends FailsOnUncaught:
       .traverse { seed =>
         scripted(answers, services).flatMap { (peers, asked, _) =>
           resolve(Vector.fill(3)(LedgerRelay.Srv("pool.example")), peers, seed)
-            .flatMap(result => asked.map(seed -> (result._1, _)))
+            .flatMap(result => asked.map(seed -> (result, _)))
         }
       }
       .map { runs =>
@@ -216,11 +213,11 @@ class LedgerRelayResolutionSuite extends FailsOnUncaught:
       failedBoth <- scripted(Map(name("relay.example") -> Vector(bad)))
         .flatMap((peers, _, _) => resolve(twice, peers))
     yield
-      assertEquals(failedFirst._1.size, 1, failedFirst._1.toString)
-      assert(failedFirst._1.subsetOf(candidates), failedFirst._1.toString)
-      assertEquals(failedLast._1.size, 1, failedLast._1.toString)
-      assert(failedLast._1.subsetOf(candidates), failedLast._1.toString)
-      assertEquals(failedBoth._1, Set.empty[Addr])
+      assertEquals(failedFirst.size, 1, failedFirst.toString)
+      assert(failedFirst.subsetOf(candidates), failedFirst.toString)
+      assertEquals(failedLast.size, 1, failedLast.toString)
+      assert(failedLast.subsetOf(candidates), failedLast.toString)
+      assertEquals(failedBoth, Set.empty[Addr])
 
   test("a drawn SRV domain's failed lookup adds nothing to its successful one"):
     val target = name("relay1.pool.example")
@@ -239,7 +236,7 @@ class LedgerRelayResolutionSuite extends FailsOnUncaught:
     }
     failing
       .flatMap(peers => resolve(Vector.fill(2)(LedgerRelay.Srv("pool.example")), peers))
-      .map { (addresses, _) =>
+      .map { addresses =>
         assertEquals(addresses.size, 1, addresses.toString)
         assert(addresses.subsetOf((0 until 4).map(at(_, 4000)).toSet), addresses.toString)
       }

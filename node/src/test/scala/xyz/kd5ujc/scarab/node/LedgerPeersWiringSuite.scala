@@ -598,3 +598,49 @@ class LedgerPeersWiringSuite extends FailsOnUncaught:
       )
     )
   }
+
+  test("the dynamic provider's ledger answers are good for 5 s, whatever their lookups' TTLs") {
+    // `ttl = 5` for every ledger answer, ordinary and big (`LedgerPeers.hs` 315, ouroboros-network
+    // c45735a5); b.example answers with 900 s, the longest TTL a lookup can give
+    val drawn = Set(
+      SocketAddress[Host](ip"10.0.0.1", port"3001"),
+      SocketAddress[Host](ip"10.0.0.2", port"3001")
+    )
+    for
+      built <- worker(UseLedgerPeers.Use(AfterSlot.Always), WithOrigin.At(BigInt(10)), two)
+      (w, _, _) = built
+      canceled <- Deferred[IO, Unit]
+      runtime <- Ref.of[IO, PeerNetwork.Runtime[IO]](
+        PeerNetwork.Runtime(
+          generation = BigInt(0),
+          roots = PeerNetwork.Roots(Nil, Set.empty, None, UseLedgerPeers.Use(AfterSlot.Always)),
+          resolvedLocalRoots = Nil,
+          localDnsCache = LocalRootDnsCache.empty[NodeRootProvider.LocalDnsKey, Addr],
+          worker = w,
+          association = AssociationMode.Unrestricted,
+          churn = ChurnLoop.Config(Targets.relay, Regime.kind(_, false)),
+          snapshotCheckCanceled = canceled
+        )
+      )
+      rng <- Ref.of[IO, Rng](Rng(1L))
+      dns = new PeerDns[IO]:
+        def addresses(name: DnsName) =
+          IO.pure(
+            DnsAddressAnswer(Vector(DnsAddressRecord(ip"10.0.0.2", 900.seconds)), Vector.empty)
+          )
+        def services(name: DnsName) = IO.raiseError(new AssertionError("no SRV relay drawn"))
+      provider = NodeRootProvider.dynamic(runtime, dns, rng)
+      ordinary <- provider.request(5, false)
+      big <- provider.requestBigLedger(5)
+    yield
+      ordinary match
+        case Some((roots, ttl)) =>
+          assert(roots.ledger.nonEmpty && roots.ledger.subsetOf(drawn), roots.ledger.toString)
+          assertEquals(ttl, LedgerPeerStake.ReRequestInterval)
+        case None => fail("no ordinary answer")
+      big match
+        case Some((BigLedgerRoots.Ledger(peers), ttl)) =>
+          assert(peers.nonEmpty && peers.subsetOf(drawn), peers.toString)
+          assertEquals(ttl, LedgerPeerStake.ReRequestInterval)
+        case other => fail(s"no big ledger answer: $other")
+  }
