@@ -1197,7 +1197,8 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     )
     val eb = xyz.kd5ujc.scarab.protocol.EbHash.fromBytes(Bytes.fromArray(Array.fill(32)(7.toByte)))
     // the closure's read from the endorser-block store fails; the store gives no closure; a
-    // Dijkstra block the node has no verdict on; the evaluator cannot judge a script
+    // Dijkstra block the node has no verdict on; a Conway block the node has no verdict on (#85);
+    // the evaluator cannot judge a script
     val failures: Vector[Header => NodeError] = Vector(
       _ => StorageError.LeiosStore(LeiosStoreError.Closed),
       h =>
@@ -1212,6 +1213,13 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           h.slot,
           xyz.kd5ujc.scarab.ledger.DijkstraBlockDefect
             .Projection(xyz.kd5ujc.scarab.ledger.era.EraTxError.ScriptsReadAgain)
+        ),
+      h =>
+        ChainError.ConwayBlock(
+          h.slot,
+          xyz.kd5ujc.scarab.ledger.ConwayBlockDefect.Gov(
+            xyz.kd5ujc.scarab.ledger.era.rules.GovDefect.ProposalIndexOverflow(65536)
+          )
         ),
       h => ValidationError(h.point, BlockFailure.Tx(unavailable))
     )
