@@ -512,3 +512,45 @@ snapshots (ledger 9df9f98c `State/SnapShots.hs:444-459,495-505`).
 This measures warmed repeated reads, not first derivation, heap retention, or node throughput.
 No allocation or mainnet-sized claim is made; other builds were active on the host. Raw run
 logs are not published.
+
+## 61. GET /state on a mainnet state: one build at a time, and the kept answer (#1150)
+
+`GET /state` builds the projection of the whole ledger state: every account, pool and DRep and the mark, set and go
+snapshots, rendered as JSON. Before #1150 each request built its own, with nothing limiting how many ran at once.
+Since #1150 one answer is built at a time, a request for the point and view of an answer being built waits for that
+build, and the answers at the tip are kept, rendered, until the committed tip moves (`SharedAnswers`).
+`StateRequestMain` (`tools`) loads a native snapshot and sends requests through the query server's routes as the node
+serves them. The state is a mainnet node's snapshot at slot 203,817,634 (10,819,125 UTxO entries; the summary reads
+only the UTxO set's totals); raw run artifacts are not published. Each mode ran once in its own JVM, in the JDK build
+container (`--cpus 4 --memory 28g`, no network) on a shared 16-thread x86-64 host (load average 3.5 to 10 from other
+work), with the mainnet node's heap settings (`java -Xms8g -Xmx24g -XX:+UseG1GC -XX:MaxGCPauseMillis=50
+-XX:+ExitOnOutOfMemoryError`), at the build of `13e5e54a6` and `bc9d6f14b`. The times are of a loaded host: they show
+the order of the cost, not a figure to compare across machines.
+
+One request, and the answer kept: the answer is the rendered body, and keeping it holds about 1.1 times its size; it is
+gone once the tip moves.
+
+<!-- register:table perf-67.t1 -->
+| Step (`StateRequestMain kept`) | Time | Heap after a full collection, MiB | Over the loaded state, MiB |
+|---|---:|---:|---:|
+| the state loaded |  | 2,357 |  |
+| the first request at the tip, which builds the answer (a body of 1,062,941,894 bytes) | 35.6 s (37.7 s in an earlier run) |  |  |
+| the answer kept |  | 3,480 | 1,122.7 |
+| a second request at the same tip | under 1 ms |  |  |
+| the tip moved |  | 2,360 | 2.7 |
+<!-- /register -->
+
+Requests at once: the heap is the most in use at any collection after the state was loaded (`-Xlog:gc`). One build
+takes about nine GiB over the state at its peak (the JSON tree, then its rendering). Four requests that each build, as
+every request did before #1150, filled the 24 GiB heap and ended the run with `OutOfMemoryError`, which ends the node
+under the same settings; four that share cost one build.
+
+<!-- register:table perf-67.t2 -->
+| Requests at the tip | Time | Builds | Most heap in use at a collection after the state was loaded, MiB |
+|---|---:|---:|---:|
+| one (`kept`) | 35.6 s | 1 | 11,616 |
+| four at once, sharing (`shared 4`) | 33.5 s | 1 | 11,591 |
+| four at once, each with answers of its own, as every request built before #1150 (`unshared 4`) | none: `OutOfMemoryError` about 2 minutes in | 4 started | 24,030 of 24,576 |
+<!-- /register -->
+
+Not measured: the heap the node's own work holds beside a build, and a quiet machine's times.

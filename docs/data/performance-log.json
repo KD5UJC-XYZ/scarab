@@ -5026,6 +5026,98 @@
     }
    ],
    "listings": []
+  },
+  {
+   "id": "perf-67",
+   "section": "61",
+   "heading": "61. GET /state on a mainnet state: one build at a time, and the kept answer (#1150)",
+   "subject": "GET /state on a mainnet state: one build at a time, and the kept answer (#1150)",
+   "date": "2026-11-23",
+   "dateSource": "text",
+   "issues": [
+    "#1150"
+   ],
+   "commits": [
+    "13e5e54a6",
+    "bc9d6f14b"
+   ],
+   "links": [],
+   "page": "memory-and-snapshots",
+   "results": [
+    {
+     "id": "perf-67.t1",
+     "header": [
+      "Step (`StateRequestMain kept`)",
+      "Time",
+      "Heap after a full collection, MiB",
+      "Over the loaded state, MiB"
+     ],
+     "separator": "|---|---:|---:|---:|",
+     "rows": [
+      [
+       "the state loaded",
+       "",
+       "2,357",
+       ""
+      ],
+      [
+       "the first request at the tip, which builds the answer (a body of 1,062,941,894 bytes)",
+       "35.6 s (37.7 s in an earlier run)",
+       "",
+       ""
+      ],
+      [
+       "the answer kept",
+       "",
+       "3,480",
+       "1,122.7"
+      ],
+      [
+       "a second request at the same tip",
+       "under 1 ms",
+       "",
+       ""
+      ],
+      [
+       "the tip moved",
+       "",
+       "2,360",
+       "2.7"
+      ]
+     ]
+    },
+    {
+     "id": "perf-67.t2",
+     "header": [
+      "Requests at the tip",
+      "Time",
+      "Builds",
+      "Most heap in use at a collection after the state was loaded, MiB"
+     ],
+     "separator": "|---|---:|---:|---:|",
+     "rows": [
+      [
+       "one (`kept`)",
+       "35.6 s",
+       "1",
+       "11,616"
+      ],
+      [
+       "four at once, sharing (`shared 4`)",
+       "33.5 s",
+       "1",
+       "11,591"
+      ],
+      [
+       "four at once, each with answers of its own, as every request built before #1150 (`unshared 4`)",
+       "none: `OutOfMemoryError` about 2 minutes in",
+       "4 started",
+       "24,030 of 24,576"
+      ]
+     ]
+    }
+   ],
+   "listings": []
   }
  ]
 }
