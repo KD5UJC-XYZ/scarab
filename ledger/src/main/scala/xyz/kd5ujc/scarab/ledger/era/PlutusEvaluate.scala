@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.ledger.era
 
 import scala.annotation.unused
-import cats.{Monad, Monoid}
+import cats.{Eval, Monad, Monoid}
 import cats.data.NonEmptyList
 import cats.mtl.Raise
 import cats.syntax.all.*
@@ -159,7 +159,15 @@ object CostModel:
   def lookupCostModel[L <: Language](costModels: CostModels)(using
       l: PlutusLanguage[L]
   ): Option[CostModel[L]] =
-    costModels.int64Model(l.language.id).map(new CostModel[L](_))
+    lookupCostModelIn[L](costModels.int64Model)
+
+  /** [[lookupCostModel]] in the models `int64` gives, by tag, as `Int64` s
+    * ([[CostModels.int64Model]]).
+    */
+  def lookupCostModelIn[L <: Language](int64: Int => Option[Vector[Long]])(using
+      l: PlutusLanguage[L]
+  ): Option[CostModel[L]] =
+    int64(l.language.id).map(new CostModel[L](_))
 
 /** A Plutus script with everything its evaluation needs (`data PlutusWithContext`,
   * `libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Evaluate.hs:97-115`, cardano-ledger
@@ -347,6 +355,11 @@ object AlonzoPlutusEvaluate:
     val redeemers = x.witsOf
       .rdmrsTxWits(x.wits[T](lti.ltiTx)(using LedgerTxInfo.toSTxLevel(lti)(using x.bodyOf)))
       .entries
+    // each language's model read as `Int64` s once for the transaction's scripts, not for each
+    // script (#85)
+    val int64 = costModels.models.keySet.iterator
+      .map(tag => tag -> Eval.later(costModels.int64Model(tag)))
+      .toMap
     def getScriptWithRedeemer(used: Used[E]): Either[CollectError[E], Found] =
       val (plutusPurpose, plutusScriptRunnable) = used
       redeemers.get(asIx(plutusPurpose)) match
@@ -356,7 +369,7 @@ object AlonzoPlutusEvaluate:
       val (plutusScriptRunnable, plutusPurpose, redeemerData, exUnits) = found
       for
         costModel <- CostModel
-          .lookupCostModel[plutusScriptRunnable.L](costModels)(using
+          .lookupCostModelIn[plutusScriptRunnable.L](tag => int64.get(tag).flatMap(_.value))(using
             plutusScriptRunnable.plutusTxInfo.plutusLanguage
           )
           .toRight(CollectError.NoCostModel(plutusScriptRunnable.language))
