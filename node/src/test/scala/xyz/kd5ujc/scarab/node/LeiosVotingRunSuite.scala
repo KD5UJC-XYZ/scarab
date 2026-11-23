@@ -95,7 +95,7 @@ class LeiosVotingRunSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     (
       Ref.of[IO, Vector[Event]](Vector.empty),
       Ref.of[IO, Int](0),
-      LeiosVotes.create[IO](IO.pure(Right(Some(committee)))),
+      LeiosVotes.create[IO](IO.pure(Right(Some(committee))), IO.pure(_ => true)),
       Queue.unbounded[IO, LeiosEbNotification]
     ).mapN(Run.apply)
 

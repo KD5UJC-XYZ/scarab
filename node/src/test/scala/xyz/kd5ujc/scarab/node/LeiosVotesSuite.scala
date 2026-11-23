@@ -31,14 +31,14 @@ class LeiosVotesSuite extends FailsOnUncaught:
   test("a seat's vote counted already is AlreadyKnown before its signature is checked") {
     val forged = right(Vote.sign(keys(1)._1, right(SeatId.fromInt(0)), announcing))
     for
-      votes <- LeiosVotes.create[IO](IO.pure(Right(Some(committee))))
+      votes <- LeiosVotes.create[IO](IO.pure(Right(Some(committee))), IO.pure(_ => true))
       answers <- allowed(votes.received(Vector(vote(0), forged)))
     yield assertEquals(answers.drop(1), Vector(AddVoteResult.AlreadyKnown))
   }
 
   test("without a committee no vote counts, and none is published") {
     for
-      votes <- LeiosVotes.create[IO](IO.pure(Right(None)))
+      votes <- LeiosVotes.create[IO](IO.pure(Right(None)), IO.pure(_ => true))
       result <- votes.subscribe.use(q => allowed(votes.add(vote(0))).product(q.tryTakeN(None)))
     yield assertEquals(result, (AddVoteResult.NoCommittee, List.empty))
   }
@@ -47,7 +47,7 @@ class LeiosVotesSuite extends FailsOnUncaught:
     // seat 1's vote signed with another key, before seat 1 has voted
     val forged = right(Vote.sign(keys(2)._1, right(SeatId.fromInt(1)), announcing))
     for
-      votes <- LeiosVotes.create[IO](IO.pure(Right(Some(committee))))
+      votes <- LeiosVotes.create[IO](IO.pure(Right(Some(committee))), IO.pure(_ => true))
       late <- allowed(votes.add(vote(3)))
       seen <- votes.subscribe.use { q =>
         allowed(votes.received(Vector(vote(0), vote(0), forged, vote(1), vote(2))))
@@ -82,7 +82,7 @@ class LeiosVotesSuite extends FailsOnUncaught:
   test("the committee is read for every vote, so a vote counts against the one in force") {
     for
       current <- Ref.of[IO, Option[TipCommittee]](None)
-      votes <- LeiosVotes.create[IO](current.get.map(Right(_)))
+      votes <- LeiosVotes.create[IO](current.get.map(Right(_)), IO.pure(_ => true))
       before <- allowed(votes.add(vote(0)))
       _ <- current.set(Some(committee))
       after <- allowed(votes.add(vote(0)))
@@ -93,7 +93,7 @@ class LeiosVotesSuite extends FailsOnUncaught:
 
   test("the same vote added concurrently is counted once") {
     for
-      votes <- LeiosVotes.create[IO](IO.pure(Right(Some(committee))))
+      votes <- LeiosVotes.create[IO](IO.pure(Right(Some(committee))), IO.pure(_ => true))
       results <- votes.subscribe.use(q =>
         allowed(Vector.fill(8)(vote(2)).parTraverse(votes.add)).product(q.tryTakeN(None))
       )
@@ -108,7 +108,7 @@ class LeiosVotesSuite extends FailsOnUncaught:
     // the first subscriber's delivery waits for the test, so the add is cancelled mid fan-out;
     // the vote is then counted and every subscriber registered at the count has it, or neither
     for
-      votes <- LeiosVotes.create[IO](IO.pure(Right(Some(committee))))
+      votes <- LeiosVotes.create[IO](IO.pure(Right(Some(committee))), IO.pure(_ => true))
       delivering <- cats.effect.Deferred[IO, Unit]
       release <- cats.effect.Deferred[IO, Unit]
       first <- Ref.of[IO, Vector[Vote]](Vector.empty)
@@ -137,6 +137,86 @@ class LeiosVotesSuite extends FailsOnUncaught:
       val (again, (got1, got2)) = outcome
       assertEquals(again, AddVoteResult.AlreadyKnown)
       assertEquals((got1, got2), (Vector(vote(3)), Vector(vote(3))))
+  }
+
+  test(
+    "a vote for a block outside the window is NotVotable before anything else, and not published"
+  ) {
+    val forged = right(Vote.sign(keys(1)._1, right(SeatId.fromInt(0)), announcing))
+    for
+      votes <- LeiosVotes.create[IO](IO.pure(Right(Some(committee))), IO.pure(_ != announcing))
+      result <- votes.subscribe.use(q =>
+        allowed(votes.received(Vector(vote(0), forged, vote(0)))).product(q.tryTakeN(None))
+      )
+      voters <- votes.voters(announcing)
+    yield
+      assertEquals(result, (Vector.fill(3)(AddVoteResult.NotVotable), List.empty))
+      assertEquals(voters, Map.empty)
+  }
+
+  test("the window is the newest blocks of the chain, newest first") {
+    val chain = Vector.tabulate(12)(i => rbHash(100 + i)) // newest first
+    val within = xyz.kd5ujc.scarab.consensus.leios.LeiosVoteState.withinVoteWindow(chain)
+    assertEquals(chain.map(within), Vector.fill(8)(true) ++ Vector.fill(4)(false))
+    assert(!within(rbHash(99)))
+  }
+
+  /** The points of the replay, distinct hashes beyond BlsFixtures' 256, one vote of seat 0 each. */
+  private def point(i: Int): xyz.kd5ujc.scarab.crypto.bls.RbHash =
+    xyz.kd5ujc.scarab.crypto.bls.RbHash
+      .fromBytes(
+        xyz.kd5ujc.scarab.codec.Bytes
+          .wrap(Array.tabulate[Byte](32)(b => (i >>> (8 * (b % 4))).toByte))
+      )
+      .getOrElse(fail("point"))
+  private val replayPoints =
+    2 * xyz.kd5ujc.scarab.consensus.leios.LeiosVoteState.Window + xyz.kd5ujc.scarab.consensus.leios.LeiosVoteState.VoteWindow
+  private lazy val goodVotes = Vector.tabulate(replayPoints)(i =>
+    right(Vote.sign(keys(0)._1, right(SeatId.fromInt(0)), point(i)))
+  )
+  private lazy val badVotes = Vector.tabulate(replayPoints)(i =>
+    right(Vote.sign(keys(1)._1, right(SeatId.fromInt(0)), point(i)))
+  )
+
+  test("a replayed vote is taken once, and only for a votable block (ouroboros-consensus #2534)") {
+    // votes cycling through more blocks than the vote state keeps, in several rounds and any order,
+    // as a fixed set of them did when every node kept relaying votes for long-gone blocks
+    (1 to 12).toVector.traverse_ { seed =>
+      val rnd = new scala.util.Random(seed)
+      val n = 1 + rnd.nextInt(replayPoints)
+      val votable =
+        rnd
+          .shuffle((0 until n).toVector)
+          .take(xyz.kd5ujc.scarab.consensus.leios.LeiosVoteState.VoteWindow)
+          .toSet
+      val bad = (0 until n).filter(_ => rnd.nextBoolean()).toSet
+      val arrivals = Vector.fill(1 + rnd.nextInt(3))(rnd.shuffle((0 until n).toVector)).flatten
+      val expected = arrivals
+        .foldLeft((Set.empty[Int], Vector.empty[String])) { case ((taken, out), i) =>
+          if !votable(i) then (taken, out :+ "notVotable")
+          else if bad(i) then (taken, out :+ "invalid")
+          else if taken(i) then (taken, out :+ "known")
+          else (taken + i, out :+ "added")
+        }
+        ._2
+      val votablePoints = votable.map(point)
+      for
+        votes <- LeiosVotes.create[IO](IO.pure(Right(Some(committee))), IO.pure(votablePoints))
+        answers <- allowed(
+          arrivals.traverse(i => votes.add(if bad(i) then badVotes(i) else goodVotes(i)))
+        )
+      yield assertEquals(
+        answers.map {
+          case AddVoteResult.NotVotable   => "notVotable"
+          case AddVoteResult.Invalid(_)   => "invalid"
+          case AddVoteResult.AlreadyKnown => "known"
+          case AddVoteResult.Added(_, _)  => "added"
+          case AddVoteResult.NoCommittee  => "noCommittee"
+        },
+        expected,
+        s"seed $seed"
+      )
+    }
   }
 
 object LeiosVotesSuite:

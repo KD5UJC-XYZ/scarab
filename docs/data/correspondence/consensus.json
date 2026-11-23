@@ -2989,19 +2989,19 @@
    "upstream": [
     {
      "repository": "IntersectMBO/ouroboros-consensus",
-     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "revision": "d91b355756945df073f0acce83e24c021e7b0d88",
      "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosVoteState.hs",
      "symbol": "AddVoteResult",
      "lines": [
-      57,
-      68
+      58,
+      72
      ]
     }
    ],
    "class": "Mirror",
    "structure": "same",
-   "note": "the four answers of addVote",
-   "digest": "278fb1f7b5ff4338"
+   "note": "the five answers of addVote, NotVotable among them (rc-2026w47)",
+   "digest": "da9ecc5270bdcc3b"
   },
   "enum consensus.leios.VoteInvalid": {
    "upstream": [
@@ -4172,6 +4172,42 @@
    "structure": "same",
    "note": "the derived Ord of the header hash's bytes, which orders an announcement slot's headers",
    "digest": "a8467e60415129a2"
+  },
+  "val consensus.leios.LeiosVoteState.VoteWindow": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "d91b355756945df073f0acce83e24c021e7b0d88",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosVoteState.hs",
+     "symbol": "leiosVoteWindow",
+     "lines": [
+      152,
+      153
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "how many of the newest blocks of our chain votes are taken for, 8",
+   "digest": "692931ed96877459"
+  },
+  "def consensus.leios.LeiosVoteState.withinVoteWindow": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "d91b355756945df073f0acce83e24c021e7b0d88",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosVoteState.hs",
+     "symbol": "withinVoteWindow",
+     "lines": [
+      155,
+      158
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "a block is votable when it is among the newest leiosVoteWindow of the chain's, newest first",
+   "digest": "5bfd8569616cdfa5"
   }
  },
  "glue": [

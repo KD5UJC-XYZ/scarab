@@ -163,7 +163,7 @@ class LeiosFetchLatencySuite extends FailsOnUncaught:
       }
   }
 
-  dirs.test("a closure fetched from the peer takes the decision's next round, half a second on") {
+  dirs.test("a closure fetched from the peer takes the decision's next round, one loop interval on") {
     dir =>
       stored(dir / "leios").use { store =>
         TestControl

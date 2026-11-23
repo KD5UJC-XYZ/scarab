@@ -817,6 +817,7 @@ object Traced:
     case AddVoteResult.NoCommittee     => "NoCommittee"
     case AddVoteResult.Invalid(reason) => s"VoteInvalid $reason"
     case AddVoteResult.AlreadyKnown    => "AlreadyKnown"
+    case AddVoteResult.NotVotable      => "NotVotable"
     case AddVoteResult.Added(tally, _) => s"Added $tally"
 
   /** `show` of a `LeiosClosureError`. */

@@ -570,7 +570,7 @@ class LeiosClosureCheckSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       )
     )
     for
-      votes <- LeiosVotes.create[IO](IO.pure(Right(Some(committee))))
+      votes <- LeiosVotes.create[IO](IO.pure(Right(Some(committee))), IO.pure(_ => true))
       env = new LeiosVotingEnv[IO, DijkstraState, Rejection, LeiosClosureDefect]:
         def now: IO[scala.concurrent.duration.FiniteDuration] =
           IO.pure(scala.concurrent.duration.Duration.Zero)

@@ -64,6 +64,12 @@ enum AddVoteResult derives CanEqual:
   /** A vote of this seat for this announcing block was counted already. */
   case AlreadyKnown
 
+  /** The vote's announcing block is not one we tally: not among the newest
+    * [[LeiosVoteState.VoteWindow]] blocks of our chain. Dropped before validation, neither counted
+    * nor relayed (`NotVotable`, `LeiosVoteState.hs` at ouroboros-consensus d91b3557).
+    */
+  case NotVotable
+
   /** Counted; the certificate is present whenever the tally is at or above the quorum. */
   case Added(tally: VoteTally, certificate: Option[Certificate])
 
@@ -93,8 +99,10 @@ object PointVotes:
 /** The pure state of `newLeiosVoteState` (`LeiosVoteState.hs:146-247`, ouroboros-consensus
   * 2416493b): the tallies by announcing block and the order in which their blocks were first seen.
   * Only the [[LeiosVoteState.Window]] most recently first seen are kept (`boundPoints`,
-  * `LeiosVoteState.hs:131-143`), a bound the reference marks unsafe: a vote names no slot, so
-  * recency is arrival, not the chain.
+  * `LeiosVoteState.hs:128-145` at ouroboros-consensus d91b3557), a memory bound only: an evicted
+  * block's votes would count as new again, which is safe because the node takes no vote for a block
+  * outside the newest [[LeiosVoteState.VoteWindow]] of its chain, a window far smaller than the
+  * bound (`NotVotable`, checked by the vote state's owner before validation).
   */
 final case class LeiosVoteState private (
     points: SortedMap[RbHash, PointVotes],
@@ -156,6 +164,17 @@ final case class LeiosVoteState private (
       }
 
 object LeiosVoteState:
+  /** `leiosVoteWindow` (`LeiosVoteState.hs:152-153`, ouroboros-consensus d91b3557): how many of the
+    * newest blocks of our chain we take votes for.
+    */
+  val VoteWindow: Int = 8
+
+  /** `withinVoteWindow` (`LeiosVoteState.hs:155-158`, ouroboros-consensus d91b3557): whether a
+    * block is among the newest [[VoteWindow]] of our chain's, given newest first.
+    */
+  def withinVoteWindow(newestFirst: Vector[RbHash])(rbHash: RbHash): Boolean =
+    newestFirst.take(VoteWindow).contains(rbHash)
+
   /** `maxAnnouncementCount` (`LeiosTxCache/API.hs:154-155`, ouroboros-consensus 2416493b). */
   val Window: Int = 128
 

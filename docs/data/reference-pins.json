@@ -338,6 +338,20 @@
    ]
   },
   {
+   "name": "ouroboros-consensus",
+   "repository": "IntersectMBO/ouroboros-consensus",
+   "revision": "d91b355756945df073f0acce83e24c021e7b0d88",
+   "urlPattern": "https://github.com/IntersectMBO/ouroboros-consensus/commit/{revision}",
+   "role": "Leios testnet release rc-2026w47 (#1365): the vote window (leiosVoteWindow, withinVoteWindow, NotVotable) and the fetch decision loop's interval that Scarab mirrors.",
+   "dependents": [
+    "consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/leios/LeiosVoteState.scala",
+    "node/src/main/scala/xyz/kd5ujc/scarab/node/LeiosVotes.scala",
+    "node/src/main/scala/xyz/kd5ujc/scarab/node/LeiosFetchKernel.scala",
+    "node/src/main/scala/xyz/kd5ujc/scarab/node/Main.scala",
+    "docs/data/correspondence/consensus.json"
+   ]
+  },
+  {
    "name": "cardano-blueprint",
    "repository": "cardano-scaling/cardano-blueprint",
    "revision": "fe4cceb94622d4205b23eb11ccf9e8b43a3af5d5",
