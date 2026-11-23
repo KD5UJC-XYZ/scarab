@@ -319,8 +319,8 @@ class CodecSuite extends ScalaCheckSuite:
     assertEquals(hex(SnapshotV10.buildBytes(ReferenceBuild.Release11_1)), "0431312e31")
     assertEquals(hex(SnapshotV10.buildBytes(ReferenceBuild.Release11_2)), "0431312e32")
     assertEquals(
-      hex(SnapshotV10.buildBytes(ReferenceBuild.LeiosB004fe0c)),
-      "0e6c65696f732d6230303466653063"
+      hex(SnapshotV10.buildBytes(ReferenceBuild.Leios)),
+      "106c65696f732d72632d32303236773437"
     )
   }
 

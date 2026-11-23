@@ -757,7 +757,7 @@ class ConwayMempoolRunSuite extends FunSuite:
     // another major version: 11.1's `reapplyTx` skips the static checks whatever the version;
     // 11.2's and Leios's `reapplyValidatedTx` validates in full, and the signature fails
     assert(outcomes(ReferenceBuild.Release11_1).isInstanceOf[Whole.Admitted])
-    Vector(ReferenceBuild.Release11_2, ReferenceBuild.LeiosB004fe0c).foreach { build =>
+    Vector(ReferenceBuild.Release11_2, ReferenceBuild.Leios).foreach { build =>
       assertEquals(outcomes(build), submitted(base.atVersion(11).under(build))._1, build.name)
       assert(outcomes(build).isInstanceOf[Whole.Refused], build.name)
     }
@@ -811,7 +811,7 @@ class ConwayMempoolRunSuite extends FunSuite:
       build match
         case ReferenceBuild.Release11_1 =>
           assertEquals(ours, again, "11.1 annotates again")
-        case ReferenceBuild.Release11_2 | ReferenceBuild.LeiosB004fe0c =>
+        case ReferenceBuild.Release11_2 | ReferenceBuild.Leios =>
           // the admission's annotation, at the version it was validated at
           assert(ours.isInstanceOf[Whole.Admitted], s"${build.name}: $ours")
           // at another major version, annotated again with every check

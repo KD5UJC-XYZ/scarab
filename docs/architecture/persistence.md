@@ -252,7 +252,7 @@ partition first and the immutable one for what it does not hold: a body, a closu
 volatile partition holds the body and not its whole closure), the transactions by offset; the point
 scans read the volatile partition alone.
 
-The node's start opens the store under `--reference-build leios-b004fe0c` with a database directory
+The node's start opens the store under `--reference-build leios-rc-2026w47` with a database directory
 and `LeiosDbConfig.Backend: SQLite` (the default): after the database's ownership and network identity
 are checked and before the other stores, and releases it after them (`LeiosStorage`), as cardano-node
 b004fe0c opens its LeiosDB once the database's marker is checked and closes it after the run

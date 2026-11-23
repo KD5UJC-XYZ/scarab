@@ -170,7 +170,7 @@ object UtxoTests:
         nonEmpty(bootstrapAttrsOver64(outs))(_.isEmpty)(big =>
           UtxoFailure.OutputTooBig(big.map((0, 0, _)))
         )
-      case ReferenceBuild.Release11_2 | ReferenceBuild.LeiosB004fe0c => bootAddrAttrsTooBig(outs)
+      case ReferenceBuild.Release11_2 | ReferenceBuild.Leios => bootAddrAttrsTooBig(outs)
 
   /** `validateMaxTxSizeUTxO` (`Shelley/Rules/Utxo.hs:554-570`). */
   def maxTxSize(pp: ProtocolParams, tx: Tx): Test[PredicateFailure] =

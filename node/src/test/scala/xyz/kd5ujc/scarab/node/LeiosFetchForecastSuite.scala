@@ -21,7 +21,7 @@ import xyz.kd5ujc.scarab.protocol.LeiosWord.Word64
 class LeiosFetchForecastSuite extends FailsOnUncaught:
   private val devnet = Path.of("fixtures", "dijkstra-devnet")
   private val setup = NodeSetup
-    .fromConfigFile(ReferenceBuild.LeiosB004fe0c)(devnet.resolve("genesis/config.json"))
+    .fromConfigFile(ReferenceBuild.Leios)(devnet.resolve("genesis/config.json"))
     .fold(e => fail(e.message), identity)
   private val praos = setup.praos.copy(forks = setup.praos.forks.copy(maxMajorProtVer = 12))
   private def hex(s: String): Bytes = Bytes.fromHex(s).fold(e => fail(e.message), identity)
@@ -52,7 +52,7 @@ class LeiosFetchForecastSuite extends FailsOnUncaught:
     given HeaderTimeRead[MirrorState] = HeaderTimeRead.mirror(setup.byronHistory)
     NodeHeaderRules[MirrorState](praos, setup.globals.copy(referenceBuild = build))
 
-  private def forecast(slot: Long, build: ReferenceBuild = ReferenceBuild.LeiosB004fe0c) =
+  private def forecast(slot: Long, build: ReferenceBuild = ReferenceBuild.Leios) =
     LeiosFetchNode.forecast(rules(build), immutable, Word64.clamped(slot))
 
   test("a Dijkstra slot's bound is the Dijkstra genesis's maxEndorserBlockTxsSize") {

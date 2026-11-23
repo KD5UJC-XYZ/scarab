@@ -69,7 +69,7 @@ class EraStartSuite extends FunSuite:
   }
 
   test("Leios: the same bounds with their next Peras round, four items") {
-    val setup = setupOf(ReferenceBuild.LeiosB004fe0c)
+    val setup = setupOf(ReferenceBuild.Leios)
     val start = setup.mirrorStart
     assertEquals(answered(setup, start, QueryEra.Byron), "81" + "8400000000")
     assertEquals(answered(setup, start, QueryEra.Shelley), "81" + "84" + shelleyStart + "00")
@@ -140,7 +140,7 @@ class EraStartSuite extends FunSuite:
   }
 
   test("Leios: a Shelley epoch past 2^64 Byron slots: the same wrapped start, round zero") {
-    val setup = shelleyAt(ReferenceBuild.LeiosB004fe0c, farEpoch)
+    val setup = shelleyAt(ReferenceBuild.Leios, farEpoch)
     assertEquals(
       answered(setup, setup.mirrorStart, QueryEra.Shelley),
       "81" + "84" + farShelleyStart + "00"
@@ -199,7 +199,7 @@ class EraStartSuite extends FunSuite:
   test(
     "Leios: a mirror built Shelley-current at the far epoch holds and answers the wrapped start"
   ) {
-    val (setup, mirror) = farShelleyCurrent(ReferenceBuild.LeiosB004fe0c)
+    val (setup, mirror) = farShelleyCurrent(ReferenceBuild.Leios)
     val start = farStart(setup, Bound.Layout.Leios(PerasRoundNo(Word64.zero)))
     assertEquals(mirror.ext.ledgerState.past.map(_.end), Vector(start))
     assertEquals(mirror.ext.ledgerState.current.start, start)

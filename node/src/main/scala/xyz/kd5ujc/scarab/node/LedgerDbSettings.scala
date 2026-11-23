@@ -36,7 +36,7 @@ object LedgerSnapshotSettings:
     */
   def defaults(build: ReferenceBuild): LedgerSnapshotSettings = build match
     case ReferenceBuild.Release11_1 => LedgerSnapshotSettings()
-    case ReferenceBuild.Release11_2 | ReferenceBuild.LeiosB004fe0c =>
+    case ReferenceBuild.Release11_2 | ReferenceBuild.Leios =>
       LedgerSnapshotSettings(maximumDelaySeconds = 21600)
 
 /** POM.hs:518-608 at cardano-node b004fe0c. These describe the reference backend, not Scarab's

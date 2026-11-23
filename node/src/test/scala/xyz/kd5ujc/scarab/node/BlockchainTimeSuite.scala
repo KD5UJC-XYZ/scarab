@@ -23,7 +23,7 @@ import xyz.kd5ujc.scarab.storage.haskell.state.HaskellLedgerFile
 class BlockchainTimeSuite extends FailsOnUncaught:
   private val start = Instant.parse("2026-01-01T00:00:00Z")
   private val geometry = NodeSetup
-    .fromConfigFile(ReferenceBuild.LeiosB004fe0c)(
+    .fromConfigFile(ReferenceBuild.Leios)(
       Path.of("fixtures", "dijkstra-devnet", "genesis", "config.json")
     )
     .fold(e => fail(e.message), identity)
@@ -167,7 +167,7 @@ class BlockchainTimeSuite extends FailsOnUncaught:
   }
 
   private lazy val testnet = NodeSetup
-    .fromConfigFile(ReferenceBuild.LeiosB004fe0c)(
+    .fromConfigFile(ReferenceBuild.Leios)(
       Path.of("fixtures", "leios", "testnet", "config", "config.json")
     )
     .fold(e => fail(e.message), identity)

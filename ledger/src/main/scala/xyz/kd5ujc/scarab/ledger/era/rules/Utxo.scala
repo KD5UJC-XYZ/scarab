@@ -1004,8 +1004,8 @@ object ConwayUtxo:
     */
   def injectShelleyFailure(build: ReferenceBuild): InjectShelleyUtxoFailure[Conway] =
     build match
-      case ReferenceBuild.Release11_1                                => injectShelleyFailure11_1
-      case ReferenceBuild.Release11_2 | ReferenceBuild.LeiosB004fe0c => injectShelleyFailure11_2
+      case ReferenceBuild.Release11_1                        => injectShelleyFailure11_1
+      case ReferenceBuild.Release11_2 | ReferenceBuild.Leios => injectShelleyFailure11_2
 
   /** `babbageToConwayUtxoPredFailure` (`Conway/Rules/Utxo.hs:373-381`, cardano-ledger f649f975). */
   def babbageToConwayUtxoPredFailure[E <: EraTag](

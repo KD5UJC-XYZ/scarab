@@ -222,7 +222,7 @@ def main():
                      "(mkMarkSnapShot, mkSetSnapShot, mkGoSnapShot as snapTransition combines them) and "
                      "kesMaxKeyAgeEpochs: exact accepted bytes, values and acceptance parity; not the stake snapshot "
                      "SNAP builds, Globals, genesis or epoch transitions.",
-            "build": "leios-b004fe0c", "image": IMAGE, "ledgerSourceCommit": LEDGER, "cardanoBase": BASE,
+            "build": "leios-rc-2026w47", "image": IMAGE, "ledgerSourceCommit": LEDGER, "cardanoBase": BASE,
             "imageId": subprocess.check_output(["docker", "image", "inspect", IMAGE, "--format", "{{.Id}}"],
                                                text=True).strip(),
             "cases": len(rows),

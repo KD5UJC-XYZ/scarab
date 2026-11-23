@@ -22995,7 +22995,7 @@
     "DijkstraTranslationSuite"
    ],
    "note": "one counterpart per build, selected by the reference build: 11.1 (f649f975) adds the pools to the map it has; 11.2 (29a7d656) and the Leios build (9df9f98c) recompute it, through Translate.populateVRFKeyHashes. Under 11.1 the map it adds to is the reference's: a state below 11 whose map is not empty, which no chain of 11.1.3 reaches, is refused where it is restored or imported (storage.StateAdmission). Total: a waiting re-registration's VRF key hash is a VRFVerKeyHash of the state's parameters, so none is refused (#85 item 38)",
-   "digest": "a604215dcbbbc687"
+   "digest": "e3d8966bf7587207"
   },
   "def ledger.era.dijkstra.DijkstraTxBody#spendInputs": {
    "upstream": [
@@ -34008,7 +34008,7 @@
     "LedgerInjectionSuite"
    ],
    "note": "a function of the build: the instance of 29a7d656 and 9df9f98c (the same lines at both), none under the 11.1 line, whose f649f975 has no such instance",
-   "digest": "f1c682bb2495ef60"
+   "digest": "92c0c22d5f73c096"
   },
   "class ledger.era.rules.DijkstraUtxoEnv": {
    "upstream": [
@@ -48192,7 +48192,7 @@
     "ConwayMempoolRunSuite"
    ],
    "note": "the build's consensus selected by an exhaustive match on the reference build (REF-3); no recording holds the reference's reapplication of a transaction, so its refusals are not compared with the reference's bytes (only applyTx's are): it is bound by the differential against the flat pool's reapply on the corpus and the pool suites' transactions and by the suite's reapplication tests",
-   "digest": "4b5415032c056281"
+   "digest": "64d91daf865ce5f8"
   },
   "def ledger.era.rules.ConwayMempoolRun.reapply": {
    "upstream": [

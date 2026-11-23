@@ -706,7 +706,7 @@ object MempoolState:
         )
       case Some(Era.Dijkstra) =>
         build match
-          case ReferenceBuild.LeiosB004fe0c =>
+          case ReferenceBuild.Leios =>
             decoding(
               DijkstraRead
                 .submitted(submission.raw)

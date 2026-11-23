@@ -50,7 +50,8 @@ refuses with Conway's `OutputBootAddrAttrsTooBig` (UTXO tag 10), where 11.1 refu
 bootstrap-attribute case from Allegra on under the Leios build's, and requires a different refusal:
 the replay follows the corpus's build. The suite replays this corpus offline, not through a running
 node: `follow --reference-build leios-b004fe0c` still refuses to start (#826). No Dijkstra refusal is
-recorded: Scarab does not read a Dijkstra ledger state yet.
+recorded: Scarab does not read a Dijkstra ledger state yet. Its corpus is judged under `leios-rc-2026w47` since the Leios re-pin to rc-2026w47 (#1365): the
+former name is read as that build, which has the same cardano-ledger, so the recorded verdicts stand.
 
 ## What is compared
 
@@ -154,8 +155,8 @@ python3 scripts/devnet.py --name <yours> up-eras --final-era babbage   # walks B
 python3 scripts/devnet.py --name <yours> refusal-corpus --era babbage  # writes babbage-devnet/
 python3 scripts/devnet.py --name <yours> down
 python3 scripts/devnet.py --name <yours> up-dijkstra --conway-only --dijkstra-epoch 1000   # the Leios build, in Conway
-python3 scripts/devnet.py --name <yours> refusal-corpus --reference-build leios-b004fe0c \
-    --corpus conway-bootstrap-attributes-leios-b004fe0c --cases refusalcases:leios_bootstrap_attributes
+python3 scripts/devnet.py --name <yours> refusal-corpus --reference-build leios-rc-2026w47 \
+    --corpus conway-bootstrap-attributes-leios-rc-2026w47 --cases refusalcases:leios_bootstrap_attributes
 python3 scripts/devnet.py --name <yours> down
 python3 scripts/devnet.py --name <yours> up
 python3 scripts/devnet.py --name <yours> refusal-corpus --corpus conway-governance \

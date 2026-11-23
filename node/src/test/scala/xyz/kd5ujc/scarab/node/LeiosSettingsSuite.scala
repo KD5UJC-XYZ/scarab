@@ -12,7 +12,7 @@ class LeiosSettingsSuite extends FunSuite:
   private val snapshotBuilds = List(
     ReferenceBuild.Release11_1 -> BigInt(600),
     ReferenceBuild.Release11_2 -> BigInt(21600),
-    ReferenceBuild.LeiosB004fe0c -> BigInt(21600)
+    ReferenceBuild.Leios -> BigInt(21600)
   )
 
   snapshotBuilds.foreach { (build, maximum) =>
@@ -317,9 +317,9 @@ class LeiosSettingsSuite extends FunSuite:
         .parse(build)(s"""{"LeiosDbConfig":{"Backend":"$backend"}}""")
         .fold(e => fail(e.message), _.settings.unsupported)
     val unused = List("LeiosDbConfig: recognised but unused")
-    assertEquals(unsupported(ReferenceBuild.LeiosB004fe0c, "SQLite"), Nil)
+    assertEquals(unsupported(ReferenceBuild.Leios, "SQLite"), Nil)
     // `follow` refuses the in-memory backend at its start (`LeiosStorage.follows`)
-    assertEquals(unsupported(ReferenceBuild.LeiosB004fe0c, "InMemory"), Nil)
+    assertEquals(unsupported(ReferenceBuild.Leios, "InMemory"), Nil)
     assertEquals(unsupported(ReferenceBuild.Release11_1, "SQLite"), unused)
     assertEquals(unsupported(ReferenceBuild.Release11_2, "SQLite"), unused)
   }

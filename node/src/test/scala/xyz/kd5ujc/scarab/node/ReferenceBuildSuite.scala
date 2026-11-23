@@ -29,7 +29,7 @@ class ReferenceBuildSuite extends FunSuite:
         .map(_.settings.ledgerDb.snapshots.maximumDelaySeconds),
       Right(BigInt(21600))
     )
-    List(ReferenceBuild.Release11_1 -> BigInt(600), ReferenceBuild.LeiosB004fe0c -> BigInt(21600))
+    List(ReferenceBuild.Release11_1 -> BigInt(600), ReferenceBuild.Leios -> BigInt(21600))
       .foreach { (build, maximum) =>
         val options = Main
           .parse(
@@ -77,8 +77,10 @@ class ReferenceBuildSuite extends FunSuite:
     ReferenceBuild.values.foreach(b => assertEquals(ReferenceBuild.parse(b.name), Right(b)))
     assertEquals(
       ReferenceBuild.values.map(_.name).toVector,
-      Vector("11.1", "11.2", "leios-b004fe0c")
+      Vector("11.1", "11.2", "leios-rc-2026w47")
     )
+    // none of these is a flag value; the Leios build's former name, leios-b004fe0c, is read from
+    // files only, never taken as the flag (#1365)
     Vector(
       "11.1.3",
       "11.1.0",
@@ -90,10 +92,25 @@ class ReferenceBuildSuite extends FunSuite:
       "11.1 ",
       "mainline",
       "leios",
-      "Leios-b004fe0c"
+      "leios-b9c1dbea",
+      "leios-b004fe0c"
     )
       .foreach(text => assertEquals(ReferenceBuild.parse(text), Left(UnknownReferenceBuild(text))))
     assertEquals(ReferenceBuild.Default, ReferenceBuild.Release11_1)
+  }
+
+  test("a name a file records is a current name or a former one, read as the value it became") {
+    ReferenceBuild.values.foreach(b => assertEquals(ReferenceBuild.recorded(b.name), Right(b)))
+    assertEquals(ReferenceBuild.recorded("leios-b004fe0c"), Right(ReferenceBuild.Leios))
+    assertEquals(ReferenceBuild.renamed, Map("leios-b004fe0c" -> ReferenceBuild.Leios))
+    assertEquals(
+      ReferenceBuild.recorded("leios-0123abcd"),
+      Left(UnknownReferenceBuild("leios-0123abcd"))
+    )
+    // a former name keeps the layout of the value it became, so its snapshots stay readable
+    ReferenceBuild.renamed.values.foreach(b =>
+      assertEquals(StateLayout.of(b), Right(StateLayout.Leios))
+    )
   }
 
   test(
@@ -102,11 +119,11 @@ class ReferenceBuildSuite extends FunSuite:
     assertEquals(ReferenceBuild.Release11_1.stability, ReferenceBuild.Stability.Stable)
     assertEquals(ReferenceBuild.Release11_2.stability, ReferenceBuild.Stability.PreRelease)
     assert(!ReferenceBuildFlag.warns(ReferenceBuild.Release11_2, false))
-    assertEquals(ReferenceBuild.LeiosB004fe0c.stability, ReferenceBuild.Stability.Unstable)
+    assertEquals(ReferenceBuild.Leios.stability, ReferenceBuild.Stability.Unstable)
     assert(!ReferenceBuildFlag.warns(ReferenceBuild.Release11_1, false))
     assert(!ReferenceBuildFlag.warns(ReferenceBuild.Release11_1, true))
-    assert(ReferenceBuildFlag.warns(ReferenceBuild.LeiosB004fe0c, false))
-    assert(!ReferenceBuildFlag.warns(ReferenceBuild.LeiosB004fe0c, true))
+    assert(ReferenceBuildFlag.warns(ReferenceBuild.Leios, false))
+    assert(!ReferenceBuildFlag.warns(ReferenceBuild.Leios, true))
     assertEquals(
       ReferenceBuild.Release11_1.describe,
       "11.1 (stable, cardano-node 11.1.3)"
@@ -116,8 +133,8 @@ class ReferenceBuildSuite extends FunSuite:
       "11.2 (pre-release, cardano-node 11.2.1)"
     )
     assertEquals(
-      ReferenceBuild.LeiosB004fe0c.describe,
-      "leios-b004fe0c (unstable, cardano-node b004fe0c)"
+      ReferenceBuild.Leios.describe,
+      "leios-rc-2026w47 (unstable, cardano-node b9c1dbea)"
     )
   }
 
@@ -149,24 +166,25 @@ class ReferenceBuildSuite extends FunSuite:
     registered("IntersectMBO/cardano-ledger", "revision", next.ledger)
     registered("IntersectMBO/cardano-ledger", "revision", next.binary)
     registered("IntersectMBO/ouroboros-consensus", "revision", next.consensus)
-    val leios = ReferenceBuild.LeiosB004fe0c.pins
+    val leios = ReferenceBuild.Leios.pins
     registered("IntersectMBO/cardano-node", "revision", leios.node)
     registered("IntersectMBO/cardano-ledger", "revision", leios.ledger)
     registered("IntersectMBO/ouroboros-consensus", "revision", leios.consensus)
-    assert(ReferenceBuild.LeiosB004fe0c.name.endsWith(leios.node.take(8)))
+    // the Leios build is named by the release it is pinned at (#1365)
+    assertEquals(ReferenceBuild.Leios.name, "leios-rc-2026w47")
   }
 
   test(
     "11.1's and the Leios layouts are read and written, 11.2's not yet; follow refuses 11.2 alone"
   ) {
     assertEquals(StateLayout.of(ReferenceBuild.Release11_1), Right(StateLayout.Node11_1))
-    assertEquals(StateLayout.of(ReferenceBuild.LeiosB004fe0c), Right(StateLayout.Leios))
+    assertEquals(StateLayout.of(ReferenceBuild.Leios), Right(StateLayout.Leios))
     assertEquals(
       StateLayout.of(ReferenceBuild.Release11_2),
       Left(ReferenceBuildNotYet.Layout(ReferenceBuild.Release11_2))
     )
     assertEquals(
-      ReferenceBuildFlag.layout(ReferenceBuild.LeiosB004fe0c).map(_.layout),
+      ReferenceBuildFlag.layout(ReferenceBuild.Leios).map(_.layout),
       Right(StateLayout.Leios)
     )
     val notYet = Left(
@@ -182,16 +200,16 @@ class ReferenceBuildSuite extends FunSuite:
     )
     // the Leios build's Dijkstra runs on the era rules (#54)
     assertEquals(
-      ReferenceBuildFlag.follows(ReferenceBuild.LeiosB004fe0c).map(_.build),
-      Right(ReferenceBuild.LeiosB004fe0c)
+      ReferenceBuildFlag.follows(ReferenceBuild.Leios).map(_.build),
+      Right(ReferenceBuild.Leios)
     )
     assert(ReferenceLayout.Release11_1.reads(ReferenceBuild.Release11_1))
-    assert(!ReferenceLayout.Release11_1.reads(ReferenceBuild.LeiosB004fe0c))
+    assert(!ReferenceLayout.Release11_1.reads(ReferenceBuild.Leios))
     assert(!ReferenceLayout.Release11_1.reads(ReferenceBuild.Release11_2))
     assertEquals(
       ReferenceLayout
-        .of(ReferenceBuild.LeiosB004fe0c)
-        .map(l => (l.reads(ReferenceBuild.LeiosB004fe0c), l.reads(ReferenceBuild.Release11_2))),
+        .of(ReferenceBuild.Leios)
+        .map(l => (l.reads(ReferenceBuild.Leios), l.reads(ReferenceBuild.Release11_2))),
       Right((true, false))
     )
   }
@@ -201,8 +219,8 @@ class ReferenceBuildSuite extends FunSuite:
   test("follow takes --reference-build, 11.1 without it, and refuses an unknown one by type") {
     assertEquals(Main.parse(follow).map(_.referenceBuild), Right(ReferenceBuild.Release11_1))
     assertEquals(
-      Main.parse(follow ++ List("--reference-build", "leios-b004fe0c")).map(_.referenceBuild),
-      Right(ReferenceBuild.LeiosB004fe0c)
+      Main.parse(follow ++ List("--reference-build", "leios-rc-2026w47")).map(_.referenceBuild),
+      Right(ReferenceBuild.Leios)
     )
     assertEquals(
       Main.parse(follow ++ List("--reference-build", "11.2")).map(_.referenceBuild),
@@ -295,9 +313,9 @@ class ReferenceBuildSuite extends FunSuite:
     )
     assertEquals(
       LedgerSnapshotImportCommand
-        .parse(required ++ List("--reference-build", "leios-b004fe0c"))
+        .parse(required ++ List("--reference-build", "leios-rc-2026w47"))
         .map(_.build),
-      Right(ReferenceBuild.LeiosB004fe0c)
+      Right(ReferenceBuild.Leios)
     )
     assertEquals(
       LedgerSnapshotImportCommand

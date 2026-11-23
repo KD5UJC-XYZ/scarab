@@ -44,7 +44,7 @@ class PoolBlsKeyLayoutSuite extends FunSuite:
     judged(build).fold(e => fail(e.toString), _.stakePools.values.toVector.map(_.blsKey))
 
   test("a pool POOL registers in Conway holds no voting key in the Leios layout") {
-    assertEquals(registered(ReferenceBuild.LeiosB004fe0c), Vector(PoolBlsKey.Leios(None)))
+    assertEquals(registered(ReferenceBuild.Leios), Vector(PoolBlsKey.Leios(None)))
   }
 
   test("a pool POOL registers in the 11.1 layout has no voting-key field") {

@@ -169,7 +169,7 @@ final case class ConfigSettings(
     if experimentalHardForksEnabled then (BigInt(12), BigInt(0))
     else
       build match
-        case ReferenceBuild.LeiosB004fe0c                            => (BigInt(11), BigInt(0))
+        case ReferenceBuild.Leios                                    => (BigInt(11), BigInt(0))
         case ReferenceBuild.Release11_1 | ReferenceBuild.Release11_2 => (BigInt(11), BigInt(2))
 
   /** POM.hs:899-905 (cardano-node 11.1.3): relays default on, producers off; an explicit setting
@@ -358,8 +358,8 @@ object NodeConfig:
       if !strict then ByConfigurationKey
       else
         build match
-          case ReferenceBuild.Release11_1                                => FlatOnly
-          case ReferenceBuild.Release11_2 | ReferenceBuild.LeiosB004fe0c => ByConfigurationKey
+          case ReferenceBuild.Release11_1                        => FlatOnly
+          case ReferenceBuild.Release11_2 | ReferenceBuild.Leios => ByConfigurationKey
 
   /** The flat dialect, the only one the node reads: an envelope, where `dialects` tells it apart,
     * is refused ([[ConfigProblem.CardanoConfigEnvelope]]).

@@ -24,11 +24,11 @@ object LeiosStateFixture:
   /** The setup of the devnet the state is of, under the Leios build. */
   val setup: NodeSetup =
     NodeSetup
-      .fromDirectory(ReferenceBuild.LeiosB004fe0c)(fixture.resolve("genesis"))
+      .fromDirectory(ReferenceBuild.Leios)(fixture.resolve("genesis"))
       .fold(e => fail(e.message), identity)
 
   val layout: ReferenceLayout =
-    ReferenceLayout.of(ReferenceBuild.LeiosB004fe0c).fold(e => fail(e.message), identity)
+    ReferenceLayout.of(ReferenceBuild.Leios).fold(e => fail(e.message), identity)
 
   def read(state: String, name: String): Bytes =
     Bytes.wrap(JFiles.readAllBytes(fixture.resolve(s"$state/$name")))

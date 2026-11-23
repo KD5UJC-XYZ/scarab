@@ -89,12 +89,12 @@ class DijkstraEpochReferenceSuite extends FunSuite:
   private def globalsOf(dir: Path): Globals =
     val config = right(
       NodeConfig
-        .parse(ReferenceBuild.LeiosB004fe0c)(Files.readString(dir.resolve("config.json")), true)
+        .parse(ReferenceBuild.Leios)(Files.readString(dir.resolve("config.json")), true)
         .left
         .map(_.message)
     )
     val setup = right(
-      NodeSetup.assemble(ReferenceBuild.LeiosB004fe0c)(
+      NodeSetup.assemble(ReferenceBuild.Leios)(
         config,
         name => Option.when(Files.exists(dir.resolve(name)))(Files.readAllBytes(dir.resolve(name)))
       )

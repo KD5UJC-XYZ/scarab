@@ -1683,7 +1683,7 @@
       "id": "persistence-leios-state-layout",
       "component": "Persistence: the Leios build's `state` layout",
       "status": "partial",
-      "summary": "The `state` file of the Leios build (`--reference-build leios-b004fe0c`: cardano-ledger 9df9f98c, ouroboros-consensus 2416493b) is read and written in every Shelley-based era, Dijkstra among them, byte for byte on captured states, and imported and exported; each record that differs from 11.1 holds a part per layout. Future pool parameters, their BLS key included, and a proposal's Dijkstra parameter update are read and written as the reference's; a Peras epoch context is not read yet, and the build's rules are not implemented",
+      "summary": "The `state` file of the Leios build (`--reference-build leios-rc-2026w47`: cardano-ledger 9df9f98c, ouroboros-consensus 2416493b) is read and written in every Shelley-based era, Dijkstra among them, byte for byte on captured states, and imported and exported; each record that differs from 11.1 holds a part per layout. Future pool parameters, their BLS key included, and a proposal's Dijkstra parameter update are read and written as the reference's; a Peras epoch context is not read yet, and the build's rules are not implemented",
       "evidence": {
         "suites": [
           "LeiosLayoutSuite",

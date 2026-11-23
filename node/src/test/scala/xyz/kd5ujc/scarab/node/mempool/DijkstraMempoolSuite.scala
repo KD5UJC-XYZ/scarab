@@ -87,7 +87,7 @@ class DijkstraMempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
 
   private lazy val setup: NodeSetup =
     NodeSetup
-      .fromDirectory(ReferenceBuild.LeiosB004fe0c)(devnet.resolve("genesis"))
+      .fromDirectory(ReferenceBuild.Leios)(devnet.resolve("genesis"))
       .fold(e => fail(e.message), identity)
 
   private def geometry = setup.praos.geometry
@@ -323,7 +323,7 @@ class DijkstraMempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       val env = envOf(s(37), tip)
       val size = BigInt(submitted.size)
       def at(limit: BigInt) =
-        withParams(s(37), tip, ReferenceBuild.LeiosB004fe0c)(_.copy(maxTxSize = limit)) match
+        withParams(s(37), tip, ReferenceBuild.Leios)(_.copy(maxTxSize = limit)) match
           case Right(Right(l)) => pool(l, tip).add(dijkstra(submitted), env, Source.Local)
           case other           => fail(s"no ledger: $other")
       assert(at(size).isRight, s"${at(size)}")
@@ -377,7 +377,7 @@ class DijkstraMempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       val units = unitsOf(read)
       val size = BigInt(read.size)
       def at(maxTxSize: BigInt, maxTxExUnits: ExUnits) =
-        withParams(s(37), tip, ReferenceBuild.LeiosB004fe0c)(
+        withParams(s(37), tip, ReferenceBuild.Leios)(
           _.copy(maxTxSize = maxTxSize, maxTxExUnits = maxTxExUnits)
         ) match
           case Right(Right(l: DijkstraLedger)) => l.phase1(read)
@@ -408,7 +408,7 @@ class DijkstraMempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     states.map { s =>
       val tip = tipOf(36)
       def at(limit: BigInt, read: DijkstraRead, outputs: Vector[(TxIn, TxOut)]) =
-        withParams(s(37), tip, ReferenceBuild.LeiosB004fe0c)(
+        withParams(s(37), tip, ReferenceBuild.Leios)(
           _.copy(maxRefScriptSizePerTx = limit)
         ) match
           case Right(Right(l: DijkstraLedger)) => l.withUtxo(l.utxo ++ outputs).phase2(read)
@@ -449,7 +449,7 @@ class DijkstraMempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       // one unit whose bytes are exactly the transaction's measure, or a byte fewer: the ranking
       // block's bytes and the endorser block's split between them
       def unit(bytes: Long) =
-        withParams(s(37), tip, ReferenceBuild.LeiosB004fe0c)(
+        withParams(s(37), tip, ReferenceBuild.Leios)(
           _.copy(
             maxBlockBodySize = BigInt(bytes / 2 + Capacity.FixedBlockBodyOverhead),
             maxEndorserBlockTxsSize = BigInt(bytes - bytes / 2)
@@ -469,7 +469,7 @@ class DijkstraMempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     states.map { s =>
       val tip = tipOf(36)
       def at(size: BigInt) =
-        withParams(s(37), tip, ReferenceBuild.LeiosB004fe0c)(
+        withParams(s(37), tip, ReferenceBuild.Leios)(
           _.copy(maxEndorserBlockReferencesSize = size)
         )
       assert(at(BigInt(LeiosFetch.MaxEbBytes)).exists(_.isRight))
@@ -540,7 +540,7 @@ class DijkstraMempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       val tip = tipOf(36)
       val env = envOf(s(37), tip)
       val epoch = nesOf(s(37)).epoch.toBigInt
-      val ledger = withGov(s(37), tip, ReferenceBuild.LeiosB004fe0c)(withKeys47And48(_, epoch)._1)
+      val ledger = withGov(s(37), tip, ReferenceBuild.Leios)(withKeys47And48(_, epoch)._1)
       val l = ledger match
         case Right(Right(l: DijkstraLedger)) => l
         case other                           => fail(s"no Dijkstra ledger: $other")
@@ -705,9 +705,7 @@ class DijkstraMempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         None,
         MempoolEvents.none[IO]
       )
-      handler = LocalSubmission.handler(mempool, ReferenceBuild.LeiosB004fe0c)(f =>
-        IO(fail(s"fatal: $f"))
-      )
+      handler = LocalSubmission.handler(mempool, ReferenceBuild.Leios)(f => IO(fail(s"fatal: $f")))
       // LocalTxSubmission takes it: `[7, #6.24(tx)]`
       answer <- handler(LocalMonitor.wrapTx(Era.Dijkstra, submitted))
       _ = assertEquals(answer, LocalTxSubmissionServer.Response.Accepted)
@@ -751,7 +749,7 @@ class DijkstraMempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
 
   test("TxSubmission2's Leios reader reads a Dijkstra transaction; LocalTxSubmission writes none") {
     states.map { s =>
-      val leios = RelayedTransactions.of(ReferenceBuild.LeiosB004fe0c)
+      val leios = RelayedTransactions.of(ReferenceBuild.Leios)
       val body = inBlock.body.raw
       assertEquals(leios.read(submitted, Era.Dijkstra), Right(body))
       assertEquals(leios.body(submitted, Era.Dijkstra), Right(body))

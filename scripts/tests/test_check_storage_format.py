@@ -201,9 +201,11 @@ class SurfaceTest(TreeTest):
             # a metadata URL of more than 64 bytes no longer reads at version 9 or later (#1241, confirmation review)
             (f'{fmt.LEDGER_MAIN}/Tx.scala', 'val limit = if version.atLeast(9) then 128 else 64', 'val limit = 64',
              '#PoolParams.urlAt'),
-            # the 11.1 build is said to write the Leios layout
-            (layout, 'case ReferenceBuild.Release11_1   => Right(Node11_1)',
-             'case ReferenceBuild.Release11_1   => Right(Leios)', '#StateLayout.of'),
+            # the 11.1 build is said to write the Leios layout (the arm as scalafmt aligns it, whatever the
+            # longest build's name)
+            (layout, release_arm := re.search(r'case ReferenceBuild\.Release11_1 +=> Right\(Node11_1\)',
+                                               (ROOT / layout).read_text(encoding='utf-8')).group(0),
+             release_arm.replace('Right(Node11_1)', 'Right(Leios)'), '#StateLayout.of'),
         ]:
             with self.subTest(key=key):
                 self.setUp()

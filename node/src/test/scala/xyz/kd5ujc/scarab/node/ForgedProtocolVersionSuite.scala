@@ -66,14 +66,14 @@ class ForgedProtocolVersionSuite extends FunSuite:
       Vector(
         ReferenceBuild.Release11_1 -> (v12, (BigInt(11), BigInt(2))),
         ReferenceBuild.Release11_2 -> (v12, (BigInt(11), BigInt(2))),
-        ReferenceBuild.LeiosB004fe0c -> (v12, (BigInt(11), BigInt(0)))
+        ReferenceBuild.Leios -> (v12, (BigInt(11), BigInt(0)))
       )
     )
   }
 
   private val testnet = Path.of("fixtures", "leios")
   private lazy val testnetSetup = NodeSetup
-    .fromConfigFile(ReferenceBuild.LeiosB004fe0c)(testnet.resolve("testnet/config/config.json"))
+    .fromConfigFile(ReferenceBuild.Leios)(testnet.resolve("testnet/config/config.json"))
     .fold(e => fail(e.message), identity)
 
   test("under the testnet's configuration the node forges 12.42, its maximum major follows it") {
@@ -100,7 +100,7 @@ class ForgedProtocolVersionSuite extends FunSuite:
         case other => fail(other.toString)
     )
     assertEquals(headers.size, 8)
-    val (major, minor) = testnetSetup.config.settings.protocolVersion(ReferenceBuild.LeiosB004fe0c)
+    val (major, minor) = testnetSetup.config.settings.protocolVersion(ReferenceBuild.Leios)
     headers.foreach(h =>
       assertEquals(h.leios.versionInfo, HeaderVersionInfo(major, minor), h.slot.toString)
     )
@@ -164,7 +164,7 @@ class ForgedProtocolVersionSuite extends FunSuite:
       assert(bbody(testnetSetup.forgedProtocolVersion(signal)).exists(_.isRight), signal.toString)
     )
     assertEquals(
-      bbody(forged(ReferenceBuild.LeiosB004fe0c, experimental = false)),
+      bbody(forged(ReferenceBuild.Leios, experimental = false)),
       Right(
         Left(Vector(DijkstraBbodyFailure.HeaderProtVerTooLow(Mismatch(BigInt(11), BigInt(12)))))
       )

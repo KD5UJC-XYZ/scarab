@@ -305,7 +305,7 @@ class CliTest(unittest.TestCase):
     def test_the_follower_runs_the_leios_build_with_its_store_and_socket(self):
         command = lf.follower_command("n", 2, 2)
         self.assertEqual(command[2:5], ["--name", "n", "follow"])
-        for flag in (["--reference-build", "leios-b004fe0c"], ["--db"], ["--local-socket"], ["--node", "2"]):
+        for flag in (["--reference-build", "leios-rc-2026w47"], ["--db"], ["--local-socket"], ["--node", "2"]):
             self.assertTrue(any(command[i:i + len(flag)] == flag for i in range(len(command))), flag)
 
     def test_a_voting_follower_listens_and_is_given_the_pools_keys(self):

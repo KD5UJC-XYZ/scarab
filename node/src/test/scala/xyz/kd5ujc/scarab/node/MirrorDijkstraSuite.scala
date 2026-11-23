@@ -68,7 +68,7 @@ class MirrorDijkstraSuite extends CatsEffectSuite:
   private def setupOf(build: ReferenceBuild): NodeSetup =
     NodeSetup.fromDirectory(build)(devnet.resolve("genesis")).fold(e => fail(e.message), identity)
 
-  private lazy val leiosSetup = setupOf(ReferenceBuild.LeiosB004fe0c)
+  private lazy val leiosSetup = setupOf(ReferenceBuild.Leios)
 
   /** The devnet chain from Origin: 33 Conway blocks, then 8 Dijkstra blocks. */
   private lazy val devnetChain: Vector[(Header, Bytes)] =
@@ -143,7 +143,7 @@ class MirrorDijkstraSuite extends CatsEffectSuite:
   ) {
     val testnet = Path.of("fixtures", "leios", "testnet")
     val setup = NodeSetup
-      .fromConfigFile(ReferenceBuild.LeiosB004fe0c)(testnet.resolve("config/config.json"))
+      .fromConfigFile(ReferenceBuild.Leios)(testnet.resolve("config/config.json"))
       .fold(e => fail(e.message), identity)
     val blocks = Files
       .readAllLines(testnet.resolve("blocks-rc-2026w44.tsv"))
@@ -232,7 +232,7 @@ class MirrorDijkstraSuite extends CatsEffectSuite:
   }
 
   test("follow runs the Leios build and the 11.1 line, and still refuses 11.2") {
-    assert(ReferenceBuildFlag.follows(ReferenceBuild.LeiosB004fe0c).isRight)
+    assert(ReferenceBuildFlag.follows(ReferenceBuild.Leios).isRight)
     assert(ReferenceBuildFlag.follows(ReferenceBuild.Release11_1).isRight)
     assert(ReferenceBuildFlag.follows(ReferenceBuild.Release11_2).isLeft)
   }

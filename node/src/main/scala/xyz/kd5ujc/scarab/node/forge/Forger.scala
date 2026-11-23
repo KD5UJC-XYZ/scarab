@@ -2663,7 +2663,7 @@ object Forger:
     * do not, and keep the refusal of a Dijkstra tip.
     */
   private[forge] def forgesDijkstra(build: ReferenceBuild): Boolean = build match
-    case ReferenceBuild.LeiosB004fe0c                            => true
+    case ReferenceBuild.Leios                                    => true
     case ReferenceBuild.Release11_1 | ReferenceBuild.Release11_2 => false
 
   /** What the leader check of a slot reads from the tip's state: the pool distribution of its

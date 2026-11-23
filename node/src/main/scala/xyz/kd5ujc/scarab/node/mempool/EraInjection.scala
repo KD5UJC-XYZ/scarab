@@ -104,18 +104,18 @@ object EraInjection:
   object Mismatch:
     /** The place of the selected build (REF-3). */
     def of(build: ReferenceBuild): Mismatch = build match
-      case ReferenceBuild.Release11_1   => InRules
-      case ReferenceBuild.Release11_2   => InMeasure
-      case ReferenceBuild.LeiosB004fe0c => InMeasure
+      case ReferenceBuild.Release11_1 => InRules
+      case ReferenceBuild.Release11_2 => InMeasure
+      case ReferenceBuild.Leios       => InMeasure
 
   /** The injection of the selected build (REF-3): 11.1 is cardano-node 11.1.3's; 11.2 is
     * cardano-node 11.2.1's, and the Leios build's is the same code (`InjectTxs.hs` is the same file
     * at ouroboros-consensus 808e4005 and 2416493b).
     */
   def of(build: ReferenceBuild): EraInjection = build match
-    case ReferenceBuild.Release11_1   => Translate
-    case ReferenceBuild.Release11_2   => Redecode
-    case ReferenceBuild.LeiosB004fe0c => Redecode
+    case ReferenceBuild.Release11_1 => Translate
+    case ReferenceBuild.Release11_2 => Redecode
+    case ReferenceBuild.Leios       => Redecode
 
   /** The whole transaction of `era` as the reference writes it, to relay and to list: before Alonzo
     * the record `[body, witnesses, auxiliary data or null]` (`EncCBOR (ShelleyTx l era)`,

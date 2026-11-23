@@ -116,7 +116,7 @@ object HaskellImport:
     * (`ReferenceBuildNotYet.Rules`). A release build's network has no Dijkstra block.
     */
   def storesDijkstra(build: ReferenceBuild): Boolean = build match
-    case ReferenceBuild.LeiosB004fe0c                            => true
+    case ReferenceBuild.Leios                                    => true
     case ReferenceBuild.Release11_1 | ReferenceBuild.Release11_2 => false
 
   final case class Progress(appended: Long, skipped: Long, chunks: Int, slot: Long)

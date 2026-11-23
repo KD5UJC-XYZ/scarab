@@ -53,7 +53,7 @@ line `inbound ... closed` names the query): the current protocol parameters, the
 of the certificate state, the distributions, the wallet's queries, the ledger peer snapshots and the queries
 of Conway's governance (the constitution, the DRep and committee queries, the proposals, the ratify state, the
 future parameters and the pools' default votes) in Dijkstra (roadmap F1); under the Leios build
-(`--reference-build leios-b004fe0c`) a Dijkstra state answers the current protocol parameters, the governance
+(`--reference-build leios-rc-2026w47`) a Dijkstra state answers the current protocol parameters, the governance
 state, the ratify state and the future parameters. Under that build a client that negotiates version
 23 is answered as the Leios build answers it: the pools' state (`GetStakePoolState`) and the Leios voting
 committees (`GetLeiosCommittee`) are answered, and the three queries it removed (tags 4, 5 and 21) and

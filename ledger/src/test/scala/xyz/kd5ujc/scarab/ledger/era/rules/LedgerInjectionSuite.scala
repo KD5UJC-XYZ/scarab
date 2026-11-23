@@ -288,7 +288,7 @@ class LedgerInjectionSuite extends munit.FunSuite:
         .map(_.injectFailure(AccountAlreadyRegistered[Conway](credential)))
       build match
         case ReferenceBuild.Release11_1 => assertEquals(injected, None, build.name)
-        case ReferenceBuild.Release11_2 | ReferenceBuild.LeiosB004fe0c =>
+        case ReferenceBuild.Release11_2 | ReferenceBuild.Leios =>
           assertEquals(injected, Some(expected), build.name)
     }
     // and LEDGERS has no instance for it at any build

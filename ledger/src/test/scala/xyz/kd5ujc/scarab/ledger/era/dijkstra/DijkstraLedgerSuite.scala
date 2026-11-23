@@ -114,7 +114,7 @@ class DijkstraLedgerSuite extends FunSuite:
 
   private lazy val leios: Globals =
     TestLedger.globals.copy(
-      ledger = TestLedger.globals.ledger.copy(referenceBuild = ReferenceBuild.LeiosB004fe0c),
+      ledger = TestLedger.globals.ledger.copy(referenceBuild = ReferenceBuild.Leios),
       geometry = EpochGeometry
         .checked(
           Instant.ofEpochSecond(systemStart.toLong),

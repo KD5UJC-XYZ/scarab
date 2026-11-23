@@ -51,7 +51,10 @@ class PoolDistributionReferenceSuite extends FunSuite:
   test("the immutable snapshot reuses its distribution; copying a changed snapshot recomputes it") {
     val row = rows
       .find(r =>
-        r.get[String]("build") == Right("leios-b004fe0c") &&
+        r.get[String]("build")
+          .toOption
+          .flatMap(xyz.kd5ujc.scarab.protocol.ReferenceBuild.recorded(_).toOption)
+          .contains(xyz.kd5ujc.scarab.protocol.ReferenceBuild.Leios) &&
           r.get[String]("name") == Right("key")
       )
       .getOrElse(fail("missing native voting-key case"))

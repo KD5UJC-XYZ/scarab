@@ -127,9 +127,8 @@ class DijkstraBbodySuite extends FunSuite:
   // ---- BBODY on crafted blocks ----------------------------------------------------------------------
 
   private val globals: Globals =
-    flat.TestLedger.globals.copy(ledger =
-      flat.TestLedger.globals.ledger.copy(referenceBuild = ReferenceBuild.LeiosB004fe0c)
-    )
+    flat.TestLedger.globals
+      .copy(ledger = flat.TestLedger.globals.ledger.copy(referenceBuild = ReferenceBuild.Leios))
 
   private lazy val history: flat.Horizon =
     val params = flat.Horizon.Params(100, 1000, 30, 30)

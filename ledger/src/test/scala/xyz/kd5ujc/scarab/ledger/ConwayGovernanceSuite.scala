@@ -1242,7 +1242,7 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
     assertEquals(scenario(ReferenceBuild.Release11_1, derived), (Some(2L), Some(1L), Some(taken)))
     // 11.2 and the Leios build count afresh and reach the reference's from it too
     assertEquals(scenario(ReferenceBuild.Release11_2, derived), (Some(1L), None, None))
-    assertEquals(scenario(ReferenceBuild.LeiosB004fe0c, derived), (Some(1L), None, None))
+    assertEquals(scenario(ReferenceBuild.Leios, derived), (Some(1L), None, None))
   }
 
   test("before protocol version 11 two pools may share a VRF key hash") {

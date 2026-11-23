@@ -72,7 +72,7 @@ class DijkstraClosureSuite extends FunSuite:
 
   private lazy val globals: Globals =
     flat.TestLedger.globals.copy(
-      ledger = flat.TestLedger.globals.ledger.copy(referenceBuild = ReferenceBuild.LeiosB004fe0c),
+      ledger = flat.TestLedger.globals.ledger.copy(referenceBuild = ReferenceBuild.Leios),
       geometry = flat.EpochGeometry
         .checked(
           Instant.EPOCH,

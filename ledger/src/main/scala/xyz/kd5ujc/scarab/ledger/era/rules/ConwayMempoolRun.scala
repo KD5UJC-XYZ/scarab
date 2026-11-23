@@ -160,9 +160,9 @@ object ConwayMempoolRun:
   object Reapply:
     /** The reapplication of `build`'s consensus. */
     def of(build: ReferenceBuild): Reapply = build match
-      case ReferenceBuild.Release11_1   => ReapplyTx
-      case ReferenceBuild.Release11_2   => ReapplyValidatedTx
-      case ReferenceBuild.LeiosB004fe0c => ReapplyValidatedTx
+      case ReferenceBuild.Release11_1 => ReapplyTx
+      case ReferenceBuild.Release11_2 => ReapplyValidatedTx
+      case ReferenceBuild.Leios       => ReapplyValidatedTx
 
   /** `mkMempoolEnv nes slot` (`Shelley/API/Mempool.hs:363-377`, cardano-ledger f649f975): the slot,
     * no epoch (LEDGER takes the slot's), the least index, the parameters in force and the chain's

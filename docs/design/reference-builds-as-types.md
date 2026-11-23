@@ -8,7 +8,7 @@ and the suites of its differential (§3). Stage 1 not started.
 Tracked in [#1063](https://github.com/KD5UJC-XYZ/scarab/issues/1063). **No persisted format changes in this
 programme** (§4).
 
-Pins: cardano-ledger f649f975 for the `11.1` build and cardano-ledger 9df9f98c for the `leios-b004fe0c`
+Pins: cardano-ledger f649f975 for the `11.1` build and cardano-ledger 9df9f98c for the `leios-rc-2026w47`
 build ([`docs/data/reference-pins.json`](../data/reference-pins.json) has every pin of each build).
 Abbreviated reference paths are under `eras/<era>/impl/src/Cardano/Ledger/<Era>/`. Scarab code is named by
 its symbols, not its lines.
@@ -16,7 +16,7 @@ its symbols, not its lines.
 ## 1. The problem
 
 `ReferenceBuild` (`protocol`) is a run-time enum with three cases: `Release11_1` (`11.1`, the default),
-`Release11_2` (`11.2`, whose layout is not read or written yet) and `LeiosB004fe0c` (`leios-b004fe0c`). Its value
+`Release11_2` (`11.2`, whose layout is not read or written yet) and `Leios` (`leios-rc-2026w47`). Its value
 reaches the code in four ways.
 
 - **Two rules match on the build.** `UtxoTests.injectedBootAddrAttrsTooBig` refuses an oversized bootstrap

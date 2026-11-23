@@ -35,7 +35,7 @@ class LeiosTxBytesSuite extends CatsEffectSuite:
   private val fixture = JPath.of("fixtures/leios/state")
   private val setup =
     NodeSetup
-      .fromDirectory(ReferenceBuild.LeiosB004fe0c)(fixture.resolve("genesis"))
+      .fromDirectory(ReferenceBuild.Leios)(fixture.resolve("genesis"))
       .fold(e => fail(e.message), identity)
   private given Ask[IO, ConsensusMirrorEnv] = Ask.const(setup.mirrorEnv())
   private val placement = Placement(setup.geometry, setup.byronHistory, setup.praos.forks)
@@ -155,7 +155,7 @@ class LeiosTxBytesSuite extends CatsEffectSuite:
   test("the total after a block is written with the state and read back from the snapshot") {
     val after = stepped(start, block(0, plain, withAux, invalid))
     val layout =
-      ReferenceLayout.of(ReferenceBuild.LeiosB004fe0c).fold(e => fail(e.message), identity)
+      ReferenceLayout.of(ReferenceBuild.Leios).fold(e => fail(e.message), identity)
     val format = SnapshotV10.format[IO](SnapshotCheck.Full, layout)
     val snapshot = StateSnapshot(
       StateMirror.anchorOf(after.ext.headerState.tip),

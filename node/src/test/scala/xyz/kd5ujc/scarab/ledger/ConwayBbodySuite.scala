@@ -887,7 +887,7 @@ class ConwayBbodySuite extends FailsOnUncaught:
       HeaderProtVerGate.MainnetOrFromVersion12
     )
     assertEquals(HeaderProtVerGate.of(ReferenceBuild.Release11_2), HeaderProtVerGate.MainnetOnly)
-    assertEquals(HeaderProtVerGate.of(ReferenceBuild.LeiosB004fe0c), HeaderProtVerGate.MainnetOnly)
+    assertEquals(HeaderProtVerGate.of(ReferenceBuild.Leios), HeaderProtVerGate.MainnetOnly)
     val v12 = Version.mkVersion(12).getOrElse(fail("12"))
     val v11 = Version.mkVersion(11).getOrElse(fail("11"))
     assert(HeaderProtVerGate.MainnetOrFromVersion12.checks(Network.Testnet, v12))

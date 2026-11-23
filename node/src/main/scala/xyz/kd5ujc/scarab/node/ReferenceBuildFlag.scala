@@ -46,7 +46,7 @@ object ReferenceBuildFlag:
     * #826 step c). The Leios build's Dijkstra runs on the era rules (#54).
     */
   def follows(build: ReferenceBuild): Either[ConfigError, ReferenceLayout] = build match
-    case ReferenceBuild.Release11_1 | ReferenceBuild.LeiosB004fe0c => layout(build)
+    case ReferenceBuild.Release11_1 | ReferenceBuild.Leios => layout(build)
     case ReferenceBuild.Release11_2 =>
       layout(build).flatMap(_ =>
         Left(ConfigError(ConfigProblem.ReferenceBuildNotYet(ReferenceBuildNotYet.Rules(build))))
@@ -60,7 +60,7 @@ object ReferenceBuildFlag:
     */
   def headerFirst(build: ReferenceBuild, on: Boolean): Either[ConfigError, Unit] = build match
     case ReferenceBuild.Release11_1 | ReferenceBuild.Release11_2 => Right(())
-    case ReferenceBuild.LeiosB004fe0c =>
+    case ReferenceBuild.Leios =>
       Either.cond(on, (), ConfigError(ConfigProblem.HeaderFirstRequired(build)))
 
   /** The fields of the line that names the build a command runs with: its name, stability and pins,

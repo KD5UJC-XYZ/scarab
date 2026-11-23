@@ -74,26 +74,31 @@ class RecordedCorpus(unittest.TestCase):
         builds = set()
         for directory, meta in self.corpora():
             build = meta.get("referenceBuild", refusalcorpus.DEFAULT_BUILD)
-            self.assertIn(build, refusalcorpus.BUILDS, directory.name)
+            current = refusalcorpus.current(build)
+            self.assertIn(current, refusalcorpus.BUILDS, directory.name)
             node = meta["provenance"]["reference"]
             self.assertTrue(refusalcorpus.is_build(build, node["node"], node["revision"]), directory.name)
-            builds.add(build)
+            builds.add(current)
         self.assertEqual(builds, set(refusalcorpus.BUILDS))
 
 
 class Builds(unittest.TestCase):
     ELEVEN = ("cardano-node 11.1.3 - linux-x86_64 - ghc-9.6", "938cba990357ae7c4b7f95c8f75dd9d31174bbeb")
-    LEIOS = ("cardano-node 11.2.0.164 - linux-x86_64 - ghc-9.6", "b004fe0c50913dcdaa827a98e68a43d0ccce152a")
+    LEIOS = ("cardano-node 11.2.0.164 - linux-x86_64 - ghc-9.6", "b9c1dbea7dd2affa4fe06403720c09ffcdcc2c13")
+    LEIOS_W44 = ("cardano-node 11.2.0.164 - linux-x86_64 - ghc-9.6", "b004fe0c50913dcdaa827a98e68a43d0ccce152a")
 
     def test_the_release_line_by_version_and_the_leios_build_by_commit(self):
         self.assertTrue(refusalcorpus.is_build("11.1", *self.ELEVEN))
         self.assertFalse(refusalcorpus.is_build("11.1", *self.LEIOS))
-        self.assertTrue(refusalcorpus.is_build("leios-b004fe0c", *self.LEIOS))
-        self.assertFalse(refusalcorpus.is_build("leios-b004fe0c", *self.ELEVEN))
-        self.assertFalse(refusalcorpus.is_build("leios-b004fe0c", self.LEIOS[0], "b004fe0c" + "0" * 32))
+        self.assertTrue(refusalcorpus.is_build("leios-rc-2026w47", *self.LEIOS))
+        self.assertFalse(refusalcorpus.is_build("leios-rc-2026w47", *self.ELEVEN))
+        self.assertFalse(refusalcorpus.is_build("leios-rc-2026w47", self.LEIOS[0], "b9c1dbea" + "0" * 32))
+        # a corpus recorded under the Leios build's former name was recorded by that name's node
+        self.assertTrue(refusalcorpus.is_build("leios-b004fe0c", *self.LEIOS_W44))
+        self.assertFalse(refusalcorpus.is_build("leios-b004fe0c", *self.LEIOS))
 
     def test_the_leios_cluster_files_are_its_genesis_and_config_json(self):
-        files = refusalcorpus.BUILDS["leios-b004fe0c"]["files"]
+        files = refusalcorpus.BUILDS["leios-rc-2026w47"]["files"]
         self.assertIn("dijkstra-genesis.json", files)
         self.assertIn("config.json", files)
         self.assertEqual(refusalcorpus.BUILDS["11.1"]["files"], refusalcorpus.GENESIS)

@@ -50,7 +50,7 @@ object LeiosCheckMain extends IOApp:
           .as(ExitCode(2))
 
   private def check(headers: Path, config: Path, stop: Option[Int]): String =
-    NodeSetup.fromConfigFile(ReferenceBuild.LeiosB004fe0c)(config) match
+    NodeSetup.fromConfigFile(ReferenceBuild.Leios)(config) match
       case Left(error) => s"cannot set up: ${error.message}"
       case Right(setup) =>
         val reader = new BufferedReader(

@@ -54,7 +54,7 @@ private[node] object LeiosStorage:
   ): Either[ConfigError, Plan] =
     build match
       case ReferenceBuild.Release11_1 | ReferenceBuild.Release11_2 => Right(Plan.NoStore)
-      case ReferenceBuild.LeiosB004fe0c =>
+      case ReferenceBuild.Leios =>
         (backend, db) match
           case (LeiosDbBackend.SQLite, Some(dir)) => Right(Plan.OnDisk(dir))
           case (LeiosDbBackend.InMemory, _) =>

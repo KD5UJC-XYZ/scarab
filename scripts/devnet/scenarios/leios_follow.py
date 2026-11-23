@@ -2,7 +2,7 @@
 """`leios-traffic --follow` (#73, #54): the Scala node follows the reference Leios cluster, and is judged against it.
 
 The follower is the plain `devnet.py follow` of the cluster (`follower.py`), started with the build the cluster runs
-(`--reference-build leios-b004fe0c`), a chain database (`--db`, under which the Leios build keeps its endorser-block
+(`--reference-build leios-rc-2026w47`), a chain database (`--db`, under which the Leios build keeps its endorser-block
 store, `LeiosStorage.follows`) and a node-to-client socket (`--local-socket`). It reads the genesis directory
 `start_nodes` writes, whose `config.json` is the cluster's own, `LeiosMinOfferLead` included. Its container joins the
 reference container's network namespace (`cluster.scala_container`), so it reaches reference node `--follow-node` at
@@ -35,7 +35,7 @@ from .. import compare, ledgercompare
 from ..cluster import database_mounts, freeze_classes, scala_container
 from ..util import ENTRY, REPO, SINGLE_FOLLOWER, docker, read_final_log, read_log
 
-BUILD = "leios-b004fe0c"
+BUILD = "leios-rc-2026w47"
 EVENT_KINDS = REPO / "node/src/main/scala/xyz/kd5ujc/scarab/node/log/EventKind.scala"
 STORE_CHECK = "xyz.kd5ujc.scarab.node.tools.LeiosStoreCheckMain"
 TOOLS_CLASSES = REPO / "tools/target/scala-3.9.0/classes"

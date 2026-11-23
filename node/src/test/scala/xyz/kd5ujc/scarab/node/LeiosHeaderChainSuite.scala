@@ -28,7 +28,7 @@ class LeiosHeaderChainSuite extends munit.FunSuite:
 
   private val setup: NodeSetup =
     NodeSetup
-      .fromConfigFile(ReferenceBuild.LeiosB004fe0c)(dir.resolve("config").resolve("config.json"))
+      .fromConfigFile(ReferenceBuild.Leios)(dir.resolve("config").resolve("config.json"))
       .fold(e => fail(e.message), identity)
   private val config = setup.praos
   private val stake =

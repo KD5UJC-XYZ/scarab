@@ -780,5 +780,5 @@ private[node] object Praos2Headers:
     * headers keep the refusal of every other era's path).
     */
   def of(build: ReferenceBuild): Option[Praos2Headers] = build match
-    case ReferenceBuild.LeiosB004fe0c                            => Some(Praos2Headers())
+    case ReferenceBuild.Leios                                    => Some(Praos2Headers())
     case ReferenceBuild.Release11_1 | ReferenceBuild.Release11_2 => None

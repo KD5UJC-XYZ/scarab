@@ -3,7 +3,7 @@
 
 REFERENCE ONLY: nothing here starts a Scala node. The cluster is the evidence base for the Dijkstra codec and rule
 work: `up-dijkstra` starts it and drives it into Dijkstra with one Dijkstra transaction, `capture-dijkstra` saves its
-chain from Origin as a fixture. `devnet.py follow --reference-build leios-b004fe0c --db` starts the Scala follower
+chain from Origin as a fixture. `devnet.py follow --reference-build leios --db` starts the Scala follower
 against it by hand, and `leios-traffic --follow` starts one against its Leios cluster and judges it
 (`scenarios/leios_follow.py`).
 
@@ -29,10 +29,10 @@ from cleanup import container_labels
 from . import cborspan
 from .util import ENV, MAGIC, REPO, USER, data_root, docker, in_ref, put_file, read_json, ref, without_resource_statistics
 
-LEIOS_TAG = "ghcr.io/input-output-hk/ouroboros-leios/cardano-node-testnet:rc-2026w44"
-LEIOS_DIGEST = "sha256:70439665b4b93c58ecaa8f73c8919ac7b358f938dd262b6644cd515270773fca"
+LEIOS_TAG = "ghcr.io/input-output-hk/ouroboros-leios/cardano-node-testnet:rc-2026w47"
+LEIOS_DIGEST = "sha256:9f10c52796370fc5a0aaceb81d7ffe492d9ac371970c8ea33ecfba1bae2c16cd"
 LEIOS_IMAGE = f"{LEIOS_TAG.rsplit(':', 1)[0]}@{LEIOS_DIGEST}"
-LEIOS_NODE_REVISION = "b004fe0c50913dcdaa827a98e68a43d0ccce152a"
+LEIOS_NODE_REVISION = "b9c1dbea7dd2affa4fe06403720c09ffcdcc2c13"
 IMAGE_CONFIG = "/app/config"
 GENESIS_FILES = ("byron-genesis.json", "shelley-genesis.json", "alonzo-genesis.json", "conway-genesis.json",
                  "dijkstra-genesis.json")
@@ -129,9 +129,11 @@ def node_command(node, bls_key=None):
 def start_reference(name, cpus=3, memory="6g", work="2g"):
     """The reference container, from the pinned digest; the nodes and the CLI run inside it, their files in a
     `work`-sized tmpfs."""
-    inspected = docker("image", "inspect", "--format", "{{json .RepoDigests}}", LEIOS_TAG, check=False)
+    # the digest-qualified reference: the one the recovery command pulls and the container runs, which a pull by
+    # digest makes present without the tag
+    inspected = docker("image", "inspect", "--format", "{{json .RepoDigests}}", LEIOS_IMAGE, check=False)
     if inspected.returncode != 0 or not image_digest_ok(json.loads(inspected.stdout or "[]")):
-        raise SystemExit(f"{LEIOS_TAG} with digest {LEIOS_DIGEST} is not present; `docker pull {LEIOS_IMAGE}`")
+        raise SystemExit(f"{LEIOS_IMAGE} is not present; `docker pull {LEIOS_IMAGE}`")
     docker("run", "-d", "--name", ref(name), "--pull=never", *container_labels("devnet", name),
            f"--cpus={cpus}", f"--memory={memory}", "--user", USER, "-e", "HOME=/work",
            "--tmpfs", f"/work:rw,exec,size={work},uid={os.getuid()},gid={os.getgid()}",
@@ -255,7 +257,7 @@ def up_dijkstra(args):
     """Start the cluster and wait until it is in Dijkstra, a Dijkstra transaction is in a block and the chain is
     `--blocks-after` blocks past it plus the security parameter (so that block is in the ImmutableDB). With
     `--conway-only` it returns once Conway has `CONWAY_ONLY_BLOCKS` blocks, and the cluster stays in Conway until
-    `--dijkstra-epoch`: a Leios-build Conway cluster for `refusal-corpus --reference-build leios-b004fe0c`."""
+    `--dijkstra-epoch`: a Leios-build Conway cluster for `refusal-corpus --reference-build leios`."""
     root = data_root(args.name)
     if root.exists():
         raise SystemExit(f"{root} exists; run `devnet.py down` first")
@@ -392,11 +394,20 @@ def headers_tsv(described, conway_before=3):
     return "\n".join(rows) + "\n"
 
 
-def capture_manifest(summary, described, tx_index, blocks_text, versions, captured_at):
+def running_reference(name):
+    """The image the running reference container was started from and the git revision its `cardano-node --version`
+    reports, so that a capture records the node that made the chain, not the checkout's pins."""
+    image = docker("inspect", "--format", "{{.Config.Image}}", ref(name), check=False).stdout.strip()
+    lines = in_ref(name, "cardano-node --version").stdout.strip().splitlines()
+    revision = next((line.removeprefix("git rev ").strip() for line in lines if line.startswith("git rev ")), "")
+    return image, revision
+
+
+def capture_manifest(summary, described, tx_index, blocks_text, versions, captured_at, image, revision):
     per_era = {era: sum(1 for d in described if d["era"] == era) for era in BLOCK_TAG_ERA.values()}
     first = next(d for d in described if d["era"] == "dijkstra")
-    return {"capturedAt": captured_at, "referenceOnly": True, "image": LEIOS_IMAGE,
-            "nodeRevision": LEIOS_NODE_REVISION, "versions": versions, "blocks": len(described),
+    return {"capturedAt": captured_at, "referenceOnly": True, "image": image,
+            "nodeRevision": revision, "versions": versions, "blocks": len(described),
             "blocksPerEra": per_era, "firstDijkstraBlock": {k: first[k] for k in ("blockNo", "slot", "headerHash")},
             "transaction": {"id": summary["transaction"]["id"], "blockNo": described[tx_index]["blockNo"],
                             "slot": described[tx_index]["slot"]},
@@ -416,6 +427,12 @@ def capture_dijkstra(args):
     summary = json.loads(summary_path.read_text())
     if summary.get("conwayOnly"):
         raise SystemExit(f"`{args.name}` was started with --conway-only: it has no Dijkstra chain to capture")
+    # a fixture is recorded from the pinned build only: refuse a cluster the checkout's pins no longer name, before
+    # any file is written
+    image, revision = running_reference(args.name)
+    if (image, revision) != (LEIOS_IMAGE, LEIOS_NODE_REVISION):
+        raise SystemExit(f"the running reference is {image} at {revision or 'an unknown revision'}, not the pinned "
+                         f"{LEIOS_IMAGE} at {LEIOS_NODE_REVISION}: start the cluster again from this checkout")
     db = f"{ENV}/node-data/node1/db/immutable"
     chunks = in_ref(args.name, f"ls {db} | grep '\\.chunk$' | sort").stdout.split()
     blocks = []
@@ -439,7 +456,8 @@ def capture_dijkstra(args):
         shutil.copyfile(root / "genesis" / file, out / "genesis" / file)
     versions = {tool: in_ref(args.name, f"{tool} --version").stdout.strip().splitlines()
                 for tool in ("cardano-node", "cardano-cli")}
-    manifest = capture_manifest(summary, described, at, text, versions, time.strftime("%Y-%m-%d", time.gmtime()))
+    manifest = capture_manifest(summary, described, at, text, versions, time.strftime("%Y-%m-%d", time.gmtime()),
+                                image, revision)
     (out / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
     print(json.dumps({"captured": len(kept), "blocksPerEra": manifest["blocksPerEra"],
                       "transaction": manifest["transaction"], "out": str(out)}))

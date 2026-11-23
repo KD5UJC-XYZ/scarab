@@ -46,7 +46,9 @@ class ReferenceBuildStartSuite extends CatsEffectSuite:
 
   // without a database directory the Leios build has no endorser-block store, so a certifying
   // block could never be applied: refused at start, before any store opens (#54)
-  test("leios-b004fe0c without --db or DatabasePath is refused at start, before any store opens") {
+  test(
+    "leios-rc-2026w47 without --db or DatabasePath is refused at start, before any store opens"
+  ) {
     Main
       .run(
         List(
@@ -58,7 +60,7 @@ class ReferenceBuildStartSuite extends CatsEffectSuite:
           "--seconds",
           "5",
           "--reference-build",
-          "leios-b004fe0c"
+          "leios-rc-2026w47"
         )
       )
       .map(assertEquals(_, ExitCode(1)))
@@ -66,7 +68,7 @@ class ReferenceBuildStartSuite extends CatsEffectSuite:
 
   // the database directory the configuration names is the run's (`DatabasePath`, completed into
   // the options before the store is admitted and opened there)
-  test("leios-b004fe0c with DatabasePath from --config and no --db opens its store there") {
+  test("leios-rc-2026w47 with DatabasePath from --config and no --db opens its store there") {
     StorageTestKit.tempDir.use { dir =>
       val genesis = java.nio.file.Path.of("fixtures", "dijkstra-devnet", "genesis").toAbsolutePath
       val source = Files.readString(genesis.resolve("config.json"))
@@ -100,7 +102,7 @@ class ReferenceBuildStartSuite extends CatsEffectSuite:
             "--seconds",
             "2",
             "--reference-build",
-            "leios-b004fe0c"
+            "leios-rc-2026w47"
           )
         )
         opened <- cats.effect.IO.blocking(Files.isDirectory((dir / "db" / "leios").toNioPath))

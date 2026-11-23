@@ -48,12 +48,12 @@ import xyz.kd5ujc.scarab.protocol.{Era, HfcHeader, NtNHeader, ReferenceBuild}
 import xyz.kd5ujc.scarab.storage.haskell.state.HaskellLedgerFile
 import xyz.kd5ujc.scarab.protocol.StateLayout
 
-/** A Dijkstra block forged as the forger forges it under `--reference-build leios-b004fe0c`, on the
-  * public Leios testnet's ledger state at slot 2,168,639 (`fixtures/leios/state/testnet-2168639`,
-  * block 97,273), and checked as a peer's block is checked. The pool is a test pool of throwaway
-  * keys: its stake is that of the testnet's ten largest pools, moved to it in the state's set
-  * snapshot, the source of both the forger's leader check and the header rules' ledger view; the
-  * total and every other pool are left as they are.
+/** A Dijkstra block forged as the forger forges it under `--reference-build leios-rc-2026w47`, on
+  * the public Leios testnet's ledger state at slot 2,168,639
+  * (`fixtures/leios/state/testnet-2168639`, block 97,273), and checked as a peer's block is
+  * checked. The pool is a test pool of throwaway keys: its stake is that of the testnet's ten
+  * largest pools, moved to it in the state's set snapshot, the source of both the forger's leader
+  * check and the header rules' ledger view; the total and every other pool are left as they are.
   *
   * The steps are the forger's own ([[Forger.ledgerAt]], [[Forger.leaderView]], [[Forger.inputsOf]],
   * [[Leadership.check]], [[Forger.tickedTo]], [[BlockBuilder.Assembly]]); only the KES signature is
@@ -81,7 +81,7 @@ class DijkstraForgeSuite extends munit.FunSuite:
       .map(_.split('\t'))
 
   private val leios = Path.of("fixtures", "leios")
-  private val build = ReferenceBuild.LeiosB004fe0c
+  private val build = ReferenceBuild.Leios
   private lazy val setup = NodeSetup
     .fromConfigFile(build)(leios.resolve("testnet/config/config.json"))
     .fold(e => fail(e.message), identity)

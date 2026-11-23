@@ -40,7 +40,7 @@ object StateAdmission:
       // as 11.2 (cardano-ledger 9df9f98c: the same HARDFORK and POOL gate, `populateVRFKeyHashes`
       // at `State/CertState.hs:528-538`); its snapshots are of its own layout, which no retired
       // conversion wrote, and its rules do not run yet
-      case ReferenceBuild.LeiosB004fe0c => Right(())
+      case ReferenceBuild.Leios => Right(())
 
   /** [[admit]] of a restored snapshot, as the snapshot format refuses it, named by the file the
     * node writes the snapshot of its anchor under.

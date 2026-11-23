@@ -44,7 +44,7 @@ import xyz.kd5ujc.scarab.protocol.{Era, Handshake, ProtocolError, ReferenceBuild
   *
   * Run, inside the build container: `tools/runMain xyz.kd5ujc.scarab.node.tools.TxSubmitPeer <host>
   * <port> <magic> <build> <era> <seconds> <tx file or directory>...`, for example
-  * `... TxSubmitPeer relay.example 3001 164 leios-b004fe0c dijkstra 120 /work/txs`. Hand-run, not
+  * `... TxSubmitPeer relay.example 3001 164 leios-rc-2026w47 dijkstra 120 /work/txs`. Hand-run, not
   * part of the node, not run by `check`.
   */
 object TxSubmitPeer extends IOApp:

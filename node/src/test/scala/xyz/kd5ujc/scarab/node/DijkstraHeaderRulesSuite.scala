@@ -46,7 +46,7 @@ import xyz.kd5ujc.scarab.crypto.vrf.PraosVrfCertificate as Vrf
 import xyz.kd5ujc.scarab.storage.haskell.state.HaskellLedgerFile
 
 /** The node's header rules ([[NodeHeaderRules]], which the header gate runs on every peer's
-  * headers) on Dijkstra headers the reference adopted, under `--reference-build leios-b004fe0c`:
+  * headers) on Dijkstra headers the reference adopted, under `--reference-build leios-rc-2026w47`:
   * each header read from its ChainSync envelope as the peer path reads it ([[NtNHeader]],
   * [[Header.fromNtN]]) and validated by Praos2 against the ledger view forecast from the anchor, as
   * the reference's ChainSync client validates it (ouroboros-consensus 2416493b
@@ -124,7 +124,7 @@ class DijkstraHeaderRulesSuite extends munit.FunSuite:
 
   private val devnet = Path.of("fixtures", "dijkstra-devnet")
   private lazy val devnetSetup = NodeSetup
-    .fromConfigFile(ReferenceBuild.LeiosB004fe0c)(devnet.resolve("genesis/config.json"))
+    .fromConfigFile(ReferenceBuild.Leios)(devnet.resolve("genesis/config.json"))
     .fold(e => fail(e.message), identity)
   private lazy val devnetPraos = devnetSetup.praos
 
@@ -155,7 +155,7 @@ class DijkstraHeaderRulesSuite extends munit.FunSuite:
   }
 
   test("every Dijkstra header the reference adopted passes from the Conway anchor") {
-    val r = rules(devnetSetup, devnetPraos, ReferenceBuild.LeiosB004fe0c)
+    val r = rules(devnetSetup, devnetPraos, ReferenceBuild.Leios)
     val start = r.at(crossing)
     val end = fold(r, crossing, Some(ref(lastConway)), start, dijkstraHeaders)
     val state = praos2(end)
@@ -173,7 +173,7 @@ class DijkstraHeaderRulesSuite extends munit.FunSuite:
   }
 
   test("a Dijkstra header whose KES signature was changed is refused as the reference refuses it") {
-    val r = rules(devnetSetup, devnetPraos, ReferenceBuild.LeiosB004fe0c)
+    val r = rules(devnetSetup, devnetPraos, ReferenceBuild.Leios)
     val first = dijkstraHeaders.head
     // the last byte of the header's body signature (`InvalidKesSignatureOCERT`)
     val forged = received(devnetSetup, envelope(flipped(first.raw, -1)))
@@ -228,7 +228,7 @@ class DijkstraHeaderRulesSuite extends munit.FunSuite:
         ),
         12
       ),
-      erasSetup.globals.copy(referenceBuild = ReferenceBuild.LeiosB004fe0c),
+      erasSetup.globals.copy(referenceBuild = ReferenceBuild.Leios),
       erasSetup.byronRules.map(_.copy(configuredShelleyEpoch = shelley)),
       erasSetup.handOver
     )
@@ -272,7 +272,7 @@ class DijkstraHeaderRulesSuite extends munit.FunSuite:
   }
 
   test("a Dijkstra header past the forecast range of its anchor waits for the node's chain") {
-    val r = rules(devnetSetup, devnetPraos, ReferenceBuild.LeiosB004fe0c)
+    val r = rules(devnetSetup, devnetPraos, ReferenceBuild.Leios)
     // an anchor whose tip's stability window (75 slots) ends before the first Dijkstra slot: the
     // bound of a forecast across the boundary is then the current era's
     val (early, anchor) = conway.findLast(_._1.slot + 1 + 75 <= dijkstraHeaders.head.slot).get
@@ -300,7 +300,7 @@ class DijkstraHeaderRulesSuite extends munit.FunSuite:
   }
 
   test("the gate's time forecast places the Dijkstra headers from the Conway anchor") {
-    val r = rules(devnetSetup, devnetPraos, ReferenceBuild.LeiosB004fe0c)
+    val r = rules(devnetSetup, devnetPraos, ReferenceBuild.Leios)
     dijkstraHeaders.foreach { h =>
       r.forecastTime(crossing, Some(ref(lastConway)), r.at(crossing), h) match
         case TimeForecast.Known(_) => ()
@@ -332,7 +332,7 @@ class DijkstraHeaderRulesSuite extends munit.FunSuite:
       }
       body(
         NodeSetup
-          .fromConfigFile(ReferenceBuild.LeiosB004fe0c)(dir.resolve("config.json"))
+          .fromConfigFile(ReferenceBuild.Leios)(dir.resolve("config.json"))
           .fold(e => fail(e.message), identity)
       )
     finally
@@ -345,7 +345,7 @@ class DijkstraHeaderRulesSuite extends munit.FunSuite:
     withBabbageStart { setup =>
       val anchor = setup.mirrorStart
       assertEquals(anchor.era, Era.Babbage)
-      val r = rules(setup, setup.praos, ReferenceBuild.LeiosB004fe0c)
+      val r = rules(setup, setup.praos, ReferenceBuild.Leios)
       // the header extends the devnet's block 32, as the candidate chain it came on does
       val prev = r.at(anchor) match
         case s: NodeHeaderState.Shelley => s.copy(previous = Some(ref(lastConway)))
@@ -402,7 +402,7 @@ class DijkstraHeaderRulesSuite extends munit.FunSuite:
       )
       .fold(e => fail(e.toString), identity)
     val state =
-      praos2(rules(devnetSetup, devnetPraos, ReferenceBuild.LeiosB004fe0c).at(crossing) match
+      praos2(rules(devnetSetup, devnetPraos, ReferenceBuild.Leios).at(crossing) match
         case s: NodeHeaderState.Shelley =>
           s.copy(state =
             s.state.copy(dep = ChainDepState.Praos2(DijkstraCrossing.chainDepState(s.state.view)))
@@ -433,7 +433,7 @@ class DijkstraHeaderRulesSuite extends munit.FunSuite:
 
   test("a Praos2 parameter that cannot hold leaves a header undecided, never refused or waiting") {
     val config = devnetPraos.copy(slotsPerKesPeriod = 0)
-    val r = rules(devnetSetup, config, ReferenceBuild.LeiosB004fe0c)
+    val r = rules(devnetSetup, config, ReferenceBuild.Leios)
     assertEquals(
       r.validate(crossing, Some(ref(lastConway)), r.at(crossing), dijkstraHeaders.head),
       Outcome.Undecided(HeaderDefect.Praos2(Praos2Defect.NonPositiveKesPeriod(0)))
@@ -444,7 +444,7 @@ class DijkstraHeaderRulesSuite extends munit.FunSuite:
 
   private val testnet = Path.of("fixtures", "leios")
   private lazy val testnetSetup = NodeSetup
-    .fromConfigFile(ReferenceBuild.LeiosB004fe0c)(testnet.resolve("testnet/config/config.json"))
+    .fromConfigFile(ReferenceBuild.Leios)(testnet.resolve("testnet/config/config.json"))
     .fold(e => fail(e.message), identity)
 
   /** The testnet's state at slot 2,168,639 as the node's anchor: its ledger and header state read
@@ -467,7 +467,7 @@ class DijkstraHeaderRulesSuite extends munit.FunSuite:
     rows(testnet.resolve("testnet/headers-after-2168639.tsv"))
       .map(r => received(testnetSetup, hex(r(4))))
   private lazy val testnetRules =
-    rules(testnetSetup, testnetSetup.praos, ReferenceBuild.LeiosB004fe0c)
+    rules(testnetSetup, testnetSetup.praos, ReferenceBuild.Leios)
 
   /** The anchor's header state, as the gate starts a session at its tip. */
   private lazy val testnetStart: NodeHeaderState =

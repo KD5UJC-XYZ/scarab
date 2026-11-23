@@ -677,7 +677,7 @@ envelope with the 11.1 codec only; nothing an existing node or file does changes
 Scarab mirrors, each with its stability and its pins, which `docs/data/reference-pins.json`
 registers with the enum as a dependent: `11.1`, the stable 11.1 release line behaving as its pinned
 release 11.1.3 (cardano-ledger f649f975, cardano-ledger-binary at 048b78d2, ouroboros-consensus
-82ecba32), and `leios-b004fe0c`, the unstable public Leios testnet build (cardano-node b004fe0c,
+82ecba32), and `leios-rc-2026w47`, the unstable public Leios testnet build (cardano-node b004fe0c,
 cardano-ledger 9df9f98c, ouroboros-consensus 2416493b). Parsing the flag string is total, with
 `UnknownReferenceBuild` for any other text. `--reference-build` is on `follow`,
 `import-ledger-snapshot` and `export-ledger-snapshot`, `11.1` without it; the help text and
@@ -771,7 +771,7 @@ selected by the build (step c).
 
 ## 14. The Leios build's layout as built (#826 step b)
 
-The `state` file of `leios-b004fe0c` (cardano-ledger 9df9f98c, ouroboros-consensus 2416493b) is read
+The `state` file of `leios-rc-2026w47` (cardano-ledger 9df9f98c, ouroboros-consensus 2416493b) is read
 and written in every Shelley-based era up to Conway, and in Dijkstra (below). The encoders and decoders of every type a
 Shelley-to-Conway `state` file holds were diffed between the pins of the two builds, era by era; the
 records below are those that differ. Everything else, the binary layer below version 12 among it
@@ -839,7 +839,7 @@ never written in the other: `HaskellLedgerFile.encode` returns `StateNotWritable
 conversion. Records that do not differ are shared.
 
 **The setting.** `ReferenceLayout.of` gives this build its codec; `import-ledger-snapshot` and
-`export-ledger-snapshot` take `leios-b004fe0c` and add or strip the envelope as for `11.1`.
+`export-ledger-snapshot` take `leios-rc-2026w47` and add or strip the envelope as for `11.1`.
 `follow` refuses it (`ReferenceBuildFlag.follows`) until step c. The rules this build runs produce
 values of the 11.1 layout; running them on a Leios state is step c's to change.
 
