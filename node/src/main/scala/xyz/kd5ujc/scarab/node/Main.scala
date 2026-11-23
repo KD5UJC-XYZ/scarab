@@ -93,7 +93,8 @@ import xyz.kd5ujc.scarab.node.forge.{
   Forger,
   HotKeySource,
   KeyGuard,
-  PoolCredentials
+  PoolCredentials,
+  ProducerSignal
 }
 import xyz.kd5ujc.scarab.node.assertions.{Assertions, Property}
 import io.circe.{Encoder, JsonObject}
@@ -487,6 +488,11 @@ object Main extends IOApp:
     * @param keyLock
     *   `--key-lock on|off`: with `--forge`, hold an exclusive lock for the KES key file, taken
     *   before the credentials are read (see [[forge.KeyGuard]]).
+    * @param producerSignal
+    *   `--producer-id scarab|opt-out`: with `--forge`, what the minor protocol version of the
+    *   forged headers says of the software (CIP-0203,
+    *   [[xyz.kd5ujc.scarab.node.forge.ProducerSignal]]): Scarab's identifier 42 by default, or the
+    *   opt-out 255.
     * @param startAsNonProducingNode
     *   `--start-as-non-producing-node`, or its hidden, deprecated alias `--non-producing-node`
     *   (cardano-node 11.1.3 `Parsers.hs` 414-436): start with forging disabled even though
@@ -556,6 +562,7 @@ object Main extends IOApp:
         xyz.kd5ujc.scarab.network.ChainSyncPipelineDecision.Window.Default,
       stallDump: Option[Path] = None,
       keyLock: Boolean = true,
+      producerSignal: ProducerSignal = ProducerSignal.Default,
       referenceBuild: ReferenceBuild = ReferenceBuild.Default,
       startAsNonProducingNode: Boolean = false,
       assertionsFile: Option[Path] = None,
@@ -2734,7 +2741,7 @@ object Main extends IOApp:
               setup.praos.copy(geometry = geometry),
               globals,
               run.plutus,
-              setup.forgedProtocolVersion,
+              setup.forgedProtocolVersion(options.producerSignal),
               pool,
               follower,
               mempool,
@@ -3060,7 +3067,7 @@ object Main extends IOApp:
       values.find(r => argument == s"--${r.flag}")
 
   private val Usage =
-    "usage: follow (--genesis-dir <dir> | --config <config.json>) (--peer <host>:<port> [--peer ...] | --topology <topology.json>) [--listen <host>:<port>] [--seconds N] [--query-listen off|P] [--query-port P] [--metrics-listen <host>:<port>] [--plutus-cases <dir>] [--db <dir>] [--adopt-legacy-network-identity] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--snapshot-check structure|full] [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--memory-report-seconds N] [--stall-minutes N] [--stall-exit-after <Ns|Nm|Nh>] [--stall-dump <dir>] [--churn-interval <Ns|Nm>] [--read-ahead N] [--chain-sync-low N] [--chain-sync-high N] [--header-first on|off] [--max-inbound N] [--max-outbound N] [--cpu-threads N] [--plutus-workers N] [--dump-state <dir> [--dump-state-at <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file> [--shelley-bls-key <file>] [--key-lock on|off]] [--start-as-non-producing-node] [--reference-build <build>] [--assertions-file <path>] " + LogSettings.Usage +
+    "usage: follow (--genesis-dir <dir> | --config <config.json>) (--peer <host>:<port> [--peer ...] | --topology <topology.json>) [--listen <host>:<port>] [--seconds N] [--query-listen off|P] [--query-port P] [--metrics-listen <host>:<port>] [--plutus-cases <dir>] [--db <dir>] [--adopt-legacy-network-identity] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--snapshot-check structure|full] [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--memory-report-seconds N] [--stall-minutes N] [--stall-exit-after <Ns|Nm|Nh>] [--stall-dump <dir>] [--churn-interval <Ns|Nm>] [--read-ahead N] [--chain-sync-low N] [--chain-sync-high N] [--header-first on|off] [--max-inbound N] [--max-outbound N] [--cpu-threads N] [--plutus-workers N] [--dump-state <dir> [--dump-state-at <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file> [--shelley-bls-key <file>] [--key-lock on|off] [--producer-id scarab|opt-out]] [--start-as-non-producing-node] [--reference-build <build>] [--assertions-file <path>] " + LogSettings.Usage +
       "\n" + ReferenceBuildFlag.Help
 
   /** Flags that take a value and may repeat. */
@@ -3105,6 +3112,7 @@ object Main extends IOApp:
     "opcert",
     "shelley-bls-key",
     "key-lock",
+    "producer-id",
     "reference-build",
     "assertions-file"
   )
@@ -3284,6 +3292,11 @@ object Main extends IOApp:
             .fold(Right(true))(v =>
               Map("on" -> true, "off" -> false).get(v).toRight(invalid("key-lock"))
             )
+          producerSignal <- flags
+            .get("producer-id")
+            .fold(Right(ProducerSignal.Default))(v =>
+              ProducerSignal.byName.get(v).toRight(invalid("producer-id"))
+            )
           maxInbound <- flags
             .get("max-inbound")
             .traverse(
@@ -3367,6 +3380,7 @@ object Main extends IOApp:
           chainSyncWindow = chainSyncWindow,
           adoptLegacyNetworkIdentity = flags.contains("adopt-legacy-network-identity"),
           keyLock = keyLock,
+          producerSignal = producerSignal,
           referenceBuild = referenceBuild,
           startAsNonProducingNode =
             flags.contains("start-as-non-producing-node") || flags.contains("non-producing-node"),

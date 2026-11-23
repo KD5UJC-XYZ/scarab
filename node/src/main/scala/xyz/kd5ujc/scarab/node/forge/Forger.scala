@@ -255,10 +255,11 @@ trait ForgeEvents[F[_]]:
   * tests drive it with a test clock.
   *
   * @param protocolVersion
-  *   The protocol version the forged headers carry: the node's own under its build
-  *   ([[xyz.kd5ujc.scarab.node.NodeSetup.forgedProtocolVersion]]), not the ledger's, as
-  *   `forgeShelleyBlock` takes `shelleyProtocolVersion` of the block config (ouroboros-consensus
-  *   82ecba32 `Shelley/Ledger/Forge.hs:83`, 2416493b `Shelley/Ledger/Forge.hs:144`).
+  *   The protocol version the forged headers carry: the node's own under its build, with the
+  *   producer signal as its minor ([[xyz.kd5ujc.scarab.node.NodeSetup.forgedProtocolVersion]]), not
+  *   the ledger's, as `forgeShelleyBlock` takes `shelleyProtocolVersion` of the block config
+  *   (ouroboros-consensus 82ecba32 `Shelley/Ledger/Forge.hs:83`, 2416493b
+  *   `Shelley/Ledger/Forge.hs:144`).
   * @param credentials
   *   The pool's keys as they were at the start; the VRF key and the cold key never change, the KES
   *   key and certificate are those of `hot`.
