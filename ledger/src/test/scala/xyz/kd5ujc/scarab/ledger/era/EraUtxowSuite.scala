@@ -295,6 +295,25 @@ class EraUtxowSuite extends munit.FunSuite:
     assertEquals(LangDepView.encodeLangViews(Set.empty), hex("a0"))
   }
 
+  test("a cost model's integers are encoded in their shortest heads, as the flat views encode them") {
+    // every width of head, each side of its bounds, positive and negative, to the ends of the
+    // `Int64` a parameter is
+    val bounds = Vector[BigInt](0, 23, 24, 255, 256, 65535, 65536, (BigInt(1) << 32) - 1)
+      .flatMap(b => Vector(b, b + 1))
+      .appended(BigInt(Long.MaxValue))
+    val model: Vector[BigInt] =
+      bounds ++ bounds.map(-1 - _) ++ Vector.tabulate(300)(i => BigInt(i) * 997 - 4000)
+    val pp = withModels(Map(0 -> model, 1 -> model, 2 -> model))
+    val flatPp = TestLedger.params(9).copy(costModels = Map(0 -> model, 1 -> model, 2 -> model))
+    languageSets.foreach { langs =>
+      assertEquals(
+        LangDepView.encodeLangViews(langs.map(LangDepView.getLanguageView(pp, _))),
+        Bytes(FlatScriptIntegrity.plutusLanguageViews(flatPp, langs)),
+        langs.toString
+      )
+    }
+  }
+
   test("views of one tag are encoded in their derived order, whatever order the set was built in") {
     // `Set.toList` of the views in the derived (tag, parameters) order, then the stable sort by tag
     // (`Alonzo/PParams.hs:547-548, 587-597`, cardano-ledger f649f975)

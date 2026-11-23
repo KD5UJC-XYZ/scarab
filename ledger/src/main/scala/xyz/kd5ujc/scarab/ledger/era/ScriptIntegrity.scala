@@ -43,15 +43,18 @@ object LangDepView:
 
   /** `encodeCostModel` (`Alonzo/PParams.hs:550-564`, cardano-ledger f649f975): PlutusV1's
     * parameters as an indefinite list (the Alonzo encoding, kept), the later languages' as a
-    * definite one.
+    * definite one. The parameters' encodings are joined once, not each appended to a copy of the
+    * ones before it: a block's every transaction with scripts encodes its languages' models, a few
+    * hundred integers each (#85).
     */
   private def encodeCostModel(lang: PlutusLanguage, params: Vector[BigInt]): Bytes =
-    val items = params.foldLeft(Bytes.empty)(_ ++ Cbor.int(_))
-    lang match
+    val items = params.map(Cbor.intItem)
+    val encoded = lang match
       case PlutusLanguage.V1 =>
-        Bytes(Vector(0x9f.toByte)) ++ items ++ Bytes(Vector(0xff.toByte))
+        Array(0x9f.toByte) +: items :+ Array(0xff.toByte)
       case PlutusLanguage.V2 | PlutusLanguage.V3 | PlutusLanguage.V4 =>
-        Cbor.head(4, BigInt(params.size)) ++ items
+        Cbor.headItem(4, BigInt(params.size)) +: items
+    Bytes.wrap(Array.concat(encoded*))
 
   /** `encodeLangViews` (`Alonzo/PParams.hs:587-597`, cardano-ledger f649f975): a definite map of
     * each view's tag to its parameters, already encoded, in the short-lex order of the tags. The
@@ -72,23 +75,32 @@ object LangDepView:
   private object Cbor:
     val Null: Bytes = Bytes(Vector(0xf6.toByte))
 
-    def head(major: Int, n: BigInt): Bytes =
+    def head(major: Int, n: BigInt): Bytes = Bytes.wrap(headItem(major, n))
+
+    /** A head's bytes: its argument, in the fewest of one, two, four or eight bytes after the
+      * initial byte, read from a `Long` where it is one (every cost model parameter is), so that
+      * an argument in range takes no `BigInt` arithmetic.
+      */
+    def headItem(major: Int, n: BigInt): Array[Byte] =
+      if n.isValidLong then headOf(major, n.longValue)
+      else if n < 24 then Array(((major << 5) | n.toInt).toByte)
+      // its low 64 bits, as the eight bytes of a wider argument were written
+      else Array(((major << 5) | 27).toByte) ++ bigEndian(n.longValue, 8)
+
+    private def headOf(major: Int, n: Long): Array[Byte] =
       val initial = major << 5
-      if n < 24 then Bytes(Vector((initial | n.toInt).toByte))
-      else
-        val width =
-          if n < 256 then 1 else if n < 65536 then 2 else if n < (BigInt(1) << 32) then 4 else 8
-        val ai = width match
-          case 1 => 24
-          case 2 => 25
-          case 4 => 26
-          case _ => 27
-        Bytes(
-          (initial | ai).toByte +: Vector.tabulate(width)(i => (n >> (8 * (width - 1 - i))).toByte)
-        )
+      if n < 24 then Array((initial | n.toInt).toByte)
+      else if n < 256 then Array((initial | 24).toByte, n.toByte)
+      else if n < 65536 then Array((initial | 25).toByte) ++ bigEndian(n, 2)
+      else if n < (1L << 32) then Array((initial | 26).toByte) ++ bigEndian(n, 4)
+      else Array((initial | 27).toByte) ++ bigEndian(n, 8)
+
+    /** The low `width` bytes of `n`, the most significant first. */
+    private def bigEndian(n: Long, width: Int): Array[Byte] =
+      Array.tabulate(width)(i => (n >>> (8 * (width - 1 - i))).toByte)
 
     def uint(n: BigInt): Bytes = head(0, n)
-    def int(n: BigInt): Bytes = if n >= 0 then head(0, n) else head(1, -1 - n)
+    def intItem(n: BigInt): Array[Byte] = if n >= 0 then headItem(0, n) else headItem(1, -1 - n)
     def bytes(b: Bytes): Bytes = head(2, BigInt(b.size)) ++ b
 
 /** What a transaction's script integrity hash is over (`data ScriptIntegrity era`, cardano-ledger
