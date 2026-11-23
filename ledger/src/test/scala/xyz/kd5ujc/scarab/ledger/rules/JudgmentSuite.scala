@@ -221,12 +221,35 @@ class JudgmentSuite extends DisciplineSuite:
     assertEquals(accumulate(judge.fail(5) *> branch), refused(2, 5))
   }
 
-  test("a defect raised after a recorded failure ends the judgment with the defect") {
-    val program = judge.fail(1) *> Raise[J, Defect].raise[Defect, Unit](Defect.Big) *> judge.fail(2)
-    assertEquals(accumulate(program), Outcome.Raised(Defect.Big))
+  test(
+    "a defect raised after a recorded failure ends the judgment with the defect, and the failures recorded to it"
+  ) {
+    val raise = Raise[J, Defect].raise[Defect, Unit](Defect.Big)
+    val program = judge.fail(1) *> raise *> judge.fail(2)
+    assertEquals(accumulate(program), Outcome.Halted(NonEmptyChain.one(1), Defect.Big))
     assertEquals(
       Judgment.judge(program, Policy.Accumulate)(globals, 0),
       Left(Defect.Big)
+    )
+    // under FirstFailure the failure ends the judgment before the raise
+    assertEquals(firstFailure(program), refused(1))
+    // with nothing recorded before it, the raise alone
+    assertEquals(accumulate(raise *> judge.fail(2)), Outcome.Raised(Defect.Big))
+    // the failures to the raise in the reference's order, the nests it leaves closed: the root's
+    // reversed, a nest's one level down in the order recorded, the raise's own nest's among them
+    assertEquals(
+      accumulate(
+        judge.fail(1) *> judge.nest(judge.fail(2) *> judge.fail(3)) *>
+          judge.nest(judge.fail(4) *> judge.nest(judge.fail(5) *> raise) *> judge.fail(6))
+      ),
+      Outcome.Halted(NonEmptyChain(4, 5, 2, 3, 1), Defect.Big)
+    )
+    // a raise recovered from drops what its protected program recorded, so it is no halt
+    assertEquals(
+      accumulate(
+        judge.fail(1) *> Handle[J, Defect].handleWith(judge.fail(2) *> raise)(_ => Monad[J].unit)
+      ),
+      refused(1)
     )
     assertEquals(
       Judgment.judge(judge.fail(1), Policy.Accumulate)(globals, 0),

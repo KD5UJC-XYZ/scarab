@@ -60,9 +60,10 @@ class ShelleyDelegsPointerSuite extends FunSuite:
     ShelleyDelegs
       .transition[F](env, Vector(Certificate.Register(Credential.Key(key), None)))
       .judge(RuleT.Policy.Accumulate, globals, start) match
-      case RuleT.Outcome.Raised(failure)   => Left(failure)
-      case RuleT.Outcome.Refused(failures) => Left(LedgerFailure.Rejected(Bytes.empty, failures))
-      case RuleT.Outcome.Passed(state, _)  => Right(state)
+      case RuleT.Outcome.Raised(failure)    => Left(failure)
+      case RuleT.Outcome.Halted(_, failure) => Left(failure)
+      case RuleT.Outcome.Refused(failures)  => Left(LedgerFailure.Rejected(Bytes.empty, failures))
+      case RuleT.Outcome.Passed(state, _)   => Right(state)
 
   private def pointers(slot: BigInt, txIx: Int): Set[Ptr] =
     delegs(slot, txIx).fold(e => fail(s"refused: $e"), _.dState.accounts.ptrs.keySet.toSet)
