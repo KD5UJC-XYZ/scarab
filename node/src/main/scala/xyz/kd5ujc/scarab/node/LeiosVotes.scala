@@ -38,23 +38,25 @@ enum LeiosVotesDefect:
   */
 final class LeiosVotes[F[_]] private (
     held: Ref[F, LeiosVotes.Held[F]],
-    committee: F[Either[LeiosCertificationDefect, Option[TipCommittee]]]
+    committee: F[Either[LeiosCertificationDefect, Option[TipCommittee]]],
+    votable: F[RbHash => Boolean]
 )(using F: Concurrent[F]):
 
-  /** `addVote` (`LeiosVoteState.hs:157-234`, ouroboros-consensus 2416493b): a vote counted already
-    * is `AlreadyKnown`, and one whose block left the window is `Retired` (#1355), before any check;
-    * then the committee in force, read once (`NoCommittee` without one); then the vote is validated
-    * against it outside the update, the pairing being the costly part; then, in one update, counted
-    * unless a concurrent add counted it first, and given to each subscriber registered at that
-    * update, once. The count and the delivery are one step that a cancellation does not split, as
-    * the reference counts the vote and writes it to its broadcast channel in one transaction: a
-    * vote is never counted while a subscriber misses it, which a later copy, `AlreadyKnown`, would
-    * never make good.
+  /** `addVote` (`LeiosVoteState.hs:168-247`, ouroboros-consensus d91b3557): a vote whose block is
+    * not `votable` is `NotVotable`, and one counted already `AlreadyKnown`, before any check, read
+    * together as the reference reads them in one transaction; then the committee in force, read
+    * once (`NoCommittee` without one); then the vote is validated against it outside the update,
+    * the pairing being the costly part; then, in one update, counted unless a concurrent add
+    * counted it first, and given to each subscriber registered at that update, once. The count and
+    * the delivery are one step that a cancellation does not split, as the reference counts the vote
+    * and writes it to its broadcast channel in one transaction: a vote is never counted while a
+    * subscriber misses it, which a later copy, `AlreadyKnown`, would never make good.
     */
   def add(vote: Vote)(using defect: Raise[F, LeiosVotesDefect]): F[AddVoteResult] =
-    held.get.map(_.state.known(vote)).flatMap {
-      case Some(known) => F.pure(known)
-      case None =>
+    (votable.map(_(vote.announcingRbHash)), held.get.map(_.state.seen(vote))).tupled.flatMap {
+      case (false, _)   => F.pure(AddVoteResult.NotVotable)
+      case (true, true) => F.pure(AddVoteResult.AlreadyKnown)
+      case (true, false) =>
         committee.flatMap {
           case Left(failed) =>
             defect.raise[LeiosVotesDefect, AddVoteResult](LeiosVotesDefect.Committee(failed))
@@ -131,10 +133,17 @@ object LeiosVotes:
     * committee in force, read for each vote: `leiosCommitteeOfTip` of the selection's ledger state
     * (`NodeKernel.hs:988-991`), or the defect that left it unread.
     */
+  /** @param votable
+    *   Whether a block is one we take votes for: among the newest [[LeiosVoteState.VoteWindow]] of
+    *   the selection (`withinVoteWindow`, `NodeKernel.hs:986-998` at ouroboros-consensus d91b3557).
+    */
   def create[F[_]: Concurrent](
-      committee: F[Either[LeiosCertificationDefect, Option[TipCommittee]]]
+      committee: F[Either[LeiosCertificationDefect, Option[TipCommittee]]],
+      votable: F[RbHash => Boolean]
   ): F[LeiosVotes[F]] =
-    Ref.of[F, Held[F]](Held(LeiosVoteState.empty, Map.empty)).map(new LeiosVotes(_, committee))
+    Ref
+      .of[F, Held[F]](Held(LeiosVoteState.empty, Map.empty))
+      .map(new LeiosVotes(_, committee, votable))
 
   /** The vote state and the subscribers, in one cell, so that a vote's count and the subscribers it
     * goes to are read in one update.

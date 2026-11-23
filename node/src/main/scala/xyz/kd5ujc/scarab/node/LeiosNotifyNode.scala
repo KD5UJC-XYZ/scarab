@@ -229,7 +229,7 @@ private[node] final class LeiosNotifyHandling[F[_]](
             certificate.traverse_(_ => events(LeiosNotifyEvent.Certified(v.announcingRbHash)))
         case Right(
               AddVoteResult.NoCommittee | AddVoteResult.AlreadyKnown | AddVoteResult.Invalid(_) |
-              AddVoteResult.Retired
+              AddVoteResult.NotVotable
             ) =>
           F.unit
       }

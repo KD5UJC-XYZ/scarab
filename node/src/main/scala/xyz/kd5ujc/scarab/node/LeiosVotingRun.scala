@@ -203,7 +203,7 @@ object LeiosVotingRun:
           trace(LeiosKernelEvent.VoteAcquired(vote, tally)) *>
           certificate.traverse_(_ => trace(LeiosKernelEvent.Certified(vote.announcingRbHash)))
       case AddVoteResult.NoCommittee | AddVoteResult.Invalid(_) | AddVoteResult.AlreadyKnown |
-          AddVoteResult.Retired =>
+          AddVoteResult.NotVotable =>
         trace(LeiosKernelEvent.SeatNotVoted(point, vote, answer))
     LeiosVoting.vote(env, keys, point, deadline).flatMap {
       case Right(answers) => answers.traverse_(answered.tupled)

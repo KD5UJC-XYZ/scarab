@@ -233,7 +233,7 @@ object LeiosVoting:
       case (
             _,
             AddVoteResult.NoCommittee | AddVoteResult.Invalid(_) | AddVoteResult.AlreadyKnown |
-            AddVoteResult.Retired
+            AddVoteResult.NotVotable
           ) =>
         false
     }

@@ -54,11 +54,11 @@ class LeiosVoteStateSuite extends ScalaCheckSuite:
 
   /** Validate, then add, as `addVote` does. */
   private def add(s: LeiosVoteState, v: Vote): (LeiosVoteState, AddVoteResult) =
-    s.known(v)
-      .map(s -> _)
-      .getOrElse(right(VoteInvalid.validate(committee, v)) match
+    if s.seen(v) then (s, AddVoteResult.AlreadyKnown)
+    else
+      right(VoteInvalid.validate(committee, v)) match
         case Left(reason)  => (s, AddVoteResult.Invalid(reason))
-        case Right(weight) => right(s.add(v, weight, committee, quorum)))
+        case Right(weight) => right(s.add(v, weight, committee, quorum))
 
   private def addAll(votes: Seq[Vote]): (LeiosVoteState, Vector[AddVoteResult]) =
     votes.foldLeft((LeiosVoteState.empty, Vector.empty[AddVoteResult])) { case ((s, rs), v) =>
@@ -149,49 +149,9 @@ class LeiosVoteStateSuite extends ScalaCheckSuite:
     val hashes = (0 to LeiosVoteState.Window).map(i => rbHash(1000 + i))
     val votes = hashes.map(vote(3, _))
     val (s, _) = addAll(votes)
+    assert(add(s, votes.head)._2.isInstanceOf[AddVoteResult.Added])
     assertEquals(add(s, votes.last)._2, AddVoteResult.AlreadyKnown)
     assertEquals(s.voters(hashes.head), Map.empty)
-    // the reference counts the first block's vote again as its first; it is retired instead (#1355)
-    assertEquals(add(s, votes.head)._2, AddVoteResult.Retired)
-    assertEquals(add(s, vote(0, hashes.head))._2, AddVoteResult.Retired)
-  }
-
-  test("votes for more blocks than the window, offered again and again, end (#1355)") {
-    // the testnet's case on 2026-11-23: votes for 222 blocks cycling between two nodes
-    val hashes = (0 until 222).map(i => rbHash(2000 + i))
-    val votes = hashes.flatMap(h => Seq(0, 3).map(vote(_, h)))
-    val (once, first) = addAll(votes)
-    assert(first.forall(_.isInstanceOf[AddVoteResult.Added]))
-    val (_, again) = votes.foldLeft((once, Vector.empty[AddVoteResult])) { case ((s, rs), v) =>
-      val (next, r) = add(s, v)
-      (next, rs :+ r)
-    }
-    // no vote counts a second time: the latest Window blocks' are known, the others' retired
-    assertEquals(again.count(_.isInstanceOf[AddVoteResult.Added]), 0)
-    assertEquals(again.count(_ == AddVoteResult.Retired), (222 - LeiosVoteState.Window) * 2)
-  }
-
-  /** An announcing block's hash for each `n`, distinct for every `n` (BlsFixtures' repeats). */
-  private def distinctHash(n: Int): RbHash =
-    RbHash
-      .fromBytes(
-        xyz.kd5ujc.scarab.codec.Bytes
-          .wrap(Array.tabulate[Byte](32)(i => (n >>> (8 * (i % 4))).toByte))
-      )
-      .get
-
-  test("the blocks that left the window are remembered up to the retired window") {
-    val n = LeiosVoteState.Window + LeiosVoteState.RetiredWindow + 1
-    val hashes = (0 until n).map(distinctHash)
-    assertEquals(hashes.toSet.size, n)
-    val weight = Weight(weights(3))
-    // counted without the pairing check, which the property above covers
-    def counted(s: LeiosVoteState, v: Vote): (LeiosVoteState, AddVoteResult) =
-      s.known(v).map(s -> _).getOrElse(right(s.add(v, weight, committee, quorum)))
-    val s = hashes.foldLeft(LeiosVoteState.empty)((s, h) => counted(s, vote(3, h))._1)
-    // the first to leave is forgotten past the retired window; the next is still retired
-    assert(counted(s, vote(3, hashes(0)))._2.isInstanceOf[AddVoteResult.Added])
-    assertEquals(counted(s, vote(3, hashes(1)))._2, AddVoteResult.Retired)
   }
 
   property("the certificate of the parent's votes certifies the parent's announcement") {

@@ -190,7 +190,8 @@ class LeiosNotifyClientSuite extends FailsOnUncaught:
   private def peer[A](run: Raise[IO, PeerError] ?=> IO[A]): IO[Either[PeerError, A]] =
     Handle.allow[PeerError](run.map(_.asRight[PeerError])).rescue(e => IO.pure(Left(e)))
 
-  private val noCommittee: IO[LeiosVotes[IO]] = LeiosVotes.create[IO](IO.pure(Right(None)))
+  private val noCommittee: IO[LeiosVotes[IO]] =
+    LeiosVotes.create[IO](IO.pure(Right(None)), IO.pure(_ => true))
 
   /** `downstream`, a peer's server on `fetch`, given `n` credits. */
   private def credited(downstream: LeiosNotifyServer.Replies[IO], n: Int): IO[Unit] =
@@ -543,7 +544,7 @@ class LeiosNotifyClientSuite extends FailsOnUncaught:
     dir =>
       node(dir).use { (fetch, _) =>
         for
-          votes <- LeiosVotes.create[IO](IO.pure(Right(Some(committee))))
+          votes <- LeiosVotes.create[IO](IO.pure(Right(Some(committee))), IO.pure(_ => true))
           events <- Ref.of[IO, Vector[LeiosNotifyEvent]](Vector.empty)
           handled <- handling(fetch, view(1.second), votes, events)((h, _) =>
             peer(
@@ -587,8 +588,8 @@ class LeiosNotifyClientSuite extends FailsOnUncaught:
   ) { dir =>
     (node(dir / "a"), node(dir / "b")).tupled.use { case ((server, served), (client, _)) =>
       for
-        serverVotes <- LeiosVotes.create[IO](IO.pure(Right(Some(committee))))
-        clientVotes <- LeiosVotes.create[IO](IO.pure(Right(Some(committee))))
+        serverVotes <- LeiosVotes.create[IO](IO.pure(Right(Some(committee))), IO.pure(_ => true))
+        clientVotes <- LeiosVotes.create[IO](IO.pure(Right(Some(committee))), IO.pure(_ => true))
         events <- SignallingRef.of[IO, Vector[LeiosNotifyEvent]](Vector.empty)
         requests <- SignallingRef.of[IO, Int](0)
         notifier = server

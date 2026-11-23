@@ -23,8 +23,10 @@ import xyz.kd5ujc.scarab.storage.{LeiosStore, LeiosStoreError}
   * whenever it is woken, and its pruning at the immutable tip.
   */
 object LeiosFetchKernel:
-  /** The loop's pace: at most one decision per half second (`loopInterval`). */
-  val LoopInterval: FiniteDuration = 500.millis
+  /** The loop's pace: at most one decision per 20 ms (`loopInterval`, `NodeKernel.hs:643` at
+    * ouroboros-consensus d91b3557; half a second until rc-2026w47).
+    */
+  val LoopInterval: FiniteDuration = 20.millis
 
   /** The fetch logic's state at the start (`initializeLeiosOutstanding`, `NodeKernel.hs:938-951` at
     * 2416493b): every endorser block whose whole closure the store holds, announced no earlier than
