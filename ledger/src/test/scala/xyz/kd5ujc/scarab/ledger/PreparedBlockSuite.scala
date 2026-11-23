@@ -72,7 +72,11 @@ class PreparedBlockSuite extends FunSuite:
     val own = body.prepare
     val foreign = body.prepare
     assertEquals(own.resolve(Vector.empty), Right(body.serial))
-    assertEquals(own.resolve(foreign.jobs.map(foreign.execute)), Right(body.serial))
+    // another plan's completions, executed by its own evaluator, are not this plan's
+    assert(foreign.jobs.nonEmpty)
+    assertEquals(compileErrors("own.resolve(own.jobs.map(own.execute))"), "")
+    assert(compileErrors("own.resolve(own.jobs.map(foreign.execute))").nonEmpty)
+    assert(compileErrors("own.resolve(foreign.jobs.map(foreign.execute))").nonEmpty)
   }
 
   test("raw evaluator defects land as the original defect") {

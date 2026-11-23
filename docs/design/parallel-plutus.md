@@ -46,8 +46,9 @@ bounds jobs across concurrent validations. Non-interruptible `blocking` holds ea
 machine returns, including cancellation. Joined fibers return `Phase2.Completed` values and hold no
 `Raise`. The owner resolves them by transaction order, calls observers only for reached transactions,
 and returns the original typed refusal, unavailability or raw defect. Later failures cannot overtake
-earlier refusals. Missing or foreign completions are evaluated locally rather than accepted as a
-success. Preparation retains an original raw defect alongside its recorded prefix. Earlier script refusals
+earlier refusals. Missing completions are evaluated locally rather than accepted as a success,
+and a completion is its plan's own type, so one another plan executed with its own evaluator does
+not type-check in this plan's resolution. Preparation retains an original raw defect alongside its recorded prefix. Earlier script refusals
 still win; when that prefix passes, the original defect lands without a retry. A transient defect
 cannot disappear because a second execution happened to succeed.
 
@@ -88,8 +89,9 @@ answered (the evaluator is a function of the request), and evaluated only where 
 defect the preparation ended in after that point is not landed from the preparation: the second
 pass runs the rules again and raises what they raise, which after a mismatch is the same defect
 (the rules go on) and after a script with no verdict is that script's naming. That second ordered
-pass is paid only for a block the node refuses or withholds, never for one it applies. Missing or foreign completions are evaluated locally. The era rules use no recovery that
-could discard a recorded job.
+pass is paid only for a block the node refuses or withholds, never for one it applies. Missing
+completions are evaluated locally, and another plan's do not type-check. The era rules use no
+recovery that could discard a recorded job.
 
 Dijkstra's UTXOS is the same function and takes the same capability; its run evaluates where the
 scripts are collected until `DijkstraBlockRun` adopts the program (#85). The node does not apply
@@ -104,9 +106,12 @@ run with no verdict at each script, with verdicts that are not the flags', throu
 at one, two and four workers, with a raw evaluator defect (the same instance, after the same
 observations) and one the serial run never reaches, with a raw defect of the rules after deferred
 scripts that pass, after a verdict that is not its flag's and after a script with no verdict, and
-with missing or foreign completions.
+with missing completions, and another plan's completions do not type-check.
 
-`ConwayBodiesReplaySuite` takes the inputs of `PlutusReplaySuite` and times each Conway block's body
+`ConwayBodiesReplaySuite` takes the inputs of `PlutusReplaySuite` (`SCARAB_PLUTUS_CAPTURE` and
+`SCARAB_PLUTUS_BASELINE`, mounted read-only), writes to a fresh directory of its own named by
+`SCARAB_ERA_BODIES_OUTPUT`, and runs with `scripts/sbtw 'node/testOnly *ConwayBodiesReplaySuite'` in
+the Docker JDK image. It times each Conway block's body
 four ways from the state the mirror ticks it to: the flat `EraBlock.Body` and the era run, each
 serial and through four workers, rotated within each block (`SCARAB_PLUTUS_ROUNDS`, default three).
 Timings exclude decoding and store reads. It checks each parallel result against its serial one and
@@ -158,7 +163,8 @@ the reference node applies transactions concurrently.
 
 `PreparedBlockSuite` compares complete BBODY states, counters and ordered observations, including
 producer-dependent spends, invalid-tag collateral, validity mismatches, unavailability, raw defects,
-later ordinary refusals and absent/foreign completions. `TxDependenciesSuite` covers transitive
+later ordinary refusals and absent completions, and that another plan's completions do not
+type-check. `TxDependenciesSuite` covers transitive
 ordinary paths, shared reads, anti-dependencies, collateral return indices and a 20,000-transaction
 chain on a 256 KiB stack. `ParallelPlutusSuite` proves actual overlap, one node-wide bound across
 callers, cancellation joining, original defect identity and the transient-preparation-defect regression. CLI tests reject nonpositive bounds.

@@ -1724,7 +1724,7 @@ class ConwayBbodySuite extends FailsOnUncaught:
   }
 
   test(
-    "missing or foreign completed values: the prepared era run evaluates them itself, never taking one for a pass"
+    "missing completed values are evaluated, and another plan's do not type-check: the prepared era run never takes one for a pass"
   ) {
     val Dependent(utxo, txs) = dependent
     Vector(Vector(2), Vector(1, 2)).foreach { invalid =>
@@ -1732,15 +1732,38 @@ class ConwayBbodySuite extends FailsOnUncaught:
       val serial = j.replayed(None).serial
       val plan = j.replayed(None).prepare
       samePlanned(s"$invalid missing", serial, plan.resolve(Vector.empty))
-      // the completed values of another preparation of the same block are foreign, though their
-      // scripts are the same
-      val other = j.replayed(None).prepare
-      assertEquals(other.jobs.size, plan.jobs.size)
-      samePlanned(
-        s"$invalid foreign",
-        serial,
-        plan.resolve(other.batches.flatten.map(other.execute))
+      // another plan's completions, executed by its own evaluator, are not this plan's: a plan
+      // whose evaluator gives no verdict cannot be handed the passes of one whose evaluator does
+      val noVerdict: ScriptEvaluator[cats.Id] = _ =>
+        EvalResult.Failure(
+          EvalFailure.Unsupported(xyz.kd5ujc.scarab.plutus.BackendFailure.StackExhausted),
+          ExUnits.zero,
+          Vector.empty
+        )
+      val withheld = j.program(noVerdict, None, Verdicts.Direct)
+      val withheldPlan = withheld.prepare
+      val admitting = j.replayed(None).prepare
+      assertEquals(admitting.jobs.size, withheldPlan.jobs.size)
+      assertEquals(
+        compileErrors("withheldPlan.resolve(withheldPlan.jobs.map(withheldPlan.execute))"),
+        ""
       )
+      assert(
+        compileErrors("withheldPlan.resolve(withheldPlan.jobs.map(admitting.execute))").nonEmpty
+      )
+      assert(
+        compileErrors("withheldPlan.resolve(admitting.jobs.map(admitting.execute))").nonEmpty
+      )
+      // its own, missing, are its evaluator's: the block withheld as the serial run withholds it
+      val withheldSerial = withheld.serial
+      assert(
+        withheldSerial.left.exists {
+          case ConwayRuleDefect.ScriptUnavailable(_) => true
+          case _                                     => false
+        },
+        s"$invalid: $withheldSerial"
+      )
+      samePlanned(s"$invalid withheld", withheldSerial, withheldPlan.resolve(Vector.empty))
     }
   }
 

@@ -320,12 +320,6 @@ object ConwayBlockRun:
       verdict: Either[ScriptVerdictUnavailable, ScriptResult]
   )
 
-  /** A worker's value: a deferred transaction's scripts run, or the raw defect that ended them. */
-  final class Finished private[ConwayBlockRun] (
-      private[ConwayBlockRun] val job: Deferred,
-      private[ConwayBlockRun] val outcome: Either[Phase2.Defect, Evaluated]
-  )
-
   /** The scripts of `job` run by `evaluator` with the reference's `evalPlutusScripts`, which stops
     * at the first with no verdict, every result kept.
     */
@@ -675,12 +669,21 @@ object ConwayBlockRun:
       replay: List[(EvalRequest, EvalResult)] => Result
   ) extends Phase2.Plan[Result]:
     type Job = Deferred
-    type Completed = Finished
+
+    /** A worker's value: a deferred transaction's scripts run by this plan's evaluator, or the raw
+      * defect that ended them. It is this plan's own type: a value another plan executed, with its
+      * own evaluator, does not type-check here.
+      */
+    final class Completed private[Plan] (
+        private[Plan] val job: Deferred,
+        private[Plan] val outcome: Either[Phase2.Defect, Evaluated]
+    )
+
     def batches: Vector[Vector[Deferred]] =
       TxDependencies.scheduled(txs.map(ConwayPhase2.footprint), jobs)(_.index)
-    def execute(job: Deferred): Finished = Finished(job, evaluated(job, evaluator))
+    def execute(job: Deferred): Completed = Completed(job, evaluated(job, evaluator))
 
-    def resolve(completed: Vector[Finished]): Either[Phase2.Defect, Result] =
+    def resolve(completed: Vector[Completed]): Either[Phase2.Defect, Result] =
       val values = completed.iterator.map(c => c.job -> c.outcome).toMap
       def observe(landed: Vector[(Deferred, Evaluated)]): Unit =
         observing.foreach(o =>

@@ -49670,7 +49670,7 @@
     "class ledger.era.rules.ConwayBlockRun.Body",
     "class ledger.era.rules.ConwayBlockRun.Deferred",
     "class ledger.era.rules.ConwayBlockRun.Evaluated",
-    "class ledger.era.rules.ConwayBlockRun.Finished",
+    "class ledger.era.rules.ConwayBlockRun.Plan#Completed",
     "class ledger.era.rules.ConwayBlockRun.Plan",
     "def ledger.era.rules.ConwayBlockRun.Body#hasScripts",
     "def ledger.era.rules.ConwayBlockRun.Body#prepare",
@@ -49681,15 +49681,14 @@
     "def ledger.era.rules.ConwayBlockRun.Plan#execute",
     "def ledger.era.rules.ConwayBlockRun.Plan#resolve",
     "def ledger.era.rules.ConwayBlockRun.program",
-    "type ledger.era.rules.ConwayBlockRun.Plan#Completed",
     "type ledger.era.rules.ConwayBlockRun.Plan#Job",
     "type ledger.era.rules.ConwayBlockRun.Result",
     "val ledger.era.rules.ConwayBlockRun.Deferred#flag",
     "val ledger.era.rules.ConwayBlockRun.Deferred#index",
     "val ledger.era.rules.ConwayBlockRun.Deferred#observation",
     "val ledger.era.rules.ConwayBlockRun.Deferred#scripts",
-    "val ledger.era.rules.ConwayBlockRun.Finished#job",
-    "val ledger.era.rules.ConwayBlockRun.Finished#outcome",
+    "val ledger.era.rules.ConwayBlockRun.Plan#Completed#job",
+    "val ledger.era.rules.ConwayBlockRun.Plan#Completed#outcome",
     "val ledger.era.rules.ConwayBlockRun.Plan#jobs"
    ]
   },
@@ -49713,7 +49712,7 @@
    ]
   },
   {
-   "reason": "the contract of a block body whose Plutus scripts the node evaluates in bounded parallel workers after an ordered preparation (ADR 0018, Scarab's own: the reference evaluates them where it collects them): a body program and its plan (Phase2.Program, Phase2.Plan) that the node's one scheduler runs, the sealed recorder of a preparation's jobs (Phase2.Recorder, captured, the flat rules' Preparation), the dependency graph over transactions' footprints (TxDependencies.Footprint, levelsOf, scheduled), and the capability through which an era's UTXOS evaluates a transaction's collected scripts, now or deferred into a preparation with no verdict (Phase2Deferral, #85)",
+   "reason": "the contract of a block body whose Plutus scripts the node evaluates in bounded parallel workers after an ordered preparation (ADR 0018, Scarab's own: the reference evaluates them where it collects them): a body program and its plan (Phase2.Program, Phase2.Plan) that the node's one scheduler runs, each plan's completions of its own type so that another plan's do not type-check, the sealed recorder of a preparation's jobs (Phase2.Recorder, captured, the flat rules' Preparation), the dependency graph over transactions' footprints (TxDependencies.Footprint, levelsOf, scheduled), and the capability through which an era's UTXOS evaluates a transaction's collected scripts, now or deferred into a preparation with no verdict (Phase2Deferral, #85)",
    "definitions": [
     "class ledger.Phase2.Recorder",
     "class ledger.rules.TxDependencies.Footprint",
@@ -49739,7 +49738,7 @@
     "type ledger.Phase2.Plan#Completed",
     "type ledger.Phase2.Plan#Job",
     "type ledger.Phase2.Preparation",
-    "type ledger.rules.EraBlock.Plan#Completed",
+    "class ledger.rules.EraBlock.Plan#Completed",
     "type ledger.rules.EraBlock.Plan#Job"
    ]
   },

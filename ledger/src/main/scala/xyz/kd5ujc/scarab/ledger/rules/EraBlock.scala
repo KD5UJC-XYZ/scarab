@@ -108,7 +108,9 @@ object EraBlock:
     new Body(ctx, ticked, header, block, txs, before)
 
   /** The only route from tentative state to a body result checks every reached phase-2 verdict.
-    * Missing or foreign completed values are evaluated directly, never treated as a success.
+    * Missing or foreign completed values are evaluated directly, never treated as a success. A
+    * completion is this plan's own type ([[Completed]]): one another plan executed, with its own
+    * evaluator, does not type-check here.
     */
   final class Plan private[EraBlock] (
       tentative: Either[Phase2.Defect, Outcome],
@@ -119,12 +121,15 @@ object EraBlock:
       evaluator: ScriptEvaluator[cats.Id]
   ) extends Phase2.Plan[Outcome]:
     type Job = Phase2.Job
-    type Completed = Phase2.Completed
-    def batches: Vector[Vector[Phase2.Job]] = TxDependencies.batches(txs, jobs)
-    def execute(job: Phase2.Job): Phase2.Completed = Phase2.execute(job, evaluator)
 
-    def resolve(completed: Vector[Phase2.Completed]): Either[Phase2.Defect, Outcome] =
-      val values = completed.iterator.map(c => c.job -> c).toMap
+    /** A job of this plan executed by this plan's evaluator. */
+    final class Completed private[Plan] (private[Plan] val value: Phase2.Completed)
+
+    def batches: Vector[Vector[Phase2.Job]] = TxDependencies.batches(txs, jobs)
+    def execute(job: Phase2.Job): Completed = Completed(Phase2.execute(job, evaluator))
+
+    def resolve(completed: Vector[Completed]): Either[Phase2.Defect, Outcome] =
+      val values = completed.iterator.map(c => c.value.job -> c.value).toMap
       type Resolved[A] = Either[Phase2.Defect, A]
       jobs
         .foldLeftM[Resolved, Either[xyz.kd5ujc.scarab.ledger.LedgerFailure, PlutusStats]](

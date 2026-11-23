@@ -84,7 +84,9 @@ object Phase2:
 
   /** A prepared body: its jobs in dependency batches, each executed alone into a value, and the
     * only route to the body's result, which checks every reached verdict in transaction order.
-    * Missing or foreign completed values are evaluated directly, never treated as a success.
+    * Missing or foreign completed values are evaluated directly, never treated as a success. An
+    * implementation's [[Completed]] is its own (a class of the plan), so that a value another plan
+    * executed with its own evaluator does not type-check in this plan's [[resolve]].
     */
   trait Plan[A]:
     type Job
