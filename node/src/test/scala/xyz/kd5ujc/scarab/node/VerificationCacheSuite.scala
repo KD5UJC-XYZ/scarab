@@ -12,6 +12,9 @@ import munit.ScalaCheckSuite
 import org.scalacheck.{Gen, Prop}
 import org.scalacheck.Prop.*
 import scala.jdk.CollectionConverters.*
+import xyz.kd5ujc.scarab.ledger.era.{EraBlockBody, EraTx, TxLevel}
+import xyz.kd5ujc.scarab.ledger.era.rules.ShelleyUtxow
+import xyz.kd5ujc.scarab.ledger.state.Conway
 
 /** The cache is memoisation: whatever was warmed, whatever order and however often it is asked, a
   * [[VerificationCache]] answers exactly as [[Verdicts.Direct]]. Two instances never share
@@ -32,12 +35,34 @@ class VerificationCacheSuite extends ScalaCheckSuite:
       .filter(_.nonEmpty)
       .map(l => Bytes.fromHex(l).fold(e => fail(e.message), identity))
 
-  private val prepared: Vector[Prepared] = raws.flatMap(NodeRules.decodeShelley)
+  private val prepared: Vector[Prepared] =
+    raws.flatMap(NodeRules.decodeShelley(_, setup.layout))
 
-  private val witnesses: Vector[(Bytes, Bytes, Bytes)] =
-    prepared.flatMap(_.txs.flatMap(_.toOption)).flatMap { tx =>
-      tx.witnesses.vkeys.map { case (k, s) => (k, s, tx.body.id) }
-    }
+  /** Every witness check of a block the rules ask for, key and bootstrap witnesses alike: a Conway
+    * block's as its era's UTXOW asks (`verifiedWitsAsked`), the others' as the flat rules ask.
+    */
+  private def checksOf(p: Prepared): Vector[(Bytes, Bytes, Bytes)] = p match
+    case Prepared.Flat(_, txs) =>
+      txs.flatMap(_.toOption).flatMap { tx =>
+        (tx.witnesses.vkeys ++ tx.witnesses.bootstrap.map(w => w.vkey -> w.signature)).map {
+          (k, s) => (k, s, tx.body.id)
+        }
+      }
+    case Prepared.Conway(read) =>
+      read.block.toOption.toVector.flatMap(block =>
+        EraBlockBody.conway
+          .txSeqBlockBody(block.blockBody)
+          .flatMap(tx =>
+            ShelleyUtxow
+              .verifiedWitsAsked[Conway, TxLevel.Top](tx)(using
+                EraTx.conway,
+                EraTx.conway.bodyOf.top
+              )
+              .map(c => (c.vkey, c.signature, c.message))
+          )
+      )
+
+  private val witnesses: Vector[(Bytes, Bytes, Bytes)] = prepared.flatMap(checksOf)
 
   private def flip(b: Bytes): Bytes =
     Bytes(b.value.updated(0, (b.value.head ^ 1).toByte))
@@ -58,7 +83,7 @@ class VerificationCacheSuite extends ScalaCheckSuite:
         }
       }
       val headersAgree = prepared.forall { p =>
-        val h = p.block.header
+        val h = p.envelope.header
         val g = setup.praos
         cache.opCert(h, g.slotsPerKesPeriod, g.maxKesEvolutions) ==
           Verdicts.Direct.opCert(h, g.slotsPerKesPeriod, g.maxKesEvolutions)
@@ -94,7 +119,7 @@ class VerificationCacheSuite extends ScalaCheckSuite:
     assert(
       witnesses.forall((k, s, m) => cache.witness(k, s, m) == Verdicts.Direct.witness(k, s, m))
     )
-    assert(prepared.forall(p => cache.takePrepared(p.block.header.hash).isDefined))
+    assert(prepared.forall(p => cache.takePrepared(p.envelope.header.hash).isDefined))
     cache.shutdown()
   }
 
@@ -146,14 +171,7 @@ class VerificationCacheSuite extends ScalaCheckSuite:
     val cache = VerificationCache.unsafe(2, failsOnce)
     cache.warm[IO](raws, setup.praos, 2).unsafeRunSync()
     // every check warming makes: vkey and bootstrap witnesses alike
-    val distinct = prepared
-      .flatMap(_.txs.flatMap(_.toOption))
-      .flatMap { tx =>
-        (tx.witnesses.vkeys ++ tx.witnesses.bootstrap.map(w => w.vkey -> w.signature)).map {
-          (k, s) => (k, s, tx.body.id)
-        }
-      }
-      .distinct
+    val distinct = prepared.flatMap(checksOf).distinct
     val warmed = calls.get
     assertEquals(warmed, distinct.size)
     // the validation reuses every verdict warming found and asks the provider for the one check

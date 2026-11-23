@@ -5,7 +5,7 @@ import xyz.kd5ujc.scarab.consensus.{BlockRef, ByronEpochStats, FollowState, Foll
 import xyz.kd5ujc.scarab.ledger.{Block, EpochGeometry, Header, Prepared, Verdicts}
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.protocol.Era
+import xyz.kd5ujc.scarab.protocol.{Era, StateLayout}
 import xyz.kd5ujc.scarab.consensus.*
 import xyz.kd5ujc.scarab.ledger.LeaderCheck
 import xyz.kd5ujc.scarab.ledger.LedgerView
@@ -22,20 +22,29 @@ import xyz.kd5ujc.scarab.node.read.{ChainRead, InEra}
   * node's flat state, were removed at J2.9).
   */
 object NodeRules:
-  /** Decode a Shelley-based block and its transactions; `None` when it does not decode (the rules
-    * then report the error).
+  /** Decode a Shelley-based block and its transactions as the rules of its era read them, a Conway
+    * block's in the pool parameters' `layout` (the chain state's); `None` when it does not decode
+    * (the rules then report the error). One the verification cache decoded is taken
+    * ([[Verdicts.takePrepared]]) where it is of the announced era and, for a Conway block, of the
+    * layout asked; otherwise the block is decoded here.
     */
-  def prepare(header: Header.Shelley, raw: Bytes, verdicts: Verdicts): Option[Prepared] =
+  def prepare(
+      header: Header.Shelley,
+      raw: Bytes,
+      verdicts: Verdicts,
+      layout: StateLayout
+  ): Option[Prepared] =
+    def fits(p: Prepared): Boolean = p match
+      case Prepared.Flat(block, _) => block.era == header.era && block.era != Era.Conway
+      case Prepared.Conway(read)   => header.era == Era.Conway && read.layout == layout
     verdicts
       .takePrepared(header.hash)
-      .orElse(decodeShelley(raw))
-      .filter(_.block.era == header.era)
+      .filter(fits)
+      .orElse(decodeShelley(raw, layout).filter(fits))
 
-  /** Decode a Shelley-based block and its transactions. */
-  def decodeShelley(raw: Bytes): Option[Prepared] =
-    Block.decodeShelley(raw).toOption.collect { case b: Block.Shelley =>
-      Prepared(b, b.transactions.map(t => Tx.fromBlock(t, b.era)))
-    }
+  /** Decode a Shelley-based block and its transactions ([[Prepared.decode]]). */
+  def decodeShelley(raw: Bytes, layout: StateLayout): Option[Prepared] =
+    Prepared.decode(raw, layout)
 
   /** Era transitions and completed-epoch summaries visible between two states, read through
     * [[ChainRead]]: the epoch line is made from the ledger state of the era the chain is in, as the

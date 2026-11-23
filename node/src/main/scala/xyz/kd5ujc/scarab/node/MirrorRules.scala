@@ -27,16 +27,42 @@ import xyz.kd5ujc.scarab.consensus.state.{
 import xyz.kd5ujc.scarab.ledger.{
   Block,
   BlockFailure,
+  ChainError,
+  ConwayBlockDefect,
   Header,
+  LedgerFailure,
   LedgerGlobals,
   Phase2,
   PlutusStats,
+  PosixClock,
   Prepared,
   ValidationError
 }
+import xyz.kd5ujc.scarab.ledger.era.{Block as EraBlockOf, PParams}
+import xyz.kd5ujc.scarab.ledger.era.conway.{
+  ConwayBlock,
+  ConwayBlockError,
+  ConwayBlockHeader,
+  ConwayPParams
+}
+import xyz.kd5ujc.scarab.ledger.era.rules.{
+  BbodyEnv,
+  ConwayBlockRun,
+  ConwayRuleDefect,
+  GovDefect,
+  ShelleyBbodyState,
+  UtxoStateDefect
+}
 import xyz.kd5ujc.scarab.ledger.rules.{EraBlock, EraNes, FromByron, Globals, Handover, TickFailure}
 import xyz.kd5ujc.scarab.ledger.state.LeiosCommitteeError
-import xyz.kd5ujc.scarab.ledger.state.{EpochNo, ShelleyBasedEra, VocabError}
+import xyz.kd5ujc.scarab.ledger.state.{
+  Conway,
+  EpochNo,
+  NewEpochState,
+  ShelleyBasedEra,
+  UtxoTables,
+  VocabError
+}
 import xyz.kd5ujc.scarab.node.read.MirrorEraRead
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.storage.UtxoStore
@@ -150,16 +176,12 @@ final class MirrorRules[F[_]: Monad](
               phase2Observer,
               prepared,
               dijkstra
-            )(workers.apply)
+            )([A] => (body: Phase2.Program[A]) => workers(body))
           )
       applied
         .flatMap {
-          // the node's own defect: no verdict on the block, and no peer blamed for it
-          case Left(stop) => stop.raise[F, MirrorState]
-          case Right(Left(failure)) =>
-            MirrorRules.stateOutOfRange(header, failure) match
-              case Some(fault) => fault.raise[F, MirrorState]
-              case None        => ValidationError(header.point, failure).raise[F, MirrorState]
+          case Left(stop)           => MirrorRules.raised[F, MirrorState](header, Left(stop))
+          case Right(Left(failure)) => MirrorRules.raised[F, MirrorState](header, Right(failure))
           case Right(Right(accepted)) =>
             MirrorRules.DijkstraCrossing
               .of(s, accepted)
@@ -206,10 +228,11 @@ final class MirrorRules[F[_]: Monad](
         }
       case h: Header.Shelley =>
         utxoStore.fold(run(state, None, MirrorDijkstra.Read.none)) { store =>
-          val prepared = NodeRules.prepare(h, raw, config.verdicts)
+          val prepared =
+            NodeRules.prepare(h, raw, config.verdicts, state.ext.layout.stateLayout)
           backed(
             store,
-            prepared.fold(Set.empty[xyz.kd5ujc.scarab.ledger.TxIn])(_.inputs.toSet),
+            prepared.fold(Set.empty[xyz.kd5ujc.scarab.ledger.TxIn])(_.inputs),
             prepared,
             MirrorDijkstra.Read.none
           )
@@ -362,6 +385,21 @@ object MirrorRules:
     private def inDijkstra(e: EraNes): Boolean = e match
       case i: EraNes.InEra[x] => i.era == ShelleyBasedEra.SDijkstra
 
+  /** How a block the rules did not admit is raised: the node's own stop or no verdict, no peer
+    * blamed for it (a [[xyz.kd5ujc.scarab.ledger.ChainError]], which `Follower.judge` reads), a
+    * quantity of the state out of range ([[stateOutOfRange]]), or the block's refusal.
+    */
+  private[node] def raised[F[_], A](
+      header: Header,
+      outcome: Either[ChainError, BlockFailure]
+  )(using Raise[F, ValidationError], Raise[F, ChainError]): F[A] =
+    outcome match
+      case Left(stop) => stop.raise[F, A]
+      case Right(failure) =>
+        stateOutOfRange(header, failure) match
+          case Some(fault) => fault.raise[F, A]
+          case None        => ValidationError(header.point, failure).raise[F, A]
+
   /** A quantity of the ledger state outside its vocabulary type, met by the tick or by a rule of a
     * transaction ([[BlockFailure.stateOutOfRange]]), the consensus state's per-epoch transition
     * counter past `Word32` ([[StateMirrorError.TransitionCounterOverflow]]), or a state with no
@@ -491,8 +529,12 @@ object MirrorRules:
       phase2Observer,
       prepared,
       dijkstra
-    )(_.serial)
+    )([A] => (body: Phase2.Program[A]) => body.serial)
 
+  /** [[applyBlock]] with the body of a block of a Shelley-based era before Dijkstra run by
+    * `validate`: serially, or through the node's bounded workers (ADR 0018), each to the same
+    * result.
+    */
   private[node] def applyBlockWith[F[_]: Monad](
       state: MirrorState,
       header: Header,
@@ -506,7 +548,7 @@ object MirrorRules:
       phase2Observer: Option[Phase2.Observation => Unit],
       prepared: Option[Prepared],
       dijkstra: MirrorDijkstra.Read
-  )(validate: EraBlock.Body => F[EraBlock.Outcome]): F[MirrorDijkstra.Applied] =
+  )(validate: [A] => Phase2.Program[A] => F[A]): F[MirrorDijkstra.Applied] =
     header match
       // a Dijkstra block of the Leios build, on the era types, whose checkpoints Praos2's envelope
       // checks after BBODY, as `validateHeader` runs after the ledger (`applyHelper`,
@@ -551,22 +593,22 @@ object MirrorRules:
                 val ready = for
                   entry <- NodeRules.entry(state.consensus.byron, h, config, globals, byron)
                   pre <- before(state, entry, handOver)
-                  body <- shelley(
-                    state,
-                    pre,
-                    h,
-                    raw,
-                    entry.configuration,
-                    entry.constants,
-                    byronParams,
-                    plutus,
-                    phase2Observer,
-                    prepared
-                  )
-                yield body
-                ready
-                  .traverse((body, finish) => validate(body).map(finish))
-                  .map(_.flatten.asRight[xyz.kd5ujc.scarab.ledger.ChainError])
+                yield shelley(
+                  state,
+                  pre,
+                  h,
+                  raw,
+                  entry.configuration,
+                  entry.constants,
+                  byronParams,
+                  plutus,
+                  phase2Observer,
+                  prepared
+                )
+                ready match
+                  case Left(failure) => (Right(Left(failure)): MirrorDijkstra.Applied).pure[F]
+                  case Right(Ready.Done(applied))   => applied.pure[F]
+                  case Right(run: Ready.Running[a]) => validate[a](run.program).map(run.finish)
 
   /** Whether `header` 's block runs on Dijkstra's era rules: a Dijkstra block under the Leios
     * build, whose Dijkstra this node runs; under a release build it does not (#54).
@@ -578,6 +620,20 @@ object MirrorRules:
           xyz.kd5ujc.scarab.protocol.ReferenceBuild.Release11_2 =>
         false)
 
+  /** A Shelley-based block's application before its body runs: what it already came to (a failure
+    * before the body, or the node's own stop), or the body's program, which the caller runs
+    * serially or through the node's workers, and what its result makes of the block.
+    */
+  private enum Ready:
+    case Done(applied: MirrorDijkstra.Applied)
+    case Running[A](program: Phase2.Program[A], finish: A => MirrorDijkstra.Applied)
+
+  private object Ready:
+    def refused(failure: BlockFailure): Ready = Done(Right(Left(failure)))
+
+  /** A block of a Shelley-based era before Dijkstra applied to `pre`: a Conway block by Conway's
+    * era rules ([[conway]], #85), a block of an earlier era by the flat rules ([[flat]]).
+    */
   private def shelley(
       state: MirrorState,
       pre: Pre,
@@ -589,28 +645,108 @@ object MirrorRules:
       backend: PlutusBackend,
       phase2Observer: Option[Phase2.Observation => Unit],
       prepared: Option[Prepared]
-  ): Either[BlockFailure, (EraBlock.Body, EraBlock.Outcome => Either[BlockFailure, MirrorState])] =
+  ): Ready =
     val geometry = config.geometry
-    val epoch = geometry.epochOf(announced.slot)
-    val context = EraBlock.Context(
-      Globals(globals, geometry),
-      config.forks.transition(geometry.k),
-      MirrorStep.afterVotingOf(state),
-      verdicts = config.verdicts,
-      evaluator = backend.evaluator,
-      observer = phase2Observer,
-      decoder = backend.decoder,
-      clock = Some(
-        MirrorClock.of(
-          globals.systemStart,
-          state,
-          Placement(geometry, byronParams, config.forks),
-          announced.era,
-          announced.slot
-        )
+    val placement = Placement(geometry, byronParams, config.forks)
+    def context(clock: PosixClock): EraBlock.Context =
+      EraBlock.Context(
+        Globals(globals, geometry),
+        config.forks.transition(geometry.k),
+        MirrorStep.afterVotingOf(state),
+        verdicts = config.verdicts,
+        evaluator = backend.evaluator,
+        observer = phase2Observer,
+        decoder = backend.decoder,
+        clock = Some(clock)
       )
-    )
-    for
+    val front = Front(state, pre, announced, config, globals, placement)
+    if announced.era == Era.Conway then
+      conway(
+        front,
+        raw,
+        MirrorClock.conway(globals.systemStart, state, placement, announced.slot),
+        context,
+        backend,
+        phase2Observer,
+        prepared.collect { case Prepared.Conway(read) => read }
+      )
+    else
+      flat(
+        front,
+        raw,
+        context(
+          MirrorClock.of(globals.systemStart, state, placement, announced.era, announced.slot)
+        ),
+        prepared.collect { case p: Prepared.Flat => p }
+      )
+
+  /** What the checks before a block's body read, and the state they lead to. */
+  private final case class Front(
+      state: MirrorState,
+      pre: Pre,
+      announced: Header.Shelley,
+      config: PraosConfig,
+      globals: LedgerGlobals,
+      placement: Placement
+  ):
+    /** The checks of the block the block decoder read (`block`) before its body: the header is the
+      * announced one, the body is the one it commits to, then the state ticked to the block's slot
+      * and the header checked against it. The ticked state and the chain-dependent state after the
+      * header, with how its leadership was established.
+      */
+    def checked(
+        block: Block.Shelley,
+        context: EraBlock.Context
+    ): Either[BlockFailure, (EraNes, ProtocolState, xyz.kd5ujc.scarab.ledger.LeaderCheck)] =
+      for
+        _ <- Either.cond(block.header.hash == announced.hash, (), BlockFailure.HeaderDiffers)
+        _ <- Either.cond(
+          block.bodySize == announced.bodySize && block.bodyHash == announced.bodyHash,
+          (),
+          BlockFailure.BodyCommitment
+        )
+        // Stamped first: the tick can change the set (the redeem outputs leave it on entering
+        // Allegra), and a change stamped with the previous block may count as already stored.
+        stamped = EraNes.mapUtxo(pre.nes)(_.at(announced.blockNo.toLong))
+        ticked <- EraBlock.ticked(context)(stamped, announced, block)
+        view = ledgerView(ticked, announced.slot)
+        validated <- NodeRules.headerChecks(
+          pre.protocol,
+          announced,
+          ticked.toEra,
+          block.bodySize,
+          config,
+          globals,
+          view.params,
+          view.genDelegs,
+          view.pools
+        )
+      yield (ticked, validated._1, validated._2)
+
+    /** The mirror after the block `block`, whose body left `nes` and the counters `plutus`. */
+    def stepped(
+        block: Block.Shelley,
+        nes: EraNes,
+        praos: ProtocolState,
+        leader: xyz.kd5ujc.scarab.ledger.LeaderCheck,
+        plutus: PlutusStats
+    ): Either[BlockFailure, MirrorState] =
+      val consensus = followed(pre, announced, config.geometry.epochOf(announced.slot), leader)
+      (if pre.entered then MirrorStep.handover(state, placement, block, nes, praos, consensus)
+       else MirrorStep.block(state, placement, block, nes, praos, consensus, plutus))
+        .leftMap(mirror)
+
+  /** A block of an era before Conway, or a Dijkstra block of a release build, by the flat rules
+    * (`EraBlock`).
+    */
+  private def flat(
+      front: Front,
+      raw: Bytes,
+      context: EraBlock.Context,
+      prepared: Option[Prepared.Flat]
+  ): Ready =
+    val announced = front.announced
+    val ready = for
       decoded <- prepared.fold(Block.decodeShelley(raw).leftMap(BlockFailure.Decode(_)))(p =>
         Right(p.block)
       )
@@ -621,51 +757,196 @@ object MirrorRules:
         case _: Block.Dijkstra if announced.era == Era.Dijkstra =>
           Left(BlockFailure.NotYet(DijkstraNotYet.Rules))
         case b => Left(BlockFailure.EraAnnounced(b.era, announced.era))
-      _ <- Either.cond(
-        block.header.hash == announced.hash,
-        (),
-        BlockFailure.HeaderDiffers
-      )
-      _ <- Either.cond(
-        block.bodySize == announced.bodySize && block.bodyHash == announced.bodyHash,
-        (),
-        BlockFailure.BodyCommitment
-      )
-      // Stamped first: the tick can change the set (the redeem outputs leave it on entering
-      // Allegra), and a change stamped with the previous block may count as already stored.
-      stamped = EraNes.mapUtxo(pre.nes)(_.at(announced.blockNo.toLong))
-      ticked <- EraBlock.ticked(context)(stamped, announced, block)
-      view = ledgerView(ticked, announced.slot)
-      validated <- NodeRules.headerChecks(
-        pre.protocol,
-        announced,
-        ticked.toEra,
-        block.bodySize,
-        config,
-        globals,
-        view.params,
-        view.genDelegs,
-        view.pools
-      )
-      (praos, leader) = validated
+      checked <- front.checked(block, context)
+      (ticked, praos, leader) = checked
       txs = prepared.fold(EraBlock.decode(block))(_.txs)
-    yield
-      val program = EraBlock.program(context)(ticked, announced, block, txs, pre.plutus)
-      val finish = (outcome: EraBlock.Outcome) =>
-        for
-          applied <- outcome match
-            case EraBlock.Outcome.Applied(nes, plutus) => Right((nes, plutus))
-            case EraBlock.Outcome.Refused(failure)     => Left(failure)
-            case EraBlock.Outcome.NotInEra(era) => Left(BlockFailure.LedgerEra(era, announced.era))
-          (nes, plutus) = applied
-          consensus = followed(pre, announced, epoch, leader)
-          placement = Placement(geometry, byronParams, config.forks)
-          next <-
-            (if pre.entered then MirrorStep.handover(state, placement, block, nes, praos, consensus)
-             else MirrorStep.block(state, placement, block, nes, praos, consensus, plutus))
-              .leftMap(mirror)
-        yield next
-      (program, finish)
+    yield Ready.Running[EraBlock.Outcome](
+      EraBlock.program(context)(ticked, announced, block, txs, front.pre.plutus),
+      outcome =>
+        (outcome match
+          case EraBlock.Outcome.Applied(nes, plutus) =>
+            front.stepped(block, nes, praos, leader, plutus)
+          case EraBlock.Outcome.Refused(failure) => Left(failure)
+          case EraBlock.Outcome.NotInEra(era) =>
+            Left(BlockFailure.LedgerEra(era, announced.era))
+        ).asRight[xyz.kd5ujc.scarab.ledger.ChainError]
+    )
+    ready.fold(Ready.refused, identity)
+
+  /** A Conway block by Conway's era rules ([[ConwayBlockRun]], #85): the block read into the era's
+    * types once (`prepared`, the verification cache's, or read here), the checks before its body on
+    * the block decoder's reading, then BBODY run on the ticked state ([[conwayBody]]). Its system
+    * start, epoch information, slot to time translation and the clock of its phase-2 observations
+    * are one value, `clock`.
+    */
+  private def conway(
+      front: Front,
+      raw: Bytes,
+      clock: PosixClock.Forecast,
+      context: PosixClock => EraBlock.Context,
+      backend: PlutusBackend,
+      phase2Observer: Option[Phase2.Observation => Unit],
+      prepared: Option[ConwayBlock.Read]
+  ): Ready =
+    val announced = front.announced
+    val slot = announced.slot
+    val layout = front.state.ext.layout.stateLayout
+    val ctx = context(clock)
+    val ready = for
+      read <- prepared
+        .filter(_.layout == layout)
+        .fold(
+          ConwayBlock
+            .read(raw, layout)
+            .leftMap(BlockFailure.Decode(_))
+            .flatMap(_.leftMap(b => BlockFailure.EraAnnounced(b.era, announced.era)))
+        )(Right(_))
+      checked <- front.checked(read.envelope, ctx)
+      (ticked, praos, leader) = checked
+    yield read.block match
+      case Left(ConwayBlockError.Decode(error)) => Ready.refused(BlockFailure.Decode(error))
+      case Left(ConwayBlockError.OtherEra(era)) =>
+        Ready.refused(BlockFailure.EraAnnounced(era, announced.era))
+      case Left(ConwayBlockError.Era(cause)) => Ready.refused(BlockFailure.ConwayEra(cause))
+      case Left(ConwayBlockError.Projection(cause)) =>
+        Ready.Done(Left(ChainError.ConwayBlock(slot, ConwayBlockDefect.Projection(cause))))
+      case Right(block) =>
+        ticked match
+          case i: EraNes.InEra[e] =>
+            i.era match
+              case ShelleyBasedEra.SConway =>
+                conwayBody(
+                  ctx.globals,
+                  i.nes,
+                  announced.blockNo,
+                  block,
+                  clock,
+                  backend,
+                  front.config.verdicts,
+                  phase2Observer
+                ).fold(
+                  defect => Ready.Done(Left(ChainError.ConwayBlock(slot, defect))),
+                  body =>
+                    Ready.Running[ConwayBlockRun.Result](
+                      body,
+                      {
+                        case Left(defect)         => conwayDefect(slot, defect).map(Left(_))
+                        case Right(Left(refusal)) => Right(Left(BlockFailure.ConwayBbody(refusal)))
+                        case Right(Right(applied)) =>
+                          Right(
+                            front.stepped(
+                              read.envelope,
+                              EraNes.InEra(ShelleyBasedEra.SConway, conwayAfter(i.nes, applied)),
+                              praos,
+                              leader,
+                              front.pre.plutus |+| applied.plutus
+                            )
+                          )
+                      }
+                    )
+                )
+              // the combinator has not brought the state into Conway
+              case other =>
+                Ready.refused(BlockFailure.LedgerEra(EraNes.eraOf(other), announced.era))
+    ready.fold(Ready.refused, identity)
+
+  /** Conway's era run on the block `block` of number `blockNo` from `ticked`, the state ticked to
+    * its slot ([[ConwayBlockRun.program]]): BBODY's environment of the parameters in force, read
+    * into Conway's, and the chain account, and its state of the ticked ledger state with the
+    * changes the block makes to the UTxO set stamped with its number, as the flat rules stamp them.
+    * The rules read their system start, epoch information and slot to time translation from
+    * `clock`, and the node's phase-2 observer, if any, is told with it. Parameters that do not read
+    * into Conway's are this node's defect ([[ConwayBlockDefect.Params]]).
+    */
+  private[node] def conwayBody(
+      globals: Globals,
+      ticked: NewEpochState[Conway],
+      blockNo: BigInt,
+      block: EraBlockOf[ConwayBlockHeader, Conway],
+      clock: PosixClock.Forecast,
+      backend: PlutusBackend,
+      verdicts: xyz.kd5ujc.scarab.ledger.Verdicts,
+      phase2Observer: Option[Phase2.Observation => Unit]
+  ): Either[ConwayBlockDefect, ConwayBlockRun.Body] =
+    val ls = ticked.es.ls
+    ConwayPParams
+      .fromStored(ls.utxo.gov.curPParams)
+      .leftMap(ConwayBlockDefect.Params(_))
+      .map { params =>
+        ConwayBlockRun.program(
+          globals,
+          BbodyEnv[Conway](PParams[Conway](params), ticked.es.chainAccount),
+          block,
+          clock.systemStart,
+          clock.horizon,
+          ShelleyBbodyState[Conway](
+            ls.copy[Conway](utxo =
+              ls.utxo.copy(utxo = UtxoTables(ls.utxo.utxo.utxo.at(blockNo.toLong)))
+            ),
+            ticked.bcur
+          ),
+          backend.evaluator,
+          verdicts,
+          backend.decoder,
+          clock.posix,
+          phase2Observer.map(ConwayBlockRun.Observing(_, Some(clock)))
+        )
+      }
+
+  /** The new-epoch state after a Conway block its era rules admitted: `ticked` with BBODY's ledger
+    * state and blocks made.
+    */
+  private def conwayAfter(
+      ticked: NewEpochState[Conway],
+      applied: ConwayBlockRun.Applied
+  ): NewEpochState[Conway] =
+    ticked.copy(
+      bcur = applied.state.blocksMade,
+      es = ticked.es.copy(ls = applied.state.ls)
+    )
+
+  /** What a defect of Conway's era rules on a block comes to for the node (#85), each placed by a
+    * total match with no default:
+    *   - a script the evaluator gives no verdict for, named by its transaction, and a verifier's
+    *     failure keep the flat rules' routes, the block withheld (`BlockFailure.Tx`, which
+    *     `Follower.judge` reads as no verdict);
+    *   - a quantity of the state out of range is no verdict, as on the flat rules
+    *     ([[ChainError.StateOutOfRange]]);
+    *   - the defects of a transaction the flat rules refuse the block for stay a refusal: the same
+    *     `BlockFailure.Tx`, the peer that served it treated as for any invalid block;
+    *   - the rest is no verdict, the block withheld and the node going on
+    *     ([[ChainError.ConwayBlock]], `BlockNoVerdict.ofConway`; issue 567).
+    */
+  private[node] def conwayDefect(
+      slot: BigInt,
+      defect: ConwayRuleDefect
+  ): Either[ChainError, BlockFailure] =
+    def none(cause: ConwayBlockDefect): Either[ChainError, BlockFailure] =
+      Left(ChainError.ConwayBlock(slot, cause))
+    defect match
+      case ConwayRuleDefect.ScriptUnavailable(unavailable) => Right(BlockFailure.Tx(unavailable))
+      case ConwayRuleDefect.Unavailable(cause) => none(ConwayBlockDefect.Unavailable(cause))
+      case ConwayRuleDefect.Ledger(cause) =>
+        cause match
+          case unavailable: LedgerFailure.Unavailable   => Right(BlockFailure.Tx(unavailable))
+          case unverifiable: LedgerFailure.Unverifiable => Right(BlockFailure.Tx(unverifiable))
+          case LedgerFailure.StateOutOfRange(_, error) =>
+            Left(ChainError.StateOutOfRange(slot, error))
+          // refused, as the flat rules refuse the block for them
+          case refused @ (_: LedgerFailure.Vocab | _: LedgerFailure.Undecodable |
+              _: LedgerFailure.LayoutNotYet | _: LedgerFailure.PoolParamsLayout |
+              _: LedgerFailure.NativeScriptUnread) =>
+            Right(BlockFailure.Tx(refused))
+      case ConwayRuleDefect.UtxoState(UtxoStateDefect.Vocab(error)) =>
+        Left(ChainError.StateOutOfRange(slot, error))
+      case ConwayRuleDefect.UtxoState(cause: UtxoStateDefect.StoredOutput) =>
+        none(ConwayBlockDefect.UtxoState(cause))
+      case ConwayRuleDefect.Gov(GovDefect.Vocab(error)) =>
+        Left(ChainError.StateOutOfRange(slot, error))
+      case ConwayRuleDefect.Gov(cause: GovDefect.ProposalIndexOverflow) =>
+        none(ConwayBlockDefect.Gov(cause))
+      case ConwayRuleDefect.ProposalsRead(cause)  => none(ConwayBlockDefect.ProposalsRead(cause))
+      case ConwayRuleDefect.ProposalsWrite(cause) => none(ConwayBlockDefect.ProposalsWrite(cause))
 
   /** The node's bookkeeping after `announced` 's block, whose leadership `leader` established: the
     * era, the epoch's statistics and the completed epoch's, and the Byron prefix finished.

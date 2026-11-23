@@ -535,6 +535,10 @@ final class Follower[F[_]: Async, S] private (
           BlockNoVerdict
             .ofDijkstra(stop.cause)
             .fold(stop.raise[F, Either[Judged, S]])(cause => F.pure(Left(Judged.NoVerdict(cause))))
+        // a Conway block whose era rules met a state, a store or a limit of this node's own: no
+        // verdict, never a stop (issue 567, #85)
+        case Right(Left(conway: xyz.kd5ujc.scarab.ledger.ChainError.ConwayBlock)) =>
+          F.pure(Left(Judged.NoVerdict(BlockNoVerdict.ofConway(conway.cause))))
         // storage and every other failure of the node stay the node's
         case Right(Left(other)) => other.raise[F, Either[Judged, S]]
         case Left(thrown)       => F.pure(Left(Judged.NoVerdict(BlockNoVerdict.Defect(thrown))))

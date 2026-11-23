@@ -139,7 +139,7 @@ object K1OfflineMain extends IOApp:
       _ <- DatabaseOwnership.resource[IO](FsPath.fromNioPath(c.db)).use { _ =>
         (
           RocksUtxoStore.resource[IO](FsPath.fromNioPath(c.db.resolve("utxo/live"))),
-          VerificationCache.resource[IO]()
+          VerificationCache.resource[IO](loaded.layout)
         ).tupled.use { (store, cache) =>
           val setup = loaded.copy(praos = loaded.praos.copy(verdicts = cache))
           given Ask[IO, ConsensusMirrorEnv] = Ask.const(setup.mirrorEnv())

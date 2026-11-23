@@ -85,8 +85,7 @@ enum ConwayRuleDefect:
   * scripts the node can evaluate in bounded parallel workers after an ordered preparation (ADR
   * 0018): the same rules run once, in order, deferring each transaction's scripts where UTXOS
   * collects them ([[Phase2Deferral]]), then the plan lands their verdicts in order ([[Plan]]), and
-  * its result is the serial run's. The node does not run it yet: its blocks run the flat BBODY
-  * until the Conway switch (#85).
+  * its result is the serial run's. The node applies Conway blocks with it (`MirrorRules`, #85).
   */
 object ConwayBlockRun:
   /** The proposals of a run: not yet read from the node's record, or the era's, as the rules left
@@ -200,9 +199,8 @@ object ConwayBlockRun:
       * failures end where the defect stopped the run; what the rules would have recorded after it
       * is not known. The defect is this implementation's, kept to be logged, not a failure of the
       * block. A defect with nothing recorded before it leaves no verdict ([[Result]]'s `Left`). The
-      * node routes neither yet: the Conway switch routes this as any refused block, the peer that
-      * served it treated as for any invalid block, beside the follower's routing of the flat rules'
-      * verdicts (`Follower.judge`'s `Judged`).
+      * node refuses the block as any invalid block (`BlockFailure.ConwayBbody`), the peer that
+      * served it treated as for any invalid block, and the defect is in the refusal's reason.
       */
     case Stopped(failures: NonEmptyChain[BbodyPredFailure[Conway]], defect: ConwayRuleDefect)
 

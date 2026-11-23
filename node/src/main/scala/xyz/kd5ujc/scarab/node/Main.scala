@@ -1360,7 +1360,7 @@ object Main extends IOApp:
       ownership *> compatible *> (
         leios,
         utxoBacking(options),
-        VerificationCache.resource[IO](),
+        VerificationCache.resource[IO](setup.layout),
         Scheduling.resource[IO](options.cpuThreads),
         Supervisor[IO](await = false),
         // the node's own fibers that write endorser-block answers and claim them: released before

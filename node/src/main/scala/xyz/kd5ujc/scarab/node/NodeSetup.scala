@@ -111,6 +111,9 @@ final case class NodeSetup(
   def mirroring(build: ReferenceBuild): NodeSetup =
     copy(globals = globals.copy(referenceBuild = build))
 
+  /** The layout of the chain's state, the build's ([[StateLayout.of]]). */
+  def layout: StateLayout = mirrorStart.ext.layout.stateLayout
+
   /** What the ledger-state mirror reads of this configuration (`StateMirror`); `observed` is the
     * epoch in which each era was seen to begin, where the configuration does not say.
     */
@@ -120,7 +123,7 @@ final case class NodeSetup(
       globals,
       praos,
       byronParams,
-      mirrorStart.ext.layout.stateLayout,
+      layout,
       observed
     )
 

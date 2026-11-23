@@ -1036,8 +1036,12 @@ object Targets:
           // The general decoder also admits Byron; compare the two Shelley-only contracts.
           val shelley =
             Block.decodeShelley(b).toOption.collect { case block: Block.Shelley => block }
-          val prepared = xyz.kd5ujc.scarab.node.NodeRules.decodeShelley(b)
-          req(prepared.map(_.block) == shelley, "Shelley block decoding and preparation disagree")
+          val prepared = xyz.kd5ujc.scarab.node.NodeRules
+            .decodeShelley(b, xyz.kd5ujc.scarab.protocol.StateLayout.Node11_1)
+          req(
+            prepared.map(_.envelope) == shelley,
+            "Shelley block decoding and preparation disagree"
+          )
         }
       ),
       Target(

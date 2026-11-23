@@ -9,7 +9,7 @@ import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.Verdicts
-import xyz.kd5ujc.scarab.node.{NodeRules, NodeSetup, VerificationCache}
+import xyz.kd5ujc.scarab.node.{NodeSetup, VerificationCache}
 
 /** Development tool (issue 125): the throughput of [[VerificationCache.warm]] on captured blocks.
   *
@@ -72,10 +72,16 @@ object WarmBenchMain:
       .map(l => Bytes.fromHex(l).fold(e => sys.error(e.message), identity))
       .toVector
     val batches = raws.grouped(batch).toVector
-    val decoded = raws.flatMap(r => NodeRules.decodeShelley(r))
-    val txs = decoded.flatMap(_.txs.flatMap(_.toOption))
+    // the transactions as the flat decoder reads them, for the bench's description of the blocks
+    val decoded = raws.flatMap(r =>
+      xyz.kd5ujc.scarab.ledger.Block.decodeShelley(r).toOption.collect {
+        case b: xyz.kd5ujc.scarab.ledger.Block.Shelley =>
+          (b, b.transactions.map(t => xyz.kd5ujc.scarab.ledger.Tx.fromBlock(t, b.era)))
+      }
+    )
+    val txs = decoded.flatMap(_._2.flatMap(_.toOption))
     val triples = decoded.map(p =>
-      p.txs
+      p._2
         .flatMap(_.toOption)
         .flatMap { tx =>
           (tx.witnesses.vkeys ++ tx.witnesses.bootstrap.map(w => w.vkey -> w.signature))
@@ -125,7 +131,7 @@ object WarmBenchMain:
       )
       // what the header side costs per block: the operational certificate with its KES signature,
       // and the two VRF proofs of a TPraos header (a wrong alpha costs the same as a right one)
-      val headers = decoded.map(_.block.header).take(200)
+      val headers = decoded.map(_._1.header).take(200)
       def perHeader(f: => Unit): Double =
         val t0 = System.nanoTime
         f
@@ -149,7 +155,7 @@ object WarmBenchMain:
     val os = ManagementFactory.getOperatingSystemMXBean
       .asInstanceOf[com.sun.management.OperatingSystemMXBean]
     def run(): (Double, Double) =
-      val cache = VerificationCache.unsafe(cpus)
+      val cache = VerificationCache.unsafe(cpus, layout = setup.layout)
       val cpu0 = os.getProcessCpuTime
       val t0 = System.nanoTime
       fs2.Stream

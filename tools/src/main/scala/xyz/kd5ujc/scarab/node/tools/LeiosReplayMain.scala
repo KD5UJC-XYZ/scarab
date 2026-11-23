@@ -546,7 +546,7 @@ object LeiosReplayMain extends IOApp:
       )
       leios <- LeiosStorage.resource[IO](plan, locks)
       utxo <- RocksUtxoStore.resource[IO](dir / "utxo" / "live")
-      cache <- VerificationCache.resource[IO]()
+      cache <- VerificationCache.resource[IO](setup.layout)
       parallel <- Resource.eval(ParallelPlutus.create[IO](ParallelPlutus.Workers.default))
       // the Leios committee of the tip, as `follow` keeps it (`Main.ruled`)
       committees <- Resource.eval(

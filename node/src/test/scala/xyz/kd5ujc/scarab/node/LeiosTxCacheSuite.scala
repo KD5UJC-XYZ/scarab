@@ -179,29 +179,30 @@ class LeiosTxCacheSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   test(
     "witnesses verified in parallel ahead of the application: the same verdicts, each one taken"
   ) {
-    VerificationCache.resource[IO](4).use { witnesses =>
-      for
-        parallel <- cacheOf(r.stored, Vector.empty, parity).flatMap(
-          check(r.stored, _, Some(witnesses))
-        )
-        taken = (witnesses.witnessStats.hits.sum, witnesses.witnessStats.misses.sum)
-        forgedParallel <- cacheOf(withForged, Vector.empty, parity).flatMap(
-          check(withForged, _, Some(witnesses))
-        )
-        forgedSerial <- cacheOf(withForged, Vector.empty, parity).flatMap(check(withForged, _))
-        // a hit is reapplied and checks no witness: none of its signatures is verified ahead
-        before = witnesses.warmedStats.misses.sum
-        _ <- cacheOf(r.stored, r.stored.map(_._1), parity).flatMap(
-          check(r.stored, _, Some(witnesses))
-        )
-        after = witnesses.warmedStats.misses.sum
-      yield
-        assertEquals(parallel, EbClosureVerdict.Valid(0, 323))
-        // every one of the 323 key witnesses the rules asked for was there, none computed again
-        assertEquals(taken, (323L, 0L))
-        refusedWitness(forgedParallel)
-        assertEquals(forgedParallel, forgedSerial)
-        assertEquals(after, before)
+    VerificationCache.resource[IO](xyz.kd5ujc.scarab.protocol.StateLayout.Leios, 4).use {
+      witnesses =>
+        for
+          parallel <- cacheOf(r.stored, Vector.empty, parity).flatMap(
+            check(r.stored, _, Some(witnesses))
+          )
+          taken = (witnesses.witnessStats.hits.sum, witnesses.witnessStats.misses.sum)
+          forgedParallel <- cacheOf(withForged, Vector.empty, parity).flatMap(
+            check(withForged, _, Some(witnesses))
+          )
+          forgedSerial <- cacheOf(withForged, Vector.empty, parity).flatMap(check(withForged, _))
+          // a hit is reapplied and checks no witness: none of its signatures is verified ahead
+          before = witnesses.warmedStats.misses.sum
+          _ <- cacheOf(r.stored, r.stored.map(_._1), parity).flatMap(
+            check(r.stored, _, Some(witnesses))
+          )
+          after = witnesses.warmedStats.misses.sum
+        yield
+          assertEquals(parallel, EbClosureVerdict.Valid(0, 323))
+          // every one of the 323 key witnesses the rules asked for was there, none computed again
+          assertEquals(taken, (323L, 0L))
+          refusedWitness(forgedParallel)
+          assertEquals(forgedParallel, forgedSerial)
+          assertEquals(after, before)
     }
   }
 
@@ -245,30 +246,31 @@ class LeiosTxCacheSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     "the steps are decided on the cache as it is once the outputs are read, as the reference reads it"
   ) {
     val (stripped, spent) = split
-    VerificationCache.resource[IO](4).use { witnesses =>
-      for
-        store <- MemoryUtxoStore[IO]
-        _ <- store.write(spent.view.mapValues(Some(_)).toMap, 0L)
-        reading <- Deferred[IO, Unit]
-        release <- Deferred[IO, Unit]
-        cache <- cacheOf(r.stored, Vector.empty, parity)
-        running <- LeiosClosureCheck
-          .validateEbClosure[IO](
-            _ => IO.pure(Some(r.stored)),
-            Some(Gated(store, reading, release)),
-            cache,
-            witnesses.warmWitnesses[IO],
-            r.point,
-            stripped,
-            r.env.copy(verdicts = witnesses)
-          )
-          .start
-        _ <- reading.get
-        // tagged while the outputs are read, after the warming chose what to verify ahead
-        _ <- cache.insertApplied(Vector(r.stored(0)._1), parity)
-        _ <- release.complete(())
-        verdict <- running.joinWithNever
-      yield assertEquals(verdict, EbClosureVerdict.Valid(1, 322))
+    VerificationCache.resource[IO](xyz.kd5ujc.scarab.protocol.StateLayout.Leios, 4).use {
+      witnesses =>
+        for
+          store <- MemoryUtxoStore[IO]
+          _ <- store.write(spent.view.mapValues(Some(_)).toMap, 0L)
+          reading <- Deferred[IO, Unit]
+          release <- Deferred[IO, Unit]
+          cache <- cacheOf(r.stored, Vector.empty, parity)
+          running <- LeiosClosureCheck
+            .validateEbClosure[IO](
+              _ => IO.pure(Some(r.stored)),
+              Some(Gated(store, reading, release)),
+              cache,
+              witnesses.warmWitnesses[IO],
+              r.point,
+              stripped,
+              r.env.copy(verdicts = witnesses)
+            )
+            .start
+          _ <- reading.get
+          // tagged while the outputs are read, after the warming chose what to verify ahead
+          _ <- cache.insertApplied(Vector(r.stored(0)._1), parity)
+          _ <- release.complete(())
+          verdict <- running.joinWithNever
+        yield assertEquals(verdict, EbClosureVerdict.Valid(1, 322))
     }
   }
 
@@ -523,7 +525,7 @@ class LeiosTxCacheSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         cacheOf(r.stored, r.stored.map(_._1), parity).flatMap(check(r.stored, _))
       )
       (parallel, parallelVerdicts) <- VerificationCache
-        .resource[IO](4)
+        .resource[IO](xyz.kd5ujc.scarab.protocol.StateLayout.Leios, 4)
         .use(w =>
           best(cacheOf(r.stored, Vector.empty, parity).flatMap(check(r.stored, _, Some(w))))
         )
