@@ -228,22 +228,29 @@ class BigLedgerSuite extends FunSuite:
     "an ordinary close or activation in flight delays closing warm big ledger peers, as the reference"
   ) {
     // the reference subtracts the closes and activations in flight of all peers, and the lingering
-    // peers among the warm big ledger peers only (`EstablishedPeers.hs` 844-849 at c45735a5)
+    // peers among the warm big ledger peers only (`EstablishedPeers.hs` 844-849 at c45735a5); an
+    // ordinary peer that lingers or is being deactivated does not count
     val st = withPeers(
-      start(targets(known = 3, established = 3, establishedBig = 1, knownBig = 4)),
+      start(targets(known = 4, established = 4, establishedBig = 1, knownBig = 5)),
       1 -> big(Status.Warm(t0)),
       2 -> big(Status.Warm(t0)),
       3 -> big(Status.Warm(t0)),
       4 -> big(Status.Warm(t0)),
+      8 -> big(Status.Cooling),
       5 -> PeerRecord.cold(Origin.Other).copy(status = Status.Closing),
       6 -> PeerRecord.cold(Origin.Other).copy(status = Status.Activating),
-      7 -> PeerRecord.cold(Origin.Other).copy(status = Status.Cooling)
+      7 -> PeerRecord.cold(Origin.Other).copy(status = Status.Cooling),
+      9 -> PeerRecord.cold(Origin.Other).copy(status = Status.Deactivating)
     )
     val (_, jobs, traces) = settle(st, t0)
-    // three above the target, less the ordinary close and the ordinary activation
-    assertEquals(jobs.collect { case Job.Close(p, _) => p }.size, 1)
+    // four above the target, less the ordinary close, the ordinary activation and the big ledger
+    // peer that lingers: one, where counting the big ledger transitions alone gives three, leaving
+    // out the lingering big ledger peer two, and counting every lingering or deactivating peer none
+    val closed = jobs.collect { case Job.Close(p, _) => p }
+    assertEquals(closed.size, 1)
+    assert(closed.forall(Set(1, 2, 3, 4)), closed.toString)
     assertEquals(
-      traces.collect { case Trace.DemoteBigLedger(Temperature.Warm, picked, 1, 4, _) =>
+      traces.collect { case Trace.DemoteBigLedger(Temperature.Warm, picked, 1, 5, _) =>
         picked.size
       },
       List(1)
