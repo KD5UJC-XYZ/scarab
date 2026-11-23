@@ -47266,7 +47266,7 @@
     "ConwayBbodySuite"
    ],
    "note": "a block's bytes as the flat block decoder reads them, its header and body in the era's types; ConwayBbodySuite compares it with the flat BBODY; its expectations are the reference's own only on the 53 recorded Conway blocks the reference accepted",
-   "digest": "6bb9654e8ff109dc"
+   "digest": "85397cee6a796af7"
   },
   "val ledger.era.conway.ConwayBlockHeader.instance": {
    "upstream": [
@@ -48398,6 +48398,45 @@
    ],
    "note": "the signal's annotation an effect forced where LEDGER first reads it, as the reference's AlonzoStAnnTx is strict in the transaction alone: the node's reading of the stored outputs the annotation is made from cannot fail before MEMPOOL's duplicate check",
    "digest": "baceb425e8d056a4"
+  },
+  "def ledger.era.conway.ConwayBlock.read": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Block.hs",
+     "symbol": "DecCBOR (Annotator (Block h era))",
+     "lines": [
+      99,
+      111
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "ConwayBbodySuite"
+   ],
+   "note": "a block's bytes as the flat block decoder reads them, a Conway block's header and body also in the era's types, read once for the rules of its era; decode is its Conway case; ConwayBbodySuite compares the era block with the flat BBODY",
+   "digest": "97dcab8810de8234"
+  },
+  "def ledger.era.conway.ConwayBlock.inputs": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Block.hs",
+     "symbol": "neededTxInsForBlock",
+     "lines": [
+      132,
+      141
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "every input of the block's transactions (allInputsTxBodyF) less those a transaction of the block creates; the node's read set of a Conway block from the store",
+   "digest": "95ed84baa3a44ad0"
   }
  },
  "glue": [
@@ -49799,6 +49838,23 @@
     "def ledger.era.LanguageViews.of",
     "def ledger.era.ScriptIntegrity.mkScriptIntegrityWith",
     "def ledger.era.CostModel.lookupCostModelIn"
+   ]
+  },
+  {
+   "reason": "The Conway switch (#85): the node's one reading of a block's bytes for the rules of its era (Prepared, and ConwayBlock.Read, the block decoder's reading beside the era block made from it), why the node reaches no verdict on a Conway block its era rules apply (ConwayBlockDefect), and the node's phase-2 counters added field by field (PlutusStats' Monoid). The reference reads a block once and has no verdict-less outcome or such counters; these are Scarab's own.",
+   "definitions": [
+    "enum ledger.Prepared",
+    "object ledger.Prepared",
+    "def ledger.Prepared#envelope",
+    "def ledger.Prepared.decode",
+    "class ledger.era.conway.ConwayBlock.Read",
+    "val ledger.era.conway.ConwayBlock.Read#block",
+    "val ledger.era.conway.ConwayBlock.Read#envelope",
+    "val ledger.era.conway.ConwayBlock.Read#layout",
+    "def ledger.era.conway.ConwayBlock.Read#inputs",
+    "enum ledger.ConwayBlockDefect",
+    "def ledger.ConwayBlockDefect#message",
+    "given ledger.PlutusStats.given_cats_Monoid_PlutusStats"
    ]
   }
  ]

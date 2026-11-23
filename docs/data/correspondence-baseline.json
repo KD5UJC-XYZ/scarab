@@ -638,7 +638,6 @@
    "class ledger.PosixClock.Extended": null,
    "class ledger.PosixClock.Forecast": null,
    "class ledger.PosixClock.Total": null,
-   "class ledger.Prepared": null,
    "class ledger.PrevIds": null,
    "class ledger.Proposal": null,
    "class ledger.ProposalIdentity": null,
