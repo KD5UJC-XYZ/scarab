@@ -38,6 +38,7 @@ import xyz.kd5ujc.scarab.ledger.era.{
   ProposalsWriteError,
   ScriptResult,
   ScriptVerdictUnavailable,
+  StAnnTx,
   Tx,
   TxLevel,
   TxOut,
@@ -467,9 +468,11 @@ object ConwayBlockRun:
     val state = summon[Stateful[F, S]]
     val places = ConwayPhase2.places(txs)
     new Phase2Deferral[F, Conway]:
-      def evalScripts(tx: Tx[TxLevel.Top, Conway], scripts: NonEmptyList[PlutusWithContext])(
-          now: F[Unit]
-      ): F[Unit] =
+      def evalScripts(
+          stAnnTx: StAnnTx[TxLevel.Top, Conway],
+          scripts: NonEmptyList[PlutusWithContext]
+      )(now: F[Unit]): F[Unit] =
+        val tx = EraTx.conway.txStAnnTx[TxLevel.Top](stAnnTx)(using EraTx.conway.bodyOf.top)
         places.get(ConwayPhase2.txId(tx)).fold(now) { index =>
           state.get.flatMap { s =>
             val ls = s.bbody.ls
@@ -690,7 +693,7 @@ object ConwayBlockRun:
         case Mode.Evaluating(_) =>
           new Phase2Deferral[F, Conway]:
             def evalScripts(
-                tx: Tx[TxLevel.Top, Conway],
+                stAnnTx: StAnnTx[TxLevel.Top, Conway],
                 scripts: NonEmptyList[PlutusWithContext]
             )(now: F[Unit]): F[Unit] = now
             def uncollected(tx: Tx[TxLevel.Top, Conway]): F[Unit] =

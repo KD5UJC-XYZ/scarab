@@ -100,6 +100,7 @@ object DijkstraUtxoRun extends munit.Assertions:
       depth: Int = 0
   ): Either[Defect, Either[NonEmptyChain[Rec], S]] =
     given ScriptEvaluator[W] = request => Monad[W].unit.map(_ => evaluator.evaluate(request))
+    given Phase2Deferral[W, Dijkstra] = Phase2Deferral.now
     val judge = summon[Judge[W, Rec]]
     val transition =
       DijkstraUtxow.dijkstraUtxowTransition[W](env, stAnnTx, context, verdicts, decoder)

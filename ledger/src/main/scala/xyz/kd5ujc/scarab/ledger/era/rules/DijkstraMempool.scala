@@ -181,6 +181,7 @@ object DijkstraMempool:
         inputs.exists(utxo.contains),
         DijkstraMempoolPredFailure.AllInputsAreSpent[Dijkstra]()
       )
+      // the mempool evaluates a transaction's scripts where UTXOS collects them
       _ <- Sts.whenFailureFree[F, MempoolPredFailure[Dijkstra]](
         judge.nest(
           DijkstraLedger.dijkstraLedgerTransition[F](env, stAnnTx, context, verdicts, decoder)(using
@@ -195,7 +196,8 @@ object DijkstraMempool:
             stateDefect,
             defect,
             poolDefect,
-            govDefect
+            govDefect,
+            Phase2Deferral.now[F, Dijkstra]
           )
         )
       )

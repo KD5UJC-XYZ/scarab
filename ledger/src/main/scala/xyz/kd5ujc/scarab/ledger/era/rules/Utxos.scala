@@ -193,7 +193,7 @@ object BabbageUtxos:
             val now = PlutusEvaluation.evalPlutusScripts[F](scriptsWithContext).flatMap(run)
             NonEmptyList
               .fromList(scriptsWithContext)
-              .fold(now)(deferral.evalScripts(tx, _)(now))
+              .fold(now)(deferral.evalScripts(stAnnTx, _)(now))
           }
         )
       )

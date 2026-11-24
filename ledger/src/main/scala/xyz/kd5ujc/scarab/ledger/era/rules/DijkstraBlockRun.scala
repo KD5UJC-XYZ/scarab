@@ -18,6 +18,7 @@ import xyz.kd5ujc.scarab.ledger.era.{
   Block,
   EraBlockHeader,
   LeiosEraBlockHeader,
+  Phase2Deferral,
   Proposals,
   ScriptVerdictUnavailable,
   Tx,
@@ -108,6 +109,7 @@ object DijkstraBlockRun:
       LeiosEraBlockHeader[H, Dijkstra]
   ): Either[DijkstraRuleDefect, Either[NonEmptyChain[BbodyPredFailure[Dijkstra]], After]] =
     given ScriptEvaluator[F] = lifted(evaluator)
+    given Phase2Deferral[F, Dijkstra] = Phase2Deferral.now
     val netId = globals.networkId
     val context =
       DijkstraUtxoContext(netId, systemStart, epochInfo, TxEnv.Validation.All)

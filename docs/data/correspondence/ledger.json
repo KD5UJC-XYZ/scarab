@@ -34275,8 +34275,8 @@
     "DijkstraRulesOracleSuite",
     "DijkstraUtxowSuite"
    ],
-   "note": "as Conway's conwayUtxoTransition: the threaded state's outputs read from the store into the era, a damaged store, an output outside the state's vocabulary and a script with no verdict raised as typed defects; its scripts evaluated where UTXOS collects them (Phase2Deferral.now)",
-   "digest": "329831b3391d401c"
+   "note": "as Conway's conwayUtxoTransition: the threaded state's outputs read from the store into the era, a damaged store, an output outside the state's vocabulary and a script with no verdict raised as typed defects; where its scripts are evaluated a capability (Phase2Deferral), which a block run is told the annotated transaction by and the mempool and a closure give as Phase2Deferral.now",
+   "digest": "615bd56113136692"
   },
   "def ledger.era.dijkstra.DijkstraUTxO.dijkstraConsumedWithoutSubTransactions": {
    "upstream": [
@@ -34663,8 +34663,8 @@
     "DijkstraRulesOracleSuite",
     "DijkstraUtxowSuite"
    ],
-   "note": "as Conway's babbageUtxowTransition: the node's signature checks and script decoder given, a check with no verdict raised as the node's LedgerDefect; the legacy mode's datums through missingRequiredDatumsAllowing",
-   "digest": "421fb4432193a73b"
+   "note": "as Conway's babbageUtxowTransition: the node's signature checks and script decoder given, a check with no verdict raised as the node's LedgerDefect; the legacy mode's datums through missingRequiredDatumsAllowing; where UTXOS evaluates the scripts a capability (Phase2Deferral), passed down to UTXO",
+   "digest": "c85880ef235eecdd"
   },
   "given ledger.era.rules.InjectUtxowFailure.dijkstra": {
    "upstream": [
@@ -40899,8 +40899,8 @@
     "DijkstraLedgerSuite",
     "DijkstraRulesOracleSuite"
    ],
-   "note": "the proposals the era's, in their own capability beside the ledger state, as SUBLEDGER's are; the committee and the constitution the governance state's, the committee's proposals put in the node's record EntitiesEnv holds; the UTxO set before the transaction the stored outputs of every level's inputs, reference inputs and collateral; the epoch the environment's or the slot's by the geometry of Globals; the reference's assertions (shelleyLedgerAssertions) not run, as at Conway",
-   "digest": "b82276f5f5972d60"
+   "note": "the proposals the era's, in their own capability beside the ledger state, as SUBLEDGER's are; the committee and the constitution the governance state's, the committee's proposals put in the node's record EntitiesEnv holds; the UTxO set before the transaction the stored outputs of every level's inputs, reference inputs and collateral; the epoch the environment's or the slot's by the geometry of Globals; the reference's assertions (shelleyLedgerAssertions) not run, as at Conway; where UTXOS evaluates the scripts a capability (Phase2Deferral), passed down to UTXO",
+   "digest": "965432bc0bc41baa"
   },
   "def ledger.era.rules.DijkstraLedgers.mkStAnnTx": {
    "upstream": [
@@ -40952,8 +40952,8 @@
     "DijkstraLedgerSuite",
     "DijkstraRulesOracleSuite"
    ],
-   "note": "Babbage's LEDGERS at Dijkstra through the fold Conway's shares (ShelleyLedgers.ledgersFold); mkStAnnTx is DijkstraLedgers.mkStAnnTx, each annotation given the cache the one before left (cacheStAnnTxG), the first an empty one",
-   "digest": "8f23d5e854af25bb"
+   "note": "Babbage's LEDGERS at Dijkstra through the fold Conway's shares (ShelleyLedgers.ledgersFold); mkStAnnTx is DijkstraLedgers.mkStAnnTx, each annotation given the cache the one before left (cacheStAnnTxG), the first an empty one; where UTXOS evaluates the scripts a capability (Phase2Deferral), passed down to UTXO",
+   "digest": "0724d590781b5a6f"
   },
   "def ledger.era.rules.ShelleyLedgers.ledgersFold": {
    "upstream": [
@@ -41356,7 +41356,8 @@
    "evidence": [
     "DijkstraLedgerSuite"
    ],
-   "digest": "126e2f5c80862afe"
+   "digest": "2bb13b5b6e5a8c58",
+   "note": "its transaction's scripts evaluated where UTXOS collects them (Phase2Deferral.now)"
   },
   "type ledger.era.BlockBody": {
    "upstream": [
@@ -42990,8 +42991,8 @@
     "DijkstraBbodySuite",
     "DijkstraRulesOracleSuite"
    ],
-   "note": "the signal the block with its header's two classes as using clauses (LeiosBbodySignal); the proposals in their own capability beside the ledger state, as LEDGER's are; the UTxO set the reference scripts are measured against the stored outputs of the block's inputs and reference inputs before LEDGERS, read into the era",
-   "digest": "d3bd642d42d4d6c6"
+   "note": "the signal the block with its header's two classes as using clauses (LeiosBbodySignal); the proposals in their own capability beside the ledger state, as LEDGER's are; the UTxO set the reference scripts are measured against the stored outputs of the block's inputs and reference inputs before LEDGERS, read into the era; where UTXOS evaluates the scripts a capability (Phase2Deferral), passed down to UTXO",
+   "digest": "1d5d54231aea4a1e"
   },
   "enum ledger.era.rules.LeiosClosureDefect": {
    "upstream": [
@@ -43136,8 +43137,8 @@
    "evidence": [
     "DijkstraClosureSuite"
    ],
-   "note": "each transaction annotated by Dijkstra's mkStAnnTx (DijkstraLedgers.mkStAnnTx) with an empty cache; ValidateNone as the policy that skips the static checks (every labelled step carries lblStatic) with a judgment that records nothing and never fails, the events discarded; the node computes some predicates the judgment then drops, so a defect raised while computing one is raised where the reference, lazy, meets none (a Gap); the state the closure is applied to and the cumulative bytes are the caller's, as stowing the tables and the consensus state's counter are the node's",
-   "digest": "09424914a6179fd3"
+   "note": "each transaction annotated by Dijkstra's mkStAnnTx (DijkstraLedgers.mkStAnnTx) with an empty cache; ValidateNone as the policy that skips the static checks (every labelled step carries lblStatic) with a judgment that records nothing and never fails, the events discarded; the node computes some predicates the judgment then drops, so a defect raised while computing one is raised where the reference, lazy, meets none (a Gap); the state the closure is applied to and the cumulative bytes are the caller's, as stowing the tables and the consensus state's counter are the node's; its scripts, which ValidateNone evaluates none of, where UTXOS collects them (Phase2Deferral.now)",
+   "digest": "046f03ee7ebc4573"
   },
   "def ledger.era.dijkstra.DijkstraBlockBody.ofDecoded": {
    "upstream": [

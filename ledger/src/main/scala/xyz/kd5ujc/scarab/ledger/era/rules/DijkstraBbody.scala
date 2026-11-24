@@ -79,7 +79,8 @@ object DijkstraBbody:
       stateDefect: Raise[F, UtxoStateDefect],
       defect: Raise[F, LedgerDefect],
       poolDefect: Raise[F, PoolDefect],
-      govDefect: Raise[F, GovDefect]
+      govDefect: Raise[F, GovDefect],
+      deferral: Phase2Deferral[F, Dijkstra]
   ): F[Unit] =
     val embed = EmbedLedgersInBbody.dijkstra
     val pp = env.bbodyPp
@@ -131,7 +132,8 @@ object DijkstraBbody:
           stateDefect,
           defect,
           poolDefect,
-          govDefect
+          govDefect,
+          deferral
         )
       )
       _ <- test(
