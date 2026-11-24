@@ -5,6 +5,7 @@ import cats.data.NonEmptyVector
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.ChainSync
 import xyz.kd5ujc.scarab.ledger.Header
+
 import HeaderChain.{Entry, Known, TipView}
 
 // The HeaderChain of e201a84bc (issue 810, #1406), kept verbatim but for its name and the

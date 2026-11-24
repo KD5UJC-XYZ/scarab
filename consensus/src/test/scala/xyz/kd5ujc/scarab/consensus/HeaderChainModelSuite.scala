@@ -11,6 +11,7 @@ import xyz.kd5ujc.scarab.consensus.genesis.GenesisDensity
 import xyz.kd5ujc.scarab.ledger.{Fixtures, Header, PreprodDeepTx, Unsigned}
 import xyz.kd5ujc.scarab.protocol.ChainSync
 import xyz.kd5ujc.scarab.protocol.ChainSync.Point
+
 import HeaderChain.{Entry, Known, TipView}
 
 /** The indexed [[HeaderChain]] answers every public method as the chain it replaces does
