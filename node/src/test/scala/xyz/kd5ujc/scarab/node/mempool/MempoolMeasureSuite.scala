@@ -60,7 +60,7 @@ class MempoolMeasureSuite extends munit.FunSuite with ScalaCheckSuite:
     assert(r.left.exists(_.isInstanceOf[Rejection.ConwayRefused]), s"$r")
     assertEquals(
       answered(r),
-      answered(Left(Rejection.Limits(id, NonEmptyList.fromListUnsafe(failures.toList))))
+      flatAnswer(Left(Rejection.Limits(id, NonEmptyList.fromListUnsafe(failures.toList))))
     )
 
   test("a transaction over the maximum size is refused with that failure alone") {
@@ -73,7 +73,7 @@ class MempoolMeasureSuite extends munit.FunSuite with ScalaCheckSuite:
     // the ledger did not run: with the default maximum the same bytes fail the MEMPOOL rule
     assertEquals(
       answered(add(pool(ledger(1)), raw)),
-      answered(
+      flatAnswer(
         Left(
           Rejection.Ledger(
             LedgerFailure.Rejected(id, PredicateFailure.Mempool(MempoolProblem.AllInputsSpent))
@@ -147,7 +147,7 @@ class MempoolMeasureSuite extends munit.FunSuite with ScalaCheckSuite:
     assert(result.left.exists(_.isInstanceOf[Rejection.ConwayRefused]), s"$result")
     assertEquals(
       answered(result),
-      answered(Left(Rejection.Ledger(LedgerFailure.Rejected(id, expected))))
+      flatAnswer(Left(Rejection.Ledger(LedgerFailure.Rejected(id, expected))))
     )
     assertEquals(
       refused(result.left.getOrElse(fail("accepted"))),
