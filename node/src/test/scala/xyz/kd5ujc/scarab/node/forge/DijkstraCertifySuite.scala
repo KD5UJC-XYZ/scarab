@@ -3,6 +3,7 @@ package xyz.kd5ujc.scarab.node.forge
 
 import cats.data.NonEmptyVector
 import cats.effect.{Deferred, IO, Ref}
+import cats.effect.testkit.TestControl
 import cats.mtl.{Handle, Raise}
 import cats.syntax.all.*
 import io.circe.parser
@@ -845,77 +846,93 @@ class DijkstraCertifySuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       assertEquals((after, reapplied), (Right(nes), 2))
   }
 
+  // The three below run their callers under TestControl, whose scheduler runs a fiber started until
+  // it waits: after `IO.cede` a waiter is waiting on the application it found, before the
+  // application is let go or cancelled, on every schedule.
+
   test(
     "a call that waited never gets the application's refusal: it asks again and applies it (#1380)"
   ) {
-    for
-      state <- state36
-      nes = nesOf(state)
-      runs <- Ref.of[IO, Int](0)
-      entered <- Deferred[IO, Unit]
-      gate <- Deferred[IO, Unit]
-      // the first run is refused once it is let go, the next applies
-      memo <- LeiosCertifying.memoized(
-        counted(
-          runs,
-          n =>
-            if n == 1 then (entered.complete(()) *> gate.get).as(Left(refused))
-            else IO.pure(Right(nes))
-        )
+    state36.flatMap { state =>
+      val nes = nesOf(state)
+      TestControl.executeEmbed(
+        for
+          runs <- Ref.of[IO, Int](0)
+          entered <- Deferred[IO, Unit]
+          gate <- Deferred[IO, Unit]
+          // the first run is refused once it is let go, the next applies
+          memo <- LeiosCertifying.memoized(
+            counted(
+              runs,
+              n =>
+                if n == 1 then (entered.complete(()) *> gate.get).as(Left(refused))
+                else IO.pure(Right(nes))
+            )
+          )
+          owner <- applied(memo, state, Some(tip36), ebHash(1)).start
+          _ <- entered.get
+          waiter <- applied(memo, state, Some(tip36), ebHash(1)).start
+          _ <- IO.cede
+          _ <- gate.complete(())
+          own <- owner.joinWithNever
+          waited <- waiter.joinWithNever
+          n <- runs.get
+        yield assertEquals((own, waited, n), (Left(refused), Right(nes), 2))
       )
-      owner <- applied(memo, state, Some(tip36), ebHash(1)).start
-      _ <- entered.get
-      waiter <- applied(memo, state, Some(tip36), ebHash(1)).start
-      _ <- gate.complete(())
-      own <- owner.joinWithNever
-      waited <- waiter.joinWithNever
-      n <- runs.get
-    yield assertEquals((own, waited, n), (Left(refused), Right(nes), 2))
+    }
   }
 
   test(
     "an application still running is never dropped by the bound, however many are reached (#1380)"
   ) {
-    for
-      state <- state36
-      nes = nesOf(state)
-      runs <- Ref.of[IO, Int](0)
-      entered <- Deferred[IO, Unit]
-      gate <- Deferred[IO, Unit]
-      memo <- LeiosCertifying.memoized(
-        counted(runs, n => (entered.complete(()) *> gate.get).whenA(n == 1).as(Right(nes)))
+    state36.flatMap { state =>
+      val nes = nesOf(state)
+      TestControl.executeEmbed(
+        for
+          runs <- Ref.of[IO, Int](0)
+          entered <- Deferred[IO, Unit]
+          gate <- Deferred[IO, Unit]
+          memo <- LeiosCertifying.memoized(
+            counted(runs, n => (entered.complete(()) *> gate.get).whenA(n == 1).as(Right(nes)))
+          )
+          held <- applied(memo, state, Some(tip36), ebHash(1)).start
+          _ <- entered.get
+          // three others reached, one more than the bound keeps
+          _ <- List(2, 3, 4).traverse_(b => applied(memo, state, Some(tip36), ebHash(b)))
+          again <- applied(memo, state, Some(tip36), ebHash(1)).start
+          _ <- IO.cede
+          _ <- gate.complete(())
+          first <- held.joinWithNever
+          second <- again.joinWithNever
+          whileHeld <- runs.get
+          // the oldest reached one was dropped, and is applied again
+          _ <- applied(memo, state, Some(tip36), ebHash(2))
+          dropped <- runs.get
+        yield
+          assertEquals((first, second, whileHeld), (Right(nes), Right(nes), 4))
+          assertEquals(dropped, 5)
       )
-      held <- applied(memo, state, Some(tip36), ebHash(1)).start
-      _ <- entered.get
-      // three others reached, one more than the bound keeps
-      _ <- List(2, 3, 4).traverse_(b => applied(memo, state, Some(tip36), ebHash(b)))
-      again <- applied(memo, state, Some(tip36), ebHash(1)).start
-      _ <- gate.complete(())
-      first <- held.joinWithNever
-      second <- again.joinWithNever
-      whileHeld <- runs.get
-      // the oldest reached one was dropped, and is applied again
-      _ <- applied(memo, state, Some(tip36), ebHash(2))
-      dropped <- runs.get
-    yield
-      assertEquals((first, second, whileHeld), (Right(nes), Right(nes), 4))
-      assertEquals(dropped, 5)
+    }
   }
 
   test("after a cancelled application the calls that waited apply the closure once (#1380)") {
-    for
-      state <- state36
-      nes = nesOf(state)
-      runs <- Ref.of[IO, Int](0)
-      began <- Deferred[IO, Unit]
-      memo <- LeiosCertifying.memoized(
-        counted(runs, n => (began.complete(()) *> IO.never[Unit]).whenA(n == 1).as(Right(nes)))
+    state36.flatMap { state =>
+      val nes = nesOf(state)
+      TestControl.executeEmbed(
+        for
+          runs <- Ref.of[IO, Int](0)
+          began <- Deferred[IO, Unit]
+          memo <- LeiosCertifying.memoized(
+            counted(runs, n => (began.complete(()) *> IO.never[Unit]).whenA(n == 1).as(Right(nes)))
+          )
+          stuck <- applied(memo, state, Some(tip36), ebHash(1)).start
+          _ <- began.get
+          waiters <- List.fill(3)(applied(memo, state, Some(tip36), ebHash(1)).start).sequence
+          _ <- IO.cede
+          _ <- stuck.cancel
+          results <- waiters.traverse(_.joinWithNever)
+          n <- runs.get
+        yield assertEquals((results, n), (List.fill(3)(Right(nes)), 2))
       )
-      stuck <- applied(memo, state, Some(tip36), ebHash(1)).start
-      _ <- began.get
-      waiters <- List.fill(3)(applied(memo, state, Some(tip36), ebHash(1)).start).sequence
-      _ <- stuck.cancel
-      results <- waiters.traverse(_.joinWithNever)
-      n <- runs.get
-    yield assertEquals((results, n), (List.fill(3)(Right(nes)), 2))
+    }
   }
