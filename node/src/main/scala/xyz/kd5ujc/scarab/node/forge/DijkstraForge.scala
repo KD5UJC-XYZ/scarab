@@ -103,13 +103,12 @@ object DijkstraForge:
     *     (`:847-856`), the pool's snapshot of the slot on it, always revalidated
     *     (`getSnapshotForNoCache`, `:858-860`; [[SnapshotCachePolicy.AlwaysRevalidate]]), and the
     *     run of it that fits `ebLimit` for the endorser block, the block itself taking none
-    *     (`snapshotPartition snap Data.Measure.zero ebCap`, `:862-867`). The reference reads a
-    *     certifying view of the pool kept up to date off the forging path first
-    *     (`getCertifyingSnapshotFor`, `:805-821`), revalidated on top of the same closure; this
-    *     node keeps no such view of the pool and always takes the second way, but the closure's
-    *     application it starts with is made off the forging path as soon as the tip announces the
-    *     endorser block, and taken from there ([[LeiosCertifying.memoized]], `Forger.warming`,
-    *     #1380).
+    *     (`snapshotPartition snap Data.Measure.zero ebCap`, `:862-867`). Before that, as the
+    *     reference does, the pool's certifying view, kept up to date off the forging path and
+    *     revalidated on the same closure (`getCertifyingSnapshotFor`, `:805-821` at d91b3557;
+    *     [[DijkstraSnapshots.certifyingFor]], kept by `Forger.warming`, #1380); the closure is
+    *     applied and the pool revalidated here only when the view does not hold for the slot, the
+    *     application then taken from the warm's ([[LeiosCertifying.memoized]]).
     *
     * The body carries the certificate and no transaction when it certifies (`mkBody`,
     * `Shelley/Ledger/Forge.hs:152-160`; [[BlockBuilder.Assembly.dijkstra]]), and announces the
@@ -128,12 +127,19 @@ object DijkstraForge:
   )(using storage: Raise[F, StorageError], fatal: Raise[F, Fatal]): F[DijkstraPartition] =
     decision match
       case CertifyDecision.Certify(certificate, announced) =>
+        // the certifying view, kept up to date off the forging path, is the pool already
+        // revalidated on the closure; without it, the closure applied and the pool revalidated here
+        val revalidated =
+          for
+            closed <- certifying.closed(parent.chain, parent.tip, parent.unticked, announced, slot)
+            after <- closed
+              .flatMap(tickAfter)
+              .fold(e => fatal.raise[Fatal, NewEpochState[Dijkstra]](Fatal.of(e)), Monad[F].pure)
+            snapshot <- snapshots.forSlot(after, slot, clock, SnapshotCachePolicy.AlwaysRevalidate)
+          yield snapshot
         for
-          closed <- certifying.closed(parent.chain, parent.tip, parent.unticked, announced, slot)
-          after <- closed
-            .flatMap(tickAfter)
-            .fold(e => fatal.raise[Fatal, NewEpochState[Dijkstra]](Fatal.of(e)), Monad[F].pure)
-          snapshot <- snapshots.forSlot(after, slot, clock, SnapshotCachePolicy.AlwaysRevalidate)
+          view <- snapshots.certifyingFor(announced.hash, parent.tip.map(_.hash), slot)
+          snapshot <- view.fold(revalidated)(Monad[F].pure)
         yield
           val split = BlockBuilder.partition(snapshot, TxMeasure.zero, ebLimit)
           DijkstraPartition(
