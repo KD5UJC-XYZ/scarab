@@ -67,7 +67,7 @@
   "66": ["closed", "completed", false],
   "67": ["closed", "completed", false],
   "68": ["open", "", false],
-  "69": ["open", "reopened", true],
+  "69": ["closed", "completed", true],
   "70": ["closed", "completed", false],
   "71": ["closed", "completed", false],
   "72": ["closed", "completed", false],
