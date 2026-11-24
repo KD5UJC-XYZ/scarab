@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.era.dijkstra
 
-import cats.Id
+import cats.{Id, Monad}
 import cats.syntax.all.*
 import java.util.concurrent.{Callable, Executors}
 import java.util.concurrent.atomic.AtomicReference
@@ -116,10 +116,11 @@ object DijkstraPlanned extends Assertions:
       observations: Vector[DijkstraPhase2.Observation]
   )
 
-  /** How a check runs a body program with a number of workers: [[threaded]] here, the node's own
-    * scheduler (`ParallelPlutus`) in the node's tests.
+  /** How a check runs a body program with a number of workers, in the effect `F`: [[threaded]]
+    * here, the node's own scheduler (`ParallelPlutus`) in `IO` in the node's tests.
     */
-  type Runner = (DijkstraBlockRun.Body, Int) => Either[Phase2.Defect, DijkstraBlockRun.Result]
+  type Runner[F[_]] =
+    (DijkstraBlockRun.Body, Int) => F[Either[Phase2.Defect, DijkstraBlockRun.Result]]
 
   /** The node's worker counts checked. */
   val workers: Vector[Int] = Vector(1, 2, 4, 8)
@@ -129,10 +130,7 @@ object DijkstraPlanned extends Assertions:
     * prepared, each dependency batch's jobs run on `n` threads at once, the batches in order, and
     * the plan resolved with every value.
     */
-  def threaded(
-      body: DijkstraBlockRun.Body,
-      n: Int
-  ): Either[Phase2.Defect, DijkstraBlockRun.Result] =
+  val threaded: Runner[Id] = (body, n) =>
     if n == 1 || !body.worthwhile then Either.catchNonFatal(body.serial).leftMap(Phase2.Defect(_))
     else
       val plan = body.prepare
@@ -167,13 +165,13 @@ object DijkstraPlanned extends Assertions:
     * the node's phase-2 observer, and again without one, to the same result; and prepared with the
     * same results and the observer: resolved with its jobs run last batch first, each batch's last
     * first; with none run, each then evaluated where it lands; and with as many workers as each of
-    * the node's worker counts (`runner`, [[threaded]] by default), with and without the observer;
-    * each to the serial run's result, and, observed, to the serial run's observations, in its
-    * order. An admitted block is run with the workers again, evaluating with `base` itself.
+    * the node's worker counts (`runner`), with and without the observer; each to the serial run's
+    * result, and, observed, to the serial run's observations, in its order. An admitted block is
+    * run with the workers again, evaluating with `base` itself.
     */
-  def check(name: String, base: ScriptEvaluator[Id], runner: Runner = threaded)(
+  def check[F[_]: Monad](name: String, base: ScriptEvaluator[Id], runner: Runner[F])(
       programOf: Program
-  ): Checked =
+  ): F[Checked] =
     val shared = Shared(base)
     val told = Observations()
     val serial = programOf(shared, Some(told.observer)).serial
@@ -196,29 +194,32 @@ object DijkstraPlanned extends Assertions:
       observing.resolve(observing.batches.reverse.flatMap(_.reverse).map(observing.execute))
     }
     observed(s"$name, none run")(again => prepared(s"$name, none run", again).resolve(Vector.empty))
-    workers.foreach { n =>
-      observed(s"$name, $n workers")(again =>
-        runner(programOf(shared.replaying, Some(again.observer)), n)
-      )
-      same(s"$name, $n workers, not observed", serial, runner(programOf(shared.replaying, None), n))
+    val withWorkers = workers.traverse_ { n =>
+      val again = Observations()
+      for
+        observedRun <- runner(programOf(shared.replaying, Some(again.observer)), n)
+        _ = same(s"$name, $n workers", serial, observedRun)
+        _ = assertEquals(again.all, told.all, s"$name, $n workers: the observations")
+        quiet <- runner(programOf(shared.replaying, None), n)
+      yield same(s"$name, $n workers, not observed", serial, quiet)
     }
     // an admitted block holds no machine's term: its workers evaluate with `base` itself, the
     // overlapping evaluations real, to the same state, proposals and counters, and observations
     // that differ from the serial run's at most in a failure's terms ([[projected]])
-    serial match
+    val evaluating = serial match
       case Right(Right(_)) =>
-        workers.foreach { n =>
+        workers.traverse_ { n =>
           val again = Observations()
-          same(
-            s"$name, $n workers evaluating",
-            serial,
-            runner(programOf(base, Some(again.observer)), n)
-          )
-          assertEquals(
-            projected(again.all),
-            projected(told.all),
-            s"$name, $n workers evaluating: the observations"
-          )
+          runner(programOf(base, Some(again.observer)), n).map { result =>
+            same(s"$name, $n workers evaluating", serial, result)
+            assertEquals(
+              projected(again.all),
+              projected(told.all),
+              s"$name, $n workers evaluating: the observations"
+            )
+          }
         }
-      case Right(Left(_)) | Left(_) => ()
-    Checked(serial, plan.jobs.size, plan.batches.map(_.map(_.index)), told.all)
+      case Right(Left(_)) | Left(_) => Monad[F].unit
+    (withWorkers *> evaluating).as(
+      Checked(serial, plan.jobs.size, plan.batches.map(_.map(_.index)), told.all)
+    )

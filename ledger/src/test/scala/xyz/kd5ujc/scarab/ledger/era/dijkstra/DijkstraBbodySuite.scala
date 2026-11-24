@@ -549,22 +549,24 @@ class DijkstraBbodySuite extends FunSuite:
       raw: Bytes,
       state: ShelleyBbodyState[Dijkstra]
   ): DijkstraPlanned.Checked =
-    DijkstraPlanned.check("the sampled block", ScarabEvaluator.default)((e, o) =>
-      DijkstraBlockRun.program(
-        on,
-        BbodyEnv[Dijkstra](testnetPParams, ChainAccountState(Coin(0), Coin(0))),
-        ok(DijkstraBlock.decode(raw)),
-        xyz.kd5ujc.scarab.ledger.SystemStart(java.time.Instant.EPOCH),
-        history,
-        state,
-        EraGovRun.dijkstraEmpty,
-        e,
-        flat.Verdicts.Direct,
-        ScarabEvaluator.defaultDecoder,
-        slot => Right(slot * 1000),
-        o
+    DijkstraPlanned
+      .check[cats.Id]("the sampled block", ScarabEvaluator.default, DijkstraPlanned.threaded)(
+        (e, o) =>
+          DijkstraBlockRun.program(
+            on,
+            BbodyEnv[Dijkstra](testnetPParams, ChainAccountState(Coin(0), Coin(0))),
+            ok(DijkstraBlock.decode(raw)),
+            xyz.kd5ujc.scarab.ledger.SystemStart(java.time.Instant.EPOCH),
+            history,
+            state,
+            EraGovRun.dijkstraEmpty,
+            e,
+            flat.Verdicts.Direct,
+            ScarabEvaluator.defaultDecoder,
+            slot => Right(slot * 1000),
+            o
+          )
       )
-    )
 
   /** The node's serial run of BBODY on `raw` ([[nodeChecked]]). */
   private def nodeRun(on: Globals, raw: Bytes, state: ShelleyBbodyState[Dijkstra]) =
@@ -628,7 +630,11 @@ class DijkstraBbodySuite extends FunSuite:
     "the chain's recorded script transactions, each block's in a block of its own: the node's run prepared comes to its serial result"
   ) {
     val checked = DijkstraRecordedBlocks.samples.map(sample =>
-      sample -> DijkstraPlanned.check(s"recorded block ${sample.block}", ScarabEvaluator.default)(
+      sample -> DijkstraPlanned.check[cats.Id](
+        s"recorded block ${sample.block}",
+        ScarabEvaluator.default,
+        DijkstraPlanned.threaded
+      )(
         DijkstraRecordedBlocks.program(sample, _, _)
       )
     )
