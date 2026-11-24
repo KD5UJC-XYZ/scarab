@@ -1249,8 +1249,9 @@ Conway's rules on the classes follow as the rest of stage 2.
     reference's order (expiry, anchor, deposit, delegators: `libs/cardano-ledger-core/src/Cardano/Ledger/DRep.hs:166-171`
     and its `EncCBOR`, `:192-199`, at f649f975 and 9df9f98c alike), as the flat state codec does. Dijkstra's proposals (`DijkstraProposals`) are read as Dijkstra's decoder reads one at
     version 12, from the flat proposal the record holds or from a state's item (`DijkstraProposals.proposal`,
-    for a codec of the era's state). Written back, an update of the keys Dijkstra adds (34 to 56) is refused
-    with its keys (`ProposalsWriteError.UnstorableUpdate`), since the flat update has no field for one;
+    for a codec of the era's state). Written back, an update of the keys Dijkstra adds (34 to 56) was refused
+    with its keys, since the flat update has no field for one, until nothing wrote Dijkstra's record back (#826,
+    below);
     `ProposalsRecord` gains Dijkstra's, its write fallible, and Conway's LEDGER raises such a refusal.
   - Evidence (`EraGovStateStoredSuite`, `EraGovStateSuite`): the governance state of `fixtures/haskell-state/conway-4593`,
     `fixtures/leios/state/conway-195`, the native V10 fixtures `conway-native-730`, `eras/conway-729` and
@@ -1507,8 +1508,8 @@ Conway's rules on the classes follow as the rest of stage 2.
     - The `ratify`, `remove-branches` and `deposit-credit` cases and two of window G's three pairs (from 1,555,188
       and 1,576,750) hold an update of keys 47 and 48, which the node's record cannot hold, so they run the main
       code's `DijkstraTick.sts` with the era's record carried from tick to tick (`EraDijkstraTick`, a caller of it):
-      every state is the build's as before. The ratify case's state written to the record is refused with its action
-      and keys (`UnstorableUpdate`). Window G's first pair, from 1,533,582, before proposal 2, is read by the node's
+      every state is the build's as before. The ratify case's state written to the record was refused with its action
+      and keys, a write since removed (below). Window G's first pair, from 1,533,582, before proposal 2, is read by the node's
       codec and also runs the node's tick, the seam included, to the bytes of the carried tick. Incomplete (CNF-2):
       the other states reach the node's path, seam included, only once the record holds the era's.
     - The node's NEWEPOCH and EPOCH of a Dijkstra state, which its tick does not call, give the era's rules' states
@@ -1552,6 +1553,13 @@ Conway's rules on the classes follow as the rest of stage 2.
     private testnet states, window G's two that hold proposal 2 among them, read and written back byte for byte
     (`EraGovStateStoredSuite`); the cases of `DijkstraEpochReferenceSuite` and `DijkstraEraEpochGovSuite` on the
     node's tick, and window G replayed through proposal 2 (docs/leios.md §13).
+  - With nothing writing Dijkstra's record into the flat one, the write side of the glue is gone (#85):
+    `GovStateRecord` writes Conway's state only (`toStored`, `ratifyStateToStored`), which every action fits, and
+    `DijkstraProposals` reads a flat proposal only (`fromFlat`), so the refusal of an update of keys 34 to 56 is
+    gone with it. The tests that wrote Dijkstra's record back read the flat record instead: each action as Conway
+    reads it (`EraGovStateStoredSuite`), the flat rule's proposals read back into the era's (`EraEpochGovSuite`),
+    and the translated record against Conway's (`DijkstraTranslationSuite`); RATIFY of a Dijkstra state runs on
+    the era's rule alone (`EraRatifyStoredSuite`).
 - **LEDGER and LEDGERS whole, with the reference's failures** (`era/rules/Ledger.scala`,
   `era/rules/LedgerFailures.scala`; `Conway/Rules/Ledger.hs`, `Conway/Rules/Ledgers.hs` and Shelley's
   `Rules/Ledger.hs` and `Rules/Ledgers.hs`, cardano-ledger f649f975, where 29a7d656 and 9df9f98c differ in derived

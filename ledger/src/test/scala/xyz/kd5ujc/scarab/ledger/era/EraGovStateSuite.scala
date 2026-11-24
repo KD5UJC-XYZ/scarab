@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.ledger.era
 
 import cats.{Eq, Order}
-import cats.data.NonEmptySet
 import monocle.Lens
 import monocle.law.discipline.LensTests
 import munit.DisciplineSuite
@@ -47,11 +46,11 @@ import xyz.kd5ujc.scarab.ledger.state.{
   *   - the lens laws of each lens of `EraGov` and `ConwayEraGov`, at Conway and Dijkstra (TST-6);
   *   - the typed vote keys order as the node's flat ones (`Credential.CredentialOrder`, the flat
   *     credential's and the bytes' orders), so that a vote map is the same sequence either way;
-  *   - Dijkstra's proposals through the flat record: every proposal of the reference's GOV cases
-  *     read by the stored reader, written to the flat proposal as the flat path writes it
-  *     (`DijkstraConway.proposal`) and read back unchanged, but the two parameter changes, of keys
-  *     38 and 47, refused with their keys, and the chain's two proposals, of keys 45 and 46, and 47
-  *     and 48, refused with their keys, alone and in a governance state;
+  *   - Dijkstra's proposals read from the flat record: every proposal of the reference's GOV cases
+  *     read by the stored reader, as the flat path writes it (`DijkstraConway.proposal`), read from
+  *     the flat proposal unchanged, but the two parameter changes, of keys 38 and 47, which the
+  *     flat path has no form for, named by their keys, and the chain's two proposals, of keys 45
+  *     and 46, and 47 and 48, likewise;
   *   - a stored vote of a pool key of another length refused with its action's id.
   */
 class EraGovStateSuite extends DisciplineSuite:
@@ -211,7 +210,7 @@ class EraGovStateSuite extends DisciplineSuite:
     }
   }
 
-  // ---- Dijkstra's proposals through the flat record
+  // ---- Dijkstra's proposals read from the flat record
 
   private def setItems(n: Node): Vector[Node] = n.value match
     case Value.Tag(_, inner) => setItems(inner)
@@ -219,7 +218,7 @@ class EraGovStateSuite extends DisciplineSuite:
     case other               => fail(s"not a set: $other")
 
   test(
-    "every proposal of the reference's Dijkstra GOV cases goes through the flat record unchanged"
+    "every proposal of the reference's Dijkstra GOV cases is read from its flat form unchanged"
   ) {
     val items = jsonLines("fixtures/reference/dijkstra-rules/cases.jsonl")
       .filter(j => str(j, "kind") == "gov")
@@ -233,18 +232,24 @@ class EraGovStateSuite extends DisciplineSuite:
       )
     val written = items.zipWithIndex.map { case ((name, n), i) =>
       val era = ok(DijkstraProposals.proposal(n))
-      name -> DijkstraProposals.toFlat(id(i), era).map { flat =>
-        // the flat proposal the flat path writes of the one read
-        assertEquals(Right(flat), DijkstraConway.proposal(era.read), s"$name #$i")
-        val back = ok(DijkstraProposals.fromFlat(flat))
-        assertEquals(back, era, s"$name #$i")
-        assertEquals(back.read, era.read, s"$name #$i")
-        flat.action.ordinal
-      }
+      // the flat proposal the flat path writes of the one read, read back
+      name -> DijkstraConway
+        .proposal(era.read)
+        .map { flat =>
+          val back = ok(DijkstraProposals.fromFlat(flat))
+          assertEquals(back, era, s"$name #$i")
+          assertEquals(back.read, era.read, s"$name #$i")
+          flat.action.ordinal
+        }
+        .left
+        .map { _ =>
+          era.pProcGovAction match
+            case GovAction.ParameterChange(_, u, _) => i -> DijkstraProposals.updateKeys(u)
+            case other                              => fail(s"$name #$i: $other")
+        }
     }
     // every kind of action but a parameter change goes through, by its case; the two parameter
-    // changes, of keys 38 and 47, are refused with their ids and keys, which the flat update has no
-    // field for
+    // changes, of keys 38 and 47, have no flat form, which the flat update has no field for
     assertEquals(
       written.collect { case (name, Right(kind)) => name -> kind },
       Vector(
@@ -268,10 +273,8 @@ class EraGovStateSuite extends DisciplineSuite:
     assertEquals(
       written.collect { case (name, Left(e)) => name -> e },
       Vector(
-        "gov/pool-vote-key-38" ->
-          ProposalsWriteError.UnstorableUpdate(id(15), NonEmptySet.of(BigInt(38))),
-        "gov/pool-vote-key-47" ->
-          ProposalsWriteError.UnstorableUpdate(id(16), NonEmptySet.of(BigInt(47)))
+        "gov/pool-vote-key-38" -> (15, Vector(BigInt(38))),
+        "gov/pool-vote-key-47" -> (16, Vector(BigInt(47)))
       )
     )
     assertEquals(items.size, 17)
@@ -305,41 +308,16 @@ class EraGovStateSuite extends DisciplineSuite:
     assertEquals(items.size, 2)
   }
 
-  test("the chain's proposals of Dijkstra's keys are refused by the flat record, with their keys") {
+  test("the chain's proposals update Dijkstra's keys, which the flat path has no form for") {
     assertEquals(
-      chainProposals.map((gaid, p) =>
-        DijkstraProposals.toFlat(gaid, p).left.map {
-          case ProposalsWriteError.UnstorableUpdate(at, keys) => (at, keys.toSortedSet.toVector)
-          case other                                          => fail(s"$other")
-        }
+      chainProposals.map((_, p) =>
+        p.pProcGovAction match
+          case GovAction.ParameterChange(_, u, _) =>
+            assert(DijkstraConway.proposal(p.read).isLeft)
+            DijkstraProposals.updateKeys(u)
+          case other => fail(s"$other")
       ),
-      chainProposals
-        .map(_._1)
-        .zip(Vector(Vector(45, 46), Vector(47, 48)))
-        .map((gaid, keys) => Left((gaid, keys.map(BigInt(_)))))
-    )
-    // in a governance state, among its enacted actions, the whole record is refused
-    val (gaid, first) = chainProposals.headOption.getOrElse(fail("no proposal"))
-    val state = ConwayGovState.empty[Dijkstra]
-    val holding = state.copy(cgsDRepPulsingState =
-      DRepPulsingState.DRComplete(
-        PulsingSnapshot.empty[Dijkstra],
-        RatifyState
-          .empty[Dijkstra]
-          .copy(rsEnacted =
-            Vector(
-              ConwayGov.mkGovActionState(gaid, first, EpochInterval.zero, EpochNo.fromUnsigned(0))
-            )
-          )
-      )
-    )
-    assert(GovStateRecord.toStored[Dijkstra](state, GovStateBases.uniform(testnetStored)).isRight)
-    assertEquals(
-      GovStateRecord.toStored[Dijkstra](holding, GovStateBases.uniform(testnetStored)).left.map {
-        case ProposalsWriteError.UnstorableUpdate(at, _) => at
-        case other                                       => fail(s"$other")
-      },
-      Left(gaid)
+      Vector(Vector(45, 46), Vector(47, 48)).map(_.map(BigInt(_)))
     )
   }
 

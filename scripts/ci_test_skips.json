@@ -215,7 +215,7 @@
   {
    "module": "node",
    "suite": "xyz.kd5ujc.scarab.storage.EraRatifyStoredSuite",
-   "test": "RATIFY over the testnet's private state window-g/1555188 is incomplete: its proposal of keys 47 and 48 has no flat view",
+   "test": "RATIFY over the testnet's private state window-g/1555188 is incomplete: it holds the proposal of keys 47 and 48",
    "environment": [
     "SCARAB_LEIOS_REFERENCE_STATES"
    ],
@@ -225,7 +225,7 @@
   {
    "module": "node",
    "suite": "xyz.kd5ujc.scarab.storage.EraRatifyStoredSuite",
-   "test": "RATIFY over the testnet's private state window-g/1576750 is incomplete: its proposal of keys 47 and 48 has no flat view",
+   "test": "RATIFY over the testnet's private state window-g/1576750 is incomplete: it holds the proposal of keys 47 and 48",
    "environment": [
     "SCARAB_LEIOS_REFERENCE_STATES"
    ],

@@ -7,10 +7,8 @@ import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
 import xyz.kd5ujc.scarab.ledger.{
   Block,
-  ConwayParamUpdate,
   Credential as FlatCredential,
-  DecoderVersion,
-  GovAction as FlatGovAction,
+  EnactState as FlatEnactState,
   GovActionId,
   GovActionState as FlatGovActionState,
   GovActions,
@@ -18,6 +16,8 @@ import xyz.kd5ujc.scarab.ledger.{
   Proposal,
   ProtocolParams,
   Proposals as FlatProposals,
+  PulsingSnapshot as FlatPulsingSnapshot,
+  RatifyState as FlatRatifyState,
   Tx as FlatTx,
   Vote
 }
@@ -26,17 +26,23 @@ import xyz.kd5ujc.scarab.ledger.era.{
   ConwayGovState as EraConwayGovState,
   DRepPulsingState,
   EraGov,
+  EraPParams,
   FuturePParams as EraFuturePParams,
   GovAction as EraGovAction,
+  GovActionState as EraGovActionState,
   GovState as EraGovState,
   GovStateBases,
   GovStateParams,
   GovStateRecord,
+  PParamsUpdate,
   Proposals as EraProposals
 }
+import xyz.kd5ujc.scarab.ledger.era.conway.ConwayProposals
+import xyz.kd5ujc.scarab.ledger.rules.Convert
 import xyz.kd5ujc.scarab.ledger.state.{
   Conway,
   ConwayGovState,
+  DRComplete as FlatDRComplete,
   Dijkstra,
   EraTag,
   FuturePParams as StoredFuturePParams,
@@ -57,17 +63,20 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{
 /** The governance state of every recorded Conway state the repository holds, read into the era
   * types (`GovStateRecord.fromStored`) and written back (`GovStateRecord.toStored`) identical: the
   * flat record the state's codec read, and the state's bytes the codec writes from it. A Dijkstra
-  * state's governance state is the era's record, which its codec reads and writes byte for byte.
-  * The other eras' fields of each parameter record are the ones the codec leaves (`Params.empty`,
-  * one base for every position). Each state's counts are asserted, so that a state that holds
-  * nothing is seen as such: no recorded state holds a proposal, an enacted action or one in the
-  * pulser's snapshot, and the populated states are built from the Preview governance blocks'
-  * proposals. The private states of the public Leios testnet (the G1 start and the replay windows,
-  * not in the repository: [[LeiosReferenceStates]], `SCARAB_LEIOS_REFERENCE_STATES`) are one test
-  * each, skipped by name where the variable is not set (an environmental skip that #54 tracks) and
-  * failed where it is set and the state is not there; the two of window G that hold the proposal of
-  * keys 47 and 48 are read and written back too. A restored state's parameter records, each with
-  * other eras' fields of its own, are written back over their own positions' records
+  * state's governance state is the era's record, which its codec reads and writes byte for byte; a
+  * flat record is read into Dijkstra's where the chain enters Dijkstra, and each action of it is
+  * read as Conway reads it (the flat path's action, or a parameter change whose update each era's
+  * encoder writes the same). The other eras' fields of each parameter record are the ones the codec
+  * leaves (`Params.empty`, one base for every position). Each state's counts are asserted, so that
+  * a state that holds nothing is seen as such: no recorded state holds a proposal, an enacted
+  * action or one in the pulser's snapshot, and the populated states are built from the Preview
+  * governance blocks' proposals. The private states of the public Leios testnet (the G1 start and
+  * the replay windows, not in the repository: [[LeiosReferenceStates]],
+  * `SCARAB_LEIOS_REFERENCE_STATES`) are one test each, skipped by name where the variable is not
+  * set (an environmental skip that #54 tracks) and failed where it is set and the state is not
+  * there; the two of window G that hold the proposal of keys 47 and 48 are read and written back
+  * too. A restored state's parameter records, each with other eras' fields of its own, are read
+  * each into its own position, and Conway's written back over their own positions' records
   * (`GovStateBases.of`). The deposits the era's `obligationGovState` counts are the flat record's.
   */
 class EraGovStateStoredSuite extends FunSuite with ExternalInputs:
@@ -96,17 +105,13 @@ class EraGovStateStoredSuite extends FunSuite with ExternalInputs:
     */
   final case class Counts(proposals: Int, votes: Int, enacted: Int, snapshot: Int)
 
-  private def roundTrip[E <: EraTag](what: String, codec: Codec[NewEpochState[E]], nes: Node)(using
-      GovStateRecord[E],
-      ConwayEraGov[E],
-      EraConwayGovState[E] =:= EraGovState[E]
-  )(using gs: GovState[E] =:= ConwayGovState): Counts =
+  private def roundTrip(what: String, codec: Codec[NewEpochState[Conway]], nes: Node): Counts =
     val state = right(s"$what decode")(codec.decode(nes))
-    val flat = gs(state.es.ls.utxo.gov)
-    val back = through[E](what, flat)
+    val flat: ConwayGovState = state.es.ls.utxo.gov
+    val back = through(what, flat)
     assertEquals(back, flat, what)
     assertEquals(codec.write(withGov(state, back)), Right(nes.original), what)
-    counts[E](what, flat)
+    counts[Conway](what, flat)
 
   private def withGov[E <: EraTag](state: NewEpochState[E], g: ConwayGovState)(using
       gs: GovState[E] =:= ConwayGovState
@@ -115,12 +120,10 @@ class EraGovStateStoredSuite extends FunSuite with ExternalInputs:
       state.es.copy(ls = state.es.ls.copy(utxo = state.es.ls.utxo.copy(gov = gs.flip(g))))
     )
 
-  /** `flat` read into era `E` 's record and written back. */
-  private def through[E <: EraTag](what: String, flat: ConwayGovState)(using
-      GovStateRecord[E]
-  ): ConwayGovState =
-    val era = right(s"$what fromStored")(GovStateRecord.fromStored[E](flat))
-    right(s"$what toStored")(GovStateRecord.toStored[E](era, GovStateBases.uniform(Params.empty)))
+  /** `flat` read into Conway's record and written back. */
+  private def through(what: String, flat: ConwayGovState): ConwayGovState =
+    val era = right(s"$what fromStored")(GovStateRecord.fromStored[Conway](flat))
+    GovStateRecord.toStored(era, GovStateBases.uniform(Params.empty))
 
   private def counts[E <: EraTag](what: String, flat: ConwayGovState)(using
       GovStateRecord[E]
@@ -177,11 +180,91 @@ class EraGovStateStoredSuite extends FunSuite with ExternalInputs:
       snapshot.psProposals.size
     )
 
-  /** A Dijkstra state's governance state as the node's flat record, over the fields the codec of
-    * the flat record left at zero (`Params.empty`): of a state that holds no proposal.
+  /** A Dijkstra state's governance state, which holds no action, as a flat record of it: its
+    * parameter records as the rules that read the flat record view them (`GovStateRecord.view`, the
+    * other eras' fields at zero), the rest the era record's.
     */
   private def flatOf(era: EraConwayGovState[Dijkstra]): ConwayGovState =
-    right("toStored")(GovStateRecord.toStored[Dijkstra](era, GovStateBases.uniform(Params.empty)))
+    val (snapshot, ratify) = era.cgsDRepPulsingState match
+      case DRepPulsingState.DRComplete(s, r) => (s, r)
+    assertEquals(eraCounts("flatOf", era), Counts(0, 0, 0, 0))
+    val enact = ratify.rsEnactState
+    ConwayGovState(
+      FlatProposals(
+        Vector.empty,
+        ConwayProposals.prevIds(EraProposals.toPrevGovActionIds(era.cgsProposals.pRoots))
+      ),
+      era.cgsCommittee,
+      era.cgsConstitution,
+      GovStateRecord.view(era.cgsCurPParams),
+      GovStateRecord.view(era.cgsPrevPParams),
+      GovStateRecord.futureView(era.cgsFuturePParams),
+      FlatDRComplete(
+        FlatPulsingSnapshot(
+          Vector.empty,
+          snapshot.psDRepDistr,
+          snapshot.psDRepState,
+          snapshot.psPoolDistr
+        ),
+        FlatRatifyState(
+          FlatEnactState(
+            enact.ensCommittee,
+            enact.ensConstitution,
+            GovStateRecord.view(enact.ensCurPParams),
+            GovStateRecord.view(enact.ensPrevPParams),
+            enact.ensTreasury.value,
+            enact.ensWithdrawals.iterator.map((c, v) => Convert.back(c) -> v.value).toMap,
+            ConwayProposals.prevIds(enact.ensPrevGovActionIds)
+          ),
+          Vector.empty,
+          ratify.rsExpired,
+          ratify.rsDelayed
+        )
+      )
+    )
+
+  /** Dijkstra's reading of the flat action states `flat` (`d`) against Conway's of them: the same
+    * ids, votes and epochs, deposits, return accounts and anchors; a parameter change of the same
+    * parent and guardrails whose update each era's encoder writes the same, every other action the
+    * flat one (`DijkstraProposals.flatOrUpdate`).
+    */
+  private def sameActions(what: String)(
+      flat: Vector[FlatGovActionState],
+      d: Vector[EraGovActionState[Dijkstra]]
+  ): Unit =
+    assertEquals(d.size, flat.size, what)
+    flat.zip(d).foreach { (f, d) =>
+      val c = right(s"$what Conway")(GovStateRecord.conway.action(f))
+      assertEquals(
+        (d.gasId, d.gasCommitteeVotes, d.gasDRepVotes, d.gasStakePoolVotes),
+        (c.gasId, c.gasCommitteeVotes, c.gasDRepVotes, c.gasStakePoolVotes),
+        what
+      )
+      assertEquals((d.gasProposedIn, d.gasExpiresAfter), (c.gasProposedIn, c.gasExpiresAfter), what)
+      val (dp, cp) = (d.gasProposalProcedure, c.gasProposalProcedure)
+      assertEquals(
+        (dp.pProcDeposit, dp.pProcReturnAddr, dp.pProcAnchor),
+        (cp.pProcDeposit, cp.pProcReturnAddr, cp.pProcAnchor),
+        what
+      )
+      (DijkstraProposals.flatOrUpdate(dp.pProcGovAction), cp.pProcGovAction) match
+        case (
+              Left(EraGovAction.ParameterChange(dParent, du, dGuard)),
+              EraGovAction.ParameterChange(cParent, cu, cGuard)
+            ) =>
+          assertEquals(
+            (dParent.map(_.unGovPurposeId), dGuard),
+            (cParent.map(_.unGovPurposeId), cGuard),
+            what
+          )
+          assertEquals(
+            PParamsUpdate.encodePParamsUpdate(du)(using EraPParams.dijkstra).bytes,
+            PParamsUpdate.encodePParamsUpdate(cu)(using EraPParams.conway).bytes,
+            what
+          )
+        case (Right(action), _) => assertEquals(action, f.proposal.action, what)
+        case other              => fail(s"$what: $other")
+    }
 
   test("the recorded Conway states' governance state reads into the era types and back") {
     val read = Vector(
@@ -190,7 +273,7 @@ class EraGovStateStoredSuite extends FunSuite with ExternalInputs:
     ).map { (path, codec) =>
       val (index, nes) = current(stateFile(path))
       assertEquals(index, 6, path)
-      path -> roundTrip[Conway](path, codec, nes)
+      path -> roundTrip(path, codec, nes)
     }.toMap
     assertEquals(
       read,
@@ -218,7 +301,7 @@ class EraGovStateStoredSuite extends FunSuite with ExternalInputs:
         right(path)(SnapshotV10.sections(content, ReferenceLayout.Release11_1))
       val (index, nes) = current(decode(haskell))
       Option.when(index == 6)(
-        file -> roundTrip[Conway](path, NativeStateCodecs.newEpochState[Conway], nes)
+        file -> roundTrip(path, NativeStateCodecs.newEpochState[Conway], nes)
       )
     }.toMap
     assertEquals(
@@ -363,31 +446,6 @@ class EraGovStateStoredSuite extends FunSuite with ExternalInputs:
   private def nesOf[E <: EraTag](path: String, codec: Codec[NewEpochState[E]]): NewEpochState[E] =
     right(path)(codec.decode(current(stateFile(path))._2))
 
-  /** The update of every parameter change written and read again as the flat state codec of a
-    * Dijkstra state reads it (at version 12): the original encodings of its values, which the
-    * Dijkstra record writes from the typed update, made the writer's.
-    */
-  private def canonical(g: ConwayGovState): ConwayGovState =
-    def update(u: ConwayParamUpdate): ConwayParamUpdate =
-      val written = right("the update written")(HaskellStateCodecs.conwayParamUpdate.write(u))
-      right("the update read")(
-        ConwayParamUpdate.decode(right("CBOR")(Cbor.decode(written)), DecoderVersion.Dijkstra)
-      )
-    def action(a: FlatGovActionState): FlatGovActionState = a.proposal.action match
-      case FlatGovAction.ParameterChange(prev, u, policy) =>
-        a.copy(proposal =
-          a.proposal.copy(action = FlatGovAction.ParameterChange(prev, update(u), policy))
-        )
-      case _ => a
-    val pulser = g.drepPulsing
-    g.copy(
-      proposals = g.proposals.copy(actions = g.proposals.actions.map(action)),
-      drepPulsing = pulser.copy(
-        snapshot = pulser.snapshot.copy(proposals = pulser.snapshot.proposals.map(action)),
-        ratify = pulser.ratify.copy(enacted = pulser.ratify.enacted.map(action))
-      )
-    )
-
   test(
     "the Preview governance blocks' proposals, voted on, read into each era's governance state and back"
   ) {
@@ -403,7 +461,7 @@ class EraGovStateStoredSuite extends FunSuite with ExternalInputs:
     val conwayCodec = HaskellStateCodecs.newEpochState[Conway]
     val conway = nesOf(conwayPath, conwayCodec)
     val conwayFlat = holding(conway.es.ls.utxo.gov)
-    val conwayBack = through[Conway]("Conway", conwayFlat)
+    val conwayBack = through("Conway", conwayFlat)
     assertEquals(conwayBack, conwayFlat)
     assertEquals(
       right("Conway written back")(conwayCodec.write(withGov(conway, conwayBack))),
@@ -416,11 +474,36 @@ class EraGovStateStoredSuite extends FunSuite with ExternalInputs:
     val dijkstraPath = "fixtures/leios/state/testnet-2168639/state"
     val dijkstraCodec = LeiosStateCodecs.newEpochState[Dijkstra]
     val dijkstra = nesOf(dijkstraPath, dijkstraCodec)
-    val dijkstraFlat = holding(flatOf(dijkstra.es.ls.utxo.gov))
-    val dijkstraBack = through[Dijkstra]("Dijkstra", dijkstraFlat)
-    assertEquals(dijkstraBack, canonical(dijkstraFlat))
-    // the era's record holding them, written by the state's codec and read back the same
+    val dijkstraGov = dijkstra.es.ls.utxo.gov
+    val dijkstraFlat = holding(flatOf(dijkstraGov))
     val era = right("Dijkstra fromStored")(GovStateRecord.fromStored[Dijkstra](dijkstraFlat))
+    // each action as Conway reads it, in the proposals, the ratification and the pulser's snapshot
+    val (snapshot, ratify) = era.cgsDRepPulsingState match
+      case DRepPulsingState.DRComplete(s, r) => (s, r)
+    val flatPulser = dijkstraFlat.drepPulsing
+    sameActions("proposals")(store.actions, EraProposals.proposalsActions(era.cgsProposals))
+    sameActions("enacted")(flatPulser.ratify.enacted, ratify.rsEnacted)
+    sameActions("snapshot")(flatPulser.snapshot.proposals, snapshot.psProposals)
+    assertEquals(
+      EraProposals.toPrevGovActionIds(era.cgsProposals.pRoots),
+      ConwayProposals.roots(store.roots)
+    )
+    assertEquals(ratify.rsEnactState.ensPrevGovActionIds, ConwayProposals.roots(store.roots))
+    assertEquals(ratify.rsExpired, flatPulser.ratify.expired)
+    assertEquals(
+      ratify.rsEnactState.ensWithdrawals.iterator.map((c, v) => Convert.back(c) -> v.value).toMap,
+      flatPulser.ratify.enact.withdrawals
+    )
+    // the parameters the state's own, the future ones its current ones
+    assertEquals(
+      (era.cgsCurPParams, era.cgsPrevPParams, era.cgsFuturePParams),
+      (
+        dijkstraGov.cgsCurPParams,
+        dijkstraGov.cgsPrevPParams,
+        EraFuturePParams.DefinitePParamsUpdate(dijkstraGov.cgsCurPParams)
+      )
+    )
+    // the era's record holding them, written by the state's codec and read back the same
     val held = dijkstra.copy(es =
       dijkstra.es.copy(ls =
         dijkstra.es.ls.copy[Dijkstra](utxo = dijkstra.es.ls.utxo.copy[Dijkstra](gov = era))
@@ -460,13 +543,11 @@ class EraGovStateStoredSuite extends FunSuite with ExternalInputs:
     )
 
   /** `flat` read into era `E` 's record: each of its parameter records the one of its own position,
-    * all five distinct, and the delay kept; written back over each position's own record, the same
-    * flat record, each position's other eras' field its own; over one record for every position,
-    * not.
+    * all five distinct, and the delay kept.
     */
-  private def restoredThrough[E <: EraTag](what: String, flat: ConwayGovState)(using
+  private def restoredRead[E <: EraTag](what: String, flat: ConwayGovState)(using
       r: GovStateRecord[E]
-  ): Unit =
+  ): EraConwayGovState[E] =
     val era = right(s"$what fromStored")(GovStateRecord.fromStored[E](flat))
     val enact = flat.drepPulsing.ratify.enact
     def own(p: ProtocolParams) = right(s"$what pparams")(r.pparams(p))
@@ -492,8 +573,15 @@ class EraGovStateStoredSuite extends FunSuite with ExternalInputs:
     )
     assertEquals(typed.distinct.size, 5, what)
     assert(ratify.rsDelayed, what)
-    val back =
-      right(s"$what toStored")(GovStateRecord.toStored[E](era, GovStateBases.of(flat)))
+    era
+
+  /** `flat` read into Conway's record ([[restoredRead]]) and written back over each position's own
+    * record, the same flat record, each position's other eras' field its own; over one record for
+    * every position, not.
+    */
+  private def restoredThrough(what: String, flat: ConwayGovState): Unit =
+    val era = restoredRead[Conway](what, flat)
+    val back = GovStateRecord.toStored(era, GovStateBases.of(flat))
     assertEquals(back, flat, what)
     val backEnact = back.drepPulsing.ratify.enact
     val written = Vector(
@@ -510,8 +598,8 @@ class EraGovStateStoredSuite extends FunSuite with ExternalInputs:
     )
     assert(back.drepPulsing.ratify.delayed, what)
     assertNotEquals(
-      GovStateRecord.toStored[E](era, GovStateBases.uniform(flat.curPParams)),
-      Right(flat),
+      GovStateRecord.toStored(era, GovStateBases.uniform(flat.curPParams)),
+      flat,
       what
     )
 
@@ -522,10 +610,10 @@ class EraGovStateStoredSuite extends FunSuite with ExternalInputs:
       "fixtures/haskell-state/conway-4593/state",
       HaskellStateCodecs.newEpochState[Conway]
     )
-    restoredThrough[Conway]("Conway", restored(conway.es.ls.utxo.gov))
+    restoredThrough("Conway", restored(conway.es.ls.utxo.gov))
     val dijkstra = nesOf(
       "fixtures/leios/state/testnet-2168639/state",
       LeiosStateCodecs.newEpochState[Dijkstra]
     )
-    restoredThrough[Dijkstra]("Dijkstra", restored(flatOf(dijkstra.es.ls.utxo.gov)))
+    restoredRead[Dijkstra]("Dijkstra", restored(flatOf(dijkstra.es.ls.utxo.gov)))
   }

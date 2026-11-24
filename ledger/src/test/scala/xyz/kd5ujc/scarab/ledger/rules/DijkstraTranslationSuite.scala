@@ -22,11 +22,12 @@ import xyz.kd5ujc.scarab.ledger.{
 }
 import xyz.kd5ujc.scarab.ledger.GenesisState.InjectionSource
 import xyz.kd5ujc.scarab.ledger.dijkstra.{DijkstraFixture, DijkstraScript}
+import xyz.kd5ujc.scarab.ledger.era.conway.ConwayProposals
+import xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraProposals
 import xyz.kd5ujc.scarab.ledger.era.{
   ConwayGovState as EraConwayGovState,
   DRepPulsingState as EraDRepPulsingState,
   FuturePParams as EraFuturePParams,
-  GovStateBases,
   GovStateReadError,
   GovStateRecord,
   PParams,
@@ -300,17 +301,31 @@ class DijkstraTranslationSuite extends FunSuite:
   test("the governance, the accounts, the votes, the snapshots and the pots carry over") {
     val (b, a) = (before, translated)
     val c = b.es.ls.utxo.gov
-    // Dijkstra's record written back over Conway's: what is not a parameter is Conway's
-    val d = GovStateRecord
-      .toStored[Dijkstra](a.es.ls.utxo.gov, GovStateBases.of(c))
-      .fold(e => fail(e.toString), identity)
-    assertEquals(d.proposals, c.proposals)
-    assertEquals(d.committee, c.committee)
-    assertEquals(d.constitution, c.constitution)
-    assertEquals(d.drepPulsing.snapshot, c.drepPulsing.snapshot)
-    assertEquals(d.drepPulsing.ratify.enacted, c.drepPulsing.ratify.enacted)
-    assertEquals(d.drepPulsing.ratify.enact.committee, c.drepPulsing.ratify.enact.committee)
-    assertEquals(d.drepPulsing.ratify.enact.prevIds, c.drepPulsing.ratify.enact.prevIds)
+    // Dijkstra's record: what is not a parameter is Conway's, each action read as Dijkstra's
+    val d = a.es.ls.utxo.gov
+    def actions(flat: Vector[node.GovActionState]) =
+      flat.map(g => DijkstraProposals.action(g).fold(e => fail(e.toString), identity))
+    assertEquals(
+      Right(d.cgsProposals),
+      DijkstraProposals.fromStored(c.proposals),
+      "the proposals"
+    )
+    assertEquals(d.cgsCommittee, c.committee)
+    assertEquals(d.cgsConstitution, c.constitution)
+    val snapshot = d.cgsDRepPulsingState match
+      case EraDRepPulsingState.DRComplete(s, _) => s
+    val (flatSnapshot, flatRatify) = (c.drepPulsing.snapshot, c.drepPulsing.ratify)
+    assertEquals(snapshot.psProposals, actions(flatSnapshot.proposals))
+    assertEquals(
+      (snapshot.psDRepDistr, snapshot.psDRepState, snapshot.psPoolDistr),
+      (flatSnapshot.drepDistr, flatSnapshot.drepState, flatSnapshot.poolDistr)
+    )
+    assertEquals(ratifyOf(d).rsEnacted, actions(flatRatify.enacted))
+    assertEquals(ratifyOf(d).rsEnactState.ensCommittee, flatRatify.enact.committee)
+    assertEquals(
+      ratifyOf(d).rsEnactState.ensPrevGovActionIds,
+      ConwayProposals.roots(flatRatify.enact.prevIds)
+    )
     assertEquals(a.es.ls.cert.dState, b.es.ls.cert.dState)
     assertEquals(a.es.ls.cert.vState, b.es.ls.cert.vState)
     assertEquals(

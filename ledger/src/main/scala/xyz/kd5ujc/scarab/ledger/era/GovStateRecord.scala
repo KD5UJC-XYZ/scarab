@@ -100,10 +100,11 @@ enum GovStateReadError:
   case Withdrawal(error: VocabError)
 
 /** How era `E` reads the node's flat record of the governance state (the flat
-  * [[xyz.kd5ujc.scarab.ledger.state.ConwayGovState]]) into its [[ConwayGovState]] and writes it
-  * back: its parameters, its proposals and each action state the record holds. Glue: Conway's
-  * ledger state holds the flat record; Dijkstra's holds the era's record, read from Conway's flat
-  * one where the chain enters Dijkstra ([[fromStored]]). One instance per era, in the companion.
+  * [[xyz.kd5ujc.scarab.ledger.state.ConwayGovState]]) into its [[ConwayGovState]]: its parameters,
+  * its proposals and each action state the record holds. Glue: Conway's ledger state holds the flat
+  * record, which Conway's state is written back into ([[GovStateRecord.toStored]]); Dijkstra's
+  * holds the era's record, read from Conway's flat one where the chain enters Dijkstra
+  * ([[fromStored]]) and never written back. One instance per era, in the companion.
   */
 sealed trait GovStateRecord[E <: EraTag]:
   /** The era's fields of the node's parameters. */
@@ -115,9 +116,7 @@ sealed trait GovStateRecord[E <: EraTag]:
   def storedPParams(pp: PParams[E], base: ProtocolParams): ProtocolParams
 
   def proposals(stored: StoredProposals): Either[ProposalsReadError, Proposals[E]]
-  def storedProposals(ps: Proposals[E]): Either[ProposalsWriteError, StoredProposals]
   def action(stored: StoredGovActionState): Either[ProposalsReadError, GovActionState[E]]
-  def storedAction(gas: GovActionState[E]): Either[ProposalsWriteError, StoredGovActionState]
 
 object GovStateRecord:
   /** Dijkstra's parameters `pp` as the node's flat record, every field of the other eras at zero
@@ -151,17 +150,11 @@ object GovStateRecord:
       ConwayPParams.toStored(pp.hkd, base)
     def proposals(stored: StoredProposals): Either[ProposalsReadError, Proposals[Conway]] =
       ConwayProposals.fromStored(stored)
-    def storedProposals(ps: Proposals[Conway]): Either[ProposalsWriteError, StoredProposals] =
-      Right(ConwayProposals.toStored(ps))
     def action(stored: StoredGovActionState): Either[ProposalsReadError, GovActionState[Conway]] =
       ConwayProposals.action(stored)
-    def storedAction(
-        gas: GovActionState[Conway]
-    ): Either[ProposalsWriteError, StoredGovActionState] =
-      Right(ConwayProposals.storedAction(gas))
 
   /** Dijkstra's: its parameters ([[DijkstraPParams.fromStored]]) and proposals
-    * ([[DijkstraProposals]]), an update of the keys Dijkstra adds refused on the way back.
+    * ([[DijkstraProposals]]).
     */
   given dijkstra: GovStateRecord[Dijkstra] with
     def pparams(p: ProtocolParams): Either[PParamsError, PParams[Dijkstra]] =
@@ -170,16 +163,10 @@ object GovStateRecord:
       DijkstraPParams.toStored(pp.hkd, base)
     def proposals(stored: StoredProposals): Either[ProposalsReadError, Proposals[Dijkstra]] =
       DijkstraProposals.fromStored(stored)
-    def storedProposals(ps: Proposals[Dijkstra]): Either[ProposalsWriteError, StoredProposals] =
-      DijkstraProposals.toStored(ps)
     def action(
         stored: StoredGovActionState
     ): Either[ProposalsReadError, GovActionState[Dijkstra]] =
       DijkstraProposals.action(stored)
-    def storedAction(
-        gas: GovActionState[Dijkstra]
-    ): Either[ProposalsWriteError, StoredGovActionState] =
-      DijkstraProposals.storedAction(gas)
 
   private def params[E <: EraTag](at: GovStateParams, p: ProtocolParams)(using
       r: GovStateRecord[E]
@@ -265,45 +252,36 @@ object GovStateRecord:
       enacted <- actions[E](ratify.enacted)
     yield RatifyState[E](enact, enacted, SortedSet.from(ratify.expired), ratify.delayed)
 
-  /** Era `E` 's ratification as the node records it, the inverse of [[ratifyStateFromStored]]: its
-    * enact state's parameter records written over their positions' records of `bases`, or the first
-    * enacted action the record cannot hold.
+  /** Conway's ratification as the node records it, the inverse of [[ratifyStateFromStored]]: its
+    * enact state's parameter records written over their positions' records of `bases`.
     */
-  def ratifyStateToStored[E <: EraTag](ratify: RatifyState[E], bases: GovStateBases)(using
-      r: GovStateRecord[E]
-  ): Either[ProposalsWriteError, StoredRatifyState] =
+  def ratifyStateToStored(ratify: RatifyState[Conway], bases: GovStateBases): StoredRatifyState =
     val enact = ratify.rsEnactState
-    ratify.rsEnacted
-      .traverse(r.storedAction)
-      .map(enacted =>
-        StoredRatifyState(
-          StoredEnactState(
-            enact.ensCommittee,
-            enact.ensConstitution,
-            r.storedPParams(enact.ensCurPParams, bases.at(GovStateParams.EnactCurrent)),
-            r.storedPParams(enact.ensPrevPParams, bases.at(GovStateParams.EnactPrevious)),
-            enact.ensTreasury.value,
-            enact.ensWithdrawals.iterator.map((c, v) => Convert.back(c) -> v.value).toMap,
-            ConwayProposals.prevIds(enact.ensPrevGovActionIds)
-          ),
-          enacted,
-          ratify.rsExpired,
-          ratify.rsDelayed
-        )
-      )
+    StoredRatifyState(
+      StoredEnactState(
+        enact.ensCommittee,
+        enact.ensConstitution,
+        conway.storedPParams(enact.ensCurPParams, bases.at(GovStateParams.EnactCurrent)),
+        conway.storedPParams(enact.ensPrevPParams, bases.at(GovStateParams.EnactPrevious)),
+        enact.ensTreasury.value,
+        enact.ensWithdrawals.iterator.map((c, v) => Convert.back(c) -> v.value).toMap,
+        ConwayProposals.prevIds(enact.ensPrevGovActionIds)
+      ),
+      ratify.rsEnacted.map(ConwayProposals.storedAction),
+      ratify.rsExpired,
+      ratify.rsDelayed
+    )
 
-  /** Era `E` 's governance state as the node records it, the inverse of [[fromStored]]: each
+  /** Conway's governance state as the node records it, the inverse of [[fromStored]]: each
     * parameter record written over its position's record of `bases`
     * ([[GovStateRecord.storedPParams]]), which gives the fields of the other eras the node's record
-    * holds, or the first action the record cannot hold ([[ProposalsWriteError]]). The record a
-    * state was read from gives them ([[GovStateBases.of]]); a state the Haskell state codecs read
-    * holds those fields at the value the codec leaves them at.
+    * holds. The record a state was read from gives them ([[GovStateBases.of]]); a state the Haskell
+    * state codecs read holds those fields at the value the codec leaves them at. Dijkstra's
+    * governance state is the era's record, which nothing writes into the flat one.
     */
-  def toStored[E <: EraTag](g: ConwayGovState[E], bases: GovStateBases)(using
-      r: GovStateRecord[E]
-  ): Either[ProposalsWriteError, StoredConwayGovState] =
-    def stored(at: GovStateParams)(pp: PParams[E]): ProtocolParams =
-      r.storedPParams(pp, bases.at(at))
+  def toStored(g: ConwayGovState[Conway], bases: GovStateBases): StoredConwayGovState =
+    def stored(at: GovStateParams)(pp: PParams[Conway]): ProtocolParams =
+      conway.storedPParams(pp, bases.at(at))
     val future = g.cgsFuturePParams match
       case FuturePParams.NoPParamsUpdate() => StoredFuturePParams.NoPParamsUpdate
       case FuturePParams.DefinitePParamsUpdate(pp) =>
@@ -312,12 +290,8 @@ object GovStateRecord:
         StoredFuturePParams.PotentialPParamsUpdate(pp.map(stored(GovStateParams.Future)))
     g.cgsDRepPulsingState match
       case DRepPulsingState.DRComplete(snapshot, ratify) =>
-        for
-          proposals <- r.storedProposals(g.cgsProposals)
-          storedRatify <- ratifyStateToStored(ratify, bases)
-          snapshotActions <- snapshot.psProposals.traverse(r.storedAction)
-        yield StoredConwayGovState(
-          proposals,
+        StoredConwayGovState(
+          ConwayProposals.toStored(g.cgsProposals),
           g.cgsCommittee,
           g.cgsConstitution,
           stored(GovStateParams.Current)(g.cgsCurPParams),
@@ -325,11 +299,11 @@ object GovStateRecord:
           future,
           StoredDRComplete(
             StoredPulsingSnapshot(
-              snapshotActions,
+              snapshot.psProposals.map(ConwayProposals.storedAction),
               snapshot.psDRepDistr,
               snapshot.psDRepState,
               snapshot.psPoolDistr
             ),
-            storedRatify
+            ratifyStateToStored(ratify, bases)
           )
         )
