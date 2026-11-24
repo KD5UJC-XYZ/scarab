@@ -104,3 +104,16 @@ ahead stays within the units an admissible block declares. Header checks and wha
 BBODY stay in the block's ordered finish, after the program's result, in `applyHelper`'s order. The
 naming of a script with no verdict and the phase-2 counters are the serial run's at every worker count.
 The [as-built design](../design/parallel-plutus.md#era-block-runs) has the detail.
+
+**Amendment (2026-11-24): a body past the block's execution units.** A body whose transactions declare
+more execution units than the parameters' `maxBlockExUnits` allow, which BBODY refuses only after
+LEDGERS (`validateExUnits`, `Alonzo/Rules/Bbody.hs:212`, cardano-ledger f649f975), is not prepared and
+runs serially, in Conway's era block run and in the flat rules' body
+([#85](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7133351366)). Each runs BBODY's own
+check of the units in preparation: the era run Alonzo's `validateExUnits`, the flat body the check its
+era's BBODY runs. The workers evaluate every recorded job before the first verdict lands, and after a
+verdict that is not its flag's the serial run reaches no later script (`whenFailureFree` in the era
+rules; the flat rules stop at the first refused transaction), so a prepared body could evaluate scripts
+the serial run never does; the rule bounds that work by the units an admissible block declares. Verdicts,
+state and counters are unchanged: an over-budget body's result is the serial run's at every worker
+count. The [as-built design](../design/parallel-plutus.md#era-block-runs) has the detail.

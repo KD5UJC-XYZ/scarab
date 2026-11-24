@@ -18,11 +18,20 @@ flowchart LR
 
 `MirrorRules.applyBlock` and `EraBlock.body` remain pure serial references. The effectful mirror
 uses the same header validation and HFC tick, then hands an immutable `EraBlock.Body` to
-`ParallelPlutus`. With one worker, or fewer than two redeemer-bearing transactions, it calls the
-serial body directly. Otherwise `Body.prepare` runs the same BBODY/LEDGERS rules once, suppressing
-only VM execution and observers at UTXOS after the existing phase-1 and script-integrity checks.
-Block and transaction execution-unit caps still precede machines. Context collection still precedes
-all scripts within its transaction.
+`ParallelPlutus`. With one worker, fewer than two redeemer-bearing transactions, or transactions
+that declare more execution units than the block may hold, it calls the serial body directly.
+Otherwise `Body.prepare` runs the same BBODY/LEDGERS rules once, suppressing only VM execution and
+observers at UTXOS after the existing phase-1 and script-integrity checks. A transaction's
+execution-unit cap still precedes its machines. Context collection still precedes all scripts
+within its transaction.
+
+BBODY checks the block's execution units only after LEDGERS (`validateExUnits`,
+`Alonzo/Rules/Bbody.hs:212`, cardano-ledger f649f975), and the workers run every recorded job before
+the first verdict lands, while the serial rules reach no script after the first refused transaction.
+So the body runs BBODY's own check of the units first, the one its era's BBODY runs
+(`ShelleyBbody.exUnitsExceeded` before Conway, `Bbody.exUnitsExceeded` in Conway), and a body past
+them is not `worthwhile`, and its plan, prepared directly, has no job and the serial run's result
+(#85). What the workers can evaluate ahead stays within the units an admissible block declares.
 
 A sealed, ledger-private recorder retains jobs. Each job contains the original transaction, exact
 spent/reference outputs, parameters, era clock and immutable evaluator requests. The rules continue
@@ -138,8 +147,15 @@ the serial run reaches no later script (`whenFailureFree`, over the whole judgme
 can evaluate scripts the serial run does not; the rule bounds that work by the units an admissible block
 declares. It does not stop the jobs after an early failure: that would need the scheduler to land each
 batch before running the next, which `ParallelPlutus` does not. Conway's era run (`ConwayBlockRun.Body`)
-and the flat rules' body (`EraBlock.Body`) prepare on the count of transactions with redeemers alone,
-with the same exposure.
+and the flat rules' body (`EraBlock.Body`) follow the same rule (#85): neither prepares a body past the
+block's execution units.
+
+The era run's preparation runs BBODY's `AlonzoBbody.validateExUnits`, and a body past the units has
+no job. After a verdict that is not its flag's the serial run reaches no later script
+(`whenFailureFree`, over the whole judgment), so a prepared over-budget block could evaluate scripts
+it does not. The rule does not stop the jobs after an early failure in an admissible block: that
+would need the scheduler to land each batch before running the next, which `ParallelPlutus` does
+not.
 
 The node applies Conway blocks with the era run (the Conway switch, #85), and the Leios build's
 Dijkstra blocks with Dijkstra's (`MirrorDijkstra.ready`), each serial or through the workers. A
@@ -193,6 +209,10 @@ transaction whose script context cannot be built, after or before one whose scri
 observed in the flat rules' order through the plan and at four workers, also where the first's
 verdict is not its flag's and the serial run, replayed, does not observe the second; where the
 first's script ends in a raw defect, neither the serial run nor the plan observes the second.
+The dependent block past `maxBlockExUnits`, as flagged and with verdicts that are not the flags',
+is not prepared and evaluates through `ParallelPlutus` at one, two, four and eight workers exactly
+the scripts the serial run evaluates (four, three, two), to its result; `ParallelPlutusSuite` checks
+the same of the flat body, in Conway and in Babbage.
 
 `ConwayBodiesReplaySuite` takes the inputs of `PlutusReplaySuite` (`SCARAB_PLUTUS_CAPTURE` and
 `SCARAB_PLUTUS_BASELINE`, mounted read-only), writes to a fresh directory of its own named by
