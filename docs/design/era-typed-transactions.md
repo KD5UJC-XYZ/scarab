@@ -3204,7 +3204,9 @@ Conway's rules on the classes follow as the rest of stage 2.
     script, with no verdict, and not collected for want of its cost model) and the testnet's recorded blocks (208
     scripts, 15 a sub-transaction's, seven guarding a batch); `DijkstraParallelSuite` does so through
     `ParallelPlutus`. `PlutusCases.observeDijkstra` writes a batch's case (`"era": "dijkstra"`, each script's
-    request and result), which `PlutusCasesSuite` reads back and evaluates again; the other eras' cases are as before.
+    request and result, named by the slot, the batch's whole id and its flag), which `PlutusCasesSuite` reads back
+    and evaluates again; the other eras' cases are as before. A case that cannot be written, of any era, is kept by
+    the recorder and logged (`plutusCaseNotWritten`), never thrown into the rules.
 - **Conway's MEMPOOL and its run** (`era/rules/ConwayMempool.scala`, `era/rules/ConwayMempoolRun.scala`; cardano-ledger
   f649f975 `eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Mempool.hs`, the same rule at 29a7d656 and 9df9f98c, and
   `Conway.hs:50-59`, `eras/shelley/impl/src/Cardano/Ledger/Shelley/API/Mempool.hs`), not wired into the node yet (the
