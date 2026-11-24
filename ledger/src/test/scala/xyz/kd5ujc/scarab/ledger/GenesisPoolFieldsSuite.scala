@@ -58,6 +58,30 @@ class GenesisPoolFieldsSuite extends FunSuite:
         val metadata = field[Vector[String]](c, "metadata")
         assert(metadata.size <= 1)
         assertEquals(params.metadata, metadata.headOption.map(hex))
-      else assert(decoded.isLeft, s"reference refused ${field[String](c, "name")}")
+      else
+        assert(
+          decoded match {
+            case Left(ConfigError(xyz.kd5ujc.scarab.ledger.ConfigProblem.ByteLength(_, _, _))) |
+                Left(
+                  ConfigError(
+                    xyz.kd5ujc.scarab.ledger.ConfigProblem
+                      .GenesisPool(xyz.kd5ujc.scarab.ledger.GenesisPoolFields.Error.Number(_, _))
+                  )
+                ) | Left(
+                  ConfigError(
+                    xyz.kd5ujc.scarab.ledger.ConfigProblem
+                      .Hex(xyz.kd5ujc.scarab.codec.Bytes.HexError.InvalidCharacter(_, _))
+                  )
+                ) | Left(
+                  ConfigError(
+                    xyz.kd5ujc.scarab.ledger.ConfigProblem
+                      .Hex(xyz.kd5ujc.scarab.codec.Bytes.HexError.OddLength(_))
+                  )
+                ) | Left(ConfigError(xyz.kd5ujc.scarab.ledger.ConfigProblem.JsonField(_, _, _))) =>
+              true
+            case _ => false
+          },
+          s"reference refused ${field[String](c, "name")}"
+        )
     }
   }

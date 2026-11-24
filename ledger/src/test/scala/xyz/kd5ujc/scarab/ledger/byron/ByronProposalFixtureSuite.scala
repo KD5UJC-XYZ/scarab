@@ -49,7 +49,10 @@ class ByronProposalFixtureSuite extends FunSuite:
   ).foreach { (name, field, number) =>
     test(s"$name is rejected before registration, matching the raw reference decoder") {
       val bytes = raw(name)
-      assert(payload(bytes).isLeft)
+      assert(payload(bytes) match {
+        case Left(LedgerDecodeError.Version(_)) => true
+        case _                                  => false
+      })
       val proposal =
         CborRead.decode(bytes).fold(e => fail(e.toString), identity)
       proposal.value match

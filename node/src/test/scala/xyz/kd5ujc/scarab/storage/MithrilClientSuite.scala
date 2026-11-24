@@ -82,12 +82,27 @@ class MithrilClientSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     yield result
 
   test("exact artifact IDs and trusted transport endpoints exclude aliases and credentials") {
-    assert(MithrilClient.Artifact.parse("latest").isLeft)
-    assert(MithrilClient.Artifact.parse("A" * 64).isLeft)
+    assert(MithrilClient.Artifact.parse("latest") match {
+      case Left(MithrilClient.Error.InvalidArtifact) => true
+      case _                                         => false
+    })
+    assert(MithrilClient.Artifact.parse("A" * 64) match {
+      case Left(MithrilClient.Error.InvalidArtifact) => true
+      case _                                         => false
+    })
     assert(MithrilClient.Endpoint.parse("https://example.test/aggregator").isRight)
-    assert(MithrilClient.Endpoint.parse("http://example.test/aggregator").isLeft)
-    assert(MithrilClient.Endpoint.parse("https://user:secret@example.test").isLeft)
-    assert(MithrilClient.Endpoint.parse("https://example.test/#fragment").isLeft)
+    assert(MithrilClient.Endpoint.parse("http://example.test/aggregator") match {
+      case Left(MithrilClient.Error.InvalidEndpoint) => true
+      case _                                         => false
+    })
+    assert(MithrilClient.Endpoint.parse("https://user:secret@example.test") match {
+      case Left(MithrilClient.Error.InvalidEndpoint) => true
+      case _                                         => false
+    })
+    assert(MithrilClient.Endpoint.parse("https://example.test/#fragment") match {
+      case Left(MithrilClient.Error.InvalidEndpoint) => true
+      case _                                         => false
+    })
   }
 
   test("exit-zero immutable refusal is not a successful verification receipt") {

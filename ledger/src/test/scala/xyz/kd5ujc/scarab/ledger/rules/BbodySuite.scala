@@ -28,6 +28,7 @@ import xyz.kd5ujc.scarab.ledger.testByteStrings
 import xyz.kd5ujc.scarab.ledger.TestLedger.*
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.plutus.ExUnits
+import xyz.kd5ujc.scarab.ledger.LedgerFailure
 
 /** BBODY of Conway on its own: what the rule says of a block before and after its transactions (the
   * transactions themselves are `ConwayLedgerSuite` 's): the commitment of the body, the limits of
@@ -210,7 +211,13 @@ class BbodySuite extends FunSuite:
     }
     assert(results.head.isRight)
     assertEquals(results(1), Left(BlockFailure.BodyCommitment))
-    assert(results(2).isLeft, "the second transaction spends the first transaction's spent input")
+    assert(
+      results(2) match {
+        case Left(BlockFailure.Tx(LedgerFailure.Rejected(_, _))) => true
+        case _                                                   => false
+      },
+      "the second transaction spends the first transaction's spent input"
+    )
   }
 
   /** The output of a transaction holding a reference script of `size` bytes (Plutus V3). */

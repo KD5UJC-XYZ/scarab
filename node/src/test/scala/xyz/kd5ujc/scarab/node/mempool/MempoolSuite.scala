@@ -358,7 +358,10 @@ class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaC
       _ <- pool.sync(Right(base.toPool), 1000)
       retried <- pool.add(refused, Source.Local)
     yield
-      assert(first.isLeft)
+      assert(first match {
+        case Left(Rejection.ConwayRefused(_, _)) => true
+        case _                                   => false
+      })
       assert(!known)
       assertEquals(retried, Right(refusedId))
   }
@@ -520,7 +523,13 @@ class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaC
     val (t1, id1) = pay(1)
     val (child, _) =
       tx(Vector(TxIn(id1, 0)), Vector(alice.address() -> (98 * ada)), ada, Vector(bob))
-    assert(add(s0, child).isLeft, "the parent is not held yet")
+    assert(
+      add(s0, child) match {
+        case Left(Rejection.ConwayRefused(_, _)) => true
+        case _                                   => false
+      },
+      "the parent is not held yet"
+    )
     val s2 = add(s0, t1).flatMap(add(_, child)).fold(r => fail(r.message), identity)
     assertEquals(s2.entries.size, 2)
     assertEquals(s2.entries.map(_.ticket), Vector(1L, 2L))

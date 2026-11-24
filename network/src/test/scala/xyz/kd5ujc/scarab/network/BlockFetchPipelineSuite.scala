@@ -5,6 +5,7 @@ import cats.effect.{Deferred, IO, Ref}
 import cats.syntax.all.*
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.protocol.{BlockFetch, CardanoBlockFetch}
+import xyz.kd5ujc.scarab.protocol.BlockFetchEngine
 
 /** Client-side pipelining: a server can wait for several requests before answering any of them. */
 class BlockFetchPipelineSuite extends FailsOnUncaught:
@@ -107,7 +108,17 @@ class BlockFetchPipelineSuite extends FailsOnUncaught:
             .toVector
         )
         assert(!idle)
-        assert(invalidDone.isLeft)
+        assert(invalidDone match {
+          case Left(
+                xyz.kd5ujc.scarab.protocol.NetworkError.IllegalTransition(
+                  _,
+                  xyz.kd5ujc.scarab.protocol.NetworkError.RuntimeViolation
+                    .ReplyNotExpected(BlockFetchEngine.State.Busy)
+                )
+              ) =>
+            true
+          case _ => false
+        })
         assertEquals(results, (Right(None), Right(Some(Vector(Peers.block(2)))), Right(None)))
         assertEquals(
           events.collect { case (i, _: BlockFetchRuntime.Event.Completed) => i },

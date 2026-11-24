@@ -7,6 +7,7 @@ import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor}
 import xyz.kd5ujc.scarab.ledger.{Block, Tx}
 import xyz.kd5ujc.scarab.protocol.Era
+import xyz.kd5ujc.scarab.ledger.LedgerDecodeError
 
 /** Conway transactions carried into Dijkstra ([[DijkstraTxTranslation]]), compared with the Leios
   * testnet build on the cases of `fixtures/reference/dijkstra-crossing` (cardano-ledger 9df9f98c,
@@ -117,5 +118,8 @@ class DijkstraTxTranslationSuite extends munit.FunSuite:
     val conway = parts(hex(string(c, "tx")))
     assert(!conway.isValid)
     assertEquals(DijkstraTxTranslation.translateEra(conway).map(_.isValid), Right(false))
-    assert(DijkstraTxTranslation.rematch(conway).isLeft)
+    assert(DijkstraTxTranslation.rematch(conway) match {
+      case Left(DijkstraTxTranslationError.WrongEra(LedgerDecodeError.InvalidFlagSubmitted)) => true
+      case _ => false
+    })
   }

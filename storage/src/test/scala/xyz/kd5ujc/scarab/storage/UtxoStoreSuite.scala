@@ -545,7 +545,13 @@ class UtxoStoreSuite extends ScalaCheckSuite:
             // closed again, so that the store is released without a database
             again <- StorageTestKit.attempt(store.restore(notCheckpoint))
           yield
-            assert(failed.isLeft, failed)
+            assert(
+              failed match {
+                case Left(StorageError.Io(_, _: org.rocksdb.RocksDBException)) => true
+                case _                                                         => false
+              },
+              failed
+            )
             assertEquals(size, Left(closed))
             assertEquals(read, Left(closed))
             assertEquals(written, Left(closed))
@@ -553,7 +559,13 @@ class UtxoStoreSuite extends ScalaCheckSuite:
             assertEquals(view, Left(closed))
             assertEquals(empty, (0L, -1L))
             assertEquals(after.keySet, Set(b))
-            assert(again.isLeft, again)
+            assert(
+              again match {
+                case Left(StorageError.Io(_, _: org.rocksdb.RocksDBException)) => true
+                case _                                                         => false
+              },
+              again
+            )
         }
         .guarantee(IO.blocking(RocksUtxoStore.deleteTree(dir)))
     }

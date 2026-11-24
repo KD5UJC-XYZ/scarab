@@ -134,7 +134,10 @@ class PreparedBlockSuite extends FunSuite:
     val (result, plan) = check(passing, PreparedBlockFixture.collectionFailure)
     assert(result.isInstanceOf[EraBlock.Outcome.Refused])
     assertEquals(plan.jobs.size, 2)
-    assert(plan.jobs(1).requests.isLeft)
+    assert(plan.jobs(1).requests.left.map(_.toVector) match {
+      case Left(Vector(xyz.kd5ujc.scarab.ledger.CollectError.BadTranslation(_))) => true
+      case _                                                                     => false
+    })
     check(failure, PreparedBlockFixture.collectionFailure)
   }
 

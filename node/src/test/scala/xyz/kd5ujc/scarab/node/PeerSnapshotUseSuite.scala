@@ -137,5 +137,8 @@ class PeerSnapshotUseSuite extends FunSuite:
   test("the Leios testnet file is accepted by its topology and refused on another network") {
     val leios = Path.of("fixtures/leios/testnet/config/peer-snapshot.json")
     assert(PeerSnapshot.use(Some(leios), 164L, after(1000)).exists(_.snapshot.isDefined))
-    assert(PeerSnapshot.use(Some(leios), 2L, after(1000)).isLeft)
+    assert(PeerSnapshot.use(Some(leios), 2L, after(1000)) match {
+      case Left(PeerSnapshotRefusal.WrongMagic(_, _)) => true
+      case _                                          => false
+    })
   }

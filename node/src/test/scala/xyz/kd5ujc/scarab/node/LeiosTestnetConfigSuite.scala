@@ -9,6 +9,8 @@ import xyz.kd5ujc.scarab.node.read.InEra
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.{Era, NtnVersion, StateLayout}
+import xyz.kd5ujc.scarab.models.runtime.ConstraintViolation
+import xyz.kd5ujc.scarab.storage.haskell.state.StateNotWritable
 
 /** The published configuration of the public Leios testnet (`fixtures/leios/testnet/config`: the
   * files of `book.play.dev.cardano.org/environments-pre/leios`, unchanged; hashes in
@@ -119,7 +121,10 @@ class LeiosTestnetConfigSuite extends FunSuite:
         .encode(file, StateLayout.Leios)
         .isRight
     )
-    assert(xyz.kd5ujc.scarab.storage.haskell.state.HaskellLedgerFile.encode(file).isLeft)
+    assert(xyz.kd5ujc.scarab.storage.haskell.state.HaskellLedgerFile.encode(file) match {
+      case Left(StateNotWritable(ConstraintViolation(_, _, _, _))) => true
+      case _                                                       => false
+    })
     assertEquals(
       setup.mirrorStart.ext.layout,
       xyz.kd5ujc.scarab.consensus.state.ExtLedgerState.Layout.Leios(

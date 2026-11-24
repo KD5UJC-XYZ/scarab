@@ -100,12 +100,51 @@ class LocalStateQuerySuite extends ScalaCheckSuite:
   }
 
   test("a message in the wrong state or from the wrong side is refused") {
-    assert(encode(State.Idle, Role.Server, Message.Acquire(Target.VolatileTip)).isLeft)
-    assert(encode(State.Acquired, Role.Client, Message.Acquire(Target.VolatileTip)).isLeft)
-    assert(encode(State.Idle, Role.Client, Message.Query(query)).isLeft)
-    assert(encode(State.Acquired, Role.Client, Message.Done).isLeft)
-    assert(encode(State.Querying, Role.Client, Message.Release).isLeft)
-    assert(encode(State.Done, Role.Client, Message.Done).isLeft)
+    assert(encode(State.Idle, Role.Server, Message.Acquire(Target.VolatileTip)) match {
+      case Left(
+            ProtocolError.LocalStateQueryAgency(LocalStateQuery.State.Idle, ChainSync.Role.Server)
+          ) =>
+        true
+      case _ => false
+    })
+    assert(encode(State.Acquired, Role.Client, Message.Acquire(Target.VolatileTip)) match {
+      case Left(
+            ProtocolError
+              .LocalStateQueryAgency(LocalStateQuery.State.Acquired, ChainSync.Role.Client)
+          ) =>
+        true
+      case _ => false
+    })
+    assert(encode(State.Idle, Role.Client, Message.Query(query)) match {
+      case Left(
+            ProtocolError.LocalStateQueryAgency(LocalStateQuery.State.Idle, ChainSync.Role.Client)
+          ) =>
+        true
+      case _ => false
+    })
+    assert(encode(State.Acquired, Role.Client, Message.Done) match {
+      case Left(
+            ProtocolError
+              .LocalStateQueryAgency(LocalStateQuery.State.Acquired, ChainSync.Role.Client)
+          ) =>
+        true
+      case _ => false
+    })
+    assert(encode(State.Querying, Role.Client, Message.Release) match {
+      case Left(
+            ProtocolError
+              .LocalStateQueryAgency(LocalStateQuery.State.Querying, ChainSync.Role.Client)
+          ) =>
+        true
+      case _ => false
+    })
+    assert(encode(State.Done, Role.Client, Message.Done) match {
+      case Left(
+            ProtocolError.LocalStateQueryAgency(LocalStateQuery.State.Done, ChainSync.Role.Client)
+          ) =>
+        true
+      case _ => false
+    })
     val release = encode(State.Acquired, Role.Client, Message.Release).toOption.get
     assert(decodePrefix(State.Idle, Role.Client, release).isInstanceOf[DecodeResult.Failed[?]])
     assert(decodePrefix(State.Acquired, Role.Server, release).isInstanceOf[DecodeResult.Failed[?]])

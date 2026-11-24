@@ -17,7 +17,14 @@ class MainArgsSuite extends munit.FunSuite:
     assertEquals((custom.chainSyncWindow.low, custom.chainSyncWindow.high), (3, 5))
     assertEquals(custom.readAhead, 2)
     List(("-1", "300"), ("301", "300"), ("0", "0"), ("200", "65536")).foreach { (low, high) =>
-      assert(Main.parse(base ++ List("--chain-sync-low", low, "--chain-sync-high", high)).isLeft)
+      assert(Main.parse(base ++ List("--chain-sync-low", low, "--chain-sync-high", high)) match {
+        case Left(
+              xyz.kd5ujc.scarab.ledger
+                .ConfigError(ConfigProblem.WithUsage(ConfigProblem.FlagValue(_, _), _))
+            ) =>
+          true
+        case _ => false
+      })
     }
   }
 
@@ -69,10 +76,38 @@ class MainArgsSuite extends munit.FunSuite:
       )
     )
     assertEquals(query("--query-port", "7100"), query("--query-listen", "7100"))
-    assert(query("--query-listen", "maybe").isLeft)
-    assert(query("--query-listen", "70000").isLeft)
-    assert(query("--query-port", "off").isLeft)
-    assert(query("--query-listen", "off", "--query-port", "7100").isLeft)
+    assert(query("--query-listen", "maybe") match {
+      case Left(
+            xyz.kd5ujc.scarab.ledger
+              .ConfigError(ConfigProblem.WithUsage(ConfigProblem.FlagValue(_, _), _))
+          ) =>
+        true
+      case _ => false
+    })
+    assert(query("--query-listen", "70000") match {
+      case Left(
+            xyz.kd5ujc.scarab.ledger
+              .ConfigError(ConfigProblem.WithUsage(ConfigProblem.FlagValue(_, _), _))
+          ) =>
+        true
+      case _ => false
+    })
+    assert(query("--query-port", "off") match {
+      case Left(
+            xyz.kd5ujc.scarab.ledger
+              .ConfigError(ConfigProblem.WithUsage(ConfigProblem.FlagValue(_, _), _))
+          ) =>
+        true
+      case _ => false
+    })
+    assert(query("--query-listen", "off", "--query-port", "7100") match {
+      case Left(
+            xyz.kd5ujc.scarab.ledger
+              .ConfigError(ConfigProblem.WithUsage(ConfigProblem.FlagValue(_, _), _))
+          ) =>
+        true
+      case _ => false
+    })
   }
 
   test("a repeated --peer is allowed") {
@@ -92,20 +127,48 @@ class MainArgsSuite extends munit.FunSuite:
   test("a duplicated flag is a ConfigError") {
     val result = Main.parse(base ++ List("--seconds", "1", "--seconds", "2"))
     assert(result.left.exists(_.message.contains("duplicate flag --seconds")))
-    assert(Main.parse(base ++ List("--forge", "--forge")).isLeft)
+    assert(Main.parse(base ++ List("--forge", "--forge")) match {
+      case Left(
+            xyz.kd5ujc.scarab.ledger
+              .ConfigError(ConfigProblem.WithUsage(ConfigProblem.DuplicateFlag(_), _))
+          ) =>
+        true
+      case _ => false
+    })
   }
 
   test("a flag without a value is a ConfigError") {
-    assert(Main.parse(base ++ List("--seconds")).isLeft)
+    assert(Main.parse(base ++ List("--seconds")) match {
+      case Left(
+            xyz.kd5ujc.scarab.ledger
+              .ConfigError(ConfigProblem.WithUsage(ConfigProblem.MissingFlagValue(_), _))
+          ) =>
+        true
+      case _ => false
+    })
   }
 
   test("legacy identity adoption is explicit, unique, and requires a database") {
     val flag = "--adopt-legacy-network-identity"
     assert(!Main.parse(base).toOption.get.adoptLegacyNetworkIdentity)
-    assert(Main.parse(base ++ List(flag)).isLeft)
+    assert(Main.parse(base ++ List(flag)) match {
+      case Left(
+            xyz.kd5ujc.scarab.ledger
+              .ConfigError(ConfigProblem.WithUsage(ConfigProblem.FlagDependency(_, _), _))
+          ) =>
+        true
+      case _ => false
+    })
     val adopted = Main.parse(base ++ List("--db", "/db", flag))
     assert(adopted.exists(_.adoptLegacyNetworkIdentity))
-    assert(Main.parse(base ++ List("--db", "/db", flag, flag)).isLeft)
+    assert(Main.parse(base ++ List("--db", "/db", flag, flag)) match {
+      case Left(
+            xyz.kd5ujc.scarab.ledger
+              .ConfigError(ConfigProblem.WithUsage(ConfigProblem.DuplicateFlag(_), _))
+          ) =>
+        true
+      case _ => false
+    })
   }
 
   test("--start-as-non-producing-node and its deprecated alias start with forging disabled") {
@@ -115,8 +178,22 @@ class MainArgsSuite extends munit.FunSuite:
     assertEquals(nonProducing("--start-as-non-producing-node"), Right(true))
     assertEquals(nonProducing("--non-producing-node"), Right(true))
     assertEquals(nonProducing("--non-producing-node", "--start-as-non-producing-node"), Right(true))
-    assert(nonProducing("--start-as-non-producing-node", "--start-as-non-producing-node").isLeft)
-    assert(nonProducing("--non-producing-node", "--non-producing-node").isLeft)
+    assert(nonProducing("--start-as-non-producing-node", "--start-as-non-producing-node") match {
+      case Left(
+            xyz.kd5ujc.scarab.ledger
+              .ConfigError(ConfigProblem.WithUsage(ConfigProblem.DuplicateFlag(_), _))
+          ) =>
+        true
+      case _ => false
+    })
+    assert(nonProducing("--non-producing-node", "--non-producing-node") match {
+      case Left(
+            xyz.kd5ujc.scarab.ledger
+              .ConfigError(ConfigProblem.WithUsage(ConfigProblem.DuplicateFlag(_), _))
+          ) =>
+        true
+      case _ => false
+    })
   }
 
   test("the flag wins over StartAsNonProducingNode, which wins over the default") {
@@ -137,7 +214,14 @@ class MainArgsSuite extends munit.FunSuite:
   test("--key-lock defaults to on and refuses other values") {
     assert(Main.parse(base).toOption.get.keyLock)
     assert(!Main.parse(base ++ List("--key-lock", "off")).toOption.get.keyLock)
-    assert(Main.parse(base ++ List("--key-lock", "maybe")).isLeft)
+    assert(Main.parse(base ++ List("--key-lock", "maybe")) match {
+      case Left(
+            xyz.kd5ujc.scarab.ledger
+              .ConfigError(ConfigProblem.WithUsage(ConfigProblem.FlagValue(_, _), _))
+          ) =>
+        true
+      case _ => false
+    })
   }
 
   test("--producer-id defaults to Scarab's identifier and refuses other values (#1348)") {
@@ -151,7 +235,14 @@ class MainArgsSuite extends munit.FunSuite:
       Main.parse(base ++ List("--producer-id", "scarab")).map(_.producerSignal),
       Right(ProducerSignal.Identified)
     )
-    assert(Main.parse(base ++ List("--producer-id", "42")).isLeft)
+    assert(Main.parse(base ++ List("--producer-id", "42")) match {
+      case Left(
+            xyz.kd5ujc.scarab.ledger
+              .ConfigError(ConfigProblem.WithUsage(ConfigProblem.FlagValue(_, _), _))
+          ) =>
+        true
+      case _ => false
+    })
   }
 
   test(
@@ -162,13 +253,34 @@ class MainArgsSuite extends munit.FunSuite:
     assertEquals(defaults.maxInbound, None)
     assert(!Main.parse(base ++ List("--header-first", "off")).toOption.get.headerFirst)
     // our clients run only where the outbound governor promotes a peer (issue 854)
-    assert(Main.parse(base ++ List("--inbound-sync", "on")).isLeft)
+    assert(Main.parse(base ++ List("--inbound-sync", "on")) match {
+      case Left(
+            xyz.kd5ujc.scarab.ledger
+              .ConfigError(ConfigProblem.WithUsage(ConfigProblem.UnknownFlag(_), _))
+          ) =>
+        true
+      case _ => false
+    })
     assertEquals(
       Main.parse(base ++ List("--max-inbound", "5")).toOption.get.maxInbound.map(_.toLong),
       Some(5L)
     )
-    assert(Main.parse(base ++ List("--header-first", "maybe")).isLeft)
-    assert(Main.parse(base ++ List("--max-inbound", "0")).isLeft)
+    assert(Main.parse(base ++ List("--header-first", "maybe")) match {
+      case Left(
+            xyz.kd5ujc.scarab.ledger
+              .ConfigError(ConfigProblem.WithUsage(ConfigProblem.FlagValue(_, _), _))
+          ) =>
+        true
+      case _ => false
+    })
+    assert(Main.parse(base ++ List("--max-inbound", "0")) match {
+      case Left(
+            xyz.kd5ujc.scarab.ledger
+              .ConfigError(ConfigProblem.WithUsage(ConfigProblem.FlagValue(_, _), _))
+          ) =>
+        true
+      case _ => false
+    })
   }
 
   test(
@@ -220,8 +332,22 @@ class MainArgsSuite extends munit.FunSuite:
   test("--cpu-threads takes zero (no pool) or a positive number, nothing else") {
     assertEquals(Main.parse(base ++ List("--cpu-threads", "0")).toOption.get.cpuThreads, 0)
     assertEquals(Main.parse(base ++ List("--cpu-threads", "3")).toOption.get.cpuThreads, 3)
-    assert(Main.parse(base ++ List("--cpu-threads", "-1")).isLeft)
-    assert(Main.parse(base ++ List("--cpu-threads", "many")).isLeft)
+    assert(Main.parse(base ++ List("--cpu-threads", "-1")) match {
+      case Left(
+            xyz.kd5ujc.scarab.ledger
+              .ConfigError(ConfigProblem.WithUsage(ConfigProblem.FlagValue(_, _), _))
+          ) =>
+        true
+      case _ => false
+    })
+    assert(Main.parse(base ++ List("--cpu-threads", "many")) match {
+      case Left(
+            xyz.kd5ujc.scarab.ledger
+              .ConfigError(ConfigProblem.WithUsage(ConfigProblem.FlagValue(_, _), _))
+          ) =>
+        true
+      case _ => false
+    })
     assert(Main.parse(base).toOption.get.cpuThreads >= 1)
   }
 
@@ -229,8 +355,22 @@ class MainArgsSuite extends munit.FunSuite:
     assertEquals(Main.parse(base).toOption.get.stallMinutes, 10)
     assertEquals(Main.parse(base ++ List("--stall-minutes", "0")).toOption.get.stallMinutes, 0)
     assertEquals(Main.parse(base ++ List("--stall-minutes", "3")).toOption.get.stallMinutes, 3)
-    assert(Main.parse(base ++ List("--stall-minutes", "-1")).isLeft)
-    assert(Main.parse(base ++ List("--stall-minutes", "soon")).isLeft)
+    assert(Main.parse(base ++ List("--stall-minutes", "-1")) match {
+      case Left(
+            xyz.kd5ujc.scarab.ledger
+              .ConfigError(ConfigProblem.WithUsage(ConfigProblem.FlagValue(_, _), _))
+          ) =>
+        true
+      case _ => false
+    })
+    assert(Main.parse(base ++ List("--stall-minutes", "soon")) match {
+      case Left(
+            xyz.kd5ujc.scarab.ledger
+              .ConfigError(ConfigProblem.WithUsage(ConfigProblem.FlagValue(_, _), _))
+          ) =>
+        true
+      case _ => false
+    })
   }
 
   test("--stall-exit-after is a typed duration, longer than --stall-minutes, off by default") {
@@ -244,10 +384,38 @@ class MainArgsSuite extends munit.FunSuite:
       Main.parse(base ++ List("--stall-exit-after", "2h")).toOption.get.stallExitAfter,
       Some(2.hours)
     )
-    assert(Main.parse(base ++ List("--stall-exit-after", "5m")).isLeft) // not after the warning
-    assert(Main.parse(base ++ List("--stall-exit-after", "30")).isLeft)
-    assert(Main.parse(base ++ List("--stall-exit-after", "0m")).isLeft)
-    assert(Main.parse(base ++ List("--stall-minutes", "0", "--stall-exit-after", "30m")).isLeft)
+    assert(Main.parse(base ++ List("--stall-exit-after", "5m")) match {
+      case Left(
+            xyz.kd5ujc.scarab.ledger
+              .ConfigError(ConfigProblem.WithUsage(ConfigProblem.FlagValue(_, _), _))
+          ) =>
+        true
+      case _ => false
+    }) // not after the warning
+    assert(Main.parse(base ++ List("--stall-exit-after", "30")) match {
+      case Left(
+            xyz.kd5ujc.scarab.ledger
+              .ConfigError(ConfigProblem.WithUsage(ConfigProblem.FlagValue(_, _), _))
+          ) =>
+        true
+      case _ => false
+    })
+    assert(Main.parse(base ++ List("--stall-exit-after", "0m")) match {
+      case Left(
+            xyz.kd5ujc.scarab.ledger
+              .ConfigError(ConfigProblem.WithUsage(ConfigProblem.FlagValue(_, _), _))
+          ) =>
+        true
+      case _ => false
+    })
+    assert(Main.parse(base ++ List("--stall-minutes", "0", "--stall-exit-after", "30m")) match {
+      case Left(
+            xyz.kd5ujc.scarab.ledger
+              .ConfigError(ConfigProblem.WithUsage(ConfigProblem.FlagValue(_, _), _))
+          ) =>
+        true
+      case _ => false
+    })
   }
 
   test("--churn-interval is a test-only duration, off by default") {
@@ -257,8 +425,22 @@ class MainArgsSuite extends munit.FunSuite:
       Main.parse(base ++ List("--churn-interval", "20s")).toOption.get.churnInterval,
       Some(20.seconds)
     )
-    assert(Main.parse(base ++ List("--churn-interval", "0s")).isLeft)
-    assert(Main.parse(base ++ List("--churn-interval", "soon")).isLeft)
+    assert(Main.parse(base ++ List("--churn-interval", "0s")) match {
+      case Left(
+            xyz.kd5ujc.scarab.ledger
+              .ConfigError(ConfigProblem.WithUsage(ConfigProblem.FlagValue(_, _), _))
+          ) =>
+        true
+      case _ => false
+    })
+    assert(Main.parse(base ++ List("--churn-interval", "soon")) match {
+      case Left(
+            xyz.kd5ujc.scarab.ledger
+              .ConfigError(ConfigProblem.WithUsage(ConfigProblem.FlagValue(_, _), _))
+          ) =>
+        true
+      case _ => false
+    })
   }
 
   test("--dump-state takes a directory and optional points; the points alone are refused") {
@@ -277,16 +459,44 @@ class MainArgsSuite extends munit.FunSuite:
       Some(StateDump.Targets.Slots(List(BigInt(100), BigInt(200))))
     )
     assertEquals(slots.dumpStateFull, true)
-    assert(Main.parse(base ++ List("--dump-state-at", "100")).isLeft)
-    assert(Main.parse(base ++ List("--dump-state", "/d", "--dump-state-at", "later")).isLeft)
+    assert(Main.parse(base ++ List("--dump-state-at", "100")) match {
+      case Left(
+            xyz.kd5ujc.scarab.ledger
+              .ConfigError(ConfigProblem.WithUsage(ConfigProblem.FlagValue(_, _), _))
+          ) =>
+        true
+      case _ => false
+    })
+    assert(Main.parse(base ++ List("--dump-state", "/d", "--dump-state-at", "later")) match {
+      case Left(
+            xyz.kd5ujc.scarab.ledger
+              .ConfigError(ConfigProblem.WithUsage(ConfigProblem.FlagValue(_, _), _))
+          ) =>
+        true
+      case _ => false
+    })
   }
 
   test("--metrics-listen is off by default and takes an address, a bad one is a ConfigError") {
     assertEquals(Main.parse(base).toOption.get.metricsListen, None)
     val listening = Main.parse(base ++ List("--metrics-listen", "0.0.0.0:12798")).toOption.get
     assertEquals(listening.metricsListen.map(_.toString), Some("0.0.0.0:12798"))
-    assert(Main.parse(base ++ List("--metrics-listen", "12798")).isLeft)
-    assert(Main.parse(base ++ List("--metrics-listen", "host:port")).isLeft)
+    assert(Main.parse(base ++ List("--metrics-listen", "12798")) match {
+      case Left(
+            xyz.kd5ujc.scarab.ledger
+              .ConfigError(ConfigProblem.PeerAddress(Peer.AddressError.Invalid(_)))
+          ) =>
+        true
+      case _ => false
+    })
+    assert(Main.parse(base ++ List("--metrics-listen", "host:port")) match {
+      case Left(
+            xyz.kd5ujc.scarab.ledger
+              .ConfigError(ConfigProblem.PeerAddress(Peer.AddressError.Invalid(_)))
+          ) =>
+        true
+      case _ => false
+    })
   }
 
   test("the log flags: sinks, repeated thresholds and samplings, refusals with the usage") {
@@ -329,7 +539,14 @@ class MainArgsSuite extends munit.FunSuite:
       1
     )
     for value <- List("0", "-1", "many", "2147483648") do
-      assert(Main.parse(base ++ List("--plutus-workers", value)).isLeft)
+      assert(Main.parse(base ++ List("--plutus-workers", value)) match {
+        case Left(
+              xyz.kd5ujc.scarab.ledger
+                .ConfigError(ConfigProblem.WithUsage(ConfigProblem.FlagValue(_, _), _))
+            ) =>
+          true
+        case _ => false
+      })
   }
 
   test("--shelley-bls-key names the voting keys of a forging node, and nothing without --forge") {

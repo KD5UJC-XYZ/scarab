@@ -71,6 +71,8 @@ import xyz.kd5ujc.scarab.node.{MirrorDijkstra, MirrorRules, NodeSetup}
 import xyz.kd5ujc.scarab.plutus.{ExUnits, PlutusBackend}
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.protocol.{Era, LeiosFetch, ReferenceBuild}
+import xyz.kd5ujc.scarab.codec.Cbor
+import xyz.kd5ujc.scarab.protocol.ProtocolError
 
 /** The pool's Dijkstra ledger under the Leios build (#54): the devnet's recorded Dijkstra
   * transaction (`fixtures/dijkstra-devnet/transaction.json`, the transaction of its block 37)
@@ -863,7 +865,10 @@ class DijkstraMempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       val body = inBlock.body.raw
       assertEquals(leios.read(submitted, Era.Dijkstra), Right(body))
       assertEquals(leios.body(submitted, Era.Dijkstra), Right(body))
-      assert(leios.read(submitted.drop(1), Era.Dijkstra).isLeft)
+      assert(leios.read(submitted.drop(1), Era.Dijkstra) match {
+        case Left(ProtocolError.Codec(Cbor.Error.TrailingBytes)) => true
+        case _                                                   => false
+      })
       // another era's body is read as the release builds read it
       assertEquals(
         leios.body(submitted, Era.Conway),

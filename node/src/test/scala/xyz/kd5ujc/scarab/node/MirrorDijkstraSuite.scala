@@ -41,6 +41,8 @@ import xyz.kd5ujc.scarab.ledger.state.{BlockIssuer, KeyHash, LeiosCommittee, Lei
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.protocol.{DijkstraNotYet, EbHash, Era, LeiosTxHash, ReferenceBuild}
 import xyz.kd5ujc.scarab.storage.MemoryUtxoStore
+import xyz.kd5ujc.scarab.ledger.ConfigError
+import xyz.kd5ujc.scarab.ledger.ConfigProblem
 
 /** Dijkstra blocks applied by the node's block rules (`MirrorRules`, [[MirrorDijkstra]]) in the
   * Leios build, as `Forker.applyBlock` applies them (ouroboros-consensus 2416493b
@@ -269,7 +271,10 @@ class MirrorDijkstraSuite extends CatsEffectSuite:
   test("follow runs the Leios build and the 11.1 line, and still refuses 11.2") {
     assert(ReferenceBuildFlag.follows(ReferenceBuild.Leios).isRight)
     assert(ReferenceBuildFlag.follows(ReferenceBuild.Release11_1).isRight)
-    assert(ReferenceBuildFlag.follows(ReferenceBuild.Release11_2).isLeft)
+    assert(ReferenceBuildFlag.follows(ReferenceBuild.Release11_2) match {
+      case Left(ConfigError(ConfigProblem.ReferenceBuildNotYet(_))) => true
+      case _                                                        => false
+    })
   }
 
   // ---- a crafted certifying ranking block on the devnet chain's last state

@@ -93,7 +93,14 @@ class ByronLargeAddressSuite extends FunSuite:
   // no decoder budget refuses it (#749): eight mebibytes of zeros are an item and trailing bytes
   test("an address beyond what a block can hold is still a typed decode failure") {
     val tooBig = Bytes(Vector.fill((1 << 23) + 1)(0.toByte))
-    assert(ByronAddress.decode(tooBig).isLeft)
+    assert(ByronAddress.decode(tooBig) match {
+      case Left(
+            xyz.kd5ujc.scarab.ledger.LedgerDecodeError
+              .Syntax(xyz.kd5ujc.scarab.codec.Cbor.Error.TrailingBytes)
+          ) =>
+        true
+      case _ => false
+    })
     assertEquals(
       ByronLedger.outputs(config, body.txs.head.tx.copy(outputs = Vector(ByronOut(tooBig, 1)))),
       Left(

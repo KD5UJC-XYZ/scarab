@@ -10,6 +10,7 @@ import xyz.kd5ujc.scarab.ledger.DetachedRecordsReferenceSuite
 import xyz.kd5ujc.scarab.network.{FailsOnUncaught, LocalStateQueryServer, Mux, Peers}
 import xyz.kd5ujc.scarab.protocol.LocalStateQuery
 import xyz.kd5ujc.scarab.protocol.ChainSync.{DecodeResult, Role}
+import xyz.kd5ujc.scarab.codec.Cbor
 
 import DetachedRecordsReferenceSuite.{Kind, Row}
 import LocalStateQuery.{Message, QueryReader, State}
@@ -86,11 +87,24 @@ class NtcQueryRecordsSuite extends FailsOnUncaught:
         for n <- 1 until wire.size do
           assertEquals(decodeQuery(wire.slice(0, n)), DecodeResult.NeedMore, s"$n bytes")
       else
-        assert(read.isLeft, read.toString)
+        assert(
+          read match {
+            case Left(NtcQuery.Error.IndefiniteRecord(_)) | Left(NtcQuery.Error.InvalidTxId) |
+                Left(NtcQuery.Error.MalformedCbor(_)) | Left(NtcQuery.Error.Word16Range(_)) =>
+              true
+            case _ => false
+          },
+          read.toString
+        )
         // the codec frames it or refuses it; framed, the query is refused when it is read
         decodeQuery(message(query)) match
           case DecodeResult.Decoded(Message.Query(framed), _) =>
-            assert(NtcQuery.decode(framed).isLeft)
+            assert(NtcQuery.decode(framed) match {
+              case Left(NtcQuery.Error.IndefiniteRecord(_)) | Left(NtcQuery.Error.InvalidTxId) |
+                  Left(NtcQuery.Error.Word16Range(_)) =>
+                true
+              case _ => false
+            })
           case DecodeResult.Decoded(other, _) => fail(s"not a query: $other")
           case DecodeResult.Failed(_)         => ()
           case DecodeResult.NeedMore          => ()
@@ -147,10 +161,17 @@ class NtcQueryRecordsSuite extends FailsOnUncaught:
     // a detached id is not walked: the query is one item, and its id is refused
     val detached = inDijkstra("819fff" + txId + "00")
     assertEquals(NtcQuery.reader.spanOf(detached), LocalStateQuery.QuerySpan.Item)
-    assert(NtcQuery.decode(detached).isLeft)
+    assert(NtcQuery.decode(detached) match {
+      case Left(NtcQuery.Error.MalformedCbor(Cbor.Error.TrailingBytes)) => true
+      case _                                                            => false
+    })
     decodeQuery(message(detached)) match
-      case DecodeResult.Decoded(Message.Query(framed), _) => assert(NtcQuery.decode(framed).isLeft)
-      case other                                          => fail(s"not a query: $other")
+      case DecodeResult.Decoded(Message.Query(framed), _) =>
+        assert(NtcQuery.decode(framed) match {
+          case Left(NtcQuery.Error.Arity(_, _, _)) => true
+          case _                                   => false
+        })
+      case other => fail(s"not a query: $other")
     // `decodeRecordNamed` takes an indefinite list of the two fields
     assertEquals(
       NtcQuery.decode(inDijkstra("819f" + txId + "00ff")).map(ids),

@@ -8,6 +8,8 @@ import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value}
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.ledger.{Block, Header, HeaderVrf}
 import scala.jdk.CollectionConverters.*
+import xyz.kd5ujc.scarab.models.runtime.ConstraintViolation
+import xyz.kd5ujc.scarab.models.runtime.DecodeError
 
 /** Fixture access shared by the equivalence suites. */
 object Fixtures:
@@ -262,15 +264,24 @@ class GoldenHeaderSuite extends munit.FunSuite:
     assertEquals(err.path.headOption, Some("header_body"))
     assert(err.render.nonEmpty)
     // Truncation is a syntax error, trailing bytes too; neither throws.
-    assert(conway.Header.decodeBytes(raw.take(raw.size - 1)).isLeft)
-    assert(conway.Header.decodeBytes(raw ++ Bytes(Vector(0.toByte))).isLeft)
+    assert(conway.Header.decodeBytes(raw.take(raw.size - 1)) match {
+      case Left(DecodeError(DecodeError.Kind.Syntax(Cbor.Error.TruncatedString), _, _, _)) => true
+      case _                                                                               => false
+    })
+    assert(conway.Header.decodeBytes(raw ++ Bytes(Vector(0.toByte))) match {
+      case Left(DecodeError(DecodeError.Kind.Syntax(Cbor.Error.TrailingBytes), _, _, _)) => true
+      case _                                                                             => false
+    })
   }
 
   test("range constraints are enforced by the types: protocol major above 12 is rejected") {
     val raw = Fixtures.headerBytes(Fixtures.hexLines("fixtures/preview/conway.hex").head)
     val h = conway.Header.decodeBytes(raw).toOption.get
     val bad = conway.MajorProtocolVersion.from(13)
-    assert(bad.isLeft)
+    assert(bad match {
+      case Left(ConstraintViolation(_, _, _, _)) => true
+      case _                                     => false
+    })
     assertEquals(bad.left.toOption.get.typeName, "MajorProtocolVersion")
     assert(conway.MajorProtocolVersion.from(h.headerBody.protocolVersion.major.value).isRight)
     val _ = Codec

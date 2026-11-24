@@ -4,6 +4,7 @@ package xyz.kd5ujc.scarab.ledger.byron
 import java.nio.file.{Files, Path}
 import io.circe.parser.parse
 import munit.FunSuite
+import xyz.kd5ujc.scarab.ledger.LedgerDecodeError
 
 class ByronParamsNativeSuite extends FunSuite:
   test("native signed ceiling and Word64 conversion precede checked fee addition") {
@@ -60,7 +61,16 @@ class ByronParamsNativeSuite extends FunSuite:
         if parameters then bytes
         else array(Vector.tabulate(14)(i => if i == 12 then array(bytes) else array())*)
       val result = ByronParamsUpdate.decode(decoded(encoded))
-      if !field[Boolean](row, "accepted") then assert(result.isLeft, label)
+      if !field[Boolean](row, "accepted") then
+        assert(
+          result match {
+            case Left(LedgerDecodeError.Expected(_, _, _)) |
+                Left(LedgerDecodeError.NumberOutOfRange(_, _, _, _)) =>
+              true
+            case _ => false
+          },
+          label
+        )
       else if parameters then
         val value = Some(field[BigInt](row, "naturalValue"))
         val expected = field[Int](row, "field") match

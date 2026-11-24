@@ -13,6 +13,7 @@ import xyz.kd5ujc.scarab.protocol.{
   LeiosWord,
   TxBitmaps
 }
+import xyz.kd5ujc.scarab.codec.Cbor
 
 /** The generated reader of the LeiosFetch messages (`models.conf`: the Blueprint's
   * `leios-fetch/messages.cddl` at `0460c5a6`, whose `base` is the consensus module plus `word16`
@@ -111,7 +112,16 @@ class LeiosFetchCddlSuite extends munit.FunSuite:
     Vector("a1" + "0500", "a1" + "19010c" + "01", "a2" + "0301" + "0201").foreach { map =>
       val bytes = hex("83" + "03" + p + map)
       assert(generated(bytes).isRight, map)
-      assert(LeiosFetch.decodePrefix(LeiosFetch.State.Idle, bytes).isLeft, map)
+      assert(
+        LeiosFetch.decodePrefix(LeiosFetch.State.Idle, bytes) match {
+          case Left(LeiosWireError.BitmapWindowOutOfRange(_, _, _)) |
+              Left(LeiosWireError.BitmapWindowsNotAscending(_, _)) |
+              Left(LeiosWireError.ZeroBitmap(_, _)) =>
+            true
+          case _ => false
+        },
+        map
+      )
     }
   }
 
@@ -154,14 +164,24 @@ class LeiosFetchCddlSuite extends munit.FunSuite:
   }
 
   test("an endorser block with no transaction is refused by both") {
-    assert(generated(hex("8202a0")).isLeft)
+    assert(generated(hex("8202a0")) match {
+      case Left(DecodeError(DecodeError.Kind.NoAlternative(_), _, _, _)) => true
+      case _                                                             => false
+    })
     assertEquals(
       LeiosFetch.decodePrefix(LeiosFetch.State.Block, hex("8202a0")),
       Left(LeiosWireError.EmptyEndorserBlock)
     )
     // an empty indefinite map: refused by both, here as not a definite map
-    assert(generated(hex("8202bfff")).isLeft)
-    assert(LeiosFetch.decodePrefix(LeiosFetch.State.Block, hex("8202bfff")).isLeft)
+    assert(generated(hex("8202bfff")) match {
+      case Left(DecodeError(DecodeError.Kind.NoAlternative(_), _, _, _)) => true
+      case _                                                             => false
+    })
+    assert(LeiosFetch.decodePrefix(LeiosFetch.State.Block, hex("8202bfff")) match {
+      case Left(LeiosWireError.BadField(_, xyz.kd5ujc.scarab.protocol.LeiosField.EndorserBlock)) =>
+        true
+      case _ => false
+    })
   }
 
   test("a transaction that is not tag 24 around bytes is refused by both") {
@@ -170,7 +190,13 @@ class LeiosFetchCddlSuite extends munit.FunSuite:
     val wrongTag = hex("82" + "04" + "81" + "d819" + "58" + "0e" + tx)
     val notBytes = hex("82" + "04" + "81" + "d818" + tx)
     Vector(untagged, wrongTag, notBytes).foreach { bytes =>
-      assert(generated(bytes).isLeft, bytes.hex)
+      assert(
+        generated(bytes) match {
+          case Left(DecodeError(DecodeError.Kind.NoAlternative(_), _, _, _)) => true
+          case _                                                             => false
+        },
+        bytes.hex
+      )
       assertEquals(
         LeiosFetch.decodePrefix(LeiosFetch.State.BlockTxs, bytes),
         Left(LeiosWireError.BadTransaction(0)),
@@ -182,7 +208,10 @@ class LeiosFetchCddlSuite extends munit.FunSuite:
   test("the bytes inside tag 24 are not read by the codec, and are by the generated reader") {
     // a CBOR text string where a block transaction belongs: framing is right, the content is not
     val bytes = hex("82" + "04" + "81" + "d818" + "42" + "6161")
-    assert(generated(bytes).isLeft)
+    assert(generated(bytes) match {
+      case Left(DecodeError(DecodeError.Kind.NoAlternative(_), _, _, _)) => true
+      case _                                                             => false
+    })
     assertEquals(
       LeiosFetch.decodePrefix(LeiosFetch.State.BlockTxs, bytes).map(_._1),
       Right(LeiosFetch.Message.BlockTxs(Vector(hex("6161"))))
@@ -202,7 +231,13 @@ class LeiosFetchCddlSuite extends munit.FunSuite:
     val over = eb(LeiosFetch.MaxTxsPerEb + 1)
     assert(LeiosFetch.decodePrefix(LeiosFetch.State.Block, ok).isRight)
     assert(generated(ok).isRight)
-    assert(LeiosFetch.decodePrefix(LeiosFetch.State.Block, over).isLeft)
+    assert(LeiosFetch.decodePrefix(LeiosFetch.State.Block, over) match {
+      case Left(
+            LeiosWireError.TooMany(_, xyz.kd5ujc.scarab.protocol.LeiosField.EndorserBlock, _, _)
+          ) =>
+        true
+      case _ => false
+    })
     assert(generated(over).isRight)
   }
 
@@ -210,7 +245,10 @@ class LeiosFetchCddlSuite extends munit.FunSuite:
     val p = written(LeiosFetch.Message.BlockRequest(point)).drop(2).hex
     // [4, point, {0: 1}, [h'a0']]: the point, the bitmaps and a plain transaction
     val old = hex("84" + "04" + p + "a1" + "0001" + "81" + "a0")
-    assert(generated(old).isLeft)
+    assert(generated(old) match {
+      case Left(DecodeError(DecodeError.Kind.NoAlternative(_), _, _, _)) => true
+      case _                                                             => false
+    })
     assertEquals(
       LeiosFetch.decodePrefix(LeiosFetch.State.BlockTxs, old),
       Left(LeiosWireError.WrongArity(4, 1, 3))
@@ -228,24 +266,51 @@ class LeiosFetchCddlSuite extends munit.FunSuite:
       LeiosFetch.State.Idle -> wideBitmap,
       LeiosFetch.State.Block -> wideSize
     ).foreach { (state, bytes) =>
-      assert(generated(bytes).isLeft, bytes.hex)
-      assert(LeiosFetch.decodePrefix(state, bytes).isLeft, bytes.hex)
+      assert(
+        generated(bytes) match {
+          case Left(DecodeError(DecodeError.Kind.NoAlternative(_), _, _, _)) => true
+          case _                                                             => false
+        },
+        bytes.hex
+      )
+      assert(
+        LeiosFetch.decodePrefix(state, bytes) match {
+          case Left(LeiosWireError.BadField(_, _)) => true
+          case _                                   => false
+        },
+        bytes.hex
+      )
     }
   }
 
   test("an unknown tag, a wrong arity and trailing bytes are refused by the generated reader") {
-    assert(generated(hex("8105")).isLeft)
-    assert(generated(hex("820000")).isLeft)
-    assert(generated(hex("8100") ++ hex("00")).isLeft)
+    assert(generated(hex("8105")) match {
+      case Left(DecodeError(DecodeError.Kind.NoAlternative(_), _, _, _)) => true
+      case _                                                             => false
+    })
+    assert(generated(hex("820000")) match {
+      case Left(DecodeError(DecodeError.Kind.NoAlternative(_), _, _, _)) => true
+      case _                                                             => false
+    })
+    assert(generated(hex("8100") ++ hex("00")) match {
+      case Left(DecodeError(DecodeError.Kind.Syntax(Cbor.Error.TrailingBytes), _, _, _)) => true
+      case _                                                                             => false
+    })
     // [4, []] is the form of 0460c5a6; the point and the bitmaps before the list are the older form
     assert(generated(hex("820480")).isRight)
-    assert(generated(hex("8404" + "82" + "1a0005a91e" + "5820" + "07" * 32 + "a0" + "80")).isLeft)
+    assert(generated(hex("8404" + "82" + "1a0005a91e" + "5820" + "07" * 32 + "a0" + "80")) match {
+      case Left(DecodeError(DecodeError.Kind.NoAlternative(_), _, _, _)) => true
+      case _                                                             => false
+    })
   }
 
   test("a hash of other than 32 bytes is refused by both") {
     // `decodeEbHash` is `decodeFixedSized` of `PackedBytes 32` (`Leios/Types.hs:105-106`, 2416493b)
     val bytes = hex("8201821a0005a91e5810" + "07" * 16)
-    assert(generated(bytes).isLeft)
+    assert(generated(bytes) match {
+      case Left(DecodeError(DecodeError.Kind.NoAlternative(_), _, _, _)) => true
+      case _                                                             => false
+    })
     assertEquals(
       LeiosFetch.decodePrefix(LeiosFetch.State.Idle, bytes),
       Left(LeiosWireError.BadField(1, xyz.kd5ujc.scarab.protocol.LeiosField.Hash))

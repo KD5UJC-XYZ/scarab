@@ -41,7 +41,18 @@ class NativeIndexComparisonSuite extends FunSuite:
       ),
       Left(Error.Decode("bad", Format.Primary, Parser.Current, ChunkFault.PrimaryEmpty))
     )
-    assert(compare("bad", Array.emptyByteArray, Array.emptyByteArray, slots).isLeft)
+    assert(compare("bad", Array.emptyByteArray, Array.emptyByteArray, slots) match {
+      case Left(
+            NativeIndexComparison.Error.Decode(
+              _,
+              NativeIndexComparison.Format.Primary,
+              NativeIndexComparison.Parser.Current,
+              ChunkFault.PrimaryEmpty
+            )
+          ) =>
+        true
+      case _ => false
+    })
   }
 
   test("either parser failure and different successful values fail with typed causes") {
@@ -86,7 +97,18 @@ class NativeIndexComparisonSuite extends FunSuite:
     assertEquals(newest, Right(completeInput.copy(primaryTailBytes = 1L, secondaryTailBytes = 3L)))
     assert(newest.flatMap(complete).isRight)
     val corruptVersion = primary.updated(0, 0.toByte)
-    assert(compare("00000", corruptVersion, secondary, slots, mostRecent = true).isLeft)
+    assert(compare("00000", corruptVersion, secondary, slots, mostRecent = true) match {
+      case Left(
+            NativeIndexComparison.Error.Decode(
+              _,
+              NativeIndexComparison.Format.Primary,
+              NativeIndexComparison.Parser.Current,
+              ChunkFault.PrimaryVersion(_)
+            )
+          ) =>
+        true
+      case _ => false
+    })
   }
 
   test("chunk numbering is canonical and greatest chunk selection uses numeric order") {

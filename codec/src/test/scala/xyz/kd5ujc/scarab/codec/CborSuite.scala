@@ -12,7 +12,10 @@ class CborSuite extends munit.FunSuite:
     Vector("e0" -> 0, "f3" -> 19, "f7" -> 23, "f820" -> 32, "f8ff" -> 255).foreach {
       (hex, simple) =>
         val input = bytes(hex)
-        assert(Cbor.decode(input).isLeft)
+        assert(Cbor.decode(input) match {
+          case Left(xyz.kd5ujc.scarab.codec.Cbor.Error.UnsupportedSimpleValue(_)) => true
+          case _                                                                  => false
+        })
         val value = Cbor.decode(input, limits).fold(e => fail(e.toString), identity)
         assertEquals(value.value, Value.Simple(simple))
         assertEquals(OracleCbor.decode(input, limits), Right(value))
@@ -21,8 +24,24 @@ class CborSuite extends munit.FunSuite:
         assertNotEquals(value.value, Value.Null)
     }
     Vector("f800", "f817", "f818", "f81f", "fc", "fd", "fe", "ff").foreach { hex =>
-      assert(Cbor.decode(bytes(hex), limits).isLeft, hex)
-      assert(OracleCbor.decode(bytes(hex), limits).isLeft, hex)
+      assert(
+        Cbor.decode(bytes(hex), limits) match {
+          case Left(xyz.kd5ujc.scarab.codec.Cbor.Error.InvalidSimpleValue(_)) |
+              Left(xyz.kd5ujc.scarab.codec.Cbor.Error.UnsupportedSimpleValue(_)) =>
+            true
+          case _ => false
+        },
+        hex
+      )
+      assert(
+        OracleCbor.decode(bytes(hex), limits) match {
+          case Left(xyz.kd5ujc.scarab.codec.Cbor.Error.InvalidSimpleValue(_)) |
+              Left(xyz.kd5ujc.scarab.codec.Cbor.Error.UnsupportedSimpleValue(_)) =>
+            true
+          case _ => false
+        },
+        hex
+      )
     }
     Vector(-1, 20, 21, 22, 24, 31, 256).foreach { n =>
       assertEquals(Cbor.encode(Value.Simple(n)), Left(Cbor.Error.InvalidSimpleValue(n)))
@@ -77,7 +96,10 @@ class CborSuite extends munit.FunSuite:
     assertEquals(Cbor.encode(Value.UInt(max + 1)), Left(Cbor.Error.ArgumentOutOfRange(max + 1)))
     assertEquals(Cbor.encode(Value.UInt(-1)), Left(Cbor.Error.ArgumentOutOfRange(-1)))
     assertEquals(Cbor.encode(Value.NInt(0)), Left(Cbor.Error.NonNegativeNInt(0)))
-    assert(Cbor.encode(Value.NInt(-max - 2)).isLeft)
+    assert(Cbor.encode(Value.NInt(-max - 2)) match {
+      case Left(xyz.kd5ujc.scarab.codec.Cbor.Error.ArgumentOutOfRange(_)) => true
+      case _                                                              => false
+    })
   }
   test("shortest integer widths at boundaries") {
     Vector(
@@ -146,31 +168,93 @@ class CborSuite extends munit.FunSuite:
       "fc",
       "df00"
     )
-      .foreach(hex => assert(Cbor.decode(bytes(hex)).isLeft, s"unexpected acceptance: $hex"))
+      .foreach(hex =>
+        assert(
+          Cbor.decode(bytes(hex)) match {
+            case Left(xyz.kd5ujc.scarab.codec.Cbor.Error.InvalidAdditionalInformation(_)) |
+                Left(xyz.kd5ujc.scarab.codec.Cbor.Error.InvalidStringChunk) |
+                Left(xyz.kd5ujc.scarab.codec.Cbor.Error.TrailingBytes) |
+                Left(xyz.kd5ujc.scarab.codec.Cbor.Error.TruncatedString) |
+                Left(xyz.kd5ujc.scarab.codec.Cbor.Error.UnexpectedEnd) |
+                Left(xyz.kd5ujc.scarab.codec.Cbor.Error.UnmatchedMapKey) |
+                Left(xyz.kd5ujc.scarab.codec.Cbor.Error.UnsupportedSimpleValue(_)) =>
+              true
+            case _ => false
+          },
+          s"unexpected acceptance: $hex"
+        )
+      )
   }
   test("UTF-8 is strict, including each indefinite text chunk") {
     Vector("61ff", "62c0af", "63eda080", "64f4908080", "7f61c361a9ff")
-      .foreach(hex => assert(Cbor.decode(bytes(hex)).isLeft, hex))
+      .foreach(hex =>
+        assert(
+          Cbor.decode(bytes(hex)) match {
+            case Left(xyz.kd5ujc.scarab.codec.Cbor.Error.InvalidUtf8) => true
+            case _                                                    => false
+          },
+          hex
+        )
+      )
     assertEquals(decoded("62c3a9").value, Value.Text("é"))
     assertEquals(encoded(Value.Text("é")), "62c3a9")
-    assert(Cbor.encode(Value.Text("\ud800")).isLeft)
+    assert(Cbor.encode(Value.Text("\ud800")) match {
+      case Left(xyz.kd5ujc.scarab.codec.Cbor.Error.InvalidUnicode) => true
+      case _                                                       => false
+    })
   }
   test(
     "bounds apply to total input, depth, item count, definite and cumulative indefinite lengths"
   ) {
-    assert(Cbor.decode(bytes("00"), Cbor.Limits(maxInputBytes = 0)).isLeft)
-    assert(Cbor.decode(bytes("8100"), Cbor.Limits(maxDepth = 0)).isLeft)
+    assert(Cbor.decode(bytes("00"), Cbor.Limits(maxInputBytes = 0)) match {
+      case Left(xyz.kd5ujc.scarab.codec.Cbor.Error.InputLimitExceeded) => true
+      case _                                                           => false
+    })
+    assert(Cbor.decode(bytes("8100"), Cbor.Limits(maxDepth = 0)) match {
+      case Left(xyz.kd5ujc.scarab.codec.Cbor.Error.DepthLimitExceeded) => true
+      case _                                                           => false
+    })
     assert(Cbor.decode(bytes("00"), Cbor.Limits(maxDepth = 0)).isRight)
-    assert(Cbor.decode(bytes("8100"), Cbor.Limits(maxItems = 1)).isLeft)
-    assert(Cbor.decode(bytes("9f00ff"), Cbor.Limits(maxItems = 1)).isLeft)
-    assert(Cbor.decode(bytes("5f41004100ff"), Cbor.Limits(maxStringBytes = 1)).isLeft)
-    assert(Cbor.decode(bytes("420000"), Cbor.Limits(maxStringBytes = 1)).isLeft)
-    assert(Cbor.decode(bytes("7f61616162ff"), Cbor.Limits(maxStringBytes = 1)).isLeft)
-    assert(Cbor.decode(bytes("00"), Cbor.Limits(maxItems = -1)).isLeft)
-    assert(Cbor.decode(bytes("5bffffffffffffffff")).isLeft)
-    assert(Cbor.decode(bytes("9bffffffffffffffff")).isLeft)
-    assert(Cbor.decode(bytes("bbffffffffffffffff")).isLeft)
-    assert(Cbor.decode(bytes("81" * 2049 + "00"), Cbor.Limits(maxDepth = 2048)).isLeft)
+    assert(Cbor.decode(bytes("8100"), Cbor.Limits(maxItems = 1)) match {
+      case Left(xyz.kd5ujc.scarab.codec.Cbor.Error.ItemLimitExceeded) => true
+      case _                                                          => false
+    })
+    assert(Cbor.decode(bytes("9f00ff"), Cbor.Limits(maxItems = 1)) match {
+      case Left(xyz.kd5ujc.scarab.codec.Cbor.Error.ItemLimitExceeded) => true
+      case _                                                          => false
+    })
+    assert(Cbor.decode(bytes("5f41004100ff"), Cbor.Limits(maxStringBytes = 1)) match {
+      case Left(xyz.kd5ujc.scarab.codec.Cbor.Error.StringLimitExceeded) => true
+      case _                                                            => false
+    })
+    assert(Cbor.decode(bytes("420000"), Cbor.Limits(maxStringBytes = 1)) match {
+      case Left(xyz.kd5ujc.scarab.codec.Cbor.Error.StringLimitExceeded) => true
+      case _                                                            => false
+    })
+    assert(Cbor.decode(bytes("7f61616162ff"), Cbor.Limits(maxStringBytes = 1)) match {
+      case Left(xyz.kd5ujc.scarab.codec.Cbor.Error.StringLimitExceeded) => true
+      case _                                                            => false
+    })
+    assert(Cbor.decode(bytes("00"), Cbor.Limits(maxItems = -1)) match {
+      case Left(xyz.kd5ujc.scarab.codec.Cbor.Error.InvalidLimits) => true
+      case _                                                      => false
+    })
+    assert(Cbor.decode(bytes("5bffffffffffffffff")) match {
+      case Left(xyz.kd5ujc.scarab.codec.Cbor.Error.StringLimitExceeded) => true
+      case _                                                            => false
+    })
+    assert(Cbor.decode(bytes("9bffffffffffffffff")) match {
+      case Left(xyz.kd5ujc.scarab.codec.Cbor.Error.ItemLimitExceeded) => true
+      case _                                                          => false
+    })
+    assert(Cbor.decode(bytes("bbffffffffffffffff")) match {
+      case Left(xyz.kd5ujc.scarab.codec.Cbor.Error.MapPairLimitExceeded) => true
+      case _                                                             => false
+    })
+    assert(Cbor.decode(bytes("81" * 2049 + "00"), Cbor.Limits(maxDepth = 2048)) match {
+      case Left(xyz.kd5ujc.scarab.codec.Cbor.Error.DepthLimitExceeded) => true
+      case _                                                           => false
+    })
   }
   test("encoder honors caller-selected output, item, depth and invalid limits") {
     val text = Value.Text("ab")
@@ -231,7 +315,15 @@ class CborSuite extends munit.FunSuite:
     val full = bytes("9f1bffffffffffffffffa16178c24201027f626f6bff5f4201024103ffff")
     assert(Cbor.decode(full).isRight)
     (0 until full.size).foreach { length =>
-      assert(Cbor.decode(Bytes(full.value.take(length))).isLeft, s"prefix $length")
+      assert(
+        Cbor.decode(Bytes(full.value.take(length))) match {
+          case Left(xyz.kd5ujc.scarab.codec.Cbor.Error.TruncatedString) |
+              Left(xyz.kd5ujc.scarab.codec.Cbor.Error.UnexpectedEnd) =>
+            true
+          case _ => false
+        },
+        s"prefix $length"
+      )
     }
   }
   test("all one-byte inputs return a result without throwing") {
@@ -343,9 +435,18 @@ class CborSuite extends munit.FunSuite:
         Cbor.decode(bytes(repeat("9f", 20000) + "bf00ff" + repeat("ff", 20000)), Wide),
         Left(Cbor.Error.UnmatchedMapKey)
       )
-      assert(Cbor.decode(bytes(repeat("c1", 50000)), Wide).isLeft)
-      assert(Cbor.decode(bytes(repeat("81", 50000) + "00" + "00"), Wide).isLeft)
-      assert(Cbor.decode(bytes(repeat("9f", 50000) + "00"), Wide).isLeft)
+      assert(Cbor.decode(bytes(repeat("c1", 50000)), Wide) match {
+        case Left(xyz.kd5ujc.scarab.codec.Cbor.Error.UnexpectedEnd) => true
+        case _                                                      => false
+      })
+      assert(Cbor.decode(bytes(repeat("81", 50000) + "00" + "00"), Wide) match {
+        case Left(xyz.kd5ujc.scarab.codec.Cbor.Error.TrailingBytes) => true
+        case _                                                      => false
+      })
+      assert(Cbor.decode(bytes(repeat("9f", 50000) + "00"), Wide) match {
+        case Left(xyz.kd5ujc.scarab.codec.Cbor.Error.UnexpectedEnd) => true
+        case _                                                      => false
+      })
     }
   }
 
@@ -410,7 +511,10 @@ class CborSuite extends munit.FunSuite:
     assertEquals(floatDecoded("f9fc00"), Value.Float(Double.NegativeInfinity, FloatWidth.Half))
     assertEquals(floatDecoded("f98000"), Value.Float(-0.0, FloatWidth.Half))
     assertNotEquals(floatDecoded("f98000"), floatDecoded("f90000"))
-    assert(Cbor.decode(bytes("fa47c35000")).isLeft)
+    assert(Cbor.decode(bytes("fa47c35000")) match {
+      case Left(xyz.kd5ujc.scarab.codec.Cbor.Error.UnsupportedSimpleValue(_)) => true
+      case _                                                                  => false
+    })
   }
 
   test("a float keeps the width it was read in, and floats nest in indefinite containers") {

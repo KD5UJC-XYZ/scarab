@@ -4,6 +4,7 @@ package xyz.kd5ujc.scarab.ledger.byron
 import xyz.kd5ujc.scarab.ledger.DecodeField
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor}
+import xyz.kd5ujc.scarab.ledger.LedgerDecodeError
 
 class ByronIntegerSuite extends FunSuite:
   private def hex(value: String): Bytes = Bytes.fromHex(value).fold(e => fail(e.message), identity)
@@ -28,7 +29,13 @@ class ByronIntegerSuite extends FunSuite:
       val decoded = ByronInteger.decode(node(encoded), DecodeField.Summand)
       expected match
         case Some(value) => assertEquals(decoded, Right(value))
-        case None        => assert(decoded.isLeft)
+        case None =>
+          assert(decoded match {
+            case Left(LedgerDecodeError.Expected(_, _, _)) |
+                Left(LedgerDecodeError.IndefiniteLength(_)) =>
+              true
+            case _ => false
+          })
     }
 
     test(s"parameter model and transport agree on native natural $label") {
@@ -39,6 +46,12 @@ class ByronIntegerSuite extends FunSuite:
       val actual = ByronParamsUpdate.decode(input)
       expected.filter(_ >= 0) match
         case Some(value) => assertEquals(actual.map(_.slotDurationMs), Right(Some(value)))
-        case None        => assert(actual.isLeft)
+        case None =>
+          assert(actual match {
+            case Left(LedgerDecodeError.Expected(_, _, _)) |
+                Left(LedgerDecodeError.IndefiniteLength(_)) =>
+              true
+            case _ => false
+          })
     }
   }

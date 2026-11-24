@@ -7,7 +7,7 @@ import xyz.kd5ujc.scarab.consensus.state.MirrorState
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.node.read.InEra
 import cats.syntax.all.*
-import xyz.kd5ujc.scarab.ledger.{Block, BlockFailure, BlockRule, Header}
+import xyz.kd5ujc.scarab.ledger.{Block, BlockFailure, Header}
 import java.nio.file.{Files, Path}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.Era
@@ -16,6 +16,8 @@ import xyz.kd5ujc.scarab.ledger.byron.{ByronLedger, ByronSignatureCensus, ByronV
 import cats.effect.IO
 import munit.CatsEffectSuite
 import scala.jdk.CollectionConverters.*
+import xyz.kd5ujc.scarab.ledger.ByronChainError
+import xyz.kd5ujc.scarab.ledger.byron.ByronError
 
 /** The whole Byron era of the public preprod testnet (45 main blocks and the epoch 0 boundary
   * block, `fixtures/preprod`) and the first Shelley blocks, replayed from the genesis files and the
@@ -181,7 +183,13 @@ class ByronPreprodSuite extends CatsEffectSuite:
   test("a Shelley block before the Byron ledger has decided on the transition is refused") {
     val early = states(30) // protocol 2.0.0 is proposed but not yet a stable candidate
     val result = step(early, byronCount)
-    assert(result.left.exists(_.rule == BlockRule.Byron), result.toString)
+    assert(
+      result match {
+        case Left(BlockFailure.TransitionUndecided(Era.Shelley)) => true
+        case _                                                   => false
+      },
+      result.toString
+    )
   }
 
   test("a configured Shelley epoch overrides the derivation, and Byron blocks end there") {
@@ -194,11 +202,23 @@ class ByronPreprodSuite extends CatsEffectSuite:
       byron = later
     )
     // the block lies in epoch 4, before the configured epoch 5
-    assert(firstShelley.left.exists(_.rule == BlockRule.Byron), firstShelley.toString)
+    assert(
+      firstShelley match {
+        case Left(BlockFailure.ShelleyBeforeTransition(_, _, _)) => true
+        case _                                                   => false
+      },
+      firstShelley.toString
+    )
     val earlier = setup.byronRules.map(_.copy(configuredShelleyEpoch = Some(BigInt(2))))
     val lastByron =
       MirrorSteps.block(setup, states(30), blocks(30).header, raws(30), byron = earlier)
-    assert(lastByron.left.exists(_.rule == BlockRule.Structure), lastByron.toString)
+    assert(
+      lastByron match {
+        case Left(BlockFailure.ByronAfterTransition(_, _)) => true
+        case _                                             => false
+      },
+      lastByron.toString
+    )
   }
 
   test("a first Shelley epoch outside Word64 never reaches the hand-over: the header precedes it") {
@@ -228,7 +248,13 @@ class ByronPreprodSuite extends CatsEffectSuite:
     val at = raw.size - 70 // inside the update payload's signatures
     val bad = Bytes(raw.value.updated(at, (raw.value(at) ^ 1).toByte))
     val result = MirrorSteps.block(setup, states(i), b.header, bad)
-    assert(result.isLeft, result.toString)
+    assert(
+      result match {
+        case Left(BlockFailure.Byron(ByronChainError.Ledger(ByronError.ProofMismatch(_)))) => true
+        case _                                                                             => false
+      },
+      result.toString
+    )
   }
 
   test(

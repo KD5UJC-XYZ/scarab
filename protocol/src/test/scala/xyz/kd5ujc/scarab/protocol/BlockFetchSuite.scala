@@ -40,14 +40,20 @@ class BlockFetchSuite extends munit.FunSuite:
       (0 until wire.size).foreach { cut =>
         val partial = Bytes(wire.value.take(cut))
         assertEquals(decodePrefix(state, role, partial, codec), DecodeResult.NeedMore)
-        assert(decode(state, role, partial, codec).isLeft)
+        assert(decode(state, role, partial, codec) match {
+          case Left(ProtocolError.TruncatedBlockFetchMessage) => true
+          case _                                              => false
+        })
       }
       val suffixed = Bytes(wire.value ++ b("8105").value)
       assertEquals(
         decodePrefix(state, role, suffixed, codec),
         DecodeResult.Decoded(message, wire.size)
       )
-      assert(decode(state, role, suffixed, codec).isLeft)
+      assert(decode(state, role, suffixed, codec) match {
+        case Left(ProtocolError.TrailingBlockFetchBytes) => true
+        case _                                           => false
+      })
     }
   }
 
@@ -82,9 +88,15 @@ class BlockFetchSuite extends munit.FunSuite:
     }
     assertEquals(end, State.Done)
     for state <- Vector(State.Busy, State.Streaming) do
-      assert(transition(state, Role.Client, Message.ClientDone).isLeft)
+      assert(transition(state, Role.Client, Message.ClientDone) match {
+        case Left(ProtocolError.BlockFetchAgency(_, _)) => true
+        case _                                          => false
+      })
       assert(
-        transition(state, Role.Client, Message.RequestRange(Point.Origin, Point.Origin)).isLeft
+        transition(state, Role.Client, Message.RequestRange(Point.Origin, Point.Origin)) match {
+          case Left(ProtocolError.BlockFetchAgency(_, _)) => true
+          case _                                          => false
+        }
       )
   }
 
@@ -107,11 +119,20 @@ class BlockFetchSuite extends munit.FunSuite:
     val wire = b("8300" + pointHex + pointHex)
     assertEquals(right(encode(State.Idle, Role.Client, range.request, codec)), wire)
     assertEquals(right(checkedRange(right(decode(State.Idle, Role.Client, wire, codec)))), range)
-    assert(InclusiveRange.fromPoints(Point.Origin, point).isLeft)
-    assert(InclusiveRange.fromPoints(point, Point.Origin).isLeft)
+    assert(InclusiveRange.fromPoints(Point.Origin, point) match {
+      case Left(ProtocolError.OriginIsNotAnAddressableCardanoBlock) => true
+      case _                                                        => false
+    })
+    assert(InclusiveRange.fromPoints(point, Point.Origin) match {
+      case Left(ProtocolError.OriginIsNotAnAddressableCardanoBlock) => true
+      case _                                                        => false
+    })
     for size <- Vector(0, 31, 33, 64) do
       assert(
-        SpecificPoint.from(Point.Block(UInt64.Zero, Bytes(Vector.fill(size)(0.toByte)))).isLeft
+        SpecificPoint.from(Point.Block(UInt64.Zero, Bytes(Vector.fill(size)(0.toByte)))) match {
+          case Left(ProtocolError.CardanoPointHashMustContain32Bytes(_)) => true
+          case _                                                         => false
+        }
       )
   }
 
@@ -121,8 +142,14 @@ class BlockFetchSuite extends munit.FunSuite:
       val message: Message[RawNtNBlock] = Message.RequestRange(point, point)
       val wire = right(encode(State.Idle, Role.Client, message, codec))
       assertEquals(right(decode(State.Idle, Role.Client, wire, codec)), message)
-    assert(UInt64.from(-1).isLeft)
-    assert(UInt64.from(UInt64.Max + 1).isLeft)
+    assert(UInt64.from(-1) match {
+      case Left(ProtocolError.OutsideUint64(_)) => true
+      case _                                    => false
+    })
+    assert(UInt64.from(UInt64.Max + 1) match {
+      case Left(ProtocolError.OutsideUint64(_)) => true
+      case _                                    => false
+    })
     val first = Point.Block(UInt64.Zero, b("00" * 32))
     val second = Point.Block(UInt64.Zero, b("01" * 32))
     val range = right(InclusiveRange.fromPoints(first, second))
@@ -143,7 +170,10 @@ class BlockFetchSuite extends munit.FunSuite:
       decodePrefix(State.Streaming, Role.Server, b("8204d81841"), oneByte),
       DecodeResult.NeedMore
     )
-    assert(payloadCodec(RawLimits(-1)).decode(b("d81840")).isLeft)
+    assert(payloadCodec(RawLimits(-1)).decode(b("d81840")) match {
+      case Left(ProtocolError.InvalidRawBlockLimit(_)) => true
+      case _                                           => false
+    })
   }
 
   test("opaque raw bytes preserved exactly without validating or normalizing inner CBOR") {
@@ -155,7 +185,10 @@ class BlockFetchSuite extends munit.FunSuite:
     val message = right(decode(State.Streaming, Role.Server, nonCanonicalEnvelope, codec))
     assertEquals(message, Message.Block(toy))
     assertEquals(right(encode(State.Streaming, Role.Server, message, codec)), b("8204d8184180"))
-    assert(codec.decode(b("d818418000")).isLeft)
+    assert(codec.decode(b("d818418000")) match {
+      case Left(ProtocolError.TrailingSerializedBlockBytes) => true
+      case _                                                => false
+    })
   }
 
   test("raw arrays copied at ownership boundary") {
@@ -171,7 +204,10 @@ class BlockFetchSuite extends munit.FunSuite:
   test("raw and whole-message limits at boundary and plus one") {
     val c = payloadCodec(RawLimits(1))
     assert(c.encode(toy).isRight)
-    assert(c.encode(right(RawNtNBlock.from(b("8080")))).isLeft)
+    assert(c.encode(right(RawNtNBlock.from(b("8080")))) match {
+      case Left(ProtocolError.RawBlockByteLimitExceeded(_, _)) => true
+      case _                                                   => false
+    })
     val wire = b("8204d8184180")
     val exact = Limits(streamingMessageBytes = wire.size)
     assertEquals(
@@ -181,7 +217,10 @@ class BlockFetchSuite extends munit.FunSuite:
     assert(encode(State.Streaming, Role.Server, Message.Block(toy), codec, exact).isRight)
     val short = exact.copy(streamingMessageBytes = wire.size - 1)
     failed(decodePrefix(State.Streaming, Role.Server, wire, codec, short))
-    assert(encode(State.Streaming, Role.Server, Message.Block(toy), codec, short).isLeft)
+    assert(encode(State.Streaming, Role.Server, Message.Block(toy), codec, short) match {
+      case Left(ProtocolError.MessageByteLimitExceeded) => true
+      case _                                            => false
+    })
     failed(decodePrefix(State.Idle, Role.Client, b("8101"), codec, Limits(idleMessageBytes = 0)))
     failed(decodePrefix(State.Streaming, Role.Server, wire, codec, Limits(maxDepth = 0)))
     failed(decodePrefix(State.Streaming, Role.Server, wire, codec, Limits(maxItems = 1)))
@@ -200,7 +239,10 @@ class BlockFetchSuite extends munit.FunSuite:
         decodePrefix(State.Streaming, Role.Server, Bytes(wire.value.take(cut)), codec),
         DecodeResult.NeedMore
       )
-    assert(RawNtNBlock.from(Bytes(bytes.value :+ 0.toByte)).isLeft)
+    assert(RawNtNBlock.from(Bytes(bytes.value :+ 0.toByte)) match {
+      case Left(ProtocolError.RawBlockByteLimitExceeded(_, _)) => true
+      case _                                                   => false
+    })
     assert(
       encode(
         State.Streaming,
@@ -208,7 +250,10 @@ class BlockFetchSuite extends munit.FunSuite:
         Message.Block(block),
         codec,
         Limits(streamingMessageBytes = 2499999)
-      ).isLeft
+      ) match {
+        case Left(ProtocolError.MessageByteLimitExceeded) => true
+        case _                                            => false
+      }
     )
   }
 
@@ -217,8 +262,14 @@ class BlockFetchSuite extends munit.FunSuite:
     val one = right(Received.add(Received.Empty, limits))
     val two = right(Received.add(one, limits))
     assertEquals(two.blocks, 2)
-    assert(Received.add(two, limits).isLeft)
-    assert(Received.add(one, RequestLimits(0)).isLeft)
+    assert(Received.add(two, limits) match {
+      case Left(ProtocolError.RequestBlockLimitExceeded) => true
+      case _                                             => false
+    })
+    assert(Received.add(one, RequestLimits(0)) match {
+      case Left(ProtocolError.InvalidRequestAccountingLimitsBytes) => true
+      case _                                                       => false
+    })
   }
 
   test("independent time policy and mux metadata, no transport timer claim") {
@@ -248,7 +299,10 @@ class BlockFetchSuite extends munit.FunSuite:
       right(encode(State.Streaming, Role.Server, Message.Block(b("1800")), generic)),
       b("82041800")
     )
-    assert(encode(State.Streaming, Role.Server, Message.Block(b("0000")), generic).isLeft)
+    assert(encode(State.Streaming, Role.Server, Message.Block(b("0000")), generic) match {
+      case Left(ProtocolError.TrailingPayloadBytes) => true
+      case _                                        => false
+    })
     failed(decodePrefix(State.Streaming, Role.Server, b("82045bffffffffffffffff"), generic))
     failed(
       decodePrefix(State.Streaming, Role.Server, b("8204818100"), generic, Limits(maxDepth = 1))

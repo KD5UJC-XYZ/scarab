@@ -137,7 +137,13 @@ class DefiniteBytesReferenceSuite extends FunSuite:
       )
     do
       val row = known(k)
-      assert(TxBody.decode(row.raw, row.era).isLeft, row.name)
+      assert(
+        TxBody.decode(row.raw, row.era) match {
+          case Left(LedgerDecodeError.IndefiniteLength(_)) => true
+          case _                                           => false
+        },
+        row.name
+      )
       val raw = output(row)
       val stored = TxOut.fromBytes(raw)(using ByteStrings.Chunked)
       assert(stored.isRight, s"${row.name}: $stored")

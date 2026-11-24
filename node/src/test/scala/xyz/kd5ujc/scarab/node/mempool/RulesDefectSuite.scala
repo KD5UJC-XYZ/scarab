@@ -30,7 +30,10 @@ class RulesDefectSuite extends FunSuite:
     LocalSubmission.response(Refused(Rejection.RulesDefect(cause), None)) match
       case LocalTxSubmissionServer.Response.ServingDefect(thrown) => assert(thrown eq cause)
       case other                                                  => fail(s"unexpected $other")
-    assert(LocalSubmission.reasonItem(Rejection.RulesDefect(cause), None).isLeft)
+    assert(LocalSubmission.reasonItem(Rejection.RulesDefect(cause), None) match {
+      case Left(Rejection.RulesDefect(_: java.lang.IllegalStateException)) => true
+      case _                                                               => false
+    })
   }
 
   test("a peer's session ends with ServingDefect for the rules, DecoderDefect for the decoder") {

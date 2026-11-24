@@ -75,7 +75,16 @@ class DijkstraParamsSuite extends FunSuite:
     )
     // a PositiveInterval is not zero
     val zeroMultiplier = 37 -> "d81e820001"
-    assert(DijkstraParams.update(genesis, update(zeroMultiplier)).isLeft)
+    assert(DijkstraParams.update(genesis, update(zeroMultiplier)) match {
+      case Left(
+            LedgerDecodeError.RationalOutOfBounds(
+              DecodeField.ParameterUpdate,
+              LedgerDecodeError.OutOfBounds.Reduced(_)
+            )
+          ) =>
+        true
+      case _ => false
+    })
     assertEquals(
       DijkstraParams.update(genesis, update(57 -> "00")),
       Left(LedgerDecodeError.UnknownKey(what, 57))

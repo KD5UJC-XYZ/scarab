@@ -155,10 +155,19 @@ class ScriptContextGoldenSuite extends FunSuite:
       )
     val base = TestLedger.body("v1", Vector(in), Vector(plain), 1)
     assert(info(base, Map(in -> plain)).isRight)
-    assert(info(base.copy(referenceInputs = Vector(in)), Map(in -> plain), Map(in -> plain)).isLeft)
+    assert(info(base.copy(referenceInputs = Vector(in)), Map(in -> plain), Map(in -> plain)) match {
+      case Left(TranslationError.ReferenceInputsNotSupported(_)) => true
+      case _                                                     => false
+    })
     val inline = plain.copy(datum = Datum.Inline(bytesOf("01")))
-    assert(info(base, Map(in -> inline)).isLeft)
-    assert(info(base.copy(outputs = Vector(inline)), Map(in -> plain)).isLeft)
+    assert(info(base, Map(in -> inline)) match {
+      case Left(TranslationError.InlineDatumsNotSupported(_)) => true
+      case _                                                  => false
+    })
+    assert(info(base.copy(outputs = Vector(inline)), Map(in -> plain)) match {
+      case Left(TranslationError.InlineDatumsNotSupported(_)) => true
+      case _                                                  => false
+    })
   }
 
   test("the same output is a valid input for V2 and the spent datum is passed to the script") {

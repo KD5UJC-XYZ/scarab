@@ -10,6 +10,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.ledger.StorageError
 import munit.CatsEffectSuite
+import xyz.kd5ujc.scarab.ledger.StorageStructureError
 
 import NodeCodecs.blockRef
 import StorageTestKit.*
@@ -108,7 +109,10 @@ class LedgerSnapshotsSuite extends CatsEffectSuite:
         )
       yield
         assertEquals(empty.snapshot, None)
-        assert(genesis.isLeft)
+        assert(genesis match {
+          case Left(StorageError.OutOfOrder(StorageStructureError.GenesisSnapshot)) => true
+          case _                                                                    => false
+        })
     }
   }
 

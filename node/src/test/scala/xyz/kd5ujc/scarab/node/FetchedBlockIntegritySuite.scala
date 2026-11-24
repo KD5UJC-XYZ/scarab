@@ -10,6 +10,8 @@ import xyz.kd5ujc.scarab.ledger.byron.ByronError
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.consensus.{BlockRef, LeiosBlockInfo, LeiosCert}
 import xyz.kd5ujc.scarab.ledger.{ChainError, StorageError}
+import xyz.kd5ujc.scarab.ledger.DecodeField
+import xyz.kd5ujc.scarab.ledger.LedgerDecodeError
 
 class FetchedBlockIntegritySuite extends FunSuite:
   private val epochSlots = BigInt(50)
@@ -157,7 +159,14 @@ class FetchedBlockIntegritySuite extends FunSuite:
         )
       )
     }
-    assert(ReceivedBlockRecovery.checked(ref, Bytes(Vector(0xff.toByte)), epochSlots).isLeft)
+    assert(ReceivedBlockRecovery.checked(ref, Bytes(Vector(0xff.toByte)), epochSlots) match {
+      case Left(
+            StorageError
+              .Corrupt(_, ChainError.Decode(DecodeField.Block, LedgerDecodeError.Syntax(_)))
+          ) =>
+        true
+      case _ => false
+    })
     ReceivedBlockRecovery.seeded(Bytes(Vector(0xff.toByte)), epochSlots) match
       case Left(StorageError.Corrupt(_, _: ChainError)) => ()
       case other =>
@@ -257,5 +266,13 @@ class FetchedBlockIntegritySuite extends FunSuite:
       BlockTransport.check(next.header, raw),
       Left(BlockTransportError.WrongHeader(next.header.point, shelley.header.point))
     )
-    assert(BlockTransport.check(shelley.header, Bytes(Vector(0xff.toByte))).isLeft)
+    assert(BlockTransport.check(shelley.header, Bytes(Vector(0xff.toByte))) match {
+      case Left(
+            BlockTransportError.Decode(
+              ChainError.Decode(DecodeField.Block, LedgerDecodeError.Syntax(_))
+            )
+          ) =>
+        true
+      case _ => false
+    })
   }

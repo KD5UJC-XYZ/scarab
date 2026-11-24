@@ -13,6 +13,7 @@ import xyz.kd5ujc.scarab.consensus.state.{StateGen as _, *}
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.models.runtime.{Codec, DecodeError, Writer}
 import xyz.kd5ujc.scarab.protocol.{DijkstraNotYet, Era, StateLayout}
+import xyz.kd5ujc.scarab.models.runtime.ConstraintViolation
 
 import DecodeError.{Arity, Kind}
 
@@ -107,14 +108,23 @@ class LeiosLayoutSuite extends ScalaCheckSuite:
       assert(back === file)
       assertEquals(HaskellLedgerFile.encode(back, StateLayout.Leios), Right(bytes))
       // a value of the Leios layout is not written in the 11.1 layout: there is no conversion
-      assert(HaskellLedgerFile.encode(file, StateLayout.Node11_1).isLeft)
+      assert(HaskellLedgerFile.encode(file, StateLayout.Node11_1) match {
+        case Left(StateNotWritable(_)) => true
+        case _                         => false
+      })
     }
   }
 
   property("a value of the 11.1 layout is not written in the Leios layout, nor the converse") {
     forAll(StateGen.newEpochState[Conway], LeiosGen.newEpochState[Conway]) { (node11, leios) =>
-      assert(LeiosStateCodecs.newEpochState[Conway].write(node11).isLeft)
-      assert(HaskellStateCodecs.newEpochState[Conway].write(leios).isLeft)
+      assert(LeiosStateCodecs.newEpochState[Conway].write(node11) match {
+        case Left(ConstraintViolation(_, _, _, _)) => true
+        case _                                     => false
+      })
+      assert(HaskellStateCodecs.newEpochState[Conway].write(leios) match {
+        case Left(ConstraintViolation(_, _, _, _)) => true
+        case _                                     => false
+      })
     }
   }
 
@@ -432,9 +442,15 @@ class LeiosLayoutSuite extends ScalaCheckSuite:
       read(HaskellStateCodecs.chainDepStateOf(Era.Dijkstra), current.original).leftMap(_.path),
       Left(List("version"))
     )
-    assert(HaskellStateCodecs.praos2State.write(state).isLeft)
+    assert(HaskellStateCodecs.praos2State.write(state) match {
+      case Left(ConstraintViolation(_, _, _, _)) => true
+      case _                                     => false
+    })
     assert(
-      HaskellStateCodecs.chainDepStateOf(Era.Dijkstra).write(ChainDepState.Praos2(state)).isLeft
+      HaskellStateCodecs.chainDepStateOf(Era.Dijkstra).write(ChainDepState.Praos2(state)) match {
+        case Left(ConstraintViolation(_, _, _, _)) => true
+        case _                                     => false
+      }
     )
   }
 
@@ -595,12 +611,17 @@ class LeiosLayoutSuite extends ScalaCheckSuite:
     // and the Leios layout's state, read, is not written in the 11.1 layout: no conversion
     val file = dijkstraFile(dijkstra)
     assert(
-      HaskellLedgerFile
-        .encode(file.copy(layout = ExtLedgerState.Layout.Node11_1), StateLayout.Node11_1)
-        .isLeft
+      (HaskellLedgerFile
+        .encode(file.copy(layout = ExtLedgerState.Layout.Node11_1), StateLayout.Node11_1)) match {
+        case Left(StateNotWritable(ConstraintViolation(_, _, _, _))) => true
+        case _                                                       => false
+      }
     )
     val header = file.header
-    assert(HaskellStateCodecs.headerState.write(header).isLeft)
+    assert(HaskellStateCodecs.headerState.write(header) match {
+      case Left(ConstraintViolation(_, _, _, _)) => true
+      case _                                     => false
+    })
     header.tip match
       case WithOrigin.At(tip) => assert(HaskellStateCodecs.annTip.check(tip).isDefined)
       case WithOrigin.Origin  => fail("no tip")

@@ -8,6 +8,8 @@ import munit.CatsEffectSuite
 import xyz.kd5ujc.scarab.ledger.StorageError
 import xyz.kd5ujc.scarab.node.{NativeSnapshots, NodeSetup}
 import xyz.kd5ujc.scarab.storage.{FileLedgerSnapshots, SnapshotReadError}
+import xyz.kd5ujc.scarab.ledger.FileKind
+import xyz.kd5ujc.scarab.ledger.StorageStructureError
 
 class NativeSnapshotBindingSuite extends CatsEffectSuite:
   private val source = Path.of("fixtures/snapshot-v5/preview-4320.bin")
@@ -38,7 +40,13 @@ class NativeSnapshotBindingSuite extends CatsEffectSuite:
         checksum match
           case Left(StorageError.Corrupt(_, SnapshotReadError.ChecksumMismatch)) => ()
           case other => fail(s"checksum refusal: $other")
-        assert(wrongFormat.isLeft)
+        assert(wrongFormat match {
+          case Left(
+                StorageError.Corrupt(_, StorageStructureError.WrongFileKind(FileKind.SnapshotFile))
+              ) =>
+            true
+          case _ => false
+        })
       }
     yield ()
   }

@@ -35,9 +35,17 @@ class HashingSuite extends munit.FunSuite:
   }
   test("invalid envelopes and body shape return errors") {
     List("80", "8400a0f5f6", "83a0a0f5", "84a0a0f5f600").foreach { s =>
-      assert(TransactionId.fromEnvelope(hex(s)).isLeft)
+      assert(TransactionId.fromEnvelope(hex(s)) match {
+        case Left(TransactionId.Error.ExpectedBodyMap(_)) |
+            Left(TransactionId.Error.ExpectedEnvelope(_)) | Left(TransactionId.Error.Syntax(_)) =>
+          true
+        case _ => false
+      })
     }
-    assert(TransactionId.fromBody(hex("80")).isLeft)
+    assert(TransactionId.fromBody(hex("80")) match {
+      case Left(TransactionId.Error.ExpectedBodyMap(_)) => true
+      case _                                            => false
+    })
   }
 
   test("transaction extraction retains syntax and envelope causes") {

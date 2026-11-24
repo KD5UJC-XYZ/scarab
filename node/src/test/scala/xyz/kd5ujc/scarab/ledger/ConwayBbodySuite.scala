@@ -1948,7 +1948,13 @@ class ConwayBbodySuite extends FailsOnUncaught:
       val raw = blockOf(block, invalid = invalid)
       val j = judge(third, raw, change = holding(utxo))
       val o = judge(third, raw, change = holding(utxo), observe = true)
-      assert(o.flat.isLeft, s"$what: ${o.flat}")
+      assert(
+        o.flat match {
+          case Left(Vector(xyz.kd5ujc.scarab.ledger.BlockFailure.Tx(_))) => true
+          case _                                                         => false
+        },
+        s"$what: ${o.flat}"
+      )
       assertEquals(outcomes(o.flatObserved), expected, what)
       assertEquals(o.eraObserved.map(comparable), o.flatObserved.map(comparable), what)
       assertEquals(o.eraRefusal, j.eraRefusal, what)
@@ -2013,7 +2019,13 @@ class ConwayBbodySuite extends FailsOnUncaught:
       blockOf(Vector(built(body, B.witnesses(body, Vector(payer))))),
       change = holding(utxo)
     )
-    assert(j.flat.isLeft, s"${j.flat}")
+    assert(
+      j.flat match {
+        case Left(Vector(xyz.kd5ujc.scarab.ledger.BlockFailure.Tx(_))) => true
+        case _                                                         => false
+      },
+      s"${j.flat}"
+    )
     same("missing input", j.era, j.flat)
     // the input LEDGERS refuses, as UTXO's `BadInputsUTxO` names it
     val missing = TxIn(B.fresh(0x77).txId, 0)
@@ -2159,7 +2171,13 @@ class ConwayBbodySuite extends FailsOnUncaught:
     // the earlier failure, and none after the defect; the flat rules refuse the block too
     stopped("refused, then a defect", j, earlier, unreadable)
     assertEquals(j.eraFailures, earlier)
-    assert(j.flat.isLeft, s"${j.flat}")
+    assert(
+      j.flat match {
+        case Left(Vector(xyz.kd5ujc.scarab.ledger.BlockFailure.Tx(_))) => true
+        case _                                                         => false
+      },
+      s"${j.flat}"
+    )
     // the defect at the first transaction, nothing recorded before it: no verdict, even though a
     // later transaction would be refused
     Vector(Vector(damagedCollateral), Vector(damagedCollateral, missingInput)).foreach { txs =>

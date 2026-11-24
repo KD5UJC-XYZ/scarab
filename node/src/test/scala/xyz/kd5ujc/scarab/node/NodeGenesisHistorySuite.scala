@@ -131,7 +131,16 @@ class NodeGenesisHistorySuite extends FailsOnUncaught:
       first <- typed(check.awaitReply(HeaderTime(Point.Origin, 0)))
       second <- typed(check.awaitReply(HeaderTime(Point.Origin, 0)))
     yield
-      assert(first.isLeft)
+      assert(first match {
+        case Left(
+              xyz.kd5ujc.scarab.ledger.PeerError.Genesis(
+                xyz.kd5ujc.scarab.ledger.PeerError.GenesisProblem
+                  .HistoricalAwait(xyz.kd5ujc.scarab.protocol.ChainSync.Point.Origin, _, _, _)
+              )
+            ) =>
+          true
+        case _ => false
+      })
       assertEquals(second, first)
   }
   test("native Genesis ChainSync failures stop the connection and remain eligible after backoff") {

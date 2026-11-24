@@ -15,6 +15,7 @@ import xyz.kd5ujc.scarab.uplc.{
 import xyz.kd5ujc.scarab.uplc.ledger.LedgerEval
 import xyz.kd5ujc.scarab.uplc.oracle.GeneratedReplay
 import xyz.kd5ujc.scarab.uplc.oracle.GeneratedReplay.{field, hex}
+import xyz.kd5ujc.scarab.uplc.flat.ScriptDecodeError
 
 /** Which programs the evaluator keeps ([[ScarabEvaluator.Programs]]) and what they weigh
   * ([[ProgramWeight]]). The heap bound itself is [[ProgramCacheMemorySuite]]'s.
@@ -52,7 +53,11 @@ class ProgramCacheSuite extends munit.FunSuite:
     assertEquals(interpreter.validate(PlutusLanguage.V1, 11, script), Right(()))
     assertEquals(interpreter.held, (0, Weight.zero))
     val malformed = Bytes.fromArray(Array[Byte](0x41, 0x01))
-    assert(interpreter.validate(PlutusLanguage.V1, 11, malformed).isLeft)
+    assert(interpreter.validate(PlutusLanguage.V1, 11, malformed) match {
+      case Left(ScriptDecodeFailure.Malformed(ScriptProblem.Uplc(ScriptDecodeError.Flat(_)))) =>
+        true
+      case _ => false
+    })
     assertEquals(interpreter.held, (0, Weight.zero))
     val result = interpreter.evaluate(request(script))
     assert(verdict(result), s"$result")

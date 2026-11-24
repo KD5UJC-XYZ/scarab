@@ -152,12 +152,23 @@ class Sum6KesSigningSuite extends munit.FunSuite:
 
   test("corrupt or mis-sized keys are refused") {
     val raw = fresh.toBytes.toArray
-    assert(fromBytes(Bytes.fromArray(raw.take(100))).isLeft)
+    assert(fromBytes(Bytes.fromArray(raw.take(100))) match {
+      case Left(Sum6KesSigning.Failure.InvalidKeyLength(_)) => true
+      case _                                                => false
+    })
     (0 until 608 by 37).foreach { i =>
       val bad = raw.clone()
       bad(i) = (bad(i) ^ 1).toByte
       // a flipped byte of any stored seed, key or verification key is detected at period 0
-      assert(fromBytes(Bytes.fromArray(bad)).isLeft, s"byte $i")
+      assert(
+        fromBytes(Bytes.fromArray(bad)) match {
+          case Left(Sum6KesSigning.Failure.RightSeedMismatch(_)) |
+              Left(Sum6KesSigning.Failure.VerificationKeyMismatch(_)) =>
+            true
+          case _ => false
+        },
+        s"byte $i"
+      )
     }
   }
 
@@ -174,11 +185,20 @@ class Sum6KesSigningSuite extends munit.FunSuite:
   }
 
   test("an erased or damaged evolved key is refused, never read as some period") {
-    assert(fromEvolved(Bytes.fromArray(new Array[Byte](KeyBytes))).isLeft)
+    assert(fromEvolved(Bytes.fromArray(new Array[Byte](KeyBytes))) match {
+      case Left(Sum6KesSigning.Failure.VerificationKeyMismatch(_)) => true
+      case _                                                       => false
+    })
     val k = fresh
     k.evolveTo(9)
     val raw = k.toBytes.toArray
     raw(3) = (raw(3) ^ 1).toByte
-    assert(fromEvolved(Bytes.fromArray(raw)).isLeft)
-    assert(fromEvolved(Bytes.fromArray(new Array[Byte](10))).isLeft)
+    assert(fromEvolved(Bytes.fromArray(raw)) match {
+      case Left(Sum6KesSigning.Failure.VerificationKeyMismatch(_)) => true
+      case _                                                       => false
+    })
+    assert(fromEvolved(Bytes.fromArray(new Array[Byte](10))) match {
+      case Left(Sum6KesSigning.Failure.InvalidKeyLength(_)) => true
+      case _                                                => false
+    })
   }

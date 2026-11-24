@@ -13,6 +13,9 @@ import xyz.kd5ujc.scarab.consensus.state.ProtocolState
 import xyz.kd5ujc.scarab.crypto.vrf.PraosLeaderThreshold.Fraction
 import munit.FunSuite
 import scala.jdk.CollectionConverters.*
+import xyz.kd5ujc.scarab.ledger.ChainError
+import xyz.kd5ujc.scarab.ledger.DecodeField
+import xyz.kd5ujc.scarab.ledger.LedgerDecodeError
 
 /** Decodes real Preview (magic 2) and mainnet Byron blocks committed under `fixtures/`. */
 class EraDecodingSuite extends FunSuite:
@@ -101,7 +104,14 @@ class EraDecodingSuite extends FunSuite:
   test("an envelope declaring the wrong era layout is a decode error") {
     val b = blocks("fixtures/preview/conway.hex").head
     val wrong = NtNHeader.codec.encode(NtNHeader(Era.Alonzo, b.header.raw, None)).toOption.get
-    assert(Header.fromEnvelope(wrong, MainnetEpochSlots).isLeft)
+    assert(Header.fromEnvelope(wrong, MainnetEpochSlots) match {
+      case Left(
+            ChainError
+              .Decode(DecodeField.Header, LedgerDecodeError.ArrayLength(DecodeField.Header, _, _))
+          ) =>
+        true
+      case _ => false
+    })
   }
 
   test("Praos validation rejects TPraos headers with a typed error") {

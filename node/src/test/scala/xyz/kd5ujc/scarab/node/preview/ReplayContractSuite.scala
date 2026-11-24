@@ -7,6 +7,7 @@ import xyz.kd5ujc.scarab.ledger.{Phase2, PlutusCase, PreparedBlockFixture, Prepr
 import xyz.kd5ujc.scarab.plutus.*
 import xyz.kd5ujc.scarab.uplc.cek.{CekError, CekFailure}
 import xyz.kd5ujc.scarab.uplc.ledger.EvaluationError
+import xyz.kd5ujc.scarab.node.ParallelPlutus
 
 class ReplayContractSuite extends FunSuite:
   import ReplayTrace.*
@@ -122,12 +123,18 @@ class ReplayContractSuite extends FunSuite:
       ReplayInputs.config(environment.updated("SCARAB_PREVIEW_WORKERS", "1")),
       Left(ReplayInputs.Error.NoParallelWorkers)
     )
-    assert(ReplayInputs.config(environment.updated("SCARAB_PREVIEW_WORKERS", "0,4")).isLeft)
+    assert(ReplayInputs.config(environment.updated("SCARAB_PREVIEW_WORKERS", "0,4")) match {
+      case Left(ReplayInputs.Error.Workers(ParallelPlutus.InvalidWorkers(_))) => true
+      case _                                                                  => false
+    })
     assertEquals(
       ReplayInputs.config(environment.updated("SCARAB_PREVIEW_ROUNDS", "0")),
       Left(ReplayInputs.Error.Rounds(0))
     )
-    assert(ReplayInputs.config(environment.updated("SCARAB_PREVIEW_CAPTURE", "\u0000")).isLeft)
+    assert(ReplayInputs.config(environment.updated("SCARAB_PREVIEW_CAPTURE", "\u0000")) match {
+      case Left(ReplayInputs.Error.InvalidPath(_, _: java.nio.file.InvalidPathException)) => true
+      case _                                                                              => false
+    })
   }
 
   private def record(slot: Int, chunk: String = "00001.chunk", length: Int = 12): String =
@@ -142,11 +149,26 @@ class ReplayContractSuite extends FunSuite:
 
   test("captured record validation rejects traversal, oversized reads and reordered blocks") {
     assert(ReplayInputs.records(Vector(record(1), record(2))).isRight)
-    assert(ReplayInputs.records(Vector(record(1, "../00001.chunk"))).isLeft)
-    assert(ReplayInputs.records(Vector(record(1, length = Int.MaxValue))).isLeft)
-    assert(ReplayInputs.records(Vector(record(2), record(1))).isLeft)
-    assert(ReplayInputs.records(Vector(record(1), record(1))).isLeft)
-    assert(ReplayInputs.records(Vector(record(1, "\u0000"))).isLeft)
+    assert(ReplayInputs.records(Vector(record(1, "../00001.chunk"))) match {
+      case Left(ReplayInputs.Error.UnsafeChunk(_)) => true
+      case _                                       => false
+    })
+    assert(ReplayInputs.records(Vector(record(1, length = Int.MaxValue))) match {
+      case Left(ReplayInputs.Error.InvalidRange(_, _, _)) => true
+      case _                                              => false
+    })
+    assert(ReplayInputs.records(Vector(record(2), record(1))) match {
+      case Left(ReplayInputs.Error.NonIncreasing(_, _)) => true
+      case _                                            => false
+    })
+    assert(ReplayInputs.records(Vector(record(1), record(1))) match {
+      case Left(ReplayInputs.Error.NonIncreasing(_, _)) => true
+      case _                                            => false
+    })
+    assert(ReplayInputs.records(Vector(record(1, "\u0000"))) match {
+      case Left(ReplayInputs.Error.InvalidPath(_, _: java.nio.file.InvalidPathException)) => true
+      case _                                                                              => false
+    })
     assertEquals(ReplayInputs.records(Vector.empty), Left(ReplayInputs.Error.EmptyWindow))
   }
 
@@ -154,9 +176,18 @@ class ReplayContractSuite extends FunSuite:
     val id = "00" * 32
     val row = s"""{"txId":"$id","isValid":false}"""
     assertEquals(ReplayInputs.expectedFailures(Vector(row)).map(_.size), Right(1))
-    assert(ReplayInputs.expectedFailures(Vector(row, row)).isLeft)
-    assert(ReplayInputs.expectedFailures(Vector(s"""{"txId":"$id","isValid":true}""")).isLeft)
-    assert(ReplayInputs.expectedFailures(Vector("""{"txId":"00","isValid":false}""")).isLeft)
+    assert(ReplayInputs.expectedFailures(Vector(row, row)) match {
+      case Left(ReplayInputs.Error.DuplicateTransaction(_)) => true
+      case _                                                => false
+    })
+    assert(ReplayInputs.expectedFailures(Vector(s"""{"txId":"$id","isValid":true}""")) match {
+      case Left(ReplayInputs.Error.ExpectedInvalid(_)) => true
+      case _                                           => false
+    })
+    assert(ReplayInputs.expectedFailures(Vector("""{"txId":"00","isValid":false}""")) match {
+      case Left(ReplayInputs.Error.TransactionIdLength(_)) => true
+      case _                                               => false
+    })
   }
 
   test("wide externally supplied records and traces are stack safe on 256 KiB") {
@@ -190,7 +221,10 @@ class ReplayContractSuite extends FunSuite:
   }
 
   test("batch scratch outputs must be distinct before any replay starts") {
-    assert(ReplayInputs.windows(Vector("{}", "{}"), environment).isLeft)
+    assert(ReplayInputs.windows(Vector("{}", "{}"), environment) match {
+      case Left(ReplayInputs.Error.DuplicateOutput(_)) => true
+      case _                                           => false
+    })
     assertEquals(
       ReplayInputs.windows(Vector.empty, environment),
       Left(ReplayInputs.Error.EmptyWindow)
@@ -204,9 +238,18 @@ class ReplayContractSuite extends FunSuite:
       PreparedBlockFixture.header.copy(slot = 8, blockNo = 3, prevHash = Some(Bytes.empty))
     val previous = xyz.kd5ujc.scarab.consensus.BlockRef(7, Bytes.empty, 2)
     assert(ReplayInputs.link(previous, header).isRight)
-    assert(ReplayInputs.link(previous, header.copy(blockNo = 4)).isLeft)
-    assert(ReplayInputs.link(previous, header.copy(prevHash = None)).isLeft)
-    assert(ReplayInputs.link(previous, header.copy(slot = 7)).isLeft)
+    assert(ReplayInputs.link(previous, header.copy(blockNo = 4)) match {
+      case Left(ReplayInputs.Error.BlockNumber(_, _)) => true
+      case _                                          => false
+    })
+    assert(ReplayInputs.link(previous, header.copy(prevHash = None)) match {
+      case Left(ReplayInputs.Error.PreviousHash(_, None)) => true
+      case _                                              => false
+    })
+    assert(ReplayInputs.link(previous, header.copy(slot = 7)) match {
+      case Left(ReplayInputs.Error.SlotOrder(_, _)) => true
+      case _                                        => false
+    })
   }
 
   test("record metadata independently refuses a wrong slot, block, header hash or raw-byte SHA") {
@@ -245,5 +288,8 @@ class ReplayContractSuite extends FunSuite:
     val bytes =
       (record(1) + "\n" + record(2) + "\n").getBytes(java.nio.charset.StandardCharsets.UTF_8)
     assertEquals(ReplayInputs.lines(bytes).flatMap(ReplayInputs.records).map(_.size), Right(2))
-    assert(ReplayInputs.lines(Array(0xc3.toByte, 0x28.toByte)).isLeft)
+    assert(ReplayInputs.lines(Array(0xc3.toByte, 0x28.toByte)) match {
+      case Left(ReplayInputs.Error.Utf8(_: java.nio.charset.MalformedInputException)) => true
+      case _                                                                          => false
+    })
   }

@@ -140,11 +140,26 @@ class NtcQuerySuite extends FunSuite:
         NtcQuery.IfCurrent(QueryEra.Conway, LedgerQuery.GetCBOR(LedgerQuery.GetStakeDistribution2))
       )
     )
-    assert(decode(CborOut.build(_.array(1).uint(9))).isLeft)
-    assert(decode(conway(_.array(1).uint(99))).isLeft)
-    assert(decode(conway { w => w.array(2).uint(22).set(1).uint(5) }).isLeft)
-    assert(decode(conway { w => w.array(2).uint(22).set(1).array(2).uint(7).bytes(hash28) }).isLeft)
-    assert(decode(CborOut.build(_.map(0))).isLeft)
+    assert(decode(CborOut.build(_.array(1).uint(9))) match {
+      case Left(NtcQuery.Error.Constructor(_, _, _)) => true
+      case _                                         => false
+    })
+    assert(decode(conway(_.array(1).uint(99))) match {
+      case Left(NtcQuery.Error.UnknownTag(_, _)) => true
+      case _                                     => false
+    })
+    assert(decode(conway { w => w.array(2).uint(22).set(1).uint(5) }) match {
+      case Left(NtcQuery.Error.ExpectedArray(_)) => true
+      case _                                     => false
+    })
+    assert(decode(conway { w => w.array(2).uint(22).set(1).array(2).uint(7).bytes(hash28) }) match {
+      case Left(NtcQuery.Error.InvalidCredential) => true
+      case _                                      => false
+    })
+    assert(decode(CborOut.build(_.map(0))) match {
+      case Left(NtcQuery.Error.ExpectedArray(_)) => true
+      case _                                     => false
+    })
   }
 
   // ouroboros-consensus 82ecba3, HardFork/Combinator/Ledger/Query.hs:536-551 and
@@ -161,7 +176,14 @@ class NtcQuerySuite extends FunSuite:
       _.array(1).uint(1),
       _.array(2).uint(0).uint(0),
       _.uint(0)
-    ).foreach(inner => assert(decode(anytime(inner)).isLeft))
+    ).foreach(inner =>
+      assert(decode(anytime(inner)) match {
+        case Left(NtcQuery.Error.Arity(_, _, _)) | Left(NtcQuery.Error.ExpectedArray(_)) |
+            Left(NtcQuery.Error.UnknownTag(_, _)) =>
+          true
+        case _ => false
+      })
+    )
   }
 
   // `decodeNS` and `EraIndex`: a `decodeWord8` index of one of the eight eras of `CardanoEras`;
@@ -205,7 +227,14 @@ class NtcQuerySuite extends FunSuite:
       _.array(2).uint(0).uint(0),
       _.array(2).uint(1).uint(0),
       _.uint(0)
-    ).foreach(inner => assert(decode(query(inner)).isLeft))
+    ).foreach(inner =>
+      assert(decode(query(inner)) match {
+        case Left(NtcQuery.Error.Arity(_, _, _)) | Left(NtcQuery.Error.ExpectedArray(_)) |
+            Left(NtcQuery.Error.UnknownTag(_, _)) =>
+          true
+        case _ => false
+      })
+    )
     // The outer constructor arities are exact, too (including QueryIfCurrent).
     Vector(
       "82008100",
@@ -216,6 +245,12 @@ class NtcQuerySuite extends FunSuite:
       "82008100",
       "820083008206810000"
     ).foreach { raw =>
-      assert(decode(Bytes.fromHex(raw).fold(e => fail(e.message), identity)).isLeft, raw)
+      assert(
+        decode(Bytes.fromHex(raw).fold(e => fail(e.message), identity)) match {
+          case Left(NtcQuery.Error.Constructor(_, _, _)) => true
+          case _                                         => false
+        },
+        raw
+      )
     }
   }

@@ -13,6 +13,7 @@ import xyz.kd5ujc.scarab.ledger.{Header, HeaderVrf, LeiosHeader}
 import xyz.kd5ujc.scarab.protocol.HfcHeader
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.node.read.InEra
+import xyz.kd5ujc.scarab.crypto.vrf.PraosVrfCertificate
 
 /** The header rules over the first 1,100 headers of the public Leios testnet as restarted on
   * 2026-10-18, from its genesis (`fixtures/leios/testnet/headers-from-origin.tsv`; provenance in
@@ -129,7 +130,10 @@ class LeiosHeaderChainSuite extends munit.FunSuite:
       run(headers.take(2) :+ headers(1)).left
         .exists(_._2.isInstanceOf[LeiosHeaderChain.Fault.PrevHashDiffers])
     )
-    assert(run(Vector(headers(1), headers(0))).isLeft)
+    assert(run(Vector(headers(1), headers(0))) match {
+      case Left((_, LeiosHeaderChain.Fault.PrevHashDiffers(None, Some(_)))) => true
+      case _                                                                => false
+    })
     assertEquals(
       run(headers.drop(1).take(1)).left.map(_._2),
       Left(LeiosHeaderChain.Fault.PrevHashDiffers(None, headers(1).prevHash))
@@ -162,7 +166,19 @@ class LeiosHeaderChainSuite extends munit.FunSuite:
     val h = headers(5)
     val moved = h.copy(slot = h.slot + 1)
     // the Praos view holds the decoded fields, so the signed bytes and the VRF input now disagree
-    assert(run(headers.take(5) :+ moved).isLeft)
+    assert(run(headers.take(5) :+ moved) match {
+      case Left(
+            (
+              _,
+              LeiosHeaderChain.Fault.Praos(
+                xyz.kd5ujc.scarab.ledger.PraosError
+                  .VrfRejected(PraosVrfCertificate.Result.ProofRejected(_))
+              )
+            )
+          ) =>
+        true
+      case _ => false
+    })
   }
 
   test("a block number that does not follow, and a slot that does not advance, are typed") {

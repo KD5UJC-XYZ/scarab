@@ -5,6 +5,7 @@ import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{Address, Datum, TxIn, TxOut, Value}
 import xyz.kd5ujc.scarab.ledger.state.{ProtVer, Word64}
+import xyz.kd5ujc.scarab.models.runtime.ConstraintViolation
 
 import NodeOrders.given
 
@@ -73,6 +74,12 @@ class UtxoCodecsSuite extends FunSuite:
   }
 
   test("a value out of the range of its Haskell type is refused, not written") {
-    assert(UtxoCodecs.txIn.write(TxIn(bytes(0, 31), 0)).isLeft)
-    assert(UtxoCodecs.txIn.write(TxIn(bytes(0, 32), 70000)).isLeft)
+    assert(UtxoCodecs.txIn.write(TxIn(bytes(0, 31), 0)) match {
+      case Left(ConstraintViolation(_, _, _, _)) => true
+      case _                                     => false
+    })
+    assert(UtxoCodecs.txIn.write(TxIn(bytes(0, 32), 70000)) match {
+      case Left(ConstraintViolation(_, _, _, _)) => true
+      case _                                     => false
+    })
   }

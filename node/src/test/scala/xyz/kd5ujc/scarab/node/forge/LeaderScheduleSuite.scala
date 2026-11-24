@@ -159,7 +159,15 @@ class LeaderScheduleSuite extends ScalaCheckSuite:
       EpochInputs.of(geometry(1000, 150), 1, hashNonce, 11, 10, half, key(Seq.fill(32)(3)))
     val schedule = computed(invalid, 0)
     assertEquals(schedule.until, invalid.first)
-    assert(Leadership.check(invalid.first, invalid).isLeft)
+    assert(Leadership.check(invalid.first, invalid) match {
+      case Left(
+            ForgeError.LeaderThreshold(
+              xyz.kd5ujc.scarab.crypto.vrf.PraosLeaderThreshold.Error.InvalidFraction(_, _)
+            )
+          ) =>
+        true
+      case _ => false
+    })
     (invalid.first until invalid.end).foreach(slot =>
       assertEquals(schedule.answer(slot, invalid), Answer.Uncovered, s"slot $slot")
     )

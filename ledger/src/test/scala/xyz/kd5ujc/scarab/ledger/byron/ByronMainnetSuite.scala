@@ -156,7 +156,11 @@ class ByronMainnetSuite extends FunSuite:
     )
     val richer =
       tx.copy(tx = tx.tx.copy(outputs = tx.tx.outputs.map(o => o.copy(value = o.value + 1))))
-    assert(applyAll(Vector(richer), utxo).isLeft)
+    // outputs above the inputs leave no fee to pay
+    assertEquals(
+      applyAll(Vector(richer), utxo).left.toOption,
+      Some(ByronError.LovelaceOutOfRange(ByronError.LovelaceContext.Fee))
+    )
   }
 
   test("a verification-key transaction fails when its input's address is another key's") {

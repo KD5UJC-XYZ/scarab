@@ -98,9 +98,27 @@ class SnapshotTablesSuite extends FunSuite:
   test(
     "every truncation, wrong envelope, key width, indefinite string and trailing byte is typed"
   ) {
-    (0 until conway.size).foreach(n => assert(decode(conway.take(n)).isLeft, s"prefix $n"))
+    (0 until conway.size).foreach(n =>
+      assert(
+        decode(conway.take(n)) match {
+          case Left(SnapshotTables.Error.Incomplete(_, _)) => true
+          case _                                           => false
+        },
+        s"prefix $n"
+      )
+    )
     Vector("80a0", "82a0a0", "9fa0ff", "81a14040", "81a15fffff", "81a05800", "81a000").foreach(s =>
-      assert(decode(hex(s)).isLeft, s)
+      assert(
+        decode(hex(s)) match {
+          case Left(SnapshotTables.Error.TrailingBytes(_)) |
+              Left(SnapshotTables.Error.WrongEnvelopeLength(_)) |
+              Left(SnapshotTables.Error.WrongKeyLength(_)) |
+              Left(SnapshotTables.Error.WrongType(_, _, _)) =>
+            true
+          case _ => false
+        },
+        s
+      )
     )
     assertEquals(decode(hex("81a0ff")), Left(Error.TrailingBytes(2L)))
     val hugeValue = hex("81a15822" + "00" * 34 + "5bffffffffffffffff")

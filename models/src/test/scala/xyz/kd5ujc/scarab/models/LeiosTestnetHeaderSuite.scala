@@ -6,6 +6,7 @@ import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.LeiosHeader
 import xyz.kd5ujc.scarab.protocol.HfcHeader
+import xyz.kd5ujc.scarab.models.runtime.DecodeError
 
 /** The generated `dijkstra.Header` codec (from the pinned `dijkstra.cddl`, `models.conf`) against
   * headers of the public Leios testnet (every one of era index 7) and against the hand-written
@@ -78,6 +79,12 @@ class LeiosTestnetHeaderSuite extends munit.FunSuite:
   test(
     "the generated Conway header refuses the 12-element header the testnet sends in Conway blocks"
   ) {
-    assert(conway.Header.decodeBytes(raws.head).isLeft)
+    assert(conway.Header.decodeBytes(raws.head) match {
+      case Left(
+            DecodeError(DecodeError.Kind.BadArity(DecodeError.Arity.Range(_, _), _), _, _, _)
+          ) =>
+        true
+      case _ => false
+    })
   }
 end LeiosTestnetHeaderSuite

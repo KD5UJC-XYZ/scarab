@@ -701,7 +701,10 @@ class CborDatasetSuite extends FunSuite:
       Right("05")
     )
     assertEquals(Step.at(hex("a1410102"), List(Step.FirstKey)).map(_.hex), Right("4101"))
-    assert(Step.at(hex("80"), List(Step.Index(0))).isLeft)
+    assert(Step.at(hex("80"), List(Step.Index(0))) match {
+      case Left(Unwritten.NotFound(_)) => true
+      case _                           => false
+    })
   }
 
   /** The rules of the dataset's `EraSpec.hs` (cardano-cbor-dataset ed6c49a4), the names of the

@@ -4,6 +4,7 @@ package xyz.kd5ujc.scarab.node
 import xyz.kd5ujc.scarab.plutus.ExUnits
 import xyz.kd5ujc.scarab.ledger.TestLedger
 import munit.FunSuite
+import xyz.kd5ujc.scarab.ledger.BlockFailure
 
 class BlockExUnitsSuite extends FunSuite:
   private val limit = ExUnits(1000, 5000)
@@ -15,8 +16,14 @@ class BlockExUnitsSuite extends FunSuite:
   }
 
   test("either dimension over the limit rejects the block") {
-    assert(NodeRules.blockExUnits(params(9), ExUnits(1001, 1)).isLeft)
-    assert(NodeRules.blockExUnits(params(9), ExUnits(1, 5001)).isLeft)
+    assert(NodeRules.blockExUnits(params(9), ExUnits(1001, 1)) match {
+      case Left(BlockFailure.BlockExUnitsTooBig(_, _)) => true
+      case _                                           => false
+    })
+    assert(NodeRules.blockExUnits(params(9), ExUnits(1, 5001)) match {
+      case Left(BlockFailure.BlockExUnitsTooBig(_, _)) => true
+      case _                                           => false
+    })
   }
 
   test("before Alonzo there are no execution units to bound") {

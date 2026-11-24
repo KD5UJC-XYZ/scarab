@@ -110,8 +110,22 @@ class DijkstraCodecsSuite extends munit.FunSuite:
   test("a Dijkstra header is not read as a Praos one, nor a Conway header as Dijkstra's") {
     val conway = headers.find(_.tag == 7).getOrElse(fail("no Conway header"))
     val later = headers.find(_.tag == 8).getOrElse(fail("no Dijkstra header"))
-    assert(Header.fromRaw(Era.Dijkstra, conway.raw).isLeft)
-    assert(Header.fromRaw(Era.Conway, later.raw).isLeft)
+    assert(Header.fromRaw(Era.Dijkstra, conway.raw) match {
+      case Left(
+            ChainError
+              .Decode(DecodeField.Header, LedgerDecodeError.ArrayLength(DecodeField.Header, _, _))
+          ) =>
+        true
+      case _ => false
+    })
+    assert(Header.fromRaw(Era.Conway, later.raw) match {
+      case Left(
+            ChainError
+              .Decode(DecodeField.Header, LedgerDecodeError.ArrayLength(DecodeField.Header, _, _))
+          ) =>
+        true
+      case _ => false
+    })
     assertEquals(
       Header.fromRaw(Era.Byron, later.raw),
       Left(ChainError.Decode(DecodeField.Header, LedgerDecodeError.ByronLayout))
@@ -192,7 +206,10 @@ class DijkstraCodecsSuite extends munit.FunSuite:
     // the block form requires the flag last, and may say `false`
     val inBlock = node(array(body, witnesses, aux, f))
     assertEquals(DijkstraTx.inBlock(inBlock).map(_.isValid), Right(false))
-    assert(DijkstraTx.inBlock(node(submitted)).isLeft)
+    assert(DijkstraTx.inBlock(node(submitted)) match {
+      case Left(LedgerDecodeError.ArrayLength(DecodeField.Transaction, _, _)) => true
+      case _                                                                  => false
+    })
   }
 
   /** The submitted body's entries with `changes` applied, `None` removing a key. */
@@ -259,9 +276,18 @@ class DijkstraCodecsSuite extends munit.FunSuite:
       assertEquals(top(body(key -> Some(empty))), Left(LedgerDecodeError.Empty(site)), s"key $key")
     }
     Vector(5, 9, 19, 24, 25, 26).foreach { key =>
-      assert(top(body(key -> Some(Value.Map(Vector.empty)))).isLeft, s"key $key")
+      assert(
+        top(body(key -> Some(Value.Map(Vector.empty)))) match {
+          case Left(LedgerDecodeError.Empty(_)) => true
+          case _                                => false
+        },
+        s"key $key"
+      )
     }
-    assert(top(body(23 -> Some(empty))).isLeft)
+    assert(top(body(23 -> Some(empty))) match {
+      case Left(LedgerDecodeError.Empty(DecodeField.SubTransactions)) => true
+      case _                                                          => false
+    })
     // the guards may be empty
     assert(top(body(14 -> Some(empty))).isRight)
     assertEquals(

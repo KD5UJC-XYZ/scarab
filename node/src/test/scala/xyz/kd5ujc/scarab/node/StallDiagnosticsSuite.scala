@@ -510,7 +510,10 @@ class StallDiagnosticsSuite extends FailsOnUncaught:
       yield
         assert(during.worker.nonEmpty)
         assertEquals(cancelled.worker, None)
-        assert(failed.isLeft)
+        assert(failed match {
+          case Left(_: java.lang.Exception) => true
+          case _                            => false
+        })
         assertEquals(after.worker, None)
     }
   }

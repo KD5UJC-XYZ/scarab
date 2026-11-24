@@ -56,7 +56,13 @@ class EraFormsReferenceSuite extends FunSuite:
     assert(refused.exists(_.era == Era.Shelley) && refused.exists(_.era == Era.Alonzo))
     for row <- refused do
       val raw = outputOf(row)
-      assert(TxBody.decode(row.raw, row.era).isLeft, row.name)
+      assert(
+        TxBody.decode(row.raw, row.era) match {
+          case Left(LedgerDecodeError.OutputForm(_, _)) => true
+          case _                                        => false
+        },
+        row.name
+      )
       assertEquals(TxOut.fromBytes(raw).map(_.raw), Right(raw), row.name)
   }
 

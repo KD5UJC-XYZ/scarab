@@ -15,6 +15,7 @@ import xyz.kd5ujc.scarab.ledger.state.EpochStateGen.given
 import xyz.kd5ujc.scarab.ledger.state.VocabularyGen.given
 import xyz.kd5ujc.scarab.models.runtime.{Codec, DecodeError, Writer}
 import xyz.kd5ujc.scarab.protocol.{Era, StateLayout}
+import xyz.kd5ujc.scarab.models.runtime.ConstraintViolation
 
 import DecodeError.Kind
 import HaskellStateCodecs.{*, given}
@@ -186,7 +187,10 @@ class LedgerFileSuite extends ScalaCheckSuite:
         )
       )
     )
-    assert(pbftState.write(bad).isLeft)
+    assert(pbftState.write(bad) match {
+      case Left(ConstraintViolation(_, _, _, _)) => true
+      case _                                     => false
+    })
   }
 
   test("TPraosState: [1, [last slot, [[counters, evolving, candidate], [epoch, prev], lab]]]") {
@@ -364,7 +368,10 @@ class LedgerFileSuite extends ScalaCheckSuite:
     val byron = LedgerFileEra.Mirrored(
       EraLedgerState.ByronCurrent(xyz.kd5ujc.scarab.consensus.ByronState.initial)
     )
-    assert(ledgerFileEra(Era.Byron).write(byron).isLeft)
+    assert(ledgerFileEra(Era.Byron).write(byron) match {
+      case Left(ConstraintViolation(_, _, _, _)) => true
+      case _                                     => false
+    })
     assert(ledgerFileEra(Era.Byron).write(LedgerFileEra.ByronItem(hex("80"))).isRight)
   }
 

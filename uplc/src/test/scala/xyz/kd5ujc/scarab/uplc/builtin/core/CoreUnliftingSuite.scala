@@ -309,11 +309,61 @@ final class CoreUnliftingSuite extends munit.FunSuite:
     def replicate(byte: BigInt) =
       CoreUnlifting(CoreVariant.A)(DefaultFun.ReplicateByte, Vector(int(1), int(byte)))
     assert(replicate(0).isRight && replicate(255).isRight, "Word8 ends")
-    assert(replicate(-1).isLeft && replicate(256).isLeft, "past Word8")
+    assert(
+      replicate(-1) match {
+        case Left(
+              UnliftingFailure(
+                ErrorClass.Operational,
+                UnliftingCause.NotWithinBounds(_, UnliftingBound.Word8, _)
+              )
+            ) =>
+          true
+        case _ => false
+      },
+      "below Word8"
+    )
+    assert(
+      replicate(256) match {
+        case Left(
+              UnliftingFailure(
+                ErrorClass.Operational,
+                UnliftingCause.NotWithinBounds(_, UnliftingBound.Word8, _)
+              )
+            ) =>
+          true
+        case _ => false
+      },
+      "past Word8"
+    )
     def constr(i: BigInt) =
       CoreUnlifting(CoreVariant.E)(DefaultFun.ConstrData, Vector(int(i), con(dataList())))
     assert(constr(0).isRight && constr(BigInt(2).pow(64) - 1).isRight, "Word64 ends")
-    assert(constr(-1).isLeft && constr(BigInt(2).pow(64)).isLeft, "past Word64")
+    assert(
+      constr(-1) match {
+        case Left(
+              UnliftingFailure(
+                ErrorClass.Operational,
+                UnliftingCause.NotWithinBounds(_, UnliftingBound.Word64, _)
+              )
+            ) =>
+          true
+        case _ => false
+      },
+      "below Word64"
+    )
+    assert(
+      constr(BigInt(2).pow(64)) match {
+        case Left(
+              UnliftingFailure(
+                ErrorClass.Operational,
+                UnliftingCause.NotWithinBounds(_, UnliftingBound.Word64, _)
+              )
+            ) =>
+          true
+        case _ => false
+      },
+      "past Word64"
+    )
     assert(
       CoreUnlifting(CoreVariant.C)(DefaultFun.ConstrData, Vector(int(-1), con(dataList()))).isRight,
       "C reads an Integer"
@@ -359,12 +409,23 @@ final class CoreUnliftingSuite extends munit.FunSuite:
   test("a data list and a map list are told apart by their whole type") {
     val pairs = con(list(DefaultUni.Pair(DefaultUni.Data, DefaultUni.Data)))
     assert(CoreUnlifting(CoreVariant.A)(DefaultFun.MapData, Vector(pairs)).isRight, "mapData")
-    assert(CoreUnlifting(CoreVariant.A)(DefaultFun.ListData, Vector(pairs)).isLeft, "listData")
+    assert(
+      CoreUnlifting(CoreVariant.A)(DefaultFun.ListData, Vector(pairs)) match {
+        case Left(UnliftingFailure(ErrorClass.Structural, UnliftingCause.WrongType(_, _, _))) =>
+          true
+        case _ => false
+      },
+      "listData"
+    )
     assert(
       CoreUnlifting(CoreVariant.A)(
         DefaultFun.MapData,
         Vector(con(dataList(PlutusData.I(1))))
-      ).isLeft,
+      ) match {
+        case Left(UnliftingFailure(ErrorClass.Structural, UnliftingCause.WrongType(_, _, _))) =>
+          true
+        case _ => false
+      },
       "mapData of data"
     )
   }

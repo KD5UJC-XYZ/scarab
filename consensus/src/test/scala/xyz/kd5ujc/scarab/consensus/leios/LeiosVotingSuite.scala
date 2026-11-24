@@ -197,7 +197,10 @@ class LeiosVotingSuite extends ScalaCheckSuite:
     assertEquals(LeiosVoting.minCertificationGap(1000, 1000, 4000, 7000), Right(BigInt(14)))
     assertEquals(LeiosVoting.minCertificationGap(100, 100, 400, 700), Right(BigInt(14)))
     assertEquals(LeiosVoting.minCertificationGap(3000, 1000, 4000, 7000), Right(BigInt(5)))
-    assertEquals(LeiosVoting.minCertificationGap(0, 1000, 4000, 7000).isLeft, true)
+    assert(LeiosVoting.minCertificationGap(0, 1000, 4000, 7000) match {
+      case Left(Praos2Defect.NonPositiveSlotLength(_)) => true
+      case _                                           => false
+    })
     assertEquals(
       LeiosVoting.minCertificationGap(0, 1, 1, 1),
       Left(Praos2Defect.NonPositiveSlotLength(0))

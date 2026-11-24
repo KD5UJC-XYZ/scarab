@@ -91,7 +91,13 @@ class ReferenceRefusalSuite extends FunSuite:
     assertEquals(recordedBuild(Some("leios-rc-2026w47")), Right(ReferenceBuild.Leios))
     // the Leios build's name until 2026-11-23, which corpora recorded then carry (#1365)
     assertEquals(recordedBuild(Some("leios-b004fe0c")), Right(ReferenceBuild.Leios))
-    assert(recordedBuild(Some("11.1.3")).isLeft, "a patch release is not a build name")
+    assert(
+      recordedBuild(Some("11.1.3")) match {
+        case Left(UnknownReferenceBuild(_)) => true
+        case _                              => false
+      },
+      "a patch release is not a build name"
+    )
     val leiosNode = "cardano-node 11.2.0.164 - linux-x86_64 - ghc-9.6"
     val leiosRevision = ReferenceBuild.Leios.pins.node
     val current = Some(ReferenceBuild.Leios.name)

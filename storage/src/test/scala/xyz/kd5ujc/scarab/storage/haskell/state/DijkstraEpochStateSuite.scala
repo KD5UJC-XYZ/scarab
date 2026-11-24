@@ -8,6 +8,7 @@ import xyz.kd5ujc.scarab.ledger.{ConwayParam, DecodeField, GovAction, LedgerDeco
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.models.runtime.{Codec, DecodeError, Writer}
 import xyz.kd5ujc.scarab.protocol.DijkstraNotYet
+import xyz.kd5ujc.scarab.models.runtime.ConstraintViolation
 
 import DecodeError.{Arity, Kind}
 
@@ -79,7 +80,10 @@ class DijkstraEpochStateSuite extends FunSuite:
     val codec = HaskellStateCodecs.newEpochState[Dijkstra]
     assertEquals(failure(codec, nes.original).kind, Kind.Domain(DijkstraNotYet.LedgerState))
     val state = read(LeiosStateCodecs.newEpochState[Dijkstra], nes)
-    assert(codec.write(state).isLeft)
+    assert(codec.write(state) match {
+      case Left(ConstraintViolation(_, _, _, _)) => true
+      case _                                     => false
+    })
   }
 
   // ---- the switches at version 12

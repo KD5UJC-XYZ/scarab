@@ -68,8 +68,25 @@ class DecodeBoundsSuite extends FunSuite:
     val deep = head(4, 2) ++ Bytes(Vector.fill(200000)(0x81.toByte)) ++ head(0, 0) ++
       bstr(filled(0x88, 448))
     val read = onSmallStack(Header.fromRaw(Era.Conway, deep))
-    assert(read.isLeft, s"read: $read")
-    assert(onSmallStack(LeiosHeader.decode(deep)).isLeft)
+    assert(
+      read match {
+        case Left(
+              ChainError
+                .Decode(DecodeField.Header, LedgerDecodeError.ArrayLength(DecodeField.Header, _, _))
+            ) =>
+          true
+        case _ => false
+      },
+      s"read: $read"
+    )
+    assert(onSmallStack(LeiosHeader.decode(deep)) match {
+      case Left(
+            ChainError
+              .Decode(DecodeField.Header, LedgerDecodeError.ArrayLength(DecodeField.Header, _, _))
+          ) =>
+        true
+      case _ => false
+    })
   }
 
   /** 200,000 nested single-item lists around a zero. */
@@ -81,13 +98,27 @@ class DecodeBoundsSuite extends FunSuite:
       hex("8207") ++ head(4, 5) ++ header ++ bodies ++ head(4, 0) ++ head(5, 0) ++ head(4, 0)
     val deepHeader = head(4, 2) ++ nested ++ bstr(filled(0x88, 448))
     val inHeader = onSmallStack(Block.decodeHeader(block(deepHeader, head(4, 0)), BigInt(21600)))
-    assert(inHeader.isLeft, s"read: $inHeader")
+    assert(
+      inHeader match {
+        case Left(
+              ChainError
+                .Decode(DecodeField.Header, LedgerDecodeError.ArrayLength(DecodeField.Header, _, _))
+            ) =>
+          true
+        case _ => false
+      },
+      s"read: $inHeader"
+    )
     val inBody = block(header, nested)
     assertEquals(
       onSmallStack(Block.decodeHeader(inBody, BigInt(21600))),
       Header.fromRaw(Era.Conway, header)
     )
-    assert(onSmallStack(Block.decode(inBody, BigInt(21600))).isLeft)
+    assert(onSmallStack(Block.decode(inBody, BigInt(21600))) match {
+      case Left(ChainError.Decode(DecodeField.Block, LedgerDecodeError.BodyWitnessCount(_, _))) =>
+        true
+      case _ => false
+    })
   }
 
   test("a body whose update proposal is nested 200,000 deep is refused typed") {
@@ -95,12 +126,24 @@ class DecodeBoundsSuite extends FunSuite:
     val body = head(5, 4) ++ head(0, 0) ++ head(4, 0) ++ head(0, 1) ++ head(4, 0) ++ head(0, 2) ++
       head(0, 0) ++ head(0, 6) ++ nested
     val read = onSmallStack(TxBody.decode(body, Era.Babbage))
-    assert(read.isLeft, s"read: $read")
+    assert(
+      read match {
+        case Left(LedgerDecodeError.ArrayLength(DecodeField.Update, _, _)) => true
+        case _                                                             => false
+      },
+      s"read: $read"
+    )
   }
 
   test("a Byron body whose transaction payload is nested 200,000 deep is refused typed") {
     // [txPayload, sscPayload, dlgPayload, updPayload], the first nested
     val body = head(4, 4) ++ head(4, 1) ++ nested ++ head(4, 0) ++ head(4, 0) ++ head(4, 0)
     val read = onSmallStack(byron.ByronTransport.check(body, hex("81a0"), boundary = false))
-    assert(read.isLeft, s"read: $read")
+    assert(
+      read match {
+        case Left(LedgerDecodeError.Expected(_, LedgerDecodeError.Shape.Array, _)) => true
+        case _                                                                     => false
+      },
+      s"read: $read"
+    )
   }

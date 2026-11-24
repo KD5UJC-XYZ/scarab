@@ -6,6 +6,7 @@ import org.scalacheck.Prop.forAll
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.uplc.*
 import xyz.kd5ujc.scarab.uplc.flat.FlatWriter.*
+import xyz.kd5ujc.scarab.codec.Cbor
 
 /** The Flat decoder against the reference's decoders, plutus 1.70.0.0 (`507cab8c`): every refusal
   * at the place the reference makes it, the inputs the reference accepts that a canonical encoder
@@ -319,7 +320,11 @@ final class FlatDecoderSuite extends ScalaCheckSuite:
       data("d8024101"),
       Left(FlatError.MalformedData(PlutusData.DecodeError.BigNumberWideHead(2)))
     )
-    assert(data("").isLeft)
+    assert(data("") match {
+      case Left(FlatError.MalformedData(PlutusData.DecodeError.Syntax(Cbor.Error.UnexpectedEnd))) =>
+        true
+      case _ => false
+    })
   }
 
   private def valueBits(

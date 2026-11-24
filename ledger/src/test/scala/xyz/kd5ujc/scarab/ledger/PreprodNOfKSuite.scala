@@ -153,7 +153,14 @@ class PreprodNOfKSuite extends ScalaCheckSuite:
         )
       else if n >= -Word64Max - 1 && n <= Word64Max then
         assertEquals(r.left.map(identity), Left(NativeScript.DecodeError.RequiredOutOfRange(n)))
-      else assert(r.isLeft, s"$n decoded")
+      else
+        assert(
+          r match {
+            case Left(NativeScript.DecodeError.Malformed(_)) => true
+            case _                                           => false
+          },
+          s"$n decoded"
+        )
       true
     }
   }
@@ -168,7 +175,14 @@ class PreprodNOfKSuite extends ScalaCheckSuite:
             if tag == 4 then NativeScript.InvalidBefore(v) else NativeScript.InvalidHereafter(v)
           )
         )
-      else assert(r.isLeft, s"$v decoded")
+      else
+        assert(
+          r match {
+            case Left(NativeScript.DecodeError.Malformed(_)) => true
+            case _                                           => false
+          },
+          s"$v decoded"
+        )
       true
     }
   }
@@ -184,8 +198,26 @@ class PreprodNOfKSuite extends ScalaCheckSuite:
       Left(NativeScript.DecodeError.RequiredOutOfRange(Int64Min - 1))
     )
     assert(decode(timelock(4, Word64Max)).isRight)
-    assert(decode(timelock(5, Word64Max + 1)).isLeft)
-    assert(decode(timelock(4, BigInt(-1))).isLeft)
+    assert(decode(timelock(5, Word64Max + 1)) match {
+      case Left(
+            NativeScript.DecodeError.Malformed(
+              LedgerDecodeError
+                .Expected(DecodeField.InvalidHereafter, LedgerDecodeError.Shape.Unsigned, _)
+            )
+          ) =>
+        true
+      case _ => false
+    })
+    assert(decode(timelock(4, BigInt(-1))) match {
+      case Left(
+            NativeScript.DecodeError.Malformed(
+              LedgerDecodeError
+                .Expected(DecodeField.InvalidBefore, LedgerDecodeError.Shape.Unsigned, _)
+            )
+          ) =>
+        true
+      case _ => false
+    })
   }
 
   // --- the reference's evaluation: `isValidMOf` -------------------------------------------------

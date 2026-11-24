@@ -76,7 +76,13 @@ class LedgerRulesSuite extends FunSuite:
       case Right(Some(c)) => c
       case other          => fail(s"no clock: $other")
     assertEquals(clock.posix(431999), Right(BigInt(431999000)))
-    assert(clock.posix(432000).isLeft, "slot 432000 is past the horizon")
+    assert(
+      clock.posix(432000) match {
+        case Left(TranslationError.PastHorizon(_, _)) => true
+        case _                                        => false
+      },
+      "slot 432000 is past the horizon"
+    )
   }
 
   private def refusalNames(id: String): Vector[ReportName] =
@@ -277,7 +283,10 @@ class LedgerRulesSuite extends FunSuite:
       expectation(Json.obj("predicate" -> "PoolMetadataHashTooBig".asJson)).map(_.refusal),
       Right(None)
     )
-    assert(expectation(Json.obj()).isLeft)
+    assert(expectation(Json.obj()) match {
+      case Left(FixtureError.Field(_, _)) => true
+      case _                              => false
+    })
   }
 
   test("the report has the schema's fields and leaves out a fixture without a result") {
@@ -332,10 +341,22 @@ class LedgerRulesSuite extends FunSuite:
       LedgerRulesMain.config(paths ++ List("--dataset-commit", "abc")),
       Left(LedgerRulesMain.Error.Commit("abc"))
     )
-    assert(LedgerRulesMain.config(paths ++ List("--unknown", "x")).isLeft)
-    assert(LedgerRulesMain.config(paths ++ List("--sidecar", "a", "--sidecar", "b")).isLeft)
-    assert(LedgerRulesMain.config(List("s", "d")).isLeft)
-    assert(LedgerRulesMain.config(paths ++ List("--plutus-vm", "scarab")).isLeft)
+    assert(LedgerRulesMain.config(paths ++ List("--unknown", "x")) match {
+      case Left(LedgerRulesMain.Error.Arguments(_)) => true
+      case _                                        => false
+    })
+    assert(LedgerRulesMain.config(paths ++ List("--sidecar", "a", "--sidecar", "b")) match {
+      case Left(LedgerRulesMain.Error.Arguments(_)) => true
+      case _                                        => false
+    })
+    assert(LedgerRulesMain.config(List("s", "d")) match {
+      case Left(LedgerRulesMain.Error.Arguments(_)) => true
+      case _                                        => false
+    })
+    assert(LedgerRulesMain.config(paths ++ List("--plutus-vm", "scarab")) match {
+      case Left(LedgerRulesMain.Error.Arguments(_)) => true
+      case _                                        => false
+    })
     assertEquals(
       LedgerRulesMain.config(paths).map(_.selection),
       Right(Selection.ExpectedInFailures)

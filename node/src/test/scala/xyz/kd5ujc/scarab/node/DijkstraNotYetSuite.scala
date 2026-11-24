@@ -56,7 +56,20 @@ class DijkstraNotYetSuite extends FunSuite:
     assertEquals(NtNHeader.codec.encode(NtNHeader(Era.Dijkstra, raw, None)), Right(envelope))
     // the header is read by the Leios header's decoder, which three bytes are not
     assert(
-      xyz.kd5ujc.scarab.ledger.Header.fromNtN(NtNHeader(Era.Dijkstra, raw, None), 21600).isLeft
+      xyz.kd5ujc.scarab.ledger.Header.fromNtN(NtNHeader(Era.Dijkstra, raw, None), 21600) match {
+        case Left(
+              xyz.kd5ujc.scarab.ledger.ChainError.Decode(
+                xyz.kd5ujc.scarab.ledger.DecodeField.Header,
+                LedgerDecodeError.Expected(
+                  xyz.kd5ujc.scarab.ledger.DecodeField.Header,
+                  LedgerDecodeError.Shape.Bytes,
+                  _
+                )
+              )
+            ) =>
+          true
+        case _ => false
+      }
     )
   }
 
@@ -67,9 +80,16 @@ class DijkstraNotYetSuite extends FunSuite:
     assertEquals(TxBody.decode(empty, Era.Dijkstra), refused)
     assertEquals(Witnesses.decode(empty, Era.Dijkstra), refused)
     assertEquals(Tx.fromEnvelope(empty, Era.Dijkstra), refused)
-    assert(
-      Block.decodeShelley(cbor(Value.Arr(Vector(node(Value.UInt(8)), node(Value.Null))))).isLeft
-    )
+    // tag 8 is read as far as its header: a null where the header array belongs is the refusal
+    Block.decodeShelley(cbor(Value.Arr(Vector(node(Value.UInt(8)), node(Value.Null))))) match
+      case Left(
+            xyz.kd5ujc.scarab.ledger.ChainError.Decode(
+              xyz.kd5ujc.scarab.ledger.DecodeField.Header,
+              LedgerDecodeError.Expected(_, LedgerDecodeError.Shape.Array, Value.Null)
+            )
+          ) =>
+        ()
+      case other => fail(s"not the header's refusal: $other")
   }
 
   test("a decoded Dijkstra header of the devnet chain is refused by the hard-fork envelope") {

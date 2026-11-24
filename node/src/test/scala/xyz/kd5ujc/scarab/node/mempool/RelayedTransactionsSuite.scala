@@ -76,7 +76,13 @@ class RelayedTransactionsSuite extends FailsOnUncaught:
   for row <- rows if !row.accepted do
     test(s"${row.name}: refused by the codec, as the reference's decoder refuses it") {
       val codec = TxSubmission2.decode(State.Txs, Role.Client, wire(row.raw))
-      assert(codec.isLeft, codec.toString)
+      assert(
+        codec match {
+          case Left(ProtocolError.Codec(_)) | Left(ProtocolError.UndecodableTransaction(_)) => true
+          case _                                                                            => false
+        },
+        codec.toString
+      )
       // and by the mempool, which reads it alike
       val mempool = MempoolState.parseParts(row.raw)
       assert(mempool.left.exists(_.isInstanceOf[Rejection.Malformed]), mempool.toString)
@@ -236,7 +242,10 @@ class RelayedTransactionsSuite extends FailsOnUncaught:
       assertEquals(TxSubmission2.bodyId(indefinite), TxSubmission2.bodyId(definite))
       assertEquals(TxSubmission2.bodyId(indefinite), Right(Blake2b.hash256.hash(hex(body))))
       // a body without its required fields: framed and identified, but refused when read whole
-      assert(TxSubmission2.decode(State.Txs, Role.Client, wire(indefinite)).isLeft)
+      assert(TxSubmission2.decode(State.Txs, Role.Client, wire(indefinite)) match {
+        case Left(ProtocolError.UndecodableTransaction(_)) => true
+        case _                                             => false
+      })
     }
     assertEquals(TxSubmission2.bodyId(hex("84a0a10080f5f6")), Right(emptyId))
     assertNotEquals(
@@ -267,7 +276,17 @@ class RelayedTransactionsSuite extends FailsOnUncaught:
       "9fa0a0f5c0ff",
       "9fa0a0f5a100ff",
       "9fa0a0f59f00ff"
-    ).foreach(raw => assert(TxSubmission2.bodyId(hex(raw)).isLeft, raw))
+    ).foreach(raw =>
+      assert(
+        TxSubmission2.bodyId(hex(raw)) match {
+          case Left(ProtocolError.Codec(_)) | Left(ProtocolError.ExpectedConwayTransactionMembers) |
+              Left(ProtocolError.TransactionBodyIsNotAMap) =>
+            true
+          case _ => false
+        },
+        raw
+      )
+    )
     assertEquals(
       RelayedTransactions.body(hex("8480a0f5f6")),
       Left(ProtocolError.TransactionBodyIsNotAMap)
@@ -299,16 +318,33 @@ class RelayedTransactionsSuite extends FailsOnUncaught:
       "82a0a0",
       "85a0a0f5f6f6"
     )
-      .foreach(t => assert(TxSubmission2.bodyId(hex(t)).isLeft, t))
+      .foreach(t =>
+        assert(
+          TxSubmission2.bodyId(hex(t)) match {
+            case Left(ProtocolError.Codec(_)) |
+                Left(ProtocolError.ExpectedConwayTransactionMembers) =>
+              true
+            case _ => false
+          },
+          t
+        )
+      )
   }
   test("nesting is bounded by the transaction's size, as in the reference, which has no bound") {
     val exact = hex("9fa0a10059fff6" + "00" * 65526 + "f5f6ff")
     assertEquals(exact.size, TxSubmission2.MaxOriginalBytes)
     assertEquals(TxSubmission2.bodyId(exact), Right(emptyId))
-    assert(TxSubmission2.bodyId(Bytes(exact.value :+ 0.toByte)).isLeft)
+    assert(TxSubmission2.bodyId(Bytes(exact.value :+ 0.toByte)) match {
+      case Left(ProtocolError.OriginalSizeOutsidePolicy(_, _)) => true
+      case _                                                   => false
+    })
     // 30,000 levels fit the 64 KiB
     val deep = hex("9fa0a0f5" + "81" * 30000 + "00ff")
     assertEquals(TxSubmission2.bodyId(deep), TxSubmission2.bodyId(hex("9fa0a0f5f6ff")))
     val tooMany = hex("9fa0a0f5" + "81" * 65535 + "00ff")
-    assert(tooMany.size > TxSubmission2.MaxOriginalBytes && TxSubmission2.bodyId(tooMany).isLeft)
+    assert(tooMany.size > TxSubmission2.MaxOriginalBytes)
+    assert(TxSubmission2.bodyId(tooMany) match {
+      case Left(ProtocolError.OriginalSizeOutsidePolicy(_, _)) => true
+      case _                                                   => false
+    })
   }

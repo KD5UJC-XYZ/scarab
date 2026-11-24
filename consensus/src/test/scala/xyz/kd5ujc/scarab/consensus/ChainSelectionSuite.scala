@@ -201,6 +201,53 @@ class ChainSelectionSuite extends ScalaCheckSuite:
     assert(prefers(Tiebreaker.Unrestricted, longer, ours))
   }
 
+  test("a header's tie-break is its raw VRF output, not the leader value derived from it") {
+    // Upstream `pTieBreakVRFValue` is `certifiedOutput . hbVrfRes . headerBody` for Praos
+    // (ouroboros-consensus 82ecba32, `Shelley/Protocol/Praos.hs`): the output before range
+    // extension. The leader value, Blake2b-256 of "L" and the output, orders differently; a node
+    // that compares it prefers the other tip (Amaru issue 1650). These two outputs order one way
+    // raw and the other way as leader values, so the wrong projection fails here.
+    import xyz.kd5ujc.scarab.crypto.vrf.PraosLeaderThreshold
+    def leaderValue(output: Bytes): BigInt =
+      PraosLeaderThreshold.leaderValue(output).fold(e => fail(e.toString), identity)
+    val anchor = Fixtures.header(9, 49, None)
+    def tip(issuer: Int, output: Bytes): Header =
+      Fixtures.header(10, 50, Some(anchor.hash), issuer) match
+        case h: Header.Shelley =>
+          h.copy(
+            issuerVkey = bytes(issuer, 32),
+            vrf = HeaderVrf.Praos(VrfCert(output, bytes(4, 80)))
+          )
+        case other => fail(s"fixture header is not a Shelley one: $other")
+    val (lowRaw, highRaw) = (bytes(1), bytes(2))
+    assert(leaderValue(lowRaw) > leaderValue(highRaw), "the outputs must order oppositely")
+    val (low, high) = (tip(1, lowRaw), tip(2, highRaw))
+    assertEquals(SelectView.of(low).tieBreak, Some(lowRaw))
+    assertEquals(SelectView.of(high).tieBreak, Some(highRaw))
+    val anchorView = SelectView.of(anchor)
+    def selected(ours: Header) =
+      Local(anchor.point, anchorView, Vector(LocalBlock(ours.point, SelectView.of(ours))))
+    for f <- Seq(Tiebreaker.Unrestricted, Tiebreaker.Restricted(5)) do
+      // whichever tip arrives first, the one with the lower raw output is selected
+      assertEquals(
+        decide(f, selected(high), Candidate(anchor.point, Vector(low))),
+        Decision.Switch(anchor.point, 1, Vector(low))
+      )
+      assertEquals(decide(f, selected(low), Candidate(anchor.point, Vector(high))), Decision.Keep)
+  }
+
+  test("a TPraos header's tie-break is its leader certificate's raw output, not the nonce's") {
+    // `pTieBreakVRFValue = certifiedOutput . SL.bheaderL . SL.bhbody` (`Shelley/Protocol/TPraos.hs`
+    // at the same pin).
+    val header = Fixtures.header(10, 50, None) match
+      case h: Header.Shelley =>
+        h.copy(vrf =
+          HeaderVrf.TPraos(VrfCert(bytes(1), bytes(4, 80)), VrfCert(bytes(2), bytes(4, 80)))
+        )
+      case other => fail(s"fixture header is not a Shelley one: $other")
+    assertEquals(SelectView.of(header).tieBreak, Some(bytes(2)))
+  }
+
   test("cross-era eligibility uses the later era configuration in either direction") {
     import xyz.kd5ujc.scarab.protocol.Era
     val older = view(3, slot = 100, issuer = 1, vrf = 200).copy(era = Some(Era.Babbage))

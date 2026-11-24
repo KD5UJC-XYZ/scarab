@@ -432,6 +432,9 @@ class HeaderGateSuite extends CatsEffectSuite with ScalaCheckSuite:
       main(0).asInstanceOf[Header.Shelley].copy(prevHash = Some(Bytes(Vector.fill(32)(9.toByte))))
     assert(c.extend(first, Some(1)).isRight)
     val one = c.extend(main(0), Some(1)).toOption.get
-    assert(one.extend(main(2), Some(2)).isLeft)
+    assert(one.extend(main(2), Some(2)) match {
+      case Left(xyz.kd5ujc.scarab.consensus.HeaderChain.Error.DoesNotExtend(_, _)) => true
+      case _                                                                       => false
+    })
     assert(one.extend(main(1), Some(2)).isRight)
   }

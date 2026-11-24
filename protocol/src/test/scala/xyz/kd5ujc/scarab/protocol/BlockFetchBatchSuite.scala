@@ -22,56 +22,120 @@ class BlockFetchBatchSuite extends munit.FunSuite:
   test("inclusive single requires exact identity and BatchDone") {
     val start = Batch.begin(plan(p))
     assertEquals(start.plan.range.from, start.plan.range.to)
-    assert(start.endOfInput.isLeft)
+    assert(start.endOfInput match {
+      case Left(ProtocolError.IncompleteBlockFetchRequestAtEndOfInput) => true
+      case _                                                           => false
+    })
     val stream = next(start, Message.StartBatch, p)
-    assert(stream.accept(Message.BatchDone)(_ => Right(p)).isLeft)
+    assert(stream.accept(Message.BatchDone)(_ => Right(p)) match {
+      case Left(ProtocolError.EarlyBatchDoneIncompleteRequestedRange) => true
+      case _                                                          => false
+    })
     val one = next(stream, Message.Block(raw), p)
     assertEquals(one.result, BatchResult.Pending)
-    assert(one.endOfInput.isLeft)
-    assert(one.accept(Message.Block(raw))(_ => Right(p)).isLeft)
+    assert(one.endOfInput match {
+      case Left(ProtocolError.IncompleteBlockFetchRequestAtEndOfInput) => true
+      case _                                                           => false
+    })
+    assert(one.accept(Message.Block(raw))(_ => Right(p)) match {
+      case Left(ProtocolError.ExtraBlockInRequestedBatch) => true
+      case _                                              => false
+    })
     val complete = next(one, Message.BatchDone, p)
     assertEquals(complete.endOfInput, Right(BatchResult.Complete(Vector(raw))))
-    assert(complete.accept(Message.StartBatch)(_ => Right(p)).isLeft)
+    assert(complete.accept(Message.StartBatch)(_ => Right(p)) match {
+      case Left(ProtocolError.RequestAlreadyCompleted) => true
+      case _                                           => false
+    })
   }
   test("same slot distinct points remain ordered; duplicates wrong order and short batch fail") {
     val stream = next(Batch.begin(plan(p, q)), Message.StartBatch, p)
-    assert(stream.accept(Message.Block(raw))(_ => Right(q)).isLeft)
-    assert(stream.accept(Message.Block(raw))(_ => Left(ProtocolError.ExpectedTag24Header)).isLeft)
+    assert(stream.accept(Message.Block(raw))(_ => Right(q)) match {
+      case Left(ProtocolError.BlockPointOrderMismatch) => true
+      case _                                           => false
+    })
+    assert(stream.accept(Message.Block(raw))(_ => Left(ProtocolError.ExpectedTag24Header)) match {
+      case Left(ProtocolError.ExpectedTag24Header) => true
+      case _                                       => false
+    })
     val one = next(stream, Message.Block(raw), p)
-    assert(one.accept(Message.Block(raw))(_ => Right(p)).isLeft)
-    assert(one.accept(Message.BatchDone)(_ => Right(q)).isLeft)
+    assert(one.accept(Message.Block(raw))(_ => Right(p)) match {
+      case Left(ProtocolError.BlockPointOrderMismatch) => true
+      case _                                           => false
+    })
+    assert(one.accept(Message.BatchDone)(_ => Right(q)) match {
+      case Left(ProtocolError.EarlyBatchDoneIncompleteRequestedRange) => true
+      case _                                                          => false
+    })
     val two = next(one, Message.Block(raw), q)
     assert(next(two, Message.BatchDone, q).endOfInput.isRight)
-    assert(FetchPlan.from(Vector(p, p)).isLeft)
-    assert(FetchPlan.from(Vector(point(2, 1), point(1, 2))).isLeft)
-    assert(FetchPlan.from(Vector.empty).isLeft)
-    assert(FetchPlan.from(Vector(p, q), BlockFetch.RequestLimits(maxBlocks = 1)).isLeft)
+    assert(FetchPlan.from(Vector(p, p)) match {
+      case Left(ProtocolError.DuplicateExpectedPoints) => true
+      case _                                           => false
+    })
+    assert(FetchPlan.from(Vector(point(2, 1), point(1, 2))) match {
+      case Left(ProtocolError.ReversedExpectedSlotOrder) => true
+      case _                                             => false
+    })
+    assert(FetchPlan.from(Vector.empty) match {
+      case Left(ProtocolError.ExpectedPointCountOutsideRequestLimits(_, _)) => true
+      case _                                                                => false
+    })
+    assert(FetchPlan.from(Vector(p, q), BlockFetch.RequestLimits(maxBlocks = 1)) match {
+      case Left(ProtocolError.ExpectedPointCountOutsideRequestLimits(_, _)) => true
+      case _                                                                => false
+    })
   }
   test("NoBlocks is unavailable only before streaming and terminal for this request") {
     val begin = Batch.begin(plan(p))
-    assert(begin.accept(Message.Block(raw))(_ => Right(p)).isLeft)
+    assert(begin.accept(Message.Block(raw))(_ => Right(p)) match {
+      case Left(
+            ProtocolError
+              .BlockFetchAgency(BlockFetchEngine.State.Busy, BlockFetchEngine.Role.Server)
+          ) =>
+        true
+      case _ => false
+    })
     val unavailable = next(begin, Message.NoBlocks, p)
     assertEquals(unavailable.endOfInput, Right(BatchResult.Unavailable))
-    assert(unavailable.accept(Message.StartBatch)(_ => Right(p)).isLeft)
+    assert(unavailable.accept(Message.StartBatch)(_ => Right(p)) match {
+      case Left(ProtocolError.RequestAlreadyCompleted) => true
+      case _                                           => false
+    })
     val stream = next(begin, Message.StartBatch, p)
-    assert(stream.accept(Message.NoBlocks)(_ => Right(p)).isLeft)
+    assert(stream.accept(Message.NoBlocks)(_ => Right(p)) match {
+      case Left(
+            ProtocolError
+              .BlockFetchAgency(BlockFetchEngine.State.Streaming, BlockFetchEngine.Role.Server)
+          ) =>
+        true
+      case _ => false
+    })
   }
   test("a batch has no aggregate raw-byte cap, only its requested block count") {
     val plan = right(FetchPlan.from(Vector(p, q), BlockFetch.RequestLimits(2)))
     val stream = next(Batch.begin(plan), Message.StartBatch, p)
     val one = next(stream, Message.Block(raw), p)
     val two = next(one, Message.Block(raw), q)
-    assert(two.accept(Message.Block(raw))(_ => Right(q)).isLeft)
+    assert(two.accept(Message.Block(raw))(_ => Right(q)) match {
+      case Left(ProtocolError.ExtraBlockInRequestedBatch) => true
+      case _                                              => false
+    })
   }
   test("shared scanner preserves ChainSync small-message and independent-field policies") {
     val limits = ChainSync.Limits(maxMessageBytes = 2, maxStringBytes = 65535, maxHashBytes = 65535)
     assert(ChainSync.encodePoint(ChainSync.Point.Origin, limits).isRight)
     assert(
-      ChainSync
-        .encodePoint(ChainSync.Point.Origin, ChainSync.Limits(maxMessageBytes = 65536))
-        .isLeft
+      (ChainSync
+        .encodePoint(ChainSync.Point.Origin, ChainSync.Limits(maxMessageBytes = 65536))) match {
+        case Left(ProtocolError.InvalidLocalLimits) => true
+        case _                                      => false
+      }
     )
-    assert(ChainSync.validateItem(Bytes(Vector.fill(65536)(0.toByte))).isLeft)
+    assert(ChainSync.validateItem(Bytes(Vector.fill(65536)(0.toByte))) match {
+      case Left(ProtocolError.TrailingPayloadBytes) => true
+      case _                                        => false
+    })
   }
 
   test("impossible state-specific outer arity fails before missing tag") {

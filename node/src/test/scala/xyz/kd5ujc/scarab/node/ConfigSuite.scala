@@ -325,22 +325,33 @@ class ConfigSuite extends FunSuite:
     val base = parser.parse(text("preview", "config.json")).toOption.get
     def with_(key: String, value: Json) = base.deepMerge(Json.obj(key -> value)).noSpaces
     assert(
-      NodeConfig.parse(ReferenceBuild.Default)(with_("Protocol", Json.fromString("Byron"))).isLeft
+      NodeConfig.parse(ReferenceBuild.Default)(with_("Protocol", Json.fromString("Byron"))) match {
+        case Left(ConfigError(ConfigProblem.Selection(_, _, _))) => true
+        case _                                                   => false
+      }
     )
     assert(
-      NodeConfig
-        .parse(ReferenceBuild.Default)(with_("ConsensusMode", Json.fromString("Other")))
-        .isLeft
+      (NodeConfig
+        .parse(ReferenceBuild.Default)(with_("ConsensusMode", Json.fromString("Other")))) match {
+        case Left(ConfigError(ConfigProblem.Selection(_, _, _))) => true
+        case _                                                   => false
+      }
     )
     assert(
-      NodeConfig
-        .parse(ReferenceBuild.Default)(with_("DiffusionMode", Json.fromString("Other")))
-        .isLeft
+      (NodeConfig
+        .parse(ReferenceBuild.Default)(with_("DiffusionMode", Json.fromString("Other")))) match {
+        case Left(ConfigError(ConfigProblem.Selection(_, _, _))) => true
+        case _                                                   => false
+      }
     )
     assert(
-      NodeConfig
-        .parse(ReferenceBuild.Default)(with_("TestEnableDevelopmentHardForkEras", Json.True))
-        .isLeft
+      (NodeConfig
+        .parse(ReferenceBuild.Default)(
+          with_("TestEnableDevelopmentHardForkEras", Json.True)
+        )) match {
+        case Left(ConfigError(ConfigProblem.RenamedField(_, _))) => true
+        case _                                                   => false
+      }
     )
     // Dijkstra: required once enabled, and recorded as unsupported
     val enabled = with_("ExperimentalHardForksEnabled", Json.True)
@@ -390,11 +401,13 @@ class ConfigSuite extends FunSuite:
       Right(None)
     )
     assert(
-      NodeConfig
+      (NodeConfig
         .parse(ReferenceBuild.Default)(
           with_("MempoolCapacityBytesOverride", Json.fromString("lots"))
-        )
-        .isLeft
+        )) match {
+        case Left(ConfigError(ConfigProblem.MempoolCapacity(_))) => true
+        case _                                                   => false
+      }
     )
     // AcceptedConnectionsLimit (POM.hs 373-375): three required keys, the limits Word32 and the
     // delay a DiffTime of seconds (OrphanInstances.hs:302-307, aeson's FromJSON Word32/DiffTime)
@@ -455,14 +468,16 @@ class ConfigSuite extends FunSuite:
     assertEquals(limit(Json.fromInt(512), Json.fromInt(384), number("1e1025")), None)
     assertEquals(limit(Json.fromInt(512), Json.fromInt(384), Json.fromString("5")), None)
     assert(
-      NodeConfig
+      (NodeConfig
         .parse(ReferenceBuild.Default)(
           with_(
             "AcceptedConnectionsLimit",
             Json.obj("hardLimit" -> Json.fromInt(10), "softLimit" -> Json.fromInt(5))
           )
-        )
-        .isLeft
+        )) match {
+        case Left(ConfigError(ConfigProblem.JsonField(_, _, _))) => true
+        case _                                                   => false
+      }
     )
     // Global fetching-peer targets; preferred-peer handover follows the reference.
     assertEquals(
@@ -538,15 +553,24 @@ class ConfigSuite extends FunSuite:
     assertEquals(nonProducing(Json.True), Right(Some(true)))
     assertEquals(nonProducing(Json.False), Right(Some(false)))
     assertEquals(nonProducing(Json.Null), Right(None))
-    assert(nonProducing(Json.fromString("true")).isLeft)
+    assert(nonProducing(Json.fromString("true")) match {
+      case Left(ConfigError(ConfigProblem.JsonField(_, _, _))) => true
+      case _                                                   => false
+    })
     assertEquals(
       NodeConfig
         .parse(ReferenceBuild.Default)(base.noSpaces)
         .map(_.settings.startAsNonProducingNode),
       Right(None)
     )
-    assert(NodeConfig.parse(ReferenceBuild.Default)("[]").isLeft)
-    assert(NodeConfig.parse(ReferenceBuild.Default)("{").isLeft)
+    assert(NodeConfig.parse(ReferenceBuild.Default)("[]") match {
+      case Left(ConfigError(ConfigProblem.ExpectedObject(_, _))) => true
+      case _                                                     => false
+    })
+    assert(NodeConfig.parse(ReferenceBuild.Default)("{") match {
+      case Left(ConfigError(ConfigProblem.JsonSyntax(_, _: io.circe.ParsingFailure))) => true
+      case _                                                                          => false
+    })
   }
 
   test("MempoolCapacityBytesOverride is a Word32, as cardano-node 11.1.3 reads it") {
@@ -585,8 +609,14 @@ class ConfigSuite extends FunSuite:
       .map(_.mempoolBytes.map(_.toLong))
     assertEquals(flag("0"), Right(Some(0L)))
     assertEquals(flag("4294967295"), Right(Some(4294967295L)))
-    assert(flag("4294967296").isLeft)
-    assert(flag("-1").isLeft)
+    assert(flag("4294967296") match {
+      case Left(ConfigError(ConfigProblem.WithUsage(ConfigProblem.FlagValue(_, _), _))) => true
+      case _                                                                            => false
+    })
+    assert(flag("-1") match {
+      case Left(ConfigError(ConfigProblem.WithUsage(ConfigProblem.FlagValue(_, _), _))) => true
+      case _                                                                            => false
+    })
   }
 
   test("the mempool's time limits are all three or none, as cardano-node reads them") {
@@ -643,7 +673,10 @@ class ConfigSuite extends FunSuite:
           "MempoolTimeoutSoft" -> bad,
           "MempoolTimeoutHard" -> Json.fromInt(2),
           "MempoolTimeoutCapacity" -> Json.fromInt(5)
-        ).isLeft,
+        ) match {
+          case Left(ConfigError(ConfigProblem.JsonField(_, _, _))) => true
+          case _                                                   => false
+        },
         bad.noSpaces
       )
     )
@@ -911,19 +944,58 @@ class ConfigSuite extends FunSuite:
     val roots = PeerNetwork.roots(Nil, Some(parsed))
     assertEquals(roots.localSrv.head.map(_._1.value), List("local.example."))
     assert(roots.hasPeers)
-    assert(topology(group("""{"address": "relay.example", "port": 70000}""")).isLeft)
-    assert(topology(group("""{"address": "relay.example", "port": "3001"}""")).isLeft)
-    assert(topology(group("""{"address": "0.0.0.0", "port": 3001}""")).isLeft)
-    assert(topology(group("""{"address": "", "port": 3001}""")).isLeft)
-    assert(topology("""{"accessPoints": []}""").isLeft, "valency is required")
-    assert(Topology.parse("""{"publicRoots": []}""").isLeft, "localRoots is required")
-    assert(Topology.parse("""{"localRoots": []}""").isLeft, "publicRoots is required")
+    assert(topology(group("""{"address": "relay.example", "port": 70000}""")) match {
+      case Left(ConfigError(ConfigProblem.TopologyPort(_))) => true
+      case _                                                => false
+    })
+    assert(topology(group("""{"address": "relay.example", "port": "3001"}""")) match {
+      case Left(ConfigError(ConfigProblem.TopologyPort(_))) => true
+      case _                                                => false
+    })
+    assert(topology(group("""{"address": "0.0.0.0", "port": 3001}""")) match {
+      case Left(ConfigError(ConfigProblem.UnspecifiedDestination(_))) => true
+      case _                                                          => false
+    })
+    assert(topology(group("""{"address": "", "port": 3001}""")) match {
+      case Left(ConfigError(ConfigProblem.TopologyHost(_))) => true
+      case _                                                => false
+    })
     assert(
-      Topology.parse("""{"localRoots": [], "publicRoots": [], "useLedgerAfterSlot": "x"}""").isLeft
+      topology("""{"accessPoints": []}""") match {
+        case Left(ConfigError(ConfigProblem.MissingValency)) => true
+        case _                                               => false
+      },
+      "valency is required"
     )
-    assert(Topology.parse("[]").isLeft)
+    assert(
+      Topology.parse("""{"publicRoots": []}""") match {
+        case Left(ConfigError(ConfigProblem.JsonField(_, _, _))) => true
+        case _                                                   => false
+      },
+      "localRoots is required"
+    )
+    assert(
+      Topology.parse("""{"localRoots": []}""") match {
+        case Left(ConfigError(ConfigProblem.JsonField(_, _, _))) => true
+        case _                                                   => false
+      },
+      "publicRoots is required"
+    )
+    assert(
+      Topology.parse("""{"localRoots": [], "publicRoots": [], "useLedgerAfterSlot": "x"}""") match {
+        case Left(ConfigError(ConfigProblem.JsonField(_, _, _))) => true
+        case _                                                   => false
+      }
+    )
+    assert(Topology.parse("[]") match {
+      case Left(ConfigError(ConfigProblem.ExpectedObject(_, _))) => true
+      case _                                                     => false
+    })
     // an empty bootstrap list and no trustable local root: nothing to make progress from
-    assert(Topology.parse("""{"localRoots": [], "publicRoots": [], "bootstrapPeers": []}""").isLeft)
+    assert(Topology.parse("""{"localRoots": [], "publicRoots": [], "bootstrapPeers": []}""") match {
+      case Left(ConfigError(ConfigProblem.UntrustedBootstrap)) => true
+      case _                                                   => false
+    })
     // a trustable group counts only with an access point (`isValidTrustedPeerConfiguration`,
     // cardano-diffusion 1.1.1.0 `Cardano/Network/Diffusion/Topology.hs` 29-40)
     assertEquals(
@@ -1034,9 +1106,24 @@ class ConfigSuite extends FunSuite:
     assert(
       Main.parse(List("follow", "--genesis-dir", "/g", "--topology", "/c/topology.json")).isRight
     )
-    assert(Main.parse(List("follow", "--topology", "/c/topology.json")).isLeft, "no genesis")
-    assert(Main.parse(List("follow", "--config", "/c/config.json")).isLeft, "no peers")
-    assert(Main.parse(List("follow", "--config", "a", "--config", "b", "--peer", "x:1")).isLeft)
+    assert(
+      Main.parse(List("follow", "--topology", "/c/topology.json")) match {
+        case Left(ConfigError(ConfigProblem.RequiredOneOf(_))) => true
+        case _                                                 => false
+      },
+      "no genesis"
+    )
+    assert(
+      Main.parse(List("follow", "--config", "/c/config.json")) match {
+        case Left(ConfigError(ConfigProblem.RequiredOneOf(_))) => true
+        case _                                                 => false
+      },
+      "no peers"
+    )
+    assert(Main.parse(List("follow", "--config", "a", "--config", "b", "--peer", "x:1")) match {
+      case Left(ConfigError(ConfigProblem.WithUsage(ConfigProblem.DuplicateFlag(_), _))) => true
+      case _                                                                             => false
+    })
   }
 
   test(

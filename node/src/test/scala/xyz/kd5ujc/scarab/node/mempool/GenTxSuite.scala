@@ -108,7 +108,13 @@ class GenTxSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaChe
       (0 until hex(prefix).size).foreach(n =>
         assert(short(hex(prefix).take(n)), s"$prefix cut at $n")
       )
-      assert(admitted(hex(prefix + completion)).isLeft, s"whole $prefix$completion")
+      assert(
+        admitted(hex(prefix + completion)) match {
+          case Left(Rejection.Malformed(_)) => true
+          case _                            => false
+        },
+        s"whole $prefix$completion"
+      )
     }
   }
 

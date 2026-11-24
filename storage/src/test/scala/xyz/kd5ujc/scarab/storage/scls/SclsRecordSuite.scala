@@ -92,11 +92,17 @@ class SclsRecordSuite extends FunSuite:
     frames.filter(_.kind != SclsFraming.Kind.Chunk).foreach { frame =>
       (0 until frame.contents.size).foreach { end =>
         assert(
-          decode(frame.copy(contents = frame.contents.take(end))).isLeft,
+          decode(frame.copy(contents = frame.contents.take(end))) match {
+            case Left(SclsRecord.Error.Truncated(_, _, _)) => true
+            case _                                         => false
+          },
           s"${frame.kind} prefix $end"
         )
       }
-      assert(decode(frame.copy(contents = frame.contents ++ hex("00"))).isLeft)
+      assert(decode(frame.copy(contents = frame.contents ++ hex("00"))) match {
+        case Left(SclsRecord.Error.FooterSize(_, _)) | Left(SclsRecord.Error.Trailing(_, _)) => true
+        case _ => false
+      })
     }
     val last = frames.last
     val wrongFooter = last.contents.take(last.contents.size - 4) ++ hex("00000000")

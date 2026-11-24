@@ -40,6 +40,7 @@ import xyz.kd5ujc.scarab.ledger.Nonce
 import munit.CatsEffectSuite
 import scala.concurrent.duration.*
 import scala.jdk.CollectionConverters.*
+import xyz.kd5ujc.scarab.ledger.json.NumberError
 
 /** Era-walking regression suite over a committed capture of the `devnet.py up-eras` cluster
   * (`fixtures/eras`): a Byron start (one 50-slot epoch), then one Shelley-based epoch per protocol
@@ -282,7 +283,13 @@ class EraTransitionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       Right(setup.origin.get)
     )
     assert(
-      NodeConfig.parse(ReferenceBuild.Default)("{\"TestShelleyHardForkAtEpoch\": \"x\"}").isLeft
+      NodeConfig.parse(ReferenceBuild.Default)("{\"TestShelleyHardForkAtEpoch\": \"x\"}") match {
+        case Left(
+              ledger.ConfigError(ledger.ConfigProblem.ConfigNumber(_, NumberError.TypeMismatch(_)))
+            ) =>
+          true
+        case _ => false
+      }
     )
     assertEquals(NodeConfig.parse(ReferenceBuild.Default)("{}"), Right(NodeConfig.empty))
   }
@@ -732,7 +739,7 @@ class EraTransitionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   test("a Byron header signed over different content is rejected") {
     val main = headers(5).asInstanceOf[Header.Byron].main.get
     val bad = withHeader(5)(_.copy(main = Some(main.copy(signed = flip(main.signed, 40)))))
-    assert(byronUpdate(5, bad).isLeft)
+    assertEquals(byronUpdate(5, bad).map(_ => ()), Left(ledger.ByronChainError.SignatureRejected))
   }
 
   test("a Byron header from a foreign delegate is rejected, not accepted unchecked") {
@@ -744,26 +751,40 @@ class EraTransitionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         Some(main.copy(signature = delegated.copy(delegate = flip(delegated.delegate, 0))))
       )
     )
-    assert(byronUpdate(5, other).isLeft)
+    assertEquals(byronUpdate(5, other).map(_ => ()), Left(ledger.ByronChainError.SignatureRejected))
   }
 
   test("a Byron block whose body does not match the header's proof is rejected") {
     val b = byronBlock(5)
     val proof = b.header.bodyProof
     val bad = b.copy(header = b.header.copy(bodyProof = flip(proof, proof.size - 3)))
-    val result = byronUpdate(5, bad)
-    assert(result.isLeft, result.toString)
+    // the flipped byte lies in the last part of the proof, the update payload's
+    assertEquals(
+      byronUpdate(5, bad).map(_ => ()),
+      Left(
+        ledger.ByronChainError.Ledger(
+          ledger.byron.ByronError.ProofMismatch(ledger.byron.ByronError.Proof.Update)
+        )
+      )
+    )
   }
 
   test("a Byron block that skips its predecessor or has the wrong magic is rejected") {
     val b = byronBlock(5)
-    assert(byronUpdate(5, b, from = 3).isLeft)
-    assert(byronUpdate(5, withHeader(5)(_.copy(protocolMagic = 1))).isLeft)
+    def skipped(result: Either[ledger.ByronChainError | ledger.ProviderDefect, Any]): Unit =
+      result match
+        case Left(ledger.ByronChainError.PreviousHash(actual, _)) =>
+          assertEquals(actual, b.header.prevHash)
+        case other => fail(s"not a previous-hash refusal: $other")
+    skipped(byronUpdate(5, b, from = 3))
+    assertEquals(
+      byronUpdate(5, withHeader(5)(_.copy(protocolMagic = 1))).map(_ => ()),
+      Left(ledger.ByronChainError.ProtocolMagic(1, b.header.protocolMagic))
+    )
     val first = states(0).consensus.byron
-    assert(
+    skipped(
       ByronRules
         .update(ByronRules.State(None, first.ledger.get, first.pbft), b, setup.byronRules.get)
-        .isLeft
     )
   }
 
@@ -806,21 +827,43 @@ class EraTransitionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         states(first).copy(extras = MirrorExtras.InByron(other.dep, follow, other.extras))
       case _ => fail("the state before the first Shelley block is not Byron's")
     val result = validate(wrong, first)
-    assert(result.left.exists(_.rule == BlockRule.TPraos), result.toString)
+    assert(
+      result match {
+        case Left(BlockFailure.TPraos(ledger.TPraosError.BadNonceVrf(_))) => true
+        case _                                                            => false
+      },
+      result.toString
+    )
   }
 
   test("a Byron block cannot follow the first Shelley block") {
     val first = blocks.indexWhere(_.era == Era.Shelley)
     val result = validate(states(first + 1), 10)
-    assert(result.left.exists(_.rule == BlockRule.Structure), result.toString)
+    assert(
+      result match {
+        case Left(BlockFailure.ByronAfterShelley) => true
+        case _                                    => false
+      },
+      result.toString
+    )
   }
 
-  test("a Shelley block with a flipped body byte fails the body commitment") {
-    val i = blocks.indexWhere(b => b.era == Era.Mary)
-    val raw = raws(i)
-    val bad = Bytes(raw.value.updated(raw.size - 2, (raw.value(raw.size - 2) ^ 1).toByte))
-    val result = applyBlock(states(i), headers(i), bad)
-    assert(result.isLeft, result.toString)
+  test("a Shelley block with another block's body fails the body commitment") {
+    // The header of one Mary block before the body of another: the bytes still decode, so the
+    // refusal is the commitment's. (A flipped byte of an empty body is a decoding failure.)
+    def body(k: Int): Vector[Byte] =
+      val raw = raws(k).value
+      val at = raw.indexOfSlice(headers(k).raw.value)
+      assert(at >= 0, s"block $k does not hold its header's bytes")
+      raw.drop(at + headers(k).raw.size)
+    val mary = blocks.indices.filter(blocks(_).era == Era.Mary)
+    val i = mary.headOption.getOrElse(fail("no Mary block in the fixture"))
+    val j = mary.find(body(_) != body(i)).getOrElse(fail("the Mary blocks have one body"))
+    val spliced = Bytes(raws(i).value.dropRight(body(i).size) ++ body(j))
+    assertEquals(
+      applyBlock(states(i), headers(i), spliced).left.toOption,
+      Some(BlockFailure.BodyCommitment)
+    )
   }
 
   // ---------------------------------------------------------------- the chain model across eras
@@ -833,14 +876,22 @@ class EraTransitionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       c.extend(h, 0).fold(e => fail(e.message), _._1)
     }
     assertEquals(grown.tipRef.map(_.hash), Some(headers(51).hash))
-    assert(VolatileChain.genesis[Int](5, 0).extend(headers.head, 0).isLeft)
+    assert(VolatileChain.genesis[Int](5, 0).extend(headers.head, 0) match {
+      case Left(ledger.ChainError.NotConnected(_, ChainSync.Point.Origin)) => true
+      case _                                                               => false
+    })
     assert(
-      VolatileChain
+      (VolatileChain
         .genesis[Int](5, 0, Some(Bytes(Vector.fill(32)(1))))
-        .extend(headers.head, 0)
-        .isLeft
+        .extend(headers.head, 0)) match {
+        case Left(ledger.ChainError.NotConnected(_, ChainSync.Point.Origin)) => true
+        case _                                                               => false
+      }
     )
-    assert(empty.extend(headers(1), 0).isLeft)
+    assert(empty.extend(headers(1), 0) match {
+      case Left(ledger.ChainError.NotConnected(_, ChainSync.Point.Origin)) => true
+      case _                                                               => false
+    })
   }
 
   /** Replay `script` through the real follower and rules over a scripted peer; returns once the

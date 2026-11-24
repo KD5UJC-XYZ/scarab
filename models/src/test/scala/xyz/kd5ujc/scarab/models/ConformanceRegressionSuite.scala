@@ -3,6 +3,7 @@ package xyz.kd5ujc.scarab.models
 
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor}
+import xyz.kd5ujc.scarab.models.runtime.DecodeError
 
 class ConformanceRegressionSuite extends FunSuite:
   private def bytes(hex: String): Bytes = Bytes.fromHex(hex).fold(e => fail(e.toString), identity)
@@ -22,7 +23,13 @@ class ConformanceRegressionSuite extends FunSuite:
     assertEquals(present.payload, Some(bytes("00")))
     assertEquals(features.OptionalMiddle.encodeUnchecked(present), bytes("844101024100f5"))
     Vector("8101", "82014100", "830102f4ff", "8201f6").foreach { hex =>
-      assert(features.OptionalMiddle.decodeBytes(bytes(hex)).isLeft, hex)
+      assert(
+        features.OptionalMiddle.decodeBytes(bytes(hex)) match {
+          case Left(DecodeError(_, _, _, _)) => true
+          case _                             => false
+        },
+        hex
+      )
     }
   }
 
@@ -38,7 +45,13 @@ class ConformanceRegressionSuite extends FunSuite:
       assertEquals(value.optionalGroup.before.isDefined, expected == 3)
     }
     Vector("8101", "8401020304", "8201f5", "82410102").foreach(hex =>
-      assert(features.GroupSuffix.decodeBytes(bytes(hex)).isLeft, hex)
+      assert(
+        features.GroupSuffix.decodeBytes(bytes(hex)) match {
+          case Left(DecodeError(_, _, _, _)) => true
+          case _                             => false
+        },
+        hex
+      )
     )
   }
 
@@ -56,9 +69,27 @@ class ConformanceRegressionSuite extends FunSuite:
             yield (before, after, tail)
           }
       }
-    assert(greedy("820102").isLeft, "greedily consumed optional prefix cannot become absent")
+    assert(
+      greedy("820102") match {
+        case Left(
+              DecodeError(DecodeError.Kind.BadArity(DecodeError.Arity.AtLeast(_), _), _, _, _)
+            ) =>
+          true
+        case _ => false
+      },
+      "greedily consumed optional prefix cannot become absent"
+    )
     assertEquals(greedy("83010203"), Right((Some(BigInt(1)), BigInt(2), BigInt(3))))
-    assert(greedy("8401020304").isLeft, "a matching prefix does not permit unconsumed values")
+    assert(
+      greedy("8401020304") match {
+        case Left(
+              DecodeError(DecodeError.Kind.BadArity(DecodeError.Arity.Range(_, _), _), _, _, _)
+            ) =>
+          true
+        case _ => false
+      },
+      "a matching prefix does not permit unconsumed values"
+    )
   }
 
   test("named integer comparisons retain both bounds and exclude an interior point") {
@@ -66,7 +97,13 @@ class ConformanceRegressionSuite extends FunSuite:
       assert(features.ComparisonControls.decodeBytes(bytes(hex)).isRight, hex)
     }
     Vector("820200", "820304", "8219010000", "8203190100").foreach { hex =>
-      assert(features.ComparisonControls.decodeBytes(bytes(hex)).isLeft, hex)
+      assert(
+        features.ComparisonControls.decodeBytes(bytes(hex)) match {
+          case Left(DecodeError(_, _, _, _)) => true
+          case _                             => false
+        },
+        hex
+      )
     }
   }
 
@@ -77,7 +114,13 @@ class ConformanceRegressionSuite extends FunSuite:
       val input = bytes(hex)
       val value = features.AnyPayload.decodeBytes(input).fold(e => fail(e.render), identity)
       assertEquals(features.AnyPayload.encodeUnchecked(value), input, hex)
-      assert(Cbor.decode(input).isLeft, "hand-written wire CBOR still rejects floats by default")
+      assert(
+        Cbor.decode(input) match {
+          case Left(Cbor.Error.UnsupportedSimpleValue(_)) => true
+          case _                                          => false
+        },
+        "hand-written wire CBOR still rejects floats by default"
+      )
     }
   }
 
@@ -86,10 +129,22 @@ class ConformanceRegressionSuite extends FunSuite:
       val input = bytes(hex)
       val value = features.AnyPayload.decodeBytes(input).fold(e => fail(e.render), identity)
       assertEquals(features.AnyPayload.encodeUnchecked(value), input)
-      assert(Cbor.decode(input).isLeft, "default wire policy still rejects generic simple values")
+      assert(
+        Cbor.decode(input) match {
+          case Left(Cbor.Error.UnsupportedSimpleValue(_)) => true
+          case _                                          => false
+        },
+        "default wire policy still rejects generic simple values"
+      )
     }
     Vector("81f800", "81f817", "81f818", "81f81f", "81fc", "81fd", "81fe").foreach(hex =>
-      assert(features.AnyPayload.decodeBytes(bytes(hex)).isLeft, hex)
+      assert(
+        features.AnyPayload.decodeBytes(bytes(hex)) match {
+          case Left(DecodeError(_, _, _, _)) => true
+          case _                             => false
+        },
+        hex
+      )
     )
   }
 
@@ -122,8 +177,14 @@ class ConformanceRegressionSuite extends FunSuite:
     val definite = bytes("5841" + "ab" * 65)
     val chunked = bytes("5f5840" + "ab" * 64 + "41abff")
     val oversizedChunk = bytes("5f5841" + "ab" * 65 + "ff")
-    assert(alonzo.BoundedBytes.decodeBytes(definite).isLeft)
-    assert(babbage.BoundedBytes.decodeBytes(oversizedChunk).isLeft)
+    assert(alonzo.BoundedBytes.decodeBytes(definite) match {
+      case Left(DecodeError(DecodeError.Kind.BadSize(_, _), _, _, _)) => true
+      case _                                                          => false
+    })
+    assert(babbage.BoundedBytes.decodeBytes(oversizedChunk) match {
+      case Left(DecodeError(DecodeError.Kind.BadSize(_, _), _, _, _)) => true
+      case _                                                          => false
+    })
     val value = conway.BoundedBytes.decodeBytes(chunked).fold(e => fail(e.render), identity)
     assertEquals(value.value.size, 65)
     assertEquals(conway.BoundedBytes.encodeUnchecked(value), chunked)

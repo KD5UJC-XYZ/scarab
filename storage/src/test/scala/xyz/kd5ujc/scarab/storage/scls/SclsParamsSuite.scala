@@ -9,6 +9,7 @@ import xyz.kd5ujc.scarab.ledger.Nonce
 import xyz.kd5ujc.scarab.ledger.state.{ConwayNewEpochState, ShelleyBasedEra}
 import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellLedgerFile, Params}
 import xyz.kd5ujc.scarab.storage.scls.SclsRecord.Namespace
+import xyz.kd5ujc.scarab.models.runtime.ConstraintViolation
 
 class SclsParamsSuite extends FunSuite:
   private def right[E, A](value: Either[E, A]): A = value.fold(e => fail(e.toString), identity)
@@ -88,7 +89,10 @@ class SclsParamsSuite extends FunSuite:
   }
 
   test("projection refuses invalid represented fields and preserves legitimate zero values") {
-    assert(Params.projectConway(current.copy(minFeeA = -1)).isLeft)
+    assert(Params.projectConway(current.copy(minFeeA = -1)) match {
+      case Left(ConstraintViolation(_, _, _, _)) => true
+      case _                                     => false
+    })
     val zero = current.copy(minFeeA = 0, minFeeB = 0)
     val rebuilt = Params.overlayConway(right(Params.projectConway(zero)), current)
     assertEquals(rebuilt.minFeeA, BigInt(0))

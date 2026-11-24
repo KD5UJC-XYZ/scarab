@@ -154,7 +154,14 @@ class DeepNestingSuite extends FunSuite:
       assert(!script.eval(Set.empty, Some(BigInt(4)), None))
       val bad =
         Cbor.decode(repeat(unit, n) ++ raw(0x82, 0x09, 0x00)).fold(e => fail(e.toString), identity)
-      assert(NativeScript.decode(bad, NativeScript.Form.Timelock).isLeft)
+      assert(NativeScript.decode(bad, NativeScript.Form.Timelock) match {
+        case Left(
+              xyz.kd5ujc.scarab.ledger.NativeScript.DecodeError
+                .Malformed(LedgerDecodeError.TaggedArity(DecodeField.NativeScript, _, _))
+            ) =>
+          true
+        case _ => false
+      })
     }
   }
 

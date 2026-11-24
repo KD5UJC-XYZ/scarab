@@ -58,11 +58,17 @@ class MirrorStepSuite extends FunSuite:
     assertEquals(next.past(1), Past(bound(0), bound(2)))
     assertEquals(next.past.drop(2), Vector.fill(4)(Past(bound(2), bound(2))))
     // the protocol must be that of the era: TPraos does not run Conway
-    assert(MirrorStep.into(inShelley, Era.Conway, bound(2), dep(Era.Shelley)).isLeft)
+    assert(MirrorStep.into(inShelley, Era.Conway, bound(2), dep(Era.Shelley)) match {
+      case Left(TelescopeError.WrongEra(Era.Conway)) => true
+      case _                                         => false
+    })
   }
 
   test("an earlier era is refused") {
-    assert(MirrorStep.into(inShelley, Era.Byron, bound(2), dep(Era.Byron)).isLeft)
+    assert(MirrorStep.into(inShelley, Era.Byron, bound(2), dep(Era.Byron)) match {
+      case Left(TelescopeError.WrongEra(Era.Byron)) => true
+      case _                                        => false
+    })
   }
 
   test("an era begins at its configured epoch, else in the epoch of the block, never before") {

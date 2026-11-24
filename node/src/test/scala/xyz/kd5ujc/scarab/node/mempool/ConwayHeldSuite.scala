@@ -362,7 +362,16 @@ class ConwayHeldSuite extends FunSuite:
       Mismatch[RelLTEQ, Long](204801L, 204800L)
     )
     val failures = NonEmptyChain(other, failure)
-    assert(ConwayFailureCbor.applyTxError(failures.toNonEmptyList).isLeft)
+    assert(ConwayFailureCbor.applyTxError(failures.toNonEmptyList) match {
+      case Left(
+            ConwayFailureCbor.NoReferenceEncoding.ContextError(
+              xyz.kd5ujc.scarab.ledger.era.AlonzoContextError
+                .TimeTranslationPastHorizon(xyz.kd5ujc.scarab.ledger.TranslationError.NoEraHistory)
+            )
+          ) =>
+        true
+      case _ => false
+    })
     // in its place, Conway's free-text failure of it; the other failure in its own bytes
     val sent = ConwayFailureCbor.applyTxError(
       cats.data.NonEmptyList.of(

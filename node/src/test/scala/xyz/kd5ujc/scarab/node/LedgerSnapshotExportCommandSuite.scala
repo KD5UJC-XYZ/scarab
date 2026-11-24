@@ -5,6 +5,7 @@ import munit.FunSuite
 import xyz.kd5ujc.scarab.ledger.ConfigProblem
 import xyz.kd5ujc.scarab.node.tools.LedgerSnapshotExportCommand
 import xyz.kd5ujc.scarab.protocol.ReferenceBuild
+import xyz.kd5ujc.scarab.ledger.ConfigError
 
 class LedgerSnapshotExportCommandSuite extends FunSuite:
   private val required = List("--db", "/data/db", "--out", "/data/ledger")
@@ -19,12 +20,28 @@ class LedgerSnapshotExportCommandSuite extends FunSuite:
 
   test("invalid slots, duplicate arguments, missing paths and malformed paths are refused") {
     Vector("-1", "18446744073709551616", "1.0", "", "abc", "+1").foreach { slot =>
-      assert(LedgerSnapshotExportCommand.parse(required ++ List("--slot", slot)).isLeft)
+      assert(LedgerSnapshotExportCommand.parse(required ++ List("--slot", slot)) match {
+        case Left(ConfigError(ConfigProblem.FlagValue(_, _))) => true
+        case _                                                => false
+      })
     }
-    assert(LedgerSnapshotExportCommand.parse(List("--db", "/data/db")).isLeft)
-    assert(LedgerSnapshotExportCommand.parse(required ++ List("--db", "/other")).isLeft)
-    assert(LedgerSnapshotExportCommand.parse(required ++ List("--unknown", "1")).isLeft)
-    assert(LedgerSnapshotExportCommand.parse(List("--db", "a\u0000b", "--out", "/out")).isLeft)
+    assert(LedgerSnapshotExportCommand.parse(List("--db", "/data/db")) match {
+      case Left(ConfigError(ConfigProblem.MissingFlag(_))) => true
+      case _                                               => false
+    })
+    assert(LedgerSnapshotExportCommand.parse(required ++ List("--db", "/other")) match {
+      case Left(ConfigError(ConfigProblem.WithUsage(ConfigProblem.DuplicateFlag(_), _))) => true
+      case _                                                                             => false
+    })
+    assert(LedgerSnapshotExportCommand.parse(required ++ List("--unknown", "1")) match {
+      case Left(ConfigError(ConfigProblem.WithUsage(ConfigProblem.UnknownFlag(_), _))) => true
+      case _                                                                           => false
+    })
+    assert(LedgerSnapshotExportCommand.parse(List("--db", "a\u0000b", "--out", "/out")) match {
+      case Left(ConfigError(ConfigProblem.InvalidPath(_, _: java.nio.file.InvalidPathException))) =>
+        true
+      case _ => false
+    })
   }
 
   test(
@@ -46,8 +63,10 @@ class LedgerSnapshotExportCommandSuite extends FunSuite:
           case other => fail(s"not an unknown build: $other")
       case Right(options) => fail(s"11.1.3 was accepted: $options")
     assert(
-      LedgerSnapshotExportCommand
-        .parse(required ++ List("--reference-build", "11.1", "--reference-build", "11.1"))
-        .isLeft
+      (LedgerSnapshotExportCommand
+        .parse(required ++ List("--reference-build", "11.1", "--reference-build", "11.1"))) match {
+        case Left(ConfigError(ConfigProblem.WithUsage(ConfigProblem.DuplicateFlag(_), _))) => true
+        case _                                                                             => false
+      }
     )
   }
