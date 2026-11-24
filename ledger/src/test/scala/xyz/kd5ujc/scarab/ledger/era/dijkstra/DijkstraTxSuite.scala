@@ -45,6 +45,7 @@ import xyz.kd5ujc.scarab.ledger.era.{
   Datum,
   Delegatee,
   EraScript,
+  EraTx,
   EraTxBody,
   EraTxError,
   EraTxWits,
@@ -59,7 +60,7 @@ import xyz.kd5ujc.scarab.ledger.era.{
   TxLevel,
   ValidityInterval
 }
-import xyz.kd5ujc.scarab.ledger.rules.Convert
+import xyz.kd5ujc.scarab.ledger.rules.{Convert, DijkstraTxMeasures}
 import xyz.kd5ujc.scarab.ledger.state.{
   Coin,
   Credential,
@@ -576,7 +577,29 @@ class DijkstraTxSuite extends FunSuite:
       partsSize(flat.body.raw, flat.witnesses.raw, flat.auxiliary.map(_.raw)),
       what
     )
+    sameMeasures(era, flat, what)
     flat.body.subTransactions.size
+
+  /** What a block, an endorser block and the pool's measure take of a transaction, the era's and
+    * the flat transaction's: the id, the block form (`toCBORForBlockInclusion`) with either flag,
+    * the size (`sizeTxF`) and the execution units with the sub-transactions' (`getTotalExUnits`).
+    */
+  private def sameMeasures(era: DijkstraTx[TxLevel.Top], flat: FlatTx, what: String): Unit =
+    assertEquals(era.id, flat.id, what)
+    assertEquals(DijkstraTx.forBlockInclusion(era), flat.forBlockInclusion, what)
+    IsPhase2Valid.values.foreach(v =>
+      assertEquals(
+        DijkstraTx.forBlockInclusion(DijkstraTx.withIsValid(era, v)),
+        flat.copy(isValid = v == IsPhase2Valid.Phase2Valid).forBlockInclusion,
+        s"$what, $v"
+      )
+    )
+    assertEquals(era.sizeTxF, flat.size, what)
+    assertEquals(
+      EraTx.dijkstra.getTotalExUnits[TxLevel.Top](era)(using BothLevels.Top),
+      DijkstraTxMeasures.totalExUnits(flat),
+      what
+    )
 
   private def registersPool(flat: FlatTx): Boolean =
     def in(b: FlatBody) = b.certificates.exists {
@@ -712,6 +735,34 @@ class DijkstraTxSuite extends FunSuite:
       .map(t => bodies.subTransactions(t.body).keys)
       .count(ids => ids.sizeIs >= 2 && ids != ids.sorted)
     assert(unsorted > 0, "every recorded sub-transaction list is in its ids' order")
+  }
+
+  test(
+    "the transactions compared for their block form cover auxiliary data, its absence and redeemers of sub-transactions"
+  ) {
+    // what `sameMeasures` compares is covered: a transaction with auxiliary data and one without
+    // (their block forms differ in the third item), and one whose sub-transactions carry
+    // redeemers (whose units `getTotalExUnits` adds at the top level)
+    val blocks = DijkstraCorpus.testnetBlocks.flatMap((_, raw) =>
+      Block.decodeShelley(raw) match
+        case Right(b: Block.Dijkstra) => b.block.transactions.map(_.raw)
+        case _                        => Vector.empty
+    )
+    val read = ((DijkstraCorpus.contextCases ++ DijkstraCorpus.chainContextCases)
+      .map(c => hex(str(c, "bytes"))) ++ blocks)
+      .flatMap(raw => DijkstraTx.inBlock(node(raw)).toOption)
+    assert(read.exists(_.auxData.isDefined), "no transaction with auxiliary data")
+    assert(read.exists(_.auxData.isEmpty), "no transaction without auxiliary data")
+    val subUnits = read.count(t =>
+      bodies
+        .subTransactions(t.body)
+        .toVector
+        .exists(s =>
+          EraTx.dijkstra.getTotalExUnits[TxLevel.Sub](s)(using BothLevels.Sub) !=
+            xyz.kd5ujc.scarab.plutus.ExUnits.zero
+        )
+    )
+    assert(subUnits > 0, "no sub-transaction with redeemers")
   }
 
   test(

@@ -108,6 +108,29 @@ object DijkstraTx:
   def isValid(tx: DijkstraTx[TxLevel.Top]): IsPhase2Valid = tx match
     case t: TopTx => t.isValid
 
+  /** `toCBORForBlockInclusion` (`Tx.hs:527-533`, cardano-ledger 9df9f98c): `[body, witnesses,
+    * auxiliary_data / null, is_valid]`, the body, the witness set and the auxiliary data each
+    * written as the bytes it memoizes, the phase-two flag last. The reference keeps no bytes of the
+    * whole transaction (`Tx.hs:483-489`): a block and an endorser block hold this encoding
+    * (`serializeTxForLeios`), whatever form the transaction arrived in. Of a top-level transaction
+    * only, as the reference's is.
+    */
+  def forBlockInclusion(tx: DijkstraTx[TxLevel.Top]): Bytes =
+    import xyz.kd5ujc.scarab.ledger.HeaderBodyEncoding.{False, Null, True, join, list}
+    tx match
+      case t: TopTx =>
+        join(
+          Vector(
+            list(4),
+            t.body.raw.toArray,
+            t.wits.raw.toArray,
+            t.auxData.fold(Null)(_.raw.toArray),
+            t.isValid match
+              case IsPhase2Valid.Phase2Valid   => True
+              case IsPhase2Valid.Phase2Invalid => False
+          )
+        )
+
   /** A top-level transaction the Leios build's block decoder read
     * ([[xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraTx]], which decides what is refused), in
     * Dijkstra's types, its sub-transactions at the sub-transaction level. Only [[inBlock]] and

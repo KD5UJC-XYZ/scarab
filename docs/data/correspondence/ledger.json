@@ -247,7 +247,7 @@
    "class": "Mirror",
    "structure": "same",
    "evidence": [
-    "LeiosEncodingSuite"
+    "DijkstraTxSuite"
    ],
    "digest": "8251fb7cc8eb9943"
   },
@@ -24312,6 +24312,27 @@
    ],
    "note": "the flat decoder's reading of the bytes, projected to the era's types by the object's private projection, its sub-transactions at the sub-transaction level in the order read and by id; the flat decoder refused an id twice (`decodeNonEmptySetLikeEnforceNoDuplicatesAnn (flip OMap.|>)`, `TxBody.hs:467-471`), and the ordered map refuses it again; caveat: the node is trusted to be the CBOR parser's, its value the reading of its bytes, as every decoder of a node assumes, since a node built by hand can hold a value its bytes are not (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6999001864)",
    "digest": "f791edaf7359499c"
+  },
+  "def ledger.era.dijkstra.DijkstraTx.forBlockInclusion": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Tx.hs",
+     "symbol": "toCBORForBlockInclusion",
+     "lines": [
+      527,
+      533
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "note": "of a top-level transaction only, as the reference's (Tx TopTx era); the parts' memoized bytes and the flag of its verdict last",
+   "digest": "2e4b6cb6289af93c"
   },
   "def ledger.era.dijkstra.DijkstraTx.fromSubmission": {
    "upstream": [
