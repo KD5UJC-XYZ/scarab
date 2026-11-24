@@ -5,6 +5,7 @@ import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.Blake2b
+import xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraBlock
 import xyz.kd5ujc.scarab.protocol.HfcHeader
 
 /** The encoders of a Dijkstra block ([[LeiosHeaderBody.encode]], [[LeiosHeader.signed]],
@@ -128,7 +129,13 @@ class LeiosEncodingSuite extends munit.FunSuite:
   test("a Dijkstra block encoded from its header and its body's contents is the recorded block") {
     blocks.foreach { (label, raw) =>
       val block = decodedBlock(label, raw)
-      val body = block.body
+      // the body's contents in the era's types, its transactions read by the era's decoder
+      val era = DijkstraBlock.decode(raw).fold(e => fail(s"$label: $e"), identity)
+      val body = LeiosBlockBody(
+        era.blockBody.txs,
+        block.leiosCertificate.map(_.certificate),
+        block.perasCertificate
+      )
       assertEquals(body.hash, block.header.bodyHash, s"$label: body hash")
       assertEquals(BigInt(body.size), block.header.bodySize, s"$label: body size")
       assertEquals(body.hash, block.bodyHash, label)

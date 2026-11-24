@@ -289,7 +289,7 @@
    "evidence": [
     "LeiosEncodingSuite"
    ],
-   "digest": "07be66521256dcce"
+   "digest": "3b3efa8066509195"
   },
   "val ledger.LeiosBlockBody#encode": {
    "upstream": [
@@ -309,7 +309,7 @@
    "evidence": [
     "LeiosEncodingSuite"
    ],
-   "digest": "0e53e4b855ea1308"
+   "digest": "e1e48e8d0fcd981d"
   },
   "def ledger.LeiosBlockBody#hash": {
    "upstream": [
@@ -380,26 +380,6 @@
     "LeiosEncodingSuite"
    ],
    "digest": "afa72954cdceab00"
-  },
-  "def ledger.LeiosBlock#body": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/BlockBody/Internal.hs",
-     "symbol": "DijkstraBlockBody",
-     "lines": [
-      163,
-      178
-     ]
-    }
-   ],
-   "class": "Mirror",
-   "structure": "same",
-   "evidence": [
-    "LeiosEncodingSuite"
-   ],
-   "digest": "29084aa0199feab2"
   },
   "class ledger.KesParameters": {
    "upstream": [
@@ -24329,7 +24309,8 @@
    "class": "Mirror",
    "structure": "same",
    "evidence": [
-    "DijkstraTxSuite"
+    "DijkstraTxSuite",
+    "LeiosEncodingSuite"
    ],
    "note": "of a top-level transaction only, as the reference's (Tx TopTx era); the parts' memoized bytes and the flag of its verdict last",
    "digest": "2e4b6cb6289af93c"
@@ -24352,29 +24333,8 @@
    "evidence": [
     "DijkstraTxSuite"
    ],
-   "note": "the flat decoder's reading of the bytes, projected to the era's types by the object's private projection, its sub-transactions at the sub-transaction level in the order read and by id; the flat decoder refused an id twice (`decodeNonEmptySetLikeEnforceNoDuplicatesAnn (flip OMap.|>)`, `TxBody.hs:467-471`), and the ordered map refuses it again; the era's half of the one read the mempool takes (submitted)",
-   "digest": "9ddd10a7c7c1736b"
-  },
-  "def ledger.era.dijkstra.DijkstraTx.submitted": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Tx.hs",
-     "symbol": "decodeDijkstraTopTx",
-     "lines": [
-      152,
-      169
-     ]
-    }
-   ],
-   "class": "Mirror",
-   "structure": "differs",
-   "evidence": [
-    "DijkstraMempoolSuite"
-   ],
-   "note": "fromSubmission's read with the flat transaction it was projected from, both of one read of the bytes: the bridge the node's mempool hands the forger, whose Dijkstra path builds blocks of the flat transaction until it takes the era's (#85)",
-   "digest": "ab1a78fad48e2574"
+   "note": "the flat decoder's reading of the bytes, projected to the era's types by the object's private projection, its sub-transactions at the sub-transaction level in the order read and by id; the flat decoder refused an id twice (`decodeNonEmptySetLikeEnforceNoDuplicatesAnn (flip OMap.|>)`, `TxBody.hs:467-471`), and the ordered map refuses it again; the one read the mempool takes (DijkstraRead.submitted)",
+   "digest": "eeee96b1efa85803"
   },
   "def ledger.era.dijkstra.DijkstraTx.withIsValid": {
    "upstream": [

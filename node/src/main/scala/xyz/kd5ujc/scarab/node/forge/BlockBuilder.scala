@@ -8,7 +8,8 @@ import xyz.kd5ujc.scarab.ledger.{HeaderBodyEncoding, HeaderVersionInfo, HeaderVr
 import xyz.kd5ujc.scarab.ledger.{LeiosBlock, LeiosBlockBody, LeiosHeader}
 import xyz.kd5ujc.scarab.ledger.{LeiosHeaderBody, LeiosHeaderFields}
 import xyz.kd5ujc.scarab.ledger.{ProtocolParams, RefScripts}
-import xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraTx
+import xyz.kd5ujc.scarab.ledger.era.{Tx, TxLevel}
+import xyz.kd5ujc.scarab.ledger.state.Dijkstra
 import xyz.kd5ujc.scarab.crypto.bls.Certificate
 import xyz.kd5ujc.scarab.plutus.ExUnits
 import scala.annotation.tailrec
@@ -338,7 +339,7 @@ object BlockBuilder:
       * (`fbPerasCert = Nothing`, `NodeKernel/Forge.hs:238`).
       */
     def dijkstra(
-        transactions: Vector[DijkstraTx],
+        transactions: Vector[Tx[TxLevel.Top, Dijkstra]],
         leiosCertificate: Option[Certificate],
         endorsing: Option[Endorsing] = None
     ): Assembly =
@@ -400,7 +401,7 @@ object BlockBuilder:
 
   /** The transactions of a Dijkstra ranking block and what they count for. */
   final case class Ranking(chosen: Vector[DijkstraHeld], used: TxMeasure):
-    def transactions: Vector[DijkstraTx] = chosen.map(_.tx)
+    def transactions: Vector[Tx[TxLevel.Top, Dijkstra]] = chosen.map(_.tx)
 
   /** The transactions a Dijkstra ranking block takes from the pool's snapshot of its slot: the
     * first part of `snapshotPartition` (`implSnapshotPartition`, ouroboros-consensus 2416493b
@@ -418,13 +419,13 @@ object BlockBuilder:
     * ([[ForgedLeiosEb.forge]]).
     */
   final case class Endorsing private (
-      transactions: NonEmptyVector[DijkstraTx],
+      transactions: NonEmptyVector[Tx[TxLevel.Top, Dijkstra]],
       forged: ForgedLeiosEb
   )
 
   object Endorsing:
     /** The endorser block of `transactions`, forged in `slot`. */
-    def apply(slot: BigInt, transactions: NonEmptyVector[DijkstraTx]): Endorsing =
+    def apply(slot: BigInt, transactions: NonEmptyVector[Tx[TxLevel.Top, Dijkstra]]): Endorsing =
       new Endorsing(transactions, ForgedLeiosEb.forge(slot, transactions))
 
   /** What a Dijkstra snapshot is partitioned into: the ranking block's transactions, and the run
@@ -435,7 +436,7 @@ object BlockBuilder:
       endorsed: Vector[DijkstraHeld],
       endorsedUsed: EbMeasure
   ):
-    def endorsedTransactions: Vector[DijkstraTx] = endorsed.map(_.tx)
+    def endorsedTransactions: Vector[Tx[TxLevel.Top, Dijkstra]] = endorsed.map(_.tx)
 
     /** `mkEb` 's endorser block of the run, forged in `slot` (`Shelley/Ledger/Forge.hs:172-212` of
       * ouroboros-consensus-cardano at 2416493b): none when the run is empty, so that a block with

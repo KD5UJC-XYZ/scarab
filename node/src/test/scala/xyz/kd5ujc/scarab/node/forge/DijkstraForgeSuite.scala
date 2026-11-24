@@ -18,12 +18,15 @@ import xyz.kd5ujc.scarab.ledger.{
   Header,
   HeaderError,
   LeiosBlock,
+  LeiosBlockBody,
   LeiosHeader,
   Nonce,
   OCertError,
   Praos2Error,
   TestLedger
 }
+import xyz.kd5ujc.scarab.ledger.era.{Tx, TxLevel}
+import xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraTx
 import xyz.kd5ujc.scarab.ledger.rules.Globals
 import xyz.kd5ujc.scarab.ledger.state.{
   CompactCoin,
@@ -332,8 +335,9 @@ class DijkstraForgeSuite extends munit.FunSuite:
     assertEquals(shape(decoded(forged.raw)), shape(decoded(recorded)))
     val ours = LeiosBlock.decode(forged.raw).toOption.get
     val theirs = LeiosBlock.decode(recorded).toOption.get
-    assertEquals(ours.body.encode.hex, "8380f6f6")
-    assertEquals(ours.body.encode, theirs.body.encode)
+    assertEquals(LeiosBlockBody(Vector.empty, None, None).encode.hex, "8380f6f6")
+    assertEquals(ours.bodyHash, theirs.bodyHash)
+    assertEquals(ours.bodySize, theirs.bodySize)
     assertEquals(ours.header.bodyHash, theirs.header.bodyHash)
     assertEquals(ours.header.bodySize, BigInt(4))
     assertEquals(ours.header.leios, theirs.header.leios)
@@ -389,9 +393,12 @@ class DijkstraForgeSuite extends munit.FunSuite:
     * pool's ([[DijkstraSnapshot]]).
     */
   private lazy val snapshot: DijkstraSnapshot =
-    DijkstraSnapshot(
-      recorded._1.transactions.map(tx => DijkstraHeld(tx, Capacity.dijkstraMeasure(tx, 0L)))
-    )
+    DijkstraSnapshot(recordedTxs.map(tx => DijkstraHeld(tx, Capacity.dijkstraMeasure(tx, 0L))))
+
+  /** Block 64,853's transactions, read again by the era's decoder from the bytes the block holds.
+    */
+  private lazy val recordedTxs: Vector[Tx[TxLevel.Top, Dijkstra]] =
+    recorded._1.transactions.map(DijkstraEraTxs.of)
 
   test("a ranking block's capacity is the testnet's, from Dijkstra's parameters") {
     // `blockCapacityConwayMeasure` at Dijkstra: 90,112 less 1,024 bytes, the block's units, and
@@ -419,12 +426,14 @@ class DijkstraForgeSuite extends munit.FunSuite:
   }
 
   test("block 64,853's transactions measure as the reference's sizes, and fit one ranking block") {
-    val txs = recorded._1.transactions
+    val txs = recordedTxs
     assertEquals(txs.size, 40)
     // `sizeTxF` writes the three memoized parts under a one-byte head, the block form also the flag
-    txs.foreach(tx => assertEquals(tx.size, tx.forBlockInclusion.size.toLong - 1, tx.id.hex))
+    txs.foreach(tx =>
+      assertEquals(tx.sizeTxF, DijkstraTx.forBlockInclusion(tx).size.toLong - 1, tx.id.hex)
+    )
     val total = snapshot.held.map(_.measure).reduce(_ + _)
-    assertEquals(total.bytes, txs.map(_.size + Capacity.PerTxOverhead).sum)
+    assertEquals(total.bytes, txs.map(_.sizeTxF + Capacity.PerTxOverhead).sum)
     val ranking = BlockBuilder.ranking(snapshot, Capacity.dijkstraBlockUnit(params))
     assertEquals(ranking.transactions, txs)
     assertEquals(ranking.used, total)
@@ -462,7 +471,8 @@ class DijkstraForgeSuite extends munit.FunSuite:
       case d: Block.Dijkstra =>
         assertEquals(d.block.faults, Vector.empty)
         assertEquals(d.block.transactions, recorded._1.transactions)
-        assertEquals(d.block.body.encode, recorded._2)
+        assertEquals(d.block.bodyHash, Blake2b.hash256.hash(recorded._2))
+        assertEquals(d.block.bodySize, recorded._2.size.toLong)
       case other => fail(s"not a Dijkstra block: $other")
     assertEquals(withTxs.header.leios.blockBodyContainsLeiosCert, false)
     assertEquals(withTxs.header.leios.announcement, None)
@@ -490,7 +500,7 @@ class DijkstraForgeSuite extends munit.FunSuite:
 
   test("a ranking block announcing an endorser block passes Praos2's header rules and the checks") {
     val endorsing =
-      BlockBuilder.Endorsing(led._1, NonEmptyVector.fromVectorUnsafe(recorded._1.transactions))
+      BlockBuilder.Endorsing(led._1, NonEmptyVector.fromVectorUnsafe(recordedTxs))
     val body = BlockBuilder.Assembly.dijkstra(Vector.empty, None, Some(endorsing))
     val announcing = forge(body)
     assertEquals(announcing.header.leios.announcement, Some(endorsing.forged.announcement))

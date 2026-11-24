@@ -4,7 +4,9 @@ package xyz.kd5ujc.scarab.node.forge
 import cats.data.NonEmptyVector
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.EbAnnouncement
-import xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraTx
+import xyz.kd5ujc.scarab.ledger.era.{Tx, TxLevel}
+import xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraTx
+import xyz.kd5ujc.scarab.ledger.state.Dijkstra
 import xyz.kd5ujc.scarab.protocol.{EbPoint, LeiosTxHash}
 import xyz.kd5ujc.scarab.protocol.LeiosWord.Word64
 import xyz.kd5ujc.scarab.storage.LeiosEb
@@ -28,13 +30,14 @@ final case class ForgedLeiosEb private (
   def announcement: EbAnnouncement = EbAnnouncement(point.hash, body.encodedSize)
 
 object ForgedLeiosEb:
-  /** `forgeLeiosEb` (`LeiosDemoTypes.hs:1273-1295` at 2416493b): the endorser block of `txs`,
-    * forged in `slot`. Each transaction is written as the block holds it (`serializeTxForLeios`,
+  /** `forgeLeiosEb` (`LeiosDemoTypes.hs:1273-1295` at 2416493b, `:1257-1279` at d91b3557): the
+    * endorser block of the era's transactions `txs` (`NonEmpty (Tx TopTx DijkstraEra)`), forged in
+    * `slot`. Each transaction is written as the block holds it (`serializeTxForLeios`,
     * `toCBORForBlockInclusion`, [[DijkstraTx.forBlockInclusion]]), which the body lists by its hash
     * and length ([[LeiosEb.of]]); the point's hash is the body's (`hashLeiosEb`).
     */
-  def forge(slot: BigInt, txs: NonEmptyVector[DijkstraTx]): ForgedLeiosEb =
-    val bytes = txs.map(_.forBlockInclusion)
+  def forge(slot: BigInt, txs: NonEmptyVector[Tx[TxLevel.Top, Dijkstra]]): ForgedLeiosEb =
+    val bytes = txs.map(DijkstraTx.forBlockInclusion)
     val body = LeiosEb.of(bytes)
     ForgedLeiosEb(
       EbPoint(Word64.clamped(slot), LeiosEb.hashOf(body.transactions.toVector)),

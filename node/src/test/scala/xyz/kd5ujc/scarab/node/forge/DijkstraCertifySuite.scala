@@ -31,7 +31,7 @@ import xyz.kd5ujc.scarab.ledger.{
   TestLedger,
   VrfCert
 }
-import xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraTx
+import xyz.kd5ujc.scarab.ledger.era.{Tx, TxLevel}
 import xyz.kd5ujc.scarab.ledger.rules.{EraLedger, Globals}
 import xyz.kd5ujc.scarab.ledger.state.{
   CompactCoin,
@@ -145,9 +145,11 @@ class DijkstraCertifySuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         .rescue(e => IO(fail(s"block ${header.blockNo}: ${e.message}")))
     }
 
-  /** Block 37's transaction, as a block holds it, and as the wallet submitted it. */
-  private lazy val tx: DijkstraTx =
-    LeiosBlock.decode(chain(37)._2).fold(e => fail(e.message), _.transactions) match
+  /** Block 37's transaction, as a block holds it (read by the era's block decoder), and as the
+    * wallet submitted it.
+    */
+  private lazy val tx: Tx[TxLevel.Top, Dijkstra] =
+    DijkstraEraTxs.ofBlock(chain(37)._2) match
       case Vector(t) => t
       case other     => fail(s"not one transaction: ${other.size}")
   private lazy val submitted: Bytes =

@@ -12,8 +12,8 @@ import xyz.kd5ujc.scarab.ledger.{
   UtxoFailure
 }
 import xyz.kd5ujc.scarab.codec.DomainError
-import xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraTx
-import xyz.kd5ujc.scarab.ledger.rules.DijkstraTxMeasures
+import xyz.kd5ujc.scarab.ledger.era.{BothLevels, EraTx as EraTxOf, Tx as EraTx, TxLevel}
+import xyz.kd5ujc.scarab.ledger.state.Dijkstra
 import xyz.kd5ujc.scarab.network.Word32
 import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.TxMeasure
 import xyz.kd5ujc.scarab.protocol.{Era, LeiosFetch}
@@ -158,32 +158,23 @@ object Capacity:
 
   /** The measure a Dijkstra transaction is admitted with and keeps (`txMeasure` of
     * `TxLimits (ShelleyBlock p DijkstraEra)`, ouroboros-consensus 2416493b
-    * `Shelley/Ledger/Mempool.hs:980-987`): `txMeasureAlonzo` 's size, [[DijkstraTx.size]] plus
-    * [[PerTxOverhead]] (`txInBlockSize`, `:445-458`), and execution units, `totExUnits`, which is
-    * `getTotalExUnits` (cardano-ledger 9df9f98c
-    * `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Tx.hs:510-515`) and in Dijkstra counts the
-    * sub-transactions' redeemers too (`Dijkstra/Tx.hs:417-421`,
-    * [[DijkstraTxMeasures.totalExUnits]]); and `txMeasureRefScripts` 's `refScriptBytes`
-    * (`Mempool.hs:775-798`), the top-level body's only ([[dijkstraRefScriptBytes]]). The checks of
-    * the three against `maxTxSize`, `maxTxExUnits` and `maxRefScriptSizePerTx` are admission's,
-    * with Dijkstra's failures, and are not here.
+    * `Shelley/Ledger/Mempool.hs:980-987`): `txMeasureAlonzo` 's size, the era's `sizeTxF`
+    * (`sizeDijkstraTxF`, cardano-ledger 9df9f98c `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/
+    * Tx.hs:297-320`) plus [[PerTxOverhead]] (`txInBlockSize`, `:445-458`), and execution units,
+    * `totExUnits`, which is `getTotalExUnits` and in Dijkstra counts the sub-transactions'
+    * redeemers too (`Dijkstra/Tx.hs:417-422`); and `txMeasureRefScripts` 's `refScriptBytes`
+    * (`Mempool.hs:775-798`), the top-level body's only, which the pool reads at admission
+    * (`DijkstraState.refScriptsSize`). The checks of the three against `maxTxSize`, `maxTxExUnits`
+    * and `maxRefScriptSizePerTx` are admission's, with Dijkstra's failures, and are not here.
     */
-  def dijkstraMeasure(tx: DijkstraTx, refScriptBytes: Long): TxMeasure =
-    val units = DijkstraTxMeasures.totalExUnits(tx)
-    TxMeasure(tx.size + PerTxOverhead, units.mem, units.steps, refScriptBytes)
-
-  /** `txNonDistinctRefScriptsSize` as the mempool's measure reads it (cardano-ledger 9df9f98c
-    * `eras/conway/impl/src/Cardano/Ledger/Conway/UTxO.hs:160-170`, from
-    * `Shelley/Ledger/Mempool.hs:789`, ouroboros-consensus 2416493b): the reference scripts of the
-    * transaction's own inputs and reference inputs, not its sub-transactions', which LEDGER's
-    * `batchNonDistinctRefScriptsSize` counts. `size` names the reference script of an output of the
-    * UTxO set the pool holds the transaction against.
-    */
-  def dijkstraRefScriptBytes(
-      size: xyz.kd5ujc.scarab.ledger.TxIn => Option[Long],
-      tx: DijkstraTx
-  ): Long =
-    DijkstraTxMeasures.refScriptsSize(size, tx.body)
+  def dijkstraMeasure(tx: EraTx[TxLevel.Top, Dijkstra], refScriptBytes: Long): TxMeasure =
+    val units = EraTxOf.dijkstra.getTotalExUnits[TxLevel.Top](tx)(using BothLevels.Top)
+    TxMeasure(
+      EraTxOf.dijkstra.sizeTxF[TxLevel.Top](tx)(using BothLevels.Top) + PerTxOverhead,
+      units.mem,
+      units.steps,
+      refScriptBytes
+    )
 
   private def blocks(unit: TxMeasure, capacityOverride: Option[Word32]): TxMeasure =
     val count = capacityOverride.fold(DefaultBlocks) { o =>
@@ -208,7 +199,7 @@ object Capacity:
       val units = tx.witnesses.totalExUnits
       TxMeasure(tx.size + PerTxOverhead, units.mem, units.steps, entry.refScriptBytes)
     case Held.InConway(held)   => held.read.measure.copy(refScriptsBytes = entry.refScriptBytes)
-    case Held.InDijkstra(held) => dijkstraMeasure(held.read.flat, entry.refScriptBytes)
+    case Held.InDijkstra(held) => dijkstraMeasure(held.read.tx, entry.refScriptBytes)
 
   /** The first phase (`txMeasurePhase1`, `txMeasureAlonzo`): the transaction's size against the
     * maximum and its execution units, pointwise, against the maximum. The two checks accumulate,

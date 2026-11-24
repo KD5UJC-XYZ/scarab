@@ -7,9 +7,11 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path}
 import java.util.zip.GZIPInputStream
 import scala.jdk.CollectionConverters.*
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Rational}
+import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
 import xyz.kd5ujc.scarab.ledger.{EbAnnouncement, ForgeDefect, LeiosBlock, TestLedger}
-import xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraTx
+import xyz.kd5ujc.scarab.ledger.era.{Tx, TxLevel}
+import xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraTx
+import xyz.kd5ujc.scarab.ledger.state.Dijkstra
 import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.TxMeasure
 import xyz.kd5ujc.scarab.node.mempool.{Capacity, EbCapacityScale, EbMeasure}
 import xyz.kd5ujc.scarab.plutus.ExUnits
@@ -30,15 +32,20 @@ class DijkstraEndorserBlockSuite extends munit.FunSuite:
 
   private val testnet = Path.of("fixtures", "leios", "testnet")
 
+  private lazy val announcingRaw: Bytes = Files
+    .readAllLines(testnet.resolve("blocks-rc-2026w44.tsv"))
+    .asScala
+    .map(_.split('\t'))
+    .collectFirst { case r if r(0) == "announcing-with-txs" => hex(r(5)) }
+    .getOrElse(fail("no block 64,853"))
+
   /** Block 64,853, which announces the endorser block of slot 1,455,869. */
   private lazy val announcing: LeiosBlock =
-    val raw = Files
-      .readAllLines(testnet.resolve("blocks-rc-2026w44.tsv"))
-      .asScala
-      .map(_.split('\t'))
-      .collectFirst { case r if r(0) == "announcing-with-txs" => hex(r(5)) }
-      .getOrElse(fail("no block 64,853"))
-    LeiosBlock.decode(raw).fold(e => fail(e.message), identity)
+    LeiosBlock.decode(announcingRaw).fold(e => fail(e.message), identity)
+
+  /** Block 64,853's 40 transactions, read by the era's block decoder. */
+  private lazy val rankingTxs: Vector[Tx[TxLevel.Top, Dijkstra]] =
+    DijkstraEraTxs.ofBlock(announcingRaw)
 
   /** The recorded endorser block: its point and announced size, its body's bytes, and its closure,
     * each transaction's bytes in the body's order.
@@ -66,19 +73,10 @@ class DijkstraEndorserBlockSuite extends munit.FunSuite:
       closure.map(_._2)
     )
 
-  /** The closure's transactions, read as a block's are. */
-  private lazy val endorsed: NonEmptyVector[DijkstraTx] =
+  /** The closure's transactions, read as a block's are, by the era's decoder. */
+  private lazy val endorsed: NonEmptyVector[Tx[TxLevel.Top, Dijkstra]] =
     NonEmptyVector
-      .fromVector(
-        recorded.closure.map(raw =>
-          Cbor
-            .decode(raw)
-            .left
-            .map(_.toString)
-            .flatMap(DijkstraTx.inBlock(_).left.map(_.toString))
-            .fold(e => fail(e), identity)
-        )
-      )
+      .fromVector(recorded.closure.map(DijkstraEraTxs.inBlock))
       .getOrElse(fail("an empty closure"))
 
   /** Dijkstra's endorser-block parameters as the testnet's state at slot 2,168,639 holds them
@@ -96,16 +94,16 @@ class DijkstraEndorserBlockSuite extends munit.FunSuite:
   private val unbounded =
     TxMeasure(Long.MaxValue, BigInt(Long.MaxValue), BigInt(Long.MaxValue), Long.MaxValue)
 
-  private def held(txs: Vector[DijkstraTx]): Vector[DijkstraHeld] =
+  private def held(txs: Vector[Tx[TxLevel.Top, Dijkstra]]): Vector[DijkstraHeld] =
     txs.map(tx => DijkstraHeld(tx, Capacity.dijkstraMeasure(tx, 0L)))
 
   /** A snapshot of the ranking block's 40 transactions, then the endorser block's 323. */
   private lazy val snapshot: DijkstraSnapshot =
-    DijkstraSnapshot(held(announcing.transactions) ++ held(endorsed.toVector))
+    DijkstraSnapshot(held(rankingTxs) ++ held(endorsed.toVector))
 
   /** The measure of the ranking block's 40 transactions together. */
   private lazy val rankingUsed: TxMeasure =
-    held(announcing.transactions).map(_.measure).reduce(_ + _)
+    held(rankingTxs).map(_.measure).reduce(_ + _)
 
   test("the recorded endorser block is the one block 64,853 announces, as the store holds it") {
     val announced = announcing.header.leios.announcement.getOrElse(fail("no announcement"))
@@ -122,7 +120,7 @@ class DijkstraEndorserBlockSuite extends munit.FunSuite:
         LeiosEb.hashTx(t) -> LeiosEb.of(NonEmptyVector.one(t)).transactions.head._2
       )
     )
-    assertEquals(endorsed.toVector.map(_.forBlockInclusion), recorded.closure)
+    assertEquals(endorsed.toVector.map(DijkstraTx.forBlockInclusion), recorded.closure)
   }
 
   test("the endorser block forged of the recorded closure is the reference's, byte for byte") {
@@ -143,7 +141,7 @@ class DijkstraEndorserBlockSuite extends munit.FunSuite:
     val forged = ForgedLeiosEb.forge(announcing.header.slot, endorsed)
     val h = announcing.header.body
     val assembly = BlockBuilder.Assembly.dijkstra(
-      announcing.transactions,
+      rankingTxs,
       None,
       Some(BlockBuilder.Endorsing(announcing.header.slot, endorsed))
     )
@@ -172,7 +170,7 @@ class DijkstraEndorserBlockSuite extends munit.FunSuite:
   test("the partition gives the ranking block its 40 and the endorser block the 323 after them") {
     val capacity = Capacity.endorserBlockCapacity(params).fold(e => fail(e.toString), identity)
     val split = BlockBuilder.partition(snapshot, rankingUsed, capacity)
-    assertEquals(split.ranking.transactions, announcing.transactions)
+    assertEquals(split.ranking.transactions, rankingTxs)
     assertEquals(split.endorsedTransactions, endorsed.toVector)
     assertEquals(
       split.endorsedUsed,
@@ -199,8 +197,11 @@ class DijkstraEndorserBlockSuite extends munit.FunSuite:
     // the measure's size is `sizeTxF` plus 4, the listed length `sizeTxF` plus the flag's byte
     endorsed.toVector.foreach { tx =>
       val m = Capacity.dijkstraMeasure(tx, 0L)
-      assertEquals(EbMeasure.of(m).references, LeiosEb.itemSize(tx.size + Capacity.PerTxOverhead))
-      assertEquals(m.bytes, tx.forBlockInclusion.size.toLong + 3)
+      assertEquals(
+        EbMeasure.of(m).references,
+        LeiosEb.itemSize(tx.sizeTxF + Capacity.PerTxOverhead)
+      )
+      assertEquals(m.bytes, DijkstraTx.forBlockInclusion(tx).size.toLong + 3)
     }
     // the item is a 32-byte hash under a 2-byte head and the size's head: 1, 2, 3 or 5 bytes
     assertEquals(
@@ -291,7 +292,7 @@ class DijkstraEndorserBlockSuite extends munit.FunSuite:
       rankingUsed,
       first.copy(references = first.references - 1)
     )
-    assertEquals(tight.ranking.transactions, announcing.transactions)
+    assertEquals(tight.ranking.transactions, rankingTxs)
     assertEquals(tight.endorsing(announcing.header.slot), None)
     // an empty snapshot, and a zero limit
     assertEquals(

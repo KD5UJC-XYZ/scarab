@@ -57,7 +57,9 @@ class LeiosForgedEbSuite extends FailsOnUncaught:
   private lazy val forged: ForgedLeiosEb =
     ForgedLeiosEb.forge(
       block.header.slot,
-      NonEmptyVector.fromVector(block.transactions).getOrElse(fail("no transactions"))
+      NonEmptyVector
+        .fromVector(block.transactions.map(xyz.kd5ujc.scarab.node.forge.DijkstraEraTxs.of))
+        .getOrElse(fail("no transactions"))
     )
 
   private lazy val announcing: AnnouncingHeader =
