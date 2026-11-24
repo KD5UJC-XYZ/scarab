@@ -146,7 +146,8 @@ object ChainSelection:
     private lazy val origins: Vector[Int] =
       blocks.iterator.zipWithIndex.collect { case (b, i) if b.point == Point.Origin => i }.toVector
     private lazy val repeated: Map[Bytes, Vector[Int]] =
-      if first.size + origins.size == blocks.size then Map.empty
+      // every block of its own hash, none at Origin: the ordinary window, read once
+      if blocks.sizeIs == first.size || blocks.sizeIs == first.size + origins.size then Map.empty
       else
         blocks.iterator.zipWithIndex
           .flatMap((b, i) => pointHash(b.point).map(_ -> i))

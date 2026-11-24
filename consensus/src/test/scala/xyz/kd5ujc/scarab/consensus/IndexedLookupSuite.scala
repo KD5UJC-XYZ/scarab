@@ -52,7 +52,7 @@ class IndexedLookupSuite extends ScalaCheckSuite:
   ) {
     // Origin among the blocks, a point twice, a hash at another slot, and probes of a held hash at
     // a slot it is not held at
-    val points = ChainSync.Point.Origin +: (chain ++ sameSlots).take(8).map(_.point)
+    val points = ChainSync.Point.Origin +: (chain.take(4) ++ sameSlots.take(4)).map(_.point)
     def moved(point: ChainSync.Point, by: Int) = point match
       case ChainSync.Point.Block(slot, hash) =>
         ChainSync.Point.Block(ChainSync.UInt64.saturating(slot.value + by), hash)
