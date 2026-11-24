@@ -677,17 +677,18 @@ envelope with the 11.1 codec only; nothing an existing node or file does changes
 Scarab mirrors, each with its stability and its pins, which `docs/data/reference-pins.json`
 registers with the enum as a dependent: `11.1`, the stable 11.1 release line behaving as its pinned
 release 11.1.3 (cardano-ledger f649f975, cardano-ledger-binary at 048b78d2, ouroboros-consensus
-82ecba32), and `leios-rc-2026w47`, the unstable public Leios testnet build (cardano-node b004fe0c,
-cardano-ledger 9df9f98c, ouroboros-consensus 2416493b). Parsing the flag string is total, with
+82ecba32), and `leios-rc-2026w47`, the unstable public Leios testnet build (cardano-node b9c1dbea,
+cardano-ledger 9df9f98c, ouroboros-consensus d91b3557; named `leios-b004fe0c`, at cardano-node b004fe0c and
+ouroboros-consensus 2416493b, until 2026-11-23, #1365). Parsing the flag string is total, with
 `UnknownReferenceBuild` for any other text. `--reference-build` is on `follow`,
 `import-ledger-snapshot` and `export-ledger-snapshot`, `11.1` without it; the help text and
 [flags.md](../running/flags.md) say that the value has to be the build the network runs. A build
 selects a layout (`StateLayout`, in `protocol` since step b); several builds may share one. A
 layout's codec (`ReferenceLayout`) is the only way to a snapshot format, an import or an export. In
 step a the Leios build was refused at start for want of its layout's codec; since step b
-(section 14) `ReferenceLayout.of` gives the Leios build its codec, and `follow` refuses the Leios build with
-`ConfigProblem.ReferenceBuildNotYet(ReferenceBuildNotYet.Rules(...))` until its rules exist, after it
-has logged `referenceBuild` with the pins and, for an unstable build without
+(section 14) `ReferenceLayout.of` gives the Leios build its codec. `follow` refused the Leios build with
+`ConfigProblem.ReferenceBuildNotYet(ReferenceBuildNotYet.Rules(...))` until its Dijkstra blocks were applied
+under it (#54); it now runs it (`ReferenceBuildFlag.follows`), after it has logged `referenceBuild` with the pins and, for an unstable build without
 `ExperimentalHardForksEnabled`, `unstableReferenceBuild`. The naming rule and every place a new
 build touches are in [the playbook](../playbooks/add-a-reference-build.md).
 
@@ -840,8 +841,8 @@ conversion. Records that do not differ are shared.
 
 **The setting.** `ReferenceLayout.of` gives this build its codec; `import-ledger-snapshot` and
 `export-ledger-snapshot` take `leios-rc-2026w47` and add or strip the envelope as for `11.1`.
-`follow` refuses it (`ReferenceBuildFlag.follows`) until step c. The rules this build runs produce
-values of the 11.1 layout; running them on a Leios state is step c's to change.
+`follow` runs it (`ReferenceBuildFlag.follows`), applying its Dijkstra blocks (#54); the rest of its rules are
+step c's (#826).
 
 **Evidence.** The last Conway state of a Leios devnet (`fixtures/leios/state/conway-195`) is read
 and written byte for byte, imported and exported with `state`, `tables` and `meta` unchanged, and
