@@ -75,10 +75,31 @@ object LeiosCertifying:
     */
   private final case class Applied(tip: Option[Bytes], eb: EbHash)
 
-  /** How many applications a memo keeps: the tip's, and the one before it while a fork switch or a
-    * forge on the previous tip still reads it.
+  /** How many reached applications a memo keeps: the tip's, and the one before it while a fork
+    * switch or a forge on the previous tip still reads it. An application still running is never
+    * dropped for this: its callers wait for it.
     */
   private val Kept: Int = 2
+
+  /** One application in a memo: running, its state to come (`none` once it failed, was refused or
+    * was cancelled), or `reached`.
+    */
+  private final case class Entry[F[_]](
+      key: Applied,
+      state: Deferred[F, Option[NewEpochState[Dijkstra]]],
+      reached: Boolean
+  )
+
+  /** `entries` with the application whose state is `state` reached, and the reached ones beyond the
+    * newest [[Kept]] dropped, the running ones all kept.
+    */
+  private def reached[F[_]](entries: Vector[Entry[F]], state: AnyRef): Vector[Entry[F]] =
+    val marked = entries.map(e => if e.state eq state then e.copy(reached = true) else e)
+    val surplus = marked.count(_.reached) - Kept
+    if surplus <= 0 then marked
+    else
+      val dropped = marked.filter(_.reached).take(surplus).map(_.state).toSet
+      marked.filterNot(e => dropped.exists(_ eq e.state))
 
   /** `underlying` with its [[LeiosCertifying.closed]] memoised, for the newest [[Kept]] tips and
     * endorser blocks, so that the certified closure applied off the forging path, as soon as the
@@ -89,16 +110,19 @@ object LeiosCertifying:
     * d91b3557), and reads it when it forges (`getCertifyingSnapshotFor`,
     * `NodeKernel/Forge.hs:805-821`).
     *
-    * One application runs at a time for each pair: a call while it runs waits for its result. Only
-    * a result the application reached is kept: a failure, a raise or a cancellation is not, and a
-    * call that waited for it applies the closure itself, as without the memo, so the memo never
-    * gives what `underlying` would not.
+    * One application runs at a time for each pair, and a call while it runs waits for it. Only a
+    * state the application reached is given to the calls that waited and kept: a failure or refusal
+    * is its own call's only, and a failure, refusal, raise or cancellation wakes the waiting calls,
+    * which then ask again, each with its own arguments, one of them applying the closure. So no
+    * call gets what `underlying` would not have given it, and a call never meets another's failure.
+    * The entry is made and the step that completes it installed with no cancellation between them,
+    * so a waiting call is always woken.
     */
   def memoized[F[_], S](underlying: LeiosCertifying[F, S])(using
       F: Concurrent[F]
   ): F[LeiosCertifying[F, S]] =
     type Result = Either[NodeError, NewEpochState[Dijkstra]]
-    Ref.of[F, Vector[(Applied, Deferred[F, Option[Result]])]](Vector.empty).map { memo =>
+    Ref.of[F, Vector[Entry[F]]](Vector.empty).map { memo =>
       new LeiosCertifying[F, S]:
         def closureHeld(eb: EbHash)(using Raise[F, StorageError]): F[Boolean] =
           underlying.closureHeld(eb)
@@ -114,27 +138,35 @@ object LeiosCertifying:
         )(using Raise[F, StorageError]): F[Result] =
           val key = Applied(tip.map(_.hash), point.hash)
           val applied = underlying.closed(chain, tip, parent, point, slot)
-          // the entry of this application, left only if it is still the one this call made
-          def forget(mine: Deferred[F, Option[Result]]): F[Unit] =
-            memo.update(_.filterNot((k, d) => k == key && (d eq mine)))
-          Deferred[F, Option[Result]].flatMap { mine =>
-            memo
-              .modify { entries =>
-                entries.collectFirst { case (k, d) if k == key => d } match
-                  case Some(theirs) => (entries, Left(theirs))
-                  case None         => ((entries :+ (key -> mine)).takeRight(Kept), Right(mine))
-              }
-              .flatMap {
-                case Left(theirs) => theirs.get.flatMap(_.fold(applied)(F.pure))
-                case Right(own) =>
-                  applied.guaranteeCase {
-                    case Outcome.Succeeded(result) =>
-                      result.flatMap { r =>
-                        forget(own).whenA(r.isLeft) *> own.complete(Some(r)).void
+          // the entry of this application, dropped only if it is still the one this call made
+          def forget(mine: AnyRef): F[Unit] =
+            memo.update(_.filterNot(e => e.key == key && (e.state eq mine)))
+          def ask: F[Result] =
+            Deferred[F, Option[NewEpochState[Dijkstra]]].flatMap { mine =>
+              F.uncancelable { poll =>
+                memo
+                  .modify { entries =>
+                    entries.find(_.key == key) match
+                      case Some(theirs) => (entries, Left(theirs.state))
+                      case None         => (entries :+ Entry(key, mine, reached = false), Right(()))
+                  }
+                  .flatMap {
+                    // woken with none, the call asks again: the entry is gone by then
+                    case Left(theirs) =>
+                      poll(theirs.get).flatMap(_.fold(poll(ask))(state => F.pure(Right(state))))
+                    case Right(()) =>
+                      poll(applied).guaranteeCase {
+                        case Outcome.Succeeded(result) =>
+                          result.flatMap {
+                            case Right(state) =>
+                              memo.update(reached(_, mine)) *> mine.complete(Some(state)).void
+                            case Left(_) => forget(mine) *> mine.complete(None).void
+                          }
+                        case Outcome.Errored(_) | Outcome.Canceled() =>
+                          forget(mine) *> mine.complete(None).void
                       }
-                    case Outcome.Errored(_) | Outcome.Canceled() =>
-                      forget(own) *> own.complete(None).void
                   }
               }
-          }
+            }
+          ask
     }

@@ -844,3 +844,78 @@ class DijkstraCertifySuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       assertEquals((a, b, waited), (Right(nes), Right(nes), 1))
       assertEquals((after, reapplied), (Right(nes), 2))
   }
+
+  test(
+    "a call that waited never gets the application's refusal: it asks again and applies it (#1380)"
+  ) {
+    for
+      state <- state36
+      nes = nesOf(state)
+      runs <- Ref.of[IO, Int](0)
+      entered <- Deferred[IO, Unit]
+      gate <- Deferred[IO, Unit]
+      // the first run is refused once it is let go, the next applies
+      memo <- LeiosCertifying.memoized(
+        counted(
+          runs,
+          n =>
+            if n == 1 then (entered.complete(()) *> gate.get).as(Left(refused))
+            else IO.pure(Right(nes))
+        )
+      )
+      owner <- applied(memo, state, Some(tip36), ebHash(1)).start
+      _ <- entered.get
+      waiter <- applied(memo, state, Some(tip36), ebHash(1)).start
+      _ <- gate.complete(())
+      own <- owner.joinWithNever
+      waited <- waiter.joinWithNever
+      n <- runs.get
+    yield assertEquals((own, waited, n), (Left(refused), Right(nes), 2))
+  }
+
+  test(
+    "an application still running is never dropped by the bound, however many are reached (#1380)"
+  ) {
+    for
+      state <- state36
+      nes = nesOf(state)
+      runs <- Ref.of[IO, Int](0)
+      entered <- Deferred[IO, Unit]
+      gate <- Deferred[IO, Unit]
+      memo <- LeiosCertifying.memoized(
+        counted(runs, n => (entered.complete(()) *> gate.get).whenA(n == 1).as(Right(nes)))
+      )
+      held <- applied(memo, state, Some(tip36), ebHash(1)).start
+      _ <- entered.get
+      // three others reached, one more than the bound keeps
+      _ <- List(2, 3, 4).traverse_(b => applied(memo, state, Some(tip36), ebHash(b)))
+      again <- applied(memo, state, Some(tip36), ebHash(1)).start
+      _ <- gate.complete(())
+      first <- held.joinWithNever
+      second <- again.joinWithNever
+      whileHeld <- runs.get
+      // the oldest reached one was dropped, and is applied again
+      _ <- applied(memo, state, Some(tip36), ebHash(2))
+      dropped <- runs.get
+    yield
+      assertEquals((first, second, whileHeld), (Right(nes), Right(nes), 4))
+      assertEquals(dropped, 5)
+  }
+
+  test("after a cancelled application the calls that waited apply the closure once (#1380)") {
+    for
+      state <- state36
+      nes = nesOf(state)
+      runs <- Ref.of[IO, Int](0)
+      began <- Deferred[IO, Unit]
+      memo <- LeiosCertifying.memoized(
+        counted(runs, n => (began.complete(()) *> IO.never[Unit]).whenA(n == 1).as(Right(nes)))
+      )
+      stuck <- applied(memo, state, Some(tip36), ebHash(1)).start
+      _ <- began.get
+      waiters <- List.fill(3)(applied(memo, state, Some(tip36), ebHash(1)).start).sequence
+      _ <- stuck.cancel
+      results <- waiters.traverse(_.joinWithNever)
+      n <- runs.get
+    yield assertEquals((results, n), (List.fill(3)(Right(nes)), 2))
+  }

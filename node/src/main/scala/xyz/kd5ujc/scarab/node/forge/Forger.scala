@@ -399,13 +399,24 @@ final class Forger[F[_]: Async, S](
   private def warming: F[Unit] =
     chains.discrete
       .changesBy(_.tipRef.map(_.hash))(using Eq.fromUniversalEquals)
-      .evalMap(warmed)
+      // a tip whose closure is not complete yet is looked at again every slot until it is, the
+      // look given up when the tip changes: the closure usually arrives after its announcing block
+      .switchMap(current =>
+        fs2.Stream.eval(
+          warmed(current)
+            .flatTap(pending => sleep(Forger.WarmRetry).whenA(pending))
+            .iterateWhile(identity)
+        )
+      )
       .compile
       .drain
 
-  private def warmed(current: VolatileChain[S]): F[Unit] =
+  /** Whether the tip `current` announces an endorser block whose closure the store does not hold
+    * yet, after the closure's application is asked for where it does.
+    */
+  private def warmed(current: VolatileChain[S]): F[Boolean] =
     current.tipRef
-      .traverse_ { tip =>
+      .fold(F.pure(false)) { tip =>
         val slot = tip.slot + 1
         Handle
           .allow[NodeError] {
@@ -419,18 +430,18 @@ final class Forger[F[_]: Async, S](
                         .ifM(
                           certifying
                             .closed(current.state, current.tipRef, unticked, point, slot)
-                            .void,
-                          F.unit
+                            .as(false),
+                          F.pure(true)
                         )
                     )
-                    .rescue(_ => F.unit)
+                    .rescue(_ => F.pure(false))
                 case (Forger.TipLedger.InDijkstra(_), None) | (Forger.TipLedger.InConway(_), _) =>
-                  F.unit
+                  F.pure(false)
             }
           }
-          .rescue(_ => F.unit)
+          .rescue(_ => F.pure(false))
       }
-      .handleError(_ => ())
+      .handleError(_ => false)
 
   private def kesPeriodOf(slot: BigInt): BigInt = slot / config.slotsPerKesPeriod
 
@@ -2061,6 +2072,11 @@ final class Forger[F[_]: Async, S](
     }
 
 object Forger:
+
+  /** How long the warm waits before it looks again at a tip whose closure is not complete yet:
+    * about a slot of the testnet (`Forger.warming`, #1380).
+    */
+  private[forge] val WarmRetry: FiniteDuration = 1.second
 
   /** The line a forged block that could not be kept gets: only for a failure of the node's own
     * ([[Follower.Retention]]), not for a block the reference's ChainDB would not keep either, nor
