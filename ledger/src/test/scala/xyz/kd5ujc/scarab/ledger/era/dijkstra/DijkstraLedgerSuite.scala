@@ -1146,14 +1146,15 @@ class DijkstraLedgerSuite extends FunSuite:
       ),
       B.utxo(refIn -> refOut, subIn -> paid(1000000), topIn -> paid(10000000))
     )
-    val made = DijkstraStAnnTx.mkDijkstraStAnnTopTx(clock, pp, k.utxo, Map.empty, k.tx)
-    assertEquals(made.dsattSubTransactions.value.size, 1)
-    def run(stAnnTx: DijkstraStAnnTx.TopTx) =
+    def made(u: UTxO[Dijkstra], t: DijkstraTx[TxLevel.Top]) =
+      DijkstraStAnnTx.mkDijkstraStAnnTopTx(clock, pp, u, Map.empty, t)
+    assertEquals(made(k.utxo, k.tx).dsattSubTransactions.value.size, 1)
+    def run(annotate: (UTxO[Dijkstra], DijkstraTx[TxLevel.Top]) => DijkstraStAnnTx.TopTx) =
       DijkstraBbodyRun.unchecked(
         leios,
         envOf(k, Coin(0)),
-        k.utxo,
-        stAnnTx,
+        k.tx,
+        annotate,
         context(TxEnv.Validation.All),
         LedgerState(start.cert, storedState(k.utxo)),
         noProposals,
@@ -1166,7 +1167,7 @@ class DijkstraLedgerSuite extends FunSuite:
       case Right(Right((bbody, _, _))) => bbody.ls.utxo.utxo.utxo
       case other                       => fail(s"$other")
     assert(after.get(xyz.kd5ujc.scarab.ledger.TxIn(subIn.txId, BigInt(subIn.ix))).isEmpty)
-    assertEquals(run(DijkstraBbodyRun.unreadMembers(made, fail(_))), expected)
+    assertEquals(run((u, t) => DijkstraBbodyRun.unreadMembers(made(u, t), fail(_))), expected)
   }
 
   test("a reference script two sub-transactions share counts once for each (LedgerSpec.hs:138)") {

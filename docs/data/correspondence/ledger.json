@@ -43132,7 +43132,7 @@
     "DijkstraClosureSuite"
    ],
    "note": "each transaction annotated by Dijkstra's mkStAnnTx (DijkstraLedgers.mkStAnnTx) with an empty cache; each applied by applyUnchecked: ValidateNone as the judgment Judge.validateNone, which evaluates no predicate's condition (`Sts.validating`), so no annotated member is read but the sub-transactions, records nothing and never fails, and as the policy that skips the static checks (every labelled step carries lblStatic), the events discarded; the node still computes some values before the judgment drops what reads them, every input's stored output read into the era among them (once, for the annotation and LEDGER both), so a defect raised while computing one is raised where the reference, lazy, meets none (a Gap); the state the closure is applied to and the cumulative bytes are the caller's, as stowing the tables and the consensus state's counter are the node's; its scripts, which ValidateNone evaluates none of, where UTXOS collects them (Phase2Deferral.now)",
-   "digest": "607968ce9a2c69a3"
+   "digest": "4d730c6312e3a6a2"
   },
   "def ledger.era.dijkstra.DijkstraBlockBody.ofDecoded": {
    "upstream": [
@@ -48584,8 +48584,8 @@
     "DijkstraClosureSuite",
     "DijkstraLedgerSuite"
    ],
-   "note": "one transaction's step of applyLeiosClosure, a function of its own here: Dijkstra's LEDGER under ValidateNone (Judge.validateNone), the labelled steps skipped (TxEnv.Validation.NonStatic), the events discarded, the scripts evaluated where collected (Phase2Deferral.now), of which ValidateNone collects none; LEDGER judges it on the UTxO set it was annotated against (dijkstraLedgerTransitionOn)",
-   "digest": "f36e2d3262fc9c73"
+   "note": "one transaction's step of applyLeiosClosure, a function of its own here: Dijkstra's LEDGER under ValidateNone (Judge.validateNone), the labelled steps skipped (TxEnv.Validation.NonStatic), the events discarded, the scripts evaluated where collected (Phase2Deferral.now), of which ValidateNone collects none; the stored outputs of its inputs read from the state it is applied to once, the annotation (mkStAnnTx, given) and LEDGER (dijkstraLedgerTransitionOn) both on that UTxO set",
+   "digest": "78a58c1c8edb2548"
   },
   "enum ledger.rules.ValidationPolicy": {
    "upstream": [
@@ -48691,7 +48691,7 @@
    "structure": "same",
    "note": "the header's point typed as a block point; computed once with point",
    "digest": "42a2f8de72ad1bfc"
- },
+  },
   "def ledger.era.rules.DijkstraLedger.dijkstraLedgerTransitionOn": {
    "upstream": [
     {
