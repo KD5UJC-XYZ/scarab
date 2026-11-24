@@ -94,6 +94,7 @@ import xyz.kd5ujc.scarab.node.forge.{
   Forger,
   HotKeySource,
   KeyGuard,
+  LeiosCertifying,
   PoolCredentials,
   ProducerSignal
 }
@@ -2753,35 +2754,40 @@ object Main extends IOApp:
                   )
               )
             }
-            Forger.create[IO, MirrorState](
-              setup.praos.copy(geometry = geometry),
-              globals,
-              run.plutus,
-              setup.forgedProtocolVersion(options.producerSignal),
-              pool,
-              follower,
-              mempool,
-              forgeEvents(measured),
-              utxoStore = Some(store),
-              source = Some(source),
-              enabled = !options.startsNonProducing(setup.config.settings),
-              conwaySnapshots = Some(
-                ConwaySnapshots.ofPool[IO](
-                  mempool,
-                  Some(store),
-                  chain.mempoolEnvironment.ask[MempoolEnv]
-                )
-              ),
-              dijkstraSnapshots = Some(
-                DijkstraSnapshots.ofPool[IO](
-                  mempool,
-                  Some(store),
-                  chain.mempoolEnvironment.ask[MempoolEnv]
-                )
-              ),
-              onForgedEb = leiosFetch.map(_.onForged),
-              certifying = certifying
-            )
+            // the certified closure applied off the forging path as soon as the tip announces an
+            // endorser block whose closure the store holds, kept for the block that certifies it
+            // (`Forger.warming`, [[LeiosCertifying.memoized]], #1380)
+            certifying.traverse(LeiosCertifying.memoized[IO, MirrorState](_)).flatMap { memoized =>
+              Forger.create[IO, MirrorState](
+                setup.praos.copy(geometry = geometry),
+                globals,
+                run.plutus,
+                setup.forgedProtocolVersion(options.producerSignal),
+                pool,
+                follower,
+                mempool,
+                forgeEvents(measured),
+                utxoStore = Some(store),
+                source = Some(source),
+                enabled = !options.startsNonProducing(setup.config.settings),
+                conwaySnapshots = Some(
+                  ConwaySnapshots.ofPool[IO](
+                    mempool,
+                    Some(store),
+                    chain.mempoolEnvironment.ask[MempoolEnv]
+                  )
+                ),
+                dijkstraSnapshots = Some(
+                  DijkstraSnapshots.ofPool[IO](
+                    mempool,
+                    Some(store),
+                    chain.mempoolEnvironment.ask[MempoolEnv]
+                  )
+                ),
+                onForgedEb = leiosFetch.map(_.onForged),
+                certifying = memoized
+              )
+            }
           }
         yield forger
       }

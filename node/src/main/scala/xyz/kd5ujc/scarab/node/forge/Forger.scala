@@ -3,6 +3,7 @@ package xyz.kd5ujc.scarab.node.forge
 
 import xyz.kd5ujc.scarab.plutus.PlutusBackend
 import xyz.kd5ujc.scarab.ledger.{ForgeDefect, ForgeLedgerProblem, ForgeProtocolProblem}
+import cats.Eq
 import cats.data.EitherT
 import cats.effect.{Async, Clock, Deferred, Ref}
 import cats.effect.std.Mutex
@@ -376,10 +377,71 @@ final class Forger[F[_]: Async, S](
         .traverse_(events.emit)
       _ <- F.both(
         F.both(scheduling, clocked(None)),
-        F.both(forging(BigInt(-1), BigInt(-1)), driving(None))
+        F.both(F.both(forging(BigInt(-1), BigInt(-1)), driving(None)), warming)
       )
     yield ()
   }
+
+  /** The certified closure applied off the forging path: on every tip the selection publishes, the
+    * closure of the endorser block the tip announces, once the store holds it, applied to the tip's
+    * unticked state as the forger applies it to certify it in the next slot
+    * ([[LeiosCertifying.closed]], memoised by the node's [[LeiosCertifying.memoized]]). The
+    * reference builds that state off the forging path too, in the mempool's certifying view
+    * (`buildCertifyingView` over `applyAnnouncedClosure`, `Mempool/CertifyingView.hs:49-72`, and
+    * `syncCertifyingView`, `Mempool/Update.hs:647-665` at ouroboros-consensus d91b3557), so that
+    * the block that certifies it is not delayed by its application (#1380).
+    *
+    * It is only a head start: the forger asks for the same application with the same arguments when
+    * it certifies, and takes it from the memo or applies the closure itself. So a warm that fails,
+    * is refused or meets a defect changes nothing the node does, and is let go of here, never
+    * raised: the forger meets the same failure where it certifies, as it does without the warm.
+    */
+  private def warming: F[Unit] =
+    chains.discrete
+      .changesBy(_.tipRef.map(_.hash))(using Eq.fromUniversalEquals)
+      // a tip whose closure is not complete yet is looked at again every slot until it is, the
+      // look given up when the tip changes: the closure usually arrives after its announcing block
+      .switchMap(current =>
+        fs2.Stream.eval(
+          warmed(current)
+            .flatTap(pending => sleep(Forger.WarmRetry).whenA(pending))
+            .iterateWhile(identity)
+        )
+      )
+      .compile
+      .drain
+
+  /** Whether the tip `current` announces an endorser block whose closure the store does not hold
+    * yet, after the closure's application is asked for where it does.
+    */
+  private def warmed(current: VolatileChain[S]): F[Boolean] =
+    current.tipRef
+      .fold(F.pure(false)) { tip =>
+        val slot = tip.slot + 1
+        Handle
+          .allow[NodeError] {
+            crossedTo(current, geometry.epochOf(slot), slot).flatMap { crossed =>
+              (crossed.ledger, LeiosCertification.announcement(crossed.view.protocol.dep)) match
+                case (Forger.TipLedger.InDijkstra(unticked), Some(point)) =>
+                  Handle
+                    .allow[StorageError](
+                      certifying
+                        .closureHeld(point.hash)
+                        .ifM(
+                          certifying
+                            .closed(current.state, current.tipRef, unticked, point, slot)
+                            .as(false),
+                          F.pure(true)
+                        )
+                    )
+                    .rescue(_ => F.pure(false))
+                case (Forger.TipLedger.InDijkstra(_), None) | (Forger.TipLedger.InConway(_), _) =>
+                  F.pure(false)
+            }
+          }
+          .rescue(_ => F.pure(false))
+      }
+      .handleError(_ => false)
 
   private def kesPeriodOf(slot: BigInt): BigInt = slot / config.slotsPerKesPeriod
 
@@ -2010,6 +2072,11 @@ final class Forger[F[_]: Async, S](
     }
 
 object Forger:
+
+  /** How long the warm waits before it looks again at a tip whose closure is not complete yet:
+    * about a slot of the testnet (`Forger.warming`, #1380).
+    */
+  private[forge] val WarmRetry: FiniteDuration = 1.second
 
   /** The line a forged block that could not be kept gets: only for a failure of the node's own
     * ([[Follower.Retention]]), not for a block the reference's ChainDB would not keep either, nor

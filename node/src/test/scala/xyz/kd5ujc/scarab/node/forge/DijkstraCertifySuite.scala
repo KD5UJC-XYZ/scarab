@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.node.forge
 
 import cats.data.NonEmptyVector
-import cats.effect.IO
+import cats.effect.{Deferred, IO, Ref}
 import cats.mtl.{Handle, Raise}
 import cats.syntax.all.*
 import io.circe.parser
@@ -21,6 +21,8 @@ import xyz.kd5ujc.scarab.crypto.vrf.Draft03Prover
 import xyz.kd5ujc.scarab.ledger.{
   Block,
   BlockTransport,
+  ForgeError,
+  ForgeProtocolProblem,
   Header,
   LeiosBlock,
   LeiosHeader,
@@ -686,4 +688,247 @@ class DijkstraCertifySuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
             )
           )
         case other => fail(s"no endorser block: $other")
+  }
+
+  // the memo of the certified closure's application (#1380)
+
+  /** A certifier whose closure application gives `result` of its run's number, from 1, counted. */
+  private def counted(
+      runs: Ref[IO, Int],
+      result: Int => Raise[IO, StorageError] ?=> IO[Either[NodeError, NewEpochState[Dijkstra]]]
+  ): LeiosCertifying[IO, MirrorState] = new LeiosCertifying[IO, MirrorState]:
+    def closureHeld(eb: EbHash)(using Raise[IO, StorageError]) = IO.pure(true)
+    def certificate(rbHash: RbHash) = IO.pure(None)
+    def closed(
+        chain: MirrorState,
+        t: Option[BlockRef],
+        p: NewEpochState[Dijkstra],
+        point: EbPoint,
+        s: BigInt
+    )(using Raise[IO, StorageError]) =
+      runs.updateAndGet(_ + 1).flatMap(n => result(n))
+
+  private def ebHash(b: Int): EbHash =
+    EbHash.fromBytes(Bytes.fromArray(Array.fill[Byte](32)(b.toByte)))
+
+  private def applied(
+      memo: LeiosCertifying[IO, MirrorState],
+      state: MirrorState,
+      tip: Option[BlockRef],
+      eb: EbHash
+  )(using Raise[IO, StorageError]): IO[Either[NodeError, NewEpochState[Dijkstra]]] =
+    memo.closed(
+      state,
+      tip,
+      nesOf(state),
+      EbPoint(xyz.kd5ujc.scarab.protocol.LeiosWord.Word64.clamped(BigInt(1)), eb),
+      BigInt(1)
+    )
+
+  private val refused: NodeError = ForgeError.UnsupportedProtocol(ForgeProtocolProblem.LeftConway)
+
+  test(
+    "the memoised closure is the one the certifier applies, at the forging slot and later (#1380)"
+  ) {
+    for
+      c <- certifying
+      (_, split, _, after, announcingBlock, endorsing) = c
+      tip = refOf(announcingBlock.header)
+      slot = announcingBlock.slot + gap
+      parent = parentOf(after, tip, slot)
+      point = split.decision match
+        case CertifyDecision.Certify(_, p) => p
+        case other                         => fail(s"not certified: $other")
+      vs <- votes(after, announcingBlock.header.hash, Vector(0, 1, 2, 3))
+      real = certifier(closureOf(endorsing), vs)
+      memo <- LeiosCertifying.memoized(real)
+      fresh <- real.closed(parent.chain, parent.tip, parent.unticked, point, slot)
+      later <- real.closed(parent.chain, parent.tip, parent.unticked, point, slot + 3)
+      // warmed in the slot after the tip, as the forger warms it, then asked for when it forges
+      warmed <- memo.closed(parent.chain, parent.tip, parent.unticked, point, tip.slot + 1)
+      forged <- memo.closed(parent.chain, parent.tip, parent.unticked, point, slot)
+    yield
+      assert(fresh.isRight, fresh.toString)
+      assertEquals(later, fresh)
+      assertEquals(warmed, fresh)
+      assertEquals(forged, fresh)
+  }
+
+  test(
+    "the memo applies a closure once per tip and endorser block, and keeps only results (#1380)"
+  ) {
+    for
+      state <- state36
+      nes = nesOf(state)
+      other = Some(refOf(chain(35)._1))
+      runs <- Ref.of[IO, Int](0)
+      failing <- Ref.of[IO, Boolean](false)
+      memo <- LeiosCertifying.memoized(
+        counted(runs, _ => failing.get.map(f => if f then Left(refused) else Right(nes)))
+      )
+      a1 <- applied(memo, state, Some(tip36), ebHash(1))
+      a2 <- applied(memo, state, Some(tip36), ebHash(1))
+      once <- runs.get
+      // another endorser block or another tip is another application
+      _ <- applied(memo, state, Some(tip36), ebHash(2))
+      _ <- applied(memo, state, other, ebHash(1))
+      three <- runs.get
+      // two are kept: the first, the oldest, is applied again
+      _ <- applied(memo, state, Some(tip36), ebHash(1))
+      four <- runs.get
+      // a failure the application reached is given, and not kept
+      _ <- failing.set(true)
+      f1 <- applied(memo, state, other, ebHash(3))
+      _ <- failing.set(false)
+      f2 <- applied(memo, state, other, ebHash(3))
+      six <- runs.get
+      // nor is a raise: the next call applies the closure again
+      raising <- Ref.of[IO, Int](0)
+      raised <- LeiosCertifying.memoized(
+        counted(
+          raising,
+          n =>
+            if n == 1 then
+              summon[Raise[IO, StorageError]].raise(StorageError.DatabaseInUse("leios"))
+            else IO.pure(Right(nes))
+        )
+      )
+      r1 <- Handle
+        .allow[StorageError](applied(raised, state, Some(tip36), ebHash(1)).map(Right(_)))
+        .rescue(e => IO.pure(Left(e)))
+      r2 <- applied(raised, state, Some(tip36), ebHash(1))
+      twice <- raising.get
+    yield
+      assertEquals((a1, a2, once), (Right(nes), Right(nes), 1))
+      assertEquals((three, four), (3, 4))
+      assertEquals((f1, f2, six), (Left(refused), Right(nes), 6))
+      assertEquals((r1, r2, twice), (Left(StorageError.DatabaseInUse("leios")), Right(nes), 2))
+  }
+
+  test(
+    "a call while the closure is applied waits for it, and applies it itself once cancelled (#1380)"
+  ) {
+    for
+      state <- state36
+      nes = nesOf(state)
+      runs <- Ref.of[IO, Int](0)
+      entered <- Deferred[IO, Unit]
+      gate <- Deferred[IO, Unit]
+      // the first run waits at the gate once it has begun
+      underlying = counted(
+        runs,
+        n => (entered.complete(()) *> gate.get).whenA(n == 1).as(Right(nes))
+      )
+      memo <- LeiosCertifying.memoized(underlying)
+      first <- applied(memo, state, Some(tip36), ebHash(1)).start
+      _ <- entered.get
+      second <- applied(memo, state, Some(tip36), ebHash(1)).start
+      _ <- gate.complete(())
+      a <- first.joinWithNever
+      b <- second.joinWithNever
+      waited <- runs.get
+      // cancelled while it applies, the next call applies the closure itself
+      cancelledRuns <- Ref.of[IO, Int](0)
+      began <- Deferred[IO, Unit]
+      held = counted(
+        cancelledRuns,
+        n => (began.complete(()) *> IO.never[Unit]).whenA(n == 1).as(Right(nes))
+      )
+      cancelling <- LeiosCertifying.memoized(held)
+      stuck <- applied(cancelling, state, Some(tip36), ebHash(1)).start
+      _ <- began.get
+      _ <- stuck.cancel
+      after <- applied(cancelling, state, Some(tip36), ebHash(1))
+      reapplied <- cancelledRuns.get
+    yield
+      assertEquals((a, b, waited), (Right(nes), Right(nes), 1))
+      assertEquals((after, reapplied), (Right(nes), 2))
+  }
+
+  // In the three below a call started while the application runs may find it running or, on
+  // another schedule, only after it ended: the results and the count of applications asserted are
+  // the same either way, which is what the memo promises its callers.
+
+  test(
+    "a call that waited never gets the application's refusal: it asks again and applies it (#1380)"
+  ) {
+    state36.flatMap { state =>
+      val nes = nesOf(state)
+      (
+        for
+          runs <- Ref.of[IO, Int](0)
+          entered <- Deferred[IO, Unit]
+          gate <- Deferred[IO, Unit]
+          // the first run is refused once it is let go, the next applies
+          memo <- LeiosCertifying.memoized(
+            counted(
+              runs,
+              n =>
+                if n == 1 then (entered.complete(()) *> gate.get).as(Left(refused))
+                else IO.pure(Right(nes))
+            )
+          )
+          owner <- applied(memo, state, Some(tip36), ebHash(1)).start
+          _ <- entered.get
+          waiter <- applied(memo, state, Some(tip36), ebHash(1)).start
+          _ <- gate.complete(())
+          own <- owner.joinWithNever
+          waited <- waiter.joinWithNever
+          n <- runs.get
+        yield assertEquals((own, waited, n), (Left(refused), Right(nes), 2))
+      )
+    }
+  }
+
+  test(
+    "an application still running is never dropped by the bound, however many are reached (#1380)"
+  ) {
+    state36.flatMap { state =>
+      val nes = nesOf(state)
+      (
+        for
+          runs <- Ref.of[IO, Int](0)
+          entered <- Deferred[IO, Unit]
+          gate <- Deferred[IO, Unit]
+          memo <- LeiosCertifying.memoized(
+            counted(runs, n => (entered.complete(()) *> gate.get).whenA(n == 1).as(Right(nes)))
+          )
+          held <- applied(memo, state, Some(tip36), ebHash(1)).start
+          _ <- entered.get
+          // three others reached, one more than the bound keeps
+          _ <- List(2, 3, 4).traverse_(b => applied(memo, state, Some(tip36), ebHash(b)))
+          again <- applied(memo, state, Some(tip36), ebHash(1)).start
+          _ <- gate.complete(())
+          first <- held.joinWithNever
+          second <- again.joinWithNever
+          whileHeld <- runs.get
+          // the oldest reached one was dropped, and is applied again
+          _ <- applied(memo, state, Some(tip36), ebHash(2))
+          dropped <- runs.get
+        yield
+          assertEquals((first, second, whileHeld), (Right(nes), Right(nes), 4))
+          assertEquals(dropped, 5)
+      )
+    }
+  }
+
+  test("after a cancelled application the calls that waited apply the closure once (#1380)") {
+    state36.flatMap { state =>
+      val nes = nesOf(state)
+      (
+        for
+          runs <- Ref.of[IO, Int](0)
+          began <- Deferred[IO, Unit]
+          memo <- LeiosCertifying.memoized(
+            counted(runs, n => (began.complete(()) *> IO.never[Unit]).whenA(n == 1).as(Right(nes)))
+          )
+          stuck <- applied(memo, state, Some(tip36), ebHash(1)).start
+          _ <- began.get
+          waiters <- List.fill(3)(applied(memo, state, Some(tip36), ebHash(1)).start).sequence
+          _ <- stuck.cancel
+          results <- waiters.traverse(_.joinWithNever)
+          n <- runs.get
+        yield assertEquals((results, n), (List.fill(3)(Right(nes)), 2))
+      )
+    }
   }
