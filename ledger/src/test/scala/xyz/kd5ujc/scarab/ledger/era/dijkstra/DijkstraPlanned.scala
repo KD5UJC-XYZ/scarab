@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.ledger.era.dijkstra
 
 import cats.Id
+import cats.syntax.all.*
 import java.util.concurrent.{Callable, Executors}
 import java.util.concurrent.atomic.AtomicReference
 import scala.jdk.CollectionConverters.*
@@ -65,7 +66,7 @@ object DijkstraPlanned extends Assertions:
       body: DijkstraBlockRun.Body,
       n: Int
   ): Either[Phase2.Defect, DijkstraBlockRun.Result] =
-    if n == 1 || !body.worthwhile then Right(body.serial)
+    if n == 1 || !body.worthwhile then Either.catchNonFatal(body.serial).leftMap(Phase2.Defect(_))
     else
       val plan = body.prepare
       val pool = Executors.newFixedThreadPool(n)

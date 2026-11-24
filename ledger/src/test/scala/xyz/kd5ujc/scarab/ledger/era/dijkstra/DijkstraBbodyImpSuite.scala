@@ -1648,6 +1648,61 @@ class DijkstraBbodyImpSuite extends FunSuite:
     }
   }
 
+  test(
+    "prepared: a raw defect of the evaluator, in a job the serial run reaches and in one it never reaches: the serial run's result at every worker count"
+  ) {
+    val fails = v4Scripts.alwaysFailsWithDatum
+    val (s1, s2, s3) = (fundOf(9401), fundOf(9402), fundOf(9403))
+    val fees = Vector(9411, 9412, 9413).map(fundOf)
+    val colls = Vector(9421, 9422, 9423).map(fundOf)
+    val utxo = B.utxo(
+      (Vector(s1 -> locked(v4SucceedsHash), s2 -> locked(fails.hash), s3 -> locked(v4SucceedsHash))
+        ++ fees.map(_ -> paid(10000000)) ++ colls.map(_ -> paid(30000000)))*
+    )
+    def spend(i: Int, sp: ScriptSpend, valid: Boolean) =
+      batch(impUnits, fees(i), colls(i), Vector(sp), Vector(paid(10000000)), valid = valid)
+    val first = spend(0, ScriptSpend(s1, v4Succeeds), true)
+    val last = spend(2, ScriptSpend(s3, v4Succeeds), true)
+    // the last batch's script ends in a raw defect of the implementation (its context reads only
+    // the outputs its own inputs spend, which no earlier batch touches)
+    val request = evaluated(impUnits, utxo, last) match
+      case Vector((pwc, _)) => PlutusWithContext.evalRequest(pwc)
+      case other            => fail(s"not one script: $other")
+    val defect = new IllegalStateException("an evaluator defect")
+    val defective: xyz.kd5ujc.scarab.plutus.ScriptEvaluator[Id] =
+      r => if r == request then throw defect else ScarabEvaluator.default.evaluate(r)
+    def bodyOf(txs: Vector[Built], e: xyz.kd5ujc.scarab.plutus.ScriptEvaluator[Id]) =
+      nodeProgram(blockOf(txs), holding(utxo), impUnits, e)
+    // reached: the middle batch's verdict its flag's, so the serial run reaches the last batch's
+    // script and raises the very defect; so does every worker count, with no other
+    val reached = Vector(first, spend(1, ScriptSpend(s2, fails.script), false), last)
+    val serial = scala.util.Try(bodyOf(reached, defective).serial).toEither
+    assert(serial.left.exists(_ eq defect), s"$serial")
+    DijkstraPlanned.workers.foreach { n =>
+      val result = runner(bodyOf(reached, defective), n)
+      assert(result.left.exists(_.cause eq defect), s"$n workers: $result")
+    }
+    // never reached: the middle batch's script fails flagged valid, so the serial run records
+    // that failure and runs no later script (`whenFailureFree`): the block is refused, and every
+    // worker count, whose plan ran the last job ahead into the defect, comes to that refusal
+    val unreached = Vector(first, spend(1, ScriptSpend(s2, fails.script), true), last)
+    val shared = DijkstraPlanned.Shared(defective)
+    val refusal = bodyOf(unreached, shared).serial
+    refusal match
+      case Right(Left(_)) => ()
+      case other          => fail(s"not refused: $other")
+    DijkstraPlanned.workers.foreach(n =>
+      DijkstraPlanned.same(s"$n workers", refusal, runner(bodyOf(unreached, shared.replaying), n))
+    )
+    val plan = bodyOf(unreached, shared.replaying).prepare
+    assertEquals(plan.jobs.size, 3)
+    DijkstraPlanned.same(
+      "the plan, every job run",
+      refusal,
+      plan.resolve(plan.batches.flatten.map(plan.execute))
+    )
+  }
+
   // ---- Conway's: `Conway/Imp/BbodySpec.hs` ----------------------------------------------------------
 
   /** `purposeIsWellformedNoDatum SPlutusV2`

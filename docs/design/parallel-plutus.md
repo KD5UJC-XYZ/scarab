@@ -157,7 +157,9 @@ whose scripts read what another batch changes (a sub-transaction spending what a
 read as a reference input, batched `[0] [1]` where its control is `[0, 1]`; a script spending what an
 earlier batch's sub-transaction made, `[0] [1]`; a script that fails between two that pass, flagged
 invalid, flagged valid, and one that passes flagged invalid; no verdict at the sub-transaction's script
-and at the top level's); `DijkstraBbodyImpWorkersSuite` (node) runs the same suite with every
+and at the top level's; a raw evaluator defect in a job the serial run reaches, raised as itself at every
+count, and in one it never reaches, after a verdict that is not its flag's, which no count raises; and
+`:49`'s block past the block's units, never prepared); `DijkstraBbodyImpWorkersSuite` (node) runs the same suite with every
 prepared block through `ParallelPlutus` itself at one, two, four and eight workers. Every captured
 Dijkstra block and every block of the Leios corpus that decodes (37) is checked the same way, but none
 defers a job: no recorded state holds their inputs. `DijkstraParallelSuite` runs the testnet's recorded script transactions, each
