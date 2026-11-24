@@ -63,14 +63,11 @@ private[node] object AvailableBlocks:
     */
   private final case class Root(place: Int, base: Point, header: Header)
 
-  /** What the walks back from the targets met: the blocks on their paths (`seen`), each with those
-    * of its successors on them (`paths`), and the blocks the paths start with.
+  /** What the walks back from the targets met: each block on their paths, with those of its
+    * successors on them (`paths`, which holds exactly the blocks met), and the blocks the paths
+    * start with.
     */
-  private final case class Back(
-      seen: Set[Bytes],
-      paths: Map[Bytes, List[Header]],
-      roots: Vector[Root]
-  )
+  private final case class Back(paths: Map[Bytes, List[Header]], roots: Vector[Root])
 
   private final class Walks[A](
       local: ChainSelection.Local,
@@ -124,7 +121,7 @@ private[node] object AvailableBlocks:
       } { targets =>
         val found = targets.toVector
           .flatMap(open)
-          .foldLeft(Back(Set.empty, Map.empty, Vector.empty))(back)
+          .foldLeft(Back(Map.empty, Vector.empty))(back)
         val roots =
           if found.roots.sizeIs <= 1 then found.roots
           else
@@ -165,7 +162,9 @@ private[node] object AvailableBlocks:
             case next =>
               walk(next.map(Walk(base, _, reversed, true)) ::: rest, paths, targets, result)
         else
-          val next = paths.getOrElse(header.hash, Nil).sortBy(_.hash)(using hashOrder)
+          val next = paths.getOrElse(header.hash, Nil) match
+            case single @ (_ :: Nil) => single
+            case several             => several.sortBy(_.hash)(using hashOrder)
           walk(next.map(Walk(base, _, reversed, false)) ::: rest, paths, targets, result)
 
     /** Back from a target towards the selected chain (`isReachable`, Paths.hs): each block met is
@@ -174,25 +173,19 @@ private[node] object AvailableBlocks:
       * then.
       */
     private def back(found: Back, target: Header): Back =
-      @tailrec def go(header: Header, met: Back): Back =
-        if met.seen(header.hash) then met
-        else
-          val grown = met.copy(
-            seen = met.seen + header.hash,
-            roots =
-              met.roots ++ bases(header.prevHash).map((place, base) => Root(place, base, header))
-          )
-          header.prevHash.flatMap(open) match
-            case Some(parent) =>
-              go(
-                parent,
-                grown.copy(paths =
-                  grown.paths
-                    .updated(parent.hash, header :: grown.paths.getOrElse(parent.hash, Nil))
-                )
-              )
-            case None => grown
-      go(target, found)
+      @tailrec def go(header: Header, paths: Map[Bytes, List[Header]], roots: Vector[Root]): Back =
+        val rooted = bases(header.prevHash) match
+          case Vector() => roots
+          case places   => roots ++ places.map((place, base) => Root(place, base, header))
+        header.prevHash.flatMap(open) match
+          case Some(parent) =>
+            val joined =
+              paths.updated(parent.hash, header :: paths.getOrElse(parent.hash, Nil))
+            // a block met before was walked back from then
+            if paths.contains(parent.hash) then Back(joined, rooted) else go(parent, joined, rooted)
+          case None => Back(paths, rooted)
+      if found.paths.contains(target.hash) then found
+      else go(target, found.paths.updated(target.hash, Nil), found.roots)
 
     /** The selected places whose successors a block of predecessor `key` is among, with their
       * points: the anchor's (with Byron's alias when it is Origin) and each block's of that hash.
@@ -201,9 +194,6 @@ private[node] object AvailableBlocks:
       val anchor = local.anchor match
         case Point.Origin                 => Option.when(afterOrigin(key))(0 -> Point.Origin)
         case point @ Point.Block(_, hash) => Option.when(key.contains(hash))(0 -> point)
-      val blocks =
-        (if afterOrigin(key) then local.placesOf(None) else Vector.empty) ++
-          key.fold(Vector.empty[Int])(hash => local.placesOf(Some(hash)))
-      anchor.toVector ++ blocks.sorted.flatMap(i =>
-        local.blocks.lift(i).map(b => (i + 1) -> b.point)
-      )
+      val named = key.fold(Vector.empty[Int])(hash => local.placesOf(Some(hash)))
+      val blocks = if afterOrigin(key) then (local.placesOf(None) ++ named).sorted else named
+      anchor.toVector ++ blocks.flatMap(i => local.blocks.lift(i).map(b => (i + 1) -> b.point))
