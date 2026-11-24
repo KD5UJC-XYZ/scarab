@@ -239,6 +239,12 @@ def main():
                          "keys of the run (`--forge --shelley-bls-key`), and pool POOL's reference node is not "
                          "started; the reference nodes dial it, and the judge requires its ranking blocks, endorser "
                          "blocks, votes and certifying blocks on every reference node's chain")
+    lt.add_argument("--keep", action="store_true",
+                    help="keep the reference container and its nodes' databases (in its tmpfs) after the run, for a "
+                         "later step such as a snapshot export or import against them; the run still stops every "
+                         "node before it ends, so start a node again to query it; with --follow the follower's "
+                         "database stays in the run directory; `devnet.py --name <name> down` removes them (the "
+                         "default name is scarab-leios)")
     lt.set_defaults(run=leios_traffic)
     sc = sub.add_parser("sample-chain-dep", help="next to up-eras: record the reference's DebugChainDepState answers at chosen tips")
     sc.add_argument("--out", required=True, help="JSON file of the recorded points")
