@@ -128,6 +128,24 @@ never overwrites it; it is not committed. The example shows ntfy webhooks. The r
 Prometheus through the agent's textfile directory (`TEXTFILE_DIR`). The alert table, the thresholds and their reasons
 are in [docs/running/monitoring.md](../../docs/running/monitoring.md).
 
+## What the agent can reach
+
+The agent observes its host with the host's own authority. Its process runs as root in a container that has the
+host's root file system mounted read-only at `/host/root` and shares the host's PID namespace (node exporter and
+cAdvisor read the host through them), so it can read **every file on the host, key files included**: on a block
+producer the KES and VRF keys, and the cold key if it is online there. It also holds the Docker socket; why the
+`:ro` on that mount does not restrict the Docker API is in the threat model's
+[boundary B10](../../docs/security/threat-model.md#boundary-register), with what remains unchecked.
+
+**Do not deploy the agent on a block-producer host that holds signing keys unless you accept that.** Whoever can
+replace the agent's image or its `config.alloy` has what the agent has. A producer's host
+metrics and the rotation driver's textfile can be collected by any other node exporter
+([docs/running/monitoring.md](../../docs/running/monitoring.md)).
+
+The images of both compose files are pinned by digest (`image: <name>:<tag>@sha256:...`), so a tag moved at the
+registry does not change what a deploy runs; a new version is a new tag and digest together
+(`docker buildx imagetools inspect <name>:<tag>`).
+
 ## Deploy
 
 From a checkout, with ssh access to the hosts:

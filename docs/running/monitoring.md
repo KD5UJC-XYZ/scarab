@@ -50,7 +50,9 @@ Prometheus text file atomically after every run (a run that finds another holdin
 To scrape it, point `--metrics-file` at `*.prom` in a directory the host's node exporter reads as its textfile
 collector. With the agent of this stack that directory is `TEXTFILE_DIR` in the agent's `.env` (default `./textfile`
 next to its `compose.yaml`; mounted at `/host/textfile`, read through `prometheus.exporter.unix`'s `textfile` block), and the
-series then carry the agent's `host` label. Any other node exporter works with `--collector.textfile.directory`.
+series then carry the agent's `host` label. Any other node exporter works with `--collector.textfile.directory`;
+before putting this stack's agent on a producer's host, read
+[what the agent can reach](../../ops/monitoring/README.md#what-the-agent-can-reach).
 Without the file `PoolKesRotationMetricsMissing` fires after an hour.
 
 **Alerts.** Labels are `severity` (`info`, `warning`, `critical`) and the series' own `host`, `container` and `role`; the

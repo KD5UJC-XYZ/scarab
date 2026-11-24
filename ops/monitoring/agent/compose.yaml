@@ -5,11 +5,19 @@
 #   - the host's metrics (node exporter) and the containers' (cAdvisor) to Prometheus,
 #   - the /metrics of every scarab-* container that carries the label scarab.metrics.port.
 # Settings come from .env next to this file (see .env.example).
+#
+# What this agent can reach: its process runs as root with the host's root file system mounted at /host/root and in
+# the host's PID namespace, so it can read every file on the host, key files included. It also holds the Docker
+# socket, and the `:ro` on that mount does not restrict the Docker API (docs/security/threat-model.md, B10). Do not
+# deploy it on a block-producer host that holds signing keys unless you accept that (../README.md, "What the agent
+# can reach").
 name: scarab-agent
 
 services:
   alloy:
-    image: grafana/alloy:v1.16.0
+    # pinned by digest, as the base images in docker/*.Dockerfile are: the digest is what is pulled, the tag is for
+    # the reader (`docker buildx imagetools inspect <image>:<tag>` prints the digest of another version)
+    image: grafana/alloy:v1.16.0@sha256:6e00cf7c5a692ff5f24844529416ed017d76fce922f8199004e73d5eca46b6b8
     restart: unless-stopped
     command:
       - run
@@ -24,8 +32,9 @@ services:
     volumes:
       - ./config.alloy:/etc/alloy/config.alloy:ro
       - alloy-data:/var/lib/alloy/data
+      # read-only as a file, not as an API: see "What this agent can reach" above
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      # node exporter and cAdvisor read the host through these
+      # node exporter and cAdvisor read the host through these; /host/root is every file on the host
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
       - /sys/fs/cgroup:/sys/fs/cgroup:ro
