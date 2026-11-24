@@ -552,9 +552,10 @@ class LeiosNotifyPipelinedSuite extends FailsOnUncaught:
   }
 
   test("no more replies are received ahead of their handing on than the lookahead") {
+    // a reply is prepared as it is received, so the preparations counted are the replies received
+    val received = new java.util.concurrent.atomic.AtomicInteger(0)
     for
       released <- Deferred[IO, Unit]
-      started <- Ref.of[IO, Int](0)
       handled <- Ref.of[IO, Vector[LeiosNotification]](Vector.empty)
       stop <- Deferred[IO, Unit]
       counted <- SignallingRef.of[IO, Int](0)
@@ -576,8 +577,9 @@ class LeiosNotifyPipelinedSuite extends FailsOnUncaught:
                 Signal.constant[IO, Boolean](true),
                 LeiosNotifyPipelined.Handling[IO, LeiosNotification](
                   n =>
-                    LeiosNotifyPipelined.Prepared
-                      .Ahead(started.update(_ + 1).as(n), LeiosNotification.Canceled),
+                    received.incrementAndGet()
+                    LeiosNotifyPipelined.Prepared.Ready(n)
+                  ,
                   n => released.get *> handled.update(_ :+ n)
                 ),
                 LeiosNotifyPipelined.Settings(depth = 3, lookahead = 1)
@@ -588,10 +590,10 @@ class LeiosNotifyPipelinedSuite extends FailsOnUncaught:
         }
       yield ended)
       control <- cats.effect.testkit.TestControl.execute(program)
-      // every fiber runs to where it waits: three replies sent, one received, read ahead and being
-      // handed on, none more received
+      // every fiber runs to where it waits: three replies sent, one received and being handed on,
+      // none more received
       _ <- control.tick
-      held <- (counted.get, started.get).tupled
+      held <- (counted.get, IO(received.get)).tupled
       _ <- released.complete(())
       _ <- control.tick
       all <- handled.get
