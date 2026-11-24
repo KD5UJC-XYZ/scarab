@@ -836,6 +836,7 @@
         "DijkstraEpochReferenceSuite",
         "PreviewConwayBlockLedgersSuite",
         "ConwayBbodySuite",
+        "ConwayBbodyImpSuite",
         "DijkstraBbodyImpSuite"
       ],
       "docs": [
@@ -1223,6 +1224,7 @@
         "MirrorDijkstraSuite",
         "DijkstraParallelSuite",
         "DijkstraBbodyImpWorkersSuite",
+        "ConwayBbodyImpWorkersSuite",
         "BlockPoolSuite",
         "FetchCoordinatorSuite",
         "ConfigSuite",
