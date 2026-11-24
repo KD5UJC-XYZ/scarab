@@ -2,7 +2,11 @@
 package xyz.kd5ujc.scarab.node.forge
 
 import cats.Applicative
+import cats.effect.{Concurrent, Deferred, Outcome, Ref}
+import cats.effect.syntax.all.*
 import cats.mtl.Raise
+import cats.syntax.all.*
+import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.crypto.bls.{Certificate, RbHash}
 import xyz.kd5ujc.scarab.ledger.{NodeError, StorageError}
@@ -62,3 +66,75 @@ object LeiosCertifying:
     )(using Raise[F, StorageError]): F[Either[NodeError, NewEpochState[Dijkstra]]] =
       // no closure is held, so the forger never decides to certify and never asks
       Applicative[F].pure(Right(parent))
+
+  /** Which application of a certified closure a memoised result is: the endorser block's, on the
+    * state of the chain at the tip `tip`. The state at a tip is the same state wherever it is read,
+    * and the application reads the environment of the tip's slot only, never the forged block's
+    * (`mkMempoolEnv nes (getTipSlot lst)`, `Shelley/Ledger/Leios.hs:204-249` at ouroboros-consensus
+    * d91b3557), so the pair names the result.
+    */
+  private final case class Applied(tip: Option[Bytes], eb: EbHash)
+
+  /** How many applications a memo keeps: the tip's, and the one before it while a fork switch or a
+    * forge on the previous tip still reads it.
+    */
+  private val Kept: Int = 2
+
+  /** `underlying` with its [[LeiosCertifying.closed]] memoised, for the newest [[Kept]] tips and
+    * endorser blocks, so that the certified closure applied off the forging path, as soon as the
+    * tip announces an endorser block whose closure the node holds, is not applied again when the
+    * forger certifies it: the reference keeps that state off the forging path too, in the mempool's
+    * certifying view (`buildCertifyingView` over `applyAnnouncedClosure`,
+    * `Mempool/CertifyingView.hs` and `Mempool/Impl/Common.hs:272-344` at ouroboros-consensus
+    * d91b3557), and reads it when it forges (`getCertifyingSnapshotFor`,
+    * `NodeKernel/Forge.hs:805-821`).
+    *
+    * One application runs at a time for each pair: a call while it runs waits for its result. Only
+    * a result the application reached is kept: a failure, a raise or a cancellation is not, and a
+    * call that waited for it applies the closure itself, as without the memo, so the memo never
+    * gives what `underlying` would not.
+    */
+  def memoized[F[_], S](underlying: LeiosCertifying[F, S])(using
+      F: Concurrent[F]
+  ): F[LeiosCertifying[F, S]] =
+    type Result = Either[NodeError, NewEpochState[Dijkstra]]
+    Ref.of[F, Vector[(Applied, Deferred[F, Option[Result]])]](Vector.empty).map { memo =>
+      new LeiosCertifying[F, S]:
+        def closureHeld(eb: EbHash)(using Raise[F, StorageError]): F[Boolean] =
+          underlying.closureHeld(eb)
+
+        def certificate(rbHash: RbHash): F[Option[Certificate]] = underlying.certificate(rbHash)
+
+        def closed(
+            chain: S,
+            tip: Option[BlockRef],
+            parent: NewEpochState[Dijkstra],
+            point: EbPoint,
+            slot: BigInt
+        )(using Raise[F, StorageError]): F[Result] =
+          val key = Applied(tip.map(_.hash), point.hash)
+          val applied = underlying.closed(chain, tip, parent, point, slot)
+          // the entry of this application, left only if it is still the one this call made
+          def forget(mine: Deferred[F, Option[Result]]): F[Unit] =
+            memo.update(_.filterNot((k, d) => k == key && (d eq mine)))
+          Deferred[F, Option[Result]].flatMap { mine =>
+            memo
+              .modify { entries =>
+                entries.collectFirst { case (k, d) if k == key => d } match
+                  case Some(theirs) => (entries, Left(theirs))
+                  case None         => ((entries :+ (key -> mine)).takeRight(Kept), Right(mine))
+              }
+              .flatMap {
+                case Left(theirs) => theirs.get.flatMap(_.fold(applied)(F.pure))
+                case Right(own) =>
+                  applied.guaranteeCase {
+                    case Outcome.Succeeded(result) =>
+                      result.flatMap { r =>
+                        forget(own).whenA(r.isLeft) *> own.complete(Some(r)).void
+                      }
+                    case Outcome.Errored(_) | Outcome.Canceled() =>
+                      forget(own) *> own.complete(None).void
+                  }
+              }
+          }
+    }

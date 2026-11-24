@@ -3,6 +3,7 @@ package xyz.kd5ujc.scarab.node.forge
 
 import xyz.kd5ujc.scarab.plutus.PlutusBackend
 import xyz.kd5ujc.scarab.ledger.{ForgeDefect, ForgeLedgerProblem, ForgeProtocolProblem}
+import cats.Eq
 import cats.data.EitherT
 import cats.effect.{Async, Clock, Deferred, Ref}
 import cats.effect.std.Mutex
@@ -376,10 +377,60 @@ final class Forger[F[_]: Async, S](
         .traverse_(events.emit)
       _ <- F.both(
         F.both(scheduling, clocked(None)),
-        F.both(forging(BigInt(-1), BigInt(-1)), driving(None))
+        F.both(F.both(forging(BigInt(-1), BigInt(-1)), driving(None)), warming)
       )
     yield ()
   }
+
+  /** The certified closure applied off the forging path: on every tip the selection publishes, the
+    * closure of the endorser block the tip announces, once the store holds it, applied to the tip's
+    * unticked state as the forger applies it to certify it in the next slot
+    * ([[LeiosCertifying.closed]], memoised by the node's [[LeiosCertifying.memoized]]). The
+    * reference builds that state off the forging path too, in the mempool's certifying view
+    * (`buildCertifyingView` over `applyAnnouncedClosure`, `Mempool/CertifyingView.hs:49-72`, and
+    * `syncCertifyingView`, `Mempool/Update.hs:647-665` at ouroboros-consensus d91b3557), so that
+    * the block that certifies it is not delayed by its application (#1380).
+    *
+    * It is only a head start: the forger asks for the same application with the same arguments when
+    * it certifies, and takes it from the memo or applies the closure itself. So a warm that fails,
+    * is refused or meets a defect changes nothing the node does, and is let go of here, never
+    * raised: the forger meets the same failure where it certifies, as it does without the warm.
+    */
+  private def warming: F[Unit] =
+    chains.discrete
+      .changesBy(_.tipRef.map(_.hash))(using Eq.fromUniversalEquals)
+      .evalMap(warmed)
+      .compile
+      .drain
+
+  private def warmed(current: VolatileChain[S]): F[Unit] =
+    current.tipRef
+      .traverse_ { tip =>
+        val slot = tip.slot + 1
+        Handle
+          .allow[NodeError] {
+            crossedTo(current, geometry.epochOf(slot), slot).flatMap { crossed =>
+              (crossed.ledger, LeiosCertification.announcement(crossed.view.protocol.dep)) match
+                case (Forger.TipLedger.InDijkstra(unticked), Some(point)) =>
+                  Handle
+                    .allow[StorageError](
+                      certifying
+                        .closureHeld(point.hash)
+                        .ifM(
+                          certifying
+                            .closed(current.state, current.tipRef, unticked, point, slot)
+                            .void,
+                          F.unit
+                        )
+                    )
+                    .rescue(_ => F.unit)
+                case (Forger.TipLedger.InDijkstra(_), None) | (Forger.TipLedger.InConway(_), _) =>
+                  F.unit
+            }
+          }
+          .rescue(_ => F.unit)
+      }
+      .handleError(_ => ())
 
   private def kesPeriodOf(slot: BigInt): BigInt = slot / config.slotsPerKesPeriod
 

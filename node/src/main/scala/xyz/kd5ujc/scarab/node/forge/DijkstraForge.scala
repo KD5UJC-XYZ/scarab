@@ -103,7 +103,10 @@ object DijkstraForge:
     *     (`snapshotPartition snap Data.Measure.zero ebCap`, `:862-867`). The reference reads a
     *     certifying view of the pool kept up to date off the forging path first
     *     (`getCertifyingSnapshotFor`, `:805-821`), revalidated on top of the same closure; this
-    *     node keeps none, and always takes the second way.
+    *     node keeps no such view of the pool and always takes the second way, but the closure's
+    *     application it starts with is made off the forging path as soon as the tip announces the
+    *     endorser block, and taken from there ([[LeiosCertifying.memoized]], `Forger.warming`,
+    *     #1380).
     *
     * The body carries the certificate and no transaction when it certifies (`mkBody`,
     * `Shelley/Ledger/Forge.hs:152-160`; [[BlockBuilder.Assembly.dijkstra]]), and announces the
