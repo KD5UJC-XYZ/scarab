@@ -49989,6 +49989,12 @@
    ]
   },
   {
+   "reason": "the flat rules' choice of BBODY's check of the block's execution units by era before Conway: Alonzo's validateExUnits (Bbody.exUnitsExceeded) from Alonzo on, none in Shelley's BBODY, which the reference makes by each era's BBODY instance; shared by the flat BBODY before Conway and the flat body's preparation, which never prepares a body past the units (EraBlock.Body, #85)",
+   "definitions": [
+    "def ledger.rules.ShelleyBbody.exUnitsExceeded"
+   ]
+  },
+  {
    "reason": "whether a block's validation error is a refusal, or no verdict as the follower routes it (a script the evaluator could not judge, a crypto provider's defect; issue 567), which the reference has no counterpart for: the refused-block metric counts refusals only (#85)",
    "definitions": [
     "def ledger.ValidationError#refuses"

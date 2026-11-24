@@ -67,6 +67,13 @@ object EraBlock:
 
   /** An immutable body program. Ordinary callers use [[serial]]; the node can prepare a sealed plan
     * without publishing its tentative ledger state.
+    *
+    * A body whose transactions declare more execution units than the block may hold (BBODY's
+    * `validateExUnits`, which it checks only after LEDGERS: [[withinUnits]]) is never prepared: it
+    * is not [[worthwhile]], and its plan has no job, its result the serial run's. A prepared body
+    * evaluates its recorded scripts before the first verdict lands, some of which the serial run
+    * never reaches (LEDGERS stops at the first refused transaction), so what it can evaluate ahead
+    * stays within the units an admissible block declares.
     */
   final class Body private[EraBlock] (
       ctx: Context,
@@ -76,27 +83,57 @@ object EraBlock:
       txs: Vector[Either[LedgerDecodeError, Tx]],
       before: PlutusStats
   ) extends Phase2.Program[Outcome]:
+    // a body with a transaction that does not decode is refused before any script
+    private val within = txs.sequence.forall(withinUnits(ticked, _))
     def serial: Outcome = body(ctx)(ticked, header, block, txs, before)
     def hasScripts: Boolean = txs.exists(_.exists(_.witnesses.redeemers.nonEmpty))
-    def worthwhile: Boolean = txs.count(_.exists(_.witnesses.redeemers.nonEmpty)) > 1
+    def worthwhile: Boolean = within && txs.count(_.exists(_.witnesses.redeemers.nonEmpty)) > 1
     def prepare: Plan =
-      val (tentative, jobs) = Phase2.capture { recorder =>
-        body(ctx.copy(observer = None, preparation = Some(recorder)))(
-          ticked,
-          header,
-          block,
-          txs,
-          before
-        )
-      }
+      val prepared =
+        if within then
+          val (tentative, jobs) = Phase2.capture { recorder =>
+            body(ctx.copy(observer = None, preparation = Some(recorder)))(
+              ticked,
+              header,
+              block,
+              txs,
+              before
+            )
+          }
+          Prepared.Deferred(tentative, jobs)
+        else Prepared.Serial(Either.catchNonFatal(serial).leftMap(Phase2.Defect(_)))
       new Plan(
-        tentative,
-        jobs,
+        prepared,
         txs.sequence.getOrElse(Vector.empty),
         before,
         ctx.observer,
         ctx.evaluator
       )
+
+  /** BBODY's own check of the execution units of the block's transactions `txs` against the limit
+    * of the parameters of `ticked`, the state at the block's slot, by its era as [[body]] runs it:
+    * Conway's ([[Bbody.exUnitsExceeded]]) or an earlier era's ([[ShelleyBbody.exUnitsExceeded]]). A
+    * state of no era the rules take on has no limit here: [[body]] refuses it before any script.
+    */
+  private def withinUnits(ticked: EraNes, txs: Vector[Tx]): Boolean =
+    ticked match
+      case i: EraNes.InEra[e] =>
+        i.era match
+          case ShelleyBasedEra.SConway =>
+            Bbody.exUnitsExceeded(i.nes.es.ls.utxo.gov.curPParams, txs).isEmpty
+          case other =>
+            PreConway.of(other) match
+              case Some(pre) =>
+                given PreConway[e] = pre
+                ShelleyBbody.exUnitsExceeded[e](pre.curPParams.get(i.nes.es.ls.utxo), txs).isEmpty
+              case None => true
+
+  /** What a plan lands: the jobs an ordered preparation deferred, beside its tentative outcome; or,
+    * for a body never prepared, the serial run's outcome itself, with no job.
+    */
+  private enum Prepared:
+    case Deferred(tentative: Either[Phase2.Defect, Outcome], jobs: Vector[Phase2.Job])
+    case Serial(outcome: Either[Phase2.Defect, Outcome])
 
   def program(ctx: Context)(
       ticked: EraNes,
@@ -110,11 +147,11 @@ object EraBlock:
   /** The only route from tentative state to a body result checks every reached phase-2 verdict.
     * Missing or foreign completed values are evaluated directly, never treated as a success. A
     * completion is this plan's own type ([[Completed]]): one another plan executed, with its own
-    * evaluator, does not type-check here.
+    * evaluator, does not type-check here. A body never prepared ([[Prepared.Serial]]) has no job,
+    * and its result is the serial run's.
     */
   final class Plan private[EraBlock] (
-      tentative: Either[Phase2.Defect, Outcome],
-      val jobs: Vector[Phase2.Job],
+      prepared: Prepared,
       txs: Vector[Tx],
       before: PlutusStats,
       observer: Option[Phase2.Observation => Unit],
@@ -122,13 +159,29 @@ object EraBlock:
   ) extends Phase2.Plan[Outcome]:
     type Job = Phase2.Job
 
+    /** The deferred scripts, in the order the preparation deferred them. */
+    val jobs: Vector[Phase2.Job] = prepared match
+      case Prepared.Deferred(_, jobs) => jobs
+      case Prepared.Serial(_)         => Vector.empty
+
     /** A job of this plan executed by this plan's evaluator. */
     final class Completed private[Plan] (private[Plan] val value: Phase2.Completed)
 
     def batches: Vector[Vector[Phase2.Job]] = TxDependencies.batches(txs, jobs)
     def execute(job: Phase2.Job): Completed = Completed(Phase2.execute(job, evaluator))
 
-    def resolve(completed: Vector[Completed]): Either[Phase2.Defect, Outcome] =
+    def resolve(completed: Vector[Completed]): Either[Phase2.Defect, Outcome] = prepared match
+      case Prepared.Serial(outcome)           => outcome
+      case Prepared.Deferred(tentative, jobs) => landed(tentative, jobs, completed)
+
+    /** The verdicts of the deferred `jobs`, landed in order on the preparation's `tentative`
+      * outcome.
+      */
+    private def landed(
+        tentative: Either[Phase2.Defect, Outcome],
+        jobs: Vector[Phase2.Job],
+        completed: Vector[Completed]
+    ): Either[Phase2.Defect, Outcome] =
       val values = completed.iterator.map(c => c.value.job -> c.value).toMap
       type Resolved[A] = Either[Phase2.Defect, A]
       jobs
