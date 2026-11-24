@@ -157,6 +157,18 @@ carry no new adding client. Peer cancellation cannot remove a queued admission o
 selection. Worker shutdown and infrastructure failure settle current and queued work, following
 `Background.hs:658–708` and `Types.hs:740–755`; they never masquerade as a peer refusal.
 
+As built, the processed forest keeps the VolatileDB's successors index (`ProcessedForest`, the reference's
+`currentSuccMap` and `filterByPredecessor`, ouroboros-consensus 82ecba32 `Storage/VolatileDB/Impl.hs:436,518-551`),
+updated where a block joins or leaves the forest: an admission, a forged or recovered block, a body the log lost,
+the collection below the immutable tip. A block is keyed by its own header's hash, and one whose predecessors would
+lead back to it is refused there, raising in the same scope the `BlockPoolProblem.AvailableCycle` that selection
+raised before. A first admission's
+candidates are found from the admitted block alone, back to the selected chain and on through its successors
+(`chainSelectionForBlock`, `ChainSel.hs:710-777`), and the LoE reprocessing pass walks from the successors of each
+selected point (`ChainSelReprocessLoEBlocks`, `ChainSel.hs:372-408`); invalid, withheld and parked blocks are
+filtered as the walks read them. Neither pass sorts or checks the whole forest. Both give the candidates, in the
+order, of the whole-forest construction they replaced (#810).
+
 As built, a block the node forges does not enter the add queue: `Follower.submitForged` judges it under the
 selection lock, projected through LoE and eligibility by the same `CandidateSelection.project` the worker applies to
 every candidate, so before the node is caught up a forged block past the LoE plus `k` is not adopted, as the
