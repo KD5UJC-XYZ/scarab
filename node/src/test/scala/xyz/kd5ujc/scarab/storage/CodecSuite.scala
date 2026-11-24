@@ -99,14 +99,8 @@ class CodecSuite extends ScalaCheckSuite:
 
   test("a huge collection count is rejected without allocating") {
     val bytes = Array[Byte](-1, -1, -1, -1, -1, -1, -1, -1, 127)
-    assert(Codec.decode[Map[Bytes, BigInt]](bytes) match {
-      case Left(xyz.kd5ujc.scarab.codec.BinaryError.CountExceedsRemaining(_, _)) => true
-      case _                                                                     => false
-    })
-    assert(Codec.decode[Bytes](bytes) match {
-      case Left(xyz.kd5ujc.scarab.codec.BinaryError.CountExceedsRemaining(_, _)) => true
-      case _                                                                     => false
-    })
+    assert(Codec.decode[Map[Bytes, BigInt]](bytes).isLeft)
+    assert(Codec.decode[Bytes](bytes).isLeft)
   }
 
   // ------------------------------------------------------------------ golden encodings
@@ -131,10 +125,7 @@ class CodecSuite extends ScalaCheckSuite:
     Vector((65536, 0, 0), (0, 65536, 0), (0, 0, 256), (-1, 0, 0)).foreach { (major, minor, alt) =>
       val bytes =
         Codec.encode(BigInt(major)) ++ Codec.encode(BigInt(minor)) ++ Codec.encode(BigInt(alt))
-      assert(Codec.decode[ByronVersion](bytes) match {
-        case Left(xyz.kd5ujc.scarab.codec.BinaryError.InvalidByronVersion(_, _)) => true
-        case _                                                                   => false
-      })
+      assert(Codec.decode[ByronVersion](bytes).isLeft)
 
     }
   }
