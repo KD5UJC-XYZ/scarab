@@ -2744,8 +2744,8 @@ Conway's rules on the classes follow as the rest of stage 2.
     cause of no verdict.
   - The flat BBODY and MEMPOOL stay (owner decision 4) and the comparison stays in the tests: `ConwayBodiesReplaySuite`
     asserts the era run's state and counters equal to the flat rules' on every Conway block of the preprod window,
-    and `SessionFailureSuite` pins each outcome's route through the follower. The forger selects with the flat rules
-    until its switch (the plan's PR7).
+    and `SessionFailureSuite` pins each outcome's route through the follower. The forger selects with the era rules
+    since its switch (below).
 - **The mempool's switch: the pool, local submission and TxSubmission2 on Conway's era rules**
   (`node/.../mempool/ConwayPool.scala`, `PoolLedger.scala`, `MempoolState.scala`, `LocalSubmission.scala`,
   `Mempool.scala`; `ledger/.../era/rules/ConwayMempoolRun.scala`; the plan's PR6). The pool's ledger of a Conway
@@ -2776,9 +2776,8 @@ Conway's rules on the classes follow as the rest of stage 2.
     proposals that does not read or write are no verdict, as on Dijkstra (no reply, the client's connection ending;
     a peer's connection kept and not charged; the disagreeing readings close it).
   - What every reader takes of a held Conway transaction (the relayed bytes, LocalTxMonitor, the measure, the read
-    set) is what it took of the flat one. The forger takes its flat transaction (`BlockBuilder.conwayTx`, a total
-    match) and applies it again on the flat `MempoolLedger` until the plan's PR7; the flat MEMPOOL stays for the
-    suites that compare the two and for `tools` (owner decision 4).
+    set) is what it took of the flat one. The flat MEMPOOL stays for the suites that compare the two and for `tools`
+    (owner decision 4).
   - Evidence: `ReferenceRefusalSuite` replays every Conway case of the refusal corpus through the pool
     (`ConwayPoolLedger`) and `LocalSubmission`, byte-equal to the reference's; replayed under the Leios build's rules,
     the three moved-withdrawal cases recorded by 11.1 at version 10 are not their recorded refusal; the mempool suites
@@ -2786,6 +2785,41 @@ Conway's rules on the classes follow as the rest of stage 2.
     each defect's route; `EraMempoolSuite` the crossing under each build. Recorded in neither corpus: GOV's key order
     (its source and `ConwayGovChecksSuite`'s crafted cases), and 11.2's moved withdrawals (its source, through
     `MovedWithdrawals`).
+- **The forger's switch: a Conway block's transactions selected by the era rules** (`node/.../forge/ConwaySnapshot.scala`,
+  `BlockBuilder.scala`, `Forger.scala`; `MempoolState.conwaySnapshot`; the plan's PR7). The forger's Conway path is
+  the reference's (`getSnapshotFor` and `snapshotTake`, ouroboros-consensus 82ecba32 `NodeKernel.hs:697-707`;
+  `partitionMempool` at 2416493b, whose endorser block of a Conway block takes nothing). It does not change Dijkstra
+  forging, and the Leios build forges its Conway blocks by the same path.
+  - The ledger of the block is the parent's, ticked once to the slot, as the pool's ledger of Conway
+    (`Forger.Ticked.InConway(ConwayPoolLedger)`). Parameters in force that do not read into Conway's end the slot
+    without a block (`ForgeProtocolProblem.ConwayParams`, `forgeFailed`), as a chain with no ledger does, and the node
+    goes on.
+  - The snapshot (`ConwaySnapshots.ofPool`, `MempoolState.conwaySnapshot`) applies the pool's held Conway
+    transactions again in order on that ledger, as the build's consensus applies them (`ConwayMempoolRun.reapply`:
+    11.1's `reapplyTx`, 11.2's and the Leios build's `reapplyValidatedTx`). It runs at the block's slot, with the clock
+    of the chain the block is forged on (`ConwayPoolEnv.of(env, slot, clock)` from `TxClock.at`, equal to the block
+    rules' `MirrorClock.conway`, which `ForgeSuite` pins). A refused transaction is left out and stays in the pool. A
+    transaction the rules have no verdict on is withheld and leaves the pool once the attempt counts (issue 584,
+    #1101). Which one applies is the type of the run's outcome: a defect of Conway's rules, or an exception of the
+    rules (`ConwayPoolLedger.reapplied`), with no wildcard. The whole pool is applied again before the cut, as the
+    reference's snapshot is, so a held transaction with no verdict past the cut leaves the pool too. The reference
+    keeps its own snapshot where the slot and the tip are the pool's; the node always revalidates, as on Dijkstra.
+  - The block takes the longest prefix of the snapshot whose admission measures fit its capacity in every component
+    (`BlockBuilder.take`, `splitAfterSize`). The body is the held transactions' parts as they were received, with the
+    flag of each verdict (`BlockBuilder.piece` of `ConwayAdmitted`, `extractTx`), never read again. The flat
+    `BlockBuilder.select`, its interleaved reapplication and `conwayTx` are gone.
+  - Selection and the era BBODY of the node's block (above) now run the same rules. What can still part them is what
+    parts the reference's: the static checks and scripts a reapplication skips (a cost model changed at the same
+    major version), the annotation of the admission kept by `reapplyValidatedTx`, and the block's aggregates checked
+    against the admission measures.
+  - Evidence: `ConwaySnapshotSuite` covers the order, the refused left out, another era's transaction, each build's
+    reapplication and both kinds of no verdict. `ConwayHeldSuite` covers the body bytes equal to the parts and flag
+    for both flags, and a non-empty pool giving a non-empty block. `ForgeSuite` covers the clock, the cut and an
+    adopted block with the pool's transactions. `ForgerFailureSuite` covers the withheld transaction and the
+    parameters' route. `ConwayForgeTickSuite` covers the ledger handed to selection. `MempoolInterventionSuite` checks
+    that no script is evaluated or decoded and no signature verified. The devnet runs (`pool`, `pool --plutus-load`,
+    `e2e`) are in the pull request. The Leios build's reapplication of a Conway block's transactions is shown by the
+    suites only: no scenario runs a Scala pool on that build's Conway.
 - **Dijkstra's BBODY** (`era/EraBlock.scala`, `era/dijkstra/DijkstraBlock.scala`, `era/rules/BbodyFailures.scala`,
   `era/rules/DijkstraBbody.scala`; `Rules/Bbody.hs` of `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/`, cardano-ledger
   9df9f98c, with the predicates of Shelley's, Alonzo's and Conway's BBODY it runs):

@@ -17,7 +17,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
   SlotNo
 }
 import xyz.kd5ujc.scarab.node.NodeSetup
-import xyz.kd5ujc.scarab.node.mempool.MempoolLedger
+import xyz.kd5ujc.scarab.node.mempool.ConwayPoolLedger
 import xyz.kd5ujc.scarab.node.read.ConwayView
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.protocol.ReferenceBuild
@@ -27,7 +27,7 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellLedgerFile, HaskellState}
   * reaches for the same block: its parent's state ticked once to the block's slot (`Hfc.tick`, as
   * `EraBlock.ticked` ticks it; the reference's forger ticks so too, `getTickedLedgerState` 's
   * `applyChainTick`, ouroboros-consensus 2416493b `NodeKernel/Forge.hs:686-705`). The forger's
-  * state is what the mempool's transactions are selected on ([[MempoolLedger]]).
+  * state is what the pool's transactions are applied again on for its block ([[ConwayPoolLedger]]).
   *
   * The parents are recorded Conway states, ticked as block application ticks them to a slot of
   * their epoch from which the forecast range (the stability window after the parent,
@@ -200,6 +200,10 @@ class ConwayForgeTickSuite extends munit.FunSuite:
   private def twoTicks(net: Net, parent: NewEpochState[Conway], slot: BigInt) =
     applied(net, applied(net, parent, net.geometry.firstSlot(net.geometry.epochOf(slot))), slot)
 
+  /** The pool's ledger of Conway of `nes`, which a forger builds its block's transactions on. */
+  private def pooled(nes: NewEpochState[Conway]): ConwayPoolLedger =
+    ConwayPoolLedger.of(nes).fold(e => fail(s"parameters that are not Conway's: $e"), identity)
+
   private def same(a: NewEpochState[Conway], b: NewEpochState[Conway]): Boolean =
     Eq[NewEpochState[Conway]].eqv(a, b)
 
@@ -279,7 +283,7 @@ class ConwayForgeTickSuite extends munit.FunSuite:
         assert(same(forger, block), s"${c.label}, slot $s: ${difference(forger, block)}")
         assertEquals(
           handed,
-          Forger.Ticked.InConway(MempoolLedger.of(block)),
+          Forger.Ticked.InConway(pooled(block)),
           s"${c.label}, slot $s"
         )
       }
@@ -309,7 +313,7 @@ class ConwayForgeTickSuite extends munit.FunSuite:
           )
           assertEquals(
             handed,
-            Forger.Ticked.InConway(MempoolLedger.of(block)),
+            Forger.Ticked.InConway(pooled(block)),
             s"${c.label}, $pending, slot $s"
           )
           // the boundary adopts a definite update, and a potential one the single tick solidifies
@@ -381,7 +385,7 @@ class ConwayForgeTickSuite extends munit.FunSuite:
           assertEquals(future(two), EraLedger.solidify(potential), s"${c.label}, slot $s")
           assert(!same(two, one), s"${c.label}, slot $s")
           assert(same(withFuture(two, potential), one), s"${c.label}, slot $s")
-          assertNotEquals(MempoolLedger.of(two), MempoolLedger.of(one), s"${c.label}, slot $s")
+          assertNotEquals(pooled(two), pooled(one), s"${c.label}, slot $s")
       }
     }
   }

@@ -58,11 +58,13 @@ class DecodeCauseSuite extends FunSuite:
     assertEquals(parsed.parts.body, bodyBytes)
     assertEquals(parsed.parts.auxiliaryData.map(_.hex), Some(aux))
     assertEquals(parsed.id, xyz.kd5ujc.scarab.crypto.Blake2b.hash256.hash(bodyBytes))
-    // and the forger reads its parts again as the mempool read them
-    val entry = Entry(xyz.kd5ujc.scarab.protocol.Era.Conway, parsed.parts, parsed.tx, 0L)
-    assertEquals(entry.raw, raw)
+    // and the forger takes the parts the mempool read, held in Conway's types, as they are
+    val ledger = TxKit.ledger(1).toPool
+    val held = ledger.heldAsValidated(ledger.readOf(raw), ConwayPoolEnv.of(TxKit.env, 1001))
     assertEquals(
-      xyz.kd5ujc.scarab.node.forge.BlockBuilder.piece(entry).map(p => (p.body, p.aux.map(_.hex))),
-      Right((bodyBytes, Some(aux)))
+      Entry(Held.InConway(held), 0L, 0L, scala.concurrent.duration.Duration.Zero).raw,
+      raw
     )
+    val piece = xyz.kd5ujc.scarab.node.forge.BlockBuilder.piece(held)
+    assertEquals((piece.body, piece.aux.map(_.hex)), (bodyBytes, Some(aux)))
   }

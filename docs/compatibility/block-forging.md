@@ -27,6 +27,14 @@ to its signature, in memory, and written back to its file only for a slot that p
 
 ## Evidence
 
+A Conway block's transactions are selected with the era rules (#85), as the reference selects them
+(`getSnapshotFor` and `snapshotTake`, ouroboros-consensus 82ecba32 `NodeKernel.hs:697-707`). The pool's snapshot of the
+slot applies the held transactions again on the ledger of the slot, as the selected build's consensus applies them,
+with the clock the block rules judge the block with. The body is the held transactions' parts as they were received,
+with each verdict's flag. `ConwaySnapshotSuite` covers each build's reapplication and both kinds of no verdict;
+`ConwayHeldSuite` covers the body bytes; `ForgeSuite` covers the clock and the cut. The design's
+[as-built entry](../design/era-typed-transactions.md#6-results) has the detail.
+
 The schedule (#1101, stage S2): `LeaderScheduleSuite`'s property that over generated epochs, nonces, stakes,
 totals, coefficients and VRF keys every slot's decision and every led slot's certificate are `Leadership.check`'s;
 `ScheduledForgerSuite`, the differential test of the wired forger, which runs each scenario through the scheduled

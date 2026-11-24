@@ -169,7 +169,7 @@ class MempoolInterventionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught
       assertEquals(entry.id, Blake2b.hash256.hash(ok.parts.body))
       assertEquals(entry.raw, ok.raw(true))
       assertEquals(entry.size, received.size + (if indefinite then 0 else 1))
-      val piece = BlockBuilder.piece(entry).fold(e => fail(e.message), identity)
+      val piece = BlockBuilder.piece(entry.conwayAdmitted)
       assertEquals(
         (piece.body, piece.witnesses, piece.aux, piece.valid),
         (ok.parts.body, ok.parts.witnesses, ok.parts.auxiliaryData, true)
@@ -205,7 +205,7 @@ class MempoolInterventionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught
     assertEquals(synced.entries.map(_.raw), held.entries.map(_.raw))
     assertEquals(synced.entries.map(_.tx.isValid), Vector(false))
     val entry = synced.entries.head
-    val piece = BlockBuilder.piece(entry).fold(e => fail(e.message), identity)
+    val piece = BlockBuilder.piece(entry.conwayAdmitted)
     assert(!piece.valid)
     assertEquals(piece.body, failing.parts.body)
     assertEquals(piece.witnesses, failing.parts.witnesses)
@@ -215,20 +215,16 @@ class MempoolInterventionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught
       BlockBuilder.body(Vector(piece)).invalid,
       Bytes.fromArray(Array(0x81, 0x00).map(_.toByte))
     )
-    val selected = BlockBuilder.select(
-      failing.ledger,
-      failing.tipSlot + 1,
-      failing.ledger.epoch,
-      mempoolEnv.geometry,
-      mempoolEnv.globals,
+    val (chosen, withheld) = failing.ledger.toPool.selected(
       synced.entries,
+      failing.tipSlot + 1,
+      mempoolEnv,
       BlockBuilder.Limits(65536, xyz.kd5ujc.scarab.plutus.ExUnits(14000000, 10000000000L))
-    )(
-      xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder,
-      xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default
     )
-    assertEquals(selected, BlockBuilder.Selection(selected.chosen, Vector.empty))
-    assertEquals(selected.chosen.map(_._1.id), Vector(entry.id))
+    assertEquals(withheld, Vector.empty)
+    assertEquals(chosen.map(_.admitted.read.id), Vector(entry.id))
+    // the block takes it as held, with the flag of its verdict
+    assertEquals(chosen.map(h => BlockBuilder.piece(h.admitted)), Vector(piece))
   }
 
   test(
@@ -289,17 +285,14 @@ class MempoolInterventionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught
     val (kept, _) = synced
       .remove(Set.empty, counted)
     assertEquals(kept.entries.map(_.id), held.entries.map(_.id))
-    val selected = BlockBuilder.select(
-      ok.ledger,
-      ok.tipSlot + 1,
-      ok.ledger.epoch,
-      mempoolEnv.geometry,
-      mempoolEnv.globals,
+    val (chosen, withheld) = ok.ledger.toPool.selected(
       synced.entries,
+      ok.tipSlot + 1,
+      counted,
       BlockBuilder.Limits(65536, xyz.kd5ujc.scarab.plutus.ExUnits(14000000, 10000000000L))
-    )(decoder, evaluator)
-    assertEquals(selected, BlockBuilder.Selection(selected.chosen, Vector.empty))
-    assertEquals(selected.chosen.map(_._1.id), held.entries.map(_.id))
+    )
+    assertEquals(withheld, Vector.empty)
+    assertEquals(chosen.map(_.admitted.read.id), held.entries.map(_.id))
     assertEquals(counts, admitted)
   }
 

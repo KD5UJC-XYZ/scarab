@@ -10,7 +10,7 @@ import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.crypto.kes.Sum6KesSigning
 import xyz.kd5ujc.scarab.ledger.{ChainError, ForgeError, ForgeKeyProblem, NodeError, StorageError}
 import xyz.kd5ujc.scarab.node.Fatal
-import xyz.kd5ujc.scarab.node.mempool.Source
+import xyz.kd5ujc.scarab.node.mempool.{Source, selected, toPool}
 
 class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ForgeFixture:
   private def unreadable =
@@ -160,36 +160,76 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
   // the reference stops the node here (`compactCoinOrError` in the linked forging thread); the
   // owner decided (2026-10-28, issue 584) that the transaction leaves the pool and the block is
   // built from the rest
-  test("a deposit of the parameters out of range withholds that transaction; the rest is chosen") {
-    import xyz.kd5ujc.scarab.node.mempool.TxKit
-    import xyz.kd5ujc.scarab.node.mempool.TxKit.*
-    // a stake registration `[0, [0, key hash]]` (Conway `RegTxCert`, which takes `ppKeyDeposit`)
-    val keyHash = xyz.kd5ujc.scarab.codec.Bytes.fromArray(Array.fill(28)(9.toByte))
-    val certificate = head(4, 1) ++ head(4, 2) ++ head(0, 0) ++ head(4, 2) ++ head(0, 0) ++
-      bstr(keyHash)
-    val (raw, _) = TxKit.tx(
-      Vector(xyz.kd5ujc.scarab.ledger.TestLedger.txIn(1)),
-      Vector(bob.address() -> BigInt(99000000)),
-      BigInt(1000000),
-      Vector(alice),
-      certificates = certificate
-    )
-    val base = TxKit.ledger(2).withParams(_.copy(keyDeposit = BigInt(1) << 64))
+  test("a held transaction the rules have no verdict on is withheld; the rest is chosen") {
+    import xyz.kd5ujc.scarab.node.mempool.{ConwayPoolEnv, MempoolState, Rejection, TxKit}
+    import xyz.kd5ujc.scarab.ledger.era.rules.ConwayMempoolRun
+    val ledger = TxKit.ledger(3).toPool
     val limit = BlockBuilder.Limits(65536, xyz.kd5ujc.scarab.plutus.ExUnits(14000000, 10000000000L))
-    val registering = MempoolStateFixture.entry(raw)
+    val spending = MempoolStateFixture.entry(TxKit.pay(1)._1)
     val paying = MempoolStateFixture.entry(TxKit.pay(2)._1)
-    BlockBuilder.select(base, 1001, 1, geometry, globals, Vector(registering, paying), limit)(
-      xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder,
-      xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default
-    ) match
-      case BlockBuilder.Selection(
-            chosen,
-            Vector((withheld, xyz.kd5ujc.scarab.ledger.LedgerFailure.StateOutOfRange(_, error)))
+    // the rules throw on the first transaction (11.1's `reapplyTx` annotates it again): no verdict
+    val calls = new java.util.concurrent.atomic.AtomicInteger(0)
+    val base = ConwayPoolEnv.of(TxKit.env, 1001)
+    val throwing = base.copy(judging =
+      base.judging.copy(annotation =
+        (posix, pp, utxo, tx) =>
+          if calls.getAndIncrement() == 0 then throw IllegalStateException("annotation")
+          else ConwayMempoolRun.annotate(posix, pp, utxo, tx)
+      )
+    )
+    val (kept, withheld) = MempoolState.conwaySnapshot(Vector(spending, paying), ledger, throwing)
+    val snapshot = ConwaySnapshot(
+      kept.map((e, a) => ConwayHeld(a, xyz.kd5ujc.scarab.node.mempool.Capacity.measure(e))),
+      withheld.map((e, r) => e.id -> r).toMap
+    )
+    withheld match
+      case Vector((entry, Rejection.RulesDefect(_))) => assertEquals(entry.id, spending.id)
+      case other => fail(s"expected the spending transaction withheld, got $other")
+    assertEquals(
+      BlockBuilder.take(snapshot, limit.capacity).map(_.admitted.read.id),
+      Vector(paying.id)
+    )
+  }
+
+  test(
+    "parameters in force that are not Conway's: no ledger for the slot's block, the slot ends and the node goes on"
+  ) {
+    import xyz.kd5ujc.scarab.node.read.ChainRead.given
+    val p = pool(kesStart = 50)
+    val nes = ledgerWith(p, 1)
+    val gov = nes.es.ls.utxo.gov
+    // a fee per byte no `Coin` of Conway's parameters holds: only a damaged state has it
+    val broken = xyz.kd5ujc.scarab.ledger.state.NewEpochState
+      .ledger[xyz.kd5ujc.scarab.ledger.state.Conway]
+      .modify(ls =>
+        ls.copy[xyz.kd5ujc.scarab.ledger.state.Conway](utxo =
+          ls.utxo.copy(gov = gov.copy(curPParams = gov.curPParams.copy(minFeeA = BigInt(-1))))
+        )
+      )(nes)
+    val slot = leaderSlot(p)
+    val epoch = geometry.epochOf(slot)
+    val crossed = Forger.crossed(
+      (None, epoch),
+      Forger.TipLedger.InConway(broken),
+      mirrorState(nes).protocol,
+      epoch
+    )
+    val handed = Forger.blockLedger(
+      xyz.kd5ujc.scarab.ledger.rules.Globals(globals, geometry),
+      config.forks.transition(geometry.k),
+      crossed,
+      slot
+    )
+    handed match
+      case Left(
+            e @ ForgeError.UnsupportedProtocol(
+              xyz.kd5ujc.scarab.ledger.ForgeProtocolProblem.ConwayParams(_)
+            )
           ) =>
-        assertEquals(withheld.id, registering.id)
-        assertEquals(error, outOfRange)
-        assertEquals(chosen.map(_._1.id), Vector(paying.id))
-      case other => fail(s"expected the registration withheld, got $other")
+        // a failure of the forger's own, not of the infrastructure: the attempt ends the slot
+        // (`forgeFailed`) and the node goes on, as for a chain it has no ledger of
+        assertEquals(HotKeys.infrastructureFailure(e), None)
+      case other => fail(s"expected no ledger for the parameters, got $other")
   }
 
   test("an actual rule rejection remains recoverable and retains its predicate failure") {
@@ -659,14 +699,9 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
     // decoded again (`Babbage/Rules/Utxow.hs` 379), so a decoder that is unavailable now, or fails
     // on the transaction, gives no reason to stop or to skip it
     List(stopped, xyz.kd5ujc.scarab.plutus.BackendFailure.StackExhausted).foreach { reason =>
+      val env = xyz.kd5ujc.scarab.node.mempool.TxKit.env.copy(decoder = failing(reason))
       assertEquals(
-        BlockBuilder
-          .select(base, 1001, 1, geometry, globals, Vector(entry), limit)(
-            failing(reason),
-            xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default
-          )
-          .chosen
-          .map(_._1.id),
+        base.toPool.selected(Vector(entry), 1001, env, limit)._1.map(_.admitted.read.id),
         Vector(id)
       )
     }
@@ -676,11 +711,8 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
       0
     )
     assertEquals(
-      BlockBuilder.select(base, 1001, 1, geometry, globals, Vector(invalid), limit)(
-        xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder,
-        xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default
-      ),
-      BlockBuilder.Selection(Vector.empty, Vector.empty)
+      base.toPool.selected(Vector(invalid), 1001, xyz.kd5ujc.scarab.node.mempool.TxKit.env, limit),
+      (Vector.empty, Vector.empty)
     )
   }
 

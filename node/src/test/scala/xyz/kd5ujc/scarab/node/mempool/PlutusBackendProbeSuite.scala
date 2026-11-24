@@ -19,9 +19,11 @@ import xyz.kd5ujc.scarab.plutus.*
   * [[PlutusBackend]]) and the rules of a block
   * ([[xyz.kd5ujc.scarab.ledger.rules.EraBlock.Context]], which `MirrorRules` builds from the same
   * backend), serial and prepared for parallel evaluation; `MirrorRules` itself is probed by
-  * [[xyz.kd5ujc.scarab.node.forge.PlutusBackendBlockProbeSuite]]. The forger applies held
-  * transactions again without their static checks, so no script reaches its backend there
-  * (`MempoolInterventionSuite`); its backend is a required argument like the others'.
+  * [[xyz.kd5ujc.scarab.node.forge.PlutusBackendBlockProbeSuite]]. The forger's snapshot applies
+  * held transactions again without their static checks, so no script reaches its backend there
+  * (`MempoolInterventionSuite`), except where 11.2's and the Leios build's `reapplyValidatedTx`
+  * validates a transaction again in full after a change of the protocol's major version; its
+  * backend is the pool environment's, like the others'.
   */
 class PlutusBackendProbeSuite extends FunSuite:
   /** @param admits

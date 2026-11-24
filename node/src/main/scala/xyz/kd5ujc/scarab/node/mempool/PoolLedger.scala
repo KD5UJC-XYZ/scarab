@@ -307,9 +307,9 @@ final case class EarlierLedger[E <: EraTag](
 /** The flat rules' Conway ledger: the Conway ledger state at the chain tip, the treasury of the
   * chain account (the transaction's `currentTreasuryValue` is checked against it) and the epoch,
   * whose transactions the flat MEMPOOL judges. The pool judges Conway's transactions by Conway's
-  * era rules ([[ConwayPoolLedger]], #85); the forger applies its block's again on this ledger until
-  * its Conway path takes the era's (the switch's PR7), and the flat MEMPOOL stays for the suites
-  * that compare the two and for `tools`.
+  * era rules ([[ConwayPoolLedger]], #85), and so does the forger's snapshot of a slot
+  * ([[MempoolState.conwaySnapshot]]); the flat MEMPOOL stays for the suites that compare the two
+  * and for `tools`.
   */
 final case class MempoolLedger(ls: LedgerState[Conway], treasury: Coin, epoch: BigInt):
   def era: Era = Era.Conway
@@ -552,9 +552,26 @@ final case class ConwayPoolLedger private (
     * `reapplyValidatedTx`). The transaction stays as held.
     */
   def reapply(held: ConwayAdmitted, env: ConwayPoolEnv): Either[Rejection, ConwayPoolLedger] =
-    judged(held.read)(
-      ConwayMempoolRun.reapply(env.judging, mempoolEnv(env.slot), ls, held.validated)
-    ).map(after => copy(ls = after))
+    reapplied(held, env).flatMap(_.leftMap(r => r: Rejection))
+
+  /** [[reapply]] with its two failures kept apart, by the type of the run's outcome: a defect of
+    * Conway's rules, the node's own, which is no verdict on the transaction
+    * ([[ConwayUnjudged.rejection]]), on the left; the refusal of the transaction
+    * ([[Rejection.ConwayRefused]]) or the ledger after it on the right.
+    */
+  def reapplied(
+      held: ConwayAdmitted,
+      env: ConwayPoolEnv
+  ): Either[Rejection, Either[Rejection.ConwayRefused, ConwayPoolLedger]] =
+    ConwayMempoolRun
+      .reapply(env.judging, mempoolEnv(env.slot), ls, held.validated)
+      .bimap(
+        ConwayUnjudged.rejection(held.read.id, _),
+        _.bimap(
+          e => new Rejection.ConwayRefused(held.read.id, e.failures),
+          after => copy(ls = after)
+        )
+      )
 
   /** A held transaction of the era before Conway, translated into it, `r`, reapplied as 11.1's
     * consensus reapplies it across the crossing ([[ConwayMempoolRun.reapplyTranslated]]): the

@@ -130,13 +130,15 @@ step by step and trace by trace, with the reference's trace names, severities an
    elected: `nodeNotLeader`. Elected with a certificate whose window has not begun: `nodeCannotForge`
    (`PraosCannotForgeKeyNotUsableYet`). Otherwise `nodeIsLeader`.
 6. The ledger is ticked to the slot (`forgeTickedLedgerState`), and the transactions are taken from the mempool
-   (`BlockBuilder.select`, `forgingMempoolSnapshot`): the held transactions are revalidated in order against the
-   ticked ledger in the block's own environment, those that no longer apply are dropped without counting, and
+   (`ConwaySnapshots`, `BlockBuilder.take`, `forgingMempoolSnapshot`): the pool's snapshot of the slot
+   (`getSnapshotFor`), its held transactions applied again in order by the era rules on the ticked ledger, with the
+   clock of the chain the block is forged on, as the selected build's consensus applies them (11.1's `reapplyTx`,
+   11.2's and the Leios build's `reapplyValidatedTx`); those that no longer apply are dropped without counting, and
    of the rest the longest prefix whose measures fit the block's capacity in every component is taken
    (`snapshotTake`): the body size less 1024 bytes, each transaction counting its size plus 4; the execution
    units; the reference-script bytes of a block. The first transaction that does not fit ends the selection.
-7. The body is encoded from the transactions' original bytes (bodies, witness sets, auxiliary data by index,
-   invalid indices) and hashed as the header commits; the ten-element Praos header body (block number, slot,
+7. The body is encoded from the held transactions' parts as they were received, with each verdict's flag
+   (bodies, witness sets, auxiliary data by index, invalid indices) and hashed as the header commits; the ten-element Praos header body (block number, slot,
    previous hash, cold key, VRF key, VRF result, body size and hash, operational certificate, the ledger's
    protocol version) is signed with the KES key at the slot's period (`forgedBlock`, then Scarab's `forged`).
 8. At the onset, `Follower.adoptForged` runs the block through the node's own `MirrorRules` and commits it through the same

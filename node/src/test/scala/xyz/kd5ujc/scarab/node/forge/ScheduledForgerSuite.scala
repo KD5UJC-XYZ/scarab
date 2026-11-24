@@ -793,9 +793,10 @@ class ScheduledForgerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught wit
     "a transaction withheld by a discarded early attempt stays in the mempool for the re-forge"
   ) {
     // the early attempt of the slot, on its first parent, has no verdict on a held registration
-    // (its deposit beyond the ledger's range, a ledger no chain state holds): it would leave the
-    // mempool; before the onset a block of the slot before moves the tip, the attempt is
-    // discarded, and the slot is forged again on the new parent, where the registration applies
+    // (a quantity beyond the ledger's range, which no chain state holds: the pool's snapshot of
+    // that attempt withholds it): it would leave the mempool; before the onset a block of the slot
+    // before moves the tip, the attempt is discarded, and the slot is forged again on the new
+    // parent, where the registration applies
     import xyz.kd5ujc.scarab.node.mempool.TxKit.*
     val keyHash = Bytes.fromArray(Array.fill(28)(9.toByte))
     val certificate =
@@ -810,17 +811,32 @@ class ScheduledForgerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught wit
     )
     val s = pair.slot
     val b = pool(kesStart = 50, seed = pair.b)
-    val withheldEarly: (
-        BigInt,
-        xyz.kd5ujc.scarab.protocol.ChainSync.Point,
-        xyz.kd5ujc.scarab.node.mempool.MempoolLedger
-    ) => xyz.kd5ujc.scarab.node.mempool.MempoolLedger =
-      (slot, prev, ledger) =>
-        prev match
-          case xyz.kd5ujc.scarab.protocol.ChainSync.Point.Block(at, _) if at.value == s - 1 =>
-            ledger
-          case _ if slot == s => ledger.withParams(_.copy(keyDeposit = BigInt(1) << 64))
-          case _              => ledger
+    val outOfRange = xyz.kd5ujc.scarab.ledger.state.VocabError
+      .OutOfRange(xyz.kd5ujc.scarab.ledger.state.VocabError.Kind.CompactCoin, BigInt(1) << 64)
+    val withheldEarly: ConwaySnapshots[IO] => ConwaySnapshots[IO] = pooled =>
+      new ConwaySnapshots[IO]:
+        def forSlot(
+            ticked: xyz.kd5ujc.scarab.node.mempool.ConwayPoolLedger,
+            tip: xyz.kd5ujc.scarab.protocol.ChainSync.Point,
+            slot: BigInt,
+            clock: xyz.kd5ujc.scarab.ledger.PosixClock
+        )(using cats.mtl.Raise[IO, xyz.kd5ujc.scarab.ledger.StorageError]) =
+          pooled.forSlot(ticked, tip, slot, clock).map { snapshot =>
+            tip match
+              case xyz.kd5ujc.scarab.protocol.ChainSync.Point.Block(at, _) if at.value == s - 1 =>
+                snapshot
+              case _ if slot == s =>
+                ConwaySnapshot(
+                  snapshot.held.filterNot(_.admitted.read.id == id),
+                  snapshot.withheld.updated(
+                    id,
+                    xyz.kd5ujc.scarab.node.mempool.Rejection.Ledger(
+                      xyz.kd5ujc.scarab.ledger.LedgerFailure.StateOutOfRange(id, outOfRange)
+                    )
+                  )
+                )
+              case _ => snapshot
+          }
     withHandle {
       compared(
         Scenario(

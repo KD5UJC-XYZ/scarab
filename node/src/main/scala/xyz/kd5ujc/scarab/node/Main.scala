@@ -87,6 +87,7 @@ import xyz.kd5ujc.scarab.network.{
 }
 import xyz.kd5ujc.scarab.node.forge.{
   BlockForgingState,
+  ConwaySnapshots,
   DijkstraSnapshots,
   ForgeEvent,
   ForgeEvents,
@@ -2723,8 +2724,9 @@ object Main extends IOApp:
           )
           forger <- {
             given TxClock[MirrorState] = chain.txClock
-            // the pool's snapshot of a Dijkstra slot (`getSnapshotFor`) is its held transactions
-            // revalidated on the ticked state of the slot (`DijkstraSnapshots.ofPool`);
+            // the pool's snapshot of a Conway or a Dijkstra slot (`getSnapshotFor`) is its held
+            // transactions revalidated on the ticked state of the slot (`ConwaySnapshots.ofPool`,
+            // `DijkstraSnapshots.ofPool`);
             // the endorser blocks it forges go to the fetch's handlers and store; the node does not
             // adapt their capacity (`LeiosAdaptiveEndorsements`, #54)
             // a block of the Leios build certifies what its parent announced once the store
@@ -2763,6 +2765,13 @@ object Main extends IOApp:
               utxoStore = Some(store),
               source = Some(source),
               enabled = !options.startsNonProducing(setup.config.settings),
+              conwaySnapshots = Some(
+                ConwaySnapshots.ofPool[IO](
+                  mempool,
+                  Some(store),
+                  chain.mempoolEnvironment.ask[MempoolEnv]
+                )
+              ),
               dijkstraSnapshots = Some(
                 DijkstraSnapshots.ofPool[IO](
                   mempool,

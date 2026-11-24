@@ -14,8 +14,7 @@ import xyz.kd5ujc.scarab.crypto.kes.Sum6KesSigning
 import xyz.kd5ujc.scarab.crypto.vrf.{Draft03Prover, PraosLeaderThreshold as Leader}
 import xyz.kd5ujc.scarab.ledger.{Header, NodeError, Nonce}
 import xyz.kd5ujc.scarab.ledger.state.{Conway, EpochNo, NewEpochState, PoolDistr, SnapShots}
-import xyz.kd5ujc.scarab.node.mempool.{MempoolLedger, TxKit}
-import xyz.kd5ujc.scarab.protocol.ChainSync
+import xyz.kd5ujc.scarab.node.mempool.TxKit
 import scala.concurrent.duration.*
 
 /** The pieces of the tests of the scheduled forger (#1101, §7): a pool forged with in two harnesses
@@ -221,7 +220,7 @@ trait ScheduleFixture extends ForgeFixture:
       scheduler: Boolean = true,
       committed: Boolean = false,
       setup: Change = _ => IO.unit,
-      selection: Option[(BigInt, ChainSync.Point, MempoolLedger) => MempoolLedger] = None,
+      selection: Option[ConwaySnapshots[IO] => ConwaySnapshots[IO]] = None,
       margin: Vector[(BigInt, Change)] = Vector.empty,
       behind: Option[(BigInt, FiniteDuration)] = None,
       within: Vector[(Forger.Point, Change)] = Vector.empty,
@@ -344,7 +343,7 @@ trait ScheduleFixture extends ForgeFixture:
           ),
           praos = sc.praos,
           committedChain = sc.committed,
-          selectionLedger = sc.selection,
+          conwaySnapshots = sc.selection,
           pause = Some(point =>
             stalled(point) *> hooks
               .modify(m => (m - point, m.get(point)))
@@ -402,7 +401,7 @@ trait ScheduleFixture extends ForgeFixture:
         source = Some(keysFrom(reading)),
         clock = Some(at.get),
         praos = sc.praos,
-        selectionLedger = sc.selection,
+        conwaySnapshots = sc.selection,
         pause = Some(point =>
           hooks
             .modify(m => (m - point, m.get(point)))
