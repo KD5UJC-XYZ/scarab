@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.era.conway
 
-import cats.Id
+import cats.{Id, Monad}
 import cats.syntax.all.*
 import java.util.concurrent.{Callable, Executors}
 import java.util.concurrent.atomic.AtomicReference
@@ -19,6 +19,7 @@ import xyz.kd5ujc.scarab.plutus.{
   ScriptFailure
 }
 import xyz.kd5ujc.scarab.uplc.cek.{CekError, CekFailure}
+import xyz.kd5ujc.scarab.uplc.Term
 import xyz.kd5ujc.scarab.uplc.ledger.EvaluationError
 
 /** Conway's era run on a block prepared for the node's bounded parallel evaluation of its scripts
@@ -64,12 +65,13 @@ object ConwayPlanned extends Assertions:
     )
     def all: Vector[Phase2.Observation] = told.get
 
-  /** A script's failure as two runs compare it: a machine's failure by its error, whether the
-    * reference attaches a term to it (`ErrorWithCause`) and its trace, since the term compares by
-    * identity; every other failure as it is, whose fields compare by value.
+  /** A script's failure as two runs compare it: a machine's failure by its error, the term the
+    * reference attaches to it (`ErrorWithCause`), discharged and compared as a tree, and its trace,
+    * since the failure holds the term's discharge, equal only as the same object; every other
+    * failure as it is, whose fields compare by value.
     */
   enum FailureForm derives CanEqual:
-    case Machine(error: CekError, caused: Boolean, logs: Vector[String])
+    case Machine(error: CekError, cause: Option[Term], logs: Vector[String])
     case Other(failure: EvalFailure)
 
   object FailureForm:
@@ -77,7 +79,7 @@ object ConwayPlanned extends Assertions:
       case EvalFailure.Script(
             ScriptFailure.Uplc(EvaluationError.Cek(CekFailure(error, cause)), logs)
           ) =>
-        Machine(error, cause.isDefined, logs)
+        Machine(error, cause.map(_.term), logs)
       case EvalFailure.Script(_) | EvalFailure.Decode(_) | EvalFailure.Unsupported(_) |
           EvalFailure.OutOfBudget | EvalFailure.OpenTerm(_) =>
         Other(failure)
@@ -151,10 +153,11 @@ object ConwayPlanned extends Assertions:
       observations: Vector[Phase2.Observation]
   )
 
-  /** How a check runs a body program with a number of workers: [[threaded]] here, the node's own
-    * scheduler (`ParallelPlutus`) in the node's tests.
+  /** How a check runs a body program with a number of workers, in the effect `F`: [[threaded]]
+    * here, the node's own scheduler (`ParallelPlutus`) in `IO` in the node's tests.
     */
-  type Runner = (ConwayBlockRun.Body, Int) => Either[Phase2.Defect, ConwayBlockRun.Result]
+  type Runner[F[_]] =
+    (ConwayBlockRun.Body, Int) => F[Either[Phase2.Defect, ConwayBlockRun.Result]]
 
   /** The node's worker counts checked. */
   val workers: Vector[Int] = Vector(1, 2, 4, 8)
@@ -164,10 +167,7 @@ object ConwayPlanned extends Assertions:
     * prepared, each dependency batch's jobs run on `n` threads at once, the batches in order, and
     * the plan resolved with every value.
     */
-  def threaded(
-      body: ConwayBlockRun.Body,
-      n: Int
-  ): Either[Phase2.Defect, ConwayBlockRun.Result] =
+  val threaded: Runner[Id] = (body, n) =>
     if n == 1 || !body.worthwhile then Either.catchNonFatal(body.serial).leftMap(Phase2.Defect(_))
     else
       val plan = body.prepare
@@ -210,13 +210,16 @@ object ConwayPlanned extends Assertions:
     * the node's phase-2 observer, and again without one, to the same result; and prepared with the
     * same results and the observer: resolved with its jobs run last batch first, each batch's last
     * first; with none run, each then evaluated where it lands; and with as many workers as each of
-    * the node's worker counts (`runner`, [[threaded]] by default), with and without the observer;
-    * each to the serial run's result, and, observed, to the serial run's observations, in its
-    * order. An admitted block is run with the workers again, evaluating with `base` itself.
+    * the node's worker counts (`runner`), with and without the observer; each to the serial run's
+    * result, and, observed, to the serial run's observations, in its order. An admitted block is
+    * run with the workers again, evaluating with `base` itself.
     */
-  def check(name: String, base: ScriptEvaluator[Id], clock: PosixClock, runner: Runner = threaded)(
-      programOf: Program
-  ): Checked =
+  def check[F[_]: Monad](
+      name: String,
+      base: ScriptEvaluator[Id],
+      clock: PosixClock,
+      runner: Runner[F]
+  )(programOf: Program): F[Checked] =
     val shared = Shared(base)
     val told = Observations(clock)
     val serial = programOf(shared, Some(told.observing)).serial
@@ -244,29 +247,36 @@ object ConwayPlanned extends Assertions:
       observing.resolve(observing.batches.reverse.flatMap(_.reverse).map(observing.execute))
     }
     observed(s"$name, none run")(again => prepared(s"$name, none run", again).resolve(Vector.empty))
-    workers.foreach { n =>
-      observed(s"$name, $n workers")(again =>
-        runner(programOf(shared.replaying, Some(again.observing)), n)
-      )
-      same(s"$name, $n workers, not observed", serial, runner(programOf(shared.replaying, None), n))
+    val withWorkers = workers.traverse_ { n =>
+      val again = Observations(clock)
+      for
+        observedRun <- runner(programOf(shared.replaying, Some(again.observing)), n)
+        _ = same(s"$name, $n workers", serial, observedRun)
+        _ = assertEquals(
+          projected(again.all),
+          projected(told.all),
+          s"$name, $n workers: the observations"
+        )
+        quiet <- runner(programOf(shared.replaying, None), n)
+      yield same(s"$name, $n workers, not observed", serial, quiet)
     }
     // an admitted block holds no machine's term: its workers evaluate with `base` itself, the
     // overlapping evaluations real, to the same state, blocks made and counters, and observations
     // that differ from the serial run's at most in a failure's terms ([[projected]])
-    serial match
+    val evaluating = serial match
       case Right(Right(_)) =>
-        workers.foreach { n =>
+        workers.traverse_ { n =>
           val again = Observations(clock)
-          same(
-            s"$name, $n workers evaluating",
-            serial,
-            runner(programOf(base, Some(again.observing)), n)
-          )
-          assertEquals(
-            projected(again.all),
-            projected(told.all),
-            s"$name, $n workers evaluating: the observations"
-          )
+          runner(programOf(base, Some(again.observing)), n).map { result =>
+            same(s"$name, $n workers evaluating", serial, result)
+            assertEquals(
+              projected(again.all),
+              projected(told.all),
+              s"$name, $n workers evaluating: the observations"
+            )
+          }
         }
-      case Right(Left(_)) | Left(_) => ()
-    Checked(serial, plan.jobs.size, plan.batches.map(_.map(_.index)), body.worthwhile, told.all)
+      case Right(Left(_)) | Left(_) => Monad[F].unit
+    (withWorkers *> evaluating).as(
+      Checked(serial, plan.jobs.size, plan.batches.map(_.map(_.index)), body.worthwhile, told.all)
+    )
