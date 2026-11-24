@@ -61,6 +61,7 @@ import xyz.kd5ujc.scarab.ledger.era.rules.{
   BbodyPredFailure,
   DijkstraBlockRun,
   DijkstraClosure,
+  DijkstraPhase2,
   DijkstraRuleDefect,
   DijkstraUtxoContext,
   GovDefect,
@@ -103,11 +104,13 @@ import xyz.kd5ujc.scarab.protocol.{EbHash, EbPoint, Era, LeiosTxHash}
   *      and the closure's (`Shelley/Ledger/Leios.hs:223-230`).
   *
   * BBODY is a body program ([[DijkstraBlockRun.program]]) the caller runs serially or through the
-  * node's bounded workers (ADR 0018), each to the same result ([[ready]]); the steps before it and
-  * after it run in the caller's order around it. A verdict on the block is a [[BlockFailure]]; what
-  * the node has no verdict on is a [[ChainError]], never a verdict: the follower withholds the
-  * block for a limit of this build valid peer input can meet (`BlockNoVerdict.ofDijkstra`), and
-  * stops for the rest.
+  * node's bounded workers (ADR 0018), each to the same result ([[ready]]), the node's phase-2
+  * observer (`--plutus-cases`), if any, told of its batches' scripts as the serial run tells it;
+  * the closure's transactions run no script (`ValidateNone`) and are not observed. The steps before
+  * it and after it run in the caller's order around it. A verdict on the block is a
+  * [[BlockFailure]]; what the node has no verdict on is a [[ChainError]], never a verdict: the
+  * follower withholds the block for a limit of this build valid peer input can meet
+  * (`BlockNoVerdict.ofDijkstra`), and stops for the rest.
   *
   * The header gate ([[Praos2Headers]]) and this application share Praos2's configuration, the
   * chain-dependent state's translation and the tip ([[Praos2Headers.config]],
@@ -527,7 +530,8 @@ private[node] object MirrorDijkstra:
   private def bbody(
       env: Env,
       ticked: NewEpochState[Dijkstra],
-      block: EraBlockOf[DijkstraBlockHeader, Dijkstra]
+      block: EraBlockOf[DijkstraBlockHeader, Dijkstra],
+      observer: Option[DijkstraPhase2.Observation => Unit]
   ): DijkstraBlockRun.Body =
     DijkstraBlockRun.program(
       env.globals,
@@ -540,7 +544,8 @@ private[node] object MirrorDijkstra:
       env.backend.evaluator,
       env.config.verdicts,
       env.backend.decoder,
-      env.clock.posix
+      env.clock.posix,
+      observer
     )
 
   /** What BBODY's result `result` on the ticked state makes of it: the state after it, and the
@@ -615,9 +620,10 @@ private[node] object MirrorDijkstra:
       globals: LedgerGlobals,
       byronParams: EraHistory.ByronParams,
       backend: PlutusBackend,
-      read: Read
+      read: Read,
+      observer: Option[DijkstraPhase2.Observation => Unit] = None
   ): Applied =
-    ready(state, pre, announced, raw, config, globals, byronParams, backend, read) match
+    ready(state, pre, announced, raw, config, globals, byronParams, backend, read, observer) match
       case MirrorRules.Ready.Done(applied)   => applied
       case run: MirrorRules.Ready.Running[a] => run.finish(run.program.serial)
 
@@ -637,7 +643,8 @@ private[node] object MirrorDijkstra:
       globals: LedgerGlobals,
       byronParams: EraHistory.ByronParams,
       backend: PlutusBackend,
-      read: Read
+      read: Read,
+      observer: Option[DijkstraPhase2.Observation => Unit]
   ): MirrorRules.Ready =
     val slot = announced.slot
     val geometry = config.geometry
@@ -695,7 +702,7 @@ private[node] object MirrorDijkstra:
       case Right(Left(refused)) => MirrorRules.Ready.refused(refused)
       case Right(Right((block, tickedNes, closureBytes))) =>
         MirrorRules.Ready.Running[DijkstraBlockRun.Result](
-          bbody(env, tickedNes, block),
+          bbody(env, tickedNes, block, observer),
           result =>
             // `applyHelper` (`Ledger/Extended.hs:297-311`, ouroboros-consensus d91b3557): the
             // ledger's BBODY first, then `validateHeader` with the ledger view of the state ticked

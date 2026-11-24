@@ -1720,7 +1720,8 @@ object Main extends IOApp:
         afterBlock = Some(afterBlock),
         compute = Some(scheduling.compute),
         parallelPlutus = Some(parallelPlutus),
-        leios = run.leios.map(MirrorRules.Leios(_, committees))
+        leios = run.leios.map(MirrorRules.Leios(_, committees)),
+        dijkstraObserver = cases.map(c => c.observeDijkstra)
       )
     )
 
