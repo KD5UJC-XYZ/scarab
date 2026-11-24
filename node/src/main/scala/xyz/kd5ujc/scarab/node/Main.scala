@@ -2757,7 +2757,15 @@ object Main extends IOApp:
             // the certified closure applied off the forging path as soon as the tip announces an
             // endorser block whose closure the store holds, kept for the block that certifies it
             // (`Forger.warming`, [[LeiosCertifying.memoized]], #1380)
-            certifying.traverse(LeiosCertifying.memoized[IO, MirrorState](_)).flatMap { memoized =>
+            (
+              certifying.traverse(LeiosCertifying.memoized[IO, MirrorState](_)),
+              // the pool's snapshots, with the certifying view `Forger.warming` keeps (#1380)
+              DijkstraSnapshots.ofPool[IO](
+                mempool,
+                Some(store),
+                chain.mempoolEnvironment.ask[MempoolEnv]
+              )
+            ).flatMapN { (memoized, dijkstraSnapshots) =>
               Forger.create[IO, MirrorState](
                 setup.praos.copy(geometry = geometry),
                 globals,
@@ -2777,13 +2785,7 @@ object Main extends IOApp:
                     chain.mempoolEnvironment.ask[MempoolEnv]
                   )
                 ),
-                dijkstraSnapshots = Some(
-                  DijkstraSnapshots.ofPool[IO](
-                    mempool,
-                    Some(store),
-                    chain.mempoolEnvironment.ask[MempoolEnv]
-                  )
-                ),
+                dijkstraSnapshots = Some(dijkstraSnapshots),
                 onForgedEb = leiosFetch.map(_.onForged),
                 certifying = memoized
               )

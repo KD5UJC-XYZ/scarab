@@ -60,9 +60,12 @@ import xyz.kd5ujc.scarab.node.{
 import xyz.kd5ujc.scarab.node.assertions.Assertions
 import xyz.kd5ujc.scarab.node.mempool.{
   Capacity,
+  CertifyingView,
   DijkstraLedger,
+  DijkstraState,
   Mempool,
   MempoolEnv,
+  MempoolState,
   MempoolEvents,
   PoolLedger,
   Source
@@ -406,17 +409,19 @@ class DijkstraCertifySuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   ): IO[DijkstraPartition] =
     val params = MirrorEra.params(parent.ticked)
     val ebLimit = Capacity.endorserBlockCapacity(params).fold(e => fail(e.toString), identity)
-    DijkstraForge.partition[IO, MirrorState](
-      slot,
-      parent,
-      decision,
-      Capacity.dijkstraBlockUnit(params),
-      ebLimit,
-      DijkstraSnapshots.ofPool[IO](mempool, None, IO.pure(envOf(state, slot))),
-      certifying,
-      nes => Right(ticked(nes, slot)),
-      setup.txClock.at(state, Era.Dijkstra, slot)
-    )
+    DijkstraSnapshots.ofPool[IO](mempool, None, IO.pure(envOf(state, slot))).flatMap { snapshots =>
+      DijkstraForge.partition[IO, MirrorState](
+        slot,
+        parent,
+        decision,
+        Capacity.dijkstraBlockUnit(params),
+        ebLimit,
+        snapshots,
+        certifying,
+        nes => Right(ticked(nes, slot)),
+        setup.txClock.at(state, Era.Dijkstra, slot)
+      )
+    }
 
   private object MirrorEra:
     def params(nes: NewEpochState[Dijkstra]) = EraLedger.curPParams(nes.es.ls.utxo.gov)
@@ -569,6 +574,23 @@ class DijkstraCertifySuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         case CertifyDecision.Certify(certificate, _) => certificate
         case other                                   => fail(s"does not certify: $other")
     yield (forge(tip, slot, certB, split.body), split, cert, after, forged, endorsing)
+
+  /** [[pool]] as the node keeps it: synchronised with the tip `tip`, which it names. */
+  private def poolAt(state: MirrorState, tip: BlockRef): IO[Mempool[IO]] =
+    val env = envOf(state, tip.slot + 1)
+    val ledger = PoolLedger.at(state, Some(tip), env, transition) match
+      case Right(Right(d: DijkstraLedger)) => d
+      case other                           => fail(s"not a Dijkstra ledger: $other")
+    Mempool
+      .create[IO](
+        Right(ledger),
+        tip.slot,
+        env,
+        None,
+        MempoolEvents.none[IO],
+        tipHash = Some(tip.hash)
+      )
+      .flatTap(_.add(submitted, Source.Local).map(added => assert(added.isRight, added)))
 
   test(
     "a certifying block from the committee's votes passes the Leios checks, Praos2's header rules, BlockFetch's and block application"
@@ -933,4 +955,148 @@ class DijkstraCertifySuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         yield assertEquals((results, n), (List.fill(3)(Right(nes)), 2))
       )
     }
+  }
+
+  // the pool's certifying view (#1380)
+
+  test(
+    "the certifying view is the pool revalidated on the closure, as the forger revalidates it at its slot (#1380)"
+  ) {
+    for
+      c <- certifying
+      (_, split, _, after, announcingBlock, endorsing) = c
+      tip = refOf(announcingBlock.header)
+      judged = tip.slot + 1
+      slot = announcingBlock.slot + gap
+      parent = parentOf(after, tip, slot)
+      point = split.decision match
+        case CertifyDecision.Certify(_, p) => p
+        case other                         => fail(s"not certified: $other")
+      vs <- votes(after, announcingBlock.header.hash, Vector(0, 1, 2, 3))
+      closed <- certifier(closureOf(endorsing), vs)
+        .closed(parent.chain, parent.tip, parent.unticked, point, judged)
+      applied = closed.fold(e => fail(e.toString), identity)
+      mempool <- poolAt(after, tip)
+      held <- mempool.snapshot
+      env = envOf(after, judged)
+      snapshots <- DijkstraSnapshots.ofPool[IO](mempool, None, IO.pure(env))
+      // the forger's revalidation on a state ticked to a slot, at that slot
+      fresh = (nes: NewEpochState[Dijkstra], at: BigInt) =>
+        snapshots.forSlot(
+          ticked(nes, at),
+          at,
+          setup.txClock.at(after, Era.Dijkstra, at),
+          SnapshotCachePolicy.AlwaysRevalidate
+        )
+      onClosure <- fresh(applied, judged)
+      onClosureLater <- fresh(applied, slot)
+      // a closure that changes nothing: the pool's transaction applies
+      onParent <- fresh(parent.unticked, judged)
+      // the transaction removed from the pool, then held again under a new ticket
+      _ <- mempool.removeTxsEvenIfValid(Set(tx.id))
+      emptied <- mempool.snapshot
+      _ <- mempool.add(submitted, Source.Local).map(added => assert(added.isRight, added))
+      again <- mempool.snapshot
+    yield
+      def viewOn(nes: NewEpochState[Dijkstra], pool: MempoolState) =
+        val base = ticked(nes, judged)
+        CertifyingView
+          .build(point.hash, Some(tip.hash), base.epoch.toBigInt, DijkstraState.of(base), pool, env)
+          .getOrElse(fail("no view"))
+      def read(view: CertifyingView, pool: MempoolState, at: BigInt) =
+        view
+          .snapshotFor(point.hash, Some(tip.hash), at, pool, geometry)
+          .map(r => DijkstraSnapshots.snapshotOf(r.kept, r.withheld))
+      val closure = viewOn(applied, held)
+      val plain = viewOn(parent.unticked, held)
+      // the closure spends the transaction's inputs: the view drops what the pool holds
+      assertEquals(held.entries.map(_.id), Vector(tx.id))
+      assertEquals(onClosure.held, Vector.empty)
+      assertEquals(onParent.held.map(_.tx.id), Vector(tx.id))
+      // at the slot it was judged at and at the forging slot: the forger's revalidation
+      assertEquals(read(closure, held, judged), Some(onClosure))
+      assertEquals(read(closure, held, slot), Some(onClosureLater))
+      assertEquals(read(plain, held, judged), Some(onParent))
+      // another endorser block, another tip, an earlier slot or the next epoch: none
+      assertEquals(closure.snapshotFor(ebHash(9), Some(tip.hash), judged, held, geometry), None)
+      assertEquals(
+        closure.snapshotFor(point.hash, Some(refOf(chain(35)._1).hash), judged, held, geometry),
+        None
+      )
+      assertEquals(read(closure, held, tip.slot), None)
+      assertEquals(read(closure, held, geometry.firstSlot(geometry.epochOf(judged) + 1)), None)
+      // a removal of a transaction the view kept: none until the view is built again
+      assert(plain.removedFrom(emptied))
+      assertEquals(read(plain, emptied, judged), None)
+      assertEquals(
+        read(viewOn(parent.unticked, emptied), emptied, judged),
+        Some(DijkstraSnapshot.empty)
+      )
+      // a removal of one it dropped changes nothing it kept
+      assert(!closure.removedFrom(emptied))
+      assertEquals(read(closure, emptied, judged), Some(onClosure))
+      // caught up with a transaction held after it was built: the revalidation of the pool
+      def caught(view: CertifyingView) =
+        view.caughtUp(view.pending(again), view.revalidation.state, env)
+      val fromEmpty = viewOn(parent.unticked, emptied)
+      assertEquals(fromEmpty.pending(again).map(_.id), Vector(tx.id))
+      assertEquals(read(caught(fromEmpty), again, judged), Some(onParent))
+      assertEquals(read(caught(viewOn(applied, emptied)), again, judged), Some(onClosure))
+  }
+
+  test(
+    "a certifying block takes the certifying view, applying no closure and revalidating nothing (#1380)"
+  ) {
+    for
+      c <- certifying
+      (_, split, _, after, announcingBlock, _) = c
+      tip = refOf(announcingBlock.header)
+      slot = announcingBlock.slot + gap
+      parent = parentOf(after, tip, slot)
+      point = split.decision match
+        case CertifyDecision.Certify(_, p) => p
+        case other                         => fail(s"not certified: $other")
+      mempool <- poolAt(after, tip)
+      snapshots <- DijkstraSnapshots.ofPool[IO](mempool, None, IO.pure(envOf(after, slot)))
+      held <- snapshots.forSlot(
+        ticked(parent.unticked, slot),
+        slot,
+        setup.txClock.at(after, Era.Dijkstra, slot),
+        SnapshotCachePolicy.AlwaysRevalidate
+      )
+      runs <- Ref.of[IO, Int](0)
+      viewing = new DijkstraSnapshots[IO]:
+        def forSlot(
+            ticked: NewEpochState[Dijkstra],
+            at: BigInt,
+            clock: xyz.kd5ujc.scarab.ledger.PosixClock,
+            policy: SnapshotCachePolicy
+        )(using Raise[IO, StorageError]) = IO(fail("revalidated"))
+        def certifying(eb: EbHash, t: Option[Bytes], base: NewEpochState[Dijkstra])(using
+            Raise[IO, StorageError]
+        ) = IO.unit
+        def certifyingFor(eb: EbHash, t: Option[Bytes], at: BigInt) =
+          IO.pure(Option.when(eb == point.hash && t == Some(tip.hash) && at == slot)(held))
+      params = MirrorEra.params(parent.ticked)
+      ebLimit = Capacity.endorserBlockCapacity(params).fold(e => fail(e.toString), identity)
+      out <- DijkstraForge.partition[IO, MirrorState](
+        slot,
+        parent,
+        split.decision,
+        Capacity.dijkstraBlockUnit(params),
+        ebLimit,
+        viewing,
+        counted(runs, _ => IO(fail("applied"))),
+        nes => Right(ticked(nes, slot)),
+        setup.txClock.at(after, Era.Dijkstra, slot)
+      )
+      applications <- runs.get
+    yield
+      assertEquals(applications, 0)
+      out.body match
+        case BlockBuilder.Assembly.InDijkstra(body, Some(e)) =>
+          assertEquals(body.transactions, Vector.empty)
+          assert(body.leiosCertificate.isDefined)
+          assertEquals(e.transactions.toVector.map(_.id), Vector(tx.id))
+        case other => fail(s"no endorser block from the view: $other")
   }

@@ -300,6 +300,21 @@ final case class MempoolEnv(
   */
 final case class Submission(era: Int, raw: Bytes)
 
+/** A revalidation of held Dijkstra transactions ([[MempoolState.dijkstraRevalidated]]): those that
+  * still apply, in order, with what they were admitted with, those the rules have no verdict on,
+  * and the state the kept ones leave.
+  */
+final case class DijkstraRevalidation(
+    kept: Vector[(Entry, DijkstraAdmitted)],
+    withheld: Vector[(Entry, Rejection)],
+    state: DijkstraState
+)
+
+object DijkstraRevalidation:
+  /** None revalidated yet, on `state`. */
+  def from(state: DijkstraState): DijkstraRevalidation =
+    DijkstraRevalidation(Vector.empty, Vector.empty, state)
+
 /** The mempool as a value. The invariant, for every state reachable through this API:
   *
   * `entries` applied in order to `base` through the transaction rules succeed and give `current`,
@@ -978,12 +993,21 @@ object MempoolState:
       state: DijkstraState,
       env: DijkstraPoolEnv
   ): (Vector[(Entry, DijkstraAdmitted)], Vector[(Entry, Rejection)]) =
-    final case class Acc(
-        state: DijkstraState,
-        kept: Vector[(Entry, DijkstraAdmitted)],
-        withheld: Vector[(Entry, Rejection)]
-    )
-    val done = entries.foldLeft(Acc(state, Vector.empty, Vector.empty)) { (acc, entry) =>
+    val done = dijkstraRevalidated(entries, DijkstraRevalidation.from(state), env)
+    (done.kept, done.withheld)
+
+  /** [[dijkstraSnapshot]] of `entries` continued from `from`: each reapplied on the state the ones
+    * before it left, after `from` 's, the kept and the withheld appended to `from` 's, and the
+    * state the kept ones leave (`revalidateTxsFor'`, `Mempool/Impl/Common.hs:575-644` at
+    * ouroboros-consensus d91b3557, which the certifying view continues from its own state,
+    * `catchUpCertifyingView`, `Mempool/CertifyingView.hs:74-99`).
+    */
+  def dijkstraRevalidated(
+      entries: Vector[Entry],
+      from: DijkstraRevalidation,
+      env: DijkstraPoolEnv
+  ): DijkstraRevalidation =
+    entries.foldLeft(from) { (acc, entry) =>
       entry.held match
         case Held.InDijkstra(admitted) =>
           judging(acc.state.reapply(admitted, env)) match
@@ -997,7 +1021,6 @@ object MempoolState:
         // after the tip, so a pool behind a crossing holds none yet
         case Held.Flat(_, _, _) | Held.InConway(_) => acc
     }
-    (done.kept, done.withheld)
 
   /** The held Conway transactions of `entries` that still apply on `ledger`, the ledger state
     * ticked to the slot being forged, in order, each applied again at that slot (`env`) as the

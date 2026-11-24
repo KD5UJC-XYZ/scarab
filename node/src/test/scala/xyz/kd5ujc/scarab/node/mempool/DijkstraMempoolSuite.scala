@@ -726,8 +726,8 @@ class DijkstraMempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         )
         .map(MirrorDijkstra.inDijkstra)
         .fold(e => fail(e.toString), _.getOrElse(fail("not in Dijkstra")))
-      snapshot <- DijkstraSnapshots
-        .ofPool[IO](mempool, None, IO.pure(env))
+      snapshots <- DijkstraSnapshots.ofPool[IO](mempool, None, IO.pure(env))
+      snapshot <- snapshots
         .forSlot(
           ticked,
           slot,
@@ -802,7 +802,7 @@ class DijkstraMempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         .submit(dijkstra(submitted), Source.Local)
         .map(_.fold(r => fail(r.rejection.message), identity))
       pool <- mempool.snapshot
-      snapshots = DijkstraSnapshots.ofPool[IO](mempool, None, IO.pure(env))
+      snapshots <- DijkstraSnapshots.ofPool[IO](mempool, None, IO.pure(env))
       // the slot after the tip, which the pool judged its transaction at, the next, and block 37's
       compared <- Vector(tip.slot + 1, tip.slot + 2, chain(37)._1.slot).traverse { slot =>
         val ticked = tickedAt(s(37), slot)

@@ -391,10 +391,19 @@ final class Forger[F[_]: Async, S](
     * `syncCertifyingView`, `Mempool/Update.hs:647-665` at ouroboros-consensus d91b3557), so that
     * the block that certifies it is not delayed by its application (#1380).
     *
+    * Once applied, that state ticked to the slot after the tip is the base of the pool's certifying
+    * view of the closure ([[DijkstraSnapshots.certifying]]): the pool revalidated on it, then kept
+    * up to date with the pool's changes until the tip changes, which the block that certifies the
+    * endorser block takes its endorser block's transactions from (`getCertifyingSnapshotFor`). The
+    * reference builds and keeps the view in its mempool (`syncCertifyingView`,
+    * `Mempool/Update.hs:647-667`, and the catch-up thread, `Mempool/Init.hs:59-60`), a pool sync
+    * that a tip or an acquired closure starts.
+    *
     * It is only a head start: the forger asks for the same application with the same arguments when
-    * it certifies, and takes it from the memo or applies the closure itself. So a warm that fails,
-    * is refused or meets a defect changes nothing the node does, and is let go of here, never
-    * raised: the forger meets the same failure where it certifies, as it does without the warm.
+    * it certifies, and takes it from the memo or applies the closure itself, and revalidates the
+    * pool itself when the view does not hold. So a warm or a view that fails, is refused or meets a
+    * defect changes nothing the node does, and is let go of here, never raised: the forger meets
+    * the same failure where it certifies, as it does without the warm.
     */
   private def warming: F[Unit] =
     chains.discrete
@@ -430,6 +439,18 @@ final class Forger[F[_]: Async, S](
                         .ifM(
                           certifying
                             .closed(current.state, current.tipRef, unticked, point, slot)
+                            .flatMap {
+                              // the pool's certifying view of the closure, kept until the tip
+                              // changes, on its state ticked to the slot after the tip
+                              case Right(closed) =>
+                                tickDijkstra(closed, slot).fold(
+                                  _ => F.unit,
+                                  base =>
+                                    dijkstraSnapshots
+                                      .certifying(point.hash, current.tipRef.map(_.hash), base)
+                                )
+                              case Left(_) => F.unit
+                            }
                             .as(false),
                           F.pure(true)
                         )

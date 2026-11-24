@@ -581,6 +581,16 @@ class MirrorDijkstraSuite extends CatsEffectSuite:
               policy: xyz.kd5ujc.scarab.node.forge.SnapshotCachePolicy
           )(using cats.mtl.Raise[IO, StorageError]) =
             seen.set(Some(ticked)).as(DijkstraSnapshot.empty)
+          def certifying(
+              eb: xyz.kd5ujc.scarab.protocol.EbHash,
+              tip: Option[xyz.kd5ujc.scarab.codec.Bytes],
+              base: NewEpochState[Dijkstra]
+          )(using cats.mtl.Raise[IO, StorageError]) = IO.unit
+          def certifyingFor(
+              eb: xyz.kd5ujc.scarab.protocol.EbHash,
+              tip: Option[xyz.kd5ujc.scarab.codec.Bytes],
+              at: BigInt
+          ) = IO.pure(None)
       val parentOf = DijkstraParent(parent, Some(tip), unticked, unticked, Some(point))
       val cert = signedOver(tip.hash)
       val decision = CertifyDecision.Certify(cert, point)
