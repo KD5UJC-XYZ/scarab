@@ -63,6 +63,22 @@ class HeaderChainModelSuite extends ScalaCheckSuite:
   private val headers: Vector[Header] = main ++ forks.flatMap(_._2)
   private val universe: Vector[Point] = Point.Origin +: headers.map(_.point)
 
+  /** Our chain as selection sees it, anchored on `main` and following `main` or a fork. */
+  private val locals: Vector[ChainSelection.Local] =
+    def local(anchor: Option[Header], blocks: Vector[Header]) =
+      ChainSelection.Local(
+        anchor.fold[Point](Point.Origin)(_.point),
+        anchor.fold(SelectView(-1, 0, None, 0, None))(SelectView.of),
+        blocks.map(h => ChainSelection.LocalBlock(h.point, SelectView.of(h)))
+      )
+    Vector(
+      local(None, main.take(3)),
+      local(None, Vector.empty),
+      local(main.lift(30), Vector.empty)
+    ) ++
+      Vector(0, 4, 10, 20).map(at => local(main.lift(at), main.slice(at + 1, at + 9))) ++
+      forks.map((at, line) => local(main.lift(at - 2), main.slice(at - 1, at + 1) ++ line))
+
   private val state: Gen[Option[Int]] = Gen.option(Gen.choose(0, 1000))
 
   private def view(h: Header): TipView =
@@ -108,6 +124,8 @@ class HeaderChainModelSuite extends ScalaCheckSuite:
     case Map
     case ForgetBaseState
     case ForgetBaseView
+    case KeepEntries(n: Int)
+    case DropPrefix(n: Int)
 
   private def op(model: HeaderChainModel[Int]): Gen[Op] =
     val points = model.points
@@ -124,7 +142,9 @@ class HeaderChainModelSuite extends ScalaCheckSuite:
       (extensions ++ Vector(
         2 -> point.map(Op.Rollback(_)),
         2 -> point.map(Op.Trim(_)),
-        1 -> Gen.choose(-1, 12).map(Op.Prune(_)),
+        1 -> Gen.oneOf(Gen.choose(-3, 40), Gen.oneOf(Int.MinValue, Int.MaxValue)).map(Op.Prune(_)),
+        1 -> Gen.choose(0, 12).map(Op.KeepEntries(_)),
+        1 -> Gen.choose(0, 9).map(Op.DropPrefix(_)),
         1 -> Gen.const(Op.Map),
         1 -> Gen.oneOf(Op.ForgetBaseState, Op.ForgetBaseView)
       ))*
@@ -151,6 +171,10 @@ class HeaderChainModelSuite extends ScalaCheckSuite:
     case Op.Map             => (hc.map(_ + 1), model.map(_ + 1), passed)
     case Op.ForgetBaseState => (hc.copy(baseState = None), model.copy(baseState = None), passed)
     case Op.ForgetBaseView  => (hc.copy(baseView = None), model.copy(baseView = None), passed)
+    case Op.KeepEntries(n) =>
+      (hc.copy(entries = hc.entries.take(n)), model.copy(entries = model.entries.take(n)), passed)
+    case Op.DropPrefix(n) =>
+      (hc.copy(prefix = hc.prefix.drop(n)), model.copy(prefix = model.prefix.drop(n)), passed)
 
   /** Every public method of the chain against the model's answer. */
   private def observe(hc: HeaderChain[Int], m: HeaderChainModel[Int]): Prop =
@@ -163,6 +187,12 @@ class HeaderChainModelSuite extends ScalaCheckSuite:
     (hc.points ?= points) &&
     (hc.nonEmptyPoints ?= m.nonEmptyPoints) &&
     (hc.pointsNewestFirst.toVector ?= points.reverse) &&
+    (hc.pointsAfterFirst ?= m.nonEmptyPoints.tail) &&
+    all(
+      locals.map(ours =>
+        (hc.intersectionPoint(ours) ?= points.reverseIterator.find(ours.contains)) :| s"$ours"
+      )*
+    ) &&
     (hc.densityFragment ?= GenesisDensity.Fragment(
       m.nonEmptyPoints.head,
       m.nonEmptyPoints.tail.collect { case b: Point.Block => b }
@@ -199,6 +229,8 @@ class HeaderChainModelSuite extends ScalaCheckSuite:
     case Op.Map             => m.map(_ + 1)
     case Op.ForgetBaseState => m.copy(baseState = None)
     case Op.ForgetBaseView  => m.copy(baseView = None)
+    case Op.KeepEntries(n)  => m.copy(entries = m.entries.take(n))
+    case Op.DropPrefix(n)   => m.copy(prefix = m.prefix.drop(n))
 
   private val scenario: Gen[(HeaderChainModel[Int], Vector[Op])] =
     for

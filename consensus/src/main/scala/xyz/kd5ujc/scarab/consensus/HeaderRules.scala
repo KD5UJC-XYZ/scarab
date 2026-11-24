@@ -118,9 +118,13 @@ object HeaderRules:
   *
   * Its points ([[points]]: the local prefix, the base and the headers) are kept as the reference
   * keeps a candidate, an [[AnchoredFragment]] anchored at the first of them, with the states beside
-  * it. So appending a header, rolling back, trimming and looking up a point cost amortised O(1),
-  * where they rebuilt or searched the whole candidate for each header (issue 810). A chain holds a
-  * block once, so the points are distinct.
+  * it. So appending a header and looking up a point cost O(1), and rolling back or trimming costs
+  * what it drops, where they rebuilt or searched the whole candidate for each header (issue 810).
+  *
+  * A chain holds a block once, and Origin, which precedes every block, at most once: the lookups
+  * rely on its points being distinct. Two points with one hash would take a header whose hash is
+  * its own or an ancestor's. The gate builds every chain with Origin, if it is there, first; one
+  * built with Origin after other points keeps those points aside, and searches them in turn.
   *
   * @param leading
   *   the points before an Origin that follows them: none on a chain the gate builds, where Origin,
@@ -172,6 +176,25 @@ final class HeaderChain[H] private (
     leading.headOption.fold(NonEmptyVector(fragment.anchorPoint, fragment.toOldestFirst))(first =>
       NonEmptyVector(first, leading.drop(1) ++ (fragment.anchorPoint +: fragment.toOldestFirst))
     )
+
+  /** [[points]] after the first. The same vector while the chain's points are unchanged, so
+    * comparing two of them costs nothing then.
+    */
+  def pointsAfterFirst: Vector[ChainSync.Point] =
+    if leading.isEmpty then fragment.toOldestFirst
+    else leading.drop(1) ++ (fragment.anchorPoint +: fragment.toOldestFirst)
+
+  /** The newest of [[points]] on our chain `ours` (its anchor or a block), searched from our newest
+    * block, as `AF.intersectionPoint` finds it: both are chains, so the first of our points from
+    * the newest that is on this one is this chain's newest point on ours. A search from this
+    * chain's tip would visit every header the peer is ahead of us by, for each header. A chain with
+    * points before an Origin that follows them is no chain, and is searched from its tip.
+    */
+  def intersectionPoint(ours: ChainSelection.Local): Option[ChainSync.Point] =
+    if leading.isEmpty then
+      (ours.blocks.reverseIterator.map(_.point) ++ Iterator.single(ours.anchor))
+        .find(withinFragmentBounds)
+    else pointsNewestFirst.find(ours.contains)
 
   /** [[points]] from the newest. */
   def pointsNewestFirst: Iterator[ChainSync.Point] =

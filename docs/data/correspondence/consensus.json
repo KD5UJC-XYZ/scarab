@@ -4245,14 +4245,15 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/810#issuecomment-7146574621",
    "evidence": [
     "AnchoredFragmentSuite",
     "HeaderChainModelSuite"
    ],
    "note": "the anchor and the blocks oldest first; the reference keeps the blocks in a finger tree measured by slot, Scarab in a Vector with a persistent map from each hash on the fragment to its position, so appending, rolling back, dropping the oldest and looking up a point cost amortised O(1)",
-   "digest": "74bb3c0b139ea157"
+   "digest": "479230476ae31df9"
   },
   "val consensus.AnchoredFragment#anchorPoint": {
    "upstream": [
@@ -4369,16 +4370,17 @@
     {
      "repository": "IntersectMBO/ouroboros-network",
      "revision": "c45735a56c567fa977969173d18943bac6bb3821",
-     "file": "ouroboros-network/api/lib/Ouroboros/Network/AnchoredSeq.hs",
-     "symbol": "toNewestFirst",
+     "file": "ouroboros-network/api/lib/Ouroboros/Network/AnchoredFragment.hs",
+     "symbol": "selectPointsSpec",
      "lines": [
-      260,
-      261
+      405,
+      416
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/810#issuecomment-7146574621",
    "evidence": [
     "AnchoredFragmentSuite",
     "HeaderChainModelSuite"
@@ -4399,8 +4401,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/810#issuecomment-7146574621",
    "evidence": [
     "AnchoredFragmentSuite",
     "HeaderChainModelSuite"
@@ -4421,8 +4424,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/810#issuecomment-7146574621",
    "evidence": [
     "AnchoredFragmentSuite",
     "HeaderChainModelSuite"
@@ -4443,8 +4447,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/810#issuecomment-7146574621",
    "evidence": [
     "AnchoredFragmentSuite",
     "HeaderChainModelSuite"
@@ -4465,14 +4470,15 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/810#issuecomment-7146574621",
    "evidence": [
     "AnchoredFragmentSuite",
     "HeaderChainModelSuite"
    ],
    "note": "appends the block and indexes its hash",
-   "digest": "b467614ceb739e18"
+   "digest": "b4207cdfcd664948"
   },
   "def consensus.AnchoredFragment#rollback": {
    "upstream": [
@@ -4487,8 +4493,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/810#issuecomment-7146574621",
    "evidence": [
     "AnchoredFragmentSuite",
     "HeaderChainModelSuite"
@@ -4509,8 +4516,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/810#issuecomment-7146574621",
    "evidence": [
     "AnchoredFragmentSuite",
     "HeaderChainModelSuite"
@@ -4531,8 +4539,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/810#issuecomment-7146574621",
    "evidence": [
     "AnchoredFragmentSuite",
     "HeaderChainModelSuite"
@@ -4553,8 +4562,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/810#issuecomment-7146574621",
    "evidence": [
     "AnchoredFragmentSuite",
     "HeaderChainModelSuite"
@@ -4575,8 +4585,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/810#issuecomment-7146574621",
    "evidence": [
     "AnchoredFragmentSuite",
     "HeaderChainModelSuite"
@@ -4597,14 +4608,15 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/810#issuecomment-7146574621",
    "evidence": [
     "AnchoredFragmentSuite",
     "HeaderChainModelSuite"
    ],
    "note": "the fragment of the blocks after the anchor, every hash indexed",
-   "digest": "beddbf75254a5e3b"
+   "digest": "6d44706415c5b653"
   },
   "def consensus.AnchoredFragment.empty": {
    "upstream": [
@@ -4615,7 +4627,7 @@
      "symbol": "Empty",
      "lines": [
       168,
-      169
+      171
      ]
     }
    ],
@@ -4641,8 +4653,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/810#issuecomment-7146574621",
    "evidence": [
     "AnchoredFragmentSuite",
     "HeaderChainModelSuite"
@@ -4659,18 +4672,18 @@
      "symbol": "blockPoint",
      "lines": [
       249,
-      250
+      252
      ]
     }
    ],
    "class": "Mirror",
-   "structure": "differs",
+   "structure": "same",
    "evidence": [
     "AnchoredFragmentSuite",
     "HeaderChainModelSuite"
    ],
    "note": "a block's point",
-   "digest": "60beb3f98d13d23f"
+   "digest": "d64f6336c344c9ee"
   },
   "def consensus.HeaderChain#withinFragmentBounds": {
    "upstream": [
@@ -4688,8 +4701,9 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "AnchoredFragmentSuite",
-    "HeaderChainModelSuite"
+    "HeaderChainModelSuite",
+    "UpstreamGenesisTerminalsSuite",
+    "UpstreamGenesisLawsSuite"
    ],
    "note": "the point is one of the candidate's: its local prefix, base or headers",
    "digest": "2b6da0b98cf8f4c5"
@@ -4710,8 +4724,9 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "AnchoredFragmentSuite",
-    "HeaderChainModelSuite"
+    "HeaderChainModelSuite",
+    "UpstreamGenesisTerminalsSuite",
+    "UpstreamGenesisLawsSuite"
    ],
    "note": "the point after a point of the candidate, as the point of successorBlock",
    "digest": "ebdcc92d2735a7ab"
@@ -4721,22 +4736,46 @@
     {
      "repository": "IntersectMBO/ouroboros-network",
      "revision": "c45735a56c567fa977969173d18943bac6bb3821",
-     "file": "ouroboros-network/api/lib/Ouroboros/Network/AnchoredSeq.hs",
-     "symbol": "toNewestFirst",
+     "file": "ouroboros-network/api/lib/Ouroboros/Network/AnchoredFragment.hs",
+     "symbol": "selectPointsSpec",
      "lines": [
-      260,
-      261
+      405,
+      416
      ]
     }
    ],
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "AnchoredFragmentSuite",
-    "HeaderChainModelSuite"
+    "HeaderChainModelSuite",
+    "UpstreamGenesisTerminalsSuite",
+    "UpstreamGenesisLawsSuite"
    ],
    "note": "the candidate's points newest first, the first point last",
    "digest": "df612f5ae3e7bcac"
+  },
+  "def consensus.HeaderChain#intersectionPoint": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/api/lib/Ouroboros/Network/AnchoredFragment.hs",
+     "symbol": "intersectionPoint",
+     "lines": [
+      726,
+      733
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "HeaderChainModelSuite",
+    "UpstreamGenesisTerminalsSuite",
+    "UpstreamGenesisLawsSuite"
+   ],
+   "note": "the newest of the candidate's points on our chain, searched from our newest block: both are chains, so it is the point the reference's binary search finds",
+   "digest": "e65ff82a990c389c"
   }
  },
  "glue": [
@@ -4899,6 +4938,7 @@
    "reason": "the Scala plumbing of the indexed AnchoredFragment and HeaderChain with no counterpart of their own: the position lookups and cuts the candidate's states are aligned by, structural equality, hashing and rendering over the points and fields alone, the companions and instances, the fields HeaderChain had as a case class with the constructor that indexes them and a copy that indexes only changed points, and the candidate's points as the density rule's fragment without collecting them again (#810)",
    "definitions": [
     "def consensus.AnchoredFragment#offsetOf",
+    "def consensus.AnchoredFragment#indexSize",
     "def consensus.AnchoredFragment#offsetOfHash",
     "def consensus.AnchoredFragment#pointAt",
     "def consensus.AnchoredFragment#headAt",
@@ -4920,7 +4960,8 @@
     "def consensus.HeaderChain#hashCode",
     "def consensus.HeaderChain#toString",
     "def consensus.HeaderChain.apply",
-    "def consensus.HeaderChain#densityFragment"
+    "def consensus.HeaderChain#densityFragment",
+    "def consensus.HeaderChain#pointsAfterFirst"
    ]
   }
  ]

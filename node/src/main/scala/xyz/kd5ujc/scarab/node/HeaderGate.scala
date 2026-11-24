@@ -582,7 +582,7 @@ object HeaderCheck:
                       .prefersCandidate(candidate.tiebreaker, ours.tipView, candidate.value)
                   )(
                     PeerError.GenesisProblem.CandidateTooSparse(
-                      hc.pointsNewestFirst.find(ours.contains).getOrElse(hc.base),
+                      hc.intersectionPoint(ours).getOrElse(hc.base),
                       ours.blocks.lastOption.fold(ours.anchor)(_.point),
                       hc.tipPoint
                     )

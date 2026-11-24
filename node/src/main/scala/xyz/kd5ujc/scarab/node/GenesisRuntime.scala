@@ -194,20 +194,18 @@ final class GenesisRuntime[F[_]: Async] private (
                     )(F.pure)
                   )
                   .flatMap { selected =>
-                    h.pointsNewestFirst
-                      .find(selected.contains)
+                    h.intersectionPoint(selected)
                       .fold(
                         invariant[Unit](GenesisInternalProblem.HeaderSelectionUnavailable(h.base))
-                      ) { intersection =>
-                        val points = h.nonEmptyPoints
+                      )(intersection =>
                         jumper.update(
                           JumpInfo(
-                            points.head,
-                            points.tail,
+                            h.nonEmptyPoints.head,
+                            h.pointsAfterFirst,
                             GenesisPeer.Checkpoint(h, selected, intersection)
                           )
                         )
-                      }
+                      )
                   }
               }
             } *> (event match
@@ -233,11 +231,10 @@ final class GenesisRuntime[F[_]: Async] private (
                   )
                   .flatMap { selected =>
                     if selected.contains(point) && h.withinFragmentBounds(point) then
-                      val points = h.nonEmptyPoints
                       jumper.update(
                         JumpInfo(
-                          points.head,
-                          points.tail,
+                          h.nonEmptyPoints.head,
+                          h.pointsAfterFirst,
                           GenesisPeer.Checkpoint(h, selected, point)
                         )
                       )

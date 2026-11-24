@@ -132,6 +132,8 @@ class AnchoredFragmentSuite extends ScalaCheckSuite:
       (f.headPoint ?= m.points.last) &&
       (f.pointsNewestFirst.toVector ?= m.points.reverse) &&
       (f ?= m.fragment) &&
+      // no key outlives its block: one for each block and the anchor's
+      (f.indexSize ?= m.blocks.size + (if m.anchor == Point.Origin then 0 else 1)) &&
       (f.hashCode ?= m.fragment.hashCode) &&
       all(universe.map { p =>
         val i = m.indexOf(p)

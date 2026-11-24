@@ -13,9 +13,10 @@ import xyz.kd5ujc.scarab.protocol.ChainSync.Point
   *
   * The reference keeps the blocks in a finger tree measured by slot. Here they are a `Vector`, with
   * a persistent map from each hash on the fragment (the anchor's among them) to its position, and
-  * the anchor's position. Adding a block adds one key; dropping blocks from either end removes only
-  * the keys that leave. So adding, rolling back and dropping the oldest cost amortised O(1) per
-  * block, and a point is looked up in O(1), whatever the fragment's length. Every structure is
+  * the anchor's position. Adding a block adds one key; dropping `d` blocks from either end removes
+  * only their `d` keys. Along one line of updates each block's key is added once and removed at
+  * most once, so adding, rolling back and dropping the oldest cost amortised O(1) per block, and a
+  * point is looked up in O(1) (a hash lookup), whatever the fragment's length. Every structure is
   * immutable: a fragment is shared with other fibers as it is.
   *
   * A chain holds a block once, so the points of a fragment are distinct; its lookups rely on that.
@@ -44,7 +45,9 @@ final class AnchoredFragment[A] private (
     */
   def headPoint: Point = blocks.lastOption.fold(anchorPoint)(pointOf.point)
 
-  /** The points from the newest block back to the anchor. */
+  /** The points from the newest block back to the anchor (`selectPointsSpec`'s list,
+    * `AnchoredFragment.hs` 405-416).
+    */
   def pointsNewestFirst: Iterator[Point] =
     blocks.reverseIterator.map(pointOf.point) ++ Iterator.single(anchorPoint)
 
@@ -70,9 +73,7 @@ final class AnchoredFragment[A] private (
       anchorPoint,
       blocks :+ block,
       anchorAt,
-      pointOf.point(block) match
-        case Point.Block(_, hash) => positions.updated(hash, position)
-        case Point.Origin         => positions
+      positions.updated(pointOf.point(block).hash, position)
     )
 
   /** The fragment rolled back so that `point`, the anchor or a block, is its head; none when the
@@ -142,13 +143,9 @@ final class AnchoredFragment[A] private (
         case Point.Block(_, hash) if positions.get(hash).contains(anchorAt) =>
           positions.removed(hash)
         case Point.Block(_, _) | Point.Origin => positions
-      new AnchoredFragment(
-        pointOf.point(anchor),
-        blocks.drop(dropped),
-        anchorAt + dropped,
-        // the new anchor, the block at index dropped - 1, keeps its key
-        unindexed(withoutAnchor, 0, dropped - 1)
-      )
+      // the new anchor, the block at index dropped - 1, keeps its key
+      val index = unindexed(withoutAnchor, 0, dropped - 1)
+      new AnchoredFragment(pointOf.point(anchor), blocks.drop(dropped), anchorAt + dropped, index)
     }
 
   /** `index` without the keys of the blocks at indices `from` until `until`. A key is removed only
@@ -159,11 +156,12 @@ final class AnchoredFragment[A] private (
       .slice(from, until)
       .zip(Iterator.from(from))
       .foldLeft(index) { case (map, (block, at)) =>
-        pointOf.point(block) match
-          case Point.Block(_, hash) if map.get(hash).contains(anchorAt + 1 + at) =>
-            map.removed(hash)
-          case Point.Block(_, _) | Point.Origin => map
+        val hash = pointOf.point(block).hash
+        if map.get(hash).contains(anchorAt + 1 + at) then map.removed(hash) else map
       }
+
+  /** The number of hashes indexed: one for each block, and the anchor's when it is a block. */
+  private[consensus] def indexSize: Int = positions.size
 
   override def equals(other: Any): Boolean = other match
     case that: AnchoredFragment[?] =>
@@ -176,19 +174,19 @@ final class AnchoredFragment[A] private (
 
 object AnchoredFragment:
 
-  /** A block of a fragment names its point (`HasHeader`'s `blockPoint`, ouroboros-network
-    * c45735a56c567fa977969173d18943bac6bb3821
-    * `ouroboros-network/api/lib/Ouroboros/Network/Block.hs` 137-138 and 249-250).
+  /** A block of a fragment names its point, never Origin, which only an anchor can be
+    * (`HasHeader`'s `blockPoint`, ouroboros-network c45735a56c567fa977969173d18943bac6bb3821
+    * `ouroboros-network/api/lib/Ouroboros/Network/Block.hs` 137-138 and 249-252).
     */
   trait HasPoint[A]:
-    def point(block: A): Point
+    def point(block: A): Point.Block
 
   object HasPoint:
     given HasPoint[Point.Block] with
-      def point(block: Point.Block): Point = block
+      def point(block: Point.Block): Point.Block = block
 
     given HasPoint[Header] with
-      def point(block: Header): Point = block.point
+      def point(block: Header): Point.Block = block.blockPoint
 
   /** The fragment of `blocks` after `anchor`, oldest first (`fromOldestFirst`). */
   def fromOldestFirst[A](anchor: Point, blocks: Vector[A])(using
@@ -202,11 +200,9 @@ object AnchoredFragment:
       blocks,
       0L,
       blocks.iterator.zipWithIndex.foldLeft(anchorKey) { case (map, (block, at)) =>
-        pointOf.point(block) match
-          case Point.Block(_, hash) => map.updated(hash, 1L + at)
-          case Point.Origin         => map
+        map.updated(pointOf.point(block).hash, 1L + at)
       }
     )
 
-  /** The fragment with no block after `anchor` (`Empty`). */
+  /** The fragment with no block after `anchor` (`Empty`, `AnchoredSeq.hs` 168-171). */
   def empty[A: HasPoint](anchor: Point): AnchoredFragment[A] = fromOldestFirst(anchor, Vector.empty)

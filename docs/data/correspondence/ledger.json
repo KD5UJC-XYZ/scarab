@@ -48683,12 +48683,12 @@
      "symbol": "blockPoint",
      "lines": [
       249,
-      250
+      252
      ]
     }
    ],
    "class": "Mirror",
-   "structure": "differs",
+   "structure": "same",
    "evidence": [
     "AnchoredFragmentSuite",
     "HeaderChainModelSuite"
