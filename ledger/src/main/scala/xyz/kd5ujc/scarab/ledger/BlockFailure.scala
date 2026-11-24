@@ -187,9 +187,9 @@ enum BlockFailure:
 
   /** The rule family, as the log names it. */
   def rule: BlockRule = this match
-    case HeaderDiffers | Transport(_) | BodyCommitment | EraAnnounced(_, _) |
-        EpochPrecedesLedger(_) | LedgerEra(_, _) | ByronAfterShelley | ByronAfterTransition(_, _) |
-        HeaderStructure(_) =>
+    case HeaderDiffers | Transport(_) | BodyCommitment | EraAnnounced(_, _) | EpochPrecedesLedger(
+          _
+        ) | LedgerEra(_, _) | ByronAfterShelley | ByronAfterTransition(_, _) | HeaderStructure(_) =>
       BlockRule.Structure
     case Decode(_) | TxDecode(_, _) | DijkstraEra(_) | ConwayEra(_) => BlockRule.Decode
     case NoByronGenesis | TransitionUndecided(_) | ShelleyBeforeTransition(_, _, _) | Byron(_) =>
