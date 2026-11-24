@@ -278,7 +278,7 @@ class HeaderRulesSuite extends ScalaCheckSuite:
 
   // Block number, slot order and previous hash: header-first validation checks them in
   // `NodeHeaderRules`, block application when the block extends the node's chain
-  // (`VolatileChain.extend`), which refuses it as not connected to the tip.
+  // (`VolatileChain.extend`), which refuses it as not connected to the tip, for the same cause.
   test("a header refused header-first for its place in the chain cannot extend the chain") {
     val i = 10
     val h = forged.headers(i)
@@ -304,12 +304,9 @@ class HeaderRulesSuite extends ScalaCheckSuite:
     val chain = chainBefore(i)
     assert(chain.extend(h, forged.states(i)).isRight, "the untampered block extends the chain")
     rows.foreach { (name, header, problem) =>
+      val unconnected = ChainError.NotConnected(header.point, chain.tip, problem)
       assertEquals(invalid(i, header), Some(HeaderError.Structure(problem)), name)
-      assertEquals(
-        chain.extend(header, forged.states(i)).left.toOption,
-        Some(ChainError.NotConnected(header.point, chain.tip)),
-        name
-      )
+      assertEquals(chain.extend(header, forged.states(i)).left.toOption, Some(unconnected), name)
     }
   }
 

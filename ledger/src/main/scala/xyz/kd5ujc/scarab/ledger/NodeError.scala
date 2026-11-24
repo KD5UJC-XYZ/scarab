@@ -392,7 +392,11 @@ enum ChainError extends NodeError:
   case StateAcquire(cause: NetworkError.StateAcquireFailure)
 
   case Decode(what: DecodeSite, cause: LedgerDecodeError)
-  case NotConnected(point: ChainSync.Point, tip: ChainSync.Point)
+
+  /** The header of `point` does not extend `tip`, for `cause`: its block number, its slot or its
+    * previous hash, as header-first validation names them ([[HeaderError.Structure]]).
+    */
+  case NotConnected(point: ChainSync.Point, tip: ChainSync.Point, cause: HeaderStructureProblem)
   case RollbackBeyondAnchor(target: ChainSync.Point, anchor: ChainSync.Point)
   case NoIntersection
   case MempoolTick(slot: BigInt, cause: rules.TickFailure)
@@ -457,9 +461,9 @@ enum ChainError extends NodeError:
       s"the governance record does not hold Dijkstra's state at slot $slot: $cause"
     case StateOutOfRange(slot, cause) =>
       s"the ledger state in the rules for slot $slot is out of range: ${cats.Show[xyz.kd5ujc.scarab.ledger.state.VocabError].show(cause)}"
-    case StateAcquire(cause) => cause.message
-    case Decode(w, r)        => s"decode ${w.show}: ${r.show}"
-    case NotConnected(p, t)  => s"${Points.show(p)} does not extend tip ${Points.show(t)}"
+    case StateAcquire(cause)   => cause.message
+    case Decode(w, r)          => s"decode ${w.show}: ${r.show}"
+    case NotConnected(p, t, c) => s"${Points.show(p)} does not extend tip ${Points.show(t)}: $c"
     case RollbackBeyondAnchor(t, a) =>
       s"rollback to ${Points.show(t)} beyond anchor ${Points.show(a)}"
     case NoIntersection => "peer shares no point with the local chain"
