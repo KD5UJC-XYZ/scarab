@@ -42197,9 +42197,10 @@
    "structure": "differs",
    "evidence": [
     "DijkstraBbodySuite",
-    "ConwayBbodySuite"
+    "ConwayBbodySuite",
+    "ConwayBbodyImpSuite"
    ],
-   "note": "in the order of its tags; the sizes Longs, the units the node's (ExUnits at f649f975, OrdExUnits, the same units with an order, at 9df9f98c); HeaderProtVerTooHigh, which Dijkstra's injection calls impossible, has no injection into Dijkstra's; ConwayBbodySuite compares it with the flat BBODY; its expectations are the reference's own only on the 53 recorded Conway blocks the reference accepted",
+   "note": "in the order of its tags; the sizes Longs, the units the node's (ExUnits at f649f975, OrdExUnits, the same units with an order, at 9df9f98c); HeaderProtVerTooHigh, which Dijkstra's injection calls impossible, has no injection into Dijkstra's; ConwayBbodySuite compares it with the flat BBODY; its expectations are the reference's own on the 53 recorded Conway blocks the reference accepted; ConwayBbodyImpSuite holds Conway's run (ConwayBlockRun) to the reference's own BBODY cases for Conway at versions 9 to 11 (the Imp's of f649f975, and Shelley's of 9df9f98c), refusals among them",
    "digest": "b2f6aae8e7850824"
   },
   "enum ledger.era.rules.DijkstraBbodyPredFailure": {
@@ -42375,9 +42376,10 @@
    "structure": "same",
    "evidence": [
     "DijkstraBbodySuite",
-    "ConwayBbodySuite"
+    "ConwayBbodySuite",
+    "ConwayBbodyImpSuite"
    ],
-   "note": "ConwayBbodySuite compares it with the flat BBODY; its expectations are the reference's own only on the 53 recorded Conway blocks the reference accepted",
+   "note": "ConwayBbodySuite compares it with the flat BBODY; its expectations are the reference's own on the 53 recorded Conway blocks the reference accepted; ConwayBbodyImpSuite holds Conway's run (ConwayBlockRun) to the reference's own BBODY cases for Conway at versions 9 to 11 (the Imp's of f649f975, and Shelley's of 9df9f98c), refusals among them",
    "digest": "826d930ed40fc37b"
   },
   "def ledger.era.rules.ConwayBbodyPredFailure.alonzoToConwayBbodyPredFailure": {
@@ -42407,9 +42409,10 @@
    "structure": "same",
    "evidence": [
     "DijkstraBbodySuite",
-    "ConwayBbodySuite"
+    "ConwayBbodySuite",
+    "ConwayBbodyImpSuite"
    ],
-   "note": "ConwayBbodySuite compares it with the flat BBODY; its expectations are the reference's own only on the 53 recorded Conway blocks the reference accepted",
+   "note": "ConwayBbodySuite compares it with the flat BBODY; its expectations are the reference's own on the 53 recorded Conway blocks the reference accepted; ConwayBbodyImpSuite holds Conway's run (ConwayBlockRun) to the reference's own BBODY cases for Conway at versions 9 to 11 (the Imp's of f649f975, and Shelley's of 9df9f98c), refusals among them",
    "digest": "99e8581dbcc1ecb7"
   },
   "type ledger.era.rules.ConwayBbodyFailureInDijkstra": {
@@ -42771,9 +42774,10 @@
    "evidence": [
     "DijkstraBbodySuite",
     "DijkstraRulesOracleSuite",
-    "ConwayBbodySuite"
+    "ConwayBbodySuite",
+    "ConwayBbodyImpSuite"
    ],
-   "note": "ConwayBbodySuite compares it with the flat BBODY; its expectations are the reference's own only on the 53 recorded Conway blocks the reference accepted",
+   "note": "ConwayBbodySuite compares it with the flat BBODY; its expectations are the reference's own on the 53 recorded Conway blocks the reference accepted; ConwayBbodyImpSuite holds Conway's run (ConwayBlockRun) to the reference's own BBODY cases for Conway at versions 9 to 11 (the Imp's of f649f975, and Shelley's of 9df9f98c), refusals among them",
    "digest": "b68c9ce19a86fc6c"
   },
   "def ledger.era.rules.ShelleyBbody.validateBlockBodyHash": {
@@ -42804,9 +42808,10 @@
    "evidence": [
     "DijkstraBbodySuite",
     "DijkstraRulesOracleSuite",
-    "ConwayBbodySuite"
+    "ConwayBbodySuite",
+    "ConwayBbodyImpSuite"
    ],
-   "note": "ConwayBbodySuite compares it with the flat BBODY; its expectations are the reference's own only on the 53 recorded Conway blocks the reference accepted",
+   "note": "ConwayBbodySuite compares it with the flat BBODY; its expectations are the reference's own on the 53 recorded Conway blocks the reference accepted; ConwayBbodyImpSuite holds Conway's run (ConwayBlockRun) to the reference's own BBODY cases for Conway at versions 9 to 11 (the Imp's of f649f975, and Shelley's of 9df9f98c), refusals among them",
    "digest": "740a8842c6ef55f7"
   },
   "def ledger.era.rules.ShelleyBbody.incrBlocks": {
@@ -42869,9 +42874,10 @@
    "structure": "same",
    "evidence": [
     "DijkstraBbodySuite",
-    "ConwayBbodySuite"
+    "ConwayBbodySuite",
+    "ConwayBbodyImpSuite"
    ],
-   "note": "ConwayBbodySuite compares it with the flat BBODY; its expectations are the reference's own only on the 53 recorded Conway blocks the reference accepted",
+   "note": "ConwayBbodySuite compares it with the flat BBODY; its expectations are the reference's own on the 53 recorded Conway blocks the reference accepted; ConwayBbodyImpSuite holds Conway's run (ConwayBlockRun) to the reference's own BBODY cases for Conway at versions 9 to 11 (the Imp's of f649f975, and Shelley's of 9df9f98c), refusals among them",
    "digest": "ba2644803105813e"
   },
   "def ledger.era.rules.ConwayBbody.totalRefScriptSizeInBlock": {
@@ -42901,9 +42907,10 @@
    "structure": "differs",
    "evidence": [
     "DijkstraBbodySuite",
-    "ConwayBbodySuite"
+    "ConwayBbodySuite",
+    "ConwayBbodyImpSuite"
    ],
-   "note": "the reference's Int a Long; the UTxO set the stored outputs of the block's inputs and reference inputs, the only ones it looks up; ConwayBbodySuite compares it with the flat BBODY; its expectations are the reference's own only on the 53 recorded Conway blocks the reference accepted",
+   "note": "the reference's Int a Long; the UTxO set the stored outputs of the block's inputs and reference inputs, the only ones it looks up; ConwayBbodySuite compares it with the flat BBODY; its expectations are the reference's own on the 53 recorded Conway blocks the reference accepted; ConwayBbodyImpSuite holds Conway's run (ConwayBlockRun) to the reference's own BBODY cases for Conway at versions 9 to 11 (the Imp's of f649f975, and Shelley's of 9df9f98c), refusals among them",
    "digest": "27fa2857e9503c9c"
   },
   "def ledger.era.rules.ConwayBbody.validateBodyRefScriptsSizeTooBig": {
@@ -42933,9 +42940,10 @@
    "structure": "differs",
    "evidence": [
     "DijkstraBbodySuite",
-    "ConwayBbodySuite"
+    "ConwayBbodySuite",
+    "ConwayBbodyImpSuite"
    ],
-   "note": "the block's transactions in place of the body, which it reads them from; ConwayBbodySuite compares it with the flat BBODY; its expectations are the reference's own only on the 53 recorded Conway blocks the reference accepted",
+   "note": "the block's transactions in place of the body, which it reads them from; ConwayBbodySuite compares it with the flat BBODY; its expectations are the reference's own on the 53 recorded Conway blocks the reference accepted; ConwayBbodyImpSuite holds Conway's run (ConwayBlockRun) to the reference's own BBODY cases for Conway at versions 9 to 11 (the Imp's of f649f975, and Shelley's of 9df9f98c), refusals among them",
    "digest": "ed514e9d619f49a8"
   },
   "def ledger.era.rules.DijkstraBbody.validatePerasCert": {
@@ -47292,9 +47300,10 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "ConwayBbodySuite"
+    "ConwayBbodySuite",
+    "ConwayBbodyImpSuite"
    ],
-   "note": "the era's LEDGERS a function the caller gives, nested here as trans nests EraRule \"LEDGERS\"; the signal the block with its header's classes as using clauses; the epoch outside EpochNo a raised defect; ConwayBbodySuite compares it with the flat BBODY; its expectations are the reference's own only on the 53 recorded Conway blocks the reference accepted",
+   "note": "the era's LEDGERS a function the caller gives, nested here as trans nests EraRule \"LEDGERS\"; the signal the block with its header's classes as using clauses; the epoch outside EpochNo a raised defect; ConwayBbodySuite compares it with the flat BBODY; its expectations are the reference's own on the 53 recorded Conway blocks the reference accepted; ConwayBbodyImpSuite holds Conway's run (ConwayBlockRun) to the reference's own BBODY cases for Conway at versions 9 to 11 (the Imp's of f649f975, and Shelley's of 9df9f98c), refusals among them",
    "digest": "2f075d3f28b27952"
   },
   "def ledger.era.rules.ConwayBbody.conwayBbodyTransition": {
@@ -47313,9 +47322,10 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "ConwayBbodySuite"
+    "ConwayBbodySuite",
+    "ConwayBbodyImpSuite"
    ],
-   "note": "the network the judgment's Globals', as the reference reads it (the Shelley genesis's networkId); the gate of the header's version by build (HeaderProtVerGate); the UTxO set the stored outputs of the block's inputs and reference inputs before LEDGERS, read into the era; ConwayBbodySuite compares it with the flat BBODY; its expectations are the reference's own only on the 53 recorded Conway blocks the reference accepted",
+   "note": "the network the judgment's Globals', as the reference reads it (the Shelley genesis's networkId); the gate of the header's version by build (HeaderProtVerGate); the UTxO set the stored outputs of the block's inputs and reference inputs before LEDGERS, read into the era; ConwayBbodySuite compares it with the flat BBODY; its expectations are the reference's own on the 53 recorded Conway blocks the reference accepted; ConwayBbodyImpSuite holds Conway's run (ConwayBlockRun) to the reference's own BBODY cases for Conway at versions 9 to 11 (the Imp's of f649f975, and Shelley's of 9df9f98c), refusals among them",
    "digest": "76a69b58642bce17"
   },
   "def ledger.era.rules.ConwayBbody.conwayBbody": {
@@ -47344,9 +47354,10 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "ConwayBbodySuite"
+    "ConwayBbodySuite",
+    "ConwayBbodyImpSuite"
    ],
-   "note": "conwayBbodyTransition >> alonzoBbodyTransition on Conway's LEDGERS, its failures and events embedded; the parameters of LEDGERS's transactions (context, verdicts, decoder, the clock) and the proposals GOV judges, a capability beside the BBODY state, given by the caller; ConwayBbodySuite compares it with the flat BBODY; its expectations are the reference's own only on the 53 recorded Conway blocks the reference accepted",
+   "note": "conwayBbodyTransition >> alonzoBbodyTransition on Conway's LEDGERS, its failures and events embedded; the parameters of LEDGERS's transactions (context, verdicts, decoder, the clock) and the proposals GOV judges, a capability beside the BBODY state, given by the caller; ConwayBbodySuite compares it with the flat BBODY; its expectations are the reference's own on the 53 recorded Conway blocks the reference accepted; ConwayBbodyImpSuite holds Conway's run (ConwayBlockRun) to the reference's own BBODY cases for Conway at versions 9 to 11 (the Imp's of f649f975, and Shelley's of 9df9f98c), refusals among them",
    "digest": "2a788d0a59e92520"
   },
   "enum ledger.era.rules.HeaderProtVerGate": {
@@ -47427,9 +47438,10 @@
    "class": "Mirror",
    "structure": "same",
    "evidence": [
-    "ConwayBbodySuite"
+    "ConwayBbodySuite",
+    "ConwayBbodyImpSuite"
    ],
-   "note": "ConwayBbodySuite compares it with the flat BBODY; its expectations are the reference's own only on the 53 recorded Conway blocks the reference accepted",
+   "note": "ConwayBbodySuite compares it with the flat BBODY; its expectations are the reference's own on the 53 recorded Conway blocks the reference accepted; ConwayBbodyImpSuite holds Conway's run (ConwayBlockRun) to the reference's own BBODY cases for Conway at versions 9 to 11 (the Imp's of f649f975, and Shelley's of 9df9f98c), refusals among them",
    "digest": "58749ea19a7951a9"
   },
   "given ledger.era.rules.InjectBbodyFailure.conwayAlonzo": {
@@ -47448,9 +47460,10 @@
    "class": "Mirror",
    "structure": "same",
    "evidence": [
-    "ConwayBbodySuite"
+    "ConwayBbodySuite",
+    "ConwayBbodyImpSuite"
    ],
-   "note": "ConwayBbodySuite compares it with the flat BBODY; its expectations are the reference's own only on the 53 recorded Conway blocks the reference accepted",
+   "note": "ConwayBbodySuite compares it with the flat BBODY; its expectations are the reference's own on the 53 recorded Conway blocks the reference accepted; ConwayBbodyImpSuite holds Conway's run (ConwayBlockRun) to the reference's own BBODY cases for Conway at versions 9 to 11 (the Imp's of f649f975, and Shelley's of 9df9f98c), refusals among them",
    "digest": "a2991a07b5743f39"
   },
   "given ledger.era.rules.InjectBbodyFailure.conwayShelley": {
@@ -47469,9 +47482,10 @@
    "class": "Mirror",
    "structure": "same",
    "evidence": [
-    "ConwayBbodySuite"
+    "ConwayBbodySuite",
+    "ConwayBbodyImpSuite"
    ],
-   "note": "ConwayBbodySuite compares it with the flat BBODY; its expectations are the reference's own only on the 53 recorded Conway blocks the reference accepted",
+   "note": "ConwayBbodySuite compares it with the flat BBODY; its expectations are the reference's own on the 53 recorded Conway blocks the reference accepted; ConwayBbodyImpSuite holds Conway's run (ConwayBlockRun) to the reference's own BBODY cases for Conway at versions 9 to 11 (the Imp's of f649f975, and Shelley's of 9df9f98c), refusals among them",
    "digest": "d1ceb84f883efe00"
   },
   "given ledger.era.rules.InjectBbodyFailure.given_conwayLedgers_F_using": {
@@ -47490,9 +47504,10 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "ConwayBbodySuite"
+    "ConwayBbodySuite",
+    "ConwayBbodyImpSuite"
    ],
-   "note": "the reference's nineteen instances from LEDGERS down (Conway/Rules/Bbody.hs:161-216) as one instance over LEDGERS's injection; ConwayBbodySuite compares it with the flat BBODY; its expectations are the reference's own only on the 53 recorded Conway blocks the reference accepted",
+   "note": "the reference's nineteen instances from LEDGERS down (Conway/Rules/Bbody.hs:161-216) as one instance over LEDGERS's injection; ConwayBbodySuite compares it with the flat BBODY; its expectations are the reference's own on the 53 recorded Conway blocks the reference accepted; ConwayBbodyImpSuite holds Conway's run (ConwayBlockRun) to the reference's own BBODY cases for Conway at versions 9 to 11 (the Imp's of f649f975, and Shelley's of 9df9f98c), refusals among them",
    "digest": "ba8a15698476ea1f"
   },
   "given ledger.era.rules.EmbedLedgersInBbody.conway": {
@@ -47511,9 +47526,10 @@
    "class": "Mirror",
    "structure": "same",
    "evidence": [
-    "ConwayBbodySuite"
+    "ConwayBbodySuite",
+    "ConwayBbodyImpSuite"
    ],
-   "note": "ConwayBbodySuite compares it with the flat BBODY; its expectations are the reference's own only on the 53 recorded Conway blocks the reference accepted",
+   "note": "ConwayBbodySuite compares it with the flat BBODY; its expectations are the reference's own on the 53 recorded Conway blocks the reference accepted; ConwayBbodyImpSuite holds Conway's run (ConwayBlockRun) to the reference's own BBODY cases for Conway at versions 9 to 11 (the Imp's of f649f975, and Shelley's of 9df9f98c), refusals among them",
    "digest": "f255f28ff8bb6c1b"
   },
   "class ledger.era.Mismatch": {
