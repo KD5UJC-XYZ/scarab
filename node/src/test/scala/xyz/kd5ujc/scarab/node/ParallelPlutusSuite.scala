@@ -294,6 +294,8 @@ class ParallelPlutusSuite extends FailsOnUncaught:
         val serialRuns = CountingEvaluator(evaluator)
         val serial = bodyOf(serialRuns, limit).serial
         assertEquals(serialRuns.count, evaluated, what)
+        // its plan, prepared directly, has the serial run's outcome
+        assertEquals(bodyOf(evaluator, limit).prepare.resolve(Vector.empty), Right(serial), what)
         if passing then
           assertEquals(
             serial,
