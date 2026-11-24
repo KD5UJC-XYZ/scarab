@@ -237,7 +237,7 @@ class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaC
         )
         assertEquals(
           answered(refused),
-          answered(Left(Rejection.Limits(id, cats.data.NonEmptyList.one(expected))))
+          flatAnswer(Left(Rejection.Limits(id, cats.data.NonEmptyList.one(expected))))
         )
       case other => fail(s"expected the adopted maximum-size rejection, received $other")
     val held = MempoolState
@@ -441,7 +441,7 @@ class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaC
     // root's failures come out reversed, LEDGER's after MEMPOOL's own
     assertEquals(
       answered(attempt(10)),
-      answered(
+      flatAnswer(
         Left(
           Rejection.Ledger(
             LedgerFailure.Rejected(
@@ -460,7 +460,7 @@ class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaC
     // from 11 GOV refuses the unelected voter, and goes on to find it is not known either
     assertEquals(
       answered(attempt(11)),
-      answered(
+      flatAnswer(
         Left(
           Rejection.Ledger(
             LedgerFailure.Rejected(

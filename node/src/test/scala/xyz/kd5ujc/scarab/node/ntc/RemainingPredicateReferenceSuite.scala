@@ -105,7 +105,7 @@ class RemainingPredicateReferenceSuite extends FunSuite:
             case PredicateFailure.Certs(CertsFailure.Cert(CertFailure.Pool(f))) => f
             case other => fail(s"$name: not a POOL failure: $other")
           }
-          val actual = pool.map(f => CborOut.build(w => PredicateFailureCbor.pool(w, f)))
+          val actual = pool.map(f => CborOut.build(w => FailureCbor.pool(w, f)))
           val expected = field[Vector[String]](result, "failureCbor").map(hex)
           assertEquals(actual, expected, name)
           // The shared POOL encoding must reach clients in every Shelley-based era.
@@ -113,7 +113,7 @@ class RemainingPredicateReferenceSuite extends FunSuite:
             (f, bytes) <- pool.zip(actual)
             era <- Vector(Era.Shelley, Era.Allegra, Era.Mary, Era.Alonzo, Era.Babbage, Era.Conway)
           do
-            val reason = PredicateFailureCbor
+            val reason = FlatRefusal
               .applyTxError(era, Vector(PredicateFailure.pool(f)))
               .fold(error => fail(error.message), identity)
               .getOrElse(fail(s"$name $era encoding"))
@@ -188,7 +188,7 @@ class RemainingPredicateReferenceSuite extends FunSuite:
             assert(!field[Boolean](expected, "accepted"), s"$major $name")
             val native = field[Vector[String]](expected, "failureCbor").headOption
               .getOrElse(fail("native output predicate failure"))
-            val reason = PredicateFailureCbor
+            val reason = FlatRefusal
               .applyTxError(era, Vector(failure))
               .fold(error => fail(error.message), identity)
               .getOrElse(fail(s"$major output encoding"))

@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.node.mempool
 
 import xyz.kd5ujc.scarab.codec.{Bytes, DomainError}
-import xyz.kd5ujc.scarab.ledger.{Block, LedgerFailure, PosixClock, Tx}
+import xyz.kd5ujc.scarab.ledger.{Block, LedgerFailure, PosixClock}
 import xyz.kd5ujc.scarab.ledger.era.{
   EraTx as EraTxOf,
   EraTxError,
@@ -25,23 +25,30 @@ import xyz.kd5ujc.scarab.protocol.{Era, StateLayout}
 
 /** A Conway transaction as a client or a peer submitted it, read into the era's types in the layout
   * of the pool's ledger: its parts as they were received, with the flag, which a block takes as
-  * they are ([[xyz.kd5ujc.scarab.node.forge.BlockBuilder.piece]]), the flat transaction they make
-  * (`Tx.fromBlock`), whose inputs the pool's read set takes ([[MempoolState.readSet]]) until the
-  * switch's last step removes the flat Conway wiring (#85), and the transaction in Conway's types
-  * (`ConwayTx.decode`), which the rules judge. The three are set together ([[withIsValid]]), so
-  * they hold the same flag.
+  * they are ([[xyz.kd5ujc.scarab.node.forge.BlockBuilder.piece]]), and the transaction in Conway's
+  * types (`ConwayTx.decode`), which the rules judge and whose inputs the pool's read set takes
+  * ([[inputs]]). The two are set together ([[withIsValid]]), so they hold the same flag.
   */
-final case class ConwayRead private (parts: Block.Transaction, flat: Tx, tx: ConwayTx):
+final case class ConwayRead private (parts: Block.Transaction, tx: ConwayTx):
   /** The id, the hash of the body. */
   def id: Bytes = parts.id
 
   /** The phase-two flag (`isValidTxL`). */
   def isValid: IsPhase2Valid = tx.isValid
 
-  /** The three forms with the flag `valid` (`tx & isValidTxL .~ valid`). */
+  /** The two forms with the flag `valid` (`tx & isValidTxL .~ valid`). */
   def withIsValid(valid: IsPhase2Valid): ConwayRead =
-    val flag = valid == IsPhase2Valid.Phase2Valid
-    ConwayRead(parts.copy(isValid = flag), flat.copy(isValid = flag), tx.withIsValid(valid))
+    ConwayRead(parts.copy(isValid = valid == IsPhase2Valid.Phase2Valid), tx.withIsValid(valid))
+
+  /** What the transaction reads from the UTxO set, which the pool fetches from the store before the
+    * rules run: every input of its body, the spent, collateral and reference ones
+    * (`allInputsTxBodyF`, `Conway/TxBody.hs:344`, cardano-ledger f649f975), as the block path
+    * fetches them ([[xyz.kd5ujc.scarab.ledger.era.conway.ConwayBlock.inputs]]).
+    */
+  def inputs: Set[xyz.kd5ujc.scarab.ledger.TxIn] =
+    EraTxOf.conway.bodyOf.allInputs(
+      EraTxOf.conway.body[TxLevel.Top](tx)(using EraTxOf.conway.bodyOf.top)
+    )
 
   /** The transaction as the reference writes it to relay and to list it, `[body, witnesses, flag,
     * auxiliary data]`, each part the bytes it was read from ([[EraInjection.envelope]]).
@@ -70,7 +77,7 @@ object ConwayRead:
     * projection's failure where the era's decoders refuse what the flat ones read.
     */
   def of(t: EraTx, layout: StateLayout): Either[EraTxError, ConwayRead] =
-    ConwayTx.decode(t.parts, layout).map(ConwayRead(t.parts, t.tx, _))
+    ConwayTx.decode(t.parts, layout).map(ConwayRead(t.parts, _))
 
 /** A Conway transaction the pool holds: the transaction with the flag of its verdict, and what it
   * was validated with (`Validated (GenTx (ShelleyBlock proto ConwayEra))`, `ShelleyValidatedTx`,

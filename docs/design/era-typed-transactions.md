@@ -2753,7 +2753,7 @@ Conway's rules on the classes follow as the rest of stage 2.
   read into Conway's once (parameters that do not read give the pool no ledger, `ConwayView.Unavailable.Params`,
   answered as any missing ledger) and the state's layout.
   - A submitted Conway transaction is read by the flat decoders, as before, and then into Conway's types in the
-    ledger's layout (`ConwayRead`: the parts, the flat transaction and the era's, one flag for the three); readings
+    ledger's layout (`ConwayRead`: the parts and the era's transaction, one flag for both); readings
     that disagree are no verdict (`ConwayUnjudged.Projection`). Its measures are Conway's (`txMeasureAlonzo` and
     `txMeasureRefScripts`, on `sizeTxF`, `totExUnits` and `txNonDistinctRefScriptsSize`), their refusals UTXO's
     and LEDGER's era failures; then `ConwayMempoolRun.applyTx`, a peer's transaction again with its flag
@@ -2820,6 +2820,21 @@ Conway's rules on the classes follow as the rest of stage 2.
     that no script is evaluated or decoded and no signature verified. The devnet runs (`pool`, `pool --plutus-load`,
     `e2e`) are in the pull request. The Leios build's reapplication of a Conway block's transactions is shown by the
     suites only: no scenario runs a Scala pool on that build's Conway.
+- **The flat Conway wiring removed** (`node/.../ntc/FailureCbor.scala`, `LocalSubmission.scala`, `ConwayPool.scala`,
+  `MempoolState.scala`; the plan's PR8). With the three switches in place, no answer of the node runs or encodes the
+  flat rules for Conway; the flat BBODY and MEMPOOL themselves stay (owner decision 4).
+  - The refusal encoders share their leaf writers, Conway's index and the era mismatch in `FailureCbor`, moved there
+    as they were, so `ConwayFailureCbor` and `PreConwayFailureCbor` no longer borrow from the flat rules' Conway
+    encoder (`PredicateFailureCbor`), whose only users are the suites that compare with the flat MEMPOOL.
+  - The node's own refusals (Conway's free-text `ConwayMempoolFailure`) are written by `ConwayFailureCbor`, byte for
+    byte as before (`LocalSubmissionSuite`). A flat refusal reaches `LocalSubmission.reasonItem` only from a ledger of
+    an era from Shelley to Babbage; under any other it is `NoEncoding`, where it was written as Conway's flat refusal
+    (no node path met it).
+  - A held Conway transaction keeps no flat form: the pool's read set takes every input of the era's body
+    (`ConwayRead.inputs`, `allInputsTxBodyF`), the same set the flat transaction gave (`ConwayHeldSuite`).
+  - Kept for the suites and `tools`: `MempoolLedger` (the flat MEMPOOL on a Conway state), the Conway arm of
+    `EraBlock`, the flat decoder's first reading of a submitted Conway transaction (`ConwayRead.of`, whose
+    disagreement is no verdict), `MempoolState.parse` and `parseParts`.
 - **Dijkstra's BBODY** (`era/EraBlock.scala`, `era/dijkstra/DijkstraBlock.scala`, `era/rules/BbodyFailures.scala`,
   `era/rules/DijkstraBbody.scala`; `Rules/Bbody.hs` of `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/`, cardano-ledger
   9df9f98c, with the predicates of Shelley's, Alonzo's and Conway's BBODY it runs):

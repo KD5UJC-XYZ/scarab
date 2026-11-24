@@ -1,24 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.ntc
 
-import cats.Order
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.*
 import xyz.kd5ujc.scarab.ledger.state.{ProtVer, ShelleyBasedEra}
-import xyz.kd5ujc.scarab.models.runtime.Codec
-import xyz.kd5ujc.scarab.plutus.ExUnits
-import xyz.kd5ujc.scarab.protocol.Era
-import xyz.kd5ujc.scarab.storage.haskell.state.{
-  HaskellStateCodecs,
-  NodeOrders,
-  Params,
-  UtxoCodecs,
-  Versions,
-  Wire
-}
+import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellStateCodecs, NodeOrders, Versions}
 
 import ContextFailureCbor.ContextEra
+import FailureCbor.*
 
 /** The ledger's predicate-failure CBOR (`EncCBOR` of `ConwayLedgerPredFailure` and the rules it
   * nests), which `cardano-cli transaction submit` decodes to render a rejection.
@@ -31,12 +21,13 @@ import ContextFailureCbor.ContextEra
   *
   * The whole answer of a LocalTxSubmission refusal is the hard-fork-combinator `ApplyTxErr`: a
   * one-element list holding the era index (Conway, 6) and the non-empty list of failures.
+  *
+  * This is the flat rules' Conway encoder. No answer of the node uses it: Conway's pool refuses in
+  * the era's types, which [[ConwayFailureCbor]] writes, and the eras before Conway are written by
+  * [[PreConwayFailureCbor]] (#85). It stays with the flat MEMPOOL it writes the refusals of, for
+  * the suites that hold Conway's era rules and encoder to the flat ones, byte for byte.
   */
 object PredicateFailureCbor:
-  private[ntc] type W = CborOut
-
-  val ConwayIndex = 6
-
   /** The reason item sent with `MsgRejectTx` for a refused Conway transaction. A failure of a rule
     * the Conway ledger does not have (the update proposals, the MIR certificates, the time to live)
     * or whose payload this encoding does not write ([[inConway]]) is sent as the ledger's own
@@ -49,14 +40,6 @@ object PredicateFailureCbor:
         list(w, encoders)((k, encoder) => encoder.write(k))
       }
     }
-
-  /** An unsupported era constructor has no encoding; a presentation defect retains its cause. */
-  def applyTxError(
-      era: Era,
-      failures: Vector[PredicateFailure]
-  ): Either[RefusalPresentationError, Option[Bytes]] = era match
-    case Era.Conway => applyTxError(failures).map(Some(_))
-    case other      => PreConwayFailureCbor.applyTxError(other, failures)
 
   /** The failure as Conway's ledger reports it: itself, or its text (`ConwayMempoolFailure`). */
   private def conwayForm(f: PredicateFailure): PredicateFailure =
@@ -99,17 +82,6 @@ object PredicateFailureCbor:
     */
   private def notInConway(w: W): Unit = { w.nul; () }
 
-  /** The hard-fork-combinator era mismatch (`encodeEitherMismatch`, `Left`,
-    * `HardFork/Combinator/Serialisation/Common.hs:570-582`, ouroboros-consensus 82ecba32): the era
-    * of the transaction, then the ledger's, each its index and its name (`singleEraName`).
-    */
-  def eraMismatch(transactionEra: Int, transactionEraName: String, ledger: Era): Bytes =
-    CborOut.build { w =>
-      w.array(2)
-      w.array(2).uint(transactionEra).text(transactionEraName)
-      w.array(2).uint(ledger.index).text(ledger.toString)
-    }
-
   // ---- helpers
 
   /** The ledger values of a failure are written by the Haskell state codecs, at the version the
@@ -118,65 +90,7 @@ object PredicateFailureCbor:
   private given ProtVer = Versions.eraLow(ShelleyBasedEra.SConway)
   import NodeOrders.given
 
-  private[ntc] def put[A](w: W, a: A)(using codec: Codec[A]): W = w.raw(codec.encodeUnchecked(a))
-
-  /** The codec of an item written by a function of the failure's writer. */
-  private[ntc] def element[A](each: (W, A) => Unit): Codec[A] =
-    Wire.writeOnly("a failure item")((a, out) => out.raw(CborOut.build(each(_, a))))
-
-  private[ntc] def list[A](w: W, xs: Iterable[A])(each: (W, A) => Unit): W =
-    put(w, xs.toVector)(using Wire.seqOf(element(each)))
-
-  private[ntc] def set[A: Order](w: W, xs: Iterable[A])(each: (W, A) => Unit)(using ProtVer): W =
-    put(w, xs.toSet)(using Wire.sortedSetOf(element(each)))
-
-  private[ntc] def map[K: Order, V](w: W, entries: Map[K, V])(
-      key: (W, K) => Unit,
-      value: (W, V) => Unit
-  )(using ProtVer): W = put(w, entries)(using Wire.sortedMapOf(element(key), element(value)))
-
-  private[ntc] def maybe[A](w: W, a: Option[A])(each: (W, A) => Unit): W =
-    put(w, a)(using Wire.strictMaybe(element(each)))
-
-  private[ntc] def credential(w: W, c: Credential): W =
-    put(w, c)(using HaskellStateCodecs.nodeCredential)
-  private[ntc] def txIn(w: W, i: TxIn): W = put(w, i)(using UtxoCodecs.txIn)
-  private[ntc] def txOut(w: W, o: TxOut): W = put(w, o)(using UtxoCodecs.txOut)
-  private[ntc] def rewardAccount(w: W, a: RewardAccount): W =
-    put(w, a)(using HaskellStateCodecs.rewardAccount)
-  private[ntc] def govActionId(w: W, i: GovActionId): W =
-    put(w, i)(using HaskellStateCodecs.govActionId)
   private def govAction(w: W, a: GovAction): W = put(w, a)(using HaskellStateCodecs.govAction)
-  private def proposalProcedure(w: W, p: Proposal): W =
-    put(w, p)(using HaskellStateCodecs.proposal)
-  private[ntc] def exUnits(w: W, e: ExUnits): W = put(w, e)(using Params.exUnits)
-
-  private[ntc] def hash(w: W, h: Bytes): Unit = { w.bytes(h); () }
-
-  private[ntc] def hashSet(w: W, hs: Set[Bytes])(using ProtVer): W = set(w, hs)(hash)
-
-  private[ntc] def maybeHash(w: W, h: Option[Bytes]): W = maybe(w, h)((k, x) => k.bytes(x))
-
-  /** A mismatch as a group: supplied, then expected. */
-  private[ntc] def group[A](w: W, m: Mismatch[A])(each: (W, A) => Unit): Unit =
-    each(w, m.supplied); each(w, m.expected)
-
-  /** A mismatch the ledger writes in the reverse order. */
-  private[ntc] def swapped[A](w: W, m: Mismatch[A])(each: (W, A) => Unit): Unit =
-    each(w, m.expected); each(w, m.supplied)
-
-  private[ntc] def coin(w: W, c: BigInt): Unit = { w.uint(c); () }
-  private[ntc] def small(w: W, n: Int): Unit = { w.uint(n); () }
-
-  /** A Haskell `Int` as `encodeInt` writes it: signed, up to 64 bits, in the shortest head. */
-  private[ntc] def int(w: W, n: Long): Unit = { w.int(n); () }
-
-  private[ntc] def voter(w: W, v: Voter): W = v match
-    case Voter.CommitteeHot(Credential.Key(h))    => w.array(2).uint(0).bytes(h)
-    case Voter.CommitteeHot(Credential.Script(h)) => w.array(2).uint(1).bytes(h)
-    case Voter.DRepVoter(Credential.Key(h))       => w.array(2).uint(2).bytes(h)
-    case Voter.DRepVoter(Credential.Script(h))    => w.array(2).uint(3).bytes(h)
-    case Voter.Pool(h)                            => w.array(2).uint(4).bytes(h)
 
   private def votes(w: W, vs: Vector[(Voter, GovActionId)]): W =
     list(w, vs) { case (k, (v, id)) =>
@@ -184,10 +98,6 @@ object PredicateFailureCbor:
       voter(k, v)
       govActionId(k, id)
     }
-
-  private[ntc] def protVer(w: W, v: (BigInt, BigInt)): Unit = {
-    w.array(2).uint(v._1).uint(v._2); ()
-  }
 
   // ---- LEDGER
 
@@ -341,27 +251,12 @@ object PredicateFailureCbor:
         notInConway(w)
       })
 
-  /** A Plutus purpose as the ledger names it with the item it applies to (`PlutusPurpose AsItem`):
-    * `[tag, item]`. The certifying purpose is the exception: its item is the Conway certificate,
-    * which [[ContextFailureCbor.purpose]] writes, so no caller reaches the certifying arm below
-    * (`conwayPurpose` routes it there). The arm is kept only because the match is total.
-    */
-  private[ntc] def item(w: W, p: Purpose): Unit = p match
-    case Purpose.Spending(_, input, _)  => w.array(2).uint(0); txIn(w, input)
-    case Purpose.Minting(_, policy)     => w.array(2).uint(1).bytes(policy)
-    case Purpose.Certifying(_, _)       => w.array(2).uint(2); w.nul
-    case Purpose.Rewarding(_, account)  => w.array(2).uint(3); rewardAccount(w, account)
-    case Purpose.Voting(_, v)           => w.array(2).uint(4); voter(w, v)
-    case Purpose.Proposing(_, proposal) => w.array(2).uint(5); proposalProcedure(w, proposal)
-
   /** The Conway `[tag, item]` of a purpose, or None when its certificate has no encoding. */
   private def conwayPurpose(p: Purpose): Option[Bytes] = p match
     case Purpose.Certifying(_, _) => ContextFailureCbor.purpose(ContextEra.Conway, p)
     case other                    => Some(CborOut.build(item(_, other)))
 
   // ---- UTXO
-
-  private[ntc] def value(w: W, v: Value): Unit = { put(w, v)(using UtxoCodecs.value); () }
 
   private def prepareUtxo(f: UtxoFailure): Either[RefusalPresentationError, Prepared] = f match
     case UtxoFailure.Utxos(u) =>
@@ -478,33 +373,7 @@ object PredicateFailureCbor:
     prepareUtxos(f).map(encoder => CborOut.build(encoder.write))
 
   private def prepareUtxos(f: UtxosFailure): Either[RefusalPresentationError, Prepared] = f match
-    case UtxosFailure.ValidationTagMismatch(isValid, failures) =>
-      failures
-        .traverse(_.traverse { failure =>
-          PlutusFailureCbor
-            .description(failure)
-            .left
-            .map(cause => RefusalPresentationError.InvalidPlutusContext(failure, cause))
-            .map(description =>
-              (
-                description.getOrElse(failure.cause.message),
-                PlutusFailureCbor.reconstruction(failure)
-              )
-            )
-        })
-        .map { descriptions =>
-          Prepared { w =>
-            w.array(3).uint(0).bool(isValid)
-            descriptions match
-              case None => w.array(1).uint(0)
-              case Some(fs) =>
-                w.array(2).uint(1)
-                list(w, fs) { case (k, (description, reconstruction)) =>
-                  k.array(3).uint(1).text(description).bytes(reconstruction)
-                }
-            ()
-          }
-        }
+    case m: UtxosFailure.ValidationTagMismatch => validationTagMismatch(m).map(Prepared(_))
     case UtxosFailure.CollectErrors(errors) =>
       Right(Prepared { w =>
         ContextFailureCbor
@@ -543,17 +412,6 @@ object PredicateFailureCbor:
         DelegFailure.MIRProducesNegativeUpdate | DelegFailure.MIRNegativeTransfer(_, _) |
         DelegFailure.DelegateeNotRegistered(_) =>
       notInConway(w)
-
-  private[ntc] def pool(w: W, f: PoolFailure): Unit = f match
-    case PoolFailure.StakePoolNotRegisteredOnKey(p) => w.array(2).uint(0).bytes(p)
-    case PoolFailure.StakePoolRetirementWrongEpoch(current, latest) =>
-      w.array(4).uint(1).uint(current.expected).uint(latest.supplied).uint(latest.expected)
-    case PoolFailure.StakePoolCostTooLow(m) => w.array(3).uint(3); group(w, m)(coin)
-    case PoolFailure.WrongNetworkPool(m, p) =>
-      w.array(4).uint(4); swapped(w, m)(small); w.bytes(p)
-    case PoolFailure.PoolMedataHashTooBig(p, size) => w.array(3).uint(5).bytes(p).uint(size)
-    case PoolFailure.VRFKeyHashAlreadyRegistered(p, vrf) =>
-      w.array(3).uint(6).bytes(p).bytes(vrf)
 
   private def govCert(w: W, f: GovCertFailure): Unit = f match
     case GovCertFailure.DRepAlreadyRegistered(c)          => w.array(2).uint(0); credential(w, c)

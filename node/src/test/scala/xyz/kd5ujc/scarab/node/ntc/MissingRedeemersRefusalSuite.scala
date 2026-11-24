@@ -44,7 +44,7 @@ class MissingRedeemersRefusalSuite extends FunSuite:
     // [6 era, [[1 UTXOW, [0 UTXO, [0 UTXOS, [1 CollectErrors, [...]]]]],
     //          [1 UTXOW, [10 MissingRedeemers, [...]]]]]
     assertEquals(
-      PredicateFailureCbor
+      FlatRefusal
         .applyTxError(Era.Conway, failures)
         .fold(error => fail(error.message), identity)
         .map(_.hex),
@@ -61,7 +61,7 @@ class MissingRedeemersRefusalSuite extends FunSuite:
     // [5 era, [[0 UTXOW, [1 Alonzo's UTXOW, [1 MissingRedeemers, [...]]]],
     //          [0 UTXOW, [2 UTXO, [1 Alonzo's UTXO, [7 UTXOS, [1 CollectErrors, [...]]]]]]]]
     assertEquals(
-      PredicateFailureCbor
+      FlatRefusal
         .applyTxError(Era.Babbage, failures)
         .fold(error => fail(error.message), identity)
         .map(_.hex),

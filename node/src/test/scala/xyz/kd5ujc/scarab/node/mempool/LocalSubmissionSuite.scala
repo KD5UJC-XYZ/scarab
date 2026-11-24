@@ -341,7 +341,8 @@ class LocalSubmissionSuite extends FailsOnUncaught:
         )
       )
     )
-    LocalSubmission.reasonItem(rejection, Some(Era.Conway)) match
+    // a flat refusal is a Babbage ledger's: Conway's pool refuses in the era's types
+    LocalSubmission.reasonItem(rejection, Some(Era.Babbage)) match
       case Left(error: xyz.kd5ujc.scarab.node.ntc.RefusalPresentationError) =>
         assert(error.failure eq failure)
       case other => fail(s"presentation defect became rejection bytes: $other")
@@ -370,7 +371,7 @@ class LocalSubmissionSuite extends FailsOnUncaught:
                     item =>
                       first.getAndSet(false).flatMap {
                         case true =>
-                          IO.pure(LocalSubmission.response(Refused(rejection, Some(Era.Conway))))
+                          IO.pure(LocalSubmission.response(Refused(rejection, Some(Era.Babbage))))
                         case false =>
                           LocalSubmission
                             .handler(mempool, ReferenceBuild.Release11_2)(fatal =>
@@ -430,4 +431,64 @@ class LocalSubmissionSuite extends FailsOnUncaught:
           assertEquals(healthy, Right(LocalTxSubmission.Message.AcceptTx))
           assert(held)
       }
+  }
+
+  test("the node's own refusals are Conway's free text, byte for byte as before the switch") {
+    // `ConwayMempoolFailure` by Conway's era encoder, as the flat rules' encoder wrote it, under
+    // every ledger that has the text and with none
+    val id = Bytes(Vector.fill(32)(7.toByte))
+    val problems = Vector(
+      Rejection.AlreadyHeld(id) -> xyz.kd5ujc.scarab.ledger.MempoolProblem.AllInputsSpent,
+      Rejection.TooSlow(id, Era.Conway, scala.concurrent.duration.FiniteDuration(3, "s")) ->
+        xyz.kd5ujc.scarab.ledger.MempoolProblem
+          .TooSlow(scala.concurrent.duration.FiniteDuration(3, "s"), Era.Conway, id),
+      Rejection.NoLedger(xyz.kd5ujc.scarab.node.read.ConwayView.Unavailable.InByron) ->
+        xyz.kd5ujc.scarab.ledger.MempoolProblem
+          .NoLedger(xyz.kd5ujc.scarab.ledger.MempoolLedgerProblem.InByron)
+    )
+    val eras = None +: Vector(
+      Era.Byron,
+      Era.Shelley,
+      Era.Allegra,
+      Era.Mary,
+      Era.Alonzo,
+      Era.Babbage,
+      Era.Conway
+    ).map(Some(_))
+    for
+      (rejection, problem) <- problems
+      era <- eras
+    do
+      val flat = xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor
+        .applyTxError(Vector(xyz.kd5ujc.scarab.ledger.PredicateFailure.Mempool(problem)))
+      assertEquals(LocalSubmission.reasonItem(rejection, era).map(_.hex), flat.map(_.hex), s"$era")
+  }
+
+  test(
+    "a flat refusal under a ledger whose rules refuse in their era's types, or none, has no reply"
+  ) {
+    // only a ledger from Shelley to Babbage refuses with the flat failures; Conway's and
+    // Dijkstra's pools refuse in their era's types
+    val id = Bytes(Vector.fill(32)(7.toByte))
+    val failure = xyz.kd5ujc.scarab.ledger.PredicateFailure.utxo(
+      xyz.kd5ujc.scarab.ledger.UtxoFailure.InputSetEmpty
+    )
+    val refusals = Vector(
+      Rejection.Ledger(
+        xyz.kd5ujc.scarab.ledger.LedgerFailure
+          .Rejected(id, cats.data.NonEmptyChain.one(failure))
+      ),
+      Rejection.Limits(id, cats.data.NonEmptyList.one(failure))
+    )
+    for
+      rejection <- refusals
+      era <- Vector(None, Some(Era.Byron), Some(Era.Conway), Some(Era.Dijkstra))
+    do
+      assertEquals(
+        LocalSubmission.reasonItem(rejection, era),
+        Left(LocalSubmission.NoEncoding(era, Vector(failure))),
+        s"$era"
+      )
+    // a Babbage ledger's is written in Babbage's encoding
+    refusals.foreach(r => assert(LocalSubmission.reasonItem(r, Some(Era.Babbage)).isRight, s"$r"))
   }

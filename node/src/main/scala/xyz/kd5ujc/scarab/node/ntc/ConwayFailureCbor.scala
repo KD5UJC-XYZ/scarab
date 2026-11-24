@@ -57,26 +57,29 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellStateCodecs, NodeOrders, 
   * the list's, `eras/conway/impl/src/Cardano/Ledger/Conway.hs:50-53`, cardano-ledger f649f975),
   * each failure by the `EncCBOR` instance of its type, constructor by constructor, at the version
   * the node writes Conway's refusals at (`Versions.eraLow`, 9), in the hard-fork combinator's
-  * wrapper [[PredicateFailureCbor.applyTxError]] writes (Conway's index, 6).
+  * wrapper (Conway's index, 6, [[FailureCbor.ConwayIndex]]).
   *
   * MEMPOOL's failure is LEDGER's (`type PredicateFailure (MEMPOOL era) = ConwayLedgerPredFailure
   * era`, `Conway/Rules/Mempool.hs:86`, cardano-ledger f649f975), so a MEMPOOL refusal is the
   * non-empty list of LEDGER's failures [[applyTxError]] takes, its own `ConwayMempoolFailure` among
   * them.
   *
-  * The leaves are written by the writers the node's flat encoder uses, where the era's value has a
-  * total form they take: an output and a value (`StoredTxOut.conway`), an account address and a
-  * credential (`Convert`); those writers are the reference's `EncCBOR` of the same values. A
-  * purpose with its item, a certificate, a governance action, a proposal and a context's error are
-  * written from the era's values here, so that no failure needs what only the transaction gives.
+  * The leaves are written by the writers the node's encoders share ([[FailureCbor]]), where the
+  * era's value has a total form they take: an output and a value (`StoredTxOut.conway`), an account
+  * address and a credential (`Convert`); those writers are the reference's `EncCBOR` of the same
+  * values. A purpose with its item, a certificate, a governance action, a proposal and a context's
+  * error are written from the era's values here, so that no failure needs what only the transaction
+  * gives.
   *
   * A failure has no bytes ([[Unencodable]]) where the reference has no constructor for what the
   * node holds ([[NoReferenceEncoding]]), or where a script's failure cannot be described
   * ([[RefusalPresentationError]]), as the flat encoder's.
   */
 object ConwayFailureCbor:
-  import PredicateFailureCbor.{
+  import FailureCbor.{
     coin as uint,
+    credential as nodeCredential,
+    govActionId,
     hash,
     hashSet,
     int,
@@ -88,6 +91,7 @@ object ConwayFailureCbor:
     rewardAccount,
     set,
     small,
+    relayBytes,
     txIn,
     txOut,
     voter
@@ -138,7 +142,7 @@ object ConwayFailureCbor:
   def applyTxError(failures: NonEmptyList[ConwayLedgerPredFailure[Conway]]): Result[Bytes] =
     failures.traverse(ledger).map { encoded =>
       CborOut.build { w =>
-        w.array(1).array(2).uint(PredicateFailureCbor.ConwayIndex)
+        w.array(1).array(2).uint(FailureCbor.ConwayIndex)
         list(w, encoded.toList)(raw)
       }
     }
@@ -598,7 +602,7 @@ object ConwayFailureCbor:
     * cardano-ledger f649f975): the map of each voter's map of votes, in the reference's orders.
     */
   private def votingProcedures(vs: VotingProcedures[Conway]): Bytes =
-    ContextFailureCbor.votingProcedures(
+    FailureCbor.votingProcedures(
       vs.unVotingProcedures.toVector.map((v, votes) => v -> votes.toVector)
     )
 
@@ -685,7 +689,7 @@ object ConwayFailureCbor:
     */
   private def registration(p: StakePoolParams): Option[Bytes] =
     (
-      ContextFailureCbor.relayBytes(p.relays),
+      relayBytes(p.relays),
       p.metadata.traverse(metadata)
     ).mapN { (relays, metadata) =>
       build { w =>
@@ -720,7 +724,7 @@ object ConwayFailureCbor:
     */
   private def govAction(a: GovAction[Conway]): Bytes = build { w =>
     def parent(id: Option[xyz.kd5ujc.scarab.ledger.GovActionId]): Unit =
-      id.fold({ w.nul; () })(i => { PredicateFailureCbor.govActionId(w, i); () })
+      id.fold({ w.nul; () })(i => { govActionId(w, i); () })
     a match
       case GovAction.ParameterChange(prev, update, guardrails) =>
         w.array(4).uint(0); parent(prev.map(_.unGovPurposeId))
@@ -838,7 +842,7 @@ object ConwayFailureCbor:
         vs: NonEmptyList[(xyz.kd5ujc.scarab.ledger.Voter, xyz.kd5ujc.scarab.ledger.GovActionId)]
     ): Unit =
       list(w, vs.toList) { case (k, (v, id)) =>
-        k.array(2); voter(k, v); PredicateFailureCbor.govActionId(k, id); ()
+        k.array(2); voter(k, v); govActionId(k, id); ()
       }; ()
     def tagged(tag: Int)(body: W => Unit): Result[Bytes] = Right(build { w =>
       w.array(2).uint(tag); body(w)
@@ -846,7 +850,7 @@ object ConwayFailureCbor:
     f match
       case GovActionsDoNotExist(ids) =>
         tagged(0) { w =>
-          list(w, ids.toList)(PredicateFailureCbor.govActionId(_, _)); ()
+          list(w, ids.toList)(govActionId(_, _)); ()
         }
       case MalformedProposal(a) => tagged(1)(raw(_, govAction(a)))
       case ProposalProcedureNetworkIdMismatch(a, network) =>
@@ -880,7 +884,7 @@ object ConwayFailureCbor:
       case ProposalCantFollow(parent, m) =>
         Right(build { w =>
           w.array(4).uint(10)
-          maybe(w, parent.map(_.unGovPurposeId))(PredicateFailureCbor.govActionId(_, _))
+          maybe(w, parent.map(_.unGovPurposeId))(govActionId(_, _))
           group(w, m)(era(EncCBOR.protVer))
         })
       case InvalidGuardrailsScriptHash(proposed, constitution) =>
@@ -905,5 +909,5 @@ object ConwayFailureCbor:
         }
       case UnelectedCommitteeVoters(cs) =>
         tagged(18) { w =>
-          list(w, cs.toList)(PredicateFailureCbor.credential(_, _)); ()
+          list(w, cs.toList)(nodeCredential(_, _)); ()
         }

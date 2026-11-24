@@ -66,7 +66,7 @@ class BootstrapDuplicateSubmissionSuite extends FunSuite:
   test("a valid bootstrap witness followed by an invalid one of its root is refused") {
     val (raw, id) = payment(Vector(carol, carol), Set(1))
     for (source, answer) <- judged(raw) do
-      assertEquals(answered(answer), answered(invalidWitnesses(id, carol)), s"$source")
+      assertEquals(answered(answer), flatAnswer(invalidWitnesses(id, carol)), s"$source")
   }
 
   test("the last of three witnesses of one root decides, a repeated copy of the first included") {
@@ -74,7 +74,7 @@ class BootstrapDuplicateSubmissionSuite extends FunSuite:
     for (source, answer) <- judged(refused) do
       assertEquals(
         answered(answer),
-        answered(invalidWitnesses(refusedId, carol)),
+        flatAnswer(invalidWitnesses(refusedId, carol)),
         s"$source, invalid last"
       )
     val (admitted, admittedId) = payment(Vector(carol, carol, carol), Set(1))
@@ -89,7 +89,7 @@ class BootstrapDuplicateSubmissionSuite extends FunSuite:
       for (source, answer) <- judged(raw) do
         assertEquals(
           answered(answer),
-          answered(invalidWitnesses(id, dave)),
+          flatAnswer(invalidWitnesses(id, dave)),
           s"$source, the invalid one at $invalid"
         )
   }

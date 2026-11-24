@@ -15,9 +15,10 @@ paperwork are there. The reference decides the check, its order and what the fai
 3. Add the check in the rule under `ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/` at the
    reference's position, with the pinned citation in a comment before it, as in `rules/Utxo.scala`
    (`// f649f975: Babbage/Rules/Utxo.hs:368–375, ...`).
-4. If a client can receive the failure, encode it in
-   [PredicateFailureCbor.scala](../../node/src/main/scala/xyz/kd5ujc/scarab/node/ntc/PredicateFailureCbor.scala)
-   with the reference's constructor tag.
+4. If a client can receive the failure, encode it with the reference's constructor tag: Conway's in
+   [ConwayFailureCbor.scala](../../node/src/main/scala/xyz/kd5ujc/scarab/node/ntc/ConwayFailureCbor.scala),
+   an earlier era's in
+   [PreConwayFailureCbor.scala](../../node/src/main/scala/xyz/kd5ujc/scarab/node/ntc/PreConwayFailureCbor.scala).
 5. Write a test that fails without the change, next to the rule's suite under
    `ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/rules/` (`CollateralWitnessSuite` is a small
    example): a case that breaks the rule and a twin that keeps it, from the reference or a real

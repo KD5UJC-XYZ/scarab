@@ -91,14 +91,35 @@ object ConwayEntries:
       scala.concurrent.duration.Duration.Zero
     )
 
-/** What a local client is answered for `answer`: the refusal's bytes
-  * ([[LocalSubmission.reasonItem]] in Conway), or what was admitted. The suites written against the
-  * flat rules' refusals compare the answers of Conway's rules with those of the same refusals in
-  * the flat form, byte for byte.
+/** What a local client is answered for `answer`, the pool's own: the refusal's bytes
+  * ([[LocalSubmission.reasonItem]] in Conway), as the node writes them, or what was admitted.
   */
 def answered[A](answer: Either[Rejection, A]): Either[xyz.kd5ujc.scarab.codec.Bytes, A] =
-  answer.leftMap(r =>
-    LocalSubmission
-      .reasonItem(r, Some(xyz.kd5ujc.scarab.protocol.Era.Conway))
-      .fold(e => munit.Assertions.fail(s"no reply to $r: $e"), identity)
-  )
+  answer.leftMap(reply)
+
+/** The answer a suite written against the flat rules' refusals expects, `answer` in the flat form:
+  * a flat refusal written by the flat rules' Conway encoder, as the node wrote it before Conway's
+  * pool refused in the era's types (#85), and any other as [[answered]] writes it. The pool's own
+  * answer goes through [[answered]], so a flat refusal from a Conway pool, which the node does not
+  * write, fails there.
+  */
+def flatAnswer[A](answer: Either[Rejection, A]): Either[xyz.kd5ujc.scarab.codec.Bytes, A] =
+  answer.leftMap {
+    case r @ Rejection.Ledger(xyz.kd5ujc.scarab.ledger.LedgerFailure.Rejected(_, failures)) =>
+      flat(r, failures.toChain.toVector)
+    case r @ Rejection.Limits(_, failures) => flat(r, failures.toList.toVector)
+    case r                                 => reply(r)
+  }
+
+private def reply(r: Rejection): xyz.kd5ujc.scarab.codec.Bytes =
+  LocalSubmission
+    .reasonItem(r, Some(xyz.kd5ujc.scarab.protocol.Era.Conway))
+    .fold(e => munit.Assertions.fail(s"no reply to $r: ${e.message}"), identity)
+
+private def flat(
+    r: Rejection,
+    failures: Vector[xyz.kd5ujc.scarab.ledger.PredicateFailure]
+): xyz.kd5ujc.scarab.codec.Bytes =
+  xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor
+    .applyTxError(failures)
+    .fold(e => munit.Assertions.fail(s"no flat encoding of $r: ${e.message}"), identity)

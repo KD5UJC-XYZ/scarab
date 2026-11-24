@@ -10,7 +10,7 @@ import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.storage.haskell.state.{NodeOrders, Versions}
 
 import ContextFailureCbor.ContextEra
-import PredicateFailureCbor.*
+import FailureCbor.*
 
 /** The predicate-failure CBOR of the eras from Shelley to Babbage (`EncCBOR` of
   * `ShelleyLedgerPredFailure` and the rules it nests), as [[PredicateFailureCbor]] has it for
@@ -38,8 +38,8 @@ import PredicateFailureCbor.*
   * A failure that the era's ledger has no constructor for, or whose payload this encoding does not
   * write, has no encoding ([[applyTxError]] is `Right(None)`): the reference answers a refusal of
   * the eras before Conway with these types alone (they have no free-text failure like Conway's).
-  * The node's submission is Conway's alone, so no client reads these today; they are the encodings
-  * of the failures the rules raise. Against the reference's own answers
+  * Local submission answers a refusal by a ledger from Shelley to Babbage with them
+  * (`LocalSubmission.inEra`). Against the reference's own answers
   * (`PreConwayFailureReferenceSuite`, recorded from the `e2e` scenario) those of Shelley, Allegra,
   * Mary and Alonzo for a small output, a large value and the MIR checks are byte-equal; the other
   * tags and all of Babbage's are read from the instances (`PreConwayFailureCborSuite`). The Plutus
@@ -272,8 +272,10 @@ object PreConwayFailureCbor:
     case UtxoFailure.OutputTooSmall(outs) => present(sum(6)(w => list(w, outs)(txOut)))
     case UtxoFailure.Utxos(u) =>
       u match
-        case UtxosFailure.ValidationTagMismatch(_, _) =>
-          OptionT.liftF(utxos(u)).map(raw => sum(7)(w => { w.raw(raw); () }))
+        case m: UtxosFailure.ValidationTagMismatch =>
+          OptionT
+            .liftF(validationTagMismatch(m).map(CborOut.build))
+            .map(raw => sum(7)(w => { w.raw(raw); () }))
         case UtxosFailure.CollectErrors(errors) =>
           supported(ContextFailureCbor.utxos(era, errors)).map(raw =>
             sum(7)(w => { w.raw(raw); () })

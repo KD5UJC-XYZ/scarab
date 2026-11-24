@@ -9,21 +9,22 @@ One Unix socket serves four node-to-client mini-protocols: LocalTxSubmission and
 `cardano-cli` uses), LocalTxMonitor (`cardano-cli query tx-mempool`, wallets) and ChainSync of whole blocks
 (db-sync, Ogmios and the followers of `cardano-cli`).
 
-**Rejections** (`ledger/PredicateFailure.scala`, `ntc/PredicateFailureCbor.scala`). The Conway rules
-refuse a transaction with a `LedgerFailure.Rejected(txId, PredicateFailure)`: a closed tree that
-mirrors `ConwayLedgerPredFailure` (UTXOW, UTXO, UTXOS, CERTS, CERT, DELEG, POOL, GOVCERT and GOV
-failures and the LEDGER-level ones) with the payload the ledger reports (the offending inputs,
-`Mismatch` pairs, credentials, outputs with their minimum, governance action ids). The rules of the earlier
-eras raise cases of the same types (`UtxoFailure.ExpiredUTxO`, `PpupFailure`, the Shelley `DelegFailure`s,
-`UtxowFailure.MIRInsufficientGenesisSigs`), which Conway sends as its free-text `ConwayMempoolFailure`
-(text derived from the case) and `PreConwayFailureCbor` writes as each earlier era's own instances do; no
-failure carries a rule name as its identity (`ruleName` is derived from the case). `PredicateFailureCbor`
-writes the shapes of the ledger's `EncCBOR` instances (constructor tag first, a `Mismatch` as two
-fields in line, reversed where the ledger swaps them, sets under tag 258, `StrictMaybe` as an empty or
-one-element list), and `LocalSubmission.reasonItem` wraps the failures as the hard-fork combinator's
-`ApplyTxErr` of the pool's era: `[[6, [failure, ...]]]` in Conway, the era's own instances before it
-(`PreConwayFailureCbor`; a failure that has no encoding there has no reply, `NoEncoding`); a transaction of another
-era that does not reach the pool's gets the era mismatch `[[era, name], [ledger era, name]]` (#934). In Conway the LEDGER-level checks (treasury value, reference-script size,
+**Rejections** (`ntc/ConwayFailureCbor.scala`, `ntc/PreConwayFailureCbor.scala`). Conway's pool refuses
+a transaction in the era's types (`Rejection.ConwayRefused`, the non-empty list of
+`ConwayLedgerPredFailure`), and `ConwayFailureCbor` writes it constructor by constructor as the
+ledger's `EncCBOR` instances do (constructor tag first, a `Mismatch` as two fields in line, reversed
+where the ledger swaps them, sets under tag 258, `StrictMaybe` as an empty or one-element list). From
+Shelley to Babbage the pool's rules refuse with the flat failures (`LedgerFailure.Rejected(txId,
+PredicateFailure)`), which `PreConwayFailureCbor` writes as each earlier era's own instances do. `LocalSubmission.reasonItem` wraps the failures as the hard-fork
+combinator's `ApplyTxErr` of the pool's era: `[[6, [failure, ...]]]` in Conway, the era's own instances
+before it (a failure that has no encoding there has no reply, `NoEncoding`); a transaction of another
+era that does not reach the pool's gets the era mismatch `[[era, name], [ledger era, name]]` (#934). The
+node's own refusals (a duplicate, a full pool, a validation too slow, no ledger) are Conway's free-text
+`ConwayMempoolFailure`, and have no reply under a Dijkstra ledger. The encoders share their leaf writers and the hard-fork wrapper
+(`ntc/FailureCbor.scala`). `PredicateFailureCbor` is the flat rules' Conway encoder, which no answer of
+the node uses: the suites that hold Conway's era rules to the flat MEMPOOL write the flat refusals with
+it, byte for byte (#85). No failure carries a rule name as its identity (`ruleName` is derived from the
+case). In Conway the LEDGER-level checks (treasury value, reference-script size,
 withdrawals), CERTS and GOV run before UTXOW, as in the ledger, and a submitted transaction is judged
 by the ledger's MEMPOOL rule; from Shelley to Babbage the pool applies the era's LEDGER rule (`EarlierLedger`), as
 the reference's mempool does in those eras, where Conway's applies MEMPOOL (the `ApplyTx` instances,

@@ -43,7 +43,7 @@ class PredicateFailureCborSuite extends FunSuite:
       "8300f582018183017820496e76616c696452657475726e56616c75653b2074726163653a207472616365420102"
     assertEquals(reason(failure), "81820681820182008200" + utxos)
     for era <- Vector(Era.Alonzo, Era.Babbage, Era.Conway) do
-      val encoded = PredicateFailureCbor
+      val encoded = FlatRefusal
         .applyTxError(era, Vector(failure))
         .fold(error => fail(error.message), identity)
         .getOrElse(fail(s"missing $era validity-tag encoding"))
@@ -76,7 +76,7 @@ class PredicateFailureCborSuite extends FunSuite:
       UtxoFailure.Utxos(UtxosFailure.ValidationTagMismatch(true, Some(Vector(failure))))
     )
     for era <- Vector(Era.Alonzo, Era.Babbage, Era.Conway) do
-      PredicateFailureCbor.applyTxError(era, Vector(predicate)) match
+      FlatRefusal.applyTxError(era, Vector(predicate)) match
         case Left(RefusalPresentationError.InvalidPlutusContext(retained, cause)) =>
           assertEquals(cause, PlutusContextText.Error.Arguments(request.language, 0))
           assert(retained eq failure)
@@ -86,7 +86,7 @@ class PredicateFailureCborSuite extends FunSuite:
               assertEquals(logs, Vector("trace"))
             case other => fail(s"changed evaluator cause: $other")
         case other => fail(s"$era silently encoded malformed context: $other")
-    assertEquals(PredicateFailureCbor.applyTxError(Era.Shelley, Vector(predicate)), Right(None))
+    assertEquals(FlatRefusal.applyTxError(Era.Shelley, Vector(predicate)), Right(None))
   }
 
   // A malformed context makes the explicit-error description observable: it is a presentation
@@ -281,7 +281,7 @@ class PredicateFailureCborSuite extends FunSuite:
   test("a transaction of another era gets the hard-fork combinator's era mismatch") {
     // Babbage transaction against a Conway ledger: [[5, "Babbage"], [6, "Conway"]]
     assertEquals(
-      PredicateFailureCbor.eraMismatch(5, "Babbage", Era.Conway).hex,
+      FailureCbor.eraMismatch(5, "Babbage", Era.Conway).hex,
       "8282056742616262616765820666436f6e776179"
     )
   }
@@ -328,7 +328,7 @@ class PredicateFailureCborSuite extends FunSuite:
     // as an empty or one-element list (Conway/Rules/Utxow.hs, the Sum encoder).
     val h = keyHash.hex
     assertEquals(
-      PredicateFailureCbor
+      FlatRefusal
         .applyTxError(
           Era.Conway,
           Vector(
@@ -376,7 +376,7 @@ class PredicateFailureCborSuite extends FunSuite:
     val expected = hex(recorded.slice(24 + 64 + 6, 24 + 64 + 6 + 64))
     val preimage = hex(recorded.drop(24 + 64 + 6 + 64 + 8))
     assertEquals(
-      PredicateFailureCbor
+      FlatRefusal
         .applyTxError(
           Era.Conway,
           Vector(
@@ -413,7 +413,7 @@ class PredicateFailureCborSuite extends FunSuite:
       )
     )
     assertEquals(
-      PredicateFailureCbor
+      FlatRefusal
         .applyTxError(Era.Conway, Vector(failure))
         .fold(error => fail(error.message), identity)
         .map(_.hex),

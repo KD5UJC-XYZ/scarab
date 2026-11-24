@@ -651,16 +651,16 @@ object MempoolState:
 
   /** The inputs whose stored outputs the rules of `txs` read, the pool fetching them from the UTxO
     * store as the block path does: of a flat transaction its spent, reference and collateral inputs
-    * ([[xyz.kd5ujc.scarab.storage.UtxoStore.readSet]]); of a Dijkstra one every level's
-    * ([[DijkstraLedger.readSet]]).
+    * ([[xyz.kd5ujc.scarab.storage.UtxoStore.readSet]]); of a Conway one every input of its body
+    * ([[ConwayRead.inputs]]); of a Dijkstra one every level's ([[DijkstraLedger.readSet]]).
     */
   def readSet(txs: Iterable[InEra]): Vector[xyz.kd5ujc.scarab.ledger.TxIn] =
-    val (flat, dijkstra) = txs.toVector.partitionMap {
-      case InEra.Flat(_, t)       => Left(t.tx)
-      case InEra.InConway(read)   => Left(read.flat)
-      case InEra.InDijkstra(read) => Right(read)
-    }
-    xyz.kd5ujc.scarab.storage.UtxoStore.readSet(flat) ++ DijkstraLedger.readSet(dijkstra)
+    val all = txs.toVector
+    val flat = all.collect { case InEra.Flat(_, t) => t.tx }
+    val conway = all.collect { case InEra.InConway(read) => read }
+    val dijkstra = all.collect { case InEra.InDijkstra(read) => read }
+    xyz.kd5ujc.scarab.storage.UtxoStore.readSet(flat) ++ conway.iterator.flatMap(_.inputs) ++
+      DijkstraLedger.readSet(dijkstra)
 
   def empty(
       ledger: Either[ConwayView.Unavailable, PoolLedger],

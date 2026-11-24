@@ -21,7 +21,7 @@ import xyz.kd5ujc.scarab.network.{
   NodeToClientServer
 }
 import xyz.kd5ujc.scarab.node.assertions.Assertions
-import xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor
+import xyz.kd5ujc.scarab.node.ntc.FailureCbor
 import xyz.kd5ujc.scarab.protocol.{Era, Handshake, LocalTxSubmission, ProtocolError, Protocols}
 import xyz.kd5ujc.scarab.protocol.ChainSync.{DecodeResult, Role}
 
@@ -479,7 +479,7 @@ class GenTxSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaChe
     // "Byron"], [6, "Conway"]]`, the reason the reference node gave each in the `ntc` scenario
     val empty = hex("84a3008001800200a0f5f6")
     val mismatch = hex("828200654279726f6e820666436f6e776179")
-    assertEquals(PredicateFailureCbor.eraMismatch(0, "Byron", Era.Conway), mismatch)
+    assertEquals(FailureCbor.eraMismatch(0, "Byron", Era.Conway), mismatch)
     outcome(Vector(hex("82008206d818" + Bytes(bstr(empty)).hex)))
       .map {
         case Right(LocalTxSubmission.Message.RejectTx(_)) => ()
