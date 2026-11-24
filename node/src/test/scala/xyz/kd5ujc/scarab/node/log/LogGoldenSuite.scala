@@ -234,6 +234,15 @@ class LogGoldenSuite extends CatsEffectSuite:
         _ <- node(
           NodeEvent.StateDumpRefused(BigInt(4200), hash, BigInt(3), "Vocab(CoinOutOfRange)")
         )
+        _ <- node(
+          NodeEvent.PlutusCaseNotWritten(
+            xyz.kd5ujc.scarab.node.tools.PlutusCases.Failure.Write(
+              Path.of("cases/slot7-ab-valid.json"),
+              java.nio.file
+                .FileSystemException("cases/slot7-ab-valid.json", null, "No space left on device")
+            )
+          )
+        )
         _ <- node(NodeEvent.VerificationCache("witness=1/2 opCert=3/4 vrf=5/6"))
         _ <- node(
           NodeEvent.Library("org.http4s.ember", Severity.Warning, "connection reset", None)

@@ -540,11 +540,11 @@ trait Phase2Deferral[F[_], E <: EraTag]:
       now: F[Unit]
   ): F[Unit]
 
-  /** `tx`, whose scripts UTXOS could not collect with their contexts, told before UTXOS records
-    * their collection's failures (`CollectErrors`): what the run does with it changes no rule's
-    * result.
+  /** `tx`, whose scripts UTXOS could not collect with their contexts, told with the collection's
+    * failures `errors` before UTXOS records them (`CollectErrors`): what the run does with it
+    * changes no rule's result.
     */
-  def uncollected(tx: Tx[TxLevel.Top, E]): F[Unit]
+  def uncollected(tx: Tx[TxLevel.Top, E], errors: NonEmptyList[CollectError[E]]): F[Unit]
 
 object Phase2Deferral:
   /** The scripts evaluated where they are collected, as the reference evaluates them, and a
@@ -554,4 +554,5 @@ object Phase2Deferral:
     def evalScripts(stAnnTx: StAnnTx[TxLevel.Top, E], scripts: NonEmptyList[PlutusWithContext])(
         now: F[Unit]
     ): F[Unit] = now
-    def uncollected(tx: Tx[TxLevel.Top, E]): F[Unit] = Applicative[F].unit
+    def uncollected(tx: Tx[TxLevel.Top, E], errors: NonEmptyList[CollectError[E]]): F[Unit] =
+      Applicative[F].unit

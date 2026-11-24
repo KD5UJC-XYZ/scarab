@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.era.rules
 
-import cats.data.Chain
+import cats.data.{Chain, NonEmptyList, NonEmptyVector}
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.{LedgerFailure, PlutusStats, Redeemer, ScriptLocation, TxIn}
+import xyz.kd5ujc.scarab.ledger.{Block, LedgerFailure, PlutusStats, Redeemer, ScriptLocation, TxIn}
 import xyz.kd5ujc.scarab.ledger.era.*
 import xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraStAnnTx
 import xyz.kd5ujc.scarab.ledger.rules.TxDependencies
 import xyz.kd5ujc.scarab.ledger.state.Dijkstra
+import xyz.kd5ujc.scarab.plutus.{EvalFailure, EvalRequest, EvalResult}
 
 /** The node's phase-2 observations of a block Dijkstra's era rules apply ([[DijkstraBlockRun]]):
   * Scarab's own, which the reference has none of, as Conway's are ([[ConwayPhase2]]). A Dijkstra
@@ -20,6 +21,97 @@ import xyz.kd5ujc.scarab.ledger.state.Dijkstra
 object DijkstraPhase2:
   private val t = EraTx.dijkstra
   private val b = EraTxBody.dijkstra
+
+  /** A script of a batch its top level's UTXOS ran, as the node's phase-2 observer is told of it
+    * ([[Observation]]): where it is in the batch ([[located]]: the top level's by its redeemer, a
+    * sub-transaction's by the sub-transaction's id and its redeemer), the request the evaluator was
+    * asked, which holds the script, its arguments (its context, and the datum and the redeemer
+    * where its language passes them), the cost model, the protocol version and the redeemer's
+    * units, and the evaluator's result.
+    */
+  final case class Evaluation(location: ScriptLocation, request: EvalRequest, result: EvalResult)
+
+  /** What the scripts of a batch came to, as the node's phase-2 observer is told of them. */
+  enum Outcome:
+    /** Every script UTXOS collected ran, in the order it runs them; the batch's scripts pass if
+      * each passed.
+      */
+    case Ran(evaluations: NonEmptyVector[Evaluation])
+
+    /** The evaluator gave no verdict for the script at `location`, asked `request`, after those
+      * that ran before it (`evaluations`): UTXOS ran no script after it, and the block has no
+      * verdict.
+      */
+    case Unavailable(
+        evaluations: Vector[Evaluation],
+        location: ScriptLocation,
+        request: EvalRequest,
+        reason: EvalFailure.Unsupported
+    )
+
+    /** UTXOS could not collect the batch's scripts with their contexts, and ran none: the failures
+      * it records (`CollectErrors`).
+      */
+    case Uncollected(errors: NonEmptyList[CollectError[Dijkstra]])
+
+  /** The node's phase-2 observation of a batch of a Dijkstra block (`--plutus-cases`), Scarab's
+    * own, as the other eras' (`Phase2.Observation`): the batch's id, its bytes as the block holds
+    * them, the block's slot, and what its scripts came to. Each script is observed with the request
+    * its context was evaluated with, which holds what an offline evaluation of it needs; the
+    * outputs the batch spends and reads are not held, since its sub-transactions' rules spend
+    * theirs before its top level's UTXOS runs the scripts.
+    */
+  final case class Observation(
+      id: Bytes,
+      transaction: Block.Transaction,
+      slot: BigInt,
+      outcome: Outcome
+  )
+
+  /** The node's observation of the batch `tx` of a block at `slot` whose scripts came to `outcome`.
+    */
+  def observation(tx: Tx[TxLevel.Top, Dijkstra], slot: BigInt, outcome: Outcome): Observation =
+    Observation(
+      txId(tx),
+      Block.Transaction(
+        tx.body.raw,
+        tx.wits.raw,
+        tx.auxData.map(_.raw),
+        t.isValid(tx) == IsPhase2Valid.Phase2Valid
+      ),
+      slot,
+      outcome
+    )
+
+  /** What the scripts `located` of a batch ([[located]], in the order UTXOS runs them) came to,
+    * once those that ran gave `results` in turn, each with the request it was asked: none while a
+    * script of them is still to run, or where the results are more than the scripts; otherwise
+    * every script with its result ([[Outcome.Ran]]), or those before the first the evaluator gave
+    * no verdict for, and that one ([[Outcome.Unavailable]]), after which UTXOS runs none
+    * (`evalPlutusScripts`, `Alonzo/Plutus/Evaluate.hs:184-203`, cardano-ledger 9df9f98c).
+    */
+  def outcome(
+      located: Vector[(ScriptLocation, PlutusWithContext)],
+      results: Vector[(EvalRequest, EvalResult)]
+  ): Option[Outcome] =
+    val evaluations = located.zip(results).map { case ((location, _), (request, result)) =>
+      Evaluation(location, request, result)
+    }
+    if results.sizeIs > located.size then None
+    else
+      evaluations.lastOption.flatMap {
+        case Evaluation(
+              location,
+              request,
+              EvalResult.Failure(reason: EvalFailure.Unsupported, _, _)
+            ) =>
+          Some(Outcome.Unavailable(evaluations.dropRight(1), location, request, reason))
+        case Evaluation(_, _, EvalResult.Success(_, _) | EvalResult.Failure(_, _, _)) =>
+          Option
+            .when(results.sizeIs == located.size)(NonEmptyVector.fromVector(evaluations))
+            .flatten
+            .map(Outcome.Ran(_))
+      }
 
   /** The event of Dijkstra's BBODY as the counters read it, if they read it: UTXOS's scripts that
     * passed and those that failed, and the change of the deposits a valid transaction's UTXO tells

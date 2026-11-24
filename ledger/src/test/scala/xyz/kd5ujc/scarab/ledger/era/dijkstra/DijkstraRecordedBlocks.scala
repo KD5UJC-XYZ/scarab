@@ -10,7 +10,12 @@ import xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraTxIn
 import xyz.kd5ujc.scarab.ledger.era.{CostModels, EraPParams, PParams, StoredTxOut, UTxO}
 import xyz.kd5ujc.scarab.ledger.era.{BothLevels, EraGovRun, EraStake, EraTx, EraTxBody, TxLevel}
 import xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraCorpus.*
-import xyz.kd5ujc.scarab.ledger.era.rules.{BbodyEnv, DijkstraBlockRun, ShelleyBbodyState}
+import xyz.kd5ujc.scarab.ledger.era.rules.{
+  BbodyEnv,
+  DijkstraBlockRun,
+  DijkstraPhase2,
+  ShelleyBbodyState
+}
 import xyz.kd5ujc.scarab.ledger.rules.Globals
 import xyz.kd5ujc.scarab.ledger.state.{
   BlocksMade,
@@ -171,7 +176,11 @@ object DijkstraRecordedBlocks extends Assertions:
       }
 
   /** The node's era run on `sample` with `evaluator` ([[DijkstraBlockRun.program]]). */
-  def program(sample: Sample, evaluator: ScriptEvaluator[Id]): DijkstraBlockRun.Body =
+  def program(
+      sample: Sample,
+      evaluator: ScriptEvaluator[Id],
+      observer: Option[DijkstraPhase2.Observation => Unit] = None
+  ): DijkstraBlockRun.Body =
     DijkstraBlockRun.program(
       globals,
       BbodyEnv[Dijkstra](params, ChainAccountState(Coin(0), Coin(0))),
@@ -183,5 +192,6 @@ object DijkstraRecordedBlocks extends Assertions:
       evaluator,
       flat.Verdicts.Direct,
       ScarabEvaluator.defaultDecoder,
-      slot => Right(slot * 1000)
+      slot => Right(slot * 1000),
+      observer
     )

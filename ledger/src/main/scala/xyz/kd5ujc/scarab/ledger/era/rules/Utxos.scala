@@ -165,8 +165,8 @@ object BabbageUtxos:
     * (`whenFailureFree`): the steps `expectScriptsToPass` and `babbageEvalScriptsTxInvalid` share.
     * Where they are evaluated is the run's ([[Phase2Deferral]]): a block the node prepares defers
     * them, so that neither their verdict nor `run` is reached before its plan checks them. A
-    * transaction whose scripts are not collected is told to the run before the failures are
-    * recorded ([[Phase2Deferral.uncollected]]), which the reference has no counterpart for.
+    * transaction whose scripts are not collected is told to the run with the failures before they
+    * are recorded ([[Phase2Deferral.uncollected]]), which the reference has no counterpart for.
     */
   private def evalScripts[F[_]: Monad, E <: EraTag](
       stAnnTx: StAnnTx[TxLevel.Top, E],
@@ -184,7 +184,7 @@ object BabbageUtxos:
     val tx = u.txOf.txStAnnTx[TxLevel.Top](stAnnTx)(using u.txOf.bodyOf.top)
     for
       _ <- scriptsWithContextEither.left.toOption.traverse_(errors =>
-        deferral.uncollected(tx) *>
+        deferral.uncollected(tx, errors) *>
           judge.fail(inject.injectFailure(AlonzoUtxosPredFailure.CollectErrors(errors)))
       )
       _ <- AlonzoUtxos.when2Phase[F](validation)(

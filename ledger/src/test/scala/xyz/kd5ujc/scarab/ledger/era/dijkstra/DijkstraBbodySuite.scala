@@ -26,7 +26,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
   StakePool,
   UnitInterval
 }
-import xyz.kd5ujc.scarab.plutus.{ExUnits, ScarabEvaluator}
+import xyz.kd5ujc.scarab.plutus.{ExUnits, PlutusLanguage, ScarabEvaluator}
 import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 
 /** Dijkstra's BBODY on the era types (`era.rules.DijkstraBbody`; `Dijkstra/Rules/Bbody.hs`,
@@ -549,7 +549,7 @@ class DijkstraBbodySuite extends FunSuite:
       raw: Bytes,
       state: ShelleyBbodyState[Dijkstra]
   ): DijkstraPlanned.Checked =
-    DijkstraPlanned.check("the sampled block", ScarabEvaluator.default)(e =>
+    DijkstraPlanned.check("the sampled block", ScarabEvaluator.default)((e, o) =>
       DijkstraBlockRun.program(
         on,
         BbodyEnv[Dijkstra](testnetPParams, ChainAccountState(Coin(0), Coin(0))),
@@ -561,7 +561,8 @@ class DijkstraBbodySuite extends FunSuite:
         e,
         flat.Verdicts.Direct,
         ScarabEvaluator.defaultDecoder,
-        slot => Right(slot * 1000)
+        slot => Right(slot * 1000),
+        o
       )
     )
 
@@ -628,7 +629,7 @@ class DijkstraBbodySuite extends FunSuite:
   ) {
     val checked = DijkstraRecordedBlocks.samples.map(sample =>
       sample -> DijkstraPlanned.check(s"recorded block ${sample.block}", ScarabEvaluator.default)(
-        DijkstraRecordedBlocks.program(sample, _)
+        DijkstraRecordedBlocks.program(sample, _, _)
       )
     )
     def admitted(c: DijkstraPlanned.Checked) = c.serial match
@@ -648,6 +649,49 @@ class DijkstraBbodySuite extends FunSuite:
         BigInt(59563) -> Vector(Vector(0), Vector(1))
       )
     )
+    // observed for the node's phase-2 observer (`--plutus-cases`, #85), serially and prepared alike
+    // ([[DijkstraPlanned.check]]): what the sample's observations hold
+    val observations = checked.flatMap((_, c) => c.observations)
+    val evaluations = observations.flatMap(_.outcome match
+      case DijkstraPhase2.Outcome.Ran(es)                  => es.toVector
+      case DijkstraPhase2.Outcome.Unavailable(es, _, _, _) => es
+      case DijkstraPhase2.Outcome.Uncollected(_)           => Vector.empty)
+    def redeemerOf(l: flat.ScriptLocation) = l match
+      case flat.ScriptLocation.Phase2(r)       => Some(r)
+      case flat.ScriptLocation.SubPhase2(_, r) => Some(r)
+      case flat.ScriptLocation.Phase1(_)       => None
+    def sub(l: flat.ScriptLocation) = l match
+      case flat.ScriptLocation.SubPhase2(_, _)                           => true
+      case flat.ScriptLocation.Phase2(_) | flat.ScriptLocation.Phase1(_) => false
+    // 171 batches whose scripts ran, every one to the end, 208 scripts of every language, three of
+    // which failed; 15 of them a sub-transaction's, all Plutus V4; and seven guarding a batch
+    // (`DijkstraGuarding`, tag 6), all Plutus V4, three of them a sub-transaction's
+    assertEquals(observations.size, 171)
+    assert(
+      observations.forall(_.outcome match
+        case DijkstraPhase2.Outcome.Ran(_) => true
+        case DijkstraPhase2.Outcome.Unavailable(_, _, _, _) |
+            DijkstraPhase2.Outcome.Uncollected(_) =>
+          false)
+    )
+    assertEquals(evaluations.size, 208)
+    assertEquals(
+      evaluations.groupBy(_.request.language).view.mapValues(_.size).toMap,
+      Map(
+        PlutusLanguage.V1 -> 68,
+        PlutusLanguage.V2 -> 52,
+        PlutusLanguage.V3 -> 62,
+        PlutusLanguage.V4 -> 26
+      )
+    )
+    assertEquals(evaluations.count(!_.result.isSuccess), 3)
+    val subs = evaluations.filter(e => sub(e.location))
+    assertEquals(subs.size, 15)
+    assert(subs.forall(_.request.language == PlutusLanguage.V4))
+    val guarding = evaluations.filter(e => redeemerOf(e.location).exists(_.tag == 6))
+    assertEquals(guarding.size, 7)
+    assert(guarding.forall(_.request.language == PlutusLanguage.V4))
+    assertEquals(guarding.count(e => sub(e.location)), 3)
   }
 
   test("no Dijkstra block value that keeps its bytes has a Mirror to build it from other fields") {

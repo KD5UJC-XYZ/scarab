@@ -122,6 +122,12 @@ enum NodeEvent:
     */
   case StateDumpRefused(slot: BigInt, hash: Bytes, epoch: BigInt, error: String)
 
+  /** A case of `--plutus-cases` was not written ([[xyz.kd5ujc.scarab.node.tools.PlutusCases]]): its
+    * file could not be written, or the recorder failed; the block it observes is judged as without
+    * the recorder, and the node goes on.
+    */
+  case PlutusCaseNotWritten(failure: xyz.kd5ujc.scarab.node.tools.PlutusCases.Failure)
+
   /** The verification verdicts found ahead of the rules so far (every 20,000 blocks). */
   case VerificationCache(summary: String)
 
@@ -507,6 +513,15 @@ object NodeEvent:
         "epoch" -> epoch.asJson,
         "error" -> error.asJson
       )
+    case PlutusCaseNotWritten(failure) =>
+      failure match
+        case xyz.kd5ujc.scarab.node.tools.PlutusCases.Failure.Write(file, cause) =>
+          EventKind.PlutusCaseNotWritten.line(
+            "file" -> file.toString.asJson,
+            "error" -> cause.toString.asJson
+          )
+        case xyz.kd5ujc.scarab.node.tools.PlutusCases.Failure.Recorder(cause) =>
+          EventKind.PlutusCaseNotWritten.line("error" -> cause.toString.asJson)
     case VerificationCache(summary) =>
       EventKind.VerificationCache.line("summary" -> summary.asJson)
     case LeiosNotify(event) => leiosNotify(event)

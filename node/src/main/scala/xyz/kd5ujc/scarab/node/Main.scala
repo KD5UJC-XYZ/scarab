@@ -1692,6 +1692,11 @@ object Main extends IOApp:
         (storageError: cats.mtl.Raise[IO, xyz.kd5ujc.scarab.ledger.StorageError]) ?=>
           IO.delay(cache.noteEpochNonce(s.ledgerEpoch, s.protocol.epochNonce)) *>
             dumper.traverse_(_.afterBlock(header, before, s)) *>
+            // the cases not written since the last block, said and gone past
+            cases.traverse_(c =>
+              IO.delay(c.failed())
+                .flatMap(_.traverse_(f => logged(NodeEvent.PlutusCaseNotWritten(f))))
+            ) *>
             praosConfig
               .update(c => c.copy(geometry = s.geometry(c.geometry)))
               .whenA(s.consensus.byron.firstShelleyEpoch.isDefined) *>
@@ -1720,7 +1725,8 @@ object Main extends IOApp:
         afterBlock = Some(afterBlock),
         compute = Some(scheduling.compute),
         parallelPlutus = Some(parallelPlutus),
-        leios = run.leios.map(MirrorRules.Leios(_, committees))
+        leios = run.leios.map(MirrorRules.Leios(_, committees)),
+        dijkstraObserver = cases.map(c => c.observeDijkstra)
       )
     )
 

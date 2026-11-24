@@ -107,6 +107,7 @@ table and the code differ). The severity is the kind's; the rows marked so are r
 | `cpuStarvation` | `Node.CpuStarvation` | Warning | `clockDriftMs`, `threshold`, `intervalMs` |
 | `stateDump` | `Node.StateDump` | Info | `slot`, `hash`, `epoch`, `millis` |
 | `stateDumpRefused` | `Node.StateDumpRefused` | Warning | `slot`, `hash`, `epoch`, `error` |
+| `plutusCaseNotWritten` | `Node.PlutusCaseNotWritten` | Warning | `file` (absent where the recorder itself failed), `error`; a case of `--plutus-cases` was not written, said after the next block the node applies, and the node goes on, every block judged as without the recorder |
 | `verificationCache` | `Node.VerificationCache` | Debug | `summary` |
 | `error` | `Node.Error` | Error | `kind`, `message`; the run stops on the error, except for `kind` `Unwritable`: the file of `--assertions-file` could not be opened or written, which is said once, and the node goes on without its assertions |
 | `socketConfigError` | `Node.SocketConfigError` | Error | `error`, the reference's `show` of its `LocalSocketError`: what was at the `--local-socket` path could not be removed (a directory, a directory the node may not write, ...); the node does not start and exits with 1 |

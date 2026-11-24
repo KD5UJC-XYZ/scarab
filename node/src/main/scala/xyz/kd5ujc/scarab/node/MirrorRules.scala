@@ -49,6 +49,7 @@ import xyz.kd5ujc.scarab.ledger.era.rules.{
   BbodyEnv,
   ConwayBlockRun,
   ConwayRuleDefect,
+  DijkstraPhase2,
   GovDefect,
   ShelleyBbodyState,
   UtxoStateDefect
@@ -106,6 +107,10 @@ import xyz.kd5ujc.scarab.ledger.rules.contramap
   *   state digests).
   * @param compute
   *   Measures the pure rules; without one they are not timed.
+  * @param dijkstraObserver
+  *   The node's phase-2 observer of a Dijkstra block's batches (`--plutus-cases`,
+  *   `DijkstraPhase2.Observation`), as `phase2Observer` is of the other eras' transactions: a
+  *   Dijkstra transaction has no flat form for `Phase2.Observation` to hold.
   * @param leios
   *   The endorser-block store a certifying Dijkstra block's closure is read from, and the Leios
   *   committee kept for the epoch ([[MirrorRules.Leios]]); without one no closure is held, and a
@@ -127,7 +132,8 @@ final class MirrorRules[F[_]: Monad](
     ] = None,
     compute: Option[Compute[F]] = None,
     parallelPlutus: Option[ParallelPlutus[F]] = None,
-    leios: Option[MirrorRules.Leios[F]] = None
+    leios: Option[MirrorRules.Leios[F]] = None,
+    dijkstraObserver: Option[DijkstraPhase2.Observation => Unit] = None
 ) extends BlockRules[F, MirrorState]:
 
   private val cpu: Compute[F] = compute.getOrElse(Compute.inline[F])
@@ -158,7 +164,8 @@ final class MirrorRules[F[_]: Monad](
               plutus,
               phase2Observer,
               prepared,
-              dijkstra
+              dijkstra,
+              dijkstraObserver
             )
           )
         case Some(workers) =>
@@ -175,7 +182,8 @@ final class MirrorRules[F[_]: Monad](
               plutus,
               phase2Observer,
               prepared,
-              dijkstra
+              dijkstra,
+              dijkstraObserver
             )([A] => (body: Phase2.Program[A]) => workers(body))
           )
       applied
@@ -514,7 +522,8 @@ object MirrorRules:
       plutus: PlutusBackend,
       phase2Observer: Option[Phase2.Observation => Unit] = None,
       prepared: Option[Prepared] = None,
-      dijkstra: MirrorDijkstra.Read = MirrorDijkstra.Read.none
+      dijkstra: MirrorDijkstra.Read = MirrorDijkstra.Read.none,
+      dijkstraObserver: Option[DijkstraPhase2.Observation => Unit] = None
   ): MirrorDijkstra.Applied =
     applyBlockWith[cats.Id](
       state,
@@ -528,7 +537,8 @@ object MirrorRules:
       plutus,
       phase2Observer,
       prepared,
-      dijkstra
+      dijkstra,
+      dijkstraObserver
     )([A] => (body: Phase2.Program[A]) => body.serial)
 
   /** [[applyBlock]] with the body of a Shelley-based block run by `validate`: serially, or through
@@ -547,7 +557,8 @@ object MirrorRules:
       plutus: PlutusBackend,
       phase2Observer: Option[Phase2.Observation => Unit],
       prepared: Option[Prepared],
-      dijkstra: MirrorDijkstra.Read
+      dijkstra: MirrorDijkstra.Read,
+      dijkstraObserver: Option[DijkstraPhase2.Observation => Unit]
   )(validate: [A] => Phase2.Program[A] => F[A]): F[MirrorDijkstra.Applied] =
     header match
       // a Dijkstra block of the Leios build, on the era types, whose checkpoints Praos2's envelope
@@ -570,7 +581,8 @@ object MirrorRules:
                 entry.constants,
                 byronParams,
                 plutus,
-                dijkstra
+                dijkstra,
+                dijkstraObserver
               )
           ) match
           case Ready.Done(applied)   => applied.pure[F]
