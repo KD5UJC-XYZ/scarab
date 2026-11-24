@@ -853,19 +853,23 @@ object HeaderCheck:
                   PeerError.HeaderUndecided(header.point, defect).raise[F, Unit]
             }
 
+        /** Append a validated header, trimmed to the anchor of the selection published with this
+          * history ([[knownSelection]], the one the header's validation was prepared against), as
+          * the reference trims its candidate to our chain's anchor whenever our chain changes
+          * ([[HeaderChain.trimmedTo]]). History and selection stay one checkpoint: a newer anchor
+          * read here could pass the point the published selection still shares with the peer.
+          */
         private def record(header: Header, next: Option[H])(using Raise[F, PeerError]): F[Unit] =
-          state.get.flatMap(hc =>
+          (state.get, knownSelection.get).tupled.flatMap((hc, selection) =>
             hc.extend(header, next)
               .fold(
                 _ =>
                   protocol[Unit](
                     PeerError.ProtocolProblem.HeaderDoesNotExtend(header.point, hc.tipPoint)
                   ),
-                // trimmed to our chain's anchor, as the reference trims its candidate whenever
-                // our chain changes (HeaderChain.trimmedTo)
                 g =>
-                  coherentCurrent.flatMap((current, _) =>
-                    state.set(g.pruned(retained).trimmedTo(current.anchor.point))
+                  state.set(
+                    selection.fold(g.pruned(retained))(s => g.pruned(retained).trimmedTo(s.anchor))
                   )
               )
           )

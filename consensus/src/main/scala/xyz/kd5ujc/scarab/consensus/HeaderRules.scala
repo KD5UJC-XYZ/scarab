@@ -224,6 +224,8 @@ final case class HeaderChain[H](
     */
   def trimmedTo(anchor: ChainSync.Point): HeaderChain[H] =
     if anchor == base then if prefix.isEmpty then this else copy(prefix = Vector.empty)
+    // already the first point kept: nothing to drop, and no search of the headers
+    else if prefix.headOption.exists(_.point == anchor) then this
     else
       entries.indexWhere(_.header.point == anchor) match
         case -1 =>
