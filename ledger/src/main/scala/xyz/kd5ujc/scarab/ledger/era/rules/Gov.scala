@@ -375,9 +375,10 @@ object ConwayGov:
     val knownCommitteeMembers = ConwayCommittee.authorizedHotCommitteeCredentials(committeeState)
 
     def fail(f: ConwayGovPredFailure[E]): F[Unit] = judge.fail(inject.injectFailure(f))
-    def check(cond: Boolean, f: => ConwayGovPredFailure[E]): F[Unit] =
-      if cond then Monad[F].unit else fail(f)
-    def runTest(test: Test[ConwayGovPredFailure[E]]): F[Unit] =
+    // a condition is evaluated only when the judgment checks predicates (`ValidateNone`)
+    def check(cond: => Boolean, f: => ConwayGovPredFailure[E]): F[Unit] =
+      Sts.validating[F, GovPredFailure[E]](if cond then Monad[F].unit else fail(f))
+    def runTest(test: => Test[ConwayGovPredFailure[E]]): F[Unit] =
       Sts.runTest[F, GovPredFailure[E]](test.leftMap(_.map(inject.injectFailure)))
     def vocab[A](result: Either[VocabError, A]): F[A] =
       result.fold(e => defect.raise[GovDefect, A](GovDefect.Vocab(e)), Monad[F].pure)
@@ -493,11 +494,17 @@ object ConwayGov:
       pgaids = Proposals.toPrevGovActionIds(st.pRoots)
       _ <-
         if ConwayEra.hardforkConwayDisallowUnelectedCommitteeFromVoting(pv) then
-          NonEmptyList
-            .fromList(
-              unelectedCommitteeVoters(committee, committeeState, signal.gsVotingProcedures).toList
-            )
-            .traverse_(u => fail(ConwayGovPredFailure.UnelectedCommitteeVoters(u)))
+          Sts.validating[F, GovPredFailure[E]](
+            NonEmptyList
+              .fromList(
+                unelectedCommitteeVoters(
+                  committee,
+                  committeeState,
+                  signal.gsVotingProcedures
+                ).toList
+              )
+              .traverse_(u => fail(ConwayGovPredFailure.UnelectedCommitteeVoters(u)))
+          )
         else Monad[F].unit
       indexed <- indexedGovProps(signal.gsProposalProcedures.toVector)
         .fold(
