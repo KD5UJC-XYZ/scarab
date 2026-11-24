@@ -584,14 +584,22 @@ final class Follower[F[_]: Async, S] private (
                     F.pure(Right(Left(Refused(header, refused, before))))
                   case Left(Judged.NoVerdict(cause)) =>
                     F.pure(Right(Left(Withheld(header, cause))))
+                  // A block the rules accepted whose header is not the next of this chain, by its
+                  // number or its slot, is refused as any invalid block is, below; any other
+                  // failure to extend the chain is the node's own (`Follower.misplaced`).
                   case Right(next) =>
                     before
                       .extend(header, next)
                       .fold(
-                        _.raise[F, Either[
-                          (VolatileChain[S], Vector[Applied], Int),
-                          Either[Stopped, Vector[Applied]]
-                        ]],
+                        unconnected =>
+                          Follower
+                            .misplaced(header, unconnected)
+                            .fold(
+                              unconnected.raise[F, Either[
+                                (VolatileChain[S], Vector[Applied], Int),
+                                Either[Stopped, Vector[Applied]]
+                              ]]
+                            )(refused => F.pure(Right(Left(Refused(header, refused, before))))),
                         extended =>
                           val ref =
                             BlockRef(header.slot, header.hash, header.blockNo, header.isBoundary)
@@ -1103,6 +1111,40 @@ object Follower:
     chain.anchor.block.forall(anchor =>
       header.blockNo > anchor.blockNo || (header.isBoundary && header.blockNo == anchor.blockNo)
     )
+
+  /** The refusal that a failure to extend the chain with `header` 's block is, when the failure is
+    * the block's: the rules accepted the block, and its header is not the next of the chain it is
+    * applied to by its block number or its slot ([[VolatileChain.extend]]). Header-first validation
+    * refuses such a header before its block is fetched ([[NodeHeaderRules]]). Block application
+    * meets one where no header was validated first (`--header-first off`), and in a block the
+    * received log kept from such a run. The reference runs the envelope on every block it applies
+    * (ouroboros-consensus 82ecba32 `validateEnvelope`,
+    * `Ouroboros/Consensus/HeaderValidation.hs:364-376`, from `Ledger/Extended.hs:189-211`), so the
+    * block is invalid, as one its rules refuse is.
+    *
+    * None for a failure that is the node's own, which stops it: a previous hash that is not the
+    * tip's, since a candidate follows the forest's predecessor links from a point of our chain
+    * ([[AvailableBlocks]]), and every failure that is not of a header's place. A total match with
+    * no default, so a new case must be placed here.
+    */
+  private[node] def misplaced(header: Header, failure: ChainError): Option[ValidationError] =
+    import xyz.kd5ujc.scarab.ledger.HeaderStructureProblem as P
+    failure match
+      case ChainError.NotConnected(_, _, cause) =>
+        cause match
+          case P.BlockNumber(_, _) | P.SlotNumber(_, _) =>
+            Some(ValidationError(header.point, BlockFailure.HeaderStructure(cause)))
+          case P.PreviousHash(_, _) | P.UnexpectedBoundarySlot(_, _) | P.Transition(_) |
+              P.MissingByronLedger | P.LedgerRead(_) | P.EpochPrecedes(_, _) |
+              P.LeiosHeaderUnread(_) =>
+            None
+      case ChainError.StateAcquire(_) | ChainError.Decode(_, _) |
+          ChainError.RollbackBeyondAnchor(_, _) | ChainError.NoIntersection |
+          ChainError.MempoolTick(_, _) | ChainError.StateOutOfRange(_, _) |
+          ChainError.CommitDefect(_) | ChainError.LeiosCommittee(_, _) |
+          ChainError.GovRecord(_, _) | ChainError.DijkstraBlock(_, _) |
+          ChainError.ConwayBlock(_, _) =>
+        None
 
   /** Where a forged block is kept ([[Follower.submitForged]]): the processed forest of the
     * selection worker, whose selections read it, and the received log
