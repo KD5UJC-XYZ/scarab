@@ -17,6 +17,7 @@ import xyz.kd5ujc.scarab.protocol.{Era, LeiosTxHash, ReferenceBuild}
 import xyz.kd5ujc.scarab.storage.LeiosEb
 import cats.data.NonEmptyChain
 import xyz.kd5ujc.scarab.ledger.era.EraTxError
+import xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraTx
 import xyz.kd5ujc.scarab.ledger.era.rules.{ConwayLedgerPredFailure, DijkstraMempoolPredFailure}
 import xyz.kd5ujc.scarab.ledger.state.{Conway, Dijkstra}
 import xyz.kd5ujc.scarab.ledger.{Block, DetachedRecords, EpochGeometry, PosixClock}
@@ -219,16 +220,16 @@ final case class Entry(
   /** The transaction as an endorser block lists it, its hash and its bytes, for a Dijkstra one:
     * `leiosTxHashOfGenTx` and `leiosTxBytesOfGenTx` (ouroboros-consensus-cardano 2416493b
     * `Shelley/Ledger/Leios.hs:155-159`), the bytes the forger writes in its endorser block
-    * (`serializeTxForLeios`, [[xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraTx.forBlockInclusion]]) of
-    * the transaction with the flag of its verdict, and their hash ([[LeiosEb.hashTx]]). None for a
-    * transaction of an earlier era, as the combinator's has none (`Cardano/Block.hs:1690-1696`).
-    * Computed when the entry is made, at its admission, as the reference keeps it with the
-    * transaction's ticket (`ValidatedTxWithDiffs`, `Mempool/Impl/Common.hs:493-523`), so a
-    * revalidation that keeps the entry does not hash it again.
+    * (`serializeTxForLeios`, [[DijkstraTx.forBlockInclusion]]) of the transaction with the flag of
+    * its verdict, and their hash ([[LeiosEb.hashTx]]). None for a transaction of an earlier era, as
+    * the combinator's has none (`Cardano/Block.hs:1690-1696`). Computed when the entry is made, at
+    * its admission, as the reference keeps it with the transaction's ticket
+    * (`ValidatedTxWithDiffs`, `Mempool/Impl/Common.hs:493-523`), so a revalidation that keeps the
+    * entry does not hash it again.
     */
   val leiosTx: Option[(LeiosTxHash, Bytes)] = held match
     case Held.InDijkstra(admitted) =>
-      val bytes = admitted.read.flat.forBlockInclusion
+      val bytes = DijkstraTx.forBlockInclusion(admitted.read.tx)
       Some(LeiosEb.hashTx(bytes) -> bytes)
     case Held.Flat(_, _, _) | Held.InConway(_) => None
 

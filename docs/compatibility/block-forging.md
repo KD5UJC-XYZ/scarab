@@ -35,6 +35,11 @@ with each verdict's flag. `ConwaySnapshotSuite` covers each build's reapplicatio
 `ConwayHeldSuite` covers the body bytes; `ForgeSuite` covers the clock and the cut. The design's
 [as-built entry](../design/era-typed-transactions.md#6-results) has the detail.
 
+A Dijkstra ranking block and the endorser block it announces are made of the era's transactions (#85), as the
+reference's are (`mkBody` and `forgeLeiosEb`), byte for byte what the flat path forged before: `DijkstraEraPathSuite`
+compares the two paths over every recorded Dijkstra transaction the build accepts, at each boundary of the capacities.
+The design's [as-built entry](../design/era-typed-transactions.md#6-results) has the detail.
+
 The schedule (#1101, stage S2): `LeaderScheduleSuite`'s property that over generated epochs, nonces, stakes,
 totals, coefficients and VRF keys every slot's decision and every led slot's certificate are `Leadership.check`'s;
 `ScheduledForgerSuite`, the differential test of the wired forger, which runs each scenario through the scheduled

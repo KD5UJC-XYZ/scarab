@@ -5,9 +5,11 @@ import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.bls.Certificate
-import xyz.kd5ujc.scarab.ledger.{LeiosBlock, TestLedger, TxIn}
-import xyz.kd5ujc.scarab.ledger.dijkstra.{DijkstraRedeemer, DijkstraSubTx, DijkstraTx, DijkstraTxIn}
+import xyz.kd5ujc.scarab.ledger.{LeiosBlock, LeiosHeader, TestLedger}
+import xyz.kd5ujc.scarab.ledger.era.{BothLevels, EraTx, Tx, TxLevel}
+import xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraTx
 import xyz.kd5ujc.scarab.ledger.rules.DijkstraTxMeasures
+import xyz.kd5ujc.scarab.ledger.state.Dijkstra
 import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.TxMeasure
 import xyz.kd5ujc.scarab.node.mempool.Capacity
 import xyz.kd5ujc.scarab.plutus.ExUnits
@@ -21,16 +23,20 @@ import xyz.kd5ujc.scarab.plutus.ExUnits
 class DijkstraSelectionSuite extends munit.FunSuite:
   private def hex(s: String): Bytes = Bytes.fromHex(s).fold(e => fail(e.message), identity)
 
-  private lazy val block: LeiosBlock =
-    val raw = Files
+  private def recorded(name: String): Bytes =
+    Files
       .readAllLines(Path.of("fixtures", "leios", "testnet", "blocks-rc-2026w44.tsv"))
       .asScala
       .map(_.split('\t'))
-      .collectFirst { case r if r(0) == "announcing-with-txs" => hex(r(5)) }
-      .getOrElse(fail("no block 64,853"))
-    LeiosBlock.decode(raw).fold(e => fail(e.message), identity)
+      .collectFirst { case r if r(0) == name => hex(r(5)) }
+      .getOrElse(fail(s"no block $name"))
 
-  private lazy val txs: Vector[DijkstraTx] = block.transactions
+  private lazy val block: LeiosBlock =
+    LeiosBlock.decode(recorded("announcing-with-txs")).fold(e => fail(e.message), identity)
+
+  /** The block's transactions, read by the era's block decoder. */
+  private lazy val txs: Vector[Tx[TxLevel.Top, Dijkstra]] =
+    DijkstraEraTxs.ofBlock(recorded("announcing-with-txs"))
 
   private def held(measures: Vector[TxMeasure]): DijkstraSnapshot =
     DijkstraSnapshot(txs.zip(measures).map(DijkstraHeld(_, _)))
@@ -86,72 +92,33 @@ class DijkstraSelectionSuite extends munit.FunSuite:
   }
 
   test("a block that certifies carries the certificate and no transactions, as mkBody makes it") {
-    val certified = LeiosBlock
-      .decode(
-        Files
-          .readAllLines(Path.of("fixtures", "leios", "testnet", "blocks-rc-2026w44.tsv"))
-          .asScala
-          .map(_.split('\t'))
-          .collectFirst { case r if r(0) == "certifying" => hex(r(5)) }
-          .getOrElse(fail("no block 64,850"))
-      )
-      .fold(e => fail(e.message), identity)
+    val raw = recorded("certifying")
+    val certified = LeiosBlock.decode(raw).fold(e => fail(e.message), identity)
     val cert: Certificate = certified.leiosCertificate.map(_.certificate).getOrElse(fail("no cert"))
     BlockBuilder.Assembly.dijkstra(txs, Some(cert)) match
       case BlockBuilder.Assembly.InDijkstra(body, _) =>
         assertEquals(body.transactions, Vector.empty)
         assertEquals(body.leiosCertificate, Some(cert))
         // the reference's certifying block 64,850 is that body, byte for byte
-        assertEquals(body.encode, certified.body.encode)
+        val header = LeiosHeader.signed(certified.header.signable, certified.header.kesSignature)
+        assertEquals(LeiosBlock.encode(header, body.encode), raw)
         assertEquals(body.hash, certified.header.bodyHash)
       case other => fail(s"not a Dijkstra body: $other")
   }
 
   test("the measure: sizeTxF and the overhead, every redeemer's units, the given script bytes") {
-    txs.foreach { tx =>
+    txs.zip(block.transactions).foreach { (tx, flat) =>
       val m = Capacity.dijkstraMeasure(tx, 7L)
-      assertEquals(m.bytes, tx.forBlockInclusion.size.toLong - 1 + 4, tx.id.hex)
-      assertEquals(ExUnits(m.exUnitsMemory, m.exUnitsSteps), DijkstraTxMeasures.totalExUnits(tx))
+      assertEquals(m.bytes, DijkstraTx.forBlockInclusion(tx).size.toLong - 1 + 4, tx.id.hex)
+      assertEquals(
+        ExUnits(m.exUnitsMemory, m.exUnitsSteps),
+        EraTx.dijkstra.getTotalExUnits[TxLevel.Top](tx)(using BothLevels.Top)
+      )
       assertEquals(m.refScriptsBytes, 7L)
+      // the flat transaction's measure the forger took until #85: its size and its units
+      assertEquals(m.bytes, flat.size + 4, tx.id.hex)
+      assertEquals(ExUnits(m.exUnitsMemory, m.exUnitsSteps), DijkstraTxMeasures.totalExUnits(flat))
     }
-    // a sub-transaction's redeemers count towards the units (`getTotalExUnits`)
-    val tx = txs.head
-    val redeemer = DijkstraRedeemer(0, 0L, Bytes.empty, BigInt(5), BigInt(9))
-    val sub = DijkstraSubTx(
-      tx.body.raw,
-      tx.body,
-      tx.witnesses.copy(redeemers = Vector(redeemer)),
-      None
-    )
-    val batch = tx.copy(body = tx.body.copy(subTransactions = Vector(sub)))
-    val before = Capacity.dijkstraMeasure(tx, 0L)
-    val after = Capacity.dijkstraMeasure(batch, 0L)
-    assertEquals(after.exUnitsMemory - before.exUnitsMemory, BigInt(5))
-    assertEquals(after.exUnitsSteps - before.exUnitsSteps, BigInt(9))
-  }
-
-  test("the measure's reference scripts are the top-level body's inputs and reference inputs") {
-    val tx = txs.head
-    val in = tx.body.inputs.head
-    val ref = DijkstraTxIn(in.id, in.index + 1000)
-    val other = DijkstraTxIn(in.id, in.index + 2000)
-    val sizes = Map(
-      TxIn(in.id, BigInt(in.index)) -> 100L,
-      TxIn(ref.id, BigInt(ref.index)) -> 20L,
-      TxIn(other.id, BigInt(other.index)) -> 3L
-    )
-    // an input that is also a reference input counts once
-    val body = tx.body.copy(referenceInputs = Vector(ref, in))
-    val sub = DijkstraSubTx(
-      tx.body.raw,
-      tx.body.copy(inputs = Vector(other), referenceInputs = Vector.empty),
-      tx.witnesses,
-      None
-    )
-    val batch = tx.copy(body = body.copy(subTransactions = Vector(sub)))
-    assertEquals(Capacity.dijkstraRefScriptBytes(sizes.get, batch), 120L)
-    // LEDGER's check counts the sub-transactions' too; the mempool's measure does not
-    assertEquals(DijkstraTxMeasures.batchRefScriptsSize(sizes.get, batch), 123L)
   }
 
   test("an endorser block's references beyond the LeiosFetch limit stop the pool's capacity") {

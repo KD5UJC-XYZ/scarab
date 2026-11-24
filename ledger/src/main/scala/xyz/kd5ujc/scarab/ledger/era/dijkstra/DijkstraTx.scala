@@ -108,6 +108,29 @@ object DijkstraTx:
   def isValid(tx: DijkstraTx[TxLevel.Top]): IsPhase2Valid = tx match
     case t: TopTx => t.isValid
 
+  /** `toCBORForBlockInclusion` (`Tx.hs:527-533`, cardano-ledger 9df9f98c): `[body, witnesses,
+    * auxiliary_data / null, is_valid]`, the body, the witness set and the auxiliary data each
+    * written as the bytes it memoizes, the phase-two flag last. The reference keeps no bytes of the
+    * whole transaction (`Tx.hs:483-489`): a block and an endorser block hold this encoding
+    * (`serializeTxForLeios`), whatever form the transaction arrived in. Of a top-level transaction
+    * only, as the reference's is.
+    */
+  def forBlockInclusion(tx: DijkstraTx[TxLevel.Top]): Bytes =
+    import xyz.kd5ujc.scarab.ledger.HeaderBodyEncoding.{False, Null, True, join, list}
+    tx match
+      case t: TopTx =>
+        join(
+          Vector(
+            list(4),
+            t.body.raw.toArray,
+            t.wits.raw.toArray,
+            t.auxData.fold(Null)(_.raw.toArray),
+            t.isValid match
+              case IsPhase2Valid.Phase2Valid   => True
+              case IsPhase2Valid.Phase2Invalid => False
+          )
+        )
+
   /** A top-level transaction the Leios build's block decoder read
     * ([[xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraTx]], which decides what is refused), in
     * Dijkstra's types, its sub-transactions at the sub-transaction level. Only [[inBlock]] and
@@ -152,18 +175,7 @@ object DijkstraTx:
     * a peer submits it, valid.
     */
   def fromSubmission(raw: Bytes): Either[EraTxError, DijkstraTx[TxLevel.Top]] =
-    submitted(raw).map(_._2)
-
-  /** [[fromSubmission]] with the flat transaction the block decoder read it from, from one read of
-    * `raw`: the bridge of the node's mempool to the forger's Dijkstra path, which builds blocks of
-    * the flat transaction ([[xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraTx]]) until it takes the
-    * era's (#54). The two are of the same bytes, the era's projected from the flat one.
-    */
-  def submitted(raw: Bytes): Either[EraTxError, (FlatDijkstraTx, DijkstraTx[TxLevel.Top])] =
-    FlatDijkstraTx
-      .fromSubmission(raw)
-      .leftMap(EraTxError.Decode(_))
-      .flatMap(flat => decode(flat).map(flat -> _))
+    FlatDijkstraTx.fromSubmission(raw).leftMap(EraTxError.Decode(_)).flatMap(decode)
 
   /** The setter of `isPhase2ValidTxL` (`isPhase2ValidDijkstraTxL`, `Tx.hs:279-283`, cardano-ledger
     * 9df9f98c): the top-level transaction with its phase-two flag set to `isValid`, its body,

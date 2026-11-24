@@ -7,7 +7,7 @@ import cats.mtl.Raise
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{PosixClock, StorageError}
-import xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraTx
+import xyz.kd5ujc.scarab.ledger.era.{Tx, TxLevel}
 import xyz.kd5ujc.scarab.ledger.state.{Dijkstra, NewEpochState}
 import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.TxMeasure
 import xyz.kd5ujc.scarab.node.mempool.{
@@ -26,10 +26,15 @@ import xyz.kd5ujc.scarab.storage.{UtxoReadView, UtxoStore}
   * the slot being forged, and the measure it was admitted with, which the pool keeps through
   * revalidation as the reference keeps a ticket's (`snapshotTxs`, ouroboros-consensus 2416493b
   * `ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Mempool/API.hs:447-450`). The
-  * transaction is the flat one the pool read it from, with the flag of its verdict, which the
-  * forger builds blocks of until its Dijkstra path takes the era's (#85).
+  * transaction is the era's (`Tx TopTx DijkstraEra`) as it was validated, with the flag of its
+  * verdict (`extractTx` of the snapshot's `Validated` transaction,
+  * `Shelley/Ledger/Forge.hs:162-163` of ouroboros-consensus-cardano at 2416493b), which the ranking
+  * block and the endorser block write in its block form
+  * ([[xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraTx.forBlockInclusion]]). Unlike [[ConwayHeld]]
+  * it keeps the transaction, not what it was admitted with: the era's transaction holds the bytes
+  * of its parts, which both blocks are made of, and the forger reads nothing else of it.
   */
-final case class DijkstraHeld(tx: DijkstraTx, measure: TxMeasure)
+final case class DijkstraHeld(tx: Tx[TxLevel.Top, Dijkstra], measure: TxMeasure)
 
 /** `getSnapshotFor` of the pool under Dijkstra (`Mempool/API.hs:187-203`, ouroboros-consensus
   * 2416493b, as the forge loop takes it, `NodeKernel/Forge.hs:795-797`): the held transactions,
@@ -98,6 +103,6 @@ object DijkstraSnapshots:
         )
         (kept, withheld) = judged
       yield DijkstraSnapshot(
-        kept.map((entry, admitted) => DijkstraHeld(admitted.read.flat, Capacity.measure(entry))),
+        kept.map((entry, admitted) => DijkstraHeld(admitted.read.tx, Capacity.measure(entry))),
         withheld.map((entry, reason) => entry.id -> reason).toMap
       )

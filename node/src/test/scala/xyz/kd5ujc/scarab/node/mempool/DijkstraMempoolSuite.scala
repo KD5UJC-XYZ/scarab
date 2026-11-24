@@ -29,6 +29,7 @@ import xyz.kd5ujc.scarab.ledger.{
 }
 import xyz.kd5ujc.scarab.ledger.{TxIn, TxOut}
 import xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraTxIn as FlatTxIn
+import xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraTx as EraDijkstraTx
 import xyz.kd5ujc.scarab.ledger.era.{
   BothLevels,
   ConwayGovState as EraConwayGovState,
@@ -598,12 +599,12 @@ class DijkstraMempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       val empty = pool(ledgerOf(s(37), tip), tip)
       val (held, entry) =
         empty.add(dijkstra(submitted), env, Source.Local).fold(r => fail(r.message), identity)
-      val flat = entry.held match
-        case Held.InDijkstra(admitted) => admitted.read.flat
+      val tx = entry.held match
+        case Held.InDijkstra(admitted) => admitted.read.tx
         case other                     => fail(s"not held in Dijkstra: $other")
       // the key and bytes are the ones the forger lists and writes (`forgeLeiosEb`), which the
       // reference's index keys by (`leiosTxHashOfGenTx`)
-      val forged = ForgedLeiosEb.forge(tip.slot + 1, NonEmptyVector.one(flat))
+      val forged = ForgedLeiosEb.forge(tip.slot + 1, NonEmptyVector.one(tx))
       val listed = forged.closure.toVector.toMap
       assertEquals(empty.leiosTxIndex, Map.empty)
       assertEquals(held.leiosTxIndex, listed)
@@ -725,7 +726,10 @@ class DijkstraMempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       assertEquals(snapshot.withheld, Map.empty)
       assertEquals(snapshot.held.map(_.tx.id), Vector(inBlock.id))
       // the block form the forger writes is the one block 37 holds
-      assertEquals(snapshot.held.map(_.tx.forBlockInclusion), Vector(inBlock.forBlockInclusion))
+      assertEquals(
+        snapshot.held.map(h => EraDijkstraTx.forBlockInclusion(h.tx)),
+        Vector(inBlock.forBlockInclusion)
+      )
       assertEquals(snapshot.held.map(_.measure), Vector(TxMeasure(submitted.size + 4L, 0, 0, 0L)))
       val params = ledgerOf(s(37), tip).params
       val eb = Capacity.endorserBlockCapacity(params).fold(e => fail(e.toString), identity)
@@ -796,13 +800,13 @@ class DijkstraMempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     )
   }
 
-  test("the phase-two flag set on both forms: the id kept, the block form's last byte the flag") {
+  test("the phase-two flag set: the id kept, the block form's last byte the flag") {
     val read = DijkstraRead.submitted(submitted).fold(e => fail(e.toString), identity)
     val invalid = read.withIsValid(IsPhase2Valid.Phase2Invalid)
     assertEquals(invalid.id, read.id)
     assertEquals(invalid.isValid, IsPhase2Valid.Phase2Invalid)
-    assertEquals(invalid.flat.isValid, false)
-    val (valid, flipped) = (read.flat.forBlockInclusion, invalid.flat.forBlockInclusion)
+    val (valid, flipped) =
+      (EraDijkstraTx.forBlockInclusion(read.tx), EraDijkstraTx.forBlockInclusion(invalid.tx))
     assertEquals(flipped.take(flipped.size - 1), valid.take(valid.size - 1))
     assertEquals(
       (valid.drop(valid.size - 1), flipped.drop(flipped.size - 1)),

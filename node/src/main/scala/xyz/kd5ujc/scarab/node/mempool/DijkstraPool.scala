@@ -5,7 +5,6 @@ import cats.Id
 import cats.data.NonEmptyVector
 import xyz.kd5ujc.scarab.codec.{Bytes, DomainError}
 import xyz.kd5ujc.scarab.ledger.{Horizon, PosixClock, SystemStart, TxEnv, Verdicts}
-import xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraTx as FlatDijkstraTx
 import xyz.kd5ujc.scarab.ledger.era.{
   BothLevels,
   EraTx,
@@ -25,24 +24,19 @@ import xyz.kd5ujc.scarab.protocol.Era
 
 /** A Dijkstra transaction as a client or a peer submitted it, read once from its mempool form
   * (`decodeDijkstraTopTx`, cardano-ledger 9df9f98c `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/
-  * Tx.hs:152-169`, [[DijkstraTx.submitted]]): the transaction in the era's types, which the rules
-  * judge, and the flat transaction it was read from, which the forger builds blocks of until its
-  * Dijkstra path takes the era's (the bridge of #85). The two are set together ([[withIsValid]]),
-  * so they hold the same flag.
+  * Tx.hs:152-169`, [[DijkstraTx.fromSubmission]]): the transaction in the era's types, which the
+  * rules judge and the forger builds blocks of.
   */
-final case class DijkstraRead private (flat: FlatDijkstraTx, tx: Tx[TxLevel.Top, Dijkstra]):
+final case class DijkstraRead private (tx: Tx[TxLevel.Top, Dijkstra]):
   /** The id, the hash of the body. */
   def id: Bytes = tx.id
 
   /** The phase-two flag (`isPhase2ValidTxL`). */
   def isValid: IsPhase2Valid = EraTx.dijkstra.isValid(tx)
 
-  /** Both forms with the flag `valid` (`tx & isPhase2ValidTxL .~ valid`). */
+  /** The transaction with the flag `valid` (`tx & isPhase2ValidTxL .~ valid`). */
   def withIsValid(valid: IsPhase2Valid): DijkstraRead =
-    DijkstraRead(
-      flat.copy(isValid = valid == IsPhase2Valid.Phase2Valid),
-      DijkstraTx.withIsValid(tx, valid)
-    )
+    DijkstraRead(DijkstraTx.withIsValid(tx, valid))
 
   /** `toCBORForMempoolSubmission` (`Tx.hs:500-515`, cardano-ledger 9df9f98c): `[body, wits,
     * auxiliary data / null]`, each part as the bytes it memoizes, the flag omitted (`OmitC`). The
@@ -51,8 +45,8 @@ final case class DijkstraRead private (flat: FlatDijkstraTx, tx: Tx[TxLevel.Top,
     * `EncCBOR`, `Tx.hs:144-145`).
     */
   lazy val raw: Bytes =
-    Bytes.fromArray(Array(0x83.toByte)) ++ flat.body.raw ++ flat.witnesses.raw ++
-      flat.auxiliary.fold(Bytes.fromArray(Array(0xf6.toByte)))(_.raw)
+    Bytes.fromArray(Array(0x83.toByte)) ++ tx.body.raw ++ tx.wits.raw ++
+      tx.auxData.fold(Bytes.fromArray(Array(0xf6.toByte)))(_.raw)
 
   /** `sizeTxF` (`Tx.hs:310-319`, cardano-ledger 9df9f98c): the bytes of the parts and the list's
     * head, which is the length of [[raw]].
@@ -60,9 +54,9 @@ final case class DijkstraRead private (flat: FlatDijkstraTx, tx: Tx[TxLevel.Top,
   def size: Long = EraTx.dijkstra.sizeTxF[TxLevel.Top](tx)(using BothLevels.Top)
 
 object DijkstraRead:
-  /** The transaction `raw` in its mempool form, read once ([[DijkstraTx.submitted]]). */
+  /** The transaction `raw` in its mempool form, read once ([[DijkstraTx.fromSubmission]]). */
   def submitted(raw: Bytes): Either[EraTxError, DijkstraRead] =
-    DijkstraTx.submitted(raw).map(DijkstraRead(_, _))
+    DijkstraTx.fromSubmission(raw).map(DijkstraRead(_))
 
 /** `ValidatedTx` (`Shelley/API/Mempool.hs:81-88`, cardano-ledger 9df9f98c): the annotation the
   * transaction was admitted with (`vtStAnnTx`), the protocol version in force then
