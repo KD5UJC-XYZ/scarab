@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import cats.data.NonEmptyVector
 import cats.effect.{Async, Deferred, Ref, Resource}
 import cats.effect.std.Mutex
 import cats.syntax.all.*
@@ -411,15 +410,12 @@ final class FetchCoordinator[F[_]: Async] private (
       id: Long,
       tip: Option[Header],
       performance: FetchGsv.PeerGsv,
-      candidate: Option[ChainSelection.Candidate]
+      announced: Option[FetchCandidates.Announced]
   ): F[Unit] =
     change { s =>
       s.copy(
         peers = s.peers.updatedWith(id)(
-          _.map(peer =>
-            newer(peer, performance)
-              .copy(tip = tip, announced = candidate.map(FetchCandidates.Announced.of))
-          )
+          _.map(peer => newer(peer, performance).copy(tip = tip, announced = announced))
         )
       )
     }
@@ -443,37 +439,22 @@ final class FetchCoordinator[F[_]: Async] private (
       ordered.indexWhere(other => compareTips(h, other) == 0).max(0)
     }
     val useGenesis = s.genesisContext.exists(_.phase != Gsm.Phase.CaughtUp)
-    val selected = s.selected.map(FetchCandidates.Selected.of)
-    val candidates = peers.map { (id, peer) =>
+    val selected = viewOf(s.selectedView, s.selected)
+    val staged = peers.map { (id, peer) =>
       val flight = peer.active.values.toVector
       val remaining = flight.flatMap(_.remaining)
       val restriction =
         ChainSelection.tiebreakerFor(tipOf(peer).fold(xyz.kd5ujc.scarab.protocol.Era.Byron)(_.era))
-      // Decision.hs:251–310, stages 1–3: filterPlausibleCandidates (405–420), selectForkSuffixes
-      // (547–558) and filterNotAlreadyFetched (599–617) over the peer's whole current candidate.
-      // Genesis selects from the plausible suffix before removing fetched blocks
-      // (Decision/Genesis.hs).
       val chain = peer.announced.getOrElse(FetchCandidates.Announced.of(candidateOf(peer)))
-      val chosen =
-        selected.fold[Either[BlockFetchPolicy.Refusal, Vector[Header]]](
-          Right(chain.candidate.headers.filterNot(h => s.fetched.contains(h.hash)))
-        ) { local =>
-          if useGenesis then
-            if !FetchCandidates.plausible(restriction, local, chain) then
-              Left(BlockFetchPolicy.Refusal.ChainNotPlausible)
-            else FetchCandidates.suffix(local, chain).map(_._2)
-          else
-            FetchCandidates
-              .select(restriction, local, chain, h => s.fetched.contains(h.hash))
-              .map(_.headers)
-        }
-      BlockFetchPolicy.Candidate(
+      val (weighing, chosen) =
+        stages(peer.weighing, selected, chain, restriction, useGenesis, s.fetched)
+      id -> weighing -> BlockFetchPolicy.Candidate(
         peer = id,
         chainPreference =
           if useGenesis || s.mode == FetchMode.Deadline then -preference(tipOf(peer))
           else preference(tipOf(peer)),
         chainHead = tipOf(peer).fold(Bytes.empty)(_.hash),
-        fragments = fragmentsOf(chosen.getOrElse(Vector.empty), estimatedBytes),
+        fragments = chosen.getOrElse(Vector.empty),
         performance = peer.performance,
         inFlight = BlockFetchPolicy.InFlight(
           flight.map(_.requests).sum,
@@ -489,6 +470,7 @@ final class FetchCoordinator[F[_]: Async] private (
         refusal = chosen.left.toOption
       )
     }
+    val candidates = staged.map(_._2)
     val genesisResult = s.genesisContext.filter(_ => useGenesis).map { context =>
       GenesisBlockFetch.decide(
         config,
@@ -506,15 +488,21 @@ final class FetchCoordinator[F[_]: Async] private (
       genesisResult.fold(BlockFetchPolicy.decide(config, s.mode, candidates))(_.decisions)
     // Decision/Genesis.hs:211–229: the peers order is written only with a request; a demotion
     // (checkLastChainSelStarvation, 281–299) demotes the dynamo either way.
-    val dispatched = genesisResult.fold(s)(r =>
-      s.copy(
+    val weighed = s.copy(
+      peers = staged.foldLeft(s.peers) { case (peers, ((id, weighing), _)) =>
+        peers.updatedWith(id)(_.map(_.copy(weighing = weighing)))
+      },
+      selectedView = selected
+    )
+    val dispatched = genesisResult.fold(weighed)(r =>
+      weighed.copy(
         genesisState =
           if r.decisions.exists {
               case _: BlockFetchPolicy.Decision.Request[?] => true
               case _                                       => false
             }
           then r.state
-          else s.genesisState,
+          else weighed.genesisState,
         demotions = r.demoteDynamo.toVector
       )
     )
@@ -637,12 +625,73 @@ object FetchCoordinator:
 
   private[node] final case class Holding(who: DecisionHolder, at: FiniteDuration)
 
+  /** The selected chain's view for a decision: the one the last decision built while the selection
+    * publishes the same window, else built for the new one.
+    */
+  private[node] def viewOf(
+      previous: Option[FetchCandidates.Selected],
+      local: Option[ChainSelection.Local]
+  ): Option[FetchCandidates.Selected] =
+    local.map(l => previous.filter(_.local eq l).getOrElse(FetchCandidates.Selected.of(l)))
+
+  /** Decision.hs:251–310, stages 1–3 for one peer: filterPlausibleCandidates (405–420),
+    * selectForkSuffixes (547–558) and filterNotAlreadyFetched (599–617) over the peer's whole
+    * current candidate, then its fragments. Genesis selects from the plausible suffix before
+    * removing fetched blocks (Decision/Genesis.hs). Without a selected chain nothing is weighed,
+    * and every header whose block is not fetched is chosen.
+    *
+    * Stages 1 and 2 depend on the candidate and the selected chain alone, so a peer whose candidate
+    * index, our window and tiebreaker are those of its `previous` weighing keeps that weighing; the
+    * weighing returned is the one the next decision is offered. Fetched blocks are asked about at
+    * every decision, since nothing says which changed.
+    */
+  private[node] def stages(
+      previous: Option[Weighing],
+      selected: Option[FetchCandidates.Selected],
+      chain: FetchCandidates.Announced,
+      restriction: ChainSelection.Tiebreaker,
+      useGenesis: Boolean,
+      fetched: Fetched
+  ): (Option[Weighing], Either[BlockFetchPolicy.Refusal, Vector[BlockFetchPolicy.Fragment]]) =
+    val weighing = selected.map { local =>
+      previous
+        .filter(w =>
+          (w.announced eq chain) && (w.local eq local.local) && w.tiebreaker == restriction
+        )
+        .getOrElse(
+          Weighing(
+            chain,
+            local.local,
+            restriction,
+            FetchCandidates.weigh(restriction, local, chain)
+          )
+        )
+    }
+    val chosen =
+      weighing.fold(Right(FetchCandidates.missing(chain, 0, h => fetched.contains(h.hash)))) { w =>
+        if useGenesis then FetchCandidates.plausibleSuffix(w.weighed, chain)
+        else FetchCandidates.chosen(w.weighed, chain, h => fetched.contains(h.hash))
+      }
+    (weighing, chosen.map(chain.fragments))
+
+  /** Stages 1 and 2 of the last decision for a peer, with what they were found from: its
+    * candidate's index, our window and the tiebreaker of its tip's era. They are the same for the
+    * same three, which a decision compares by identity.
+    */
+  private[node] final case class Weighing(
+      announced: FetchCandidates.Announced,
+      local: ChainSelection.Local,
+      tiebreaker: ChainSelection.Tiebreaker,
+      weighed: FetchCandidates.Weighed
+  )
+
   private final case class Active(remaining: Vector[Header], requests: Int, claimed: Set[Bytes])
   private final case class PeerState[F[_]](
       identity: Long,
       order: PeerOrder,
       tip: Option[Header] = None,
       announced: Option[FetchCandidates.Announced] = None,
+      weighing: Option[Weighing] = None,
       performance: FetchGsv.PeerGsv = FetchGsv.default,
       control: Control = Control.Continue,
       request: Option[Allocation] = None,
@@ -665,6 +714,7 @@ object FetchCoordinator:
       peers: Map[Long, PeerState[F]],
       mode: FetchMode = FetchMode.BulkSync,
       selected: Option[ChainSelection.Local] = None,
+      selectedView: Option[FetchCandidates.Selected] = None,
       fetched: Fetched = Fetched.none,
       genesisContext: Option[GenesisContext] = None,
       genesisState: GenesisBlockFetch.State[Long] = GenesisBlockFetch.State[Long](),
@@ -686,7 +736,17 @@ object FetchCoordinator:
         performance: FetchGsv.PeerGsv,
         candidate: Option[ChainSelection.Candidate] = None
     ): F[Unit] =
-      owner.announce(id, tip, performance, candidate)
+      owner.announce(id, tip, performance, candidate.map(FetchCandidates.Announced.of))
+
+    /** Report the session's candidate with the index its session carried to it, so that nothing of
+      * it is scanned again.
+      */
+    private[node] def announce(
+        tip: Option[Header],
+        performance: FetchGsv.PeerGsv,
+        announced: FetchCandidates.Announced
+    ): F[Unit] =
+      owner.announce(id, tip, performance, Some(announced))
     def identity: Long = id
 
     /** Let [[diagnostics]] read this session's pipeline through `probe`, which must not block. */
@@ -729,24 +789,6 @@ object FetchCoordinator:
     case h: Header.Shelley =>
       (h.bodySize + h.raw.size + 10).min(BigInt(Long.MaxValue)).max(0).toLong
     case h: Header.Byron => h.blockSizeHint.value.toLong
-
-  private def fragmentsOf(
-      headers: Vector[Header],
-      size: Header => Long
-  ): Vector[BlockFetchPolicy.Fragment] =
-    // the runs of headers that each extend the one before, the newest run first
-    val runs = headers.foldLeft(List.empty[NonEmptyVector[Header]]) { (groups, header) =>
-      groups match
-        case previous :: older if header.prevHash.contains(previous.last.hash) =>
-          previous.append(header) :: older
-        case _ => NonEmptyVector.one(header) :: groups
-    }
-    runs.reverse.toVector.map(run =>
-      BlockFetchPolicy.Fragment(
-        run.head.prevHash,
-        run.toVector.map(h => BlockFetchPolicy.Header(h.hash, h.slot, size(h)))
-      )
-    )
 
   private[node] def compareTips(a: Header, b: Header): Int =
     // ClientInterface.hs:286–291 uses compareAnchoredFragments, hence raw Ord;

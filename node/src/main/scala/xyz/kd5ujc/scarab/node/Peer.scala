@@ -595,15 +595,11 @@ object Peer:
         )
       )(Resource.pure[F, FetchCoordinator.Session[F]])
       supervisor <- OrderedSupervisor[F]
-      heights <- Resource.eval(
-        Ref.of[F, Map[ChainSync.Point, Option[BigInt]]](
-          Map(ChainSync.Point.Origin -> None)
-        )
-      )
+      tracked <- Resource.eval(Ref.of[F, CandidateTrack](CandidateTrack.initial))
       owned <- Resource.eval(Deferred[F, Ref[F, HeaderGate.Grafting[F]]])
       _ <- connection.chainSync.observe(observer(chainSyncObserver, owned))
-    yield (claims, fetcher, (supervisor, heights, owned))).evalMap { (claims, fetcher, lifecycle) =>
-      val (supervisor, heights, owned) = lifecycle
+    yield (claims, fetcher, (supervisor, tracked, owned))).evalMap { (claims, fetcher, lifecycle) =>
+      val (supervisor, tracked, owned) = lifecycle
       // Read-ahead: while the peer is far ahead, ChainSync requests are pipelined, and the
       // accepted headers are published to `queue` in order, up to `Depth` batches ahead of the
       // consumer. Their blocks are fetched independently: the session's fetch client takes the
@@ -894,12 +890,14 @@ object Peer:
                       )
                 }
                 canonical.fold(
-                  heights.get.flatMap(
-                    _.get(point).fold(
-                      heightSnapshot.unavailable[Option[BigInt]](
-                        ChainSyncInternalProblem.MissingHeight(point)
-                      )
-                    )(F.pure)
+                  tracked.get.flatMap(
+                    _.heights
+                      .get(point)
+                      .fold(
+                        heightSnapshot.unavailable[Option[BigInt]](
+                          ChainSyncInternalProblem.MissingHeight(point)
+                        )
+                      )(F.pure)
                   )
                 )(F.pure)
               }
@@ -1201,34 +1199,23 @@ object Peer:
           ): F[Vector[SyncEvent]] =
             for
               performance <- connection.fetchPerformance.getOrElse(F.pure(FetchGsv.default))
-              candidate <- candidateHeaders.modify { before =>
-                val after = batch.foldLeft(before) {
-                  case (known, SyncEvent.RollForward(h, _)) =>
-                    val grown = known.headers :+ h
-                    val dropped = grown.dropRight(retainedHeaders.max(1))
-                    ChainSelection.Candidate(
-                      dropped.lastOption.fold(known.base)(_.point),
-                      grown.takeRight(retainedHeaders.max(1))
-                    )
-                  case (known, SyncEvent.RollBackward(point, _)) =>
-                    known.rollback(point).getOrElse(ChainSelection.Candidate(point, Vector.empty))
-                }
-                (after, after)
+              known <- tracked.get.map(_.announced)
+              // the candidate's index is carried through the batch's headers alone, and its
+              // retained points filter the heights without a set of them built per batch
+              moved <- candidateHeaders.modify { before =>
+                val moved = CandidateTrack.move(known, before, batch, retainedHeaders)
+                (moved.announced.candidate, moved)
               }
-              _ <- fetcher.announce(
-                candidate.headers.lastOption,
-                performance,
-                Some(candidate)
-              )
-              _ <- heights.update { previous =>
-                val received = batch.collect { case SyncEvent.RollForward(h, _) =>
-                  h.point -> Some(h.blockNo)
-                }.toMap
-                val retained = candidate.headers.map(_.point).toSet + candidate.base
-                (previous ++ received).filter((point, _) =>
-                  retained(point) || point == ChainSync.Point.Origin
+              candidate = moved.announced.candidate
+              _ <- fetcher.announce(candidate.headers.lastOption, performance, moved.announced)
+              _ <- tracked.update(
+                _.recorded(
+                  moved,
+                  batch.collect { case SyncEvent.RollForward(h, _) =>
+                    h.point -> Some(h.blockNo)
+                  }.toMap
                 )
-              }
+              )
               _ <- batch.lastOption.traverse_ { event =>
                 val tip = event match
                   case SyncEvent.RollForward(_, value)  => value
@@ -1478,7 +1465,9 @@ object Peer:
                       else candidates
                     )(c => F.pure(c._1))
                     offeredHeights = captured.fold(metadata.heights)(_._2)
-                    _ <- heights.set(offeredHeights.updated(ChainSync.Point.Origin, None))
+                    _ <- tracked.update(
+                      _.offered(offeredHeights.updated(ChainSync.Point.Origin, None))
+                    )
                     found <- connection.chainSync.findIntersect(intersectionPoints(points))
                     _ <- found match
                       case None =>
@@ -1783,7 +1772,7 @@ object Peer:
                 offeredPoints = captured.fold(
                   if connection.chainSyncPipeline.nonEmpty then metadata.points else candidates
                 )(_._1)
-                _ <- heights.set(offeredHeights.updated(ChainSync.Point.Origin, None))
+                _ <- tracked.update(_.offered(offeredHeights.updated(ChainSync.Point.Origin, None)))
                 found <- connection.chainSync.findIntersect(
                   intersectionPoints(offeredPoints)
                 )
