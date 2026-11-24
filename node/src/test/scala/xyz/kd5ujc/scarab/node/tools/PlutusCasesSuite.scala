@@ -106,18 +106,24 @@ class PlutusCasesSuite extends munit.FunSuite:
           DijkstraRecordedBlocks.program(sample, ScarabEvaluator.default, Some(observer)).serial
       }
       val written = files(dir).map(read)
-      // one case a batch, named by the block's slot and the batch's id, whose body it holds
+      // one case a batch, named by the block's slot, the batch's whole id and its flag, whose
+      // body it holds; each script's request, read back, the very one the run evaluated
+      def nameOf(o: DijkstraPhase2.Observation) =
+        s"slot${o.slot}-${o.id.hex}-${if o.transaction.isValid then "valid" else "invalid"}"
       assertEquals(written.size, told.all.size)
-      assertEquals(
-        written.map(r => text(r.json, "name")).toSet,
-        told.all.map(o => s"slot${o.slot}-${o.id.hex.take(8)}").toSet
-      )
+      val observed = told.all.map(o => nameOf(o) -> o).toMap
+      assertEquals(written.map(r => text(r.json, "name")).toSet, observed.keySet)
+      assertEquals(cases.failed(), Vector.empty)
       written.foreach { r =>
         assertEquals(text(r.json, "era"), "dijkstra")
-        val body = hex(text(r.json, "body"))
-        assert(
-          text(r.json, "name").endsWith(Blake2b.hash256.hash(body).hex.take(8)),
-          text(r.json, "name")
+        val o = observed(text(r.json, "name"))
+        assertEquals(Blake2b.hash256.hash(hex(text(r.json, "body"))), o.id)
+        assertEquals(
+          r.scripts.map(_._1),
+          o.outcome match
+            case DijkstraPhase2.Outcome.Ran(es)                  => es.toVector.map(_.request)
+            case DijkstraPhase2.Outcome.Unavailable(es, _, q, _) => es.map(_.request) :+ q
+            case DijkstraPhase2.Outcome.Uncollected(_)           => Vector.empty
         )
         // each script evaluated again from its case alone: the result and the units it recorded
         r.scripts.foreach { (request, result, spent, _, _) =>
@@ -201,6 +207,87 @@ class PlutusCasesSuite extends munit.FunSuite:
           assertEquals(uncollected.scripts, Vector.empty)
         case other => fail(s"not two cases: ${other.size}")
     }
+  }
+
+  test(
+    "one body at one slot under each flag, and bodies whose ids share a prefix: each its own case"
+  ) {
+    inDirectory { dir =>
+      val cases = PlutusCases(dir, perKind = 1000, max = 100000)
+      val request =
+        EvalRequest(PlutusLanguage.V3, 12, Bytes.empty, Vector.empty, Vector.empty, ExUnits(1, 2))
+      val top =
+        ScriptLocation.Phase2(Redeemer(0, 0, Bytes.fromHex("00").toOption.get, ExUnits(1, 2)))
+      val ran = DijkstraPhase2.Outcome.Ran(
+        NonEmptyVector.one(
+          DijkstraPhase2.Evaluation(top, request, EvalResult.Success(ExUnits(1, 1), Vector.empty))
+        )
+      )
+      val body = Bytes.fromHex("a0").toOption.get
+      // two ids alike in their first eight hex digits (the names of the other eras' cases)
+      val (id1, id2) =
+        (Bytes.fromHex("ab" * 32).toOption.get, Bytes.fromHex("ab" * 4 + "cd" * 28).toOption.get)
+      Vector(
+        (id1, true),
+        (id1, false),
+        (id2, true)
+      ).foreach((id, valid) =>
+        cases.observeDijkstra(
+          DijkstraPhase2.Observation(id, Block.Transaction(body, Bytes.empty, None, valid), 7, ran)
+        )
+      )
+      assertEquals(
+        files(dir).map(_.getFileName.toString),
+        Vector(
+          s"slot7-${"ab" * 32}-invalid.json",
+          s"slot7-${"ab" * 32}-valid.json",
+          s"slot7-${"ab" * 4 + "cd" * 28}-valid.json"
+        )
+      )
+    }
+  }
+
+  test(
+    "a case that cannot be written, of either kind of observation: kept for the node to report, the observer returning as ever"
+  ) {
+    // the directory a regular file: no case can be written into it
+    val notADirectory = Files.createTempFile("scarab-plutus-cases", ".file")
+    try
+      val cases = PlutusCases(notADirectory, perKind = 1000, max = 100000)
+      val transaction = Block.Transaction(Bytes.fromHex("a0").toOption.get, Bytes.empty, None, true)
+      cases.observeDijkstra(
+        DijkstraPhase2.Observation(
+          transaction.id,
+          transaction,
+          8,
+          DijkstraPhase2.Outcome.Uncollected(
+            NonEmptyList.one(CollectError.NoCostModel[Dijkstra](PlutusLanguage.V4))
+          )
+        )
+      )
+      // an earlier era's observation, from a recorded Preview case
+      val recorded = xyz.kd5ujc.scarab.ledger.PlutusCase.all.head
+      cases.observe(
+        xyz.kd5ujc.scarab.ledger.Phase2.Observation(
+          recorded.tx,
+          recorded.params,
+          recorded.slot,
+          recorded.spent,
+          recorded.references,
+          None,
+          Left(
+            NonEmptyVector.one(xyz.kd5ujc.scarab.ledger.CollectError.NoWitness(recorded.tx.body.id))
+          )
+        )
+      )
+      cases.failed() match
+        case Vector(PlutusCases.Failure.Write(dijkstra, _), PlutusCases.Failure.Write(flat, _)) =>
+          assertEquals(dijkstra.getParent, notADirectory)
+          assertEquals(flat.getParent, notADirectory)
+        case other => fail(s"not two unwritten cases: $other")
+      // reported once
+      assertEquals(cases.failed(), Vector.empty)
+    finally Files.delete(notADirectory)
   }
 
   test("a Dijkstra batch's cases are kept to `perKind` of a kind, its kind marked as Dijkstra's") {

@@ -23,7 +23,7 @@ import xyz.kd5ujc.scarab.uplc.builtin.core.DataSerialisation
   * the batch's bytes, each script's request as the evaluator was asked it (the script, its
   * arguments, the cost model, the protocol version and the redeemer's units) with its result, in
   * place of the outputs and the clock, which a Dijkstra observation does not hold
-  * (`DijkstraPhase2.Observation`).
+  * (`DijkstraPhase2.Observation`), named by the block's slot, the batch's whole id and its flag.
   *
   * Recording a case never fails the observer that calls it, which the rules call while they judge a
   * block: a case that cannot be written, or a failure of the recorder itself, is kept
@@ -183,7 +183,8 @@ final class PlutusCases(dir: Path, perKind: Int, max: Int):
     val kind =
       s"dijkstra-v${languages.mkString("")}-$valid-${features.mkString(",")}-${outcome.take(40)}"
     if admitted(kind) then
-      val name = s"slot${o.slot}-${o.id.hex.take(8)}"
+      // the batch's whole id and its flag: two batches at a slot never share a name
+      val name = s"slot${o.slot}-${o.id.hex}-$valid"
       // a script with its request, and its result: passed, or failed with why, and what it spent;
       // or unavailable, with why, where the evaluator gave no verdict
       def script(
