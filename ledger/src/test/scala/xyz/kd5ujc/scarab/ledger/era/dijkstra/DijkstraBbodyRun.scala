@@ -184,6 +184,7 @@ object DijkstraBbodyRun:
   def unchecked(
       globals: Globals,
       env: LedgerEnv[Dijkstra],
+      utxo: xyz.kd5ujc.scarab.ledger.era.UTxO[Dijkstra],
       stAnnTx: DijkstraStAnnTx.TopTx,
       context: DijkstraUtxoContext,
       state: LedgerState[Dijkstra],
@@ -197,7 +198,7 @@ object DijkstraBbodyRun:
       summon[Stateful[F, ShelleyBbodyState[Dijkstra]]].focus(ShelleyBbodyState.ls[Dijkstra])
     Judgment
       .judge(
-        DijkstraClosure.applyUnchecked[F](env, stAnnTx, context, verdicts, decoder),
+        DijkstraClosure.applyUnchecked[F](env, utxo, stAnnTx, context, verdicts, decoder),
         RuleT.Policy.Accumulate
       )(
         globals,

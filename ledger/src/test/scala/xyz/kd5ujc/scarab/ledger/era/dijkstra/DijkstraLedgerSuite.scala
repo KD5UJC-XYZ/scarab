@@ -1152,6 +1152,7 @@ class DijkstraLedgerSuite extends FunSuite:
       DijkstraBbodyRun.unchecked(
         leios,
         envOf(k, Coin(0)),
+        k.utxo,
         stAnnTx,
         context(TxEnv.Validation.All),
         LedgerState(start.cert, storedState(k.utxo)),

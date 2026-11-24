@@ -138,11 +138,11 @@ object DijkstraClosure:
     *
     * The reference's checks are lazy and a skipped one is never evaluated, as the Dijkstra rules'
     * predicates are here; the node still computes some values before the judgment drops what reads
-    * them, the outputs of every input read from the store into the era among them, so a defect
-    * raised while computing one is raised here where the reference meets none. A closure the
-    * committee certified passes them, and the difference is a Gap (#54). The defects are the rules'
-    * ([[UtxoStateDefect]], [[LedgerDefect]], [[PoolDefect]], [[GovDefect]],
-    * [[ScriptVerdictUnavailable]]).
+    * them, the outputs of every input read from the store into the era among them (once, for the
+    * annotation and LEDGER both), so a defect raised while computing one is raised here where the
+    * reference meets none. A closure the committee certified passes them, and the difference is a
+    * Gap (#54). The defects are the rules' ([[UtxoStateDefect]], [[LedgerDefect]], [[PoolDefect]],
+    * [[GovDefect]], [[ScriptVerdictUnavailable]]).
     */
   def applyLeiosClosure[F[_]: Monad](
       env: LedgerEnv[Dijkstra],
@@ -177,6 +177,7 @@ object DijkstraClosure:
         // (`Leios.hs:249-251`, ouroboros-consensus 2416493b)
         _ <- applyUnchecked[F](
           env,
+          utxo,
           DijkstraLedgers.mkStAnnTx(slotToPOSIXTime, env.ledgerPp)(utxo, Map.empty, tx),
           context,
           verdicts,
@@ -187,13 +188,15 @@ object DijkstraClosure:
 
   /** One annotated transaction of a closure by Dijkstra's LEDGER with `ValidateNone`
     * (`ruleApplyTxValidation @"LEDGER" ValidateNone`, `Leios.hs:240-252`, ouroboros-consensus
-    * 2416493b), as [[applyLeiosClosure]] applies each: no predicate checked
-    * ([[Judge.validateNone]]), so none of the annotation's members is read but its
-    * sub-transactions, the labelled parts skipped ([[TxEnv.Validation.NonStatic]]), the events
-    * discarded.
+    * 2416493b), as [[applyLeiosClosure]] applies each, `utxo` the UTxO set it was annotated
+    * against, which LEDGER judges it on too, as the reference annotates and judges against the one
+    * set: no predicate checked ([[Judge.validateNone]]), so none of the annotation's members is
+    * read but its sub-transactions, the labelled parts skipped ([[TxEnv.Validation.NonStatic]]),
+    * the events discarded.
     */
   def applyUnchecked[F[_]: Monad](
       env: LedgerEnv[Dijkstra],
+      utxo: UTxO[Dijkstra],
       stAnnTx: StAnnTx[TxLevel.Top, Dijkstra],
       context: DijkstraUtxoContext,
       verdicts: Verdicts,
@@ -213,7 +216,7 @@ object DijkstraClosure:
     given Tell[F, Chain[LedgerEvent[Dijkstra]]] = discarded
     // no script is evaluated (`ValidateNone`), so there is none to tell the run of
     given Phase2Deferral[F, Dijkstra] = Phase2Deferral.now
-    DijkstraLedger.dijkstraLedgerTransition[F](
+    DijkstraLedger.dijkstraLedgerTransitionOn[F](utxo)(
       env,
       stAnnTx,
       context.copy(validation = TxEnv.Validation.NonStatic),

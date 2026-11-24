@@ -274,6 +274,43 @@ object DijkstraLedger:
       govDefect: Raise[F, GovDefect],
       deferral: Phase2Deferral[F, Dijkstra]
   ): F[Unit] =
+    val txBody = t.body[TxLevel.Top](t.txStAnnTx[TxLevel.Top](stAnnTx))
+    for
+      ledgerState <- state.get
+      originalUtxo <- ShelleyUtxo.readStored[F, Dijkstra](
+        ShelleyUtxo.restrictKeys(ledgerState.utxo.utxo.utxo, b.allInputs(txBody))
+      )
+      _ <- dijkstraLedgerTransitionOn[F](originalUtxo)(env, stAnnTx, context, verdicts, decoder)
+    yield ()
+
+  /** [[dijkstraLedgerTransition]] with the UTxO set before the transaction given, `originalUtxo`:
+    * the stored outputs of the batch's every input read into the era from the state the transition
+    * runs on, which the caller read for the annotation (`applyLeiosClosure`, which annotates and
+    * judges against the one UTxO set, as the reference does, `Leios.hs:240-252`,
+    * ouroboros-consensus 2416493b).
+    */
+  private[rules] def dijkstraLedgerTransitionOn[F[_]: Monad](
+      originalUtxo: UTxO[Dijkstra]
+  )(
+      env: LedgerEnv[Dijkstra],
+      stAnnTx: StAnnTx[TxLevel.Top, Dijkstra],
+      context: DijkstraUtxoContext,
+      verdicts: Verdicts,
+      decoder: ScriptDecoder[Id]
+  )(using
+      ask: Ask[F, Globals],
+      state: Stateful[F, LedgerState[Dijkstra]],
+      proposals: Stateful[F, Proposals[Dijkstra]],
+      judge: Judge[F, LedgerPredFailure[Dijkstra]],
+      events: Tell[F, Chain[LedgerEvent[Dijkstra]]],
+      evaluator: ScriptEvaluator[F],
+      unavailable: Raise[F, ScriptVerdictUnavailable],
+      stateDefect: Raise[F, UtxoStateDefect],
+      defect: Raise[F, LedgerDefect],
+      poolDefect: Raise[F, PoolDefect],
+      govDefect: Raise[F, GovDefect],
+      deferral: Phase2Deferral[F, Dijkstra]
+  ): F[Unit] =
     val embed = EmbedInDijkstraLedger.dijkstra
     val tx = t.txStAnnTx[TxLevel.Top](stAnnTx)
     val txBody = t.body[TxLevel.Top](tx)
@@ -288,9 +325,6 @@ object DijkstraLedger:
       Sts.runTest[F, LedgerPredFailure[Dijkstra]](check.leftMap(_.map(wrap)))
     for
       ledgerState <- state.get
-      originalUtxo <- ShelleyUtxo.readStored[F, Dijkstra](
-        ShelleyUtxo.restrictKeys(ledgerState.utxo.utxo.utxo, b.allInputs(txBody))
-      )
       originalAccounts = accountsL.get(ledgerState.cert)
       _ <- judge.nest(
         DijkstraSubLedgers.dijkstraSubLedgersTransition[F](

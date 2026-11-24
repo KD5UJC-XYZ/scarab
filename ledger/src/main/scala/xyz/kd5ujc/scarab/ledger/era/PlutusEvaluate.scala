@@ -352,12 +352,13 @@ object AlonzoPlutusEvaluate:
       c: EraPlutusContext[E]
   ): Either[NonEmptyList[CollectError[E]], List[PlutusWithContext]] =
     type Found = (SupportedPlutusRunnable[E], PlutusPurpose[AsIxItem, E], Data, ExUnits)
-    val redeemers = x.witsOf
+    // read only for a script the information uses, so a transaction that uses none reads neither
+    lazy val redeemers = x.witsOf
       .rdmrsTxWits(x.wits[T](lti.ltiTx)(using LedgerTxInfo.toSTxLevel(lti)(using x.bodyOf)))
       .entries
     // each language's model read as `Int64` s once for the transaction's scripts, not for each
     // script (#85)
-    val int64 = costModels.models.keySet.iterator
+    lazy val int64 = costModels.models.keySet.iterator
       .map(tag => tag -> Eval.later(costModels.int64Model(tag)))
       .toMap
     def getScriptWithRedeemer(used: Used[E]): Either[CollectError[E], Found] =

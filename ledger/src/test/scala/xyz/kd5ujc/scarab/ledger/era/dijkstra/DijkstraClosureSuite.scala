@@ -338,6 +338,7 @@ class DijkstraClosureSuite extends FunSuite:
       DijkstraBbodyRun.unchecked(
         globals,
         DijkstraClosure.mkMempoolEnv(r.ebSlot, testnetPParams, account),
+        r.utxo,
         stAnnTx,
         context(flat.TxEnv.Validation.All),
         holding(r.utxo),
