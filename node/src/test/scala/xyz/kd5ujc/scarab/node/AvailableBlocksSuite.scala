@@ -39,9 +39,14 @@ class AvailableBlocksSuite extends FunSuite:
       containing: Option[Set[Bytes]] = None,
       genesis: Option[Bytes] = None
   ): Vector[ChainSelection.Candidate] =
-    AvailableBlocks
-      .candidates(selected, bodies, invalid, containing, genesis)
-      .fold(e => fail(e.toString), identity)
+    val forest = ProcessedForest.of(bodies.values).fold(e => fail(e.toString), identity)
+    val found = AvailableBlocks.candidates(selected, forest, invalid, containing, genesis)
+    // the whole-forest construction it replaced gives the same candidates, in the same order
+    assertEquals(
+      Right(found),
+      AvailableBlocksModel.candidates(selected, bodies, invalid, containing, genesis)
+    )
+    found
 
   test("maximal paths preserve every original header and omit intermediary prefixes") {
     val a = header(1, None, 0, 1)
@@ -148,17 +153,23 @@ class AvailableBlocksSuite extends FunSuite:
     assertEquals(candidates(origin, chain(ebb), genesis = Some(hash(101))), Vector.empty)
   }
 
-  test("inconsistent hash keys and cycles are closed invariant errors") {
+  test("a block is keyed by its own hash, and one that closes a cycle is refused") {
     val a = header(1, None, 0, 1)
-    assertEquals(
-      AvailableBlocks.candidates(origin, Map(hash(9) -> a), Set.empty),
-      Left(AvailableBlocks.Error.HashMismatch(hash(9), a.hash))
-    )
+    assertEquals(ProcessedForest.of(Vector(a)).map(_.get(a.hash)), Right(Some(a)))
     val x = header(2, Some(hash(3)), 1, 2)
     val y = header(3, Some(x.hash), 2, 3)
+    val withX = ProcessedForest.of(Vector(x)).fold(e => fail(e.toString), identity)
+    assertEquals(withX.inserted(y).map(_.size), Left(ProcessedForest.Cycle(y.hash)))
+    assertEquals(ProcessedForest.of(Vector(x, y)).map(_.size), Left(ProcessedForest.Cycle(y.hash)))
+    val self = header(4, Some(hash(4)), 1, 4)
     assertEquals(
-      AvailableBlocks.candidates(origin, chain(x, y), Set.empty),
-      Left(AvailableBlocks.Error.Cycle(x.hash))
+      ProcessedForest.of(Vector(self)).map(_.size),
+      Left(ProcessedForest.Cycle(self.hash))
+    )
+    // the model refuses the same forest when it selects from it
+    assertEquals(
+      AvailableBlocksModel.candidates(origin, chain(x, y), Set.empty),
+      Left(AvailableBlocksModel.Error.Cycle(x.hash))
     )
   }
 

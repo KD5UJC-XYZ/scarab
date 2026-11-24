@@ -340,6 +340,7 @@ object Main extends IOApp:
             }
           }
           .flatMap(items => pool.seedRecoveredMetadata(items.flatten))
+          .flatMap(_.fold(summon[Raise[IO, NodeError]].raise(_), IO.pure))
       }
     )
 

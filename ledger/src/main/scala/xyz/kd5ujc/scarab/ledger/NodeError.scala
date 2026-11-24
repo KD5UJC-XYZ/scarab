@@ -319,15 +319,12 @@ enum BlockPoolProblem extends NodeError:
   case MissingDeliveredHeader(point: ChainSync.Point)
   case DifferentInvalidRegistry
   case NoSelectionWorker
-  case AvailableHashMismatch(key: Bytes, actual: Bytes)
   case SelectionProjectionChanged(point: ChainSync.Point)
   case AvailableCycle(hash: Bytes)
 
   def message: String = this match
     case MissingDeliveredHeader(point) =>
       s"received block ${Points.show(point)} has no original adding-header context"
-    case AvailableHashMismatch(key, actual) =>
-      s"available block key ${key.hex} differs from header hash ${actual.hex}"
     case SelectionProjectionChanged(point) =>
       s"candidate projection changed under selection lock at $point"
     case AvailableCycle(hash) => s"available block ancestry contains a cycle at ${hash.hex}"

@@ -240,7 +240,9 @@ final class Follower[F[_]: Async, S] private (
             else BlockPool.Delivered.checked(header, raw).leftMap(Follower.Retention.Unmatched(_))
         }
       private def stored(block: BlockPool.Delivered)(using Raise[F, NodeError]): F[Unit] =
-        before.store(block.header, block.block) *> pool.processForged(block).void
+        before.store(block.header, block.block) *> pool
+          .processForged(block)
+          .flatMap(_.fold(_.raise[F, Unit], _ => F.unit))
       def keep(header: Header, raw: Bytes)(using Raise[F, NodeError]): F[Follower.Retention] =
         admitted(header, raw).flatMap(
           _.fold(F.pure, block => stored(block).as(Follower.Retention.Kept))

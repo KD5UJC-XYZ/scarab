@@ -35,7 +35,7 @@ private[node] final class BlockSelection[F[_]: Async] private (
     * original is taken from there and never read again where a wait could not be cancelled.
     */
   private def reader(
-      bodies: Map[Bytes, BlockPool.Processed],
+      bodies: ProcessedForest[BlockPool.Processed],
       last: Ref[F, Option[(BlockPool.Processed, Bytes)]]
   ): BlockSelection.Bodies[F] =
     new BlockSelection.Bodies[F]:
@@ -82,7 +82,7 @@ private[node] final class BlockSelection[F[_]: Async] private (
       // excluded for the rest of this selection, so its end does not depend on the clock (#693).
       now <- F.monotonic
       current <- application.local
-      bodies <- pool.processedSnapshot
+      bodies <- pool.processedForest
       // only a reselection judges a withheld block again, the one due first with those of its
       // chain, never an admission: a delivery cannot bring an attempt forward, and a refusal on it
       // blames no session
@@ -98,23 +98,17 @@ private[node] final class BlockSelection[F[_]: Async] private (
       withheld <- pool.noVerdictBlocks.excluded(released)
       // a ranking block certifying an endorser block whose closure is not acquired is parked: hidden
       // as a tip and as a successor until it is (`ignoreUnacquiredCertRB`,
-      // `ignoreUnacquiredCertRBSuc`, `ChainSel.hs:1046-1064` at ouroboros-consensus 2416493b)
+      // `ignoreUnacquiredCertRBSuc`, `ChainSel.hs:1046-1064` at ouroboros-consensus 2416493b),
+      // asked of each block the walks reach, as the reference wraps the forest's functions
       acquired <- pool.leios.snapshot
-      parked = LeiosCertGate.hidden(acquired, BlockSelection.forest(bodies))
-      original <- AvailableBlocks
-        .candidates(
-          if phase == Phase.Startup then current.copy(blocks = Vector.empty) else current,
-          bodies.view.mapValues(_.delivered.header).toMap,
-          known.entries.keySet ++ withheld ++ parked,
-          cause.containing,
-          originPredecessor
-        )
-        .leftMap {
-          case AvailableBlocks.Error.HashMismatch(key, actual) =>
-            BlockPoolProblem.AvailableHashMismatch(key, actual)
-          case AvailableBlocks.Error.Cycle(hash) => BlockPoolProblem.AvailableCycle(hash)
-        }
-        .fold(_.raise[F, Vector[ChainSelection.Candidate]], F.pure)
+      parked = LeiosCertGate.unacquired(acquired, BlockSelection.leiosBlock(bodies))
+      original = AvailableBlocks.candidates(
+        if phase == Phase.Startup then current.copy(blocks = Vector.empty) else current,
+        bodies,
+        hash => known.entries.contains(hash) || withheld(hash) || parked(hash),
+        cause.containing,
+        originPredecessor
+      )
       _ <- F.tailRecM(()) { _ =>
         for
           before <- pool.invalidBlocks.snapshot
@@ -169,11 +163,12 @@ private[node] final class BlockSelection[F[_]: Async] private (
               pool.admissions.stage(AdmissionStage.Applying) *> application.admits(header).flatMap {
                 case false => F.unit
                 case true =>
-                  pool.processedSnapshot.flatMap { processed =>
+                  pool.processedForest.flatMap { processed =>
                     if processed.contains(header.hash) then F.unit
                     else
                       before.prepare(header, admission.taken.block) *> pool
-                        .processAdmission(admission) *>
+                        .processAdmission(admission)
+                        .flatMap(_.fold(_.raise[F, Boolean], F.pure)) *>
                         selectLocked(BlockSelection.Cause.Admitted(admission))
                   }
               }
@@ -205,7 +200,7 @@ private[node] final class BlockSelection[F[_]: Async] private (
     * nothing is done when none is parked.
     */
   private def reprocessLeiosEb(eb: EbHash)(using Raise[F, NodeError]): F[Unit] =
-    (pool.processedSnapshot, pool.invalidBlocks.snapshot).flatMapN { (bodies, known) =>
+    (pool.processedForest, pool.invalidBlocks.snapshot).flatMapN { (bodies, known) =>
       NonEmptyVector
         .fromVector(
           LeiosCertGate
@@ -288,10 +283,16 @@ private[node] object BlockSelection:
   /** What the acquired-endorser-block gate reads of the processed forest: each block's predecessor
     * and Leios fields, as the reference reads them from the VolatileDB's `BlockInfo`.
     */
-  def forest(bodies: Map[Bytes, BlockPool.Processed]): Map[Bytes, LeiosForestBlock] =
-    bodies.view
+  def forest(bodies: ProcessedForest[BlockPool.Processed]): Map[Bytes, LeiosForestBlock] =
+    bodies.byHash.view
       .mapValues(p => LeiosForestBlock(p.delivered.header.prevHash, p.delivered.leios))
       .toMap
+
+  /** The same, of one block: what the gate reads of a block a selection's walk reaches. */
+  def leiosBlock(bodies: ProcessedForest[BlockPool.Processed])(
+      hash: Bytes
+  ): Option[LeiosForestBlock] =
+    bodies.get(hash).map(p => LeiosForestBlock(p.delivered.header.prevHash, p.delivered.leios))
 
   /** The worker's chain selection for a block this node forged, run by the follower under the
     * application lock it holds.
