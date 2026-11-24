@@ -298,8 +298,7 @@ object LocalSubmission:
                 LocalTxSubmissionServer.Unavailable.ScriptEvaluation(cause)
               )
             case cause @ (ConwayUnjudged.UtxoState(_) | ConwayUnjudged.Gov(_) |
-                ConwayUnjudged.ProposalsRead(_) | ConwayUnjudged.ProposalsWrite(_) |
-                ConwayUnjudged.Projection(_)) =>
+                ConwayUnjudged.ProposalsRead(_) | ConwayUnjudged.Projection(_)) =>
               LocalTxSubmissionServer.Response.Aborted(cause)
         // no verdict on a Dijkstra transaction: no reply, the client's connection ends, as a
         // provider's failure ends it for the other eras

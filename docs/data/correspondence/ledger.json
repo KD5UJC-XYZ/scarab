@@ -33688,8 +33688,8 @@
    "evidence": [
     "ConwayLedgerChecksSuite"
    ],
-   "note": "the era's Proposals written back as the node's record, a typed ProposalsWriteError where it cannot hold an action",
-   "digest": "ec30e85d2022f311"
+   "note": "the era's Proposals written back as the node's record, which holds every Conway action",
+   "digest": "8c37c3696c61be85"
   },
   "def ledger.era.rules.ProposalsRecord#storedAction": {
    "upstream": [
@@ -33731,7 +33731,7 @@
     "ConwayLedgerChecksSuite"
    ],
    "note": "Conway's, over ConwayProposals.fromStored, toStored and storedAction",
-   "digest": "b98be3c626a37d7e"
+   "digest": "62936f473832ced2"
   },
   "def ledger.era.rules.InjectLedgerFailure.conwayShelleyUtxo": {
    "upstream": [
@@ -45593,8 +45593,8 @@
    "evidence": [
     "ConwayLedgerChecksSuite"
    ],
-   "note": "the proposals of the ledger state's record as a capability, read on get and written on set, the record's refusals raised",
-   "digest": "a0dfed935997a68c"
+   "note": "the proposals of the ledger state's record as a capability, read on get and written on set, the record's read refusals raised",
+   "digest": "298ffa5a211a53c3"
   },
   "def ledger.era.DecCBOR.recordNamed": {
    "upstream": [
@@ -47876,7 +47876,7 @@
     "ConwayMempoolRunSuite"
    ],
    "note": "the mempool failure holds the node's typed cause (MempoolProblem) where the reference holds its Text, as ConwayLedgerPredFailure.ConwayMempoolFailure does; LEDGER through its embedding, the identity; the annotation given, through mempoolTransitionAnnotating",
-   "digest": "486ebe7b91587ff7"
+   "digest": "bd310898cefb4fb9"
   },
   "class ledger.era.rules.ConwayApplyTxError": {
    "upstream": [
@@ -48379,7 +48379,7 @@
     "ConwayMempoolRunSuite"
    ],
    "note": "the signal's annotation an effect forced where LEDGER first reads it, as the reference's AlonzoStAnnTx is strict in the transaction alone: the node's reading of the stored outputs the annotation is made from cannot fail before MEMPOOL's duplicate check",
-   "digest": "baceb425e8d056a4"
+   "digest": "dabdbb19f8416c77"
   },
   "def ledger.era.conway.ConwayBlock.read": {
    "upstream": [
@@ -49597,26 +49597,16 @@
    ]
   },
   {
-   "reason": "the node's flat governance record read into the era's governance state and written back, and its parameters, each written over its own position's flat record, proposals and action states, until the ledger state holds the era's record (#85); a write is refused where the flat record cannot hold an update of the keys Dijkstra adds",
+   "reason": "the node's flat governance record read into the era's governance state, its parameters, proposals and action states, until the ledger state holds the era's record (#85): Dijkstra's ledger state holds the era's record, read from Conway's flat one where the chain enters Dijkstra; nothing writes the era's governance state back whole",
    "definitions": [
     "enum ledger.era.GovStateParams",
     "enum ledger.era.GovStateReadError",
-    "enum ledger.era.ProposalsWriteError",
     "trait ledger.era.GovStateRecord",
     "object ledger.era.GovStateRecord",
     "def ledger.era.GovStateRecord#action",
     "def ledger.era.GovStateRecord#pparams",
     "def ledger.era.GovStateRecord#proposals",
-    "def ledger.era.GovStateRecord#storedAction",
-    "def ledger.era.GovStateRecord#storedPParams",
-    "def ledger.era.GovStateRecord#storedProposals",
     "def ledger.era.GovStateRecord.fromStored",
-    "def ledger.era.GovStateRecord.toStored",
-    "class ledger.era.GovStateBases",
-    "object ledger.era.GovStateBases",
-    "def ledger.era.GovStateBases#at",
-    "def ledger.era.GovStateBases.of",
-    "def ledger.era.GovStateBases.uniform",
     "given ledger.era.GovStateRecord.conway",
     "given ledger.era.GovStateRecord.dijkstra",
     "def ledger.era.conway.ConwayProposals.action",
@@ -49629,13 +49619,9 @@
     "def ledger.era.dijkstra.DijkstraProposals.action",
     "def ledger.era.dijkstra.DijkstraProposals.fromFlat",
     "def ledger.era.dijkstra.DijkstraProposals.fromStored",
-    "def ledger.era.dijkstra.DijkstraProposals.storedAction",
-    "def ledger.era.dijkstra.DijkstraProposals.toFlat",
-    "def ledger.era.dijkstra.DijkstraProposals.toStored",
     "def ledger.era.Voter.fromFlat",
     "def ledger.era.Voter.toFlat",
-    "def ledger.era.GovStateRecord.ratifyStateFromStored",
-    "def ledger.era.GovStateRecord.ratifyStateToStored"
+    "def ledger.era.GovStateRecord.ratifyStateFromStored"
    ]
   },
   {

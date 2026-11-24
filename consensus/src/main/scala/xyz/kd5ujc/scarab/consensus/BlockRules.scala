@@ -105,8 +105,7 @@ enum BlockNoVerdict:
         cause match
           case C.Unavailable(unavailable) => BlockNoVerdict.recoveryOf(unavailable.reason)
           // the same build reads the same bytes and the same state again
-          case C.Projection(_) | C.Params(_) | C.UtxoState(_) | C.Gov(_) | C.ProposalsRead(_) |
-              C.ProposalsWrite(_) =>
+          case C.Projection(_) | C.Params(_) | C.UtxoState(_) | C.Gov(_) | C.ProposalsRead(_) =>
             Deterministic
       case Defect(_) => Passing
 
@@ -134,7 +133,7 @@ object BlockNoVerdict:
     defect match
       case C.Unavailable(cause) => ScriptUnavailable(cause)
       case C.Projection(cause)  => Projection(cause)
-      case C.Params(_) | C.UtxoState(_) | C.Gov(_) | C.ProposalsRead(_) | C.ProposalsWrite(_) =>
+      case C.Params(_) | C.UtxoState(_) | C.Gov(_) | C.ProposalsRead(_) =>
         ConwayRules(defect)
 
   /** Whether an evaluator's missing verdict can pass on its own, by its cause. */

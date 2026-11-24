@@ -1,16 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.era.dijkstra
 
-import cats.data.NonEmptySet
 import cats.syntax.all.*
-import scala.collection.immutable.SortedSet
 import xyz.kd5ujc.scarab.codec.Node
 import xyz.kd5ujc.scarab.ledger.{
   Anchor,
   CborRead,
   ConwayParamUpdate,
   DecodeField,
-  DecoderVersion,
   GovAction as FlatGovAction,
   GovActionId,
   GovActionState as StoredGovActionState,
@@ -37,22 +34,20 @@ import xyz.kd5ujc.scarab.ledger.era.{
   PParamsUpdate,
   ProposalProcedure,
   Proposals,
-  ProposalsReadError,
-  ProposalsWriteError
+  ProposalsReadError
 }
 import xyz.kd5ujc.scarab.ledger.era.conway.{ConwayPParams, ConwayProposals}
 import xyz.kd5ujc.scarab.ledger.rules.Convert
 import xyz.kd5ujc.scarab.ledger.state.{Conway, Dijkstra}
 
-/** Dijkstra's proposals read from the node's flat record of them and written back, as Conway's are
+/** Dijkstra's proposals read from the node's flat record of them, as Conway's are
   * ([[ConwayProposals]]): the flat record holds Conway's flat proposal ([[Proposal]]), whose update
   * holds Conway's keys only. The ledger state holds Dijkstra's own record, whose proposals the
   * state's codec reads as Dijkstra's decoder reads a proposal at version 12 ([[proposal]]:
   * [[DijkstraProposal.decode]], then [[DijkstraProcedures.proposal]]); a flat proposal is read
   * ([[fromFlat]]) where the chain enters Dijkstra, its update read through its typed value and the
-  * era's encoder. Written into the flat record, an update that sets a parameter Dijkstra adds (keys
-  * 34 to 56) is refused ([[ProposalsWriteError.UnstorableUpdate]]): the flat record cannot hold it.
-  * At cardano-ledger 9df9f98c.
+  * era's encoder. Nothing writes Dijkstra's proposals into the flat record. At cardano-ledger
+  * 9df9f98c.
   */
 object DijkstraProposals:
   /** A proposal of a Dijkstra state's item, as the state's decoder reads it (`DecCBOR
@@ -123,55 +118,11 @@ object DijkstraProposals:
       .map(a => DijkstraProposal(p.deposit, p.returnAccount, a, anchor(p.anchor)))
       .flatMap(DijkstraProcedures.proposal)
 
-  /** Conway's update keys (`Conway/PParams.hs:862-894`, cardano-ledger f649f975), the ones the flat
-    * update has a field for.
-    */
-  private val conwayKeys: Set[BigInt] =
-    EraPParams.conway.eraPParams.flatMap(_.ppUpdate.map(_.ppuTag.value)).toSet
-
   /** The update keys `u` sets, in the order of the era's descriptions. */
   def updateKeys(u: PParamsUpdate[Dijkstra]): Vector[BigInt] =
     EraPParams.dijkstra.eraPParams.flatMap(
       _.ppUpdate.filter(_.ppuLens.get(u).isDefined).map(_.ppuTag.value)
     )
-
-  /** A Dijkstra update as the flat record holds it: refused if it sets a key Conway's update has no
-    * field for, else written by the era's encoder (`EncCBOR (PParamsUpdate DijkstraEra)`) and read
-    * by the flat reader of an update at version 12 ([[ConwayParamUpdate.decode]]).
-    */
-  private def flatUpdate(
-      id: GovActionId,
-      u: PParamsUpdate[Dijkstra]
-  ): Either[ProposalsWriteError, ConwayParamUpdate] =
-    NonEmptySet
-      .fromSet(SortedSet.from(updateKeys(u).filterNot(conwayKeys)))
-      .map(ProposalsWriteError.UnstorableUpdate(id, _))
-      .toLeft(())
-      .flatMap(_ =>
-        CborRead
-          .decode(PParamsUpdate.encodePParamsUpdate(u)(using EraPParams.dijkstra).bytes)
-          .flatMap(ConwayParamUpdate.decode(_, DecoderVersion.Dijkstra))
-          .leftMap(ProposalsWriteError.StoredUpdate(id, _))
-      )
-
-  /** Dijkstra's proposal of the action `id` as the flat record holds it, the inverse of
-    * [[fromFlat]] where the record holds the proposal's update: each field the flat proposal's, the
-    * withdrawals in the reference's order (`Map AccountAddress Coin`).
-    */
-  def toFlat(
-      id: GovActionId,
-      p: ProposalProcedure[Dijkstra]
-  ): Either[ProposalsWriteError, Proposal] =
-    val action: Either[ProposalsWriteError, FlatGovAction] =
-      flatOrUpdate(p.pProcGovAction).fold(
-        { case GovAction.ParameterChange(parent, u, guardrails) =>
-          flatUpdate(id, u).map(
-            FlatGovAction.ParameterChange(parent.map(_.unGovPurposeId), _, guardrails.map(_.bytes))
-          )
-        },
-        Right(_)
-      )
-    action.map(Proposal(p.pProcDeposit.value, p.pProcReturnAddr, _, p.pProcAnchor))
 
   /** An action of Dijkstra as the flat record holds it, every action but a parameter change, which
     * is given back: its update is Dijkstra's ([[PParamsUpdate]]), which the flat record's update of
@@ -214,12 +165,6 @@ object DijkstraProposals:
       ProposalsReadError.StoredProposal(_, _)
     )
 
-  /** Dijkstra's action state as the node records it, its proposal written by [[toFlat]]. */
-  def storedAction(
-      gas: GovActionState[Dijkstra]
-  ): Either[ProposalsWriteError, StoredGovActionState] =
-    toFlat(gas.gasId, gas.gasProposalProcedure).map(ConwayProposals.storedWith(gas, _))
-
   /** The node's record of the proposals as Dijkstra's [[Proposals]]: `mkProposals` over its roots
     * and actions in order, as Conway's ([[ConwayProposals.fromStored]]).
     */
@@ -227,11 +172,3 @@ object DijkstraProposals:
     stored.actions
       .traverse(action)
       .flatMap(Proposals.mkProposals[Dijkstra](ConwayProposals.roots(stored.roots), _))
-
-  /** Dijkstra's [[Proposals]] as the node records them: the roots and the actions in order, or the
-    * first action the record cannot hold.
-    */
-  def toStored(ps: Proposals[Dijkstra]): Either[ProposalsWriteError, StoredProposals] =
-    ps.pProps.toVector
-      .traverse(storedAction)
-      .map(StoredProposals(_, ConwayProposals.prevIds(Proposals.toPrevGovActionIds(ps.pRoots))))

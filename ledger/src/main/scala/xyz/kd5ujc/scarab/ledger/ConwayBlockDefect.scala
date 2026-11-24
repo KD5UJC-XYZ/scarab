@@ -5,7 +5,6 @@ import xyz.kd5ujc.scarab.ledger.era.{
   EraTxError,
   PParamsError,
   ProposalsReadError,
-  ProposalsWriteError,
   ScriptVerdictUnavailable
 }
 import xyz.kd5ujc.scarab.ledger.era.rules.{GovDefect, UtxoStateDefect}
@@ -44,14 +43,10 @@ enum ConwayBlockDefect:
   /** The node's record of the proposals does not read into the era's ([[ProposalsReadError]]). */
   case ProposalsRead(cause: ProposalsReadError)
 
-  /** The era's proposals do not write into the node's record ([[ProposalsWriteError]]). */
-  case ProposalsWrite(cause: ProposalsWriteError)
-
   def message: String = this match
-    case Unavailable(cause)    => s"a script has no verdict: ${cause.reason}"
-    case Projection(cause)     => s"the node's readings of the block disagree: $cause"
-    case Params(cause)         => s"the parameters in force are not Conway's: $cause"
-    case UtxoState(cause)      => s"the UTxO state cannot be changed: $cause"
-    case Gov(cause)            => s"GOV has no verdict: $cause"
-    case ProposalsRead(cause)  => s"the proposals cannot be read: $cause"
-    case ProposalsWrite(cause) => s"the proposals cannot be written: $cause"
+    case Unavailable(cause)   => s"a script has no verdict: ${cause.reason}"
+    case Projection(cause)    => s"the node's readings of the block disagree: $cause"
+    case Params(cause)        => s"the parameters in force are not Conway's: $cause"
+    case UtxoState(cause)     => s"the UTxO state cannot be changed: $cause"
+    case Gov(cause)           => s"GOV has no verdict: $cause"
+    case ProposalsRead(cause) => s"the proposals cannot be read: $cause"

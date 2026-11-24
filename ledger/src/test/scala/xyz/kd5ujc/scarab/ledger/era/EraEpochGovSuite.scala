@@ -6,7 +6,18 @@ import org.scalacheck.Gen
 import org.scalacheck.Prop.forAll
 import scala.collection.immutable.SortedSet
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.{GovActionId, PreprodDeepTx}
+import xyz.kd5ujc.scarab.ledger.{
+  CborRead,
+  ConwayParamUpdate,
+  DecoderVersion,
+  GovAction as FlatGovAction,
+  GovActionId,
+  GovActionState as StoredGovActionState,
+  PreprodDeepTx,
+  Proposal,
+  Proposals as StoredProposals
+}
+import xyz.kd5ujc.scarab.ledger.era.conway.ConwayProposals
 import xyz.kd5ujc.scarab.ledger.era.dijkstra.{DijkstraCorpus, DijkstraProposals}
 import xyz.kd5ujc.scarab.ledger.era.rules.ConwayEpoch
 import xyz.kd5ujc.scarab.ledger.state.{
@@ -35,8 +46,9 @@ import xyz.kd5ujc.scarab.ledger.state.{
   *
   *   - `proposalsApplyEnactment` on a forest of every shape, against the node's flat rule
   *     (`xyz.kd5ujc.scarab.ledger.Proposals.applyEnactment`, which the recorded epoch cases bind):
-  *     the same proposals, roots and removed actions, over random forests too (TST-6); and its
-  *     removal of 10,000 descendants on a 256 KiB stack (STK-3);
+  *     the same proposals, roots and removed actions, over random forests too (TST-6), the flat
+  *     rule's proposals read into the era's by the stored reader (`DijkstraProposals.fromStored`);
+  *     and its removal of 10,000 descendants on a 256 KiB stack (STK-3);
   *   - `returnProposalDeposits`, `applyEnactedWithdrawals` and `updateNumDormantEpochs`: a
   *     registered account is paid and an unregistered one's amount is kept, and a dormant epoch is
   *     one with no action still to vote on;
@@ -115,8 +127,41 @@ class EraEpochGovSuite extends ScalaCheckSuite:
       Proposals.mkProposals[Dijkstra](GovRelation[Option](None, None, None, None), actions.toVector)
     )
 
+  /** The node's flat record of a change's update (`change`): key 0 at 1. */
+  private val flatChange: ConwayParamUpdate = ok(
+    CborRead
+      .decode(DijkstraCorpus.hex("a10001"))
+      .flatMap(ConwayParamUpdate.decode(_, DecoderVersion.Dijkstra))
+  )
+
+  /** One of this suite's action states as the node's flat record holds it, for the flat rule: a
+    * change's update [[flatChange]], every other action's the flat form of it
+    * (`DijkstraProposals.flatOrUpdate`). The stored reader reads it back as `g`.
+    */
+  private def flat(g: GovActionState[Dijkstra]): StoredGovActionState =
+    val p = g.gasProposalProcedure
+    val action = DijkstraProposals
+      .flatOrUpdate(p.pProcGovAction)
+      .fold(
+        { case GovAction.ParameterChange(parent, _, guardrails) =>
+          FlatGovAction.ParameterChange(
+            parent.map(_.unGovPurposeId),
+            flatChange,
+            guardrails.map(_.bytes)
+          )
+        },
+        identity
+      )
+    val stored = ConwayProposals.storedWith(
+      g,
+      Proposal(p.pProcDeposit.value, p.pProcReturnAddr, action, p.pProcAnchor)
+    )
+    assertEquals(DijkstraProposals.action(stored), Right(g))
+    stored
+
   /** The era's `proposalsApplyEnactment` and the node's flat rule on the same proposals: the
-    * proposals after, by the node's record, and the ids of the enacted, competing and expired.
+    * proposals after, the flat rule's read into the era's, and the ids of the enacted, competing
+    * and expired.
     */
   private def bothRules(
       ps: Proposals[Dijkstra],
@@ -125,10 +170,14 @@ class EraEpochGovSuite extends ScalaCheckSuite:
   ): Unit =
     val (era, eraEnacted, eraCompeting, eraExpired) =
       Proposals.proposalsApplyEnactment(enacted, expired, ps)
-    val stored = ok(DijkstraProposals.toStored(ps))
-    val (flat, flatCompeting, flatExpired) =
-      stored.applyEnactment(enacted.map(g => ok(DijkstraProposals.storedAction(g))), expired)
-    assertEquals(ok(DijkstraProposals.toStored(era)), flat)
+    val stored = StoredProposals(
+      ps.pProps.toVector.map(flat),
+      ConwayProposals.prevIds(Proposals.toPrevGovActionIds(ps.pRoots))
+    )
+    assertEquals(DijkstraProposals.fromStored(stored), Right(ps))
+    val (flatAfter, flatCompeting, flatExpired) =
+      stored.applyEnactment(enacted.map(flat), expired)
+    assertEquals(ok(DijkstraProposals.fromStored(flatAfter)), era)
     assertEquals(eraEnacted.keySet, enacted.map(_.gasId).toSet.filter(ps.pProps.toMap.contains))
     assertEquals(eraCompeting.keySet, flatCompeting.map(_.id).toSet)
     assertEquals(eraExpired.keySet, flatExpired.map(_.id).toSet)

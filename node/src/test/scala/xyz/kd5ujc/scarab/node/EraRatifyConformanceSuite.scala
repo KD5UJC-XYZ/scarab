@@ -23,7 +23,6 @@ import xyz.kd5ujc.scarab.ledger.era.{
   ConwayEraPParams,
   EraAccounts,
   GovActionState,
-  GovStateBases,
   GovStateRecord,
   RatifyEnv,
   RatifySignal,
@@ -33,6 +32,7 @@ import xyz.kd5ujc.scarab.ledger.era.{
 import xyz.kd5ujc.scarab.ledger.era.rules.{ConwayEnact, ConwayRatify, EnactSignal}
 import xyz.kd5ujc.scarab.ledger.rules.Convert
 import xyz.kd5ujc.scarab.models.runtime.Codec
+import xyz.kd5ujc.scarab.storage.{ConwayGovWrite, GovStateBases}
 import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellStateCodecs, Wire}
 import xyz.kd5ujc.scarab.storage.haskell.state.NodeOrders.given
 
@@ -117,9 +117,7 @@ class EraRatifyConformanceSuite extends FunSuite:
 
   /** The era rule's state as the node records it, its parameters over `base` 's. */
   private def stored(rs: RatifyState[S.Conway], base: FlatRatifyState): FlatRatifyState =
-    right("stored")(
-      GovStateRecord.ratifyStateToStored[S.Conway](rs, GovStateBases.uniform(base.enact.params))
-    )
+    ConwayGovWrite.ratifyStateToStored(rs, GovStateBases.uniform(base.enact.params))
 
   private def transition(dir: Path, before: String, expected: String): Unit =
     val env = environment(node(dir.resolve("environment.cbor")))

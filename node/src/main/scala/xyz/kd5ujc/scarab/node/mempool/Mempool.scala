@@ -268,7 +268,7 @@ object Mempool:
           case ConwayUnjudged.Unavailable(_) | ConwayUnjudged.Projection(_) =>
             Some(NetworkError.Unjudged(Protocols.TxSubmission2, cause))
           case ConwayUnjudged.UtxoState(_) | ConwayUnjudged.Gov(_) |
-              ConwayUnjudged.ProposalsRead(_) | ConwayUnjudged.ProposalsWrite(_) =>
+              ConwayUnjudged.ProposalsRead(_) =>
             None
       // a refusal, or a defect of the state's own, ends nothing: named one by one, so that a new
       // kind of rejection is placed here by the compiler, not left open by a default

@@ -1,15 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.era
 
-import cats.data.NonEmptySet
 import scala.collection.immutable.{SortedMap, SortedSet}
-import xyz.kd5ujc.scarab.ledger.{
-  GovActionId,
-  LedgerDecodeError,
-  RewardAccount,
-  Vote,
-  Voter as FlatVoter
-}
+import xyz.kd5ujc.scarab.ledger.{GovActionId, RewardAccount, Vote, Voter as FlatVoter}
 import xyz.kd5ujc.scarab.ledger.rules.Convert
 import xyz.kd5ujc.scarab.ledger.state.{
   Coin,
@@ -541,18 +534,3 @@ enum ProposalsReadError:
     * record holding an id twice gives: the ids recorded and those the store holds, in order.
     */
   case Malformed(recorded: Vector[GovActionId], rebuilt: Vector[GovActionId])
-
-/** Why an era's action state cannot be written to the node's record of it, which holds Conway's
-  * flat proposal: what only an era whose proposals hold more than Conway's gives (Dijkstra). None
-  * is a verdict of the rules.
-  */
-enum ProposalsWriteError:
-  /** A parameter change that sets parameters the flat update has no field for, the update keys of
-    * those Dijkstra adds (34 to 56, `Dijkstra/PParams.hs:798-1123`, cardano-ledger 9df9f98c).
-    */
-  case UnstorableUpdate(id: GovActionId, keys: NonEmptySet[BigInt])
-
-  /** A parameter change whose update, written by the era's encoder, the flat reader of an update
-    * refuses: what no update the era's decoder read gives.
-    */
-  case StoredUpdate(id: GovActionId, error: LedgerDecodeError)

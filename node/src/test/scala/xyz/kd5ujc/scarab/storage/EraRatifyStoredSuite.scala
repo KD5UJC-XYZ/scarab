@@ -35,12 +35,11 @@ import xyz.kd5ujc.scarab.ledger.era.{
   GovActionPurpose,
   GovPurposeId,
   GovRelation,
-  GovStateBases,
   GovStateReadError,
   GovStateRecord,
   PParams,
-  ProposalsWriteError,
   Proposals,
+  PulsingSnapshot,
   RatifyEnv,
   RatifySignal,
   VotingStakePoolDistr
@@ -85,21 +84,21 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{
   * public Leios testnet where present: from the enact state the pulser starts from
   * (`Governance.hs`'s `mkEnactState`: the state's committee, constitution and parameters, its
   * treasury, no withdrawals and the proposals' roots), over the snapshot's actions in priority
-  * order, it reaches the stored ratification, which is the reference's own result; and the flat
-  * `Ratify` reaches the stored flat record from the same inputs. For `conway-195`, of the Leios
-  * devnet's epoch 0, the start's current parameters are the translation's, before consensus
-  * injected the genesis' cost models into the state's current ones (its own test).
+  * order, it reaches the stored ratification, which is the reference's own result; and, of a Conway
+  * state, which holds the flat record, the flat `Ratify` reaches the stored flat record from the
+  * same inputs. For `conway-195`, of the Leios devnet's epoch 0, the start's current parameters are
+  * the translation's, before consensus injected the genesis' cost models into the state's current
+  * ones (its own test).
   *
   * Every one of these snapshots holds no action (asserted per state), so this binds the empty
   * signal only: the start, the treasury's reset and the record's reading. The pulser's environment
   * is not stored (the stake, the committee's state, the accounts and pools at the epoch's start),
   * so a snapshot holding actions could not be replayed soundly from a later state; the two window G
-  * states with the proposal of keys 47 and 48 have no flat view (the flat rule's record has no form
-  * for the update), so they are not replayed, and their RATIFY is incomplete (CNF-2). Of the one
-  * whose pulser enacted that proposal, 1,576,750, ENACT of the action on the live parameters and
-  * roots gives the stored enact state's, read from the state's bytes. A withdrawal to an account of
-  * network 2, which the node's stored codec reads and the reference's does not, is ENACT's
-  * `VocabError`.
+  * states with the proposal of keys 47 and 48 are not replayed, and their RATIFY is incomplete
+  * (CNF-2). Of the one whose pulser enacted that proposal, 1,576,750, ENACT of the action on the
+  * live parameters and roots gives the stored enact state's, read from the state's bytes. A
+  * withdrawal to an account of network 2, which the node's stored codec reads and the reference's
+  * does not, is ENACT's `VocabError`.
   *
   * The private states are read from the directory `SCARAB_LEIOS_REFERENCE_STATES` names
   * ([[LeiosReferenceStates]]), one test each: skipped by name where the variable is not set (an
@@ -129,12 +128,11 @@ class EraRatifyStoredSuite extends FunSuite with ExternalInputs:
     */
   private def environment[E <: EraTag](
       state: NewEpochState[E],
-      flat: ConwayGovState
+      snapshot: PulsingSnapshot[E]
   )(using c: ConwayEraCertState[E]): RatifyEnv[E] =
-    val snapshot = flat.drepPulsing.snapshot
     val cert = state.es.ls.cert
     val stakes = right("pools")(
-      snapshot.poolDistr.toVector.traverse((k, v) =>
+      snapshot.psPoolDistr.toVector.traverse((k, v) =>
         (KeyHash.fromBytes[StakePool](k), CompactCoin.fromBigInt(v)).tupled
       )
     )
@@ -143,11 +141,11 @@ class EraRatifyStoredSuite extends FunSuite with ExternalInputs:
       state.es.ls.utxo.instantStake,
       VotingStakePoolDistr(Sorted.map(stakes), total),
       right("DReps")(
-        snapshot.drepDistr.toVector.traverse((d, v) =>
+        snapshot.psDRepDistr.toVector.traverse((d, v) =>
           (Convert.drep(d), CompactCoin.fromBigInt(v)).tupled
         )
       ).toMap,
-      right("DRep states")(snapshot.drepState.toVector.traverse { (k, d) =>
+      right("DRep states")(snapshot.psDRepState.toVector.traverse { (k, d) =>
         (
           Convert.credential[DRepRole](k),
           EpochNo.fromBigInt(d.expiry),
@@ -188,41 +186,45 @@ class EraRatifyStoredSuite extends FunSuite with ExternalInputs:
       FlatView.pools(0, c.certPStateL.get(cert).stakePools)
     )
 
-  /** A state's governance state as the node's flat record, which the flat rule reads, and as the
-    * era's record: Conway's state holds the flat record, read into the era's; Dijkstra's holds the
-    * era's, written as the flat record over the fields its codec left at zero (`Params.empty`).
+  /** A state's governance state as the era's record and, where the state holds it, as the node's
+    * flat record, which the flat rule reads, with the writer of the era's parameters into it over
+    * the fields its codec left (`Params.empty`): Conway's state holds the flat record, read into
+    * the era's; Dijkstra's holds the era's only.
     */
   private trait GovViews[E <: EraTag]:
     def apply(
         nes: NewEpochState[E]
     ): Either[
-      GovStateReadError | ProposalsWriteError,
-      (ConwayGovState, xyz.kd5ujc.scarab.ledger.era.ConwayGovState[E])
+      GovStateReadError,
+      (
+          Option[(ConwayGovState, PParams[E] => ProtocolParams)],
+          xyz.kd5ujc.scarab.ledger.era.ConwayGovState[E]
+      )
     ]
 
   private given GovViews[Conway] = nes =>
     val flat: ConwayGovState = nes.es.ls.utxo.gov
-    GovStateRecord.fromStored[Conway](flat).map(flat -> _)
-
-  private given GovViews[Dijkstra] = nes =>
-    val era: xyz.kd5ujc.scarab.ledger.era.ConwayGovState[Dijkstra] = nes.es.ls.utxo.gov
     GovStateRecord
-      .toStored[Dijkstra](era, GovStateBases.uniform(Params.empty))
-      .map(_ -> era)
+      .fromStored[Conway](flat)
+      .map(Some(flat -> (ConwayGovWrite.storedPParams(_, Params.empty))) -> _)
 
-  /** RATIFY of a state's snapshot on both rules, beside its stored ratification. */
+  private given GovViews[Dijkstra] = nes => Right(None -> nes.es.ls.utxo.gov)
+
+  /** RATIFY of a state's snapshot on the era's rule, beside its stored ratification, and, of a
+    * state that holds the flat record, the flat rule's end beside the stored flat record.
+    */
   private final case class Replayed[E <: EraTag](
       era: xyz.kd5ujc.scarab.ledger.era.ConwayGovState[E],
       end: xyz.kd5ujc.scarab.ledger.era.RatifyState[E],
       stored: xyz.kd5ujc.scarab.ledger.era.RatifyState[E],
-      flatEnd: FlatRatifyState,
-      flatStored: FlatRatifyState,
+      flat: Option[(FlatRatifyState, FlatRatifyState)],
       actions: Int
   )
 
-  /** RATIFY of `nes` 's snapshot on both rules, from the enact state the pulser starts from with
-    * the state's current parameters, or `startCur` in their place where the pulser was made before
-    * the state's current parameters were.
+  /** RATIFY of `nes` 's snapshot on the era's rule and, where the state holds the flat record, the
+    * flat one, from the enact state the pulser starts from with the state's current parameters, or
+    * `startCur` in their place where the pulser was made before the state's current parameters
+    * were.
     */
   private def replayed[E <: EraTag](
       what: String,
@@ -230,7 +232,6 @@ class EraRatifyStoredSuite extends FunSuite with ExternalInputs:
       nes: Node,
       startCur: Option[PParams[E]]
   )(using
-      r: GovStateRecord[E],
       c: ConwayEraCertState[E],
       p: ConwayEraPParams[E],
       a: ConwayEraAccounts[E]
@@ -252,7 +253,7 @@ class EraRatifyStoredSuite extends FunSuite with ExternalInputs:
     )
     val end = right(s"$what RATIFY")(
       ConwayRatify.ratifyTransition(
-        environment(state, flat),
+        environment(state, snapshot),
         xyz.kd5ujc.scarab.ledger.era
           .RatifyState[E](start, Vector.empty, scala.collection.immutable.SortedSet.empty, false),
         RatifySignal(RatifySignal.reorderActions(snapshot.psProposals))
@@ -260,34 +261,32 @@ class EraRatifyStoredSuite extends FunSuite with ExternalInputs:
     )
     // the flat record of the start's parameters is the one the state's codec reads of them, its other
     // eras' fields the codec's (`Params.empty`)
-    val flatStart = FlatEnactState(
-      flat.committee,
-      flat.constitution,
-      startCur.fold(flat.curPParams)(r.storedPParams(_, Params.empty)),
-      flat.prevPParams,
-      treasury.value,
-      Map.empty,
-      flat.proposals.roots
-    )
-    val flatEnd: FlatRatifyState =
-      Ratify.ratify(flatEnvironment(state, flat), flatStart, flat.drepPulsing.snapshot.proposals)
-    (
-      state.epoch,
-      Replayed[E](era, end, stored, flatEnd, flat.drepPulsing.ratify, snapshot.psProposals.size)
-    )
+    val flatRun = flat.map { (flat, flatParams) =>
+      val flatStart = FlatEnactState(
+        flat.committee,
+        flat.constitution,
+        startCur.fold(flat.curPParams)(flatParams),
+        flat.prevPParams,
+        treasury.value,
+        Map.empty,
+        flat.proposals.roots
+      )
+      Ratify.ratify(flatEnvironment(state, flat), flatStart, flat.drepPulsing.snapshot.proposals) ->
+        flat.drepPulsing.ratify
+    }
+    (state.epoch, Replayed[E](era, end, stored, flatRun, snapshot.psProposals.size))
 
-  /** RATIFY of a state's snapshot on both rules reaches its stored ratification; the number of
-    * actions in its snapshot.
+  /** RATIFY of a state's snapshot on the era's rule, and on the flat one where the state holds the
+    * flat record, reaches its stored ratification; the number of actions in its snapshot.
     */
   private def replay[E <: EraTag](what: String, codec: Codec[NewEpochState[E]], nes: Node)(using
-      GovStateRecord[E],
       ConwayEraCertState[E],
       ConwayEraPParams[E],
       ConwayEraAccounts[E]
   )(using GovViews[E]): Int =
     val (_, r) = replayed[E](what, codec, nes, None)
     assertEquals(r.end, r.stored, what)
-    assertEquals(r.flatEnd, r.flatStored, what)
+    r.flat.foreach((end, stored) => assertEquals(end, stored, what))
     r.actions
 
   private def leios(path: String): Node =
@@ -348,11 +347,11 @@ class EraRatifyStoredSuite extends FunSuite with ExternalInputs:
     assertEquals(r.stored.rsEnactState.ensPrevPParams, start)
     // the current ones are the translation's with the injected cost models over them: the Alonzo
     // and Conway genesis' PlutusV1 and PlutusV3 models replaced, and PlutusV2 added
-    val base = record.storedPParams(start, Params.empty)
+    val base = ConwayGovWrite.storedPParams(start, Params.empty)
     assertEquals(base.costModels.view.mapValues(_.size).toMap, Map(0 -> 166, 2 -> 251))
     assertEquals(injected.view.mapValues(_.size).toMap, Map(0 -> 332, 1 -> 332, 2 -> 350))
     assertEquals(
-      record.storedPParams(r.era.cgsCurPParams, Params.empty),
+      ConwayGovWrite.storedPParams(r.era.cgsCurPParams, Params.empty),
       base.copy(costModels = base.costModels ++ injected)
     )
     // in the state's bytes, the current parameters differ from the enact state's in field 15 (the
@@ -365,7 +364,9 @@ class EraRatifyStoredSuite extends FunSuite with ExternalInputs:
     assertEquals(differing(at(gov, 3), at(gov, 4)), Vector(15))
     // and RATIFY from the translation's enact state reaches the stored ratification exactly
     assertEquals(r.end, r.stored)
-    assertEquals(r.flatEnd, r.flatStored)
+    r.flat match
+      case Some((end, stored)) => assertEquals(end, stored)
+      case None                => fail("no flat record")
   }
 
   test("RATIFY over the native V10 fixtures' Conway snapshots reaches their stored ratification") {
@@ -403,14 +404,16 @@ class EraRatifyStoredSuite extends FunSuite with ExternalInputs:
     val name = capture.name
     if withDijkstraKeys(capture) then
       test(
-        s"RATIFY over the testnet's private state $name is incomplete: its proposal of keys 47 and 48 has no flat view"
+        s"RATIFY over the testnet's private state $name is incomplete: it holds the proposal of keys 47 and 48"
       ) {
         withInput(LeiosReferenceStates.input(capture)) { root =>
           val (_, nes) = current(stateFile(capture.state(root)))
           val state = right(name)(LeiosStateCodecs.newEpochState[Dijkstra].decode(nes))
-          // its proposal updates keys 47 and 48, which the flat record of the flat rule has no
-          // form for
-          assert(summon[GovViews[Dijkstra]](state).isLeft, name)
+          val keys = Proposals
+            .proposalsActions(state.es.ls.utxo.gov.cgsProposals)
+            .map(_.gasAction)
+            .collect { case GovAction.ParameterChange(_, u, _) => DijkstraProposals.updateKeys(u) }
+          assertEquals(keys, Vector(Vector(BigInt(47), BigInt(48))), name)
         }
       }
     else
