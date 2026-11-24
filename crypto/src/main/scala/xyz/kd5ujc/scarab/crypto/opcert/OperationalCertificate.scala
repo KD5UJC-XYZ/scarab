@@ -12,8 +12,12 @@ import xyz.kd5ujc.scarab.crypto.witness.{
 }
 import cats.syntax.either.*
 
-/** Public operational-certificate signature predicate only. No pool registration, counter-state,
-  * KES, header validity or chain-authenticity claim. Uses the existing experimental strict profile.
+/** The cold key's signature on an operational certificate, over `hotKey || counter || startPeriod`,
+  * verified with [[StrictEd25519]]. The header rules check a header's certificate with it
+  * (`ledger`'s `OCertRules`).
+  *
+  * A signature predicate only: the pool's registration, the counter rules, the KES period window
+  * and the KES signature are its callers'. Public inputs only; not independently audited (#230).
   */
 object OperationalCertificate:
   enum Failure:

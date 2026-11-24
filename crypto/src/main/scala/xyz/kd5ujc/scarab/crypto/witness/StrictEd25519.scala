@@ -70,10 +70,15 @@ object BodyHash32:
     Bytes.fromArray(bytes)
   )
 
-/** Experimental public-input predicate for the pinned non-COMPAT sodium source profile. Not a
-  * security audit, release-binary equivalence, or complete ledger validation. No constant-time
-  * claim: all inputs are public. Never add a cofactor to this equation, or replace small-order
-  * rejection with prime-subgroup-only validation.
+/** Ed25519 verification with the acceptance rules of libsodium's `crypto_sign_verify_detached`
+  * built without `ED25519_COMPAT`: the verifier of transaction witnesses from Shelley on, of
+  * operational certificates and of the KES leaf (Byron signatures are [[ByronEd25519]]'s).
+  *
+  * A signature predicate over public inputs: no constant-time claim, and not independently audited
+  * (#230). Its agreement with the reference is the finite corpus of `fixtures/witness`, compared
+  * with a source build of the pinned libsodium, not with a node's shipped binary. Never add a
+  * cofactor to this equation, or replace small-order rejection with prime-subgroup-only validation:
+  * either changes the accepted set.
   */
 object StrictEd25519:
   import VerificationResult.*
