@@ -13,7 +13,7 @@ import xyz.kd5ujc.scarab.ledger.{Block, Phase2, ScriptLocation}
 import xyz.kd5ujc.scarab.ledger.era.CollectError
 import xyz.kd5ujc.scarab.ledger.state.Dijkstra
 import xyz.kd5ujc.scarab.ledger.era.rules.{DijkstraBlockRun, DijkstraPhase2}
-import xyz.kd5ujc.scarab.plutus.{EvalFailure, EvalRequest, EvalResult, ScriptEvaluator}
+import xyz.kd5ujc.scarab.plutus.{EvalFailure, EvalRequest, EvalResult, ExUnits, ScriptEvaluator}
 
 /** Dijkstra's era run on a block prepared for the node's bounded parallel evaluation of its scripts
   * (ADR 0018), against its serial run ([[DijkstraBlockRun.program]]): the plan's result is the
@@ -54,14 +54,24 @@ object DijkstraPlanned extends Assertions:
       val _ = told.updateAndGet(_ :+ o)
     def all: Vector[DijkstraPhase2.Observation] = told.get
 
+  /** A script's result as two runs that each evaluated it compare it ([[projected]]): the units it
+    * spent and its trace, and a failure by its reason's message, since a machine's failure holds
+    * terms, equal only as the same object.
+    */
+  final case class Result(failure: Option[String], spent: ExUnits, logs: Vector[String])
+
+  object Result:
+    def of(result: EvalResult): Result = result match
+      case EvalResult.Success(spent, logs)         => Result(None, spent, logs)
+      case EvalResult.Failure(reason, spent, logs) => Result(Some(reason.message), spent, logs)
+
   /** An observation's outcome as two runs that each evaluated their scripts compare it
-    * ([[projected]]): each script by its location, its request and its verdict, a failure by its
-    * reason's message, since a machine's failure holds terms, equal only as the same object.
+    * ([[projected]]): each script by its location, its request and its result ([[Result]]).
     */
   enum Projection:
-    case Ran(scripts: Vector[(ScriptLocation, EvalRequest, Option[String])])
+    case Ran(scripts: Vector[(ScriptLocation, EvalRequest, Result)])
     case Unavailable(
-        scripts: Vector[(ScriptLocation, EvalRequest, Option[String])],
+        scripts: Vector[(ScriptLocation, EvalRequest, Result)],
         location: ScriptLocation,
         request: EvalRequest,
         reason: EvalFailure.Unsupported
@@ -75,15 +85,7 @@ object DijkstraPlanned extends Assertions:
       observations: Vector[DijkstraPhase2.Observation]
   ): Vector[(Bytes, Block.Transaction, BigInt, Projection)] =
     def scripts(es: Vector[DijkstraPhase2.Evaluation]) =
-      es.map(e =>
-        (
-          e.location,
-          e.request,
-          e.result match
-            case EvalResult.Success(_, _)         => None
-            case EvalResult.Failure(reason, _, _) => Some(reason.message)
-        )
-      )
+      es.map(e => (e.location, e.request, Result.of(e.result)))
     observations.map(o =>
       (
         o.id,
@@ -178,22 +180,26 @@ object DijkstraPlanned extends Assertions:
     assertEquals(programOf(shared.replaying, None).serial, serial, s"$name, not observed")
     // the plan's result and observations, the observer told only where the plan resolves
     def observed(variant: String)(
-        run: Option[DijkstraPhase2.Observation => Unit] => Either[
-          Phase2.Defect,
-          DijkstraBlockRun.Result
-        ]
+        run: Observations => Either[Phase2.Defect, DijkstraBlockRun.Result]
     ): Unit =
       val again = Observations()
-      same(variant, serial, run(Some(again.observer)))
+      same(variant, serial, run(again))
       assertEquals(again.all, told.all, s"$variant: the observations")
+    // prepared, a body tells nothing before its plan resolves, one past the block's units too
+    def prepared(variant: String, again: Observations): DijkstraBlockRun.Plan =
+      val observing = programOf(shared.replaying, Some(again.observer)).prepare
+      assertEquals(again.all, Vector.empty, s"$variant: told before the plan resolves")
+      observing
     val plan = programOf(shared.replaying, None).prepare
-    observed(s"$name, reversed") { o =>
-      val observing = programOf(shared.replaying, o).prepare
+    observed(s"$name, reversed") { again =>
+      val observing = prepared(s"$name, reversed", again)
       observing.resolve(observing.batches.reverse.flatMap(_.reverse).map(observing.execute))
     }
-    observed(s"$name, none run")(o => programOf(shared.replaying, o).prepare.resolve(Vector.empty))
+    observed(s"$name, none run")(again => prepared(s"$name, none run", again).resolve(Vector.empty))
     workers.foreach { n =>
-      observed(s"$name, $n workers")(o => runner(programOf(shared.replaying, o), n))
+      observed(s"$name, $n workers")(again =>
+        runner(programOf(shared.replaying, Some(again.observer)), n)
+      )
       same(s"$name, $n workers, not observed", serial, runner(programOf(shared.replaying, None), n))
     }
     // an admitted block holds no machine's term: its workers evaluate with `base` itself, the
