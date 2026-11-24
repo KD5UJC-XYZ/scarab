@@ -46,6 +46,7 @@ import json
 import os
 import pathlib
 import shlex
+import stat
 import subprocess
 import sys
 import time
@@ -174,24 +175,58 @@ def write_atomic(path, text, mode=0o600):
     fsync_dir(path.parent)
 
 
+def write_all(fd, data):
+    """Write all of `data` to `fd`: one `os.write` may take only a part of what it is given."""
+    view = memoryview(data)
+    while view:
+        view = view[os.write(fd, view):]
+
+
 def scrub(path):
-    """Overwrite a file with zeros and remove it (best effort on a file system that keeps old blocks)."""
-    if path.is_dir() and not path.is_symlink():
-        for child in sorted(path.iterdir()):
-            scrub(child)
-        path.rmdir()
-        return
+    """Overwrite a file with zeros and remove it (best effort on a file system that keeps old blocks); a directory
+    with all that is in it. The node writes in these directories, so nothing found there is followed: a symbolic
+    link is removed, never written through, and only a regular file is overwritten."""
     try:
-        size = path.stat().st_size
-        fd = os.open(path, os.O_WRONLY)
-        try:
-            os.write(fd, bytes(size))
-            os.fsync(fd)
-        finally:
-            os.close(fd)
+        parent = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
     except FileNotFoundError:
         return
-    path.unlink()
+    try:
+        _scrub_at(parent, path.name)
+    finally:
+        os.close(parent)
+
+
+def _scrub_at(parent, name):
+    """`scrub` of the entry `name` of the open directory `parent`. Every step names its entry from a descriptor of
+    the directory that holds it and refuses a link, so that an entry exchanged for a link meanwhile is not followed
+    either (the open fails, and the run with it)."""
+    try:
+        mode = os.stat(name, dir_fd=parent, follow_symlinks=False).st_mode
+    except FileNotFoundError:
+        return
+    if stat.S_ISDIR(mode):
+        fd = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
+        try:
+            for child in sorted(os.listdir(fd)):
+                _scrub_at(fd, child)
+        finally:
+            os.close(fd)
+        os.rmdir(name, dir_fd=parent)
+        return
+    if stat.S_ISREG(mode):
+        try:
+            # O_NONBLOCK: a FIFO put there since the look above fails the open instead of holding it for ever
+            fd = os.open(name, os.O_WRONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
+        except FileNotFoundError:
+            return
+        try:
+            opened = os.fstat(fd)
+            if stat.S_ISREG(opened.st_mode):
+                write_all(fd, bytes(opened.st_size))
+                os.fsync(fd)
+        finally:
+            os.close(fd)
+    os.unlink(name, dir_fd=parent)
 
 
 def generation_name(counter, period):
@@ -209,19 +244,30 @@ def switch_link(key_dir, target):
     fsync_dir(key_dir)
 
 
+def is_entry_name(name):
+    """Whether `name` names an entry of the key directory itself: one path component, and not `.` or `..`. The node
+    can write `current` and `rotation.json`, and the generations they name are overwritten and removed."""
+    return isinstance(name, str) and name not in ("", ".", "..") and "/" not in name and "\0" not in name
+
+
 def current_generation(key_dir):
     link = key_dir / "current"
     if not link.is_symlink():
         raise RotationError(EXIT_CONFIG, f"{link} is not a symbolic link to a generation directory")
     target = os.readlink(link)
-    if os.path.isabs(target) or "/" in target:
+    if not is_entry_name(target):
         raise RotationError(EXIT_CONFIG, f"{link} must point at a directory beside it by name, not at {target}")
     return target
 
 
 def read_rotation(key_dir):
     path = key_dir / "rotation.json"
-    return json.loads(path.read_text()) if path.exists() else None
+    if not path.exists():
+        return None
+    rotation = json.loads(path.read_text())
+    if not (isinstance(rotation, dict) and is_entry_name(rotation.get("old")) and is_entry_name(rotation.get("new"))):
+        raise RotationError(EXIT_CONFIG, f"{path} does not name two generation directories beside it")
+    return rotation
 
 
 # ---------------------------------------------------------------- the outside world
@@ -363,16 +409,16 @@ def read_local_counter(s):
 def generate(s, cli, key_dir, name, counter, period):
     """Build the generation `name` in a staging directory and move it into place; returns its OpCert."""
     final = key_dir / name
-    if final.exists():
-        # a complete one from an earlier run of this period and counter, which crashed before the switch
-        if (final / "READY").exists():
+    if final.is_symlink() or final.exists():
+        # a complete one from an earlier run of this period and counter, which crashed before the switch; a link of
+        # that name is none of this driver's generations, and is removed
+        if not final.is_symlink() and (final / "READY").exists():
             cert = parse_opcert((final / "node.cert").read_text())
             if cert.counter == counter and cert.start_period == period:
                 return cert
         scrub(final)
     staging = key_dir / f".staging-{name}"
-    if staging.exists():
-        scrub(staging)
+    scrub(staging)
     staging.mkdir(mode=0o700)
     work = [(staging, "/work", "rw")]
     try:
@@ -432,7 +478,7 @@ def finish(s, node, key_dir, rotation):
     if verdict is None:
         raise RotationError(EXIT_UNCONFIRMED, f"no kesReloaded with counter {rotation['counter']} within "
                                               f"{s.confirm_timeout:.0f} s; run again to finish")
-    if old != new and (key_dir / old).exists():
+    if old != new:
         scrub(key_dir / old)
     (key_dir / "rotation.json").unlink()
     fsync_dir(key_dir)
@@ -454,7 +500,13 @@ def run(s, cli=None, node=None):
     key_dir = s.key_dir
     if not key_dir.is_dir():
         raise RotationError(EXIT_CONFIG, f"{key_dir} is not a directory")
-    with open(key_dir / ".lock", "w") as lock:  # one run at a time
+    try:
+        # never through a link and never truncating: the node writes in this directory. 0o666 less the umask is the
+        # mode `open(..., "w")` made it with
+        lock_fd = os.open(key_dir / ".lock", os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW, 0o666)
+    except OSError as e:
+        raise RotationError(EXIT_CONFIG, f"cannot open the lock file {key_dir / '.lock'}: {e}") from e
+    with os.fdopen(lock_fd, "w") as lock:  # one run at a time
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError:
