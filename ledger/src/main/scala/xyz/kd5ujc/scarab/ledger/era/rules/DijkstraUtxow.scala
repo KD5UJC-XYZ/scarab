@@ -285,26 +285,26 @@ object DijkstraUtxow:
     val tx = t.txStAnnTx[TxLevel.Top](stAnnTx)
     val txBody = t.body[TxLevel.Top](tx)
     val wits = t.wits[TxLevel.Top](tx)
-    val subTxs = b.subTransactions(txBody).toVector
-    val scriptsProvided = u.scriptsProvidedStAnnTx[TxLevel.Top](stAnnTx)
-    val witsKeyHashes = EraTxWits.keyHashWitnessesTxWits[Dijkstra](wits)(using t.witsOf)
-    val topScriptsNeeded = u.scriptsNeededStAnnTx[TxLevel.Top](stAnnTx)
-    val topScriptHashesNeeded = u.getScriptsHashesNeeded(topScriptsNeeded)
-    val allScriptHashesNeeded = topScriptHashesNeeded ++ u
+    lazy val subTxs = b.subTransactions(txBody).toVector
+    lazy val scriptsProvided = u.scriptsProvidedStAnnTx[TxLevel.Top](stAnnTx)
+    lazy val witsKeyHashes = EraTxWits.keyHashWitnessesTxWits[Dijkstra](wits)(using t.witsOf)
+    lazy val topScriptsNeeded = u.scriptsNeededStAnnTx[TxLevel.Top](stAnnTx)
+    lazy val topScriptHashesNeeded = u.getScriptsHashesNeeded(topScriptsNeeded)
+    lazy val allScriptHashesNeeded = topScriptHashesNeeded ++ u
       .subTransactionsStAnnTx(stAnnTx)
       .flatMap(sub => u.scriptsHashesNeededStAnnTx[TxLevel.Sub](sub)(using SubOnly.Sub))
-    val witnessScripts = t.witsOf.scriptTxWits(wits).keySet ++ subTxs.flatMap(sub =>
+    lazy val witnessScripts = t.witsOf.scriptTxWits(wits).keySet ++ subTxs.flatMap(sub =>
       t.witsOf.scriptTxWits(t.wits[TxLevel.Sub](sub)(using BothLevels.Sub)).keySet
     )
-    val allRefScriptInputs =
+    lazy val allRefScriptInputs =
       b.referenceInputs[TxLevel.Top](txBody) ++ b.inputs[TxLevel.Top](txBody) ++ subTxs.flatMap {
         sub =>
           b.referenceInputs[TxLevel.Sub](sub.body)(using BothLevels.Sub) ++
             b.inputs[TxLevel.Sub](sub.body)(using BothLevels.Sub)
       }
-    val refScripts =
+    lazy val refScripts =
       BabbageUTxO.getReferenceScripts(originalUtxo, allRefScriptInputs)(using b.outputsOf).keySet
-    val datums = u.plutusLegacyModeStAnnTx(stAnnTx) match
+    lazy val datums = u.plutusLegacyModeStAnnTx(stAnnTx) match
       case PlutusLegacyMode.Legacy =>
         AlonzoUtxow.missingRequiredDatumsAllowing[Dijkstra, TxLevel.Top](
           scriptsProvided,
@@ -314,12 +314,16 @@ object DijkstraUtxow:
         )
       case PlutusLegacyMode.NotLegacy =>
         AlonzoUtxow.missingRequiredDatums[Dijkstra, TxLevel.Top](scriptsProvided, originalUtxo, tx)
-    def test[A](t: Test[A])(using inject: InjectUtxowFailure[A, Dijkstra]): F[Unit] =
+    // every predicate's condition is evaluated only when the judgment checks predicates
+    // (`ValidateNone`, [[Sts.validating]]), so the values above are lazy
+    def test[A](t: => Test[A])(using inject: InjectUtxowFailure[A, Dijkstra]): F[Unit] =
       Sts.runTest[F, UtxowPredFailure[Dijkstra]](t.leftMap(_.map(inject.injectFailure)))
-    def checked[A](t: Either[LedgerDefect, Test[A]])(using
+    def checked[A](t: => Either[LedgerDefect, Test[A]])(using
         InjectUtxowFailure[A, Dijkstra]
     ): F[Unit] =
-      Sts.lift[F, LedgerDefect, Test[A]](t).flatMap(test(_))
+      Sts.validating[F, UtxowPredFailure[Dijkstra]](
+        Sts.lift[F, LedgerDefect, Test[A]](t).flatMap(test(_))
+      )
     def onSignal(fa: => F[Unit]): F[Unit] = context.validation match
       case xyz.kd5ujc.scarab.ledger.TxEnv.Validation.All       => fa
       case xyz.kd5ujc.scarab.ledger.TxEnv.Validation.NonStatic => Monad[F].unit

@@ -179,13 +179,16 @@ object BabbageUtxos:
       raise: Raise[F, ScriptVerdictUnavailable],
       deferral: Phase2Deferral[F, E]
   ): F[Unit] =
-    val scriptsWithContextEither =
+    // collected only for the predicate or the evaluation, neither run under `ValidateNone`
+    lazy val scriptsWithContextEither =
       u.plutusScriptsWithContextStAnnTx[TxLevel.Top](stAnnTx)(using u.txOf.bodyOf.top)
     val tx = u.txOf.txStAnnTx[TxLevel.Top](stAnnTx)(using u.txOf.bodyOf.top)
     for
-      _ <- scriptsWithContextEither.left.toOption.traverse_(errors =>
-        deferral.uncollected(tx, errors) *>
-          judge.fail(inject.injectFailure(AlonzoUtxosPredFailure.CollectErrors(errors)))
+      _ <- Sts.validating[F, UtxosPredFailure[E]](
+        scriptsWithContextEither.left.toOption.traverse_(errors =>
+          deferral.uncollected(tx, errors) *>
+            judge.fail(inject.injectFailure(AlonzoUtxosPredFailure.CollectErrors(errors)))
+        )
       )
       _ <- AlonzoUtxos.when2Phase[F](validation)(
         Sts.whenFailureFree[F, UtxosPredFailure[E]](

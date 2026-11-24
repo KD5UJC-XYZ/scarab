@@ -226,8 +226,8 @@ object DijkstraTx:
       override def cacheStAnnTx[L <: TxLevel](stAnnTx: DijkstraStAnnTx[L])(using
           BothLevels[L]
       ): Map[Bytes, SupportedPlutusRunnable[Dijkstra]] = stAnnTx match
-        case s: DijkstraStAnnTx.TopTx => s.dsattPlutusRunnableCache
-        case s: DijkstraStAnnTx.SubTx => s.dsastPlutusRunnableCache
+        case s: DijkstraStAnnTx.TopTx => s.dsattPlutusRunnableCache.value
+        case s: DijkstraStAnnTx.SubTx => s.dsastPlutusRunnableCache.value
       override def sizeTxForFeeCalculation[L <: TxLevel](tx: DijkstraTx[L])(using
           BothLevels[L]
       ): Long = tx.sizeTxF

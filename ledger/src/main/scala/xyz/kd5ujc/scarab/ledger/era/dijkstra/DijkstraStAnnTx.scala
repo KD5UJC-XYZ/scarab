@@ -48,37 +48,37 @@ object PlutusLegacyMode:
 sealed abstract class DijkstraStAnnTx[L <: TxLevel]
 
 object DijkstraStAnnTx:
-  /** `DijkstraStAnnTopTx` (`Tx.hs:536-546`, cardano-ledger 9df9f98c). Its scripts with their
-    * contexts are a deferred value, collected when first read and then kept (`Eval.later`), as the
-    * reference's field is lazy: its consumer (`plutusScriptsWithContextDijkstraStAnnTx`,
-    * `Dijkstra/UTxO.hs:258-276`) reads them after phase 1, the top level's first, so reading any
-    * other member runs no translation.
+  /** `DijkstraStAnnTopTx` (`Tx.hs:536-546`, cardano-ledger 9df9f98c). Every member but the
+    * transaction is a deferred value, made when first read and then kept (`Eval.later`), as only
+    * the reference's `dsattTx` is strict: a rule run without its predicates (`ValidateNone`) reads
+    * none of the scripts, so none is computed, and the scripts with their contexts are read after
+    * phase 1, the top level's first (`plutusScriptsWithContextDijkstraStAnnTx`,
+    * `Dijkstra/UTxO.hs:258-276`).
     */
   final case class TopTx(
       dsattTx: DijkstraTx[TxLevel.Top],
-      dsattScriptsNeeded: AlonzoScriptsNeeded[Dijkstra],
-      dsattScriptsProvided: ScriptsProvided[Dijkstra],
-      dsattPlutusLegacyMode: PlutusLegacyMode,
-      dsattPlutusLanguagesUsed: Set[Lang],
-      dsattPlutusRunnableCache: Map[Bytes, SupportedPlutusRunnable[Dijkstra]],
+      dsattScriptsNeeded: Eval[AlonzoScriptsNeeded[Dijkstra]],
+      dsattScriptsProvided: Eval[ScriptsProvided[Dijkstra]],
+      dsattPlutusLegacyMode: Eval[PlutusLegacyMode],
+      dsattPlutusLanguagesUsed: Eval[Set[Lang]],
+      dsattPlutusRunnableCache: Eval[Map[Bytes, SupportedPlutusRunnable[Dijkstra]]],
       dsattPlutusScriptsWithContext: Eval[
         Either[NonEmptyList[CollectError[Dijkstra]], List[PlutusWithContext]]
       ],
-      dsattSubTransactions: List[DijkstraStAnnTx[TxLevel.Sub]]
+      dsattSubTransactions: Eval[List[DijkstraStAnnTx[TxLevel.Sub]]]
   ) extends DijkstraStAnnTx[TxLevel.Top]
 
-  /** `DijkstraStAnnSubTx` (`Tx.hs:547-557`, cardano-ledger 9df9f98c). Its scripts with their
-    * contexts are a deferred value, collected when first read and then kept, as the top level's are
-    * ([[TopTx]]).
+  /** `DijkstraStAnnSubTx` (`Tx.hs:547-557`, cardano-ledger 9df9f98c). Every member but the
+    * sub-transaction is a deferred value, as the top level's are ([[TopTx]]).
     */
   final case class SubTx(
       dsastTx: DijkstraTx[TxLevel.Sub],
-      dsastScriptsNeeded: AlonzoScriptsNeeded[Dijkstra],
-      dsastScriptsHashesNeeded: Set[Bytes],
-      dsastScriptsProvided: ScriptsProvided[Dijkstra],
-      dsastTxInfoResult: DijkstraTxInfoResult,
-      dsastPlutusLanguagesUsed: Set[Lang],
-      dsastPlutusRunnableCache: Map[Bytes, SupportedPlutusRunnable[Dijkstra]],
+      dsastScriptsNeeded: Eval[AlonzoScriptsNeeded[Dijkstra]],
+      dsastScriptsHashesNeeded: Eval[Set[Bytes]],
+      dsastScriptsProvided: Eval[ScriptsProvided[Dijkstra]],
+      dsastTxInfoResult: Eval[DijkstraTxInfoResult],
+      dsastPlutusLanguagesUsed: Eval[Set[Lang]],
+      dsastPlutusRunnableCache: Eval[Map[Bytes, SupportedPlutusRunnable[Dijkstra]]],
       dsastPlutusScriptsWithContext: Eval[
         Either[NonEmptyList[CollectError[Dijkstra]], List[PlutusWithContext]]
       ]
@@ -116,55 +116,59 @@ object DijkstraStAnnTx:
     given BothLevels[TxLevel.Top] = BothLevels.Top
     val txBody = t.body[TxLevel.Top](tx)
     val protVer = p.ppProtocolVersionL.get(pp)
-    val scriptsNeeded = u.getScriptsNeeded[TxLevel.Top](utxo, txBody)
-    val scriptsProvided = u.getScriptsProvided[TxLevel.Top](utxo, tx)
-    val (newStAnnTxCache, plutusScriptsUsed) =
+    val scriptsNeeded = Eval.later(u.getScriptsNeeded[TxLevel.Top](utxo, txBody))
+    val scriptsProvided = Eval.later(u.getScriptsProvided[TxLevel.Top](utxo, tx))
+    val resolved = Eval.later(
       AlonzoPlutusEvaluate.resolveNeededPlutusScriptsWithPurpose(
         protVer,
-        scriptsProvided,
-        scriptsNeeded,
+        scriptsProvided.value,
+        scriptsNeeded.value,
         stAnnTxCache
       )
+    )
+    val newStAnnTxCache = Eval.later(resolved.value._1)
     // the cache need not be folded over the sub-transactions: the scripts provided are the whole
     // transaction's
-    val stAnnSubTxs = TxIx
-      .enumerate(b.subTransactions(txBody).entries.map(_._2))
-      .map((sub, txIx) =>
-        mkDijkstraStAnnSubTx(
-          slotToPOSIXTime,
-          pp,
-          utxo,
-          scriptsProvided,
-          newStAnnTxCache,
-          txIx,
-          sub
+    val stAnnSubTxs = Eval.later(
+      TxIx
+        .enumerate(b.subTransactions(txBody).entries.map(_._2))
+        .map((sub, txIx) =>
+          mkDijkstraStAnnSubTx(
+            slotToPOSIXTime,
+            pp,
+            utxo,
+            scriptsProvided,
+            newStAnnTxCache,
+            txIx,
+            sub
+          )
         )
-      )
-      .toList
-    val ledgerTxInfo = LedgerTxInfo(
-      protVer,
-      slotToPOSIXTime,
-      utxo,
-      tx,
-      plutusScriptsUsed,
-      LedgerLevelTxInfo.LedgerTopTxInfo(stAnnSubTxs.map { sub =>
-        given BothLevels[TxLevel.Sub] = BothLevels.Sub
-        b.id[TxLevel.Sub](t.body[TxLevel.Sub](sub.dsastTx)) -> sub.dsastTxInfoResult
-      }.toMap)
+        .toList
     )
-    val languagesUsed = languages(plutusScriptsUsed)
+    val languagesUsed = Eval.later(languages(resolved.value._2))
     TopTx(
       dsattTx = tx,
       dsattScriptsNeeded = scriptsNeeded,
       dsattScriptsProvided = scriptsProvided,
-      dsattPlutusLegacyMode =
-        if languagesUsed.exists(_.id <= Lang.V3.id) then PlutusLegacyMode.Legacy
-        else PlutusLegacyMode.NotLegacy,
+      dsattPlutusLegacyMode = Eval.later(
+        if languagesUsed.value.exists(_.id <= Lang.V3.id) then PlutusLegacyMode.Legacy
+        else PlutusLegacyMode.NotLegacy
+      ),
       dsattPlutusLanguagesUsed = languagesUsed,
       dsattPlutusRunnableCache = newStAnnTxCache,
       dsattPlutusScriptsWithContext = Eval.later(
         AlonzoPlutusEvaluate.scriptsWithContextFromLedgerTxInfo(
-          ledgerTxInfo,
+          LedgerTxInfo(
+            protVer,
+            slotToPOSIXTime,
+            utxo,
+            tx,
+            resolved.value._2,
+            LedgerLevelTxInfo.LedgerTopTxInfo(stAnnSubTxs.value.map { sub =>
+              given BothLevels[TxLevel.Sub] = BothLevels.Sub
+              b.id[TxLevel.Sub](t.body[TxLevel.Sub](sub.dsastTx)) -> sub.dsastTxInfoResult.value
+            }.toMap)
+          ),
           PParams.lensHKD[Dijkstra].andThen(p.hkdCostModelsL[Identity]).get(pp)
         )
       ),
@@ -181,41 +185,47 @@ object DijkstraStAnnTx:
       slotToPOSIXTime: BigInt => Either[TranslationError, BigInt],
       pp: PParams[Dijkstra],
       utxo: UTxO[Dijkstra],
-      scriptsProvided: ScriptsProvided[Dijkstra],
-      plutusScriptsCache: Map[Bytes, SupportedPlutusRunnable[Dijkstra]],
+      scriptsProvided: Eval[ScriptsProvided[Dijkstra]],
+      plutusScriptsCache: Eval[Map[Bytes, SupportedPlutusRunnable[Dijkstra]]],
       txIx: TxIx,
       tx: DijkstraTx[TxLevel.Sub]
   )(using c: EraPlutusContext[Dijkstra]): SubTx =
     given BothLevels[TxLevel.Sub] = BothLevels.Sub
     val protVer = p.ppProtocolVersionL.get(pp)
-    val scriptsNeeded = u.getScriptsNeeded[TxLevel.Sub](utxo, t.body[TxLevel.Sub](tx))
-    val (_, plutusScriptsUsed) = AlonzoPlutusEvaluate.resolveNeededPlutusScriptsWithPurpose(
-      protVer,
-      scriptsProvided,
-      scriptsNeeded,
-      plutusScriptsCache
+    val scriptsNeeded = Eval.later(u.getScriptsNeeded[TxLevel.Sub](utxo, t.body[TxLevel.Sub](tx)))
+    val plutusScriptsUsed = Eval.later(
+      AlonzoPlutusEvaluate
+        .resolveNeededPlutusScriptsWithPurpose(
+          protVer,
+          scriptsProvided.value,
+          scriptsNeeded.value,
+          plutusScriptsCache.value
+        )
+        ._2
     )
-    val ledgerTxInfo = LedgerTxInfo(
-      protVer,
-      slotToPOSIXTime,
-      utxo,
-      tx,
-      plutusScriptsUsed,
-      LedgerLevelTxInfo.LedgerSubTxInfo(txIx)
+    val ledgerTxInfo = Eval.later(
+      LedgerTxInfo(
+        protVer,
+        slotToPOSIXTime,
+        utxo,
+        tx,
+        plutusScriptsUsed.value,
+        LedgerLevelTxInfo.LedgerSubTxInfo(txIx)
+      )
     )
-    val txInfoResult = c.mkTxInfoResult(ledgerTxInfo)
+    val txInfoResult = Eval.later(c.mkTxInfoResult(ledgerTxInfo.value))
     SubTx(
       dsastTx = tx,
       dsastScriptsNeeded = scriptsNeeded,
-      dsastScriptsHashesNeeded = u.getScriptsHashesNeeded(scriptsNeeded),
+      dsastScriptsHashesNeeded = Eval.later(u.getScriptsHashesNeeded(scriptsNeeded.value)),
       dsastScriptsProvided = scriptsProvided,
       dsastTxInfoResult = txInfoResult,
-      dsastPlutusLanguagesUsed = languages(plutusScriptsUsed),
+      dsastPlutusLanguagesUsed = Eval.later(languages(plutusScriptsUsed.value)),
       dsastPlutusRunnableCache = plutusScriptsCache,
       dsastPlutusScriptsWithContext = Eval.later(
         AlonzoPlutusEvaluate.scriptsWithContextFromLedgerTxInfoWithResult(
-          ledgerTxInfo,
-          txInfoResult,
+          ledgerTxInfo.value,
+          txInfoResult.value,
           PParams.lensHKD[Dijkstra].andThen(p.hkdCostModelsL[Identity]).get(pp)
         )
       )

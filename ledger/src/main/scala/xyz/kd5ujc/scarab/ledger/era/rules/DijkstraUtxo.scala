@@ -527,11 +527,17 @@ object DijkstraUtxo:
       def tell(l: Chain[UtxosEvent[Dijkstra]]): F[Unit] = events.tell(l.map(embed.wrapEvent))
     for
       utxoState <- state.get
-      current <- ShelleyUtxo.readStored[F, Dijkstra](
-        ShelleyUtxo.restrictKeys(utxoState.utxo.utxo, b.inputs[TxLevel.Top](txBody))
-      )
-      _ <- Sts.runTest[F, UtxoPredFailure[Dijkstra]](
-        dijkstraUtxoValidation(env, current, stAnnTx, context)
+      // the threaded state's outputs are read only for the predicates (`ValidateNone`)
+      _ <- Sts.validating[F, UtxoPredFailure[Dijkstra]](
+        ShelleyUtxo
+          .readStored[F, Dijkstra](
+            ShelleyUtxo.restrictKeys(utxoState.utxo.utxo, b.inputs[TxLevel.Top](txBody))
+          )
+          .flatMap(current =>
+            Sts.runTest[F, UtxoPredFailure[Dijkstra]](
+              dijkstraUtxoValidation(env, current, stAnnTx, context)
+            )
+          )
       )
       _ <- judge.nest(ConwayUtxos.utxosTransition[F, Dijkstra](stAnnTx, context.validation))
       next <- BabbageUtxo.updateUTxOState[F, Dijkstra](

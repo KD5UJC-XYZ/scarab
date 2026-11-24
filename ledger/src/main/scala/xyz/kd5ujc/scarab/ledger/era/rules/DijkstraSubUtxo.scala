@@ -369,11 +369,17 @@ object DijkstraSubUtxo:
     val txBody = t.body[TxLevel.Sub](tx)
     for
       utxoState <- state.get
-      current <- ShelleyUtxo.readStored[F, Dijkstra](
-        ShelleyUtxo.restrictKeys(utxoState.utxo.utxo, b.inputs[TxLevel.Sub](txBody))
-      )
-      _ <- Sts.runTest[F, SubUtxoPredFailure[Dijkstra]](
-        dijkstraSubUtxoValidation(env, current, stAnnTx, context)
+      // the threaded state's outputs are read only for the predicates (`ValidateNone`)
+      _ <- Sts.validating[F, SubUtxoPredFailure[Dijkstra]](
+        ShelleyUtxo
+          .readStored[F, Dijkstra](
+            ShelleyUtxo.restrictKeys(utxoState.utxo.utxo, b.inputs[TxLevel.Sub](txBody))
+          )
+          .flatMap(current =>
+            Sts.runTest[F, SubUtxoPredFailure[Dijkstra]](
+              dijkstraSubUtxoValidation(env, current, stAnnTx, context)
+            )
+          )
       )
       _ <- env.topTxIsPhase2Valid match
         case IsPhase2Valid.Phase2Valid =>

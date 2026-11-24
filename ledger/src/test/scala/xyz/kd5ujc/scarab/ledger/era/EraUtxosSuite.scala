@@ -51,7 +51,8 @@ import xyz.kd5ujc.scarab.ledger.rules.{
   StAnnTx as FlatStAnnTx,
   Utxo as FlatUtxoRule,
   UtxoEnv as FlatUtxoEnv,
-  Utxos as FlatUtxos
+  Utxos as FlatUtxos,
+  ValidationPolicy
 }
 import xyz.kd5ujc.scarab.ledger.state.{
   Build,
@@ -577,6 +578,7 @@ class EraUtxosSuite extends munit.FunSuite:
       StateT.modify(seen => seen.copy(failures = seen.failures ++ failures))
     def failing: R[Boolean] = StateT.inspect(_.failures.nonEmpty)
     def nest[A](fa: R[A]): R[A] = fa
+    def policy: ValidationPolicy = ValidationPolicy.ValidateAll
 
   private given Tell[R, Events] = new Tell[R, Events]:
     val functor: Functor[R] = summon[Monad[R]]

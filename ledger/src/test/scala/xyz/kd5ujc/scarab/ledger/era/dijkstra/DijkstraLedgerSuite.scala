@@ -1128,6 +1128,46 @@ class DijkstraLedgerSuite extends FunSuite:
     assertEquals(ledgerOf(k, params = maxRefScriptSize(refSize)), Vector.empty)
   }
 
+  test(
+    "a batch applied without its predicates reads none of its or its sub-transactions' members"
+  ) {
+    // a closure's transaction (`ValidateNone`, `DijkstraClosure.applyUnchecked`): no predicate's
+    // condition is evaluated (`Extended.hs:715-720`, cardano-ledger 9df9f98c), so neither the top
+    // level's members nor a sub-transaction's are read, and the state after is the one the made
+    // annotation leaves, its sub-transaction's input spent
+    val subIn = B.fresh(0x5a)
+    val topIn = B.fresh(0x5b)
+    val k = built(
+      "unchecked batch",
+      batch(
+        Vector(topIn),
+        11000000 - fee,
+        Vector(spending(subIn, Vector(18 -> B.set(refIn.node))))
+      ),
+      B.utxo(refIn -> refOut, subIn -> paid(1000000), topIn -> paid(10000000))
+    )
+    val made = DijkstraStAnnTx.mkDijkstraStAnnTopTx(clock, pp, k.utxo, Map.empty, k.tx)
+    assertEquals(made.dsattSubTransactions.value.size, 1)
+    def run(stAnnTx: DijkstraStAnnTx.TopTx) =
+      DijkstraBbodyRun.unchecked(
+        leios,
+        envOf(k, Coin(0)),
+        stAnnTx,
+        context(TxEnv.Validation.All),
+        LedgerState(start.cert, storedState(k.utxo)),
+        noProposals,
+        ScarabEvaluator.default,
+        Verdicts.Direct,
+        ScarabEvaluator.defaultDecoder
+      )
+    val expected = run(made)
+    val after = expected match
+      case Right(Right((bbody, _, _))) => bbody.ls.utxo.utxo.utxo
+      case other                       => fail(s"$other")
+    assert(after.get(xyz.kd5ujc.scarab.ledger.TxIn(subIn.txId, BigInt(subIn.ix))).isEmpty)
+    assertEquals(run(DijkstraBbodyRun.unreadMembers(made, fail(_))), expected)
+  }
+
   test("a reference script two sub-transactions share counts once for each (LedgerSpec.hs:138)") {
     // `Dijkstra/Imp/LedgerSpec.hs:138-159`, cardano-ledger 9df9f98c: under a limit of the script's
     // size, two sub-transactions spending an input each and referencing it total twice the size

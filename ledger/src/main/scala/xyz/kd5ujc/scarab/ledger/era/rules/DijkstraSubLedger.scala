@@ -363,7 +363,7 @@ object DijkstraSubLedger:
     val pp = env.slePParams
     val certL = LedgerState.cert[Dijkstra]
     val utxoL = LedgerState.utxo[Dijkstra]
-    def test[A](check: Test[A])(using inject: InjectSubLedgerFailure[A, Dijkstra]): F[Unit] =
+    def test[A](check: => Test[A])(using inject: InjectSubLedgerFailure[A, Dijkstra]): F[Unit] =
       Sts.runTest[F, SubLedgerPredFailure[Dijkstra]](check.leftMap(_.map(inject.injectFailure)))
     for
       globals <- ask.ask[Globals]

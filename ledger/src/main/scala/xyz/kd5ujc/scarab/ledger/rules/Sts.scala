@@ -75,30 +75,46 @@ object Sts:
   ): F[Unit] =
     Monad[F].flatMap(state.get)(s => Monad[F].flatMap(lift[F, Fail, S](f(s)))(state.set))
 
+  /** A predicate of the rule (`Predicate`, `Extended.hs:715-720`, cardano-ledger 9df9f98c): `check`
+    * run under a judgment that checks its predicates (`ValidateAll`), and under `ValidateNone`
+    * nothing run, so the condition is never evaluated. Every recording helper below is one.
+    */
+  def validating[F[_], Rec](check: => F[Unit])(using
+      F: Applicative[F],
+      judge: Judge[F, Rec]
+  ): F[Unit] = judge.policy match
+    case ValidationPolicy.ValidateAll  => check
+    case ValidationPolicy.ValidateNone => F.unit
+
   /** `runTest` (`Cardano/Ledger/Rules/ValidationMode.hs`, `validateTrans`, `Extended.hs:373`,
     * cardano-ledger f649f975): records every failure of a pure [[Test]], in its order, and
-    * continues.
+    * continues; the test evaluated only when predicates are checked ([[validating]]).
     */
-  def runTest[F[_], Rec](test: Test[Rec])(using F: Applicative[F], judge: Judge[F, Rec]): F[Unit] =
-    test.fold(failures => judge.tell(failures.toChain), _ => F.unit)
+  def runTest[F[_], Rec](
+      test: => Test[Rec]
+  )(using F: Applicative[F], judge: Judge[F, Rec]): F[Unit] =
+    validating(test.fold(failures => judge.tell(failures.toChain), _ => F.unit))
 
   /** `cond ?! failure` (`Extended.hs:394-399`, cardano-ledger f649f975): records `failure` unless
     * `cond` holds.
     */
-  def predicate[F[_], Rec](cond: Boolean, failure: => Rec)(using
+  def predicate[F[_], Rec](cond: => Boolean, failure: => Rec)(using
       F: Applicative[F],
       judge: Judge[F, Rec]
   ): F[Unit] =
-    if cond then F.unit else judge.fail(failure)
+    validating(if cond then F.unit else judge.fail(failure))
 
   /** `failBecause` (`Extended.hs:401-402`, cardano-ledger f649f975): records `failure`. */
-  def failBecause[F[_], Rec](failure: Rec)(using judge: Judge[F, Rec]): F[Unit] =
-    judge.fail(failure)
+  def failBecause[F[_], Rec](failure: => Rec)(using
+      F: Applicative[F],
+      judge: Judge[F, Rec]
+  ): F[Unit] =
+    validating(judge.fail(failure))
 
   /** `failOnJust` (`Extended.hs:404-407`, cardano-ledger f649f975): records the failure made of a
     * present value.
     */
-  def failOnJust[F[_], A, Rec](cond: Option[A])(onJust: A => Rec)(using
+  def failOnJust[F[_], A, Rec](cond: => Option[A])(onJust: A => Rec)(using
       F: Applicative[F],
       judge: Judge[F, Rec]
   ): F[Unit] =
@@ -107,7 +123,7 @@ object Sts:
   /** `failOnNonEmpty` (`Extended.hs:419-421` (cardano-ledger f649f975), and its set and map forms):
     * records the failure made of the items, if there are any.
     */
-  def failOnNonEmpty[F[_], C, Rec](items: C)(isEmpty: C => Boolean)(onNonEmpty: C => Rec)(using
+  def failOnNonEmpty[F[_], C, Rec](items: => C)(isEmpty: C => Boolean)(onNonEmpty: C => Rec)(using
       F: Applicative[F],
       judge: Judge[F, Rec]
   ): F[Unit] =

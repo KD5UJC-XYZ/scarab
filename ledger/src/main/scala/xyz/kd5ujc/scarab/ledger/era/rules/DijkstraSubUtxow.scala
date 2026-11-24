@@ -411,22 +411,27 @@ object DijkstraSubUtxow:
     val tx = t.txStAnnTx[TxLevel.Sub](stAnnTx)
     val txBody = t.body[TxLevel.Sub](tx)
     val wits = t.wits[TxLevel.Sub](tx)
-    val witsKeyHashes = EraTxWits.keyHashWitnessesTxWits[Dijkstra](wits)(using t.witsOf)
-    val scriptsProvided = u.scriptsProvidedStAnnTx[TxLevel.Sub](stAnnTx)
-    val scriptsNeeded = u.scriptsNeededStAnnTx[TxLevel.Sub](stAnnTx)
-    val scriptHashesNeeded = u.scriptsHashesNeededStAnnTx[TxLevel.Sub](stAnnTx)(using SubOnly.Sub)
-    val witScripts = t.witsOf.scriptTxWits(wits)
+    lazy val witsKeyHashes = EraTxWits.keyHashWitnessesTxWits[Dijkstra](wits)(using t.witsOf)
+    lazy val scriptsProvided = u.scriptsProvidedStAnnTx[TxLevel.Sub](stAnnTx)
+    lazy val scriptsNeeded = u.scriptsNeededStAnnTx[TxLevel.Sub](stAnnTx)
+    lazy val scriptHashesNeeded =
+      u.scriptsHashesNeededStAnnTx[TxLevel.Sub](stAnnTx)(using SubOnly.Sub)
+    lazy val witScripts = t.witsOf.scriptTxWits(wits)
     // the witnesses' scripts in the order they arrived, which only the choice of the first script
     // the decoder gives no verdict for reads, as in `BabbageUtxow.validateScriptsWellFormed`
-    val inArrival = ListMap.from(
+    lazy val inArrival = ListMap.from(
       t.witsOf.scriptTxWitsArrival(wits).flatMap(h => witScripts.get(h).map(h -> _))
     )
-    def test[A](t: Test[A])(using inject: InjectSubUtxowFailure[A, Dijkstra]): F[Unit] =
+    // every predicate's condition is evaluated only when the judgment checks predicates
+    // (`ValidateNone`, [[Sts.validating]]), so the values above are lazy
+    def test[A](t: => Test[A])(using inject: InjectSubUtxowFailure[A, Dijkstra]): F[Unit] =
       Sts.runTest[F, SubUtxowPredFailure[Dijkstra]](t.leftMap(_.map(inject.injectFailure)))
-    def checked[A](t: Either[LedgerDefect, Test[A]])(using
+    def checked[A](t: => Either[LedgerDefect, Test[A]])(using
         InjectSubUtxowFailure[A, Dijkstra]
     ): F[Unit] =
-      Sts.lift[F, LedgerDefect, Test[A]](t).flatMap(test(_))
+      Sts.validating[F, SubUtxowPredFailure[Dijkstra]](
+        Sts.lift[F, LedgerDefect, Test[A]](t).flatMap(test(_))
+      )
     def onSignal(fa: => F[Unit]): F[Unit] = context.validation match
       case xyz.kd5ujc.scarab.ledger.TxEnv.Validation.All       => fa
       case xyz.kd5ujc.scarab.ledger.TxEnv.Validation.NonStatic => Monad[F].unit
