@@ -4867,6 +4867,12 @@
     "def consensus.HeaderChain#densityFragment",
     "def consensus.HeaderChain#pointsAfterFirst"
    ]
+  },
+  {
+   "reason": "the selected chain's index by hash, which chain selection's walks over the processed forest read to tell a selected block and the places a block's predecessor names, where the reference compares points on its AnchoredFragment; Scala plumbing with no counterpart of its own (#810)",
+   "definitions": [
+    "def consensus.ChainSelection.Local#placesOf"
+   ]
   }
  ]
 }
