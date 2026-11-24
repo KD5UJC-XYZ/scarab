@@ -936,6 +936,7 @@ class MirrorDijkstraSuite extends CatsEffectSuite:
         .nesOf(parent)
         .flatMap(MirrorDijkstra.inDijkstra)
         .getOrElse(fail("no Dijkstra ledger"))
+      val blockStats = xyz.kd5ujc.scarab.ledger.PlutusStats(1, 2, 5, 3)
       val after = MirrorDijkstra
         .assembled(
           parent,
@@ -949,11 +950,14 @@ class MirrorDijkstraSuite extends CatsEffectSuite:
           closureBytes,
           body,
           nes,
-          parent.protocol
+          parent.protocol,
+          blockStats
         )
         .fold(e => fail(s"not assembled: $e"), identity)
       assert(BigInt(closureBytes.bits) > 0)
       assertEquals(bytes(after) - bytes(parent), BigInt(closureBytes.bits))
+      // the node's phase-2 counters gain the block's, field by field (#85)
+      assertEquals(after.plutus, parent.plutus |+| blockStats)
     }
   }
 end MirrorDijkstraSuite

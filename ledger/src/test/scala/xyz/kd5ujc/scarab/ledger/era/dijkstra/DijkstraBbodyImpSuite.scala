@@ -292,6 +292,29 @@ class DijkstraBbodyImpSuite extends FunSuite:
       slot => Right(slot * 1000)
     )
 
+  /** The node's run of the block `raw` (`DijkstraBlockRun.bbody`), on the context's clock and era
+    * history, with `evaluator`.
+    */
+  private def nodeRun(
+      raw: Bytes,
+      state: LedgerState[Dijkstra],
+      params: PParams[Dijkstra],
+      evaluator: xyz.kd5ujc.scarab.plutus.ScriptEvaluator[Id]
+  ) =
+    DijkstraBlockRun.bbody(
+      globals,
+      BbodyEnv[Dijkstra](params, ChainAccountState(Coin(0), Coin(0))),
+      ok(DijkstraBlock.decode(raw)),
+      context.systemStart,
+      context.epochInfo,
+      ShelleyBbodyState[Dijkstra](state, BlocksMade.empty),
+      EraGovRun.dijkstraEmpty,
+      evaluator,
+      flat.Verdicts.Direct,
+      ScarabEvaluator.defaultDecoder,
+      slot => Right(slot * 1000)
+    )
+
   private def refused(
       raw: Bytes,
       state: LedgerState[Dijkstra],
@@ -1064,30 +1087,75 @@ class DijkstraBbodyImpSuite extends FunSuite:
         Submit.Valid(certifying(zero, fund(18), 7))
       )
       val submits = spends ++ mints ++ withdrawals ++ certs
-      val (_, _, txs) = submits.foldLeft((before, utxo2, Vector.empty[Built])) {
-        case ((state, utxo, done), submit) =>
-          val t = submit match
-            case Submit.Fixed(t)    => t
-            case Submit.Valid(make) => make(utxo, true)
-            case Submit.Phase2Invalid(make) =>
-              val flagged = make(utxo, true)
-              val refusal = ledgerOn(flagged, state, utxo, params) match
-                case Right(Left(fs)) => fs.toChain.toVector
-                case other           => fail(s"not refused: $other")
-              assertEquals(refusal.size, 1, s"$refusal")
-              assertEquals(
-                refusal.map(comparable),
-                Vector(comparable(scriptPredicateFailure(params, utxo, flagged)))
-              )
-              make(utxo, false)
-          val (next, nextUtxo) = step(state, utxo, t, params)
-          (next, nextUtxo, done :+ t)
-      }
+      // each transaction with the UTxO set it is submitted on
+      val (_, _, submitted) =
+        submits.foldLeft((before, utxo2, Vector.empty[(Built, UTxO[Dijkstra])])) {
+          case ((state, utxo, done), submit) =>
+            val t = submit match
+              case Submit.Fixed(t)    => t
+              case Submit.Valid(make) => make(utxo, true)
+              case Submit.Phase2Invalid(make) =>
+                val flagged = make(utxo, true)
+                val refusal = ledgerOn(flagged, state, utxo, params) match
+                  case Right(Left(fs)) => fs.toChain.toVector
+                  case other           => fail(s"not refused: $other")
+                assertEquals(refusal.size, 1, s"$refusal")
+                assertEquals(
+                  refusal.map(comparable),
+                  Vector(comparable(scriptPredicateFailure(params, utxo, flagged)))
+                )
+                make(utxo, false)
+            val (next, nextUtxo) = step(state, utxo, t, params)
+            (next, nextUtxo, done :+ (t -> utxo))
+        }
+      val txs = submitted.map(_._1)
       assertEquals(txs.size, 18)
       // the block of the eighteen, on the state after the registration, admitted
-      run(blockOf(txs), before, params) match
-        case Right(Right(_)) => ()
-        case other           => fail(s"not admitted: $other")
+      val admitted = run(blockOf(txs), before, params) match
+        case Right(Right((state, proposals, _))) => (state, proposals)
+        case other                               => fail(s"not admitted: $other")
+      // and by the node's run (`DijkstraBlockRun`), to the same state, its phase-2 counters those of
+      // its eight script transactions (#85): four flagged valid whose script passed, four flagged
+      // invalid whose script failed, one script each, each with its integrity hash
+      nodeRun(blockOf(txs), before, params, ScarabEvaluator.default) match
+        case Right(Right(applied)) =>
+          assertEquals((applied.state, applied.proposals), admitted)
+          assertEquals(applied.plutus, flat.PlutusStats(4, 4, 8, 8))
+        case other => fail(s"not admitted by the node's run: $other")
+      // the script of each, the evaluator giving no verdict on it: the block withheld, the script
+      // named by its transaction and the redeemer its witnesses hold
+      val reason: EvalFailure.Unsupported = EvalFailure.Unsupported(
+        xyz.kd5ujc.scarab.plutus.BackendFailure.BudgetOutOfRange(ExUnits(0, 0))
+      )
+      val scripted = submitted.filter((t, _) =>
+        tx.witsOf.rdmrsTxWits(tx.wits[TxLevel.Top](t.era)).entries.nonEmpty
+      )
+      assertEquals(scripted.size, 8)
+      scripted.foreach { (t, utxo) =>
+        val request = evaluated(params, utxo, t) match
+          case Vector((pwc, _)) => PlutusWithContext.evalRequest(pwc)
+          case other            => fail(s"not one script: $other")
+        val redeemer =
+          tx.witsOf.rdmrsTxWits(tx.wits[TxLevel.Top](t.era)).entries.toVector match
+            case Vector((key, (data, units))) =>
+              flat.Redeemer(key.tag, key.ix.value, data.originalBytes, units)
+            case other => fail(s"not one redeemer: $other")
+        val unjudged: xyz.kd5ujc.scarab.plutus.ScriptEvaluator[Id] = r =>
+          if r == request then EvalResult.Failure(reason, ExUnits(0, 0), Vector.empty)
+          else ScarabEvaluator.default.evaluate(r)
+        assertEquals(
+          nodeRun(blockOf(txs), before, params, unjudged),
+          Left(
+            DijkstraRuleDefect.Ledger(
+              flat.LedgerFailure.Unavailable(
+                bodies.id[TxLevel.Top](tx.body(t.era)),
+                flat.ScriptLocation.Phase2(redeemer),
+                reason
+              )
+            )
+          )
+        )
+      }
       // at the testnet's units the same block is refused for them alone, past its block's steps
       val total =
         txs.foldLeft(ExUnits.zero)((sum, t) => sum + tx.getTotalExUnits[TxLevel.Top](t.era))
@@ -1102,6 +1170,106 @@ class DijkstraBbodyImpSuite extends FunSuite:
         )
       )
     }
+  }
+
+  test(
+    "a sub-transaction's script: counted, and named by its batch, its id and its redeemer (#85)"
+  ) {
+    // a batch whose one sub-transaction spends an output of `alwaysSucceedsWithDatum SPlutusV4`
+    // with the datum 0 and the redeemer 0 at the most units a transaction may use, which its own
+    // witnesses hold with its own integrity hash; its top level pays the fee and gives the
+    // collateral, and runs no script of its own
+    val (_, _, witnessKey, script, hash) =
+      alwaysSucceedsWithDatum.find(_._1 == PlutusLanguage.V4).getOrElse(fail("no Plutus V4"))
+    val params = impUnits
+    val maxTx = AlonzoEraPParams.ppMaxTxExUnitsL.get(params).units
+    val datum = B.uint(0)
+    val (scriptIn, feeIn, collateralIn) = (fundOf(9001), fundOf(9002), fundOf(9003))
+    val utxo = B.utxo(
+      scriptIn -> B.datumHashOut(B.scriptAddress(hash), 5000000, B.dataHash(datum)),
+      feeIn -> paid(10000000),
+      collateralIn -> paid(30000000)
+    )
+    val redeemers = B.cmap(
+      B.arr(B.uint(0), B.uint(0)) -> B.arr(datum, B.arr(B.uint(maxTx.mem), B.uint(maxTx.steps)))
+    )
+    def batchOf(integrity: Option[Bytes]): Built =
+      val subBody = B.body(
+        (Vector(0 -> B.set(scriptIn.node), 1 -> B.arr(paid(5000000))) ++
+          integrity.map(h => 11 -> B.bytes(h)).toVector)*
+      )
+      val sub = B.arr(
+        subBody,
+        B.witnesses(
+          subBody,
+          Vector.empty,
+          4 -> B.set(datum),
+          5 -> redeemers,
+          witnessKey -> B.set(B.bytes(script))
+        ),
+        B.nil
+      )
+      val body = B.body(
+        0 -> B.set(feeIn.node),
+        1 -> B.arr(paid(5000000)),
+        2 -> B.uint(5000000),
+        13 -> B.set(collateralIn.node),
+        23 -> B.set(sub)
+      )
+      built(body, B.witnesses(body, Vector(payer)))
+    def subOf(t: Built): DijkstraTx[TxLevel.Sub] =
+      bodies.subTransactions(tx.body(t.era)).toVector match
+        case Vector(sub) => sub
+        case other       => fail(s"not one sub-transaction: $other")
+    val integrity =
+      given BothLevels[TxLevel.Sub] = BothLevels.Sub
+      ScriptIntegrity
+        .mkScriptIntegrity[Dijkstra, TxLevel.Sub](
+          params,
+          subOf(batchOf(None)),
+          Set(PlutusLanguage.V4)
+        )
+        .map(ScriptIntegrity.hashScriptIntegrity(_))
+        .getOrElse(fail("no script integrity"))
+    val t = batchOf(Some(integrity))
+    val raw = blockOf(Vector(t))
+    val state = holding(utxo)
+    // admitted, by the node's run to the same state as BBODY's: one batch whose one script passed,
+    // and one body, the sub-transaction's, with an integrity hash
+    val admitted = run(raw, state, params) match
+      case Right(Right((after, proposals, _))) => (after, proposals)
+      case other                               => fail(s"not admitted: $other")
+    nodeRun(raw, state, params, ScarabEvaluator.default) match
+      case Right(Right(applied)) =>
+        assertEquals((applied.state, applied.proposals), admitted)
+        assertEquals(applied.plutus, flat.PlutusStats(1, 0, 1, 1))
+      case other => fail(s"not admitted by the node's run: $other")
+    // the evaluator giving no verdict on the script: named by the batch's id, the sub-transaction's
+    // and the redeemer its witnesses hold
+    val request = evaluated(params, utxo, t) match
+      case Vector((pwc, _)) => PlutusWithContext.evalRequest(pwc)
+      case other            => fail(s"not one script: $other")
+    val reason: EvalFailure.Unsupported = EvalFailure.Unsupported(
+      xyz.kd5ujc.scarab.plutus.BackendFailure.BudgetOutOfRange(ExUnits(0, 0))
+    )
+    val unjudged: xyz.kd5ujc.scarab.plutus.ScriptEvaluator[Id] = r =>
+      if r == request then EvalResult.Failure(reason, ExUnits(0, 0), Vector.empty)
+      else ScarabEvaluator.default.evaluate(r)
+    assertEquals(
+      nodeRun(raw, state, params, unjudged),
+      Left(
+        DijkstraRuleDefect.Ledger(
+          flat.LedgerFailure.Unavailable(
+            bodies.id[TxLevel.Top](tx.body(t.era)),
+            flat.ScriptLocation.SubPhase2(
+              bodies.id[TxLevel.Sub](subOf(t).body)(using BothLevels.Sub),
+              flat.Redeemer(0, 0, B.encode(datum), maxTx)
+            ),
+            reason
+          )
+        )
+      )
+    )
   }
 
   // ---- Conway's: `Conway/Imp/BbodySpec.hs` ----------------------------------------------------------

@@ -9,7 +9,9 @@ import scala.annotation.tailrec
 import xyz.kd5ujc.scarab.codec.{Bytes, Value as CborValue}
 import xyz.kd5ujc.scarab.ledger.{
   Credential as FlatCredential,
+  LedgerFailure,
   RewardAccount,
+  ScriptLocation,
   TxIn,
   TxOutSource,
   Voter
@@ -37,14 +39,16 @@ import xyz.kd5ujc.scarab.ledger.era.{
   PParams,
   PlutusWithContext,
   ProtVer,
+  ScriptVerdictUnavailable,
   TxLevel,
   UTxO,
   Version
 }
 import xyz.kd5ujc.scarab.ledger.era.conway.ConwayContextError
+import xyz.kd5ujc.scarab.ledger.era.rules.DijkstraPhase2
 import xyz.kd5ujc.scarab.ledger.state.{Credential, Dijkstra}
 import xyz.kd5ujc.scarab.ledger.Unsigned
-import xyz.kd5ujc.scarab.plutus.PlutusLanguage
+import xyz.kd5ujc.scarab.plutus.{BackendFailure, EvalFailure, ExUnits, PlutusLanguage}
 import xyz.kd5ujc.scarab.uplc.builtin.core.DataSerialisation
 
 import DijkstraCorpus.*
@@ -305,6 +309,78 @@ class DijkstraPlutusContextSuite extends FunSuite:
     )
     // 18 of the Plutus V4 contexts in sub-transactions, where no V1 to V3 script runs
     assertEquals(byLanguage(compared.flatMap(_._2.drop(1))), Map(PlutusLanguage.V4 -> 18))
+  }
+
+  test(
+    "each script of the chain's batches is named by its level and its redeemer at its place (#85)"
+  ) {
+    // what a block run names a script the evaluator gives no verdict for by (`DijkstraPhase2`):
+    // the batch's id, the level the reference recorded the script's context at (its top level's
+    // contexts first, then each sub-transaction's) and a redeemer of that level's own witnesses,
+    // each named once; and nothing where the script at the place is another
+    val env = environment(chain)
+    val recorded = results("fixtures/reference/leios-testnet-chain-contexts/results.json")
+    val reason: EvalFailure.Unsupported =
+      EvalFailure.Unsupported(BackendFailure.BudgetOutOfRange(ExUnits(0, 0)))
+    def keys[L <: TxLevel](tx: DijkstraTx[L])(using BothLevels[L]): Set[(scala.Int, BigInt)] =
+      txs.witsOf.rdmrsTxWits(txs.wits[L](tx)).entries.keySet.map(k => (k.tag, k.ix.value))
+    val named = chainContextCases.flatMap { c =>
+      val name = str(c, "name")
+      val (tx, utxo) = read(c)
+      val result = recorded.getOrElse(name, fail(name))
+      val id = hex(
+        result.hcursor.downField("result").get[String]("id").fold(e => fail(e.message), identity)
+      )
+      val top = DijkstraStAnnTx.mkDijkstraStAnnTopTx(env.clock, env.pp, utxo, Map.empty, tx)
+      val batch = EraUTxO.dijkstra
+        .plutusScriptsWithContextStAnnTx[TxLevel.Top](top)
+        .fold(e => fail(s"$name: $e"), _.toVector)
+      val levelOf = levels(result).zipWithIndex.flatMap {
+        case (RecordedLevel.Collected(contexts), level) => Vector.fill(contexts.size)(level)
+        case (RecordedLevel.Refused(record), _)         => fail(s"$name: $record")
+      }
+      assertEquals(levelOf.size, batch.size, name)
+      val subs = bodies.subTransactions(tx.body).toVector
+      val subIds = subs.map(sub => bodies.id[TxLevel.Sub](sub.body)(using BothLevels.Sub))
+      val levelKeys = keys(tx) +: subs.map(keys(_)(using BothLevels.Sub))
+      val names = batch.zipWithIndex.map { (pwc, place) =>
+        val level = levelOf(place)
+        DijkstraPhase2.named(top, env.pp, ScriptVerdictUnavailable(pwc, reason), place) match
+          case Some(LedgerFailure.Unavailable(txId, location, why)) =>
+            assertEquals((txId, why), (id, reason), s"$name, place $place")
+            val located = location match
+              case ScriptLocation.Phase2(r) if level == 0 => (level, r)
+              case ScriptLocation.SubPhase2(sub, r) if level > 0 =>
+                assertEquals(sub, subIds(level - 1), s"$name, place $place")
+                (level, r)
+              case other => fail(s"$name, place $place at level $level: $other")
+            // the redeemer's units are those the script at the place runs with
+            assertEquals(located._2.exUnits, pwc.pwcExUnits, s"$name, place $place")
+            located
+          case None => fail(s"$name, place $place: not named")
+      }
+      levelKeys.zipWithIndex.foreach { (expected, level) =>
+        val ours = names.collect { case (`level`, r) => (r.tag, r.index) }
+        assertEquals(ours.toSet, expected, s"$name, level $level")
+        assertEquals(ours.size, expected.size, s"$name, level $level")
+      }
+      batch.indices.foreach { place =>
+        batch.find(_ != batch(place)).foreach { other =>
+          assertEquals(
+            DijkstraPhase2.named(top, env.pp, ScriptVerdictUnavailable(other, reason), place),
+            None,
+            s"$name, place $place"
+          )
+        }
+      }
+      names
+    }
+    assertEquals((named.size, named.count(_._1 > 0)), (273, 18))
+    // by purpose: spending 0, minting 1, certifying 2, rewarding 3, proposing 5 and guarding 6
+    assertEquals(
+      named.groupMapReduce(_._2.tag)(_ => 1)(_ + _),
+      Map(0 -> 103, 1 -> 108, 2 -> 13, 3 -> 40, 5 -> 2, 6 -> 7)
+    )
   }
 
   // ---- the refusals, as the reference's `Show` gives them

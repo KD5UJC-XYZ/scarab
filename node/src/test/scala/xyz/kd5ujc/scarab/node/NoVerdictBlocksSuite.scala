@@ -115,6 +115,38 @@ class NoVerdictBlocksSuite extends FunSuite:
     cases.foreach((cause, expected) => assertEquals(cause.recovery, expected, cause.message))
   }
 
+  test(
+    "a Dijkstra script named in a sub-transaction is judged again as any with no verdict (#85)"
+  ) {
+    // the cause a Dijkstra block run names a script with (`ScriptLocation.SubPhase2`): its
+    // recovery and its schedule are the evaluator's reason's, wherever the script is
+    def named(location: ScriptLocation, why: BackendFailure): BlockNoVerdict =
+      BlockNoVerdict.Evaluation(
+        point,
+        LedgerFailure.Unavailable(hash(1), location, EvalFailure.Unsupported(why))
+      )
+    val redeemer = xyz.kd5ujc.scarab.ledger.Redeemer(6, 0, Bytes.empty, ExUnits.zero)
+    Vector(
+      BackendFailure.Defect(new OutOfMemoryError("heap")),
+      BackendFailure.StackExhausted,
+      BackendFailure.BudgetOutOfRange(ExUnits(BigInt(2).pow(64), 0)),
+      BackendFailure.Uplc(Unavailability.Thrown(new IllegalStateException("x")))
+    ).foreach { why =>
+      val top = named(ScriptLocation.Phase2(redeemer), why)
+      val sub = named(ScriptLocation.SubPhase2(hash(3), redeemer), why)
+      assertEquals(sub.recovery, top.recovery, why.message)
+      assertEquals(sub.recovery, evaluation(why).recovery, why.message)
+      val (subEntries, subRetry) = Entries.empty.recorded(hash(1), BigInt(5), sub, 10.seconds)
+      val (topEntries, topRetry) = Entries.empty.recorded(hash(1), BigInt(5), top, 10.seconds)
+      assertEquals(subRetry, topRetry, why.message)
+      assertEquals(
+        subEntries.byHash.view.mapValues(w => (w.attempts, w.schedule)).toMap,
+        topEntries.byHash.view.mapValues(w => (w.attempts, w.schedule)).toMap,
+        why.message
+      )
+    }
+  }
+
   test("attempts count on from the earlier ones; the latest cause decides the schedule") {
     val (first, (n1, r1)) = Entries.empty.recorded(hash(1), BigInt(5), passing, 10.seconds)
     val (second, (n2, r2)) = first.recorded(hash(1), BigInt(5), passing, 12.seconds)

@@ -529,8 +529,9 @@ final class Follower[F[_]: Async, S] private (
         case Right(Left(record: xyz.kd5ujc.scarab.ledger.ChainError.GovRecord)) =>
           F.pure(Left(Judged.NoVerdict(BlockNoVerdict.StateOutOfRange(record))))
         // a Dijkstra block that meets a limit of this build valid peer input can meet (a script
-        // the evaluator cannot judge, proposals the state's record cannot hold, the node's own
-        // readings that disagree): no verdict, as the other eras'; any other defect stops the node
+        // the evaluator cannot judge that its run could not name, the node's own readings that
+        // disagree): no verdict, as the other eras'; any other defect stops the node. A script
+        // named by its transaction is the evaluation's case above (#85)
         case Right(Left(stop: xyz.kd5ujc.scarab.ledger.ChainError.DijkstraBlock)) =>
           BlockNoVerdict
             .ofDijkstra(stop.cause)

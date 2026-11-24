@@ -560,9 +560,9 @@ class DijkstraBbodySuite extends FunSuite:
     val (raw, seeded) = sampled(byBlock.head)
     // the refusal or the state after, of the node's run and of BBODY on a context given whole
     def ofNode(n: Network) = nodeRun(onNetwork(n), raw, seeded) match
-      case Right(Left(fs))          => Left(fs.toChain.toVector)
-      case Right(Right((after, _))) => Right(after)
-      case Left(d)                  => fail(s"a defect: $d")
+      case Right(Left(fs))       => Left(fs.toChain.toVector)
+      case Right(Right(applied)) => Right(applied.state)
+      case Left(d)               => fail(s"a defect: $d")
     def judgedOn(network: Network, validation: flat.TxEnv.Validation) =
       run(
         raw,

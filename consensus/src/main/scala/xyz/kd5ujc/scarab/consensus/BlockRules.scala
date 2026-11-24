@@ -43,8 +43,9 @@ enum BlockNoVerdict:
       unavailable: xyz.kd5ujc.scarab.ledger.LedgerFailure.Unavailable
   )
 
-  /** The evaluator cannot evaluate a script of a Dijkstra block, which the era rules raise with the
-    * script and no transaction (`ScriptVerdictUnavailable`): the other eras' [[Evaluation]].
+  /** The evaluator cannot evaluate a script of a Conway or Dijkstra block that the era rules could
+    * not name by its transaction and redeemer (`ScriptVerdictUnavailable`), which the script they
+    * ran never is: a named one is an [[Evaluation]].
     */
   case ScriptUnavailable(cause: xyz.kd5ujc.scarab.ledger.era.ScriptVerdictUnavailable)
 

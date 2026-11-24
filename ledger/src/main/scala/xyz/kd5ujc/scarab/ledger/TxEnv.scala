@@ -56,7 +56,17 @@ enum TxDefect:
 /** Where this implementation could not supply a script verdict. */
 enum ScriptLocation:
   case Phase1(scriptHash: Bytes)
+
+  /** A phase-2 script of the transaction itself, by its redeemer. */
   case Phase2(redeemer: Redeemer)
+
+  /** A phase-2 script of one of a Dijkstra transaction's sub-transactions, by the sub-transaction's
+    * id and its redeemer, which its own witnesses hold (#85): its top level's UTXOS runs it with
+    * the batch's (`plutusScriptsWithContextStAnnTx`, cardano-ledger 9df9f98c
+    * `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/UTxO.hs:258-276`), so the transaction the
+    * failure names is the top level, which the block and its peers refer to.
+    */
+  case SubPhase2(subTxId: Bytes, redeemer: Redeemer)
 
 /** Why the ledger refused a transaction: the predicate failures of the rules
   * ([[LedgerFailure.Rejected]]), or a defect ([[LedgerDefect]]) that leaves no verdict of the
@@ -72,6 +82,8 @@ sealed trait LedgerFailure extends DomainError:
       val where = location match
         case ScriptLocation.Phase1(hash) => s"phase 1 script ${hash.hex.take(16)}"
         case ScriptLocation.Phase2(r)    => s"phase 2 redeemer ${r.tag}.${r.index}"
+        case ScriptLocation.SubPhase2(sub, r) =>
+          s"phase 2 redeemer ${r.tag}.${r.index} of sub-transaction ${sub.hex.take(16)}"
       s"tx ${id.hex.take(16)} evaluation unavailable at $where: ${why.message}"
     case LedgerFailure.Unverifiable(id, d) => s"tx ${id.hex.take(16)} has no verdict: ${d.message}"
     case LedgerFailure.Vocab(e)            => s"transaction outside the state's vocabulary: $e"

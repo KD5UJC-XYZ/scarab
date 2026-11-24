@@ -333,6 +333,31 @@ class LeiosReplayMainSuite extends FailsOnUncaught:
     assert(!LeiosReplayMain.noVerdictNotYet.isDefinedAt(ChainError.DijkstraBlock(1944035, missing)))
   }
 
+  test("a Dijkstra script named with no verdict is a halt, as the follower withholds the block") {
+    val point = ChainSync.Point.Block(
+      ChainSync.UInt64.saturating(1944035),
+      Bytes(Vector.fill(32)(0x07.toByte))
+    )
+    val unavailable = xyz.kd5ujc.scarab.ledger.LedgerFailure.Unavailable(
+      Bytes(Vector.fill(32)(0x01.toByte)),
+      xyz.kd5ujc.scarab.ledger.ScriptLocation.SubPhase2(
+        Bytes(Vector.fill(32)(0x02.toByte)),
+        xyz.kd5ujc.scarab.ledger.Redeemer(6, 0, Bytes.empty, xyz.kd5ujc.scarab.plutus.ExUnits(1, 2))
+      ),
+      xyz.kd5ujc.scarab.plutus.EvalFailure.Unsupported(
+        xyz.kd5ujc.scarab.plutus.BackendFailure.BudgetOutOfRange(
+          xyz.kd5ujc.scarab.plutus.ExUnits(1, 2)
+        )
+      )
+    )
+    assertEquals(
+      LeiosReplayMain.noVerdictNotYet.lift(
+        xyz.kd5ujc.scarab.ledger.ValidationError(point, BlockFailure.Tx(unavailable))
+      ),
+      Some(BigInt(1944035) -> BlockNoVerdict.Evaluation(point, unavailable))
+    )
+  }
+
   test("the slot of a reference ledger directory is its name") {
     assertEquals(LeiosReplayMain.slotOf(JPath.of("x/1943999")), Right(BigInt(1943999)))
     assertEquals(LeiosReplayMain.slotOf(JPath.of("x/-1")), Left(Error.EndSlot("-1")))
