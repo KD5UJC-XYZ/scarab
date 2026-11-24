@@ -82,7 +82,10 @@ class SclsKeySuite extends ScalaCheckSuite:
       decode(Namespace.ProposalRoots, Bytes(Vector(4.toByte))),
       Left(Error.PurposeSelector(4))
     )
-    assert(decode(Namespace.PParams, Bytes(Vector.fill(4)(0.toByte))).isLeft)
+    assert(decode(Namespace.PParams, Bytes(Vector.fill(4)(0.toByte))) match {
+      case Left(SclsKey.Error.ParameterSelector(_)) => true
+      case _                                        => false
+    })
     for namespace <- Namespace.values; size <- 0 to 40 if size != namespace.keySize do
       assertEquals(
         decode(namespace, Bytes(Vector.fill(size)(0.toByte))),

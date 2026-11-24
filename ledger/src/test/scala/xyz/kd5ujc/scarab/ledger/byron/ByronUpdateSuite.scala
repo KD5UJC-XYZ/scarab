@@ -283,10 +283,20 @@ class ByronUpdateSuite extends ScalaCheckSuite:
       proposalWith(
         Cb.map(Cb.text("win") -> installer, Cb.text("lin") -> installer),
         Cb.map()
-      ).isLeft
+      ) match {
+        case Left(LedgerDecodeError.Expected(_, LedgerDecodeError.Shape.Map, _)) => true
+        case _                                                                   => false
+      }
     )
     // a value that is not an `InstallerHash`
-    assert(proposalWith(Cb.map(Cb.text("lin") -> Cb.uint(0)), Cb.map()).isLeft)
+    assert(proposalWith(Cb.map(Cb.text("lin") -> Cb.uint(0)), Cb.map()) match {
+      case Left(
+            LedgerDecodeError
+              .Expected(DecodeField.InstallerHashes, LedgerDecodeError.Shape.Array, _)
+          ) =>
+        true
+      case _ => false
+    })
   }
 
   test(

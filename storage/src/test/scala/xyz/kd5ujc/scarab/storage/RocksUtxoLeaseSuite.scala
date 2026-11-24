@@ -278,7 +278,13 @@ class RocksUtxoLeaseSuite extends FailsOnUncaught:
             _ <- release
             current <- (store.all, store.memory.map(snapshots)).tupled
           yield
-            assert(failed.isLeft, failed)
+            assert(
+              failed match {
+                case Left(StorageError.Io(_, _: org.rocksdb.RocksDBException)) => true
+                case _                                                         => false
+              },
+              failed
+            )
             assertEquals(whileNone, Left(closed(UtxoStoreClosure.NoDatabase)))
             assertEquals(afterReset, Left(closed(UtxoStoreClosure.Replaced)))
             assertEquals(current, (Map(b -> second), Some(0L)))

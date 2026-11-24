@@ -116,9 +116,45 @@ class ByronHeaderBytesSuite extends FunSuite:
         )
       )
     )
-    assert(verdict(widened(consensus(1), 0), false).isLeft, "the leader's key")
-    assert(verdict(widened(psk(1), 1), false).isLeft, "the certificate's issuer")
-    assert(verdict(widened(psk(2), 0), false).isLeft, "the delegate")
+    assert(
+      verdict(widened(consensus(1), 0), false) match {
+        case Left(
+              ChainError.Decode(
+                DecodeField.Header,
+                LedgerDecodeError.Expected(_, LedgerDecodeError.Shape.Bytes, _)
+              )
+            ) =>
+          true
+        case _ => false
+      },
+      "the leader's key"
+    )
+    assert(
+      verdict(widened(psk(1), 1), false) match {
+        case Left(
+              ChainError.Decode(
+                DecodeField.Header,
+                LedgerDecodeError.Expected(_, LedgerDecodeError.Shape.Bytes, _)
+              )
+            ) =>
+          true
+        case _ => false
+      },
+      "the certificate's issuer"
+    )
+    assert(
+      verdict(widened(psk(2), 0), false) match {
+        case Left(
+              ChainError.Decode(
+                DecodeField.Header,
+                LedgerDecodeError.Expected(_, LedgerDecodeError.Shape.Bytes, _)
+              )
+            ) =>
+          true
+        case _ => false
+      },
+      "the delegate"
+    )
     assert(verdict(widened(psk(3), 0), false).isRight, "the certificate is a signature")
     assert(verdict(widened(proxy(1), 0), false).isRight, "the block signature")
     assertEquals(verdict(widened(consensus(1), 0), false), canonical)
@@ -288,10 +324,22 @@ class ByronHeaderBytesSuite extends FunSuite:
   test("epochs, slot counts and difficulties are Word64 (#634)") {
     for path <- Vector(List(3, 0, 0), List(3, 0, 1), List(3, 2, 0), List(3, 3, 1, 0, 0)) do
       assert(verdict(spliced(main, path, uint(Max64)), false).isRight, path)
-      assert(verdict(spliced(main, path, Bignum64), false).isLeft, path)
+      assert(
+        verdict(spliced(main, path, Bignum64), false) match {
+          case Left(ChainError.Decode(_, _)) => true
+          case _                             => false
+        },
+        path
+      )
     for path <- Vector(List(3, 0), List(3, 1, 0)) do
       assert(verdict(spliced(ebb, path, uint(Max64)), true).isRight, path)
-      assert(verdict(spliced(ebb, path, Bignum64), true).isLeft, path)
+      assert(
+        verdict(spliced(ebb, path, Bignum64), true) match {
+          case Left(ChainError.Decode(_, _)) => true
+          case _                             => false
+        },
+        path
+      )
     assertEquals(
       cause(spliced(main, List(3, 3, 0), uint(258)), false),
       Some(LedgerDecodeError.NumberOutOfRange(DecodeField.ByronBlockSignature, 258, 0, 255))

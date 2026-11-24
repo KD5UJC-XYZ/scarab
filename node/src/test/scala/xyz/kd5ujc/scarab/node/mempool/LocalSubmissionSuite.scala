@@ -148,7 +148,17 @@ class LocalSubmissionSuite extends FailsOnUncaught:
               refused.toString
             )
             assertEquals(held, Vector(id))
-            assert(garbage.isLeft, s"a reply to a malformed transaction: $garbage")
+            assert(
+              garbage match {
+                case Left(
+                      xyz.kd5ujc.scarab.protocol.NetworkError
+                        .BearerClosed(xyz.kd5ujc.scarab.protocol.NetworkError.Closure.PeerClosed)
+                    ) =>
+                  true
+                case _ => false
+              },
+              s"a reply to a malformed transaction: $garbage"
+            )
           }
       }
   }

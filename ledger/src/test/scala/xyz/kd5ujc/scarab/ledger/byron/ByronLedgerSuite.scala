@@ -315,7 +315,10 @@ class ByronLedgerSuite extends ScalaCheckSuite:
     assertEquals(next(TxIn(redeem.tx.id, 0)).value, BigInt(5000000))
     // a verification-key witness cannot spend a redeem address
     val wrong = aux(config, Seq((addrIn(redeemAddr), redeemer, false)), Seq(aliceAddr -> 5000000))
-    assert(apply(wrong).isLeft)
+    assert(apply(wrong) match {
+      case Left(ByronError.WrongKey(_)) => true
+      case _                            => false
+    })
   }
 
   test("outputs on an address of another network are refused") {
@@ -323,7 +326,10 @@ class ByronLedgerSuite extends ScalaCheckSuite:
     val a = spendAlice(Seq(foreign -> 1000000, aliceAddr -> 50000000))
     assert(apply(a).left.exists(_.isInstanceOf[ByronError.NetworkMagicMismatch]))
     val noMagic = address(bob, None)
-    assert(apply(spendAlice(Seq(noMagic -> 1000000, aliceAddr -> 50000000))).isLeft)
+    assert(apply(spendAlice(Seq(noMagic -> 1000000, aliceAddr -> 50000000))) match {
+      case Left(ByronError.NetworkMagicMismatch(Some(_), None)) => true
+      case _                                                    => false
+    })
   }
 
   test("a transaction above the maximum size is refused") {

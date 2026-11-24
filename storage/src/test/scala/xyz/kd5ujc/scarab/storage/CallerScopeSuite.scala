@@ -5,6 +5,8 @@ import cats.effect.IO
 import java.nio.file.Files
 import xyz.kd5ujc.scarab.ledger.StorageError
 import xyz.kd5ujc.scarab.protocol.ChainSync
+import xyz.kd5ujc.scarab.ledger.FileKind
+import xyz.kd5ujc.scarab.ledger.StorageStructureError
 
 /** A store is reusable from a different error scope. Opening does not own later operations. */
 class CallerScopeSuite extends munit.CatsEffectSuite:
@@ -71,7 +73,13 @@ class CallerScopeSuite extends munit.CatsEffectSuite:
         first <- attempt(migration.detect(path))
         second <- attempt(migration.detect(path))
       yield
-        assert(first.isLeft)
+        assert(first match {
+          case Left(
+                StorageError.Corrupt(_, StorageStructureError.WrongFileKind(FileKind.IndexFile))
+              ) =>
+            true
+          case _ => false
+        })
         assertEquals(second, first)
     }
   }

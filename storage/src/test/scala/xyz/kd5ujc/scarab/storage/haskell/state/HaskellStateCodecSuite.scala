@@ -91,7 +91,11 @@ class HaskellStateCodecSuite extends ScalaCheckSuite:
       assertEquals(coin.encodeUnchecked(Coin(amount)), expected)
       if amount >= 0 && amount < (BigInt(1) << 64) then
         assertEquals(read(coin, expected), Right(Coin(amount)))
-      else assert(read(coin, expected).isLeft)
+      else
+        assert(read(coin, expected) match {
+          case Left(DecodeError(DecodeError.Kind.TypeMismatch(_, _), _, _, _)) => true
+          case _                                                               => false
+        })
     }
   }
 
@@ -129,7 +133,13 @@ class HaskellStateCodecSuite extends ScalaCheckSuite:
       .foreach { (pledge, cost) =>
         val outside = params.copy(pledge = pledge, cost = cost)
         assertEquals(poolParams.write(outside), Right(withCoins(pledge, cost)), s"$pledge $cost")
-        assert(read(poolParams, withCoins(pledge, cost)).isLeft, s"$pledge $cost is not a Word64")
+        assert(
+          read(poolParams, withCoins(pledge, cost)) match {
+            case Left(DecodeError(DecodeError.Kind.TypeMismatch(_, _), _, _, _)) => true
+            case _                                                               => false
+          },
+          s"$pledge $cost is not a Word64"
+        )
       }
   }
 
@@ -432,7 +442,10 @@ class HaskellStateCodecSuite extends ScalaCheckSuite:
     }
     assert(failure(likelihood, double).kind.isInstanceOf[Kind.Unsupported])
     // and without the option to allow them, a float does not even parse
-    assert(likelihood.decodeBytes(bytes).isLeft)
+    assert(likelihood.decodeBytes(bytes) match {
+      case Left(DecodeError(DecodeError.Kind.TypeMismatch(_, _), _, _, _)) => true
+      case _                                                               => false
+    })
   }
 
   private def coinOf(n: Long): Coin =
@@ -500,9 +513,19 @@ class HaskellStateCodecSuite extends ScalaCheckSuite:
     val state = StateGen.rewardUpdate.sample.getOrElse(fail("no update"))
     val written = pulsingRewUpdate.encodeUnchecked(state)
     assertEquals(readOk(pulsingRewUpdate, written), state)
-    assert(rewardPulseSize.decodeBytes(hex("00")).isLeft)
-    assert(rewardPulseSize.decodeBytes(hex("20")).isLeft)
-    assert(rewardPulser.decodeBytes(hex("9f01a0ff")).isLeft)
+    assert(rewardPulseSize.decodeBytes(hex("00")) match {
+      case Left(DecodeError(DecodeError.Kind.Domain(VocabError.OutOfRange(_, _)), _, _, _)) => true
+      case _                                                                                => false
+    })
+    assert(rewardPulseSize.decodeBytes(hex("20")) match {
+      case Left(DecodeError(DecodeError.Kind.TypeMismatch(_, _), _, _, _)) => true
+      case _                                                               => false
+    })
+    assert(rewardPulser.decodeBytes(hex("9f01a0ff")) match {
+      case Left(DecodeError(DecodeError.Kind.BadArity(DecodeError.Arity.Exactly(_), _), _, _, _)) =>
+        true
+      case _ => false
+    })
   }
 
   test(
@@ -942,7 +965,11 @@ class HaskellStateCodecSuite extends ScalaCheckSuite:
     val truncated = Bytes(bytes.value.dropRight(1))
     assert(HaskellState.decode[Conway](truncated).left.exists(_.kind.isInstanceOf[Kind.Syntax]))
     val wrong = HaskellState.decode[Babbage](bytes)(using ShelleyBasedEra.SBabbage)
-    assert(wrong.isLeft)
+    assert(wrong match {
+      case Left(DecodeError(DecodeError.Kind.BadArity(DecodeError.Arity.Exactly(_), _), _, _, _)) =>
+        true
+      case _ => false
+    })
     // the first thing wrong is located: the ledger state's certificate state has three fields
     assert(wrong.left.exists(_.path.nonEmpty), wrong.toString)
     assertEquals(HaskellState.decode[Conway](bytes), Right(state))

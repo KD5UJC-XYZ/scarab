@@ -9,6 +9,7 @@ import xyz.kd5ujc.scarab.models.gen.{CddlSampler, Generator, QName}
 import xyz.kd5ujc.scarab.models.runtime.{Codec, DecodeError}
 
 import DecodeError.Kind
+import xyz.kd5ujc.scarab.models.runtime.ConstraintViolation
 
 /** The generator features that the two bounded targets do not need, on `features.cddl`: integer-
   * and text-keyed maps with optional entries, tag-258 sets, group choices, sockets, embedded CBOR,
@@ -181,7 +182,10 @@ class FeaturesSuite extends munit.FunSuite:
     )
     val registration = Certificate.decodeBytes(hex(s"82 00 82 01 $h28")).toOption.get
     assert(registration.isInstanceOf[Certificate.StakeRegistrationCase])
-    assert(Certificate.decodeBytes(hex(s"82 03 82 01 $h28")).isLeft)
+    assert(Certificate.decodeBytes(hex(s"82 03 82 01 $h28")) match {
+      case Left(DecodeError(DecodeError.Kind.NoAlternative(_), _, _, _)) => true
+      case _                                                             => false
+    })
   }
 
   test(
@@ -193,7 +197,10 @@ class FeaturesSuite extends munit.FunSuite:
     assert(CryptoAlg.from(2).isRight && CryptoAlg.from(3).isLeft)
     assert(RedeemerTag.from(5).isRight && RedeemerTag.from(6).isLeft)
     assert(PositiveCoin.from(BigInt(0)).isLeft && PositiveCoin.from(BigInt(1)).isRight)
-    assert(PolicyId.from(Bytes.fromArray(new Array[Byte](27))).isLeft)
+    assert(PolicyId.from(Bytes.fromArray(new Array[Byte](27))) match {
+      case Left(ConstraintViolation(_, _, _, _)) => true
+      case _                                     => false
+    })
   }
 
   test("nested multi-assets keep wire order and duplicates are not silently merged") {

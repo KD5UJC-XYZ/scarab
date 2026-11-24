@@ -134,10 +134,26 @@ final class SerialisedScriptSuite extends munit.FunSuite:
     assert(deserialise(PlutusLanguage.V1, 11, serialise).isRight)
     assert(deserialise(PlutusLanguage.V2, 7, serialise).isRight)
     val expMod = using(DefaultFun.ExpModInteger)
-    assert(deserialise(PlutusLanguage.V3, 10, expMod).isLeft)
+    assert(deserialise(PlutusLanguage.V3, 10, expMod) match {
+      case Left(
+            ScriptDecodeError.Flat(
+              FlatError.Refused(Availability.Refusal.BuiltinNotAvailable(_, _, _))
+            )
+          ) =>
+        true
+      case _ => false
+    })
     assert(deserialise(PlutusLanguage.V3, 11, expMod).isRight)
     assert(deserialise(PlutusLanguage.V4, 12, expMod).isRight)
-    assert(deserialise(PlutusLanguage.V4, 12, using(DefaultFun.DropPolicies)).isLeft)
+    assert(deserialise(PlutusLanguage.V4, 12, using(DefaultFun.DropPolicies)) match {
+      case Left(
+            ScriptDecodeError.Flat(
+              FlatError.Refused(Availability.Refusal.BuiltinNotAvailable(_, _, _))
+            )
+          ) =>
+        true
+      case _ => false
+    })
   }
 
   // `Eval.hs:124-127` of plutus 1.70.0.0: the program's version is checked when it is evaluated,

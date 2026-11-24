@@ -106,11 +106,24 @@ class HandshakeNegotiationSuite extends munit.FunSuite:
       if v.carriesPeras then
         assertEquals(decodeData(ntn, v.number, right(term)), Right(on))
         assertEquals(right(term), right(dataTerm(ntn, v.number, on)))
-      else assert(term.isLeft, s"v${v.number} accepted a Peras flag")
+      else
+        assert(
+          term match {
+            case Left(ProtocolError.PerasRequiresVersion16) => true
+            case _                                          => false
+          },
+          s"v${v.number} accepted a Peras flag"
+        )
     }
     // a peer's version-16 data without the fifth element, and version-14 data with it, are refused
-    assert(decodeData(ntn, 16, right(dataTerm(ntn, 14, Data(164)))).isLeft)
-    assert(decodeData(ntn, 15, right(dataTerm(ntn, 16, Data(164)))).isLeft)
+    assert(decodeData(ntn, 16, right(dataTerm(ntn, 14, Data(164)))) match {
+      case Left(ProtocolError.NtNDataArity) => true
+      case _                                => false
+    })
+    assert(decodeData(ntn, 15, right(dataTerm(ntn, 16, Data(164)))) match {
+      case Left(ProtocolError.NtNDataArity) => true
+      case _                                => false
+    })
   }
 
   test("a server that does not offer the highest version of the client picks the next one down") {

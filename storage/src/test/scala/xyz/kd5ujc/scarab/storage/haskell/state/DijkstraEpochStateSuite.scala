@@ -10,6 +10,7 @@ import xyz.kd5ujc.scarab.models.runtime.{Codec, DecodeError, Writer}
 import xyz.kd5ujc.scarab.protocol.DijkstraNotYet
 
 import DecodeError.{Arity, Kind}
+import xyz.kd5ujc.scarab.models.runtime.ConstraintViolation
 
 /** Dijkstra's `NewEpochState` in the `state` layout of the Leios build (#826): the state of the
   * first Dijkstra epoch the build wrote (`fixtures/leios/state/dijkstra-203`) and the public
@@ -79,7 +80,10 @@ class DijkstraEpochStateSuite extends FunSuite:
     val codec = HaskellStateCodecs.newEpochState[Dijkstra]
     assertEquals(failure(codec, nes.original).kind, Kind.Domain(DijkstraNotYet.LedgerState))
     val state = read(LeiosStateCodecs.newEpochState[Dijkstra], nes)
-    assert(codec.write(state).isLeft)
+    assert(codec.write(state) match {
+      case Left(ConstraintViolation(_, _, _, _)) => true
+      case _                                     => false
+    })
   }
 
   // ---- the switches at version 12

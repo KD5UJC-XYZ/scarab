@@ -18,6 +18,7 @@ import xyz.kd5ujc.scarab.crypto.bls.{
   Weight
 }
 import xyz.kd5ujc.scarab.crypto.bls.BlsFixtures.{key, rbHash, right}
+import xyz.kd5ujc.scarab.crypto.bls.BlsError
 
 /** The pure vote state of `newLeiosVoteState` (ouroboros-consensus 2416493b
   * `LeiosVoteState.hs:146-247`), checked as the reference's own properties check it
@@ -191,5 +192,8 @@ class LeiosVoteStateSuite extends ScalaCheckSuite:
     val (two, _) = addAll(Seq(0, 4).map(vote(_, announcing)))
     val smaller = right(Committee.honoured(committee.seats.take(4)))
     val v = vote(1, announcing)
-    assert(two.add(v, Weight(Rational(1, 2)), smaller, quorum).isLeft)
+    assert(two.add(v, Weight(Rational(1, 2)), smaller, quorum) match {
+      case Left(VoteAggregationDefect(_, BlsError.SignerNotInCommittee(_))) => true
+      case _                                                                => false
+    })
   }

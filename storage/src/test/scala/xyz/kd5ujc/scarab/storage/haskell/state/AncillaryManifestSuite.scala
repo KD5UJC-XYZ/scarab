@@ -31,7 +31,14 @@ class AncillaryManifestSuite extends FunSuite:
       AncillaryManifest.parse(signature).flatMap(_.verify(key)),
       Left(AncillaryManifest.Error.SignatureRejected)
     )
-    assert(AncillaryManifest.verificationKey("00").isLeft)
+    assert(AncillaryManifest.verificationKey("00") match {
+      case Left(
+            AncillaryManifest.Error
+              .InvalidKey(AncillaryManifest.KeyFailure.JsonSyntax(_: io.circe.ParsingFailure))
+          ) =>
+        true
+      case _ => false
+    })
     val bytes = key.toArray
     bytes(0) = (bytes(0) ^ 1).toByte
     val wrong = xyz.kd5ujc.scarab.crypto.witness.PublicKey32
@@ -48,12 +55,27 @@ class AncillaryManifestSuite extends FunSuite:
       path =>
         assert(!AncillaryManifest.safePath(path), path)
     }
-    assert(AncillaryManifest.parse(text.replace("immutable/06321.chunk", "../outside")).isLeft)
-    assert(AncillaryManifest.parse(text.replace("4d5ee78c", "4D5EE78C")).isLeft)
-    assert(AncillaryManifest.parse("{\"data\":{}}").isLeft)
+    assert(AncillaryManifest.parse(text.replace("immutable/06321.chunk", "../outside")) match {
+      case Left(AncillaryManifest.Error.UnsafePath(_)) => true
+      case _                                           => false
+    })
+    assert(AncillaryManifest.parse(text.replace("4d5ee78c", "4D5EE78C")) match {
+      case Left(
+            AncillaryManifest.Error.InvalidDigest(_, AncillaryManifest.DigestFailure.NonCanonical)
+          ) =>
+        true
+      case _ => false
+    })
+    assert(AncillaryManifest.parse("{\"data\":{}}") match {
+      case Left(AncillaryManifest.Error.SignatureMissing) => true
+      case _                                              => false
+    })
     val duplicate =
       text.replace("{\"data\":{", "{\"data\":{\"ledger/136511997/meta\":\"" + "00" * 32 + "\",")
-    assert(AncillaryManifest.parse(duplicate).isLeft)
+    assert(AncillaryManifest.parse(duplicate) match {
+      case Left(AncillaryManifest.Error.JsonSyntax(_: io.circe.ParsingFailure)) => true
+      case _                                                                    => false
+    })
   }
 
   test("twenty thousand manifest paths parse, sort and hash on a 256 KiB worker") {

@@ -359,12 +359,23 @@ final class CoreUnliftingSuite extends munit.FunSuite:
   test("a data list and a map list are told apart by their whole type") {
     val pairs = con(list(DefaultUni.Pair(DefaultUni.Data, DefaultUni.Data)))
     assert(CoreUnlifting(CoreVariant.A)(DefaultFun.MapData, Vector(pairs)).isRight, "mapData")
-    assert(CoreUnlifting(CoreVariant.A)(DefaultFun.ListData, Vector(pairs)).isLeft, "listData")
+    assert(
+      CoreUnlifting(CoreVariant.A)(DefaultFun.ListData, Vector(pairs)) match {
+        case Left(UnliftingFailure(ErrorClass.Structural, UnliftingCause.WrongType(_, _, _))) =>
+          true
+        case _ => false
+      },
+      "listData"
+    )
     assert(
       CoreUnlifting(CoreVariant.A)(
         DefaultFun.MapData,
         Vector(con(dataList(PlutusData.I(1))))
-      ).isLeft,
+      ) match {
+        case Left(UnliftingFailure(ErrorClass.Structural, UnliftingCause.WrongType(_, _, _))) =>
+          true
+        case _ => false
+      },
       "mapData of data"
     )
   }

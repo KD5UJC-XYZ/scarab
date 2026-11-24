@@ -54,7 +54,10 @@ class HandshakeSuite extends munit.FunSuite:
         decodePrefix(suite, State.Confirm, Bytes(full.value ++ full.value)),
         Right((message, full))
       )
-      assert(decode(suite, State.Confirm, Bytes(full.value ++ full.value)).isLeft)
+      assert(decode(suite, State.Confirm, Bytes(full.value ++ full.value)) match {
+        case Left(Handshake.DecodeError(ProtocolError.TrailingBytes, _)) => true
+        case _                                                           => false
+      })
     }
   }
   test("valid nonminimal integer and container widths remain accepted") {
@@ -68,10 +71,22 @@ class HandshakeSuite extends munit.FunSuite:
         assertEquals(read(encoded(m, ntc), ntc), m)
       }
     }
-    assert(wireVersion(ntn, 17).isLeft)
-    assert(wireVersion(ntc, 24).isLeft)
-    assert(decode(ntc, State.Confirm, bytes("8301108202f4")).isLeft)
-    assert(decode(ntn, State.Confirm, bytes("8301118502f500f4f4")).isLeft)
+    assert(wireVersion(ntn, 17) match {
+      case Left(ProtocolError.UnsupportedLogicalVersion) => true
+      case _                                             => false
+    })
+    assert(wireVersion(ntc, 24) match {
+      case Left(ProtocolError.UnsupportedLogicalVersion) => true
+      case _                                             => false
+    })
+    assert(decode(ntc, State.Confirm, bytes("8301108202f4")) match {
+      case Left(Handshake.DecodeError(ProtocolError.UnrecognizedSelectedVersion, _)) => true
+      case _                                                                         => false
+    })
+    assert(decode(ntn, State.Confirm, bytes("8301118502f500f4f4")) match {
+      case Left(Handshake.DecodeError(ProtocolError.UnrecognizedSelectedVersion, _)) => true
+      case _                                                                         => false
+    })
     // the default is the latest release, 14 and 15; 16 is experimental (docs/running/configuration.md)
     assertEquals(defaultNodeToNode(2), Vector(14 -> Data(2), 15 -> Data(2)))
     assertEquals(
@@ -85,29 +100,59 @@ class HandshakeSuite extends munit.FunSuite:
         assertEquals(decodeData(s, v, data(v, Data(magic), s)), Right(Data(magic)))
       }
     }
-    assert(dataTerm(ntn, 14, Data(-1)).isLeft)
-    assert(dataTerm(ntn, 14, Data(0x100000000L)).isLeft)
+    assert(dataTerm(ntn, 14, Data(-1)) match {
+      case Left(ProtocolError.NetworkMagicOutsideUint32) => true
+      case _                                             => false
+    })
+    assert(dataTerm(ntn, 14, Data(0x100000000L)) match {
+      case Left(ProtocolError.NetworkMagicOutsideUint32) => true
+      case _                                             => false
+    })
     assert(
       decodeData(
         ntn,
         14,
         Term.Arr(Vector(Term.Integer(-1), Term.Bool(true), Term.Integer(0), Term.Bool(false)))
-      ).isLeft
+      ) match {
+        case Left(ProtocolError.NetworkMagicOutsideUint32) => true
+        case _                                             => false
+      }
     )
     assert(
-      decodeData(ntc, 16, Term.Arr(Vector(Term.Integer(BigInt(1) << 32), Term.Bool(false)))).isLeft
+      decodeData(ntc, 16, Term.Arr(Vector(Term.Integer(BigInt(1) << 32), Term.Bool(false)))) match {
+        case Left(ProtocolError.NetworkMagicOutsideUint32) => true
+        case _                                             => false
+      }
     )
   }
   test("selected data exact arity, definite list and typed flags") {
-    assert(decodeData(ntn, 14, data(16)).isLeft)
-    assert(decodeData(ntn, 16, data(14)).isLeft)
-    assert(dataTerm(ntn, 15, Data(2, peras = true)).isLeft)
-    assert(dataTerm(ntc, 16, Data(2, peerSharing = true)).isLeft)
+    assert(decodeData(ntn, 14, data(16)) match {
+      case Left(ProtocolError.NtNDataArity) => true
+      case _                                => false
+    })
+    assert(decodeData(ntn, 16, data(14)) match {
+      case Left(ProtocolError.NtNDataArity) => true
+      case _                                => false
+    })
+    assert(dataTerm(ntn, 15, Data(2, peras = true)) match {
+      case Left(ProtocolError.PerasRequiresVersion16) => true
+      case _                                          => false
+    })
+    assert(dataTerm(ntc, 16, Data(2, peerSharing = true)) match {
+      case Left(ProtocolError.NtCHasNoNtNFeatures) => true
+      case _                                       => false
+    })
     val invalid = Vector("83010e8402f502f4", "83010e84020000f4", "83010e9f02f500f4ff")
     invalid.foreach(hex =>
       read(hex) match
-        case Message.Accept(v, d) => assert(decodeData(ntn, v, d).isLeft)
-        case _                    => fail("expected accept")
+        case Message.Accept(v, d) =>
+          assert(decodeData(ntn, v, d) match {
+            case Left(ProtocolError.ExpectedBoolean) | Left(ProtocolError.ExpectedDefiniteArray) |
+                Left(ProtocolError.PeerSharingMustBe0Or1) =>
+              true
+            case _ => false
+          })
+        case _ => fail("expected accept")
     )
   }
   test("unknown map keys skipped including arbitrary generic CBOR and unordered unknown keys") {
@@ -123,9 +168,18 @@ class HandshakeSuite extends munit.FunSuite:
       "8200a20e8402f500f40e8402f500f4",
       "8200a30e8402f500f41863f60e8402f500f4"
     ).foreach { hex =>
-      assert(decode(ntn, State.Propose, bytes(hex)).isLeft)
+      assert(decode(ntn, State.Propose, bytes(hex)) match {
+        case Left(
+              Handshake.DecodeError(ProtocolError.RecognizedVersionsMustBeDistinctAndIncreasing, _)
+            ) =>
+          true
+        case _ => false
+      })
     }
-    assert(encode(ntn, Message.Propose(Vector(14 -> data(14), 14 -> data(14)))).isLeft)
+    assert(encode(ntn, Message.Propose(Vector(14 -> data(14), 14 -> data(14)))) match {
+      case Left(ProtocolError.DuplicateVersion) => true
+      case _                                    => false
+    })
     assertEquals(
       encoded(Message.Propose(Vector(15 -> data(15), 14 -> data(14)))),
       "8200a20e8402f500f40f8402f500f4"
@@ -140,10 +194,24 @@ class HandshakeSuite extends munit.FunSuite:
       "8300a000",
       "820283038000",
       "8202830118186178"
-    ).foreach { hex => assert(decode(ntn, State.Confirm, bytes(hex)).isLeft) }
-    assert(decode(ntn, State.Propose, bytes("83010e8402f500f4")).isLeft)
-    assert(decode(ntn, State.Propose, bytes("8203a0")).isLeft)
-    assert(decode(ntn, State.Done, bytes("8200a0")).isLeft)
+    ).foreach { hex =>
+      assert(decode(ntn, State.Confirm, bytes(hex)) match {
+        case Left(Handshake.DecodeError(_, _)) => true
+        case _                                 => false
+      })
+    }
+    assert(decode(ntn, State.Propose, bytes("83010e8402f500f4")) match {
+      case Left(Handshake.DecodeError(ProtocolError.UnexpectedHandshakeTagArityOrState, _)) => true
+      case _                                                                                => false
+    })
+    assert(decode(ntn, State.Propose, bytes("8203a0")) match {
+      case Left(Handshake.DecodeError(ProtocolError.UnexpectedHandshakeTagArityOrState, _)) => true
+      case _                                                                                => false
+    })
+    assert(decode(ntn, State.Done, bytes("8200a0")) match {
+      case Left(Handshake.DecodeError(ProtocolError.HandshakeAlreadyDone, _)) => true
+      case _                                                                  => false
+    })
   }
   test("refusals preserve unknown integer versions; typed errors and bounded text") {
     assertEquals(
@@ -193,14 +261,29 @@ class HandshakeSuite extends munit.FunSuite:
   }
   test("client validates offered membership, magic and shape; terminal state rejects repeats") {
     val c = client(Vector(14 -> Data(2)))
-    assert(c.receive(Message.Accept(16, data(16))).isLeft)
-    assert(c.receive(Message.Accept(14, data(14, Data(764824073)))).isLeft)
-    assert(c.receive(Message.Accept(14, Term.Bool(false))).isLeft)
+    assert(c.receive(Message.Accept(16, data(16))) match {
+      case Left(ProtocolError.ServerSelectedAVersionNotOffered) => true
+      case _                                                    => false
+    })
+    assert(c.receive(Message.Accept(14, data(14, Data(764824073)))) match {
+      case Left(ProtocolError.NetworkMagicMismatch) => true
+      case _                                        => false
+    })
+    assert(c.receive(Message.Accept(14, Term.Bool(false))) match {
+      case Left(ProtocolError.ExpectedDefiniteArray) => true
+      case _                                         => false
+    })
     val (done, r) = right(c.receive(Message.Accept(14, data(14))))
     assertEquals(done.state, State.Done)
     assertEquals(r, Result.Negotiated(14, Data(2)))
-    assert(done.receive(Message.Accept(14, data(14))).isLeft)
-    assert(responder(ntn, Vector(14 -> Data(2)), Message.Accept(14, data(14))).isLeft)
+    assert(done.receive(Message.Accept(14, data(14))) match {
+      case Left(ProtocolError.ClientIsNotAwaitingConfirmation) => true
+      case _                                                   => false
+    })
+    assert(responder(ntn, Vector(14 -> Data(2)), Message.Accept(14, data(14))) match {
+      case Left(ProtocolError.ResponderExpectsProposal) => true
+      case _                                            => false
+    })
   }
   test("query is a distinct terminal result with per-version decode errors") {
     val offered = Vector(23 -> Data(2, query = true))
@@ -259,8 +342,12 @@ class HandshakeSuite extends munit.FunSuite:
     )
       .foreach { term =>
         read("8200a10e" + term) match
-          case Message.Propose(Vector((14, t))) => assert(decodeData(ntn, 14, t).isLeft)
-          case m                                => fail(s"unexpected $m")
+          case Message.Propose(Vector((14, t))) =>
+            assert(decodeData(ntn, 14, t) match {
+              case Left(ProtocolError.ExpectedDefiniteArray) => true
+              case _                                         => false
+            })
+          case m => fail(s"unexpected $m")
       }
   }
 
@@ -315,7 +402,10 @@ class HandshakeSuite extends munit.FunSuite:
     val huge = decodePrefix(ntn, State.Confirm, bytes("8202" + "9b8000000000000000" + "010e6178"))
     assert(huge.isLeft && !huge.swap.toOption.exists(_.incomplete), huge)
     // only a refusal is read so: in StPropose the message is refused as before
-    assert(decode(ntn, State.Propose, bytes("8202" + "85" + "010e63626164")).isLeft)
+    assert(decode(ntn, State.Propose, bytes("8202" + "85" + "010e63626164")) match {
+      case Left(Handshake.DecodeError(ProtocolError.IncompleteCbor, _)) => true
+      case _                                                            => false
+    })
   }
 
   // The reference bounds a handshake message at maxTransmissionUnit, 5760 bytes (Codec.hs:54-68),

@@ -333,7 +333,10 @@ class TxOutMemPackSuite extends ScalaCheckSuite:
           policy -> Map(Bytes.fromArray(Array(i.toByte)) -> BigInt(1))
         }.toMap
       )
-    assert(TxOutMemPack.encodeParts[Conway](parts(enterprise, tooMany)).isLeft)
+    assert(TxOutMemPack.encodeParts[Conway](parts(enterprise, tooMany)) match {
+      case Left(MemPack.Failure.MultiAssetTooLarge(_, _)) => true
+      case _                                              => false
+    })
   }
 
   test("what an era does not have is refused, not guessed") {

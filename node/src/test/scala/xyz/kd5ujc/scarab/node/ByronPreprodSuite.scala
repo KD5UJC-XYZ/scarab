@@ -16,6 +16,8 @@ import xyz.kd5ujc.scarab.ledger.byron.{ByronLedger, ByronSignatureCensus, ByronV
 import cats.effect.IO
 import munit.CatsEffectSuite
 import scala.jdk.CollectionConverters.*
+import xyz.kd5ujc.scarab.ledger.ByronChainError
+import xyz.kd5ujc.scarab.ledger.byron.ByronError
 
 /** The whole Byron era of the public preprod testnet (45 main blocks and the epoch 0 boundary
   * block, `fixtures/preprod`) and the first Shelley blocks, replayed from the genesis files and the
@@ -228,7 +230,13 @@ class ByronPreprodSuite extends CatsEffectSuite:
     val at = raw.size - 70 // inside the update payload's signatures
     val bad = Bytes(raw.value.updated(at, (raw.value(at) ^ 1).toByte))
     val result = MirrorSteps.block(setup, states(i), b.header, bad)
-    assert(result.isLeft, result.toString)
+    assert(
+      result match {
+        case Left(BlockFailure.Byron(ByronChainError.Ledger(ByronError.ProofMismatch(_)))) => true
+        case _                                                                             => false
+      },
+      result.toString
+    )
   }
 
   test(

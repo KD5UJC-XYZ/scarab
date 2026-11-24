@@ -20,6 +20,7 @@ import xyz.kd5ujc.scarab.ledger.byron.{ByronLedger, ByronSig}
 import xyz.kd5ujc.scarab.ledger.byron.ByronTestKit
 import xyz.kd5ujc.scarab.ledger.byron.ByronTestKit.*
 import munit.FunSuite
+import xyz.kd5ujc.scarab.crypto.witness.VerificationError
 
 /** A signature of the Byron ledger (a transaction witness, an update proposal) that a failing
   * provider cannot check is no verdict on the block (issue 438, folded into issue 393): the Byron
@@ -70,7 +71,15 @@ class ByronLedgerDefectSuite extends FunSuite:
   }
 
   test("the same block is accepted with a working provider") {
-    assert(ByronRules.update(start, block, rules(ByronSig.SignTx)).isLeft)
+    assert(ByronRules.update(start, block, rules(ByronSig.SignTx)) match {
+      case Left(
+            ProviderDefect.Ed25519(
+              VerificationError.ImplementationFailure(_: java.lang.IllegalStateException)
+            )
+          ) =>
+        true
+      case _ => false
+    })
     assert(ByronRules.update(start, block, working).isRight)
     assert(NodeRules.byronStep(byronState, follow, header, raw, Some(working)).isRight)
   }

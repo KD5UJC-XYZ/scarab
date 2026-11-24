@@ -9,6 +9,8 @@ import xyz.kd5ujc.scarab.ledger.LeiosHeader
 import xyz.kd5ujc.scarab.crypto.bls.Vote
 import xyz.kd5ujc.scarab.models.leios.notify.LeiosNotifyMessage
 import xyz.kd5ujc.scarab.protocol.{EbHash, EbPoint, LeiosNotify, LeiosWord}
+import xyz.kd5ujc.scarab.codec.Cbor
+import xyz.kd5ujc.scarab.models.runtime.DecodeError
 
 /** The generated reader of the LeiosNotify messages (`models.conf`: consensus' `leiosNotify.cddl`,
   * which imports the ChainSync header, so `header.cddl` is a module of that name too) against the
@@ -103,15 +105,30 @@ class LeiosNotifyCddlSuite extends munit.FunSuite:
         .foldLeft(Bytes.empty)(_ ++ _)
     assert(generated(votes(16)).isRight)
     assert(LeiosNotify.decodePrefix(LeiosNotify.State.Busy, votes(16)).isRight)
-    assert(generated(votes(17)).isLeft)
+    assert(generated(votes(17)) match {
+      case Left(DecodeError(DecodeError.Kind.NoAlternative(_), _, _, _)) => true
+      case _                                                             => false
+    })
     assert(LeiosNotify.decodePrefix(LeiosNotify.State.Busy, votes(17)).isRight)
-    assert(generated(votes(0)).isLeft)
+    assert(generated(votes(0)) match {
+      case Left(DecodeError(DecodeError.Kind.NoAlternative(_), _, _, _)) => true
+      case _                                                             => false
+    })
     assert(LeiosNotify.decodePrefix(LeiosNotify.State.Busy, votes(0)).isRight)
   }
 
   test("an unknown tag, a wrong arity and trailing bytes are refused by the generated reader") {
-    assert(generated(hex("8108")).isLeft)
-    assert(generated(hex("820300")).isLeft)
-    assert(generated(hex("8103") ++ hex("00")).isLeft)
+    assert(generated(hex("8108")) match {
+      case Left(DecodeError(DecodeError.Kind.NoAlternative(_), _, _, _)) => true
+      case _                                                             => false
+    })
+    assert(generated(hex("820300")) match {
+      case Left(DecodeError(DecodeError.Kind.NoAlternative(_), _, _, _)) => true
+      case _                                                             => false
+    })
+    assert(generated(hex("8103") ++ hex("00")) match {
+      case Left(DecodeError(DecodeError.Kind.Syntax(Cbor.Error.TrailingBytes), _, _, _)) => true
+      case _                                                                             => false
+    })
   }
 end LeiosNotifyCddlSuite

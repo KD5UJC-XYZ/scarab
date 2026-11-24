@@ -79,17 +79,38 @@ class RewardPulserSuite extends ScalaCheckSuite:
       result(RewardBlockCount.fromBigInt((BigInt(1) << 80) + 7)).value,
       (BigInt(1) << 80) + 7
     )
-    assert(RewardBlockCount.fromBigInt(-1).isLeft)
+    assert(RewardBlockCount.fromBigInt(-1) match {
+      case Left(VocabError.Negative(VocabError.Kind.RewardBlockCount, _)) => true
+      case _                                                              => false
+    })
     assertEquals(result(RewardPulseSize.fromBigInt(Long.MaxValue)).value, Long.MaxValue)
-    assert(RewardPulseSize.fromBigInt(0).isLeft)
-    assert(RewardPulseSize.fromBigInt(-1).isLeft)
+    assert(RewardPulseSize.fromBigInt(0) match {
+      case Left(VocabError.OutOfRange(VocabError.Kind.RewardPulseSize, _)) => true
+      case _                                                               => false
+    })
+    assert(RewardPulseSize.fromBigInt(-1) match {
+      case Left(VocabError.OutOfRange(VocabError.Kind.RewardPulseSize, _)) => true
+      case _                                                               => false
+    })
   }
 
   test("protocol version capture refuses overflow instead of narrowing BigInts") {
-    assert(ProtVer.fromBigInt(BigInt(1) << 64, 0).isLeft)
-    assert(ProtVer.fromBigInt(10, BigInt(1) << 32).isLeft)
-    assert(ProtVer.fromBigInt(-1, 0).isLeft)
-    assert(ProtVer.fromBigInt(10, -1).isLeft)
+    assert(ProtVer.fromBigInt(BigInt(1) << 64, 0) match {
+      case Left(VocabError.OutOfRange(VocabError.Kind.ProtocolMajor, _)) => true
+      case _                                                             => false
+    })
+    assert(ProtVer.fromBigInt(10, BigInt(1) << 32) match {
+      case Left(VocabError.OutOfRange(VocabError.Kind.ProtocolMinor, _)) => true
+      case _                                                             => false
+    })
+    assert(ProtVer.fromBigInt(-1, 0) match {
+      case Left(VocabError.OutOfRange(VocabError.Kind.ProtocolMajor, _)) => true
+      case _                                                             => false
+    })
+    assert(ProtVer.fromBigInt(10, -1) match {
+      case Left(VocabError.OutOfRange(VocabError.Kind.ProtocolMinor, _)) => true
+      case _                                                             => false
+    })
     assertEquals(
       ProtVer.fromBigInt(13, (BigInt(1) << 32) - 1),
       Right(ProtVer(Word64.fromUnsigned(13), Word64.fromUnsigned(0xffffffffL)))

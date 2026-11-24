@@ -157,7 +157,13 @@ class IdentitySnapshotPreflightSuite extends CatsEffectSuite:
             .flatMap(NetworkIdentityFile.admit[IO](dir, setup.identity, _))
         )
         _ <- retained(dir, original)
-      yield assert(result.isLeft, result.toString)
+      yield assert(
+        result match {
+          case Left(StorageError.Corrupt(_, SnapshotReadError.VersionHeaderLength(_, _))) => true
+          case _                                                                          => false
+        },
+        result.toString
+      )
     }
   }
 

@@ -154,9 +154,16 @@ class Sum6KesSuite extends munit.FunSuite:
     )
     (0 to 63).foreach(p => assertEquals(RelativePeriod.create(p).toOption.get.value, p))
     Vector(null, Bytes(Vector.fill(MaxMessageBytes + 1)(0.toByte))).foreach(x =>
-      assert(SuppliedMessage.fromBytes(x).isLeft)
+      assert(SuppliedMessage.fromBytes(x) match {
+        case Left(Sum6Kes.Failure.MessageTooLarge(_)) | Left(Sum6Kes.Failure.MissingComponent(_)) =>
+          true
+        case _ => false
+      })
     )
-    assert(SuppliedMessage.fromArray(null).isLeft)
+    assert(SuppliedMessage.fromArray(null) match {
+      case Left(Sum6Kes.Failure.MissingComponent(Sum6Kes.Component.Message)) => true
+      case _                                                                 => false
+    })
     assertEquals(
       SuppliedMessage.fromArray(new Array[Byte](MaxMessageBytes + 1)),
       Left(Failure.MessageTooLarge(MaxMessageBytes + 1))
@@ -166,10 +173,22 @@ class Sum6KesSuite extends munit.FunSuite:
       MaxMessageBytes
     )
     assertEquals(SuppliedMessage.fromBytes(Bytes.empty).toOption.get.bytes, Bytes.empty)
-    assert(Root32.fromArray(null).isLeft)
-    assert(Signature448.fromArray(null).isLeft)
-    assert(Root32.fromArray(new Array[Byte](33)).isLeft)
-    assert(Signature448.fromArray(new Array[Byte](449)).isLeft)
+    assert(Root32.fromArray(null) match {
+      case Left(Sum6Kes.Failure.MissingComponent(Sum6Kes.Component.Root)) => true
+      case _                                                              => false
+    })
+    assert(Signature448.fromArray(null) match {
+      case Left(Sum6Kes.Failure.MissingComponent(Sum6Kes.Component.Signature)) => true
+      case _                                                                   => false
+    })
+    assert(Root32.fromArray(new Array[Byte](33)) match {
+      case Left(Sum6Kes.Failure.InvalidLength(Sum6Kes.Component.Root, _, _)) => true
+      case _                                                                 => false
+    })
+    assert(Signature448.fromArray(new Array[Byte](449)) match {
+      case Left(Sum6Kes.Failure.InvalidLength(Sum6Kes.Component.Signature, _, _)) => true
+      case _                                                                      => false
+    })
   }
 
   test("owned array snapshots getters immutable storage and no public copy bypass") {
@@ -265,14 +284,24 @@ class Sum6KesSuite extends munit.FunSuite:
       case (root, period, message, signature) =>
         val result =
           verifyWith(root, period, message, signature, _ => fail("hash"), (_, _, _) => fail("leaf"))
-        assert(result.isLeft)
+        assert(result match {
+          case Left(Sum6Kes.Failure.MissingComponent(_)) => true
+          case _                                         => false
+        })
     }
     Vector(
       verify(null, 0, Bytes.empty, s.bytes),
       verify(r.bytes, 64, m.bytes, s.bytes),
       verify(r.bytes, 0, null, s.bytes),
       verify(r.bytes, 0, m.bytes, null)
-    ).foreach(x => assert(x.isLeft))
+    ).foreach(x =>
+      assert(x match {
+        case Left(Sum6Kes.Failure.MissingComponent(_)) |
+            Left(Sum6Kes.Failure.PeriodOutOfRange(_)) =>
+          true
+        case _ => false
+      })
+    )
   }
 
   test("dependency nonfatal failures stay typed; fatal errors propagate; rejection is distinct") {
@@ -316,7 +345,10 @@ class Sum6KesSuite extends munit.FunSuite:
           .isInstanceOf[Failure.HashContractViolation]
       )
     )
-    assert(verifyWith(r, p, m, s, Blake2b.hash256.hash, (_, _, _) => null).isLeft)
+    assert(verifyWith(r, p, m, s, Blake2b.hash256.hash, (_, _, _) => null) match {
+      case Left(Sum6Kes.Failure.LeafContractViolation) => true
+      case _                                           => false
+    })
     val fatal = new LinkageError("fatal")
     var caught: Throwable = null
     try verifyWith(r, p, m, s, _ => throw fatal, reject)

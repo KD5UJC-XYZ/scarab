@@ -100,9 +100,14 @@ class ConnectionStateSuite extends ScalaCheckSuite:
       assertEquals(ConnectionState.transition(Inbound(f), Event.CommitInUse), Right(Terminating))
       assert(!ConnectionState.valid(Some(Inbound(f)), Some(Terminating)))
       assert(
-        ConnectionState
-          .transition(Unnegotiated(Provenance.Outbound), Event.Negotiated(f, Provenance.Inbound))
-          .isLeft
+        (ConnectionState
+          .transition(
+            Unnegotiated(Provenance.Outbound),
+            Event.Negotiated(f, Provenance.Inbound)
+          )) match {
+          case Left(xyz.kd5ujc.scarab.protocol.ConnectionState.Illegal(_, _)) => true
+          case _                                                              => false
+        }
       )
     }
     every
@@ -110,7 +115,15 @@ class ConnectionStateSuite extends ScalaCheckSuite:
         case Inbound(_) => true
         case _          => false
       }
-      .foreach(s => assert(ConnectionState.transition(s, Event.CommitInUse).isLeft, s.abstractName))
+      .foreach(s =>
+        assert(
+          ConnectionState.transition(s, Event.CommitInUse) match {
+            case Left(xyz.kd5ujc.scarab.protocol.ConnectionState.Illegal(_, _)) => true
+            case _                                                              => false
+          },
+          s.abstractName
+        )
+      )
   }
 
   test("the identity moves are the reference's, and its oracle admits all but one") {
@@ -170,7 +183,14 @@ class ConnectionStateSuite extends ScalaCheckSuite:
       )
       assert(!ConnectionState.valid(Some(OutboundIdle(flow)), Some(InboundIdle(flow))))
     }
-    assert(ConnectionState.transition(InboundIdle(DataFlow.Duplex), Event.SelfConnIdle).isLeft)
+    assert(ConnectionState.transition(InboundIdle(DataFlow.Duplex), Event.SelfConnIdle) match {
+      case Left(
+            xyz.kd5ujc.scarab.protocol.ConnectionState
+              .Illegal(_, xyz.kd5ujc.scarab.protocol.ConnectionState.Event.SelfConnIdle)
+          ) =>
+        true
+      case _ => false
+    })
   }
 
   test("outbound: Reserve, Connected and Negotiated^{flow}_{Outbound}") {
@@ -225,10 +245,25 @@ class ConnectionStateSuite extends ScalaCheckSuite:
 
   test("a unidirectional inbound connection cannot be reused") {
     assert(
-      ConnectionState.transition(InboundIdle(DataFlow.Unidirectional), Event.AwakeLocal).isLeft
+      ConnectionState.transition(InboundIdle(DataFlow.Unidirectional), Event.AwakeLocal) match {
+        case Left(
+              xyz.kd5ujc.scarab.protocol.ConnectionState
+                .Illegal(_, xyz.kd5ujc.scarab.protocol.ConnectionState.Event.AwakeLocal)
+            ) =>
+          true
+        case _ => false
+      }
     )
     assert(
-      ConnectionState.transition(Inbound(DataFlow.Unidirectional), Event.PromotedToWarmLocal).isLeft
+      ConnectionState
+        .transition(Inbound(DataFlow.Unidirectional), Event.PromotedToWarmLocal) match {
+        case Left(
+              xyz.kd5ujc.scarab.protocol.ConnectionState
+                .Illegal(_, xyz.kd5ujc.scarab.protocol.ConnectionState.Event.PromotedToWarmLocal)
+            ) =>
+          true
+        case _ => false
+      }
     )
   }
 
@@ -237,8 +272,26 @@ class ConnectionStateSuite extends ScalaCheckSuite:
       ConnectionState.transition(Unnegotiated(Provenance.Inbound), Event.Connected),
       Left(Illegal(Unnegotiated(Provenance.Inbound), Event.Connected))
     )
-    assert(ConnectionState.transition(OutboundUni, Event.Commit).isLeft)
-    assert(ConnectionState.transition(Terminated, Event.Fail).isLeft)
+    assert(ConnectionState.transition(OutboundUni, Event.Commit) match {
+      case Left(
+            xyz.kd5ujc.scarab.protocol.ConnectionState.Illegal(
+              xyz.kd5ujc.scarab.protocol.ConnectionState.OutboundUni,
+              xyz.kd5ujc.scarab.protocol.ConnectionState.Event.Commit
+            )
+          ) =>
+        true
+      case _ => false
+    })
+    assert(ConnectionState.transition(Terminated, Event.Fail) match {
+      case Left(
+            xyz.kd5ujc.scarab.protocol.ConnectionState.Illegal(
+              xyz.kd5ujc.scarab.protocol.ConnectionState.Terminated,
+              xyz.kd5ujc.scarab.protocol.ConnectionState.Event.Fail
+            )
+          ) =>
+        true
+      case _ => false
+    })
   }
 
   test("the counters are the reference's connectionStateToCounters") {

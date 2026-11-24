@@ -56,7 +56,20 @@ class DijkstraNotYetSuite extends FunSuite:
     assertEquals(NtNHeader.codec.encode(NtNHeader(Era.Dijkstra, raw, None)), Right(envelope))
     // the header is read by the Leios header's decoder, which three bytes are not
     assert(
-      xyz.kd5ujc.scarab.ledger.Header.fromNtN(NtNHeader(Era.Dijkstra, raw, None), 21600).isLeft
+      xyz.kd5ujc.scarab.ledger.Header.fromNtN(NtNHeader(Era.Dijkstra, raw, None), 21600) match {
+        case Left(
+              xyz.kd5ujc.scarab.ledger.ChainError.Decode(
+                xyz.kd5ujc.scarab.ledger.DecodeField.Header,
+                LedgerDecodeError.Expected(
+                  xyz.kd5ujc.scarab.ledger.DecodeField.Header,
+                  LedgerDecodeError.Shape.Bytes,
+                  _
+                )
+              )
+            ) =>
+          true
+        case _ => false
+      }
     )
   }
 

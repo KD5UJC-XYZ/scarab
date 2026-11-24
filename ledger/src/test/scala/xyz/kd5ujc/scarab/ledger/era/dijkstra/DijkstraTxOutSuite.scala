@@ -357,6 +357,13 @@ class DijkstraTxOutSuite extends FunSuite:
     // an output map without its value
     val raw = hex("a100" + "581d61" + "00" * 28)
     val ours = node(raw).flatMap(DijkstraTxOut.read)
-    assert(ours.isLeft)
+    assert(ours match {
+      case Left(
+            xyz.kd5ujc.scarab.ledger.LedgerDecodeError
+              .MissingKeys(xyz.kd5ujc.scarab.ledger.DecodeField.Output, _)
+          ) =>
+        true
+      case _ => false
+    })
     assertEquals(ours.left.toOption, node(raw).flatMap(FlatDijkstraTxOut.decode).left.toOption)
   }

@@ -40,6 +40,7 @@ import xyz.kd5ujc.scarab.ledger.Nonce
 import munit.CatsEffectSuite
 import scala.concurrent.duration.*
 import scala.jdk.CollectionConverters.*
+import xyz.kd5ujc.scarab.ledger.json.NumberError
 
 /** Era-walking regression suite over a committed capture of the `devnet.py up-eras` cluster
   * (`fixtures/eras`): a Byron start (one 50-slot epoch), then one Shelley-based epoch per protocol
@@ -282,7 +283,13 @@ class EraTransitionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       Right(setup.origin.get)
     )
     assert(
-      NodeConfig.parse(ReferenceBuild.Default)("{\"TestShelleyHardForkAtEpoch\": \"x\"}").isLeft
+      NodeConfig.parse(ReferenceBuild.Default)("{\"TestShelleyHardForkAtEpoch\": \"x\"}") match {
+        case Left(
+              ledger.ConfigError(ledger.ConfigProblem.ConfigNumber(_, NumberError.TypeMismatch(_)))
+            ) =>
+          true
+        case _ => false
+      }
     )
     assertEquals(NodeConfig.parse(ReferenceBuild.Default)("{}"), Right(NodeConfig.empty))
   }
@@ -857,14 +864,22 @@ class EraTransitionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       c.extend(h, 0).fold(e => fail(e.message), _._1)
     }
     assertEquals(grown.tipRef.map(_.hash), Some(headers(51).hash))
-    assert(VolatileChain.genesis[Int](5, 0).extend(headers.head, 0).isLeft)
+    assert(VolatileChain.genesis[Int](5, 0).extend(headers.head, 0) match {
+      case Left(ledger.ChainError.NotConnected(_, ChainSync.Point.Origin)) => true
+      case _                                                               => false
+    })
     assert(
-      VolatileChain
+      (VolatileChain
         .genesis[Int](5, 0, Some(Bytes(Vector.fill(32)(1))))
-        .extend(headers.head, 0)
-        .isLeft
+        .extend(headers.head, 0)) match {
+        case Left(ledger.ChainError.NotConnected(_, ChainSync.Point.Origin)) => true
+        case _                                                               => false
+      }
     )
-    assert(empty.extend(headers(1), 0).isLeft)
+    assert(empty.extend(headers(1), 0) match {
+      case Left(ledger.ChainError.NotConnected(_, ChainSync.Point.Origin)) => true
+      case _                                                               => false
+    })
   }
 
   /** Replay `script` through the real follower and rules over a scripted peer; returns once the

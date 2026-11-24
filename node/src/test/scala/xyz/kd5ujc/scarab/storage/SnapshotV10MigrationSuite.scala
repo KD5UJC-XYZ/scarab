@@ -14,6 +14,8 @@ import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellLedgerFile, ReferenceLayout}
 
 import StorageTestKit.*
+import xyz.kd5ujc.scarab.codec.Cbor
+import xyz.kd5ujc.scarab.models.runtime.DecodeError
 
 /** V10 records the reference build whose layout a snapshot's Haskell state bytes are in (#826); V9
   * and the versions before it recorded none, and held the 11.1 layout only. A V9 file migrates as
@@ -103,8 +105,23 @@ class SnapshotV10MigrationSuite extends CatsEffectSuite:
       assert(HaskellLedgerFile.decode(haskell).isRight, name)
       assertEquals(bytes(2) & 0xff, 0x82, s"$name: [1, [ledger, header]]")
       val threeParts = Bytes.wrap(bytes.updated(2, 0x83.toByte) :+ 0xf6.toByte)
-      assert(HaskellLedgerFile.decode(threeParts).isLeft, s"$name: a three-part state")
-      assert(HaskellLedgerFile.decode(Bytes.wrap(bytes :+ 0.toByte)).isLeft, s"$name: trailing")
+      assert(
+        HaskellLedgerFile.decode(threeParts) match {
+          case Left(
+                DecodeError(DecodeError.Kind.BadArity(DecodeError.Arity.Exactly(_), _), _, _, _)
+              ) =>
+            true
+          case _ => false
+        },
+        s"$name: a three-part state"
+      )
+      assert(
+        HaskellLedgerFile.decode(Bytes.wrap(bytes :+ 0.toByte)) match {
+          case Left(DecodeError(DecodeError.Kind.Syntax(Cbor.Error.TrailingBytes), _, _, _)) => true
+          case _ => false
+        },
+        s"$name: trailing"
+      )
     }
   }
 

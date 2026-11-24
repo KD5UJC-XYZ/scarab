@@ -231,9 +231,11 @@ class ReferenceBuildSuite extends FunSuite:
         assertEquals(e, UnknownReferenceBuild("11.1.3"))
       case other => fail(s"not refused as an unknown build: $other")
     assert(
-      Main
-        .parse(follow ++ List("--reference-build", "11.1", "--reference-build", "11.1"))
-        .isLeft
+      (Main
+        .parse(follow ++ List("--reference-build", "11.1", "--reference-build", "11.1"))) match {
+        case Left(ConfigError(ConfigProblem.WithUsage(ConfigProblem.DuplicateFlag(_), _))) => true
+        case _                                                                             => false
+      }
     )
   }
 
@@ -323,5 +325,9 @@ class ReferenceBuildSuite extends FunSuite:
         .map(_.build),
       Right(ReferenceBuild.Release11_2)
     )
-    assert(LedgerSnapshotImportCommand.parse(required ++ List("--reference-build", "x")).isLeft)
+    assert(LedgerSnapshotImportCommand.parse(required ++ List("--reference-build", "x")) match {
+      case Left(ConfigError(ConfigProblem.WithUsage(ConfigProblem.ReferenceBuildUnknown(_), _))) =>
+        true
+      case _ => false
+    })
   }

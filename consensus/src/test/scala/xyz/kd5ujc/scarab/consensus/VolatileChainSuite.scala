@@ -91,7 +91,10 @@ class VolatileChainSuite extends ScalaCheckSuite:
 
   test("the first block after genesis must have no parent") {
     val orphan = Fixtures.header(0, 1, Some(Fixtures.chain(1).head.hash))
-    assert(VolatileChain.genesis[Int](k, 0).extend(orphan, 0).isLeft)
+    assert(VolatileChain.genesis[Int](k, 0).extend(orphan, 0) match {
+      case Left(ChainError.NotConnected(_, ChainSync.Point.Origin)) => true
+      case _                                                        => false
+    })
     assertEquals(VolatileChain.genesis[Int](k, 0).tip, ChainSync.Point.Origin)
   }
 
@@ -127,7 +130,19 @@ class VolatileChainSuite extends ScalaCheckSuite:
       VolatileChain.genesis[BigInt](k, -1).extend(first, 0).fold(e => fail(e.message), _._1)
     val prev = Some(first.hash)
     assert(chain.extend(byron(boundary = true, 6, 0, 8, prev, 2), 1).isRight, "the next number")
-    assert(chain.extend(byron(boundary = true, 6, 0, 7, prev, 3), 1).isLeft, "its own number")
-    assert(chain.extend(byron(boundary = true, 4, 0, 8, prev, 4), 1).isLeft, "its own slot")
+    assert(
+      chain.extend(byron(boundary = true, 6, 0, 7, prev, 3), 1) match {
+        case Left(ChainError.NotConnected(_, _)) => true
+        case _                                   => false
+      },
+      "its own number"
+    )
+    assert(
+      chain.extend(byron(boundary = true, 4, 0, 8, prev, 4), 1) match {
+        case Left(ChainError.NotConnected(_, _)) => true
+        case _                                   => false
+      },
+      "its own slot"
+    )
     assert(chain.extend(byron(boundary = false, 4, 0, 8, prev, 5), 1).isRight, "a main block")
   }

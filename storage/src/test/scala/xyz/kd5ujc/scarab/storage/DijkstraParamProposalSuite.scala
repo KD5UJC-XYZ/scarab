@@ -82,7 +82,16 @@ class DijkstraParamProposalSuite extends FunSuite:
   test("every update the reference read is written as it wrote it again; its refusals refused") {
     val (accepted, refused) = rows.partition(_.reencoded.isDefined)
     assert(accepted.nonEmpty && refused.nonEmpty)
-    refused.foreach(r => assert(codec.decodeBytes(proposal(r.update)).isLeft, r.name))
+    refused.foreach(r =>
+      assert(
+        codec.decodeBytes(proposal(r.update)) match {
+          case Left(DecodeError(DecodeError.Kind.Domain(EraGovReadError.Proposal(_)), _, _, _)) =>
+            true
+          case _ => false
+        },
+        r.name
+      )
+    )
     accepted.foreach { r =>
       val again = r.reencoded.getOrElse(fail(r.name))
       assertEquals(codec.write(read(proposal(r.update))), Right(proposal(again)), r.name)
@@ -112,7 +121,10 @@ class DijkstraParamProposalSuite extends FunSuite:
 
   test("entries are refused in order: a bad Conway value after a Dijkstra key, a key past 56") {
     // a ratio of -1 at key 10, after key 34
-    assert(codec.decodeBytes(proposal(hex("a2 1822 01 0a d81e822001"))).isLeft)
+    assert(codec.decodeBytes(proposal(hex("a2 1822 01 0a d81e822001"))) match {
+      case Left(DecodeError(DecodeError.Kind.Domain(EraGovReadError.Proposal(_)), _, _, _)) => true
+      case _                                                                                => false
+    })
     codec.decodeBytes(proposal(hex("a2 1822 01 1839 01"))).left.map(_.kind) match
       case Left(
             DecodeError.Kind.Domain(

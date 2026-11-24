@@ -305,7 +305,13 @@ class CostModelDecodeSuite extends FunSuite:
 
   test("legacy: a text key, an entry that is not an array or a bignum parameter is refused") {
     forRows(Category.Malformed) { case Verdict.Malformed => () }((row, _) =>
-      assert(replay(row).isLeft, row.name)
+      assert(
+        replay(row) match {
+          case Left(LedgerDecodeError.Expected(_, _, _)) => true
+          case _                                         => false
+        },
+        row.name
+      )
     )
   }
 
@@ -350,6 +356,10 @@ class CostModelDecodeSuite extends FunSuite:
   }
 
   test("open: a cost-model entry that is not an array of integers is refused") {
-    assert(proposal(models(BigInt(0) -> array(Seq("6161")))).isLeft)
+    assert(proposal(models(BigInt(0) -> array(Seq("6161")))) match {
+      case Left(LedgerDecodeError.Expected(DecodeField.Cost, LedgerDecodeError.Shape.Integer, _)) =>
+        true
+      case _ => false
+    })
   }
 end CostModelDecodeSuite

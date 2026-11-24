@@ -52,13 +52,19 @@ class TxSubmission2Suite extends munit.FunSuite:
         TxSubmission2.decodePrefix(state, role, Bytes(bytes.value ++ Vector(0.toByte))),
         DecodeResult.Decoded(message, bytes.size)
       )
-      assert(TxSubmission2.decode(state, role, Bytes(bytes.value ++ Vector(0.toByte))).isLeft)
+      assert(TxSubmission2.decode(state, role, Bytes(bytes.value ++ Vector(0.toByte))) match {
+        case Left(ProtocolError.TrailingTxSubmission2Bytes) => true
+        case _                                              => false
+      })
     }
   }
   test("wrong agency, definite inner lists, era, arity, tag and blocking empty reply rejected") {
     vectors.foreach { case (state, role, message, _) =>
       val wrong = if role == Role.Client then Role.Server else Role.Client
-      assert(TxSubmission2.encode(state, wrong, message).isLeft)
+      assert(TxSubmission2.encode(state, wrong, message) match {
+        case Left(ProtocolError.TxSubmission2Agency(_, _)) => true
+        case _                                             => false
+      })
     }
     Vector(
       "820280",
@@ -67,30 +73,44 @@ class TxSubmission2Suite extends munit.FunSuite:
       "82029f5820d36a2619a672494604e11bb447cbcf5231e9f2ba25c2169177edc941bd50ad6cff",
       "82029f8206581f" + "00" * 31 + "ff"
     ).foreach(w => assert(TxSubmission2.decode(State.Idle, Role.Server, hex(w)).isLeft))
-    assert(TxSubmission2.decode(State.Ids(true), Role.Client, hex("82019fff")).isLeft)
-    assert(TxSubmission2.decode(State.Ids(false), Role.Client, hex("8104")).isLeft)
+    assert(TxSubmission2.decode(State.Ids(true), Role.Client, hex("82019fff")) match {
+      case Left(ProtocolError.TxSubmission2Agency(_, ChainSync.Role.Client)) => true
+      case _                                                                 => false
+    })
+    assert(TxSubmission2.decode(State.Ids(false), Role.Client, hex("8104")) match {
+      case Left(ProtocolError.UnknownTxSubmission2TagStateArity) => true
+      case _                                                     => false
+    })
   }
   test("uint16 bounds before narrowing and noncanonical numeric forms") {
     assertEquals(
       TxSubmission2.decode(State.Idle, Role.Server, hex("8400f60001")),
       Left(ProtocolError.ExpectedBlockingBoolean)
     )
-    assert(TxSubmission2.decode(State.Idle, Role.Server, hex("8400f51a0001000001")).isLeft)
+    assert(TxSubmission2.decode(State.Idle, Role.Server, hex("8400f51a0001000001")) match {
+      case Left(ProtocolError.CountOutsideUint16(_)) => true
+      case _                                         => false
+    })
     assertEquals(
       TxSubmission2.decode(State.Idle, Role.Server, hex("8400f518001801")),
       Right(Message.RequestIds(true, 0, 1))
     )
-    assert(TxSubmission2.encode(State.Idle, Role.Server, Message.RequestIds(true, -1, 1)).isLeft)
+    assert(TxSubmission2.encode(State.Idle, Role.Server, Message.RequestIds(true, -1, 1)) match {
+      case Left(ProtocolError.CountOutsideUint16(_)) => true
+      case _                                         => false
+    })
     assert(
-      TxSubmission2
+      (TxSubmission2
         .decode(
           State.Ids(false),
           Role.Client,
           hex(
             "82019f8282065820d36a2619a672494604e11bb447cbcf5231e9f2ba25c2169177edc941bd50ad6c1b0000000100000000ff"
           )
-        )
-        .isLeft
+        )) match {
+        case Left(ProtocolError.SizeOutsideUint32) => true
+        case _                                     => false
+      }
     )
   }
   test("the codec reads each transaction with the era's reader: its refusal, and the id's body") {
@@ -131,14 +151,20 @@ class TxSubmission2Suite extends munit.FunSuite:
     )
     assertEquals(TxSubmission2.bodyId(tx)(using undecodable), TxSubmission2.bodyId(tx)(using whole))
     // the size this codec carries is checked before the reader is asked
-    assert(TxSubmission2.bodyId(Bytes(Vector.fill(65537)(0.toByte)))(using whole).isLeft)
+    assert(TxSubmission2.bodyId(Bytes(Vector.fill(65537)(0.toByte)))(using whole) match {
+      case Left(ProtocolError.OriginalSizeOutsidePolicy(_, _)) => true
+      case _                                                   => false
+    })
   }
   test("advertised GenTx size crosses byte-string header widths") {
     Vector(23 -> 28L, 24 -> 30L, 255 -> 261L, 256 -> 263L, 65535 -> 65542L, 65536 -> 65545L)
       .foreach { case (n, expected) =>
         assertEquals(TxSubmission2.advertisedSize(n), Right(expected))
       }
-    assert(TxSubmission2.advertisedSize(65537).isLeft)
+    assert(TxSubmission2.advertisedSize(65537) match {
+      case Left(ProtocolError.OriginalSizeOutsidePolicy(_, _)) => true
+      case _                                                   => false
+    })
   }
   test("blocking request window can exceed available lease; FIFO acknowledgement drains it") {
     val i = TxSubmission2.Inventory.create(Vector(offer)).toOption.get
@@ -146,24 +172,57 @@ class TxSubmission2Suite extends munit.FunSuite:
     assertEquals(reply, Message.ReplyIds(Vector(offer)))
     assertEquals(ack, Vector.empty)
     val served = a.requestTxs(Vector(id)).toOption.get
-    assert(served.requestTxs(Vector(id)).isLeft)
+    assert(served.requestTxs(Vector(id)) match {
+      case Left(ProtocolError.UnadvertisedAcknowledgedOrRepeatedBodyRequest) => true
+      case _                                                                 => false
+    })
     val (_, done, acknowledged) = served.requestIds(true, 1, 10).toOption.get
     assertEquals(done, Message.Done)
     assertEquals(acknowledged, Vector(id))
   }
   test("unsolicited/repeated/duplicate/acknowledged body requests fail") {
     val start = TxSubmission2.Inventory.create(Vector(offer)).toOption.get
-    assert(start.requestTxs(Vector(id)).isLeft)
+    assert(start.requestTxs(Vector(id)) match {
+      case Left(ProtocolError.UnadvertisedAcknowledgedOrRepeatedBodyRequest) => true
+      case _                                                                 => false
+    })
     val advertised = start.requestIds(true, 0, 1).toOption.get._1
-    assert(advertised.requestTxs(Vector(id, id)).isLeft)
-    assert(advertised.requestTxs(Vector(hex("00" * 32))).isLeft)
-    assert(advertised.requestIds(true, 0, 1).isLeft)
-    assert(advertised.requestIds(false, 1, 1).isLeft)
-    assert(advertised.requestIds(false, 2, 1).isLeft)
-    assert(advertised.requestIds(false, 0, 0).isLeft)
-    assert(start.requestIds(false, 0, 1).isLeft)
-    assert(start.requestIds(true, 0, 0).isLeft)
-    assert(advertised.requestIds(true, 1, 1).toOption.get._1.requestTxs(Vector(id)).isLeft)
+    assert(advertised.requestTxs(Vector(id, id)) match {
+      case Left(ProtocolError.DuplicateBodyRequest) => true
+      case _                                        => false
+    })
+    assert(advertised.requestTxs(Vector(hex("00" * 32))) match {
+      case Left(ProtocolError.UnadvertisedAcknowledgedOrRepeatedBodyRequest) => true
+      case _                                                                 => false
+    })
+    assert(advertised.requestIds(true, 0, 1) match {
+      case Left(ProtocolError.InvalidBlockingInventoryRequest) => true
+      case _                                                   => false
+    })
+    assert(advertised.requestIds(false, 1, 1) match {
+      case Left(ProtocolError.InvalidNonblockingInventoryRequest) => true
+      case _                                                      => false
+    })
+    assert(advertised.requestIds(false, 2, 1) match {
+      case Left(ProtocolError.AckExceedsOutstandingInventory(_, _)) => true
+      case _                                                        => false
+    })
+    assert(advertised.requestIds(false, 0, 0) match {
+      case Left(ProtocolError.InvalidNonblockingInventoryRequest) => true
+      case _                                                      => false
+    })
+    assert(start.requestIds(false, 0, 1) match {
+      case Left(ProtocolError.InvalidNonblockingInventoryRequest) => true
+      case _                                                      => false
+    })
+    assert(start.requestIds(true, 0, 0) match {
+      case Left(ProtocolError.InvalidBlockingInventoryRequest) => true
+      case _                                                   => false
+    })
+    assert(advertised.requestIds(true, 1, 1).toOption.get._1.requestTxs(Vector(id)) match {
+      case Left(ProtocolError.UnadvertisedAcknowledgedOrRepeatedBodyRequest) => true
+      case _                                                                 => false
+    })
   }
   test("partial acknowledgements remove oldest IDs and nonblocking replies may be empty") {
     val second = offer.copy(transactionId = hex("01" * 32))
@@ -172,17 +231,32 @@ class TxSubmission2Suite extends munit.FunSuite:
     val (next, reply, ack) = advertised.requestIds(false, 1, 1).toOption.get
     assertEquals(ack, Vector(id))
     assertEquals(reply, Message.ReplyIds(Vector.empty))
-    assert(next.requestTxs(Vector(id)).isLeft)
+    assert(next.requestTxs(Vector(id)) match {
+      case Left(ProtocolError.UnadvertisedAcknowledgedOrRepeatedBodyRequest) => true
+      case _                                                                 => false
+    })
     assert(next.requestTxs(Vector(second.transactionId)).isRight)
   }
   test("inventory and wire collections have independent fixed eight-item bounds") {
-    assert(TxSubmission2.Inventory.create(Vector.fill(2)(offer)).isLeft)
-    assert(TxSubmission2.Inventory.create(Vector.fill(9)(offer)).isLeft)
+    assert(TxSubmission2.Inventory.create(Vector.fill(2)(offer)) match {
+      case Left(ProtocolError.DuplicateOfferID) => true
+      case _                                    => false
+    })
+    assert(TxSubmission2.Inventory.create(Vector.fill(9)(offer)) match {
+      case Left(ProtocolError.BatchLimitExceeded(_, _)) => true
+      case _                                            => false
+    })
     val wire =
       "82029f" + ("82065820d36a2619a672494604e11bb447cbcf5231e9f2ba25c2169177edc941bd50ad6c" * 9) + "ff"
-    assert(TxSubmission2.decode(State.Idle, Role.Server, hex(wire)).isLeft)
+    assert(TxSubmission2.decode(State.Idle, Role.Server, hex(wire)) match {
+      case Left(ProtocolError.BatchLimitExceeded(_, _)) => true
+      case _                                            => false
+    })
     assert(
-      TxSubmission2.encode(State.Txs, Role.Client, Message.ReplyTxs(Vector.fill(9)(tx))).isLeft
+      TxSubmission2.encode(State.Txs, Role.Client, Message.ReplyTxs(Vector.fill(9)(tx))) match {
+        case Left(ProtocolError.BatchLimitExceeded(_, _)) => true
+        case _                                            => false
+      }
     )
   }
 

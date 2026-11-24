@@ -160,16 +160,35 @@ class LocalTxMonitorSuite extends ScalaCheckSuite:
   test("agency and states are enforced in both directions") {
     vectors.foreach { case (state, sender, message, wire) =>
       val other = if sender == Role.Client then Role.Server else Role.Client
-      assert(encode(state, other, message).isLeft, s"$message by $other")
+      assert(
+        encode(state, other, message) match {
+          case Left(ProtocolError.LocalTxMonitorAgency(_, _)) => true
+          case _                                              => false
+        },
+        s"$message by $other"
+      )
       assert(
         decodePrefix(state, other, hex(wire)).isInstanceOf[DecodeResult.Failed[?]],
         s"$message decoded for $other"
       )
-      assert(encode(State.Done, sender, message).isLeft)
+      assert(encode(State.Done, sender, message) match {
+        case Left(ProtocolError.LocalTxMonitorAgency(_, _)) => true
+        case _                                              => false
+      })
     }
     // a reply of the wrong kind, a client message while the server has agency
-    assert(encode(State.Busy(Kind.NextTx), Role.Server, Message.ReplyHasTx(true)).isLeft)
-    assert(encode(State.Acquiring, Role.Client, Message.Release).isLeft)
+    assert(encode(State.Busy(Kind.NextTx), Role.Server, Message.ReplyHasTx(true)) match {
+      case Left(ProtocolError.LocalTxMonitorAgency(_, ChainSync.Role.Server)) => true
+      case _                                                                  => false
+    })
+    assert(encode(State.Acquiring, Role.Client, Message.Release) match {
+      case Left(
+            ProtocolError
+              .LocalTxMonitorAgency(LocalTxMonitor.State.Acquiring, ChainSync.Role.Client)
+          ) =>
+        true
+      case _ => false
+    })
     assert(
       decodePrefix(State.Busy(Kind.HasTx), Role.Server, hex("8106"))
         .isInstanceOf[DecodeResult.Failed[?]]
@@ -184,7 +203,10 @@ class LocalTxMonitorSuite extends ScalaCheckSuite:
         State.Busy(Kind.GetSizes),
         Role.Server,
         Message.ReplyGetSizes(Sizes(1L << 32, 0, 0))
-      ).isLeft
+      ) match {
+        case Left(ProtocolError.Word32Range(ProtocolError.MonitorField.CapacityInBytes, _)) => true
+        case _                                                                              => false
+      }
     )
     assert(
       decodePrefix(State.Busy(Kind.GetSizes), Role.Server, hex("820a831b000000010000000000" + "00"))

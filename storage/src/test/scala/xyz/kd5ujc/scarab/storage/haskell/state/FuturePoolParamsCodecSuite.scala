@@ -12,6 +12,7 @@ import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.ledger.state.VocabularyGen.given
 import xyz.kd5ujc.scarab.models.runtime.{Codec, DecodeError}
 import xyz.kd5ujc.scarab.protocol.StateLayout
+import xyz.kd5ujc.scarab.models.runtime.ConstraintViolation
 
 /** `PState` 's future parameters at the state's types ([[StakePoolParams]]) keep the bytes the
   * state's `PState` had while it held the node's parameters: the codec of `PState` as it was, the
@@ -182,7 +183,19 @@ class FuturePoolParamsCodecSuite extends ScalaCheckSuite:
         w.bytes(Bytes(Vector.fill(96)(6.toByte)))
         w.bytes(key.proofOfPossession)
       }
-      assert(c.params.decodeBytes(ten(nine, bad), HaskellState.limits).isLeft)
+      assert(c.params.decodeBytes(ten(nine, bad), HaskellState.limits) match {
+        case Left(
+              DecodeError(
+                DecodeError.Kind
+                  .Domain(xyz.kd5ujc.scarab.ledger.LedgerDecodeError.LeiosCertificate(_)),
+                _,
+                _,
+                _
+              )
+            ) =>
+          true
+        case _ => false
+      })
     }
   }
 
@@ -238,7 +251,10 @@ class FuturePoolParamsCodecSuite extends ScalaCheckSuite:
         case StateLayout.Node11_1 => PoolParamsBlsKey.Leios(Some(key))
         case StateLayout.Leios    => PoolParamsBlsKey.Node11_1
       assert(
-        c.params.write(keyedParams.copy(blsKey = other)).isLeft,
+        c.params.write(keyedParams.copy(blsKey = other)) match {
+          case Left(ConstraintViolation(_, _, _, _)) => true
+          case _                                     => false
+        },
         s"${c.layout}: another layout"
       )
     }

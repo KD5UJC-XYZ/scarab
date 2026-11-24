@@ -44,9 +44,30 @@ class LocalTxSubmissionSuite extends FunSuite:
   }
 
   test("agency and states are enforced in both directions") {
-    assert(encode(State.Busy, Role.Client, Message.SubmitTx(tx)).isLeft)
-    assert(encode(State.Idle, Role.Server, Message.AcceptTx).isLeft)
-    assert(encode(State.Idle, Role.Client, Message.AcceptTx).isLeft)
+    assert(encode(State.Busy, Role.Client, Message.SubmitTx(tx)) match {
+      case Left(
+            ProtocolError
+              .LocalTxSubmissionAgency(LocalTxSubmission.State.Busy, ChainSync.Role.Client)
+          ) =>
+        true
+      case _ => false
+    })
+    assert(encode(State.Idle, Role.Server, Message.AcceptTx) match {
+      case Left(
+            ProtocolError
+              .LocalTxSubmissionAgency(LocalTxSubmission.State.Idle, ChainSync.Role.Server)
+          ) =>
+        true
+      case _ => false
+    })
+    assert(encode(State.Idle, Role.Client, Message.AcceptTx) match {
+      case Left(
+            ProtocolError
+              .LocalTxSubmissionAgency(LocalTxSubmission.State.Idle, ChainSync.Role.Client)
+          ) =>
+        true
+      case _ => false
+    })
     val accept = encode(State.Busy, Role.Server, Message.AcceptTx).toOption.get
     assert(decodePrefix(State.Idle, Role.Client, accept).isInstanceOf[DecodeResult.Failed[?]])
     assert(decodePrefix(State.Busy, Role.Client, accept).isInstanceOf[DecodeResult.Failed[?]])
@@ -106,7 +127,10 @@ class LocalTxSubmissionSuite extends FunSuite:
     // an indefinite map still holds whole pairs
     val missingValue = roundTrip(Bytes(Vector(0xbf, 0x00, 0xff).map(_.toByte)))
     val completePair = roundTrip(Bytes(Vector(0xbf, 0x00, 0x01, 0xff).map(_.toByte)))
-    assert(missingValue.isLeft)
+    assert(missingValue match {
+      case Left(ProtocolError.UnexpectedBreakOrReservedSimpleValue) => true
+      case _                                                        => false
+    })
     assertEquals(completePair, Right(true))
   }
 

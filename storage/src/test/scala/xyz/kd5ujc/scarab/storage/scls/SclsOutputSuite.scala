@@ -120,11 +120,20 @@ class SclsOutputSuite extends FunSuite:
     assertEquals(result.chunks, BigInt(0))
     assertEquals(result.namespaces.map(_.namespace), Namespace.values.toVector)
     assert(result.namespaces.forall(info => info.root == SclsCommitment.empty.root))
-    assert(Config.fromInts(0, 1).isLeft)
+    assert(Config.fromInts(0, 1) match {
+      case Left(SclsOutput.Error.Framing(SclsFraming.Error.InvalidLength(_, _))) => true
+      case _                                                                     => false
+    })
     assertEquals(Config.fromInts(8192, 0), Left(Error.InvalidChunkEntries(0)))
-    assert(begin(right(Config.fromInts(8, 1))).isLeft)
+    assert(begin(right(Config.fromInts(8, 1))) match {
+      case Left(SclsOutput.Error.Framing(SclsFraming.Error.RecordTooLarge(_, _, _))) => true
+      case _                                                                         => false
+    })
     val (tiny, _) = right(begin(right(Config.fromInts(9, 1))))
-    assert(tiny.finish(0, summary).isLeft)
+    assert(tiny.finish(0, summary) match {
+      case Left(SclsOutput.Error.Framing(SclsFraming.Error.RecordTooLarge(_, _, _))) => true
+      case _                                                                         => false
+    })
     val (valid, _) = right(begin(right(Config.fromInts(8192, 1))))
     assertEquals(valid.finish(-1, summary), Left(Error.Record(SclsRecord.Error.Word64Range(-1))))
   }

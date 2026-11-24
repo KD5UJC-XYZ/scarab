@@ -46,7 +46,13 @@ class LocalDecodeBoundsSuite extends CatsEffectSuite:
       MempoolState
         .empty(Right(TxKit.ledger(1).toPool), 1000, None)
         .add(large, TxKit.env, Source.Local)
-    assert(judged.isLeft, "a transaction over maxTxSize is not admitted")
+    assert(
+      judged match {
+        case Left(Rejection.ConwayRefused(_, _)) => true
+        case _                                   => false
+      },
+      "a transaction over maxTxSize is not admitted"
+    )
     assert(
       judged.left.forall(r => !r.isInstanceOf[Rejection.Malformed]),
       s"the ledger refuses it, not the decoder: $judged"

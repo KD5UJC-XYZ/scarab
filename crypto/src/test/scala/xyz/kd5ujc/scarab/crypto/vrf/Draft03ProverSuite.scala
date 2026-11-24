@@ -71,8 +71,14 @@ class Draft03ProverSuite extends munit.ScalaCheckSuite:
     assertEquals(k.toBytes.hex, seed16 + pk16)
     assert(Draft03Prover.SigningKey.fromBytes(k.toBytes).isRight)
     val wrong = Bytes.fromArray(k.toBytes.toArray.updated(40, 0.toByte))
-    assert(Draft03Prover.SigningKey.fromBytes(wrong).isLeft)
-    assert(Draft03Prover.SigningKey.fromBytes(hex("00")).isLeft)
+    assert(Draft03Prover.SigningKey.fromBytes(wrong) match {
+      case Left(Draft03Prover.Failure.PublicKeyMismatch) => true
+      case _                                             => false
+    })
+    assert(Draft03Prover.SigningKey.fromBytes(hex("00")) match {
+      case Left(Draft03Prover.Failure.SigningKeyLength(_)) => true
+      case _                                               => false
+    })
   }
 
   property("every proof verifies with the strict verifier and certifies the same output") {

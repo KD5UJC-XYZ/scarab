@@ -470,11 +470,16 @@ class ConwayCodecsSuite extends ScalaCheckSuite:
 
   test("a certificate Conway has no constructor of is refused, never written") {
     val c = Credential.Key(hex(key))
-    assert(ConwayCodecs.certificate.write(Certificate.Delegate(c, None, None, None)).isLeft)
+    assert(ConwayCodecs.certificate.write(Certificate.Delegate(c, None, None, None)) match {
+      case Left(ConstraintViolation(_, _, _, _)) => true
+      case _                                     => false
+    })
     assert(
-      ConwayCodecs.certificate
-        .write(Certificate.GenesisDelegate(hex(key), hex(key), hex("00" * 32)))
-        .isLeft
+      (ConwayCodecs.certificate
+        .write(Certificate.GenesisDelegate(hex(key), hex(key), hex("00" * 32)))) match {
+        case Left(ConstraintViolation(_, _, _, _)) => true
+        case _                                     => false
+      }
     )
   }
 
@@ -679,7 +684,10 @@ class ConwayCodecsSuite extends ScalaCheckSuite:
   test("a metadatum string past 64 bytes is refused from decoder version 3, as before") {
     val long = Metadatum.Str("x" * 65)
     val bytes = written(ConwayCodecs.metadatum)(long)
-    assert(Metadatum.decode(node(bytes), version).isLeft)
+    assert(Metadatum.decode(node(bytes), version) match {
+      case Left(LedgerDecodeError.NumberOutOfRange(DecodeField.MetadataByteLength, _, _, _)) => true
+      case _ => false
+    })
     assertEquals(Metadatum.decode(node(bytes), DecoderVersion.of(Era.Shelley)), Right(long))
   }
 
@@ -1023,7 +1031,15 @@ class ConwayCodecsSuite extends ScalaCheckSuite:
       ConwayCodecs.redeemer.write(Redeemer(6, 0, hex("00"), ExUnits(0, 0))),
       ConwayCodecs.redeemer.write(Redeemer(0, 0, Bytes.empty, ExUnits(0, 0)))
     )
-    refused.zipWithIndex.foreach((r, i) => assert(r.isLeft, s"case $i was written: $r"))
+    refused.zipWithIndex.foreach((r, i) =>
+      assert(
+        r match {
+          case Left(ConstraintViolation(_, _, _, _)) => true
+          case _                                     => false
+        },
+        s"case $i was written: $r"
+      )
+    )
   }
 
   test("a script whose bytes were not kept, or are not the script's, is refused") {
@@ -1115,7 +1131,13 @@ class ConwayCodecsSuite extends ScalaCheckSuite:
       DetachedRecords.detached(enveloped, DetachedRecords.Shapes.block).exists(!_.isEmpty),
       "the body segment requires the detached-record reader"
     )
-    assert(Cbor.decode(segments(2)).isLeft, "the auxiliary-data segment is not one CBOR item")
+    assert(
+      Cbor.decode(segments(2)) match {
+        case Left(Cbor.Error.TrailingBytes) => true
+        case _                              => false
+      },
+      "the auxiliary-data segment is not one CBOR item"
+    )
     val block = Block.decodeShelley(enveloped).fold(e => fail(e.message), identity) match
       case b: Block.Shelley => b
       case other            => fail(s"not a Shelley-based block: ${other.era}")
@@ -1128,8 +1150,14 @@ class ConwayCodecsSuite extends ScalaCheckSuite:
 
   test("a block built by hand, without the segments it was read with, is refused") {
     val (_, b) = blocks("fixtures/preview/conway.hex").head
-    assert(ConwayCodecs.block.write(b.copy(segments = Vector.empty)).isLeft)
-    assert(ConwayCodecs.block.write(b.copy(segments = Vector.fill(4)(Bytes.empty))).isLeft)
+    assert(ConwayCodecs.block.write(b.copy(segments = Vector.empty)) match {
+      case Left(ConstraintViolation(_, _, _, _)) => true
+      case _                                     => false
+    })
+    assert(ConwayCodecs.block.write(b.copy(segments = Vector.fill(4)(Bytes.empty))) match {
+      case Left(ConstraintViolation(_, _, _, _)) => true
+      case _                                     => false
+    })
   }
 
   test("the certificates, votes, proposals and vkey witnesses of Preview are written as on chain") {

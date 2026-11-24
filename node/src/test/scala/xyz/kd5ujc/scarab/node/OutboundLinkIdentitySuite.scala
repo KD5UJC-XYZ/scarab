@@ -188,7 +188,20 @@ class OutboundLinkIdentitySuite extends FailsOnUncaught:
           )
           snapshot <- current.manager.snapshot
         yield
-          assert(result.isLeft, result.toString)
+          assert(
+            result match {
+              case Left(
+                    EstablishmentError.Failed(
+                      PeerError.Handshake(
+                        xyz.kd5ujc.scarab.protocol.NetworkError.HandshakeRefused(_)
+                      )
+                    )
+                  ) =>
+                true
+              case _ => false
+            },
+            result.toString
+          )
           assertEquals(snapshot.connections, Vector.empty)
       }
     }

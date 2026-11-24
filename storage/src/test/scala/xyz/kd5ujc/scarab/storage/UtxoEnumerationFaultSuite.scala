@@ -163,7 +163,17 @@ class UtxoEnumerationFaultSuite extends CatsEffectSuite:
       writeRaw(dir / "db", List(key(damaged) -> Array.emptyByteArray))
       everything(dir / "db", damaged).map { results =>
         val direct = failureOf(results, "read")
-        assert(direct.isLeft, clue(direct))
+        assert(
+          direct match {
+            case Left(
+                  StorageError
+                    .Corrupt(_, UtxoStore.Coding.EntryError(_, UtxoStore.Coding.ValueError.Empty))
+                ) =>
+              true
+            case _ => false
+          },
+          clue(direct)
+        )
         enumerations.foreach(name => assertEquals(failureOf(results, name), direct, name))
       }
     }

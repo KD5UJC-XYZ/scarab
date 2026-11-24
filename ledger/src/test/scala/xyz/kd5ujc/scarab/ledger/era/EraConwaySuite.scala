@@ -312,7 +312,13 @@ class EraConwaySuite extends munit.FunSuite:
     // `{0: [input], 1: [], 2: 0, 6: [{}, 0]}`
     val withUpdate = Bytes.fromHex(s"a400818258${"20"}${"44" * 32}00018002000682a000").toOption.get
     val flat = FlatTxBody.decode(withUpdate, Era.Conway)
-    assert(flat.isLeft, flat)
+    assert(
+      flat match {
+        case Left(LedgerDecodeError.UnknownFields(DecodeField.TransactionBody, _)) => true
+        case _                                                                     => false
+      },
+      flat
+    )
     assertEquals(
       ConwayTxBody.decode(withUpdate, StateLayout.Node11_1).left.toOption,
       flat.left.toOption.map(EraTxError.Decode(_))

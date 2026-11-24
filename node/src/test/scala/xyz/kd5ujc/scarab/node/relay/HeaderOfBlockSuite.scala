@@ -3,6 +3,7 @@ package xyz.kd5ujc.scarab.node.relay
 
 import munit.FunSuite
 import xyz.kd5ujc.scarab.ledger.{Block, EraBlocks}
+import xyz.kd5ujc.scarab.ledger.ChainError
 
 /** The header ChainSync sends for a block the server holds ([[ChainServer.headerOfBlock]]): read
   * from the block's envelope and header, the contents of its body not decoded, as the reference's
@@ -22,7 +23,13 @@ class HeaderOfBlockSuite extends FunSuite:
       val header = headerOf(raw)
       val unread = withoutBody(raw)
       assert(header.isRight, s"tag $tag: $header")
-      assert(Block.decode(unread, ByronEpochSlots).isLeft, s"tag $tag: the body still decodes")
+      assert(
+        Block.decode(unread, ByronEpochSlots) match {
+          case Left(ChainError.Decode(_, _)) => true
+          case _                             => false
+        },
+        s"tag $tag: the body still decodes"
+      )
       assertEquals(headerOf(unread), header, s"tag $tag")
     }
   }

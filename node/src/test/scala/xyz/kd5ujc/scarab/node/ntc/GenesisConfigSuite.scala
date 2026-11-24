@@ -96,5 +96,12 @@ class GenesisConfigSuite extends FunSuite:
     val ratio = Json.obj("numerator" -> Json.fromInt(2), "denominator" -> Json.fromInt(40))
     // the object form is reduced, so it encodes as the decimal 0.05 does
     assertEquals(coefficient(ratio), GenesisConfig.encode(valid))
-    assert(coefficient(Json.fromBigDecimal(BigDecimal("1e-20"))).isLeft)
+    assert(coefficient(Json.fromBigDecimal(BigDecimal("1e-20"))) match {
+      case Left(
+            GenesisConfig.Error
+              .InvalidActiveSlotsCoeff(xyz.kd5ujc.scarab.ledger.json.NumberError.TooPrecise(_))
+          ) =>
+        true
+      case _ => false
+    })
   }

@@ -4,6 +4,7 @@ package xyz.kd5ujc.scarab.ledger
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.byron.ByronAddress
+import xyz.kd5ujc.scarab.codec.Cbor
 
 /** An address of header kind 8 in an output is a bootstrap address, and the reference decodes the
   * whole byte string as the CRC-protected Byron `Address` in every era (`decodeBootstrapAddress`,
@@ -40,7 +41,10 @@ class ByronOutputAddressSuite extends FunSuite:
       Address.decode(flipLast(valid)).swap.toOption,
       ByronAddress.decode(flipLast(valid)).swap.toOption
     )
-    assert(Address.decode(flipLast(valid)).isLeft)
+    assert(Address.decode(flipLast(valid)) match {
+      case Left(LedgerDecodeError.CrcMismatch(_, _)) => true
+      case _                                         => false
+    })
     assert(
       Address.decode(flipLast(valid)).left.exists(_.isInstanceOf[LedgerDecodeError.CrcMismatch])
     )
@@ -54,21 +58,50 @@ class ByronOutputAddressSuite extends FunSuite:
       Bytes(Vector(0x82.toByte)),
       Bytes(Vector(0x80.toByte))
     )
-    refused.foreach(a => assert(Address.decode(a).isLeft, a.hex))
+    refused.foreach(a =>
+      assert(
+        Address.decode(a) match {
+          case Left(LedgerDecodeError.AddressHeader(_)) | Left(LedgerDecodeError.Syntax(_)) => true
+          case _                                                                            => false
+        },
+        a.hex
+      )
+    )
   }
 
   test("no mode of any era keeps an address the Byron decoder refuses") {
     Address.Mode.values.foreach { mode =>
-      assert(Address.decode(flipLast(valid), mode).isLeft, mode.toString)
-      assert(Address.decode(valid ++ Bytes(Vector(0.toByte)), mode).isLeft, mode.toString)
+      assert(
+        Address.decode(flipLast(valid), mode) match {
+          case Left(LedgerDecodeError.CrcMismatch(_, _)) => true
+          case _                                         => false
+        },
+        mode.toString
+      )
+      assert(
+        Address.decode(valid ++ Bytes(Vector(0.toByte)), mode) match {
+          case Left(LedgerDecodeError.Syntax(Cbor.Error.TrailingBytes)) => true
+          case _                                                        => false
+        },
+        mode.toString
+      )
       assert(Address.decode(valid, mode).isRight, mode.toString)
     }
   }
 
   test("an output with a malformed Byron address is refused, as is its body") {
     assert(TxOut.fromBytes(output(valid)).isRight)
-    assert(TxOut.fromBytes(output(flipLast(valid))).isLeft)
+    assert(TxOut.fromBytes(output(flipLast(valid))) match {
+      case Left(LedgerDecodeError.CrcMismatch(_, _)) => true
+      case _                                         => false
+    })
     Address.Mode.values.foreach { mode =>
-      assert(TxOut.fromBytes(output(flipLast(valid)), mode).isLeft, mode.toString)
+      assert(
+        TxOut.fromBytes(output(flipLast(valid)), mode) match {
+          case Left(LedgerDecodeError.CrcMismatch(_, _)) => true
+          case _                                         => false
+        },
+        mode.toString
+      )
     }
   }

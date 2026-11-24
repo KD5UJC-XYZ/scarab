@@ -172,7 +172,10 @@ class MuxSuite extends munit.FunSuite:
     assertEquals(frames, Vector(frame))
     assertEquals(done.pendingBytes, 0)
     assertEquals(done.finish, Right(()))
-    assert(encode(frame.copy(payload = Bytes(payload.value :+ 0.toByte))).isLeft)
+    assert(encode(frame.copy(payload = Bytes(payload.value :+ 0.toByte))) match {
+      case Left(Mux.Error.PayloadLengthOutOfRange(_, _)) => true
+      case _                                             => false
+    })
   }
 
   test("configurable segmentation obeys local SDU size and bounded handshake message size") {
@@ -185,12 +188,30 @@ class MuxSuite extends munit.FunSuite:
       val (done, received) = right(decoder().feed(encoded))
       assertEquals(received, parts)
       assertEquals(done.finish, Right(()))
-    assert(segment(Bytes.empty, 0, Direction.Initiator, 1).isLeft)
-    assert(segment(proposalSdu.payload, 0, Direction.Initiator, 0).isLeft)
-    assert(segment(proposalSdu.payload, 0, Direction.Initiator, 65536).isLeft)
-    assert(segment(proposalSdu.payload, -1, Direction.Initiator, 1).isLeft)
-    assert(segment(proposalSdu.payload, 0, Direction.Initiator, 1, protocol = 32768).isLeft)
-    assert(segment(Bytes(Vector.fill(5761)(0.toByte)), 0, Direction.Initiator, 10).isLeft)
+    assert(segment(Bytes.empty, 0, Direction.Initiator, 1) match {
+      case Left(Mux.Error.HandshakeLength(_)) => true
+      case _                                  => false
+    })
+    assert(segment(proposalSdu.payload, 0, Direction.Initiator, 0) match {
+      case Left(Mux.Error.InvalidPayloadLimit(_)) => true
+      case _                                      => false
+    })
+    assert(segment(proposalSdu.payload, 0, Direction.Initiator, 65536) match {
+      case Left(Mux.Error.InvalidPayloadLimit(_)) => true
+      case _                                      => false
+    })
+    assert(segment(proposalSdu.payload, -1, Direction.Initiator, 1) match {
+      case Left(Mux.Error.TimestampOutOfRange(_)) => true
+      case _                                      => false
+    })
+    assert(segment(proposalSdu.payload, 0, Direction.Initiator, 1, protocol = 32768) match {
+      case Left(Mux.Error.ProtocolOutOfRange(_)) => true
+      case _                                     => false
+    })
+    assert(segment(Bytes(Vector.fill(5761)(0.toByte)), 0, Direction.Initiator, 10) match {
+      case Left(Mux.Error.HandshakeLength(_)) => true
+      case _                                  => false
+    })
     assertEquals(
       right(segment(Bytes(Vector.fill(5760)(0.toByte)), 0, Direction.Initiator, 5760)).size,
       1

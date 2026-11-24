@@ -13,6 +13,7 @@ import munit.CatsEffectSuite
 
 import NodeCodecs.blockRef
 import StorageTestKit.*
+import xyz.kd5ujc.scarab.ledger.StorageStructureError
 
 /** A small state to exercise the snapshot file format without the full node state. */
 final case class Toy(counter: BigInt, names: Map[Bytes, BigInt], tags: Vector[Option[Bytes]])
@@ -108,7 +109,10 @@ class LedgerSnapshotsSuite extends CatsEffectSuite:
         )
       yield
         assertEquals(empty.snapshot, None)
-        assert(genesis.isLeft)
+        assert(genesis match {
+          case Left(StorageError.OutOfOrder(StorageStructureError.GenesisSnapshot)) => true
+          case _                                                                    => false
+        })
     }
   }
 

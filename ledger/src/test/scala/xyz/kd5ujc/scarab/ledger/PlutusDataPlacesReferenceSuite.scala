@@ -55,5 +55,13 @@ class PlutusDataPlacesReferenceSuite extends FunSuite:
         case _           => TxBody.decode(raw, era).map(_ => ())
       if row.accepted then assert(read.isRight, s"the reference reads it: $read")
       // a float is refused by the decode of any item, before the data is read as `Data`
-      else assert(read.isLeft, s"the reference refuses it: ${row.name}")
+      else
+        assert(
+          read match {
+            case Left(LedgerDecodeError.PlutusData(_, _)) | Left(LedgerDecodeError.Syntax(_)) =>
+              true
+            case _ => false
+          },
+          s"the reference refuses it: ${row.name}"
+        )
     }

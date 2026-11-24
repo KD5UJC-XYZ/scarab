@@ -163,14 +163,28 @@ class HfcHeaderSuite extends munit.FunSuite:
   test("every prefix of a real envelope is refused, never accepted") {
     val bytes = row("first").envelope
     (0 until bytes.size by 7).foreach { n =>
-      assert(HfcHeader.decode(bytes.take(n)).isLeft, s"prefix $n")
+      assert(
+        HfcHeader.decode(bytes.take(n)) match {
+          case Left(HfcHeaderError.Syntax(_)) => true
+          case _                              => false
+        },
+        s"prefix $n"
+      )
     }
   }
 
   test("the ChainSync payload codec accepts a header of any era and refuses a malformed envelope") {
     val good = row("first").envelope
     assert(HfcHeader.codec.decode(good).isRight)
-    assert(HfcHeader.codec.decode(good.take(10)).isLeft)
+    assert(HfcHeader.codec.decode(good.take(10)) match {
+      case Left(
+            ProtocolError.HfcHeader(
+              HfcHeaderError.Syntax(xyz.kd5ujc.scarab.codec.Cbor.Error.TruncatedString)
+            )
+          ) =>
+        true
+      case _ => false
+    })
     assertEquals(HfcHeader.codec.encode(HfcHeader.codec.decode(good).toOption.get), Right(good))
   }
 end HfcHeaderSuite

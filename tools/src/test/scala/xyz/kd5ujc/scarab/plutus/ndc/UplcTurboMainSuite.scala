@@ -70,7 +70,10 @@ class UplcTurboMainSuite extends FunSuite:
     val program =
       UplcParser.program("(program 1.0.0 (error))").fold(e => fail(e.toString), identity)
     val prepared = backend.text(context, program).fold(r => fail(r.toString), identity)
-    assert(measure(prepared, Some(0L), Options.Default.limitFor(9)).isLeft)
+    assert(measure(prepared, Some(0L), Options.Default.limitFor(9)) match {
+      case Left(UplcTurboMain.Unmeasured.NotEvaluated(_)) => true
+      case _                                              => false
+    })
   }
 
   test("the README's budget is the restricting limit, and the default of the options") {

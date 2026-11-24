@@ -140,7 +140,11 @@ class PeerHeaderMetricsSuite extends FailsOnUncaught:
                                     )
                                   )
                                 )
-                              else assert(outcome.isLeft)
+                              else
+                                assert(outcome match {
+                                  case Left(Fault.Failed(_)) => true
+                                  case _                     => false
+                                })
                             )
                           )
                       events <- reported.get

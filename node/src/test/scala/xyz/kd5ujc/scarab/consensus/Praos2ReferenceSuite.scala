@@ -551,7 +551,10 @@ class Praos2ReferenceSuite extends munit.FunSuite:
     val later = headers(10)
     val ticked =
       Praos2.tick(config, view, slot(later.slot), older).fold(e => fail(e.toString), identity)
-    assert(Praos2.validate(config, later, ticked).isLeft)
+    assert(Praos2.validate(config, later, ticked) match {
+      case Left(Praos2Error.UnexpectedBlockNo(_, _)) => true
+      case _                                         => false
+    })
     assertEquals(
       Praos2.validateAnnouncement(config, later, ticked),
       Right(Praos2.OcinStaleness.Fresh)

@@ -40,6 +40,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
   StakePool,
   Staking
 }
+import xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraPending
 
 /** The governance state of the era types (`ConwayGovState era`, `EraGov`, `ConwayEraGov`;
   * cardano-ledger f649f975, Dijkstra's at 9df9f98c):
@@ -319,7 +320,10 @@ class EraGovStateSuite extends DisciplineSuite:
       chainProposals.map((_, p) =>
         p.pProcGovAction match
           case GovAction.ParameterChange(_, u, _) =>
-            assert(DijkstraConway.proposal(p.read).isLeft)
+            assert(DijkstraConway.proposal(p.read) match {
+              case Left(DijkstraPending.ParameterChangeProposal) => true
+              case _                                             => false
+            })
             DijkstraProposals.updateKeys(u)
           case other => fail(s"$other")
       ),

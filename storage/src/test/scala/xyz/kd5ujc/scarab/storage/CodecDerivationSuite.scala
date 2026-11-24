@@ -7,6 +7,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.state.{Genesis, KeyHash, StakePool}
 import xyz.kd5ujc.scarab.models.runtime.Codec as ModelCodec
 import xyz.kd5ujc.scarab.storage.haskell.state.Record
+import xyz.kd5ujc.scarab.models.runtime.DecodeError
 
 class CodecDerivationSuite extends FunSuite:
   private final case class Box[A](value: A, rest: Vector[A])
@@ -75,7 +76,10 @@ class CodecDerivationSuite extends FunSuite:
     assertEquals(codec.decodeBytes(codec.encodeUnchecked(value)), Right(value))
     val invalid = record(ModelCodec.text).encodeUnchecked(Box("bad", Vector("value")))
     val failure = codec.decodeBytes(invalid)
-    assert(failure.isLeft)
+    assert(failure match {
+      case Left(DecodeError(DecodeError.Kind.TypeMismatch(_, _), _, _, _)) => true
+      case _                                                               => false
+    })
     assertEquals(failure.left.toOption.map(_.path), Some(List("value")))
     val nested = Bytes.fromHex("82078163626164").fold(e => fail(e.toString), identity)
     assertEquals(codec.decodeBytes(nested).left.toOption.map(_.path), Some(List("rest", "[0]")))

@@ -73,7 +73,10 @@ class ConwayDecodingReferenceSuite extends FunSuite:
     "the decoder version comes from the era: a repeated input is a refusal in Conway and one input in Babbage"
   ) {
     val repeated = known(Known.DuplicateInput)
-    assert(TxBody.decode(repeated.raw, Era.Conway).isLeft)
+    assert(TxBody.decode(repeated.raw, Era.Conway) match {
+      case Left(LedgerDecodeError.DuplicateElement(DecodeField.Inputs)) => true
+      case _                                                            => false
+    })
     val babbage = TxBody.decode(repeated.raw, Era.Babbage).fold(e => fail(e.toString), identity)
     assertEquals(babbage.inputs.size, 1)
   }

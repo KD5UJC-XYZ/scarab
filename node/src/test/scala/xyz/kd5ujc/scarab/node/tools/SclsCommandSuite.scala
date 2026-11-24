@@ -3,6 +3,8 @@ package xyz.kd5ujc.scarab.node.tools
 
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor}
+import xyz.kd5ujc.scarab.ledger.ConfigError
+import xyz.kd5ujc.scarab.ledger.ConfigProblem
 
 class SclsCommandSuite extends FunSuite:
   private val base = List(
@@ -68,29 +70,48 @@ class SclsCommandSuite extends FunSuite:
   }
 
   test("SCLS parsers reject duplicate, unknown, missing, and malformed point flags") {
-    assert(SclsCommand.parseExport(base ++ List("--out", "a", "--out", "b")).isLeft)
-    assert(SclsCommand.parseExport(base ++ List("--out", "a", "--surprise", "x")).isLeft)
+    assert(SclsCommand.parseExport(base ++ List("--out", "a", "--out", "b")) match {
+      case Left(ConfigError(ConfigProblem.WithUsage(ConfigProblem.DuplicateFlag(_), _))) => true
+      case _                                                                             => false
+    })
+    assert(SclsCommand.parseExport(base ++ List("--out", "a", "--surprise", "x")) match {
+      case Left(ConfigError(ConfigProblem.WithUsage(ConfigProblem.UnknownFlag(_), _))) => true
+      case _                                                                           => false
+    })
     assert(
-      SclsCommand
-        .parseImport(base.dropRight(2) ++ List("--input", "in", "--target-db", "db"))
-        .isLeft
+      (SclsCommand
+        .parseImport(base.dropRight(2) ++ List("--input", "in", "--target-db", "db"))) match {
+        case Left(ConfigError(ConfigProblem.WithUsage(ConfigProblem.MissingFlag(_), _))) => true
+        case _                                                                           => false
+      }
     )
     assert(
-      SclsCommand.parseExport(base.updated(base.indexOf("42"), "-1") ++ List("--out", "a")).isLeft
+      SclsCommand.parseExport(base.updated(base.indexOf("42"), "-1") ++ List("--out", "a")) match {
+        case Left(ConfigError(ConfigProblem.WithUsage(ConfigProblem.FlagValue(_, _), _))) => true
+        case _                                                                            => false
+      }
     )
     assert(
-      SclsCommand
-        .parseExport(base.updated(base.indexOf("01" * 32), "abcd") ++ List("--out", "a"))
-        .isLeft
+      (SclsCommand
+        .parseExport(base.updated(base.indexOf("01" * 32), "abcd") ++ List("--out", "a"))) match {
+        case Left(ConfigError(ConfigProblem.WithUsage(ConfigProblem.ByteLength(_, _, _), _))) =>
+          true
+        case _ => false
+      }
     )
     assert(
-      SclsCommand
+      (SclsCommand
         .parseImport(
           base.filterNot(_ == "--genesis-dir") ++ List("--input", "in", "--target-db", "db")
-        )
-        .isLeft
+        )) match {
+        case Left(ConfigError(ConfigProblem.WithUsage(ConfigProblem.UnknownFlag(_), _))) => true
+        case _                                                                           => false
+      }
     )
-    assert(SclsCommand.parseExport(base ++ List("--out", "a", "--record-bytes", "0")).isLeft)
+    assert(SclsCommand.parseExport(base ++ List("--out", "a", "--record-bytes", "0")) match {
+      case Left(ConfigError(ConfigProblem.WithUsage(ConfigProblem.FlagValue(_, _), _))) => true
+      case _                                                                            => false
+    })
     assert(
       SclsCommand
         .parseImport(

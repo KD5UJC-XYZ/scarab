@@ -9,6 +9,7 @@ import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
 import xyz.kd5ujc.scarab.plutus.{ExUnits, PlutusLanguage}
 import xyz.kd5ujc.scarab.protocol.Era
+import xyz.kd5ujc.scarab.codec.Cbor
 
 /** An explicit decoder version. [[DecoderVersion.at]] builds one of an era's range, `ProtVerLow` to
   * `ProtVerHigh`
@@ -643,7 +644,15 @@ class DecoderVersionSuite extends FunSuite:
     )
     assert(Witnesses.decode(plutusV2, Era.Babbage, DecoderVersion.high(Era.Alonzo)).isRight)
     val timelock = hex("a10181820400")
-    assert(Witnesses.decode(timelock, Era.Shelley, at12).isLeft)
+    assert(Witnesses.decode(timelock, Era.Shelley, at12) match {
+      case Left(
+            LedgerDecodeError.NativeScript(
+              NativeScript.DecodeError.Malformed(LedgerDecodeError.TaggedArity(_, _, _))
+            )
+          ) =>
+        true
+      case _ => false
+    })
     assert(Witnesses.decode(timelock, Era.Allegra, DecoderVersion.of(Era.Shelley)).isRight)
   }
 
@@ -670,7 +679,14 @@ class DecoderVersionSuite extends FunSuite:
         Right(1)
       )
       assert(Witnesses.decode(hex("a10080"), era, at12).isRight)
-      assert(Witnesses.decode(hex("a100d9010280"), era, at12).isLeft)
+      assert(Witnesses.decode(hex("a100d9010280"), era, at12) match {
+        case Left(
+              LedgerDecodeError
+                .Expected(DecodeField.VkeyWitnesses, LedgerDecodeError.Shape.Array, _)
+            ) =>
+          true
+        case _ => false
+      })
   }
 
   test("redeemers must use the map form from version 12, retaining last-wins map entries") {
@@ -780,7 +796,14 @@ class DecoderVersionSuite extends FunSuite:
     val chunked = hex("82" + headerBody + "5f" + ("5900e0" + "08" * 224) * 2 + "ff")
     val read = Header.fromRaw(Era.Conway, definite).map(_.signable)
     assert(read.isRight, s"$read")
-    assert(Header.fromRaw(Era.Conway, chunked, at11).isLeft)
+    assert(Header.fromRaw(Era.Conway, chunked, at11) match {
+      case Left(
+            ChainError
+              .Decode(DecodeField.Header, LedgerDecodeError.IndefiniteLength(DecodeField.Header))
+          ) =>
+        true
+      case _ => false
+    })
     assertEquals(Header.fromRaw(Era.Conway, chunked, at12).map(_.signable), read)
   }
 
@@ -788,8 +811,22 @@ class DecoderVersionSuite extends FunSuite:
     val chunked = hex("82" + headerBody + "5f" + ("5900e0" + "08" * 224) * 2 + "ff")
     val raw = hex("820785") ++ chunked ++ hex("8080a080")
     val header = Header.fromRaw(Era.Conway, chunked, at12).fold(e => fail(s"$e"), identity)
-    assert(Block.decodeShelley(raw).isLeft)
-    assert(Block.decodeShelley(raw, _ => at11).isLeft)
+    assert(Block.decodeShelley(raw) match {
+      case Left(
+            ChainError
+              .Decode(DecodeField.Header, LedgerDecodeError.IndefiniteLength(DecodeField.Header))
+          ) =>
+        true
+      case _ => false
+    })
+    assert(Block.decodeShelley(raw, _ => at11) match {
+      case Left(
+            ChainError
+              .Decode(DecodeField.Header, LedgerDecodeError.IndefiniteLength(DecodeField.Header))
+          ) =>
+        true
+      case _ => false
+    })
     assertEquals(
       Block.decodeShelley(raw, _ => at12).map {
         case b: Block.Shelley => b.header
@@ -846,7 +883,13 @@ class DecoderVersionSuite extends FunSuite:
       .getOrElse(fail("no detached Babbage block in the header-decoding corpus"))
     for v <- DecoderVersion.range(Era.Babbage).versions do
       assert(Block.decodeShelley(detached, _ => v).isRight, s"${v.value}")
-    assert(Block.decodeShelley(detached, _ => at12).isLeft)
+    assert(Block.decodeShelley(detached, _ => at12) match {
+      case Left(
+            ChainError.Decode(DecodeField.Block, LedgerDecodeError.Syntax(Cbor.Error.TrailingBytes))
+          ) =>
+        true
+      case _ => false
+    })
   }
 
   test("a body, a witness set and a transaction read detached records below 12 only") {

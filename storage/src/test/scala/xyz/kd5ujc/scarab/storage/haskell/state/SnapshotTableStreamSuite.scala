@@ -76,7 +76,17 @@ class SnapshotTableStreamSuite extends CatsEffectSuite:
         (original.reverse, original.size.toLong),
         (original.take(1) ++ original.take(1), 2L)
       ).traverse_ { (es, count) =>
-        attempt(encoded(es, count)).map(r => assert(r.isLeft, r.toString))
+        attempt(encoded(es, count)).map(r =>
+          assert(
+            r match {
+              case Left(SnapshotTables.Error.CountMismatch(_, _)) |
+                  Left(SnapshotTables.Error.KeysNotAscending(_, _)) =>
+                true
+              case _ => false
+            },
+            r.toString
+          )
+        )
       }
     }
   }
@@ -111,7 +121,16 @@ class SnapshotTableStreamSuite extends CatsEffectSuite:
     Vector(bytes.drop(1), bytes.take(bytes.size - 1), bytes ++ Bytes.wrap(Array(0))).traverse_ {
       malformed =>
         attempt(SnapshotTableStream.events(input(malformed)).compile.toVector).map(r =>
-          assert(r.isLeft, r.toString)
+          assert(
+            r match {
+              case Left(SnapshotTables.Error.Incomplete(_, _)) |
+                  Left(SnapshotTables.Error.TrailingBytes(_)) |
+                  Left(SnapshotTables.Error.WrongType(_, _, _)) =>
+                true
+              case _ => false
+            },
+            r.toString
+          )
         )
     }
   }

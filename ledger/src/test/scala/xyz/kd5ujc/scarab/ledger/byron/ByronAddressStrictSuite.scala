@@ -277,6 +277,12 @@ class ByronAddressStrictSuite extends FunSuite:
       length(attributes(uint(1) -> bstr(onePathByte), uint(9) -> bstr(onePathByte))),
       Right(2)
     )
-    assert(length(attributes(uint(9) -> bstr(onePathByte), uint(1) -> bstr(onePathByte))).isLeft)
-    assert(length(attributes(uint(256) -> bstr(onePathByte))).isLeft)
+    assert(length(attributes(uint(9) -> bstr(onePathByte), uint(1) -> bstr(onePathByte))) match {
+      case Left(LedgerDecodeError.Expected(_, LedgerDecodeError.Shape.Map, _)) => true
+      case _                                                                   => false
+    })
+    assert(length(attributes(uint(256) -> bstr(onePathByte))) match {
+      case Left(LedgerDecodeError.NumberOutOfRange(DecodeField.ByronTxAttributes, _, _, _)) => true
+      case _                                                                                => false
+    })
   }

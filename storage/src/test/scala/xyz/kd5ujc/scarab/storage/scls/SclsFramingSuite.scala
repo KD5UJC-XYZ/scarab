@@ -45,12 +45,23 @@ class SclsFramingSuite extends FunSuite:
   test("unsigned oversized lengths and unknown tags fail before buffering their payload") {
     Vector("00000000", "80000000", "ffffffff").foreach { prefix =>
       val bytes = Bytes.fromHex(prefix).fold(e => fail(e.message), identity)
-      assert(decoder(limit).feed(bytes).isLeft)
+      assert(decoder(limit).feed(bytes) match {
+        case Left(SclsFraming.Error.InvalidLength(_, _)) |
+            Left(SclsFraming.Error.RecordTooLarge(_, _, _)) =>
+          true
+        case _ => false
+      })
     }
     val unknown = Bytes.fromHex("00000001fe").fold(e => fail(e.message), identity)
     assertEquals(decoder(limit).feed(unknown), Left(Error.UnknownKind(4L, 0xfe)))
-    assert(Limit.fromInt(0).isLeft)
-    assert(Limit.fromInt(-1).isLeft)
+    assert(Limit.fromInt(0) match {
+      case Left(SclsFraming.Error.InvalidLength(_, _)) => true
+      case _                                           => false
+    })
+    assert(Limit.fromInt(-1) match {
+      case Left(SclsFraming.Error.InvalidLength(_, _)) => true
+      case _                                           => false
+    })
   }
 
   test(
@@ -62,7 +73,10 @@ class SclsFramingSuite extends FunSuite:
       assertEquals(decoded.isRight, boundaries(end), s"length $end")
     }
     val small = right(Limit.fromInt(8))
-    assert(encode(frames.head, small).isLeft)
+    assert(encode(frames.head, small) match {
+      case Left(SclsFraming.Error.RecordTooLarge(_, _, _)) => true
+      case _                                               => false
+    })
   }
 
   test("large record streams are stack safe, including zero-length record contents") {

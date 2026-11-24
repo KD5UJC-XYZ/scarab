@@ -19,6 +19,7 @@ import xyz.kd5ujc.scarab.ledger.rules.{
 }
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.ledger.GenesisState.{FundAddress, InjectionSource}
+import xyz.kd5ujc.scarab.ledger.ConfigError
 
 /** The start state of a chain, made from its genesis files as the reference makes it
   * (`GenesisStart`, `GenesisMirror`): the devnet genesis of `devnet.py up` starts in Conway with
@@ -231,7 +232,10 @@ class GenesisStartSuite extends FunSuite:
         file.mapObject(_.add("data", Json.obj()))
       )
     do
-      assert(GenesisInjections.read(StateLayout.Node11_1)(sourceFiles(fundSources(invalid))).isLeft)
+      assert(GenesisInjections.read(StateLayout.Node11_1)(sourceFiles(fundSources(invalid))) match {
+        case Left(ConfigError(_)) => true
+        case _                    => false
+      })
   }
 
   // `injectInitialExtLedgerState` (ouroboros-consensus 82ecba32 `Embed/Nary.hs:259-306`) extends the
@@ -354,7 +358,10 @@ class GenesisStartSuite extends FunSuite:
           replaceExtra(started, "initialFunds", Json.obj("data" -> funds))
         else started
       })
-      assert(result.isLeft)
+      assert(result match {
+        case Left(ConfigError(_)) => true
+        case _                    => false
+      })
     }
   }
 
@@ -494,7 +501,15 @@ class GenesisStartSuite extends FunSuite:
       )
     )
     val overflowPointer = "40" + "19" * 28 + "90808080000000"
-    assert(GenesisState.address(overflowPointer).isLeft)
+    assert(GenesisState.address(overflowPointer) match {
+      case Left(
+            ConfigError(
+              ConfigProblem.LedgerValue(xyz.kd5ujc.scarab.ledger.LedgerDecodeError.Pointer(_))
+            )
+          ) =>
+        true
+      case _ => false
+    })
     val result = NodeSetup.fromFiles(ReferenceBuild.Default)(files { (name, value) =>
       if name != "shelley-genesis.json" then value
       else

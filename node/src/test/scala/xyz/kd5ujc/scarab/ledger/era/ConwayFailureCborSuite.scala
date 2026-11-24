@@ -794,7 +794,10 @@ class ConwayFailureCborSuite extends FunSuite:
   test("an action no proposal reads: the flat form's bytes of the same action") {
     actions.zip(flatActions).foreach { (a, fa) =>
       val f = gov(ConwayGovPredFailure.MalformedProposal(a))
-      assert(ConwayLedgerPredFailure.toStored(f, flatPurpose, _ => None).isLeft)
+      assert(ConwayLedgerPredFailure.toStored(f, flatPurpose, _ => None) match {
+        case Left(LedgerUnprojected.Gov(_)) => true
+        case _                              => false
+      })
       assertEquals(
         direct(f),
         flat(PredicateFailure.gov(xyz.kd5ujc.scarab.ledger.GovFailure.MalformedProposal(fa)))
@@ -810,7 +813,10 @@ class ConwayFailureCborSuite extends FunSuite:
   test("a purpose no needed script names: the flat form's bytes of the same purpose") {
     val missing = NonEmptyList.fromListUnsafe(items.toList.map(_ -> h28(30)))
     val f = utxow(ConwayUtxowPredFailure.MissingRedeemers(missing))
-    assert(ConwayLedgerPredFailure.toStored(f, _ => None, read).isLeft)
+    assert(ConwayLedgerPredFailure.toStored(f, _ => None, read) match {
+      case Left(LedgerUnprojected.Utxow(_)) => true
+      case _                                => false
+    })
     val resolved = missing.toList.toVector.map((p, h) => flatPurpose(p).getOrElse(fail(s"$p")) -> h)
     assertEquals(
       direct(f),
@@ -821,7 +827,10 @@ class ConwayFailureCborSuite extends FunSuite:
         missing.map((p, _) => CollectError.NoRedeemer[Conway](p))
       )
     )
-    assert(ConwayLedgerPredFailure.toStored(g, _ => None, read).isLeft)
+    assert(ConwayLedgerPredFailure.toStored(g, _ => None, read) match {
+      case Left(LedgerUnprojected.Utxow(UtxowUnprojected.CollectErrors(_))) => true
+      case _                                                                => false
+    })
     assertEquals(
       direct(g),
       flat(
@@ -904,7 +913,10 @@ class ConwayFailureCborSuite extends FunSuite:
       val f = utxos(
         ConwayUtxosPredFailure.CollectErrors(NonEmptyList.one(CollectError.BadTranslation(era)))
       )
-      assert(ConwayLedgerPredFailure.toStored(f, flatPurpose, read).isLeft)
+      assert(ConwayLedgerPredFailure.toStored(f, flatPurpose, read) match {
+        case Left(LedgerUnprojected.Utxow(UtxowUnprojected.CollectErrors(_))) => true
+        case _                                                                => false
+      })
       assertEquals(
         direct(f),
         flat(

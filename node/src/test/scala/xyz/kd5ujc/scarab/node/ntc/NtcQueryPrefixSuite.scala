@@ -216,7 +216,15 @@ class NtcQueryPrefixSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with
       else
         arguments.foreach { a =>
           val whole = inEra(era) + head + a * math.max(0, size - 1)
-          assert(NtcQuery.decode(hex(whole)).isLeft, s"era $era ($size, $tag) $whole")
+          assert(
+            NtcQuery.decode(hex(whole)) match {
+              case Left(NtcQuery.Error.Arity(_, _, _)) | Left(NtcQuery.Error.ConwayOnly(_)) |
+                  Left(NtcQuery.Error.MalformedCbor(_)) | Left(NtcQuery.Error.UnknownTag(_, _)) =>
+                true
+              case _ => false
+            },
+            s"era $era ($size, $tag) $whole"
+          )
         }
   }
 

@@ -12,6 +12,7 @@ import xyz.kd5ujc.scarab.consensus.state.PBftState
 import xyz.kd5ujc.scarab.ledger.{Block, Header, TxIn}
 import xyz.kd5ujc.scarab.ledger.byron.*
 import xyz.kd5ujc.scarab.ledger.byron.ByronTestKit.*
+import xyz.kd5ujc.scarab.ledger.LedgerDecodeError
 
 /** Source-derived REF-07 header/registration cases; raw reference proposal-decoder verdicts are
   * retained separately by ByronProposalFixtureSuite. The pinned ledger f649f97 has
@@ -116,7 +117,10 @@ class ByronVersionSuite extends ScalaCheckSuite:
     test(s"signed proposal rejects out-of-range version $proposed before registration") {
       val b = decoded(block((0, 0, 0), proposed))
       assert(ByronRules.update(state((0, 0, 0)), b, rulesConfig).isLeft)
-      assert(ByronBody.decode(b.body).isLeft)
+      assert(ByronBody.decode(b.body) match {
+        case Left(LedgerDecodeError.Version(_)) => true
+        case _                                  => false
+      })
     }
   }
 

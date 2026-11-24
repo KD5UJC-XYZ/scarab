@@ -27,6 +27,7 @@ import xyz.kd5ujc.scarab.protocol.{Era, ReferenceBuild}
 
 import TestLedger.{out, txIn}
 import TxKit.{ada, alice, bob, bstr, head}
+import xyz.kd5ujc.scarab.ledger.LedgerFailure
 
 /** The mempool in every Shelley-based era (#934): it holds transactions of the era of its ledger,
   * lists them under that era, and takes a transaction of another era as the selected reference
@@ -339,7 +340,10 @@ class EraMempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   test("a Byron GenTx and a transaction its era does not read end the protocol") {
     val (raw, _) = payment(Era.Conway)
     val byron = TxSubmission2Engine.Message.ReplyTxs(Vector(EraTx(Era.Byron, raw)))
-    assert(codec.encode(TxSubmission2.State.Txs, ChainSync.Role.Client, byron).isLeft)
+    assert(codec.encode(TxSubmission2.State.Txs, ChainSync.Role.Client, byron) match {
+      case Left(ProtocolError.ExpectedShelleyBasedGenTx) => true
+      case _                                             => false
+    })
     // a Conway body with a Shelley tag: Shelley's record has three items, not four
     val shelley = TxSubmission2Engine.Message.ReplyTxs(Vector(EraTx(Era.Shelley, raw)))
     val wire = TxSubmission2
@@ -358,7 +362,10 @@ class EraMempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     codec.decodePrefix(TxSubmission2.State.Txs, ChainSync.Role.Client, tagged) match
       case ChainSync.DecodeResult.Failed(_: ProtocolError) => ()
       case other => fail(s"a Conway transaction read as Shelley's: $other")
-    assert(codec.encode(TxSubmission2.State.Txs, ChainSync.Role.Client, shelley).isLeft)
+    assert(codec.encode(TxSubmission2.State.Txs, ChainSync.Role.Client, shelley) match {
+      case Left(ProtocolError.ExpectedConwayTransactionMembers) => true
+      case _                                                    => false
+    })
   }
 
   test(
@@ -398,7 +405,13 @@ class EraMempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       ledger(era) match
         case l: FlatLedger =>
           val txEnv = translating.txEnv(1000, l)
-          assert(l.submit(tx, txEnv, translating.rules).isLeft, s"$era: every check refuses it")
+          assert(
+            l.submit(tx, txEnv, translating.rules) match {
+              case Left(LedgerFailure.Rejected(_, _)) => true
+              case _                                  => false
+            },
+            s"$era: every check refuses it"
+          )
           assert(
             l.reapply(tx, txEnv, translating.rules).isRight,
             s"$era: reapplyTx does not verify it"

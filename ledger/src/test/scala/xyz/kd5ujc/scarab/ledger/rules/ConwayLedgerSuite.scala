@@ -646,7 +646,13 @@ class ConwayLedgerSuite extends FunSuite:
     )
     // no redeemers: nothing for it to fail, so the node refuses a transaction flagged invalid
     val t = tx(b, Vector(alice), isValid = false)
-    assert(run(s, t).isLeft, "expected a refusal, the transaction was accepted")
+    assert(
+      run(s, t) match {
+        case Left(LedgerFailure.Rejected(_, _)) => true
+        case _                                  => false
+      },
+      "expected a refusal, the transaction was accepted"
+    )
   }
 
   test("the failures of the node are the failures of the new rules") {
@@ -1076,7 +1082,13 @@ class ConwayLedgerSuite extends FunSuite:
       case Left(f) => fail(s"expected the invalid transaction to take its collateral: $f")
     // a verdict that is not the tag's is refused, as the node refuses it
     for (succeeds, isValid) <- Vector((false, true), (true, false)) do
-      assert(c.attempt(succeeds, isValid).isLeft, s"expected a refusal for $succeeds / $isValid")
+      assert(
+        c.attempt(succeeds, isValid) match {
+          case Left(LedgerFailure.Rejected(_, _)) => true
+          case _                                  => false
+        },
+        s"expected a refusal for $succeeds / $isValid"
+      )
   }
 
   // The withdrawal accounts of a transaction are of the network of the ledger, whichever validity

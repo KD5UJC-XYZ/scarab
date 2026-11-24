@@ -97,7 +97,13 @@ class PreprodMalformedRefScriptSuite extends FunSuite:
     val garbage = item.take(3) ++ Vector.fill(1075)(0xff.toByte)
     List(garbage, garbage ++ garbage, item.take(500), Vector.empty[Byte], Vector(0x01.toByte))
       .foreach { b =>
-        assert(decoder.validate(PlutusLanguage.V2, 10, Bytes(b)).isLeft, b.length.toString)
+        assert(
+          decoder.validate(PlutusLanguage.V2, 10, Bytes(b)) match {
+            case Left(ScriptDecodeFailure.Malformed(_)) => true
+            case _                                      => false
+          },
+          b.length.toString
+        )
       }
   }
 

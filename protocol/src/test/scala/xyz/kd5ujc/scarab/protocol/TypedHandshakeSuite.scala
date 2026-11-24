@@ -80,8 +80,22 @@ class TypedHandshakeSuite extends munit.FunSuite:
     assertEquals(Handshake.encode(ntc), Right(bytes("830119801700")))
     assertEquals(Handshake.decode[NtnVersion](State.Confirm, bytes("83010f00")), Right(ntn))
     assertEquals(Handshake.decode[NtcVersion](State.Confirm, bytes("830119801700")), Right(ntc))
-    assert(Handshake.decode[NtnVersion](State.Confirm, bytes("830119801700")).isLeft)
-    assert(Handshake.decode[NtcVersion](State.Confirm, bytes("83011700")).isLeft)
+    assert(Handshake.decode[NtnVersion](State.Confirm, bytes("830119801700")) match {
+      case Left(
+            xyz.kd5ujc.scarab.protocol.Handshake
+              .DecodeError(ProtocolError.UnrecognizedSelectedVersion, _)
+          ) =>
+        true
+      case _ => false
+    })
+    assert(Handshake.decode[NtcVersion](State.Confirm, bytes("83011700")) match {
+      case Left(
+            xyz.kd5ujc.scarab.protocol.Handshake
+              .DecodeError(ProtocolError.UnrecognizedSelectedVersion, _)
+          ) =>
+        true
+      case _ => false
+    })
     assertEquals(
       Handshake.encode(Handshake.Suite.NodeToClient, Message.Accept(23, Term.Integer(0))),
       Handshake.encode(ntc)

@@ -58,6 +58,13 @@ class GenesisPoolFieldsSuite extends FunSuite:
         val metadata = field[Vector[String]](c, "metadata")
         assert(metadata.size <= 1)
         assertEquals(params.metadata, metadata.headOption.map(hex))
-      else assert(decoded.isLeft, s"reference refused ${field[String](c, "name")}")
+      else
+        assert(
+          decoded match {
+            case Left(ConfigError(_)) => true
+            case _                    => false
+          },
+          s"reference refused ${field[String](c, "name")}"
+        )
     }
   }

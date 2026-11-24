@@ -54,17 +54,41 @@ class PraosVrfCertificateSuite extends munit.FunSuite:
     }
   }
   test("checked slot range and null constructors") {
-    Vector(BigInt(-1), Slot.MaxValue + 1, null).foreach(s => assert(Slot.fromBigInt(s).isLeft))
+    Vector(BigInt(-1), Slot.MaxValue + 1, null).foreach(s =>
+      assert(Slot.fromBigInt(s) match {
+        case Left(PraosVrfCertificate.Failure.MissingSlot) |
+            Left(PraosVrfCertificate.Failure.SlotOutOfRange(_)) =>
+          true
+        case _ => false
+      })
+    )
     Vector(BigInt(0), BigInt(1) << 63, Slot.MaxValue).foreach(s =>
       assert(Slot.fromBigInt(s).isRight)
     )
-    assert(Input.create(null, NeutralNonce).isLeft)
-    assert(Input.create(Slot.fromBigInt(0).toOption.get, null).isLeft)
-    assert(alpha(null).isLeft)
+    assert(Input.create(null, NeutralNonce) match {
+      case Left(PraosVrfCertificate.Failure.MissingSlot) => true
+      case _                                             => false
+    })
+    assert(Input.create(Slot.fromBigInt(0).toOption.get, null) match {
+      case Left(PraosVrfCertificate.Failure.MissingNonce) => true
+      case _                                              => false
+    })
+    assert(alpha(null) match {
+      case Left(PraosVrfCertificate.Failure.MissingInput) => true
+      case _                                              => false
+    })
   }
   test("checked nonce lengths and a missing nonce") {
-    Vector(0, 31, 33).foreach(n => assert(Hash32.fromBytes(Bytes(Vector.fill(n)(0.toByte))).isLeft))
-    assert(Hash32.fromBytes(null).isLeft)
+    Vector(0, 31, 33).foreach(n =>
+      assert(Hash32.fromBytes(Bytes(Vector.fill(n)(0.toByte))) match {
+        case Left(PraosVrfCertificate.Failure.NonceHashLength(_)) => true
+        case _                                                    => false
+      })
+    )
+    assert(Hash32.fromBytes(null) match {
+      case Left(PraosVrfCertificate.Failure.MissingNonceHash) => true
+      case _                                                  => false
+    })
   }
   test("envelopes and nulls rejected before primitive invocation") {
     val r = row; val in = input(r(1), r(2)); val k = bytes(r(3)); val p = bytes(r(4));

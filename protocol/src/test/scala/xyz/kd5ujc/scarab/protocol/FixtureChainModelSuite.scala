@@ -43,7 +43,10 @@ class FixtureChainModelSuite extends munit.FunSuite:
   test("unoffered intersection rejected without changing immutable cursor") {
     val initial = right(FixtureChainModel.start(history))
     val offered = right(initial.step(Role.Client, Message.FindIntersect(Vector(b))))
-    assert(offered.step(Role.Server, Message.IntersectFound(a, tip)).isLeft)
+    assert(offered.step(Role.Server, Message.IntersectFound(a, tip)) match {
+      case Left(FixtureChainModel.Error.UnofferedIntersection) => true
+      case _                                                   => false
+    })
     assertEquals(offered.cursor, c)
     assertEquals(offered.state, State.Intersect)
   }
@@ -55,7 +58,10 @@ class FixtureChainModelSuite extends munit.FunSuite:
       Some(FixtureChainModel.Error.UnknownOrPrunedRollbackTargetReintersectionRequired)
     )
     assertEquals(next.history, Vector(b, c))
-    assert(next.step(Role.Server, Message.RollBackward(Point.Origin, tip)).isLeft)
+    assert(next.step(Role.Server, Message.RollBackward(Point.Origin, tip)) match {
+      case Left(FixtureChainModel.Error.UnknownOrPrunedRollbackTargetReintersectionRequired) => true
+      case _ => false
+    })
   }
   test("new offered intersection establishes anchor; rollback to anchor is legal") {
     val initial = right(FixtureChainModel.start(Vector(Point.Origin, a)))
@@ -73,9 +79,33 @@ class FixtureChainModelSuite extends munit.FunSuite:
     val awaiting = right(
       right(initial.step(Role.Client, Message.RequestNext)).step(Role.Server, Message.AwaitReply)
     )
-    assert(awaiting.step(Role.Server, Message.AwaitReply).isLeft)
-    assert(awaiting.step(Role.Client, Message.RequestNext).isLeft)
-    assert(awaiting.step(Role.Client, Message.Done).isLeft)
+    assert(awaiting.step(Role.Server, Message.AwaitReply) match {
+      case Left(
+            FixtureChainModel.Error.Protocol(
+              ProtocolError.ChainSyncAgency(ChainSync.State.NextMustReply, ChainSync.Role.Server)
+            )
+          ) =>
+        true
+      case _ => false
+    })
+    assert(awaiting.step(Role.Client, Message.RequestNext) match {
+      case Left(
+            FixtureChainModel.Error.Protocol(
+              ProtocolError.ChainSyncAgency(ChainSync.State.NextMustReply, ChainSync.Role.Client)
+            )
+          ) =>
+        true
+      case _ => false
+    })
+    assert(awaiting.step(Role.Client, Message.Done) match {
+      case Left(
+            FixtureChainModel.Error.Protocol(
+              ProtocolError.ChainSyncAgency(ChainSync.State.NextMustReply, ChainSync.Role.Client)
+            )
+          ) =>
+        true
+      case _ => false
+    })
     assertEquals(
       right(awaiting.step(Role.Server, Message.RollForward("B", tip), Some(b))).cursor,
       b
@@ -108,19 +138,55 @@ class FixtureChainModelSuite extends munit.FunSuite:
         "done"
       )
     )
-    assert(result.step(Role.Client, Message.Done).isLeft)
-    assert(result.step(Role.Client, Message.RequestNext).isLeft)
+    assert(result.step(Role.Client, Message.Done) match {
+      case Left(
+            FixtureChainModel.Error
+              .Protocol(ProtocolError.ChainSyncAgency(ChainSync.State.Done, ChainSync.Role.Client))
+          ) =>
+        true
+      case _ => false
+    })
+    assert(result.step(Role.Client, Message.RequestNext) match {
+      case Left(
+            FixtureChainModel.Error
+              .Protocol(ProtocolError.ChainSyncAgency(ChainSync.State.Done, ChainSync.Role.Client))
+          ) =>
+        true
+      case _ => false
+    })
   }
   test("history/candidates/trace/hash allocations have explicit local bounds") {
-    assert(FixtureChainModel.start(Vector.empty).isLeft)
-    assert(FixtureChainModel.start(Vector.fill(257)(a)).isLeft)
-    assert(FixtureChainModel.start(Vector(a, a)).isLeft)
-    assert(FixtureChainModel.start(Vector(Point.Block(UInt64.Zero, Bytes(Vector(1))))).isLeft)
-    assert(FixtureChainModel.intersect(Vector.fill(65)(a), history).isLeft)
+    assert(FixtureChainModel.start(Vector.empty) match {
+      case Left(FixtureChainModel.Error.ModelRequiresNonemptyBoundedDistinctSyntheticHistory) =>
+        true
+      case _ => false
+    })
+    assert(FixtureChainModel.start(Vector.fill(257)(a)) match {
+      case Left(FixtureChainModel.Error.ModelRequiresNonemptyBoundedDistinctSyntheticHistory) =>
+        true
+      case _ => false
+    })
+    assert(FixtureChainModel.start(Vector(a, a)) match {
+      case Left(FixtureChainModel.Error.ModelRequiresNonemptyBoundedDistinctSyntheticHistory) =>
+        true
+      case _ => false
+    })
+    assert(FixtureChainModel.start(Vector(Point.Block(UInt64.Zero, Bytes(Vector(1))))) match {
+      case Left(FixtureChainModel.Error.ModelRequiresNonemptyBoundedDistinctSyntheticHistory) =>
+        true
+      case _ => false
+    })
+    assert(FixtureChainModel.intersect(Vector.fill(65)(a), history) match {
+      case Left(FixtureChainModel.Error.IntersectionModelBoundExceeded) => true
+      case _                                                            => false
+    })
     val full = right(FixtureChainModel.start((0 until 256).map(i => p(i, 1)).toVector))
     val requested = right(full.step(Role.Client, Message.RequestNext))
     assert(
-      requested.step(Role.Server, Message.RollForward("overflow", tip), Some(p(256, 1))).isLeft
+      requested.step(Role.Server, Message.RollForward("overflow", tip), Some(p(256, 1))) match {
+        case Left(FixtureChainModel.Error.ModelHistoryLimitExceededReintersectionRequired) => true
+        case _                                                                             => false
+      }
     )
     var model = right(FixtureChainModel.start())
     (0 until 512).foreach { _ =>
@@ -130,5 +196,8 @@ class FixtureChainModelSuite extends munit.FunSuite:
       )
     }
     assertEquals(model.trace.size, 1024)
-    assert(model.step(Role.Client, Message.Done).isLeft)
+    assert(model.step(Role.Client, Message.Done) match {
+      case Left(FixtureChainModel.Error.ModelTraceLimitExceeded) => true
+      case _                                                     => false
+    })
   }

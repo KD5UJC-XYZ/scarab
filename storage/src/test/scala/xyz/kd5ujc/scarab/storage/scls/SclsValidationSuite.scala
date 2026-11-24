@@ -155,7 +155,10 @@ class SclsValidationSuite extends FunSuite:
   test("a rejected branch cannot mutate previously captured hash or validator state") {
     val prefix = right(validator.feed(frames.head))
     val after = right(prefix.feed(frames(1)))
-    assert(prefix.feed(encoded(chunks.head.copy(hash = zeroHash))).isLeft)
+    assert(prefix.feed(encoded(chunks.head.copy(hash = zeroHash))) match {
+      case Left(SclsValidation.Error.ChunkHash(SclsRecord.Namespace.Blocks, _, _)) => true
+      case _                                                                       => false
+    })
     val complete = right(
       frames.tail.foldLeft[Either[Error, Validator]](Right(prefix))((state, frame) =>
         state.flatMap(_.feed(frame))

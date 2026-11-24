@@ -37,11 +37,17 @@ class KeepAliveSuite extends munit.FunSuite:
       (0 until wire.size).foreach { cut =>
         val prefix = Bytes(wire.value.take(cut))
         assertEquals(decodePrefix(state, role, prefix), DecodeResult.NeedMore)
-        assert(decode(state, role, prefix).isLeft)
+        assert(decode(state, role, prefix) match {
+          case Left(ProtocolError.TruncatedKeepAliveMessage) => true
+          case _                                             => false
+        })
       }
       val joined = Bytes(wire.value ++ b("8102").value)
       assertEquals(decodePrefix(state, role, joined), DecodeResult.Decoded(message, wire.size))
-      assert(decode(state, role, joined).isLeft)
+      assert(decode(state, role, joined) match {
+        case Left(ProtocolError.TrailingKeepAliveBytes) => true
+        case _                                          => false
+      })
     }
   }
 
@@ -63,7 +69,12 @@ class KeepAliveSuite extends munit.FunSuite:
   }
 
   test("UInt16 is checked at construction and before narrowing decoded values") {
-    Vector(Int.MinValue, -1, 65536, Int.MaxValue).foreach(n => assert(Cookie.from(n).isLeft))
+    Vector(Int.MinValue, -1, 65536, Int.MaxValue).foreach(n =>
+      assert(Cookie.from(n) match {
+        case Left(ProtocolError.KeepAliveCookieOutsideUint16(_)) => true
+        case _                                                   => false
+      })
+    )
     Vector(0, 23, 24, 255, 256, 65535).foreach(n => assertEquals(cookie(n).value, n))
     assertEquals(cookie(65535), cookie(65535))
     assertEquals(cookie(65535).hashCode, cookie(65535).hashCode)
@@ -135,7 +146,10 @@ class KeepAliveSuite extends munit.FunSuite:
     val msg = Message.Request(cookie(65535))
     val wire = b("820019ffff")
     assertEquals(right(encode(State.Client, Role.Client, msg, Limits(maxMessageBytes = 5))), wire)
-    assert(encode(State.Client, Role.Client, msg, Limits(maxMessageBytes = 4)).isLeft)
+    assert(encode(State.Client, Role.Client, msg, Limits(maxMessageBytes = 4)) match {
+      case Left(ProtocolError.MessageByteLimitExceeded) => true
+      case _                                            => false
+    })
     failed(decodePrefix(State.Client, Role.Client, wire, Limits(maxMessageBytes = 4)))
     // Declared uint width exceeds limit before waiting for its body.
     failed(decodePrefix(State.Client, Role.Client, b("82001b"), Limits(maxMessageBytes = 5)))
@@ -154,7 +168,12 @@ class KeepAliveSuite extends munit.FunSuite:
       Limits(maxDepth = 0),
       Limits(maxItems = 2)
     ).foreach { limits =>
-      assert(encode(State.Client, Role.Client, msg, limits).isLeft)
+      assert(encode(State.Client, Role.Client, msg, limits) match {
+        case Left(ProtocolError.CBORDepthLimitExceeded) |
+            Left(ProtocolError.InvalidKeepAliveLimits) | Left(ProtocolError.ItemLimitExceeded) =>
+          true
+        case _ => false
+      })
       failed(decodePrefix(State.Client, Role.Client, wire, limits))
     }
   }
@@ -162,16 +181,39 @@ class KeepAliveSuite extends munit.FunSuite:
   test("cookie matching is mandatory and independent from valid wire decoding") {
     val response = right(decode(State.Server, Role.Server, b("820100")))
     assertEquals(matchResponse(Some(cookie(0)), response), Right(()))
-    assert(matchResponse(Some(cookie(1)), response).isLeft)
-    assert(matchResponse(None, response).isLeft)
-    assert(matchResponse(Some(cookie(0)), Message.Request(cookie(0))).isLeft)
-    assert(matchResponse(Some(cookie(0)), Message.Done).isLeft)
+    assert(matchResponse(Some(cookie(1)), response) match {
+      case Left(ProtocolError.KeepAliveCookieMismatch(_, _)) => true
+      case _                                                 => false
+    })
+    assert(matchResponse(None, response) match {
+      case Left(ProtocolError.UnsolicitedKeepAliveResponse) => true
+      case _                                                => false
+    })
+    assert(matchResponse(Some(cookie(0)), Message.Request(cookie(0))) match {
+      case Left(ProtocolError.ExpectedKeepAliveResponse) => true
+      case _                                             => false
+    })
+    assert(matchResponse(Some(cookie(0)), Message.Done) match {
+      case Left(ProtocolError.ExpectedKeepAliveResponse) => true
+      case _                                             => false
+    })
     // After matching and clearing the outstanding cookie, the same response is a duplicate.
     val outstanding = Some(cookie(0))
     assert(matchResponse(outstanding, response).isRight)
-    assert(matchResponse(None, response).isLeft)
-    assert(transition(State.Server, Role.Client, Message.Request(cookie(1))).isLeft)
-    assert(transition(State.Server, Role.Client, Message.Done).isLeft)
+    assert(matchResponse(None, response) match {
+      case Left(ProtocolError.UnsolicitedKeepAliveResponse) => true
+      case _                                                => false
+    })
+    assert(transition(State.Server, Role.Client, Message.Request(cookie(1))) match {
+      case Left(ProtocolError.KeepAliveAgency(KeepAlive.State.Server, KeepAlive.Role.Client)) =>
+        true
+      case _ => false
+    })
+    assert(transition(State.Server, Role.Client, Message.Done) match {
+      case Left(ProtocolError.KeepAliveAgency(KeepAlive.State.Server, KeepAlive.Role.Client)) =>
+        true
+      case _ => false
+    })
   }
 
   test("coalesced request/response/done advances only by exact consumed prefixes") {

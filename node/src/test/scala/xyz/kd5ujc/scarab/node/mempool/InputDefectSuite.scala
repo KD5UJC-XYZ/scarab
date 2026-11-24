@@ -29,5 +29,8 @@ class InputDefectSuite extends FunSuite:
     LocalSubmission.response(Refused(Rejection.InputDefect(cause), None)) match
       case LocalTxSubmissionServer.Response.InputDefect(thrown) => assert(thrown eq cause)
       case other                                                => fail(s"unexpected $other")
-    assert(LocalSubmission.reasonItem(Rejection.InputDefect(cause), None).isLeft)
+    assert(LocalSubmission.reasonItem(Rejection.InputDefect(cause), None) match {
+      case Left(Rejection.InputDefect(_: java.lang.IllegalStateException)) => true
+      case _                                                               => false
+    })
   }

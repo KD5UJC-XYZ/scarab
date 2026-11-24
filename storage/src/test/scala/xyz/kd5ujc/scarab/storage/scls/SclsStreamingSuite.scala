@@ -132,7 +132,13 @@ class SclsStreamingSuite extends CatsEffectSuite:
           }
           wasPublished <- published.get
         yield
-          assert(result.isLeft, result.toString)
+          assert(
+            result match {
+              case Left(SclsStreaming.Error.Framing(SclsFraming.Error.Incomplete(_, _))) => true
+              case _                                                                     => false
+            },
+            result.toString
+          )
           assert(!wasPublished, "unverified input must not yield a publishable result")
     }
   }

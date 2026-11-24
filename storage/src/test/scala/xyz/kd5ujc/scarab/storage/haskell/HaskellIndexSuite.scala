@@ -311,12 +311,18 @@ class HaskellIndexSuite extends ScalaCheckSuite:
       val r = Math.floorMod(which, f.primary.offsets.size - 1)
       val tampered = f.primary.offsets.zipWithIndex.map((o, i) => if i > r then o + 3 else o)
       assert(
-        parse(PrimaryIndex.encode(PrimaryIndex(tampered)).require).isLeft,
+        parse(PrimaryIndex.encode(PrimaryIndex(tampered)).require) match {
+          case Left(ChunkFault.PrimaryStep(_, _, _)) => true
+          case _                                     => false
+        },
         "an offset step of 3 must be refused"
       )
       // More offsets than a chunk can have.
       val tooLong = PrimaryIndex(Vector.fill(chunkSlots.value.toInt + 3)(0L))
-      assert(parse(PrimaryIndex.encode(tooLong).require).isLeft)
+      assert(parse(PrimaryIndex.encode(tooLong).require) match {
+        case Left(ChunkFault.PrimaryTooLong(_, _)) => true
+        case _                                     => false
+      })
     }
   }
 

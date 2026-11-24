@@ -16,6 +16,8 @@ import xyz.kd5ujc.scarab.storage.haskell.state.UtxoCodecs
 import xyz.kd5ujc.scarab.models.runtime.Codec
 import xyz.kd5ujc.scarab.storage.scls.SclsRecord.Namespace
 import xyz.kd5ujc.scarab.ledger.state as S
+import xyz.kd5ujc.scarab.ledger.LedgerDecodeError
+import xyz.kd5ujc.scarab.models.runtime.DecodeError
 
 class SclsValueSuite extends FunSuite:
   private val fixture = Path.of("fixtures/scls/conway-4593/entries.tsv")
@@ -156,7 +158,17 @@ class SclsValueSuite extends FunSuite:
     assertEquals(SclsValue.decode(Namespace.StakePools, atBytes), Right(at), "128 UTF-8 bytes")
     val past =
       SclsValue.encode(withMetadata("é" * 64 + "a", 32)).fold(e => fail(e.toString), identity)
-    assert(SclsValue.decode(Namespace.StakePools, past).isLeft, "129 UTF-8 bytes")
+    assert(
+      SclsValue.decode(Namespace.StakePools, past) match {
+        case Left(
+              xyz.kd5ujc.scarab.storage.scls.SclsValue.Error
+                .WrongShape(SclsRecord.Namespace.StakePools, _)
+            ) =>
+          true
+        case _ => false
+      },
+      "129 UTF-8 bytes"
+    )
   }
 
   test("a pool metadata hash of any length is exported and imported") {
@@ -356,7 +368,14 @@ class SclsValueSuite extends FunSuite:
     val negative = changedNatural(
       Node(V.Arr(Vector(Node(V.NInt(-1), Bytes.empty), Node(V.UInt(1), Bytes.empty))), Bytes.empty)
     )
-    assert(SclsValue.decode(Namespace.PParams, negative).isLeft)
+    assert(SclsValue.decode(Namespace.PParams, negative) match {
+      case Left(
+            xyz.kd5ujc.scarab.storage.scls.SclsValue.Error
+              .Runtime(DecodeError(DecodeError.Kind.OutOfRange(_, _), _, _, _))
+          ) =>
+        true
+      case _ => false
+    })
     val nonMinimalNatural = changedNatural(
       Node(
         V.Arr(
@@ -368,7 +387,14 @@ class SclsValueSuite extends FunSuite:
         Bytes.empty
       )
     )
-    assert(SclsValue.decode(Namespace.PParams, nonMinimalNatural).isLeft)
+    assert(SclsValue.decode(Namespace.PParams, nonMinimalNatural) match {
+      case Left(
+            xyz.kd5ujc.scarab.storage.scls.SclsValue.Error
+              .NonCanonical(SclsRecord.Namespace.PParams)
+          ) =>
+        true
+      case _ => false
+    })
   }
 
   test("UTxO OnChain values keep exact embedded output bytes") {
@@ -452,7 +478,16 @@ class SclsValueSuite extends FunSuite:
       xyz.kd5ujc.scarab.ledger.state.NonZero.from(word).fold(e => fail(e.toString), identity)
     assertEquals(value, SclsValue.Entry.VrfKeyCount(nonzero))
     assertEquals(SclsValue.encode(value), Right(raw))
-    assert(SclsValue.decode(Namespace.StakePoolVrfHashes, hex("00")).isLeft)
+    assert(SclsValue.decode(Namespace.StakePoolVrfHashes, hex("00")) match {
+      case Left(
+            xyz.kd5ujc.scarab.storage.scls.SclsValue.Error.Vocabulary(
+              xyz.kd5ujc.scarab.ledger.state.VocabError
+                .Zero(xyz.kd5ujc.scarab.ledger.state.VocabError.Kind.NonZero)
+            )
+          ) =>
+        true
+      case _ => false
+    })
     val largest = hex("1bffffffffffffffff")
     val largestValue =
       SclsValue.decode(Namespace.StakePoolVrfHashes, largest).fold(e => fail(e.toString), identity)
@@ -549,7 +584,14 @@ class SclsValueSuite extends FunSuite:
     )
     assertEquals(SclsValue.encode(SclsValue.Entry.Blocks(BigInt(1) << 64)), Right(raw))
     assert(
-      SclsValue.decode(Namespace.Blocks, hex("c24101")).isLeft
+      SclsValue.decode(Namespace.Blocks, hex("c24101")) match {
+        case Left(
+              xyz.kd5ujc.scarab.storage.scls.SclsValue.Error
+                .InvalidInteger(SclsRecord.Namespace.Blocks, _)
+            ) =>
+          true
+        case _ => false
+      }
     ) // tag 2 is noncanonical below uint64
   }
 
@@ -564,7 +606,14 @@ class SclsValueSuite extends FunSuite:
       Right(SclsValue.Entry.ProposalRoot(id))
     )
     assertEquals(SclsValue.encode(SclsValue.Entry.ProposalRoot(id)), Right(raw))
-    assert(SclsValue.encode(SclsValue.Entry.ProposalRoot(id.copy(index = 65536))).isLeft)
+    assert(SclsValue.encode(SclsValue.Entry.ProposalRoot(id.copy(index = 65536))) match {
+      case Left(
+            xyz.kd5ujc.scarab.storage.scls.SclsValue.Error
+              .InvalidInteger(SclsRecord.Namespace.ProposalRoots, _)
+          ) =>
+        true
+      case _ => false
+    })
   }
 
   test("PParams are complete typed Conway numeric-key maps, not state arrays or partial updates") {
@@ -596,20 +645,48 @@ class SclsValueSuite extends FunSuite:
     source.value match
       case V.Map(pairs) =>
         val incomplete = Cbor.encode(V.Map(pairs.dropRight(1))).fold(e => fail(e.message), identity)
-        assert(SclsValue.decode(Namespace.PParams, incomplete).isLeft)
+        assert(SclsValue.decode(Namespace.PParams, incomplete) match {
+          case Left(
+                xyz.kd5ujc.scarab.storage.scls.SclsValue.Error
+                  .Runtime(DecodeError(DecodeError.Kind.BadArity(_, _), _, _, _))
+              ) =>
+            true
+          case _ => false
+        })
         val duplicate = Cbor
           .encode(V.Map(pairs.updated(pairs.size - 1, pairs.head)))
           .fold(e => fail(e.message), identity)
-        assert(SclsValue.decode(Namespace.PParams, duplicate).isLeft)
+        assert(SclsValue.decode(Namespace.PParams, duplicate) match {
+          case Left(
+                xyz.kd5ujc.scarab.storage.scls.SclsValue.Error
+                  .Runtime(DecodeError(DecodeError.Kind.DuplicateKey(_), _, _, _))
+              ) =>
+            true
+          case _ => false
+        })
         val unknown = Cbor
           .encode(
             V.Map(pairs.updated(pairs.size - 1, Node(V.UInt(34), Bytes.empty) -> pairs.last._2))
           )
           .fold(e => fail(e.message), identity)
-        assert(SclsValue.decode(Namespace.PParams, unknown).isLeft)
+        assert(SclsValue.decode(Namespace.PParams, unknown) match {
+          case Left(
+                xyz.kd5ujc.scarab.storage.scls.SclsValue.Error
+                  .Runtime(DecodeError(DecodeError.Kind.UnexpectedKey(_), _, _, _))
+              ) =>
+            true
+          case _ => false
+        })
       case other => fail(s"PParams fixture is not a map: $other")
     val array = Cbor.encode(V.Arr(Vector.empty)).fold(e => fail(e.message), identity)
-    assert(SclsValue.decode(Namespace.PParams, array).isLeft)
+    assert(SclsValue.decode(Namespace.PParams, array) match {
+      case Left(
+            xyz.kd5ujc.scarab.storage.scls.SclsValue.Error
+              .Runtime(DecodeError(DecodeError.Kind.TypeMismatch(_, _), _, _, _))
+          ) =>
+        true
+      case _ => false
+    })
   }
 
   test("StakePools refuses invalid manually constructed ledger bounds and retained bytes") {
@@ -629,41 +706,68 @@ class SclsValueSuite extends FunSuite:
     pool.futureParams match
       case Some(future) =>
         assert(
-          SclsValue
+          (SclsValue
             .encode(
               SclsValue.Entry
                 .StakePool(pool.copy(futureParams = Some(future.copy(owners = Set(Bytes.empty)))))
-            )
-            .isLeft
+            )) match {
+            case Left(
+                  xyz.kd5ujc.scarab.storage.scls.SclsValue.Error.Vocabulary(
+                    xyz.kd5ujc.scarab.ledger.state.VocabError
+                      .WrongHashLength(xyz.kd5ujc.scarab.ledger.state.VocabError.Kind.KeyHash, _, _)
+                  )
+                ) =>
+              true
+            case _ => false
+          }
         )
         assert(
-          SclsValue
+          (SclsValue
             .encode(
               SclsValue.Entry.StakePool(
                 pool.copy(futureParams =
                   Some(future.copy(margin = xyz.kd5ujc.scarab.codec.Rational(11, 10)))
                 )
               )
-            )
-            .isLeft
+            )) match {
+            case Left(
+                  xyz.kd5ujc.scarab.storage.scls.SclsValue.Error
+                    .InvalidRatio(SclsRecord.Namespace.StakePools, _, _)
+                ) =>
+              true
+            case _ => false
+          }
         )
         assert(
-          SclsValue
+          (SclsValue
             .encode(
               SclsValue.Entry.StakePool(
                 pool.copy(futureParams =
                   Some(future.copy(metadata = Some(Bytes.wrap(Array[Byte](0)))))
                 )
               )
-            )
-            .isLeft
+            )) match {
+            case Left(
+                  xyz.kd5ujc.scarab.storage.scls.SclsValue.Error
+                    .WrongShape(SclsRecord.Namespace.StakePools, _)
+                ) =>
+              true
+            case _ => false
+          }
         )
       case None => fail("Haskell pool vector has no future parameters")
   }
 
   test("PoolRelays propagates canonical shape and caller-selected CBOR limits") {
-    assert(PoolRelays.decode(hex("8180")).isLeft)
-    assert(PoolRelays.decode(hex("80"), Cbor.Limits(maxInputBytes = 0)).isLeft)
+    assert(PoolRelays.decode(hex("8180")) match {
+      case Left(PoolRelayError.NotARelay(_)) => true
+      case _                                 => false
+    })
+    assert(PoolRelays.decode(hex("80"), Cbor.Limits(maxInputBytes = 0)) match {
+      case Left(PoolRelayError.NotCbor(LedgerDecodeError.Syntax(Cbor.Error.InputLimitExceeded))) =>
+        true
+      case _ => false
+    })
   }
 
   test("anchor URL limit counts UTF-8 bytes on decode and encode") {
@@ -677,7 +781,14 @@ class SclsValueSuite extends FunSuite:
     val tooLong = SclsValue.Entry.GovernanceConstitution(
       xyz.kd5ujc.scarab.ledger.Constitution(xyz.kd5ujc.scarab.ledger.Anchor("é" * 65, digest), None)
     )
-    assert(SclsValue.encode(tooLong).isLeft)
+    assert(SclsValue.encode(tooLong) match {
+      case Left(
+            xyz.kd5ujc.scarab.storage.scls.SclsValue.Error
+              .WrongShape(SclsRecord.Namespace.Constitution, _)
+          ) =>
+        true
+      case _ => false
+    })
     val oversizedNode = Node(
       V.Arr(
         Vector(
@@ -693,7 +804,14 @@ class SclsValueSuite extends FunSuite:
       Bytes.empty
     )
     val oversizedBytes = Cbor.encode(oversizedNode.value).fold(e => fail(e.message), identity)
-    assert(SclsValue.decode(Namespace.Constitution, oversizedBytes).isLeft)
+    assert(SclsValue.decode(Namespace.Constitution, oversizedBytes) match {
+      case Left(
+            xyz.kd5ujc.scarab.storage.scls.SclsValue.Error
+              .WrongShape(SclsRecord.Namespace.Constitution, _)
+          ) =>
+        true
+      case _ => false
+    })
   }
 
   test("Committee UnitInterval rejects zero denominators and values above one without throwing") {
@@ -715,10 +833,31 @@ class SclsValueSuite extends FunSuite:
         Bytes.empty
       )
       Cbor.encode(V.Arr(Vector(members, ratio))).fold(e => fail(e.message), identity)
-    assert(SclsValue.decode(Namespace.Committee, encoded(0, 0)).isLeft)
-    assert(SclsValue.decode(Namespace.Committee, encoded(2, 1)).isLeft)
+    assert(SclsValue.decode(Namespace.Committee, encoded(0, 0)) match {
+      case Left(
+            xyz.kd5ujc.scarab.storage.scls.SclsValue.Error
+              .InvalidRatio(SclsRecord.Namespace.Committee, _, _)
+          ) =>
+        true
+      case _ => false
+    })
+    assert(SclsValue.decode(Namespace.Committee, encoded(2, 1)) match {
+      case Left(
+            xyz.kd5ujc.scarab.storage.scls.SclsValue.Error
+              .InvalidRatio(SclsRecord.Namespace.Committee, _, _)
+          ) =>
+        true
+      case _ => false
+    })
     assert(
-      SclsValue.decode(Namespace.Committee, encoded(2, 4)).isLeft
+      SclsValue.decode(Namespace.Committee, encoded(2, 4)) match {
+        case Left(
+              xyz.kd5ujc.scarab.storage.scls.SclsValue.Error
+                .NonCanonical(SclsRecord.Namespace.Committee)
+            ) =>
+          true
+        case _ => false
+      }
     ) // decoder re-encode rejects non-reduced form
   }
 
@@ -727,7 +866,14 @@ class SclsValueSuite extends FunSuite:
       Map(LedgerCredential.Key(Bytes.wrap(Array.fill[Byte](27)(0))) -> BigInt(1)),
       xyz.kd5ujc.scarab.codec.Rational(1, 2)
     )
-    assert(SclsValue.encode(SclsValue.Entry.GovernanceCommittee(Some(malformed))).isLeft)
+    assert(SclsValue.encode(SclsValue.Entry.GovernanceCommittee(Some(malformed))) match {
+      case Left(
+            xyz.kd5ujc.scarab.storage.scls.SclsValue.Error
+              .WrongShape(SclsRecord.Namespace.Committee, _)
+          ) =>
+        true
+      case _ => false
+    })
   }
 
   test("proposal namespace rejects a value with the wrong outer shape") {

@@ -10,6 +10,8 @@ import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.consensus.state.PBftState
 import xyz.kd5ujc.scarab.ledger.{Block, ByronGenesisFile, ProviderDefect, TxIn}
 import xyz.kd5ujc.scarab.ledger.byron.*
+import xyz.kd5ujc.scarab.ledger.ChainError
+import xyz.kd5ujc.scarab.ledger.LedgerDecodeError
 
 /** Actual unchanged Haskell registration, proposal/transaction admission and block-ledger APIs,
   * composed with authentic original-byte header/certificate crypto gates. This is controlled
@@ -99,7 +101,11 @@ class ByronRegistrationFixtureSuite extends FunSuite:
     test(s"original signed proposal $name matches full reference registration and admission") {
       val wrapped = ByronCbor.of(0x82, 0x81) ++ rawProposal ++ ByronCbor.of(0x80)
       val decoded = Cbor.decode(wrapped).flatMap(UpdatePayload.decode)
-      if verdict(reference, "proposalDecode") == Verdict.DecodeFailure then assert(decoded.isLeft)
+      if verdict(reference, "proposalDecode") == Verdict.DecodeFailure then
+        assert(decoded match {
+          case Left(LedgerDecodeError.Version(_)) => true
+          case _                                  => false
+        })
       else
         val proposal =
           decoded
@@ -145,7 +151,11 @@ class ByronRegistrationFixtureSuite extends FunSuite:
         case b: Block.Byron => ByronBody.decode(b.body).map(body => b -> body)
         case _              => fail("expected main Byron block")
       }
-      if verdict(reference, "blockDecode") == Verdict.DecodeFailure then assert(decoded.isLeft)
+      if verdict(reference, "blockDecode") == Verdict.DecodeFailure then
+        assert(decoded match {
+          case Left(ChainError.Decode(_, _)) | Left(LedgerDecodeError.Version(_)) => true
+          case _                                                                  => false
+        })
       else
         val (block, body) = decoded.fold(e => fail(e.toString), identity)
         val proposal = body.update.proposal.fold(fail("missing embedded proposal"))(identity)

@@ -81,11 +81,17 @@ class LeiosCertificateSuite extends ScalaCheckSuite:
   ) {
     // `rawDecodeFixedSized` decodes the identity (cardano-base c1e1ed8d, `BLS12381/Internal.hs:476-491`)
     val identity = Bytes.wrap(Array(0xc0.toByte) ++ Array.fill[Byte](47)(0))
-    assert(Signature.fromBytes(identity).isLeft)
+    assert(Signature.fromBytes(identity) match {
+      case Left(BlsError.Infinity(_)) => true
+      case _                          => false
+    })
     forAll(genSigners, genHash) { (seats, h) =>
       val signers = right(Certificate.aggregate(committee, votes(h, seats))).signers
       val cert = right(Certificate.fromFields(signers.bytes, identity))
-      assert(Certificate.verify(committee, Weight.zero, h, cert).isLeft)
+      assert(Certificate.verify(committee, Weight.zero, h, cert) match {
+        case Left(VerificationError.InvalidSignature) => true
+        case _                                        => false
+      })
     }
   }
 
@@ -120,7 +126,10 @@ class LeiosCertificateSuite extends ScalaCheckSuite:
     forAll(genSigners, genHash, Gen.choose(0, 3 * 8 - 1)) { (seats, h, bit) =>
       val cert = right(Certificate.aggregate(committee, votes(h, seats)))
       val tampered = Signers.fromBytes(flip(cert.signers.bytes, bit)).get
-      assert(Certificate.verify(committee, Weight.zero, h, cert.copy(signers = tampered)).isLeft)
+      assert(Certificate.verify(committee, Weight.zero, h, cert.copy(signers = tampered)) match {
+        case Left(VerificationError.InvalidSignature) => true
+        case _                                        => false
+      })
     }
   }
 
@@ -132,7 +141,10 @@ class LeiosCertificateSuite extends ScalaCheckSuite:
           assert(Vote.verify(committee, vote.copy(signature = s)).isLeft)
         }
         val h2 = RbHash.fromBytes(flip(h.bytes, hbit)).get
-        assert(Vote.verify(committee, vote.copy(announcingRbHash = h2)).isLeft)
+        assert(Vote.verify(committee, vote.copy(announcingRbHash = h2)) match {
+          case Left(BlsError.SignatureInvalid) => true
+          case _                               => false
+        })
     }
   }
 
@@ -166,7 +178,10 @@ class LeiosCertificateSuite extends ScalaCheckSuite:
       )
     ) { (i, h, dst) =>
       val sig = right(MinSig.signUnder(keys(i)._1, h.bytes, dst))
-      assert(MinSig.verifyUnder(keys(i)._2, h.bytes, sig, MinSig.signatureDst).isLeft)
+      assert(MinSig.verifyUnder(keys(i)._2, h.bytes, sig, MinSig.signatureDst) match {
+        case Left(BlsError.SignatureInvalid) => true
+        case _                               => false
+      })
     }
   }
 
@@ -175,7 +190,10 @@ class LeiosCertificateSuite extends ScalaCheckSuite:
       val vs = votes(h, seats).toVector
       val doubled = right(MinSig.aggregateSignatures(vs.map(_._2) :+ vs.head._2))
       val cert = Certificate(right(Signers.of(seatCount, seats.map(seatId))), doubled)
-      assert(Certificate.verify(committee, Weight.zero, h, cert).isLeft)
+      assert(Certificate.verify(committee, Weight.zero, h, cert) match {
+        case Left(VerificationError.InvalidSignature) => true
+        case _                                        => false
+      })
     }
   }
 
@@ -185,7 +203,10 @@ class LeiosCertificateSuite extends ScalaCheckSuite:
       val changed = if seats(extra) then seats - extra else seats + extra
       if changed.nonEmpty then
         val signers = right(Signers.of(seatCount, changed.map(seatId)))
-        assert(Certificate.verify(committee, Weight.zero, h, cert.copy(signers = signers)).isLeft)
+        assert(Certificate.verify(committee, Weight.zero, h, cert.copy(signers = signers)) match {
+          case Left(VerificationError.InvalidSignature) => true
+          case _                                        => false
+        })
     }
   }
 

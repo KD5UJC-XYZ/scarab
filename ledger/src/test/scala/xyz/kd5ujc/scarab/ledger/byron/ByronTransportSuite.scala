@@ -4,6 +4,7 @@ package xyz.kd5ujc.scarab.ledger.byron
 import java.nio.file.{Files, Path}
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
+import xyz.kd5ujc.scarab.ledger.DecodeField
 
 /** Native droppers are intentionally permissive about values, but distinguish CBOR token forms.
   * These cases follow cardano-ledger f649f975 Ssc.hs and Binary/Decoding/Drop.hs, independently of
@@ -163,7 +164,15 @@ class ByronTransportSuite extends FunSuite:
       (body(payloads(3)), list(map())),
       (body(payloads(3)), array(hex("bfff"))),
       (body(payloads(3)), array(map(zero -> bytes)))
-    ).foreach { (raw, tail) => assert(ByronTransport.check(raw, tail, boundary = false).isLeft) }
+    ).foreach { (raw, tail) =>
+      assert(ByronTransport.check(raw, tail, boundary = false) match {
+        case Left(xyz.kd5ujc.scarab.ledger.LedgerDecodeError.Expected(_, _, _)) |
+            Left(xyz.kd5ujc.scarab.ledger.LedgerDecodeError.IndefiniteLength(_)) |
+            Left(xyz.kd5ujc.scarab.ledger.LedgerDecodeError.NumberOutOfRange(_, _, _, _)) =>
+          true
+        case _ => false
+      })
+    }
   }
 
   test("EBB skips body proof only after decoding its indefinite byte list and Word8 attributes") {
@@ -179,7 +188,15 @@ class ByronTransportSuite extends FunSuite:
       (list(), array(map(hex("190100") -> bytes))),
       (list(), array(map(zero -> zero))),
       (list(), array(map(zero -> hex("5fff"))))
-    ).foreach { (raw, tail) => assert(ByronTransport.check(raw, tail, boundary = true).isLeft) }
+    ).foreach { (raw, tail) =>
+      assert(ByronTransport.check(raw, tail, boundary = true) match {
+        case Left(xyz.kd5ujc.scarab.ledger.LedgerDecodeError.Expected(_, _, _)) |
+            Left(xyz.kd5ujc.scarab.ledger.LedgerDecodeError.IndefiniteLength(_)) |
+            Left(xyz.kd5ujc.scarab.ledger.LedgerDecodeError.NumberOutOfRange(_, _, _, _)) =>
+          true
+        case _ => false
+      })
+    }
   }
 
   test("wide native SSC collections remain stack safe") {
@@ -344,7 +361,13 @@ class ByronTransportSuite extends FunSuite:
     )
       .foreach { value =>
         assert(
-          ByronTransport.check(body(payloads(3), delegation = list(value)), extra, false).isLeft
+          ByronTransport.check(body(payloads(3), delegation = list(value)), extra, false) match {
+            case Left(xyz.kd5ujc.scarab.ledger.LedgerDecodeError.ByteLength(_, _, _)) |
+                Left(xyz.kd5ujc.scarab.ledger.LedgerDecodeError.Expected(_, _, _)) |
+                Left(xyz.kd5ujc.scarab.ledger.LedgerDecodeError.IndefiniteLength(_)) =>
+              true
+            case _ => false
+          }
         )
       }
   }
@@ -363,11 +386,25 @@ class ByronTransportSuite extends FunSuite:
     ).foreach { value =>
       assertEquals(checkUpdate(withParams(params(12, value))), Right(()))
     }
-    assert(checkUpdate(withParams(params(12, fee(-1000000000, 0)))).isLeft)
+    assert(checkUpdate(withParams(params(12, fee(-1000000000, 0)))) match {
+      case Left(
+            xyz.kd5ujc.scarab.ledger.LedgerDecodeError
+              .NumberOutOfRange(DecodeField.FeeSummand, _, _, _)
+          ) =>
+        true
+      case _ => false
+    })
     assert(
       checkUpdate(
         withParams(params(12, fee(ByronLedger.MaxLovelace * 1000000000 + 500000001, 0)))
-      ).isLeft
+      ) match {
+        case Left(
+              xyz.kd5ujc.scarab.ledger.LedgerDecodeError
+                .NumberOutOfRange(DecodeField.FeeSummand, _, _, _)
+            ) =>
+          true
+        case _ => false
+      }
     )
   }
 
@@ -380,7 +417,14 @@ class ByronTransportSuite extends FunSuite:
       map(txt("a") -> installer, txt("a") -> installer)
     )
       .foreach(value =>
-        assert(checkUpdate(array(array(proposal(metadata = value)), list())).isLeft)
+        assert(checkUpdate(array(array(proposal(metadata = value)), list())) match {
+          case Left(
+                xyz.kd5ujc.scarab.ledger.LedgerDecodeError
+                  .Expected(_, xyz.kd5ujc.scarab.ledger.LedgerDecodeError.Shape.Map, _)
+              ) =>
+            true
+          case _ => false
+        })
       )
   }
 

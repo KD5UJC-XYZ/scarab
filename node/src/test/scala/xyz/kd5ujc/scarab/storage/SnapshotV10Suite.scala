@@ -20,6 +20,7 @@ import xyz.kd5ujc.scarab.node.read.InEra
 import xyz.kd5ujc.scarab.protocol.Era
 
 import StorageTestKit.*
+import xyz.kd5ujc.scarab.codec.Cbor
 
 /** V10 writes and reads every era in the block capture. The maintained V10 conversions of the
   * previous fixture corpus retain its independently replayed chain position and UTxO accounting.
@@ -288,8 +289,20 @@ class SnapshotV10Suite extends CatsEffectSuite:
   test("the structure check refuses content whose Haskell section is not one CBOR item") {
     accepted.filter(_._1 != Era.Byron).foreach { (era, _, bytes) =>
       assert(SnapshotV10.wellFormed(bytes).isRight, era.toString)
-      assert(SnapshotV10.wellFormed(bytes.dropRight(1)).isLeft, s"$era truncated")
-      assert(SnapshotV10.wellFormed(bytes :+ 0.toByte).isLeft, s"$era trailing byte")
+      assert(
+        SnapshotV10.wellFormed(bytes.dropRight(1)) match {
+          case Left(StorageError.Corrupt(_, Cbor.Error.TruncatedString)) => true
+          case _                                                         => false
+        },
+        s"$era truncated"
+      )
+      assert(
+        SnapshotV10.wellFormed(bytes :+ 0.toByte) match {
+          case Left(StorageError.Corrupt(_, Cbor.Error.TrailingBytes)) => true
+          case _                                                       => false
+        },
+        s"$era trailing byte"
+      )
     }
     assertEquals(SnapshotCheck.parse("structure"), Some(SnapshotCheck.Structure))
     assertEquals(SnapshotCheck.parse("FULL"), Some(SnapshotCheck.Full))
@@ -334,7 +347,23 @@ class SnapshotV10Suite extends CatsEffectSuite:
       "haskell section" -> bytes.take(bytes.length - 40),
       "too short" -> bytes.take(5)
     )
-    cases.traverse_((what, damaged) => v10.decode(damaged).map(r => assert(r.isLeft, what)))
+    cases.traverse_((what, damaged) =>
+      v10
+        .decode(damaged)
+        .map(r =>
+          assert(
+            r match {
+              case Left(StorageError.Corrupt(_, _)) |
+                  Left(StorageError.UnknownReferenceBuild(_, _, _)) |
+                  Left(StorageError.UnknownVersion(_, _, _)) |
+                  Left(StorageError.VersionMismatch(_, _, _)) =>
+                true
+              case _ => false
+            },
+            what
+          )
+        )
+    )
   }
 
   test(
@@ -390,7 +419,10 @@ class SnapshotV10Suite extends CatsEffectSuite:
         // and the restore deletes the damaged temporary snapshot, as the reference does
         assertEquals(unchanged, SnapshotMigration.Report.empty)
         assert(java.util.Arrays.equals(migrated, damaged))
-        assert(FileLedgerSnapshots.verified(damaged).isLeft)
+        assert(FileLedgerSnapshots.verified(damaged) match {
+          case Left(StorageError.Corrupt(_, SnapshotReadError.ChecksumMismatch)) => true
+          case _                                                                 => false
+        })
         assertEquals(restored.snapshot, None)
         assertEquals(restored.skipped.map(_.name), Vector(current.fileName.toString))
         assertEquals(restored.skipped.map(_.unused), Vector(LedgerSnapshots.Unused.Deleted))

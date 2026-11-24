@@ -162,16 +162,40 @@ class MultiAssetDecodeSuite extends FunSuite:
         read(value(1, assets(1 -> Seq("01" -> uint(TwoTo64 - 1)))), d).map(_.assets),
         Right(Map(key(1) -> Map(bytes("01") -> (TwoTo64 - 1))))
       )
-      assert(read(value(1, assets(1 -> Seq("01" -> bignum))), d).isLeft)
-      assert(read(value(1, assets(1 -> Seq("01" -> int(-1)))), d).isLeft)
+      assert(read(value(1, assets(1 -> Seq("01" -> bignum))), d) match {
+        case Left(
+              LedgerDecodeError.Expected(DecodeField.Value, LedgerDecodeError.Shape.Unsigned, _)
+            ) =>
+          true
+        case _ => false
+      })
+      assert(read(value(1, assets(1 -> Seq("01" -> int(-1)))), d) match {
+        case Left(
+              LedgerDecodeError.Expected(DecodeField.Value, LedgerDecodeError.Shape.Unsigned, _)
+            ) =>
+          true
+        case _ => false
+      })
     }
   }
 
   test("the coin of an output is a Word64 in every version") {
     both.foreach { d =>
       assertEquals(read(uint(TwoTo64 - 1), d), Right(Value(TwoTo64 - 1, Map.empty)))
-      assert(read(bignum, d).isLeft)
-      assert(read("82" + bignum + assets(1 -> Seq("01" -> uint(1))), d).isLeft)
+      assert(read(bignum, d) match {
+        case Left(
+              LedgerDecodeError.Expected(DecodeField.Value, LedgerDecodeError.Shape.Array, _)
+            ) =>
+          true
+        case _ => false
+      })
+      assert(read("82" + bignum + assets(1 -> Seq("01" -> uint(1))), d) match {
+        case Left(
+              LedgerDecodeError.Expected(DecodeField.Value, LedgerDecodeError.Shape.Unsigned, _)
+            ) =>
+          true
+        case _ => false
+      })
     }
   }
 
@@ -308,7 +332,15 @@ class MultiAssetDecodeSuite extends FunSuite:
     )
     val big = body(assets(1 -> Seq("01" -> uint(TwoTo63))))
     Era.values.filter(_.ordinal >= Era.Mary.ordinal).foreach { era =>
-      assert(TxBody.decode(bytes(big), era).isLeft, era.toString)
+      assert(
+        TxBody.decode(bytes(big), era) match {
+          case Left(LedgerDecodeError.NotYet(_)) |
+              Left(LedgerDecodeError.NumberOutOfRange(_, _, _, _)) =>
+            true
+          case _ => false
+        },
+        era.toString
+      )
     }
   }
 

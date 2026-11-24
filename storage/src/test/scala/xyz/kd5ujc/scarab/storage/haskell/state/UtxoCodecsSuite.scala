@@ -7,6 +7,7 @@ import xyz.kd5ujc.scarab.ledger.{Address, Datum, TxIn, TxOut, Value}
 import xyz.kd5ujc.scarab.ledger.state.{ProtVer, Word64}
 
 import NodeOrders.given
+import xyz.kd5ujc.scarab.models.runtime.ConstraintViolation
 
 /** The UTxO codecs and the unordered-container combinators the node-to-client answers are written
   * with: the bytes are those the reference ledger writes (`Mary/Value.hs`, `Babbage/TxOut.hs`,
@@ -73,6 +74,12 @@ class UtxoCodecsSuite extends FunSuite:
   }
 
   test("a value out of the range of its Haskell type is refused, not written") {
-    assert(UtxoCodecs.txIn.write(TxIn(bytes(0, 31), 0)).isLeft)
-    assert(UtxoCodecs.txIn.write(TxIn(bytes(0, 32), 70000)).isLeft)
+    assert(UtxoCodecs.txIn.write(TxIn(bytes(0, 31), 0)) match {
+      case Left(ConstraintViolation(_, _, _, _)) => true
+      case _                                     => false
+    })
+    assert(UtxoCodecs.txIn.write(TxIn(bytes(0, 32), 70000)) match {
+      case Left(ConstraintViolation(_, _, _, _)) => true
+      case _                                     => false
+    })
   }

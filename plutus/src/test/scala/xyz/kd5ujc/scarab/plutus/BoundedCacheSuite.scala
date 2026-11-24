@@ -23,7 +23,10 @@ class BoundedCacheSuite extends ScalaCheckSuite:
       BackendFailure.Uplc(Unavailability.Thrown(new IllegalStateException("injected")))
     )
     assertEquals(lookup("valid")(Right(1)), Right(1))
-    assert(lookup("retry")(Left(unavailable)).isLeft)
+    assert(lookup("retry")(Left(unavailable)) match {
+      case Left(ScriptDecodeFailure.Unavailable(BackendFailure.Uplc(_))) => true
+      case _                                                             => false
+    })
     // An unavailable attempt did not consume the single cache slot or evict the known program.
     assertEquals(lookup("valid")(Right(2)), Right(1))
     val malformed =

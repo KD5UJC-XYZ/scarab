@@ -77,7 +77,11 @@ class ScriptResultOracleSuite extends FunSuite:
           assertEquals(stats.scripts, reference.size.toLong)
           assertEquals(stats.succeeded, if valid then 1L else 0L)
           assertEquals(stats.failed, if valid then 0L else 1L)
-        else assert(checked.isLeft)
+        else
+          assert(checked match {
+            case Left(LedgerFailure.Rejected(_, _)) => true
+            case _                                  => false
+          })
     }
   }
 

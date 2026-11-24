@@ -129,8 +129,14 @@ class ChainSyncSuite extends munit.FunSuite:
       val t = Tip(p, right(UInt64.from(n)))
       assertEquals(decoded(decodeTip(right(encodeTip(t)))), t)
     }
-    assert(UInt64.from(-1).isLeft)
-    assert(UInt64.from(UInt64.Max + 1).isLeft)
+    assert(UInt64.from(-1) match {
+      case Left(ProtocolError.OutsideUint64(_)) => true
+      case _                                    => false
+    })
+    assert(UInt64.from(UInt64.Max + 1) match {
+      case Left(ProtocolError.OutsideUint64(_)) => true
+      case _                                    => false
+    })
     failed(decodePoint(b("822040")))
   }
   test("nonminimal valid uint and payload encodings preserve opaque payload bytes") {
@@ -192,11 +198,23 @@ class ChainSyncSuite extends munit.FunSuite:
         Message.FindIntersect(Vector.fill(2)(Point.Origin)),
         payload,
         small
-      ).isLeft
+      ) match {
+        case Left(ProtocolError.CandidateLimitExceeded) => true
+        case _                                          => false
+      }
     )
-    assert(validateItem(b("818180"), Limits(maxDepth = 1)).isLeft)
-    assert(validateItem(b("820000"), Limits(maxItems = 2)).isLeft)
-    assert(validateItem(b("5f44000000004400000000ff"), Limits(maxStringBytes = 7)).isLeft)
+    assert(validateItem(b("818180"), Limits(maxDepth = 1)) match {
+      case Left(ProtocolError.CBORDepthLimitExceeded) => true
+      case _                                          => false
+    })
+    assert(validateItem(b("820000"), Limits(maxItems = 2)) match {
+      case Left(ProtocolError.ItemLimitExceeded) => true
+      case _                                     => false
+    })
+    assert(validateItem(b("5f44000000004400000000ff"), Limits(maxStringBytes = 7)) match {
+      case Left(ProtocolError.StringLimitExceeded) => true
+      case _                                       => false
+    })
     failed(
       decodePrefix(
         State.NextCanAwait,
@@ -210,8 +228,14 @@ class ChainSyncSuite extends munit.FunSuite:
   test("standalone point and tip honor full structural bounds") {
     val p = Point.Block(UInt64.Zero, b("00"))
     val small = Limits(maxDepth = 0, maxItems = 1)
-    assert(encodePoint(p, small).isLeft)
-    assert(encodeTip(Tip.Origin, small).isLeft)
+    assert(encodePoint(p, small) match {
+      case Left(ProtocolError.ItemLimitExceeded) => true
+      case _                                     => false
+    })
+    assert(encodeTip(Tip.Origin, small) match {
+      case Left(ProtocolError.ItemLimitExceeded) => true
+      case _                                     => false
+    })
     failed(decodePoint(b("82004100"), small))
     failed(decodeTip(b("828000"), small))
   }
@@ -223,7 +247,10 @@ class ChainSyncSuite extends munit.FunSuite:
       Limits(maxCandidates = -1)
     ).foreach { lim =>
       failed(decodePrefix(State.Idle, Role.Client, b("8100"), payload, lim))
-      assert(encode(State.Idle, Role.Client, Message.RequestNext, payload, lim).isLeft)
+      assert(encode(State.Idle, Role.Client, Message.RequestNext, payload, lim) match {
+        case Left(ProtocolError.InvalidLocalLimits) => true
+        case _                                      => false
+      })
     }
     assertEquals(
       decoded(
@@ -237,9 +264,17 @@ class ChainSyncSuite extends munit.FunSuite:
     val block = b("d8184f3c43415244414e4f5f424c4f434b3e")
     assertEquals(right(ChainSyncFixtures.ntcBlock.decode(block)).bytes, block)
     Vector("d8174100", "d81800", "d818410000", "d8185f4101ff").foreach(h =>
-      assert(ChainSyncFixtures.ntcBlock.decode(b(h)).isLeft)
+      assert(ChainSyncFixtures.ntcBlock.decode(b(h)) match {
+        case Left(ProtocolError.ExpectedDefiniteByteString) |
+            Left(ProtocolError.ExpectedTag24Header) | Left(ProtocolError.TrailingPayloadBytes) =>
+          true
+        case _ => false
+      })
     )
-    assert(ChainSyncFixtures.cardanoPoint(Point.Block(UInt64.Zero, b("00"))).isLeft)
+    assert(ChainSyncFixtures.cardanoPoint(Point.Block(UInt64.Zero, b("00"))) match {
+      case Left(ProtocolError.CardanoPointHashMustContain32Bytes(_)) => true
+      case _                                                         => false
+    })
     assertEquals(decoded(decodePoint(b("82004100"))), Point.Block(UInt64.Zero, b("00")))
   }
   test("NtN header codec: every Shelley-based era the node follows round-trips") {
@@ -295,11 +330,16 @@ class ChainSyncSuite extends munit.FunSuite:
       "820082820200d8184100",
       "8206d818410000"
     ).foreach(h => assert(NtNHeader.codec.decode(b(h)).isLeft, h))
-    assert(NtNHeader.codec.encode(NtNHeader(Era.Byron, b("00"), None)).isLeft)
+    assert(NtNHeader.codec.encode(NtNHeader(Era.Byron, b("00"), None)) match {
+      case Left(ProtocolError.ByronHeaderRequiresItsWrapper) => true
+      case _                                                 => false
+    })
     assert(
-      NtNHeader.codec
-        .encode(NtNHeader(Era.Conway, b("00"), Some(NtNHeader.ByronInfo(true, 1))))
-        .isLeft
+      (NtNHeader.codec
+        .encode(NtNHeader(Era.Conway, b("00"), Some(NtNHeader.ByronInfo(true, 1))))) match {
+        case Left(ProtocolError.OnlyByronHeadersCarryAWrapper) => true
+        case _                                                 => false
+      }
     )
   }
   test("era index and block tag mappings") {
@@ -328,7 +368,10 @@ class ChainSyncSuite extends munit.FunSuite:
         Role.Server,
         Message.RollForward(tooLarge, Tip.Origin),
         payload
-      ).isLeft
+      ) match {
+        case Left(ProtocolError.MessageByteLimitExceeded) => true
+        case _                                            => false
+      }
     )
     failed(
       decodePrefix(

@@ -18,6 +18,7 @@ import xyz.kd5ujc.scarab.protocol.{Era, StateLayout}
 
 import DecodeError.Kind
 import HaskellStateCodecs.{*, given}
+import xyz.kd5ujc.scarab.models.runtime.ConstraintViolation
 
 /** The envelopes of the Haskell `state` file: the laws of every codec on generated values of every
   * era, hand-derived bytes of the small encodings (each cites the Haskell instance), typed
@@ -186,7 +187,10 @@ class LedgerFileSuite extends ScalaCheckSuite:
         )
       )
     )
-    assert(pbftState.write(bad).isLeft)
+    assert(pbftState.write(bad) match {
+      case Left(ConstraintViolation(_, _, _, _)) => true
+      case _                                     => false
+    })
   }
 
   test("TPraosState: [1, [last slot, [[counters, evolving, candidate], [epoch, prev], lab]]]") {
@@ -364,7 +368,10 @@ class LedgerFileSuite extends ScalaCheckSuite:
     val byron = LedgerFileEra.Mirrored(
       EraLedgerState.ByronCurrent(xyz.kd5ujc.scarab.consensus.ByronState.initial)
     )
-    assert(ledgerFileEra(Era.Byron).write(byron).isLeft)
+    assert(ledgerFileEra(Era.Byron).write(byron) match {
+      case Left(ConstraintViolation(_, _, _, _)) => true
+      case _                                     => false
+    })
     assert(ledgerFileEra(Era.Byron).write(LedgerFileEra.ByronItem(hex("80"))).isRight)
   }
 

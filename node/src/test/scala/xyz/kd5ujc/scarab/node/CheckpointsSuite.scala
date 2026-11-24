@@ -75,7 +75,10 @@ class CheckpointsSuite extends FunSuite:
         )
       )
     )
-    assert(CheckpointsFile.parse("checkpoints.json", invalidJson, Some(actual)).isLeft)
+    assert(CheckpointsFile.parse("checkpoints.json", invalidJson, Some(actual)) match {
+      case Left(ConfigError(ConfigProblem.JsonSyntax(_, _: io.circe.ParsingFailure))) => true
+      case _                                                                          => false
+    })
   }
 
   test("checkpoint block numbers retain the full unsigned Word64 range") {
@@ -86,7 +89,10 @@ class CheckpointsSuite extends FunSuite:
       Right(Set(maximum))
     )
     Vector(BigInt(-1), maximum + 1).foreach { invalid =>
-      assert(parsed(s"""{"checkpoints":[{"blockNo":$invalid,"hash":"$zero"}]}""").isLeft)
+      assert(parsed(s"""{"checkpoints":[{"blockNo":$invalid,"hash":"$zero"}]}""") match {
+        case Left(ConfigError(_)) => true
+        case _                    => false
+      })
     }
   }
 
@@ -98,7 +104,15 @@ class CheckpointsSuite extends FunSuite:
       s"""{"checkpoints":[{"blockNo":1,"hash":"00"}]}""",
       s"""{"checkpoints":[{"blockNo":1,"hash":"${"zz" * 32}"}]}""",
       s"""{"checkpoints":[{"blockNo":1.5,"hash":"$zero"}]}"""
-    ).foreach(text => assert(parsed(text).isLeft, text))
+    ).foreach(text =>
+      assert(
+        parsed(text) match {
+          case Left(ConfigError(_)) => true
+          case _                    => false
+        },
+        text
+      )
+    )
     assertEquals(parsed("{\"checkpoints\":[]}"), Right(HeaderCheckpoints.empty))
   }
 

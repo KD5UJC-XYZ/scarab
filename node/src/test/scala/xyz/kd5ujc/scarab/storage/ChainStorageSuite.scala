@@ -52,6 +52,7 @@ import scala.concurrent.duration.*
 import scala.jdk.CollectionConverters.*
 
 import StorageTestKit.*
+import xyz.kd5ujc.scarab.ledger.StorageStructureError
 
 /** Restart behaviour over the committed Byron-to-Conway capture (`fixtures/eras`): the follower
   * writes through [[ChainStorage]], a fresh open recovers the same state from the newest snapshot
@@ -1591,10 +1592,37 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       NetworkIdentity.parse("f", shelleyOnly.render),
       Right(StoredNetworkIdentity.Complete(shelleyOnly, IdentityProvenance.Fresh))
     )
-    assert(NetworkIdentity.parse("f", "garbage").isLeft)
-    assert(NetworkIdentity.parse("f", id.render.replace("magic", "magick")).isLeft)
-    assert(NetworkIdentity.parse("f", id.render.replace("v9", "v3")).isLeft)
-    assert(NetworkIdentity.parse("f", id.render.replace("dijkstra-genesis", "dijkstra")).isLeft)
+    assert(NetworkIdentity.parse("f", "garbage") match {
+      case Left(
+            xyz.kd5ujc.scarab.ledger.StorageError
+              .Corrupt(_, StorageStructureError.WrongFileKind(FileKind.IdentityFile))
+          ) =>
+        true
+      case _ => false
+    })
+    assert(NetworkIdentity.parse("f", id.render.replace("magic", "magick")) match {
+      case Left(
+            xyz.kd5ujc.scarab.ledger.StorageError
+              .Corrupt(_, StorageStructureError.UnexpectedIdentityLines)
+          ) =>
+        true
+      case _ => false
+    })
+    assert(NetworkIdentity.parse("f", id.render.replace("v9", "v3")) match {
+      case Left(
+            xyz.kd5ujc.scarab.ledger.StorageError.UnknownVersion(_, FileKind.IdentityFile, _)
+          ) =>
+        true
+      case _ => false
+    })
+    assert(NetworkIdentity.parse("f", id.render.replace("dijkstra-genesis", "dijkstra")) match {
+      case Left(
+            xyz.kd5ujc.scarab.ledger.StorageError
+              .Corrupt(_, StorageStructureError.UnexpectedIdentityLines)
+          ) =>
+        true
+      case _ => false
+    })
   }
 
   // ---- V5 and V7 snapshots paired with current and pre-K6 checkpoint key layouts (#145, #395)

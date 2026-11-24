@@ -284,7 +284,13 @@ class ConfigDialectSuite extends FunSuite:
     assert(NodeConfig.parse(ReferenceBuild.Default)(enabled.noSpaces).isRight)
     NodeConfig.TopLevelKeys.toList.sorted.foreach { key =>
       val wrong = enabled.deepMerge(Json.obj(key -> Json.arr())).noSpaces
-      assert(NodeConfig.parse(ReferenceBuild.Default)(wrong).isLeft, key)
+      assert(
+        NodeConfig.parse(ReferenceBuild.Default)(wrong) match {
+          case Left(ConfigError(_)) => true
+          case _                    => false
+        },
+        key
+      )
     }
   }
 

@@ -7,6 +7,7 @@ import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{ByteStrings, TxIn, TxOut}
 import xyz.kd5ujc.scarab.ledger.state.ShelleyBasedEra
+import xyz.kd5ujc.scarab.models.runtime.ConstraintViolation
 
 /** The UTxO answer of the node-to-client queries in every Shelley-based era, against the reference
   * (`fixtures/reference/utxo-answers`, written by `scripts/oracle/utxo-answers`): each entry is
@@ -87,7 +88,13 @@ class UtxoAnswersReferenceSuite extends FunSuite:
 
   test("an output the era's reference decoder refuses is not written in that era") {
     rows.filter(r => r.refused.isDefined && !r.name.contains("detached")).foreach { row =>
-      assert(UtxoCodecs.utxoIn(era(row)).write(entries(row)).isLeft, row.name)
+      assert(
+        UtxoCodecs.utxoIn(era(row)).write(entries(row)) match {
+          case Left(ConstraintViolation(_, _, _, _)) => true
+          case _                                     => false
+        },
+        row.name
+      )
     }
   }
 

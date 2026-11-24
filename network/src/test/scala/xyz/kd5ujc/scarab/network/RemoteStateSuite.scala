@@ -153,7 +153,10 @@ class RemoteStateSuite extends FailsOnUncaught:
         _ <- responders.running(Temperature.Established)(IO.unit)
         more <- nothingMore(responders)
       yield
-        assert(failed.isLeft)
+        assert(failed match {
+          case Left(_: java.lang.IllegalStateException) => true
+          case _                                        => false
+        })
         assertEquals(seen, Vector(Activity.Awake, Activity.PromotedToHot))
         assert(more, "nothing more waits")
     )
@@ -332,7 +335,10 @@ class RemoteStateSuite extends FailsOnUncaught:
           .timeout(1.hour)
           .attempt
       yield
-        assert(failed.isLeft)
+        assert(failed match {
+          case Left(_: java.lang.IllegalStateException) => true
+          case _                                        => false
+        })
         assert(moved.left.exists(_.isInstanceOf[TimeoutException]), moved.toString)
     }.map(written => assertEquals(written, Vector(RemoteSt.Idle, RemoteSt.Warm, RemoteSt.Hot)))
   }

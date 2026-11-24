@@ -32,7 +32,10 @@ class MithrilBootstrapCommandSuite extends FunSuite:
       "--mithril-client"
     ).foreach { flag =>
       val index = base.indexOf(flag)
-      assert(Command.parse(base.take(index) ++ base.drop(index + 2)).isLeft)
+      assert(Command.parse(base.take(index) ++ base.drop(index + 2)) match {
+        case Left(xyz.kd5ujc.scarab.node.tools.MithrilBootstrapCommand.Problem.Missing(_)) => true
+        case _                                                                             => false
+      })
     }
   }
 

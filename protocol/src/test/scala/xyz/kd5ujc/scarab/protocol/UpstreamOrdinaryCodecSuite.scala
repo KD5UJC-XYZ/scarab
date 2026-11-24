@@ -176,10 +176,20 @@ class UpstreamOrdinaryCodecSuite extends munit.FunSuite:
       )
       assertEquals(right(Cbor.decode(sample.wire)).original, sample.wire)
       val wrongSender = if sender == Role.Client then Role.Server else Role.Client
-      assert(BlockFetchEngine.decode(state, wrongSender, sample.wire, fetchPoint, block).isLeft)
-      assert(BlockFetchEngine.decode(State.Done, sender, sample.wire, fetchPoint, block).isLeft)
+      assert(BlockFetchEngine.decode(state, wrongSender, sample.wire, fetchPoint, block) match {
+        case Left(ProtocolError.WrongBlockFetchAgency) => true
+        case _                                         => false
+      })
+      assert(BlockFetchEngine.decode(State.Done, sender, sample.wire, fetchPoint, block) match {
+        case Left(ProtocolError.BlockFetchIsTerminal) => true
+        case _                                        => false
+      })
       assert(
-        BlockFetchEngine.decode(state, sender, sample.wire ++ bytes("00"), fetchPoint, block).isLeft
+        BlockFetchEngine
+          .decode(state, sender, sample.wire ++ bytes("00"), fetchPoint, block) match {
+          case Left(ProtocolError.TrailingBlockFetchBytes) => true
+          case _                                           => false
+        }
       )
       partitions(sample, expected, decode)
     }

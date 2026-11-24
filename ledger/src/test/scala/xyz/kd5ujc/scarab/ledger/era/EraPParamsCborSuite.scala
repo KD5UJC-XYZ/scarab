@@ -427,7 +427,10 @@ class EraPParamsCborSuite extends ScalaCheckSuite:
     // `a1 14 9f ff 01 02`: key 20's `RecD` record written as `9f ff` with its fields after it,
     // which the reference accepts; a plain decode refuses the bytes after the empty list
     val raw = hex("a1 14 9f ff 01 02")
-    assert(read[PParamsUpdate[Conway]](raw).isLeft)
+    assert(read[PParamsUpdate[Conway]](raw) match {
+      case Left(LedgerDecodeError.Syntax(Cbor.Error.TrailingBytes)) => true
+      case _                                                        => false
+    })
     val detached = DetachedRecords.read(
       raw,
       Cbor.Limits.Unbounded,

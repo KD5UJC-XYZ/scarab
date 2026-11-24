@@ -90,9 +90,24 @@ class LeiosBlockSuite extends munit.FunSuite:
       .fold(e => fail(e.toString), identity)
     val ten = conwayHeader(conway)
     assert(Header.fromRaw(Era.Conway, ten).isRight)
-    assert(LeiosHeader.decode(ten).isLeft)
+    assert(LeiosHeader.decode(ten) match {
+      case Left(
+            ChainError
+              .Decode(DecodeField.Header, LedgerDecodeError.ArrayLength(DecodeField.Header, _, _))
+          ) =>
+        true
+      case _ => false
+    })
     val good = headers("first")._2
-    (1 until good.size by 11).foreach(n => assert(LeiosHeader.decode(good.take(n)).isLeft, s"$n"))
+    (1 until good.size by 11).foreach(n =>
+      assert(
+        LeiosHeader.decode(good.take(n)) match {
+          case Left(ChainError.Decode(_, _)) => true
+          case _                             => false
+        },
+        s"$n"
+      )
+    )
   }
 
   private def conwayHeader(block: Bytes): Bytes =
@@ -115,7 +130,14 @@ class LeiosBlockSuite extends munit.FunSuite:
         t == 7
       case _ => false
     })
-    assert(Block.decode(conwayTag, BigInt(21600)).isLeft)
+    assert(Block.decode(conwayTag, BigInt(21600)) match {
+      case Left(
+            ChainError
+              .Decode(DecodeField.Block, LedgerDecodeError.ArrayLength(DecodeField.Block, _, _))
+          ) =>
+        true
+      case _ => false
+    })
   }
 
   test("a Dijkstra block hashes its whole body, transactions are whole, and the header matches") {
@@ -195,6 +217,14 @@ class LeiosBlockSuite extends munit.FunSuite:
       case ChainError.Decode(_, LedgerDecodeError.UnknownTag(DecodeField.LeiosBlockTag, _)) => true
       case _                                                                                => false
     })
-    (1 until raw.size by 13).foreach(n => assert(LeiosBlock.decode(raw.take(n)).isLeft, s"$n"))
+    (1 until raw.size by 13).foreach(n =>
+      assert(
+        LeiosBlock.decode(raw.take(n)) match {
+          case Left(ChainError.Decode(_, _)) => true
+          case _                             => false
+        },
+        s"$n"
+      )
+    )
   }
 end LeiosBlockSuite

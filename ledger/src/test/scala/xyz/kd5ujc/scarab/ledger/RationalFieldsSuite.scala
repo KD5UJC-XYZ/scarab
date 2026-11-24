@@ -73,9 +73,30 @@ class RationalFieldsSuite extends FunSuite:
     val Right(p) = applied(9 -> threeHalvesSigned, 33 -> threeHalves): @unchecked
     assertEquals(p.a0, Rational(3, 2))
     assertEquals(p.minFeeRefScriptCostPerByte, Rational(3, 2))
-    assert(applied(9 -> minusHalf).isLeft)
-    assert(applied(9 -> tooBig).isLeft)
-    assert(applied(19 -> array(half, minusHalf)).isLeft)
+    assert(applied(9 -> minusHalf) match {
+      case Left(
+            LedgerDecodeError
+              .RationalOutOfBounds(DecodeField.A0, LedgerDecodeError.OutOfBounds.Reduced(_))
+          ) =>
+        true
+      case _ => false
+    })
+    assert(applied(9 -> tooBig) match {
+      case Left(
+            LedgerDecodeError
+              .RationalOutOfBounds(DecodeField.A0, LedgerDecodeError.OutOfBounds.Wide(_, _))
+          ) =>
+        true
+      case _ => false
+    })
+    assert(applied(19 -> array(half, minusHalf)) match {
+      case Left(
+            LedgerDecodeError
+              .RationalOutOfBounds(DecodeField.PriceSteps, LedgerDecodeError.OutOfBounds.Reduced(_))
+          ) =>
+        true
+      case _ => false
+    })
   }
 
   test(
@@ -96,8 +117,26 @@ class RationalFieldsSuite extends FunSuite:
     val five = array(Seq.fill(5)(halfSigned)*)
     val ten = array(Seq.fill(10)(halfBig)*)
     assert(applied(25 -> five, 26 -> ten).isRight)
-    assert(applied(25 -> array(Seq.fill(4)(halfSigned) :+ threeHalvesSigned*)).isLeft)
-    assert(applied(26 -> array(Seq.fill(9)(halfBig) :+ threeHalves*)).isLeft)
+    assert(applied(25 -> array(Seq.fill(4)(halfSigned) :+ threeHalvesSigned*)) match {
+      case Left(
+            LedgerDecodeError.RationalOutOfBounds(
+              DecodeField.PoolVotingThresholds,
+              LedgerDecodeError.OutOfBounds.Reduced(_)
+            )
+          ) =>
+        true
+      case _ => false
+    })
+    assert(applied(26 -> array(Seq.fill(9)(halfBig) :+ threeHalves*)) match {
+      case Left(
+            LedgerDecodeError.RationalOutOfBounds(
+              DecodeField.DRepVotingThresholds,
+              LedgerDecodeError.OutOfBounds.Reduced(_)
+            )
+          ) =>
+        true
+      case _ => false
+    })
   }
 
   private def shelley(fields: (Int, String)*): Either[LedgerDecodeError, ProtocolParams] =
@@ -156,7 +195,16 @@ class RationalFieldsSuite extends FunSuite:
 
   test("a Conway update refuses a rational the reference cannot decode") {
     for form <- Seq(minusHalf, tooBig, zeroDenominator, indefiniteBignum, widenedTag) do
-      assert(translated(9 -> form).isLeft, form)
+      assert(
+        translated(9 -> form) match {
+          case Left(LedgerDecodeError.Expected(_, _, _)) |
+              Left(LedgerDecodeError.RationalOutOfBounds(_, _)) |
+              Left(LedgerDecodeError.ZeroDenominator(_)) =>
+            true
+          case _ => false
+        },
+        form
+      )
   }
 
   test("the test's bignum helper writes the heads cborg reads") {
