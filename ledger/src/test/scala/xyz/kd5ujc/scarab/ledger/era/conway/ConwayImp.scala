@@ -697,8 +697,9 @@ object ConwayImp extends Assertions:
         .fold(e => fail(s"$e"), _.toVector)
         .map(pwc => pwc -> ScarabEvaluator.default.evaluate(PlutusWithContext.evalRequest(pwc)))
 
-    /** `txWithMaxRedeemers` (`Alonzo/ImpTest.hs:242-255`): every context's redeemer, its data with
-      * the parameters' most units a transaction may use, in place of the redeemers it has.
+    /** `txWithMaxRedeemers` (`Alonzo/ImpTest.hs:242-255`, cardano-ledger f649f975): every context's
+      * redeemer, its data with the parameters' most units a transaction may use, in place of the
+      * redeemers it has.
       */
     private def withMaxRedeemers(s: ImpState, spec: Spec): Spec =
       spec.copy(redeemers = contexts(s, spec).map((p, t) => p -> (t.redeemer, maxTx)).toMap)
@@ -753,9 +754,9 @@ object ConwayImp extends Assertions:
       }
     }
 
-    /** `fixupRedeemers` (`Alonzo/ImpTest.hs:203-240`): each context's redeemer the transaction has,
-      * kept; else its data with the units its script spends when the redeemer declares the most
-      * units, or those most where it fails (`txWithMaxRedeemers`).
+    /** `fixupRedeemers` (`Alonzo/ImpTest.hs:203-240`, cardano-ledger f649f975): each context's
+      * redeemer the transaction has, kept; else its data with the units its script spends when the
+      * redeemer declares the most units, or those most where it fails (`txWithMaxRedeemers`).
       */
     private def fixupRedeemers(s: ImpState, spec: Spec): Spec =
       val cs = contexts(s, spec)
@@ -769,8 +770,8 @@ object ConwayImp extends Assertions:
       }.toMap
       spec.copy(redeemers = max.redeemers ++ estimated ++ spec.redeemers)
 
-    /** `fixupPPHash` (`Alonzo/ImpTest.hs:318-327`): the integrity hash of the languages of the
-      * transaction's Plutus scripts.
+    /** `fixupPPHash` (`Alonzo/ImpTest.hs:318-327`, cardano-ledger f649f975): the integrity hash of
+      * the languages of the transaction's Plutus scripts.
       */
     private def fixupPPHash(s: ImpState, spec: Spec): Spec =
       val langs = contexts(s, spec).map(_._2.lang).toSet
@@ -779,8 +780,8 @@ object ConwayImp extends Assertions:
         .map(ScriptIntegrity.hashScriptIntegrity(_))
       spec.copy(integrity = integrity)
 
-    /** `makeCollateralInput` (`Alonzo/ImpTest.hs:144-149`): 30 ada sent to a fresh address by a
-      * transaction the Imp submits with its fixups, its first output.
+    /** `makeCollateralInput` (`Alonzo/ImpTest.hs:144-149`, cardano-ledger f649f975): 30 ada sent to
+      * a fresh address by a transaction the Imp submits with its fixups, its first output.
       */
     private val makeCollateralInput: Imp[TxIn] =
       freshKeyAddr.flatMap(a => sendCoinTo(a, 30000000))
@@ -916,26 +917,27 @@ object ConwayImp extends Assertions:
     def sendCoinTo(address: Bytes, coin: BigInt): Imp[TxIn] =
       submitTx(Spec(outputs = Vector(Out(address, coin)))).map(_.in(0))
 
-    /** `produceScript` (`Shelley/ImpTest.hs:2166-2176`): an output of nothing to `hash` 's script
-      * address, its first.
+    /** `produceScript` (`Shelley/ImpTest.hs:2166-2176`, cardano-ledger f649f975): an output of
+      * nothing to `hash` 's script address, its first.
       */
     def produceScript(hash: Bytes): Imp[TxIn] =
       submitTx(Spec(outputs = Vector(Out(scriptAddress(hash), 0)))).map(_.in(0))
 
-    /** `produceRefScriptsTx` (`Babbage/ImpTest.hs:143-155`): an output to a fresh address holding
-      * `script` (its language's tag and itself) as its reference script, of exactly its least coin.
+    /** `produceRefScriptsTx` (`Babbage/ImpTest.hs:143-155`, cardano-ledger f649f975): an output to
+      * a fresh address holding `script` (its language's tag and itself) as its reference script, of
+      * exactly its least coin.
       */
     def produceRefScriptsTx(tag: Int, script: Node): Imp[Built] =
       freshKeyAddr.flatMap(a =>
         submitTx(Spec(outputs = Vector(setMinCoin(Out(a, 0, refScript = Some((tag, script)))))))
       )
 
-    /** `mkTxWithRefInputs` (`Babbage/ImpTest.hs:157-166`). */
+    /** `mkTxWithRefInputs` (`Babbage/ImpTest.hs:157-166`, cardano-ledger f649f975). */
     def withRefInputs(in: TxIn, refIns: Vector[TxIn]): Spec =
       Spec(inputs = SortedSet(in), refInputs = SortedSet.from(refIns))
 
-    /** `impScriptPredicateFailure` (`Alonzo/ImpTest.hs:490-507`) injected into LEDGER: the fixed-up
-      * transaction refused for the scripts that fail, each described as
+    /** `impScriptPredicateFailure` (`Alonzo/ImpTest.hs:490-507`, cardano-ledger f649f975) injected
+      * into LEDGER: the fixed-up transaction refused for the scripts that fail, each described as
       * `scriptFailureToFailureDescription` gives it, through Conway's UTXOS, UTXO, UTXOW and
       * LEDGER.
       */

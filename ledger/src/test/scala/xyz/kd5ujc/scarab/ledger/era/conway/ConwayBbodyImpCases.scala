@@ -406,7 +406,8 @@ trait ConwayBbodyImpCases[F[_]](using F: Monad[F]) extends munit.Assertions:
         val withdrawal = Vector(accountAddress -> BigInt(0))
         val block: Imp[Unit] =
           for
-            // "notValidatingTx" and "validatingTx" (`Alonzo/Imp/BbodySpec.hs:51-56`)
+            // "notValidatingTx" and "validatingTx" (`Alonzo/Imp/BbodySpec.hs:51-56`, cardano-ledger
+            // f649f975)
             failingIn <- at.produceScript(failsWithDatum.hash)
             _ <- submitPhase2Invalid(at)(Spec(inputs = SortedSet(failingIn)))
             succeedingIn <- at.produceScript(succeedsWithDatum.hash)
