@@ -300,6 +300,26 @@ class CollectorsSuite extends CatsEffectSuite:
     }
   }
 
+  test(
+    "measured rules count no refusal for a block they have no verdict on, and raise the same error"
+  ) {
+    registry.flatMap { metrics =>
+      given Metrics[IO] = metrics
+      val noVerdict = xyz.kd5ujc.scarab.node.ForgedRetention.noVerdict(header)
+      for
+        result <- withHandle {
+          val metered = MeteredRules[IO, Int](
+            BlockRules.from((_, _, _) => cats.mtl.Raise[IO, ValidationError].raise(noVerdict))
+          )
+          metered(0, header, Bytes.empty)
+        }
+        s <- metrics.snapshot
+      yield
+        assertEquals(result, Left(noVerdict))
+        assertEquals(counter(s, Catalogue.validationErrors, BlockRule.Ledger), None)
+    }
+  }
+
   // `TrInboundGovernorCounters`'s metrics (`Ouroboros/Network/Tracing/InboundGovernor.hs` 36-49,
   // ouroboros-network `c45735a5`): the tracked connections by remote state
   test("the connections collector exports the inbound governor's counts of the remote states") {

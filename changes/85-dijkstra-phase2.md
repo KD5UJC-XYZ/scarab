@@ -6,3 +6,8 @@
 - A Dijkstra block withheld for a script the evaluator gives no verdict for (`blockNoVerdict`, kind `evaluation`)
   now names the transaction and the redeemer, and the sub-transaction for a script of one. It is judged again on
   the same schedule as before.
+
+### Fixed (metrics, #85)
+
+- `scarab_validation_errors_total` no longer counts a block the rules have no verdict on (a script the evaluator
+  could not judge, or a crypto provider's defect) as refused, in any era. Such a block is withheld, not refused.
