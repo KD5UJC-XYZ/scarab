@@ -113,7 +113,7 @@ class RemainingPredicateReferenceSuite extends FunSuite:
             (f, bytes) <- pool.zip(actual)
             era <- Vector(Era.Shelley, Era.Allegra, Era.Mary, Era.Alonzo, Era.Babbage, Era.Conway)
           do
-            val reason = PredicateFailureCbor
+            val reason = FlatRefusal
               .applyTxError(era, Vector(PredicateFailure.pool(f)))
               .fold(error => fail(error.message), identity)
               .getOrElse(fail(s"$name $era encoding"))
@@ -188,7 +188,7 @@ class RemainingPredicateReferenceSuite extends FunSuite:
             assert(!field[Boolean](expected, "accepted"), s"$major $name")
             val native = field[Vector[String]](expected, "failureCbor").headOption
               .getOrElse(fail("native output predicate failure"))
-            val reason = PredicateFailureCbor
+            val reason = FlatRefusal
               .applyTxError(era, Vector(failure))
               .fold(error => fail(error.message), identity)
               .getOrElse(fail(s"$major output encoding"))

@@ -13,7 +13,7 @@ import xyz.kd5ujc.scarab.ledger.{LedgerFailure, PredicateFailure}
 import xyz.kd5ujc.scarab.node.ntc.{
   ConwayFailureCbor,
   FailureCbor,
-  PredicateFailureCbor,
+  PreConwayFailureCbor,
   RefusalPresentationError
 }
 import xyz.kd5ujc.scarab.node.{Fatal, StorageBoundary}
@@ -52,13 +52,17 @@ object LocalSubmission:
         s"no Dijkstra encoding of the refusal: ${failures.toChain.toVector.mkString("; ")}"
       case Text(problem) => s"no Dijkstra text of the refusal: ${problem.message}"
 
-  /** A refusal by the rules of `era` that this build cannot write: one of `failures` has no
-    * encoding in that era's ledger ([[PreConwayFailureCbor]]). There is no free-text failure before
-    * Conway to send instead, so there is no reply.
+  /** A refusal by the flat rules that this build cannot write: one of `failures` has no encoding in
+    * the ledger's era `era` ([[PreConwayFailureCbor]]), or the pool's ledger is not of an era whose
+    * rules refuse with the flat failures (Conway's and Dijkstra's refuse in their era's types,
+    * [[Rejection.ConwayRefused]] and [[Rejection.DijkstraRefused]]), or there is none. There is no
+    * free-text failure before Conway to send instead, so there is no reply.
     */
-  final case class NoEncoding(era: Era, failures: Vector[PredicateFailure]) extends DomainError:
+  final case class NoEncoding(era: Option[Era], failures: Vector[PredicateFailure])
+      extends DomainError:
     def message: String =
-      s"no $era encoding of the refusal: ${failures.map(_.detail).mkString("; ")}"
+      s"${era.fold("no encoding")(e => s"no $e encoding")} of the refusal: " +
+        failures.map(_.detail).mkString("; ")
 
   extension (reason: NoReply)
     def message: String = reason match
@@ -202,25 +206,24 @@ object LocalSubmission:
             MempoolLedgerProblem.Params(error)
         text(era, MempoolProblem.NoLedger(cause))
 
-  /** The `ApplyTxErr` of `failures` in the ledger's era: Conway's, with its free text for a failure
-    * of a rule Conway does not have ([[PredicateFailureCbor.applyTxError]]), when the pool has a
-    * Conway ledger or none; the era's own before Conway ([[PreConwayFailureCbor]]).
+  /** The `ApplyTxErr` of the flat rules' `failures` in the ledger's era, the era's own
+    * ([[PreConwayFailureCbor]]). Only a ledger of an era from Shelley to Babbage refuses with them
+    * ([[FlatLedger]]); under any other, or with no ledger, there is none to write ([[NoEncoding]]).
     */
   private def inEra(era: Option[Era], failures: Vector[PredicateFailure]): Either[NoReply, Bytes] =
     era match
       case Some(e @ (Era.Shelley | Era.Allegra | Era.Mary | Era.Alonzo | Era.Babbage)) =>
-        PredicateFailureCbor
+        PreConwayFailureCbor
           .applyTxError(e, failures)
           .leftMap[NoReply](identity)
-          .flatMap(_.toRight[NoReply](NoEncoding(e, failures)))
-      case Some(Era.Byron | Era.Conway | Era.Dijkstra) | None =>
-        PredicateFailureCbor.applyTxError(failures)
+          .flatMap(_.toRight[NoReply](NoEncoding(era, failures)))
+      case Some(Era.Byron | Era.Conway | Era.Dijkstra) | None => Left(NoEncoding(era, failures))
 
   /** Conway's refusal in the era's types, by its own encoder (`EncCBOR (ApplyTxError ConwayEra)`,
     * `Conway.hs:50-53`, cardano-ledger f649f975). A failure the reference has no constructor for
     * ([[ConwayFailureCbor.NoReferenceEncoding]]: a context error of the node's own, a pool
     * registration that does not read as the reference's) is sent in its place as Conway's free-text
-    * `ConwayMempoolFailure` of it ([[MempoolProblem.ConwayRule]]), as the flat encoder sends such a
+    * `ConwayMempoolFailure` of it ([[MempoolProblem.ConwayRule]]), as the flat encoder sent such a
     * failure (#85).
     */
   private def conwayRefusal(
@@ -240,8 +243,8 @@ object LocalSubmission:
           .leftMap[NoReply](identity)
       case other => other.leftMap[NoReply](identity)
 
-  /** Conway's free-text `ConwayMempoolFailure` of `message`; under a Dijkstra ledger, none
-    * ([[DijkstraNoEncoding.Text]]).
+  /** Conway's free-text `ConwayMempoolFailure` of `message` ([[ConwayFailureCbor]]); under a
+    * Dijkstra ledger, none ([[DijkstraNoEncoding.Text]]).
     */
   private def text(era: Option[Era], message: MempoolProblem): Either[NoReply, Bytes] =
     era match
@@ -249,7 +252,11 @@ object LocalSubmission:
       case Some(
             Era.Byron | Era.Shelley | Era.Allegra | Era.Mary | Era.Alonzo | Era.Babbage | Era.Conway
           ) | None =>
-        PredicateFailureCbor.applyTxError(Vector(PredicateFailure.Mempool(message)))
+        ConwayFailureCbor
+          .applyTxError(
+            NonEmptyList.one(ConwayLedgerPredFailure.ConwayMempoolFailure[Conway](message))
+          )
+          .leftMap[NoReply](identity)
 
   /** Service unavailability has no ledger rejection bytes. The transport closes this connection;
     * admitting an external transaction does not require stopping the node.

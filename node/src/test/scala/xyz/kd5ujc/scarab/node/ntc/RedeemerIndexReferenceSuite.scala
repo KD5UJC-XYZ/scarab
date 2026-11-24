@@ -200,7 +200,7 @@ class RedeemerIndexReferenceSuite extends FunSuite:
           fail(s"${r.label}: refused with $failures, the reference accepted it")
         case (Left(failures), Some(reason)) =>
           assertEquals(
-            PredicateFailureCbor
+            FlatRefusal
               .applyTxError(r.era, failures)
               .fold(error => fail(error.message), identity)
               .map(_.hex),
@@ -273,7 +273,7 @@ class RedeemerIndexReferenceSuite extends FunSuite:
               .fold(e => fail(s"${r.label}: $e"), identity)
           )
           assertEquals(
-            PredicateFailureCbor
+            FlatRefusal
               .applyTxError(r.era, flat)
               .fold(error => fail(error.message), identity)
               .map(_.hex),
@@ -381,7 +381,7 @@ class RedeemerIndexReferenceSuite extends FunSuite:
             EraLedgerRun.flat(f, purposes, read).fold(e => fail(s"${r.label}: $e"), identity)
           )
           assertEquals(
-            PredicateFailureCbor
+            FlatRefusal
               .applyTxError(r.era, failures)
               .fold(error => fail(error.message), identity)
               .map(_.hex),

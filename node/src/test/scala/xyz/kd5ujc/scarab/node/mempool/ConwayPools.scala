@@ -94,11 +94,24 @@ object ConwayEntries:
 /** What a local client is answered for `answer`: the refusal's bytes
   * ([[LocalSubmission.reasonItem]] in Conway), or what was admitted. The suites written against the
   * flat rules' refusals compare the answers of Conway's rules with those of the same refusals in
-  * the flat form, byte for byte.
+  * the flat form, byte for byte: a refusal in the flat form, which no Conway pool gives, is written
+  * by the flat rules' Conway encoder, as the node wrote it before Conway's pool refused in the
+  * era's types (#85).
   */
 def answered[A](answer: Either[Rejection, A]): Either[xyz.kd5ujc.scarab.codec.Bytes, A] =
-  answer.leftMap(r =>
-    LocalSubmission
-      .reasonItem(r, Some(xyz.kd5ujc.scarab.protocol.Era.Conway))
+  answer.leftMap { r =>
+    val flat = r match
+      case Rejection.Ledger(xyz.kd5ujc.scarab.ledger.LedgerFailure.Rejected(_, failures)) =>
+        Some(failures.toChain.toVector)
+      case Rejection.Limits(_, failures) => Some(failures.toList.toVector)
+      case _                             => None
+    flat
+      .fold(
+        LocalSubmission
+          .reasonItem(r, Some(xyz.kd5ujc.scarab.protocol.Era.Conway))
+          .leftMap(_.message)
+      )(failures =>
+        xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor.applyTxError(failures).leftMap(_.message)
+      )
       .fold(e => munit.Assertions.fail(s"no reply to $r: $e"), identity)
-  )
+  }

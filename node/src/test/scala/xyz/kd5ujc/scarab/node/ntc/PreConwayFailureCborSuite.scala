@@ -23,7 +23,7 @@ class PreConwayFailureCborSuite extends FunSuite:
   private val h = keyHash.hex
 
   private def reason(era: Era, failures: PredicateFailure*): Option[String] =
-    PredicateFailureCbor
+    FlatRefusal
       .applyTxError(era, failures.toVector)
       .fold(error => fail(error.message), identity)
       .map(_.hex)
@@ -386,7 +386,7 @@ class PreConwayFailureCborSuite extends FunSuite:
       era <- Vector(Era.Shelley, Era.Allegra, Era.Mary, Era.Alonzo, Era.Babbage)
       f <- shared
     do
-      val bytes = PredicateFailureCbor
+      val bytes = FlatRefusal
         .applyTxError(era, Vector(f))
         .fold(error => fail(error.message), identity)
         .getOrElse(fail(s"$era $f"))

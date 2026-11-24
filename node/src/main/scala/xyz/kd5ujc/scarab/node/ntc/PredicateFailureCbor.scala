@@ -5,7 +5,6 @@ import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.*
 import xyz.kd5ujc.scarab.ledger.state.{ProtVer, ShelleyBasedEra}
-import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellStateCodecs, NodeOrders, Versions}
 
 import ContextFailureCbor.ContextEra
@@ -22,6 +21,11 @@ import FailureCbor.*
   *
   * The whole answer of a LocalTxSubmission refusal is the hard-fork-combinator `ApplyTxErr`: a
   * one-element list holding the era index (Conway, 6) and the non-empty list of failures.
+  *
+  * This is the flat rules' Conway encoder. No answer of the node uses it: Conway's pool refuses in
+  * the era's types, which [[ConwayFailureCbor]] writes, and the eras before Conway are written by
+  * [[PreConwayFailureCbor]] (#85). It stays with the flat MEMPOOL it writes the refusals of, for
+  * the suites that hold Conway's era rules and encoder to the flat ones, byte for byte.
   */
 object PredicateFailureCbor:
   /** The reason item sent with `MsgRejectTx` for a refused Conway transaction. A failure of a rule
@@ -36,14 +40,6 @@ object PredicateFailureCbor:
         list(w, encoders)((k, encoder) => encoder.write(k))
       }
     }
-
-  /** An unsupported era constructor has no encoding; a presentation defect retains its cause. */
-  def applyTxError(
-      era: Era,
-      failures: Vector[PredicateFailure]
-  ): Either[RefusalPresentationError, Option[Bytes]] = era match
-    case Era.Conway => applyTxError(failures).map(Some(_))
-    case other      => PreConwayFailureCbor.applyTxError(other, failures)
 
   /** The failure as Conway's ledger reports it: itself, or its text (`ConwayMempoolFailure`). */
   private def conwayForm(f: PredicateFailure): PredicateFailure =
