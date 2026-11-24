@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.uplc.cost
 
-import xyz.kd5ujc.scarab.uplc.{DefaultFun, SemanticsVariant}
+import xyz.kd5ujc.scarab.uplc.{DefaultFun, SemanticsVariant, Signature}
 import xyz.kd5ujc.scarab.uplc.builtin.{Argument, Costing, CostingFunction, MachineValue}
 import xyz.kd5ujc.scarab.uplc.cost.Measure.{
   literal,
@@ -43,6 +43,9 @@ final class BuiltinCosting private (
   def measures(function: DefaultFun): Vector[Measure] = table(function.ordinal).measures
 
   private def costedOf(function: DefaultFun): Costed =
+    shapeOf(function)(function.signature.parameters)
+
+  private def shapeOf(function: DefaultFun): Shaped =
     val m = model
     import DefaultFun.*
     function match
@@ -199,36 +202,72 @@ object BuiltinCosting:
   /** A builtin's argument measures and its costing function. */
   private final case class Costed(measures: Vector[Measure], function: CostingFunction)
 
+  /** A costing function once it knows the builtin's parameters, which a held argument is measured
+    * against ([[Measure.held]]).
+    */
+  private type Shaped = Vector[Signature.Parameter] => Costed
+
   private def measured[V](measure: Measure, arguments: Vector[Argument[V]], position: Int)(using
       MachineValue[V]
   ): Costs =
     arguments.lift(position).fold(Costs.Last(SatInt(1)))(measure(_))
 
-  private def single(fun: CostingFun[OneArgument, SatInt], m1: Measure): Costed =
+  /** The parameter at `position`; one past the signature is measured as an opaque one, which the
+    * costing of a saturated application never asks for.
+    */
+  private def parameter(
+      parameters: Vector[Signature.Parameter],
+      position: Int
+  ): Signature.Parameter =
+    parameters.lift(position).getOrElse(Signature.Parameter.Opaque(position))
+
+  private def single(fun: CostingFun[OneArgument, SatInt], m1: Measure): Shaped = parameters =>
+    val p1 = parameter(parameters, 0)
     Costed(
       Vector(m1),
       new CostingFunction:
         def apply[V](arguments: Vector[Argument[V]])(using MachineValue[V]): CostStream =
           lazy val x = measured(m1, arguments, 0)
           Costs.zip(fun.cpu.run(x), fun.memory.run(x))
+
+        override def applied[V](function: DefaultFun, arguments: List[V])(using
+            MachineValue[V]
+        ): CostStream = arguments match
+          case first :: Nil =>
+            val x = m1.held(p1, first)
+            Costs.zip(fun.cpu.run(x), fun.memory.run(x))
+          case _ => apply(Argument.unlifted(function, arguments))
     )
 
-  private def two(fun: CostingFun[TwoArguments, SatInt], m1: Measure, m2: Measure): Costed =
-    Costed(
-      Vector(m1, m2),
-      new CostingFunction:
-        def apply[V](arguments: Vector[Argument[V]])(using MachineValue[V]): CostStream =
-          lazy val x = measured(m1, arguments, 0)
-          lazy val y = measured(m2, arguments, 1)
-          Costs.zip(fun.cpu.run(x, y), fun.memory.run(x, y))
-    )
+  private def two(fun: CostingFun[TwoArguments, SatInt], m1: Measure, m2: Measure): Shaped =
+    parameters =>
+      val (p1, p2) = (parameter(parameters, 0), parameter(parameters, 1))
+      Costed(
+        Vector(m1, m2),
+        new CostingFunction:
+          def apply[V](arguments: Vector[Argument[V]])(using MachineValue[V]): CostStream =
+            lazy val x = measured(m1, arguments, 0)
+            lazy val y = measured(m2, arguments, 1)
+            Costs.zip(fun.cpu.run(x, y), fun.memory.run(x, y))
+
+          override def applied[V](function: DefaultFun, arguments: List[V])(using
+              MachineValue[V]
+          ): CostStream = arguments match
+            case second :: first :: Nil =>
+              val x = m1.held(p1, first)
+              val y = m2.held(p2, second)
+              Costs.zip(fun.cpu.run(x, y), fun.memory.run(x, y))
+            case _ => apply(Argument.unlifted(function, arguments))
+      )
 
   private def three(
       fun: CostingFun[ThreeArguments, SatInt],
       m1: Measure,
       m2: Measure,
       m3: Measure
-  ): Costed =
+  ): Shaped = parameters =>
+    val (p1, p2, p3) =
+      (parameter(parameters, 0), parameter(parameters, 1), parameter(parameters, 2))
     Costed(
       Vector(m1, m2, m3),
       new CostingFunction:
@@ -237,6 +276,16 @@ object BuiltinCosting:
           lazy val y = measured(m2, arguments, 1)
           lazy val z = measured(m3, arguments, 2)
           Costs.zip(fun.cpu.run(x, y, z), fun.memory.run(x, y, z))
+
+        override def applied[V](function: DefaultFun, arguments: List[V])(using
+            MachineValue[V]
+        ): CostStream = arguments match
+          case third :: second :: first :: Nil =>
+            val x = m1.held(p1, first)
+            val y = m2.held(p2, second)
+            val z = m3.held(p3, third)
+            Costs.zip(fun.cpu.run(x, y, z), fun.memory.run(x, y, z))
+          case _ => apply(Argument.unlifted(function, arguments))
     )
 
   /** Four arguments: only the fourth is read by any shape (`ModelFourArguments`). */
@@ -246,13 +295,22 @@ object BuiltinCosting:
       m2: Measure,
       m3: Measure,
       m4: Measure
-  ): Costed =
+  ): Shaped = parameters =>
+    val p4 = parameter(parameters, 3)
     Costed(
       Vector(m1, m2, m3, m4),
       new CostingFunction:
         def apply[V](arguments: Vector[Argument[V]])(using MachineValue[V]): CostStream =
           lazy val u = measured(m4, arguments, 3)
           Costs.zip(fun.cpu.run(u), fun.memory.run(u))
+
+        override def applied[V](function: DefaultFun, arguments: List[V])(using
+            MachineValue[V]
+        ): CostStream = arguments match
+          case fourth :: _ :: _ :: _ :: Nil =>
+            val u = m4.held(p4, fourth)
+            Costs.zip(fun.cpu.run(u), fun.memory.run(u))
+          case _ => apply(Argument.unlifted(function, arguments))
     )
 
   /** Six arguments, and a constant cost (`ModelSixArguments`): no measure is read. */
@@ -264,10 +322,14 @@ object BuiltinCosting:
       m4: Measure,
       m5: Measure,
       m6: Measure
-  ): Costed =
+  ): Shaped = _ =>
     Costed(
       Vector(m1, m2, m3, m4, m5, m6),
       new CostingFunction:
         def apply[V](arguments: Vector[Argument[V]])(using MachineValue[V]): CostStream =
           Costs.zip(fun.cpu.run, fun.memory.run)
+
+        override def applied[V](function: DefaultFun, arguments: List[V])(using
+            MachineValue[V]
+        ): CostStream = Costs.zip(fun.cpu.run, fun.memory.run)
     )

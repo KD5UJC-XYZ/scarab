@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.uplc.cost
 
 import cats.Eval
 import scala.annotation.tailrec
-import xyz.kd5ujc.scarab.uplc.{Constant, PlutusData, Text}
+import xyz.kd5ujc.scarab.uplc.{Constant, PlutusData, Signature, Text}
 import xyz.kd5ujc.scarab.uplc.builtin.{Argument, MachineValue}
 
 /** The size of a builtin's argument as its costing function reads it, the reference's
@@ -21,6 +21,12 @@ trait Measure:
   /** The reference's name of the measure: its Haskell type, or `universe` for a type's own. */
   def name: String
   def apply[V](argument: Argument[V])(using MachineValue[V]): Costs
+
+  /** [[apply]] of the argument the unlifting makes of `value` for `parameter` ([[Argument.of]]),
+    * without making it.
+    */
+  def held[V](parameter: Signature.Parameter, value: V)(using MachineValue[V]): Costs
+
   override def toString: String = name
 
 object Measure:
@@ -37,6 +43,10 @@ object Measure:
     def apply[V](argument: Argument[V])(using value: MachineValue[V]): Costs = argument match
       case Argument.Con(c)    => constant(c)
       case Argument.Opaque(v) => value.constantOf(v).fold(single(1))(constant)
+    def held[V](parameter: Signature.Parameter, value: V)(using mv: MachineValue[V]): Costs =
+      mv.asConstant(value) match
+        case c: Constant             => constant(c)
+        case MachineValue.NoConstant => single(1)
 
   /** 1 whatever the value: `Int`, `Word8` and `Word64` (lines 267-273, 343-345), the types of
     * arguments taken as indices, widths, bytes and constructor tags in some variants.
@@ -44,6 +54,7 @@ object Measure:
   val one: Measure = new Measure:
     val name = "Int, Word8 or Word64"
     def apply[V](argument: Argument[V])(using MachineValue[V]): Costs = single(1)
+    def held[V](parameter: Signature.Parameter, value: V)(using MachineValue[V]): Costs = single(1)
 
   /** `TextCostedByByteLength` (lines 336-341): a quarter of the length of the text's UTF-8
     * encoding, rounded towards zero.
@@ -103,6 +114,13 @@ object Measure:
       def apply[V](argument: Argument[V])(using value: MachineValue[V]): Costs = argument match
         case Argument.Con(c) => measure.applyOrElse(c, constant)
         case other           => universe(other)
+      def held[V](parameter: Signature.Parameter, value: V)(using mv: MachineValue[V]): Costs =
+        parameter match
+          case Signature.Parameter.Opaque(_) => universe.held(parameter, value)
+          case Signature.Parameter.Constant(_) =>
+            mv.asConstant(value) match
+              case c: Constant             => measure.applyOrElse(c, constant)
+              case MachineValue.NoConstant => single(1)
 
   private def depth(size: Int): Long = (32 - Integer.numberOfLeadingZeros(size)).toLong
 

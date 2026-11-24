@@ -12,6 +12,17 @@ trait MachineValue[V]:
   def constantOf(value: V): Option[Constant]
   def ofConstant(constant: Constant): V
 
+  /** [[constantOf]] as the constant itself, or [[MachineValue.NoConstant]]: what a saturated
+    * application reads of each argument, with no `Option` made for it.
+    */
+  def asConstant(value: V): Constant | MachineValue.NoConstant.type = constantOf(value) match
+    case Some(c) => c
+    case None    => MachineValue.NoConstant
+
+object MachineValue:
+  /** A value of the machine that is not a constant ([[MachineValue.asConstant]]). */
+  case object NoConstant
+
 /** An argument of a saturated builtin application once it is unlifted: a constant of the
   * parameter's type (`Signature.Parameter.Constant`), or any value of the machine passed as it is
   * (`Signature.Parameter.Opaque`).
@@ -19,6 +30,29 @@ trait MachineValue[V]:
 enum Argument[+V]:
   case Con(value: Constant)
   case Opaque(value: V)
+
+object Argument:
+  /** The argument an unlifting of the signature makes of `value` for `parameter` once it unlifts:
+    * the constant of a constant parameter, the value itself for an opaque one.
+    */
+  def of[V](parameter: Signature.Parameter, value: V)(using mv: MachineValue[V]): Argument[V] =
+    parameter match
+      case Signature.Parameter.Opaque(_) => Opaque(value)
+      case Signature.Parameter.Constant(_) =>
+        mv.asConstant(value) match
+          case c: Constant             => Con(c)
+          case MachineValue.NoConstant => Opaque(value)
+
+  /** The arguments of an application of `function` held as the machine holds them, the last one
+    * first, in order and each as [[of]] makes it (one past the signature is opaque).
+    */
+  def unlifted[V](function: DefaultFun, arguments: List[V])(using
+      MachineValue[V]
+  ): Vector[Argument[V]] =
+    val parameters = function.signature.parameters
+    arguments.reverseIterator.zipWithIndex
+      .map((value, i) => parameters.lift(i).fold(Opaque(value))(of(_, value)))
+      .toVector
 
 /** The two classes of the reference's errors (`EvaluationError structural operational`,
   * `PlutusCore/Evaluation/Error.hs`): a structural one is a malformed program, an operational one a
@@ -227,6 +261,13 @@ object Outcome:
 trait Denotation:
   def apply[V](arguments: Vector[Argument[V]])(using MachineValue[V]): Outcome[V]
 
+  /** [[apply]] of a saturated application of `function` whose arguments unlift
+    * ([[Unlifting.refusal]]), given as the machine holds them, the last one first: each argument as
+    * the unlifting makes it ([[Argument.of]]).
+    */
+  def applied[V](function: DefaultFun, arguments: List[V])(using MachineValue[V]): Outcome[V] =
+    apply(Argument.unlifted(function, arguments))
+
 /** The denotation of every builtin under one semantics variant. */
 trait Denotations:
   def apply(function: DefaultFun): Denotation
@@ -241,11 +282,25 @@ trait Unlifting:
       MachineValue[V]
   ): Either[UnliftingFailure, Vector[Argument[V]]]
 
+  /** [[apply]]'s failure for a saturated application of `function`, its arguments given as the
+    * machine holds them, the last one first; none when every argument unlifts.
+    */
+  def refusal[V](function: DefaultFun, arguments: List[V])(using
+      MachineValue[V]
+  ): Option[UnliftingFailure] =
+    apply(function, arguments.reverseIterator.toVector).swap.toOption
+
 /** The cost of one builtin from its unlifted arguments (the costing function of the cost model,
   * applied to the arguments' measures, `ExMemoryUsage`).
   */
 trait CostingFunction:
   def apply[V](arguments: Vector[Argument[V]])(using MachineValue[V]): CostStream
+
+  /** [[apply]] of a saturated application of `function` whose arguments unlift, given as the
+    * machine holds them, the last one first ([[Denotation.applied]]).
+    */
+  def applied[V](function: DefaultFun, arguments: List[V])(using MachineValue[V]): CostStream =
+    apply(Argument.unlifted(function, arguments))
 
 /** The costing functions of every builtin under one cost model and semantics variant. */
 trait Costing:
@@ -274,10 +329,29 @@ final case class Builtins(
     */
   def prepare[V](function: DefaultFun, arguments: Vector[V])(using MachineValue[V]): Prepared[V] =
     unlifting(function, arguments) match
-      case Left(failure) =>
-        Prepared(
-          CostStream.free,
-          () => Outcome.Failure(BuiltinFailure.Unlifting(failure), failure.message.toVector)
-        )
+      case Left(failure) => Prepared(CostStream.free, () => Builtins.refused(failure))
       case Right(unlifted) =>
         Prepared(costing(function)(unlifted), () => denotations(function)(unlifted))
+
+  /** [[prepare]] in the steps the machine takes, on the arguments as it holds them (the last one
+    * first), with nothing made between the steps: the unlifting's failure, if any ([[refusal]]),
+    * which costs nothing and is [[Builtins.refused]]; otherwise the cost ([[cost]]), and once the
+    * machine has spent it the result ([[result]]).
+    */
+  def refusal[V](function: DefaultFun, arguments: List[V])(using
+      MachineValue[V]
+  ): Option[UnliftingFailure] =
+    unlifting.refusal(function, arguments)
+
+  def cost[V](function: DefaultFun, arguments: List[V])(using MachineValue[V]): CostStream =
+    costing(function).applied(function, arguments)
+
+  def result[V](function: DefaultFun, arguments: List[V])(using MachineValue[V]): Outcome[V] =
+    denotations(function).applied(function, arguments)
+
+object Builtins:
+  /** The outcome of an application whose arguments do not unlift, logging the message of an
+    * operational unlifting error ([[UnliftingFailure.message]]).
+    */
+  def refused[V](failure: UnliftingFailure): Outcome[V] =
+    Outcome.Failure(BuiltinFailure.Unlifting(failure), failure.message.toVector)

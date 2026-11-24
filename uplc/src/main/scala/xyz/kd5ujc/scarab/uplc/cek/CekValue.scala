@@ -95,6 +95,11 @@ object CekValue:
       case VCon(c) => Some(c)
       case _       => None
     def ofConstant(constant: Constant): CekValue = VCon(constant)
+    override def asConstant(value: CekValue): Constant | MachineValue.NoConstant.type =
+      value match
+        case VCon(c) => c
+        case VDelay(_, _) | VLamAbs(_, _) | VBuiltin(_, _, _, _) | VConstr(_, _) =>
+          MachineValue.NoConstant
 
   /** `dischargeCekValue` (`Cek/Internal.hs:657-704`, plutus 1.70.0.0): the value as a term, every
     * variable that its environments bind replaced by the term of its value. An unfold over

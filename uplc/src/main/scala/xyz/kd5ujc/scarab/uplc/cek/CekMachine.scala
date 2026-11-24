@@ -5,7 +5,7 @@ import scala.annotation.tailrec
 import cats.Applicative
 import cats.mtl.{Raise, Tell}
 import xyz.kd5ujc.scarab.uplc.{Constant, Fix, Term, TermF}
-import xyz.kd5ujc.scarab.uplc.builtin.{Builtins, Outcome}
+import xyz.kd5ujc.scarab.uplc.builtin.{BuiltinFailure, Builtins, Outcome}
 import xyz.kd5ujc.scarab.uplc.cost.{CostStream, ExBudget, MachineCosts, SatInt, StepKind}
 import xyz.kd5ujc.scarab.uplc.cek.CekValue.{VBuiltin, VCon, VConstr, VDelay, VLamAbs}
 
@@ -445,8 +445,10 @@ object CekMachine:
         Step.Halt(fail(CekError.NonFunctionalApplication, Some(Cause.of(function)), budget, logs))
 
     /** `evalBuiltinApp` (`Cek/Internal.hs:1052-1075`, plutus 1.70.0.0): a partial application is a
-      * value; a saturated one spends its cost, element by element, before its result is computed,
-      * then emits the result's logs and returns its value or fails.
+      * value; a saturated one unlifts its arguments, spends its cost, element by element, before
+      * its result is computed, then emits the result's logs and returns its value or fails. An
+      * application whose arguments do not unlift costs nothing (`builtinRuntimeFailure`,
+      * `PlutusCore/Builtin/Runtime.hs:111`), so it fails with the budget it came with.
       */
     private def evalBuiltinApp(
         next: Context,
@@ -456,22 +458,36 @@ object CekMachine:
     ): Step =
       if !b.saturated then Step.Next(next, Env.empty, b, budget, logs)
       else
-        val prepared = builtins.prepare(b.function, b.inOrder)
-        val spent = spendStream(budget, prepared.cost)
-        if exhausted(spent) then Step.Halt(outOfBudget(spent, logs))
-        else
-          prepared.result() match
-            case Outcome.Success(value, emitted) =>
-              Step.Next(next, Env.empty, value, spent, emit(logs, emitted))
-            case Outcome.Failure(failure, emitted) =>
-              Step.Halt(
-                fail(
-                  CekError.Builtin(b.function, failure),
-                  Some(Cause.of(b)),
-                  spent,
-                  emit(logs, emitted)
-                )
+        builtins.refusal(b.function, b.arguments) match
+          case Some(failure) =>
+            Step.Halt(
+              builtinFailure(
+                b,
+                BuiltinFailure.Unlifting(failure),
+                failure.message.toVector,
+                budget,
+                logs
               )
+            )
+          case None =>
+            val spent = spendStream(budget, builtins.cost(b.function, b.arguments))
+            if exhausted(spent) then Step.Halt(outOfBudget(spent, logs))
+            else
+              builtins.result(b.function, b.arguments) match
+                case Outcome.Success(value, emitted) =>
+                  Step.Next(next, Env.empty, value, spent, emit(logs, emitted))
+                case Outcome.Failure(failure, emitted) =>
+                  Step.Halt(builtinFailure(b, failure, emitted, spent, logs))
+
+    /** A saturated application `b` that failed, after the logs it emits. */
+    private def builtinFailure(
+        b: VBuiltin,
+        failure: BuiltinFailure,
+        emitted: Vector[String],
+        budget: ExBudget,
+        logs: List[String]
+    ): CekReport =
+      fail(CekError.Builtin(b.function, failure), Some(Cause.of(b)), budget, emit(logs, emitted))
 
     /** `spendBudgets` (`Cek/Internal.hs:1061-1064`, plutus 1.70.0.0): each element in order, the
       * rest of the stream forced only once the element before it is spent, stopping at the element

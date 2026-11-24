@@ -198,6 +198,56 @@ object CoreUnlifting:
 
   /** The unlifting of one variant: the checks of every builtin, by ordinal. */
   private final class Table(byFunction: Vector[Vector[Check]]) extends Unlifting:
+    /** The checks of every builtin the last one first, as the machine holds the arguments. */
+    private val lastFirst: Vector[List[Check]] = byFunction.map(_.reverseIterator.toList)
+
+    /** [[apply]]'s verdict without its arguments: every check is total and pure, so walking from
+      * the last argument and keeping the failure nearest the first is the failure [[apply]] stops
+      * at.
+      */
+    override def refusal[V](function: DefaultFun, arguments: List[V])(using
+        MachineValue[V]
+    ): Option[UnliftingFailure] =
+      val expected = byFunction(function.ordinal)
+      @tailrec def go(
+          values: List[V],
+          checks: List[Check],
+          position: Int,
+          found: Option[UnliftingFailure]
+      ): Option[UnliftingFailure] = values match
+        case Nil => found
+        case value :: earlier =>
+          checks match
+            case Nil => found
+            case check :: before =>
+              val failure = verdict(check, position, value)
+              go(earlier, before, position - 1, if failure.isEmpty then found else failure)
+      if arguments.sizeIs != expected.size then
+        Some(structural(UnliftingCause.Arity(expected.size, arguments.size)))
+      else go(arguments, lastFirst(function.ordinal), expected.size - 1, None)
+
+    /** [[unlift]]'s failure, made only when there is one. */
+    private def verdict[V](check: Check, position: Int, value: V)(using
+        mv: MachineValue[V]
+    ): Option[UnliftingFailure] = check match
+      case Check.Anything => None
+      case Check.AnyConstant =>
+        mv.asConstant(value) match
+          case _: Constant             => None
+          case MachineValue.NoConstant => Some(structural(UnliftingCause.NotAConstant(position)))
+      case Check.Typed(expected, uni, bound) =>
+        mv.asConstant(value) match
+          case MachineValue.NoConstant => Some(structural(UnliftingCause.NotAConstant(position)))
+          case c: Constant if (c.typeOf ne uni) && c.typeOf != uni =>
+            Some(structural(UnliftingCause.WrongType(position, expected, c.typeOf)))
+          case c: Constant =>
+            bound match
+              case None => None
+              case Some(b) =>
+                outside(b, position, c) match
+                  case None        => None
+                  case Some(cause) => Some(operational(cause))
+
     def apply[V](function: DefaultFun, arguments: Vector[V])(using
         mv: MachineValue[V]
     ): Either[UnliftingFailure, Vector[Argument[V]]] =
