@@ -656,7 +656,7 @@
     {
       "module": "ledger",
       "path": "ledger/era",
-      "responsibility": "Era-specific transaction types (#85): the type families as match types, the reference's era classes with one instance per era, what the eras share (output and script representations, certificate parts), the protocol parameters as higher-kinded data, the governance state with its classes, read from and written to the node's flat record (the tick's one seam, `StoredGov`), the voting thresholds and environment of ratification, and the DRep pulser computed where it starts",
+      "responsibility": "Era-specific transaction types (#85): the type families as match types, the reference's era classes with one instance per era, what the eras share (output and script representations, certificate parts), the protocol parameters as higher-kinded data, the governance state with its classes, read from the node's flat record where the chain enters Dijkstra (`GovStateRecord`) and held whole in Dijkstra's state (`StoredGov`), the voting thresholds and environment of ratification, and the DRep pulser computed where it starts",
       "entryPoints": [
         "Tx",
         "TxOut",

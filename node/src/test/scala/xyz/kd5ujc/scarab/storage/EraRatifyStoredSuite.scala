@@ -187,20 +187,26 @@ class EraRatifyStoredSuite extends FunSuite with ExternalInputs:
     )
 
   /** A state's governance state as the era's record and, where the state holds it, as the node's
-    * flat record, which the flat rule reads: Conway's state holds the flat record, read into the
-    * era's; Dijkstra's holds the era's only.
+    * flat record, which the flat rule reads, with the writer of the era's parameters into it over
+    * the fields its codec left (`Params.empty`): Conway's state holds the flat record, read into
+    * the era's; Dijkstra's holds the era's only.
     */
   private trait GovViews[E <: EraTag]:
     def apply(
         nes: NewEpochState[E]
     ): Either[
       GovStateReadError,
-      (Option[ConwayGovState], xyz.kd5ujc.scarab.ledger.era.ConwayGovState[E])
+      (
+          Option[(ConwayGovState, PParams[E] => ProtocolParams)],
+          xyz.kd5ujc.scarab.ledger.era.ConwayGovState[E]
+      )
     ]
 
   private given GovViews[Conway] = nes =>
     val flat: ConwayGovState = nes.es.ls.utxo.gov
-    GovStateRecord.fromStored[Conway](flat).map(Some(flat) -> _)
+    GovStateRecord
+      .fromStored[Conway](flat)
+      .map(Some(flat -> (ConwayGovWrite.storedPParams(_, Params.empty))) -> _)
 
   private given GovViews[Dijkstra] = nes => Right(None -> nes.es.ls.utxo.gov)
 
@@ -226,7 +232,6 @@ class EraRatifyStoredSuite extends FunSuite with ExternalInputs:
       nes: Node,
       startCur: Option[PParams[E]]
   )(using
-      r: GovStateRecord[E],
       c: ConwayEraCertState[E],
       p: ConwayEraPParams[E],
       a: ConwayEraAccounts[E]
@@ -256,11 +261,11 @@ class EraRatifyStoredSuite extends FunSuite with ExternalInputs:
     )
     // the flat record of the start's parameters is the one the state's codec reads of them, its other
     // eras' fields the codec's (`Params.empty`)
-    val flatRun = flat.map { flat =>
+    val flatRun = flat.map { (flat, flatParams) =>
       val flatStart = FlatEnactState(
         flat.committee,
         flat.constitution,
-        startCur.fold(flat.curPParams)(r.storedPParams(_, Params.empty)),
+        startCur.fold(flat.curPParams)(flatParams),
         flat.prevPParams,
         treasury.value,
         Map.empty,
@@ -275,7 +280,6 @@ class EraRatifyStoredSuite extends FunSuite with ExternalInputs:
     * flat record, reaches its stored ratification; the number of actions in its snapshot.
     */
   private def replay[E <: EraTag](what: String, codec: Codec[NewEpochState[E]], nes: Node)(using
-      GovStateRecord[E],
       ConwayEraCertState[E],
       ConwayEraPParams[E],
       ConwayEraAccounts[E]
@@ -343,11 +347,11 @@ class EraRatifyStoredSuite extends FunSuite with ExternalInputs:
     assertEquals(r.stored.rsEnactState.ensPrevPParams, start)
     // the current ones are the translation's with the injected cost models over them: the Alonzo
     // and Conway genesis' PlutusV1 and PlutusV3 models replaced, and PlutusV2 added
-    val base = record.storedPParams(start, Params.empty)
+    val base = ConwayGovWrite.storedPParams(start, Params.empty)
     assertEquals(base.costModels.view.mapValues(_.size).toMap, Map(0 -> 166, 2 -> 251))
     assertEquals(injected.view.mapValues(_.size).toMap, Map(0 -> 332, 1 -> 332, 2 -> 350))
     assertEquals(
-      record.storedPParams(r.era.cgsCurPParams, Params.empty),
+      ConwayGovWrite.storedPParams(r.era.cgsCurPParams, Params.empty),
       base.copy(costModels = base.costModels ++ injected)
     )
     // in the state's bytes, the current parameters differ from the enact state's in field 15 (the

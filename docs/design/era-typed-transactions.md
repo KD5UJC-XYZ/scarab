@@ -1240,8 +1240,8 @@ Conway's rules on the classes follow as the rest of stage 2.
     reference's `Map` order, which is the flat keys' order (a property of each role). The votes of a transaction
     still carry the node's flat voter, which GOV reads into the reference's `Voter` once, a key outside its role
     a `GovDefect`.
-  - `GovStateRecord` reads the node's flat record into each era's and writes it back, each parameter record
-    over its own position's flat record (`GovStateBases.of`), which keeps that position's other eras' fields:
+  - `GovStateRecord` reads the node's flat record into each era's and wrote it back (the write since removed,
+    below), each parameter record over its own position's flat record (`GovStateBases.of`), which keeps that position's other eras' fields:
     a restored state can hold different ones at each position (`MirrorStep.withParams` restores the current
     and previous parameters from the sidecar and leaves the enact state's as decoded), and a state the
     Haskell codecs read holds the codec's empty values there. The DReps' states the pulser's snapshot holds
@@ -1375,7 +1375,7 @@ Conway's rules on the classes follow as the rest of stage 2.
     donations and the unclaimed deposits; the deposits counted again (`totalObligation`, the certificate state's and
     `obligationGovState`) and the donations reset; HARDFORK (`HardFork`) if the protocol version changed; Dijkstra's
     SNAP (`DijkstraSnap`) with the current parameters, read through the node's parameter record, the era's fields
-    written over the record's current one (`GovStateRecord.storedPParams`), whose other eras' fields SNAP does not
+    written over the record's current one (`GovStateRecord.storedPParams`, since removed), whose other eras' fields SNAP does not
     read; and `setFreshDRepPulsingState` over the new mark's pool distribution (`msStakePoolDistr`).
   - The pulser is computed to completion where it starts (`DRepPulser.setFreshDRepPulsingState`), as forcing the
     fresh `DRPulsing` gives (`finishDRepPulser` with its index zero and its distribution empty): `computeDRepDistr`
@@ -1473,7 +1473,7 @@ Conway's rules on the classes follow as the rest of stage 2.
     record (`StoredGov.synced`), from the state the tick began with even where it crosses the boundary.
   - One seam reads and writes the governance record (`StoredGov`, its one instance Dijkstra's): before the tick the
     node's record is read into the era's (`GovStateRecord.fromStored`), after it the era's state is written back over
-    the positions of the record it was read from (`toStored`, `GovStateBases.of`). The rules work on the era's state
+    the positions of the record it was read from (`toStored`, `GovStateBases.of`, since removed). The rules work on the era's state
     alone, so the format change that stores the era's record makes the seam's read and write the identity there and
     changes nothing else; SNAP is given the era's current parameters (`SnapEnv ls pp`), so EPOCH reads no flat
     record. Over the flat record the seam is glue and lossless: it reads every state the record holds, and its write
@@ -1555,11 +1555,13 @@ Conway's rules on the classes follow as the rest of stage 2.
     (`EraGovStateStoredSuite`); the cases of `DijkstraEpochReferenceSuite` and `DijkstraEraEpochGovSuite` on the
     node's tick, and window G replayed through proposal 2 (docs/leios.md §13).
   - With nothing writing Dijkstra's record into the flat one, the write side of the glue is gone (#85):
-    `GovStateRecord` writes Conway's state only (`toStored`, `ratifyStateToStored`), which every action fits, and
-    `DijkstraProposals` reads a flat proposal only (`fromFlat`), so the refusal of an update of keys 34 to 56 is
-    gone with it, and with it `ProposalsWriteError`: `ProposalsRecord.write` is total, and Conway's rule defect,
-    block defect and pool no-verdict for proposals the record cannot hold are gone. The tests that wrote Dijkstra's record back read the flat record instead: each action as Conway
-    reads it (`EraGovStateStoredSuite`), the flat rule's proposals read back into the era's (`EraEpochGovSuite`),
+    `GovStateRecord` only reads (`fromStored`, `ratifyStateFromStored`), and `DijkstraProposals` reads a flat
+    proposal only (`fromFlat`), so the refusal of an update of keys 34 to 56 is gone with it, and with it
+    `ProposalsWriteError`: Conway's rules write the proposals alone (`ProposalsRecord.write`), which every action
+    fits, and Conway's rule defect, block defect and pool no-verdict for proposals the record cannot hold are gone.
+    Conway's whole state is written back only by the tests that read a recorded record and back
+    (`ConwayGovWrite`, `GovStateBases`). The tests that wrote Dijkstra's record back read the flat record instead:
+    each action as Conway reads it (`EraGovStateStoredSuite`), the flat rule's proposals read back into the era's (`EraEpochGovSuite`),
     and the translated record against Conway's (`DijkstraTranslationSuite`); RATIFY of a Dijkstra state runs on
     the era's rule alone (`EraRatifyStoredSuite`).
 - **LEDGER and LEDGERS whole, with the reference's failures** (`era/rules/Ledger.scala`,

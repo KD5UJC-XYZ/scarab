@@ -31,7 +31,6 @@ import xyz.kd5ujc.scarab.ledger.era.{
   GovAction as EraGovAction,
   GovActionState as EraGovActionState,
   GovState as EraGovState,
-  GovStateBases,
   GovStateParams,
   GovStateRecord,
   PParamsUpdate,
@@ -61,7 +60,7 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{
 }
 
 /** The governance state of every recorded Conway state the repository holds, read into the era
-  * types (`GovStateRecord.fromStored`) and written back (`GovStateRecord.toStored`) identical: the
+  * types (`GovStateRecord.fromStored`) and written back (`ConwayGovWrite.toStored`) identical: the
   * flat record the state's codec read, and the state's bytes the codec writes from it. A Dijkstra
   * state's governance state is the era's record, which its codec reads and writes byte for byte; a
   * flat record is read into Dijkstra's where the chain enters Dijkstra, and each action of it is
@@ -123,7 +122,7 @@ class EraGovStateStoredSuite extends FunSuite with ExternalInputs:
   /** `flat` read into Conway's record and written back. */
   private def through(what: String, flat: ConwayGovState): ConwayGovState =
     val era = right(s"$what fromStored")(GovStateRecord.fromStored[Conway](flat))
-    GovStateRecord.toStored(era, GovStateBases.uniform(Params.empty))
+    ConwayGovWrite.toStored(era, GovStateBases.uniform(Params.empty))
 
   private def counts[E <: EraTag](what: String, flat: ConwayGovState)(using
       GovStateRecord[E]
@@ -581,7 +580,7 @@ class EraGovStateStoredSuite extends FunSuite with ExternalInputs:
     */
   private def restoredThrough(what: String, flat: ConwayGovState): Unit =
     val era = restoredRead[Conway](what, flat)
-    val back = GovStateRecord.toStored(era, GovStateBases.of(flat))
+    val back = ConwayGovWrite.toStored(era, GovStateBases.of(flat))
     assertEquals(back, flat, what)
     val backEnact = back.drepPulsing.ratify.enact
     val written = Vector(
@@ -598,7 +597,7 @@ class EraGovStateStoredSuite extends FunSuite with ExternalInputs:
     )
     assert(back.drepPulsing.ratify.delayed, what)
     assertNotEquals(
-      GovStateRecord.toStored(era, GovStateBases.uniform(flat.curPParams)),
+      ConwayGovWrite.toStored(era, GovStateBases.uniform(flat.curPParams)),
       flat,
       what
     )
