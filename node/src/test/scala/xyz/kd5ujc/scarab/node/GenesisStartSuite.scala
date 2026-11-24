@@ -233,8 +233,17 @@ class GenesisStartSuite extends FunSuite:
       )
     do
       assert(GenesisInjections.read(StateLayout.Node11_1)(sourceFiles(fundSources(invalid))) match {
-        case Left(ConfigError(_)) => true
-        case _                    => false
+        case Left(ConfigError(ConfigProblem.ConflictingFields(_))) | Left(
+              ConfigError(
+                ConfigProblem.GenesisStart(
+                  xyz.kd5ujc.scarab.ledger.rules.GenesisStartError.Vocab(_)
+                )
+              )
+            ) | Left(
+              ConfigError(ConfigProblem.Hex(xyz.kd5ujc.scarab.codec.Bytes.HexError.OddLength(_)))
+            ) | Left(ConfigError(ConfigProblem.JsonField(_, _, _))) =>
+          true
+        case _ => false
       })
   }
 
@@ -359,8 +368,11 @@ class GenesisStartSuite extends FunSuite:
         else started
       })
       assert(result match {
-        case Left(ConfigError(_)) => true
-        case _                    => false
+        case Left(
+              ConfigError(ConfigProblem.Hex(xyz.kd5ujc.scarab.codec.Bytes.HexError.OddLength(_)))
+            ) | Left(ConfigError(ConfigProblem.JsonField(_, _, _))) =>
+          true
+        case _ => false
       })
     }
   }

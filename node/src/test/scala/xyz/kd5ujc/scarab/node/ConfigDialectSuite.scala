@@ -286,8 +286,40 @@ class ConfigDialectSuite extends FunSuite:
       val wrong = enabled.deepMerge(Json.obj(key -> Json.arr())).noSpaces
       assert(
         NodeConfig.parse(ReferenceBuild.Default)(wrong) match {
-          case Left(ConfigError(_)) => true
-          case _                    => false
+          case Left(
+                ConfigError(
+                  ConfigProblem.Ancillary(
+                    xyz.kd5ujc.scarab.node.ConfigFieldError.NotDouble(_, _, _)
+                  )
+                )
+              ) | Left(
+                ConfigError(
+                  ConfigProblem.Ancillary(xyz.kd5ujc.scarab.node.ConfigFieldError.Number(_, _, _))
+                )
+              ) | Left(
+                ConfigError(
+                  ConfigProblem
+                    .ConfigNumber(_, xyz.kd5ujc.scarab.ledger.json.NumberError.TypeMismatch(_))
+                )
+              ) | Left(
+                ConfigError(
+                  ConfigProblem.ConfigNumber(
+                    xyz.kd5ujc.scarab.ledger.ConfigNumberField.DijkstraHardForkAtEpoch,
+                    xyz.kd5ujc.scarab.ledger.json.NumberError.TypeMismatch(_)
+                  )
+                )
+              ) | Left(
+                ConfigError(
+                  ConfigProblem.ConfigNumber(
+                    xyz.kd5ujc.scarab.ledger.ConfigNumberField.DijkstraHardForkAtVersion,
+                    xyz.kd5ujc.scarab.ledger.json.NumberError.TypeMismatch(_)
+                  )
+                )
+              ) | Left(ConfigError(ConfigProblem.ExpectedObject(_, _))) |
+              Left(ConfigError(ConfigProblem.JsonField(_, _, _))) |
+              Left(ConfigError(ConfigProblem.MempoolCapacity(_))) =>
+            true
+          case _ => false
         },
         key
       )

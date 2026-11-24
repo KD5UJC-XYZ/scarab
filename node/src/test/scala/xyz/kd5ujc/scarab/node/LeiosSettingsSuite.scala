@@ -143,8 +143,37 @@ class LeiosSettingsSuite extends FunSuite:
             .parse(ReferenceBuild.Default)(
               s"""{"ExperimentalHardForksEnabled":true,"$key":$value}"""
             )) match {
-            case Left(ConfigError(_)) => true
-            case _                    => false
+            case Left(
+                  ConfigError(
+                    ConfigProblem.ConfigNumber(
+                      xyz.kd5ujc.scarab.ledger.ConfigNumberField.DijkstraHardForkAtEpoch,
+                      xyz.kd5ujc.scarab.ledger.json.NumberError.NotWord64(_)
+                    )
+                  )
+                ) | Left(
+                  ConfigError(
+                    ConfigProblem.ConfigNumber(
+                      xyz.kd5ujc.scarab.ledger.ConfigNumberField.DijkstraHardForkAtEpoch,
+                      xyz.kd5ujc.scarab.ledger.json.NumberError.TypeMismatch(_)
+                    )
+                  )
+                ) | Left(
+                  ConfigError(
+                    ConfigProblem.ConfigNumber(
+                      xyz.kd5ujc.scarab.ledger.ConfigNumberField.DijkstraHardForkAtVersion,
+                      xyz.kd5ujc.scarab.ledger.json.NumberError.NotWord64(_)
+                    )
+                  )
+                ) | Left(
+                  ConfigError(
+                    ConfigProblem.ConfigNumber(
+                      xyz.kd5ujc.scarab.ledger.ConfigNumberField.DijkstraHardForkAtVersion,
+                      xyz.kd5ujc.scarab.ledger.json.NumberError.TypeMismatch(_)
+                    )
+                  )
+                ) =>
+              true
+            case _ => false
           }
         )
   }
@@ -160,8 +189,11 @@ class LeiosSettingsSuite extends FunSuite:
     )
     for value <- List("{}", "{\"Backend\":null}", "{\"Backend\":\"Other\"}", "\"SQLite\"") do
       assert(NodeConfig.parse(ReferenceBuild.Default)(s"""{"LeiosDbConfig":$value}""") match {
-        case Left(ConfigError(_)) => true
-        case _                    => false
+        case Left(ConfigError(ConfigProblem.ExpectedObject(_, _))) |
+            Left(ConfigError(ConfigProblem.MissingField(_, _))) |
+            Left(ConfigError(ConfigProblem.Selection(_, _, _))) =>
+          true
+        case _ => false
       })
     for value <- List("-1", "18446744073709551616", "0.5", "\"1\"") do
       assert(NodeConfig.parse(ReferenceBuild.Default)(s"""{"LeiosMinOfferLead":$value}""") match {
@@ -186,8 +218,26 @@ class LeiosSettingsSuite extends FunSuite:
       do
         assert(
           NodeConfig.parse(ReferenceBuild.Default)(config) match {
-            case Left(ConfigError(_)) => true
-            case _                    => false
+            case Left(
+                  ConfigError(
+                    ConfigProblem.Ancillary(
+                      xyz.kd5ujc.scarab.node.ConfigFieldError.NotInt64(_, _, _)
+                    )
+                  )
+                ) | Left(
+                  ConfigError(
+                    ConfigProblem.Ancillary(xyz.kd5ujc.scarab.node.ConfigFieldError.Number(_, _, _))
+                  )
+                ) | Left(
+                  ConfigError(
+                    ConfigProblem.ConfigNumber(
+                      xyz.kd5ujc.scarab.ledger.ConfigNumberField.DijkstraHardForkAtEpoch,
+                      xyz.kd5ujc.scarab.ledger.json.NumberError.NotWord64(_)
+                    )
+                  )
+                ) =>
+              true
+            case _ => false
           },
           config
         )
@@ -216,8 +266,19 @@ class LeiosSettingsSuite extends FunSuite:
           .parse(ReferenceBuild.Default)(
             s"""{"LeiosAdaptiveEndorsements":{"Enabled":false,"$key":$value}}"""
           )) match {
-          case Left(ConfigError(_)) => true
-          case _                    => false
+          case Left(
+                ConfigError(
+                  ConfigProblem.Ancillary(
+                    xyz.kd5ujc.scarab.node.ConfigFieldError.NotDouble(_, _, _)
+                  )
+                )
+              ) | Left(
+                ConfigError(
+                  ConfigProblem.Ancillary(xyz.kd5ujc.scarab.node.ConfigFieldError.NotInt64(_, _, _))
+                )
+              ) | Left(ConfigError(ConfigProblem.JsonField(_, _, _))) =>
+            true
+          case _ => false
         }
       )
     assertEquals(

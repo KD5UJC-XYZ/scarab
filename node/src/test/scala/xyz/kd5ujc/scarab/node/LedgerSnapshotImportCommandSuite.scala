@@ -46,8 +46,12 @@ class LedgerSnapshotImportCommandSuite extends FunSuite:
     ).foreach { args =>
       assert(
         Command.parse(args) match {
-          case Left(ConfigError(_)) => true
-          case _                    => false
+          case Left(ConfigError(ConfigProblem.WithUsage(ConfigProblem.DuplicateFlag(_), _))) |
+              Left(ConfigError(ConfigProblem.WithUsage(ConfigProblem.MissingFlag(_), _))) |
+              Left(ConfigError(ConfigProblem.WithUsage(ConfigProblem.MissingFlagValue(_), _))) |
+              Left(ConfigError(ConfigProblem.WithUsage(ConfigProblem.UnknownFlag(_), _))) =>
+            true
+          case _ => false
         },
         args.toString
       )

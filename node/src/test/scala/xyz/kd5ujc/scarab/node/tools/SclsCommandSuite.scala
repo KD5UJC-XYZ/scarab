@@ -102,10 +102,15 @@ class SclsCommandSuite extends FunSuite:
     assert(
       (SclsCommand
         .parseImport(
-          base.filterNot(_ == "--genesis-dir") ++ List("--input", "in", "--target-db", "db")
+          base.patch(base.indexOf("--genesis-dir"), Nil, 2) ++ List(
+            "--input",
+            "in",
+            "--target-db",
+            "db"
+          )
         )) match {
-        case Left(ConfigError(ConfigProblem.WithUsage(ConfigProblem.UnknownFlag(_), _))) => true
-        case _                                                                           => false
+        case Left(ConfigError(ConfigProblem.WithUsage(ConfigProblem.RequiredOneOf(_), _))) => true
+        case _                                                                             => false
       }
     )
     assert(SclsCommand.parseExport(base ++ List("--out", "a", "--record-bytes", "0")) match {

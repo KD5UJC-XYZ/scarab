@@ -90,8 +90,17 @@ class CheckpointsSuite extends FunSuite:
     )
     Vector(BigInt(-1), maximum + 1).foreach { invalid =>
       assert(parsed(s"""{"checkpoints":[{"blockNo":$invalid,"hash":"$zero"}]}""") match {
-        case Left(ConfigError(_)) => true
-        case _                    => false
+        case Left(
+              ConfigError(
+                ConfigProblem.Ancillary(xyz.kd5ujc.scarab.ledger.state.VocabError.Negative(_, _))
+              )
+            ) | Left(
+              ConfigError(
+                ConfigProblem.Ancillary(xyz.kd5ujc.scarab.ledger.state.VocabError.OutOfRange(_, _))
+              )
+            ) =>
+          true
+        case _ => false
       })
     }
   }
@@ -107,8 +116,13 @@ class CheckpointsSuite extends FunSuite:
     ).foreach(text =>
       assert(
         parsed(text) match {
-          case Left(ConfigError(_)) => true
-          case _                    => false
+          case Left(ConfigError(ConfigProblem.ByteLength(_, _, _))) | Left(
+                ConfigError(
+                  ConfigProblem.Hex(xyz.kd5ujc.scarab.codec.Bytes.HexError.InvalidCharacter(_, _))
+                )
+              ) | Left(ConfigError(ConfigProblem.JsonField(_, _, _))) =>
+            true
+          case _ => false
         },
         text
       )
