@@ -24,10 +24,10 @@ import xyz.kd5ujc.scarab.ledger.state.{
 }
 import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.TxMeasure
 import xyz.kd5ujc.scarab.protocol.{Era, ReferenceBuild}
+import xyz.kd5ujc.scarab.ledger.LedgerFailure
 
 import TestLedger.{out, txIn}
 import TxKit.{ada, alice, bob, bstr, head}
-import xyz.kd5ujc.scarab.ledger.LedgerFailure
 
 /** The mempool in every Shelley-based era (#934): it holds transactions of the era of its ledger,
   * lists them under that era, and takes a transaction of another era as the selected reference

@@ -15,10 +15,10 @@ import xyz.kd5ujc.scarab.ledger.state.EpochStateGen.given
 import xyz.kd5ujc.scarab.ledger.state.VocabularyGen.given
 import xyz.kd5ujc.scarab.models.runtime.{Codec, DecodeError, Writer}
 import xyz.kd5ujc.scarab.protocol.{Era, StateLayout}
+import xyz.kd5ujc.scarab.models.runtime.ConstraintViolation
 
 import DecodeError.Kind
 import HaskellStateCodecs.{*, given}
-import xyz.kd5ujc.scarab.models.runtime.ConstraintViolation
 
 /** The envelopes of the Haskell `state` file: the laws of every codec on generated values of every
   * era, hand-derived bytes of the small encodings (each cites the Haskell instance), typed

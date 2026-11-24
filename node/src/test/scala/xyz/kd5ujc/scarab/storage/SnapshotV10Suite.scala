@@ -18,9 +18,9 @@ import xyz.kd5ujc.scarab.node.{MirrorSteps, NodeSetup}
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.node.read.InEra
 import xyz.kd5ujc.scarab.protocol.Era
+import xyz.kd5ujc.scarab.codec.Cbor
 
 import StorageTestKit.*
-import xyz.kd5ujc.scarab.codec.Cbor
 
 /** V10 writes and reads every era in the block capture. The maintained V10 conversions of the
   * previous fixture corpus retain its independently replayed chain position and UTxO accounting.

@@ -5,9 +5,9 @@ import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{Address, Datum, TxIn, TxOut, Value}
 import xyz.kd5ujc.scarab.ledger.state.{ProtVer, Word64}
+import xyz.kd5ujc.scarab.models.runtime.ConstraintViolation
 
 import NodeOrders.given
-import xyz.kd5ujc.scarab.models.runtime.ConstraintViolation
 
 /** The UTxO codecs and the unordered-container combinators the node-to-client answers are written
   * with: the bytes are those the reference ledger writes (`Mary/Value.hs`, `Babbage/TxOut.hs`,

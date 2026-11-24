@@ -10,11 +10,11 @@ import xyz.kd5ujc.scarab.ledger.DetachedRecordsReferenceSuite
 import xyz.kd5ujc.scarab.network.{FailsOnUncaught, LocalStateQueryServer, Mux, Peers}
 import xyz.kd5ujc.scarab.protocol.LocalStateQuery
 import xyz.kd5ujc.scarab.protocol.ChainSync.{DecodeResult, Role}
+import xyz.kd5ujc.scarab.codec.Cbor
 
 import DetachedRecordsReferenceSuite.{Kind, Row}
 import LocalStateQuery.{Message, QueryReader, State}
 import Peers.typed
-import xyz.kd5ujc.scarab.codec.Cbor
 
 /** A node-to-client query that carries a `RecD` record reads it as the reference does (#700). The
   * only such argument is the set of `GovActionId` of `GetProposals`, which the reference reads with

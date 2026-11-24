@@ -13,9 +13,9 @@ import xyz.kd5ujc.scarab.consensus.state.{StateGen as _, *}
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.models.runtime.{Codec, DecodeError, Writer}
 import xyz.kd5ujc.scarab.protocol.{DijkstraNotYet, Era, StateLayout}
+import xyz.kd5ujc.scarab.models.runtime.ConstraintViolation
 
 import DecodeError.{Arity, Kind}
-import xyz.kd5ujc.scarab.models.runtime.ConstraintViolation
 
 /** The `state` layout of the Leios build (#826 step b): the laws of each record it writes
   * differently from 11.1 on generated values, hand-derived bytes of its envelopes, the refusal of

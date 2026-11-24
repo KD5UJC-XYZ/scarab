@@ -8,9 +8,9 @@ import xyz.kd5ujc.scarab.ledger.{ConwayParam, DecodeField, GovAction, LedgerDeco
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.models.runtime.{Codec, DecodeError, Writer}
 import xyz.kd5ujc.scarab.protocol.DijkstraNotYet
+import xyz.kd5ujc.scarab.models.runtime.ConstraintViolation
 
 import DecodeError.{Arity, Kind}
-import xyz.kd5ujc.scarab.models.runtime.ConstraintViolation
 
 /** Dijkstra's `NewEpochState` in the `state` layout of the Leios build (#826): the state of the
   * first Dijkstra epoch the build wrote (`fixtures/leios/state/dijkstra-203`) and the public

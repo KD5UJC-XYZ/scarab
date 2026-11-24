@@ -50,9 +50,9 @@ import xyz.kd5ujc.scarab.node.RefStateful
 import xyz.kd5ujc.scarab.node.SyncEvent
 import scala.concurrent.duration.*
 import scala.jdk.CollectionConverters.*
+import xyz.kd5ujc.scarab.ledger.StorageStructureError
 
 import StorageTestKit.*
-import xyz.kd5ujc.scarab.ledger.StorageStructureError
 
 /** Restart behaviour over the committed Byron-to-Conway capture (`fixtures/eras`): the follower
   * writes through [[ChainStorage]], a fresh open recovers the same state from the newest snapshot

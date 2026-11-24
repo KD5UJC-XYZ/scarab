@@ -10,10 +10,10 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.ledger.StorageError
 import munit.CatsEffectSuite
+import xyz.kd5ujc.scarab.ledger.StorageStructureError
 
 import NodeCodecs.blockRef
 import StorageTestKit.*
-import xyz.kd5ujc.scarab.ledger.StorageStructureError
 
 /** A small state to exercise the snapshot file format without the full node state. */
 final case class Toy(counter: BigInt, names: Map[Bytes, BigInt], tags: Vector[Option[Bytes]])

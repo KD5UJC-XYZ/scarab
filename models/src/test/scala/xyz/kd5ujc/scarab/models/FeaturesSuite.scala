@@ -7,9 +7,9 @@ import scala.util.Random
 import xyz.kd5ujc.scarab.models.features.*
 import xyz.kd5ujc.scarab.models.gen.{CddlSampler, Generator, QName}
 import xyz.kd5ujc.scarab.models.runtime.{Codec, DecodeError}
+import xyz.kd5ujc.scarab.models.runtime.ConstraintViolation
 
 import DecodeError.Kind
-import xyz.kd5ujc.scarab.models.runtime.ConstraintViolation
 
 /** The generator features that the two bounded targets do not need, on `features.cddl`: integer-
   * and text-keyed maps with optional entries, tag-258 sets, group choices, sockets, embedded CBOR,
