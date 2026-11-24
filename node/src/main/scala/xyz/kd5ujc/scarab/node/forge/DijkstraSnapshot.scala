@@ -3,6 +3,7 @@ package xyz.kd5ujc.scarab.node.forge
 
 import cats.Applicative
 import cats.effect.{Ref, Sync}
+import cats.effect.syntax.all.*
 import cats.mtl.Raise
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -223,7 +224,11 @@ object DijkstraSnapshots:
             case Some(view) => views.set(Some(view)) *> kept(view, pool)
             case None       => mempool.awaitChange(_ eq pool).flatMap(building)
           }
-        mempool.snapshot.flatMap(building)
+        // a worker that ends, failed or cancelled, takes its view with it: a view it no longer
+        // brings up to date would miss what the pool holds since, so the forger revalidates
+        mempool.snapshot
+          .flatMap(building)
+          .guarantee(views.update(_.filter(v => v.eb != eb || v.tip != tip)))
 
       def certifyingFor(eb: EbHash, tip: Option[Bytes], slot: BigInt) =
         (views.get, mempool.snapshot, environment).mapN { (view, pool, env) =>

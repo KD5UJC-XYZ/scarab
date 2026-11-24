@@ -23,7 +23,7 @@ import xyz.kd5ujc.scarab.protocol.EbHash
   *   the greatest ticket of the pool the view has judged (`isLastTicketNo`): a transaction with a
   *   greater one is not in it yet
   */
-final case class CertifyingView private (
+final case class CertifyingView private[node] (
     eb: EbHash,
     tip: Option[Bytes],
     judgedAt: BigInt,
@@ -63,12 +63,12 @@ final case class CertifyingView private (
 
   /** `implGetCertifyingSnapshotFor` (`CertifyingView.hs:217-236`) of the block forged in `slot`
     * certifying `eb` on the chain whose tip's hash is `tip`, with `pool` as it is now: the view's
-    * kept transactions and the withheld ones still held, when the view is of `eb` on that tip, and
-    * `slot` is the one it was judged at, or a later one in the slots of its epoch by `geometry`
-    * that every kept transaction's validity interval contains, where the view's judgement holds (as
-    * [[MempoolState.dijkstraCached]] reads the pool's own). None also when a kept transaction has
-    * left the pool and the view was not built again yet, which the reference's view, revalidated
-    * under the pool's lock on a removal, never meets.
+    * kept transactions and the withheld ones still held under the same ticket, when the view is of
+    * `eb` on that tip, and `slot` is the one it was judged at, or a later one in the slots of its
+    * epoch by `geometry` that every kept transaction's validity interval contains, where the view's
+    * judgement holds (as [[MempoolState.dijkstraCached]] reads the pool's own). None also when a
+    * kept transaction has left the pool and the view was not built again yet, which the reference's
+    * view, revalidated under the pool's lock on a removal, never meets.
     */
   def snapshotFor(
       eb: EbHash,
@@ -85,8 +85,10 @@ final case class CertifyingView private (
       this.eb == eb && this.tip == tip && pool.tipHash == tip && !removedFrom(pool) &&
         (slot == judgedAt || inRange)
     ) {
-      val held = pool.entries.iterator.map(_.id).toSet
-      revalidation.copy(withheld = revalidation.withheld.filter((entry, _) => held(entry.id)))
+      // by ticket: a transaction removed and held again is another admission, which the view
+      // judges when it catches up, not by the verdict its removed one had
+      val held = pool.entries.iterator.map(_.ticket).toSet
+      revalidation.copy(withheld = revalidation.withheld.filter((entry, _) => held(entry.ticket)))
     }
 
 object CertifyingView:

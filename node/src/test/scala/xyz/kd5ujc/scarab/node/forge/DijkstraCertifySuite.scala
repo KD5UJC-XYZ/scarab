@@ -68,6 +68,7 @@ import xyz.kd5ujc.scarab.node.mempool.{
   MempoolState,
   MempoolEvents,
   PoolLedger,
+  Rejection,
   Source
 }
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
@@ -1042,6 +1043,68 @@ class DijkstraCertifySuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       assertEquals(fromEmpty.pending(again).map(_.id), Vector(tx.id))
       assertEquals(read(caught(fromEmpty), again, judged), Some(onParent))
       assertEquals(read(caught(viewOn(applied, emptied)), again, judged), Some(onClosure))
+      // a verdict withheld is the admission's it was reached for: held again under a new ticket,
+      // the transaction is another admission, and the removed one's verdict is not given
+      val first = held.entries.headOption.getOrElse(fail("nothing held"))
+      val reason = Rejection.WrongEra(Era.Dijkstra.index, Era.Dijkstra)
+      val withheld =
+        closure.copy(revalidation = closure.revalidation.copy(withheld = Vector(first -> reason)))
+      assertEquals(read(withheld, held, judged).map(_.withheld), Some(Map(tx.id -> reason)))
+      assertEquals(read(withheld, again, judged).map(_.withheld), Some(Map.empty))
+  }
+
+  test("a certifying view whose worker fails is no longer read: the forger revalidates (#1380)") {
+    for
+      c <- certifying
+      (_, split, _, after, announcingBlock, endorsing) = c
+      tip = refOf(announcingBlock.header)
+      judged = tip.slot + 1
+      parent = parentOf(after, tip, judged)
+      point = split.decision match
+        case CertifyDecision.Certify(_, p) => p
+        case other                         => fail(s"not certified: $other")
+      vs <- votes(after, announcingBlock.header.hash, Vector(0, 1, 2, 3))
+      closed <- certifier(closureOf(endorsing), vs)
+        .closed(parent.chain, parent.tip, parent.unticked, point, judged)
+      base = ticked(closed.fold(e => fail(e.toString), identity), judged)
+      mempool <- poolAt(after, tip)
+      // the view is built on an empty pool, and the transaction is held after it
+      _ <- mempool.removeTxsEvenIfValid(Set(tx.id))
+      emptied <- mempool.snapshot
+      env = envOf(after, judged)
+      // the environment the build reads, then a failure when the worker brings the view up to date,
+      // then the environment again for the forger's read
+      built <- Deferred[IO, Unit]
+      reads <- Ref.of[IO, Int](0)
+      environment = reads.updateAndGet(_ + 1).flatMap {
+        case 1 => built.complete(()).as(env)
+        case 2 => IO.raiseError(new IllegalStateException("the environment is gone"))
+        case _ => IO.pure(env)
+      }
+      snapshots <- DijkstraSnapshots.ofPool[IO](mempool, None, environment)
+      worker <- snapshots.certifying(point.hash, Some(tip.hash), base).start
+      _ <- built.get
+      _ <- mempool.add(submitted, Source.Local).map(added => assert(added.isRight, added))
+      ended <- worker.join
+      read <- snapshots.certifyingFor(point.hash, Some(tip.hash), judged)
+      now <- mempool.snapshot
+    yield
+      assert(ended.isError, ended.toString)
+      // the view the worker built kept nothing that left the pool: only the worker's end takes it
+      // away, and the forger then revalidates
+      val view = CertifyingView
+        .build(
+          point.hash,
+          Some(tip.hash),
+          base.epoch.toBigInt,
+          DijkstraState.of(base),
+          emptied,
+          env
+        )
+        .getOrElse(fail("no view"))
+      assert(!view.removedFrom(now))
+      assert(view.snapshotFor(point.hash, Some(tip.hash), judged, now, geometry).isDefined)
+      assertEquals(read, None)
   }
 
   test(
