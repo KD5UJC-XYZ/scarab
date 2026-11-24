@@ -30,10 +30,13 @@ sealed trait Header:
   def prevHash: Option[Bytes]
   def point: ChainSync.Point = cachedPoint
 
+  /** [[point]], typed as the block point it always is. */
+  def blockPoint: ChainSync.Point.Block = cachedPoint
+
   // computed once: candidates, fragments and chain-selection walks ask every header of a candidate
   // for its point, again on each new header (issue 1394)
-  private lazy val cachedPoint: ChainSync.Point =
-    ChainSync.Point.Block(ChainSync.UInt64.saturating(slot), hash)
+  private lazy val cachedPoint: ChainSync.Point.Block =
+    new ChainSync.Point.Block(ChainSync.UInt64.saturating(slot), hash)
   def prevPoint: Option[Bytes] = prevHash
 
   /** A Byron epoch-boundary block: it shares its slot with the epoch's first slot and its block
