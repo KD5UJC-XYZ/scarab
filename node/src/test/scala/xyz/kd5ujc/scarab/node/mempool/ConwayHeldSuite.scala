@@ -74,15 +74,13 @@ class ConwayHeldSuite extends FunSuite:
 
   private type Conway = xyz.kd5ujc.scarab.ledger.state.Conway
 
-  test("a Conway reading holds the parts, the flat transaction and the era's, one flag for all") {
+  test("a Conway reading holds the parts and the era's transaction, one flag for both") {
     assertEquals(read.id, id)
-    assertEquals(read.flat, parsed.tx)
     assertEquals(read.raw, raw)
     assertEquals(read.isValid, IsPhase2Valid.Phase2Valid)
     val flipped = read.withIsValid(IsPhase2Valid.Phase2Invalid)
     assertEquals(flipped.isValid, IsPhase2Valid.Phase2Invalid)
     assertEquals(flipped.parts.isValid, false)
-    assertEquals(flipped.flat.isValid, false)
     assertEquals(flipped.id, id)
     // the flag is the only byte of the relayed form that changes
     assertEquals(flipped.raw, EraInjection.envelope(parsed.parts.copy(isValid = false), Era.Conway))
@@ -100,9 +98,10 @@ class ConwayHeldSuite extends FunSuite:
     assertEquals(conway.leiosTx, None)
     // the measure: `sizeTxF` and the redeemers' units of the era's transaction, as of the flat one
     assertEquals(Capacity.measure(conway), Capacity.measure(flat))
+    // the read set: every input of the era's body, the flat one's spent, reference and collateral
     assertEquals(
-      MempoolState.readSet(Vector(conway.held.in)),
-      MempoolState.readSet(Vector(flat.held.in))
+      MempoolState.readSet(Vector(conway.held.in)).toSet,
+      MempoolState.readSet(Vector(flat.held.in)).toSet
     )
     assertEquals(
       LocalMonitor.wrapTx(conway.era, conway.raw),

@@ -10,7 +10,9 @@ object FlatEntries:
   extension (entry: Entry)
     def tx: Tx = entry.held match
       case Held.Flat(_, _, tx) => tx
-      case Held.InConway(held) => held.read.flat
+      case Held.InConway(held) =>
+        Tx.fromBlock(held.read.parts, xyz.kd5ujc.scarab.protocol.Era.Conway)
+          .fold(e => munit.Assertions.fail(s"the parts of a held Conway transaction: $e"), identity)
       case Held.InDijkstra(held) =>
         munit.Assertions.fail(
           s"a Dijkstra transaction, ${held.read.id.hex}, where a flat one is held"
