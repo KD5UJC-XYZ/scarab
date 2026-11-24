@@ -861,7 +861,12 @@ object HeaderCheck:
                   protocol[Unit](
                     PeerError.ProtocolProblem.HeaderDoesNotExtend(header.point, hc.tipPoint)
                   ),
-                g => state.set(g.pruned(retained))
+                // trimmed to our chain's anchor, as the reference trims its candidate whenever
+                // our chain changes (HeaderChain.trimmedTo)
+                g =>
+                  coherentCurrent.flatMap((current, _) =>
+                    state.set(g.pruned(retained).trimmedTo(current.anchor.point))
+                  )
               )
           )
 

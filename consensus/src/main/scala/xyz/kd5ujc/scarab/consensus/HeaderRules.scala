@@ -213,6 +213,38 @@ final case class HeaderChain[H](
           )
         )
 
+  /** The chain from `anchor` on, when it passes there: the reference trims its candidate to the
+    * anchor of our current chain whenever our chain changes, as the headers before it can never be
+    * adopted or rolled back to (`intersectsWithCurrentChain`, `AF.splitAfterPoint theirFrag
+    * (AF.anchorPoint ourFrag')`, ouroboros-consensus 82ecba329 `MiniProtocol/ChainSync/Client.hs`
+    * 942-992). A header at `anchor` becomes the base, as in [[pruned]]; an anchor in the local
+    * prefix drops the prefix before it; a chain that does not pass through `anchor` is kept, for
+    * the caller's reintersection to decide (issue 810: without this, a candidate grew to the
+    * retention cap and every header's checks grew with it).
+    */
+  def trimmedTo(anchor: ChainSync.Point): HeaderChain[H] =
+    if anchor == base then if prefix.isEmpty then this else copy(prefix = Vector.empty)
+    else
+      entries.indexWhere(_.header.point == anchor) match
+        case -1 =>
+          prefix.indexWhere(_.point == anchor) match
+            case at if at > 0 => copy(prefix = prefix.drop(at))
+            case _            => this
+        case at =>
+          val last = entries(at)
+          copy(
+            base = anchor,
+            baseState = last.state,
+            entries = entries.drop(at + 1),
+            prefix = Vector.empty,
+            baseView = Some(
+              HeaderChain.TipView(
+                SelectView.of(last.header),
+                ChainSelection.tiebreakerFor(last.header.era)
+              )
+            )
+          )
+
   /** At most `max` of the newest headers: the oldest are folded into the base. */
   def pruned(max: Int): HeaderChain[H] =
     val (dropped, kept) = entries.splitAt(entries.size - max)
