@@ -30,9 +30,12 @@ class LogSinkFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     given Log[IO] = log
     slots.toList.traverse_(n => Log.follower[IO](None).emit(extended(n)))
 
+  /** The slot of each line; a line that is not an `extended` line fails the test. */
   private def slots(texts: List[String]): List[Int] =
-    texts.flatMap(l =>
-      parse(l).toOption.flatMap(_.hcursor.downField("block").get[Int]("slot").toOption)
+    texts.map(l =>
+      parse(l)
+        .flatMap(_.hcursor.downField("block").get[Int]("slot"))
+        .fold(e => fail(s"not an extended line: $l ($e)"), identity)
     )
 
   private def lines(p: Path): List[String] =
@@ -232,33 +235,39 @@ class LogSinkFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       file = dir.resolve("node.jsonl")
       in <- blocked(dir)
       reports <- Ref.of[IO, Vector[SinkReport]](Vector.empty)
-      before <- LogRouter
+      seen <- LogRouter
         .reporting[IO](fileSettings(file), r => reports.update(_ :+ r), 1.minute)
         .use { log =>
           for
-            _ <- emit(log, 0 until 20)
+            _ <- tellAll(log, 0 until 20)
             before <- IO.blocking(slots(lines(file)))
             _ <- cleared(in)
-            _ <- emit(log, 20 until 60)
-          yield before
+            // the rotation the fault held, then more of them
+            _ <- tellAll(log, 20 until 21)
+            recovered <- contents(dir, 1)
+            _ <- tellAll(log, 21 until 60)
+          yield (before, recovered)
         }
+      (before, recovered) = seen
       reported <- reports.get
-      files = List(dir.resolve("node.jsonl.1"), file)
-      kept <- IO.blocking(files.map(f => f -> Files.size(f)))
-      after <- IO.blocking(slots(files.flatMap(lines)))
+      dropped = reported match
+        case Vector(
+              SinkReport.Failed(Sink.File, SinkError.Rotate(_: DirectoryNotEmptyException)),
+              SinkReport.Recovered(Sink.File, n)
+            ) =>
+          n.toInt
+        case other => fail(s"reports: $other")
+      written <- contents(dir, 1)
+      // what a run without the fault writes from the lines taken: all but the ones dropped
+      taken = 0 until 20 - dropped
+      expectedRecovered <- healthy(taken :+ 20, 1)
+      expected <- healthy(taken ++ (20 until 60), 1)
     yield
-      // the lines before the fault are in the file, the ones while it held are dropped
-      assert(before.nonEmpty)
-      assertEquals(before, (0 until before.size).toList)
-      assertEquals(
-        reported,
-        Vector(reported.head, SinkReport.Recovered(Sink.File, (20 - before.size).toLong))
-      )
-      // after it, the file turns over again and keeps the newest lines, with none missing
-      kept.foreach((f, size) => assert(size <= 1024, s"$f: $size bytes"))
-      assert(!Files.exists(dir.resolve("node.jsonl.2")))
-      assert(after.nonEmpty)
-      assertEquals(after, (60 - after.size until 60).toList)
+      assert(dropped > 0 && dropped < 20, s"dropped $dropped")
+      assertEquals(before, taken.toList)
+      assertEquals(recovered, expectedRecovered)
+      assertEquals(written, expected)
+      written.flatten.foreach(f => slots(f))
   }
 
   test("a library's line on a failing sink is dropped and reported, and nothing escapes") {
