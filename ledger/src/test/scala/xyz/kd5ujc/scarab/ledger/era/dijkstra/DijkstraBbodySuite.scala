@@ -540,21 +540,34 @@ class DijkstraBbodySuite extends FunSuite:
   private def onNetwork(n: Network): Globals =
     globals.copy(ledger = globals.ledger.copy(network = n))
 
-  /** The node's run of BBODY (`DijkstraBlockRun.bbody`) on `raw` from `state` under `on`. */
-  private def nodeRun(on: Globals, raw: Bytes, state: ShelleyBbodyState[Dijkstra]) =
-    DijkstraBlockRun.bbody(
-      on,
-      BbodyEnv[Dijkstra](testnetPParams, ChainAccountState(Coin(0), Coin(0))),
-      ok(DijkstraBlock.decode(raw)),
-      xyz.kd5ujc.scarab.ledger.SystemStart(java.time.Instant.EPOCH),
-      history,
-      state,
-      EraGovRun.dijkstraEmpty,
-      ScarabEvaluator.default,
-      flat.Verdicts.Direct,
-      ScarabEvaluator.defaultDecoder,
-      slot => Right(slot * 1000)
+  /** The node's run of BBODY (`DijkstraBlockRun.program`) on `raw` from `state` under `on`: serial,
+    * and prepared for the node's bounded parallel evaluation of its scripts, each to the same
+    * result ([[DijkstraPlanned.check]]).
+    */
+  private def nodeChecked(
+      on: Globals,
+      raw: Bytes,
+      state: ShelleyBbodyState[Dijkstra]
+  ): DijkstraPlanned.Checked =
+    DijkstraPlanned.check("the sampled block", ScarabEvaluator.default)(e =>
+      DijkstraBlockRun.program(
+        on,
+        BbodyEnv[Dijkstra](testnetPParams, ChainAccountState(Coin(0), Coin(0))),
+        ok(DijkstraBlock.decode(raw)),
+        xyz.kd5ujc.scarab.ledger.SystemStart(java.time.Instant.EPOCH),
+        history,
+        state,
+        EraGovRun.dijkstraEmpty,
+        e,
+        flat.Verdicts.Direct,
+        ScarabEvaluator.defaultDecoder,
+        slot => Right(slot * 1000)
+      )
     )
+
+  /** The node's serial run of BBODY on `raw` ([[nodeChecked]]). */
+  private def nodeRun(on: Globals, raw: Bytes, state: ShelleyBbodyState[Dijkstra]) =
+    nodeChecked(on, raw, state).serial
 
   test("the node's run reads its network from the globals and validates every check") {
     val (raw, seeded) = sampled(byBlock.head)
@@ -588,6 +601,33 @@ class DijkstraBbodySuite extends FunSuite:
     // the run is BBODY on the globals' network (`networkId`) with every check
     assertEquals(ofNode(Network.Testnet), judgedOn(Network.Testnet, all))
     assertEquals(ofNode(Network.Mainnet), judgedOn(Network.Mainnet, all))
+  }
+
+  test(
+    "the chain's recorded script transactions, each block's in a block of its own: the node's run prepared comes to its serial result"
+  ) {
+    val checked = DijkstraRecordedBlocks.samples.map(sample =>
+      sample -> DijkstraPlanned.check(s"recorded block ${sample.block}", ScarabEvaluator.default)(
+        DijkstraRecordedBlocks.program(sample, _)
+      )
+    )
+    def admitted(c: DijkstraPlanned.Checked) = c.serial match
+      case Right(Right(_))          => true
+      case Right(Left(_)) | Left(_) => false
+    // what the sample exercises (CNF-2): 173 blocks, 150 admitted; 17 with two or more scripted
+    // batches, the plan's jobs, two of them in dependent batches (a later transaction spending an
+    // earlier one's output, blocks 59,559 and 59,563); the rest of the refusals are for the state
+    // the sample does not record (accounts, above all)
+    assertEquals(checked.size, 173)
+    assertEquals(checked.count((_, c) => admitted(c)), 150)
+    assertEquals(checked.count((_, c) => c.jobs >= 2), 17)
+    assertEquals(
+      checked.collect { case (s, c) if c.batches.sizeIs > 1 => s.block -> c.batches },
+      Vector(
+        BigInt(59559) -> Vector(Vector(0), Vector(1)),
+        BigInt(59563) -> Vector(Vector(0), Vector(1))
+      )
+    )
   }
 
   test("no Dijkstra block value that keeps its bytes has a Mirror to build it from other fields") {

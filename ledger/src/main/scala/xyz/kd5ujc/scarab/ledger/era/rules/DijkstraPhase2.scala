@@ -4,9 +4,10 @@ package xyz.kd5ujc.scarab.ledger.era.rules
 import cats.data.Chain
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.{LedgerFailure, PlutusStats, Redeemer, ScriptLocation}
+import xyz.kd5ujc.scarab.ledger.{LedgerFailure, PlutusStats, Redeemer, ScriptLocation, TxIn}
 import xyz.kd5ujc.scarab.ledger.era.*
 import xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraStAnnTx
+import xyz.kd5ujc.scarab.ledger.rules.TxDependencies
 import xyz.kd5ujc.scarab.ledger.state.Dijkstra
 
 /** The node's phase-2 observations of a block Dijkstra's era rules apply ([[DijkstraBlockRun]]):
@@ -145,6 +146,79 @@ object DijkstraPhase2:
   def txId(stAnnTx: StAnnTx[TxLevel.Top, Dijkstra]): Bytes =
     given BothLevels[TxLevel.Top] = BothLevels.Top
     b.id[TxLevel.Top](t.body[TxLevel.Top](t.txStAnnTx[TxLevel.Top](stAnnTx)))
+
+  /** The id of the batch `tx`, its top level's body's hash. */
+  def txId(tx: Tx[TxLevel.Top, Dijkstra]): Bytes =
+    given BothLevels[TxLevel.Top] = BothLevels.Top
+    b.id[TxLevel.Top](t.body[TxLevel.Top](tx))
+
+  /** The place of each batch of `txs` among them by its id ([[txId]]), the first where two share
+    * one, as Conway's ([[ConwayPhase2.places]]): a block whose rules reach the second's scripts
+    * never has one, its inputs and collateral spent by the first.
+    */
+  def places(txs: Vector[Tx[TxLevel.Top, Dijkstra]]): Map[Bytes, Int] =
+    txs.zipWithIndex.foldLeft(Map.empty[Bytes, Int]) { case (places, (tx, index)) =>
+      val id = txId(tx)
+      if places.contains(id) then places else places.updated(id, index)
+    }
+
+  /** Whether a level of the batch `tx`, its top level or a sub-transaction, holds a redeemer in its
+    * own witnesses: a batch whose scripts a block's preparation can defer, which its top level's
+    * UTXOS runs together.
+    */
+  def redeeming(tx: Tx[TxLevel.Top, Dijkstra]): Boolean =
+    given BothLevels[TxLevel.Top] = BothLevels.Top
+    def holds[L <: TxLevel](level: Tx[L, Dijkstra])(using BothLevels[L]): Boolean =
+      t.witsOf.rdmrsTxWits(t.wits[L](level)).entries.nonEmpty
+    holds[TxLevel.Top](tx) || b
+      .subTransactions(t.body[TxLevel.Top](tx))
+      .toVector
+      .exists(sub => holds[TxLevel.Sub](sub)(using BothLevels.Sub))
+
+  /** What the batch `tx` does to the UTxO set, as the dependency graph of a prepared block reads it
+    * (`TxDependencies.Footprint`, as Conway's, [[ConwayPhase2.footprint]], at every level). Every
+    * level's script context is built from the set before the batch (`mkStAnnTx` on `utxoL` before
+    * LEDGER, `Babbage/Rules/Ledgers.hs:132-133`; `ltiUTxO = utxo` at the top level and each
+    * sub-transaction, `mkDijkstraStAnnTopTx` and `mkDijkstraStAnnSubTx`,
+    * `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra.hs:111-219`, cardano-ledger 9df9f98c), and of
+    * the ledger's state the translations read only that set (`ltiUTxO`, beside the parameters'
+    * version, the era history and the system start, which a block does not change: `toPlutusTxInfo`
+    * of V1 to V4 and the spending datum, `Dijkstra/TxInfo.hs:338-345, 397-405, 438-448, 583-589,
+    * 945`). So it reads `allInputs` (`dijkstraAllInputsTxBodyF`): the top level's inputs,
+    * collateral inputs and reference inputs, and each sub-transaction's inputs and reference
+    * inputs. Flagged valid, it consumes the top level's inputs and each sub-transaction's, and
+    * creates the top level's outputs and each sub-transaction's under the sub-transaction's own id
+    * (`updateUTxOState`, `Babbage/Rules/Utxo.hs:449-486`; `updateUTxOAndInstantStake`,
+    * `Dijkstra/Rules/SubUtxo.hs:255-259`); flagged invalid, it consumes the top level's collateral
+    * and creates its collateral return (`mkCollateralTxIn`), and no sub-transaction changes the set
+    * (`Phase2Invalid -> pure utxoState`, `SubUtxo.hs:260-261`).
+    */
+  def footprint(tx: Tx[TxLevel.Top, Dijkstra]): TxDependencies.Footprint =
+    given BothLevels[TxLevel.Top] = BothLevels.Top
+    val body = t.body[TxLevel.Top](tx)
+    val id = b.id[TxLevel.Top](body)
+    val outputs = b.outputs[TxLevel.Top](body)
+    val subs =
+      b.subTransactions(body).toVector.map(sub => t.body[TxLevel.Sub](sub)(using BothLevels.Sub))
+    val reads: Set[TxIn] = b.allInputs(body)
+    t.isValid(tx) match
+      case IsPhase2Valid.Phase2Valid =>
+        TxDependencies.Footprint(
+          reads,
+          b.inputs[TxLevel.Top](body) ++ subs.flatMap(sub =>
+            b.inputs[TxLevel.Sub](sub)(using BothLevels.Sub)
+          ),
+          TxIn.txouts(id, outputs).map(_._1) ++ subs.flatMap { sub =>
+            given BothLevels[TxLevel.Sub] = BothLevels.Sub
+            TxIn.txouts(b.id[TxLevel.Sub](sub), b.outputs[TxLevel.Sub](sub)).map(_._1)
+          }
+        )
+      case IsPhase2Valid.Phase2Invalid =>
+        TxDependencies.Footprint(
+          reads,
+          b.collateralInputs(body),
+          TxIn.collOuts(id, outputs.size, b.collateralReturn(body)).toVector.map(_._1)
+        )
 
   /** The script `cause` the evaluator gave no verdict for, named as the other eras name it
     * ([[LedgerFailure.Unavailable]]): by its batch's id and its location ([[located]]), the script
