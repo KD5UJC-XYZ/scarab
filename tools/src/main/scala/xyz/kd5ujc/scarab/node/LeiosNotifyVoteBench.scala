@@ -8,7 +8,8 @@ import cats.syntax.all.*
 import fs2.concurrent.SignallingRef
 import java.lang.management.ManagementFactory
 import scala.concurrent.duration.*
-import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
+import xyz.kd5ujc.scarab.consensus.leios.TipCommittee
 import xyz.kd5ujc.scarab.crypto.bls.{
   Committee,
   RbHash,
@@ -42,7 +43,10 @@ import xyz.kd5ujc.scarab.storage.LeiosEbNotification
   * handler, so that the client waits for its replies as a client whose handler checks each vote's
   * signature does. Not part of `check`: run it from the tools classpath, with
   * `-Dcats.effect.tracing.mode=none` or without; it prints the median wall and process CPU
-  * microseconds per vote, and one signature check's, for scale.
+  * microseconds per vote, and one signature check's, for scale. It then takes fresh votes into a
+  * vote state of their committee, each added in its turn ([[LeiosVotes.add]]) or checked ahead and
+  * committed in its turn ([[LeiosVotes.verify]], [[LeiosVotes.commit]]), and prints the wall
+  * microseconds per vote of each.
   */
 object LeiosNotifyVoteBench extends IOApp.Simple:
   private given LeiosNotify.AnnouncementReader = _ => Right(())
@@ -71,6 +75,30 @@ object LeiosNotifyVoteBench extends IOApp.Simple:
       committee <- Committee.honoured(vks.map(vk => Seat(Weight.zero, Some(vk))))
     yield (votes, committee)).leftMap(e => new IllegalStateException(e.toString))
 
+  /** How the client takes each vote: counted only, added to a vote state in its turn, or checked
+    * ahead and committed in its turn.
+    */
+  private enum Taking derives CanEqual:
+    case Counting, Adding, CheckingAhead
+
+  /** Fresh votes of 16 seats for 125 announcing blocks, each needing its signature checked, and the
+    * committee they count against.
+    */
+  private val fresh: Either[Throwable, (Vector[Vote], TipCommittee)] =
+    (for
+      keys <- (0 until 16).toVector.traverse(i =>
+        Seed.fromBytes(bytes(32, i)).flatMap(SecretKey.generate)
+      )
+      hashes = (0 until 125).toVector.flatMap(i => RbHash.fromBytes(bytes(32, 1000 + i)).toVector)
+      votes <- (for
+        h <- hashes
+        (k, seat) <- keys.zipWithIndex
+      yield SeatId.fromInt(seat).flatMap(Vote.sign(k, _, h))).sequence
+      vks <- keys.traverse(VerificationKey.derive)
+      committee <- Committee.honoured(vks.map(vk => Seat(Weight(Rational(1, 16)), Some(vk))))
+    yield (votes, TipCommittee(committee, Weight(Rational(3, 4)))))
+      .leftMap(e => new IllegalStateException(e.toString))
+
   /** Votes `from` to `votes` of `pool` in turn, each once the server has counted a request for it
     * and the window has room for it.
     */
@@ -86,7 +114,13 @@ object LeiosNotifyVoteBench extends IOApp.Simple:
       produced(counted, ahead, acquired, pool, from + 1, votes)).whenA(from < votes)
 
   /** One round: microseconds of wall and of process CPU per vote. */
-  private def round(pool: Vector[Vote], votes: Int, window: Int): IO[(Double, Double)] =
+  private def round(
+      pool: Vector[Vote],
+      votes: Int,
+      window: Int,
+      taking: Taking = Taking.Counting,
+      tip: Option[TipCommittee] = None
+  ): IO[(Double, Double)] =
     Handle
       .allow[NetworkError] {
         Bearer.inMemory[IO](256).flatMap { (a, b) =>
@@ -116,18 +150,48 @@ object LeiosNotifyVoteBench extends IOApp.Simple:
                   replies.use(r => LeiosNotifyServer.run(theirs, countingRequests(r, counted)))
                 )
                 .start
-              handle: (LeiosNotification => Raise[IO, NetworkError] ?=> IO[Unit]) = n =>
-                n match
-                  case LeiosNotification.Votes(vs) =>
-                    ahead.release *> delivered
-                      .updateAndGet(_ + vs.size)
-                      .flatMap(d => stop.complete(()).void.whenA(d >= votes))
-                  case _ => IO.unit
-              client <- Fibers
-                .scoped[IO, NetworkError, Unit](NetworkError.Defect(_))(
-                  LeiosNotifyPipelined.run[IO](ours, stop, gate, handle)
-                )
-                .start
+              state <- LeiosVotes.create[IO](
+                IO.pure(Right(tip)),
+                IO.pure(_ => true),
+                math.max(1, VerificationCache.defaultParallelism / 2)
+              )
+              taken = (n: Int) =>
+                ahead.release.replicateA_(n) *> delivered
+                  .updateAndGet(_ + n)
+                  .flatMap(d => stop.complete(()).void.whenA(d >= votes))
+              conversing = [P] =>
+                (handling: LeiosNotifyPipelined.Handling[IO, P]) =>
+                  Fibers
+                    .scoped[IO, NetworkError, Unit](NetworkError.Defect(_))(
+                      LeiosNotifyPipelined.run[IO, P](ours, stop, gate, handling)
+                    )
+                    .start
+              client <- taking match
+                case Taking.Counting =>
+                  conversing(LeiosNotifyPipelined.Handling.inOrder[IO] {
+                    case LeiosNotification.Votes(vs) => taken(vs.size)
+                    case _                           => IO.unit
+                  })
+                case Taking.Adding =>
+                  conversing(LeiosNotifyPipelined.Handling.inOrder[IO] {
+                    case LeiosNotification.Votes(vs) =>
+                      undefective(vs.traverse_(state.add)) *> taken(vs.size)
+                    case _ => IO.unit
+                  })
+                case Taking.CheckingAhead =>
+                  conversing(
+                    LeiosNotifyPipelined.Handling[IO, Vector[LeiosVotes.Verified]](
+                      {
+                        case LeiosNotification.Votes(vs) =>
+                          LeiosNotifyPipelined.Prepared.Ahead(
+                            vs.traverse(state.verify),
+                            vs.map(LeiosVotes.Verified.unread)
+                          )
+                        case _ => LeiosNotifyPipelined.Prepared.Ready(Vector.empty)
+                      },
+                      vs => undefective(vs.traverse_(state.commit)) *> taken(vs.size)
+                    )
+                  )
               (began, cpu) <- (IO.monotonic, cpuNanos).tupled
               producer <- produced(counted, ahead, acquired, pool, 0, votes).start
               _ <- stop.get.timeout(120.seconds)
@@ -159,6 +223,12 @@ object LeiosNotifyVoteBench extends IOApp.Simple:
       def poll: IO[Option[LeiosNotifyServer.Reply]] = replies.poll
       def pump: IO[Unit] = replies.pump
 
+  /** A defect of the vote state ends the bench. */
+  private def undefective[A](body: Raise[IO, LeiosVotesDefect] ?=> IO[A]): IO[A] =
+    Handle
+      .allow[LeiosVotesDefect](body)
+      .rescue(d => IO.raiseError(new IllegalStateException(s"vote state defect: $d")))
+
   private def median(xs: List[Double]): Double = xs.sorted.apply(xs.size / 2)
 
   /** Microseconds of one signature check ([[Vote.verify]]), for scale. */
@@ -184,6 +254,20 @@ object LeiosNotifyVoteBench extends IOApp.Simple:
           f"BENCH leios-notify votes, tracing $tracing, window $window: " +
             f"${median(samples.map(_._1))}%8.2f us wall, ${median(samples.map(_._2))}%8.2f us cpu a vote; " +
             f"one signature check $verify%8.2f us"
+        )
+        checked <- IO.fromEither(fresh)
+        (fresh, tip) = checked
+        both = (
+          round(fresh, fresh.size, window, Taking.Adding, Some(tip)),
+          round(fresh, fresh.size, window, Taking.CheckingAhead, Some(tip))
+        ).tupled
+        _ <- both // warm-up
+        rounds <- both.replicateA(3)
+        _ <- IO.println(
+          f"BENCH leios-notify votes checked, window $window: one at a time " +
+            f"${median(rounds.map(_._1._1))}%8.2f us a vote, checked ahead " +
+            f"${median(rounds.map(_._2._1))}%8.2f us a vote, " +
+            f"${math.max(1, VerificationCache.defaultParallelism / 2)} checks at once"
         )
       yield ()
     }
