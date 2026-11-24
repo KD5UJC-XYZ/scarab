@@ -90,11 +90,13 @@ object LeiosCertifying:
       reached: Boolean
   )
 
-  /** `entries` with the application whose state is `state` reached, and the reached ones beyond the
-    * newest [[Kept]] dropped, the running ones all kept.
+  /** `entries` with the application whose state is `state` reached, as the newest reached one, and
+    * the reached ones beyond the newest [[Kept]] dropped, the running ones all kept: an application
+    * that ran long is not dropped as it is reached.
     */
   private def reached[F[_]](entries: Vector[Entry[F]], state: AnyRef): Vector[Entry[F]] =
-    val marked = entries.map(e => if e.state eq state then e.copy(reached = true) else e)
+    val (mine, others) = entries.partition(_.state eq state)
+    val marked = others ++ mine.map(_.copy(reached = true))
     val surplus = marked.count(_.reached) - Kept
     if surplus <= 0 then marked
     else

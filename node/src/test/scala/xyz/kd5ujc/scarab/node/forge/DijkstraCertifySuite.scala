@@ -3,7 +3,6 @@ package xyz.kd5ujc.scarab.node.forge
 
 import cats.data.NonEmptyVector
 import cats.effect.{Deferred, IO, Ref}
-import cats.effect.testkit.TestControl
 import cats.mtl.{Handle, Raise}
 import cats.syntax.all.*
 import io.circe.parser
@@ -846,16 +845,16 @@ class DijkstraCertifySuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       assertEquals((after, reapplied), (Right(nes), 2))
   }
 
-  // The three below run their callers under TestControl, whose scheduler runs a fiber started until
-  // it waits: after `IO.cede` a waiter is waiting on the application it found, before the
-  // application is let go or cancelled, on every schedule.
+  // In the three below a call started while the application runs may find it running or, on
+  // another schedule, only after it ended: the results and the count of applications asserted are
+  // the same either way, which is what the memo promises its callers.
 
   test(
     "a call that waited never gets the application's refusal: it asks again and applies it (#1380)"
   ) {
     state36.flatMap { state =>
       val nes = nesOf(state)
-      TestControl.executeEmbed(
+      (
         for
           runs <- Ref.of[IO, Int](0)
           entered <- Deferred[IO, Unit]
@@ -872,7 +871,6 @@ class DijkstraCertifySuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           owner <- applied(memo, state, Some(tip36), ebHash(1)).start
           _ <- entered.get
           waiter <- applied(memo, state, Some(tip36), ebHash(1)).start
-          _ <- IO.cede
           _ <- gate.complete(())
           own <- owner.joinWithNever
           waited <- waiter.joinWithNever
@@ -887,7 +885,7 @@ class DijkstraCertifySuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   ) {
     state36.flatMap { state =>
       val nes = nesOf(state)
-      TestControl.executeEmbed(
+      (
         for
           runs <- Ref.of[IO, Int](0)
           entered <- Deferred[IO, Unit]
@@ -900,7 +898,6 @@ class DijkstraCertifySuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           // three others reached, one more than the bound keeps
           _ <- List(2, 3, 4).traverse_(b => applied(memo, state, Some(tip36), ebHash(b)))
           again <- applied(memo, state, Some(tip36), ebHash(1)).start
-          _ <- IO.cede
           _ <- gate.complete(())
           first <- held.joinWithNever
           second <- again.joinWithNever
@@ -918,7 +915,7 @@ class DijkstraCertifySuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   test("after a cancelled application the calls that waited apply the closure once (#1380)") {
     state36.flatMap { state =>
       val nes = nesOf(state)
-      TestControl.executeEmbed(
+      (
         for
           runs <- Ref.of[IO, Int](0)
           began <- Deferred[IO, Unit]
@@ -928,7 +925,6 @@ class DijkstraCertifySuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           stuck <- applied(memo, state, Some(tip36), ebHash(1)).start
           _ <- began.get
           waiters <- List.fill(3)(applied(memo, state, Some(tip36), ebHash(1)).start).sequence
-          _ <- IO.cede
           _ <- stuck.cancel
           results <- waiters.traverse(_.joinWithNever)
           n <- runs.get
