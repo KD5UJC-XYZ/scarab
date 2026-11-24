@@ -6467,7 +6467,6 @@
    "class uplc.builtin.Builtins": null,
    "class uplc.builtin.Prepared": null,
    "class uplc.builtin.UnliftingFailure": null,
-   "class uplc.builtin.core.Done": null,
    "class uplc.builtin.core.Reading": null,
    "class uplc.cek.Cause": null,
    "class uplc.cek.CekEvaluated": null,
