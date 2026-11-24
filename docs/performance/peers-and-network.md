@@ -629,3 +629,62 @@ functional walk stays 1.4 to 2.4 times slower and allocates 4 to 9 times as much
 form (FUN-2 (a)). Before, a message that arrived in many SDUs, with a decode attempt after each, was read from its
 start on every attempt; `PacedDecodingSuite` checks, for the shapes it paces, that no head read whole is read
 again, and where a part read whole was copied, that the bytes allocated grow with the message, not its square.
+
+## 62. Chain selection from the admitted block, through the forest's successors index (#810)
+
+Chain selection now finds a first admission's candidates from the admitted block alone. It walks back to the selected
+chain and on through the processed forest's successors index, which is kept as the reference's VolatileDB keeps
+`currentSuccMap` (ouroboros-consensus 82ecba32 `Storage/VolatileDB/Impl.hs:436,518-551`). The LoE reprocessing pass
+walks from the successors of each selected point. Before, every selection sorted the whole forest, checked each key
+and the forest's acyclicity, rebuilt the successors with `groupBy`, and walked from every selected point. The
+candidates and their order are unchanged (`AvailableBlocksPropertySuite`).
+
+**Harness and environment.**
+- *Syncs*: mainnet syncs from origin on a 24-core host, 10 minutes each. Each ran in a `scarab-jdk:local` container with
+  `--cpus 6 --memory 12g` and JFR at its default settings, one run at a time.
+  - Genesis mode used the peer snapshot and topology of 2026-11-24; Praos mode used a copy of the mainnet
+    configuration with `ConsensusMode: PraosMode` and the two backbone relays.
+  - The runs at `b32068ea9` shared the host with two devnet scenarios.
+  - The syncs are bound by the network and by their peers, so a block rate is one sample of a varying quantity;
+    the shares of samples are steadier.
+- *Microbenchmark*: `tools/runMain xyz.kd5ujc.scarab.node.SelectionReviewBenchmark` (section 39's harness, with a
+  condition added to both builds: the block after the tip of a 2,160-block window, which is published afresh on each
+  call as a commit publishes it). Thread CPU time of 100 calls after 20 warm-up calls.
+- Raw logs and profiles are not published.
+
+<!-- register:table perf-68.t1 -->
+| Mainnet sync from origin, 10 minutes | Blocks adopted | Blocks/s while moving | `selectLocked` share of samples | `AvailableBlocks` share of samples |
+|---|---:|---:|---:|---:|
+| Genesis mode, before (`e201a84bc`) | 49,657 | 85.1 | 23.3% | 18.4% |
+| Genesis mode, after (`5eb6c6991`) | 52,867 | 89.0 | 4.4% | 4.2% |
+| Genesis mode, after (`b32068ea9`) | 71,256 | 122.9 | 4.7% | 4.4% |
+| Praos mode, before (`e201a84bc`) | 49,851 | 83.9 | 12.3% | 9.4% |
+| Praos mode, after (`5eb6c6991`) | 76,823 | 128.8 | 2.3% | 2.1% |
+| Praos mode, after (`b32068ea9`) | 88,599 | 148.5 | 2.2% | 2.1% |
+<!-- /register -->
+
+<!-- register:table perf-68.t2 -->
+| Forest (`SelectionReviewBenchmark`) | Call | Thread CPU ms per call, before (`e201a84bc`) | Thread CPU ms per call, after (`95607c735`) |
+|---|---|---:|---:|
+| Linear, 128 blocks, Origin selected | first admission of the last block | 0.355 | 0.267 |
+| Linear, 128 blocks, Origin selected | full pass (LoE reprocessing) | 0.477 | 0.241 |
+| Independent forks, 128 blocks, Origin selected | first admission of the last block | 0.137 | 0.011 |
+| Independent forks, 128 blocks, Origin selected | full pass (LoE reprocessing) | 0.588 | 0.293 |
+| Linear, 1,024 blocks, Origin selected | first admission of the last block | 1.492 | 0.561 |
+| Linear, 1,024 blocks, Origin selected | full pass (LoE reprocessing) | 1.550 | 0.251 |
+| Independent forks, 1,024 blocks, Origin selected | first admission of the last block | 0.746 | 0.003 |
+| Independent forks, 1,024 blocks, Origin selected | full pass (LoE reprocessing) | 2.325 | 1.664 |
+| Linear, 4,096 blocks, Origin selected | first admission of the last block | 6.727 | 1.513 |
+| Linear, 4,096 blocks, Origin selected | full pass (LoE reprocessing) | 6.444 | 0.902 |
+| Independent forks, 4,096 blocks, Origin selected | first admission of the last block | 3.325 | 0.002 |
+| Independent forks, 4,096 blocks, Origin selected | full pass (LoE reprocessing) | 9.995 | 5.839 |
+| Linear, 2,500 blocks, 2,160 selected, a fresh window each call | first admission of the block after the tip | 4.203 | 0.882 |
+| Linear, 4,096 blocks, 2,160 selected, a fresh window each call | first admission of the block after the tip | 4.449 | 0.761 |
+<!-- /register -->
+
+What is left in `AvailableBlocks` in the syncs is almost all the build of the window's index by hash, on its first
+lookup, once per published window. Before, the window's set of points was built at the same place. The forest's own
+lookups also appear in the profiles, but they are mostly the BlockFetch decision's `Fetched` check, the same lookup
+as before under another name. A first admission walks the blocks between the selected chain and the admitted block.
+When the LoE holds the selection back, that path is long (the linear forests above); the candidate it returns is as
+long. A full pass still walks every visible block after the selected chain.
