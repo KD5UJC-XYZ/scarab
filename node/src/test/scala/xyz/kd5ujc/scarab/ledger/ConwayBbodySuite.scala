@@ -1614,6 +1614,58 @@ class ConwayBbodySuite extends FailsOnUncaught:
       }
   }
 
+  /** `evaluator`, counting the scripts it is asked to run. */
+  private final class CountingOf(evaluator: ScriptEvaluator[cats.Id])
+      extends ScriptEvaluator[cats.Id]:
+    private val runs = new java.util.concurrent.atomic.AtomicInteger(0)
+    def evaluate(request: EvalRequest): EvalResult =
+      val _ = runs.incrementAndGet()
+      evaluator.evaluate(request)
+    def count: Int = runs.get
+
+  test(
+    "a block past maxBlockExUnits is never prepared: at 1, 2, 4 and 8 workers the era run evaluates the scripts the serial run evaluates, to its result"
+  ) {
+    val Dependent(utxo, txs) = dependent
+    // the block may hold one redeemer's units of its four
+    val over = holding(utxo, _.copy(maxBlockExUnits = redeemerUnits))
+    // as flagged, every script run and BBODY's refusal after LEDGERS for the units; with a verdict
+    // that is not its flag's, the third's or the second's, no later script is run
+    // (`whenFailureFree`)
+    Vector(Vector(2) -> 4, Vector.empty[Int] -> 3, Vector(1, 2) -> 2).traverse_ {
+      (invalid, evaluated) =>
+        val raw = blockOf(txs, invalid = invalid)
+        // within the units, the body is prepared, every script a job
+        val within = judge(third, raw, change = holding(utxo))
+        assert(within.program(within.replaying(), None, Verdicts.Direct).worthwhile, s"$invalid")
+        val j = judge(third, raw, change = over)
+        assert(
+          j.eraFailures.exists {
+            case ConwayBbodyPredFailure.TooManyExUnits(_) => true
+            case _                                        => false
+          },
+          s"$invalid: ${j.eraFailures}"
+        )
+        val body = j.program(j.replaying(), None, Verdicts.Direct)
+        assert(!body.worthwhile, s"$invalid")
+        assertEquals(body.prepare.jobs, Vector.empty, s"$invalid")
+        val serialRuns = CountingOf(j.replaying())
+        val serial = j.program(serialRuns, None, Verdicts.Direct).serial
+        assertEquals(serialRuns.count, evaluated, s"$invalid")
+        Vector(1, 2, 4, 8).traverse_ { n =>
+          val runs = CountingOf(j.replaying())
+          ParallelPlutus.Workers
+            .from(n)
+            .fold(e => IO(fail(s"$e")), ParallelPlutus.create[IO](_))
+            .flatMap(_(j.program(runs, None, Verdicts.Direct)))
+            .map { result =>
+              samePlanned(s"$invalid at $n workers", serial, Right(result))
+              assertEquals(runs.count, serialRuns.count, s"$invalid at $n workers")
+            }
+        }
+    }
+  }
+
   /** The node's evaluator but on `at`, the request of a script whose evaluation ends in `defect`, a
     * raw defect of the implementation.
     */
