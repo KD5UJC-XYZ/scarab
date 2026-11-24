@@ -1363,7 +1363,7 @@
         "NtcQuery",
         "QueryAnswers",
         "RewardQueries",
-        "PredicateFailureCbor",
+        "ConwayFailureCbor",
         "GenesisConfig"
       ],
       "suites": [

@@ -272,12 +272,6 @@
   {
    "kind": "missing-path",
    "path": "docs/architecture/node-to-client.md",
-   "key": "ledger/PredicateFailure.scala",
-   "count": 1
-  },
-  {
-   "kind": "missing-path",
-   "path": "docs/architecture/node-to-client.md",
    "key": "network/LocalStateQueryServer.scala",
    "count": 1
   },
