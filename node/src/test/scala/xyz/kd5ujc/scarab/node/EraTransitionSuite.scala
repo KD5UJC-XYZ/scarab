@@ -732,7 +732,7 @@ class EraTransitionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   test("a Byron header signed over different content is rejected") {
     val main = headers(5).asInstanceOf[Header.Byron].main.get
     val bad = withHeader(5)(_.copy(main = Some(main.copy(signed = flip(main.signed, 40)))))
-    assert(byronUpdate(5, bad).isLeft)
+    assertEquals(byronUpdate(5, bad).map(_ => ()), Left(ledger.ByronChainError.SignatureRejected))
   }
 
   test("a Byron header from a foreign delegate is rejected, not accepted unchecked") {
@@ -744,26 +744,40 @@ class EraTransitionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         Some(main.copy(signature = delegated.copy(delegate = flip(delegated.delegate, 0))))
       )
     )
-    assert(byronUpdate(5, other).isLeft)
+    assertEquals(byronUpdate(5, other).map(_ => ()), Left(ledger.ByronChainError.SignatureRejected))
   }
 
   test("a Byron block whose body does not match the header's proof is rejected") {
     val b = byronBlock(5)
     val proof = b.header.bodyProof
     val bad = b.copy(header = b.header.copy(bodyProof = flip(proof, proof.size - 3)))
-    val result = byronUpdate(5, bad)
-    assert(result.isLeft, result.toString)
+    // the flipped byte lies in the last part of the proof, the update payload's
+    assertEquals(
+      byronUpdate(5, bad).map(_ => ()),
+      Left(
+        ledger.ByronChainError.Ledger(
+          ledger.byron.ByronError.ProofMismatch(ledger.byron.ByronError.Proof.Update)
+        )
+      )
+    )
   }
 
   test("a Byron block that skips its predecessor or has the wrong magic is rejected") {
     val b = byronBlock(5)
-    assert(byronUpdate(5, b, from = 3).isLeft)
-    assert(byronUpdate(5, withHeader(5)(_.copy(protocolMagic = 1))).isLeft)
+    def skipped(result: Either[ledger.ByronChainError | ledger.ProviderDefect, Any]): Unit =
+      result match
+        case Left(ledger.ByronChainError.PreviousHash(actual, _)) =>
+          assertEquals(actual, b.header.prevHash)
+        case other => fail(s"not a previous-hash refusal: $other")
+    skipped(byronUpdate(5, b, from = 3))
+    assertEquals(
+      byronUpdate(5, withHeader(5)(_.copy(protocolMagic = 1))).map(_ => ()),
+      Left(ledger.ByronChainError.ProtocolMagic(1, b.header.protocolMagic))
+    )
     val first = states(0).consensus.byron
-    assert(
+    skipped(
       ByronRules
         .update(ByronRules.State(None, first.ledger.get, first.pbft), b, setup.byronRules.get)
-        .isLeft
     )
   }
 
@@ -815,12 +829,22 @@ class EraTransitionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     assert(result.left.exists(_.rule == BlockRule.Structure), result.toString)
   }
 
-  test("a Shelley block with a flipped body byte fails the body commitment") {
-    val i = blocks.indexWhere(b => b.era == Era.Mary)
-    val raw = raws(i)
-    val bad = Bytes(raw.value.updated(raw.size - 2, (raw.value(raw.size - 2) ^ 1).toByte))
-    val result = applyBlock(states(i), headers(i), bad)
-    assert(result.isLeft, result.toString)
+  test("a Shelley block with another block's body fails the body commitment") {
+    // The header of one Mary block before the body of another: the bytes still decode, so the
+    // refusal is the commitment's. (A flipped byte of an empty body is a decoding failure.)
+    def body(k: Int): Vector[Byte] =
+      val raw = raws(k).value
+      val at = raw.indexOfSlice(headers(k).raw.value)
+      assert(at >= 0, s"block $k does not hold its header's bytes")
+      raw.drop(at + headers(k).raw.size)
+    val mary = blocks.indices.filter(blocks(_).era == Era.Mary)
+    val i = mary.headOption.getOrElse(fail("no Mary block in the fixture"))
+    val j = mary.find(body(_) != body(i)).getOrElse(fail("the Mary blocks have one body"))
+    val spliced = Bytes(raws(i).value.dropRight(body(i).size) ++ body(j))
+    assertEquals(
+      applyBlock(states(i), headers(i), spliced).left.toOption,
+      Some(BlockFailure.BodyCommitment)
+    )
   }
 
   // ---------------------------------------------------------------- the chain model across eras
