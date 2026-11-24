@@ -724,7 +724,7 @@ object HeaderCheck:
                 )
               )
             case Some(prefix) =>
-              val restored = prefix.map(equality.flip)
+              val restored = equality.flip.substituteCo[HeaderChain](prefix)
               F.uncancelable(_ =>
                 state.set(restored) *> knownSelection.set(Some(selection)) *> prepared.set(None)
               ).as(Right(()))
