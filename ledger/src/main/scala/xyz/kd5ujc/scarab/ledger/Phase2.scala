@@ -79,7 +79,10 @@ object Phase2:
     def serial: A
     def hasScripts: Boolean
 
-    /** Whether preparation can pay: more than one transaction carries redeemers. */
+    /** Whether preparation can pay and stays within what the block may evaluate: more than one
+      * transaction carries redeemers, and their execution units are within the block's limit
+      * (BBODY's `validateExUnits`, which it checks only after LEDGERS).
+      */
     def worthwhile: Boolean
     def prepare: Plan[A]
 

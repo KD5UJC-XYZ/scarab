@@ -80,15 +80,19 @@ object PreparedBlockFixture:
     tx.body.inputs.map(_ -> scriptOutput) ++
       tx.body.collateral.map(_ -> TestLedger.out(owner.address(), 10000000))
   )
-  private val initial = NewEpochState.empty[Conway](EpochNo.fromBigInt(5).toOption.get, params)
-  val state: EraNes = EraNes.InEra(
-    ShelleyBasedEra.SConway,
-    initial.copy(es =
-      initial.es.copy(ls =
-        initial.es.ls.copy(utxo = initial.es.ls.utxo.copy(utxo = UtxoTables(utxo)))
+
+  /** The fixture's Conway state, its parameters `pp`. */
+  private def conwayState(pp: ProtocolParams): EraNes =
+    val initial = NewEpochState.empty[Conway](EpochNo.fromBigInt(5).toOption.get, pp)
+    EraNes.InEra(
+      ShelleyBasedEra.SConway,
+      initial.copy(es =
+        initial.es.copy(ls =
+          initial.es.ls.copy(utxo = initial.es.ls.utxo.copy(utxo = UtxoTables(utxo)))
+        )
       )
     )
-  )
+  val state: EraNes = conwayState(params)
   private val empty = Bytes.empty
   val header = Header.Shelley(
     Era.Conway,
@@ -113,7 +117,8 @@ object PreparedBlockFixture:
       observer: Option[Phase2.Observation => Unit] = None,
       verdicts: Verdicts = Verdicts.Direct,
       decoder: xyz.kd5ujc.scarab.plutus.ScriptDecoder[Id] =
-        xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder
+        xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder,
+      maxBlockExUnits: ExUnits = params.maxBlockExUnits
   ): EraBlock.Body =
     val block = Block.Shelley(
       Era.Conway,
@@ -131,7 +136,13 @@ object PreparedBlockFixture:
       decoder = decoder,
       verdicts = verdicts
     )
-    EraBlock.program(ctx)(state, header, block, transactions.map(Right(_)), PlutusStats.zero)
+    EraBlock.program(ctx)(
+      conwayState(params.copy(maxBlockExUnits = maxBlockExUnits)),
+      header,
+      block,
+      transactions.map(Right(_)),
+      PlutusStats.zero
+    )
 
   val collectionFailure: Vector[Tx] = txs.updated(
     1,
@@ -143,10 +154,16 @@ object PreparedBlockFixture:
     )
   )
 
-  def babbage(evaluator: ScriptEvaluator[Id]): EraBlock.Body =
+  def babbage(
+      evaluator: ScriptEvaluator[Id],
+      maxBlockExUnits: ExUnits = params.maxBlockExUnits
+  ): EraBlock.Body =
     val pp = params.copy(protocolMajor = 8)
     val transactions = txs.map(resign[Babbage](_, pp))
-    val emptyState = NewEpochState.empty[Babbage](EpochNo.fromBigInt(5).toOption.get, pp)
+    val emptyState = NewEpochState.empty[Babbage](
+      EpochNo.fromBigInt(5).toOption.get,
+      pp.copy(maxBlockExUnits = maxBlockExUnits)
+    )
     val from = emptyState.copy[Babbage](es =
       emptyState.es.copy[Babbage](ls =
         emptyState.es.ls

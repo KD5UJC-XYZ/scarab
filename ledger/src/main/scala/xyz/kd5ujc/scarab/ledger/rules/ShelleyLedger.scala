@@ -16,6 +16,7 @@ import xyz.kd5ujc.scarab.ledger.{
   TxEnv
 }
 import xyz.kd5ujc.scarab.ledger.state.{Withdrawals as _, *}
+import xyz.kd5ujc.scarab.plutus.ExUnits
 
 // LEDGER, LEDGERS and BBODY for the eras before Conway (`Shelley/Rules/Ledger.hs`, `Ledgers.hs`,
 // `Bbody.hs`, with `Alonzo/Rules/Ledger.hs`, `Bbody.hs`), on the ledger state counted with the
@@ -162,6 +163,16 @@ object ShelleyBbody:
     val s = slot - firstSlot
     (Rational(s) * d).ceil < (Rational(s + 1) * d).ceil
 
+  /** The execution units of the block's transactions when they exceed the limit of `pp`: Alonzo's
+    * BBODY, which Babbage's is, checks them at any version (`validateExUnits`,
+    * `Alonzo/Rules/Bbody.hs:212` (cardano-ledger f649f975), after LEDGERS,
+    * [[Bbody.exUnitsExceeded]]); Shelley's has no such check.
+    */
+  def exUnitsExceeded[E <: EraTag](pp: ProtocolParams, txs: Vector[Tx])(using
+      pre: PreConway[E]
+  ): Option[ExUnits] =
+    if pre.atLeast(ShelleyBasedEra.SAlonzo) then Bbody.exUnitsExceeded(pp, txs) else None
+
   def sts[E <: EraTag](using
       pre: PreConway[E]
   ): Sts[ShelleyBbodyEnv, ShelleyBbodyState[E], BbodySignal, BlockFailure] =
@@ -195,10 +206,10 @@ object ShelleyBbody:
             ShelleyLedgerEnv(env.ctx, env.account),
             signal.txs
           )
-          // Alonzo's BBODY, which Babbage's is, at any version; Shelley's has no such check
           _ <- Sts.require[F, BlockFailure](
-            (if pre.atLeast(ShelleyBasedEra.SAlonzo) then Bbody.exUnitsExceeded(pp, signal.txs)
-             else None).map(BlockFailure.BlockExUnitsTooBig(_, pp.maxBlockExUnits))
+            exUnitsExceeded[E](pp, signal.txs).map(
+              BlockFailure.BlockExUnitsTooBig(_, pp.maxBlockExUnits)
+            )
           )
           counted = !isOverlaySlot(
             globals.firstSlot(env.ctx.epoch),

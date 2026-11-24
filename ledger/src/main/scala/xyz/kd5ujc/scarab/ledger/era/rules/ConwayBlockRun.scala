@@ -22,6 +22,7 @@ import xyz.kd5ujc.scarab.ledger.{
   Verdicts
 }
 import xyz.kd5ujc.scarab.ledger.era.{
+  AlonzoEraPParams,
   Block,
   EraBlockBody,
   EraBlockHeader,
@@ -738,32 +739,55 @@ object ConwayBlockRun:
           Right(Left(Refusal.Stopped(failures, defect)))
         case RuleT.Outcome.Refused(failures) => Right(Left(Refusal.Failed(failures)))
         case RuleT.Outcome.Passed(after, _)  => Right(Right(written(after) -> after.told))
-    Body(txs, evaluator, observing, run)
+    // BBODY's own check of the block's units (`validateExUnits`, after LEDGERS): a body past
+    // them is never prepared
+    val withinUnits =
+      given EraTx.conway.bodyOf.Level[TxLevel.Top] = EraTx.conway.bodyOf.top
+      AlonzoBbody
+        .validateExUnits[Conway](
+          txs,
+          AlonzoEraPParams.ppMaxBlockExUnitsL[Conway].get(env.bbodyPp).units
+        )
+        .isValid
+    Body(txs, evaluator, observing, withinUnits, run)
 
   /** Conway's run on a block as a body program (`Phase2.Program`): [[serial]] is the run with every
     * script evaluated where UTXOS collects it; [[prepare]] runs the same rules once, in order, with
     * the scripts of each transaction deferred, and its [[Plan]] lands their verdicts.
+    *
+    * A body whose transactions declare more execution units than the block may hold (`withinUnits`
+    * false: BBODY's `validateExUnits`, `TooManyExUnits`, which it checks only after LEDGERS) is
+    * never prepared: it is not [[worthwhile]], and its plan has no job, its result the serial
+    * run's. A prepared body evaluates its recorded scripts before the first verdict lands, some of
+    * which the serial run may never reach (`whenFailureFree` after a verdict that is not its
+    * flag's), so what it can evaluate ahead stays within the units an admissible block declares.
     */
   final class Body private[ConwayBlockRun] (
       txs: Vector[Tx[TxLevel.Top, Conway]],
       evaluator: ScriptEvaluator[Id],
       observing: Option[Observing],
+      withinUnits: Boolean,
       run: Mode => Ran
   ) extends Phase2.Program[Result]:
     def serial: Result = settled(txs, run(Mode.Evaluating(Nil)), Map.empty)
     def hasScripts: Boolean = txs.exists(ConwayPhase2.redeeming)
-    def worthwhile: Boolean = txs.count(ConwayPhase2.redeeming) > 1
+    def worthwhile: Boolean = withinUnits && txs.count(ConwayPhase2.redeeming) > 1
     def prepare: Plan =
-      val (tentative, recorded) =
-        Phase2.captured[Recorded, Ran](recorder => run(Mode.Preparing(recorder)))
-      Plan(
-        tentative,
-        recorded,
-        txs,
-        evaluator,
-        observing,
+      val replay: List[(EvalRequest, EvalResult)] => Result =
         answers => settled(txs, run(Mode.Evaluating(answers)), Map.empty)
-      )
+      if withinUnits then
+        val (tentative, recorded) =
+          Phase2.captured[Recorded, Ran](recorder => run(Mode.Preparing(recorder)))
+        Plan(tentative, recorded, txs, evaluator, observing, replay)
+      else
+        Plan(
+          Either.catchNonFatal(run(Mode.Evaluating(Nil))).leftMap(Phase2.Defect(_)),
+          Vector.empty,
+          txs,
+          evaluator,
+          observing,
+          replay
+        )
 
   /** Where the landing of a plan's deferred scripts stops: at a raw defect, or at the first
     * transaction whose scripts' verdict is not the one its flag announces, or gives none.
