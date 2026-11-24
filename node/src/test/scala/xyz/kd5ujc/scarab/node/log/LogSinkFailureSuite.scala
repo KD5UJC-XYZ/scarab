@@ -5,7 +5,10 @@ import java.io.IOException
 import java.nio.charset.StandardCharsets.UTF_8
 import java.nio.file.{DirectoryNotEmptyException, Files, Path}
 import scala.jdk.CollectionConverters.*
-import cats.effect.{IO, Ref}
+import scala.concurrent.duration.*
+import cats.effect.{Deferred, IO, Ref}
+import cats.effect.std.Queue
+import cats.effect.testkit.TestControl
 import cats.syntax.all.*
 import io.circe.parser.parse
 import xyz.kd5ujc.scarab.consensus.FollowerEvent
@@ -56,7 +59,7 @@ class LogSinkFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       fault <- Ref.of[IO, Boolean](true)
       failingTook <- Ref.of[IO, Vector[String]](Vector.empty)
       otherTook <- Ref.of[IO, Vector[String]](Vector.empty)
-      reports <- Ref.of[IO, Vector[SinkReport]](Vector.empty)
+      seen <- Queue.unbounded[IO, SinkReport]
       // the failing sink first, so that its failure would stop the others if it escaped
       failing = (text: String) =>
         fault.get.ifM(
@@ -65,11 +68,11 @@ class LogSinkFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         )
       other = (text: String) => otherTook.update(_ :+ text).as(().asRight[SinkError])
       outputs = List((Sink.File, Format.Json, failing), (Sink.Stdout, Format.Json, other))
-      _ <- LogRouter.routed[IO](settings, outputs, r => reports.update(_ :+ r)).use { log =>
+      _ <- LogRouter.routed[IO](settings, outputs, seen.offer, 64, 1.minute).use { log =>
         for
           _ <- emit(log, 0 until 3)
-          during <- reports.get
-          _ = assertEquals(during, Vector(SinkReport.Failed(Sink.File, SinkError.Write(full))))
+          first <- seen.take
+          _ = assertEquals(first, SinkReport.Failed(Sink.File, SinkError.Write(full)))
           _ <- fault.set(false)
           _ <- emit(log, 3 until 5)
           _ <- fault.set(true)
@@ -78,14 +81,13 @@ class LogSinkFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       }
       took <- failingTook.get
       others <- otherTook.get
-      reported <- reports.get
+      reported <- seen.tryTakeN(None)
     yield
       assertEquals(slots(others.toList), (0 until 7).toList)
       assertEquals(slots(took.toList), List(3, 4))
       assertEquals(
         reported,
-        Vector(
-          SinkReport.Failed(Sink.File, SinkError.Write(full)),
+        List(
           SinkReport.Recovered(Sink.File, 3),
           SinkReport.Failed(Sink.File, SinkError.Write(full)),
           SinkReport.Closed(Sink.File, 2)
@@ -100,13 +102,14 @@ class LogSinkFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       file = dir.resolve("node.jsonl")
       _ <- IO.blocking(Files.createSymbolicLink(file, devFull))
       reports <- Ref.of[IO, Vector[SinkReport]](Vector.empty)
-      _ <- LogRouter.reporting[IO](fileSettings(file), r => reports.update(_ :+ r)).use { log =>
-        emit(log, 0 until 3) *>
-          IO.blocking {
-            Files.delete(file)
-            Files.createSymbolicLink(file, Files.createFile(dir.resolve("disk")))
-          } *>
-          emit(log, 3 until 5)
+      _ <- LogRouter.reporting[IO](fileSettings(file), r => reports.update(_ :+ r), 1.minute).use {
+        log =>
+          emit(log, 0 until 3) *>
+            IO.blocking {
+              Files.delete(file)
+              Files.createSymbolicLink(file, Files.createFile(dir.resolve("disk")))
+            } *>
+            emit(log, 3 until 5)
       }
       reported <- reports.get
       written <- IO.blocking(slots(lines(dir.resolve("disk"))))
@@ -134,6 +137,10 @@ class LogSinkFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       SinkReport.Closed(Sink.File, 2).text,
       "scarab: the log closed with its file sink failing, after it dropped 2 lines"
     )
+    assertEquals(
+      SinkReport.Lost(4).text,
+      "scarab: 4 reports of the log's failing sinks were lost while earlier ones waited to be written"
+    )
   }
 
   /** `node.jsonl.1` a directory with a file in it: turning the file over cannot replace it. */
@@ -159,22 +166,16 @@ class LogSinkFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       file = dir.resolve("node.jsonl")
       in <- blocked(dir)
       reports <- Ref.of[IO, Vector[SinkReport]](Vector.empty)
-      before <- LogRouter.reporting[IO](fileSettings(file), r => reports.update(_ :+ r)).use {
-        log =>
+      before <- LogRouter
+        .reporting[IO](fileSettings(file), r => reports.update(_ :+ r), 1.minute)
+        .use { log =>
           for
             _ <- emit(log, 0 until 20)
             before <- IO.blocking(slots(lines(file)))
-            during <- reports.get
-            _ = during match
-              case Vector(
-                    SinkReport.Failed(Sink.File, SinkError.Rotate(_: DirectoryNotEmptyException))
-                  ) =>
-                ()
-              case other => fail(s"reports while the rotation fails: $other")
             _ <- cleared(in)
             _ <- emit(log, 20 until 60)
           yield before
-      }
+        }
       reported <- reports.get
       files = List(dir.resolve("node.jsonl.1"), file)
       kept <- IO.blocking(files.map(f => f -> Files.size(f)))
@@ -202,8 +203,9 @@ class LogSinkFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       // a full file, so the first line turns it over
       _ <- IO.blocking(Files.writeString(file, "x" * 2048))
       reports <- Ref.of[IO, Vector[SinkReport]](Vector.empty)
-      _ <- LogRouter.reporting[IO](fileSettings(file), r => reports.update(_ :+ r)).use { _ =>
-        IO.blocking(org.slf4j.LoggerFactory.getLogger("org.http4s.test").warn("dropped"))
+      _ <- LogRouter.reporting[IO](fileSettings(file), r => reports.update(_ :+ r), 1.minute).use {
+        _ =>
+          IO.blocking(org.slf4j.LoggerFactory.getLogger("org.http4s.test").warn("dropped"))
       }
       reported <- reports.get
       size <- IO.blocking(Files.size(file))
@@ -216,4 +218,58 @@ class LogSinkFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           ()
         case other => fail(s"reports: $other")
       assertEquals(size, 2048L)
+  }
+
+  /** A route that fails while `fault` holds. */
+  private def faulty(fault: Ref[IO, Boolean]) =
+    (
+      Sink.File,
+      Format.Json,
+      (_: String) => fault.get.map(on => Either.cond(!on, (), SinkError.Write(full)))
+    )
+
+  test("a report writer that never returns holds neither what logs nor the log's release") {
+    // under TestControl a release that waited for the writer would never end, and fail the test
+    TestControl.executeEmbed(
+      for
+        fault <- Ref.of[IO, Boolean](false)
+        stuck = (_: SinkReport) => IO.uncancelable(_ => IO.never[Unit])
+        told <- LogRouter.routed[IO](settings, List(faulty(fault)), stuck, 2, 1.second).use { log =>
+          (0 until 10).toList
+            .traverse_(n => fault.set(n % 2 == 0) *> emit(log, n until n + 1))
+            .as(10)
+        }
+      yield assertEquals(told, 10)
+    )
+  }
+
+  test("reports that cannot wait are lost and counted, and the count is written") {
+    for
+      fault <- Ref.of[IO, Boolean](true)
+      entered <- Deferred[IO, Unit]
+      gate <- Deferred[IO, Unit]
+      written <- Ref.of[IO, Vector[SinkReport]](Vector.empty)
+      // the first report holds the writer until the gate opens
+      write = (r: SinkReport) =>
+        written.update(_ :+ r) *> entered.complete(()) *> IO.uncancelable(_ => gate.get)
+      _ <- LogRouter.routed[IO](settings, List(faulty(fault)), write, 1, 1.minute).use { log =>
+        for
+          _ <- emit(log, 0 until 1)
+          _ <- entered.get
+          // queued: the recovery; lost: the next failure and recovery
+          _ <- fault.set(false) *> emit(log, 1 until 2)
+          _ <- fault.set(true) *> emit(log, 2 until 3)
+          _ <- fault.set(false) *> emit(log, 3 until 4)
+          _ <- gate.complete(())
+        yield ()
+      }
+      reported <- written.get
+    yield assertEquals(
+      reported,
+      Vector(
+        SinkReport.Failed(Sink.File, SinkError.Write(full)),
+        SinkReport.Lost(2),
+        SinkReport.Recovered(Sink.File, 1)
+      )
+    )
   }

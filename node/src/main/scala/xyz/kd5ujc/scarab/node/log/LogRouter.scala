@@ -7,8 +7,9 @@ import java.nio.file.{Files, Path, StandardCopyOption}
 import java.time.Instant
 import cats.Applicative
 import cats.data.EitherT
-import cats.effect.{Async, Clock, Ref, Resource, Sync}
-import cats.effect.std.Mutex
+import scala.concurrent.duration.*
+import cats.effect.{Async, Clock, Deferred, Fiber, Ref, Resource, Sync}
+import cats.effect.std.{Mutex, Queue}
 import cats.mtl.Tell
 import cats.syntax.all.*
 
@@ -32,7 +33,9 @@ import cats.syntax.all.*
   * A sink that cannot take a line (a full disk, a rotation that cannot move a file) drops it, and
   * `tell` returns as it would have: logging never stops or alters what logged. The failure is
   * reported outside the routes ([[SinkReport]]): the first of a streak with its cause, and the
-  * number of lines dropped when the sink takes a line again or the log closes.
+  * number of lines dropped when the sink takes a line again or the log closes. The reports are
+  * written by a fiber of their own, never under the lock: a report that cannot be written (stderr a
+  * full pipe nobody reads) holds neither what logged nor the log's release.
   */
 object LogRouter:
   /** One sink: its format, where its text goes, and per kind (by ordinal) its threshold and its
@@ -67,16 +70,25 @@ object LogRouter:
   def resource[F[_]: Async](settings: LogSettings): Resource[F, Log[F]] =
     reporting(settings, SinkReport.toStderr[F])
 
-  /** [[resource]], with the reports of failing sinks given to `report`. */
+  /** The reports that wait to be written: more are lost, and counted. */
+  private val ReportsQueued = 64
+
+  /** How long the log's release waits for its last reports to be written. */
+  private val ReportsAtRelease = 1.second
+
+  /** [[resource]], with the reports of failing sinks given to `report`, which the release waits for
+    * at most `limit`.
+    */
   private[log] def reporting[F[_]: Async](
       settings: LogSettings,
-      report: SinkReport => F[Unit]
+      report: SinkReport => F[Unit],
+      limit: FiniteDuration = ReportsAtRelease
   ): Resource[F, Log[F]] =
     for
       outputs <- settings.sinks.traverse { (sink, format) =>
         output[F](sink, settings.file).map((sink, format, _))
       }
-      log <- routed[F](settings, outputs, report)
+      log <- routed[F](settings, outputs, report, ReportsQueued, limit)
       _ <- LibraryLogs.install[F](
         log,
         severity =>
@@ -86,34 +98,90 @@ object LogRouter:
       )
     yield log
 
-  /** The log over `outputs`, each a sink, its format and where its text goes. When it closes, a
-    * sink still failing is reported with the lines it dropped.
+  /** The log over `outputs`, each a sink, its format and where its text goes; the reports of its
+    * failing sinks go to `report` through [[SinkReports]] of `capacity`. When it closes, a sink
+    * still failing is reported with the lines it dropped.
     */
   private[log] def routed[F[_]: Async](
       settings: LogSettings,
       outputs: List[(Sink, Format, String => F[Either[SinkError, Unit]])],
-      report: SinkReport => F[Unit]
+      report: SinkReport => F[Unit],
+      capacity: Int,
+      limit: FiniteDuration
   ): Resource[F, Log[F]] =
-    Resource
-      .make(
-        (
-          Mutex[F],
-          Ref.of[F, Map[(Sink, Scope), Long]](Map.empty),
-          Ref.of[F, Map[Sink, Long]](Map.empty)
-        ).tupled
-      ) { (_, _, failing) =>
-        // not under the lock, which a wedged write may hold: the release must not wait on it
-        failing.get.flatMap(_.toList.traverse_((sink, n) => report(SinkReport.Closed(sink, n))))
-      }
-      .map((mutex, counts, failing) =>
-        of[F](
-          outputs.map((sink, format, write) => route(settings, sink, format, write)),
-          mutex,
-          counts,
-          failing,
-          report
-        )
+    for
+      failing <- Resource.eval(Ref.of[F, Map[Sink, Long]](Map.empty))
+      reports <- SinkReports.resource[F](
+        report,
+        capacity,
+        limit,
+        failing.get.map(_.toList.map(SinkReport.Closed(_, _)))
       )
+      mutex <- Resource.eval(Mutex[F])
+      counts <- Resource.eval(Ref.of[F, Map[(Sink, Scope), Long]](Map.empty))
+    yield of[F](
+      outputs.map((sink, format, write) => route(settings, sink, format, write)),
+      mutex,
+      counts,
+      failing,
+      reports.offer
+    )
+
+  /** The reports of failing sinks on their way to `write`, which one fiber of their own calls, one
+    * report at a time. Offering one never waits: when `queue` is full it is lost and counted in
+    * `lost`, and the count is written after the next report.
+    */
+  private final class SinkReports[F[_]: Async] private (
+      queue: Queue[F, Option[SinkReport]],
+      lost: Ref[F, Long],
+      done: Deferred[F, Unit]
+  ):
+    def offer(report: SinkReport): F[Unit] =
+      queue.tryOffer(Some(report)).flatMap(lost.update(_ + 1).unlessA(_))
+
+    /** Each report to `write` until the end (`None`). The writer has no other place to say that it
+      * failed, so a report it raises on is not written ([[SinkReport.toStderr]] does not raise: a
+      * `PrintStream` keeps an error flag), and the fiber ends with a value.
+      */
+    private def drain(write: SinkReport => F[Unit]): F[Unit] =
+      val lostSince =
+        lost.getAndSet(0L).flatMap(n => write(SinkReport.Lost(n)).attempt.void.whenA(n > 0))
+      queue.take.flatMap {
+        case Some(report) => write(report).attempt.void *> lostSince *> drain(write)
+        case None         => lostSince *> done.complete(()).void
+      }
+
+    /** The `last` reports and the end, waited for at most `limit`. The writer is then abandoned,
+      * not waited for: a write blocked on stderr cannot be cancelled.
+      */
+    private def end(
+        last: List[SinkReport],
+        limit: FiniteDuration,
+        writer: Fiber[F, Throwable, Unit]
+    ): F[Unit] =
+      Async[F]
+        .race(
+          last.traverse_(r => queue.offer(Some(r))) *> queue.offer(None) *> done.get,
+          Async[F].sleep(limit)
+        )
+        .void *> Async[F].start(writer.cancel).void
+
+  private object SinkReports:
+    def resource[F[_]: Async](
+        write: SinkReport => F[Unit],
+        capacity: Int,
+        limit: FiniteDuration,
+        last: F[List[SinkReport]]
+    ): Resource[F, SinkReports[F]] =
+      for
+        reports <- Resource.eval(
+          (Queue.bounded[F, Option[SinkReport]](capacity), Ref.of[F, Long](0L), Deferred[F, Unit])
+            .mapN(new SinkReports[F](_, _, _))
+        )
+        _ <- Resource.make(Async[F].start(reports.drain(write)))(writer =>
+          last.flatMap(reports.end(_, limit, writer))
+        )
+      yield reports
 
   /** `failing` holds, per sink that failed its last line, the lines it has dropped since it last
     * took one.
@@ -222,6 +290,9 @@ enum SinkReport:
   /** The log closed while `sink` was failing, after it dropped `dropped`. */
   case Closed(sink: Sink, dropped: Long)
 
+  /** `lost` reports could not wait to be written: the ones before were not written yet. */
+  case Lost(lost: Long)
+
   /** The text on stderr, as the node's start-up failures are written (`scarab: ...`). */
   def text: String =
     def name(sink: Sink) = sink.toString.toLowerCase
@@ -232,6 +303,8 @@ enum SinkReport:
         s"scarab: the log's ${name(sink)} sink takes lines again, after dropping $dropped"
       case Closed(sink, dropped) =>
         s"scarab: the log closed with its ${name(sink)} sink failing, after it dropped $dropped lines"
+      case Lost(lost) =>
+        s"scarab: $lost reports of the log's failing sinks were lost while earlier ones waited to be written"
 
 object SinkReport:
   /** Each report on stderr, directly: not through the stderr sink, which may be off or the one

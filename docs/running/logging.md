@@ -37,8 +37,9 @@ shorter prefix). A namespace that does not exist, a sink or severity that does n
 A sink that cannot take a line (a full disk, a log file that cannot be turned over) drops it, and the node goes on:
 logging never stops what logged. The first failure of a streak is written to stderr directly, with its cause, as
 `scarab: the log's file sink ...`, and when the sink takes a line again (or the log closes) another line there says
-how many lines it dropped. The file is opened again for the next line, so it recovers once the disk has room or the
-rotation can move its files.
+how many lines it dropped. These reports are written by a writer of their own, so a stderr that blocks holds neither
+the node nor its shutdown: reports that cannot wait are counted, and the count is written after the next one. The file
+is opened again for the next line, so it recovers once the disk has room or the rotation can move its files.
 
 The human format is `[time][namespace](Severity) event key=value ...` (trace-dispatcher's without the host and the
 thread):
