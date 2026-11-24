@@ -416,7 +416,10 @@ final class FetchCoordinator[F[_]: Async] private (
     change { s =>
       s.copy(
         peers = s.peers.updatedWith(id)(
-          _.map(peer => newer(peer, performance).copy(tip = tip, candidate = candidate))
+          _.map(peer =>
+            newer(peer, performance)
+              .copy(tip = tip, announced = candidate.map(FetchCandidates.Announced.of))
+          )
         )
       )
     }
@@ -450,10 +453,10 @@ final class FetchCoordinator[F[_]: Async] private (
       // (547–558) and filterNotAlreadyFetched (599–617) over the peer's whole current candidate.
       // Genesis selects from the plausible suffix before removing fetched blocks
       // (Decision/Genesis.hs).
-      val chain = candidateOf(peer)
+      val chain = peer.announced.getOrElse(FetchCandidates.Announced.of(candidateOf(peer)))
       val chosen =
         selected.fold[Either[BlockFetchPolicy.Refusal, Vector[Header]]](
-          Right(chain.headers.filterNot(h => s.fetched.contains(h.hash)))
+          Right(chain.candidate.headers.filterNot(h => s.fetched.contains(h.hash)))
         ) { local =>
           if useGenesis then
             if !FetchCandidates.plausible(restriction, local, chain) then
@@ -639,7 +642,7 @@ object FetchCoordinator:
       identity: Long,
       order: PeerOrder,
       tip: Option[Header] = None,
-      candidate: Option[ChainSelection.Candidate] = None,
+      announced: Option[FetchCandidates.Announced] = None,
       performance: FetchGsv.PeerGsv = FetchGsv.default,
       control: Control = Control.Continue,
       request: Option[Allocation] = None,
@@ -647,7 +650,8 @@ object FetchCoordinator:
       busy: Boolean = false,
       probe: Option[F[Peer.PipelineState]] = None,
       estimate: Option[F[FetchGsv.PeerGsv]] = None
-  )
+  ):
+    def candidate: Option[ChainSelection.Candidate] = announced.map(_.candidate)
 
   /** `peer` with the GSV `sample`, unless the one it has was sampled later: a delayed sample never
     * replaces a newer one, and one of the same time does.

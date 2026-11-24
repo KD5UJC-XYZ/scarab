@@ -124,7 +124,11 @@ object Header:
       genesisTag: Boolean = false
   ) extends Header:
     def era: Era = Era.Byron
-    def slot: BigInt = Header.byronSlot(epoch, epochSlots, slotInEpoch)
+    def slot: BigInt = cachedSlot
+
+    // computed once: the BlockFetch decision asks every header of every candidate for its slot at
+    // each round (issue 810)
+    private lazy val cachedSlot: BigInt = Header.byronSlot(epoch, epochSlots, slotInEpoch)
 
     /** The epoch of the flattened slot (`slotNumberEpoch`, `Slotting/EpochAndSlotCount.hs:98-99`,
       * cardano-ledger f649f975), which the reference reads where it needs a block's epoch; it is
