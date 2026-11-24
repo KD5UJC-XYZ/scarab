@@ -138,14 +138,15 @@ object Peer:
       tip: ChainSync.Tip,
       limit: Int
   ): Either[PeerError.Divergence, (ChainSelection.Candidate, Vector[SyncEvent])] =
-    // The newest point of `previous` that `latest` holds, and its position in `latest` (the base
-    // is 0). When `latest` only extends `previous`, that is `previous`'s tip at its own position,
-    // found without indexing all of `latest` again for each header (issue 1394).
+    // The newest point of `previous` that `latest` holds, and its last position in `latest` (the
+    // base is 0). When `latest` only extends `previous`, that is `previous`'s tip at its own
+    // position, unless it occurs again further on: found from the appended headers alone, without
+    // indexing all of `latest` again for each header (issue 1394).
     val extending =
       latest.base == previous.base && latest.headers.sizeIs >= previous.headers.size &&
         previous.headers.lastOption.forall(last =>
           latest.headers.lift(previous.headers.size - 1).exists(_.point == last.point)
-        )
+        ) && latest.headers.drop(previous.headers.size).forall(_.point != previous.tip)
     val found: Option[(ChainSync.Point, Int)] =
       if extending then Some(previous.tip -> previous.headers.size)
       else
