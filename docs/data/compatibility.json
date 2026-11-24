@@ -1777,7 +1777,8 @@
           "KesWriteBackClockSuite",
           "KesConfirmedWriteBackSuite",
           "ConwaySnapshotSuite",
-          "ConwayForgeTickSuite"
+          "ConwayForgeTickSuite",
+          "DijkstraEraPathSuite"
         ],
         "issues": [
           82,

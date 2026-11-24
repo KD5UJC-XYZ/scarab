@@ -2835,6 +2835,38 @@ Conway's rules on the classes follow as the rest of stage 2.
   - Kept for the suites and `tools`: `MempoolLedger` (the flat MEMPOOL on a Conway state), the Conway arm of
     `EraBlock`, the flat decoder's first reading of a submitted Conway transaction (`ConwayRead.of`, whose
     disagreement is no verdict), `MempoolState.parse` and `parseParts`.
+- **The forger's Dijkstra path on the era's transaction** (`node/.../forge/DijkstraSnapshot.scala`, `BlockBuilder.scala`,
+  `ForgedLeiosEb.scala`; `node/.../mempool/DijkstraPool.scala`, `Capacity.scala`, `MempoolState.scala`;
+  `ledger/.../LeiosBlock.scala`, `era/dijkstra/DijkstraTx.scala`). The ranking block and the endorser block are made of
+  the era's transaction (`Tx TopTx DijkstraEra`), as the reference's are (`mkBody`, ouroboros-consensus 2416493b
+  `Shelley/Ledger/Forge.hs:152-163`; `forgeLeiosEb`, `LeiosDemoTypes.hs:1273-1295`, `:1257-1279` at d91b3557, unchanged).
+  No behaviour changes: the bytes, the measures and the partitions are the flat path's.
+  - A held transaction of the snapshot is the era's, with the flag of its verdict (`DijkstraHeld(tx, measure)`,
+    `extractTx`). Unlike `ConwayHeld` it keeps the transaction, not what it was admitted with: the era's transaction
+    holds the bytes of its parts, which both blocks are made of, and the forger reads nothing else of it.
+  - Both blocks write each transaction in its block form, the era's `DijkstraTx.forBlockInclusion`
+    (`toCBORForBlockInclusion`, cardano-ledger 9df9f98c `Dijkstra/Tx.hs:527-533`): the ranking block's body
+    (`LeiosBlockBody`, `DijkstraBlockBodyRaw`, `BlockBody/Internal.hs:100-106, 184-189`, whose transactions are now the
+    era's), the endorser block's body and closure, and the pool's Leios key (`Entry.leiosTx`, `leiosTxBytesOfGenTx`,
+    `Shelley/Ledger/Leios.hs:155-159`). The measure is the era's `sizeTxF` and `getTotalExUnits`, which counts the
+    sub-transactions' units (`Capacity.dijkstraMeasure`, `Tx.hs:297-320, 417-422`).
+  - The pool reads a submitted transaction once, into the era's types (`DijkstraRead`, `DijkstraTx.fromSubmission`);
+    its relayed form is written from the era's parts. Gone: the flat half of `DijkstraRead` and the era decoder's
+    function that read it beside the era's transaction, the flat block's body contents, and the flat reference-script
+    measure of `Capacity`, which no path called (the pool's is `DijkstraState.refScriptsSize`). The flat decoder stays:
+    the era's transaction is read through it, and `RelayedTransactions` reads with it.
+  - The era's `DijkstraBlockBody` stays decode-only: the forger writes `LeiosBlockBody`, whose bytes the decoded body's
+    size and hash are of.
+  - Evidence: `DijkstraEraPathSuite` keeps the flat path of 0ea3528b8 as a test oracle and compares it with the era
+    path over every Dijkstra transaction the fixtures hold that the build accepts (the testnet's blocks and the 323 of
+    the endorser block of slot 1,455,869, the Leios corpus, the devnet chain and its submission, the script-context
+    and UTXOW cases, the crossing corpus's mempool forms, more than a thousand): each transaction's block form with
+    either flag, id, Leios key, measure and relayed form, and, at each boundary of the capacities, certifying or not,
+    the partition, the ranking block's body, header body and block, and the endorser block's point, body, closure and
+    announcement, byte for byte. Block 64,853 and its endorser block, forged on the era path, are the recorded ones.
+    `DijkstraTxSuite` compares the block form, size and units of the era's and the flat transaction on the same
+    corpus; `LeiosEncodingSuite` writes every recorded Dijkstra block again from the era's transactions. The private
+    Leios devnet forging run is in the pull request.
 - **Dijkstra's BBODY** (`era/EraBlock.scala`, `era/dijkstra/DijkstraBlock.scala`, `era/rules/BbodyFailures.scala`,
   `era/rules/DijkstraBbody.scala`; `Rules/Bbody.hs` of `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/`, cardano-ledger
   9df9f98c, with the predicates of Shelley's, Alonzo's and Conway's BBODY it runs):
