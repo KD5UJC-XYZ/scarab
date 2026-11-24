@@ -48,6 +48,11 @@ object DijkstraPlanned extends Assertions:
       batches: Vector[Vector[Int]]
   )
 
+  /** How a check runs a body program with a number of workers: [[threaded]] here, the node's own
+    * scheduler (`ParallelPlutus`) in the node's tests.
+    */
+  type Runner = (DijkstraBlockRun.Body, Int) => Either[Phase2.Defect, DijkstraBlockRun.Result]
+
   /** The node's worker counts checked. */
   val workers: Vector[Int] = Vector(1, 2, 4, 8)
 
@@ -95,7 +100,7 @@ object DijkstraPlanned extends Assertions:
     * last first; with none run, each then evaluated where it lands; and on as many threads as each
     * of the node's worker counts ([[threaded]]); each to the serial run's result.
     */
-  def check(name: String, base: ScriptEvaluator[Id])(
+  def check(name: String, base: ScriptEvaluator[Id], runner: Runner = threaded)(
       programOf: ScriptEvaluator[Id] => DijkstraBlockRun.Body
   ): Checked =
     val shared = Shared(base)
@@ -107,7 +112,5 @@ object DijkstraPlanned extends Assertions:
       plan.resolve(plan.batches.reverse.flatMap(_.reverse).map(plan.execute))
     )
     same(s"$name, none run", serial, programOf(shared.replaying).prepare.resolve(Vector.empty))
-    workers.foreach(n =>
-      same(s"$name, $n threads", serial, threaded(programOf(shared.replaying), n))
-    )
+    workers.foreach(n => same(s"$name, $n workers", serial, runner(programOf(shared.replaying), n)))
     Checked(serial, plan.jobs.size, plan.batches.map(_.map(_.index)))

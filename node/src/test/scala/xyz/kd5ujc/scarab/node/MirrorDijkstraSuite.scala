@@ -166,7 +166,17 @@ class MirrorDijkstraSuite extends CatsEffectSuite:
     for
       rules <- rulesOf(setup)
       applied <- applyAll(rules, setup.mirrorStart, blocks)
+      // and through the node's bounded workers, one, two, four and eight: the same states (#85)
+      parallel <- Vector(1, 2, 4, 8).traverse { n =>
+        ParallelPlutus.Workers
+          .from(n)
+          .fold(e => IO(fail(s"$e")), ParallelPlutus.create[IO](_))
+          .flatMap(workers => rulesOf(setup, parallel = Some(workers)))
+          .flatMap(rules => applyAll(rules, setup.mirrorStart, blocks))
+          .map(n -> _)
+      }
     yield
+      parallel.foreach((n, states) => assertEquals(states, applied, s"$n workers"))
       val states = applied.fold((i, e) => fail(s"block $i: ${e.message}"), identity).tail
       assertEquals(states.map(_.era), Vector(Era.Dijkstra, Era.Dijkstra))
       assertEquals(

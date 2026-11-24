@@ -604,6 +604,26 @@ class DijkstraBbodySuite extends FunSuite:
   }
 
   test(
+    "every captured Dijkstra block and every block of the Leios corpus that decodes: the node's run prepared comes to its serial result"
+  ) {
+    val corpusBlocks = leiosCorpus
+      .filter(c => str(c, "kind") == "block")
+      .map(c => str(c, "id") -> hex(str(c, "bytes")))
+    val decoded = (captured.map((name, raw, _) => name -> raw) ++ corpusBlocks).filter((_, raw) =>
+      DijkstraBlock.decode(raw).isRight
+    )
+    val checked = decoded.map((name, raw) => name -> nodeChecked(globals, raw, empty))
+    // what they exercise (CNF-2): no recorded state holds these blocks' inputs, so a block with
+    // transactions is refused by LEDGERS before any script (`whenFailureFree`), and none defers a
+    // job; the prepared run with jobs is shown on the recorded script transactions below, on
+    // `DijkstraBbodyImpSuite`'s blocks and on the devnet chain (node)
+    assertEquals(captured.size, 13)
+    assertEquals(corpusBlocks.size, 55)
+    assertEquals(checked.size, 13 + 24)
+    assertEquals(checked.filter((_, c) => c.jobs > 0), Vector.empty)
+  }
+
+  test(
     "the chain's recorded script transactions, each block's in a block of its own: the node's run prepared comes to its serial result"
   ) {
     val checked = DijkstraRecordedBlocks.samples.map(sample =>

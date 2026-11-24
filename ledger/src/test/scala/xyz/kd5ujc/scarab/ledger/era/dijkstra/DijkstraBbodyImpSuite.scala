@@ -292,6 +292,11 @@ class DijkstraBbodyImpSuite extends FunSuite:
       slot => Right(slot * 1000)
     )
 
+  /** How a prepared block is run with a number of workers ([[DijkstraPlanned.check]]): on as many
+    * threads here, through the node's scheduler in `DijkstraBbodyImpWorkersSuite` (node).
+    */
+  protected def runner: DijkstraPlanned.Runner = DijkstraPlanned.threaded
+
   /** The node's run of the block `raw` (`DijkstraBlockRun.program`), on the context's clock and era
     * history, with `evaluator`: serial, and prepared for the node's bounded parallel evaluation of
     * its scripts, each to the same result ([[DijkstraPlanned.check]]).
@@ -303,7 +308,7 @@ class DijkstraBbodyImpSuite extends FunSuite:
       evaluator: xyz.kd5ujc.scarab.plutus.ScriptEvaluator[Id]
   ): DijkstraPlanned.Checked =
     val block = ok(DijkstraBlock.decode(raw))
-    DijkstraPlanned.check(s"block ${block.blockHeader.header.hash.hex}", evaluator)(e =>
+    DijkstraPlanned.check(s"block ${block.blockHeader.header.hash.hex}", evaluator, runner)(e =>
       DijkstraBlockRun.program(
         globals,
         BbodyEnv[Dijkstra](params, ChainAccountState(Coin(0), Coin(0))),
