@@ -7,9 +7,13 @@ import java.util.concurrent.{Callable, Executors}
 import java.util.concurrent.atomic.AtomicReference
 import scala.jdk.CollectionConverters.*
 import munit.Assertions
-import xyz.kd5ujc.scarab.ledger.Phase2
+import cats.data.NonEmptyList
+import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.ledger.{Block, Phase2, ScriptLocation}
+import xyz.kd5ujc.scarab.ledger.era.CollectError
+import xyz.kd5ujc.scarab.ledger.state.Dijkstra
 import xyz.kd5ujc.scarab.ledger.era.rules.{DijkstraBlockRun, DijkstraPhase2}
-import xyz.kd5ujc.scarab.plutus.{EvalRequest, EvalResult, ScriptEvaluator}
+import xyz.kd5ujc.scarab.plutus.{EvalFailure, EvalRequest, EvalResult, ScriptEvaluator}
 
 /** Dijkstra's era run on a block prepared for the node's bounded parallel evaluation of its scripts
   * (ADR 0018), against its serial run ([[DijkstraBlockRun.program]]): the plan's result is the
@@ -49,6 +53,49 @@ object DijkstraPlanned extends Assertions:
     val observer: DijkstraPhase2.Observation => Unit = o =>
       val _ = told.updateAndGet(_ :+ o)
     def all: Vector[DijkstraPhase2.Observation] = told.get
+
+  /** An observation's outcome as two runs that each evaluated their scripts compare it
+    * ([[projected]]): each script by its location, its request and its verdict, a failure by its
+    * reason's message, since a machine's failure holds terms, equal only as the same object.
+    */
+  enum Projection:
+    case Ran(scripts: Vector[(ScriptLocation, EvalRequest, Option[String])])
+    case Unavailable(
+        scripts: Vector[(ScriptLocation, EvalRequest, Option[String])],
+        location: ScriptLocation,
+        request: EvalRequest,
+        reason: EvalFailure.Unsupported
+    )
+    case Uncollected(errors: NonEmptyList[CollectError[Dijkstra]])
+
+  /** Observations as two runs that each evaluated their scripts compare them: each batch by its id,
+    * its bytes and its slot, and what its scripts came to ([[Projection]]).
+    */
+  def projected(
+      observations: Vector[DijkstraPhase2.Observation]
+  ): Vector[(Bytes, Block.Transaction, BigInt, Projection)] =
+    def scripts(es: Vector[DijkstraPhase2.Evaluation]) =
+      es.map(e =>
+        (
+          e.location,
+          e.request,
+          e.result match
+            case EvalResult.Success(_, _)         => None
+            case EvalResult.Failure(reason, _, _) => Some(reason.message)
+        )
+      )
+    observations.map(o =>
+      (
+        o.id,
+        o.transaction,
+        o.slot,
+        o.outcome match
+          case DijkstraPhase2.Outcome.Ran(es) => Projection.Ran(scripts(es.toVector))
+          case DijkstraPhase2.Outcome.Unavailable(es, location, request, reason) =>
+            Projection.Unavailable(scripts(es), location, request, reason)
+          case DijkstraPhase2.Outcome.Uncollected(errors) => Projection.Uncollected(errors)
+      )
+    )
 
   /** A block's run as a body program, made with an evaluator and, if any, the node's phase-2
     * observer.
@@ -150,11 +197,22 @@ object DijkstraPlanned extends Assertions:
       same(s"$name, $n workers, not observed", serial, runner(programOf(shared.replaying, None), n))
     }
     // an admitted block holds no machine's term: its workers evaluate with `base` itself, the
-    // overlapping evaluations real, to the same state, proposals and counters
+    // overlapping evaluations real, to the same state, proposals and counters, and observations
+    // that differ from the serial run's at most in a failure's terms ([[projected]])
     serial match
       case Right(Right(_)) =>
-        workers.foreach(n =>
-          same(s"$name, $n workers evaluating", serial, runner(programOf(base, None), n))
-        )
+        workers.foreach { n =>
+          val again = Observations()
+          same(
+            s"$name, $n workers evaluating",
+            serial,
+            runner(programOf(base, Some(again.observer)), n)
+          )
+          assertEquals(
+            projected(again.all),
+            projected(told.all),
+            s"$name, $n workers evaluating: the observations"
+          )
+        }
       case Right(Left(_)) | Left(_) => ()
     Checked(serial, plan.jobs.size, plan.batches.map(_.map(_.index)), told.all)

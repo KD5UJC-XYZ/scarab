@@ -203,7 +203,7 @@ class PlutusCasesSuite extends munit.FunSuite:
     }
   }
 
-  test("a Dijkstra batch's kind keeps its cases apart from the other eras'") {
+  test("a Dijkstra batch's cases are kept to `perKind` of a kind, its kind marked as Dijkstra's") {
     inDirectory { dir =>
       val cases = PlutusCases(dir, perKind = 1, max = 100000)
       val transaction = Block.Transaction(Bytes.fromHex("a0").toOption.get, Bytes.empty, None, true)

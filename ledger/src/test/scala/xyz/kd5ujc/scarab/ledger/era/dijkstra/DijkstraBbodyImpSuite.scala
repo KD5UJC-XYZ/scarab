@@ -1213,24 +1213,13 @@ class DijkstraBbodyImpSuite extends FunSuite:
             )
           )
         )
-        // observed: the script transactions before it as they were (a failure by its request and
-        // its machine's error: a term is equal only as the same object), then it, unavailable
-        def ran(observations: Vector[DijkstraPhase2.Observation]) = observations.map(o =>
-          o.id -> (o.outcome match
-            case DijkstraPhase2.Outcome.Ran(es) =>
-              es.toVector.map(e =>
-                (
-                  e.location,
-                  e.request,
-                  e.result match
-                    case EvalResult.Success(_, _)         => None
-                    case EvalResult.Failure(reason, _, _) => Some(reason.message)
-                )
-              )
-            case other => fail(s"not run: $other"))
-        )
+        // observed: the script transactions before it as they were (a failure by its reason: a
+        // term is equal only as the same object), then it, unavailable
         val at = scripted.indexWhere(_._1 eq t)
-        assertEquals(ran(unavailable.observations.dropRight(1)), ran(checked.observations.take(at)))
+        assertEquals(
+          DijkstraPlanned.projected(unavailable.observations.dropRight(1)),
+          DijkstraPlanned.projected(checked.observations.take(at))
+        )
         assertEquals(
           unavailable.observations.lastOption.map(_.outcome),
           Some(
@@ -1778,16 +1767,32 @@ class DijkstraBbodyImpSuite extends FunSuite:
     val defect = new IllegalStateException("an evaluator defect")
     val defective: xyz.kd5ujc.scarab.plutus.ScriptEvaluator[Id] =
       r => if r == request then throw defect else ScarabEvaluator.default.evaluate(r)
-    def bodyOf(txs: Vector[Built], e: xyz.kd5ujc.scarab.plutus.ScriptEvaluator[Id]) =
-      nodeProgram(blockOf(txs), holding(utxo), impUnits, e)
+    def bodyOf(
+        txs: Vector[Built],
+        e: xyz.kd5ujc.scarab.plutus.ScriptEvaluator[Id],
+        observer: Option[DijkstraPhase2.Observation => Unit] = None
+    ) =
+      nodeProgram(blockOf(txs), holding(utxo), impUnits, e, observer)
     // reached: the middle batch's verdict its flag's, so the serial run reaches the last batch's
-    // script and raises the very defect; so does every worker count, with no other
+    // script and raises the very defect; so does every worker count, with no other. Observed, each
+    // tells the first two batches, whose scripts ran, and not the last
     val reached = Vector(first, spend(1, ScriptSpend(s2, fails.script), false), last)
-    val serial = scala.util.Try(bodyOf(reached, defective).serial).toEither
+    val told = DijkstraPlanned.Observations()
+    val serial = scala.util.Try(bodyOf(reached, defective, Some(told.observer)).serial).toEither
     assert(serial.left.exists(_ eq defect), s"$serial")
+    assertEquals(
+      told.all.map(_.id),
+      Vector(first, reached(1)).map(t => bodies.id[TxLevel.Top](tx.body(t.era)))
+    )
     DijkstraPlanned.workers.foreach { n =>
-      val result = runner(bodyOf(reached, defective), n)
+      val again = DijkstraPlanned.Observations()
+      val result = runner(bodyOf(reached, defective, Some(again.observer)), n)
       assert(result.left.exists(_.cause eq defect), s"$n workers: $result")
+      assertEquals(
+        DijkstraPlanned.projected(again.all),
+        DijkstraPlanned.projected(told.all),
+        s"$n workers: the observations"
+      )
     }
     // never reached: the middle batch's script fails flagged valid, so the serial run records
     // that failure and runs no later script (`whenFailureFree`): the block is refused, and every
