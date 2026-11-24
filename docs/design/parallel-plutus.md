@@ -102,8 +102,8 @@ completions are evaluated locally, and another plan's do not type-check. The era
 recovery that could discard a recorded job.
 
 Dijkstra's UTXOS is the same function and takes the same capability; its run evaluates where the
-scripts are collected until `DijkstraBlockRun` adopts the program (#85). The node does not apply
-Conway blocks with the era run yet; the Conway switch does.
+scripts are collected until `DijkstraBlockRun` adopts the program (#85). The node applies Conway
+blocks with the era run (the Conway switch, #85), serial or through the workers.
 
 `ConwayBbodySuite` prepares every era run it makes and resolves the plan, its jobs run last batch
 first, with the serial run's results: the same state, blocks made, counters, failures, naming and
@@ -127,8 +127,7 @@ the Docker JDK image. It times each Conway block's body
 four ways from the state the mirror ticks it to: the flat `EraBlock.Body` and the era run, each
 serial and through four workers, rotated within each block (`SCARAB_PLUTUS_ROUNDS`, default three).
 Timings exclude decoding and store reads. It checks each parallel result against its serial one and
-reports, without asserting, any block where the era run's state or counters differ from the flat
-rules'.
+asserts that the era run's state and counters equal the flat rules' on every block.
 
 On the preprod capture and pinned baseline of `PlutusReplaySuite` (2026-11-22, the source that
 added the prepared era run under [#85](https://github.com/KD5UJC-XYZ/scarab/issues/85), the Docker

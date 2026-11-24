@@ -405,15 +405,37 @@ object ShelleyUtxo:
 
   /** The stored outputs `stored`, read into the era: the first, in input order, the era does not
     * read raised. They are read as a value and the result lifted once, not each read a step of the
-    * rules' program (#85).
+    * rules' program (#85). A stored output held under several inputs, the very value, is read once
+    * and its reading shared by each of them: a read copies the output's reference script out of its
+    * bytes, so read for each input it cost a copy per input (#85). Outputs are told apart by
+    * reference ([[Shared]]), so that no output is hashed or compared whole.
     */
   private[rules] def readStored[F[_], E <: EraTag](
       stored: Map[TxIn, xyz.kd5ujc.scarab.ledger.TxOut]
   )(using F: Monad[F], s: StoredTxOut[E], raise: Raise[F, UtxoStateDefect]): F[UTxO[E]] =
     stored.toVector
       .sortBy(_._1)
-      .traverse((in, out) => s.fromStored(out).bimap(UtxoStateDefect.StoredOutput(in, _), in -> _))
-      .fold(raise.raise[UtxoStateDefect, UTxO[E]], outs => F.pure(UTxO[E](outs.toMap)))
+      .foldLeftM((Map.empty[Shared, TxOut[E]], Vector.empty[(TxIn, TxOut[E])])) {
+        case ((seen, outs), (in, out)) =>
+          val key = Shared(out)
+          seen
+            .get(key)
+            .fold(
+              s.fromStored(out)
+                .bimap(UtxoStateDefect.StoredOutput(in, _), read => (seen.updated(key, read), read))
+            )(read => Right((seen, read)))
+            .map((next, read) => (next, outs :+ (in -> read)))
+      }
+      .fold(raise.raise[UtxoStateDefect, UTxO[E]], (_, outs) => F.pure(UTxO[E](outs.toMap)))
+
+  /** A stored output as the very value the set holds, equal only to itself: a key of the outputs
+    * [[readStored]] has read, which costs no hash of the output's bytes or its value.
+    */
+  private final class Shared(val out: xyz.kd5ujc.scarab.ledger.TxOut):
+    override def equals(that: Any): Boolean = that match
+      case other: Shared => other.out eq out
+      case _             => false
+    override def hashCode(): Int = System.identityHashCode(out)
 
   /** A change of the instant stake, or its refusal raised. */
   private[rules] def vocab[F[_], A](result: Either[VocabError, A])(using

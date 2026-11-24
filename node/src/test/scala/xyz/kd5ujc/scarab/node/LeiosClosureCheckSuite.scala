@@ -304,22 +304,23 @@ class LeiosClosureCheckSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       .map(_.size)
       .sum
     assert(subWitnesses > 0, "the batches' sub-transactions carry key witnesses")
-    VerificationCache.resource[IO](2).use { witnesses =>
-      batches.traverse_(tx => witnesses.warmWitnesses[IO](LeiosClosureCheck.witnessChecks(tx))) *>
-        IO {
-          val judged = subs.map(sub =>
-            ShelleyUtxow.validateVerifiedWits[Dijkstra, TxLevel.Sub](sub, witnesses)(using
-              EraTx.dijkstra,
-              BothLevels.Sub
+    VerificationCache.resource[IO](xyz.kd5ujc.scarab.protocol.StateLayout.Leios, 2).use {
+      witnesses =>
+        batches.traverse_(tx => witnesses.warmWitnesses[IO](LeiosClosureCheck.witnessChecks(tx))) *>
+          IO {
+            val judged = subs.map(sub =>
+              ShelleyUtxow.validateVerifiedWits[Dijkstra, TxLevel.Sub](sub, witnesses)(using
+                EraTx.dijkstra,
+                BothLevels.Sub
+              )
             )
-          )
-          assert(judged.forall(_.isRight), s"$judged")
-          // every sub-transaction witness SUBUTXOW asked for was warmed, none computed in place
-          assertEquals(
-            (witnesses.witnessStats.hits.sum, witnesses.witnessStats.misses.sum),
-            (subWitnesses.toLong, 0L)
-          )
-        }
+            assert(judged.forall(_.isRight), s"$judged")
+            // every sub-transaction witness SUBUTXOW asked for was warmed, none computed in place
+            assertEquals(
+              (witnesses.witnessStats.hits.sum, witnesses.witnessStats.misses.sum),
+              (subWitnesses.toLong, 0L)
+            )
+          }
     }
   }
 

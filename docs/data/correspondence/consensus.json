@@ -4358,6 +4358,13 @@
     "given consensus.leios.LeiosJobPoolOf.given_Ordering_LeiosJobPoolOf",
     "given consensus.leios.LeiosJobPoolId.given_Ordering_LeiosJobPoolId"
    ]
+  },
+  {
+   "reason": "The Conway switch (#85): the no verdict a Conway block's defect is (BlockNoVerdict.ofConway, issue 567's routing, which the reference has no counterpart of), and the one value Conway's era rules read their system start, epoch information and slot to time translation from (MirrorClock.conway, the era history of MirrorClock.of for a Conway block, not extended).",
+   "definitions": [
+    "def consensus.BlockNoVerdict.ofConway",
+    "def consensus.state.MirrorClock.conway"
+   ]
   }
  ]
 }

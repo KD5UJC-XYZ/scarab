@@ -9,6 +9,8 @@ implemented incl. scripts, all certificates, treasury donation, the protocol-11 
 
 ## Evidence
 
+The node applies Conway blocks with the era rules (`ConwayBlockRun`, #85), as the reference applies them (`applyBlockEither` with `ValidateAll`, cardano-ledger f649f975 `Shelley/API/Validation.hs`): BBODY on the era types, a refused block's failures every one the rules record (#412). Their state and phase-2 counters equal the flat rules' on every Conway block of the recorded preprod window (`ConwayBodiesReplaySuite`, which asserts it); `SessionFailureSuite` pins how the follower routes each outcome, a refusal recorded before a defect of the node refused as the reference refuses it. The design's [as-built entry](../design/era-typed-transactions.md#6-results) has the detail.
+
 unit/property; devnet soak (24/24, 41/41 and, with the extended governance load, 44/44) and e2e (Conway 30 comparisons, matched); Preview sync from epoch 646 (Conway, protocols 9 to 11); protocol-11 rules checked against the reference's refusals: 5 taken-VRF registrations refused with `VRFKeyHashAlreadyRegistered` and 5 around them accepted, a reference input that is also an input refused with `BabbageNonDisjointRefInputs` at 10, accepted without scripts at 11 and refused for a Plutus V3 script with `CollectErrors (BadTranslation ReferenceInputsNotDisjointFromInputs)`; the refused bytes replay through our rules (`DevnetRefusedTxSuite`)
 
 `ValueNotConservedUTxO` counts minted tokens as consumed and burned ones as produced, as the reference does (`getConsumedMaryValue` and `burnedMultiAssets`, cardano-ledger f649f975 `Mary/UTxO.hs:72-97`; #828, `ValueConservationSuite`). The verdict was already the reference's; the failure's payload now is too.

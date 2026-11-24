@@ -152,6 +152,21 @@ enum BlockFailure:
   /** A Praos2 header rule, retaining its typed cause. */
   case Praos2(error: Praos2Error)
 
+  /** A field of a decoded Conway block the era's types refuse, one the era does not have or bytes
+    * they do not decode (`era.conway.ConwayBlockError.Era`); the node's own readings that disagree
+    * are no refusal (`ConwayBlockDefect.Projection`).
+    */
+  case ConwayEra(cause: xyz.kd5ujc.scarab.ledger.era.EraTxError)
+
+  /** Conway's BBODY refused the block (`Conway/Rules/Bbody.hs`, cardano-ledger f649f975), every
+    * failure accumulated in the reference's order
+    * ([[xyz.kd5ujc.scarab.ledger.era.rules.ConwayBlockRun.Refusal]]): those of a run to the end of
+    * the block, or those recorded before a defect of this node stopped the run, which the block is
+    * refused on as the reference refuses it, the defect recorded as this node's in the reason
+    * (#85).
+    */
+  case ConwayBbody(refusal: xyz.kd5ujc.scarab.ledger.era.rules.ConwayBlockRun.Refusal)
+
   /** Dijkstra's BBODY refused the block (`Dijkstra/Rules/Bbody.hs`, cardano-ledger 9df9f98c), its
     * failures in the reference's order.
     */
@@ -166,7 +181,7 @@ enum BlockFailure:
     case HeaderDiffers | Transport(_) | BodyCommitment | EraAnnounced(_, _) |
         EpochPrecedesLedger(_) | LedgerEra(_, _) | ByronAfterShelley | ByronAfterTransition(_, _) =>
       BlockRule.Structure
-    case Decode(_) | TxDecode(_, _) | DijkstraEra(_) => BlockRule.Decode
+    case Decode(_) | TxDecode(_, _) | DijkstraEra(_) | ConwayEra(_) => BlockRule.Decode
     case NoByronGenesis | TransitionUndecided(_) | ShelleyBeforeTransition(_, _, _) | Byron(_) =>
       BlockRule.Byron
     case Envelope(_)          => BlockRule.Envelope
@@ -174,7 +189,8 @@ enum BlockFailure:
     case Praos(_) | Praos2(_) => BlockRule.Praos
     case Unverifiable(r, _)   => r
     case Handover(_) | SupplyInvariant(_, _, _) | RefScriptsTooLarge(_) | BlockExUnitsTooBig(_, _) |
-        Tx(_) | Tick(_) | Mirror(_) | NotYet(_) | LeiosCertificate(_) | DijkstraBbody(_) =>
+        Tx(_) | Tick(_) | Mirror(_) | NotYet(_) | LeiosCertificate(_) | DijkstraBbody(_) |
+        ConwayBbody(_) =>
       BlockRule.Ledger
 
   /** The reason, as the log renders it (the text of the old `(rule, reason)` pair, unchanged). */
@@ -216,6 +232,14 @@ enum BlockFailure:
     case Praos2(error)           => error.message
     case DijkstraBbody(failures) =>
       s"BBODY refused the block: ${failures.iterator.mkString("; ")}"
+    case ConwayEra(cause) => s"a field of the Conway block is outside its type: $cause"
+    case ConwayBbody(refusal) =>
+      import xyz.kd5ujc.scarab.ledger.era.rules.ConwayBlockRun.Refusal
+      val refused = s"BBODY refused the block: ${refusal.failures.iterator.mkString("; ")}"
+      refusal match
+        case Refusal.Failed(_) => refused
+        case Refusal.Stopped(_, defect) =>
+          s"$refused; the rules then stopped on a defect of this node, after which no failure is known: $defect"
 
 object BlockFailure:
   extension (failure: BlockFailure)

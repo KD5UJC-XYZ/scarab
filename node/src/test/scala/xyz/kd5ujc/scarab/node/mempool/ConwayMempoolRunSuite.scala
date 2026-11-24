@@ -824,3 +824,27 @@ class ConwayMempoolRunSuite extends FunSuite:
             s"${build.name}: at 11"
           )
     }
+
+  test("a stored output held under many inputs is read into the era once, and shared"):
+    // an output with a reference script of 64 KiB, held under 64 inputs: a read copies the
+    // script out of the output's bytes, so each input's own read cost a copy of it
+    val (scriptRaw, _) = tx(
+      Vector(txIn(1)),
+      Vector(bob.address() -> (99 * ada)),
+      ada,
+      Vector(alice),
+      referenceScript = Some(
+        xyz.kd5ujc.scarab.ledger.ScriptKind.PlutusV2 -> Bytes(Vector.fill(1 << 16)(1.toByte))
+      )
+    )
+    val stored =
+      right("stored output")(FlatTx.fromEnvelope(scriptRaw, Era.Conway)).body.outputs.head
+    val inputs = Vector.tabulate(64)(i => TxIn(txIn(60).id, i))
+    val base = TxKit.ledger(1)
+    val held = base.withUtxo(inputs.foldLeft(base.utxo)(_.updated(_, stored)))
+    val (raw, _) = tx(inputs, Vector(bob.address() -> (99 * ada)), ada, Vector(alice))
+    val typed = right("typed")(ConwayTx.fromEnvelope(raw, StateLayout.Node11_1))
+    val read = right("read")(ConwayMempoolRun.utxoOf(held.ls, typed)).unUTxO
+    assertEquals(read.keySet, inputs.toSet)
+    val first = read(inputs.head)
+    assert(inputs.forall(in => read(in).asInstanceOf[AnyRef] eq first.asInstanceOf[AnyRef]))

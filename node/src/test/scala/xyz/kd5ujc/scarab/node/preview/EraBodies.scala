@@ -9,19 +9,11 @@ import io.circe.syntax.*
 import munit.Assertions.{assert, assertEquals, fail}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.state.{MirrorClock, MirrorState, MirrorStep, Placement}
-import xyz.kd5ujc.scarab.ledger.{Block, PlutusStats, StorageError}
-import xyz.kd5ujc.scarab.ledger.era.PParams
-import xyz.kd5ujc.scarab.ledger.era.conway.{ConwayBlock, ConwayPParams}
-import xyz.kd5ujc.scarab.ledger.era.rules.{BbodyEnv, ConwayBlockRun, ShelleyBbodyState}
+import xyz.kd5ujc.scarab.ledger.{Block, PlutusStats, Prepared, StorageError}
+import xyz.kd5ujc.scarab.ledger.era.rules.ConwayBlockRun
 import xyz.kd5ujc.scarab.ledger.rules.{EraBlock, EraNes, Globals}
-import xyz.kd5ujc.scarab.ledger.state.{
-  Conway,
-  LedgerState,
-  NewEpochState,
-  ShelleyBasedEra,
-  UtxoTables
-}
-import xyz.kd5ujc.scarab.node.{NodeRules, NodeSetup, ParallelPlutus}
+import xyz.kd5ujc.scarab.ledger.state.{Conway, LedgerState, NewEpochState, ShelleyBasedEra}
+import xyz.kd5ujc.scarab.node.{MirrorRules, NodeRules, NodeSetup, ParallelPlutus}
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.plutus.PlutusBackend
 import xyz.kd5ujc.scarab.protocol.{Era, StateLayout}
@@ -34,8 +26,10 @@ import xyz.kd5ujc.scarab.storage.UtxoStore
   * era block are decoded, and the inputs read from the store, outside the timings. The era run's
   * result through the workers is checked against its serial result, the flat rules' through the
   * workers against theirs, and the era run's against the flat rules' (the same ledger state and
-  * counters), on the first round, as reading the whole state costs; the last is reported, not
-  * asserted: the node does not apply Conway blocks with the era run yet (#85).
+  * counters), on the first round, as reading the whole state costs; the last is reported, and the
+  * caller asserts it over the window (`ConwayBodiesReplaySuite`, #85). The era run is the one the
+  * node builds ([[xyz.kd5ujc.scarab.node.MirrorRules.conwayBody]]), from the block and the read set
+  * the node reads ([[NodeRules.prepare]]).
   */
 object EraBodies:
   /** The bound of the node's workers the two parallel ways run at, and the rounds of each block. */
@@ -79,9 +73,11 @@ object EraBodies:
     val header = block.header
     if block.era != Era.Conway then IO.pure(Vector.empty)
     else
-      val prepared = NodeRules.prepare(header, raw, setup.praos.verdicts)
-      val inputs = prepared.fold(Set.empty[xyz.kd5ujc.scarab.ledger.TxIn])(_.inputs.toSet)
-      store.read(state.utxo.missing(inputs)).flatMap { fetched =>
+      // the block read as the node reads it (`NodeRules.prepare`), and its read set the node's
+      val read = NodeRules.prepare(header, raw, setup.praos.verdicts, layout) match
+        case Some(Prepared.Conway(read)) => read
+        case other                       => fail(s"not a Conway block as the node reads it: $other")
+      store.read(state.utxo.missing(read.inputs)).flatMap { fetched =>
         IO.defer {
           val resident = MirrorStep.mapUtxo(state)(_.withResident(fetched))
           // the configuration and constants of the chain within Shelley, its geometry resolved
@@ -92,8 +88,8 @@ object EraBodies:
           val (config, constants) = (entry.configuration, entry.constants)
           val geometry = config.geometry
           val placement = Placement(geometry, setup.byronHistory, config.forks)
-          val clock =
-            MirrorClock.of(constants.systemStart, resident, placement, Era.Conway, header.slot)
+          // the one clock the node's Conway run reads (`MirrorClock.conway`)
+          val clock = MirrorClock.conway(constants.systemStart, resident, placement, header.slot)
           val backend = PlutusBackend.default
           val globals = Globals(constants, geometry)
           val ctx = EraBlock.Context(
@@ -115,7 +111,8 @@ object EraBodies:
                 i.era match
                   case ShelleyBasedEra.SConway => i.nes
                   case other                   => fail(s"ticked into $other")
-          val txs = prepared.fold(EraBlock.decode(block))(_.txs)
+          // the flat rules' transactions, decoded as the flat decoder reads them
+          val txs = EraBlock.decode(block)
           def flat: EraBlock.Body =
             EraBlock.program(ctx)(
               EraNes.InEra(ShelleyBasedEra.SConway, ticked),
@@ -124,30 +121,21 @@ object EraBodies:
               txs,
               PlutusStats.zero
             )
-          val eraBlock = ConwayBlock.decode(raw, layout).fold(e => fail(s"era block: $e"), identity)
-          val params = ticked.es.ls.utxo.gov.curPParams
-          val pp =
-            PParams[Conway](ConwayPParams.fromStored(params).fold(e => fail(s"$e"), identity))
-          val ls = ticked.es.ls
-          val bbody = ShelleyBbodyState[Conway](
-            ls.copy[Conway](utxo =
-              ls.utxo.copy(utxo = UtxoTables(ls.utxo.utxo.utxo.at(header.blockNo.toLong)))
-            ),
-            ticked.bcur
-          )
+          val eraBlock = read.block.fold(e => fail(s"era block: $e"), identity)
+          // the era run as the node builds it (`MirrorRules.conwayBody`)
           def era: ConwayBlockRun.Body =
-            ConwayBlockRun.program(
-              globals,
-              BbodyEnv[Conway](pp, ticked.es.chainAccount),
-              eraBlock,
-              globals.systemStart,
-              MirrorClock.horizon(resident, placement, Era.Conway, header.slot),
-              bbody,
-              backend.evaluator,
-              config.verdicts,
-              backend.decoder,
-              clock.posix
-            )
+            MirrorRules
+              .conwayBody(
+                globals,
+                ticked,
+                header.blockNo,
+                eraBlock,
+                clock,
+                backend,
+                config.verdicts,
+                None
+              )
+              .fold(e => fail(s"era run: $e"), identity)
           def run(way: Way): IO[(Either[EraBlock.Outcome, ConwayBlockRun.Result], Long)] =
             way match
               case Way.FlatSerial   => timed(IO.blocking(flat.serial)).map(_.leftMap(Left(_)))

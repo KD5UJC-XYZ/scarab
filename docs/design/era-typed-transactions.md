@@ -678,9 +678,9 @@ Conway's rules on the classes follow as the rest of stage 2.
     - the bound of `txouts` and the clamp of `mkCollateralTxIn` are `TxOutsBoundSuite`'s, and the two
       `UtxoStateDefect`s, which only a damaged store or an output outside the state's vocabulary gives, are
       not reached.
-  - Not yet (#85): Alonzo's and Babbage's own UTXOS transitions, which run PPUP; and the node's phase-2
-    counters (`PlutusStats`) and its preparation of a block's evaluations, which the events stand for until
-    the switch.
+  - Not yet (#85): Alonzo's and Babbage's own UTXOS transitions, which run PPUP. The node's phase-2 counters
+    (`PlutusStats`) and its preparation of a Conway block's evaluations come from the events since the Conway
+    switch (below).
 - **UTXO whole, with the reference's failures** (`era/rules/Utxo.scala`, `era/rules/UtxoFailures.scala`; the
   `Rules/Utxo.hs` of Shelley, Allegra, Alonzo, Babbage and Conway, cardano-ledger f649f975, where 29a7d656 and
   9df9f98c differ in derived `Ord` instances, Alonzo's and Conway's units as `OrdExUnits`, the units read
@@ -742,11 +742,11 @@ Conway's rules on the classes follow as the rest of stage 2.
     (`fixtures/devnet/redeemer-index.jsonl`) are UTXOW's, run with its transition (UTXOW whole, below); the forecast
     corpus's Alonzo and Babbage cases, and the pre-Conway predicates of `remaining-predicates` and
     `instant-stake`, are of eras whose UTXO is not typed yet.
-  - UTXOW's transition with UTXO embedded and the failing native scripts came after (UTXOW whole, below). Not
-    yet (#85): the node's phase-2 counters (`PlutusStats`), which the events stand for until the Conway
-    switch. The defects stay typed raises
-    until then too: the node's `LedgerFailure.Unavailable` names a script by its flat redeemer, which a
-    `PlutusWithContext` does not carry, and has no case for a stored output the era does not read.
+  - UTXOW's transition with UTXO embedded and the failing native scripts came after (UTXOW whole, below). The
+    node's phase-2 counters (`PlutusStats`) come from the events since the Conway switch, and its defects stay
+    typed raises, which the switch routes (below): a script is named by its flat redeemer where the run can
+    locate it (`ConwayPhase2.named`), and a stored output the era does not read is the node's own
+    (`ConwayBlockDefect.UtxoState`).
 - **Conway's rules, the first predicates of UTXOW** (`era/rules/Utxow.scala`): six of the predicates
   Babbage's UTXOW runs (`babbageUtxowTransition`, `Babbage/Rules/Utxow.hs:308-391`), the ones whose own
   arguments the era types have: `validateVerifiedWits`, `babbageMissingScripts`, `missingRequiredDatums`,
@@ -1138,7 +1138,8 @@ Conway's rules on the classes follow as the rest of stage 2.
     form, one with none failing the comparison, and a missing script by its hash; the refusals are compared
     through the flat form and the node's encoder (#796); the redeemer-index cases of Alonzo and Babbage are of
     eras whose UTXOW is not typed yet.
-  - Not yet (#85): LEDGER and the mempool on the era types, and the node's phase-2 counters (`PlutusStats`).
+  - Not yet (#85): the mempool on the era types. The node's phase-2 counters (`PlutusStats`) come from the era
+    run since the Conway switch (below).
 - **Proposals and votes** (`era/Procedures.scala`, `conway/ConwayProcedures.scala`): `GovAction[E]`,
   `ProposalProcedure[E]` and `VotingProcedures[E]` are data types parameterised by the era, as the reference's
   `data GovAction era` and the others are, not families (decided 2026-11-16, #85): a family with one case reduces, in
@@ -1656,7 +1657,8 @@ Conway's rules on the classes follow as the rest of stage 2.
     (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7076811330); the epoch from the slot is compared
     within an era history only, as every suite's slot is in its history, not where the reference's
     `epochFromSlot` fails.
-  - Not yet (#85): the node's mempool, block body and phase-2 counters run the flat LEDGER until the Conway switch.
+  - Not yet (#85): the node's mempool runs the flat LEDGER until its switch (the plan's PR6); the node's block body
+    and phase-2 counters run Conway's era run (below).
 - **Conway's era failure encoder** (`node/.../ntc/ConwayFailureCbor.scala`; `Conway.hs:50-53` and the `EncCBOR`
   instances of `Conway/Rules/{Ledger,Utxow,Utxo,Utxos,Certs,Cert,Deleg,GovCert,Gov}.hs`, Shelley's `Rules/Pool.hs`,
   `Alonzo/Plutus/Context.hs`, `Alonzo/Rules/Utxos.hs`, the context errors of `Conway/TxInfo.hs` and
@@ -2604,7 +2606,7 @@ Conway's rules on the classes follow as the rest of stage 2.
     `DijkstraBlockRun` runs Dijkstra's, with the context of its transactions' rules made, as Dijkstra's is, from the
     judgment's `Globals` (the network, and here the build's injection) and every check validated (`ValidateAll`);
     the network the header's version is checked on is `Globals`' too, as the reference reads it (`:306`). The node
-    does not run it yet (the Conway switch).
+    applies Conway blocks with it (the Conway switch, below).
   - Conway's block is `AlonzoBlockBody` (`BlockBody`'s Conway case, `Conway/BlockBody.hs:14-15`), made only from a
     block's bytes (its decoder, `ConwayBlock`), its size and hash those of the segments the flat decoder read
     (`hashAlonzoSegWits`, `Alonzo/BlockBody/Internal.hs:188-210`), and the header's instance that of the Praos header.
@@ -2638,7 +2640,8 @@ Conway's rules on the classes follow as the rest of stage 2.
     reference's own only on the 53 recorded blocks it accepted; the rest are the flat rules'.
 - **Conway's block run, what the switch reads of it** (`era/rules/ConwayBlockRun.scala`, `era/rules/ConwayPhase2.scala`,
   `era/rules/Ledger.scala`), the glue the Conway switch wires in (item 3 of
-  https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7078449515); the node does not run it yet:
+  https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7078449515), which the node runs since the switch
+  (below):
   - The proposals: Conway's LEDGER, LEDGERS and BBODY take the proposals GOV judges as a capability beside the ledger
     state, as Dijkstra's LEDGER does, and CERTS's committee actions are those of the proposals before the transaction
     (`proposalsWithPurpose grCommitteeL`, `Conway/Rules/Ledger.hs:367-370`, cardano-ledger f649f975). `ConwayBlockRun`
@@ -2699,14 +2702,51 @@ Conway's rules on the classes follow as the rest of stage 2.
     `ConwayBbodySuite` shows it with an earlier missing input and then a damaged collateral output or a reference
     script the decoder gives no verdict on, each alone first (no verdict), and after deferred scripts flagged valid
     and invalid, the prepared plan's result compared with the serial run's (each of these blocks has one
-    redeeming transaction, under the bounded workers' threshold, so the workers run it serially). The node routes
-    neither yet; the switch routes the
-    refusal as any refused block. Remaining difference: BBODY reads every transaction's inputs and reference inputs
+    redeeming transaction, under the bounded workers' threshold, so the workers run it serially). The node refuses
+    the block as any refused block, the defect in the refusal's reason (the switch, below). Remaining difference: BBODY reads every transaction's inputs and reference inputs
     into the era before LEDGERS judges any (for the reference scripts' size), so a later transaction's input or
     reference input the era does not read is raised before any transaction's failure is recorded and the block is
     withheld (refused only on a header failure BBODY recorded first), where the reference refuses it on the earlier
     transaction; `ConwayBbodySuite` pins it
     ([#85](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7105195571)).
+- **The Conway switch: the node applies Conway blocks with the era rules** (`node/.../MirrorRules.scala`,
+  `Follower.scala`, `VerificationCache.scala`, `LedgerRules.scala`; `ledger/.../Prepared.scala`,
+  `era/conway/ConwayBlock.scala`, `ConwayBlockDefect.scala`; the plan's PR5,
+  https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7078449515, with the owner's decisions of
+  https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7104253607). Only Conway blocks move: a block of an
+  earlier era, and a Dijkstra block of a release build, keep the flat rules (`EraBlock`); a Dijkstra block of the
+  Leios build keeps `MirrorDijkstra`.
+  - The block is read once, as its era's rules read it (`Prepared`): a Conway block's bytes by the block decoder,
+    and its transactions into Conway's types in the chain state's layout (`ConwayBlock.read`), in place of the flat
+    decoder's transactions. The verification cache reads it so ahead of the rules, its witness checks those Conway's
+    UTXOW asks for (`verifiedWitsAsked`), and the store's read set is the era transactions' inputs, collateral and
+    reference inputs less the block's own outputs (`ConwayBlock.inputs`, `neededTxInsForBlock`); the replay harness
+    reads the block and its read set with the same functions (`NodeRules.prepare`).
+  - The checks before the body are the flat path's, on the block decoder's reading: the header is the announced one,
+    the body is the one it commits to, the tick, the header checks. Then the era run (`MirrorRules.conwayBody`, which
+    the harness's era side calls too): BBODY's environment of the parameters in force read into Conway's and the chain
+    account, its state the ticked ledger state with the block's UTxO changes stamped with its number, run serially or
+    through the node's bounded workers (ADR 0018). Its system start, epoch information, slot to time translation and
+    the clock of its `--plutus-cases` observations are one value (`MirrorClock.conway`). The node's counters gain the
+    block's (`ConwayPhase2.counted`, from zero), field by field; `integrityChecked` keeps its meaning.
+  - What a run comes to, each outcome placed by a total match: an admitted block is the mirror after it; a refusal,
+    of every failure the run recorded (#412), or of those recorded before a later defect of this node
+    (`Refusal.Stopped`, the defect in the reason, logged as ours), is a refused block like any other
+    (`BlockFailure.ConwayBbody`), the peer that served it treated as for any invalid block. A defect with no failure
+    before it (`MirrorRules.conwayDefect`): a script named by its transaction, a phase-1 script the decoder cannot
+    judge and a verifier's failure keep the flat routes, the block withheld; a quantity of the state out of range is
+    withheld as on the flat rules; the five transaction defects the flat rules refuse a block for (`Vocab`,
+    `Undecodable`, `LayoutNotYet`, `PoolParamsLayout`, `NativeScriptUnread`) stay refusals, so the switch
+    reclassifies nothing; the rest, an unnamed script, the node's readings that disagree, parameters that are not
+    Conway's, a stored output the era does not read, too many proposals and a record of the proposals that does not
+    read or write, withhold the block and never stop the node (`ChainError.ConwayBlock`, `BlockNoVerdict.ofConway`,
+    issue 567). A stored block replayed at a restart keeps its routes: in the volatile tail's recovery a refusal cuts the
+    stored tail back, and in the immutable replay it stops the start; no verdict stops the start, as for every
+    cause of no verdict.
+  - The flat BBODY and MEMPOOL stay (owner decision 4) and the comparison stays in the tests: `ConwayBodiesReplaySuite`
+    asserts the era run's state and counters equal to the flat rules' on every Conway block of the preprod window,
+    and `SessionFailureSuite` pins each outcome's route through the follower. The forger selects with the flat rules
+    and the mempool admits with them until their switches (the plan's PR6 and PR7).
 - **Dijkstra's BBODY** (`era/EraBlock.scala`, `era/dijkstra/DijkstraBlock.scala`, `era/rules/BbodyFailures.scala`,
   `era/rules/DijkstraBbody.scala`; `Rules/Bbody.hs` of `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/`, cardano-ledger
   9df9f98c, with the predicates of Shelley's, Alonzo's and Conway's BBODY it runs):

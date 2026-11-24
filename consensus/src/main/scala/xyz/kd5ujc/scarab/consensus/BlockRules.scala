@@ -66,6 +66,11 @@ enum BlockNoVerdict:
     */
   case StateOutOfRange(error: xyz.kd5ujc.scarab.ledger.ChainError)
 
+  /** The node reaches no verdict on a Conway block its era rules apply, for a state or a store of
+    * its own (`ChainError.ConwayBlock`, [[BlockNoVerdict.ofConway]]).
+    */
+  case ConwayRules(cause: xyz.kd5ujc.scarab.ledger.ConwayBlockDefect)
+
   /** The rules threw while they judged the block. */
   case Defect(cause: Throwable)
 
@@ -79,6 +84,7 @@ enum BlockNoVerdict:
     case Projection(cause) => xyz.kd5ujc.scarab.ledger.DijkstraBlockDefect.Projection(cause).message
     case Verification(defect)   => s"verification failed: ${defect.message}"
     case StateOutOfRange(error) => error.message
+    case ConwayRules(cause)     => cause.message
     case Defect(cause)          => s"the rules threw: $cause"
 
   /** Whether the cause can pass on its own, so that the block is judged again (issue 693). A total
@@ -94,7 +100,15 @@ enum BlockNoVerdict:
       case Verification(_) => Passing
       // a quantity of the state stays out of range for the same state
       case StateOutOfRange(_) => Deterministic
-      case Defect(_)          => Passing
+      case ConwayRules(cause) =>
+        import xyz.kd5ujc.scarab.ledger.ConwayBlockDefect as C
+        cause match
+          case C.Unavailable(unavailable) => BlockNoVerdict.recoveryOf(unavailable.reason)
+          // the same build reads the same bytes and the same state again
+          case C.Projection(_) | C.Params(_) | C.UtxoState(_) | C.Gov(_) | C.ProposalsRead(_) |
+              C.ProposalsWrite(_) =>
+            Deterministic
+      case Defect(_) => Passing
 
 object BlockNoVerdict:
   /** The no verdict a Dijkstra block's defect is, where the follower withholds the block for it: a
@@ -109,6 +123,19 @@ object BlockNoVerdict:
       case D.Closure(_) | D.Certification(_) | D.Header(_) | D.View(_) | D.UtxoState(_) |
           D.Gov(_) =>
         None
+
+  /** The no verdict a Conway block's defect is (#85): every one, as the follower withholds the
+    * block for each and never stops for one (issue 567); a script the evaluator gives no verdict
+    * for and the node's readings that disagree as for a Dijkstra block. A total match with no
+    * default, so a new defect must be placed here.
+    */
+  def ofConway(defect: xyz.kd5ujc.scarab.ledger.ConwayBlockDefect): BlockNoVerdict =
+    import xyz.kd5ujc.scarab.ledger.ConwayBlockDefect as C
+    defect match
+      case C.Unavailable(cause) => ScriptUnavailable(cause)
+      case C.Projection(cause)  => Projection(cause)
+      case C.Params(_) | C.UtxoState(_) | C.Gov(_) | C.ProposalsRead(_) | C.ProposalsWrite(_) =>
+        ConwayRules(defect)
 
   /** Whether an evaluator's missing verdict can pass on its own, by its cause. */
   private def recoveryOf(

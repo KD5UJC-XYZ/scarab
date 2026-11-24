@@ -14,8 +14,9 @@ import xyz.kd5ujc.scarab.node.preview.{EraBodies, RecordedReplay, ReplayInputs}
   * `SCARAB_PLUTUS_BASELINE`, and the pinned baseline, with a fresh output directory of its own,
   * `SCARAB_ERA_BODIES_OUTPUT`), each Conway block's BBODY timed four ways from the state the mirror
   * ticks it to: the flat rules' and Conway's era run's, each serial and through four of the node's
-  * workers (`EraBodies`). The reference state advances by the original serial interpreter, timed
-  * once a block. Opt-in offline evidence, as `PlutusReplaySuite` is.
+  * workers (`EraBodies`), the era run's state and counters asserted equal to the flat rules' on
+  * every block. The reference state advances by the original serial interpreter, timed once a
+  * block. Opt-in offline evidence, as `PlutusReplaySuite` is.
   */
 class ConwayBodiesReplaySuite extends FailsOnUncaught:
   override def munitIOTimeout: Duration = 40.minutes
@@ -86,5 +87,17 @@ class ConwayBodiesReplaySuite extends FailsOnUncaught:
       )
       _ <- IO.blocking(Files.writeString(output.resolve("era-bodies-summary.json"), report.spaces2))
       _ <- IO.println(report.noSpaces)
+      // the node applies Conway blocks with the era run (#85): on every block, its state and
+      // counters are the flat rules', which the summary above names where they are not
+      compared = rows.filter(_.hcursor.downField("round").as[Int].toOption.contains(0))
+      _ <- IO(assert(compared.nonEmpty, "no Conway block of the window was compared"))
+      _ <- IO(
+        assert(
+          compared.forall(
+            _.hcursor.downField("eraAgreesWithFlat").as[Boolean].toOption.contains(true)
+          ),
+          s"the era run differs from the flat rules on ${disagreeing.size} rows"
+        )
+      )
     yield ()
   }

@@ -4,7 +4,7 @@ package xyz.kd5ujc.scarab.ledger.era.conway
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.Blake2b
-import xyz.kd5ujc.scarab.ledger.{Block as FlatBlock, ChainError, Header, Unsigned}
+import xyz.kd5ujc.scarab.ledger.{Block as FlatBlock, ChainError, Header, TxIn, Unsigned}
 import xyz.kd5ujc.scarab.ledger.era.{
   Block,
   BlockBody,
@@ -165,6 +165,41 @@ object ConwayBlock:
 
   private given Decoded = Decoded()
 
+  /** A Conway block's bytes read once: the block decoder's reading of them (`envelope`, which the
+    * node's checks of the header and the body's commitment read) and, made from it, the block in
+    * the era's types in the pool parameters' `layout`, or why its contents are not one. Only
+    * [[read]] makes one, from the bytes it decoded.
+    */
+  final class Read private[ConwayBlock] (
+      val envelope: FlatBlock.Shelley,
+      val layout: StateLayout,
+      val block: Either[ConwayBlockError, Block[ConwayBlockHeader, Conway]]
+  ):
+    /** What the block's transactions read from the UTxO set ([[inputs]]); none where its contents
+      * are not a block of the era, whose rules then read nothing.
+      */
+    def inputs: Set[TxIn] = block.fold(_ => Set.empty, ConwayBlock.inputs)
+
+  /** The block encoded as `raw` read by the block decoder (`Block.decodeShelley`, whose failure is
+    * the `Left`): a Conway block as [[Read]], each transaction read in the pool parameters'
+    * `layout`; a block of another era as the decoder read it.
+    */
+  def read(raw: Bytes, layout: StateLayout): Either[ChainError, Either[FlatBlock, Read]] =
+    FlatBlock.decodeShelley(raw).map {
+      case b: FlatBlock.Shelley if b.era == ChainEra.Conway =>
+        Right(
+          Read(
+            b,
+            layout,
+            for
+              header <- ConwayBlockHeader.fromHeader(b.header)
+              body <- ConwayBlockBody.ofDecoded(b, layout).leftMap(ConwayBlockError.of)
+            yield Block[ConwayBlockHeader, Conway](header, body)
+          )
+        )
+      case other => Left(other)
+    }
+
   /** The block encoded as `raw` (`[7, [header, bodies, witnesses, auxiliary data, invalid]]`), as
     * the block decoder reads it (`Block.decodeShelley`): its header
     * ([[ConwayBlockHeader.fromHeader]]) and its body, made from the same bytes as its size and hash
@@ -174,14 +209,26 @@ object ConwayBlock:
       raw: Bytes,
       layout: StateLayout
   ): Either[ConwayBlockError, Block[ConwayBlockHeader, Conway]] =
-    FlatBlock
-      .decodeShelley(raw)
+    read(raw, layout)
       .leftMap(ConwayBlockError.Decode(_))
       .flatMap {
-        case b: FlatBlock.Shelley if b.era == ChainEra.Conway =>
-          for
-            header <- ConwayBlockHeader.fromHeader(b.header)
-            body <- ConwayBlockBody.ofDecoded(b, layout).leftMap(ConwayBlockError.of)
-          yield Block[ConwayBlockHeader, Conway](header, body)
-        case other => Left(ConwayBlockError.OtherEra(other.era))
+        case Right(conway) => conway.block
+        case Left(other)   => Left(ConwayBlockError.OtherEra(other.era))
       }
+
+  /** What the transactions of `block` read from the UTxO set, fetched from the store before its
+    * rules run: every input of each (`allInputsTxBodyF`: the spent, collateral and reference
+    * inputs, `Conway/TxBody.hs:344`, cardano-ledger f649f975), less those that an output of a
+    * transaction of the same block holds, which no store holds (`neededTxInsForBlock`,
+    * `libs/cardano-ledger-core/src/Cardano/Ledger/Block.hs:132-141`, cardano-ledger f649f975). The
+    * set must hold every input the rules read, or they would refuse a valid block for an output the
+    * store holds.
+    */
+  def inputs(block: Block[ConwayBlockHeader, Conway]): Set[TxIn] =
+    val t = EraTx.conway
+    val txs = EraBlockBody.conway.txSeqBlockBody(block.blockBody)
+    val bodies = txs.map(tx => t.body[TxLevel.Top](tx)(using t.bodyOf.top))
+    val created = bodies.map(b => t.bodyOf.id[TxLevel.Top](b)(using t.bodyOf.top)).toSet
+    bodies
+      .foldLeft(Set.empty[TxIn])((all, b) => all ++ t.bodyOf.allInputs(b))
+      .filterNot(in => created.contains(in.id))

@@ -18,6 +18,11 @@ import xyz.kd5ujc.scarab.ledger.{
   BlockPoolProblem,
   BlockRule,
   ChainError,
+  ConwayBlockDefect,
+  GovActionId,
+  LedgerDefect,
+  TxDefect,
+  TxIn,
   EpochGeometry,
   Header,
   HeaderError,
@@ -33,7 +38,25 @@ import xyz.kd5ujc.scarab.crypto.opcert.OperationalCertificate
 import xyz.kd5ujc.scarab.crypto.vrf.PraosVrfCertificate as Vrf
 import xyz.kd5ujc.scarab.crypto.witness.VerificationError
 import xyz.kd5ujc.scarab.ledger.byron.ByronSig
-import xyz.kd5ujc.scarab.ledger.era.{GovStateReadError, StoredGovError}
+import xyz.kd5ujc.scarab.ledger.era.{
+  EraTxError,
+  GovStateReadError,
+  Mismatch,
+  ProposalsReadError,
+  StoredGovError
+}
+import xyz.kd5ujc.scarab.ledger.era.Relation.RelLTEQ
+import xyz.kd5ujc.scarab.ledger.era.rules.{
+  BbodyPredFailure,
+  ConwayBbodyPredFailure,
+  ConwayBlockRun,
+  ConwayRuleDefect,
+  GovDefect,
+  UtxoStateDefect
+}
+import xyz.kd5ujc.scarab.ledger.state.Conway
+import xyz.kd5ujc.scarab.protocol.{ReferenceBuild, ReferenceBuildNotYet, StateLayout}
+import cats.data.NonEmptyChain
 import xyz.kd5ujc.scarab.ledger.rules.TickFailure
 import xyz.kd5ujc.scarab.ledger.state.VocabError
 import xyz.kd5ujc.scarab.protocol.ChainSync
@@ -99,7 +122,8 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       outOfRange: Option[Int] = None,
       govRecord: Option[Int] = None,
       closureMissing: Option[Int] = None,
-      dijkstra: Option[(Int, xyz.kd5ujc.scarab.ledger.DijkstraBlockDefect)] = None
+      dijkstra: Option[(Int, xyz.kd5ujc.scarab.ledger.DijkstraBlockDefect)] = None,
+      conway: Option[(Int, Either[ChainError, BlockFailure])] = None
   ): IO[Result] =
     NodeScope.resource.use { node =>
       for
@@ -163,6 +187,11 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
             dijkstra.fold(IO.pure(header.blockNo))((_, defect) =>
               Raise[IO, ChainError]
                 .raise[ChainError, BigInt](ChainError.DijkstraBlock(header.slot, defect))
+            )
+          // what a Conway block's era run came to, raised as the node's rules raise it
+          else if conway.exists(_._1 == header.blockNo.toInt) then
+            conway.fold(IO.pure(header.blockNo))((_, outcome) =>
+              MirrorRules.raised[IO, BigInt](header, outcome)
             )
           else if closureMissing.contains(header.blockNo.toInt) then
             Raise[IO, ChainError].raise[ChainError, BigInt](missingClosure(header.slot))
@@ -701,6 +730,153 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       )
     )
     assertEquals(SessionEnd.of(refused), SessionEnd.Failed(refused))
+  }
+
+  // ---- Conway blocks on the era rules (#85): what each outcome of the era run comes to
+
+  /** A refusal of block `at` with `failure`: the peer that served it forgotten as for any invalid
+    * block, the chain at the block before.
+    */
+  private def refusedWith(left: Result, at: Int, failure: BlockFailure): Unit =
+    left.end match
+      case SessionEnd.Failed(PeerError.InvalidBlock(e)) =>
+        assertEquals(e.point, headers(at).point)
+        assertEquals(e.failure, failure)
+      case other => fail(s"unexpected $other")
+    assertEquals(left.chain.tip, headers(at - 1).point)
+    assertEquals(blockNos(left.stored), (0 until at).toVector)
+    assertEquals(FailurePolicy.disposition(left.end), Disposition.Forget)
+
+  private def conwayDefect(defect: ConwayRuleDefect): Either[ChainError, BlockFailure] =
+    MirrorRules.conwayDefect(headers(2).slot, defect)
+
+  private val refusedFailures: NonEmptyChain[BbodyPredFailure[Conway]] =
+    NonEmptyChain.one(
+      ConwayBbodyPredFailure.BodyRefScriptsSizeTooBig[Conway](Mismatch[RelLTEQ, Long](10L, 5L))
+    )
+
+  private val unverifiableWitness = LedgerFailure.Unverifiable(
+    Bytes.fromArray(Array.fill(32)(3.toByte)),
+    ProviderDefect.Ed25519(VerificationError.ImplementationFailure(boom))
+  )
+
+  test("Conway's era rules refuse a block: a refusal of every failure, the peer forgotten") {
+    val refusal = ConwayBlockRun.Refusal.Failed(refusedFailures)
+    session(conway = Some(2 -> Right(BlockFailure.ConwayBbody(refusal)))).map(
+      refusedWith(_, 2, BlockFailure.ConwayBbody(refusal))
+    )
+  }
+
+  // owner decision 2026-11-23 on #85: the established refusal wins over a later defect of ours,
+  // whatever that defect is; the defect is in the refusal's reason
+  Vector[(String, ConwayRuleDefect)](
+    "a script with no verdict" -> ConwayRuleDefect.ScriptUnavailable(heldFailure),
+    "a verifier's failure" -> ConwayRuleDefect.Ledger(unverifiableWitness),
+    "a state out of range" -> ConwayRuleDefect.Ledger(
+      LedgerFailure.StateOutOfRange(Bytes.empty, pot)
+    ),
+    "an output out of the state's vocabulary" ->
+      ConwayRuleDefect.UtxoState(UtxoStateDefect.Vocab(pot)),
+    "too many proposals" -> ConwayRuleDefect.Gov(GovDefect.ProposalIndexOverflow(65536))
+  ).foreach { (name, defect) =>
+    test(s"failures recorded before $name refuse the Conway block, the peer forgotten") {
+      val failure =
+        BlockFailure.ConwayBbody(ConwayBlockRun.Refusal.Stopped(refusedFailures, defect))
+      assertEquals(ValidationError(headers(2).point, failure).unverifiable, None)
+      assertEquals(MirrorRules.stateOutOfRange(headers(2), failure), None)
+      assert(failure.reason.contains(defect.toString), failure.reason)
+      session(conway = Some(2 -> Right(failure))).map(refusedWith(_, 2, failure))
+    }
+  }
+
+  // the five defects of a transaction the flat rules refuse a block for stay a refusal on the
+  // era rules: the switch reclassifies nothing (#85)
+  Vector[LedgerDefect](
+    LedgerFailure.Vocab(pot),
+    LedgerFailure.Undecodable(Bytes.empty, TxDefect.DelegationWithoutDelegatee),
+    LedgerFailure.LayoutNotYet(ReferenceBuildNotYet.Layout(ReferenceBuild.Release11_2)),
+    LedgerFailure.PoolParamsLayout(Bytes.empty, StateLayout.Leios, StateLayout.Node11_1),
+    LedgerFailure.NativeScriptUnread(Bytes.empty, Bytes.empty)
+  ).foreach { defect =>
+    test(
+      s"Conway's era rules' ${defect.getClass.getSimpleName} refuses the block, as the flat rules do"
+    ) {
+      val outcome = conwayDefect(ConwayRuleDefect.Ledger(defect))
+      assertEquals(outcome, Right(BlockFailure.Tx(defect)))
+      session(conway = Some(2 -> outcome)).map(refusedWith(_, 2, BlockFailure.Tx(defect)))
+    }
+  }
+
+  test("a Conway script named with no verdict withholds the block, as on the flat rules") {
+    Vector(ConwayRuleDefect.ScriptUnavailable(heldFailure), ConwayRuleDefect.Ledger(heldFailure))
+      .traverse_ { defect =>
+        session(conway = Some(2 -> conwayDefect(defect))).map { left =>
+          withheld(left, 2) { case BlockNoVerdict.Evaluation(point, failure) =>
+            assertEquals(point, headers(2).point)
+            assertEquals(failure, heldFailure)
+          }
+        }
+      }
+  }
+
+  test("a verifier's failure on a Conway block withholds it, as on the flat rules") {
+    session(conway = Some(2 -> conwayDefect(ConwayRuleDefect.Ledger(unverifiableWitness)))).map {
+      left =>
+        withheld(left, 2) { case BlockNoVerdict.Verification(d) =>
+          assertEquals(d.site, VerificationDefect.Site.Witness(unverifiableWitness.txId))
+        }
+    }
+  }
+
+  test("a quantity of the state out of range on Conway's era rules withholds the block") {
+    Vector(
+      ConwayRuleDefect.Ledger(LedgerFailure.StateOutOfRange(Bytes.empty, pot)),
+      ConwayRuleDefect.UtxoState(UtxoStateDefect.Vocab(pot)),
+      ConwayRuleDefect.Gov(GovDefect.Vocab(pot))
+    ).traverse_ { defect =>
+      session(conway = Some(2 -> conwayDefect(defect))).map { left =>
+        withheld(left, 2) { case BlockNoVerdict.StateOutOfRange(fault) =>
+          assertEquals(fault, ChainError.StateOutOfRange(headers(2).slot, pot))
+        }
+      }
+    }
+  }
+
+  test("a state or a store of the node's own on Conway's era rules withholds the block, no stop") {
+    val id = GovActionId(Bytes.fromArray(Array.fill(32)(5.toByte)), 0)
+    Vector[(ConwayRuleDefect, ConwayBlockDefect)](
+      ConwayRuleDefect.UtxoState(
+        UtxoStateDefect.StoredOutput(TxIn(Bytes.empty, 0), EraTxError.OtherLevel)
+      ) -> ConwayBlockDefect.UtxoState(
+        UtxoStateDefect.StoredOutput(TxIn(Bytes.empty, 0), EraTxError.OtherLevel)
+      ),
+      ConwayRuleDefect.Gov(GovDefect.ProposalIndexOverflow(65536)) ->
+        ConwayBlockDefect.Gov(GovDefect.ProposalIndexOverflow(65536)),
+      ConwayRuleDefect.ProposalsRead(ProposalsReadError.Unattached(id)) ->
+        ConwayBlockDefect.ProposalsRead(ProposalsReadError.Unattached(id))
+    ).traverse_ { (defect, held) =>
+      val outcome = conwayDefect(defect)
+      assertEquals(outcome, Left(ChainError.ConwayBlock(headers(2).slot, held)))
+      session(conway = Some(2 -> outcome)).map { left =>
+        assertEquals(left.fatal, None)
+        withheld(left, 2) { case BlockNoVerdict.ConwayRules(cause) => assertEquals(cause, held) }
+      }
+    }
+  }
+
+  test("the node's readings of a Conway block that disagree withhold it, no stop") {
+    val outcome = Left(
+      ChainError.ConwayBlock(
+        headers(2).slot,
+        ConwayBlockDefect.Projection(EraTxError.ScriptsReadAgain)
+      )
+    )
+    session(conway = Some(2 -> outcome)).map { left =>
+      assertEquals(left.fatal, None)
+      withheld(left, 2) { case BlockNoVerdict.Projection(cause) =>
+        assertEquals(cause, EraTxError.ScriptsReadAgain)
+      }
+    }
   }
 
   test("an implementation limit is never recorded as an invalid block") {

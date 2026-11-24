@@ -12,6 +12,10 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{Nonce, OCertError, ProviderDefect}
 import xyz.kd5ujc.scarab.consensus.{Praos, PraosConfig, TPraos}
 import xyz.kd5ujc.scarab.crypto.vrf.PraosVrfCertificate as Vrf
+import xyz.kd5ujc.scarab.ledger.era.{EraBlockBody, EraTx, TxLevel}
+import xyz.kd5ujc.scarab.ledger.era.rules.ShelleyUtxow
+import xyz.kd5ujc.scarab.ledger.state.Conway
+import xyz.kd5ujc.scarab.protocol.StateLayout
 
 /** Signature checks that do not depend on the ledger state, made available ahead of the sequential
   * rules.
@@ -42,6 +46,10 @@ import xyz.kd5ujc.scarab.crypto.vrf.PraosVrfCertificate as Vrf
   *
   * @param direct
   *   the providers every verdict is computed with; [[Verdicts.Direct]] except in tests
+  * @param layout
+  *   the pool parameters' layout of the chain's state, which a Conway block's transactions are
+  *   decoded in for the rules ([[Prepared.decode]]); the rules take a block decoded in another only
+  *   to decode it again ([[NodeRules.prepare]])
   * @param running
   *   the permits all warming shares, `parallelism` of them; a test may supply its own to observe
   *   the waits
@@ -49,6 +57,7 @@ import xyz.kd5ujc.scarab.crypto.vrf.PraosVrfCertificate as Vrf
 final class VerificationCache private (
     val parallelism: Int,
     direct: Verdicts,
+    layout: StateLayout,
     private[node] val running: java.util.concurrent.Semaphore
 ) extends Verdicts:
   private final case class WitnessKey(vkey: Bytes, signature: Bytes, message: Bytes)
@@ -91,11 +100,11 @@ final class VerificationCache private (
       pool.execute { () =>
         val _ = Either.catchNonFatal {
           val pending = prepared.values.asScala.toVector
-            .filter(p => config.geometry.epochOf(p.block.header.slot) == epoch)
-            .sortBy(_.block.header.slot)
+            .filter(p => config.geometry.epochOf(p.envelope.header.slot) == epoch)
+            .sortBy(_.envelope.header.slot)
           pending.asJava
             .parallelStream()
-            .forEach(p => warmVrf(p.block.header, config, epochNonce.get))
+            .forEach(p => warmVrf(p.envelope.header, config, epochNonce.get))
         }
       }
 
@@ -331,18 +340,36 @@ final class VerificationCache private (
     if headers.size > Limit then headers.clear()
     if prepared.size > 4096 then prepared.clear()
     if vrfs.size > 16384 then vrfs.clear()
-    NodeRules.decodeShelley(raw).fold(Vector.empty[Job]) { p =>
-      val b = p.block
+    NodeRules.decodeShelley(raw, layout).fold(Vector.empty[Job]) { p =>
+      val b = p.envelope
       val key = HeaderKey(b.header.hash, config.slotsPerKesPeriod, config.maxKesEvolutions)
-      val triples = p.txs
-        .flatMap(_.toOption)
-        .flatMap { tx =>
-          val id = tx.body.id
-          (tx.witnesses.vkeys ++ tx.witnesses.bootstrap.map(w => w.vkey -> w.signature)).map {
-            (vkey, signature) => WitnessKey(vkey, signature, id)
-          }
-        }
-        .distinct
+      val triples = (p match
+        case Prepared.Flat(_, txs) =>
+          txs
+            .flatMap(_.toOption)
+            .flatMap { tx =>
+              val id = tx.body.id
+              (tx.witnesses.vkeys ++ tx.witnesses.bootstrap.map(w => w.vkey -> w.signature)).map {
+                (vkey, signature) => WitnessKey(vkey, signature, id)
+              }
+            }
+        // the checks the era's UTXOW asks for, exactly (`verifiedWitsAsked`)
+        case Prepared.Conway(read) =>
+          read.block.fold(
+            _ => Vector.empty[WitnessKey],
+            block =>
+              EraBlockBody.conway
+                .txSeqBlockBody(block.blockBody)
+                .flatMap(tx =>
+                  ShelleyUtxow
+                    .verifiedWitsAsked[Conway, TxLevel.Top](tx)(using
+                      EraTx.conway,
+                      EraTx.conway.bodyOf.top
+                    )
+                    .map(c => WitnessKey(c.vkey, c.signature, c.message))
+                )
+          )
+      ).distinct
       val checks: Vector[Job] =
         // header-first validation may have computed it already (see forHeaders)
         Vector[Job](
@@ -462,12 +489,16 @@ object VerificationCache:
   val defaultParallelism: Int = math.max(1, Runtime.getRuntime.availableProcessors())
 
   /** A fresh, empty cache whose background pool is shut down when the resource is released. */
-  def resource[F[_]: Sync](parallelism: Int = defaultParallelism): Resource[F, VerificationCache] =
+  def resource[F[_]: Sync](
+      layout: StateLayout,
+      parallelism: Int = defaultParallelism
+  ): Resource[F, VerificationCache] =
     Resource.make(
       Sync[F].delay(
         new VerificationCache(
           parallelism,
           Verdicts.Direct,
+          layout,
           new java.util.concurrent.Semaphore(parallelism)
         )
       )
@@ -478,10 +509,12 @@ object VerificationCache:
   private[node] def unsafe(
       parallelism: Int = defaultParallelism,
       direct: Verdicts = Verdicts.Direct,
-      running: Option[java.util.concurrent.Semaphore] = None
+      running: Option[java.util.concurrent.Semaphore] = None,
+      layout: StateLayout = StateLayout.Node11_1
   ): VerificationCache =
     new VerificationCache(
       parallelism,
       direct,
+      layout,
       running.getOrElse(new java.util.concurrent.Semaphore(parallelism))
     )

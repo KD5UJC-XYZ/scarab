@@ -1197,7 +1197,8 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     )
     val eb = xyz.kd5ujc.scarab.protocol.EbHash.fromBytes(Bytes.fromArray(Array.fill(32)(7.toByte)))
     // the closure's read from the endorser-block store fails; the store gives no closure; a
-    // Dijkstra block the node has no verdict on; the evaluator cannot judge a script
+    // Dijkstra block the node has no verdict on; a Conway block the node has no verdict on (#85);
+    // the evaluator cannot judge a script
     val failures: Vector[Header => NodeError] = Vector(
       _ => StorageError.LeiosStore(LeiosStoreError.Closed),
       h =>
@@ -1212,6 +1213,13 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           h.slot,
           xyz.kd5ujc.scarab.ledger.DijkstraBlockDefect
             .Projection(xyz.kd5ujc.scarab.ledger.era.EraTxError.ScriptsReadAgain)
+        ),
+      h =>
+        ChainError.ConwayBlock(
+          h.slot,
+          xyz.kd5ujc.scarab.ledger.ConwayBlockDefect.Gov(
+            xyz.kd5ujc.scarab.ledger.era.rules.GovDefect.ProposalIndexOverflow(65536)
+          )
         ),
       h => ValidationError(h.point, BlockFailure.Tx(unavailable))
     )
@@ -1254,6 +1262,54 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         assertEquals(again.resumed, k)
         assertEquals(again.dropped, 0)
         assertEquals(again.chain, first.chain)
+    }
+  }
+
+  // owner decision 2026-11-23 on #85: failures recorded before a later defect of the node refuse the
+  // block as the reference refuses it, so a stored Conway block refused so cuts the tail back at a
+  // restart, as any refusal does, whatever the defect (here a verifier's failure, which alone would
+  // stop the start)
+  test(
+    "a stored Conway block refused on failures recorded before a defect of the node is cut back"
+  ) {
+    val defect = xyz.kd5ujc.scarab.ledger.era.rules.ConwayRuleDefect.Ledger(
+      LedgerFailure.Unverifiable(
+        Bytes.fromArray(Array.fill(32)(3.toByte)),
+        ProviderDefect.Ed25519(
+          VerificationError.ImplementationFailure(new IllegalStateException("provider broke"))
+        )
+      )
+    )
+    val refusal = xyz.kd5ujc.scarab.ledger.era.rules.ConwayBlockRun.Refusal.Stopped(
+      cats.data.NonEmptyChain.one(
+        xyz.kd5ujc.scarab.ledger.era.rules.ConwayBbodyPredFailure
+          .BodyRefScriptsSizeTooBig[xyz.kd5ujc.scarab.ledger.state.Conway](
+            xyz.kd5ujc.scarab.ledger.era.Mismatch[
+              xyz.kd5ujc.scarab.ledger.era.Relation.RelLTEQ,
+              Long
+            ](10L, 5L)
+          )
+      ),
+      defect
+    )
+    def refusingOn(last: Header): BlockRules[IO, MirrorState] => BlockRules[IO, MirrorState] =
+      base =>
+        BlockRules.from { (state, header, raw) =>
+          if header.hash == last.hash then
+            Raise[IO, ValidationError].raise[ValidationError, MirrorState](
+              ValidationError(header.point, BlockFailure.ConwayBbody(refusal))
+            )
+          else base(state, header, raw)
+        }
+    tempDir.use { dir =>
+      for
+        first <- session(dir, 500)
+        tail = first.chain.blocks.lastOption.getOrElse(fail("expected a volatile suffix"))._1
+        header = headers.find(_.hash == tail.hash).getOrElse(fail("missing fixture header"))
+        again <- session(dir, 500, wrapRules = refusingOn(header))
+      yield
+        assertEquals(again.resumed, k - 1)
+        assertEquals(again.dropped, 1)
     }
   }
 

@@ -875,7 +875,7 @@
       "id": "ledger-conway",
       "component": "Ledger: Conway",
       "status": "implemented",
-      "summary": "Conway ledger rules including scripts, all certificates, treasury donation and the protocol-11 pool rule, with the VRF key hashes HARDFORK counts as the selected reference build does",
+      "summary": "Conway ledger rules including scripts, all certificates, treasury donation and the protocol-11 pool rule, with the VRF key hashes HARDFORK counts as the selected reference build does; the node applies Conway blocks with the era rules, every failure of a refused block accumulated",
       "evidence": {
         "suites": [
           "DevnetRefusedTxSuite",
@@ -888,11 +888,16 @@
           "RedeemerIndexReferenceSuite",
           "ConwayGovernanceSuite",
           "ConwayLedgerSuite",
-          "StateAdmissionSuite"
+          "StateAdmissionSuite",
+          "ConwayBbodySuite",
+          "ConwayBodiesReplaySuite",
+          "SessionFailureSuite"
         ],
         "issues": [
           828,
-          825
+          825,
+          85,
+          412
         ]
       },
       "limitations": {
