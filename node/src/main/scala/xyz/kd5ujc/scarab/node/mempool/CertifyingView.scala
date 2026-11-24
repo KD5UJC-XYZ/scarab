@@ -34,20 +34,21 @@ final case class CertifyingView private[node] (
 ):
   /** Whether a transaction the view kept has left the pool since (`isRemovalCounter` changed): the
     * view is then built again from its base, as the reference revalidates it from `cvBase` on a
-    * removal (`removeFromCertifyingView`, `CertifyingView.hs:156-178`).
+    * removal (`removeFromCertifyingView`, `CertifyingView.hs:156-178` at ouroboros-consensus
+    * d91b3557).
     */
   def removedFrom(pool: MempoolState): Boolean =
     val held = pool.entries.iterator.map(_.ticket).toSet
     revalidation.kept.exists((entry, _) => !held(entry.ticket))
 
   /** The pool's transactions the view has not judged yet, oldest first (`TxSeq.splitAfterTicketNo`
-    * after `isLastTicketNo`, `CertifyingView.hs:99`).
+    * after `isLastTicketNo`, `CertifyingView.hs:99` at ouroboros-consensus d91b3557).
     */
   def pending(pool: MempoolState): Vector[Entry] = pool.entries.filter(_.ticket > lastTicket)
 
-  /** `catchUpCertifyingView` (`CertifyingView.hs:74-99`): `pending` revalidated on the state the
-    * view's kept transactions leave, `state` (that state, with the stored outputs `pending` reads),
-    * and appended.
+  /** `catchUpCertifyingView` (`CertifyingView.hs:74-99` at ouroboros-consensus d91b3557): `pending`
+    * revalidated on the state the view's kept transactions leave, `state` (that state, with the
+    * stored outputs `pending` reads), and appended.
     */
   def caughtUp(pending: Vector[Entry], state: DijkstraState, env: MempoolEnv): CertifyingView =
     if pending.isEmpty then this
@@ -61,14 +62,15 @@ final case class CertifyingView private[node] (
         lastTicket = pending.foldLeft(lastTicket)((last, entry) => last.max(entry.ticket))
       )
 
-  /** `implGetCertifyingSnapshotFor` (`CertifyingView.hs:217-236`) of the block forged in `slot`
-    * certifying `eb` on the chain whose tip's hash is `tip`, with `pool` as it is now: the view's
-    * kept transactions and the withheld ones still held under the same ticket, when the view is of
-    * `eb` on that tip, and `slot` is the one it was judged at, or a later one in the slots of its
-    * epoch by `geometry` that every kept transaction's validity interval contains, where the view's
-    * judgement holds (as [[MempoolState.dijkstraCached]] reads the pool's own). None also when a
-    * kept transaction has left the pool and the view was not built again yet, which the reference's
-    * view, revalidated under the pool's lock on a removal, never meets.
+  /** `implGetCertifyingSnapshotFor` (`CertifyingView.hs:217-236` at ouroboros-consensus d91b3557)
+    * of the block forged in `slot` certifying `eb` on the chain whose tip's hash is `tip`, with
+    * `pool` as it is now: the view's kept transactions and the withheld ones still held under the
+    * same ticket, when the view is of `eb` on that tip, and `slot` is the one it was judged at, or
+    * a later one in the slots of its epoch by `geometry` that every kept transaction's validity
+    * interval contains, where the view's judgement holds (as [[MempoolState.dijkstraCached]] reads
+    * the pool's own). None also when a kept transaction has left the pool and the view was not
+    * built again yet, which the reference's view, revalidated under the pool's lock on a removal,
+    * never meets.
     */
   def snapshotFor(
       eb: EbHash,
@@ -92,11 +94,12 @@ final case class CertifyingView private[node] (
     }
 
 object CertifyingView:
-  /** `buildCertifyingView` (`CertifyingView.hs:49-72`): `pool` 's held transactions revalidated on
-    * `base`, the state of the chain at `tip` with the closure of `eb` applied, ticked to the slot
-    * after the tip, in `epoch`, with the stored outputs the pool's transactions read, when the pool
-    * is at that tip and in Dijkstra (`syncCertifyingView` builds the view only for the pool's own
-    * tip, `Mempool/Update.hs:647-667`); none otherwise.
+  /** `buildCertifyingView` (`CertifyingView.hs:49-72` at ouroboros-consensus d91b3557): `pool` 's
+    * held transactions revalidated on `base`, the state of the chain at `tip` with the closure of
+    * `eb` applied, ticked to the slot after the tip, in `epoch`, with the stored outputs the pool's
+    * transactions read, when the pool is at that tip and in Dijkstra (`syncCertifyingView` builds
+    * the view only for the pool's own tip, `Mempool/Update.hs:647-667` at ouroboros-consensus
+    * d91b3557); none otherwise.
     */
   def build(
       eb: EbHash,
