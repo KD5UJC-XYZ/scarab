@@ -129,7 +129,7 @@ object DijkstraSnapshots:
         env <- environment
         cached = policy match
           case SnapshotCachePolicy.UseCache(tip) =>
-            pool.dijkstraCached(tip, slot, ticked.epoch.toBigInt)
+            pool.dijkstraCached(tip, slot, env.geometry)
           case SnapshotCachePolicy.AlwaysRevalidate => None
         snapshot <- cached.fold {
           val state = DijkstraState.of(ticked)

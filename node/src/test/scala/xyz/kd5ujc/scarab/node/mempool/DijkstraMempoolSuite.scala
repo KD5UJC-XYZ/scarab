@@ -810,7 +810,7 @@ class DijkstraMempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         (
           snapshots.forSlot(ticked, slot, clock, SnapshotCachePolicy.UseCache(Some(tip.hash))),
           snapshots.forSlot(ticked, slot, clock, SnapshotCachePolicy.AlwaysRevalidate)
-        ).mapN((cached, fresh) => (slot, ticked.epoch.toBigInt, cached, fresh))
+        ).mapN((cached, fresh) => (slot, cached, fresh))
       }
     yield
       val epoch = ledgerOf(s(37), tip).epoch
@@ -823,31 +823,37 @@ class DijkstraMempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       assertEquals(bodies.subTransactions(tx.body).toVector, Vector.empty)
       val range = SlotRange.dijkstraTx(tx)
       assertEquals(range, SlotRange.validity(bodies.vldt(tx.body)))
-      compared.foreach { (slot, tickedEpoch, cached, fresh) =>
+      val epochSlots = SlotRange.epoch(env.geometry, epoch)
+      def cachedAt(at: Option[Bytes], slot: BigInt) =
+        pool.dijkstraCached(at, slot, env.geometry).map(_.map(_._1.id))
+      compared.foreach { (slot, cached, fresh) =>
         assertEquals(cached, fresh, s"slot $slot")
         assertEquals(cached.held.map(_.tx.id), Vector(inBlock.id))
         // taken from the pool at its own slot, and at a later one its range and epoch contain
         assertEquals(
-          pool.dijkstraCached(Some(tip.hash), slot, tickedEpoch).map(_.map(_._1.id)),
-          Option.when(
-            slot == tip.slot + 1 || (tickedEpoch == epoch && range.contains(slot))
-          )(Vector(inBlock.id)),
+          cachedAt(Some(tip.hash), slot),
+          Option.when(slot == tip.slot + 1 || (range |+| epochSlots).contains(slot))(
+            Vector(inBlock.id)
+          ),
           s"slot $slot"
         )
       }
       val judged = tip.slot + 1
-      // a later slot in the epoch, which the transaction's interval contains: the pool's own
-      assertEquals(
-        pool.dijkstraCached(Some(tip.hash), judged + 1, epoch).map(_.map(_._1.id)),
-        Some(Vector(inBlock.id))
-      )
-      // another tip, an earlier slot, another epoch, or past the transaction's range: none
-      assertEquals(pool.dijkstraCached(Some(chain(35)._1.hash), judged, epoch), None)
-      assertEquals(pool.dijkstraCached(None, judged, epoch), None)
-      assertEquals(pool.dijkstraCached(Some(tip.hash), tip.slot, epoch), None)
-      assertEquals(pool.dijkstraCached(Some(tip.hash), judged + 1, epoch + 1), None)
+      val nextEpoch = env.geometry.firstSlot(epoch + 1)
+      // a later slot of the epoch, its last among them, which the interval contains: the pool's own
+      assert(range.contains(judged + 1) && range.contains(nextEpoch - 1), s"range $range")
+      assertEquals(cachedAt(Some(tip.hash), judged + 1), Some(Vector(inBlock.id)))
+      assertEquals(cachedAt(Some(tip.hash), nextEpoch - 1), Some(Vector(inBlock.id)))
+      // another tip, an earlier slot, the next epoch's first slot or one two epochs on (a tick
+      // that passes an epoch with no block stops short of the slot's epoch, so the bound is the
+      // pool's epoch's slots), or past the transaction's range: revalidated
+      assertEquals(cachedAt(Some(chain(35)._1.hash), judged), None)
+      assertEquals(cachedAt(None, judged), None)
+      assertEquals(cachedAt(Some(tip.hash), tip.slot), None)
+      assertEquals(cachedAt(Some(tip.hash), nextEpoch), None)
+      assertEquals(cachedAt(Some(tip.hash), env.geometry.firstSlot(epoch + 2) + 1), None)
       range.until.foreach(until =>
-        assertEquals(pool.dijkstraCached(Some(tip.hash), until.max(judged + 1), epoch), None)
+        assertEquals(cachedAt(Some(tip.hash), until.max(judged + 1)), None)
       )
   }
 

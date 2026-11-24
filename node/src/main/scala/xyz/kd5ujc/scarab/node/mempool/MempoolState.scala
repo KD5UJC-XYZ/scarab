@@ -381,18 +381,18 @@ final case class MempoolState private (
     * `getSnapshotUsingPolicyFor` with `UseCache`, ouroboros-consensus d91b3557
     * `ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Mempool/Query.hs:91-127`):
     * the pool is at that tip, and `slot` is the one after it, which the pool judged its
-    * transactions at, or a later one that every held transaction's validity interval contains, in
-    * the pool's epoch (`cheapTick`), where reapplying them would give the same. `epoch` is the
-    * epoch of the tip's state ticked to `slot`: the pool's ledger's range (`ledgerSlotRange`, the
-    * slots of its epoch, `Shelley/Ledger/Mempool.hs:241-250` of ouroboros-consensus-cardano
-    * d91b3557) contains `slot` exactly when it is the pool's epoch. None otherwise, and while the
-    * pool's ledger is not Dijkstra's: the snapshot is then revalidated
-    * ([[MempoolState.dijkstraSnapshot]]).
+    * transactions at, or a later one that every held transaction's validity interval contains, and
+    * the pool's ledger's range, the slots of its epoch by `geometry` (`ledgerSlotRange`,
+    * `Shelley/Ledger/Mempool.hs:241-250` of ouroboros-consensus-cardano d91b3557): `cheapTick`,
+    * where reapplying them would give the same. The range is the epoch's slots, not the epoch of
+    * the state ticked to `slot`, which a tick past an epoch with no block does not advance to the
+    * slot's. None otherwise, and while the pool's ledger is not Dijkstra's: the snapshot is then
+    * revalidated ([[MempoolState.dijkstraSnapshot]]).
     */
   def dijkstraCached(
       tip: Option[Bytes],
       slot: BigInt,
-      epoch: BigInt
+      geometry: EpochGeometry
   ): Option[Vector[(Entry, DijkstraAdmitted)]] =
     val judgedAt = tipSlot + 1
     base.toOption.collect { case l: DijkstraLedger => l }.filter(_ => tip == tipHash).flatMap {
@@ -403,8 +403,9 @@ final case class MempoolState private (
             case Held.InDijkstra(admitted)             => Vector(e -> admitted)
             case Held.Flat(_, _, _) | Held.InConway(_) => Vector.empty
         )
-        lazy val cheapTick = slot > judgedAt && epoch == ledger.epoch &&
-          held.foldMap((_, admitted) => SlotRange.dijkstraTx(admitted.read.tx)).contains(slot)
+        lazy val cheapTick = slot > judgedAt &&
+          (held.foldMap((_, admitted) => SlotRange.dijkstraTx(admitted.read.tx)) |+|
+            SlotRange.epoch(geometry, ledger.epoch)).contains(slot)
         Option.when(slot == judgedAt || cheapTick)(held)
     }
 

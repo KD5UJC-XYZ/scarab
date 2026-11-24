@@ -3,6 +3,7 @@ package xyz.kd5ujc.scarab.node.mempool
 
 import cats.Monoid
 import cats.syntax.all.*
+import xyz.kd5ujc.scarab.ledger.EpochGeometry
 import xyz.kd5ujc.scarab.ledger.era.{BothLevels, EraTxBody, Tx, TxLevel, ValidityInterval}
 import xyz.kd5ujc.scarab.ledger.state.Dijkstra
 
@@ -46,3 +47,10 @@ object SlotRange:
     given BothLevels[TxLevel.Sub] = BothLevels.Sub
     validity(bodies.vldt(tx.body)) |+|
       bodies.subTransactions(tx.body).toVector.foldMap(sub => validity(bodies.vldt(sub.body)))
+
+  /** `ledgerSlotRange` of a Shelley-based ledger in `epoch` (ouroboros-consensus-cardano d91b3557
+    * `src/shelley/Ouroboros/Consensus/Shelley/Ledger/Mempool.hs:241-250`): the slots of that epoch,
+    * as the parameters and the era change only at an epoch boundary.
+    */
+  def epoch(geometry: EpochGeometry, epoch: BigInt): SlotRange =
+    SlotRange(geometry.firstSlot(epoch), Some(geometry.firstSlot(epoch + 1)))
