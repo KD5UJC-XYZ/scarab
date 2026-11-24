@@ -105,7 +105,7 @@ class RemainingPredicateReferenceSuite extends FunSuite:
             case PredicateFailure.Certs(CertsFailure.Cert(CertFailure.Pool(f))) => f
             case other => fail(s"$name: not a POOL failure: $other")
           }
-          val actual = pool.map(f => CborOut.build(w => PredicateFailureCbor.pool(w, f)))
+          val actual = pool.map(f => CborOut.build(w => FailureCbor.pool(w, f)))
           val expected = field[Vector[String]](result, "failureCbor").map(hex)
           assertEquals(actual, expected, name)
           // The shared POOL encoding must reach clients in every Shelley-based era.

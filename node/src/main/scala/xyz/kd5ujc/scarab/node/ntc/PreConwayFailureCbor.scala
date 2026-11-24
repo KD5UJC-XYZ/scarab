@@ -10,7 +10,7 @@ import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.storage.haskell.state.{NodeOrders, Versions}
 
 import ContextFailureCbor.ContextEra
-import PredicateFailureCbor.*
+import FailureCbor.*
 
 /** The predicate-failure CBOR of the eras from Shelley to Babbage (`EncCBOR` of
   * `ShelleyLedgerPredFailure` and the rules it nests), as [[PredicateFailureCbor]] has it for
@@ -272,8 +272,10 @@ object PreConwayFailureCbor:
     case UtxoFailure.OutputTooSmall(outs) => present(sum(6)(w => list(w, outs)(txOut)))
     case UtxoFailure.Utxos(u) =>
       u match
-        case UtxosFailure.ValidationTagMismatch(_, _) =>
-          OptionT.liftF(utxos(u)).map(raw => sum(7)(w => { w.raw(raw); () }))
+        case m: UtxosFailure.ValidationTagMismatch =>
+          OptionT
+            .liftF(validationTagMismatch(m).map(CborOut.build))
+            .map(raw => sum(7)(w => { w.raw(raw); () }))
         case UtxosFailure.CollectErrors(errors) =>
           supported(ContextFailureCbor.utxos(era, errors)).map(raw =>
             sum(7)(w => { w.raw(raw); () })

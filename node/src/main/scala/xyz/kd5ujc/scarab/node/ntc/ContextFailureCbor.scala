@@ -52,16 +52,16 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{
   * the rules before UTXOS) and the Byron-output and redeemer-pointer faults.
   */
 private[ntc] object ContextFailureCbor:
-  import PredicateFailureCbor.{
+  import FailureCbor.{
     credential,
-    element,
     item,
     list,
     put,
+    relayBytes,
     rewardAccount,
     set,
     txIn,
-    voter
+    votingProcedures
   }
   import NodeOrders.given
 
@@ -197,23 +197,6 @@ private[ntc] object ContextFailureCbor:
         TranslationError.NoEraHistory | TranslationError.NoClockSample(_) =>
       None
 
-  private[ntc] def votingProcedures(
-      procedures: Vector[(Voter, Vector[(GovActionId, VotingProcedure)])]
-  )(using ProtVer): Bytes =
-    CborOut.build { w =>
-      val procedure = element[VotingProcedure] { (out, value) =>
-        out.array(2)
-        put(out, value.vote)(using HaskellStateCodecs.vote)
-        put(out, value.anchor)(using Wire.nullable(HaskellStateCodecs.anchor)); ()
-      }
-      put(w, procedures.map { case (v, votes) => v -> votes.toMap }.toMap)(using
-        Wire.sortedMapOf(
-          element((out, v: Voter) => { voter(out, v); () }),
-          Wire.sortedMapOf(HaskellStateCodecs.govActionId, procedure)
-        )
-      ); ()
-    }
-
   private def proposal(value: Proposal)(using ProtVer): Option[Bytes] =
     val projected = value.action match
       case GovAction.ParameterChange(previous, update, policy) =>
@@ -222,25 +205,6 @@ private[ntc] object ContextFailureCbor:
         }
       case _ => Some(value)
     projected.map(p => HaskellStateCodecs.proposal.encodeUnchecked(p))
-
-  private[ntc] def relayBytes(raw: Bytes): Option[Bytes] =
-    PoolRelays.decode(raw).toOption.map { relays =>
-      CborOut.build { w =>
-        list(w, relays) { (out, relay) =>
-          def optional[A](value: Option[A])(write: A => CborOut): Unit =
-            value.fold({ out.nul; () })(item => { write(item); () })
-          relay match
-            case PoolRelay.SingleHostAddr(port, ipv4, ipv6) =>
-              out.array(4).uint(0)
-              optional(port)(p => out.uint(p.toInt))
-              optional(ipv4)(a => out.bytes(a.octets))
-              optional(ipv6)(a => out.bytes(a.wire))
-            case PoolRelay.SingleHostName(port, name) =>
-              out.array(3).uint(1); optional(port)(p => out.uint(p.toInt)); out.text(name); ()
-            case PoolRelay.MultiHostName(name) => out.array(2).uint(2).text(name); ()
-        }
-      }
-    }
 
   /** The certificate of the era in a purpose. */
   private def certificate(era: ContextEra, cert: Certificate)(using ProtVer): Option[Bytes] =

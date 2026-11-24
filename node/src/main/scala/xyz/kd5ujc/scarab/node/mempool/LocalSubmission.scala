@@ -12,6 +12,7 @@ import xyz.kd5ujc.scarab.ledger.state.{Conway, Dijkstra}
 import xyz.kd5ujc.scarab.ledger.{LedgerFailure, PredicateFailure}
 import xyz.kd5ujc.scarab.node.ntc.{
   ConwayFailureCbor,
+  FailureCbor,
   PredicateFailureCbor,
   RefusalPresentationError
 }
@@ -174,7 +175,7 @@ object LocalSubmission:
         text(era, MempoolProblem.TooSlow(took, submitted, id))
       case Rejection.WrongEra(transaction, ledger) =>
         Right(
-          PredicateFailureCbor.eraMismatch(
+          FailureCbor.eraMismatch(
             transaction,
             Era.fromIndex(BigInt(transaction)).fold("Unknown")(_.toString),
             ledger

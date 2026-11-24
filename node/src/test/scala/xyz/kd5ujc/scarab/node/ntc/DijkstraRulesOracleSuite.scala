@@ -310,10 +310,10 @@ class DijkstraRulesOracleSuite extends FunSuite:
     def conwayUtxow(c: UtxowFailure): Bytes =
       payload(encoded(PredicateFailure.utxow(c)))
     def utxo(u: DijkstraUtxoFailure): Bytes = u match
-      case DijkstraUtxoFailure.FeeTooSmall(m) => mismatch(u.tag, m)(PredicateFailureCbor.coin)
-      case DijkstraUtxoFailure.MaxTxSize(m)   => mismatch(u.tag, m)(PredicateFailureCbor.coin)
+      case DijkstraUtxoFailure.FeeTooSmall(m) => mismatch(u.tag, m)(FailureCbor.coin)
+      case DijkstraUtxoFailure.MaxTxSize(m)   => mismatch(u.tag, m)(FailureCbor.coin)
       case DijkstraUtxoFailure.ValueNotConserved(m) =>
-        mismatch(u.tag, m)(PredicateFailureCbor.value)
+        mismatch(u.tag, m)(FailureCbor.value)
       case DijkstraUtxoFailure.BadInputs(i)     => conwayUtxo(u.tag, UtxoFailure.BadInputs(i))
       case DijkstraUtxoFailure.OutputTooBig(os) => conwayUtxo(u.tag, UtxoFailure.OutputTooBig(os))
       case DijkstraUtxoFailure.BabbageOutputTooSmall(os) =>
