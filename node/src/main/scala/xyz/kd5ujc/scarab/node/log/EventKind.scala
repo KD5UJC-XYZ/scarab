@@ -102,6 +102,7 @@ enum EventKind(val area: Area, val severity: Severity):
   case CpuStarvation extends EventKind(Area.Node, Severity.Warning)
   case StateDump extends EventKind(Area.Node, Severity.Info)
   case StateDumpRefused extends EventKind(Area.Node, Severity.Warning)
+  case PlutusCaseNotWritten extends EventKind(Area.Node, Severity.Warning)
   case VerificationCache extends EventKind(Area.Node, Severity.Debug)
   case Error extends EventKind(Area.Node, Severity.Error)
   // the reference's `Startup.SocketConfigError` (cardano-node 11.1.3,

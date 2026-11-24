@@ -65,6 +65,50 @@ class DijkstraParallelSuite extends FailsOnUncaught:
   }
 
   test(
+    "a case recorder whose every case fails to be written: each recorded block's result as with no recorder, serially and at one, two, four and eight workers"
+  ) {
+    // the cases' directory a regular file: no case can be written into it
+    IO.blocking(java.nio.file.Files.createTempFile("scarab-plutus-cases", ".file"))
+      .bracket { notADirectory =>
+        services.flatMap { services =>
+          val cases = tools.PlutusCases(notADirectory, perKind = 1000, max = 100000)
+          DijkstraRecordedBlocks.samples
+            .traverse_ { sample =>
+              val shared = DijkstraPlanned.Shared(ScarabEvaluator.default)
+              val unobserved = DijkstraRecordedBlocks.program(sample, shared).serial
+              assertEquals(
+                DijkstraRecordedBlocks
+                  .program(sample, shared.replaying, Some(cases.observeDijkstra))
+                  .serial,
+                unobserved,
+                s"block ${sample.block}, serially"
+              )
+              services.traverse_ { (n, service) =>
+                service(
+                  DijkstraRecordedBlocks
+                    .program(sample, shared.replaying, Some(cases.observeDijkstra))
+                ).map(result =>
+                  assertEquals(result, unobserved, s"block ${sample.block}, $n workers")
+                )
+              }
+            }
+            .map { _ =>
+              // every batch observed, serially and at each worker count, kept unwritten
+              val failed = cases.failed()
+              assertEquals(failed.size, 171 * 5)
+              assert(
+                failed.forall {
+                  case tools.PlutusCases.Failure.Write(_, _) => true
+                  case tools.PlutusCases.Failure.Recorder(_) => false
+                },
+                s"${failed.headOption}"
+              )
+            }
+        }
+      }(notADirectory => IO.blocking(java.nio.file.Files.delete(notADirectory)))
+  }
+
+  test(
     "every admitted recorded block of two or more scripted batches, evaluated by the workers themselves at one, two, four and eight: the serial run's state, proposals and counters"
   ) {
     val admitted = DijkstraRecordedBlocks.samples.flatMap { sample =>

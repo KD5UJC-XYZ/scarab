@@ -3,6 +3,8 @@ package xyz.kd5ujc.scarab.node.tools
 
 import io.circe.Json
 import io.circe.syntax.*
+import cats.syntax.all.*
+import java.io.IOException
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path}
 import xyz.kd5ujc.scarab.ledger.*
@@ -22,6 +24,11 @@ import xyz.kd5ujc.scarab.uplc.builtin.core.DataSerialisation
   * arguments, the cost model, the protocol version and the redeemer's units) with its result, in
   * place of the outputs and the clock, which a Dijkstra observation does not hold
   * (`DijkstraPhase2.Observation`).
+  *
+  * Recording a case never fails the observer that calls it, which the rules call while they judge a
+  * block: a case that cannot be written, or a failure of the recorder itself, is kept
+  * ([[PlutusCases.Failure]]) for the node to report ([[failed]], `NodeEvent.PlutusCaseNotWritten`)
+  * and the block's result is the one it is without a recorder.
   */
 final class PlutusCases(dir: Path, perKind: Int, max: Int):
   // Instance-local state, not global: the phase-2 observer is a synchronous callback
@@ -31,8 +38,36 @@ final class PlutusCases(dir: Path, perKind: Int, max: Int):
   // is given (tooling, off by default).
   private final case class Written(seen: Map[String, Int], total: Int)
   private val written = new java.util.concurrent.atomic.AtomicReference(Written(Map.empty, 0))
+  // the cases not written since the node last asked ([[failed]]), kept as the counts are
+  private val failures =
+    new java.util.concurrent.atomic.AtomicReference(Vector.empty[PlutusCases.Failure])
 
-  def observe(o: Phase2.Observation): Unit = synchronized {
+  /** Records the observation of a transaction of an era before Dijkstra; never fails. */
+  def observe(o: Phase2.Observation): Unit = contained(recordFlat(o))
+
+  /** Records the observation of a Dijkstra batch ([[recordDijkstra]]); never fails. */
+  def observeDijkstra(o: DijkstraPhase2.Observation): Unit = contained(recordDijkstra(o))
+
+  /** The cases not written since the last call, in order, and none kept after. */
+  def failed(): Vector[PlutusCases.Failure] = failures.getAndSet(Vector.empty)
+
+  // one recording at a time; whatever it fails with is kept, not thrown into the rules
+  private def contained(record: => Option[PlutusCases.Failure]): Unit = synchronized {
+    Either
+      .catchNonFatal(record)
+      .fold(cause => Some(PlutusCases.Failure.Recorder(cause)), identity)
+      .foreach(failure => failures.updateAndGet(_ :+ failure))
+  }
+
+  // the case written into `file`, or why it was not
+  private def write(file: Path, json: Json): Option[PlutusCases.Failure] =
+    Either
+      .catchOnly[IOException](Files.writeString(file, json.spaces2, StandardCharsets.UTF_8))
+      .left
+      .toOption
+      .map(PlutusCases.Failure.Write(file, _))
+
+  private def recordFlat(o: Phase2.Observation): Option[PlutusCases.Failure] = {
     val body = o.tx.body
     val languages = o.tx.witnesses.scripts.filter(_.kind.isPlutus).map(_.kind.tag).distinct.sorted
     val outs = (o.spent.values ++ o.references.values ++ body.outputs).toVector
@@ -93,12 +128,13 @@ final class PlutusCases(dir: Path, perKind: Int, max: Int):
         ),
         "clock" -> clock
       )
-      Files.writeString(dir.resolve(s"$name.json"), json.spaces2, StandardCharsets.UTF_8)
+      write(dir.resolve(s"$name.json"), json)
+    else None
   }
 
   /** Whether a Dijkstra batch's case of `kind` is written: fewer than `perKind` of it and `max` of
-    * all so far, as `observe` admits a case, and then counted. Called only within
-    * `observeDijkstra`, which holds the lock.
+    * all so far, as `recordFlat` admits a case, and then counted. Called only within
+    * `recordDijkstra`, under the recorder's lock.
     */
   private def admitted(kind: String): Boolean =
     val now = written.get
@@ -112,7 +148,7 @@ final class PlutusCases(dir: Path, perKind: Int, max: Int):
     * run, the validity flag, whether a sub-transaction's script ran (`sub`) and more than one
     * script (`multi`), and the outcome.
     */
-  def observeDijkstra(o: DijkstraPhase2.Observation): Unit = synchronized {
+  private def recordDijkstra(o: DijkstraPhase2.Observation): Option[PlutusCases.Failure] = {
     val evaluations = o.outcome match
       case DijkstraPhase2.Outcome.Ran(es)                  => es.toVector
       case DijkstraPhase2.Outcome.Unavailable(es, _, _, _) => es
@@ -199,10 +235,18 @@ final class PlutusCases(dir: Path, perKind: Int, max: Int):
         "auxiliary" -> o.transaction.auxiliaryData.map(_.hex).asJson,
         "scripts" -> scripts.asJson
       )
-      Files.writeString(dir.resolve(s"$name.json"), json.spaces2, StandardCharsets.UTF_8)
+      write(dir.resolve(s"$name.json"), json)
+    else None
   }
 
 object PlutusCases:
+  /** Why a case was not written: its file could not be written (`Write`), or the recorder failed
+    * otherwise (`Recorder`, a defect of this tool). Neither changes the block's result.
+    */
+  enum Failure:
+    case Write(file: Path, cause: IOException)
+    case Recorder(cause: Throwable)
+
   /** Where a script of a Dijkstra batch is, as a case names it: its redeemer's tag and index, a
     * sub-transaction's script after the first eight hex digits of the sub-transaction's id.
     */
