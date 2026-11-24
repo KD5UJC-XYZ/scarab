@@ -3057,7 +3057,8 @@ Conway's rules on the classes follow as the rest of stage 2.
     the reference applies or reapplies the block (`ReapplyVal`, `Forker.hs:580-622`; `LedgerDB/V2/LedgerSeq.hs:279-310`).
   - No verdict (`ChainError.DijkstraBlock`, `DijkstraBlockDefect`), routed by `BlockNoVerdict.ofDijkstra`, a total
     match. What valid peer input can meet withholds the block, blaming no peer and recording nothing invalid, as the
-    follower withholds the other eras' (issue 567): a script the evaluator cannot judge (`ScriptUnavailable`); an
+    follower withholds the other eras' (issue 567): a script the evaluator cannot judge that the run could not name
+    (`ScriptUnavailable`, below; the script the rules ran is always named); an
     update of a key Dijkstra adds (34-56), which the public testnet's ledger admitted and the record cannot hold yet, so
     the node does not follow the chain past it until it can
     ([#85](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7065232490); `UnstorableProposals`); and the
@@ -3095,10 +3096,35 @@ Conway's rules on the classes follow as the rest of stage 2.
     recorded, 97,274 and 97,275 only as headers), and no recording holds a certifying block with its closure and the
     state before it, so a certifying block's application is checked on crafted blocks, not against the reference's
     states; that is the offline replay's (#54).
+  - A script with no verdict, named (`DijkstraBlockRun`, `DijkstraPhase2`; item 72 of
+    [#85](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7067709618), Scarab's own, the reference having
+    no such defect): a batch's scripts are its top level's and its sub-transactions', collected and run together by its
+    top level's UTXOS (`plutusScriptsWithContextDijkstraStAnnTx`, cardano-ledger 9df9f98c `Dijkstra/UTxO.hs:258-276`;
+    no sub-transaction rule evaluates one). Where UTXOS evaluates them is a capability of Dijkstra's rules
+    (`Phase2Deferral`, as Conway's), told the annotated transaction they were collected from; the block run keeps it
+    while they run, counting each script the evaluator is asked for. A script the evaluator gives no verdict for is
+    named at its place among the batch's: the batch's id, the level (`ScriptLocation.Phase2` for the top level,
+    `ScriptLocation.SubPhase2` with the sub-transaction's id) and the redeemer of that level's own witnesses, each
+    level's scripts lined up with the purposes it resolved (`resolveNeededPlutusScriptsWithPurpose`, the last first as
+    `merge` puts them), Guarding (tag 6) among them. It is raised as the ledger's defect (`LedgerFailure.Unavailable`,
+    `BlockFailure.Tx`), so the follower withholds the block as it withholds the other eras' (`BlockNoVerdict.Evaluation`),
+    the same recovery and schedule as before (`recoveryOf` of the evaluator's reason), and the received log's replay and
+    `leios-replay` route it as they route the other eras'. The mempool and a closure (`ValidateNone`, no script
+    evaluated) evaluate where UTXOS collects (`Phase2Deferral.now`). `DijkstraPlutusContextSuite` names every script of
+    the 200 recorded testnet transactions (273, 18 in sub-transactions) at its place, each by the level the reference
+    recorded its context at and a redeemer its witnesses hold, each once; `DijkstraBbodyImpSuite` names each of the
+    eight scripts of `Alonzo/Imp/BbodySpec.hs:49`'s block and a sub-transaction's Plutus V4 script through the run.
+  - The phase-2 counters (`PlutusStats`): the run keeps what of BBODY's events they read (`DijkstraPhase2.told`,
+    UTXOS's passed and failed scripts and the `TotalDeposits` a valid transaction's UTXO tells after them; SUBLEDGERS
+    tells none), counted as Conway's (`ScriptsTold.counted`): `succeeded` and `failed` the batches, `scripts` every
+    script of every level; `integrityChecked` keeps its meaning, the bodies of an admitted block that declare a script
+    integrity hash, every level's, as UTXOW and SUBUTXOW recompute each whatever the flag. The node's counters gain the
+    block's, field by field (`MirrorDijkstra.assembled`); a closure, under `ValidateNone`, counts nothing.
+    `DijkstraBbodyImpSuite` shows the eight-script block's counters (4, 4, 8, 8) and the sub-transaction batch's
+    (1, 0, 1, 1), the run's state and proposals the BBODY run's.
   - Gaps ([#85](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7067709618)): a Dijkstra block's scripts
-    run serially, outside the parallel plan (`EraBlock.Body`, over the flat transactions); a script the evaluator
-    cannot judge is withheld without the transaction and redeemer the other eras' no-verdict names; its evaluations
-    are neither observed nor counted.
+    run serially, outside the parallel plan (`EraBlock.Body`, over the flat transactions); its evaluations are not
+    observed (`--plutus-cases`, whose observation holds the flat transaction, which cannot hold a Dijkstra one).
 - **Conway's MEMPOOL and its run** (`era/rules/ConwayMempool.scala`, `era/rules/ConwayMempoolRun.scala`; cardano-ledger
   f649f975 `eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Mempool.hs`, the same rule at 29a7d656 and 9df9f98c, and
   `Conway.hs:50-59`, `eras/shelley/impl/src/Cardano/Ledger/Shelley/API/Mempool.hs`), not wired into the node yet (the
