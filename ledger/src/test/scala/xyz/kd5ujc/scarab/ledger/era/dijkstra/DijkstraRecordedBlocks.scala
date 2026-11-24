@@ -8,7 +8,7 @@ import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.ledger as flat
 import xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraTxIn
 import xyz.kd5ujc.scarab.ledger.era.{CostModels, EraPParams, PParams, StoredTxOut, UTxO}
-import xyz.kd5ujc.scarab.ledger.era.{EraGovRun, EraStake}
+import xyz.kd5ujc.scarab.ledger.era.{BothLevels, EraGovRun, EraStake, EraTx, EraTxBody, TxLevel}
 import xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraCorpus.*
 import xyz.kd5ujc.scarab.ledger.era.rules.{BbodyEnv, DijkstraBlockRun, ShelleyBbodyState}
 import xyz.kd5ujc.scarab.ledger.rules.Globals
@@ -26,12 +26,13 @@ import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 /** The public Leios testnet's recorded script transactions
   * (`fixtures/reference/leios-testnet-chain-contexts`), each block's in the order the chain holds
   * them, in a block of their own: the devnet's first Dijkstra block with that body and the recorded
-  * block's slot, on a state holding the outputs they spend, at the testnet's genesis parameters
-  * with the chain's cost models, and an era history whose forecast reaches every recorded slot.
-  * What the chain's state held beyond those outputs (registered accounts above all) is not
-  * recorded, so a transaction that needs it is refused here, which the chain did not refuse: the
-  * blocks are inputs of the era run's own differential (serial against prepared), not of a verdict
-  * against the reference.
+  * block's slot, on a state holding the outputs they spend but those the block's own transactions
+  * make (so a later transaction that spends one finds it only once its maker applied), at the
+  * testnet's genesis parameters with the chain's cost models, and an era history whose forecast
+  * reaches every recorded slot. What the chain's state held beyond those outputs (registered
+  * accounts above all) is not recorded, so a transaction that needs it is refused here, which the
+  * chain did not refuse: the blocks are inputs of the era run's own differential (serial against
+  * prepared), not of a verdict against the reference.
   */
 object DijkstraRecordedBlocks extends Assertions:
   private def ok[A](e: Either[?, A]): A = e.fold(v => fail(s"$v"), identity)
@@ -136,7 +137,22 @@ object DijkstraRecordedBlocks extends Assertions:
       .sortBy(_._1)
       .map { (block, rows) =>
         val sorted = rows.sortBy(_._2)
-        val utxo = UTxO[Dijkstra](sorted.flatMap(_._5).toMap)
+        // the outputs the block's own transactions make, at any level, are not in the state the
+        // block starts from: a later transaction's request built from that state would not find them
+        val made = sorted.flatMap { row =>
+          val t = ok(DijkstraTx.inBlock(node(row._4)))
+          val body = EraTx.dijkstra.body[TxLevel.Top](t)(using BothLevels.Top)
+          EraTxBody.dijkstra.id[TxLevel.Top](body)(using BothLevels.Top) +:
+            EraTxBody.dijkstra
+              .subTransactions(body)
+              .toVector
+              .map(sub =>
+                EraTxBody.dijkstra.id[TxLevel.Sub](
+                  EraTx.dijkstra.body[TxLevel.Sub](sub)(using BothLevels.Sub)
+                )(using BothLevels.Sub)
+              )
+        }.toSet
+        val utxo = UTxO[Dijkstra](sorted.flatMap(_._5).filterNot((in, _) => made(in.id)).toMap)
         val ls = start.copy[Dijkstra](utxo =
           start.utxo.copy[Dijkstra](
             utxo = UtxoTables(
