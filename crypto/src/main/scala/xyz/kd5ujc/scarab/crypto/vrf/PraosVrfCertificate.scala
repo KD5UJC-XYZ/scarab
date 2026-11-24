@@ -8,11 +8,11 @@ import cats.syntax.either.*
 /** A header's VRF certificate: the draft-03 proof ([[StrictDraft03]]) over the era's input and the
   * binding of the output the header claims. [[verify]] builds the Praos input (Babbage and later);
   * [[verifyAlpha]] takes an input already derived, as TPraos derives its two seeds. The consensus
-  * rules call both through `ledger`'s `Verdicts`.
+  * rules call both through `ledger` 's `Verdicts`.
   *
   * A certificate predicate only: the key's registration and stake, the leader threshold, KES, the
-  * operational certificate and the evolution of the epoch nonce are the header rules' (`consensus`).
-  * The limits of the evidence are [[StrictDraft03]]'s.
+  * operational certificate and the evolution of the epoch nonce are the header rules'
+  * (`consensus`). The limits of the evidence are [[StrictDraft03]]'s.
   */
 object PraosVrfCertificate:
   enum Failure:

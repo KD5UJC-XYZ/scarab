@@ -8,8 +8,8 @@ import cats.syntax.either.*
 /** ECVRF-ED25519-SHA512-Elligator2 (draft-03) verification with the acceptance rules of the Cardano
   * fork of libsodium (`crypto_vrf_ietfdraft03_verify`, IntersectMBO/libsodium dbb48cce): the proof
   * verifier under the Praos and TPraos header rules, reached through [[PraosVrfCertificate]]. It
-  * verifies a proof over a given alpha and nothing more: building alpha, binding the claimed output,
-  * the leader threshold and the key's registration are its callers'.
+  * verifies a proof over a given alpha and nothing more: building alpha, binding the claimed
+  * output, the leader threshold and the key's registration are its callers'.
   *
   * Public inputs only, variable-time, and not independently audited (#230). Its agreement with the
   * reference is the finite corpus of `fixtures/vrf` (`StrictDraft03Suite`), compared with a source

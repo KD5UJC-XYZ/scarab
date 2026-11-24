@@ -100,8 +100,7 @@ object Draft03Prover:
     def fromSeed(seed: Bytes): Either[Failure, SigningKey] =
       if seed == null then Left(Failure.MissingSeed)
       else if seed.size != 32 then Left(Failure.SeedLength(seed.size))
-      else
-        Either.catchNonFatal(expanded(seed.toArray)).leftMap(Failure.InternalFailure(_))
+      else Either.catchNonFatal(expanded(seed.toArray)).leftMap(Failure.InternalFailure(_))
 
     /** The key of `seed`, which becomes the key's own array. SHA-512 of the seed is the scalar's
       * bytes (clamped) and the nonce key; the arrays it passes through are zeroed here.

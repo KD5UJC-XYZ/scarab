@@ -20,10 +20,10 @@ import org.bouncycastle.math.ec.rfc8032.Ed25519
   * seeds and sub-keys of periods that can no longer be signed), so a stolen key cannot sign the
   * past. [[forget]] erases everything. Not constant-time beyond what BouncyCastle gives.
   *
-  * What the erasure covers: the key's own array and every array this object makes from it. The
-  * leaf is signed and its public key derived from the key's array in place, hashes read the seeds
-  * where they lie, and scratch copies are zeroed before they are dropped. What it does not cover:
-  * Bouncy Castle's Ed25519 leaves the expanded leaf key in arrays of its own that it never clears,
+  * What the erasure covers: the key's own array and every array this object makes from it. The leaf
+  * is signed and its public key derived from the key's array in place, hashes read the seeds where
+  * they lie, and scratch copies are zeroed before they are dropped. What it does not cover: Bouncy
+  * Castle's Ed25519 leaves the expanded leaf key in arrays of its own that it never clears,
   * [[SigningKey.toBytes]] is a copy its caller owns, and a collector that moves an array leaves the
   * old bytes behind. So forward security holds for the stored key, not against a reader of this
   * process's memory (#230); the reference keeps the key in locked memory outside the heap.
@@ -144,8 +144,8 @@ object Sum6KesSigning:
     else if period < 0 || period >= Periods then Left(Failure.PeriodOutOfRange(period))
     else loaded(bytes.toArray, period)
 
-  /** The key over `material`, which becomes the key's own array, if it is a key at `period`;
-    * erased if it is not.
+  /** The key over `material`, which becomes the key's own array, if it is a key at `period`; erased
+    * if it is not.
     */
   private def loaded(material: Array[Byte], period: Int): Either[Failure, SigningKey] =
     checkLevel(material, 0, Depth, period).fold(
@@ -181,8 +181,8 @@ object Sum6KesSigning:
 
   // ---- tree operations over the flat layout
 
-  /** Blake2b-256 of the parts, read where they lie: a seed among them is not copied, and the
-    * digest clears its own buffer when it finishes.
+  /** Blake2b-256 of the parts, read where they lie: a seed among them is not copied, and the digest
+    * clears its own buffer when it finishes.
     */
   private def hash(parts: Array[Byte]*): Array[Byte] =
     val digest = new Blake2bDigest(256)

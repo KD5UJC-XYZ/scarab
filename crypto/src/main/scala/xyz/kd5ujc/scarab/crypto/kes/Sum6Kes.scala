@@ -14,8 +14,8 @@ import xyz.kd5ujc.scarab.crypto.witness.{
 import cats.syntax.either.*
 
 /** Sum6 KES verification of a supplied message, as cardano-base's `SumKES` over `Ed25519` with
-  * Blake2b-256: six levels of verification-key pairs over a [[StrictEd25519]] leaf. The header rules
-  * verify a header's KES signature with it (`ledger`'s `OCertRules`).
+  * Blake2b-256: six levels of verification-key pairs over a [[StrictEd25519]] leaf. The header
+  * rules verify a header's KES signature with it (`ledger`'s `OCertRules`).
   *
   * A signature predicate only: the bytes a header is signed over, the KES period window and the
   * operational certificate that authorises the key are its callers'. Public inputs only; not
