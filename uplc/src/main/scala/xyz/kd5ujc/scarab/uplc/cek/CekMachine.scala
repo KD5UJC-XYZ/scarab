@@ -97,7 +97,8 @@ object Stop:
   * the step counters and the logs). The loop is a pure tail-recursive function whose parameters are
   * that state: a step allocates the frames and values its transition builds and no state object,
   * the budget changes only when it is spent, and capabilities appear only at the boundary
-  * ([[CekMachine.evaluate]]).
+  * ([[CekMachine.evaluate]]). A builtin application that a `force` or an argument saturates is
+  * returned as a value and evaluated by the loop before the frame it goes to is read.
   */
 object CekMachine:
   /** `defaultSlippage` (`Cek/Internal.hs:420-421`, plutus 1.70.0.0), which `runCekM` sets as
@@ -135,17 +136,6 @@ object CekMachine:
     F.productR(tell.tell(report.logs))(report.result match
       case CekResult.Failure(failure) => raise.raise(CekFailed(failure, report.budget))
       case success: CekResult.Success => F.pure(CekEvaluated(success, report.budget)))
-
-  /** What a transition outside the loop gives back: the next state, or the end. */
-  private enum Step:
-    case Next(
-        ctx: Context,
-        env: Env[CekValue],
-        control: Term | CekValue,
-        budget: ExBudget,
-        logs: List[String]
-    )
-    case Halt(report: CekReport)
 
   /** The step counter (`Cek/StepCounter.hs`; Note [Structure of the step counter],
     * `Cek/Internal.hs:381-388`, plutus 1.70.0.0): one counter per [[StepKind]] and the total, each
@@ -190,6 +180,31 @@ object CekMachine:
         logs: List[String]
     ): CekReport | S =
       control match
+        // `evalBuiltinApp` (`Cek/Internal.hs:1052-1075`, plutus 1.70.0.0) of an application that the
+        // last `force` or argument saturated: its arguments unlift, its cost is spent, element by
+        // element, before its result is computed, and the result goes to the frame the application
+        // was made in. An application whose arguments do not unlift costs nothing
+        // (`builtinRuntimeFailure`, `PlutusCore/Builtin/Runtime.hs:111`, plutus 1.70.0.0).
+        case b: VBuiltin if b.saturated =>
+          builtins.refusal(b.function, b.arguments) match
+            case Some(failure) =>
+              builtinFailure(
+                b,
+                BuiltinFailure.Unlifting(failure),
+                failure.message.toVector,
+                budget,
+                logs
+              )
+            case None =>
+              val spent = builtins.spend(b.function, b.arguments, budget, this)
+              if exhausted(spent) then outOfBudget(spent, logs)
+              else
+                builtins.result(b.function, b.arguments) match
+                  case Outcome.Success(result, emitted) =>
+                    loop(ctx, env, result, spent, low, high, emit(logs, emitted))
+                  case Outcome.Failure(failure, emitted) =>
+                    builtinFailure(b, failure, emitted, spent, logs)
+
         case value: CekValue =>
           ctx match
             // `returnCek NoFrame` (`Cek/Internal.hs:892-894`, plutus 1.70.0.0)
@@ -199,12 +214,9 @@ object CekMachine:
             case Context.Force(next) =>
               value match
                 case VDelay(body, closure) => loop(next, closure, body, budget, low, high, logs)
-                case b: VBuiltin if b.expectsForce && !b.saturatedByForce =>
+                case b: VBuiltin if b.expectsForce =>
                   loop(next, env, b.forced, budget, low, high, logs)
-                case _ =>
-                  forceOther(next, value, budget, logs) match
-                    case Step.Next(c, e, x, b, l) => loop(c, e, x, b, low, high, l)
-                    case Step.Halt(report)        => report
+                case _ => forceOther(value, budget, logs)
 
             // `returnCek (FrameAwaitFunTerm ..)` (`Cek/Internal.hs:898-899`, plutus 1.70.0.0)
             case Context.AwaitFunTerm(argEnv, argument, next) =>
@@ -216,12 +228,9 @@ object CekMachine:
               function match
                 case VLamAbs(body, closure) =>
                   loop(next, closure.cons(value), body, budget, low, high, logs)
-                case b: VBuiltin if b.expectsArgument && !b.saturatedByArgument =>
+                case b: VBuiltin if b.expectsArgument =>
                   loop(next, env, b.applied(value), budget, low, high, logs)
-                case _ =>
-                  applyOther(next, function, value, budget, logs) match
-                    case Step.Next(c, e, x, b, l) => loop(c, e, x, b, low, high, l)
-                    case Step.Halt(report)        => report
+                case _ => applyOther(function, value, budget, logs)
 
             // `returnCek (FrameAwaitFunValueN ..)` and `(FrameAwaitFunConN ..)`
             // (`Cek/Internal.hs:906-921`, plutus 1.70.0.0): the first argument is applied, the rest
@@ -233,10 +242,9 @@ object CekMachine:
               value match
                 case VLamAbs(body, closure) =>
                   loop(next, closure.cons(first), body, budget, low, high, logs)
-                case _ =>
-                  applyOther(next, value, first, budget, logs) match
-                    case Step.Next(c, e, x, b, l) => loop(c, e, x, b, low, high, l)
-                    case Step.Halt(report)        => report
+                case b: VBuiltin if b.expectsArgument =>
+                  loop(next, env, b.applied(first), budget, low, high, logs)
+                case _ => applyOther(value, first, budget, logs)
 
             // `returnCek (FrameConstr ..)` (`Cek/Internal.hs:923-929`, plutus 1.70.0.0)
             case Context.Constr(fieldEnv, tag, fields, todo, done, next) =>
@@ -401,84 +409,37 @@ object CekMachine:
       case TermF.Constr(_, _) => StepKind.Constr.ordinal
       case TermF.Error        => -1
 
-    /** `forceEvaluate` of anything but a `delay` and a builtin that takes the `force` unsaturated
-      * (`Cek/Internal.hs:963-977`, plutus 1.70.0.0).
+    /** `forceEvaluate` of anything but a `delay` and a builtin that expects a `force`
+      * (`Cek/Internal.hs:963-977`, plutus 1.70.0.0): a failure.
       */
-    private def forceOther(
-        next: Context,
-        value: CekValue,
-        budget: ExBudget,
-        logs: List[String]
-    ): Step = value match
-      case b: VBuiltin if b.expectsForce => evalBuiltinApp(next, b.forced, budget, logs)
-      case b: VBuiltin =>
-        Step.Halt(
+    private def forceOther(value: CekValue, budget: ExBudget, logs: List[String]): CekReport =
+      value match
+        case b: VBuiltin =>
           fail(
             CekError.BuiltinTermArgumentExpected,
             Some(Cause(Term.force(CekValue.discharge(b)))),
             budget,
             logs
           )
-        )
-      case _ =>
-        Step.Halt(fail(CekError.NonPolymorphicInstantiation, Some(Cause.of(value)), budget, logs))
+        case _ => fail(CekError.NonPolymorphicInstantiation, Some(Cause.of(value)), budget, logs)
 
-    /** `applyEvaluate` of anything but a `lam` (`Cek/Internal.hs:995-1008`, plutus 1.70.0.0). */
+    /** `applyEvaluate` of anything but a `lam` and a builtin that expects an argument
+      * (`Cek/Internal.hs:995-1008`, plutus 1.70.0.0): a failure.
+      */
     private def applyOther(
-        next: Context,
         function: CekValue,
         argument: CekValue,
         budget: ExBudget,
         logs: List[String]
-    ): Step = function match
-      case b: VBuiltin if b.expectsArgument =>
-        evalBuiltinApp(next, b.applied(argument), budget, logs)
+    ): CekReport = function match
       case b: VBuiltin =>
-        Step.Halt(
-          fail(
-            CekError.UnexpectedBuiltinTermArgument,
-            Some(Cause(CekValue.dischargeApplied(b, argument))),
-            budget,
-            logs
-          )
+        fail(
+          CekError.UnexpectedBuiltinTermArgument,
+          Some(Cause(CekValue.dischargeApplied(b, argument))),
+          budget,
+          logs
         )
-      case _ =>
-        Step.Halt(fail(CekError.NonFunctionalApplication, Some(Cause.of(function)), budget, logs))
-
-    /** `evalBuiltinApp` (`Cek/Internal.hs:1052-1075`, plutus 1.70.0.0): a partial application is a
-      * value; a saturated one unlifts its arguments, spends its cost, element by element, before
-      * its result is computed, then emits the result's logs and returns its value or fails. An
-      * application whose arguments do not unlift costs nothing (`builtinRuntimeFailure`,
-      * `PlutusCore/Builtin/Runtime.hs:111`), so it fails with the budget it came with.
-      */
-    private def evalBuiltinApp(
-        next: Context,
-        b: VBuiltin,
-        budget: ExBudget,
-        logs: List[String]
-    ): Step =
-      if !b.saturated then Step.Next(next, Env.empty, b, budget, logs)
-      else
-        builtins.refusal(b.function, b.arguments) match
-          case Some(failure) =>
-            Step.Halt(
-              builtinFailure(
-                b,
-                BuiltinFailure.Unlifting(failure),
-                failure.message.toVector,
-                budget,
-                logs
-              )
-            )
-          case None =>
-            val spent = builtins.spend(b.function, b.arguments, budget, this)
-            if exhausted(spent) then Step.Halt(outOfBudget(spent, logs))
-            else
-              builtins.result(b.function, b.arguments) match
-                case Outcome.Success(value, emitted) =>
-                  Step.Next(next, Env.empty, value, spent, emit(logs, emitted))
-                case Outcome.Failure(failure, emitted) =>
-                  Step.Halt(builtinFailure(b, failure, emitted, spent, logs))
+      case _ => fail(CekError.NonFunctionalApplication, Some(Cause.of(function)), budget, logs)
 
     /** A saturated application `b` that failed, after the logs it emits. */
     private def builtinFailure(
