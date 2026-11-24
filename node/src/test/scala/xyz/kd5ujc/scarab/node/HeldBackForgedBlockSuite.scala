@@ -338,3 +338,48 @@ class HeldBackForgedBlockSuite extends FailsOnUncaught:
       )
     yield ()
   }
+
+  test("a forged block whose predecessors lead back to it is refused, typed, in its submission") {
+    for
+      chain <- ForgedChain.forge(5000 until 5060)
+      forged = chain.headers(1)
+      // a recovered block of the hash the forged one names as its predecessor, after the forged one
+      after = Header
+        .UnsizedByron(
+          chain.headers(0).hash,
+          chain.headers(0).hash,
+          false,
+          0,
+          1,
+          21600,
+          1,
+          Some(forged.hash)
+        )
+        .withSizeHint(FetchTesting.sizeHint(1))
+      recovered <- IO.fromEither(
+        BlockPool.DeliveredHeader
+          .checkedAtOpen(after, xyz.kd5ujc.scarab.consensus.LeiosBlockInfo.Absent)
+          .leftMap(e => new AssertionError(e.toString))
+      )
+      _ <- TestControl.executeEmbed(
+        node(Some(Gsm.Phase.PreSyncing)) { n =>
+          for
+            seeded <- n.pool.seedRecoveredMetadata(Vector(recovered))
+            submitted <- Handle
+              .allow[NodeError](n.offer(forged, chain.raws(1)).map(_.asRight[NodeError]))
+              .rescue(error => IO.pure(error.asLeft[Follower.Submission]))
+            forest <- n.pool.processedSnapshot
+            tip <- n.follower.committedChain.get
+          yield
+            assertEquals(seeded, Right(()))
+            assertEquals(
+              submitted,
+              Left(BlockPoolProblem.AvailableCycle(forged.hash)),
+              "the refusal reaches the forger, typed, as the selection for the block raised it"
+            )
+            assertEquals(forest.keySet, Set(after.hash), "the forged block is not in the forest")
+            assertEquals(tip.tip, ChainSync.Point.Origin, "and it was not adopted")
+        }
+      )
+    yield ()
+  }
