@@ -35,8 +35,23 @@ class LogSinkFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   private def lines(p: Path): List[String] =
     if Files.exists(p) then Files.readAllLines(p, UTF_8).asScala.toList else Nil
 
-  test("a sink that fails drops the line, the others take it, and the streak is reported once") {
-    val full = new IOException("No space left on device")
+  private val full = new IOException("No space left on device")
+
+  /** A write that fails as a sink returns its failure, or as a write raises it. */
+  private val failures: List[(String, IO[Either[SinkError, Unit]])] = List(
+    "returned" -> IO.pure(SinkError.Write(full).asLeft[Unit]),
+    "raised" -> IO.raiseError(full)
+  )
+
+  failures.foreach((how, failure) =>
+    test(
+      s"a sink that fails ($how) drops the line, the others take it, and the streak is reported once"
+    ) {
+      streak(failure)
+    }
+  )
+
+  private def streak(failure: IO[Either[SinkError, Unit]]): IO[Unit] =
     for
       fault <- Ref.of[IO, Boolean](true)
       failingTook <- Ref.of[IO, Vector[String]](Vector.empty)
@@ -45,7 +60,7 @@ class LogSinkFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       // the failing sink first, so that its failure would stop the others if it escaped
       failing = (text: String) =>
         fault.get.ifM(
-          IO.pure(SinkError.Write(full).asLeft[Unit]),
+          failure,
           failingTook.update(_ :+ text).as(().asRight[SinkError])
         )
       other = (text: String) => otherTook.update(_ :+ text).as(().asRight[SinkError])
@@ -76,6 +91,49 @@ class LogSinkFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           SinkReport.Closed(Sink.File, 2)
         )
       )
+
+  test("a write that fails (a full disk) leaves a sink that opens its file again") {
+    val devFull = java.nio.file.Paths.get("/dev/full")
+    for
+      _ <- IO.blocking(Files.isWritable(devFull)).map(assume(_, "no /dev/full"))
+      dir <- IO.blocking(Files.createTempDirectory("scarab-log"))
+      file = dir.resolve("node.jsonl")
+      _ <- IO.blocking(Files.createSymbolicLink(file, devFull))
+      reports <- Ref.of[IO, Vector[SinkReport]](Vector.empty)
+      _ <- LogRouter.reporting[IO](fileSettings(file), r => reports.update(_ :+ r)).use { log =>
+        emit(log, 0 until 3) *>
+          IO.blocking {
+            Files.delete(file)
+            Files.createSymbolicLink(file, Files.createFile(dir.resolve("disk")))
+          } *>
+          emit(log, 3 until 5)
+      }
+      reported <- reports.get
+      written <- IO.blocking(slots(lines(dir.resolve("disk"))))
+    yield
+      reported match
+        case Vector(
+              SinkReport.Failed(Sink.File, SinkError.Write(_)),
+              SinkReport.Recovered(Sink.File, 3)
+            ) =>
+          ()
+        case other => fail(s"reports: $other")
+      assertEquals(written, List(3, 4))
+  }
+
+  test("the reports on stderr") {
+    assertEquals(
+      SinkReport.Failed(Sink.File, SinkError.Write(full)).text,
+      "scarab: the log's file sink could not write a line (java.io.IOException: No space left on device); its lines are dropped until it takes one again"
+    )
+    assertEquals(
+      SinkReport.Recovered(Sink.File, 3).text,
+      "scarab: the log's file sink takes lines again, after dropping 3"
+    )
+    assertEquals(
+      SinkReport.Closed(Sink.File, 2).text,
+      "scarab: the log closed with its file sink failing, after it dropped 2 lines"
+    )
   }
 
   /** `node.jsonl.1` a directory with a file in it: turning the file over cannot replace it. */

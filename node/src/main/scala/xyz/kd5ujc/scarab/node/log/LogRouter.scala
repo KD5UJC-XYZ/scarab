@@ -101,10 +101,9 @@ object LogRouter:
           Ref.of[F, Map[(Sink, Scope), Long]](Map.empty),
           Ref.of[F, Map[Sink, Long]](Map.empty)
         ).tupled
-      ) { (mutex, _, failing) =>
-        mutex.lock.surround(
-          failing.get.flatMap(_.toList.traverse_((sink, n) => report(SinkReport.Closed(sink, n))))
-        )
+      ) { (_, _, failing) =>
+        // not under the lock, which a wedged write may hold: the release must not wait on it
+        failing.get.flatMap(_.toList.traverse_((sink, n) => report(SinkReport.Closed(sink, n))))
       }
       .map((mutex, counts, failing) =>
         of[F](
@@ -154,6 +153,12 @@ object LogRouter:
             )
             .flatMap(report(SinkReport.Failed(sink, error)).unlessA(_))
 
+    /** `text` written by `route`; an `IOException` its write raises rather than returns is its
+      * failure too.
+      */
+    private def written(route: Route[F], text: String): F[Either[SinkError, Unit]] =
+      route.write(text).recover { case cause: IOException => SinkError.Write(cause).asLeft }
+
     def tell(line: Line): F[Unit] =
       routes.filter(_.admits(line)) match
         case Nil => Sync[F].unit
@@ -162,7 +167,7 @@ object LogRouter:
             val text = Rendered(line, at)
             admitted.traverse_(r =>
               kept(r, line.kind)
-                .ifM(r.write(text(r.format)).flatMap(outcome(r.sink, _)), Sync[F].unit)
+                .ifM(written(r, text(r.format)).flatMap(outcome(r.sink, _)), Sync[F].unit)
             )
           })
 
