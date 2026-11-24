@@ -7,7 +7,7 @@ cites the site's file and line at that commit. What the site's scoring reads fro
 ledger-rules fixtures' expected results, the uplc-conformance expectations and the uplc-turbo corpus) is read from
 a checkout of the site at that commit (`Site.read`). A report the site could not read counts as no report, as on
 the site. One rule is left out: the site also fails a uplc-turbo benchmark whose budget disagrees with the other
-nodes' reports (9dc68a75 scenarios/uplc-turbo/build.py:209-288 and 410-423), which the reports repository does
+nodes' reports (62800627 scenarios/uplc-turbo/build.py:209-288 and 410-423), which the reports repository does
 not hold.
 """
 from __future__ import annotations
@@ -28,22 +28,22 @@ from conformance.scenarios import PROTOCOL_ERAS, SCENARIOS, label
 SITE_REPOSITORY = "pragma-org/node-diversity-conformance"
 # The commit whose scoring this module mirrors. A change of the site's pin in pins.json needs its scoring read
 # again at the new commit before this moves with it.
-SITE_COMMIT = "9dc68a750478335755d057288cc8978c117d7ac4"
+SITE_COMMIT = "628006278309c02a1c3e49dce00e43595d925c2e"
 SITE = "https://pragma-org.github.io/node-diversity-conformance/"
-# 9dc68a75 scripts/build_common.py:32 and 416-418: the era a node is scored by when it reports several.
+# 62800627 scripts/build_common.py:32 and 416-418: the era a node is scored by when it reports several.
 DEFAULT_ERA = "conway"
-# 9dc68a75 scripts/build_common.py:37-42.
+# 62800627 scripts/build_common.py:37-42.
 CBOR_V1_CLASSES = {
     "valid": ("generated_decoded_reencoded",),
     "invalid": ("generated_must_be_rejected", "zap_must_be_rejected"),
 }
 CBOR_REPORT_FIELDS = ("generated_at", "protocol_version", "dataset_commit", "implementation_commit", "results")
-# 9dc68a75 scenarios/uplc-turbo/build.py:15-17: a dimension passes within twice its budget, or within an absolute
+# 62800627 scenarios/uplc-turbo/build.py:15-17: a dimension passes within twice its budget, or within an absolute
 # tolerance of it.
 DEVIATION_LIMIT = 1.0
 CPU_TOLERANCE_US = 200
 MEMORY_TOLERANCE_BYTES = 320 * 1024
-# 9dc68a75 scenarios/uplc-conformance/build.py:15 and 28.
+# 62800627 scenarios/uplc-conformance/build.py:15 and 28.
 EVALUATION_TOKENS = re.compile(r'"(?:\\.|[^"\\])*"|[()[\],{}]|[^\s()[\],{}]+', re.DOTALL)
 BUDGET_TEXT = re.compile(r"cpu:\s*(-?\d+).*?mem:\s*(-?\d+)", re.DOTALL)
 
@@ -53,7 +53,7 @@ class ScoreError(ValueError):
 
 
 class Unreadable(ValueError):
-    """A report the site could not read, which it counts as no report (9dc68a75 scripts/build_common.py:409-414)."""
+    """A report the site could not read, which it counts as no report (62800627 scripts/build_common.py:409-414)."""
 
 
 @dataclass(frozen=True)
@@ -64,7 +64,7 @@ class Score:
 
     @property
     def ratio(self) -> float:
-        # 9dc68a75 scripts/build.py:46.
+        # 62800627 scripts/build.py:46.
         return self.met / self.total if self.total else 0.0
 
 
@@ -76,7 +76,7 @@ def _json(path: Path) -> Any:
 
 
 def expected_result(expected: Any) -> Any:
-    """The result a ledger-rules fixture expects (9dc68a75 scenarios/ledger-rules/build.py:46-56)."""
+    """The result a ledger-rules fixture expects (62800627 scenarios/ledger-rules/build.py:46-56)."""
     if expected == "Pass":
         return "pass"
     if isinstance(expected, dict):
@@ -99,7 +99,7 @@ class Site:
     @staticmethod
     def read(site: Path) -> Site:
         """From a checkout of the site's `scenarios/`."""
-        # 9dc68a75 scripts/build_common.py:443-451: the scenarios in the order of their directories' names.
+        # 62800627 scripts/build_common.py:443-451: the scenarios in the order of their directories' names.
         metadata = {}
         for path in sorted((site / "scenarios").glob("*/scenario.json")):
             scenario = _json(path)
@@ -121,7 +121,7 @@ class Site:
 
     @staticmethod
     def _ledger(site: Path) -> dict[str, Any]:
-        """Each fixture id and the result it expects (9dc68a75 scenarios/ledger-rules/build.py:24-43 and 97); a
+        """Each fixture id and the result it expects (62800627 scenarios/ledger-rules/build.py:24-43 and 97); a
         later file of the same id replaces an earlier one."""
         definitions = {}
         for path in sorted((site / "scenarios" / "ledger-rules" / "fixtures" / "scenarios").glob("*.json")):
@@ -137,7 +137,7 @@ class Site:
 
     @staticmethod
     def _uplc(path: Path) -> tuple[dict, ...]:
-        """The expected vectors (9dc68a75 scenarios/uplc-conformance/build.py:32-34)."""
+        """The expected vectors (62800627 scenarios/uplc-conformance/build.py:32-34)."""
         document = _json(path)
         expectations = document.get("scenarios") if isinstance(document, dict) else None
         if not isinstance(expectations, list) or not all(isinstance(item, dict) and "id" in item
@@ -147,7 +147,7 @@ class Site:
 
     @staticmethod
     def _turbo(path: Path) -> tuple[str, ...]:
-        """The corpus's benchmarks, from the schema's enumeration (9dc68a75 scenarios/uplc-turbo/build.py:49-56)."""
+        """The corpus's benchmarks, from the schema's enumeration (62800627 scenarios/uplc-turbo/build.py:49-56)."""
         schema = _json(path)
         try:
             benchmarks = schema["$defs"]["benchmark"]["properties"]["bench"].get("enum")
@@ -160,7 +160,7 @@ class Site:
 
 
 def _era_of_protocol(protocol_version: Any) -> str:
-    """9dc68a75 scripts/build_common.py:274-279."""
+    """62800627 scripts/build_common.py:274-279."""
     try:
         major = int(str(protocol_version).split(".")[0])
     except ValueError as error:
@@ -172,7 +172,7 @@ def _era_of_protocol(protocol_version: Any) -> str:
 
 
 def _cbor_kind(category: str) -> str:
-    """9dc68a75 scripts/build_common.py:256-262."""
+    """62800627 scripts/build_common.py:256-262."""
     if category in ("valid", "manual-valid"):
         return "valid"
     if category == "manual-invalid" or re.fullmatch(r"invalid-zap-[0-9]+", category):
@@ -182,7 +182,7 @@ def _cbor_kind(category: str) -> str:
 
 def _cbor_v2(report: dict) -> tuple[str, Score]:
     """A version 2 report's era, and its score: every sample counts, and one whose outcome is `true` is met
-    (9dc68a75 scripts/build_common.py:282-322; scenarios/cbor-decoding/build.py:110-114, its `rules` being empty
+    (62800627 scripts/build_common.py:282-322; scenarios/cbor-decoding/build.py:110-114, its `rules` being empty
     exactly when its results are)."""
     missing = [field for field in CBOR_REPORT_FIELDS if field not in report]
     if missing:
@@ -208,7 +208,7 @@ def _cbor_v2(report: dict) -> tuple[str, Score]:
 
 
 def _v1_counts(outcome: Any) -> dict[str, Any]:
-    """A version 1 outcome's classes merged into the kinds of a version 2 report (9dc68a75
+    """A version 1 outcome's classes merged into the kinds of a version 2 report (62800627
     scripts/build_common.py:265-271)."""
     if not isinstance(outcome, dict):
         raise Unreadable(f"version 1 counts {outcome!r} are not an object")
@@ -220,7 +220,7 @@ def _v1_counts(outcome: Any) -> dict[str, Any]:
 
 
 def _cbor_v1(report: dict) -> tuple[Any, Score]:
-    """A version 1 report's era, conway when it names none, and its score (9dc68a75 scripts/build_common.py:330-345;
+    """A version 1 report's era, conway when it names none, and its score (62800627 scripts/build_common.py:330-345;
     scenarios/cbor-decoding/build.py:104-115). Scarab writes only version 2 reports."""
     if report.get("scenario") != "cbor-decoding":
         raise Unreadable(f"report belongs to {report.get('scenario')!r}, expected 'cbor-decoding'")
@@ -242,7 +242,7 @@ def _cbor_v1(report: dict) -> tuple[Any, Score]:
 
 def cbor(report: dict, era: str | None) -> Score:
     """A CBOR report read as the site reads it, version 2, version 1 or the legacy form without a version, and
-    refused unless it is of `era` (9dc68a75 scripts/build_common.py:325-346 and 380-381)."""
+    refused unless it is of `era` (62800627 scripts/build_common.py:325-346 and 380-381)."""
     if report.get("version") == "2":
         read, score = _cbor_v2(report)
     elif "version" not in report:
@@ -269,7 +269,7 @@ def _items(report: dict, key: str) -> list[dict]:
 
 def ledger(report: dict, definitions: dict[str, Any]) -> Score:
     """A fixture is met when the result reported under the first five characters of its id is the one it
-    expects; of several, the last counts (9dc68a75 scenarios/ledger-rules/build.py:59-60 and 93-107)."""
+    expects; of several, the last counts (62800627 scenarios/ledger-rules/build.py:59-60 and 93-107)."""
     results = {str(item.get("id", ""))[:5]: item.get("result") for item in _items(report, "scenarios")
                if str(item.get("id", ""))[:5] in definitions}
     return Score(sum(results.get(identifier) == expected for identifier, expected in definitions.items()),
@@ -277,7 +277,7 @@ def ledger(report: dict, definitions: dict[str, Any]) -> Score:
 
 
 def normalize_evaluation(value: Any) -> Any:
-    """A result without the pretty-printer's whitespace (9dc68a75 scenarios/uplc-conformance/build.py:10-20)."""
+    """A result without the pretty-printer's whitespace (62800627 scenarios/uplc-conformance/build.py:10-20)."""
     if not isinstance(value, str):
         return value
     normalized = " ".join(EVALUATION_TOKENS.findall(value))
@@ -288,7 +288,7 @@ def normalize_evaluation(value: Any) -> Any:
 
 
 def budget_value(value: Any) -> Any:
-    """9dc68a75 scenarios/uplc-conformance/build.py:23-29."""
+    """62800627 scenarios/uplc-conformance/build.py:23-29."""
     if isinstance(value, dict):
         return value
     if not isinstance(value, str):
@@ -300,7 +300,7 @@ def budget_value(value: Any) -> Any:
 def uplc(report: dict, expectations: tuple[dict, ...]) -> Score:
     """Each expectation takes an unused reported vector of its id, one of its Plutus and protocol versions if
     there is one, else the first; it is met when the versions agree, the results agree and, where it expects a
-    budget, the budgets agree (9dc68a75 scenarios/uplc-conformance/build.py:37-76)."""
+    budget, the budgets agree (62800627 scenarios/uplc-conformance/build.py:37-76)."""
     items = _items(report, "scenarios")
     if any(isinstance(item.get("id"), (list, dict)) for item in items):
         raise ScoreError("a reported vector's id is a list or an object, on which the site's build fails")
@@ -330,13 +330,13 @@ def uplc(report: dict, expectations: tuple[dict, ...]) -> Score:
 
 
 def _number(value: Any) -> bool:
-    """9dc68a75 scenarios/uplc-turbo/build.py:22-23."""
+    """62800627 scenarios/uplc-turbo/build.py:22-23."""
     return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
 
 
 def _within(measured: Any, budget: Any, tolerance: float) -> bool | None:
     """Whether a measurement is within twice its budget or within `tolerance` of it; None when either is
-    absent (9dc68a75 scenarios/uplc-turbo/build.py:84-121)."""
+    absent (62800627 scenarios/uplc-turbo/build.py:84-121)."""
     if measured is None or budget is None:
         return None
     return (measured - budget) / budget <= DEVIATION_LIMIT or abs(measured - budget) <= tolerance
@@ -344,7 +344,7 @@ def _within(measured: Any, budget: Any, tolerance: float) -> bool | None:
 
 def benchmark_met(item: dict | None) -> bool:
     """A benchmark is met when every dimension that can be compared passes and one can; a benchmark not reported
-    fails (9dc68a75 scenarios/uplc-turbo/build.py:59-61, 80-83 and 139-147). The CPU budget is in picoseconds."""
+    fails (62800627 scenarios/uplc-turbo/build.py:59-61, 80-83 and 139-147). The CPU budget is in picoseconds."""
     if item is None:
         return False
     cpu_us = item.get("cpu_us") if _number(item.get("cpu_us")) else None
@@ -358,7 +358,7 @@ def benchmark_met(item: dict | None) -> bool:
 
 
 def turbo(report: dict, benchmarks: tuple[str, ...]) -> Score:
-    """Each benchmark of the corpus, from the last reported item of its name (9dc68a75
+    """Each benchmark of the corpus, from the last reported item of its name (62800627
     scenarios/uplc-turbo/build.py:26-34 and 410-423, without the other nodes' budgets)."""
     corpus = set(benchmarks)
     items = report.get("benchmarks", [])
@@ -370,7 +370,7 @@ def turbo(report: dict, benchmarks: tuple[str, ...]) -> Score:
 
 
 def read(path: Path, scenario: str, era: str | None, site: Site) -> Score:
-    """The score of the report at `path`, or `Unreadable` (9dc68a75 scripts/build_common.py:179-180 and
+    """The score of the report at `path`, or `Unreadable` (62800627 scripts/build_common.py:179-180 and
     325-346)."""
     try:
         report = json.loads(gzip.decompress(path.read_bytes()))
@@ -423,8 +423,8 @@ def _row(latest: Path, scenario: str, era: str | None, site: Site) -> Row:
 
 def results(latest: Path, site: Site) -> Results:
     """Every scenario of the site, in its order, with each era Scarab reports; the overall score adds each
-    scenario's ratio over their number, in that order (9dc68a75 scripts/build.py:38-47). A scenario is scored by
-    its Conway report when that can be read, else by the first other era that can (9dc68a75
+    scenario's ratio over their number, in that order (62800627 scripts/build.py:38-47). A scenario is scored by
+    its Conway report when that can be read, else by the first other era that can (62800627
     scripts/build_common.py:416-418), in the order of the node's report URLs in its `nodes/<id>/metadata.json`;
     the site has no entry for Scarab at that commit, and this takes Scarab's own order (`SCENARIOS`)."""
     rows = []
@@ -444,7 +444,7 @@ def results(latest: Path, site: Site) -> Results:
 
 def percent(ratio: float) -> str:
     """A ratio as the site shows it: cut, never rounded, to two decimals, and 100 only when it is whole
-    (9dc68a75 shared/js/percent.js:4-8), with what JavaScript's `toFixed` gives for a value that is not finite or
+    (62800627 shared/js/percent.js:4-8), with what JavaScript's `toFixed` gives for a value that is not finite or
     is at least 10^21 in magnitude."""
     if ratio == 1:
         return "100%"

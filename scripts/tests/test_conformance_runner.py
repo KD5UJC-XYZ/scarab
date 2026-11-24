@@ -127,7 +127,7 @@ class PinsTest(unittest.TestCase):
         pins = inputs.load_pins()
         needed = {name for scenario in scenarios.SCENARIOS.values() for name in scenario.inputs}
         self.assertLessEqual(needed, set(pins), "every scenario input is pinned")
-        self.assertEqual(pins["site"].directory, "site-9dc68a750478")
+        self.assertEqual(pins["site"].directory, "site-628006278309")
 
     def test_malformed_pins_are_refused(self):
         bad = [
