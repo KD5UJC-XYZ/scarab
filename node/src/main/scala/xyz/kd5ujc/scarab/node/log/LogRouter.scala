@@ -77,16 +77,17 @@ object LogRouter:
   private val ReportsAtRelease = 1.second
 
   /** [[resource]], with the reports of failing sinks given to `report`, which the release waits for
-    * at most `limit`.
+    * at most `limit`, and the file sink's file-system calls `calls`.
     */
   private[log] def reporting[F[_]: Async](
       settings: LogSettings,
       report: SinkReport => F[Unit],
-      limit: FiniteDuration = ReportsAtRelease
+      limit: FiniteDuration = ReportsAtRelease,
+      calls: FileCalls = FileCalls.real
   ): Resource[F, Log[F]] =
     for
       outputs <- settings.sinks.traverse { (sink, format) =>
-        output[F](sink, settings.file).map((sink, format, _))
+        output[F](sink, settings.file, calls).map((sink, format, _))
       }
       log <- routed[F](settings, outputs, report, ReportsQueued, limit)
       _ <- LibraryLogs.install[F](
@@ -250,7 +251,8 @@ object LogRouter:
   /** Where a sink writes. `println` does not fail: a `PrintStream` keeps an error flag instead. */
   private def output[F[_]: Sync](
       sink: Sink,
-      file: Option[FileSink]
+      file: Option[FileSink],
+      calls: FileCalls
   ): Resource[F, String => F[Either[SinkError, Unit]]] =
     val taken = ().asRight[SinkError]
     sink match
@@ -260,7 +262,7 @@ object LogRouter:
         Resource.pure(text => Sync[F].blocking(System.err.println(text)).as(taken))
       case Sink.File =>
         file.fold(Resource.pure[F, String => F[Either[SinkError, Unit]]](_ => Sync[F].pure(taken)))(
-          RotatingFile.resource[F](_).map(f => f.write)
+          RotatingFile.resource[F](_, calls).map(f => f.write)
         )
 
 /** Why a sink did not take a line: the file operation that failed, and its cause. */
@@ -274,10 +276,16 @@ enum SinkError:
   /** The line could not be written. */
   case Write(cause: IOException)
 
+  /** The log was closed: a line that comes after it is not written, and the file is not opened
+    * again.
+    */
+  case Released
+
   def text: String = this match
     case Open(cause)   => s"could not open its file ($cause)"
     case Rotate(cause) => s"could not rotate its file ($cause)"
     case Write(cause)  => s"could not write a line ($cause)"
+    case Released      => "was closed"
 
 /** What the router says of a sink that fails, outside the routes. */
 enum SinkReport:
@@ -313,18 +321,21 @@ object SinkReport:
   def toStderr[F[_]: Sync]: SinkReport => F[Unit] =
     report => Sync[F].blocking(System.err.println(report.text))
 
-/** The log file of a [[FileSink]], rotated by size. Used under the router's lock only.
+/** The log file of a [[FileSink]], rotated by size, through `calls`. Used under the router's lock
+  * only.
   *
   * The file is held while a line is written: `current` is `Shut` until the line is in, so a failure
   * at any step (a write, a rotation that closed the file and could not move it) leaves it `Shut`,
   * never holding a closed stream, and the next line opens the file again; a full file then turns
-  * over again.
+  * over again. The release makes it `Released` for good: a write still under way when it comes (one
+  * abandoned by a bounded last line) closes the stream it holds, and no line opens the file again.
   */
 private[log] final class RotatingFile[F[_]: Sync] private (
     file: FileSink,
+    calls: FileCalls,
     current: Ref[F, RotatingFile.State]
 ):
-  import RotatingFile.{Open, Shut, opened}
+  import RotatingFile.{Open, Released, Shut}
 
   private def numbered(i: Int): Path = file.path.resolveSibling(s"${file.path.getFileName}.$i")
 
@@ -336,11 +347,10 @@ private[log] final class RotatingFile[F[_]: Sync] private (
   private def rotate(open: Open): F[Either[SinkError, Open]] = io(SinkError.Rotate(_)) {
     open.stream.close()
     (file.keep - 1 to 1 by -1).foreach { i =>
-      if Files.exists(numbered(i)) then
-        Files.move(numbered(i), numbered(i + 1), StandardCopyOption.REPLACE_EXISTING)
+      if Files.exists(numbered(i)) then calls.move(numbered(i), numbered(i + 1))
     }
-    Files.move(file.path, numbered(1), StandardCopyOption.REPLACE_EXISTING)
-    opened(file)
+    calls.move(file.path, numbered(1))
+    calls.open(file)
   }
 
   /** `bytes` appended. A stream that failed a write is closed, so the next line opens the file
@@ -354,42 +364,76 @@ private[log] final class RotatingFile[F[_]: Sync] private (
       case Left(error) => io(SinkError.Write(_))(open.stream.close()).as(error.asLeft[Open])
     }
 
+  /** `open` held again, or closed if the file was released while it was written. */
+  private[log] def settle(open: Open): F[Either[SinkError, Unit]] =
+    current
+      .modify {
+        case Released => (Released, true)
+        case _        => (open, false)
+      }
+      .ifM(io(SinkError.Write(_))(open.stream.close()), Sync[F].pure(().asRight[SinkError]))
+
   def write(text: String): F[Either[SinkError, Unit]] =
     val bytes = (text + "\n").getBytes(UTF_8)
+    def through(held: F[Either[SinkError, Open]]): F[Either[SinkError, Unit]] =
+      (for
+        open <- EitherT(held)
+        ready <- EitherT(
+          if open.size > 0 && open.size + bytes.length > file.maxBytes then rotate(open)
+          else Sync[F].pure(open.asRight[SinkError])
+        )
+        written <- EitherT(append(ready, bytes))
+        _ <- EitherT(settle(written))
+      yield ()).value
     Sync[F].uncancelable { _ =>
-      current.getAndSet(Shut).flatMap { held =>
-        (for
-          open <- EitherT(held match
-            case open @ Open(_, _) => Sync[F].pure(open.asRight[SinkError])
-            case Shut              => io(SinkError.Open(_))(opened(file)))
-          ready <- EitherT(
-            if open.size > 0 && open.size + bytes.length > file.maxBytes then rotate(open)
-            else Sync[F].pure(open.asRight[SinkError])
-          )
-          written <- EitherT(append(ready, bytes))
-          _ <- EitherT.liftF(current.set(written))
-        yield ()).value
+      current.modify(state => (state.taken, state)).flatMap {
+        case Released          => Sync[F].pure(SinkError.Released.asLeft[Unit])
+        case Shut              => through(io(SinkError.Open(_))(calls.open(file)))
+        case open @ Open(_, _) => through(Sync[F].pure(open.asRight[SinkError]))
       }
     }
 
-object RotatingFile:
-  private[log] sealed trait State
-  private[log] final case class Open(stream: FileOutputStream, size: Long) extends State
-  private[log] case object Shut extends State
+/** The file-system calls of a [[RotatingFile]]: the real ones, or a test's. Each may throw an
+  * `IOException`, which the file makes its failure.
+  */
+private[log] trait FileCalls:
+  /** `from` moved to `to`, replacing it. */
+  def move(from: Path, to: Path): Unit
 
   /** The file, appended to, with its directory made if it is missing. */
-  private def opened(file: FileSink): Open =
-    Option(file.path.toAbsolutePath.getParent).foreach(Files.createDirectories(_))
-    val size = if Files.exists(file.path) then Files.size(file.path) else 0L
-    Open(new FileOutputStream(file.path.toFile, true), size)
+  def open(file: FileSink): RotatingFile.Open
 
-  /** The file, appended to; the file open at release is closed. */
-  def resource[F[_]: Sync](file: FileSink): Resource[F, RotatingFile[F]] =
+private[log] object FileCalls:
+  val real: FileCalls = new FileCalls:
+    def move(from: Path, to: Path): Unit =
+      Files.move(from, to, StandardCopyOption.REPLACE_EXISTING)
+      ()
+
+    def open(file: FileSink): RotatingFile.Open =
+      Option(file.path.toAbsolutePath.getParent).foreach(Files.createDirectories(_))
+      val size = if Files.exists(file.path) then Files.size(file.path) else 0L
+      RotatingFile.Open(new FileOutputStream(file.path.toFile, true), size)
+
+object RotatingFile:
+  private[log] sealed trait State:
+    /** What the file holds while a line is written: `Shut`, unless it was released. */
+    def taken: State = this match
+      case Released => Released
+      case _        => Shut
+  private[log] final case class Open(stream: FileOutputStream, size: Long) extends State
+  private[log] case object Shut extends State
+  private[log] case object Released extends State
+
+  /** The file, appended to; the file open at release is closed, and is not opened again. */
+  def resource[F[_]: Sync](
+      file: FileSink,
+      calls: FileCalls = FileCalls.real
+  ): Resource[F, RotatingFile[F]] =
     Resource
-      .make(Sync[F].blocking(opened(file)).flatMap(Ref.of[F, State](_))) {
-        _.getAndSet(Shut).flatMap {
+      .make(Sync[F].blocking(calls.open(file)).flatMap(Ref.of[F, State](_))) {
+        _.getAndSet(Released).flatMap {
           case Open(stream, _) => Sync[F].blocking(stream.close())
-          case Shut            => Sync[F].unit
+          case Shut | Released => Sync[F].unit
         }
       }
-      .map(new RotatingFile[F](file, _))
+      .map(new RotatingFile[F](file, calls, _))

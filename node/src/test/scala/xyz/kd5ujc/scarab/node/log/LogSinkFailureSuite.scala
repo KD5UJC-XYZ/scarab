@@ -273,3 +273,45 @@ class LogSinkFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       )
     )
   }
+
+  test("a write under way at release closes the file it opened, and no later write opens it") {
+    val armed = new java.util.concurrent.atomic.AtomicBoolean(false)
+    val entered = new java.util.concurrent.CountDownLatch(1)
+    val gate = new java.util.concurrent.CountDownLatch(1)
+    val opened = new java.util.concurrent.atomic.AtomicReference[Option[RotatingFile.Open]](None)
+    // the file the rotation opens is held open until the gate opens
+    val calls = new FileCalls:
+      def move(from: Path, to: Path): Unit = FileCalls.real.move(from, to)
+      def open(file: FileSink): RotatingFile.Open =
+        val open = FileCalls.real.open(file)
+        if armed.get then
+          opened.set(Some(open))
+          entered.countDown()
+          gate.await()
+        open
+    // the gate opens whatever the outcome, so that a failure does not hold a thread
+    (for
+      dir <- IO.blocking(Files.createTempDirectory("scarab-log"))
+      file = dir.resolve("node.jsonl")
+      allocated <- RotatingFile
+        .resource[IO](FileSink(file, Format.Json, maxBytes = 16, keep = 1), calls)
+        .allocated
+      (rotating, release) = allocated
+      first <- rotating.write("a line longer than the file")
+      _ <- IO(armed.set(true))
+      underWay <- rotating.write("the line that turns it over").start
+      _ <- IO.blocking(entered.await())
+      _ <- release
+      _ <- IO.blocking(gate.countDown())
+      second <- underWay.joinWithNever
+      _ <- IO.blocking(Files.delete(file))
+      late <- rotating.write("a line after the release")
+      reopened <- IO.blocking(Files.exists(file))
+    yield
+      assertEquals(first, Right(()))
+      assertEquals(second, Right(()))
+      assert(opened.get.exists(!_.stream.getFD.valid), "the file opened under way is closed")
+      assertEquals(late, Left(SinkError.Released))
+      assert(!reopened, "a write after the release opened the file")
+    ).guarantee(IO(gate.countDown()))
+  }
