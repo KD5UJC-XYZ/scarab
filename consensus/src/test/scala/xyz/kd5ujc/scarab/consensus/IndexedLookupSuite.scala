@@ -34,6 +34,19 @@ class IndexedLookupSuite extends ScalaCheckSuite:
     }
   }
 
+  test(
+    "HeaderChain.contains is stateAfter's answer with Origin in the prefix before a block base"
+  ) {
+    // as HeaderGate.startAt captures an Origin anchor when the intersection is a later block
+    val prefix = HeaderChain.Known[Int](ChainSync.Point.Origin, Some(0)) +:
+      chain.take(3).map(h => HeaderChain.Known(h.point, Option.empty[Int]))
+    val hc = HeaderChain(chain(3).point, Some(3), Vector(HeaderChain.Entry(chain(4), None)), prefix)
+    (chain ++ other ++ sameSlots).foreach(h =>
+      assertEquals(hc.contains(h.hash), hc.stateAfter(h.hash).isDefined, h.hash.hex)
+    )
+    assert(hc.contains(chain(0).hash) && hc.contains(chain(4).hash) && !hc.contains(other(0).hash))
+  }
+
   property("ChainSelection.Local.contains is the anchor or one of the blocks") {
     forAll(Gen.choose(-1, 23)) { anchorAt =>
       // -1: anchored at Origin, every header a block
