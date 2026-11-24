@@ -65,10 +65,10 @@ import xyz.kd5ujc.scarab.storage.haskell.state.ReferenceLayout
   * halt is not a pass.
   *
   * Arguments: `--config <config.json> --haskell-db <reference db> --start <ledger dir> --end
-  * <ledger dir> --db <fresh dir> --out <dir> [--end-slot N]`. A ledger directory is the reference's
-  * `ledger/<slot>`, named after its tip's slot (or the end's slot is `--end-slot`), holding
-  * `state`, `tables` and `meta`; the end directory may hold only some of them, and those it lacks
-  * are reported as not compared ([[Outcome.Matched]]).
+  * <ledger dir> --db <fresh dir> --out <dir> [--end-slot N] [--plutus-workers N]`. A ledger
+  * directory is the reference's `ledger/<slot>`, named after its tip's slot (or the end's slot is
+  * `--end-slot`), holding `state`, `tables` and `meta`; the end directory may hold only some of
+  * them, and those it lacks are reported as not compared ([[Outcome.Matched]]).
   */
 object LeiosReplayMain extends IOApp:
   /** The build the testnet runs. */
@@ -78,7 +78,7 @@ object LeiosReplayMain extends IOApp:
   val Compared: Vector[String] = Vector("state", "tables", "meta")
 
   val Usage: String =
-    "usage: LeiosReplayMain --config <config.json> --haskell-db <reference db> --start <ledger dir> --end <ledger dir> --db <fresh dir> --out <dir> [--end-slot N]"
+    "usage: LeiosReplayMain --config <config.json> --haskell-db <reference db> --start <ledger dir> --end <ledger dir> --db <fresh dir> --out <dir> [--end-slot N] [--plutus-workers N]"
 
   final case class Window(
       config: Path,
@@ -87,7 +87,8 @@ object LeiosReplayMain extends IOApp:
       end: Path,
       db: Path,
       out: Path,
-      endSlot: Option[BigInt] = None
+      endSlot: Option[BigInt] = None,
+      plutusWorkers: ParallelPlutus.Workers = ParallelPlutus.Workers.default
   )
 
   /** Why the window was not replayed: no verdict on the rules. */
@@ -99,6 +100,9 @@ object LeiosReplayMain extends IOApp:
 
     /** The end directory is not named after a slot. */
     case EndSlot(name: String)
+
+    /** `--plutus-workers` is not a positive count, as `follow` refuses it. */
+    case PlutusWorkers(value: String)
     case NotFresh(path: Path)
     case Stage(cause: HaskellImportError)
 
@@ -183,7 +187,8 @@ object LeiosReplayMain extends IOApp:
     case _: Outcome.Refused  => ExitCode(5)
 
   def parse(args: List[String]): Either[Error, Window] =
-    val names = Set("config", "haskell-db", "start", "end", "db", "out", "end-slot")
+    val names =
+      Set("config", "haskell-db", "start", "end", "db", "out", "end-slot", "plutus-workers")
     @annotation.tailrec
     def go(rest: List[String], acc: Map[String, String]): Either[Error, Map[String, String]] =
       rest match
@@ -199,6 +204,14 @@ object LeiosReplayMain extends IOApp:
       val endSlot = flags
         .get("end-slot")
         .traverse(t => t.toLongOption.filter(_ >= 0).map(BigInt(_)).toRight(Error.EndSlot(t)))
+      // as `follow` reads it: a positive count, the node's default where it is not given
+      val workers = flags
+        .get("plutus-workers")
+        .fold(Right(ParallelPlutus.Workers.default))(t =>
+          t.toIntOption
+            .toRight(Error.PlutusWorkers(t))
+            .flatMap(ParallelPlutus.Workers.from(_).leftMap(_ => Error.PlutusWorkers(t)))
+        )
       (
         path("config"),
         path("haskell-db"),
@@ -206,7 +219,8 @@ object LeiosReplayMain extends IOApp:
         path("end"),
         path("db"),
         path("out"),
-        endSlot
+        endSlot,
+        workers
       ).mapN(Window.apply)
     }
 
@@ -410,12 +424,17 @@ object LeiosReplayMain extends IOApp:
 
   /** Step 3: the blocks of `db` after its imported state `from`, applied as the node's start
     * applies its stored blocks, with the node's own rules and the endorser-block store open. The
-    * rules are built as `follow` builds them; the application of a Dijkstra block, and of an
-    * endorser block's closure before the block that certifies it, is theirs alone (#85 D8).
+    * rules are built as `follow` builds them, their scripts evaluated by `workers` as
+    * `--plutus-workers` sets them; the application of a Dijkstra block, and of an endorser block's
+    * closure before the block that certifies it, is theirs alone (#85 D8).
     */
-  def replay(db: Path, setup: NodeSetup, from: BlockRef, locks: LeiosStoreLocks[IO])(using
-      Raise[IO, Error]
-  ): IO[Replayed] =
+  def replay(
+      db: Path,
+      setup: NodeSetup,
+      from: BlockRef,
+      locks: LeiosStoreLocks[IO],
+      workers: ParallelPlutus.Workers
+  )(using Raise[IO, Error]): IO[Replayed] =
     val dir = FsPath.fromNioPath(db)
     for
       codec <- lift(ReferenceBuildFlag.layout(Build).leftMap(Error.Config(_)))
@@ -435,7 +454,7 @@ object LeiosReplayMain extends IOApp:
           kept *> log("storage", "detail" -> Json.fromString(event.toString))
       result <- Handle
         .allow[NodeError](
-          opened(dir, setup, codec, events, applied, locks).map(Replayed.Reached(_, 0L))
+          opened(dir, setup, codec, events, applied, locks, workers).map(Replayed.Reached(_, 0L))
         )
         .rescue {
           case stop if noVerdictNotYet.isDefinedAt(stop) =>
@@ -537,7 +556,8 @@ object LeiosReplayMain extends IOApp:
       layout: ReferenceLayout,
       events: StorageEvents[IO],
       applied: Ref[IO, (Long, Option[Header])],
-      locks: LeiosStoreLocks[IO]
+      locks: LeiosStoreLocks[IO],
+      workers: ParallelPlutus.Workers
   )(using Raise[IO, NodeError]): IO[Option[BlockRef]] =
     given Ask[IO, ConsensusMirrorEnv] = setup.mirrorAsk(IO.pure(Map.empty))
     given SnapshotFormat[IO, MirrorState] =
@@ -554,7 +574,7 @@ object LeiosReplayMain extends IOApp:
       leios <- LeiosStorage.resource[IO](plan, locks)
       utxo <- RocksUtxoStore.resource[IO](dir / "utxo" / "live")
       cache <- VerificationCache.resource[IO](setup.layout)
-      parallel <- Resource.eval(ParallelPlutus.create[IO](ParallelPlutus.Workers.default))
+      parallel <- Resource.eval(ParallelPlutus.create[IO](workers))
       // the Leios committee of the tip, as `follow` keeps it (`Main.ruled`)
       committees <- Resource.eval(
         Ref.of[IO, Option[((LeiosCommittee, Rational), TipCommittee)]](None)
@@ -612,7 +632,7 @@ object LeiosReplayMain extends IOApp:
       expected: Reference,
       locks: LeiosStoreLocks[IO]
   )(using Raise[IO, Error]): IO[Outcome] =
-    replay(window.db, setup, from, locks).flatMap {
+    replay(window.db, setup, from, locks, window.plutusWorkers).flatMap {
       case Replayed.Stopped(outcome) => IO.pure(outcome)
       case Replayed.Reached(anchor, applied) =>
         for
@@ -639,7 +659,8 @@ object LeiosReplayMain extends IOApp:
         "started",
         "slot" -> Json.fromBigInt(started.anchor.slot),
         "hash" -> Json.fromString(started.anchor.hash.hex),
-        "outputs" -> Json.fromLong(started.count)
+        "outputs" -> Json.fromLong(started.count),
+        "plutusWorkers" -> Json.fromInt(window.plutusWorkers.value)
       )
       outcome <- replayed(window, setup, started.anchor, endSlot, expected, locks)
     yield outcome

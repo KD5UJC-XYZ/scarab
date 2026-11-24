@@ -11,7 +11,7 @@ import xyz.kd5ujc.scarab.ledger.Phase2
 /** One node-wide admission bound, shared by all callers. Only immutable evaluator requests enter
   * workers; ledger changes and observations land in transaction order in the caller's fiber. Any
   * body program ([[Phase2.Program]]) runs here: the flat rules' (`EraBlock.Body`) and an era block
-  * run's (`ConwayBlockRun.Body`).
+  * run's (`ConwayBlockRun.Body`, `DijkstraBlockRun.Body`).
   */
 final class ParallelPlutus[F[_]: Async] private (
     workers: ParallelPlutus.Workers,

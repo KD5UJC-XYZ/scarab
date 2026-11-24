@@ -292,16 +292,34 @@ class DijkstraBbodyImpSuite extends FunSuite:
       slot => Right(slot * 1000)
     )
 
-  /** The node's run of the block `raw` (`DijkstraBlockRun.bbody`), on the context's clock and era
-    * history, with `evaluator`.
+  /** How a prepared block is run with a number of workers ([[DijkstraPlanned.check]]): on as many
+    * threads here, through the node's scheduler in `DijkstraBbodyImpWorkersSuite` (node).
     */
-  private def nodeRun(
+  protected def runner: DijkstraPlanned.Runner = DijkstraPlanned.threaded
+
+  /** The node's run of the block `raw` (`DijkstraBlockRun.program`), on the context's clock and era
+    * history, with `evaluator`: serial, and prepared for the node's bounded parallel evaluation of
+    * its scripts, each to the same result ([[DijkstraPlanned.check]]).
+    */
+  private def nodeChecked(
       raw: Bytes,
       state: LedgerState[Dijkstra],
       params: PParams[Dijkstra],
       evaluator: xyz.kd5ujc.scarab.plutus.ScriptEvaluator[Id]
-  ) =
-    DijkstraBlockRun.bbody(
+  ): DijkstraPlanned.Checked =
+    val block = ok(DijkstraBlock.decode(raw))
+    DijkstraPlanned.check(s"block ${block.blockHeader.header.hash.hex}", evaluator, runner)(
+      nodeProgram(raw, state, params, _)
+    )
+
+  /** The node's era run of the block `raw` as a body program, with `evaluator`. */
+  private def nodeProgram(
+      raw: Bytes,
+      state: LedgerState[Dijkstra],
+      params: PParams[Dijkstra],
+      evaluator: xyz.kd5ujc.scarab.plutus.ScriptEvaluator[Id]
+  ): DijkstraBlockRun.Body =
+    DijkstraBlockRun.program(
       globals,
       BbodyEnv[Dijkstra](params, ChainAccountState(Coin(0), Coin(0))),
       ok(DijkstraBlock.decode(raw)),
@@ -314,6 +332,22 @@ class DijkstraBbodyImpSuite extends FunSuite:
       ScarabEvaluator.defaultDecoder,
       slot => Right(slot * 1000)
     )
+
+  /** An evaluator that counts the scripts it is asked to run. */
+  private final class CountingEvaluator extends xyz.kd5ujc.scarab.plutus.ScriptEvaluator[Id]:
+    private val runs = java.util.concurrent.atomic.AtomicInteger(0)
+    def evaluate(request: xyz.kd5ujc.scarab.plutus.EvalRequest): EvalResult =
+      val _ = runs.incrementAndGet()
+      ScarabEvaluator.default.evaluate(request)
+    def count: Int = runs.get
+
+  /** The node's serial run of the block `raw` ([[nodeChecked]]). */
+  private def nodeRun(
+      raw: Bytes,
+      state: LedgerState[Dijkstra],
+      params: PParams[Dijkstra],
+      evaluator: xyz.kd5ujc.scarab.plutus.ScriptEvaluator[Id]
+  ): DijkstraBlockRun.Result = nodeChecked(raw, state, params, evaluator).serial
 
   private def refused(
       raw: Bytes,
@@ -1117,7 +1151,11 @@ class DijkstraBbodyImpSuite extends FunSuite:
       // and by the node's run (`DijkstraBlockRun`), to the same state, its phase-2 counters those of
       // its eight script transactions (#85): four flagged valid whose script passed, four flagged
       // invalid whose script failed, one script each, each with its integrity hash
-      nodeRun(blockOf(txs), before, params, ScarabEvaluator.default) match
+      // prepared, its eight script transactions are the plan's eight jobs, each landed with the
+      // verdict its flag announces, to the serial run's result ([[nodeChecked]])
+      val checked = nodeChecked(blockOf(txs), before, params, ScarabEvaluator.default)
+      assertEquals(checked.jobs, 8)
+      checked.serial match
         case Right(Right(applied)) =>
           assertEquals((applied.state, applied.proposals), admitted)
           assertEquals(applied.plutus, flat.PlutusStats(4, 4, 8, 8))
@@ -1169,6 +1207,31 @@ class DijkstraBbodyImpSuite extends FunSuite:
           )
         )
       )
+      // past the block's units, the node's run is never prepared (#85): not worthwhile, and its
+      // plan has no job; at every worker count it evaluates exactly the scripts the serial run
+      // evaluates, to the serial run's refusal. With the first transaction flagged invalid flagged
+      // valid instead, the serial run records its scripts' failure and reaches no later script
+      // (`whenFailureFree`), and neither does any worker count
+      val firstInvalid = txs.indexWhere(t => tx.isValid(t.era) == IsPhase2Valid.Phase2Invalid)
+      Vector(txs, txs.updated(firstInvalid, withFlag(txs(firstInvalid), true))).zipWithIndex
+        .foreach { (block, mismatched) =>
+          val raw = blockOf(block)
+          val body = nodeProgram(raw, before, pp, ScarabEvaluator.default)
+          assert(!body.worthwhile)
+          assertEquals(body.prepare.jobs, Vector.empty)
+          val serialRuns = CountingEvaluator()
+          val _ = nodeProgram(raw, before, pp, serialRuns).serial
+          // the eight scripts, or, after the mismatch, fewer
+          if mismatched == 0 then assertEquals(serialRuns.count, 8)
+          else assert(serialRuns.count < 8, s"${serialRuns.count}")
+          DijkstraPlanned.workers.foreach { n =>
+            val runs = CountingEvaluator()
+            val _ = runner(nodeProgram(raw, before, pp, runs), n)
+            assertEquals(runs.count, serialRuns.count, s"$n workers")
+          }
+          // and the result is the serial run's at every worker count
+          val _ = nodeChecked(raw, before, pp, ScarabEvaluator.default)
+        }
     }
   }
 
@@ -1269,6 +1332,374 @@ class DijkstraBbodyImpSuite extends FunSuite:
           )
         )
       )
+    )
+  }
+
+  // ---- the node's prepared run: batches whose scripts read what another batch changes (#85) ---------
+
+  /** A spend of the script output `in`, locked by `script` with the datum 0, with `redeemer`. */
+  private final case class ScriptSpend(in: B.In, script: Bytes, redeemer: Node = B.uint(0))
+
+  /** Plutus V4's `alwaysSucceedsWithDatum`, its witness set's key and its hash. */
+  private lazy val (v4Key, v4Succeeds, v4SucceedsHash) =
+    alwaysSucceedsWithDatum
+      .collectFirst { case (PlutusLanguage.V4, _, key, script, hash) => (key, script, hash) }
+      .getOrElse(fail("no Plutus V4"))
+
+  private lazy val v4Scripts = eightScripts.getOrElse(PlutusLanguage.V4, fail("no Plutus V4"))
+
+  /** An output of 5 ada locked by the script `hash` with the datum 0. */
+  private def locked(hash: Bytes): Node =
+    B.datumHashOut(B.scriptAddress(hash), 5000000, B.dataHash(B.uint(0)))
+
+  /** A level's body and witnesses: its key inputs `inputs` and the script outputs `spends` spent,
+    * the other fields `rest`, the integrity hash `integrity`, signed by the payer if `signed`; each
+    * script's redeemer at a quarter of a transaction's most units, so that a batch's levels fit
+    * them together.
+    */
+  private def level(
+      params: PParams[Dijkstra],
+      inputs: Vector[B.In],
+      spends: Vector[ScriptSpend],
+      rest: Vector[(Int, Node)],
+      integrity: Option[Bytes],
+      signed: Boolean
+  ): (Node, Node) =
+    val units = AlonzoEraPParams.ppMaxTxExUnitsL.get(params).units
+    val all = inputs ++ spends.map(_.in)
+    val body = B.body(
+      ((0 -> B.set(all.map(_.node)*)) +: (rest ++ integrity.map(h => 11 -> B.bytes(h)).toVector))
+        .sortBy(_._1)*
+    )
+    val scripts =
+      if spends.isEmpty then Vector.empty
+      else
+        Vector(
+          4 -> B.set(B.uint(0)),
+          5 -> B.cmap(
+            spends.map(sp =>
+              B.arr(B.uint(0), B.uint(spendingIx(sp.in, all))) ->
+                B.arr(sp.redeemer, B.arr(B.uint(units.mem / 4), B.uint(units.steps / 4)))
+            )*
+          ),
+          v4Key -> B.set(spends.map(_.script).distinct.map(B.bytes)*)
+        )
+    (body, B.witnesses(body, if signed then Vector(payer) else Vector.empty, scripts*))
+
+  /** The one sub-transaction of `t`. */
+  private def subOfBatch(t: Built): DijkstraTx[TxLevel.Sub] =
+    bodies.subTransactions(tx.body(t.era)).toVector match
+      case Vector(sub) => sub
+      case other       => fail(s"not one sub-transaction: $other")
+
+  /** A batch: its top level spending the payer's `fee` of 10 ada for a fee of 5 ada, giving
+    * `collateral`, spending `spends`, reading `refs`, paying `outputs`, with the sub-transaction
+    * `sub` (its key inputs, its script spends, its outputs) if any, flagged `valid`; each level
+    * with a redeemer with its own integrity hash, of Plutus V4 at `params`.
+    */
+  private def batch(
+      params: PParams[Dijkstra],
+      fee: B.In,
+      collateral: B.In,
+      spends: Vector[ScriptSpend],
+      outputs: Vector[Node],
+      refs: Vector[B.In] = Vector.empty,
+      sub: Option[(Vector[B.In], Vector[ScriptSpend], Vector[Node])] = None,
+      valid: Boolean = true
+  ): Built =
+    def integrityOf[L <: TxLevel](t: DijkstraTx[L])(using BothLevels[L]): Bytes =
+      ScriptIntegrity
+        .mkScriptIntegrity[Dijkstra, L](params, t, Set(PlutusLanguage.V4))
+        .map(ScriptIntegrity.hashScriptIntegrity(_))
+        .getOrElse(fail("no script integrity"))
+    def subNode(integrity: Option[Bytes]): Option[Node] = sub.map { (inputs, subSpends, outs) =>
+      val (b, w) =
+        level(params, inputs, subSpends, Vector(1 -> B.arr(outs*)), integrity, inputs.nonEmpty)
+      B.arr(b, w, B.nil)
+    }
+    def make(subTx: Option[Node], integrity: Option[Bytes]): Built =
+      val (b, w) = level(
+        params,
+        Vector(fee),
+        spends,
+        Vector(
+          1 -> B.arr(outputs*),
+          2 -> B.uint(5000000),
+          13 -> B.set(collateral.node)
+        ) ++ Option.when(refs.nonEmpty)(18 -> B.set(refs.map(_.node)*)).toVector ++
+          subTx.map(s => 23 -> B.set(s)).toVector,
+        integrity,
+        true
+      )
+      built(b, w, valid)
+    val subFinal = sub
+      .flatMap { (_, subSpends, _) =>
+        if subSpends.isEmpty then subNode(None)
+        else
+          subNode(
+            Some(
+              integrityOf[TxLevel.Sub](subOfBatch(make(subNode(None), None)))(using BothLevels.Sub)
+            )
+          )
+      }
+      .orElse(subNode(None))
+    if spends.isEmpty then make(subFinal, None)
+    else make(subFinal, Some(integrityOf[TxLevel.Top](make(subFinal, None).era)))
+
+  /** The id of a batch's one sub-transaction. */
+  private def subId(t: Built): Bytes =
+    bodies.id[TxLevel.Sub](subOfBatch(t).body)(using BothLevels.Sub)
+
+  /** The block of `txs` on `utxo` at the Imp's units, checked prepared against serial
+    * ([[nodeChecked]]) with `evaluator`.
+    */
+  private def preparedOn(
+      utxo: UTxO[Dijkstra],
+      txs: Vector[Built],
+      evaluator: xyz.kd5ujc.scarab.plutus.ScriptEvaluator[Id] = ScarabEvaluator.default
+  ): DijkstraPlanned.Checked =
+    nodeChecked(blockOf(txs), holding(utxo), impUnits, evaluator)
+
+  /** The block admitted by the node's run, serial and prepared, to BBODY's state, with `plutus`. */
+  private def admittedAs(
+      utxo: UTxO[Dijkstra],
+      txs: Vector[Built],
+      checked: DijkstraPlanned.Checked,
+      plutus: flat.PlutusStats
+  ): Unit =
+    val admitted = run(blockOf(txs), holding(utxo), impUnits) match
+      case Right(Right((after, proposals, _))) => (after, proposals)
+      case other                               => fail(s"not admitted: $other")
+    checked.serial match
+      case Right(Right(applied)) =>
+        assertEquals((applied.state, applied.proposals), admitted)
+        assertEquals(applied.plutus, plutus)
+      case other => fail(s"not admitted by the node's run: $other")
+
+  test(
+    "prepared: a sub-transaction spends an output an earlier batch's script read as a reference input"
+  ) {
+    val (s1, r, other) = (fundOf(9101), fundOf(9102), fundOf(9103))
+    val (f1, f2, c1, c2) = (fundOf(9111), fundOf(9112), fundOf(9121), fundOf(9122))
+    val utxo = B.utxo(
+      s1 -> locked(v4SucceedsHash),
+      r -> locked(v4SucceedsHash),
+      other -> locked(v4SucceedsHash),
+      f1 -> paid(10000000),
+      f2 -> paid(10000000),
+      c1 -> paid(30000000),
+      c2 -> paid(30000000)
+    )
+    // the first batch's script reads `r` (its context's reference inputs); the second's
+    // sub-transaction spends `r`, or, the control, another output of the same script
+    val reads = batch(
+      impUnits,
+      f1,
+      c1,
+      Vector(ScriptSpend(s1, v4Succeeds)),
+      Vector(paid(10000000)),
+      refs = Vector(r)
+    )
+    def spending(target: B.In) =
+      batch(
+        impUnits,
+        f2,
+        c2,
+        Vector.empty,
+        Vector(paid(5000000)),
+        sub = Some((Vector.empty, Vector(ScriptSpend(target, v4Succeeds)), Vector(paid(5000000))))
+      )
+    val txs = Vector(reads, spending(r))
+    val checked = preparedOn(utxo, txs)
+    // the spend of what the first's script read waits for it; the control does not
+    assertEquals(checked.jobs, 2)
+    assertEquals(checked.batches, Vector(Vector(0), Vector(1)))
+    admittedAs(utxo, txs, checked, flat.PlutusStats(2, 0, 2, 2))
+    val control = preparedOn(utxo, Vector(reads, spending(other)))
+    assertEquals(control.batches, Vector(Vector(0, 1)))
+    // the evaluator giving no verdict on the sub-transaction's script, then on the first batch's:
+    // each named as the serial run names it, at every worker count ([[DijkstraPlanned.check]])
+    val asked = java.util.concurrent.atomic
+      .AtomicReference(Vector.empty[xyz.kd5ujc.scarab.plutus.EvalRequest])
+    val recording: xyz.kd5ujc.scarab.plutus.ScriptEvaluator[Id] = r0 =>
+      val _ = asked.updateAndGet(_ :+ r0)
+      ScarabEvaluator.default.evaluate(r0)
+    val _ = nodeProgram(blockOf(txs), holding(utxo), impUnits, recording).serial
+    val requests = asked.get
+    assertEquals(requests.size, 2)
+    val reason: EvalFailure.Unsupported = EvalFailure.Unsupported(
+      xyz.kd5ujc.scarab.plutus.BackendFailure.BudgetOutOfRange(ExUnits(0, 0))
+    )
+    def unjudged(
+        request: xyz.kd5ujc.scarab.plutus.EvalRequest
+    ): xyz.kd5ujc.scarab.plutus.ScriptEvaluator[Id] = r0 =>
+      if r0 == request then EvalResult.Failure(reason, ExUnits(0, 0), Vector.empty)
+      else ScarabEvaluator.default.evaluate(r0)
+    val units = AlonzoEraPParams.ppMaxTxExUnitsL.get(impUnits).units
+    val quarter = ExUnits(units.mem / 4, units.steps / 4)
+    assertEquals(
+      preparedOn(utxo, txs, unjudged(requests(1))).serial,
+      Left(
+        DijkstraRuleDefect.Ledger(
+          flat.LedgerFailure.Unavailable(
+            bodies.id[TxLevel.Top](tx.body(txs(1).era)),
+            flat.ScriptLocation.SubPhase2(
+              subId(txs(1)),
+              flat.Redeemer(0, 0, B.encode(B.uint(0)), quarter)
+            ),
+            reason
+          )
+        )
+      )
+    )
+    assertEquals(
+      preparedOn(utxo, txs, unjudged(requests(0))).serial,
+      Left(
+        DijkstraRuleDefect.Ledger(
+          flat.LedgerFailure.Unavailable(
+            bodies.id[TxLevel.Top](tx.body(txs(0).era)),
+            flat.ScriptLocation.Phase2(
+              flat.Redeemer(0, spendingIx(s1, Vector(f1, s1)), B.encode(B.uint(0)), quarter)
+            ),
+            reason
+          )
+        )
+      )
+    )
+  }
+
+  test("prepared: a batch's script spends an output an earlier batch's sub-transaction creates") {
+    val (s1, k) = (fundOf(9201), fundOf(9202))
+    val (f1, f2, c1, c2) = (fundOf(9211), fundOf(9212), fundOf(9221), fundOf(9222))
+    val utxo = B.utxo(
+      s1 -> locked(v4SucceedsHash),
+      k -> paid(5000000),
+      f1 -> paid(10000000),
+      f2 -> paid(10000000),
+      c1 -> paid(30000000),
+      c2 -> paid(30000000)
+    )
+    // the first batch runs a script at its top level, and its sub-transaction makes an output
+    // locked by a script; the second spends that output with its script
+    val makes = batch(
+      impUnits,
+      f1,
+      c1,
+      Vector(ScriptSpend(s1, v4Succeeds)),
+      Vector(paid(10000000)),
+      sub = Some((Vector(k), Vector.empty, Vector(locked(v4SucceedsHash))))
+    )
+    val made = B.In(subId(makes), 0)
+    val spends = batch(
+      impUnits,
+      f2,
+      c2,
+      Vector(ScriptSpend(made, v4Succeeds)),
+      Vector(paid(10000000))
+    )
+    val txs = Vector(makes, spends)
+    val checked = preparedOn(utxo, txs)
+    assertEquals(checked.jobs, 2)
+    assertEquals(checked.batches, Vector(Vector(0), Vector(1)))
+    admittedAs(utxo, txs, checked, flat.PlutusStats(2, 0, 2, 2))
+  }
+
+  test(
+    "prepared: a script that fails in the middle of a block, flagged invalid, flagged valid, and one that passes flagged invalid"
+  ) {
+    val fails = v4Scripts.alwaysFailsWithDatum
+    val (s1, s2, s3, s2ok) = (fundOf(9301), fundOf(9302), fundOf(9303), fundOf(9304))
+    val fees = Vector(9311, 9312, 9313).map(fundOf)
+    val colls = Vector(9321, 9322, 9323).map(fundOf)
+    val utxo = B.utxo(
+      (Vector(
+        s1 -> locked(v4SucceedsHash),
+        s2 -> locked(fails.hash),
+        s3 -> locked(v4SucceedsHash),
+        s2ok -> locked(v4SucceedsHash)
+      ) ++ fees.map(_ -> paid(10000000)) ++ colls.map(_ -> paid(30000000)))*
+    )
+    def spend(i: Int, sp: ScriptSpend, valid: Boolean) =
+      batch(impUnits, fees(i), colls(i), Vector(sp), Vector(paid(10000000)), valid = valid)
+    val first = spend(0, ScriptSpend(s1, v4Succeeds), true)
+    val last = spend(2, ScriptSpend(s3, v4Succeeds), true)
+    def block(middle: Built) = Vector(first, middle, last)
+    // flagged invalid and failing: the verdict its flag announces, landed; the block admitted,
+    // the middle batch's collateral taken
+    val invalid = block(spend(1, ScriptSpend(s2, fails.script), false))
+    val agreed = preparedOn(utxo, invalid)
+    assertEquals(agreed.jobs, 3)
+    assertEquals(agreed.batches, Vector(Vector(0, 1, 2)))
+    admittedAs(utxo, invalid, agreed, flat.PlutusStats(2, 1, 3, 3))
+    // flagged valid and failing, and flagged invalid and passing: not the verdict the flag
+    // announces, so the serial run is the plan's result, refused as BBODY refuses it
+    Vector(
+      block(spend(1, ScriptSpend(s2, fails.script), true)),
+      block(spend(1, ScriptSpend(s2ok, v4Succeeds), false))
+    ).foreach { txs =>
+      val checked = preparedOn(utxo, txs)
+      assertEquals(checked.jobs, 3)
+      val bbody = run(blockOf(txs), holding(utxo), impUnits) match
+        case Right(Left(fs)) => fs.toChain.toVector
+        case other           => fail(s"not refused: $other")
+      checked.serial match
+        case Right(Left(fs)) => assertEquals(fs.toChain.toVector.size, bbody.size)
+        case other           => fail(s"not refused by the node's run: $other")
+    }
+  }
+
+  test(
+    "prepared: a raw defect of the evaluator, in a job the serial run reaches and in one it never reaches: the serial run's result at every worker count"
+  ) {
+    val fails = v4Scripts.alwaysFailsWithDatum
+    val (s1, s2, s3) = (fundOf(9401), fundOf(9402), fundOf(9403))
+    val fees = Vector(9411, 9412, 9413).map(fundOf)
+    val colls = Vector(9421, 9422, 9423).map(fundOf)
+    val utxo = B.utxo(
+      (Vector(s1 -> locked(v4SucceedsHash), s2 -> locked(fails.hash), s3 -> locked(v4SucceedsHash))
+        ++ fees.map(_ -> paid(10000000)) ++ colls.map(_ -> paid(30000000)))*
+    )
+    def spend(i: Int, sp: ScriptSpend, valid: Boolean) =
+      batch(impUnits, fees(i), colls(i), Vector(sp), Vector(paid(10000000)), valid = valid)
+    val first = spend(0, ScriptSpend(s1, v4Succeeds), true)
+    val last = spend(2, ScriptSpend(s3, v4Succeeds), true)
+    // the last batch's script ends in a raw defect of the implementation (its context reads only
+    // the outputs its own inputs spend, which no earlier batch touches)
+    val request = evaluated(impUnits, utxo, last) match
+      case Vector((pwc, _)) => PlutusWithContext.evalRequest(pwc)
+      case other            => fail(s"not one script: $other")
+    val defect = new IllegalStateException("an evaluator defect")
+    val defective: xyz.kd5ujc.scarab.plutus.ScriptEvaluator[Id] =
+      r => if r == request then throw defect else ScarabEvaluator.default.evaluate(r)
+    def bodyOf(txs: Vector[Built], e: xyz.kd5ujc.scarab.plutus.ScriptEvaluator[Id]) =
+      nodeProgram(blockOf(txs), holding(utxo), impUnits, e)
+    // reached: the middle batch's verdict its flag's, so the serial run reaches the last batch's
+    // script and raises the very defect; so does every worker count, with no other
+    val reached = Vector(first, spend(1, ScriptSpend(s2, fails.script), false), last)
+    val serial = scala.util.Try(bodyOf(reached, defective).serial).toEither
+    assert(serial.left.exists(_ eq defect), s"$serial")
+    DijkstraPlanned.workers.foreach { n =>
+      val result = runner(bodyOf(reached, defective), n)
+      assert(result.left.exists(_.cause eq defect), s"$n workers: $result")
+    }
+    // never reached: the middle batch's script fails flagged valid, so the serial run records
+    // that failure and runs no later script (`whenFailureFree`): the block is refused, and every
+    // worker count, whose plan ran the last job ahead into the defect, comes to that refusal
+    val unreached = Vector(first, spend(1, ScriptSpend(s2, fails.script), true), last)
+    val shared = DijkstraPlanned.Shared(defective)
+    val refusal = bodyOf(unreached, shared).serial
+    refusal match
+      case Right(Left(_)) => ()
+      case other          => fail(s"not refused: $other")
+    DijkstraPlanned.workers.foreach(n =>
+      DijkstraPlanned.same(s"$n workers", refusal, runner(bodyOf(unreached, shared.replaying), n))
+    )
+    val plan = bodyOf(unreached, shared.replaying).prepare
+    assertEquals(plan.jobs.size, 3)
+    DijkstraPlanned.same(
+      "the plan, every job run",
+      refusal,
+      plan.resolve(plan.batches.flatten.map(plan.execute))
     )
   }
 

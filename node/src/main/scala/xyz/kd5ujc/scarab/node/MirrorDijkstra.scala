@@ -102,10 +102,12 @@ import xyz.kd5ujc.scarab.protocol.{EbHash, EbPoint, Era, LeiosTxHash}
   *      `Ledger/Extended.hs:297-311`), the state's cumulative transaction bytes gaining the block's
   *      and the closure's (`Shelley/Ledger/Leios.hs:223-230`).
   *
-  * The rules run serially: the parallel Plutus plan of the other eras (`EraBlock.Body`) is over the
-  * node's flat transactions. A verdict on the block is a [[BlockFailure]]; what the node has no
-  * verdict on is a [[ChainError]], never a verdict: the follower withholds the block for a limit of
-  * this build valid peer input can meet (`BlockNoVerdict.ofDijkstra`), and stops for the rest.
+  * BBODY is a body program ([[DijkstraBlockRun.program]]) the caller runs serially or through the
+  * node's bounded workers (ADR 0018), each to the same result ([[ready]]); the steps before it and
+  * after it run in the caller's order around it. A verdict on the block is a [[BlockFailure]]; what
+  * the node has no verdict on is a [[ChainError]], never a verdict: the follower withholds the
+  * block for a limit of this build valid peer input can meet (`BlockNoVerdict.ofDijkstra`), and
+  * stops for the rest.
   *
   * The header gate ([[Praos2Headers]]) and this application share Praos2's configuration, the
   * chain-dependent state's translation and the tip ([[Praos2Headers.config]],
@@ -516,44 +518,50 @@ private[node] object MirrorDijkstra:
       )
     yield ProtocolState(ChainDepState.Praos2(next.protocol), translated.extras.copy(epoch = epoch))
 
-  /** BBODY on the ticked state (`dijkstraBbodyTransition`, [[DijkstraBlockRun.bbody]]), with its
-    * parameters, account and proposals, and the system start and era history of the context: the
-    * state after it, and the node's phase-2 counters of the block's scripts, from zero. The network
-    * and the validation policy are the run's own, from the globals.
+  /** BBODY on the ticked state as a body program (`dijkstraBbodyTransition`,
+    * [[DijkstraBlockRun.program]]), with its parameters, account and proposals, and the system
+    * start and era history of the context, which the node runs serially or through its bounded
+    * workers (ADR 0018), each to the same result. The network and the validation policy are the
+    * run's own, from the globals.
     */
   private def bbody(
       env: Env,
       ticked: NewEpochState[Dijkstra],
       block: EraBlockOf[DijkstraBlockHeader, Dijkstra]
+  ): DijkstraBlockRun.Body =
+    DijkstraBlockRun.program(
+      env.globals,
+      BbodyEnv[Dijkstra](pparamsOf(ticked), ticked.es.chainAccount),
+      block,
+      env.context.systemStart,
+      env.context.epochInfo,
+      ShelleyBbodyState[Dijkstra](ticked.es.ls, ticked.bcur),
+      proposalsOf(ticked),
+      env.backend.evaluator,
+      env.config.verdicts,
+      env.backend.decoder,
+      env.clock.posix
+    )
+
+  /** What BBODY's result `result` on the ticked state makes of it: the state after it, and the
+    * node's phase-2 counters of the block's scripts, from zero; or the refusal or defect.
+    */
+  private def bbodyAfter(
+      env: Env,
+      ticked: NewEpochState[Dijkstra],
+      result: DijkstraBlockRun.Result
   ): Step[(NewEpochState[Dijkstra], PlutusStats)] =
-    for
-      pp = pparamsOf(ticked)
-      proposals = proposalsOf(ticked)
-      applied <- judged(
-        env.slot,
-        DijkstraBlockRun.bbody(
-          env.globals,
-          BbodyEnv[Dijkstra](pp, ticked.es.chainAccount),
-          block,
-          env.context.systemStart,
-          env.context.epochInfo,
-          ShelleyBbodyState[Dijkstra](ticked.es.ls, ticked.bcur),
-          proposals,
-          env.backend.evaluator,
-          env.config.verdicts,
-          env.backend.decoder,
-          env.clock.posix
-        )
-      )
-    yield (
-      withProposals(
-        ticked.copy[Dijkstra](
-          bcur = applied.state.blocksMade,
-          es = ticked.es.copy[Dijkstra](ls = applied.state.ls)
+    judged(env.slot, result).map(applied =>
+      (
+        withProposals(
+          ticked.copy[Dijkstra](
+            bcur = applied.state.blocksMade,
+            es = ticked.es.copy[Dijkstra](ls = applied.state.ls)
+          ),
+          applied.proposals
         ),
-        applied.proposals
-      ),
-      applied.plutus
+        applied.plutus
+      )
     )
 
   /** What the era rules read for `announced` 's block on `state`: the slot, the globals, the UTxO
@@ -596,7 +604,7 @@ private[node] object MirrorDijkstra:
     )
 
   /** The state after `announced` 's block `raw` on `state`, whose Shelley-based part before the
-    * block is `pre`: see the object's description for the order.
+    * block is `pre`, its BBODY run serially: see the object's description for the order.
     */
   def apply(
       state: MirrorState,
@@ -609,6 +617,28 @@ private[node] object MirrorDijkstra:
       backend: PlutusBackend,
       read: Read
   ): Applied =
+    ready(state, pre, announced, raw, config, globals, byronParams, backend, read) match
+      case MirrorRules.Ready.Done(applied)   => applied
+      case run: MirrorRules.Ready.Running[a] => run.finish(run.program.serial)
+
+  /** [[apply]] up to its BBODY: what the block already came to before it (a refusal, or the node's
+    * stop), or BBODY's program on the ticked state ([[DijkstraBlockRun.program]]), which the caller
+    * runs serially or through the node's bounded workers (ADR 0018), and what its result makes of
+    * the block: the state after it, then its header checked against the state ticked before BBODY,
+    * and the state assembled, in the reference's order (`applyHelper`,
+    * `Ledger/Extended.hs:297-311`, ouroboros-consensus d91b3557, main's pin, the same at 2416493b).
+    */
+  private[node] def ready(
+      state: MirrorState,
+      pre: MirrorRules.Pre,
+      announced: Header.Shelley,
+      raw: Bytes,
+      config: PraosConfig,
+      globals: LedgerGlobals,
+      byronParams: EraHistory.ByronParams,
+      backend: PlutusBackend,
+      read: Read
+  ): MirrorRules.Ready =
     val slot = announced.slot
     val geometry = config.geometry
     val epoch = geometry.epochOf(slot)
@@ -628,7 +658,7 @@ private[node] object MirrorDijkstra:
           case Left(DijkstraBlockError.Projection(cause)) =>
             Left(stop(slot, DijkstraBlockDefect.Projection(cause)))
       )
-    val steps: Step[MirrorState] =
+    val before: Step[(EraBlockOf[DijkstraBlockHeader, Dijkstra], NewEpochState[Dijkstra], Word64)] =
       for
         block <- decoded
         header = block.blockHeader.header
@@ -659,17 +689,36 @@ private[node] object MirrorDijkstra:
         }
         closed <- closedThenTicked(env, tickContext, state, announced, stamped, certifying)
         (tickedNes, closureBytes) = closed
-        // `applyHelper` (`Ledger/Extended.hs:297-311`, ouroboros-consensus 2416493b): the
-        // ledger's BBODY first, then `validateHeader` with the ledger view of the state ticked
-        // before BBODY
-        ran <- bbody(env, tickedNes, block)
-        (nes, plutus) = ran
-        praos <- headerChecks(env, state, pre, header, tickedNes, epoch)
-        next <- refuse(
-          assembled(state, pre, announced, placement, closureBytes, body, nes, praos, plutus)
+      yield (block, tickedNes, closureBytes)
+    before.value match
+      case Left(halted)         => MirrorRules.Ready.Done(Left(halted))
+      case Right(Left(refused)) => MirrorRules.Ready.refused(refused)
+      case Right(Right((block, tickedNes, closureBytes))) =>
+        MirrorRules.Ready.Running[DijkstraBlockRun.Result](
+          bbody(env, tickedNes, block),
+          result =>
+            // `applyHelper` (`Ledger/Extended.hs:297-311`, ouroboros-consensus d91b3557): the
+            // ledger's BBODY first, then `validateHeader` with the ledger view of the state ticked
+            // before BBODY
+            (for
+              ran <- bbodyAfter(env, tickedNes, result)
+              (nes, plutus) = ran
+              praos <- headerChecks(env, state, pre, block.blockHeader.header, tickedNes, epoch)
+              next <- refuse(
+                assembled(
+                  state,
+                  pre,
+                  announced,
+                  placement,
+                  closureBytes,
+                  block.blockBody,
+                  nes,
+                  praos,
+                  plutus
+                )
+              )
+            yield next).value
         )
-      yield next
-    steps.value
 
   /** The state after `announced` 's block, once its rules passed: `nes` and `praos` the ledger and
     * protocol states after it, the cumulative transaction bytes gaining the closure's
