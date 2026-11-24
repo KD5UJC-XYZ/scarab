@@ -531,8 +531,9 @@ def leios_traffic(args):
     try:
         _drive(args, root, started)
     finally:
-        # `--keep` leaves the reference container (its nodes and their databases, in its tmpfs) and the follower's
-        # container for a later step, such as a snapshot export or import against them; `devnet.py down` removes them
+        # `--keep` leaves the reference container, with its nodes' databases in its tmpfs (the run has stopped the
+        # nodes), and the follower's database in the run directory, for a later step such as a snapshot export or
+        # import against them; `devnet.py --name <name> down` removes them
         if not getattr(args, "keep", False):
             if getattr(args, "follow", False):
                 leios_follow.remove(args.name)  # it lives in the reference container's network namespace
