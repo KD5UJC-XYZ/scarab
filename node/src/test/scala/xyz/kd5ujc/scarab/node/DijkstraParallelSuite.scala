@@ -58,6 +58,29 @@ class DijkstraParallelSuite extends FailsOnUncaught:
   }
 
   test(
+    "every admitted recorded block of two or more scripted batches, evaluated by the workers themselves at one, two, four and eight: the serial run's state, proposals and counters"
+  ) {
+    val admitted = DijkstraRecordedBlocks.samples.flatMap { sample =>
+      val body = DijkstraRecordedBlocks.program(sample, ScarabEvaluator.default)
+      body.serial match
+        case Right(Right(applied)) if body.worthwhile   => Vector(sample -> applied)
+        case Right(Right(_)) | Right(Left(_)) | Left(_) => Vector.empty
+    }
+    services.flatMap { services =>
+      admitted
+        .traverse_ { (sample, applied) =>
+          // a fresh evaluator, no result given again: the workers' evaluations overlap for real
+          services.traverse_ { (n, service) =>
+            service(DijkstraRecordedBlocks.program(sample, ScarabEvaluator.default)).map(result =>
+              assertEquals(result, Right(Right(applied)), s"block ${sample.block}, $n workers")
+            )
+          }
+        }
+        .map(_ => assertEquals(admitted.size, 17))
+    }
+  }
+
+  test(
     "a script with no verdict at each place of every recorded block of two or more scripted batches: named as the serial run names it, at every worker count"
   ) {
     val reason: EvalFailure.Unsupported =

@@ -1524,7 +1524,7 @@ class DijkstraBbodyImpSuite extends FunSuite:
     val recording: xyz.kd5ujc.scarab.plutus.ScriptEvaluator[Id] = r0 =>
       val _ = asked.updateAndGet(_ :+ r0)
       ScarabEvaluator.default.evaluate(r0)
-    val _ = nodeRun(blockOf(txs), holding(utxo), impUnits, recording)
+    val _ = nodeProgram(blockOf(txs), holding(utxo), impUnits, recording).serial
     val requests = asked.get
     assertEquals(requests.size, 2)
     val reason: EvalFailure.Unsupported = EvalFailure.Unsupported(

@@ -97,8 +97,9 @@ object DijkstraPlanned extends Assertions:
 
   /** The block `programOf` makes with an evaluator, run serially with `base` (kept, [[Shared]]),
     * and prepared with the same results: resolved with its jobs run last batch first, each batch's
-    * last first; with none run, each then evaluated where it lands; and on as many threads as each
-    * of the node's worker counts ([[threaded]]); each to the serial run's result.
+    * last first; with none run, each then evaluated where it lands; and with as many workers as
+    * each of the node's worker counts (`runner`, [[threaded]] by default); each to the serial run's
+    * result. An admitted block is run with the workers again, evaluating with `base` itself.
     */
   def check(name: String, base: ScriptEvaluator[Id], runner: Runner = threaded)(
       programOf: ScriptEvaluator[Id] => DijkstraBlockRun.Body
@@ -113,4 +114,12 @@ object DijkstraPlanned extends Assertions:
     )
     same(s"$name, none run", serial, programOf(shared.replaying).prepare.resolve(Vector.empty))
     workers.foreach(n => same(s"$name, $n workers", serial, runner(programOf(shared.replaying), n)))
+    // an admitted block holds no machine's term: its workers evaluate with `base` itself, the
+    // overlapping evaluations real, to the same state, proposals and counters
+    serial match
+      case Right(Right(_)) =>
+        workers.foreach(n =>
+          same(s"$name, $n workers evaluating", serial, runner(programOf(base), n))
+        )
+      case Right(Left(_)) | Left(_) => ()
     Checked(serial, plan.jobs.size, plan.batches.map(_.map(_.index)))
