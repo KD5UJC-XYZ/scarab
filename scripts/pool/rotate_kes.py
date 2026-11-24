@@ -45,6 +45,7 @@ import fcntl
 import json
 import os
 import pathlib
+import secrets
 import shlex
 import stat
 import subprocess
@@ -163,15 +164,21 @@ def fsync_dir(path):
 
 
 def write_atomic(path, text, mode=0o600):
-    """Write `text` to `path` through a temporary file in the same directory: all or nothing, on disk."""
-    tmp = path.with_name(path.name + ".tmp")
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, mode)
+    """Write `text` to `path` through a temporary file in the same directory: all or nothing, on disk. Others write
+    in these directories (the node in the key directory, other tools in the textfile collector's), so the temporary
+    file has a name they cannot foresee and is made new, never opened through a link; a failed write removes it."""
+    tmp = path.with_name(f".{path.name}.{secrets.token_hex(8)}.tmp")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, mode)
     try:
-        os.write(fd, text.encode())
-        os.fsync(fd)
-    finally:
-        os.close(fd)
-    os.replace(tmp, path)
+        try:
+            write_all(fd, text.encode())
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+        os.replace(tmp, path)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
     fsync_dir(path.parent)
 
 

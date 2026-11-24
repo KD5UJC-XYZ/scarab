@@ -8,6 +8,7 @@ import importlib.util
 import json
 import os
 import pathlib
+import stat
 import tempfile
 import unittest
 from unittest import mock
@@ -150,6 +151,43 @@ class MetricsTest(DriverTest):
         self.assertEqual(values[rk.LAST_SUCCESS], success)
         self.assertEqual(values[rk.LAST_RUN], failed)
         self.assertEqual(values[rk.LAST_STATUS], rk.EXIT_NODE_DOWN)
+
+    def test_a_planted_temporary_link_is_not_written_through(self):
+        sentinel = self.outside()
+        path = self.keys / "rotate-kes.prom"
+        planted = self.keys / "rotate-kes.prom.tmp"  # the name the temporary file had, which anyone could predict
+        planted.symlink_to(sentinel)
+        settings = rk.dataclasses.replace(self.settings, metrics_file=path)
+        rk.write_metrics(settings, rk.EXIT_OK, 1792292758.125)
+        self.assertEqual(sentinel.read_text(), OUTSIDE)
+        self.assertTrue(planted.is_symlink())
+        self.assertTrue(stat.S_ISREG(path.lstat().st_mode))
+        self.assertEqual(rk.read_metrics(path)[rk.LAST_STATUS], rk.EXIT_OK)
+
+    def test_the_metrics_file_keeps_its_mode_and_leaves_no_temporary_file(self):
+        path = self.keys / "rotate-kes.prom"
+        settings = rk.dataclasses.replace(self.settings, metrics_file=path)
+        before = [p.name for p in self.keys.iterdir()]
+        umask = os.umask(0)
+        os.umask(umask)
+        rk.write_metrics(settings, rk.EXIT_OK, 1792292758.125)
+        self.assertEqual(stat.S_IMODE(path.lstat().st_mode), 0o644 & ~umask)
+        self.assertEqual(sorted(p.name for p in self.keys.iterdir()), sorted(before + [path.name]))
+
+    def test_a_failed_write_leaves_no_temporary_file(self):
+        path = self.keys / "rotate-kes.prom"
+        before = sorted(p.name for p in self.keys.iterdir())
+        with mock.patch.object(rk.os, "replace", side_effect=OSError("no rename today")):
+            with self.assertRaises(OSError):
+                rk.write_atomic(path, "text")
+        self.assertEqual(sorted(p.name for p in self.keys.iterdir()), before)
+
+    def test_a_short_write_is_completed(self):
+        path = self.keys / "rotate-kes.prom"
+        text = "scarab_kes_rotation_last_exit_status 0\n" * 20
+        with short_writes():
+            rk.write_atomic(path, text)
+        self.assertEqual(path.read_text(), text)
 
 
 class ScrubTest(DriverTest):
