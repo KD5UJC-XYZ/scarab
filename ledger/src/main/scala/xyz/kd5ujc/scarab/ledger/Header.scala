@@ -28,7 +28,9 @@ sealed trait Header:
   def blockNo: BigInt
   def slot: BigInt
   def prevHash: Option[Bytes]
-  def point: ChainSync.Point =
+  // computed once: candidates, fragments and chain-selection walks ask every header of a candidate
+  // for its point, again on each new header (issue 1394)
+  lazy val point: ChainSync.Point =
     ChainSync.Point.Block(ChainSync.UInt64.saturating(slot), hash)
   def prevPoint: Option[Bytes] = prevHash
 

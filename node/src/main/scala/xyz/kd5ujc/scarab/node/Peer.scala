@@ -138,11 +138,22 @@ object Peer:
       tip: ChainSync.Tip,
       limit: Int
   ): Either[PeerError.Divergence, (ChainSelection.Candidate, Vector[SyncEvent])] =
-    val positions = (latest.base +: latest.headers.map(_.point)).zipWithIndex.toMap
-    val common =
-      (previous.base +: previous.headers.map(_.point)).reverseIterator.find(positions.contains)
-    common.toRight(PeerError.Divergence.DetachedCandidate(latest.base)).map { point =>
-      val start = positions.getOrElse(point, 0)
+    // The newest point of `previous` that `latest` holds, and its position in `latest` (the base
+    // is 0). When `latest` only extends `previous`, that is `previous`'s tip at its own position,
+    // found without indexing all of `latest` again for each header (issue 1394).
+    val extending =
+      latest.base == previous.base && latest.headers.sizeIs >= previous.headers.size &&
+        previous.headers.lastOption.forall(last =>
+          latest.headers.lift(previous.headers.size - 1).exists(_.point == last.point)
+        )
+    val found: Option[(ChainSync.Point, Int)] =
+      if extending then Some(previous.tip -> previous.headers.size)
+      else
+        val positions = (latest.base +: latest.headers.map(_.point)).zipWithIndex.toMap
+        (previous.base +: previous.headers.map(_.point)).reverseIterator
+          .find(positions.contains)
+          .map(point => point -> positions.getOrElse(point, 0))
+    found.toRight(PeerError.Divergence.DetachedCandidate(latest.base)).map { (point, start) =>
       val forward = latest.headers.drop(start).take(limit.max(1))
       val kept = latest.headers.take(start) ++ forward
       val after = ChainSelection.Candidate(latest.base, kept)
