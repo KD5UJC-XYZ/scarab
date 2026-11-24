@@ -3,15 +3,9 @@ package xyz.kd5ujc.scarab.uplc.cek
 
 import org.scalacheck.{Gen, Prop}
 import org.scalacheck.Prop.forAll
-import xyz.kd5ujc.scarab.uplc.{
-  Constant,
-  DefaultFun,
-  DefaultUni,
-  PlutusData,
-  SemanticsVariant,
-  Signature,
-  Term
-}
+import org.scalacheck.rng.Seed
+import xyz.kd5ujc.scarab.uplc.{Constant, DefaultFun, DefaultUni, SemanticsVariant, Signature, Term}
+import xyz.kd5ujc.scarab.uplc.builtin.{BuiltinFailure, ErrorClass}
 import xyz.kd5ujc.scarab.uplc.cost.{CekConformance, CostStream, DefaultCostModels, ExBudget}
 import xyz.kd5ujc.scarab.uplc.flat.FlatGen
 import xyz.kd5ujc.scarab.uplc.cek.Terms.*
@@ -241,43 +235,48 @@ final class CekApplicationSuite extends munit.ScalaCheckSuite:
     checked(Gen.oneOf(anyChain, Gen.const(stubs)), programs)
   }
 
-  test("the generators reach every class of failure") {
-    val parameters = chain(SemanticsVariant.E)
-    def errorOf(term: Term): CekError =
-      CekMachine.run(parameters, BudgetMode.Counting, term).result match
-        case CekResult.Failure(failure) => failure.error
-        case other                      => fail(s"expected a failure, got $other")
-    assert(
-      errorOf(app(builtin(DefaultFun.AddInteger), lam(v(1)), int(1))) match
-        case CekError.Builtin(_, _) => true
-        case _                      => false
-    )
-    val bytes = con(Constant.ByteString(xyz.kd5ujc.scarab.codec.Bytes.wrap(Array[Byte](1))))
-    val outside = app(builtin(DefaultFun.IndexByteString), bytes, int(BigInt(1) << 70))
+  /** The outcome classes the properties are to reach. */
+  private enum Reached:
+    case Value, Structural, Operational, Evaluation, OutOfBudget, Machine
+
+  private def reached(report: CekReport): Reached = report.result match
+    case _: CekResult.Success => Reached.Value
+    case CekResult.Failure(failure) =>
+      failure.error match
+        case CekError.Builtin(_, BuiltinFailure.Unlifting(f)) =>
+          f.errorClass match
+            case ErrorClass.Structural  => Reached.Structural
+            case ErrorClass.Operational => Reached.Operational
+        case CekError.Builtin(_, BuiltinFailure.Evaluation(_)) => Reached.Evaluation
+        case CekError.OutOfBudget(_)                           => Reached.OutOfBudget
+        case _                                                 => Reached.Machine
+
+  test("the generated applications reach every class of outcome the properties compare") {
+    val cases =
+      for
+        p <- anyChain
+        term <- application(2)
+        m <- mode(p, term)
+      yield CekMachine.run(p, m, term)
+    val seen = Iterator
+      .iterate(Seed(1411L))(_.next)
+      .take(2000)
+      .map(seed => reached(cases.pureApply(Gen.Parameters.default, seed)))
+      .toSet
+    assertEquals(seen, Reached.values.toSet)
+  }
+
+  test("a limit that runs out inside a cost stream stops at the element that overspends") {
+    // `trace` costs 1000, 5000 and 700 CPU in the stub costing; the steps before it are counted,
+    // not yet spent, so the budget meets the stream with only the start-up's 50 spent: a limit of
+    // 3050 overspends at the second element and never spends the third.
+    val term = app(force(builtin(DefaultFun.Trace)), con(StubBuiltins.string("x")), int(1))
+    val mode = BudgetMode.Restricting(ExBudget.of(3050, 1000))
+    val now = CekMachine.run(stubs, mode, term)
     assertEquals(
-      errorOf(outside).errorClass,
-      xyz.kd5ujc.scarab.uplc.builtin.ErrorClass.Operational,
-      "an index outside `Int` is an operational unlifting failure"
+      resultOf(now),
+      Left(CekError.OutOfBudget(ExBudget.of(3050 - 50 - 1000 - 5000, 1000 - 50 - 10 - 10))),
+      "out of budget at the second element"
     )
-    val deep = con(Constant.Data(PlutusData.List(Vector.fill(50)(PlutusData.I(1)))))
-    val limit = ExBudget.of(
-      CekMachine
-        .run(parameters, BudgetMode.Counting, app(builtin(DefaultFun.EqualsData), deep, deep))
-        .budget
-        .spent
-        .cpu
-        .toLong - 1,
-      Long.MaxValue / 4
-    )
-    val run = CekMachine.run(
-      parameters,
-      BudgetMode.Restricting(limit),
-      app(builtin(DefaultFun.EqualsData), deep, deep)
-    )
-    assert(
-      resultOf(run) match
-        case Left(CekError.OutOfBudget(_)) => true
-        case _                             => false,
-      s"a limit one short of an equalsData of a streamed measure runs out, got ${resultOf(run)}"
-    )
+    assertEquals(now.budget, PresentCekMachine.run(stubs, mode, term).budget, "as before")
   }
