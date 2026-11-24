@@ -86,23 +86,31 @@ class FetchCandidatesIntersectionSuite extends ScalaCheckSuite:
   }
 
   test("a Byron boundary and the main block sharing its slot are both within the bound") {
-    def byron(hash: Int, boundary: Boolean, slotInEpoch: Int, blockNo: Int, prev: Option[Header]) =
+    def byron(
+        hash: Int,
+        boundary: Boolean,
+        epoch: Int,
+        slotInEpoch: Int,
+        blockNo: Int,
+        prev: Option[Header]
+    ) =
       Header
         .UnsizedByron(
           Bytes.empty,
           Bytes(Vector(hash.toByte)),
           boundary,
-          1,
+          epoch,
           slotInEpoch,
           21600,
           blockNo,
           prev.map(_.hash)
         )
         .withSizeHint(FetchTesting.sizeHint(1))
-    val last = byron(1, false, 21599, 9, None)
-    val boundary = byron(2, true, 0, 9, Some(last))
-    val first = byron(3, false, 0, 10, Some(boundary))
-    val next = byron(4, false, 1, 11, Some(first))
+    // epoch 0 ends at slot 21,599; the boundary of epoch 1 and its first main block share 21,600
+    val last = byron(1, false, 0, 21599, 9, None)
+    val boundary = byron(2, true, 1, 0, 9, Some(last))
+    val first = byron(3, false, 1, 0, 10, Some(boundary))
+    val next = byron(4, false, 1, 1, 11, Some(first))
     val candidate = ChainSelection.Candidate(last.point, Vector(boundary, first, next))
     assertEquals(
       boundary.point match
@@ -113,8 +121,14 @@ class FetchCandidatesIntersectionSuite extends ScalaCheckSuite:
         case Point.Block(slot, _) => Some(slot)
         case Point.Origin         => None
     )
+    assertEquals(
+      FetchCandidates.Announced.of(candidate).order,
+      FetchCandidates.SlotOrder.NonDecreasing
+    )
     for held <- Vector(Vector(boundary), Vector(boundary, first)) do
       val selected = FetchCandidates.Selected.of(localOf(last, held))
+      // the bound is the shared slot, so an exclusive bound would miss the held headers
+      assertEquals(selected.newestSlot, Some(BigInt(21600)))
       val points = held.map(_.point).toSet + last.point
       assertEquals(
         FetchCandidates.suffix(selected, FetchCandidates.Announced.of(candidate)),
@@ -130,7 +144,27 @@ class FetchCandidatesIntersectionSuite extends ScalaCheckSuite:
     val candidate = ChainSelection.Candidate(anchor.point, Vector(held, ahead))
     val selected = FetchCandidates.Selected.of(localOf(anchor, Vector(held)))
     assertEquals(
+      FetchCandidates.Announced.of(candidate).order,
+      FetchCandidates.SlotOrder.NonDecreasing
+    )
+    assertEquals(
       FetchCandidates.suffix(selected, FetchCandidates.Announced.of(candidate)),
       Right(held.point -> Vector(ahead))
     )
+  }
+
+  test("both searches run on a small stack over a long candidate held only near its front") {
+    val long = Fixtures.chain(20000, salt = 2)
+    val selected = FetchCandidates.Selected.of(localOf(long(0), Vector(long(1))))
+    val ordered = ChainSelection.Candidate(long(0).point, long.drop(1))
+    // the last two swapped: unchecked, scanned from the tip down to the front
+    val unordered = ordered.copy(headers = long.drop(1).dropRight(2) ++ long.takeRight(2).reverse)
+    assertEquals(FetchCandidates.Announced.of(unordered).order, FetchCandidates.SlotOrder.Unchecked)
+    for candidate <- Vector(ordered, unordered) do
+      assertEquals(
+        xyz.kd5ujc.scarab.ledger.PreprodDeepTx.onSmallStack(
+          FetchCandidates.suffix(selected, FetchCandidates.Announced.of(candidate))
+        ),
+        scanned(Set(long(0).point, long(1).point), candidate)
+      )
   }

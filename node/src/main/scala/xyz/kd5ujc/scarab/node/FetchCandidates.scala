@@ -9,9 +9,10 @@ import xyz.kd5ujc.scarab.protocol.ChainSync.Point
 /** Praos candidate boundary of BlockFetch, without Peras weights or Genesis selection. Reference:
   * consensus 82ecba329 MiniProtocol/BlockFetch/ClientInterface.hs 256–284 and
   * Util/AnchoredFragment.hs 167–210; network c45735a5 BlockFetch/Decision.hs
-  * filterPlausibleCandidates, selectForkSuffixes and filterNotAlreadyFetched. Headers have already
-  * passed the ChainSync header gate. The owner supplies one coherent selected-chain snapshot and
-  * any additional downloaded blocks retained outside that chain.
+  * filterPlausibleCandidates, selectForkSuffixes and filterNotAlreadyFetched. A candidate whose
+  * point slots never decrease takes a bounded intersection search; any other is scanned from its
+  * tip ([[SlotOrder]]). The owner supplies one coherent selected-chain snapshot and any additional
+  * downloaded blocks retained outside that chain.
   */
 private[node] object FetchCandidates:
 
@@ -44,7 +45,7 @@ private[node] object FetchCandidates:
   /** A candidate with the order of its slots, found once when its session announces it rather than
     * at every decision that weighs it.
     */
-  final case class Announced private (candidate: ChainSelection.Candidate, order: SlotOrder)
+  final class Announced private (val candidate: ChainSelection.Candidate, val order: SlotOrder)
 
   object Announced:
     def of(candidate: ChainSelection.Candidate): Announced =
@@ -55,7 +56,7 @@ private[node] object FetchCandidates:
             case (Some(x), Some(y)) => x <= y
             case _                  => false
         )
-      Announced(candidate, if ordered then SlotOrder.NonDecreasing else SlotOrder.Unchecked)
+      new Announced(candidate, if ordered then SlotOrder.NonDecreasing else SlotOrder.Unchecked)
 
   final case class Selection(
       intersection: Point,
