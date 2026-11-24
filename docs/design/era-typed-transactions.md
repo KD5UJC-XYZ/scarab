@@ -3184,9 +3184,27 @@ Conway's rules on the classes follow as the rest of stage 2.
     with no verdict at each of their 41 scripts in turn; `MirrorDijkstraSuite` the devnet chain and the testnet's
     first two blocks. Window P's first two hops of the recorded testnet replay to the reference's states at one
     and four workers (`LeiosReplayMain --plutus-workers`).
-  - Gap ([#85](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7067709618)): a Dijkstra block's
-    evaluations are not observed (`--plutus-cases`, whose observation holds the flat transaction, which cannot hold a
-    Dijkstra one).
+  - The phase-2 observer (`--plutus-cases`,
+    [#85](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7067709618)): the flat observation
+    (`Phase2.Observation`) holds a flat transaction, which a Dijkstra batch has no form of, so a Dijkstra block's
+    batches have an observation of their own (`DijkstraPhase2.Observation`), told through an observer of their own
+    (`MirrorRules`' `dijkstraObserver`, beside `phase2Observer`): the batch's id and bytes, the block's slot, and
+    what its scripts came to (`Outcome`: every script run, one with no verdict after those before it, or none
+    collected, with the era's `CollectErrors`), each script by its location in the batch (`ScriptLocation`, a
+    sub-transaction's by its id) and the request it was evaluated with, which holds its context. It holds no spent
+    or referenced outputs: the sub-transactions' rules spend theirs before the top level's UTXOS runs the batch's
+    scripts. The serial run watches each batch's scripts where UTXOS runs them (`watching`, `observed`) and tells
+    the batch once they came to an outcome, the one with no verdict before UTXOS raises it; a batch whose scripts
+    UTXOS could not collect is told, with the failures, only while nothing has failed (`uncollecting`, as Conway's,
+    for which `Phase2Deferral.uncollected` now carries the failures); a prepared block records both (`Recorded`)
+    and its plan tells them where it resolves, in their order, up to a raw defect, or leaves them to the serial
+    run it falls back on; the closure (`ValidateNone`) and the mempool observe nothing, and without an observer the
+    run is as before. `DijkstraPlanned.check` compares the observations of every prepared variant and worker count
+    with the serial run's, on `DijkstraBbodyImpSuite`'s blocks (`:49`'s eight, the sub-transaction's Plutus V4
+    script, with no verdict, and not collected for want of its cost model) and the testnet's recorded blocks (208
+    scripts, 15 a sub-transaction's, seven guarding a batch); `DijkstraParallelSuite` does so through
+    `ParallelPlutus`. `PlutusCases.observeDijkstra` writes a batch's case (`"era": "dijkstra"`, each script's
+    request and result), which `PlutusCasesSuite` reads back and evaluates again; the other eras' cases are as before.
 - **Conway's MEMPOOL and its run** (`era/rules/ConwayMempool.scala`, `era/rules/ConwayMempoolRun.scala`; cardano-ledger
   f649f975 `eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Mempool.hs`, the same rule at 29a7d656 and 9df9f98c, and
   `Conway.hs:50-59`, `eras/shelley/impl/src/Cardano/Ledger/Shelley/API/Mempool.hs`), not wired into the node yet (the

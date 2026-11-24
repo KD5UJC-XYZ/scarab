@@ -256,4 +256,6 @@ forger.
   `phase2.scripts` and `scriptIntegrityHashChecked`.
 - **Recording cases**: `follow --plutus-cases <dir>` writes self-contained JSON cases (transaction,
   spent and referenced outputs, cost models, clock samples) for a few transactions of each kind;
-  `fixtures/preview/plutus` holds a selection that the tests replay.
+  `fixtures/preview/plutus` holds a selection that the tests replay. A Dijkstra transaction's case
+  (`"era": "dijkstra"`) holds its bytes and each script's evaluation request (script, arguments, cost
+  model, budget) with its result, which replays the scripts without the ledger state.
