@@ -24310,7 +24310,8 @@
    "structure": "same",
    "evidence": [
     "DijkstraTxSuite",
-    "LeiosEncodingSuite"
+    "LeiosEncodingSuite",
+    "DijkstraEraPathSuite"
    ],
    "note": "of a top-level transaction only, as the reference's (Tx TopTx era); the parts' memoized bytes and the flag of its verdict last",
    "digest": "2e4b6cb6289af93c"
