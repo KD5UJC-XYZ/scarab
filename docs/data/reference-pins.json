@@ -582,6 +582,18 @@
     "consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/leios/StdGen.scala",
     "scripts/oracle/leios-stdgen/README.md"
    ]
+  },
+  {
+   "name": "node-diversity-conformance",
+   "repository": "pragma-org/node-diversity-conformance",
+   "revision": "628006278309c02a1c3e49dce00e43595d925c2e",
+   "urlPattern": "https://github.com/pragma-org/node-diversity-conformance/commit/{revision}",
+   "role": "UPLC turbo measurement instructions, report schemas and scoring for the node conformance runner.",
+   "dependents": [
+    "scripts/conformance/pins.json",
+    "scripts/conformance/score.py",
+    "docs/running/conformance.md"
+   ]
   }
  ]
 }
