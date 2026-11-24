@@ -14,7 +14,7 @@ import xyz.kd5ujc.scarab.ledger.state.Dijkstra
   * that ticking changes nothing.
   */
 final case class SlotRange(from: BigInt, until: Option[BigInt]):
-  /** `inSlotRange` (`SupportsMempool.hs:306-307`). */
+  /** `inSlotRange` (`SupportsMempool.hs:306-307`, ouroboros-consensus d91b3557). */
   def contains(slot: BigInt): Boolean = slot >= from && until.forall(slot < _)
 
 object SlotRange:
@@ -38,8 +38,9 @@ object SlotRange:
   def validity(interval: ValidityInterval): SlotRange =
     SlotRange(interval.invalidBefore.getOrElse(BigInt(0)), interval.invalidHereafter)
 
-  /** `shelleyBasedTxSlotRange` of a Dijkstra transaction (`Shelley/Eras.hs:287-289`): its own
-    * validity interval and each of its sub-transactions', intersected.
+  /** `shelleyBasedTxSlotRange` of a Dijkstra transaction (`Shelley/Eras.hs:287-289`,
+    * ouroboros-consensus-cardano d91b3557): its own validity interval and each of its
+    * sub-transactions', intersected.
     */
   def dijkstraTx(tx: Tx[TxLevel.Top, Dijkstra]): SlotRange =
     val bodies = EraTxBody.dijkstra
