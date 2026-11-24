@@ -168,7 +168,17 @@ final case class HeaderChain[H](
             .map(_.state)
         )
 
-  def contains(hash: Bytes): Boolean = stateAfter(hash).isDefined
+  // the hashes [[stateAfter]] finds (the base's, the headers' and the prefix's), built on the first
+  // lookup: the search for the newest of our blocks on this chain asks for each of them in turn,
+  // and a scan per question made header validation quadratic in the candidate's length (issue 1394)
+  private lazy val hashes: Set[Bytes] =
+    baseHash.toSet ++ entries.iterator.map(_.header.hash) ++ prefix.iterator.flatMap(
+      _.point match
+        case ChainSync.Point.Block(_, h) => Some(h)
+        case ChainSync.Point.Origin      => None
+    )
+
+  def contains(hash: Bytes): Boolean = hashes(hash)
 
   /** The header can follow the tip. The first header of a chain that starts at Origin names the
     * chain's origin (the Byron genesis hash on a chain with a Byron prefix) as its parent, which

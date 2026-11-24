@@ -234,6 +234,79 @@ class PeerSuite extends ScalaCheckSuite:
     assertEquals(events, headers.map(h => SyncEvent.RollForward(h, tip)))
   }
 
+  /** The publication as a search of every point of both candidates, which [[Peer.publication]]
+    * shortcuts when the latest candidate extends the previous one (issue 1394).
+    */
+  private def publicationBySearch(
+      previous: ChainSelection.Candidate,
+      latest: ChainSelection.Candidate,
+      tip: ChainSync.Tip,
+      limit: Int
+  ): Either[PeerError.Divergence, (ChainSelection.Candidate, Vector[SyncEvent])] =
+    val positions = (latest.base +: latest.headers.map(_.point)).zipWithIndex.toMap
+    (previous.base +: previous.headers.map(_.point)).reverseIterator
+      .find(positions.contains)
+      .toRight(PeerError.Divergence.DetachedCandidate(latest.base))
+      .map { point =>
+        val start = positions.getOrElse(point, 0)
+        val forward = latest.headers.drop(start).take(limit.max(1))
+        val rollback =
+          Option.when(previous.tip != point)(SyncEvent.RollBackward(point, tip)).toVector
+        (
+          ChainSelection.Candidate(latest.base, latest.headers.take(start) ++ forward),
+          rollback ++ forward.map(h => SyncEvent.RollForward(h, tip))
+        )
+      }
+
+  property("candidate publication equals a search of every point, extending or not") {
+    val main = Vector.tabulate(40)(i => header(i + 1, 1))
+    val fork = Vector.tabulate(8)(i => header(i + 60, 1))
+    val bases = Vector(ChainSync.Point.Origin, main(0).point, fork(0).point)
+    // `repeated` appends copies of headers the candidate may already hold: a representable
+    // candidate whose last occurrence of a point is not its first
+    forAll(
+      Gen.choose(0, 39),
+      Gen.choose(0, 39),
+      Gen.choose(0, 8),
+      Gen.oneOf(bases),
+      Gen.oneOf(bases),
+      Gen.choose(-2, 50),
+      Gen.listOfN(3, Gen.choose(0, 39))
+    ) { (kept, grown, forked, previousBase, latestBase, limit, repeated) =>
+      val previous = ChainSelection.Candidate(previousBase, main.drop(1).take(kept))
+      val latest = ChainSelection.Candidate(
+        latestBase,
+        main.drop(1).take(grown) ++ fork.take(forked) ++ repeated.take(grown % 4).map(main)
+      )
+      val tip = ChainSync.Tip(latest.tip, ChainSync.UInt64.saturating(99))
+      Peer.publication(previous, latest, tip, limit) == publicationBySearch(
+        previous,
+        latest,
+        tip,
+        limit
+      )
+    }
+  }
+
+  test("candidate publication keeps the last occurrence of the common point, as the full search") {
+    val a = header(1, 1)
+    val b = header(2, 1)
+    val tip = ChainSync.Tip(a.point, ChainSync.UInt64.saturating(2))
+    val repeatedTip = ChainSelection.Candidate(ChainSync.Point.Origin, Vector(a))
+    val twice = ChainSelection.Candidate(ChainSync.Point.Origin, Vector(a, a))
+    assertEquals(
+      Peer.publication(repeatedTip, twice, tip, 1),
+      publicationBySearch(repeatedTip, twice, tip, 1)
+    )
+    assertEquals(Peer.publication(repeatedTip, twice, tip, 1), Right(twice -> Vector.empty))
+    val empty = ChainSelection.Candidate(a.point, Vector.empty)
+    val baseAgain = ChainSelection.Candidate(a.point, Vector(b, a))
+    assertEquals(
+      Peer.publication(empty, baseAgain, tip, 1),
+      publicationBySearch(empty, baseAgain, tip, 1)
+    )
+  }
+
   test("detached publication requests a typed reintersection instead of inventing a rollback") {
     val previous = ChainSelection.Candidate(header(1, 1).point, Vector(header(2, 1)))
     val latest = ChainSelection.Candidate(header(3, 1).point, Vector(header(4, 1)))

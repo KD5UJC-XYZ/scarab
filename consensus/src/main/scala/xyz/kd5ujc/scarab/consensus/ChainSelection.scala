@@ -133,7 +133,10 @@ object ChainSelection:
     */
   final case class Local(anchor: Point, anchorView: SelectView, blocks: Vector[LocalBlock]):
     def tipView: SelectView = blocks.lastOption.fold(anchorView)(_.view)
-    def contains(point: Point): Boolean = point == anchor || blocks.exists(_.point == point)
+    // a set of the block points, built on the first lookup: a header's search for its intersection
+    // with our chain asks once for each of its points (issue 1394)
+    private lazy val points: Set[Point] = blocks.iterator.map(_.point).toSet
+    def contains(point: Point): Boolean = point == anchor || points(point)
 
     /** Blocks that rolling back to `point` removes. */
     def depthTo(point: Point): Int =

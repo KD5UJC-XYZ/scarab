@@ -19,13 +19,11 @@ private[node] object AvailableBlocks:
     case HashMismatch(key: Bytes, actual: Bytes)
     case Cycle(hash: Bytes)
 
-  private val hashOrder: Ordering[Bytes] = new Ordering[Bytes]:
-    def compare(a: Bytes, b: Bytes): Int =
-      a.value.iterator
-        .zip(b.value.iterator)
-        .map((x, y) => Integer.compare(x & 255, y & 255))
-        .find(_ != 0)
-        .getOrElse(Integer.compare(a.size, b.size))
+  /** Unsigned lexicographic order of the hashes, shorter first on a common prefix: the order
+    * [[Bytes.compareTo]] gives without allocating, so a whole-forest sort does not dominate chain
+    * selection while the LoE holds blocks back (issue 1394).
+    */
+  private val hashOrder: Ordering[Bytes] = (a, b) => a.compareTo(b)
 
   /** `containing` restricts a first-admission pass to paths involving that actual adding block (or
     * one of the ranking blocks a reprocessing of an endorser block reconsiders); `None` is the
@@ -45,15 +43,16 @@ private[node] object AvailableBlocks:
     }
     // ChainSel.hs:574–582 (ouroboros-consensus 82ecba32): an EBB may share the immutable
     // predecessor's block number.
-    val visible = ordered.filter { (hash, header) =>
+    val visibleOrdered = ordered.filter { (hash, header) =>
       !invalid(
         hash
       ) && (local.anchor == Point.Origin || header.blockNo > local.anchorView.blockNo ||
         (header.isBoundary && header.blockNo == local.anchorView.blockNo))
-    }.toMap
+    }
+    val visible = visibleOrdered.toMap
     for
       _ <- checked
-      _ <- acyclic(visible)
+      _ <- acyclic(visible, visibleOrdered.map(_._1))
     yield
       val selected = local.anchor +: local.blocks.map(_.point)
       val selectedHashes = selected.flatMap(hashOf).toSet
@@ -109,7 +108,8 @@ private[node] object AvailableBlocks:
           else result
         walk(rest, successors, selected, containing, grown)
 
-  private def acyclic(available: Map[Bytes, Header]): Either[Error, Unit] =
+  /** `ordered` is the keys of `available` in [[hashOrder]], as the caller already sorted them. */
+  private def acyclic(available: Map[Bytes, Header], ordered: Vector[Bytes]): Either[Error, Unit] =
     @tailrec def predecessors(
         current: Option[Bytes],
         path: Set[Bytes],
@@ -120,8 +120,7 @@ private[node] object AvailableBlocks:
         case Some(hash) if !done(hash) && available.contains(hash) =>
           predecessors(available.get(hash).flatMap(_.prevHash), path + hash, done)
         case _ => Right(done ++ path)
-    available.keys.toVector
-      .sorted(using hashOrder)
+    ordered
       .foldLeft[Either[Error, Set[Bytes]]](Right(Set.empty)) { (state, hash) =>
         state.flatMap(done => predecessors(Some(hash), Set.empty, done))
       }
