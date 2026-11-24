@@ -223,6 +223,9 @@ object BuiltinCosting:
 
   private def single(fun: CostingFun[OneArgument, SatInt], m1: Measure): Shaped = parameters =>
     val p1 = parameter(parameters, 0)
+    val readsX = fun.cpu.readsX || fun.memory.readsX
+    // the cost is one element when every measure the costing reads is
+    val flat = !readsX || m1.flat(p1)
     Costed(
       Vector(m1),
       new CostingFunction:
@@ -237,11 +240,25 @@ object BuiltinCosting:
             val x = m1.held(p1, first)
             Costs.zip(fun.cpu.run(x), fun.memory.run(x))
           case _ => apply(Argument.unlifted(function, arguments))
+
+        override def spend[V](
+            function: DefaultFun,
+            arguments: List[V],
+            budget: ExBudget,
+            spender: Spender
+        )(using MachineValue[V]): ExBudget = arguments match
+          case first :: Nil if flat =>
+            val x = if readsX then m1.size(p1, first) else SatInt.zero
+            spender.spend(budget, fun.cpu.single(x), fun.memory.single(x))
+          case _ => spender.spendAll(budget, applied(function, arguments))
     )
 
   private def two(fun: CostingFun[TwoArguments, SatInt], m1: Measure, m2: Measure): Shaped =
     parameters =>
       val (p1, p2) = (parameter(parameters, 0), parameter(parameters, 1))
+      val readsX = fun.cpu.readsX || fun.memory.readsX
+      val readsY = fun.cpu.readsY || fun.memory.readsY
+      val flat = (!readsX || m1.flat(p1)) && (!readsY || m2.flat(p2))
       Costed(
         Vector(m1, m2),
         new CostingFunction:
@@ -258,6 +275,18 @@ object BuiltinCosting:
               val y = m2.held(p2, second)
               Costs.zip(fun.cpu.run(x, y), fun.memory.run(x, y))
             case _ => apply(Argument.unlifted(function, arguments))
+
+          override def spend[V](
+              function: DefaultFun,
+              arguments: List[V],
+              budget: ExBudget,
+              spender: Spender
+          )(using MachineValue[V]): ExBudget = arguments match
+            case second :: first :: Nil if flat =>
+              val x = if readsX then m1.size(p1, first) else SatInt.zero
+              val y = if readsY then m2.size(p2, second) else SatInt.zero
+              spender.spend(budget, fun.cpu.single(x, y), fun.memory.single(x, y))
+            case _ => spender.spendAll(budget, applied(function, arguments))
       )
 
   private def three(
@@ -268,6 +297,10 @@ object BuiltinCosting:
   ): Shaped = parameters =>
     val (p1, p2, p3) =
       (parameter(parameters, 0), parameter(parameters, 1), parameter(parameters, 2))
+    val readsX = fun.cpu.readsX || fun.memory.readsX
+    val readsY = fun.cpu.readsY || fun.memory.readsY
+    val readsZ = fun.cpu.readsZ || fun.memory.readsZ
+    val flat = (!readsX || m1.flat(p1)) && (!readsY || m2.flat(p2)) && (!readsZ || m3.flat(p3))
     Costed(
       Vector(m1, m2, m3),
       new CostingFunction:
@@ -286,6 +319,19 @@ object BuiltinCosting:
             val z = m3.held(p3, third)
             Costs.zip(fun.cpu.run(x, y, z), fun.memory.run(x, y, z))
           case _ => apply(Argument.unlifted(function, arguments))
+
+        override def spend[V](
+            function: DefaultFun,
+            arguments: List[V],
+            budget: ExBudget,
+            spender: Spender
+        )(using MachineValue[V]): ExBudget = arguments match
+          case third :: second :: first :: Nil if flat =>
+            val x = if readsX then m1.size(p1, first) else SatInt.zero
+            val y = if readsY then m2.size(p2, second) else SatInt.zero
+            val z = if readsZ then m3.size(p3, third) else SatInt.zero
+            spender.spend(budget, fun.cpu.single(x, y, z), fun.memory.single(x, y, z))
+          case _ => spender.spendAll(budget, applied(function, arguments))
     )
 
   /** Four arguments: only the fourth is read by any shape (`ModelFourArguments`). */
@@ -297,6 +343,8 @@ object BuiltinCosting:
       m4: Measure
   ): Shaped = parameters =>
     val p4 = parameter(parameters, 3)
+    val readsU = fun.cpu.readsU || fun.memory.readsU
+    val flat = !readsU || m4.flat(p4)
     Costed(
       Vector(m1, m2, m3, m4),
       new CostingFunction:
@@ -311,6 +359,17 @@ object BuiltinCosting:
             val u = m4.held(p4, fourth)
             Costs.zip(fun.cpu.run(u), fun.memory.run(u))
           case _ => apply(Argument.unlifted(function, arguments))
+
+        override def spend[V](
+            function: DefaultFun,
+            arguments: List[V],
+            budget: ExBudget,
+            spender: Spender
+        )(using MachineValue[V]): ExBudget = arguments match
+          case fourth :: _ :: _ :: _ :: Nil if flat =>
+            val u = if readsU then m4.size(p4, fourth) else SatInt.zero
+            spender.spend(budget, fun.cpu.single(u), fun.memory.single(u))
+          case _ => spender.spendAll(budget, applied(function, arguments))
     )
 
   /** Six arguments, and a constant cost (`ModelSixArguments`): no measure is read. */
@@ -332,4 +391,12 @@ object BuiltinCosting:
         override def applied[V](function: DefaultFun, arguments: List[V])(using
             MachineValue[V]
         ): CostStream = Costs.zip(fun.cpu.run, fun.memory.run)
+
+        override def spend[V](
+            function: DefaultFun,
+            arguments: List[V],
+            budget: ExBudget,
+            spender: Spender
+        )(using MachineValue[V]): ExBudget =
+          spender.spend(budget, fun.cpu.single, fun.memory.single)
     )

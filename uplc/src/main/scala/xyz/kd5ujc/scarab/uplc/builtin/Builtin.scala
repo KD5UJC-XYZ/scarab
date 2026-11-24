@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.uplc.builtin
 
 import xyz.kd5ujc.scarab.uplc.{Constant, DefaultFun, DefaultUni, SemanticsVariant, Signature}
-import xyz.kd5ujc.scarab.uplc.cost.CostStream
+import xyz.kd5ujc.scarab.uplc.cost.{CostStream, ExBudget, Spender}
 
 /** What a builtin needs to know about a value of the machine `V`: whether it is a constant, and how
   * to make one. The builtins are written once for any machine; the CEK machine gives its own
@@ -302,6 +302,14 @@ trait CostingFunction:
   def applied[V](function: DefaultFun, arguments: List[V])(using MachineValue[V]): CostStream =
     apply(Argument.unlifted(function, arguments))
 
+  /** The budget once `spender` has spent the cost of [[applied]] from `budget`, element by element;
+    * a costing that knows its cost to be one element spends it without making it.
+    */
+  def spend[V](function: DefaultFun, arguments: List[V], budget: ExBudget, spender: Spender)(using
+      MachineValue[V]
+  ): ExBudget =
+    spender.spendAll(budget, applied(function, arguments))
+
 /** The costing functions of every builtin under one cost model and semantics variant. */
 trait Costing:
   def apply(function: DefaultFun): CostingFunction
@@ -335,16 +343,18 @@ final case class Builtins(
 
   /** [[prepare]] in the steps the machine takes, on the arguments as it holds them (the last one
     * first), with nothing made between the steps: the unlifting's failure, if any ([[refusal]]),
-    * which costs nothing and is [[Builtins.refused]]; otherwise the cost ([[cost]]), and once the
-    * machine has spent it the result ([[result]]).
+    * which costs nothing and is [[Builtins.refused]]; otherwise the cost, which the machine spends
+    * ([[spend]]), and then the result ([[result]]).
     */
   def refusal[V](function: DefaultFun, arguments: List[V])(using
       MachineValue[V]
   ): Option[UnliftingFailure] =
     unlifting.refusal(function, arguments)
 
-  def cost[V](function: DefaultFun, arguments: List[V])(using MachineValue[V]): CostStream =
-    costing(function).applied(function, arguments)
+  def spend[V](function: DefaultFun, arguments: List[V], budget: ExBudget, spender: Spender)(using
+      MachineValue[V]
+  ): ExBudget =
+    costing(function).spend(function, arguments, budget, spender)
 
   def result[V](function: DefaultFun, arguments: List[V])(using MachineValue[V]): Outcome[V] =
     denotations(function).applied(function, arguments)

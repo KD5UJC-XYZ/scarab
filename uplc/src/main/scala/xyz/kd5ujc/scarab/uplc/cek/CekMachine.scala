@@ -6,7 +6,7 @@ import cats.Applicative
 import cats.mtl.{Raise, Tell}
 import xyz.kd5ujc.scarab.uplc.{Constant, Fix, Term, TermF}
 import xyz.kd5ujc.scarab.uplc.builtin.{BuiltinFailure, Builtins, Outcome}
-import xyz.kd5ujc.scarab.uplc.cost.{CostStream, ExBudget, MachineCosts, SatInt, StepKind}
+import xyz.kd5ujc.scarab.uplc.cost.{ExBudget, MachineCosts, SatInt, Spender, StepKind}
 import xyz.kd5ujc.scarab.uplc.cek.CekValue.{VBuiltin, VCon, VConstr, VDelay, VLamAbs}
 
 /** What an evaluation runs with, the reference's `MachineParameters`
@@ -157,7 +157,8 @@ object CekMachine:
   private val TotalIncrement = 1 << 8
 
   /** One evaluation: the parameters every transition reads. */
-  private final class Run[S](parameters: MachineParameters, mode: BudgetMode, stop: Stop[S]):
+  private final class Run[S](parameters: MachineParameters, mode: BudgetMode, stop: Stop[S])
+      extends Spender:
     private val builtins: Builtins = parameters.builtins
     private val caser: CaserBuiltin = parameters.caser
     private val stepCosts: Vector[ExBudget] = StepKind.values.toVector.map(parameters.costs.step)
@@ -470,7 +471,7 @@ object CekMachine:
               )
             )
           case None =>
-            val spent = spendStream(budget, builtins.cost(b.function, b.arguments))
+            val spent = builtins.spend(b.function, b.arguments, budget, this)
             if exhausted(spent) then Step.Halt(outOfBudget(spent, logs))
             else
               builtins.result(b.function, b.arguments) match
@@ -489,18 +490,6 @@ object CekMachine:
     ): CekReport =
       fail(CekError.Builtin(b.function, failure), Some(Cause.of(b)), budget, emit(logs, emitted))
 
-    /** `spendBudgets` (`Cek/Internal.hs:1061-1064`, plutus 1.70.0.0): each element in order, the
-      * rest of the stream forced only once the element before it is spent, stopping at the element
-      * that overspends; the rest of the stream after it is never computed.
-      */
-    private def spendStream(budget: ExBudget, cost: CostStream): ExBudget =
-      @tailrec def go(b: ExBudget, stream: CostStream): ExBudget = stream match
-        case CostStream.Last(element) => spend(b, element)
-        case CostStream.Cons(element, rest) =>
-          val after = spend(b, element)
-          if exhausted(after) then after else go(after, rest.value)
-      go(budget, cost)
-
     /** `spendAccumulatedBudget` (`Cek/Internal.hs:1011-1027`, plutus 1.70.0.0): for each
       * [[StepKind]] in order, its count times its cost, stopping at the kind that overspends.
       */
@@ -515,14 +504,17 @@ object CekMachine:
       go(budget, 0)
 
     /** The spender of the mode (`ExBudgetMode.hs:55-57,146-165`, plutus 1.70.0.0). */
+    def spend(budget: ExBudget, cpu: SatInt, memory: SatInt): ExBudget =
+      if restricting then ExBudget(budget.cpu - cpu, budget.memory - memory)
+      else ExBudget(budget.cpu + cpu, budget.memory + memory)
+
     private def spend(budget: ExBudget, cost: ExBudget): ExBudget =
-      if restricting then ExBudget(budget.cpu - cost.cpu, budget.memory - cost.memory)
-      else budget + cost
+      spend(budget, cost.cpu, cost.memory)
 
     /** A restricting budget is negative only once a charge has overspent it, which fails the
       * evaluation (`ExBudgetMode.hs:155-165`, plutus 1.70.0.0).
       */
-    private def exhausted(budget: ExBudget): Boolean =
+    def exhausted(budget: ExBudget): Boolean =
       restricting && (budget.cpu < SatInt.zero || budget.memory < SatInt.zero)
 
     /** `returnCek NoFrame` (`Cek/Internal.hs:892-894`, plutus 1.70.0.0): spend the counted steps,

@@ -150,11 +150,15 @@ object Costs:
     * in front.
     */
   def scaleQuadratically(c0: SatInt, c1: SatInt, c2: SatInt, costs: Costs): Costs =
-    def f(x: SatInt, r: SatInt): SatInt = SatInt(2) * c2 * x * r + c2 * x * x + c1 * x
+    def f(x: SatInt, r: SatInt): SatInt = quadraticTerm(c1, c2, x, r)
     def go(r: SatInt, costs: Costs): Costs = costs match
       case Last(x)       => Last(f(x, r))
       case Cons(x, rest) => Cons(f(x, r), rest.map(go(r + x, _)))
     add(Last(c0), go(SatInt.zero, costs))
+
+  /** The cost of `x` in [[scaleQuadratically]] after costs that add up to `r`. */
+  private[cost] def quadraticTerm(c1: SatInt, c2: SatInt, x: SatInt, r: SatInt): SatInt =
+    SatInt(2) * c2 * x * r + c2 * x * x + c1 * x
 
   /** `zipCostStream` (`ExBudgetStream.hs:72-77`, plutus 1.70.0.0): CPU and memory costs paired
     * element by element into the machine's budgets; the shorter side is taken as zeros after its
