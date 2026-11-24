@@ -531,9 +531,9 @@ object MirrorRules:
       dijkstra
     )([A] => (body: Phase2.Program[A]) => body.serial)
 
-  /** [[applyBlock]] with the body of a block of a Shelley-based era before Dijkstra run by
-    * `validate`: serially, or through the node's bounded workers (ADR 0018), each to the same
-    * result.
+  /** [[applyBlock]] with the body of a Shelley-based block run by `validate`: serially, or through
+    * the node's bounded workers (ADR 0018), each to the same result. A Dijkstra block of the Leios
+    * build runs its era run's program ([[MirrorDijkstra.ready]]), the others their era's.
     */
   private[node] def applyBlockWith[F[_]: Monad](
       state: MirrorState,
@@ -559,9 +559,9 @@ object MirrorRules:
           .entry(state.consensus.byron, h, config, globals, byron)
           .flatMap(entry => before(state, entry, handOver).map(entry -> _))
           .fold(
-            failure => Right(Left(failure)),
+            Ready.refused,
             (entry, pre) =>
-              MirrorDijkstra(
+              MirrorDijkstra.ready(
                 state,
                 pre,
                 h,
@@ -572,8 +572,9 @@ object MirrorRules:
                 plutus,
                 dijkstra
               )
-          )
-          .pure[F]
+          ) match
+          case Ready.Done(applied)   => applied.pure[F]
+          case run: Ready.Running[a] => validate[a](run.program).map(run.finish)
       case _ =>
         config.checkpoints.validate(header) match
           case Left(error) =>
@@ -624,11 +625,11 @@ object MirrorRules:
     * before the body, or the node's own stop), or the body's program, which the caller runs
     * serially or through the node's workers, and what its result makes of the block.
     */
-  private enum Ready:
+  private[node] enum Ready:
     case Done(applied: MirrorDijkstra.Applied)
     case Running[A](program: Phase2.Program[A], finish: A => MirrorDijkstra.Applied)
 
-  private object Ready:
+  private[node] object Ready:
     def refused(failure: BlockFailure): Ready = Done(Right(Left(failure)))
 
   /** A block of a Shelley-based era before Dijkstra applied to `pre`: a Conway block by Conway's

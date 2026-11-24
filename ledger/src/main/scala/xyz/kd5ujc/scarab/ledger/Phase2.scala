@@ -72,7 +72,8 @@ object Phase2:
   /** An immutable block body program whose scripts the node can evaluate in bounded parallel
     * workers (ADR 0018): the serial rules ([[serial]]), the executable reference, or an ordered
     * preparation ([[prepare]]) whose plan yields the same result. The flat rules' body
-    * (`EraBlock.Body`) and an era block run's (`ConwayBlockRun.Body`) are each one.
+    * (`EraBlock.Body`) and an era block run's (`ConwayBlockRun.Body`, `DijkstraBlockRun.Body`) are
+    * each one.
     */
   trait Program[A]:
     def serial: A

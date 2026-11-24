@@ -89,7 +89,11 @@ class MirrorDijkstraSuite extends CatsEffectSuite:
   /** The node's block rules, with a store behind the UTxO set or, `stored` off, the set in the
     * state.
     */
-  private def rulesOf(setup: NodeSetup, stored: Boolean = true) =
+  private def rulesOf(
+      setup: NodeSetup,
+      stored: Boolean = true,
+      parallel: Option[ParallelPlutus[IO]] = None
+  ) =
     MemoryUtxoStore[IO].map(store =>
       new MirrorRules[IO](
         setup.praos,
@@ -98,7 +102,8 @@ class MirrorDijkstraSuite extends CatsEffectSuite:
         setup.handOver,
         setup.byronHistory,
         xyz.kd5ujc.scarab.plutus.PlutusBackend.default,
-        utxoStore = Option.when(stored)(store)
+        utxoStore = Option.when(stored)(store),
+        parallelPlutus = parallel
       )
     )
 
@@ -168,6 +173,26 @@ class MirrorDijkstraSuite extends CatsEffectSuite:
         StateMirror.anchorOf(states.last.ext.headerState.tip).map(_.blockNo),
         Some(BigInt(1))
       )
+  }
+
+  test(
+    "the devnet chain through the node's bounded workers, one, two, four and eight: each state the serial rules' (#85)"
+  ) {
+    for
+      serialRules <- rulesOf(leiosSetup, stored = false)
+      serial <- applyAll(serialRules, leiosSetup.mirrorStart, devnetChain)
+      parallel <- Vector(1, 2, 4, 8).traverse { n =>
+        ParallelPlutus.Workers
+          .from(n)
+          .fold(e => IO(fail(s"$e")), ParallelPlutus.create[IO](_))
+          .flatMap(workers => rulesOf(leiosSetup, stored = false, Some(workers)))
+          .flatMap(rules => applyAll(rules, leiosSetup.mirrorStart, devnetChain))
+          .map(n -> _)
+      }
+    yield
+      val expected = serial.fold((i, e) => fail(s"block $i: ${e.message}"), identity)
+      assertEquals(expected.map(_.era).count(_ == Era.Dijkstra), 8)
+      parallel.foreach((n, states) => assertEquals(states, Right(expected), s"$n workers"))
   }
 
   // a restored Dijkstra state keeps its snapshot sidecar's records through the blocks it applies,
