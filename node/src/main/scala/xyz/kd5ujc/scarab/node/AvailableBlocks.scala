@@ -29,8 +29,8 @@ private[node] object AvailableBlocks:
   /** `containing` restricts a first-admission pass to paths involving that actual adding block (or
     * one of the ranking blocks a reprocessing of an endorser block reconsiders): as the reference's
     * `chainSelectionForBlock` finds them (ouroboros-consensus 82ecba32 `ChainSel.hs:710–777`), from
-    * those blocks alone, walking back to the selected chain (`isReachable`, `Paths.hs:393–482`)
-    * and on through the successors (`extendWithSuccessors`, `Paths.hs:63–130`). `None` is the
+    * those blocks alone, walking back to the selected chain (`isReachable`, `Paths.hs:393–482`) and
+    * on through the successors (`extendWithSuccessors`, `Paths.hs:63–130`). `None` is the
     * unpunished LoE reprocessing pass, which starts from the successors of every selected point
     * (`ChainSelReprocessLoEBlocks`, `ChainSel.hs:372–408`). `hidden` blocks (invalid, withheld or
     * parked) are neither tips nor successors, as `ignoreInvalidSuc` hides them
@@ -38,9 +38,8 @@ private[node] object AvailableBlocks:
     * genesis predecessor can be supplied as an exact alias for Origin.
     *
     * The order and the blocks are those of the reference's walks over this node's selected chain;
-    * which block a walk back stops at is decided by the hash of a selected point, not by
-    * `isReachable`'s comparison of block numbers, as the whole-forest walk of every selected point
-    * decided it.
+    * which block a walk back stops at is decided by the hash of a selected point, not by the block
+    * numbers `isReachable` compares, as the whole-forest walk of every selected point decided it.
     */
   def candidates[A](
       local: ChainSelection.Local,
