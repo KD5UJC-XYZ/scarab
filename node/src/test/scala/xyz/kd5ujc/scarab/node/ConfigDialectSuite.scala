@@ -301,20 +301,6 @@ class ConfigDialectSuite extends FunSuite:
                   ConfigProblem
                     .ConfigNumber(_, xyz.kd5ujc.scarab.ledger.json.NumberError.TypeMismatch(_))
                 )
-              ) | Left(
-                ConfigError(
-                  ConfigProblem.ConfigNumber(
-                    xyz.kd5ujc.scarab.ledger.ConfigNumberField.DijkstraHardForkAtEpoch,
-                    xyz.kd5ujc.scarab.ledger.json.NumberError.TypeMismatch(_)
-                  )
-                )
-              ) | Left(
-                ConfigError(
-                  ConfigProblem.ConfigNumber(
-                    xyz.kd5ujc.scarab.ledger.ConfigNumberField.DijkstraHardForkAtVersion,
-                    xyz.kd5ujc.scarab.ledger.json.NumberError.TypeMismatch(_)
-                  )
-                )
               ) | Left(ConfigError(ConfigProblem.ExpectedObject(_, _))) |
               Left(ConfigError(ConfigProblem.JsonField(_, _, _))) |
               Left(ConfigError(ConfigProblem.MempoolCapacity(_))) =>
