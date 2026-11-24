@@ -15,6 +15,12 @@ import cats.syntax.either.*
   * Secret scalars only meet the constant-time curve arithmetic of `curve25519-elisabeth` (base
   * point and arbitrary point multiplication, scalar multiply-and-add). The hash-to-curve step takes
   * only public inputs (public key and alpha) and reuses the variable-time verifier arithmetic.
+  *
+  * That is the intended split, not an established property: the library is Java, compiled by the
+  * JIT, and no constant-time claim is made for it here (#230). Nor is the key's memory controlled:
+  * the byte arrays this object makes from the seed are zeroed when they are done with, but the
+  * library's scalars (the key's and each proof's nonce) are immutable values that stay in the heap
+  * until their memory is reused.
   */
 object Draft03Prover:
   enum Failure:
@@ -26,22 +32,36 @@ object Draft03Prover:
   /** A proof and the 64-byte VRF output it certifies. */
   final case class Proved(proof: Bytes, output: Bytes)
 
-  /** The secret key: the 32-byte seed and its public key. The seed is zeroised by [[forget]]. */
-  final class SigningKey private (seed: Array[Byte], val publicKey: Bytes):
-    private val x: Scalar =
-      Scalar.fromBytesModOrder(Draft03Prover.clamp(Draft03Prover.sha512(seed).take(32)))
-    private val nonceKey: Array[Byte] = Draft03Prover.sha512(seed).slice(32, 64)
+  /** The secret key: the 32-byte seed, the scalar and the nonce key expanded from it, and its
+    * public key.
+    */
+  final class SigningKey private (
+      seed: Array[Byte],
+      x: Scalar,
+      nonceKey: Array[Byte],
+      val publicKey: Bytes
+  ):
+    /** `seed || publicKey`, the layout of `vrf.skey`: a copy its caller owns. */
+    def toBytes: Bytes =
+      val payload = new Array[Byte](64)
+      System.arraycopy(seed, 0, payload, 0, 32)
+      publicKey.copyTo(payload, 32)
+      Bytes.wrap(payload)
 
-    /** `seed || publicKey`, the layout of `vrf.skey`. */
-    def toBytes: Bytes = Bytes.fromArray(seed ++ publicKey.toArray)
-
+    /** Zero the seed and the nonce key. This is not an erasure of the key: the scalar is an
+      * immutable value of the curve library that cannot be overwritten and lives as long as this
+      * object (and in the heap after it until its memory is reused), and it alone computes the
+      * output and a proof for any input. Copies given out by [[toBytes]] are their owners'.
+      */
     def forget(): Unit =
       Arrays.fill(seed, 0.toByte)
       Arrays.fill(nonceKey, 0.toByte)
 
     def prove(alpha: Bytes): Either[Failure, Proved] =
       evaluated(alpha) { g =>
-        val k = Scalar.fromBytesModOrderWide(Draft03Prover.sha512(nonceKey, g.hString))
+        val nonce = Draft03Prover.sha512(nonceKey, g.hString)
+        val k = Scalar.fromBytesModOrderWide(nonce)
+        Arrays.fill(nonce, 0.toByte)
         val kB = Constants.ED25519_BASEPOINT_TABLE.multiply(k).compress().toByteArray
         val kH = g.hPoint.multiply(k).compress().toByteArray
         val c = Draft03Math.challenge(
@@ -81,26 +101,38 @@ object Draft03Prover:
       if seed == null then Left(Failure.MissingSeed)
       else if seed.size != 32 then Left(Failure.SeedLength(seed.size))
       else
-        Either
-          .catchNonFatal {
-            val s = seed.toArray
-            val x = Scalar.fromBytesModOrder(clamp(sha512(s).take(32)))
-            val pk = Constants.ED25519_BASEPOINT_TABLE.multiply(x).compress().toByteArray
-            new SigningKey(s, Bytes.fromArray(pk))
-          }
-          .leftMap(Failure.InternalFailure(_))
+        Either.catchNonFatal(expanded(seed.toArray)).leftMap(Failure.InternalFailure(_))
+
+    /** The key of `seed`, which becomes the key's own array. SHA-512 of the seed is the scalar's
+      * bytes (clamped) and the nonce key; the arrays it passes through are zeroed here.
+      */
+    private def expanded(seed: Array[Byte]): SigningKey =
+      val digest = sha512(seed)
+      val scalarBytes = Arrays.copyOfRange(digest, 0, 32)
+      scalarBytes(0) = (scalarBytes(0) & 248).toByte
+      scalarBytes(31) = ((scalarBytes(31) & 127) | 64).toByte
+      val nonceKey = Arrays.copyOfRange(digest, 32, 64)
+      Arrays.fill(digest, 0.toByte)
+      val x = Scalar.fromBytesModOrder(scalarBytes)
+      Arrays.fill(scalarBytes, 0.toByte)
+      val pk = Constants.ED25519_BASEPOINT_TABLE.multiply(x).compress().toByteArray
+      new SigningKey(seed, x, nonceKey, Bytes.wrap(pk))
 
     /** The 64-byte `vrf.skey` payload; the stored public key must be the seed's. */
     def fromBytes(bytes: Bytes): Either[Failure, SigningKey] =
       if bytes == null then Left(Failure.MissingSigningKey)
       else if bytes.size != 64 then Left(Failure.SigningKeyLength(bytes.size))
       else
-        fromSeed(Bytes.fromArray(bytes.toArray.take(32))).flatMap { key =>
-          if key.publicKey.toArray.sameElements(bytes.toArray.drop(32)) then Right(key)
-          else
-            key.forget()
-            Left(Failure.PublicKeyMismatch)
-        }
+        // the seed half is copied once, into the array that becomes the key's
+        Either
+          .catchNonFatal(expanded(bytes.take(32).toArray))
+          .leftMap(Failure.InternalFailure(_))
+          .flatMap { key =>
+            if key.publicKey == bytes.drop(32) then Right(key)
+            else
+              key.forget()
+              Left(Failure.PublicKeyMismatch)
+          }
 
   /** An input's hash-to-curve point H (variable-time, encoded, and constant-time) and the encoding
     * of `Gamma = x*H`: what the output and the proof share.
@@ -118,12 +150,6 @@ object Draft03Prover:
     val d = MessageDigest.getInstance("SHA-512")
     pieces.foreach(d.update)
     d.digest()
-
-  private def clamp(h: Array[Byte]): Array[Byte] =
-    val r = h.clone()
-    r(0) = (r(0) & 248).toByte
-    r(31) = ((r(31) & 127) | 64).toByte
-    r
 
   private def toEdwards(encoded: Array[Byte]): EdwardsPoint =
     new CompressedEdwardsY(encoded).decompress()
