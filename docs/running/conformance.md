@@ -104,6 +104,9 @@ never on CI (the runner refuses it there):
 python3 -I -B scripts/conformance/run.py uplc-turbo --out <dir> [--cpus 3] [--memory 8g]
 ```
 
+The restricting budget is 10 billion CPU units and 14 million memory units through protocol 10,
+then 16.5 million memory units from protocol 11, per the [clarified scenario](https://github.com/pragma-org/node-diversity-conformance/blob/628006278309c02a1c3e49dce00e43595d925c2e/scenarios/uplc-turbo/README.md).
+These are Plutus execution units. The runner measures JVM allocation separately in bytes.
 A busy or shared machine moves its `cpu_us` measurements and the score the site gives them.
 
 ## Names and the reports repository

@@ -37,7 +37,8 @@ class UplcTurboMainSuite extends FunSuite:
       .fold(e => fail(e.toString), identity)
     val prepared = backend.text(context, program).fold(r => fail(r.toString), identity)
     val measured =
-      measure(prepared, counterOverhead(), Limit).fold(e => fail(e.message), identity)
+      measure(prepared, counterOverhead(), Options.Default.limitFor(8))
+        .fold(e => fail(e.message), identity)
     assert(measured.cpuMicros > 0, "a time is measured")
     assert(measured.allocated.forall(_ >= 0), "allocation is never negative")
     assert(measured.spent.cpu.toLong > 0 && measured.spent.memory.toLong > 0, "a budget is spent")
@@ -69,12 +70,18 @@ class UplcTurboMainSuite extends FunSuite:
     val program =
       UplcParser.program("(program 1.0.0 (error))").fold(e => fail(e.toString), identity)
     val prepared = backend.text(context, program).fold(r => fail(r.toString), identity)
-    assert(measure(prepared, Some(0L), Limit).isLeft)
+    assert(measure(prepared, Some(0L), Options.Default.limitFor(9)).isLeft)
   }
 
   test("the README's budget is the restricting limit, and the default of the options") {
-    assertEquals(Limit, ExBudget.of(10_000_000_000L, 10_000_000L))
-    assertEquals(options(Nil), Some(Options(Memory.Allocated, 1, Limit)))
+    assertEquals(options(Nil), Some(Options(Memory.Allocated, 1, None)))
+    List(8, 9, protocolOf(643)).foreach(p =>
+      assertEquals(Options.Default.limitFor(p), ExBudget.of(10_000_000_000L, 14_000_000L))
+    )
+    assertEquals(
+      Options.Default.limitFor(protocolOf(644)),
+      ExBudget.of(10_000_000_000L, 16_500_000L)
+    )
   }
 
   test("a measurement without allocation readings reports no mem_bytes, never zero") {
@@ -89,7 +96,10 @@ class UplcTurboMainSuite extends FunSuite:
     val standard = report(Json.obj(), at, Json.obj(), Vector.empty, Options.Default)
     assertEquals(standard.hcursor.get[String]("version").toOption, Some("1"))
     assertEquals(standard.hcursor.downField("experiment").focus, None)
-    val other = Options.Default.copy(limit = ExBudget.of(10_000_000_000L, 14_000_000L))
+    val other = Options.Default.copy(memoryOverride = Some(14_000_000L))
+    List(10, 11).foreach(p =>
+      assertEquals(other.limitFor(p), ExBudget.of(10_000_000_000L, 14_000_000L))
+    )
     val experimental = report(Json.obj(), at, Json.obj(), Vector.empty, other)
     assertEquals(experimental.hcursor.get[String]("version").toOption, Some("experimental"))
     assertEquals(
@@ -101,7 +111,7 @@ class UplcTurboMainSuite extends FunSuite:
   test("the options are read in any order, and anything else refuses the command line") {
     assertEquals(
       options(List("--memory-limit", "14000000", "--memory", "null", "--warm-up", "0")),
-      Some(Options(Memory.Unreported, 0, ExBudget.of(10_000_000_000L, 14_000_000L)))
+      Some(Options(Memory.Unreported, 0, Some(14_000_000L)))
     )
     assertEquals(options(List("--warm-up", "-1")), None)
     assertEquals(options(List("--memory", "rss")), None)
