@@ -23,8 +23,8 @@ class LogSinkFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
 
   private val settings = LogSettings()
 
-  private def extended(n: Int) =
-    FollowerEvent.Extended(block.copy(slot = n), BigInt(0), Some(tip), Era.Conway)
+  private def extended(n: Int): FollowerEvent.Extended =
+    new FollowerEvent.Extended(block.copy(slot = n), BigInt(0), Some(tip), Era.Conway)
 
   private def emit(log: Log[IO], slots: Range): IO[Unit] =
     given Log[IO] = log
@@ -155,10 +155,76 @@ class LogSinkFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     Files.delete(in)
   }
 
-  private def fileSettings(file: Path) = settings.copy(
+  private def fileSettings(file: Path, keep: Int = 1) = settings.copy(
     stdout = None,
-    file = Some(FileSink(file, Format.Json, maxBytes = 1024, keep = 1))
+    file = Some(FileSink(file, Format.Json, maxBytes = 1024, keep = keep))
   )
+
+  private val at = java.time.Instant.parse("2026-11-24T12:00:00Z")
+
+  /** The lines of `slots`, all made at one time, so that two runs of the same slots write the same
+    * bytes and turn their files over at the same lines.
+    */
+  private def tellAll(log: Log[IO], slots: Seq[Int]): IO[Unit] =
+    slots.toList.traverse_(n =>
+      log.tell(Traced[Traced.FollowerLine].line(extended(n)).copy(time = Some(at)))
+    )
+
+  /** The lines of `node.jsonl` and of each rotated file up to one past `keep`, when it exists. */
+  private def contents(dir: Path, keep: Int): IO[List[Option[List[String]]]] = IO.blocking(
+    (dir.resolve("node.jsonl") :: (1 to keep + 1).toList.map(i => dir.resolve(s"node.jsonl.$i")))
+      .map(f => Option.when(Files.exists(f))(lines(f)))
+  )
+
+  /** What a run without a fault writes from `slots`. */
+  private def healthy(slots: Seq[Int], keep: Int): IO[List[Option[List[String]]]] =
+    for
+      dir <- IO.blocking(Files.createTempDirectory("scarab-log"))
+      _ <- LogRouter
+        .reporting[IO](fileSettings(dir.resolve("node.jsonl"), keep), _ => IO.unit, 1.minute)
+        .use(tellAll(_, slots))
+      written <- contents(dir, keep)
+    yield written
+
+  test("a rotation that failed after some moves takes up where it stopped, and discards no file") {
+    val fault = new java.util.concurrent.atomic.AtomicBoolean(false)
+    for
+      dir <- IO.blocking(Files.createTempDirectory("scarab-log"))
+      file = dir.resolve("node.jsonl")
+      // the rotated files move up; the file itself cannot move while the fault holds
+      calls = new FileCalls:
+        def move(from: Path, to: Path): Unit =
+          if fault.get && from == file then throw new IOException("the file cannot move")
+          else FileCalls.real.move(from, to)
+        def open(sink: FileSink): RotatingFile.Open = FileCalls.real.open(sink)
+      reports <- Ref.of[IO, Vector[SinkReport]](Vector.empty)
+      filled <- LogRouter
+        .reporting[IO](fileSettings(file, keep = 3), r => reports.update(_ :+ r), 1.minute, calls)
+        .use { log =>
+          for
+            _ <- tellAll(log, 0 until 30)
+            filled <- IO.blocking(Files.exists(dir.resolve("node.jsonl.3")))
+            _ <- IO(fault.set(true)) *> tellAll(log, 30 until 40)
+            // one line: the rotation it takes up, and no later one that would push its files out
+            _ <- IO(fault.set(false)) *> tellAll(log, 40 until 41)
+          yield filled
+        }
+      reported <- reports.get
+      dropped = reported match
+        case Vector(
+              SinkReport.Failed(Sink.File, SinkError.Rotate(_)),
+              SinkReport.Recovered(Sink.File, n)
+            ) =>
+          n.toInt
+        case other => fail(s"reports: $other")
+      written <- contents(dir, 3)
+      // the lines taken: all but the ones dropped while the fault held
+      expected <- healthy((0 until 40 - dropped) :+ 40, 3)
+    yield
+      assert(filled, "every rotated file was there before the fault")
+      assert(dropped > 0)
+      assertEquals(written, expected)
+  }
 
   test("a rotation that cannot move the file leaves a sink that takes lines and turns over again") {
     for

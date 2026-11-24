@@ -343,12 +343,15 @@ private[log] final class RotatingFile[F[_]: Sync] private (
   private def io[A](as: IOException => SinkError)(body: => A): F[Either[SinkError, A]] =
     Sync[F].blocking(body).attemptNarrow[IOException].map(_.leftMap(as))
 
-  /** `path.(keep-1)` to `path.keep`, ..., `path` to `path.1`, and a new `path`. */
+  /** The rotated files move up, from `path.1` to the first free `path.n` (to `path.keep`, the
+    * oldest's place, when none is free), then `path` to `path.1`, and a new `path` starts. Only the
+    * files below a free place move, so a rotation that failed after some moves takes up where it
+    * stopped: `path.1` is free, and nothing moves again.
+    */
   private def rotate(open: Open): F[Either[SinkError, Open]] = io(SinkError.Rotate(_)) {
     open.stream.close()
-    (file.keep - 1 to 1 by -1).foreach { i =>
-      if Files.exists(numbered(i)) then calls.move(numbered(i), numbered(i + 1))
-    }
+    val free = (1 to file.keep).find(i => !Files.exists(numbered(i))).getOrElse(file.keep)
+    (free - 1 to 1 by -1).foreach(i => calls.move(numbered(i), numbered(i + 1)))
     calls.move(file.path, numbered(1))
     calls.open(file)
   }
