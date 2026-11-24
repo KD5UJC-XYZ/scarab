@@ -59,7 +59,8 @@ import xyz.kd5ujc.scarab.uplc.ledger.EvaluationError
   *     so runs here at 11 alone); the function `totalRefScriptSizeInBlock` on a block's
   *     transactions as they are applied, and on every prefix of them before (`:122`), and with a
   *     collateral return holding the script, its transaction first refused flagged valid with
-  *     exactly its script's failure (`:195`, an `it` at f649f975).
+  *     exactly its script's failure (`:195`, a `disableInConformanceIt`, an `it` outside the
+  *     conformance run, `Shelley/ImpTest.hs:773-781`).
   *
   * Shelley's (`Shelley/Imp/BbodySpec.hs`) are not in f649f975's tree: Shelley's `Imp.hs` runs no
   * BBODY spec there (`Shelley/Imp.hs`), and no test of that tree names `WrongBlockBodySizeBBODY` or
@@ -108,7 +109,7 @@ class ConwayBbodyImpSuite extends FunSuite:
 
   private val layout: StateLayout = ok(StateLayout.of(ReferenceBuild.Release11_1))
 
-  // ---- the parameters, the globals and the state -----------------------------------------------------
+  // ---- the parameters, the globals and the state ------------------------------------------------
 
   private lazy val genesis: flat.ProtocolParams =
     def file(era: String) = json(s"fixtures/preview/genesis/$era-genesis.json")
@@ -193,7 +194,7 @@ class ConwayBbodyImpSuite extends FunSuite:
   private def stateUtxo(state: LedgerState[Conway]): Map[TxIn, TxOut] =
     state.utxo.utxo.utxo.toMap
 
-  // ---- transactions as the fixups leave them ---------------------------------------------------------
+  // ---- transactions as the fixups leave them ----------------------------------------------------
 
   private lazy val payer = flat.TestLedger.key()
   private def paid(coin: BigInt): Node = B.out(B.keyAddress(payer), coin)
@@ -218,8 +219,8 @@ class ConwayBbodyImpSuite extends FunSuite:
     val body = B.body(0 -> B.set(in.node), 1 -> B.arr(paid(8000000)), 2 -> B.uint(2000000))
     built(body, B.witnesses(body, Vector(payer)))
 
-  /** `sendCoinTo` of `makeCollateralInput` (`Alonzo/ImpTest.hs:144-149`): 30 ada to the payer, a
-    * transaction the Imp records, funded from `in` of 40 ada.
+  /** `sendCoinTo` of `makeCollateralInput` (`Alonzo/ImpTest.hs:144-149`, cardano-ledger f649f975):
+    * 30 ada to the payer, a transaction the Imp records, funded from `in` of 40 ada.
     */
   private def collateralOf(in: B.In): Built =
     val body = B.body(
@@ -239,7 +240,7 @@ class ConwayBbodyImpSuite extends FunSuite:
 
   private def fundOf(i: Int): B.In = B.In(Blake2b.hash256.hash(B.encode(B.uint(i))))
 
-  // ---- blocks made from bytes ------------------------------------------------------------------------
+  // ---- blocks made from bytes -------------------------------------------------------------------
 
   /** The first recorded Conway block of `fixtures/eras`, which has no transaction: its bytes. */
   private lazy val plain: Bytes =
@@ -289,9 +290,10 @@ class ConwayBbodyImpSuite extends FunSuite:
     )
     array(Vector(outer(0).original, array(newHeader +: parts)))
 
-  /** The header the Imp makes for a block (`tryTxsInBlock'`, `Shelley/ImpTest.hs:1506-1520`): its
-    * body's size and hash (fields 6 and 7: the segments' length and the digest of their digests,
-    * `hashAlonzoSegWits`), and the parameters' version, `major` and 0 (field 9).
+  /** The header the Imp makes for a block (`tryTxsInBlock'`, `Shelley/ImpTest.hs:1506-1520`,
+    * cardano-ledger f649f975): its body's size and hash (fields 6 and 7: the segments' length and
+    * the digest of their digests, `hashAlonzoSegWits`), and the parameters' version, `major` and 0
+    * (field 9).
     */
   private def imp(major: Int)(fields: Vector[Bytes], parts: Vector[Bytes]): Vector[Bytes] =
     fields
@@ -333,7 +335,7 @@ class ConwayBbodyImpSuite extends FunSuite:
   private lazy val slot: BigInt =
     EraBlockHeader.conway.slotNoBlockHeader(decoded(plain)).toBigInt
 
-  // ---- the node's run of a block ---------------------------------------------------------------------
+  // ---- the node's run of a block ----------------------------------------------------------------
 
   /** How a prepared block is run with a number of workers ([[ConwayPlanned.check]]): on as many
     * threads here, through the node's scheduler in `ConwayBbodyImpWorkersSuite` (node).
@@ -389,10 +391,10 @@ class ConwayBbodyImpSuite extends FunSuite:
   private def into[F](f: F)(using i: InjectBbodyFailure[F, Conway]): BbodyPredFailure[Conway] =
     i.injectFailure(f)
 
-  // ---- LEDGER on one transaction, as the Imp submits it ----------------------------------------------
+  // ---- LEDGER on one transaction, as the Imp submits it -----------------------------------------
 
   /** LEDGER with every check on `t` from `state`, at the block's slot (`trySubmitTx`,
-    * `Shelley/ImpTest.hs:1254-1300`).
+    * `Shelley/ImpTest.hs:1254-1300`, cardano-ledger f649f975).
     */
   private def ledgerOn(t: Built, state: LedgerState[Conway], params: PParams[Conway]) =
     val era = t.era
@@ -416,9 +418,12 @@ class ConwayBbodyImpSuite extends FunSuite:
     )
 
   /** `t` submitted (`submitTx`): admitted by LEDGER, and the state after it, whose UTxO set is as
-    * `impAlonzoExpectTxSuccess` (`Alonzo/ImpTest.hs`) and Babbage's collateral return require: a
-    * valid transaction's inputs gone and its outputs there, an invalid one's inputs there, its
-    * collateral gone and its collateral return there.
+    * Conway's `expectTxSuccess` requires (`impBabbageExpectTxSuccess`,
+    * `Babbage/ImpTest.hs:103-121`, cardano-ledger f649f975, `Conway/ImpTest.hs:314`, after
+    * `impAlonzoExpectTxSuccess`, `Alonzo/ImpTest.hs`): a valid transaction's inputs gone, its other
+    * collateral inputs there, its outputs there and its collateral return not; an invalid one's
+    * other inputs there, its collateral gone, its outputs not there and its collateral return
+    * there.
     */
   private def step(state: LedgerState[Conway], t: Built, params: PParams[Conway]) =
     val after = ledgerOn(t, state, params) match
@@ -436,6 +441,11 @@ class ConwayBbodyImpSuite extends FunSuite:
         stored(UTxOs.txouts[Conway, TxLevel.Top](body)).foreach((in, o) =>
           assertEquals(now.get(in), Some(o), s"$in")
         )
+        BabbageUtxo
+          .collOuts[Conway](body)
+          .unUTxO
+          .keys
+          .foreach(in => assert(!now.contains(in), s"$in not created"))
       case IsPhase2Valid.Phase2Invalid =>
         (inputs -- collateral).foreach(in => assert(now.contains(in), s"$in kept"))
         collateral.foreach(in => assert(!now.contains(in), s"$in spent"))
@@ -472,7 +482,7 @@ class ConwayBbodyImpSuite extends FunSuite:
     }
   }
 
-  // ---- Shelley's: `Shelley/Imp/BbodySpec.hs`, cardano-ledger 9df9f98c ---------------------------------
+  // ---- Shelley's: `Shelley/Imp/BbodySpec.hs`, cardano-ledger 9df9f98c ---------------------------
 
   versions.foreach { v =>
     test(s"version $v: WrongBlockBodySizeBBODY (Shelley/Imp/BbodySpec.hs:28, 9df9f98c)") {
@@ -520,8 +530,8 @@ class ConwayBbodyImpSuite extends FunSuite:
 
     test(s"version $v: LedgersFailure (Shelley/Imp/BbodySpec.hs:58, 9df9f98c)") {
       // `modifyBlockBody protVer $ txSeqBlockBodyL %~ \txs -> txs <> txs`, the header committing to
-      // the body: among the failures (`withTxsInModifiedFailingSubsetBlockM`), the block's inputs as
-      // bad
+      // the body: among the failures (`withTxsInModifiedFailingSubsetBlockM`), the block's inputs
+      // as bad
       val in1 = B.fresh(0x01)
       val state = holding(v, outputs(in1 -> paid(10000000)))
       val once = basic(in1)
@@ -544,7 +554,7 @@ class ConwayBbodyImpSuite extends FunSuite:
     }
   }
 
-  // ---- Alonzo's: `Alonzo/Imp/BbodySpec.hs`, for each language -----------------------------------------
+  // ---- Alonzo's: `Alonzo/Imp/BbodySpec.hs`, for each language -----------------------------------
 
   /** The scripts of `Examples.hs` the cases use. */
   private enum Example:
@@ -762,9 +772,10 @@ class ConwayBbodyImpSuite extends FunSuite:
     val succeeds = example(Example.AlwaysSucceedsWithDatum, lang)
     versions.foreach { v =>
       test(s"version $v, $lang: enforces ppMaxBlockExUnits (Alonzo/Imp/BbodySpec.hs:91)") {
-        // `txCount = 1 + max (bMem `div` tMem) (bSteps `div` tSteps)` transactions, each spending an
-        // output of the script with the datum 0 (`PlutusArgs (P.I 0) (Just $ P.I 0)`,
-        // `Alonzo/ImpTest.hs:400`) and the redeemer `(Data (P.I 0), maxTxUnits)`
+        // `txCount = 1 + max (bMem `div` tMem) (bSteps `div` tSteps)` transactions, each spending
+        // an output of the script with the datum 0 (`PlutusArgs (P.I 0) (Just $ P.I 0)`,
+        // `Alonzo/ImpTest.hs:400`, cardano-ledger f649f975) and the redeemer `(Data (P.I 0),
+        // maxTxUnits)`
         val params = pp(v)
         val maxBlockUnits = AlonzoEraPParams.ppMaxBlockExUnitsL.get(params).units
         val maxTxUnits = AlonzoEraPParams.ppMaxTxExUnitsL.get(params).units
@@ -781,13 +792,13 @@ class ConwayBbodyImpSuite extends FunSuite:
             B.arr(B.uint(0), B.arr(B.uint(maxTxUnits.mem), B.uint(maxTxUnits.steps)))
         )
         // each spend as `submitTx_` leaves it, after the transaction its fixups submit while the
-        // block records (`addCollateralInput`, `Alonzo/ImpTest.hs:151-164`;
-        // `withTxsInFailingBlock`, `Shelley/ImpTest.hs:1429-1453`): the collateral's producer
-        // (`collateralOf`), then the spend, the script's output first among its inputs (the
-        // redeemer's index 0, as `fixupRedeemerIndices` leaves it), the fee's input, the producer's
-        // 30 ada as its collateral, the change, the datum, the script and the integrity hash. The
-        // state before the block holds the scripts' outputs (`produceScript`, before it) and the
-        // inputs that fund the pairs, not the collateral
+        // block records (`addCollateralInput`, `Alonzo/ImpTest.hs:151-164`, cardano-ledger
+        // f649f975; `withTxsInFailingBlock`, `Shelley/ImpTest.hs:1429-1453`): the collateral's
+        // producer (`collateralOf`), then the spend, the script's output first among its inputs
+        // (the redeemer's index 0, as `fixupRedeemerIndices` leaves it), the fee's input, the
+        // producer's 30 ada as its collateral, the change, the datum, the script and the integrity
+        // hash. The state before the block holds the scripts' outputs (`produceScript`, before it)
+        // and the inputs that fund the pairs, not the collateral
         val pairs = (0 until txCount.toInt).toVector.map { i =>
           val (scriptIn, feeIn, fund) = (B.fresh(0x10 + i), B.fresh(0x40 + i), B.fresh(0x70 + i))
           val producer = collateralOf(fund)
@@ -862,7 +873,8 @@ class ConwayBbodyImpSuite extends FunSuite:
 
   /** The scripts of `t` with their contexts on `utxo` (`plutusScriptsWithContextStAnnTx`), each run
     * with the units its redeemer declares: what `evalTxExUnits` and `evalPlutusScriptsWithLogs` run
-    * (`fixupRedeemers` and `impScriptPredicateFailure`, `Alonzo/ImpTest.hs:203-237, 490-507`).
+    * (`fixupRedeemers` and `impScriptPredicateFailure`, `Alonzo/ImpTest.hs:203-237, 490-507`,
+    * cardano-ledger f649f975).
     */
   private def evaluated(
       params: PParams[Conway],
@@ -878,10 +890,11 @@ class ConwayBbodyImpSuite extends FunSuite:
 
   /** The redeemer of a transaction's one Plutus purpose `key` and its integrity hash as the fixups
     * leave them (`txWithMaxRedeemers`, `fixupRedeemers`, `fixupPPHash`, `Alonzo/ImpTest.hs:203-260,
-    * 318-327`): the redeemer the case gives (`explicit`), kept; else the script's redeemer data
-    * with the units the script spends when its redeemer declares the parameters' most units a
-    * transaction may use, or those most where it fails; then the integrity hash of `lang` over the
-    * parameters. `make` builds the transaction of a redeemer map and a hash.
+    * 318-327`, cardano-ledger f649f975): the redeemer the case gives (`explicit`), kept; else the
+    * script's redeemer data with the units the script spends when its redeemer declares the
+    * parameters' most units a transaction may use, or those most where it fails; then the integrity
+    * hash of `lang` over the parameters. `make` builds the transaction of a redeemer map and a
+    * hash.
     */
   private def fixedUp(
       params: PParams[Conway],
@@ -906,10 +919,10 @@ class ConwayBbodyImpSuite extends FunSuite:
       .getOrElse(fail("no script integrity"))
     make(redeemers(d, u), Some(integrity))
 
-  /** `impScriptPredicateFailure` (`Alonzo/ImpTest.hs:490-507`) injected into LEDGER
-    * (`submitPhase2Invalid`, `:517-532`): the transaction flagged valid refused for the scripts
-    * that fail on `utxo`, each described as `scriptFailureToFailureDescription` gives it, through
-    * Conway's UTXOS, UTXO, UTXOW and LEDGER.
+  /** `impScriptPredicateFailure` (`Alonzo/ImpTest.hs:490-507`, cardano-ledger f649f975) injected
+    * into LEDGER (`submitPhase2Invalid`, `:517-532`): the transaction flagged valid refused for the
+    * scripts that fail on `utxo`, each described as `scriptFailureToFailureDescription` gives it,
+    * through Conway's UTXOS, UTXO, UTXOW and LEDGER.
     */
   private def scriptPredicateFailure(
       params: PParams[Conway],
@@ -958,8 +971,9 @@ class ConwayBbodyImpSuite extends FunSuite:
       }
     case other => fail(s"not a refusal of failing scripts: $other")
 
-  /** `submitPhase2Invalid` (`Alonzo/ImpTest.hs:517-532`) of `flagged`: first refused flagged valid
-    * with exactly its scripts' failure, then submitted with only its flag set invalid.
+  /** `submitPhase2Invalid` (`Alonzo/ImpTest.hs:517-532`, cardano-ledger f649f975) of `flagged`:
+    * first refused flagged valid with exactly its scripts' failure, then submitted with only its
+    * flag set invalid.
     */
   private def phase2Invalid(
       state: LedgerState[Conway],
@@ -995,13 +1009,15 @@ class ConwayBbodyImpSuite extends FunSuite:
         // `ScriptHashObj evenRedeemerNoDatumHash`, and its reward account on the testnet
         val credential = B.arr(B.uint(1), B.bytes(even.hash))
         val accountAddress = Bytes(0xf0.toByte +: even.hash.value)
-        // `PlutusArgs`' redeemers (`plutusTestScripts`, `Alonzo/ImpTest.hs:391-417`): 0 for the
-        // always succeeding and failing scripts, 2 for `evenRedeemerNoDatum`; the datum 0
+        // `PlutusArgs`' redeemers (`plutusTestScripts`, `Alonzo/ImpTest.hs:391-417`, cardano-ledger
+        // f649f975): 0 for the always succeeding and failing scripts, 2 for `evenRedeemerNoDatum`;
+        // the datum 0
         val (zero, one, two) = (B.uint(0), B.uint(1), B.uint(2))
         val datum = zero
 
-        // `produceScript` (`Shelley/ImpTest.hs:2166-2176`): an output of the script with the datum
-        // hash `fixupOutputDatums` adds (`Alonzo/ImpTest.hs:329-343`), the change after it
+        // `produceScript` (`Shelley/ImpTest.hs:2166-2176`, cardano-ledger f649f975): an output of
+        // the script with the datum hash `fixupOutputDatums` adds (`Alonzo/ImpTest.hs:329-343`),
+        // the change after it
         def produceScript(in: B.In, hash: Bytes): Built =
           val body = B.body(
             0 -> B.set(in.node),
@@ -1041,8 +1057,8 @@ class ConwayBbodyImpSuite extends FunSuite:
                 Vector(5 -> rdmrs, witnessKey -> B.set(B.bytes(script)))).sortBy(_._1)
               built(body, B.witnesses(body, Vector(payer), more*))
           )
-        // `mkTokenMintingTx` (`Mary/ImpTest.hs:44-54`), its draws fixed: the asset name, one
-        // token, and the payer's address
+        // `mkTokenMintingTx` (`Mary/ImpTest.hs:44-54`, cardano-ledger f649f975), its draws fixed:
+        // the asset name, one token, and the payer's address
         val name = Bytes.fromArray("eight".getBytes(java.nio.charset.StandardCharsets.US_ASCII))
         def minting(policy: Bytes): (Int, Node) =
           9 -> B.cmap(B.bytes(policy) -> B.cmap(B.bytes(name) -> B.uint(1)))
@@ -1063,10 +1079,11 @@ class ConwayBbodyImpSuite extends FunSuite:
         )
 
         // before the block: `registerStakeCredential` of the script's credential
-        // (`Shelley/ImpTest.hs:1915-1929`), `RegDepositTxCert` with the parameters' deposit, one
-        // of the two forms `conwayGenRegTxCert` draws (`Conway/ImpTest.hs:440-452`), which the
-        // script witnesses (`getScriptWitnessConwayTxCert`, `Conway/TxCert.hs:756-780`); its
-        // collateral's producer before it
+        // (`Shelley/ImpTest.hs:1915-1929`, cardano-ledger f649f975), `RegDepositTxCert` with the
+        // parameters' deposit, one of the two forms `conwayGenRegTxCert` draws
+        // (`Conway/ImpTest.hs:440-452`), which the script witnesses
+        // (`getScriptWitnessConwayTxCert`, `Conway/TxCert.hs:763-771`); its collateral's producer
+        // before it
         val registrationCollateral = collateralOf(fund(10))
         val afterCollateral = step(start, registrationCollateral, params)
         val registration = plutus(
@@ -1139,7 +1156,8 @@ class ConwayBbodyImpSuite extends FunSuite:
             Some(i -> maxTx)
           )
         // `genUnRegTxCert`: `UnRegDepositTxCert` with the account's deposit, one of the two forms
-        // `conwayGenUnRegTxCert` draws (`Conway/ImpTest.hs:423-438`), refunded to the change
+        // `conwayGenUnRegTxCert` draws (`Conway/ImpTest.hs:423-438`, cardano-ledger f649f975),
+        // refunded to the change
         def certifying(i: Node, fee: B.In, c: Int)(state: LedgerState[Conway]) =
           plutus(
             state,
@@ -1160,7 +1178,8 @@ class ConwayBbodyImpSuite extends FunSuite:
           case Fixed(t: Built)
           case Phase2Invalid(make: LedgerState[Conway] => Built)
           case Valid(make: LedgerState[Conway] => Built)
-        // "notValidatingTx" and "validatingTx" (`Alonzo/Imp/BbodySpec.hs:51-56`)
+        // "notValidatingTx" and "validatingTx" (`Alonzo/Imp/BbodySpec.hs:51-56`, cardano-ledger
+        // f649f975)
         val spends = Vector(
           Submit.Fixed(produceScript(fund(0), failsWithDatum.hash)),
           Submit.Fixed(collaterals(0)),
@@ -1231,14 +1250,14 @@ class ConwayBbodyImpSuite extends FunSuite:
     }
   }
 
-  // ---- Conway's: `Conway/Imp/BbodySpec.hs` ----------------------------------------------------------
+  // ---- Conway's: `Conway/Imp/BbodySpec.hs` ------------------------------------------------------
 
   private lazy val purposeIsWellformedNoDatumV2: Binary =
     example(Example.PurposeIsWellformedNoDatum, PlutusLanguage.V2)
 
-  /** `genNumAdditionsExceeding sc maxSingle toExceed` (`Conway/Imp/BbodySpec.hs:244-252`) with the
-    * largest value its generator allows drawn each time: counts whose multiples of `sc` sum past
-    * `toExceed`, each multiple at most `maxSingle`.
+  /** `genNumAdditionsExceeding sc maxSingle toExceed` (`Conway/Imp/BbodySpec.hs:244-252`,
+    * cardano-ledger f649f975) with the largest value its generator allows drawn each time: counts
+    * whose multiples of `sc` sum past `toExceed`, each multiple at most `maxSingle`.
     */
   private def genNumAdditionsExceeding(sc: Long, maxSingle: Long, toExceed: Long): Vector[Long] =
     val x = math.min(toExceed / sc, maxSingle / sc)
@@ -1265,8 +1284,9 @@ class ConwayBbodyImpSuite extends FunSuite:
     assertEquals(counts, Vector.fill(24)(100L))
     (scriptSize, maxRefScriptSizePerBlock, counts)
 
-  /** A transaction referencing `refIns` (`mkTxWithRefInputs`, `Babbage/ImpTest.hs`) as the fixups
-    * leave it: spending `ins`, of `coin` in all, a fee of 3 ada and the change to the payer.
+  /** A transaction referencing `refIns` (`mkTxWithRefInputs`, `Babbage/ImpTest.hs:157-166`,
+    * cardano-ledger f649f975) as the fixups leave it: spending `ins`, of `coin` in all, a fee of 3
+    * ada and the change to the payer.
     */
   private def referencing(ins: Vector[B.In], coin: BigInt, refIns: Vector[B.In]): Built =
     val body = B.body(
@@ -1277,8 +1297,9 @@ class ConwayBbodyImpSuite extends FunSuite:
     )
     built(body, B.witnesses(body, Vector(payer)))
 
-  /** `produceRefScript` 's transaction (`Babbage/ImpTest.hs`): an output holding the V2 script,
-    * funded from `in`, the change to the payer.
+  /** `produceRefScript` 's transaction (`produceRefScriptsTx`, `Babbage/ImpTest.hs:127-155`,
+    * cardano-ledger f649f975): an output holding the V2 script, funded from `in`, the change to the
+    * payer.
     */
   private def producing(in: B.In): Built =
     val body = B.body(
@@ -1294,9 +1315,10 @@ class ConwayBbodyImpSuite extends FunSuite:
   versions.foreach { v =>
     test(s"version $v: BodyRefScriptsSizeTooBig (Conway/Imp/BbodySpec.hs:43)") {
       // the reference scripts produced before the block, each transaction of the block spending the
-      // 100 ada sent to it before the block (`sendCoinTo addr (Coin 100_000_000)`) and, for the root
-      // input `addRootTxIn` adds, an input of its own, and referencing as many of the scripts as its
-      // count; the exact refusal is BBODY's alone, LEDGERS having admitted each, as `submitTx_` did
+      // 100 ada sent to it before the block (`sendCoinTo addr (Coin 100_000_000)`) and, for the
+      // root input `addRootTxIn` adds, an input of its own, and referencing as many of the scripts
+      // as its count; the exact refusal is BBODY's alone, LEDGERS having admitted each, as
+      // `submitTx_` did
       val params = pp(v)
       val (scriptSize, maxRefScriptSizePerBlock, counts) = scriptCounts(params)
       val refIns = counts.indices.toVector.map(i =>
@@ -1367,7 +1389,7 @@ class ConwayBbodyImpSuite extends FunSuite:
     )
   }
 
-  // ---- `totalRefScriptSizeInBlock` on transactions as they are applied ---------------------------------
+  // ---- `totalRefScriptSizeInBlock` on transactions as they are applied --------------------------
 
   /** `RequireSignature` of a fresh key (`Shelley/Scripts.hs`), its bytes, hash and address. */
   private lazy val scriptKey = flat.TestLedger.key()
@@ -1389,7 +1411,8 @@ class ConwayBbodyImpSuite extends FunSuite:
       assertEquals(scriptSize, 32L)
       val (scriptSpendIn, scriptSpendIn2, rootIn) = (B.fresh(0x21), B.fresh(0x22), B.fresh(0x23))
       val (fee1, fee2, fee3, fee4) = (B.fresh(0x24), B.fresh(0x25), B.fresh(0x26), B.fresh(0x27))
-      // `produceRefScriptsTx`: an output holding the native script, the change after it
+      // `produceRefScriptsTx` (`Babbage/ImpTest.hs:143-155`, cardano-ledger f649f975): an output
+      // holding the native script, the change after it
       def producingNative(in: B.In): Built =
         val body = B.body(
           0 -> B.set(in.node),
@@ -1397,8 +1420,9 @@ class ConwayBbodyImpSuite extends FunSuite:
           2 -> B.uint(2000000)
         )
         built(body, B.witnesses(body, Vector(payer)))
-      // `submitTxWithRefInputs`: the input and the reference inputs, with an input of its own for
-      // the fee, signed by the payer and the script's key
+      // `submitTxWithRefInputs` (`Babbage/ImpTest.hs:168-173`, cardano-ledger f649f975): the input
+      // and the reference inputs, with an input of its own for the fee, signed by the payer and the
+      // script's key
       def spendingWithRefs(in: B.In, fee: B.In, refIns: Vector[B.In]): Built =
         val body = B.body(
           0 -> B.set(in.node, fee.node),
@@ -1454,8 +1478,8 @@ class ConwayBbodyImpSuite extends FunSuite:
         EraUTxO.conway.getProducedValue(params, _ => false, spendRefScriptBody)
       )
       // within `simulateThenRestore`, each transaction's size against the UTxO set after it, the
-      // last against the set after the five (`mkTxWithExpectedSize`, `:136-139`), and the whole list
-      // against the set after the five (`:182`)
+      // last against the set after the five (`mkTxWithExpectedSize`, `:136-139`), and the whole
+      // list against the set after the five (`:182`)
       val txsWithSizes = Vector(
         (refScriptTx1, 0L, afters(0)),
         (refScriptTx2, 0L, afters(1)),
