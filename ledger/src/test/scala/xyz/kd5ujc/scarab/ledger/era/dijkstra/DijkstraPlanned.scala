@@ -8,14 +8,15 @@ import java.util.concurrent.atomic.AtomicReference
 import scala.jdk.CollectionConverters.*
 import munit.Assertions
 import xyz.kd5ujc.scarab.ledger.Phase2
-import xyz.kd5ujc.scarab.ledger.era.rules.DijkstraBlockRun
+import xyz.kd5ujc.scarab.ledger.era.rules.{DijkstraBlockRun, DijkstraPhase2}
 import xyz.kd5ujc.scarab.plutus.{EvalRequest, EvalResult, ScriptEvaluator}
 
 /** Dijkstra's era run on a block prepared for the node's bounded parallel evaluation of its scripts
   * (ADR 0018), against its serial run ([[DijkstraBlockRun.program]]): the plan's result is the
-  * serial run's, whatever order its jobs run in, on as many threads as the node's workers, and with
-  * none run at all. The node's own scheduler (`ParallelPlutus`) is `DijkstraParallelSuite` 's
-  * (node).
+  * serial run's, and so are the observations it tells the node's phase-2 observer
+  * (`--plutus-cases`, [[DijkstraPhase2.Observation]]), whatever order its jobs run in, on as many
+  * threads as the node's workers, and with none run at all. The node's own scheduler
+  * (`ParallelPlutus`) is `DijkstraParallelSuite` 's (node).
   */
 object DijkstraPlanned extends Assertions:
   /** The evaluator `base`, each result it gives kept by its request and the place of the request
@@ -40,13 +41,30 @@ object DijkstraPlanned extends Assertions:
       val again = AtomicReference(Map.empty[EvalRequest, Int])
       request => results.get.getOrElse((request, placed(again, request)), base.evaluate(request))
 
-  /** What a checked block came to: the serial run's result, the plan's jobs, and their dependency
-    * batches by the place of each job's batch among the block's.
+  /** The node's phase-2 observer of a run, as `--plutus-cases` gives it: each observation it is
+    * told, kept in order.
+    */
+  final class Observations:
+    private val told = AtomicReference(Vector.empty[DijkstraPhase2.Observation])
+    val observer: DijkstraPhase2.Observation => Unit = o =>
+      val _ = told.updateAndGet(_ :+ o)
+    def all: Vector[DijkstraPhase2.Observation] = told.get
+
+  /** A block's run as a body program, made with an evaluator and, if any, the node's phase-2
+    * observer.
+    */
+  type Program =
+    (ScriptEvaluator[Id], Option[DijkstraPhase2.Observation => Unit]) => DijkstraBlockRun.Body
+
+  /** What a checked block came to: the serial run's result, the plan's jobs, their dependency
+    * batches by the place of each job's batch among the block's, and the observations the serial
+    * run told.
     */
   final case class Checked(
       serial: DijkstraBlockRun.Result,
       jobs: Int,
-      batches: Vector[Vector[Int]]
+      batches: Vector[Vector[Int]],
+      observations: Vector[DijkstraPhase2.Observation]
   )
 
   /** How a check runs a body program with a number of workers: [[threaded]] here, the node's own
@@ -96,31 +114,47 @@ object DijkstraPlanned extends Assertions:
       case Left(defect)   => fail(s"$name: the plan's defect $defect")
       case Right(outcome) => assertEquals(outcome, serial, s"$name: the plan")
 
-  /** The block `programOf` makes with an evaluator, run serially with `base` (kept, [[Shared]]),
-    * and prepared with the same results: resolved with its jobs run last batch first, each batch's
-    * last first; with none run, each then evaluated where it lands; and with as many workers as
-    * each of the node's worker counts (`runner`, [[threaded]] by default); each to the serial run's
-    * result. An admitted block is run with the workers again, evaluating with `base` itself.
+  /** The block `programOf` makes with an evaluator, run serially with `base` (kept, [[Shared]]) and
+    * the node's phase-2 observer, and again without one, to the same result; and prepared with the
+    * same results and the observer: resolved with its jobs run last batch first, each batch's last
+    * first; with none run, each then evaluated where it lands; and with as many workers as each of
+    * the node's worker counts (`runner`, [[threaded]] by default), with and without the observer;
+    * each to the serial run's result, and, observed, to the serial run's observations, in its
+    * order. An admitted block is run with the workers again, evaluating with `base` itself.
     */
   def check(name: String, base: ScriptEvaluator[Id], runner: Runner = threaded)(
-      programOf: ScriptEvaluator[Id] => DijkstraBlockRun.Body
+      programOf: Program
   ): Checked =
     val shared = Shared(base)
-    val serial = programOf(shared).serial
-    val plan = programOf(shared.replaying).prepare
-    same(
-      s"$name, reversed",
-      serial,
-      plan.resolve(plan.batches.reverse.flatMap(_.reverse).map(plan.execute))
-    )
-    same(s"$name, none run", serial, programOf(shared.replaying).prepare.resolve(Vector.empty))
-    workers.foreach(n => same(s"$name, $n workers", serial, runner(programOf(shared.replaying), n)))
+    val told = Observations()
+    val serial = programOf(shared, Some(told.observer)).serial
+    assertEquals(programOf(shared.replaying, None).serial, serial, s"$name, not observed")
+    // the plan's result and observations, the observer told only where the plan resolves
+    def observed(variant: String)(
+        run: Option[DijkstraPhase2.Observation => Unit] => Either[
+          Phase2.Defect,
+          DijkstraBlockRun.Result
+        ]
+    ): Unit =
+      val again = Observations()
+      same(variant, serial, run(Some(again.observer)))
+      assertEquals(again.all, told.all, s"$variant: the observations")
+    val plan = programOf(shared.replaying, None).prepare
+    observed(s"$name, reversed") { o =>
+      val observing = programOf(shared.replaying, o).prepare
+      observing.resolve(observing.batches.reverse.flatMap(_.reverse).map(observing.execute))
+    }
+    observed(s"$name, none run")(o => programOf(shared.replaying, o).prepare.resolve(Vector.empty))
+    workers.foreach { n =>
+      observed(s"$name, $n workers")(o => runner(programOf(shared.replaying, o), n))
+      same(s"$name, $n workers, not observed", serial, runner(programOf(shared.replaying, None), n))
+    }
     // an admitted block holds no machine's term: its workers evaluate with `base` itself, the
     // overlapping evaluations real, to the same state, proposals and counters
     serial match
       case Right(Right(_)) =>
         workers.foreach(n =>
-          same(s"$name, $n workers evaluating", serial, runner(programOf(base), n))
+          same(s"$name, $n workers evaluating", serial, runner(programOf(base, None), n))
         )
       case Right(Left(_)) | Left(_) => ()
-    Checked(serial, plan.jobs.size, plan.batches.map(_.map(_.index)))
+    Checked(serial, plan.jobs.size, plan.batches.map(_.map(_.index)), told.all)

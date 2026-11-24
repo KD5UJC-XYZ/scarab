@@ -309,7 +309,7 @@ class DijkstraBbodyImpSuite extends FunSuite:
   ): DijkstraPlanned.Checked =
     val block = ok(DijkstraBlock.decode(raw))
     DijkstraPlanned.check(s"block ${block.blockHeader.header.hash.hex}", evaluator, runner)(
-      nodeProgram(raw, state, params, _)
+      nodeProgram(raw, state, params, _, _)
     )
 
   /** The node's era run of the block `raw` as a body program, with `evaluator`. */
@@ -317,7 +317,8 @@ class DijkstraBbodyImpSuite extends FunSuite:
       raw: Bytes,
       state: LedgerState[Dijkstra],
       params: PParams[Dijkstra],
-      evaluator: xyz.kd5ujc.scarab.plutus.ScriptEvaluator[Id]
+      evaluator: xyz.kd5ujc.scarab.plutus.ScriptEvaluator[Id],
+      observer: Option[DijkstraPhase2.Observation => Unit] = None
   ): DijkstraBlockRun.Body =
     DijkstraBlockRun.program(
       globals,
@@ -330,7 +331,8 @@ class DijkstraBbodyImpSuite extends FunSuite:
       evaluator,
       flat.Verdicts.Direct,
       ScarabEvaluator.defaultDecoder,
-      slot => Right(slot * 1000)
+      slot => Right(slot * 1000),
+      observer
     )
 
   /** An evaluator that counts the scripts it is asked to run. */
@@ -1169,6 +1171,23 @@ class DijkstraBbodyImpSuite extends FunSuite:
         tx.witsOf.rdmrsTxWits(tx.wits[TxLevel.Top](t.era)).entries.nonEmpty
       )
       assertEquals(scripted.size, 8)
+      // observed for the node's phase-2 observer (`--plutus-cases`, #85), serially and at every
+      // worker count alike: each script transaction, in the block's order, its one script by its
+      // redeemer, passed where it is flagged valid and failed where flagged invalid
+      assertEquals(
+        checked.observations.map(_.id),
+        scripted.map((t, _) => bodies.id[TxLevel.Top](tx.body(t.era)))
+      )
+      checked.observations.foreach(o =>
+        o.outcome match
+          case DijkstraPhase2.Outcome.Ran(cats.data.NonEmptyVector(evaluation, Vector())) =>
+            evaluation.location match
+              case flat.ScriptLocation.Phase2(_) => ()
+              case other                         => fail(s"not the top level's: $other")
+            assertEquals(evaluation.result.isSuccess, o.transaction.isValid, s"$o")
+          case other => fail(s"not one script ran: $other")
+      )
+      assertEquals(checked.observations.count(_.transaction.isValid), 4)
       scripted.foreach { (t, utxo) =>
         val request = evaluated(params, utxo, t) match
           case Vector((pwc, _)) => PlutusWithContext.evalRequest(pwc)
@@ -1181,8 +1200,9 @@ class DijkstraBbodyImpSuite extends FunSuite:
         val unjudged: xyz.kd5ujc.scarab.plutus.ScriptEvaluator[Id] = r =>
           if r == request then EvalResult.Failure(reason, ExUnits(0, 0), Vector.empty)
           else ScarabEvaluator.default.evaluate(r)
+        val unavailable = nodeChecked(blockOf(txs), before, params, unjudged)
         assertEquals(
-          nodeRun(blockOf(txs), before, params, unjudged),
+          unavailable.serial,
           Left(
             DijkstraRuleDefect.Ledger(
               flat.LedgerFailure.Unavailable(
@@ -1191,6 +1211,31 @@ class DijkstraBbodyImpSuite extends FunSuite:
                 reason
               )
             )
+          )
+        )
+        // observed: the script transactions before it as they were (a failure by its request and
+        // its machine's error: a term is equal only as the same object), then it, unavailable
+        def ran(observations: Vector[DijkstraPhase2.Observation]) = observations.map(o =>
+          o.id -> (o.outcome match
+            case DijkstraPhase2.Outcome.Ran(es) =>
+              es.toVector.map(e =>
+                (
+                  e.location,
+                  e.request,
+                  e.result match
+                    case EvalResult.Success(_, _)         => None
+                    case EvalResult.Failure(reason, _, _) => Some(reason.message)
+                )
+              )
+            case other => fail(s"not run: $other"))
+        )
+        val at = scripted.indexWhere(_._1 eq t)
+        assertEquals(ran(unavailable.observations.dropRight(1)), ran(checked.observations.take(at)))
+        assertEquals(
+          unavailable.observations.lastOption.map(_.outcome),
+          Some(
+            DijkstraPhase2.Outcome
+              .Unavailable(Vector.empty, flat.ScriptLocation.Phase2(redeemer), request, reason)
           )
         )
       }
@@ -1318,18 +1363,80 @@ class DijkstraBbodyImpSuite extends FunSuite:
     val unjudged: xyz.kd5ujc.scarab.plutus.ScriptEvaluator[Id] = r =>
       if r == request then EvalResult.Failure(reason, ExUnits(0, 0), Vector.empty)
       else ScarabEvaluator.default.evaluate(r)
+    val location = flat.ScriptLocation.SubPhase2(
+      bodies.id[TxLevel.Sub](subOf(t).body)(using BothLevels.Sub),
+      flat.Redeemer(0, 0, B.encode(datum), maxTx)
+    )
+    val batchId = bodies.id[TxLevel.Top](tx.body(t.era))
+    val unavailable = nodeChecked(raw, state, params, unjudged)
     assertEquals(
-      nodeRun(raw, state, params, unjudged),
-      Left(
-        DijkstraRuleDefect.Ledger(
-          flat.LedgerFailure.Unavailable(
-            bodies.id[TxLevel.Top](tx.body(t.era)),
-            flat.ScriptLocation.SubPhase2(
-              bodies.id[TxLevel.Sub](subOf(t).body)(using BothLevels.Sub),
-              flat.Redeemer(0, 0, B.encode(datum), maxTx)
-            ),
-            reason
+      unavailable.serial,
+      Left(DijkstraRuleDefect.Ledger(flat.LedgerFailure.Unavailable(batchId, location, reason)))
+    )
+    // observed for the node's phase-2 observer (`--plutus-cases`, #85), serially and at every
+    // worker count alike ([[nodeChecked]]): the batch, by its id and with the bytes the block holds,
+    // and its one script, the sub-transaction's Plutus V4 script, by the sub-transaction's id and
+    // its redeemer, with the request it was evaluated with; it passed, or, with no verdict, is the
+    // one unavailable
+    val transaction = flat.Block.Transaction(
+      t.era.body.raw,
+      t.era.wits.raw,
+      t.era.auxData.map(_.raw),
+      true
+    )
+    nodeChecked(raw, state, params, ScarabEvaluator.default).observations match
+      case Vector(
+            DijkstraPhase2.Observation(
+              `batchId`,
+              `transaction`,
+              _,
+              DijkstraPhase2.Outcome.Ran(cats.data.NonEmptyVector(evaluation, Vector()))
+            )
+          ) =>
+        assertEquals((evaluation.location, evaluation.request), (location, request))
+        assertEquals(evaluation.request.language, PlutusLanguage.V4)
+        assert(evaluation.result.isSuccess, s"${evaluation.result}")
+      case other => fail(s"not the batch's one script: $other")
+    assertEquals(
+      unavailable.observations.map(o => (o.id, o.transaction, o.outcome)),
+      Vector(
+        (
+          batchId,
+          transaction,
+          DijkstraPhase2.Outcome.Unavailable(Vector.empty, location, request, reason)
+        )
+      )
+    )
+    // with no cost model for Plutus V4 in force, which the integrity hash is made with, UTXOS
+    // cannot collect the script: the block refused for it (`CollectErrors`), and the batch
+    // observed with the failure, before its scripts, of which none ran
+    val noV4 = PParams
+      .lensHKD[Dijkstra]
+      .andThen(AlonzoEraPParams.dijkstra.hkdCostModelsL[Identity])
+      .modify(models =>
+        CostModels.from(models.models - PlutusLanguage.V4.id).getOrElse(fail("cost models"))
+      )(params)
+    val withoutModel =
+      given BothLevels[TxLevel.Sub] = BothLevels.Sub
+      batchOf(
+        ScriptIntegrity
+          .mkScriptIntegrity[Dijkstra, TxLevel.Sub](
+            noV4,
+            subOf(batchOf(None)),
+            Set(PlutusLanguage.V4)
           )
+          .map(ScriptIntegrity.hashScriptIntegrity(_))
+      )
+    val uncollected =
+      nodeChecked(blockOf(Vector(withoutModel)), state, noV4, ScarabEvaluator.default)
+    uncollected.serial match
+      case Right(Left(failures)) => assertEquals(failures.length, 1L, s"$failures")
+      case other                 => fail(s"not refused: $other")
+    assertEquals(
+      uncollected.observations.map(o => (o.id, o.outcome)),
+      Vector(
+        bodies.id[TxLevel.Top](tx.body(withoutModel.era)) -> DijkstraPhase2.Outcome.Uncollected(
+          NonEmptyList.one(CollectError.NoCostModel[Dijkstra](PlutusLanguage.V4))
         )
       )
     )

@@ -24,6 +24,7 @@ import xyz.kd5ujc.scarab.ledger.{
 import xyz.kd5ujc.scarab.ledger.era.{
   AlonzoEraPParams,
   Block,
+  CollectError,
   EraBlockBody,
   EraBlockHeader,
   EraTx,
@@ -486,7 +487,10 @@ object ConwayBlockRun:
               state.set(s.copy(told = s.told :+ Told.At(job)))
           }
         }
-      def uncollected(tx: Tx[TxLevel.Top, Conway]): F[Unit] =
+      def uncollected(
+          tx: Tx[TxLevel.Top, Conway],
+          errors: NonEmptyList[CollectError[Conway]]
+      ): F[Unit] =
         uncollecting(
           observing,
           slot,
@@ -688,7 +692,10 @@ object ConwayBlockRun:
                 stAnnTx: StAnnTx[TxLevel.Top, Conway],
                 scripts: NonEmptyList[PlutusWithContext]
             )(now: F[Unit]): F[Unit] = now
-            def uncollected(tx: Tx[TxLevel.Top, Conway]): F[Unit] =
+            def uncollected(
+                tx: Tx[TxLevel.Top, Conway],
+                errors: NonEmptyList[CollectError[Conway]]
+            ): F[Unit] =
               uncollecting(observing, slot, slotToPOSIXTime, o => observing.foreach(_.observer(o)))(
                 tx
               )
