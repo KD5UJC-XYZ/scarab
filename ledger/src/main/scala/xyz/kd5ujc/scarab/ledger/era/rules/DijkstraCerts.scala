@@ -715,7 +715,8 @@ object ENTITIES:
     val txBody = t.body[TxLevel.Top](tx)
     val pp = env.pp
     val curEpoch = env.currentEpoch
-    val legacyMode = u.plutusLegacyModeStAnnTx(stAnnTx)
+    // read only by the predicates, none evaluated under `ValidateNone`
+    lazy val legacyMode = u.plutusLegacyModeStAnnTx(stAnnTx)
     val accountsL = c.certDStateL.andThen(DState.accounts[Accounts[Dijkstra]])
     val certsEnv =
       CertsEnv[Dijkstra](tx, pp, curEpoch, env.currentCommittee, env.committeeProposals)

@@ -39,6 +39,9 @@ import xyz.kd5ujc.scarab.protocol.{EbHash, LeiosTxHash, ReferenceBuild}
   *     sample's five transactions of one endorser block, a prefix of its closure, the same as each
   *     applied in turn with the ledger state and the proposals handed on, and their bytes the sum
   *     of their sizes;
+  *   - each of them applied alone with an annotation whose every member but the transaction and its
+  *     sub-transactions fails the test when read: none is read, and the state after is the one the
+  *     made annotation leaves; the control, LEDGER checking every predicate, reads them;
   *   - the closure's order on built transactions: a chain transaction's proposal, an output paid
   *     and then spent by the next, from a state holding only the outputs from outside the closure,
   *     and the reverse order leaving the output; a transaction flagged invalid (crafted: every
@@ -51,6 +54,8 @@ import xyz.kd5ujc.scarab.protocol.{EbHash, LeiosTxHash, ReferenceBuild}
   *     by the epoch of the tip's slot, not the next epoch's.
   *
   * Incomplete (CNF-2):
+  *   - the recorded endorser blocks' transactions have no sub-transactions, so a sub-transaction's
+  *     members are shown unread on none;
   *   - no recording holds a whole closure with the state before its certifying block, so the state
   *     after one is checked against its parts, not against the reference's; that is the offline
   *     replay's (#54);
@@ -314,6 +319,53 @@ class DijkstraClosureSuite extends FunSuite:
         assertEquals(left.get(in), Some(StoredTxOut.dijkstra.toStored(out)), r.name)
       )
     }
+  }
+
+  test("a closure's transaction reads none of its annotation's members but its sub-transactions") {
+    // under `ValidateNone` no predicate's condition is evaluated (`Extended.hs:715-720`,
+    // cardano-ledger 9df9f98c), so no member a predicate reads is made: here each is one that
+    // fails the test when read, and the state after is the one the made annotation leaves
+    def unreadTop(top: DijkstraStAnnTx.TopTx) = DijkstraBbodyRun.unreadMembers(top, fail(_))
+    def made(r: Recorded) =
+      DijkstraStAnnTx.mkDijkstraStAnnTopTx(
+        slot => Right(slot * 1000),
+        testnetPParams,
+        r.utxo,
+        Map.empty,
+        r.tx
+      )
+    def run(r: Recorded, stAnnTx: DijkstraStAnnTx.TopTx) =
+      DijkstraBbodyRun.unchecked(
+        globals,
+        DijkstraClosure.mkMempoolEnv(r.ebSlot, testnetPParams, account),
+        stAnnTx,
+        context(flat.TxEnv.Validation.All),
+        holding(r.utxo),
+        noProposals,
+        refusing,
+        flat.Verdicts.Direct,
+        ScarabEvaluator.defaultDecoder
+      )
+    endorsed.foreach { r =>
+      val expected = run(r, made(r))
+      assert(expected.exists(_.isRight), s"${r.name}: $expected")
+      assertEquals(run(r, unreadTop(made(r))), expected, r.name)
+    }
+    // the control: LEDGER with every predicate checked reads them
+    val r = endorsed.head
+    intercept[munit.FailException](
+      DijkstraLedgerRun.ledger(
+        globals,
+        DijkstraClosure.mkMempoolEnv(r.ebSlot, testnetPParams, account),
+        unreadTop(made(r)),
+        context(flat.TxEnv.Validation.NonStatic),
+        holding(r.utxo),
+        noProposals,
+        refusing,
+        flat.Verdicts.Direct,
+        ScarabEvaluator.defaultDecoder
+      )
+    )
   }
 
   /** The closure `txs` applied at `tip` to `state` and `proposals` with the node's evaluator: the

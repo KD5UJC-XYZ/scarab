@@ -465,7 +465,7 @@ object Utxow
     checks.traverse_(check =>
       Sts
         .lift[F, LedgerFailure, Test[PredicateFailure]](check)
-        .flatMap(Sts.runTest[F, PredicateFailure])
+        .flatMap(test => Sts.runTest[F, PredicateFailure](test))
     )
 
   def transition[F[_]: Monad](env: UtxoEnv[ConwayCertState], ann: StAnnTx)(using

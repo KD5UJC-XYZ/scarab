@@ -576,23 +576,23 @@ class DijkstraUTxOSuite extends FunSuite:
     def subAnn(contexts: Either[NonEmptyList[CollectError[Dijkstra]], List[PlutusWithContext]]) =
       DijkstraStAnnTx.SubTx(
         sub,
-        subNeeded,
-        utxos.getScriptsHashesNeeded(subNeeded),
-        provided,
-        unforced,
-        Set(PlutusLanguage.V4),
-        Map.empty,
+        cats.Eval.now(subNeeded),
+        cats.Eval.now(utxos.getScriptsHashesNeeded(subNeeded)),
+        cats.Eval.now(provided),
+        cats.Eval.now(unforced),
+        cats.Eval.now(Set(PlutusLanguage.V4)),
+        cats.Eval.now(Map.empty),
         cats.Eval.now(contexts)
       )
     def top(s: DijkstraStAnnTx.SubTx) = DijkstraStAnnTx.TopTx(
       c.era,
-      topNeeded,
-      provided,
-      PlutusLegacyMode.NotLegacy,
-      Set(PlutusLanguage.V3),
-      Map.empty,
+      cats.Eval.now(topNeeded),
+      cats.Eval.now(provided),
+      cats.Eval.now(PlutusLegacyMode.NotLegacy),
+      cats.Eval.now(Set(PlutusLanguage.V3)),
+      cats.Eval.now(Map.empty),
       cats.Eval.now(Right(Nil)),
-      List(s)
+      cats.Eval.now(List(s))
     )
     val failing = subAnn(Left(NonEmptyList.one(noCostModel)))
     val ann = top(failing)

@@ -306,3 +306,4 @@ object RuleT:
       def tell(failures: Chain[Rec]): RuleT[Rec, Fail, S, Unit] = Prog.Record(failures)
       def failing: RuleT[Rec, Fail, S, Boolean] = Prog.Failing()
       def nest[A](fa: RuleT[Rec, Fail, S, A]): RuleT[Rec, Fail, S, A] = Prog.Nest(fa)
+      def policy: ValidationPolicy = ValidationPolicy.ValidateAll

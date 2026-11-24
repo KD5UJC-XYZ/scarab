@@ -22,6 +22,8 @@ import cats.mtl.{Raise, Tell}
   *     `Extended.hs:713-722`): the sub-rule always runs, inherits the failing flag, and what it
   *     records is one block of the parent's failures. The block decides the order the reference
   *     reports ([[Judgment.flatten]]).
+  *   - [[policy]]: whether a predicate is checked at all ([[ValidationPolicy]]). Under
+  *     `ValidateNone` a predicate's condition is never evaluated ([[Sts.validating]]).
   *
   * A raised failure (`Raise`) is not a predicate failure: it ends the judgment with no verdict and
   * is kept for the defects of the implementation, which the reference has no counterpart for.
@@ -36,6 +38,9 @@ trait Judge[F[_], Fail] extends Tell[F, Chain[Fail]]:
   /** Runs `fa` as a sub-rule: its failures are recorded as one block of the enclosing rule's. */
   def nest[A](fa: F[A]): F[A]
 
+  /** Whether the judgment checks its predicates; a sub-rule's judgment is its parent's. */
+  def policy: ValidationPolicy
+
   /** The judgment of a sub-rule whose failures are wrapped into this one's (`wrapFailed`, as
     * `Raise.contramap` does for raised failures).
     */
@@ -46,6 +51,7 @@ trait Judge[F[_], Fail] extends Tell[F, Chain[Fail]]:
       def tell(failures: Chain[G]): F[Unit] = outer.tell(failures.map(wrap))
       def failing: F[Boolean] = outer.failing
       def nest[A](fa: F[A]): F[A] = outer.nest(fa)
+      def policy: ValidationPolicy = outer.policy
 
 object Judge:
   def apply[F[_], Fail](using judge: Judge[F, Fail]): Judge[F, Fail] = judge
@@ -65,3 +71,25 @@ object Judge:
       failures.headOption.fold(F.unit)(f => raise.raise[Fail, Unit](wrap(f)))
     def failing: F[Boolean] = F.pure(false)
     def nest[A](fa: F[A]): F[A] = fa
+    def policy: ValidationPolicy = ValidationPolicy.ValidateAll
+
+  /** The judgment of `ValidateNone` (`Control/State/Transition/Extended.hs:715-724, 739-742`,
+    * cardano-ledger 9df9f98c): no predicate is checked, so its condition is never evaluated and
+    * nothing is recorded, the failing flag stays down (`isFailing`, `:701-707`), and every sub-rule
+    * runs as the rule's own.
+    */
+  def validateNone[F[_], Fail](using F: Applicative[F]): Judge[F, Fail] =
+    new Judge[F, Fail]:
+      val functor: Functor[F] = F
+      def tell(failures: Chain[Fail]): F[Unit] = F.unit
+      def failing: F[Boolean] = F.pure(false)
+      def nest[A](fa: F[A]): F[A] = fa
+      def policy: ValidationPolicy = ValidationPolicy.ValidateNone
+
+/** `ValidationPolicy` (`Control/State/Transition/Extended.hs:526-529`, cardano-ledger 9df9f98c):
+  * whether a judgment checks its predicates. The reference's third, `ValidateSuchThat`, selects the
+  * labelled parts of the rules, which the node selects with
+  * [[xyz.kd5ujc.scarab.ledger.TxEnv.Validation]].
+  */
+enum ValidationPolicy derives CanEqual:
+  case ValidateAll, ValidateNone

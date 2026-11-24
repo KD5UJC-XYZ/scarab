@@ -117,6 +117,7 @@ object DijkstraSts:
           .fold(f => raise.raise[DijkstraHalt, Unit](DijkstraHalt.NoDijkstraCase(f)), judge.tell)
       def failing: F[Boolean] = judge.failing
       def nest[A](fa: F[A]): F[A] = judge.nest(fa)
+      def policy: ValidationPolicy = judge.policy
     sub.transition[F](env, signal)(using
       summon[Monad[F]],
       ask,

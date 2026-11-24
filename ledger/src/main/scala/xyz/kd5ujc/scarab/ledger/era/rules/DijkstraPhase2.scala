@@ -210,22 +210,23 @@ object DijkstraPhase2:
       }
     stAnnTx match
       case top: DijkstraStAnnTx.TopTx =>
-        val subs = top.dsattSubTransactions.toVector.traverse { case sub: DijkstraStAnnTx.SubTx =>
-          given BothLevels[TxLevel.Sub] = BothLevels.Sub
-          val id = b.id[TxLevel.Sub](t.body[TxLevel.Sub](sub.dsastTx))
-          level[TxLevel.Sub](
-            sub.dsastTx,
-            sub.dsastScriptsProvided,
-            sub.dsastScriptsNeeded,
-            sub.dsastPlutusScriptsWithContext.value,
-            ScriptLocation.SubPhase2(id, _)
-          )
+        val subs = top.dsattSubTransactions.value.toVector.traverse {
+          case sub: DijkstraStAnnTx.SubTx =>
+            given BothLevels[TxLevel.Sub] = BothLevels.Sub
+            val id = b.id[TxLevel.Sub](t.body[TxLevel.Sub](sub.dsastTx))
+            level[TxLevel.Sub](
+              sub.dsastTx,
+              sub.dsastScriptsProvided.value,
+              sub.dsastScriptsNeeded.value,
+              sub.dsastPlutusScriptsWithContext.value,
+              ScriptLocation.SubPhase2(id, _)
+            )
         }
         (
           level[TxLevel.Top](
             top.dsattTx,
-            top.dsattScriptsProvided,
-            top.dsattScriptsNeeded,
+            top.dsattScriptsProvided.value,
+            top.dsattScriptsNeeded.value,
             top.dsattPlutusScriptsWithContext.value,
             ScriptLocation.Phase2(_)
           )(using BothLevels.Top),

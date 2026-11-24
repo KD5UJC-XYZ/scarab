@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.era.dijkstra
 
-import cats.{Functor, Id, Monad}
+import cats.{Eval, Functor, Id, Monad}
 import cats.data.{Chain, NonEmptyChain}
 import cats.mtl.{Raise, Stateful, Tell}
 import cats.syntax.all.*
@@ -37,8 +37,8 @@ import xyz.kd5ujc.scarab.plutus.{ScriptDecoder, ScriptEvaluator}
 /** Dijkstra's BBODY on the era types (`DijkstraBbody`) run in one judgment, every failure
   * accumulated, from a BBODY state and the era's proposals, with the node's evaluator, for
   * `DijkstraBbodySuite` and the node's `DijkstraRulesOracleSuite`; and the application of an
-  * endorser block's closure (`DijkstraClosure`), which records no failure, for
-  * `DijkstraClosureSuite`.
+  * endorser block's closure (`DijkstraClosure`), and of one of its annotated transactions, which
+  * record no failure, for `DijkstraClosureSuite`.
   */
 object DijkstraBbodyRun:
   /** What a judgment ends with short of a verdict, as [[DijkstraLedgerRun.Defect]]. */
@@ -133,6 +133,71 @@ object DijkstraBbodyRun:
           decoder,
           slotToPOSIXTime
         ),
+        RuleT.Policy.Accumulate
+      )(
+        globals,
+        (
+          ShelleyBbodyState[Dijkstra](state, xyz.kd5ujc.scarab.ledger.state.BlocksMade.empty),
+          proposals,
+          Chain.empty
+        )
+      )
+      .map(_.map(_._1))
+
+  /** `stAnnTx` with every member but the transaction and its sub-transactions one that fails the
+    * test when read (`fail`), each sub-transaction's likewise: what a run without its predicates
+    * (`ValidateNone`) must leave unread, as the reference's members are lazy but the transaction
+    * (`Tx.hs:535-557`, cardano-ledger 9df9f98c).
+    */
+  def unreadMembers(
+      stAnnTx: DijkstraStAnnTx.TopTx,
+      fail: String => Nothing
+  ): DijkstraStAnnTx.TopTx =
+    def unread[A](member: String): Eval[A] = Eval.later(fail(s"$member was read"))
+    def unreadSub(sub: DijkstraStAnnTx[TxLevel.Sub]): DijkstraStAnnTx[TxLevel.Sub] = sub match
+      case s: DijkstraStAnnTx.SubTx =>
+        DijkstraStAnnTx.SubTx(
+          s.dsastTx,
+          unread("dsastScriptsNeeded"),
+          unread("dsastScriptsHashesNeeded"),
+          unread("dsastScriptsProvided"),
+          unread("dsastTxInfoResult"),
+          unread("dsastPlutusLanguagesUsed"),
+          unread("dsastPlutusRunnableCache"),
+          unread("dsastPlutusScriptsWithContext")
+        )
+    DijkstraStAnnTx.TopTx(
+      stAnnTx.dsattTx,
+      unread("dsattScriptsNeeded"),
+      unread("dsattScriptsProvided"),
+      unread("dsattPlutusLegacyMode"),
+      unread("dsattPlutusLanguagesUsed"),
+      unread("dsattPlutusRunnableCache"),
+      unread("dsattPlutusScriptsWithContext"),
+      stAnnTx.dsattSubTransactions.map(_.map(unreadSub))
+    )
+
+  /** One annotated transaction of a closure applied as the closure applies each
+    * (`DijkstraClosure.applyUnchecked`), with `env` to `state` and `proposals`: the state after,
+    * the proposals after, or a defect.
+    */
+  def unchecked(
+      globals: Globals,
+      env: LedgerEnv[Dijkstra],
+      stAnnTx: DijkstraStAnnTx.TopTx,
+      context: DijkstraUtxoContext,
+      state: LedgerState[Dijkstra],
+      proposals: Proposals[Dijkstra],
+      evaluator: ScriptEvaluator[Id],
+      verdicts: Verdicts,
+      decoder: ScriptDecoder[Id]
+  ): Judged =
+    given ScriptEvaluator[F] = request => Monad[F].unit.map(_ => evaluator.evaluate(request))
+    given Stateful[F, LedgerState[Dijkstra]] =
+      summon[Stateful[F, ShelleyBbodyState[Dijkstra]]].focus(ShelleyBbodyState.ls[Dijkstra])
+    Judgment
+      .judge(
+        DijkstraClosure.applyUnchecked[F](env, stAnnTx, context, verdicts, decoder),
         RuleT.Policy.Accumulate
       )(
         globals,

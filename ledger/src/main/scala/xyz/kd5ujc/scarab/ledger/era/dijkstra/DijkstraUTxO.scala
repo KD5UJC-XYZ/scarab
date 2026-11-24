@@ -322,13 +322,13 @@ object DijkstraUTxO:
       override def scriptsProvidedStAnnTx[L <: TxLevel](stAnnTx: DijkstraStAnnTx[L])(using
           BothLevels[L]
       ): ScriptsProvided[Dijkstra] = stAnnTx match
-        case s: DijkstraStAnnTx.TopTx => s.dsattScriptsProvided
-        case s: DijkstraStAnnTx.SubTx => s.dsastScriptsProvided
+        case s: DijkstraStAnnTx.TopTx => s.dsattScriptsProvided.value
+        case s: DijkstraStAnnTx.SubTx => s.dsastScriptsProvided.value
       override def scriptsNeededStAnnTx[L <: TxLevel](stAnnTx: DijkstraStAnnTx[L])(using
           BothLevels[L]
       ): AlonzoScriptsNeeded[Dijkstra] = stAnnTx match
-        case s: DijkstraStAnnTx.TopTx => s.dsattScriptsNeeded
-        case s: DijkstraStAnnTx.SubTx => s.dsastScriptsNeeded
+        case s: DijkstraStAnnTx.TopTx => s.dsattScriptsNeeded.value
+        case s: DijkstraStAnnTx.SubTx => s.dsastScriptsNeeded.value
       // the top level's with each sub-transaction's, the batch's together (`UTxO.hs:258-276`, cardano-ledger 9df9f98c)
       override def plutusScriptsWithContextStAnnTx[L <: TxLevel](stAnnTx: DijkstraStAnnTx[L])(using
           BothLevels[L]
@@ -336,31 +336,33 @@ object DijkstraUTxO:
         case s: DijkstraStAnnTx.TopTx =>
           // `concat <$> sequence`: the top level's first, a sub-transaction's read only while every
           // one before it was collected, as the reference's lazy list is forced
-          s.dsattSubTransactions.foldLeft(s.dsattPlutusScriptsWithContext.value)((collected, sub) =>
-            collected.flatMap(pwcs =>
-              plutusScriptsWithContextStAnnTx[TxLevel.Sub](sub)(using BothLevels.Sub).map(pwcs ++ _)
-            )
+          s.dsattSubTransactions.value.foldLeft(s.dsattPlutusScriptsWithContext.value)(
+            (collected, sub) =>
+              collected.flatMap(pwcs =>
+                plutusScriptsWithContextStAnnTx[TxLevel.Sub](sub)(using BothLevels.Sub)
+                  .map(pwcs ++ _)
+              )
           )
         case s: DijkstraStAnnTx.SubTx => s.dsastPlutusScriptsWithContext.value
       override def plutusLanguagesUsedStAnnTx[L <: TxLevel](stAnnTx: DijkstraStAnnTx[L])(using
           BothLevels[L]
       ): Set[Lang] = stAnnTx match
-        case s: DijkstraStAnnTx.TopTx => s.dsattPlutusLanguagesUsed
-        case s: DijkstraStAnnTx.SubTx => s.dsastPlutusLanguagesUsed
+        case s: DijkstraStAnnTx.TopTx => s.dsattPlutusLanguagesUsed.value
+        case s: DijkstraStAnnTx.SubTx => s.dsastPlutusLanguagesUsed.value
       // `instance DijkstraEraUTxO DijkstraEra`, `UTxO.hs:291-298`, cardano-ledger 9df9f98c
       override def subTransactionsStAnnTx(
           stAnnTx: DijkstraStAnnTx[TxLevel.Top]
       ): List[DijkstraStAnnTx[TxLevel.Sub]] = stAnnTx match
-        case s: DijkstraStAnnTx.TopTx => s.dsattSubTransactions
+        case s: DijkstraStAnnTx.TopTx => s.dsattSubTransactions.value
       override def plutusLegacyModeStAnnTx(
           stAnnTx: DijkstraStAnnTx[TxLevel.Top]
       ): PlutusLegacyMode =
         stAnnTx match
-          case s: DijkstraStAnnTx.TopTx => s.dsattPlutusLegacyMode
+          case s: DijkstraStAnnTx.TopTx => s.dsattPlutusLegacyMode.value
       override def scriptsHashesNeededStAnnTx[L <: TxLevel](stAnnTx: DijkstraStAnnTx[L])(using
           l: SubOnly[L]
       ): Set[Bytes] =
         l match
           case SubOnly.Sub =>
             stAnnTx match
-              case s: DijkstraStAnnTx.SubTx => s.dsastScriptsHashesNeeded
+              case s: DijkstraStAnnTx.SubTx => s.dsastScriptsHashesNeeded.value

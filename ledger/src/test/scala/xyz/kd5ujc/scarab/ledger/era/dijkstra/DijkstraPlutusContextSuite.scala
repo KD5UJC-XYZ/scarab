@@ -151,7 +151,7 @@ class DijkstraPlutusContextSuite extends FunSuite:
   private def annotate(env: Environment, c: Json): Vector[Collection] =
     val (tx, utxo) = read(c)
     val top = DijkstraStAnnTx.mkDijkstraStAnnTopTx(env.clock, env.pp, utxo, Map.empty, tx)
-    top.dsattPlutusScriptsWithContext.value +: top.dsattSubTransactions.toVector.map {
+    top.dsattPlutusScriptsWithContext.value +: top.dsattSubTransactions.value.toVector.map {
       case sub: DijkstraStAnnTx.SubTx => sub.dsastPlutusScriptsWithContext.value
     }
 
@@ -853,9 +853,9 @@ class DijkstraPlutusContextSuite extends FunSuite:
         val name = str(c, "name")
         val (tx, utxo) = read(c)
         val top = DijkstraStAnnTx.mkDijkstraStAnnTopTx(env.clock, env.pp, utxo, Map.empty, tx)
-        val ours = (top.dsattPlutusLanguagesUsed, Some(top.dsattPlutusLegacyMode)) +:
-          top.dsattSubTransactions.toVector.map { case sub: DijkstraStAnnTx.SubTx =>
-            (sub.dsastPlutusLanguagesUsed, None)
+        val ours = (top.dsattPlutusLanguagesUsed.value, Some(top.dsattPlutusLegacyMode.value)) +:
+          top.dsattSubTransactions.value.toVector.map { case sub: DijkstraStAnnTx.SubTx =>
+            (sub.dsastPlutusLanguagesUsed.value, None)
           }
         ours.zip(levels(recorded.getOrElse(name, fail(name)))).collect {
           case ((used, mode), RecordedLevel.Collected(refs)) =>
@@ -887,15 +887,18 @@ class DijkstraPlutusContextSuite extends FunSuite:
     val (tx, utxo) = read(c)
     val untimed = contextsEnvironment.copy(clock = slot => fail(s"the clock was read at $slot"))
     val top = DijkstraStAnnTx.mkDijkstraStAnnTopTx(untimed.clock, untimed.pp, utxo, Map.empty, tx)
-    val subs = top.dsattSubTransactions.collect { case sub: DijkstraStAnnTx.SubTx => sub }
+    val subs = top.dsattSubTransactions.value.collect { case sub: DijkstraStAnnTx.SubTx => sub }
     assertEquals(subs.size, 2)
-    assertEquals(top.dsattPlutusLegacyMode, PlutusLegacyMode.NotLegacy)
-    assertEquals(top.dsattPlutusLanguagesUsed, Set(PlutusLanguage.V4))
-    assertEquals(subs.map(_.dsastPlutusLanguagesUsed), List(Set(PlutusLanguage.V4), Set.empty))
-    assert(top.dsattScriptsNeeded.unAlonzoScriptsNeeded.nonEmpty)
+    assertEquals(top.dsattPlutusLegacyMode.value, PlutusLegacyMode.NotLegacy)
+    assertEquals(top.dsattPlutusLanguagesUsed.value, Set(PlutusLanguage.V4))
     assertEquals(
-      subs.map(_.dsastScriptsHashesNeeded),
-      subs.map(sub => EraUTxO.dijkstra.getScriptsHashesNeeded(sub.dsastScriptsNeeded))
+      subs.map(_.dsastPlutusLanguagesUsed.value),
+      List(Set(PlutusLanguage.V4), Set.empty)
+    )
+    assert(top.dsattScriptsNeeded.value.unAlonzoScriptsNeeded.nonEmpty)
+    assertEquals(
+      subs.map(_.dsastScriptsHashesNeeded.value),
+      subs.map(sub => EraUTxO.dijkstra.getScriptsHashesNeeded(sub.dsastScriptsNeeded.value))
     )
     // a collection read runs the translation, which reads the clock for the guard's interval
     assert(

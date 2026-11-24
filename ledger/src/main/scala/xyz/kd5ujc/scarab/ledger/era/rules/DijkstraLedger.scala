@@ -284,7 +284,7 @@ object DijkstraLedger:
       xyz.kd5ujc.scarab.ledger.state.DState
         .accounts[xyz.kd5ujc.scarab.ledger.state.Accounts[Dijkstra]]
     )
-    def test[A](check: Test[A])(wrap: A => DijkstraLedgerPredFailure[Dijkstra]): F[Unit] =
+    def test[A](check: => Test[A])(wrap: A => DijkstraLedgerPredFailure[Dijkstra]): F[Unit] =
       Sts.runTest[F, LedgerPredFailure[Dijkstra]](check.leftMap(_.map(wrap)))
     for
       ledgerState <- state.get
