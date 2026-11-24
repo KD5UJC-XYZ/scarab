@@ -42838,10 +42838,9 @@
    "evidence": [
     "DijkstraBbodySuite",
     "DijkstraRulesOracleSuite",
-    "ConwayBbodySuite",
-    "ConwayBbodyImpSuite"
+    "ConwayBbodySuite"
    ],
-   "note": "the count of a pool a Word64, which a count of one epoch's blocks never wraps (BlocksMade); ConwayBbodySuite compares it with the flat BBODY; its expectations are the reference's own on the 53 recorded Conway blocks the reference accepted; ConwayBbodyImpSuite holds Conway's run (ConwayBlockRun) to the reference's own BBODY cases for Conway at versions 9 to 11 (the Imp's of f649f975, and Shelley's of 9df9f98c), refusals among them",
+   "note": "the count of a pool a Word64, which a count of one epoch's blocks never wraps (BlocksMade); ConwayBbodySuite compares it with the flat BBODY; its expectations are the reference's own only on the 53 recorded Conway blocks the reference accepted",
    "digest": "32df67be24f393e1"
   },
   "def ledger.era.rules.AlonzoBbody.validateExUnits": {
