@@ -121,13 +121,9 @@ Reports are published to the public repository `KD5UJC-XYZ/scarab-conformance`, 
 - `README.md`, which `publish.py` writes from `latest/`: a Results section with the met, total and ratio of each
   report and the overall score, as the site computes them, and the provenance of each report.
 
-The site reads a node's reports from the URLs of the node's entry in the site's own repository (`nodes/<id>/`),
-one per scenario and one per era for `cbor-decoding`, and decompresses a `.gz` it downloads. The URLs to give it
-are those of the fixed files of `latest/`, for example
-`https://raw.githubusercontent.com/KD5UJC-XYZ/scarab-conformance/main/latest/ledger-rules.json.gz` and
-`.../latest/cbor-decoding-conway.json.gz`. Publishing here does not list Scarab on the site: that takes a
-`nodes/scarab/` entry with these URLs in the site's repository, added as its README's "Adding a node
-implementation" describes, which is a separate step for the owner.
+Pragma reads Scarab’s five fixed report URLs from its
+[Scarab registration](https://github.com/pragma-org/node-diversity-conformance/blob/628006278309c02a1c3e49dce00e43595d925c2e/nodes/scarab/metadata.json).
+Publishing a report updates the corresponding file under `latest/`.
 
 ## Publishing on demand
 

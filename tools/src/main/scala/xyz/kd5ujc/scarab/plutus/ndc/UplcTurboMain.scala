@@ -28,13 +28,13 @@ import xyz.kd5ujc.scarab.uplc.cost.{DefaultCostModels, ExBudget}
   * `cekMachineCosts` files, through [[DefaultCostModels]]) as the list the ledger would pass. The
   * script is admitted and checked before anything is timed. Every program is then run once,
   * untimed, so that the JVM's compilers have seen the corpus; then fifty times each, timed, within
-  * 10,000,000,000 CPU units and the protocol-specific memory limit (14,000,000 through protocol 10 and 16,500,000 from protocol 11) (`--memory-limit`
-  * changes the second, for an experiment only: the report is then in a format the site refuses,
-  * [[report]]). Of the fifty the thirty fastest are kept: `cpu_us` is their mean time and
-  * `mem_bytes` the mean of the bytes the evaluating thread allocated in them (`--memory allocated`,
-  * the default) or null (`--memory null`). The budget is what the runs spent, which must be the
-  * same in each. A program that does not evaluate is left out of the report, which the site counts
-  * as a failure, and named on the console.
+  * 10,000,000,000 CPU units and the protocol-specific memory limit (14,000,000 through protocol 10
+  * and 16,500,000 from protocol 11) (`--memory-limit` changes the second, for an experiment only:
+  * the report is then in a format the site refuses, [[report]]). Of the fifty the thirty fastest
+  * are kept: `cpu_us` is their mean time and `mem_bytes` the mean of the bytes the evaluating
+  * thread allocated in them (`--memory allocated`, the default) or null (`--memory null`). The
+  * budget is what the runs spent, which must be the same in each. A program that does not evaluate
+  * is left out of the report, which the site counts as a failure, and named on the console.
   */
 object UplcTurboMain extends IOApp:
 
