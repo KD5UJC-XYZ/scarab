@@ -62,9 +62,10 @@ private[node] object FetchCandidates:
     * to batch through [[forward]] and [[backward]], which change the candidate exactly as a
     * ChainSync batch does and touch only the headers that batch adds or removes.
     *
-    * Positions of headers that do not extend their predecessor are counted from the first header
-    * the index was scanned from (`offset` is the position of the current first header), so that
-    * dropping the oldest header leaves the others where they are.
+    * Positions of headers that do not extend their predecessor are counted from the first header of
+    * the last scan or rebase (`offset` is the position of the current first header), so that
+    * dropping the oldest header leaves the others where they are; a rebase counts them from the
+    * current first header again.
     */
   final class Announced private (
       val candidate: ChainSelection.Candidate,
@@ -190,6 +191,7 @@ private[node] object FetchCandidates:
 
     /** The index of the first of `occurrences` headers at `point`, searched from the tip. */
     private def first(headers: Vector[Header], point: Point, occurrences: Int): Int =
+      // `i` starts at the last index and only decreases, and is never read below zero
       @tailrec def go(i: Int, seen: Int): Int =
         if i < 0 then -1
         else if headers(i).point != point then go(i - 1, seen)

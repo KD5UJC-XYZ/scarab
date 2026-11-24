@@ -153,12 +153,13 @@ class FetchIncrementalSuite extends ScalaCheckSuite:
   private enum Round:
     case Batch(ops: List[Op])
     case Offered(points: List[Int])
-    case Replaced(base: Int, length: Int)
+    case Replaced(base: Int, length: Int, grafted: Boolean)
 
   private val rounds: Gen[Round] = Gen.frequency(
     8 -> Gen.choose(0, 6).flatMap(Gen.listOfN(_, ops)).map(Round.Batch(_)),
     1 -> Gen.listOf(Gen.choose(0, 59)).map(Round.Offered(_)),
-    1 -> (for b <- Gen.choose(-1, 50); n <- Gen.choose(0, 9) yield Round.Replaced(b, n))
+    1 -> (for b <- Gen.choose(-1, 50); n <- Gen.choose(0, 9); g <- Gen.oneOf(true, false)
+    yield Round.Replaced(b, n, g))
   )
 
   private final case class Session(
@@ -210,12 +211,16 @@ class FetchIncrementalSuite extends ScalaCheckSuite:
                 session.copy(track = session.track.offered(offered), heights = offered),
                 prop
               )
-            case Round.Replaced(base, length) =>
+            case Round.Replaced(base, length, grafted) =>
               val candidate = ChainSelection.Candidate(
                 main.lift(base).fold(Point.Origin)(_.point),
                 main.slice(base + 1, base + 1 + length)
               )
-              (session.copy(candidate = candidate), prop)
+              // a restart leaves the track; a graft installs the index it announced
+              val track =
+                if grafted then session.track.replaced(FetchCandidates.Announced.of(candidate))
+                else session.track
+              (session.copy(candidate = candidate, track = track), prop)
         }
         ._2
     }
@@ -550,17 +555,24 @@ class FetchIncrementalSuite extends ScalaCheckSuite:
     val a = Fixtures.header(1, 1, None, 1)
     val b = Fixtures.header(2, 2, None, 2)
     val start = FetchCandidates.Announced.of(ChainSelection.Candidate(Point.Origin, Vector.empty))
-    val carried = (0L until FetchCandidates.Announced.Rebase + 3).foldLeft(start) {
-      (announced, i) =>
-        announced.forward(if i % 2 == 0 then a else b, 2).announced
-    }
-    val headers = carried.candidate.headers
-    assertEquals(headers.size, 2)
-    assertEquals(
-      carried.fragments(Vector(FetchCandidates.Span(0, 2))),
-      FetchDecisionModel.fragmentsOf(headers)
-    )
-    assertEquals(carried.fragments(Vector(FetchCandidates.Span(0, 2))).size, 2)
+    def appended(announced: FetchCandidates.Announced, i: Long) =
+      announced.forward(if i % 2 == 0 then a else b, 2).announced
+    val near = (0L until FetchCandidates.Announced.Rebase - 2).foldLeft(start)(appended)
+    // the rebase falls on append Rebase + 2, where the only retained break crosses it: every
+    // append around it keeps the pair cut in two
+    (FetchCandidates.Announced.Rebase - 2 until FetchCandidates.Announced.Rebase + 6)
+      .foldLeft(near) { (announced, i) =>
+        val next = appended(announced, i)
+        val headers = next.candidate.headers
+        assertEquals(headers.size, 2)
+        assertEquals(
+          next.fragments(Vector(FetchCandidates.Span(0, 2))),
+          FetchDecisionModel.fragmentsOf(headers),
+          s"after append ${i + 1}"
+        )
+        assertEquals(next.fragments(Vector(FetchCandidates.Span(0, 2))).size, 2)
+        next
+      }
   }
 
   test("spans are cut to the candidate") {
@@ -569,5 +581,41 @@ class FetchIncrementalSuite extends ScalaCheckSuite:
     assertEquals(
       announced.fragments(Vector(FetchCandidates.Span(-4, 1), FetchCandidates.Span(2, 9))),
       FetchDecisionModel.fragmentsOf(Vector(main(0), main(2)))
+    )
+  }
+
+  test("a graft between a batch's move and its record keeps every height the whole filter keeps") {
+    val retained = 8
+    val start = ChainSelection.Candidate(Point.Origin, Vector.empty)
+    val first = main.take(5).map(SyncEvent.RollForward(_, ChainSync.Tip.Origin))
+    val once = CandidateTrack.move(None, start, first, retained)
+    // heights of retained points from the first batch, and one FindIntersect offered earlier
+    val seeded = CandidateTrack.initial
+      .offered(Map(main(40).point -> Some(main(40).blockNo), Point.Origin -> None))
+      .recorded(
+        once,
+        first.collect { case SyncEvent.RollForward(h, _) => h.point -> Some(h.blockNo) }.toMap
+      )
+    val batch = main.slice(5, 7).map(SyncEvent.RollForward(_, ChainSync.Tip.Origin))
+    val moved = CandidateTrack.move(seeded.announced, once.announced.candidate, batch, retained)
+    // a graft of another candidate lands after the move and before the record
+    val graft = ChainSelection.Candidate(main(1).point, main.slice(2, 4))
+    val grafted = seeded.replaced(FetchCandidates.Announced.of(graft))
+    val received = batch.collect { case SyncEvent.RollForward(h, _) =>
+      h.point -> Some(h.blockNo)
+    }.toMap
+    val recorded = grafted.recorded(moved, received)
+    assert(!grafted.carries(moved))
+    assertEquals(
+      recorded.heights,
+      FetchDecisionModel.heightsAfter(seeded.heights, batch, moved.announced.candidate)
+    )
+    assert(recorded.heights.size > 2)
+    // the batch after it starts from the graft, which is not the candidate the record left
+    val after = CandidateTrack.move(recorded.announced, graft, batch, retained)
+    assertEquals(after.start, FetchCandidates.Derivation.Scanned)
+    assertEquals(
+      after.announced.candidate,
+      FetchDecisionModel.candidateAfter(graft, batch, retained)
     )
   }
