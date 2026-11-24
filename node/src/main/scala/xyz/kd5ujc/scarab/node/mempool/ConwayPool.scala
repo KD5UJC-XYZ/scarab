@@ -8,7 +8,6 @@ import xyz.kd5ujc.scarab.ledger.era.{
   EraTxError,
   IsPhase2Valid,
   ProposalsReadError,
-  ProposalsWriteError,
   ScriptVerdictUnavailable,
   TxLevel
 }
@@ -106,9 +105,6 @@ enum ConwayUnjudged extends DomainError:
   /** The node's record of the proposals cannot be read into the era's. */
   case ProposalsRead(cause: ProposalsReadError)
 
-  /** The era's proposals cannot be written into the node's record. */
-  case ProposalsWrite(cause: ProposalsWriteError)
-
   /** The node's two readings of the transaction disagree: Conway's decoders refuse what the flat
     * ones read ([[ConwayRead.of]]).
     */
@@ -117,11 +113,10 @@ enum ConwayUnjudged extends DomainError:
   def message: String = this match
     case Unavailable(cause) =>
       s"no verdict on a script: ${cause.reason}"
-    case UtxoState(cause)      => s"a stored output Conway's types cannot read: $cause"
-    case Gov(cause)            => s"a proposal past the reference's index: $cause"
-    case ProposalsRead(cause)  => s"the proposals cannot be read: $cause"
-    case ProposalsWrite(cause) => s"the proposals cannot be written: $cause"
-    case Projection(cause)     => s"the era's decoders refuse the transaction: $cause"
+    case UtxoState(cause)     => s"a stored output Conway's types cannot read: $cause"
+    case Gov(cause)           => s"a proposal past the reference's index: $cause"
+    case ProposalsRead(cause) => s"the proposals cannot be read: $cause"
+    case Projection(cause)    => s"the era's decoders refuse the transaction: $cause"
 
 object ConwayUnjudged:
   /** What a defect of Conway's rules on the transaction `id` comes to for the pool, each kind
@@ -151,8 +146,6 @@ object ConwayUnjudged:
       Rejection.ConwayUnjudged(Some(id), Gov(cause))
     case ConwayRuleDefect.ProposalsRead(cause) =>
       Rejection.ConwayUnjudged(Some(id), ProposalsRead(cause))
-    case ConwayRuleDefect.ProposalsWrite(cause) =>
-      Rejection.ConwayUnjudged(Some(id), ProposalsWrite(cause))
 
 /** What a Conway transaction is judged with besides the ledger: the slot (`mkMempoolEnv`), and the
   * reference's `Globals` and the UTXO rules' context but for the validation

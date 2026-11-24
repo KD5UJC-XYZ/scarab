@@ -71,8 +71,7 @@ object ConwayMempool:
       stateDefect: Raise[F, UtxoStateDefect],
       defect: Raise[F, LedgerDefect],
       govDefect: Raise[F, GovDefect],
-      readError: Raise[F, ProposalsReadError],
-      writeError: Raise[F, ProposalsWriteError]
+      readError: Raise[F, ProposalsReadError]
   ): F[Unit] =
     mempoolTransitionAnnotating[F](
       env,
@@ -109,8 +108,7 @@ object ConwayMempool:
       stateDefect: Raise[F, UtxoStateDefect],
       defect: Raise[F, LedgerDefect],
       govDefect: Raise[F, GovDefect],
-      readError: Raise[F, ProposalsReadError],
-      writeError: Raise[F, ProposalsWriteError]
+      readError: Raise[F, ProposalsReadError]
   ): F[Unit] =
     val embed = EmbedLedgerInMempool.conway
     val top = t.bodyOf.top
@@ -176,8 +174,7 @@ object ConwayMempool:
       Raise[F, UtxoStateDefect],
       Raise[F, LedgerDefect],
       Raise[F, GovDefect],
-      Raise[F, ProposalsReadError],
-      Raise[F, ProposalsWriteError]
+      Raise[F, ProposalsReadError]
   ): F[Unit] =
     given Stateful[F, Proposals[Conway]] = ProposalsRecord.stateful[F, Conway]
     // the pool evaluates a transaction's scripts where UTXOS collects them, as the reference does

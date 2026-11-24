@@ -1252,7 +1252,8 @@ Conway's rules on the classes follow as the rest of stage 2.
     for a codec of the era's state). Written back, an update of the keys Dijkstra adds (34 to 56) was refused
     with its keys, since the flat update has no field for one, until nothing wrote Dijkstra's record back (#826,
     below);
-    `ProposalsRecord` gains Dijkstra's, its write fallible, and Conway's LEDGER raises such a refusal.
+    `ProposalsRecord` gained Dijkstra's, its write fallible, and Conway's LEDGER raised such a refusal; with
+    Conway's alone left, its write is total and that refusal and its no-verdicts are gone (#85).
   - Evidence (`EraGovStateStoredSuite`, `EraGovStateSuite`): the governance state of `fixtures/haskell-state/conway-4593`,
     `fixtures/leios/state/conway-195`, the native V10 fixtures `conway-native-730`, `eras/conway-729` and
     `eras/conway-730`, `fixtures/leios/state/dijkstra-203` and `testnet-2168639` reads into the era's record and
@@ -1484,7 +1485,7 @@ Conway's rules on the classes follow as the rest of stage 2.
   - Failures. A `VocabError` the era's EPOCH raises is `TickFailure.Vocab`, the no-verdict that keeps its typed cause
     on the node's route (`BlockFailure.stateOutOfRange`, `ChainError.StateOutOfRange`, `BlockNoVerdict.StateOutOfRange`).
     A record the era does not read (`GovStateReadError`), which only a damaged record gives, and a state the record
-    cannot hold (`ProposalsWriteError`) are `TickFailure.GovRecord` with the cause (`StoredGovError`), on the same
+    cannot hold (`ProposalsWriteError`, since removed with the write, below) are `TickFailure.GovRecord` with the cause (`StoredGovError`), on the same
     route as `ChainError.GovRecord`, as a Leios committee SNAP cannot seat is (`ChainError.LeiosCommittee`): never a
     refusal. The second is unreachable here: the tick adds no action, so every action it writes back is one it read
     from the record, which holds no update of keys 34 to 56 (the codec refuses one), and D8(c) withholds a block that
@@ -1556,7 +1557,8 @@ Conway's rules on the classes follow as the rest of stage 2.
   - With nothing writing Dijkstra's record into the flat one, the write side of the glue is gone (#85):
     `GovStateRecord` writes Conway's state only (`toStored`, `ratifyStateToStored`), which every action fits, and
     `DijkstraProposals` reads a flat proposal only (`fromFlat`), so the refusal of an update of keys 34 to 56 is
-    gone with it. The tests that wrote Dijkstra's record back read the flat record instead: each action as Conway
+    gone with it, and with it `ProposalsWriteError`: `ProposalsRecord.write` is total, and Conway's rule defect,
+    block defect and pool no-verdict for proposals the record cannot hold are gone. The tests that wrote Dijkstra's record back read the flat record instead: each action as Conway
     reads it (`EraGovStateStoredSuite`), the flat rule's proposals read back into the era's (`EraEpochGovSuite`),
     and the translated record against Conway's (`DijkstraTranslationSuite`); RATIFY of a Dijkstra state runs on
     the era's rule alone (`EraRatifyStoredSuite`).

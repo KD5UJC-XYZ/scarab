@@ -83,7 +83,7 @@ final case class LedgersEnv[E <: EraTag](
   */
 sealed trait ProposalsRecord[E <: EraTag]:
   def read(stored: StoredProposals): Either[ProposalsReadError, Proposals[E]]
-  def write(proposals: Proposals[E]): Either[ProposalsWriteError, StoredProposals]
+  def write(proposals: Proposals[E]): StoredProposals
 
   /** An action's state as the node records it, as the rules below LEDGER read the committee's
     * actions ([[CertsEnv]]).
@@ -94,23 +94,21 @@ object ProposalsRecord:
   given conway: ProposalsRecord[Conway] with
     def read(stored: StoredProposals): Either[ProposalsReadError, Proposals[Conway]] =
       ConwayProposals.fromStored(stored)
-    def write(proposals: Proposals[Conway]): Either[ProposalsWriteError, StoredProposals] =
-      Right(ConwayProposals.toStored(proposals))
+    def write(proposals: Proposals[Conway]): StoredProposals =
+      ConwayProposals.toStored(proposals)
     def storedAction(gas: GovActionState[Conway]): StoredGovActionState =
       ConwayProposals.storedAction(gas)
 
   /** The proposals of the ledger state's governance record, read into the era's on every `get` and
-    * written back on every `set`: a record the era cannot read is raised (`readError`), and
-    * proposals it cannot hold (`writeError`). For a judgment of one transaction, whose LEDGER reads
-    * them for CERTS's committee actions and for GOV; a run over many holds them once beside the
-    * ledger state instead ([[ConwayBlockRun]]).
+    * written back on every `set`: a record the era cannot read is raised (`readError`). For a
+    * judgment of one transaction, whose LEDGER reads them for CERTS's committee actions and for
+    * GOV; a run over many holds them once beside the ledger state instead ([[ConwayBlockRun]]).
     */
   def stateful[F[_]: Monad, E <: EraTag](using
       state: Stateful[F, LedgerState[E]],
       gs: GovState[E] =:= ConwayGovState,
       record: ProposalsRecord[E],
-      readError: Raise[F, ProposalsReadError],
-      writeError: Raise[F, ProposalsWriteError]
+      readError: Raise[F, ProposalsReadError]
   ): Stateful[F, Proposals[E]] = new Stateful[F, Proposals[E]]:
     val monad: Monad[F] = Monad[F]
     def get: F[Proposals[E]] = state.get.flatMap(ls =>
@@ -119,18 +117,12 @@ object ProposalsRecord:
         .fold(readError.raise[ProposalsReadError, Proposals[E]], Monad[F].pure)
     )
     def set(ps: Proposals[E]): F[Unit] =
-      record
-        .write(ps)
-        .fold(
-          writeError.raise[ProposalsWriteError, Unit],
-          stored =>
-            state.modify(
-              LedgerState
-                .utxo[E]
-                .andThen(UTxOState.gov[E])
-                .modify(g => gs.flip(gs(g).copy(proposals = stored)))
-            )
-        )
+      state.modify(
+        LedgerState
+          .utxo[E]
+          .andThen(UTxOState.gov[E])
+          .modify(g => gs.flip(gs(g).copy(proposals = record.write(ps))))
+      )
 
 /** Shelley's functions of LEDGER that Conway's runs (`Shelley/Rules/Ledger.hs`, cardano-ledger
   * f649f975).

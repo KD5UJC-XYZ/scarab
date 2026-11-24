@@ -945,8 +945,7 @@ object MirrorRules:
         Left(ChainError.StateOutOfRange(slot, error))
       case ConwayRuleDefect.Gov(cause: GovDefect.ProposalIndexOverflow) =>
         none(ConwayBlockDefect.Gov(cause))
-      case ConwayRuleDefect.ProposalsRead(cause)  => none(ConwayBlockDefect.ProposalsRead(cause))
-      case ConwayRuleDefect.ProposalsWrite(cause) => none(ConwayBlockDefect.ProposalsWrite(cause))
+      case ConwayRuleDefect.ProposalsRead(cause) => none(ConwayBlockDefect.ProposalsRead(cause))
 
   /** The node's bookkeeping after `announced` 's block, whose leadership `leader` established: the
     * era, the epoch's statistics and the completed epoch's, and the Byron prefix finished.

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.mempool
 
-import cats.data.{NonEmptyChain, NonEmptySet}
+import cats.data.NonEmptyChain
 import cats.syntax.all.*
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -18,8 +18,7 @@ import xyz.kd5ujc.scarab.ledger.era.{
   IsPhase2Valid,
   Mismatch,
   PParams,
-  ProposalsReadError,
-  ProposalsWriteError
+  ProposalsReadError
 }
 import xyz.kd5ujc.scarab.ledger.era.Relation.RelLTEQ
 import xyz.kd5ujc.scarab.ledger.era.conway.ConwayPParams
@@ -171,7 +170,6 @@ class ConwayHeldSuite extends FunSuite:
   private val overflow: GovDefect.ProposalIndexOverflow = GovDefect.ProposalIndexOverflow(65536)
   private val action = GovActionId(Bytes.fromArray(Array.fill(32)(5.toByte)), 0)
   private val unread = ProposalsReadError.Unattached(action)
-  private val unwritten = ProposalsWriteError.UnstorableUpdate(action, NonEmptySet.of(BigInt(34)))
 
   test("each defect of Conway's rules comes to its rejection, by kind") {
     val ledgerDefects = Vector[LedgerDefect](
@@ -207,9 +205,7 @@ class ConwayHeldSuite extends FunSuite:
       ConwayRuleDefect.Gov(overflow) ->
         Rejection.ConwayUnjudged(Some(id), ConwayUnjudged.Gov(overflow)),
       ConwayRuleDefect.ProposalsRead(unread) ->
-        Rejection.ConwayUnjudged(Some(id), ConwayUnjudged.ProposalsRead(unread)),
-      ConwayRuleDefect.ProposalsWrite(unwritten) ->
-        Rejection.ConwayUnjudged(Some(id), ConwayUnjudged.ProposalsWrite(unwritten))
+        Rejection.ConwayUnjudged(Some(id), ConwayUnjudged.ProposalsRead(unread))
     )
     cases.foreach((defect, rejection) =>
       assertEquals(ConwayUnjudged.rejection(id, defect), rejection, defect)
@@ -221,7 +217,6 @@ class ConwayHeldSuite extends FunSuite:
     ConwayUnjudged.UtxoState(stored),
     ConwayUnjudged.Gov(overflow),
     ConwayUnjudged.ProposalsRead(unread),
-    ConwayUnjudged.ProposalsWrite(unwritten),
     ConwayUnjudged.Projection(EraTxError.ScriptsReadAgain)
   )
 
@@ -244,8 +239,8 @@ class ConwayHeldSuite extends FunSuite:
       val expected = cause match
         case ConwayUnjudged.Unavailable(_) | ConwayUnjudged.Projection(_) =>
           Some(NetworkError.Unjudged(xyz.kd5ujc.scarab.protocol.Protocols.TxSubmission2, cause))
-        case ConwayUnjudged.UtxoState(_) | ConwayUnjudged.Gov(_) | ConwayUnjudged.ProposalsRead(_) |
-            ConwayUnjudged.ProposalsWrite(_) =>
+        case ConwayUnjudged.UtxoState(_) | ConwayUnjudged.Gov(_) |
+            ConwayUnjudged.ProposalsRead(_) =>
           None
       assertEquals(
         Mempool.peerConnectionEnd(Rejection.ConwayUnjudged(Some(id), cause)),

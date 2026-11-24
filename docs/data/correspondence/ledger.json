@@ -33706,8 +33706,8 @@
    "evidence": [
     "ConwayLedgerChecksSuite"
    ],
-   "note": "the era's Proposals written back as the node's record, a typed ProposalsWriteError where it cannot hold an action",
-   "digest": "ec30e85d2022f311"
+   "note": "the era's Proposals written back as the node's record, which holds every Conway action",
+   "digest": "8c37c3696c61be85"
   },
   "def ledger.era.rules.ProposalsRecord#storedAction": {
    "upstream": [
@@ -33749,7 +33749,7 @@
     "ConwayLedgerChecksSuite"
    ],
    "note": "Conway's, over ConwayProposals.fromStored, toStored and storedAction",
-   "digest": "b98be3c626a37d7e"
+   "digest": "62936f473832ced2"
   },
   "def ledger.era.rules.InjectLedgerFailure.conwayShelleyUtxo": {
    "upstream": [
@@ -45611,8 +45611,8 @@
    "evidence": [
     "ConwayLedgerChecksSuite"
    ],
-   "note": "the proposals of the ledger state's record as a capability, read on get and written on set, the record's refusals raised",
-   "digest": "a0dfed935997a68c"
+   "note": "the proposals of the ledger state's record as a capability, read on get and written on set, the record's read refusals raised",
+   "digest": "298ffa5a211a53c3"
   },
   "def ledger.era.DecCBOR.recordNamed": {
    "upstream": [
@@ -47894,7 +47894,7 @@
     "ConwayMempoolRunSuite"
    ],
    "note": "the mempool failure holds the node's typed cause (MempoolProblem) where the reference holds its Text, as ConwayLedgerPredFailure.ConwayMempoolFailure does; LEDGER through its embedding, the identity; the annotation given, through mempoolTransitionAnnotating",
-   "digest": "486ebe7b91587ff7"
+   "digest": "bd310898cefb4fb9"
   },
   "class ledger.era.rules.ConwayApplyTxError": {
    "upstream": [
@@ -48397,7 +48397,7 @@
     "ConwayMempoolRunSuite"
    ],
    "note": "the signal's annotation an effect forced where LEDGER first reads it, as the reference's AlonzoStAnnTx is strict in the transaction alone: the node's reading of the stored outputs the annotation is made from cannot fail before MEMPOOL's duplicate check",
-   "digest": "baceb425e8d056a4"
+   "digest": "dabdbb19f8416c77"
   },
   "def ledger.era.conway.ConwayBlock.read": {
    "upstream": [
@@ -49619,7 +49619,6 @@
    "definitions": [
     "enum ledger.era.GovStateParams",
     "enum ledger.era.GovStateReadError",
-    "enum ledger.era.ProposalsWriteError",
     "trait ledger.era.GovStateRecord",
     "object ledger.era.GovStateRecord",
     "def ledger.era.GovStateRecord#action",

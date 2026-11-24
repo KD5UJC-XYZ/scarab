@@ -19,7 +19,6 @@ import xyz.kd5ujc.scarab.ledger.era.{
   EraTx,
   PParams,
   ProposalsReadError,
-  ProposalsWriteError,
   ProtVer,
   ScriptVerdictUnavailable,
   StAnnTx,
@@ -68,8 +67,6 @@ object ConwayMempoolRun:
     summon[Raise[F, ConwayRuleDefect]].contramap(ConwayRuleDefect.Gov(_))
   private given Raise[F, ProposalsReadError] =
     summon[Raise[F, ConwayRuleDefect]].contramap(ConwayRuleDefect.ProposalsRead(_))
-  private given Raise[F, ProposalsWriteError] =
-    summon[Raise[F, ConwayRuleDefect]].contramap(ConwayRuleDefect.ProposalsWrite(_))
 
   private def lifted(evaluator: ScriptEvaluator[Id]): ScriptEvaluator[F] =
     request => Monad[F].unit.map(_ => evaluator.evaluate(request))

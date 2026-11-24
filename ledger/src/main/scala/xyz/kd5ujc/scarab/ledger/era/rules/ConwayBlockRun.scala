@@ -35,7 +35,6 @@ import xyz.kd5ujc.scarab.ledger.era.{
   PraosEraBlockHeader,
   Proposals,
   ProposalsReadError,
-  ProposalsWriteError,
   ScriptResult,
   ScriptVerdictUnavailable,
   Tx,
@@ -54,8 +53,8 @@ import xyz.kd5ujc.scarab.plutus.{
 }
 
 /** What ends a run of Conway's rules on a block without a verdict: the defects the rules raise,
-  * each typed as its rule raises it, GOV's proposals the node's record cannot give or hold among
-  * them ([[ProposalsRecord]]).
+  * each typed as its rule raises it, GOV's proposals the node's record cannot give among them
+  * ([[ProposalsRecord]]).
   */
 enum ConwayRuleDefect:
   case Unavailable(cause: ScriptVerdictUnavailable)
@@ -70,7 +69,6 @@ enum ConwayRuleDefect:
   case Ledger(cause: LedgerDefect)
   case Gov(cause: GovDefect)
   case ProposalsRead(cause: ProposalsReadError)
-  case ProposalsWrite(cause: ProposalsWriteError)
 
 /** Conway's rules on a block, run as the node applies the block (`applyBlockEither` with
   * `ValidateAll`, cardano-ledger f649f975 `Shelley/API/Validation.hs`): BBODY in one judgment
@@ -596,25 +594,18 @@ object ConwayBlockRun:
       }
 
   /** The BBODY state with the proposals the run holds written back into the node's record
-    * ([[ProposalsRecord.write]]; ones it cannot hold are a defect), the record as it was if the
-    * rules never read them.
+    * ([[ProposalsRecord.write]]), the record as it was if the rules never read them.
     */
-  private def written(after: S): Either[ConwayRuleDefect, ShelleyBbodyState[Conway]] =
+  private def written(after: S): ShelleyBbodyState[Conway] =
     val bbody = after.bbody
     after.held match
-      case Held.Unread => Right(bbody)
+      case Held.Unread => bbody
       case Held.Read(proposals) =>
-        ProposalsRecord.conway
-          .write(proposals)
-          .bimap(
-            ConwayRuleDefect.ProposalsWrite(_),
-            stored =>
-              ShelleyBbodyState
-                .ls[Conway]
-                .andThen(LedgerState.utxo[Conway])
-                .andThen(UTxOState.gov[Conway])
-                .modify(_.copy(proposals = stored))(bbody)
-          )
+        ShelleyBbodyState
+          .ls[Conway]
+          .andThen(LedgerState.utxo[Conway])
+          .andThen(UTxOState.gov[Conway])
+          .modify(_.copy(proposals = ProposalsRecord.conway.write(proposals)))(bbody)
 
   /** BBODY on `block` from `state`: a defect, the refusal ([[Refusal]]), or the BBODY state after
     * with the block's phase-2 counters ([[Applied]]). Every failure is accumulated, and a defect
@@ -743,7 +734,7 @@ object ConwayBlockRun:
         case RuleT.Outcome.Halted(failures, defect) =>
           Right(Left(Refusal.Stopped(failures, defect)))
         case RuleT.Outcome.Refused(failures) => Right(Left(Refusal.Failed(failures)))
-        case RuleT.Outcome.Passed(after, _)  => written(after).map(s => Right(s -> after.told))
+        case RuleT.Outcome.Passed(after, _)  => Right(Right(written(after) -> after.told))
     Body(txs, evaluator, observing, run)
 
   /** Conway's run on a block as a body program (`Phase2.Program`): [[serial]] is the run with every
