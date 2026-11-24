@@ -3166,9 +3166,27 @@ Conway's rules on the classes follow as the rest of stage 2.
     block's, field by field (`MirrorDijkstra.assembled`); a closure, under `ValidateNone`, counts nothing.
     `DijkstraBbodyImpSuite` shows the eight-script block's counters (4, 4, 8, 8) and the sub-transaction batch's
     (1, 0, 1, 1), the run's state and proposals the BBODY run's.
-  - Gaps ([#85](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7067709618)): a Dijkstra block's scripts
-    run serially, outside the parallel plan (`EraBlock.Body`, over the flat transactions); its evaluations are not
-    observed (`--plutus-cases`, whose observation holds the flat transaction, which cannot hold a Dijkstra one).
+  - Parallel Plutus (item 72, part 1, of
+    [#85](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7067709618); ADR 0018's amendment of
+    2026-11-24): the run is a body program of its own (`DijkstraBlockRun.program`, `Body`, `Plan`, `Deferred`),
+    modelled on Conway's and sharing with it nothing whose meaning depends on the era. A job is a batch, its top
+    level's and its sub-transactions' scripts with the contexts the ordered preparation built from the set before
+    the batch, checked against the top level's flag; its footprint is every level's (`DijkstraPhase2.footprint`),
+    and orders the evaluation only. While every verdict is its flag's the preparation is the serial run; at the
+    first that is not, or no verdict, the serial run is the result, a result evaluated ahead used only for the very
+    request it answers. `MirrorDijkstra.ready` splits a block's application at BBODY, the header checks and the
+    assembly after it in `applyHelper`'s order, and `MirrorRules` runs the program serially or through
+    `ParallelPlutus`. `DijkstraBbodyImpSuite` and `DijkstraBbodySuite` check every node run prepared against
+    serial (jobs reversed, none run, and on one, two, four and eight threads), `Alonzo/Imp/BbodySpec.hs:49`'s
+    block as eight jobs and crafted blocks whose scripts read what another batch changes;
+    `DijkstraBbodyImpWorkersSuite` runs those blocks through `ParallelPlutus` itself, and `DijkstraParallelSuite`
+    the testnet's recorded script transactions, assembled into 173 blocks, at one, two, four and eight workers,
+    with no verdict at each of their 41 scripts in turn; `MirrorDijkstraSuite` the devnet chain and the testnet's
+    first two blocks. Window P's first two hops of the recorded testnet replay to the reference's states at one
+    and four workers (`LeiosReplayMain --plutus-workers`).
+  - Gap ([#85](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7067709618)): a Dijkstra block's
+    evaluations are not observed (`--plutus-cases`, whose observation holds the flat transaction, which cannot hold a
+    Dijkstra one).
 - **Conway's MEMPOOL and its run** (`era/rules/ConwayMempool.scala`, `era/rules/ConwayMempoolRun.scala`; cardano-ledger
   f649f975 `eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Mempool.hs`, the same rule at 29a7d656 and 9df9f98c, and
   `Conway.hs:50-59`, `eras/shelley/impl/src/Cardano/Ledger/Shelley/API/Mempool.hs`), not wired into the node yet (the

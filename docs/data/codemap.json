@@ -835,7 +835,8 @@
         "DijkstraEraEpochGovSuite",
         "DijkstraEpochReferenceSuite",
         "PreviewConwayBlockLedgersSuite",
-        "ConwayBbodySuite"
+        "ConwayBbodySuite",
+        "DijkstraBbodyImpSuite"
       ],
       "docs": [
         "docs/design/era-typed-transactions.md"
@@ -1220,6 +1221,8 @@
       "suites": [
         "FollowerSuite",
         "MirrorDijkstraSuite",
+        "DijkstraParallelSuite",
+        "DijkstraBbodyImpWorkersSuite",
         "BlockPoolSuite",
         "FetchCoordinatorSuite",
         "ConfigSuite",

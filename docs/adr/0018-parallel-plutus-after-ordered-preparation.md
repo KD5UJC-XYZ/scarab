@@ -83,3 +83,20 @@ with the defect kept beside them, and leaves no verdict only where nothing was r
 is unchanged: the preparation's result, that refusal included, is the serial run's while every
 reached verdict is its flag's, and the serial run itself otherwise: one that records a mismatch records
 it before the defect, and one that reaches a script with no verdict ends there, before the defect. The [as-built design](../design/parallel-plutus.md#era-block-runs) has the detail.
+
+**Amendment (2026-11-24): Dijkstra's era block run adopts the program.** The Leios build's Dijkstra
+blocks run as a body program under the same contract, scheduler and bound
+([#85](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7067709618)), replacing the
+2026-11-22 amendment's sentence that Dijkstra's run evaluates where UTXOS collects its scripts. A job is
+a batch: its top level's and its sub-transactions' scripts, which its top level's UTXOS collects and
+evaluates together and checks against the top level's flag. Each script's context is built in the ordered
+preparation from the UTxO set before its batch, as the serial rules build it. While every reached verdict
+is its flag's, the preparation is the serial run, so each result was evaluated against the state the
+serial run evaluates it against. At the first verdict that is not its flag's, or no verdict, the result
+is the serial run itself. There a result evaluated ahead answers a script only when its request is the
+very one the serial run asks, the script's whole context included; any other script is evaluated in
+order. The dependency batches read every level's footprint: reads, consumes and creates, by the top
+level's flag. They order the evaluation and never decide a verdict. Header checks and what follows
+BBODY stay in the block's ordered finish, after the program's result, in `applyHelper`'s order. The
+naming of a script with no verdict and the phase-2 counters are the serial run's at every worker count.
+The [as-built design](../design/parallel-plutus.md#era-block-runs) has the detail.

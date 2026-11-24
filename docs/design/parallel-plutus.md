@@ -101,9 +101,70 @@ pass is paid only for a block the node refuses or withholds, never for one it ap
 completions are evaluated locally, and another plan's do not type-check. The era rules use no
 recovery that could discard a recorded job.
 
-Dijkstra's UTXOS is the same function and takes the same capability; its run evaluates where the
-scripts are collected until `DijkstraBlockRun` adopts the program (#85). The node applies Conway
-blocks with the era run (the Conway switch, #85), serial or through the workers.
+Dijkstra's era run is a body program of its own, modelled on Conway's: `DijkstraBlockRun.program`,
+whose `serial` is `DijkstraBlockRun.bbody` (#85). Its types are Dijkstra's alone; it shares with
+Conway's only what no era parameter enters (`Phase2.Program`, `Phase2.Plan`, the recorder,
+`TxDependencies`, `ScriptsTold`, `evalPlutusScripts`). Dijkstra's UTXOS is the same function and takes
+the same capability, at a batch's top level, with the batch's scripts: its top level's first, then each
+sub-transaction's (`plutusScriptsWithContextDijkstraStAnnTx`,
+[Dijkstra/UTxO.hs, lines 258–276](https://github.com/IntersectMBO/cardano-ledger/blob/9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c/eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/UTxO.hs#L258)),
+each with the context the rules built from the UTxO set before the batch (`mkDijkstraStAnnTopTx` and
+`mkDijkstraStAnnSubTx` take `ltiUTxO` from the set LEDGERS judges the batch on,
+[Dijkstra.hs, lines 111–219](https://github.com/IntersectMBO/cardano-ledger/blob/9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c/eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra.hs#L111),
+[Babbage/Rules/Ledgers.hs, lines 132–133](https://github.com/IntersectMBO/cardano-ledger/blob/9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c/eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Ledgers.hs#L132)).
+So a job is a batch, its flag the top level's, and the preparation records it, its place and its
+scripts, and a marker at its place among the counters' events. The landing is Conway's without the
+observer, which a Dijkstra block does not have: while every verdict is its flag's the preparation's
+result is the serial run's, the counters told from the landed verdicts; a raw defect lands as itself; at
+the first verdict that is not its flag's, or no verdict, the serial run is the result, each script
+answered by a landed result only where its request is the one asked, and the serial run names a script
+with no verdict as it always does (its batch, `ScriptLocation.Phase2` or `SubPhase2`, its redeemer).
+
+A batch's footprint (`DijkstraPhase2.footprint`) is every level's. Of the ledger's state the
+translations read only the UTxO set, beside the parameters' version, the era history and the system
+start, which no transaction of a block changes (`ltiUTxO` in `toPlutusTxInfo` of V1 to V4 and the
+spending datum, `Dijkstra/TxInfo.hs`). The batch reads `allInputs`: the top level's inputs, collateral
+and reference inputs, and each sub-transaction's inputs and reference inputs. Flagged valid, it consumes
+every level's inputs and creates every level's outputs, a sub-transaction's under its own id; flagged
+invalid, it consumes the top level's collateral and creates its collateral return, and no
+sub-transaction changes the set (`SubUtxo.hs`, lines 255–261). The batches order the evaluation only:
+a verdict reaches the result through the ordered landing alone, whatever batch evaluated it.
+
+The node applies Conway blocks with the era run (the Conway switch, #85), and the Leios build's
+Dijkstra blocks with Dijkstra's (`MirrorDijkstra.ready`), each serial or through the workers. A
+Dijkstra block's application is split at BBODY: the decoding, the Leios checks, the closure and the tick
+run before the program, and BBODY's result, Praos2's header checks against the state ticked before BBODY
+and the state's assembly run after it, in `applyHelper`'s order (`Ledger/Extended.hs`, lines 297–311,
+ouroboros-consensus d91b3557, the same at 2416493b). The mempool, the forger's and the closure's runs
+keep their serial interpreter (`Phase2Deferral.now`; a closure evaluates nothing, `ValidateNone`).
+
+`DijkstraBbodyImpSuite` and `DijkstraBbodySuite` prepare every Dijkstra run they make
+(`DijkstraPlanned.check`) and resolve the plan with its jobs run last batch first, with none run, and on
+one, two, four and eight threads, each batch's jobs at once: the reference's BBODY cases, among them
+`Alonzo/Imp/BbodySpec.hs:49`'s block as eight jobs and the sub-transaction's batch, and crafted blocks
+whose scripts read what another batch changes (a sub-transaction spending what an earlier batch's script
+read as a reference input, batched `[0] [1]` where its control is `[0, 1]`; a script spending what an
+earlier batch's sub-transaction made, `[0] [1]`; a script that fails between two that pass, flagged
+invalid, flagged valid, and one that passes flagged invalid; no verdict at the sub-transaction's script
+and at the top level's); `DijkstraBbodyImpWorkersSuite` (node) runs the same suite with every
+prepared block through `ParallelPlutus` itself at one, two, four and eight workers. Every captured
+Dijkstra block and every block of the Leios corpus that decodes (37) is checked the same way, but none
+defers a job: no recorded state holds their inputs. `DijkstraParallelSuite` runs the testnet's recorded script transactions, each
+block's in a block of its own (173 blocks, 150 admitted, 17 of two or more scripted batches, two in
+dependent batches), through `ParallelPlutus` at one, two, four and eight workers, and gives each of the
+41 scripts of those 17 blocks no verdict in turn, three of them a sub-transaction's; `MirrorDijkstraSuite`
+runs the devnet chain through the node's rules at the same counts. Every result is the serial run's.
+
+On 2026-11-24 (the source that made Dijkstra's run a program, #85) `LeiosReplayMain` replayed window P's
+first two hops of the recorded public testnet (985 and 1,010 blocks from the reference's states at slots
+1,015,165 and 1,036,794) with `--plutus-workers 1` and `4`: all four runs ended `matched`, `state`, `tables`
+and `meta` byte for byte the reference's. Of those hops' ranking blocks, 171 and 128 hold two or more
+transactions with redeemers (one of them three), each prepared at four workers; the closures'
+transactions run no script (`ValidateNone`). Those blocks' script batches are small: the replay, export and
+comparison of the second hop took 65 s serially and 71 s at four workers, with another build sharing the
+machine, and the 21 recorded blocks whose preparation can pay ran in a median of 54 ms serially and 65 ms
+at four workers. That is an observation, not a gate: preparing a block of two or three cheap scripts costs
+more than it saves.
 
 `ConwayBbodySuite` prepares every era run it makes and resolves the plan, its jobs run last batch
 first, with the serial run's results: the same state, blocks made, counters, failures, naming and
