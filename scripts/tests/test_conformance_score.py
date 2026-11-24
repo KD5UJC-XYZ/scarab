@@ -121,7 +121,7 @@ def item(bench="a.flat", **fields):
 
 
 class TurboTest(unittest.TestCase):
-    """9dc68a75 scenarios/uplc-turbo/build.py: within twice the budget or within 200 µs (CPU) or 320 KiB (memory)."""
+    """62800627 scenarios/uplc-turbo/build.py: within twice the budget or within 200 µs (CPU) or 320 KiB (memory)."""
 
     def met(self, **fields):
         return score.benchmark_met(item(**fields))
@@ -161,7 +161,7 @@ class TurboTest(unittest.TestCase):
 
 
 class UplcTest(unittest.TestCase):
-    """9dc68a75 scenarios/uplc-conformance/build.py:37-76."""
+    """62800627 scenarios/uplc-conformance/build.py:37-76."""
 
     def test_whitespace_and_budget_text_are_read_as_the_site_reads_them(self):
         expected = (vector("a", '(program 1.0.0 [ (con string "a  b") , (con unit ()) ])', {"cpu": 7, "mem": -2}),)
@@ -194,7 +194,7 @@ class UplcTest(unittest.TestCase):
 
 
 class LedgerTest(unittest.TestCase):
-    """9dc68a75 scenarios/ledger-rules/build.py:46-60 and 93-107."""
+    """62800627 scenarios/ledger-rules/build.py:46-60 and 93-107."""
 
     def test_expected_results(self):
         for expected, result in LEDGER_KINDS[1:] + (("pass", "failed"), (None, "failed")):
@@ -227,7 +227,7 @@ def legacy_report(**fields):
 
 
 class CborTest(unittest.TestCase):
-    """The site's parser of CBOR reports (9dc68a75 scripts/build_common.py:256-346 and 380-381) and its scoring
+    """The site's parser of CBOR reports (62800627 scripts/build_common.py:256-346 and 380-381) and its scoring
     (scenarios/cbor-decoding/build.py:104-115)."""
 
     def test_version_2_every_sample_counts_and_a_true_outcome_is_met(self):
@@ -283,7 +283,7 @@ class CborTest(unittest.TestCase):
 
 
 class ReadTest(unittest.TestCase):
-    """What the site cannot read of any scenario (9dc68a75 scripts/build_common.py:179-180 and 325-341)."""
+    """What the site cannot read of any scenario (62800627 scripts/build_common.py:179-180 and 325-341)."""
 
     def test_unreadable_files_and_reports(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -16,7 +16,7 @@ import xyz.kd5ujc.scarab.uplc.cost.{DefaultCostModels, ExBudget}
 /** The `uplc-turbo` scenario of pragma-org's node-diversity-conformance site: the time, the memory
   * and the budget of every program of its corpus on the node's Plutus evaluator, written as the
   * scenario's report (`scenarios/uplc-turbo/README.md`, `CHANGELOG.md` and `schema.json` at the
-  * site's commit 9dc68a75).
+  * site's commit 62800627).
   *
   * `tools/runMain xyz.kd5ujc.scarab.plutus.ndc.UplcTurboMain <corpus-dir> <report.json> [--memory
   * allocated|null] [--warm-up <passes>] [--memory-limit <units>]`
@@ -28,18 +28,15 @@ import xyz.kd5ujc.scarab.uplc.cost.{DefaultCostModels, ExBudget}
   * `cekMachineCosts` files, through [[DefaultCostModels]]) as the list the ledger would pass. The
   * script is admitted and checked before anything is timed. Every program is then run once,
   * untimed, so that the JVM's compilers have seen the corpus; then fifty times each, timed, within
-  * 10,000,000,000 CPU and 10,000,000 memory units, restricting, as the README sets
-  * (`--memory-limit` changes the second, for an experiment only: the report is then in a format the
-  * site refuses, [[report]]). Of the fifty the thirty fastest are kept: `cpu_us` is their mean time
-  * and `mem_bytes` the mean of the bytes the evaluating thread allocated in them (`--memory
-  * allocated`, the default) or null (`--memory null`). The budget is what the runs spent, which
-  * must be the same in each. A program that does not evaluate is left out of the report, which the
-  * site counts as a failure, and named on the console.
+  * 10,000,000,000 CPU units and the protocol-specific memory limit (14,000,000 through protocol 10
+  * and 16,500,000 from protocol 11) (`--memory-limit` changes the second, for an experiment only:
+  * the report is then in a format the site refuses, [[report]]). Of the fifty the thirty fastest
+  * are kept: `cpu_us` is their mean time and `mem_bytes` the mean of the bytes the evaluating
+  * thread allocated in them (`--memory allocated`, the default) or null (`--memory null`). The
+  * budget is what the runs spent, which must be the same in each. A program that does not evaluate
+  * is left out of the report, which the site counts as a failure, and named on the console.
   */
 object UplcTurboMain extends IOApp:
-
-  /** The budget of the README. */
-  val Limit: ExBudget = ExBudget.of(10_000_000_000L, 10_000_000L)
 
   val Runs: Int = 50
   val Kept: Int = 30
@@ -63,11 +60,16 @@ object UplcTurboMain extends IOApp:
     /** Nothing: the schema's null. */
     case Unreported
 
-  /** The options after the three paths. */
-  final case class Options(memory: Memory, passes: Int, limit: ExBudget)
+  /** The options after the two paths. */
+  final case class Options(memory: Memory, passes: Int, memoryOverride: Option[Long]):
+    def limitFor(protocol: Int): ExBudget =
+      ExBudget.of(
+        10_000_000_000L,
+        memoryOverride.getOrElse(if protocol >= 11 then 16_500_000L else 14_000_000L)
+      )
 
   object Options:
-    val Default: Options = Options(Memory.Allocated, 1, Limit)
+    val Default: Options = Options(Memory.Allocated, 1, None)
 
   /** `--memory allocated|null`, `--warm-up <passes>`, `--memory-limit <units>`, in any order; none
     * for anything else.
@@ -83,7 +85,7 @@ object UplcTurboMain extends IOApp:
         case None         => None
     case "--memory-limit" :: n :: tail =>
       n.toLongOption.filter(_ > 0) match
-        case Some(units) => options(tail, so.copy(limit = ExBudget.of(Limit.cpu.toLong, units)))
+        case Some(units) => options(tail, so.copy(memoryOverride = Some(units)))
         case None        => None
     case _ => None
 
@@ -250,12 +252,12 @@ object UplcTurboMain extends IOApp:
       so: Options
   ): Json =
     val header = NdcReport.header("uplc-turbo", generated, implementation)
-    val experiment = Option.when(so.limit != Limit)(
+    val experiment = so.memoryOverride.map { units =>
       Json.obj(
-        "memory_limit" -> Json.fromLong(so.limit.memory.toLong),
+        "memory_limit" -> Json.fromLong(units),
         "note" -> Json.fromString("not a uplc-turbo report: the memory limit is not the README's")
       )
-    )
+    }
     val fields = experiment.fold(header)(e =>
       header.map {
         case ("version", _) => "version" -> Json.fromString("experimental")
@@ -303,17 +305,17 @@ object UplcTurboMain extends IOApp:
         code <- prepared._2 match
           case Left(error) => IO.println(error.message).as(ExitCode(1))
           case Right(programs) =>
-            val ready = programs.collect { case (b, Right(p)) => b -> p }
+            val ready = programs.collect { case (b, Right(p)) => (b, p, so.limitFor(b.protocol)) }
             val unprepared = programs.collect { case (b, Left(run)) =>
               b -> Unmeasured.NotPrepared(run)
             }
             for
-              warm <- IO(Vector.fill(so.passes)(ready.foreach((_, p) => p.evaluate(so.limit))))
+              warm <- IO(Vector.fill(so.passes)(ready.foreach((_, p, limit) => p.evaluate(limit))))
                 .evalOn(stack)
                 .timed
               measured <- IO {
                 val overhead = counterOverhead()
-                ready.map((b, p) => b -> measure(p, overhead, so.limit))
+                ready.map((b, p, limit) => b -> measure(p, overhead, limit))
               }.evalOn(stack).timed
               results = measured._2
               failed = unprepared ++ results.collect { case (b, Left(why)) => b -> why }
@@ -330,17 +332,15 @@ object UplcTurboMain extends IOApp:
                 items.map((b, m) => item(b, m, so.memory)),
                 so
               )
-              _ <- IO
-                .println(
-                  s"experimental memory limit ${so.limit.memory.toLong}: the report is marked experimental"
-                )
-                .whenA(so.limit != Limit)
+              _ <- so.memoryOverride.traverse_(units =>
+                IO.println(s"experimental memory limit $units: the report is marked experimental")
+              )
               written <- NdcReport.write(out, report).timed
               _ <- failed.traverse_((b, why) => IO.println(s"${b.name}: ${why.message}"))
               _ <- IO.println(
                 s"${items.size} of ${programs.size} programs measured, ${failed.size} not; " +
                   s"sum of cpu_us ${items.map(_._2.cpuMicros).sum.round} us; read ${read._1.toMillis} ms, " +
-                  s"prepare ${prepared._1.toMillis} ms, warm-up ${warm._1.toMillis} ms (${so.passes} passes, memory limit ${so.limit.memory.toLong}), " +
+                  s"prepare ${prepared._1.toMillis} ms, warm-up ${warm._1.toMillis} ms (${so.passes} passes), " +
                   s"measure ${measured._1.toMillis} ms, write ${written._1.toMillis} ms"
               )
             yield ExitCode.Success

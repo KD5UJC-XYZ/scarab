@@ -3,7 +3,7 @@
   "site": {
     "kind": "git",
     "repository": "pragma-org/node-diversity-conformance",
-    "commit": "9dc68a750478335755d057288cc8978c117d7ac4",
+    "commit": "628006278309c02a1c3e49dce00e43595d925c2e",
     "paths": ["scenarios"]
   },
   "ledger-rules-documents": {

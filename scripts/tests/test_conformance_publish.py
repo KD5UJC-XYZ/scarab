@@ -161,10 +161,10 @@ class DryRunTest(unittest.TestCase):
                       "https://github.com/KD5UJC-XYZ/scarab-conformance.git", text)
         self.assertIn(f"-> reports/ledger-rules/{LEDGER}", text)
         self.assertIn("-> latest/ledger-rules.json.gz", text)
-        self.assertIn("# fetch the site at 9dc68a750478335755d057288cc8978c117d7ac4 into <temporary directory>/"
-                      "site-9dc68a750478, unless a verified copy is there", text)
+        self.assertIn("# fetch the site at 628006278309c02a1c3e49dce00e43595d925c2e into <temporary directory>/"
+                      "site-628006278309, unless a verified copy is there", text)
         self.assertIn("fetch -q --depth 1 --filter=blob:none --no-tags "
-                      "https://github.com/pragma-org/node-diversity-conformance 9dc68a75", text)
+                      "https://github.com/pragma-org/node-diversity-conformance 62800627", text)
         self.assertIn("push --quiet origin HEAD:refs/heads/main", text)
 
     def test_explicit_dry_run_runs_nothing_and_excludes_apply(self):
@@ -262,7 +262,7 @@ class ApplyTest(unittest.TestCase):
         with mock.patch.object(publish.inputs, "fetch", side_effect=inputs.InputError("site: checked out another")):
             code, said = self.publish(remote, runner)
         self.assertEqual(code, 1, said)
-        self.assertIn("the site at 9dc68a750 could not be fetched or read", said)
+        self.assertIn("the site at 628006278 could not be fetched or read", said)
         self.assertIn("nothing was published", said)
         self.assertEqual(runner.verbs(), ["api"], "refused before the reports repository is cloned")
         self.assertEqual(remote.commits(), 1)
