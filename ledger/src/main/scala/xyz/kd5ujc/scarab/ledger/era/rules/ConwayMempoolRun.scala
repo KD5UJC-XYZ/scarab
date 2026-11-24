@@ -324,6 +324,26 @@ object ConwayMempoolRun:
   ): Outcome[LedgerState[Conway]] =
     applyTxWithValidation(judging, env, state, held.tx, TxEnv.Validation.NonStatic).map(_.map(_._1))
 
+  /** A held transaction of the era before Conway, translated into it (`tx`), brought into the era
+    * as 11.1's consensus brings it, and applied again: `translateValidatedTxBabbageToConwayWrapper`
+    * (ouroboros-consensus 82ecba32 `Cardano/CanHardFork.hs:803-811`, `translateEra` of
+    * `ShelleyValidatedTx`, `Shelley/ShelleyHFC.hs:408-422`) keeps it validated, its transaction
+    * translated (`translateValidated`, `Validated <$> translateEra ctx tx`,
+    * `Shelley/API/Mempool.hs:157-163`, cardano-ledger f649f975); the combinator then reapplies it
+    * (`InjectValidatedTx`, `HardFork/Combinator/Mempool.hs:182-192` at 82ecba32) by 11.1's
+    * `reapplyTx` (`:465-473`), which reads that transaction alone. Here that is
+    * [[applyTxWithValidation]] without the static checks on `tx`, annotated against the state: the
+    * ledger state after it, and what the transaction is held with from then on, which a later
+    * [[reapplyTx]] reads the transaction of alone, as 11.1's does.
+    */
+  def reapplyTranslated(
+      judging: Judging,
+      env: LedgerEnv[Conway],
+      state: LedgerState[Conway],
+      tx: Tx[TxLevel.Top, Conway]
+  ): Outcome[(LedgerState[Conway], ValidatedTx)] =
+    applyTxWithValidation(judging, env, state, tx, TxEnv.Validation.NonStatic)
+
   /** `reapplyValidatedTx` (`Shelley/API/Mempool.hs:420-439`, cardano-ledger f649f975): under the
     * major version of the state's parameters (`curPParamsGovStateL`, the node's record of them,
     * `:439`) that the transaction was validated at, MEMPOOL without the static checks on the

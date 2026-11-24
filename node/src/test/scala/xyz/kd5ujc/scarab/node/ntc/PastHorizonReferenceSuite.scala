@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.ntc
 
+import xyz.kd5ujc.scarab.node.mempool.{heldAsValidated, readOf, toPool}
 import xyz.kd5ujc.scarab.protocol.StateLayout
 import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import cats.syntax.all.*
@@ -66,7 +67,9 @@ import xyz.kd5ujc.scarab.ledger.state.{
 import xyz.kd5ujc.scarab.node.NodeSetup
 import xyz.kd5ujc.scarab.node.forge.BlockBuilder
 import xyz.kd5ujc.scarab.node.mempool.{
+  ConwayPoolEnv,
   Entry,
+  Held,
   LocalSubmission,
   MempoolEnv,
   MempoolLedger,
@@ -264,7 +267,7 @@ class PastHorizonReferenceSuite extends FunSuite:
     )
     val ledger =
       MempoolLedger.tick(nes, Some(r.tip), env).fold(e => fail(e.show), identity)
-    val pool = MempoolState.empty(Right(ledger), r.tip, None)
+    val pool = MempoolState.empty(Right(ledger.toPool), r.tip, None)
     LocalSubmission
       .unwrap(r.item)
       .flatMap(tx => pool.add(tx, env, Source.Local).map(_ => ()))
@@ -308,9 +311,13 @@ class PastHorizonReferenceSuite extends FunSuite:
       )
       val ledger = MempoolLedger.tick(nes, Some(r.tip), env).fold(e => fail(e.show), identity)
       val raw = LocalSubmission.unwrap(r.item).fold(e => fail(s"$e"), identity).raw
-      val parsed = MempoolState.parseParts(raw).fold(e => fail(e.message), identity)
-      val tx = parsed.tx
-      val entry = Entry(Era.Conway, parsed.parts, tx, 0)
+      val pool = ledger.toPool
+      val entry = Entry(
+        Held.InConway(pool.heldAsValidated(pool.readOf(raw), ConwayPoolEnv.of(env, r.tip + 1))),
+        0,
+        0L,
+        scala.concurrent.duration.Duration.Zero
+      )
       val limits =
         BlockBuilder.Limits(ledger.params.maxBlockBodySize.toLong, ledger.params.maxBlockExUnits)
       def chosen(clock: PosixClock) =

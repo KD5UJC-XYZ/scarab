@@ -2711,7 +2711,8 @@ object Forger:
     ForgeError.UnsupportedProtocol(why match
       case ConwayView.Unavailable.InByron        => ForgeProtocolProblem.InByron
       case ConwayView.Unavailable.InEarlier(era) => ForgeProtocolProblem.Earlier(era)
-      case ConwayView.Unavailable.Refused(e)     => ForgeProtocolProblem.Mirror(e))
+      case ConwayView.Unavailable.Refused(e)     => ForgeProtocolProblem.Mirror(e)
+      case ConwayView.Unavailable.Params(e)      => ForgeProtocolProblem.ConwayParams(e))
 
   private def inEpoch(stateEpoch: BigInt, epoch: BigInt, slot: BigInt): Either[NodeError, Unit] =
     Either.cond(

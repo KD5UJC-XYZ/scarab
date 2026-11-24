@@ -43,7 +43,9 @@ class LocalDecodeBoundsSuite extends CatsEffectSuite:
 
   test("such a transaction is judged by the ledger, not refused as malformed") {
     val judged =
-      MempoolState.empty(Right(TxKit.ledger(1)), 1000, None).add(large, TxKit.env, Source.Local)
+      MempoolState
+        .empty(Right(TxKit.ledger(1).toPool), 1000, None)
+        .add(large, TxKit.env, Source.Local)
     assert(judged.isLeft, "a transaction over maxTxSize is not admitted")
     assert(
       judged.left.forall(r => !r.isInstanceOf[Rejection.Malformed]),
@@ -65,14 +67,14 @@ class LocalDecodeBoundsSuite extends CatsEffectSuite:
   test("the live submission handler returns the ledger rejection for the large transaction") {
     val wrapped = Bytes(head(4, 2) ++ head(0, 6) ++ head(6, 24) ++ TxKit.bstr(large))
     val expected = MempoolState
-      .empty(Right(TxKit.ledger(1)), 1000, None)
+      .empty(Right(TxKit.ledger(1).toPool), 1000, None)
       .add(large, TxKit.env, Source.Local)
       .swap
       .toOption
       .getOrElse(fail("the oversized transaction must be refused"))
     assert(!expected.isInstanceOf[Rejection.Malformed])
     Mempool
-      .create[IO](Right(TxKit.ledger(1)), 1000, TxKit.env, None, MempoolEvents.none[IO])
+      .create[IO](Right(TxKit.ledger(1).toPool), 1000, TxKit.env, None, MempoolEvents.none[IO])
       .flatMap(pool =>
         LocalSubmission.handler(pool, ReferenceBuild.Release11_2)(fatal =>
           IO(fail(s"unexpected fatal: $fatal"))

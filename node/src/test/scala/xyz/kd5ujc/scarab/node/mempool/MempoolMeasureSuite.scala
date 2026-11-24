@@ -11,6 +11,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.*
 import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.TxMeasure
 import xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor
+import xyz.kd5ujc.scarab.ledger.era.rules.ConwayLedgerPredFailure
 import xyz.kd5ujc.scarab.plutus.ExUnits
 
 import Capacity.{component, exceeded, fits}
@@ -24,7 +25,7 @@ import TxKit.*
   */
 class MempoolMeasureSuite extends munit.FunSuite with ScalaCheckSuite:
   private def pool(ledger: MempoolLedger, capacityOverride: Option[Long] = None) =
-    MempoolState.empty(Right(ledger), 1000, capacityOverride.map(word32))
+    MempoolState.empty(Right(ledger.toPool), 1000, capacityOverride.map(word32))
 
   private def add(s: MempoolState, raw: Bytes): Either[Rejection, MempoolState] =
     s.add(raw, env, Source.Local).map(_._1)
@@ -48,9 +49,19 @@ class MempoolMeasureSuite extends munit.FunSuite with ScalaCheckSuite:
       exUnits = exUnits
     )
 
-  private def limitsOf(r: Either[Rejection, Any]): List[PredicateFailure] = r match
-    case Left(Rejection.Limits(_, failures)) => failures.toList
-    case other => fail(s"expected a refusal of the measure, received $other")
+  /** A refusal of the measure, on Conway's types, compared by its bytes with the flat form of the
+    * same failures (`Limits`), which the node sent before the switch (#85).
+    */
+  private def measuredAs(
+      r: Either[Rejection, MempoolState],
+      id: Bytes,
+      failures: PredicateFailure*
+  ): Unit =
+    assert(r.left.exists(_.isInstanceOf[Rejection.ConwayRefused]), s"$r")
+    assertEquals(
+      answered(r),
+      answered(Left(Rejection.Limits(id, NonEmptyList.fromListUnsafe(failures.toList))))
+    )
 
   test("a transaction over the maximum size is refused with that failure alone") {
     val (raw, id) = unknownInput()
@@ -58,13 +69,15 @@ class MempoolMeasureSuite extends munit.FunSuite with ScalaCheckSuite:
     val result = add(pool(small), raw)
     val expected =
       PredicateFailure.utxo(UtxoFailure.MaxTxSize(Mismatch(BigInt(sizeOf(raw)), BigInt(100))))
-    assertEquals(limitsOf(result), List(expected))
+    measuredAs(result, id, expected)
     // the ledger did not run: with the default maximum the same bytes fail the MEMPOOL rule
     assertEquals(
-      add(pool(ledger(1)), raw),
-      Left(
-        Rejection.Ledger(
-          LedgerFailure.Rejected(id, PredicateFailure.Mempool(MempoolProblem.AllInputsSpent))
+      answered(add(pool(ledger(1)), raw)),
+      answered(
+        Left(
+          Rejection.Ledger(
+            LedgerFailure.Rejected(id, PredicateFailure.Mempool(MempoolProblem.AllInputsSpent))
+          )
         )
       )
     )
@@ -77,13 +90,13 @@ class MempoolMeasureSuite extends munit.FunSuite with ScalaCheckSuite:
   }
 
   test("a transaction over its execution-unit maximum is refused with that failure alone") {
-    val (raw, _) = unknownInput(Some((BigInt(11), BigInt(5))))
+    val (raw, id) = unknownInput(Some((BigInt(11), BigInt(5))))
     val limited = ledger(1).withParams(_.copy(maxTxExUnits = ExUnits(10, 10)))
     val result = add(pool(limited), raw)
     val expected = PredicateFailure.utxo(
       UtxoFailure.ExUnitsTooBig(Mismatch(ExUnits(11, 5), ExUnits(10, 10)))
     )
-    assertEquals(limitsOf(result), List(expected))
+    measuredAs(result, id, expected)
     assertEquals(
       refused(result.left.getOrElse(fail("accepted"))),
       PredicateFailureCbor
@@ -100,10 +113,7 @@ class MempoolMeasureSuite extends munit.FunSuite with ScalaCheckSuite:
       PredicateFailure.utxo(UtxoFailure.MaxTxSize(Mismatch(BigInt(sizeOf(raw)), BigInt(100)))),
       PredicateFailure.utxo(UtxoFailure.ExUnitsTooBig(Mismatch(ExUnits(11, 5), ExUnits(10, 10))))
     )
-    assertEquals(
-      add(pool(limited), raw),
-      Left(Rejection.Limits(id, NonEmptyList.fromListUnsafe(failures)))
-    )
+    measuredAs(add(pool(limited), raw), id, failures*)
   }
 
   private def refScriptOutput(size: Int): TxOut =
@@ -134,7 +144,11 @@ class MempoolMeasureSuite extends munit.FunSuite with ScalaCheckSuite:
       Mismatch(size, RefScripts.MaxRefScriptSizePerTx)
     )
     val result = add(pool(l), raw)
-    assertEquals(result, Left(Rejection.Ledger(LedgerFailure.Rejected(id, expected))))
+    assert(result.left.exists(_.isInstanceOf[Rejection.ConwayRefused]), s"$result")
+    assertEquals(
+      answered(result),
+      answered(Left(Rejection.Ledger(LedgerFailure.Rejected(id, expected))))
+    )
     assertEquals(
       refused(result.left.getOrElse(fail("accepted"))),
       PredicateFailureCbor
@@ -152,15 +166,12 @@ class MempoolMeasureSuite extends munit.FunSuite with ScalaCheckSuite:
     val base = ledger(1).withParams(_.copy(maxTxSize = 1 << 17))
     val l = base.withUtxo(inputs.foldLeft(base.utxo)(_.updated(_, script)))
     val (raw, _) = tx(inputs, Vector(bob.address() -> (99 * ada)), ada, Vector(alice))
-    val parsed = MempoolState.parse(raw).fold(r => fail(r.message), _._2)
     val total = BigInt(1) << 31
-    assertEquals(BigInt(MempoolState.refScriptBytes(l, parsed)), total)
     add(pool(l), raw) match
-      case Left(
-            Rejection.Ledger(
-              LedgerFailure.Rejected.Single(_, PredicateFailure.TxRefScriptsSizeTooBig(m))
-            )
-          ) =>
+      case Left(Rejection.ConwayRefused(_, failures)) if failures.length == 1 =>
+        val m = failures.head match
+          case ConwayLedgerPredFailure.ConwayTxRefScriptsSizeTooBig(m) => m
+          case other => fail(s"expected the size of the reference scripts refused, got $other")
         assertEquals(
           (BigInt(m.supplied), BigInt(m.expected)),
           (total, BigInt(RefScripts.MaxRefScriptSizePerTx))
@@ -184,8 +195,6 @@ class MempoolMeasureSuite extends munit.FunSuite with ScalaCheckSuite:
       Vector(bob),
       referenceInputs = Vector(txIn(50))
     )
-    val parsed = MempoolState.parse(raw).fold(r => fail(r.message), _._2)
-    assertEquals(MempoolState.refScriptBytes(l, parsed), size.toLong)
     val admitted = add(pool(l), raw).fold(r => fail(r.message), identity)
     assertEquals(admitted.entries.map(e => (e.id, e.refScriptBytes)), Vector((id, size.toLong)))
   }
@@ -194,13 +203,13 @@ class MempoolMeasureSuite extends munit.FunSuite with ScalaCheckSuite:
     val size = RefScripts.MaxRefScriptSizePerTx + 1
     val s0 = pool(ledger(1))
     val (raw, _) = spendRefScript
-    val afterHeld = s0.withCurrent(withRefScript(ledger(1), size))
+    val afterHeld = s0.withCurrent(withRefScript(ledger(1), size).toPool)
     assert(
       add(afterHeld, raw).left.exists {
-        case Rejection.Ledger(
-              LedgerFailure.Rejected.Single(_, _: PredicateFailure.TxRefScriptsSizeTooBig)
-            ) =>
-          true
+        case Rejection.ConwayRefused(_, failures) =>
+          failures.toChain.toList match
+            case List(ConwayLedgerPredFailure.ConwayTxRefScriptsSizeTooBig(_)) => true
+            case _                                                             => false
         case _ => false
       }
     )
@@ -208,11 +217,13 @@ class MempoolMeasureSuite extends munit.FunSuite with ScalaCheckSuite:
     // then refuse its input
     assert(
       add(s0, raw).left.exists {
-        case Rejection.Ledger(
-              LedgerFailure.Rejected
-                .Single(_, PredicateFailure.Mempool(MempoolProblem.AllInputsSpent))
-            ) =>
-          true
+        case Rejection.ConwayRefused(_, failures) =>
+          failures.toChain.toList match
+            case List(
+                  ConwayLedgerPredFailure.ConwayMempoolFailure(MempoolProblem.AllInputsSpent)
+                ) =>
+              true
+            case _ => false
         case _ => false
       }
     )
@@ -288,12 +299,12 @@ class MempoolMeasureSuite extends munit.FunSuite with ScalaCheckSuite:
     assert(add(pool(narrow(ledger(2))), big).left.exists(_.isInstanceOf[Rejection.Full]))
     assert(
       add(pool(narrow(ledger(2)).withParams(_.copy(maxTxSize = 50))), big).left
-        .exists(_.isInstanceOf[Rejection.Limits])
+        .exists(_.isInstanceOf[Rejection.ConwayRefused])
     )
     // a duplicate on a pool without room waits for room, as the reference's MEMPOOL rule, which
     // refuses it, comes after the capacity; with room it is refused as the duplicate it is
     val over = held(pool(ledger(2)), t1)
-      .sync(Right(narrow(ledger(2))), 1000, env)
+      .sync(Right(narrow(ledger(2)).toPool), 1000, env)
       ._1
     assert(over.free.bytes < 0)
     assert(add(over, t1).left.exists(_.isInstanceOf[Rejection.Full]), s"${add(over, t1)}")
@@ -315,7 +326,7 @@ class MempoolMeasureSuite extends munit.FunSuite with ScalaCheckSuite:
     assertEquals(s0.capacity.bytes, 2 * unit)
     assertEquals(s0.capacity.refScriptsBytes, 2L * RefScripts.MaxRefScriptSizePerBlock)
     val grown = l.withParams(_.copy(maxBlockBodySize = 1024 + 3 * unit))
-    val (synced, dropped) = s0.sync(Right(grown), 1000, env)
+    val (synced, dropped) = s0.sync(Right(grown.toPool), 1000, env)
     assertEquals(dropped, Vector.empty)
     assertEquals(synced.capacity.bytes, 6 * unit)
     assertEquals(synced.capacity, Capacity.of(grown.params, None))
@@ -340,7 +351,7 @@ class MempoolMeasureSuite extends munit.FunSuite with ScalaCheckSuite:
     val (t3, _) = pay(3)
     val s = held(held(pool(ledger(3)), t1), t2)
     val shrunk = ledger(3).withParams(_.copy(maxBlockBodySize = 1024 + 10))
-    val (synced, dropped) = s.sync(Right(shrunk), 1000, env)
+    val (synced, dropped) = s.sync(Right(shrunk.toPool), 1000, env)
     assertEquals(dropped, Vector.empty)
     assertEquals(synced.entries.size, 2)
     assert(!synced.used.fits(synced.capacity))
@@ -357,7 +368,7 @@ class MempoolMeasureSuite extends munit.FunSuite with ScalaCheckSuite:
       pool(l, Some(5 * unit)),
       held(pool(l), pay(1)._1),
       pool(l)
-        .sync(Right(l.withParams(_.copy(maxBlockBodySize = 1024 + 7 * unit))), 1000, env)
+        .sync(Right(l.withParams(_.copy(maxBlockBodySize = 1024 + 7 * unit)).toPool), 1000, env)
         ._1,
       pool(l).withBase(Left(xyz.kd5ujc.scarab.node.read.ConwayView.Unavailable.InByron))
     )

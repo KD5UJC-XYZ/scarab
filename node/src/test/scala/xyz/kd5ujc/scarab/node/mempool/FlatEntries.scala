@@ -10,6 +10,7 @@ object FlatEntries:
   extension (entry: Entry)
     def tx: Tx = entry.held match
       case Held.Flat(_, _, tx) => tx
+      case Held.InConway(held) => held.read.flat
       case Held.InDijkstra(held) =>
         munit.Assertions.fail(
           s"a Dijkstra transaction, ${held.read.id.hex}, where a flat one is held"

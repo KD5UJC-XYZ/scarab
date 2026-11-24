@@ -60,15 +60,22 @@ import xyz.kd5ujc.scarab.ledger.era.{
   EraTxBody,
   IsPhase2Valid,
   PParams,
+  PParamsError,
   Proposals,
   StAnnTx,
   TxLevel,
   UTxO
 }
 import xyz.kd5ujc.scarab.ledger.era.Tx as ETx
-import xyz.kd5ujc.scarab.ledger.era.conway.ConwayUTxO
+import xyz.kd5ujc.scarab.ledger.era.conway.{ConwayPParams, ConwayUTxO}
 import xyz.kd5ujc.scarab.ledger.era.rules.{
+  ConwayLedgerPredFailure,
+  ConwayMempoolRun,
+  ConwayRuleDefect,
+  ConwayUtxoPredFailure,
   ConwayUtxosPredFailure,
+  ConwayUtxowPredFailure,
+  InjectLedgerFailure,
   DijkstraClosure,
   DijkstraLedgerPredFailure,
   DijkstraMempoolPredFailure,
@@ -80,6 +87,8 @@ import xyz.kd5ujc.scarab.ledger.era.rules.{
 import xyz.kd5ujc.scarab.ledger.rules.EraLedger
 import xyz.kd5ujc.scarab.ledger.state.Dijkstra
 import xyz.kd5ujc.scarab.ledger.era.Mismatch
+import xyz.kd5ujc.scarab.ledger.era.rules.LedgerEnv as EraLedgerEnv
+import xyz.kd5ujc.scarab.protocol.StateLayout
 import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.TxMeasure
 
 /** The ledger the mempool validates a transaction against: the ledger state at the chain tip,
@@ -91,9 +100,9 @@ import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.TxMeasure
   *
   * Each era applies a transaction by its own rule (`ApplyTx`, cardano-ledger f649f975): LEDGER from
   * Shelley to Babbage ([[EarlierLedger]]; `Shelley/API/Mempool.hs:325-344`, `Allegra.hs:37-47`,
-  * `Mary.hs:44-53`, `Alonzo.hs:77-94`, `Babbage.hs:59-69`), MEMPOOL in Conway ([[MempoolLedger]];
-  * `Conway.hs:50-59`), and Dijkstra's MEMPOOL in the Leios build ([[DijkstraLedger]];
-  * `Dijkstra.hs:87-96`, cardano-ledger 9df9f98c).
+  * `Mary.hs:44-53`, `Alonzo.hs:77-94`, `Babbage.hs:59-69`), Conway's MEMPOOL on the era's types in
+  * Conway ([[ConwayPoolLedger]]; `Conway.hs:50-59`), and Dijkstra's MEMPOOL in the Leios build
+  * ([[DijkstraLedger]]; `Dijkstra.hs:87-96`, cardano-ledger 9df9f98c).
   */
 sealed trait PoolLedger:
   /** The era of the ledger, which every transaction the pool holds is of. */
@@ -110,7 +119,7 @@ sealed trait PoolLedger:
 
   def withUtxo(u: Utxo): PoolLedger
 
-/** The ledger of an era from Shelley to Conway, whose transactions are the node's flat ones
+/** The ledger of an era from Shelley to Babbage, whose transactions are the node's flat ones
   * ([[Tx]]).
   */
 sealed trait FlatLedger extends PoolLedger:
@@ -196,7 +205,8 @@ object PoolLedger:
   ): Either[Failure, Either[ConwayView.Unavailable, PoolLedger]] = e match
     case i: EraNes.InEra[x] =>
       i.era match
-        case ShelleyBasedEra.SConway => Right(Right(MempoolLedger.of(i.nes)))
+        case ShelleyBasedEra.SConway =>
+          Right(ConwayPoolLedger.of(i.nes).leftMap(ConwayView.Unavailable.Params(_)))
         case ShelleyBasedEra.SDijkstra =>
           build match
             case ReferenceBuild.Leios =>
@@ -294,13 +304,14 @@ final case class EarlierLedger[E <: EraTag](
       .flatMap(_.leftMap(LedgerFailure.Rejected(tx.body.id, _)))
       .map(after => copy(ls = after.state))
 
-/** The ledger a transaction is validated against: the Conway ledger state at the chain tip, the
-  * treasury of the chain account (the transaction's `currentTreasuryValue` is checked against it)
-  * and the epoch. The mempool is Conway's: the transaction is `[body, witnesses, is_valid,
-  * auxiliary_data]`, and the rules are those of the era-indexed state ([[Ledger]]).
+/** The flat rules' Conway ledger: the Conway ledger state at the chain tip, the treasury of the
+  * chain account (the transaction's `currentTreasuryValue` is checked against it) and the epoch,
+  * whose transactions the flat MEMPOOL judges. The pool judges Conway's transactions by Conway's
+  * era rules ([[ConwayPoolLedger]], #85); the forger applies its block's again on this ledger until
+  * its Conway path takes the era's (the switch's PR7), and the flat MEMPOOL stays for the suites
+  * that compare the two and for `tools`.
   */
-final case class MempoolLedger(ls: LedgerState[Conway], treasury: Coin, epoch: BigInt)
-    extends FlatLedger:
+final case class MempoolLedger(ls: LedgerState[Conway], treasury: Coin, epoch: BigInt):
   def era: Era = Era.Conway
 
   /** The protocol parameters in force. */
@@ -394,6 +405,203 @@ object MempoolLedger:
       env: MempoolEnv
   ): Either[TickFailure, Either[ConwayView.Unavailable, MempoolLedger]] =
     ConwayView(s, tip).traverse(tick(_, tip.map(_.slot), env))
+
+/** The pool's ledger of Conway, whose transactions Conway's MEMPOOL judges on the era's types
+  * (`LedgerSupportsMempool (ShelleyBlock proto ConwayEra)`, ouroboros-consensus 82ecba32
+  * `Shelley/Ledger/Mempool.hs`; `ApplyTx ConwayEra`, cardano-ledger f649f975 `Conway.hs:50-59`,
+  * [[ConwayMempoolRun]]): the ledger state of the new-epoch state ticked to the slot after the tip
+  * (`mkMempoolState`, `Shelley/API/Mempool.hs:384-385`) and its chain account (`mkMempoolEnv`,
+  * `:363-377`), the epoch, the parameters in force read into Conway's once, when the ledger is made
+  * ([[ConwayPoolLedger.of]]), and the layout of the state, which Conway's decoders read a
+  * transaction's pool registrations in ([[ConwayRead.of]]).
+  */
+final case class ConwayPoolLedger private (
+    ls: LedgerState[Conway],
+    account: ChainAccountState,
+    epoch: BigInt,
+    pp: PParams[Conway],
+    layout: StateLayout
+) extends PoolLedger:
+  def era: Era = Era.Conway
+
+  /** The parameters in force, in the node's record. */
+  def params: ProtocolParams = ls.utxo.gov.curPParams
+
+  def utxo: Utxo = ls.utxo.utxo.utxo
+
+  def withUtxo(u: Utxo): ConwayPoolLedger =
+    copy(ls = ls.copy[Conway](utxo = ls.utxo.copy(utxo = UtxoTables(u))))
+
+  /** `t`, which the flat decoders read, read by Conway's in the ledger's layout
+    * ([[ConwayRead.of]]): where they refuse what the flat ones read, the node's two readings
+    * disagree, which is no verdict on the transaction ([[ConwayUnjudged.Projection]]).
+    */
+  def read(t: xyz.kd5ujc.scarab.node.mempool.EraTx): Either[Rejection, ConwayRead] =
+    ConwayRead
+      .of(t, layout)
+      .leftMap(e => Rejection.ConwayUnjudged(Some(t.parts.id), ConwayUnjudged.Projection(e)))
+
+  /** `mkMempoolEnv` of the slot (`Shelley/API/Mempool.hs:363-377`, cardano-ledger f649f975). */
+  private def mempoolEnv(slot: BigInt): EraLedgerEnv[Conway] =
+    ConwayMempoolRun.mkMempoolEnv(slot, pp, account)
+
+  /** The stored outputs of the transaction's inputs, read into the era. */
+  private def utxoOf(r: ConwayRead): Either[Rejection, UTxO[Conway]] =
+    ConwayMempoolRun
+      .utxoOf(ls, r.tx)
+      .leftMap(d => ConwayUnjudged.rejection(r.id, ConwayRuleDefect.UtxoState(d)))
+
+  /** A judgment of Conway's rules on `r`: a defect ([[ConwayUnjudged.rejection]]), the refusal
+    * ([[Rejection.ConwayRefused]]), or what the transaction leaves.
+    */
+  private def judged[A](r: ConwayRead)(outcome: ConwayMempoolRun.Outcome[A]): Either[Rejection, A] =
+    outcome
+      .leftMap(ConwayUnjudged.rejection(r.id, _))
+      .flatMap(_.leftMap(e => Rejection.ConwayRefused(r.id, e.failures)))
+
+  /** `txMeasurePhase1` of Conway (`txMeasureAlonzo`, ouroboros-consensus 82ecba32
+    * `Shelley/Ledger/Mempool.hs:590-612`): the size (`sizeTxF`) at most `maxTxSize` and the
+    * execution units (`totExUnits`) pointwise at most `maxTxExUnits`, the two accumulated, size
+    * first, as `Validation` accumulates them; each failure UTXO's (`MaxTxSizeUTxO`,
+    * `ExUnitsTooBigUTxO`) under LEDGER's UTXOW. The measure's bytes are the size plus
+    * [[Capacity.PerTxOverhead]] ([[ConwayRead.measure]]).
+    */
+  def phase1(r: ConwayRead): Either[Rejection, TxMeasure] =
+    val size = BigInt(r.size)
+    val units = r.units
+    val maxTxSize = EraPParams.ppMaxTxSizeL[Conway].get(pp).value
+    val maxTxExUnits = AlonzoEraPParams.ppMaxTxExUnitsL[Conway].get(pp).units
+    val inject = InjectLedgerFailure.conwayUtxow[ConwayUtxoPredFailure[Conway]]
+    val tooBig = Option.unless(size <= maxTxSize)(
+      inject.injectFailure(ConwayUtxoPredFailure.MaxTxSizeUTxO[Conway](Mismatch(size, maxTxSize)))
+    )
+    val tooMuch = Option.unless(units.fits(maxTxExUnits))(
+      inject.injectFailure(
+        ConwayUtxoPredFailure.ExUnitsTooBigUTxO[Conway](Mismatch(units, maxTxExUnits))
+      )
+    )
+    NonEmptyChain
+      .fromSeq(tooBig.toList ++ tooMuch.toList)
+      .map(Rejection.ConwayRefused(r.id, _))
+      .toLeft(r.measure)
+
+  /** `txMeasurePhase2` of Conway (`txMeasureRefScripts`, `Shelley/Ledger/Mempool.hs:714-726`,
+    * ouroboros-consensus 82ecba32): the reference-script bytes of the transaction's spent and
+    * reference inputs in the state after the held transactions (`txNonDistinctRefScriptsSize`,
+    * `Conway/UTxO.hs:164-170`, cardano-ledger f649f975), at most `maxRefScriptSizePerTx`
+    * (`ppMaxRefScriptSizePerTxG`, `Conway/PParams.hs:981`), or LEDGER's
+    * `ConwayTxRefScriptsSizeTooBig`.
+    */
+  def phase2(r: ConwayRead): Either[Rejection, Long] =
+    for
+      u <- utxoOf(r)
+      size = ConwayUTxO.txNonDistinctRefScriptsSize[Conway, TxLevel.Top](u, r.tx)(using
+        EraTx.conway,
+        EraTxBody.conway,
+        EraTx.conway.bodyOf.top,
+        EraTxBody.conway.top
+      )
+      limit = EraPParams.conway.ppMaxRefScriptSizePerTxG.get(pp).value.toLong
+      _ <- Either.cond(
+        size <= limit,
+        (),
+        Rejection.ConwayRefused(
+          r.id,
+          NonEmptyChain.one(
+            ConwayLedgerPredFailure.ConwayTxRefScriptsSizeTooBig[Conway](Mismatch(size, limit))
+          )
+        )
+      )
+    yield size
+
+  /** `applyTxWithFullValidation` (`Shelley/API/Mempool.hs:406-413`, cardano-ledger f649f975) of `r`
+    * at the environment's slot ([[ConwayMempoolRun.applyTx]]): the ledger after it, and the
+    * transaction as held with what it was validated with.
+    */
+  private def applyFull(
+      r: ConwayRead,
+      env: ConwayPoolEnv
+  ): Either[Rejection, (ConwayPoolLedger, ConwayAdmitted)] =
+    judged(r)(ConwayMempoolRun.applyTx(env.judging, mempoolEnv(env.slot), ls, r.tx)).map(
+      (after, validated) => copy(ls = after) -> ConwayAdmitted(r, validated)
+    )
+
+  /** `applyTx` of Conway (`applyShelleyTx`, `Shelley/Ledger/Mempool.hs:288-323`, through
+    * `applyAlonzoBasedTx`, `Shelley/Eras.hs:190-269`, ouroboros-consensus 82ecba32): a local
+    * transaction (`Intervene`) applied as it is; a peer's (`DoNotIntervene`) applied with its flag
+    * `Phase2Valid`, and, when the only failure is UTXOS's `ValidationTagMismatch`
+    * (`isIncorrectClaimedFlag` of Conway, `:326-338`; 808e4005 `:338-350`, whatever the flag it
+    * names), again with `Phase2Invalid`, that result the answer.
+    */
+  def admit(
+      r: ConwayRead,
+      env: ConwayPoolEnv,
+      source: Source
+  ): Either[Rejection, (ConwayPoolLedger, ConwayAdmitted)] =
+    source match
+      case Source.Local => applyFull(r, env)
+      case Source.Remote =>
+        applyFull(r.withIsValid(IsPhase2Valid.Phase2Valid), env) match
+          case Left(Rejection.ConwayRefused(_, failures))
+              if ConwayPoolLedger.isIncorrectClaimedFlag(failures) =>
+            applyFull(r.withIsValid(IsPhase2Valid.Phase2Invalid), env)
+          case other => other
+
+  /** A held transaction applied again as the build's consensus applies it
+    * ([[ConwayMempoolRun.reapply]]: 11.1's `reapplyTx`, 11.2's and the Leios build's
+    * `reapplyValidatedTx`). The transaction stays as held.
+    */
+  def reapply(held: ConwayAdmitted, env: ConwayPoolEnv): Either[Rejection, ConwayPoolLedger] =
+    judged(held.read)(
+      ConwayMempoolRun.reapply(env.judging, mempoolEnv(env.slot), ls, held.validated)
+    ).map(after => copy(ls = after))
+
+  /** A held transaction of the era before Conway, translated into it, `r`, reapplied as 11.1's
+    * consensus reapplies it across the crossing ([[ConwayMempoolRun.reapplyTranslated]]): the
+    * ledger after it, and the transaction held from then on.
+    */
+  def reapplyTranslated(
+      r: ConwayRead,
+      env: ConwayPoolEnv
+  ): Either[Rejection, (ConwayPoolLedger, ConwayAdmitted)] =
+    judged(r)(ConwayMempoolRun.reapplyTranslated(env.judging, mempoolEnv(env.slot), ls, r.tx))
+      .map((after, validated) => copy(ls = after) -> ConwayAdmitted(r, validated))
+
+object ConwayPoolLedger:
+  /** The pool's ledger of the new-epoch state `nes`, ticked to the slot after the tip; parameters
+    * in force that do not read into Conway's ([[PParamsError]]) give none.
+    */
+  def of(nes: NewEpochState[Conway]): Either[PParamsError, ConwayPoolLedger] =
+    of(nes.es.ls, nes.es.chainAccount, nes.epoch.toBigInt, nes.layout.stateLayout)
+
+  /** The pool's ledger of the ledger state `ls` of the epoch `epoch`, ticked to the slot after the
+    * tip, with the chain account `account`, in the layout `layout`.
+    */
+  def of(
+      ls: LedgerState[Conway],
+      account: ChainAccountState,
+      epoch: BigInt,
+      layout: StateLayout
+  ): Either[PParamsError, ConwayPoolLedger] =
+    ConwayPParams
+      .fromStored(ls.utxo.gov.curPParams)
+      .map(p => ConwayPoolLedger(ls, account, epoch, PParams[Conway](p), layout))
+
+  /** `isIncorrectClaimedFlag` of Conway (`Shelley/Eras.hs:326-338`, ouroboros-consensus 82ecba32;
+    * `:338-350` at 808e4005): the only failure is UTXOS's `ValidationTagMismatch`, under LEDGER's
+    * UTXOW and UTXO, whatever the flag it names.
+    */
+  def isIncorrectClaimedFlag(failures: NonEmptyChain[ConwayLedgerPredFailure[Conway]]): Boolean =
+    failures.length == 1 && (failures.head match
+      case ConwayLedgerPredFailure.ConwayUtxowFailure(
+            ConwayUtxowPredFailure.UtxoFailure(
+              ConwayUtxoPredFailure.UtxosFailure(
+                ConwayUtxosPredFailure.ValidationTagMismatch(_, _)
+              )
+            )
+          ) =>
+        true
+      case _ => false)
 
 /** The state a Dijkstra transaction is judged against, and the rules that judge it
   * (`LedgerSupportsMempool (ShelleyBlock proto DijkstraEra)`, ouroboros-consensus 2416493b

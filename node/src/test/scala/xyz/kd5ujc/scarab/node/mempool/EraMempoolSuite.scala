@@ -93,13 +93,13 @@ class EraMempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   private def funds = out(alice.address(), 100 * ada)
 
   /** A ledger of `era` with two outputs of 100 ada for alice, at txIn(1) and txIn(2). */
-  private def ledger(era: Era): FlatLedger = era match
+  private def ledger(era: Era): PoolLedger = era match
     case Era.Shelley                           => earlier[Shelley](2)
     case Era.Allegra                           => earlier[Allegra](3)
     case Era.Mary                              => earlier[Mary](4)
     case Era.Alonzo                            => earlier[Alonzo](5)
     case Era.Babbage                           => earlier[Babbage](7)
-    case Era.Conway | Era.Byron | Era.Dijkstra => TxKit.ledger(2)
+    case Era.Conway | Era.Byron | Era.Dijkstra => TxKit.ledger(2).toPool
 
   private def pool(era: Era): MempoolState = MempoolState.empty(Right(ledger(era)), 1000, None)
 
@@ -395,10 +395,27 @@ class EraMempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       val (_, parts) = payment(era, forged = true)
       val tx =
         xyz.kd5ujc.scarab.ledger.Tx.fromBlock(parts, era).fold(e => fail(e.message), identity)
-      val l = ledger(era)
-      val txEnv = translating.txEnv(1000, l)
-      assert(l.submit(tx, txEnv, translating.rules).isLeft, s"$era: every check refuses it")
-      assert(l.reapply(tx, txEnv, translating.rules).isRight, s"$era: reapplyTx does not verify it")
+      ledger(era) match
+        case l: FlatLedger =>
+          val txEnv = translating.txEnv(1000, l)
+          assert(l.submit(tx, txEnv, translating.rules).isLeft, s"$era: every check refuses it")
+          assert(
+            l.reapply(tx, txEnv, translating.rules).isRight,
+            s"$era: reapplyTx does not verify it"
+          )
+        // Conway's MEMPOOL on the era's types: `applyTx` with every check, then the held
+        // transaction applied again as the build's consensus does
+        case c: ConwayPoolLedger =>
+          val read = c
+            .read(xyz.kd5ujc.scarab.node.mempool.EraTx(parts, tx))
+            .fold(r => fail(r.message), identity)
+          val env = ConwayPoolEnv.of(translating, 1001)
+          assert(c.admit(read, env, Source.Local).isLeft, s"$era: every check refuses it")
+          assert(
+            c.reapply(c.heldAsValidated(read, env), env).isRight,
+            s"$era: reapplyTx does not verify it"
+          )
+        case _: DijkstraLedger => fail(s"$era: a Dijkstra ledger")
     }
   }
 
@@ -493,11 +510,20 @@ class EraMempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     val (translated, kept) = state.sync(Right(ledger(Era.Conway)), 1000, translating)
     assertEquals(kept, Vector.empty, "11.1 reapplies it: the signature is a static check")
     assertEquals(translated.entries.map(_.era), Vector(Era.Conway))
+    // held as validated across the crossing (`translateValidatedTxBabbageToConwayWrapper`), in
+    // Conway's types, and applied again without the static checks at the next revalidation
+    translated.entries.map(_.held) match
+      case Vector(Held.InConway(held)) =>
+        assertEquals(held.read.id, entry.id)
+        assertEquals(held.validated.tx, held.read.tx)
+      case other => fail(s"not held in Conway's types: $other")
+    val (again, droppedAgain) = translated.sync(Right(ledger(Era.Conway)), 1000, translating)
+    assertEquals((again.entries.map(_.id), droppedAgain), (Vector(entry.id), Vector.empty))
     val (redecoded, dropped) = state.sync(Right(ledger(Era.Conway)), 1000, redecoding)
     assertEquals(redecoded.entries, Vector.empty)
     dropped match
       case Vector(
-            (`entry`, Rejection.Ledger(_: xyz.kd5ujc.scarab.ledger.LedgerFailure.Rejected))
+            (`entry`, Rejection.ConwayRefused(_, _))
           ) =>
         ()
       case other => fail(s"the Leios build must refuse it again: $other")

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.forge
 
+import xyz.kd5ujc.scarab.node.mempool.toPool
 import xyz.kd5ujc.scarab.ledger.state.Network
 import xyz.kd5ujc.scarab.node.assertions.Assertions
 import xyz.kd5ujc.scarab.node.ConfigSettings
@@ -228,8 +229,7 @@ trait ForgeFixture:
                 )
               )
             )
-            .left
-            .map(ChainError.MempoolTick(BigInt(4999) + 1, _))
+            .bimap(ChainError.MempoolTick(BigInt(4999) + 1, _), _.map(_.toPool))
         )
       mempool <- Mempool.create[IO](
         mempoolBase,
@@ -279,8 +279,10 @@ trait ForgeFixture:
                   xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder
                 )
               )
-              .left
-              .map(ChainError.MempoolTick(c.tipRef.fold(BigInt(0))(_.slot + 1), _))
+              .bimap(
+                ChainError.MempoolTick(c.tipRef.fold(BigInt(0))(_.slot + 1), _),
+                _.map(_.toPool)
+              )
           )
           .flatMap(
             mempool.sync(_, c.tipRef.fold(BigInt(0))(_.slot), Set.empty, c.tipRef.map(_.hash))

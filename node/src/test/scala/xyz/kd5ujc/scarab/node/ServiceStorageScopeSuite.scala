@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.node.mempool.toPool
 import xyz.kd5ujc.scarab.protocol.StateLayout
 import xyz.kd5ujc.scarab.node.assertions.Assertions
 import xyz.kd5ujc.scarab.protocol.ReferenceBuild
@@ -97,7 +98,7 @@ class ServiceStorageScopeSuite extends FailsOnUncaught:
           store <- MemoryUtxoStore[IO]
           _ <- store.write(full.utxo.toVector.map((i, o) => i -> Some(o)), 0L)
           pool <- Mempool.create[IO](
-            Right(full.withUtxo(Utxo.empty)),
+            Right(full.withUtxo(Utxo.empty).toPool),
             1000,
             TxKit.env,
             None,
@@ -121,7 +122,7 @@ class ServiceStorageScopeSuite extends FailsOnUncaught:
       pool <- opened {
         MemoryUtxoStore[IO].flatMap(store =>
           Mempool.create[IO](
-            Right(TxKit.ledger(2).withUtxo(Utxo.empty)),
+            Right(TxKit.ledger(2).withUtxo(Utxo.empty).toPool),
             1000,
             TxKit.env,
             None,

@@ -47,7 +47,7 @@ import xyz.kd5ujc.scarab.node.mempool.{
   EarlierLedger,
   LocalSubmission,
   MempoolEnv,
-  MempoolLedger,
+  ConwayPoolLedger,
   MempoolState,
   Rejection,
   Source
@@ -65,8 +65,9 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{
   * `scripts/devnet/refusalcorpus.py` records them on the devnet; nothing here is written by hand.
   *
   * Each Conway case puts the submitted bytes through Scarab's own path: `LocalSubmission.unwrap`, a
-  * mempool whose ledger is the reference's state ticked to the successor of the recorded tip
-  * (`MempoolLedger.tick`), `MempoolState.add`, and `LocalSubmission.reasonItem`. The bytes must
+  * mempool whose ledger is the reference's state ticked to the successor of the recorded tip, which
+  * Conway's era rules judge ([[ConwayPoolLedger]]), `MempoolState.add`, and
+  * `LocalSubmission.reasonItem`, which writes Conway's refusal by its era encoder. The bytes must
   * equal the reference's. An earlier-era case goes the same path, its pool's ledger the era's
   * ([[replayPreConway]], #934). Every difference fails its case. A family the manifest requires for
   * an era and no case covers fails that era's coverage test (an incomplete gate is never a pass).
@@ -279,7 +280,11 @@ class ReferenceRefusalSuite extends FunSuite:
     for
       at <- recorded[Conway](c, rc, rules)
       env = at.env
-      ledger <- MempoolLedger.tick(at.nes, Some(rc.tipSlot), env).leftMap(ReplayProblem.Tick(_))
+      slot <- SlotNo
+        .fromBigInt(rc.tipSlot + 1)
+        .leftMap(e => ReplayProblem.Tick(TickFailure.Vocab(e)))
+      ticked <- Sts(Tick.sts[Conway])(env.rules, (), at.nes, slot).leftMap(ReplayProblem.Tick(_))
+      ledger <- ConwayPoolLedger.of(ticked).leftMap(ReplayProblem.Params(_))
     yield
       val pool = MempoolState.empty(Right(ledger), rc.tipSlot, None)
       LocalSubmission
@@ -308,20 +313,32 @@ object ReferenceRefusalSuite:
     */
   final case class BuildSensitive(corpus: String, label: String, other: ReferenceBuild)
 
+  /** The withdrawals 11.1 refuses in CERTS below version 11, recorded at version 10, which the
+    * Leios build's LEDGER refuses at every version (`MovedWithdrawals`,
+    * https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7055304484): replayed under the
+    * Leios build's rules, the mempool sends LEDGER's refusal, not the recorded one.
+    */
+  private val movedWithdrawals: Vector[BuildSensitive] =
+    Vector(
+      "withdrawal-more-than-balance",
+      "withdrawal-unregistered-account",
+      "withdrawal-network-flag-true"
+    ).map(BuildSensitive("conway-devnet", _, ReferenceBuild.Leios))
+
   /** The bootstrap-attribute case (#832), refused as `OutputBootAddrAttrsTooBig` by the Leios build
     * and as `OutputTooBigUTxO` by 11.1 from Allegra on (`UtxoTests.injectedBootAddrAttrsTooBig`):
     * each corpus that holds it, against the other build.
     */
   val buildSensitive: Vector[BuildSensitive] =
     val label = "utxo-bootstrap-attributes-too-big"
-    BuildSensitive(
+    (BuildSensitive(
       "conway-bootstrap-attributes-leios-b004fe0c",
       label,
       ReferenceBuild.Release11_1
     ) +:
       Vector("allegra", "mary", "alonzo", "babbage", "conway").map(era =>
         BuildSensitive(s"$era-bootstrap-attributes", label, ReferenceBuild.Leios)
-      )
+      )) ++ movedWithdrawals
 
   /** The build a corpus was recorded from: the one its `corpus.json` names (`referenceBuild`), and
     * 11.1 for a corpus that names none, as every corpus recorded before corpora named their build
@@ -432,6 +449,7 @@ object ReferenceRefusalSuite:
     case State(error: DecodeError)
     case Utxo(error: DecodeError)
     case Tick(failure: TickFailure)
+    case Params(error: xyz.kd5ujc.scarab.ledger.era.PParamsError)
     case Item
     case Transaction(error: LedgerDecodeError)
 
@@ -443,6 +461,7 @@ object ReferenceRefusalSuite:
       case State(e)       => s"the reference's state does not decode: ${e.render}"
       case Utxo(e)        => s"the reference's UTxO does not decode: ${e.render}"
       case Tick(f)        => s"the state does not tick to the next slot: ${f.show}"
+      case Params(e)      => s"the parameters in force are not Conway's: $e"
       case Item           => "the case's item is not `[expected era index, #6.24(tx)]`"
       case Transaction(e) => s"Scarab does not decode the transaction: ${e.message}"
     }

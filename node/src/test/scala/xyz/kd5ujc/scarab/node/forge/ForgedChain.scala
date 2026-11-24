@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.forge
 
+import xyz.kd5ujc.scarab.node.mempool.toPool
 import xyz.kd5ujc.scarab.ledger.state.Network
 import xyz.kd5ujc.scarab.node.MirrorSteps.verdict
 import xyz.kd5ujc.scarab.node.assertions.Assertions
@@ -334,10 +335,10 @@ class ForgedChainSetup(val geometry: EpochGeometry):
                     )
                   )
                 )
-                .left
-                .map(
+                .bimap(
                   ChainError
-                    .MempoolTick(initial.tipRef.fold(BigInt(slots.head.toLong - 1))(_.slot) + 1, _)
+                    .MempoolTick(initial.tipRef.fold(BigInt(slots.head.toLong - 1))(_.slot) + 1, _),
+                  _.map(_.toPool)
                 )
             )
           mempool <- Mempool.create[IO](

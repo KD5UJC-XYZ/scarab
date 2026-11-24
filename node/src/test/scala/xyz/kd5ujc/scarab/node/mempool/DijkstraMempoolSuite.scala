@@ -670,8 +670,8 @@ class DijkstraMempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         .map(i => (i, tipOf(i - 1)))
         .collectFirst(Function.unlift { (i, t) =>
           PoolLedger.at(s(i), Some(t), envOf(s(i), t), transition) match
-            case Right(Right(l: MempoolLedger)) => Some((i, t, l))
-            case _                              => None
+            case Right(Right(l: ConwayPoolLedger)) => Some((i, t, l))
+            case _                                 => None
         })
         .getOrElse(fail("no Conway ledger"))
       val (held, first) = pool(conwayPool, before)

@@ -97,7 +97,7 @@ class MempoolBackpressureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught
       events <- Queue.unbounded[IO, MempoolEvent]
       base = ledger(inputs).withParams(_.copy(maxBlockBodySize = 1024 + capacity))
       mempool <- Mempool.create[IO](
-        Right(base),
+        Right(base.toPool),
         1000,
         env,
         Some(word32(1)),
@@ -135,8 +135,8 @@ class MempoolBackpressureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught
       changed <- p.mempool.awaitChange(_ => false).timeout(failsafe)
       // a revalidation that frees nothing is not a reason to stop waiting, and a retry does not
       // announce the wait again
-      _ <- p.mempool.sync(Right(p.base), 1001)
-      freed <- p.mempool.sync(Right(p.after(s.held)), 1002, Set(idOf(s.held)))
+      _ <- p.mempool.sync(Right(p.base.toPool), 1001)
+      freed <- p.mempool.sync(Right(p.after(s.held).toPool), 1002, Set(idOf(s.held)))
       result <- blocked.joinWithNever.timeout(failsafe)
       held <- p.mempool.snapshot
       waits <- p.waitingIds
@@ -184,7 +184,7 @@ class MempoolBackpressureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught
       blocked <- p.mempool.add(s.wide, Source.Local).start
       _ <- p.waiting(idOf(s.wide))
       grown = p.base.withParams(_.copy(maxBlockBodySize = 1024 + 3 * s.capacity))
-      dropped <- p.mempool.sync(Right(grown), 1001)
+      dropped <- p.mempool.sync(Right(grown.toPool), 1001)
       result <- blocked.joinWithNever.timeout(failsafe)
       held <- p.mempool.snapshot
     yield

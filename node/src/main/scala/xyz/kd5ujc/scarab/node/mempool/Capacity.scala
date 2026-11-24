@@ -73,6 +73,8 @@ object Capacity:
   def of(ledger: PoolLedger, capacityOverride: Option[Word32]): TxMeasure = ledger match
     case flat: FlatLedger =>
       blocks(Shape.of(flat.era).project(blockUnit(flat.params)), capacityOverride)
+    case conway: ConwayPoolLedger =>
+      blocks(Shape.of(conway.era).project(blockUnit(conway.params)), capacityOverride)
     case d: DijkstraLedger => blocks(dijkstraBlockUnit(d.params) + d.reservation, capacityOverride)
 
   /** `blockCapacityTxMeasure` of Dijkstra (`TxLimits (ShelleyBlock p DijkstraEra)`,
@@ -205,6 +207,7 @@ object Capacity:
     case Held.Flat(_, _, tx) =>
       val units = tx.witnesses.totalExUnits
       TxMeasure(tx.size + PerTxOverhead, units.mem, units.steps, entry.refScriptBytes)
+    case Held.InConway(held)   => held.read.measure.copy(refScriptsBytes = entry.refScriptBytes)
     case Held.InDijkstra(held) => dijkstraMeasure(held.read.flat, entry.refScriptBytes)
 
   /** The first phase (`txMeasurePhase1`, `txMeasureAlonzo`): the transaction's size against the
@@ -242,23 +245,6 @@ object Capacity:
           )
         )
       case Shape.Alonzo | Shape.Conway => phase1(tx, params)
-
-  /** The second phase (`txMeasurePhase2`, `txMeasureRefScripts`, Conway): the reference-script
-    * bytes of the transaction's inputs and reference inputs in the state after the held
-    * transactions against the per-transaction maximum, both the reference's 64-bit `Int`. Before
-    * Conway the phase is trivial (`TrivialTxMeasurePhase2`, `Shelley/Ledger/Mempool.hs:522-544,
-    * 668-677, 751-761`, ouroboros-consensus 82ecba32, Babbage's included): nothing is measured.
-    */
-  def phase2(ledger: FlatLedger, tx: Tx): Either[PredicateFailure, Long] = ledger match
-    case conway: MempoolLedger =>
-      val size = MempoolState.refScriptBytes(conway, tx)
-      val limit = RefScripts.MaxRefScriptSizePerTx.toLong
-      Either.cond(
-        size <= limit,
-        size,
-        PredicateFailure.TxRefScriptsSizeTooBig(Mismatch(size, limit))
-      )
-    case _: EarlierLedger[?] => Right(0L)
 
   /** Which components of the measure an era has, in the hard-fork combinator's measure
     * (`hardForkInjTxMeasurePhase1` and `hardForkInjTxMeasurePhase2`,

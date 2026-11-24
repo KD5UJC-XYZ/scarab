@@ -176,6 +176,16 @@ object BlockBuilder:
     def of(params: ProtocolParams): Limits =
       Limits(params.maxBlockBodySize.toLong, params.maxBlockExUnits)
 
+  /** The flat transaction a Conway block takes of a held one, none of another era's: a Conway
+    * transaction, which Conway's rules admitted, is applied again here as the flat transaction it
+    * was read with, until the forger's Conway path takes the era's (#85). A total match with no
+    * default, so that a new kind of held transaction is placed here, never left out of every block
+    * by a default.
+    */
+  private[forge] def conwayTx(held: Held): Option[Tx] = held match
+    case Held.InConway(admitted)                 => Some(admitted.read.flat)
+    case Held.Flat(_, _, _) | Held.InDijkstra(_) => None
+
   /** The transactions of the block, as the reference takes them from its mempool (consensus
     * 82ecba329 `NodeKernel.hs` 693-715): the held transactions are revalidated in order against the
     * ticked ledger in the block's own environment (`getSnapshotFor`, `Mempool/Query.hs` 29-50, and
@@ -222,52 +232,58 @@ object BlockBuilder:
     )
     val rules = Globals(globals, geometry)
     val capacity = limit.capacity
+    // a Conway block takes Conway transactions: the pool's ledger is of the era of the slot after
+    // the tip, and the forger forges only on a Conway tip, so the pool it reads is Conway's. The
+    // selection after `entry`, whose flat transaction is `tx`, or none where it does not fit
+    def taken(entry: Entry, tx: Tx, acc: Acc): Option[Acc] =
+      val env = TxEnv(
+        slot,
+        epoch,
+        globals.network.wire,
+        firstSlotNextEpoch = geometry.firstSlot(epoch + 1),
+        stabilityWindow = geometry.stabilityWindow.toBigInt,
+        txIndex = acc.chosen.size,
+        updateQuorum = globals.updateQuorum,
+        clock = Some(clock.getOrElse(PosixClock.total(globals.systemStart, geometry))),
+        decoder = decoder,
+        evaluator = evaluator,
+        referenceBuild = globals.referenceBuild
+      )
+      val applied: Either[NoVerdict, Option[(MempoolLedger, Piece)]] = piece(entry).toOption match
+        case None => Right(None)
+        case Some(p) =>
+          acc.state
+            .reapply(tx, env, rules)
+            .fold(
+              {
+                // no verdict on the transaction (evaluator, crypto provider) or a quantity of the
+                // state out of range: it is withheld and the selection goes on
+                case unavailable: LedgerFailure.Unavailable    => Left(unavailable)
+                case unverifiable: LedgerFailure.Unverifiable  => Left(unverifiable)
+                case outOfRange: LedgerFailure.StateOutOfRange => Left(outOfRange)
+                case _                                         => Right(None)
+              },
+              next => Right(Some((next, p)))
+            )
+      applied match
+        case Left(noVerdict) => Some(acc.copy(withheld = acc.withheld :+ (entry -> noVerdict)))
+        case Right(None)     => Some(acc)
+        case Right(Some((next, p))) =>
+          val used = acc.used + Capacity.measure(entry)
+          Option.when(used.fits(capacity))(
+            acc.copy(state = next, chosen = acc.chosen :+ (entry -> p), used = used)
+          )
     @tailrec
     def go(rest: List[Entry], acc: Acc): Acc = rest match
       case Nil => acc
-      // a Conway block takes Conway transactions: the pool's ledger is of the era of the slot
-      // after the tip, and the forger forges only on a Conway tip, so the pool it reads is Conway's
-      case (entry @ Entry(Held.Flat(Era.Conway, _, tx), _, _, _)) :: more =>
-        val env = TxEnv(
-          slot,
-          epoch,
-          globals.network.wire,
-          firstSlotNextEpoch = geometry.firstSlot(epoch + 1),
-          stabilityWindow = geometry.stabilityWindow.toBigInt,
-          txIndex = acc.chosen.size,
-          updateQuorum = globals.updateQuorum,
-          clock = Some(clock.getOrElse(PosixClock.total(globals.systemStart, geometry))),
-          decoder = decoder,
-          evaluator = evaluator,
-          referenceBuild = globals.referenceBuild
-        )
-        val applied: Either[NoVerdict, Option[(MempoolLedger, Piece)]] = piece(entry).toOption match
-          case None => Right(None)
-          case Some(p) =>
-            acc.state
-              .reapply(tx, env, rules)
-              .fold(
-                {
-                  // no verdict on the transaction (evaluator, crypto provider) or a quantity of the
-                  // state out of range: it is withheld and the selection goes on
-                  case unavailable: LedgerFailure.Unavailable    => Left(unavailable)
-                  case unverifiable: LedgerFailure.Unverifiable  => Left(unverifiable)
-                  case outOfRange: LedgerFailure.StateOutOfRange => Left(outOfRange)
-                  case _                                         => Right(None)
-                },
-                next => Right(Some((next, p)))
-              )
-        applied match
-          case Left(noVerdict) =>
-            go(more, acc.copy(withheld = acc.withheld :+ (entry -> noVerdict)))
-          case Right(None) => go(more, acc)
-          case Right(Some((next, p))) =>
-            val used = acc.used + Capacity.measure(entry)
-            if used.fits(capacity) then
-              go(more, acc.copy(state = next, chosen = acc.chosen :+ (entry -> p), used = used))
-            else acc
-      // the transactions of the other eras, which a pool behind or past the crossing holds
-      case Entry(Held.Flat(_, _, _) | Held.InDijkstra(_), _, _, _) :: more => go(more, acc)
+      case entry :: more =>
+        conwayTx(entry.held) match
+          // the transactions of the other eras, which a pool behind or past the crossing holds
+          case None => go(more, acc)
+          case Some(tx) =>
+            taken(entry, tx, acc) match
+              case Some(next) => go(more, next)
+              case None       => acc
     val done = go(candidates.toList, Acc(ticked, Vector.empty, Vector.empty, TxMeasure.zero))
     Selection(done.chosen, done.withheld)
 

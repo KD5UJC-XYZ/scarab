@@ -185,14 +185,15 @@ class MempoolSyncSuite extends FailsOnUncaught with ScalaCheckSuite:
     val (t, _) = pay(1)
     val (conflict, _) = pay(1, fee = 2 * TxKit.ada)
     val (other, _) = pay(2)
-    val a = chainAt(10, 1000, Right(base))
-    val b = chainAt(11, 1001, Right(base.applied(parsed(conflict)._2)), Set(parsed(conflict)._1))
-    val c = chainAt(12, 1001, Right(base.applied(parsed(other)._2)), Set(parsed(other)._1))
+    val a = chainAt(10, 1000, Right(base.toPool))
+    val b =
+      chainAt(11, 1001, Right(base.applied(parsed(conflict)._2).toPool), Set(parsed(conflict)._1))
+    val c = chainAt(12, 1001, Right(base.applied(parsed(other)._2).toPool), Set(parsed(other)._1))
     for
       log <- Ref.of[IO, Vector[MempoolEvent]](Vector.empty)
       armed <- Ref.of[IO, Option[(Deferred[IO, Unit], Deferred[IO, Unit])]](None)
       mempool <- Mempool.create[IO](
-        Right(base),
+        Right(base.toPool),
         BigInt(1000),
         env,
         None,

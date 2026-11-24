@@ -74,7 +74,7 @@ class PlutusBackendProbeSuite extends FunSuite:
 
   private def admit(backend: PlutusBackend): Either[Rejection, (MempoolState, Entry)] =
     MempoolState
-      .empty(Right(ledger), plutus.slot - 1, None)
+      .empty(Right(ledger.toPool), plutus.slot - 1, None)
       .add(
         raw,
         TxKit.env.copy(evaluator = backend.interruptible, decoder = backend.decoder),

@@ -46,6 +46,13 @@ final class ConwayTx private (
   def sizeTxForFeeCalculation: Long =
     1L + body.raw.size + wits.raw.size + auxData.fold(1L)(_.raw.size.toLong)
 
+  /** The transaction with the phase-two flag `valid` (`tx & isPhase2ValidTxL .~ valid`, Conway's
+    * `isPhase2ValidTxL`, `Conway/Tx.hs:145-146`, through `isPhase2ValidAlonzoTxL`,
+    * `Alonzo/Tx.hs:334-339`, cardano-ledger f649f975): its body, witnesses and auxiliary data as
+    * they were read, the flag being none of their bytes.
+    */
+  def withIsValid(valid: IsPhase2Valid): ConwayTx = new ConwayTx(body, wits, valid, auxData)
+
 object ConwayTx:
   given CanEqual[ConwayTx, ConwayTx] = CanEqual.derived
 

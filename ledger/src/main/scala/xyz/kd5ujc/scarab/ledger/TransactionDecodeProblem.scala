@@ -68,6 +68,16 @@ enum MempoolProblem:
   case UnelectedCommittee(voters: Vector[Credential])
   case Ledger(cause: LedgerFailure)
   case Rule(cause: PredicateFailure)
+
+  /** A failure of Conway's rules on the era's types that the reference has no constructor for (the
+    * node's own context errors, a pool registration that does not read as the reference's), sent as
+    * its text in place, as the flat encoder sends such a failure ([[Rule]]).
+    */
+  case ConwayRule(
+      cause: xyz.kd5ujc.scarab.ledger.era.rules.ConwayLedgerPredFailure[
+        xyz.kd5ujc.scarab.ledger.state.Conway
+      ]
+  )
   case Malformed(cause: TransactionDecodeProblem)
   case Capacity(dimension: CapacityDimension, needed: BigInt, free: BigInt)
   case NoLedger(cause: MempoolLedgerProblem)
@@ -89,9 +99,10 @@ enum MempoolProblem:
       "Unelected committee members are not allowed to cast votes: " + voters
         .map(credential)
         .mkString("[", ",", "]")
-    case Ledger(cause)    => cause.message
-    case Rule(cause)      => cause.detail
-    case Malformed(cause) => s"malformed transaction: ${cause.message}"
+    case Ledger(cause)     => cause.message
+    case Rule(cause)       => cause.detail
+    case ConwayRule(cause) => cause.toString
+    case Malformed(cause)  => s"malformed transaction: ${cause.message}"
     case Capacity(dimension, needed, free) =>
       s"mempool full: $needed ${dimension.unit} needed, $free free"
     case NoLedger(cause) => s"no Conway ledger state: ${cause.message}"
@@ -140,7 +151,9 @@ enum MempoolLedgerProblem:
   case InByron
   case Earlier(era: xyz.kd5ujc.scarab.protocol.Era)
   case Refused(cause: xyz.kd5ujc.scarab.ledger.state.MirrorError)
+  case Params(cause: xyz.kd5ujc.scarab.ledger.era.PParamsError)
   def message: String = this match
     case InByron        => "the chain is in Byron"
     case Earlier(era)   => s"the chain is in $era, before Conway"
     case Refused(cause) => s"the ledger state cannot be read: $cause"
+    case Params(cause)  => s"the parameters in force are not Conway's: $cause"

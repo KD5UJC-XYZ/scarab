@@ -72,7 +72,7 @@ class LocalSubmissionSuite extends FailsOnUncaught:
     val (clash, _) = pay(1, fee = 2 * ada)
     Resource
       .eval(
-        Mempool.create[IO](Right(ledger(2)), 1000, env, None, MempoolEvents.none[IO])
+        Mempool.create[IO](Right(ledger(2).toPool), 1000, env, None, MempoolEvents.none[IO])
       )
       .flatMap { mempool =>
         Resource.eval(IO(java.nio.file.Files.createTempDirectory("csl-ntc"))).flatMap { dir =>
@@ -157,8 +157,9 @@ class LocalSubmissionSuite extends FailsOnUncaught:
     Resource
       .eval(Bearer.inMemory[IO]())
       .use { (clientEnd, serverEnd) =>
-        Mempool.create[IO](Right(ledger(1)), 1000, env, None, MempoolEvents.none[IO]).flatMap {
-          mempool =>
+        Mempool
+          .create[IO](Right(ledger(1).toPool), 1000, env, None, MempoolEvents.none[IO])
+          .flatMap { mempool =>
             Handle
               .allow[NetworkError](
                 LocalTxSubmissionServer
@@ -194,7 +195,7 @@ class LocalSubmissionSuite extends FailsOnUncaught:
                   .rescue(_ => IO.pure(()))
                   *> server.joinWithNever.map(r => assert(r.nonEmpty))
               }
-        }
+          }
       }
   }
 
@@ -239,7 +240,7 @@ class LocalSubmissionSuite extends FailsOnUncaught:
           val applicative = summon[cats.Applicative[IO]]
           def ask[E >: MempoolEnv]: IO[E] = context.get.map(value => value: E)
         mempool <- Mempool.create[IO](
-          Right(ledger(2)),
+          Right(ledger(2).toPool),
           1000,
           env,
           None,
@@ -347,7 +348,8 @@ class LocalSubmissionSuite extends FailsOnUncaught:
     val (good, id) = pay(1)
     Resource
       .eval(for
-        mempool <- Mempool.create[IO](Right(ledger(2)), 1000, env, None, MempoolEvents.none[IO])
+        mempool <- Mempool
+          .create[IO](Right(ledger(2).toPool), 1000, env, None, MempoolEvents.none[IO])
         first <- Ref.of[IO, Boolean](true)
         ended <- Deferred[IO, LocalTxSubmissionServer.End]
       yield (mempool, first, ended))

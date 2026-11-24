@@ -114,6 +114,9 @@ object RejectionLabel:
     // Dijkstra's refusal is the ledger's; no verdict on a Dijkstra transaction is its own reason
     case Rejection.DijkstraRefused(_, _)  => Ledger
     case Rejection.DijkstraUnjudged(_, _) => NoVerdict
+    // and so are Conway's
+    case Rejection.ConwayRefused(_, _)  => Ledger
+    case Rejection.ConwayUnjudged(_, _) => NoVerdict
 
 /** Why the forger gave a slot up before the leader check: the reference's `TraceSlotIsImmutable`,
   * `TraceBlockFromFuture` and `TraceNoLedgerView`. `Other` remains as a zero-valued series for

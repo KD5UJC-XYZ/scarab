@@ -10,7 +10,7 @@ import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.crypto.kes.Sum6KesSigning
 import xyz.kd5ujc.scarab.ledger.{ChainError, ForgeError, ForgeKeyProblem, NodeError, StorageError}
 import xyz.kd5ujc.scarab.node.Fatal
-import xyz.kd5ujc.scarab.node.mempool.{Held, Source}
+import xyz.kd5ujc.scarab.node.mempool.Source
 
 class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ForgeFixture:
   private def unreadable =
@@ -642,8 +642,7 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
         .parseParts(raw)
         .fold(e => fail(e.message), identity)
     assertEquals(parsed.id, id)
-    val entry = xyz.kd5ujc.scarab.node.mempool
-      .Entry(xyz.kd5ujc.scarab.protocol.Era.Conway, parsed.parts, parsed.tx, 0)
+    val entry = xyz.kd5ujc.scarab.node.mempool.ConwayEntries.held(raw, 0)
     val stopped = xyz.kd5ujc.scarab.plutus.BackendFailure.Uplc(
       xyz.kd5ujc.scarab.uplc.ledger.Unavailability.NoDenotation(
         xyz.kd5ujc.scarab.uplc.SemanticsVariant.E,
@@ -671,12 +670,10 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
         Vector(id)
       )
     }
-    val invalid = entry.copy(held =
-      Held.Flat(
-        xyz.kd5ujc.scarab.protocol.Era.Conway,
-        parsed.parts,
-        parsed.tx.copy(body = parsed.tx.body.copy(fee = -1))
-      )
+    // a candidate the rules refuse now, its input spent: left out, not withheld
+    val invalid = xyz.kd5ujc.scarab.node.mempool.ConwayEntries.held(
+      xyz.kd5ujc.scarab.node.mempool.TxKit.pay(9)._1,
+      0
     )
     assertEquals(
       BlockBuilder.select(base, 1001, 1, geometry, globals, Vector(invalid), limit)(
