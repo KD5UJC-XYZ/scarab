@@ -18,12 +18,21 @@ private[node] object FetchCandidates:
   /** The selected chain of one decision with the set of its points, built once for every candidate
     * that decision weighs: the intersection, plausibility and fetched checks all ask it.
     */
-  final class Selected private (val local: ChainSelection.Local, points: Set[Point]):
+  final class Selected private (
+      val local: ChainSelection.Local,
+      points: Set[Point],
+      val newestSlot: Option[BigInt]
+  ):
     def holds(point: Point): Boolean = points(point)
 
   object Selected:
     def of(local: ChainSelection.Local): Selected =
-      new Selected(local, local.blocks.map(_.point).toSet + local.anchor)
+      val points = local.blocks.map(_.point).toSet + local.anchor
+      new Selected(local, points, points.iterator.flatMap(slotOf).maxOption)
+
+  private def slotOf(point: Point): Option[BigInt] = point match
+    case Point.Block(slot, _) => Some(slot.value)
+    case Point.Origin         => None
 
   final case class Selection(
       intersection: Point,
@@ -81,10 +90,33 @@ private[node] object FetchCandidates:
       (point, candidate.headers.drop(count))
     }
 
+  /** The newest header of the candidate on the selected chain. No point of the selected chain is
+    * past its newest slot, and a candidate's headers have passed the header gate, so their slots
+    * never decrease: the newest header on the selected chain is at or before the last header within
+    * that slot, found by halving, and the scan back starts there instead of at the candidate's tip
+    * (issue 810: a dynamo far ahead of the selection was scanned whole, for each peer, at every
+    * decision).
+    */
   private def intersection(
       selected: Selected,
       candidate: ChainSelection.Candidate
   ): Option[(Point, Int)] =
-    candidate.headers.lastIndexWhere(h => selected.holds(h.point)) match
+    val headers = candidate.headers
+    val end = selected.newestSlot.fold(-1)(bound => lastWithin(headers, bound))
+    headers.lastIndexWhere(h => selected.holds(h.point), end) match
       case -1 => Option.when(selected.holds(candidate.base))(candidate.base -> 0)
       case i  => Some(candidate.headers(i).point -> (i + 1))
+
+  /** The index of the last header whose slot is at most `bound`, or -1: by halving, as the slots of
+    * a gated candidate never decrease.
+    */
+  private def lastWithin(headers: Vector[Header], bound: BigInt): Int =
+    @scala.annotation.tailrec
+    def go(low: Int, high: Int): Int =
+      // invariant: every index below `low` is within `bound`, every index from `high` on is past it
+      if low >= high then low - 1
+      else
+        val middle = (low + high) >>> 1
+        if slotOf(headers(middle).point).exists(_ <= bound) then go(middle + 1, high)
+        else go(low, middle)
+    go(0, headers.size)
