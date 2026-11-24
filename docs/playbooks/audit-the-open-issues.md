@@ -25,8 +25,10 @@ follow-ups, changing course), [REF-4](../design-rules.md#ref-4), [FMT-1](../desi
    Mirror, an Improvement, a Gap (unintended: it gets an issue and a fix) or a Deviation, and anything not shown
    to be one of the first two is a Deviation until settled: check [decisions.md](../decisions.md) for a decision
    that covers it, else ask ([raise a deviation](raise-a-deviation-or-audit-finding.md)). Any storage format change
-   needs the owner's answer in the current chat session (FMT-1). The question and the decision are recorded as what
-   approval is says; a subagent reports to its lead, which asks. Repository settings are never an agent's.
+   needs the owner's answer in the current chat session (FMT-1), and so does what
+   [changing course](../process.md#changing-course) reserves to the owner for P0 and P1 issues. The question and
+   the decision are recorded as what approval is says; a subagent reports to its lead, which asks. Repository
+   settings are never an agent's.
 6. **Act, each by its rule in process.md:**
    - *Done:* it closes as completed only when the whole definition of done holds. Move every follow-up first:
      `python3 scripts/file_issue.py --title T --body-file F --priority P2 --parent N` for an open parent's
@@ -37,9 +39,9 @@ follow-ups, changing course), [REF-4](../design-rules.md#ref-4), [FMT-1](../desi
      after: other sessions edit epics too.
    - *The rest lives in another issue:* fold it as process.md says, closing with a pointer to where the item now
      lives, once that issue is shown to cover it.
-   - *A change of priority:* a label or milestone change, with one sentence on why.
+   - *A change of priority:* as [changing course](../process.md#changing-course) says.
    - *Paused on purpose:* replace its status with `status:parked`, remove its milestone, and comment what is done,
-     where the work is and how to resume.
+     where the work is and how to resume; a P0 or P1 issue as changing course says.
    - *A table of audit rows:* it closes as completed under the same definition of done, once every row has an
      outcome: aligned (with its evidence), recorded in decisions.md, tracked by an issue, or filed.
 7. **Pick up work** as process.md's "Now, next, later" orders it: the `status:backlog` issues of each milestone in
