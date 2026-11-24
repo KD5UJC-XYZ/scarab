@@ -30,6 +30,7 @@ import xyz.kd5ujc.scarab.ledger.{
 import xyz.kd5ujc.scarab.node.forge.ForgedChain
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.protocol.ChainSync
+import xyz.kd5ujc.scarab.ledger
 import scala.concurrent.duration.*
 
 /** A crypto provider that fails on a peer's header or block is no verdict on it (issue 393). The
@@ -244,8 +245,11 @@ class ProviderDefectBoundarySuite extends xyz.kd5ujc.scarab.network.FailsOnUncau
     val headerFirst =
       Ordered(Left(OCertError.KesSignatureRejected), Vrf.Result.InternalFailure(boom))
     validate(headerFirst, target) match
-      case Outcome.Invalid(_) => ()
-      case other              => fail(s"unexpected $other")
+      case Outcome.Invalid(
+            ledger.HeaderError.Praos(ledger.PraosError.OCert(OCertError.KesSignatureRejected))
+          ) =>
+        ()
+      case other => fail(s"unexpected $other")
     assertEquals(headerFirst.calls, Vector(Verifier.OCert))
     val block = Ordered(Left(OCertError.KesSignatureRejected), Vrf.Result.InternalFailure(boom))
     session(block).map { (end, invalid, _, tip) =>
@@ -347,8 +351,8 @@ class ProviderDefectBoundarySuite extends xyz.kd5ujc.scarab.network.FailsOnUncau
         target.copy(vrf = HeaderVrf.Praos(c.copy(proof = Bytes.fromArray(proof))))
       case other => fail(s"unexpected $other")
     validate(Verdicts.Direct, bad) match
-      case Outcome.Invalid(_) => ()
-      case other              => fail(s"unexpected $other")
+      case Outcome.Invalid(ledger.HeaderError.Praos(ledger.PraosError.VrfRejected(_))) => ()
+      case other => fail(s"unexpected $other")
     assert(validate(Verdicts.Direct, target).isInstanceOf[Outcome.Valid[?]])
   }
 
