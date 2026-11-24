@@ -4208,6 +4208,28 @@
    "structure": "same",
    "note": "a block is votable when it is among the newest leiosVoteWindow of the chain's, newest first",
    "digest": "5bfd8569616cdfa5"
+  },
+  "def consensus.HeaderChain#trimmedTo": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/MiniProtocol/ChainSync/Client.hs",
+     "symbol": "intersectsWithCurrentChain",
+     "lines": [
+      942,
+      992
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "HeaderChainTrimSuite",
+    "GenesisHeaderGateSuite"
+   ],
+   "note": "the trim of intersectsWithCurrentChain: the candidate from the anchor of our chain on (AF.splitAfterPoint theirFrag (AF.anchorPoint ourFrag')), with the header state history trimmed alike. The reference trims when our chain changed and the candidate still intersects it; Scarab's gate trims after each recorded header, to the anchor of the selection published with the history (the one the header was validated against), keeps a chain that does not pass through the anchor for its reintersection to decide, and also drops the local prefix Scarab keeps for ChainSync jumping before that anchor",
+   "digest": "1809f77fd600ac8a"
   }
  },
  "glue": [

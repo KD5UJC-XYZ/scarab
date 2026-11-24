@@ -673,8 +673,13 @@ object HeaderCheck:
             )
           }
 
+        // the history itself, seen at the node's header state through the witness: mapping it
+        // through the witness would copy every entry at each snapshot, which Genesis takes for
+        // each header of each session (issue 810)
         override def snapshot(using Applicative[F]): F[Option[HeaderChain[NodeHeaderState]]] =
-          state.get.map(history => stateWitness.map(equality => history.map(equality)))
+          state.get.map(history =>
+            stateWitness.map(equality => equality.substituteCo[HeaderChain](history))
+          )
 
         override def intersectionSelection(using Applicative[F]): F[Option[ChainSelection.Local]] =
           knownSelection.get
@@ -719,7 +724,7 @@ object HeaderCheck:
                 )
               )
             case Some(prefix) =>
-              val restored = prefix.map(equality.flip)
+              val restored = equality.flip.substituteCo[HeaderChain](prefix)
               F.uncancelable(_ =>
                 state.set(restored) *> knownSelection.set(Some(selection)) *> prepared.set(None)
               ).as(Right(()))
@@ -848,15 +853,24 @@ object HeaderCheck:
                   PeerError.HeaderUndecided(header.point, defect).raise[F, Unit]
             }
 
+        /** Append a validated header, trimmed to the anchor of the selection published with this
+          * history ([[knownSelection]], the one the header's validation was prepared against), as
+          * the reference trims its candidate to our chain's anchor whenever our chain changes
+          * ([[HeaderChain.trimmedTo]]). History and selection stay one checkpoint: a newer anchor
+          * read here could pass the point the published selection still shares with the peer.
+          */
         private def record(header: Header, next: Option[H])(using Raise[F, PeerError]): F[Unit] =
-          state.get.flatMap(hc =>
+          (state.get, knownSelection.get).tupled.flatMap((hc, selection) =>
             hc.extend(header, next)
               .fold(
                 _ =>
                   protocol[Unit](
                     PeerError.ProtocolProblem.HeaderDoesNotExtend(header.point, hc.tipPoint)
                   ),
-                g => state.set(g.pruned(retained))
+                g =>
+                  state.set(
+                    selection.fold(g.pruned(retained))(s => g.pruned(retained).trimmedTo(s.anchor))
+                  )
               )
           )
 
