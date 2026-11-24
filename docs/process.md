@@ -63,7 +63,8 @@ an issue each. A P2 item that follows up an open issue is a checklist line of th
 `python3 scripts/file_issue.py --priority P2 --parent N` posts its details as a comment on N and adds the line
 to N's checklist. A P2 item that needs an issue of its own says why with `--own-issue`, and the reason is
 kept in its body; P0 and P1 items are issues. Fold or close a shaped issue that has not moved for a quarter,
-with a pointer to where the item now lives.
+with a pointer to where the item now lives (a P0 or P1 issue only with the owner's approval,
+[changing course](#changing-course)).
 
 **Spikes** (`kind:spike`) are time-boxed explorations. A spike ends in one of three outcomes, recorded
 in its closing comment and, when it shapes the design, in an ADR: *adopt* (follow-up issues opened),
@@ -73,7 +74,8 @@ in its closing comment and, when it shapes the design, in an ADR: *adopt* (follo
 ### Now, next, later
 
 - **Now**: issues labelled `status:in-progress`, at most 20 at a time: work runs in parallel. An issue
-  that is not moving goes back to the backlog or is parked, whatever the count.
+  that is not moving goes back to the backlog or is parked, whatever the count (a P0 or P1 issue is parked only with
+  the owner's approval, [changing course](#changing-course)).
 - **Next**: the `status:backlog` issues of each milestone, in the [order of work](roadmap.md#order-of-work),
   then by priority.
 - **Later**: ideas and parked issues, which carry no milestone.
@@ -88,8 +90,8 @@ Changing your mind is normal, not a failure of planning:
   or P1 issue, parking it, closing it as not planned, or folding it into an issue of lower priority needs the owner's
   approval first, asked in the chat session doing the work ([what approval is](design-rules.md#approval)); such an
   issue still closes as completed under the definition of done without it (owner decision, 2026-11-23).
-- **An interruption** parks the current item: push or record the branch, write the resume comment,
-  label it `status:parked`. Parked work is resumed from the comment, not from memory.
+- **An interruption** parks the current item (a P0 or P1 issue only with the owner's approval, above): push or
+  record the branch, write the resume comment, label it `status:parked`. Parked work is resumed from the comment, not from memory.
 - **A reversed decision** gets a new ADR that supersedes the old one; the old one is kept and marked.
 
 ### Labels and milestones
