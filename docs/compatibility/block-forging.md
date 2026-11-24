@@ -40,6 +40,15 @@ reference's are (`mkBody` and `forgeLeiosEb`), byte for byte what the flat path 
 compares the two paths over every recorded Dijkstra transaction the build accepts, at each boundary of the capacities.
 The design's [as-built entry](../design/era-typed-transactions.md#6-results) has the detail.
 
+A Dijkstra block's snapshot is the pool's own revalidated transactions, read as they are, when the pool is at the
+block's parent and the slot changes nothing they were judged by (#1380), as the reference's `getSnapshotFor` reads
+its cache (`cheapTick`, ouroboros-consensus d91b3557 `Mempool/Query.hs:91-127`): the slot after the parent, or a
+later one in the pool's epoch that every held transaction's validity interval, and each of its sub-transactions',
+contains. A certifying block's snapshot is always revalidated, on the parent with the certified closure applied
+(`getSnapshotForNoCache`). `DijkstraMempoolSuite` checks that the pool's own transactions are the snapshot a
+revalidation makes at those slots, and that another tip, an earlier slot, another epoch or a slot past a
+transaction's interval is revalidated. The Conway forger still revalidates at every slot (#1380).
+
 The schedule (#1101, stage S2): `LeaderScheduleSuite`'s property that over generated epochs, nonces, stakes,
 totals, coefficients and VRF keys every slot's decision and every led slot's certificate are `Leadership.check`'s;
 `ScheduledForgerSuite`, the differential test of the wired forger, which runs each scenario through the scheduled

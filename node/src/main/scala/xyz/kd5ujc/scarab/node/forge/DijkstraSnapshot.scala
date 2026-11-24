@@ -12,8 +12,10 @@ import xyz.kd5ujc.scarab.ledger.state.{Dijkstra, NewEpochState}
 import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.TxMeasure
 import xyz.kd5ujc.scarab.node.mempool.{
   Capacity,
+  DijkstraAdmitted,
   DijkstraPoolEnv,
   DijkstraState,
+  Entry,
   Held,
   Mempool,
   MempoolEnv,
@@ -57,27 +59,50 @@ object DijkstraSnapshot:
   private[node] def apply(held: Vector[DijkstraHeld]): DijkstraSnapshot =
     DijkstraSnapshot(held, Map.empty)
 
+/** `SnapshotCachePolicy` (ouroboros-consensus d91b3557
+  * `ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Mempool/Query.hs:25-38`):
+  * whether a snapshot may be the pool's own revalidated transactions.
+  */
+enum SnapshotCachePolicy:
+  /** `UseCache`: the state is the chain's at the tip whose hash is `tip`, so the pool's own
+    * snapshot is the snapshot when the pool is at that tip and the slot allows it
+    * ([[xyz.kd5ujc.scarab.node.mempool.MempoolState.dijkstraCached]]).
+    */
+  case UseCache(tip: Option[Bytes])
+
+  /** `AlwaysRevalidate`: the state is not the tip's though the tip is the pool's, as when a
+    * certified closure is applied to it (`getSnapshotForNoCache`).
+    */
+  case AlwaysRevalidate
+
 /** Where the forger takes its Dijkstra snapshot from: the pool's `getSnapshotFor` of the slot, on
-  * the state ticked into it, with the clock of a transaction in a block of that slot.
+  * the state ticked into it, with the clock of a transaction in a block of that slot, by `policy`.
   */
 trait DijkstraSnapshots[F[_]]:
   def forSlot(
       ticked: NewEpochState[Dijkstra],
       slot: BigInt,
-      clock: PosixClock
+      clock: PosixClock,
+      policy: SnapshotCachePolicy
   )(using Raise[F, StorageError]): F[DijkstraSnapshot]
 
 object DijkstraSnapshots:
   /** A source of empty snapshots, for forgers of tests that take no transactions. */
   def unadmitted[F[_]: Applicative]: DijkstraSnapshots[F] = new DijkstraSnapshots[F]:
-    def forSlot(ticked: NewEpochState[Dijkstra], slot: BigInt, clock: PosixClock)(using
-        Raise[F, StorageError]
-    ) = Applicative[F].pure(DijkstraSnapshot.empty)
+    def forSlot(
+        ticked: NewEpochState[Dijkstra],
+        slot: BigInt,
+        clock: PosixClock,
+        policy: SnapshotCachePolicy
+    )(using Raise[F, StorageError]) = Applicative[F].pure(DijkstraSnapshot.empty)
 
-  /** The node's: the snapshot of `mempool` 's held Dijkstra transactions on `ticked`, the stored
-    * outputs their rules read fetched from `utxoStore` first, as the reference reads them from the
-    * forker of the unticked state (`readUntickedTables`, `Mempool/Query.hs:107-117`,
-    * ouroboros-consensus 2416493b), revalidated at `slot` in the environment `environment` gives
+  /** The node's (`getSnapshotUsingPolicyFor`, ouroboros-consensus d91b3557
+    * `Mempool/Query.hs:80-127`): under [[SnapshotCachePolicy.UseCache]], the pool's own revalidated
+    * transactions when they are the snapshot of `slot` already ([[MempoolState.dijkstraCached]]),
+    * with none withheld, as each was judged when it was held; otherwise the snapshot of `mempool`
+    * 's held Dijkstra transactions on `ticked`, the stored outputs their rules read fetched from
+    * `utxoStore` first, as the reference reads them from the forker of the unticked state
+    * (`readUntickedTables`), revalidated at `slot` in the environment `environment` gives
     * ([[MempoolState.dijkstraSnapshot]]).
     */
   def ofPool[F[_]: Sync](
@@ -85,24 +110,39 @@ object DijkstraSnapshots:
       utxoStore: Option[UtxoReadView[F]],
       environment: F[MempoolEnv]
   ): DijkstraSnapshots[F] = new DijkstraSnapshots[F]:
-    def forSlot(ticked: NewEpochState[Dijkstra], slot: BigInt, clock: PosixClock)(using
-        Raise[F, StorageError]
-    ) =
+    def forSlot(
+        ticked: NewEpochState[Dijkstra],
+        slot: BigInt,
+        clock: PosixClock,
+        policy: SnapshotCachePolicy
+    )(using Raise[F, StorageError]) =
+      def of(
+          kept: Vector[(Entry, DijkstraAdmitted)],
+          withheld: Vector[(Entry, Rejection)]
+      ): DijkstraSnapshot =
+        DijkstraSnapshot(
+          kept.map((entry, admitted) => DijkstraHeld(admitted.read.tx, Capacity.measure(entry))),
+          withheld.map((entry, reason) => entry.id -> reason).toMap
+        )
       for
         pool <- mempool.snapshot
         env <- environment
-        state = DijkstraState.of(ticked)
-        reads = pool.entries.map(_.held).collect { case h @ Held.InDijkstra(_) => h.in }
-        utxo <- UtxoStore.complete(utxoStore, state.utxo, MempoolState.readSet(reads))
-        judged <- Sync[F].blocking(
-          MempoolState.dijkstraSnapshot(
-            pool.entries,
-            state.withUtxo(utxo),
-            DijkstraPoolEnv.of(env, slot).copy(clock = clock)
-          )
-        )
-        (kept, withheld) = judged
-      yield DijkstraSnapshot(
-        kept.map((entry, admitted) => DijkstraHeld(admitted.read.tx, Capacity.measure(entry))),
-        withheld.map((entry, reason) => entry.id -> reason).toMap
-      )
+        cached = policy match
+          case SnapshotCachePolicy.UseCache(tip) =>
+            pool.dijkstraCached(tip, slot, ticked.epoch.toBigInt)
+          case SnapshotCachePolicy.AlwaysRevalidate => None
+        snapshot <- cached.fold {
+          val state = DijkstraState.of(ticked)
+          val reads = pool.entries.map(_.held).collect { case h @ Held.InDijkstra(_) => h.in }
+          for
+            utxo <- UtxoStore.complete(utxoStore, state.utxo, MempoolState.readSet(reads))
+            judged <- Sync[F].blocking(
+              MempoolState.dijkstraSnapshot(
+                pool.entries,
+                state.withUtxo(utxo),
+                DijkstraPoolEnv.of(env, slot).copy(clock = clock)
+              )
+            )
+          yield of(judged._1, judged._2)
+        }(kept => Sync[F].pure(of(kept, Vector.empty)))
+      yield snapshot

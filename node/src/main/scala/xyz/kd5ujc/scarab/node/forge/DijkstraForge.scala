@@ -93,13 +93,16 @@ object DijkstraForge:
   /** `partitionMempool` (`NodeKernel/Forge.hs:760-869`, ouroboros-consensus 2416493b) of the block
     * forged in `slot` on `parent`, by `decision`:
     *   - without a certificate, the pool's snapshot of the slot on the parent ticked to it
-    *     (`getSnapshotFor`, `:792-797`), its longest prefix that fits the ranking block's
-    *     `blockLimit` for the block and the run after it that fits `ebLimit` for its endorser block
-    *     (`snapshotPartition snap rbCap ebCap`, `:799-803`);
+    *     (`getSnapshotFor`, `:792-797`), the pool's own transactions when the pool is at the parent
+    *     and the slot changes nothing they were judged by ([[SnapshotCachePolicy.UseCache]]), its
+    *     longest prefix that fits the ranking block's `blockLimit` for the block and the run after
+    *     it that fits `ebLimit` for its endorser block (`snapshotPartition snap rbCap ebCap`,
+    *     `:799-803`);
     *   - with one, the certified closure applied to the unticked parent
     *     ([[LeiosCertifying.closed]], `:826-841`), that state ticked to the slot by `tickAfter`
-    *     (`:847-856`), the pool's snapshot of the slot on it (`getSnapshotForNoCache`, `:858-860`),
-    *     and the run of it that fits `ebLimit` for the endorser block, the block itself taking none
+    *     (`:847-856`), the pool's snapshot of the slot on it, always revalidated
+    *     (`getSnapshotForNoCache`, `:858-860`; [[SnapshotCachePolicy.AlwaysRevalidate]]), and the
+    *     run of it that fits `ebLimit` for the endorser block, the block itself taking none
     *     (`snapshotPartition snap Data.Measure.zero ebCap`, `:862-867`). The reference reads a
     *     certifying view of the pool kept up to date off the forging path first
     *     (`getCertifyingSnapshotFor`, `:805-821`), revalidated on top of the same closure; this
@@ -130,7 +133,7 @@ object DijkstraForge:
           after <- closed
             .flatMap(tickAfter)
             .fold(e => fatal.raise[Fatal, NewEpochState[Dijkstra]](Fatal.of(e)), Monad[F].pure)
-          snapshot <- snapshots.forSlot(after, slot, clock)
+          snapshot <- snapshots.forSlot(after, slot, clock, SnapshotCachePolicy.AlwaysRevalidate)
         yield
           val split = BlockBuilder.partition(snapshot, TxMeasure.zero, ebLimit)
           DijkstraPartition(
@@ -140,14 +143,17 @@ object DijkstraForge:
           )
       case CertifyDecision.NothingAnnounced | CertifyDecision.TooEarly(_, _) |
           CertifyDecision.ClosureNotDownloaded(_) | CertifyDecision.NoCertificate(_) =>
-        snapshots.forSlot(parent.ticked, slot, clock).map { snapshot =>
-          val split = BlockBuilder.partition(snapshot, blockLimit, ebLimit)
-          DijkstraPartition(
-            BlockBuilder.Assembly.dijkstra(split.ranking.transactions, None, split.endorsing(slot)),
-            snapshot.withheld,
-            decision
-          )
-        }
+        snapshots
+          .forSlot(parent.ticked, slot, clock, SnapshotCachePolicy.UseCache(parent.tip.map(_.hash)))
+          .map { snapshot =>
+            val split = BlockBuilder.partition(snapshot, blockLimit, ebLimit)
+            DijkstraPartition(
+              BlockBuilder.Assembly
+                .dijkstra(split.ranking.transactions, None, split.endorsing(slot)),
+              snapshot.withheld,
+              decision
+            )
+          }
 
   /** The lines `decideLeiosCertify` traces of `decision` for the block of `slot`
     * (`NodeKernel/Forge.hs:356-383`, ouroboros-consensus 2416493b): the two kernel messages and

@@ -34,12 +34,14 @@ import xyz.kd5ujc.scarab.ledger.era.{
   BothLevels,
   ConwayGovState as EraConwayGovState,
   EraTx,
+  EraTxBody,
   GovStateRecord,
   Proposals as EraProposals,
   IsPhase2Valid,
   PParams,
   StoredTxOut,
-  TxLevel
+  TxLevel,
+  ValidityInterval
 }
 import xyz.kd5ujc.scarab.ledger.era.rules.{
   ConwayUtxosPredFailure,
@@ -57,7 +59,12 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{LeiosStateCodecs, Versions}
 import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.TxMeasure
 import xyz.kd5ujc.scarab.network.LocalTxSubmissionServer
 import xyz.kd5ujc.scarab.node.assertions.Assertions
-import xyz.kd5ujc.scarab.node.forge.{BlockBuilder, DijkstraSnapshots, ForgedLeiosEb}
+import xyz.kd5ujc.scarab.node.forge.{
+  BlockBuilder,
+  DijkstraSnapshots,
+  ForgedLeiosEb,
+  SnapshotCachePolicy
+}
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.node.read.ConwayView
 import xyz.kd5ujc.scarab.node.{MirrorDijkstra, MirrorRules, NodeSetup}
@@ -721,7 +728,12 @@ class DijkstraMempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         .fold(e => fail(e.toString), _.getOrElse(fail("not in Dijkstra")))
       snapshot <- DijkstraSnapshots
         .ofPool[IO](mempool, None, IO.pure(env))
-        .forSlot(ticked, slot, setup.txClock.at(s(37), Era.Dijkstra, slot))
+        .forSlot(
+          ticked,
+          slot,
+          setup.txClock.at(s(37), Era.Dijkstra, slot),
+          SnapshotCachePolicy.AlwaysRevalidate
+        )
     yield
       assertEquals(snapshot.withheld, Map.empty)
       assertEquals(snapshot.held.map(_.tx.id), Vector(inBlock.id))
@@ -749,6 +761,94 @@ class DijkstraMempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       assertEquals(endorsing.ranking.transactions, Vector.empty)
       assertEquals(endorsing.endorsedTransactions.map(_.id), Vector(inBlock.id))
       assert(endorsing.endorsing(slot).isDefined)
+  }
+
+  /** The state of the chain at block 36 ticked to `slot`, Dijkstra's. */
+  private def tickedAt(state: MirrorState, slot: BigInt): NewEpochState[Dijkstra] =
+    Hfc
+      .tick(Globals(setup.globals, geometry), transition)(
+        MirrorStep.nesOf(state).getOrElse(fail("no ledger")),
+        MirrorStep.afterVotingOf(state),
+        SlotNo.fromBigInt(slot).fold(e => fail(e.toString), identity)
+      )
+      .map(MirrorDijkstra.inDijkstra)
+      .fold(e => fail(e.toString), _.getOrElse(fail("not in Dijkstra")))
+
+  test("SlotRange: a validity interval's slots, half open, and the intersection of two") {
+    val window = SlotRange.validity(ValidityInterval(Some(5), Some(10)))
+    assertEquals((4 to 11).filter(i => window.contains(i)).toVector, (5 to 9).toVector)
+    assertEquals(SlotRange.validity(ValidityInterval(None, None)), SlotRange.any)
+    assertEquals(window |+| SlotRange(7, None), SlotRange(7, Some(10)))
+    assertEquals(window |+| SlotRange(0, Some(8)), SlotRange(5, Some(8)))
+    assertEquals(window |+| SlotRange.any, window)
+  }
+
+  test(
+    "the forger's snapshot is the pool's own at its tip and slot: the same one revalidation makes"
+  ) {
+    for
+      s <- states
+      tip = tipOf(36)
+      env = envOf(s(37), tip)
+      mempool <- Mempool.create[IO](
+        Right(ledgerOf(s(37), tip)),
+        tip.slot,
+        env,
+        None,
+        MempoolEvents.none[IO],
+        tipHash = Some(tip.hash)
+      )
+      _ <- mempool
+        .submit(dijkstra(submitted), Source.Local)
+        .map(_.fold(r => fail(r.rejection.message), identity))
+      pool <- mempool.snapshot
+      snapshots = DijkstraSnapshots.ofPool[IO](mempool, None, IO.pure(env))
+      // the slot after the tip, which the pool judged its transaction at, the next, and block 37's
+      compared <- Vector(tip.slot + 1, tip.slot + 2, chain(37)._1.slot).traverse { slot =>
+        val ticked = tickedAt(s(37), slot)
+        val clock = setup.txClock.at(s(37), Era.Dijkstra, slot)
+        (
+          snapshots.forSlot(ticked, slot, clock, SnapshotCachePolicy.UseCache(Some(tip.hash))),
+          snapshots.forSlot(ticked, slot, clock, SnapshotCachePolicy.AlwaysRevalidate)
+        ).mapN((cached, fresh) => (slot, ticked.epoch.toBigInt, cached, fresh))
+      }
+    yield
+      val epoch = ledgerOf(s(37), tip).epoch
+      val tx = pool.entries.map(_.held) match
+        case Vector(Held.InDijkstra(admitted)) => admitted.read.tx
+        case other                             => fail(s"not one Dijkstra transaction: $other")
+      // the devnet's transaction has no sub-transaction: its range is its own interval
+      val bodies = EraTxBody.dijkstra
+      given BothLevels[TxLevel.Top] = BothLevels.Top
+      assertEquals(bodies.subTransactions(tx.body).toVector, Vector.empty)
+      val range = SlotRange.dijkstraTx(tx)
+      assertEquals(range, SlotRange.validity(bodies.vldt(tx.body)))
+      compared.foreach { (slot, tickedEpoch, cached, fresh) =>
+        assertEquals(cached, fresh, s"slot $slot")
+        assertEquals(cached.held.map(_.tx.id), Vector(inBlock.id))
+        // taken from the pool at its own slot, and at a later one its range and epoch contain
+        assertEquals(
+          pool.dijkstraCached(Some(tip.hash), slot, tickedEpoch).map(_.map(_._1.id)),
+          Option.when(
+            slot == tip.slot + 1 || (tickedEpoch == epoch && range.contains(slot))
+          )(Vector(inBlock.id)),
+          s"slot $slot"
+        )
+      }
+      val judged = tip.slot + 1
+      // a later slot in the epoch, which the transaction's interval contains: the pool's own
+      assertEquals(
+        pool.dijkstraCached(Some(tip.hash), judged + 1, epoch).map(_.map(_._1.id)),
+        Some(Vector(inBlock.id))
+      )
+      // another tip, an earlier slot, another epoch, or past the transaction's range: none
+      assertEquals(pool.dijkstraCached(Some(chain(35)._1.hash), judged, epoch), None)
+      assertEquals(pool.dijkstraCached(None, judged, epoch), None)
+      assertEquals(pool.dijkstraCached(Some(tip.hash), tip.slot, epoch), None)
+      assertEquals(pool.dijkstraCached(Some(tip.hash), judged + 1, epoch + 1), None)
+      range.until.foreach(until =>
+        assertEquals(pool.dijkstraCached(Some(tip.hash), until.max(judged + 1), epoch), None)
+      )
   }
 
   test("TxSubmission2's Leios reader reads a Dijkstra transaction; LocalTxSubmission writes none") {

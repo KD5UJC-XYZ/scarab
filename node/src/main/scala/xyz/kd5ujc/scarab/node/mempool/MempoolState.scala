@@ -376,6 +376,38 @@ final case class MempoolState private (
 
   def contains(id: Bytes): Boolean = entries.exists(_.id == id)
 
+  /** The pool's own revalidated Dijkstra transactions as the snapshot of `slot` on the chain whose
+    * tip's hash is `tip`, when they are that snapshot already (`getSnapshotFor` 's cache,
+    * `getSnapshotUsingPolicyFor` with `UseCache`, ouroboros-consensus d91b3557
+    * `ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Mempool/Query.hs:91-127`):
+    * the pool is at that tip, and `slot` is the one after it, which the pool judged its
+    * transactions at, or a later one that every held transaction's validity interval contains, in
+    * the pool's epoch (`cheapTick`), where reapplying them would give the same. `epoch` is the
+    * epoch of the tip's state ticked to `slot`: the pool's ledger's range (`ledgerSlotRange`, the
+    * slots of its epoch, `Shelley/Ledger/Mempool.hs:241-250` of ouroboros-consensus-cardano
+    * d91b3557) contains `slot` exactly when it is the pool's epoch. None otherwise, and while the
+    * pool's ledger is not Dijkstra's: the snapshot is then revalidated
+    * ([[MempoolState.dijkstraSnapshot]]).
+    */
+  def dijkstraCached(
+      tip: Option[Bytes],
+      slot: BigInt,
+      epoch: BigInt
+  ): Option[Vector[(Entry, DijkstraAdmitted)]] =
+    val judgedAt = tipSlot + 1
+    base.toOption.collect { case l: DijkstraLedger => l }.filter(_ => tip == tipHash).flatMap {
+      ledger =>
+        // as in a revalidation, a Dijkstra snapshot takes only the Dijkstra transactions
+        val held = entries.flatMap(e =>
+          e.held match
+            case Held.InDijkstra(admitted)             => Vector(e -> admitted)
+            case Held.Flat(_, _, _) | Held.InConway(_) => Vector.empty
+        )
+        lazy val cheapTick = slot > judgedAt && epoch == ledger.epoch &&
+          held.foldMap((_, admitted) => SlotRange.dijkstraTx(admitted.read.tx)).contains(slot)
+        Option.when(slot == judgedAt || cheapTick)(held)
+    }
+
   /** `entry` held after the others: the entries, their bytes and the Leios index in one step
     * (`validateNewTransaction`'s `isTxs` and `isLeiosTxIndex`, `Mempool/Impl/Common.hs:490-501` at
     * ouroboros-consensus 2416493b).
@@ -936,8 +968,9 @@ object MempoolState:
     * `computeSnapshot`, `Mempool/Query.hs:138-155`, with `reapplyTx`), and those the rules have no
     * verdict on, which the forger withdraws from the pool, as it withdraws a Conway one (issue
     * 584). A refused transaction is left out of the snapshot and stays in the pool, which its next
-    * revalidation drops. The reference keeps the pool's own snapshot when the slot and the tip are
-    * the pool's (`Query.hs:91-128`, its `cheapTick`); this always revalidates.
+    * revalidation drops. The forger takes the pool's own transactions instead when they are the
+    * snapshot already ([[MempoolState.dijkstraCached]], `Query.hs:91-127` at d91b3557, its
+    * `cheapTick`).
     */
   def dijkstraSnapshot(
       entries: Vector[Entry],
@@ -976,7 +1009,8 @@ object MempoolState:
     * defect of Conway's rules or an exception of the rules ([[Rejection.RulesDefect]]) is no
     * verdict, a refusal leaves the transaction out of the snapshot and in the pool, which its next
     * revalidation drops. The reference keeps the pool's own snapshot when the slot and the tip are
-    * the pool's (`Query.hs:29-36`); this always revalidates, as [[dijkstraSnapshot]] does.
+    * the pool's (`Query.hs:29-36`); the Conway forger always revalidates, where the Dijkstra one
+    * takes the pool's own ([[dijkstraCached]]).
     */
   def conwaySnapshot(
       entries: Vector[Entry],

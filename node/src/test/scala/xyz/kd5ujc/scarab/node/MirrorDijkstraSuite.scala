@@ -542,7 +542,8 @@ class MirrorDijkstraSuite extends CatsEffectSuite:
           def forSlot(
               ticked: NewEpochState[Dijkstra],
               at: BigInt,
-              clock: xyz.kd5ujc.scarab.ledger.PosixClock
+              clock: xyz.kd5ujc.scarab.ledger.PosixClock,
+              policy: xyz.kd5ujc.scarab.node.forge.SnapshotCachePolicy
           )(using cats.mtl.Raise[IO, StorageError]) =
             seen.set(Some(ticked)).as(DijkstraSnapshot.empty)
       val parentOf = DijkstraParent(parent, Some(tip), unticked, unticked, Some(point))
