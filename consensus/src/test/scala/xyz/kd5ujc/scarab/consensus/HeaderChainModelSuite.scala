@@ -74,7 +74,7 @@ class HeaderChainModelSuite extends ScalaCheckSuite:
     Vector(
       local(None, main.take(3)),
       local(None, Vector.empty),
-      local(main.lift(30), Vector.empty)
+      local(main.lastOption, Vector.empty)
     ) ++
       Vector(0, 4, 10, 20).map(at => local(main.lift(at), main.slice(at + 1, at + 9))) ++
       forks.map((at, line) => local(main.lift(at - 2), main.slice(at - 1, at + 1) ++ line))

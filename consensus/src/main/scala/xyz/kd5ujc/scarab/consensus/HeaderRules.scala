@@ -177,8 +177,8 @@ final class HeaderChain[H] private (
       NonEmptyVector(first, leading.drop(1) ++ (fragment.anchorPoint +: fragment.toOldestFirst))
     )
 
-  /** [[points]] after the first. The same vector while the chain's points are unchanged, so
-    * comparing two of them costs nothing then.
+  /** [[points]] after the first. On a chain the gate builds, the same vector while the chain's
+    * points are unchanged, so comparing two of them costs nothing then.
     */
   def pointsAfterFirst: Vector[ChainSync.Point] =
     if leading.isEmpty then fragment.toOldestFirst
@@ -187,11 +187,13 @@ final class HeaderChain[H] private (
   /** The newest of [[points]] on our chain `ours` (its anchor or a block), searched from our newest
     * block, as `AF.intersectionPoint` finds it: both are chains, so the first of our points from
     * the newest that is on this one is this chain's newest point on ours. A search from this
-    * chain's tip would visit every header the peer is ahead of us by, for each header. A chain with
-    * points before an Origin that follows them is no chain, and is searched from its tip.
+    * chain's tip would visit every header the peer is ahead of us by, for each header. A tip on our
+    * chain is the answer at once, as a peer behind us or rolled back to our anchor has it. A chain
+    * with points before an Origin that follows them is no chain, and is searched from its tip.
     */
   def intersectionPoint(ours: ChainSelection.Local): Option[ChainSync.Point] =
-    if leading.isEmpty then
+    if ours.contains(tipPoint) then Some(tipPoint)
+    else if leading.isEmpty then
       (ours.blocks.reverseIterator.map(_.point) ++ Iterator.single(ours.anchor))
         .find(withinFragmentBounds)
     else pointsNewestFirst.find(ours.contains)

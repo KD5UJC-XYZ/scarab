@@ -4225,9 +4225,8 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "GenesisHeaderGateSuite",
-    "HeaderChainModelSuite",
-    "HeaderChainTrimSuite"
+    "HeaderChainTrimSuite",
+    "GenesisHeaderGateSuite"
    ],
    "note": "the trim of intersectsWithCurrentChain: the candidate from the anchor of our chain on (AF.splitAfterPoint theirFrag (AF.anchorPoint ourFrag')), with the header state history trimmed alike. The reference trims when our chain changed and the candidate still intersects it; Scarab's gate trims after each recorded header, to the anchor of the selection published with the history (the one the header was validated against), keeps a chain that does not pass through the anchor for its reintersection to decide, and also drops the local prefix Scarab keeps for ChainSync jumping before that anchor",
    "digest": "74dabc99afe0d6ff"
@@ -4248,10 +4247,6 @@
    "class": "Gap",
    "structure": "differs",
    "record": "https://github.com/KD5UJC-XYZ/scarab/issues/810#issuecomment-7146574621",
-   "evidence": [
-    "AnchoredFragmentSuite",
-    "HeaderChainModelSuite"
-   ],
    "note": "the anchor and the blocks oldest first; the reference keeps the blocks in a finger tree measured by slot, Scarab in a Vector with a persistent map from each hash on the fragment to its position, so appending, rolling back, dropping the oldest and looking up a point cost amortised O(1)",
    "digest": "479230476ae31df9"
   },
@@ -4270,10 +4265,6 @@
    ],
    "class": "Mirror",
    "structure": "same",
-   "evidence": [
-    "AnchoredFragmentSuite",
-    "HeaderChainModelSuite"
-   ],
    "note": "the anchor's point",
    "digest": "888a11b65da59039"
   },
@@ -4292,10 +4283,6 @@
    ],
    "class": "Mirror",
    "structure": "same",
-   "evidence": [
-    "AnchoredFragmentSuite",
-    "HeaderChainModelSuite"
-   ],
    "note": "the newest block's point, the anchor's when empty",
    "digest": "5cb93c97b16df7fa"
   },
@@ -4314,10 +4301,6 @@
    ],
    "class": "Mirror",
    "structure": "same",
-   "evidence": [
-    "AnchoredFragmentSuite",
-    "HeaderChainModelSuite"
-   ],
    "note": "the number of blocks, the anchor not counted",
    "digest": "d8be1da917b70cf3"
   },
@@ -4336,10 +4319,6 @@
    ],
    "class": "Mirror",
    "structure": "same",
-   "evidence": [
-    "AnchoredFragmentSuite",
-    "HeaderChainModelSuite"
-   ],
    "note": "no block after the anchor",
    "digest": "f6609df6bd74847d"
   },
@@ -4358,10 +4337,6 @@
    ],
    "class": "Mirror",
    "structure": "same",
-   "evidence": [
-    "AnchoredFragmentSuite",
-    "HeaderChainModelSuite"
-   ],
    "note": "the blocks, oldest first",
    "digest": "bfa8cf1ca97bf1a2"
   },
@@ -4381,10 +4356,6 @@
    "class": "Gap",
    "structure": "differs",
    "record": "https://github.com/KD5UJC-XYZ/scarab/issues/810#issuecomment-7146574621",
-   "evidence": [
-    "AnchoredFragmentSuite",
-    "HeaderChainModelSuite"
-   ],
    "note": "the points of the blocks newest first, then the anchor's, as a search for the newest point on another chain walks them",
    "digest": "471e0ec51aba32b8"
   },
@@ -4404,10 +4375,6 @@
    "class": "Gap",
    "structure": "differs",
    "record": "https://github.com/KD5UJC-XYZ/scarab/issues/810#issuecomment-7146574621",
-   "evidence": [
-    "AnchoredFragmentSuite",
-    "HeaderChainModelSuite"
-   ],
    "note": "the anchor or a block; found through the hash map and its slot compared, where the reference searches by slot and compares the point",
    "digest": "d27c1cf45106ed27"
   },
@@ -4427,10 +4394,6 @@
    "class": "Gap",
    "structure": "differs",
    "record": "https://github.com/KD5UJC-XYZ/scarab/issues/810#issuecomment-7146574621",
-   "evidence": [
-    "AnchoredFragmentSuite",
-    "HeaderChainModelSuite"
-   ],
    "note": "a block, not the anchor; found as withinFragmentBounds finds it",
    "digest": "f75768c7a2966b6f"
   },
@@ -4450,10 +4413,6 @@
    "class": "Gap",
    "structure": "differs",
    "record": "https://github.com/KD5UJC-XYZ/scarab/issues/810#issuecomment-7146574621",
-   "evidence": [
-    "AnchoredFragmentSuite",
-    "HeaderChainModelSuite"
-   ],
    "note": "the block after the anchor or a block, by its position",
    "digest": "0806c27144750af3"
   },
@@ -4473,10 +4432,6 @@
    "class": "Gap",
    "structure": "differs",
    "record": "https://github.com/KD5UJC-XYZ/scarab/issues/810#issuecomment-7146574621",
-   "evidence": [
-    "AnchoredFragmentSuite",
-    "HeaderChainModelSuite"
-   ],
    "note": "appends the block and indexes its hash",
    "digest": "b4207cdfcd664948"
   },
@@ -4496,10 +4451,6 @@
    "class": "Gap",
    "structure": "differs",
    "record": "https://github.com/KD5UJC-XYZ/scarab/issues/810#issuecomment-7146574621",
-   "evidence": [
-    "AnchoredFragmentSuite",
-    "HeaderChainModelSuite"
-   ],
    "note": "the fragment whose head is the point, its later blocks unindexed",
    "digest": "0fc269129a1df281"
   },
@@ -4519,10 +4470,6 @@
    "class": "Gap",
    "structure": "differs",
    "record": "https://github.com/KD5UJC-XYZ/scarab/issues/810#issuecomment-7146574621",
-   "evidence": [
-    "AnchoredFragmentSuite",
-    "HeaderChainModelSuite"
-   ],
    "note": "both parts, each unindexing what the other keeps",
    "digest": "44d6107ab51c0e58"
   },
@@ -4542,10 +4489,6 @@
    "class": "Gap",
    "structure": "differs",
    "record": "https://github.com/KD5UJC-XYZ/scarab/issues/810#issuecomment-7146574621",
-   "evidence": [
-    "AnchoredFragmentSuite",
-    "HeaderChainModelSuite"
-   ],
    "note": "snd <$> splitAfterPoint af point, without building the first part: the trim of a candidate to our chain's anchor costs what it drops",
    "digest": "6f8b0e2079cb0d82"
   },
@@ -4565,10 +4508,6 @@
    "class": "Gap",
    "structure": "differs",
    "record": "https://github.com/KD5UJC-XYZ/scarab/issues/810#issuecomment-7146574621",
-   "evidence": [
-    "AnchoredFragmentSuite",
-    "HeaderChainModelSuite"
-   ],
    "note": "the n newest blocks anchored at the one before them; a negative n keeps none (the reference takes a Word64)",
    "digest": "c8a23bd29f1ab255"
   },
@@ -4588,10 +4527,6 @@
    "class": "Gap",
    "structure": "differs",
    "record": "https://github.com/KD5UJC-XYZ/scarab/issues/810#issuecomment-7146574621",
-   "evidence": [
-    "AnchoredFragmentSuite",
-    "HeaderChainModelSuite"
-   ],
    "note": "the first of the other fragment's points from its newest that lies on this one; the reference finds the same point of two chains by binary search",
    "digest": "bd6c17d1edcbf6ef"
   },
@@ -4611,10 +4546,6 @@
    "class": "Gap",
    "structure": "differs",
    "record": "https://github.com/KD5UJC-XYZ/scarab/issues/810#issuecomment-7146574621",
-   "evidence": [
-    "AnchoredFragmentSuite",
-    "HeaderChainModelSuite"
-   ],
    "note": "the fragment of the blocks after the anchor, every hash indexed",
    "digest": "6d44706415c5b653"
   },
@@ -4633,10 +4564,6 @@
    ],
    "class": "Mirror",
    "structure": "same",
-   "evidence": [
-    "AnchoredFragmentSuite",
-    "HeaderChainModelSuite"
-   ],
    "note": "the fragment with no block after its anchor",
    "digest": "097f18232ea310f3"
   },
@@ -4656,10 +4583,6 @@
    "class": "Gap",
    "structure": "differs",
    "record": "https://github.com/KD5UJC-XYZ/scarab/issues/810#issuecomment-7146574621",
-   "evidence": [
-    "AnchoredFragmentSuite",
-    "HeaderChainModelSuite"
-   ],
    "note": "the one field of HasHeader a fragment reads: the point of a block",
    "digest": "1ed4b8e48f46eca6"
   },
@@ -4676,12 +4599,9 @@
      ]
     }
    ],
-   "class": "Mirror",
-   "structure": "same",
-   "evidence": [
-    "AnchoredFragmentSuite",
-    "HeaderChainModelSuite"
-   ],
+   "class": "Gap",
+   "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/810#issuecomment-7146574621",
    "note": "a block's point",
    "digest": "d64f6336c344c9ee"
   },
@@ -4698,13 +4618,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
-   "evidence": [
-    "HeaderChainModelSuite",
-    "UpstreamGenesisTerminalsSuite",
-    "UpstreamGenesisLawsSuite"
-   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/810#issuecomment-7146574621",
    "note": "the point is one of the candidate's: its local prefix, base or headers",
    "digest": "2b6da0b98cf8f4c5"
   },
@@ -4721,13 +4637,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
-   "evidence": [
-    "HeaderChainModelSuite",
-    "UpstreamGenesisTerminalsSuite",
-    "UpstreamGenesisLawsSuite"
-   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/810#issuecomment-7146574621",
    "note": "the point after a point of the candidate, as the point of successorBlock",
    "digest": "ebdcc92d2735a7ab"
   },
@@ -4744,13 +4656,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
-   "evidence": [
-    "HeaderChainModelSuite",
-    "UpstreamGenesisTerminalsSuite",
-    "UpstreamGenesisLawsSuite"
-   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/810#issuecomment-7146574621",
    "note": "the candidate's points newest first, the first point last",
    "digest": "df612f5ae3e7bcac"
   },
@@ -4767,15 +4675,11 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
-   "evidence": [
-    "HeaderChainModelSuite",
-    "UpstreamGenesisTerminalsSuite",
-    "UpstreamGenesisLawsSuite"
-   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/810#issuecomment-7146574621",
    "note": "the newest of the candidate's points on our chain, searched from our newest block: both are chains, so it is the point the reference's binary search finds",
-   "digest": "e65ff82a990c389c"
+   "digest": "c6c9e4e5d509f0ba"
   }
  },
  "glue": [

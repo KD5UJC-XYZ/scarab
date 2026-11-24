@@ -48689,10 +48689,6 @@
    ],
    "class": "Mirror",
    "structure": "same",
-   "evidence": [
-    "AnchoredFragmentSuite",
-    "HeaderChainModelSuite"
-   ],
    "note": "the header's point typed as a block point; computed once with point",
    "digest": "42a2f8de72ad1bfc"
   }
