@@ -24,7 +24,11 @@ class FetchCandidatesSuite extends FunSuite:
     val chain = Fixtures.chain(5)
     val selected = local(chain.take(3))
     val result =
-      FetchCandidates.select(flavor, selected, ChainSelection.Candidate(Point.Origin, chain))
+      FetchCandidates.select(
+        flavor,
+        selected,
+        FetchCandidates.Announced.of(ChainSelection.Candidate(Point.Origin, chain))
+      )
     assertEquals(
       result,
       Right(FetchCandidates.Selection(chain(2).point, chain.drop(3), Vector(chain.drop(3))))
@@ -36,7 +40,7 @@ class FetchCandidatesSuite extends FunSuite:
     val fork = Fixtures.chain(3, salt = 7, from = Some(chain(0)))
     val candidate = ChainSelection.Candidate(Point.Origin, Vector(chain(0)) ++ fork)
     assertEquals(
-      FetchCandidates.select(flavor, local(chain), candidate),
+      FetchCandidates.select(flavor, local(chain), FetchCandidates.Announced.of(candidate)),
       Right(FetchCandidates.Selection(chain(0).point, fork, Vector(fork)))
     )
   }
@@ -46,7 +50,11 @@ class FetchCandidatesSuite extends FunSuite:
     Vector(chain.take(2), chain, Vector.empty).foreach { headers =>
       assertEquals(
         FetchCandidates
-          .select(flavor, local(chain), ChainSelection.Candidate(Point.Origin, headers)),
+          .select(
+            flavor,
+            local(chain),
+            FetchCandidates.Announced.of(ChainSelection.Candidate(Point.Origin, headers))
+          ),
         Left(Refusal.ChainNotPlausible)
       )
     }
@@ -58,10 +66,13 @@ class FetchCandidatesSuite extends FunSuite:
     val elsewhere = Fixtures.header(20, 100, Some(base.hash))
     val candidate = ChainSelection.Candidate(base.point, Vector(elsewhere))
     assertEquals(
-      FetchCandidates.select(flavor, local(chain), candidate),
+      FetchCandidates.select(flavor, local(chain), FetchCandidates.Announced.of(candidate)),
       Left(Refusal.ChainNotPlausible)
     )
-    assertEquals(FetchCandidates.suffix(local(chain), candidate), Left(Refusal.IntersectionTooDeep))
+    assertEquals(
+      FetchCandidates.suffix(local(chain), FetchCandidates.Announced.of(candidate)),
+      Left(Refusal.IntersectionTooDeep)
+    )
   }
 
   test("an older base can intersect a retained header after the immutable anchor moved") {
@@ -74,7 +85,11 @@ class FetchCandidatesSuite extends FunSuite:
       )
     )
     assertEquals(
-      FetchCandidates.select(flavor, selected, ChainSelection.Candidate(Point.Origin, chain)),
+      FetchCandidates.select(
+        flavor,
+        selected,
+        FetchCandidates.Announced.of(ChainSelection.Candidate(Point.Origin, chain))
+      ),
       Right(FetchCandidates.Selection(chain(3).point, chain.drop(4), Vector(chain.drop(4))))
     )
   }
@@ -86,7 +101,7 @@ class FetchCandidatesSuite extends FunSuite:
       FetchCandidates.select(
         flavor,
         local(Vector.empty),
-        ChainSelection.Candidate(Point.Origin, chain),
+        FetchCandidates.Announced.of(ChainSelection.Candidate(Point.Origin, chain)),
         h => fetched(h.point)
       ),
       Right(
@@ -101,7 +116,7 @@ class FetchCandidatesSuite extends FunSuite:
       FetchCandidates.select(
         flavor,
         local(Vector.empty),
-        ChainSelection.Candidate(Point.Origin, chain),
+        FetchCandidates.Announced.of(ChainSelection.Candidate(Point.Origin, chain)),
         h => chain.map(_.point).toSet(h.point)
       ),
       Left(Refusal.AlreadyFetched)
@@ -122,12 +137,16 @@ class FetchCandidatesSuite extends FunSuite:
       FetchCandidates.plausible(
         flavor,
         selected,
-        ChainSelection.Candidate(anchor.point, Vector(boundary))
+        FetchCandidates.Announced.of(ChainSelection.Candidate(anchor.point, Vector(boundary)))
       )
     )
     assertEquals(
       FetchCandidates
-        .select(flavor, selected, ChainSelection.Candidate(anchor.point, Vector(boundary))),
+        .select(
+          flavor,
+          selected,
+          FetchCandidates.Announced.of(ChainSelection.Candidate(anchor.point, Vector(boundary)))
+        ),
       Right(FetchCandidates.Selection(anchor.point, Vector(boundary), Vector(Vector(boundary))))
     )
   }

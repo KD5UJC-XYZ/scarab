@@ -4,6 +4,7 @@ package xyz.kd5ujc.scarab.node
 import munit.ScalaCheckSuite
 import org.scalacheck.Gen
 import org.scalacheck.Prop.*
+import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.{ChainSelection, SelectView}
 import xyz.kd5ujc.scarab.ledger.{Fixtures, Header}
 import xyz.kd5ujc.scarab.network.selection.BlockFetchPolicy.Refusal
@@ -57,6 +58,79 @@ class FetchCandidatesIntersectionSuite extends ScalaCheckSuite:
         kept ++ fork
       )
       val points = local.blocks.map(_.point).toSet + local.anchor
-      FetchCandidates.suffix(selected, candidate) == scanned(points, candidate)
+      FetchCandidates.suffix(selected, FetchCandidates.Announced.of(candidate)) ==
+        scanned(points, candidate)
     }
+  }
+
+  private def localOf(anchor: Header, blocks: Vector[Header]): ChainSelection.Local =
+    ChainSelection.Local(
+      anchor.point,
+      SelectView.of(anchor),
+      blocks.map(h => ChainSelection.LocalBlock(h.point, SelectView.of(h)))
+    )
+
+  test("a candidate whose slots decrease is scanned from its tip, as before") {
+    val anchor = main(9)
+    val selected = FetchCandidates.Selected.of(localOf(anchor, Vector.empty))
+    // slots 20, 21, then the anchor's own (10): only an unchecked candidate can hold this
+    val candidate =
+      ChainSelection.Candidate(main(0).point, Vector(main(19), main(20), anchor))
+    val announced = FetchCandidates.Announced.of(candidate)
+    assertEquals(announced.order, FetchCandidates.SlotOrder.Unchecked)
+    assertEquals(
+      FetchCandidates.suffix(selected, announced),
+      scanned(Set(anchor.point), candidate)
+    )
+    assertEquals(FetchCandidates.suffix(selected, announced), Right(anchor.point -> Vector.empty))
+  }
+
+  test("a Byron boundary and the main block sharing its slot are both within the bound") {
+    def byron(hash: Int, boundary: Boolean, slotInEpoch: Int, blockNo: Int, prev: Option[Header]) =
+      Header
+        .UnsizedByron(
+          Bytes.empty,
+          Bytes(Vector(hash.toByte)),
+          boundary,
+          1,
+          slotInEpoch,
+          21600,
+          blockNo,
+          prev.map(_.hash)
+        )
+        .withSizeHint(FetchTesting.sizeHint(1))
+    val last = byron(1, false, 21599, 9, None)
+    val boundary = byron(2, true, 0, 9, Some(last))
+    val first = byron(3, false, 0, 10, Some(boundary))
+    val next = byron(4, false, 1, 11, Some(first))
+    val candidate = ChainSelection.Candidate(last.point, Vector(boundary, first, next))
+    assertEquals(
+      boundary.point match
+        case Point.Block(slot, _) => Some(slot)
+        case Point.Origin         => None
+      ,
+      first.point match
+        case Point.Block(slot, _) => Some(slot)
+        case Point.Origin         => None
+    )
+    for held <- Vector(Vector(boundary), Vector(boundary, first)) do
+      val selected = FetchCandidates.Selected.of(localOf(last, held))
+      val points = held.map(_.point).toSet + last.point
+      assertEquals(
+        FetchCandidates.suffix(selected, FetchCandidates.Announced.of(candidate)),
+        scanned(points, candidate)
+      )
+  }
+
+  test("saturated point slots keep the bound inclusive") {
+    val far = BigInt(1) << 64
+    val anchor = Fixtures.header(0, far + 5, None)
+    val held = Fixtures.header(1, far + 6, Some(anchor.hash))
+    val ahead = Fixtures.header(2, far + 7, Some(held.hash))
+    val candidate = ChainSelection.Candidate(anchor.point, Vector(held, ahead))
+    val selected = FetchCandidates.Selected.of(localOf(anchor, Vector(held)))
+    assertEquals(
+      FetchCandidates.suffix(selected, FetchCandidates.Announced.of(candidate)),
+      Right(held.point -> Vector(ahead))
+    )
   }
