@@ -4,7 +4,9 @@ the node are replaced by fakes that write what the real ones write.
 
 Run from the repository root:  python3 -m unittest discover -s scripts/tests -v
 """
+import contextlib
 import importlib.util
+import io
 import json
 import os
 import pathlib
@@ -58,10 +60,12 @@ class Fakes:
         self.signals, self.generated = 0, 0
         self.issued = None  # (counter, period) the fake cli was asked for
         self.cold_vkey = COLD
+        self.mounts = {}  # the mounts of each cardano-cli command, by its name
 
     # the Cli
     def run(self, args, mounts=(), check=True):
         work = next(h for h, inside, _ in mounts if inside == "/work")
+        self.mounts[args[1]] = list(mounts)
         if args[1] == "key-gen-KES":
             self.generated += 1
             self.hot = bytes([self.generated]) * 32
@@ -445,6 +449,51 @@ class RotationTest(DriverTest):
         self.assertEqual(caught.exception.status, rk.EXIT_CONFIG)
         self.assertEqual(self.generations(), ["gen-000000-00000000"])
         self.assertEqual(fakes.signals, 0)
+
+    def test_each_command_is_given_only_the_cold_key_file_it_reads(self):
+        fakes = Fakes(tip_slot=1650, on_chain=0)
+        self.assertEqual(self.go(fakes), rk.EXIT_OK)
+        s = self.settings
+
+        def beyond_work(command):
+            return [m for m in fakes.mounts[command] if m[1] != "/work"]
+
+        self.assertEqual(beyond_work("key-gen-KES"), [])
+        self.assertEqual(beyond_work("new-counter"), [(s.cold_vkey, "/cold/cold.vkey", "ro")])
+        self.assertEqual(beyond_work("issue-op-cert"), [(s.cold_skey, "/cold/cold.skey", "ro")])
+
+    def test_cold_keys_of_any_name_are_mounted_under_the_names_the_commands_use(self):
+        cold = pathlib.Path(self.tmp.name) / "cold"
+        (cold / "cold.skey").rename(cold / "pool.skey")
+        (cold / "cold.vkey").rename(cold / "pool.vkey")
+        fakes = Fakes(tip_slot=1650, on_chain=0)
+        self.assertEqual(self.go(fakes, cold_skey=cold / "pool.skey", cold_vkey=cold / "pool.vkey"), rk.EXIT_OK)
+        self.assertEqual(fakes.mounts["new-counter"][-1], (cold / "pool.vkey", "/cold/cold.vkey", "ro"))
+        self.assertEqual(fakes.mounts["issue-op-cert"][-1], (cold / "pool.skey", "/cold/cold.skey", "ro"))
+
+    def test_a_missing_cold_key_stops_the_run_before_any_command(self):
+        # `docker run -v` makes a directory of a host path that is not there
+        (pathlib.Path(self.tmp.name) / "cold" / "cold.skey").unlink()
+        fakes = Fakes(tip_slot=1650, on_chain=0)
+        with self.assertRaises(rk.RotationError) as caught:
+            self.go(fakes)
+        self.assertEqual(caught.exception.status, rk.EXIT_CONFIG)
+        self.assertEqual((fakes.generated, fakes.mounts), (0, {}))
+        self.assertEqual(self.generations(), ["gen-000000-00000000"])
+
+    def warnings(self, **changes):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.assertEqual(self.go(Fakes(tip_slot=1000, on_chain=0), **changes), rk.EXIT_OK)
+        return [e["message"] for e in map(json.loads, out.getvalue().splitlines()) if e["step"] == "warning"]
+
+    def test_a_mainnet_run_with_the_cold_key_online_warns(self):
+        self.assertEqual(self.warnings(), [])  # the settings of these tests name a test network
+        (said,) = self.warnings(testnet_magic=None)
+        self.assertIn("mainnet", said)
+        self.assertIn(str(self.settings.cold_skey), said)
+        self.settings.cold_skey.unlink()
+        self.assertEqual(self.warnings(testnet_magic=None), [])
 
 
 class SettingsTest(unittest.TestCase):

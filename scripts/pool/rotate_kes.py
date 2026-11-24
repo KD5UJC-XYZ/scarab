@@ -301,8 +301,11 @@ class Settings:
 
 
 class Cli:
-    """`cardano-cli` in a container. The key directory is read-only, the work directory a scratch directory, the
-    cold key is mounted only for the command that signs, and the container has no network."""
+    """`cardano-cli` in a container, with the mounts its caller names and no network. A query has the socket's
+    directory and the key directory, both read-only; the commands of `generate` have the staging directory to write
+    in, and of the cold key only the one file each reads, read-only: `new-counter` the verification key and
+    `issue-op-cert`, the command that signs, the signing key. The cold key's directory is never mounted.
+    `--pull=never` runs the image the local store has under `--cli-image`, whatever it is: a tag does not say which."""
 
     def __init__(self, settings, runner=subprocess.run):
         self.s = settings
@@ -424,6 +427,9 @@ def generate(s, cli, key_dir, name, counter, period):
             if cert.counter == counter and cert.start_period == period:
                 return cert
         scrub(final)
+    for key in (s.cold_skey, s.cold_vkey):
+        if not key.is_file():  # `docker run -v` would make a directory of a path that is not there
+            raise RotationError(EXIT_CONFIG, f"the cold key file {key} is not there (or is not a file)")
     staging = key_dir / f".staging-{name}"
     scrub(staging)
     staging.mkdir(mode=0o700)
@@ -433,12 +439,12 @@ def generate(s, cli, key_dir, name, counter, period):
                  "--signing-key-file", "/work/kes.skey"], mounts=work)
         cli.run(["node", "new-counter", "--cold-verification-key-file", "/cold/cold.vkey",
                  "--counter-value", str(counter), "--operational-certificate-issue-counter-file", "/work/issue.counter"],
-                mounts=work + [(s.cold_vkey.parent, "/cold", "ro")])
+                mounts=work + [(s.cold_vkey, "/cold/cold.vkey", "ro")])
         cli.run(["node", "issue-op-cert", "--kes-verification-key-file", "/work/kes.vkey",
                  "--cold-signing-key-file", "/cold/cold.skey",
                  "--operational-certificate-issue-counter-file", "/work/issue.counter",
                  "--kes-period", str(period), "--out-file", "/work/node.cert"],
-                mounts=work + [(s.cold_skey.parent, "/cold", "ro")])
+                mounts=work + [(s.cold_skey, "/cold/cold.skey", "ro")])
         cert = parse_opcert((staging / "node.cert").read_text())
         hot = parse_vkey((staging / "kes.vkey").read_text())
         cold = parse_vkey(s.cold_vkey.read_text())
@@ -526,6 +532,11 @@ def run(s, cli=None, node=None):
 def rotate(s, cli, node):
     key_dir = s.key_dir
     node = node or Node(s, cli)
+    if s.testnet_magic is None and s.cold_skey.exists():
+        say(step="warning", message=f"this run is for mainnet (no --testnet-magic) and the cold signing key is online, "
+                                    f"at {s.cold_skey}: a mainnet pool keeps it offline and issues the certificate by "
+                                    f"hand. Here it is read by whatever image the local store holds as {s.cli_image} "
+                                    f"(--pull=never, nothing verifies it): name the image by digest")
     current = current_generation(key_dir)
     # a rotation that was not confirmed (the previous run crashed or timed out) is finished first
     rotation = read_rotation(key_dir)
