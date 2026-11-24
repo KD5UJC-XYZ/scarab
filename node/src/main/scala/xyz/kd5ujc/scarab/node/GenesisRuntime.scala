@@ -112,13 +112,8 @@ final class GenesisRuntime[F[_]: Async] private (
       // the session's gate's history, as the session publishes it
       def publishedBy(gate: HeaderGate.Grafting[F]): F[Option[HeaderChain[NodeHeaderState]]] =
         gate.snapshot.flatTap(published.set)
-      def fragment(history: HeaderChain[NodeHeaderState]): Fragment =
-        Fragment(
-          history.nonEmptyPoints.head,
-          history.nonEmptyPoints.tail.collect { case point: Point.Block =>
-            point
-          }
-        )
+      // the history's points as they are kept, not collected again for each header (issue 810)
+      def fragment(history: HeaderChain[NodeHeaderState]): Fragment = history.densityFragment
       def publish: F[Unit] =
         (snapshot, raw.get, idle.get).tupled.flatMap { (history, latest, idling) =>
           peer.publish(history.map(fragment), latest, idling) *> readings.update { current =>
@@ -199,19 +194,20 @@ final class GenesisRuntime[F[_]: Async] private (
                     )(F.pure)
                   )
                   .flatMap { selected =>
-                    h.points.reverseIterator
+                    h.pointsNewestFirst
                       .find(selected.contains)
                       .fold(
                         invariant[Unit](GenesisInternalProblem.HeaderSelectionUnavailable(h.base))
-                      )(intersection =>
+                      ) { intersection =>
+                        val points = h.nonEmptyPoints
                         jumper.update(
                           JumpInfo(
-                            h.nonEmptyPoints.head,
-                            h.nonEmptyPoints.tail,
+                            points.head,
+                            points.tail,
                             GenesisPeer.Checkpoint(h, selected, intersection)
                           )
                         )
-                      )
+                      }
                   }
               }
             } *> (event match
@@ -236,11 +232,12 @@ final class GenesisRuntime[F[_]: Async] private (
                     )(F.pure)
                   )
                   .flatMap { selected =>
-                    if selected.contains(point) && h.points.contains(point) then
+                    if selected.contains(point) && h.withinFragmentBounds(point) then
+                      val points = h.nonEmptyPoints
                       jumper.update(
                         JumpInfo(
-                          h.nonEmptyPoints.head,
-                          h.nonEmptyPoints.tail,
+                          points.head,
+                          points.tail,
                           GenesisPeer.Checkpoint(h, selected, point)
                         )
                       )
@@ -342,10 +339,7 @@ final class GenesisRuntime[F[_]: Async] private (
           jumper.onRollForward(header.point) *> raw.set(LatestSlot.At(header.slot)) *> publish
         case SyncEvent.RollBackward(point, _) =>
           snapshot.flatMap { history =>
-            val oldest = history.flatMap { h =>
-              val index = h.points.indexOf(point)
-              Option.when(index >= 0)(h.points.drop(index + 1).headOption).flatten
-            }
+            val oldest = history.flatMap(_.successorPoint(point))
             oldest.traverse_(point =>
               historical(NodeGenesisHistory.Message.RollBackward, point, history)
             )

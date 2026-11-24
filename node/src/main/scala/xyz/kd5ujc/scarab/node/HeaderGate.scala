@@ -582,7 +582,7 @@ object HeaderCheck:
                       .prefersCandidate(candidate.tiebreaker, ours.tipView, candidate.value)
                   )(
                     PeerError.GenesisProblem.CandidateTooSparse(
-                      hc.points.reverseIterator.find(ours.contains).getOrElse(hc.base),
+                      hc.pointsNewestFirst.find(ours.contains).getOrElse(hc.base),
                       ours.blocks.lastOption.fold(ours.anchor)(_.point),
                       hc.tipPoint
                     )
@@ -602,7 +602,7 @@ object HeaderCheck:
               (state.get, coherentCurrent).tupled.flatMap { (hc, snapshot) =>
                 val (current, selected) = snapshot
                 val parent = hc.tipState.orElse(appliedState(current, hc))
-                if !hc.points.contains(current.anchor.point) then
+                if !hc.withinFragmentBounds(current.anchor.point) then
                   F.pure(Right(HeaderGate.Acceptance.Restart(hc.tipPoint)))
                 else
                   (parent, anchorOf(current, hc)) match
@@ -647,7 +647,7 @@ object HeaderCheck:
               (state.get, coherentCurrent).tupled.flatMap { (hc, snapshot) =>
                 val (current, selected) = snapshot
                 val parent = hc.tipState.orElse(appliedState(current, hc))
-                if !hc.points.contains(current.anchor.point) then
+                if !hc.withinFragmentBounds(current.anchor.point) then
                   F.pure(Right(HeaderGate.TimeForecast.Restart(hc.tipPoint)))
                 else
                   (parent, anchorOf(current, hc)) match
@@ -940,7 +940,7 @@ object HeaderCheck:
           }
           selected.orElse {
             Option.when(
-              hc.points.contains(current.anchor.point)
+              hc.withinFragmentBounds(current.anchor.point)
             )(current.anchor.state -> current.anchor.block)
           }
 
