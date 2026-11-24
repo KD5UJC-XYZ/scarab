@@ -7,7 +7,7 @@ import org.scalacheck.Prop.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.{ChainSelection, SelectView}
 import xyz.kd5ujc.scarab.ledger.{Fixtures, Header}
-import xyz.kd5ujc.scarab.network.selection.{BlockFetchPolicy, Fetched, FetchMode}
+import xyz.kd5ujc.scarab.network.selection.{BlockFetchPolicy, Fetched, FetchMode, GenesisBlockFetch}
 import xyz.kd5ujc.scarab.protocol.ChainSync
 import xyz.kd5ujc.scarab.protocol.ChainSync.Point
 
@@ -363,43 +363,49 @@ class FetchIncrementalSuite extends ScalaCheckSuite:
         false,
         Vector.empty
       )
-      script
-        .foldLeft((start, Prop.passed)) { case ((before, prop), change) =>
-          val world = changed(before, change)
-          // a fresh membership test for every decision, as the block pool gives one
-          val fetched = Fetched.of(world.fetched)
-          val view = FetchCoordinator.viewOf(world.view, world.local)
-          val peers = world.peers.toVector.sortBy(_._1)
-          val decided = peers.map { (id, announced) =>
-            val restriction = ChainSelection.tiebreakerFor(
-              announced.candidate.headers.lastOption
-                .fold(xyz.kd5ujc.scarab.protocol.Era.Byron)(_.era)
+      val genesisStart = GenesisBlockFetch.State[Int]()
+      script.zipWithIndex
+        .foldLeft((start, genesisStart, genesisStart, Prop.passed)) {
+          case ((before, genesisGot, genesisExpected, prop), (change, round)) =>
+            val world = changed(before, change)
+            // a fresh membership test for every decision, as the block pool gives one
+            val fetched = Fetched.of(world.fetched)
+            val view = FetchCoordinator.viewOf(world.view, world.local)
+            // sessions 4 and 5 are registered and have announced nothing: the coordinator weighs a
+            // fresh index of the empty candidate for them at every decision
+            val unannounced = Vector(4, 5).map(id =>
+              id -> FetchCandidates.Announced
+                .of(ChainSelection.Candidate(Point.Origin, Vector.empty))
             )
-            val (weighing, chosen) = FetchCoordinator.stages(
-              world.weighings.get(id),
-              view,
-              announced,
-              restriction,
-              world.genesis,
-              fetched
-            )
-            val expected = FetchDecisionModel.chosen(
-              world.local,
-              world.genesis,
-              restriction,
-              announced.candidate,
-              fetched
-            )
-            (id, weighing, (chosen.left.toOption, chosen.getOrElse(Vector.empty)), expected)
-          }
-          def policy(
-              stages: Vector[
-                (Int, (Option[BlockFetchPolicy.Refusal], Vector[BlockFetchPolicy.Fragment]))
-              ]
-          ) =
-            BlockFetchPolicy.decide(
-              BlockFetchPolicy.Config(2, 1, 3),
-              mode,
+            val peers = world.peers.toVector.sortBy(_._1) ++ unannounced
+            val decided = peers.map { (id, announced) =>
+              val restriction = ChainSelection.tiebreakerFor(
+                announced.candidate.headers.lastOption
+                  .fold(xyz.kd5ujc.scarab.protocol.Era.Byron)(_.era)
+              )
+              val (weighing, chosen) = FetchCoordinator.stages(
+                world.weighings.get(id),
+                view,
+                announced,
+                restriction,
+                world.genesis,
+                fetched
+              )
+              val expected = FetchDecisionModel.chosen(
+                world.local,
+                world.genesis,
+                restriction,
+                announced.candidate,
+                fetched
+              )
+              (id, weighing, (chosen.left.toOption, chosen.getOrElse(Vector.empty)), expected)
+            }
+            val config = BlockFetchPolicy.Config(2, 1, 3)
+            def candidates(
+                stages: Vector[
+                  (Int, (Option[BlockFetchPolicy.Refusal], Vector[BlockFetchPolicy.Fragment]))
+                ]
+            ) =
               stages.map { case (id, (refusal, fragments)) =>
                 BlockFetchPolicy.Candidate(
                   peer = id,
@@ -410,20 +416,51 @@ class FetchIncrementalSuite extends ScalaCheckSuite:
                   refusal = refusal
                 )
               }
+            // the Genesis decision keeps its state from round to round, on each side its own
+            def genesis(
+                state: GenesisBlockFetch.State[Int],
+                stages: Vector[
+                  (Int, (Option[BlockFetchPolicy.Refusal], Vector[BlockFetchPolicy.Fragment]))
+                ]
+            ) =
+              GenesisBlockFetch.decide(
+                config,
+                state,
+                BigInt(round) * 1000000000000L,
+                GenesisBlockFetch.Starvation.EndedAt(BigInt(round / 3) * 3000000000000L),
+                candidates(stages),
+                GenesisBlockFetch.DefaultGracePicos,
+                fetched
+              )
+            val got = decided.map((id, _, got, _) => id -> got)
+            val expected = decided.map((id, _, _, expected) => id -> expected)
+            val (decisions, genesisNext) =
+              if world.genesis then
+                val (a, b) = (genesis(genesisGot, got), genesis(genesisExpected, expected))
+                (
+                  (a.decisions, a.demoteDynamo, a.state) == (b.decisions, b.demoteDynamo, b.state),
+                  (a.state, b.state)
+                )
+              else
+                (
+                  BlockFetchPolicy.decide(config, mode, candidates(got)) ==
+                    BlockFetchPolicy.decide(config, mode, candidates(expected)),
+                  (genesisGot, genesisExpected)
+                )
+            val next = world.copy(
+              weighings = decided.flatMap((id, w, _, _) => w.map(id -> _)).toMap,
+              view = view
             )
-          val next = world.copy(
-            weighings = decided.flatMap((id, w, _, _) => w.map(id -> _)).toMap,
-            view = view
-          )
-          (
-            next,
-            prop && decided
-              .forall((_, _, got, expected) => got == expected) :| s"stages after $change" &&
-              (policy(decided.map((id, _, got, _) => id -> got)) ==
-                policy(decided.map((id, _, _, expected) => id -> expected))) :| "decisions"
-          )
+            (
+              next,
+              genesisNext._1,
+              genesisNext._2,
+              prop && decided
+                .forall((_, _, got, expected) => got == expected) :| s"stages after $change" &&
+                decisions :| "decisions"
+            )
         }
-        ._2
+        ._4
     }
   }
 
@@ -454,4 +491,83 @@ class FetchIncrementalSuite extends ScalaCheckSuite:
     assert(first.zip(again).exists(_ eq _))
     assert(!first.zip(moved).exists(_ eq _))
     assert(FetchCoordinator.viewOf(view, Some(local)).zip(view).exists(_ eq _))
+  }
+
+  test("heights a FindIntersect installs between a batch's move and its record are all filtered") {
+    val retained = 8
+    val first = main.take(5).map(SyncEvent.RollForward(_, ChainSync.Tip.Origin))
+    val start = ChainSelection.Candidate(Point.Origin, Vector.empty)
+    val once = CandidateTrack.move(None, start, first, retained)
+    val track = CandidateTrack.initial.recorded(once, Map.empty)
+    val batch = main.slice(5, 7).map(SyncEvent.RollForward(_, ChainSync.Tip.Origin))
+    val moved = CandidateTrack.move(track.announced, once.announced.candidate, batch, retained)
+    // the FindIntersect lands after the candidate moved and before its heights were recorded
+    val offered = main.slice(20, 30).map(h => h.point -> Some(h.blockNo)).toMap +
+      (Point.Origin -> None)
+    val interleaved = track.offered(offered)
+    val received = batch.collect { case SyncEvent.RollForward(h, _) =>
+      h.point -> Some(h.blockNo)
+    }.toMap
+    assert(!interleaved.carries(moved))
+    assertEquals(
+      interleaved.recorded(moved, received).heights,
+      FetchDecisionModel.heightsAfter(offered, batch, moved.announced.candidate)
+    )
+  }
+
+  test("a candidate replaced between reading the index and moving it is scanned, not carried") {
+    val retained = 8
+    val start = ChainSelection.Candidate(Point.Origin, Vector.empty)
+    val once = CandidateTrack.move(
+      None,
+      start,
+      main.take(5).map(SyncEvent.RollForward(_, ChainSync.Tip.Origin)),
+      retained
+    )
+    val track = CandidateTrack.initial.recorded(once, Map.empty)
+    // a restart put an equal but distinct candidate in place after the index was read
+    val replaced = ChainSelection.Candidate(
+      once.announced.candidate.base,
+      once.announced.candidate.headers.map(identity)
+    )
+    val batch = main.slice(5, 7).map(SyncEvent.RollForward(_, ChainSync.Tip.Origin))
+    val moved = CandidateTrack.move(track.announced, replaced, batch, retained)
+    assertEquals(moved.start, FetchCandidates.Derivation.Scanned)
+    assert(!track.carries(moved))
+    assertEquals(
+      moved.announced.candidate,
+      FetchDecisionModel.candidateAfter(replaced, batch, retained)
+    )
+    // a graft installs the index it announced, so the batch after it carries that index
+    val grafted = track.replaced(FetchCandidates.Announced.of(replaced))
+    val next = CandidateTrack.move(grafted.announced, replaced, batch, retained)
+    assertEquals(next.start, FetchCandidates.Derivation.Carried)
+    assert(!grafted.carries(next))
+  }
+
+  test("positions are counted again from the first header long before they could overflow") {
+    // two headers that never extend each other, alternating, in a window of two: every pair is cut
+    val a = Fixtures.header(1, 1, None, 1)
+    val b = Fixtures.header(2, 2, None, 2)
+    val start = FetchCandidates.Announced.of(ChainSelection.Candidate(Point.Origin, Vector.empty))
+    val carried = (0L until FetchCandidates.Announced.Rebase + 3).foldLeft(start) {
+      (announced, i) =>
+        announced.forward(if i % 2 == 0 then a else b, 2).announced
+    }
+    val headers = carried.candidate.headers
+    assertEquals(headers.size, 2)
+    assertEquals(
+      carried.fragments(Vector(FetchCandidates.Span(0, 2))),
+      FetchDecisionModel.fragmentsOf(headers)
+    )
+    assertEquals(carried.fragments(Vector(FetchCandidates.Span(0, 2))).size, 2)
+  }
+
+  test("spans are cut to the candidate") {
+    val announced =
+      FetchCandidates.Announced.of(ChainSelection.Candidate(Point.Origin, main.take(3)))
+    assertEquals(
+      announced.fragments(Vector(FetchCandidates.Span(-4, 1), FetchCandidates.Span(2, 9))),
+      FetchDecisionModel.fragmentsOf(Vector(main(0), main(2)))
+    )
   }

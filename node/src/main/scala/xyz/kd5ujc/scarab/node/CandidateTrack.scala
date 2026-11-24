@@ -18,6 +18,12 @@ private[node] final case class CandidateTrack(
     heights: Map[Point, Option[BigInt]],
     restricted: Boolean
 ):
+  /** A candidate put in place from outside the batches (a Genesis graft), with its index: the next
+    * batch carries that index, and filters every height, which were filtered to another candidate.
+    */
+  def replaced(index: FetchCandidates.Announced): CandidateTrack =
+    copy(announced = Some(index), restricted = false)
+
   /** The heights of the points a FindIntersect offered. */
   def offered(heights: Map[Point, Option[BigInt]]): CandidateTrack =
     copy(heights = heights, restricted = false)

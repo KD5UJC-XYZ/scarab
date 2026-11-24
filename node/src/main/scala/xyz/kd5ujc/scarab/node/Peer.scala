@@ -1329,16 +1329,14 @@ object Peer:
                 .map(held =>
                   publicationRoom(published, candidate, retainedHeaders) && held.forall(identity)
                 )
+            // the candidate's index is scanned once, kept for the batches after it and announced
             def remember(candidate: ChainSelection.Candidate): F[Unit] =
-              candidateHeaders.set(candidate) *>
+              val announced = FetchCandidates.Announced.of(candidate)
+              candidateHeaders.set(candidate) *> tracked.update(_.replaced(announced)) *>
                 connection.fetchPerformance
                   .getOrElse(F.pure(FetchGsv.default))
                   .flatMap(performance =>
-                    fetcher.announce(
-                      candidate.headers.lastOption,
-                      performance,
-                      candidate = Some(candidate)
-                    )
+                    fetcher.announce(candidate.headers.lastOption, performance, announced)
                   )
             for
               initial <- candidateHeaders.get

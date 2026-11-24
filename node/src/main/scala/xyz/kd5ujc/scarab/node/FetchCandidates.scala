@@ -94,11 +94,16 @@ private[node] object FetchCandidates:
       val joined = headers.lastOption
       val left =
         if dropping == 0 then Vector.empty else candidate.base +: dropped.dropRight(1).map(_.point)
-      val first = offset + dropping
+      val moved = offset + dropping
       val linked =
         joined.fold(breaks)(last =>
           if Announced.extendsHeader(header, last) then breaks else breaks + (offset + size)
         )
+      val kept = if dropping == 0 then linked else linked.rangeFrom(moved + 1)
+      // positions count from a first header that keeps moving: they are counted again from the
+      // current first one before they could grow without bound
+      val (first, positions) =
+        if moved < Announced.Rebase then (moved, kept) else (0L, kept.map(_ - moved))
       Announced.Step.Moved(
         new Announced(
           ChainSelection
@@ -107,7 +112,7 @@ private[node] object FetchCandidates:
             (0 until dropping).iterator.map(j => Announced.disordered(grown(j), grown(j + 1))).sum,
           (blocks :+ Announced.sized(header)).drop(dropping),
           first,
-          if dropping == 0 then linked else linked.rangeFrom(first + 1),
+          positions,
           left.foldLeft(Announced.counted(points, header.point))(Announced.uncounted),
           Derivation.Carried
         ),
@@ -123,12 +128,10 @@ private[node] object FetchCandidates:
       val at =
         if point == candidate.base then Some(-1)
         else
-          points.get(point).map { occurrences =>
-            // a point that occurs once, and is not the base, is one header's: the newest headers
-            // are the likeliest target, so it is searched from the tip
-            if occurrences == 1 then headers.lastIndexWhere(_.point == point)
-            else headers.indexWhere(_.point == point)
-          }
+          // a point that is not the base occurs only in headers, as often as it is counted: the
+          // first of them is found from the tip, so that only the headers the rollback removes and
+          // the occurrences after the first are looked at
+          points.get(point).map(occurrences => Announced.first(headers, point, occurrences))
       at.fold[Announced.Step](
         Announced.Step.Reset(Announced.of(ChainSelection.Candidate(point, Vector.empty)))
       ) { i =>
@@ -150,17 +153,18 @@ private[node] object FetchCandidates:
         )
       }
 
-    /** The fragments of the headers `spans` select, in their order, as `fragmentsOf` makes them
-      * from those headers: one for each run in which every header extends the one before. A run is
-      * cut where a header does not extend its predecessor in the candidate, and a span joins the
-      * fragment before it when its first header extends that fragment's last. The fragments'
-      * headers are slices of the sized headers, not built again.
+    /** The fragments of the headers `spans` select (each cut to the candidate), in their order, as
+      * `fragmentsOf` makes them from those headers: one for each run in which every header extends
+      * the one before. A run is cut where a header does not extend its predecessor in the
+      * candidate, and a span joins the fragment before it when its first header extends that
+      * fragment's last. The fragments' headers are slices of the sized headers, not built again.
       */
     def fragments(spans: Vector[Span]): Vector[BlockFetchPolicy.Fragment] =
       val headers = candidate.headers
       spans
         .foldLeft((Vector.empty[BlockFetchPolicy.Fragment], Option.empty[Int])) {
-          case ((done, last), span) =>
+          case ((done, last), whole) =>
+            val span = Span(whole.from.max(0), whole.until.min(headers.size))
             if span.from >= span.until then (done, last)
             else
               val cuts = breaks
@@ -181,6 +185,18 @@ private[node] object FetchCandidates:
         ._1
 
   object Announced:
+    /** How far the first header's position moves before positions are counted from it again. */
+    private[node] val Rebase: Long = 1L << 20
+
+    /** The index of the first of `occurrences` headers at `point`, searched from the tip. */
+    private def first(headers: Vector[Header], point: Point, occurrences: Int): Int =
+      @tailrec def go(i: Int, seen: Int): Int =
+        if i < 0 then -1
+        else if headers(i).point != point then go(i - 1, seen)
+        else if seen + 1 == occurrences then i
+        else go(i - 1, seen + 1)
+      go(headers.size - 1, 0)
+
     /** The index of `candidate`, from a scan of the whole of it. */
     def of(candidate: ChainSelection.Candidate): Announced =
       val headers = candidate.headers
@@ -238,24 +254,26 @@ private[node] object FetchCandidates:
     def headers: Vector[Header] = missing.flatten
 
   /** What stages 1 and 2 find of a candidate against the selected chain, which no fetched block
-    * changes: whether it is plausible, and its intersection with the count of its headers up to it.
+    * changes: for a plausible candidate, its intersection with the count of its headers up to it;
+    * none for one that is not plausible.
     */
-  final case class Weighed(plausible: Boolean, intersection: Option[(Point, Int)])
+  final case class Weighed(plausible: Option[(Point, Int)])
 
+  /** A candidate is plausible when its tip is preferred to ours and it intersects our chain. The
+    * tip is weighed first, so that a candidate we do not prefer (a peer behind us, or on a fork we
+    * would not take) is not searched for its intersection.
+    */
   def weigh(
       tiebreaker: ChainSelection.Tiebreaker,
       selected: Selected,
       announced: Announced
   ): Weighed =
     val local = selected.local
-    val found = intersection(selected, announced)
-    Weighed(
-      found.isDefined && announced.candidate.headers.lastOption.exists { tip =>
-        if local.blocks.isEmpty then tip.point != local.anchor
-        else ChainSelection.prefersCandidate(tiebreaker, local.tipView, SelectView.of(tip))
-      },
-      found
-    )
+    val preferred = announced.candidate.headers.lastOption.exists { tip =>
+      if local.blocks.isEmpty then tip.point != local.anchor
+      else ChainSelection.prefersCandidate(tiebreaker, local.tipView, SelectView.of(tip))
+    }
+    Weighed(if preferred then intersection(selected, announced) else None)
 
   /** Stages 1–3 for Praos from a candidate's weighing: the runs of its suffix whose blocks are not
     * fetched.
@@ -265,24 +283,20 @@ private[node] object FetchCandidates:
       announced: Announced,
       alreadyFetched: Header => Boolean
   ): Either[Refusal, Vector[Span]] =
-    if !weighed.plausible then Left(Refusal.ChainNotPlausible)
-    else
-      weighed.intersection
-        .toRight(Refusal.IntersectionTooDeep)
-        .map((_, count) => missing(announced, count, alreadyFetched))
-        .filterOrElse(_.nonEmpty, Refusal.AlreadyFetched)
+    weighed.plausible
+      .toRight(Refusal.ChainNotPlausible)
+      .map((_, count) => missing(announced, count, alreadyFetched))
+      .filterOrElse(_.nonEmpty, Refusal.AlreadyFetched)
 
   /** Stages 1 and 2 for Genesis, which selects from the plausible suffix before removing fetched
     * blocks (Decision/Genesis.hs): the whole suffix.
     */
   def plausibleSuffix(weighed: Weighed, announced: Announced): Either[Refusal, Vector[Span]] =
-    if !weighed.plausible then Left(Refusal.ChainNotPlausible)
-    else
-      weighed.intersection
-        .toRight(Refusal.IntersectionTooDeep)
-        .map((_, count) =>
-          Vector(Span(count, announced.candidate.headers.size)).filter(s => s.from < s.until)
-        )
+    weighed.plausible
+      .toRight(Refusal.ChainNotPlausible)
+      .map((_, count) =>
+        Vector(Span(count, announced.candidate.headers.size)).filter(s => s.from < s.until)
+      )
 
   /** The runs of the candidate's headers from position `from` whose blocks are not fetched. Only
     * fetched blocks split the suffix after an intersection: the intersection is the last header on
@@ -316,10 +330,13 @@ private[node] object FetchCandidates:
   ): Either[Refusal, Selection] =
     val weighed = weigh(tiebreaker, selected, announced)
     val headers = announced.candidate.headers
-    chosen(weighed, announced, alreadyFetched).flatMap { spans =>
-      weighed.intersection.toRight(Refusal.IntersectionTooDeep).map { (point, count) =>
-        Selection(point, headers.drop(count), spans.map(s => headers.slice(s.from, s.until)))
-      }
+    weighed.plausible.toRight(Refusal.ChainNotPlausible).flatMap { (point, count) =>
+      Some(missing(announced, count, alreadyFetched))
+        .filter(_.nonEmpty)
+        .toRight(Refusal.AlreadyFetched)
+        .map(spans =>
+          Selection(point, headers.drop(count), spans.map(s => headers.slice(s.from, s.until)))
+        )
     }
 
   /** Empty current fragments are anchored at an immutable block. A strict extension is plausible
@@ -329,7 +346,7 @@ private[node] object FetchCandidates:
       tiebreaker: ChainSelection.Tiebreaker,
       selected: Selected,
       announced: Announced
-  ): Boolean = weigh(tiebreaker, selected, announced).plausible
+  ): Boolean = weigh(tiebreaker, selected, announced).plausible.isDefined
 
   /** Latest common point, bounded by the selected immutable anchor. */
   def suffix(
