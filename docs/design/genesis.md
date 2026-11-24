@@ -161,8 +161,9 @@ As built, the processed forest keeps the VolatileDB's successors index (`Process
 `currentSuccMap` and `filterByPredecessor`, ouroboros-consensus 82ecba32 `Storage/VolatileDB/Impl.hs:436,518-551`),
 updated where a block joins or leaves the forest: an admission, a forged or recovered block, a body the log lost,
 the collection below the immutable tip. A block is keyed by its own header's hash, and one whose predecessors would
-lead back to it is refused there, raising in the same scope the `BlockPoolProblem.AvailableCycle` that selection
-raised before. A first admission's
+lead back to it is refused there with the `BlockPoolProblem.AvailableCycle` that selection raised before: in the
+worker for an admitted block, in the submission for a forged one, and at the start, before the first selection, for a
+recovered one. A first admission's
 candidates are found from the admitted block alone, back to the selected chain and on through its successors
 (`chainSelectionForBlock`, `ChainSel.hs:710-777`), and the LoE reprocessing pass walks from the successors of each
 selected point (`ChainSelReprocessLoEBlocks`, `ChainSel.hs:372-408`); invalid, withheld and parked blocks are

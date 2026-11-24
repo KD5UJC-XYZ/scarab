@@ -19,9 +19,10 @@ import xyz.kd5ujc.scarab.protocol.ChainSync.Point
   * in hash order ([[ProcessedForest.hashOrder]]), the selected points in the order of the chain
   * (anchor first); `containing` keeps the paths through one of its blocks.
   *
-  * A selected point is told by [[ChainSelection.Local.contains]] on a block's point: the selected
-  * chain names each of its blocks by the point of the block's header, the hash of which determines
-  * it, and holds no point twice.
+  * A block is selected when its hash is the anchor's or a selected block's, and the paths of a
+  * selected point start with the blocks whose predecessor is its hash (Origin's: none, or Byron's
+  * genesis alias), each place of the chain on its own, as the walk from every selected point treats
+  * them.
   */
 private[node] object AvailableBlocks:
   import ProcessedForest.hashOrder
@@ -57,6 +58,20 @@ private[node] object AvailableBlocks:
       through: Boolean
   )
 
+  /** A block a path starts with, after the selected point at `place` (0 the anchor, else one more
+    * than the index in the selected blocks).
+    */
+  private final case class Root(place: Int, base: Point, header: Header)
+
+  /** What the walks back from the targets met: the blocks on their paths (`seen`), each with those
+    * of its successors on them (`paths`), and the blocks the paths start with.
+    */
+  private final case class Back(
+      seen: Set[Bytes],
+      paths: Map[Bytes, List[Header]],
+      roots: Vector[Root]
+  )
+
   private final class Walks[A](
       local: ChainSelection.Local,
       forest: ProcessedForest[A],
@@ -69,14 +84,23 @@ private[node] object AvailableBlocks:
       local.anchor == Point.Origin || header.blockNo > local.anchorView.blockNo ||
         (header.isBoundary && header.blockNo == local.anchorView.blockNo)
 
+    private def selected(hash: Bytes): Boolean =
+      local.anchor match
+        case Point.Block(_, anchor) if anchor == hash => true
+        case Point.Block(_, _) | Point.Origin         => local.placesOf(Some(hash)).nonEmpty
+
     /** A block a path may go through: in the forest, visible and not selected. */
     private def open(hash: Bytes): Option[Header] =
       forest
         .header(hash)
-        .filter(header => !hidden(hash) && aboveImmutable(header) && !local.contains(header.point))
+        .filter(header => !hidden(hash) && aboveImmutable(header) && !selected(hash))
 
     private def children(header: Header): List[Header] =
       forest.successors(Some(header.hash)).toList.flatMap(open)
+
+    /** Whether a block of predecessor `key` starts the paths of Origin. */
+    private def afterOrigin(key: Option[Bytes]): Boolean =
+      key.isEmpty || (originPredecessor.nonEmpty && key == originPredecessor)
 
     /** The blocks after `point` that a path starts with, in hash order. */
     private def expansion(point: Point): List[Header] =
@@ -93,98 +117,93 @@ private[node] object AvailableBlocks:
         val selected = local.anchor +: local.blocks.map(_.point)
         walk(
           selected.toList.flatMap(point => expansion(point).map(Walk(point, _, Nil, true))),
-          Set.empty,
+          Map.empty,
           _ => true,
           Vector.empty
         )
       } { targets =>
-        val (relevant, roots) = targets.toVector
+        val found = targets.toVector
           .flatMap(open)
-          .foldLeft((Set.empty[Bytes], Vector.empty[(Point, Header)])) {
-            case ((seen, found), target) => back(target, seen, found)
-          }
+          .foldLeft(Back(Set.empty, Map.empty, Vector.empty))(back)
+        val roots =
+          if found.roots.sizeIs <= 1 then found.roots
+          else
+            found.roots.sortBy(root => (root.place, root.header.hash))(using
+              Ordering.Tuple2(using Ordering.Int, hashOrder)
+            )
         walk(
-          ordered(roots).map((base, root) => Walk(base, root, Nil, false)).toList,
-          relevant,
+          roots.map(root => Walk(root.base, root.header, Nil, false)).toList,
+          found.paths,
           targets,
           Vector.empty
         )
       }
 
     /** The paths through a target, in the order the walk from every selected point meets them:
-      * depth first, children in hash order, emitting a tip once its path holds a target. Below a
-      * block whose path holds none, only the children that lead to one (`relevant`) are walked.
+      * depth first, children in hash order, emitting a tip once its path holds a target. Before a
+      * target, only the successors on a path to one are followed (`paths`), and there is always
+      * one, so no tip is emitted there.
       */
     @tailrec private def walk(
         pending: List[Walk],
-        relevant: Set[Bytes],
+        paths: Map[Bytes, List[Header]],
         targets: Bytes => Boolean,
         result: Vector[ChainSelection.Candidate]
     ): Vector[ChainSelection.Candidate] = pending match
       case Nil => result
       case Walk(base, header, prefix, through) :: rest =>
         val reversed = header :: prefix
-        val reached = through || targets(header.hash)
-        children(header) match
-          case Nil =>
-            val grown =
-              if reached then result :+ ChainSelection.Candidate(base, reversed.reverse.toVector)
-              else result
-            walk(rest, relevant, targets, grown)
-          case next =>
-            val followed = if reached then next else next.filter(h => relevant(h.hash))
-            walk(followed.map(Walk(base, _, reversed, reached)) ::: rest, relevant, targets, result)
+        if through || targets(header.hash) then
+          children(header) match
+            case Nil =>
+              walk(
+                rest,
+                paths,
+                targets,
+                result :+ ChainSelection.Candidate(base, reversed.reverse.toVector)
+              )
+            case next =>
+              walk(next.map(Walk(base, _, reversed, true)) ::: rest, paths, targets, result)
+        else
+          val next = paths.getOrElse(header.hash, Nil).sortBy(_.hash)(using hashOrder)
+          walk(next.map(Walk(base, _, reversed, false)) ::: rest, paths, targets, result)
 
-    /** Back from `header` towards the selected chain (`isReachable`, Paths.hs): each block met is
-      * `relevant`, and a block is a root of each selected point whose successors it is among. A
-      * block already met was walked back from before.
+    /** Back from a target towards the selected chain (`isReachable`, Paths.hs): each block met is
+      * on a path, joined to its predecessor when that is a block a path goes through, and is a root
+      * of each selected place whose successors it is among. A block met before was walked back from
+      * then.
       */
-    @tailrec private def back(
-        header: Header,
-        seen: Set[Bytes],
-        found: Vector[(Point, Header)]
-    ): (Set[Bytes], Vector[(Point, Header)]) =
-      if seen(header.hash) then (seen, found)
-      else
-        val rooted = found ++ bases(header.prevHash).map(_ -> header)
-        header.prevHash.flatMap(open) match
-          case Some(parent) => back(parent, seen + header.hash, rooted)
-          case None         => (seen + header.hash, rooted)
-
-    /** The selected points whose successors a block of predecessor `key` is among: the anchor (with
-      * Byron's alias when it is Origin), and the selected block of that hash.
-      */
-    private def bases(key: Option[Bytes]): Vector[Point] =
-      val anchor = local.anchor match
-        case Point.Origin =>
-          Option.when(key.isEmpty || (originPredecessor.nonEmpty && key == originPredecessor))(
-            Point.Origin
+    private def back(found: Back, target: Header): Back =
+      @tailrec def go(header: Header, met: Back): Back =
+        if met.seen(header.hash) then met
+        else
+          val grown = met.copy(
+            seen = met.seen + header.hash,
+            roots =
+              met.roots ++ bases(header.prevHash).map((place, base) => Root(place, base, header))
           )
-        case point @ Point.Block(_, hash) => Option.when(key.contains(hash))(point)
-      anchor.toVector ++ key.flatMap(selectedBlock).toVector
+          header.prevHash.flatMap(open) match
+            case Some(parent) =>
+              go(
+                parent,
+                grown.copy(paths =
+                  grown.paths
+                    .updated(parent.hash, header :: grown.paths.getOrElse(parent.hash, Nil))
+                )
+              )
+            case None => grown
+      go(target, found)
 
-    /** The selected block (not the anchor) of `hash`: by its header's point when the forest holds
-      * it, else looked for in the selected chain.
+    /** The selected places whose successors a block of predecessor `key` is among, with their
+      * points: the anchor's (with Byron's alias when it is Origin) and each block's of that hash.
       */
-    private def selectedBlock(hash: Bytes): Option[Point] =
-      forest.header(hash) match
-        case Some(header) =>
-          Option.when(header.point != local.anchor && local.contains(header.point))(header.point)
-        case None =>
-          local.blocks.reverseIterator.map(_.point).find {
-            case Point.Block(_, selected) => selected == hash
-            case Point.Origin             => false
-          }
-
-    /** Roots in the order the selected points are walked: by the point's place in the chain, then
-      * by hash, as the point's successors are.
-      */
-    private def ordered(roots: Vector[(Point, Header)]): Vector[(Point, Header)] =
-      if roots.sizeIs <= 1 then roots
-      else
-        roots.sortBy((base, root) => (place(base), root.hash))(using
-          Ordering.Tuple2(using Ordering.Int, hashOrder)
-        )
-
-    private def place(point: Point): Int =
-      if point == local.anchor then 0 else local.blocks.lastIndexWhere(_.point == point) + 1
+    private def bases(key: Option[Bytes]): Vector[(Int, Point)] =
+      val anchor = local.anchor match
+        case Point.Origin                 => Option.when(afterOrigin(key))(0 -> Point.Origin)
+        case point @ Point.Block(_, hash) => Option.when(key.contains(hash))(0 -> point)
+      val blocks =
+        (if afterOrigin(key) then local.placesOf(None) else Vector.empty) ++
+          key.fold(Vector.empty[Int])(hash => local.placesOf(Some(hash)))
+      anchor.toVector ++ blocks.sorted.flatMap(i =>
+        local.blocks.lift(i).map(b => (i + 1) -> b.point)
+      )

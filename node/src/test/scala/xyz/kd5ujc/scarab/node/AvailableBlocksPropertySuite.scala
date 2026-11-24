@@ -13,8 +13,9 @@ import xyz.kd5ujc.scarab.protocol.ChainSync.Point
   * successors index, against the whole-forest construction it replaced ([[AvailableBlocksModel]]):
   * the same candidates in the same order, over random forests with forks, orphans, Byron boundary
   * blocks, hidden blocks, selected chains anchored at Origin, in the forest or outside it, selected
-  * blocks the forest no longer holds, Byron's genesis alias for Origin (also naming a block of the
-  * forest), and every kind of `containing`.
+  * blocks the forest no longer holds, selected chains that are not chains (a point twice, a hash at
+  * another slot, Origin among the blocks), Byron's genesis alias for Origin (also naming a block of
+  * the forest), and every kind of `containing`.
   */
 class AvailableBlocksPropertySuite extends ScalaCheckSuite:
   override def scalaCheckInitialSeed = "Rbx7dVg8lF0kQ2cKXbYp8mVZJm4Uo1cQyCq3m7h2zLA="
@@ -129,7 +130,49 @@ class AvailableBlocksPropertySuite extends ScalaCheckSuite:
               )
             )
           }
-    yield local
+      odd <- Gen.frequency(3 -> Gen.const(0), 1 -> Gen.choose(1, 3))
+      mangled <- (1 to odd).foldLeft(Gen.const(local))((acc, _) => acc.flatMap(mangle(_, forest)))
+    yield mangled
+
+  /** A selected chain that is not one, which the walk from every selected point handles all the
+    * same: a point twice, a hash at another slot than its header's, Origin among the blocks, or a
+    * block of the forest off the path.
+    */
+  private def mangle(
+      local: ChainSelection.Local,
+      forest: Vector[Header]
+  ): Gen[ChainSelection.Local] =
+    val view = SelectView(0, 0, None, 0, None)
+    def at(point: Point): Gen[ChainSelection.Local] =
+      Gen
+        .choose(0, local.blocks.size)
+        .map(i =>
+          local
+            .copy(blocks = local.blocks.patch(i, Vector(ChainSelection.LocalBlock(point, view)), 0))
+        )
+    Gen.oneOf(0, 1, 2, 3).flatMap {
+      case 0 if local.blocks.nonEmpty => Gen.oneOf(local.blocks).flatMap(b => at(b.point))
+      case 1 if local.blocks.nonEmpty =>
+        Gen.choose(0, local.blocks.size - 1).map { i =>
+          local.copy(blocks =
+            local.blocks.updated(
+              i,
+              local
+                .blocks(i)
+                .copy(point = local.blocks(i).point match
+                  case Point.Block(slot, hash) =>
+                    Point.Block(
+                      xyz.kd5ujc.scarab.protocol.ChainSync.UInt64.saturating(slot.value + 5),
+                      hash
+                    )
+                  case Point.Origin => Point.Origin)
+            )
+          )
+        }
+      case 2                    => at(Point.Origin)
+      case _ if forest.nonEmpty => Gen.oneOf(forest).flatMap(h => at(h.point))
+      case _                    => Gen.const(local)
+    }
 
   /** Each of `hashes` with a chance of one in six. */
   private def few(hashes: Vector[Bytes]): Gen[Set[Bytes]] =

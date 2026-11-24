@@ -105,6 +105,9 @@ class ProcessedForestSuite extends ScalaCheckSuite:
           Prop(nf.byHash == nm) :| s"blocks after $op" &&
             Prop(nf.successorIndex == rebuilt(nm)) :| s"index after $op" &&
             Prop(
+              nf.slotIndex == nm.values.groupBy(_.slot).view.mapValues(_.map(_.hash).toSet).toMap
+            ) :| s"slots after $op" &&
+            Prop(
               nm.keys.forall(h =>
                 nf.successors(Some(h)) == rebuilt(nm)
                   .getOrElse(Some(h), TreeSet.empty(using ProcessedForest.hashOrder))

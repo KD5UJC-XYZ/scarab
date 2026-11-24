@@ -68,6 +68,45 @@ object SelectionReviewBenchmark extends IOApp.Simple:
       )
     yield ()
 
+  /** The common case of a sync: the block after the tip of a selected window of 2160 blocks, all in
+    * a linear forest of `size` blocks, the window a fresh one each time, as a commit publishes one.
+    */
+  private def measureTip(size: Int): IO[Unit] =
+    for
+      headers <- IO.fromEither(
+        forest(size, false).leftMap(cycle => new AssertionError(cycle.toString))
+      )
+      chain = (1 until size).toVector.flatMap(n => headers.get(hash(n)))
+      window = chain.takeRight(2160)
+      anchor <- IO.fromOption(chain.dropRight(2160).lastOption)(new AssertionError("no anchor"))
+      selected = ChainSelection.Local(
+        anchor.point,
+        SelectView.of(anchor),
+        window.map(h => ChainSelection.LocalBlock(h.point, SelectView.of(h)))
+      )
+      decision = () =>
+        val fresh = selected.copy()
+        CandidateSelection
+          .project(
+            2160,
+            fresh,
+            AvailableBlocks.candidates(fresh, headers, _ => false, Some(Set(hash(size)))),
+            None
+          )
+          .size
+      result <- IO.delay {
+        val cpu = ManagementFactory.getThreadMXBean
+        (1 to 20).foreach(_ => decision())
+        val startCpu = cpu.getCurrentThreadCpuTime
+        val start = System.nanoTime()
+        val selected = (1 to 100).map(_ => decision()).sum
+        (System.nanoTime() - start, cpu.getCurrentThreadCpuTime - startCpu, selected)
+      }
+      _ <- IO.println(
+        s"tip size=$size window=2160 iterations=100 elapsedNs=${result._1} cpuNs=${result._2} selected=${result._3}"
+      )
+    yield ()
+
   private def measureIdle(peers: Int): IO[Unit] =
     for
       coordinator <- FetchCoordinator.create[IO]()
@@ -93,4 +132,4 @@ object SelectionReviewBenchmark extends IOApp.Simple:
       Vector(false, true).traverse_(forks =>
         Vector(false, true).traverse_(admission => measureForest(size, forks, admission))
       )
-    ) *> Vector(0, 32).traverse_(measureIdle)
+    ) *> Vector(2500, 4096).traverse_(measureTip) *> Vector(0, 32).traverse_(measureIdle)

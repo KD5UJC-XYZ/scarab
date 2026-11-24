@@ -133,10 +133,23 @@ object ChainSelection:
     */
   final case class Local(anchor: Point, anchorView: SelectView, blocks: Vector[LocalBlock]):
     def tipView: SelectView = blocks.lastOption.fold(anchorView)(_.view)
-    // a set of the block points, built on the first lookup: a header's search for its intersection
-    // with our chain asks once for each of its points (issue 1394)
-    private lazy val points: Set[Point] = blocks.iterator.map(_.point).toSet
-    def contains(point: Point): Boolean = point == anchor || points(point)
+    // the places of the blocks by the hash of their point (none for Origin), built on the first
+    // lookup: a header's search for its intersection with our chain asks once for each of its
+    // points (issue 1394), and chain selection once for each block it walks (#810)
+    private lazy val places: Map[Option[Bytes], Vector[Int]] =
+      blocks.iterator.zipWithIndex.foldLeft(Map.empty[Option[Bytes], Vector[Int]]) {
+        case (found, (block, i)) =>
+          val hash = pointHash(block.point)
+          found.updated(hash, found.getOrElse(hash, Vector.empty) :+ i)
+      }
+    def contains(point: Point): Boolean =
+      point == anchor || placesOf(pointHash(point)).exists(i =>
+        blocks.lift(i).exists(_.point == point)
+      )
+
+    /** The indices in `blocks` of the blocks whose point has `hash` (`None`: Origin), oldest first.
+      */
+    def placesOf(hash: Option[Bytes]): Vector[Int] = places.getOrElse(hash, Vector.empty)
 
     /** Blocks that rolling back to `point` removes. */
     def depthTo(point: Point): Int =

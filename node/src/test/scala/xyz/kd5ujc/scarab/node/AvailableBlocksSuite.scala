@@ -173,6 +173,26 @@ class AvailableBlocksSuite extends FunSuite:
     )
   }
 
+  test("a first admission reads the blocks on its paths, not their siblings") {
+    val a = header(1, None, 0, 1)
+    val siblings = Vector.tabulate(100)(i => header(i + 10, Some(a.hash), 1, 2))
+    val target = header(200, Some(siblings(50).hash), 2, 3)
+    val forest =
+      ProcessedForest.of(a +: target +: siblings).fold(e => fail(e.toString), identity)
+    val read = scala.collection.mutable.Set.empty[Bytes]
+    val found = AvailableBlocks.candidates(
+      origin,
+      forest,
+      hash => { read += hash; false },
+      Some(Set(target.hash))
+    )
+    assertEquals(
+      found,
+      Vector(ChainSelection.Candidate(Point.Origin, Vector(a, siblings(50), target)))
+    )
+    assertEquals(read.toSet, Set(a.hash, siblings(50).hash, target.hash))
+  }
+
   test("deep forests remain stack safe on a 256 KiB thread") {
     val headers = Vector.tabulate(30000)(i => header(i + 1, Option.when(i > 0)(hash(i)), i, i))
     PreprodDeepTx.onSmallStack {

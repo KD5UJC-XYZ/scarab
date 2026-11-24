@@ -41,6 +41,9 @@ private[node] final class ProcessedForest[A] private (
   /** The successors index itself, to compare with one rebuilt from the blocks. */
   private[node] def successorIndex: Map[Option[Bytes], SortedSet[Bytes]] = index
 
+  /** The blocks by slot, to compare with the blocks grouped by slot. */
+  private[node] def slotIndex: Map[BigInt, Set[Bytes]] = bySlot
+
   /** The forest with `value`, or this forest when a block of its hash is here already. A block
     * whose predecessors lead back to it is refused. A cycle has to pass through the new block, the
     * only new edge, so it is looked for only when a block after it is here already: then the walk
