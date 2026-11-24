@@ -877,20 +877,44 @@ class EraTransitionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     }
     assertEquals(grown.tipRef.map(_.hash), Some(headers(51).hash))
     assert(VolatileChain.genesis[Int](5, 0).extend(headers.head, 0) match {
-      case Left(ledger.ChainError.NotConnected(_, ChainSync.Point.Origin)) => true
-      case _                                                               => false
+      case Left(
+            ledger.ChainError
+              .NotConnected(
+                _,
+                ChainSync.Point.Origin,
+                ledger.HeaderStructureProblem.PreviousHash(_, _)
+              )
+          ) =>
+        true
+      case _ => false
     })
     assert(
       (VolatileChain
         .genesis[Int](5, 0, Some(Bytes(Vector.fill(32)(1))))
         .extend(headers.head, 0)) match {
-        case Left(ledger.ChainError.NotConnected(_, ChainSync.Point.Origin)) => true
-        case _                                                               => false
+        case Left(
+              ledger.ChainError
+                .NotConnected(
+                  _,
+                  ChainSync.Point.Origin,
+                  ledger.HeaderStructureProblem.PreviousHash(_, _)
+                )
+            ) =>
+          true
+        case _ => false
       }
     )
     assert(empty.extend(headers(1), 0) match {
-      case Left(ledger.ChainError.NotConnected(_, ChainSync.Point.Origin)) => true
-      case _                                                               => false
+      case Left(
+            ledger.ChainError
+              .NotConnected(
+                _,
+                ChainSync.Point.Origin,
+                ledger.HeaderStructureProblem.PreviousHash(_, _)
+              )
+          ) =>
+        true
+      case _ => false
     })
   }
 

@@ -6,11 +6,12 @@
   through, only a regular file is overwritten, in full when a write is short, and temporary files are created new
   under names that cannot be foreseen and removed when a write fails. `rotation.json` and `current` may name only
   an entry of the key directory itself (`..`, `../cold` and absolute paths are refused with exit status 4), and a
-  link in place of the new generation or of its staging directory is removed, not used.
+  link in place of the new generation or of its staging directory is removed, not used. The modes of the staged
+  key and certificate are set on the files themselves, never on what a link in their place points at.
 - **Each `cardano-cli` container of the driver gets only the cold key file it reads**, read-only: the verification
   key for `node new-counter`, the signing key for `node issue-op-cert`; the cold key's directory is no longer
   mounted. The key files may have any name. A cold key file that is not there ends the run with exit status 4
-  before any container starts.
+  before any container that would mount it starts.
 
 ### Changed (pool tooling)
 - **The driver warns on a mainnet run that finds the cold signing key** (no `--testnet-magic`): the key is online,

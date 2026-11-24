@@ -7,6 +7,7 @@ import xyz.kd5ujc.scarab.ledger.{Header, HeaderVrf}
 import cats.effect.unsafe.implicits.global
 import cats.syntax.eq.*
 import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.protocol.ChainSync
 import xyz.kd5ujc.scarab.ledger.{
   BlockFailure,
   ChainError,
@@ -317,6 +318,20 @@ class HeaderRulesSuite extends ScalaCheckSuite:
         case _                                         => true
       assertEquals(Follower.misplaced(header, unconnected), Option.when(blocks)(refusal), name)
     }
+    // the number and the slot are checked before the previous hash, so a header that does not
+    // name the tip fails by its number first: that is the node's own failure, never a refusal
+    val stray = h.copy(blockNo = h.blockNo + 1, prevHash = Some(other))
+    val byNumber = HeaderStructureProblem.BlockNumber(h.blockNo + 1, h.blockNo)
+    val notLinked = ChainError.NotConnected(stray.point, chain.tip, byNumber)
+    assertEquals(chain.extend(stray, forged.states(i)).left.toOption, Some(notLinked))
+    assertEquals(Follower.misplaced(stray, notLinked), None)
+    assertEquals(
+      Follower.misplaced(
+        stray,
+        ChainError.NotConnected(stray.point, ChainSync.Point.Origin, byNumber)
+      ),
+      None
+    )
   }
 
   test("a block body larger than the parameters allow is an envelope error") {
