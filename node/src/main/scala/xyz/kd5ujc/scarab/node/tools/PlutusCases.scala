@@ -58,7 +58,10 @@ final class PlutusCases(dir: Path, perKind: Int, max: Int):
       case Left(es) => s"translation ${es.toVector.map(_.message).mkString("; ")}"
     val kind =
       s"v${languages.mkString("")}-${if o.tx.isValid then "valid" else "invalid"}-${features.mkString(",")}-${outcome.take(40)}"
-    if admitted(kind) then
+    val now = written.get
+    val count = now.seen.getOrElse(kind, 0)
+    if count < perKind && now.total < max then
+      written.set(Written(now.seen.updated(kind, count + 1), now.total + 1))
       val name = s"slot${o.slot}-${body.id.hex.take(8)}"
       val slots = (body.validityStart ++ body.ttl).toVector.distinct
       val clock =
@@ -93,8 +96,9 @@ final class PlutusCases(dir: Path, perKind: Int, max: Int):
       Files.writeString(dir.resolve(s"$name.json"), json.spaces2, StandardCharsets.UTF_8)
   }
 
-  /** Whether a case of `kind` is written: fewer than `perKind` of it and `max` of all so far, and
-    * then counted. Called only within `observe` and `observeDijkstra`, which hold the lock.
+  /** Whether a Dijkstra batch's case of `kind` is written: fewer than `perKind` of it and `max` of
+    * all so far, as `observe` admits a case, and then counted. Called only within
+    * `observeDijkstra`, which holds the lock.
     */
   private def admitted(kind: String): Boolean =
     val now = written.get
