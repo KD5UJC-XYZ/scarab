@@ -85,7 +85,7 @@ object HardFork:
         pools.copy(vrfKeyHashes =
           (registered ++ pending).foldLeft(pools.vrfKeyHashes)(addVRFKeyHashOccurrence)
         )
-      case ReferenceBuild.Release11_2 | ReferenceBuild.LeiosB004fe0c =>
+      case ReferenceBuild.Release11_2 | ReferenceBuild.Leios =>
         Translate.populateVRFKeyHashes(pools)
 
   /** `addVRFKeyHashOccurrence` (`HardFork.hs:121-125`, cardano-ledger f649f975): one more count of

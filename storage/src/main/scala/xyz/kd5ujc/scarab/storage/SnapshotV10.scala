@@ -216,7 +216,7 @@ object SnapshotV10:
       found <- recorded(content)
       (name, at) = found
       build <- ReferenceBuild
-        .parse(name)
+        .recorded(name)
         .leftMap(_ => StorageError.UnknownReferenceBuild("snapshot", name, layout.build))
       _ <- Either.cond(
         layout.reads(build),

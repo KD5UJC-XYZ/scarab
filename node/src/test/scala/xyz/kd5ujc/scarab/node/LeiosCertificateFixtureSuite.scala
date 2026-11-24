@@ -52,7 +52,7 @@ class LeiosCertificateFixtureSuite extends munit.FunSuite:
       .map(_.split('\t'))
 
   private lazy val setup = NodeSetup
-    .fromConfigFile(ReferenceBuild.LeiosB004fe0c)(leios.resolve("testnet/config/config.json"))
+    .fromConfigFile(ReferenceBuild.Leios)(leios.resolve("testnet/config/config.json"))
     .fold(e => fail(e.message), identity)
   private lazy val anchor: MirrorState =
     val raw = Bytes.wrap(Files.readAllBytes(leios.resolve("state/testnet-2168639/state")))
@@ -66,7 +66,7 @@ class LeiosCertificateFixtureSuite extends munit.FunSuite:
   )
   private lazy val rules = NodeHeaderRules[MirrorState](
     setup.praos,
-    setup.globals.copy(referenceBuild = ReferenceBuild.LeiosB004fe0c),
+    setup.globals.copy(referenceBuild = ReferenceBuild.Leios),
     setup.byronRules,
     setup.handOver
   )

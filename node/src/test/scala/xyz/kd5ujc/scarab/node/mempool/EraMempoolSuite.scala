@@ -50,7 +50,7 @@ class EraMempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
 
   private val translating = TxKit.env
   private val redecoding =
-    TxKit.env.copy(globals = TxKit.env.globals.copy(referenceBuild = ReferenceBuild.LeiosB004fe0c))
+    TxKit.env.copy(globals = TxKit.env.globals.copy(referenceBuild = ReferenceBuild.Leios))
 
   /** Alice pays bob from `txIn(i)`, Shelley's body `{0: inputs, 1: outputs, 2: fee, 3: ttl}` with
     * `extra` fields after it, signed by alice: the whole transaction as `era` writes it, and the
@@ -276,7 +276,7 @@ class EraMempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   test("the injection of each build") {
     assertEquals(EraInjection.of(ReferenceBuild.Release11_1), EraInjection.Translate)
     assertEquals(EraInjection.of(ReferenceBuild.Release11_2), EraInjection.Redecode)
-    assertEquals(EraInjection.of(ReferenceBuild.LeiosB004fe0c), EraInjection.Redecode)
+    assertEquals(EraInjection.of(ReferenceBuild.Leios), EraInjection.Redecode)
     assertEquals(translating.injection, EraInjection.Translate)
     assertEquals(redecoding.injection, EraInjection.Redecode)
   }

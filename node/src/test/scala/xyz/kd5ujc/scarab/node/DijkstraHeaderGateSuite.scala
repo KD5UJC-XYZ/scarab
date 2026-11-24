@@ -30,12 +30,13 @@ import xyz.kd5ujc.scarab.protocol.{ChainSync, Era, NtNHeader, ReferenceBuild, St
 import xyz.kd5ujc.scarab.storage.haskell.state.HaskellLedgerFile
 
 /** The canonical header gate ([[HeaderCheck.forNodeChain]], the gate every peer session of the node
-  * runs) on the public Leios testnet's headers under `--reference-build leios-b004fe0c`, built from
-  * the testnet's configuration by [[NodeSetup]] with nothing overridden (its maximum major version
-  * is the configured 12, #54): from the chain's genesis, whose state is Dijkstra's with Praos2's
-  * chain-dependent state, its first headers (`fixtures/leios/testnet/headers-from-origin.tsv`), and
-  * from the testnet's ledger state at slot 2,168,639 (`fixtures/leios/state/testnet-2168639`) the
-  * eight headers that follow it on that chain (`fixtures/leios/testnet/headers-after-2168639.tsv`).
+  * runs) on the public Leios testnet's headers under `--reference-build leios-rc-2026w47`, built
+  * from the testnet's configuration by [[NodeSetup]] with nothing overridden (its maximum major
+  * version is the configured 12, #54): from the chain's genesis, whose state is Dijkstra's with
+  * Praos2's chain-dependent state, its first headers
+  * (`fixtures/leios/testnet/headers-from-origin.tsv`), and from the testnet's ledger state at slot
+  * 2,168,639 (`fixtures/leios/state/testnet-2168639`) the eight headers that follow it on that
+  * chain (`fixtures/leios/testnet/headers-after-2168639.tsv`).
   */
 class DijkstraHeaderGateSuite extends FailsOnUncaught:
   private given Tell[IO, GenesisInternalProblem] with
@@ -46,7 +47,7 @@ class DijkstraHeaderGateSuite extends FailsOnUncaught:
   private val testnet = Path.of("fixtures", "leios")
   private def hex(s: String): Bytes = Bytes.fromHex(s).fold(e => fail(e.message), identity)
   private lazy val setup = NodeSetup
-    .fromConfigFile(ReferenceBuild.LeiosB004fe0c)(testnet.resolve("testnet/config/config.json"))
+    .fromConfigFile(ReferenceBuild.Leios)(testnet.resolve("testnet/config/config.json"))
     .fold(e => fail(e.message), identity)
   private lazy val praos: PraosConfig = setup.praos
   private lazy val anchor: MirrorState =

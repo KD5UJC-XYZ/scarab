@@ -32,11 +32,11 @@ class ConfigErrorCaseSuite extends FunSuite:
   // and the reference has no block-only mode
   test("--header-first off is refused under the Leios build, and kept under a release build") {
     val follow = List("follow", "--config", "config.json", "--peer", "127.0.0.1:3001")
-    val leios = List("--reference-build", "leios-b004fe0c")
+    val leios = List("--reference-build", "leios-rc-2026w47")
     val off = List("--header-first", "off")
     assertEquals(
       problem((follow ++ leios ++ off)*),
-      ConfigProblem.HeaderFirstRequired(ReferenceBuild.LeiosB004fe0c)
+      ConfigProblem.HeaderFirstRequired(ReferenceBuild.Leios)
     )
     assert(Main.parse(follow ++ leios).map(_.headerFirst) == Right(true))
     assert(Main.parse(follow ++ leios ++ List("--header-first", "on")).isRight)

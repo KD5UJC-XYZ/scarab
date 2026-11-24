@@ -339,7 +339,7 @@ class MempoolTimeoutsSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     val (t1, id1) = pay(1)
     val (t2, id2) = pay(2)
     val limits = MempoolTimeouts.default.copy(soft = DiffTime.of(10.seconds))
-    Vector(ReferenceBuild.Release11_1, ReferenceBuild.Release11_2, ReferenceBuild.LeiosB004fe0c)
+    Vector(ReferenceBuild.Release11_1, ReferenceBuild.Release11_2, ReferenceBuild.Leios)
       .traverse { build =>
         for
           events <- Queue.unbounded[IO, MempoolEvent]
@@ -354,7 +354,7 @@ class MempoolTimeoutsSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           first <- pool.add(t1, Source.Local)
           // past the capacity of 5 s: a wait, cancelled once seen, or the transaction taken at once
           second <- build match
-            case ReferenceBuild.LeiosB004fe0c =>
+            case ReferenceBuild.Leios =>
               pool.add(t2, Source.Local).timeout(failsafe).map(Right(_))
             case ReferenceBuild.Release11_1 | ReferenceBuild.Release11_2 =>
               pool
@@ -368,7 +368,7 @@ class MempoolTimeoutsSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       .map(_.foreach { (build, first, second, held) =>
         assertEquals(first, Right(id1), s"$build")
         build match
-          case ReferenceBuild.LeiosB004fe0c =>
+          case ReferenceBuild.Leios =>
             assertEquals(second, Right(Right(id2)), s"$build")
             assertEquals(held, Vector(id1, id2), s"$build")
           case ReferenceBuild.Release11_1 | ReferenceBuild.Release11_2 =>
@@ -493,7 +493,7 @@ class MempoolTimeoutsSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     val (raw, _) = alonzoWithUpdate(1)
     val submitted =
       MempoolState.read(Submission(Era.Alonzo.index, raw), ReferenceBuild.Release11_2).toOption.get
-    Vector(ReferenceBuild.Release11_2, ReferenceBuild.LeiosB004fe0c).traverse_ { build =>
+    Vector(ReferenceBuild.Release11_2, ReferenceBuild.Leios).traverse_ { build =>
       // redecoded, the transaction does not read in Conway: the mismatch names Alonzo
       val mismatch = Rejection.WrongEra(Era.Alonzo.index, Era.Conway)
       val start = MempoolState.empty(Right(ledger(2)), 1000, None)

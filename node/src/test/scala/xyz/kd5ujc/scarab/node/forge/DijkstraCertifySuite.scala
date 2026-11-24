@@ -98,7 +98,7 @@ class DijkstraCertifySuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   private def hex(s: String): Bytes = Bytes.fromHex(s).fold(e => fail(e.message), identity)
 
   private val devnet = Path.of("fixtures", "dijkstra-devnet")
-  private val build = ReferenceBuild.LeiosB004fe0c
+  private val build = ReferenceBuild.Leios
 
   private lazy val setup: NodeSetup =
     NodeSetup.fromDirectory(build)(devnet.resolve("genesis")).fold(e => fail(e.message), identity)

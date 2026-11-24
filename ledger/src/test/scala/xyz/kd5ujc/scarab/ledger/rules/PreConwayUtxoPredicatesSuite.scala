@@ -315,7 +315,7 @@ class PreConwayUtxoPredicatesSuite extends FunSuite:
       // keep it
       def expected(injected: Boolean) = build match
         case ReferenceBuild.Release11_1 => attrsTooBig(injected, big)
-        case ReferenceBuild.Release11_2 | ReferenceBuild.LeiosB004fe0c =>
+        case ReferenceBuild.Release11_2 | ReferenceBuild.Leios =>
           UtxoFailure.OutputBootAddrAttrsTooBig(big)
       // the usual version of each era, then Shelley and Allegra each at the other's version: the
       // injection follows the era (`Allegra/Rules/Utxo.hs:374-387`), and a chain whose eras are set

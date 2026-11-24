@@ -61,7 +61,7 @@ class DijkstraGovSuite extends FunSuite:
 
   private val leios: Globals =
     TestLedger.globals.copy(ledger =
-      TestLedger.globals.ledger.copy(referenceBuild = ReferenceBuild.LeiosB004fe0c)
+      TestLedger.globals.ledger.copy(referenceBuild = ReferenceBuild.Leios)
     )
 
   // ---- the failure type and its injection --------------------------------------------------------

@@ -170,7 +170,7 @@ def main():
                      "of the reward update: each input state, and after each tick the SHA-256 of the state as a "
                      "ledger snapshot holds it (without its UTxO, which it is also ticked without), its snapshots "
                      "and its pool states. Not Dijkstra's EPOCH, blocks, or the consensus layer's parts.",
-            "build": "leios-b004fe0c", "image": IMAGE, "ledgerSourceCommit": LEDGER, "cardanoBase": BASE,
+            "build": "leios-rc-2026w47", "image": IMAGE, "ledgerSourceCommit": LEDGER, "cardanoBase": BASE,
             "imageId": subprocess.check_output(["docker", "image", "inspect", IMAGE, "--format", "{{.Id}}"],
                                                text=True).strip(),
             "cases": len(rows),

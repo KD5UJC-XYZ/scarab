@@ -73,7 +73,7 @@ class LeiosNotifyRelaySuite extends FailsOnUncaught:
   private val dirs = ResourceFunFixture(Files.forAsync[IO].tempDirectory)
   private val source = Path.of("fixtures/leios/testnet")
   private val setup = NodeSetup
-    .fromConfigFile(ReferenceBuild.LeiosB004fe0c)(source.resolve("config/config.json"))
+    .fromConfigFile(ReferenceBuild.Leios)(source.resolve("config/config.json"))
     .fold(e => fail(e.message), identity)
 
   /** The fixture's headers by name, with the envelope the reference sent each in. */

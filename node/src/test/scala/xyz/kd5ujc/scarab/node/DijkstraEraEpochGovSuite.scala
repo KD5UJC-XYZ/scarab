@@ -74,7 +74,7 @@ class DijkstraEraEpochGovSuite extends FunSuite with ExternalInputs:
   private val globals: Globals =
     val node = right("config")(
       NodeConfig
-        .parse(ReferenceBuild.LeiosB004fe0c)(
+        .parse(ReferenceBuild.Leios)(
           Files.readString(config.resolve("config.json")),
           true
         )
@@ -82,7 +82,7 @@ class DijkstraEraEpochGovSuite extends FunSuite with ExternalInputs:
         .map(_.message)
     )
     val setup = right("setup")(
-      NodeSetup.assemble(ReferenceBuild.LeiosB004fe0c)(
+      NodeSetup.assemble(ReferenceBuild.Leios)(
         node,
         name =>
           Option.when(Files.exists(config.resolve(name)))(Files.readAllBytes(config.resolve(name)))

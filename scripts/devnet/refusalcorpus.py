@@ -45,10 +45,20 @@ GENESIS = ("byron-genesis.json", "shelley-genesis.json", "alonzo-genesis.json", 
 # `up-dijkstra --conway-only` the Leios build, whose cluster also has a Dijkstra genesis and names its configuration
 # `config.json`, and whose image has no `socat`.
 DEFAULT_BUILD = "11.1"
+LEIOS = "leios-rc-2026w47"
 BUILDS = {
     "11.1": {"version": "cardano-node 11.1.", "files": GENESIS, "relay": "socat"},
-    "leios-b004fe0c": {"revision": LEIOS_NODE_REVISION, "files": (*LEIOS_GENESIS, "config.json"), "relay": "perl"},
+    LEIOS: {"revision": LEIOS_NODE_REVISION, "files": (*LEIOS_GENESIS, "config.json"), "relay": "perl"},
 }
+# The Leios build's former names, which corpora recorded under them carry, with the node commit each stood for
+# (`ReferenceBuild.renamed`; all of them name the current Leios build, `LEIOS`): `leios-b004fe0c`, rc-2026w44, the
+# name until 2026-11-23 (#1365).
+RENAMED = {"leios-b004fe0c": "b004fe0c50913dcdaa827a98e68a43d0ccce152a"}
+
+
+def current(build):
+    """The build a recorded name names now: a current name itself, a former name the Leios build."""
+    return LEIOS if build in RENAMED else build
 
 # What the manifest requires per era. A family without a case is an incomplete gate in the Scala suite.
 COVERAGE = {
@@ -232,7 +242,10 @@ def rendering(name, era, tx):
 
 
 def is_build(build, node, revision):
-    """Whether the node that printed `node` (the first line of `cardano-node --version`) at `revision` is `build`."""
+    """Whether the node that printed `node` (the first line of `cardano-node --version`) at `revision` is `build`,
+    or, for a former name (`RENAMED`), the node of the commit it stood for."""
+    if build in RENAMED:
+        return revision == RENAMED[build]
     want = BUILDS[build]
     return node.startswith(want["version"]) if "version" in want else revision == want["revision"]
 

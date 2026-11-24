@@ -175,7 +175,7 @@ class DijkstraTranslationSuite extends FunSuite:
     def hardFork(build: ReferenceBuild) =
       HardFork.populateVRFKeyHashes(build, stale).vrfKeyHashes
     assertEquals(hardFork(ReferenceBuild.Release11_2), counted.vrfKeyHashes)
-    assertEquals(hardFork(ReferenceBuild.LeiosB004fe0c), counted.vrfKeyHashes)
+    assertEquals(hardFork(ReferenceBuild.Leios), counted.vrfKeyHashes)
     assertEquals(
       hardFork(ReferenceBuild.Release11_1),
       Sorted.map(

@@ -87,16 +87,34 @@ class ReferenceRefusalSuite extends FunSuite:
 
   test("a corpus that names no build is 11.1's, and its node must be of the 11.1 line") {
     assertEquals(recordedBuild(None), Right(ReferenceBuild.Release11_1))
-    assertEquals(recordedBuild(Some("leios-b004fe0c")), Right(ReferenceBuild.LeiosB004fe0c))
+    assertEquals(recordedBuild(Some("leios-rc-2026w47")), Right(ReferenceBuild.Leios))
+    // the Leios build's name until 2026-11-23, which corpora recorded then carry (#1365)
+    assertEquals(recordedBuild(Some("leios-b004fe0c")), Right(ReferenceBuild.Leios))
     assert(recordedBuild(Some("11.1.3")).isLeft, "a patch release is not a build name")
     val leiosNode = "cardano-node 11.2.0.164 - linux-x86_64 - ghc-9.6"
-    val leiosRevision = ReferenceBuild.LeiosB004fe0c.pins.node
+    val leiosRevision = ReferenceBuild.Leios.pins.node
+    val current = Some(ReferenceBuild.Leios.name)
+    val former = Some("leios-b004fe0c")
+    val w44 = "b004fe0c50913dcdaa827a98e68a43d0ccce152a"
     assert(
-      recordedBy(ReferenceBuild.Release11_1, "cardano-node 11.1.3 - linux-x86_64 - ghc-9.6", "")
+      recordedBy(
+        ReferenceBuild.Release11_1,
+        None,
+        "cardano-node 11.1.3 - linux-x86_64 - ghc-9.6",
+        ""
+      )
     )
-    assert(!recordedBy(ReferenceBuild.Release11_1, leiosNode, leiosRevision))
-    assert(recordedBy(ReferenceBuild.LeiosB004fe0c, leiosNode, leiosRevision))
-    assert(!recordedBy(ReferenceBuild.LeiosB004fe0c, leiosNode, leiosRevision.take(8)))
+    assert(!recordedBy(ReferenceBuild.Release11_1, None, leiosNode, leiosRevision))
+    assert(recordedBy(ReferenceBuild.Leios, current, leiosNode, leiosRevision))
+    assert(!recordedBy(ReferenceBuild.Leios, current, leiosNode, leiosRevision.take(8)))
+    // a corpus names its node by the name it was recorded under: the current name the current
+    // pin's commit, a former name the commit it stood for, each in full, never the other's
+    assert(recordedBy(ReferenceBuild.Leios, former, leiosNode, w44))
+    assert(!recordedBy(ReferenceBuild.Leios, current, leiosNode, w44))
+    assert(!recordedBy(ReferenceBuild.Leios, former, leiosNode, leiosRevision))
+    assert(!recordedBy(ReferenceBuild.Leios, former, leiosNode, w44.take(8)))
+    // every former name has its commit
+    assertEquals(formerCommits.keySet, ReferenceBuild.renamed.keySet)
   }
 
   loaded match
@@ -114,7 +132,7 @@ class ReferenceRefusalSuite extends FunSuite:
       corpus.corpora.foreach { c =>
         test(s"${c.path}: recorded by the node of its build, ${c.build.describe}") {
           assert(
-            recordedBy(c.build, c.node, c.revision),
+            recordedBy(c.build, c.recordedAs, c.node, c.revision),
             s"${c.node} at ${c.revision} is not ${c.build.describe}"
           )
         }
@@ -302,7 +320,7 @@ object ReferenceRefusalSuite:
       ReferenceBuild.Release11_1
     ) +:
       Vector("allegra", "mary", "alonzo", "babbage", "conway").map(era =>
-        BuildSensitive(s"$era-bootstrap-attributes", label, ReferenceBuild.LeiosB004fe0c)
+        BuildSensitive(s"$era-bootstrap-attributes", label, ReferenceBuild.Leios)
       )
 
   /** The build a corpus was recorded from: the one its `corpus.json` names (`referenceBuild`), and
@@ -310,16 +328,30 @@ object ReferenceRefusalSuite:
     * (#826) is. [[recordedBy]] checks either against the node that recorded the corpus.
     */
   def recordedBuild(named: Option[String]): Either[UnknownReferenceBuild, ReferenceBuild] =
-    named.fold(Right(ReferenceBuild.Release11_1))(ReferenceBuild.parse)
+    named.fold(Right(ReferenceBuild.Release11_1))(ReferenceBuild.recorded)
+
+  /** The node commit each former name of a build stood for (`ReferenceBuild.renamed`), as the
+    * corpora recorded under it name it in full (`refusalcorpus.RENAMED`).
+    */
+  val formerCommits: Map[String, String] =
+    Map("leios-b004fe0c" -> "b004fe0c50913dcdaa827a98e68a43d0ccce152a")
 
   /** Whether the node that recorded a corpus, by its `cardano-node --version` line `node` and its
-    * revision, is `build`: a stable build by its release line, an unstable one by its commit.
+    * revision, is `build` under the name the corpus records, `recordedAs`: a stable build by its
+    * release line, an unstable one by its full commit, the current pin's under the current name and
+    * the one a former name stood for under that name ([[formerCommits]]).
     */
-  def recordedBy(build: ReferenceBuild, node: String, revision: String): Boolean =
+  def recordedBy(
+      build: ReferenceBuild,
+      recordedAs: Option[String],
+      node: String,
+      revision: String
+  ): Boolean =
     build.stability match
       case ReferenceBuild.Stability.Stable | ReferenceBuild.Stability.PreRelease =>
         node.startsWith(s"cardano-node ${build.name}.")
-      case ReferenceBuild.Stability.Unstable => revision == build.pins.node
+      case ReferenceBuild.Stability.Unstable =>
+        recordedAs.flatMap(formerCommits.get).fold(revision == build.pins.node)(_ == revision)
 
   /** The codecs of the reference's state in the layout `build` writes, or why there are none. */
   def stateCodecs(build: ReferenceBuild): Either[ReferenceBuildNotYet, LedgerFileCodecs] =
@@ -483,6 +515,7 @@ object ReferenceRefusalSuite:
       path: String,
       era: RefusalEra,
       build: ReferenceBuild,
+      recordedAs: Option[String],
       node: String,
       revision: String,
       cases: Vector[RefusalCase],
@@ -592,6 +625,7 @@ object ReferenceRefusalSuite:
       entry.path,
       file.era,
       build,
+      file.referenceBuild,
       file.provenance.reference.node,
       file.provenance.reference.revision,
       cases,

@@ -1521,7 +1521,7 @@ Conway's rules on the classes follow as the rest of stage 2.
       Window P's three hops (1,015,165 to 1,036,794, 1,058,391 and 1,079,994, a fresh database each, Plutus among
       their blocks) each give `matched` on all three files (exit 0), with the 985, 1,010 and 983 blocks applied.
     - A live follow of a Leios-build devnet with D8(c) (`devnet.py up-dijkstra`, then `follow --reference-build
-      leios-b004fe0c --db --seconds 180`, 2026-11-21): the node extended its chain by 421 blocks from Conway into
+      leios-rc-2026w47 --db --seconds 180`, 2026-11-21): the node extended its chain by 421 blocks from Conway into
       Dijkstra and across the nine Dijkstra boundaries of epochs 1 to 10 on this tick, refusing none and withholding
       none.
 - **Dijkstra's governance state stored on the era types** (#826, a storage format change of its own, FMT-1;
@@ -2896,7 +2896,7 @@ Conway's rules on the classes follow as the rest of stage 2.
     recorded counter.
   - On the node's running path: the next bullet (D8c).
 - **Dijkstra blocks applied by the node** (D8c; `node/src/main/scala/xyz/kd5ujc/scarab/node/MirrorDijkstra.scala`, through `MirrorRules`; the rules' run,
-  `era/rules/DijkstraBlockRun.scala`): under `--reference-build leios-b004fe0c` a Dijkstra block is applied on the era
+  `era/rules/DijkstraBlockRun.scala`): under `--reference-build leios-rc-2026w47` a Dijkstra block is applied on the era
   types in the order of `Forker.applyBlock` (ouroboros-consensus 2416493b `Storage/LedgerDB/Forker.hs:624-687`); the
   release builds keep refusing it (`BlockFailure.NotYet(DijkstraNotYet.Rules)`), and `follow` now runs the Leios build.
   - The order: the block in the era's types (`DijkstraBlock.decode`), its header and body hash against the announced

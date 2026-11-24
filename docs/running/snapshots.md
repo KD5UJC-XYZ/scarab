@@ -187,7 +187,7 @@ blocks and the number ignored is printed. `--stop-slot N` stops after the last b
 ledger snapshots are not read: the ledger state is rebuilt by the replay.
 
 `--reference-build` names the build that wrote the database (`11.1` without it; see [flags](flags.md)):
-the network setup is that build's. Under `leios-b004fe0c` the chain's Dijkstra blocks are stored as
+the network setup is that build's. Under `leios-rc-2026w47` the chain's Dijkstra blocks are stored as
 they are, with the same checks as every other block, and the Leios node's `leios.vol.db` and
 `leios.imm.db` are read into the endorser-block store first; applying a Dijkstra block stays refused
 by the rules (`BlockFailure.NotYet`), as following that build does (#54). Under a release build a
@@ -275,11 +275,11 @@ java -cp "$(cat node/target/runtime-classpath.txt)" xyz.kd5ujc.scarab.node.Main 
 [flags](flags.md) for the values). Its `state` file must decode completely in that build's layout,
 or the import is refused with a typed `error`; the bytes go into the snapshot unchanged, with the
 build recorded beside them. Nothing is converted between builds. The command first prints a
-`referenceBuild` line with the build and its pins. Under `leios-b004fe0c` the state is read in the
+`referenceBuild` line with the build and its pins. Under `leios-rc-2026w47` the state is read in the
 Leios build's layout (every Shelley-based era, Dijkstra among them), and `11.1` refuses that
 layout's three-part extended state; a database imported so is not followed yet (#826). A Dijkstra
 snapshot needs its point's block in the database: import the blocks with
-`import-haskell-db --reference-build leios-b004fe0c` first. The offline replay of the Leios testnet
+`import-haskell-db --reference-build leios-rc-2026w47` first. The offline replay of the Leios testnet
 against the reference's states is in
 [the Leios note](../leios.md#13-offline-replay-against-the-references-ledger-states-g1-54).
 
@@ -302,7 +302,7 @@ existing immutable files or overwrites ledger artifacts. JSON `importLedgerSnaps
 restores that checkpoint and replays local blocks after the snapshot. Use the same
 `--reference-build` for `follow` as for the import: starting with a different layout deletes the
 incompatible snapshot and its checkpoint, then tries an older snapshot or replays from genesis.
-The default is `11.1`; `follow --reference-build leios-b004fe0c` remains unavailable until the
+The default is `11.1`; `follow --reference-build leios-rc-2026w47` remains unavailable until the
 Leios rules are implemented. `11.2` is refused by `follow` and both commands until its layout is
 implemented. Byron and non-Mem snapshots are refused. Import/export details and recovery of an interrupted staged import are in
 [the accepted design](../design/haskell-snapshots.md#10-stage-3-as-built-offline-import); export and
@@ -322,7 +322,7 @@ java -cp "$(cat node/target/runtime-classpath.txt)" xyz.kd5ujc.scarab.node.Main 
 The default is the newest snapshot; `--slot` selects an exact stored snapshot slot, an unsigned
 64-bit number. `--reference-build` names the build the output is for (`11.1` without it): the
 snapshot's recorded build must be of that build's layout, or the export is refused with a typed
-`error`; nothing is converted, so a snapshot imported under `leios-b004fe0c` is exported under it.
+`error`; nothing is converted, so a snapshot imported under `leios-rc-2026w47` is exported under it.
 The command checks the existing V10 file's checksum and schema (a
 V9 file of a database this build has not opened yet is read as `11.1` bytes), preserves its
 Haskell state bytes, admits its checkpoint against the snapshot's binding and reads it without

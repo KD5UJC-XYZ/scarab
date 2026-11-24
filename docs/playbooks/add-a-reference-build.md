@@ -25,15 +25,18 @@ and, later, rules.
   conversion at that patch.** A major line is too broad: cardano-node 10.7.0's release notes require
   a full chain replay inside 10.x, because `TablesCodecVersion1` changed the on-disk serialisation
   of `LedgerState` and `ExtLedgerState`.
-- **A Leios build is named by its node commit, `leios-<first 8 hex digits>`.** It is unstable: a
-  prototype that can change or go away at any time, meant for use with
+- **The Leios testnet's build is one value, `ReferenceBuild.Leios`, named by the release it is pinned
+  at: `leios-<release tag>`, now `leios-rc-2026w47`** (the owner's decision of 2026-11-23, #1365). It
+  is unstable: a prototype that can change or go away at any time, meant for use with
   `ExperimentalHardForksEnabled`; the node warns when it runs without it. Its docs say it is
-  unstable.
+  unstable. The testnet releases weekly, so it is re-pinned often; see "Re-pin the Leios build"
+  below. Its former names are in `ReferenceBuild.renamed`.
 - **Several values may share one layout.** A value is what the operator runs; a layout
   (`StateLayout`) is what the bytes are. A snapshot is read when its recorded build's layout is the
   configured build's; there is no conversion between layouts.
 - **A value is never renamed or removed without the owner's decision.** The name is what V10
-  snapshots record: a renamed or removed name makes those files unknown, and they are skipped.
+  snapshots record: a renamed or removed name makes those files unknown, and they are deleted at
+  restore, unless `ReferenceBuild.renamed` reads the former name as the value it became.
 
 ### Known differences inside 11.1
 
@@ -121,3 +124,41 @@ When a Leios build becomes a release of `cardano-node`:
    removed without the owner's decision, above), or ask the owner to retire it.
 3. Update every doc that calls the build unstable, and move `ReferenceBuild.Default` only with the
    owner's decision.
+
+## Re-pin the Leios build
+
+ouroboros-leios releases `rc-<year>w<week>` about weekly. To follow a release:
+
+1. **Read what changed.** Read the release notes and the release's pins: the image's
+   `cardano-node --version` revision, and that commit's `cabal.project` (ouroboros-consensus,
+   cardano-ledger, ouroboros-network). Compare `leios-prototype` with the current pins
+   (`gh api repos/IntersectMBO/ouroboros-consensus/compare/<pin>...<new>`), and note "No resync, no
+   respin" or its absence.
+2. **Decide the layout.** If cardano-ledger or the state codecs changed, the `state` layout may have
+   changed: compare the release's ledger state against `StateLayout.Leios`'s codecs.
+3. **Ask the owner first.** The name a snapshot records changes, so a re-pin is a storage format change
+   (FMT-1): ask before editing. Record the question and the decision in `docs/data/storage-format.json`.
+   The re-pin touches paths outside `FORMAT_CHANGE_PATHS`, so it needs a one-off path exception for its
+   pull request, landed first (`ONE_OFF_PATHS` in `scripts/check_storage_format.py`, approved with the
+   re-pin, removed after it merges).
+4. **Rename and re-pin.** Give `ReferenceBuild.Leios` the release's name (`leios-<tag>`) and pins.
+   - **Same layout:** add the old name to `ReferenceBuild.renamed`, and its full node commit to
+     `refusalcorpus.RENAMED` and `ReferenceRefusalSuite.formerCommits`. Every entry of those maps names
+     the current Leios build (`Leios`, `LEIOS`), so all compatible former names follow it with no other
+     edit.
+   - **Changed layout:** add a layout (`StateLayout`), and remove every entry of those maps, not only
+     the predecessor's, or map them to a value of the old layout. Their files are then refused, never
+     read in the new layout.
+5. **Pins and image.**
+   - Add the release's revisions to `docs/data/reference-pins.json`, keeping the old ones while
+     citations name them.
+   - Set `scripts/devnet/dijkstra.py`'s `LEIOS_TAG`, `LEIOS_DIGEST` and `LEIOS_NODE_REVISION`, and
+     `refusalcorpus.LEIOS` and the pool-distribution oracle's `BUILDS` key with its `RENAMED`.
+   - Update the log golden's `referenceBuild` line, `CodecSuite`'s V10 header golden, and
+     `docs/leios.md`'s pins list.
+6. **Mirror the behaviour that changed,** each change with its citation at the new pin. List what is
+   left as gaps on the re-pin's issue.
+7. **Deploy.**
+   - Same layout: restart the node on the new build; its snapshots load under the former name.
+   - Changed layout: import the reference's ledger snapshot under the new name
+     (`import-ledger-snapshot --reference-build leios-<tag>`).

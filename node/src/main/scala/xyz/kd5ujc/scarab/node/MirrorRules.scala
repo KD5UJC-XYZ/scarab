@@ -573,7 +573,7 @@ object MirrorRules:
     */
   private[node] def runsDijkstra(globals: LedgerGlobals, header: Header.Shelley): Boolean =
     header.era == Era.Dijkstra && (globals.referenceBuild match
-      case xyz.kd5ujc.scarab.protocol.ReferenceBuild.LeiosB004fe0c => true
+      case xyz.kd5ujc.scarab.protocol.ReferenceBuild.Leios => true
       case xyz.kd5ujc.scarab.protocol.ReferenceBuild.Release11_1 |
           xyz.kd5ujc.scarab.protocol.ReferenceBuild.Release11_2 =>
         false)

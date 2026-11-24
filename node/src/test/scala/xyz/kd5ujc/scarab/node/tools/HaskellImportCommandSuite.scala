@@ -16,8 +16,10 @@ class HaskellImportCommandSuite extends FunSuite:
   test("without the flag the build is 11.1; with it, the build named") {
     assertEquals(HaskellImportCommand.parse(base).map(_.build), Right(ReferenceBuild.Release11_1))
     assertEquals(
-      HaskellImportCommand.parse(base ++ List("--reference-build", "leios-b004fe0c")).map(_.build),
-      Right(ReferenceBuild.LeiosB004fe0c)
+      HaskellImportCommand
+        .parse(base ++ List("--reference-build", "leios-rc-2026w47"))
+        .map(_.build),
+      Right(ReferenceBuild.Leios)
     )
   }
 
@@ -41,13 +43,13 @@ class HaskellImportCommandSuite extends FunSuite:
           "--stop-slot",
           "1943999",
           "--reference-build",
-          "leios-b004fe0c"
+          "leios-rc-2026w47"
         )
       )
       .fold(e => fail(e.message), identity)
     val (setup, chunk) = HaskellImportCommand.setupOf(options).fold(e => fail(e.message), identity)
     val config = HaskellImportCommand.config(options, setup, chunk)
-    assertEquals(config.build, ReferenceBuild.LeiosB004fe0c)
+    assertEquals(config.build, ReferenceBuild.Leios)
     assertEquals(config.stopSlot, Some(1943999L))
     assertEquals(config.identity.magic, 164L)
     // k = 108 (the testnet's `securityParam`): the reference's chunks of 1,080 slots

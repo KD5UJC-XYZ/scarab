@@ -623,7 +623,7 @@ class DijkstraRulesOracleSuite extends FunSuite:
   /** The globals of the Leios build, whose layout Dijkstra's POOL registers pools in. */
   private val leiosGlobals =
     globals.copy(ledger =
-      globals.ledger.copy(referenceBuild = xyz.kd5ujc.scarab.protocol.ReferenceBuild.LeiosB004fe0c)
+      globals.ledger.copy(referenceBuild = xyz.kd5ujc.scarab.protocol.ReferenceBuild.Leios)
     )
 
   private def epochOf(c: Json): EpochNo =

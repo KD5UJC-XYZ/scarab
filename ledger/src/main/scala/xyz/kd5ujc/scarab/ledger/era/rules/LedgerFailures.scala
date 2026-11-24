@@ -199,7 +199,7 @@ object InjectLedgerFailure:
       build: ReferenceBuild
   ): Option[InjectLedgerFailure[AccountAlreadyRegistered[Conway], Conway]] = build match
     case ReferenceBuild.Release11_1 => None
-    case ReferenceBuild.Release11_2 | ReferenceBuild.LeiosB004fe0c =>
+    case ReferenceBuild.Release11_2 | ReferenceBuild.Leios =>
       Some(
         new InjectLedgerFailure[AccountAlreadyRegistered[Conway], Conway]:
           def injectFailure(failure: AccountAlreadyRegistered[Conway]): LedgerPredFailure[Conway] =

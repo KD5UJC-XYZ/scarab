@@ -944,7 +944,7 @@ class ConwayLedgerSuite extends FunSuite:
     // again from nothing (`State/CertState.hs:525-535` at 29a7d656, 528-538 at 9df9f98c)
     assertEquals(counted(ReferenceBuild.Release11_1, before), Some(3L))
     assertEquals(counted(ReferenceBuild.Release11_2, before), Some(2L))
-    assertEquals(counted(ReferenceBuild.LeiosB004fe0c, before), Some(2L))
+    assertEquals(counted(ReferenceBuild.Leios, before), Some(2L))
   }
 
   test("under 11.1 HARDFORK keeps a count at the largest word where adding one would wrap") {

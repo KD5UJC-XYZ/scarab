@@ -66,22 +66,25 @@ enum ReferenceBuild(
         )
       )
 
-  /** The build of the public Leios testnet (release rc-2026w44, #711): cardano-node
-    * b004fe0c50913dcdaa827a98e68a43d0ccce152a (branch leios-prototype), with cardano-ledger
+  /** The build of the public Leios testnet, named by the release it is pinned at,
+    * `leios-<release tag>`: release rc-2026w47, cardano-node
+    * b9c1dbea7dd2affa4fe06403720c09ffcdcc2c13 (branch leios-prototype), with cardano-ledger
     * 9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c (its binary package included) and ouroboros-consensus
-    * 2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b. Unstable. Its `state` layout is read and written in
+    * d91b355756945df073f0acce83e24c021e7b0d88. Unstable. Its `state` layout is read and written in
     * every Shelley-based era, Dijkstra among them ([[StateLayout.Leios]]); its rules are not run
-    * ([[ReferenceBuildNotYet.Rules]]).
+    * ([[ReferenceBuildNotYet.Rules]]). The testnet releases weekly: each re-pin gives this value
+    * the new release's name and pins, and moves the name it had into [[renamed]] when the layout is
+    * the same (the owner's decision of 2026-11-23, #1365; the playbook's re-pin steps).
     */
-  case LeiosB004fe0c
+  case Leios
       extends ReferenceBuild(
-        "leios-b004fe0c",
+        "leios-rc-2026w47",
         ReferenceBuild.Stability.Unstable,
         ReferenceBuild.Pins(
-          "b004fe0c50913dcdaa827a98e68a43d0ccce152a",
+          "b9c1dbea7dd2affa4fe06403720c09ffcdcc2c13",
           "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
           "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-          "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b"
+          "d91b355756945df073f0acce83e24c021e7b0d88"
         )
       )
 
@@ -130,6 +133,20 @@ object ReferenceBuild:
     */
   def parse(text: String): Either[UnknownReferenceBuild, ReferenceBuild] =
     values.find(_.name == text).toRight(UnknownReferenceBuild(text))
+
+  /** The former names of a value, which files recorded under them carry, read as the value they
+    * became and never accepted as `--reference-build` (the owner's decision of 2026-11-23, #1365).
+    * A former name is listed only while its layout is the value's (`ReferenceBuildSuite` checks
+    * it): a release that changes the layout leaves its predecessor's name out, so files of that
+    * name are unknown and the node imports or replays rather than reading them in another layout
+    * (#1369 records the layout in the file instead). The Leios build's names: `leios-b004fe0c`
+    * (rc-2026w44, the name until 2026-11-23).
+    */
+  val renamed: Map[String, ReferenceBuild] = Map("leios-b004fe0c" -> Leios)
+
+  /** The build a file records by `text`: a current name, or one in [[renamed]]. */
+  def recorded(text: String): Either[UnknownReferenceBuild, ReferenceBuild] =
+    parse(text).orElse(renamed.get(text).toRight(UnknownReferenceBuild(text)))
 
 /** A `--reference-build` value, or a recorded one, that names no build this build knows. */
 final case class UnknownReferenceBuild(text: String) extends DomainError:

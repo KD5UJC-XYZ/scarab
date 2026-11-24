@@ -115,18 +115,18 @@ class SnapshotV10MigrationSuite extends CatsEffectSuite:
     // the Haskell section is not a CBOR item: only a decoder that reads it would notice
     val leios =
       SnapshotV10.framed(
-        ReferenceBuild.LeiosB004fe0c,
+        ReferenceBuild.Leios,
         binding,
         sidecar,
         Bytes.wrap(Array(0xff.toByte))
       )
-    assertEquals(SnapshotV10.recordedOf(leios), Right("leios-b004fe0c"))
+    assertEquals(SnapshotV10.recordedOf(leios), Right("leios-rc-2026w47"))
     assertEquals(
       SnapshotV10.decode(env, ReferenceLayout.Release11_1, leios).map(_.anchor),
       Left(
         StorageError.ReferenceBuildMismatch(
           "snapshot",
-          ReferenceBuild.LeiosB004fe0c,
+          ReferenceBuild.Leios,
           ReferenceBuild.Release11_1
         )
       )
@@ -162,6 +162,30 @@ class SnapshotV10MigrationSuite extends CatsEffectSuite:
   }
 
   test(
+    "a V10 file recorded under the Leios build's former name is read as the Leios build, not unknown"
+  ) {
+    // `leios-b004fe0c` was the Leios value until 2026-11-23 (#1365): its files are the same layout's
+    val v10 = content("fixtures/snapshot-v10", "eras/conway-730.bin")
+    val former = "leios-b004fe0c".getBytes("US-ASCII")
+    val renamed = SnapshotV10.Magic ++ Array(former.length.toByte) ++ former ++
+      v10.drop(SnapshotV10.Magic.length + 5)
+    assertEquals(SnapshotV10.recordedOf(renamed), Right("leios-b004fe0c"))
+    // under 11.1 it is a known build of another layout, as a Leios file is, never an unknown one
+    // that a restore would delete as it deletes a corrupt file
+    assertEquals(
+      SnapshotV10.decode(env, ReferenceLayout.Release11_1, renamed).map(_.anchor),
+      Left(
+        StorageError.ReferenceBuildMismatch(
+          "snapshot",
+          ReferenceBuild.Leios,
+          ReferenceBuild.Release11_1
+        )
+      )
+    )
+    // a valid Leios snapshot of that name restores in full: LeiosLayoutImportSuite
+  }
+
+  test(
     "a restore skips a snapshot recorded under another build, names both builds, and takes an older one"
   ) {
     given Ask[IO, ConsensusMirrorEnv] = Ask.const(env)
@@ -181,7 +205,7 @@ class SnapshotV10MigrationSuite extends CatsEffectSuite:
       IO.blocking(JFiles.write((dir / name).toNioPath, FileLedgerSnapshots.closed(content)))
     val mismatch = StorageError.ReferenceBuildMismatch(
       "snapshot",
-      ReferenceBuild.LeiosB004fe0c,
+      ReferenceBuild.Leios,
       ReferenceBuild.Release11_1
     )
     def restore(dir: fs2.io.file.Path) = ok(
@@ -192,11 +216,11 @@ class SnapshotV10MigrationSuite extends CatsEffectSuite:
     for
       both <- tempDir.use { dir =>
         put(dir, older, olderContent) *>
-          put(dir, newer, recordedUnder(ReferenceBuild.LeiosB004fe0c, newerContent)) *>
+          put(dir, newer, recordedUnder(ReferenceBuild.Leios, newerContent)) *>
           restore(dir)
       }
       alone <- tempDir.use { dir =>
-        put(dir, newer, recordedUnder(ReferenceBuild.LeiosB004fe0c, newerContent)) *> restore(dir)
+        put(dir, newer, recordedUnder(ReferenceBuild.Leios, newerContent)) *> restore(dir)
       }
     yield
       assertEquals(both.snapshot.map(_._1), Some(older))
@@ -204,7 +228,7 @@ class SnapshotV10MigrationSuite extends CatsEffectSuite:
         both.skipped,
         Vector(LedgerSnapshots.Skipped(newer, mismatch, LedgerSnapshots.Unused.Deleted))
       )
-      assert(mismatch.message.contains("leios-b004fe0c"), mismatch.message)
+      assert(mismatch.message.contains("leios"), mismatch.message)
       assert(mismatch.message.contains("11.1 (stable, cardano-node 11.1.3)"), mismatch.message)
       // with nothing else to restore, the stored blocks are replayed from genesis
       assertEquals(alone.snapshot, None)

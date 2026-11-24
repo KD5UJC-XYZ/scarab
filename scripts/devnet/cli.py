@@ -4,7 +4,7 @@
     devnet.py up                   create genesis and start the reference cluster
     devnet.py tip [--node N]       reference tip as JSON
     devnet.py follow [--seconds N] run the Scala follower against node1 (logs to the run dir); --reference-build
-                                   names the cluster's build to the node (leios-b004fe0c for up-dijkstra)
+                                   names the cluster's build to the node (leios-rc-2026w47 for up-dijkstra)
     devnet.py load [--seconds N]   submit randomized ADA transfers between wallets
     devnet.py compare              compare the Scala ledger with the reference at one block
     devnet.py soak [--seconds N]   up + follow + load + periodic compare, then a summary
@@ -185,7 +185,7 @@ def main():
     ud.add_argument("--timeout", type=int, default=900, help="overall time limit in seconds")
     ud.add_argument("--conway-only", action="store_true",
                     help="return once the cluster forges Conway blocks, before Dijkstra (with a late --dijkstra-epoch, "
-                         "a Leios-build Conway cluster for refusal-corpus --reference-build leios-b004fe0c)")
+                         "a Leios-build Conway cluster for refusal-corpus --reference-build leios-rc-2026w47)")
     ud.set_defaults(run=up_dijkstra)
     cd = sub.add_parser("capture-dijkstra", help="REFERENCE ONLY: capture the running up-dijkstra chain as fixtures")
     cd.add_argument("--out", default=str(DIJKSTRA_OUT), help="fixture directory")
@@ -217,7 +217,7 @@ def main():
     lt.add_argument("--memory", default="12g", help="memory of the reference container")
     lt.add_argument("--work-size", default="4g", help="size of the reference container's /work tmpfs")
     lt.add_argument("--follow", action="store_true",
-                    help="the Scala node follows the cluster (--reference-build leios-b004fe0c, --db, --local-socket) "
+                    help="the Scala node follows the cluster (--reference-build leios-rc-2026w47, --db, --local-socket) "
                          "and is judged against it: its chain, the closures of the certified endorser blocks in its "
                          "store, its log and the same-point ledger state")
     lt.add_argument("--follow-node", type=int, default=1, help="with --follow: the reference node it follows")
@@ -290,7 +290,7 @@ def main():
     f.add_argument("--reference-build", metavar="BUILD",
                    help="the cardano-node build the cluster's reference runs, passed on as the node's own "
                         "`follow --reference-build` (the node checks the value; without the flag, the node's "
-                        "default): leios-b004fe0c for an `up-dijkstra` cluster, with --db for its endorser-block "
+                        "default): leios-rc-2026w47 for an `up-dijkstra` cluster, with --db for its endorser-block "
                         "store")
     f.add_argument("--listen", metavar="HOST:PORT", help="accept node-to-node connections at this address")
     f.add_argument("--voter-keys", metavar="DIR",
@@ -471,7 +471,7 @@ def main():
                                     "devnet name and returning `refusalcases.Case`s")
     rc.add_argument("--reference-build", choices=sorted(REFUSAL_BUILDS), default=REFUSAL_DEFAULT_BUILD,
                     help="the build of the cluster's reference node, recorded in corpus.json and checked against the "
-                         "node: 11.1 (`up`, `up-eras`) or leios-b004fe0c (`up-dijkstra --conway-only`)")
+                         "node: 11.1 (`up`, `up-eras`) or leios-rc-2026w47 (`up-dijkstra --conway-only`)")
     rc.add_argument("--out", default=str(REFUSALS_OUT), help="the refusal corpus root (its manifest.json is updated)")
     rc.set_defaults(run=refusal_corpus)
     rf = sub.add_parser("refused-fixture", help="write fixtures/devnet/refused-txs.jsonl from the run directory of a "

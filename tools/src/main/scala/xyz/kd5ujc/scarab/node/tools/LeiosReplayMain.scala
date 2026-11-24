@@ -45,7 +45,7 @@ import xyz.kd5ujc.scarab.storage.haskell.state.ReferenceLayout
   * states (#54, gate G1): from a reference ledger state, the node's own block application to the
   * slot of a later one, and the state it reaches exported and compared byte for byte with the
   * reference's. No peer, no follower. Everything is the shipped path under
-  * `--reference-build leios-b004fe0c`:
+  * `--reference-build leios-rc-2026w47`:
   *
   *   1. the reference node's ImmutableDB up to the end state's slot, and its LeiosDB, into a fresh
   *      database, as `import-haskell-db` stores them ([[HaskellImport]]);
@@ -71,7 +71,7 @@ import xyz.kd5ujc.scarab.storage.haskell.state.ReferenceLayout
   */
 object LeiosReplayMain extends IOApp:
   /** The build the testnet runs. */
-  val Build: ReferenceBuild = ReferenceBuild.LeiosB004fe0c
+  val Build: ReferenceBuild = ReferenceBuild.Leios
 
   /** The files of a reference ledger directory, compared in this order. */
   val Compared: Vector[String] = Vector("state", "tables", "meta")

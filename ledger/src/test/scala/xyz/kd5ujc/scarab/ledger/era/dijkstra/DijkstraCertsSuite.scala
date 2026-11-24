@@ -93,7 +93,7 @@ class DijkstraCertsSuite extends FunSuite:
 
   private val leios: Globals =
     TestLedger.globals.copy(ledger =
-      TestLedger.globals.ledger.copy(referenceBuild = ReferenceBuild.LeiosB004fe0c)
+      TestLedger.globals.ledger.copy(referenceBuild = ReferenceBuild.Leios)
     )
 
   private val pp: PParams[Dijkstra] = testnetPParams

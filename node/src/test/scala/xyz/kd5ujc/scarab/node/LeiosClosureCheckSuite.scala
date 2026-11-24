@@ -80,7 +80,7 @@ class LeiosClosureCheckSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
 
   private lazy val setup: NodeSetup =
     NodeSetup
-      .fromDirectory(ReferenceBuild.LeiosB004fe0c)(devnet.resolve("genesis"))
+      .fromDirectory(ReferenceBuild.Leios)(devnet.resolve("genesis"))
       .fold(e => fail(e.message), identity)
 
   private def geometry = setup.praos.geometry

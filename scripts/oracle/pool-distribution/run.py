@@ -18,8 +18,11 @@ HERE = Path(__file__).resolve().parent
 FIXTURE = ROOT / "fixtures/reference/pool-distribution"
 BUILDS = {
     "11.1": ("scarab-plutus176-context-reference:local", "f649f9751074d2ab3de033fc3912f29c9862c1f5"),
-    "leios-b004fe0c": ("scarab-leios-testnet:local", "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c"),
+    "leios-rc-2026w47": ("scarab-leios-testnet:local", "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c"),
 }
+# Former names of a build, which the recorded corpus may carry (`ReferenceBuild.renamed`, #1365): a recorded row is
+# compared under the name its build has now, every input and native result still compared.
+RENAMED = {"leios-b004fe0c": "leios-rc-2026w47"}
 
 
 def head(major, n):
@@ -122,6 +125,7 @@ def main():
         (FIXTURE / "provenance.json").write_text(json.dumps(provenance, indent=2) + "\n")
     else:
         expected = [json.loads(line) for line in path.read_text().splitlines()]
+        expected = [dict(row, build=RENAMED.get(row["build"], row["build"])) for row in expected]
         if rows != expected:
             raise SystemExit("native pool distributions differ from the recorded corpus")
     print(f"Compared {len(rows)} native pool-distribution results across both builds")

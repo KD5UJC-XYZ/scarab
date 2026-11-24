@@ -17,7 +17,7 @@ import TxSubmitPeer.{Batch, Outcome, Signed, Unreadable}
 class TxSubmitPeerSuite extends FailsOnUncaught:
   private def hex(s: String): Bytes = Bytes.fromHex(s).fold(e => fail(e.toString), identity)
   private val devnet = Path.of("fixtures", "dijkstra-devnet")
-  private val leios = RelayedTransactions.of(ReferenceBuild.LeiosB004fe0c)
+  private val leios = RelayedTransactions.of(ReferenceBuild.Leios)
   private val dijkstra = TxSubmitPeer.eras("dijkstra")
   private val file = devnet.resolve("transaction.json")
   private def envelope: String = Files.readString(file)

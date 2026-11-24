@@ -44,14 +44,14 @@ class LeiosGenesisReferenceSuite extends FunSuite:
     def right[E, A](e: Either[E, A]): A = e.fold(x => fail(x.toString), identity)
     val parsed = right(
       NodeConfig
-        .parse(xyz.kd5ujc.scarab.protocol.ReferenceBuild.LeiosB004fe0c)(
+        .parse(xyz.kd5ujc.scarab.protocol.ReferenceBuild.Leios)(
           Files.readString(config.resolve("config.json")),
           true
         )
     )
     val setup = right(
       NodeSetup
-        .assemble(xyz.kd5ujc.scarab.protocol.ReferenceBuild.LeiosB004fe0c)(
+        .assemble(xyz.kd5ujc.scarab.protocol.ReferenceBuild.Leios)(
           parsed,
           name =>
             Option

@@ -5,692 +5,17 @@
   "`approval` records that question and the owner's decision, in neutral words and never as a quotation, with their UTC times and the digest of the surface they admit. It is evidence of the approval, never an approval itself. `approval` is null only for the baseline: the surface of main (bc0e4995a, after #994 merged) on 2026-11-14, when the freeze began, which approves nothing."
  ],
  "approval": {
-  "question": "Asked 2026-11-22T15:26:57Z: storage format change (FMT-1): may the UTxO store's filter-cache fix land in place, as its own storage-format pull request? No stored byte changes, no new version and no migration, and existing stores open as they are; it changes only RocksDB's caching of index and filter blocks (out of the shared block cache, RocksDB's default) and the store's batch read (a status-returning multi-get, so an absent key is not read again). The format guard lists object RocksUtxoStore as a persisted-format member, so the edit needs an approval record.",
-  "asked_at": "2026-11-22T15:26:57Z",
-  "decision": "Approved in place, as its own storage-format pull request: no version, no migration, no stored byte change.",
-  "decided_at": "2026-11-22T15:31:58Z",
-  "surface_sha256": "e322752af243076ba135f9d532aa735e1e39208917ea742bac46e2e3461ac2e5"
+  "question": "Asked 2026-11-23T20:36:49Z: storage format change (FMT-1): may the Leios reference build's value be renamed, as its own storage-format pull request? V10 snapshots record the build's name as text; renaming leios-b004fe0c changes the name new snapshots record, the build-to-layout table (StateLayout.of) and the goldens that pin the header, and, without more, makes snapshots recorded under the old name unknown, which a restore deletes. Proposed: the new value, with the old name read from snapshots and captures only (never accepted as --reference-build); or keep the old name with new pins.",
+  "asked_at": "2026-11-23T20:36:49Z",
+  "decision": "Approved, as its own storage-format pull request: the Leios value is named by the release it is pinned at (leios-rc-2026w47), and each former name of a build whose layout is the same is read from files as that build (ReferenceBuild.renamed), so that weekly re-pins keep snapshots readable; a layout change leaves the former name out. No new version and no migration. The owner first chose a single generic name (21:00:12Z) and then release-tagged names with this upgrade path.",
+  "decided_at": "2026-11-23T21:21:49Z",
+  "surface_sha256": "85c6f9823562f1df46ac6a1d8826fccdf38983b110df8c20c5fecd56cbc5ea09"
  },
  "surface": {
-  "registry": {
-   "versions": [
-    "V1",
-    "V2",
-    "V3",
-    "V4",
-    "V5",
-    "V6",
-    "V7",
-    "V8",
-    "V9",
-    "V10"
-   ],
-   "kinds": {
-    "IdentityFile": {
-     "label": "network identity",
-     "families": [
-      "cardano-scala-lab network",
-      "scarab network"
-     ],
-     "history": [
-      [
-       "V1",
-       "cardano-scala-lab network identity v1"
-      ],
-      [
-       "V2",
-       "scarab network identity v2"
-      ],
-      [
-       "V6",
-       "scarab network identity v6"
-      ],
-      [
-       "V9",
-       "scarab network identity v9"
-      ]
-     ]
-    },
-    "FormatFile": {
-     "label": "immutable store format",
-     "families": [
-      "cardano-scala-lab immutable",
-      "scarab immutable"
-     ],
-     "history": [
-      [
-       "V1",
-       "cardano-scala-lab immutable store v1"
-      ],
-      [
-       "V2",
-       "scarab immutable store v2"
-      ]
-     ]
-    },
-    "IndexFile": {
-     "label": "chunk index",
-     "families": [
-      "CSLIDX",
-      "SCRBIDX"
-     ],
-     "history": [
-      [
-       "V1",
-       "CSLIDX01"
-      ],
-      [
-       "V2",
-       "SCRBIDX2"
-      ]
-     ]
-    },
-    "SnapshotFile": {
-     "label": "ledger snapshot",
-     "families": [
-      "CSLSNAP",
-      "SCRBSNP"
-     ],
-     "history": [
-      [
-       "V1",
-       "CSLSNAP1 v1"
-      ],
-      [
-       "V2",
-       "CSLSNAP1 v2"
-      ],
-      [
-       "V3",
-       "SCRBSNP3"
-      ],
-      [
-       "V4",
-       "SCRBSNP4"
-      ],
-      [
-       "V5",
-       "SCRBSNP5"
-      ],
-      [
-       "V7",
-       "SCRBSNP7"
-      ],
-      [
-       "V8",
-       "SCRBSNP8"
-      ],
-      [
-       "V9",
-       "SCRBSNP9"
-      ],
-      [
-       "V10",
-       "SCRBSNPA"
-      ]
-     ]
-    }
-   },
-   "readableFrom": {
-    "SnapshotFile": "FormatVersion.V5",
-    "_": "history.head._1"
-   },
-   "utxoKeyLayouts": [
-    "TxIdIndex16"
-   ],
-   "utxoKeyLayoutCurrent": "TxIdIndex16",
-   "formatLosses": [
-    "ByronSoftwareMetadata(proposals: Int, applications: Int)"
-   ],
-   "code_sha256": "9e713b69e7c860357e9c3c7684e21b54148900933e5b47846da2f0ab54770908"
-  },
-  "magics": {
-   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/PersistedFormat.scala": [
-    "CSLIDX01",
-    "SCRBIDX2",
-    "SCRBSNP3",
-    "SCRBSNP4",
-    "SCRBSNP5",
-    "SCRBSNP7",
-    "SCRBSNP8",
-    "SCRBSNP9",
-    "SCRBSNPA"
-   ],
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/RocksLeiosStore.scala": [
-    "SCRBLEIO"
-   ],
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotMigration.scala": [
-    "CSLSNAP1"
-   ],
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV10.scala": [
-    "SCRBSNPA"
-   ],
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV5.scala": [
-    "SCRBSNP5"
-   ],
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV7.scala": [
-    "SCRBSNP7"
-   ],
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV8.scala": [
-    "SCRBSNP8"
-   ],
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV9.scala": [
-    "SCRBSNP9"
-   ],
-   "tools/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV10FixtureMain.scala": [
-    "SCRBSNPA"
-   ],
-   "tools/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV7FixtureMain.scala": [
-    "SCRBSNP7"
-   ],
-   "tools/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV8FixtureMain.scala": [
-    "SCRBSNP8"
-   ],
-   "tools/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV9FixtureMain.scala": [
-    "SCRBSNP9"
-   ]
-  },
-  "migrations": {
-   "converted": {
-    "V5": [
-     "SnapshotV7.fromV5",
-     "SnapshotV8.fromV7",
-     "SnapshotV9.fromV8",
-     "SnapshotV10.fromV9"
-    ],
-    "V7": [
-     "SnapshotV8.fromV7",
-     "SnapshotV9.fromV8",
-     "SnapshotV10.fromV9"
-    ],
-    "V8": [
-     "SnapshotV9.fromV8",
-     "SnapshotV10.fromV9"
-    ],
-    "V9": [
-     "SnapshotV10.fromV9"
-    ]
-   },
-   "steps": [
-    [
-     "V5",
-     "V7"
-    ],
-    [
-     "V7",
-     "V8"
-    ],
-    [
-     "V8",
-     "V9"
-    ],
-    [
-     "V9",
-     "V10"
-    ]
-   ],
-   "conversions": {
-    "SnapshotV10": [
-     "fromV9"
-    ],
-    "SnapshotV5": [],
-    "SnapshotV7": [
-     "fromV5"
-    ],
-    "SnapshotV8": [
-     "fromV7"
-    ],
-    "SnapshotV9": [
-     "fromV8"
-    ]
-   },
-   "implementers": [
-    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/ImmutableStore.scala",
-    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/NetworkIdentityFile.scala",
-    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotMigration.scala"
-   ]
-  },
-  "format_sources": {
-   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/NetworkIdentity.scala": "5f633327263ec029ef8889c0d5c4d93061dcde43e536507433433e9af5b97825",
-   "models/src/main/scala/xyz/kd5ujc/scarab/models/runtime/Codec.scala": "bb7755ab7638eb0258ef648a5f7102953479f85781e8d6a137998cd6849404c5",
-   "models/src/main/scala/xyz/kd5ujc/scarab/models/runtime/Writer.scala": "c1ea0b6d41cdadc177033812cb3586478ce7a9ccd8895ea82b7d7e811be7dd0d",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/CheckpointBinding.scala": "6715cb7b26e20a9a55d6641f1df28cdfd54b58bc359d07eb4cd7c0cd9c143914",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/Codec.scala": "4609832427c5a9a6a51a10af9dc39468c82fcfb2edcf2fe205f4027bf8dbe547",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/Migrate.scala": "df1ac6aa1c643ba755072cb43b0efd1b35d452ec74789a50b0ddc40c5908a150",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/NetworkIdentityFile.scala": "c9a54d01a7d73d4138418b444c1460cd77c144eb338faa6c8cc5ec1165ce5cee",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/NodeCodecs.scala": "1ce5f254083cb5b084202e76f9cea9ab65844c9ef7fc64491a191b5b7bc8d9b3",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/ProductFields.scala": "1ed8c65c8fa67d29c4a205cde6f9d259d6dc2fb86d9fab900e743fdc27ad48fc",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotMigration.scala": "25e4606de501019a542cf49c3905897b5dd30185bfb0f0d79ecafe064ee62d90",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotSidecar.scala": "8936c1c5b3ef5ad1ef96e303c142485c3914490cb1625e7f7248250446109860",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV10.scala": "3eaeffcaa134dd5fc98322dea1b9fd5e59195acb7c76599082dbb71d1448229c",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV5.scala": "9ac6c24476d8a52f52f3f601c642018de19a0494c7baad054543c223e205f1d1",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV7.scala": "1db1c2781205f65ae9decbc835e34a1118a821bfc53be1128f48eb48224d1add",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV8.scala": "c56ee0253fd57be19c42d7d9f11e517b9a8130d0d79349a3e81db4230ccc2402",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV9.scala": "c137fed393e4dd5f96c9815d4e858fa1929e21bfce75ea9aaa90eb30608668f5",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/CertStateCodecs.scala": "6cdebec042cb239e702bb38ab433438034af42d23f419151bbc9ef29b35b8fc3",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/ConsensusCodecs.scala": "ef22fd1b2d75680ec5e0071b8cff73a116a1e837a539a6845ebd63cd45a1e6d8",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/ConwayCodecs.scala": "050040f1e442e00fb448ef2a7c8296ff229413a41f46e7c79ad91e5d516aaa0e",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/Envelope.scala": "e538ab5c49e0ee9f41cadff7029cdc514a790a753a8b7e547fe32654d6ca2f92",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/EpochStateCodecs.scala": "628e831761db792170015f18d6d33cfdf829a1d625c6133da613379a088dd1b8",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/GovStateCodecs.scala": "b5786dd7c6a4097a345fb1bc7371d06fcd9d8d4c6344ef0734291ab1af36b9d7",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/HaskellLedgerFile.scala": "44ce725f39bc7e9060334fc98614c7ac435c25ce9a66c16629e0b50e2c8c4562",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/HaskellState.scala": "f45c212166c972c81d61da11bbaa5ee4da3250c67411e886ba3c401640c76772",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/HaskellStateCodecs.scala": "eff5766f1249ba4843cb3e22e9819133370f4d955094cd283d6d96ee3c7ae9c9",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/LedgerFileCodecs.scala": "da67df20db22b3535397dc21fafe51ec5e0d858e12ce2a6e4aab1894668f9d32",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/NodeOrders.scala": "344093d18720fc3e064dabca426d2eb1ace16246a5b18d279407e453298b960c",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/NodeTypeCodecs.scala": "e86d2aacb41afc5678457d5cb7d897b830b164f344a4ca9100bf09754608f3a3",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/Params.scala": "41c5941c850388e1eb68d2ab6dfb2e3c7361167ea0eb80218c17a876f221442d",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/ProposalsReading.scala": "1db8028ebb4238a55e1dc869d46aa98db7333d7b5eb510a0763bc0aad382a1e1",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/Record.scala": "3cc9db95616e5b058f27d41da49f4a273699cc46ab98cb7b2dc9f1e6a7939c46",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/ReferenceLayout.scala": "3615cd8286548704b534e00d3deabe113957b26564d92291c4f9c6204af271ea",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/RewardCodecs.scala": "ad6f62555ab3bc5a052887bc72f340712eaaf2a29101febfc7a108132fcde583",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/SnapshotCodecs.scala": "b6359962bb2c3146c9f398e7b0edc726ec5f2192d883fd7277a397fb3b07fd66",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/VocabularyCodecs.scala": "d9f29bc82aa2c53db970e9b65f6fdb091cb7387831ac0da8cc228afdc0a572ba",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/Wire.scala": "69454c40ca47e61e50a5bd2845e71f5eb93799bbecb7f470c8f9a3f505fd63bd"
-  },
-  "format_members": {
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/UtxoStore.scala#UtxoStore.Coding": "72e8b74b8ffc95b29f030937c8d31777e41d35645c3677abb86df1e64e36f42b",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/UtxoStore.scala#MemoryUtxoStore.checkpoint": "faadeeef0aee201dee018c7227e9bfe04abfbe2327547b4d5543f660c58dddc5",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/UtxoStore.scala#MemoryUtxoStore.restore": "87169b81baf8b1be8805398b5cec5d71fa74019d2626e862ec824d888b4bbafd",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/RocksUtxoStore.scala#RocksUtxoStore.StampKey": "f05b797a6078ccbad76651d099242127696a15d9d048d95fcddf4661f136f33b",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/RocksUtxoStore.scala#RocksUtxoStore.write": "d593867ea12c5d0e2e785a8025a992e292d3e325b49178487f8e3441b53d755b",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/RocksUtxoStore.scala#RocksUtxoStore.flushed": "3065ee8334f728a8faa98c76788696e2e04393412c7c7b856a3528c1f459180d",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/RocksUtxoStore.scala#object RocksUtxoStore": "b0efee65199cebc07d36ce8e377000381854136926d9b3b7ecbef77cc6c570f0",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/ImmutableStore.scala#FileImmutableStore.IndexMagic": "aa4bf78512eb6775425ee42d1e38474fad0ff05f56cc64042de2e967a172594b",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/ImmutableStore.scala#FileImmutableStore.FormatText": "84e33690e1b7061bf2d2d8dacfb70af0567f015db237fd9d9c676f6e36aed19e",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/ImmutableStore.scala#FileImmutableStore.HeaderSize": "fd5b730fc5b433c3415a16898060d52b368a4049b8cdf2def24c4705a673f259",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/ImmutableStore.scala#FileImmutableStore.EntrySize": "01cff6f183c25b801a0a9bdacfd4a5052af1d90a327b227738a8a95916bd32d1",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/ImmutableStore.scala#FileImmutableStore.magicOf": "0834a7bdd55d1cdf17b5ffebbe1fc1fe4c53c426ba68c8da2d738c6d7c298b2f",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/ImmutableStore.scala#FileImmutableStore.indexMigration": "846b6f15abf90b22111d127eddaf925e67727f2b139def23f66e12562ac99825",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/ImmutableStore.scala#FileImmutableStore.formatMigration": "033771895874ae6351ba1291b36709d2690228ad211b18a1800f08a90f742baa",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/ImmutableStore.scala#FileImmutableStore.encode": "9d942fdcd1390a99ab54bafb4c16e82ea87ebd15e3d972a1b0361e023b01fcf9",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/ImmutableStore.scala#FileImmutableStore.decode": "9b43e719c0007c3a773765c3b761ba1f67be091077ebb2ab1421f9793002391f",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/ImmutableStore.scala#FileImmutableStore.crcOf": "1110166db0bf6c4f3cf9e1071923a330e6d9b8ac594dacd0339ea87805e82388",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/ImmutableStore.scala#FileImmutableStore.entries": "109a9019d88021fdcd159f9b216f9dc5a2ad99b3c94c9bfae77a06089fe1ed85",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/VolatileStore.scala#VolatileRecord": "5bdb29e750dc21307e8243d403cfcd4c8547315a958831b2d51d1ad97e8f600b",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/VolatileStore.scala#VolatileStore.HeaderSize": "0e9be4b2e746fbb13d404e82dfca087065d2dbe55b34cea9d4f1f2ee71b61dc1",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/VolatileStore.scala#VolatileStore.KindBlock": "4b96fc977c67edaa50b7658a5cb94f11dc9bf8c4820b2aa2107926ec90601a8d",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/VolatileStore.scala#VolatileStore.KindRollback": "18051809a43ba9fb67fe26a42331bbe0b33a88117b5e38ee17a5fd05bfd11eea",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/VolatileStore.scala#VolatileStore.FlagBoundary": "661c4f6a7e096b976846af228682e0d8d9ebd27889c57f066b1e322be94fceef",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/VolatileStore.scala#VolatileStore.FlagOrigin": "316cce31ba372302f1162a69d20c85e6cc1934476cff13ba4c590380971585f3",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/VolatileStore.scala#VolatileStore.encode": "215d64f2bf983f9f7f9f94ab6778f541c3745fbdd7bb4a2ac92c10a88cbc3548",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/VolatileStore.scala#VolatileStore.decodeAll": "71c21602799c1b3e385006e4d5d8a141a0842bf501e8d739772954f91c8c078a",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/VolatileStore.scala#VolatileStore.Scanned": "ba6d5c2c11c483a172b844043c61667f02bca8af8c03190fd7c986447b5005bc",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/VolatileStore.scala#VolatileStore.Suffix": "7c5d3843d3f0dbf69b4c1e26c8b50612ab46da3dac3bea1f227735bcced0064e",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/VolatileStore.scala#VolatileStore.nameOf": "b40dc2209694b6355c04f947e055e04d1b7773c21ddfefe547c7b66f50d6d289",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/LedgerSnapshots.scala#FileLedgerSnapshots": "3e02c1f07fcabd295641b04b18ea0839463922c35b6c5c3dc8e900d346b63d2f",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/StateBacking.scala#StateBacking.stem": "67592a136e8c67596733bdaa48a11245fb6d121f38057d4e1f2a7543b03bd14d",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/StateBacking.scala#StateBacking.Stem": "ebc2ae76bf4aab10145b5e249e2eb46ca5bba8540d2f3dd632bc058e335cc82f",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/StateBacking.scala#StateBacking.isStem": "2ed76a5e221935e901fab245602b37e4014be1b094075a7269b6987416424b8c",
-   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/PoolRelays.scala#object PoolRelays": "fea6013e265c03b47f600b46539da124cd798973374fe9c1073eb72453f48d5f",
-   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/PoolRelays.scala#Ipv4": "bcd221463706e4a367d5135af79e7a22871179e9c1440654d3fa72edadb48b74",
-   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/PoolRelays.scala#Ipv6": "53f2efe986cd12d5d5690722c52fb207fba845a66eaf53bbd42b07bb61192569",
-   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/PoolRelays.scala#object Ipv6": "7a93d1fe6bc62cc613437a5bd7b3582e917145debecc062f4f0b8de447c54bfa",
-   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/PoolRelays.scala#RelayIp.be": "e51c21a686e213b8033a7a71cd4f24db1bf297c43257eebac1222a075fa21798",
-   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/PoolRelays.scala#RelayIp.fromOctets": "e57d3eeb4bbc786609d3aee533572ab01b7515a342adf1a1328baa4a5ef8e737",
-   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/PoolRelays.scala#RelayPort": "050121597e080a4e8e5e55b0ced6e52cfa88d7d8f8a390a21d228c184615cf50",
-   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/Convert.scala#Convert.poolParamsBack": "4e89c99fad71d9dcb20bbac4337e52fda8ec08d50e052200690753e8b9b12d5e",
-   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/Convert.scala#Convert.rewardAccountBack": "bcea0c5d429de34cff97e3c35e819b18acd1139bfec8aefea1fd516208c094f5",
-   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/Convert.scala#Convert.stakePoolParams": "32d293f1fb1e47d4c64a2d4c4ef11b7d93fe49e4487f5ac9fabc7eaee32d57df",
-   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/Convert.scala#Convert.keyHash": "46cbb34ab23a026855a30bcd88f1314d09d1e9672ededbb36ca056ffc2334de6",
-   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/Convert.scala#Convert.credential": "bc93cc878148e9673cee1e1580aac703f3f3a2977a63c6f6cb83afb6eb5821b3",
-   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/Convert.scala#Convert.back": "e93efe2e3c7afbdf2579e0e3da2d91dbfa6c24aedfb2c8e87257835990b03bcc",
-   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/Convert.scala#Convert.accountAddress": "7ff99106981c93bc8d197c59810878ddc8e230e91987fb1763fd4cc979f32e0d",
-   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/state/StakePool.scala#PoolMetadata.read": "65e63aa1ca398524a9d0c399a74d19d16eb6a82a67ca8d070a5609bec447f918",
-   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/Tx.scala#PoolParams.metadataAt": "4458f8d4f48290d2f933b0041d9bf7fe2a92d9d8f71fb8b8f2737e33db67e313",
-   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/Tx.scala#PoolParams.urlAt": "99d2e529c5dec14a7b39383c114cd788491986371c2208d148b20f71f86d3c70",
-   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/Tx.scala#PoolParams.metadata": "7f0627ea5bf3aee19e6c1d2466d23f7c4d6d0cf9aef3aef171fb7c88af985bf0",
-   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/CborRead.scala#CborRead.decode": "771fe448e4539a9f29ec6a949d9ee1e0e3e5d3ab7a7f8de2112a8c6baf17c0ca",
-   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/CborRead.scala#CborRead.bytes": "437f83f3d2890ed1d43d777a8fb9f7c4423ca87959ab8c3bb2749943cb082514",
-   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/CborRead.scala#CborRead.indefinite": "ee88047a3b781d93a04ee0e49db718aec18d379feb4e7fd2b93c3d62deef48e5",
-   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/CborRead.scala#CborRead.text": "e7a5dcc4fb87f2f9a37194b237f14313d43548c46868e9a1a3b3c373be112b22",
-   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/CborRead.scala#CborRead.arrayN": "c6f7e06a35e10ddb5bd23eb0072a3484926c373ba691905f4be0034ee4a5a417",
-   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/ByteStrings.scala#ByteStrings.of": "483df5f309ceb37dd10903815244f4d358594574198f0971a2fbbe83202195e7",
-   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/state/Vocabulary.scala#checked": "a100393754bb434e682cedb82e5dcbbcad8d30c751ab1a8577ceb5c94b3104f8",
-   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/state/Vocabulary.scala#UnitInterval.boundRational": "7c6e4d733cbcb1f11143c06f1b03d4b180e92eca8117a277ec0a0c59f054eb06",
-   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/ConwayParamUpdate.scala#enum ConwayParam": "ba823725c0a39d5cf74523e615ed0512d9fc603f7903dd221bf17b705a1390cc",
-   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/ConwayParamUpdate.scala#object ConwayParam": "b5f631ba5019ee966d5db65c388ea1be6a03c926c1b2b56d3b25fbaa9b30b0ff",
-   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/ConwayParamUpdate.scala#ConwayParamUpdate.decodeStored": "0a49b5162d9f1c07bd1d2fb48811fb9ef9a503fad5bcf273c5a5c589765728ca",
-   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/ConwayParamUpdate.scala#ConwayParamUpdate.read": "dbee90aa356773cc2fda54c485de841ca4e9a702cf175ac852a1e215cbd12868",
-   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/ConwayParamUpdate.scala#ConwayParamUpdate.fromEncoded": "218f75cfb8ff8fc7e2733734a7210d3f93d8e75e09e95bf91921060af298aee1",
-   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/ConwayParamUpdate.scala#ConwayParamUpdate.add": "7064cdeae6f36cc198741ae245c4604a8ae005e01d031816350120dafa32d23d",
-   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/state/Shared.scala#Sorted.orderingOf": "fb4e8c4b27a04cc93b2d54e1b4fe31ab3fc23e09802f6fe93c7761663ac1bf57",
-   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/state/Shared.scala#Sorted.map": "2d9658bf87e894006b54d7add818001e619dc65b5e7ded54d078457a25e298cf",
-   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/state/Shared.scala#Sorted.set": "7b1dce935c40f322682e7420be9ec9f097b65057c2e2161f1275ea55c813454c",
-   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/state/Shared.scala#SortOrder": "7a2a8afddb79ade3e6b7a2e907541ef526dc23f5a7d05ad53239df94008307c7",
-   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/state/Shared.scala#Order[Ptr]": "4afcc325f2088f236e8dfa3654201da7b0c809c992772ff05382573ff6757aac",
-   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/state/Vocabulary.scala#hashOrder": "f6653fb3e63ccb1f35d84aec5471a521cb5632600439a2e56b7c3a3d85bf83e3",
-   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/state/Vocabulary.scala#bigOrder": "2f36cc16a17b4c7402eaf39f5c8a839c49e6fc3965e014c2a11a234f4bcd775a",
-   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/state/Vocabulary.scala#Credential.CredentialOrder": "210b26c120c0819b92c87704815aee1153418fc9fab71f830ce827e3edf74d69",
-   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/state/Vocabulary.scala#Order[DRep]": "0076512e14ec7f3225450c89b28edfe8edcea236f6b65edca93067d4f0c17bbd",
-   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/state/Vocabulary.scala#Order[WithOrigin]": "43f0b75daf04ff37f3f2b0ac491e319b3302a8380b813fe7e9b52f81a51dec0b",
-   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/state/Word64.scala#Word64.order": "d58466a4602f2abf8a03cebd64b889cfe5859508863270d85114b8516ba3cfb0",
-   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/Address.scala#Ordering[Ptr]": "b81a548eb353d9fbc952b030861d1f0ae38341976373f2f63f77f68f6a071d38",
-   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/Address.scala#Ordering[Credential]": "607103bbc49f614c2994929202c89e789e8639bc407bfad63ec876f642786453",
-   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/Governance.scala#Voter.order": "497a3f6316cd207b3ac7bf5523fb108cd693590dc4414f573eb7f76a6dbff2a9",
-   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/Governance.scala#Voter.credential": "af61c2b8a78b791ba23fe641ccb3b2ba1b52a15c32dee1e0513721635d64a036",
-   "codec/src/main/scala/xyz/kd5ujc/scarab/codec/Bytes.scala#Bytes.compareTo": "14096ba0202c35ea9516641fce62d0ace39e9284936e80d1dbab03430d1cbc9a",
-   "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/Era.scala#enum Era": "103e9b934d0991c334649cc3dbc69dd7ae8aa7da924f15a8a70c2be6e09be895",
-   "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/StateLayout.scala#enum StateLayout": "32d60a4b2b1fe70c8d109de621bc5e8c1121406835bf1c6d46c352d3e2e13147",
-   "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/StateLayout.scala#StateLayout.of": "b3d70316a4211fdf453ce575f26582eb79d2c829aba44f1a2c08b5b91d299817",
-   "codec/src/main/scala/xyz/kd5ujc/scarab/codec/Cbor.scala#Cbor.Limits": "542c8a5acc188b1f76b3e59da05169c1a4f5bf517745348ee60991492274798f",
-   "codec/src/main/scala/xyz/kd5ujc/scarab/codec/Cbor.scala#Cbor.decode": "79ea808bba4c3753760ed731a259e92190895054ab17df0f3a3dbb207f25968e",
-   "codec/src/main/scala/xyz/kd5ujc/scarab/codec/Cbor.scala#Cbor.decoded": "215dd6ca10356ce1e0d0c780ebac2d9804619075461dd737288c67ecc3137875",
-   "codec/src/main/scala/xyz/kd5ujc/scarab/codec/Cbor.scala#Cbor.Decoder": "2853b3765814f1f9ba71e4eef9ee2b55767021b28f75b1d88030c4af36d8dc81",
-   "codec/src/main/scala/xyz/kd5ujc/scarab/codec/Document.scala#Document": "455ccf7e1219ee68c9dd539841a0449444bc5eef1ba98eaf9221b80e15625442"
-  },
-  "frozen_schemas": {
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/FrozenChainDepState.scala": "6afa78dcaf92286304f7c1addc8cff6d12936191555ffd99f06511300ff846c2",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/FrozenEra.scala": "dc1bd190d36c791cf081e7e602a0c6c1c28d145c684b618be0c33b1f760a4498",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/FrozenProtocolParams.scala": "b4356c8b94c6087772811896e6fe6cbc2ecfcba6b029d12e2905fbf33dcc90f2",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/FrozenScriptKind.scala": "e80219ba877678d38929947e07532e80c1c66dd18be5db6bc0f078c9563225b7",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/FrozenSidecar.scala": "cc4c040093a9f1e7112ab0fadd851f756b058f8e0221ba84fc2e95771dcbe249",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotSidecarV7.scala": "eb379927b5c47f89f12afd9a95ff2ce9cc9d4cd01bb37e245c60b2b48c5c844f",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotSidecarV8.scala": "4c908a9fb5f60efa1156258b06024172832e3d5d217397b2c4060c015ba199b2",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotSidecarV9.scala": "5ff7829aac861aed187d71230c5283b0bc337a0f757bc8e4bfef1cce06525270"
-  },
-  "goldens": {
-   "node/src/test/scala/xyz/kd5ujc/scarab/storage/CodecSuite.scala": {
-    "literals": [
-     "",
-     " ",
-     "$i%02x",
-     "${b & 0xff}%02x",
-     ")}",
-     "00",
-     "00 1c${hex(scriptHash.toArray)} 01 0103 001c${hex(keyHash.toArray)} 0201 040100",
-     "00 1d61${hex(keyHash.toArray)} 00 01 001c${hex(keyHash.toArray)} 00 00",
-     "01",
-     "01 1c$hash 00 00",
-     "01 1c$hash 00 01 0746010000220011",
-     "0100",
-     "010101",
-     "01010102",
-     "010107",
-     "0101090105",
-     "01ac02",
-     "01ff",
-     "02 1c$hash 00 00",
-     "02 1c$hash 00 01 0746010000220011",
-     "020020",
-     "020100",
-     "0210e1",
-     "03 0101 01 05 0900ffffffffffffffff 00",
-     "03 1c$hash 00 00",
-     "03 1c$hash 00 01 0746010000220011",
-     "03010001",
-     "03010203",
-     "03015180",
-     "031e8480 00 00 01",
-     "04 1c$hash 00 00",
-     "04 1c$hash 00 01 0746010000220011",
-     "0431312e31",
-     "0431312e32",
-     "06",
-     "0e6c65696f732d6230303466653063",
-     "20",
-     "31718eaf81232a77",
-     "404c9ad6acb477adf63fa1ca450c4e116761663b9dabe1f19f276f530933db5b",
-     "5564943c2b843296",
-     "7650a759442924ec",
-     "7c483457b06802d6",
-     "Account",
-     "Address",
-     "AnyOf(Vector[NativeScript])|NOfK(BigInt,Vector[NativeScript])|InvalidBefore(BigInt)|",
-     "BigInt",
-     "BlockRef",
-     "Byron version snapshot readers reject values outside the reference widths",
-     "Byron versions retain the previous three-BigInt layout and schema",
-     "ByronState",
-     "ByronVersion(major:BigInt,minor:BigInt,alt:BigInt)",
-     "Bytes",
-     "ChainDepState",
-     "ChainDepState{PBft(",
-     "ConsensusExtras",
-     "Credential",
-     "Era",
-     "FollowState",
-     "InvalidHereafter(BigInt)}],plutus:Option[Bytes])",
-     "Map",
-     "NativeScript",
-     "Nonce",
-     "PoolParams",
-     "Praos2",
-     "ProtocolExtras",
-     "ProtocolParams",
-     "Rational",
-     "SCRBSNPA",
-     "SHA-256",
-     "Script(kind:ScriptKind{Native|PlutusV1|PlutusV2|PlutusV3|PlutusV4},hash:Bytes,",
-     "Script(kind:ScriptKind{Native|PlutusV1|PlutusV2|PlutusV3},hash:Bytes,",
-     "ScriptKind",
-     "TxIn",
-     "TxOut",
-     "US-ASCII",
-     "Value",
-     "a frozen schema read a PlutusV4 script: $other",
-     "a frozen schema read a Praos2 state: $other",
-     "a huge collection count is rejected without allocating",
-     "a strict prefix of an encoding never decodes",
-     "an encoding with trailing bytes does not decode",
-     "an output built with a reference script is stored by the codec, its script as before",
-     "bd43aa08b4fae886",
-     "decoded $back",
-     "decoding arbitrary bytes never throws",
-     "fixtures/eras/genesis",
-     "golden: BlockRef",
-     "golden: primitives and containers",
-     "golden: sums are a variant index then the variant",
-     "golden: the frozen sidecar schema of V5 and V7 files keeps its fingerprint",
-     "golden: the frozen sidecar schema of V8 files keeps its fingerprint",
-     "golden: the frozen sidecar schema of V9 files keeps its fingerprint",
-     "golden: the reference build a V10 file records after its magic, before the binding",
-     "golden: the schema fingerprint and encodings of the V7 checkpoint binding",
-     "golden: the schema fingerprint of the sidecar of the V5 body (V10)",
-     "golden: the sidecar of the initial state of the eras fixture encodes to a fixed digest",
-     "native:Option[NativeScript{Sig(Bytes)|AllOf(Vector[NativeScript])|",
-     "round trip: $name",
-     "scripts keep the layout and schema of their four derived fields",
-     "size $size",
-     "the frozen schemas of V5 to V9 keep the bytes of their states and refuse Praos2",
-     "the frozen schemas of V5 to V9 name the chain-dependent states their files hold",
-     "the frozen schemas of V5 to V9 name the kinds their files hold, PlutusV4 not among them",
-     "the initial state is not Byron",
-     "the reader never reads past its limit, wherever a value straddles its buffer",
-     "|Praos2(state:"
-    ],
-    "code_sha256": "5dc909564d63fc733bbb73c9623e375b75d85baa05191440603b8f69be068b6b"
-   },
-   "storage/src/test/scala/xyz/kd5ujc/scarab/storage/FormatGoldenSuite.scala": {
-    "literals": [
-     "00",
-     "00000000",
-     "0000000000000000",
-     "0000000000001000",
-     "0000000000001388",
-     "00000000000f1206",
-     "00000000075bcd15",
-     "00000001",
-     "00000003",
-     "00000038",
-     "00000070",
-     "000004d2",
-     "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
-     "0003",
-     "01",
-     "01000000",
-     "0100000000000000380000003800000070",
-     "0102030405060708",
-     "02",
-     "02aba1a4",
-     "1122334455667788",
-     "80000001",
-     "a10203",
-     "cb595e13",
-     "deadbeef",
-     "ef972cde",
-     "ff",
-     "fffe",
-     "haskell primary index: version byte, then big-endian u32 offsets",
-     "haskell secondary entry: 56 bytes, big-endian, unsigned u16 fields",
-     "immutable store index entry: all-ones fields",
-     "immutable store index entry: flags other than bit 0 read as not boundary",
-     "immutable store index entry: layout, and the three padding bytes are ignored on read",
-     "immutable store index: a partial last entry is not read",
-     "volatile log: decoding stops at a bad checksum, a torn tail or an unknown kind",
-     "volatile record: block, rollback to a block and rollback to origin"
-    ],
-    "code_sha256": "fbcae2dc5d881ade7d5184a84d99ab7c6c8e25e15d75c28798e2a188c7b54217"
-   },
-   "node/src/test/scala/xyz/kd5ujc/scarab/storage/SnapshotGoldenSuite.scala": {
-    "literals": [
-     "${b & 0xff}%02x",
-     "${g.file} at ${g.version}: migrates once, then restores its state and carried gaps",
-     "${g.file}: a Shelley-based snapshot became Byron",
-     "${g.file}: not restored",
-     "02c716ef8de7d837c86c4b8da3588a583a1f17f5a93fdc0c152916e3d6534bcd",
-     "11.1",
-     "27a5e02eee38bc3c565d8f85830ea01804406a2b562dca957db368d9883699b2",
-     "29999998493562207",
-     "2eba1699708be0c1c99a2224f596ebedfced2043e5c92354e7413a534f443e95",
-     "30ef52892b2d3cee06265370233863a5705c462dd7841b9c112735b7d80ec720",
-     "399826ff08ab1945ae258f53d7e3d23d060d587b6902a403107f5c656690d954",
-     "3f55eb9f3cfa35c576a9770283222eea7e6df3c382e66ba40ccb8bfb3b0e09e6",
-     "4a9761ddc291b0c352d1712b624759132936a07b3e02d1d3bdaaf17b9abfe683",
-     "648aed117f826d06117f616b5c0a3716a50485a7",
-     "692acd226a7da77730114ae646643f3f6b8f3557763cdba28b65eaaae37248bc",
-     "7df6d610f2b828dcc4fadf26150ae307fd85321b41fc2072df5bec414cdfcf76",
-     "874580cea6a2435cab02d0a25ae74764968b25871871317f5a19489459a3bf41",
-     "8996400000",
-     "89cdfee8525e74ec5188e54c0ae7dc373025531e8e3465524e01e8b25fd2fef9",
-     "SCRBSNP7",
-     "SCRBSNP8",
-     "SCRBSNP9",
-     "SCRBSNPA",
-     "SHA-256",
-     "US-ASCII",
-     "UTF-8",
-     "a104434df873e4c7406fa57d00fe4b861a773d697312744c8ac30ea1de6ff97a",
-     "a91a5009ff79d542fb1a63bb6e59433b952b0047b3df0266580736f8f0ce74bc",
-     "anchor",
-     "blockNo",
-     "c27be6850661f3fe1c01e5662d55873cf7f60074a5a16f285a62ca806908b647",
-     "cc5d5d6a248499a0b1505d0a44174f97d447ffadebde5f1d5408c30d2a206734",
-     "ce2dcdd6bcc747169817defc3158cb364c79d72cbbea41319b51360b5edeabf2",
-     "conversionSourceCommit",
-     "conway-native-730.bin",
-     "ddaad24d00de33e82cd4459f2f86fa9cb0d9bafc1681fc01ca639f3283bf6acf",
-     "eras/conway-730.bin",
-     "every V7 file is the registered conversion of its V5 source",
-     "every V8 file is the registered conversion of its V7 source",
-     "every V9 file is the registered conversion of its V8 source",
-     "every maintained V10 file is the registered conversion of its V9 source",
-     "every supported snapshot version has an immutable current-format golden",
-     "f5e2584a862e521162c2098a99dd3268e74300f7aae6fd069279cbe94d831ad0",
-     "file",
-     "files",
-     "fixtures/eras/genesis",
-     "fixtures/preview/genesis",
-     "fixtures/snapshot-v10",
-     "fixtures/snapshot-v5",
-     "fixtures/snapshot-v7",
-     "fixtures/snapshot-v8",
-     "fixtures/snapshot-v9",
-     "format",
-     "gaps",
-     "hash",
-     "manifest.json",
-     "observed",
-     "preview-4320.bin",
-     "slot",
-     "sourceSha256",
-     "targetSha256",
-     "the complete era conversion manifest pins every file and carried metadata"
-    ],
-    "code_sha256": "330027814b6a8891b5f6c00cd3ce0fe79dabddd163b79ec34e6cb27ebe36c271"
-   },
-   "storage/src/test/scala/xyz/kd5ujc/scarab/storage/V10BodyGoldenSuite.scala": {
-    "literals": [
-     "${V10BodyCases.IndefiniteFile} reads as the canonical body and writes it",
-     "${c.file} holds the values its case put in",
-     "${c.file} is what the current codecs write for its case",
-     "${c.file} reads back with the snapshot's reader and writes the same bytes",
-     "${c.file}: $e",
-     "${c.file}: not a Conway state",
-     "${c.file}: not a Dijkstra state",
-     "a pool",
-     "the future parameters",
-     "the proposal: $other"
-    ],
-    "code_sha256": "5fb48c3c76dd36a6ba7c5f5dffd8cd8f37b6abcb32b838382f830af4a6b39c98"
-   },
-   "storage/src/test/scala/xyz/kd5ujc/scarab/storage/V10BodyCases.scala": {
-    "literals": [
-     "",
-     " ",
-     " 182f 82 1a80befc00 1b0000008bb2c97000 1835 f6",
-     "$k%02x",
-     "${c.file}: $e",
-     "${c.source}: $e",
-     "${c.source}: not a state of its case's era",
-     ".json",
-     "0b",
-     "0c",
-     "0d",
-     "0e",
-     "182c",
-     "1a00f42400 1b00000002540be400",
-     "1a03b20b80 1b00000004a817c800",
-     "1f",
-     "5820",
-     "5d",
-     "6e",
-     "6f",
-     "82",
-     "82 7864",
-     "9f",
-     "_cardano._tcp.example.org.",
-     "a URL of 100 bytes",
-     "a state with a pool",
-     "a state with two pools",
-     "a100182c",
-     "a3",
-     "a7 00 182c 1822 1a00100000 1824 03 1825 d81e820302 1826 d81e820501",
-     "d81e82190241192710 d81e821902d11a00989680",
-     "ff",
-     "fixtures/haskell-state/conway-4593/state",
-     "fixtures/leios/state/conway-195/state",
-     "fixtures/leios/state/dijkstra-203/state",
-     "fixtures/snapshot-v10-bodies",
-     "https://pools.example.org/",
-     "leios-conway.cbor",
-     "leios-dijkstra-param-proposal.cbor",
-     "m",
-     "margin",
-     "node11_1-conway-indefinite-prices.cbor",
-     "node11_1-conway.cbor",
-     "not an update of Dijkstra's keys: $e",
-     "port",
-     "relay.example.org",
-     "the Dijkstra proposal: $e",
-     "the body holds the update",
-     "the pending proposal attaches to its root",
-     "the proposal holds the placeholder",
-     "the update occurs once"
-    ],
-    "code_sha256": "c45df0b5938ef9dd12d7ebeab2c319903aed92ac57c09eac0d6acbf9af24c586"
-   }
-  },
-  "previous_version_suites": {
-   "node/src/test/scala/xyz/kd5ujc/scarab/storage/NetworkIdentityV9Suite.scala": "49b14bec11130a92faf00540155bf843ca78da7dde004f0154a9075bc6b2afb6",
-   "node/src/test/scala/xyz/kd5ujc/scarab/storage/SnapshotV10MigrationSuite.scala": "e0c1cdceeca9dcaeeeaad3be2a841832af9821ab417daedcd5ad7752afc86576",
-   "node/src/test/scala/xyz/kd5ujc/scarab/storage/SnapshotV8MigrationSuite.scala": "fbfdb32f862e52bed704e62e1ab651190087cfafc01814e21e9ab518d0e19323",
-   "node/src/test/scala/xyz/kd5ujc/scarab/storage/SnapshotV9MigrationSuite.scala": "077465edba5d29f00efc9371a0ce4bcd44eb3d2016def5a5fc24fb9c0dbf508d",
-   "storage/src/test/scala/xyz/kd5ujc/scarab/storage/FormatMigrationSuite.scala": "6f3da29eae04425b0312d9013f0825208b5def3988640e5220b0572ce0a997ec"
-  },
   "fixtures": {
    "fixtures/network-identity-v6/network-identity": "933037d584eefcb4357e1f1c3857c5854175b2e5636196d9152662dba89b9588",
    "fixtures/snapshot-v10-bodies/leios-conway.cbor": "b6a1f78813252d89cc00f865f29b5d7e2009023aa62917fd75386bb87286b830",
+   "fixtures/snapshot-v10-bodies/leios-dijkstra-param-proposal.cbor": "cce40a1a688da8af8b817b32d0ea9f89f549646e5deb187794cb71810fb087f8",
    "fixtures/snapshot-v10-bodies/node11_1-conway-indefinite-prices.cbor": "ba223ee1e04ee9b549b6adc2801799ca99df8ec00b86f4bcec622a40deb43bb9",
    "fixtures/snapshot-v10-bodies/node11_1-conway.cbor": "871ba419c08795a858c6879d58d641f6555260c5ada9c2d5ba0e24e1ffe0d224",
    "fixtures/snapshot-v10/SHA256SUMS": "e54e83261bb5bea3d01b40d67504d820c9026f6d2752c983fab4b8e3b4e352ca",
@@ -787,8 +112,683 @@
    "fixtures/snapshot-v9/eras/shelley-149.bin": "50b0ed352b86d8d457267938c28cf953e492d8a56dcb309db29178f23f864d54",
    "fixtures/snapshot-v9/eras/shelley-51.bin": "4333439494631d795b2fa12e95eb88cd42a17870c781e827fbefbe31ae3b8d0a",
    "fixtures/snapshot-v9/manifest.json": "b4b3c215cd4fa6abd6c9c44df3fbfc21b7da83ff78954a722f98d22c6a7e752a",
-   "fixtures/snapshot-v9/preview-4320.bin": "ddaad24d00de33e82cd4459f2f86fa9cb0d9bafc1681fc01ca639f3283bf6acf",
-   "fixtures/snapshot-v10-bodies/leios-dijkstra-param-proposal.cbor": "cce40a1a688da8af8b817b32d0ea9f89f549646e5deb187794cb71810fb087f8"
+   "fixtures/snapshot-v9/preview-4320.bin": "ddaad24d00de33e82cd4459f2f86fa9cb0d9bafc1681fc01ca639f3283bf6acf"
+  },
+  "format_members": {
+   "codec/src/main/scala/xyz/kd5ujc/scarab/codec/Bytes.scala#Bytes.compareTo": "14096ba0202c35ea9516641fce62d0ace39e9284936e80d1dbab03430d1cbc9a",
+   "codec/src/main/scala/xyz/kd5ujc/scarab/codec/Cbor.scala#Cbor.Decoder": "2853b3765814f1f9ba71e4eef9ee2b55767021b28f75b1d88030c4af36d8dc81",
+   "codec/src/main/scala/xyz/kd5ujc/scarab/codec/Cbor.scala#Cbor.Limits": "542c8a5acc188b1f76b3e59da05169c1a4f5bf517745348ee60991492274798f",
+   "codec/src/main/scala/xyz/kd5ujc/scarab/codec/Cbor.scala#Cbor.decode": "79ea808bba4c3753760ed731a259e92190895054ab17df0f3a3dbb207f25968e",
+   "codec/src/main/scala/xyz/kd5ujc/scarab/codec/Cbor.scala#Cbor.decoded": "215dd6ca10356ce1e0d0c780ebac2d9804619075461dd737288c67ecc3137875",
+   "codec/src/main/scala/xyz/kd5ujc/scarab/codec/Document.scala#Document": "455ccf7e1219ee68c9dd539841a0449444bc5eef1ba98eaf9221b80e15625442",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/Address.scala#Ordering[Credential]": "607103bbc49f614c2994929202c89e789e8639bc407bfad63ec876f642786453",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/Address.scala#Ordering[Ptr]": "b81a548eb353d9fbc952b030861d1f0ae38341976373f2f63f77f68f6a071d38",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/ByteStrings.scala#ByteStrings.of": "483df5f309ceb37dd10903815244f4d358594574198f0971a2fbbe83202195e7",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/CborRead.scala#CborRead.arrayN": "c6f7e06a35e10ddb5bd23eb0072a3484926c373ba691905f4be0034ee4a5a417",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/CborRead.scala#CborRead.bytes": "437f83f3d2890ed1d43d777a8fb9f7c4423ca87959ab8c3bb2749943cb082514",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/CborRead.scala#CborRead.decode": "771fe448e4539a9f29ec6a949d9ee1e0e3e5d3ab7a7f8de2112a8c6baf17c0ca",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/CborRead.scala#CborRead.indefinite": "ee88047a3b781d93a04ee0e49db718aec18d379feb4e7fd2b93c3d62deef48e5",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/CborRead.scala#CborRead.text": "e7a5dcc4fb87f2f9a37194b237f14313d43548c46868e9a1a3b3c373be112b22",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/ConwayParamUpdate.scala#ConwayParamUpdate.add": "7064cdeae6f36cc198741ae245c4604a8ae005e01d031816350120dafa32d23d",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/ConwayParamUpdate.scala#ConwayParamUpdate.decodeStored": "0a49b5162d9f1c07bd1d2fb48811fb9ef9a503fad5bcf273c5a5c589765728ca",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/ConwayParamUpdate.scala#ConwayParamUpdate.fromEncoded": "218f75cfb8ff8fc7e2733734a7210d3f93d8e75e09e95bf91921060af298aee1",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/ConwayParamUpdate.scala#ConwayParamUpdate.read": "dbee90aa356773cc2fda54c485de841ca4e9a702cf175ac852a1e215cbd12868",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/ConwayParamUpdate.scala#enum ConwayParam": "ba823725c0a39d5cf74523e615ed0512d9fc603f7903dd221bf17b705a1390cc",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/ConwayParamUpdate.scala#object ConwayParam": "b5f631ba5019ee966d5db65c388ea1be6a03c926c1b2b56d3b25fbaa9b30b0ff",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/Governance.scala#Voter.credential": "af61c2b8a78b791ba23fe641ccb3b2ba1b52a15c32dee1e0513721635d64a036",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/Governance.scala#Voter.order": "497a3f6316cd207b3ac7bf5523fb108cd693590dc4414f573eb7f76a6dbff2a9",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/PoolRelays.scala#Ipv4": "bcd221463706e4a367d5135af79e7a22871179e9c1440654d3fa72edadb48b74",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/PoolRelays.scala#Ipv6": "53f2efe986cd12d5d5690722c52fb207fba845a66eaf53bbd42b07bb61192569",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/PoolRelays.scala#RelayIp.be": "e51c21a686e213b8033a7a71cd4f24db1bf297c43257eebac1222a075fa21798",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/PoolRelays.scala#RelayIp.fromOctets": "e57d3eeb4bbc786609d3aee533572ab01b7515a342adf1a1328baa4a5ef8e737",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/PoolRelays.scala#RelayPort": "050121597e080a4e8e5e55b0ced6e52cfa88d7d8f8a390a21d228c184615cf50",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/PoolRelays.scala#object Ipv6": "7a93d1fe6bc62cc613437a5bd7b3582e917145debecc062f4f0b8de447c54bfa",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/PoolRelays.scala#object PoolRelays": "fea6013e265c03b47f600b46539da124cd798973374fe9c1073eb72453f48d5f",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/Tx.scala#PoolParams.metadata": "7f0627ea5bf3aee19e6c1d2466d23f7c4d6d0cf9aef3aef171fb7c88af985bf0",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/Tx.scala#PoolParams.metadataAt": "4458f8d4f48290d2f933b0041d9bf7fe2a92d9d8f71fb8b8f2737e33db67e313",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/Tx.scala#PoolParams.urlAt": "99d2e529c5dec14a7b39383c114cd788491986371c2208d148b20f71f86d3c70",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/Convert.scala#Convert.accountAddress": "7ff99106981c93bc8d197c59810878ddc8e230e91987fb1763fd4cc979f32e0d",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/Convert.scala#Convert.back": "e93efe2e3c7afbdf2579e0e3da2d91dbfa6c24aedfb2c8e87257835990b03bcc",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/Convert.scala#Convert.credential": "bc93cc878148e9673cee1e1580aac703f3f3a2977a63c6f6cb83afb6eb5821b3",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/Convert.scala#Convert.keyHash": "46cbb34ab23a026855a30bcd88f1314d09d1e9672ededbb36ca056ffc2334de6",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/Convert.scala#Convert.poolParamsBack": "4e89c99fad71d9dcb20bbac4337e52fda8ec08d50e052200690753e8b9b12d5e",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/Convert.scala#Convert.rewardAccountBack": "bcea0c5d429de34cff97e3c35e819b18acd1139bfec8aefea1fd516208c094f5",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/Convert.scala#Convert.stakePoolParams": "32d293f1fb1e47d4c64a2d4c4ef11b7d93fe49e4487f5ac9fabc7eaee32d57df",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/state/Shared.scala#Order[Ptr]": "4afcc325f2088f236e8dfa3654201da7b0c809c992772ff05382573ff6757aac",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/state/Shared.scala#SortOrder": "7a2a8afddb79ade3e6b7a2e907541ef526dc23f5a7d05ad53239df94008307c7",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/state/Shared.scala#Sorted.map": "2d9658bf87e894006b54d7add818001e619dc65b5e7ded54d078457a25e298cf",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/state/Shared.scala#Sorted.orderingOf": "fb4e8c4b27a04cc93b2d54e1b4fe31ab3fc23e09802f6fe93c7761663ac1bf57",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/state/Shared.scala#Sorted.set": "7b1dce935c40f322682e7420be9ec9f097b65057c2e2161f1275ea55c813454c",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/state/StakePool.scala#PoolMetadata.read": "65e63aa1ca398524a9d0c399a74d19d16eb6a82a67ca8d070a5609bec447f918",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/state/Vocabulary.scala#Credential.CredentialOrder": "210b26c120c0819b92c87704815aee1153418fc9fab71f830ce827e3edf74d69",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/state/Vocabulary.scala#Order[DRep]": "0076512e14ec7f3225450c89b28edfe8edcea236f6b65edca93067d4f0c17bbd",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/state/Vocabulary.scala#Order[WithOrigin]": "43f0b75daf04ff37f3f2b0ac491e319b3302a8380b813fe7e9b52f81a51dec0b",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/state/Vocabulary.scala#UnitInterval.boundRational": "7c6e4d733cbcb1f11143c06f1b03d4b180e92eca8117a277ec0a0c59f054eb06",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/state/Vocabulary.scala#bigOrder": "2f36cc16a17b4c7402eaf39f5c8a839c49e6fc3965e014c2a11a234f4bcd775a",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/state/Vocabulary.scala#checked": "a100393754bb434e682cedb82e5dcbbcad8d30c751ab1a8577ceb5c94b3104f8",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/state/Vocabulary.scala#hashOrder": "f6653fb3e63ccb1f35d84aec5471a521cb5632600439a2e56b7c3a3d85bf83e3",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/state/Word64.scala#Word64.order": "d58466a4602f2abf8a03cebd64b889cfe5859508863270d85114b8516ba3cfb0",
+   "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/Era.scala#enum Era": "103e9b934d0991c334649cc3dbc69dd7ae8aa7da924f15a8a70c2be6e09be895",
+   "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/StateLayout.scala#StateLayout.of": "10df4824d0f7fc41cf70d720d944bf782322776325c49ad3499fa9cf99245994",
+   "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/StateLayout.scala#enum StateLayout": "32d60a4b2b1fe70c8d109de621bc5e8c1121406835bf1c6d46c352d3e2e13147",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/ImmutableStore.scala#FileImmutableStore.EntrySize": "01cff6f183c25b801a0a9bdacfd4a5052af1d90a327b227738a8a95916bd32d1",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/ImmutableStore.scala#FileImmutableStore.FormatText": "84e33690e1b7061bf2d2d8dacfb70af0567f015db237fd9d9c676f6e36aed19e",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/ImmutableStore.scala#FileImmutableStore.HeaderSize": "fd5b730fc5b433c3415a16898060d52b368a4049b8cdf2def24c4705a673f259",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/ImmutableStore.scala#FileImmutableStore.IndexMagic": "aa4bf78512eb6775425ee42d1e38474fad0ff05f56cc64042de2e967a172594b",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/ImmutableStore.scala#FileImmutableStore.crcOf": "1110166db0bf6c4f3cf9e1071923a330e6d9b8ac594dacd0339ea87805e82388",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/ImmutableStore.scala#FileImmutableStore.decode": "9b43e719c0007c3a773765c3b761ba1f67be091077ebb2ab1421f9793002391f",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/ImmutableStore.scala#FileImmutableStore.encode": "9d942fdcd1390a99ab54bafb4c16e82ea87ebd15e3d972a1b0361e023b01fcf9",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/ImmutableStore.scala#FileImmutableStore.entries": "109a9019d88021fdcd159f9b216f9dc5a2ad99b3c94c9bfae77a06089fe1ed85",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/ImmutableStore.scala#FileImmutableStore.formatMigration": "033771895874ae6351ba1291b36709d2690228ad211b18a1800f08a90f742baa",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/ImmutableStore.scala#FileImmutableStore.indexMigration": "846b6f15abf90b22111d127eddaf925e67727f2b139def23f66e12562ac99825",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/ImmutableStore.scala#FileImmutableStore.magicOf": "0834a7bdd55d1cdf17b5ffebbe1fc1fe4c53c426ba68c8da2d738c6d7c298b2f",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/LedgerSnapshots.scala#FileLedgerSnapshots": "3e02c1f07fcabd295641b04b18ea0839463922c35b6c5c3dc8e900d346b63d2f",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/RocksUtxoStore.scala#RocksUtxoStore.StampKey": "f05b797a6078ccbad76651d099242127696a15d9d048d95fcddf4661f136f33b",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/RocksUtxoStore.scala#RocksUtxoStore.flushed": "3065ee8334f728a8faa98c76788696e2e04393412c7c7b856a3528c1f459180d",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/RocksUtxoStore.scala#RocksUtxoStore.write": "d593867ea12c5d0e2e785a8025a992e292d3e325b49178487f8e3441b53d755b",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/RocksUtxoStore.scala#object RocksUtxoStore": "b0efee65199cebc07d36ce8e377000381854136926d9b3b7ecbef77cc6c570f0",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/StateBacking.scala#StateBacking.Stem": "ebc2ae76bf4aab10145b5e249e2eb46ca5bba8540d2f3dd632bc058e335cc82f",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/StateBacking.scala#StateBacking.isStem": "2ed76a5e221935e901fab245602b37e4014be1b094075a7269b6987416424b8c",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/StateBacking.scala#StateBacking.stem": "67592a136e8c67596733bdaa48a11245fb6d121f38057d4e1f2a7543b03bd14d",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/UtxoStore.scala#MemoryUtxoStore.checkpoint": "faadeeef0aee201dee018c7227e9bfe04abfbe2327547b4d5543f660c58dddc5",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/UtxoStore.scala#MemoryUtxoStore.restore": "87169b81baf8b1be8805398b5cec5d71fa74019d2626e862ec824d888b4bbafd",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/UtxoStore.scala#UtxoStore.Coding": "72e8b74b8ffc95b29f030937c8d31777e41d35645c3677abb86df1e64e36f42b",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/VolatileStore.scala#VolatileRecord": "5bdb29e750dc21307e8243d403cfcd4c8547315a958831b2d51d1ad97e8f600b",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/VolatileStore.scala#VolatileStore.FlagBoundary": "661c4f6a7e096b976846af228682e0d8d9ebd27889c57f066b1e322be94fceef",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/VolatileStore.scala#VolatileStore.FlagOrigin": "316cce31ba372302f1162a69d20c85e6cc1934476cff13ba4c590380971585f3",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/VolatileStore.scala#VolatileStore.HeaderSize": "0e9be4b2e746fbb13d404e82dfca087065d2dbe55b34cea9d4f1f2ee71b61dc1",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/VolatileStore.scala#VolatileStore.KindBlock": "4b96fc977c67edaa50b7658a5cb94f11dc9bf8c4820b2aa2107926ec90601a8d",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/VolatileStore.scala#VolatileStore.KindRollback": "18051809a43ba9fb67fe26a42331bbe0b33a88117b5e38ee17a5fd05bfd11eea",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/VolatileStore.scala#VolatileStore.Scanned": "ba6d5c2c11c483a172b844043c61667f02bca8af8c03190fd7c986447b5005bc",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/VolatileStore.scala#VolatileStore.Suffix": "7c5d3843d3f0dbf69b4c1e26c8b50612ab46da3dac3bea1f227735bcced0064e",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/VolatileStore.scala#VolatileStore.decodeAll": "71c21602799c1b3e385006e4d5d8a141a0842bf501e8d739772954f91c8c078a",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/VolatileStore.scala#VolatileStore.encode": "215d64f2bf983f9f7f9f94ab6778f541c3745fbdd7bb4a2ac92c10a88cbc3548",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/VolatileStore.scala#VolatileStore.nameOf": "b40dc2209694b6355c04f947e055e04d1b7773c21ddfefe547c7b66f50d6d289"
+  },
+  "format_sources": {
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/NetworkIdentity.scala": "5f633327263ec029ef8889c0d5c4d93061dcde43e536507433433e9af5b97825",
+   "models/src/main/scala/xyz/kd5ujc/scarab/models/runtime/Codec.scala": "bb7755ab7638eb0258ef648a5f7102953479f85781e8d6a137998cd6849404c5",
+   "models/src/main/scala/xyz/kd5ujc/scarab/models/runtime/Writer.scala": "c1ea0b6d41cdadc177033812cb3586478ce7a9ccd8895ea82b7d7e811be7dd0d",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/CheckpointBinding.scala": "6715cb7b26e20a9a55d6641f1df28cdfd54b58bc359d07eb4cd7c0cd9c143914",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/Codec.scala": "4609832427c5a9a6a51a10af9dc39468c82fcfb2edcf2fe205f4027bf8dbe547",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/Migrate.scala": "df1ac6aa1c643ba755072cb43b0efd1b35d452ec74789a50b0ddc40c5908a150",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/NetworkIdentityFile.scala": "c9a54d01a7d73d4138418b444c1460cd77c144eb338faa6c8cc5ec1165ce5cee",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/NodeCodecs.scala": "1ce5f254083cb5b084202e76f9cea9ab65844c9ef7fc64491a191b5b7bc8d9b3",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/ProductFields.scala": "1ed8c65c8fa67d29c4a205cde6f9d259d6dc2fb86d9fab900e743fdc27ad48fc",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotMigration.scala": "25e4606de501019a542cf49c3905897b5dd30185bfb0f0d79ecafe064ee62d90",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotSidecar.scala": "8936c1c5b3ef5ad1ef96e303c142485c3914490cb1625e7f7248250446109860",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV10.scala": "a6d998e8c00862175932fd5ccc73f1a6f89dfac6992a361cabce52b5cea487b4",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV5.scala": "9ac6c24476d8a52f52f3f601c642018de19a0494c7baad054543c223e205f1d1",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV7.scala": "1db1c2781205f65ae9decbc835e34a1118a821bfc53be1128f48eb48224d1add",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV8.scala": "c56ee0253fd57be19c42d7d9f11e517b9a8130d0d79349a3e81db4230ccc2402",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV9.scala": "c137fed393e4dd5f96c9815d4e858fa1929e21bfce75ea9aaa90eb30608668f5",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/CertStateCodecs.scala": "6cdebec042cb239e702bb38ab433438034af42d23f419151bbc9ef29b35b8fc3",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/ConsensusCodecs.scala": "ef22fd1b2d75680ec5e0071b8cff73a116a1e837a539a6845ebd63cd45a1e6d8",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/ConwayCodecs.scala": "050040f1e442e00fb448ef2a7c8296ff229413a41f46e7c79ad91e5d516aaa0e",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/Envelope.scala": "e538ab5c49e0ee9f41cadff7029cdc514a790a753a8b7e547fe32654d6ca2f92",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/EpochStateCodecs.scala": "628e831761db792170015f18d6d33cfdf829a1d625c6133da613379a088dd1b8",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/GovStateCodecs.scala": "b5786dd7c6a4097a345fb1bc7371d06fcd9d8d4c6344ef0734291ab1af36b9d7",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/HaskellLedgerFile.scala": "44ce725f39bc7e9060334fc98614c7ac435c25ce9a66c16629e0b50e2c8c4562",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/HaskellState.scala": "f45c212166c972c81d61da11bbaa5ee4da3250c67411e886ba3c401640c76772",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/HaskellStateCodecs.scala": "eff5766f1249ba4843cb3e22e9819133370f4d955094cd283d6d96ee3c7ae9c9",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/LedgerFileCodecs.scala": "da67df20db22b3535397dc21fafe51ec5e0d858e12ce2a6e4aab1894668f9d32",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/NodeOrders.scala": "344093d18720fc3e064dabca426d2eb1ace16246a5b18d279407e453298b960c",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/NodeTypeCodecs.scala": "e86d2aacb41afc5678457d5cb7d897b830b164f344a4ca9100bf09754608f3a3",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/Params.scala": "41c5941c850388e1eb68d2ab6dfb2e3c7361167ea0eb80218c17a876f221442d",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/ProposalsReading.scala": "1db8028ebb4238a55e1dc869d46aa98db7333d7b5eb510a0763bc0aad382a1e1",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/Record.scala": "3cc9db95616e5b058f27d41da49f4a273699cc46ab98cb7b2dc9f1e6a7939c46",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/ReferenceLayout.scala": "3615cd8286548704b534e00d3deabe113957b26564d92291c4f9c6204af271ea",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/RewardCodecs.scala": "ad6f62555ab3bc5a052887bc72f340712eaaf2a29101febfc7a108132fcde583",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/SnapshotCodecs.scala": "b6359962bb2c3146c9f398e7b0edc726ec5f2192d883fd7277a397fb3b07fd66",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/VocabularyCodecs.scala": "d9f29bc82aa2c53db970e9b65f6fdb091cb7387831ac0da8cc228afdc0a572ba",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/Wire.scala": "69454c40ca47e61e50a5bd2845e71f5eb93799bbecb7f470c8f9a3f505fd63bd"
+  },
+  "frozen_schemas": {
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/FrozenChainDepState.scala": "6afa78dcaf92286304f7c1addc8cff6d12936191555ffd99f06511300ff846c2",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/FrozenEra.scala": "dc1bd190d36c791cf081e7e602a0c6c1c28d145c684b618be0c33b1f760a4498",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/FrozenProtocolParams.scala": "b4356c8b94c6087772811896e6fe6cbc2ecfcba6b029d12e2905fbf33dcc90f2",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/FrozenScriptKind.scala": "e80219ba877678d38929947e07532e80c1c66dd18be5db6bc0f078c9563225b7",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/FrozenSidecar.scala": "cc4c040093a9f1e7112ab0fadd851f756b058f8e0221ba84fc2e95771dcbe249",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotSidecarV7.scala": "eb379927b5c47f89f12afd9a95ff2ce9cc9d4cd01bb37e245c60b2b48c5c844f",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotSidecarV8.scala": "4c908a9fb5f60efa1156258b06024172832e3d5d217397b2c4060c015ba199b2",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotSidecarV9.scala": "5ff7829aac861aed187d71230c5283b0bc337a0f757bc8e4bfef1cce06525270"
+  },
+  "goldens": {
+   "node/src/test/scala/xyz/kd5ujc/scarab/storage/CodecSuite.scala": {
+    "code_sha256": "abdd9e4f496ec95c42b2e8a56d8a0e1a8a7bdba3e3e9f8cf3037c03ed18c9fe9",
+    "literals": [
+     "",
+     " ",
+     "$i%02x",
+     "${b & 0xff}%02x",
+     ")}",
+     "00",
+     "00 1c${hex(scriptHash.toArray)} 01 0103 001c${hex(keyHash.toArray)} 0201 040100",
+     "00 1d61${hex(keyHash.toArray)} 00 01 001c${hex(keyHash.toArray)} 00 00",
+     "01",
+     "01 1c$hash 00 00",
+     "01 1c$hash 00 01 0746010000220011",
+     "0100",
+     "010101",
+     "01010102",
+     "010107",
+     "0101090105",
+     "01ac02",
+     "01ff",
+     "02 1c$hash 00 00",
+     "02 1c$hash 00 01 0746010000220011",
+     "020020",
+     "020100",
+     "0210e1",
+     "03 0101 01 05 0900ffffffffffffffff 00",
+     "03 1c$hash 00 00",
+     "03 1c$hash 00 01 0746010000220011",
+     "03010001",
+     "03010203",
+     "03015180",
+     "031e8480 00 00 01",
+     "04 1c$hash 00 00",
+     "04 1c$hash 00 01 0746010000220011",
+     "0431312e31",
+     "0431312e32",
+     "06",
+     "106c65696f732d72632d32303236773437",
+     "20",
+     "31718eaf81232a77",
+     "404c9ad6acb477adf63fa1ca450c4e116761663b9dabe1f19f276f530933db5b",
+     "5564943c2b843296",
+     "7650a759442924ec",
+     "7c483457b06802d6",
+     "Account",
+     "Address",
+     "AnyOf(Vector[NativeScript])|NOfK(BigInt,Vector[NativeScript])|InvalidBefore(BigInt)|",
+     "BigInt",
+     "BlockRef",
+     "Byron version snapshot readers reject values outside the reference widths",
+     "Byron versions retain the previous three-BigInt layout and schema",
+     "ByronState",
+     "ByronVersion(major:BigInt,minor:BigInt,alt:BigInt)",
+     "Bytes",
+     "ChainDepState",
+     "ChainDepState{PBft(",
+     "ConsensusExtras",
+     "Credential",
+     "Era",
+     "FollowState",
+     "InvalidHereafter(BigInt)}],plutus:Option[Bytes])",
+     "Map",
+     "NativeScript",
+     "Nonce",
+     "PoolParams",
+     "Praos2",
+     "ProtocolExtras",
+     "ProtocolParams",
+     "Rational",
+     "SCRBSNPA",
+     "SHA-256",
+     "Script(kind:ScriptKind{Native|PlutusV1|PlutusV2|PlutusV3|PlutusV4},hash:Bytes,",
+     "Script(kind:ScriptKind{Native|PlutusV1|PlutusV2|PlutusV3},hash:Bytes,",
+     "ScriptKind",
+     "TxIn",
+     "TxOut",
+     "US-ASCII",
+     "Value",
+     "a frozen schema read a PlutusV4 script: $other",
+     "a frozen schema read a Praos2 state: $other",
+     "a huge collection count is rejected without allocating",
+     "a strict prefix of an encoding never decodes",
+     "an encoding with trailing bytes does not decode",
+     "an output built with a reference script is stored by the codec, its script as before",
+     "bd43aa08b4fae886",
+     "decoded $back",
+     "decoding arbitrary bytes never throws",
+     "fixtures/eras/genesis",
+     "golden: BlockRef",
+     "golden: primitives and containers",
+     "golden: sums are a variant index then the variant",
+     "golden: the frozen sidecar schema of V5 and V7 files keeps its fingerprint",
+     "golden: the frozen sidecar schema of V8 files keeps its fingerprint",
+     "golden: the frozen sidecar schema of V9 files keeps its fingerprint",
+     "golden: the reference build a V10 file records after its magic, before the binding",
+     "golden: the schema fingerprint and encodings of the V7 checkpoint binding",
+     "golden: the schema fingerprint of the sidecar of the V5 body (V10)",
+     "golden: the sidecar of the initial state of the eras fixture encodes to a fixed digest",
+     "native:Option[NativeScript{Sig(Bytes)|AllOf(Vector[NativeScript])|",
+     "round trip: $name",
+     "scripts keep the layout and schema of their four derived fields",
+     "size $size",
+     "the frozen schemas of V5 to V9 keep the bytes of their states and refuse Praos2",
+     "the frozen schemas of V5 to V9 name the chain-dependent states their files hold",
+     "the frozen schemas of V5 to V9 name the kinds their files hold, PlutusV4 not among them",
+     "the initial state is not Byron",
+     "the reader never reads past its limit, wherever a value straddles its buffer",
+     "|Praos2(state:"
+    ]
+   },
+   "node/src/test/scala/xyz/kd5ujc/scarab/storage/SnapshotGoldenSuite.scala": {
+    "code_sha256": "330027814b6a8891b5f6c00cd3ce0fe79dabddd163b79ec34e6cb27ebe36c271",
+    "literals": [
+     "${b & 0xff}%02x",
+     "${g.file} at ${g.version}: migrates once, then restores its state and carried gaps",
+     "${g.file}: a Shelley-based snapshot became Byron",
+     "${g.file}: not restored",
+     "02c716ef8de7d837c86c4b8da3588a583a1f17f5a93fdc0c152916e3d6534bcd",
+     "11.1",
+     "27a5e02eee38bc3c565d8f85830ea01804406a2b562dca957db368d9883699b2",
+     "29999998493562207",
+     "2eba1699708be0c1c99a2224f596ebedfced2043e5c92354e7413a534f443e95",
+     "30ef52892b2d3cee06265370233863a5705c462dd7841b9c112735b7d80ec720",
+     "399826ff08ab1945ae258f53d7e3d23d060d587b6902a403107f5c656690d954",
+     "3f55eb9f3cfa35c576a9770283222eea7e6df3c382e66ba40ccb8bfb3b0e09e6",
+     "4a9761ddc291b0c352d1712b624759132936a07b3e02d1d3bdaaf17b9abfe683",
+     "648aed117f826d06117f616b5c0a3716a50485a7",
+     "692acd226a7da77730114ae646643f3f6b8f3557763cdba28b65eaaae37248bc",
+     "7df6d610f2b828dcc4fadf26150ae307fd85321b41fc2072df5bec414cdfcf76",
+     "874580cea6a2435cab02d0a25ae74764968b25871871317f5a19489459a3bf41",
+     "8996400000",
+     "89cdfee8525e74ec5188e54c0ae7dc373025531e8e3465524e01e8b25fd2fef9",
+     "SCRBSNP7",
+     "SCRBSNP8",
+     "SCRBSNP9",
+     "SCRBSNPA",
+     "SHA-256",
+     "US-ASCII",
+     "UTF-8",
+     "a104434df873e4c7406fa57d00fe4b861a773d697312744c8ac30ea1de6ff97a",
+     "a91a5009ff79d542fb1a63bb6e59433b952b0047b3df0266580736f8f0ce74bc",
+     "anchor",
+     "blockNo",
+     "c27be6850661f3fe1c01e5662d55873cf7f60074a5a16f285a62ca806908b647",
+     "cc5d5d6a248499a0b1505d0a44174f97d447ffadebde5f1d5408c30d2a206734",
+     "ce2dcdd6bcc747169817defc3158cb364c79d72cbbea41319b51360b5edeabf2",
+     "conversionSourceCommit",
+     "conway-native-730.bin",
+     "ddaad24d00de33e82cd4459f2f86fa9cb0d9bafc1681fc01ca639f3283bf6acf",
+     "eras/conway-730.bin",
+     "every V7 file is the registered conversion of its V5 source",
+     "every V8 file is the registered conversion of its V7 source",
+     "every V9 file is the registered conversion of its V8 source",
+     "every maintained V10 file is the registered conversion of its V9 source",
+     "every supported snapshot version has an immutable current-format golden",
+     "f5e2584a862e521162c2098a99dd3268e74300f7aae6fd069279cbe94d831ad0",
+     "file",
+     "files",
+     "fixtures/eras/genesis",
+     "fixtures/preview/genesis",
+     "fixtures/snapshot-v10",
+     "fixtures/snapshot-v5",
+     "fixtures/snapshot-v7",
+     "fixtures/snapshot-v8",
+     "fixtures/snapshot-v9",
+     "format",
+     "gaps",
+     "hash",
+     "manifest.json",
+     "observed",
+     "preview-4320.bin",
+     "slot",
+     "sourceSha256",
+     "targetSha256",
+     "the complete era conversion manifest pins every file and carried metadata"
+    ]
+   },
+   "storage/src/test/scala/xyz/kd5ujc/scarab/storage/FormatGoldenSuite.scala": {
+    "code_sha256": "fbcae2dc5d881ade7d5184a84d99ab7c6c8e25e15d75c28798e2a188c7b54217",
+    "literals": [
+     "00",
+     "00000000",
+     "0000000000000000",
+     "0000000000001000",
+     "0000000000001388",
+     "00000000000f1206",
+     "00000000075bcd15",
+     "00000001",
+     "00000003",
+     "00000038",
+     "00000070",
+     "000004d2",
+     "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+     "0003",
+     "01",
+     "01000000",
+     "0100000000000000380000003800000070",
+     "0102030405060708",
+     "02",
+     "02aba1a4",
+     "1122334455667788",
+     "80000001",
+     "a10203",
+     "cb595e13",
+     "deadbeef",
+     "ef972cde",
+     "ff",
+     "fffe",
+     "haskell primary index: version byte, then big-endian u32 offsets",
+     "haskell secondary entry: 56 bytes, big-endian, unsigned u16 fields",
+     "immutable store index entry: all-ones fields",
+     "immutable store index entry: flags other than bit 0 read as not boundary",
+     "immutable store index entry: layout, and the three padding bytes are ignored on read",
+     "immutable store index: a partial last entry is not read",
+     "volatile log: decoding stops at a bad checksum, a torn tail or an unknown kind",
+     "volatile record: block, rollback to a block and rollback to origin"
+    ]
+   },
+   "storage/src/test/scala/xyz/kd5ujc/scarab/storage/V10BodyCases.scala": {
+    "code_sha256": "038e27faad274b17992cc5db65c5cdbe151dd80d583dd9ed51499339949150db",
+    "literals": [
+     "",
+     " ",
+     " 182f 82 1a80befc00 1b0000008bb2c97000 1835 f6",
+     "$k%02x",
+     "${c.file}: $e",
+     "${c.source}: $e",
+     "${c.source}: not a state of its case's era",
+     ".json",
+     "0b",
+     "0c",
+     "0d",
+     "0e",
+     "182c",
+     "1a00f42400 1b00000002540be400",
+     "1a03b20b80 1b00000004a817c800",
+     "1f",
+     "5820",
+     "5d",
+     "6e",
+     "6f",
+     "82",
+     "82 7864",
+     "9f",
+     "_cardano._tcp.example.org.",
+     "a URL of 100 bytes",
+     "a state with a pool",
+     "a state with two pools",
+     "a100182c",
+     "a3",
+     "a7 00 182c 1822 1a00100000 1824 03 1825 d81e820302 1826 d81e820501",
+     "d81e82190241192710 d81e821902d11a00989680",
+     "ff",
+     "fixtures/haskell-state/conway-4593/state",
+     "fixtures/leios/state/conway-195/state",
+     "fixtures/leios/state/dijkstra-203/state",
+     "fixtures/snapshot-v10-bodies",
+     "https://pools.example.org/",
+     "leios-conway.cbor",
+     "leios-dijkstra-param-proposal.cbor",
+     "m",
+     "margin",
+     "node11_1-conway-indefinite-prices.cbor",
+     "node11_1-conway.cbor",
+     "not an update of Dijkstra's keys: $e",
+     "port",
+     "relay.example.org",
+     "the Dijkstra proposal: $e",
+     "the body holds the update",
+     "the pending proposal attaches to its root",
+     "the proposal holds the placeholder",
+     "the update occurs once"
+    ]
+   },
+   "storage/src/test/scala/xyz/kd5ujc/scarab/storage/V10BodyGoldenSuite.scala": {
+    "code_sha256": "5fb48c3c76dd36a6ba7c5f5dffd8cd8f37b6abcb32b838382f830af4a6b39c98",
+    "literals": [
+     "${V10BodyCases.IndefiniteFile} reads as the canonical body and writes it",
+     "${c.file} holds the values its case put in",
+     "${c.file} is what the current codecs write for its case",
+     "${c.file} reads back with the snapshot's reader and writes the same bytes",
+     "${c.file}: $e",
+     "${c.file}: not a Conway state",
+     "${c.file}: not a Dijkstra state",
+     "a pool",
+     "the future parameters",
+     "the proposal: $other"
+    ]
+   }
+  },
+  "magics": {
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/PersistedFormat.scala": [
+    "CSLIDX01",
+    "SCRBIDX2",
+    "SCRBSNP3",
+    "SCRBSNP4",
+    "SCRBSNP5",
+    "SCRBSNP7",
+    "SCRBSNP8",
+    "SCRBSNP9",
+    "SCRBSNPA"
+   ],
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/RocksLeiosStore.scala": [
+    "SCRBLEIO"
+   ],
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotMigration.scala": [
+    "CSLSNAP1"
+   ],
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV10.scala": [
+    "SCRBSNPA"
+   ],
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV5.scala": [
+    "SCRBSNP5"
+   ],
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV7.scala": [
+    "SCRBSNP7"
+   ],
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV8.scala": [
+    "SCRBSNP8"
+   ],
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV9.scala": [
+    "SCRBSNP9"
+   ],
+   "tools/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV10FixtureMain.scala": [
+    "SCRBSNPA"
+   ],
+   "tools/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV7FixtureMain.scala": [
+    "SCRBSNP7"
+   ],
+   "tools/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV8FixtureMain.scala": [
+    "SCRBSNP8"
+   ],
+   "tools/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV9FixtureMain.scala": [
+    "SCRBSNP9"
+   ]
+  },
+  "migrations": {
+   "conversions": {
+    "SnapshotV10": [
+     "fromV9"
+    ],
+    "SnapshotV5": [],
+    "SnapshotV7": [
+     "fromV5"
+    ],
+    "SnapshotV8": [
+     "fromV7"
+    ],
+    "SnapshotV9": [
+     "fromV8"
+    ]
+   },
+   "converted": {
+    "V5": [
+     "SnapshotV7.fromV5",
+     "SnapshotV8.fromV7",
+     "SnapshotV9.fromV8",
+     "SnapshotV10.fromV9"
+    ],
+    "V7": [
+     "SnapshotV8.fromV7",
+     "SnapshotV9.fromV8",
+     "SnapshotV10.fromV9"
+    ],
+    "V8": [
+     "SnapshotV9.fromV8",
+     "SnapshotV10.fromV9"
+    ],
+    "V9": [
+     "SnapshotV10.fromV9"
+    ]
+   },
+   "implementers": [
+    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/ImmutableStore.scala",
+    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/NetworkIdentityFile.scala",
+    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotMigration.scala"
+   ],
+   "steps": [
+    [
+     "V5",
+     "V7"
+    ],
+    [
+     "V7",
+     "V8"
+    ],
+    [
+     "V8",
+     "V9"
+    ],
+    [
+     "V9",
+     "V10"
+    ]
+   ]
+  },
+  "previous_version_suites": {
+   "node/src/test/scala/xyz/kd5ujc/scarab/storage/NetworkIdentityV9Suite.scala": "49b14bec11130a92faf00540155bf843ca78da7dde004f0154a9075bc6b2afb6",
+   "node/src/test/scala/xyz/kd5ujc/scarab/storage/SnapshotV10MigrationSuite.scala": "f8921cd1ad7771d864e1f24014ca1f1c5ae382e66bedff613b00332c6ed39c3a",
+   "node/src/test/scala/xyz/kd5ujc/scarab/storage/SnapshotV8MigrationSuite.scala": "fbfdb32f862e52bed704e62e1ab651190087cfafc01814e21e9ab518d0e19323",
+   "node/src/test/scala/xyz/kd5ujc/scarab/storage/SnapshotV9MigrationSuite.scala": "077465edba5d29f00efc9371a0ce4bcd44eb3d2016def5a5fc24fb9c0dbf508d",
+   "storage/src/test/scala/xyz/kd5ujc/scarab/storage/FormatMigrationSuite.scala": "6f3da29eae04425b0312d9013f0825208b5def3988640e5220b0572ce0a997ec"
+  },
+  "registry": {
+   "code_sha256": "9e713b69e7c860357e9c3c7684e21b54148900933e5b47846da2f0ab54770908",
+   "formatLosses": [
+    "ByronSoftwareMetadata(proposals: Int, applications: Int)"
+   ],
+   "kinds": {
+    "FormatFile": {
+     "families": [
+      "cardano-scala-lab immutable",
+      "scarab immutable"
+     ],
+     "history": [
+      [
+       "V1",
+       "cardano-scala-lab immutable store v1"
+      ],
+      [
+       "V2",
+       "scarab immutable store v2"
+      ]
+     ],
+     "label": "immutable store format"
+    },
+    "IdentityFile": {
+     "families": [
+      "cardano-scala-lab network",
+      "scarab network"
+     ],
+     "history": [
+      [
+       "V1",
+       "cardano-scala-lab network identity v1"
+      ],
+      [
+       "V2",
+       "scarab network identity v2"
+      ],
+      [
+       "V6",
+       "scarab network identity v6"
+      ],
+      [
+       "V9",
+       "scarab network identity v9"
+      ]
+     ],
+     "label": "network identity"
+    },
+    "IndexFile": {
+     "families": [
+      "CSLIDX",
+      "SCRBIDX"
+     ],
+     "history": [
+      [
+       "V1",
+       "CSLIDX01"
+      ],
+      [
+       "V2",
+       "SCRBIDX2"
+      ]
+     ],
+     "label": "chunk index"
+    },
+    "SnapshotFile": {
+     "families": [
+      "CSLSNAP",
+      "SCRBSNP"
+     ],
+     "history": [
+      [
+       "V1",
+       "CSLSNAP1 v1"
+      ],
+      [
+       "V2",
+       "CSLSNAP1 v2"
+      ],
+      [
+       "V3",
+       "SCRBSNP3"
+      ],
+      [
+       "V4",
+       "SCRBSNP4"
+      ],
+      [
+       "V5",
+       "SCRBSNP5"
+      ],
+      [
+       "V7",
+       "SCRBSNP7"
+      ],
+      [
+       "V8",
+       "SCRBSNP8"
+      ],
+      [
+       "V9",
+       "SCRBSNP9"
+      ],
+      [
+       "V10",
+       "SCRBSNPA"
+      ]
+     ],
+     "label": "ledger snapshot"
+    }
+   },
+   "readableFrom": {
+    "SnapshotFile": "FormatVersion.V5",
+    "_": "history.head._1"
+   },
+   "utxoKeyLayoutCurrent": "TxIdIndex16",
+   "utxoKeyLayouts": [
+    "TxIdIndex16"
+   ],
+   "versions": [
+    "V1",
+    "V2",
+    "V3",
+    "V4",
+    "V5",
+    "V6",
+    "V7",
+    "V8",
+    "V9",
+    "V10"
+   ]
   }
  }
 }

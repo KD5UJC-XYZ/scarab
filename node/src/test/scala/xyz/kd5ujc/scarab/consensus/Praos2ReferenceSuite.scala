@@ -44,7 +44,7 @@ import xyz.kd5ujc.scarab.protocol.LeiosWord.{Word16, Word32}
 class Praos2ReferenceSuite extends munit.FunSuite:
   private val source = Path.of("fixtures/leios/testnet")
   private val setup = NodeSetup
-    .fromConfigFile(ReferenceBuild.LeiosB004fe0c)(source.resolve("config/config.json"))
+    .fromConfigFile(ReferenceBuild.Leios)(source.resolve("config/config.json"))
     .fold(e => fail(e.message), identity)
   private val pools = setup.mirrorStart
     .ledger(None)

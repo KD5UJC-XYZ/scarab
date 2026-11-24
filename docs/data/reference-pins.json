@@ -74,7 +74,7 @@
    "repository": "IntersectMBO/cardano-node",
    "revision": "b004fe0c50913dcdaa827a98e68a43d0ccce152a",
    "urlPattern": "https://github.com/IntersectMBO/cardano-node/commit/{revision}",
-   "role": "Leios testnet reference: the build of the public Leios testnet (release rc-2026w44, #711): the node (branch leios-prototype) the release's flake.lock and Docker image name.",
+   "role": "Leios testnet reference: the build of the public Leios testnet until 2026-11-23 (release rc-2026w44, #711, then named leios-b004fe0c; the same ledger as rc-2026w47): the node (branch leios-prototype) the release's flake.lock and Docker image name.",
    "dependents": [
     "docs/leios.md",
     "fixtures/dijkstra-devnet/README.md",
@@ -83,6 +83,17 @@
     "scripts/oracle/leios-testnet/README.md",
     "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/ReferenceBuild.scala",
     "scripts/devnet/scenarios/leios_traffic.py"
+   ]
+  },
+  {
+   "name": "cardano-node",
+   "repository": "IntersectMBO/cardano-node",
+   "revision": "b9c1dbea7dd2affa4fe06403720c09ffcdcc2c13",
+   "urlPattern": "https://github.com/IntersectMBO/cardano-node/commit/{revision}",
+   "role": "Leios testnet reference: the build of the public Leios testnet, the reference build `leios`, at release rc-2026w47 (#1365): the node (branch leios-prototype) its Docker image reports.",
+   "dependents": [
+    "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/ReferenceBuild.scala",
+    "scripts/devnet/dijkstra.py"
    ]
   },
   {
@@ -326,14 +337,13 @@
    "repository": "IntersectMBO/ouroboros-consensus",
    "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
    "urlPattern": "https://github.com/IntersectMBO/ouroboros-consensus/commit/{revision}",
-   "role": "Leios testnet reference: the build of the public Leios testnet (release rc-2026w44, #711): the block envelope (decodeDiskHfcBlock), Praos2 header validation and protocol-state evolution.",
+   "role": "Leios testnet reference: the build of the public Leios testnet until 2026-11-23 (release rc-2026w44, #711, then named leios-b004fe0c; the same ledger as rc-2026w47): the block envelope (decodeDiskHfcBlock), Praos2 header validation and protocol-state evolution.",
    "dependents": [
     "docs/leios.md",
     "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/LeiosBlock.scala",
     "scripts/oracle/leios-testnet/README.md",
     "consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/Praos2.scala",
     "scripts/oracle/leios-praos2/README.md",
-    "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/ReferenceBuild.scala",
     "scripts/devnet/scenarios/leios_traffic.py"
    ]
   },
@@ -348,7 +358,8 @@
     "node/src/main/scala/xyz/kd5ujc/scarab/node/LeiosVotes.scala",
     "node/src/main/scala/xyz/kd5ujc/scarab/node/LeiosFetchKernel.scala",
     "node/src/main/scala/xyz/kd5ujc/scarab/node/Main.scala",
-    "docs/data/correspondence/consensus.json"
+    "docs/data/correspondence/consensus.json",
+    "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/ReferenceBuild.scala"
    ]
   },
   {

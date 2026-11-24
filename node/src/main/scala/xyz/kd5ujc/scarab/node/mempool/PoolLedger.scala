@@ -199,7 +199,7 @@ object PoolLedger:
         case ShelleyBasedEra.SConway => Right(Right(MempoolLedger.of(i.nes)))
         case ShelleyBasedEra.SDijkstra =>
           build match
-            case ReferenceBuild.LeiosB004fe0c =>
+            case ReferenceBuild.Leios =>
               DijkstraLedger.of(i.nes).bimap(Failure.WireLimit(_), Right(_))
             case ReferenceBuild.Release11_1 | ReferenceBuild.Release11_2 =>
               Right(Left(ConwayView.Unavailable.InEarlier(Era.Dijkstra)))

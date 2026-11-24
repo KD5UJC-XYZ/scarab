@@ -429,7 +429,7 @@ object NodeSetup:
       // `ExperimentalHardForksEnabled`, so its chain enters Dijkstra (owner decision on #54,
       // 2026-11-19); the 11.1 line's stays 11, with #788.
       maxMajor = build match
-        case ReferenceBuild.LeiosB004fe0c => config.settings.protocolVersion(build)._1.toInt
+        case ReferenceBuild.Leios => config.settings.protocolVersion(build)._1.toInt
         case ReferenceBuild.Release11_1 | ReferenceBuild.Release11_2 =>
           HardForkConfig.MaxMajorProtVer
       forks = HardForkConfig.fromEpochs(

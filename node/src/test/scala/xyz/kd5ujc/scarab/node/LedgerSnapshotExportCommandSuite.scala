@@ -35,8 +35,8 @@ class LedgerSnapshotExportCommandSuite extends FunSuite:
     assertEquals(build(Nil), Right(ReferenceBuild.Release11_1))
     assertEquals(build(List("--reference-build", "11.1")), Right(ReferenceBuild.Release11_1))
     assertEquals(
-      build(List("--reference-build", "leios-b004fe0c")),
-      Right(ReferenceBuild.LeiosB004fe0c)
+      build(List("--reference-build", "leios-rc-2026w47")),
+      Right(ReferenceBuild.Leios)
     )
     LedgerSnapshotExportCommand.parse(required ++ List("--reference-build", "11.1.3")) match
       case Left(error) =>

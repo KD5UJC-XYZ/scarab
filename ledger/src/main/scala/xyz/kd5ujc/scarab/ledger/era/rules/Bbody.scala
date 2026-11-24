@@ -207,8 +207,8 @@ enum HeaderProtVerGate derives CanEqual:
 object HeaderProtVerGate:
   /** The gate of the build `build`. */
   def of(build: ReferenceBuild): HeaderProtVerGate = build match
-    case ReferenceBuild.Release11_1                                => MainnetOrFromVersion12
-    case ReferenceBuild.Release11_2 | ReferenceBuild.LeiosB004fe0c => MainnetOnly
+    case ReferenceBuild.Release11_1                        => MainnetOrFromVersion12
+    case ReferenceBuild.Release11_2 | ReferenceBuild.Leios => MainnetOnly
 
 /** Conway's functions of BBODY (`Conway/Rules/Bbody.hs`, cardano-ledger 9df9f98c and f649f975), and
   * Conway's BBODY.

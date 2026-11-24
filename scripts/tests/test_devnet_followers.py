@@ -126,7 +126,7 @@ class FollowerProcessTest(unittest.TestCase):
 
     def test_the_reference_build_reaches_the_nodes_command_line_as_given(self):
         # passed on as the node takes it, the value unchecked here: the node parses it (`ReferenceBuildFlag.parse`)
-        for build in ("leios-b004fe0c", "11.1", "not-a-build"):
+        for build in ("leios-rc-2026w47", "11.1", "not-a-build"):
             seen, _ = self.follow(["follow", "--reference-build", build])
             program = seen["program"]
             self.assertEqual(program[:1], ["follow"])

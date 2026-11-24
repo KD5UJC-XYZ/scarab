@@ -18,7 +18,7 @@ reads. cardano-node 11.2.1 also reads a second form, the cardano-config envelope
 it as an empty configuration:
 
 - in a `--genesis-dir` directory, under every `--reference-build`, with `ConfigError` `CardanoConfigEnvelope`;
-- with `--config`, as the selected build's node tells the file apart: `11.2` and `leios-b004fe0c` refuse it
+- with `--config`, as the selected build's node tells the file apart: `11.2` and `leios-rc-2026w47` refuse it
   with `CardanoConfigEnvelope`; `11.1`, the default, reads the file flat as cardano-node 11.1.3 does, and
   refuses it, as 11.1.3 does, for its missing `ByronGenesisFile`.
 
@@ -39,7 +39,7 @@ What the configuration does:
 | `ByronGenesisHash`, `ShelleyGenesisHash`, `AlonzoGenesisHash`, `ConwayGenesisHash` | verified against the files: the Byron hash is that of the canonical JSON of the file, the others the blake2b-256 of the file's bytes (`cardano-cli genesis hash`). A mismatch is a `ConfigError` of kind `GenesisHashMismatch` that names the file, the listed and the actual hash; a hash that is not 64 hexadecimal digits is refused. The check runs for `--genesis-dir` too |
 | `DijkstraGenesisFile`/`Hash` | read only when experimental hard forks are enabled: the file is then required, its listed hash is verified, and it is parsed as the reference's `FromJSON DijkstraGenesis` (a file that does not parse stops start-up with a `ConfigError` naming the field). Otherwise both fields are ignored. The node does not enter the Dijkstra era |
 | `TestDijkstraHardForkAtEpoch`/`Version` | read as unsigned 64-bit values only with experimental hard forks enabled; retained without activating Dijkstra |
-| `EgressBudgetMbps`, `LeiosDbConfig`, `LeiosMinOfferLead`, `LeiosAdaptiveEndorsements` | parsed with the public Leios testnet build's types and defaults; explicit settings are reported in `configUnsupported` as recognised and unused, except `LeiosDbConfig` under `--reference-build leios-b004fe0c`, where the node's start opens the endorser-block store at `<db>/leios` with the backend `SQLite` (the default) ([persistence](../architecture/persistence.md)), and `LeiosMinOfferLead` with it, the slots past the immutable tip from which the node's LeiosNotify servers offer an endorser block (3,600 by default). `follow` refuses the backend `InMemory`, which the reference keeps in memory and Scarab has no store for, and a run with neither `--db` nor `DatabasePath`, at start under that build |
+| `EgressBudgetMbps`, `LeiosDbConfig`, `LeiosMinOfferLead`, `LeiosAdaptiveEndorsements` | parsed with the public Leios testnet build's types and defaults; explicit settings are reported in `configUnsupported` as recognised and unused, except `LeiosDbConfig` under `--reference-build leios-rc-2026w47`, where the node's start opens the endorser-block store at `<db>/leios` with the backend `SQLite` (the default) ([persistence](../architecture/persistence.md)), and `LeiosMinOfferLead` with it, the slots past the immutable tip from which the node's LeiosNotify servers offer an endorser block (3,600 by default). `follow` refuses the backend `InMemory`, which the reference keeps in memory and Scarab has no store for, and a run with neither `--db` nor `DatabasePath`, at start under that build |
 | `LedgerDB`, deprecated `SnapshotInterval`/`NumOfDiskSnapshots` | the reference's backend, query-batch and snapshot settings are parsed and retained; explicit settings are reported as recognised and unused, and do not configure Scarab's store |
 | `CheckpointsFile`/`Hash` | a configured file is required; its byte hash is verified before parsing. Unique unsigned block numbers map to 32-byte header hashes, enforced during header and block validation across eras |
 | `TestShelleyHardForkAtEpoch` ... `TestConwayHardForkAtEpoch` | the first epoch of each era (`0` for all of them: the chain starts in that era, as Preview); absent for Shelley: the Byron ledger decides |
@@ -66,7 +66,7 @@ Its other fields are still checked when `Enabled` is false. Optional `null` valu
 flat snapshot fields inside `LedgerDB`. A nested snapshot interval or count takes precedence over
 the deprecated top-level value; both values must parse. A named policy uses its complete defaults.
 The selected `--reference-build` supplies the default delay range: 300–600 seconds for `11.1`
-and 300–21600 seconds for `11.2` and `leios-b004fe0c`, following `mithrilSnapshotPolicyArgs` in
+and 300–21600 seconds for `11.2` and `leios-rc-2026w47`, following `mithrilSnapshotPolicyArgs` in
 [release consensus](https://github.com/IntersectMBO/ouroboros-consensus/blob/82ecba329d7d054340bf707d44fe6e9ac27cec40/ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LedgerDB/Snapshots.hs#L673),
 [11.2 consensus](https://github.com/IntersectMBO/ouroboros-consensus/blob/808e400545729b1246ba4393c69326ec4a04a730/ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LedgerDB/Snapshots.hs#L672)
 and [Leios consensus](https://github.com/IntersectMBO/ouroboros-consensus/blob/2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b/ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LedgerDB/Snapshots.hs#L681).

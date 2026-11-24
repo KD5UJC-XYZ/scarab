@@ -21,7 +21,7 @@ import xyz.kd5ujc.scarab.storage.haskell.state.ReferenceLayout
 import DecodeError.{Arity, Kind}
 
 /** Reference snapshots of the Leios build (#826), of a Leios devnet (`fixtures/leios/state`):
-  * imported under `--reference-build leios-b004fe0c` with their bytes recorded as they are,
+  * imported under `--reference-build leios-rc-2026w47` with their bytes recorded as they are,
   * exported with the same bytes, and refused under `11.1`, whose layout does not read them. The
   * last Conway state, `conway-195`, with the block of its point; the first Dijkstra state,
   * `dijkstra-203`, whose block was not kept, with its header's tip moved to the point of a Dijkstra
@@ -122,7 +122,7 @@ class LeiosLayoutImportSuite extends CatsEffectSuite:
       )
       .rescue(e => IO.pure(Left(e)))
 
-  test("slot 195 imports under leios-b004fe0c and exports its state byte for byte") {
+  test("slot 195 imports under leios-rc-2026w47 and exports its state byte for byte") {
     tempDir.use { root =>
       for
         input <- source(root)
@@ -130,19 +130,19 @@ class LeiosLayoutImportSuite extends CatsEffectSuite:
         report <- imported(config(ledger, db, leios))
         _ <- IO {
           val r = report.fold(e => fail(e.message), identity)
-          assertEquals(r.build, ReferenceBuild.LeiosB004fe0c)
+          assertEquals(r.build, ReferenceBuild.Leios)
           assertEquals(r.anchor, anchor)
           assertEquals(r.era, Era.Conway)
           val content = JFiles
             .readAllBytes((db / "snapshots" / FileLedgerSnapshots.nameOf(anchor)).toNioPath)
             .dropRight(32)
-          assertEquals(SnapshotV10.recordedOf(content), Right("leios-b004fe0c"))
+          assertEquals(SnapshotV10.recordedOf(content), Right("leios-rc-2026w47"))
           assert(content.takeRight(read("state").size).sameElements(read("state").toArray))
         }
         out <- exported(LedgerSnapshotExport.Config(db, root / "out", layout = leios))
         _ <- IO {
           val r = out.fold(e => fail(e.message), identity)
-          assertEquals(r.build, ReferenceBuild.LeiosB004fe0c)
+          assertEquals(r.build, ReferenceBuild.Leios)
           assertEquals(r.anchor, anchor)
           Vector("state", "tables", "meta").foreach(name =>
             assertEquals(
@@ -162,7 +162,7 @@ class LeiosLayoutImportSuite extends CatsEffectSuite:
                 .Storage(
                   xyz.kd5ujc.scarab.ledger.StorageError.ReferenceBuildMismatch(
                     "snapshot",
-                    ReferenceBuild.LeiosB004fe0c,
+                    ReferenceBuild.Leios,
                     ReferenceBuild.Release11_1
                   )
                 )
@@ -194,7 +194,7 @@ class LeiosLayoutImportSuite extends CatsEffectSuite:
   }
 
   test(
-    "slot 203, a Dijkstra state with its tip moved, imports under leios-b004fe0c and exports byte for byte"
+    "slot 203, a Dijkstra state with its tip moved, imports under leios-rc-2026w47 and exports byte for byte"
   ) {
     val files = LeiosStateFixture.movedFiles
     tempDir.use { root =>
@@ -204,19 +204,19 @@ class LeiosLayoutImportSuite extends CatsEffectSuite:
         report <- imported(config(ledger, db, leios))
         _ <- IO {
           val r = report.fold(e => fail(e.message), identity)
-          assertEquals(r.build, ReferenceBuild.LeiosB004fe0c)
+          assertEquals(r.build, ReferenceBuild.Leios)
           assertEquals(r.anchor, dijkstraPoint)
           assertEquals(r.era, Era.Dijkstra)
           val content = JFiles
             .readAllBytes((db / "snapshots" / FileLedgerSnapshots.nameOf(dijkstraPoint)).toNioPath)
             .dropRight(32)
-          assertEquals(SnapshotV10.recordedOf(content), Right("leios-b004fe0c"))
+          assertEquals(SnapshotV10.recordedOf(content), Right("leios-rc-2026w47"))
           assert(content.takeRight(movedState.size).sameElements(movedState.toArray))
         }
         out <- exported(LedgerSnapshotExport.Config(db, root / "out", layout = leios))
         _ <- IO {
           val r = out.fold(e => fail(e.message), identity)
-          assertEquals(r.build, ReferenceBuild.LeiosB004fe0c)
+          assertEquals(r.build, ReferenceBuild.Leios)
           assertEquals(r.era, Era.Dijkstra)
           files.foreach((name, bytes) =>
             assertEquals(
@@ -295,6 +295,39 @@ class LeiosLayoutImportSuite extends CatsEffectSuite:
           assertEquals(writtenParams.maxTxSize, BigInt(12345))
           assertEquals(writtenParams.d, xyz.kd5ujc.scarab.codec.Rational.one)
           assertEquals(writtenParams.copy(maxTxSize = params.maxTxSize), params)
+        }
+      yield ()
+    }
+  }
+
+  test(
+    "a snapshot recorded under the Leios build's former name restores in full under the current one"
+  ) {
+    // leios-b004fe0c was the Leios build's name until 2026-11-23 (#1365): the same layout, so its
+    // snapshots are read, not deleted as unknown
+    val files = LeiosStateFixture.movedFiles
+    tempDir.use { root =>
+      for
+        input <- sourceOf(root, dijkstraPoint.slot, files, dijkstraPoint, dijkstraBlock)
+        (ledger, db) = input
+        report <- imported(config(ledger, db, leios))
+        _ <- IO(report.fold(e => fail(e.message), identity))
+        _ <- IO {
+          val content = JFiles
+            .readAllBytes((db / "snapshots" / FileLedgerSnapshots.nameOf(dijkstraPoint)).toNioPath)
+            .dropRight(32)
+          val current = leios.build.name.getBytes("US-ASCII")
+          val former = "leios-b004fe0c".getBytes("US-ASCII")
+          val renamed = SnapshotV10.Magic ++ Array(former.length.toByte) ++ former ++
+            content.drop(SnapshotV10.Magic.length + 1 + current.length)
+          assertEquals(SnapshotV10.recordedOf(renamed), Right("leios-b004fe0c"))
+          val restored = SnapshotV10
+            .decode(setup.mirrorEnv(), leios, renamed)
+            .fold(e => fail(e.message), identity)
+          assertEquals(restored.anchor, Some(dijkstraPoint))
+          // written again, it records the current name, and is otherwise the same file
+          val again = SnapshotV10.encoded(restored, leios).fold(e => fail(e.toString), identity)
+          assertEquals(Bytes.wrap(again).hex, Bytes.wrap(content).hex)
         }
       yield ()
     }

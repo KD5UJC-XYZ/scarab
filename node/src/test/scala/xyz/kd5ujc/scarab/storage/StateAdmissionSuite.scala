@@ -223,7 +223,7 @@ class StateAdmissionSuite extends CatsEffectSuite:
           )
         )
       )
-      Vector(ReferenceBuild.Release11_2, ReferenceBuild.LeiosB004fe0c).foreach { build =>
+      Vector(ReferenceBuild.Release11_2, ReferenceBuild.Leios).foreach { build =>
         assertEquals(StateAdmission.admit(build, state), Right(()), build.name)
         // their HARDFORK counts from nothing, so it reaches the reference's counts either way
         assertEquals(entered(build, contaminated), entered(build, clean), build.name)

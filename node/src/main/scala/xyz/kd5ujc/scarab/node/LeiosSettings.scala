@@ -49,7 +49,7 @@ object LeiosSettings:
     */
   private def used(build: ReferenceBuild): Set[NodeConfig.TopLevelKey] =
     build match
-      case ReferenceBuild.LeiosB004fe0c =>
+      case ReferenceBuild.Leios =>
         Set[NodeConfig.TopLevelKey]("LeiosDbConfig", "LeiosMinOfferLead")
       case ReferenceBuild.Release11_1 | ReferenceBuild.Release11_2 => Set.empty
 

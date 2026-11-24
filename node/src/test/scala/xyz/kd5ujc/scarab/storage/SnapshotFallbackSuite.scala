@@ -227,10 +227,10 @@ class SnapshotFallbackSuite extends CatsEffectSuite:
 
   test("a snapshot recorded under a build of another layout is deleted (:628-631)") {
     falls(
-      FileLedgerSnapshots.closed(framed(ReferenceBuild.LeiosB004fe0c)),
+      FileLedgerSnapshots.closed(framed(ReferenceBuild.Leios)),
       StorageError.ReferenceBuildMismatch(
         "snapshot",
-        ReferenceBuild.LeiosB004fe0c,
+        ReferenceBuild.Leios,
         ReferenceBuild.Release11_1
       ),
       Unused.Deleted
@@ -384,7 +384,7 @@ class SnapshotFallbackSuite extends CatsEffectSuite:
   test("with nothing usable left the restore takes none: the blocks replay from genesis") {
     tempDir.use { dir =>
       for
-        _ <- write(dir, newer, FileLedgerSnapshots.closed(framed(ReferenceBuild.LeiosB004fe0c)))
+        _ <- write(dir, newer, FileLedgerSnapshots.closed(framed(ReferenceBuild.Leios)))
         _ <- write(dir, older, FileLedgerSnapshots.closed(unknownBuild))
         restored <- restore(dir).map(_.fold(e => fail(e.message), identity))
         left <- IO.blocking(JFiles.list(dir.toNioPath)).map { listing =>
@@ -410,7 +410,7 @@ class SnapshotFallbackSuite extends CatsEffectSuite:
       StorageError.Missing("snapshot anchor in the immutable store"),
       StorageError.ReferenceBuildMismatch(
         "snapshot",
-        ReferenceBuild.LeiosB004fe0c,
+        ReferenceBuild.Leios,
         ReferenceBuild.Release11_1
       ),
       StorageError.UnknownReferenceBuild("snapshot", "x", ReferenceBuild.Release11_1),

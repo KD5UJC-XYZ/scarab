@@ -236,7 +236,7 @@ class LedgerSnapshotExportSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaugh
           JFiles.write(
             (db / "snapshots" / FileLedgerSnapshots.nameOf(anchor)).toNioPath,
             FileLedgerSnapshots.closed(
-              SnapshotV10.framed(ReferenceBuild.LeiosB004fe0c, bindingOf(db, anchor), sidecar, raw)
+              SnapshotV10.framed(ReferenceBuild.Leios, bindingOf(db, anchor), sidecar, raw)
             )
           )
         )
@@ -251,7 +251,7 @@ class LedgerSnapshotExportSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaugh
               LedgerSnapshotExport.Error.Storage(
                 StorageError.ReferenceBuildMismatch(
                   "snapshot",
-                  ReferenceBuild.LeiosB004fe0c,
+                  ReferenceBuild.Leios,
                   ReferenceBuild.Release11_1
                 )
               )

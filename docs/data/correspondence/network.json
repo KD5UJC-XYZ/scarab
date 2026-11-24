@@ -2621,6 +2621,13 @@
    "definitions": [
     "def protocol.LeiosWord.Word64.fromUnsigned"
    ]
+  },
+  {
+   "reason": "the reading of a reference build's former names from recorded files (snapshots, refusal corpora, captures), Scarab's own: the reference names its build by its binary and records no build in its files (#1365, an FMT-1 decision of 2026-11-23)",
+   "definitions": [
+    "val protocol.ReferenceBuild.renamed",
+    "def protocol.ReferenceBuild.recorded"
+   ]
   }
  ]
 }

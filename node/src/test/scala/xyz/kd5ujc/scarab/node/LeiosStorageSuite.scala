@@ -48,7 +48,7 @@ class LeiosStorageSuite extends CatsEffectSuite:
     "the Leios build opens the store at leios/ of the database, and closes it with the run"
   ) { db =>
     for
-      written <- opened(ReferenceBuild.LeiosB004fe0c, LeiosDbBackend.SQLite, Some(db)).use {
+      written <- opened(ReferenceBuild.Leios, LeiosDbBackend.SQLite, Some(db)).use {
         case None => IO.raiseError(new AssertionError("no store under the Leios build"))
         case Some(s) =>
           for
@@ -58,7 +58,7 @@ class LeiosStorageSuite extends CatsEffectSuite:
           yield (points, opened)
       }
       // released: the next run opens it again and finds what the last one wrote
-      again <- opened(ReferenceBuild.LeiosB004fe0c, LeiosDbBackend.SQLite, Some(db)).use(
+      again <- opened(ReferenceBuild.Leios, LeiosDbBackend.SQLite, Some(db)).use(
         _.traverse(s => ok(s.scanEbPoints))
       )
     yield
@@ -67,7 +67,7 @@ class LeiosStorageSuite extends CatsEffectSuite:
   }
 
   dirs.test("the store refuses calls once the run has released it") { db =>
-    opened(ReferenceBuild.LeiosB004fe0c, LeiosDbBackend.SQLite, Some(db)).allocated.flatMap {
+    opened(ReferenceBuild.Leios, LeiosDbBackend.SQLite, Some(db)).allocated.flatMap {
       (store, release) =>
         release *> store
           .traverse(s => attempt(s.scanEbPoints))
@@ -90,12 +90,8 @@ class LeiosStorageSuite extends CatsEffectSuite:
     "an in-memory LeiosDbConfig, or a run without a database, is refused and opens nothing"
   ) { db =>
     (
-      opened(ReferenceBuild.LeiosB004fe0c, LeiosDbBackend.InMemory, Some(db)).use(s =>
-        IO.pure(s.isEmpty)
-      ),
-      opened(ReferenceBuild.LeiosB004fe0c, LeiosDbBackend.SQLite, None).use(s =>
-        IO.pure(s.isEmpty)
-      ),
+      opened(ReferenceBuild.Leios, LeiosDbBackend.InMemory, Some(db)).use(s => IO.pure(s.isEmpty)),
+      opened(ReferenceBuild.Leios, LeiosDbBackend.SQLite, None).use(s => IO.pure(s.isEmpty)),
       exists(db / "leios")
     ).tupled.map(r => assertEquals(r, (true, true, false)))
   }
@@ -104,28 +100,28 @@ class LeiosStorageSuite extends CatsEffectSuite:
     import xyz.kd5ujc.scarab.ledger.{ConfigError, ConfigProblem, LeiosStoreMissing}
     val db = Some(Path("db"))
     def refused(missing: LeiosStoreMissing) =
-      Left(ConfigError(ConfigProblem.LeiosStoreRequired(ReferenceBuild.LeiosB004fe0c, missing)))
+      Left(ConfigError(ConfigProblem.LeiosStoreRequired(ReferenceBuild.Leios, missing)))
     assertEquals(
-      LeiosStorage.follows(ReferenceBuild.LeiosB004fe0c, LeiosDbBackend.SQLite, db),
+      LeiosStorage.follows(ReferenceBuild.Leios, LeiosDbBackend.SQLite, db),
       Right(LeiosStorage.Plan.OnDisk(Path("db")))
     )
     assertEquals(
-      LeiosStorage.follows(ReferenceBuild.LeiosB004fe0c, LeiosDbBackend.InMemory, db),
+      LeiosStorage.follows(ReferenceBuild.Leios, LeiosDbBackend.InMemory, db),
       refused(LeiosStoreMissing.InMemoryBackend)
     )
     assertEquals(
-      LeiosStorage.follows(ReferenceBuild.LeiosB004fe0c, LeiosDbBackend.SQLite, None),
+      LeiosStorage.follows(ReferenceBuild.Leios, LeiosDbBackend.SQLite, None),
       refused(LeiosStoreMissing.NoDatabase)
     )
     assert(
       ConfigProblem
-        .LeiosStoreRequired(ReferenceBuild.LeiosB004fe0c, LeiosStoreMissing.InMemoryBackend)
+        .LeiosStoreRequired(ReferenceBuild.Leios, LeiosStoreMissing.InMemoryBackend)
         .message
         .startsWith("LeiosDbConfig.Backend InMemory:")
     )
     assert(
       ConfigProblem
-        .LeiosStoreRequired(ReferenceBuild.LeiosB004fe0c, LeiosStoreMissing.NoDatabase)
+        .LeiosStoreRequired(ReferenceBuild.Leios, LeiosStoreMissing.NoDatabase)
         .message
         .startsWith("--db:")
     )

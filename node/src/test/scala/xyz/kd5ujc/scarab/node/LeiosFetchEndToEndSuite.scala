@@ -118,7 +118,7 @@ class LeiosFetchEndToEndSuite extends FailsOnUncaught:
     .initial(
       xyz.kd5ujc.scarab.protocol.Era.Conway,
       NodeSetup
-        .fromConfigFile(xyz.kd5ujc.scarab.protocol.ReferenceBuild.LeiosB004fe0c)(
+        .fromConfigFile(xyz.kd5ujc.scarab.protocol.ReferenceBuild.Leios)(
           java.nio.file.Path.of("fixtures/leios/testnet/config/config.json")
         )
         .fold(e => fail(e.message), identity)

@@ -104,7 +104,7 @@ class ConfigDialectSuite extends FunSuite:
       "11.1"
     )
     // 11.2.1 and the Leios build tell the envelope by its Configuration key; it is not read yet
-    List(ReferenceBuild.Release11_2, ReferenceBuild.LeiosB004fe0c).foreach { build =>
+    List(ReferenceBuild.Release11_2, ReferenceBuild.Leios).foreach { build =>
       assertEquals(problem(NodeSetup.readConfig(build)(file)), refused, build.name)
       assertEquals(
         problem(NodeSetup.fromConfigFile(build)(file)),
@@ -121,7 +121,7 @@ class ConfigDialectSuite extends FunSuite:
           "--peer",
           "127.0.0.1:9",
           "--reference-build",
-          ReferenceBuild.LeiosB004fe0c.name
+          ReferenceBuild.Leios.name
         )
       )
       .fold(e => fail(e.message), identity)
@@ -136,7 +136,7 @@ class ConfigDialectSuite extends FunSuite:
       ReferenceBuild.values.foreach { build =>
         assertEquals(problem(NodeConfig.parse(build)(marked)), refused, s"${build.name}: $value")
       }
-      List(ReferenceBuild.Release11_2, ReferenceBuild.LeiosB004fe0c).foreach { build =>
+      List(ReferenceBuild.Release11_2, ReferenceBuild.Leios).foreach { build =>
         assertEquals(
           problem(NodeConfig.parse(build)(marked, strict = true)),
           refused,

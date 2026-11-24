@@ -771,8 +771,8 @@ enum WithdrawalsRule derives CanEqual:
 object WithdrawalsRule:
   /** The rule of the build `build`. */
   def of(build: ReferenceBuild): WithdrawalsRule = build match
-    case ReferenceBuild.Release11_1                                => LedgerAboveVersion10
-    case ReferenceBuild.Release11_2 | ReferenceBuild.LeiosB004fe0c => Ledger
+    case ReferenceBuild.Release11_1                        => LedgerAboveVersion10
+    case ReferenceBuild.Release11_2 | ReferenceBuild.Leios => Ledger
 
 /** `EraRule "CERT" era`: the CERT transition of era `E`, which CERTS runs on each certificate
   * (`trans @(EraRule "CERT" era)`, `Conway/Rules/Certs.hs:224-225`, cardano-ledger 9df9f98c):

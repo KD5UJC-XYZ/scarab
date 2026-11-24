@@ -79,14 +79,14 @@ object V10BodyCases extends Assertions:
         extends Case(
           "leios-conway.cbor",
           "fixtures/leios/state/conway-195/state",
-          ReferenceBuild.LeiosB004fe0c,
+          ReferenceBuild.Leios,
           Edits.Conway(FutureParams.Absent)
         )
     case LeiosDijkstraParamProposal
         extends Case(
           "leios-dijkstra-param-proposal.cbor",
           "fixtures/leios/state/dijkstra-203/state",
-          ReferenceBuild.LeiosB004fe0c,
+          ReferenceBuild.Leios,
           Edits.DijkstraParamProposal
         )
 

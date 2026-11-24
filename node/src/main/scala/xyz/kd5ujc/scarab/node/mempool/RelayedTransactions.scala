@@ -76,7 +76,7 @@ object RelayedTransactions extends TxSubmission2.TransactionReader:
     */
   def of(build: ReferenceBuild): TxSubmission2.TransactionReader = build match
     case ReferenceBuild.Release11_1 | ReferenceBuild.Release11_2 => this
-    case ReferenceBuild.LeiosB004fe0c                            => Leios
+    case ReferenceBuild.Leios                                    => Leios
 
   private object Leios extends TxSubmission2.TransactionReader:
     def body(original: Bytes): Either[ProtocolError, Bytes] = RelayedTransactions.body(original)

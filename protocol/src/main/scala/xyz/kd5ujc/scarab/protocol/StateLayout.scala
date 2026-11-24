@@ -25,9 +25,9 @@ object StateLayout:
     * write yet ([[ReferenceBuildNotYet.Layout]]): 11.2's is neither of these.
     */
   def of(build: ReferenceBuild): Either[ReferenceBuildNotYet, StateLayout] = build match
-    case ReferenceBuild.Release11_1   => Right(Node11_1)
-    case ReferenceBuild.Release11_2   => Left(ReferenceBuildNotYet.Layout(build))
-    case ReferenceBuild.LeiosB004fe0c => Right(Leios)
+    case ReferenceBuild.Release11_1 => Right(Node11_1)
+    case ReferenceBuild.Release11_2 => Left(ReferenceBuildNotYet.Layout(build))
+    case ReferenceBuild.Leios       => Right(Leios)
 
   given Eq[StateLayout] = Eq.fromUniversalEquals
   given Show[StateLayout] = Show.fromToString

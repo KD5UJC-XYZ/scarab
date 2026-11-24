@@ -42,7 +42,7 @@ class LeiosChainSyncSuite extends FailsOnUncaught:
   private val dirs = ResourceFunFixture(Files.forAsync[IO].tempDirectory)
   private val source = Path.of("fixtures/leios/testnet")
   private val setup = NodeSetup
-    .fromConfigFile(ReferenceBuild.LeiosB004fe0c)(source.resolve("config/config.json"))
+    .fromConfigFile(ReferenceBuild.Leios)(source.resolve("config/config.json"))
     .fold(e => fail(e.message), identity)
 
   private val notable: Map[String, LeiosHeader] = java.nio.file.Files

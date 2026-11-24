@@ -47,9 +47,9 @@ final case class MempoolTimeouts(soft: DiffTime, hard: DiffTime, capacity: DiffT
     * snapshot instead, a tenth of it per step (`Mempool/Query.hs` 164), which Scarab does not do.
     */
   def admissionCapacity(build: ReferenceBuild): Option[DiffTime] = build match
-    case ReferenceBuild.Release11_1   => Some(capacity)
-    case ReferenceBuild.Release11_2   => Some(capacity)
-    case ReferenceBuild.LeiosB004fe0c => None
+    case ReferenceBuild.Release11_1 => Some(capacity)
+    case ReferenceBuild.Release11_2 => Some(capacity)
+    case ReferenceBuild.Leios       => None
 
 object MempoolTimeouts:
 

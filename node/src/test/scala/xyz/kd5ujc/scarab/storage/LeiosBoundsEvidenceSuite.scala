@@ -25,7 +25,7 @@ import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.protocol.{Era, ReferenceBuild, StateLayout}
 import xyz.kd5ujc.scarab.storage.haskell.state.{Envelope, HaskellLedgerFile, HaskellState}
 
-/** The era history's bounds under `--reference-build leios-b004fe0c` (#826) against the states a
+/** The era history's bounds under `--reference-build leios-rc-2026w47` (#826) against the states a
   * node of that build wrote on a devnet that crossed from Conway into Dijkstra at epoch 1
   * (`fixtures/leios/state`): the bounds of the chain's origin as the genesis start builds them, and
   * the bound where Dijkstra starts as the block step places it ([[MirrorStep.startOf]]), each
@@ -36,7 +36,7 @@ class LeiosBoundsEvidenceSuite extends FunSuite:
   private val fixture = JPath.of("fixtures/leios/state")
   private val setup =
     NodeSetup
-      .fromDirectory(ReferenceBuild.LeiosB004fe0c)(fixture.resolve("genesis"))
+      .fromDirectory(ReferenceBuild.Leios)(fixture.resolve("genesis"))
       .fold(e => fail(e.message), identity)
   private val placement = Placement(setup.geometry, setup.byronHistory, setup.praos.forks)
   private val start: MirrorState = setup.mirrorStart

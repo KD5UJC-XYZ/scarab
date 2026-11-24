@@ -21,7 +21,7 @@ import xyz.kd5ujc.scarab.protocol.{Era, ReferenceBuild}
 class LeiosAnnouncementCheckSuite extends FailsOnUncaught:
   private val devnet = Path.of("fixtures", "dijkstra-devnet")
   private val setup = NodeSetup
-    .fromConfigFile(ReferenceBuild.LeiosB004fe0c)(devnet.resolve("genesis/config.json"))
+    .fromConfigFile(ReferenceBuild.Leios)(devnet.resolve("genesis/config.json"))
     .fold(e => fail(e.message), identity)
   private val praos = setup.praos.copy(forks = setup.praos.forks.copy(maxMajorProtVer = 12))
   private def hex(s: String): Bytes = Bytes.fromHex(s).fold(e => fail(e.message), identity)
@@ -56,7 +56,7 @@ class LeiosAnnouncementCheckSuite extends FailsOnUncaught:
     .filter(_._1 == "8")
     .map(b => LeiosChainSync.leiosHeader(b._2.header).getOrElse(fail("not a Leios header")))
 
-  private def rules(build: ReferenceBuild = ReferenceBuild.LeiosB004fe0c) =
+  private def rules(build: ReferenceBuild = ReferenceBuild.Leios) =
     given HeaderTimeRead[MirrorState] = HeaderTimeRead.mirror(setup.byronHistory)
     NodeHeaderRules[MirrorState](praos, setup.globals.copy(referenceBuild = build))
 

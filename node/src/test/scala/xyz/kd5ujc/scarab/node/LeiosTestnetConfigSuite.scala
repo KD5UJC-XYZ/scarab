@@ -20,7 +20,7 @@ class LeiosTestnetConfigSuite extends FunSuite:
   private val configText = Files.readString(dir.resolve("config.json"))
   private val config =
     NodeConfig
-      .parse(ReferenceBuild.LeiosB004fe0c)(configText, strict = true)
+      .parse(ReferenceBuild.Leios)(configText, strict = true)
       .fold(e => fail(e.message), identity)
   private def read(name: String): Option[Array[Byte]] =
     Option.when(Files.exists(dir.resolve(name)))(Files.readAllBytes(dir.resolve(name)))
@@ -85,7 +85,7 @@ class LeiosTestnetConfigSuite extends FunSuite:
   test("the node setup reads the genesis, funds and pool from `extraConfig` included") {
     val setup =
       NodeSetup
-        .fromConfigFile(ReferenceBuild.LeiosB004fe0c)(dir.resolve("config.json"))
+        .fromConfigFile(ReferenceBuild.Leios)(dir.resolve("config.json"))
         .fold(e => fail(e.message), identity)
     assertEquals(setup.identity.magic, 164L)
     assertEquals(setup.genesis.geometry.epochLength, 21600L)
@@ -108,7 +108,7 @@ class LeiosTestnetConfigSuite extends FunSuite:
   test("the start state is in the Leios layout throughout: it writes as a Leios ledger file only") {
     val setup =
       NodeSetup
-        .fromConfigFile(ReferenceBuild.LeiosB004fe0c)(dir.resolve("config.json"))
+        .fromConfigFile(ReferenceBuild.Leios)(dir.resolve("config.json"))
         .fold(e => fail(e.message), identity)
     val file = xyz.kd5ujc.scarab.storage.haskell.state.HaskellLedgerFile
       .of(setup.mirrorStart.ext)
@@ -133,7 +133,7 @@ class LeiosTestnetConfigSuite extends FunSuite:
   ) {
     val setup =
       NodeSetup
-        .fromConfigFile(ReferenceBuild.LeiosB004fe0c)(dir.resolve("config.json"))
+        .fromConfigFile(ReferenceBuild.Leios)(dir.resolve("config.json"))
         .fold(e => fail(e.message), identity)
     val forks = setup.praos.forks
     assertEquals(
@@ -152,7 +152,7 @@ class LeiosTestnetConfigSuite extends FunSuite:
   test("the node setup reads the Dijkstra genesis the configuration names") {
     val setup =
       NodeSetup
-        .fromConfigFile(ReferenceBuild.LeiosB004fe0c)(dir.resolve("config.json"))
+        .fromConfigFile(ReferenceBuild.Leios)(dir.resolve("config.json"))
         .fold(e => fail(e.message), identity)
     val dijkstra = setup.globals.dijkstra.fold(fail("no Dijkstra genesis was read"))(identity)
     assertEquals(dijkstra.leiosCommitteeSize, BigInt(900))
@@ -165,7 +165,7 @@ class LeiosTestnetConfigSuite extends FunSuite:
     val unhashed = config.copy(hashes = config.hashes.copy(dijkstra = None))
     def withDijkstra(text: String)(name: String) =
       if name == "dijkstra-genesis.json" then Some(text.getBytes("UTF-8")) else read(name)
-    val refused = NodeSetup.assemble(ReferenceBuild.LeiosB004fe0c)(
+    val refused = NodeSetup.assemble(ReferenceBuild.Leios)(
       unhashed,
       withDijkstra("""{"maxRefScriptSizePerBlock": 1}""")
     )

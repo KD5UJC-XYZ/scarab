@@ -557,7 +557,7 @@ class HaskellImportSuite extends CatsEffectSuite:
 
   private val dijkstraSetup =
     NodeSetup
-      .fromDirectory(ReferenceBuild.LeiosB004fe0c)(JPath.of("fixtures/dijkstra-devnet/genesis"))
+      .fromDirectory(ReferenceBuild.Leios)(JPath.of("fixtures/dijkstra-devnet/genesis"))
       .fold(e => fail(e.message), identity)
   private val dijkstraChunk = ChunkSlots
     .fromSecurityParam(dijkstraSetup.geometry.k.toLong)
@@ -574,7 +574,7 @@ class HaskellImportSuite extends CatsEffectSuite:
       .map(hex => Bytes.fromHex(hex).fold(e => fail(e.message), identity))
 
   test(
-    "under leios-b004fe0c a chain into Dijkstra is stored whole, its Dijkstra blocks checked and kept as they are"
+    "under leios-rc-2026w47 a chain into Dijkstra is stored whole, its Dijkstra blocks checked and kept as they are"
   ) {
     val items = dijkstraRaw.map { raw =>
       val h = Block
@@ -599,7 +599,7 @@ class HaskellImportSuite extends CatsEffectSuite:
       write(haskell, dijkstraSetup.identity.magic, dijkstraChunk, items)
       val db = dir.toNioPath.resolve("scala-db")
       val leios = config(haskell, db, dijkstraSetup, dijkstraChunk)
-        .copy(build = ReferenceBuild.LeiosB004fe0c)
+        .copy(build = ReferenceBuild.Leios)
       for
         r <- attempt(importing(leios, _ => IO.unit))
         report = r.fold(e => fail(e.message), identity)
@@ -614,7 +614,7 @@ class HaskellImportSuite extends CatsEffectSuite:
   test("only the Leios testnet's build stores Dijkstra blocks") {
     assertEquals(
       ReferenceBuild.values.toVector.filter(HaskellImport.storesDijkstra),
-      Vector(ReferenceBuild.LeiosB004fe0c)
+      Vector(ReferenceBuild.Leios)
     )
   }
 

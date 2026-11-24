@@ -205,7 +205,7 @@ def main():
                      "without its UTxO (as a ledger snapshot holds it, the UTxO in its tables), and its exact UTxO, "
                      "snapshots and pool states. Not the Byron to Conway translations the node "
                      "applies before the injection, nor the consensus layer's parts of the start state.",
-            "build": "leios-b004fe0c", "image": IMAGE, "ledgerSourceCommit": LEDGER, "cardanoBase": BASE,
+            "build": "leios-rc-2026w47", "image": IMAGE, "ledgerSourceCommit": LEDGER, "cardanoBase": BASE,
             "imageId": subprocess.check_output(["docker", "image", "inspect", IMAGE, "--format", "{{.Id}}"],
                                                text=True).strip(),
             "cases": len(rows),
