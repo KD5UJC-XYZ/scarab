@@ -72,7 +72,17 @@ class TxSubmission2Suite extends munit.FunSuite:
       "8102",
       "82029f5820d36a2619a672494604e11bb447cbcf5231e9f2ba25c2169177edc941bd50ad6cff",
       "82029f8206581f" + "00" * 31 + "ff"
-    ).foreach(w => assert(TxSubmission2.decode(State.Idle, Role.Server, hex(w)).isLeft))
+    ).foreach(w =>
+      assert(TxSubmission2.decode(State.Idle, Role.Server, hex(w)) match {
+        case Left(ProtocolError.ExpectedConwayTransactionID) |
+            Left(ProtocolError.ExpectedDefiniteArray) |
+            Left(ProtocolError.ExpectedIndefiniteProtocolList) |
+            Left(ProtocolError.TransactionIDMustBe32Bytes(_)) |
+            Left(ProtocolError.UnknownTxSubmission2TagStateArity) =>
+          true
+        case _ => false
+      })
+    )
     assert(TxSubmission2.decode(State.Ids(true), Role.Client, hex("82019fff")) match {
       case Left(ProtocolError.TxSubmission2Agency(_, ChainSync.Role.Client)) => true
       case _                                                                 => false

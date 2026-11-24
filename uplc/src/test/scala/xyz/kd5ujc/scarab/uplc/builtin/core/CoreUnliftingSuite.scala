@@ -309,11 +309,61 @@ final class CoreUnliftingSuite extends munit.FunSuite:
     def replicate(byte: BigInt) =
       CoreUnlifting(CoreVariant.A)(DefaultFun.ReplicateByte, Vector(int(1), int(byte)))
     assert(replicate(0).isRight && replicate(255).isRight, "Word8 ends")
-    assert(replicate(-1).isLeft && replicate(256).isLeft, "past Word8")
+    assert(
+      replicate(-1) match {
+        case Left(
+              UnliftingFailure(
+                ErrorClass.Operational,
+                UnliftingCause.NotWithinBounds(_, UnliftingBound.Word8, _)
+              )
+            ) =>
+          true
+        case _ => false
+      },
+      "below Word8"
+    )
+    assert(
+      replicate(256) match {
+        case Left(
+              UnliftingFailure(
+                ErrorClass.Operational,
+                UnliftingCause.NotWithinBounds(_, UnliftingBound.Word8, _)
+              )
+            ) =>
+          true
+        case _ => false
+      },
+      "past Word8"
+    )
     def constr(i: BigInt) =
       CoreUnlifting(CoreVariant.E)(DefaultFun.ConstrData, Vector(int(i), con(dataList())))
     assert(constr(0).isRight && constr(BigInt(2).pow(64) - 1).isRight, "Word64 ends")
-    assert(constr(-1).isLeft && constr(BigInt(2).pow(64)).isLeft, "past Word64")
+    assert(
+      constr(-1) match {
+        case Left(
+              UnliftingFailure(
+                ErrorClass.Operational,
+                UnliftingCause.NotWithinBounds(_, UnliftingBound.Word64, _)
+              )
+            ) =>
+          true
+        case _ => false
+      },
+      "below Word64"
+    )
+    assert(
+      constr(BigInt(2).pow(64)) match {
+        case Left(
+              UnliftingFailure(
+                ErrorClass.Operational,
+                UnliftingCause.NotWithinBounds(_, UnliftingBound.Word64, _)
+              )
+            ) =>
+          true
+        case _ => false
+      },
+      "past Word64"
+    )
     assert(
       CoreUnlifting(CoreVariant.C)(DefaultFun.ConstrData, Vector(int(-1), con(dataList()))).isRight,
       "C reads an Integer"

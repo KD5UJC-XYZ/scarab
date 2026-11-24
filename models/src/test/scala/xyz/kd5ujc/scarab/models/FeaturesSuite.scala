@@ -194,9 +194,21 @@ class FeaturesSuite extends munit.FunSuite:
     assert(KeyDescriptor.decodeBytes(hex(s"82 02 58 20 ${"00" * 32}")).isRight)
     val err = KeyDescriptor.decodeBytes(hex(s"82 03 58 20 ${"00" * 32}")).left.toOption.get
     assertEquals(err.path, List("$crypto_alg"))
-    assert(CryptoAlg.from(2).isRight && CryptoAlg.from(3).isLeft)
-    assert(RedeemerTag.from(5).isRight && RedeemerTag.from(6).isLeft)
-    assert(PositiveCoin.from(BigInt(0)).isLeft && PositiveCoin.from(BigInt(1)).isRight)
+    assert(CryptoAlg.from(2).isRight)
+    assert(CryptoAlg.from(3) match {
+      case Left(ConstraintViolation(_, _, _, _)) => true
+      case _                                     => false
+    })
+    assert(RedeemerTag.from(5).isRight)
+    assert(RedeemerTag.from(6) match {
+      case Left(ConstraintViolation(_, _, _, _)) => true
+      case _                                     => false
+    })
+    assert(PositiveCoin.from(BigInt(0)) match {
+      case Left(ConstraintViolation(_, _, _, _)) => true
+      case _                                     => false
+    })
+    assert(PositiveCoin.from(BigInt(1)).isRight)
     assert(PolicyId.from(Bytes.fromArray(new Array[Byte](27))) match {
       case Left(ConstraintViolation(_, _, _, _)) => true
       case _                                     => false

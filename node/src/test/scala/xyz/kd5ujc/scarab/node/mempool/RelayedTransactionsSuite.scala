@@ -342,5 +342,9 @@ class RelayedTransactionsSuite extends FailsOnUncaught:
     val deep = hex("9fa0a0f5" + "81" * 30000 + "00ff")
     assertEquals(TxSubmission2.bodyId(deep), TxSubmission2.bodyId(hex("9fa0a0f5f6ff")))
     val tooMany = hex("9fa0a0f5" + "81" * 65535 + "00ff")
-    assert(tooMany.size > TxSubmission2.MaxOriginalBytes && TxSubmission2.bodyId(tooMany).isLeft)
+    assert(tooMany.size > TxSubmission2.MaxOriginalBytes)
+    assert(TxSubmission2.bodyId(tooMany) match {
+      case Left(ProtocolError.OriginalSizeOutsidePolicy(_, _)) => true
+      case _                                                   => false
+    })
   }

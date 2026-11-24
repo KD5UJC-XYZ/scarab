@@ -50,5 +50,18 @@ class MithrilBootstrapCommandSuite extends FunSuite:
       base ++ List("--timeout-seconds", "1.5"),
       base ++ List("--source-db"),
       base.updated(3, "http://public.example.test/aggregator")
-    ).foreach(args => assert(Command.parse(args).isLeft, args.toString))
+    ).foreach(args =>
+      assert(
+        Command.parse(args) match {
+          case Left(xyz.kd5ujc.scarab.node.tools.MithrilBootstrapCommand.Problem.Duplicate(_)) |
+              Left(xyz.kd5ujc.scarab.node.tools.MithrilBootstrapCommand.Problem.InvalidClient(_)) |
+              Left(xyz.kd5ujc.scarab.node.tools.MithrilBootstrapCommand.Problem.InvalidTimeout) |
+              Left(xyz.kd5ujc.scarab.node.tools.MithrilBootstrapCommand.Problem.NeedsValue(_)) |
+              Left(xyz.kd5ujc.scarab.node.tools.MithrilBootstrapCommand.Problem.Unknown(_)) =>
+            true
+          case _ => false
+        },
+        args.toString
+      )
+    )
   }

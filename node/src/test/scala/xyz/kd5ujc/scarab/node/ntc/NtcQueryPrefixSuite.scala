@@ -82,7 +82,18 @@ class NtcQueryPrefixSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with
       (0 until hex(prefix).size).foreach(n =>
         assert(short(hex(prefix).take(n)), s"$prefix cut at $n")
       )
-      assert(NtcQuery.decode(hex(prefix + completion)).isLeft, s"whole $prefix$completion")
+      assert(
+        NtcQuery.decode(hex(prefix + completion)) match {
+          case Left(NtcQuery.Error.Arity(_, _, _)) | Left(NtcQuery.Error.Constructor(_, _, _)) |
+              Left(NtcQuery.Error.ConwayOnly(_)) | Left(NtcQuery.Error.ExpectedArray(_)) |
+              Left(NtcQuery.Error.ExpectedUnsigned(_)) | Left(NtcQuery.Error.IndefiniteList(_)) |
+              Left(NtcQuery.Error.UnknownEra(_)) | Left(NtcQuery.Error.UnknownTag(_, _)) |
+              Left(NtcQuery.Error.Word8Range(_)) =>
+            true
+          case _ => false
+        },
+        s"whole $prefix$completion"
+      )
     }
   }
 

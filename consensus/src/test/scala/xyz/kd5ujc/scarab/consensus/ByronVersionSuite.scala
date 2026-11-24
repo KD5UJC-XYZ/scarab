@@ -13,6 +13,8 @@ import xyz.kd5ujc.scarab.ledger.{Block, Header, TxIn}
 import xyz.kd5ujc.scarab.ledger.byron.*
 import xyz.kd5ujc.scarab.ledger.byron.ByronTestKit.*
 import xyz.kd5ujc.scarab.ledger.LedgerDecodeError
+import xyz.kd5ujc.scarab.ledger.ByronChainError
+import xyz.kd5ujc.scarab.ledger.ChainError
 
 /** Source-derived REF-07 header/registration cases; raw reference proposal-decoder verdicts are
   * retained separately by ByronProposalFixtureSuite. The pinned ledger f649f97 has
@@ -112,11 +114,17 @@ class ByronVersionSuite extends ScalaCheckSuite:
     Vector[Version]((65536L, 0L, 0L), (0L, 65536L, 0L), (1L, 0L, 256L), (4294967297L, 0L, 0L))
   overflows.foreach { proposed =>
     test(s"header rejects out-of-range version $proposed at block decoding") {
-      assert(Block.decode(block(proposed, (1, 0, 0)), config.epochSlots).isLeft)
+      assert(Block.decode(block(proposed, (1, 0, 0)), config.epochSlots) match {
+        case Left(ChainError.Decode(_, _)) => true
+        case _                             => false
+      })
     }
     test(s"signed proposal rejects out-of-range version $proposed before registration") {
       val b = decoded(block((0, 0, 0), proposed))
-      assert(ByronRules.update(state((0, 0, 0)), b, rulesConfig).isLeft)
+      assert(ByronRules.update(state((0, 0, 0)), b, rulesConfig) match {
+        case Left(ByronChainError.Body(_)) => true
+        case _                             => false
+      })
       assert(ByronBody.decode(b.body) match {
         case Left(LedgerDecodeError.Version(_)) => true
         case _                                  => false

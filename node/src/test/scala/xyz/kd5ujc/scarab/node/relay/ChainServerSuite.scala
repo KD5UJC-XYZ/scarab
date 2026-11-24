@@ -262,7 +262,7 @@ class ChainServerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
             assertEquals(read, (1 to 10).toList)
             assertEquals(fromMiddle, (6 to 10).toList)
             assertEquals(fromVolatile, List(10))
-            assertEquals(unknown.isLeft, true)
+            assert(unknown.isLeft)
             assertEquals(tip.blockNo.value, BigInt(10))
         }
       }

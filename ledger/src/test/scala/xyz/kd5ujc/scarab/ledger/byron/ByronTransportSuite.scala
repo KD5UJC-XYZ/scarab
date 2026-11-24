@@ -151,7 +151,15 @@ class ByronTransportSuite extends FunSuite:
 
   invalidSsc.foreach { (label, payload) =>
     test(s"SSC native structural rejection: $label") {
-      assert(check(payload).isLeft)
+      assert(check(payload) match {
+        case Left(xyz.kd5ujc.scarab.ledger.LedgerDecodeError.ArrayLength(_, _, _)) |
+            Left(xyz.kd5ujc.scarab.ledger.LedgerDecodeError.Expected(_, _, _)) |
+            Left(xyz.kd5ujc.scarab.ledger.LedgerDecodeError.IndefiniteLength(_)) |
+            Left(xyz.kd5ujc.scarab.ledger.LedgerDecodeError.NumberOutOfRange(_, _, _, _)) |
+            Left(xyz.kd5ujc.scarab.ledger.LedgerDecodeError.UnknownTag(_, _)) =>
+          true
+        case _ => false
+      })
     }
   }
 
@@ -327,7 +335,20 @@ class ByronTransportSuite extends FunSuite:
     )
   )
   invalidTransactions.foreach { (label, value) =>
-    test(s"ordinary native transaction rejection: $label") { assert(checkTx(value).isLeft) }
+    test(s"ordinary native transaction rejection: $label") {
+      assert(checkTx(value) match {
+        case Left(xyz.kd5ujc.scarab.ledger.LedgerDecodeError.ByteLength(_, _, _)) |
+            Left(xyz.kd5ujc.scarab.ledger.LedgerDecodeError.EmptyInputsOrOutputs) |
+            Left(xyz.kd5ujc.scarab.ledger.LedgerDecodeError.Expected(_, _, _)) |
+            Left(xyz.kd5ujc.scarab.ledger.LedgerDecodeError.ExpectedTag(_, _, _)) |
+            Left(xyz.kd5ujc.scarab.ledger.LedgerDecodeError.IndefiniteLength(_)) |
+            Left(xyz.kd5ujc.scarab.ledger.LedgerDecodeError.NumberOutOfRange(_, _, _, _)) |
+            Left(xyz.kd5ujc.scarab.ledger.LedgerDecodeError.Syntax(_)) |
+            Left(xyz.kd5ujc.scarab.ledger.LedgerDecodeError.UnknownTag(_, _)) =>
+          true
+        case _ => false
+      })
+    }
   }
 
   test("ordinary attributes preserve unknown data without applying ledger admission limits") {
@@ -460,5 +481,16 @@ class ByronTransportSuite extends FunSuite:
     "indefinite fee coefficients" -> withParams(params(12, array(zero, known(list(zero, zero)))))
   )
   invalidUpdates.foreach { (label, value) =>
-    test(s"ordinary native update rejection: $label") { assert(checkUpdate(value).isLeft) }
+    test(s"ordinary native update rejection: $label") {
+      assert(checkUpdate(value) match {
+        case Left(xyz.kd5ujc.scarab.ledger.LedgerDecodeError.AtMostOne(_, _)) |
+            Left(xyz.kd5ujc.scarab.ledger.LedgerDecodeError.ByteLength(_, _, _)) |
+            Left(xyz.kd5ujc.scarab.ledger.LedgerDecodeError.Expected(_, _, _)) |
+            Left(xyz.kd5ujc.scarab.ledger.LedgerDecodeError.IndefiniteLength(_)) |
+            Left(xyz.kd5ujc.scarab.ledger.LedgerDecodeError.NumberOutOfRange(_, _, _, _)) |
+            Left(xyz.kd5ujc.scarab.ledger.LedgerDecodeError.UnknownTag(_, _)) =>
+          true
+        case _ => false
+      })
+    }
   }

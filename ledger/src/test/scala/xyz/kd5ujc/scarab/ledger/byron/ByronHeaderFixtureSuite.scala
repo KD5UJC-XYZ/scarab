@@ -7,6 +7,7 @@ import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{Block, Header, LedgerDecodeError, Unsigned}
 import xyz.kd5ujc.scarab.protocol.{NtNHeader, ProtocolError}
+import xyz.kd5ujc.scarab.ledger.ChainError
 
 /** Actual pinned CLI full-block decoder verdicts, not reference signature/ledger acceptance. */
 class ByronHeaderFixtureSuite extends FunSuite:
@@ -72,6 +73,10 @@ class ByronHeaderFixtureSuite extends FunSuite:
             case _ => fail("expected Byron block")
           }
         )
-      else assert(decoded.isLeft)
+      else
+        assert(decoded match {
+          case Left(ChainError.Decode(_, _)) => true
+          case _                             => false
+        })
     }
   }

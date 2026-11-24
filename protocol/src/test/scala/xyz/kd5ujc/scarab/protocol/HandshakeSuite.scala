@@ -400,7 +400,14 @@ class HandshakeSuite extends munit.FunSuite:
     )
     // a length cborg's decodeListLen cannot hold in an Int is refused
     val huge = decodePrefix(ntn, State.Confirm, bytes("8202" + "9b8000000000000000" + "010e6178"))
-    assert(huge.isLeft && !huge.swap.toOption.exists(_.incomplete), huge)
+    assert(
+      huge match {
+        case Left(Handshake.DecodeError(ProtocolError.HandshakeByteLimitExceeded, _)) => true
+        case _                                                                        => false
+      },
+      huge
+    )
+    assert(!huge.swap.toOption.exists(_.incomplete), huge)
     // only a refusal is read so: in StPropose the message is refused as before
     assert(decode(ntn, State.Propose, bytes("8202" + "85" + "010e63626164")) match {
       case Left(Handshake.DecodeError(ProtocolError.IncompleteCbor, _)) => true

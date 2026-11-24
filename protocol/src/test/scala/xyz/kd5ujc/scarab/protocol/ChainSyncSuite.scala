@@ -329,7 +329,20 @@ class ChainSyncSuite extends munit.FunSuite:
       "8200d8184100",
       "820082820200d8184100",
       "8206d818410000"
-    ).foreach(h => assert(NtNHeader.codec.decode(b(h)).isLeft, h))
+    ).foreach(h =>
+      assert(
+        NtNHeader.codec.decode(b(h)) match {
+          case Left(ProtocolError.ExpectedDefiniteArray) |
+              Left(ProtocolError.ExpectedDefiniteByteString) |
+              Left(ProtocolError.ExpectedEraHeader) | Left(ProtocolError.ExpectedTag24Header) |
+              Left(ProtocolError.TrailingPayloadBytes) | Left(ProtocolError.UnknownByronSubtag) |
+              Left(ProtocolError.UnknownEraIndex) =>
+            true
+          case _ => false
+        },
+        h
+      )
+    )
     assert(NtNHeader.codec.encode(NtNHeader(Era.Byron, b("00"), None)) match {
       case Left(ProtocolError.ByronHeaderRequiresItsWrapper) => true
       case _                                                 => false

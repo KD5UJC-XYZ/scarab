@@ -209,7 +209,21 @@ class EraPParamsCborSuite extends ScalaCheckSuite:
     assertEquals(refused.map(_.id).toSet, refusals.keySet)
     refused.foreach { r =>
       assertEquals(read[PParamsUpdate[Dijkstra]](r.update).left.toOption, refusals.get(r.id), r.id)
-      assert(flat(r.update).isLeft, r.id)
+      assert(
+        flat(r.update) match {
+          case Left(LedgerDecodeError.ArrayLength(_, _, _)) |
+              Left(LedgerDecodeError.DuplicateElement(_)) |
+              Left(LedgerDecodeError.Expected(_, _, _)) |
+              Left(LedgerDecodeError.ExpectedTag(_, _, _)) |
+              Left(LedgerDecodeError.NumberOutOfRange(_, _, _, _)) |
+              Left(LedgerDecodeError.RationalOutOfBounds(_, _)) |
+              Left(LedgerDecodeError.UnknownKey(_, _)) | Left(LedgerDecodeError.Zero(_)) |
+              Left(LedgerDecodeError.ZeroDenominator(_)) =>
+            true
+          case _ => false
+        },
+        r.id
+      )
     }
 
   test("the Leios testnet's two updates read and write their bytes"):

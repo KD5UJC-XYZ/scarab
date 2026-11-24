@@ -168,7 +168,22 @@ class CborSuite extends munit.FunSuite:
       "fc",
       "df00"
     )
-      .foreach(hex => assert(Cbor.decode(bytes(hex)).isLeft, s"unexpected acceptance: $hex"))
+      .foreach(hex =>
+        assert(
+          Cbor.decode(bytes(hex)) match {
+            case Left(xyz.kd5ujc.scarab.codec.Cbor.Error.InvalidAdditionalInformation(_)) |
+                Left(xyz.kd5ujc.scarab.codec.Cbor.Error.InvalidStringChunk) |
+                Left(xyz.kd5ujc.scarab.codec.Cbor.Error.TrailingBytes) |
+                Left(xyz.kd5ujc.scarab.codec.Cbor.Error.TruncatedString) |
+                Left(xyz.kd5ujc.scarab.codec.Cbor.Error.UnexpectedEnd) |
+                Left(xyz.kd5ujc.scarab.codec.Cbor.Error.UnmatchedMapKey) |
+                Left(xyz.kd5ujc.scarab.codec.Cbor.Error.UnsupportedSimpleValue(_)) =>
+              true
+            case _ => false
+          },
+          s"unexpected acceptance: $hex"
+        )
+      )
   }
   test("UTF-8 is strict, including each indefinite text chunk") {
     Vector("61ff", "62c0af", "63eda080", "64f4908080", "7f61c361a9ff")
