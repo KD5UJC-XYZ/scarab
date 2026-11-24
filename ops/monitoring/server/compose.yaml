@@ -3,11 +3,13 @@
 # Alertmanager (notifications for its alert rules), Loki (log streams) and Grafana. Prometheus and Loki are published on BIND_ADDR only (on monitor-host, its
 # VPN address); Grafana on GRAFANA_BIND_ADDR, which defaults to BIND_ADDR (on monitor-host, 0.0.0.0, so
 # the home network reaches it too). Settings come from .env next to this file (see .env.example).
+# The images are pinned by digest, as the base images in docker/*.Dockerfile are: the digest is what is pulled, the
+# tag is for the reader (`docker buildx imagetools inspect <image>:<tag>` prints the digest of another version).
 name: scarab-monitoring
 
 services:
   prometheus:
-    image: prom/prometheus:v3.5.0
+    image: prom/prometheus:v3.5.0@sha256:63805ebb8d2b3920190daf1cb14a60871b16fd38bed42b857a3182bc621f4996
     restart: unless-stopped
     user: "65534:65534"
     command:
@@ -25,7 +27,7 @@ services:
   # Routes the firing rules to the receivers in alertmanager/alertmanager.yml. That file is the operator's and is
   # not committed; deploy.sh starts it from alertmanager.example.yml (which sends nothing) and never overwrites it.
   alertmanager:
-    image: prom/alertmanager:v0.28.1
+    image: prom/alertmanager:v0.28.1@sha256:27c475db5fb156cab31d5c18a4251ac7ed567746a2483ff264516437a39b15ba
     restart: unless-stopped
     user: "65534:65534"
     command:
@@ -38,7 +40,7 @@ services:
       - ${BIND_ADDR:-127.0.0.1}:9093:9093
 
   loki:
-    image: grafana/loki:3.5.3
+    image: grafana/loki:3.5.3@sha256:3165cecce301ce5b9b6e3530284b080934a05cd5cafac3d3d82edcb887b45ecd
     restart: unless-stopped
     user: "10001:10001"
     command: -config.file=/etc/loki/loki.yaml
@@ -49,7 +51,7 @@ services:
       - ${BIND_ADDR:-127.0.0.1}:3100:3100
 
   grafana:
-    image: grafana/grafana:12.1.1
+    image: grafana/grafana:12.1.1@sha256:a1701c2180249361737a99a01bc770db39381640e4d631825d38ff4535efa47d
     restart: unless-stopped
     user: "472:0"
     environment:

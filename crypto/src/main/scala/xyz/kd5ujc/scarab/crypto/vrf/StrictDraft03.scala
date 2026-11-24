@@ -5,8 +5,16 @@ import java.util.Arrays
 import xyz.kd5ujc.scarab.codec.Bytes
 import cats.syntax.either.*
 
-/** Experimental public-only Cardano draft03 source-profile verifier. Variable-time, unaudited,
-  * finite-corpus evidence only. Not a protocol-alpha builder or consensus validator.
+/** ECVRF-ED25519-SHA512-Elligator2 (draft-03) verification with the acceptance rules of the Cardano
+  * fork of libsodium (`crypto_vrf_ietfdraft03_verify`, IntersectMBO/libsodium dbb48cce): the proof
+  * verifier under the Praos and TPraos header rules, reached through [[PraosVrfCertificate]]. It
+  * verifies a proof over a given alpha and nothing more: building alpha, binding the claimed
+  * output, the leader threshold and the key's registration are its callers'.
+  *
+  * Public inputs only, variable-time, and not independently audited (#230). Its agreement with the
+  * reference is the finite corpus of `fixtures/vrf` (`StrictDraft03Suite`), compared with a source
+  * build of that fork, not with a node's shipped binary; the corpus holds no accepted proof under a
+  * mixed-order public key (`fixtures/vrf/README.md`).
   */
 object StrictDraft03:
   val MaxAlphaBytes: Int = 1024 * 1024

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.consensus
 
-import xyz.kd5ujc.scarab.ledger.{ChainError, Fixtures, Header}
+import xyz.kd5ujc.scarab.ledger.{ChainError, Fixtures, Header, HeaderStructureProblem}
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.protocol.ChainSync
 import munit.ScalaCheckSuite
@@ -86,7 +86,56 @@ class VolatileChainSuite extends ScalaCheckSuite:
     val headers = Fixtures.chain(3)
     val c = build(headers)
     val fork = Fixtures.chain(1, 7, Some(headers(1))).head
-    assertEquals(c.extend(fork, 0).map(_._1), Left(ChainError.NotConnected(fork.point, c.tip)))
+    val number = HeaderStructureProblem.BlockNumber(fork.blockNo, headers(2).blockNo + 1)
+    assertEquals(
+      c.extend(fork, 0).map(_._1),
+      Left(ChainError.NotConnected(fork.point, c.tip, number))
+    )
+  }
+
+  // The envelope's checks in its order (`validateEnvelope`, ouroboros-consensus 82ecba32
+  // `Ouroboros/Consensus/HeaderValidation.hs:364-376`), in the words of header-first validation: a
+  // header that fails two of them is refused for the first (#1403)
+  test("a header that does not extend the tip is refused for the first check it fails") {
+    val c = build(Fixtures.chain(3))
+    val tip = Fixtures.chain(3).last
+    val other = Fixtures.chain(1, 7).head.hash
+    val (number, slot) = (tip.blockNo + 1, tip.slot + 1)
+    val rows: Vector[(String, Header, HeaderStructureProblem)] = Vector(
+      (
+        "block number",
+        Fixtures.header(number + 1, slot, Some(tip.hash)),
+        HeaderStructureProblem.BlockNumber(number + 1, number)
+      ),
+      (
+        "slot",
+        Fixtures.header(number, tip.slot, Some(tip.hash)),
+        HeaderStructureProblem.SlotNumber(tip.slot, slot)
+      ),
+      (
+        "previous hash",
+        Fixtures.header(number, slot, Some(other)),
+        HeaderStructureProblem.PreviousHash(Some(other), Some(tip.hash))
+      ),
+      (
+        "block number before the slot and the previous hash",
+        Fixtures.header(number - 1, tip.slot - 1, Some(other)),
+        HeaderStructureProblem.BlockNumber(number - 1, number)
+      ),
+      (
+        "slot before the previous hash",
+        Fixtures.header(number, tip.slot - 1, Some(other)),
+        HeaderStructureProblem.SlotNumber(tip.slot - 1, slot)
+      )
+    )
+    assert(c.extend(Fixtures.header(number, slot, Some(tip.hash)), 0).isRight, "the next block")
+    rows.foreach { (name, header, cause) =>
+      assertEquals(
+        c.extend(header, 0).left.toOption,
+        Some(ChainError.NotConnected(header.point, c.tip, cause)),
+        name
+      )
+    }
   }
 
   test("the first block after genesis must have no parent") {

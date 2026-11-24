@@ -2,10 +2,9 @@
 package xyz.kd5ujc.scarab.crypto.kes
 
 import java.util.Arrays
-import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes
-import org.bouncycastle.crypto.params.Ed25519PrivateKeyParameters
-import org.bouncycastle.crypto.signers.Ed25519Signer
+import org.bouncycastle.crypto.digests.Blake2bDigest
+import org.bouncycastle.math.ec.rfc8032.Ed25519
 
 /** Sum6 KES signing keys in the binary layout of cardano-base (`SumKES` over `Ed25519`,
   * Blake2b-256): the `kes.skey` payload of `cardano-cli node key-gen-KES`.
@@ -20,6 +19,14 @@ import org.bouncycastle.crypto.signers.Ed25519Signer
   * The key is mutable on purpose: [[evolve]] overwrites the discarded material with zeros (the
   * seeds and sub-keys of periods that can no longer be signed), so a stolen key cannot sign the
   * past. [[forget]] erases everything. Not constant-time beyond what BouncyCastle gives.
+  *
+  * What the erasure covers: the key's own array and every array this object makes from it. The leaf
+  * is signed and its public key derived from the key's array in place, hashes read the seeds where
+  * they lie, and scratch copies are zeroed before they are dropped. What it does not cover: Bouncy
+  * Castle's Ed25519 leaves the expanded leaf key in arrays of its own that it never clears,
+  * [[SigningKey.toBytes]] is a copy its caller owns, and a collector that moves an array leaves the
+  * old bytes behind. So forward security holds for the stored key, not against a reader of this
+  * process's memory (#230); the reference keeps the key in locked memory outside the heap.
   */
 object Sum6KesSigning:
   val Depth: Int = 6
@@ -108,16 +115,25 @@ object Sum6KesSigning:
     else if seed.size != SeedBytes then Left(Failure.InvalidSeedLength(seed.size))
     else
       val material = new Array[Byte](KeyBytes)
-      gen(seed.toArray, material, 0, Depth)
+      val root = seed.toArray
+      gen(root, material, 0, Depth)
+      Arrays.fill(root, 0.toByte)
       Right(new SigningKey(material, 0))
 
   /** Verification key of the depth-`depth` tree generated from `seed` (test and diagnostics). */
   private[kes] def rootOfSeed(seed: Bytes, depth: Int): Bytes =
+    val root = seed.toArray
+    val vk = rootOf(root, depth)
+    Arrays.fill(root, 0.toByte)
+    Bytes.wrap(vk)
+
+  /** [[rootOfSeed]] over a seed array, which stays its caller's to erase. */
+  private def rootOf(seed: Array[Byte], depth: Int): Array[Byte] =
     val m = new Array[Byte](size(depth))
-    gen(seed.toArray, m, 0, depth)
+    gen(seed, m, 0, depth)
     val vk = vkOf(m, 0, depth)
     Arrays.fill(m, 0.toByte)
-    Bytes.fromArray(vk)
+    vk
 
   /** Load a `kes.skey` payload that is at period `period` (0 for a fresh key). Every level's stored
     * verification keys are recomputed and checked, so a corrupt or mis-sized key is refused.
@@ -126,15 +142,19 @@ object Sum6KesSigning:
     if bytes == null then Left(Failure.MissingKey)
     else if bytes.size != KeyBytes then Left(Failure.InvalidKeyLength(bytes.size))
     else if period < 0 || period >= Periods then Left(Failure.PeriodOutOfRange(period))
-    else
-      val material = bytes.toArray
-      checkLevel(material, 0, Depth, period).fold(
-        failure =>
-          Arrays.fill(material, 0.toByte)
-          Left(failure)
-        ,
-        _ => Right(new SigningKey(material, period))
-      )
+    else loaded(bytes.toArray, period)
+
+  /** The key over `material`, which becomes the key's own array, if it is a key at `period`; erased
+    * if it is not.
+    */
+  private def loaded(material: Array[Byte], period: Int): Either[Failure, SigningKey] =
+    checkLevel(material, 0, Depth, period).fold(
+      failure =>
+        Arrays.fill(material, 0.toByte)
+        Left(failure)
+      ,
+      _ => Right(new SigningKey(material, period))
+    )
 
   /** Load a `kes.skey` payload of any period (a key this node has evolved and written back, see
     * `KesStore`): the period is read off the key itself, because [[update]] erases the `r1` seed of
@@ -146,7 +166,10 @@ object Sum6KesSigning:
   def fromEvolved(bytes: Bytes): Either[Failure, SigningKey] =
     if bytes == null then Left(Failure.MissingKey)
     else if bytes.size != KeyBytes then Left(Failure.InvalidKeyLength(bytes.size))
-    else fromBytes(bytes, periodOf(bytes.toArray))
+    else
+      // one copy of the payload: the period is read off the array that becomes the key's
+      val material = bytes.toArray
+      loaded(material, periodOf(material))
 
   /** The period an evolved key stands at, read from which levels' right-half seeds are erased. */
   private[kes] def periodOf(m: Array[Byte]): Int =
@@ -158,13 +181,21 @@ object Sum6KesSigning:
 
   // ---- tree operations over the flat layout
 
+  /** Blake2b-256 of the parts, read where they lie: a seed among them is not copied, and the digest
+    * clears its own buffer when it finishes.
+    */
   private def hash(parts: Array[Byte]*): Array[Byte] =
-    Blake2b.hash256.hash(Bytes.fromArray(parts.flatten.toArray)).toArray
+    val digest = new Blake2bDigest(256)
+    parts.foreach(part => digest.update(part, 0, part.length))
+    val output = new Array[Byte](32)
+    digest.doFinal(output, 0)
+    output
 
+  /** The public key of the leaf seed at `at`, derived from the array in place. */
   private def leafPublic(seed: Array[Byte], at: Int): Array[Byte] =
-    new Ed25519PrivateKeyParameters(Arrays.copyOfRange(seed, at, at + 32), 0)
-      .generatePublicKey()
-      .getEncoded
+    val public = new Array[Byte](Ed25519.PUBLIC_KEY_SIZE)
+    Ed25519.generatePublicKey(seed, at, public, 0)
+    public
 
   private def r1At(offset: Int, depth: Int): Int = offset + size(depth - 1)
   private def vk0At(offset: Int, depth: Int): Int = r1At(offset, depth) + 32
@@ -207,10 +238,10 @@ object Sum6KesSigning:
       message: Array[Byte]
   ): Array[Byte] =
     if depth == 0 then
-      val signer = new Ed25519Signer()
-      signer.init(true, new Ed25519PrivateKeyParameters(m, offset))
-      signer.update(message, 0, message.length)
-      signer.generateSignature()
+      // signed from the key's array in place: no key object holds a copy of the leaf seed
+      val signature = new Array[Byte](Ed25519.SIGNATURE_SIZE)
+      Ed25519.sign(m, offset, message, 0, message.length, signature, 0)
+      signature
     else
       val half = 1 << (depth - 1)
       signAt(m, offset, depth - 1, period % half, message) ++
@@ -260,12 +291,16 @@ object Sum6KesSigning:
         )
       else if !Arrays.equals(vkOf(m, offset, depth - 1), stored) then
         Left(Failure.VerificationKeyMismatch(depth))
-      else if !inRight && !Arrays.equals(
-          rootOfSeed(
-            Bytes.fromArray(Arrays.copyOfRange(m, seedAt, seedAt + 32)),
-            depth - 1
-          ).toArray,
-          Arrays.copyOfRange(m, vk1At(offset, depth), vk1At(offset, depth) + 32)
-        )
-      then Left(Failure.RightSeedMismatch(depth))
+      else if !inRight && !rightSeedGenerates(m, offset, depth) then
+        Left(Failure.RightSeedMismatch(depth))
       else checkLevel(m, offset, depth - 1, subPeriod)
+
+  /** Does the right-half seed stored at this level generate the stored `vk1`? */
+  private def rightSeedGenerates(m: Array[Byte], offset: Int, depth: Int): Boolean =
+    val seed = Arrays.copyOfRange(m, r1At(offset, depth), r1At(offset, depth) + 32)
+    val root = rootOf(seed, depth - 1)
+    Arrays.fill(seed, 0.toByte)
+    Arrays.equals(
+      root,
+      Arrays.copyOfRange(m, vk1At(offset, depth), vk1At(offset, depth) + 32)
+    )

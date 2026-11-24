@@ -191,8 +191,12 @@ chain refuses if a rotation was not yet followed by a block, and the node then r
 pair stays).
 
 **Cold key.** The driver signs with the pool's cold key, so on a *test network* the cold key is online, on the
-machine of the driver, mounted into the `cardano-cli` container only (never into the node's); the owner accepts
-that for a pool whose stake is test stake. A *mainnet* pool keeps the cold key offline: do the same steps by hand
+machine of the driver; the owner accepts that for a pool whose stake is test stake. It is never mounted into the
+node's container, and of the `cardano-cli` containers only two get a part of it, one file each and read-only: the
+verification key for `node new-counter`, the signing key for `node issue-op-cert`. `--cli-image` is run as the
+local image store holds it (`--pull=never`), and nothing verifies it: name it by digest rather than by tag. The
+driver does not refuse mainnet (no `--testnet-magic`): a run that finds the signing key there prints a `warning`
+line and goes on. A *mainnet* pool keeps the cold key offline: do the same steps by hand
 on the offline machine (`cardano-cli node key-gen-KES`, `node new-counter --counter-value <on-chain + 1>`,
 `node issue-op-cert --kes-period <current period>`), carry only the new `kes.skey` and `node.cert` to the producer
 as a new `gen-...` directory, switch `current`, and send SIGHUP; the node performs the same checks.

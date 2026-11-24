@@ -11,7 +11,14 @@ import scala.concurrent.duration.*
 import scala.math.Ordering.Implicits.seqOrdering
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.{BlockRules, FollowerEvent, NoVerdictRetry, VolatileChain}
-import xyz.kd5ujc.scarab.ledger.{BlockFailure, Header, ValidationError, NodeError, StorageError}
+import xyz.kd5ujc.scarab.ledger.{
+  BlockFailure,
+  Header,
+  HeaderStructureProblem,
+  ValidationError,
+  NodeError,
+  StorageError
+}
 import xyz.kd5ujc.scarab.network.FailsOnUncaught
 import xyz.kd5ujc.scarab.network.selection.Gsm
 import xyz.kd5ujc.scarab.node.forge.ForgedChain
@@ -394,6 +401,113 @@ class BlockSelectionWorkerSuite extends FailsOnUncaught:
             }
           yield ()
         }
+      }
+    yield ()
+  }
+
+  /** A block that names its predecessor by hash and is not the next of its chain: a copy `header`
+    * of a forged header, announced for that header's own body `raw`. The copy keeps the hash and
+    * the slot, so the body is its header's ([[BlockPool.Delivered.checked]]). `cause` is what
+    * extending the chain with it finds, and `refusal` the invalid block that makes of it.
+    */
+  private final case class Misplaced(header: Header, raw: Bytes, cause: HeaderStructureProblem):
+    def refusal: ValidationError =
+      ValidationError(header.point, BlockFailure.HeaderStructure(cause))
+    def delivered: IO[BlockPool.Delivered] =
+      BlockPool.Delivered.checked(header, raw).fold(e => IO(fail(e.message)), IO.pure)
+
+  /** The second block of `late`, announced with the number after its own. */
+  private def numbered(late: ForgedChain): Misplaced =
+    val next = late.headers(1)
+    Misplaced(
+      next.copy(blockNo = next.blockNo + 1),
+      late.raws(1),
+      HeaderStructureProblem.BlockNumber(next.blockNo + 1, next.blockNo)
+    )
+
+  /** The first block of `early` announced as a successor of the first block of `late`, whose slot
+    * is later than its own, with the number `ahead` after that block's: the next one, or a number
+    * that is not the next either, which the envelope finds first.
+    */
+  private def earlier(early: ForgedChain, late: ForgedChain, ahead: Int): Misplaced =
+    val (base, block) = (late.headers(0), early.headers(0))
+    Misplaced(
+      block.copy(prevHash = Some(base.hash), blockNo = base.blockNo + ahead),
+      early.raws(0),
+      if ahead == 1 then HeaderStructureProblem.SlotNumber(block.slot, base.slot + 1)
+      else HeaderStructureProblem.BlockNumber(base.blockNo + ahead, base.blockNo + 1)
+    )
+
+  // #1403: block application meets a header that no header-first validation saw. This harness has
+  // none, as a node run with `--header-first off`. The rules accept the block, and its header is
+  // not the next of the chain by its block number or its slot: an invalid block, as the envelope
+  // the reference runs on every block it applies makes it (ouroboros-consensus 82ecba32
+  // `validateEnvelope`, `Ouroboros/Consensus/HeaderValidation.hs:364-376`), and no stop of the
+  // node. `late` forges in later slots than `early`, both from one genesis, and the chain holds the
+  // first block of `late`. The session has diffusion pipelining off, so that the refusal of the
+  // block it added is its punishment, whatever it added before.
+  private def misplaced(name: String)(block: (ForgedChain, ForgedChain) => Misplaced): Unit =
+    test(s"$name is an invalid block: recorded, its sender blamed, no stop (#1403)") {
+      for
+        forks <- ForgedChain.sameIssuerForks(5000 until 5060, 5060 until 5120)
+        (early, late) = forks
+        base <- checked(late, 1)
+        bad = block(early, late)
+        delivered <- bad.delivered
+        _ <- node(Set.empty) { n =>
+          val blamed = (e: ValidationError) => n.reports.update(_ :+ e)
+          n.pool.session(Some(blamed), BlockPool.Diffusion.Off).use { sender =>
+            for
+              _ <- add(sender, base) *> n.pool.admissions.reprocess
+              _ <- add(sender, Vector(delivered)) *> n.pool.admissions.reprocess
+              fatals <- n.fatals.get
+              known <- n.pool.invalidBlocks.snapshot
+              reports <- n.reports.get
+              tip <- n.state.get.map(_.tip)
+              _ <- IO {
+                assertEquals(fatals, Vector.empty)
+                assertEquals(known.entries, Map(bad.header.hash -> bad.refusal))
+                assertEquals(reports, Vector(bad.refusal))
+                assertEquals(tip, late.headers(0).point)
+              }
+            yield ()
+          }
+        }
+      yield ()
+    }
+
+  misplaced("a block whose number is not its predecessor's successor")((_, late) => numbered(late))
+  misplaced("a block whose slot is not after its predecessor's")(earlier(_, _, 1))
+  misplaced("a block of neither the next number nor a later slot")(earlier(_, _, 2))
+
+  // #1403: a delivered block is in the received log before it is applied, so a start reads such a
+  // block back with the chain it resumed. Startup selection refuses it as any selection does, and
+  // blames nobody: the node starts, on the chain it resumed.
+  test("startup refuses a recovered block that is not the next of its chain: no stop (#1403)") {
+    for
+      forks <- ForgedChain.sameIssuerForks(5000 until 5060, 5060 until 5120)
+      (early, late) = forks
+      base <- checked(late, 1)
+      bad = earlier(early, late, 1)
+      delivered <- bad.delivered
+      resumed = VolatileChain
+        .genesis[BigInt](5, 42)
+        .extend(late.headers(0), 99)
+        .fold(e => fail(e.message), _._1)
+      _ <- node(Set.empty, initial = Some(resumed), recovered = base :+ delivered) { n =>
+        for
+          _ <- n.pool.admissions.reprocess
+          selected <- n.state.get
+          known <- n.pool.invalidBlocks.snapshot
+          reports <- n.reports.get
+          fatals <- n.fatals.get
+          _ <- IO {
+            assertEquals(selected, resumed)
+            assertEquals(known.entries, Map(bad.header.hash -> bad.refusal))
+            assertEquals(reports, Vector.empty)
+            assertEquals(fatals, Vector.empty)
+          }
+        yield ()
       }
     yield ()
   }

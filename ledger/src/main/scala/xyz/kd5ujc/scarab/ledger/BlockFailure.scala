@@ -61,6 +61,15 @@ enum BlockFailure:
   /** A Byron block in or after the epoch the chain enters Shelley. */
   case ByronAfterTransition(epoch: BigInt, first: BigInt)
 
+  /** The block's header does not continue the block it names as its predecessor: its block number
+    * or its slot is not the envelope's, as header-first validation refuses the header
+    * ([[HeaderError.Structure]]). Block application meets it only for a header that validation did
+    * not see first; the reference runs the envelope on every block it applies (ouroboros-consensus
+    * 82ecba32 `validateEnvelope`, `Ouroboros/Consensus/HeaderValidation.hs:364-376`, from
+    * `Ledger/Extended.hs:189-211`).
+    */
+  case HeaderStructure(cause: HeaderStructureProblem)
+
   // ---- decode
 
   /** The block does not decode. */
@@ -178,8 +187,9 @@ enum BlockFailure:
 
   /** The rule family, as the log names it. */
   def rule: BlockRule = this match
-    case HeaderDiffers | Transport(_) | BodyCommitment | EraAnnounced(_, _) |
-        EpochPrecedesLedger(_) | LedgerEra(_, _) | ByronAfterShelley | ByronAfterTransition(_, _) =>
+    case HeaderDiffers | Transport(_) | BodyCommitment | EraAnnounced(_, _) | EpochPrecedesLedger(
+          _
+        ) | LedgerEra(_, _) | ByronAfterShelley | ByronAfterTransition(_, _) | HeaderStructure(_) =>
       BlockRule.Structure
     case Decode(_) | TxDecode(_, _) | DijkstraEra(_) | ConwayEra(_) => BlockRule.Decode
     case NoByronGenesis | TransitionUndecided(_) | ShelleyBeforeTransition(_, _, _) | Byron(_) =>
@@ -204,9 +214,10 @@ enum BlockFailure:
     case ByronAfterShelley               => "Byron block after the Shelley era began"
     case ByronAfterTransition(epoch, first) =>
       s"Byron block in epoch $epoch, the chain enters Shelley in epoch $first"
-    case Decode(error)      => error.message
-    case TxDecode(id, text) => s"tx ${id.hex.take(16)}: ${text.show}"
-    case NoByronGenesis     => "no Byron genesis configured"
+    case HeaderStructure(cause) => s"the header does not continue its predecessor: $cause"
+    case Decode(error)          => error.message
+    case TxDecode(id, text)     => s"tx ${id.hex.take(16)}: ${text.show}"
+    case NoByronGenesis         => "no Byron genesis configured"
     case TransitionUndecided(era) =>
       s"$era block, but the Byron ledger has not decided on the transition to Shelley"
     case ShelleyBeforeTransition(epoch, first, last) =>

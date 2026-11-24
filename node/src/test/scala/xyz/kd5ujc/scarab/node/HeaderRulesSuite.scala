@@ -15,7 +15,8 @@ import xyz.kd5ujc.scarab.ledger.{
   PraosError,
   OCertError,
   PoolDistribution,
-  StakeView
+  StakeView,
+  ValidationError
 }
 import xyz.kd5ujc.scarab.consensus.{HeaderCheckpoints, Praos, PraosConfig}
 import xyz.kd5ujc.scarab.crypto.Blake2b
@@ -278,7 +279,10 @@ class HeaderRulesSuite extends ScalaCheckSuite:
 
   // Block number, slot order and previous hash: header-first validation checks them in
   // `NodeHeaderRules`, block application when the block extends the node's chain
-  // (`VolatileChain.extend`), which refuses it as not connected to the tip.
+  // (`VolatileChain.extend`), which refuses it as not connected to the tip, for the same cause. A
+  // block the rules accepted that fails there by its number or its slot is an invalid block; a
+  // previous hash that is not the tip's is the node's own failure, since a candidate follows the
+  // predecessor links from a point of our chain (`Follower.misplaced`, #1403).
   test("a header refused header-first for its place in the chain cannot extend the chain") {
     val i = 10
     val h = forged.headers(i)
@@ -304,12 +308,14 @@ class HeaderRulesSuite extends ScalaCheckSuite:
     val chain = chainBefore(i)
     assert(chain.extend(h, forged.states(i)).isRight, "the untampered block extends the chain")
     rows.foreach { (name, header, problem) =>
+      val unconnected = ChainError.NotConnected(header.point, chain.tip, problem)
       assertEquals(invalid(i, header), Some(HeaderError.Structure(problem)), name)
-      assertEquals(
-        chain.extend(header, forged.states(i)).left.toOption,
-        Some(ChainError.NotConnected(header.point, chain.tip)),
-        name
-      )
+      assertEquals(chain.extend(header, forged.states(i)).left.toOption, Some(unconnected), name)
+      val refusal = ValidationError(header.point, BlockFailure.HeaderStructure(problem))
+      val blocks = problem match
+        case HeaderStructureProblem.PreviousHash(_, _) => false
+        case _                                         => true
+      assertEquals(Follower.misplaced(header, unconnected), Option.when(blocks)(refusal), name)
     }
   }
 

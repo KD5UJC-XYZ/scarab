@@ -4,11 +4,16 @@ the node are replaced by fakes that write what the real ones write.
 
 Run from the repository root:  python3 -m unittest discover -s scripts/tests -v
 """
+import contextlib
 import importlib.util
+import io
 import json
+import os
 import pathlib
+import stat
 import tempfile
 import unittest
+from unittest import mock
 
 SCRIPT = pathlib.Path(__file__).resolve().parents[1] / "pool" / "rotate_kes.py"
 spec = importlib.util.spec_from_file_location("rotate_kes", SCRIPT)
@@ -21,6 +26,13 @@ REAL_CERT = ('{"type": "NodeOperationalCertificate", "description": "", "cborHex
              '30684e334d71dc4c25191a865fd84a67ef75895db4f4eac976a384d247a7640949219972662de852f614566a068ab0ff702582009e8ef34'
              '07c2f3f411da6a1d72e1cc0cb79f8fe8fcca221204eb6be41ad7ab4a"}')
 COLD = bytes.fromhex("09e8ef3407c2f3f411da6a1d72e1cc0cb79f8fe8fcca221204eb6be41ad7ab4a")
+OUTSIDE = "a file outside the key directory"
+
+
+def short_writes():
+    """`os.write` as a signal or a full device leaves it: no call takes more than three bytes."""
+    real = os.write
+    return mock.patch.object(rk.os, "write", side_effect=lambda fd, data: real(fd, bytes(data[:3])))
 
 
 def envelope(kind, cbor):
@@ -48,10 +60,12 @@ class Fakes:
         self.signals, self.generated = 0, 0
         self.issued = None  # (counter, period) the fake cli was asked for
         self.cold_vkey = COLD
+        self.mounts = {}  # the mounts of each cardano-cli command, by its name
 
     # the Cli
     def run(self, args, mounts=(), check=True):
         work = next(h for h, inside, _ in mounts if inside == "/work")
+        self.mounts[args[1]] = list(mounts)
         if args[1] == "key-gen-KES":
             self.generated += 1
             self.hot = bytes([self.generated]) * 32
@@ -112,6 +126,12 @@ class DriverTest(unittest.TestCase):
     def generations(self):
         return sorted(p.name for p in self.keys.iterdir() if p.name.startswith(("gen-", ".staging")))
 
+    def outside(self):
+        """A file the driver must never touch: what a link planted in the key directory points at."""
+        path = pathlib.Path(self.tmp.name) / "sentinel"
+        path.write_text(OUTSIDE)
+        return path
+
 
 class MetricsTest(DriverTest):
     def test_metrics_keep_current_timestamp_precision(self):
@@ -135,6 +155,176 @@ class MetricsTest(DriverTest):
         self.assertEqual(values[rk.LAST_SUCCESS], success)
         self.assertEqual(values[rk.LAST_RUN], failed)
         self.assertEqual(values[rk.LAST_STATUS], rk.EXIT_NODE_DOWN)
+
+    def test_a_planted_temporary_link_is_not_written_through(self):
+        sentinel = self.outside()
+        path = self.keys / "rotate-kes.prom"
+        planted = self.keys / "rotate-kes.prom.tmp"  # the name the temporary file had, which anyone could predict
+        planted.symlink_to(sentinel)
+        settings = rk.dataclasses.replace(self.settings, metrics_file=path)
+        rk.write_metrics(settings, rk.EXIT_OK, 1792292758.125)
+        self.assertEqual(sentinel.read_text(), OUTSIDE)
+        self.assertTrue(planted.is_symlink())
+        self.assertTrue(stat.S_ISREG(path.lstat().st_mode))
+        self.assertEqual(rk.read_metrics(path)[rk.LAST_STATUS], rk.EXIT_OK)
+
+    def test_the_metrics_file_keeps_its_mode_and_leaves_no_temporary_file(self):
+        path = self.keys / "rotate-kes.prom"
+        settings = rk.dataclasses.replace(self.settings, metrics_file=path)
+        before = [p.name for p in self.keys.iterdir()]
+        umask = os.umask(0)
+        os.umask(umask)
+        rk.write_metrics(settings, rk.EXIT_OK, 1792292758.125)
+        self.assertEqual(stat.S_IMODE(path.lstat().st_mode), 0o644 & ~umask)
+        self.assertEqual(sorted(p.name for p in self.keys.iterdir()), sorted(before + [path.name]))
+
+    def test_a_failed_write_leaves_no_temporary_file(self):
+        path = self.keys / "rotate-kes.prom"
+        before = sorted(p.name for p in self.keys.iterdir())
+        with mock.patch.object(rk.os, "replace", side_effect=OSError("no rename today")):
+            with self.assertRaises(OSError):
+                rk.write_atomic(path, "text")
+        self.assertEqual(sorted(p.name for p in self.keys.iterdir()), before)
+
+    def test_a_short_write_is_completed(self):
+        path = self.keys / "rotate-kes.prom"
+        text = "scarab_kes_rotation_last_exit_status 0\n" * 20
+        with short_writes():
+            rk.write_atomic(path, text)
+        self.assertEqual(path.read_text(), text)
+
+
+class ScrubTest(DriverTest):
+    """The node writes in the key directory and in the generation it reads, so what is found there is erased without
+    being followed: a link to the cold key must not have the cold key overwritten."""
+
+    def planted(self):
+        """An orphan generation with a key, a link to a file outside and a link to a directory outside."""
+        sentinel = self.outside()
+        other = pathlib.Path(self.tmp.name) / "elsewhere"
+        other.mkdir()
+        (other / "kept").write_text("kept")
+        gen = self.keys / "gen-000009-00000009"
+        gen.mkdir()
+        (gen / "kes.skey").write_text("an orphan")
+        (gen / "kes.skey.bak").symlink_to(sentinel)
+        (gen / "more").symlink_to(other, target_is_directory=True)
+        return gen, sentinel, other
+
+    def assert_untouched(self, sentinel, other):
+        self.assertEqual(sentinel.read_text(), OUTSIDE)
+        self.assertEqual((other / "kept").read_text(), "kept")
+
+    def test_scrub_removes_a_link_and_leaves_what_it_points_at(self):
+        gen, sentinel, other = self.planted()
+        rk.scrub(gen)
+        self.assertFalse(gen.exists())
+        self.assert_untouched(sentinel, other)
+
+    def test_scrub_of_a_link_removes_the_link_only(self):
+        _, sentinel, other = self.planted()
+        for target in (sentinel, other):
+            link = self.keys / "gen-000008-00000008"
+            link.symlink_to(target)
+            rk.scrub(link)
+            self.assertFalse(link.is_symlink())
+        self.assert_untouched(sentinel, other)
+
+    def test_scrub_overwrites_all_of_a_file_when_writes_are_short(self):
+        secret = "a secret longer than one short write"
+        gen = self.keys / "gen-000009-00000009"
+        gen.mkdir()
+        (gen / "kes.skey").write_text(secret)
+        seen = pathlib.Path(self.tmp.name) / "same-file"  # another name of the file, to read it after the removal
+        os.link(gen / "kes.skey", seen)
+        with short_writes():
+            rk.scrub(gen)
+        self.assertFalse(gen.exists())
+        self.assertEqual(seen.read_bytes(), bytes(len(secret)))
+
+    def test_scrub_removes_what_is_neither_a_file_nor_a_directory(self):
+        gen = self.keys / "gen-000009-00000009"
+        gen.mkdir()
+        os.mkfifo(gen / "kes.skey")  # nobody reads it: an open for writing that waited would wait for ever
+        rk.scrub(gen)
+        self.assertFalse(gen.exists())
+
+    def test_scrub_of_nothing_does_nothing(self):
+        rk.scrub(self.keys / "gen-000009-00000009")
+        self.assertEqual(self.generations(), ["gen-000000-00000000"])
+
+    def test_the_orphan_cleanup_does_not_follow_links(self):
+        _, sentinel, other = self.planted()
+        fakes = Fakes(tip_slot=1000, on_chain=0)
+        self.assertEqual(self.go(fakes), rk.EXIT_OK)
+        self.assertEqual(self.generations(), ["gen-000000-00000000"])
+        self.assert_untouched(sentinel, other)
+
+    def test_a_rotation_does_not_follow_links_in_the_old_generation(self):
+        sentinel = self.outside()
+        (self.keys / "gen-000000-00000000" / "kes.skey.bak").symlink_to(sentinel)
+        fakes = Fakes(tip_slot=1650, on_chain=0)
+        self.assertEqual(self.go(fakes), rk.EXIT_OK)
+        self.assertEqual(self.generations(), ["gen-000001-00000016"])
+        self.assertEqual(sentinel.read_text(), OUTSIDE)
+
+    def test_a_refused_reload_does_not_follow_links_in_the_new_generation(self):
+        sentinel = self.outside()
+        keys = self.keys
+
+        class Planting(Fakes):
+            def hangup(self):
+                super().hangup()
+                (keys / "gen-000001-00000016" / "kes.skey.bak").symlink_to(sentinel)
+
+        with self.assertRaises(rk.RotationError) as caught:
+            self.go(Planting(tip_slot=1650, on_chain=0, reply="refused"))
+        self.assertEqual(caught.exception.status, rk.EXIT_REFUSED)
+        self.assertEqual(self.generations(), ["gen-000000-00000000"])
+        self.assertEqual(sentinel.read_text(), OUTSIDE)
+
+    def test_a_link_in_place_of_the_new_generation_is_replaced_not_used(self):
+        other = pathlib.Path(self.tmp.name) / "elsewhere"
+        other.mkdir()
+        (other / "READY").write_text("")
+        (other / "node.cert").write_text(opcert_text(bytes([9]) * 32, 1, 16))
+        (self.keys / "gen-000001-00000016").symlink_to(other, target_is_directory=True)
+        (self.keys / ".staging-gen-000001-00000016").symlink_to(self.keys / "nowhere")
+        fakes = Fakes(tip_slot=1650, on_chain=0)
+        self.assertEqual(self.go(fakes), rk.EXIT_OK)
+        self.assertEqual(fakes.generated, 1)
+        self.assertFalse((self.keys / "gen-000001-00000016").is_symlink())
+        self.assertEqual(self.generations(), ["gen-000001-00000016"])
+        self.assertEqual(sorted(p.name for p in other.iterdir()), ["READY", "node.cert"])
+
+    def test_a_lock_that_is_a_link_is_refused_and_its_target_kept(self):
+        sentinel = self.outside()
+        (self.keys / ".lock").symlink_to(sentinel)
+        with self.assertRaises(rk.RotationError) as caught:
+            self.go(Fakes(tip_slot=1650, on_chain=0))
+        self.assertEqual(caught.exception.status, rk.EXIT_CONFIG)
+        self.assertEqual(sentinel.read_text(), OUTSIDE)
+
+    def test_a_recorded_rotation_cannot_name_a_directory_outside(self):
+        cold = pathlib.Path(self.tmp.name) / "cold"
+        for old in ("../cold", "..", ".", str(cold), ""):
+            (self.keys / "rotation.json").write_text(
+                json.dumps({"old": old, "new": "gen-000000-00000000", "counter": 0, "startPeriod": 0}))
+            fakes = Fakes(tip_slot=1650, on_chain=0)
+            fakes.issued = (0, 0)  # the node would confirm it
+            with self.assertRaises(rk.RotationError) as caught:
+                self.go(fakes)
+            self.assertEqual(caught.exception.status, rk.EXIT_CONFIG, old)
+            self.assertEqual(fakes.signals, 0)
+        self.assertEqual((cold / "cold.skey").read_text(), "cold secret")
+        self.assertEqual(self.generations(), ["gen-000000-00000000"])
+
+    def test_current_cannot_point_outside_the_key_directory(self):
+        for target in ("..", ".", "../cold", "/"):
+            rk.switch_link(self.keys, target)
+            with self.assertRaises(rk.RotationError) as caught:
+                self.go(Fakes(tip_slot=1650, on_chain=0))
+            self.assertEqual(caught.exception.status, rk.EXIT_CONFIG, target)
 
 
 class ParseTest(unittest.TestCase):
@@ -259,6 +449,51 @@ class RotationTest(DriverTest):
         self.assertEqual(caught.exception.status, rk.EXIT_CONFIG)
         self.assertEqual(self.generations(), ["gen-000000-00000000"])
         self.assertEqual(fakes.signals, 0)
+
+    def test_each_command_is_given_only_the_cold_key_file_it_reads(self):
+        fakes = Fakes(tip_slot=1650, on_chain=0)
+        self.assertEqual(self.go(fakes), rk.EXIT_OK)
+        s = self.settings
+
+        def beyond_work(command):
+            return [m for m in fakes.mounts[command] if m[1] != "/work"]
+
+        self.assertEqual(beyond_work("key-gen-KES"), [])
+        self.assertEqual(beyond_work("new-counter"), [(s.cold_vkey, "/cold/cold.vkey", "ro")])
+        self.assertEqual(beyond_work("issue-op-cert"), [(s.cold_skey, "/cold/cold.skey", "ro")])
+
+    def test_cold_keys_of_any_name_are_mounted_under_the_names_the_commands_use(self):
+        cold = pathlib.Path(self.tmp.name) / "cold"
+        (cold / "cold.skey").rename(cold / "pool.skey")
+        (cold / "cold.vkey").rename(cold / "pool.vkey")
+        fakes = Fakes(tip_slot=1650, on_chain=0)
+        self.assertEqual(self.go(fakes, cold_skey=cold / "pool.skey", cold_vkey=cold / "pool.vkey"), rk.EXIT_OK)
+        self.assertEqual(fakes.mounts["new-counter"][-1], (cold / "pool.vkey", "/cold/cold.vkey", "ro"))
+        self.assertEqual(fakes.mounts["issue-op-cert"][-1], (cold / "pool.skey", "/cold/cold.skey", "ro"))
+
+    def test_a_missing_cold_key_stops_the_run_before_any_command(self):
+        # `docker run -v` makes a directory of a host path that is not there
+        (pathlib.Path(self.tmp.name) / "cold" / "cold.skey").unlink()
+        fakes = Fakes(tip_slot=1650, on_chain=0)
+        with self.assertRaises(rk.RotationError) as caught:
+            self.go(fakes)
+        self.assertEqual(caught.exception.status, rk.EXIT_CONFIG)
+        self.assertEqual((fakes.generated, fakes.mounts), (0, {}))
+        self.assertEqual(self.generations(), ["gen-000000-00000000"])
+
+    def warnings(self, **changes):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.assertEqual(self.go(Fakes(tip_slot=1000, on_chain=0), **changes), rk.EXIT_OK)
+        return [e["message"] for e in map(json.loads, out.getvalue().splitlines()) if e["step"] == "warning"]
+
+    def test_a_mainnet_run_with_the_cold_key_online_warns(self):
+        self.assertEqual(self.warnings(), [])  # the settings of these tests name a test network
+        (said,) = self.warnings(testnet_magic=None)
+        self.assertIn("mainnet", said)
+        self.assertIn(str(self.settings.cold_skey), said)
+        self.settings.cold_skey.unlink()
+        self.assertEqual(self.warnings(testnet_magic=None), [])
 
 
 class SettingsTest(unittest.TestCase):
