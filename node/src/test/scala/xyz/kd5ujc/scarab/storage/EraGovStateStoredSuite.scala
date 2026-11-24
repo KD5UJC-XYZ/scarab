@@ -483,6 +483,12 @@ class EraGovStateStoredSuite extends FunSuite with ExternalInputs:
     sameActions("proposals")(store.actions, EraProposals.proposalsActions(era.cgsProposals))
     sameActions("enacted")(flatPulser.ratify.enacted, ratify.rsEnacted)
     sameActions("snapshot")(flatPulser.snapshot.proposals, snapshot.psProposals)
+    // the pulser's distributions and DRep states, as the record holds them
+    assert(flatPulser.snapshot.drepDistr.nonEmpty)
+    assertEquals(
+      (snapshot.psDRepDistr, snapshot.psDRepState, snapshot.psPoolDistr),
+      (flatPulser.snapshot.drepDistr, flatPulser.snapshot.drepState, flatPulser.snapshot.poolDistr)
+    )
     assertEquals(
       EraProposals.toPrevGovActionIds(era.cgsProposals.pRoots),
       ConwayProposals.roots(store.roots)
@@ -614,5 +620,12 @@ class EraGovStateStoredSuite extends FunSuite with ExternalInputs:
       "fixtures/leios/state/testnet-2168639/state",
       LeiosStateCodecs.newEpochState[Dijkstra]
     )
-    restoredRead[Dijkstra]("Dijkstra", restored(flatOf(dijkstra.es.ls.utxo.gov)))
+    val flat = restored(flatOf(dijkstra.es.ls.utxo.gov))
+    val era = restoredRead[Dijkstra]("Dijkstra", flat)
+    // the current and previous parameters written over their own records, as a restored state's
+    // sidecar is written again (`GovStateRecord.viewOver`): each record's other eras' fields kept
+    val current = GovStateRecord.viewOver(era.cgsCurPParams, flat.curPParams)
+    val previous = GovStateRecord.viewOver(era.cgsPrevPParams, flat.prevPParams)
+    assertEquals((current, previous), (flat.curPParams, flat.prevPParams))
+    assertEquals((current.minUTxOValue, previous.minUTxOValue), (BigInt(1000), BigInt(1001)))
   }

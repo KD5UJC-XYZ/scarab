@@ -236,6 +236,12 @@ class EraGovStateSuite extends DisciplineSuite:
       name -> DijkstraConway
         .proposal(era.read)
         .map { flat =>
+          // the node's writer of an action other than a parameter change gives the same
+          assertEquals(
+            DijkstraProposals.flatOrUpdate(era.pProcGovAction),
+            Right(flat.action),
+            s"$name #$i"
+          )
           val back = ok(DijkstraProposals.fromFlat(flat))
           assertEquals(back, era, s"$name #$i")
           assertEquals(back.read, era.read, s"$name #$i")
