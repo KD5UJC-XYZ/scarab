@@ -14,6 +14,14 @@ import xyz.kd5ujc.scarab.uplc.cek.CekValue.{VBuiltin, VCon, VConstr, VDelay, VLa
   * result as a closure.
   */
 object PresentCekMachine:
+  // what the application of that machine read of a partial application
+  extension (b: VBuiltin)
+    private def saturatedByForce: Boolean =
+      b.forces + 1 == b.function.signature.forces && b.count == b.function.signature.arity
+    private def saturatedByArgument: Boolean =
+      b.forces == b.function.signature.forces && b.count + 1 == b.function.signature.arity
+    private def inOrder: Vector[CekValue] = b.arguments.reverseIterator.toVector
+
   /** `defaultSlippage` (`Cek/Internal.hs:420-421`, plutus 1.70.0.0), which `runCekM` sets as
     * `?cekSlippage` (`Cek/Internal.hs:798`): the machine spends its counted steps once they reach
     * this many.

@@ -61,21 +61,10 @@ object CekValue:
     def saturated: Boolean =
       forces == function.signature.forces && count == function.signature.arity
 
-    /** Whether one more `force` saturates the application. */
-    def saturatedByForce: Boolean =
-      forces + 1 == function.signature.forces && count == function.signature.arity
-
-    /** Whether one more argument saturates the application. */
-    def saturatedByArgument: Boolean =
-      forces == function.signature.forces && count + 1 == function.signature.arity
-
     def forced: VBuiltin = VBuiltin(function, forces + 1, arguments, count)
 
     def applied(argument: CekValue): VBuiltin =
       VBuiltin(function, forces, argument :: arguments, count + 1)
-
-    /** The arguments in the order they were applied. */
-    def inOrder: Vector[CekValue] = arguments.reverseIterator.toVector
 
   object VBuiltin:
     private val unapplied: Vector[VBuiltin] =
