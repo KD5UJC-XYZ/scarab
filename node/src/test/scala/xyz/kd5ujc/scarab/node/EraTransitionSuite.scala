@@ -827,13 +827,25 @@ class EraTransitionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         states(first).copy(extras = MirrorExtras.InByron(other.dep, follow, other.extras))
       case _ => fail("the state before the first Shelley block is not Byron's")
     val result = validate(wrong, first)
-    assert(result.left.exists(_.rule == BlockRule.TPraos), result.toString)
+    assert(
+      result match {
+        case Left(BlockFailure.TPraos(ledger.TPraosError.BadNonceVrf(_))) => true
+        case _                                                            => false
+      },
+      result.toString
+    )
   }
 
   test("a Byron block cannot follow the first Shelley block") {
     val first = blocks.indexWhere(_.era == Era.Shelley)
     val result = validate(states(first + 1), 10)
-    assert(result.left.exists(_.rule == BlockRule.Structure), result.toString)
+    assert(
+      result match {
+        case Left(BlockFailure.ByronAfterShelley) => true
+        case _                                    => false
+      },
+      result.toString
+    )
   }
 
   test("a Shelley block with another block's body fails the body commitment") {
