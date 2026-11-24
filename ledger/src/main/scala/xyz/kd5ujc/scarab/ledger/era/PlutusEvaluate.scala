@@ -529,11 +529,14 @@ object PlutusEvaluation:
   * transaction's flag announces, and the block's plan checks every verdict after, in order. UTXOS
   * also tells it of a transaction whose scripts it could not collect, before it records why
   * ([[uncollected]]), so that a block run observes that transaction for the node as it observes one
-  * whose scripts ran.
+  * whose scripts ran. It is told the annotated transaction the scripts were collected from, so that
+  * a run can say which level of a Dijkstra batch and which redeemer a script is (#85).
   */
 trait Phase2Deferral[F[_], E <: EraTag]:
-  /** The scripts `scripts` of `tx`, which `now` evaluates and checks. */
-  def evalScripts(tx: Tx[TxLevel.Top, E], scripts: NonEmptyList[PlutusWithContext])(
+  /** The scripts `scripts` of the annotated transaction `stAnnTx`, collected from it
+    * (`plutusScriptsWithContextStAnnTx`), which `now` evaluates and checks.
+    */
+  def evalScripts(stAnnTx: StAnnTx[TxLevel.Top, E], scripts: NonEmptyList[PlutusWithContext])(
       now: F[Unit]
   ): F[Unit]
 
@@ -548,7 +551,7 @@ object Phase2Deferral:
     * transaction whose scripts could not be collected told to no one.
     */
   def now[F[_]: Applicative, E <: EraTag]: Phase2Deferral[F, E] = new Phase2Deferral[F, E]:
-    def evalScripts(tx: Tx[TxLevel.Top, E], scripts: NonEmptyList[PlutusWithContext])(
+    def evalScripts(stAnnTx: StAnnTx[TxLevel.Top, E], scripts: NonEmptyList[PlutusWithContext])(
         now: F[Unit]
     ): F[Unit] = now
     def uncollected(tx: Tx[TxLevel.Top, E]): F[Unit] = Applicative[F].unit

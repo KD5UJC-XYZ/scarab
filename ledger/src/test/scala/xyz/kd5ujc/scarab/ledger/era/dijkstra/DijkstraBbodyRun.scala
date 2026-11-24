@@ -11,6 +11,7 @@ import xyz.kd5ujc.scarab.ledger.era.{
   Block,
   EraBlockHeader,
   LeiosEraBlockHeader,
+  Phase2Deferral,
   Proposals,
   ScriptVerdictUnavailable,
   Tx,
@@ -89,6 +90,7 @@ object DijkstraBbodyRun:
       slotToPOSIXTime: BigInt => Either[TranslationError, BigInt]
   )(using EraBlockHeader[H, Dijkstra], LeiosEraBlockHeader[H, Dijkstra]): Judged =
     given ScriptEvaluator[F] = request => Monad[F].unit.map(_ => evaluator.evaluate(request))
+    given Phase2Deferral[F, Dijkstra] = Phase2Deferral.now
     Judgment
       .judge(
         DijkstraBbody.dijkstraBbodyTransition[F, H](

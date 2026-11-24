@@ -499,7 +499,11 @@ object DijkstraUtxo:
     * The threaded state's outputs of the top level's inputs are read from the store into the era
     * for the second check of the inputs; a stored output the era does not read, and a change of the
     * instant stake outside the state's vocabulary, are raised ([[UtxoStateDefect]]), as is a script
-    * the evaluator gives no verdict for ([[ScriptVerdictUnavailable]]), as in Conway's.
+    * the evaluator gives no verdict for ([[ScriptVerdictUnavailable]]), as in Conway's. Where UTXOS
+    * evaluates the batch's scripts is the run's ([[Phase2Deferral]]): a block run is told the
+    * annotated transaction whose scripts run, which names a script with no verdict, and the mempool
+    * and an endorser block's closure evaluate them where they are collected
+    * ([[Phase2Deferral.now]]).
     */
   def dijkstraUtxoTransition[F[_]: Monad](
       env: DijkstraUtxoEnv[Dijkstra],
@@ -511,7 +515,8 @@ object DijkstraUtxo:
       events: Tell[F, Chain[AlonzoUtxoEvent[Dijkstra]]],
       evaluator: ScriptEvaluator[F],
       unavailable: Raise[F, ScriptVerdictUnavailable],
-      defect: Raise[F, UtxoStateDefect]
+      defect: Raise[F, UtxoStateDefect],
+      deferral: Phase2Deferral[F, Dijkstra]
   ): F[Unit] =
     val embed = EmbedUtxosInUtxo.dijkstra
     val tx = t.txStAnnTx[TxLevel.Top](stAnnTx)
@@ -520,9 +525,6 @@ object DijkstraUtxo:
     given Tell[F, Chain[UtxosEvent[Dijkstra]]] = new Tell[F, Chain[UtxosEvent[Dijkstra]]]:
       val functor: cats.Functor[F] = events.functor
       def tell(l: Chain[UtxosEvent[Dijkstra]]): F[Unit] = events.tell(l.map(embed.wrapEvent))
-    // a Dijkstra block's scripts are evaluated where UTXOS collects them: its run prepares no
-    // block for parallel evaluation yet (#85)
-    given Phase2Deferral[F, Dijkstra] = Phase2Deferral.now
     for
       utxoState <- state.get
       current <- ShelleyUtxo.readStored[F, Dijkstra](

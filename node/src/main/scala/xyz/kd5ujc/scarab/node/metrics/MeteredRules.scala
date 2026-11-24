@@ -10,7 +10,8 @@ import xyz.kd5ujc.scarab.consensus.BlockRules
 import xyz.kd5ujc.scarab.ledger.{ChainError, Header, StorageError, ValidationError}
 
 /** The block rules, measured: how long a block took to validate and apply, and which rule family
-  * refused it. The wrapped rules are called exactly as before and their result, or the error they
+  * refused it. A block the rules have no verdict on ([[ValidationError.refuses]]) is not counted as
+  * refused. The wrapped rules are called exactly as before and their result, or the error they
   * raise, passes through unchanged.
   */
 object MeteredRules:
@@ -36,6 +37,8 @@ object MeteredRules:
           case Right(applied) =>
             metrics.observe(Catalogue.blockApplySeconds, took.toNanos / 1e9).as(applied)
           case Left(error) =>
-            metrics.inc(Catalogue.validationErrors, error.failure.rule) *>
+            metrics
+              .inc(Catalogue.validationErrors, error.failure.rule)
+              .whenA(error.refuses) *>
               validation.raise[ValidationError, S](error)
       yield next

@@ -29,9 +29,10 @@ enum DijkstraBlockDefect:
   /** The ticked state gives no Praos2 ledger view: a parameter outside its word. */
   case View(cause: CrossingForecastFailure)
 
-  /** The evaluator gave no verdict on a script of the block ([[ScriptVerdictUnavailable]]). The
-    * follower withholds the block for it, as it withholds the other eras' (issue 567), rather than
-    * stop.
+  /** The evaluator gave no verdict on a script of the block that the rules could not name by its
+    * transaction and redeemer ([[ScriptVerdictUnavailable]]), which the script the rules ran never
+    * is: one named is a transaction's defect (`LedgerFailure.Unavailable`, #85). The follower
+    * withholds the block for it, as it withholds the other eras' (issue 567), rather than stop.
     */
   case Unavailable(cause: ScriptVerdictUnavailable)
 

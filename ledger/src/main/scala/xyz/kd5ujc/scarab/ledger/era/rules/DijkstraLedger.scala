@@ -271,7 +271,8 @@ object DijkstraLedger:
       stateDefect: Raise[F, UtxoStateDefect],
       defect: Raise[F, LedgerDefect],
       poolDefect: Raise[F, PoolDefect],
-      govDefect: Raise[F, GovDefect]
+      govDefect: Raise[F, GovDefect],
+      deferral: Phase2Deferral[F, Dijkstra]
   ): F[Unit] =
     val embed = EmbedInDijkstraLedger.dijkstra
     val tx = t.txStAnnTx[TxLevel.Top](stAnnTx)
@@ -414,7 +415,8 @@ object DijkstraLedger:
           evaluator,
           unavailable,
           stateDefect,
-          defect
+          defect,
+          deferral
         )
       )
     yield ()
@@ -459,7 +461,8 @@ object DijkstraLedgers:
       stateDefect: Raise[F, UtxoStateDefect],
       defect: Raise[F, LedgerDefect],
       poolDefect: Raise[F, PoolDefect],
-      govDefect: Raise[F, GovDefect]
+      govDefect: Raise[F, GovDefect],
+      deferral: Phase2Deferral[F, Dijkstra]
   ): F[Unit] =
     val embedLedger = EmbedLedgerInLedgers.dijkstra
     given Judge[F, LedgerPredFailure[Dijkstra]] = judge.contramap(embedLedger.wrapFailed)

@@ -173,6 +173,8 @@ object DijkstraClosure:
     val validation = context.copy(validation = TxEnv.Validation.NonStatic)
     given Judge[F, LedgerPredFailure[Dijkstra]] = validateNone
     given Tell[F, Chain[LedgerEvent[Dijkstra]]] = discarded
+    // no script is evaluated (`ValidateNone`), so there is none to tell the run of
+    given Phase2Deferral[F, Dijkstra] = Phase2Deferral.now
     val bodies = EraTx.dijkstra.bodyOf
     txs.traverse_ { tx =>
       for

@@ -276,7 +276,8 @@ object DijkstraUtxow:
       evaluator: ScriptEvaluator[F],
       unavailable: Raise[F, ScriptVerdictUnavailable],
       stateDefect: Raise[F, UtxoStateDefect],
-      defect: Raise[F, LedgerDefect]
+      defect: Raise[F, LedgerDefect],
+      deferral: Phase2Deferral[F, Dijkstra]
   ): F[Unit] =
     val embedUtxo = EmbedUtxoInUtxow.dijkstra
     val pp = env.pp

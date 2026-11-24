@@ -494,6 +494,14 @@ final case class ValidationError(point: ChainSync.Point, failure: BlockFailure) 
       )
     case _ => None
 
+  /** Whether the rules refused the block. A script the evaluator could not judge
+    * ([[LedgerFailure.Unavailable]]) and a provider defect ([[unverifiable]]) are no verdict on it
+    * (issue 567): the block is withheld, not refused, as the follower routes them.
+    */
+  def refuses: Boolean = failure match
+    case BlockFailure.Tx(_: LedgerFailure.Unavailable) => false
+    case _                                             => unverifiable.isEmpty
+
 object ValidationError:
   given cats.Show[ValidationError] = cats.Show.show(_.message)
 

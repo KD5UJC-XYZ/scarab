@@ -18,6 +18,7 @@ import xyz.kd5ujc.scarab.ledger.{
   ConfigError,
   Header,
   LedgerDecodeError,
+  LedgerFailure,
   NodeError,
   StorageError,
   ValidationError
@@ -503,13 +504,19 @@ object LeiosReplayMain extends IOApp:
     * no-verdict the follower withholds the block for: a Dijkstra block's defect that is a limit of
     * this build valid peer input can meet ([[BlockNoVerdict.ofDijkstra]], as `Follower` routes it),
     * among them a proposal that updates a parameter Dijkstra adds (keys 34 to 56, which the state's
-    * record holds only once #826's format change lands). Any other error stays an error of the run,
-    * with no verdict.
+    * record holds only once #826's format change lands), and a script the evaluator gives no
+    * verdict for, named by its transaction ([[BlockNoVerdict.Evaluation]], #85). Any other error
+    * stays an error of the run, with no verdict.
     */
   val noVerdictNotYet: PartialFunction[NodeError, (BigInt, BlockNoVerdict)] =
     Function.unlift {
       case ChainError.DijkstraBlock(slot, defect) =>
         BlockNoVerdict.ofDijkstra(defect).map(slot -> _)
+      case ValidationError(
+            point @ ChainSync.Point.Block(slot, _),
+            BlockFailure.Tx(unavailable: LedgerFailure.Unavailable)
+          ) =>
+        Some(slot.value -> BlockNoVerdict.Evaluation(point, unavailable))
       case _ => None
     }
 

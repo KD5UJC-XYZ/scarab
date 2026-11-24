@@ -34257,8 +34257,8 @@
     "DijkstraRulesOracleSuite",
     "DijkstraUtxowSuite"
    ],
-   "note": "as Conway's conwayUtxoTransition: the threaded state's outputs read from the store into the era, a damaged store, an output outside the state's vocabulary and a script with no verdict raised as typed defects; its scripts evaluated where UTXOS collects them (Phase2Deferral.now)",
-   "digest": "329831b3391d401c"
+   "note": "as Conway's conwayUtxoTransition: the threaded state's outputs read from the store into the era, a damaged store, an output outside the state's vocabulary and a script with no verdict raised as typed defects; where its scripts are evaluated a capability (Phase2Deferral), which a block run is told the annotated transaction by and the mempool and a closure give as Phase2Deferral.now",
+   "digest": "615bd56113136692"
   },
   "def ledger.era.dijkstra.DijkstraUTxO.dijkstraConsumedWithoutSubTransactions": {
    "upstream": [
@@ -34645,8 +34645,8 @@
     "DijkstraRulesOracleSuite",
     "DijkstraUtxowSuite"
    ],
-   "note": "as Conway's babbageUtxowTransition: the node's signature checks and script decoder given, a check with no verdict raised as the node's LedgerDefect; the legacy mode's datums through missingRequiredDatumsAllowing",
-   "digest": "421fb4432193a73b"
+   "note": "as Conway's babbageUtxowTransition: the node's signature checks and script decoder given, a check with no verdict raised as the node's LedgerDefect; the legacy mode's datums through missingRequiredDatumsAllowing; where UTXOS evaluates the scripts a capability (Phase2Deferral), passed down to UTXO",
+   "digest": "c85880ef235eecdd"
   },
   "given ledger.era.rules.InjectUtxowFailure.dijkstra": {
    "upstream": [
@@ -40881,8 +40881,8 @@
     "DijkstraLedgerSuite",
     "DijkstraRulesOracleSuite"
    ],
-   "note": "the proposals the era's, in their own capability beside the ledger state, as SUBLEDGER's are; the committee and the constitution the governance state's, the committee's proposals put in the node's record EntitiesEnv holds; the UTxO set before the transaction the stored outputs of every level's inputs, reference inputs and collateral; the epoch the environment's or the slot's by the geometry of Globals; the reference's assertions (shelleyLedgerAssertions) not run, as at Conway",
-   "digest": "b82276f5f5972d60"
+   "note": "the proposals the era's, in their own capability beside the ledger state, as SUBLEDGER's are; the committee and the constitution the governance state's, the committee's proposals put in the node's record EntitiesEnv holds; the UTxO set before the transaction the stored outputs of every level's inputs, reference inputs and collateral; the epoch the environment's or the slot's by the geometry of Globals; the reference's assertions (shelleyLedgerAssertions) not run, as at Conway; where UTXOS evaluates the scripts a capability (Phase2Deferral), passed down to UTXO",
+   "digest": "965432bc0bc41baa"
   },
   "def ledger.era.rules.DijkstraLedgers.mkStAnnTx": {
    "upstream": [
@@ -40934,8 +40934,8 @@
     "DijkstraLedgerSuite",
     "DijkstraRulesOracleSuite"
    ],
-   "note": "Babbage's LEDGERS at Dijkstra through the fold Conway's shares (ShelleyLedgers.ledgersFold); mkStAnnTx is DijkstraLedgers.mkStAnnTx, each annotation given the cache the one before left (cacheStAnnTxG), the first an empty one",
-   "digest": "8f23d5e854af25bb"
+   "note": "Babbage's LEDGERS at Dijkstra through the fold Conway's shares (ShelleyLedgers.ledgersFold); mkStAnnTx is DijkstraLedgers.mkStAnnTx, each annotation given the cache the one before left (cacheStAnnTxG), the first an empty one; where UTXOS evaluates the scripts a capability (Phase2Deferral), passed down to UTXO",
+   "digest": "0724d590781b5a6f"
   },
   "def ledger.era.rules.ShelleyLedgers.ledgersFold": {
    "upstream": [
@@ -41338,7 +41338,8 @@
    "evidence": [
     "DijkstraLedgerSuite"
    ],
-   "digest": "126e2f5c80862afe"
+   "digest": "2bb13b5b6e5a8c58",
+   "note": "its transaction's scripts evaluated where UTXOS collects them (Phase2Deferral.now)"
   },
   "type ledger.era.BlockBody": {
    "upstream": [
@@ -42972,8 +42973,8 @@
     "DijkstraBbodySuite",
     "DijkstraRulesOracleSuite"
    ],
-   "note": "the signal the block with its header's two classes as using clauses (LeiosBbodySignal); the proposals in their own capability beside the ledger state, as LEDGER's are; the UTxO set the reference scripts are measured against the stored outputs of the block's inputs and reference inputs before LEDGERS, read into the era",
-   "digest": "d3bd642d42d4d6c6"
+   "note": "the signal the block with its header's two classes as using clauses (LeiosBbodySignal); the proposals in their own capability beside the ledger state, as LEDGER's are; the UTxO set the reference scripts are measured against the stored outputs of the block's inputs and reference inputs before LEDGERS, read into the era; where UTXOS evaluates the scripts a capability (Phase2Deferral), passed down to UTXO",
+   "digest": "1d5d54231aea4a1e"
   },
   "enum ledger.era.rules.LeiosClosureDefect": {
    "upstream": [
@@ -43118,8 +43119,8 @@
    "evidence": [
     "DijkstraClosureSuite"
    ],
-   "note": "each transaction annotated by Dijkstra's mkStAnnTx (DijkstraLedgers.mkStAnnTx) with an empty cache; ValidateNone as the policy that skips the static checks (every labelled step carries lblStatic) with a judgment that records nothing and never fails, the events discarded; the node computes some predicates the judgment then drops, so a defect raised while computing one is raised where the reference, lazy, meets none (a Gap); the state the closure is applied to and the cumulative bytes are the caller's, as stowing the tables and the consensus state's counter are the node's",
-   "digest": "09424914a6179fd3"
+   "note": "each transaction annotated by Dijkstra's mkStAnnTx (DijkstraLedgers.mkStAnnTx) with an empty cache; ValidateNone as the policy that skips the static checks (every labelled step carries lblStatic) with a judgment that records nothing and never fails, the events discarded; the node computes some predicates the judgment then drops, so a defect raised while computing one is raised where the reference, lazy, meets none (a Gap); the state the closure is applied to and the cumulative bytes are the caller's, as stowing the tables and the consensus state's counter are the node's; its scripts, which ValidateNone evaluates none of, where UTXOS collects them (Phase2Deferral.now)",
+   "digest": "046f03ee7ebc4573"
   },
   "def ledger.era.dijkstra.DijkstraBlockBody.ofDecoded": {
    "upstream": [
@@ -49732,8 +49733,9 @@
    ]
   },
   {
-   "reason": "the run of Dijkstra's era rules on a block as the node applies it, BBODY with every failure accumulated, the context of its transactions' rules made from the judgment's Globals (the network, networkId) with every check validated as the reference's application does (its reapplication validates none, where the node validates replays in full), and the closure's application, on the fused interpreter with the proposals as their own state and the events discarded (applyBlockEither with ValidateAll, ComputeLedgerEvents off), and its defects; and the tick of a block given by its era and header hash, which a block on the era types gives (#54)",
+   "reason": "the run of Dijkstra's era rules on a block as the node applies it, BBODY with every failure accumulated, the context of its transactions' rules made from the judgment's Globals (the network, networkId) with every check validated as the reference's application does (its reapplication validates none, where the node validates replays in full), and the closure's application, on the fused interpreter with the proposals as their own state (applyBlockEither with ValidateAll, ComputeLedgerEvents off), and its defects; of a block's events only what the node's phase-2 counters read kept, the counters of an admitted block (Applied, DijkstraPhase2.counted), and a script the evaluator gives no verdict for named by the batch UTXOS ran (the annotated transaction Phase2Deferral is told of) and its place among its scripts (DijkstraPhase2.named), Scarab's own (#85); and the tick of a block given by its era and header hash, which a block on the era types gives (#54)",
    "definitions": [
+    "class ledger.era.rules.DijkstraBlockRun.Applied",
     "def ledger.era.rules.DijkstraBlockRun.bbody",
     "def ledger.era.rules.DijkstraBlockRun.closure",
     "def ledger.rules.EraBlock.tickedTo",
@@ -49854,7 +49856,8 @@
     "def ledger.era.rules.ConwayPhase2.footprint",
     "def ledger.era.rules.ConwayPhase2.places",
     "def ledger.era.rules.ConwayPhase2.redeeming",
-    "def ledger.era.rules.ConwayPhase2.txId"
+    "def ledger.era.rules.ConwayPhase2.txId",
+    "def ledger.era.rules.ScriptsTold.counted"
    ]
   },
   {
@@ -49947,6 +49950,23 @@
     "enum ledger.ConwayBlockDefect",
     "def ledger.ConwayBlockDefect#message",
     "given ledger.PlutusStats.given_cats_Monoid_PlutusStats"
+   ]
+  },
+  {
+   "reason": "the node's phase-2 observations (Scarab's own, which the reference has none of) of a Dijkstra block the era rules judge (#85), as Conway's (ConwayPhase2): the phase-2 counters (PlutusStats) of a block the rules admitted, from what of BBODY's events they read (told: UTXOS's passed and failed scripts and UTXO's change of the deposits a valid transaction tells after them, none of SUBLEDGERS, whose sub-transactions run no script of their own) counted by batch as Conway's are (ScriptsTold.counted), integrityChecked the bodies of every level that declare a script integrity hash, which UTXOW and SUBUTXOW recompute; and a script with no verdict named by its batch's id, its level (ScriptLocation.Phase2 for the top level, SubPhase2 with the sub-transaction's id) and its redeemer (located, named, txId): each level's scripts as it collected them (dsattPlutusScriptsWithContext, dsastPlutusScriptsWithContext) with the purposes it resolved (resolveNeededPlutusScriptsWithPurpose, Alonzo/UTxO.hs:431-460, cardano-ledger 9df9f98c), the batch's in the order plutusScriptsWithContextDijkstraStAnnTx concatenates them (Dijkstra/UTxO.hs:258-276), so that the node withholds the block as it does the other eras'",
+   "definitions": [
+    "def ledger.era.rules.DijkstraPhase2.counted",
+    "def ledger.era.rules.DijkstraPhase2.located",
+    "def ledger.era.rules.DijkstraPhase2.named",
+    "def ledger.era.rules.DijkstraPhase2.told",
+    "def ledger.era.rules.DijkstraPhase2.txId",
+    "object ledger.era.rules.DijkstraPhase2"
+   ]
+  },
+  {
+   "reason": "whether a block's validation error is a refusal, or no verdict as the follower routes it (a script the evaluator could not judge, a crypto provider's defect; issue 567), which the reference has no counterpart for: the refused-block metric counts refusals only (#85)",
+   "definitions": [
+    "def ledger.ValidationError#refuses"
    ]
   }
  ]

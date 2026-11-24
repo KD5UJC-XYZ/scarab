@@ -9,6 +9,7 @@ import monocle.Lens
 import xyz.kd5ujc.scarab.ledger.{LedgerDefect, TranslationError, Verdicts}
 import xyz.kd5ujc.scarab.ledger.era.{
   EraTx,
+  Phase2Deferral,
   Proposals,
   ScriptVerdictUnavailable,
   StAnnTxCache,
@@ -134,6 +135,7 @@ object DijkstraLedgerRun:
     import ledgerRun.given
     import RuleT.given
     given ScriptEvaluator[ledgerRun.F] = ledgerRun.evaluator(evaluator)
+    given Phase2Deferral[ledgerRun.F, Dijkstra] = Phase2Deferral.now
     ledgerRun.run(globals, state, proposals, depth)(
       DijkstraLedger.dijkstraLedgerTransition[ledgerRun.F](env, stAnnTx, context, verdicts, decoder)
     )
@@ -155,6 +157,7 @@ object DijkstraLedgerRun:
     import ledgersRun.given
     import RuleT.given
     given ScriptEvaluator[ledgersRun.F] = ledgersRun.evaluator(evaluator)
+    given Phase2Deferral[ledgersRun.F, Dijkstra] = Phase2Deferral.now
     ledgersRun.run(globals, state, proposals, depth)(
       DijkstraLedgers.ledgersTransition[ledgersRun.F](
         env,

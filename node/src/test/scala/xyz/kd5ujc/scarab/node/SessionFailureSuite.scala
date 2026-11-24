@@ -819,6 +819,30 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       }
   }
 
+  test("a Dijkstra script named with no verdict withholds the block, as on the other eras (#85)") {
+    // a sub-transaction's script, by the batch's id, the sub-transaction's and its redeemer (a
+    // guard's, tag 6), as Dijkstra's block run names it
+    val named = LedgerFailure.Unavailable(
+      Bytes(Vector.fill(32)(1.toByte)),
+      ScriptLocation.SubPhase2(
+        Bytes(Vector.fill(32)(2.toByte)),
+        Redeemer(6, 0, Bytes.empty, ExUnits.zero)
+      ),
+      heldFailure.reason
+    )
+    val outcome = MirrorDijkstra.ruleDefect(
+      headers(2).slot,
+      xyz.kd5ujc.scarab.ledger.era.rules.DijkstraRuleDefect.Ledger(named)
+    )
+    assertEquals(outcome, Right(BlockFailure.Tx(named)))
+    session(conway = Some(2 -> outcome)).map { left =>
+      withheld(left, 2) { case BlockNoVerdict.Evaluation(point, failure) =>
+        assertEquals(point, headers(2).point)
+        assertEquals(failure, named)
+      }
+    }
+  }
+
   test("a verifier's failure on a Conway block withholds it, as on the flat rules") {
     session(conway = Some(2 -> conwayDefect(ConwayRuleDefect.Ledger(unverifiableWitness)))).map {
       left =>

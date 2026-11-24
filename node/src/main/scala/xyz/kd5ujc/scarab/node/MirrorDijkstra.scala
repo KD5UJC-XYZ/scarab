@@ -209,10 +209,13 @@ private[node] object MirrorDijkstra:
     * outside its type stops the node ([[ChainError.StateOutOfRange]]); a transaction's defect is a
     * [[BlockFailure.Tx]], which `MirrorRules` and the follower read as no verdict where it is one;
     * a BLS library's failure is a provider defect ([[BlockFailure.Unverifiable]]); a script the
-    * evaluator cannot judge is [[DijkstraBlockDefect.Unavailable]], which the follower withholds
-    * the block for as it does the other eras'; the rest stop the node ([[DijkstraBlockDefect]]).
+    * evaluator cannot judge, named by its transaction, its level and its redeemer, is a
+    * transaction's defect too (`LedgerFailure.Unavailable`), which the follower withholds the block
+    * for as it does the other eras' (`BlockNoVerdict.Evaluation`, #85), and one the run could not
+    * name is [[DijkstraBlockDefect.Unavailable]], withheld the same way; the rest stop the node
+    * ([[DijkstraBlockDefect]]).
     */
-  private def ruleDefect(
+  private[node] def ruleDefect(
       slot: BigInt,
       defect: DijkstraRuleDefect
   ): Either[ChainError, BlockFailure] =
@@ -515,13 +518,14 @@ private[node] object MirrorDijkstra:
 
   /** BBODY on the ticked state (`dijkstraBbodyTransition`, [[DijkstraBlockRun.bbody]]), with its
     * parameters, account and proposals, and the system start and era history of the context: the
-    * state after it. The network and the validation policy are the run's own, from the globals.
+    * state after it, and the node's phase-2 counters of the block's scripts, from zero. The network
+    * and the validation policy are the run's own, from the globals.
     */
   private def bbody(
       env: Env,
       ticked: NewEpochState[Dijkstra],
       block: EraBlockOf[DijkstraBlockHeader, Dijkstra]
-  ): Step[NewEpochState[Dijkstra]] =
+  ): Step[(NewEpochState[Dijkstra], PlutusStats)] =
     for
       pp = pparamsOf(ticked)
       proposals = proposalsOf(ticked)
@@ -541,10 +545,15 @@ private[node] object MirrorDijkstra:
           env.clock.posix
         )
       )
-      (after, ps) = applied
-    yield withProposals(
-      ticked.copy[Dijkstra](bcur = after.blocksMade, es = ticked.es.copy[Dijkstra](ls = after.ls)),
-      ps
+    yield (
+      withProposals(
+        ticked.copy[Dijkstra](
+          bcur = applied.state.blocksMade,
+          es = ticked.es.copy[Dijkstra](ls = applied.state.ls)
+        ),
+        applied.proposals
+      ),
+      applied.plutus
     )
 
   /** What the era rules read for `announced` 's block on `state`: the slot, the globals, the UTxO
@@ -653,16 +662,20 @@ private[node] object MirrorDijkstra:
         // `applyHelper` (`Ledger/Extended.hs:297-311`, ouroboros-consensus 2416493b): the
         // ledger's BBODY first, then `validateHeader` with the ledger view of the state ticked
         // before BBODY
-        nes <- bbody(env, tickedNes, block)
+        ran <- bbody(env, tickedNes, block)
+        (nes, plutus) = ran
         praos <- headerChecks(env, state, pre, header, tickedNes, epoch)
-        next <- refuse(assembled(state, pre, announced, placement, closureBytes, body, nes, praos))
+        next <- refuse(
+          assembled(state, pre, announced, placement, closureBytes, body, nes, praos, plutus)
+        )
       yield next
     steps.value
 
   /** The state after `announced` 's block, once its rules passed: `nes` and `praos` the ledger and
     * protocol states after it, the cumulative transaction bytes gaining the closure's
     * `closureBytes` and the block's own (`Shelley/Ledger/Leios.hs:223-230`, ouroboros-consensus
-    * 2416493b), and the node's bookkeeping.
+    * 2416493b), and the node's bookkeeping, its phase-2 counters gaining the block's `plutus`,
+    * field by field, as a Conway block's do (#85).
     */
   private[node] def assembled(
       state: MirrorState,
@@ -672,7 +685,8 @@ private[node] object MirrorDijkstra:
       closureBytes: Word64,
       body: xyz.kd5ujc.scarab.ledger.era.BlockBody[Dijkstra],
       nes: NewEpochState[Dijkstra],
-      praos: ProtocolState
+      praos: ProtocolState,
+      plutus: PlutusStats
   ): Either[BlockFailure, MirrorState] =
     val epoch = placement.geometry.epochOf(announced.slot)
     // modulo 2^64, as `Word64` 's `+`
@@ -691,7 +705,7 @@ private[node] object MirrorDijkstra:
         EraNes.InEra(ShelleyBasedEra.SDijkstra, nes),
         praos,
         consensus,
-        if pre.entered then PlutusStats.zero else pre.plutus
+        (if pre.entered then PlutusStats.zero else pre.plutus) |+| plutus
       )
       .leftMap(BlockFailure.Mirror(_))
 end MirrorDijkstra
