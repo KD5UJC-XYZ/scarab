@@ -18,6 +18,7 @@ import xyz.kd5ujc.scarab.ledger.{
   Verdicts
 }
 import xyz.kd5ujc.scarab.ledger.era.{
+  AlonzoEraPParams,
   Block,
   BothLevels,
   EraBlockBody,
@@ -420,32 +421,52 @@ object DijkstraBlockRun:
           RuleT.Policy.Accumulate
         )(globals, S(state, proposals, Chain.empty, None, answers))
         .map(_.map { case (after, _) => (after.bbody, after.proposals, after.told) })
-    Body(txs, evaluator, run)
+    // BBODY's own check of the block's units (`validateExUnits`, after LEDGERS): a body past
+    // them is never prepared
+    val withinUnits =
+      given BothLevels[TxLevel.Top] = BothLevels.Top
+      AlonzoBbody
+        .validateExUnits[Dijkstra](txs, AlonzoEraPParams.ppMaxBlockExUnitsL.get(env.bbodyPp).units)
+        .isValid
+    Body(txs, evaluator, withinUnits, run)
 
   /** Dijkstra's run on a block as a body program (`Phase2.Program`): [[serial]] is the run with
     * every script evaluated where UTXOS collects it; [[prepare]] runs the same rules once, in
     * order, with the scripts of each batch deferred, and its [[Plan]] lands their verdicts. A batch
     * whose sub-transaction alone holds a redeemer has scripts as much as one whose top level does
     * ([[DijkstraPhase2.redeeming]]).
+    *
+    * A body whose transactions declare more execution units than the block may hold (`withinUnits`
+    * false: BBODY's `validateExUnits`, `TooManyExUnits`, which it checks only after LEDGERS) is
+    * never prepared: it is not [[worthwhile]], and its plan has no job, its result the serial
+    * run's. A prepared body evaluates its recorded scripts before the first verdict lands, some of
+    * which the serial run may never reach (`whenFailureFree` after a verdict that is not its
+    * flag's), so what it can evaluate ahead stays within the units an admissible block declares.
     */
   final class Body private[DijkstraBlockRun] (
       txs: Vector[Tx[TxLevel.Top, Dijkstra]],
       evaluator: ScriptEvaluator[Id],
+      withinUnits: Boolean,
       run: Mode => Ran
   ) extends Phase2.Program[Result]:
     def serial: Result = settled(txs, run(Mode.Evaluating(Nil)), Map.empty)
     def hasScripts: Boolean = txs.exists(DijkstraPhase2.redeeming)
-    def worthwhile: Boolean = txs.count(DijkstraPhase2.redeeming) > 1
+    def worthwhile: Boolean = withinUnits && txs.count(DijkstraPhase2.redeeming) > 1
     def prepare: Plan =
-      val (tentative, recorded) =
-        Phase2.captured[Deferred, Ran](recorder => run(Mode.Preparing(recorder)))
-      Plan(
-        tentative,
-        recorded,
-        txs,
-        evaluator,
+      val replay: List[(EvalRequest, EvalResult)] => Result =
         answers => settled(txs, run(Mode.Evaluating(answers)), Map.empty)
-      )
+      if withinUnits then
+        val (tentative, recorded) =
+          Phase2.captured[Deferred, Ran](recorder => run(Mode.Preparing(recorder)))
+        Plan(tentative, recorded, txs, evaluator, replay)
+      else
+        Plan(
+          Either.catchNonFatal(run(Mode.Evaluating(Nil))).leftMap(Phase2.Defect(_)),
+          Vector.empty,
+          txs,
+          evaluator,
+          replay
+        )
 
   /** Where the landing of a plan's deferred scripts stops: at a raw defect, or at the first batch
     * whose scripts' verdict is not the one its flag announces, or gives none.

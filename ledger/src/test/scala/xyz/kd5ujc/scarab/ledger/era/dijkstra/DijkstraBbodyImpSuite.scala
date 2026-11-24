@@ -308,21 +308,38 @@ class DijkstraBbodyImpSuite extends FunSuite:
       evaluator: xyz.kd5ujc.scarab.plutus.ScriptEvaluator[Id]
   ): DijkstraPlanned.Checked =
     val block = ok(DijkstraBlock.decode(raw))
-    DijkstraPlanned.check(s"block ${block.blockHeader.header.hash.hex}", evaluator, runner)(e =>
-      DijkstraBlockRun.program(
-        globals,
-        BbodyEnv[Dijkstra](params, ChainAccountState(Coin(0), Coin(0))),
-        block,
-        context.systemStart,
-        context.epochInfo,
-        ShelleyBbodyState[Dijkstra](state, BlocksMade.empty),
-        EraGovRun.dijkstraEmpty,
-        e,
-        flat.Verdicts.Direct,
-        ScarabEvaluator.defaultDecoder,
-        slot => Right(slot * 1000)
-      )
+    DijkstraPlanned.check(s"block ${block.blockHeader.header.hash.hex}", evaluator, runner)(
+      nodeProgram(raw, state, params, _)
     )
+
+  /** The node's era run of the block `raw` as a body program, with `evaluator`. */
+  private def nodeProgram(
+      raw: Bytes,
+      state: LedgerState[Dijkstra],
+      params: PParams[Dijkstra],
+      evaluator: xyz.kd5ujc.scarab.plutus.ScriptEvaluator[Id]
+  ): DijkstraBlockRun.Body =
+    DijkstraBlockRun.program(
+      globals,
+      BbodyEnv[Dijkstra](params, ChainAccountState(Coin(0), Coin(0))),
+      ok(DijkstraBlock.decode(raw)),
+      context.systemStart,
+      context.epochInfo,
+      ShelleyBbodyState[Dijkstra](state, BlocksMade.empty),
+      EraGovRun.dijkstraEmpty,
+      evaluator,
+      flat.Verdicts.Direct,
+      ScarabEvaluator.defaultDecoder,
+      slot => Right(slot * 1000)
+    )
+
+  /** An evaluator that counts the scripts it is asked to run. */
+  private final class CountingEvaluator extends xyz.kd5ujc.scarab.plutus.ScriptEvaluator[Id]:
+    private val runs = java.util.concurrent.atomic.AtomicInteger(0)
+    def evaluate(request: xyz.kd5ujc.scarab.plutus.EvalRequest): EvalResult =
+      val _ = runs.incrementAndGet()
+      ScarabEvaluator.default.evaluate(request)
+    def count: Int = runs.get
 
   /** The node's serial run of the block `raw` ([[nodeChecked]]). */
   private def nodeRun(
@@ -1190,6 +1207,31 @@ class DijkstraBbodyImpSuite extends FunSuite:
           )
         )
       )
+      // past the block's units, the node's run is never prepared (#85): not worthwhile, and its
+      // plan has no job; at every worker count it evaluates exactly the scripts the serial run
+      // evaluates, to the serial run's refusal. With the first transaction flagged invalid flagged
+      // valid instead, the serial run records its scripts' failure and reaches no later script
+      // (`whenFailureFree`), and neither does any worker count
+      val firstInvalid = txs.indexWhere(t => tx.isValid(t.era) == IsPhase2Valid.Phase2Invalid)
+      Vector(txs, txs.updated(firstInvalid, withFlag(txs(firstInvalid), true))).zipWithIndex
+        .foreach { (block, mismatched) =>
+          val raw = blockOf(block)
+          val body = nodeProgram(raw, before, pp, ScarabEvaluator.default)
+          assert(!body.worthwhile)
+          assertEquals(body.prepare.jobs, Vector.empty)
+          val serialRuns = CountingEvaluator()
+          val _ = nodeProgram(raw, before, pp, serialRuns).serial
+          // the eight scripts, or, after the mismatch, fewer
+          if mismatched == 0 then assertEquals(serialRuns.count, 8)
+          else assert(serialRuns.count < 8, s"${serialRuns.count}")
+          DijkstraPlanned.workers.foreach { n =>
+            val runs = CountingEvaluator()
+            val _ = runner(nodeProgram(raw, before, pp, runs), n)
+            assertEquals(runs.count, serialRuns.count, s"$n workers")
+          }
+          // and the result is the serial run's at every worker count
+          val _ = nodeChecked(raw, before, pp, ScarabEvaluator.default)
+        }
     }
   }
 

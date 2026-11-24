@@ -130,6 +130,17 @@ invalid, it consumes the top level's collateral and creates its collateral retur
 sub-transaction changes the set (`SubUtxo.hs`, lines 255–261). The batches order the evaluation only:
 a verdict reaches the result through the ordered landing alone, whatever batch evaluated it.
 
+A body whose transactions declare more execution units than the parameters' `maxBlockExUnits`
+(BBODY's `validateExUnits`, which it checks only after LEDGERS) is never prepared: it is not
+`worthwhile`, so `ParallelPlutus` runs it serially, and its plan, prepared directly, has no job. The
+workers run every recorded job before the first verdict lands, and after a verdict that is not its flag's
+the serial run reaches no later script (`whenFailureFree`, over the whole judgment), so a prepared block
+can evaluate scripts the serial run does not; the rule bounds that work by the units an admissible block
+declares. It does not stop the jobs after an early failure: that would need the scheduler to land each
+batch before running the next, which `ParallelPlutus` does not. Conway's era run (`ConwayBlockRun.Body`)
+and the flat rules' body (`EraBlock.Body`) prepare on the count of transactions with redeemers alone,
+with the same exposure.
+
 The node applies Conway blocks with the era run (the Conway switch, #85), and the Leios build's
 Dijkstra blocks with Dijkstra's (`MirrorDijkstra.ready`), each serial or through the workers. A
 Dijkstra block's application is split at BBODY: the decoding, the Leios checks, the closure and the tick

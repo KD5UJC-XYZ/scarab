@@ -96,7 +96,11 @@ serial run evaluates it against. At the first verdict that is not its flag's, or
 is the serial run itself. There a result evaluated ahead answers a script only when its request is the
 very one the serial run asks, the script's whole context included; any other script is evaluated in
 order. The dependency batches read every level's footprint: reads, consumes and creates, by the top
-level's flag. They order the evaluation and never decide a verdict. Header checks and what follows
+level's flag. They order the evaluation and never decide a verdict. A body whose transactions declare more execution
+units than the block may hold, which BBODY refuses only after LEDGERS (`TooManyExUnits`), is not
+prepared and runs serially: the workers evaluate every recorded job before the first verdict lands, some
+of which the serial run would not reach after a verdict that is not its flag's, so what they can evaluate
+ahead stays within the units an admissible block declares. Header checks and what follows
 BBODY stay in the block's ordered finish, after the program's result, in `applyHelper`'s order. The
 naming of a script with no verdict and the phase-2 counters are the serial run's at every worker count.
 The [as-built design](../design/parallel-plutus.md#era-block-runs) has the detail.
