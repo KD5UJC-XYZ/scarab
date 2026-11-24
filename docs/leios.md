@@ -988,7 +988,10 @@ path under `--reference-build leios-rc-2026w47`.
 
 A reference ledger directory is the `ledger/<slot>` that the reference node, or its `db-analyser
 --store-ledger`, writes: `state`, `tables` and `meta`, named after its tip's slot. `--end-slot` gives the
-end's slot where the directory is not named after it. The end directory's files are recorded before anything is written; one that is not there, or
+end's slot where the directory is not named after it. `--plutus-workers N` sets the scripts' workers as `follow`'s flag
+sets them ([running](running.md)), the node's default where it is not given; the `started` line prints
+the count, so `--plutus-workers 1` against a larger count compares the serial rules with the bounded
+workers on the same window. The end directory's files are recorded before anything is written; one that is not there, or
 holds none of the three, is refused (`error`), and so is an exported file that is the end's own. The program prints JSON lines (`leiosReplay`). Its
 last line and exit code are the outcome:
 

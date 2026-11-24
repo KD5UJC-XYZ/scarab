@@ -18,6 +18,7 @@ import xyz.kd5ujc.scarab.ledger.{
 }
 import xyz.kd5ujc.scarab.consensus.BlockNoVerdict
 import xyz.kd5ujc.scarab.network.FailsOnUncaught
+import xyz.kd5ujc.scarab.node.ParallelPlutus
 import xyz.kd5ujc.scarab.protocol.{ChainSync, DijkstraNotYet}
 import xyz.kd5ujc.scarab.storage.LeiosStateFixture
 import xyz.kd5ujc.scarab.storage.StorageTestKit.tempDir
@@ -275,6 +276,32 @@ class LeiosReplayMainSuite extends FailsOnUncaught:
       LeiosReplayMain.parse(args ++ List("--out", "o", "--end-slot", "x")),
       Left(Error.EndSlot("x"))
     )
+  }
+
+  test(
+    "the scripts' workers are --plutus-workers, a positive count, the node's default without it"
+  ) {
+    val args = List(
+      "--config",
+      "c",
+      "--haskell-db",
+      "h",
+      "--start",
+      "s",
+      "--end",
+      "e",
+      "--db",
+      "d",
+      "--out",
+      "o"
+    )
+    def workers(more: String*) =
+      LeiosReplayMain.parse(args ++ more).map(_.plutusWorkers.value)
+    assertEquals(workers("--plutus-workers", "1"), Right(1))
+    assertEquals(workers("--plutus-workers", "4"), Right(4))
+    assertEquals(workers(), Right(ParallelPlutus.Workers.default.value))
+    assertEquals(workers("--plutus-workers", "0"), Left(Error.PlutusWorkers("0")))
+    assertEquals(workers("--plutus-workers", "x"), Left(Error.PlutusWorkers("x")))
   }
 
   test(
