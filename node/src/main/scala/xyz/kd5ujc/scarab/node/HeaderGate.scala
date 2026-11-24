@@ -673,8 +673,13 @@ object HeaderCheck:
             )
           }
 
+        // the history itself, seen at the node's header state through the witness: mapping it
+        // through the witness would copy every entry at each snapshot, which Genesis takes for
+        // each header of each session (issue 810)
         override def snapshot(using Applicative[F]): F[Option[HeaderChain[NodeHeaderState]]] =
-          state.get.map(history => stateWitness.map(equality => history.map(equality)))
+          state.get.map(history =>
+            stateWitness.map(equality => equality.substituteCo[HeaderChain](history))
+          )
 
         override def intersectionSelection(using Applicative[F]): F[Option[ChainSelection.Local]] =
           knownSelection.get

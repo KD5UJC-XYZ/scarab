@@ -176,6 +176,10 @@ class GenesisHeaderGateSuite extends FailsOnUncaught:
       original <- gate.snapshot
       snapshot <- IO.fromOption(original)(new AssertionError("canonical snapshot missing"))
       _ <- IO(assertEquals(snapshot.points, ChainSync.Point.Origin +: headers.take(4).map(_.point)))
+      // a snapshot is the gate's own history, not a copy of it, so a second one is the same value
+      // (issue 810: each snapshot copied every entry)
+      again <- gate.snapshot
+      _ <- IO(assert(again.exists(_ eq snapshot), "a second snapshot copied the history"))
       local <- summon[Ask[IO, ChainSelection.Local]].ask[ChainSelection.Local]
       result <- gate.graft(snapshot, headers(1).point, local)
       _ <- IO(assertEquals(result, Right(())))
