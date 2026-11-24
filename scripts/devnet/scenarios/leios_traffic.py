@@ -77,7 +77,7 @@ import time
 from .. import cborspan
 from ..dijkstra import (BASE_PORT, BLOCK_TAG_ERA, IMAGE_CONFIG, LEIOS_IMAGE, blake2b_256, dijkstra_plan, make_network,
                         socket, split_chunk, start_nodes, start_reference, tip, tx_spent)
-from ..load import submit_all_script, submit_results
+from ..load import submission_outcomes, submit_all_script
 from ..util import ENV, MAGIC, data_root, in_ref, put_file, read_json, ref
 from . import leios_follow
 
@@ -644,8 +644,8 @@ def _drive(args, root, started):
         fans.append(f"{TX}/fan{k}.tx")
         inputs += [f"{fan_txid}#{i}" for i in range(outputs)]
         txin = f"{fan_txid}#{outputs}"
-    ok, failed = submit_results(in_ref(args.name, submit_all_script(fans, parallelism=1, cli=CLI), timeout=120,
-                                       check=False).stdout)
+    ok, failed = submission_outcomes(fans, in_ref(args.name, submit_all_script(fans, parallelism=1, cli=CLI), timeout=120,
+                                        check=False))
     if failed:
         raise SystemExit(f"the fan-out transactions were refused: {failed}")
     put_file(args.name, f"{LOAD}/meta.json", json.dumps(padding_metadata(args.load_tx_bytes)))
@@ -678,8 +678,8 @@ def _drive(args, root, started):
         if wave:
             files = [f"{LOAD}/t{i}.tx" for i in left[:wave]]
             left = left[wave:]
-            ok, failed = submit_results(in_ref(args.name, submit_all_script(files, cli=CLI), timeout=120,
-                                               check=False).stdout)
+            ok, failed = submission_outcomes(files, in_ref(args.name, submit_all_script(files, cli=CLI), timeout=120,
+                                                 check=False))
             window["waves"] += 1
             submitted, rejected = submitted + len(ok), rejected + len(failed)
             for f, error in failed.items():

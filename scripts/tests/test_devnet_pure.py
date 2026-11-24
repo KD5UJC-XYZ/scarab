@@ -68,6 +68,59 @@ class BurstLoadTest(unittest.TestCase):
         self.assertEqual(ok, ["/l/a.signed"])
         self.assertEqual(failed, {"/l/b.signed": "Command failed: BadInputsUTxO"})
 
+    def test_a_file_the_script_reports_nothing_of_is_refused(self):
+        # a submission that ended before its last file (a `docker exec` that failed) counts every file
+        result = types.SimpleNamespace(stdout="ok /l/a.signed\nfail /l/b.signed BadInputsUTxO\n", returncode=126,
+                                       stderr="OCI runtime exec failed\n")
+        ok, failed = load_tool.submission_outcomes(["/l/a.signed", "/l/b.signed", "/l/c.signed"], result)
+        self.assertEqual(ok, ["/l/a.signed"])
+        self.assertEqual(failed, {"/l/b.signed": "BadInputsUTxO",
+                                  "/l/c.signed": "no result (exit 126): OCI runtime exec failed"})
+
+    def test_a_script_longer_than_one_argument_runs_from_a_file(self):
+        calls, uploads = [], []
+        def docker(*args, **kwargs):
+            calls.append(args)
+            return types.SimpleNamespace(stdout="", returncode=0, stderr="")
+        def upload(command, **kwargs):
+            uploads.append((command, kwargs))
+            return types.SimpleNamespace(stdout="", returncode=0, stderr="")
+        files = [f"/work/leios-load/t{i}.tx" for i in range(335)]
+        long_script = load_tool.submit_all_script(files)
+        # 335 files of small load transactions: about 149 KB, over the 128 KiB `docker exec` takes in one argument
+        self.assertGreater(len(long_script.encode()), 128 * 1024)
+        with patch.object(util, "docker", side_effect=docker), patch.object(util.subprocess, "run", side_effect=upload):
+            util.in_ref("n", "echo short")
+            util.in_ref("n", long_script, timeout=120)
+        self.assertEqual(calls[0], ("exec", "n-ref", "/bin/sh", "-c", "echo short"))
+        (command, kwargs), = uploads
+        self.assertEqual(command[:4], ["docker", "exec", "-i", "n-ref"])
+        self.assertEqual((kwargs["input"], kwargs["timeout"]), (long_script, 120))
+        path = command[-1].removeprefix("cat > ")
+        self.assertEqual(calls[1][:4], ("exec", "n-ref", "/bin/sh", "-c"))
+        self.assertIn(f"/bin/sh {path}", calls[1][4])
+        self.assertIn(f"rm -f {path}", calls[1][4])
+        self.assertTrue(all(len(a.encode()) <= util.SCRIPT_ARGUMENT_BYTES for c in calls for a in c))
+
+    def test_a_failed_upload_is_the_callers_to_read_and_its_files_are_refused(self):
+        calls = []
+        def docker(*args, **kwargs):
+            calls.append(args)
+            return types.SimpleNamespace(stdout="", returncode=0, stderr="")
+        failed = types.SimpleNamespace(stdout="", returncode=1, stderr="no space left on device")
+        files = [f"/work/leios-load/t{i}.tx" for i in range(335)]
+        script = load_tool.submit_all_script(files)
+        with patch.object(util, "docker", side_effect=docker), patch.object(util.subprocess, "run", return_value=failed):
+            result = util.in_ref("n", script, check=False)
+            with self.assertRaises(SystemExit):
+                util.in_ref("n", script)
+        # the partial file is removed, and the script never runs
+        self.assertTrue(all(c[:3] == ("exec", "n-ref", "rm") for c in calls))
+        ok, refused = load_tool.submission_outcomes(files, result)
+        self.assertEqual(ok, [])
+        self.assertEqual(set(refused), set(files))
+        self.assertEqual(refused[files[0]], "no result (exit 1): no space left on device")
+
     def test_funding_takes_the_largest_outputs_that_cover_the_burst(self):
         held = {f"t#{i}": {"value": {"lovelace": 5_000_000}} for i in range(1000)}
         held["big#0"] = {"value": {"lovelace": 400_000_000}}
