@@ -239,6 +239,9 @@ def main():
                          "keys of the run (`--forge --shelley-bls-key`), and pool POOL's reference node is not "
                          "started; the reference nodes dial it, and the judge requires its ranking blocks, endorser "
                          "blocks, votes and certifying blocks on every reference node's chain")
+    lt.add_argument("--keep", action="store_true",
+                    help="leave the cluster running: the reference container with its nodes and their databases, and "
+                         "with --follow the follower's container; `devnet.py down` removes them")
     lt.set_defaults(run=leios_traffic)
     sc = sub.add_parser("sample-chain-dep", help="next to up-eras: record the reference's DebugChainDepState answers at chosen tips")
     sc.add_argument("--out", required=True, help="JSON file of the recorded points")

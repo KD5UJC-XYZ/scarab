@@ -531,9 +531,12 @@ def leios_traffic(args):
     try:
         _drive(args, root, started)
     finally:
-        if getattr(args, "follow", False):
-            leios_follow.remove(args.name)  # it lives in the reference container's network namespace
-        _remove_reference(args.name, root, args.pools)
+        # `--keep` leaves the reference container (its nodes and their databases, in its tmpfs) and the follower's
+        # container for a later step, such as a snapshot export or import against them; `devnet.py down` removes them
+        if not getattr(args, "keep", False):
+            if getattr(args, "follow", False):
+                leios_follow.remove(args.name)  # it lives in the reference container's network namespace
+            _remove_reference(args.name, root, args.pools)
 
 
 def _remove_reference(name, root, pools):
