@@ -181,6 +181,15 @@ def submit_results(stdout):
     return ok, failed
 
 
+def submission_outcomes(files, result):
+    """The outcome of `submit_all_script(files)` run as `result` (a completed process): the files it
+    reports accepted, and the refused ones with their errors, a file it reports nothing of among them,
+    with the script's exit status and error output, so that no file goes uncounted."""
+    ok, failed = submit_results(result.stdout)
+    unreported = f"no result (exit {result.returncode}): {(result.stderr or '').strip()[:300]}"
+    return ok, {**failed, **{f: unreported for f in files if f not in failed and f not in ok}}
+
+
 def funding_inputs(held, need, most=40):
     """The fewest of a wallet's outputs (`held`: txin -> its query entry) that cover `need`
     lovelace, largest first, at most `most` of them so that the fan-out transaction stays well
@@ -254,7 +263,7 @@ def burst_load(args):
             for i in range(size))
         in_ref(args.name, builds, timeout=60 + 5 * size)
         r = in_ref(args.name, submit_all_script(files, args.burst_parallelism), timeout=120, check=False)
-        ok, failed = submit_results(r.stdout)
+        ok, failed = submission_outcomes(files, r)
         for name, error in failed.items():
             print(json.dumps({"rejected": name, "error": error}), flush=True)
         accepted = {inputs[files.index(f)] for f in ok}

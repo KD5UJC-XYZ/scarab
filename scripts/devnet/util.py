@@ -8,6 +8,7 @@ import pathlib
 import shutil
 import subprocess
 import sys
+import time
 from dataclasses import dataclass
 
 
@@ -198,8 +199,28 @@ def ref(name):
     return f"{name}-ref"
 
 
+# the longest script `in_ref` passes as `sh -c`'s argument: Linux caps one argument at 128 KiB
+# (MAX_ARG_STRLEN), and `docker exec` fails with `Argument list too long` above it
+SCRIPT_ARGUMENT_BYTES = 64 * 1024
+
+
 def in_ref(name, script, timeout=60, check=True):
-    return docker("exec", ref(name), "/bin/sh", "-c", script, check=check, timeout=timeout)
+    """Run `script` with `/bin/sh` in the reference container. A script longer than one argument may be
+    (`SCRIPT_ARGUMENT_BYTES`), such as the submission of many load transactions, is written to a file of
+    the container first, run from it, and removed."""
+    if len(script.encode()) <= SCRIPT_ARGUMENT_BYTES:
+        return docker("exec", ref(name), "/bin/sh", "-c", script, check=check, timeout=timeout)
+    path = f"/tmp/in-ref-{os.getpid()}-{time.monotonic_ns()}.sh"
+    # the upload as the run: within `timeout`, and its failure the caller's to read when `check` is off
+    upload = subprocess.run(["docker", "exec", "-i", ref(name), "/bin/sh", "-c", f"cat > {path}"],
+                            input=script, text=True, capture_output=True, timeout=timeout)
+    if upload.returncode != 0:
+        docker("exec", ref(name), "rm", "-f", path, check=False, timeout=timeout)
+        if check:
+            raise SystemExit(f"cannot write {path}: {upload.stderr.strip()}")
+        return upload
+    return docker("exec", ref(name), "/bin/sh", "-c", f"/bin/sh {path}; status=$?; rm -f {path}; exit $status",
+                  check=check, timeout=timeout)
 
 
 def query(name, kind, node=1):

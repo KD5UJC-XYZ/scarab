@@ -81,6 +81,11 @@ class LoadTest(unittest.TestCase):
         self.assertEqual(lt.wave_size(133632, 133632, 14000, 400), 0)
         self.assertEqual(lt.wave_size(0, 133632, 14000, 3), 3, "no more than are left")
 
+    def test_the_run_reads_the_submission_helper_not_a_local_of_its_name(self):
+        # a local of `_drive` named as the helper made every run fail before its first submission
+        self.assertIn("submission_outcomes", lt._drive.__code__.co_names)
+        self.assertNotIn("submission_outcomes", lt._drive.__code__.co_varnames)
+
     def test_each_input_line_makes_one_signed_load_transaction(self):
         script = lt.load_txs_script("addr", 900000)
         self.assertTrue(script.startswith("while read i txin; do "))
