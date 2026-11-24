@@ -189,6 +189,29 @@ def write_all(fd, data):
         view = view[os.write(fd, view):]
 
 
+def set_mode(directory, name, mode):
+    """Set the mode of the regular file `name` of `directory`, never of a link's target.
+
+    `Path.chmod` follows a symbolic link, and the node can write where the driver stages a generation: a link put
+    in a staged file's place would have the mode set on its target, the cold signing key included. The file is
+    opened without following a link, through a descriptor of the directory, and must be a regular file.
+    """
+    dir_fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        try:
+            fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=dir_fd)
+        except OSError as error:
+            raise RotationError(EXIT_CONFIG, f"{directory / name} cannot be opened as a file: {error}") from error
+        try:
+            if not stat.S_ISREG(os.fstat(fd).st_mode):
+                raise RotationError(EXIT_CONFIG, f"{directory / name} is not a regular file")
+            os.fchmod(fd, mode)
+        finally:
+            os.close(fd)
+    finally:
+        os.close(dir_fd)
+
+
 def scrub(path):
     """Overwrite a file with zeros and remove it (best effort on a file system that keeps old blocks); a directory
     with all that is in it. The node writes in these directories, so nothing found there is followed: a symbolic
@@ -456,8 +479,8 @@ def generate(s, cli, key_dir, name, counter, period):
             raise RotationError(EXIT_CONFIG, "the new certificate is wrong: " + "; ".join(problems))
         for leftover in ("kes.vkey", "issue.counter"):
             (staging / leftover).unlink()
-        (staging / "kes.skey").chmod(0o600)
-        (staging / "node.cert").chmod(0o644)
+        set_mode(staging, "kes.skey", 0o600)
+        set_mode(staging, "node.cert", 0o644)
         write_atomic(staging / "READY", "")
         os.rename(staging, final)
         fsync_dir(key_dir)

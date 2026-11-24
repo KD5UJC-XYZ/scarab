@@ -52,12 +52,19 @@ object Draft03Prover:
       * immutable value of the curve library that cannot be overwritten and lives as long as this
       * object (and in the heap after it until its memory is reused), and it alone computes the
       * output and a proof for any input. Copies given out by [[toBytes]] are their owners'.
+      *
+      * A forgotten key proves nothing more ([[prove]] refuses): its nonce key is zero, so the nonce
+      * of a proof would be computable by anyone, and one proof would give the scalar away.
       */
     def forget(): Unit =
       Arrays.fill(seed, 0.toByte)
       Arrays.fill(nonceKey, 0.toByte)
 
     def prove(alpha: Bytes): Either[Failure, Proved] =
+      if nonceKey.forall(_ == 0) then Left(Failure.MissingSigningKey)
+      else proved(alpha)
+
+    private def proved(alpha: Bytes): Either[Failure, Proved] =
       evaluated(alpha) { g =>
         val nonce = Draft03Prover.sha512(nonceKey, g.hString)
         val k = Scalar.fromBytesModOrderWide(nonce)

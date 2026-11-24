@@ -1124,16 +1124,24 @@ object Follower:
     *
     * None for a failure that is the node's own, which stops it: a previous hash that is not the
     * tip's, since a candidate follows the forest's predecessor links from a point of our chain
-    * ([[AvailableBlocks]]), and every failure that is not of a header's place. A total match with
-    * no default, so a new case must be placed here.
+    * ([[AvailableBlocks]]), and every failure that is not of a header's place.
+    * [[VolatileChain.extend]] checks the number and the slot before the previous hash, so a header
+    * that does not name the tip at all fails by its number or its slot first: it is refused only if
+    * it names the tip, and is the node's own failure if it does not. A total match with no default,
+    * so a new case must be placed here.
     */
   private[node] def misplaced(header: Header, failure: ChainError): Option[ValidationError] =
     import xyz.kd5ujc.scarab.ledger.HeaderStructureProblem as P
     failure match
-      case ChainError.NotConnected(_, _, cause) =>
+      case ChainError.NotConnected(_, tip, cause) =>
+        val namesTheTip = tip match
+          case ChainSync.Point.Block(_, hash) => header.prevHash.contains(hash)
+          case ChainSync.Point.Origin         => false
         cause match
           case P.BlockNumber(_, _) | P.SlotNumber(_, _) =>
-            Some(ValidationError(header.point, BlockFailure.HeaderStructure(cause)))
+            Option.when(namesTheTip)(
+              ValidationError(header.point, BlockFailure.HeaderStructure(cause))
+            )
           case P.PreviousHash(_, _) | P.UnexpectedBoundarySlot(_, _) | P.Transition(_) |
               P.MissingByronLedger | P.LedgerRead(_) | P.EpochPrecedes(_, _) |
               P.LeiosHeaderUnread(_) =>

@@ -215,6 +215,23 @@ class ScrubTest(DriverTest):
         self.assertEqual(sentinel.read_text(), OUTSIDE)
         self.assertEqual((other / "kept").read_text(), "kept")
 
+    def test_set_mode_changes_a_staged_file_and_never_a_link_s_target(self):
+        staging = self.keys / ".staging-gen-000009-00000009"
+        staging.mkdir(mode=0o700)
+        (staging / "kes.skey").write_text("staged")
+        rk.set_mode(staging, "kes.skey", 0o600)
+        self.assertEqual(stat.S_IMODE((staging / "kes.skey").stat().st_mode), 0o600)
+        # the node can write in the staging directory: a link in a staged file's place must not have the mode set
+        # on what it points at (the cold signing key would become readable by everyone)
+        sentinel = self.outside()
+        sentinel.chmod(0o600)
+        (staging / "node.cert").symlink_to(sentinel)
+        with self.assertRaises(rk.RotationError) as raised:
+            rk.set_mode(staging, "node.cert", 0o644)
+        self.assertEqual(raised.exception.status, rk.EXIT_CONFIG)
+        self.assertEqual(stat.S_IMODE(sentinel.stat().st_mode), 0o600)
+        self.assertEqual(sentinel.read_text(), OUTSIDE)
+
     def test_scrub_removes_a_link_and_leaves_what_it_points_at(self):
         gen, sentinel, other = self.planted()
         rk.scrub(gen)
