@@ -385,7 +385,9 @@ class StallDiagnosticsSuite extends FailsOnUncaught:
           for
             release <- IO(new java.util.concurrent.CountDownLatch(1))
             logged <- SignallingRef[IO, Vector[NodeEvent]](Vector.empty)
+            dumping <- Deferred[IO, Unit]
             hung = () =>
+              dumping.complete(()).unsafeRunAndForget()(using munitIORuntime)
               release.await()
               None
             reporter <- StallDiagnostics.Reporter
@@ -398,6 +400,9 @@ class StallDiagnosticsSuite extends FailsOnUncaught:
               _ <- reporter.onStall(stalledLine)
               firstStates <- states(_.size >= 2)
               skipped <- dumps(_.nonEmpty)
+              // the first stall's state is logged before its files are written, in a fiber of
+              // their own: its fiber dump has begun, so the state file written before it is there
+              _ <- dumping.get.timeout(10.seconds)
               files <- IO.blocking(
                 Files.list(dir).iterator.asScala.toList.map(_.getFileName.toString)
               )
