@@ -121,6 +121,8 @@ def collect(paths: Sequence[Path]) -> list[Report]:
             problems.append("its sha256 is not the one its provenance records")
         if record.get("validation", {}).get("valid") is not True:
             problems.append("its provenance records no passed validation")
+        if not SCENARIOS[LABELS[NAME.match(path.name)["label"]]].in_ci and record.get("environment", {}).get("runner") != "local":
+            problems.append("it is a timing report that was not written on a local machine")
         scarab = record.get("scarab", {})
         if scarab.get("dirty") is not False:
             problems.append("it was written from a checkout with uncommitted changes")

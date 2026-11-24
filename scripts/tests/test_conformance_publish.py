@@ -136,6 +136,15 @@ class CollectTest(unittest.TestCase):
             with tempfile.TemporaryDirectory() as tmp, self.assertRaises(publish.PublishError, msg=case):
                 write_report(tmp, **changes)
                 publish.collect([Path(tmp)])
+        turbo = "scarab-20261114-uplc-turbo.json.gz"
+        for runner in ({"environment": {"runner": "github-actions"}}, {}):
+            with tempfile.TemporaryDirectory() as tmp, self.assertRaises(publish.PublishError, msg=str(runner)):
+                write_report(tmp, turbo, **runner)
+                publish.collect([Path(tmp)])
+        with tempfile.TemporaryDirectory() as tmp:
+            write_report(tmp, turbo, environment={"runner": "local"})
+            write_report(tmp, environment={"runner": "github-actions"})
+            self.assertEqual(len(publish.collect([Path(tmp)])), 2)
         with tempfile.TemporaryDirectory() as tmp, self.assertRaises(publish.PublishError):
             Path(tmp, "scarab-2026111-ledger-rules.json.gz").write_bytes(b"")
             publish.collect([Path(tmp, "scarab-2026111-ledger-rules.json.gz")])

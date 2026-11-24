@@ -22,8 +22,9 @@ For the scenarios given (ledger-rules, uplc-conformance, uplc-turbo, cbor-decodi
 status is 1 if a scenario failed, 2 for a usage error. Nothing is published: that is `publish.py`'s, on demand.
 `--dry-run` prints the plan (commands, inputs and report names) without building, fetching or running anything.
 
-uplc-turbo is a timing benchmark: it runs on a quiet machine with a fast core, never on CI (refused when
-`GITHUB_ACTIONS` is set). docs/running/conformance.md has the details.
+uplc-turbo is a timing benchmark: its report is written on a quiet machine with a fast core. On CI (`GITHUB_ACTIONS`
+set) it runs only with `--allocation-only`, for its memory counts, which a shared runner reproduces and its timings
+do not: publish.py refuses a timing report written there. docs/running/conformance.md has the details.
 """
 from __future__ import annotations
 
@@ -355,6 +356,8 @@ def arguments(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--memory", default="8g", help="memory of each tool container (default: %(default)s)")
     parser.add_argument("--allow-dirty", action="store_true",
                         help="run with uncommitted changes (recorded; publish.py refuses such reports)")
+    parser.add_argument("--allocation-only", action="store_true",
+                        help="on CI, run a timing scenario for its memory counts alone (its report is not published)")
     parser.add_argument("--dry-run", action="store_true", help="print the plan, run nothing")
     args = parser.parse_args(argv)
     if not OWNER.match(args.owner):
@@ -369,9 +372,9 @@ def main(argv: list[str] | None = None) -> int:
     selected = [SCENARIOS[name] for name in dict.fromkeys(args.scenarios)]
     if os.environ.get("GITHUB_ACTIONS") == "true":
         refused = [scenario.id for scenario in selected if not scenario.in_ci]
-        if refused:
-            print(f"{', '.join(refused)}: timing scenarios run on a quiet local machine, never on CI",
-                  file=sys.stderr)
+        if refused and not args.allocation_only:
+            print(f"{', '.join(refused)}: timing scenarios are measured on a quiet local machine; on CI they run "
+                  "only with --allocation-only, for their memory counts", file=sys.stderr)
             return 2
     pins = fetching.load_pins()
     checkout = checkout_facts(ROOT)
