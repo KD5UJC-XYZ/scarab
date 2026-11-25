@@ -61,21 +61,10 @@ object CekValue:
     def saturated: Boolean =
       forces == function.signature.forces && count == function.signature.arity
 
-    /** Whether one more `force` saturates the application. */
-    def saturatedByForce: Boolean =
-      forces + 1 == function.signature.forces && count == function.signature.arity
-
-    /** Whether one more argument saturates the application. */
-    def saturatedByArgument: Boolean =
-      forces == function.signature.forces && count + 1 == function.signature.arity
-
     def forced: VBuiltin = VBuiltin(function, forces + 1, arguments, count)
 
     def applied(argument: CekValue): VBuiltin =
       VBuiltin(function, forces, argument :: arguments, count + 1)
-
-    /** The arguments in the order they were applied. */
-    def inOrder: Vector[CekValue] = arguments.reverseIterator.toVector
 
   object VBuiltin:
     private val unapplied: Vector[VBuiltin] =
@@ -95,6 +84,11 @@ object CekValue:
       case VCon(c) => Some(c)
       case _       => None
     def ofConstant(constant: Constant): CekValue = VCon(constant)
+    override def asConstant(value: CekValue): Constant | MachineValue.NoConstant.type =
+      value match
+        case VCon(c) => c
+        case VDelay(_, _) | VLamAbs(_, _) | VBuiltin(_, _, _, _) | VConstr(_, _) =>
+          MachineValue.NoConstant
 
   /** `dischargeCekValue` (`Cek/Internal.hs:657-704`, plutus 1.70.0.0): the value as a term, every
     * variable that its environments bind replaced by the term of its value. An unfold over

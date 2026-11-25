@@ -5,8 +5,8 @@ import scala.annotation.tailrec
 import cats.Applicative
 import cats.mtl.{Raise, Tell}
 import xyz.kd5ujc.scarab.uplc.{Constant, Fix, Term, TermF}
-import xyz.kd5ujc.scarab.uplc.builtin.{Builtins, Outcome}
-import xyz.kd5ujc.scarab.uplc.cost.{CostStream, ExBudget, MachineCosts, SatInt, StepKind}
+import xyz.kd5ujc.scarab.uplc.builtin.{BuiltinFailure, Builtins, Outcome}
+import xyz.kd5ujc.scarab.uplc.cost.{ExBudget, MachineCosts, SatInt, Spender, StepKind}
 import xyz.kd5ujc.scarab.uplc.cek.CekValue.{VBuiltin, VCon, VConstr, VDelay, VLamAbs}
 
 /** What an evaluation runs with, the reference's `MachineParameters`
@@ -97,7 +97,8 @@ object Stop:
   * the step counters and the logs). The loop is a pure tail-recursive function whose parameters are
   * that state: a step allocates the frames and values its transition builds and no state object,
   * the budget changes only when it is spent, and capabilities appear only at the boundary
-  * ([[CekMachine.evaluate]]).
+  * ([[CekMachine.evaluate]]). A builtin application that a `force` or an argument saturates is
+  * returned as a value and evaluated by the loop before the frame it goes to is read.
   */
 object CekMachine:
   /** `defaultSlippage` (`Cek/Internal.hs:420-421`, plutus 1.70.0.0), which `runCekM` sets as
@@ -136,17 +137,6 @@ object CekMachine:
       case CekResult.Failure(failure) => raise.raise(CekFailed(failure, report.budget))
       case success: CekResult.Success => F.pure(CekEvaluated(success, report.budget)))
 
-  /** What a transition outside the loop gives back: the next state, or the end. */
-  private enum Step:
-    case Next(
-        ctx: Context,
-        env: Env[CekValue],
-        control: Term | CekValue,
-        budget: ExBudget,
-        logs: List[String]
-    )
-    case Halt(report: CekReport)
-
   /** The step counter (`Cek/StepCounter.hs`; Note [Structure of the step counter],
     * `Cek/Internal.hs:381-388`, plutus 1.70.0.0): one counter per [[StepKind]] and the total, each
     * below [[Slippage]], so a byte each. The counters of the first eight kinds are the bytes of a
@@ -156,8 +146,22 @@ object CekMachine:
   private val LowKinds = 8
   private val TotalIncrement = 1 << 8
 
+  /** The frame on top of the stack while an operand that takes one step is computed (a variable, a
+    * constant, a `lam`, a `delay` or a builtin), held in the loop's parameters instead of made: the
+    * argument of an application, to compute in the operand's environment once the function is a
+    * value (`FrameAwaitFunTerm`); the function, to apply once the argument is a value
+    * (`FrameAwaitArg`); a `force` (`FrameForce`); or none. The operand's step is counted and
+    * charged as any other, so every step and charge is the frame's; the frame is made only if a
+    * term that is not such an operand comes first.
+    */
+  private type Top = Term | CekValue | Forcing.type | NoTop.type
+
+  private case object Forcing
+  private case object NoTop
+
   /** One evaluation: the parameters every transition reads. */
-  private final class Run[S](parameters: MachineParameters, mode: BudgetMode, stop: Stop[S]):
+  private final class Run[S](parameters: MachineParameters, mode: BudgetMode, stop: Stop[S])
+      extends Spender:
     private val builtins: Builtins = parameters.builtins
     private val caser: CaserBuiltin = parameters.caser
     private val stepCosts: Vector[ExBudget] = StepKind.values.toVector.map(parameters.costs.step)
@@ -172,129 +176,203 @@ object CekMachine:
       // `unCekBudgetSpender ?cekBudgetSpender BStartup` (`Cek/Internal.hs:1102`, plutus 1.70.0.0)
       val started = spend(initial, parameters.costs.startup)
       if exhausted(started) then outOfBudget(started, Nil)
-      else loop(Context.NoFrame, Env.empty, term, started, 0L, 0, Nil)
+      else loop(Context.NoFrame, Env.empty, term, NoTop, started, 0L, 0, Nil)
 
     /** The transitions. `control` is the term being computed (`computeCek`) or the value being
-      * returned (`returnCek`); `low` and `high` are the step counter; `logs` the logs so far, the
-      * last one first.
+      * returned (`returnCek`); `top` is the frame above `ctx` while an operand of one step is
+      * computed ([[Top]]); `low` and `high` are the step counter; `logs` the logs so far, the last
+      * one first.
       */
     @tailrec
     private def loop(
         ctx: Context,
         env: Env[CekValue],
         control: Term | CekValue,
+        top: Top,
         budget: ExBudget,
         low: Long,
         high: Int,
         logs: List[String]
     ): CekReport | S =
       control match
+        // `evalBuiltinApp` (`Cek/Internal.hs:1052-1075`, plutus 1.70.0.0) of an application that the
+        // last `force` or argument saturated: its arguments unlift, its cost is spent, element by
+        // element, before its result is computed, and the result goes to the frame the application
+        // was made in. An application whose arguments do not unlift costs nothing
+        // (`builtinRuntimeFailure`, `PlutusCore/Builtin/Runtime.hs:111`, plutus 1.70.0.0).
+        case b: VBuiltin if b.saturated =>
+          builtins.held(b.function) match
+            // on the arguments as the machine holds them, with nothing made for them
+            case Some(held) =>
+              held.unlifting.refusal(b.function, b.arguments) match
+                case Some(failure) =>
+                  builtinFailure(
+                    b,
+                    BuiltinFailure.Unlifting(failure),
+                    failure.message.toVector,
+                    budget,
+                    logs
+                  )
+                case None =>
+                  val spent = held.costing.spend(b.function, b.arguments, budget, this)
+                  if exhausted(spent) then outOfBudget(spent, logs)
+                  else
+                    held.denotation.applied(b.function, b.arguments) match
+                      case Outcome.Success(result, emitted) =>
+                        loop(ctx, env, result, top, spent, low, high, emit(logs, emitted))
+                      case Outcome.Failure(failure, emitted) =>
+                        builtinFailure(b, failure, emitted, spent, logs)
+            // a builtin a component of which reads its arguments only in order: unlifted once,
+            // the costing and the denotation reading what the unlifting made
+            case None =>
+              val prepared = builtins.prepare(b.function, b.arguments.reverseIterator.toVector)
+              val spent = spendAll(budget, prepared.cost)
+              if exhausted(spent) then outOfBudget(spent, logs)
+              else
+                prepared.result() match
+                  case Outcome.Success(result, emitted) =>
+                    loop(ctx, env, result, top, spent, low, high, emit(logs, emitted))
+                  case Outcome.Failure(failure, emitted) =>
+                    builtinFailure(b, failure, emitted, spent, logs)
+
         case value: CekValue =>
-          ctx match
-            // `returnCek NoFrame` (`Cek/Internal.hs:892-894`, plutus 1.70.0.0)
-            case Context.NoFrame => finish(value, budget, low, high, logs)
-
-            // `forceEvaluate` (`Cek/Internal.hs:958-977`, plutus 1.70.0.0)
-            case Context.Force(next) =>
+          top match
+            // the frame an operand of one step returns to, as `ctx` below does for the others
+            case Forcing =>
               value match
-                case VDelay(body, closure) => loop(next, closure, body, budget, low, high, logs)
-                case b: VBuiltin if b.expectsForce && !b.saturatedByForce =>
-                  loop(next, env, b.forced, budget, low, high, logs)
-                case _ =>
-                  forceOther(next, value, budget, logs) match
-                    case Step.Next(c, e, x, b, l) => loop(c, e, x, b, low, high, l)
-                    case Step.Halt(report)        => report
-
-            // `returnCek (FrameAwaitFunTerm ..)` (`Cek/Internal.hs:898-899`, plutus 1.70.0.0)
-            case Context.AwaitFunTerm(argEnv, argument, next) =>
-              loop(Context.AwaitArg(value, next), argEnv, argument, budget, low, high, logs)
-
-            // `returnCek (FrameAwaitArg ..)`, `applyEvaluate` (`Cek/Internal.hs:903-904,986-1008`,
-            // plutus 1.70.0.0)
-            case Context.AwaitArg(function, next) =>
+                case VDelay(body, closure) =>
+                  loop(ctx, closure, body, NoTop, budget, low, high, logs)
+                case b: VBuiltin if b.expectsForce =>
+                  loop(ctx, env, b.forced, NoTop, budget, low, high, logs)
+                case _ => forceOther(value, budget, logs)
+            case function: CekValue =>
               function match
                 case VLamAbs(body, closure) =>
-                  loop(next, closure.cons(value), body, budget, low, high, logs)
-                case b: VBuiltin if b.expectsArgument && !b.saturatedByArgument =>
-                  loop(next, env, b.applied(value), budget, low, high, logs)
-                case _ =>
-                  applyOther(next, function, value, budget, logs) match
-                    case Step.Next(c, e, x, b, l) => loop(c, e, x, b, low, high, l)
-                    case Step.Halt(report)        => report
+                  loop(ctx, closure.cons(value), body, NoTop, budget, low, high, logs)
+                case b: VBuiltin if b.expectsArgument =>
+                  loop(ctx, env, b.applied(value), NoTop, budget, low, high, logs)
+                case _ => applyOther(function, value, budget, logs)
+            case argument: Fix[TermF] =>
+              if immediate(argument) then loop(ctx, env, argument, value, budget, low, high, logs)
+              else loop(Context.AwaitArg(value, ctx), env, argument, NoTop, budget, low, high, logs)
+            case NoTop =>
+              ctx match
+                // `returnCek NoFrame` (`Cek/Internal.hs:892-894`, plutus 1.70.0.0)
+                case Context.NoFrame => finish(value, budget, low, high, logs)
 
-            // `returnCek (FrameAwaitFunValueN ..)` and `(FrameAwaitFunConN ..)`
-            // (`Cek/Internal.hs:906-921`, plutus 1.70.0.0): the first argument is applied, the rest
-            // wait.
-            case Context.AwaitFunValues(first, rest, after) =>
-              val next = rest match
-                case Nil       => after
-                case h :: tail => Context.AwaitFunValues(h, tail, after)
-              value match
-                case VLamAbs(body, closure) =>
-                  loop(next, closure.cons(first), body, budget, low, high, logs)
-                case _ =>
-                  applyOther(next, value, first, budget, logs) match
-                    case Step.Next(c, e, x, b, l) => loop(c, e, x, b, low, high, l)
-                    case Step.Halt(report)        => report
+                // `forceEvaluate` (`Cek/Internal.hs:958-977`, plutus 1.70.0.0)
+                case Context.Force(next) =>
+                  value match
+                    case VDelay(body, closure) =>
+                      loop(next, closure, body, NoTop, budget, low, high, logs)
+                    case b: VBuiltin if b.expectsForce =>
+                      loop(next, env, b.forced, NoTop, budget, low, high, logs)
+                    case _ => forceOther(value, budget, logs)
 
-            // `returnCek (FrameConstr ..)` (`Cek/Internal.hs:923-929`, plutus 1.70.0.0)
-            case Context.Constr(fieldEnv, tag, fields, todo, done, next) =>
-              if todo < fields.size then
-                loop(
-                  Context.Constr(fieldEnv, tag, fields, todo + 1, value :: done, next),
-                  fieldEnv,
-                  fields(todo),
-                  budget,
-                  low,
-                  high,
-                  logs
-                )
-              else loop(next, env, VConstr(tag, (value :: done).reverse), budget, low, high, logs)
+                // `returnCek (FrameAwaitFunTerm ..)` (`Cek/Internal.hs:898-899`, plutus 1.70.0.0)
+                case Context.AwaitFunTerm(argEnv, argument, next) =>
+                  if immediate(argument) then
+                    loop(next, argEnv, argument, value, budget, low, high, logs)
+                  else
+                    loop(
+                      Context.AwaitArg(value, next),
+                      argEnv,
+                      argument,
+                      NoTop,
+                      budget,
+                      low,
+                      high,
+                      logs
+                    )
 
-            // `returnCek (FrameCases ..)` (`Cek/Internal.hs:931-950`, plutus 1.70.0.0)
-            case Context.Cases(branchEnv, branches, next) =>
-              value match
-                case VConstr(tag, fields) =>
-                  // A tag of 2^63 or more is a negative `Long`, past every branch
-                  // (`Cek/Internal.hs:936-938`, plutus 1.70.0.0).
-                  val i = tag.bits
-                  if i >= 0L && i < branches.size then
-                    fields match
-                      case Nil =>
-                        loop(next, branchEnv, branches(i.toInt), budget, low, high, logs)
-                      case h :: tail =>
-                        loop(
-                          Context.AwaitFunValues(h, tail, next),
-                          branchEnv,
-                          branches(i.toInt),
-                          budget,
-                          low,
-                          high,
-                          logs
-                        )
-                  else fail(CekError.MissingCaseBranch(tag), Some(Cause.of(value)), budget, logs)
-                case VCon(constant) =>
-                  caser.select(constant, branches) match
-                    case CaserBuiltin.Selection.Branch(branch) =>
-                      loop(next, branchEnv, branch, budget, low, high, logs)
-                    case CaserBuiltin.Selection.Applied(branch, h :: tail) =>
-                      loop(
-                        Context.AwaitFunValues(VCon(h), tail.map(VCon(_)), next),
-                        branchEnv,
-                        branch,
-                        budget,
-                        low,
-                        high,
-                        logs
-                      )
-                    // `headSpine h [] = HeadOnly h` (`PlutusCore/Builtin/KnownType.hs:355`,
-                    // plutus 1.70.0.0)
-                    case CaserBuiltin.Selection.Applied(branch, Nil) =>
-                      loop(next, branchEnv, branch, budget, low, high, logs)
-                    case CaserBuiltin.Selection.Refused(error) =>
-                      fail(CekError.CaseBuiltin(error), Some(Cause.of(value)), budget, logs)
-                case _ =>
-                  fail(CekError.NonConstrScrutinized, Some(Cause.of(value)), budget, logs)
+                // `returnCek (FrameAwaitArg ..)`, `applyEvaluate`
+                // (`Cek/Internal.hs:903-904,986-1008`, plutus 1.70.0.0)
+                case Context.AwaitArg(function, next) =>
+                  function match
+                    case VLamAbs(body, closure) =>
+                      loop(next, closure.cons(value), body, NoTop, budget, low, high, logs)
+                    case b: VBuiltin if b.expectsArgument =>
+                      loop(next, env, b.applied(value), NoTop, budget, low, high, logs)
+                    case _ => applyOther(function, value, budget, logs)
+
+                // `returnCek (FrameAwaitFunValueN ..)` and `(FrameAwaitFunConN ..)`
+                // (`Cek/Internal.hs:906-921`, plutus 1.70.0.0): the first argument is applied, the
+                // rest wait.
+                case Context.AwaitFunValues(first, rest, after) =>
+                  val next = rest match
+                    case Nil       => after
+                    case h :: tail => Context.AwaitFunValues(h, tail, after)
+                  value match
+                    case VLamAbs(body, closure) =>
+                      loop(next, closure.cons(first), body, NoTop, budget, low, high, logs)
+                    case b: VBuiltin if b.expectsArgument =>
+                      loop(next, env, b.applied(first), NoTop, budget, low, high, logs)
+                    case _ => applyOther(value, first, budget, logs)
+
+                // `returnCek (FrameConstr ..)` (`Cek/Internal.hs:923-929`, plutus 1.70.0.0)
+                case Context.Constr(fieldEnv, tag, fields, todo, done, next) =>
+                  if todo < fields.size then
+                    loop(
+                      Context.Constr(fieldEnv, tag, fields, todo + 1, value :: done, next),
+                      fieldEnv,
+                      fields(todo),
+                      NoTop,
+                      budget,
+                      low,
+                      high,
+                      logs
+                    )
+                  else
+                    val constructed = VConstr(tag, (value :: done).reverse)
+                    loop(next, env, constructed, NoTop, budget, low, high, logs)
+
+                // `returnCek (FrameCases ..)` (`Cek/Internal.hs:931-950`, plutus 1.70.0.0)
+                case Context.Cases(branchEnv, branches, next) =>
+                  value match
+                    case VConstr(tag, fields) =>
+                      // A tag of 2^63 or more is a negative `Long`, past every branch
+                      // (`Cek/Internal.hs:936-938`, plutus 1.70.0.0).
+                      val i = tag.bits
+                      if i >= 0L && i < branches.size then
+                        fields match
+                          case Nil =>
+                            loop(next, branchEnv, branches(i.toInt), NoTop, budget, low, high, logs)
+                          case h :: tail =>
+                            loop(
+                              Context.AwaitFunValues(h, tail, next),
+                              branchEnv,
+                              branches(i.toInt),
+                              NoTop,
+                              budget,
+                              low,
+                              high,
+                              logs
+                            )
+                      else
+                        fail(CekError.MissingCaseBranch(tag), Some(Cause.of(value)), budget, logs)
+                    case VCon(constant) =>
+                      caser.select(constant, branches) match
+                        case CaserBuiltin.Selection.Branch(branch) =>
+                          loop(next, branchEnv, branch, NoTop, budget, low, high, logs)
+                        case CaserBuiltin.Selection.Applied(branch, h :: tail) =>
+                          loop(
+                            Context.AwaitFunValues(VCon(h), tail.map(VCon(_)), next),
+                            branchEnv,
+                            branch,
+                            NoTop,
+                            budget,
+                            low,
+                            high,
+                            logs
+                          )
+                        // `headSpine h [] = HeadOnly h` (`PlutusCore/Builtin/KnownType.hs:355`,
+                        // plutus 1.70.0.0)
+                        case CaserBuiltin.Selection.Applied(branch, Nil) =>
+                          loop(next, branchEnv, branch, NoTop, budget, low, high, logs)
+                        case CaserBuiltin.Selection.Refused(error) =>
+                          fail(CekError.CaseBuiltin(error), Some(Cause.of(value)), budget, logs)
+                    case _ =>
+                      fail(CekError.NonConstrScrutinized, Some(Cause.of(value)), budget, logs)
 
         case term: Fix[TermF] =>
           val layer = term.unfix
@@ -324,7 +402,7 @@ object CekMachine:
                     case TermF.Var(index) =>
                       env.indexOne(index.index.bits) match
                         case found: Env.Tree[CekValue] =>
-                          loop(ctx, env, found.value, spent, low1, high1, logs)
+                          loop(ctx, env, found.value, top, spent, low1, high1, logs)
                         case Env.Absent =>
                           fail(
                             CekError.OpenTermEvaluated(index),
@@ -333,39 +411,49 @@ object CekMachine:
                             logs
                           )
                     // `Cek/Internal.hs:838-840` of plutus 1.70.0.0
-                    case TermF.Constant(c) => loop(ctx, env, VCon(c), spent, low1, high1, logs)
+                    case TermF.Constant(c) =>
+                      loop(ctx, env, VCon(c), top, spent, low1, high1, logs)
                     // `Cek/Internal.hs:842-844` of plutus 1.70.0.0
                     case TermF.LamAbs(body) =>
-                      loop(ctx, env, VLamAbs(body, env), spent, low1, high1, logs)
+                      loop(ctx, env, VLamAbs(body, env), top, spent, low1, high1, logs)
                     // `Cek/Internal.hs:846-848` of plutus 1.70.0.0
                     case TermF.Delay(body) =>
-                      loop(ctx, env, VDelay(body, env), spent, low1, high1, logs)
+                      loop(ctx, env, VDelay(body, env), top, spent, low1, high1, logs)
                     // `Cek/Internal.hs:850-852` of plutus 1.70.0.0
                     case TermF.Force(body) =>
-                      loop(Context.Force(ctx), env, body, spent, low1, high1, logs)
+                      val stack = framed(top, env, ctx)
+                      if immediate(body) then
+                        loop(stack, env, body, Forcing, spent, low1, high1, logs)
+                      else loop(Context.Force(stack), env, body, NoTop, spent, low1, high1, logs)
                     // `Cek/Internal.hs:854-856` of plutus 1.70.0.0
                     case TermF.Apply(function, argument) =>
-                      loop(
-                        Context.AwaitFunTerm(env, argument, ctx),
-                        env,
-                        function,
-                        spent,
-                        low1,
-                        high1,
-                        logs
-                      )
+                      val stack = framed(top, env, ctx)
+                      if immediate(function) then
+                        loop(stack, env, function, argument, spent, low1, high1, logs)
+                      else
+                        loop(
+                          Context.AwaitFunTerm(env, argument, stack),
+                          env,
+                          function,
+                          NoTop,
+                          spent,
+                          low1,
+                          high1,
+                          logs
+                        )
                     // `Cek/Internal.hs:858-862` of plutus 1.70.0.0
                     case TermF.Builtin(function) =>
-                      loop(ctx, env, VBuiltin.of(function), spent, low1, high1, logs)
+                      loop(ctx, env, VBuiltin.of(function), top, spent, low1, high1, logs)
                     // `Cek/Internal.hs:864-868` of plutus 1.70.0.0
                     case TermF.Constr(tag, fields) =>
                       if fields.isEmpty then
-                        loop(ctx, env, VConstr(tag, Nil), spent, low1, high1, logs)
+                        loop(ctx, env, VConstr(tag, Nil), top, spent, low1, high1, logs)
                       else
                         loop(
-                          Context.Constr(env, tag, fields, 1, Nil, ctx),
+                          Context.Constr(env, tag, fields, 1, Nil, framed(top, env, ctx)),
                           env,
                           fields(0),
+                          NoTop,
                           spent,
                           low1,
                           high1,
@@ -374,9 +462,10 @@ object CekMachine:
                     // `Cek/Internal.hs:870-872` of plutus 1.70.0.0
                     case TermF.Case(scrutinee, branches) =>
                       loop(
-                        Context.Cases(env, branches, ctx),
+                        Context.Cases(env, branches, framed(top, env, ctx)),
                         env,
                         scrutinee,
+                        NoTop,
                         spent,
                         low1,
                         high1,
@@ -384,6 +473,26 @@ object CekMachine:
                       )
                     case TermF.Error =>
                       fail(CekError.ErrorTerm, Some(Cause(Term.error)), budget, logs)
+
+    /** Whether computing `term` is one step that gives a value without a frame: a variable, a
+      * constant, a `lam`, a `delay` or a builtin (`Cek/Internal.hs:833-848,858-862`, plutus
+      * 1.70.0.0). Such an operand is computed with the frame it returns to held in [[Top]].
+      */
+    private def immediate(term: Term): Boolean = term.unfix match
+      case TermF.Var(_) | TermF.Constant(_) | TermF.LamAbs(_) | TermF.Delay(_) | TermF.Builtin(_) =>
+        true
+      case TermF.Apply(_, _) | TermF.Force(_) | TermF.Constr(_, _) | TermF.Case(_, _) |
+          TermF.Error =>
+        false
+
+    /** The stack of frames with `top` made a frame on `ctx`; `env` is the environment of an
+      * argument held there, which the operand it waits for shares.
+      */
+    private def framed(top: Top, env: Env[CekValue], ctx: Context): Context = top match
+      case NoTop                => ctx
+      case Forcing              => Context.Force(ctx)
+      case function: CekValue   => Context.AwaitArg(function, ctx)
+      case argument: Fix[TermF] => Context.AwaitFunTerm(env, argument, ctx)
 
     /** The step kind of a term (`StepKind`, `Cek/Internal.hs:208-217`, plutus 1.70.0.0), -1 for
       * `error`, which is not a step.
@@ -400,90 +509,47 @@ object CekMachine:
       case TermF.Constr(_, _) => StepKind.Constr.ordinal
       case TermF.Error        => -1
 
-    /** `forceEvaluate` of anything but a `delay` and a builtin that takes the `force` unsaturated
-      * (`Cek/Internal.hs:963-977`, plutus 1.70.0.0).
+    /** `forceEvaluate` of anything but a `delay` and a builtin that expects a `force`
+      * (`Cek/Internal.hs:963-977`, plutus 1.70.0.0): a failure.
       */
-    private def forceOther(
-        next: Context,
-        value: CekValue,
-        budget: ExBudget,
-        logs: List[String]
-    ): Step = value match
-      case b: VBuiltin if b.expectsForce => evalBuiltinApp(next, b.forced, budget, logs)
-      case b: VBuiltin =>
-        Step.Halt(
+    private def forceOther(value: CekValue, budget: ExBudget, logs: List[String]): CekReport =
+      value match
+        case b: VBuiltin =>
           fail(
             CekError.BuiltinTermArgumentExpected,
             Some(Cause(Term.force(CekValue.discharge(b)))),
             budget,
             logs
           )
-        )
-      case _ =>
-        Step.Halt(fail(CekError.NonPolymorphicInstantiation, Some(Cause.of(value)), budget, logs))
+        case _ => fail(CekError.NonPolymorphicInstantiation, Some(Cause.of(value)), budget, logs)
 
-    /** `applyEvaluate` of anything but a `lam` (`Cek/Internal.hs:995-1008`, plutus 1.70.0.0). */
+    /** `applyEvaluate` of anything but a `lam` and a builtin that expects an argument
+      * (`Cek/Internal.hs:995-1008`, plutus 1.70.0.0): a failure.
+      */
     private def applyOther(
-        next: Context,
         function: CekValue,
         argument: CekValue,
         budget: ExBudget,
         logs: List[String]
-    ): Step = function match
-      case b: VBuiltin if b.expectsArgument =>
-        evalBuiltinApp(next, b.applied(argument), budget, logs)
+    ): CekReport = function match
       case b: VBuiltin =>
-        Step.Halt(
-          fail(
-            CekError.UnexpectedBuiltinTermArgument,
-            Some(Cause(CekValue.dischargeApplied(b, argument))),
-            budget,
-            logs
-          )
+        fail(
+          CekError.UnexpectedBuiltinTermArgument,
+          Some(Cause(CekValue.dischargeApplied(b, argument))),
+          budget,
+          logs
         )
-      case _ =>
-        Step.Halt(fail(CekError.NonFunctionalApplication, Some(Cause.of(function)), budget, logs))
+      case _ => fail(CekError.NonFunctionalApplication, Some(Cause.of(function)), budget, logs)
 
-    /** `evalBuiltinApp` (`Cek/Internal.hs:1052-1075`, plutus 1.70.0.0): a partial application is a
-      * value; a saturated one spends its cost, element by element, before its result is computed,
-      * then emits the result's logs and returns its value or fails.
-      */
-    private def evalBuiltinApp(
-        next: Context,
+    /** A saturated application `b` that failed, after the logs it emits. */
+    private def builtinFailure(
         b: VBuiltin,
+        failure: BuiltinFailure,
+        emitted: Vector[String],
         budget: ExBudget,
         logs: List[String]
-    ): Step =
-      if !b.saturated then Step.Next(next, Env.empty, b, budget, logs)
-      else
-        val prepared = builtins.prepare(b.function, b.inOrder)
-        val spent = spendStream(budget, prepared.cost)
-        if exhausted(spent) then Step.Halt(outOfBudget(spent, logs))
-        else
-          prepared.result() match
-            case Outcome.Success(value, emitted) =>
-              Step.Next(next, Env.empty, value, spent, emit(logs, emitted))
-            case Outcome.Failure(failure, emitted) =>
-              Step.Halt(
-                fail(
-                  CekError.Builtin(b.function, failure),
-                  Some(Cause.of(b)),
-                  spent,
-                  emit(logs, emitted)
-                )
-              )
-
-    /** `spendBudgets` (`Cek/Internal.hs:1061-1064`, plutus 1.70.0.0): each element in order, the
-      * rest of the stream forced only once the element before it is spent, stopping at the element
-      * that overspends; the rest of the stream after it is never computed.
-      */
-    private def spendStream(budget: ExBudget, cost: CostStream): ExBudget =
-      @tailrec def go(b: ExBudget, stream: CostStream): ExBudget = stream match
-        case CostStream.Last(element) => spend(b, element)
-        case CostStream.Cons(element, rest) =>
-          val after = spend(b, element)
-          if exhausted(after) then after else go(after, rest.value)
-      go(budget, cost)
+    ): CekReport =
+      fail(CekError.Builtin(b.function, failure), Some(Cause.of(b)), budget, emit(logs, emitted))
 
     /** `spendAccumulatedBudget` (`Cek/Internal.hs:1011-1027`, plutus 1.70.0.0): for each
       * [[StepKind]] in order, its count times its cost, stopping at the kind that overspends.
@@ -499,14 +565,17 @@ object CekMachine:
       go(budget, 0)
 
     /** The spender of the mode (`ExBudgetMode.hs:55-57,146-165`, plutus 1.70.0.0). */
+    def spend(budget: ExBudget, cpu: SatInt, memory: SatInt): ExBudget =
+      if restricting then ExBudget(budget.cpu - cpu, budget.memory - memory)
+      else ExBudget(budget.cpu + cpu, budget.memory + memory)
+
     private def spend(budget: ExBudget, cost: ExBudget): ExBudget =
-      if restricting then ExBudget(budget.cpu - cost.cpu, budget.memory - cost.memory)
-      else budget + cost
+      spend(budget, cost.cpu, cost.memory)
 
     /** A restricting budget is negative only once a charge has overspent it, which fails the
       * evaluation (`ExBudgetMode.hs:155-165`, plutus 1.70.0.0).
       */
-    private def exhausted(budget: ExBudget): Boolean =
+    def exhausted(budget: ExBudget): Boolean =
       restricting && (budget.cpu < SatInt.zero || budget.memory < SatInt.zero)
 
     /** `returnCek NoFrame` (`Cek/Internal.hs:892-894`, plutus 1.70.0.0): spend the counted steps,

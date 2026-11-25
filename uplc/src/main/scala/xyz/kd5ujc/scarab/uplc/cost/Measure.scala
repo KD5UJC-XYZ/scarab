@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.uplc.cost
 
 import cats.Eval
 import scala.annotation.tailrec
-import xyz.kd5ujc.scarab.uplc.{Constant, PlutusData, Text}
+import xyz.kd5ujc.scarab.uplc.{Constant, PlutusData, Signature, Text}
 import xyz.kd5ujc.scarab.uplc.builtin.{Argument, MachineValue}
 
 /** The size of a builtin's argument as its costing function reads it, the reference's
@@ -21,6 +21,18 @@ trait Measure:
   /** The reference's name of the measure: its Haskell type, or `universe` for a type's own. */
   def name: String
   def apply[V](argument: Argument[V])(using MachineValue[V]): Costs
+
+  /** Whether [[apply]] of the argument a held unlifting accepts as `value` for `parameter`
+    * ([[Argument.of]]) is one cost, decided from the value: a parameter whose type has variables
+    * takes a constant of any type.
+    */
+  def oneCost[V](parameter: Signature.Parameter, value: V)(using MachineValue[V]): Boolean
+
+  /** The sum of the costs of that [[apply]], which is its one cost where [[oneCost]] says so,
+    * computed with no stream.
+    */
+  def size[V](parameter: Signature.Parameter, value: V)(using MachineValue[V]): SatInt
+
   override def toString: String = name
 
 object Measure:
@@ -37,6 +49,16 @@ object Measure:
     def apply[V](argument: Argument[V])(using value: MachineValue[V]): Costs = argument match
       case Argument.Con(c)    => constant(c)
       case Argument.Opaque(v) => value.constantOf(v).fold(single(1))(constant)
+    def oneCost[V](parameter: Signature.Parameter, value: V)(using
+        mv: MachineValue[V]
+    ): Boolean =
+      mv.asConstant(value) match
+        case c: Constant             => oneCostConstant(c)
+        case MachineValue.NoConstant => true
+    def size[V](parameter: Signature.Parameter, value: V)(using mv: MachineValue[V]): SatInt =
+      mv.asConstant(value) match
+        case c: Constant             => total(c)
+        case MachineValue.NoConstant => SatInt(1)
 
   /** 1 whatever the value: `Int`, `Word8` and `Word64` (lines 267-273, 343-345), the types of
     * arguments taken as indices, widths, bytes and constructor tags in some variants.
@@ -44,65 +66,112 @@ object Measure:
   val one: Measure = new Measure:
     val name = "Int, Word8 or Word64"
     def apply[V](argument: Argument[V])(using MachineValue[V]): Costs = single(1)
+    def oneCost[V](parameter: Signature.Parameter, value: V)(using MachineValue[V]): Boolean =
+      true
+    def size[V](parameter: Signature.Parameter, value: V)(using MachineValue[V]): SatInt =
+      SatInt(1)
 
   /** `TextCostedByByteLength` (lines 336-341): a quarter of the length of the text's UTF-8
     * encoding, rounded towards zero.
     */
-  val textBytes: Measure = refining("TextCostedByByteLength") { case Constant.String(t) =>
-    single(t.utf8Length / 4L)
-  }
+  val textBytes: Measure =
+    refining("TextCostedByByteLength") { case Constant.String(t) =>
+      SatInt(t.utf8Length / 4L)
+    }
 
   /** `IntegerCostedLiterally` (lines 304-308): the absolute value of the integer, at most
     * `maxBound`.
     */
-  val literal: Measure = refining("IntegerCostedLiterally") { case Constant.Integer(n) =>
-    Costs.Last(SatInt.clamp(n.abs))
-  }
+  val literal: Measure =
+    refining("IntegerCostedLiterally") { case Constant.Integer(n) =>
+      SatInt.clamp(n.abs)
+    }
 
   /** `NumBytesCostedAsNumWords` (lines 287-291): the number of 8-byte words that hold `|n|` bytes,
     * `((|n| - 1) div 8) + 1` with the division rounding down, so 0 for 0; at most `maxBound`.
     */
-  val words: Measure = refining("NumBytesCostedAsNumWords") { case Constant.Integer(n) =>
-    val m = n.abs - 1
-    Costs.Last(SatInt.clamp((m - m.mod(8)) / 8 + 1))
-  }
+  val words: Measure =
+    refining("NumBytesCostedAsNumWords") { case Constant.Integer(n) =>
+      val m = n.abs - 1
+      SatInt.clamp((m - m.mod(8)) / 8 + 1)
+    }
 
   /** `ValueTotalSize` (lines 420-424), also `Value`'s own measure: the number of entries. */
-  val totalSize: Measure = refining("ValueTotalSize") { case Constant.Value(v) =>
-    single(v.totalSize.toLong)
-  }
+  val totalSize: Measure =
+    refining("ValueTotalSize") { case Constant.Value(v) =>
+      SatInt(v.totalSize.toLong)
+    }
 
   /** `ValueOuterSize` (lines 427-431): the number of currencies. */
-  val outerSize: Measure = refining("ValueOuterSize") { case Constant.Value(v) =>
-    single(v.entries.size.toLong)
-  }
+  val outerSize: Measure =
+    refining("ValueOuterSize") { case Constant.Value(v) =>
+      SatInt(v.entries.size.toLong)
+    }
 
   /** `ValueOuterDepth` of plutus 1.71.0.0 (`261766ad`, `ExMemoryUsage.hs:434-452` there), the
     * measure of the `Value` of `keepPolicies` and `dropPolicies`: `integerLog2 m + 1` for `m`
     * currencies, and 1, not 0, for none.
     */
-  val outerDepth: Measure = refining("ValueOuterDepth") { case Constant.Value(v) =>
-    single(if v.entries.isEmpty then 1L else depth(v.entries.size))
-  }
+  val outerDepth: Measure =
+    refining("ValueOuterDepth") { case Constant.Value(v) =>
+      SatInt(if v.entries.isEmpty then 1L else depth(v.entries.size))
+    }
 
   /** `ValueMaxDepth` (lines 452-462): the sum of `integerLog2 n + 1` (0 for 0) over the number of
     * currencies and the size of the largest inner map.
     */
-  val maxDepth: Measure = refining("ValueMaxDepth") { case Constant.Value(v) =>
-    single(depth(v.entries.size) + depth(v.maxInnerSize))
-  }
+  val maxDepth: Measure =
+    refining("ValueMaxDepth") { case Constant.Value(v) =>
+      SatInt(depth(v.entries.size) + depth(v.maxInnerSize))
+    }
 
   /** `DataNodeCount` (lines 399-412): 1 for every node of the `Data`, in pre-order. */
-  val nodeCount: Measure = refining("DataNodeCount") { case Constant.Data(d) =>
-    flatten(d)(_ => SatInt(1))
-  }
+  val nodeCount: Measure = new Measure:
+    val name = "DataNodeCount"
+    private val nodes: PartialFunction[Constant, Costs] = { case Constant.Data(d) =>
+      flatten(d)(_ => SatInt(1))
+    }
+    def apply[V](argument: Argument[V])(using MachineValue[V]): Costs = argument match
+      case Argument.Con(c) => nodes.applyOrElse(c, constant)
+      case other           => universe(other)
+    // a `Data` node's children are those `data` walks, so its count is one cost where its
+    // measure is, and any other constant is measured as its own
+    def oneCost[V](parameter: Signature.Parameter, value: V)(using MachineValue[V]): Boolean =
+      universe.oneCost(parameter, value)
+    def size[V](parameter: Signature.Parameter, value: V)(using mv: MachineValue[V]): SatInt =
+      parameter match
+        case Signature.Parameter.Opaque(_) => universe.size(parameter, value)
+        case Signature.Parameter.Constant(_) =>
+          mv.asConstant(value) match
+            case c: Constant             => nodes.applyOrElse(c, constant).sum
+            case MachineValue.NoConstant => SatInt(1)
 
-  private def refining(label: String)(measure: PartialFunction[Constant, Costs]): Measure =
+  /** A measure of one cost for the constants `measure` takes, and the argument's own measure
+    * ([[universe]]) for any other.
+    */
+  private def refining(label: String)(measure: PartialFunction[Constant, SatInt]): Measure =
     new Measure:
       val name = label
+      private val costs: PartialFunction[Constant, Costs] = measure.andThen(Costs.Last(_))
       def apply[V](argument: Argument[V])(using value: MachineValue[V]): Costs = argument match
-        case Argument.Con(c) => measure.applyOrElse(c, constant)
+        case Argument.Con(c) => costs.applyOrElse(c, constant)
         case other           => universe(other)
+      def oneCost[V](parameter: Signature.Parameter, value: V)(using
+          mv: MachineValue[V]
+      ): Boolean =
+        parameter match
+          case Signature.Parameter.Opaque(_) => universe.oneCost(parameter, value)
+          case Signature.Parameter.Constant(_) =>
+            mv.asConstant(value) match
+              case c: Constant             => measure.isDefinedAt(c) || oneCostConstant(c)
+              case MachineValue.NoConstant => true
+      def size[V](parameter: Signature.Parameter, value: V)(using mv: MachineValue[V]): SatInt =
+        parameter match
+          case Signature.Parameter.Opaque(_) => universe.size(parameter, value)
+          case Signature.Parameter.Constant(_) =>
+            mv.asConstant(value) match
+              case c: Constant             => measure.applyOrElse(c, total)
+              case MachineValue.NoConstant => SatInt(1)
 
   private def depth(size: Int): Long = (32 - Integer.numberOfLeadingZeros(size)).toLong
 
@@ -110,20 +179,51 @@ object Measure:
     * universe, `ExMemoryUsage.hs:199-497`, plutus 1.70.0.0).
     */
   def constant(c: Constant): Costs = c match
-    case Constant.Integer(n)              => Costs.Last(integer(n))
-    case Constant.ByteString(b)           => Costs.Last(bytes(b.size))
-    case Constant.String(t)               => text(t)
-    case Constant.Unit                    => single(1)
-    case Constant.Bool(_)                 => single(1)
-    case Constant.Data(d)                 => data(d)
-    case Constant.Bls12_381_G1_Element(_) => single(G1Words)
-    case Constant.Bls12_381_G2_Element(_) => single(G2Words)
-    case Constant.Bls12_381_MlResult(_)   => single(MlResultWords)
-    case Constant.Value(v)                => single(v.totalSize.toLong)
-    case l: Constant.List                 => list(l.size)
-    case Constant.Array(_, items)         => single(items.size.toLong)
+    case Constant.String(t) => text(t)
+    case Constant.Data(d)   => data(d)
+    case l: Constant.List   => list(l.size)
+    case Constant.Integer(_) | Constant.ByteString(_) | Constant.Unit | Constant.Bool(_) |
+        Constant.Bls12_381_G1_Element(_) | Constant.Bls12_381_G2_Element(_) |
+        Constant.Bls12_381_MlResult(_) | Constant.Value(_) | Constant.Array(_, _) |
+        Constant.Pair(_, _) =>
+      Costs.Last(total(c))
+
+  /** Whether [[constant]] of `c` is one cost: all but a text of more than 100 characters, a list of
+    * 100 elements or more, and a `Data` value with a child ([[text]], [[list]], [[data]]).
+    */
+  def oneCostConstant(c: Constant): Boolean = c match
+    case Constant.String(t) => t.codePoints <= Chunk
+    case l: Constant.List   => l.size < Chunk
+    case Constant.Data(d)   => childless(d)
+    case Constant.Integer(_) | Constant.ByteString(_) | Constant.Unit | Constant.Bool(_) |
+        Constant.Bls12_381_G1_Element(_) | Constant.Bls12_381_G2_Element(_) |
+        Constant.Bls12_381_MlResult(_) | Constant.Value(_) | Constant.Array(_, _) |
+        Constant.Pair(_, _) =>
+      true
+
+  /** Whether `d` has no child for [[data]] to walk ([[childrenOf]]). */
+  private def childless(d: PlutusData): Boolean = d match
+    case PlutusData.Constr(_, fields)      => fields.isEmpty
+    case PlutusData.List(items)            => items.isEmpty
+    case PlutusData.Map(entries)           => entries.isEmpty
+    case PlutusData.I(_) | PlutusData.B(_) => true
+
+  /** The sum of [[constant]]'s costs: its one cost but for a text, a `Data` and a list. */
+  def total(c: Constant): SatInt = c match
+    case Constant.Integer(n)              => integer(n)
+    case Constant.ByteString(b)           => bytes(b.size)
+    case Constant.String(t)               => SatInt(t.codePoints.toLong)
+    case Constant.Unit                    => SatInt(1)
+    case Constant.Bool(_)                 => SatInt(1)
+    case Constant.Data(d)                 => if childless(d) then node(d) else data(d).sum
+    case Constant.Bls12_381_G1_Element(_) => SatInt(G1Words)
+    case Constant.Bls12_381_G2_Element(_) => SatInt(G2Words)
+    case Constant.Bls12_381_MlResult(_)   => SatInt(MlResultWords)
+    case Constant.Value(v)                => SatInt(v.totalSize.toLong)
+    case l: Constant.List                 => SatInt(l.size.toLong)
+    case Constant.Array(_, items)         => SatInt(items.size.toLong)
     // Pairs are only ever costed by constant functions (lines 199-205).
-    case Constant.Pair(_, _) => Costs.Last(SatInt.maxValue)
+    case Constant.Pair(_, _) => SatInt.maxValue
 
   /** `memoryUsageInteger` (lines 247-256): 1 for 0, else the number of 64-bit words of `|n|`,
     * `integerLog2 |n| div 64 + 1`.
@@ -154,12 +254,13 @@ object Measure:
   /** `Data` (lines 382-394): 4 for every node plus the size of an integer or byte string in it, in
     * pre-order (a map's keys and values alternate).
     */
-  def data(d: PlutusData): Costs =
-    flatten(d) {
-      case PlutusData.I(n) => SatInt(4) + integer(n)
-      case PlutusData.B(b) => SatInt(4) + bytes(b.size)
-      case _               => SatInt(4) + SatInt.zero
-    }
+  def data(d: PlutusData): Costs = flatten(d)(node)
+
+  /** The cost of one node of a `Data` value in [[data]]. */
+  private def node(d: PlutusData): SatInt = d match
+    case PlutusData.I(n) => SatInt(4) + integer(n)
+    case PlutusData.B(b) => SatInt(4) + bytes(b.size)
+    case _               => SatInt(4) + SatInt.zero
 
   /** The children of a node not yet walked: the fields of a constructor or the items of a list from
     * `next`, or a map's keys and values in turn from position `next` of `2 * size`.

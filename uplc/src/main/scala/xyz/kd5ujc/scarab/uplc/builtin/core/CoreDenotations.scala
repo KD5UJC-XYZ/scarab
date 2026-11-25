@@ -8,6 +8,7 @@ import xyz.kd5ujc.scarab.uplc.builtin.{
   BuiltinFailure,
   DataShape,
   Denotation,
+  HeldDenotation,
   EvaluationFailure,
   MachineValue,
   Outcome,
@@ -41,37 +42,53 @@ object CoreDenotations:
   def functions: Set[DefaultFun] = bodies.keySet
 
   /** A denotation over the arguments as [[Reading]] reads them. */
-  private type Body = [V] => Reading[V] => Either[BuiltinFailure, Done[V]]
+  private type Body = [V] => Reading[V] => Either[BuiltinFailure, Outcome[V]]
 
   private def denotation(variant: CoreVariant, function: DefaultFun, body: Body): Denotation =
     val bounds = CoreUnlifting.bounds(variant, function)
-    new Denotation:
+    val arity = function.arity
+    new Denotation with HeldDenotation:
       def apply[V](arguments: Vector[Argument[V]])(using MachineValue[V]): Outcome[V] =
-        Reading.outcome(body[V](Reading(function.arity, bounds, arguments)))
+        Reading.outcome(body[V](Reading(arity, bounds, Reading.held(arguments))))
+
+      override def held: Option[HeldDenotation] = Some(this)
+
+      def applied[V](function: DefaultFun, arguments: List[V])(using
+          MachineValue[V]
+      ): Outcome[V] =
+        Reading.outcome(body[V](Reading(arity, bounds, arguments)))
 
   private def constant1[A: Reader](f: A => Either[BuiltinFailure, Constant]): Body =
-    [V] => (r: Reading[V]) => r[A](0).flatMap(f).map(r.constant)
+    [V] =>
+      (r: Reading[V]) =>
+        r[A](0) match
+          case Right(a)      => r.result(f(a))
+          case Left(failure) => Left(failure)
 
   private def constant2[A: Reader, B: Reader](f: (A, B) => Either[BuiltinFailure, Constant]): Body =
     [V] =>
       (r: Reading[V]) =>
-        for
-          a <- r[A](0)
-          b <- r[B](1)
-          c <- f(a, b)
-        yield r.constant(c)
+        r[A](0) match
+          case Right(a) =>
+            r[B](1) match
+              case Right(b)      => r.result(f(a, b))
+              case Left(failure) => Left(failure)
+          case Left(failure) => Left(failure)
 
   private def constant3[A: Reader, B: Reader, C: Reader](
       f: (A, B, C) => Either[BuiltinFailure, Constant]
   ): Body =
     [V] =>
       (r: Reading[V]) =>
-        for
-          a <- r[A](0)
-          b <- r[B](1)
-          c <- r[C](2)
-          d <- f(a, b, c)
-        yield r.constant(d)
+        r[A](0) match
+          case Right(a) =>
+            r[B](1) match
+              case Right(b) =>
+                r[C](2) match
+                  case Right(c)      => r.result(f(a, b, c))
+                  case Left(failure) => Left(failure)
+              case Left(failure) => Left(failure)
+          case Left(failure) => Left(failure)
 
   private def integer(n: BigInt): Either[BuiltinFailure, Constant] = Right(Constant.Integer(n))
   private def bool(b: Boolean): Either[BuiltinFailure, Constant] = Right(Constant.Bool(b))
@@ -191,7 +208,7 @@ object CoreDenotations:
           for
             t <- r[Text](0)
             x <- r.opaque(1)
-          yield Done(x, Vector(t.string)))
+          yield Outcome.Success(x, Vector(t.string)))
     )
 
     // `Builtins.hs:1638-1661` of plutus 1.70.0.0

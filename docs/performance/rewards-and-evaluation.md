@@ -603,3 +603,41 @@ interpreter reachable.
 **To repeat.** In the JDK container, export the full classpath of the `tools` module through `scripts/sbtw` and
 run, for each table, `java -Xmx768m -XX:+UseG1GC -cp <classpath> xyz.kd5ujc.scarab.plutus.ProgramCacheHeapMain`
 with `leios` (table 1), `programs 40` (table 2), `fold 10` (table 3) and `cache 512` (table 4).
+
+## 63. The evaluator's allocation per builtin application and per operand (#1411)
+
+On the `uplc-turbo` scenario of node-diversity-conformance (3,997 mainnet scripts, site pin `62800627`), most of
+the programs the evaluator missed were over the scenario's memory limit: the bytes the evaluating thread allocated
+were more than twice the program's memory budget. An allocation profile of the whole corpus run (Java Flight
+Recorder, `jdk.ObjectAllocationSample`, JDK 25, 3 CPUs, a 4 GB heap) gave where the bytes came from:
+
+<!-- register:table perf-69.t1 -->
+| Share of allocated bytes, before (`929f794a6`) | Source |
+|---:|---|
+| about 50% | objects made for each saturated builtin application: argument `Vector`s and their builders, list cells, `Right` and `Some`, `ExBudget` and `Costs$Last`, closures, `Prepared`, `Outcome.Success`, `Step.Next` |
+| about 26% | `java.math.BigInteger` arithmetic of one program |
+| about 17% | continuation frames, environment cells and closures of the machine |
+<!-- /register -->
+
+The change keeps the machine purely functional and its behaviour the same (`CekApplicationSuite` and
+`CekRouteSuite` run the machine before the change against it): a saturated builtin application reads its arguments
+as the machine holds them, a cost of one element is computed and spent as two longs, the application is evaluated
+in the machine's loop, and an operand of one step is computed without a continuation frame.
+
+Each row is one run of `scripts/conformance/run.py uplc-turbo` at its own settings (3 CPUs, 8 GB, a 4 GB heap) on
+an idle laptop (Intel Core Ultra 5 135H under WSL2), scored by the scenario's rules; every program's budget is the
+same in all four. The counts over the CPU limit move with the machine from run to run; the bytes do not depend on
+its speed.
+
+<!-- register:table perf-69.t2 -->
+| `uplc-turbo`, 3,997 programs | Programs met | Over the memory limit | Over the CPU limit | Bytes per memory unit, median | 95th percentile | Bytes allocated | Median `cpu_us` |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| before (`929f794a6`) | 3,625 | 366 | 11 | 1.685 | 2.296 | 6.20 GB | 108.4 |
+| after, run 1 | 3,958 | 27 | 15 | 0.621 | 0.818 | 3.46 GB | 105.9 |
+| after, run 2 | 3,966 | 27 | 6 | 0.621 | 0.818 | 3.46 GB | 106.2 |
+| after, run 3 | 3,959 | 27 | 13 | 0.622 | 0.820 | 3.47 GB | 111.6 |
+<!-- /register -->
+
+Of the 27 programs still over the memory limit, an allocation profile of 26 attributes 25 to the field arithmetic
+of the Ed25519 verification (`verifyEd25519Signature`), which makes an object for each operation, and one to
+`BigInteger` arithmetic; the other program is at 2.002 times its budget and was not profiled.

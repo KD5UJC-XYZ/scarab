@@ -69,6 +69,29 @@ object CostStream:
     */
   val free: CostStream = Last(ExBudget.zero)
 
+/** How the machine spends the cost of a builtin application in its budget mode
+  * (`ExBudgetMode.hs:55-57,146-165`, plutus 1.70.0.0): each element as its CPU and memory units,
+  * checked against the limit before the next one is computed.
+  */
+trait Spender:
+  /** The budget after `cpu` and `memory` are spent from it. */
+  def spend(budget: ExBudget, cpu: SatInt, memory: SatInt): ExBudget
+
+  /** Whether `budget` is overspent, which fails the evaluation. */
+  def exhausted(budget: ExBudget): Boolean
+
+  /** `spendBudgets` (`Cek/Internal.hs:1061-1064`, plutus 1.70.0.0): each element in order, the rest
+    * of the stream forced only once the element before it is spent, stopping at the element that
+    * overspends; the rest of the stream after it is never computed.
+    */
+  final def spendAll(budget: ExBudget, cost: CostStream): ExBudget =
+    @tailrec def go(b: ExBudget, stream: CostStream): ExBudget = stream match
+      case CostStream.Last(element) => spend(b, element.cpu, element.memory)
+      case CostStream.Cons(element, rest) =>
+        val after = spend(b, element.cpu, element.memory)
+        if exhausted(after) then after else go(after, rest.value)
+    go(budget, cost)
+
 /** A step of the CEK machine, charged at its own cost (`StepKind`, `Cek/Internal.hs:208-217`,
   * plutus 1.70.0.0).
   */

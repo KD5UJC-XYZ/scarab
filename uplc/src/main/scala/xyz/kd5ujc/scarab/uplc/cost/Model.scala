@@ -135,6 +135,11 @@ enum OneArgument[A]:
     case LinearInX(_)    => "linear_in_x"
     case QuadraticInX(_) => "quadratic_in_x"
 
+  /** Whether the shape reads the measure of its argument. */
+  def readsX: Boolean = this match
+    case ConstantCost(_)                => false
+    case LinearInX(_) | QuadraticInX(_) => true
+
 object OneArgument:
   given Model[OneArgument] with
     def traverse[G[_]: Applicative, A, B](model: OneArgument[A], path: String)(
@@ -153,6 +158,13 @@ object OneArgument:
       case ConstantCost(c)                     => Costs.Last(c)
       case LinearInX(Linear(i, s))             => Costs.scaleLinearly(i, s, x)
       case QuadraticInX(Quadratic(c0, c1, c2)) => Costs.scaleQuadratically(c0, c1, c2, x)
+
+    /** [[run]] of a measure of one cost `x`, which is one cost too, read only if [[readsX]]. */
+    def single(x: SatInt): SatInt = model match
+      case ConstantCost(c)         => c
+      case LinearInX(Linear(i, s)) => i + s * x
+      case QuadraticInX(Quadratic(c0, c1, c2)) =>
+        c0 + Costs.quadraticTerm(c1, c2, x, SatInt.zero)
 
 /** `ModelTwoArguments` (`CostingFun/Core.hs:568-588`, plutus 1.70.0.0), run by
   * `runTwoArgumentModel` (627-737).
@@ -196,6 +208,24 @@ enum TwoArguments[A]:
     case QuadraticInXAndY(_)         => "quadratic_in_x_and_y"
     case WithInteractionInXAndY(_)   => "with_interaction_in_x_and_y"
     case AboveAndBelowDiagonal(_, _) => "above_and_below_diagonal"
+
+  /** Whether the shape reads the measure of its first argument. */
+  def readsX: Boolean = this match
+    case ConstantCost(_) | LinearInY(_) | LinearInY2(_) | QuadraticInY(_) => false
+    case LinearInX(_) | LinearInXAndY(_) | AddedSizes(_) | SubtractedSizes(_) | MultipliedSizes(_) |
+        MinSize(_) | MaxSize(_) | LinearOnDiagonal(_) | ConstOffDiagonal(_, _) |
+        ConstAboveDiagonal(_, _) | ConstBelowDiagonal(_, _) | QuadraticInXAndY(_) |
+        WithInteractionInXAndY(_) | AboveAndBelowDiagonal(_, _) =>
+      true
+
+  /** Whether the shape reads the measure of its second argument. */
+  def readsY: Boolean = this match
+    case ConstantCost(_) | LinearInX(_) => false
+    case LinearInY(_) | LinearInY2(_) | QuadraticInY(_) | LinearInXAndY(_) | AddedSizes(_) |
+        SubtractedSizes(_) | MultipliedSizes(_) | MinSize(_) | MaxSize(_) | LinearOnDiagonal(_) |
+        ConstOffDiagonal(_, _) | ConstAboveDiagonal(_, _) | ConstBelowDiagonal(_, _) |
+        QuadraticInXAndY(_) | WithInteractionInXAndY(_) | AboveAndBelowDiagonal(_, _) =>
+      true
 
 object TwoArguments:
   given Model[TwoArguments] with
@@ -272,6 +302,30 @@ object TwoArguments:
       case QuadraticInXAndY(q)                 => Costs.Last(Run.quadratic2(q, x.sum, y.sum))
       case WithInteractionInXAndY(f)           => Costs.Last(Run.interaction(f, x.sum, y.sum))
 
+    /** [[run]] of measures of one cost each, `x` read only if [[readsX]] and `y` only if
+      * [[readsY]]: one cost, in [[run]]'s order of operations.
+      */
+    def single(x: SatInt, y: SatInt): SatInt = model match
+      case ConstantCost(c)                             => c
+      case LinearInX(Linear(i, s))                     => i + s * x
+      case LinearInY(Linear(i, s))                     => i + s * y
+      case LinearInY2(Subtracted(i, s, _))             => i + s * y
+      case LinearInXAndY(Linear2(i, s1, s2))           => i + (s1 * x + s2 * y)
+      case AddedSizes(Linear(i, s))                    => i + s * (x + y)
+      case SubtractedSizes(Subtracted(i, s, m))        => i + s * m.max(x - y)
+      case MultipliedSizes(Linear(i, s))               => i + s * (x * y)
+      case MinSize(Linear(i, s))                       => i + s * x.min(y)
+      case MaxSize(Linear(i, s))                       => i + s * x.max(y)
+      case LinearOnDiagonal(ConstantOrLinear(c, i, s)) => if x == y then i + s * x else c
+      case ConstOffDiagonal(c, m)                      => if x != y then c else m.single(x)
+      case ConstBelowDiagonal(c, m)                    => if x > y then c else m.single(x, y)
+      case ConstAboveDiagonal(c, m)                    => if x < y then c else m.single(x, y)
+      case AboveAndBelowDiagonal(_, m)                 => m.single(x.max(y), x.min(y))
+      case QuadraticInY(Quadratic(c0, c1, c2)) =>
+        c0 + Costs.quadraticTerm(c1, c2, y, SatInt.zero)
+      case QuadraticInXAndY(q)       => Run.quadratic2(q, x, y)
+      case WithInteractionInXAndY(f) => Run.interaction(f, x, y)
+
 /** `ModelThreeArguments` (`CostingFun/Core.hs:741-753`, plutus 1.70.0.0), run by
   * `runThreeArgumentModel` (761-821).
   */
@@ -298,6 +352,27 @@ enum ThreeArguments[A]:
     case LinearInYAndZ(_)         => "linear_in_y_and_z"
     case QuadraticInYAndZ(_)      => "quadratic_in_y_and_z"
     case ExpModCost(_)            => "exp_mod_cost"
+
+  /** Whether the shape reads the measure of its first argument. */
+  def readsX: Boolean = this match
+    case LinearInX(_) | ExpModCost(_) => true
+    case ConstantCost(_) | LinearInY(_) | LinearInZ(_) | QuadraticInZ(_) |
+        LiteralInYOrLinearInZ(_) | LinearInMaxYZ(_) | LinearInYAndZ(_) | QuadraticInYAndZ(_) =>
+      false
+
+  /** Whether the shape reads the measure of its second argument. */
+  def readsY: Boolean = this match
+    case LinearInY(_) | LiteralInYOrLinearInZ(_) | LinearInMaxYZ(_) | LinearInYAndZ(_) |
+        QuadraticInYAndZ(_) | ExpModCost(_) =>
+      true
+    case ConstantCost(_) | LinearInX(_) | LinearInZ(_) | QuadraticInZ(_) => false
+
+  /** Whether the shape reads the measure of its third argument. */
+  def readsZ: Boolean = this match
+    case LinearInZ(_) | QuadraticInZ(_) | LiteralInYOrLinearInZ(_) | LinearInMaxYZ(_) |
+        LinearInYAndZ(_) | QuadraticInYAndZ(_) | ExpModCost(_) =>
+      true
+    case ConstantCost(_) | LinearInX(_) | LinearInY(_) => false
 
 object ThreeArguments:
   given Model[ThreeArguments] with
@@ -334,6 +409,22 @@ object ThreeArguments:
       case QuadraticInYAndZ(q)               => Costs.Last(Run.quadratic2(q, y.sum, z.sum))
       case ExpModCost(e)                     => Costs.Last(Run.expMod(e, x.sum, y.sum, z.sum))
 
+    /** [[run]] of measures of one cost each, each read only if the shape reads it: one cost, in
+      * [[run]]'s order of operations.
+      */
+    def single(x: SatInt, y: SatInt, z: SatInt): SatInt = model match
+      case ConstantCost(c)         => c
+      case LinearInX(Linear(i, s)) => i + s * x
+      case LinearInY(Linear(i, s)) => i + s * y
+      case LinearInZ(Linear(i, s)) => i + s * z
+      case QuadraticInZ(Quadratic(c0, c1, c2)) =>
+        c0 + Costs.quadraticTerm(c1, c2, z, SatInt.zero)
+      case LiteralInYOrLinearInZ(Linear(i, s)) => if y == SatInt.zero then i + s * z else y
+      case LinearInMaxYZ(Linear(i, s))         => i + s * y.max(z)
+      case LinearInYAndZ(Linear2(i, s1, s2))   => i + (s1 * y + s2 * z)
+      case QuadraticInYAndZ(q)                 => Run.quadratic2(q, y, z)
+      case ExpModCost(e)                       => Run.expMod(e, x, y, z)
+
 /** `ModelFourArguments` (`CostingFun/Core.hs:844-848`, plutus 1.70.0.0), run by
   * `runFourArgumentModel` (856-868).
   */
@@ -344,6 +435,11 @@ enum FourArguments[A]:
   def tag: String = this match
     case ConstantCost(_) => "constant_cost"
     case LinearInU(_)    => "linear_in_u"
+
+  /** Whether the shape reads the measure of its fourth argument. */
+  def readsU: Boolean = this match
+    case ConstantCost(_) => false
+    case LinearInU(_)    => true
 
 object FourArguments:
   given Model[FourArguments] with
@@ -361,6 +457,11 @@ object FourArguments:
     def run(u: => Costs): Costs = model match
       case ConstantCost(c)         => Costs.Last(c)
       case LinearInU(Linear(i, s)) => Costs.scaleLinearly(i, s, u)
+
+    /** [[run]] of a measure of one cost `u`, read only if [[readsU]]. */
+    def single(u: SatInt): SatInt = model match
+      case ConstantCost(c)         => c
+      case LinearInU(Linear(i, s)) => i + s * u
 
 /** `ModelFiveArguments` (`CostingFun/Core.hs:893-896`, plutus 1.70.0.0): a constant only (904-913).
   */
@@ -401,6 +502,10 @@ object SixArguments:
   extension (model: SixArguments[SatInt])
     def run: Costs = model match
       case ConstantCost(c) => Costs.Last(c)
+
+    /** [[run]]'s one cost. */
+    def single: SatInt = model match
+      case ConstantCost(c) => c
 
 /** The CPU and memory costing functions of one builtin (`CostingFun`, `CostingFun/Core.hs:100-105`,
   * plutus 1.70.0.0), written in the cost model under the builtin's name as `cpu` and `memory`.

@@ -472,7 +472,7 @@
    "evidence": [
     "CostModelSuite"
    ],
-   "digest": "d13f55b1629de858"
+   "digest": "d33a9545e7e3720c"
   }
  },
  "glue": [
@@ -575,6 +575,59 @@
     "val uplc.cek.Stop.never",
     "def uplc.cek.CekMachine.runUntil",
     "val plutus.ScarabEvaluator.interruptible"
+   ]
+  },
+  {
+   "reason": "The held forms of a builtin's unlifting, costing and denotation, by which the CEK machine takes a saturated application on the arguments as it holds them (the last one first) when all three have one, so that it makes no vector, Option or closure for them (#1411); a builtin a component of which has none is taken by the vector forms, as before. The reference's order (unlift every argument, spend the cost, then compute the result; `evalBuiltinApp`, `Cek/Internal.hs:1052-1075`, plutus 1.70.0.0) is that of the vector forms, and CekApplicationSuite compares the machine with the one before #1411",
+   "definitions": [
+    "class uplc.builtin.HeldApplication",
+    "def uplc.builtin.Argument.of",
+    "def uplc.builtin.Builtins#held",
+    "def uplc.builtin.Builtins.refused",
+    "def uplc.builtin.CostingFunction#held",
+    "def uplc.builtin.Denotation#held",
+    "def uplc.builtin.HeldCosting#spend",
+    "def uplc.builtin.HeldDenotation#applied",
+    "def uplc.builtin.HeldUnlifting#refusal",
+    "def uplc.builtin.MachineValue#asConstant",
+    "def uplc.builtin.Unlifting#held",
+    "def uplc.builtin.core.Reading#result",
+    "def uplc.builtin.core.Reading.held",
+    "def uplc.builtin.core.Reading.mismatch",
+    "object uplc.builtin.Argument",
+    "object uplc.builtin.Builtins",
+    "object uplc.builtin.MachineValue",
+    "object uplc.builtin.MachineValue.NoConstant",
+    "object uplc.builtin.core.Reading.Unbounded",
+    "trait uplc.builtin.HeldCosting",
+    "trait uplc.builtin.HeldDenotation",
+    "trait uplc.builtin.HeldUnlifting"
+   ]
+  },
+  {
+   "reason": "The cost of a builtin application whose measures are each one cost for the values given, computed as longs and spent with no stream made (#1411), where the reference spends a one-element `ExBudgetStream` (`ExBudgetStream.hs:15-29`, plutus 1.70.0.0): the shapes' `run` and the measures' streams stay the mirror, the spender is the machine's (`ExBudgetMode.hs:55-57,146-165`), and CekApplicationSuite compares the two",
+   "definitions": [
+    "def uplc.cost.Costs.quadraticTerm",
+    "def uplc.cost.FourArguments#readsU",
+    "def uplc.cost.FourArguments.single",
+    "def uplc.cost.Measure#oneCost",
+    "def uplc.cost.Measure#size",
+    "def uplc.cost.Measure.oneCostConstant",
+    "def uplc.cost.Measure.total",
+    "def uplc.cost.OneArgument#readsX",
+    "def uplc.cost.OneArgument.single",
+    "def uplc.cost.SixArguments.single",
+    "def uplc.cost.Spender#exhausted",
+    "def uplc.cost.Spender#spend",
+    "def uplc.cost.Spender#spendAll",
+    "def uplc.cost.ThreeArguments#readsX",
+    "def uplc.cost.ThreeArguments#readsY",
+    "def uplc.cost.ThreeArguments#readsZ",
+    "def uplc.cost.ThreeArguments.single",
+    "def uplc.cost.TwoArguments#readsX",
+    "def uplc.cost.TwoArguments#readsY",
+    "def uplc.cost.TwoArguments.single",
+    "trait uplc.cost.Spender"
    ]
   }
  ]

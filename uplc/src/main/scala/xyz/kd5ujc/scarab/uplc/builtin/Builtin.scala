@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.uplc.builtin
 
+import cats.Eval
 import xyz.kd5ujc.scarab.uplc.{Constant, DefaultFun, DefaultUni, SemanticsVariant, Signature}
-import xyz.kd5ujc.scarab.uplc.cost.CostStream
+import xyz.kd5ujc.scarab.uplc.cost.{CostStream, ExBudget, Spender}
 
 /** What a builtin needs to know about a value of the machine `V`: whether it is a constant, and how
   * to make one. The builtins are written once for any machine; the CEK machine gives its own
@@ -12,6 +13,17 @@ trait MachineValue[V]:
   def constantOf(value: V): Option[Constant]
   def ofConstant(constant: Constant): V
 
+  /** [[constantOf]] as the constant itself, or [[MachineValue.NoConstant]]: what a saturated
+    * application reads of each argument, with no `Option` made for it.
+    */
+  def asConstant(value: V): Constant | MachineValue.NoConstant.type = constantOf(value) match
+    case Some(c) => c
+    case None    => MachineValue.NoConstant
+
+object MachineValue:
+  /** A value of the machine that is not a constant ([[MachineValue.asConstant]]). */
+  case object NoConstant
+
 /** An argument of a saturated builtin application once it is unlifted: a constant of the
   * parameter's type (`Signature.Parameter.Constant`), or any value of the machine passed as it is
   * (`Signature.Parameter.Opaque`).
@@ -19,6 +31,18 @@ trait MachineValue[V]:
 enum Argument[+V]:
   case Con(value: Constant)
   case Opaque(value: V)
+
+object Argument:
+  /** The argument a held unlifting accepts `value` as for `parameter` ([[HeldUnlifting]]): its
+    * constant for a constant parameter, the value itself for an opaque one.
+    */
+  def of[V](parameter: Signature.Parameter, value: V)(using mv: MachineValue[V]): Argument[V] =
+    parameter match
+      case Signature.Parameter.Opaque(_) => Opaque(value)
+      case Signature.Parameter.Constant(_) =>
+        mv.asConstant(value) match
+          case c: Constant             => Con(c)
+          case MachineValue.NoConstant => Opaque(value)
 
 /** The two classes of the reference's errors (`EvaluationError structural operational`,
   * `PlutusCore/Evaluation/Error.hs`): a structural one is a malformed program, an operational one a
@@ -227,6 +251,9 @@ object Outcome:
 trait Denotation:
   def apply[V](arguments: Vector[Argument[V]])(using MachineValue[V]): Outcome[V]
 
+  /** This denotation on held arguments, if it has that form ([[HeldDenotation]]). */
+  def held: Option[HeldDenotation] = None
+
 /** The denotation of every builtin under one semantics variant. */
 trait Denotations:
   def apply(function: DefaultFun): Denotation
@@ -241,11 +268,51 @@ trait Unlifting:
       MachineValue[V]
   ): Either[UnliftingFailure, Vector[Argument[V]]]
 
+  /** This unlifting on held arguments, if it has that form ([[HeldUnlifting]]). */
+  def held: Option[HeldUnlifting] = None
+
 /** The cost of one builtin from its unlifted arguments (the costing function of the cost model,
   * applied to the arguments' measures, `ExMemoryUsage`).
   */
 trait CostingFunction:
   def apply[V](arguments: Vector[Argument[V]])(using MachineValue[V]): CostStream
+
+  /** This costing on held arguments, if it has that form ([[HeldCosting]]). */
+  def held: Option[HeldCosting] = None
+
+/** The held form of an unlifting: its verdict on the arguments of a saturated application as the
+  * machine holds them, the last one first, made with nothing allocated for them. When it accepts
+  * them, each is to a held costing and a held denotation what [[Unlifting.apply]] makes of it: the
+  * argument itself, read as the constant of a constant parameter or as the value of an opaque one.
+  */
+trait HeldUnlifting:
+  /** [[Unlifting.apply]]'s failure on the held `arguments`, or none when it accepts them. */
+  def refusal[V](function: DefaultFun, arguments: List[V])(using
+      MachineValue[V]
+  ): Option[UnliftingFailure]
+
+/** The held form of a costing function ([[HeldUnlifting]]). */
+trait HeldCosting:
+  /** The budget once `spender` has spent the cost [[CostingFunction.apply]] gives for the
+    * arguments, element by element, from `budget`: one cost spent with no stream made.
+    */
+  def spend[V](function: DefaultFun, arguments: List[V], budget: ExBudget, spender: Spender)(using
+      MachineValue[V]
+  ): ExBudget
+
+/** The held form of a denotation ([[HeldUnlifting]]). */
+trait HeldDenotation:
+  /** [[Denotation.apply]] of the held `arguments`. */
+  def applied[V](function: DefaultFun, arguments: List[V])(using MachineValue[V]): Outcome[V]
+
+/** The held forms of a builtin's unlifting, costing and denotation, by which the machine takes a
+  * saturated application when all three have one.
+  */
+final case class HeldApplication(
+    unlifting: HeldUnlifting,
+    costing: HeldCosting,
+    denotation: HeldDenotation
+)
 
 /** The costing functions of every builtin under one cost model and semantics variant. */
 trait Costing:
@@ -274,10 +341,33 @@ final case class Builtins(
     */
   def prepare[V](function: DefaultFun, arguments: Vector[V])(using MachineValue[V]): Prepared[V] =
     unlifting(function, arguments) match
-      case Left(failure) =>
-        Prepared(
-          CostStream.free,
-          () => Outcome.Failure(BuiltinFailure.Unlifting(failure), failure.message.toVector)
-        )
+      case Left(failure) => Prepared(CostStream.free, () => Builtins.refused(failure))
       case Right(unlifted) =>
         Prepared(costing(function)(unlifted), () => denotations(function)(unlifted))
+
+  /** The held forms of `function` 's application, when its unlifting, its costing and its
+    * denotation each have one: [[prepare]]'s steps on the arguments as the machine holds them. When
+    * one of them has none, the machine takes the application by [[prepare]], so that the costing
+    * and the denotation read what the unlifting made.
+    */
+  def held(function: DefaultFun): Option[HeldApplication] = heldForms(function.ordinal).value
+
+  // each builtin's forms are looked up when it is first applied, so that the costing and the
+  // denotations are asked only for the builtins a script applies, as [[prepare]] asks them
+  private val heldForms: Vector[Eval[Option[HeldApplication]]] =
+    DefaultFun.values.toVector.map(function =>
+      Eval.later(
+        for
+          u <- unlifting.held
+          c <- costing(function).held
+          d <- denotations(function).held
+        yield HeldApplication(u, c, d)
+      )
+    )
+
+object Builtins:
+  /** The outcome of an application whose arguments do not unlift, logging the message of an
+    * operational unlifting error ([[UnliftingFailure.message]]).
+    */
+  def refused[V](failure: UnliftingFailure): Outcome[V] =
+    Outcome.Failure(BuiltinFailure.Unlifting(failure), failure.message.toVector)
