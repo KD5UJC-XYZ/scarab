@@ -658,7 +658,18 @@ class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaC
       assertEquals(s.used, s.entries.foldLeft(TxMeasure.zero)(_ + Capacity.measure(_)))
       assert(candidates.forall((_, id) => s.contains(id) == s.entries.exists(_.id == id)))
       assert(s.used.fits(s.capacity), s"${s.used} over ${s.capacity}")
-      assert(s.entries.map(_.ticket) == s.entries.map(_.ticket).sorted)
+      // the tickets strictly increase, and the ticket split is the filter it stands for at every
+      // cursor: each held ticket and its neighbours (gaps where transactions left), below the
+      // oldest, and at and past the next ticket, on an empty pool too
+      val tickets = s.entries.map(_.ticket)
+      assert(tickets.zip(tickets.drop(1)).forall(_ < _), tickets.toString)
+      val cursors = tickets.flatMap(t => Vector(t - 1, t, t + 1)) ++
+        Vector(-1L, 0L, s.nextTicket - 1, s.nextTicket, s.nextTicket + 1)
+      cursors.distinct.foreach { t =>
+        val expected = s.entries.filter(_.ticket > t)
+        assertEquals(s.after(t), expected, s"after $t")
+        assertEquals(s.hasAfter(t), expected.nonEmpty, s"hasAfter $t")
+      }
     }
   }
 

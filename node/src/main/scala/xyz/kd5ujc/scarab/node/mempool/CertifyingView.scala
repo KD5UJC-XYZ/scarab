@@ -44,7 +44,7 @@ final case class CertifyingView private[node] (
   /** The pool's transactions the view has not judged yet, oldest first (`TxSeq.splitAfterTicketNo`
     * after `isLastTicketNo`, `CertifyingView.hs:99` at ouroboros-consensus d91b3557).
     */
-  def pending(pool: MempoolState): Vector[Entry] = pool.entries.filter(_.ticket > lastTicket)
+  def pending(pool: MempoolState): Vector[Entry] = pool.after(lastTicket)
 
   /** `catchUpCertifyingView` (`CertifyingView.hs:74-99` at ouroboros-consensus d91b3557): `pending`
     * revalidated on the state the view's kept transactions leave, `state` (that state, with the

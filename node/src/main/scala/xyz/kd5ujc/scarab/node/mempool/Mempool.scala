@@ -675,7 +675,7 @@ object Mempool:
         def awaitAfter(ticket: Long): F[Unit] =
           version.get.flatMap { seenVersion =>
             state.get.flatMap { s =>
-              if s.after(ticket).nonEmpty then F.unit
+              if s.hasAfter(ticket) then F.unit
               else version.waitUntil(_ > seenVersion) *> awaitAfter(ticket)
             }
           }

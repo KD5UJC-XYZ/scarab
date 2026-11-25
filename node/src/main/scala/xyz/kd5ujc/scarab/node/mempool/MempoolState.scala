@@ -336,6 +336,11 @@ object DijkstraRevalidation:
   * [[MempoolState.retaining]]; the constructor and `copy` are private, so no state has a sum or an
   * index that is not its entries'.
   *
+  * @param entries
+  *   The held transactions, oldest first, their tickets strictly increasing: a transaction is
+  *   appended with the next ticket ([[MempoolState.add]]), and removal and revalidation keep the
+  *   order and each ticket, as the reference's sequence is ordered by ticket
+  *   (`Mempool/TxSeq.hs:72-79` at ouroboros-consensus 2416493b). [[after]] relies on the order.
   * @param used
   *   What the held transactions count for, the sum of their measures ([[Entry.measure]]), kept as
   *   they are added and removed, as the reference's sequence caches its measure (`toSize` of
@@ -704,8 +709,19 @@ final case class MempoolState private (
       .takeWhile(_._1 <= maxBytes)
       .flatMap(_._2)
 
-  /** Entries with a ticket above `ticket`, oldest first. */
-  def after(ticket: Long): Vector[Entry] = entries.filter(_.ticket > ticket)
+  /** Entries with a ticket above `ticket`, oldest first: the second part of `splitAfterTicketNo`
+    * (`Mempool/TxSeq.hs:194-205` at ouroboros-consensus 2416493b), as `snapshotTxsAfter` takes it
+    * (`Mempool/Impl/Common.hs:750-758`). The entries are in ticket order, so the split is found by
+    * a binary search, not by reading every entry.
+    */
+  def after(ticket: Long): Vector[Entry] =
+    import scala.collection.Searching.{Found, InsertionPoint}
+    entries.drop(entries.view.map(_.ticket).search(ticket) match
+      case Found(at)          => at + 1
+      case InsertionPoint(at) => at)
+
+  /** Whether an entry has a ticket above `ticket`: the newest has the largest. */
+  def hasAfter(ticket: Long): Boolean = entries.lastOption.exists(_.ticket > ticket)
 
 object MempoolState:
   /** A held transaction that revalidation has no verdict on: a crypto provider failed on one of its
