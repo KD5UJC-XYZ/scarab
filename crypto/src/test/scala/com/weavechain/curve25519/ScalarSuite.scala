@@ -122,11 +122,10 @@ class ScalarSuite extends munit.ScalaCheckSuite:
     assertEquals(naf.indices.map(i => BigInt(naf(i).toInt) << i).sum, top, "nonAdjacentForm")
   }
 
-  // Scalar.add and subtract (Scalar.java:457-484) document a + b and a - b modulo L for any two
-  // scalars, the result canonical when both are and "outside the range [0, L)" possibly otherwise.
-  // They subtract or add L once (UnpackedScalar.java:107-144), so for unreduced operands the result
-  // can leave [0, 2^255), and the Scalar constructor refuses it. No caller in Scarab passes them
-  // unreduced scalars, or calls them at all.
+  // Scalar.add and subtract document a + b and a - b modulo L for any two scalars, the result
+  // canonical. UnpackedScalar.add and subtract correct by L once (their preconditions), so the
+  // operands are reduced first: unreduced, the result could leave [0, 2^255) and the Scalar
+  // constructor refused it. No caller in Scarab calls them.
   property(
     "add and subtract of any two scalars below 2^255 are a + b and a - b modulo L, as documented"
   ) {
@@ -134,21 +133,21 @@ class ScalarSuite extends munit.ScalaCheckSuite:
       val clue = s"${a.toString(16)} and ${b.toString(16)}"
       val sum = Try(value(unreduced(a).add(unreduced(b)))).toEither
       val difference = Try(value(unreduced(a).subtract(unreduced(b)))).toEither
-      assert(sum.exists(r => (r - a - b).mod(L) == 0), s"add of $clue gave $sum")
-      assert(difference.exists(r => (r - a + b).mod(L) == 0), s"subtract of $clue gave $difference")
+      assertEquals(sum.toOption, Some((a + b).mod(L)), s"add of $clue gave $sum")
+      assertEquals(difference.toOption, Some((a - b).mod(L)), s"subtract of $clue gave $difference")
     }
   }
 
   test("add and subtract at the edge: (2^255 - 1) + (L + 1), and 0 - (L + 1)") {
     val top = (BigInt(1) << 255) - 1
     assertEquals(
-      Try(value(unreduced(top).add(unreduced(L + 1)))).toOption.map(r => (r - top - L - 1).mod(L)),
-      Some(BigInt(0)),
+      Try(value(unreduced(top).add(unreduced(L + 1)))).toOption,
+      Some((top + L + 1).mod(L)),
       "(2^255 - 1) + (L + 1)"
     )
     assertEquals(
-      Try(value(Scalar.ZERO.subtract(unreduced(L + 1)))).toOption.map(r => (r + L + 1).mod(L)),
-      Some(BigInt(0)),
+      Try(value(Scalar.ZERO.subtract(unreduced(L + 1)))).toOption,
+      Some((-L - 1).mod(L)),
       "0 - (L + 1)"
     )
   }

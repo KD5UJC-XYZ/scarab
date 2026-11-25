@@ -457,30 +457,29 @@ public class Scalar implements Serializable {
     /**
      * Compute $a + b \bmod \ell$.
      * <p>
-     * If $a$ and $b$ are both canonical Scalars, the result is guaranteed to be a
-     * canonical Scalar. In all other cases, the result may be outside the range
-     * $[0, \ell)$.
+     * The operands need not be canonical; the result always is.
      *
      * @param b the Scalar to add to this.
      * @return $a + b \bmod \ell$
      */
     public Scalar add(final Scalar b) {
-        return new Scalar(UnpackedScalar.fromByteArray(this.s).add(UnpackedScalar.fromByteArray(b.s)).toByteArray());
+        // Both operands are reduced, always, to meet UnpackedScalar.add's precondition.
+        return new Scalar(UnpackedScalar.fromByteArray(this.reduce().s)
+                .add(UnpackedScalar.fromByteArray(b.reduce().s)).toByteArray());
     }
 
     /**
      * Compute $a - b \bmod \ell$.
      * <p>
-     * If $a$ and $b$ are both canonical Scalars, the result is guaranteed to be a
-     * canonical Scalar. In all other cases, the result may be outside the range
-     * $[0, \ell)$.
+     * The operands need not be canonical; the result always is.
      *
      * @param b the Scalar to subtract from this.
      * @return $a - b \bmod \ell$
      */
     public Scalar subtract(final Scalar b) {
-        return new Scalar(
-                UnpackedScalar.fromByteArray(this.s).subtract(UnpackedScalar.fromByteArray(b.s)).toByteArray());
+        // Both operands are reduced, always, to meet UnpackedScalar.subtract's precondition.
+        return new Scalar(UnpackedScalar.fromByteArray(this.reduce().s)
+                .subtract(UnpackedScalar.fromByteArray(b.reduce().s)).toByteArray());
     }
 
     /**
