@@ -781,7 +781,7 @@ class PeerSelectionSuite extends FunSuite:
     )
   }
 
-  test("reloading roots demotes every removed root population") {
+  test("reloading roots demotes the removed topology roots and keeps the ledger peers") {
     val initial = start(Nil)
     val withRoots = initial.copy(peers =
       initial.peers ++ Map(
@@ -795,7 +795,15 @@ class PeerSelectionSuite extends FunSuite:
       .apply(withRoots, Event.RootsConfigured(LocalRoots.empty, false, Set.empty), t0)
       .state
 
-    assertEquals(reloaded.peers.values.map(_.origin).toSet, Set(Origin.Other))
+    assertEquals(
+      reloaded.peers.view.mapValues(_.origin).toMap,
+      Map(
+        1 -> Origin.Other,
+        2 -> Origin.Other,
+        3 -> Origin.Ledger,
+        4 -> Origin.BigLedger
+      )
+    )
   }
 
   test("a local DNS root rotation installs origins and demotions atomically") {

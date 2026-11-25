@@ -2291,6 +2291,39 @@
    "note": "the handler the client is given (k0), as two parts: prepare reads ahead of a reply's turn what changes nothing its turn relies on, with what to take where that reading has not ended by the reply's turn or failed, and handle takes the replies in order with it; with nothing read ahead (Handling.inOrder) it is k0 itself. LeiosVotesSuite shows that a vote checked ahead and committed in its turn counts as adding it in its turn counts it",
    "digest": "9d3b0130e9850772"
   },
+  "def network.selection.Origin#configured": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "cardano-diffusion/lib/Cardano/Network/PeerSelection/Governor/Monitor.hs",
+     "symbol": "publicRootPeers'",
+     "lines": [
+      276,
+      282
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/lib/Ouroboros/Network/PeerSelection/Governor/BigLedgerPeers.hs",
+     "symbol": "publicRootPeers'",
+     "lines": [
+      164,
+      225
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "BigLedgerSuite",
+    "PeerSelectionSuite",
+    "PeerRootReloadSuite"
+   ],
+   "note": "the reference keeps its roots in sets (localRootPeers, and publicRootPeers with its ledger and big ledger peers) where Scarab gives each known peer one Origin; a reconfiguration of the local roots takes only the new local roots out of publicRootPeers (localRoots, Monitor.hs 276-282) and leaves its ledger and big ledger peers, which only their own requests add (BigLedgerPeers.hs 164-225) and forgetting removes. This predicate names the origins a reload may take away (local, public, bootstrap) and leaves the ledger and big ledger ones as they are (issue 810)",
+   "digest": "aa50e1a3980faa56"
+  },
   "trait network.PeerSharingController": {
    "upstream": [
     {
