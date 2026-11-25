@@ -16,15 +16,17 @@ For the scenarios given (ledger-rules, uplc-conformance, uplc-turbo, cbor-decodi
      checkout's commit;
   5. writes `scarab-YYYYMMDD-<scenario>[-<era>].json.gz`, dated by the report's `generated_at` in UTC, and beside it
      `...provenance.json`: the Scarab commit, the inputs and their pins, the tool and its arguments, the image, the
-     checks and the time each phase took. No host name, user or host path is recorded.
+     CPU model and logical CPU count a tool container sees and its limits (`--cpus`, `--memory`), the checks and
+     the time each phase took. No host name, user or host path is recorded.
 
 `summary.json` in `--out` lists what each scenario gave: a report, a skip and why, or a failure and why. The exit
 status is 1 if a scenario failed, 2 for a usage error. Nothing is published: that is `publish.py`'s, on demand.
 `--dry-run` prints the plan (commands, inputs and report names) without building, fetching or running anything.
 
-uplc-turbo is a timing benchmark: its report is written on a quiet machine with a fast core. On CI (`GITHUB_ACTIONS`
-set) it runs only with `--allocation-only`, for its memory counts, which a shared runner reproduces and its timings
-do not: publish.py refuses a timing report written there. docs/running/conformance.md has the details.
+uplc-turbo measures each program's CPU time and allocated bytes. Its reference budget is the default limits with the
+scenario's 4 GB heap, which a GitHub-hosted runner supplies; a report written there or locally names in its
+provenance the runner and the CPU that took its timings, and publish.py refuses a timing report that names no CPU.
+docs/running/conformance.md has the details.
 """
 from __future__ import annotations
 
@@ -162,12 +164,31 @@ def tool_command(scenario: Scenario, era: str | None, checkout: Checkout, contex
             "java", *scenario.jvm, "-cp", classpath, scenario.main, *scenario.arguments(context, era, "/out")]
 
 
-def environment(image: str, owner: str) -> dict:
+# Printed in a tool container: the logical CPUs it may run on, then the CPU's model as the kernel names it (x86).
+CPU_PROBE = "nproc && grep -m 1 '^model name' /proc/cpuinfo || true"
+
+
+def parse_cpu(output: str) -> dict:
+    """The CPU from `CPU_PROBE`'s output: its model, None when the kernel names none (as on most ARM CPUs), and
+    its logical CPUs, None when the count is not a positive number."""
+    lines = output.splitlines()
+    count = lines[0].strip() if lines else ""
+    names = [line.partition(":")[2].strip() for line in lines[1:] if line.startswith("model name")]
+    return {"model": names[0] if names and names[0] else None,
+            "logical_cpus": int(count) if count.isdecimal() and int(count) > 0 else None}
+
+
+def environment(image: str, owner: str, cpus: str, memory: str) -> dict:
+    """What the tools ran on. The CPU is what a tool container sees: `--cpus` caps its CPU time, not the CPUs it may
+    run on, so the count is the machine's, and the container's limits are recorded beside it."""
     def ask(argv: list[str]) -> str | None:
         done = subprocess.run(argv, text=True, capture_output=True)
         text = (done.stdout or done.stderr).strip()
         return text.splitlines()[0] if done.returncode == 0 and text else None
 
+    container = ["docker", "run", "--rm", "--network", "none", "--cpus", cpus, "--memory", memory,
+                 *labels("conformance", owner), image]
+    probe = subprocess.run([*container, "sh", "-c", CPU_PROBE], text=True, capture_output=True)
     return {
         "image": image,
         "image_id": ask(["docker", "image", "inspect", "--format", "{{.Id}}", image]),
@@ -176,6 +197,8 @@ def environment(image: str, owner: str) -> dict:
         "docker": ask(["docker", "version", "--format", "{{.Server.Version}}"]),
         "python": platform.python_version(),
         "runner": "github-actions" if os.environ.get("GITHUB_ACTIONS") == "true" else "local",
+        "cpu": parse_cpu(probe.stdout if probe.returncode == 0 else ""),
+        "limits": {"cpus": cpus, "memory": memory},
     }
 
 
@@ -328,7 +351,7 @@ def run_scenarios(args: argparse.Namespace, checkout: Checkout, selected: list[S
         return outcomes + [Outcome(scenario.id, era, "failed", str(error))
                            for scenario in runnable for era in scenario.eras]
     build_seconds = time.monotonic() - clock
-    env = environment(args.image, args.owner)
+    env = environment(args.image, args.owner, args.cpus, args.memory)
     for scenario in runnable:
         if not has_class(classpath, scenario.main, checkout):
             outcomes += [Outcome(scenario.id, era, "skipped", f"{scenario.main} is not on the tools classpath")
@@ -356,8 +379,6 @@ def arguments(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--memory", default="8g", help="memory of each tool container (default: %(default)s)")
     parser.add_argument("--allow-dirty", action="store_true",
                         help="run with uncommitted changes (recorded; publish.py refuses such reports)")
-    parser.add_argument("--allocation-only", action="store_true",
-                        help="on CI, run a timing scenario for its memory counts alone (its report is not published)")
     parser.add_argument("--dry-run", action="store_true", help="print the plan, run nothing")
     args = parser.parse_args(argv)
     if not OWNER.match(args.owner):
@@ -370,12 +391,6 @@ def arguments(argv: list[str]) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     args = arguments(sys.argv[1:] if argv is None else argv)
     selected = [SCENARIOS[name] for name in dict.fromkeys(args.scenarios)]
-    if os.environ.get("GITHUB_ACTIONS") == "true":
-        refused = [scenario.id for scenario in selected if not scenario.in_ci]
-        if refused and not args.allocation_only:
-            print(f"{', '.join(refused)}: timing scenarios are measured on a quiet local machine; on CI they run "
-                  "only with --allocation-only, for their memory counts", file=sys.stderr)
-            return 2
     pins = fetching.load_pins()
     checkout = checkout_facts(ROOT)
     if args.dry_run:

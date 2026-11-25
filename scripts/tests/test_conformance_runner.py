@@ -7,6 +7,7 @@ import io
 import json
 import os
 import re
+import subprocess
 import sys
 import tarfile
 import tempfile
@@ -342,7 +343,8 @@ class ChecksTest(unittest.TestCase):
         self.assertEqual(scenarios.SCENARIOS["ledger-rules"].arguments(ctx, None, "/out")[-2:],
                          ["--dataset-commit", ctx.pins["ledger-rules-documents"].spec["commit"]])
         self.assertIn(COMMIT, scenarios.SCENARIOS["cbor-decoding"].arguments(ctx, "conway", "/out"))
-        self.assertFalse(scenarios.SCENARIOS["uplc-turbo"].in_ci)
+        self.assertEqual([scenario.id for scenario in scenarios.SCENARIOS.values() if scenario.timed], ["uplc-turbo"],
+                         "uplc-turbo alone reports timings")
 
 
 def checkout(root):
@@ -447,20 +449,49 @@ class RunTest(unittest.TestCase):
                     run.prepare_cache(locked)
                 locked.chmod(0o700)
 
-    def test_turbo_is_refused_on_ci(self):
-        with mock.patch.dict(os.environ, {"GITHUB_ACTIONS": "true"}), \
-                mock.patch.object(run, "checkout_facts", side_effect=AssertionError("ran")), \
-                mock.patch("sys.stderr", new=io.StringIO()):
-            self.assertEqual(run.main(["uplc-turbo", "--out", "/nonexistent"]), 2)
-
-    def test_turbo_runs_on_ci_for_its_allocation_alone(self):
+    def test_turbo_runs_on_ci_as_any_scenario_does(self):
         with tempfile.TemporaryDirectory() as tmp, \
                 mock.patch.dict(os.environ, {"GITHUB_ACTIONS": "true"}), \
                 mock.patch.object(run, "checkout_facts", return_value=checkout(tmp)), \
                 mock.patch.object(run, "run_scenarios", return_value=[]) as ran, \
                 mock.patch("sys.stdout", new=io.StringIO()), mock.patch("sys.stderr", new=io.StringIO()):
-            self.assertEqual(run.main(["uplc-turbo", "--allocation-only", "--out", str(Path(tmp, "out"))]), 0)
-            self.assertEqual([scenario.id for scenario in ran.call_args.args[2]], ["uplc-turbo"])
+            self.assertEqual(run.main(["ledger-rules", "uplc-turbo", "--out", str(Path(tmp, "out"))]), 0)
+            self.assertEqual([scenario.id for scenario in ran.call_args.args[2]], ["ledger-rules", "uplc-turbo"])
+        with mock.patch("sys.stderr", new=io.StringIO()), self.assertRaises(SystemExit):
+            run.arguments(["uplc-turbo", "--out", "/x", "--allocation-only"])
+
+    def test_the_cpu_is_read_as_the_probe_prints_it(self):
+        x86 = "4\nmodel name\t: Intel(R) Xeon(R) 6975P-C\n"
+        self.assertEqual(run.parse_cpu(x86), {"model": "Intel(R) Xeon(R) 6975P-C", "logical_cpus": 4})
+        self.assertEqual(run.parse_cpu("8\n"), {"model": None, "logical_cpus": 8}, "a kernel that names no model")
+        self.assertEqual(run.parse_cpu("16\nmodel name\t:\n"), {"model": None, "logical_cpus": 16},
+                         "an empty name is none")
+        for output in ("", "0\n", "-2\n", "four\nmodel name : x\n", "4.5\n"):
+            self.assertIsNone(run.parse_cpu(output)["logical_cpus"], repr(output))
+
+    def test_the_environment_records_the_cpu_and_limits_the_tool_container_sees(self):
+        seen = []
+
+        def docker(argv, **kwargs):
+            seen.append(argv)
+            output = "4\nmodel name\t: Some CPU @ 2.00GHz\n" if argv[-3:-1] == ["sh", "-c"] else "x\n"
+            return subprocess.CompletedProcess(argv, 0, output, "")
+
+        with mock.patch.object(run.subprocess, "run", side_effect=docker), \
+                mock.patch.dict(os.environ, {"GITHUB_ACTIONS": "true"}):
+            recorded = run.environment("img", "owner-1", "3", "8g")
+        self.assertEqual(recorded["cpu"], {"model": "Some CPU @ 2.00GHz", "logical_cpus": 4})
+        self.assertEqual(recorded["limits"], {"cpus": "3", "memory": "8g"})
+        self.assertEqual(recorded["runner"], "github-actions")
+        probe = next(argv for argv in seen if argv[-3:-1] == ["sh", "-c"])
+        self.assertEqual(probe[-1], run.CPU_PROBE)
+        text = " ".join(probe)
+        for flags in ("--network none", "--cpus 3 --memory 8g", "xyz.kd5ujc.scarab.owner=owner-1"):
+            self.assertIn(flags, text, "the probe runs as the tool's containers do")
+        with mock.patch.object(run.subprocess, "run",
+                               side_effect=lambda argv, **kwargs: subprocess.CompletedProcess(argv, 125, "", "no")):
+            self.assertEqual(run.environment("img", "o", "3", "8g")["cpu"], {"model": None, "logical_cpus": None},
+                             "a failed probe records no CPU")
 
     def test_an_out_directory_with_reports_is_refused(self):
         with tempfile.TemporaryDirectory() as tmp, \

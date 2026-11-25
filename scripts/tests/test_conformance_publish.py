@@ -136,15 +136,6 @@ class CollectTest(unittest.TestCase):
             with tempfile.TemporaryDirectory() as tmp, self.assertRaises(publish.PublishError, msg=case):
                 write_report(tmp, **changes)
                 publish.collect([Path(tmp)])
-        turbo = "scarab-20261114-uplc-turbo.json.gz"
-        for runner in ({"environment": {"runner": "github-actions"}}, {}, {"environment": None}):
-            with tempfile.TemporaryDirectory() as tmp, self.assertRaises(publish.PublishError, msg=str(runner)):
-                write_report(tmp, turbo, **runner)
-                publish.collect([Path(tmp)])
-        with tempfile.TemporaryDirectory() as tmp:
-            write_report(tmp, turbo, environment={"runner": "local"})
-            write_report(tmp, environment={"runner": "github-actions"})
-            self.assertEqual(len(publish.collect([Path(tmp)])), 2)
         with tempfile.TemporaryDirectory() as tmp, self.assertRaises(publish.PublishError):
             Path(tmp, "scarab-2026111-ledger-rules.json.gz").write_bytes(b"")
             publish.collect([Path(tmp, "scarab-2026111-ledger-rules.json.gz")])
@@ -155,6 +146,49 @@ class CollectTest(unittest.TestCase):
             write_report(tmp)
             write_report(tmp, "scarab-20261115-ledger-rules.json.gz")
             publish.collect([Path(tmp)])
+
+
+TURBO = "scarab-20261114-uplc-turbo.json.gz"
+CPU = {"model": "Some CPU @ 2.00GHz", "logical_cpus": 4}
+
+
+def environment(runner, cpu=CPU):
+    return {"runner": runner, "cpu": cpu, "limits": {"cpus": "3", "memory": "8g"}}
+
+
+class TimedReportTest(unittest.TestCase):
+    """A report of timings (uplc-turbo) is published wherever it was written, once its provenance names the CPU the
+    timings were taken on."""
+
+    def collected(self, name, **changes):
+        with tempfile.TemporaryDirectory() as tmp:
+            write_report(tmp, name, **changes)
+            return [report.path.name for report in publish.collect([Path(tmp)])]
+
+    def test_a_turbo_report_from_a_runner_or_a_local_machine_is_published(self):
+        for runner in ("github-actions", "local"):
+            self.assertEqual(self.collected(TURBO, environment=environment(runner)), [TURBO], runner)
+        self.assertEqual(self.collected(TURBO, environment=environment("local", {"model": None, "logical_cpus": 8})),
+                         [TURBO], "a CPU the kernel names no model of")
+
+    def test_a_turbo_report_that_names_no_cpu_is_refused(self):
+        # As every turbo report run.py wrote before it recorded the CPU: on a runner, run.py --allocation-only's.
+        cases = {"runner alone": {"environment": {"runner": "github-actions"}},
+                 "local, no CPU": {"environment": {"runner": "local"}}, "no environment": {},
+                 "environment null": {"environment": None},
+                 "the probe failed": {"environment": environment("github-actions",
+                                                                 {"model": "x", "logical_cpus": None})},
+                 "a count of zero": {"environment": environment("local", {"model": "x", "logical_cpus": 0})},
+                 "a boolean count": {"environment": environment("local", {"model": "x", "logical_cpus": True})},
+                 "a count as text": {"environment": environment("local", {"model": "x", "logical_cpus": "4"})},
+                 "cpu not an object": {"environment": environment("local", "x")}}
+        for case, changes in cases.items():
+            with self.subTest(case), self.assertRaisesRegex(publish.PublishError, "names no CPU"):
+                self.collected(TURBO, **changes)
+
+    def test_a_report_of_no_timings_needs_no_cpu(self):
+        self.assertEqual(self.collected(LEDGER), [LEDGER])
+        self.assertEqual(self.collected(LEDGER, environment={"runner": "github-actions"}), [LEDGER])
 
 
 class DryRunTest(unittest.TestCase):

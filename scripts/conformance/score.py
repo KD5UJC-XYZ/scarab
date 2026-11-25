@@ -589,6 +589,6 @@ Ratios are shown as the site shows them, cut to two decimals.
 - `uplc-turbo`: a benchmark of the corpus is met when its CPU time is at most twice its CPU budget or within
   {CPU_TOLERANCE_US} µs of it, and its memory at most twice its memory budget or within {memory} KiB of it;
   a benchmark that is not reported fails.
-  The times depend on the machine that took them.
+  The times depend on the machine that took them, which the report's provenance names.
   The site also fails a benchmark whose budget disagrees with the other nodes' reports, which this count leaves out.
 """

@@ -271,5 +271,25 @@ class TurboScoreTest(unittest.TestCase):
             self.assertIsNone(summarize.turbo(Path(tmp), Path(tmp, "inputs")))
 
 
+class WorkflowTest(unittest.TestCase):
+    def workflow(self):
+        return (Path(__file__).resolve().parents[2] / '.github/workflows/conformance.yml').read_text()
+
+    def test_turbo_is_an_ordinary_scenario_of_the_workflow_and_its_nightly_run(self):
+        workflow = self.workflow()
+        self.assertIn("UPLC_TURBO: ${{ github.event_name == 'schedule' || inputs.uplc-turbo }}", workflow)
+        self.assertIn('if [ "$UPLC_TURBO" = true ]; then scenarios+=(uplc-turbo); fi', workflow)
+        self.assertEqual(workflow.count("python3 -I -B scripts/conformance/run.py"), 1,
+                         "one run, one --out, one artifact")
+        self.assertNotIn("--allocation-only", workflow)
+        self.assertNotIn("uplc-turbo-memory", workflow)
+        inputs = workflow.split("    inputs:\n", 1)[1].split("\npermissions:", 1)[0]
+        self.assertIn("      uplc-turbo:\n", inputs)
+        self.assertIn("${{ runner.temp }}/conformance/turbo-score.md", workflow)
+        self.assertIn('cat "$RUNNER_TEMP/conformance/turbo-score.md" >> "$GITHUB_STEP_SUMMARY"', workflow)
+        self.assertIn('--inputs "$RUNNER_TEMP/conformance-inputs" --previous "$RUNNER_TEMP/conformance-previous"',
+                      workflow)
+
+
 if __name__ == "__main__":
     unittest.main()

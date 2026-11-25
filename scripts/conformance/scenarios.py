@@ -49,7 +49,8 @@ class Scenario:
     arguments: Callable[[Context, str | None, str], list[str]]
     entries: Callable[[dict], int]
     checks: Callable[[dict, Context, str | None], list[str]]
-    in_ci: bool = True
+    # A report of timings, whose provenance must name the CPU they were taken on to be published.
+    timed: bool = False
 
     @property
     def schema(self) -> str:
@@ -194,7 +195,7 @@ SCENARIOS: dict[str, Scenario] = {scenario.id: scenario for scenario in (
              "tools/src/main/scala/xyz/kd5ujc/scarab/plutus/ndc/UplcTurboMain.scala",
              ("site", "uplc-turbo-corpus"), (None,), TURBO_JVM,
              _turbo_arguments, lambda report: len(report.get("benchmarks", [])), lambda report, context, era: [],
-             in_ci=False),
+             timed=True),
     Scenario("cbor-decoding", "xyz.kd5ujc.scarab.ledger.conformance.CborDatasetMain",
              "tools/src/main/scala/xyz/kd5ujc/scarab/ledger/conformance/CborDatasetMain.scala",
              ("site", "cbor-dataset"), ("conway", "dijkstra"), TOOL_JVM,

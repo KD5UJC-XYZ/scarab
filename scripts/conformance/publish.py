@@ -34,7 +34,8 @@ cannot be determined, the outcome is reported as unknown. Running it again start
 refuses already-published reports unless `--replace` is given; identical files are never committed again.
 
 Every file is checked first: its name is `scarab-YYYYMMDD-<scenario>[-<era>].json.gz`, its provenance beside it
-names it with the same sha256, and records a passed validation of a checkout with no uncommitted changes.
+names it with the same sha256, and records a passed validation of a checkout with no uncommitted changes and, for a
+report of timings (uplc-turbo), the CPU they were taken on.
 """
 from __future__ import annotations
 
@@ -102,10 +103,15 @@ def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def runner_of(record: dict) -> object:
-    """Where the provenance says the report was written, None when it does not say."""
+def timed_on(record: dict) -> bool:
+    """Whether the provenance names the CPU a report's timings were taken on: a count of logical CPUs at least, as
+    `run.py` records it since uplc-turbo became a scenario of GitHub-hosted runners. A report written before then
+    names none; on a runner, only `run.py --allocation-only` could write one, its timings not offered as
+    measurements."""
     environment = record.get("environment")
-    return environment.get("runner") if isinstance(environment, dict) else None
+    cpu = environment.get("cpu") if isinstance(environment, dict) else None
+    count = cpu.get("logical_cpus") if isinstance(cpu, dict) else None
+    return isinstance(count, int) and not isinstance(count, bool) and count > 0
 
 
 def collect(paths: Sequence[Path]) -> list[Report]:
@@ -127,8 +133,8 @@ def collect(paths: Sequence[Path]) -> list[Report]:
             problems.append("its sha256 is not the one its provenance records")
         if record.get("validation", {}).get("valid") is not True:
             problems.append("its provenance records no passed validation")
-        if not SCENARIOS[LABELS[NAME.match(path.name)["label"]]].in_ci and runner_of(record) != "local":
-            problems.append("it is a timing report that was not written on a local machine")
+        if SCENARIOS[LABELS[NAME.match(path.name)["label"]]].timed and not timed_on(record):
+            problems.append("it is a timing report whose provenance names no CPU the timings were taken on")
         scarab = record.get("scarab", {})
         if scarab.get("dirty") is not False:
             problems.append("it was written from a checkout with uncommitted changes")
@@ -193,7 +199,7 @@ also writes this file: do not edit it by hand. Scarab's Plutus evaluator is its 
   `{RAW}/latest/`, with its `.provenance.json` beside it.
 - `reports/<scenario>/scarab-YYYYMMDD-<scenario>[-<era>].json.gz`: every published report, dated (UTC) by its
   `generated_at`, with its `.provenance.json`: the Scarab commit, the pinned inputs and their checksums, the tool, its
-  arguments and the checks the report passed.
+  arguments, where it ran (the runner, and the CPU and limits of its container) and the checks the report passed.
 
 {score.markdown(score.results(clone / "latest", site))}
 ## Reports in `latest/`
