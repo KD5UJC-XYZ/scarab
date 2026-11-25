@@ -14,7 +14,9 @@ import xyz.kd5ujc.scarab.ledger.state.{Alonzo, Babbage, Conway}
   * (`getConwayScriptsNeeded`, `Conway/UTxO.hs:62-80`). UTXOW asks for exactly the redeemers of
   * those purposes (`hasExactSetOfRedeemers`, `Alonzo/Rules/Utxow.hs:239-262`), and lists the
   * missing ones in the order of the scripts needed: spending, withdrawing, certifying, minting,
-  * voting, proposing.
+  * voting, proposing. Conway's pool judges by its era rules: its distinct certificates and its
+  * missing redeemers of every purpose are held to the reference node's answers through them
+  * (`RedeemerIndexReferenceSuite`).
   */
 class CertificateRedeemerIndexSuite extends FunSuite:
   import RedeemerIndexCases.*
@@ -48,25 +50,38 @@ class CertificateRedeemerIndexSuite extends FunSuite:
     assertEquals(verdict[Babbage](8)(twice[Babbage](_, Vector(0, 1))), Left(Vector(extra(1))))
   }
 
-  test("Conway: each certificate takes its own redeemer index (Conway/UTxO.hs:75-80)") {
-    // two delegations to different pools; Conway's MEMPOOL reports UTXOS's failures before UTXOW's
-    val other = Purpose.Certifying(1, otherDelegation)
-    assertEquals(
-      verdict[Conway](10)(distinct[Conway](_, Vector(0))),
-      Left(
-        Vector(
-          collect(Vector(other)),
-          PredicateFailure.utxow(UtxowFailure.MissingRedeemers(Vector(other -> script.hash)))
+  test("Conway: a body cannot repeat a certificate, so each certificate has its own index") {
+    // `getConwayScriptsNeeded` indexes the certificates by their position in the body's ordered set
+    // (`zipAsIxItem`, `Conway/UTxO.hs:78` (f649f975)), which holds no repeat: `decodeOSet`
+    // (`Data/OSet/Strict.hs:109-110` (f649f975)) refuses a body that repeats one, and Conway's era
+    // types cannot hold one (`OSet`). The body Alonzo and Babbage index the repeat of by its first
+    // occurrence is no Conway body. A body `{0: [input], 1: [], 2: 0, 4: [c, c']}` with the stake
+    // registrations `c` and `c'` (`[0, [0, key hash]]`):
+    def body(certificates: String*): Bytes =
+      Bytes
+        .fromHex(
+          "a4" + "00" + "81" + "825820" + "11" * 32 + "00" + "01" + "80" + "02" + "00" + "04" +
+            "82" + certificates.mkString
         )
+        .fold(e => fail(e.message), identity)
+    def registration(key: Int): String = "8200" + "8200" + "581c" + f"$key%02x" * 28
+    def decoded(raw: Bytes) =
+      xyz.kd5ujc.scarab.ledger.era.conway.ConwayTxBody
+        .decode(raw, xyz.kd5ujc.scarab.protocol.StateLayout.Node11_1)
+    assertEquals(
+      decoded(body(registration(0x22), registration(0x22))).map(_ => ()),
+      Left(
+        xyz.kd5ujc.scarab.ledger.era.EraTxError
+          .Decode(LedgerDecodeError.DuplicateElement(DecodeField.Certificates))
       )
     )
-    assertEquals(verdict[Conway](10)(distinct[Conway](_, Vector(0, 1))), Right(2L))
-    // A Conway body cannot repeat a certificate: `decodeOSet` refuses a duplicate at every version
-    // (cardano-ledger f649f975 `libs/cardano-data/src/Data/OSet/Strict.hs:109-110`, through
-    // `decodeSetLikeEnforceNoDuplicates`, `Binary/Decoding/Decoder.hs:1053-1062,1083-1085`), and
-    // so does the node's decoder from version 9, Conway's lowest. A body built with one anyway gets
-    // its own positions too.
-    assertEquals(verdict[Conway](10)(twice[Conway](_, Vector(0, 1))), Right(2L))
+    // two distinct certificates are read, each at its own position; their redeemers are held to
+    // the reference node's answers through Conway's era rules (`RedeemerIndexReferenceSuite`)
+    assertEquals(
+      decoded(body(registration(0x22), registration(0x33)))
+        .map(_.certs.size),
+      Right(2)
+    )
   }
 
   test("Alonzo and Babbage give different certificates their own redeemer indices") {
@@ -120,10 +135,6 @@ class CertificateRedeemerIndexSuite extends FunSuite:
 
   test("Babbage lists missing redeemers as spending, withdrawing, certifying, minting") {
     assertEquals(verdict[Babbage](8)(unredeemed[Babbage]), Left(Vector(missing, collected)))
-  }
-
-  test("Conway lists missing redeemers as spending, withdrawing, certifying, minting") {
-    assertEquals(verdict[Conway](10)(unredeemed[Conway]), Left(Vector(collected, missing)))
   }
 
   test("Conway lists missing voting and proposing redeemers last (Conway/UTxO.hs:67-73)") {
