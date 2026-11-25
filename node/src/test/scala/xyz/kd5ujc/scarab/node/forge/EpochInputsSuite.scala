@@ -66,7 +66,11 @@ class EpochInputsSuite extends FailsOnUncaught with ForgeFixture:
           case ForgeTrace.NodeCannotForge(s, _) => s -> true
         }.toMap
         slots.foreach(s =>
-          assertEquals(decided.get(s), Some(Leadership.check(s, derived(s)).isRight), s"slot $s")
+          assertEquals(
+            decided.get(s),
+            Some(LentKeys.check(s, derived(s), p.creds.vrf).isRight),
+            s"slot $s"
+          )
         )
         // and a forged block's stake is the derived inputs'
         assert(forged.exists(f => geometry.epochOf(f.slot) == tipEpoch), "none forged before")

@@ -41,8 +41,8 @@ class LeaderScheduleSuite extends ScalaCheckSuite:
   /** The answer [[Leadership.check]] of `slot` gives: led with its certificate, not led, or a
     * failure, which the schedule never covers.
     */
-  private def checked(slot: BigInt, inputs: EpochInputs): Answer =
-    Leadership.check(slot, inputs) match
+  private def checked(slot: BigInt, inputs: EpochInputs, key: Draft03Prover.SigningKey): Answer =
+    Leadership.check(slot, inputs, Leadership.Evaluator.of(key)) match
       case Right(cert)                   => Answer.Led(cert)
       case Left(ForgeError.NotLeader(_)) => Answer.NotLed
       case Left(_)                       => Answer.Uncovered
@@ -50,13 +50,16 @@ class LeaderScheduleSuite extends ScalaCheckSuite:
   /** The schedule of `inputs` computed chunk by chunk with the clock in slot `clock`, as the walk
     * computes it, until it covers the epoch or a slot's check fails.
     */
-  private def computed(inputs: EpochInputs, clock: BigInt): EpochSchedule =
+  private def computed(
+      inputs: EpochInputs,
+      clock: BigInt,
+      key: Draft03Prover.SigningKey
+  ): EpochSchedule =
     @tailrec def go(schedule: EpochSchedule): EpochSchedule =
       schedule.next(clock) match
         case None => schedule
         case Some((from, until)) =>
-          val chunk =
-            LeaderSchedule.decided(inputs, from, until, Leadership.Evaluator.of(inputs.key))
+          val chunk = LeaderSchedule.decided(inputs, from, until, Leadership.Evaluator.of(key))
           schedule.added(chunk) match
             case None                                  => fail(s"chunk $from-$until refused")
             case Some(added) if chunk.failure.nonEmpty => added
@@ -107,6 +110,7 @@ class LeaderScheduleSuite extends ScalaCheckSuite:
   // 32 bytes, slots of no length) and reports a case that cannot occur
   property("every slot's decision and every led slot's certificate are Leadership.check's") {
     forAllNoShrink(cases) { c =>
+      val k = key(c.seed)
       val inputs = EpochInputs.of(
         geometry(1000, c.epochLength.toLong),
         c.epoch,
@@ -114,16 +118,16 @@ class LeaderScheduleSuite extends ScalaCheckSuite:
         c.stake,
         c.total,
         fraction(c.coefficient._1, c.coefficient._2),
-        key(c.seed)
+        k.publicKey
       )
       // started with the clock `into` the epoch: the slots before it have passed
       val clock = inputs.first + c.into
-      val schedule = computed(inputs, clock)
+      val schedule = computed(inputs, clock, k)
       val wrong =
         mismatches(
           schedule,
           inputs,
-          s => if s < clock then Answer.Uncovered else checked(s, inputs)
+          s => if s < clock then Answer.Uncovered else checked(s, inputs, k)
         )
       Prop(wrong.isEmpty) :| s"slots whose answer is not the check's: ${wrong.take(5)}" &&
       Prop(
@@ -136,30 +140,30 @@ class LeaderScheduleSuite extends ScalaCheckSuite:
   test(
     "an epoch with led and not led slots: the schedule has each one's decision and certificate"
   ) {
-    val inputs =
-      EpochInputs.of(geometry(1000, 300), 2, hashNonce, 1, 1, half, key(Seq.fill(32)(9)))
-    val schedule = computed(inputs, inputs.first)
-    assertEquals(mismatches(schedule, inputs, checked(_, inputs)), Vector.empty)
+    val k = key(Seq.fill(32)(9))
+    val inputs = EpochInputs.of(geometry(1000, 300), 2, hashNonce, 1, 1, half, k.publicKey)
+    val schedule = computed(inputs, inputs.first, k)
+    assertEquals(mismatches(schedule, inputs, checked(_, inputs, k)), Vector.empty)
     assert(schedule.led.nonEmpty, "no slot led: the comparison saw no certificate")
     assert(schedule.led.size < 300, "every slot led: the comparison saw no slot not led")
   }
 
   test("at f = 1 every slot is led, and without stake below f = 1 none is") {
-    val all =
-      EpochInputs.of(geometry(1000, 150), 1, hashNonce, 0, 10, fraction(1, 1), key(Seq.fill(32)(3)))
-    val none = EpochInputs.of(geometry(1000, 150), 1, hashNonce, 0, 10, half, key(Seq.fill(32)(3)))
-    assertEquals(computed(all, 0).led.keySet, (all.first until all.end).toSet)
-    assertEquals(computed(none, 0).led.size, 0)
-    assertEquals(computed(none, 0).complete, true)
+    val k = key(Seq.fill(32)(3))
+    val all = EpochInputs.of(geometry(1000, 150), 1, hashNonce, 0, 10, fraction(1, 1), k.publicKey)
+    val none = EpochInputs.of(geometry(1000, 150), 1, hashNonce, 0, 10, half, k.publicKey)
+    assertEquals(computed(all, 0, k).led.keySet, (all.first until all.end).toSet)
+    assertEquals(computed(none, 0, k).led.size, 0)
+    assertEquals(computed(none, 0, k).complete, true)
   }
 
   test("a check that fails otherwise than by not leading stops the schedule at that slot") {
     // a stake above the total is no fraction: every slot's check fails
-    val invalid =
-      EpochInputs.of(geometry(1000, 150), 1, hashNonce, 11, 10, half, key(Seq.fill(32)(3)))
-    val schedule = computed(invalid, 0)
+    val k = key(Seq.fill(32)(3))
+    val invalid = EpochInputs.of(geometry(1000, 150), 1, hashNonce, 11, 10, half, k.publicKey)
+    val schedule = computed(invalid, 0, k)
     assertEquals(schedule.until, invalid.first)
-    assert(Leadership.check(invalid.first, invalid) match {
+    assert(Leadership.check(invalid.first, invalid, Leadership.Evaluator.of(k)) match {
       case Left(
             ForgeError.LeaderThreshold(
               xyz.kd5ujc.scarab.crypto.vrf.PraosLeaderThreshold.Error.InvalidFraction(_, _)
@@ -174,30 +178,31 @@ class LeaderScheduleSuite extends ScalaCheckSuite:
   }
 
   test("the slots decided before a failure in a chunk keep their decisions; the failure is kept") {
-    val inputs = EpochInputs.of(geometry(1000, 300), 1, hashNonce, 1, 1, half, key(Seq.fill(32)(9)))
+    val k = key(Seq.fill(32)(9))
+    val inputs = EpochInputs.of(geometry(1000, 300), 1, hashNonce, 1, 1, half, k.publicKey)
     val boom = Draft03Prover.Failure.InternalFailure(new IllegalStateException("evaluation"))
     val calls = new AtomicInteger(0)
     // the fifth output fails
     val failing = new Leadership.Evaluator:
       def output(alpha: Bytes): Either[Draft03Prover.Failure, Bytes] =
-        if calls.incrementAndGet() == 5 then Left(boom) else inputs.key.output(alpha)
+        if calls.incrementAndGet() == 5 then Left(boom) else k.output(alpha)
       def prove(alpha: Bytes): Either[Draft03Prover.Failure, Draft03Prover.Proved] =
-        inputs.key.prove(alpha)
+        k.prove(alpha)
     val chunk = LeaderSchedule.decided(inputs, inputs.first, inputs.first + 100, failing)
     assertEquals(chunk.until, inputs.first + 4)
     assertEquals(chunk.failure, Some(ForgeError.VrfProof(boom)))
     val schedule = EpochSchedule.empty(inputs).added(chunk).getOrElse(fail("chunk refused"))
     (inputs.first until inputs.first + 4).foreach(slot =>
-      assertEquals(schedule.answer(slot, inputs), checked(slot, inputs), s"slot $slot")
+      assertEquals(schedule.answer(slot, inputs), checked(slot, inputs, k), s"slot $slot")
     )
     assertEquals(schedule.answer(inputs.first + 4, inputs), Answer.Uncovered)
   }
 
   test("a chunk past where a schedule ends drops the slots before it: they answer uncovered") {
-    val inputs =
-      EpochInputs.of(geometry(1000, 500), 1, hashNonce, 1, 1, half, key(Seq.fill(32)(9)))
+    val k = key(Seq.fill(32)(9))
+    val inputs = EpochInputs.of(geometry(1000, 500), 1, hashNonce, 1, 1, half, k.publicKey)
     def chunk(from: BigInt) =
-      LeaderSchedule.decided(inputs, from, from + 100, Leadership.Evaluator.of(inputs.key))
+      LeaderSchedule.decided(inputs, from, from + 100, Leadership.Evaluator.of(k))
     val once = EpochSchedule.empty(inputs).added(chunk(inputs.first)).getOrElse(fail("refused"))
     assert(once.led.nonEmpty, "the first chunk leads no slot: the test would see no dropped slot")
     // the clock passed the schedule's end: the next chunk starts at the clock's slot
@@ -207,7 +212,7 @@ class LeaderScheduleSuite extends ScalaCheckSuite:
       assertEquals(jumped.answer(slot, inputs), Answer.Uncovered, s"slot $slot")
     )
     (inputs.first + 250 until inputs.first + 350).foreach(slot =>
-      assertEquals(jumped.answer(slot, inputs), checked(slot, inputs), s"slot $slot")
+      assertEquals(jumped.answer(slot, inputs), checked(slot, inputs, k), s"slot $slot")
     )
   }
 
@@ -216,7 +221,7 @@ class LeaderScheduleSuite extends ScalaCheckSuite:
   ) {
     val g = geometry(1000, 100)
     def inputs(seed: Int, nonce: Nonce = hashNonce, stake: BigInt = 1, f: Leader.Fraction = half) =
-      EpochInputs.of(g, 3, nonce, stake, 2, f, key(Seq.fill(32)(seed)))
+      EpochInputs.of(g, 3, nonce, stake, 2, f, key(Seq.fill(32)(seed)).publicKey)
     // two keys made apart from one seed are two objects with one public key
     assertEquals(inputs(4), inputs(4))
     assertEquals(inputs(4).hashCode, inputs(4).hashCode)
@@ -231,10 +236,11 @@ class LeaderScheduleSuite extends ScalaCheckSuite:
 
   test("a schedule answers only under the inputs it was computed from") {
     val g = geometry(1000, 150)
-    val a = EpochInputs.of(g, 1, hashNonce, 1, 1, half, key(Seq.fill(32)(9)))
-    val b = EpochInputs.of(g, 1, Nonce.Neutral, 1, 1, half, key(Seq.fill(32)(9)))
-    val schedule = computed(a, 0)
-    assertEquals(mismatches(schedule, a, checked(_, a)), Vector.empty)
+    val k = key(Seq.fill(32)(9))
+    val a = EpochInputs.of(g, 1, hashNonce, 1, 1, half, k.publicKey)
+    val b = EpochInputs.of(g, 1, Nonce.Neutral, 1, 1, half, k.publicKey)
+    val schedule = computed(a, 0, k)
+    assertEquals(mismatches(schedule, a, checked(_, a, k)), Vector.empty)
     (a.first until a.end).foreach(slot =>
       assertEquals(schedule.answer(slot, b), Answer.Uncovered, s"slot $slot under other inputs")
     )
@@ -244,10 +250,11 @@ class LeaderScheduleSuite extends ScalaCheckSuite:
     "the state keeps a schedule whose inputs did not change, restarts one whose did, and refuses stale chunks"
   ) {
     val g = geometry(1000, 300)
-    val a = EpochInputs.of(g, 1, hashNonce, 1, 1, half, key(Seq.fill(32)(9)))
-    val b = EpochInputs.of(g, 1, Nonce.Neutral, 1, 1, half, key(Seq.fill(32)(9)))
+    val k = key(Seq.fill(32)(9))
+    val a = EpochInputs.of(g, 1, hashNonce, 1, 1, half, k.publicKey)
+    val b = EpochInputs.of(g, 1, Nonce.Neutral, 1, 1, half, k.publicKey)
     val firstOf = (i: EpochInputs) =>
-      LeaderSchedule.decided(i, i.first, i.first + 100, Leadership.Evaluator.of(i.key))
+      LeaderSchedule.decided(i, i.first, i.first + 100, Leadership.Evaluator.of(k))
     val withA = Schedules.empty.started(Vector(a)).added(firstOf(a)).getOrElse(fail("refused"))._1
     // the same inputs again: the schedule goes on from where it got
     assertEquals(withA.started(Vector(a)).of(a).map(_.until), Some(a.first + 100))
@@ -266,7 +273,7 @@ class LeaderScheduleSuite extends ScalaCheckSuite:
 
   test("pacing ahead of an epoch: a tenth of the time to its first slot is kept, the rest shared") {
     val g = geometry(1000, 1000)
-    val inputs = EpochInputs.of(g, 1, hashNonce, 1, 1, half, key(Seq.fill(32)(9)))
+    val inputs = EpochInputs.of(g, 1, hashNonce, 1, 1, half, key(Seq.fill(32)(9)).publicKey)
     val signalled = Instant.EPOCH.plusSeconds(300)
     val target = Pacing.target(g, inputs, signalled)
     assertEquals(target, Pacing.Target.Ahead(Instant.EPOCH.plusSeconds(1000), 70.seconds))
@@ -290,7 +297,7 @@ class LeaderScheduleSuite extends ScalaCheckSuite:
 
   test("pacing a begun epoch: no pause until a chunk ahead, then done a chunk before its end") {
     val g = geometry(1000, 1000)
-    val inputs = EpochInputs.of(g, 0, hashNonce, 1, 1, half, key(Seq.fill(32)(9)))
+    val inputs = EpochInputs.of(g, 0, hashNonce, 1, 1, half, key(Seq.fill(32)(9)).publicKey)
     val signalled = Instant.EPOCH.plusSeconds(300)
     val target = Pacing.target(g, inputs, signalled)
     assertEquals(target, Pacing.Target.Begun(Instant.EPOCH.plusSeconds(900), 60.seconds))
@@ -314,7 +321,7 @@ class LeaderScheduleSuite extends ScalaCheckSuite:
     // slots of 0.1 s, an epoch of 300 signalled at its onset, each chunk taking 2.5 s: after two
     // chunks, at 5 s, the epoch's last chunk must be decided before slot 200 begins at 20 s
     val g = geometry(100, 300)
-    val inputs = EpochInputs.of(g, 0, hashNonce, 1, 1, half, key(Seq.fill(32)(9)))
+    val inputs = EpochInputs.of(g, 0, hashNonce, 1, 1, half, key(Seq.fill(32)(9)).publicKey)
     val target = Pacing.target(g, inputs, Instant.EPOCH)
     assertEquals(target, Pacing.Target.Begun(Instant.EPOCH.plusSeconds(20), 2.seconds))
     val two = EpochSchedule
@@ -402,7 +409,7 @@ class LeaderScheduleSuite extends ScalaCheckSuite:
 
   private def walked(slotMillis: Long, length: Long, offset: Long, took: Took): Prop =
     val g = geometry(slotMillis, length)
-    val inputs = EpochInputs.of(g, 2, hashNonce, 1, 1, half, key(Seq.fill(32)(9)))
+    val inputs = EpochInputs.of(g, 2, hashNonce, 1, 1, half, key(Seq.fill(32)(9)).publicKey)
     val signalled = g.slotStart(inputs.first).plusMillis(offset)
     val log = paced(g, inputs, signalled, took)
     val last = log.last

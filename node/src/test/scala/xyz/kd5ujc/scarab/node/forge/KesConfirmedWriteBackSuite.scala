@@ -22,7 +22,10 @@ class KesConfirmedWriteBackSuite
     */
   private def writing(written: Ref[IO, Vector[Int]]): HotKeySource[IO] =
     new HotKeySource[IO]:
-      def read = IO.pure(Left(xyz.kd5ujc.scarab.ledger.ForgeError.KesUpdateInterrupted))
+      def read =
+        HotKeySource.reading(
+          IO.pure(Left(xyz.kd5ujc.scarab.ledger.ForgeError.KesUpdateInterrupted))
+        )
       def persist(key: Sum6KesSigning.SigningKey) =
         written.update(_ :+ key.period).as(Persisted.Written(WriteProtocol.Exchanged))
 
@@ -96,19 +99,17 @@ class KesConfirmedWriteBackSuite
     */
   private def files(p: Pool, seed: Int, period: Int = 0): HotKeySource[IO] =
     new HotKeySource[IO]:
-      def read = IO {
+      def read = HotKeySource.reading(IO {
         val key = kesOf(seed)
         key.evolveTo(period).fold(e => fail(e.toString), identity)
         Right(
-          HotKeySource.Reading.Found(
-            HotKeySource.Candidate(
-              HotCredentials(key, p.creds.opCert, p.creds.coldVkey),
-              p.creds.vrf,
-              IO.unit
-            )
+          HotKeySource.Read.Found(
+            HotCredentials(key, p.creds.opCert, p.creds.coldVkey),
+            p.vrfRead,
+            IO.unit
           )
         )
-      }
+      })
       def persist(key: Sum6KesSigning.SigningKey) = IO.pure(Persisted.Unchanged)
 
   test(
@@ -171,7 +172,7 @@ class KesConfirmedWriteBackSuite
     def ahead(start: Int, relative: Int, now: BigInt): Option[ForgeEvent] =
       val p = pool(kesStart = start, seed = 33)
       p.creds.kes.evolveTo(relative).fold(e => fail(e.toString), identity)
-      Forger.keyAhead(p.creds, now)
+      Forger.keyAhead(Forger.Pool.of(p.creds), now)
     assertEquals(ahead(50, 3, 50), Some(ForgeEvent.KesKeyAhead(53, 50)))
     assertEquals(ahead(50, 3, 52), Some(ForgeEvent.KesKeyAhead(53, 52)))
     assertEquals(ahead(50, 3, 53), None, "at the present")

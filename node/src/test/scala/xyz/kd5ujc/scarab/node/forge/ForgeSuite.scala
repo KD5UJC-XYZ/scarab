@@ -252,7 +252,7 @@ class ForgeSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ForgeFix
         for
           writes <- Ref.of[IO, Int](0)
           slow = new HotKeySource[IO]:
-            def read = IO.pure(Left(ForgeError.KesUpdateInterrupted))
+            def read = HotKeySource.reading(IO.pure(Left(ForgeError.KesUpdateInterrupted)))
             def persist(key: xyz.kd5ujc.scarab.crypto.kes.Sum6KesSigning.SigningKey) =
               writes
                 .getAndUpdate(_ + 1)

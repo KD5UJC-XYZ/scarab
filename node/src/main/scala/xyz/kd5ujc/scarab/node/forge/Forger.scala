@@ -21,7 +21,7 @@ import xyz.kd5ujc.scarab.ledger.{Block, Header}
 import xyz.kd5ujc.scarab.ledger.{ForgeError, ValidationError}
 import xyz.kd5ujc.scarab.ledger.{ClockProblem, NodeError}
 import xyz.kd5ujc.scarab.ledger.VrfCert
-import xyz.kd5ujc.scarab.crypto.vrf.{Draft03Prover, PraosLeaderThreshold as Leader}
+import xyz.kd5ujc.scarab.crypto.vrf.PraosLeaderThreshold as Leader
 import xyz.kd5ujc.scarab.ledger.state.{BlockIssuer, KeyHash}
 import xyz.kd5ujc.scarab.node.{Fatal, Follower, SessionEnd}
 import xyz.kd5ujc.scarab.consensus.{Praos, PraosConfig}
@@ -261,9 +261,9 @@ trait ForgeEvents[F[_]]:
   *   the ledger's, as `forgeShelleyBlock` takes `shelleyProtocolVersion` of the block config
   *   (ouroboros-consensus 82ecba32 `Shelley/Ledger/Forge.hs:83`, 2416493b
   *   `Shelley/Ledger/Forge.hs:144`).
-  * @param credentials
-  *   The pool's keys as they were at the start; the VRF key and the cold key never change, the KES
-  *   key and certificate are those of `hot`.
+  * @param pool
+  *   What the forger keeps of the credentials it started with, none of it secret: the keys are
+  *   those of `hot`, which owns them ([[Forger.Pool]]).
   * @param forecastWindow
   *   How far the ledger view can be forecast from the ledger state of the block's predecessor: the
   *   stability window (`SL.stabilityWindow`) of `ledgerViewForecastAt`.
@@ -309,7 +309,7 @@ final class Forger[F[_]: Async, S](
     config: PraosConfig,
     globals: LedgerGlobals,
     protocolVersion: (BigInt, BigInt),
-    credentials: PoolCredentials,
+    pool: Forger.Pool,
     val hot: HotKeys[F],
     follower: Follower[F, S],
     mempool: Mempool[F],
@@ -351,7 +351,7 @@ final class Forger[F[_]: Async, S](
   def run: F[Either[Fatal, Unit]] = Forger.scoped {
     for
       instant <- now
-      current <- hot.current
+      current <- hot.certificate
       _ <- events.emit(
         ForgeEvent.BlockForgingUpdate(
           current.fold(BlockForgingState.DisabledBlockForging)(_ =>
@@ -359,21 +359,21 @@ final class Forger[F[_]: Async, S](
           )
         )
       )
-      _ <- current.traverse_(c =>
+      _ <- current.traverse_(opCert =>
         events.emit(
           ForgeEvent.Started(
-            credentials.poolId,
-            credentials.vrfKeyHash,
-            c.opCert.kesPeriod,
+            pool.id,
+            pool.vrfKeyHash,
+            opCert.kesPeriod,
             config.maxKesEvolutions,
-            c.opCert.sequence,
+            opCert.sequence,
             kesPeriodOf(geometry.slotAt(instant))
           )
         )
       )
       // a key in its file ahead of the present cannot sign until the present reaches it
       _ <- Forger
-        .keyAhead(credentials, kesPeriodOf(geometry.slotAt(instant)))
+        .keyAhead(pool, kesPeriodOf(geometry.slotAt(instant)))
         .traverse_(events.emit)
       _ <- F.both(
         F.both(scheduling, clocked(None)),
@@ -507,7 +507,7 @@ final class Forger[F[_]: Async, S](
       instant <- now
       current <- chain.get
       counter = KeyHash
-        .fromBytes[BlockIssuer](credentials.poolId)
+        .fromBytes[BlockIssuer](pool.id)
         .toOption
         .flatMap(current.state.protocol.counters.get)
         .map(_.toBigInt)
@@ -578,7 +578,7 @@ final class Forger[F[_]: Async, S](
         current.tipRef,
         globals.referenceBuild,
         geometry,
-        credentials.poolId,
+        pool.id,
         config.activeSlotsCoeff,
         vrf
       )(e => viewOf(current, e, geometry.firstSlot(e)))
@@ -943,7 +943,7 @@ final class Forger[F[_]: Async, S](
                                 geometry,
                                 epoch,
                                 view,
-                                credentials.poolId,
+                                pool.id,
                                 config.activeSlotsCoeff,
                                 vrf
                               )
@@ -952,13 +952,18 @@ final class Forger[F[_]: Async, S](
                                 case LeaderSchedule.Answer.NotLed =>
                                   ends(ForgeTrace.NodeNotLeader(slot), reached = true)
                                 case LeaderSchedule.Answer.Uncovered =>
-                                  F.blocking(Leadership.check(slot, inputs)).flatMap {
-                                    case Left(_: ForgeError.NotLeader) =>
-                                      ends(ForgeTrace.NodeNotLeader(slot), reached = true)
-                                    // led, or a check that fails otherwise: the forging fiber's
-                                    // attempt ends the slot as the reference would
-                                    case Left(_) | Right(_) => F.pure(Forger.Decision.Led())
-                                  }
+                                  hot.keys
+                                    .evaluating(vrf)(Leadership.check(slot, inputs, _))
+                                    .flatMap {
+                                      case Some(Left(_: ForgeError.NotLeader)) =>
+                                        ends(ForgeTrace.NodeNotLeader(slot), reached = true)
+                                      // led, a check that fails otherwise, or one the credentials in
+                                      // force no longer make (a reload replaced the VRF key since):
+                                      // the forging fiber's attempt ends the slot as the reference
+                                      // would
+                                      case Some(Left(_) | Right(_)) | None =>
+                                        F.pure(Forger.Decision.Led())
+                                    }
                               }
                           }))
                   }
@@ -1169,7 +1174,7 @@ final class Forger[F[_]: Async, S](
                       geometry,
                       prepared.inputs.epoch,
                       view,
-                      credentials.poolId,
+                      pool.id,
                       config.activeSlotsCoeff,
                       vrf
                     ) == prepared.inputs =>
@@ -1239,28 +1244,32 @@ final class Forger[F[_]: Async, S](
 
   /** The leader check of a slot the forging fiber forges (decision 5): under inputs equal to the
     * schedule's, the slot's output evaluated again and the schedule's certificate; otherwise
-    * [[Leadership.check]] afresh.
+    * [[Leadership.check]] afresh. Each evaluation borrows the VRF key the inputs name from the
+    * credentials in force (none: they no longer hold it, [[Leadership.Keys]]).
     */
-  private def scheduled(slot: BigInt, inputs: EpochInputs): F[Either[ForgeError, VrfCert]] =
+  private def scheduled(
+      slot: BigInt,
+      inputs: EpochInputs
+  ): F[Option[Either[ForgeError, VrfCert]]] =
     schedule.answer(slot, inputs).flatMap {
       case LeaderSchedule.Answer.Led(cert) =>
-        F.blocking(
+        hot.keys.evaluating(inputs.vrf)(key =>
           Leadership.decide(
             slot,
             inputs.nonce,
-            Leadership.Evaluator.again(inputs.key, cert),
+            Leadership.Evaluator.again(key, cert),
             inputs.stake,
             inputs.total,
             inputs.activeSlotsCoeff
           )
         )
-      case LeaderSchedule.Answer.NotLed    => F.pure(Left(ForgeError.NotLeader(slot)))
-      case LeaderSchedule.Answer.Uncovered => F.blocking(Leadership.check(slot, inputs))
+      case LeaderSchedule.Answer.NotLed    => F.pure(Some(Left(ForgeError.NotLeader(slot))))
+      case LeaderSchedule.Answer.Uncovered => checked(slot, inputs)
     }
 
   /** The leader check of the reference's per-slot loop: [[Leadership.check]] of the slot. */
-  private def checked(slot: BigInt, inputs: EpochInputs): F[Either[ForgeError, VrfCert]] =
-    F.blocking(Leadership.check(slot, inputs))
+  private def checked(slot: BigInt, inputs: EpochInputs): F[Option[Either[ForgeError, VrfCert]]] =
+    hot.keys.evaluating(inputs.vrf)(Leadership.check(slot, inputs, _))
 
   /** The per-slot decision of one slot, as the reference's forging thread makes it at the slot: the
     * attempt with [[Leadership.check]], its block handed over at once, and its lines published as
@@ -1422,7 +1431,7 @@ final class Forger[F[_]: Async, S](
     */
   private def attempt(
       slot: BigInt,
-      decide: (BigInt, EpochInputs) => F[Either[ForgeError, VrfCert]],
+      decide: (BigInt, EpochInputs) => F[Option[Either[ForgeError, VrfCert]]],
       admitted: Option[Admitted]
   )(using handle: Handle[F, NodeError], terminal: Raise[F, Fatal]): F[Attempted[F, S]] =
     (Ref.of[F, Vector[Held[F]]](Vector.empty), hot.inForce.get.map(_.generation)).flatMapN {
@@ -1444,7 +1453,7 @@ final class Forger[F[_]: Async, S](
 
   private def steps(
       slot: BigInt,
-      decide: (BigInt, EpochInputs) => F[Either[ForgeError, VrfCert]],
+      decide: (BigInt, EpochInputs) => F[Option[Either[ForgeError, VrfCert]]],
       hold: Holding,
       admitted: Option[Admitted]
   )(using Handle[F, NodeError], Raise[F, Fatal]): Step[Prepared[S]] =
@@ -1477,7 +1486,7 @@ final class Forger[F[_]: Async, S](
       period: BigInt,
       context: Forger.Context[S],
       crossed: Forger.Crossed,
-      decide: (BigInt, EpochInputs) => F[Either[ForgeError, VrfCert]],
+      decide: (BigInt, EpochInputs) => F[Option[Either[ForgeError, VrfCert]]],
       hold: Holding,
       admitted: Option[Admitted]
   )(using Handle[F, NodeError], Raise[F, Fatal]): Step[Prepared[S]] =
@@ -1493,25 +1502,29 @@ final class Forger[F[_]: Async, S](
         case Right(Left(failure)) =>
           EitherT.left[KesInfo](hold.kes(slot, generation, Left(failure)).as(Why.Refused))
         case Right(Right(info)) => perform(hold.kes(slot, generation, Right(info)).as(info))
-      // the VRF key of the credentials in force: a reload replaces it with the key it read
+      // the VRF verification key of the credentials in force: a reload replaces it with the key
+      // it read
       vrf <- perform(hot.locked(c => F.pure(c.vrf))).flatMap(_.fold(disabled)(proceed))
       inputs = Forger.inputsOf(
         geometry,
         epoch,
         crossed.view,
-        credentials.poolId,
+        pool.id,
         config.activeSlotsCoeff,
         vrf
       )
+      // none: a reload replaced the VRF key or disabled forging since, and the slot ends as it
+      // does when that happens before the block is signed ([[assemble]])
       cert <- perform(decide(slot, inputs)).flatMap {
-        case Right(cert) => proceed(cert)
-        case Left(_: ForgeError.NotLeader) =>
+        case None              => disabled
+        case Some(Right(cert)) => proceed(cert)
+        case Some(Left(_: ForgeError.NotLeader)) =>
           EitherT.left[VrfCert](
             hold
               .line(ForgeEvent.Loop(ForgeTrace.NodeNotLeader(slot)))
               .as(Why.NotLed(generation, key))
           )
-        case Left(e) => perform(e.raise[F, VrfCert])
+        case Some(Left(e)) => perform(e.raise[F, VrfCert])
       }
       _ <- perform(pause(Forger.Point.Rechecked(slot)))
       // `praosCheckCanForge` (`Protocol/Praos.hs` 691-711)
@@ -1879,7 +1892,7 @@ final class Forger[F[_]: Async, S](
       forecastable: Forecastable,
       params: ProtocolParams,
       cert: VrfCert,
-      vrf: Draft03Prover.SigningKey,
+      vrf: Bytes,
       body: BlockBuilder.Assembly,
       admitted: Option[Admitted]
   )(using
@@ -1888,7 +1901,7 @@ final class Forger[F[_]: Async, S](
   ): F[Option[Either[NotAdmitted, Either[ForgeDefect, (Forger.Built, Long)]]]] =
     val slot = forecastable.slot
     val kesPeriod = kesPeriodOf(slot)
-    def signedWith(c: PoolCredentials)(using
+    def signedWith(c: HotKeys.Signer)(using
         Raise[F, Fatal]
     ): F[Either[NotAdmitted, Either[ForgeError, (Bytes, Bytes, Int, BigInt)]]] =
       val start = c.opCert.kesPeriod
@@ -1903,7 +1916,7 @@ final class Forger[F[_]: Async, S](
           slot,
           context.base.tipRef.map(_.hash),
           c.coldVkey,
-          c.vrf.publicKey,
+          c.vrf,
           cert,
           c.opCert,
           protocolVersion
@@ -1929,7 +1942,7 @@ final class Forger[F[_]: Async, S](
         : F[Option[(Either[NotAdmitted, Either[ForgeError, (Bytes, Bytes, Int, BigInt)]], Long)]] =
       hot
         .lockedIn { (c, generation) =>
-          if c.vrf.publicKey != vrf.publicKey then F.pure(None)
+          if c.vrf != vrf then F.pure(None)
           else signedWith(c).map(signed => Some(signed -> generation))
         }
         .map(_.flatten)
@@ -2009,14 +2022,14 @@ final class Forger[F[_]: Async, S](
     }
 
   /** The inputs of the leader check of `slot` forecast from the tip of `base`, with the VRF key
-    * `vrf`: those [[attempt]] checks the slot with when `base` is the chain it builds on, by the
-    * same derivation ([[Forger.ledgerAt]], [[Forger.leaderView]], [[Forger.inputsOf]]) without the
-    * cache and the tick of the block's own ledger.
+    * whose verification key is `vrf`: those [[attempt]] checks the slot with when `base` is the
+    * chain it builds on, by the same derivation ([[Forger.ledgerAt]], [[Forger.leaderView]],
+    * [[Forger.inputsOf]]) without the cache and the tick of the block's own ledger.
     */
   private[forge] def inputsAt(
       base: VolatileChain[S],
       slot: BigInt,
-      vrf: Draft03Prover.SigningKey
+      vrf: Bytes
   ): Either[NodeError, EpochInputs] =
     val epoch = geometry.epochOf(slot)
     ledgerAt(base, epoch, slot)
@@ -2025,7 +2038,7 @@ final class Forger[F[_]: Async, S](
           geometry,
           epoch,
           Forger.leaderView(ledger, base.state.protocol, epoch),
-          credentials.poolId,
+          pool.id,
           config.activeSlotsCoeff,
           vrf
         )
@@ -2606,12 +2619,20 @@ object Forger:
     * until the present reaches it. A key at its certificate's first period is not evolved, and is
     * never said to be ahead.
     */
-  private[forge] def keyAhead(
-      c: PoolCredentials,
-      kesPeriod: BigInt
-  ): Option[ForgeEvent.KesKeyAhead] =
-    val at = c.opCert.kesPeriod + c.kes.period
-    Option.when(c.kes.period > 0 && at > kesPeriod)(ForgeEvent.KesKeyAhead(at, kesPeriod))
+  private[forge] def keyAhead(c: Pool, kesPeriod: BigInt): Option[ForgeEvent.KesKeyAhead] =
+    val at = c.kesStart + c.kesPeriod
+    Option.when(c.kesPeriod > 0 && at > kesPeriod)(ForgeEvent.KesKeyAhead(at, kesPeriod))
+
+  /** What the forger keeps of the credentials it starts with, none of it secret (#1418): the pool's
+    * id, the hash of the VRF verification key a registration of it carries, and where the KES key
+    * read at start-up stands, its certificate's first period and its own ([[keyAhead]]). The keys
+    * themselves are the [[HotKeys]]' from the start, and are erased with their credentials.
+    */
+  final case class Pool(id: Bytes, vrfKeyHash: Bytes, kesStart: BigInt, kesPeriod: Int)
+
+  object Pool:
+    def of(c: PoolCredentials): Pool =
+      Pool(c.poolId, c.vrfKeyHash, c.opCert.kesPeriod, c.kes.period)
 
   /** Whether the era history at the chain's tip translates `slot` (`wallclockToSlot` of the summary
     * of the current ledger, `hfbtGetLedgerState`): the horizon of [[ChainRead.clock]], the same one
@@ -2803,7 +2824,7 @@ object Forger:
       geometry: EpochGeometry,
       poolId: Bytes,
       activeSlotsCoeff: Leader.Fraction,
-      vrf: Draft03Prover.SigningKey
+      vrf: Bytes
   )(view: BigInt => F[Either[NodeError, LeaderView]])(using
       ChainRead[S]
   ): F[LeaderSchedule.InForce] =
@@ -2900,7 +2921,8 @@ object Forger:
     )
 
   /** The inputs of the leader check of `epoch` from its ledger view: the epoch nonce, the stake of
-    * the pool `poolId` (none if the distribution does not have it) and the distribution's total.
+    * the pool `poolId` (none if the distribution does not have it) and the distribution's total,
+    * with the VRF key whose verification key is `vrf`.
     */
   private[forge] def inputsOf(
       geometry: EpochGeometry,
@@ -2908,7 +2930,7 @@ object Forger:
       view: LeaderView,
       poolId: Bytes,
       activeSlotsCoeff: Leader.Fraction,
-      vrf: Draft03Prover.SigningKey
+      vrf: Bytes
   ): EpochInputs =
     EpochInputs.of(
       geometry,
@@ -3007,47 +3029,52 @@ object Forger:
   ): F[Forger[F, S]] =
     val clockNow = now.getOrElse(Clock[F].realTimeInstant)
     val sleeping = sleep.getOrElse((d: FiniteDuration) => Async[F].sleep(d))
+    // what is public of the credentials, taken before the hot keys own them
     (
-      Ref.of[F, Option[Crossed]](None),
-      Ref.of[F, Vector[((Option[Bytes], BigInt), LeaderView)]](Vector.empty),
-      Ref.of[F, Vector[Forged]](Vector.empty),
-      ForgeStats.create[F],
-      HotKeys.create[F](credentials, source, config, events, enabled),
-      LeaderSchedule.create[F](config.geometry, Some(clockNow), Some(sleeping)),
-      Shared.create[F]
-    ).mapN { (cache, viewed, pending, stats, hot, schedule, shared) =>
-      new Forger[F, S](
-        config,
-        globals,
-        protocolVersion,
-        credentials,
-        hot,
-        follower,
-        mempool,
-        events,
-        forecastWindow.getOrElse(config.geometry.stabilityWindow.toBigInt),
-        clockNow,
-        sleeping,
-        unknownSlotBackoff,
-        horizon.getOrElse(Forger.withinHorizon[S]),
-        cache,
-        viewed,
-        pending,
-        stats,
-        schedule,
-        chains.getOrElse(follower.committedChain),
-        shared,
-        pause.getOrElse(_ => Async[F].unit),
-        conwaySnapshots.getOrElse(
-          ConwaySnapshots.ofPool[F](
-            mempool,
-            utxoStore,
-            Async[F].pure(MempoolEnv(globals, config.geometry, plutus.evaluator, plutus.decoder))
-          )
-        ),
-        dijkstraSnapshots.getOrElse(DijkstraSnapshots.unadmitted[F]),
-        onForgedEb,
-        ebCapacityScale.getOrElse(Async[F].pure(EbCapacityScale.full)),
-        certifying.getOrElse(LeiosCertifying.none[F, S])
-      )
-    }
+      Async[F].delay(Pool.of(credentials)),
+      HotKeys.create[F](credentials, source, config, events, enabled)
+    ).flatMapN((pool, hot) =>
+      (
+        Ref.of[F, Option[Crossed]](None),
+        Ref.of[F, Vector[((Option[Bytes], BigInt), LeaderView)]](Vector.empty),
+        Ref.of[F, Vector[Forged]](Vector.empty),
+        ForgeStats.create[F],
+        LeaderSchedule.create[F](config.geometry, hot.keys, Some(clockNow), Some(sleeping)),
+        Shared.create[F]
+      ).mapN { (cache, viewed, pending, stats, schedule, shared) =>
+        new Forger[F, S](
+          config,
+          globals,
+          protocolVersion,
+          pool,
+          hot,
+          follower,
+          mempool,
+          events,
+          forecastWindow.getOrElse(config.geometry.stabilityWindow.toBigInt),
+          clockNow,
+          sleeping,
+          unknownSlotBackoff,
+          horizon.getOrElse(Forger.withinHorizon[S]),
+          cache,
+          viewed,
+          pending,
+          stats,
+          schedule,
+          chains.getOrElse(follower.committedChain),
+          shared,
+          pause.getOrElse(_ => Async[F].unit),
+          conwaySnapshots.getOrElse(
+            ConwaySnapshots.ofPool[F](
+              mempool,
+              utxoStore,
+              Async[F].pure(MempoolEnv(globals, config.geometry, plutus.evaluator, plutus.decoder))
+            )
+          ),
+          dijkstraSnapshots.getOrElse(DijkstraSnapshots.unadmitted[F]),
+          onForgedEb,
+          ebCapacityScale.getOrElse(Async[F].pure(EbCapacityScale.full)),
+          certifying.getOrElse(LeiosCertifying.none[F, S])
+        )
+      }
+    )

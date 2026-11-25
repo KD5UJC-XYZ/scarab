@@ -27,10 +27,10 @@ class KesWriteBackClockSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught w
     */
   private def recording(
       written: Ref[IO, Vector[(Int, Sum6KesSigning.SigningKey)]],
-      reading: => HotKeySource.Reading[IO]
+      reading: => HotKeySource.Read[IO]
   ): HotKeySource[IO] =
     new HotKeySource[IO]:
-      def read = IO(Right(reading))
+      def read = HotKeySource.reading(IO(Right(reading)))
       def persist(key: Sum6KesSigning.SigningKey) =
         written.update(_ :+ (key.period -> key.copy)).as(Persisted.Written(WriteProtocol.Exchanged))
 
@@ -78,7 +78,8 @@ class KesWriteBackClockSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught w
   ): IO[(Vector[BigInt], Vector[(BigInt, ForgeError)])] =
     for
       still <- Ref.of[IO, Long](0L)
-      h <- node(p.copy(creds = p.creds.copy(kes = onDisk.copy)), from, still, None)
+      // started again, the node reads its keys again: the first run erased those it superseded
+      h <- node(p.copy(creds = p.creds.copy(vrf = p.vrfRead, kes = onDisk.copy)), from, still, None)
       _ <- running(h)(fiber => IO.race(h.settled(until), fiber.joinWithNever).timeout(2.minutes))
       events <- h.seen
     yield (
@@ -276,22 +277,20 @@ class KesWriteBackClockSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught w
   /** What the files hold: the pool's own credentials, their KES key at `period` relative to the
     * certificate.
     */
-  private def filed(p: Pool, seed: Int, period: Int): HotKeySource.Reading[IO] =
+  private def filed(p: Pool, seed: Int, period: Int): HotKeySource.Read[IO] =
     val key = kesOf(seed)
     key.evolveTo(period).fold(e => fail(e.toString), identity)
-    HotKeySource.Reading.Found(
-      HotKeySource.Candidate(
-        HotCredentials(key, p.creds.opCert, p.creds.coldVkey),
-        p.creds.vrf,
-        IO.unit
-      )
+    HotKeySource.Read.Found(
+      HotCredentials(key, p.creds.opCert, p.creds.coldVkey),
+      p.vrfRead,
+      IO.unit
     )
 
   /** A forger of `p` that a SIGHUP while the clock reads 60 KES periods ahead leaves with its key
     * past the present, a SIGHUP at the true time when the files hold `onFile`, and what followed:
     * the two reloads' results, the slot settled at the second, and the events.
     */
-  private def reloadedTwice(p: Pool, onFile: => HotKeySource.Reading[IO])(using
+  private def reloadedTwice(p: Pool, onFile: => HotKeySource.Read[IO])(using
       Handle[IO, NodeError]
   ): IO[(Either[Fatal, Unit], Either[Fatal, Unit], BigInt, Vector[ForgeEvent], Vector[Int])] =
     for

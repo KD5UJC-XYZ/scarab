@@ -49,12 +49,12 @@ class LeaderScheduleStreamSuite extends FailsOnUncaught:
     )
 
   private def inputs(g: EpochGeometry, epoch: BigInt, nonce: Nonce = hashNonce): EpochInputs =
-    EpochInputs.of(g, epoch, nonce, 1, 1, half, key(9))
+    EpochInputs.of(g, epoch, nonce, 1, 1, half, key(9).publicKey)
 
   private def at(seconds: Double): Instant = Instant.EPOCH.plusNanos((seconds * 1e9).round)
 
   private def checked(slot: BigInt, inputs: EpochInputs): Answer =
-    Leadership.check(slot, inputs) match
+    LentKeys.check(slot, inputs, key(9)) match
       case Right(cert)                   => Answer.Led(cert)
       case Left(ForgeError.NotLeader(_)) => Answer.NotLed
       case Left(_)                       => Answer.Uncovered
@@ -69,7 +69,7 @@ class LeaderScheduleStreamSuite extends FailsOnUncaught:
 
   /** The schedules the stream reports from `initial`, each with the time its chunk was done, until
     * `done` holds of the reports so far; and the state then. `onEach` sees each report first. Each
-    * evaluation of the VRF key takes `perEvaluation`.
+    * evaluation of the VRF key, `lent`, takes `perEvaluation`.
     */
   private def recorded(
       g: EpochGeometry,
@@ -82,14 +82,15 @@ class LeaderScheduleStreamSuite extends FailsOnUncaught:
       for
         spent <- IO(new AtomicLong(0))
         now = IO.realTimeInstant.flatMap(t => IO(t.plusNanos(spent.get)))
-        evaluator = (i: EpochInputs) =>
+        keys = LentKeys.wrapped[IO](key(9))(k =>
           new Leadership.Evaluator:
             def output(alpha: Bytes): Either[Draft03Prover.Failure, Bytes] =
               spent.addAndGet(perEvaluation.toNanos)
-              i.key.output(alpha)
+              k.output(alpha)
             def prove(alpha: Bytes): Either[Draft03Prover.Failure, Draft03Prover.Proved] =
-              i.key.prove(alpha)
-        schedule <- LeaderSchedule.evaluatedWith[IO](g, Some(now), None, evaluator)
+              k.prove(alpha)
+        )
+        schedule <- LeaderSchedule.create[IO](g, keys, Some(now), None)
         signal <- SignallingRef.of[IO, InForce](initial)
         log <- schedule
           .computed(signal)
@@ -243,7 +244,7 @@ class LeaderScheduleStreamSuite extends FailsOnUncaught:
     val g = geometry(1000, 1000, 300.seconds)
     val first = inputs(g, 1)
     val again = inputs(g, 1)
-    assert(!(first.key eq again.key))
+    assertEquals(first, again)
     recorded(
       g,
       InForce.of(first),
@@ -340,7 +341,7 @@ class LeaderScheduleStreamSuite extends FailsOnUncaught:
     seeds
       .traverse((n, seed) =>
         LeaderSchedule
-          .create[IO](g)
+          .create[IO](g, LentKeys.of[IO](key(9)))
           .flatMap(quiescent(_, replaced, seed)(_.schedules.get.map(_.of(i).exists(_.complete))))
           .tupleLeft(n)
       )
@@ -359,7 +360,7 @@ class LeaderScheduleStreamSuite extends FailsOnUncaught:
     seeds
       .traverse((n, seed) =>
         for
-          schedule <- LeaderSchedule.create[IO](g)
+          schedule <- LeaderSchedule.create[IO](g, LentKeys.of[IO](key(9)))
           current <- Ref.of[IO, InForce](a)
           read <- Deferred[IO, Unit]
           computing = schedule.schedules.discrete.find(_.of(i).nonEmpty).compile.drain

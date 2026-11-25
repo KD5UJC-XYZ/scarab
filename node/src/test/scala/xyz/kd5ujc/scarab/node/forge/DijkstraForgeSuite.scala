@@ -179,14 +179,14 @@ class DijkstraForgeSuite extends munit.FunSuite:
   /** The inputs of the test pool's leader check in the tip's epoch, as the forger derives them. */
   private lazy val inputs: EpochInputs =
     val view = Forger.leaderView(ledger, injected.protocol, epoch)
-    Forger.inputsOf(geometry, epoch, view, poolId, setup.praos.activeSlotsCoeff, vrf)
+    Forger.inputsOf(geometry, epoch, view, poolId, setup.praos.activeSlotsCoeff, vrf.publicKey)
 
   /** The first slot the test pool leads, its certificate, and the state ticked into it. */
   private lazy val led: (BigInt, xyz.kd5ujc.scarab.ledger.VrfCert, Forger.Ticked) =
     val window = (tip.slot + 1) until (tip.slot + 1 + geometry.stabilityWindow.toBigInt)
     val (slot, cert) = window.iterator
       .filter(s => geometry.epochOf(s) == epoch)
-      .map(s => s -> Leadership.check(s, inputs))
+      .map(s => s -> LentKeys.check(s, inputs, vrf))
       .collectFirst { case (s, Right(cert)) => s -> cert }
       .getOrElse(fail("the test pool leads no slot of the forecast range"))
     val ticked = Forger
@@ -263,7 +263,7 @@ class DijkstraForgeSuite extends munit.FunSuite:
   }
 
   test("the test pool leads some slots after the tip and not others: the leader check decides") {
-    val led = ((tip.slot + 1) to (tip.slot + 400)).map(s => Leadership.check(s, inputs).isRight)
+    val led = ((tip.slot + 1) to (tip.slot + 400)).map(s => LentKeys.check(s, inputs, vrf).isRight)
     val count = led.count(identity)
     // a third of the stake, and at the testnet's active slot coefficient about one slot in 120:
     // the three of these 400 slots its VRF key wins, the first of them the forged block's
@@ -284,7 +284,7 @@ class DijkstraForgeSuite extends munit.FunSuite:
       geometry,
       poolId,
       setup.praos.activeSlotsCoeff,
-      vrf
+      vrf.publicKey
     )(e =>
       Forger
         .ledgerAt(injected, Some(tip), e, geometry.firstSlot(e), build)
@@ -306,11 +306,11 @@ class DijkstraForgeSuite extends munit.FunSuite:
     assertEquals(ofEpoch, inputs)
     val from = tip.slot + 1
     val until = from + 400
-    val chunk = LeaderSchedule.decided(ofEpoch, from, until, Leadership.Evaluator.of(ofEpoch.key))
+    val chunk = LeaderSchedule.decided(ofEpoch, from, until, Leadership.Evaluator.of(vrf))
     assertEquals(chunk.failure, None)
     assertEquals(
       chunk.led.map(_._1),
-      (from until until).filter(s => Leadership.check(s, inputs).isRight).toVector
+      (from until until).filter(s => LentKeys.check(s, inputs, vrf).isRight).toVector
     )
     assert(chunk.led.nonEmpty, "the test pool leads some of these slots")
   }
