@@ -470,14 +470,8 @@ class LocalSubmissionSuite extends FailsOnUncaught:
       (rejection, problem) <- problems
       era <- eras
     do
-      val conway = xyz.kd5ujc.scarab.node.ntc.ConwayFailureCbor
-        .applyTxError(
-          cats.data.NonEmptyList.one(
-            xyz.kd5ujc.scarab.ledger.era.rules.ConwayLedgerPredFailure
-              .ConwayMempoolFailure[xyz.kd5ujc.scarab.ledger.state.Conway](problem)
-          )
-        )
-        .fold(e => fail(s"$era: ${e.message}"), identity)
+      // written byte by byte, apart from any encoder of the node's
+      val conway = xyz.kd5ujc.scarab.node.ntc.ConwayFailureCborCheck.freeTextReply(problem.message)
       val sent = LocalSubmission.reasonItem(rejection, era).fold(e => fail(e.message), identity)
       assertEquals(sent.hex, conway.hex, s"$era")
       assertEquals(

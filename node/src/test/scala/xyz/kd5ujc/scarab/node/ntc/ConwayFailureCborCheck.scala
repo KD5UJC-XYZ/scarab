@@ -21,6 +21,21 @@ object ConwayFailureCborCheck:
           .fold(e => Assertions.fail(s"no Conway encoding: $e"), identity)
       }
 
+  /** Conway's `ApplyTxErr` of one `ConwayMempoolFailure` of `text`, `[[6, [[7, text]]]]` (the era's
+    * index in the hard-fork combinator, then LEDGER's tag 7, `Conway/Rules/Ledger.hs:238`
+    * (f649f975)), written here byte by byte, by no encoder of the node's: the arrays' heads, then
+    * the text's head (major type 3, its length in the shortest head) and its UTF-8 bytes.
+    */
+  def freeTextReply(text: String): Bytes =
+    val utf8 = Bytes.fromArray(text.getBytes(java.nio.charset.StandardCharsets.UTF_8))
+    val n = utf8.size
+    val head: Vector[Byte] =
+      if n < 24 then Vector((0x60 + n).toByte)
+      else if n < 256 then Vector(0x78.toByte, n.toByte)
+      else if n < 65536 then Vector(0x79.toByte, (n >> 8).toByte, n.toByte)
+      else Vector(0x7a.toByte, (n >> 24).toByte, (n >> 16).toByte, (n >> 8).toByte, n.toByte)
+    Bytes(Vector(0x81, 0x82, 0x06, 0x81, 0x82, 0x07).map(_.toByte) ++ head ++ utf8.value)
+
   /** The text of `reply`, read as Conway's `ApplyTxErr` of one `ConwayMempoolFailure`,
     * `[[6, [[7, text]]]]` (the era's index in the hard-fork combinator, then LEDGER's tag 7,
     * `Conway/Rules/Ledger.hs:238` (f649f975)), failing the test where it is anything else.
