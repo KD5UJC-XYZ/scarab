@@ -192,7 +192,7 @@ class DijkstraOnePassSuite extends ScalaCheckSuite:
     assertEquals(counts("script contexts")._1, Map(Accepted -> 11))
     assertEquals(counts("chain script contexts")._1, Map(Accepted -> 200))
     assertEquals(counts("context refusals")._1, Map(Accepted -> 22))
-    assertEquals(counts("UTXOW cases")._1, Map(Accepted -> 11))
+    assertEquals(counts("UTXOW cases")._1, Map(Accepted -> 12))
     assert(counts("BBODY cases")._1.getOrElse(Accepted, 0) > 0, counts("BBODY cases").toString)
     assertEquals(
       forms,
