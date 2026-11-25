@@ -23,11 +23,12 @@ nix fmt -- --fail-on-change
 
 These Nix checks validate the environment and Nix formatting; run the Scala
 `check` separately as shown above. CI runs them, and builds the three network
-apps below, when the flake, its launcher or the CI workflow changes; the
-`nix-jdk` guard keeps the flake's JDK at the JDK image's major version. The flake supplies a development environment,
-not a sandboxed application package. It does not run Docker or convert the
-Docker-based preflight and reference scenarios to Nix: `scripts/preflight --check`
-and the reference scenarios still need Docker
+apps below, when a Nix file, the flake's lock, its launcher or the CI workflow
+changes, and on manual runs; a stale `flake.lock` fails it. The `nix-jdk` guard
+keeps the flake's JDK at the JDK image's major version. The flake supplies a
+development environment, not a sandboxed application package. It does not run
+Docker or convert the Docker-based preflight and reference scenarios to Nix:
+`scripts/preflight --check` and the reference scenarios still need Docker
 ([CONTRIBUTING.md](../CONTRIBUTING.md#build-docker-or-the-nix-shell)).
 
 With direnv and nix-direnv configured, `direnv allow` enables the included `.envrc`.

@@ -44,10 +44,30 @@ class NixJdkTest(unittest.TestCase):
                 self.assertEqual(len(found), 1, found)
                 self.assertIn("not once", found[0])
 
-    def test_a_dockerfile_naming_no_tag_fails(self):
-        found = check_nix_jdk.problems(TOOLCHAIN % "25", "FROM eclipse-temurin@sha256:00\n")
-        self.assertEqual(len(found), 1, found)
-        self.assertIn("no eclipse-temurin tag", found[0])
+    def test_a_dockerfile_naming_no_tag_or_two_fails(self):
+        for dockerfile in ("FROM eclipse-temurin@sha256:00\n",
+                           "# was eclipse-temurin:25.0.1_1-jdk-noble\n" + DOCKERFILE % "21.0.9"):
+            with self.subTest(dockerfile=dockerfile):
+                found = check_nix_jdk.problems(TOOLCHAIN % "21", dockerfile)
+                self.assertEqual(len(found), 1, found)
+                self.assertIn("eclipse-temurin tags, not one", found[0])
+
+    def test_commented_bindings_are_not_read(self):
+        for comment in ("/* jdk = pkgs.jdk25; */", "# jdk = pkgs.jdk25;"):
+            with self.subTest(comment=comment):
+                toolchain = (TOOLCHAIN % "21").replace("sbt =", comment + "\n      sbt =")
+                found = check_nix_jdk.problems(toolchain, DOCKERFILE % "25.0.4.1")
+                self.assertEqual(len(found), 1, found)
+                self.assertIn("JDK 21", found[0])
+
+    def test_a_parenthesised_binding_is_read(self):
+        toolchain = (TOOLCHAIN % "21").replace("pkgs.jdk21", "(pkgs.jdk21)")
+        self.assertEqual(len(check_nix_jdk.problems(toolchain, DOCKERFILE % "25.0.4.1")), 1)
+        self.assertEqual(check_nix_jdk.problems(toolchain, DOCKERFILE % "21.0.9"), [])
+
+    def test_a_release_naming_only_its_major(self):
+        self.assertEqual(check_nix_jdk.problems(TOOLCHAIN % "25", DOCKERFILE % "25"), [])
+        self.assertEqual(len(check_nix_jdk.problems(TOOLCHAIN % "21", DOCKERFILE % "25")), 1)
 
     def test_main_exits_one_on_a_mismatch(self):
         with tempfile.TemporaryDirectory() as tmp:

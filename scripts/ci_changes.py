@@ -6,8 +6,9 @@ PR merge checkouts compare against their first parent. Pushes compare against th
 before SHA, including every commit in a multi-commit push. Manual/nightly runs
 always run checks. Both sides of a rename are examined by disabling rename detection.
 
-Two outputs: `run` (anything but documentation changed) and `nix` (the Nix flake, the
-launcher it builds or this workflow changed; docs/nix.md).
+Two outputs: `run` (anything but documentation changed) and `nix` (a Nix file, the
+flake's lock or directories, the launcher its apps run or this workflow changed;
+docs/nix.md).
 """
 import json
 import os
@@ -32,10 +33,12 @@ def docs_only(paths):
 
 
 def nix_affected(paths):
-    """Whether the change touches the flake, the launcher its apps run, or the workflow that checks them."""
+    """Whether the change touches a Nix file (the formatter reads every one), the flake's lock or directories, the
+    launcher its apps run, or the workflow that checks them."""
     def nix(name):
-        parts = PurePosixPath(name).parts
-        return name in NIX_FILES or (len(parts) > 1 and parts[0] in NIX_DIRECTORIES)
+        path = PurePosixPath(name)
+        return (name in NIX_FILES or path.suffix == ".nix"
+                or (len(path.parts) > 1 and path.parts[0] in NIX_DIRECTORIES))
     return any(nix(name) for name in paths)
 
 

@@ -80,10 +80,11 @@ class ChangesTest(unittest.TestCase):
 
     def test_nix_paths(self):
         for path in ('flake.nix', 'flake.lock', '.envrc', 'flake/toolchain.nix', 'perSystem/apps.nix',
-                     'scripts/nix-network', '.github/workflows/ci.yml'):
+                     'perSystem/README', 'scripts/nix-network', '.github/workflows/ci.yml', 'shell.nix',
+                     'flakes/a.nix', 'tools/nix/a.nix'):
             with self.subTest(path=path):
                 self.assertTrue(ci_changes.nix_affected(['README.md', path]))
-        for path in ('README.md', 'docs/nix.md', 'flake', 'perSystem', 'flakes/a.nix', 'docs/flake/a.md',
+        for path in ('README.md', 'docs/nix.md', 'flake', 'perSystem', 'docs/flake/a.md', 'a.nix.md',
                      'scripts/ci_changes.py', 'scripts/check_nix_jdk.py', '.github/workflows/fuzz.yml'):
             with self.subTest(path=path):
                 self.assertFalse(ci_changes.nix_affected([path]))
@@ -132,6 +133,12 @@ class ChangesTest(unittest.TestCase):
         self.assertNotIn('if', first)
         self.assertIn('test "$CLASSIFY_RESULT" = success', first['run'])
         self.assertTrue(steps and all(s['if'] == "needs.changes.outputs.nix == 'true'" for s in steps))
+        script = '\n'.join(s.get('run', '') for s in steps)
+        for command in ('nix flake check -L --no-update-lock-file',
+                        'nix fmt --no-update-lock-file -- --fail-on-change',
+                        'for network in preview preprod mainnet; do',
+                        'nix run --no-update-lock-file ".#$network" -- --help'):
+            self.assertIn(command, script)
         for key in ('scripts', 'workflows', 'secrets'):
             self.assertNotIn('needs', ci['jobs'][key])
 

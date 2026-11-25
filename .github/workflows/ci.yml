@@ -372,7 +372,8 @@ jobs:
             -exec grep -L 'SPDX-License-Identifier: Apache-2.0' {} +)
           if [ -n "$missing" ]; then echo "missing SPDX header:"; echo "$missing"; exit 1; fi
 
-  # The Nix flake (docs/nix.md), when it, the launcher its apps run or this workflow changes (scripts/ci_changes.py):
+  # The Nix flake (docs/nix.md), when a Nix file, the flake's lock, the launcher its apps run or this workflow changes,
+  # or the change cannot be known (scripts/ci_changes.py); a stale lock fails rather than being rewritten:
   # evaluated, its formatting checked, and the three network apps built, which runs ShellCheck on the launcher, and
   # asked for their help, which stops before any build or download. The `nix-jdk` guard of the scripts job keeps the
   # flake's JDK at the JDK image's major version without Nix.
@@ -406,13 +407,13 @@ jobs:
       - name: Evaluate the flake and check its formatting
         if: needs.changes.outputs.nix == 'true'
         run: |
-          nix flake check -L
-          nix fmt -- --fail-on-change
+          nix flake check -L --no-update-lock-file
+          nix fmt --no-update-lock-file -- --fail-on-change
       - name: Build the network apps and ask for their help
         if: needs.changes.outputs.nix == 'true'
         run: |
           for network in preview preprod mainnet; do
-            nix run ".#$network" -- --help > /dev/null
+            nix run --no-update-lock-file ".#$network" -- --help > /dev/null
           done
 
   workflows:

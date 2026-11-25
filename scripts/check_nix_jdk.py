@@ -2,11 +2,11 @@
 # SPDX-License-Identifier: Apache-2.0
 """Fail when the Nix shell's JDK is not the JDK image's major version.
 
-The flake names its JDK as `jdk = pkgs.jdk<major>;` in `flake/toolchain.nix`; the JDK image pins a Temurin release,
-read from the tag the header of `docker/jdk.Dockerfile` names, as `scripts/preflight_doctor.py` reads it. The shell
-may carry another update of that release, since the gates build in the image (docs/nix.md), but not another major
-version. Either one missing, or the flake naming its JDK more than once, fails the check too. It reads text only and
-needs no Nix.
+The flake names its JDK as `jdk = pkgs.jdk<major>;` in `flake/toolchain.nix`, read with its comments left out; the
+JDK image pins a Temurin release, read from the tag the header of `docker/jdk.Dockerfile` names, with the pattern
+`scripts/preflight_doctor.py` reads it by. The shell may carry another update of that release, since the gates build
+in the image (docs/nix.md), but not another major version. Either file naming its JDK other than exactly once fails
+the check too. It reads text only and needs no Nix.
 """
 from __future__ import annotations
 
@@ -15,23 +15,24 @@ from pathlib import Path
 import re
 import sys
 
-from preflight_doctor import DOCKERFILE, jdk_pin
+from preflight_doctor import DOCKERFILE, TEMURIN_TAG
 
 ROOT = Path(__file__).resolve().parents[1]
 TOOLCHAIN = "flake/toolchain.nix"
-NIX_JDK = re.compile(r"^\s*jdk\s*=\s*pkgs\.jdk(\d+)\s*;", re.MULTILINE)
+NIX_COMMENT = re.compile(r"/\*.*?\*/|#[^\n]*", re.DOTALL)
+NIX_JDK = re.compile(r"\bjdk\s*=\s*\(?\s*pkgs\.jdk(\d+)\s*\)?\s*;")
 
 
 def problems(toolchain: str, dockerfile: str) -> list[str]:
-    nix = NIX_JDK.findall(toolchain)
-    pin = jdk_pin(dockerfile)
+    nix = NIX_JDK.findall(NIX_COMMENT.sub(" ", toolchain))
+    image = TEMURIN_TAG.findall(dockerfile)
     found = []
     if len(nix) != 1:
         found.append(f"{TOOLCHAIN} names its JDK {len(nix)} times, not once as `jdk = pkgs.jdk<major>;`")
-    if pin is None:
-        found.append(f"{DOCKERFILE} names no eclipse-temurin tag; the image's JDK cannot be read")
-    if not found and int(nix[0]) != int(pin.release.split(".", 1)[0]):
-        found.append(f"{TOOLCHAIN} has JDK {nix[0]}, the JDK image Temurin {pin.release}: "
+    if len(image) != 1:
+        found.append(f"{DOCKERFILE} names {len(image)} eclipse-temurin tags, not one: the image's JDK cannot be read")
+    if not found and int(nix[0]) != int(image[0][0].split(".", 1)[0]):
+        found.append(f"{TOOLCHAIN} has JDK {nix[0]}, the JDK image Temurin {image[0][0]}+{image[0][1]}: "
                      "move the flake to the image's major version (or both together)")
     return found
 
