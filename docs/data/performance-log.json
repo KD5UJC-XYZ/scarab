@@ -5797,7 +5797,8 @@
    "commits": [
     "ae5ed2c2c",
     "1477fe052",
-    "8e2701101"
+    "8e2701101",
+    "9989052bf"
    ],
    "links": [],
    "page": "rewards-and-evaluation",
@@ -5826,6 +5827,13 @@
        "`1477fe052`",
        "45690908941",
        "3,992"
+      ],
+      [
+       "GitHub-hosted runner",
+       "Intel Xeon 6975P-C",
+       "`9989052bf`",
+       "45701051392, 45702457985",
+       "3,995, 3,993"
       ],
       [
        "GitHub-hosted runner",

@@ -645,8 +645,9 @@ of the Ed25519 verification (`verifyEd25519Signature`), which makes an object fo
 ## 68. uplc-turbo on GitHub-hosted runners: the score by CPU (#1411)
 
 Each row is a run of `scripts/conformance/run.py uplc-turbo` at its own settings (3 CPUs, 8 GB, a 4 GB heap),
-scored by the scenario's rules at the site's pin `62800627`, with one evaluator: `ae5ed2c2c`, and `1477fe052` and
-`8e2701101` of the change that runs the scenario on GitHub-hosted runners, which change no Scala. A runner
+scored by the scenario's rules at the site's pin `62800627`, with one evaluator: `ae5ed2c2c`, and `1477fe052`,
+`8e2701101` and `9989052bf` of the change that runs the scenario on GitHub-hosted runners, which change no Scala
+(nor did `main` between them). A runner
 (`ubuntu-24.04`) cannot be chosen by its CPU: each run is given one, and the CPU named is the one the tool's
 container saw (`/proc/cpuinfo`). The runs are the **Conformance reports** workflow's; their artifacts expire with the
 workflow's retention, and the laptop's are not published.
@@ -656,6 +657,7 @@ workflow's retention, and the laptop's are not published.
 |---|---|---|---|---:|
 | GitHub-hosted runner | Intel Xeon 6975P-C | `ae5ed2c2c` | 45682241083, 45684247173, 45685651691 | 3,995, 3,994, 3,995 |
 | GitHub-hosted runner | Intel Xeon 6975P-C | `1477fe052` | 45690908941 | 3,992 |
+| GitHub-hosted runner | Intel Xeon 6975P-C | `9989052bf` | 45701051392, 45702457985 | 3,995, 3,993 |
 | GitHub-hosted runner | Intel Xeon Platinum 8370C | `8e2701101` | 45692610105 | 3,857 |
 | a development laptop |  | `ae5ed2c2c` | three | 3,981, 3,986, 3,992 |
 <!-- /register -->

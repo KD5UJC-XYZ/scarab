@@ -137,7 +137,7 @@ jobs:
           if-no-files-found: error
 
   turbo:
-    name: uplc-turbo on the reference CPU
+    name: measure uplc-turbo
     if: ${{ github.event_name == 'schedule' || inputs.uplc-turbo }}
     # A failure here is red on this job, with its reason in the job summary, but leaves the run green: the next
     # nightly run takes the newest successful scheduled run's CBOR report as its baseline (`--status success` above),
