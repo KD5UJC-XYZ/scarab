@@ -82,6 +82,21 @@ private[node] object UpstreamEraLedger:
         case _ => Left(Unread.Shape(n))
     case _ => Left(Unread.Shape(n))
 
+  /** Whether `tx` keeps the four original parts of `n` as signed: its body's, its witnesses' and
+    * its auxiliary data's bytes, and its validity flag. None of them is re-encoded.
+    */
+  def retains(n: Node, tx: ConwayTx): Boolean = n.value match
+    case Value.Arr(Vector(body, witnesses, valid, auxiliary)) =>
+      val aux = auxiliary.value match
+        case Value.Null => None
+        case _          => Some(auxiliary.original)
+      tx.body.raw == body.original && tx.wits.raw == witnesses.original &&
+      tx.auxData.map(_.raw) == aux &&
+      (valid.value match
+        case Value.Bool(flag) => tx.isValid == xyz.kd5ujc.scarab.ledger.era.IsPhase2Valid.of(flag)
+        case _                => false)
+    case _ => false
+
   /** The clock of the suites' geometry from their ledger's system start, which the annotation
     * translates slots with.
     */

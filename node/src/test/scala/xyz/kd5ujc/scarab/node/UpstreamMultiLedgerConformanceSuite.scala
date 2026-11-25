@@ -142,32 +142,14 @@ class UpstreamMultiLedgerConformanceSuite extends FunSuite:
           node(originals.resolve(s"LEDGER-$ordinal/signal.cbor")).original
         )
       }
-      // the original parts as signed, retained whole by the decoder
-      signals.foreach { signal =>
-        val fields = array(signal)
-        assertEquals(fields.size, 4)
-        val valid = fields(2).value match
-          case Value.Bool(v) => v
-          case other         => fail(s"expected validity flag, got $other")
-        val auxiliary = fields(3).value match
-          case Value.Null => None
-          case _          => Some(fields(3).original)
-        val flat = Tx
-          .fromBlock(
-            Block.Transaction(fields(0).original, fields(1).original, auxiliary, valid),
-            xyz.kd5ujc.scarab.protocol.Era.Conway
-          )
-          .fold(e => fail(e.message), identity)
-        assertEquals(flat.body.raw, fields(0).original, "retain signed body bytes")
-        assertEquals(
-          flat.witnesses.raw,
-          Some(fields(1).original),
-          "retain original signed witnesses"
-        )
-      }
       val txs = signals.map(
         UpstreamEraLedger.transaction(_).fold(e => fail(s"$id transaction: $e"), identity)
       )
+      // the original parts as signed, retained whole by Conway's decoder
+      signals.zip(txs).foreach { (signal, tx) =>
+        assertEquals(array(signal).size, 4)
+        assert(UpstreamEraLedger.retains(signal, tx), "retain the signed body and witnesses")
+      }
       assert(txs.size > 1)
       val t = EraTx.conway
       val b = EraTxBody.conway

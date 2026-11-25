@@ -106,7 +106,9 @@ class UpstreamFreshLedgerConformanceSuite extends FunSuite:
     )
 
   /** Compare the rule's failures, embedded as LEDGER's, written by the era's encoder
-    * (`UpstreamEraLedger.refusal`), with the unchanged native encoding of the rule's own.
+    * (`UpstreamEraLedger.refusal`), with the unchanged native encoding of the rule's own, byte for
+    * byte as written, never re-encoded: LEDGER's and LEDGERS's list whole, and UTXO's and UTXOW's
+    * failures each as LEDGER's embeds it, in order and with their multiplicity.
     */
   private def rejected(
       rule: String,
@@ -116,8 +118,8 @@ class UpstreamFreshLedgerConformanceSuite extends FunSuite:
     val answer = Cbor
       .decode(UpstreamEraLedger.refusal(failures))
       .fold(e => fail(e.message), identity)
-    val ledgerFailures = array(array(array(answer).head)(1))
-    val encoded = ledgerFailures.map { ledgerFailure =>
+    val list = array(array(answer).head)(1)
+    val written = array(list).map { ledgerFailure =>
       rule match
         case "UTXO"    => array(array(ledgerFailure)(1))(1)
         case "UTXOW"   => array(ledgerFailure)(1)
@@ -125,8 +127,13 @@ class UpstreamFreshLedgerConformanceSuite extends FunSuite:
         case "LEDGER"  => ledgerFailure
         case other     => fail(s"unsupported native STS rule $other")
     }
-    val bytes = Cbor.encode(Value.Arr(encoded)).fold(e => fail(e.message), identity)
-    assertEquals(bytes.hex, native.original.hex, "complete native failure bytes, including order")
+    assertEquals(
+      written.map(_.original.hex),
+      array(native).map(_.original.hex),
+      "each native failure's bytes, in order"
+    )
+    if rule == "LEDGER" || rule == "LEDGERS" then
+      assertEquals(list.original.hex, native.original.hex, "the complete native failure list")
 
   private def cacheInvariant(state: UTxOState[Conway], incoherent: Boolean): Unit =
     val empty = ConwayInstantStake(
@@ -166,11 +173,13 @@ class UpstreamFreshLedgerConformanceSuite extends FunSuite:
     val cert = decode(fields(2), summon[Codec[ConwayCertState]])
     val before = decode(read("state"), UpstreamNativeStates.nativeUtxoState)
     cacheInvariant(before, incoherent)
-    val _ = tx(read("signal"))
     val transaction =
       UpstreamEraLedger
         .transaction(read("signal"))
         .fold(e => fail(s"era transaction: $e"), identity)
+    // the original parts as signed, retained whole by Conway's decoder
+    assertEquals(array(read("signal")).size, 4)
+    assert(UpstreamEraLedger.retains(read("signal"), transaction), "retain the signed parts")
     val judged = rule match
       case "UTXO" =>
         UpstreamEraLedger
@@ -207,9 +216,11 @@ class UpstreamFreshLedgerConformanceSuite extends FunSuite:
   ): UpstreamEraLedger.Outcome =
     def read(name: String): Node = nodeAt(directory.resolve(s"$name.cbor"))
     def eraTx(n: Node) =
-      // the original parts as signed, retained whole (`tx`)
-      val _ = tx(n)
-      UpstreamEraLedger.transaction(n).fold(e => fail(s"era transaction: $e"), identity)
+      val read = UpstreamEraLedger.transaction(n).fold(e => fail(s"era transaction: $e"), identity)
+      // the original parts as signed, retained whole by Conway's decoder
+      assertEquals(array(n).size, 4)
+      assert(UpstreamEraLedger.retains(n, read), "retain the signed body and witnesses")
+      read
     val rule = text(row, "rule")
     val fields = array(read("environment"))
     assertEquals(Files.readString(directory.resolve("result.txt")), text(row, "result"))
@@ -453,7 +464,10 @@ class UpstreamFreshLedgerConformanceSuite extends FunSuite:
       .fold(e => fail(e.message), identity)
     val ledgerFailure = array(array(array(encoded).head)(1)).head
     val utxoFailure = array(array(ledgerFailure)(1))(1)
-    assertEquals(array(observed("native-failures")).map(_.value), Vector(utxoFailure.value))
+    assertEquals(
+      array(observed("native-failures")).map(_.original.hex),
+      Vector(utxoFailure.original.hex)
+    )
   }
   test("every original input, native output and independent formal verdict is pinned") {
     cases.foreach { row =>
