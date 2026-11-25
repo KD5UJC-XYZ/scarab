@@ -5,7 +5,6 @@ import scala.collection.immutable.{SortedMap, SortedSet}
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node}
 import xyz.kd5ujc.scarab.ledger.{
-  BootstrapWitness,
   ByteStrings,
   CborRead,
   DecodeField,
@@ -15,39 +14,30 @@ import xyz.kd5ujc.scarab.ledger.{
   Unsigned,
   Witnesses
 }
-import xyz.kd5ujc.scarab.ledger.era.{AsIx, Data, EraTxError, Plutus, Redeemers, TxDats, WitVKey}
+import xyz.kd5ujc.scarab.ledger.era.{
+  AlonzoEraTxWits,
+  AlonzoTxWitsRep,
+  AsIx,
+  Data,
+  EraTxError,
+  Plutus,
+  Redeemers,
+  TxDats,
+  WitVKey
+}
+import xyz.kd5ujc.scarab.ledger.state.Conway
 import xyz.kd5ujc.scarab.protocol.Era
 
-/** Conway's witness set: `AlonzoTxWits ConwayEra` (`data AlonzoTxWitsRaw`,
-  * `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxWits.hs:249-255`, cardano-ledger f649f975), with
-  * the bytes it arrived as and those of its datums and redeemers, which the script integrity hash
-  * is over. Its scripts are Conway scripts, by hash, and its redeemers are keyed by Conway's
-  * purposes. Made only by [[ConwayTxWits.decode]].
-  *
-  * @param bootstrap
-  *   the bootstrap witnesses, one per address root ([[BootstrapWitness.set]])
-  * @param scriptArrival
-  *   the scripts' hashes in the order they arrived (native, Plutus V1, V2 and V3, each list in its
-  *   order), each once
+/** Conway's witness set: `AlonzoTxWits ConwayEra` (`type TxWits ConwayEra = AlonzoTxWits
+  * ConwayEra`, `eras/conway/impl/src/Cardano/Ledger/Conway/TxWits.hs:25`, cardano-ledger f649f975),
+  * the representation Alonzo's witness set has ([[AlonzoTxWitsRep]]) with Conway's scripts, by
+  * hash, and its redeemers keyed by Conway's purposes, a type of its own. Made only by
+  * [[ConwayTxWits.decode]].
   */
-final class ConwayTxWits private (
-    val raw: Bytes,
-    val vkeys: SortedSet[WitVKey],
-    val bootstrap: Vector[BootstrapWitness],
-    val scripts: SortedMap[Bytes, ConwayScript],
-    val scriptArrival: Vector[Bytes],
-    val datums: TxDats,
-    val redeemers: Redeemers[ConwayPlutusPurpose[AsIx]]
-):
-  // Not a case class: its derived `Mirror` would make one from any fields, whatever its bytes.
-  private def fields: Any = (raw, vkeys, bootstrap, scripts, scriptArrival, datums, redeemers)
-  override def equals(that: Any): Boolean = that match
-    case o: ConwayTxWits => fields == o.fields
-    case _               => false
-  override def hashCode(): Int = fields.hashCode
-  override def toString: String = s"ConwayTxWits($fields)"
+opaque type ConwayTxWits = AlonzoTxWitsRep[ConwayScript, ConwayPlutusPurpose[AsIx]]
 
-object ConwayTxWits:
+object ConwayTxWits
+    extends AlonzoTxWitsRep.Fields[ConwayTxWits, ConwayScript, ConwayPlutusPurpose[AsIx]]:
   private val Word32Max = (BigInt(1) << 32) - 1
 
   given CanEqual[ConwayTxWits, ConwayTxWits] = CanEqual.derived
@@ -95,7 +85,7 @@ object ConwayTxWits:
         yield purpose -> (redeemer, r.exUnits)
       )
       datums <- flat.datums.traverse(data(_, DecodeField.Datums))
-    yield ConwayTxWits(
+    yield AlonzoTxWitsRep(
       raw,
       SortedSet.from(flat.vkeys.map(WitVKey(_, _))),
       flat.bootstrap,
@@ -132,16 +122,7 @@ object ConwayTxWits:
         .distinctBy(_._1)
       (SortedMap.from(arrived), arrived.map(_._1))
 
-  val instance
-      : xyz.kd5ujc.scarab.ledger.era.AlonzoEraTxWits[xyz.kd5ujc.scarab.ledger.state.Conway] =
-    new xyz.kd5ujc.scarab.ledger.era.AlonzoEraTxWits[xyz.kd5ujc.scarab.ledger.state.Conway]:
-      override def scriptsOf
-          : xyz.kd5ujc.scarab.ledger.era.AlonzoEraScript[xyz.kd5ujc.scarab.ledger.state.Conway] =
-        ConwayScript.instance
-      override def addrTxWits(wits: ConwayTxWits): SortedSet[WitVKey] = wits.vkeys
-      override def bootAddrTxWits(wits: ConwayTxWits): Vector[BootstrapWitness] = wits.bootstrap
-      override def scriptTxWits(wits: ConwayTxWits): SortedMap[Bytes, ConwayScript] = wits.scripts
-      override def scriptTxWitsArrival(wits: ConwayTxWits): Vector[Bytes] = wits.scriptArrival
-      override def datsTxWits(wits: ConwayTxWits): TxDats = wits.datums
-      override def rdmrsTxWits(wits: ConwayTxWits): Redeemers[ConwayPlutusPurpose[AsIx]] =
-        wits.redeemers
+  /** `EraTxWits ConwayEra` and `AlonzoEraTxWits ConwayEra` (`Conway/TxWits.hs:24-43`,
+    * cardano-ledger f649f975): Alonzo's lenses.
+    */
+  val instance: AlonzoEraTxWits[Conway] = AlonzoTxWitsRep.Instance[Conway](ConwayScript.instance)

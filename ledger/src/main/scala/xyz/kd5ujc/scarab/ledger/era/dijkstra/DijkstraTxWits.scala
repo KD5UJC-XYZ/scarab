@@ -19,8 +19,8 @@ import xyz.kd5ujc.scarab.ledger.dijkstra.{
   V12
 }
 import xyz.kd5ujc.scarab.ledger.era.{
-  AlonzoEraScript,
   AlonzoEraTxWits,
+  AlonzoTxWitsRep,
   AsIx,
   Data,
   EraTxError,
@@ -31,37 +31,16 @@ import xyz.kd5ujc.scarab.ledger.era.{
 import xyz.kd5ujc.scarab.ledger.state.Dijkstra
 import xyz.kd5ujc.scarab.plutus.ExUnits
 
-/** Dijkstra's witness set: `AlonzoTxWits DijkstraEra` (`instance EraTxWits DijkstraEra`,
-  * `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxWits.hs:18-37`, cardano-ledger 9df9f98c;
-  * `data AlonzoTxWitsRaw`, `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxWits.hs:254-260`), with
-  * the bytes it arrived as and those of its datums and redeemers, which the script integrity hash
-  * is over. Its scripts are Dijkstra scripts, Plutus V4 among them, by hash, and its redeemers are
-  * keyed by Dijkstra's purposes. Made only by [[DijkstraTxWits.decode]].
-  *
-  * @param bootstrap
-  *   the bootstrap witnesses, one per address root ([[BootstrapWitness.set]])
-  * @param scriptArrival
-  *   the scripts' hashes in the order they arrived (native, Plutus V1, V2, V3 and V4, each list in
-  *   its order), each once
+/** Dijkstra's witness set: `AlonzoTxWits DijkstraEra` (`type TxWits DijkstraEra = AlonzoTxWits
+  * DijkstraEra`, `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxWits.hs:19`, cardano-ledger
+  * 9df9f98c), the representation Alonzo's witness set has ([[AlonzoTxWitsRep]]) with Dijkstra's
+  * scripts, Plutus V4 among them, by hash, and its redeemers keyed by Dijkstra's purposes, a type
+  * of its own. Made only by [[DijkstraTxWits.decode]].
   */
-final class DijkstraTxWits private (
-    val raw: Bytes,
-    val vkeys: SortedSet[WitVKey],
-    val bootstrap: Vector[BootstrapWitness],
-    val scripts: SortedMap[Bytes, DijkstraScript],
-    val scriptArrival: Vector[Bytes],
-    val datums: TxDats,
-    val redeemers: Redeemers[DijkstraPlutusPurpose[AsIx]]
-):
-  // Not a case class: its derived `Mirror` would make one from any fields, whatever its bytes.
-  private def fields: Any = (raw, vkeys, bootstrap, scripts, scriptArrival, datums, redeemers)
-  override def equals(that: Any): Boolean = that match
-    case o: DijkstraTxWits => fields == o.fields
-    case _                 => false
-  override def hashCode(): Int = fields.hashCode
-  override def toString: String = s"DijkstraTxWits($fields)"
+opaque type DijkstraTxWits = AlonzoTxWitsRep[DijkstraScript, DijkstraPlutusPurpose[AsIx]]
 
-object DijkstraTxWits:
+object DijkstraTxWits
+    extends AlonzoTxWitsRep.Fields[DijkstraTxWits, DijkstraScript, DijkstraPlutusPurpose[AsIx]]:
   given CanEqual[DijkstraTxWits, DijkstraTxWits] = CanEqual.derived
 
   /** A Dijkstra witness set read as the Leios build's block decoder reads it
@@ -129,7 +108,7 @@ object DijkstraTxWits:
         yield purpose -> (redeemer, ExUnits(r.memory, r.steps))
       )
       datums <- flat.datums.traverse(data(_, DecodeField.Datums))
-    yield DijkstraTxWits(
+    yield AlonzoTxWitsRep(
       flat.raw,
       SortedSet.from(flat.vkeys.map(WitVKey(_, _))),
       BootstrapWitness.set(
@@ -172,7 +151,7 @@ object DijkstraTxWits:
       // of the scripts with one hash, which are one script, the first read, native ones first; of
       // the redeemers of one purpose, the last read (`Map.fromList`), which `SortedMap.from` keeps
       val arrived = Vector(native, v1, v2, v3, v4).flatMap(_.orEmpty).distinctBy(_._1)
-      DijkstraTxWits(
+      AlonzoTxWitsRep(
         n.original,
         SortedSet.from(vkeys.orEmpty.map(WitVKey(_, _))),
         BootstrapWitness.set(
@@ -350,13 +329,5 @@ object DijkstraTxWits:
   /** `EraTxWits DijkstraEra` and `AlonzoEraTxWits DijkstraEra` (`TxWits.hs:18-37`, cardano-ledger
     * 9df9f98c): Alonzo's lenses.
     */
-  val instance: AlonzoEraTxWits[Dijkstra] = new AlonzoEraTxWits[Dijkstra]:
-    override def scriptsOf: AlonzoEraScript[Dijkstra] = DijkstraScript.instance
-    override def addrTxWits(wits: DijkstraTxWits): SortedSet[WitVKey] = wits.vkeys
-    override def bootAddrTxWits(wits: DijkstraTxWits): Vector[BootstrapWitness] = wits.bootstrap
-    override def scriptTxWits(wits: DijkstraTxWits): SortedMap[Bytes, DijkstraScript] =
-      wits.scripts
-    override def scriptTxWitsArrival(wits: DijkstraTxWits): Vector[Bytes] = wits.scriptArrival
-    override def datsTxWits(wits: DijkstraTxWits): TxDats = wits.datums
-    override def rdmrsTxWits(wits: DijkstraTxWits): Redeemers[DijkstraPlutusPurpose[AsIx]] =
-      wits.redeemers
+  val instance: AlonzoEraTxWits[Dijkstra] =
+    AlonzoTxWitsRep.Instance[Dijkstra](DijkstraScript.instance)
