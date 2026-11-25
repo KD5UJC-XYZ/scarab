@@ -12,8 +12,8 @@ package xyz.kd5ujc.scarab.node.forge
   */
 enum ProducerSignal:
   /** Scarab's identifier, 73, requested in the registry (`CIP-0203/registry.json`,
-    * cardano-foundation/CIPs#1334), with no payload: the entry
-    * links no payload definition, so the payload is 0 ("Producer requirements").
+    * cardano-foundation/CIPs#1334), with no payload: the entry links no payload definition, so the
+    * payload is 0 ("Producer requirements").
     */
   case Identified
 
