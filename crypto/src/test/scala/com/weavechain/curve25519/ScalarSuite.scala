@@ -180,25 +180,64 @@ class ScalarSuite extends munit.ScalaCheckSuite:
     }
   }
 
-  property("nonAdjacentForm writes zero or odd digits below 16 that sum to the scalar") {
+  // vartimeDoubleScalarMultiplyBasepoint reads these digits with tables of the eight odd multiples
+  // 1P to 15P (ProjectiveNielsPoint and AffineNielsPoint NafLookupTable), so the form is width 5: odd
+  // digits of absolute value at most 15, each nonzero digit followed by at least four zeros.
+  property("nonAdjacentForm writes a width-5 NAF of the scalar") {
     forAllNoShrink(scalar255) { v =>
-      val naf = unreduced(v).nonAdjacentForm()
+      val naf = unreduced(v).nonAdjacentForm().map(_.toInt)
       assertEquals(naf.length, 256)
       naf.indices.foreach { i =>
-        val d = naf(i).toInt
+        val d = naf(i)
         assert(d == 0 || (math.abs(d) <= 15 && d % 2 != 0), s"digit $i is $d for ${v.toString(16)}")
       }
-      val sum = naf.indices.map(i => BigInt(naf(i).toInt) << i).sum
+      val nonzero = naf.indices.filter(naf(_) != 0)
+      nonzero.zip(nonzero.drop(1)).foreach { (i, j) =>
+        assert(j - i >= 5, s"nonzero digits $i and $j are less than 5 apart for ${v.toString(16)}")
+      }
+      val sum = naf.indices.map(i => BigInt(naf(i)) << i).sum
       assertEquals(sum, v, v.toString(16))
     }
   }
 
-  property("equality and hashing are by the encoding") {
+  /** The scalar `v` (below L) made five ways: read as canonical, reduced from v + L (256 bits) and
+    * from v + 2^256 L (512 bits), reduced from its unreduced form v + L, and as v + 0.
+    */
+  private def representations(v: BigInt): Vector[(String, Scalar)] =
+    Vector(
+      "fromCanonicalBytes" -> canonical(v),
+      "fromBytesModOrder(v + L)" -> Scalar.fromBytesModOrder(le(v + L, 32)),
+      "fromBytesModOrderWide(v + 2^256 L)" -> Scalar.fromBytesModOrderWide(le(v + (L << 256), 64)),
+      "fromBits(v + L).reduce()" -> unreduced(v + L).reduce(),
+      "add(ZERO)" -> canonical(v).add(Scalar.ZERO)
+    )
+
+  property(
+    "equal scalars made different ways are equal and hash alike; unequal ones are not equal"
+  ) {
     forAllNoShrink(canonicalScalar, canonicalScalar) { (a, b) =>
-      assertEquals(canonical(a).equals(canonical(b)), a == b, "equals")
-      assertEquals(canonical(a).ctEquals(canonical(b)), if a == b then 1 else 0, "ctEquals")
-      assertEquals(canonical(a).hashCode(), canonical(a).hashCode(), "hashCode")
+      val first = canonical(a)
+      representations(a).foreach { (how, other) =>
+        assert(first ne other, s"$how makes another object")
+        assertEquals(other.equals(first), true, s"equals, $how of ${a.toString(16)}")
+        assertEquals(other.ctEquals(first), 1, s"ctEquals, $how of ${a.toString(16)}")
+        assertEquals(other.hashCode(), first.hashCode(), s"hashCode, $how of ${a.toString(16)}")
+      }
+      assertEquals(canonical(a).equals(canonical(b)), a == b, "equals of two values")
+      assertEquals(
+        canonical(a).ctEquals(canonical(b)),
+        if a == b then 1 else 0,
+        "ctEquals of two values"
+      )
     }
+  }
+
+  // A constant hashCode keeps the contract of equals and hashCode; this checks that the hash also
+  // tells scalars apart, as Arrays.hashCode of the encoding does.
+  test("hashCode tells distinct scalars apart") {
+    val values = Iterator.continually(canonicalScalar.sample).flatten.distinct.take(1000).toVector
+    val hashes = values.map(v => canonical(v).hashCode()).distinct
+    assert(hashes.size >= 990, s"${hashes.size} distinct hashes of 1000 distinct scalars")
   }
 
   test("the scalar constants are those of edwards25519") {
