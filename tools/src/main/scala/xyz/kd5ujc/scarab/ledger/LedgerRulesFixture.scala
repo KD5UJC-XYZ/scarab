@@ -40,6 +40,12 @@ enum FixtureError extends DomainError:
   /** A seeded proposal chains to neither a root nor an earlier proposal of its lineage. */
   case Unattached(cause: ProposalsError)
 
+  /** The fixture's protocol parameters do not read into Conway's, which the era rules take. */
+  case Params(cause: era.PParamsError)
+
+  /** The transaction's index in its block is not a `TxIx` (`Word16`). */
+  case TxIndex(index: Int)
+
   def message: String = this match
     case Syntax(file, cause)      => s"$file: not JSON: ${cause.message}"
     case Field(file, cause)       => s"$file: ${cause.getMessage}"
@@ -50,6 +56,8 @@ enum FixtureError extends DomainError:
     case Vocab(field, cause)      => s"$field: $cause"
     case Unsupported(what)        => s"unsupported fixture: $what"
     case Unattached(cause)        => s"seeded proposals: $cause"
+    case Params(cause)            => s"protocol parameters: $cause"
+    case TxIndex(index)           => s"transaction index $index is not a TxIx"
 
 /** A bound of the era history (`EraBound`): the time in seconds since the system start. */
 final case class FixtureBound(time: BigInt, slot: BigInt, epoch: BigInt)
