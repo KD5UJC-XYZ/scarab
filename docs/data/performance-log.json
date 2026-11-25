@@ -5136,6 +5136,179 @@
     }
    ],
    "listings": []
+  },
+  {
+   "id": "perf-68",
+   "section": "62",
+   "heading": "62. Chain selection from the admitted block, through the forest's successors index (#810)",
+   "subject": "Chain selection from the admitted block, through the forest's successors index (#810)",
+   "date": "2026-11-24",
+   "dateSource": "text",
+   "issues": [
+    "#810"
+   ],
+   "commits": [
+    "e201a84bc",
+    "5eb6c6991",
+    "b32068ea9",
+    "95607c735"
+   ],
+   "links": [],
+   "page": "peers-and-network",
+   "results": [
+    {
+     "id": "perf-68.t1",
+     "header": [
+      "Mainnet sync from origin, 10 minutes",
+      "Blocks adopted",
+      "Blocks/s while moving",
+      "`selectLocked` share of samples",
+      "`AvailableBlocks` share of samples"
+     ],
+     "separator": "|---|---:|---:|---:|---:|",
+     "rows": [
+      [
+       "Genesis mode, before (`e201a84bc`)",
+       "49,657",
+       "85.1",
+       "23.3%",
+       "18.4%"
+      ],
+      [
+       "Genesis mode, after (`5eb6c6991`)",
+       "52,867",
+       "89.0",
+       "4.4%",
+       "4.2%"
+      ],
+      [
+       "Genesis mode, after (`b32068ea9`)",
+       "71,256",
+       "122.9",
+       "4.7%",
+       "4.4%"
+      ],
+      [
+       "Praos mode, before (`e201a84bc`)",
+       "49,851",
+       "83.9",
+       "12.3%",
+       "9.4%"
+      ],
+      [
+       "Praos mode, after (`5eb6c6991`)",
+       "76,823",
+       "128.8",
+       "2.3%",
+       "2.1%"
+      ],
+      [
+       "Praos mode, after (`b32068ea9`)",
+       "88,599",
+       "148.5",
+       "2.2%",
+       "2.1%"
+      ]
+     ]
+    },
+    {
+     "id": "perf-68.t2",
+     "header": [
+      "Forest (`SelectionReviewBenchmark`)",
+      "Call",
+      "Thread CPU ms per call, before (`e201a84bc`)",
+      "Thread CPU ms per call, after (`95607c735`)"
+     ],
+     "separator": "|---|---|---:|---:|",
+     "rows": [
+      [
+       "Linear, 128 blocks, Origin selected",
+       "first admission of the last block",
+       "0.355",
+       "0.267"
+      ],
+      [
+       "Linear, 128 blocks, Origin selected",
+       "full pass (LoE reprocessing)",
+       "0.477",
+       "0.241"
+      ],
+      [
+       "Independent forks, 128 blocks, Origin selected",
+       "first admission of the last block",
+       "0.137",
+       "0.011"
+      ],
+      [
+       "Independent forks, 128 blocks, Origin selected",
+       "full pass (LoE reprocessing)",
+       "0.588",
+       "0.293"
+      ],
+      [
+       "Linear, 1,024 blocks, Origin selected",
+       "first admission of the last block",
+       "1.492",
+       "0.561"
+      ],
+      [
+       "Linear, 1,024 blocks, Origin selected",
+       "full pass (LoE reprocessing)",
+       "1.550",
+       "0.251"
+      ],
+      [
+       "Independent forks, 1,024 blocks, Origin selected",
+       "first admission of the last block",
+       "0.746",
+       "0.003"
+      ],
+      [
+       "Independent forks, 1,024 blocks, Origin selected",
+       "full pass (LoE reprocessing)",
+       "2.325",
+       "1.664"
+      ],
+      [
+       "Linear, 4,096 blocks, Origin selected",
+       "first admission of the last block",
+       "6.727",
+       "1.513"
+      ],
+      [
+       "Linear, 4,096 blocks, Origin selected",
+       "full pass (LoE reprocessing)",
+       "6.444",
+       "0.902"
+      ],
+      [
+       "Independent forks, 4,096 blocks, Origin selected",
+       "first admission of the last block",
+       "3.325",
+       "0.002"
+      ],
+      [
+       "Independent forks, 4,096 blocks, Origin selected",
+       "full pass (LoE reprocessing)",
+       "9.995",
+       "5.839"
+      ],
+      [
+       "Linear, 2,500 blocks, 2,160 selected, a fresh window each call",
+       "first admission of the block after the tip",
+       "4.203",
+       "0.882"
+      ],
+      [
+       "Linear, 4,096 blocks, 2,160 selected, a fresh window each call",
+       "first admission of the block after the tip",
+       "4.449",
+       "0.761"
+      ]
+     ]
+    }
+   ],
+   "listings": []
   }
  ]
 }

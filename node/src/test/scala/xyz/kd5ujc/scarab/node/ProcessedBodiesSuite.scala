@@ -7,11 +7,12 @@ import cats.mtl.{Handle, Raise, Tell}
 import cats.syntax.all.*
 import fs2.io.file.{Files, Path}
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node as CborNode, Value}
-import xyz.kd5ujc.scarab.consensus.{BlockRef, ChainSelection}
+import xyz.kd5ujc.scarab.consensus.{BlockRef, ChainSelection, LeiosBlockInfo}
 import xyz.kd5ujc.scarab.consensus.SelectView
 import xyz.kd5ujc.scarab.ledger.{
   Block,
   BlockFailure,
+  BlockPoolProblem,
   BlockTransportError,
   Header,
   HeaderVrf,
@@ -462,4 +463,28 @@ class ProcessedBodiesSuite extends FailsOnUncaught:
       assert(!after.contains(lost), "the block left the forest")
       assert(after.contains(delivered(1).header.hash), "the others stay")
       assertEquals(claimed, Vector(true), "the block can be claimed and fetched again")
+  }
+
+  test("a recovered block whose predecessors lead back to it is refused, the forest unchanged") {
+    def hash(id: Int) =
+      Bytes.fromArray(Array.tabulate[Byte](32)(i => if i == 31 then id.toByte else 0))
+    def metadata(id: Int, parent: Int, slot: Int) =
+      BlockPool.DeliveredHeader
+        .checkedAtOpen(
+          Header
+            .UnsizedByron(hash(id), hash(id), false, 0, slot, 21600, slot, Some(hash(parent)))
+            .withSizeHint(FetchTesting.sizeHint(1)),
+          LeiosBlockInfo.Absent
+        )
+        .fold(e => fail(e.toString), identity)
+    for
+      pool <- BlockPool.create[IO]
+      first <- pool.seedRecoveredMetadata(Vector(metadata(1, 2, 1)))
+      before <- pool.processedSnapshot
+      closing <- pool.seedRecoveredMetadata(Vector(metadata(3, 9, 3), metadata(2, 1, 2)))
+      after <- pool.processedSnapshot
+    yield
+      assertEquals(first, Right(()))
+      assertEquals(closing, Left(BlockPoolProblem.AvailableCycle(hash(2))))
+      assertEquals(after, before, "a refused seeding adds nothing")
   }

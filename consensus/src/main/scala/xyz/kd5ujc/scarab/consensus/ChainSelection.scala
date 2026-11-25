@@ -133,10 +133,37 @@ object ChainSelection:
     */
   final case class Local(anchor: Point, anchorView: SelectView, blocks: Vector[LocalBlock]):
     def tipView: SelectView = blocks.lastOption.fold(anchorView)(_.view)
-    // a set of the block points, built on the first lookup: a header's search for its intersection
-    // with our chain asks once for each of its points (issue 1394)
-    private lazy val points: Set[Point] = blocks.iterator.map(_.point).toSet
-    def contains(point: Point): Boolean = point == anchor || points(point)
+    // the places of the blocks by the hash of their point, built on the first lookup: a header's
+    // search for its intersection with our chain asks once for each of its points (issue 1394), and
+    // chain selection once for each block it walks (#810). The first place of each hash, built in
+    // one pass; the places of a hash held more than once, and those of Origin, aside.
+    private lazy val first: Map[Bytes, Int] =
+      Map.from(
+        blocks.indices.reverseIterator.flatMap(i =>
+          blocks.lift(i).flatMap(b => pointHash(b.point)).map(_ -> i)
+        )
+      )
+    private lazy val origins: Vector[Int] =
+      blocks.iterator.zipWithIndex.collect { case (b, i) if b.point == Point.Origin => i }.toVector
+    private lazy val repeated: Map[Bytes, Vector[Int]] =
+      // every block of its own hash, none at Origin: the ordinary window, read once
+      if blocks.sizeIs == first.size || blocks.sizeIs == first.size + origins.size then Map.empty
+      else
+        blocks.iterator.zipWithIndex
+          .flatMap((b, i) => pointHash(b.point).map(_ -> i))
+          .toVector
+          .groupMap(_._1)(_._2)
+          .filter(_._2.sizeIs > 1)
+    def contains(point: Point): Boolean =
+      point == anchor || placesOf(pointHash(point)).exists(i =>
+        blocks.lift(i).exists(_.point == point)
+      )
+
+    /** The indices in `blocks` of the blocks whose point has `hash` (`None`: Origin), oldest first.
+      */
+    def placesOf(hash: Option[Bytes]): Vector[Int] = hash.fold(origins)(h =>
+      repeated.get(h).orElse(first.get(h).map(Vector(_))).getOrElse(Vector.empty)
+    )
 
     /** Blocks that rolling back to `point` removes. */
     def depthTo(point: Point): Int =

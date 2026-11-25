@@ -90,4 +90,5 @@ One row per measurement section, in the order the sections were written; the sec
 | 59 | 2026-11-18 | The program cache: what it saves, and the heap of a decoded program |  | [Rewards, parallel Plutus and script decoding](performance/rewards-and-evaluation.md#59-the-program-cache-what-it-saves-and-the-heap-of-a-decoded-program) |
 | 60 | 2026-11-18 | The mini-protocol reader resumed: a persistent stack in its CBOR walk |  | [Peers, connections and the network path](performance/peers-and-network.md#60-the-mini-protocol-reader-resumed-a-persistent-stack-in-its-cbor-walk) |
 | 61 | 2026-11-23 | GET /state on a mainnet state: one build at a time, and the kept answer (#1150) | #1150 | [Memory, snapshots and bootstrap](performance/memory-and-snapshots.md#61-get-state-on-a-mainnet-state-one-build-at-a-time-and-the-kept-answer-1150) |
+| 62 | 2026-11-24 | Chain selection from the admitted block, through the forest's successors index (#810) | #810 | [Peers, connections and the network path](performance/peers-and-network.md#62-chain-selection-from-the-admitted-block-through-the-forests-successors-index-810) |
 <!-- /register -->

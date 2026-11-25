@@ -483,7 +483,7 @@ final class BlockPool[F[_]: Async] private (
           headers = Map.empty,
           fresh = Set.empty,
           pinned = Set.empty,
-          processed = Map.empty
+          processed = ProcessedForest.empty[Processed]
         )
       )
       .flatMap(_.entries.values.toVector.traverse_ {
@@ -516,7 +516,7 @@ final class BlockPool[F[_]: Async] private (
     */
   def residency: F[Residency] = slots.get.map { current =>
     val held = current.entries.collect { case (hash, Slot.Done(raw, _, _)) => hash -> raw } ++
-      current.processed.flatMap((hash, p) => p.held.map(hash -> _))
+      current.processed.byHash.flatMap((hash, p) => p.held.map(hash -> _))
     Residency(held.size, held.valuesIterator.map(_.size.toLong).sum)
   }
 
@@ -524,15 +524,19 @@ final class BlockPool[F[_]: Async] private (
     * bodies are still retained.
     */
   private[node] def selectionSnapshot: F[Map[Bytes, DeliveredHeader]] = slots.get.map { current =>
-    current.processed.view.mapValues(_.delivered).toMap ++ current.headers.filter { (hash, _) =>
-      current.entries.get(hash).exists {
-        case Slot.Done(_, _, _) => true
-        case _                  => false
-      }
+    current.processed.byHash.view.mapValues(_.delivered).toMap ++ current.headers.filter {
+      (hash, _) =>
+        current.entries.get(hash).exists {
+          case Slot.Done(_, _, _) => true
+          case _                  => false
+        }
     }
   }
 
-  private[node] def processedSnapshot: F[Map[Bytes, Processed]] = slots.get.map(_.processed)
+  private[node] def processedSnapshot: F[Map[Bytes, Processed]] = slots.get.map(_.processed.byHash)
+
+  /** The processed forest with its successors index, which chain selection walks. */
+  private[node] def processedForest: F[ProcessedForest[Processed]] = slots.get.map(_.processed)
 
   /** The original body of a processed block: kept in memory without a received log, else read back
     * from it as the reference reads a VolatileDB block from its file. None when the log no longer
@@ -545,19 +549,31 @@ final class BlockPool[F[_]: Async] private (
       recovered.flatTraverse(_.original(hash)).flatTap {
         case Some(_) => F.unit
         case None =>
-          slots.update(s => s.copy(processed = s.processed - hash)) *>
+          slots.update(s => s.copy(processed = s.processed.removed(hash))) *>
             fetchCoordinator.refreshGenesis
       }
     )(raw => F.pure(Some(raw)))
 
-  private[node] def processAdmission(admission: Admission): F[Boolean] = slots.modify { current =>
-    val hash = admission.delivered.header.hash
-    if current.processed.contains(hash) then current -> false
-    else
-      val processed =
+  /** An admitted block joins the processed forest: false if the forest has it already, refused if
+    * its predecessors would lead back to it ([[ProcessedForest.inserted]]).
+    */
+  private[node] def processAdmission(admission: Admission): F[Either[BlockPoolProblem, Boolean]] =
+    slots.modify(
+      process(
+        _,
         Processed(admission.delivered, admission.taken.origin, held(admission.taken.block))
-      current.copy(processed = current.processed.updated(hash, processed)) -> true
-  }
+      )
+    )
+
+  private def process(
+      current: Slots[F],
+      processed: Processed
+  ): (Slots[F], Either[BlockPoolProblem, Boolean]) =
+    if current.processed.contains(processed.delivered.header.hash) then current -> Right(false)
+    else
+      current.processed.inserted(processed) match
+        case Left(cycle)   => current -> Left(BlockPoolProblem.AvailableCycle(cycle.hash))
+        case Right(forest) => current.copy(processed = forest) -> Right(true)
 
   /** A block this node forged joins the processed forest, as the reference's ChainDB puts a block
     * it is given, a forged one included, in its VolatileDB before chain selection runs for it,
@@ -566,18 +582,12 @@ final class BlockPool[F[_]: Async] private (
     * 428-450; 433-455 at 808e40054, 467-489 at 2416493bf). Its body is read back from the received
     * log, where it was put first, or held without one; a reselection of the forest considers it as
     * any other block, and a refusal of it blames nobody ([[Source.Forged]]). False if the forest
-    * has it already.
+    * has it already; refused as [[processAdmission]] refuses a block.
     */
-  private[node] def processForged(forged: Delivered): F[Boolean] =
+  private[node] def processForged(forged: Delivered): F[Either[BlockPoolProblem, Boolean]] =
     slots
-      .modify { current =>
-        val hash = forged.header.hash
-        if current.processed.contains(hash) then current -> false
-        else
-          val processed = Processed(forged.metadata, Source.Forged, held(forged.block))
-          current.copy(processed = current.processed.updated(hash, processed)) -> true
-      }
-      .flatTap(added => fetchCoordinator.refreshGenesis.whenA(added))
+      .modify(process(_, Processed(forged.metadata, Source.Forged, held(forged.block))))
+      .flatTap(added => fetchCoordinator.refreshGenesis.whenA(added.contains(true)))
 
   /** The body a processed block keeps in memory: none when the received log holds it. */
   private def held(raw: Bytes): Option[Bytes] = Option.when(recovered.isEmpty)(raw)
@@ -591,21 +601,29 @@ final class BlockPool[F[_]: Async] private (
   /** Read every checked recovered original as one startup forest. The ordinary cache limit must not
     * discard branches before native initialChainSelection has compared them.
     */
-  private[node] def seedRecoveredHeaders(blocks: Vector[Delivered]): F[Unit] =
+  private[node] def seedRecoveredHeaders(
+      blocks: Vector[Delivered]
+  ): F[Either[BlockPoolProblem, Unit]] =
     seed(blocks.map(b => Processed(b.metadata, Source.Recovered, held(b.block))))
 
   /** As [[seedRecoveredHeaders]], from the metadata of blocks the received log holds: their bodies
     * are not kept and are read back from the log. Only for a pool created with that log
     * ([[Recovered]]); without one the seeded bodies could not be read.
     */
-  private[node] def seedRecoveredMetadata(blocks: Vector[DeliveredHeader]): F[Unit] =
+  private[node] def seedRecoveredMetadata(
+      blocks: Vector[DeliveredHeader]
+  ): F[Either[BlockPoolProblem, Unit]] =
     seed(blocks.map(Processed(_, Source.Recovered, None)))
 
-  private def seed(blocks: Vector[Processed]): F[Unit] =
-    slots.update { current =>
-      val recovered = blocks.map(p => p.delivered.header.hash -> p).toMap
-      current.copy(processed = recovered ++ current.processed)
-    } *> fetchCoordinator.refreshGenesis
+  /** The recovered blocks join the forest, which keeps its own entry of a block it holds already;
+    * refused, the forest unchanged, if one would be its own ancestor ([[ProcessedForest.seeded]]).
+    */
+  private def seed(blocks: Vector[Processed]): F[Either[BlockPoolProblem, Unit]] =
+    slots.modify { current =>
+      current.processed.seeded(blocks) match
+        case Left(cycle)   => current -> Left(BlockPoolProblem.AvailableCycle(cycle.hash))
+        case Right(forest) => current.copy(processed = forest) -> Right(())
+    } <* fetchCoordinator.refreshGenesis
 
   /** The admission of `hash` is done: its body leaves the cache unless the processed forest needs
     * it there, which is only without a received log. A processed block is read back from the log
@@ -796,6 +814,8 @@ object BlockPool:
       origin: Source,
       held: Option[Bytes]
   )
+  private[node] object Processed:
+    given ProcessedForest.Block[Processed] = _.delivered.header
   final class Delivered private (
       val header: Header,
       val block: Bytes,
@@ -918,8 +938,7 @@ object BlockPool:
                     headers = current.headers -- expired,
                     fresh = current.fresh -- expired,
                     pinned = current.pinned -- expired,
-                    processed =
-                      current.processed.filter((_, a) => a.delivered.header.slot >= cutoff)
+                    processed = current.processed.collectedBelow(cutoff)
                   )
                 }
               )
@@ -980,7 +999,7 @@ object BlockPool:
       fresh: Set[Bytes] = Set.empty,
       pinned: Set[Bytes] = Set.empty,
       admissions: BigInt = 0,
-      processed: Map[Bytes, Processed] = Map.empty
+      processed: ProcessedForest[Processed] = ProcessedForest.empty[Processed]
   ):
     def pruned(now: FiniteDuration, policy: AttributionPolicy): Slots[F] =
       if released <= policy.retained && reapAt.forall(_ > now) then this

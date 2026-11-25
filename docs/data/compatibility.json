@@ -655,7 +655,10 @@
           "ChainSelectionSuite",
           "CandidateSelectionSuite",
           "LeiosChainSelSuite",
-          "LeiosEbGateSuite"
+          "LeiosEbGateSuite",
+          "AvailableBlocksSuite",
+          "AvailableBlocksPropertySuite",
+          "ProcessedForestSuite"
         ]
       },
       "page": "docs/compatibility/chain-selection.md"

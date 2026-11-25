@@ -240,7 +240,9 @@ final class Follower[F[_]: Async, S] private (
             else BlockPool.Delivered.checked(header, raw).leftMap(Follower.Retention.Unmatched(_))
         }
       private def stored(block: BlockPool.Delivered)(using Raise[F, NodeError]): F[Unit] =
-        before.store(block.header, block.block) *> pool.processForged(block).void
+        before.store(block.header, block.block) *> pool
+          .processForged(block)
+          .flatMap(_.fold(_.raise[F, Unit], _ => F.unit))
       def keep(header: Header, raw: Bytes)(using Raise[F, NodeError]): F[Follower.Retention] =
         admitted(header, raw).flatMap(
           _.fold(F.pure, block => stored(block).as(Follower.Retention.Kept))
@@ -967,8 +969,9 @@ final class Follower[F[_]: Async, S] private (
     * came of it. Keeping is the node's work, not the forger's: a typed failure other than storage,
     * or an exception, leaves the block unkept and the adoption as it is, with the cause
     * ([[Follower.Retention]]). A storage failure is raised, and stops the node, as a failed write
-    * of a peer's block to the received log stops it in the worker (`Fatal.of`). The scope is built
-    * inside `defer`, as in [[judge]].
+    * of a peer's block to the received log stops it in the worker (`Fatal.of`). A block whose
+    * predecessors would lead back to it is raised too (`BlockPoolProblem.AvailableCycle`), where
+    * the selection for it raised it. The scope is built inside `defer`, as in [[judge]].
     */
   private def retain(
       keep: Follower.Keeping[F] => Raise[F, NodeError] ?=> F[Follower.Retention]
@@ -985,8 +988,11 @@ final class Follower[F[_]: Async, S] private (
           .flatMap {
             case Right(Right(retention))            => F.pure(retention)
             case Right(Left(storage: StorageError)) => storage.raise[F, Follower.Retention]
-            case Right(Left(other))                 => F.pure(Follower.Retention.Failed(other))
-            case Left(thrown)                       => F.pure(Follower.Retention.Defect(thrown))
+            // the selection for the block raised it here before the forest refused it (#810)
+            case Right(Left(cycle: BlockPoolProblem.AvailableCycle)) =>
+              cycle.raise[F, Follower.Retention]
+            case Right(Left(other)) => F.pure(Follower.Retention.Failed(other))
+            case Left(thrown)       => F.pure(Follower.Retention.Defect(thrown))
           }
       }
     )

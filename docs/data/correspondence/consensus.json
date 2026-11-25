@@ -799,7 +799,7 @@
     "LeiosChainSelSuite",
     "LeiosEbGateSuite"
    ],
-   "note": "the blocks ignoreUnacquiredCertRB and ignoreUnacquiredCertRBSuc hide, as a set the node's candidate construction excludes from the forest with the invalid ones (AvailableBlocks.candidates), where the reference wraps the forest's lookup and successor functions; both hide a block as a tip and as a successor",
+   "note": "the blocks ignoreUnacquiredCertRB and ignoreUnacquiredCertRBSuc hide, as a set of the whole forest; the node's candidate construction asks unacquired of each block its walks reach instead, with the invalid ones (AvailableBlocks.candidates), as the reference wraps the forest's lookup and successor functions; both hide a block as a tip and as a successor",
    "digest": "a49b478ab7dbf987"
   },
   "def consensus.LeiosCertGate.parkedOn": {
@@ -4866,6 +4866,12 @@
     "def consensus.HeaderChain.apply",
     "def consensus.HeaderChain#densityFragment",
     "def consensus.HeaderChain#pointsAfterFirst"
+   ]
+  },
+  {
+   "reason": "the selected chain's index by hash, which chain selection's walks over the processed forest read to tell a selected block and the places a block's predecessor names, where the reference compares points on its AnchoredFragment; Scala plumbing with no counterpart of its own (#810)",
+   "definitions": [
+    "def consensus.ChainSelection.Local#placesOf"
    ]
   }
  ]

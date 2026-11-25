@@ -47,6 +47,36 @@ class IndexedLookupSuite extends ScalaCheckSuite:
     assert(hc.contains(chain(0).hash) && hc.contains(chain(4).hash) && !hc.contains(other(0).hash))
   }
 
+  property(
+    "ChainSelection.Local.contains and placesOf are a scan's answers on chains that are not chains"
+  ) {
+    // Origin among the blocks, a point twice, a hash at another slot, and probes of a held hash at
+    // a slot it is not held at
+    val points = ChainSync.Point.Origin +: (chain.take(4) ++ sameSlots.take(4)).map(_.point)
+    def moved(point: ChainSync.Point, by: Int) = point match
+      case ChainSync.Point.Block(slot, hash) =>
+        ChainSync.Point.Block(ChainSync.UInt64.saturating(slot.value + by), hash)
+      case ChainSync.Point.Origin => ChainSync.Point.Origin
+    val held = Gen.oneOf(points).flatMap(p => Gen.oneOf(p, moved(p, 3)))
+    forAll(held, Gen.listOf(held)) { (anchor, blocks) =>
+      val local = ChainSelection.Local(
+        anchor,
+        SelectView(-1, 0, None, 0, None),
+        blocks.toVector.map(ChainSelection.LocalBlock(_, SelectView(0, 0, None, 0, None)))
+      )
+      def hash(p: ChainSync.Point) = p match
+        case ChainSync.Point.Block(_, h) => Some(h)
+        case ChainSync.Point.Origin      => None
+      val probes = points.flatMap(p => Vector(p, moved(p, 3), moved(p, 9)))
+      probes.forall(p =>
+        local.contains(p) == (p == local.anchor || local.blocks.exists(_.point == p)) &&
+          local.placesOf(hash(p)) == local.blocks.indices.filter(i =>
+            hash(local.blocks(i).point) == hash(p)
+          )
+      )
+    }
+  }
+
   property("ChainSelection.Local.contains is the anchor or one of the blocks") {
     forAll(Gen.choose(-1, 23)) { anchorAt =>
       // -1: anchored at Origin, every header a block
