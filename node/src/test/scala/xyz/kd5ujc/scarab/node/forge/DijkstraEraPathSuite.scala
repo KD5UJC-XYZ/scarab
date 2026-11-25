@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.node.forge
 
 import xyz.kd5ujc.scarab.consensus.leios.ProtVerParity
-import cats.data.NonEmptyVector
 import java.io.ByteArrayInputStream
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path}
@@ -11,7 +10,6 @@ import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.crypto.bls.Certificate
 import xyz.kd5ujc.scarab.ledger.{
-  EbAnnouncement,
   HeaderVersionInfo,
   LeiosBlock,
   LeiosHeader,
@@ -29,13 +27,13 @@ import xyz.kd5ujc.scarab.ledger.era.{
   Tx,
   TxLevel
 }
-import xyz.kd5ujc.scarab.ledger.era.dijkstra.{DijkstraBlock, DijkstraCorpus, DijkstraTx}
+import xyz.kd5ujc.scarab.ledger.era.dijkstra.{DijkstraCorpus, DijkstraRecordedTxs, DijkstraTx}
+import xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraRecordedTxs.{Form, Recorded}
 import xyz.kd5ujc.scarab.ledger.state.Dijkstra
 import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.TxMeasure
 import xyz.kd5ujc.scarab.node.mempool.{Capacity, DijkstraRead, EbCapacityScale, EbMeasure}
 import xyz.kd5ujc.scarab.plutus.ExUnits
-import xyz.kd5ujc.scarab.protocol.{EbPoint, LeiosTxHash}
-import xyz.kd5ujc.scarab.protocol.LeiosWord.Word64
+import xyz.kd5ujc.scarab.protocol.LeiosTxHash
 import xyz.kd5ujc.scarab.storage.LeiosEb
 
 /** The forger's Dijkstra path in the era's types (`Tx TopTx DijkstraEra`, #85) against what the
@@ -43,30 +41,33 @@ import xyz.kd5ujc.scarab.storage.LeiosEb
   * and the partitions, byte for byte and value for value.
   *
   * The expected values are the recorded bytes and what the reference's definitions derive from them
-  * ([[Expected]]), never the forger's own functions: a transaction's block form
+  * ([[Expected]]), not the forger's functions: a transaction's block form
   * (`toCBORForBlockInclusion`, cardano-ledger 9df9f98c
   * `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Tx.hs:527-533`) and its size
   * (`toCBORForSizeComputation` and `sizeDijkstraTxF`, `Tx.hs:297-320`) from the parts the recorded
-  * bytes hold, its execution units with its sub-transactions' (`getTotalExUnits`, `Tx.hs:417-422`,
-  * which `DijkstraTxSuite` and `DijkstraUTxOSuite` check), a partition as the longest prefix whose
-  * summed measure fits (`splitAfterTxSize`, ouroboros-consensus 2416493b
-  * `ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Mempool/TxSeq.hs:211-231`), and
-  * an endorser block as `forgeLeiosEb` makes it (`LeiosDemoTypes.hs:1257-1279` at
-  * ouroboros-consensus d91b3557). The recorded block 64,853 and the endorser block it announces are
-  * forged again, byte for byte, and `LeiosEncodingSuite` checks the block body's encoding on every
-  * recorded Dijkstra block.
+  * bytes hold, its execution units with its sub-transactions' (`getTotalExUnits`, `Tx.hs:417-422`)
+  * from the recorded redeemers, its cost in an endorser block (`txEbMeasureDijkstra` and
+  * `encodeLeiosEbItemSize`), a partition as the longest prefix whose summed measure fits
+  * (`splitAfterTxSize`, ouroboros-consensus 2416493b
+  * `ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Mempool/TxSeq.hs:211-231`), a
+  * block body from its transactions' bytes, and an endorser block as `forgeLeiosEb` makes it
+  * (`LeiosDemoTypes.hs:1257-1279` at ouroboros-consensus d91b3557), its body `encodeLeiosEb` 's
+  * encoding. The header body and the block envelope are written by the node's encoders
+  * (`LeiosHeaderBody.encode`, `LeiosBlock.encode`), which `LeiosEncodingSuite` checks on every
+  * recorded Dijkstra header and block. The recorded block 64,853 and the endorser block it
+  * announces are forged again, byte for byte.
   *
-  * The transactions are every Dijkstra transaction the repository holds that the build accepts: the
-  * public testnet's blocks and the 323 of the endorser block of slot 1,455,869
-  * (`fixtures/leios/testnet`), the corpus of the Leios build's verdicts
-  * (`fixtures/reference/leios-testnet-blocks`), the reference cluster's chain and its submitted
-  * transaction (`fixtures/dijkstra-devnet`), the script-context fixtures, recorded on the testnet's
-  * chain with their sub-transactions, the UTXOW cases and the mempool forms of the crossing corpus.
-  * Each is read as the node reads it: one of a block by the era's block decoder, one alone by the
-  * era's transaction decoder, one submitted by the pool's read ([[DijkstraRead.submitted]]).
+  * The transactions are the 1,108 the fixtures record that the reference reads, each selected by
+  * its recorded verdict and read as the node reads it ([[DijkstraRecordedTxs]]): the Dijkstra
+  * blocks' (the Leios corpus's blocks the build reads, the public testnet's and the devnet's), the
+  * 323 of the endorser block of slot 1,455,869 (`fixtures/leios/testnet`), the Leios corpus's
+  * transactions alone the build reads, the script-context fixtures' (written by hand, recorded on
+  * the testnet's chain, and the context refusals'), the reference's distinct UTXOW and ENTITIES
+  * transactions, and the submitted forms (the devnet's and the crossing corpus's), read by the
+  * pool's read ([[DijkstraRead.submitted]]).
   */
 class DijkstraEraPathSuite extends munit.FunSuite:
-  import DijkstraCorpus.{hex, str}
+  import DijkstraCorpus.hex
 
   /** The parts of a transaction as recorded bytes hold them: the body, the witnesses and the
     * auxiliary data's bytes, and the flag of a block form (true in a submitted form).
@@ -156,19 +157,35 @@ class DijkstraEraPathSuite extends munit.FunSuite:
     def rankingBody(txs: Vector[Bytes], cert: Option[Certificate]): Bytes =
       body(cert.fold(txs)(_ => Vector.empty), cert)
 
-    /** `forgeLeiosEb` (`LeiosDemoTypes.hs:1257-1279` at ouroboros-consensus d91b3557): the point,
-      * the body of each transaction's hash and size, and the closure of the block forms.
+    /** `cborIntBytesSize` (`Leios/Types.hs:283-288` at ouroboros-consensus 2416493b). */
+    private def intSize(n: Long): Long =
+      if n < 24 then 1 else if n < 0x100 then 2 else if n < 0x10000 then 3 else 5
+
+    /** A transaction's cost in an endorser block (`txEbMeasureDijkstra`, `Mempool.hs:845-855` at
+      * ouroboros-consensus 2416493b): its pool measure, and for its reference
+      * `encodeLeiosEbItemSize` of the measure's bytes, a 32-byte hash under its head and the size
+      * (`Leios/Types.hs:229-233` at 2416493b).
       */
-    def forge(
-        slot: BigInt,
-        txs: NonEmptyVector[Bytes]
-    ): (EbPoint, LeiosEb, NonEmptyVector[(LeiosTxHash, Bytes)]) =
-      val body = LeiosEb.of(txs)
-      (
-        EbPoint(Word64.clamped(slot), LeiosEb.hashOf(body.transactions.toVector)),
-        body,
-        txs.map(tx => LeiosEb.hashTx(tx) -> tx)
+    def ebMeasure(m: TxMeasure): EbMeasure = EbMeasure(m, 2 + 32 + intSize(m.bytes))
+
+    /** `encodeLeiosEb` (`Leios/Types.hs:247-254` at ouroboros-consensus 2416493b) of the
+      * transactions `txs`: a map of each one's hash (`hashTxBytes`, Blake2b-256 of its bytes) to
+      * its size.
+      */
+    def ebBody(txs: Vector[Bytes]): Bytes =
+      Bytes.wrap(
+        (head(5, txs.size.toLong) +: txs.flatMap(tx =>
+          Vector(head(2, 32), Blake2b.hash256.hash(tx).toArray, head(0, tx.size.toLong))
+        )).flatten.toArray
       )
+
+    /** `forgeLeiosEb` (`LeiosDemoTypes.hs:1257-1279` at ouroboros-consensus d91b3557): the slot and
+      * the hash of the body's encoding (`hashLeiosEb`, Blake2b-256), the body's encoding, and the
+      * closure of the block forms by hash.
+      */
+    def forge(slot: BigInt, txs: Vector[Bytes]): (BigInt, Bytes, Bytes, Vector[(Bytes, Bytes)]) =
+      val body = ebBody(txs)
+      (slot, Blake2b.hash256.hash(body), body, txs.map(tx => Blake2b.hash256.hash(tx) -> tx))
 
     private def fits(m: TxMeasure, limit: TxMeasure): Boolean =
       m.bytes <= limit.bytes && m.exUnitsMemory <= limit.exUnitsMemory &&
@@ -189,46 +206,21 @@ class DijkstraEraPathSuite extends munit.FunSuite:
         .size
 
   /** A transaction the node read, with the parts of the recorded bytes it was read from. */
-  private final case class Item(name: String, parts: Parts, era: Tx[TxLevel.Top, Dijkstra]):
+  private final case class Item(recorded: Recorded):
+    def name: String = recorded.name
+    def era: Tx[TxLevel.Top, Dijkstra] = recorded.tx
+    val parts: Parts = Expected.parts(recorded.raw, recorded.form == Form.InBlock)
     def blockForm: Bytes = Expected.blockForm(parts, parts.valid)
-    def units: ExUnits = EraTx.dijkstra.getTotalExUnits[TxLevel.Top](era)(using BothLevels.Top)
 
-  private def inBlock(name: String, raw: Bytes): Option[Item] =
-    Cbor
-      .decode(raw)
-      .toOption
-      .flatMap(n => DijkstraTx.inBlock(n).toOption)
-      .map(era => Item(name, Expected.parts(raw, inBlock = true), era))
-
-  /** A submitted transaction, read as the pool reads it: the pool relays its mempool form. */
-  private def submitted(name: String, raw: Bytes): Option[Item] =
-    DijkstraRead.submitted(raw).toOption.map { r =>
-      val parts = Expected.parts(raw, inBlock = false)
-      assertEquals(r.raw, Expected.mempoolForm(parts), s"$name: the mempool form")
-      assertEquals(r.size, Expected.mempoolForm(parts).size.toLong, name)
-      Item(name, parts, r.tx)
-    }
-
-  /** The transactions of a block `[8, [header, [transactions, certificate, Peras]]]`, read by the
-    * era's block decoder, with the bytes the block holds for each.
-    */
-  private def ofBlock(name: String, raw: Bytes): Vector[Item] =
-    DijkstraBlock
-      .decode(raw)
-      .fold(
-        _ => Vector.empty,
-        b =>
-          def items(n: Node): Vector[Node] = n.value match
-            case Value.Arr(xs) => xs
-            case other         => fail(s"$name: not an array: $other")
-          val root = Cbor.decode(raw).fold(e => fail(e.toString), identity)
-          val recorded = items(items(items(items(root)(1))(1))(0)).map(_.original)
-          val txs = b.blockBody.txs
-          assertEquals(txs.size, recorded.size, name)
-          txs.zip(recorded).zipWithIndex.map { case ((era, bytes), i) =>
-            Item(s"$name tx $i", Expected.parts(bytes, inBlock = true), era)
-          }
-      )
+    /** The execution units of its redeemers and its sub-transactions', from the recorded bytes
+      * (`getTotalExUnits`, `Tx.hs:417-422`, cardano-ledger 9df9f98c).
+      */
+    lazy val units: ExUnits =
+      val (mem, steps) = DijkstraRecordedTxs
+        .levels(recorded)
+        .map(_.units)
+        .foldLeft((BigInt(0), BigInt(0)))((a, b) => (a._1 + b._1, a._2 + b._2))
+      ExUnits(mem, steps)
 
   private val testnet = Path.of("fixtures", "leios", "testnet")
 
@@ -240,48 +232,46 @@ class DijkstraEraPathSuite extends munit.FunSuite:
   private lazy val announcing: LeiosBlock =
     LeiosBlock.decode(announcingRaw).fold(e => fail(e.message), identity)
 
-  /** The closure of the endorser block block 64,853 announces, in its order, as recorded. */
-  private lazy val closureBytes: Vector[Bytes] =
-    val text = new String(
+  /** The endorser block block 64,853 announces, as recorded: its point, body and closure. */
+  private lazy val ebRows: Vector[Vector[String]] =
+    new String(
       new GZIPInputStream(
         new ByteArrayInputStream(Files.readAllBytes(testnet.resolve("eb-1455869.tsv.gz")))
       ).readAllBytes(),
       StandardCharsets.US_ASCII
-    )
-    text.linesIterator
-      .map(_.split('\t').toVector)
-      .collect { case Vector("tx", _, t) => hex(t) }
-      .toVector
+    ).linesIterator.map(_.split('\t').toVector).toVector
+
+  /** The closure, in its order. */
+  private lazy val closureBytes: Vector[Bytes] =
+    ebRows.collect { case Vector("tx", _, t) => hex(t) }
 
   private lazy val closure: Vector[Item] =
     closureBytes.zipWithIndex.map((raw, i) =>
-      inBlock(s"closure $i", raw).getOrElse(fail(s"closure $i: refused"))
+      Item(DijkstraRecordedTxs.inBlock(s"closure $i", raw, None))
     )
 
   /** Block 64,853's 40 transactions, then the 323 of the endorser block it announces. */
-  private lazy val recorded: Vector[Item] = ofBlock("block 64,853", announcingRaw) ++ closure
+  private lazy val recorded: Vector[Item] =
+    DijkstraRecordedTxs.ofBlock("block 64,853", announcingRaw).map(Item(_)) ++ closure
 
-  /** The submitted transactions: the devnet's and the crossing corpus's mempool forms. */
-  private lazy val forms: Vector[(String, Bytes)] =
-    (DijkstraCorpus.devnetSubmitted +: DijkstraCorpus.crossingForms).zipWithIndex
-      .map((raw, i) => (s"submitted $i", raw))
-
-  /** Every Dijkstra transaction the repository holds that the build accepts. */
+  /** Every Dijkstra transaction the repository records that the reference reads, each selected by
+    * its recorded verdict ([[DijkstraRecordedTxs]]): the Dijkstra blocks' (the Leios corpus's
+    * blocks the build reads, the public testnet's and the devnet's), the closure of the endorser
+    * block of slot 1,455,869, the Leios corpus's transactions the build reads, the script-context
+    * fixtures' (written by hand, the chain's and the context refusals), the reference's distinct
+    * UTXOW and ENTITIES transactions, and the submitted forms.
+    */
   private lazy val corpus: Vector[Item] =
-    val blocks = (DijkstraCorpus.testnetBlocks ++ DijkstraCorpus.devnetBlocks ++
-      DijkstraCorpus.leiosCorpus
-        .filter(j => str(j, "kind") == "block")
-        .map(j => (str(j, "name"), hex(str(j, "bytes")))))
-      .flatMap(ofBlock)
-    val alone = (DijkstraCorpus.leiosCorpus.filter(j => str(j, "kind") == "tx") ++
-      DijkstraCorpus.contextCases ++ DijkstraCorpus.chainContextCases)
-      .flatMap(j => inBlock(str(j, "name"), hex(str(j, "bytes"))))
-    val utxow = DijkstraCorpus.utxowCases
-      .map(j => str(j, "tx"))
-      .distinct
-      .zipWithIndex
-      .flatMap((t, i) => inBlock(s"utxow $i", hex(t)))
-    blocks ++ closure ++ alone ++ utxow ++ forms.flatMap(submitted)
+    val rules = DijkstraRecordedTxs.rulesTxs
+    (DijkstraRecordedTxs.leiosBlockTxs ++ DijkstraRecordedTxs.testnetBlockTxs ++
+      DijkstraRecordedTxs.devnetBlockTxs).map(Item(_)) ++ closure ++
+      (DijkstraRecordedTxs.leiosTxs ++ DijkstraRecordedTxs.contextTxs ++
+        rules.collect { case ("utxow", r) => r }.distinctBy(_.raw) ++
+        rules.collect { case ("entities", r) => r }.distinctBy(_.raw) ++
+        DijkstraRecordedTxs.submittedTxs).map(Item(_))
+
+  /** The submitted forms. */
+  private lazy val forms: Vector[Item] = corpus.filter(_.recorded.form == Form.Submitted)
 
   private val unbounded =
     TxMeasure(Long.MaxValue, BigInt(Long.MaxValue), BigInt(Long.MaxValue), Long.MaxValue)
@@ -311,10 +301,12 @@ class DijkstraEraPathSuite extends munit.FunSuite:
 
   test("the corpus holds the transactions the comparison is claimed for") {
     assertEquals(recorded.size, 363)
-    // every accepted transaction of the fixtures: the blocks' 104 (the testnet's 40, the devnet's
-    // one and the Leios corpus's 63), the closure's 323, the 484 alone (the Leios corpus's 273, the
-    // contexts' 11 and the chain's 200), the 12 distinct UTXOW transactions and the 150 submitted
-    assertEquals(corpus.size, 104 + 323 + 484 + 12 + 150)
+    // the Dijkstra blocks' 104 (the Leios corpus's 63, the testnet's 40, the devnet's one), the
+    // closure's 323, the Leios corpus's 273 alone, the script-context fixtures' 233 (11 written by
+    // hand, the chain's 200, the context refusals' 22), the reference's 12 distinct UTXOW and 13
+    // ENTITIES transactions, and the 150 submitted
+    assertEquals(corpus.size, 104 + 323 + 273 + 233 + 12 + 13 + 150)
+    assertEquals(forms.size, 150)
     assert(corpus.exists(_.parts.aux.isDefined))
     assert(corpus.exists(_.parts.aux.isEmpty))
     assert(
@@ -331,7 +323,8 @@ class DijkstraEraPathSuite extends munit.FunSuite:
   }
 
   test("each transaction's block form, flag, id, measure and Leios key are the reference's") {
-    corpus.foreach { case item @ Item(name, parts, era) =>
+    corpus.foreach { item =>
+      val (name, parts, era) = (item.name, item.parts, item.era)
       assertEquals(era.id, Blake2b.hash256.hash(parts.body), name)
       // the bytes a block and an endorser block hold, `Entry.leiosTx` 's bytes and key
       val bytes = DijkstraTx.forBlockInclusion(era)
@@ -355,6 +348,13 @@ class DijkstraEraPathSuite extends munit.FunSuite:
           s"$name $r"
         )
       )
+      // a submitted transaction as the pool reads it: it relays the mempool form
+      if item.recorded.form == Form.Submitted then
+        DijkstraRead.submitted(item.recorded.raw) match
+          case Right(read) =>
+            assertEquals(read.raw, Expected.mempoolForm(parts), name)
+            assertEquals(read.size, Expected.mempoolForm(parts).size.toLong, name)
+          case Left(e) => fail(s"$name: $e")
       // the mempool form, as the pool relays and lists a block's transaction once submitted
       if parts.valid then
         val form = Expected.mempoolForm(parts)
@@ -372,10 +372,9 @@ class DijkstraEraPathSuite extends munit.FunSuite:
     // `decodeDijkstraTopTx` (`Tx.hs:147-169`, cardano-ledger 9df9f98c): `[body, witnesses, true,
     // auxiliary data / null]` is read as the transaction with its flag valid, which the pool relays
     // as `[body, witnesses, auxiliary data / null]`; `false` is refused
-    val accepted =
-      forms.flatMap((name, raw) => DijkstraRead.submitted(raw).toOption.map((name, raw, _)))
-    val checked = accepted.map { (name, raw, read) =>
-      val parts = Expected.parts(raw, inBlock = false)
+    val checked = forms.map { item =>
+      val (name, parts) = (item.name, item.parts)
+      val read = DijkstraRead.submitted(item.recorded.raw).fold(e => fail(s"$name: $e"), identity)
       val form = Expected.mempoolForm(parts)
       DijkstraRead.submitted(Expected.legacy(parts, valid = true)) match
         case Right(legacy) =>
@@ -390,7 +389,6 @@ class DijkstraEraPathSuite extends munit.FunSuite:
       parts.aux.isDefined
     }
     // every submitted form the repository holds, four of them with auxiliary data
-    assertEquals(accepted.size, forms.size)
     assertEquals((checked.size, checked.count(identity)), (150, 4))
   }
 
@@ -415,7 +413,7 @@ class DijkstraEraPathSuite extends munit.FunSuite:
   ): (Int, Int) =
     val measures = items.map(i => Expected.measure(i.parts, i.units, refScriptBytes))
     val k = Expected.cut(measures, blockLimit)
-    val e = Expected.ebCut(measures.drop(k).map(EbMeasure.of), ebLimit)
+    val e = Expected.ebCut(measures.drop(k).map(Expected.ebMeasure), ebLimit)
     val inBlock = items.take(k)
     val inEb = items.slice(k, k + e)
     val split = BlockBuilder.partition(snapshot(items, refScriptBytes), blockLimit, ebLimit)
@@ -425,7 +423,7 @@ class DijkstraEraPathSuite extends munit.FunSuite:
     assertEquals(split.endorsedTransactions.map(_.id), inEb.map(_.era.id), what)
     assertEquals(
       split.endorsedUsed,
-      measures.slice(k, k + e).map(EbMeasure.of).foldLeft(EbMeasure.zero)(_ + _),
+      measures.slice(k, k + e).map(Expected.ebMeasure).foldLeft(EbMeasure.zero)(_ + _),
       what
     )
     val slot = announcing.header.slot
@@ -436,19 +434,26 @@ class DijkstraEraPathSuite extends munit.FunSuite:
         split.endorsing(slot, ProtVerParity.Even)
       )
     // the endorser block: its point, body, closure and announcement
-    val expectedEb = NonEmptyVector.fromVector(inEb.map(_.blockForm)).map(Expected.forge(slot, _))
+    val expectedEb = Option.when(inEb.nonEmpty)(Expected.forge(slot, inEb.map(_.blockForm)))
     val announcement = assembly match
       case BlockBuilder.Assembly.InDijkstra(_, eb) =>
         assertEquals(
-          eb.map(x => (x.forged.point, x.forged.body, x.forged.closure)),
+          eb.map(x =>
+            (
+              x.forged.point.slot.toBigInt,
+              x.forged.point.hash.bytes,
+              x.forged.body.encoded,
+              x.forged.closure.toVector.map((h, tx) => h.bytes -> tx)
+            )
+          ),
           expectedEb,
           what
         )
         eb.map(_.forged.announcement)
       case other => fail(s"$what: not a Dijkstra body: $other")
     assertEquals(
-      announcement,
-      expectedEb.map((point, body, _) => EbAnnouncement(point.hash, body.encodedSize)),
+      announcement.map(a => (a.hash.bytes, a.size)),
+      expectedEb.map((_, hash, body, _) => (hash, body.size.toLong)),
       what
     )
     // the body, the header body and the block
@@ -517,6 +522,32 @@ class DijkstraEraPathSuite extends munit.FunSuite:
       case other                                        => fail(s"no endorser block: $other")
     assertEquals(Some(eb.announcement), announcing.header.body.leios.announcement)
     assertEquals(eb.closure.map(_._2).toVector, closureBytes)
+    // the endorser block the testnet recorded at slot 1,455,869: its point, and its body, which the
+    // reference's encoding of the closure writes again
+    val point = ebRows.collectFirst { case Vector("point", slot, hash, size) => (slot, hash, size) }
+    val recordedBody = ebRows.collectFirst { case Vector("body", b) => hex(b) }
+    assertEquals(recordedBody, Some(Expected.ebBody(closureBytes)))
+    assertEquals(
+      point,
+      recordedBody.map(b =>
+        (
+          announcing.header.slot.toString,
+          Blake2b.hash256.hash(b).hex,
+          b.size.toString
+        )
+      )
+    )
+    assertEquals(eb.body.encoded, Expected.ebBody(closureBytes))
+    // the testnet's endorser-block capacity: the closure's three limits, and the references'
+    // `maxEndorserBlockReferencesSize` less the widest map head (`leiosReferencesCapacity`,
+    // `Leios/Types.hs:263-273` at ouroboros-consensus 2416493b)
+    assertEquals(
+      ebCapacity,
+      EbMeasure(
+        TxMeasure(2000000L, BigInt(2160000000L), BigInt(600000000000L), 12000000L),
+        308000L - 5L
+      )
+    )
     val h = announcing.header.body
     val headerBody = assembly.headerBody(
       h.blockNo,
@@ -542,7 +573,7 @@ class DijkstraEraPathSuite extends munit.FunSuite:
         Vector(0, 1, 2, 23, 24, 40, items.size / 2, items.size).distinct.filter(_ <= items.size)
       ks.flatMap { k =>
         val total = measures.take(k).foldLeft(TxMeasure.zero)(_ + _)
-        val rest = measures.drop(k).map(EbMeasure.of)
+        val rest = measures.drop(k).map(Expected.ebMeasure)
         val n = k.max(1).min(rest.size)
         val ebTotal = rest.take(k.max(1)).foldLeft(EbMeasure.zero)(_ + _)
         // an exact fit takes the k, and the endorser block's the n after them; a byte or a

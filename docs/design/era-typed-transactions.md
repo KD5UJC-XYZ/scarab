@@ -2874,15 +2874,19 @@ Conway's rules on the classes follow as the rest of stage 2.
   - The era's `DijkstraBlockBody` stays decode-only: the forger writes `LeiosBlockBody`, whose bytes the decoded body's
     size and hash are of.
   - Evidence: `DijkstraEraPathSuite` compares the era path with what the reference derives from the recorded bytes,
-    over every Dijkstra transaction the fixtures hold that the build accepts (the testnet's blocks and the 323 of the
-    endorser block of slot 1,455,869, the Leios corpus, the devnet chain and its submission, the script-context and
-    UTXOW cases, the crossing corpus's mempool forms, more than a thousand): each transaction's block form with either
-    flag (`Tx.hs:527-533`), id, Leios key, measure (`Tx.hs:297-320, 417-422`) and relayed form, a legacy submission's
+    over the 1,108 transactions the fixtures record that the reference reads, each selected by its recorded verdict
+    (the Dijkstra blocks' of the Leios corpus, the testnet and the devnet, the 323 of the endorser block of slot
+    1,455,869, the Leios corpus's alone, the script-context fixtures' with the context refusals', the reference's
+    distinct UTXOW and ENTITIES transactions, and the submitted forms): each transaction's block form with either
+    flag (`Tx.hs:527-533`), id, Leios key, measure (`Tx.hs:297-320`, and the units of the recorded redeemers,
+    `Tx.hs:417-422`) and relayed form, a legacy submission's
     relayed form (`Tx.hs:147-169`), and, at each boundary of the capacities, certifying or not and with reference-script
     bytes binding, the partition as the longest prefix that fits (`splitAfterTxSize`), with its counts at each exact
     fit, the ranking block's body, header body and block, and the endorser block's point, body, closure and
-    announcement (`forgeLeiosEb`, `LeiosDemoTypes.hs:1257-1279` at ouroboros-consensus d91b3557), byte for byte. Block
-    64,853 and its endorser block, forged on the era path, are the recorded ones. Until #85's stage 3 it compared the
+    announcement (`forgeLeiosEb`, `LeiosDemoTypes.hs:1257-1279` at ouroboros-consensus d91b3557, and `encodeLeiosEb`),
+    byte for byte; the header body and the block envelope are the node's encoders, which `LeiosEncodingSuite` checks.
+    Block 64,853 and its endorser block, forged on the era path, are the recorded ones, and the recorded endorser
+    block's body is the encoding of its closure. Until #85's stage 3 it compared the
     era path with a copy of the flat path of 0ea3528b8 instead. `DijkstraTxSuite` compares the block form, size and
     units of the era's and the flat transaction on the same corpus; `LeiosEncodingSuite` writes every recorded Dijkstra
     block again from the era's transactions. The private Leios devnet forging run is in the pull request.
