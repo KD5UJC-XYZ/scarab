@@ -155,16 +155,28 @@
     },
     {
       "module": "crypto",
-      "path": "crypto/vrf/secret",
-      "responsibility": "The secret steps of VRF proving: the key's seed, and the working storage erased after each operation",
+      "path": "crypto/secret",
+      "responsibility": "Working storage for one computation on secret material, zeroed when it ends, whose buffers cannot be its result",
       "entryPoints": [
-        "Draft03Key",
         "Scratch",
         "Public"
       ],
       "suites": [
-        "Draft03KeySuite",
         "ScratchSuite"
+      ],
+      "docs": [
+        "docs/security/threat-model.md"
+      ]
+    },
+    {
+      "module": "crypto",
+      "path": "crypto/vrf/secret",
+      "responsibility": "The secret steps of VRF proving: the key's seed, kept between operations, and every value computed from it, in working storage",
+      "entryPoints": [
+        "Draft03Key"
+      ],
+      "suites": [
+        "Draft03KeySuite"
       ],
       "docs": [
         "docs/security/threat-model.md"

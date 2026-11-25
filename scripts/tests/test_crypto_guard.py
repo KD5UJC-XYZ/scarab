@@ -184,6 +184,8 @@ class CryptoGuardTests(unittest.TestCase):
 
 Secret = "crypto/src/main/scala/xyz/kd5ujc/scarab/crypto/vrf/secret"
 SECRET = "package xyz.kd5ujc.scarab.crypto.vrf.secret\n"
+Shared = "crypto/src/main/scala/xyz/kd5ujc/scarab/crypto/secret"
+SHARED = "package xyz.kd5ujc.scarab.crypto.secret\n"
 Facade = f"{Vrf}/Draft03Prover.scala"
 
 
@@ -231,6 +233,31 @@ class SecretPathGuardTests(unittest.TestCase):
             with self.subTest(call=call):
                 found = self.found({f"{Secret}/Uses.scala": SECRET + f"object U {{ {call} }}"})
                 self.assertEqual([path for path, _ in found][:1], [f"{Secret}/Uses.scala"], call)
+
+    def test_the_shared_working_storage_is_held_to_the_same_rules(self):
+        for call in ("Arrays.equals(a, b)", "Bytes.wrap(buffer)", "BigInt(1, k)", "Draft03Math.h2c(pk, a)"):
+            with self.subTest(call=call):
+                by_directory = self.found({f"{Shared}/Scratch.scala": SHARED + f"object S {{ {call} }}"})
+                self.assertEqual([path for path, _ in by_directory][:1], [f"{Shared}/Scratch.scala"], call)
+                by_declaration = self.found(
+                    {"node/src/main/scala/xyz/kd5ujc/scarab/elsewhere/S.scala": SHARED + f"object S {{ {call} }}"}
+                )
+                self.assertGreaterEqual(len(by_declaration), 1, call)
+        self.assertEqual(
+            self.found({f"{Shared}/Scratch.scala": SHARED + "object S { java.util.Arrays.fill(a, 0.toByte) }"}),
+            [],
+        )
+
+    def test_a_package_that_only_starts_like_a_secret_package_is_not_covered(self):
+        self.assertEqual(
+            self.found(
+                {
+                    "crypto/src/main/scala/xyz/kd5ujc/scarab/crypto/secretive/S.scala":
+                        "package xyz.kd5ujc.scarab.crypto.secretive\nobject S { BigInt(1) }"
+                }
+            ),
+            [],
+        )
 
     def test_the_prover_file_may_call_only_the_hash_to_curve(self):
         for call in ("Draft03Math.output(g)", "Draft03Math.challenge(h, g, u, v)", "Ed25519Point.decode(g)", "Draft03Math"):

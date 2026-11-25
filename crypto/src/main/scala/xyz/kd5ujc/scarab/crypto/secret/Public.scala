@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package xyz.kd5ujc.scarab.crypto.vrf.secret
+package xyz.kd5ujc.scarab.crypto.secret
 
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.vrf.Draft03Prover
@@ -11,9 +11,9 @@ import xyz.kd5ujc.scarab.crypto.vrf.Draft03Prover
   * trait is sealed and its one implementation private: the instances below are all there are, and a
   * new one is added here, where review sees it.
   */
-private[vrf] sealed trait Public[A]
+private[crypto] sealed trait Public[A]
 
-private[vrf] object Public:
+private[crypto] object Public:
   private final class Evidence[A] extends Public[A]
   private def evidence[A]: Public[A] = new Evidence[A]
 

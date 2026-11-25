@@ -23,17 +23,19 @@ only its own source, the two verifiers (`StrictEd25519`, `ByronEd25519`) in the 
 each at its path and with that package declared. A new caller, in that package or elsewhere, in
 main sources or in `tools`, is refused until it is added to `VERIFY_CALLERS` here.
 
-The secret path of VRF proving (#1418) is held tighter too. The main sources of the package
-`xyz.kd5ujc.scarab.crypto.vrf.secret`, which hold the signing key's seed and every value computed
-from it, may name no variable-time routine (`VARIABLE_TIME`: the `vartime*` operations and
-`VartimeEd25519`, the NAF recoding, Bouncy Castle's `*Var` routines, `Ed25519Point`, `Draft03Math`,
-the verifiers, big-integer arithmetic), no comparison that stops at the first difference (and no
-member of `java.util.Arrays` but `fill`), and no call that would share an array the package erases;
-and an import there may rename nothing and bring in no member of `java.util.Arrays`, so that a
-listed name cannot be called under another (`IMPORT_RULES`). `Draft03Prover.scala`, which hands that
-package the hash-to-curve point, may call `Draft03Math.h2c` (its inputs are the public key and alpha)
-and nothing else of the variable-time math. A source is of the package when it sits in its directory
-or when any of its package clauses, in any form (chained, `:`, braces, nested), names it, in any
+The secret path (#1418) is held tighter too. The main sources of the secret packages
+(`SECRET_PACKAGES`): `xyz.kd5ujc.scarab.crypto.vrf.secret`, which holds the VRF signing key's seed
+and every value computed from it, and `xyz.kd5ujc.scarab.crypto.secret`, the working storage
+(`Scratch`) those values live in, may name no variable-time routine (`VARIABLE_TIME`: the
+`vartime*` operations and `VartimeEd25519`, the NAF recoding, Bouncy Castle's `*Var` routines,
+`Ed25519Point`, `Draft03Math`, the verifiers, big-integer arithmetic), no comparison that stops at
+the first difference (and no member of `java.util.Arrays` but `fill`), and no call that would share
+an array the package erases; and an import there may rename nothing and bring in no member of
+`java.util.Arrays`, so that a listed name cannot be called under another (`IMPORT_RULES`).
+`Draft03Prover.scala`, which hands the VRF package the hash-to-curve point, may call
+`Draft03Math.h2c` (its inputs are the public key and alpha) and nothing else of the variable-time
+math. A source is of a secret package when it sits in its directory or when any of its package
+clauses, in any form (chained, `:`, braces, nested), names it or a package inside it, in any
 module's main sources (`tools` among them). Comments and string literals are not read; the
 expressions of an interpolated string are. Test sources are not covered: a suite may check a proof
 with the verifier. The check reads names, not calls: a routine reached through code in another
@@ -160,8 +162,11 @@ def main(argv):
     return 0
 
 
-SECRET_PACKAGE = "xyz.kd5ujc.scarab.crypto.vrf.secret"
-SECRET_PARTS = PACKAGE_PARTS + ("secret",)
+# The secret packages, each with its path relative to the language directory.
+SECRET_PACKAGES = (
+    ("xyz.kd5ujc.scarab.crypto.vrf.secret", PACKAGE_PARTS + ("secret",)),
+    ("xyz.kd5ujc.scarab.crypto.secret", ("xyz", "kd5ujc", "scarab", "crypto", "secret")),
+)
 # The prover file in package vrf that hands the secret path its public input: (module, language
 # directory, file name).
 SECRET_FACADE = ("crypto", "scala", "Draft03Prover.scala")
@@ -283,8 +288,10 @@ def secret_path_violations(root: Path):
             continue
         code = code_of(text)
         packages = declared_packages(code)
-        in_package = parts[i + 3 : i + 3 + len(SECRET_PARTS)] == SECRET_PARTS or any(
-            p == SECRET_PACKAGE or p.startswith(SECRET_PACKAGE + ".") for p in packages
+        in_package = any(
+            parts[i + 3 : i + 3 + len(secret_parts)] == secret_parts
+            or any(p == secret or p.startswith(secret + ".") for p in packages)
+            for secret, secret_parts in SECRET_PACKAGES
         )
         facade = i >= 1 and (parts[i - 1], parts[i + 2], parts[-1]) == SECRET_FACADE and PACKAGE in packages
         if not (in_package or facade):
@@ -306,15 +313,15 @@ def guarded(argv):
     """The containment check, and then the secret path's: 1 if either refuses."""
     secret = sorted(set(secret_path_violations(Path(argv[1] if len(argv) > 1 else "."))))
     for path, what in secret:
-        print(f"variable-time name on the VRF secret path: {path}: {what}")
+        print(f"variable-time name on the secret path: {path}: {what}")
     contained = main(argv)
     if secret:
         print(
-            "The VRF secret path (package xyz.kd5ujc.scarab.crypto.vrf.secret, and Draft03Prover's "
-            "call into Draft03Math) names no variable-time routine (VARIABLE_TIME)."
+            "The secret path (the packages of SECRET_PACKAGES, and Draft03Prover's call into "
+            "Draft03Math) names no variable-time routine (VARIABLE_TIME)."
         )
         return 1
-    print("crypto guard: the VRF secret path names no variable-time routine")
+    print("crypto guard: the secret path names no variable-time routine")
     return contained
 
 

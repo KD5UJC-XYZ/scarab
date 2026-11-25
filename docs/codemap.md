@@ -53,7 +53,8 @@ Hashes, signatures, VRF, KES, BLS (jblst, with its start-up check), operational 
 | crypto/kes | Sum6 KES verify, sign and evolve | `Sum6Kes`, `Sum6KesSigning` | `Sum6KesSuite`, `Sum6KesSigningSuite` | [ADR 0015](adr/0015-kes-key-written-back-and-checked-reload.md) |
 | crypto/opcert | Operational certificate decoding and checks | `OperationalCertificate` | `OperationalCertificateSuite` | [ADR 0015](adr/0015-kes-key-written-back-and-checked-reload.md) |
 | crypto/vrf | VRF draft-03 verify and prove, Praos leader threshold | `Draft03Prover`, `StrictDraft03`, `PraosVrfCertificate`, `PraosLeaderThreshold` | `Draft03ProverSuite`, `Draft03ProverDifferentialSuite`, `StrictDraft03Suite`, `PraosVrfCertificateSuite`, `PraosLeaderThresholdSuite` | [ADR 0001](adr/0001-haskell-node-as-reference.md) |
-| crypto/vrf/secret | The secret steps of VRF proving: the key's seed, and the working storage erased after each operation | `Draft03Key`, `Scratch`, `Public` | `Draft03KeySuite`, `ScratchSuite` | [threat-model](security/threat-model.md) |
+| crypto/secret | Working storage for one computation on secret material, zeroed when it ends, whose buffers cannot be its result | `Scratch`, `Public` | `ScratchSuite` | [threat-model](security/threat-model.md) |
+| crypto/vrf/secret | The secret steps of VRF proving: the key's seed, kept between operations, and every value computed from it, in working storage | `Draft03Key` | `Draft03KeySuite` | [threat-model](security/threat-model.md) |
 | crypto/witness | Strict Ed25519 witness verification | `StrictEd25519`, `VerificationResult`, `VerificationError` | `StrictEd25519Suite`, `StrictEd25519DifferentialSuite`, `WitnessGoldenSuite`, `VartimeEd25519Suite`, `VartimeEd25519DifferentialSuite` | [ADR 0001](adr/0001-haskell-node-as-reference.md) |
 
 ## protocol

@@ -8,6 +8,7 @@ import java.util.Arrays
 import scala.util.Using
 import scala.util.Using.Releasable
 import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.crypto.secret.Scratch
 import xyz.kd5ujc.scarab.crypto.vrf.Draft03Prover.{Failure, Proved}
 
 /** The secret steps of ECVRF-ED25519-SHA512-Elligator2 (draft-03) proving, in the order and form of

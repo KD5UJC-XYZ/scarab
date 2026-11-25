@@ -6,6 +6,7 @@ import java.security.MessageDigest
 import java.util.concurrent.{CountDownLatch, Executors, TimeUnit}
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicInteger}
 import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.crypto.secret.{Public, Scratch}
 import xyz.kd5ujc.scarab.crypto.vrf.Draft03Prover.Failure
 
 /** What the secret half of a VRF key holds and erases: the seed alone between operations, zeroed by
