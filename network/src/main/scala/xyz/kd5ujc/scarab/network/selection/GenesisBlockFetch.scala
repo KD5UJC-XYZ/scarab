@@ -113,10 +113,19 @@ object GenesisBlockFetch:
   private def contains(fragments: Vector[Fragment], hash: Bytes): Boolean =
     fragments.exists(f => f.anchor.contains(hash) || f.headers.exists(_.hash == hash))
 
-  /** Retain only prefixes up to the latest intersection with the serving peer's suffix. */
+  /** Retain only prefixes up to the latest intersection with the serving peer's suffix: the prefix
+    * `AF.intersect` gives of each fragment, kept when not empty (`trimFragmentsToCandidate`,
+    * ouroboros-network c45735a5, BlockFetch/Decision/Genesis.hs:588-597). The candidate's anchors
+    * and headers are its points; they are put in one set per decision, so that each header costs
+    * one lookup rather than a scan of the candidate (issue 810).
+    */
   private def trim(fragments: Vector[Fragment], candidate: Vector[Fragment]): Vector[Fragment] =
-    fragments.flatMap { fragment =>
-      val last = fragment.headers.lastIndexWhere(h => contains(candidate, h.hash))
-      if last < 0 then Vector.empty
-      else Vector(fragment.copy(headers = fragment.headers.take(last + 1)))
-    }
+    if fragments.isEmpty then Vector.empty
+    else
+      val points =
+        candidate.iterator.flatMap(f => f.anchor.iterator ++ f.headers.iterator.map(_.hash)).toSet
+      fragments.flatMap { fragment =>
+        val last = fragment.headers.lastIndexWhere(h => points(h.hash))
+        if last < 0 then Vector.empty
+        else Vector(fragment.copy(headers = fragment.headers.take(last + 1)))
+      }
