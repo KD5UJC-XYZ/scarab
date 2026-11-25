@@ -1,6 +1,27 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
+import xyz.kd5ujc.scarab.ledger.era.{
+  AlonzoContextError,
+  BabbageContextError,
+  CollectError as EraCollectError
+}
+import xyz.kd5ujc.scarab.ledger.era.conway.{ConwayContextError, ConwayTxCert}
+import xyz.kd5ujc.scarab.ledger.era.{ConwayDelegCert, Delegatee}
+import xyz.kd5ujc.scarab.ledger.era.rules.{
+  ConwayCertPredFailure,
+  ConwayCertsPredFailure,
+  ConwayDelegPredFailure,
+  ConwayGovCertPredFailure,
+  ConwayGovPredFailure,
+  ConwayLedgerPredFailure,
+  ConwayUtxoPredFailure,
+  ConwayUtxosPredFailure,
+  ConwayUtxowPredFailure,
+  ShelleyPoolPredFailure
+}
+import xyz.kd5ujc.scarab.ledger.state.{Conway, Credential as StateCredential, Staking}
+
 /** The predicate names a ledger-rules report may give as a result: the `result` values of the
   * scenario's report schema (`scenarios/ledger-rules/schema.json` of node-diversity-conformance at
   * 9dc68a75) other than `pass`. They are Amaru's names, which mostly are the reference's
@@ -41,10 +62,11 @@ object ReportName:
 /** Scarab's predicate failures as the report's names, following the names the reference harness of
   * the corpus gives the reference's failures (Amaru `crates/amaru/tests/conformance/
   * validation-rules/src/Command/ValidatePhaseOne/Run.hs`, `normalizeLedgerFailure` and below, at
-  * 40ba9950). Scarab's failures are the reference's constructors, so the correspondence is the
-  * harness's, with two differences: a failure is never named after the fixture's expectation (the
-  * expectation only chooses among the names Scarab's failures have, [[Selection]]), and a failure
-  * that the harness names only by matching the expectation against its text is named by its case.
+  * 40ba9950). Scarab's failures are Conway's era failures, the reference's constructors
+  * (`ConwayLedgerPredFailure` and the failures it holds), so the correspondence is the harness's,
+  * with two differences: a failure is never named after the fixture's expectation (the expectation
+  * only chooses among the names Scarab's failures have, [[Selection]]), and a failure that the
+  * harness names only by matching the expectation against its text is named by its case.
   *
   * A failure has no name or one: none where the schema lists no name for it (a failure of a
   * protocol version the corpus does not reach, or one the corpus does not exercise), or where the
@@ -53,199 +75,243 @@ object ReportName:
 object LedgerRulesNames:
   import ReportName.*
 
+  /** A failure of Conway's LEDGER, which MEMPOOL's failures are. */
+  type Failure = ConwayLedgerPredFailure[Conway]
+
   /** The names of `failure` in the transaction whose `context` the judgment gave. */
-  def of(failure: PredicateFailure, context: FailureContext): Vector[ReportName] = failure match
-    case PredicateFailure.Utxow(u)                  => utxow(u)
-    case PredicateFailure.Certs(c)                  => certs(c, context)
-    case PredicateFailure.Gov(g)                    => gov(g)
-    case PredicateFailure.WdrlNotDelegatedToDRep(_) => Vector(ConwayWdrlNotDelegatedToDRep)
-    case PredicateFailure.TreasuryValueMismatch(_)  => Vector(ConwayTreasuryValueMismatch)
-    case PredicateFailure.TxRefScriptsSizeTooBig(_) => Vector(ConwayTxRefScriptsSizeTooBig)
-    case PredicateFailure.Mempool(MempoolProblem.AllInputsSpent) =>
+  def of(failure: Failure, context: FailureContext): Vector[ReportName] = failure match
+    case ConwayLedgerPredFailure.ConwayUtxowFailure(u) => utxow(u)
+    case ConwayLedgerPredFailure.ConwayCertsFailure(c) => certs(c, context)
+    case ConwayLedgerPredFailure.ConwayGovFailure(g)   => gov(g)
+    case ConwayLedgerPredFailure.ConwayWdrlNotDelegatedToDRep(_) =>
+      Vector(ConwayWdrlNotDelegatedToDRep)
+    case ConwayLedgerPredFailure.ConwayTreasuryValueMismatch(_) =>
+      Vector(ConwayTreasuryValueMismatch)
+    case ConwayLedgerPredFailure.ConwayTxRefScriptsSizeTooBig(_) =>
+      Vector(ConwayTxRefScriptsSizeTooBig)
+    case ConwayLedgerPredFailure.ConwayMempoolFailure(MempoolProblem.AllInputsSpent) =>
       Vector(if context.hasInputs then BadInputsUTxO else InputSetEmptyUTxO)
-    case PredicateFailure.Mempool(_)                    => Vector.empty
-    case PredicateFailure.WithdrawalsMissingAccounts(_) => Vector.empty
-    case PredicateFailure.IncompleteWithdrawals(_)      => Vector.empty
+    case ConwayLedgerPredFailure.ConwayMempoolFailure(_)             => Vector.empty
+    case ConwayLedgerPredFailure.ConwayWithdrawalsMissingAccounts(_) => Vector.empty
+    case ConwayLedgerPredFailure.ConwayIncompleteWithdrawals(_)      => Vector.empty
 
   /** The mempool's refusal of a vote by an unelected committee member below protocol version 11,
     * which a block does not refuse: the harness drops it (`isMempoolOnlyFailure`), as Amaru's
     * fixtures judge a transaction as part of a block.
     */
-  def mempoolOnly(failure: PredicateFailure): Boolean = failure match
-    case PredicateFailure.Mempool(MempoolProblem.UnelectedCommittee(_)) => true
-    case _                                                              => false
+  def mempoolOnly(failure: Failure): Boolean = failure match
+    case ConwayLedgerPredFailure.ConwayMempoolFailure(MempoolProblem.UnelectedCommittee(_)) => true
+    case _                                                                                  => false
 
-  private def utxow(u: UtxowFailure): Vector[ReportName] = u match
-    case UtxowFailure.Utxo(f)                       => utxo(f)
-    case UtxowFailure.InvalidWitnesses(_)           => Vector(InvalidWitnessesUTXOW)
-    case UtxowFailure.MissingVKeyWitnesses(_)       => Vector(MissingVerificationKeyWitnessesUTXOW)
-    case UtxowFailure.MissingScriptWitnesses(_)     => Vector(MissingScriptWitnessesUTXOW)
-    case UtxowFailure.ScriptWitnessNotValidating(_) => Vector(ScriptWitnessNotValidatingUTXOW)
-    case UtxowFailure.MissingTxBodyMetadataHash(_)  => Vector(MissingTxBodyMetadataHash)
-    case UtxowFailure.MissingTxMetadata(_)          => Vector(MissingTxMetadata)
-    case UtxowFailure.ConflictingMetadataHash(_)    => Vector(ConflictingMetadataHash)
-    case UtxowFailure.InvalidMetadata               => Vector.empty
-    case UtxowFailure.ExtraneousScriptWitnesses(_)  => Vector(ExtraneousScriptWitnessesUTXOW)
-    case UtxowFailure.MissingRequiredDatums(_, _)   => Vector(MissingRequiredDatums)
-    case UtxowFailure.NotAllowedSupplementalDatums(_, _) => Vector(NotAllowedSupplementalDatums)
-    case UtxowFailure.PPViewHashesDontMatch(_)           => Vector(PPViewHashesDontMatch)
-    case UtxowFailure.ScriptIntegrityHashMismatch(_, _)  => Vector.empty
-    case UtxowFailure.UnspendableUTxONoDatumHash(_)      => Vector(UnspendableUTxONoDatumHash)
-    case UtxowFailure.MalformedScriptWitnesses(_)        => Vector(MalformedScriptWitnesses)
-    case UtxowFailure.MalformedReferenceScripts(_)       => Vector(MalformedReferenceScripts)
-    case UtxowFailure.MIRInsufficientGenesisSigs(_)      => Vector.empty
-    case UtxowFailure.MissingRedeemers(_)                => Vector(MissingRedeemers)
-    case UtxowFailure.ExtraRedeemers(_)                  => Vector(ExtraRedeemers)
+  /** The constructor of the innermost rule's failure, as the reference names it: what the sidecar
+    * records of a failure beside its names, for its reader.
+    */
+  def constructor(failure: Failure): String = failure match
+    case ConwayLedgerPredFailure.ConwayUtxowFailure(u) =>
+      u match
+        case ConwayUtxowPredFailure.UtxoFailure(f) =>
+          f match
+            case ConwayUtxoPredFailure.UtxosFailure(s) => s.productPrefix
+            case other                                 => other.productPrefix
+        case other => other.productPrefix
+    case ConwayLedgerPredFailure.ConwayCertsFailure(c) =>
+      c match
+        case ConwayCertsPredFailure.CertFailure(ConwayCertPredFailure.DelegFailure(d)) =>
+          d.productPrefix
+        case ConwayCertsPredFailure.CertFailure(ConwayCertPredFailure.PoolFailure(p)) =>
+          p.productPrefix
+        case ConwayCertsPredFailure.CertFailure(ConwayCertPredFailure.GovCertFailure(g)) =>
+          g.productPrefix
+        case other => other.productPrefix
+    case ConwayLedgerPredFailure.ConwayGovFailure(g) => g.productPrefix
+    case other                                       => other.productPrefix
 
-  private def utxo(u: UtxoFailure): Vector[ReportName] = u match
-    case UtxoFailure.Utxos(UtxosFailure.ValidationTagMismatch(_, _)) =>
+  private def utxow(u: ConwayUtxowPredFailure[Conway]): Vector[ReportName] = u match
+    case ConwayUtxowPredFailure.UtxoFailure(f)           => utxo(f)
+    case ConwayUtxowPredFailure.InvalidWitnessesUTXOW(_) => Vector(InvalidWitnessesUTXOW)
+    case ConwayUtxowPredFailure.MissingVKeyWitnessesUTXOW(_) =>
+      Vector(MissingVerificationKeyWitnessesUTXOW)
+    case ConwayUtxowPredFailure.MissingScriptWitnessesUTXOW(_) =>
+      Vector(MissingScriptWitnessesUTXOW)
+    case ConwayUtxowPredFailure.ScriptWitnessNotValidatingUTXOW(_) =>
+      Vector(ScriptWitnessNotValidatingUTXOW)
+    case ConwayUtxowPredFailure.MissingTxBodyMetadataHash(_) => Vector(MissingTxBodyMetadataHash)
+    case ConwayUtxowPredFailure.MissingTxMetadata(_)         => Vector(MissingTxMetadata)
+    case ConwayUtxowPredFailure.ConflictingMetadataHash(_)   => Vector(ConflictingMetadataHash)
+    case ConwayUtxowPredFailure.InvalidMetadata()            => Vector.empty
+    case ConwayUtxowPredFailure.ExtraneousScriptWitnessesUTXOW(_) =>
+      Vector(ExtraneousScriptWitnessesUTXOW)
+    case ConwayUtxowPredFailure.MissingRedeemers(_)         => Vector(MissingRedeemers)
+    case ConwayUtxowPredFailure.MissingRequiredDatums(_, _) => Vector(MissingRequiredDatums)
+    case ConwayUtxowPredFailure.NotAllowedSupplementalDatums(_, _) =>
+      Vector(NotAllowedSupplementalDatums)
+    case ConwayUtxowPredFailure.PPViewHashesDontMatch(_)      => Vector(PPViewHashesDontMatch)
+    case ConwayUtxowPredFailure.UnspendableUTxONoDatumHash(_) => Vector(UnspendableUTxONoDatumHash)
+    case ConwayUtxowPredFailure.ExtraRedeemers(_)             => Vector(ExtraRedeemers)
+    case ConwayUtxowPredFailure.MalformedScriptWitnesses(_)   => Vector(MalformedScriptWitnesses)
+    case ConwayUtxowPredFailure.MalformedReferenceScripts(_)  => Vector(MalformedReferenceScripts)
+    case ConwayUtxowPredFailure.ScriptIntegrityHashMismatch(_, _) => Vector.empty
+
+  private def utxo(u: ConwayUtxoPredFailure[Conway]): Vector[ReportName] = u match
+    case ConwayUtxoPredFailure.UtxosFailure(ConwayUtxosPredFailure.ValidationTagMismatch(_, _)) =>
       Vector(ValidationTagMismatch)
-    case UtxoFailure.Utxos(UtxosFailure.CollectErrors(errors)) =>
-      errors.toVector.flatMap(collect).distinct
-    case UtxoFailure.ExpiredUTxO(_)                      => Vector.empty
-    case UtxoFailure.Update(_)                           => Vector.empty
-    case UtxoFailure.BadInputs(_)                        => Vector(BadInputsUTxO)
-    case UtxoFailure.OutsideValidityInterval(_, _, _)    => Vector(OutsideValidityIntervalUTxO)
-    case UtxoFailure.MaxTxSize(_)                        => Vector(MaxTxSizeUTxO)
-    case UtxoFailure.InputSetEmpty                       => Vector(InputSetEmptyUTxO)
-    case UtxoFailure.FeeTooSmall(_)                      => Vector(FeeTooSmallUTxO)
-    case UtxoFailure.ValueNotConserved(_)                => Vector(ValueNotConservedUTxO)
-    case UtxoFailure.WrongNetwork(_, _)                  => Vector(WrongNetworkInTxOutput)
-    case UtxoFailure.WrongNetworkWithdrawal(_, _)        => Vector(WrongNetworkWithdrawal)
-    case UtxoFailure.OutputTooSmall(_)                   => Vector(BabbageOutputTooSmallUTxO)
-    case UtxoFailure.OutputBootAddrAttrsTooBig(_)        => Vector.empty
-    case UtxoFailure.OutputTooBig(_)                     => Vector(OutputTooBigUTxO)
-    case UtxoFailure.InsufficientCollateral(_, _)        => Vector(InsufficientCollateral)
-    case UtxoFailure.ScriptsNotPaid(_)                   => Vector(ScriptsNotPaidUTxO)
-    case UtxoFailure.ExUnitsTooBig(_)                    => Vector(ExUnitsTooBigUTxO)
-    case UtxoFailure.CollateralContainsNonAda(_)         => Vector.empty
-    case UtxoFailure.WrongNetworkInTxBody(_)             => Vector(WrongNetworkInTxBody)
-    case UtxoFailure.OutsideForecast(_)                  => Vector(OutsideForecast)
-    case UtxoFailure.TooManyCollateralInputs(_)          => Vector(TooManyCollateralInputs)
-    case UtxoFailure.NoCollateralInputs                  => Vector(NoCollateralInputs)
-    case UtxoFailure.IncorrectTotalCollateralField(_, _) => Vector(IncorrectTotalCollateralField)
-    case UtxoFailure.BabbageOutputTooSmall(_)            => Vector(BabbageOutputTooSmallUTxO)
-    case UtxoFailure.BabbageNonDisjointRefInputs(_)      => Vector(BabbageNonDisjointRefInputs)
+    case ConwayUtxoPredFailure.UtxosFailure(ConwayUtxosPredFailure.CollectErrors(errors)) =>
+      errors.toList.toVector.flatMap(collect).distinct
+    case ConwayUtxoPredFailure.BadInputsUTxO(_) => Vector(BadInputsUTxO)
+    case ConwayUtxoPredFailure.OutsideValidityIntervalUTxO(_, _) =>
+      Vector(OutsideValidityIntervalUTxO)
+    case ConwayUtxoPredFailure.MaxTxSizeUTxO(_)             => Vector(MaxTxSizeUTxO)
+    case ConwayUtxoPredFailure.InputSetEmptyUTxO()          => Vector(InputSetEmptyUTxO)
+    case ConwayUtxoPredFailure.FeeTooSmallUTxO(_)           => Vector(FeeTooSmallUTxO)
+    case ConwayUtxoPredFailure.ValueNotConservedUTxO(_)     => Vector(ValueNotConservedUTxO)
+    case ConwayUtxoPredFailure.WrongNetwork(_, _)           => Vector(WrongNetworkInTxOutput)
+    case ConwayUtxoPredFailure.WrongNetworkWithdrawal(_, _) => Vector(WrongNetworkWithdrawal)
+    case ConwayUtxoPredFailure.OutputTooSmallUTxO(_)        => Vector(BabbageOutputTooSmallUTxO)
+    case ConwayUtxoPredFailure.OutputBootAddrAttrsTooBig(_) => Vector.empty
+    case ConwayUtxoPredFailure.OutputTooBigUTxO(_)          => Vector(OutputTooBigUTxO)
+    case ConwayUtxoPredFailure.InsufficientCollateral(_, _) => Vector(InsufficientCollateral)
+    case ConwayUtxoPredFailure.ScriptsNotPaidUTxO(_)        => Vector(ScriptsNotPaidUTxO)
+    case ConwayUtxoPredFailure.ExUnitsTooBigUTxO(_)         => Vector(ExUnitsTooBigUTxO)
+    case ConwayUtxoPredFailure.CollateralContainsNonADA(_)  => Vector.empty
+    case ConwayUtxoPredFailure.WrongNetworkInTxBody(_)      => Vector(WrongNetworkInTxBody)
+    case ConwayUtxoPredFailure.OutsideForecast(_)           => Vector(OutsideForecast)
+    case ConwayUtxoPredFailure.TooManyCollateralInputs(_)   => Vector(TooManyCollateralInputs)
+    case ConwayUtxoPredFailure.NoCollateralInputs()         => Vector(NoCollateralInputs)
+    case ConwayUtxoPredFailure.IncorrectTotalCollateralField(_, _) =>
+      Vector(IncorrectTotalCollateralField)
+    case ConwayUtxoPredFailure.BabbageOutputTooSmallUTxO(_)   => Vector(BabbageOutputTooSmallUTxO)
+    case ConwayUtxoPredFailure.BabbageNonDisjointRefInputs(_) => Vector(BabbageNonDisjointRefInputs)
 
   /** A `CollectError` of UTXOS: the harness names `NoCostModel` and a time past the horizon, and
     * the context errors by the constructor named in the failure's text; the other errors have no
     * name in the schema.
     */
-  private def collect(e: CollectError): Vector[ReportName] = e match
-    case CollectError.NoCostModel(_)    => Vector(MissingCostModel)
-    case CollectError.NoRedeemer(_)     => Vector.empty
-    case CollectError.NoWitness(_)      => Vector.empty
-    case CollectError.BadTranslation(t) => translation(t)
+  private def collect(e: EraCollectError[Conway]): Vector[ReportName] = e match
+    case EraCollectError.NoCostModel(_)    => Vector(MissingCostModel)
+    case EraCollectError.NoRedeemer(_)     => Vector.empty
+    case EraCollectError.NoWitness(_)      => Vector.empty
+    case EraCollectError.BadTranslation(t) => context(t)
 
-  private def translation(t: TranslationError): Vector[ReportName] = t match
-    case TranslationError.PastHorizon(_, _)           => Vector(OutsideForecast)
-    case TranslationError.NoClockSample(_)            => Vector(OutsideForecast)
-    case TranslationError.InlineDatumsNotSupported(_) => Vector(InlineDatumsNotSupported)
-    case TranslationError.ByronTxOutInContext(_)      => Vector(ByronTxOutInContext)
-    case TranslationError.VotingProceduresFieldNotSupported(_) =>
-      Vector(VotingProceduresFieldNotSupported)
-    case TranslationError.ProposalProceduresFieldNotSupported(_) =>
-      Vector(ProposalProceduresFieldNotSupported)
-    case TranslationError.TreasuryDonationFieldNotSupported(_) =>
-      Vector(TreasuryDonationFieldNotSupported)
-    case TranslationError.CurrentTreasuryFieldNotSupported(_) =>
+  private def context(e: ConwayContextError[Conway]): Vector[ReportName] = e match
+    case ConwayContextError.BabbageContextError(b)       => babbage(b)
+    case ConwayContextError.CertificateNotSupported(_)   => Vector.empty
+    case ConwayContextError.PlutusPurposeNotSupported(_) => Vector.empty
+    case ConwayContextError.CurrentTreasuryFieldNotSupported(_) =>
       Vector(CurrentTreasuryFieldNotSupported)
-    case TranslationError.RedeemerPointerPointsToNothing(_, _)    => Vector.empty
-    case TranslationError.UnresolvedInput(_)                      => Vector.empty
-    case TranslationError.ReferenceScriptsNotSupported(_)         => Vector.empty
-    case TranslationError.ReferenceInputsNotSupported(_)          => Vector.empty
-    case TranslationError.ReferenceInputsNotDisjointFromInputs(_) => Vector.empty
-    case TranslationError.CertificateNotSupported(_)              => Vector.empty
-    case TranslationError.PlutusPurposeNotSupported(_)            => Vector.empty
-    case TranslationError.DelegationWithoutDelegatee              => Vector.empty
-    case TranslationError.Undecodable(_)                          => Vector.empty
-    case TranslationError.NoScriptBytes(_)                        => Vector.empty
-    case TranslationError.NativeScriptRedeemer                    => Vector.empty
-    case TranslationError.LanguageWithoutContext(_)               => Vector.empty
-    case TranslationError.CostModelParameterTooLarge              => Vector.empty
-    case TranslationError.NoEraHistory                            => Vector.empty
+    case ConwayContextError.VotingProceduresFieldNotSupported(_) =>
+      Vector(VotingProceduresFieldNotSupported)
+    case ConwayContextError.ProposalProceduresFieldNotSupported(_) =>
+      Vector(ProposalProceduresFieldNotSupported)
+    case ConwayContextError.TreasuryDonationFieldNotSupported(_) =>
+      Vector(TreasuryDonationFieldNotSupported)
+    case ConwayContextError.ReferenceInputsNotDisjointFromInputs(_) => Vector.empty
 
-  private def certs(c: CertsFailure, context: FailureContext): Vector[ReportName] = c match
-    case CertsFailure.WithdrawalsNotInRewards(_)   => Vector(WithdrawalsNotInRewardsCERTS)
-    case CertsFailure.Cert(CertFailure.Deleg(d))   => deleg(d, context)
-    case CertsFailure.Cert(CertFailure.Pool(p))    => pool(p)
-    case CertsFailure.Cert(CertFailure.GovCert(g)) => govCert(g)
+  private def babbage(e: BabbageContextError[Conway]): Vector[ReportName] = e match
+    case BabbageContextError.AlonzoContextError(a)             => alonzo(a)
+    case BabbageContextError.ByronTxOutInContext(_)            => Vector(ByronTxOutInContext)
+    case BabbageContextError.RedeemerPointerPointsToNothing(_) => Vector.empty
+    case BabbageContextError.InlineDatumsNotSupported(_)       => Vector(InlineDatumsNotSupported)
+    case BabbageContextError.ReferenceScriptsNotSupported(_)   => Vector.empty
+    case BabbageContextError.ReferenceInputsNotSupported(_)    => Vector.empty
+
+  private def alonzo(e: AlonzoContextError[Conway]): Vector[ReportName] = e match
+    case AlonzoContextError.TranslationLogicMissingInput(_)   => Vector.empty
+    case AlonzoContextError.TimeTranslationPastHorizon(cause) => horizon(cause)
+    case AlonzoContextError.CertificateNotSupported(_)        => Vector.empty
+    case AlonzoContextError.PlutusPurposeNotSupported(_)      => Vector.empty
+    case AlonzoContextError.Undecodable(_, _)                 => Vector.empty
+    case AlonzoContextError.ImpossibleContextError(_)         => Vector.empty
+
+  /** A time the clock could not translate: past its horizon, or with no sample, the harness's
+    * `OutsideForecast`; the node's own missing era history has no name.
+    */
+  private def horizon(cause: TranslationError): Vector[ReportName] = cause match
+    case TranslationError.PastHorizon(_, _) | TranslationError.NoClockSample(_) =>
+      Vector(OutsideForecast)
+    case _ => Vector.empty
+
+  private def certs(
+      c: ConwayCertsPredFailure[Conway],
+      context: FailureContext
+  ): Vector[ReportName] =
+    c match
+      case ConwayCertsPredFailure.WithdrawalsNotInRewardsCERTS(_) =>
+        Vector(WithdrawalsNotInRewardsCERTS)
+      case ConwayCertsPredFailure.CertFailure(ConwayCertPredFailure.DelegFailure(d)) =>
+        deleg(d, context)
+      case ConwayCertsPredFailure.CertFailure(ConwayCertPredFailure.PoolFailure(p)) => pool(p)
+      case ConwayCertsPredFailure.CertFailure(ConwayCertPredFailure.GovCertFailure(g)) =>
+        govCert(g)
 
   /** Conway DELEG. The reference refuses the deregistration and every delegation of an unregistered
     * credential with one failure (`StakeKeyNotRegisteredDELEG`, `Conway/Rules/Deleg.hs`), which
     * carries the credential and not the certificate; Amaru names it by the certificate, which the
     * judgment attributes ([[FailureContext.unregistered]]).
     */
-  private def deleg(d: DelegFailure, context: FailureContext): Vector[ReportName] = d match
-    case DelegFailure.IncorrectDeposit(_)   => Vector(IncorrectDepositDELEG)
-    case DelegFailure.StakeKeyRegistered(_) => Vector(StakeKeyRegistered)
-    case DelegFailure.StakeKeyNotRegistered(credential) =>
+  private def deleg(
+      d: ConwayDelegPredFailure[Conway],
+      context: FailureContext
+  ): Vector[ReportName] = d match
+    case ConwayDelegPredFailure.IncorrectDepositDELEG(_)   => Vector(IncorrectDepositDELEG)
+    case ConwayDelegPredFailure.StakeKeyRegisteredDELEG(_) => Vector(StakeKeyRegistered)
+    case ConwayDelegPredFailure.StakeKeyNotRegisteredDELEG(credential) =>
       context.unregistered.get(credential).toVector.map(_.name)
-    case DelegFailure.StakeKeyHasNonZeroAccountBalance(_) =>
+    case ConwayDelegPredFailure.StakeKeyHasNonZeroAccountBalanceDELEG(_) =>
       Vector(StakeKeyHasNonZeroAccountBalance)
-    case DelegFailure.DelegateeDRepNotRegistered(_)      => Vector(DelegateeDRepNotRegistered)
-    case DelegFailure.DelegateeStakePoolNotRegistered(_) => Vector(DelegateeStakePoolNotRegistered)
-    case DelegFailure.DepositIncorrect(_)                => Vector.empty
-    case DelegFailure.RefundIncorrect(_)                 => Vector.empty
-    case DelegFailure.StakeKeyAlreadyRegistered(_)       => Vector.empty
-    case DelegFailure.StakeDelegationImpossible(_)       => Vector.empty
-    case DelegFailure.WrongCertificateType               => Vector.empty
-    case DelegFailure.GenesisKeyNotInMapping(_)          => Vector.empty
-    case DelegFailure.DuplicateGenesisDelegate(_)        => Vector.empty
-    case DelegFailure.DuplicateGenesisVRF(_)             => Vector.empty
-    case DelegFailure.InsufficientForInstantaneousRewards(_, _) => Vector.empty
-    case DelegFailure.MIRCertificateTooLateinEpoch(_)           => Vector.empty
-    case DelegFailure.MIRTransferNotCurrentlyAllowed            => Vector.empty
-    case DelegFailure.MIRNegativesNotCurrentlyAllowed           => Vector.empty
-    case DelegFailure.InsufficientForTransfer(_, _)             => Vector.empty
-    case DelegFailure.MIRProducesNegativeUpdate                 => Vector.empty
-    case DelegFailure.MIRNegativeTransfer(_, _)                 => Vector.empty
-    case DelegFailure.DelegateeNotRegistered(_)                 => Vector.empty
+    case ConwayDelegPredFailure.DelegateeDRepNotRegisteredDELEG(_) =>
+      Vector(DelegateeDRepNotRegistered)
+    case ConwayDelegPredFailure.DelegateeStakePoolNotRegisteredDELEG(_) =>
+      Vector(DelegateeStakePoolNotRegistered)
+    case ConwayDelegPredFailure.DepositIncorrectDELEG(_) => Vector.empty
+    case ConwayDelegPredFailure.RefundIncorrectDELEG(_)  => Vector.empty
 
-  private def pool(p: PoolFailure): Vector[ReportName] = p match
-    case PoolFailure.StakePoolNotRegisteredOnKey(_) => Vector(StakePoolNotRegisteredOnKeyPOOL)
-    case PoolFailure.StakePoolRetirementWrongEpoch(_, _) =>
+  private def pool(p: ShelleyPoolPredFailure[Conway]): Vector[ReportName] = p match
+    case ShelleyPoolPredFailure.StakePoolNotRegisteredOnKeyPOOL(_) =>
+      Vector(StakePoolNotRegisteredOnKeyPOOL)
+    case ShelleyPoolPredFailure.StakePoolRetirementWrongEpochPOOL(_, _) =>
       Vector(StakePoolRetirementWrongEpochPOOL)
-    case PoolFailure.StakePoolCostTooLow(_)            => Vector(StakePoolCostTooLowPOOL)
-    case PoolFailure.WrongNetworkPool(_, _)            => Vector(WrongNetworkPOOL)
-    case PoolFailure.PoolMedataHashTooBig(_, _)        => Vector.empty
-    case PoolFailure.VRFKeyHashAlreadyRegistered(_, _) => Vector.empty
+    case ShelleyPoolPredFailure.StakePoolCostTooLowPOOL(_)        => Vector(StakePoolCostTooLowPOOL)
+    case ShelleyPoolPredFailure.WrongNetworkPOOL(_, _)            => Vector(WrongNetworkPOOL)
+    case ShelleyPoolPredFailure.PoolMedataHashTooBig(_, _)        => Vector.empty
+    case ShelleyPoolPredFailure.VRFKeyHashAlreadyRegistered(_, _) => Vector.empty
 
   /** Conway GOVCERT; the harness names an incorrect refund as an incorrect deposit. */
-  private def govCert(g: GovCertFailure): Vector[ReportName] = g match
-    case GovCertFailure.DRepAlreadyRegistered(_)          => Vector(DRepAlreadyRegistered)
-    case GovCertFailure.DRepNotRegistered(_)              => Vector(DRepNotRegistered)
-    case GovCertFailure.DRepIncorrectDeposit(_)           => Vector(IncorrectDepositDRep)
-    case GovCertFailure.CommitteeHasPreviouslyResigned(_) => Vector(CommitteeHasPreviouslyResigned)
-    case GovCertFailure.DRepIncorrectRefund(_)            => Vector(IncorrectDepositDRep)
-    case GovCertFailure.CommitteeIsUnknown(_)             => Vector(CommitteeIsUnknown)
+  private def govCert(g: ConwayGovCertPredFailure[Conway]): Vector[ReportName] = g match
+    case ConwayGovCertPredFailure.ConwayDRepAlreadyRegistered(_) => Vector(DRepAlreadyRegistered)
+    case ConwayGovCertPredFailure.ConwayDRepNotRegistered(_)     => Vector(DRepNotRegistered)
+    case ConwayGovCertPredFailure.ConwayDRepIncorrectDeposit(_)  => Vector(IncorrectDepositDRep)
+    case ConwayGovCertPredFailure.ConwayCommitteeHasPreviouslyResigned(_) =>
+      Vector(CommitteeHasPreviouslyResigned)
+    case ConwayGovCertPredFailure.ConwayDRepIncorrectRefund(_) => Vector(IncorrectDepositDRep)
+    case ConwayGovCertPredFailure.ConwayCommitteeIsUnknown(_)  => Vector(CommitteeIsUnknown)
 
   /** Conway GOV; the harness names the votes of unelected committee members (protocol version 11)
     * as votes of voters that do not exist.
     */
-  private def gov(g: GovFailure): Vector[ReportName] = g match
-    case GovFailure.GovActionsDoNotExist(_) => Vector(GovActionsDoNotExist)
-    case GovFailure.MalformedProposal(_)    => Vector(MalformedProposal)
-    case GovFailure.ProposalProcedureNetworkIdMismatch(_, _) =>
+  private def gov(g: ConwayGovPredFailure[Conway]): Vector[ReportName] = g match
+    case ConwayGovPredFailure.GovActionsDoNotExist(_) => Vector(GovActionsDoNotExist)
+    case ConwayGovPredFailure.MalformedProposal(_)    => Vector(MalformedProposal)
+    case ConwayGovPredFailure.ProposalProcedureNetworkIdMismatch(_, _) =>
       Vector(ProposalProcedureNetworkIdMismatch)
-    case GovFailure.TreasuryWithdrawalsNetworkIdMismatch(_, _) => Vector.empty
-    case GovFailure.ProposalDepositIncorrect(_)                => Vector(ProposalDepositIncorrect)
-    case GovFailure.DisallowedVoters(_)                        => Vector(DisallowedVoters)
-    case GovFailure.ConflictingCommitteeUpdate(_)              => Vector(ConflictingCommitteeUpdate)
-    case GovFailure.ExpirationEpochTooSmall(_)                 => Vector(ExpirationEpochTooSmall)
-    case GovFailure.InvalidPrevGovActionId(_)                  => Vector(InvalidPrevGovActionId)
-    case GovFailure.VotingOnExpiredGovAction(_)                => Vector(VotingOnExpiredGovAction)
-    case GovFailure.ProposalCantFollow(_, _)                   => Vector(ProposalCantFollow)
-    case GovFailure.InvalidGuardrailsScriptHash(_, _)    => Vector(InvalidGuardrailsScriptHash)
-    case GovFailure.DisallowedProposalDuringBootstrap(_) => Vector.empty
-    case GovFailure.DisallowedVotesDuringBootstrap(_)    => Vector.empty
-    case GovFailure.VotersDoNotExist(_)                  => Vector(VotersDoNotExist)
-    case GovFailure.ZeroTreasuryWithdrawals(_)           => Vector(TreasuryWithdrawalsAllZeros)
-    case GovFailure.ProposalReturnAccountDoesNotExist(_) =>
+    case ConwayGovPredFailure.TreasuryWithdrawalsNetworkIdMismatch(_, _) => Vector.empty
+    case ConwayGovPredFailure.ProposalDepositIncorrect(_)   => Vector(ProposalDepositIncorrect)
+    case ConwayGovPredFailure.DisallowedVoters(_)           => Vector(DisallowedVoters)
+    case ConwayGovPredFailure.ConflictingCommitteeUpdate(_) => Vector(ConflictingCommitteeUpdate)
+    case ConwayGovPredFailure.ExpirationEpochTooSmall(_)    => Vector(ExpirationEpochTooSmall)
+    case ConwayGovPredFailure.InvalidPrevGovActionId(_)     => Vector(InvalidPrevGovActionId)
+    case ConwayGovPredFailure.VotingOnExpiredGovAction(_)   => Vector(VotingOnExpiredGovAction)
+    case ConwayGovPredFailure.ProposalCantFollow(_, _)      => Vector(ProposalCantFollow)
+    case ConwayGovPredFailure.InvalidGuardrailsScriptHash(_, _) =>
+      Vector(InvalidGuardrailsScriptHash)
+    case ConwayGovPredFailure.DisallowedProposalDuringBootstrap(_) => Vector.empty
+    case ConwayGovPredFailure.DisallowedVotesDuringBootstrap(_)    => Vector.empty
+    case ConwayGovPredFailure.VotersDoNotExist(_)                  => Vector(VotersDoNotExist)
+    case ConwayGovPredFailure.ZeroTreasuryWithdrawals(_) => Vector(TreasuryWithdrawalsAllZeros)
+    case ConwayGovPredFailure.ProposalReturnAccountDoesNotExist(_) =>
       Vector(ProposalReturnAccountDoesNotExist)
-    case GovFailure.TreasuryWithdrawalReturnAccountsDoNotExist(_) =>
+    case ConwayGovPredFailure.TreasuryWithdrawalReturnAccountsDoNotExist(_) =>
       Vector(TreasuryWithdrawalReturnAccountsDoNotExist)
-    case GovFailure.UnelectedCommitteeVoters(_) => Vector(VotersDoNotExist)
+    case ConwayGovPredFailure.UnelectedCommitteeVoters(_) => Vector(VotersDoNotExist)
 
 /** The certificate a refusal of an unregistered credential is about, as Amaru names the refusal
   * (Amaru `crates/amaru-ledger/src/rules/transaction/fixture.rs:509-518, 535-537` at 40ba9950): an
@@ -264,15 +330,23 @@ enum CertificateKind derives CanEqual:
 
 object CertificateKind:
   /** The kind of a certificate that can refuse an unregistered credential: an unregistration
-    * (Shelley's or Conway's), or a delegation (Conway's `ConwayDelegCert`, whose registering forms
-    * refuse a registered credential instead).
+    * (Shelley's or Conway's, `ConwayUnRegCert` with or without its refund), or a delegation
+    * (`ConwayDelegCert`; its registering form, `ConwayRegDelegCert`, refuses a registered
+    * credential instead).
     */
-  def of(certificate: Certificate): Option[CertificateKind] = certificate match
-    case Certificate.Unregister(_, _)                    => Some(Unregistration)
-    case Certificate.Delegate(_, Some(_), None, None)    => Some(PoolDelegation)
-    case Certificate.Delegate(_, None, Some(_), None)    => Some(VoteDelegation)
-    case Certificate.Delegate(_, Some(_), Some(_), None) => Some(PoolAndVoteDelegation)
-    case _                                               => None
+  def of(certificate: ConwayTxCert): Option[CertificateKind] = certificate match
+    case ConwayTxCert.ConwayTxCertDeleg(ConwayDelegCert.ConwayUnRegCert(_, _)) =>
+      Some(Unregistration)
+    case ConwayTxCert.ConwayTxCertDeleg(ConwayDelegCert.ConwayDelegCert(_, delegatee)) =>
+      Some(delegatee match
+        case Delegatee.DelegStake(_)        => PoolDelegation
+        case Delegatee.DelegVote(_)         => VoteDelegation
+        case Delegatee.DelegStakeVote(_, _) => PoolAndVoteDelegation)
+    case ConwayTxCert.ConwayTxCertDeleg(
+          ConwayDelegCert.ConwayRegCert(_, _) | ConwayDelegCert.ConwayRegDelegCert(_, _, _)
+        ) =>
+      None
+    case ConwayTxCert.ConwayTxCertPool(_) | ConwayTxCert.ConwayTxCertGov(_) => None
 
 /** What a failure's name depends on beyond the failure: whether the transaction spends any input,
   * which tells the two meanings of the mempool's "all inputs are spent" apart as the harness tells
@@ -282,5 +356,5 @@ object CertificateKind:
   */
 final case class FailureContext(
     hasInputs: Boolean,
-    unregistered: Map[Credential, CertificateKind]
+    unregistered: Map[StateCredential[Staking], CertificateKind]
 )

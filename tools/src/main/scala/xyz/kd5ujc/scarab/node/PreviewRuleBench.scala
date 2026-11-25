@@ -13,14 +13,23 @@ import java.nio.file.{Files, Path as JPath}
 import java.security.MessageDigest
 import munit.Assertions
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.consensus.state.{ConsensusMirrorEnv, MirrorStep}
-import xyz.kd5ujc.scarab.ledger.{Block, PlutusStats, StorageError, TxIn, TxOut, Utxo}
+import xyz.kd5ujc.scarab.consensus.state.{ConsensusMirrorEnv, MirrorClock, MirrorStep, Placement}
+import xyz.kd5ujc.scarab.ledger.{StorageError, TxIn, TxOut, Utxo}
+import xyz.kd5ujc.scarab.ledger.era.conway.ConwayBlock
+import xyz.kd5ujc.scarab.ledger.era.rules.ConwayBlockRun
 import xyz.kd5ujc.scarab.ledger.rules.{EraBlock, EraNes, Globals, Hfc}
+import xyz.kd5ujc.scarab.node.read.ChainRead.given
+import xyz.kd5ujc.scarab.plutus.PlutusBackend
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.storage.{FileLedgerSnapshots, RocksUtxoStore, SnapshotCheck, SnapshotV10}
 
 /** Opt-in test-side benchmark. Decoding, store reads, assertions and complete result rendering are
-  * outside timing. Every timed call receives an identical immutable historical input.
+  * outside timing. Every timed call receives an identical immutable historical input. A block is
+  * applied as the node applies a Conway block (#85): the state ticked to its slot
+  * ([[EraBlock.ticked]]), then Conway's era run on its body as the node builds it
+  * ([[MirrorRules.conwayBody]], [[ConwayBlockRun]]), run serially; its clock is the one the node
+  * reads ([[MirrorClock.conway]]), of the snapshot's mirror at the block's slot, which the pinned
+  * window, within one epoch, does not move.
   */
 object PreviewRuleBench extends IOApp.Simple with Assertions:
   private val bean = ManagementFactory.getThreadMXBean match
@@ -60,6 +69,11 @@ object PreviewRuleBench extends IOApp.Simple with Assertions:
     expected
   private def readSet(nes: EraNes): Utxo = nes match
     case i: EraNes.InEra[e] => i.nes.es.ls.utxo.utxo.utxo
+  private def conway(nes: EraNes): NewEpochState[Conway] = nes match
+    case i: EraNes.InEra[e] =>
+      i.era match
+        case ShelleyBasedEra.SConway => i.nes
+        case other                   => fail(s"Conway state required, not $other")
   private def resident(nes: EraNes, fetched: Map[TxIn, TxOut]): EraNes = nes match
     case i: EraNes.InEra[e] =>
       val ls = i.nes.es.ls
@@ -86,6 +100,7 @@ object PreviewRuleBench extends IOApp.Simple with Assertions:
           evaluator = xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default,
           decoder = xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder
         )
+        val backend = PlutusBackend.default
         val name = "snapshot-00000000000125231955-4753556"
         for
           raw <- IO.blocking(Files.readAllBytes(JPath.of(s"/native/$name.bin")))
@@ -94,7 +109,9 @@ object PreviewRuleBench extends IOApp.Simple with Assertions:
             .format[IO](SnapshotCheck.Full, ReferenceLayout.Release11_1)
             .decode(checked(FileLedgerSnapshots.verified(raw).flatMap(NativeSnapshots.current)))
             .map(checked(_))
-          initial <- IO(MirrorStep.nesOf(snapshot.state).getOrElse(fail("Shelley input required")))
+          mirror = snapshot.state
+          layout = mirror.ext.layout.stateLayout
+          initial <- IO(MirrorStep.nesOf(mirror).getOrElse(fail("Shelley input required")))
           _ <- IO.println(s"INPUT nes ${fingerprint(initial)} epoch=${initial.epoch}")
           restored <- store.restore(Path(s"/input/utxo/checkpoints/$name"))
           _ <- IO(assert(restored))
@@ -121,35 +138,70 @@ object PreviewRuleBench extends IOApp.Simple with Assertions:
                   finally file.close()
                 }
                 _ <- IO(assert(hash(bytes) == checked(cursor.get[String]("rawSha256"))))
-                block <- IO(checked(Block.decodeShelley(Bytes.fromArray(bytes))) match
-                  case b: Block.Shelley => b
-                  case _                => fail("Shelley block required"))
-                txs = EraBlock.decode(block)
-                decoded = txs.map(checked(_))
-                keys = decoded
-                  .flatMap(t => t.body.inputs ++ t.body.collateral ++ t.body.referenceInputs)
-                fetched <- store.read(readSet(before).missing(keys))
+                read <- IO(
+                  checked(ConwayBlock.read(Bytes.fromArray(bytes), layout))
+                    .getOrElse(fail("Conway block required"))
+                )
+                block = read.envelope
+                header = block.header
+                eraBlock = read.block.fold(e => fail(s"Conway block refused: $e"), identity)
+                fetched <- store.read(readSet(before).missing(read.inputs))
                 from = resident(before, fetched)
                 next <- IO {
-                  println(
-                    s"INPUT block-$index slot=${block.header.slot} txs=${decoded.size} sha256=${hash(bytes)}"
+                  // the configuration and constants of the chain within Shelley, its geometry
+                  // resolved from the first Shelley epoch, and the clock, as `MirrorRules` takes
+                  // them
+                  val entry = checked(
+                    NodeRules.entry(
+                      mirror.consensus.byron,
+                      header,
+                      setup.praos,
+                      setup.globals,
+                      setup.byronConfig
+                    )
                   )
-                  measure(s"block-$index") {
-                    EraBlock(context)(from, block.header, block, txs, PlutusStats.zero)
-                  } match
-                    case EraBlock.Outcome.Applied(nes, _) => nes
+                  val placement = Placement(
+                    entry.configuration.geometry,
+                    setup.byronHistory,
+                    entry.configuration.forks
+                  )
+                  val clock =
+                    MirrorClock.conway(entry.constants.systemStart, mirror, placement, header.slot)
+                  // the block's body on the state ticked to its slot, by Conway's era run
+                  def ticked(state: EraNes): NewEpochState[Conway] =
+                    conway(checked(EraBlock.ticked(context)(state, header, block)))
+                  def applied(state: EraNes): ConwayBlockRun.Result =
+                    checked(
+                      MirrorRules.conwayBody(
+                        globals,
+                        ticked(state),
+                        header.blockNo,
+                        eraBlock,
+                        clock,
+                        backend,
+                        setup.praos.verdicts,
+                        None
+                      )
+                    ).serial
+                  println(
+                    s"INPUT block-$index slot=${header.slot} txs=${block.transactions.size} sha256=${hash(bytes)}"
+                  )
+                  val next = measure(s"block-$index")(applied(from)) match
+                    case Right(Right(after)) =>
+                      val nes = ticked(from)
+                      EraNes.InEra(
+                        ShelleyBasedEra.SConway,
+                        nes.copy(
+                          bcur = after.state.blocksMade,
+                          es = nes.es.copy(ls = after.state.ls)
+                        )
+                      )
                     case other => fail(s"historical block refused: $other")
-                }
-                _ <- IO.whenA(decoded.nonEmpty) {
-                  IO {
-                    val missing = resident(before, Map.empty)
-                    val failure = measure(s"missing-input-$index") {
-                      EraBlock(context)(missing, block.header, block, txs, PlutusStats.zero)
-                    }
-                    failure match
-                      case EraBlock.Outcome.Refused(_) => ()
-                      case other                       => fail(s"expected refusal: $other")
-                  }
+                  if read.inputs.nonEmpty then
+                    measure(s"missing-input-$index")(applied(resident(before, Map.empty))) match
+                      case Right(Left(_)) => ()
+                      case other          => fail(s"expected refusal: $other")
+                  next
                 }
               yield next
           }

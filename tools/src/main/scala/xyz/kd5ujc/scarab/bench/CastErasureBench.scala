@@ -1,49 +1,26 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.bench
 
-import xyz.kd5ujc.scarab.ledger.TestGeometry
 import java.lang.management.ManagementFactory
-import java.security.{KeyPairGenerator, SecureRandom}
-import java.time.Instant
 import scala.collection.immutable.{SortedMap, TreeMap}
 import cats.{Eq, Order, Show}
 import cats.derived.*
 import cats.syntax.show.*
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Rational}
-import xyz.kd5ujc.scarab.ledger.{
-  EpochGeometry,
-  LedgerGlobals,
-  PlutusStats,
-  ProtocolParams,
-  TestLedger,
-  Tx,
-  TxIn,
-  Utxo
-}
-import xyz.kd5ujc.scarab.ledger.TestLedger.*
-import xyz.kd5ujc.scarab.ledger.rules.{
-  Bbody,
-  BbodyEnv,
-  BbodySignal,
-  BbodyState,
-  BodyCommitment,
-  Counted,
-  Globals as RuleGlobals,
-  Sts
-}
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor}
 import xyz.kd5ujc.scarab.ledger.state.*
-import xyz.kd5ujc.scarab.plutus.ExUnits
 
 /** Development tool for the cast-erasure batch (#202–#207): the same workloads, run against the old
   * and the new code, timed and with the thread's allocation counted.
   *
-  * `tools/runMain xyz.kd5ujc.scarab.bench.CastErasureBench [credentials|decode|diff|rules|all] [n]`
+  * `tools/runMain xyz.kd5ujc.scarab.bench.CastErasureBench [credentials|decode|diff|all] [n]`
   *
-  * Inputs are deterministic and asserted so outside the timed region (distinct credentials, one
-  * fixed signing key), and every workload prints a `DIGEST` of its complete output — the sorted
-  * credentials, the map entries, both decoded trees, the applied ledger state — hashed with SHA-256
-  * over a canonical rendering, computed outside the timed region. Identical digests between two
-  * builds therefore mean identical outputs; a digest that covered only a count would not.
+  * Inputs are deterministic and asserted so outside the timed region (distinct credentials), and
+  * every workload prints a `DIGEST` of its complete output — the sorted credentials, the map
+  * entries, both decoded trees, the differences — hashed with SHA-256 over a canonical rendering,
+  * computed outside the timed region. Identical digests between two builds therefore mean identical
+  * outputs; a digest that covered only a count would not. The `rules` workload (#202), a block of
+  * transactions through the flat Conway BBODY, measured a finished batch and was retired with the
+  * flat Conway rules (#85).
   */
 object CastErasureBench:
   private val bean = ManagementFactory.getThreadMXBean.asInstanceOf[com.sun.management.ThreadMXBean]
@@ -206,74 +183,6 @@ object CastErasureBench:
       .mkString("|")
     println(s"DIGEST diff ${sha256(rendered)}")
 
-  // ---- #202: a block of transactions through the rules
-
-  private val globals = RuleGlobals(
-    LedgerGlobals(
-      TestLedger.Supply,
-      100,
-      Rational(1, 2),
-      network = xyz.kd5ujc.scarab.ledger.state.Network.Testnet,
-      systemStart = xyz.kd5ujc.scarab.ledger.SystemStart(Instant.EPOCH),
-      updateQuorum = 2,
-      kes = xyz.kd5ujc.scarab.ledger.KesParameters.Mainnet
-    ),
-    EpochGeometry(Instant.EPOCH, 1000, 10000, TestGeometry.k(5), TestGeometry.f("0.05"))
-  )
-
-  private def ok[A](either: Either[VocabError, A]): A =
-    either.fold(e => sys.error(s"vocabulary: $e"), identity)
-
-  /** One fixed signing key: the block's inputs must be identical in every build and every run, or
-    * the comparison measures the keys as well as the interpreter.
-    */
-  private def fixedKey(): Key =
-    val random = SecureRandom.getInstance("SHA1PRNG")
-    random.setSeed(Array[Byte](7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7))
-    val generator = KeyPairGenerator.getInstance("Ed25519")
-    generator.initialize(new java.security.spec.NamedParameterSpec("Ed25519"), random)
-    Key(generator.generateKeyPair())
-
-  private def state(pp: ProtocolParams, utxo: Utxo) =
-    val empty = NewEpochState.empty[Conway](ok(EpochNo.fromBigInt(5)), pp)
-    val ls = empty.es.ls
-    BbodyState(
-      Counted(ls.copy[Conway](utxo = ls.utxo.copy(utxo = UtxoTables(utxo))), PlutusStats.zero),
-      BlocksMade.empty
-    )
-
-  private def run(pp: ProtocolParams, txs: Vector[Tx], from: BbodyState) =
-    val issuer = ok(KeyHash.fromBytes[StakePool](Bytes.fromArray(Array.fill(28)(7.toByte))))
-    val commitment = BodyCommitment(100, Bytes.fromArray(Array.fill(32)(1.toByte)))
-    Sts(Bbody)(
-      globals,
-      BbodyEnv(TestLedger.env, pp, Coin(0)),
-      from,
-      BbodySignal(txs, issuer, commitment, commitment)
-    )
-
-  private def benchRules(count: Int): Unit =
-    val alice = fixedKey()
-    val ada = BigInt(1000000)
-    val inputs = Vector.tabulate(count)(i =>
-      TxIn(Bytes.fromArray(Array.tabulate[Byte](32)(j => (i >> (8 * (j % 4))).toByte)), i)
-    )
-    val utxo = Utxo.empty ++ inputs.map(_ -> out(alice.address(), 10 * ada))
-    val txs = inputs.zipWithIndex.map { (in, i) =>
-      tx(body(s"t$i", Vector(in), Vector(out(alice.address(), 10 * ada - 200)), 200), Vector(alice))
-    }
-    val pp = params(10).copy(maxBlockExUnits = ExUnits(1, 1))
-    val from = state(pp, utxo)
-    val once = run(pp, txs, from).fold(f => sys.error(f.reason), identity)
-    println(s"#202 rules txs=$count fees=${once.ledger.state.utxo.fees.value}")
-    // the UTxO count is the sink; the complete state is the digest, computed outside the region
-    measure("rules.bbody")(
-      run(pp, txs, from)
-        .fold(f => sys.error(f.reason), s => s.ledger.state.utxo.utxo.utxo.count.toLong)
-    )
-    // the complete applied state, rendered outside the timed region
-    println(s"DIGEST rules ${sha256(once.ledger.state.toString)}")
-
   def main(args: Array[String]): Unit =
     val what = args.headOption.getOrElse("all")
     val n = args.lift(1).map(_.toInt)
@@ -284,4 +193,3 @@ object CastErasureBench:
     if what == "all" || what == "decode" then
       benchDecode(n.getOrElse(2000), args.lift(2).map(_.toInt).getOrElse(50000))
     if what == "all" || what == "diff" then benchDiff(n.getOrElse(20000))
-    if what == "all" || what == "rules" then benchRules(n.getOrElse(10000))
