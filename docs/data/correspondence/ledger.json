@@ -48980,13 +48980,14 @@
     }
    ],
    "class": "Mirror",
-   "structure": "same",
+   "structure": "differs",
    "evidence": [
     "DijkstraTxSuite",
+    "DijkstraUTxOSuite",
     "EraConwaySuite",
-    "EraCoreSuite"
+    "EraPlutusContextSuite"
    ],
-   "note": "Alonzo's lenses, written once for every era whose witness set is the representation",
+   "note": "Alonzo's lenses, written once for every era whose witness set is the representation; getters only, where the reference's lenses also set a field and rebuild the memoized bytes",
    "digest": "401752ba7d159e3e"
   },
   "def ledger.era.AlonzoTxWitsRep.Instance#scriptsOf": {
@@ -49025,13 +49026,15 @@
     }
    ],
    "class": "Mirror",
-   "structure": "same",
+   "structure": "differs",
    "evidence": [
     "DijkstraTxSuite",
+    "DijkstraUTxOSuite",
     "EraConwaySuite",
-    "EraCoreSuite"
+    "EraPlutusContextSuite"
    ],
-   "digest": "739737160279b8b1"
+   "digest": "739737160279b8b1",
+   "note": "a getter only: the reference's lens also sets the field and rebuilds the set's memoized bytes (`lensMemoRawType`); the node builds a witness set only by its era's decoder and never sets a field"
   },
   "def ledger.era.AlonzoTxWitsRep.Instance#bootAddrTxWits": {
    "upstream": [
@@ -49047,13 +49050,15 @@
     }
    ],
    "class": "Mirror",
-   "structure": "same",
+   "structure": "differs",
    "evidence": [
     "DijkstraTxSuite",
+    "DijkstraUTxOSuite",
     "EraConwaySuite",
-    "EraCoreSuite"
+    "EraPlutusContextSuite"
    ],
-   "digest": "d8be59af7ca2e7da"
+   "digest": "d8be59af7ca2e7da",
+   "note": "a getter only: the reference's lens also sets the field and rebuilds the set's memoized bytes (`lensMemoRawType`); the node builds a witness set only by its era's decoder and never sets a field"
   },
   "def ledger.era.AlonzoTxWitsRep.Instance#scriptTxWits": {
    "upstream": [
@@ -49069,13 +49074,15 @@
     }
    ],
    "class": "Mirror",
-   "structure": "same",
+   "structure": "differs",
    "evidence": [
     "DijkstraTxSuite",
+    "DijkstraUTxOSuite",
     "EraConwaySuite",
-    "EraCoreSuite"
+    "EraPlutusContextSuite"
    ],
-   "digest": "3aeaeb1082df23b4"
+   "digest": "3aeaeb1082df23b4",
+   "note": "a getter only: the reference's lens also sets the field and rebuilds the set's memoized bytes (`lensMemoRawType`); the node builds a witness set only by its era's decoder and never sets a field"
   },
   "def ledger.era.AlonzoTxWitsRep.Instance#datsTxWits": {
    "upstream": [
@@ -49091,13 +49098,15 @@
     }
    ],
    "class": "Mirror",
-   "structure": "same",
+   "structure": "differs",
    "evidence": [
     "DijkstraTxSuite",
+    "DijkstraUTxOSuite",
     "EraConwaySuite",
-    "EraCoreSuite"
+    "EraPlutusContextSuite"
    ],
-   "digest": "abc830a49559d880"
+   "digest": "abc830a49559d880",
+   "note": "a getter only: the reference's lens also sets the field and rebuilds the set's memoized bytes (`lensMemoRawType`); the node builds a witness set only by its era's decoder and never sets a field"
   },
   "def ledger.era.AlonzoTxWitsRep.Instance#rdmrsTxWits": {
    "upstream": [
@@ -49113,13 +49122,15 @@
     }
    ],
    "class": "Mirror",
-   "structure": "same",
+   "structure": "differs",
    "evidence": [
     "DijkstraTxSuite",
+    "DijkstraUTxOSuite",
     "EraConwaySuite",
-    "EraCoreSuite"
+    "EraPlutusContextSuite"
    ],
-   "digest": "bdf7f5818e486fff"
+   "digest": "bdf7f5818e486fff",
+   "note": "a getter only: the reference's lens also sets the field and rebuilds the set's memoized bytes (`lensMemoRawType`); the node builds a witness set only by its era's decoder and never sets a field"
   },
   "class ledger.era.AlonzoTxAuxDataRep": {
    "upstream": [
@@ -49289,13 +49300,13 @@
     }
    ],
    "class": "Mirror",
-   "structure": "same",
+   "structure": "differs",
    "evidence": [
     "DijkstraTxSuite",
     "EraConwaySuite",
-    "EraCoreSuite"
+    "EraPlutusContextSuite"
    ],
-   "note": "Alonzo's lenses and validation, written once for every era whose auxiliary data is the representation, with the reference's constraint on the era's cache as evidence",
+   "note": "Alonzo's lenses and validation, written once for every era whose auxiliary data is the representation, with the reference's constraint on the era's cache as evidence; getters only, where the reference's lenses also set a field and rebuild the memoized bytes",
    "digest": "805f37418432af21"
   },
   "def ledger.era.AlonzoTxAuxDataRep.Instance#originalBytes": {
@@ -49335,13 +49346,14 @@
     }
    ],
    "class": "Mirror",
-   "structure": "same",
+   "structure": "differs",
    "evidence": [
     "DijkstraTxSuite",
     "EraConwaySuite",
-    "EraCoreSuite"
+    "EraPlutusContextSuite"
    ],
-   "digest": "1f64dfa52bd7e43a"
+   "digest": "1f64dfa52bd7e43a",
+   "note": "a getter only: the reference's lens also sets the field and rebuilds the data's memoized bytes (`lensMemoRawType`); the node builds auxiliary data only by its era's decoder and never sets a field"
   },
   "def ledger.era.AlonzoTxAuxDataRep.Instance#validateTxAuxData": {
    "upstream": [
@@ -49379,13 +49391,14 @@
     }
    ],
    "class": "Mirror",
-   "structure": "same",
+   "structure": "differs",
    "evidence": [
     "DijkstraTxSuite",
     "EraConwaySuite",
-    "EraCoreSuite"
+    "EraPlutusContextSuite"
    ],
-   "digest": "a1b5d6385f7331ea"
+   "digest": "a1b5d6385f7331ea",
+   "note": "a getter only: the reference's lens also sets the field and rebuilds the data's memoized bytes (`lensMemoRawType`); the node builds auxiliary data only by its era's decoder and never sets a field"
   },
   "def ledger.era.AlonzoTxAuxDataRep.Instance#plutusScripts": {
    "upstream": [
@@ -49401,13 +49414,14 @@
     }
    ],
    "class": "Mirror",
-   "structure": "same",
+   "structure": "differs",
    "evidence": [
     "DijkstraTxSuite",
     "EraConwaySuite",
-    "EraCoreSuite"
+    "EraPlutusContextSuite"
    ],
-   "digest": "939f5634090b2b8e"
+   "digest": "939f5634090b2b8e",
+   "note": "a getter only: the reference's lens also sets the field and rebuilds the data's memoized bytes (`lensMemoRawType`); the node builds auxiliary data only by its era's decoder and never sets a field"
   }
  },
  "glue": [
@@ -50884,7 +50898,7 @@
    ]
   },
   {
-   "reason": "the shared representations of the era types (#85): their companions, Scala's equality, hash and rendering of each, which the reference derives, and the read-only forwarders of an era's opaque type to its representation's fields, which only the era's own file can give the evidence for, where the reference reads the fields through its lenses and `getMemoRawType`",
+   "reason": "the shared representations of the era types (#85): their companions; Scala's equality and rendering of each, where the reference derives `Eq` and `Show`; the hash code over the same fields, Scala's own (the reference's `SafeToHash` hashes the serialized bytes, which `raw` keeps and the era's hash functions read); and the read-only forwarders of an era's opaque type to its representation's fields, which only the era's own file can give the evidence for, where the reference reads the fields through its lenses and `getMemoRawType`",
    "definitions": [
     "class ledger.era.AlonzoTxAuxDataRep.Fields",
     "class ledger.era.AlonzoTxWitsRep.Fields",
