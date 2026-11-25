@@ -172,3 +172,47 @@ private[node] object FetchDecisionModel:
     }.toMap
     val retained = candidate.headers.map(_.point).toSet + candidate.base
     (previous ++ received).filter((point, _) => retained(point) || point == ChainSync.Point.Origin)
+
+  /** A candidate trimmed to `anchor` as the header gate trims its history to our chain's anchor
+    * (`HeaderChain.trimmedTo`), but never past `published`: from the first header at either point,
+    * which becomes the base; kept whole unless it holds both points and its base is neither.
+    */
+  def trimmedTo(
+      candidate: ChainSelection.Candidate,
+      anchor: Point,
+      published: Point
+  ): ChainSelection.Candidate =
+    val points = candidate.headers.map(_.point).toSet + candidate.base
+    if !points(anchor) || !points(published) || candidate.base == anchor ||
+      candidate.base == published
+    then candidate
+    else
+      candidate.headers.indexWhere(h => h.point == anchor || h.point == published) match
+        case -1 => candidate
+        case i =>
+          ChainSelection.Candidate(candidate.headers(i).point, candidate.headers.drop(i + 1))
+
+  /** `Peer.publication` without its fast paths: the newest point of `previous` that `latest` holds,
+    * at its last position in `latest`.
+    */
+  def publication(
+      previous: ChainSelection.Candidate,
+      latest: ChainSelection.Candidate,
+      tip: ChainSync.Tip,
+      limit: Int
+  ): Either[
+    xyz.kd5ujc.scarab.ledger.PeerError.Divergence,
+    (ChainSelection.Candidate, Vector[SyncEvent])
+  ] =
+    val positions = (latest.base +: latest.headers.map(_.point)).zipWithIndex.toMap
+    (previous.base +: previous.headers.map(_.point)).reverseIterator
+      .find(positions.contains)
+      .map(point => point -> positions.getOrElse(point, 0))
+      .toRight(xyz.kd5ujc.scarab.ledger.PeerError.Divergence.DetachedCandidate(latest.base))
+      .map { (point, start) =>
+        val forward = latest.headers.drop(start).take(limit.max(1))
+        val after = ChainSelection.Candidate(latest.base, latest.headers.take(start) ++ forward)
+        val rollback =
+          Option.when(previous.tip != point)(SyncEvent.RollBackward(point, tip)).toVector
+        (after, rollback ++ forward.map(h => SyncEvent.RollForward(h, tip)))
+      }

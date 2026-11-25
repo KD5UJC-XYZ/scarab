@@ -88,37 +88,68 @@ private[node] object FetchCandidates:
       */
     def forward(header: Header, retained: Int): Announced.Step =
       val headers = candidate.headers
-      val size = headers.size
-      val grown = headers :+ header
-      val dropping = (size + 1 - retained.max(1)).max(0)
-      val dropped = grown.take(dropping)
-      val joined = headers.lastOption
-      val left =
-        if dropping == 0 then Vector.empty else candidate.base +: dropped.dropRight(1).map(_.point)
-      val moved = offset + dropping
-      val linked =
-        joined.fold(breaks)(last =>
-          if Announced.extendsHeader(header, last) then breaks else breaks + (offset + size)
-        )
-      val kept = if dropping == 0 then linked else linked.rangeFrom(moved + 1)
-      // positions count from a first header that keeps moving: they are counted again from the
-      // current first one before they could grow without bound
-      val (first, positions) =
-        if moved < Announced.Rebase then (moved, kept) else (0L, kept.map(_ - moved))
-      Announced.Step.Moved(
-        new Announced(
-          ChainSelection
-            .Candidate(dropped.lastOption.fold(candidate.base)(_.point), grown.drop(dropping)),
-          disorder + joined.fold(0)(last => Announced.disordered(last, header)) -
-            (0 until dropping).iterator.map(j => Announced.disordered(grown(j), grown(j + 1))).sum,
-          (blocks :+ Announced.sized(header)).drop(dropping),
-          first,
-          positions,
-          left.foldLeft(Announced.counted(points, header.point))(Announced.uncounted),
-          Derivation.Carried
+      val grown = new Announced(
+        candidate.copy(headers = headers :+ header),
+        disorder + headers.lastOption.fold(0)(last => Announced.disordered(last, header)),
+        blocks :+ Announced.sized(header),
+        offset,
+        headers.lastOption.fold(breaks)(last =>
+          if Announced.extendsHeader(header, last) then breaks
+          else breaks + (offset + headers.size)
         ),
-        left
+        Announced.counted(points, header.point),
+        Derivation.Carried
       )
+      grown.dropOldest((headers.size + 1 - retained.max(1)).max(0))
+
+    /** The candidate from `anchor` on, as the header gate trims its history to our chain's anchor
+      * ([[xyz.kd5ujc.scarab.consensus.HeaderChain.trimmedTo]]), but never past `published`, the
+      * newest point published to the session's consumer: from the first header at either point,
+      * which becomes the base. A candidate that does not hold both points, or whose base is one of
+      * them, is kept. Only the headers that leave are looked at.
+      */
+    def trimmedTo(anchor: Point, published: Point): Announced.Step =
+      if !points.contains(anchor) || !points.contains(published) ||
+        candidate.base == anchor || candidate.base == published
+      then Announced.Step.Moved(this, Vector.empty)
+      else
+        dropOldest(
+          candidate.headers.indexWhere(h => h.point == anchor || h.point == published) + 1
+        )
+
+    /** The candidate without its oldest `dropping` headers (at most all of them), the last of them
+      * becoming the base: the points that left are the old base and every dropped header but the
+      * last.
+      */
+    private def dropOldest(dropping: Int): Announced.Step =
+      val headers = candidate.headers
+      val count = dropping.min(headers.size)
+      if count <= 0 then Announced.Step.Moved(this, Vector.empty)
+      else
+        val dropped = headers.take(count)
+        val left = candidate.base +: dropped.dropRight(1).map(_.point)
+        val moved = offset + count
+        // positions count from a first header that keeps moving: they are counted again from the
+        // current first one before they could grow without bound
+        val kept = breaks.rangeFrom(moved + 1)
+        val (first, positions) =
+          if moved < Announced.Rebase then (moved, kept) else (0L, kept.map(_ - moved))
+        Announced.Step.Moved(
+          new Announced(
+            ChainSelection
+              .Candidate(dropped.lastOption.fold(candidate.base)(_.point), headers.drop(count)),
+            disorder - (0 until count).iterator
+              .filter(_ + 1 < headers.size)
+              .map(j => Announced.disordered(headers(j), headers(j + 1)))
+              .sum,
+            blocks.drop(count),
+            first,
+            positions,
+            left.foldLeft(points)(Announced.uncounted),
+            Derivation.Carried
+          ),
+          left
+        )
 
     /** The candidate after a rollback to `point`: back to the base or to the first header at
       * `point`, the headers after it leaving; a point it does not hold starts the candidate again

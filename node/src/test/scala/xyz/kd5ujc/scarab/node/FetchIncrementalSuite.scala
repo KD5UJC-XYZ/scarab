@@ -619,3 +619,230 @@ class FetchIncrementalSuite extends ScalaCheckSuite:
       FetchDecisionModel.candidateAfter(graft, batch, retained)
     )
   }
+
+  property("an index carried through steps and trims to our anchor is the one a scan finds") {
+    forAll(
+      Gen.listOfN(40, Gen.zip(ops, Gen.option(ops))),
+      Gen.choose(0, 7)
+    ) { (steps, retained) =>
+      val start = FetchCandidates.Announced.of(ChainSelection.Candidate(Point.Origin, Vector.empty))
+      steps
+        .foldLeft((start, Vector.empty[Header], Prop.passed)) {
+          case ((announced, seen, prop), (op, trim)) =>
+            val before = announced.candidate
+            trim match
+              case Some(other) =>
+                // trim to an anchor, never past a published point
+                val anchor = pointFor(op, before, seen)
+                val published = pointFor(other, before, seen)
+                val step = announced.trimmedTo(anchor, published)
+                val next = step.announced
+                // exactly the old base and the dropped headers before the new base, in order
+                val dropped = before.headers.size - next.candidate.headers.size
+                val expectedLeft =
+                  if dropped == 0 then Vector.empty
+                  else before.base +: before.headers.take(dropped - 1).map(_.point)
+                val left = step match
+                  case FetchCandidates.Announced.Step.Moved(_, l) => l == expectedLeft
+                  case FetchCandidates.Announced.Step.Reset(_)    => false
+                (
+                  next,
+                  seen,
+                  prop && (next.candidate ==
+                    FetchDecisionModel.trimmedTo(before, anchor, published)) :|
+                    s"trim to $anchor before $published" &&
+                    (!before.retains(published) || next.candidate.retains(published)) :|
+                    "the published point is kept" &&
+                    left :| "left points of a trim" &&
+                    agrees(next, op.seed.toLong, op.kind.toLong)
+                )
+              case None =>
+                val e = event(op, before, seen)
+                val next = e match
+                  case SyncEvent.RollForward(h, _)  => announced.forward(h, retained).announced
+                  case SyncEvent.RollBackward(p, _) => announced.backward(p).announced
+                val seenNext = e match
+                  case SyncEvent.RollForward(h, _) => seen :+ h
+                  case _                           => seen
+                (
+                  next,
+                  seenNext,
+                  prop && (next.candidate ==
+                    FetchDecisionModel.candidateAfter(before, Vector(e), retained)) :| "step" &&
+                    agrees(next, op.seed.toLong, op.kind.toLong)
+                )
+        }
+        ._3
+    }
+  }
+
+  /** One round of a session whose candidate is trimmed between batches. */
+  private enum Trimming:
+    case Batch(ops: List[Op])
+    case Trim(anchor: Op, published: Op)
+    case Offered(points: List[Int])
+    case Replaced(base: Int, length: Int)
+
+  private val trimmings: Gen[Trimming] = Gen.frequency(
+    6 -> Gen.choose(0, 5).flatMap(Gen.listOfN(_, ops)).map(Trimming.Batch(_)),
+    3 -> Gen.zip(ops, ops).map(Trimming.Trim(_, _)),
+    1 -> Gen.listOf(Gen.choose(0, 59)).map(Trimming.Offered(_)),
+    1 -> (for b <- Gen.choose(-1, 50); n <- Gen.choose(0, 9) yield Trimming.Replaced(b, n))
+  )
+
+  property("trims between batches leave the candidate and heights of the whole-candidate filter") {
+    forAll(Gen.listOfN(30, trimmings), Gen.choose(0, 7)) { (script, retained) =>
+      val start = Session(
+        ChainSelection.Candidate(Point.Origin, Vector.empty),
+        CandidateTrack.initial,
+        CandidateTrack.initial.heights,
+        Vector.empty
+      )
+      script
+        .foldLeft((start, Prop.passed)) { case ((session, prop), round) =>
+          round match
+            case Trimming.Batch(codes) =>
+              val (batch, seen) = codes.foldLeft((Vector.empty[SyncEvent], session.seen)) {
+                case ((events, seen), op) =>
+                  val now = FetchDecisionModel.candidateAfter(session.candidate, events, retained)
+                  event(op, now, seen) match
+                    case e @ SyncEvent.RollForward(h, _) => (events :+ e, seen :+ h)
+                    case e                               => (events :+ e, seen)
+              }
+              val moved =
+                CandidateTrack.move(session.track.announced, session.candidate, batch, retained)
+              val received = batch.collect { case SyncEvent.RollForward(h, _) =>
+                h.point -> Some(h.blockNo)
+              }.toMap
+              val candidate = FetchDecisionModel.candidateAfter(session.candidate, batch, retained)
+              val heights = FetchDecisionModel.heightsAfter(session.heights, batch, candidate)
+              val track = session.track.recorded(moved, received)
+              (
+                Session(moved.announced.candidate, track, heights, seen),
+                prop && (moved.announced.candidate == candidate) :| "candidate" &&
+                  (track.heights == heights) :| s"heights after $batch"
+              )
+            case Trimming.Trim(anchorCode, publishedCode) =>
+              val before = session.candidate
+              val anchor = pointFor(anchorCode, before, session.seen)
+              val published = pointFor(publishedCode, before, session.seen)
+              val expected = FetchDecisionModel.trimmedTo(before, anchor, published)
+              // the heights of the points the trim dropped leave; the next batch filters the rest
+              val was = before.headers.map(_.point).toSet + before.base
+              val is = expected.headers.map(_.point).toSet + expected.base
+              val heights =
+                session.heights.filterNot((p, _) => was(p) && !is(p) && p != Point.Origin)
+              session.track.trimmed(before, anchor, published) match
+                case Some(trimmed) =>
+                  (
+                    Session(trimmed.candidate, trimmed.track, heights, session.seen),
+                    prop && (trimmed.candidate == expected) :| s"trim to $anchor" &&
+                      (trimmed.track.announced.map(_.candidate) == Some(trimmed.candidate)) :|
+                      "the track is the trimmed candidate's" &&
+                      (trimmed.track.heights == heights) :| "heights after a trim" &&
+                      trimmed.track.announced.fold(Prop.falsified)(agrees(_, 0L, 0L))
+                  )
+                case None =>
+                  // nothing to drop, or a track that is not the candidate's: the candidate stays
+                  (
+                    session,
+                    prop && (session.track.announced.forall(_.candidate ne before) ||
+                      expected == before) :| s"a trim to $anchor was not taken"
+                  )
+            case Trimming.Offered(indices) =>
+              val offered =
+                indices.map(i => main(i).point -> Some(main(i).blockNo)).toMap +
+                  (Point.Origin -> None)
+              (session.copy(track = session.track.offered(offered), heights = offered), prop)
+            case Trimming.Replaced(base, length) =>
+              val candidate = ChainSelection.Candidate(
+                main.lift(base).fold(Point.Origin)(_.point),
+                main.slice(base + 1, base + 1 + length)
+              )
+              (session.copy(candidate = candidate), prop)
+        }
+        ._2
+    }
+  }
+
+  property(
+    "publication from a candidate trimmed to our anchor, or moved any other way, is the model's"
+  ) {
+    forAll(
+      Gen.choose(0, 40),
+      Gen.choose(0, 40),
+      Gen.choose(0, 12),
+      Gen.choose(0, 12),
+      Gen.choose(0, 6),
+      Gen.choose(1, 4),
+      Gen.choose(0, 3)
+    ) { (publishedFrom, publishedLength, trimAt, grow, forkAt, limit, shape) =>
+      // the published cursor: a stretch of the main chain; the latest candidate: the same chain
+      // trimmed, grown, rolled back onto a fork, or unrelated
+      val previous = ChainSelection.Candidate(
+        main.lift(publishedFrom - 1).fold(Point.Origin)(_.point),
+        main.slice(publishedFrom, publishedFrom + publishedLength)
+      )
+      val end = (publishedFrom + publishedLength + grow).min(main.size)
+      val latest = shape match
+        case 0 =>
+          ChainSelection.Candidate(
+            main(publishedFrom + trimAt).point,
+            main.slice(publishedFrom + trimAt + 1, end)
+          )
+        case 1 => ChainSelection.Candidate(previous.base, main.slice(publishedFrom, end))
+        case 2 =>
+          val kept = main.slice(publishedFrom, publishedFrom + forkAt.min(publishedLength))
+          val fork = kept.lastOption.fold(Vector.empty[Header])(last =>
+            Fixtures.chain(grow, salt = 2, from = Some(last))
+          )
+          val point = main(publishedFrom + trimAt.min(forkAt)).point
+          FetchDecisionModel.trimmedTo(
+            ChainSelection.Candidate(previous.base, kept ++ fork),
+            point,
+            point
+          )
+        case _ => ChainSelection.Candidate(main(55).point, main.slice(56, 58))
+      val got = Peer.publication(previous, latest, ChainSync.Tip.Origin, limit)
+      val expected = FetchDecisionModel.publication(previous, latest, ChainSync.Tip.Origin, limit)
+      (got == expected) :| s"$previous -> $latest"
+    }
+  }
+
+  test("an older graft after a trim is published as a deeper rollback and a replay to its tip") {
+    // published to D, then trimmed to C: the cursor no longer holds A or B
+    val chain = main.take(4)
+    val (a, b, c, d) = (chain(0), chain(1), chain(2), chain(3))
+    val untrimmed = ChainSelection.Candidate(Point.Origin, Vector(a, b, c, d))
+    val trimmed = FetchDecisionModel.trimmedTo(untrimmed, c.point, d.point)
+    assertEquals(trimmed, ChainSelection.Candidate(c.point, Vector(d)))
+    // an accepted, older checkpoint is grafted: Origin, A, B
+    val graft = ChainSelection.Candidate(Point.Origin, Vector(a, b))
+    val tip = ChainSync.Tip.Origin
+    // from the untrimmed cursor the publication rolls back to B
+    assertEquals(
+      Peer.publication(untrimmed, graft, tip, 8).map(_._2),
+      Right(Vector(SyncEvent.RollBackward(b.point, tip)))
+    )
+    // from the trimmed one it finds no common point; the new epoch's fallback publishes from the
+    // graft's base: a rollback to Origin and A, B again, to the same tip
+    assertEquals(
+      Peer.publication(trimmed, graft, tip, 8).left.map(_ => ()),
+      Left(())
+    )
+    assertEquals(
+      Peer
+        .publication(ChainSelection.Candidate(graft.base, Vector.empty), graft, tip, 8)
+        .map((after, events) => (after.tip, SyncEvent.RollBackward(graft.base, tip) +: events)),
+      Right(
+        (
+          b.point,
+          Vector(
+            SyncEvent.RollBackward(Point.Origin, tip),
+            SyncEvent.RollForward(a, tip),
+            SyncEvent.RollForward(b, tip)
+          )
+        )
+      )
+    )
+  }
