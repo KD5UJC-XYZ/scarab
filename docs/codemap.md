@@ -53,7 +53,7 @@ Hashes, signatures, VRF, KES, BLS (jblst, with its start-up check), operational 
 | crypto/kes | Sum6 KES verify, sign and evolve | `Sum6Kes`, `Sum6KesSigning` | `Sum6KesSuite`, `Sum6KesSigningSuite` | [ADR 0015](adr/0015-kes-key-written-back-and-checked-reload.md) |
 | crypto/opcert | Operational certificate decoding and checks | `OperationalCertificate` | `OperationalCertificateSuite` | [ADR 0015](adr/0015-kes-key-written-back-and-checked-reload.md) |
 | crypto/vrf | VRF draft-03 verify and prove, Praos leader threshold | `Draft03Prover`, `StrictDraft03`, `PraosVrfCertificate`, `PraosLeaderThreshold` | `Draft03ProverSuite`, `StrictDraft03Suite`, `PraosVrfCertificateSuite`, `PraosLeaderThresholdSuite` | [ADR 0001](adr/0001-haskell-node-as-reference.md) |
-| crypto/witness | Strict Ed25519 witness verification | `StrictEd25519`, `VerificationResult`, `VerificationError` | `StrictEd25519Suite`, `StrictEd25519DifferentialSuite`, `WitnessGoldenSuite` | [ADR 0001](adr/0001-haskell-node-as-reference.md) |
+| crypto/witness | Strict Ed25519 witness verification | `StrictEd25519`, `VerificationResult`, `VerificationError` | `StrictEd25519Suite`, `StrictEd25519DifferentialSuite`, `WitnessGoldenSuite`, `VartimeEd25519Suite`, `VartimeEd25519DifferentialSuite` | [ADR 0001](adr/0001-haskell-node-as-reference.md) |
 
 ## protocol
 
@@ -194,6 +194,7 @@ Programs run by hand, never as tests and never shipped: benchmarks, probes again
 | consensus | Hand-run benchmarks for the `consensus` package (its package, for its package-private access) | `DecideBenchMain` |  |  |
 | crypto | Hand-run benchmarks for the `crypto` package (its package, for its package-private access) | `VerifyBench` |  |  |
 | crypto/bls | Hand-run benchmarks for the `crypto.bls` package (its package, for its package-private access) | `BlsBenchmark` |  |  |
+| crypto/witness | Hand-run benchmarks for the `crypto.witness` package (its package, for its package-private access): the allocation and time of one Ed25519 verification, through `VartimeEd25519` and through the vendored objects | `VerifyAllocationBench` |  |  |
 | ledger | Hand-run benchmarks for the `ledger` package, and the ledger-rules report of node-diversity-conformance: the corpus's transaction fixtures judged by the mempool's decoder and rules (its package, for its package-private access) | `ApplyBenchMain`, `DetachedRecordsBench`, `LedgerRulesMain`, `RationalDecodeBench`, `UtxoChangesBench` | `LedgerRulesSuite` |  |
 | ledger/era/dijkstra | Hand-run benchmarks for the `ledger.era.dijkstra` package (its package, for its package-private access): an endorser block's closure read into Dijkstra's types in one pass against two | `DijkstraDecodeBench` |  |  |
 | ledger/conformance | Hand-run conformance checks of the ledger's decoders: the cardano-cbor-dataset of node-diversity-conformance's `cbor-decoding` scenario, each rule mapped to a production decoder and encoder, with the dataset's normal form and its version 2 report | `CborDatasetMain`, `ConwayRules`, `DijkstraRules`, `CborNormalForm` | `CborDatasetSuite` |  |
