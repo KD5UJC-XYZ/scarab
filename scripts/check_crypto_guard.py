@@ -23,6 +23,17 @@ only its own source, the two verifiers (`StrictEd25519`, `ByronEd25519`) in the 
 each at its path and with that package declared. A new caller, in that package or elsewhere, in
 main sources or in `tools`, is refused until it is added to `VERIFY_CALLERS` here.
 
+The secret path of VRF proving (#1418) is held tighter too. The main sources of the package
+`xyz.kd5ujc.scarab.crypto.vrf.secret`, which hold the signing key's seed and every value computed
+from it, may name no variable-time routine (`VARIABLE_TIME`: the `vartime*` operations and
+`VartimeEd25519`, the NAF recoding, Bouncy Castle's `*Var` routines, `Ed25519Point`, `Draft03Math`,
+the verifiers, big-integer arithmetic), no comparison that stops at the first difference, and no
+call that would share an array the package erases. `Draft03Prover.scala`, which hands that package
+the hash-to-curve point, may call `Draft03Math.h2c` (its inputs are the public key and alpha) and
+nothing else of the variable-time math. A source is of the package when it sits in its directory
+or declares it, in any module's main sources (`tools` among them); comments and string literals are
+not read. Test sources are not covered: a suite may check a proof with the verifier.
+
 Usage: python3 scripts/check_crypto_guard.py [repo-root]
 Exit 0 when every reference is contained; 1 with the offending files listed.
 """
@@ -144,5 +155,119 @@ def main(argv):
     return 0
 
 
+SECRET_PACKAGE = "xyz.kd5ujc.scarab.crypto.vrf.secret"
+SECRET_PARTS = PACKAGE_PARTS + ("secret",)
+# The prover file in package vrf that hands the secret path its public input: (module, language
+# directory, file name).
+SECRET_FACADE = ("crypto", "scala", "Draft03Prover.scala")
+# What the secret path may not name, each with the reason it gives.
+VARIABLE_TIME = (
+    (re.compile(r"(?i)vartime"), "a variable-time operation (vartime*, VartimeEd25519)"),
+    (re.compile(r"\bnonAdjacentForm\b"), "the NAF recoding of the variable-time multiplication"),
+    (re.compile(r"\b[a-z]\w*Var\b"), "a variable-time Bouncy Castle routine (sqrtRatioVar, invVar, ...)"),
+    (re.compile(r"\bEd25519Point\b"), "the variable-time point arithmetic and its decoder"),
+    (re.compile(r"\b(StrictDraft03|StrictEd25519|ByronEd25519)\b"), "a verifier (variable-time)"),
+    (re.compile(r"\bBig(Int|Integer|Decimal)\b"), "variable-time integer arithmetic"),
+    (re.compile(r"\bArrays\s*\.\s*equals\b|\bsameElements\b"), "a comparison that stops at a difference"),
+    (re.compile(r"\bBytes\s*\.\s*wrap\b|\bunsafeArray\b"), "a value sharing an array that is erased"),
+)
+DRAFT03_MATH = re.compile(r"\bDraft03Math\b(?:\s*\.\s*(\w+))?")
+FACADE_MATH = {"h2c"}
+PACKAGE_CLAUSE = re.compile(r"\s*package\s+([\w.]+)\s*;?\s*$")
+
+
+def code_of(text: str) -> str:
+    """`text` without its comments and string and character literals, each replaced by a space."""
+    out = []
+    i, n = 0, len(text)
+    while i < n:
+        if text.startswith("//", i):
+            j = text.find("\n", i)
+            i = n if j < 0 else j
+        elif text.startswith("/*", i):
+            depth, i = 1, i + 2
+            while i < n and depth:
+                if text.startswith("/*", i):
+                    depth, i = depth + 1, i + 2
+                elif text.startswith("*/", i):
+                    depth, i = depth - 1, i + 2
+                else:
+                    i += 1
+        elif text.startswith('"""', i):
+            j = text.find('"""', i + 3)
+            i = n if j < 0 else j + 3
+        elif text[i] in "\"'":
+            quote, i = text[i], i + 1
+            while i < n and text[i] != quote and text[i] != "\n":
+                i += 2 if text[i] == "\\" else 1
+            i += 1
+        else:
+            out.append(text[i])
+            i += 1
+            continue
+        out.append(" ")
+    return "".join(out)
+
+
+def declared_package(text: str):
+    """The package the leading package clauses declare (chained clauses joined), or None."""
+    names = []
+    for line in code_of(text).splitlines():
+        if not line.strip():
+            continue
+        match = PACKAGE_CLAUSE.match(line)
+        if not match:
+            break
+        names.append(match.group(1))
+    return ".".join(names) if names else None
+
+
+def secret_path_violations(root: Path):
+    """(path, what it names) for every main source of the secret path that names what it may not."""
+    for path in sources(root):
+        parts = path.relative_to(root).parts
+        if "src" not in parts:
+            continue
+        i = parts.index("src")
+        if i + 3 >= len(parts) or parts[i + 1] != "main" or parts[i + 2] not in LANGS:
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        code = code_of(text)
+        package = declared_package(text) or ""
+        in_package = (
+            parts[i + 3 : i + 3 + len(SECRET_PARTS)] == SECRET_PARTS
+            or package == SECRET_PACKAGE
+            or package.startswith(SECRET_PACKAGE + ".")
+        )
+        facade = i >= 1 and (parts[i - 1], parts[i + 2], parts[-1]) == SECRET_FACADE and package == PACKAGE
+        if not (in_package or facade):
+            continue
+        for pattern, what in VARIABLE_TIME:
+            if pattern.search(code):
+                yield path, what
+        for match in DRAFT03_MATH.finditer(code):
+            if in_package or match.group(1) not in FACADE_MATH:
+                yield path, f"Draft03Math.{match.group(1) or ''} (only the prover's Draft03Math.h2c is allowed)"
+
+
+def guarded(argv):
+    """The containment check, and then the secret path's: 1 if either refuses."""
+    secret = sorted(set(secret_path_violations(Path(argv[1] if len(argv) > 1 else "."))))
+    for path, what in secret:
+        print(f"variable-time name on the VRF secret path: {path}: {what}")
+    contained = main(argv)
+    if secret:
+        print(
+            "The VRF secret path (package xyz.kd5ujc.scarab.crypto.vrf.secret, and Draft03Prover's "
+            "call into Draft03Math) names no variable-time routine (VARIABLE_TIME)."
+        )
+        return 1
+    print("crypto guard: the VRF secret path names no variable-time routine")
+    return contained
+
+
 if __name__ == "__main__":
-    sys.exit(main(sys.argv))
+    sys.exit(guarded(sys.argv))
