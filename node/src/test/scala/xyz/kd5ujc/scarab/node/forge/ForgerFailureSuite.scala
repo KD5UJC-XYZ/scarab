@@ -10,7 +10,7 @@ import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.crypto.kes.Sum6KesSigning
 import xyz.kd5ujc.scarab.ledger.{ChainError, ForgeError, ForgeKeyProblem, NodeError, StorageError}
 import xyz.kd5ujc.scarab.node.Fatal
-import xyz.kd5ujc.scarab.node.mempool.{Source, selected, toPool}
+import xyz.kd5ujc.scarab.node.mempool.{Source, selected}
 
 class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ForgeFixture:
   private def unreadable =
@@ -163,7 +163,7 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
   test("a held transaction the rules have no verdict on is withheld; the rest is chosen") {
     import xyz.kd5ujc.scarab.node.mempool.{ConwayPoolEnv, MempoolState, Rejection, TxKit}
     import xyz.kd5ujc.scarab.ledger.era.rules.ConwayMempoolRun
-    val ledger = TxKit.ledger(3).toPool
+    val ledger = TxKit.ledger(3)
     val limit = BlockBuilder.Limits(65536, xyz.kd5ujc.scarab.plutus.ExUnits(14000000, 10000000000L))
     val spending = MempoolStateFixture.entry(TxKit.pay(1)._1)
     val paying = MempoolStateFixture.entry(TxKit.pay(2)._1)
@@ -701,7 +701,7 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
     List(stopped, xyz.kd5ujc.scarab.plutus.BackendFailure.StackExhausted).foreach { reason =>
       val env = xyz.kd5ujc.scarab.node.mempool.TxKit.env.copy(decoder = failing(reason))
       assertEquals(
-        base.toPool.selected(Vector(entry), 1001, env, limit)._1.map(_.admitted.read.id),
+        base.selected(Vector(entry), 1001, env, limit)._1.map(_.admitted.read.id),
         Vector(id)
       )
     }
@@ -711,7 +711,7 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
       0
     )
     assertEquals(
-      base.toPool.selected(Vector(invalid), 1001, xyz.kd5ujc.scarab.node.mempool.TxKit.env, limit),
+      base.selected(Vector(invalid), 1001, xyz.kd5ujc.scarab.node.mempool.TxKit.env, limit),
       (Vector.empty, Vector.empty)
     )
   }

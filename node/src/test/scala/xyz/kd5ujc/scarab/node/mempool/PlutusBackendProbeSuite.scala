@@ -66,8 +66,8 @@ class PlutusBackendProbeSuite extends FunSuite:
     val aux = j.hcursor.get[String]("auxiliary").toOption.map(_ => hex(j, "auxiliary"))
     c -> Tx.envelope(Block.Transaction(hex(j, "body"), hex(j, "witnesses"), aux, c.tx.isValid))
 
-  private val ledger: MempoolLedger =
-    MempoolLedger.of(
+  private val ledger: ConwayPoolLedger =
+    ConwayPools.of(
       Build.funded(
         Build.nes[Conway](5, plutus.params),
         plutus.spent ++ plutus.references ++ plutus.collateral
@@ -76,7 +76,7 @@ class PlutusBackendProbeSuite extends FunSuite:
 
   private def admit(backend: PlutusBackend): Either[Rejection, (MempoolState, Entry)] =
     MempoolState
-      .empty(Right(ledger.toPool), plutus.slot - 1, None)
+      .empty(Right(ledger), plutus.slot - 1, None)
       .add(
         raw,
         TxKit.env.copy(evaluator = backend.interruptible, decoder = backend.decoder),

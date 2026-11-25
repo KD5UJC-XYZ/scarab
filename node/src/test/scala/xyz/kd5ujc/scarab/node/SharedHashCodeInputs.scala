@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import xyz.kd5ujc.scarab.node.mempool.toPool
 import java.nio.file.{Files, Path}
 import munit.Assertions.fail
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value as CborValue}
@@ -9,7 +8,7 @@ import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.ledger.*
 import xyz.kd5ujc.scarab.ledger.rules.NativeRules
 import xyz.kd5ujc.scarab.ledger.state.Conway
-import xyz.kd5ujc.scarab.node.mempool.{MempoolLedger, MempoolState, TxKit}
+import xyz.kd5ujc.scarab.node.mempool.{ConwayPools, MempoolState, TxKit}
 import xyz.kd5ujc.scarab.node.ntc.CborOut
 import xyz.kd5ujc.scarab.protocol.Era
 
@@ -152,7 +151,7 @@ object SharedHashCodeInputs:
       TxIn(Blake2b.hash256.hash(Bytes(Vector((i >> 8).toByte, i.toByte))), 0) ->
         TxOut(alice.address(), Value(30 * ada, Map(policy -> names.map(_ -> BigInt(1)).toMap)))
     }
-    val ledger = MempoolLedger.of(NativeRules.stateIn[Conway](10, funds))
+    val ledger = ConwayPools.of(NativeRules.stateIn[Conway](10, funds))
     val (raw, _) =
       TxKit.tx(
         funds.map(_._1),
@@ -160,7 +159,7 @@ object SharedHashCodeInputs:
         ada,
         Vector(alice)
       )
-    (MempoolState.empty(Right(ledger.toPool), 1000, None), raw)
+    (MempoolState.empty(Right(ledger), 1000, None), raw)
 
   /** A transaction as a peer relays it, `[body, {4: [* datum]}, true, null]`, whose witness set
     * holds `n` datums of six bytes: 9,300 of them make 65,192 bytes, under the 65,536 a reply's

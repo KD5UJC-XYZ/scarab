@@ -369,17 +369,19 @@ object ConwayTestKit extends munit.Assertions:
     */
   private type Outcome = Either[Vector[PredicateFailure], LedgerState[Conway]]
 
-  /** Conway's LEDGER on the era types on `built` from `nes` under `ctx`, at the root, every failure
-    * accumulated: the state after it, or its refusal with its failures in the node's flat form
-    * ([[EraLedgerRun.flat]]). The flat LEDGER, on the same bytes from the same state, accumulating
-    * too, gives the same failures in the same order or the same state; a defect of either, or a
-    * failure without a flat form, fails the test.
+  /** Conway's LEDGER on the era types (`ConwayLedger.conwayLedgerTransition`, through
+    * [[EraLedgerRun.ledger]]) on `tx` from `nes` under `ctx`, at the root, every failure
+    * accumulated: a defect, the failures in the reference's order, or the state after with the
+    * events. The transaction is annotated against the stored outputs of `nes` it names.
     */
-  def ledger(
+  def eraLedger(
       nes: NewEpochState[Conway],
-      built: Built,
+      tx: ConwayTx,
       ctx: TxEnv
-  ): Either[LedgerFailure, NewEpochState[Conway]] =
+  ): EraLedgerRun.Judged[
+    xyz.kd5ujc.scarab.ledger.era.rules.LedgerPredFailure[Conway],
+    xyz.kd5ujc.scarab.ledger.era.rules.LedgerEvent[Conway]
+  ] =
     val globals = NativeRules.globalsOf(ctx)
     val ls = nes.es.ls
     val pp = PParams[Conway](
@@ -405,16 +407,33 @@ object ConwayTestKit extends munit.Assertions:
       ctx.validation,
       ConwayUtxo.injectShelleyFailure(ctx.referenceBuild)
     )
-    val era: Outcome = EraLedgerRun.ledger(
+    EraLedgerRun.ledger(
       globals,
       env,
-      AlonzoStAnnTx.mkAlonzoStAnnTx[Conway](clock.posix, pp, utxo, Map.empty, built.typed),
+      AlonzoStAnnTx.mkAlonzoStAnnTx[Conway](clock.posix, pp, utxo, Map.empty, tx),
       context,
       ls,
       ctx.evaluator,
       ctx.verdicts,
       ctx.decoder
-    ) match
+    )
+
+  /** Conway's LEDGER on the era types on `built` from `nes` under `ctx`, at the root, every failure
+    * accumulated: the state after it, or its refusal with its failures in the node's flat form
+    * ([[EraLedgerRun.flat]]). The flat LEDGER, on the same bytes from the same state, accumulating
+    * too, gives the same failures in the same order or the same state; a defect of either, or a
+    * failure without a flat form, fails the test.
+    */
+  def ledger(
+      nes: NewEpochState[Conway],
+      built: Built,
+      ctx: TxEnv
+  ): Either[LedgerFailure, NewEpochState[Conway]] =
+    val globals = NativeRules.globalsOf(ctx)
+    val ls = nes.es.ls
+    val utxo =
+      ConwayUTxO.fromStored(ls.utxo.utxo.utxo.toMap).fold(e => fail(s"outputs: $e"), identity)
+    val era: Outcome = eraLedger(nes, built.typed, ctx) match
       case Left(defect)             => fail(s"the era LEDGER: $defect")
       case Right(Left(failures))    => Left(failures.toChain.toVector.map(flatForm(built, utxo, _)))
       case Right(Right((after, _))) => Right(after)

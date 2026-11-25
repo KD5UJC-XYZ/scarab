@@ -372,8 +372,24 @@ class ConwayMempoolRunSuite extends FunSuite:
 
   // ---- the pool suites' transactions
 
-  import TxKit.{ada, alice, applied, bob, bstr, head, tx}
+  import TxKit.{ada, alice, bob, bstr, head, tx}
   import xyz.kd5ujc.scarab.ledger.TestLedger.{key, txIn}
+
+  /** TxKit's Conway state with `n` outputs for alice, as the flat rules' ledger, which this suite
+    * compares Conway's rules with.
+    */
+  private def flatKit(n: Int): MempoolLedger = MempoolLedger.of(TxKit.native(n))
+
+  extension (l: MempoolLedger)
+    /** The flat ledger after `tx`, which the suite knows to be valid, applied by the flat MEMPOOL
+      * in the slot after `slot`.
+      */
+    private def applied(tx: FlatTx, slot: BigInt): MempoolLedger =
+      val pool = ConwayPoolLedger
+        .of(l.ls, ChainAccountState(l.treasury, Coin.zero), l.epoch, StateLayout.Node11_1)
+        .fold(e => fail(s"parameters that are not Conway's: $e"), identity)
+      l.submit(tx, TxKit.env.txEnv(slot, pool), TxKit.env.rules)
+        .fold(f => fail(f.message), identity)
 
   /** The pool's environment of `TxKit`, judged at `slot`, in the state's epoch (5: 1000-slot
     * epochs), so that `mkMempoolEnv` 's epoch of the slot is the flat environment's epoch of the
@@ -450,7 +466,7 @@ class ConwayMempoolRunSuite extends FunSuite:
     * reference input, an output with a reference script, a stake registration and a vote.
     */
   private def kitCases: Vector[Seen] =
-    val l3 = TxKit.ledger(3)
+    val l3 = flatKit(3)
     val (paid, _) = TxKit.pay(1)
     val afterPaid =
       l3.applied(FlatTx.fromEnvelope(paid, Era.Conway).getOrElse(fail("paid")), kitSlot)
@@ -532,12 +548,12 @@ class ConwayMempoolRunSuite extends FunSuite:
           Vector(alice, hot),
           votes = unelectedVote
         )._1,
-        TxKit.ledger(1)
+        flatKit(1)
       )
     )
 
   test("applyTx and reapply give the flat MEMPOOL's verdicts on the pool suites' transactions"):
-    assertEquals(TxKit.ledger(3).epoch, kitSlot / TxKit.env.geometry.epochLength, "the epoch")
+    assertEquals(flatKit(3).epoch, kitSlot / TxKit.env.geometry.epochLength, "the epoch")
     val judged = for
       s0 <- kitCases
       v <- s0 +: Vector(9, 10, 11).map(s0.atVersion)
@@ -623,7 +639,7 @@ class ConwayMempoolRunSuite extends FunSuite:
   ):
     // an output with a reference script, created by a payment, then kept with a script hash that
     // is not its bytes' (an output only a damaged store holds)
-    val l3 = TxKit.ledger(3)
+    val l3 = flatKit(3)
     val (created, _) = tx(
       Vector(txIn(1)),
       Vector(bob.address() -> (99 * ada)),
@@ -702,7 +718,7 @@ class ConwayMempoolRunSuite extends FunSuite:
     s.copy(judging = s.judging.copy(annotation = (_, _, _, _) => throw Annotated(s.label)))
 
   test("a duplicate is never annotated: no stored output read and no script context built for it"):
-    val l3 = TxKit.ledger(3)
+    val l3 = flatKit(3)
     val (paid, _) = TxKit.pay(1)
     val after = l3.applied(FlatTx.fromEnvelope(paid, Era.Conway).getOrElse(fail("paid")), kitSlot)
     val allSpent = ConwayApplyTxError(
@@ -773,7 +789,7 @@ class ConwayMempoolRunSuite extends FunSuite:
   ):
     // alice pays from txIn(1), admitted by `applyTx`: its annotation needs no script
     val (raw, _) = TxKit.pay(1)
-    val l3 = TxKit.ledger(3)
+    val l3 = flatKit(3)
     // the state it is applied again in holds txIn(1)'s output locked by a native script the
     // transaction does not provide: an output never changes on a chain, so only a crafted state
     // tells the held annotation (no script needed) from one made again (the script needed and
@@ -840,7 +856,7 @@ class ConwayMempoolRunSuite extends FunSuite:
     val stored =
       right("stored output")(FlatTx.fromEnvelope(scriptRaw, Era.Conway)).body.outputs.head
     val inputs = Vector.tabulate(64)(i => TxIn(txIn(60).id, i))
-    val base = TxKit.ledger(1)
+    val base = flatKit(1)
     val held = base.withUtxo(inputs.foldLeft(base.utxo)(_.updated(_, stored)))
     val (raw, _) = tx(inputs, Vector(bob.address() -> (99 * ada)), ada, Vector(alice))
     val typed = right("typed")(ConwayTx.fromEnvelope(raw, StateLayout.Node11_1))

@@ -80,9 +80,17 @@ class DeepNestingSuite extends FunSuite:
   test("the recorded transaction passes the ledger rules") {
     val world = PreprodDeepTx.ledger
     val e = env.copy(slot = PreprodDeepTx.Slot, epoch = PreprodDeepTx.Epoch)
-    // ADR 0011: the rules evaluate the script through a fold, on the small stack
-    val outcome = onSmallStack(TestLedger.conwayLedger(world, parsed, e))
-    assert(outcome.isRight, outcome.toString)
+    // ADR 0011: Conway's decoder reads the script, and Conway's LEDGER evaluates it through a fold,
+    // on the small stack
+    val outcome = onSmallStack {
+      val tx = xyz.kd5ujc.scarab.ledger.era.conway.ConwayTx
+        .fromEnvelope(PreprodDeepTx.bytes, xyz.kd5ujc.scarab.protocol.StateLayout.Node11_1)
+        .fold(err => fail(s"Conway's decoder: $err"), identity)
+      xyz.kd5ujc.scarab.ledger.era.conway.ConwayTestKit.eraLedger(world, tx, e)
+    }
+    outcome match
+      case Right(Right(_)) => ()
+      case other           => fail(s"refused or not judged: $other")
   }
 
   // --- native scripts ------------------------------------------------------------------------------

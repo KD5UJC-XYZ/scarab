@@ -2,18 +2,36 @@
 package xyz.kd5ujc.scarab.node.mempool
 
 import cats.syntax.all.*
-import xyz.kd5ujc.scarab.ledger.state.{ChainAccountState, Coin}
-import xyz.kd5ujc.scarab.protocol.StateLayout
+import xyz.kd5ujc.scarab.ledger.rules.EraNes
+import xyz.kd5ujc.scarab.ledger.state.{Conway, NewEpochState, ShelleyBasedEra}
 
-extension (l: MempoolLedger)
-  /** The pool's Conway ledger, which Conway's era rules judge, of the flat rules' ledger `l`, for
-    * the suites that build their states as the flat rules' ledger: the same ledger state, epoch and
-    * treasury (the only account the rules read), in the 11.1 layout.
+/** The pool's Conway ledger of a Conway state, for the suites that build their pool from one, as
+  * the node makes it ([[ConwayPoolLedger.of]], [[PoolLedger.ticked]]).
+  */
+object ConwayPools:
+  /** The pool's ledger of the new-epoch state `nes`, whose parameters the suite knows to be
+    * Conway's.
     */
-  def toPool: ConwayPoolLedger =
+  def of(nes: NewEpochState[Conway]): ConwayPoolLedger =
     ConwayPoolLedger
-      .of(l.ls, ChainAccountState(l.treasury, Coin.zero), l.epoch, StateLayout.Node11_1)
+      .of(nes)
       .fold(e => munit.Assertions.fail(s"parameters that are not Conway's: $e"), identity)
+
+  /** The pool's ledger of the Conway state `nes` of a chain whose tip is at `tipSlot` (none at
+    * Origin), ticked to the slot after the tip as the node ticks it ([[PoolLedger.ticked]]), on a
+    * chain that stays in Conway. A tick failure is the node's ([[PoolLedger.Failure]]).
+    */
+  def ticked(
+      nes: NewEpochState[Conway],
+      tipSlot: Option[BigInt],
+      env: MempoolEnv
+  ): Either[PoolLedger.Failure, ConwayPoolLedger] =
+    PoolLedger
+      .ticked(EraNes.InEra(ShelleyBasedEra.SConway, nes), 0L, tipSlot, env, _ => None)
+      .map {
+        case Right(c: ConwayPoolLedger) => c
+        case other => munit.Assertions.fail(s"not the pool's Conway ledger: $other")
+      }
 
 extension (l: ConwayPoolLedger)
   /** The ledger after the held transaction `e`, which the suite knows to apply, judged with every
@@ -80,7 +98,7 @@ extension (e: Entry)
   * TxKit's (`unsafeMakeValidatedTx`).
   */
 object ConwayEntries:
-  private lazy val ledger: ConwayPoolLedger = TxKit.ledger(1).toPool
+  private lazy val ledger: ConwayPoolLedger = TxKit.ledger(1)
 
   /** `raw` held with the ticket `ticket`. */
   def held(raw: xyz.kd5ujc.scarab.codec.Bytes, ticket: Long = 1L): Entry =
@@ -91,35 +109,55 @@ object ConwayEntries:
       scala.concurrent.duration.Duration.Zero
     )
 
+/** Refusals of Conway's pool in the era's types ([[Rejection.ConwayRefused]]), as the suites expect
+  * them: a failure of LEDGER, or of a rule below it, as LEDGER reports it.
+  */
+object ConwayRefusals:
+  import xyz.kd5ujc.scarab.ledger.era.rules.{
+    ConwayGovPredFailure,
+    ConwayLedgerPredFailure,
+    ConwayUtxoPredFailure,
+    ConwayUtxowPredFailure
+  }
+
+  type Failure = ConwayLedgerPredFailure[Conway]
+
+  /** The refusal of the transaction `id` with `first` and `rest`, in that order. */
+  def refused(
+      id: xyz.kd5ujc.scarab.codec.Bytes,
+      first: Failure,
+      rest: Failure*
+  ): Rejection.ConwayRefused =
+    Rejection.ConwayRefused(id, cats.data.NonEmptyChain(first, rest*))
+
+  /** The bytes a local client is sent for `r`, written by Conway's encoder of `ApplyTxError`
+    * ([[xyz.kd5ujc.scarab.node.ntc.ConwayFailureCbor.applyTxError]]) from its failures, every one
+    * in its order, apart from the pool's answer ([[LocalSubmission.reasonItem]]).
+    */
+  def sent(r: Rejection.ConwayRefused): xyz.kd5ujc.scarab.codec.Bytes =
+    xyz.kd5ujc.scarab.node.ntc.ConwayFailureCbor
+      .applyTxError(r.failures.toNonEmptyList)
+      .fold(e => munit.Assertions.fail(s"no encoding of $r: $e"), identity)
+
+  /** A failure of UTXOW, under LEDGER. */
+  def utxow(f: ConwayUtxowPredFailure[Conway]): Failure =
+    ConwayLedgerPredFailure.ConwayUtxowFailure[Conway](f)
+
+  /** A failure of UTXO, under LEDGER's UTXOW. */
+  def utxo(f: ConwayUtxoPredFailure[Conway]): Failure =
+    utxow(ConwayUtxowPredFailure.UtxoFailure[Conway](f))
+
+  /** A failure of GOV, under LEDGER. */
+  def gov(f: ConwayGovPredFailure[Conway]): Failure =
+    ConwayLedgerPredFailure.ConwayGovFailure[Conway](f)
+
 /** What a local client is answered for `answer`, the pool's own: the refusal's bytes
   * ([[LocalSubmission.reasonItem]] in Conway), as the node writes them, or what was admitted.
   */
 def answered[A](answer: Either[Rejection, A]): Either[xyz.kd5ujc.scarab.codec.Bytes, A] =
   answer.leftMap(reply)
 
-/** The answer a suite written against the flat rules' refusals expects, `answer` in the flat form:
-  * a flat refusal written by the flat rules' Conway encoder, as the node wrote it before Conway's
-  * pool refused in the era's types (#85), and any other as [[answered]] writes it. The pool's own
-  * answer goes through [[answered]], so a flat refusal from a Conway pool, which the node does not
-  * write, fails there.
-  */
-def flatAnswer[A](answer: Either[Rejection, A]): Either[xyz.kd5ujc.scarab.codec.Bytes, A] =
-  answer.leftMap {
-    case r @ Rejection.Ledger(xyz.kd5ujc.scarab.ledger.LedgerFailure.Rejected(_, failures)) =>
-      flat(r, failures.toChain.toVector)
-    case r @ Rejection.Limits(_, failures) => flat(r, failures.toList.toVector)
-    case r                                 => reply(r)
-  }
-
 private def reply(r: Rejection): xyz.kd5ujc.scarab.codec.Bytes =
   LocalSubmission
     .reasonItem(r, Some(xyz.kd5ujc.scarab.protocol.Era.Conway))
     .fold(e => munit.Assertions.fail(s"no reply to $r: ${e.message}"), identity)
-
-private def flat(
-    r: Rejection,
-    failures: Vector[xyz.kd5ujc.scarab.ledger.PredicateFailure]
-): xyz.kd5ujc.scarab.codec.Bytes =
-  xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor
-    .applyTxError(failures)
-    .fold(e => munit.Assertions.fail(s"no flat encoding of $r: ${e.message}"), identity)

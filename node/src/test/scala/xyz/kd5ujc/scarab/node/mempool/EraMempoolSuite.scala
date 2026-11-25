@@ -100,7 +100,7 @@ class EraMempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     case Era.Mary                              => earlier[Mary](4)
     case Era.Alonzo                            => earlier[Alonzo](5)
     case Era.Babbage                           => earlier[Babbage](7)
-    case Era.Conway | Era.Byron | Era.Dijkstra => TxKit.ledger(2).toPool
+    case Era.Conway | Era.Byron | Era.Dijkstra => TxKit.ledger(2)
 
   private def pool(era: Era): MempoolState = MempoolState.empty(Right(ledger(era)), 1000, None)
 

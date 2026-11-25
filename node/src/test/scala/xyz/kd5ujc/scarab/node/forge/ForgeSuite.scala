@@ -21,7 +21,7 @@ import xyz.kd5ujc.scarab.consensus.{ChainSelection, SelectView}
 import xyz.kd5ujc.scarab.ledger.state.{Network, NewEpochState, PoolDistr}
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.ledger.*
-import xyz.kd5ujc.scarab.node.mempool.{Source, TxKit, conwayAdmitted, selected, toPool}
+import xyz.kd5ujc.scarab.node.mempool.{Source, TxKit, conwayAdmitted, selected}
 import xyz.kd5ujc.scarab.crypto.vrf.{Draft03Prover, PraosLeaderThreshold as Leader}
 
 /** Forging against the real block rules: whatever the forger builds must pass the same `NodeRules`
@@ -1112,7 +1112,7 @@ class ForgeSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ForgeFix
     val units = xyz.kd5ujc.scarab.plutus.ExUnits(14000000, 10000000000L)
     def bytes(e: xyz.kd5ujc.scarab.node.mempool.Entry) = Capacity.measure(e).bytes
     def pick(entries: Vector[xyz.kd5ujc.scarab.node.mempool.Entry], room: Long) =
-      base.toPool
+      base
         .selected(entries, 1001, TxKit.env, BlockBuilder.Limits(room + 1024, units))
         ._1
         .map(_.admitted.read.id)

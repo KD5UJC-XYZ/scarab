@@ -106,7 +106,7 @@ class MempoolTimeoutsSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     val (t3, id3) = pay(3)
     for
       timing <- scripted(Step.Took(soft), Step.Took(soft + 1.nano), Step.Took(soft + 1.nano))
-      pool <- mempool(ledger(3).toPool, timing)
+      pool <- mempool(ledger(3), timing)
       kept <- pool.add(t1, Source.Local)
       local <- pool.add(t2, Source.Local)
       remote <- pool.add(t3, Source.Remote)
@@ -124,7 +124,7 @@ class MempoolTimeoutsSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     val (t1, id1) = pay(1, fee = 0)
     for
       timing <- scripted(Step.Took(2.seconds))
-      pool <- mempool(ledger(1).toPool, timing)
+      pool <- mempool(ledger(1), timing)
       refused <- pool.add(t1, Source.Remote)
       held <- pool.snapshot
     yield
@@ -187,7 +187,7 @@ class MempoolTimeoutsSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     val cut = 1500.millis
     for
       timing <- scripted(Step.Cut(cut), Step.Cut(cut), Step.Cut(cut), Step.Took(Duration.Zero))
-      pool <- mempool(ledger(4).toPool, timing)
+      pool <- mempool(ledger(4), timing)
       local <- pool.add(t1, Source.Local)
       remote <- pool.add(t2, Source.Remote)
       sink = pool.sink(f => IO(fail(s"fatal: $f")))
@@ -268,7 +268,7 @@ class MempoolTimeoutsSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     "only Conway's ledger has the error: none from Shelley to Babbage, nor in Byron or Dijkstra"
   ) {
     val measured = MempoolState
-      .empty(Right(ledger(1).toPool), 1000, None)
+      .empty(Right(ledger(1)), 1000, None)
       .measure(
         MempoolState
           .read(Submission(Era.Conway.index, pay(1)._1), ReferenceBuild.Release11_2)
@@ -302,7 +302,7 @@ class MempoolTimeoutsSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     for
       events <- Queue.unbounded[IO, MempoolEvent]
       timing <- scripted(Step.Took(5.seconds), Step.Took(1.nano), Step.Took(Duration.Zero))
-      pool <- mempool(ledger(3).toPool, timing, (e: MempoolEvent) => events.offer(e), capacity)
+      pool <- mempool(ledger(3), timing, (e: MempoolEvent) => events.offer(e), capacity)
       // 0 taken: the first is validated, and takes the pool to its capacity, 5 s
       first <- pool.add(t1, Source.Local)
       // 5 s is not past 5 s: the second is validated, and takes the pool past it
@@ -346,7 +346,7 @@ class MempoolTimeoutsSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           events <- Queue.unbounded[IO, MempoolEvent]
           timing <- scripted(Step.Took(6.seconds), Step.Took(Duration.Zero))
           pool <- mempool(
-            ledger(2).toPool,
+            ledger(2),
             timing,
             (e: MempoolEvent) => events.offer(e),
             limits,
@@ -389,7 +389,7 @@ class MempoolTimeoutsSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     "a duplicate waits for room and for time, as the reference's MEMPOOL rule comes after them"
   ) {
     val (t1, id1) = pay(1)
-    val start = MempoolState.empty(Right(ledger(2).toPool), 1000, None)
+    val start = MempoolState.empty(Right(ledger(2)), 1000, None)
     val measured = (s: MempoolState) =>
       s.measure(
         MempoolState
@@ -412,7 +412,7 @@ class MempoolTimeoutsSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       case other => fail(s"not measured: $other")
     // in a pool over its capacity in bytes, it waits for room
     val narrow = held
-      .sync(Right(ledger(2).withParams(_.copy(maxBlockBodySize = 1024 + 50)).toPool), 1000, env)
+      .sync(Right(ledger(2).withParams(_.copy(maxBlockBodySize = 1024 + 50))), 1000, env)
       ._1
     assert(narrow.free.bytes < 0)
     assert(measured(narrow).left.exists(_.isInstanceOf[Rejection.Full]), s"${measured(narrow)}")
@@ -451,10 +451,10 @@ class MempoolTimeoutsSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     val mismatch = Rejection.WrongEra(Era.Babbage.index, Era.Conway)
     val eleven = built(ReferenceBuild.Release11_1)
     // measured as nothing: a pool over its capacity makes it wait, and so does one past its time
-    val start = MempoolState.empty(Right(ledger(2).toPool), 1000, None)
+    val start = MempoolState.empty(Right(ledger(2)), 1000, None)
     val (held, _) = start.add(pay(2)._1, env, Source.Local).fold(r => fail(r.message), identity)
     val narrow = held
-      .sync(Right(ledger(2).withParams(_.copy(maxBlockBodySize = 1024 + 50)).toPool), 1000, env)
+      .sync(Right(ledger(2).withParams(_.copy(maxBlockBodySize = 1024 + 50))), 1000, env)
       ._1
     assert(narrow.measure(submitted, eleven).left.exists(_.isInstanceOf[Rejection.Full]))
     val slow = held.holding(held.entries.map(_.copy(validation = 6.seconds)))
@@ -472,7 +472,7 @@ class MempoolTimeoutsSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     // in time it is refused with the mismatch; late, as too slow, naming the era it came in
     for
       timing <- scripted(Step.Took(Duration.Zero), Step.Took(2.seconds), Step.Cut(1500.millis))
-      pool <- mempool(ledger(2).toPool, timing, env = eleven)
+      pool <- mempool(ledger(2), timing, env = eleven)
       inTime <- pool.submit(Submission(Era.Alonzo.index, raw), Source.Local)
       late <- pool.submit(Submission(Era.Alonzo.index, raw), Source.Remote)
       cut <- pool.submit(Submission(Era.Alonzo.index, raw), Source.Local)
@@ -497,16 +497,16 @@ class MempoolTimeoutsSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     Vector(ReferenceBuild.Release11_2, ReferenceBuild.Leios).traverse_ { build =>
       // redecoded, the transaction does not read in Conway: the mismatch names Alonzo
       val mismatch = Rejection.WrongEra(Era.Alonzo.index, Era.Conway)
-      val start = MempoolState.empty(Right(ledger(2).toPool), 1000, None)
+      val start = MempoolState.empty(Right(ledger(2)), 1000, None)
       val (held, _) = start.add(pay(2)._1, env, Source.Local).fold(r => fail(r.message), identity)
       val narrow = held
-        .sync(Right(ledger(2).withParams(_.copy(maxBlockBodySize = 1024 + 50)).toPool), 1000, env)
+        .sync(Right(ledger(2).withParams(_.copy(maxBlockBodySize = 1024 + 50))), 1000, env)
         ._1
       // refused at once, even by a pool over its capacity, and never timed
       assertEquals(narrow.measure(submitted, built(build)), Left(mismatch), s"$build")
       for
         timing <- scripted(Step.Took(2.seconds))
-        pool <- mempool(ledger(2).toPool, timing, env = built(build))
+        pool <- mempool(ledger(2), timing, env = built(build))
         refused <- pool.submit(Submission(Era.Alonzo.index, raw), Source.Local)
         limits <- timing.limits.get
       yield
@@ -517,7 +517,7 @@ class MempoolTimeoutsSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
 
   test("a held transaction keeps the time its admission took when the pool is validated again") {
     val (t1, id1) = pay(1)
-    val start = MempoolState.empty(Right(ledger(2).toPool), 1000, None)
+    val start = MempoolState.empty(Right(ledger(2)), 1000, None)
     val measured = start
       .measure(
         MempoolState
@@ -530,7 +530,7 @@ class MempoolTimeoutsSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     start.tryAdd(measured, env, Source.Local, None) match
       case MempoolState.Tried.Done(Right(admitted)) =>
         val (held, _) = start.hold(admitted, 3.seconds)
-        val (synced, dropped) = held.sync(Right(ledger(2).toPool), 1001, env)
+        val (synced, dropped) = held.sync(Right(ledger(2)), 1001, env)
         assertEquals(dropped, Vector.empty)
         assertEquals(synced.entries.map(e => (e.id, e.validation)), Vector(id1 -> 3.seconds))
         assertEquals(synced.validationTime, DiffTime.of(3.seconds))
@@ -553,7 +553,7 @@ class MempoolTimeoutsSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         .flatMap(h => Bytes.fromHex(h).left.map(e => io.circe.DecodingFailure(e.message, Nil)))
         .fold(e => fail(e.getMessage), identity)
     val c = PlutusCase.fromJson(j)
-    val ledger = MempoolLedger.of(
+    val ledger = ConwayPools.of(
       Build.funded(Build.nes[Conway](5, c.params), c.spent ++ c.references ++ c.collateral)
     )
     (
@@ -575,7 +575,7 @@ class MempoolTimeoutsSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     val throwing: ScriptEvaluator[cats.Id] = _ => throw RuntimeException("an evaluator defect")
     def pool(evaluator: ScriptEvaluator[cats.Id], timing: Timing[IO]) =
       Mempool.create[IO](
-        Right(plutusLedger.toPool),
+        Right(plutusLedger),
         plutusSlot - 1,
         TxKit.env.copy(evaluator = evaluator),
         None,
@@ -650,7 +650,7 @@ class MempoolTimeoutsSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     val id = MempoolState.parse(plutusTx).fold(r => fail(r.message), _._1)
     for
       pool <- Mempool.create[IO](
-        Right(plutusLedger.toPool),
+        Right(plutusLedger),
         plutusSlot - 1,
         TxKit.env.copy(evaluator = evaluator),
         None,

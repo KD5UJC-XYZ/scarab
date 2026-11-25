@@ -1,13 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.forge
 
-import xyz.kd5ujc.scarab.node.mempool.toPool
 import xyz.kd5ujc.scarab.ledger.state.Network
 import xyz.kd5ujc.scarab.node.MirrorSteps.verdict
 import xyz.kd5ujc.scarab.node.assertions.Assertions
 import xyz.kd5ujc.scarab.node.ConfigSettings
 import xyz.kd5ujc.scarab.ledger.TestGeometry
-import xyz.kd5ujc.scarab.ledger.ChainError
 import cats.effect.{IO, Ref}
 import cats.mtl.{Handle, Raise, Stateful}
 import cats.syntax.all.*
@@ -34,7 +32,7 @@ import xyz.kd5ujc.scarab.consensus.state.{
 import xyz.kd5ujc.scarab.ledger.state.MirrorEnv
 import xyz.kd5ujc.scarab.node.MirrorRules
 import xyz.kd5ujc.scarab.node.RefStateful
-import xyz.kd5ujc.scarab.node.mempool.MempoolLedger
+import xyz.kd5ujc.scarab.node.mempool.ConwayPools
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.node.read.TxClock
 import xyz.kd5ujc.scarab.ledger.Nonce
@@ -324,7 +322,7 @@ class ForgedChainSetup(val geometry: EpochGeometry):
               xyz.kd5ujc.scarab.node.read
                 .ConwayView(initial.state, initial.tipRef)
                 .traverse(
-                  MempoolLedger.tick(
+                  ConwayPools.ticked(
                     _,
                     Some(initial.tipRef.fold(BigInt(slots.head.toLong - 1))(_.slot)),
                     MempoolEnv(
@@ -335,11 +333,7 @@ class ForgedChainSetup(val geometry: EpochGeometry):
                     )
                   )
                 )
-                .bimap(
-                  ChainError
-                    .MempoolTick(initial.tipRef.fold(BigInt(slots.head.toLong - 1))(_.slot) + 1, _),
-                  _.map(_.toPool)
-                )
+                .leftMap(_.stop(initial.tipRef.fold(BigInt(slots.head.toLong - 1))(_.slot) + 1))
             )
           mempool <- Mempool.create[IO](
             mempoolBase,

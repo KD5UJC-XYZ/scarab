@@ -28,7 +28,7 @@ class BootstrapChainCodeSubmissionSuite extends FunSuite:
   private def admitted(raw: Bytes) =
     Source.values.toVector.map(source =>
       source -> MempoolState
-        .empty(Right(TxKit.ledger(1).toPool), 1000, None)
+        .empty(Right(TxKit.ledger(1)), 1000, None)
         .add(raw, TxKit.env, source)
         .map((pool, entry) => (pool.entries.size, entry.id))
     )

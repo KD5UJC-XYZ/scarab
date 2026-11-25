@@ -61,11 +61,11 @@ class ConwayHeldSuite extends FunSuite:
   /** `read` held as if validated in TxKit's ledger (`unsafeMakeValidatedTx`, which the reference
     * keeps for tests).
     */
-  private def admitted(ledger: MempoolLedger, r: ConwayRead = read): ConwayAdmitted =
+  private def admitted(ledger: ConwayPoolLedger, r: ConwayRead = read): ConwayAdmitted =
     val judging = ConwayPoolEnv.of(env, slot).judging
     val pp = PParams[Conway](right("parameters")(ConwayPParams.fromStored(ledger.params)))
     val menv =
-      ConwayMempoolRun.mkMempoolEnv(slot, pp, ChainAccountState(ledger.treasury, Coin.zero))
+      ConwayMempoolRun.mkMempoolEnv(slot, pp, ChainAccountState(ledger.account.treasury, Coin.zero))
     ConwayAdmitted(
       r,
       right("held")(ConwayMempoolRun.unsafeMakeValidatedTx(judging, menv, ledger.ls, r.tx))
@@ -114,7 +114,7 @@ class ConwayHeldSuite extends FunSuite:
       Entry(Held.InConway(admitted(ledger)), 1L, 0L, scala.concurrent.duration.Duration.Zero)
     val limit = BlockBuilder.Limits(65536, xyz.kd5ujc.scarab.plutus.ExUnits(14000000, 10000000000L))
     // a pool that holds a transaction the ledger takes gives a block that takes it
-    val (chosen, withheld) = ledger.toPool.selected(Vector(entry), slot, env, limit)
+    val (chosen, withheld) = ledger.selected(Vector(entry), slot, env, limit)
     assertEquals(chosen.map(_.admitted.read.id), Vector(id))
     assertEquals(withheld, Vector.empty)
   }

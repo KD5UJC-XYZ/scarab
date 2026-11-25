@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.forge
 
-import xyz.kd5ujc.scarab.node.mempool.toPool
 import xyz.kd5ujc.scarab.ledger.state.Network
 import xyz.kd5ujc.scarab.node.assertions.Assertions
 import xyz.kd5ujc.scarab.node.ConfigSettings
@@ -33,7 +32,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
 import xyz.kd5ujc.scarab.node.Follower
 import xyz.kd5ujc.scarab.node.MirrorRules
 import xyz.kd5ujc.scarab.node.RefStateful
-import xyz.kd5ujc.scarab.node.mempool.MempoolLedger
+import xyz.kd5ujc.scarab.node.mempool.ConwayPools
 import xyz.kd5ujc.scarab.node.read.ConwayView
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.node.read.TxClock
@@ -216,7 +215,7 @@ trait ForgeFixture:
           xyz.kd5ujc.scarab.node.read
             .ConwayView(start, None)
             .traverse(
-              MempoolLedger.tick(
+              ConwayPools.ticked(
                 _,
                 Some(BigInt(4999)),
                 MempoolEnv(
@@ -227,7 +226,7 @@ trait ForgeFixture:
                 )
               )
             )
-            .bimap(ChainError.MempoolTick(BigInt(4999) + 1, _), _.map(_.toPool))
+            .leftMap(_.stop(BigInt(4999) + 1))
         )
       mempool <- Mempool.create[IO](
         mempoolBase,
@@ -266,21 +265,21 @@ trait ForgeFixture:
         cats.mtl
           .Raise[IO, NodeError]
           .fromEither(
-            MempoolLedger
-              .at(
-                c.state,
-                c.tipRef,
-                MempoolEnv(
-                  rulesGlobals,
-                  geometry,
-                  xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default,
-                  xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder
+            xyz.kd5ujc.scarab.node.read
+              .ConwayView(c.state, c.tipRef)
+              .traverse(
+                ConwayPools.ticked(
+                  _,
+                  c.tipRef.map(_.slot),
+                  MempoolEnv(
+                    rulesGlobals,
+                    geometry,
+                    xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default,
+                    xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder
+                  )
                 )
               )
-              .bimap(
-                ChainError.MempoolTick(c.tipRef.fold(BigInt(0))(_.slot + 1), _),
-                _.map(_.toPool)
-              )
+              .leftMap(_.stop(c.tipRef.fold(BigInt(0))(_.slot + 1)))
           )
           .flatMap(
             mempool.sync(_, c.tipRef.fold(BigInt(0))(_.slot), Set.empty, c.tipRef.map(_.hash))

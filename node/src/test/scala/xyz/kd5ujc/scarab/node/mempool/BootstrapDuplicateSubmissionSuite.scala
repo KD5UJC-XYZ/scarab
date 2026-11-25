@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.mempool
 
-import cats.data.NonEmptyChain
+import cats.data.NonEmptyList
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.{LedgerFailure, PredicateFailure, UtxowFailure}
 import xyz.kd5ujc.scarab.ledger.TestLedger.{Key, key, txIn}
+import xyz.kd5ujc.scarab.ledger.era.rules.ConwayUtxowPredFailure
+import xyz.kd5ujc.scarab.ledger.state.Conway
 
 /** A submitted transaction with two bootstrap witnesses of one address root. The reference reads
   * them into a `Set` whose `Ord` compares the roots alone, which keeps the last one read (`Ord
@@ -29,7 +30,7 @@ class BootstrapDuplicateSubmissionSuite extends FunSuite:
   private def judged(raw: Bytes) =
     Source.values.toVector.map(source =>
       source -> MempoolState
-        .empty(Right(TxKit.ledger(1).toPool), 1000, None)
+        .empty(Right(TxKit.ledger(1)), 1000, None)
         .add(raw, TxKit.env, source)
         .map((pool, entry) => (pool.entries.size, entry.id))
     )
@@ -44,13 +45,15 @@ class BootstrapDuplicateSubmissionSuite extends FunSuite:
       invalidBootstraps = invalid
     )
 
-  private def invalidWitnesses(id: Bytes, keys: Key*): Either[Rejection, (Int, Bytes)] =
+  private def invalidWitnesses(id: Bytes, keys: Key*): Either[Bytes, (Int, Bytes)] =
     Left(
-      Rejection.Ledger(
-        LedgerFailure.Rejected(
+      ConwayRefusals.sent(
+        ConwayRefusals.refused(
           id,
-          NonEmptyChain.one(
-            PredicateFailure.utxow(UtxowFailure.InvalidWitnesses(keys.toVector.map(_.vkey)))
+          ConwayRefusals.utxow(
+            ConwayUtxowPredFailure.InvalidWitnessesUTXOW[Conway](
+              NonEmptyList.fromListUnsafe(keys.toList.map(_.vkey))
+            )
           )
         )
       )
@@ -66,7 +69,7 @@ class BootstrapDuplicateSubmissionSuite extends FunSuite:
   test("a valid bootstrap witness followed by an invalid one of its root is refused") {
     val (raw, id) = payment(Vector(carol, carol), Set(1))
     for (source, answer) <- judged(raw) do
-      assertEquals(answered(answer), flatAnswer(invalidWitnesses(id, carol)), s"$source")
+      assertEquals(answered(answer), invalidWitnesses(id, carol), s"$source")
   }
 
   test("the last of three witnesses of one root decides, a repeated copy of the first included") {
@@ -74,7 +77,7 @@ class BootstrapDuplicateSubmissionSuite extends FunSuite:
     for (source, answer) <- judged(refused) do
       assertEquals(
         answered(answer),
-        flatAnswer(invalidWitnesses(refusedId, carol)),
+        invalidWitnesses(refusedId, carol),
         s"$source, invalid last"
       )
     val (admitted, admittedId) = payment(Vector(carol, carol, carol), Set(1))
@@ -89,7 +92,7 @@ class BootstrapDuplicateSubmissionSuite extends FunSuite:
       for (source, answer) <- judged(raw) do
         assertEquals(
           answered(answer),
-          flatAnswer(invalidWitnesses(id, dave)),
+          invalidWitnesses(id, dave),
           s"$source, the invalid one at $invalid"
         )
   }
