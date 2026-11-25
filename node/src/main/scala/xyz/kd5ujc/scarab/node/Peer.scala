@@ -141,19 +141,27 @@ object Peer:
     // The newest point of `previous` that `latest` holds, and its last position in `latest` (the
     // base is 0). When `latest` only extends `previous`, that is `previous`'s tip at its own
     // position, unless it occurs again further on: found from the appended headers alone, without
-    // indexing all of `latest` again for each header (issue 1394).
-    val extending =
-      latest.base == previous.base && latest.headers.sizeIs >= previous.headers.size &&
-        previous.headers.lastOption.forall(last =>
-          latest.headers.lift(previous.headers.size - 1).exists(_.point == last.point)
-        ) && latest.headers.drop(previous.headers.size).forall(_.point != previous.tip)
-    val found: Option[(ChainSync.Point, Int)] =
-      if extending then Some(previous.tip -> previous.headers.size)
+    // indexing all of `latest` again for each header (issue 1394). The same holds when `latest`'s
+    // base moved on to one of `previous`'s headers (its candidate was trimmed to our chain's
+    // anchor): the tip's position is then fewer by the headers the trim dropped.
+    val trimmed =
+      if latest.base == previous.base then Some(0)
       else
+        previous.headers.indexWhere(_.point == latest.base) match
+          case -1 => None
+          case at => Some(at + 1)
+    val extending = trimmed.map(previous.headers.size - _).filter { kept =>
+      latest.headers.sizeIs >= kept &&
+      (kept == 0 || latest.headers.lift(kept - 1).exists(_.point == previous.tip)) &&
+      latest.headers.drop(kept).forall(_.point != previous.tip)
+    }
+    val found: Option[(ChainSync.Point, Int)] =
+      extending.map(previous.tip -> _).orElse {
         val positions = (latest.base +: latest.headers.map(_.point)).zipWithIndex.toMap
         (previous.base +: previous.headers.map(_.point)).reverseIterator
           .find(positions.contains)
           .map(point => point -> positions.getOrElse(point, 0))
+      }
     found.toRight(PeerError.Divergence.DetachedCandidate(latest.base)).map { (point, start) =>
       val forward = latest.headers.drop(start).take(limit.max(1))
       val kept = latest.headers.take(start) ++ forward
@@ -1377,6 +1385,36 @@ object Peer:
                   )
                 }
               )
+              // The candidate follows the header gate's history as the gate trims it to our chain's
+              // anchor, as the reference trims its candidate whenever our chain changes
+              // (`intersectsWithCurrentChain`, ouroboros-consensus 82ecba329
+              // MiniProtocol/ChainSync/Client.hs 942-992). The trim never passes `cursor`'s tip, the
+              // newest point published to the session's consumer, and applies only to `published`,
+              // the journal's candidate the cursor was found from, while it is still the session's
+              // candidate: the next publication then finds the cursor's tip, or the point of a later
+              // rollback, which the gate keeps at or after its base.
+              trimToAnchor = (
+                  cursor: ChainSelection.Candidate,
+                  published: ChainSelection.Candidate
+              ) =>
+                gate.get
+                  .flatMap(_.snapshot)
+                  .flatMap(_.traverse_ { history =>
+                    tracked.get.flatMap { track =>
+                      track.trimmed(published, history.base, cursor.tip).traverse_ { next =>
+                        candidateHeaders
+                          .modify(current =>
+                            if current eq published then (next.candidate, true)
+                            else (current, false)
+                          )
+                          .flatMap(done =>
+                            tracked
+                              .update(now => if now eq track then next.track else now)
+                              .whenA(done)
+                          )
+                      }
+                    }
+                  })
               advance = (candidate: ChainSelection.Candidate) =>
                 Deferred[F, Unit].flatMap { fresh =>
                   publishedCursor.getAndSet(candidate -> fresh).flatMap(_._2.complete(()).void)
@@ -1384,13 +1422,17 @@ object Peer:
               capacity = (update: ChainSyncClient.Update[NtNHeader]) =>
                 update match
                   case ChainSyncClient.Update.RollBackward(_, _) => F.unit
-                  case ChainSyncClient.Update.RollForward(_, _) =>
+                  case ChainSyncClient.Update.RollForward(_, _)  =>
+                    // a trim the publication held back is taken as soon as it may, before the room
+                    // is weighed: no batch comes to trim while the window is full
                     def room: F[(Boolean, F[Unit])] =
-                      (publishedCursor.get, candidateHeaders.get, fetcher.changed).tupled.flatMap {
-                        (published, candidate, bodyArrived) =>
+                      (publishedCursor.get, journal.get).tupled.flatMap((cursor, latest) =>
+                        trimToAnchor(cursor._1, latest.candidate)
+                      ) *> (publishedCursor.get, candidateHeaders.get, fetcher.changed).tupled
+                        .flatMap { (published, candidate, bodyArrived) =>
                           windowRoom(published._1, candidate)
                             .map(_ -> F.race(published._2.get, bodyArrived).void)
-                      }
+                        }
                     room.flatMap {
                       case (true, _) => F.unit
                       case (false, _) =>
@@ -1626,7 +1668,8 @@ object Peer:
                       events.zipWithIndex.traverse_ { (event, index) =>
                         permits.acquire.whenA(index > 0) *>
                           queue.offer(PipelineEvent.Batch(Vector(event)))
-                      } *> advance(after).as(Left((after, latest.epoch)))
+                      } *> trimToAnchor(after, latest.candidate) *>
+                        advance(after).as(Left((after, latest.epoch)))
 
                   }
                 }

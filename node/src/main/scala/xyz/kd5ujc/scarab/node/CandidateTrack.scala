@@ -18,6 +18,29 @@ private[node] final case class CandidateTrack(
     heights: Map[Point, Option[BigInt]],
     restricted: Boolean
 ):
+  /** `candidate` trimmed to `anchor`, but never past `published`
+    * ([[FetchCandidates.Announced.trimmedTo]]), with the heights of the points it drops removed:
+    * none unless the track is the one of `candidate` and the trim drops something. Heights filtered
+    * to `candidate` stay filtered to the trimmed one.
+    */
+  def trimmed(
+      candidate: ChainSelection.Candidate,
+      anchor: Point,
+      published: Point
+  ): Option[CandidateTrack.Trimmed] =
+    announced.filter(_.candidate eq candidate).flatMap { index =>
+      index.trimmedTo(anchor, published) match
+        case FetchCandidates.Announced.Step.Moved(next, left) if left.nonEmpty =>
+          val gone = left.filter(point => !next.retains(point) && point != Point.Origin)
+          Some(
+            CandidateTrack.Trimmed(
+              next.candidate,
+              CandidateTrack(Some(next), heights -- gone, restricted)
+            )
+          )
+        case _ => None
+    }
+
   /** A candidate put in place from outside the batches (a Genesis graft), with its index: the next
     * batch carries that index, and filters every height, which were filtered to another candidate.
     */
@@ -62,6 +85,9 @@ private[node] object CandidateTrack:
       announced: FetchCandidates.Announced,
       left: Option[Vector[Point]]
   )
+
+  /** A candidate trimmed to our chain's anchor, with the track that describes it. */
+  final case class Trimmed(candidate: ChainSelection.Candidate, track: CandidateTrack)
 
   /** Apply `batch` to `before`, as a session's candidate takes it: each header rolled forward keeps
     * the newest `retained` headers, each rollback goes back to a point or starts the candidate
