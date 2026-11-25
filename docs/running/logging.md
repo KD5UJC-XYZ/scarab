@@ -73,6 +73,9 @@ exec java -Xms3g -Xmx3g -XX:+UseG1GC -XX:MaxGCPauseMillis=20 \
   --log-every stdout:Chain.Extended=1000
 ```
 
+This is a class path run in the JDK image. The release image's entry point already execs the JVM, through its
+launcher, which takes JVM options differently ([launcher.md](launcher.md)).
+
 `docker logs` (and the monitoring agent, [ops/monitoring](../../ops/monitoring/README.md)) then sees every line but
 999 of each 1000 `extended`, and `/data/sync.jsonl` with its rotated files holds everything.
 

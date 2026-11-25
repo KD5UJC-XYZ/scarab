@@ -67,7 +67,7 @@ script exits 0 after it prints the new image's ID, and `docker image inspect` pr
 Every node command below runs the node's `Main` in the JDK image through the function `scarab`: the checkout
 (`$REPO`) read-only at `/work` with the dependency cache at `/work/.cache`, `$D` at `/data`, and the JVM flags the
 devnet passes, started through the release image's launcher `scripts/scarab-jvm`, which keeps step 6's keys off disk
-([forging.md](forging.md#keys-in-memory)). `HEAP` is the JVM's heap option
+([launcher.md](launcher.md)). `HEAP` is the JVM's heap option
 (`-Xmx...`): preprod's as [configuration.md](configuration.md#preprod) runs it, mainnet's as
 [the mainnet follower's measurements](../performance/mainnet-follower.md#flags-for-the-fastest-follow) record it.
 

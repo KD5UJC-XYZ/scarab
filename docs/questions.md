@@ -28,6 +28,7 @@ that record are authoritative. Modules and packages are in [codemap.md](codemap.
 | How is deeply nested CBOR walked without recursion? | [TreeFold.scala](../codec/src/main/scala/xyz/kd5ujc/scarab/codec/TreeFold.scala) | [ADR 0011](adr/0011-stack-safety.md) |
 | Where is a decode failure located in the input? | [DecodeSite.scala](../ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/DecodeSite.scala) | [design/domain-errors.md](design/domain-errors.md) |
 | Where are the fuzz targets registered? | `Targets.all` in [Targets.scala](../fuzz/src/test/scala/xyz/kd5ujc/scarab/fuzz/Targets.scala) | [running.md](running/fuzzing.md#fuzzing-the-decoders-roadmap-k3) |
+| How does the release image or a Nix app start the node's JVM, and which variables does it read? | [scripts/scarab-jvm](../scripts/scarab-jvm) | [running/launcher.md](running/launcher.md) |
 | Where are devnet scenarios registered? | [scripts/devnet/cli.py](../scripts/devnet/cli.py), [scripts/devnet/scenarios](../scripts/devnet/scenarios) | [running.md](running/devnet.md#devnet-scenarios-scriptsdevnetpy) |
 
 ## Decisions recorded outside an ADR
