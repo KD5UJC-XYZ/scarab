@@ -70,6 +70,11 @@ class DijkstraOnePassSuite extends ScalaCheckSuite:
         .fold(e => fail(e.message), identity)
         .map(c => hex(str(c, "bytes"))),
       "UTXOW cases" -> DijkstraCorpus.utxowCases.map(j => hex(str(j, "tx"))).distinct,
+      "ENTITIES cases" -> DijkstraCorpus
+        .jsonLines("fixtures/reference/dijkstra-rules/cases.jsonl")
+        .filter(j => str(j, "kind") == "entities")
+        .map(j => hex(str(j, "tx")))
+        .distinct,
       "BBODY cases" -> DijkstraCorpus
         .jsonLines("fixtures/reference/dijkstra-rules/cases.jsonl")
         .filter(j => str(j, "kind") == "bbody")
@@ -192,7 +197,10 @@ class DijkstraOnePassSuite extends ScalaCheckSuite:
     assertEquals(counts("script contexts")._1, Map(Accepted -> 11))
     assertEquals(counts("chain script contexts")._1, Map(Accepted -> 200))
     assertEquals(counts("context refusals")._1, Map(Accepted -> 22))
-    assertEquals(counts("UTXOW cases")._1, Map(Accepted -> 12))
+    // the 11 distinct UTXOW transactions, and the collateral return to a pointer address of the
+    // cases of 2026-11-24 (#1420); their 13 distinct ENTITIES transactions
+    assertEquals(counts("UTXOW cases")._1, Map(Accepted -> (11 + 1)))
+    assertEquals(counts("ENTITIES cases")._1, Map(Accepted -> 13))
     assert(counts("BBODY cases")._1.getOrElse(Accepted, 0) > 0, counts("BBODY cases").toString)
     assertEquals(
       forms,
