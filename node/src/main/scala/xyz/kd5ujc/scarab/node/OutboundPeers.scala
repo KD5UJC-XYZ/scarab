@@ -592,7 +592,11 @@ final class OutboundPeers[F[_]: Async, A] private (
     }
 
   /** A request starts in its own scope. Domain network failures terminate that mini-protocol's
-    * connection; defects stop the node without peer blame. A missing controller is no answer.
+    * connection; defects stop the node without peer blame. A missing controller is no answer, and
+    * neither is one whose client has said `Done`: a closing connection keeps its link until the
+    * connection manager lets it go, while the reference unregisters the controller when its client
+    * ends (`bracketPeerSharingClient`, `PeerSharing.hs` 81-93 at ouroboros-network c45735a5;
+    * [[PeerSharingController]], issue 1439).
     */
   def requestPeerShare(peer: A, amount: xyz.kd5ujc.scarab.protocol.PeerSharing.Amount)(
       address: xyz.kd5ujc.scarab.protocol.PeerSharing.Address => Option[A]
@@ -604,11 +608,14 @@ final class OutboundPeers[F[_]: Async, A] private (
           case None => F.pure(PeerShare.Result.NotRegistered())
           case Some(client) =>
             Fibers
-              .scoped[F, NetworkError, Vector[xyz.kd5ujc.scarab.protocol.PeerSharing.Address]](
+              .scoped[F, NetworkError, PeerSharingController.Result](
                 NetworkError.fromThrowable("peer-sharing", _)
               )(client.request(amount))
               .flatMap {
-                case Right(peers) => F.pure(PeerShare.Result.Peers(peers.flatMap(address)))
+                case Right(PeerSharingController.Result.Peers(peers)) =>
+                  F.pure(PeerShare.Result.Peers(peers.flatMap(address)))
+                case Right(PeerSharingController.Result.NotRegisteredYet) =>
+                  F.pure(PeerShare.Result.NotRegistered())
                 // an exception of ours processing the reply ends that connection like any other
                 // failure of it (issue 567)
                 case Left(error) => link.warm.mux.abort(error).as(PeerShare.Result.Failed(error))

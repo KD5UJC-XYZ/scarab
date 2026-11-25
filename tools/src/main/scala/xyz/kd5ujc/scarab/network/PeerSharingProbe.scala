@@ -55,9 +55,12 @@ object PeerSharingProbe extends IOApp:
                 case None => IO.println("peer sharing not agreed: the peer has it off")
                 case Some(client) =>
                   (1 to count).toList.traverse_ { i =>
-                    client.request(amount).flatMap { peers =>
-                      IO.println(s"request $i for ${amount.value}: ${peers.size} peers") *>
-                        peers.traverse_(a => IO.println(s"  ${show(a)}"))
+                    client.request(amount).flatMap {
+                      case PeerSharingController.Result.Peers(peers) =>
+                        IO.println(s"request $i for ${amount.value}: ${peers.size} peers") *>
+                          peers.traverse_(a => IO.println(s"  ${show(a)}"))
+                      case PeerSharingController.Result.NotRegisteredYet =>
+                        IO.println(s"request $i: the client has said Done")
                     }
                   } *> client.done
             yield ()

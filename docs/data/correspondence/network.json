@@ -2290,6 +2290,130 @@
    ],
    "note": "the handler the client is given (k0), as two parts: prepare reads ahead of a reply's turn what changes nothing its turn relies on, with what to take where that reading has not ended by the reply's turn or failed, and handle takes the replies in order with it; with nothing read ahead (Handling.inOrder) it is k0 itself. LeiosVotesSuite shows that a vote checked ahead and committed in its turn counts as adding it in its turn counts it",
    "digest": "9d3b0130e9850772"
+  },
+  "trait network.PeerSharingController": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/lib/Ouroboros/Network/PeerSharing.hs",
+     "symbol": "PeerSharingController",
+     "lines": [
+      57,
+      60
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/lib/Ouroboros/Network/PeerSharing.hs",
+     "symbol": "PeerSharingRegistry",
+     "lines": [
+      73,
+      75
+     ]
+    }
+   ],
+   "class": "Gap",
+   "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1439#issuecomment-7161652843",
+   "note": "a peer's entry in the registry and its controller, as one value of the connection: present (the client registered) until its Done, absent after. The reference's controller is a depth-1 mailbox the client loop takes requests from; here a request calls the client, under a lock that also orders the Done",
+   "digest": "153b5f6a77245e61"
+  },
+  "def network.PeerSharingController#request": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/lib/Ouroboros/Network/PeerSelection/PeerSelectionActions.hs",
+     "symbol": "requestPeerSharingResult",
+     "lines": [
+      104,
+      123
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/lib/Ouroboros/Network/PeerSharing.hs",
+     "symbol": "requestPeers",
+     "lines": [
+      62,
+      67
+     ]
+    }
+   ],
+   "class": "Gap",
+   "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1439#issuecomment-7161652843",
+   "note": "the registry lookup and the request: no registered client is PeerSharingNotRegisteredYet, without touching the connection; otherwise the client's answer. The outcomes of a request concurrent with the Done are among the reference's: it is answered when it takes the lock first (the reference's client takes a queued request before Terminate, PeerSharing.hs 115-122), and otherwise answers NotRegisteredYet once the Done is sent, as a lookup after the bracket's release does there; the reference's third outcome, a request that looked the controller up before the release and queued after Terminate waiting until the job gives up, does not arise, the lookup and the queueing being one step under the lock. The governor asks a peer once at a time (its share time is set when it is picked), so no second request queues behind one in flight. The behaviour is the reference's; the structure differs with no differential evidence yet, hence the Gap",
+   "digest": "2f25913cf9a15248"
+  },
+  "def network.PeerSharingController#done": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/lib/Ouroboros/Network/PeerSharing.hs",
+     "symbol": "peerSharingClient",
+     "lines": [
+      112,
+      125
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/lib/Ouroboros/Network/PeerSharing.hs",
+     "symbol": "bracketPeerSharingClient",
+     "lines": [
+      86,
+      93
+     ]
+    }
+   ],
+   "class": "Gap",
+   "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1439#issuecomment-7161652843",
+   "note": "the client's Terminate branch (SendMsgDone) and the bracket's release that unregisters it, which also runs when the Done raises; a second Done finds no client and does nothing, as the reference's client sends MsgDone once",
+   "digest": "d416909dd641809d"
+  },
+  "enum network.PeerSharingController.Result": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/PeerSharing/Type.hs",
+     "symbol": "PeerSharingResult",
+     "lines": [
+      38,
+      40
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "PeerSharingResult [peer] and PeerSharingNotRegisteredYet, over the wire's addresses",
+   "digest": "d80ae15a11dda327"
+  },
+  "def network.PeerSharingController.apply": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/lib/Ouroboros/Network/PeerSharing.hs",
+     "symbol": "bracketPeerSharingClient",
+     "lines": [
+      81,
+      93
+     ]
+    }
+   ],
+   "class": "Gap",
+   "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1439#issuecomment-7161652843",
+   "note": "the registration of a fresh controller for the client, which the warm connection holds for the life of the client (NodeToNode.warm)",
+   "digest": "55ccc820c14653f1"
   }
  },
  "glue": [
@@ -2661,6 +2785,12 @@
     "object network.LeiosNotifyPipelined.Handling",
     "def network.LeiosNotifyPipelined.Handling.inOrder",
     "val network.LeiosNotifyPipelined.Lookahead"
+   ]
+  },
+  {
+   "reason": "the companion of PeerSharingController, holding its result type and constructor",
+   "definitions": [
+    "object network.PeerSharingController"
    ]
   }
  ]

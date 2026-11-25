@@ -115,7 +115,7 @@ final class WarmConnection[F[_], P, A] private[network] (
     role: Mux.Role,
     codec: ChainSync.PayloadCodec[P],
     settings: NodeToNode.Settings,
-    val peerSharing: Option[PeerSharingClient[F]] = None,
+    val peerSharing: Option[PeerSharingController[F]] = None,
     val duplex: Boolean = false,
     val fetchPerformance: Option[F[FetchGsv.PeerGsv]],
     val applications: ProtocolResults[F, A],
@@ -633,25 +633,26 @@ object NodeToNode:
             mux
               .channel(Protocols.PeerSharing, role)
               .flatMap(PeerSharingClient(_, settings.peerSharing))
+              .flatMap(PeerSharingController(_))
               .flatMap(client =>
                 applications
                   .start(Protocols.PeerSharing, ProtocolResults.Temperature.Established)
                   .map { result =>
-                    new PeerSharingClient[F]:
+                    new PeerSharingController[F]:
+                      // a request after the `Done` answers that no client is registered, and is
+                      // no failure of the connection (issue 1439)
                       def request(amount: xyz.kd5ujc.scarab.protocol.PeerSharing.Amount)(using
                           Raise[F, NetworkError]
                       ) =
                         Fibers
-                          .scoped[F, NetworkError, Vector[
-                            xyz.kd5ujc.scarab.protocol.PeerSharing.Address
-                          ]](NetworkError.Defect(_))(
-                            client.request(amount)
-                          )
+                          .scoped[F, NetworkError, PeerSharingController.Result](
+                            NetworkError.Defect(_)
+                          )(client.request(amount))
                           .flatMap {
-                            case Right(peers) => Async[F].pure(peers)
+                            case Right(answer) => Async[F].pure(answer)
                             case Left(error) =>
                               result.complete(Left(error)) *> mux.abort(error) *> error
-                                .raise[F, Vector[xyz.kd5ujc.scarab.protocol.PeerSharing.Address]]
+                                .raise[F, PeerSharingController.Result]
                           }
                       def done(using Raise[F, NetworkError]) =
                         client.done *> result.complete(Right(noInitiatorResult))

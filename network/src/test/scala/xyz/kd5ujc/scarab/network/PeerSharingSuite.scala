@@ -2,8 +2,9 @@
 package xyz.kd5ujc.scarab.network
 
 import xyz.kd5ujc.scarab.protocol.TxSubmission2Fixtures
-import cats.effect.{IO, Ref, Resource}
+import cats.effect.{Deferred, IO, Ref, Resource}
 import cats.effect.testkit.TestControl
+import cats.mtl.Raise
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.{ChainSync, ChainSyncFixtures, PeerSharing}
@@ -289,7 +290,9 @@ class PeerSharingSuite extends FailsOnUncaught:
   test("both sides offer the flag: the client asks and the server answers on the connection"):
     typed(
       connection(ours = true, theirs = true).use(w => w.peerSharing.traverse(_.request(amount(5))))
-    ).map(r => assertEquals(r, Right(Some(Vector(addr(1), addr(2))))))
+    ).map(r =>
+      assertEquals(r, Right(Some(PeerSharingController.Result.Peers(Vector(addr(1), addr(2))))))
+    )
 
   test("the flag is the conjunction: either side off, no client"):
     for
@@ -323,4 +326,54 @@ class PeerSharingSuite extends FailsOnUncaught:
           )
         }
         .use(_.peerSharing.traverse(_.request(amount(5))))
-    ).map(r => assertEquals(r, Right(Some(Vector.empty[Address]))))
+    ).map(r => assertEquals(r, Right(Some(PeerSharingController.Result.Peers(Vector.empty)))))
+
+  // issue 1439: a closing connection's PeerSharing client has said `Done` while the governor may
+  // still ask its peer; the reference's controller is gone with its client by then
+  // (`bracketPeerSharingClient`, `PeerSharing.hs` 81-93 at ouroboros-network c45735a5)
+  test("after the connection's close said Done, a request answers not registered; it stays up"):
+    typed(
+      connection(ours = true, theirs = true).use { w =>
+        for
+          _ <- w.stopEstablished
+          answer <- w.peerSharing.traverse(_.request(amount(5)))
+          failure <- w.mux.failure
+        yield (answer, failure)
+      }
+    ).map(r => assertEquals(r, Right((Some(PeerSharingController.Result.NotRegisteredYet), None))))
+
+  private enum Call:
+    case Request, Done
+
+  test("a request in flight as the Done is asked is answered; after it, none reaches the client"):
+    typed {
+      (Deferred[IO, Unit], Deferred[IO, Unit], Ref.of[IO, Vector[Call]](Vector.empty)).tupled
+        .flatMap { (started, answer, calls) =>
+          val client = new PeerSharingClient[IO]:
+            def request(amount: Amount)(using Raise[IO, NetworkError]) =
+              started.complete(()) *> answer.get *>
+                calls.update(_ :+ Call.Request).as(Vector(addr(1)))
+            def done(using Raise[IO, NetworkError]) = calls.update(_ :+ Call.Done)
+          for
+            controller <- PeerSharingController(client)
+            raced <- (
+              controller.request(amount(1)),
+              started.get *> (controller.done, answer.complete(())).parTupled
+            ).parTupled
+            again <- controller.request(amount(1))
+            _ <- controller.done
+            made <- calls.get
+          yield (raced._1, again, made)
+        }
+    }.map(r =>
+      assertEquals(
+        r,
+        Right(
+          (
+            PeerSharingController.Result.Peers(Vector(addr(1))),
+            PeerSharingController.Result.NotRegisteredYet,
+            Vector(Call.Request, Call.Done)
+          )
+        )
+      )
+    )
