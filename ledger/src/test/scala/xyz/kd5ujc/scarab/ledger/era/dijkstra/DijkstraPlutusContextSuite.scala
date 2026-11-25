@@ -279,11 +279,15 @@ class DijkstraPlutusContextSuite extends FunSuite:
   private def byLanguage(compared: Vector[Compared]): Map[PlutusLanguage, scala.Int] =
     compared.flatMap(_.contexts).groupMapReduce(identity)(_ => 1)(_ + _)
 
-  private def results(path: String): Map[String, Json] =
-    json(path).asArray
-      .getOrElse(fail(s"$path is not an array"))
-      .map(r => str(r, "name") -> r)
-      .toMap
+  /** A fixture's results by case name, which must be its cases', in their order. */
+  private def results(path: String, cases: Vector[Json]): Map[String, Json] =
+    val recorded = json(path).asArray.getOrElse(fail(s"$path is not an array"))
+    assertEquals(
+      recorded.map(str(_, "name")),
+      cases.map(str(_, "name")),
+      s"$path: the cases' results"
+    )
+    recorded.map(r => str(r, "name") -> r).toMap
 
   // ---- the chain's transactions
 
@@ -293,7 +297,7 @@ class DijkstraPlutusContextSuite extends FunSuite:
     val compared = compareFixture(
       environment(chain),
       chainContextCases,
-      results("fixtures/reference/leios-testnet-chain-contexts/results.json")
+      results("fixtures/reference/leios-testnet-chain-contexts/results.json", chainContextCases)
     )
     assertEquals(compared.size, 200)
     val all = compared.flatMap(_._2)
@@ -320,7 +324,8 @@ class DijkstraPlutusContextSuite extends FunSuite:
     // contexts first, then each sub-transaction's) and a redeemer of that level's own witnesses,
     // each named once; and nothing where the script at the place is another
     val env = environment(chain)
-    val recorded = results("fixtures/reference/leios-testnet-chain-contexts/results.json")
+    val recorded =
+      results("fixtures/reference/leios-testnet-chain-contexts/results.json", chainContextCases)
     val reason: EvalFailure.Unsupported =
       EvalFailure.Unsupported(BackendFailure.BudgetOutOfRange(ExUnits(0, 0)))
     def keys[L <: TxLevel](tx: DijkstraTx[L])(using BothLevels[L]): Set[(scala.Int, BigInt)] =
@@ -760,7 +765,7 @@ class DijkstraPlutusContextSuite extends FunSuite:
     val compared = compareFixture(
       environment(refusals),
       refusalCases,
-      results("fixtures/reference/leios-testnet-context-refusals/results.json")
+      results("fixtures/reference/leios-testnet-context-refusals/results.json", refusalCases)
     )
     assertEquals(compared.size, 22)
     val all = compared.flatMap(_._2)
@@ -813,7 +818,7 @@ class DijkstraPlutusContextSuite extends FunSuite:
     val compared = compareFixture(
       contextsEnvironment,
       contextCases,
-      results("fixtures/reference/leios-testnet-contexts/results.json")
+      results("fixtures/reference/leios-testnet-contexts/results.json", contextCases)
     )
     assertEquals(compared.size, 11)
     val all = compared.flatMap(_._2)
@@ -826,7 +831,7 @@ class DijkstraPlutusContextSuite extends FunSuite:
 
   test("each recorded transaction is the one the reference ran: its id, validity and acceptance") {
     def check(cases: Vector[Json], path: String): Vector[(Boolean, IsPhase2Valid)] =
-      val recorded = results(path)
+      val recorded = results(path, cases)
       cases.map { c =>
         val name = str(c, "name")
         val (tx, _) = read(c)
@@ -852,8 +857,16 @@ class DijkstraPlutusContextSuite extends FunSuite:
         else IsPhase2Valid.Phase2Invalid
       )
     )
-    val failures = results("fixtures/reference/leios-testnet-chain-contexts/results.json").values
-      .flatMap(_.hcursor.downField("result").get[Option[String]]("failure").toOption.flatten)
+    val failures = results(
+      "fixtures/reference/leios-testnet-chain-contexts/results.json",
+      chainContextCases
+    ).values
+      .flatMap(
+        _.hcursor
+          .downField("result")
+          .get[Option[String]]("failure")
+          .fold(e => fail(e.message), identity)
+      )
     assertEquals(failures.toVector, Vector.empty)
   }
 
@@ -884,7 +897,7 @@ class DijkstraPlutusContextSuite extends FunSuite:
     assertEquals(updates.size, 1)
     assert(updates.forall(_ != PlutusData.Map(Vector.empty)))
     val recorded = levels(
-      results("fixtures/reference/leios-testnet-contexts/results.json")
+      results("fixtures/reference/leios-testnet-contexts/results.json", contextCases)
         .getOrElse("governance", fail("no governance result"))
     )
     val contexts = recorded.headOption match
@@ -907,17 +920,17 @@ class DijkstraPlutusContextSuite extends FunSuite:
       (
         environment(chain),
         chainContextCases,
-        results("fixtures/reference/leios-testnet-chain-contexts/results.json")
+        results("fixtures/reference/leios-testnet-chain-contexts/results.json", chainContextCases)
       ),
       (
         environment(refusals),
         refusalCases,
-        results("fixtures/reference/leios-testnet-context-refusals/results.json")
+        results("fixtures/reference/leios-testnet-context-refusals/results.json", refusalCases)
       ),
       (
         contextsEnvironment,
         contextCases,
-        results("fixtures/reference/leios-testnet-contexts/results.json")
+        results("fixtures/reference/leios-testnet-contexts/results.json", contextCases)
       )
     )
     def language(id: BigInt): PlutusLanguage =
