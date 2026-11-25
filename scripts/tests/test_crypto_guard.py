@@ -306,6 +306,71 @@ class SecretPathGuardTests(unittest.TestCase):
         write(root / f"{Secret}/Uses.scala", SECRET + "object U { }")
         self.assertEqual(guarded(["check_crypto_guard.py", str(root)]), 0)
 
+    def test_the_expressions_of_an_interpolated_string_are_read(self):
+        for line in (
+            's"${Ed25519Point.decode(b)}"',
+            'f"$x%s ${BigInt(1)}"',
+            's"""${VartimeEd25519.verify(m)} and more"""',
+            'raw"${a.sameElements(b)}"',
+            's"${java.util.Arrays.equals(a, b)}"',
+            's"${{ val v = sqrtRatioVar(u, w, z); v }}"',
+        ):
+            with self.subTest(line=line):
+                found = self.found({f"{Secret}/Uses.scala": SECRET + f"object U {{ val t = {line} }}"})
+                self.assertEqual(len(found), 1, (line, found))
+
+    def test_the_text_of_an_interpolated_string_is_not_read(self):
+        self.assertEqual(
+            self.found({f"{Secret}/Text.scala": SECRET + 'object T { val t = s"no vartime, no BigInt: $x and ${y.size}" }'}),
+            [],
+        )
+
+    def test_every_form_of_a_package_clause_puts_a_source_in_the_package(self):
+        call = "object U { BigInt(1) }"
+        elsewhere = "crypto/src/main/scala/xyz/kd5ujc/scarab/elsewhere"
+        for name, text in (
+            ("colon", "package xyz.kd5ujc.scarab.crypto.vrf.secret:\n  " + call + "\n"),
+            ("braces", "package xyz.kd5ujc.scarab.crypto.vrf.secret {\n  " + call + "\n}\n"),
+            ("nested braces", "package xyz.kd5ujc.scarab.crypto.vrf {\npackage secret {\n" + call + "\n}\n}\n"),
+            ("nested colons", "package xyz.kd5ujc.scarab.crypto:\n  package vrf.secret:\n    " + call + "\n"),
+            ("after other code", "package xyz.kd5ujc.scarab.crypto.vrf\nobject A\npackage secret:\n  " + call + "\n"),
+        ):
+            with self.subTest(form=name):
+                self.assertEqual(len(self.found({f"{elsewhere}/U.scala": text})), 1, name)
+        self.assertEqual(
+            self.found({f"{elsewhere}/O.scala": "package object secret { " + call + " }"}),
+            [],
+            "a package object named secret is not the package",
+        )
+
+    def test_an_import_may_not_rename_or_bring_in_members_of_java_util_arrays(self):
+        for imported in (
+            "import java.util.{Arrays as A}",
+            "import java.util.{Arrays => A}",
+            "import java.util.Arrays.{equals as same}",
+            "import java.util.Arrays.equals",
+            "import java.util.Arrays.*",
+            "import java.util.{\n  Arrays as A\n}",
+            "import com.weavechain.curve25519.{Scalar as S}",
+        ):
+            with self.subTest(imported=imported):
+                found = self.found({f"{Secret}/Uses.scala": SECRET + imported + "\nobject U"})
+                self.assertGreaterEqual(len(found), 1, imported)
+        java = self.found(
+            {f"{Secret}/Uses.java": "package xyz.kd5ujc.scarab.crypto.vrf.secret;\nimport static java.util.Arrays.mismatch;\nclass U {}"}
+        )
+        self.assertGreaterEqual(len(java), 1, "a static import of an Arrays member")
+
+    def test_arrays_may_be_filled_and_nothing_else(self):
+        self.assertEqual(
+            self.found({f"{Secret}/Fill.scala": SECRET + "import java.util.Arrays\nobject F { Arrays.fill(a, 0.toByte) }"}),
+            [],
+        )
+        for call in ("Arrays.mismatch(a, b)", "java.util.Arrays.compare(a, b)", "Arrays . equals(a, b)", "a corresponds b", "a sameElements b"):
+            with self.subTest(call=call):
+                found = self.found({f"{Secret}/Uses.scala": SECRET + f"object U {{ {call} }}"})
+                self.assertEqual(len(found), 1, (call, found))
+
 
 if __name__ == "__main__":
     unittest.main()

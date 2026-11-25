@@ -27,12 +27,17 @@ The secret path of VRF proving (#1418) is held tighter too. The main sources of 
 `xyz.kd5ujc.scarab.crypto.vrf.secret`, which hold the signing key's seed and every value computed
 from it, may name no variable-time routine (`VARIABLE_TIME`: the `vartime*` operations and
 `VartimeEd25519`, the NAF recoding, Bouncy Castle's `*Var` routines, `Ed25519Point`, `Draft03Math`,
-the verifiers, big-integer arithmetic), no comparison that stops at the first difference, and no
-call that would share an array the package erases. `Draft03Prover.scala`, which hands that package
-the hash-to-curve point, may call `Draft03Math.h2c` (its inputs are the public key and alpha) and
-nothing else of the variable-time math. A source is of the package when it sits in its directory
-or declares it, in any module's main sources (`tools` among them); comments and string literals are
-not read. Test sources are not covered: a suite may check a proof with the verifier.
+the verifiers, big-integer arithmetic), no comparison that stops at the first difference (and no
+member of `java.util.Arrays` but `fill`), and no call that would share an array the package erases;
+and an import there may rename nothing and bring in no member of `java.util.Arrays`, so that a
+listed name cannot be called under another (`IMPORT_RULES`). `Draft03Prover.scala`, which hands that
+package the hash-to-curve point, may call `Draft03Math.h2c` (its inputs are the public key and alpha)
+and nothing else of the variable-time math. A source is of the package when it sits in its directory
+or when any of its package clauses, in any form (chained, `:`, braces, nested), names it, in any
+module's main sources (`tools` among them). Comments and string literals are not read; the
+expressions of an interpolated string are. Test sources are not covered: a suite may check a proof
+with the verifier. The check reads names, not calls: a routine reached through code in another
+package, by reflection, or under a name the list does not hold is review only.
 
 Usage: python3 scripts/check_crypto_guard.py [repo-root]
 Exit 0 when every reference is contained; 1 with the offending files listed.
@@ -168,16 +173,29 @@ VARIABLE_TIME = (
     (re.compile(r"\bEd25519Point\b"), "the variable-time point arithmetic and its decoder"),
     (re.compile(r"\b(StrictDraft03|StrictEd25519|ByronEd25519)\b"), "a verifier (variable-time)"),
     (re.compile(r"\bBig(Int|Integer|Decimal)\b"), "variable-time integer arithmetic"),
-    (re.compile(r"\bArrays\s*\.\s*equals\b|\bsameElements\b"), "a comparison that stops at a difference"),
+    (re.compile(r"\b(sameElements|corresponds|contentEquals|deepEquals)\b"), "a comparison that stops at a difference"),
+    (re.compile(r"\bArrays\s*\.\s*(?!fill\b)\w+"), "a member of java.util.Arrays other than fill (equals, mismatch, compare, ...)"),
     (re.compile(r"\bBytes\s*\.\s*wrap\b|\bunsafeArray\b"), "a value sharing an array that is erased"),
 )
 DRAFT03_MATH = re.compile(r"\bDraft03Math\b(?:\s*\.\s*(\w+))?")
 FACADE_MATH = {"h2c"}
-PACKAGE_CLAUSE = re.compile(r"\s*package\s+([\w.]+)\s*;?\s*$")
+# A package clause in any of its forms (`package a.b`, `package a.b;`, `package a.b:`, `package a.b {`); `package
+# object` is not one.
+PACKAGE_CLAUSE = re.compile(r"\bpackage\s+(?!object\b)([A-Za-z_][\w.]*)")
+# An import to the end of its line, with a selector in braces however many lines it takes.
+IMPORT = re.compile(r"\bimport\s+([^\n;{]*(?:\{[^}]*\})?[^\n;]*)")
+# What an import in the secret package may not do: give a name another (`as`, or `=>` in a selector), so that a
+# forbidden routine cannot be called under a name the list does not hold; or bring in members of java.util.Arrays,
+# which are called as `Arrays.<member>` and so seen.
+IMPORT_RULES = (
+    (re.compile(r"\bas\b|=>"), "an import that renames (a forbidden name could be called under another)"),
+    (re.compile(r"\bArrays\s*\.\s*[\w{*]"), "an import of members of java.util.Arrays"),
+)
 
 
 def code_of(text: str) -> str:
-    """`text` without its comments and string and character literals, each replaced by a space."""
+    """`text` without its comments and its string and character literals, each replaced by a space. The
+    expressions of an interpolated string (`${...}`, and `$name`) are code and are kept."""
     out = []
     i, n = 0, len(text)
     while i < n:
@@ -193,6 +211,8 @@ def code_of(text: str) -> str:
                     depth, i = depth - 1, i + 2
                 else:
                     i += 1
+        elif text[i] == '"' and i > 0 and (text[i - 1].isalnum() or text[i - 1] == "_"):
+            i = interpolated(text, i, out)
         elif text.startswith('"""', i):
             j = text.find('"""', i + 3)
             i = n if j < 0 else j + 3
@@ -209,17 +229,43 @@ def code_of(text: str) -> str:
     return "".join(out)
 
 
-def declared_package(text: str):
-    """The package the leading package clauses declare (chained clauses joined), or None."""
-    names = []
-    for line in code_of(text).splitlines():
-        if not line.strip():
-            continue
-        match = PACKAGE_CLAUSE.match(line)
-        if not match:
-            break
-        names.append(match.group(1))
-    return ".".join(names) if names else None
+def interpolated(text: str, i: int, out: list) -> int:
+    """Read the interpolated string that opens at `text[i]`, appending its expressions to `out` as code; the index
+    after its closing quote."""
+    triple = text.startswith('"""', i)
+    close = '"""' if triple else '"'
+    i, n = i + len(close), len(text)
+    while i < n and not text.startswith(close, i):
+        if text.startswith("$$", i):
+            i += 2
+        elif text.startswith("${", i):
+            depth, i = 1, i + 2
+            out.append(" ")
+            while i < n and depth:
+                depth += {"{": 1, "}": -1}.get(text[i], 0)
+                if depth:
+                    out.append(text[i])
+                i += 1
+            out.append(" ")
+        elif text[i] == "$":
+            j = i + 1
+            while j < n and (text[j].isalnum() or text[j] == "_"):
+                j += 1
+            out.append(" " + text[i + 1 : j] + " ")
+            i = j
+        elif not triple and text[i] == "\n":
+            return i
+        else:
+            i += 2 if (not triple and text[i] == "\\") else 1
+    return i + len(close)
+
+
+def declared_packages(code: str):
+    """Every package a source's package clauses name: each clause, and each run of consecutive clauses joined, so
+    that chained, nested and block forms all name their full package."""
+    names = PACKAGE_CLAUSE.findall(code)
+    return {".".join(names[a:b]) for a in range(len(names)) for b in range(a + 1, len(names) + 1)}
+
 
 
 def secret_path_violations(root: Path):
@@ -236,13 +282,11 @@ def secret_path_violations(root: Path):
         except OSError:
             continue
         code = code_of(text)
-        package = declared_package(text) or ""
-        in_package = (
-            parts[i + 3 : i + 3 + len(SECRET_PARTS)] == SECRET_PARTS
-            or package == SECRET_PACKAGE
-            or package.startswith(SECRET_PACKAGE + ".")
+        packages = declared_packages(code)
+        in_package = parts[i + 3 : i + 3 + len(SECRET_PARTS)] == SECRET_PARTS or any(
+            p == SECRET_PACKAGE or p.startswith(SECRET_PACKAGE + ".") for p in packages
         )
-        facade = i >= 1 and (parts[i - 1], parts[i + 2], parts[-1]) == SECRET_FACADE and package == PACKAGE
+        facade = i >= 1 and (parts[i - 1], parts[i + 2], parts[-1]) == SECRET_FACADE and PACKAGE in packages
         if not (in_package or facade):
             continue
         for pattern, what in VARIABLE_TIME:
@@ -251,6 +295,11 @@ def secret_path_violations(root: Path):
         for match in DRAFT03_MATH.finditer(code):
             if in_package or match.group(1) not in FACADE_MATH:
                 yield path, f"Draft03Math.{match.group(1) or ''} (only the prover's Draft03Math.h2c is allowed)"
+        if in_package:
+            for imported in IMPORT.findall(code):
+                for pattern, what in IMPORT_RULES:
+                    if pattern.search(imported):
+                        yield path, what
 
 
 def guarded(argv):
