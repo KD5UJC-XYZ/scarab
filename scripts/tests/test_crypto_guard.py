@@ -16,6 +16,10 @@ from check_crypto_guard import violations  # noqa: E402
 Vrf = "crypto/src/main/scala/xyz/kd5ujc/scarab/crypto/vrf"
 Java = "crypto/src/main/java/xyz/kd5ujc/scarab/crypto/vrf"
 PACKAGE = "package xyz.kd5ujc.scarab.crypto.vrf\n"
+Witness = "crypto/src/main/scala/xyz/kd5ujc/scarab/crypto/witness"
+WitnessJava = "crypto/src/main/java/xyz/kd5ujc/scarab/crypto/witness"
+WITNESS = "package xyz.kd5ujc.scarab.crypto.witness\n"
+WITNESS_JAVA = "package xyz.kd5ujc.scarab.crypto.witness;\n"
 
 
 def write(path, text):
@@ -111,6 +115,71 @@ class CryptoGuardTests(unittest.TestCase):
             }
         )
         self.assertEqual(list(violations(root)), [])
+
+    # VartimeEd25519: only its own source, the two verifiers and the witness package's tests.
+
+    def test_the_listed_callers_of_the_verification_arithmetic_are_allowed(self):
+        root, tmp = self.tree(
+            {
+                f"{WitnessJava}/VartimeEd25519.java": WITNESS_JAVA + "final class VartimeEd25519 {}",
+                f"{Witness}/StrictEd25519.scala": WITNESS + "object StrictEd25519 { VartimeEd25519.strict() }",
+                f"{Witness}/ByronEd25519.scala": WITNESS + "object ByronEd25519 { VartimeEd25519.byron() }",
+                "crypto/src/test/scala/xyz/kd5ujc/scarab/crypto/witness/VartimeEd25519Suite.scala":
+                    WITNESS + "class VartimeEd25519Suite { VartimeEd25519.fe() }",
+            }
+        )
+        self.assertEqual(list(violations(root)), [])
+
+    def test_a_new_caller_inside_the_witness_package_is_flagged(self):
+        root, tmp = self.tree(
+            {f"{Witness}/Shortcut.scala": WITNESS + "object Shortcut { VartimeEd25519.strict() }"}
+        )
+        found = [p.parts[-1] for p in violations(root)]
+        self.assertEqual(found, ["Shortcut.scala"])
+
+    def test_the_prover_package_may_not_name_the_verification_arithmetic(self):
+        root, tmp = self.tree(
+            {f"{Vrf}/Draft03Prover.scala": PACKAGE + "object Draft03Prover { VartimeEd25519.fe() }"}
+        )
+        found = [p.parts[-1] for p in violations(root)]
+        self.assertEqual(found, ["Draft03Prover.scala"])
+
+    def test_a_tool_in_the_witness_package_is_flagged(self):
+        root, tmp = self.tree(
+            {
+                "tools/src/main/scala/xyz/kd5ujc/scarab/crypto/witness/Bench.scala":
+                    WITNESS + "object Bench { VartimeEd25519.strict() }",
+            }
+        )
+        found = [p.parts[-1] for p in violations(root)]
+        self.assertEqual(found, ["Bench.scala"])
+
+    def test_a_listed_name_in_another_module_is_flagged(self):
+        root, tmp = self.tree(
+            {
+                "ledger/src/main/scala/xyz/kd5ujc/scarab/crypto/witness/StrictEd25519.scala":
+                    WITNESS + "object StrictEd25519 { VartimeEd25519.strict() }",
+            }
+        )
+        found = [p.parts[-1] for p in violations(root)]
+        self.assertEqual(found, ["StrictEd25519.scala"])
+
+    def test_a_listed_name_with_another_package_is_flagged(self):
+        root, tmp = self.tree(
+            {f"{Witness}/StrictEd25519.scala": PACKAGE + "object StrictEd25519 { VartimeEd25519.strict() }"}
+        )
+        found = [p.parts[-1] for p in violations(root)]
+        self.assertEqual(found, ["StrictEd25519.scala"])
+
+    def test_a_test_source_of_another_package_is_flagged(self):
+        root, tmp = self.tree(
+            {
+                "crypto/src/test/scala/xyz/kd5ujc/scarab/crypto/vrf/Suite.scala":
+                    PACKAGE + "class Suite { VartimeEd25519.fe() }",
+            }
+        )
+        found = [p.parts[-1] for p in violations(root)]
+        self.assertEqual(found, ["Suite.scala"])
 
 
 if __name__ == "__main__":

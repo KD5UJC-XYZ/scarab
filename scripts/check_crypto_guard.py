@@ -17,6 +17,12 @@ path is outside the source tree. This is a containment rule for the variable-tim
 a data-flow proof: that secret scalars never reach them also rests on the review in #219 and on
 the timing probe (`TimingProbeMain`).
 
+`VartimeEd25519`, the variable-time arithmetic of Ed25519 verification (#1418), is held tighter:
+only its own source, the two verifiers (`StrictEd25519`, `ByronEd25519`) in the main sources of
+`crypto`, and the test sources of its package `xyz.kd5ujc.scarab.crypto.witness` may mention it,
+each at its path and with that package declared. A new caller, in that package or elsewhere, in
+main sources or in `tools`, is refused until it is added to `VERIFY_CALLERS` here.
+
 Usage: python3 scripts/check_crypto_guard.py [repo-root]
 Exit 0 when every reference is contained; 1 with the offending files listed.
 """
@@ -34,6 +40,16 @@ LANGS = ("scala", "java")
 PACKAGE_PARTS = ("xyz", "kd5ujc", "scarab", "crypto", "vrf")
 
 PACKAGE_RE = re.compile(r"^\s*package\s+([\w.]+)")
+
+VERIFY_NEEDLE = "VartimeEd25519"
+VERIFY_PACKAGE = "xyz.kd5ujc.scarab.crypto.witness"
+VERIFY_PARTS = ("xyz", "kd5ujc", "scarab", "crypto", "witness")
+# The main sources that may mention VartimeEd25519: (module, language directory, file name).
+VERIFY_CALLERS = {
+    ("crypto", "java", "VartimeEd25519.java"),
+    ("crypto", "scala", "StrictEd25519.scala"),
+    ("crypto", "scala", "ByronEd25519.scala"),
+}
 
 
 def package_of(path: Path):
@@ -65,6 +81,23 @@ def contained(path: Path) -> bool:
     return package_of(path) == PACKAGE
 
 
+def verify_allowed(path: Path, root: Path) -> bool:
+    """Whether a source may mention VartimeEd25519: a listed main source of `crypto`, or a test
+    source of the witness package, at its path under `root` and with the package declared."""
+    parts = path.relative_to(root).parts
+    if "src" not in parts:
+        return False
+    i = parts.index("src")
+    if i < 1 or i + 9 != len(parts):
+        return False
+    module, root, lang = parts[i - 1], parts[i + 1], parts[i + 2]
+    if root not in ROOTS or lang not in LANGS or parts[i + 3 : i + 8] != VERIFY_PARTS:
+        return False
+    if package_of(path) != VERIFY_PACKAGE:
+        return False
+    return root == "test" or (module, lang, parts[-1]) in VERIFY_CALLERS
+
+
 def sources(root: Path):
     for path in root.rglob("*"):
         if any(part in EXCLUDE_DIRS for part in path.parts):
@@ -83,6 +116,8 @@ def violations(root: Path):
             continue
         if any(needle in text for needle in NEEDLES) and not contained(path):
             yield path
+        elif VERIFY_NEEDLE in text and not verify_allowed(path, root):
+            yield path
 
 
 def main(argv):
@@ -90,13 +125,22 @@ def main(argv):
     found = sorted(violations(root))
     if found:
         for path in found:
-            print(f"outside the vrf package: {path}")
+            text = path.read_text(encoding="utf-8")
+            if any(needle in text for needle in NEEDLES) and not contained(path):
+                print(f"outside the vrf package: {path}")
+            else:
+                print(f"not a listed caller of {VERIFY_NEEDLE}: {path}")
         print(
             "Draft03Math/Ed25519Point are variable-time (public inputs only): references must "
-            "stay inside xyz.kd5ujc.scarab.crypto.vrf, in the regular source tree."
+            "stay inside xyz.kd5ujc.scarab.crypto.vrf, in the regular source tree. "
+            "VartimeEd25519 may be named only by StrictEd25519, ByronEd25519 and the test "
+            "sources of xyz.kd5ujc.scarab.crypto.witness (VERIFY_CALLERS)."
         )
         return 1
-    print("crypto guard: every Draft03Math/Ed25519Point reference is inside the vrf package")
+    print(
+        "crypto guard: every Draft03Math/Ed25519Point reference is inside the vrf package, and "
+        "every VartimeEd25519 reference is one of its listed callers"
+    )
     return 0
 
 
