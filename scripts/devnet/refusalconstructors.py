@@ -543,6 +543,8 @@ def conway_constructors_v11(name):
     def wrong_integrity(**kw):
         return dict(inputs=[txin(w)], **{**kw, "script_data": eratx.blake2b(b"not the integrity hash")})
 
-    add("utxow-script-integrity-hash-mismatch-v11", **plutus_minting(
-        "conway", wrong_integrity, here, w["lovelace"], 3, v3, collateral, [k1]))
+    label = "utxow-script-integrity-hash-mismatch-v11"
+    tx, _ = eratx.build_tx("conway", **plutus_minting("conway", wrong_integrity, here, w["lovelace"], 3, v3,
+                                                      collateral, [k1]))
+    cases.append(Case(label, tx, expected(label)))
     return cases
