@@ -239,24 +239,23 @@ its full native GOV output with both formal evaluation and the resulting native 
 proposal state; Scarab must insert that vote and match the complete result. It exposed a production GOV mismatch: an authorized named committee voter
 with an empty inner vote map was incorrectly unknown when all flattened votes were
 empty. Authorization lookup now depends on the presence of named voters, matching
-`Conway/Rules/Gov.hs` at the pin. All fifteen original generated GOV inputs now execute the same production kernel
-as the strict ledger facade. Five environments contain zero `NonZero Word64` VRF
-registration counts, which GOV never observes. The adapter supplies only typed
-registration memberships and committee authorisations from unchanged original bytes;
-it compares the complete proposal output. Strict full-certificate decoding still
+`Conway/Rules/Gov.hs` at the pin. All fifteen original generated GOV inputs now execute Conway's
+era-typed GOV, comparing the complete proposal output: ten on their full original environment,
+and five on a projected one. Those five environments contain zero `NonZero Word64` VRF
+registration counts, which GOV never observes; their certificate state is read with the
+pools' VRF counts left out (an empty map). Strict full-certificate decoding still
 refuses those five inputs, with regression checks for its exact typed cause/path.
-The ten representable originals additionally compare the facade and kernel, while
-missing-registration and deposit-mismatch controls retain typed refusals.
+Missing-registration controls retain typed refusals, and the deposit-mismatch control's
+refusal is compared byte for byte with the native failure.
 
 The [native batch corpus](../../node/src/test/resources/upstream/conway-native-ledgers/README.md)
 executes the real native LEDGERS rule over original signed transactions. Two accepted
 batches contain actual output dependencies; reversed order and a repeated spend are
 rejected. Accepted comparisons cover complete native state and every inline MemPack
 UTxO field, excluding only unavailable output-original bytes and Scala change-history
-bookkeeping. Rejected batches are judged with the accumulating policy: the production Conway
-predicate-failure encoder writes every typed cause, and the complete list must equal the unchanged
-native bytes, including order and multiplicity. Production block application keeps its separate
-first-failure policy.
+bookkeeping. Rejected batches are judged by Conway's era-typed LEDGERS, every failure accumulated:
+Conway's era failure encoder writes every typed cause, and the complete list must equal the
+unchanged native bytes as written, including order and multiplicity.
 The [reference-refusal corpus](../../fixtures/reference/refusals/README.md) (#401) also compares
 complete refusals: the released node's whole LocalTxSubmission `ApplyTxErr`, every failure in
 its order, byte for byte against Scarab's.

@@ -14,16 +14,17 @@ nonempty votes, proposals and certificates, full six-field environment,
 EnactState context, complete input proposal state and native output. Only the
 explicit generator size changes. Each ordinary native/formal comparison passes. Scarab executes all fifteen original
 inputs through Conway's era-typed GOV (`ConwayGov.conwayGovTransition`), comparing the
-complete `Proposals` output: roots, ordered actions, votes and expiration data. The
-fixture adapter reads the original environment and signal, without altering inputs or
-expected outputs.
+complete `Proposals` output: roots, ordered actions, votes and expiration data. Ten run on
+their full original environment; five run on a projected one (below). The signals and the
+expected outputs are not altered.
 
 Five environments (seeds 510102, 510103, 510109, 510113 and 510114) encode a zero
 VRF registration count in `PState.vrfKeyHashes`, whose declared native type is
 `NonZero Word64` (`Cardano/Ledger/State/CertState.hs:233`). The native CBOR reader
 also refuses zero (`BaseTypes/NonZero.hs:102–107, 129–131`). GOV never reads these
-counts, so for these five the era GOV's certificate state is read without them; this
-unrelated certificate transport constraint no longer excludes its original judgments. Separate regressions retain the full typed certificate
+counts, so for these five the era GOV's certificate state is a projection, read with the
+pools' VRF counts left out (an empty map); this unrelated certificate transport constraint
+no longer excludes their original judgments. Separate regressions retain the full typed certificate
 decoder's `NonZero` refusal and exact path. No invalid native certificate state is
 constructed, and the rule's entire proposal output is compared, not projected.
 Missing DRep/committee registrations remain negative controls, and the native deposit
