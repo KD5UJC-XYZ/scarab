@@ -59,8 +59,11 @@ are off unless explicitly enabled. Configurations are downloaded over HTTPS
 from the official Cardano environment endpoint documented in
 [network configuration](running/configuration.md); referenced checkpoints and
 peer snapshots are included. Scarab performs its existing genesis hash checks.
-Downloads publish a complete configuration directory atomically and reuse it on
-later starts. To refresh a default configuration, stop the corresponding node
+Downloads publish a complete configuration directory atomically, marked with a
+`.complete` file, and reuse it on later starts. An empty download is refused,
+and so is an existing `config/` without the marker (for example one fetched by
+hand at the same path): remove it, or name it with `SCARAB_CONFIG_DIR` to use it
+as it is. To refresh a default configuration, stop the corresponding node
 and remove only its `config/` directory; the next start downloads it again.
 
 Additional arguments are passed to `follow` with their argument boundaries

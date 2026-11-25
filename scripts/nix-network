@@ -71,6 +71,10 @@ else
   if ! has_option --config || ! has_option --topology; then
     (
       flock 9
+      if [[ -d $config_dir && ! -f $config_dir/.complete ]]; then
+        printf '%s is incomplete or was not written by this app; remove it to download the configuration again, or set SCARAB_CONFIG_DIR to use it as it is.\n' "$config_dir" >&2
+        exit 2
+      fi
       if [[ ! -d $config_dir ]]; then
         staging=$(mktemp -d "$state_dir/.config.XXXXXXXX")
         trap 'rm -rf -- "$staging"' EXIT
@@ -79,6 +83,10 @@ else
           curl --fail --silent --show-error --location --retry 3 \
             --proto '=https' --proto-redir '=https' \
             "$base_url/$1" --output "$staging/$1"
+          if [[ ! -s $staging/$1 ]]; then
+            printf 'The downloaded %s is empty.\n' "$1" >&2
+            exit 2
+          fi
           jq empty "$staging/$1"
         }
         printf 'Fetching official %s configuration...\n' "$network" >&2
@@ -98,6 +106,7 @@ else
           fi
           fetch "$asset"
         done <<< "$assets"
+        : > "$staging/.complete"
         mv -- "$staging" "$config_dir"
         trap - EXIT
       fi
