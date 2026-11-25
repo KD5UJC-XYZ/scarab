@@ -38,8 +38,14 @@ with each verdict's flag. `ConwaySnapshotSuite` covers each build's reapplicatio
 [as-built entry](../design/era-typed-transactions.md#6-results) has the detail.
 
 A Dijkstra ranking block and the endorser block it announces are made of the era's transactions (#85), as the
-reference's are (`mkBody` and `forgeLeiosEb`), byte for byte what the flat path forged before: `DijkstraEraPathSuite`
-compares the two paths over every recorded Dijkstra transaction the build accepts, at each boundary of the capacities.
+reference's are (`mkBody` and `forgeLeiosEb`): `DijkstraEraPathSuite` forges the recorded block 64,853 and its endorser
+block again, byte for byte, and compares the era path with the bytes, measures and partitions the reference's definitions
+derive from the recorded bytes, at each boundary of the capacities. Its 1,108 transactions are those the fixtures record
+that the reference reads, each selected by its recorded verdict: the Dijkstra blocks' (the Leios corpus's, the public
+testnet's and the devnet's), the closure of the endorser block of slot 1,455,869, the Leios corpus's transactions alone,
+the script-context fixtures' (hand-written, the chain's and the context refusals'), the reference's distinct UTXOW and
+ENTITIES transactions, and the submitted forms. The header body and the block envelope are written by the node's
+encoders, which `LeiosEncodingSuite` checks on every recorded Dijkstra header and block.
 The design's [as-built entry](../design/era-typed-transactions.md#6-results) has the detail.
 
 A Dijkstra block's snapshot is the pool's own revalidated transactions, read as they are, when the pool is at the

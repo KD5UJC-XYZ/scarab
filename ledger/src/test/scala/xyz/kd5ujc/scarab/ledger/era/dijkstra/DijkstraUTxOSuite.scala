@@ -9,7 +9,6 @@ import xyz.kd5ujc.scarab.ledger.dijkstra.{
   DijkstraPurpose,
   DijkstraDatum,
   DijkstraPurposes,
-  DijkstraScriptContexts,
   DijkstraTx as FlatTx,
   DijkstraTxBody as FlatBody,
   DijkstraTxIn,
@@ -45,10 +44,9 @@ import DijkstraCorpus.*
   *
   * Against the flat Dijkstra rules, on every Dijkstra transaction the repository holds
   * ([[DijkstraCorpus]]) at both levels: the scripts needed, in order, with each purpose, its index
-  * and item, and the script's hash; the top level's Plutus scripts provided, by hash and language;
-  * the execution units of the batch and of each sub-transaction; the reference scripts' size; and
-  * the supplemental datums, exactly. A transaction whose corpus records no UTxO set is given
-  * stand-in outputs, a key's and a script's in turn.
+  * and item, and the script's hash; the execution units of the batch and of each sub-transaction;
+  * the reference scripts' size; and the supplemental datums, exactly. A transaction whose corpus
+  * records no UTxO set is given stand-in outputs, a key's and a script's in turn.
   *
   * Against the reference, as component checks (CNF-2), not its verdict or the resulting state: on
   * the 200 transactions recorded on the public Leios testnet's chain, which its ledger accepted,
@@ -242,25 +240,6 @@ class DijkstraUTxOSuite extends FunSuite:
       assertEquals(
         DijkstraUTxO.batchNonDistinctRefScriptsSize(u.era, c.era),
         DijkstraTxMeasures.batchRefScriptsSize(size, c.flat),
-        c.name
-      )
-    }
-  }
-
-  test(
-    "the Plutus scripts provided equal the flat rules', the sub-transactions' at the top level"
-  ) {
-    cases.foreach { c =>
-      val u = utxosOf(c)
-      val provided = utxos.getScriptsProvided[TxLevel.Top](u.era, c.era).unScriptsProvided
-      val plutus = provided.flatMap((h, s) =>
-        DijkstraScript.instance.toPlutusScript(s).map(p => h -> p.tag.toInt)
-      )
-      assertEquals(
-        plutus,
-        DijkstraScriptContexts
-          .plutusScriptsProvided(c.flat, u.flat)
-          .map((h, l) => h -> l.hashTag.toInt),
         c.name
       )
     }

@@ -33,6 +33,7 @@ import xyz.kd5ujc.scarab.ledger.era.{
   EraUTxO,
   Identity,
   ImpossibleContext,
+  IsPhase2Valid,
   Language,
   LedgerLevelTxInfo,
   LedgerTxInfo,
@@ -278,11 +279,15 @@ class DijkstraPlutusContextSuite extends FunSuite:
   private def byLanguage(compared: Vector[Compared]): Map[PlutusLanguage, scala.Int] =
     compared.flatMap(_.contexts).groupMapReduce(identity)(_ => 1)(_ + _)
 
-  private def results(path: String): Map[String, Json] =
-    json(path).asArray
-      .getOrElse(fail(s"$path is not an array"))
-      .map(r => str(r, "name") -> r)
-      .toMap
+  /** A fixture's results by case name, which must be its cases', in their order. */
+  private def results(path: String, cases: Vector[Json]): Map[String, Json] =
+    val recorded = json(path).asArray.getOrElse(fail(s"$path is not an array"))
+    assertEquals(
+      recorded.map(str(_, "name")),
+      cases.map(str(_, "name")),
+      s"$path: the cases' results"
+    )
+    recorded.map(r => str(r, "name") -> r).toMap
 
   // ---- the chain's transactions
 
@@ -292,7 +297,7 @@ class DijkstraPlutusContextSuite extends FunSuite:
     val compared = compareFixture(
       environment(chain),
       chainContextCases,
-      results("fixtures/reference/leios-testnet-chain-contexts/results.json")
+      results("fixtures/reference/leios-testnet-chain-contexts/results.json", chainContextCases)
     )
     assertEquals(compared.size, 200)
     val all = compared.flatMap(_._2)
@@ -319,7 +324,8 @@ class DijkstraPlutusContextSuite extends FunSuite:
     // contexts first, then each sub-transaction's) and a redeemer of that level's own witnesses,
     // each named once; and nothing where the script at the place is another
     val env = environment(chain)
-    val recorded = results("fixtures/reference/leios-testnet-chain-contexts/results.json")
+    val recorded =
+      results("fixtures/reference/leios-testnet-chain-contexts/results.json", chainContextCases)
     val reason: EvalFailure.Unsupported =
       EvalFailure.Unsupported(BackendFailure.BudgetOutOfRange(ExUnits(0, 0)))
     def keys[L <: TxLevel](tx: DijkstraTx[L])(using BothLevels[L]): Set[(scala.Int, BigInt)] =
@@ -759,7 +765,7 @@ class DijkstraPlutusContextSuite extends FunSuite:
     val compared = compareFixture(
       environment(refusals),
       refusalCases,
-      results("fixtures/reference/leios-testnet-context-refusals/results.json")
+      results("fixtures/reference/leios-testnet-context-refusals/results.json", refusalCases)
     )
     assertEquals(compared.size, 22)
     val all = compared.flatMap(_._2)
@@ -812,7 +818,7 @@ class DijkstraPlutusContextSuite extends FunSuite:
     val compared = compareFixture(
       contextsEnvironment,
       contextCases,
-      results("fixtures/reference/leios-testnet-contexts/results.json")
+      results("fixtures/reference/leios-testnet-contexts/results.json", contextCases)
     )
     assertEquals(compared.size, 11)
     val all = compared.flatMap(_._2)
@@ -821,6 +827,87 @@ class DijkstraPlutusContextSuite extends FunSuite:
     // a pointer and a Byron output, an unknown input, a reference input that is an input, a
     // redeemer naming nothing, a script without its redeemer and a key withdrawal's redeemer
     assertEquals(all.map(_.refusals).sum, 7)
+  }
+
+  test("each recorded transaction is the one the reference ran: its id, validity and acceptance") {
+    def check(cases: Vector[Json], path: String): Vector[(Boolean, IsPhase2Valid)] =
+      val recorded = results(path, cases)
+      cases.map { c =>
+        val name = str(c, "name")
+        val (tx, _) = read(c)
+        val r = recorded.getOrElse(name, fail(name)).hcursor.downField("result")
+        assertEquals(
+          bodies.id(tx.body).hex,
+          r.get[String]("id").fold(e => fail(e.message), identity)
+        )
+        (r.get[Boolean]("accepted").fold(e => fail(e.message), identity), txs.isValid(tx))
+      }
+    // the hand-written cases, refused or not, were each accepted by the reference's decoder
+    val written = check(contextCases, "fixtures/reference/leios-testnet-contexts/results.json")
+    assertEquals(written.map(_._1).distinct, Vector(true))
+    // the chain's, each with the validity flag its block recorded and no collection failure
+    val onChain =
+      check(chainContextCases, "fixtures/reference/leios-testnet-chain-contexts/results.json")
+    assertEquals(onChain.map(_._1).distinct, Vector(true))
+    assertEquals(
+      onChain.map(_._2),
+      chainContextCases.map(c =>
+        if c.hcursor.get[Boolean]("valid").fold(e => fail(e.message), identity) then
+          IsPhase2Valid.Phase2Valid
+        else IsPhase2Valid.Phase2Invalid
+      )
+    )
+    val failures = results(
+      "fixtures/reference/leios-testnet-chain-contexts/results.json",
+      chainContextCases
+    ).values
+      .flatMap(
+        _.hcursor
+          .downField("result")
+          .get[Option[String]]("failure")
+          .fold(e => fail(e.message), identity)
+      )
+    assertEquals(failures.toVector, Vector.empty)
+  }
+
+  test(
+    "a parameter change is in the reference's contexts as the era types write it in Plutus data"
+  ) {
+    // `ToPlutusData (PParamsUpdate DijkstraEra)` (`Conway/PParams.hs:200-206`, cardano-ledger
+    // 9df9f98c) in the `governance` case's three top-level contexts, which each show the body's
+    // proposals (`transProposal`, `TxInfo.hs`, cardano-ledger 9df9f98c)
+    import xyz.kd5ujc.scarab.ledger.era.{GovAction, PParamsUpdate, ToPlutusData}
+    import xyz.kd5ujc.scarab.plutus.PlutusData
+    def contains(haystack: PlutusData, needle: PlutusData): Boolean =
+      @tailrec
+      def go(todo: List[PlutusData]): Boolean = todo match
+        case Nil                          => false
+        case d :: _ if d == needle        => true
+        case PlutusData.Constr(_, f) :: r => go(f.toList ++ r)
+        case PlutusData.Map(kvs) :: r     => go(kvs.toList.flatMap((k, v) => List(k, v)) ++ r)
+        case PlutusData.List(xs) :: r     => go(xs.toList ++ r)
+        case _ :: r                       => go(r)
+      go(List(haystack))
+    val c = contextCases.find(str(_, "name") == "governance").getOrElse(fail("no governance case"))
+    val (tx, _) = read(c)
+    val updates = bodies.proposalProcedures(tx.body).toVector.map(_.pProcGovAction).collect {
+      case GovAction.ParameterChange(_, update, _) =>
+        ToPlutusData[PParamsUpdate[Dijkstra]].toPlutusData(update)
+    }
+    assertEquals(updates.size, 1)
+    assert(updates.forall(_ != PlutusData.Map(Vector.empty)))
+    val recorded = levels(
+      results("fixtures/reference/leios-testnet-contexts/results.json", contextCases)
+        .getOrElse("governance", fail("no governance result"))
+    )
+    val contexts = recorded.headOption match
+      case Some(RecordedLevel.Collected(refs)) =>
+        refs.flatMap(_.args).map(a => PlutusData.decode(a).fold(e => fail(e.toString), identity))
+      case other => fail(s"the governance case's top level: $other")
+    assertEquals(contexts.size, 3)
+    // the contexts differ, each by its purpose, and each holds the update
+    assertEquals(contexts.distinct.size, contexts.size)
+    updates.foreach(u => assert(contexts.forall(contains(_, u)), s"$u"))
   }
 
   test(
@@ -833,17 +920,17 @@ class DijkstraPlutusContextSuite extends FunSuite:
       (
         environment(chain),
         chainContextCases,
-        results("fixtures/reference/leios-testnet-chain-contexts/results.json")
+        results("fixtures/reference/leios-testnet-chain-contexts/results.json", chainContextCases)
       ),
       (
         environment(refusals),
         refusalCases,
-        results("fixtures/reference/leios-testnet-context-refusals/results.json")
+        results("fixtures/reference/leios-testnet-context-refusals/results.json", refusalCases)
       ),
       (
         contextsEnvironment,
         contextCases,
-        results("fixtures/reference/leios-testnet-contexts/results.json")
+        results("fixtures/reference/leios-testnet-contexts/results.json", contextCases)
       )
     )
     def language(id: BigInt): PlutusLanguage =

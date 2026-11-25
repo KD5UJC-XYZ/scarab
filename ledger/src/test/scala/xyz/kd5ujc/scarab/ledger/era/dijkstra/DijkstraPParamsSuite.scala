@@ -24,8 +24,8 @@ import xyz.kd5ujc.scarab.ledger.{
 }
 import xyz.kd5ujc.scarab.ledger.Unsigned.Width.{W16, W32, W64}
 import xyz.kd5ujc.scarab.ledger.dijkstra.{
+  DijkstraChangedParameters,
   DijkstraGenesis,
-  DijkstraScriptContexts,
   DijkstraParamUpdate,
   DijkstraParamValue,
   DijkstraParams,
@@ -366,7 +366,7 @@ class DijkstraPParamsSuite extends DisciplineSuite:
           )
           assertEquals(
             ToPlutusData[PParamsUpdate[Dijkstra]].toPlutusData(ppu),
-            DijkstraScriptContexts.changedParameters(u),
+            DijkstraChangedParameters.of(u),
             "as Plutus data"
           )
   }

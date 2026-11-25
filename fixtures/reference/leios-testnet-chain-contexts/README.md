@@ -81,26 +81,13 @@ sub-transactions. The reference collected every transaction's contexts without a
 
 ## What the suite checks
 
-`LeiosChainContextsSuite` reads each transaction and its outputs as the node does and collects its
-scripts with `DijkstraScriptContexts.transaction`, the slots turned to POSIX time from the chain's
-system start: the same scripts, of the same languages and hashes, in the same order, each for the
-same purpose (the input it spends, the policy it mints, the account it withdraws from, the voter, or
-the index of the certificate, proposal or guard, read from the reference's arguments for every
-language), with the same redeemers and execution units as the reference, at the top level and in
-every sub-transaction; and each PlutusV4 script's argument, as `DataSerialisation` writes it, equal
-byte for byte to the reference's argument bytes in its `PlutusWithContext` encoding. Every
-collection of the reference must have succeeded, with an explicit list of contexts. The node builds
-no context for a PlutusV1 to PlutusV3 script in a Dijkstra transaction (it collects them as
-`Untranslated`, [the compatibility page](../../../docs/compatibility/plutus-v4-dijkstra.md)), so only
-those arguments are not compared here; the suite reports how many, requires every PlutusV4 argument
-of the reference to be compared, and fails on a PlutusV4 script collected without a context. The arguments themselves are
-evaluated, with the reference's verdicts, by
-[leios-testnet-chain-scripts](../leios-testnet-chain-scripts/README.md).
-
 `DijkstraPlutusContextSuite` builds every one of the 273 contexts on the era types, each transaction annotated by
 `mkDijkstraStAnnTopTx` and `mkDijkstraStAnnSubTx`, and compares each level's collection with the reference's: each
 context's serialized arguments byte for byte, and the rest of its `PlutusWithContext` record (the protocol version,
-language, script, units and cost model) field by field, Plutus V1 to V3 included.
+language, script, units and cost model) field by field, Plutus V1 to V3 included. It also requires each
+transaction's id and validity flag to be those recorded, and the reference's every collection to have succeeded. The
+arguments themselves are evaluated, with the reference's verdicts, by
+[leios-testnet-chain-scripts](../leios-testnet-chain-scripts/README.md).
 
 ## Licence
 
