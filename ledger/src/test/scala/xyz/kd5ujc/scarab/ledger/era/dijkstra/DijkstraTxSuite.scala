@@ -769,10 +769,25 @@ class DijkstraTxSuite extends FunSuite:
     "the distinct transactions of the reference's UTXOW cases read as the flat decoder reads them"
   ) {
     // `fixtures/reference/dijkstra-rules`: the devnet's transaction and its variants, each a
-    // transaction of a block body
+    // transaction of a block body; 11 of the earlier cases, and the collateral return to a pointer
+    // address of the cases of 2026-11-24 (`utxow/collateral-return-pointer`)
     val txs = DijkstraCorpus.utxowCases.map(j => str(j, "tx")).distinct
     val tally = txs.zipWithIndex.map((t, i) => inBlock(hex(t), s"utxow $i")).foldLeft(none)(_ + _)
-    assertEquals(tally, Tally(11, 0, 0, 0))
+    assertEquals(tally, Tally(11 + 1, 0, 0, 0))
+  }
+
+  test("the transactions of the reference's ENTITIES cases read as the flat decoder reads them") {
+    // `fixtures/reference/dijkstra-rules`, the cases of 2026-11-24: 13 transactions of a block body
+    // whose bodies withdraw, deposit directly, bound balances or deregister, all accepted by the
+    // reference's decoder, which the oracle reads them with
+    val txs = DijkstraCorpus
+      .jsonLines("fixtures/reference/dijkstra-rules/cases.jsonl")
+      .filter(j => str(j, "kind") == "entities")
+      .map(j => str(j, "tx"))
+      .distinct
+    val tally =
+      txs.zipWithIndex.map((t, i) => inBlock(hex(t), s"entities $i")).foldLeft(none)(_ + _)
+    assertEquals(tally, Tally(13, 0, 0, 0))
   }
 
   test("the Dijkstra mempool forms of the crossing corpus read as the flat decoder reads them") {

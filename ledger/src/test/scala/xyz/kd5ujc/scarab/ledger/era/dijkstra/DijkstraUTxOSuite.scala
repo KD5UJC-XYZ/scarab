@@ -177,9 +177,11 @@ class DijkstraUTxOSuite extends FunSuite:
 
   test("the corpus holds the transactions the suites of the era types read") {
     // every transaction the flat decoder accepts (`DijkstraTxSuite`): the Leios corpus's 273 and
-    // its blocks' 63, the testnet's 40, the devnet's one and its submitted one, the contexts' 11
-    // and 200, the 11 distinct UTXOW transactions (17 cases) and the crossing corpus's 149
-    assertEquals(cases.size, 273 + 63 + 40 + 1 + 11 + 200 + 17 + 1 + 149)
+    // its blocks' 63, the testnet's 40, the devnet's one, the contexts' 11 and 200, the reference's
+    // 18 UTXOW cases (12 distinct transactions: the 17 earlier cases, and the collateral return to
+    // a pointer address of the cases of 2026-11-24, `utxow/collateral-return-pointer`), the devnet's
+    // submitted one and the crossing corpus's 149
+    assertEquals(cases.size, 273 + 63 + 40 + 1 + 11 + 200 + (17 + 1) + 1 + 149)
   }
 
   test("the scripts needed at each level equal the flat rules' in order, purpose, index and item") {

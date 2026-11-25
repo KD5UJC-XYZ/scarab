@@ -79,7 +79,17 @@ class DijkstraStateSuite extends FunSuite:
         era(stored)
       )
     chainContextCases.map(c => read(str(c, "name"), hex(str(c, "bytes")), testnet)) ++
-      utxowCases.map(c => read(str(c, "name"), hex(str(c, "tx")), utxowStored(c)))
+      (utxowCases ++ entitiesCases).map(c =>
+        read(str(c, "name"), hex(str(c, "tx")), utxowStored(c))
+      )
+
+  /** The reference's ENTITIES cases (`fixtures/reference/dijkstra-rules`, of 2026-11-24): their
+    * transactions withdraw, deposit directly, bound balances or deregister.
+    */
+  private lazy val entitiesCases =
+    jsonLines("fixtures/reference/dijkstra-rules/cases.jsonl").filter(c =>
+      str(c, "kind") == "entities"
+    )
 
   /** The transaction in its Conway form, the flat rules' reading of it, where it has no
     * sub-transaction: the Conway decoder's refusal where it reads a field Dijkstra adds, or none
@@ -122,8 +132,12 @@ class DijkstraStateSuite extends FunSuite:
     }
     // the transactions the Conway decoder refuses, each for a field Dijkstra adds or changes, are
     // not compared: a witness set's key 8 (seven), a parameter change of keys 45 to 48 (the two
-    // proposals), the direct deposits' key 25 with the balance intervals' key 26 (one) and a guard
-    // where Conway has a signer (three); 28 more have sub-transactions
+    // proposals), the direct deposits' key 25 with the balance intervals' key 26 (one), a guard
+    // where Conway has a signer (three), and of the ENTITIES cases of 2026-11-24 the direct
+    // deposits' key 25 alone (two), the balance intervals' key 26 (four) and the original balance
+    // intervals' key 27 (two); 28 more have sub-transactions. The cases of 2026-11-24 add 6
+    // compared: the collateral return to a pointer address (UTXOW), and of the ENTITIES cases the
+    // four withdrawals and the deregistration whose declared refund is not the deposit held
     val excluded = forms.collect { case (c, Left(e)) => (c.name, e) }
     import LedgerDecodeError.*
     def count(p: LedgerDecodeError => Boolean) = excluded.count((_, e) => p(e))
@@ -144,12 +158,17 @@ class DijkstraStateSuite extends FunSuite:
         count {
           case Expected(DecodeField.Signer, Shape.Bytes, _) => true
           case _                                            => false
+        },
+        count {
+          case UnknownFields(DecodeField.TransactionBody, fields) =>
+            fields == Set(25) || fields == Set(26) || fields == Set(27)
+          case _ => false
         }
       ),
-      (7, 2, 1, 3),
+      (7, 2, 1, 3, 8),
       excluded.mkString("\n")
     )
-    assertEquals((compared.size, excluded.size, cases.size - forms.size), (176, 13, 28))
+    assertEquals((compared.size, excluded.size, cases.size - forms.size), (176 + 6, 13 + 8, 28))
     assert(compared.exists(_._1 > 0) && compared.exists(_._2 > 0), compared.toString)
   }
 
