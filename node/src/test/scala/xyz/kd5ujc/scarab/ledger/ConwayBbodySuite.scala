@@ -87,6 +87,7 @@ import xyz.kd5ujc.scarab.uplc.cek.{CekError, CekFailure}
 import xyz.kd5ujc.scarab.uplc.ledger.EvaluationError
 import xyz.kd5ujc.scarab.network.FailsOnUncaught
 import xyz.kd5ujc.scarab.node.{MirrorSteps, NodeSetup, ParallelPlutus}
+import xyz.kd5ujc.scarab.node.tools.PlutusCases
 import xyz.kd5ujc.scarab.protocol.{Era, ReferenceBuild, StateLayout}
 
 /** Conway's BBODY on the era types (`ConwayBbody.conwayBbody`, run by `ConwayBlockRun`;
@@ -204,7 +205,7 @@ class ConwayBbodySuite extends FailsOnUncaught:
       eraFailures: Vector[BbodyPredFailure[Conway]],
       eraEvaluated: Int,
       flatEvaluated: Int,
-      eraObserved: Vector[Phase2.Observation],
+      eraObserved: Vector[ConwayPhase2.Observation],
       flatObserved: Vector[Phase2.Observation],
       deferred: Vector[Vector[Int]],
       replayed: Option[ConwayBlockRun.Observing] => ConwayBlockRun.Body,
@@ -285,12 +286,68 @@ class ConwayBbodySuite extends FailsOnUncaught:
     }
     ObservationForm(o.tx, o.params, o.slot, o.spent, o.references, o.clock, outcome)
 
+  /** The era run's observation as it compares with the flat rules' ([[comparable]]): its
+    * transaction as the flat rules read its bytes, and its collection's failures in the flat
+    * vocabulary the node's case files name them in (`ConwayPhase2.storedErrors`), each of which has
+    * a flat form.
+    */
+  private def comparable(o: ConwayPhase2.Observation): ObservationForm =
+    val tx = ok("the observed transaction, read flat")(
+      Tx.fromBlock(
+        FlatBlock.Transaction(
+          o.tx.body.raw,
+          o.tx.wits.raw,
+          o.tx.auxData.map(_.raw),
+          EraTx.conway.isValid(o.tx) == IsPhase2Valid.Phase2Valid
+        ),
+        Era.Conway
+      )
+    )
+    val outcome = o.outcome.leftMap(errors =>
+      ConwayPhase2
+        .storedErrors(o, errors)
+        .traverse(_.leftMap(e => fail(s"no flat form of $e")))
+        .fold(identity, flat => NonEmptyVector(flat.head, flat.tail.toVector))
+    )
+    comparable(Phase2.Observation(tx, o.params, o.slot, o.spent, o.references, o.clock, outcome))
+
   /** The phase-2 observations a side's observer is told (`--plutus-cases`), in order. */
-  private final class Observations:
-    private val told =
-      new java.util.concurrent.atomic.AtomicReference(Vector.empty[Phase2.Observation])
-    def observe(o: Phase2.Observation): Unit = { val _ = told.updateAndGet(_ :+ o); () }
-    def all: Vector[Phase2.Observation] = told.get
+  private final class Observations[O]:
+    private val told = new java.util.concurrent.atomic.AtomicReference(Vector.empty[O])
+    def observe(o: O): Unit = { val _ = told.updateAndGet(_ :+ o); () }
+    def all: Vector[O] = told.get
+
+  /** The case files the node's `--plutus-cases` recorder writes of `observations`, by name, each
+    * kind kept, through `record` (`PlutusCases.observe` for the flat rules' observations,
+    * `observeConway` for the era run's), in a directory of their own, removed after.
+    */
+  private def cases[O](observations: Vector[O])(
+      record: PlutusCases => O => Unit
+  ): Map[String, String] =
+    val dir = Files.createTempDirectory("conway-plutus-cases")
+    try
+      val recorder = PlutusCases(dir, perKind = Int.MaxValue, max = Int.MaxValue)
+      observations.foreach(record(recorder))
+      assertEquals(recorder.failed(), Vector.empty)
+      Files
+        .list(dir)
+        .iterator()
+        .asScala
+        .map(f => f.getFileName.toString -> Files.readString(f))
+        .toMap
+    finally
+      Files.list(dir).iterator().asScala.foreach(Files.delete)
+      Files.delete(dir)
+
+  /** The era run observes a block as the flat rules do: its observations compare with the flat
+    * rules' ([[comparable]]), and the case files `--plutus-cases` writes of them are the flat
+    * rules', byte for byte (#85).
+    */
+  private def sameObserved(j: Judged, what: String): Unit =
+    assertEquals(j.eraObserved.map(comparable), j.flatObserved.map(comparable), what)
+    val written = cases(j.eraObserved)(_.observeConway)
+    assertEquals(written.isEmpty, j.flatObserved.isEmpty, what)
+    assertEquals(written, cases(j.flatObserved)(_.observe), what)
 
   /** The node's evaluator, counting the scripts it is asked to run, and giving no verdict on the
     * `unsupportedAt` th, as an evaluator's limit does (`EvalFailure.Unsupported`).
@@ -388,7 +445,11 @@ class ConwayBbodySuite extends FailsOnUncaught:
       geometry
     )
     val (flatEvaluator, eraEvaluator) = (Counting(unsupportedAt), Shared(unsupportedAt))
-    val (flatObserved, eraObserved, planObserved) = (Observations(), Observations(), Observations())
+    val (flatObserved, eraObserved, planObserved) = (
+      Observations[Phase2.Observation](),
+      Observations[ConwayPhase2.Observation](),
+      Observations[ConwayPhase2.Observation]()
+    )
     // one clock, which both sides' observations hold
     val clock = PosixClock.total(globals.systemStart, geometry)
     val ctx = EraBlock.Context(
@@ -1348,7 +1409,7 @@ class ConwayBbodySuite extends FailsOnUncaught:
       // with the observer the same verdict and counters
       val o = judge(third, blockOf(txs, invalid = invalid), change = holding(utxo), observe = true)
       assertEquals(o.flatObserved.size, txs.count(_ != datumOnly), what)
-      assertEquals(o.eraObserved.map(comparable), o.flatObserved.map(comparable), what)
+      sameObserved(o, what)
       same(what, o.era, j.era)
       assertEquals(o.eraPlutus, j.eraPlutus, what)
     }
@@ -1386,7 +1447,7 @@ class ConwayBbodySuite extends FailsOnUncaught:
       val o =
         judge(third, raw, change = holding(utxo), unsupportedAt = Some(n), observe = true)
       assertEquals(o.flatObserved.size, if n <= 2 then 1 else 2, s"$n")
-      assertEquals(o.eraObserved.map(comparable), o.flatObserved.map(comparable), s"$n")
+      sameObserved(o, s"$n")
       assertEquals(o.eraRun.left.toOption, j.eraRun.left.toOption, s"$n")
       (failure.txId, failure.location)
     }
@@ -1494,7 +1555,7 @@ class ConwayBbodySuite extends FailsOnUncaught:
       Set[(Int, BigInt)]((2, 0), (2, 2))
     )
     assertEquals(evaluations.map(_.request).distinct.size, 1)
-    assertEquals(admitted.eraObserved.map(comparable), admitted.flatObserved.map(comparable))
+    sameObserved(admitted, "admitted")
     // with no verdict on either, each named and observed by its own redeemer
     val named = Vector(1, 2).map { n =>
       Vector(false, true).map { observe =>
@@ -1507,7 +1568,7 @@ class ConwayBbodySuite extends FailsOnUncaught:
           Some(ConwayRuleDefect.ScriptUnavailable(failure)),
           s"$n"
         )
-        assertEquals(j.eraObserved.map(comparable), j.flatObserved.map(comparable), s"$n")
+        sameObserved(j, s"$n")
         failure.location
       }.distinct
     }
@@ -1573,7 +1634,7 @@ class ConwayBbodySuite extends FailsOnUncaught:
     same("admitted", admitted.era, admitted.flat)
     assertEquals(admitted.eraPlutus, admitted.flatPlutus)
     assertEquals(admitted.eraPlutus, Some(PlutusStats(3, 1, 4, 4)))
-    assertEquals(admitted.eraObserved.map(comparable), admitted.flatObserved.map(comparable))
+    sameObserved(admitted, "admitted")
     assertEquals(admitted.deferred, Vector(Vector(0), Vector(1, 2), Vector(3)))
     // no verdict on each script in turn: the plan stops where the serial run stops, and names it
     (1 to 4).foreach { n =>
@@ -1584,7 +1645,7 @@ class ConwayBbodySuite extends FailsOnUncaught:
           case Left(Vector(BlockFailure.Tx(failure: LedgerFailure.Unavailable))) => failure
           case other => fail(s"$n: the flat rules' ${other.map(_._1)}")
         assertEquals(j.eraRun.left.toOption, Some(ConwayRuleDefect.ScriptUnavailable(failure)))
-        assertEquals(j.eraObserved.map(comparable), j.flatObserved.map(comparable), s"$n")
+        sameObserved(j, s"$n")
       }
     }
     // a verdict that is not the flag's: the second flagged invalid though its script passes, the
@@ -1592,7 +1653,7 @@ class ConwayBbodySuite extends FailsOnUncaught:
     Vector(Vector(1, 2), Vector.empty[Int]).foreach { invalid =>
       val j = judge(third, blockOf(txs, invalid = invalid), change = holding(utxo), observe = true)
       assert(j.eraFailures.nonEmpty, s"$invalid: ${j.eraRun}")
-      assertEquals(j.eraObserved.map(comparable), j.flatObserved.map(comparable), s"$invalid")
+      sameObserved(j, s"$invalid")
     }
   }
 
@@ -1691,7 +1752,8 @@ class ConwayBbodySuite extends FailsOnUncaught:
       judge(third, blockOf(txs, invalid = Vector(2)), change = holding(utxo), observe = true)
     // the third transaction's script ends in a defect: the first two observed, then the defect
     val defective = Defective(requestOf(admitted, 2))
-    val (serialSeen, planSeen) = (Observations(), Observations())
+    val (serialSeen, planSeen) =
+      (Observations[ConwayPhase2.Observation](), Observations[ConwayPhase2.Observation]())
     val serial =
       Either.catchNonFatal(
         admitted
@@ -1752,7 +1814,8 @@ class ConwayBbodySuite extends FailsOnUncaught:
         change = holding(utxo),
         unsupportedAt = unsupportedAt
       )
-      val (serialSeen, planSeen) = (Observations(), Observations())
+      val (serialSeen, planSeen) =
+        (Observations[ConwayPhase2.Observation](), Observations[ConwayPhase2.Observation]())
       val serial = Either.catchNonFatal(
         j.program(
           j.replaying(),
@@ -1921,7 +1984,7 @@ class ConwayBbodySuite extends FailsOnUncaught:
     // observed, with the same verdict; the plan's observations are the serial run's (`judge`)
     val o = judge(third, raw, change = holding(utxo), observe = true)
     assertEquals(outcomes(o.flatObserved), Vector(Left(inlineDatumRefused)))
-    assertEquals(o.eraObserved.map(comparable), o.flatObserved.map(comparable))
+    sameObserved(o, "observed")
     assertEquals(o.eraRefusal, j.eraRefusal)
     assertEquals(o.flat, refusal)
   }
@@ -1956,11 +2019,12 @@ class ConwayBbodySuite extends FailsOnUncaught:
         s"$what: ${o.flat}"
       )
       assertEquals(outcomes(o.flatObserved), expected, what)
-      assertEquals(o.eraObserved.map(comparable), o.flatObserved.map(comparable), what)
+      sameObserved(o, what)
       assertEquals(o.eraRefusal, j.eraRefusal, what)
       // through the node's bounded workers, with the serial run's results: the serial run's
       // result and observations, both observed without a clock
-      val (serialSeen, workersSeen) = (Observations(), Observations())
+      val (serialSeen, workersSeen) =
+        (Observations[ConwayPhase2.Observation](), Observations[ConwayPhase2.Observation]())
       val serial =
         o.replayed(Some(ConwayBlockRun.Observing(serialSeen.observe, None))).serial
       val body = o.replayed(Some(ConwayBlockRun.Observing(workersSeen.observe, None)))
@@ -1986,7 +2050,8 @@ class ConwayBbodySuite extends FailsOnUncaught:
     // the second, and observes nothing; the plan recorded the second's observation after the
     // first's scripts, and tells nothing past the job whose defect it raises
     val defective = Defective(requestOf(admitted, 0))
-    val (serialSeen, planSeen) = (Observations(), Observations())
+    val (serialSeen, planSeen) =
+      (Observations[ConwayPhase2.Observation](), Observations[ConwayPhase2.Observation]())
     val serial = Either.catchNonFatal(
       admitted
         .program(

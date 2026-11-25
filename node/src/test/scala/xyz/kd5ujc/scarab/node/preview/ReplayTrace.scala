@@ -1,8 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.preview
 
+import cats.data.NonEmptyList
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{CollectError, Phase2, Redeemer}
+import xyz.kd5ujc.scarab.ledger.era.{CollectError as EraCollectError, EraTx, IsPhase2Valid}
+import xyz.kd5ujc.scarab.ledger.era.rules.ConwayPhase2
+import xyz.kd5ujc.scarab.ledger.state.Conway
 import xyz.kd5ujc.scarab.plutus.*
 
 /** Typed replay observations: every evaluator failure retains its original typed payload, its trace
@@ -42,28 +46,44 @@ object ReplayTrace:
     )
     case Collection(errors: Vector[CollectError])
 
+    /** A Conway transaction's scripts not collected, with the era's collection's failures. */
+    case ConwayCollection(errors: NonEmptyList[EraCollectError[Conway]])
+
     def evaluations: Vector[Evaluation] = this match
-      case Passed(es)            => es
-      case Failed(es, _)         => es
-      case Unavailable(es, _, _) => es
-      case Collection(_)         => Vector.empty
+      case Passed(es)                          => es
+      case Failed(es, _)                       => es
+      case Unavailable(es, _, _)               => es
+      case Collection(_) | ConwayCollection(_) => Vector.empty
 
   final case class Transaction(id: Bytes, slot: BigInt, isValid: Boolean, outcome: Outcome)
 
-  def from(observed: Phase2.Observation): Transaction =
+  /** What the scripts of a transaction came to, once collected. */
+  private def ran(outcome: Phase2.Outcome): Outcome =
     def report(r: Phase2.Report): Vector[Evaluation] =
       r.evaluations.map(e => Evaluation(e.redeemer, e.request, Result.from(e.result)))
-    val outcome = observed.outcome match
-      case Left(errors)                    => Outcome.Collection(errors.toVector)
-      case Right(Phase2.Outcome.Passed(r)) => Outcome.Passed(report(r))
-      case Right(Phase2.Outcome.Failed(r, failures)) =>
+    outcome match
+      case Phase2.Outcome.Passed(r) => Outcome.Passed(report(r))
+      case Phase2.Outcome.Failed(r, failures) =>
         Outcome.Failed(
           report(r),
           failures.toVector.map(f => Refusal(f.redeemer, f.request, Failure.from(f.reason)))
         )
-      case Right(Phase2.Outcome.Unavailable(r, redeemer, reason)) =>
+      case Phase2.Outcome.Unavailable(r, redeemer, reason) =>
         Outcome.Unavailable(report(r), redeemer, reason)
+
+  def from(observed: Phase2.Observation): Transaction =
+    val outcome = observed.outcome.fold(errors => Outcome.Collection(errors.toVector), ran)
     Transaction(observed.tx.body.id, observed.slot, observed.tx.isValid, outcome)
+
+  /** A Conway transaction's observation, from the era's transaction (`ConwayPhase2.Observation`).
+    */
+  def from(observed: ConwayPhase2.Observation): Transaction =
+    Transaction(
+      ConwayPhase2.txId(observed.tx),
+      observed.slot,
+      EraTx.conway.isValid(observed.tx) == IsPhase2Valid.Phase2Valid,
+      observed.outcome.fold(Outcome.ConwayCollection(_), ran)
+    )
 
   /** These are reached transaction observations and all executed scripts, rather than the old
     * short-circuiting machine's completed prefix. Invalid transactions and failed scripts have
@@ -91,8 +111,8 @@ object ReplayTrace:
           case Outcome.Unavailable(_, _, _) => 1
           case _                            => 0),
         collectionFailures = collectionFailures + (transaction.outcome match
-          case Outcome.Collection(_) => 1
-          case _                     => 0),
+          case Outcome.Collection(_) | Outcome.ConwayCollection(_) => 1
+          case _                                                   => 0),
         used = evaluations.foldLeft(used)((total, e) => total + e.result.used)
       )
 

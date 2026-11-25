@@ -83,7 +83,8 @@ object RecordedReplay extends munit.Assertions:
       case ReplayTrace.Outcome.Passed(_)            => "passed"
       case ReplayTrace.Outcome.Failed(_, _)         => "failed"
       case ReplayTrace.Outcome.Unavailable(_, _, _) => "unavailable"
-      case ReplayTrace.Outcome.Collection(_)        => "collection"
+      case ReplayTrace.Outcome.Collection(_) | ReplayTrace.Outcome.ConwayCollection(_) =>
+        "collection"
     Json.obj(
       "txId" -> transaction.id.hex.asJson,
       "slot" -> transaction.slot.toString.asJson,
@@ -154,7 +155,7 @@ object RecordedReplay extends munit.Assertions:
         setup.handOver,
         setup.byronHistory,
         xyz.kd5ujc.scarab.plutus.PlutusBackend.default,
-        phase2Observer = if observe then Some(observations.observe) else None,
+        phase2Observer = Option.when(observe)(observations.observer),
         utxoStore = Some(store),
         parallelPlutus = parallel
       )

@@ -50036,15 +50036,16 @@
    ]
   },
   {
-   "reason": "the node's phase-2 observations (Scarab's own, which the reference has none of) of a Conway block the era rules judge (#85): a script located among the block's transactions (Located, locate: its context collected again one purpose at a time in the ledger state the rules ran it in and compared); a script with no verdict named by its transaction and redeemer as the flat rules name it (LedgerFailure.Unavailable), so that the node withholds the block as it does the flat rules'; the phase-2 observation of a transaction's scripts (--plutus-cases) as the flat rules make it (Phase2.Observation of the flat transaction, flatTx, and outcome), and of a transaction whose scripts UTXOS could not collect, with the flat rules' collection's failures (uncollected, Phase2.collect); and the phase-2 counters (PlutusStats) of a block the rules admitted: what of BBODY's events they read (ScriptsTold, UTXOS's passed and failed scripts and UTXO's change of the deposits a valid transaction tells after them) and their count by transaction, integrityChecked the bodies that declare a script integrity hash, as the flat rules count them from their evaluations (TxChecks.phase2, EraBlock.Plan); and what a prepared block reads of its transactions: a transaction's id, its place among the block's transactions, whether it holds a redeemer, and its footprint in the dependency graph (TxDependencies.Footprint), the flat transaction's",
+   "reason": "the node's phase-2 observations (Scarab's own, which the reference has none of) of a Conway block the era rules judge (#85): a script located among the block's transactions (Located, locate: its context collected again one purpose at a time in the ledger state the rules ran it in and compared); a script with no verdict named by its transaction and redeemer as the flat rules name it (LedgerFailure.Unavailable), so that the node withholds the block as it does the flat rules'; the phase-2 observation of a transaction's scripts (--plutus-cases), made from the era's transaction and state with no flat transaction (Observation, observation, and outcome), as the flat rules observe theirs, and of a transaction whose scripts UTXOS could not collect, with the era's collection's failures (collectPlutusScriptsWithContext, which Phase2Deferral.uncollected carries), named in the case files as the flat collection's were through their projection into the flat vocabulary (storedErrors, the flat purposes of ConwayUtxowPredFailure.storedPurposes and the flat certificates of ConwayTxCert.toStored), glue for the case files' text; and the phase-2 counters (PlutusStats) of a block the rules admitted: what of BBODY's events they read (ScriptsTold, UTXOS's passed and failed scripts and UTXO's change of the deposits a valid transaction tells after them) and their count by transaction, integrityChecked the bodies that declare a script integrity hash, as the flat rules count them from their evaluations (TxChecks.phase2, EraBlock.Plan); and what a prepared block reads of its transactions: a transaction's id, its place among the block's transactions, whether it holds a redeemer, and its footprint in the dependency graph (TxDependencies.Footprint), the flat transaction's",
    "definitions": [
     "class ledger.era.rules.ConwayPhase2.Located",
     "def ledger.era.rules.ConwayPhase2.counted",
-    "def ledger.era.rules.ConwayPhase2.flatTx",
     "def ledger.era.rules.ConwayPhase2.locate",
     "def ledger.era.rules.ConwayPhase2.named",
     "def ledger.era.rules.ConwayPhase2.outcome",
-    "def ledger.era.rules.ConwayPhase2.uncollected",
+    "class ledger.era.rules.ConwayPhase2.Observation",
+    "def ledger.era.rules.ConwayPhase2.observation",
+    "def ledger.era.rules.ConwayPhase2.storedErrors",
     "def ledger.era.rules.ScriptsTold.of",
     "enum ledger.era.rules.ScriptsTold",
     "object ledger.era.rules.ConwayPhase2",
