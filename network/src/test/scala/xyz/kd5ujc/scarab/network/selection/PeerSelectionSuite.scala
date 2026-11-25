@@ -57,12 +57,12 @@ class PeerSelectionSuite extends FunSuite:
       else
         val done = jobs.foldLeft(settled) { (s, job) =>
           val outcome: Option[Outcome[Int]] = job match
-            case Job.Connect(p, _, _, generation)    => Some(Outcome.Connected(p, generation))
-            case Job.Activate(p, _)                  => Some(Outcome.Activated(p))
-            case Job.Deactivate(p)                   => Some(Outcome.Deactivated(p))
-            case Job.Close(p, _)                     => Some(Outcome.Closed(p))
-            case Job.RequestRoots(_, _, generation)  => Some(Outcome.RootsFailed(generation))
-            case Job.RequestBigLedger(_, generation) => Some(Outcome.BigLedgerFailed(generation))
+            case Job.Connect(p, _, _, generation) => Some(Outcome.Connected(p, generation))
+            case Job.Activate(p, _)               => Some(Outcome.Activated(p))
+            case Job.Deactivate(p)                => Some(Outcome.Deactivated(p))
+            case Job.Close(p, _)                  => Some(Outcome.Closed(p))
+            case Job.RequestRoots(_, _)           => Some(Outcome.RootsFailed())
+            case Job.RequestBigLedger(_)          => Some(Outcome.BigLedgerFailed())
             case Job.Share(id, _, peers) =>
               Some(Outcome.Shared(id, peers.map(_ -> PeerShare.Result.NotRegistered())))
             // the connection manager's business: nothing comes back to the governor

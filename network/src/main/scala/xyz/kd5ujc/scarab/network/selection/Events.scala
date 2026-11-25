@@ -302,8 +302,13 @@ private[selection] object Events:
           List(Trace.PromoteFailed(Temperature.Warm, peer, failure, None, false))
         )
 
-      case Outcome.RootsFound(found, ttl, generation)
-          if st0.publicRootsInFlight && generation == st0.rootsGeneration =>
+      // A request's answer is applied to the state as it is now, whatever was reconfigured while
+      // it ran: the reference's completion reads the state it completes into
+      // (`jobReqPublicRootPeers`, ouroboros-network c45735a5,
+      // `ouroboros-network/lib/Ouroboros/Network/PeerSelection/Governor/RootPeers.hs` 157-231;
+      // `jobReqBigLedgerPeers`, `Governor/BigLedgerPeers.hs` 164-225), and a reconfiguration of
+      // the roots leaves the request in flight (issue 810)
+      case Outcome.RootsFound(found, ttl) if st0.publicRootsInFlight =>
         val local = st0.localRoots.keys
         val offered = found.ordinary ++ found.bootstrap ++ found.ledger
         // new peers only: not a local root, and not a public root of any kind already (the reference
@@ -338,8 +343,7 @@ private[selection] object Events:
           List(Trace.RootsResults(fresh, backoffs, retryIn))
         )
 
-      case Outcome.RootsFailed(generation, defect)
-          if st0.publicRootsInFlight && generation == st0.rootsGeneration =>
+      case Outcome.RootsFailed(defect) if st0.publicRootsInFlight =>
         // one step in the failure direction (negative), an exponential delay of up to 2^8 seconds
         val backoffs = st0.publicRootBackoffs.min(0) - 1
         val retryIn = (1L << math.abs(backoffs).min(policy.maxPublicRootBackoff).toLong).seconds
@@ -353,8 +357,7 @@ private[selection] object Events:
           List(Trace.RootsFailure(backoffs, retryIn, defect))
         )
 
-      case Outcome.BigLedgerFound(found, ttl, generation)
-          if st0.bigLedgerInFlight && generation == st0.rootsGeneration =>
+      case Outcome.BigLedgerFound(found, ttl) if st0.bigLedgerInFlight =>
         // Native merges the complete response: configured fallback extras stay ordinary roots.
         // Local roots and roots already known retain their existing population. The native job
         // inserts Just DoNotAdvertisePeer, even when the extra-root configuration permits sharing.
@@ -385,8 +388,7 @@ private[selection] object Events:
           List(Trace.BigLedgerResults(fresh, backoffs, retryIn))
         )
 
-      case Outcome.BigLedgerFailed(generation, defect)
-          if st0.bigLedgerInFlight && generation == st0.rootsGeneration =>
+      case Outcome.BigLedgerFailed(defect) if st0.bigLedgerInFlight =>
         val backoffs = st0.bigLedgerBackoffs.min(0) - 1
         val retryIn = (1L << math.abs(backoffs).min(policy.maxPublicRootBackoff).toLong).seconds
         Decision(

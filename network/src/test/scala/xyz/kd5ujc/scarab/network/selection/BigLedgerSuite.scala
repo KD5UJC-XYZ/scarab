@@ -516,7 +516,7 @@ class BigLedgerSuite extends FunSuite:
     )
     // in the sensitive state the node asks for bootstrap peers only
     val (_, jobsOld, _) = settle(tooOld, t0)
-    assert(jobsOld.forall { case Job.RequestBigLedger(_, _) => false; case _ => true })
+    assert(jobsOld.forall { case Job.RequestBigLedger(_) => false; case _ => true })
     val young = PeerSelection
       .apply(tooOld, Event.JudgementReported(LedgerStateJudgement.YoungEnough), t0)
       .state

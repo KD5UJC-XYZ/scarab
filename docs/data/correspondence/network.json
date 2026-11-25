@@ -2227,7 +2227,7 @@
    ],
    "record": "https://github.com/KD5UJC-XYZ/scarab/issues/474#issuecomment-6880015076",
    "note": "the reference's guards, state, job and trace; before the retry time it skips with the retry time as its wake-up, where the reference's otherwise is GuardedSkip Nothing (BigLedgerPeers.hs 93), so after a request that leaves it below the known big ledger target the reference asks again only when an unrelated event wakes the governor; its public-root request names its retry time (GuardedSkip (Just publicRootRetryTime), RootPeers.hs 79-82); unchanged at 4646039f (11.2.1) and 2f1c154f (the Leios testnet build). An Improvement under REF-2 (a), shown by reading the pinned source, with I1 to I4 holding: the stored retry time is added to the times the governor wakes at, and the request is unchanged; BigLedgerSuite checks the wake-up",
-   "digest": "0872577c66b8558f"
+   "digest": "f98ba40101eba8c7"
   },
   "def network.selection.BigLedgerGuards#close": {
    "upstream": [

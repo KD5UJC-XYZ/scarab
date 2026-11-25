@@ -396,7 +396,7 @@ object PeerSelection:
           val (_, next) = st.rng.split
           go(
             st.copy(publicRootsInFlight = true, rng = next),
-            List(Job.RequestRoots(missing, st.sensitivity.sensitive, st.rootsGeneration)),
+            List(Job.RequestRoots(missing, st.sensitivity.sensitive)),
             List(Trace.RootsRequest(st.targets.root, view.roots.size))
           )
         else Skip(Some(st.publicRootRetryAt))
@@ -705,10 +705,13 @@ object PeerSelection:
         if generation <= st.rootsGeneration then Decision(st, Nil, Nil)
         else
           val stillConfigured = roots.keys ++ configuredPublic
-          // a connect in progress is left to complete: the reference's reconfiguration of the
-          // roots does not touch `inProgressPromoteCold` (cardano-diffusion `c5117705`,
-          // `Cardano/Network/PeerSelection/Governor/Monitor.hs` 197-353), and its completion is
-          // applied whatever changed meanwhile (`Events.completed`). Only a root the topology
+          // a connect in progress and a root request in flight are left to complete: the
+          // reference's reconfiguration of the roots writes neither `inProgressPromoteCold` nor
+          // the root requests' backoffs, retry times and requests in flight (`localRoots`,
+          // ouroboros-network c45735a5,
+          // `cardano-diffusion/lib/Cardano/Network/PeerSelection/Governor/Monitor.hs` 197-353),
+          // and their completions are applied whatever changed meanwhile (`Events.completed`,
+          // issue 810). Only a root the topology
           // names is taken away; a ledger or big ledger peer keeps its population
           // ([[Origin.configured]], issue 810)
           val peers = st.peers.map { (peer, record) =>
@@ -725,12 +728,6 @@ object PeerSelection:
           val base = st.copy(
             peers = peers,
             configuredRoots = roots,
-            publicRootBackoffs = 0,
-            publicRootRetryAt = now,
-            bigLedgerBackoffs = 0,
-            bigLedgerRetryAt = now,
-            publicRootsInFlight = false,
-            bigLedgerInFlight = false,
             rootsGeneration = generation,
             sensitivity = sensitivity
           )

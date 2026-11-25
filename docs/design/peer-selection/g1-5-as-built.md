@@ -17,7 +17,9 @@ and the trusted-state consensus consumer remain G3 (#33); Praos defaults are unc
 **#142 topology and outbound networking.** SIGHUP re-reads the original topology path and preserves the original
 CLI roots separately from dynamic topology roots. Parse failure leaves the active configuration usable. Successful
 reload installs runtime and governor roots under an acknowledged owner event; work from older generations cannot
-publish roots, DNS answers, snapshot verdicts or outbound links after a newer generation is installed. Hostname and
+publish local roots, DNS answers, snapshot verdicts or outbound links after a newer generation is installed. A
+public-root or big-ledger request in flight is not of a generation: since issue 810 it completes into the governor's
+state as it is then, and a reload keeps its backoff and retry time, as the reference's does. Hostname and
 SRV inputs, group valencies, advertise flags and alias provenance are retained across refresh. SRV queries for
 topology and ledger relays follow the pinned policy in section 6.1. Outbound connections configured as duplex run
 the responder side over the negotiated bearer; link-table registration and cleanup compare attempt identity so a

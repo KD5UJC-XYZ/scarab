@@ -775,10 +775,10 @@ class JobHandlersSuite extends FailsOnUncaught:
       def request(max: Int, bootstrap: Boolean) = IO.raiseError(raised)
       def requestBigLedger(max: Int) = IO.never
     govern(state(targets(1, 1, 0, 0)), actions(), roots = roots) {
-      case Outcome.RootsFailed(_, _) => true
-      case _                         => false
+      case Outcome.RootsFailed(_) => true
+      case _                      => false
     }.map { applied =>
-      assertEquals(applied.outcome, Outcome.RootsFailed(BigInt(0), Some(raised)))
+      assertEquals(applied.outcome, Outcome.RootsFailed(Some(raised)))
       assertEquals(applied.state.publicRootsInFlight, false)
       assertEquals(applied.state.publicRootBackoffs, -1)
       assertEquals(applied.state.publicRootRetryAt, applied.at + 2.seconds)
@@ -797,10 +797,10 @@ class JobHandlersSuite extends FailsOnUncaught:
       def request(max: Int, bootstrap: Boolean) = IO.never
       def requestBigLedger(max: Int) = IO.raiseError(raised)
     govern(state(targets(0, 0, 0, 0, knownBig = 1)), actions(), roots = roots) {
-      case Outcome.BigLedgerFailed(_, _) => true
-      case _                             => false
+      case Outcome.BigLedgerFailed(_) => true
+      case _                          => false
     }.map { applied =>
-      assertEquals(applied.outcome, Outcome.BigLedgerFailed(BigInt(0), Some(raised)))
+      assertEquals(applied.outcome, Outcome.BigLedgerFailed(Some(raised)))
       assertEquals(applied.state.bigLedgerInFlight, false)
       assertEquals(applied.state.bigLedgerBackoffs, -1)
       assertEquals(applied.state.bigLedgerRetryAt, applied.at + 2.seconds)
