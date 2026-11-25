@@ -23,6 +23,7 @@ import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.models.runtime.Codec
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.storage.haskell.state.HaskellStateCodecs
+import xyz.kd5ujc.scarab.ledger.era.rules.ShelleyPoolPredFailure
 
 import HaskellStateCodecs.given
 
@@ -110,17 +111,10 @@ class RemainingPredicateReferenceSuite extends FunSuite:
             val actual = pool.map(f => CborOut.build(w => FailureCbor.pool(w, f)))
             val expected = field[Vector[String]](result, "failureCbor").map(hex)
             assertEquals(actual, expected, name)
-            // The shared POOL encoding must reach clients in every Shelley-based era before
-            // Conway; Conway's is its era encoder's ([[conwayPool]]).
-            for
-              (f, bytes) <- pool.zip(actual)
-              era <- Vector(Era.Shelley, Era.Allegra, Era.Mary, Era.Alonzo, Era.Babbage)
-            do
-              val reason = FlatRefusal
-                .applyTxError(era, Vector(PredicateFailure.pool(f)))
-                .fold(error => fail(error.message), identity)
-                .getOrElse(fail(s"$name $era encoding"))
-              assert(reason.hex.endsWith(bytes.hex), s"$name $era")
+            // The shared POOL encoding must reach clients in every Shelley-based era.
+            pool
+              .zip(actual)
+              .foreach((f, bytes) => clientEncodings(name, f, eraPool(name, f), bytes))
           case Left(defect) => fail(s"$name defect: $defect")
     }
   }
@@ -173,6 +167,71 @@ class RemainingPredicateReferenceSuite extends FunSuite:
         val expected =
           field[Vector[String]](result, "failureCbor").map(b => hex("8201" + "8202" + b))
         assertEquals(actual, expected, name)
+        // The shared POOL encoding must reach clients in every Shelley-based era.
+        failures.toChain.toVector.zip(field[Vector[String]](result, "failureCbor")).foreach {
+          (f, bytes) => clientEncodings(name, ShelleyPoolPredFailure.toStored(f), f, hex(bytes))
+        }
+
+  /** The LocalTxSubmission refusal of one POOL failure in every Shelley-based era ends with the
+    * POOL failure's bytes `bytes`: the flat failure `flat` in each era before Conway
+    * ([[FlatRefusal]]), its era form `era` in Conway ([[ConwayFailureCbor]]).
+    */
+  private def clientEncodings(
+      name: String,
+      flat: PoolFailure,
+      era: ShelleyPoolPredFailure[Conway],
+      bytes: Bytes
+  ): Unit =
+    import xyz.kd5ujc.scarab.ledger.era.rules.{
+      ConwayCertPredFailure,
+      ConwayCertsPredFailure,
+      ConwayLedgerPredFailure
+    }
+    for era <- Vector(Era.Shelley, Era.Allegra, Era.Mary, Era.Alonzo, Era.Babbage) do
+      val reason = FlatRefusal
+        .applyTxError(era, Vector(PredicateFailure.pool(flat)))
+        .fold(error => fail(error.message), identity)
+        .getOrElse(fail(s"$name $era encoding"))
+      assert(reason.hex.endsWith(bytes.hex), s"$name $era")
+    val conway = ConwayFailureCborCheck.direct(
+      Vector(
+        ConwayLedgerPredFailure.ConwayCertsFailure[Conway](
+          ConwayCertsPredFailure.CertFailure[Conway](ConwayCertPredFailure.PoolFailure[Conway](era))
+        )
+      )
+    )
+    assert(conway.hex.endsWith(bytes.hex), s"$name ${Era.Conway}")
+
+  /** The flat POOL failure `f` in Conway's era types: the inverse of
+    * `ShelleyPoolPredFailure.toStored`, which gives `f` back.
+    */
+  private def eraPool(name: String, f: PoolFailure): ShelleyPoolPredFailure[Conway] =
+    import xyz.kd5ujc.scarab.ledger.era.Mismatch as M
+    def ok[A](e: Either[?, A]): A = e.fold(x => fail(s"$name: $x"), identity)
+    def pool(b: Bytes) = ok(KeyHash.fromBytes[StakePool](b))
+    def epoch(n: BigInt) = ok(EpochNo.fromBigInt(n))
+    def network(n: Int) = Network.of(BigInt(n)).getOrElse(fail(s"$name: network $n"))
+    val era: ShelleyPoolPredFailure[Conway] = f match
+      case PoolFailure.StakePoolNotRegisteredOnKey(p) =>
+        ShelleyPoolPredFailure.StakePoolNotRegisteredOnKeyPOOL(pool(p))
+      case PoolFailure.StakePoolRetirementWrongEpoch(current, latest) =>
+        ShelleyPoolPredFailure.StakePoolRetirementWrongEpochPOOL(
+          M(epoch(current.supplied), epoch(current.expected)),
+          M(epoch(latest.supplied), epoch(latest.expected))
+        )
+      case PoolFailure.StakePoolCostTooLow(m) =>
+        ShelleyPoolPredFailure.StakePoolCostTooLowPOOL(M(Coin(m.supplied), Coin(m.expected)))
+      case PoolFailure.WrongNetworkPool(m, p) =>
+        ShelleyPoolPredFailure.WrongNetworkPOOL(
+          M(network(m.supplied), network(m.expected)),
+          pool(p)
+        )
+      case PoolFailure.PoolMedataHashTooBig(p, size) =>
+        ShelleyPoolPredFailure.PoolMedataHashTooBig(pool(p), size)
+      case PoolFailure.VRFKeyHashAlreadyRegistered(p, v) =>
+        ShelleyPoolPredFailure.VRFKeyHashAlreadyRegistered(pool(p), ok(VRFVerKeyHash.fromBytes(v)))
+    assertEquals(ShelleyPoolPredFailure.toStored(era), f, name)
+    era
 
   /** The failure the era's UTXO reports for a failure of Shelley's predicate, as captured. The
     * capture calls `Shelley.validateOutputBootAddrAttrsTooBig` itself, before the era's UTXO
