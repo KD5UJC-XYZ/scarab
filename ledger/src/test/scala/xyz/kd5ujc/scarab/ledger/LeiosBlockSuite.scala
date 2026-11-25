@@ -229,4 +229,46 @@ class LeiosBlockSuite extends munit.FunSuite:
       )
     )
   }
+
+  test(
+    "a transaction its decoder's bounds rule out is the node's defect: the block passes the fetch checks and is withheld"
+  ) {
+    import xyz.kd5ujc.scarab.codec.Node
+    import xyz.kd5ujc.scarab.ledger.era.{EraTxError, TxLevel}
+    import xyz.kd5ujc.scarab.ledger.era.dijkstra.{DijkstraBlock, DijkstraBlockError, DijkstraCorpus}
+    import xyz.kd5ujc.scarab.ledger.state.VocabError
+    val raw = blocks("announcing-with-txs")._2
+    val recorded = block("announcing-with-txs")
+    val items = DijkstraCorpus.blockItems(raw)
+    assertEquals(items.size, recorded.transactions.size)
+    // the decoder's bounds make the real path unreachable: a reader that meets such a value at the
+    // block's second transaction, and reads the others as the decoder does
+    val cause = EraTxError.Vocab(VocabError.OutOfRange(VocabError.Kind.Word32, BigInt(-1)))
+    def failing(at: Int, e: EraTxError)(n: Node): Either[EraTxError, DijkstraTx[TxLevel.Top]] =
+      if n.original == items(at) then Left(e) else DijkstraTx.inBlock(n)
+    val defective =
+      LeiosBlock.decodeWith(raw, failing(1, cause)).fold(e => fail(e.message), identity)
+    assertEquals(defective.unread, Vector(LeiosBlock.Unread(1, cause)))
+    assertEquals(defective.transactions, recorded.transactions.patch(1, Nil, 1))
+    assertEquals(defective.transactionCount, recorded.transactions.size)
+    assertEquals(defective.faults, recorded.faults)
+    // the fetch checks pass it, so no peer is charged (`FetchedBlockIntegrity`)
+    val announced = recorded.header.dijkstraView
+    assertEquals(
+      BlockTransport.matches(announced, Block.Dijkstra(defective)),
+      Right(Block.Dijkstra(defective))
+    )
+    // and its application in the era's types meets the defect, which the follower withholds the
+    // block for (`MirrorDijkstra`: `DijkstraBlockDefect.Projection`)
+    assertEquals(
+      DijkstraBlock.decodeWith(raw, failing(1, cause)).map(_ => ()),
+      Left(DijkstraBlockError.Projection(cause))
+    )
+    // a refusal of the decoder at the same transaction stays the block's, the peer's fault
+    val refusal = LedgerDecodeError.Empty(DecodeField.Certificates)
+    assertEquals(
+      LeiosBlock.decodeWith(raw, failing(1, EraTxError.Decode(refusal))).map(_ => ()),
+      Left(ChainError.Decode(DecodeField.Header, refusal))
+    )
+  }
 end LeiosBlockSuite

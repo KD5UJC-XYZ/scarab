@@ -280,7 +280,12 @@ end LeiosHeader
   * `Dijkstra/BlockBody/Internal.hs:120`: `hashBlockBody = extractHash . getMemoBytesHash`), not a
   * merkle of component hashes (the CDDL comment "merkle triple root" is stale).
   *
-  * Every part keeps its original bytes.
+  * Every part keeps its original bytes. A transaction whose reading met a value the decoder's own
+  * bounds rule out is not among `transactions` but in `unread`, by its index among the block's
+  * items: the node's defect, no fault of the bytes, which the block decoder accepts as the build's
+  * decoder does, and only the application of the block in the era's types meets
+  * ([[era.dijkstra.DijkstraBlock.decode]], `DijkstraBlockError.Projection`), so the block is
+  * withheld and no peer is charged for it.
   */
 final case class LeiosBlock(
     header: LeiosHeader,
@@ -288,8 +293,12 @@ final case class LeiosBlock(
     leiosCertificate: Option[LeiosBlock.CertificateBytes],
     perasCertificate: Option[Bytes],
     bodySize: Long,
-    bodyHash: Bytes
+    bodyHash: Bytes,
+    unread: Vector[LeiosBlock.Unread] = Vector.empty
 ):
+  /** How many transactions the body holds, those read and those unread. */
+  def transactionCount: Int = transactions.size + unread.size
+
   /** Does the block belong to its header, and is it well formed as a ranking block? The checks of
     * consensus `blockMatchesHeader` (`Shelley/Ledger/Block.hs` 224-231) and the size of the
     * ledger's BBODY rule, each reported as its own case.
@@ -306,8 +315,8 @@ final case class LeiosBlock(
           leiosCertificate.isDefined
         )
       ),
-      Option.when(leiosCertificate.isDefined && transactions.nonEmpty)(
-        LeiosBlock.Fault.CertificateWithTransactions(transactions.size)
+      Option.when(leiosCertificate.isDefined && transactionCount > 0)(
+        LeiosBlock.Fault.CertificateWithTransactions(transactionCount)
       )
     ).flatten
 
@@ -331,6 +340,11 @@ object LeiosBlock:
         body.toArray
       )
     )
+
+  /** A transaction of the body, at `index` among its items, whose reading met a value the decoder's
+    * own bounds rule out (an [[EraTxError]] other than `Decode`): the node's defect.
+    */
+  final case class Unread(index: Int, cause: EraTxError)
 
   /** The certificate of a block body, decoded, with the bytes it arrived as. */
   final case class CertificateBytes(certificate: Certificate, raw: Bytes)
@@ -368,45 +382,62 @@ object LeiosBlock:
     * refused where the reference refuses it. Each transaction is decoded in full at version 12, in
     * one pass into Dijkstra's types ([[era.dijkstra.DijkstraTx.inBlock]]): its body, witness set,
     * auxiliary data and sub-transactions, each with its original bytes; no ledger rule is applied.
-    * The decoder's refusal is the block's ([[transaction]]).
+    * The decoder's refusal is the block's, the first in the order of the items; a value its own
+    * bounds rule out is no refusal ([[LeiosBlock.unread]]).
     */
-  def decode(raw: Bytes): Either[ChainError, LeiosBlock] =
-    CborRead.decode(raw, limits).leftMap(fail).flatMap(read)
+  def decode(raw: Bytes): Either[ChainError, LeiosBlock] = decodeWith(raw, EraDijkstraTx.inBlock)
+
+  /** [[decode]] with the transactions read by `reader`: the era's decoder, or a test's. */
+  private[ledger] def decodeWith(
+      raw: Bytes,
+      reader: Node => Either[EraTxError, EraDijkstraTx[TxLevel.Top]]
+  ): Either[ChainError, LeiosBlock] =
+    CborRead.decode(raw, limits).leftMap(fail).flatMap(readWith(_, reader))
 
   /** [[decode]] of a block already read as a tree of items; [[Block.decode]] reads a block of tag 8
     * with it. A Dijkstra block holds no `RecD` record at its decoder version 12
     * ([[DetachedRecords.Shapes.block]]), so the tree is the reference's reading of it.
     */
   private[ledger] def read(root: Node): Either[ChainError, LeiosBlock] =
+    readWith(root, EraDijkstraTx.inBlock)
+
+  /** [[read]] with the transactions read by `reader`. The first refusal of the decoder in the order
+    * of the items is the block's; the transactions whose reading met a value the decoder's own
+    * bounds rule out are kept apart ([[Unread]]), as the flat decoder accepted them before the one
+    * pass and only their projection into the era's types met them (#85).
+    */
+  private def readWith(
+      root: Node,
+      reader: Node => Either[EraTxError, EraDijkstraTx[TxLevel.Top]]
+  ): Either[ChainError, LeiosBlock] =
     for
       (header, body) <- framed(root)
       xs <- array(body, 3)
-      txs <- list(xs(0)).flatMap(_.traverse(transaction(header)))
+      items <- list(xs(0))
+      results = items.map(reader)
+      _ <- results.collectFirst { case Left(EraTxError.Decode(e)) => fail(e) }.toLeft(())
+      txs = results.collect { case Right(t) => t }
+      unread = results.zipWithIndex.collect {
+        case (Left(cause), i) if (cause match
+              case EraTxError.Decode(_) => false
+              case _                    => true
+            ) =>
+          Unread(i, cause)
+      }
       cert <- nullable(xs(1))(certificate)
       peras <- nullable(xs(2))(c =>
         CborRead.bytes(c, DecodeField.PerasCertificate)(using ByteStrings.Chunked).leftMap(fail)
       )
       bytes = body.original
-    yield LeiosBlock(header, txs, cert, peras, bytes.size.toLong, Blake2b.hash256.hash(bytes))
-
-  /** A transaction of the block read from its item ([[era.dijkstra.DijkstraTx.inBlock]]). The
-    * decoder's refusal is the block's, as the build's decoder refuses it
-    * (`decodeDijkstraTopTxInBlock`, `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Tx.hs:175-182`,
-    * cardano-ledger 9df9f98c). A value its own bounds rule out ([[EraTxError]] other than `Decode`)
-    * is the node's defect, not the bytes' fault: the block of `header` is not applied, as its
-    * rules' defects are not ([[DijkstraBlockDefect.Projection]]).
-    */
-  private def transaction(
-      header: LeiosHeader
-  )(n: Node): Either[ChainError, EraDijkstraTx[TxLevel.Top]] =
-    EraDijkstraTx.inBlock(n).leftMap {
-      case EraTxError.Decode(e) => fail(e)
-      case cause @ (EraTxError.NotInEra(_) | EraTxError.NoDelegatee | EraTxError.Vocab(_) |
-          EraTxError.PParams(_) | EraTxError.ScriptsReadAgain | EraTxError.OtherLevel |
-          EraTxError.WitnessDataReadAgain | EraTxError.StoredOutputDiffers |
-          EraTxError.TranslationReadBack(_)) =>
-        ChainError.DijkstraBlock(header.slot, DijkstraBlockDefect.Projection(cause))
-    }
+    yield LeiosBlock(
+      header,
+      txs,
+      cert,
+      peras,
+      bytes.size.toLong,
+      Blake2b.hash256.hash(bytes),
+      unread
+    )
 
   /** The header of a block already read as a tree of items, its envelope and header read as
     * [[read]] reads them and its body's contents not decoded ([[Block.decodeHeader]]).

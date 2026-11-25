@@ -42846,8 +42846,8 @@
     "DijkstraBbodySuite",
     "DijkstraRulesOracleSuite"
    ],
-   "note": "the body in Dijkstra's types from the body the block decoder read from a block's bytes, its transactions those it read in one pass (DijkstraTx.inBlock), its size and hash those bytes': it takes evidence only DijkstraBlock.decode makes (DijkstraBlock.Decoded), so no body has a commitment its contents do not have, as MemoBytes ties them",
-   "digest": "797acf5b3090bc1b"
+   "note": "the body in Dijkstra's types from the body the block decoder read from a block's bytes, its transactions those it read in one pass (DijkstraTx.inBlock), the first it left unread for a value the decoder's own bounds rule out (LeiosBlock.unread) its failure, its size and hash those bytes': it takes evidence only DijkstraBlock.decode makes (DijkstraBlock.Decoded), so no body has a commitment its contents do not have, as MemoBytes ties them",
+   "digest": "82422ed55c0eec71"
   },
   "def ledger.era.dijkstra.DijkstraBlock.decode": {
    "upstream": [
@@ -42878,8 +42878,8 @@
     "DijkstraBbodySuite",
     "DijkstraRulesOracleSuite"
    ],
-   "note": "a block's bytes as the block decoder reads them, its transactions read in one pass into the era's types (LeiosBlock.decode, DijkstraTx.inBlock), its header and body in the era's types, the body made from the same bytes as its size and hash; a value a transaction's decoder's own bounds rule out is the node's (DijkstraBlockError.Projection), not the bytes' refusal",
-   "digest": "fb7d0add8d9e0df6"
+   "note": "a block's bytes as the block decoder reads them, its transactions read in one pass into the era's types (LeiosBlock.decode, DijkstraTx.inBlock), its header and body in the era's types, the body made from the same bytes as its size and hash; a transaction whose reading met a value the decoder's own bounds rule out is accepted by the block decoder and is the node's defect here (LeiosBlock.unread, DijkstraBlockError.Projection), the block withheld and no peer charged, as when the flat decoder read it and its projection failed",
+   "digest": "2b67a21b00b194a9"
   },
   "val ledger.era.dijkstra.DijkstraBlockHeader.instance": {
    "upstream": [
@@ -50802,6 +50802,16 @@
     "val ledger.era.dijkstra.DijkstraBlockHeader#issuer",
     "val ledger.era.dijkstra.DijkstraBlockHeader#slot",
     "val ledger.era.dijkstra.DijkstraBlockHeader#versionInfo"
+   ]
+  },
+  {
+   "reason": "the ranking block's transactions whose one-pass reading met a value the decoder's own bounds rule out, kept apart as the node's defect (LeiosBlock.Unread, LeiosBlock#transactionCount), so that the block decodes, passes the fetch checks (BlockTransport.matches, the checks of a decoded block split from its decoding) and is withheld by its application, as the flat decoder and its projection routed it; and the decoders taking the transaction reader (LeiosBlock.decodeWith, DijkstraBlock.decodeWith), so that a test forces that path, which the decoder's bounds make unreachable (#85); the reference's decoder has no such value and no counterpart",
+   "definitions": [
+    "class ledger.LeiosBlock.Unread",
+    "def ledger.BlockTransport.matches",
+    "def ledger.LeiosBlock#transactionCount",
+    "def ledger.LeiosBlock.decodeWith",
+    "def ledger.era.dijkstra.DijkstraBlock.decodeWith"
    ]
   }
  ]

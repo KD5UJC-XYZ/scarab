@@ -2,9 +2,9 @@
 package xyz.kd5ujc.scarab.ledger.era.dijkstra
 
 import cats.syntax.all.*
-import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.codec.{Bytes, Node}
 import xyz.kd5ujc.scarab.crypto.Blake2b
-import xyz.kd5ujc.scarab.ledger.{ChainError, DijkstraBlockDefect, LeiosBlock, LeiosHeader}
+import xyz.kd5ujc.scarab.ledger.{ChainError, LeiosBlock, LeiosHeader}
 import xyz.kd5ujc.scarab.ledger.era.{
   Block,
   BlockBody,
@@ -40,8 +40,9 @@ final class DijkstraBlockBody private (
 object DijkstraBlockBody:
   /** The body of a block the block decoder read from its bytes (`LeiosBlock.decode`, the build's
     * `DecCBOR (Annotator (DijkstraBlockBody era))`), each transaction read in Dijkstra's types
-    * ([[DijkstraTx.inBlock]]): the hash is the Blake2b-256 digest of the body's bytes
-    * (`hashBlockBody = extractHash . getMemoBytesHash`, `Internal.hs:120`, cardano-ledger
+    * ([[DijkstraTx.inBlock]]), the first whose reading met a value the decoder's own bounds rule
+    * out ([[LeiosBlock.unread]]) its failure: the hash is the Blake2b-256 digest of the body's
+    * bytes (`hashBlockBody = extractHash . getMemoBytesHash`, `Internal.hs:120`, cardano-ledger
     * 9df9f98c), which the decoder computed, and the size their length. Only
     * [[DijkstraBlock.decode]] holds the evidence ([[DijkstraBlock.Decoded]]), on the block it
     * decoded, so no copied block, whose contents differ from its size and hash, reaches it.
@@ -49,9 +50,10 @@ object DijkstraBlockBody:
   private[dijkstra] def ofDecoded(block: LeiosBlock)(using
       DijkstraBlock.Decoded
   ): Either[EraTxError, DijkstraBlockBody] =
-    Hash32
-      .fromBytes(block.bodyHash)
-      .leftMap(EraTxError.Vocab(_))
+    block.unread.headOption
+      .map(_.cause)
+      .toLeft(())
+      .flatMap(_ => Hash32.fromBytes(block.bodyHash).leftMap(EraTxError.Vocab(_)))
       .map(hash =>
         new DijkstraBlockBody(
           block.transactions,
@@ -148,8 +150,8 @@ object DijkstraBlockHeader:
 /** Why a Dijkstra block's bytes are not a block in the era's types, by whose the failure is: the
   * block decoder refused them ([[Decode]]); the era's types refuse what it read, a field the era
   * does not have or bytes they do not decode ([[Era]]); or a value the decoder's own bounds rule
-  * out came of them, in a transaction ([[DijkstraBlockDefect.Projection]], which the block decoder
-  * reports) or in the header ([[Projection]]), which is no fault of the bytes.
+  * out came of them, in a transaction ([[LeiosBlock.unread]]) or in the header ([[Projection]]),
+  * which is no fault of the bytes.
   */
 enum DijkstraBlockError:
   case Decode(cause: ChainError)
@@ -182,13 +184,16 @@ object DijkstraBlock:
     * the same bytes as its size and hash ([[DijkstraBlockBody.ofDecoded]]).
     */
   def decode(raw: Bytes): Either[DijkstraBlockError, Block[DijkstraBlockHeader, Dijkstra]] =
+    decodeWith(raw, DijkstraTx.inBlock)
+
+  /** [[decode]] with the transactions read by `reader`: the era's decoder, or a test's. */
+  private[ledger] def decodeWith(
+      raw: Bytes,
+      reader: Node => Either[EraTxError, DijkstraTx[TxLevel.Top]]
+  ): Either[DijkstraBlockError, Block[DijkstraBlockHeader, Dijkstra]] =
     LeiosBlock
-      .decode(raw)
-      .leftMap {
-        case ChainError.DijkstraBlock(_, DijkstraBlockDefect.Projection(cause)) =>
-          DijkstraBlockError.Projection(cause)
-        case other => DijkstraBlockError.Decode(other)
-      }
+      .decodeWith(raw, reader)
+      .leftMap(DijkstraBlockError.Decode(_))
       .flatMap(block =>
         (DijkstraBlockHeader.fromHeader(block.header), DijkstraBlockBody.ofDecoded(block))
           .mapN(Block[DijkstraBlockHeader, Dijkstra](_, _))
