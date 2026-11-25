@@ -31,9 +31,6 @@ class DijkstraSelectionSuite extends munit.FunSuite:
       .collectFirst { case r if r(0) == name => hex(r(5)) }
       .getOrElse(fail(s"no block $name"))
 
-  private lazy val block: LeiosBlock =
-    LeiosBlock.decode(recorded("announcing-with-txs")).fold(e => fail(e.message), identity)
-
   /** The block's transactions, read by the era's block decoder. */
   private lazy val txs: Vector[Tx[TxLevel.Top, Dijkstra]] =
     DijkstraEraTxs.ofBlock(recorded("announcing-with-txs"))
@@ -107,7 +104,14 @@ class DijkstraSelectionSuite extends munit.FunSuite:
   }
 
   test("the measure: sizeTxF and the overhead, every redeemer's units, the given script bytes") {
-    txs.zip(block.transactions).foreach { (tx, flat) =>
+    val flats = xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraCorpus
+      .blockItems(recorded("announcing-with-txs"))
+      .map(i =>
+        xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraTx
+          .inBlock(xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraCorpus.node(i))
+          .fold(e => fail(e.toString), identity)
+      )
+    txs.zip(flats).foreach { (tx, flat) =>
       val m = Capacity.dijkstraMeasure(tx, 7L)
       assertEquals(m.bytes, DijkstraTx.forBlockInclusion(tx).size.toLong - 1 + 4, tx.id.hex)
       assertEquals(

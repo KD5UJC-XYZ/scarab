@@ -100,14 +100,14 @@ class DijkstraUTxOSuite extends FunSuite:
           .decode(hex(str(j, "bytes")))
           .toOption
           .toVector
-          .flatMap(b =>
-            b.transactions.zipWithIndex
-              .flatMap((t, i) => read(s"${str(j, "name")} tx $i", t.raw, None))
+          .flatMap(_ =>
+            blockItems(hex(str(j, "bytes"))).zipWithIndex
+              .flatMap((t, i) => read(s"${str(j, "name")} tx $i", t, None))
           )
       )
     def shelleyBlock(name: String, raw: Bytes) = Block.decodeShelley(raw) match
-      case Right(b: Block.Dijkstra) =>
-        b.block.transactions.zipWithIndex.flatMap((t, i) => read(s"$name tx $i", t.raw, None))
+      case Right(_: Block.Dijkstra) =>
+        blockItems(raw).zipWithIndex.flatMap((t, i) => read(s"$name tx $i", t, None))
       case other => fail(s"$name: $other")
     val blocks = (testnetBlocks ++ devnetBlocks).flatMap(shelleyBlock)
     val contexts =

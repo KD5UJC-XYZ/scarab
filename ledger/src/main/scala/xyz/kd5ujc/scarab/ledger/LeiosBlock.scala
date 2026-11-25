@@ -5,8 +5,7 @@ import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.crypto.bls.Certificate
-import xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraTx
-import xyz.kd5ujc.scarab.ledger.era.{Tx, TxLevel}
+import xyz.kd5ujc.scarab.ledger.era.{EraTxError, Tx, TxLevel}
 import xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraTx as EraDijkstraTx
 import xyz.kd5ujc.scarab.ledger.state.Dijkstra
 import xyz.kd5ujc.scarab.protocol.{ChainSync, EbHash, Era, HfcHeader}
@@ -275,17 +274,17 @@ end LeiosHeader
 
 /** A Dijkstra block of the Leios testnet, block tag 8: `[header, block_body]` with `block_body =
   * [transactions, leios_certificate / nil, peras_certificate / nil]`. Each transaction is whole,
-  * `[body, witnesses, auxiliary_data / nil, is_valid]`, decoded as the build decodes it
-  * ([[dijkstra.DijkstraTx]]), and the block body hash is the Blake2b-256 digest of the whole
-  * encoded body (cardano-ledger 9df9f98c `Dijkstra/BlockBody/Internal.hs:120`:
-  * `hashBlockBody = extractHash . getMemoBytesHash`), not a merkle of component hashes (the CDDL
-  * comment "merkle triple root" is stale).
+  * `[body, witnesses, auxiliary_data / nil, is_valid]`, read as the build decodes it straight into
+  * Dijkstra's types ([[era.dijkstra.DijkstraTx.inBlock]]), and the block body hash is the
+  * Blake2b-256 digest of the whole encoded body (cardano-ledger 9df9f98c
+  * `Dijkstra/BlockBody/Internal.hs:120`: `hashBlockBody = extractHash . getMemoBytesHash`), not a
+  * merkle of component hashes (the CDDL comment "merkle triple root" is stale).
   *
   * Every part keeps its original bytes.
   */
 final case class LeiosBlock(
     header: LeiosHeader,
-    transactions: Vector[DijkstraTx],
+    transactions: Vector[EraDijkstraTx[TxLevel.Top]],
     leiosCertificate: Option[LeiosBlock.CertificateBytes],
     perasCertificate: Option[Bytes],
     bodySize: Long,
@@ -366,9 +365,10 @@ object LeiosBlock:
     * No list of the block is a `RecD` record at version 12 ([[LeiosHeader.decode]]; the records of
     * a transaction are read by `decodeRecordNamed` from version 12, e.g. `Mary/Value.hs:308-321`),
     * so the block is read as a tree of items, and an empty indefinite list with fields after it is
-    * refused where the reference refuses it. Each transaction is decoded in full at version 12
-    * ([[dijkstra.DijkstraTx.inBlock]]): its body, witness set, auxiliary data and sub-transactions,
-    * each with its original bytes; no ledger rule is applied.
+    * refused where the reference refuses it. Each transaction is decoded in full at version 12, in
+    * one pass into Dijkstra's types ([[era.dijkstra.DijkstraTx.inBlock]]): its body, witness set,
+    * auxiliary data and sub-transactions, each with its original bytes; no ledger rule is applied.
+    * The decoder's refusal is the block's ([[transaction]]).
     */
   def decode(raw: Bytes): Either[ChainError, LeiosBlock] =
     CborRead.decode(raw, limits).leftMap(fail).flatMap(read)
@@ -381,13 +381,32 @@ object LeiosBlock:
     for
       (header, body) <- framed(root)
       xs <- array(body, 3)
-      txs <- list(xs(0)).flatMap(_.traverse(DijkstraTx.inBlock(_).leftMap(fail)))
+      txs <- list(xs(0)).flatMap(_.traverse(transaction(header)))
       cert <- nullable(xs(1))(certificate)
       peras <- nullable(xs(2))(c =>
         CborRead.bytes(c, DecodeField.PerasCertificate)(using ByteStrings.Chunked).leftMap(fail)
       )
       bytes = body.original
     yield LeiosBlock(header, txs, cert, peras, bytes.size.toLong, Blake2b.hash256.hash(bytes))
+
+  /** A transaction of the block read from its item ([[era.dijkstra.DijkstraTx.inBlock]]). The
+    * decoder's refusal is the block's, as the build's decoder refuses it
+    * (`decodeDijkstraTopTxInBlock`, `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Tx.hs:175-182`,
+    * cardano-ledger 9df9f98c). A value its own bounds rule out ([[EraTxError]] other than `Decode`)
+    * is the node's defect, not the bytes' fault: the block of `header` is not applied, as its
+    * rules' defects are not ([[DijkstraBlockDefect.Projection]]).
+    */
+  private def transaction(
+      header: LeiosHeader
+  )(n: Node): Either[ChainError, EraDijkstraTx[TxLevel.Top]] =
+    EraDijkstraTx.inBlock(n).leftMap {
+      case EraTxError.Decode(e) => fail(e)
+      case cause @ (EraTxError.NotInEra(_) | EraTxError.NoDelegatee | EraTxError.Vocab(_) |
+          EraTxError.PParams(_) | EraTxError.ScriptsReadAgain | EraTxError.OtherLevel |
+          EraTxError.WitnessDataReadAgain | EraTxError.StoredOutputDiffers |
+          EraTxError.TranslationReadBack(_)) =>
+        ChainError.DijkstraBlock(header.slot, DijkstraBlockDefect.Projection(cause))
+    }
 
   /** The header of a block already read as a tree of items, its envelope and header read as
     * [[read]] reads them and its body's contents not decoded ([[Block.decodeHeader]]).

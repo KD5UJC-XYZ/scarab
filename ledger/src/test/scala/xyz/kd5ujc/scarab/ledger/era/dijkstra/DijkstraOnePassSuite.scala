@@ -43,8 +43,9 @@ class DijkstraOnePassSuite extends ScalaCheckSuite:
       StandardCharsets.UTF_8
     ).linesIterator.map(_.split('\t').toVector).toVector
 
+  // the items of the transactions of a block the block decoder reads
   private def blockTxs(raw: Bytes): Vector[Bytes] =
-    LeiosBlock.decode(raw).toOption.toVector.flatMap(_.transactions.map(_.raw))
+    if LeiosBlock.decode(raw).isRight then DijkstraCorpus.blockItems(raw) else Vector.empty
 
   /** The transactions in their block form, by source. */
   private lazy val sources: Vector[(String, Vector[Bytes])] =

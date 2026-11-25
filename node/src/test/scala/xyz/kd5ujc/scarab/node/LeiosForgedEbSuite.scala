@@ -60,7 +60,7 @@ class LeiosForgedEbSuite extends FailsOnUncaught:
       block.header.slot,
       ProtVerParity.Even,
       NonEmptyVector
-        .fromVector(block.transactions.map(xyz.kd5ujc.scarab.node.forge.DijkstraEraTxs.of))
+        .fromVector(block.transactions)
         .getOrElse(fail("no transactions"))
     )
 

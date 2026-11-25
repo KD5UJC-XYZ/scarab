@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.ledger.era.dijkstra
 
 import cats.syntax.all.*
-import scala.annotation.unused
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
 import xyz.kd5ujc.scarab.ledger.{DecodeField, LedgerDecodeError}
 import xyz.kd5ujc.scarab.ledger.dijkstra.{
@@ -140,10 +139,9 @@ object DijkstraTx:
           )
         )
 
-  /** A top-level transaction the Leios build's block decoder read
-    * ([[xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraTx]], which decides what is refused), in
-    * Dijkstra's types, its sub-transactions at the sub-transaction level. Only [[ofBlock]], on a
-    * transaction the block decoder read, and the two passes [[inBlockByFlat]] and
+  /** A top-level transaction the flat block decoder read
+    * ([[xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraTx]]), in Dijkstra's types, its sub-transactions
+    * at the sub-transaction level. Only the two passes [[inBlockByFlat]] and
     * [[fromSubmissionByFlat]] call it, each on what the flat decoder read from bytes, so each body
     * is of the level read at and its bytes are the ones read.
     */
@@ -180,17 +178,6 @@ object DijkstraTx:
         ).mapN((body, wits, aux, valid) => TopTx(body, wits, IsPhase2Valid.of(valid), aux))
       )
 
-  /** A transaction of a block the flat block decoder read (`LeiosBlock.decode`, which reads each
-    * transaction with `decodeDijkstraTopTxInBlock` as [[inBlock]] does): what [[inBlock]] reads,
-    * from the transaction that decoder already read. Only [[DijkstraBlock.decode]] holds the
-    * evidence ([[DijkstraBlock.Decoded]]), on the block it decoded, so no copied flat transaction
-    * reaches the era's types this way.
-    */
-  private[dijkstra] def ofBlock(flat: FlatDijkstraTx)(using
-      @unused decoded: DijkstraBlock.Decoded
-  ): Either[EraTxError, DijkstraTx[TxLevel.Top]] =
-    decode(flat)
-
   /** `decodeDijkstraTopTx` (`Tx.hs:152-169`, cardano-ledger 9df9f98c): a transaction as a client or
     * a peer submits it, valid.
     */
@@ -200,11 +187,12 @@ object DijkstraTx:
       .leftMap(e => EraTxError.Decode(LedgerDecodeError.Syntax(e)))
       .flatMap(submitted)
 
-  /** The mempool form read from its item, as the flat decoder's `submitted` reads it: three items,
-    * or four with a boolean third, which must be `true`, before the auxiliary data
-    * (`decodeDijkstraTopTx`, `Tx.hs:152-169`, cardano-ledger 9df9f98c).
+  /** The mempool form read from its item, already read as CBOR within the reader's own bounds (the
+    * node-to-node transaction submission's, `RelayedTransactions`): three items, or four with a
+    * boolean third, which must be `true`, before the auxiliary data (`decodeDijkstraTopTx`,
+    * `Tx.hs:152-169`, cardano-ledger 9df9f98c).
     */
-  private def submitted(n: Node): Either[EraTxError, DijkstraTx[TxLevel.Top]] =
+  def submitted(n: Node): Either[EraTxError, DijkstraTx[TxLevel.Top]] =
     V12.list(n, DecodeField.Transaction).leftMap(EraTxError.Decode(_)).flatMap { xs =>
       val flagged = xs
         .lift(2)

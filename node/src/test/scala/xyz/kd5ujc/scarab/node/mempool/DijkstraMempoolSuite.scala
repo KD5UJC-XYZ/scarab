@@ -743,7 +743,7 @@ class DijkstraMempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       // the block form the forger writes is the one block 37 holds
       assertEquals(
         snapshot.held.map(h => EraDijkstraTx.forBlockInclusion(h.tx)),
-        Vector(inBlock.forBlockInclusion)
+        Vector(EraDijkstraTx.forBlockInclusion(inBlock))
       )
       assertEquals(snapshot.held.map(_.measure), Vector(TxMeasure(submitted.size + 4L, 0, 0, 0L)))
       val params = ledgerOf(s(37), tip).params

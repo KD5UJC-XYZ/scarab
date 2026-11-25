@@ -639,9 +639,11 @@ class DijkstraTxSuite extends FunSuite:
 
   private def ofBlock(raw: Bytes, what: String): Tally =
     Block.decodeShelley(raw) match
-      case Right(b: Block.Dijkstra) =>
-        b.block.transactions.zipWithIndex
-          .map((t, i) => compare(Right(t), DijkstraTx.inBlock(node(t.raw)), s"$what tx $i"))
+      case Right(_: Block.Dijkstra) =>
+        DijkstraCorpus
+          .blockItems(raw)
+          .zipWithIndex
+          .map((t, i) => inBlock(t, s"$what tx $i"))
           .foldLeft(none)(_ + _)
       case other => fail(s"$what: $other")
 
@@ -691,9 +693,11 @@ class DijkstraTxSuite extends FunSuite:
 
   private def LeiosBlockRead(raw: Bytes, what: String): Tally =
     xyz.kd5ujc.scarab.ledger.LeiosBlock.decode(raw) match
-      case Right(b) =>
-        b.transactions.zipWithIndex
-          .map((t, i) => compare(Right(t), DijkstraTx.inBlock(node(t.raw)), s"$what tx $i"))
+      case Right(_) =>
+        DijkstraCorpus
+          .blockItems(raw)
+          .zipWithIndex
+          .map((t, i) => inBlock(t, s"$what tx $i"))
           .foldLeft(none)(_ + _)
       case Left(_) => none
 
@@ -746,7 +750,7 @@ class DijkstraTxSuite extends FunSuite:
     // redeemers (whose units `getTotalExUnits` adds at the top level)
     val blocks = DijkstraCorpus.testnetBlocks.flatMap((_, raw) =>
       Block.decodeShelley(raw) match
-        case Right(b: Block.Dijkstra) => b.block.transactions.map(_.raw)
+        case Right(_: Block.Dijkstra) => DijkstraCorpus.blockItems(raw)
         case _                        => Vector.empty
     )
     val read = ((DijkstraCorpus.contextCases ++ DijkstraCorpus.chainContextCases)

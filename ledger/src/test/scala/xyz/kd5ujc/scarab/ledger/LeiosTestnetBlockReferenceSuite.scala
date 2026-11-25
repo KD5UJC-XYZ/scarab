@@ -8,6 +8,8 @@ import munit.FunSuite
 import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
 import xyz.kd5ujc.scarab.ledger.dijkstra.{DijkstraTx, DijkstraWitnesses, V12}
+import xyz.kd5ujc.scarab.ledger.era.IsPhase2Valid
+import xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraTx as EraDijkstraTx
 
 /** The Leios reference is the build the public Leios testnet runs (cardano-node b004fe0c, release
   * rc-2026w44: cardano-ledger 9df9f98c, ouroboros-consensus 2416493b; decided 2026-11-03 on #711).
@@ -147,7 +149,9 @@ class LeiosTestnetBlockReferenceSuite extends FunSuite:
                   b.transactions.map(t =>
                     Json.obj(
                       "id" -> Json.fromString(t.id.hex),
-                      "valid" -> Json.fromBoolean(t.isValid)
+                      "valid" -> Json.fromBoolean(
+                        EraDijkstraTx.isValid(t) == IsPhase2Valid.Phase2Valid
+                      )
                     )
                   )*
                 )

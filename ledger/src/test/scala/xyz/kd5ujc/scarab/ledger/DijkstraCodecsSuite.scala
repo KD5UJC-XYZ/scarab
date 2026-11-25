@@ -6,6 +6,8 @@ import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.ledger.dijkstra.{DijkstraLevel, DijkstraTx, DijkstraVoting}
+import xyz.kd5ujc.scarab.ledger.era.IsPhase2Valid
+import xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraTx as EraDijkstraTx
 import xyz.kd5ujc.scarab.protocol.{DijkstraNotYet, Era}
 
 /** The block, header and transaction readers of the node on the Conway to Dijkstra chain of the
@@ -151,9 +153,9 @@ class DijkstraCodecsSuite extends munit.FunSuite:
   }
 
   test("the submitted transaction is the block's: same id, body and witnesses, valid") {
-    val tx = DijkstraTx.fromSubmission(submitted).fold(e => fail(e.message), identity)
+    val tx = EraDijkstraTx.fromSubmission(submitted).fold(e => fail(e.toString), identity)
     assertEquals(tx.id.hex, txId)
-    assertEquals(tx.isValid, true)
+    assertEquals(EraDijkstraTx.isValid(tx), IsPhase2Valid.Phase2Valid)
     val inBlock = blocks
       .filter(_.tag == 8)
       .flatMap(dijkstra(_).block.transactions)
@@ -161,13 +163,13 @@ class DijkstraCodecsSuite extends munit.FunSuite:
     assertEquals(inBlock.size, 1)
     val t = inBlock(0)
     assertEquals(t.body.raw, tx.body.raw)
-    assertEquals(t.witnesses.raw, tx.witnesses.raw)
-    assertEquals(t.auxiliary, tx.auxiliary)
-    assertEquals(t.isValid, true)
+    assertEquals(t.wits.raw, tx.wits.raw)
+    assertEquals(t.auxData, tx.auxData)
+    assertEquals(EraDijkstraTx.isValid(t), IsPhase2Valid.Phase2Valid)
     // the mempool form's parts, as the generic envelope reader splits them
     assertEquals(
       Tx.envelopeParts(node(submitted), Era.Dijkstra),
-      Right(Block.Transaction(t.body.raw, t.witnesses.raw, None, true))
+      Right(Block.Transaction(t.body.raw, t.wits.raw, None, true))
     )
   }
 

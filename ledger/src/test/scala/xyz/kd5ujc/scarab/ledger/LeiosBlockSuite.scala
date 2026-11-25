@@ -5,6 +5,8 @@ import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.Blake2b
+import xyz.kd5ujc.scarab.ledger.era.IsPhase2Valid
+import xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraTx
 import xyz.kd5ujc.scarab.protocol.{Era, HfcHeader}
 
 /** Headers and blocks captured from the public Leios testnet (`fixtures/leios/testnet`, provenance
@@ -145,7 +147,7 @@ class LeiosBlockSuite extends munit.FunSuite:
     assert(txs.transactions.nonEmpty)
     assertEquals(txs.faults, Vector.empty)
     assertEquals(txs.bodyHash, txs.header.bodyHash)
-    assert(txs.transactions.forall(_.isValid))
+    assert(txs.transactions.forall(t => DijkstraTx.isValid(t) == IsPhase2Valid.Phase2Valid))
     val empty = block("block-0")
     assertEquals(empty.bodySize, 4L) // [[], null, null] = 0x83 0x80 0xf6 0xf6
     assertEquals(empty.faults, Vector.empty)

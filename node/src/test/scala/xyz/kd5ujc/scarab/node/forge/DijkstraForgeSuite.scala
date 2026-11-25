@@ -443,7 +443,7 @@ class DijkstraForgeSuite extends munit.FunSuite:
   /** Block 64,853's transactions, read again by the era's decoder from the bytes the block holds.
     */
   private lazy val recordedTxs: Vector[Tx[TxLevel.Top, Dijkstra]] =
-    recorded._1.transactions.map(DijkstraEraTxs.of)
+    recorded._1.transactions
 
   test("a ranking block's capacity is the testnet's, from Dijkstra's parameters") {
     // `blockCapacityConwayMeasure` at Dijkstra: 90,112 less 1,024 bytes, the block's units, and

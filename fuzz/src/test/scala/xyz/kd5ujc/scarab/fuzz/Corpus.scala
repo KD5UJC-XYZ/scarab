@@ -120,13 +120,13 @@ object Corpus extends munit.Assertions:
 
   /** The transactions of the Dijkstra blocks in their block form, `is_valid` last. */
   lazy val dijkstraInBlock: Vector[Array[Byte]] =
-    dijkstraBlocks.flatMap(b =>
-      xyz.kd5ujc.scarab.ledger.LeiosBlock
-        .decode(Bytes.fromArray(b))
-        .toOption
-        .toVector
-        .flatMap(_.transactions.map(_.raw.toArray))
-    )
+    dijkstraBlocks
+      .filter(b => xyz.kd5ujc.scarab.ledger.LeiosBlock.decode(Bytes.fromArray(b)).isRight)
+      .flatMap(b =>
+        xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraCorpus
+          .blockItems(Bytes.fromArray(b))
+          .map(_.toArray)
+      )
 
   /** The devnet's transaction in the mempool form (`transaction.json`) and the block forms. */
   lazy val dijkstraSubmitted: Vector[Array[Byte]] =

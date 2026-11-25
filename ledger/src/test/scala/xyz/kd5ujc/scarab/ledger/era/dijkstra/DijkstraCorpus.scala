@@ -109,6 +109,22 @@ object DijkstraCorpus extends Assertions:
       .map(hex)
 
   /** Bytes read as one item of CBOR, none for bytes that are not one. */
+  /** The items of a Dijkstra block's transactions, each the bytes the block holds it as, read from
+    * the block's tree (`[8, [header, [transactions, ...]]]`); none when the block is not one.
+    */
+  def blockItems(raw: Bytes): Vector[Bytes] =
+    def items(n: Node): Vector[Node] = n.value match
+      case xyz.kd5ujc.scarab.codec.Value.Arr(xs) => xs
+      case _                                     => Vector.empty
+    CborRead
+      .decode(raw, xyz.kd5ujc.scarab.codec.Cbor.Limits.Unbounded)
+      .toOption
+      .toVector
+      .flatMap(root =>
+        items(root).lift(1).toVector.flatMap(items(_).lift(1)).flatMap(items(_).headOption)
+      )
+      .flatMap(items(_).map(_.original))
+
   def cbor(raw: Bytes): Option[Node] = CborRead.decode(raw, V12.nestedLimits).toOption
 
   /** A transaction input as the block decoder reads one: its id and index. */

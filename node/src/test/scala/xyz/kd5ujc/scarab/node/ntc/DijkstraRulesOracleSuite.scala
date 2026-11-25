@@ -802,9 +802,7 @@ class DijkstraRulesOracleSuite extends FunSuite:
     val block = Block.decodeShelley(hex(str(h.downField("block")))) match
       case Right(Block.Dijkstra(b)) => b
       case other                    => fail(s"not a Dijkstra block: $other")
-    val txs = block.transactions.map(t =>
-      ok(xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraTx.inBlock(node(t.raw)))
-    )
+    val txs = block.transactions
     DijkstraLedgerRun.ledgers(
       leiosGlobals,
       xyz.kd5ujc.scarab.ledger.era.rules

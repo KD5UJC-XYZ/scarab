@@ -88,7 +88,7 @@ class DijkstraBbodySuite extends FunSuite:
       )
       assertEquals(
         txs.map(t => IsPhase2Valid.of(true) == tx.isValid(t)),
-        b.transactions.map(_.isValid),
+        b.transactions.map(t => IsPhase2Valid.of(true) == DijkstraTx.isValid(t)),
         name
       )
       assertEquals(
@@ -237,12 +237,9 @@ class DijkstraBbodySuite extends FunSuite:
   ) {
     // the control: a block's bytes make one
     assertEquals(compileErrors("DijkstraBlock.decode(plain)"), "")
-    // a copied flat block or transaction does not, in this package either: the evidence only the
-    // decoder makes is missing, and cannot be made here
+    // a copied block does not, in this package either: the evidence only the decoder makes is
+    // missing, and cannot be made here
     assert(compileErrors("DijkstraBlockBody.ofDecoded(flatBlock(plain))").nonEmpty)
-    assert(
-      compileErrors("DijkstraTx.ofBlock(flatBlock(captured.last._2).transactions.head)").nonEmpty
-    )
     assert(compileErrors("new DijkstraBlock.Decoded()").nonEmpty)
   }
 

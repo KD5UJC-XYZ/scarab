@@ -4,7 +4,7 @@ package xyz.kd5ujc.scarab.ledger.era.dijkstra
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.Blake2b
-import xyz.kd5ujc.scarab.ledger.{ChainError, LeiosBlock, LeiosHeader}
+import xyz.kd5ujc.scarab.ledger.{ChainError, DijkstraBlockDefect, LeiosBlock, LeiosHeader}
 import xyz.kd5ujc.scarab.ledger.era.{
   Block,
   BlockBody,
@@ -38,9 +38,9 @@ final class DijkstraBlockBody private (
     s"DijkstraBlockBody(${txs.size} transactions, $leiosCert, $perasCert, $size, $hash)"
 
 object DijkstraBlockBody:
-  /** The body of a block the flat block decoder read from its bytes (`LeiosBlock.decode`, the
-    * build's `DecCBOR (Annotator (DijkstraBlockBody era))`), each transaction in Dijkstra's types
-    * ([[DijkstraTx.ofBlock]]): the hash is the Blake2b-256 digest of the body's bytes
+  /** The body of a block the block decoder read from its bytes (`LeiosBlock.decode`, the build's
+    * `DecCBOR (Annotator (DijkstraBlockBody era))`), each transaction read in Dijkstra's types
+    * ([[DijkstraTx.inBlock]]): the hash is the Blake2b-256 digest of the body's bytes
     * (`hashBlockBody = extractHash . getMemoBytesHash`, `Internal.hs:120`, cardano-ledger
     * 9df9f98c), which the decoder computed, and the size their length. Only
     * [[DijkstraBlock.decode]] holds the evidence ([[DijkstraBlock.Decoded]]), on the block it
@@ -49,16 +49,18 @@ object DijkstraBlockBody:
   private[dijkstra] def ofDecoded(block: LeiosBlock)(using
       DijkstraBlock.Decoded
   ): Either[EraTxError, DijkstraBlockBody] =
-    for
-      txs <- block.transactions.traverse(DijkstraTx.ofBlock)
-      hash <- Hash32.fromBytes(block.bodyHash).leftMap(EraTxError.Vocab(_))
-    yield new DijkstraBlockBody(
-      txs,
-      block.leiosCertificate,
-      block.perasCertificate.map(PerasCert(_)),
-      block.bodySize,
-      hash
-    )
+    Hash32
+      .fromBytes(block.bodyHash)
+      .leftMap(EraTxError.Vocab(_))
+      .map(hash =>
+        new DijkstraBlockBody(
+          block.transactions,
+          block.leiosCertificate,
+          block.perasCertificate.map(PerasCert(_)),
+          block.bodySize,
+          hash
+        )
+      )
 
   /** `instance EraBlockBody DijkstraEra` and `instance DijkstraEraBlockBody DijkstraEra`
     * (`Internal.hs:114-140`, cardano-ledger 9df9f98c). `blockBodySize` encodes the memoized body
@@ -145,9 +147,9 @@ object DijkstraBlockHeader:
 
 /** Why a Dijkstra block's bytes are not a block in the era's types, by whose the failure is: the
   * block decoder refused them ([[Decode]]); the era's types refuse what it read, a field the era
-  * does not have or bytes they do not decode ([[Era]]); or the node's own two readings of the same
-  * bytes disagree, or a value the decoder's own bounds rule out came of them ([[Projection]]),
-  * which is no fault of the bytes.
+  * does not have or bytes they do not decode ([[Era]]); or a value the decoder's own bounds rule
+  * out came of them, in a transaction ([[DijkstraBlockDefect.Projection]], which the block decoder
+  * reports) or in the header ([[Projection]]), which is no fault of the bytes.
   */
 enum DijkstraBlockError:
   case Decode(cause: ChainError)
@@ -168,8 +170,8 @@ object DijkstraBlockError:
 
 /** A Dijkstra block in the era's types. */
 object DijkstraBlock:
-  /** The evidence that a flat block or transaction is one [[decode]] read from bytes: only this
-    * object makes one, so the era's body and transactions are made from no other.
+  /** The evidence that a block is one [[decode]] read from bytes: only this object makes one, so
+    * the era's body is made from no other.
     */
   final class Decoded private[DijkstraBlock] ()
 
@@ -182,7 +184,11 @@ object DijkstraBlock:
   def decode(raw: Bytes): Either[DijkstraBlockError, Block[DijkstraBlockHeader, Dijkstra]] =
     LeiosBlock
       .decode(raw)
-      .leftMap(DijkstraBlockError.Decode(_))
+      .leftMap {
+        case ChainError.DijkstraBlock(_, DijkstraBlockDefect.Projection(cause)) =>
+          DijkstraBlockError.Projection(cause)
+        case other => DijkstraBlockError.Decode(other)
+      }
       .flatMap(block =>
         (DijkstraBlockHeader.fromHeader(block.header), DijkstraBlockBody.ofDecoded(block))
           .mapN(Block[DijkstraBlockHeader, Dijkstra](_, _))
