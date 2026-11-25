@@ -28,7 +28,7 @@ import xyz.kd5ujc.scarab.ledger.era.rules.{
   UtxoContext,
   UtxoStateDefect
 }
-import xyz.kd5ujc.scarab.ledger.rules.{Globals, Judge, Judgment, RuleT, contramap}
+import xyz.kd5ujc.scarab.ledger.rules.{Globals, Judgment, RuleT, contramap}
 import xyz.kd5ujc.scarab.ledger.state.{CertState, Conway, LedgerState}
 import xyz.kd5ujc.scarab.plutus.{ScriptDecoder, ScriptEvaluator}
 
@@ -77,10 +77,10 @@ object LedgerRulesEra:
       def tell(events: Chain[CertsEvent[Conway]]): F[Unit] = Monad[F].unit
 
   /** LEDGER (`ConwayLedger.conwayLedgerTransition`, `Conway/Rules/Ledger.hs`, cardano-ledger
-    * f649f975) on `stAnnTx` from `state`, one level below the root, as LEDGERS runs each
-    * transaction of a block (`Shelley/Rules/Ledgers.hs:201-211`), which fixes the order its
-    * failures are reported in (`Judgment.flatten`). Its proposals are the governance state's record
-    * ([[ProposalsRecord]]).
+    * f649f975) on `stAnnTx` from `state`, at the root. In a block LEDGER runs two levels down,
+    * under BBODY and LEDGERS (`Shelley/Rules/Ledgers.hs:201-211`), and the parity of the depth
+    * fixes the order its failures are reported in (`Judgment.flatten`), so the root orders them as
+    * a block does. Its proposals are the governance state's record ([[ProposalsRecord]]).
     */
   def ledger(
       globals: Globals,
@@ -98,9 +98,7 @@ object LedgerRulesEra:
     given Phase2Deferral[F, Conway] = Phase2Deferral.now
     Judgment
       .judge(
-        summon[Judge[F, LedgerPredFailure[Conway]]].nest(
-          ConwayLedger.conwayLedgerTransition[F, Conway](env, stAnnTx, context, verdicts, decoder)
-        ),
+        ConwayLedger.conwayLedgerTransition[F, Conway](env, stAnnTx, context, verdicts, decoder),
         RuleT.Policy.Accumulate
       )(globals, state)
       .map(_.map(_._1))
