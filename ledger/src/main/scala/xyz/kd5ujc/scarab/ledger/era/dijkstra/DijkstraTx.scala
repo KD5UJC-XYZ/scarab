@@ -288,7 +288,7 @@ object DijkstraTx:
     */
   def translate(conway: ConwayTx): Either[DijkstraTxTranslationError, DijkstraTx[TxLevel.Top]] =
     for
-      body <- throughCbor(DijkstraTxPart.TxBody, conway.body.raw)(topBody)
+      body <- throughCbor(DijkstraTxPart.TxBody, conway.body.raw)(DijkstraTxBody.readTop(_, subTx))
       wits <- throughCbor(DijkstraTxPart.TxWits, conway.wits.raw)(DijkstraTxWits.decode)
       aux <- conway.auxData.traverse(a =>
         throughCbor(DijkstraTxPart.TxAuxData, a.raw)(DijkstraTxAuxData.decode)
@@ -306,20 +306,6 @@ object DijkstraTx:
       .leftMap(e => EraTxError.Decode(LedgerDecodeError.Syntax(e)))
       .flatMap(read)
       .leftMap(DijkstraTxTranslationError.Undecodable(part, _))
-
-  // A top-level body read by the block decoder's body decoder, its sub-transactions in order and
-  // without a repeated id, as [[decode]] reads a transaction's.
-  private def topBody(n: Node): Either[EraTxError, DijkstraTxBody[TxLevel.Top]] =
-    for
-      flat <- FlatDijkstraTx
-        .body(n, xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraLevel.Top)
-        .leftMap(EraTxError.Decode(_))
-      subs <- flat.subTransactions.traverse(sub)
-      ordered <- OMap
-        .decoded(subs.map(s => s.id -> s))
-        .toRight(EraTxError.Decode(LedgerDecodeError.DuplicateElement(DecodeField.SubTransactions)))
-      body <- DijkstraTxBody.topOf(flat, ordered)
-    yield body
 
   /** `instance EraTx DijkstraEra` (`Tx.hs:216-253`, cardano-ledger 9df9f98c) and `instance
     * AlonzoEraTx DijkstraEra` (`Tx.hs:413-422`), of both levels. The size for the fee is the

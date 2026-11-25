@@ -24358,8 +24358,8 @@
    "evidence": [
     "DijkstraTxTranslationSuite"
    ],
-   "note": "each part's memoised bytes read whole at Dijkstra's version (translateEraThroughCBOR), in the reference's order, the flag kept; the body is read by the block decoder's body decoder and projected, as DijkstraTx's decoders read one. Unwired: Scarab's 11.1 build, whose injection uses it (hardForkInjectTxs, ouroboros-consensus 82ecba329), never enters Dijkstra",
-   "digest": "f830e75436dc1764"
+   "note": "each part's memoised bytes read whole at Dijkstra's version (translateEraThroughCBOR), in the reference's order, the flag kept; the body is read by the top-level body's reader in one pass (DijkstraTxBody.readTop), as DijkstraTx's decoders read one. Unwired: Scarab's 11.1 build, whose injection uses it (hardForkInjectTxs, ouroboros-consensus 82ecba329), never enters Dijkstra",
+   "digest": "300d6ebd290958dc"
   },
   "enum ledger.era.dijkstra.DijkstraTxPart": {
    "upstream": [
