@@ -215,6 +215,55 @@ class DijkstraOnePassSuite extends ScalaCheckSuite:
     )
   }
 
+  /** What a transaction read from its item keeps of it: the id is the hash of the body's item, and
+    * a block form written as a definite list of four is the transaction's block inclusion, its size
+    * for the fee the bytes but the flag's.
+    */
+  private def kept(t: DijkstraTx[TxLevel.Top], n: Node, what: String): Unit =
+    n.value match
+      case Value.Arr(xs) if xs.nonEmpty =>
+        assertEquals(t.id, xyz.kd5ujc.scarab.crypto.Blake2b.hash256.hash(xs(0).original), what)
+        if n.original.byteOr(0)(0)(_ & 0xff) == 0x84 then
+          assertEquals(DijkstraTx.forBlockInclusion(t), n.original, what)
+          assertEquals(t.sizeTxF, n.original.size - 1L, what)
+      case _ => fail(s"$what: read from no list")
+
+  test("every recorded Dijkstra transaction reads as recorded") {
+    import DijkstraOnePassExpected.{corpus, corpusMempool, corpusNoMempoolForm, corpusNotCbor}
+    // every transaction but the Leios build's refused ones is accepted in both forms, and keeps
+    // its item's bytes; the refused ones are refused as recorded, each form
+    sources.foreach { (name, txs) =>
+      val recorded = name == "Leios corpus transactions"
+      txs.zipWithIndex.foreach { (raw, i) =>
+        val what = s"$name $i"
+        node(raw) match
+          case None => assert(recorded && corpusNotCbor(i), s"$what: not CBOR")
+          case Some(n) =>
+            assert(!(recorded && corpusNotCbor(i)), what)
+            val read = DijkstraTx.inBlock(n)
+            assertEquals(read.left.toOption, Option.when(recorded)(corpus.get(i)).flatten, what)
+            read.foreach(kept(_, n, what))
+        mempoolForm(raw) match
+          case None => assert(!recorded || corpusNoMempoolForm(i), s"$what: no mempool form")
+          case Some(m) =>
+            assert(!(recorded && corpusNoMempoolForm(i)), what)
+            assertEquals(
+              DijkstraTx.fromSubmission(m).left.toOption,
+              Option.when(recorded)(corpusMempool.get(i).orElse(corpus.get(i))).flatten,
+              s"$what, mempool form"
+            )
+      }
+    }
+    submitted.foreach((name, txs) =>
+      txs.zipWithIndex.foreach((raw, i) =>
+        assert(DijkstraTx.fromSubmission(raw).isRight, s"$name $i")
+      )
+    )
+    // the 258 refusals of the corpus, its five items that are not CBOR, and its seven without a
+    // mempool form: the five, a block form of three items and a list of four that is indefinite
+    assertEquals((corpus.size, corpusNotCbor.size, corpusNoMempoolForm.size), (258, 5, 7))
+  }
+
   // ---- mutants
 
   /** The items of a decoded transaction with where each begins in its bytes and the part it is in:
@@ -406,6 +455,21 @@ class DijkstraOnePassSuite extends ScalaCheckSuite:
     }
     val outcomes = tally(read.map(_._2).toVector)
     val parts = read.map(_._1).toSet
+    // as recorded: the outcomes, and the distinct refusals among them
+    assertEquals(
+      outcomes,
+      Map(Outcome.Accepted -> 1589, Outcome.Refused -> 3185, Outcome.NotCbor -> 1226)
+    )
+    assertEquals(
+      read.indices
+        .flatMap(i =>
+          node(mutant(seeds(i % seeds.size), i.toLong * 7919L)._1)
+            .flatMap(DijkstraTx.inBlock(_).left.toOption)
+        )
+        .distinct
+        .size,
+      597
+    )
     assert(outcomes.getOrElse(Outcome.Accepted, 0) > 100, outcomes.toString)
     assert(outcomes.getOrElse(Outcome.Refused, 0) > 1000, outcomes.toString)
     assert(!outcomes.contains(Outcome.ProjectionRefused), outcomes.toString)
@@ -450,6 +514,14 @@ class DijkstraOnePassSuite extends ScalaCheckSuite:
       kind -> node(raw).fold(Outcome.NotCbor)(n => sameInBlock(n, s"$kind mutant $i"))
     }
     val byKind = read.groupBy(_._1).view.mapValues(rs => tally(rs.map(_._2))).toMap
+    // as recorded
+    assertEquals(
+      byKind,
+      Map(
+        "redeemers" -> Map(Outcome.Accepted -> 233, Outcome.Refused -> 20),
+        "text" -> Map(Outcome.Accepted -> 66, Outcome.Refused -> 176)
+      )
+    )
     assert(byKind.get("text").exists(_.getOrElse(Outcome.Accepted, 0) > 0), byKind.toString)
     assert(byKind.get("redeemers").exists(_.values.sum > 0), byKind.toString)
     assert(!read.exists(_._2 == Outcome.ProjectionRefused), byKind.toString)
@@ -652,6 +724,13 @@ class DijkstraOnePassSuite extends ScalaCheckSuite:
     val values =
       Vector("60", "00", "80", "a0", "f6", "1bffffffffffffffff", "d9010280", "4100", "8100", "8140")
         .map(hex)
+    // the verdicts recorded of each case
+    val expected = Map(
+      "body" -> DijkstraOnePassExpected.body,
+      "sub-transaction's body" -> DijkstraOnePassExpected.subBody,
+      "witness set" -> DijkstraOnePassExpected.wits,
+      "auxiliary data" -> DijkstraOnePassExpected.aux
+    )
     def table(
         what: String,
         keys: Range,
@@ -662,7 +741,9 @@ class DijkstraOnePassSuite extends ScalaCheckSuite:
         v <- values
       yield
         val (b, w, aux) = make(k, v)
-        (k, v, bothForms(b, w, aux, s"$what key $k = ${v.hex}"))
+        val read = bothForms(b, w, aux, s"$what key $k = ${v.hex}")
+        assertEquals(read.left.toOption, expected(what)((k, v.hex)), s"$what key $k = ${v.hex}")
+        (k, v, read)
     val tables = Vector(
       "body" -> table("body", 0 to 28, (k, v) => (body(k -> v), mp(), nul)),
       "sub-transaction's body" ->
@@ -692,6 +773,16 @@ class DijkstraOnePassSuite extends ScalaCheckSuite:
     val counts = tables.map((what, rows) =>
       what -> tally(rows.map(r => if r._3.isRight then Outcome.Accepted else Outcome.Refused))
     )
-    // both outcomes in every part
+    // both outcomes in every part, and every case recorded
     counts.foreach((what, c) => assert(c.size == 2, s"$what: $c"))
+    assertEquals(
+      counts.toMap,
+      Map(
+        "body" -> Map(Outcome.Accepted -> 17, Outcome.Refused -> 273),
+        "sub-transaction's body" -> Map(Outcome.Accepted -> 13, Outcome.Refused -> 277),
+        "witness set" -> Map(Outcome.Accepted -> 6, Outcome.Refused -> 94),
+        "auxiliary data" -> Map(Outcome.Accepted -> 10, Outcome.Refused -> 60)
+      )
+    )
+    assertEquals(expected.values.map(_.size).sum, 750)
   }
