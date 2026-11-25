@@ -126,6 +126,10 @@ receive identical inputs), three warm-up runs and five measured runs, pinned CPU
 `ThreadMXBean.getCurrentThreadAllocatedBytes`. The sequence is interleaved — old, new, old, new —
 so session drift cannot be mistaken for a difference between builds.
 
+The harness's `rules` workload ran the flat Conway BBODY, which the node no longer runs; it was
+retired with the flat Conway rules (#85, 2026-11-25), so the command above runs only at the
+commits it measured.
+
 `DIGEST rules` is the SHA-256 of the complete applied ledger state (rendered outside the timed
 region), not a count: identical digests mean the two builds produced the same state, including
 balances, outputs and fees. It was `159017f549d74b4d4cb6a520` on all four runs.

@@ -28,6 +28,9 @@ The measured standalone source SHA-256 is
 `04ee354d1b73e93f6f4acdb024997ecabf21d62fb98b641faf0b14d1767f2000`;
 the committed, scalafmt-formatted source is
 `929703727068b4859feac327191742eb7bd5eba1612dff1d673ee3209ab8d944`.
+Since #85 (2026-11-25) the bench applies its Conway blocks by Conway's era run
+(`MirrorRules.conwayBody`), as the node does; the measurement recorded here is of the flat rules,
+at the sources named above.
 Their executable source is identical; only whitespace and comment wrapping differ.
 
 Inputs reuse the authenticated Preview K1 provenance of section 30; the original archives remain
@@ -195,6 +198,8 @@ ticket's workload against both builds. The same file is added by #248 for #202 a
 the two copies are identical, so the repository has one authoritative harness. The codec workload
 is `tools/src/main/scala/xyz/kd5ujc/scarab/storage/BenchCodecMain.scala`
 (`tools/runMain xyz.kd5ujc.scarab.storage.BenchCodecMain [iterations]`).
+Its `rules` workload (#202), the flat Conway BBODY, was retired with the flat Conway rules (#85,
+2026-11-25); the results below are those of the commits they name.
 
 **Inputs are deterministic and asserted so outside the timed region.** The credential workload
 builds 100,000 credentials whose 28 bytes carry the index in the last four bytes, asserts
