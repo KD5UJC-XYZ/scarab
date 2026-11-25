@@ -333,12 +333,13 @@ class ReferenceRefusalSuite extends FunSuite:
 object ReferenceRefusalSuite:
   /** The corpora recorded for the era rules alone (#85 stage 3, slice C2c): this suite binds the
     * era rules to them, and the suites that compare the era rules with the flat ones leave them out
-    * of those comparisons, which stage 3 retires, and keep them in their era rules' own assertions.
-    * On these corpora the flat rules differ from the reference where the era rules do not: the flat
-    * GOV lists a refusal's votes, voters and accounts in the order the body's maps arrived in
-    * (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7054122427). A case judged after
-    * items the reference admitted first (`before`) is not one a single rule can judge from the
-    * recorded state, so a suite judging one rule leaves those out too.
+    * of those comparisons, which stage 3 retires, and of the bytes the flat encoder wrote before it
+    * was deleted (`fixtures/conway-flat-refusals`), and keep them in their era rules' own
+    * assertions. On these corpora the flat rules differ from the reference where the era rules do
+    * not: the flat GOV lists a refusal's votes, voters and accounts in the order the body's maps
+    * arrived in (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7054122427). A case
+    * judged after items the reference admitted first (`before`) is not one a single rule can judge
+    * from the recorded state, so a suite judging one rule leaves those out too.
     */
   val EraOnly: Set[String] =
     Set("conway-constructors", "conway-gov-order", "conway-mempool", "conway-constructors-v11")
