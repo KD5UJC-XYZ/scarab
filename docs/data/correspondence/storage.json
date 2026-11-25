@@ -2905,6 +2905,37 @@
    ],
    "note": "read by Dijkstra's decoder of a proposal at version 12 (DijkstraProposals.proposal); an action other than a parameter change written by the flat record's writer, which writes the same values",
    "digest": "fca268aaa389e7f6"
+  },
+  "def storage.haskell.state.EpochStateCodecs#stashedAvvm": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/LedgerState/Types.hs",
+     "symbol": "StashedAVVMAddresses",
+     "lines": [
+      357,
+      359
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/UTxO.hs",
+     "symbol": "EncCBOR (UTxO era)",
+     "lines": [
+      112,
+      112
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "ShelleyAvvmStashSuite",
+    "AllegraRedeemMirrorSuite"
+   ],
+   "digest": "a3c8148f88b748a3"
   }
  },
  "glue": [
