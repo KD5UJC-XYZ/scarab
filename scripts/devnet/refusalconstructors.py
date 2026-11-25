@@ -284,8 +284,9 @@ def conway_gov_order(name):
     body order). The reference lists them in key order: `GovActionsDoNotExist` and the votes of
     `VotingOnExpiredGovAction` and `DisallowedVoters` fold the voting procedures' maps (`foldrVotingProcedures`,
     `Conway/Rules/Gov.hs:573-603`; `checkDisallowedVotes`, 356-376), `VotersDoNotExist` is a set (595-604), and
-    `TreasuryWithdrawalReturnAccountsDoNotExist` is a map's keys (508-519). Each case's map is written in descending
-    key order (`votes_out_of_order`); a credential's script sorts before a key, where its CBOR tag sorts after.
+    `TreasuryWithdrawalReturnAccountsDoNotExist` is a map's keys (508-519). Each case's maps arrive out of key order:
+    the votes' in descending order (`votes_out_of_order`), the treasury withdrawal's neither ascending nor
+    descending; a credential's script sorts before a key, where its CBOR tag sorts after.
 
     The vote cases need actions on chain. `govActionLifetime` is 1, so the timing is `conway_governance`'s: two info
     actions proposed in epoch e are expired but still present in e + 2, when two treasury withdrawals proposed in

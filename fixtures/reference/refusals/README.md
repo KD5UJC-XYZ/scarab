@@ -148,7 +148,7 @@ the reference's key order while the refusal lists its items in key order.
 | corpus | protocol | cases |
 |---|---|---|
 | `conway-constructors` | 10.0 | UTXOW `InvalidWitnessesUTXOW`, `ScriptWitnessNotValidatingUTXOW`, `MissingTxBodyMetadataHash`, `MissingTxMetadata`, `ConflictingMetadataHash`, `InvalidMetadata` (a malformed auxiliary Plutus script), `UnspendableUTxONoDatumHash`; UTXO `TooManyCollateralInputs`, `IncorrectTotalCollateralField`, `BabbageNonDisjointRefInputs`; POOL `WrongNetworkPOOL`, `PoolMedataHashTooBig`; GOVCERT `ConwayCommitteeHasPreviouslyResigned`; and an empty input set, which MEMPOOL refuses |
-| `conway-gov-order` | 10.0 | GOV `VotingOnExpiredGovAction`, `GovActionsDoNotExist`, `VotersDoNotExist`, `DisallowedVoters`, `TreasuryWithdrawalReturnAccountsDoNotExist`, each with several items written in descending key order |
+| `conway-gov-order` | 10.0 | GOV `VotingOnExpiredGovAction`, `GovActionsDoNotExist`, `VotersDoNotExist`, `DisallowedVoters`, `TreasuryWithdrawalReturnAccountsDoNotExist`, each with several items written out of key order |
 | `conway-mempool` | 10.0 | MEMPOOL's refusal of an unelected committee member's vote, alone and with LEDGER's failures; refusals judged after the reference admitted a proposal (and a vote on it) |
 | `conway-constructors-v11` | 11.0 | LEDGER `ConwayIncompleteWithdrawals`, `ConwayWithdrawalsMissingAccounts` (their maps out of key order); POOL `VRFKeyHashAlreadyRegistered`, `StakePoolCostTooLowPOOL`; UTXOW `ScriptIntegrityHashMismatch` |
 
@@ -165,16 +165,19 @@ so the version 11 builder first enacts a parameter change of `minPoolCost` that 
 DReps vote for.
 
 Pool 2 of that cluster ran cardano-node 11.2.1 (`up --node-image 2=cardano-reference-11.2.1:local`); node 1,
-which recorded every corpus, ran 11.1.3. Each case's item was then submitted to node 1 and node 2 at one tip:
-11.2.1's refusal was byte for byte 11.1.3's for every case without `before` but one, and the same failures for
-those with it, from new transactions. The one is `ledger-withdrawal-amounts-wrong-v11`, whose refusal holds each
-account's balance: node 2's reward balances and treasury differed from those of nodes 1 and 3 at the same tip,
+which recorded every corpus, ran 11.1.3. Each of the 26 cases without `before` was then submitted to node 1 and
+node 2 at one tip: for 25, 11.2.1's refusal was 11.1.3's byte for byte. The two cases with `before` were not
+resubmitted; new transactions of the same shape, prefix included, submitted to node 2 alone, gave the same
+failures. The one that differed is `ledger-withdrawal-amounts-wrong-v11`, whose refusal holds each account's
+balance (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7175334552): node 2's reward balances and treasury differed from those of nodes 1 and 3 at the same tip,
 so 11.2.1 expected other amounts, for the same accounts and the same failure. On a second such cluster the
 balances already differed from epoch 2, at protocol version 10; why is not established here. No 11.2
 corpus is kept, since Scarab does not read the 11.2 build's state layout yet (`ReferenceBuildNotYet.Layout`).
 The Leios build's cluster runs Conway at protocol version 12 and was not recorded.
 
-Some constructors cannot be reached by a transaction submitted to the reference:
+Some constructors of Conway's era encoder cannot be reached by a transaction submitted to the reference on these
+clusters. Each still needs an oracle encoding or a cluster of another genesis, and #85's item
+https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7079191550 stays open for them:
 - `InputSetEmptyUTxO`: MEMPOOL refuses a transaction none of whose inputs the UTxO holds and skips LEDGER
   (`Conway/Rules/Mempool.hs:113-122`); `mempool-inputs-empty` records that refusal.
 - `OutputTooSmallUTxO` (UTXO tag 9): Conway's UTXO checks outputs with Babbage's check, which reports
