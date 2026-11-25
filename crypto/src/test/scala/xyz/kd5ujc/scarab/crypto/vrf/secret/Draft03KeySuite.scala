@@ -4,18 +4,18 @@ package xyz.kd5ujc.scarab.crypto.vrf.secret
 import com.weavechain.curve25519.{Constants, Scalar}
 import java.security.MessageDigest
 import java.util.concurrent.{CountDownLatch, Executors, TimeUnit}
-import scala.concurrent.duration.*
-import scala.concurrent.{Await, ExecutionContext, Future}
+import java.util.concurrent.atomic.{AtomicBoolean, AtomicInteger}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.vrf.Draft03Prover.Failure
 
 /** What the secret half of a VRF key holds and erases: the seed alone between operations, zeroed by
   * `forget`; within an operation, every value computed from the seed (the expanded key, the scalar
   * and its digits, the nonce digest, the nonce and its digits, the encodings of Gamma, U and V)
-  * held by the operation's scratch and zero when it ends, on success and on failure; and a forget
-  * that races an operation gives the key's proof or a refusal, never a proof from a partly zeroed
-  * seed. The proof's correctness is the suites of the `vrf` package's (vectors, the replaced
-  * prover, the strict verifier); here H is any point of the prime-order subgroup.
+  * held by the operation's scratch and zero when it ends, on success and on failure; a forget after
+  * a proof has copied the seed leaves that proof the key's, and a proof after a forget refuses; and
+  * the digest of every hash is reset on the way out. The proof's correctness is the suites of the
+  * `vrf` package's (vectors, the replaced prover, the strict verifier); here H is any point of the
+  * prime-order subgroup.
   */
 class Draft03KeySuite extends munit.FunSuite:
   private val L = BigInt(2).pow(252) + BigInt("27742317777372353535851937790883648493")
@@ -128,9 +128,9 @@ class Draft03KeySuite extends munit.FunSuite:
   test("forget zeroes the seed, and the key then refuses") {
     val k0 = key()
     val publicKey = k0.publicKey
-    assert(!k0.storage.forall(_ == 0))
+    assert(!k0.storedSeedIsZero)
     k0.forget()
-    assert(k0.storage.forall(_ == 0), "forget left the seed")
+    assert(k0.storedSeedIsZero, "forget left the seed")
     assert(k0.isForgotten)
     assertEquals(k0.prove(h), Left(Failure.MissingSigningKey))
     assertEquals(k0.output(h), Left(Failure.MissingSigningKey))
@@ -145,35 +145,80 @@ class Draft03KeySuite extends munit.FunSuite:
     assert(!key().sameKey(other))
   }
 
-  test("a forget that races proving gives the key's proof or a refusal, never another proof") {
-    val proof = key().prove(h).toOption.get
-    val pool = Executors.newFixedThreadPool(5)
-    given ExecutionContext = ExecutionContext.fromExecutor(pool)
+  test("a proof that copied the seed before a forget completes with the key's proof") {
+    val expectedProof = key().prove(h).toOption.get
+    val k0 = key()
+    val copied = new CountDownLatch(1)
+    val released = new CountDownLatch(1)
+    val parkedFor = new AtomicBoolean(false)
+    val pool = Executors.newSingleThreadExecutor()
     try
-      (1 to 40).foreach { round =>
-        val k0 = key()
-        val start = new CountDownLatch(1)
-        val provers = (1 to 4).map(_ =>
-          Future {
-            start.await(10, TimeUnit.SECONDS)
-            (1 to 3).map(_ => k0.prove(h))
-          }
-        )
-        val forgetting = Future {
-          start.await(10, TimeUnit.SECONDS)
-          k0.forget()
-        }
-        start.countDown()
-        val results = Await.result(Future.sequence(provers), 60.seconds).flatten
-        Await.result(forgetting, 60.seconds)
-        results.foreach { r =>
-          assert(
-            r == Right(proof) || r == Left(Failure.MissingSigningKey),
-            s"round $round: $r is neither the key's proof nor a refusal"
+      val proving = pool.submit { () =>
+        Scratch.within(s =>
+          k0.provingIn(
+            s,
+            h,
+            () =>
+              copied.countDown()
+              parkedFor.set(released.await(30, TimeUnit.SECONDS))
           )
-        }
+        )
       }
-    finally pool.shutdownNow()
+      val parked = copied.await(30, TimeUnit.SECONDS)
+      // the proof holds its copy of the seed and not the monitor, so forget runs now, while it waits
+      k0.forget()
+      val erased = k0.storedSeedIsZero
+      released.countDown()
+      val outcome = proving.get(30, TimeUnit.SECONDS)
+      assert(parked, "the proof did not reach the point after its copy of the seed")
+      assert(erased, "forget did not zero the seed while the proof was parked")
+      assert(parkedFor.get(), "the proof was not released by the suite")
+      assertEquals(outcome, Some(expectedProof), "the parked proof is not the key's")
+      assertEquals(k0.prove(h), Left(Failure.MissingSigningKey), "a proof after the forget")
+    finally
+      released.countDown()
+      pool.shutdown()
+      val joined = pool.awaitTermination(30, TimeUnit.SECONDS)
+      assert(joined, "the proving thread did not finish")
+  }
+
+  test("a proof that begins after a forget refuses before it copies anything") {
+    val k0 = key()
+    k0.forget()
+    val copies = new AtomicInteger(0)
+    val outcome = Scratch.within(s => k0.provingIn(s, h, () => copies.incrementAndGet(): Unit))
+    assertEquals(outcome, None)
+    assertEquals(copies.get(), 0, "the proof copied a seed after the forget")
+  }
+
+  /** A SHA-512 digest over the JDK's that counts its resets. */
+  private final class Recording extends MessageDigest("SHA-512"):
+    private val inner = MessageDigest.getInstance("SHA-512")
+    val resets = new AtomicInteger(0)
+    override protected def engineUpdate(b: Byte): Unit = inner.update(b)
+    override protected def engineUpdate(in: Array[Byte], off: Int, len: Int): Unit =
+      inner.update(in, off, len)
+    override protected def engineDigest(): Array[Byte] = inner.digest()
+    override protected def engineDigest(buf: Array[Byte], off: Int, len: Int): Int =
+      inner.digest(buf, off, len)
+    override protected def engineReset(): Unit =
+      resets.incrementAndGet()
+      inner.reset()
+
+  // The JDK provider's own buffer, state words and schedule are private fields of
+  // sun.security.provider.DigestBase and SHA5, which java.base does not open: a suite can read
+  // them only with --add-opens. What it can see is that the digest is reset on every way out.
+  test("the digest of a hash is reset once it returns and once it throws") {
+    val returned = new Recording
+    val out = new Array[Byte](64)
+    Draft03Key.sha512With(returned)(out, seed)
+    assertEquals(out.toVector, sha512(seed).toVector)
+    assertEquals(returned.resets.get(), 1, "resets after a hash that returned")
+    val failed = new Recording
+    intercept[java.security.DigestException](
+      Draft03Key.sha512With(failed)(new Array[Byte](63), seed)
+    )
+    assertEquals(failed.resets.get(), 1, "resets after a hash that threw")
   }
 
   test("the public key is [x]B of the clamped scalar") {

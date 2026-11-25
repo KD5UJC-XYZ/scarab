@@ -5,6 +5,8 @@ import cats.syntax.either.*
 import com.weavechain.curve25519.{CompressedEdwardsY, Constants, EdwardsPoint, Scalar}
 import java.security.MessageDigest
 import java.util.Arrays
+import scala.util.Using
+import scala.util.Using.Releasable
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.vrf.Draft03Prover.{Failure, Proved}
 
@@ -38,11 +40,14 @@ import xyz.kd5ujc.scarab.crypto.vrf.Draft03Prover.{Failure, Proved}
   * an operation copies the whole seed or, once the key is forgotten, refuses
   * ([[Failure.MissingSigningKey]]). A forgotten key proves nothing more.
   */
-@SuppressWarnings(Array("org.wartremover.warts.Var"))
-private[vrf] final class Draft03Key private (material: Array[Byte], val publicKey: Bytes):
+private[vrf] final class Draft03Key private (
+    private val material: Array[Byte],
+    val publicKey: Bytes
+):
   import Draft03Key.*
 
   // FUN-2 (d): the seed is zeroed in place by forget; reads and the erasure hold this monitor
+  @SuppressWarnings(Array("org.wartremover.warts.Var"))
   private var forgotten = false
 
   /** Zero the seed. Copies given out by [[toBytes]] are their owners'. */
@@ -53,11 +58,15 @@ private[vrf] final class Draft03Key private (material: Array[Byte], val publicKe
 
   def isForgotten: Boolean = synchronized(forgotten)
 
-  /** The key's own array, for the suites of this package to see that [[forget]] zeroes it. */
-  private[secret] def storage: Array[Byte] = material
+  /** Whether every byte of the key's own seed is zero, read under the monitor and with no early
+    * exit: for the suites of this package to see that [[forget]] zeroes it.
+    */
+  private[secret] def storedSeedIsZero: Boolean =
+    synchronized(material.foldLeft(0)((acc, b) => acc | b) == 0)
 
   /** `seed || publicKey`, the layout of `vrf.skey`: a copy its caller owns (the seed zero once the
-    * key is forgotten).
+    * key is forgotten), and the only one made outside a scratch. The node reads VRF key files and
+    * writes none, so no main code calls it; a writer would take the bytes inside a scratch instead.
     */
   def toBytes: Bytes = Scratch.within { s =>
     val payload = s.buffer(SeedBytes + 32)
@@ -93,9 +102,17 @@ private[vrf] final class Draft03Key private (material: Array[Byte], val publicKe
       outputOf(s)(gammaOf(s)(x, decoded(h)))
     }
 
-  /** [[prove]] in the scratch `s`; none once the key is forgotten. */
-  private[secret] def provingIn(s: Scratch, h: Bytes): Option[Proved] =
+  /** [[prove]] in the scratch `s`; none once the key is forgotten. `copied` runs once the seed is
+    * copied and the monitor released, before anything is computed from the copy: the point at which
+    * a suite of this package parks a proof to race it with [[forget]].
+    */
+  private[secret] def provingIn(
+      s: Scratch,
+      h: Bytes,
+      copied: () => Unit = () => ()
+  ): Option[Proved] =
     seedIn(s).map { seed =>
+      copied()
       val (x, nonceKey) = expanded(s)(seed)
       val hString = h.toArray
       val hPoint = decoded(h)
@@ -167,27 +184,28 @@ private[vrf] object Draft03Key:
           Left(Failure.PublicKeyMismatch)
       }
 
-  /** The key of the 32 bytes `seed`, copied once into the array that becomes the key's, with its
-    * public key `[x]B`, computed in a scratch.
+  /** The key of the 32 bytes `seed`: its public key `[x]B`, computed from a copy in a scratch,
+    * which zeroes it however the computation ends; then the key, made with an array of zeros, and
+    * the seed copied into that array, which nothing between the copy and the key that owns it can
+    * fail.
     */
   private def made(seed: Bytes): Either[Failure, Draft03Key] =
-    val material = new Array[Byte](SeedBytes)
-    seed.copyTo(material, 0)
     Either
       .catchNonFatal(Scratch.within { s =>
         val copy = s.buffer(SeedBytes)
-        System.arraycopy(material, 0, s.array(copy), 0, SeedBytes)
+        seed.copyTo(s.array(copy), 0)
         val (x, _) = expanded(s)(copy)
         s.publish(
           encoded(s)(Constants.ED25519_BASEPOINT_TABLE.multiplyRadix16(s.array(digits(s)(x))))
         )
       })
-      .fold[Either[Failure, Draft03Key]](
-        { cause =>
-          Arrays.fill(material, 0.toByte)
-          Left(Failure.InternalFailure(cause))
-        },
-        publicKey => Right(new Draft03Key(material, publicKey))
+      .bimap(
+        Failure.InternalFailure(_),
+        { publicKey =>
+          val key = new Draft03Key(new Array[Byte](SeedBytes), publicKey)
+          seed.copyTo(key.material, 0)
+          key
+        }
       )
 
   /** What an operation computed, a failure of the library as [[Failure.InternalFailure]], or the
@@ -244,11 +262,27 @@ private[vrf] object Draft03Key:
   /** H, from its encoding: a public point, decoded by the constant-time decoder. */
   private def decoded(h: Bytes): EdwardsPoint = new CompressedEdwardsY(h.toArray).decompress()
 
-  /** SHA-512 of `pieces` into the 64 bytes of `into`. `digest` resets the provider's state, which
-    * zeroes its buffer and message schedule (the JDK's `DigestBase.engineReset`), so no copy stays
-    * in the digest object.
-    */
+  /** SHA-512 of `pieces` into the 64 bytes of `into`, with a digest made for the call. */
   private def sha512(into: Array[Byte], pieces: Array[Byte]*): Unit =
-    val digest = MessageDigest.getInstance("SHA-512")
-    pieces.foreach(digest.update)
-    digest.digest(into, 0, into.length)
+    sha512With(MessageDigest.getInstance("SHA-512"))(into, pieces*)
+
+  private given Releasable[MessageDigest] = _.reset()
+
+  /** SHA-512 of `pieces` into `into` with `digest`, which is reset on the way out, whether the hash
+    * returns or throws. `digest(into, …)` does not clear the provider: in the JDK
+    * (`sun.security.provider.DigestBase` and `SHA5` at jdk-25.0.4.1-ga) it leaves the input after
+    * the last whole block in the provider's buffer, the result in its state words and the last
+    * block's message schedule in its `W` array, and clears them only when the object is used again
+    * or reset (`engineReset`: `implReset` restores the initial state and zeroes `W`, then the
+    * buffer is zeroed). A digest made for one call and dropped kept the seed, the expanded key or
+    * the nonce key until the collector reused its memory. What the reset cannot reach: what the
+    * compression's intrinsic keeps in registers or spills to the stack, and copies a moving
+    * collector made of the provider's arrays before the reset.
+    */
+  private[secret] def sha512With(
+      digest: MessageDigest
+  )(into: Array[Byte], pieces: Array[Byte]*): Unit =
+    Using.resource(digest) { d =>
+      pieces.foreach(d.update)
+      d.digest(into, 0, into.length)
+    }
