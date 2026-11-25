@@ -293,14 +293,17 @@ gigabytes and the stores' native memory. [ADR 0024](../adr/0024-adopt-the-upstre
 what follows keeps it off disk.
 
 **The launcher.** The release image starts the node through `scripts/scarab-jvm` (`docker/candidate.Dockerfile`), and
-the Nix network apps ([nix.md](../nix.md)) end in it. It ends in `exec java`, so the JVM is the process the container
-or the shell started, with its signals and its exit status. Unless diagnostics are asked for (below), it
+the Nix network apps ([nix.md](../nix.md)) end in it: `scarab-jvm <absolute path of java> <java arguments>`. It runs in
+bash's privileged mode (`bash -p`), which reads no `BASH_ENV` or `ENV` file and takes no function from the environment,
+and it ends in `exec <java>`, so the JVM is the process the container or the shell started, with its signals and its
+exit status. Unless diagnostics are asked for (below), it
 
 - sets the core file limit to 0, soft and hard, whatever Docker, systemd or the shell gave it;
-- removes `JAVA_TOOL_OPTIONS`, `JDK_JAVA_OPTIONS` and `_JAVA_OPTIONS` from the JVM's environment and names on standard
-  error those it removed: the JVM reads them before and after its command line, and options there (`OnError`,
-  `HeapDumpPath`, a recording started at launch) could write memory whatever the options below say;
-- starts the JVM with these options:
+- removes `JAVA_TOOL_OPTIONS`, `JDK_JAVA_OPTIONS`, `_JAVA_OPTIONS` and `JDK_ALTERNATE_VM` from the JVM's environment
+  and names on standard error those it removed: the JVM reads the first three before and after its command line, and
+  options there (`OnError`, `HeapDumpPath`, a recording started at launch) could write memory whatever the options
+  below say; the last names the `libjvm.so` that `java` loads;
+- starts the JVM with these options, before the arguments it was given:
 
 | Option | What it stops |
 |---|---|
@@ -316,12 +319,31 @@ or the shell started, with its signals and its exit status. Unless diagnostics a
 value the launcher cannot read stops it with exit status 2 before the JVM starts. The node writes no heap dump or JFR
 recording of its own: `--stall-dump` writes the runtime's fiber snapshot to a file and `kill -QUIT` prints a thread
 dump on standard output, both stack traces rather than the contents of the heap. Those two,
-`--memory-report-seconds` and the metrics need no attach. A JVM started some other way, with a command of your own or
-an image entry point replaced with `--entrypoint`, gets none of this unless it goes through `scripts/scarab-jvm`, as
-the [tester runbook](tester-runbook.md)'s node commands do.
+`--memory-report-seconds` and the metrics need no attach.
+
+The arguments of `scarab-jvm` are trusted: they follow its options and can override them, add an agent, a recording
+or an options file. The image's fixed entry point ends with `-jar /opt/scarab/scarab.jar`, so what `docker run` adds
+after the image reaches the node, not the JVM. A command that calls the launcher itself chooses the JVM's arguments,
+for example the small-host collector settings of [configuration.md](configuration.md):
+
+```sh
+docker run --entrypoint /opt/scarab/scarab-jvm <image> /opt/java/openjdk/bin/java -Xms3g -Xmx3g -XX:+UseG1GC \
+  -XX:MaxGCPauseMillis=20 --sun-misc-unsafe-memory-access=allow -jar /opt/scarab/scarab.jar follow ...
+```
+
+A JVM started some other way, with a command of your own or an entry point that does not go through
+`scripts/scarab-jvm`, gets none of this; the [tester runbook](tester-runbook.md)'s node commands go through it. The
+environment is trusted too: `PATH` and the native loader's inputs (`LD_PRELOAD`, `LD_LIBRARY_PATH`, `LD_AUDIT`) are
+read before the launcher runs or by the programs it starts, and it cannot defend against them. Whoever sets the
+container's environment controls the process.
+
+**Upgrading** from an image that started `java` directly: the launcher drops `JAVA_TOOL_OPTIONS` and the like, with
+the one line on standard error, so a node that set its heap there runs with the JVM's default heap. Replace
+`JAVA_TOOL_OPTIONS=-Xmx3g` with `SCARAB_HEAP_SIZE=3g`, `-XX:ActiveProcessorCount=N` with `SCARAB_RUN_PROCESSORS=N`, and
+other JVM options with the launcher's arguments, as above.
 
 **Diagnostics** are a deliberate step. With `SCARAB_JVM_DIAGNOSTICS=1` the launcher starts the JVM as the JVM itself
-would: it keeps the three variables, passes none of the options above, leaves the core file limit as it found it, and
+would: it keeps the four variables, passes none of the options above, leaves the core file limit as it found it, and
 says so on standard error (`memory diagnostics enabled: do not use on a forging node`). `0` or no value is the
 default; any other value stops it. The release image's base is a JRE, with no `jcmd` in it: run `jcmd` from a JDK
 image in the node's process namespace, or on the host as the node's user.

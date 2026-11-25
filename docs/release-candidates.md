@@ -61,12 +61,16 @@ incomplete name, never as a verified candidate.
    as another tested platform.
 5. The image is built once from the verified JAR and the digest-pinned Temurin 25.0.4.1+1 JRE.
    It runs as numeric user `10001:10001`, with entrypoint
-   `/opt/scarab/scarab-jvm --sun-misc-unsafe-memory-access=allow -jar /opt/scarab/scarab.jar`: the launcher
-   `scripts/scarab-jvm`, which keeps the JVM's memory, and a forging node's keys, off disk
-   ([the forging guide](running/forging.md#keys-in-memory)), then the flag that allows Scala 3's lazy vals, still in 3.9,
-   their `sun.misc.Unsafe` calls without Java 25's warning. Its last two layers are the JAR and the launcher, read-only
-   and executable. OCI export validation refuses any other entrypoint (`candidate_oci.ENTRYPOINT`) and a launcher
-   other than the verifying checkout's `scripts/scarab-jvm`, byte for byte. It accepts no image of the earlier
+   `/opt/scarab/scarab-jvm /opt/java/openjdk/bin/java --sun-misc-unsafe-memory-access=allow -jar /opt/scarab/scarab.jar`:
+   the launcher `scripts/scarab-jvm`, which keeps the JVM's memory, and a forging node's keys, off disk
+   ([the forging guide](running/forging.md#keys-in-memory)), the base image's `java`, then the flag that allows Scala 3's
+   lazy vals, still in 3.9, their `sun.misc.Unsafe` calls without Java 25's warning. Its last two layers are the JAR
+   (0444) and the launcher (0555), with `/opt/scarab` (0755), all owned by root. OCI export validation refuses any other
+   entrypoint (`candidate_oci.ENTRYPOINT`), owner or mode, and a launcher other than the source commit's
+   `scripts/scarab-jvm`, byte for byte. It reads that launcher from git at the commit its caller authenticated (the
+   release commit the publication flow checked against the server's tag, or the commit built), not from the candidate
+   or the verifier's own revision, so a launcher changed on `main` since the cut still lets the cut's candidate verify
+   (`candidate_oci.launcher_at`); the verifying checkout needs that commit. It accepts no image of the earlier
    entrypoint, which started `java` directly: on 2026-11-25 no such image was published (no release had image assets
    and the release-publication workflow had never run) or retained (the one candidate run's artifacts had expired), so
    nothing needs it. Read-only runtime smoke checks

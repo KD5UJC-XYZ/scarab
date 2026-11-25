@@ -86,8 +86,8 @@ The release image and the Nix network apps start the node through `scripts/scara
 `-XX:+DisableAttachMechanism`, as the decision says, under a core file limit of 0, and with more options of the same
 purpose: no crash report (it prints the arrays and objects the registers point at, so a crash while signing could
 write a key into it), no compiler replay file, no heap dump when the heap runs out and no performance data file. It
-removes `JAVA_TOOL_OPTIONS`, `JDK_JAVA_OPTIONS` and `_JAVA_OPTIONS` from the JVM's environment, since options there
-could write memory whatever the command line says. Diagnostics stay available as a deliberate opt-in,
+removes `JAVA_TOOL_OPTIONS`, `JDK_JAVA_OPTIONS`, `_JAVA_OPTIONS` and `JDK_ALTERNATE_VM` from the JVM's environment,
+since options there could write memory whatever the command line says and the last chooses the `libjvm.so` loaded. Diagnostics stay available as a deliberate opt-in,
 `SCARAB_JVM_DIAGNOSTICS=1`, which starts the JVM with its own defaults, so the native memory diagnostics with `jcmd`
 that the amendment of 2026-11-17 names remain possible, on a node that holds no keys. The
 [forging guide](../running/forging.md#keys-in-memory) is the operator's documentation of the launcher, the opt-in and

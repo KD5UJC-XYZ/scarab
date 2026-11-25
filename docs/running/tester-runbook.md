@@ -78,7 +78,7 @@ scarab() {   # scarab <docker run options> -- <arguments of the node's Main>
   while [ "$#" -gt 0 ] && [ "$1" != -- ]; do opts+=("$1"); shift; done
   shift
   docker run --user "$(id -u):$(id -g)" -v "$REPO":/work:ro -v "$CACHE":/work/.cache:ro -w /work -v "$D":/data \
-    "${opts[@]}" --entrypoint /work/scripts/scarab-jvm scarab-jdk:local $HEAP \
+    "${opts[@]}" --entrypoint /work/scripts/scarab-jvm scarab-jdk:local /opt/java/openjdk/bin/java $HEAP \
     --sun-misc-unsafe-memory-access=allow --enable-native-access=ALL-UNNAMED \
     -cp "$(cat "$REPO/node/target/runtime-classpath.txt")" xyz.kd5ujc.scarab.node.Main "$@"
 }
