@@ -42785,8 +42785,8 @@
     "DijkstraBbodySuite",
     "DijkstraRulesOracleSuite"
    ],
-   "note": "the body in Dijkstra's types from the body the block decoder read from a block's bytes, its transactions those it read in one pass (DijkstraTx.inBlock), the first it left unread for a value the decoder's own bounds rule out (LeiosBlock.unread) its failure, its size and hash those bytes': it takes evidence only DijkstraBlock.decode makes (DijkstraBlock.Decoded), so no body has a commitment its contents do not have, as MemoBytes ties them",
-   "digest": "82422ed55c0eec71"
+   "note": "the body in Dijkstra's types from the body the block decoder read from a block's bytes, its transactions those it read in one pass (DijkstraTx.inBlock), the first it kept apart (LeiosBlock.firstUnheld: a value the decoder's own bounds rule out, the node's defect, or a field Dijkstra does not have, the bytes' fault) its failure, its size and hash those bytes': it takes evidence only DijkstraBlock.decode makes (DijkstraBlock.Decoded), so no body has a commitment its contents do not have, as MemoBytes ties them",
+   "digest": "b51aa8e8908b7e12"
   },
   "def ledger.era.dijkstra.DijkstraBlock.decode": {
    "upstream": [
@@ -50765,20 +50765,24 @@
    ]
   },
   {
-   "reason": "the ranking block's transactions whose one-pass reading met a value the decoder's own bounds rule out, kept apart as the node's defect (LeiosBlock.Unread, LeiosBlock#transactionCount), so that the block decodes, passes the fetch checks (BlockTransport.matches, the checks of a decoded block split from its decoding) and is withheld by its application, as the flat decoder and its projection routed it; and the decoders taking the transaction reader (LeiosBlock.decodeWith, DijkstraBlock.decodeWith), so that a test forces that path, which the decoder's bounds make unreachable (#85); the reference's decoder has no such value and no counterpart",
+   "reason": "the objects that hold the readers of a Dijkstra body's fields and of a witness set's key witnesses, which Dijkstra's era decoder and the stored state's codecs share, kept when the flat Dijkstra decoder that held them went (#85); the reference's readers are the instances of the types they read, mapped by each reader's own entry",
+   "definitions": [
+    "object ledger.dijkstra.DijkstraBodyReaders",
+    "object ledger.dijkstra.DijkstraWitnessReaders"
+   ]
+  },
+  {
+   "reason": "the ranking block's transactions whose one-pass reading met a value the decoder's own bounds rule out, kept apart by whose the failure is: the node's defect, typed as one of the era errors that are defects only (LeiosBlock.Unread, LeiosBlock.Defect), or a field Dijkstra does not have, the bytes' fault (LeiosBlock.OutsideEra), the first of them the failure of the block's application (LeiosBlock#firstUnheld, LeiosBlock#transactionCount), so that the block decodes, passes the fetch checks (BlockTransport.matches, the checks of a decoded block split from its decoding) and is withheld by its application, as the flat decoder and its projection routed it; and the decoders taking the transaction reader (LeiosBlock.decodeWith, DijkstraBlock.decodeWith), so that a test forces that path, which the decoder's bounds make unreachable (#85); the reference's decoder has no such value and no counterpart",
    "definitions": [
     "class ledger.LeiosBlock.Unread",
     "def ledger.BlockTransport.matches",
     "def ledger.LeiosBlock#transactionCount",
     "def ledger.LeiosBlock.decodeWith",
-    "def ledger.era.dijkstra.DijkstraBlock.decodeWith"
-   ]
-  },
-  {
-   "reason": "the objects that hold the readers of a Dijkstra body's fields and of a witness set's key witnesses, which Dijkstra's era decoder and the stored state's codecs share, kept when the flat Dijkstra decoder that held them went (#85); the reference's readers are the instances of the types they read, mapped by each reader's own entry",
-   "definitions": [
-    "object ledger.dijkstra.DijkstraBodyReaders",
-    "object ledger.dijkstra.DijkstraWitnessReaders"
+    "def ledger.era.dijkstra.DijkstraBlock.decodeWith",
+    "class ledger.LeiosBlock.OutsideEra",
+    "def ledger.LeiosBlock#firstUnheld",
+    "def ledger.LeiosBlock.Defect#error",
+    "enum ledger.LeiosBlock.Defect"
    ]
   }
  ]

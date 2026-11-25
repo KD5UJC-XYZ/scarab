@@ -40,8 +40,8 @@ final class DijkstraBlockBody private (
 object DijkstraBlockBody:
   /** The body of a block the block decoder read from its bytes (`LeiosBlock.decode`, the build's
     * `DecCBOR (Annotator (DijkstraBlockBody era))`), each transaction read in Dijkstra's types
-    * ([[DijkstraTx.inBlock]]), the first whose reading met a value the decoder's own bounds rule
-    * out ([[LeiosBlock.unread]]) its failure: the hash is the Blake2b-256 digest of the body's
+    * ([[DijkstraTx.inBlock]]), the first that Dijkstra's types do not hold
+    * ([[LeiosBlock.firstUnheld]]) its failure: the hash is the Blake2b-256 digest of the body's
     * bytes (`hashBlockBody = extractHash . getMemoBytesHash`, `Internal.hs:120`, cardano-ledger
     * 9df9f98c), which the decoder computed, and the size their length. Only
     * [[DijkstraBlock.decode]] holds the evidence ([[DijkstraBlock.Decoded]]), on the block it
@@ -50,8 +50,7 @@ object DijkstraBlockBody:
   private[dijkstra] def ofDecoded(block: LeiosBlock)(using
       DijkstraBlock.Decoded
   ): Either[EraTxError, DijkstraBlockBody] =
-    block.unread.headOption
-      .map(_.cause)
+    block.firstUnheld
       .toLeft(())
       .flatMap(_ => Hash32.fromBytes(block.bodyHash).leftMap(EraTxError.Vocab(_)))
       .map(hash =>
@@ -151,7 +150,8 @@ object DijkstraBlockHeader:
   * block decoder refused them ([[Decode]]); the era's types refuse what it read, a field the era
   * does not have or bytes they do not decode ([[Era]]); or a value the decoder's own bounds rule
   * out came of them, in a transaction ([[LeiosBlock.unread]]) or in the header ([[Projection]]),
-  * which is no fault of the bytes.
+  * which is no fault of the bytes. A transaction's field Dijkstra does not have
+  * ([[LeiosBlock.outsideEra]]) is [[Era]].
   */
 enum DijkstraBlockError:
   case Decode(cause: ChainError)

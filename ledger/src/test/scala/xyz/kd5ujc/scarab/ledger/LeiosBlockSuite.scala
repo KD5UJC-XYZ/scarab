@@ -243,12 +243,14 @@ class LeiosBlockSuite extends munit.FunSuite:
     assertEquals(items.size, recorded.transactions.size)
     // the decoder's bounds make the real path unreachable: a reader that meets such a value at the
     // block's second transaction, and reads the others as the decoder does
-    val cause = EraTxError.Vocab(VocabError.OutOfRange(VocabError.Kind.Word32, BigInt(-1)))
+    val vocab = VocabError.OutOfRange(VocabError.Kind.Word32, BigInt(-1))
+    val cause = EraTxError.Vocab(vocab)
     def failing(at: Int, e: EraTxError)(n: Node): Either[EraTxError, DijkstraTx[TxLevel.Top]] =
       if n.original == items(at) then Left(e) else DijkstraTx.inBlock(n)
     val defective =
       LeiosBlock.decodeWith(raw, failing(1, cause)).fold(e => fail(e.message), identity)
-    assertEquals(defective.unread, Vector(LeiosBlock.Unread(1, cause)))
+    assertEquals(defective.unread, Vector(LeiosBlock.Unread(1, LeiosBlock.Defect.Vocab(vocab))))
+    assertEquals(defective.outsideEra, Vector.empty)
     assertEquals(defective.transactions, recorded.transactions.patch(1, Nil, 1))
     assertEquals(defective.transactionCount, recorded.transactions.size)
     assertEquals(defective.faults, recorded.faults)
@@ -268,6 +270,56 @@ class LeiosBlockSuite extends munit.FunSuite:
     val refusal = LedgerDecodeError.Empty(DecodeField.Certificates)
     assertEquals(
       LeiosBlock.decodeWith(raw, failing(1, EraTxError.Decode(refusal))).map(_ => ()),
+      Left(ChainError.Decode(DecodeField.Header, refusal))
+    )
+  }
+
+  test(
+    "a transaction with a field Dijkstra does not have is the bytes' fault: the block passes the fetch checks and its application refuses it"
+  ) {
+    import xyz.kd5ujc.scarab.codec.Node
+    import xyz.kd5ujc.scarab.ledger.era.{EraField, EraTxError, TxLevel}
+    import xyz.kd5ujc.scarab.ledger.era.dijkstra.{DijkstraBlock, DijkstraBlockError, DijkstraCorpus}
+    val raw = blocks("announcing-with-txs")._2
+    val recorded = block("announcing-with-txs")
+    val items = DijkstraCorpus.blockItems(raw)
+    // as the projection refused it before the one pass: the block decoder accepts the bytes, and
+    // the era's types refuse them when the block is applied (`DijkstraBlockError.Era`, the path of
+    // an invalid block), not the node's defect (`Projection`)
+    val cause = EraTxError.NotInEra(EraField.Update)
+    def failing(n: Node): Either[EraTxError, DijkstraTx[TxLevel.Top]] =
+      if n.original == items(1) then Left(cause) else DijkstraTx.inBlock(n)
+    val refused = LeiosBlock.decodeWith(raw, failing).fold(e => fail(e.message), identity)
+    assertEquals(refused.outsideEra, Vector(LeiosBlock.OutsideEra(1, EraField.Update)))
+    assertEquals(refused.unread, Vector.empty)
+    assertEquals(refused.transactionCount, recorded.transactions.size)
+    assertEquals(
+      BlockTransport.matches(recorded.header.dijkstraView, Block.Dijkstra(refused)),
+      Right(Block.Dijkstra(refused))
+    )
+    assertEquals(
+      DijkstraBlock.decodeWith(raw, failing).map(_ => ()),
+      Left(DijkstraBlockError.Era(cause))
+    )
+  }
+
+  test("the block decoder reads no transaction after the first its decoder refuses") {
+    import xyz.kd5ujc.scarab.codec.Node
+    import xyz.kd5ujc.scarab.ledger.era.{EraTxError, TxLevel}
+    import xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraCorpus
+    val raw = blocks("announcing-with-txs")._2
+    val items = DijkstraCorpus.blockItems(raw)
+    assert(items.size > 3)
+    val refusal = LedgerDecodeError.Empty(DecodeField.Certificates)
+    // the refusal at the second item ends the reading: a later item given to the reader fails
+    val later = items.drop(2).toSet
+    assert(!later.contains(items(0)) && !later.contains(items(1)))
+    def reader(n: Node): Either[EraTxError, DijkstraTx[TxLevel.Top]] =
+      if later.contains(n.original) then fail("an item after the refusal was read")
+      else if n.original == items(1) then Left(EraTxError.Decode(refusal))
+      else DijkstraTx.inBlock(n)
+    assertEquals(
+      LeiosBlock.decodeWith(raw, reader).map(_ => ()),
       Left(ChainError.Decode(DecodeField.Header, refusal))
     )
   }
