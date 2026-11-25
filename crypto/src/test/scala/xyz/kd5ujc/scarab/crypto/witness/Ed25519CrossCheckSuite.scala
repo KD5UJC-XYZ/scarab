@@ -291,7 +291,7 @@ class Ed25519CrossCheckSuite extends munit.ScalaCheckSuite:
         hex(point.encode),
         s"decompress ${hex(e)}"
       )
-      assert(StrictEd25519.point(e).isEmpty, s"Scarab refuses ${hex(e)}")
+      assert(!StrictEd25519.acceptsKey(e), s"Scarab refuses ${hex(e)}")
       assert(!bcAcceptsKey(e), s"BC refuses ${hex(e)}")
       assert(!jdkAcceptsKey(e), s"the JDK refuses ${hex(e)}")
     }
@@ -448,7 +448,7 @@ class Ed25519CrossCheckSuite extends munit.ScalaCheckSuite:
 
   property("a key decodes for Scarab exactly when BC's validatePublicKeyPartial accepts it") {
     forAllNoShrink(encoding) { e =>
-      assertEquals(StrictEd25519.point(e).isDefined, bcAcceptsKey(e), hex(e))
+      assertEquals(StrictEd25519.acceptsKey(e), bcAcceptsKey(e), hex(e))
     }
   }
 
@@ -457,13 +457,16 @@ class Ed25519CrossCheckSuite extends munit.ScalaCheckSuite:
       val strict = M.decode(e, M.Reading.Strict)
       assertEquals(jdkAcceptsKey(e), strict.isDefined, s"JDK, ${hex(e)}")
       assertEquals(
-        StrictEd25519.point(e).isDefined,
+        StrictEd25519.acceptsKey(e),
         strict.exists(!_.isSmallOrder),
         s"Scarab, ${hex(e)}"
       )
-      StrictEd25519.point(e).foreach { decoded =>
-        assertEquals(hex(decoded.compress().toByteArray), hex(e), s"Scarab's point of ${hex(e)}")
-      }
+      if StrictEd25519.acceptsKey(e) then
+        assertEquals(
+          VartimeEd25519Probe.decoded(e).map(hex),
+          Some(hex(e)),
+          s"Scarab's point of ${hex(e)}"
+        )
     }
   }
 
@@ -472,12 +475,12 @@ class Ed25519CrossCheckSuite extends munit.ScalaCheckSuite:
   ) {
     torsionEncodings.foreach { e =>
       assert(jdkAcceptsKey(e), s"JDK accepts ${hex(e)}")
-      assert(StrictEd25519.point(e).isEmpty, s"Scarab refuses ${hex(e)}")
+      assert(!StrictEd25519.acceptsKey(e), s"Scarab refuses ${hex(e)}")
       assert(!bcAcceptsKey(e), s"BC refuses ${hex(e)}")
     }
     (negativeZero ++ nonCanonical).foreach { e =>
       assert(!jdkAcceptsKey(e), s"JDK refuses ${hex(e)}")
-      assert(StrictEd25519.point(e).isEmpty, s"Scarab refuses ${hex(e)}")
+      assert(!StrictEd25519.acceptsKey(e), s"Scarab refuses ${hex(e)}")
       assert(!bcAcceptsKey(e), s"BC refuses ${hex(e)}")
     }
   }

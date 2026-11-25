@@ -2,14 +2,6 @@
 package xyz.kd5ujc.scarab.crypto.witness
 
 import xyz.kd5ujc.scarab.codec.Bytes
-import com.weavechain.curve25519.{
-  CompressedEdwardsY,
-  EdwardsPoint,
-  InvalidEncodingException,
-  Scalar
-}
-import java.security.MessageDigest
-import java.util.Arrays
 import cats.syntax.bifunctor.*
 import cats.syntax.either.*
 
@@ -56,42 +48,30 @@ object ByronEd25519:
       signature: Signature64,
       message: Bytes
   ): Either[VerificationError, VerificationResult] =
-    // Only the decoding of A classifies invalid input; any other failure is a typed defect.
+    // The arithmetic refuses a key off the curve with a verdict; anything it throws is a typed
+    // implementation failure.
     Either
       .catchNonFatal(evaluate(publicKey, signature, message))
       .leftMap(VerificationError.ImplementationFailure(_))
-
-  /** The point of an encoding, read as `ge25519_unpack_negative_vartime` reads it (y modulo p, any
-    * order), or nothing when y is not on the curve.
-    */
-  private def point(bytes: Array[Byte]): Option[EdwardsPoint] =
-    Either
-      .catchOnly[InvalidEncodingException](new CompressedEdwardsY(bytes.clone()).decompress())
-      .toOption
 
   private def evaluate(
       publicKey: PublicKey32,
       signature: Signature64,
       message: Bytes
   ): VerificationResult =
-    val keyBytes = publicKey.toArray
-    val signatureBytes = signature.toArray
-    val rBytes = Arrays.copyOfRange(signatureBytes, 0, 32)
-    // `RS[63] & 224`: S below 2^253, any such S reduced modulo L (zero-padded to 64 bytes)
-    val valid =
-      if (signatureBytes(63) & 0xe0) != 0 then None
-      else
-        point(keyBytes).map { a =>
-          val s = Scalar.fromBytesModOrderWide(Arrays.copyOfRange(signatureBytes, 32, 96))
-          val digest = MessageDigest.getInstance("SHA-512")
-          digest.update(rBytes)
-          digest.update(keyBytes)
-          digest.update(message.toArray)
-          val h = Scalar.fromBytesModOrderWide(digest.digest())
-          // `ge25519_double_scalarmult_vartime(&R, &A, hram, S)` over the negated key, as
-          // `StrictEd25519` computes it: the point is negated, not the scalar, which matters for a
-          // key with a torsion component
-          val check = EdwardsPoint.vartimeDoubleScalarMultiplyBasepoint(h, a.negate(), s)
-          Arrays.equals(check.compress().toByteArray, rBytes)
-        }
-    if valid.contains(true) then SignatureVerified else SignatureRejected
+    // `RS[63] & 224`: S below 2^253, any such S reduced modulo L (zero-padded to 64 bytes); A read
+    // as `ge25519_unpack_negative_vartime` reads it (y modulo p, any order); then the hash, and
+    // `ge25519_double_scalarmult_vartime(&R, &A, hram, S)` over the negated key, as `StrictEd25519`
+    // computes it, R never decoded (`VartimeEd25519.byron`)
+    val accepted = publicKey.bytes.withRange { (key, keyAt, _) =>
+      signature.bytes.withRange { (sig, sigAt, _) =>
+        VartimeEd25519.byron(
+          key,
+          keyAt,
+          sig,
+          sigAt,
+          () => Ed25519Challenge(signature.bytes, publicKey.bytes, message)
+        )
+      }
+    }
+    if accepted then SignatureVerified else SignatureRejected
