@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.crypto.secret
 
 import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.crypto.kes.Sum6KesSigning
 import xyz.kd5ujc.scarab.crypto.vrf.Draft03Prover
 
 /** Evidence that a value may leave a [[Scratch]]: it is immutable and holds nothing of a scratch,
@@ -19,8 +20,10 @@ private[crypto] object Public:
 
   given Public[Bytes] = evidence
   given Public[Boolean] = evidence
+  given Public[Int] = evidence
   given Public[Unit] = evidence
   given Public[Draft03Prover.Proved] = evidence
+  given Public[Sum6KesSigning.Failure] = evidence
   given [A: Public]: Public[Option[A]] = evidence
   given [A: Public, B: Public]: Public[Either[A, B]] = evidence
   given [A: Public, B: Public]: Public[(A, B)] = evidence

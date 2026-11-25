@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.crypto.kes
 
-import java.util.Arrays
 import xyz.kd5ujc.scarab.codec.Bytes
-import org.bouncycastle.crypto.digests.Blake2bDigest
-import org.bouncycastle.math.ec.rfc8032.Ed25519
+import xyz.kd5ujc.scarab.crypto.kes.secret.Sum6Key
 
 /** Sum6 KES signing keys in the binary layout of cardano-base (`SumKES` over `Ed25519`,
   * Blake2b-256): the `kes.skey` payload of `cardano-cli node key-gen-KES`.
@@ -16,25 +14,22 @@ import org.bouncycastle.math.ec.rfc8032.Ed25519
   * followed by the `vk0 || vk1` pair of every level, innermost first (448 bytes); the verification
   * key is `Blake2b-256(vk0 || vk1)` of the top level.
   *
-  * The key is mutable on purpose: [[evolve]] overwrites the discarded material with zeros (the
-  * seeds and sub-keys of periods that can no longer be signed), so a stolen key cannot sign the
-  * past. [[forget]] erases everything. Not constant-time beyond what BouncyCastle gives.
-  *
-  * What the erasure covers: the key's own array and every array this object makes from it. The leaf
-  * is signed and its public key derived from the key's array in place, hashes read the seeds where
-  * they lie, and scratch copies are zeroed before they are dropped. What it does not cover: Bouncy
-  * Castle's Ed25519 leaves the expanded leaf key in arrays of its own that it never clears, its
-  * Blake2b leaves each hashed seed in the block it compressed, [[SigningKey.toBytes]] is a copy its
-  * caller owns, and a collector that moves an array leaves the old bytes behind. So forward
-  * security holds for the stored key, not against a reader of this process's memory (#230); the
-  * reference keeps the key in locked memory outside the heap.
+  * The key is mutable on purpose: evolving overwrites the discarded material with zeros (the seeds
+  * and sub-keys of periods that can no longer be signed), so a stolen key cannot sign the past.
+  * [[SigningKey.forget]] erases everything. What reads the seeds is [[secret.Sum6Key]], in a
+  * package of its own that may name no variable-time routine (`scripts/check_crypto_guard.py`): it
+  * computes every value it derives from them (the hashes of the seed halves, the leaves' expanded
+  * keys, scalars and nonces, the subtrees it builds) in storage that is zeroed when the operation
+  * ends, and serializes signing, evolving and forgetting on the key. See it for what is erased and
+  * what is not. The reference keeps the key in locked memory outside the heap; a JVM may copy an
+  * array before it is zeroed, so the erasure is of the arrays this code owns.
   */
 object Sum6KesSigning:
-  val Depth: Int = 6
-  val Periods: Int = 1 << Depth
-  val SeedBytes: Int = 32
-  val KeyBytes: Int = size(Depth)
-  val SignatureBytes: Int = 64 + 64 * Depth
+  val Depth: Int = Sum6Key.Depth
+  val Periods: Int = Sum6Key.Periods
+  val SeedBytes: Int = Sum6Key.SeedBytes
+  val KeyBytes: Int = Sum6Key.KeyBytes
+  val SignatureBytes: Int = Sum6Key.SignatureBytes
 
   enum Failure:
     case MissingSeed
@@ -45,6 +40,9 @@ object Sum6KesSigning:
     case SeedStateMismatch(depth: Int, period: Int, actual: SeedState)
     case VerificationKeyMismatch(depth: Int)
     case RightSeedMismatch(depth: Int)
+
+    /** The key is forgotten (its material zeroed): it signs and evolves no more. */
+    case Forgotten
 
     def message: String = this match
       case MissingSeed | InvalidSeedLength(_) => "KES seed must be 32 bytes"
@@ -60,249 +58,86 @@ object Sum6KesSigning:
         s"level $depth: the stored key does not match its verification key"
       case RightSeedMismatch(depth) =>
         s"level $depth: the right-half seed does not generate the stored verification key"
+      case Forgotten => "the KES signing key has been erased"
 
   enum SeedState:
     case Present, Erased
 
-  /** Bytes of a key of the given depth. */
-  private def size(depth: Int): Int = if depth == 0 then 32 else size(depth - 1) + 96
-
-  /** A signing key evolves in place: `update` zeroes the material of the periods it leaves behind,
-    * so that no copy of an earlier period's key survives (forward security). The key is therefore a
-    * mutable object, and its current period is part of that state.
+  /** A signing key, which evolves in place: an evolution zeroes the material of the periods it
+    * leaves behind, so that no copy of an earlier period's key survives in it (forward security).
     */
-  @SuppressWarnings(Array("org.wartremover.warts.Var"))
-  final class SigningKey private[Sum6KesSigning] (
-      private val material: Array[Byte],
-      private var current: Int
-  ):
+  final class SigningKey private[Sum6KesSigning] (private val key: Sum6Key):
     /** The period this key currently signs for. */
-    def period: Int = current
+    def period: Int = key.period
 
-    /** The 608-byte `kes.skey` payload for the current period. */
-    def toBytes: Bytes = Bytes.fromArray(material)
+    /** The 608-byte `kes.skey` payload for the current period: a copy its caller owns, which
+      * nothing erases. The node does not write the key from it.
+      */
+    def toBytes: Bytes = key.toBytes
 
-    def verificationKey: Bytes = Bytes.fromArray(vkOf(material, 0, Depth))
+    def verificationKey: Bytes = key.verificationKey
 
-    /** Sign `message` for the current period. */
-    def sign(message: Bytes): Bytes =
-      Bytes.fromArray(signAt(material, 0, Depth, current, message.toArray))
+    /** Sign `message` for the current period; refused once the key is forgotten. */
+    def sign(message: Bytes): Either[Failure, Bytes] = key.sign(message)
 
     /** Advance to `target` (not before the current period), erasing what cannot be used any more.
       */
     def evolveTo(target: BigInt): Either[Failure, Unit] =
-      @scala.annotation.tailrec
-      def step(): Unit =
-        if current < target then
-          update(material, 0, Depth, current)
-          current += 1
-          step()
-      if target < current || target >= Periods then Left(Failure.PeriodOutOfRange(target))
-      else Right(step())
+      if !target.isValidInt then Left(Failure.PeriodOutOfRange(target))
+      else evolution(key.evolveTo(target.toInt))
 
-    def evolve(): Either[Failure, Unit] = evolveTo(current + 1)
+    def evolve(): Either[Failure, Unit] = evolution(key.evolve())
+
+    private def evolution(done: Sum6Key.Evolution): Either[Failure, Unit] = done match
+      case Sum6Key.Evolution.Moved              => Right(())
+      case Sum6Key.Evolution.OutOfRange(target) => Left(Failure.PeriodOutOfRange(target))
+      case Sum6Key.Evolution.Forgotten          => Left(Failure.Forgotten)
 
     /** A copy with its own storage (the original may be evolved or forgotten independently). */
-    def copy: SigningKey = new SigningKey(material.clone(), current)
+    def copy: SigningKey = new SigningKey(key.copy)
 
-    def isForgotten: Boolean = material.forall(_ == 0)
+    /** Whether `other` holds the same 608 bytes, compared in constant time without a copy that
+      * outlives the comparison.
+      */
+    def sameMaterial(other: SigningKey): Boolean = key.sameMaterial(other.key)
+
+    def isForgotten: Boolean = key.isForgotten
 
     /** Erase the whole key. */
-    def forget(): Unit = Arrays.fill(material, 0.toByte)
+    def forget(): Unit = key.forget()
 
   /** `genKeyKES seed`: the key for period 0, deterministic in the 32-byte seed. */
   def generate(seed: Bytes): Either[Failure, SigningKey] =
     if seed == null then Left(Failure.MissingSeed)
     else if seed.size != SeedBytes then Left(Failure.InvalidSeedLength(seed.size))
-    else
-      val material = new Array[Byte](KeyBytes)
-      val root = seed.toArray
-      gen(root, material, 0, Depth)
-      Arrays.fill(root, 0.toByte)
-      Right(new SigningKey(material, 0))
+    else Right(new SigningKey(seed.withRange((array, from, _) => Sum6Key.generated(array, from))))
 
   /** Verification key of the depth-`depth` tree generated from `seed` (test and diagnostics). */
   private[kes] def rootOfSeed(seed: Bytes, depth: Int): Bytes =
-    val root = seed.toArray
-    val vk = rootOf(root, depth)
-    Arrays.fill(root, 0.toByte)
-    Bytes.wrap(vk)
-
-  /** [[rootOfSeed]] over a seed array, which stays its caller's to erase. */
-  private def rootOf(seed: Array[Byte], depth: Int): Array[Byte] =
-    val m = new Array[Byte](size(depth))
-    gen(seed, m, 0, depth)
-    val vk = vkOf(m, 0, depth)
-    Arrays.fill(m, 0.toByte)
-    vk
+    seed.withRange((array, from, _) => Sum6Key.rootOf(array, from, depth))
 
   /** Load a `kes.skey` payload that is at period `period` (0 for a fresh key). Every level's stored
-    * verification keys are recomputed and checked, so a corrupt or mis-sized key is refused.
+    * verification keys are recomputed and checked, so a corrupt or mis-sized key is refused. The
+    * key copies the payload; `bytes` stays its caller's.
     */
   def fromBytes(bytes: Bytes, period: Int = 0): Either[Failure, SigningKey] =
     if bytes == null then Left(Failure.MissingKey)
     else if bytes.size != KeyBytes then Left(Failure.InvalidKeyLength(bytes.size))
     else if period < 0 || period >= Periods then Left(Failure.PeriodOutOfRange(period))
-    else loaded(bytes.toArray, period)
-
-  /** The key over `material`, which becomes the key's own array, if it is a key at `period`; erased
-    * if it is not.
-    */
-  private def loaded(material: Array[Byte], period: Int): Either[Failure, SigningKey] =
-    checkLevel(material, 0, Depth, period).fold(
-      failure =>
-        Arrays.fill(material, 0.toByte)
-        Left(failure)
-      ,
-      _ => Right(new SigningKey(material, period))
-    )
+    else
+      bytes
+        .withRange((array, from, _) => Sum6Key.loaded(array, from, Some(period)))
+        .map(new SigningKey(_))
 
   /** Load a `kes.skey` payload of any period (a key this node has evolved and written back, see
-    * `KesStore`): the period is read off the key itself, because [[update]] erases the `r1` seed of
-    * a level exactly when the key moves into that level's right half, so the erased seeds, from the
-    * outermost level in, spell the period in binary. The result is checked as in [[fromBytes]], so
-    * a damaged key (or an all-zero, forgotten one) is refused. The cardano-cli file is the period-0
-    * case.
+    * `KesStore`): the period is read off the key itself, because an evolution erases the `r1` seed
+    * of a level exactly when the key moves into that level's right half, so the erased seeds, from
+    * the outermost level in, spell the period in binary. The result is checked as in [[fromBytes]],
+    * so a damaged key (or an all-zero, forgotten one) is refused. The cardano-cli file is the
+    * period-0 case. The key copies the payload; `bytes` stays its caller's.
     */
   def fromEvolved(bytes: Bytes): Either[Failure, SigningKey] =
     if bytes == null then Left(Failure.MissingKey)
     else if bytes.size != KeyBytes then Left(Failure.InvalidKeyLength(bytes.size))
     else
-      // one copy of the payload: the period is read off the array that becomes the key's
-      val material = bytes.toArray
-      loaded(material, periodOf(material))
-
-  /** The period an evolved key stands at, read from which levels' right-half seeds are erased. */
-  private[kes] def periodOf(m: Array[Byte]): Int =
-    (Depth to 1 by -1).foldLeft(0) { (acc, depth) =>
-      val at = r1At(0, depth)
-      val erased = (0 until 32).forall(i => m(at + i) == 0)
-      if erased then acc + (1 << (depth - 1)) else acc
-    }
-
-  // ---- tree operations over the flat layout
-
-  /** Blake2b-256 of the parts, read where they lie: this object makes no copy of a seed among them.
-    * The digest does: into its buffer, which it clears when it finishes, and into the block of
-    * words it compresses, which it does not.
-    */
-  private def hash(parts: Array[Byte]*): Array[Byte] =
-    val digest = new Blake2bDigest(256)
-    parts.foreach(part => digest.update(part, 0, part.length))
-    val output = new Array[Byte](32)
-    digest.doFinal(output, 0)
-    output
-
-  /** The public key of the leaf seed at `at`, derived from the array in place. */
-  private def leafPublic(seed: Array[Byte], at: Int): Array[Byte] =
-    val public = new Array[Byte](Ed25519.PUBLIC_KEY_SIZE)
-    Ed25519.generatePublicKey(seed, at, public, 0)
-    public
-
-  private def r1At(offset: Int, depth: Int): Int = offset + size(depth - 1)
-  private def vk0At(offset: Int, depth: Int): Int = r1At(offset, depth) + 32
-  private def vk1At(offset: Int, depth: Int): Int = vk0At(offset, depth) + 32
-
-  /** Verification key of the (sub-)key stored at `offset`. */
-  private def vkOf(m: Array[Byte], offset: Int, depth: Int): Array[Byte] =
-    if depth == 0 then leafPublic(m, offset)
-    else
-      hash(
-        Arrays.copyOfRange(m, vk0At(offset, depth), vk0At(offset, depth) + 32),
-        Arrays.copyOfRange(m, vk1At(offset, depth), vk1At(offset, depth) + 32)
-      )
-
-  private def expand(seed: Array[Byte]): (Array[Byte], Array[Byte]) =
-    (hash(Array(1.toByte), seed), hash(Array(2.toByte), seed))
-
-  /** Write the period-0 key for `seed` at `offset`. */
-  private def gen(seed: Array[Byte], m: Array[Byte], offset: Int, depth: Int): Unit =
-    if depth == 0 then System.arraycopy(seed, 0, m, offset, 32)
-    else
-      val (r0, r1) = expand(seed)
-      gen(r0, m, offset, depth - 1)
-      Arrays.fill(r0, 0.toByte)
-      val vk0 = vkOf(m, offset, depth - 1)
-      val scratch = new Array[Byte](size(depth - 1))
-      gen(r1, scratch, 0, depth - 1)
-      val vk1 = vkOf(scratch, 0, depth - 1)
-      Arrays.fill(scratch, 0.toByte)
-      System.arraycopy(r1, 0, m, r1At(offset, depth), 32)
-      System.arraycopy(vk0, 0, m, vk0At(offset, depth), 32)
-      System.arraycopy(vk1, 0, m, vk1At(offset, depth), 32)
-      Arrays.fill(r1, 0.toByte)
-
-  private def signAt(
-      m: Array[Byte],
-      offset: Int,
-      depth: Int,
-      period: Int,
-      message: Array[Byte]
-  ): Array[Byte] =
-    if depth == 0 then
-      // signed from the key's array in place: no key object holds a copy of the leaf seed
-      val signature = new Array[Byte](Ed25519.SIGNATURE_SIZE)
-      Ed25519.sign(m, offset, message, 0, message.length, signature, 0)
-      signature
-    else
-      val half = 1 << (depth - 1)
-      signAt(m, offset, depth - 1, period % half, message) ++
-        Arrays.copyOfRange(m, vk0At(offset, depth), vk0At(offset, depth) + 32) ++
-        Arrays.copyOfRange(m, vk1At(offset, depth), vk1At(offset, depth) + 32)
-
-  /** Move the key at `offset` from `period` to `period + 1` (which exists for this depth). */
-  private def update(m: Array[Byte], offset: Int, depth: Int, period: Int): Unit =
-    val half = 1 << (depth - 1)
-    if period + 1 < half then update(m, offset, depth - 1, period)
-    else if period + 1 == half then
-      // the left half is finished: erase it and generate the right half from its seed
-      val r1 = Arrays.copyOfRange(m, r1At(offset, depth), r1At(offset, depth) + 32)
-      Arrays.fill(m, offset, r1At(offset, depth), 0.toByte)
-      gen(r1, m, offset, depth - 1)
-      Arrays.fill(r1, 0.toByte)
-      Arrays.fill(m, r1At(offset, depth), r1At(offset, depth) + 32, 0.toByte)
-    else update(m, offset, depth - 1, period - half)
-
-  /** Does the stored key at `offset` agree with its stored verification keys at `period`? */
-  private def checkLevel(
-      m: Array[Byte],
-      offset: Int,
-      depth: Int,
-      period: Int
-  ): Either[Failure, Unit] =
-    if depth == 0 then Right(())
-    else
-      val half = 1 << (depth - 1)
-      val inRight = period >= half
-      val stored =
-        Arrays.copyOfRange(
-          m,
-          if inRight then vk1At(offset, depth) else vk0At(offset, depth),
-          (if inRight then vk1At(offset, depth) else vk0At(offset, depth)) + 32
-        )
-      val subPeriod = if inRight then period - half else period
-      val seedAt = r1At(offset, depth)
-      val seedZero = (0 until 32).forall(i => m(seedAt + i) == 0)
-      if inRight != seedZero then
-        Left(
-          Failure.SeedStateMismatch(
-            depth,
-            period,
-            if seedZero then SeedState.Erased else SeedState.Present
-          )
-        )
-      else if !Arrays.equals(vkOf(m, offset, depth - 1), stored) then
-        Left(Failure.VerificationKeyMismatch(depth))
-      else if !inRight && !rightSeedGenerates(m, offset, depth) then
-        Left(Failure.RightSeedMismatch(depth))
-      else checkLevel(m, offset, depth - 1, subPeriod)
-
-  /** Does the right-half seed stored at this level generate the stored `vk1`? */
-  private def rightSeedGenerates(m: Array[Byte], offset: Int, depth: Int): Boolean =
-    val seed = Arrays.copyOfRange(m, r1At(offset, depth), r1At(offset, depth) + 32)
-    val root = rootOf(seed, depth - 1)
-    Arrays.fill(seed, 0.toByte)
-    Arrays.equals(
-      root,
-      Arrays.copyOfRange(m, vk1At(offset, depth), vk1At(offset, depth) + 32)
-    )
+      bytes.withRange((array, from, _) => Sum6Key.loaded(array, from, None)).map(new SigningKey(_))

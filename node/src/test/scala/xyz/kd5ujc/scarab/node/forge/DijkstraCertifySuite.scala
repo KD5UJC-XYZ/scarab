@@ -282,7 +282,7 @@ class DijkstraCertifySuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       opCert,
       protocolVersion
     )
-    val raw = body.block(headerBody, kes.sign(headerBody))
+    val raw = body.block(headerBody, kes.sign(headerBody).toOption.get)
     val header = Block.decode(raw, geometry.byron.epochSlots).fold(e => fail(e.message), _.header)
     Forged(slot, raw, header, LeiosBlock.decode(raw).fold(e => fail(e.message), _.header))
 
