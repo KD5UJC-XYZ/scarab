@@ -26,13 +26,13 @@ import xyz.kd5ujc.scarab.codec.Bytes
   *
   * A scratch belongs to the thread that runs its computation and is not shared.
   */
-@SuppressWarnings(Array("org.wartremover.warts.Var"))
 private[vrf] final class Scratch private (observe: List[Array[Byte]] => Unit):
   /** A buffer of this scratch, which only this scratch reads and writes. */
   opaque type Buffer = Array[Byte]
 
   // FUN-2 (d): the arrays handed out, zeroed in place when the scratch ends, after which there are
   // none; the state of one computation on one thread
+  @SuppressWarnings(Array("org.wartremover.warts.Var"))
   private var held: Option[List[Array[Byte]]] = Some(Nil)
 
   /** A new buffer of `size` zero bytes. */
@@ -55,11 +55,14 @@ private[vrf] final class Scratch private (observe: List[Array[Byte]] => Unit):
     b.length
 
   /** A copy of `length` bytes of `b` from `from`, as a value that leaves the scratch: what the
-    * computation publishes.
+    * computation publishes. The result's own array is the only copy made outside the scratch: the
+    * range is cut into a buffer of this scratch, zeroed with the rest, and `Bytes.fromArray` copies
+    * that once into the array the result owns.
     */
   def publish(b: Buffer, from: Int, length: Int): Bytes =
-    live()
-    Bytes.fromArray(Arrays.copyOfRange(b, from, from + length))
+    val part = buffer(length)
+    System.arraycopy(array(b), from, part, 0, length)
+    Bytes.fromArray(part)
 
   /** A copy of all of `b` that leaves the scratch. */
   def publish(b: Buffer): Bytes = publish(b, 0, b.length)
@@ -75,14 +78,18 @@ private[vrf] final class Scratch private (observe: List[Array[Byte]] => Unit):
     if held.isEmpty then
       throw new IllegalStateException("the scratch has ended and its buffers are erased")
 
+  // the observer sees the buffers before they are zeroed; the zeroing runs whether it returns or
+  // throws, as the release of the buffers it is handed
   private def release(): Unit =
     val arrays = held.getOrElse(Nil)
-    observe(arrays)
-    arrays.foreach(Arrays.fill(_, 0.toByte))
     held = None
+    Using.resource(arrays)(observe)(using Scratch.wiped)
 
 private[vrf] object Scratch:
   private given Releasable[Scratch] = _.release()
+
+  /** Zeroing the arrays a scratch held is their release. */
+  private val wiped: Releasable[List[Array[Byte]]] = _.foreach(Arrays.fill(_, 0.toByte))
 
   /** Run `body` with a new scratch and zero every buffer it made or adopted once `body` returns or
     * throws; an exception is rethrown after the erasure.

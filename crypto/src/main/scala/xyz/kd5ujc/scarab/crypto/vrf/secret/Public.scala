@@ -6,13 +6,16 @@ import xyz.kd5ujc.scarab.crypto.vrf.Draft03Prover
 
 /** Evidence that a value may leave a [[Scratch]]: it is immutable and holds nothing of a scratch,
   * only what the computation publishes (a proof, an output, a public key) or a plain answer. There
-  * is no instance for an array, a [[Scratch.Buffer]], a scratch or a function, so none of them can
-  * be the result of [[Scratch.within]], and so none can be read after its buffers are erased.
+  * is no instance for an array, a `Scratch#Buffer`, a scratch or a function, so none of them can be
+  * the result of [[Scratch.within]], and so none can be read after its buffers are erased. The
+  * trait is sealed and its one implementation private: the instances below are all there are, and a
+  * new one is added here, where review sees it.
   */
-private[vrf] trait Public[A]
+private[vrf] sealed trait Public[A]
 
 private[vrf] object Public:
-  private def evidence[A]: Public[A] = new Public[A] {}
+  private final class Evidence[A] extends Public[A]
+  private def evidence[A]: Public[A] = new Evidence[A]
 
   given Public[Bytes] = evidence
   given Public[Boolean] = evidence

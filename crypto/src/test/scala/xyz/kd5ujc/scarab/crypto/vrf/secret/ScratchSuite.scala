@@ -59,6 +59,42 @@ class ScratchSuite extends munit.FunSuite:
     assert(seen.exists(zero), "a fatal error left the buffer as it was")
   }
 
+  test("an observer that throws does not keep the buffers from being zeroed") {
+    var seen: List[Array[Byte]] = Nil
+    val thrown = intercept[IllegalArgumentException](
+      Scratch.observed[Unit] { arrays =>
+        seen = arrays
+        throw new IllegalArgumentException("the observer failed")
+      } { s =>
+        System.arraycopy(pattern, 0, s.array(s.buffer(48)), 0, 48)
+        ()
+      }
+    )
+    assertEquals(thrown.getClass, classOf[IllegalArgumentException])
+    assertEquals(seen.size, 1)
+    assert(seen.forall(zero), "the buffer kept its bytes after the observer threw")
+  }
+
+  test("what a scratch publishes is copied once into the result, through a buffer it zeroes") {
+    var before: List[Array[Byte]] = Nil
+    var after: List[Array[Byte]] = Nil
+    val published = Scratch.observed[Bytes] { arrays =>
+      before = arrays.map(_.clone())
+      after = arrays
+    } { s =>
+      val a = s.buffer(48)
+      System.arraycopy(pattern, 0, s.array(a), 0, 48)
+      s.publish(a, 8, 16)
+    }
+    assertEquals(published, Bytes.fromArray(pattern.slice(8, 24)))
+    assert(
+      before.exists(java.util.Arrays.equals(_, pattern.slice(8, 24))),
+      "the range was not cut into a buffer of the scratch"
+    )
+    assertEquals(after.size, 2)
+    assert(after.forall(zero), "a buffer kept its bytes")
+  }
+
   test("an adopted array is zeroed with the buffers") {
     val made = pattern.clone()
     Scratch.within { s =>
