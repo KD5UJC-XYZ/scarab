@@ -274,7 +274,7 @@ class FieldElement {
      * @param b    must be 0 or 1, otherwise results are undefined.
      * @return a copy of this if $b == 0$, or a copy of val if $b == 1$.
      * @see <a href=
-     *      "https://github.com/floodyberry/supercop/blob/master/crypto_sign/ed25519/ref10/fe_cmov.c"
+     *      "https://github.com/floodyberry/supercop/blob/a351f2c29235512a042d4b6989d241a67e86ad23/crypto_sign/ed25519/ref10/fe_cmov.c"
      *      target="_top">SUPERCOP</a>
      */
     public FieldElement ctSelect(FieldElement that, int b) {
