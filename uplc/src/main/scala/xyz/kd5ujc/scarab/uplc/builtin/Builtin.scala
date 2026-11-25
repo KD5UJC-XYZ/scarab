@@ -32,8 +32,8 @@ enum Argument[+V]:
   case Opaque(value: V)
 
 object Argument:
-  /** The argument an unlifting of the signature makes of `value` for `parameter` once it unlifts:
-    * the constant of a constant parameter, the value itself for an opaque one.
+  /** The argument a held unlifting accepts `value` as for `parameter` ([[HeldUnlifting]]): its
+    * constant for a constant parameter, the value itself for an opaque one.
     */
   def of[V](parameter: Signature.Parameter, value: V)(using mv: MachineValue[V]): Argument[V] =
     parameter match
@@ -42,17 +42,6 @@ object Argument:
         mv.asConstant(value) match
           case c: Constant             => Con(c)
           case MachineValue.NoConstant => Opaque(value)
-
-  /** The arguments of an application of `function` held as the machine holds them, the last one
-    * first, in order and each as [[of]] makes it (one past the signature is opaque).
-    */
-  def unlifted[V](function: DefaultFun, arguments: List[V])(using
-      MachineValue[V]
-  ): Vector[Argument[V]] =
-    val parameters = function.signature.parameters
-    arguments.reverseIterator.zipWithIndex
-      .map((value, i) => parameters.lift(i).fold(Opaque(value))(of(_, value)))
-      .toVector
 
 /** The two classes of the reference's errors (`EvaluationError structural operational`,
   * `PlutusCore/Evaluation/Error.hs`): a structural one is a malformed program, an operational one a
@@ -261,12 +250,8 @@ object Outcome:
 trait Denotation:
   def apply[V](arguments: Vector[Argument[V]])(using MachineValue[V]): Outcome[V]
 
-  /** [[apply]] of a saturated application of `function` whose arguments unlift
-    * ([[Unlifting.refusal]]), given as the machine holds them, the last one first: each argument as
-    * the unlifting makes it ([[Argument.of]]).
-    */
-  def applied[V](function: DefaultFun, arguments: List[V])(using MachineValue[V]): Outcome[V] =
-    apply(Argument.unlifted(function, arguments))
+  /** This denotation on held arguments, if it has that form ([[HeldDenotation]]). */
+  def held: Option[HeldDenotation] = None
 
 /** The denotation of every builtin under one semantics variant. */
 trait Denotations:
@@ -282,13 +267,8 @@ trait Unlifting:
       MachineValue[V]
   ): Either[UnliftingFailure, Vector[Argument[V]]]
 
-  /** [[apply]]'s failure for a saturated application of `function`, its arguments given as the
-    * machine holds them, the last one first; none when every argument unlifts.
-    */
-  def refusal[V](function: DefaultFun, arguments: List[V])(using
-      MachineValue[V]
-  ): Option[UnliftingFailure] =
-    apply(function, arguments.reverseIterator.toVector).swap.toOption
+  /** This unlifting on held arguments, if it has that form ([[HeldUnlifting]]). */
+  def held: Option[HeldUnlifting] = None
 
 /** The cost of one builtin from its unlifted arguments (the costing function of the cost model,
   * applied to the arguments' measures, `ExMemoryUsage`).
@@ -296,19 +276,42 @@ trait Unlifting:
 trait CostingFunction:
   def apply[V](arguments: Vector[Argument[V]])(using MachineValue[V]): CostStream
 
-  /** [[apply]] of a saturated application of `function` whose arguments unlift, given as the
-    * machine holds them, the last one first ([[Denotation.applied]]).
-    */
-  def applied[V](function: DefaultFun, arguments: List[V])(using MachineValue[V]): CostStream =
-    apply(Argument.unlifted(function, arguments))
+  /** This costing on held arguments, if it has that form ([[HeldCosting]]). */
+  def held: Option[HeldCosting] = None
 
-  /** The budget once `spender` has spent the cost of [[applied]] from `budget`, element by element;
-    * a costing that knows its cost to be one element spends it without making it.
+/** The held form of an unlifting: its verdict on the arguments of a saturated application as the
+  * machine holds them, the last one first, made with nothing allocated for them. When it accepts
+  * them, each is to a held costing and a held denotation what [[Unlifting.apply]] makes of it: the
+  * argument itself, read as the constant of a constant parameter or as the value of an opaque one.
+  */
+trait HeldUnlifting:
+  /** [[Unlifting.apply]]'s failure on the held `arguments`, or none when it accepts them. */
+  def refusal[V](function: DefaultFun, arguments: List[V])(using
+      MachineValue[V]
+  ): Option[UnliftingFailure]
+
+/** The held form of a costing function ([[HeldUnlifting]]). */
+trait HeldCosting:
+  /** The budget once `spender` has spent the cost [[CostingFunction.apply]] gives for the
+    * arguments, element by element, from `budget`: one cost spent with no stream made.
     */
   def spend[V](function: DefaultFun, arguments: List[V], budget: ExBudget, spender: Spender)(using
       MachineValue[V]
-  ): ExBudget =
-    spender.spendAll(budget, applied(function, arguments))
+  ): ExBudget
+
+/** The held form of a denotation ([[HeldUnlifting]]). */
+trait HeldDenotation:
+  /** [[Denotation.apply]] of the held `arguments`. */
+  def applied[V](function: DefaultFun, arguments: List[V])(using MachineValue[V]): Outcome[V]
+
+/** The held forms of a builtin's unlifting, costing and denotation, by which the machine takes a
+  * saturated application when all three have one.
+  */
+final case class HeldApplication(
+    unlifting: HeldUnlifting,
+    costing: HeldCosting,
+    denotation: HeldDenotation
+)
 
 /** The costing functions of every builtin under one cost model and semantics variant. */
 trait Costing:
@@ -341,23 +344,21 @@ final case class Builtins(
       case Right(unlifted) =>
         Prepared(costing(function)(unlifted), () => denotations(function)(unlifted))
 
-  /** [[prepare]] in the steps the machine takes, on the arguments as it holds them (the last one
-    * first), with nothing made between the steps: the unlifting's failure, if any ([[refusal]]),
-    * which costs nothing and is [[Builtins.refused]]; otherwise the cost, which the machine spends
-    * ([[spend]]), and then the result ([[result]]).
+  /** The held forms of `function` 's application, when its unlifting, its costing and its
+    * denotation each have one: [[prepare]]'s steps on the arguments as the machine holds them. When
+    * one of them has none, the machine takes the application by [[prepare]], so that the costing
+    * and the denotation read what the unlifting made.
     */
-  def refusal[V](function: DefaultFun, arguments: List[V])(using
-      MachineValue[V]
-  ): Option[UnliftingFailure] =
-    unlifting.refusal(function, arguments)
+  def held(function: DefaultFun): Option[HeldApplication] = heldForms(function.ordinal)
 
-  def spend[V](function: DefaultFun, arguments: List[V], budget: ExBudget, spender: Spender)(using
-      MachineValue[V]
-  ): ExBudget =
-    costing(function).spend(function, arguments, budget, spender)
-
-  def result[V](function: DefaultFun, arguments: List[V])(using MachineValue[V]): Outcome[V] =
-    denotations(function).applied(function, arguments)
+  private lazy val heldForms: Vector[Option[HeldApplication]] =
+    DefaultFun.values.toVector.map(function =>
+      for
+        u <- unlifting.held
+        c <- costing(function).held
+        d <- denotations(function).held
+      yield HeldApplication(u, c, d)
+    )
 
 object Builtins:
   /** The outcome of an application whose arguments do not unlift, logging the message of an

@@ -201,20 +201,35 @@ object CekMachine:
         // was made in. An application whose arguments do not unlift costs nothing
         // (`builtinRuntimeFailure`, `PlutusCore/Builtin/Runtime.hs:111`, plutus 1.70.0.0).
         case b: VBuiltin if b.saturated =>
-          builtins.refusal(b.function, b.arguments) match
-            case Some(failure) =>
-              builtinFailure(
-                b,
-                BuiltinFailure.Unlifting(failure),
-                failure.message.toVector,
-                budget,
-                logs
-              )
+          builtins.held(b.function) match
+            // on the arguments as the machine holds them, with nothing made for them
+            case Some(held) =>
+              held.unlifting.refusal(b.function, b.arguments) match
+                case Some(failure) =>
+                  builtinFailure(
+                    b,
+                    BuiltinFailure.Unlifting(failure),
+                    failure.message.toVector,
+                    budget,
+                    logs
+                  )
+                case None =>
+                  val spent = held.costing.spend(b.function, b.arguments, budget, this)
+                  if exhausted(spent) then outOfBudget(spent, logs)
+                  else
+                    held.denotation.applied(b.function, b.arguments) match
+                      case Outcome.Success(result, emitted) =>
+                        loop(ctx, env, result, top, spent, low, high, emit(logs, emitted))
+                      case Outcome.Failure(failure, emitted) =>
+                        builtinFailure(b, failure, emitted, spent, logs)
+            // a builtin a component of which reads its arguments only in order: unlifted once,
+            // the costing and the denotation reading what the unlifting made
             case None =>
-              val spent = builtins.spend(b.function, b.arguments, budget, this)
+              val prepared = builtins.prepare(b.function, b.arguments.reverseIterator.toVector)
+              val spent = spendAll(budget, prepared.cost)
               if exhausted(spent) then outOfBudget(spent, logs)
               else
-                builtins.result(b.function, b.arguments) match
+                prepared.result() match
                   case Outcome.Success(result, emitted) =>
                     loop(ctx, env, result, top, spent, low, high, emit(logs, emitted))
                   case Outcome.Failure(failure, emitted) =>

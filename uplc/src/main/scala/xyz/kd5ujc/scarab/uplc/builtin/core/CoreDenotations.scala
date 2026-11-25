@@ -8,6 +8,7 @@ import xyz.kd5ujc.scarab.uplc.builtin.{
   BuiltinFailure,
   DataShape,
   Denotation,
+  HeldDenotation,
   EvaluationFailure,
   MachineValue,
   Outcome,
@@ -46,11 +47,13 @@ object CoreDenotations:
   private def denotation(variant: CoreVariant, function: DefaultFun, body: Body): Denotation =
     val bounds = CoreUnlifting.bounds(variant, function)
     val arity = function.arity
-    new Denotation:
+    new Denotation with HeldDenotation:
       def apply[V](arguments: Vector[Argument[V]])(using MachineValue[V]): Outcome[V] =
         Reading.outcome(body[V](Reading(arity, bounds, Reading.held(arguments))))
 
-      override def applied[V](function: DefaultFun, arguments: List[V])(using
+      override def held: Option[HeldDenotation] = Some(this)
+
+      def applied[V](function: DefaultFun, arguments: List[V])(using
           MachineValue[V]
       ): Outcome[V] =
         Reading.outcome(body[V](Reading(arity, bounds, arguments)))

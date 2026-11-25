@@ -6,6 +6,7 @@ import xyz.kd5ujc.scarab.uplc.{Constant, DefaultFun, DefaultUni, SemanticsVarian
 import xyz.kd5ujc.scarab.uplc.builtin.{
   Argument,
   ErrorClass,
+  HeldUnlifting,
   MachineValue,
   UnliftingBound,
   UnliftingCause,
@@ -197,7 +198,7 @@ object CoreUnlifting:
       case _ => None
 
   /** The unlifting of one variant: the checks of every builtin, by ordinal. */
-  private final class Table(byFunction: Vector[Vector[Check]]) extends Unlifting:
+  private final class Table(byFunction: Vector[Vector[Check]]) extends Unlifting, HeldUnlifting:
     /** The checks of every builtin the last one first, as the machine holds the arguments. */
     private val lastFirst: Vector[List[Check]] = byFunction.map(_.reverseIterator.toList)
 
@@ -205,7 +206,9 @@ object CoreUnlifting:
       * the last argument and keeping the failure nearest the first is the failure [[apply]] stops
       * at.
       */
-    override def refusal[V](function: DefaultFun, arguments: List[V])(using
+    override def held: Option[HeldUnlifting] = Some(this)
+
+    def refusal[V](function: DefaultFun, arguments: List[V])(using
         MachineValue[V]
     ): Option[UnliftingFailure] =
       val expected = byFunction(function.ordinal)

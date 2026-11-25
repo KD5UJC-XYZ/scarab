@@ -22,18 +22,14 @@ trait Measure:
   def name: String
   def apply[V](argument: Argument[V])(using MachineValue[V]): Costs
 
-  /** [[apply]] of the argument the unlifting makes of `value` for `parameter` ([[Argument.of]]),
-    * without making it.
+  /** Whether [[apply]] of the argument a held unlifting accepts as `value` for `parameter`
+    * ([[Argument.of]]) is one cost, decided from the value: a parameter whose type has variables
+    * takes a constant of any type.
     */
-  def held[V](parameter: Signature.Parameter, value: V)(using MachineValue[V]): Costs
+  def oneCost[V](parameter: Signature.Parameter, value: V)(using MachineValue[V]): Boolean
 
-  /** Whether [[held]] is one cost for every argument an unlifting accepts for `parameter`: an
-    * answer of the parameter's type alone, which may say no where a value would have one cost.
-    */
-  def flat(parameter: Signature.Parameter): Boolean
-
-  /** The sum of [[held]]'s costs, which for a [[flat]] parameter is its one cost, computed with no
-    * stream.
+  /** The sum of the costs of that [[apply]], which is its one cost where [[oneCost]] says so,
+    * computed with no stream.
     */
   def size[V](parameter: Signature.Parameter, value: V)(using MachineValue[V]): SatInt
 
@@ -53,13 +49,12 @@ object Measure:
     def apply[V](argument: Argument[V])(using value: MachineValue[V]): Costs = argument match
       case Argument.Con(c)    => constant(c)
       case Argument.Opaque(v) => value.constantOf(v).fold(single(1))(constant)
-    def held[V](parameter: Signature.Parameter, value: V)(using mv: MachineValue[V]): Costs =
+    def oneCost[V](parameter: Signature.Parameter, value: V)(using
+        mv: MachineValue[V]
+    ): Boolean =
       mv.asConstant(value) match
-        case c: Constant             => constant(c)
-        case MachineValue.NoConstant => single(1)
-    def flat(parameter: Signature.Parameter): Boolean = parameter match
-      case Signature.Parameter.Opaque(_)   => false
-      case Signature.Parameter.Constant(t) => flatType(t)
+        case c: Constant             => oneCostConstant(c)
+        case MachineValue.NoConstant => true
     def size[V](parameter: Signature.Parameter, value: V)(using mv: MachineValue[V]): SatInt =
       mv.asConstant(value) match
         case c: Constant             => total(c)
@@ -71,8 +66,8 @@ object Measure:
   val one: Measure = new Measure:
     val name = "Int, Word8 or Word64"
     def apply[V](argument: Argument[V])(using MachineValue[V]): Costs = single(1)
-    def held[V](parameter: Signature.Parameter, value: V)(using MachineValue[V]): Costs = single(1)
-    def flat(parameter: Signature.Parameter): Boolean = true
+    def oneCost[V](parameter: Signature.Parameter, value: V)(using MachineValue[V]): Boolean =
+      true
     def size[V](parameter: Signature.Parameter, value: V)(using MachineValue[V]): SatInt =
       SatInt(1)
 
@@ -80,7 +75,7 @@ object Measure:
     * encoding, rounded towards zero.
     */
   val textBytes: Measure =
-    refining("TextCostedByByteLength", Signature.Type.String) { case Constant.String(t) =>
+    refining("TextCostedByByteLength") { case Constant.String(t) =>
       SatInt(t.utf8Length / 4L)
     }
 
@@ -88,7 +83,7 @@ object Measure:
     * `maxBound`.
     */
   val literal: Measure =
-    refining("IntegerCostedLiterally", Signature.Type.Integer) { case Constant.Integer(n) =>
+    refining("IntegerCostedLiterally") { case Constant.Integer(n) =>
       SatInt.clamp(n.abs)
     }
 
@@ -96,20 +91,20 @@ object Measure:
     * `((|n| - 1) div 8) + 1` with the division rounding down, so 0 for 0; at most `maxBound`.
     */
   val words: Measure =
-    refining("NumBytesCostedAsNumWords", Signature.Type.Integer) { case Constant.Integer(n) =>
+    refining("NumBytesCostedAsNumWords") { case Constant.Integer(n) =>
       val m = n.abs - 1
       SatInt.clamp((m - m.mod(8)) / 8 + 1)
     }
 
   /** `ValueTotalSize` (lines 420-424), also `Value`'s own measure: the number of entries. */
   val totalSize: Measure =
-    refining("ValueTotalSize", Signature.Type.Value) { case Constant.Value(v) =>
+    refining("ValueTotalSize") { case Constant.Value(v) =>
       SatInt(v.totalSize.toLong)
     }
 
   /** `ValueOuterSize` (lines 427-431): the number of currencies. */
   val outerSize: Measure =
-    refining("ValueOuterSize", Signature.Type.Value) { case Constant.Value(v) =>
+    refining("ValueOuterSize") { case Constant.Value(v) =>
       SatInt(v.entries.size.toLong)
     }
 
@@ -118,7 +113,7 @@ object Measure:
     * currencies, and 1, not 0, for none.
     */
   val outerDepth: Measure =
-    refining("ValueOuterDepth", Signature.Type.Value) { case Constant.Value(v) =>
+    refining("ValueOuterDepth") { case Constant.Value(v) =>
       SatInt(if v.entries.isEmpty then 1L else depth(v.entries.size))
     }
 
@@ -126,7 +121,7 @@ object Measure:
     * currencies and the size of the largest inner map.
     */
   val maxDepth: Measure =
-    refining("ValueMaxDepth", Signature.Type.Value) { case Constant.Value(v) =>
+    refining("ValueMaxDepth") { case Constant.Value(v) =>
       SatInt(depth(v.entries.size) + depth(v.maxInnerSize))
     }
 
@@ -139,39 +134,37 @@ object Measure:
     def apply[V](argument: Argument[V])(using MachineValue[V]): Costs = argument match
       case Argument.Con(c) => nodes.applyOrElse(c, constant)
       case other           => universe(other)
-    def held[V](parameter: Signature.Parameter, value: V)(using mv: MachineValue[V]): Costs =
+    // a `Data` node's children are those `data` walks, so its count is one cost where its
+    // measure is, and any other constant is measured as its own
+    def oneCost[V](parameter: Signature.Parameter, value: V)(using MachineValue[V]): Boolean =
+      universe.oneCost(parameter, value)
+    def size[V](parameter: Signature.Parameter, value: V)(using mv: MachineValue[V]): SatInt =
       parameter match
-        case Signature.Parameter.Opaque(_) => universe.held(parameter, value)
+        case Signature.Parameter.Opaque(_) => universe.size(parameter, value)
         case Signature.Parameter.Constant(_) =>
           mv.asConstant(value) match
-            case c: Constant             => nodes.applyOrElse(c, constant)
-            case MachineValue.NoConstant => single(1)
-    def flat(parameter: Signature.Parameter): Boolean = false
-    def size[V](parameter: Signature.Parameter, value: V)(using MachineValue[V]): SatInt =
-      held(parameter, value).sum
+            case c: Constant             => nodes.applyOrElse(c, constant).sum
+            case MachineValue.NoConstant => SatInt(1)
 
-  /** A measure of one cost for a constant of type `refined`, and the argument's own measure
+  /** A measure of one cost for the constants `measure` takes, and the argument's own measure
     * ([[universe]]) for any other.
     */
-  private def refining(label: String, refined: Signature.Type)(
-      measure: PartialFunction[Constant, SatInt]
-  ): Measure =
+  private def refining(label: String)(measure: PartialFunction[Constant, SatInt]): Measure =
     new Measure:
       val name = label
       private val costs: PartialFunction[Constant, Costs] = measure.andThen(Costs.Last(_))
       def apply[V](argument: Argument[V])(using value: MachineValue[V]): Costs = argument match
         case Argument.Con(c) => costs.applyOrElse(c, constant)
         case other           => universe(other)
-      def held[V](parameter: Signature.Parameter, value: V)(using mv: MachineValue[V]): Costs =
+      def oneCost[V](parameter: Signature.Parameter, value: V)(using
+          mv: MachineValue[V]
+      ): Boolean =
         parameter match
-          case Signature.Parameter.Opaque(_) => universe.held(parameter, value)
+          case Signature.Parameter.Opaque(_) => universe.oneCost(parameter, value)
           case Signature.Parameter.Constant(_) =>
             mv.asConstant(value) match
-              case c: Constant             => costs.applyOrElse(c, constant)
-              case MachineValue.NoConstant => single(1)
-      def flat(parameter: Signature.Parameter): Boolean = parameter match
-        case Signature.Parameter.Opaque(_)   => false
-        case Signature.Parameter.Constant(t) => t == refined || flatType(t)
+              case c: Constant             => measure.isDefinedAt(c) || oneCostConstant(c)
+              case MachineValue.NoConstant => true
       def size[V](parameter: Signature.Parameter, value: V)(using mv: MachineValue[V]): SatInt =
         parameter match
           case Signature.Parameter.Opaque(_) => universe.size(parameter, value)
@@ -179,17 +172,6 @@ object Measure:
             mv.asConstant(value) match
               case c: Constant             => measure.applyOrElse(c, total)
               case MachineValue.NoConstant => SatInt(1)
-
-  /** Whether every constant of type `t` has a measure of one cost ([[constant]]). */
-  private def flatType(t: Signature.Type): Boolean = t match
-    case Signature.Type.Integer | Signature.Type.ByteString | Signature.Type.Unit |
-        Signature.Type.Bool | Signature.Type.Bls12_381_G1_Element |
-        Signature.Type.Bls12_381_G2_Element | Signature.Type.Bls12_381_MlResult |
-        Signature.Type.Value | Signature.Type.Pair(_, _) | Signature.Type.Array(_) =>
-      true
-    case Signature.Type.String | Signature.Type.Data | Signature.Type.List(_) |
-        Signature.Type.Variable(_) =>
-      false
 
   private def depth(size: Int): Long = (32 - Integer.numberOfLeadingZeros(size)).toLong
 
@@ -206,6 +188,26 @@ object Measure:
         Constant.Pair(_, _) =>
       Costs.Last(total(c))
 
+  /** Whether [[constant]] of `c` is one cost: all but a text of more than 100 characters, a list of
+    * 100 elements or more, and a `Data` value with a child ([[text]], [[list]], [[data]]).
+    */
+  def oneCostConstant(c: Constant): Boolean = c match
+    case Constant.String(t) => t.codePoints <= Chunk
+    case l: Constant.List   => l.size < Chunk
+    case Constant.Data(d)   => childless(d)
+    case Constant.Integer(_) | Constant.ByteString(_) | Constant.Unit | Constant.Bool(_) |
+        Constant.Bls12_381_G1_Element(_) | Constant.Bls12_381_G2_Element(_) |
+        Constant.Bls12_381_MlResult(_) | Constant.Value(_) | Constant.Array(_, _) |
+        Constant.Pair(_, _) =>
+      true
+
+  /** Whether `d` has no child for [[data]] to walk ([[childrenOf]]). */
+  private def childless(d: PlutusData): Boolean = d match
+    case PlutusData.Constr(_, fields)      => fields.isEmpty
+    case PlutusData.List(items)            => items.isEmpty
+    case PlutusData.Map(entries)           => entries.isEmpty
+    case PlutusData.I(_) | PlutusData.B(_) => true
+
   /** The sum of [[constant]]'s costs: its one cost but for a text, a `Data` and a list. */
   def total(c: Constant): SatInt = c match
     case Constant.Integer(n)              => integer(n)
@@ -213,7 +215,7 @@ object Measure:
     case Constant.String(t)               => SatInt(t.codePoints.toLong)
     case Constant.Unit                    => SatInt(1)
     case Constant.Bool(_)                 => SatInt(1)
-    case Constant.Data(d)                 => data(d).sum
+    case Constant.Data(d)                 => if childless(d) then node(d) else data(d).sum
     case Constant.Bls12_381_G1_Element(_) => SatInt(G1Words)
     case Constant.Bls12_381_G2_Element(_) => SatInt(G2Words)
     case Constant.Bls12_381_MlResult(_)   => SatInt(MlResultWords)
@@ -252,12 +254,13 @@ object Measure:
   /** `Data` (lines 382-394): 4 for every node plus the size of an integer or byte string in it, in
     * pre-order (a map's keys and values alternate).
     */
-  def data(d: PlutusData): Costs =
-    flatten(d) {
-      case PlutusData.I(n) => SatInt(4) + integer(n)
-      case PlutusData.B(b) => SatInt(4) + bytes(b.size)
-      case _               => SatInt(4) + SatInt.zero
-    }
+  def data(d: PlutusData): Costs = flatten(d)(node)
+
+  /** The cost of one node of a `Data` value in [[data]]. */
+  private def node(d: PlutusData): SatInt = d match
+    case PlutusData.I(n) => SatInt(4) + integer(n)
+    case PlutusData.B(b) => SatInt(4) + bytes(b.size)
+    case _               => SatInt(4) + SatInt.zero
 
   /** The children of a node not yet walked: the fields of a constructor or the items of a list from
     * `next`, or a map's keys and values in turn from position `next` of `2 * size`.

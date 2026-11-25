@@ -7,5 +7,8 @@
   element; a saturated application continues the machine's loop with its result; and an operand that is a variable,
   a constant, a `lam`, a `delay` or a builtin is computed without a frame for it, its step counted and charged as
   before.
-- The machine is checked against the machine before the change on generated builtin applications and terms, with
-  every builtin and the default cost models of variants B, C, E and G (`CekApplicationSuite`).
+- The machine is checked against the machine before the change, which runs with the reading, denotations and costing
+  of then, on generated builtin applications and terms, with every builtin, the default cost models of variants B, C,
+  E and G and cost models of every shape (`CekApplicationSuite`). A builtin whose unlifting, costing or denotation
+  reads its arguments only as a vector is applied as before, the costing and the denotation reading what the
+  unlifting made.

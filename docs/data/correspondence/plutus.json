@@ -472,7 +472,7 @@
    "evidence": [
     "CostModelSuite"
    ],
-   "digest": "fe61fd74912ccc1f"
+   "digest": "d33a9545e7e3720c"
   }
  },
  "glue": [
@@ -578,19 +578,19 @@
    ]
   },
   {
-   "reason": "The steps of a saturated builtin application as the CEK machine takes them, on the arguments as it holds them (the last one first), so that it makes no vector, Option or closure for them (#1411): the reference's order (unlift every argument, spend the cost, then compute the result; `evalBuiltinApp`, `Cek/Internal.hs:1052-1075`, plutus 1.70.0.0) is that of the vector forms these default to, and CekApplicationSuite compares the machine with the one before them",
+   "reason": "The held forms of a builtin's unlifting, costing and denotation, by which the CEK machine takes a saturated application on the arguments as it holds them (the last one first) when all three have one, so that it makes no vector, Option or closure for them (#1411); a builtin a component of which has none is taken by the vector forms, as before. The reference's order (unlift every argument, spend the cost, then compute the result; `evalBuiltinApp`, `Cek/Internal.hs:1052-1075`, plutus 1.70.0.0) is that of the vector forms, and CekApplicationSuite compares the machine with the one before #1411",
    "definitions": [
+    "class uplc.builtin.HeldApplication",
     "def uplc.builtin.Argument.of",
-    "def uplc.builtin.Argument.unlifted",
-    "def uplc.builtin.Builtins#refusal",
-    "def uplc.builtin.Builtins#result",
-    "def uplc.builtin.Builtins#spend",
+    "def uplc.builtin.Builtins#held",
     "def uplc.builtin.Builtins.refused",
-    "def uplc.builtin.CostingFunction#applied",
-    "def uplc.builtin.CostingFunction#spend",
-    "def uplc.builtin.Denotation#applied",
+    "def uplc.builtin.CostingFunction#held",
+    "def uplc.builtin.Denotation#held",
+    "def uplc.builtin.HeldCosting#spend",
+    "def uplc.builtin.HeldDenotation#applied",
+    "def uplc.builtin.HeldUnlifting#refusal",
     "def uplc.builtin.MachineValue#asConstant",
-    "def uplc.builtin.Unlifting#refusal",
+    "def uplc.builtin.Unlifting#held",
     "def uplc.builtin.core.Reading#result",
     "def uplc.builtin.core.Reading.held",
     "def uplc.builtin.core.Reading.mismatch",
@@ -598,18 +598,21 @@
     "object uplc.builtin.Builtins",
     "object uplc.builtin.MachineValue",
     "object uplc.builtin.MachineValue.NoConstant",
-    "object uplc.builtin.core.Reading.Unbounded"
+    "object uplc.builtin.core.Reading.Unbounded",
+    "trait uplc.builtin.HeldCosting",
+    "trait uplc.builtin.HeldDenotation",
+    "trait uplc.builtin.HeldUnlifting"
    ]
   },
   {
-   "reason": "The cost of a builtin application whose measures are each one cost, computed as longs and spent with no stream made (#1411), where the reference spends a one-element `ExBudgetStream` (`ExBudgetStream.hs:15-29`, plutus 1.70.0.0): the shapes' `run` and the measures' streams stay the mirror, the spender is the machine's (`ExBudgetMode.hs:55-57,146-165`), and CekApplicationSuite compares the two",
+   "reason": "The cost of a builtin application whose measures are each one cost for the values given, computed as longs and spent with no stream made (#1411), where the reference spends a one-element `ExBudgetStream` (`ExBudgetStream.hs:15-29`, plutus 1.70.0.0): the shapes' `run` and the measures' streams stay the mirror, the spender is the machine's (`ExBudgetMode.hs:55-57,146-165`), and CekApplicationSuite compares the two",
    "definitions": [
     "def uplc.cost.Costs.quadraticTerm",
     "def uplc.cost.FourArguments#readsU",
     "def uplc.cost.FourArguments.single",
-    "def uplc.cost.Measure#flat",
-    "def uplc.cost.Measure#held",
+    "def uplc.cost.Measure#oneCost",
     "def uplc.cost.Measure#size",
+    "def uplc.cost.Measure.oneCostConstant",
     "def uplc.cost.Measure.total",
     "def uplc.cost.OneArgument#readsX",
     "def uplc.cost.OneArgument.single",
