@@ -15,7 +15,8 @@ key file must be writable by the node (mode 0600, in a directory it can write): 
 key back (see below); the VRF key and the certificate can stay read-only.
 
 The headers the node forges carry the reference's major protocol version and, as their minor, Scarab's block
-producer identifier 42 under the layout CIP-0203 proposes (cardano-foundation/CIPs#1276), where cardano-node writes
+producer identifier 73 under CIP-0203's layout (cardano-foundation/CIPs#1276; registry entry requested in
+cardano-foundation/CIPs#1334), where cardano-node writes
 its own release minor: an approved Deviation (#1348). `--producer-id opt-out` writes the opt-out identifier 255
 instead ([flags](flags.md)).
 
