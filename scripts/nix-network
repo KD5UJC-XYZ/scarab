@@ -18,11 +18,9 @@ Environment:
   SCARAB_QUERY_PORT     HTTP query port (default: $SCARAB_WRAPPER_QUERY_PORT)
   SCARAB_HEAP_SIZE      Java maximum heap (default: 3g)
   SCARAB_RUN_PROCESSORS Java active processor count (default: 4)
-  SCARAB_CORE_LIMIT     Core file size limit, as ulimit -c takes it (default: 0, none)
-
-The JVM writes no core file, error report or heap dump and accepts no attach, so a
-forging node's keys stay off disk; _JAVA_OPTIONS turns these back on (see
-docs/running/forging.md, "Keys in memory").
+  SCARAB_JVM_DIAGNOSTICS 1: the JVM's own core files, crash reports, heap dumps and
+                        attach, never on a forging node (default: off; see
+                        docs/running/forging.md, "Keys in memory")
 
 Extra arguments are passed to follow. Explicit --config, --topology, --db,
 --local-socket and --query-listen/--query-port replace the corresponding defaults.
@@ -54,6 +52,10 @@ else
 fi
 if [[ ! -f $source_dir/scripts/sbtw || ! -f $source_dir/build.sbt || ! -d $source_dir/node ]]; then
   printf 'SCARAB_SOURCE_DIR must name a Scarab checkout.\n' >&2
+  exit 2
+fi
+if [[ ! -f $source_dir/scripts/scarab-jvm ]]; then
+  printf '%s has no scripts/scarab-jvm, which starts the node; use a checkout that has it.\n' "$source_dir" >&2
   exit 2
 fi
 
@@ -147,10 +149,8 @@ classpath=$(
     "$BASH" scripts/sbtw node/compile node/runtimeClasspathFile >&2 && cat node/target/runtime-classpath.txt
 )
 export MALLOC_ARENA_MAX=${MALLOC_ARENA_MAX:-2}
-# A forging node's keys are in the heap: no core file, from a crash or from a signal such as SIGABRT that the JVM does
-# not catch, and the JVM options of docker/candidate.Dockerfile (no error report, heap dump or attach).
-ulimit -c "${SCARAB_CORE_LIMIT:-0}"
-exec java "-Xmx${SCARAB_HEAP_SIZE:-3g}" "-XX:ActiveProcessorCount=${SCARAB_RUN_PROCESSORS:-4}" \
-  --sun-misc-unsafe-memory-access=allow --enable-native-access=ALL-UNNAMED \
-  -XX:-CreateCoredumpOnCrash -XX:ErrorFile=/dev/null -XX:-HeapDumpOnOutOfMemoryError -XX:+DisableAttachMechanism \
+export SCARAB_HEAP_SIZE=${SCARAB_HEAP_SIZE:-3g} SCARAB_RUN_PROCESSORS=${SCARAB_RUN_PROCESSORS:-4}
+# The release image's launcher keeps a forging node's keys off disk. The build above ran with the caller's environment,
+# JAVA_TOOL_OPTIONS and the like included: it holds no keys.
+exec "$BASH" "$source_dir/scripts/scarab-jvm" --sun-misc-unsafe-memory-access=allow --enable-native-access=ALL-UNNAMED \
   -cp "$classpath" xyz.kd5ujc.scarab.node.Main follow "${defaults[@]}" "${node_args[@]}"
