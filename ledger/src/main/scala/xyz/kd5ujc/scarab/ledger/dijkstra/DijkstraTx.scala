@@ -279,7 +279,7 @@ object DijkstraTx:
     )
 
   /** A non-empty map of account addresses, none twice (`decodeMap`, then `failOnNull`). */
-  private def accountMap[A](n: Node, site: DecodeField)(
+  private[ledger] def accountMap[A](n: Node, site: DecodeField)(
       value: Node => Result[A]
   ): Result[Vector[(RewardAccount, A)]] =
     V12.nonEmptyMap(n, site)(Account.decode(_, site))((_, v) => value(v))
@@ -287,13 +287,13 @@ object DijkstraTx:
   /** `decodePositiveCoin` (`libs/cardano-ledger-core/src/Cardano/Ledger/Coin.hs:226-232`): a
     * `Word64` other than zero.
     */
-  private def positive(n: Node): Result[BigInt] =
+  private[ledger] def positive(n: Node): Result[BigInt] =
     V12
       .word64(n, DecodeField.Donation)
       .flatMap(c => Either.cond(c != 0, c, LedgerDecodeError.Zero(DecodeField.Donation)))
 
   /** `Network` (`BaseTypes.hs:899-905`): a `Word8` that is 0 or 1. */
-  private def networkId(n: Node): Result[Int] =
+  private[ledger] def networkId(n: Node): Result[Int] =
     V12
       .word8(n, DecodeField.NetworkId)
       .flatMap(v =>
@@ -304,7 +304,7 @@ object DijkstraTx:
     * the form of all: a list makes every element a credential, anything else every element a key
     * hash. No guard twice.
     */
-  private def guards(n: Node): Result[Vector[Credential]] =
+  private[ledger] def guards(n: Node): Result[Vector[Credential]] =
     V12.setItems(n, DecodeField.Guards).flatMap { xs =>
       val credentials = xs.headOption.exists(V12.isList)
       xs.traverse(x =>

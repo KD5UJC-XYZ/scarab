@@ -41,7 +41,7 @@ object DijkstraAnchor:
 /** `AccountAddress` (`fromCborAccountAddress`, `Address.hs:913-916`): a byte string, chunked or
   * not, read as an account address in full.
   */
-private[dijkstra] object Account:
+private[ledger] object Account:
   def decode(n: Node, what: DecodeSite): Result[RewardAccount] =
     V12.bytes(n, what).flatMap(RewardAccount.decode)
 
