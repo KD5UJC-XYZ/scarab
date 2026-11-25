@@ -252,6 +252,33 @@ class EraCoreSuite extends munit.FunSuite:
     assert(mirror.nonEmpty, mirror)
   }
 
+  test("auxiliary data share one representation; the compiler refuses them across eras") {
+    val across = compileErrors(
+      "import scala.language.strictEquality; def f(c: conway.ConwayTxAuxData, d: dijkstra.DijkstraTxAuxData) = c == d"
+    )
+    assert(across.contains("cannot be compared"), across)
+    Vector(
+      compileErrors(
+        "import scala.language.strictEquality; def f(a: conway.ConwayTxAuxData, b: conway.ConwayTxAuxData) = a == b"
+      ),
+      compileErrors(
+        "import scala.language.strictEquality; def f(a: dijkstra.DijkstraTxAuxData, b: dijkstra.DijkstraTxAuxData) = a == b"
+      )
+    ).foreach(within => assertEquals(within, ""))
+    // nor is one era's auxiliary data the other's, or the representation outside its file
+    val other = compileErrors("def f(c: conway.ConwayTxAuxData): dijkstra.DijkstraTxAuxData = c")
+    assert(other.contains("Found:"), other)
+    val rep = compileErrors(
+      "def f(c: conway.ConwayTxAuxData): AlonzoTxAuxDataRep[conway.ConwayTimelock] = c"
+    )
+    assert(rep.contains("Found:"), rep)
+    // a plain class, not a case class: no `Mirror` builds one from any fields, whatever its bytes
+    val mirror = compileErrors(
+      "summon[scala.deriving.Mirror.ProductOf[AlonzoTxAuxDataRep[conway.ConwayTimelock]]]"
+    )
+    assert(mirror.nonEmpty, mirror)
+  }
+
   test("the compiler refuses another era's value; the era's own compiles") {
     val other = compileErrors("def f(a: allegra.AllegraTxOut) = EraTxOut.mary.value(a)")
     assert(other.contains("AllegraTxOut"), other)

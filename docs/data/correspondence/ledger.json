@@ -24534,108 +24534,6 @@
    ],
    "digest": "a9707d0ef1f66891"
   },
-  "class ledger.era.dijkstra.DijkstraTxAuxData": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxAuxData.hs",
-     "symbol": "AlonzoTxAuxDataRaw",
-     "lines": [
-      124,
-      128
-     ]
-    }
-   ],
-   "class": "Mirror",
-   "structure": "differs",
-   "evidence": [
-    "DijkstraTxSuite"
-   ],
-   "note": "the bytes the data arrived as are kept, and the Plutus scripts' order of arrival",
-   "digest": "717d61d46a1de3e8"
-  },
-  "val ledger.era.dijkstra.DijkstraTxAuxData#metadata": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxAuxData.hs",
-     "symbol": "atadrMetadata",
-     "lines": [
-      125,
-      125
-     ]
-    }
-   ],
-   "class": "Mirror",
-   "structure": "same",
-   "evidence": [
-    "DijkstraTxSuite"
-   ],
-   "digest": "af341372b857bf57"
-  },
-  "val ledger.era.dijkstra.DijkstraTxAuxData#nativeScripts": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxAuxData.hs",
-     "symbol": "atadrNativeScripts",
-     "lines": [
-      126,
-      126
-     ]
-    }
-   ],
-   "class": "Mirror",
-   "structure": "same",
-   "evidence": [
-    "DijkstraTxSuite"
-   ],
-   "digest": "984a137865f96852"
-  },
-  "val ledger.era.dijkstra.DijkstraTxAuxData#plutusScripts": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxAuxData.hs",
-     "symbol": "atadrPlutusScripts",
-     "lines": [
-      127,
-      127
-     ]
-    }
-   ],
-   "class": "Mirror",
-   "structure": "same",
-   "evidence": [
-    "DijkstraTxSuite"
-   ],
-   "digest": "c4ff5108bc39d276"
-  },
-  "val ledger.era.dijkstra.DijkstraTxAuxData#raw": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxAuxData.hs",
-     "symbol": "AlonzoTxAuxData",
-     "lines": [
-      329,
-      329
-     ]
-    }
-   ],
-   "class": "Mirror",
-   "structure": "same",
-   "evidence": [
-    "DijkstraTxSuite"
-   ],
-   "note": "the bytes the data arrived as, which the reference's `MemoBytes` keeps",
-   "digest": "820f2db25161a7ca"
-  },
   "def ledger.era.dijkstra.DijkstraTxAuxData.fromFlat": {
    "upstream": [
     {
@@ -24655,7 +24553,7 @@
     "DijkstraTxSuite"
    ],
    "note": "the flat decoder's auxiliary data, which decides its form and what is refused, made in the era's types from its values: each metadatum read from the bytes the decoder kept of it, each native script from its bytes, and the Plutus scripts by language, in the order the decoder lists them, which is the order of the reference's `Map Language`",
-   "digest": "fec563bb5e868cc5"
+   "digest": "f611f9eb0c6b1b27"
   },
   "def ledger.era.dijkstra.DijkstraTxAuxData.decode": {
    "upstream": [
@@ -24696,7 +24594,7 @@
    "evidence": [
     "DijkstraTxSuite"
    ],
-   "digest": "11dc48fcb9dea8d0"
+   "digest": "361170861093897d"
   },
   "def ledger.era.dijkstra.DijkstraPlutusPurpose.asIx": {
    "upstream": [
@@ -48720,7 +48618,7 @@
     "DijkstraTxSuite"
    ],
    "note": "auxiliary data read from its item straight into the era's types in one pass, chosen by the first token as the flat decoder chooses (a map, a list of two, the tag 259 over a sparse map of keys 0 to 5), each metadatum once by Metadatum.read and each native script by Dijkstra's reader, which refuse what the flat decoder's refuse with the same errors. The same value or refusal as fromFlat over the flat decoder; checked on the recorded transactions, mutants and written cases (a fault at each key, competing refusals, every form of data)",
-   "digest": "d64e203a0a64f30e"
+   "digest": "ac586484d05e9571"
   },
   "def ledger.era.Data.read": {
    "upstream": [
@@ -49222,6 +49120,294 @@
     "EraCoreSuite"
    ],
    "digest": "bdf7f5818e486fff"
+  },
+  "class ledger.era.AlonzoTxAuxDataRep": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxAuxData.hs",
+     "symbol": "AlonzoTxAuxDataRaw",
+     "lines": [
+      124,
+      128
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraTxSuite",
+    "EraConwaySuite",
+    "EraCoreSuite"
+   ],
+   "note": "the representation Conway's and Dijkstra's auxiliary data share, each era's an opaque type over it, parameterised by the era's native script; the bytes the data arrived as are kept, and the Plutus scripts' order of arrival",
+   "digest": "03256e1d9595629a"
+  },
+  "val ledger.era.AlonzoTxAuxDataRep#metadata": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxAuxData.hs",
+     "symbol": "atadrMetadata",
+     "lines": [
+      125,
+      125
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraTxSuite",
+    "EraConwaySuite",
+    "EraCoreSuite"
+   ],
+   "digest": "af341372b857bf57"
+  },
+  "val ledger.era.AlonzoTxAuxDataRep#nativeScripts": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxAuxData.hs",
+     "symbol": "atadrNativeScripts",
+     "lines": [
+      126,
+      126
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraTxSuite",
+    "EraConwaySuite",
+    "EraCoreSuite"
+   ],
+   "digest": "499ff30db42195e8"
+  },
+  "val ledger.era.AlonzoTxAuxDataRep#plutusScripts": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxAuxData.hs",
+     "symbol": "atadrPlutusScripts",
+     "lines": [
+      127,
+      127
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraTxSuite",
+    "EraConwaySuite",
+    "EraCoreSuite"
+   ],
+   "digest": "c4ff5108bc39d276"
+  },
+  "val ledger.era.AlonzoTxAuxDataRep#raw": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxAuxData.hs",
+     "symbol": "MkAlonzoTxAuxData",
+     "lines": [
+      329,
+      329
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraTxSuite",
+    "EraConwaySuite",
+    "EraCoreSuite"
+   ],
+   "note": "the bytes the data arrived as, which the reference's `MemoBytes` keeps",
+   "digest": "820f2db25161a7ca"
+  },
+  "type ledger.era.conway.ConwayTxAuxData": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxAuxData.hs",
+     "symbol": "AlonzoTxAuxData ConwayEra",
+     "lines": [
+      24,
+      24
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "EraConwaySuite",
+    "EraCoreSuite"
+   ],
+   "digest": "e1c3b0ce275a8ac6"
+  },
+  "type ledger.era.dijkstra.DijkstraTxAuxData": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxAuxData.hs",
+     "symbol": "AlonzoTxAuxData DijkstraEra",
+     "lines": [
+      24,
+      24
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraTxSuite",
+    "EraCoreSuite"
+   ],
+   "digest": "e7e161ba68d60ee2"
+  },
+  "class ledger.era.AlonzoTxAuxDataRep.Instance": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxAuxData.hs",
+     "symbol": "metadataAlonzoTxAuxDataL",
+     "lines": [
+      356,
+      400
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraTxSuite",
+    "EraConwaySuite",
+    "EraCoreSuite"
+   ],
+   "note": "Alonzo's lenses and validation, written once for every era whose auxiliary data is the representation, with the reference's constraint on the era's cache as evidence",
+   "digest": "805f37418432af21"
+  },
+  "def ledger.era.AlonzoTxAuxDataRep.Instance#originalBytes": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxAuxData.hs",
+     "symbol": "MkAlonzoTxAuxData",
+     "lines": [
+      329,
+      331
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraTxSuite",
+    "EraConwaySuite",
+    "EraCoreSuite"
+   ],
+   "note": "the bytes the data arrived as (`SafeToHash`, derived through `MemoBytes`)",
+   "digest": "80acb5f05aa5f60a"
+  },
+  "def ledger.era.AlonzoTxAuxDataRep.Instance#metadata": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxAuxData.hs",
+     "symbol": "metadataAlonzoTxAuxDataL",
+     "lines": [
+      356,
+      361
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraTxSuite",
+    "EraConwaySuite",
+    "EraCoreSuite"
+   ],
+   "digest": "1f64dfa52bd7e43a"
+  },
+  "def ledger.era.AlonzoTxAuxDataRep.Instance#validateTxAuxData": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxAuxData.hs",
+     "symbol": "validateTxAuxData = validateAlonzoTxAuxData",
+     "lines": [
+      354,
+      354
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraTxSuite",
+    "EraConwaySuite",
+    "EraCoreSuite"
+   ],
+   "digest": "9f9dd6280d49e007"
+  },
+  "def ledger.era.AlonzoTxAuxDataRep.Instance#nativeScripts": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxAuxData.hs",
+     "symbol": "nativeScriptsAlonzoTxAuxDataL",
+     "lines": [
+      381,
+      386
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraTxSuite",
+    "EraConwaySuite",
+    "EraCoreSuite"
+   ],
+   "digest": "a1b5d6385f7331ea"
+  },
+  "def ledger.era.AlonzoTxAuxDataRep.Instance#plutusScripts": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxAuxData.hs",
+     "symbol": "plutusScriptsAllegraTxAuxDataL",
+     "lines": [
+      394,
+      400
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraTxSuite",
+    "EraConwaySuite",
+    "EraCoreSuite"
+   ],
+   "digest": "939f5634090b2b8e"
   }
  },
  "glue": [
@@ -49826,11 +50012,11 @@
    "reason": "the order a witness set's scripts and auxiliary data's Plutus scripts arrived in, the node's own, which no verdict reads, only the choice of the first script the `plutus` module's decoder gives no verdict for, as the flat checks choose it (the reference's decoding always gives a verdict)",
    "definitions": [
     "def ledger.era.AlonzoEraTxAuxData#plutusScriptsArrival",
+    "def ledger.era.AlonzoTxAuxDataRep.Instance#plutusScriptsArrival",
     "def ledger.era.AlonzoTxWitsRep.Instance#scriptTxWitsArrival",
     "def ledger.era.EraTxWits#scriptTxWitsArrival",
-    "val ledger.era.AlonzoTxWitsRep#scriptArrival",
-    "val ledger.era.conway.ConwayTxAuxData#plutusArrival",
-    "val ledger.era.dijkstra.DijkstraTxAuxData#plutusArrival"
+    "val ledger.era.AlonzoTxAuxDataRep#plutusArrival",
+    "val ledger.era.AlonzoTxWitsRep#scriptArrival"
    ]
   },
   {
@@ -49875,9 +50061,6 @@
     "def ledger.era.dijkstra.DijkstraTx.TopTx#toString",
     "def ledger.era.dijkstra.DijkstraTx.auxDataOf",
     "def ledger.era.dijkstra.DijkstraTx.witsOf",
-    "def ledger.era.dijkstra.DijkstraTxAuxData#equals",
-    "def ledger.era.dijkstra.DijkstraTxAuxData#hashCode",
-    "def ledger.era.dijkstra.DijkstraTxAuxData#toString",
     "def ledger.era.dijkstra.DijkstraTxBody.SubTxBody#equals",
     "def ledger.era.dijkstra.DijkstraTxBody.SubTxBody#hashCode",
     "def ledger.era.dijkstra.DijkstraTxBody.SubTxBody#toString",
@@ -50703,7 +50886,17 @@
   {
    "reason": "the shared representations of the era types (#85): their companions, Scala's equality, hash and rendering of each, which the reference derives, and the read-only forwarders of an era's opaque type to its representation's fields, which only the era's own file can give the evidence for, where the reference reads the fields through its lenses and `getMemoRawType`",
    "definitions": [
+    "class ledger.era.AlonzoTxAuxDataRep.Fields",
     "class ledger.era.AlonzoTxWitsRep.Fields",
+    "def ledger.era.AlonzoTxAuxDataRep#equals",
+    "def ledger.era.AlonzoTxAuxDataRep#hashCode",
+    "def ledger.era.AlonzoTxAuxDataRep#toString",
+    "def ledger.era.AlonzoTxAuxDataRep.Fields#metadata",
+    "def ledger.era.AlonzoTxAuxDataRep.Fields#nativeScripts",
+    "def ledger.era.AlonzoTxAuxDataRep.Fields#plutusArrival",
+    "def ledger.era.AlonzoTxAuxDataRep.Fields#plutusScripts",
+    "def ledger.era.AlonzoTxAuxDataRep.Fields#raw",
+    "def ledger.era.AlonzoTxAuxDataRep.Fields#rep",
     "def ledger.era.AlonzoTxWitsRep#equals",
     "def ledger.era.AlonzoTxWitsRep#hashCode",
     "def ledger.era.AlonzoTxWitsRep#toString",
@@ -50715,6 +50908,7 @@
     "def ledger.era.AlonzoTxWitsRep.Fields#scriptArrival",
     "def ledger.era.AlonzoTxWitsRep.Fields#scripts",
     "def ledger.era.AlonzoTxWitsRep.Fields#vkeys",
+    "object ledger.era.AlonzoTxAuxDataRep",
     "object ledger.era.AlonzoTxWitsRep"
    ]
   }

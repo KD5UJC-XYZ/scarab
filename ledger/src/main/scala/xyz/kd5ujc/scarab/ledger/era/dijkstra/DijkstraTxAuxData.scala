@@ -3,7 +3,6 @@ package xyz.kd5ujc.scarab.ledger.era.dijkstra
 
 import scala.annotation.unused
 import scala.collection.immutable.SortedMap
-import cats.Id
 import cats.data.NonEmptyVector
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Node, Value}
@@ -14,48 +13,20 @@ import xyz.kd5ujc.scarab.ledger.dijkstra.{
   Sparse,
   V12
 }
-import xyz.kd5ujc.scarab.ledger.era.{
-  AlonzoEraTxAuxData,
-  AlonzoTxAuxData,
-  EraScript,
-  EraTxError,
-  ProtVer,
-  SupportedPlutusRunnable,
-  UnavailableScript
-}
+import xyz.kd5ujc.scarab.ledger.era.{AlonzoEraTxAuxData, AlonzoTxAuxDataRep, EraTxError}
 import xyz.kd5ujc.scarab.ledger.state.Dijkstra
-import xyz.kd5ujc.scarab.plutus.{PlutusLanguage, ScriptDecoder}
+import xyz.kd5ujc.scarab.plutus.PlutusLanguage
 
-/** Dijkstra's auxiliary data: `AlonzoTxAuxData DijkstraEra` (`instance EraTxAuxData DijkstraEra`,
-  * `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxAuxData.hs:20-42`, cardano-ledger 9df9f98c;
-  * `data AlonzoTxAuxDataRaw`, `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxAuxData.hs:124-128`),
-  * with the bytes it arrived as, which the body's auxiliary data hash is over. Its native scripts
-  * are Dijkstra's, which may require a guard. Made only by [[DijkstraTxAuxData.decode]].
-  *
-  * @param metadata
-  *   by label (a `Word64`)
-  * @param plutusScripts
-  *   per language, Plutus V1 to V4, the Plutus scripts' bytes
-  * @param plutusArrival
-  *   the Plutus scripts with their languages in the order they arrived as the block decoder lists
-  *   them: by language, each list in its order
+/** Dijkstra's auxiliary data: `AlonzoTxAuxData DijkstraEra` (`type TxAuxData DijkstraEra =
+  * AlonzoTxAuxData DijkstraEra`, `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxAuxData.hs:24`,
+  * cardano-ledger 9df9f98c), the representation Alonzo's auxiliary data has
+  * ([[AlonzoTxAuxDataRep]]) with Dijkstra's native scripts, which may require a guard, a type of
+  * its own. Its Plutus scripts, V1 to V4, arrive as the block decoder lists them: by language, each
+  * list in its order. Made only by [[DijkstraTxAuxData.decode]].
   */
-final class DijkstraTxAuxData private (
-    val raw: Bytes,
-    val metadata: SortedMap[Unsigned[Unsigned.Width.W64], Metadatum],
-    val nativeScripts: Vector[DijkstraNativeScript],
-    val plutusScripts: SortedMap[PlutusLanguage, NonEmptyVector[Bytes]],
-    val plutusArrival: Vector[(PlutusLanguage, Bytes)]
-):
-  // Not a case class: its derived `Mirror` would make one from any fields, whatever its bytes.
-  private def fields: Any = (raw, metadata, nativeScripts, plutusScripts, plutusArrival)
-  override def equals(that: Any): Boolean = that match
-    case o: DijkstraTxAuxData => fields == o.fields
-    case _                    => false
-  override def hashCode(): Int = fields.hashCode
-  override def toString: String = s"DijkstraTxAuxData($fields)"
+opaque type DijkstraTxAuxData = AlonzoTxAuxDataRep[DijkstraNativeScript]
 
-object DijkstraTxAuxData:
+object DijkstraTxAuxData extends AlonzoTxAuxDataRep.Fields[DijkstraTxAuxData, DijkstraNativeScript]:
   given CanEqual[DijkstraTxAuxData, DijkstraTxAuxData] = CanEqual.derived
 
   // the languages in `Language`'s order, as `Map Language` keeps them
@@ -90,7 +61,7 @@ object DijkstraTxAuxData:
           .groupBy(_._1)
           .flatMap((language, ps) => NonEmptyVector.fromVector(ps.map(_._2)).map(language -> _))
       )
-      DijkstraTxAuxData(flat.raw, SortedMap.from(metadata), natives, byLanguage, plutus)
+      AlonzoTxAuxDataRep(flat.raw, SortedMap.from(metadata), natives, byLanguage, plutus)
     }.leftMap(EraTxError.Decode(_))
 
   // The keys of the tagged form (`decodeAlonzo`, `Alonzo/TxAuxData.hs:258-300`, cardano-ledger
@@ -120,7 +91,7 @@ object DijkstraTxAuxData:
           .groupBy(_._1)
           .flatMap((language, ps) => NonEmptyVector.fromVector(ps.map(_._2)).map(language -> _))
       )
-      DijkstraTxAuxData(n.original, SortedMap.from(metadata), natives, byLanguage, arrival)
+      AlonzoTxAuxDataRep(n.original, SortedMap.from(metadata), natives, byLanguage, arrival)
     val read: Either[LedgerDecodeError, DijkstraTxAuxData] = n.value match
       case Value.Map(_) => metadataMap(n).map(of(_, Vector.empty, Vector.empty))
       case Value.Arr(_) =>
@@ -203,26 +174,5 @@ object DijkstraTxAuxData:
   /** `EraTxAuxData`, `AllegraEraTxAuxData` and `AlonzoEraTxAuxData DijkstraEra`
     * (`TxAuxData.hs:20-42`, cardano-ledger 9df9f98c): Alonzo's lenses and validation.
     */
-  val instance: AlonzoEraTxAuxData[Dijkstra] = new AlonzoEraTxAuxData[Dijkstra]:
-    override def originalBytes(aux: DijkstraTxAuxData): Bytes = aux.raw
-    // `validateTxAuxData = validateAlonzoTxAuxData`, `TxAuxData.hs:30`, cardano-ledger 9df9f98c
-    override def validateTxAuxData(
-        decoder: ScriptDecoder[Id],
-        stAnnTxCache: Map[Bytes, SupportedPlutusRunnable[Dijkstra]],
-        pv: ProtVer,
-        aux: DijkstraTxAuxData
-    ): Either[UnavailableScript, Boolean] =
-      AlonzoTxAuxData.validateAlonzoTxAuxData[Dijkstra](decoder, stAnnTxCache, pv, aux)(using
-        this,
-        EraScript.dijkstra
-      )
-    override def metadata(
-        aux: DijkstraTxAuxData
-    ): SortedMap[Unsigned[Unsigned.Width.W64], Metadatum] = aux.metadata
-    override def nativeScripts(aux: DijkstraTxAuxData): Vector[DijkstraNativeScript] =
-      aux.nativeScripts
-    override def plutusScripts(
-        aux: DijkstraTxAuxData
-    ): SortedMap[PlutusLanguage, NonEmptyVector[Bytes]] = aux.plutusScripts
-    override def plutusScriptsArrival(aux: DijkstraTxAuxData): Vector[(PlutusLanguage, Bytes)] =
-      aux.plutusArrival
+  val instance: AlonzoEraTxAuxData[Dijkstra] =
+    AlonzoTxAuxDataRep.Instance[Dijkstra](DijkstraScript.instance)

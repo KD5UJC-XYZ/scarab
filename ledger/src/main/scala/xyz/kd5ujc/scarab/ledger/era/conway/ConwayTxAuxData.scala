@@ -17,49 +17,20 @@ import xyz.kd5ujc.scarab.ledger.{
   Unsigned
 }
 import xyz.kd5ujc.scarab.plutus.PlutusLanguage
-import xyz.kd5ujc.scarab.ledger.era.{
-  AlonzoEraTxAuxData,
-  AlonzoTxAuxData,
-  EraScript,
-  EraTxError,
-  ProtVer,
-  SupportedPlutusRunnable,
-  UnavailableScript
-}
-import cats.Id
-import xyz.kd5ujc.scarab.plutus.ScriptDecoder
+import xyz.kd5ujc.scarab.ledger.era.{AlonzoEraTxAuxData, AlonzoTxAuxDataRep, EraTxError}
 import xyz.kd5ujc.scarab.ledger.state.Conway
 import xyz.kd5ujc.scarab.protocol.Era
 
-/** Conway's auxiliary data: `AlonzoTxAuxData ConwayEra` (`data AlonzoTxAuxDataRaw`, cardano-ledger
-  * f649f975 `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxAuxData.hs:124-128`), with the bytes it
-  * arrived as, which the body's auxiliary data hash is over. Made only by
+/** Conway's auxiliary data: `AlonzoTxAuxData ConwayEra` (`type TxAuxData ConwayEra =
+  * AlonzoTxAuxData ConwayEra`, `eras/conway/impl/src/Cardano/Ledger/Conway/TxAuxData.hs:24`,
+  * cardano-ledger f649f975), the representation Alonzo's auxiliary data has
+  * ([[AlonzoTxAuxDataRep]]) with Conway's native scripts, a type of its own. Its Plutus scripts
+  * arrive in the encoded map's order, each list in its order. Made only by
   * [[ConwayTxAuxData.decode]].
-  *
-  * @param metadata
-  *   by label (a `Word64`)
-  * @param plutusScripts
-  *   per language, the Plutus scripts' bytes
-  * @param plutusArrival
-  *   the Plutus scripts with their languages in the order they arrived: the fields in the encoded
-  *   map's order, each list in its order
   */
-final class ConwayTxAuxData private (
-    val raw: Bytes,
-    val metadata: SortedMap[Unsigned[Unsigned.Width.W64], Metadatum],
-    val nativeScripts: Vector[ConwayTimelock],
-    val plutusScripts: SortedMap[PlutusLanguage, NonEmptyVector[Bytes]],
-    val plutusArrival: Vector[(PlutusLanguage, Bytes)]
-):
-  // Not a case class: its derived `Mirror` would make one from any fields, whatever its bytes.
-  private def fields: Any = (raw, metadata, nativeScripts, plutusScripts, plutusArrival)
-  override def equals(that: Any): Boolean = that match
-    case o: ConwayTxAuxData => fields == o.fields
-    case _                  => false
-  override def hashCode(): Int = fields.hashCode
-  override def toString: String = s"ConwayTxAuxData($fields)"
+opaque type ConwayTxAuxData = AlonzoTxAuxDataRep[ConwayTimelock]
 
-object ConwayTxAuxData:
+object ConwayTxAuxData extends AlonzoTxAuxDataRep.Fields[ConwayTxAuxData, ConwayTimelock]:
   given CanEqual[ConwayTxAuxData, ConwayTxAuxData] = CanEqual.derived
 
   // the languages in `Language`'s order, as `Map Language` keeps them
@@ -83,7 +54,7 @@ object ConwayTxAuxData:
         Cbor.Limits.Unbounded,
         DetachedRecords.Shapes.auxiliaryDataAt(Era.Conway, version.value)
       )(LedgerDecodeError.Syntax(_))(fields)
-    yield ConwayTxAuxData(raw, parts._1, parts._2, parts._3, parts._4))
+    yield AlonzoTxAuxDataRep(raw, parts._1, parts._2, parts._3, parts._4))
       .leftMap(EraTxError.Decode(_))
 
   private val noMetadata = SortedMap.empty[Unsigned[Unsigned.Width.W64], Metadatum]
@@ -175,28 +146,8 @@ object ConwayTxAuxData:
       .array(node, DecodeField.AuxiliaryNativeScripts)
       .flatMap(_.traverse(ConwayTimelock.read(_)))
 
-  val instance: AlonzoEraTxAuxData[Conway] = new AlonzoEraTxAuxData[Conway]:
-    override def originalBytes(aux: ConwayTxAuxData): Bytes = aux.raw
-    // `validateTxAuxData = validateAlonzoTxAuxData`, `Conway/TxAuxData.hs:30`, cardano-ledger
-    // f649f975
-    override def validateTxAuxData(
-        decoder: ScriptDecoder[Id],
-        stAnnTxCache: Map[Bytes, SupportedPlutusRunnable[Conway]],
-        pv: ProtVer,
-        aux: ConwayTxAuxData
-    ): Either[UnavailableScript, Boolean] =
-      AlonzoTxAuxData.validateAlonzoTxAuxData[Conway](decoder, stAnnTxCache, pv, aux)(using
-        this,
-        EraScript.conway
-      )
-    override def metadata(
-        aux: ConwayTxAuxData
-    ): SortedMap[Unsigned[Unsigned.Width.W64], Metadatum] =
-      aux.metadata
-    override def nativeScripts(aux: ConwayTxAuxData): Vector[ConwayTimelock] = aux.nativeScripts
-    override def plutusScripts(
-        aux: ConwayTxAuxData
-    ): SortedMap[PlutusLanguage, NonEmptyVector[Bytes]] =
-      aux.plutusScripts
-    override def plutusScriptsArrival(aux: ConwayTxAuxData): Vector[(PlutusLanguage, Bytes)] =
-      aux.plutusArrival
+  /** `EraTxAuxData`, `AllegraEraTxAuxData` and `AlonzoEraTxAuxData ConwayEra`
+    * (`Conway/TxAuxData.hs:20-42`, cardano-ledger f649f975): Alonzo's lenses and validation.
+    */
+  val instance: AlonzoEraTxAuxData[Conway] =
+    AlonzoTxAuxDataRep.Instance[Conway](ConwayScript.instance)
