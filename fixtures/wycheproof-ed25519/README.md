@@ -27,10 +27,13 @@ that revision from its source archive (`codeload.github.com/IntersectMBO/libsodi
 `e4f29ae3c16037e484bb69e3fa22a5565c42adf497f8f88e61ff8d9486ab863e`, the archive
 `../witness/archive/pinned-source-oracle/provenance.json` records) with the configure flags and `CFLAGS` recorded
 there, checks that `open.c` was compiled with `-UED25519_COMPAT`, and runs `oracle/verify.c` on the cases with no
-network. The run of 2026-11-25 used gcc 12.2.0 (Debian bookworm, the base of `scripts/oracle/plutus/Dockerfile`);
-the library it built has SHA-256 `42ebd2c63d2857573162d455193b564984d5351e9f99e3c36627e18f57d1f6fb`, which differs
-from the archived oracle's only by the compiler. On the 151 cases of the earlier revision its verdicts equal the
-archived system-sodium and pinned-source verdicts of `../witness/status.tsv`, case for case.
+network. The run of 2026-11-25 was in Debian bookworm (the base of `scripts/oracle/plutus/Dockerfile`) with gcc
+12.2.0, glibc 2.36 and GNU Make 4.3, on a Linux 7.1.5 kernel; the library it built has SHA-256
+`42ebd2c63d2857573162d455193b564984d5351e9f99e3c36627e18f57d1f6fb`. The archived oracle's library
+(`76b41125…`) was built with gcc 14.2.0, GNU Make 4.4.1 and glibc 2.41 on a Linux 6.18.44 kernel
+(`../witness/archive/pinned-source-oracle/provenance.json`), so the two binaries were not expected to be equal, and
+no single cause of the difference is claimed. On the 151 cases of the earlier revision the verdicts of this build
+equal the archived system-sodium and pinned-source verdicts of `../witness/status.tsv`, case for case.
 
 To repeat it, extract the cases from `ed25519_test.json` as `tcId<TAB>pk<TAB>sig<TAB>msg` lines (the group's
 `publicKey.pk`, empty fields kept) into `/io/cases.tsv`, mount the source archive at `/in`, `oracle/` at
