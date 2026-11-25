@@ -12,3 +12,8 @@
 - The keys a reload reads belong to the read until the reload installs them, and the end of the read
   erases the others, on failure and cancellation too. No method of the forger's hot keys hands out the
   VRF signing key; the leader schedule's inputs name the key by its verification key.
+- A reload never costs the leader schedule or a slot what it would not have cost before: a walk a
+  reload ended resumes with the next credentials' value even when the inputs are equal again, and
+  an attempt's leader check takes the VRF key's verification key from the credentials it leased, so
+  that a key replaced and put back around it is checked as the one in force. A reload's log lines are
+  written once its lease has ended, so that a log that blocks keeps no superseded key in memory.
