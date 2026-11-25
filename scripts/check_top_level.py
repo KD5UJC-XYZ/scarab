@@ -20,7 +20,6 @@ from __future__ import annotations
 from collections.abc import Iterable
 from pathlib import Path
 import argparse
-import os
 import subprocess
 import sys
 
@@ -47,8 +46,8 @@ HELP = ('A spec, plan, task list or validation log that a workflow tool writes i
         'directory is added to DIRECTORIES in scripts/check_top_level.py, in the pull request that adds it.')
 
 
-def unlisted(paths: Iterable[str], submodules: frozenset[str] = frozenset(),
-             listed: frozenset[str] = DIRECTORIES) -> dict[str, list[str]]:
+def unlisted(paths: Iterable[str], listed: frozenset[str] = DIRECTORIES, *,
+             submodules: frozenset[str] = frozenset()) -> dict[str, list[str]]:
     """Each top-level directory that is not listed, with its tracked paths, each once and sorted, sorted by directory.
     A path in `submodules` is a directory of its own."""
     found: dict[str, set[str]] = {}
@@ -65,7 +64,8 @@ def index(listing: bytes) -> tuple[list[str], frozenset[str]]:
     paths, submodules = [], set()
     for record in filter(None, listing.split(b'\0')):
         meta, _, name = record.partition(b'\t')
-        paths.append(os.fsdecode(name))
+        # git writes the bytes of the name; bytes that are not UTF-8 are kept as surrogates, whatever the locale
+        paths.append(name.decode('utf-8', 'surrogateescape'))
         if meta.startswith(GITLINK):
             submodules.add(paths[-1])
     return paths, frozenset(submodules)
@@ -85,7 +85,8 @@ def shown(path: str) -> str:
 
 def main(argv: list[str] | None = None, root: Path = ROOT) -> int:
     argparse.ArgumentParser(description=__doc__.split('\n\n')[0]).parse_args(argv)
-    found = unlisted(*tracked(root))
+    paths, submodules = tracked(root)
+    found = unlisted(paths, submodules=submodules)
     if found:
         print('top-level directories that are not on the list of scripts/check_top_level.py:')
         for head, files in found.items():

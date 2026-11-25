@@ -28,10 +28,10 @@ class UnlistedTest(unittest.TestCase):
                                                                         'docs-old': ['docs-old/y.md']})
 
     def test_a_list_is_honoured(self):
-        self.assertEqual(top.unlisted(['specs/a.md'], listed=frozenset({'specs'})), {})
+        self.assertEqual(top.unlisted(['specs/a.md'], frozenset({'specs'})), {})
 
     def test_a_top_level_submodule_is_a_directory_and_a_path_counts_once(self):
-        self.assertEqual(top.unlisted(['vendor', 'notes.md', 'docs/sub'], frozenset({'vendor', 'docs/sub'})),
+        self.assertEqual(top.unlisted(['vendor', 'notes.md', 'docs/sub'], submodules=frozenset({'vendor', 'docs/sub'})),
                          {'vendor': ['vendor']})
         self.assertEqual(top.unlisted(['specs/a.md'] * 3), {'specs': ['specs/a.md']})
 
@@ -49,7 +49,8 @@ class UnlistedTest(unittest.TestCase):
 
     def test_the_list_holds_single_names_and_today_s_tree_passes(self):
         self.assertEqual([d for d in top.DIRECTORIES if not d or '/' in d], [])
-        self.assertEqual(top.unlisted(*top.tracked(ROOT)), {})
+        paths, submodules = top.tracked(ROOT)
+        self.assertEqual(top.unlisted(paths, submodules=submodules), {})
 
 
 class RepositoryTest(unittest.TestCase):
@@ -104,8 +105,11 @@ class RepositoryTest(unittest.TestCase):
     def test_a_top_level_submodule_fails_and_a_top_level_file_does_not(self):
         self.write('notes.md')
         self.assertEqual(self.run_check()[0], 0)
+        # an object id of the repository's own hash; a gitlink's commit need not exist
+        commit = subprocess.run(['git', '-C', str(self.root), 'hash-object', '--stdin'], input=b'',
+                                check=True, capture_output=True).stdout.decode().strip()
         subprocess.run(['git', '-C', str(self.root), 'update-index', '--add', '--cacheinfo',
-                        '160000,' + '1' * 40 + ',vendor'], check=True)
+                        f'160000,{commit},vendor'], check=True)
         code, out = self.run_check()
         self.assertEqual(code, 1)
         self.assertIn('  vendor/: 1 tracked path, such as vendor\n', out)
