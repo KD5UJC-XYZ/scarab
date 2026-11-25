@@ -69,7 +69,9 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{
   * Conway's era rules judge ([[ConwayPoolLedger]]), `MempoolState.add`, and
   * `LocalSubmission.reasonItem`, which writes Conway's refusal by its era encoder. The bytes must
   * equal the reference's. An earlier-era case goes the same path, its pool's ledger the era's
-  * ([[replayPreConway]], #934). Every difference fails its case. A family the manifest requires for
+  * ([[replayPreConway]], #934). A case the reference judged after admitting other transactions on
+  * the same connection (`before`) is judged after Scarab's mempool admits them too, each of which
+  * it must admit ([[admitted]]). Every difference fails its case. A family the manifest requires for
   * an era and no case covers fails that era's coverage test (an incomplete gate is never a pass).
   *
   * Each corpus is replayed under the rules of the reference build that recorded it
@@ -269,14 +271,9 @@ class ReferenceRefusalSuite extends FunSuite:
         .fromBigInt(rc.tipSlot + 1)
         .leftMap(e => ReplayProblem.Tick(TickFailure.Vocab(e)))
       ticked <- Sts(Tick.sts[E])(env.rules, (), at.nes, slot).leftMap(ReplayProblem.Tick(_))
-    yield
-      val ledger =
-        EarlierLedger(pre, ticked.es.ls, ticked.es.chainAccount, ticked.epoch.toBigInt)
-      val pool = MempoolState.empty(Right(ledger), rc.tipSlot, None)
-      LocalSubmission
-        .unwrap(rc.item)
-        .flatMap(submission => pool.add(submission, env, Source.Local).map(_ => ()))
-        .fold(judge(_, rc.era.wire), _ => Judgement.Accepted)
+      ledger = EarlierLedger(pre, ticked.es.ls, ticked.es.chainAccount, ticked.epoch.toBigInt)
+      pool <- admitted(MempoolState.empty(Right(ledger), rc.tipSlot, None), rc, env, rc.era.wire)
+    yield submitted(pool, rc, env, rc.era.wire)
 
   private def replayConway(
       c: Corpus,
@@ -291,12 +288,31 @@ class ReferenceRefusalSuite extends FunSuite:
         .leftMap(e => ReplayProblem.Tick(TickFailure.Vocab(e)))
       ticked <- Sts(Tick.sts[Conway])(env.rules, (), at.nes, slot).leftMap(ReplayProblem.Tick(_))
       ledger <- ConwayPoolLedger.of(ticked).leftMap(ReplayProblem.Params(_))
-    yield
-      val pool = MempoolState.empty(Right(ledger), rc.tipSlot, None)
+      pool <- admitted(MempoolState.empty(Right(ledger), rc.tipSlot, None), rc, env, Era.Conway)
+    yield submitted(pool, rc, env, Era.Conway)
+
+  /** The mempool after the transactions the reference admitted before the case (`before`), each put
+    * through Scarab's path in turn, as the reference's mempool held them when it judged the case.
+    */
+  private def admitted(
+      pool: MempoolState,
+      rc: RefusalCase,
+      env: MempoolEnv,
+      era: Era
+  ): Either[ReplayProblem, MempoolState] =
+    rc.before.zipWithIndex.foldLeftM(pool) { case (held, (raw, index)) =>
       LocalSubmission
-        .unwrap(rc.item)
-        .flatMap(submission => pool.add(submission, env, Source.Local).map(_ => ()))
-        .fold(judge(_, Era.Conway), _ => Judgement.Accepted)
+        .unwrap(raw)
+        .flatMap(held.add(_, env, Source.Local))
+        .bimap(rejection => ReplayProblem.Before(index, judge(rejection, era)), _._1)
+    }
+
+  /** What Scarab answers for the case's item, put to `pool` through its node-to-client path. */
+  private def submitted(pool: MempoolState, rc: RefusalCase, env: MempoolEnv, era: Era): Judgement =
+    LocalSubmission
+      .unwrap(rc.item)
+      .flatMap(submission => pool.add(submission, env, Source.Local).map(_ => ()))
+      .fold(judge(_, era), _ => Judgement.Accepted)
 
   /** Where the two refusals part: the failure counts and the first failure that differs. */
   private def difference(scarab: Bytes, rc: RefusalCase): String =
@@ -458,6 +474,7 @@ object ReferenceRefusalSuite:
     case Params(error: xyz.kd5ujc.scarab.ledger.era.PParamsError)
     case Item
     case Transaction(error: LedgerDecodeError)
+    case Before(index: Int, judgement: Judgement)
 
   object ReplayProblem:
     given Show[ReplayProblem] = Show.show {
@@ -470,6 +487,8 @@ object ReferenceRefusalSuite:
       case Params(e)      => s"the parameters in force are not Conway's: $e"
       case Item           => "the case's item is not `[expected era index, #6.24(tx)]`"
       case Transaction(e) => s"Scarab does not decode the transaction: ${e.message}"
+      case Before(i, j) =>
+        s"the reference admitted transaction ${i + 1} before the case, and Scarab ${j.show}"
     }
 
   enum CorpusProblem:
@@ -518,15 +537,20 @@ object ReferenceRefusalSuite:
       tip: Tip,
       state: String,
       utxo: String,
-      reason: String
+      reason: String,
+      before: Option[Vector[String]]
   ) derives Decoder
 
-  /** One recorded refusal: the submitted LocalTxSubmission item and the reference's reason item. */
+  /** One recorded refusal: the submitted LocalTxSubmission item and the reference's reason item,
+    * and the items the reference admitted on the same connection just before it (`before`), whose
+    * mempool it judged the case against.
+    */
   final case class RefusalCase(
       label: String,
       era: RefusalEra,
       families: Vector[Family],
       item: Bytes,
+      before: Vector[Bytes],
       tipSlot: BigInt,
       state: String,
       utxo: String,
@@ -629,12 +653,14 @@ object ReferenceRefusalSuite:
             decoded <- records.traverse { c =>
               for
                 item <- hex(path, "item", c.item)
+                before <- c.before.combineAll.traverse(hex(path, "before", _))
                 reason <- hex(path, "reason", c.reason)
               yield RefusalCase(
                 c.label,
                 c.era,
                 c.families,
                 item,
+                before,
                 c.tip.slot,
                 c.state,
                 c.utxo,
