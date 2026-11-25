@@ -36,6 +36,22 @@
       "candidateRequired": true
     },
     {
+      "id": "ed25519-wycheproof-current",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "All 210 cases of the Wycheproof Ed25519 vectors at C2SP/wycheproof a3d5d142, including the 29 acceptable keys of small and mixed order, with the verdicts of the pinned libsodium fork built without ED25519_COMPAT.",
+      "assertion": "StrictEd25519 gives the native verdict on every case (12 malformed signatures as their typed length error); the native verdicts agree with every valid and invalid case and reject the 8 small-order keys and accept the 21 mixed-order keys; Bouncy Castle gives the native verdict on every case and the JDK on every case but the 8 small-order keys, which it accepts.",
+      "rationale": "The vectors in fixtures/witness are an earlier revision of 151 cases; the 59 cases added since cover the small- and mixed-order keys where verifiers differ. The native verdicts are a source build of the pinned revision, not the shipped node's binary.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/1418",
+      "resolution": "Retain the upstream file and the native verdicts unchanged; a newer Wycheproof revision is vendored beside them with a fresh native run.",
+      "evidence": [
+        "crypto/src/test/scala/xyz/kd5ujc/scarab/crypto/witness/WycheproofEd25519Suite.scala",
+        "fixtures/wycheproof-ed25519/README.md"
+      ],
+      "candidateRequired": false
+    },
+    {
       "id": "vrf-draft03-reference-vectors",
       "classification": "native-parity",
       "status": "covered",

@@ -78,6 +78,12 @@ attribution files in fixtures/witness/licenses. The curve25519-elisabeth arithme
 is vendored source (named above); the fixtures hold no signing implementation or
 private-key corpus.
 
+Wycheproof Ed25519 (fixtures/wycheproof-ed25519): the C2SP/wycheproof Ed25519
+verification vectors at commit a3d5d1423f2592d6646836a45a21a1b209da9f4d, Apache-2.0,
+with Wycheproof's LICENSE beside them. The reference verdicts and the driver that
+produced them are Scarab's own; the libsodium source the driver builds is not
+redistributed.
+
 ECVRF draft-03 vectors (fixtures/vrf-cardano-base): the seven vrf_ver03 test vectors of
 IntersectMBO/cardano-base revision 060819b59c184b951a54e3c563304983c53a3eac, Apache-2.0
 (fixtures/licenses/cardano-base-LICENSE and cardano-base-NOTICE). Their seeds are
