@@ -9,7 +9,8 @@ import org.scalacheck.Prop.forAllNoShrink
 import scala.jdk.CollectionConverters.*
 import scala.util.Using
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.crypto.witness.{Ed25519Model as M}
+import xyz.kd5ujc.scarab.crypto.witness.Ed25519Model as M
+
 import ProofToOutput.Refusal
 
 /** [[ProofToOutput]], the reference's output of a proof alone, against the pinned libsodium's
