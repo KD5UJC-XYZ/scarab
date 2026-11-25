@@ -18,9 +18,6 @@
   intermediate product overflowed 32 bits, and a multiple of p could be written as the non-canonical encoding of p.
   It is now exact over the whole documented range. No point encoding and no accepted or rejected signature
   changes.
-
-#### Known gaps
-
-- `Scalar.add` and `Scalar.subtract` document a result congruent modulo L for any two scalars, but for unreduced
-  operands they can fail instead (`0 - (L + 1)`, `(2^255 - 1) + (L + 1)`). Nothing in Scarab calls them; two tests
-  pin the cases.
+- `Scalar.add` and `Scalar.subtract` failed for some unreduced operands, which their documentation admits, instead
+  of returning a + b and a - b modulo L. They now reduce both operands first and always return a canonical scalar.
+  The node does not use them; no verdict changes.
