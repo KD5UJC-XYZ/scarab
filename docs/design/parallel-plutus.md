@@ -16,9 +16,10 @@ flowchart LR
   result -->|no| refusal[Typed refusal or original defect]
 ```
 
-`MirrorRules.applyBlock` and `EraBlock.body` remain pure serial references. The effectful mirror
-uses the same header validation and HFC tick, then hands an immutable `EraBlock.Body` to
-`ParallelPlutus`. With one worker, fewer than two redeemer-bearing transactions, transactions
+`MirrorRules.applyBlock` and the bodies' serial runs remain pure serial references. The effectful mirror
+uses the same header validation and HFC tick, then hands an immutable body (`ConwayBlockRun.Body` for
+a Conway block, `DijkstraBlockRun.Body` for a Leios-build Dijkstra one, `EraBlock.Body` for a block of
+an era before Conway) to `ParallelPlutus`. With one worker, fewer than two redeemer-bearing transactions, transactions
 that declare more execution units than the block may hold, or redeemers that declare fewer CPU steps
 than preparing needs to pay ([below](#where-preparing-pays)), it calls the serial body directly.
 Otherwise `Body.prepare` runs the same BBODY/LEDGERS rules once, suppressing only VM execution and
@@ -148,8 +149,8 @@ the serial run reaches no later script (`whenFailureFree`, over the whole judgme
 can evaluate scripts the serial run does not; the rule bounds that work by the units an admissible block
 declares. It does not stop the jobs after an early failure: that would need the scheduler to land each
 batch before running the next, which `ParallelPlutus` does not. Conway's era run (`ConwayBlockRun.Body`)
-and the flat rules' body (`EraBlock.Body`) follow the same rule (#85): neither prepares a body past the
-block's execution units.
+and the flat rules' body of the eras before Conway (`EraBlock.Body`) follow the same rule (#85):
+neither prepares a body past the block's execution units.
 
 The era run's preparation runs BBODY's `AlonzoBbody.validateExUnits`, and a body past the units has
 no job. After a verdict that is not its flag's the serial run reaches no later script
@@ -218,7 +219,7 @@ The floor was measured on 2026-11-24, each body serially (`ParallelPlutus` at on
   jobs (17), and blocks of 2 to 32 independent transactions each minting with a Plutus V3 loop of 0 to
   3,000 iterations (`DijkstraScriptedBlocks`, `ConwayScriptedBlocks`: 0.5 million to 1.8 billion steps a
   script), each redeemer declaring what its script spends, and cheap scripts declaring more;
-- `ConwayBodiesReplaySuite` on the recorded preprod window (`EraBodies`, the sbt JVM of
+- `ConwayBodiesReplaySuite` (now `EraBodiesReplaySuite`, era ways only) on the recorded preprod window (`EraBodies`, the sbt JVM of
   `scripts/sbtw`, four processors), its 3,005 Conway blocks that defer two or more jobs, in the
   rotated order of the tables of 2026-11-22 and 2026-11-23 below, where each serial way and its
   prepared way follow the same kind of way (an era way after a flat one, a flat way after an era one).
@@ -296,22 +297,24 @@ observations) and one the serial run never reaches, with a raw defect of the rul
 scripts that pass, after a verdict that is not its flag's and after a script with no verdict, and
 with missing completions, and another plan's completions do not type-check. A block of a
 transaction whose script context cannot be built, after or before one whose script runs, is
-observed in the flat rules' order through the plan and at four workers, also where the first's
+observed in order through the plan and at four workers, also where the first's
 verdict is not its flag's and the serial run, replayed, does not observe the second; where the
 first's script ends in a raw defect, neither the serial run nor the plan observes the second.
 The dependent block past `maxBlockExUnits`, as flagged and with verdicts that are not the flags',
 is not prepared and evaluates through `ParallelPlutus` at one, two, four and eight workers exactly
 the scripts the serial run evaluates (four, three, two), to its result; `ParallelPlutusSuite` checks
-the same of the flat body, in Conway and in Babbage.
+the same of the flat body, on Babbage blocks.
 
-`ConwayBodiesReplaySuite` takes the inputs of `PlutusReplaySuite` (`SCARAB_PLUTUS_CAPTURE` and
+`EraBodiesReplaySuite` takes the inputs of `PlutusReplaySuite` (`SCARAB_PLUTUS_CAPTURE` and
 `SCARAB_PLUTUS_BASELINE`, mounted read-only), writes to a fresh directory of its own named by
-`SCARAB_ERA_BODIES_OUTPUT`, and runs with `scripts/sbtw 'node/testOnly *ConwayBodiesReplaySuite'` in
-the Docker JDK image. It times each Conway block's body
-four ways from the state the mirror ticks it to: the flat `EraBlock.Body` and the era run, each
-serial and through four workers, rotated within each block (`SCARAB_PLUTUS_ROUNDS`, default three).
-Timings exclude decoding and store reads. It checks each parallel result against its serial one and
-asserts that the era run's state and counters equal the flat rules' on every block.
+`SCARAB_ERA_BODIES_OUTPUT`, and runs with `scripts/sbtw 'node/testOnly *EraBodiesReplaySuite'` in
+the Docker JDK image. It times each Conway block's era run three ways from the state the mirror
+ticks it to: serial, through four workers, and prepared below the floor too, rotated within each
+block (`SCARAB_PLUTUS_ROUNDS`, default three). Timings exclude decoding and store reads. It checks
+each parallel and prepared result against the serial one. Until the flat Conway BBODY was deleted
+(#85, C6), the suite was `ConwayBodiesReplaySuite` and also timed the flat body and asserted the
+era run's state and counters equal to the flat rules' on every block; the measurements below are
+that suite's.
 
 On the preprod capture and pinned baseline of `PlutusReplaySuite` (2026-11-22, the source that
 added the prepared era run under [#85](https://github.com/KD5UJC-XYZ/scarab/issues/85), the Docker

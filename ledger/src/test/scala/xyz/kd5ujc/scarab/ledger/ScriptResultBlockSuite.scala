@@ -6,7 +6,7 @@ import io.circe.parser.parse
 import java.nio.file.{Files, Path}
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
-import xyz.kd5ujc.scarab.ledger.rules.{EraBlock, EraNes}
+import xyz.kd5ujc.scarab.ledger.rules.EraBlock
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.plutus.*
 import xyz.kd5ujc.scarab.protocol.Era
@@ -34,7 +34,7 @@ class ScriptResultBlockSuite extends FunSuite:
       valid: Boolean,
       evaluator: ScriptEvaluator[Id],
       seen: Phase2.Observation => Unit
-  ): EraBlock.Body =
+  ): EraBlock.Body[Babbage] =
     val pp = recorded.params.copy(
       protocolMajor = 8,
       minFeeA = 0,
@@ -63,13 +63,10 @@ class ScriptResultBlockSuite extends FunSuite:
     )
     val initial =
       NewEpochState.empty[Babbage](EpochNo.fromBigInt(5).fold(e => fail(e.toString), identity), pp)
-    val state: EraNes = EraNes.InEra(
-      ShelleyBasedEra.SBabbage,
-      initial.copy[Babbage](es =
-        initial.es.copy[Babbage](ls =
-          initial.es.ls
-            .copy[Babbage](utxo = initial.es.ls.utxo.copy[Babbage](utxo = UtxoTables(utxo)))
-        )
+    val state: NewEpochState[Babbage] = initial.copy[Babbage](es =
+      initial.es.copy[Babbage](ls =
+        initial.es.ls
+          .copy[Babbage](utxo = initial.es.ls.utxo.copy[Babbage](utxo = UtxoTables(utxo)))
       )
     )
     val header = PreparedBlockFixture.babbageHeader

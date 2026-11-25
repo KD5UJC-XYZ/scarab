@@ -3,16 +3,6 @@
  "skips": [
   {
    "module": "node",
-   "suite": "xyz.kd5ujc.scarab.node.ConwayBodiesReplaySuite",
-   "test": "the flat rules' and the era run's bodies, serial and through four workers, on a captured window",
-   "environment": [
-    "SCARAB_PLUTUS_CAPTURE"
-   ],
-   "data": "the offline captured preprod window of PlutusReplaySuite, with its baseline (SCARAB_PLUTUS_BASELINE) and a fresh output directory of its own (SCARAB_ERA_BODIES_OUTPUT)",
-   "issue": 85
-  },
-  {
-   "module": "node",
    "suite": "xyz.kd5ujc.scarab.node.DijkstraEraEpochGovSuite",
    "test": "window G: 1533582 ticked into the next epoch has the boundary's governance of 1555188",
    "environment": [
@@ -40,6 +30,16 @@
    ],
    "data": "the reference's ledger states window-g/1576750 and window-g/1598375 of the public Leios testnet, which are not in the repository (LeiosReferenceStates)",
    "issue": 54
+  },
+  {
+   "module": "node",
+   "suite": "xyz.kd5ujc.scarab.node.EraBodiesReplaySuite",
+   "test": "the era run's bodies, serial, through four workers and prepared, on a captured window",
+   "environment": [
+    "SCARAB_PLUTUS_CAPTURE"
+   ],
+   "data": "the offline captured preprod window of PlutusReplaySuite, with its baseline (SCARAB_PLUTUS_BASELINE) and a fresh output directory of its own (SCARAB_ERA_BODIES_OUTPUT)",
+   "issue": 85
   },
   {
    "module": "node",

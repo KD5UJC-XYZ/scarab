@@ -884,7 +884,7 @@
       "evidence": {
         "suites": [
           "DevnetRefusedTxSuite",
-          "BbodySuite",
+          "ConwayBlockRunSuite",
           "ValueConservationSuite",
           "EpochGeometrySuite",
           "ConwayCertsChecksSuite",
@@ -895,7 +895,7 @@
           "ConwayLedgerSuite",
           "StateAdmissionSuite",
           "ConwayBbodySuite",
-          "ConwayBodiesReplaySuite",
+          "ConwayBbodyImpSuite",
           "SessionFailureSuite"
         ],
         "issues": [

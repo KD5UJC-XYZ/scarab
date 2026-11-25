@@ -12,18 +12,16 @@ import xyz.kd5ujc.scarab.node.preview.{EraBodies, RecordedReplay, ReplayInputs}
 
 /** The preprod capture of `PlutusReplaySuite` (the same inputs, `SCARAB_PLUTUS_CAPTURE` and
   * `SCARAB_PLUTUS_BASELINE`, and the pinned baseline, with a fresh output directory of its own,
-  * `SCARAB_ERA_BODIES_OUTPUT`), each Conway block's BBODY timed four ways from the state the mirror
-  * ticks it to: the flat rules' and Conway's era run's, each serial and through four of the node's
-  * workers (`EraBodies`), the era run's state and counters asserted equal to the flat rules' on
-  * every block. The reference state advances by the original serial interpreter, timed once a
-  * block. Opt-in offline evidence, as `PlutusReplaySuite` is.
+  * `SCARAB_ERA_BODIES_OUTPUT`), each Conway block's BBODY timed three ways from the state the
+  * mirror ticks it to: Conway's era run serial, through four of the node's workers and prepared
+  * below the floor too (`EraBodies`), each asserted equal to the serial run on every block. The
+  * reference state advances by the original serial interpreter, timed once a block. Opt-in offline
+  * evidence, as `PlutusReplaySuite` is.
   */
-class ConwayBodiesReplaySuite extends FailsOnUncaught:
+class EraBodiesReplaySuite extends FailsOnUncaught:
   override def munitIOTimeout: Duration = 40.minutes
 
-  test(
-    "the flat rules' and the era run's bodies, serial and through four workers, on a captured window"
-  ) {
+  test("the era run's bodies, serial, through four workers and prepared, on a captured window") {
     assume(sys.env.contains("SCARAB_PLUTUS_CAPTURE"), "requires an offline captured window")
     val baseline = Path.of(sys.env("SCARAB_PLUTUS_BASELINE"))
     // an output directory of its own, so that it and `PlutusReplaySuite` each find theirs fresh
@@ -69,9 +67,6 @@ class ConwayBodiesReplaySuite extends FailsOnUncaught:
         }
         way.toString -> (nanos.sum / 1e9).asJson
       }
-      disagreeing = rows.filter(
-        _.hcursor.downField("eraAgreesWithFlat").as[Boolean].contains(false)
-      )
       report = Json.obj(
         "replay" -> summary,
         "conwayBlocks" -> rows
@@ -79,25 +74,13 @@ class ConwayBodiesReplaySuite extends FailsOnUncaught:
           .distinct
           .size
           .asJson,
-        "medianSecondsSummed" -> Json.obj(totals*),
-        "eraDiffersFromFlatAtSlots" -> disagreeing
-          .flatMap(_.hcursor.downField("slot").as[BigInt].toOption)
-          .distinct
-          .asJson
+        "medianSecondsSummed" -> Json.obj(totals*)
       )
       _ <- IO.blocking(Files.writeString(output.resolve("era-bodies-summary.json"), report.spaces2))
       _ <- IO.println(report.noSpaces)
-      // the node applies Conway blocks with the era run (#85): on every block, its state and
-      // counters are the flat rules', which the summary above names where they are not
+      // every block's ways through the workers and prepared are checked against its serial run
+      // as it is measured (`EraBodies.measure`)
       compared = rows.filter(_.hcursor.downField("round").as[Int].toOption.contains(0))
       _ <- IO(assert(compared.nonEmpty, "no Conway block of the window was compared"))
-      _ <- IO(
-        assert(
-          compared.forall(
-            _.hcursor.downField("eraAgreesWithFlat").as[Boolean].toOption.contains(true)
-          ),
-          s"the era run differs from the flat rules on ${disagreeing.size} rows"
-        )
-      )
     yield ()
   }

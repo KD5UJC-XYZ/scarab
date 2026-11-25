@@ -49,13 +49,7 @@ import xyz.kd5ujc.scarab.ledger.era.rules.{
   ShelleyLedgersPredFailure,
   UtxoStateDefect
 }
-import xyz.kd5ujc.scarab.ledger.rules.{
-  Bbody as FlatBbody,
-  EraBlock,
-  EraNes,
-  Globals,
-  TxDependencies
-}
+import xyz.kd5ujc.scarab.ledger.rules.{EraBlock, EraNes, Globals, TxDependencies}
 import xyz.kd5ujc.scarab.ledger.state.{
   BlocksMade,
   Coin,
@@ -90,37 +84,32 @@ import xyz.kd5ujc.scarab.node.{MirrorSteps, NodeSetup, ParallelPlutus}
 import xyz.kd5ujc.scarab.protocol.{Era, ReferenceBuild, StateLayout}
 
 /** Conway's BBODY on the era types (`ConwayBbody.conwayBbody`, run by `ConwayBlockRun`;
-  * `Conway/Rules/Bbody.hs` and the Alonzo and Shelley BBODY functions it runs, cardano-ledger
-  * f649f975) against the flat BBODY the node runs for Conway (`rules.Bbody` through
-  * `EraBlock.body`), from the same ticked ledger state, as `MirrorRules` ticks it, on the same
-  * block's bytes, each side reading them with its own decoder:
+  * `Conway/Rules/Bbody.hs:268` and the Alonzo and Shelley BBODY functions it runs, cardano-ledger
+  * f649f975), as the node applies Conway blocks, from the ticked ledger state `MirrorRules` ticks a
+  * block to, every run prepared too and its plan's result and observations the serial run's:
   *   - every recorded Conway block of the era-walking captures (`fixtures/eras` and
   *     `fixtures/chain-dep`, each replayed from genesis by the node's rules), which the reference
-  *     node accepted: both admit it with the same ledger state and blocks made on its testnet, and
-  *     as if on mainnet, where the header's version is checked, both refuse it for that version
-  *     (the clusters' headers declare major 11 over parameters at 9);
+  *     node accepted: admitted on its testnet, counted for its issuer, and as if on mainnet, where
+  *     the header's version is checked, refused for that version (the clusters' headers declare
+  *     major 11 over parameters at 9);
   *   - refusals crafted from a recorded block's bytes: another declared body size, another declared
-  *     hash, a header major version past the one after the parameters' on mainnet (which the flat
-  *     side checks in the envelope, `consensus.HardForkConfig.check`, before its BBODY, and its
-  *     BBODY alone admits), each refused by both sides with equal failures in the node's flat form,
-  *     and each boundary admitted by both;
+  *     hash, both (each recorded), a header major version past the one after the parameters' on
+  *     mainnet, and each boundary admitted;
   *   - blocks of built transactions (real CBOR and signatures, a reference script and a Plutus V3
   *     script of the reference's examples) on the state before the third Conway block of
   *     `fixtures/eras` with the outputs they spend: reference scripts past the block's limit, a
   *     block's units past `maxBlockExUnits` in either component, and a transaction whose input is
-  *     missing, refused by both with equal failures, and the same blocks within the limits admitted
-  *     by both with the same state, a script run among them;
+  *     missing, refused, and the same blocks within the limits admitted, a script run among them;
+  *     the phase-2 counters, the naming of a script with no verdict and the observations
+  *     (`--plutus-cases`) of the run;
   *   - the era block reads every recorded Conway block (the captures' and the Preview blocks of
   *     `fixtures/preview`) as the flat decoder reads it, and the units of a block's transactions
-  *     are the flat rules' sum.
+  *     are their sum.
   *
-  * The flat form of an era failure (`flat`): the body's size or hash `BodyCommitment`, which holds
-  * neither; the units `BlockExUnitsTooBig`; the reference scripts `RefScriptsTooLarge`; the
-  * header's version the envelope's `HeaderProtVerTooHigh`; LEDGERS's failures the transaction's
-  * `Rejected`, through `EraLedgerRun.flat`. The flat BBODY stops at its first failure, the era's
-  * records every one (`ValidateAll`, the accumulation the flat rules take on in #412), so each
-  * refusal here fails one check, and the two lists are compared whole; a named difference pins the
-  * accumulation on a block failing both the size and the hash.
+  * A refusal is compared in the node's form (`flatOf`): the body's size or hash `BodyCommitment`,
+  * which holds neither; the units `BlockExUnitsTooBig`; the reference scripts `RefScriptsTooLarge`;
+  * the header's version the envelope's `HeaderProtVerTooHigh`; LEDGERS's failures the transaction's
+  * `Rejected`, through `EraLedgerRun.flat`; and where the order matters, as the era's own failures.
   *
   * Incomplete (CNF-2): no recording holds a Conway block's refusal or a Conway block with
   * transactions and the state before it, so the refusals are crafted, the transactions built, and
@@ -183,29 +172,17 @@ class ConwayBbodySuite extends FailsOnUncaught:
     */
   private type Verdict = Either[Vector[BlockFailure], (LedgerState[Conway], BlocksMade)]
 
-  private def same(name: String, era: Verdict, flat: Verdict): Unit =
-    (era, flat) match
-      case (Right((ls, made)), Right((flatLs, flatMade))) =>
-        assert(cats.Eq[LedgerState[Conway]].eqv(ls, flatLs), s"$name: the ledger states differ")
-        assertEquals(made, flatMade, s"$name: blocks made")
-      case _ => assertEquals(era, flat, name)
-
-  /** The ticked Conway state of a block and what each side reads of the run: the era BBODY's own
-    * failures as well as their flat form, and the scripts each side's evaluator ran.
+  /** The ticked Conway state of a block and what is read of the era run on it: the era BBODY's own
+    * failures as well as their form in the node's vocabulary, and the scripts its evaluator ran.
     */
   private final case class Judged(
       eraRun: Either[ConwayRuleDefect, Verdict],
-      flat: Verdict,
       ticked: NewEpochState[Conway],
-      flatPlutus: Option[PlutusStats],
       eraPlutus: Option[PlutusStats],
-      flatBbodyAdmits: Boolean,
       eraRefusal: Option[ConwayBlockRun.Refusal],
       eraFailures: Vector[BbodyPredFailure[Conway]],
       eraEvaluated: Int,
-      flatEvaluated: Int,
       eraObserved: Vector[ConwayPhase2.Observation],
-      flatObserved: Vector[Phase2.Observation],
       deferred: Vector[Vector[Int]],
       replayed: Option[ConwayBlockRun.Observing] => ConwayBlockRun.Body,
       program: (
@@ -291,10 +268,9 @@ class ConwayBbodySuite extends FailsOnUncaught:
     }
     ObservationForm(o.tx, o.params, o.slot, o.spent, o.references, o.clock, outcome)
 
-  /** The era run's observation as it compares with the flat rules' ([[comparable]]): its
-    * transaction as the flat rules read its bytes, and its collection's failures in the flat
-    * vocabulary the node's case files name them in (`ConwayPhase2.storedErrors`), each of which has
-    * a flat form.
+  /** The era run's observation in a form that compares ([[comparable]]): its transaction as the
+    * flat decoder reads its bytes, and its collection's failures in the flat vocabulary the node's
+    * case files name them in (`ConwayPhase2.storedErrors`), each of which has a flat form.
     */
   private def comparable(o: ConwayPhase2.Observation): ObservationForm =
     val tx = ok("the observed transaction, read flat")(
@@ -321,15 +297,6 @@ class ConwayBbodySuite extends FailsOnUncaught:
     private val told = new java.util.concurrent.atomic.AtomicReference(Vector.empty[O])
     def observe(o: O): Unit = { val _ = told.updateAndGet(_ :+ o); () }
     def all: Vector[O] = told.get
-
-  /** The era run observes a block as the flat rules do: its observations compare with the flat
-    * rules' ([[comparable]]). The case files written of them are not compared with the flat rules'
-    * here: the flat rules list a transaction's outputs in their own order, and the node's case
-    * files, since it applies Conway blocks with the era run, in the era run's; their bytes are
-    * checked against the recorded cases in `ConwayPlutusCasesSuite` (#85).
-    */
-  private def sameObserved(j: Judged, what: String): Unit =
-    assertEquals(j.eraObserved.map(comparable), j.flatObserved.map(comparable), what)
 
   /** The node's evaluator, counting the scripts it is asked to run, and giving no verdict on the
     * `unsupportedAt` th, as an evaluator's limit does (`EvalFailure.Unsupported`).
@@ -401,10 +368,8 @@ class ConwayBbodySuite extends FailsOnUncaught:
       case Right(other) => assertEquals(other, serial, s"$name: the plan")
 
   /** The state of `before` ticked to the block `raw` as `MirrorRules` ticks it (stamped with the
-    * block's number, then the combinator's tick), changed by `change`; then the era BBODY and the
-    * flat side on it: the envelope's check of the header's version (`HardForkConfig.check`, as
-    * `LedgerRules` calls it), then the flat BBODY (`EraBlock.body`), each on `network` under
-    * `build`.
+    * block's number, then the combinator's tick), changed by `change`; then Conway's era run on it,
+    * as the node runs it, on `network` under `build`, serially and prepared.
     */
   private def judge(
       before: Before,
@@ -426,21 +391,17 @@ class ConwayBbodySuite extends FailsOnUncaught:
       setup.globals.copy(network = network, referenceBuild = build),
       geometry
     )
-    val (flatEvaluator, eraEvaluator) = (Counting(unsupportedAt), Shared(unsupportedAt))
-    val (flatObserved, eraObserved, planObserved) = (
-      Observations[Phase2.Observation](),
-      Observations[ConwayPhase2.Observation](),
-      Observations[ConwayPhase2.Observation]()
-    )
-    // one clock, which both sides' observations hold
+    val eraEvaluator = Shared(unsupportedAt)
+    val (eraObserved, planObserved) =
+      (Observations[ConwayPhase2.Observation](), Observations[ConwayPhase2.Observation]())
+    // one clock, which the run's observations hold
     val clock = PosixClock.total(globals.systemStart, geometry)
+    // the tick's context, as `MirrorRules` makes it (the tick evaluates no script)
     val ctx = EraBlock.Context(
       globals,
       setup.praos.forks.transition(geometry.k),
       MirrorStep.afterVotingOf(before.mirror),
-      verdicts = Verdicts.Direct,
-      evaluator = flatEvaluator,
-      observer = Option.when(observe)(flatObserved.observe),
+      evaluator = ScarabEvaluator.default,
       decoder = decoder,
       clock = Some(clock)
     )
@@ -453,40 +414,7 @@ class ConwayBbodySuite extends FailsOnUncaught:
             case ShelleyBasedEra.SConway => change(i.nes)
             case other                   => fail(s"${before.name}: ticked into $other")
     val params = ConwayNewEpochState.gov.get(ticked).curPParams
-    // the flat side: the envelope's check of the header's version, then the flat BBODY
-    val body = EraBlock.body(ctx)(
-      EraNes.InEra(ShelleyBasedEra.SConway, ticked),
-      header,
-      block,
-      EraBlock.decode(block),
-      PlutusStats.zero
-    )
-    val outcome: Either[Vector[BlockFailure], EraBlock.Outcome] = setup.praos.forks
-      .check(
-        header.era,
-        Era.Conway,
-        geometry.epochOf(header.slot),
-        header.protocolVersion._1,
-        params.protocolMajor,
-        header.raw.size,
-        params.maxBlockHeaderSize,
-        block.bodySize,
-        params.maxBlockBodySize,
-        mainnet = network == Network.Mainnet
-      ) match
-      case Left(error) => Left(Vector(BlockFailure.Envelope(error)))
-      case Right(_)    => Right(body)
-    val flat: Verdict = outcome.flatMap[Vector[BlockFailure], (LedgerState[Conway], BlocksMade)] {
-      case EraBlock.Outcome.Applied(after, _) =>
-        after match
-          case i: EraNes.InEra[e] =>
-            i.era match
-              case ShelleyBasedEra.SConway => Right((i.nes.es.ls, i.nes.bcur))
-              case other                   => fail(s"${before.name}: applied in $other")
-      case EraBlock.Outcome.Refused(failure) => Left(Vector(failure))
-      case EraBlock.Outcome.NotInEra(era)    => fail(s"${before.name}: not in era $era")
-    }
-    // the era side, on the same state stamped as the flat BBODY stamps it
+    // the state stamped as `MirrorRules.conwayBody` stamps it
     val eraBlock = ok(s"${before.name} era block")(ConwayBlock.decode(raw, layout))
     val pp = PParams[Conway](ok(s"${before.name} parameters")(ConwayPParams.fromStored(params)))
     val ls = ticked.es.ls
@@ -550,7 +478,7 @@ class ConwayBbodySuite extends FailsOnUncaught:
       eraObserved.all.map(comparable),
       s"${before.name}: the plan's observations"
     )
-    // the graph of the era's transactions is the flat rules'
+    // the graph of the era's transactions is the one the flat decoder's reading gives
     EraBlockBody.conway
       .txSeqBlockBody(eraBlock.blockBody)
       .zip(EraBlock.decode(block))
@@ -570,20 +498,12 @@ class ConwayBbodySuite extends FailsOnUncaught:
     }
     Judged(
       era,
-      flat,
       ticked,
-      outcome.toOption.collect { case EraBlock.Outcome.Applied(_, plutus) => plutus },
       judged.flatMap(_.toOption).map(_.plutus),
-      body match
-        case EraBlock.Outcome.Applied(_, _) => true
-        case _                              => false
-      ,
       judged.flatMap(_.left.toOption),
       judged.flatMap(_.left.toOption).fold(Vector.empty)(_.failures.toChain.toVector),
       eraEvaluator.count,
-      flatEvaluator.count,
       eraObserved.all,
-      flatObserved.all,
       plan.batches.map(_.map(_.index)),
       o => programOf(eraEvaluator.replaying, o),
       programOf,
@@ -605,7 +525,7 @@ class ConwayBbodySuite extends FailsOnUncaught:
         ok(s"$name: flat")(EraLedgerRun.flat(f, _ => None, _ => None))
     }
     // a block of more transactions has no flat form here: the era's failures do not say which
-    // transaction each is of, and the flat rules stop at the first refused one
+    // transaction each is of
     lazy val rejected = NonEmptyChain.fromSeq(ledgers).flatMap { fs =>
       block.transactions match
         case Vector(t) => Some(BlockFailure.Tx(LedgerFailure.Rejected(t.id, fs)))
@@ -745,7 +665,7 @@ class ConwayBbodySuite extends FailsOnUncaught:
         name
       )
       assertEquals((BigInt(pv.pvMajor.value), pv.pvMinor.value), flat.header.protocolVersion, name)
-      // the units of the block's transactions are the flat rules' sum, refused one step below it
+      // the units of the block's transactions are their sum, refused one step below it
       val units = flat.transactions
         .map(x => ok(name)(Tx.fromBlock(x, Era.Conway)))
         .foldLeft(ExUnits.zero)(_ + _.witnesses.totalExUnits)
@@ -766,15 +686,13 @@ class ConwayBbodySuite extends FailsOnUncaught:
   }
 
   test(
-    "every recorded Conway block: admitted by both BBODYs with the same state on its testnet; as on mainnet, refused by both for its header's version"
+    "every recorded Conway block, which the reference accepted: admitted by the era run on its testnet; as on mainnet, refused for its header's version"
   ) {
     val all = eras ++ chainDep
     val onMainnet = all.map { b =>
       val j = judge(b, b.raw)
-      same(b.name, j.era, j.flat)
-      // the phase-2 counters, the flat rules' (CNF-2: the recorded blocks run no script, so the
-      // counters are zero on both sides; the blocks of built transactions below count scripts)
-      assertEquals(j.eraPlutus, j.flatPlutus, b.name)
+      // the phase-2 counters (CNF-2: the recorded blocks run no script, so the counters are zero;
+      // the blocks of built transactions below count scripts)
       assertEquals(j.eraPlutus, Some(PlutusStats.zero), b.name)
       j.era match
         case Right((_, made)) =>
@@ -785,9 +703,7 @@ class ConwayBbodySuite extends FailsOnUncaught:
             b.name
           )
         case Left(fs) => fail(s"${b.name}: refused $fs")
-      val m = judge(b, b.raw, Network.Mainnet)
-      same(s"${b.name} on mainnet", m.era, m.flat)
-      m.era
+      judge(b, b.raw, Network.Mainnet).era
     }
     // the clusters' headers declare major 11 and their parameters' 9: as on mainnet, each is past
     // the version after it
@@ -803,7 +719,7 @@ class ConwayBbodySuite extends FailsOnUncaught:
 
   private lazy val first: Before = eras.head
 
-  test("another declared body size or hash: refused by both, with equal failures") {
+  test("another declared body size or hash: refused") {
     val size = crafted(first.raw)(
       identity,
       (fields, parts) =>
@@ -819,9 +735,7 @@ class ConwayBbodySuite extends FailsOnUncaught:
     assertEquals(committed, first.raw, "the recorded header commits to its body")
     Vector("size" -> size, "hash" -> hash).foreach { (what, raw) =>
       val j = judge(first, raw)
-      assertEquals(j.flat, Left(Vector(BlockFailure.BodyCommitment)), what)
       assertEquals(j.era, Left(Vector(BlockFailure.BodyCommitment)), what)
-      same(what, j.era, j.flat)
     }
     // the era predicates' own failures, with the reference's mismatches: the body's (supplied)
     // and the header's (expected)
@@ -849,11 +763,9 @@ class ConwayBbodySuite extends FailsOnUncaught:
   }
 
   test(
-    "named difference: a declared size and hash both other than the body's: the era BBODY records both, the flat BBODY its first"
+    "a declared size and hash both other than the body's: the era BBODY records both"
   ) {
-    // the flat BBODY stops at its first failure, and its form of the body's commitment holds
-    // neither mismatch (the accumulation of #412); the reference records both
-    // (`Alonzo/Rules/Bbody.hs:194-196`, cardano-ledger f649f975)
+    // the reference records both (`Alonzo/Rules/Bbody.hs:194-196`, cardano-ledger f649f975)
     val both = crafted(first.raw)(
       identity,
       (fields, parts) =>
@@ -862,7 +774,6 @@ class ConwayBbodySuite extends FailsOnUncaught:
           .updated(7, encoded(Value.ByteString(Bytes(Vector.fill(32)(7.toByte)))))
     )
     val j = judge(first, both)
-    assertEquals(j.flat, Left(Vector(BlockFailure.BodyCommitment)))
     assertEquals(j.era, Left(Vector(BlockFailure.BodyCommitment, BlockFailure.BodyCommitment)))
     // the era rule's own failures, before their flat form: the size is checked before the hash, and
     // the root's list is the reverse of the order its predicates recorded (each failure put in
@@ -896,7 +807,7 @@ class ConwayBbodySuite extends FailsOnUncaught:
     case other                       => fail(s"$other")
 
   test(
-    "the header's major version past the one after the parameters': refused on mainnet by the era BBODY and the flat envelope"
+    "the header's major version past the one after the parameters': refused on mainnet by the era BBODY"
   ) {
     val major =
       ConwayNewEpochState.gov.get(judge(first, first.raw).ticked).curPParams.protocolMajor.toInt
@@ -911,16 +822,12 @@ class ConwayBbodySuite extends FailsOnUncaught:
         ),
         s"$build"
       )
-      same(s"$build too high", tooHigh.era, tooHigh.flat)
-      // the flat BBODY alone admits it: the flat rules check the version in the envelope
-      assert(tooHigh.flatBbodyAdmits, s"$build")
-      // the boundary, and another network, admitted by both
+      // the boundary, and another network, admitted
       Vector(
         judge(first, at(major + 1), Network.Mainnet, build),
         judge(first, at(major + 2), Network.Testnet, build)
       ).foreach { j =>
         assert(j.era.isRight, s"$build: ${j.era}")
-        same(s"$build admitted", j.era, j.flat)
       }
     }
   }
@@ -1034,7 +941,7 @@ class ConwayBbodySuite extends FailsOnUncaught:
     B.arr(B.bytes(i.id), B.uint(i.index))
 
   test(
-    "reference scripts past the block's limit: refused by both with equal failures, within it admitted with the same state"
+    "reference scripts past the block's limit: refused, within it admitted"
   ) {
     val script = B.purposeIsWellformedNoDatumV3
     val scriptSize = script.size.toLong
@@ -1060,25 +967,20 @@ class ConwayBbodySuite extends FailsOnUncaught:
     // epoch keeps from Babbage (`conwayBbodyTransition` runs `validateBodyRefScriptsSizeTooBig`
     // whatever the version, `Conway/Rules/Bbody.hs:285-316`, cardano-ledger f649f975)
     Vector(7, 8, 9, 10, 11).foreach { major =>
-      // the body is past the cluster's 65,536 bytes, which the flat side's envelope checks before
-      // its BBODY (BBODY reads no such limit): a limit that holds it
+      // the body is past the cluster's 65,536 bytes, which the node's envelope checks before BBODY
+      // (BBODY reads no such limit): a limit that holds it
       val world =
         holding(utxo, _.copy(protocolMajor = major, maxBlockBodySize = BigInt(1024 * 1024)))
       val refused = judge(third, blockOf(txs), change = world)
-      assertEquals(
-        refused.flat,
-        Left(Vector(BlockFailure.RefScriptsTooLarge(Mismatch(total, limit)))),
-        s"$major"
-      )
       assertEquals(
         refused.era,
         Left(Vector(BlockFailure.RefScriptsTooLarge(Mismatch(total, limit)))),
         s"$major"
       )
-      same(s"$major refused", refused.era, refused.flat)
       // with another declared body size too, both recorded: the reference scripts' check
-      // (`conwayBbodyTransition`) before the body's (`alonzoBbodyTransition`'s, `:268`), the root's
-      // list the reverse of the order its predicates recorded (`Extended.hs:708`)
+      // (`conwayBbodyTransition`) before the body's (`alonzoBbodyTransition`'s;
+      // `Conway/Rules/Bbody.hs:268`, cardano-ledger f649f975), the root's list the reverse of the
+      // order its predicates recorded (`Extended.hs:708`, cardano-ledger f649f975)
       val size = sizeOf(blockOf(txs))
       val both = judge(
         third,
@@ -1095,12 +997,11 @@ class ConwayBbodySuite extends FailsOnUncaught:
       )
       val admitted = judge(third, blockOf(txs.init), change = world)
       assert(admitted.era.isRight, s"$major: ${admitted.era}")
-      same(s"$major admitted", admitted.era, admitted.flat)
     }
   }
 
   test(
-    "reference scripts created in the block count from version 11, as the flat rules count them"
+    "reference scripts created in the block count from version 11"
   ) {
     val script = B.purposeIsWellformedNoDatumV3
     val utxo = funded(Vector(paid(50000000), paid(20000000)))
@@ -1120,7 +1021,6 @@ class ConwayBbodySuite extends FailsOnUncaught:
       )
       built(body, B.witnesses(body, Vector(payer)))
     val txs = Vector(producer, consumer)
-    val flatTxs = txs.map(t => ok("flat")(Tx.fromBlock(t.transaction, Era.Conway)))
     val eraUtxo = UTxO[Conway](
       utxo.map((i, o) => i -> ok("stored")(StoredTxOut.conway.fromStored(o))).toMap
     )
@@ -1136,23 +1036,14 @@ class ConwayBbodySuite extends FailsOnUncaught:
         t.bodyOf.top,
         EraTxBody.conway.top
       )
-      val flat = FlatBbody.refScriptsSize(
-        ConwayNewEpochState.gov
-          .get(judge(third, third.raw).ticked)
-          .curPParams
-          .copy(protocolMajor = major),
-        Utxo.fromMap(utxo.toMap),
-        flatTxs
-      )
-      assertEquals((era, flat), (expected, expected), s"$major")
+      assertEquals(era, expected, s"$major")
       val j = judge(third, blockOf(txs), change = holding(utxo, _.copy(protocolMajor = major)))
       assert(j.era.isRight, s"$major: ${j.era}")
-      same(s"$major", j.era, j.flat)
     }
   }
 
   test(
-    "reference scripts made in the block alone past the block's limit: admitted at version 10, refused at 11 by both"
+    "reference scripts made in the block alone past the block's limit: admitted at version 10, refused at 11"
   ) {
     // the version switch of `totalRefScriptSizeInBlock` (`Conway/Rules/Bbody.hs:360-370`,
     // cardano-ledger f649f975) through BBODY: up to 10 each transaction is measured against the set
@@ -1190,7 +1081,7 @@ class ConwayBbodySuite extends FailsOnUncaught:
     assert(total > limit, s"$total")
     val raw = blockOf(producers ++ consumers)
     // the producers' bodies are past the cluster's transaction size, and the block past its body
-    // size, which the flat side's envelope checks before its BBODY: limits that hold them (BBODY
+    // size, which the node's envelope checks before BBODY: limits that hold them (BBODY
     // reads neither)
     def world(major: Int) = holding(
       funds,
@@ -1202,7 +1093,6 @@ class ConwayBbodySuite extends FailsOnUncaught:
     )
     val at10 = judge(third, raw, change = world(10))
     assert(at10.era.isRight, s"${at10.era}")
-    same("10", at10.era, at10.flat)
     val at11 = judge(third, raw, change = world(11))
     assertEquals(
       at11.eraFailures,
@@ -1210,13 +1100,11 @@ class ConwayBbodySuite extends FailsOnUncaught:
         new ConwayBbodyPredFailure.BodyRefScriptsSizeTooBig[Conway](EraMismatch(total, limit))
       )
     )
-    assertEquals(at11.flat, Left(Vector(BlockFailure.RefScriptsTooLarge(Mismatch(total, limit)))))
     assertEquals(at11.era, Left(Vector(BlockFailure.RefScriptsTooLarge(Mismatch(total, limit)))))
-    same("11", at11.era, at11.flat)
   }
 
   test(
-    "the block's units past maxBlockExUnits, in either component: refused by both with equal failures; within, the script run and the same state"
+    "the block's units past maxBlockExUnits, in either component: refused; within, the script run"
   ) {
     val datum = B.uint(0)
     val utxo = funded(
@@ -1270,12 +1158,9 @@ class ConwayBbodySuite extends FailsOnUncaught:
     val raw = blockOf(Vector(spend(integrity)))
     val admitted = judge(third, raw, change = holding(utxo))
     assert(admitted.era.isRight, s"${admitted.era}")
-    same("admitted", admitted.era, admitted.flat)
-    // the script ran, as the flat rules count it, and its output is spent
-    assertEquals((admitted.eraEvaluated, admitted.flatEvaluated), (1, 1))
-    assertEquals(admitted.flatPlutus, Some(PlutusStats(1, 0, 1, 1)))
+    // the script ran, counted, and its output is spent
+    assertEquals(admitted.eraEvaluated, 1)
     assertEquals(admitted.eraPlutus, Some(PlutusStats(1, 0, 1, 1)))
-    assertEquals(admitted.eraPlutus, admitted.flatPlutus)
     admitted.era.foreach((ls, _) => assert(ls.utxo.utxo.utxo.get(utxo.head._1).isEmpty))
     Vector(
       ExUnits(units.mem - 1, params.maxBlockExUnits.steps),
@@ -1283,16 +1168,10 @@ class ConwayBbodySuite extends FailsOnUncaught:
     ).foreach { below =>
       val refused = judge(third, raw, change = holding(utxo, _.copy(maxBlockExUnits = below)))
       assertEquals(
-        refused.flat,
-        Left(Vector(BlockFailure.BlockExUnitsTooBig(units, below))),
-        s"$below"
-      )
-      assertEquals(
         refused.era,
         Left(Vector(BlockFailure.BlockExUnitsTooBig(units, below))),
         s"$below"
       )
-      same(s"$below", refused.era, refused.flat)
     }
   }
 
@@ -1367,7 +1246,7 @@ class ConwayBbodySuite extends FailsOnUncaught:
     B.datumHashOut(B.scriptAddress(B.scriptHash(3, script)), coin, B.dataHash(lockDatum))
 
   test(
-    "the phase-2 counters of BBODY's events: a valid transaction of two scripts, an invalid one whose scripts all fail, one whose scripts pass and fail, and a hash with no redeemer, the flat rules' counts"
+    "the phase-2 counters of BBODY's events: a valid transaction of two scripts, an invalid one whose scripts all fail, one whose scripts pass and fail, and a hash with no redeemer"
   ) {
     val (succeeds, fails) = (alwaysSucceedsWithDatumV3, B.alwaysFailsWithDatumV3)
     // 0, 1: two outputs at the script that passes; 2: at the one that fails; 3, 4: one at each;
@@ -1429,31 +1308,31 @@ class ConwayBbodySuite extends FailsOnUncaught:
     ).foreach { (what, txs, invalid, expected, observed) =>
       val j = judge(third, blockOf(txs, invalid = invalid), change = holding(utxo))
       assert(j.era.isRight, s"$what: ${j.era}")
-      same(what, j.era, j.flat)
       // the plan deferred the scripts of each transaction whose scripts ran
       assertEquals(j.deferred.flatten.size, txs.count(_ != datumOnly), what)
-      assertEquals(j.flatPlutus, Some(expected), what)
       assertEquals(j.eraPlutus, Some(expected), what)
-      assertEquals(j.eraPlutus, j.flatPlutus, what)
       // the phase-2 observations (`--plutus-cases`), one by transaction whose scripts ran, and
       // with the observer the same verdict and counters
       val o = judge(third, blockOf(txs, invalid = invalid), change = holding(utxo), observe = true)
-      assertEquals(o.flatObserved.size, txs.count(_ != datumOnly), what)
-      assertEquals(outcomes(o.flatObserved), observed, what)
       assertEquals(eraOutcomes(o.eraObserved), observed, what)
       assertEquals(
         o.eraObserved.map(comparable(_).tx.body.id),
         txs.filter(_ != datumOnly).map(_.id),
         what
       )
-      sameObserved(o, what)
-      same(what, o.era, j.era)
+      assertEquals(o.era.isRight, j.era.isRight, what)
+      o.era.foreach((ls, made) =>
+        j.era.foreach((jls, jmade) =>
+          assert(cats.Eq[LedgerState[Conway]].eqv(ls, jls), what)
+          assertEquals(made, jmade, what)
+        )
+      )
       assertEquals(o.eraPlutus, j.eraPlutus, what)
     }
   }
 
   test(
-    "a script the evaluator gives no verdict for: the era run names its transaction and redeemer as the flat rules name them, whichever script of the block it is"
+    "a script the evaluator gives no verdict for: the era run names its transaction and redeemer, whichever script of the block it is"
   ) {
     val (succeeds, fails) = (alwaysSucceedsWithDatumV3, B.alwaysFailsWithDatumV3)
     val utxo = funded(
@@ -1473,23 +1352,15 @@ class ConwayBbodySuite extends FailsOnUncaught:
     val raw = blockOf(Vector(valid, passAndFail), invalid = Vector(1))
     val named = (1 to 4).map { n =>
       val j = judge(third, raw, change = holding(utxo), unsupportedAt = Some(n))
-      val failure = j.flat match
-        case Left(Vector(BlockFailure.Tx(failure: LedgerFailure.Unavailable))) => failure
-        case other => fail(s"$n: the flat rules' ${other.map(_._1)}")
-      assertEquals(j.eraRun.left.toOption, Some(ConwayRuleDefect.ScriptUnavailable(failure)), s"$n")
       val eraFailure = unavailable(j, s"$n")
-      // the evaluation stops at the script with no verdict on both sides
-      assertEquals((j.eraEvaluated, j.flatEvaluated), (n, n), s"$n")
+      // the evaluation stops at the script with no verdict
       assertEquals(j.eraEvaluated, n, s"$n")
       // the transactions observed, the last with no verdict on the script, and with the observer
       // the same naming
       val o =
         judge(third, raw, change = holding(utxo), unsupportedAt = Some(n), observe = true)
-      assertEquals(o.flatObserved.size, if n <= 2 then 1 else 2, s"$n")
       assertEquals(o.eraObserved.size, if n <= 2 then 1 else 2, s"$n")
-      sameObserved(o, s"$n")
       assertEquals(o.eraRun.left.toOption, j.eraRun.left.toOption, s"$n")
-      assertEquals((eraFailure.txId, eraFailure.location), (failure.txId, failure.location))
       (eraFailure.txId, eraFailure.location)
     }
     // each of the four scripts named once, the first two of the valid transaction
@@ -1501,7 +1372,7 @@ class ConwayBbodySuite extends FailsOnUncaught:
   }
 
   test(
-    "two scripts of one transaction whose requests are equal at distinct redeemers: the era run names and observes each by its place, as the flat rules do"
+    "two scripts of one transaction whose requests are equal at distinct redeemers: the era run names and observes each by its place"
   ) {
     // a Plutus V1 script's staking credential, registered, unregistered (certificate 0, the
     // Shelley form), registered again, and unregistered with its refund (certificate 2, Conway's
@@ -1584,8 +1455,6 @@ class ConwayBbodySuite extends FailsOnUncaught:
     val raw = blockOf(Vector(tx))
     val admitted = judge(third, raw, change = registered, observe = true)
     assert(admitted.era.isRight, s"${admitted.era}")
-    same("admitted", admitted.era, admitted.flat)
-    assertEquals(admitted.eraPlutus, admitted.flatPlutus)
     assertEquals(admitted.eraPlutus, Some(PlutusStats(1, 0, 2, 1)))
     // the two requests are equal, at certificates 0 and 2
     val eraEvaluations = admitted.eraObserved.map(comparable) match
@@ -1597,29 +1466,11 @@ class ConwayBbodySuite extends FailsOnUncaught:
       Set[(Int, BigInt)]((2, 0), (2, 2))
     )
     assertEquals(eraEvaluations.map(_._2).distinct.size, 1)
-    val evaluations = admitted.flatObserved match
-      case Vector(Phase2.Observation(_, _, _, _, _, _, Right(Phase2.Outcome.Passed(report)))) =>
-        report.evaluations
-      case other => fail(s"the flat rules' observations $other")
-    assertEquals(
-      evaluations.map(e => (e.redeemer.tag, e.redeemer.index)).toSet,
-      Set[(Int, BigInt)]((2, 0), (2, 2))
-    )
-    assertEquals(evaluations.map(_.request).distinct.size, 1)
-    sameObserved(admitted, "admitted")
     // with no verdict on either, each named and observed by its own redeemer
     val named = Vector(1, 2).map { n =>
       Vector(false, true).map { observe =>
         val j = judge(third, raw, change = registered, unsupportedAt = Some(n), observe = observe)
-        val failure = j.flat match
-          case Left(Vector(BlockFailure.Tx(failure: LedgerFailure.Unavailable))) => failure
-          case other => fail(s"$n: the flat rules' ${other.map(_._1)}")
-        assertEquals(
-          j.eraRun.left.toOption,
-          Some(ConwayRuleDefect.ScriptUnavailable(failure)),
-          s"$n"
-        )
-        sameObserved(j, s"$n")
+        if observe then assertEquals(eraOutcomes(j.eraObserved), Vector(Right(Came.Unavailable)))
         assertEquals(unavailable(j, s"$n").txId, tx.id, s"$n")
         unavailable(j, s"$n").location
       }.distinct
@@ -1683,27 +1534,25 @@ class ConwayBbodySuite extends FailsOnUncaught:
     val raw = blockOf(txs, invalid = Vector(2))
     val admitted = judge(third, raw, change = holding(utxo), observe = true)
     assert(admitted.era.isRight, s"${admitted.era}")
-    same("admitted", admitted.era, admitted.flat)
-    assertEquals(admitted.eraPlutus, admitted.flatPlutus)
     assertEquals(admitted.eraPlutus, Some(PlutusStats(3, 1, 4, 4)))
     val (passed, failed) = (Right(Came.Passed), Right(Came.Failed))
-    assertEquals(outcomes(admitted.flatObserved), Vector(passed, passed, failed, passed))
     assertEquals(eraOutcomes(admitted.eraObserved), Vector(passed, passed, failed, passed))
-    sameObserved(admitted, "admitted")
     assertEquals(admitted.deferred, Vector(Vector(0), Vector(1, 2), Vector(3)))
     // no verdict on each script in turn: the plan stops where the serial run stops, and names it
     (1 to 4).foreach { n =>
       Vector(false, true).foreach { observe =>
         val j =
           judge(third, raw, change = holding(utxo), unsupportedAt = Some(n), observe = observe)
-        val failure = j.flat match
-          case Left(Vector(BlockFailure.Tx(failure: LedgerFailure.Unavailable))) => failure
-          case other => fail(s"$n: the flat rules' ${other.map(_._1)}")
-        assertEquals(j.eraRun.left.toOption, Some(ConwayRuleDefect.ScriptUnavailable(failure)))
         // each transaction holds one script: the n th is the n th transaction's
         assertEquals(unavailable(j, s"$n").txId, txs(n - 1).id, s"$n")
         assertEquals(j.eraEvaluated, n, s"$n")
-        sameObserved(j, s"$n")
+        // the transactions before observed, the n th with no verdict on its script
+        if observe then
+          assertEquals(
+            eraOutcomes(j.eraObserved),
+            Vector(passed, passed, failed).take(n - 1) :+ Right(Came.Unavailable),
+            s"$n"
+          )
       }
     }
     // a verdict that is not the flag's: the second flagged invalid though its script passes, the
@@ -1711,7 +1560,13 @@ class ConwayBbodySuite extends FailsOnUncaught:
     Vector(Vector(1, 2), Vector.empty[Int]).foreach { invalid =>
       val j = judge(third, blockOf(txs, invalid = invalid), change = holding(utxo), observe = true)
       assert(j.eraFailures.nonEmpty, s"$invalid: ${j.eraRun}")
-      sameObserved(j, s"$invalid")
+      // the scripts run up to the first verdict that is not its flag's, and none after it
+      // (`whenFailureFree`)
+      assertEquals(
+        eraOutcomes(j.eraObserved),
+        if invalid.isEmpty then Vector(passed, passed, failed) else Vector(passed, passed),
+        s"$invalid"
+      )
     }
   }
 
@@ -1817,21 +1672,14 @@ class ConwayBbodySuite extends FailsOnUncaught:
     def evaluate(request: EvalRequest): EvalResult =
       if request == at then throw defect else ScarabEvaluator.default.evaluate(request)
 
-  /** The request of the first script of the `n` th transaction the flat rules observed. */
+  /** The request of the first script of the `n` th transaction the era run observed. */
   private def requestOf(j: Judged, n: Int): EvalRequest =
-    val flat = j.flatObserved.lift(n).map(_.outcome) match
-      case Some(Right(Phase2.Outcome.Passed(report))) =>
-        report.evaluations.headOption.fold(fail(s"$n: no evaluation"))(_.request)
-      case Some(Right(Phase2.Outcome.Failed(report, _))) =>
-        report.evaluations.headOption.fold(fail(s"$n: no evaluation"))(_.request)
-      case other => fail(s"$n: observed $other")
     val era = j.eraObserved.lift(n).map(comparable(_).outcome) match
       case Some(Right(OutcomeForm.Passed(evaluations))) =>
         evaluations.headOption.fold(fail(s"$n: no evaluation"))(_._2)
       case Some(Right(OutcomeForm.Failed(evaluations, _))) =>
         evaluations.headOption.fold(fail(s"$n: no evaluation"))(_._2)
       case other => fail(s"$n: observed $other")
-    assertEquals(era, flat, s"$n")
     era
 
   test(
@@ -1989,7 +1837,7 @@ class ConwayBbodySuite extends FailsOnUncaught:
     */
   private val plutusV1: Bytes = hex("4d01000033222220051200120011")
 
-  /** The failure of the collection of [[uncollectable]]'s scripts, as the flat rules give it: its
+  /** The failure of the collection of [[uncollectable]]'s scripts, in the node's vocabulary: its
     * first output's inline datum.
     */
   private val inlineDatumRefused: NonEmptyVector[CollectError] = NonEmptyVector.one(
@@ -2042,17 +1890,9 @@ class ConwayBbodySuite extends FailsOnUncaught:
   private enum Came derives CanEqual:
     case Passed, Failed, Unavailable
 
-  /** The outcomes of observations, in order: the collection's failures, or what the scripts came
-    * to.
+  /** The outcomes of the era run's observations, in order: the collection's failures, or what the
+    * scripts came to.
     */
-  private def outcomes(observed: Vector[Phase2.Observation]): Vector[Phase2.Collected[Came]] =
-    observed.map(_.outcome.map {
-      case Phase2.Outcome.Passed(_)            => Came.Passed
-      case Phase2.Outcome.Failed(_, _)         => Came.Failed
-      case Phase2.Outcome.Unavailable(_, _, _) => Came.Unavailable
-    })
-
-  /** The outcomes of the era run's observations, in order ([[outcomes]]). */
   private def eraOutcomes(
       observed: Vector[ConwayPhase2.Observation]
   ): Vector[Phase2.Collected[Came]] =
@@ -2063,7 +1903,7 @@ class ConwayBbodySuite extends FailsOnUncaught:
     })
 
   test(
-    "a V1 script transaction whose context cannot be built: refused by both, and observed by the era run, serial and prepared, as the flat rules observe it"
+    "a V1 script transaction whose context cannot be built: refused, and observed by the era run, serial and prepared, with its collection's failures"
   ) {
     val Uncollectable(utxo, txs) = uncollectable
     val tx = txs(1)
@@ -2079,28 +1919,22 @@ class ConwayBbodySuite extends FailsOnUncaught:
         )
       )
     )
-    assertEquals(j.flat, refusal)
     assertEquals(j.era, refusal)
-    same("refused", j.era, j.flat)
     // observed, with the same verdict; the plan's observations are the serial run's (`judge`)
     val o = judge(third, raw, change = holding(utxo), observe = true)
-    assertEquals(outcomes(o.flatObserved), Vector(Left(inlineDatumRefused)))
     assertEquals(eraOutcomes(o.eraObserved), Vector(Left(inlineDatumRefused)))
-    sameObserved(o, "observed")
     assertEquals(o.eraRefusal, j.eraRefusal)
-    assertEquals(o.flat, refusal)
     assertEquals(o.era, refusal)
   }
 
   test(
-    "a block of an evaluated transaction and one whose context cannot be built: the era run observes them in the flat rules' order, serial, prepared and at four workers"
+    "a block of an evaluated transaction and one whose context cannot be built: the era run observes them in order, serial, prepared and at four workers"
   ) {
     val Uncollectable(utxo, txs) = uncollectable
-    // each block's transactions, those flagged invalid, and the outcomes the flat rules observe:
-    // both; the first's verdict not its flag's, after which the second is not observed (the flat
-    // rules stop at the first refused transaction, the era's record the second's collection's
-    // failures with the judgment failing); the second first, after which the first's scripts are
-    // not run (`whenFailureFree`)
+    // each block's transactions, those flagged invalid, and the outcomes the era run observes:
+    // both; the first's verdict not its flag's, after which the second is not observed (the era
+    // records the second's collection's failures with the judgment failing); the second first,
+    // after which the first's scripts are not run (`whenFailureFree`)
     Vector[(String, Vector[Built], Vector[Int], Vector[Phase2.Collected[Came]])](
       (
         "evaluated, then not collected",
@@ -2115,14 +1949,6 @@ class ConwayBbodySuite extends FailsOnUncaught:
       val j = judge(third, raw, change = holding(utxo))
       val o = judge(third, raw, change = holding(utxo), observe = true)
       assert(
-        o.flat match {
-          case Left(Vector(xyz.kd5ujc.scarab.ledger.BlockFailure.Tx(_))) => true
-          case _                                                         => false
-        },
-        s"$what: ${o.flat}"
-      )
-      assertEquals(outcomes(o.flatObserved), expected, what)
-      assert(
         o.eraFailures.exists {
           case ConwayBbodyPredFailure.LedgersFailure(_) => true
           case _                                        => false
@@ -2130,7 +1956,6 @@ class ConwayBbodySuite extends FailsOnUncaught:
         s"$what: ${o.eraFailures}"
       )
       assertEquals(eraOutcomes(o.eraObserved), expected, what)
-      sameObserved(o, what)
       assertEquals(o.eraRefusal, j.eraRefusal, what)
       // through the node's bounded workers, with the serial run's results: the serial run's
       // result and observations, both observed without a clock
@@ -2183,7 +2008,7 @@ class ConwayBbodySuite extends FailsOnUncaught:
     assertEquals(planSeen.all, Vector.empty)
   }
 
-  test("a transaction whose input is missing: LEDGERS's refusal, embedded, the flat LEDGER's") {
+  test("a transaction whose input is missing: LEDGERS's refusal, embedded") {
     val utxo = funded(Vector(paid(20000000)))
     val body = B.body(
       0 -> B.set(in(utxo, 0), B.fresh(0x77).node),
@@ -2196,20 +2021,12 @@ class ConwayBbodySuite extends FailsOnUncaught:
       change = holding(utxo)
     )
     assert(
-      j.flat match {
-        case Left(Vector(xyz.kd5ujc.scarab.ledger.BlockFailure.Tx(_))) => true
-        case _                                                         => false
-      },
-      s"${j.flat}"
-    )
-    assert(
       j.era match {
         case Left(Vector(xyz.kd5ujc.scarab.ledger.BlockFailure.Tx(_))) => true
         case _                                                         => false
       },
       s"${j.era}"
     )
-    same("missing input", j.era, j.flat)
     // the input LEDGERS refuses, as UTXO's `BadInputsUTxO` names it
     val missing = TxIn(B.fresh(0x77).txId, 0)
     assertEquals(
@@ -2351,16 +2168,9 @@ class ConwayBbodySuite extends FailsOnUncaught:
       blockOf(Vector(missingInput, damagedCollateral)),
       change = holding(withDamaged)
     )
-    // the earlier failure, and none after the defect; the flat rules refuse the block too
+    // the earlier failure, and none after the defect
     stopped("refused, then a defect", j, earlier, unreadable)
     assertEquals(j.eraFailures, earlier)
-    assert(
-      j.flat match {
-        case Left(Vector(xyz.kd5ujc.scarab.ledger.BlockFailure.Tx(_))) => true
-        case _                                                         => false
-      },
-      s"${j.flat}"
-    )
     // the defect at the first transaction, nothing recorded before it: no verdict, even though a
     // later transaction would be refused
     Vector(Vector(damagedCollateral), Vector(damagedCollateral, missingInput)).foreach { txs =>
@@ -2461,12 +2271,12 @@ class ConwayBbodySuite extends FailsOnUncaught:
   }
 
   test(
-    "two transactions of one block proposing: the era run holds the proposals across them and writes back the flat BBODY's record"
+    "two transactions of one block proposing: the era run holds the proposals across them and writes back the node's record"
   ) {
     // the era run reads the node's record of the proposals once, where GOV first reads them, holds
     // them across the block's transactions, and writes them back once after it (`ConwayBlockRun`):
     // the second transaction's GOV judges the first one's proposal, and the record after the block
-    // is the flat rules' (the cluster's parameters are at major 9, the bootstrap phase, where an
+    // holds both (the cluster's parameters are at major 9, the bootstrap phase, where an
     // info action may be proposed and its return account is not looked up)
     val params = ConwayNewEpochState.gov.get(judge(third, third.raw).ticked).curPParams
     val deposit = params.govActionDeposit
@@ -2493,7 +2303,6 @@ class ConwayBbodySuite extends FailsOnUncaught:
     val txs = Vector(proposing(0), proposing(1))
     val j = judge(third, blockOf(txs), change = holding(utxo))
     assert(j.era.isRight, s"${j.era}")
-    same("proposing", j.era, j.flat)
     j.era.foreach((ls, _) =>
       assertEquals(
         ls.utxo.gov.proposals.actions.map(_.id),
@@ -2506,7 +2315,6 @@ class ConwayBbodySuite extends FailsOnUncaught:
     empty.era.foreach((ls, _) =>
       assertEquals(ls.utxo.gov.proposals, empty.ticked.es.ls.utxo.gov.proposals)
     )
-    same("empty", empty.era, empty.flat)
   }
 
   test("the injections into Conway's BBODY are the reference's compositions") {

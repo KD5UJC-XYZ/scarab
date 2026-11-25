@@ -856,6 +856,7 @@
         "PreviewConwayBlockLedgersSuite",
         "ConwayBbodySuite",
         "ConwayBbodyImpSuite",
+        "ConwayBlockRunSuite",
         "DijkstraBbodyImpSuite"
       ],
       "docs": [
@@ -897,11 +898,12 @@
     {
       "module": "ledger",
       "path": "ledger/rules",
-      "responsibility": "Shelley to Conway rule interpreter: LEDGER, UTXO, BBODY, epoch, tick, rewards (with `MuslMath`, the release node's musl `log`, `pow` and `exp`), governance; Dijkstra's BBODY, LEDGER, UTXOW, UTXO, CERT, POOL and GOV, reached from tests only",
+      "responsibility": "Shelley to Conway rule interpreter: LEDGER, UTXO, BBODY of the eras before Conway (Conway's blocks are the era run's, `era/rules`), epoch, tick, rewards (with `MuslMath`, the release node's musl `log`, `pow` and `exp`), governance; Dijkstra's BBODY, LEDGER, UTXOW, UTXO, CERT, POOL and GOV, reached from tests only",
       "entryPoints": [
         "Ledger",
         "Utxo",
-        "Bbody",
+        "ShelleyBbody",
+        "EraBlock",
         "NewEpoch",
         "Tick",
         "RuleT",
@@ -914,7 +916,7 @@
         "DijkstraSnap"
       ],
       "suites": [
-        "BbodySuite",
+        "ShelleyBbodySuite",
         "StsSuite",
         "TickRulesSuite",
         "EpochBoundarySuite",

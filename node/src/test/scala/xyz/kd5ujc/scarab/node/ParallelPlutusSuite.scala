@@ -280,7 +280,10 @@ class ParallelPlutusSuite extends FailsOnUncaught:
     val limit = ExUnits(10000, 10000000)
     // the flat body is Babbage's (the eras before Conway); Conway's era run past the units is
     // `ConwayBbodySuite`'s
-    def bodyOf(e: ScriptEvaluator[Id], units: ExUnits): EraBlock.Body =
+    def bodyOf(
+        e: ScriptEvaluator[Id],
+        units: ExUnits
+    ): EraBlock.Body[xyz.kd5ujc.scarab.ledger.state.Babbage] =
       PreparedBlockFixture.body(e, maxBlockExUnits = units)
     // the scripts passing, as flagged, BBODY refuses the block after LEDGERS for its units; the
     // scripts failing though flagged valid, LEDGERS stops at the first and no later script is run

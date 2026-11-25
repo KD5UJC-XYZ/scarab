@@ -4,7 +4,7 @@ package xyz.kd5ujc.scarab.ledger
 import cats.Id
 import java.nio.file.Path
 import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
-import xyz.kd5ujc.scarab.ledger.rules.{EraBlock, EraNes}
+import xyz.kd5ujc.scarab.ledger.rules.EraBlock
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.plutus.*
 import xyz.kd5ujc.scarab.protocol.Era
@@ -90,7 +90,7 @@ object PreparedBlockFixture:
           .copy[Babbage](utxo = initial.es.ls.utxo.copy[Babbage](utxo = UtxoTables(utxo)))
       )
     )
-  val state: EraNes = EraNes.InEra(ShelleyBasedEra.SBabbage, babbageState(params))
+  val state: NewEpochState[Babbage] = babbageState(params)
   private val empty = Bytes.empty
   val header = Header.Shelley(
     Era.Conway,
@@ -121,7 +121,7 @@ object PreparedBlockFixture:
       decoder: xyz.kd5ujc.scarab.plutus.ScriptDecoder[Id] =
         xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder,
       maxBlockExUnits: ExUnits = params.maxBlockExUnits
-  ): EraBlock.Body =
+  ): EraBlock.Body[Babbage] =
     val block = Block.Shelley(
       Era.Babbage,
       babbageHeader,
@@ -139,10 +139,7 @@ object PreparedBlockFixture:
       verdicts = verdicts
     )
     EraBlock.program(ctx)(
-      EraNes.InEra(
-        ShelleyBasedEra.SBabbage,
-        babbageState(params.copy(maxBlockExUnits = maxBlockExUnits))
-      ),
+      babbageState(params.copy(maxBlockExUnits = maxBlockExUnits)),
       babbageHeader,
       block,
       transactions.map(Right(_)),

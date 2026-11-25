@@ -158,8 +158,10 @@ class ShelleyBbodySuite extends FunSuite:
     val pp = params(5)
     val half = ExUnits(pp.maxBlockExUnits.mem / 2 + 1, 1)
     val txs = Vector(redeeming(half, "a"), redeeming(half, "b"), redeeming(half, "c"))
-    assertEquals(Bbody.exUnitsExceeded(pp, txs), Some(half + half + half))
-    assertEquals(Bbody.exUnitsExceeded(pp, txs.take(1)), None)
+    assertEquals(ShelleyBbody.exUnitsExceeded[Alonzo](pp, txs), Some(half + half + half))
+    assertEquals(ShelleyBbody.exUnitsExceeded[Alonzo](pp, txs.take(1)), None)
+    // Shelley's BBODY has no such check
+    assertEquals(ShelleyBbody.exUnitsExceeded[Shelley](pp, txs), None)
   }
 
   test("from Alonzo a block LEDGERS accepts is refused for the units of the whole block") {
