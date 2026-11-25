@@ -68,6 +68,22 @@
       "candidateRequired": false
     },
     {
+      "id": "vrf-proof-to-hash-native",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "105 proofs: the pi of each cardano-base draft-03 vector, unchanged and with fourteen changes of c, s and Gamma, with the result of the pinned libsodium fork's crypto_vrf_ietfdraft03_proof_to_hash.",
+      "assertion": "Each proof is rebuilt from its vector and change; ProofToOutput gives the native output, or refuses where the native function does, with the typed refusal verify.c:13-41 gives the change; on proved proofs it gives the output StrictDraft03.verify gives, and on changed ones the outcome read from verify.c:13-41.",
+      "rationale": "The reference's outputFromProof has no counterpart in the node; the test-scope mirror is what makes the reference vectors' check of the output of pi alone, and it accepts what the verifier does not only through what it does not read (c).",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/1418",
+      "resolution": "Retain the derived proofs and the native results unchanged; a new native run records its own build.",
+      "evidence": [
+        "crypto/src/test/scala/xyz/kd5ujc/scarab/crypto/vrf/ProofToOutputSuite.scala",
+        "fixtures/vrf-proof-to-hash/README.md"
+      ],
+      "candidateRequired": false
+    },
+    {
       "id": "byron-projection",
       "classification": "regression",
       "status": "covered",

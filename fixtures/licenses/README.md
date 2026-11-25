@@ -14,6 +14,7 @@ Upstream licenses and notices for the test vectors under `fixtures/`:
   cardano-ledger (`cardano-ledger-LICENSE`, `cardano-ledger-NOTICE`).
 - `vrf-cardano-base/`: the ECVRF draft-03 test vectors of IntersectMBO cardano-base
   (`cardano-base-LICENSE`, `cardano-base-NOTICE`).
+- `vrf-proof-to-hash/`: proofs derived from those vectors (the same licence files).
 - `wycheproof-ed25519/`: keeps Wycheproof's licence beside the vectors (`LICENSE`).
 - `witness/`: the strict Ed25519 corpus. It keeps its own license and provenance
   files under `fixtures/witness/licenses` and `fixtures/witness/provenance`
