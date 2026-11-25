@@ -813,22 +813,16 @@ class DijkstraTxSuite extends FunSuite:
   }
 
   test("a body and a transaction are made only by the decoders, from what they read from bytes") {
-    // the body projections and the flat witness set's take a proof only the decoders hold
+    // the readers of a body, a witness set and auxiliary data take a proof only the decoders hold
     val proof =
       "No given instance of type xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraTx.FromBytes was found"
     Vector(
+      compileErrors("def f(n: xyz.kd5ujc.scarab.codec.Node) = DijkstraTxBody.readSub(n)"),
       compileErrors(
-        "def f(b: xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraTxBody) = DijkstraTxBody.subOf(b)"
+        "def f(n: xyz.kd5ujc.scarab.codec.Node, s: xyz.kd5ujc.scarab.codec.Node => Either[xyz.kd5ujc.scarab.ledger.era.EraTxError, DijkstraTx[TxLevel.Sub]]) = DijkstraTxBody.readTop(n, s)"
       ),
-      compileErrors(
-        "def f(b: xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraTxBody, s: xyz.kd5ujc.scarab.ledger.era.OMap[Bytes, DijkstraTx[TxLevel.Sub]]) = DijkstraTxBody.topOf(b, s)"
-      ),
-      compileErrors(
-        "def f(w: xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraWitnesses) = DijkstraTxWits.fromFlat(w)"
-      ),
-      compileErrors(
-        "def f(a: xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraAuxData) = DijkstraTxAuxData.fromFlat(a)"
-      )
+      compileErrors("def f(n: xyz.kd5ujc.scarab.codec.Node) = DijkstraTxWits.read(n)"),
+      compileErrors("def f(n: xyz.kd5ujc.scarab.codec.Node) = DijkstraTxAuxData.read(n)")
     ).foreach(e => assert(e.contains(proof), e))
     // nor can the proof, a body or a transaction be made outside the objects that make them
     Vector(

@@ -2900,9 +2900,9 @@ Conway's rules on the classes follow as the rest of stage 2.
     and `LeiosEraBlockHeader` (the previous nonce, the class's default, and the version info, `Block.hs:120-147`). The
     members no rule reads yet (`mkBasicBlockBody`, `blockHeaderSizeBlockHeaderG`, the announcement's lens) come with
     their readers. A Dijkstra block in the era's types is made only from its bytes (`DijkstraBlock.decode`): its body
-    from the body the flat block decoder read from them, each transaction in Dijkstra's types from the one that decoder
-    read (`DijkstraTx.ofBlock`), its size and hash those of the same bytes, so no body has a commitment its contents do
-    not have, as the reference's `MemoBytes` ties them (`Dijkstra/BlockBody/Internal.hs:115-121`); the header's instance
+    from the body the block decoder read from them, each transaction read in one pass into Dijkstra's types
+    (`DijkstraTx.inBlock`, through `LeiosBlock.decode`), its size and hash those of the same bytes, so no body has a
+    commitment its contents do not have, as the reference's `MemoBytes` ties them (`Dijkstra/BlockBody/Internal.hs:115-121`); the header's instance
     is that of the build's Praos2 header (`EraBlockHeader (Header c) era` and `LeiosEraBlockHeader (Header c) era`,
     `libs/cardano-protocol/src/Cardano/Protocol/Leios/BlockHeader.hs:363-379`), over the decoded header with the classes'
     fields read once in their types (`DijkstraBlockHeader`, a plain class, so no derived `Mirror` builds one whose fields

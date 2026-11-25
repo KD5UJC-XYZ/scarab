@@ -1509,7 +1509,7 @@
     {
       "module": "tools",
       "path": "ledger/era/dijkstra",
-      "responsibility": "Hand-run benchmarks for the `ledger.era.dijkstra` package (its package, for its package-private access): an endorser block's closure read into Dijkstra's types in one pass against two",
+      "responsibility": "Hand-run benchmarks for the `ledger.era.dijkstra` package (its package, for its package-private access): an endorser block's closure and the recorded ranking blocks read into Dijkstra's types in one pass",
       "entryPoints": [
         "DijkstraDecodeBench"
       ],

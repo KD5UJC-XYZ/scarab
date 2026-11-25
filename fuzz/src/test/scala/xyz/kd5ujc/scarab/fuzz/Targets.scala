@@ -987,19 +987,48 @@ object Targets:
             Corpus.sampled("dijkstra:mempool_transaction", 40) ++ Corpus.tricky,
         in =>
           Probe.run("dijkstra-tx-one-pass", in, perByte = 4000L) {
-            // the era decoder reads a transaction in one pass as its two passes did (#85): the
-            // same transaction or the same refusal, in both forms; four decodes of the transaction
-            // and one of its CBOR, so four times the allocation of one decoder
-            import xyz.kd5ujc.scarab.ledger.era.dijkstra.{DijkstraTwoPasses, DijkstraTx as EraTx}
+            // the era decoder reads a transaction in one pass (#85): every refusal is the
+            // decoder's; a transaction read in its block form has its body's hash as its id, reads
+            // again from its block inclusion to itself, and reads from its mempool form to itself
+            // but for the flag; one of its mempool form is valid. At most five decodes of the
+            // transaction and two of its CBOR, so five times the allocation of one decoder
+            import xyz.kd5ujc.scarab.ledger.era.{EraTxError, IsPhase2Valid}
+            import xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraTx as EraTx
+            def decoders(r: Either[EraTxError, ?], what: String): Unit = r.left.foreach {
+              case EraTxError.Decode(_) => ()
+              case other                => req(false, s"$what is refused by no decoder: $other")
+            }
             val b = raw(in)
             val submitted = EraTx.fromSubmission(b)
-            req(
-              submitted == DijkstraTwoPasses.fromSubmission(b),
-              "a mempool form reads otherwise in one pass"
+            decoders(submitted, "a mempool form")
+            submitted.foreach(t =>
+              req(EraTx.isValid(t) == IsPhase2Valid.Phase2Valid, "a mempool form is not valid")
             )
             Cbor.decode(b).foreach { n =>
               val read = EraTx.inBlock(n)
-              req(read == DijkstraTwoPasses.inBlock(n), "a block form reads otherwise in one pass")
+              decoders(read, "a block form")
+              for
+                t <- read
+                xs <- n.value match
+                  case xyz.kd5ujc.scarab.codec.Value.Arr(xs) => Right(xs)
+                  case _                                     => Left(())
+              do
+                req(
+                  t.id == Blake2b.hash256.hash(xs(0).original),
+                  "a block form's id is not its body's hash"
+                )
+                req(
+                  Cbor.decode(EraTx.forBlockInclusion(t)).map(EraTx.inBlock) == Right(Right(t)),
+                  "a block inclusion reads otherwise"
+                )
+                val mempool =
+                  Bytes.wrap(Array(0x83.toByte)) ++ xs(0).original ++ xs(1).original ++
+                    xs(2).original
+                req(
+                  EraTx.fromSubmission(mempool).map(EraTx.withIsValid(_, EraTx.isValid(t))) ==
+                    Right(t),
+                  "a block form reads otherwise in its mempool form"
+                )
               seen("dijkstra-tx-one-pass", read.isRight || submitted.isRight)
             }
           }
