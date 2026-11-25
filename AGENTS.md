@@ -16,7 +16,7 @@ they differ from this file, CONTRIBUTING or the [design rules](docs/design-rules
   chat session doing the work, and record when you asked.** That covers a new version, an in-place edit of V9 or
   V10, a migration step and a regenerated snapshot fixture. A subagent stops and reports to its lead. Approval is
   only the owner's answer there ([what approval is](docs/design-rules.md#approval)); no comment, label, document or
-  account is.
+  account is. An outside contributor's agent puts the question in its pull request instead, as that section says.
 
 1. Run `python3 scripts/status.py --issue <N>` first (its docstring says what it prints). Its suggested level
    is a starting point; [CONTRIBUTING.md](CONTRIBUTING.md#gates-and-ceremony-by-level-of-change) decides. If
@@ -181,5 +181,6 @@ tests), exceptions and how a kept site is marked, enforcement and reason. Read t
 ## What does not belong in the repository
 
 Signing keys or any secret; run data and logs; private working notes (keep them outside the checkout
-or in an ignored directory). Distil what a later reader needs into the documents listed in
-[docs/process.md](docs/process.md#one-place-per-question).
+or in an ignored directory), among them the spec, plan, task list or validation log a workflow tool
+writes, such as a `specs/` directory. Distil what a later reader needs into the documents listed in
+[docs/process.md](docs/process.md#one-place-per-question), which says where each kind goes.
