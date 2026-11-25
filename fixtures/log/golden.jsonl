@@ -305,5 +305,5 @@
 {"event":"rotatedDynamo","at":"2026-10-16T12:00:00Z","oldPeer":{"connectionId":"10.0.0.2:3001 192.0.2.7:3001"},"newPeer":{"connectionId":"[::1]:40123 [2001:db8::7]:6000"}}
 {"event":"peerStarvedUs","at":"2026-10-16T12:00:00Z","peer":{"localAddress":{"address":"10.0.0.2","port":"3001"},"remoteAddress":{"address":"192.0.2.7","port":"3001"}}}
 {"event":"peerStarvedUs","at":"2026-10-16T12:00:00Z","peer":{"localAddress":{"address":"::1","port":"40123"},"remoteAddress":{"address":"2001:db8::7","port":"6000"}}}
-{"event":"chainSelStarvationEvent","at":"2026-10-16T12:00:00Z","risingEdge":true}
-{"event":"chainSelStarvationEvent","at":"2026-10-16T12:00:00Z","fallingEdge":{"kind":"Point","slot":4200,"hash":"abababababababababababababababababababababababababababababababab"}}
+{"event":"chainSelStarvationEvent","at":"2026-10-16T12:00:00Z","kind":"ChainSelStarvation","risingEdge":true}
+{"event":"chainSelStarvationEvent","at":"2026-10-16T12:00:00Z","kind":"ChainSelStarvation","fallingEdge":{"kind":"Point","slot":4200,"hash":"abababababababababababababababababababababababababababababababab"}}

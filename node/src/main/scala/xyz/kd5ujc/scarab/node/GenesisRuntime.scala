@@ -19,7 +19,7 @@ import xyz.kd5ujc.scarab.protocol.ChainSync.Point
 final class GenesisRuntime[F[_]: Async] private (
     val governor: GenesisGovernor[F],
     val work: SelectionWork[F],
-    jumping: ChainSyncJumpingRuntime[F, Long, GenesisPeer.Checkpoint],
+    jumping: ChainSyncJumpingRuntime[F, GenesisRuntime.Jumper, GenesisPeer.Checkpoint],
     settings: GenesisSettings,
     selection: F[ChainSelection.Local],
     geometry: F[EpochGeometry],
@@ -27,13 +27,14 @@ final class GenesisRuntime[F[_]: Async] private (
     elapsed: F[BigInt],
     clock: Option[PicosClock[F]],
     readings: Ref[F, Map[Long, (Option[HeaderChain[NodeHeaderState]], Boolean)]],
-    headers: HeaderCheck.Grafting[F],
-    labels: Ref[F, Map[Long, PeerOrder]]
+    headers: HeaderCheck.Grafting[F]
 ):
   private val F = Async[F]
   import ChainSyncJumping.{Instruction, JumpInfo}
 
-  def demoteDynamo(id: Long): F[Unit] = jumping.rotate(id)
+  /** `demoteCSJDynamo` of the session `id`, if it is still registered. */
+  def demoteDynamo(id: Long): F[Unit] =
+    jumping.snapshot.flatMap(_.peers.find(_.id.session == id).traverse_(p => jumping.rotate(p.id)))
 
   def gsmReadings(
       versus: HeaderChain[NodeHeaderState] => F[Gsm.Candidate]
@@ -103,13 +104,9 @@ final class GenesisRuntime[F[_]: Async] private (
         disconnect(PeerError.Genesis(PeerError.GenesisProblem.DensityTooLow)),
         Some(label)
       )
-      // the session's name in the CSJ traces, kept until its handle's last trace (`unregisterClient`)
-      _ <- Resource.make(labels.update(_.updated(identity, label)))(_ =>
-        labels.update(_ - identity)
-      )
       phase <- Resource.eval(governor.phase)
       jumper <- jumping.session(
-        identity,
+        GenesisRuntime.Jumper(identity, label),
         anchor,
         phase == Gsm.Phase.CaughtUp || !settings.enableCSJ
       )
@@ -444,10 +441,9 @@ object GenesisRuntime:
     for
       work <- SelectionWork.create[F](changed, clock, Some(traced))
       readings <- Ref.of[F, Map[Long, (Option[HeaderChain[NodeHeaderState]], Boolean)]](Map.empty)
-      labels <- Ref.of[F, Map[Long, PeerOrder]](Map.empty)
-      jumping <- ChainSyncJumpingRuntime.create[F, Long, GenesisPeer.Checkpoint](
+      jumping <- ChainSyncJumpingRuntime.create[F, Jumper, GenesisPeer.Checkpoint](
         settings.jumpSlots,
-        traces = Some(jumpingTraces(labels, traced))
+        traces = Some(jumpingTraces(traced))
       )
     yield new GenesisRuntime(
       governor,
@@ -460,17 +456,21 @@ object GenesisRuntime:
       elapsed,
       clock,
       readings,
-      headers,
-      labels
+      headers
     )
 
+  /** A session's key in ChainSync jumping: its number, and its connection, which names it in the
+    * traces, as the reference's handles are keyed by the peer its traces name (consensus 82ecba329,
+    * `MiniProtocol/ChainSync/Client/Jumping.hs:842-866`). Every peer an event names is named by the
+    * key the transition read, so a peer that disconnects meanwhile keeps its name.
+    */
+  final case class Jumper(session: Long, connection: PeerOrder)
+
   /** The CSJ and Devoted BlockFetch traces with each session named by its connection. */
-  private def jumpingTraces[F[_]: Async](
-      labels: Ref[F, Map[Long, PeerOrder]],
+  private def jumpingTraces[F[_]](
       events: GenesisEvents[F]
-  ): ChainSyncJumpingRuntime.Traces[F, Long] = new ChainSyncJumpingRuntime.Traces[F, Long]:
-    private def named = labels.get.map(known => (id: Long) => known.getOrElse(id, PeerOrder(id)))
-    def csj(peer: Long, event: ChainSyncJumping.Event[Long]) =
-      named.flatMap(name => events.emit(GenesisTrace.Csj(name(peer), event.map(name))))
-    def dbf(event: ChainSyncJumping.RotatedDynamo[Long]) =
-      named.flatMap(name => events.emit(GenesisTrace.Dbf(event.map(name))))
+  ): ChainSyncJumpingRuntime.Traces[F, Jumper] = new ChainSyncJumpingRuntime.Traces[F, Jumper]:
+    def csj(peer: Jumper, event: ChainSyncJumping.Event[Jumper]) =
+      events.emit(GenesisTrace.Csj(peer.connection, event.map(_.connection)))
+    def dbf(event: ChainSyncJumping.RotatedDynamo[Jumper]) =
+      events.emit(GenesisTrace.Dbf(event.map(_.connection)))

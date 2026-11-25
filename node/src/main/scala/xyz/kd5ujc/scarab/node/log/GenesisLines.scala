@@ -16,7 +16,7 @@ import xyz.kd5ujc.scarab.protocol.PeerSharing.Address
   * 676-684 (`PeerStarvedUs`), 898-944 (the GDD), 2010-2047 (CSJ) and 2088-2097 (Devoted
   * BlockFetch), and `Tracers/ChainDB.hs` 128-132 (`ChainSelStarvation`). As in the other lines of
   * the reference's traces, its `kind` is left out where it is the event's name, and kept for the
-  * two kinds of `TraceGDDEvent`.
+  * two kinds of `TraceGDDEvent` and for `ChainSelStarvation`.
   */
 private[log] object GenesisLines:
   /** `show` of a `SockAddr` (network's `showSockAddr`): `a.b.c.d:port`, `[v6]:port`. */
@@ -109,6 +109,9 @@ private[log] object GenesisLines:
       case Event.SentJumpInstruction(target) =>
         EventKind.SentJumpInstruction.line(by, "jumpTarget" -> point(target))
 
+  /** The `kind` of `ChainSelStarvationEvent`'s lines, which is not the event's name. */
+  private val starvation = "kind" -> "ChainSelStarvation".asJson
+
   def line(event: GenesisTrace): Line = event match
     case GenesisTrace.GddDebug(losing, head, window) =>
       EventKind.TraceGDDEvent.line(
@@ -131,6 +134,6 @@ private[log] object GenesisLines:
     case GenesisTrace.PeerStarvedUs(starved) =>
       EventKind.PeerStarvedUs.line("peer" -> peerJson(starved))
     case GenesisTrace.ChainSelStarvation(GenesisTrace.Edge.Rising) =>
-      EventKind.ChainSelStarvationEvent.line("risingEdge" -> true.asJson)
+      EventKind.ChainSelStarvationEvent.line(starvation, "risingEdge" -> true.asJson)
     case GenesisTrace.ChainSelStarvation(GenesisTrace.Edge.FallingWith(block)) =>
-      EventKind.ChainSelStarvationEvent.line("fallingEdge" -> realPoint(block))
+      EventKind.ChainSelStarvationEvent.line(starvation, "fallingEdge" -> realPoint(block))

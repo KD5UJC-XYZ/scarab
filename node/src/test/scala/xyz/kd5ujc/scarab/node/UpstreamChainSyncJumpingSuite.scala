@@ -120,6 +120,7 @@ class UpstreamChainSyncJumpingSuite extends FunSuite:
   private def expected(
       step: String,
       id: Int,
+      forward: Option[Point],
       before: State[Int, Unit],
       after: State[Int, Unit]
   ): (Option[Event[Int]], Option[RotatedDynamo[Int]]) =
@@ -136,8 +137,9 @@ class UpstreamChainSyncJumpingSuite extends FunSuite:
             Some(Event.NoLongerDynamo(holder(after, isDynamo), reason))
           case (Some(role), next) if isObjector(role) && !next.exists(isObjector) =>
             Some(Event.NoLongerObjector(holder(after, isObjector), reason))
-          case (Some(Role.Dynamo(_, last)), Some(Role.Dynamo(_, moved)))
-              if step == "Forward" && (moved != last || before.peers != after.peers) =>
+          // a header past the jump boundary (consensus 82ecba329, Jumping.hs:488-511), whatever it changes
+          case (Some(Role.Dynamo(_, last)), Some(Role.Dynamo(_, _)))
+              if forward.exists(point => slot(point) > last + 4) =>
             before.peers.find(_.id == id).flatMap(_.info).map(i => Event.SentJumpInstruction(i.tip))
           case (Some(role), Some(next)) if !isObjector(role) && isObjector(next) =>
             Some(Event.BecomingObjector(holder(before, isObjector).filter(_ != id)))
@@ -200,7 +202,13 @@ class UpstreamChainSyncJumpingSuite extends FunSuite:
         // the step's trace is the one its native roles imply
         assertEquals(
           (csj, dbf),
-          this.expected(event.head, id, s, after),
+          this.expected(
+            event.head,
+            id,
+            Option.when(event.head == "Forward")(makeInfo(event.last.toInt).tip),
+            s,
+            after
+          ),
           clue(event)
         )
         (after, saved)

@@ -35,12 +35,16 @@ final class ChainSyncJumpingRuntime[F[_]: Async, P, J] private (
       }
     }
 
-  /** Commit `f`'s step, then trace what it reports as `id`'s. */
-  private def step(id: P)(f: State[P, J] => Step[P, J, Event[P]]): F[Unit] =
+  /** Commit `f`'s step, and give back what it reports. */
+  private def commit(f: State[P, J] => Step[P, J, Event[P]]): F[Option[Event[P]]] =
     alter { s =>
       val result = f(s)
       (result.state, result.event)
-    }.flatMap(_.traverse_(traces.csj(id, _)))
+    }
+
+  /** Commit `f`'s step, then trace what it reports as `id`'s. */
+  private def step(id: P)(f: State[P, J] => Step[P, J, Event[P]]): F[Unit] =
+    commit(f).flatMap(_.traverse_(traces.csj(id, _)))
 
   def snapshot: F[State[P, J]] = state.get.map(_._1)
 
@@ -52,9 +56,15 @@ final class ChainSyncJumpingRuntime[F[_]: Async, P, J] private (
       val result = ChainSyncJumping.rotate(s, id)
       (result.state, result.event)
     }.flatMap(_.traverse_(traces.dbf))
+
+  /** A session registered as `registerClient` registers it, and removed on every exit; its
+    * registration is traced once the removal is installed, so the trace can neither fail nor block
+    * the acquisition.
+    */
   def session(id: P, anchor: Point, caughtUp: Boolean): Resource[F, Session] =
     Resource
-      .make(step(id)(register(_, id, anchor, caughtUp)))(_ => step(id)(remove(_, id)))
+      .make(commit(register(_, id, anchor, caughtUp)))(_ => step(id)(remove(_, id)))
+      .evalTap(_.traverse_(traces.csj(id, _)))
       .as(new Session(id))
 
   final class Session private[ChainSyncJumpingRuntime] (val id: P):
