@@ -437,11 +437,14 @@ class DijkstraOnePassSuite extends ScalaCheckSuite:
     }
     val outcomes = tally(read.map(_._2).toVector)
     val parts = read.map(_._1).toSet
-    // as recorded: each mutant's outcome, their tally, and the distinct refusals among them
+    // as recorded: each mutant's outcome and refusal, their tally, and the distinct refusals
     val recorded = DijkstraOnePassExpected.fixedMutants
     assertEquals(recorded.length, read.size)
     read.zipWithIndex.foreach { case ((part, o), i) =>
-      assertEquals(letter(o), recorded(i), s"mutant $i ($part)")
+      val (raw, _) = mutant(seeds(i % seeds.size), i.toLong * 7919L)
+      val got = DijkstraOnePassExpected.code(node(raw).map(DijkstraTx.inBlock))
+      assertEquals(got.take(1) == "A", o == Outcome.Accepted, s"mutant $i ($part)")
+      assertEquals(got, recorded(i), s"mutant $i ($part)")
     }
     assertEquals(
       outcomes,
@@ -500,8 +503,15 @@ class DijkstraOnePassSuite extends ScalaCheckSuite:
       kind -> node(raw).fold(Outcome.NotCbor)(n => readInBlock(n, s"$kind mutant $i"))
     }
     val byKind = read.groupBy(_._1).view.mapValues(rs => tally(rs.map(_._2))).toMap
-    // as recorded: each mutant's outcome, in order, and their tally
+    // as recorded: each mutant's outcome, in order, its refusal, and their tally
     assertEquals(read.map((_, o) => letter(o)).mkString, DijkstraOnePassExpected.textMutants)
+    val codes =
+      mutants.map((_, raw) => DijkstraOnePassExpected.code(node(raw).map(DijkstraTx.inBlock)))
+    assertEquals(codes.size, DijkstraOnePassExpected.textMutantCodes.size)
+    codes.zip(DijkstraOnePassExpected.textMutantCodes).zipWithIndex.foreach {
+      case ((got, want), i) =>
+        assertEquals(got, want, s"${mutants(i)._1} mutant $i")
+    }
     assertEquals(
       byKind,
       Map(
