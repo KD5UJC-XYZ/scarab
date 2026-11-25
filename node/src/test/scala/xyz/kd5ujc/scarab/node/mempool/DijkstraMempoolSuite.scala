@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.mempool
 
+import xyz.kd5ujc.scarab.consensus.leios.ProtVerParity
 import cats.data.{NonEmptyChain, NonEmptyVector}
 import cats.effect.IO
 import cats.mtl.{Handle, Raise}
@@ -613,7 +614,7 @@ class DijkstraMempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         case other                     => fail(s"not held in Dijkstra: $other")
       // the key and bytes are the ones the forger lists and writes (`forgeLeiosEb`), which the
       // reference's index keys by (`leiosTxHashOfGenTx`)
-      val forged = ForgedLeiosEb.forge(tip.slot + 1, NonEmptyVector.one(tx))
+      val forged = ForgedLeiosEb.forge(tip.slot + 1, ProtVerParity.Even, NonEmptyVector.one(tx))
       val listed = forged.closure.toVector.toMap
       assertEquals(empty.leiosTxIndex, Map.empty)
       assertEquals(held.leiosTxIndex, listed)
@@ -749,7 +750,7 @@ class DijkstraMempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       val eb = Capacity.endorserBlockCapacity(params).fold(e => fail(e.toString), identity)
       val ranking = BlockBuilder.partition(snapshot, Capacity.dijkstraBlockUnit(params), eb)
       assertEquals(ranking.ranking.transactions.map(_.id), Vector(inBlock.id))
-      assertEquals(ranking.endorsing(slot), None)
+      assertEquals(ranking.endorsing(slot, ProtVerParity.Even), None)
       // the body the forger builds of the snapshot is block 37's: its hash the header commits to
       val recorded = LeiosBlock.decode(chain(37)._2).fold(e => fail(e.message), identity)
       assertEquals(
@@ -762,7 +763,7 @@ class DijkstraMempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       val endorsing = BlockBuilder.partition(snapshot, TxMeasure.zero, eb)
       assertEquals(endorsing.ranking.transactions, Vector.empty)
       assertEquals(endorsing.endorsedTransactions.map(_.id), Vector(inBlock.id))
-      assert(endorsing.endorsing(slot).isDefined)
+      assert(endorsing.endorsing(slot, ProtVerParity.Even).isDefined)
   }
 
   /** The state of the chain at block 36 ticked to `slot`, Dijkstra's. */

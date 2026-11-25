@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.forge
 
+import xyz.kd5ujc.scarab.consensus.leios.ProtVerParity
 import cats.data.NonEmptyVector
 import java.io.ByteArrayInputStream
 import java.nio.charset.StandardCharsets
@@ -124,7 +125,7 @@ class DijkstraEndorserBlockSuite extends munit.FunSuite:
   }
 
   test("the endorser block forged of the recorded closure is the reference's, byte for byte") {
-    val forged = ForgedLeiosEb.forge(announcing.header.slot, endorsed)
+    val forged = ForgedLeiosEb.forge(announcing.header.slot, ProtVerParity.Even, endorsed)
     assertEquals(forged.body.encoded, recorded.body)
     assertEquals(forged.point, recorded.point)
     assertEquals(
@@ -138,12 +139,12 @@ class DijkstraEndorserBlockSuite extends munit.FunSuite:
   }
 
   test("the header body that announces the forged block is block 64,853's signed bytes") {
-    val forged = ForgedLeiosEb.forge(announcing.header.slot, endorsed)
+    val forged = ForgedLeiosEb.forge(announcing.header.slot, ProtVerParity.Even, endorsed)
     val h = announcing.header.body
     val assembly = BlockBuilder.Assembly.dijkstra(
       rankingTxs,
       None,
-      Some(BlockBuilder.Endorsing(announcing.header.slot, endorsed))
+      Some(BlockBuilder.Endorsing(announcing.header.slot, ProtVerParity.Even, endorsed))
     )
     val rbBody = assembly match
       case BlockBuilder.Assembly.InDijkstra(b, Some(e)) =>
@@ -176,7 +177,9 @@ class DijkstraEndorserBlockSuite extends munit.FunSuite:
       split.endorsedUsed,
       held(endorsed.toVector).map(h => EbMeasure.of(h.measure)).reduce(_ + _)
     )
-    val endorsing = split.endorsing(announcing.header.slot).getOrElse(fail("no endorser block"))
+    val endorsing = split
+      .endorsing(announcing.header.slot, ProtVerParity.Even)
+      .getOrElse(fail("no endorser block"))
     assertEquals(endorsing.forged.body.encoded, recorded.body)
     assertEquals(endorsing.transactions, endorsed)
   }
@@ -283,7 +286,7 @@ class DijkstraEndorserBlockSuite extends munit.FunSuite:
     val all = BlockBuilder.partition(snapshot, unbounded, capacity)
     assertEquals(all.ranking.chosen.size, 363)
     assertEquals(all.endorsedTransactions, Vector.empty)
-    assertEquals(all.endorsing(announcing.header.slot), None)
+    assertEquals(all.endorsing(announcing.header.slot, ProtVerParity.Even), None)
     // transactions overflow, but the first of them does not fit the endorser block: none is taken,
     // however small those after it
     val first = EbMeasure.of(Capacity.dijkstraMeasure(endorsed.head, 0L))
@@ -293,14 +296,18 @@ class DijkstraEndorserBlockSuite extends munit.FunSuite:
       first.copy(references = first.references - 1)
     )
     assertEquals(tight.ranking.transactions, rankingTxs)
-    assertEquals(tight.endorsing(announcing.header.slot), None)
+    assertEquals(tight.endorsing(announcing.header.slot, ProtVerParity.Even), None)
     // an empty snapshot, and a zero limit
     assertEquals(
-      BlockBuilder.partition(DijkstraSnapshot.empty, unbounded, capacity).endorsing(0),
+      BlockBuilder
+        .partition(DijkstraSnapshot.empty, unbounded, capacity)
+        .endorsing(0, ProtVerParity.Even),
       None
     )
     assertEquals(
-      BlockBuilder.partition(snapshot, rankingUsed, EbMeasure.zero).endorsing(0),
+      BlockBuilder
+        .partition(snapshot, rankingUsed, EbMeasure.zero)
+        .endorsing(0, ProtVerParity.Even),
       None
     )
     // the body of a block with no endorser block announces none
@@ -340,7 +347,7 @@ class DijkstraEndorserBlockSuite extends munit.FunSuite:
     val limit = EbMeasure(unbounded, LeiosEb.referencesCapacity(LeiosFetch.MaxEbBytes.toLong))
     val many = DijkstraSnapshot(Vector.fill(20000)(one))
     val split = BlockBuilder.partition(many, TxMeasure.zero, limit)
-    val endorsing = split.endorsing(1).getOrElse(fail("no endorser block"))
+    val endorsing = split.endorsing(1, ProtVerParity.Even).getOrElse(fail("no endorser block"))
     assert(
       endorsing.forged.body.encodedSize <= LeiosFetch.MaxEbBytes,
       endorsing.forged.body.encodedSize
@@ -355,7 +362,7 @@ class DijkstraEndorserBlockSuite extends munit.FunSuite:
 
   test("an endorser block encoded past the wire's limit is a defect of the block just built") {
     val over = NonEmptyVector(endorsed.head, Vector.fill(17200)(endorsed.head))
-    val endorsing = BlockBuilder.Endorsing(1, over)
+    val endorsing = BlockBuilder.Endorsing(1, ProtVerParity.Even, over)
     val size = endorsing.forged.body.encodedSize
     assert(size > LeiosFetch.MaxEbBytes, size)
     assertEquals(

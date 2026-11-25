@@ -153,16 +153,16 @@ final class LeiosFetchNode[F[_]] private (
     * First the announcement, relayed to the peers the node's LeiosNotify servers run for
     * ([[announcedLocally]]), then the body ([[LeiosFetchArrival.forgedBlock]]) and the closure
     * ([[LeiosFetchArrival.forgedTxs]]), each written before the next, whose writes the servers
-    * offer. Not mirrored (#54): the forged closure's transactions are not recorded in the
-    * transaction cache as applied (`ForgedTxs`' parity); no egress credit; no traces of the forged
-    * and stored endorser block.
+    * offer, the closure's transactions then recorded in the transaction cache as applied under the
+    * forge's parity. Not mirrored (#54): no egress credit; no traces of the forged and stored
+    * endorser block.
     */
   val onForged: OnForgedLeiosEb[F] = new OnForgedLeiosEb[F]:
     def forged(announcing: AnnouncingHeader, eb: ForgedLeiosEb)(using
         Raise[F, LeiosStoreError]
     ): F[Unit] =
       announcedLocally(announcing) *> arrival.forgedBlock(eb.point, eb.body) *>
-        arrival.forgedTxs(eb.point, eb.closure)
+        arrival.forgedTxs(eb.point, eb.closure, eb.txsProtVerParity)
 
   /** `processAnnouncementCentrally` of an announcement the node forged (`ForgedLocally`,
     * `Announcements.DoRelay`, `LeiosDemoLogic.hs` 1784-1853 and 2425-2436): counted once per

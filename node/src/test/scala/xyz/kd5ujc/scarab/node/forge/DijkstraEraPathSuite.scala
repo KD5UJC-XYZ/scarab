@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.forge
 
+import xyz.kd5ujc.scarab.consensus.leios.ProtVerParity
 import cats.data.NonEmptyVector
 import java.io.ByteArrayInputStream
 import java.nio.charset.StandardCharsets
@@ -285,7 +286,11 @@ class DijkstraEraPathSuite extends munit.FunSuite:
     assertEquals(split.endorsedUsed, flatEbUsed, what)
     val slot = announcing.header.slot
     val assembly =
-      BlockBuilder.Assembly.dijkstra(split.ranking.transactions, cert, split.endorsing(slot))
+      BlockBuilder.Assembly.dijkstra(
+        split.ranking.transactions,
+        cert,
+        split.endorsing(slot, ProtVerParity.Even)
+      )
     // the endorser block: its point, body, closure and announcement
     val flatForged = NonEmptyVector.fromVector(flatEb).map(FlatPath.forge(slot, _))
     val announcement = assembly match
@@ -351,7 +356,7 @@ class DijkstraEraPathSuite extends munit.FunSuite:
       BlockBuilder.Assembly.dijkstra(
         split.ranking.transactions,
         None,
-        split.endorsing(announcing.header.slot)
+        split.endorsing(announcing.header.slot, ProtVerParity.Even)
       )
     val h = announcing.header.body
     val headerBody = assembly.headerBody(
