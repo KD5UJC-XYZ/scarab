@@ -44,7 +44,8 @@ class ParallelPlutusSuite extends FailsOnUncaught:
         )
         TestLedger.scripted(true).evaluate(request)
       finally { val _ = active.decrementAndGet() }
-    val body = PreparedBlockFixture.body(evaluator)
+    // prepared, below the declared work the node prepares above too (#85)
+    val body = AlwaysPrepared(PreparedBlockFixture.body(evaluator))
     for
       service <- ParallelPlutus.create[IO](workers(2))
       _ <- cats.effect.Resource
@@ -159,7 +160,9 @@ class ParallelPlutusSuite extends FailsOnUncaught:
             blocking.tickAll()
             compute.tickAll()
         val txs = if serial then PreparedBlockFixture.txs.take(1) else PreparedBlockFixture.txs
-        val body = PreparedBlockFixture.body(TestLedger.scripted(true), txs)
+        val fixture = PreparedBlockFixture.body(TestLedger.scripted(true), txs)
+        // prepared, below the declared work the node prepares above too (#85), but for one tx
+        val body = if serial then fixture else AlwaysPrepared(fixture)
         try
           val setup = (for
             service <- ParallelPlutus.create[IO](workers(2))
@@ -197,7 +200,7 @@ class ParallelPlutusSuite extends FailsOnUncaught:
       serial <- ParallelPlutus.create[IO](workers(1))
       parallel <- ParallelPlutus.create[IO](workers(2))
       a <- serial(PreparedBlockFixture.body(evaluator)).attempt
-      b <- parallel(PreparedBlockFixture.body(evaluator)).attempt
+      b <- parallel(AlwaysPrepared(PreparedBlockFixture.body(evaluator))).attempt
       _ <- IO { assert(a.left.exists(_ eq defect)); assert(b.left.exists(_ eq defect)) }
     yield ()
   }
@@ -223,8 +226,9 @@ class ParallelPlutusSuite extends FailsOnUncaught:
     val defective = PreparedBlockFixture.body(TestLedger.scripted(true), verdicts = verdicts)
     for
       service <- ParallelPlutus.create[IO](workers(2))
-      actual <- service(refused)
-      reached <- service(defective).attempt
+      // prepared, below the declared work the node prepares above too (#85)
+      actual <- service(AlwaysPrepared(refused))
+      reached <- service(AlwaysPrepared(defective)).attempt
       _ <- IO {
         assertEquals(actual, refused.serial)
         assert(reached.left.exists(_ eq defect))
@@ -248,7 +252,8 @@ class ParallelPlutusSuite extends FailsOnUncaught:
     val body = PreparedBlockFixture.body(TestLedger.scripted(true), verdicts = verdicts)
     for
       service <- ParallelPlutus.create[IO](workers(2))
-      result <- service(body).attempt
+      // prepared, below the declared work the node prepares above too (#85)
+      result <- service(AlwaysPrepared(body)).attempt
       _ <- IO {
         assert(result.left.exists(_ eq defect))
         assert(body.serial.isInstanceOf[xyz.kd5ujc.scarab.ledger.rules.EraBlock.Outcome.Applied])
@@ -286,10 +291,10 @@ class ParallelPlutusSuite extends FailsOnUncaught:
         val evaluator = TestLedger.scripted(passing)
         // within the units, the body is prepared, every script a job
         val within = bodyOf(evaluator, PreparedBlockFixture.params.maxBlockExUnits)
-        assert(within.worthwhile, what)
+        assert(within.preparable, what)
         assertEquals(within.prepare.jobs.size, 3, what)
         val over = bodyOf(evaluator, limit)
-        assert(!over.worthwhile, what)
+        assert(!over.preparable && !over.worthwhile, what)
         assertEquals(over.prepare.jobs, Vector.empty, what)
         val serialRuns = CountingEvaluator(evaluator)
         val serial = bodyOf(serialRuns, limit).serial
@@ -309,10 +314,14 @@ class ParallelPlutusSuite extends FailsOnUncaught:
           )
         Vector(1, 2, 4, 8).traverse_ { n =>
           val runs = CountingEvaluator(evaluator)
-          ParallelPlutus.create[IO](workers(n)).flatMap(_(bodyOf(runs, limit))).map { result =>
-            assertEquals(result, serial, s"$what at $n workers")
-            assertEquals(runs.count, serialRuns.count, s"$what at $n workers")
-          }
+          // not prepared even where every preparable body is
+          ParallelPlutus
+            .create[IO](workers(n))
+            .flatMap(_(AlwaysPrepared(bodyOf(runs, limit))))
+            .map { result =>
+              assertEquals(result, serial, s"$what at $n workers")
+              assertEquals(runs.count, serialRuns.count, s"$what at $n workers")
+            }
         }
       }
     }

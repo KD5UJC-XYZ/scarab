@@ -10,8 +10,9 @@ import xyz.kd5ujc.scarab.network.FailsOnUncaught
 
 /** The reference's BBODY cases for Conway (`ConwayBbodyImpCases`, ledger) with every block they
   * check run through the node's own scheduler (`ParallelPlutus`) at one, two, four and eight
-  * workers, in place of as many threads; each to the serial run's result (#85). Each case's effect
-  * is returned to the test framework.
+  * workers, in place of as many threads, each block the scheduler may prepare prepared, below the
+  * declared work the node prepares above too ([[AlwaysPrepared]]); each to the serial run's result
+  * (#85). Each case's effect is returned to the test framework.
   */
 class ConwayBbodyImpWorkersSuite extends FailsOnUncaught with ConwayBbodyImpCases[IO]:
   // the block of `Conway/Imp/BbodySpec.hs:86` (cardano-ledger f649f975) holds 2,424 transactions,
@@ -22,7 +23,7 @@ class ConwayBbodyImpWorkersSuite extends FailsOnUncaught with ConwayBbodyImpCase
     ParallelPlutus.Workers
       .from(n)
       .fold(e => IO(fail(s"$e")), ParallelPlutus.create[IO](_))
-      .flatMap(_(body))
+      .flatMap(_(AlwaysPrepared(body)))
       .attempt
       .map(_.leftMap(Phase2.Defect(_)))
 

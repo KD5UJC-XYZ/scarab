@@ -79,12 +79,44 @@ object Phase2:
     def serial: A
     def hasScripts: Boolean
 
-    /** Whether preparation can pay and stays within what the block may evaluate: more than one
-      * transaction carries redeemers, and their execution units are within the block's limit
-      * (BBODY's `validateExUnits`, which it checks only after LEDGERS).
+    /** Whether the body may be prepared: more than one transaction carries redeemers, and their
+      * execution units are within the block's limit (BBODY's `validateExUnits`, which it checks
+      * only after LEDGERS), so that what the workers evaluate ahead stays within what an admissible
+      * block declares.
       */
-    def worthwhile: Boolean
+    def preparable: Boolean
+
+    /** The execution units the body's redeemers declare, summed over its transactions
+      * (`getTotalExUnits`, the sum BBODY's `validateExUnits` takes).
+      */
+    def declared: ExUnits
+
+    /** Whether the node prepares the body for its workers: it may be prepared ([[preparable]]), and
+      * its scripts declare enough work for the preparation to pay ([[pays]]).
+      */
+    def worthwhile: Boolean = preparable && pays(declared)
     def prepare: Plan[A]
+
+  /** The CPU steps a body's redeemers must declare, summed, for the node to prepare it for its
+    * workers (#85, ADR 0018's amendment of 2026-11-24): below them preparing costs more than it
+    * saves. Measured on 2026-11-24, each body serially and prepared at four workers in one JVM,
+    * alternated: on the recorded Leios testnet blocks (`PlutusThresholdBench`, tools) all eight
+    * that declare less lost 0.1 to 0.3 ms (10 to 30%) prepared in each of three runs, and those
+    * above were within about 0.3 ms either way up to 0.5 billion steps; on Dijkstra's and Conway's
+    * blocks of 2 to 32 synthetic scripts, preparing cost about 0.2 ms a block plus about 20 us a
+    * job and saved about three quarters of the scripts' evaluation, crossing near 0.35 billion
+    * steps; on the recorded preprod window (`ConwayBodiesReplaySuite`), the flat rules' body did
+    * best with this floor, and Conway's era run, whose jobs also translate their contexts, lost
+    * about 0.2% by it. Declared, not spent, steps decide, as only they are known before the scripts
+    * run, and a script spends at most what it declares: a block declaring more than its scripts
+    * spend is prepared at a loss of at most that overhead.
+    */
+  val payingSteps: BigInt = BigInt(200000000)
+
+  /** Whether a body whose redeemers declare `units` declares enough work for preparing it to pay
+    * ([[payingSteps]]).
+    */
+  def pays(units: ExUnits): Boolean = units.steps >= payingSteps
 
   /** A prepared body: its jobs in dependency batches, each executed alone into a value, and the
     * only route to the body's result, which checks every reached verdict in transaction order.

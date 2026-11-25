@@ -2392,7 +2392,6 @@
    "def ledger.rules.EraBlock.Body#hasScripts": null,
    "def ledger.rules.EraBlock.Body#prepare": null,
    "def ledger.rules.EraBlock.Body#serial": null,
-   "def ledger.rules.EraBlock.Body#worthwhile": null,
    "def ledger.rules.EraBlock.Plan#batches": null,
    "def ledger.rules.EraBlock.Plan#execute": null,
    "def ledger.rules.EraBlock.Plan#resolve": null,
