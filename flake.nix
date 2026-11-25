@@ -15,6 +15,7 @@
       imports = [
         inputs.treefmt-nix.flakeModule
         ./flake/toolchain.nix
+        ./perSystem/apps.nix
         ./perSystem/devShells.nix
         ./perSystem/formatter.nix
       ];

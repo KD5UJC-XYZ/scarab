@@ -28,3 +28,54 @@ Docker-based preflight and reference scenarios to Nix. The owner authorized
 this Nix workflow in the implementing chat session on 2026-11-24.
 
 With direnv and nix-direnv configured, `direnv allow` enables the included `.envrc`.
+
+## Run public networks
+
+From a writable Scarab checkout:
+
+```sh
+nix run .#preview
+nix run .#preprod
+nix run .#mainnet
+```
+
+Each app downloads and caches its official configuration on first use, builds
+the node through `scripts/sbtw`, then runs `follow` directly with the pinned JDK.
+The build lock serializes wrapper builds in the same checkout; it is released
+before the node starts. The three networks can run at the same time.
+
+| App | Query port | State directory beneath `SCARAB_DATA_DIR` |
+|---|---|---|
+| `.#preview` | 7071 | `preview` |
+| `.#preprod` | 7072 | `preprod` |
+| `.#mainnet` | 7073 | `mainnet` |
+
+`SCARAB_DATA_DIR` defaults to `/tmp/scarab`. Each network directory contains
+`config/`, `db/` and `node.socket`. Node-to-node and separate metrics listeners
+are off unless explicitly enabled. Configurations are downloaded over HTTPS
+from the official Cardano environment endpoint documented in
+[network configuration](running/configuration.md); referenced checkpoints and
+peer snapshots are included. Scarab performs its existing genesis hash checks.
+Downloads publish a complete configuration directory atomically and reuse it on
+later starts. To refresh a default configuration, stop the corresponding node
+and remove only its `config/` directory; the next start downloads it again.
+
+Additional arguments are passed to `follow` with their argument boundaries
+preserved. Explicit `--config`, `--topology`, `--db`, `--local-socket` and
+`--query-listen`/`--query-port` replace the respective wrapper defaults.
+
+```sh
+nix run .#preview -- --seconds 30
+nix run .#preprod -- --query-listen off --seconds 30
+SCARAB_DATA_DIR=/srv/scarab nix run .#mainnet
+SCARAB_CONFIG_DIR=/path/to/config nix run .#preview
+nix run .#mainnet -- --help
+```
+
+`SCARAB_CONFIG_DIR` selects existing configuration files without downloading.
+`SCARAB_SOURCE_DIR` selects a writable checkout when running elsewhere. The
+apps use a 3 GiB heap, four active processors and `MALLOC_ARENA_MAX=2` by default;
+set `SCARAB_HEAP_SIZE`, `SCARAB_RUN_PROCESSORS` or `MALLOC_ARENA_MAX` to override
+these. `SCARAB_QUERY_PORT` overrides the selected network's default query port.
+Ctrl-C reaches the node directly. Help creates no run data and performs no
+Scala build or configuration download.

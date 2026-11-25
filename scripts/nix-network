@@ -1,0 +1,117 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
+# Shared body of the Nix network apps; writeShellApplication supplies the tools and network.
+set -euo pipefail
+
+network=$SCARAB_WRAPPER_NETWORK
+if [[ ${1:-} == --help || ${1:-} == -h ]]; then
+  cat <<EOF
+Usage: nix run .#$network -- [follow options]
+
+Build Scarab in the current checkout, cache the official $network configuration,
+and follow the network with its own database, socket and HTTP query port.
+
+Environment:
+  SCARAB_DATA_DIR       Network directories beneath this root (default: /tmp/scarab)
+  SCARAB_CONFIG_DIR     Use an existing configuration directory instead of downloading
+  SCARAB_SOURCE_DIR     Scarab checkout (default: the current Git checkout)
+  SCARAB_QUERY_PORT     HTTP query port (default: $SCARAB_WRAPPER_QUERY_PORT)
+  SCARAB_HEAP_SIZE      Java maximum heap (default: 3g)
+  SCARAB_RUN_PROCESSORS Java active processor count (default: 4)
+
+Extra arguments are passed to follow. Explicit --config, --topology, --db,
+--local-socket and --query-listen/--query-port replace the corresponding defaults.
+Example: nix run .#$network -- --seconds 30
+EOF
+  exit 0
+fi
+
+node_args=("$@")
+has_option() {
+  local expected argument
+  for expected in "$@"; do
+    for argument in "${node_args[@]}"; do
+      if [[ $argument == "$expected" ]]; then
+        return 0
+      fi
+    done
+  done
+  return 1
+}
+
+if [[ -n ${SCARAB_SOURCE_DIR:-} ]]; then
+  source_dir=$(realpath -e -- "$SCARAB_SOURCE_DIR")
+else
+  source_dir=$(git rev-parse --show-toplevel) || {
+    printf 'Run this app from a Scarab checkout or set SCARAB_SOURCE_DIR.\n' >&2
+    exit 2
+  }
+fi
+if [[ ! -f $source_dir/scripts/sbtw || ! -f $source_dir/build.sbt || ! -d $source_dir/node ]]; then
+  printf 'SCARAB_SOURCE_DIR must name a Scarab checkout.\n' >&2
+  exit 2
+fi
+
+state_dir=$(realpath -m -- "${SCARAB_DATA_DIR:-/tmp/scarab}/$network")
+mkdir -p -- "$state_dir"
+if [[ -n ${SCARAB_CONFIG_DIR:-} ]]; then
+  config_dir=$(realpath -e -- "$SCARAB_CONFIG_DIR")
+else
+  config_dir=$state_dir/config
+  if ! has_option --config || ! has_option --topology; then
+    (
+      flock 9
+      if [[ ! -d $config_dir ]]; then
+        staging=$(mktemp -d "$state_dir/.config.XXXXXXXX")
+        trap 'rm -rf -- "$staging"' EXIT
+        base_url="https://book.play.dev.cardano.org/environments/$network"
+        fetch() {
+          curl --fail --silent --show-error --location --retry 3 \
+            --proto '=https' --proto-redir '=https' \
+            "$base_url/$1" --output "$staging/$1"
+          jq empty "$staging/$1"
+        }
+        printf 'Fetching official %s configuration...\n' "$network" >&2
+        fetch config.json
+        fetch topology.json
+        assets=$(jq --slurp --raw-output '
+          .[0] as $config | .[1] as $topology |
+          [$config.ByronGenesisFile, $config.ShelleyGenesisFile,
+           $config.AlonzoGenesisFile, $config.ConwayGenesisFile,
+           $config.CheckpointsFile, $topology.peerSnapshotFile] |
+          map(select(. != null)) | unique | .[]
+        ' "$staging/config.json" "$staging/topology.json")
+        while IFS= read -r asset; do
+          if [[ ! $asset =~ ^[a-zA-Z0-9][a-zA-Z0-9._-]*$ ]]; then
+            printf 'Unsupported network asset name: %s\n' "$asset" >&2
+            exit 2
+          fi
+          fetch "$asset"
+        done <<< "$assets"
+        mv -- "$staging" "$config_dir"
+        trap - EXIT
+      fi
+    ) 9>"$state_dir/config.lock"
+  fi
+fi
+
+defaults=()
+has_option --config || defaults+=(--config "$config_dir/config.json")
+has_option --topology || defaults+=(--topology "$config_dir/topology.json")
+has_option --db || defaults+=(--db "$state_dir/db")
+has_option --local-socket || defaults+=(--local-socket "$state_dir/node.socket")
+has_option --query-listen --query-port || defaults+=(--query-listen "${SCARAB_QUERY_PORT:-$SCARAB_WRAPPER_QUERY_PORT}")
+
+# Serialize sbt launches within this checkout, then release the lock before running the node.
+mkdir -p -- "$source_dir/.cache"
+(
+  flock 9
+  cd "$source_dir"
+  bash scripts/sbtw node/compile node/runtimeClasspathFile >&2
+) 9>"$source_dir/.cache/nix-network-build.lock"
+
+classpath=$(cat "$source_dir/node/target/runtime-classpath.txt")
+export MALLOC_ARENA_MAX=${MALLOC_ARENA_MAX:-2}
+exec java "-Xmx${SCARAB_HEAP_SIZE:-3g}" "-XX:ActiveProcessorCount=${SCARAB_RUN_PROCESSORS:-4}" \
+  --sun-misc-unsafe-memory-access=allow --enable-native-access=ALL-UNNAMED \
+  -cp "$classpath" xyz.kd5ujc.scarab.node.Main follow "${defaults[@]}" "${node_args[@]}"

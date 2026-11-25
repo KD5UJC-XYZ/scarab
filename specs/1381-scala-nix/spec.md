@@ -34,3 +34,16 @@ An existing project's source and build files must never be replaced with the
 sample. Unsupported systems are outside scope. A first build needs network
 access for Maven dependencies. Docker-only repository gates must be reported
 as incomplete rather than claimed as passed.
+
+## Network app extension
+
+P1: Run `nix run .#preview`, `.#preprod` or `.#mainnet` from a Scarab checkout.
+Given any of these apps, starting it downloads and caches that network's official
+configuration, compiles the existing node and runs `follow`. Different networks
+use separate databases, Unix sockets and query ports, and can run concurrently.
+Additional node arguments retain their exact argument boundaries.
+
+The owner approved the defaults in this chat on 2026-11-25: configuration,
+database and socket under `${SCARAB_DATA_DIR:-/tmp/scarab}/<network>`, with one
+query port per network. User-supplied configuration directories remain supported.
+No stored format, production Scala implementation or generic Scala template is changed.

@@ -35,3 +35,28 @@ boundary; implementation and subsequent validation use the original mounted
 checkout. No containers were started. Raw run artifacts are not published.
 
 The Scala template is committed in nix-templates as `5632f5c`.
+
+## Network apps
+
+Level 1, validated on x86_64 Linux on 2026-11-25:
+
+- All three app derivations build with ShellCheck; `nix flake check` and
+  `nix fmt -- --fail-on-change` pass.
+- All three help commands succeed without creating network state.
+- Preview, preprod and mainnet ran concurrently for 60 seconds each, using
+  freshly downloaded official configuration. All three HTTP query endpoints
+  responded while their independent Unix sockets were live. The nodes reported
+  network magic 2, 1 and 764824073 respectively, advanced their chain tips and
+  exited successfully after writing shutdown snapshots.
+- Bounded follow-up starts exercised cached configuration, an existing custom
+  config directory, explicit source selection from another working directory,
+  query flag overrides, and database/socket paths containing spaces. The cached
+  configuration's timestamp and size were unchanged, with no repeat download.
+- All temporary chain databases and configuration downloads from these checks
+  were removed after the owner requested conservative disk use. No full-chain
+  sync was attempted, and no public-network node remains running.
+- The full Scala `check` and Python guards are running for this extension;
+  their final outcome is not yet recorded. Docker remains prohibited, so the
+  Docker-only preflight remains incomplete.
+
+Raw run artifacts are not published.
