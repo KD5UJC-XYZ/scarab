@@ -3,7 +3,8 @@ package xyz.kd5ujc.scarab.uplc.cek
 
 import scala.annotation.tailrec
 import xyz.kd5ujc.scarab.uplc.{Fix, Term, TermF}
-import xyz.kd5ujc.scarab.uplc.builtin.{Builtins, Outcome}
+import xyz.kd5ujc.scarab.uplc.DefaultFun
+import xyz.kd5ujc.scarab.uplc.builtin.{BuiltinFailure, Builtins, Outcome, Prepared}
 import xyz.kd5ujc.scarab.uplc.cost.{CostStream, ExBudget, SatInt, StepKind}
 import xyz.kd5ujc.scarab.uplc.cek.CekValue.{VBuiltin, VCon, VConstr, VDelay, VLamAbs}
 
@@ -57,6 +58,20 @@ object PresentCekMachine:
   /** One evaluation: the parameters every transition reads. */
   private final class Run[S](parameters: MachineParameters, mode: BudgetMode, stop: Stop[S]):
     private val builtins: Builtins = parameters.builtins
+
+    /** `Builtins.prepare` at `929f794a6`. */
+    private def prepare(function: DefaultFun, arguments: Vector[CekValue]): Prepared[CekValue] =
+      builtins.unlifting(function, arguments) match
+        case Left(failure) =>
+          Prepared(
+            CostStream.free,
+            () => Outcome.Failure(BuiltinFailure.Unlifting(failure), failure.message.toVector)
+          )
+        case Right(unlifted) =>
+          Prepared(
+            builtins.costing(function)(unlifted),
+            () => builtins.denotations(function)(unlifted)
+          )
     private val caser: CaserBuiltin = parameters.caser
     private val stepCosts: Vector[ExBudget] = StepKind.values.toVector.map(parameters.costs.step)
     private val restricting: Boolean = mode match
@@ -354,7 +369,7 @@ object PresentCekMachine:
     ): Step =
       if !b.saturated then Step.Next(next, Env.empty, b, budget, logs)
       else
-        val prepared = builtins.prepare(b.function, b.inOrder)
+        val prepared = prepare(b.function, b.inOrder)
         val spent = spendStream(budget, prepared.cost)
         if exhausted(spent) then Step.Halt(outOfBudget(spent, logs))
         else
