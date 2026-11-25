@@ -1083,14 +1083,16 @@ class DijkstraCertifySuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         case _ => IO.pure(env)
       }
       snapshots <- DijkstraSnapshots.ofPool[IO](mempool, None, environment)
-      worker <- snapshots.certifying(point.hash, Some(tip.hash), base).start
+      // the worker ends with its outcome as a value: its failure may come before the join, and a
+      // fiber that ends failed with no one joined is reported by the runtime as uncaught
+      worker <- snapshots.certifying(point.hash, Some(tip.hash), base).attempt.start
       _ <- built.get
       _ <- mempool.add(submitted, Source.Local).map(added => assert(added.isRight, added))
-      ended <- worker.join
+      ended <- worker.joinWithNever
       read <- snapshots.certifyingFor(point.hash, Some(tip.hash), judged)
       now <- mempool.snapshot
     yield
-      assert(ended.isError, ended.toString)
+      assert(ended.isLeft, ended.toString)
       // the view the worker built kept nothing that left the pool: only the worker's end takes it
       // away, and the forger then revalidates
       val view = CertifyingView
