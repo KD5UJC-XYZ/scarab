@@ -101,7 +101,7 @@ object DijkstraRecordedBlocks extends Assertions:
   /** The devnet's first Dijkstra block, which has no transaction, with the transactions `txs` as
     * its body and `slot` as its header's slot, its header committing to that body.
     */
-  private def blockOf(txs: Vector[Bytes], slot: BigInt): Bytes =
+  def blockOf(txs: Vector[Bytes], slot: BigInt): Bytes =
     val plain = devnetBlocks
       .map(_._2)
       .find(raw =>
@@ -122,10 +122,22 @@ object DijkstraRecordedBlocks extends Assertions:
     val newHeader = array(Vector(array(fields), signed(1).original))
     array(Vector(outer(0).original, array(Vector(newHeader, newBody))))
 
-  /** Every recorded block, in block order. */
-  lazy val samples: Vector[Sample] =
+  /** The state BBODY runs a block from: the genesis parameters' state holding exactly `utxo`. */
+  def stateOf(utxo: UTxO[Dijkstra]): ShelleyBbodyState[Dijkstra] =
     val start =
       xyz.kd5ujc.scarab.ledger.state.Build.dijkstra(EpochNo.fromUnsigned(0L), stored).es.ls
+    val ls = start.copy[Dijkstra](utxo =
+      start.utxo.copy[Dijkstra](
+        utxo = UtxoTables(
+          flat.Utxo(utxo.unUTxO.view.mapValues(StoredTxOut.dijkstra.toStored).toMap)
+        ),
+        instantStake = ok(EraStake.dijkstra.addInstantStake(utxo, start.utxo.instantStake))
+      )
+    )
+    ShelleyBbodyState[Dijkstra](ls, BlocksMade.empty)
+
+  /** Every recorded block, in block order. */
+  lazy val samples: Vector[Sample] =
     chainContextCases
       .map { c =>
         def big(name: String) = c.hcursor.get[BigInt](name).fold(e => fail(e.message), identity)
@@ -158,20 +170,12 @@ object DijkstraRecordedBlocks extends Assertions:
               )
         }.toSet
         val utxo = UTxO[Dijkstra](sorted.flatMap(_._5).filterNot((in, _) => made(in.id)).toMap)
-        val ls = start.copy[Dijkstra](utxo =
-          start.utxo.copy[Dijkstra](
-            utxo = UtxoTables(
-              flat.Utxo(utxo.unUTxO.view.mapValues(StoredTxOut.dijkstra.toStored).toMap)
-            ),
-            instantStake = ok(EraStake.dijkstra.addInstantStake(utxo, start.utxo.instantStake))
-          )
-        )
         Sample(
           block,
           sorted.head._3,
           sorted.size,
           blockOf(sorted.map(_._4), sorted.head._3),
-          ShelleyBbodyState[Dijkstra](ls, BlocksMade.empty)
+          stateOf(utxo)
         )
       }
 
