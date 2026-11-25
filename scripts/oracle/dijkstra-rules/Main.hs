@@ -20,6 +20,9 @@
 --     at the slot of the case;
 --   kind "certs": CERTS (Conway's, with Dijkstra's CERT, POOL and GOVCERT) over the certificates of
 --     the case on the default certificate state, in the current epoch of the case;
+--   kind "entities": ENTITIES (`Dijkstra/Rules/Entities.hs`) of a transaction as a block body
+--     holds it, annotated as for UTXOW, on the certificate state CERTS makes of `setup` (which must
+--     pass), whose accounts are the original ones too, in the current epoch of the case;
 --   kind "gov": CERTS over `setup` first, which must pass, then GOV
 --     (`Dijkstra/Rules/Gov.hs`, Conway's transition) over the votes and proposals of the case on
 --     the certificate state CERTS left and the default store of proposals, for a transaction whose
@@ -43,15 +46,15 @@ import Cardano.Ledger.Conway.PParams (ppDRepDepositL, ppGovActionDepositL, ppGov
 import qualified Cardano.Ledger.Conway.Rules as Conway
 import Cardano.Ledger.Core (PParams, Tx, TxCert, TxLevel (TopTx), emptyPParams, eraDecoder, ppEMaxL, ppKeyDepositL, ppMaxTxSizeL, ppMinPoolCostL, ppPoolDepositL, ppProtocolVersionL, ppTxFeeFixedL, ppTxFeePerByteL)
 import Cardano.Ledger.Dijkstra (DijkstraEra, mkDijkstraStAnnTopTx)
-import Cardano.Ledger.Dijkstra.Era (BBODY, GOV, UTXOW)
+import Cardano.Ledger.Dijkstra.Era (BBODY, ENTITIES, GOV, UTXOW)
 import Cardano.Ledger.Dijkstra.PParams (ppMaxRefScriptSizePerBlockL, ppMaxRefScriptSizePerTxL, ppRefScriptCostMultiplierL, ppRefScriptCostStrideL)
-import Cardano.Ledger.Dijkstra.Rules (UtxoEnv (..))
+import Cardano.Ledger.Dijkstra.Rules (EntitiesEnv (..), UtxoEnv (..))
 import Cardano.Ledger.Dijkstra.Tx (Tx (MkDijkstraTx), decodeDijkstraTopTxInBlock)
 import Cardano.Ledger.Hashes (unsafeMakeSafeHash)
 import Cardano.Ledger.Plutus.ExUnits (ExUnits (..), Prices (..))
 import Cardano.Ledger.Shelley.LedgerState (LedgerState (..), smartUTxOState)
 import qualified Cardano.Ledger.Shelley.Rules as Shelley
-import Cardano.Ledger.State (CertState, ChainAccountState (..), UTxO (..), certPStateL)
+import Cardano.Ledger.State (CertState, ChainAccountState (..), UTxO (..), accountsL, certDStateL, certPStateL)
 import Cardano.Ledger.TxIn (TxId (..))
 import Cardano.Protocol.Crypto (StandardCrypto)
 import qualified Cardano.Protocol.Leios.BlockHeader as Leios
@@ -284,6 +287,24 @@ runCase c = object ["name" .= name c, "kind" .= kind c, "reference" .= result]
                     ( TRC
                         ( UtxoEnv (SlotNo (maybe 0 id (slot c))) pp (certState ^. certPStateL) certState u
                         , smartUTxOState pp u (Coin 0) (Coin 0) def (Coin 0)
+                        , annotated
+                        )
+                    )
+                )
+                globals
+      -- ENTITIES of a transaction on the certificate state of the case's setup, its accounts the
+      -- original ones, with no committee and no committee proposals
+      "entities" ->
+        let u = utxoOf c
+            annotated =
+              mkDijkstraStAnnTopTx (epochInfo globals) (systemStart globals) pp u mempty (topTx (maybe (error "tx") id (tx c)))
+            certState = either (error . show) id (runCerts c (maybe [] id (setup c)) def)
+         in verdict (const []) $
+              runReader
+                ( applySTS @(ENTITIES DijkstraEra)
+                    ( TRC
+                        ( EntitiesEnv (EpochNo (epoch c)) pp SNothing Map.empty (certState ^. certDStateL . accountsL)
+                        , certState
                         , annotated
                         )
                     )

@@ -1,9 +1,9 @@
 {
   "blocksSha256": "e1da0c447af50129c782b5f6bdc08582ca7f289f75a87fa895e2792b39dec446",
-  "cases": 70,
-  "casesSha256": "c9e43a608b4d0ce414539d21d37be1ad4377ff9ba3297a144504e75436bfa352",
+  "cases": 117,
+  "casesSha256": "aa2baff010a57c8a6295b5a99271f6e3ed301c7608cb4cbffc4de165ae55753f",
   "image": "scarab-dijkstra-rules-oracle:local",
-  "imageId": "sha256:973ddec5f4a8998a3e4c45cb77b7c05127feb1dbd21603ee4c545bd40b0a495f",
+  "imageId": "sha256:1c54826f90bef9abe7ad2825d93c059fb9ab0eb3d93cf4992ac3e92b176a8661",
   "ledger": {
     "packages": [
       "cardano-ledger-dijkstra 0.5.0.0"
@@ -11,9 +11,9 @@
     "repository": "IntersectMBO/cardano-ledger",
     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c"
   },
-  "measuredAt": "2026-11-21",
+  "measuredAt": "2026-11-24",
   "program": "scripts/oracle/dijkstra-rules/Main.hs",
-  "programSha256": "64d3bcbc8e006d2fd85ead76c7aef2b69e0ddf0fd95d535e72978cc2facf6f74",
+  "programSha256": "d291c3adf48f4a6d69f721b0e23cd27e8120dfde6b390f6cc04aad15722ec4a2",
   "schemaVersion": 1,
-  "scope": "Dijkstra's BBODY, UTXOW (with UTXO and UTXOS), CERTS (with Dijkstra's CERT, POOL and GOVCERT) and GOV of the Leios testnet build, each applied on its own with every check run: BBODY over the devnet's Dijkstra blocks, UTXOW over the devnet transaction and its variants, CERTS on the default certificate state, GOV after a CERTS setup on the default store of proposals, pools' votes on parameter changes of keys 38 and 47 among them; not LEDGER on its own, ENTITIES or the SUB rules"
+  "scope": "Dijkstra's BBODY, UTXOW (with UTXO and UTXOS), ENTITIES, CERTS (with Dijkstra's CERT, POOL and GOVCERT) and GOV of the Leios testnet build, each applied on its own with every check run: BBODY over the devnet's Dijkstra blocks, UTXOW over the devnet transaction and its variants, CERTS on the default certificate state, GOV after a CERTS setup on the default store of proposals, pools' votes on parameter changes of keys 34 to 56, ill-formed parameter changes and the bootstrap phase's refusals among them, pool registrations with voting keys, ENTITIES over a transaction's withdrawals, direct deposits, balance intervals and certificates; not LEDGER on its own or the SUB rules"
 }

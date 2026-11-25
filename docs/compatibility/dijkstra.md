@@ -36,7 +36,7 @@ the reference-only devnet evidence below does not satisfy that condition.
   - `scripts/oracle/dijkstra-translation` (`fixtures/reference/dijkstra-translation`);
   - `scripts/oracle/dijkstra-state-translation` (`fixtures/reference/dijkstra-state-translation`): the ledger's translation of the captured Conway state `fixtures/leios/state/conway-195`, equal byte for byte to `Translate.conwayToDijkstra`'s (`DijkstraStateTranslationSuite`); the consensus parts of the crossing are not compared;
   - `scripts/oracle/dijkstra-crossing` (`fixtures/reference/dijkstra-crossing`);
-  - `scripts/oracle/dijkstra-rules` (`fixtures/reference/dijkstra-rules`): individual rules agree on the cases they complete; cases reaching ENTITIES are incomplete gates, not agreement.
+  - `scripts/oracle/dijkstra-rules` (`fixtures/reference/dijkstra-rules`): individual rules agree on the cases they complete. The era rules, ENTITIES among them, give every case the reference's verdict and bytes; the flat rules are compared on the cases recorded before the era failure encoder, and those reaching ENTITIES are incomplete gates, not agreement.
 - **Stored-output translation:** `DijkstraStoredOutputsSuite` checks the reference translation cases against both memory and RocksDB stores, including bytes, hashes, sizes, totals and spent outputs. The node crossing suite checks entry from earlier eras and that an invalid block never triggers the store pass.
 - **The Leios devnet chain `fixtures/dijkstra-devnet`** (Conway to Dijkstra, from the reference-only cluster of #791):
   - its blocks and headers decode;

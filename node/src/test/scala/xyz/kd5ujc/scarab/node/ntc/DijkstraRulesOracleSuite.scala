@@ -61,7 +61,7 @@ import xyz.kd5ujc.scarab.protocol.{DijkstraNotYet, Era}
   *
   * The era-typed GOV (Conway's transition at Dijkstra, `EraGovRun.dijkstra`, #85) is run on every
   * `gov` case at the root, from the certificate state the era-typed CERTS leaves after its setup:
-  * its failures are the reference's bytes in its order, on all 18; its verdicts are the flat rule's
+  * its failures are the reference's bytes in its order, on all 44; its verdicts are the flat rule's
   * on the 16 the flat rules judge, and on the 6 both admit its proposals after are the flat rule's
   * and its events the sequence Conway's transition tells (`GovNewProposals`, then
   * `GovRemovedVotes`), which the oracle does not record. The other two are a pool's vote on a
@@ -77,6 +77,13 @@ import xyz.kd5ujc.scarab.protocol.{DijkstraNotYet, Era}
   * level below the root: its refusals are the reference's LEDGERS refusals byte for byte, and it
   * admits every other block, the one the flat rules halt on among them. On the two cases flagged
   * invalid, which the flat LEDGER judges, the era LEDGER and LEDGERS give the flat failures.
+  *
+  * The 47 cases recorded after the era encoder (#85) are judged by the era rules alone: pools'
+  * votes on a parameter change of each key Dijkstra adds, ill-formed parameter changes, the
+  * bootstrap phase's refusals and votes on actions that do not exist (GOV), pool registrations with
+  * a voting key whose proof of possession verifies or does not and POOL's other refusals (CERTS), a
+  * collateral return to a pointer address (UTXOW, and LEDGER around it), and ENTITIES at the root
+  * over a transaction's withdrawals, direct deposits, balance intervals and certificates.
   *
   * On every case recorded before the era encoder, each era failure it writes is the bytes its flat
   * form (`toStored`) and this suite's encoder of the flat form write, so the change of encoder is
@@ -471,12 +478,12 @@ class DijkstraRulesOracleSuite extends FunSuite:
       case Right(Right(s)) => s
       case other           => fail(s"the setup does not pass: $other")
 
-  private lazy val observations: Vector[(String, Verdict, Verdict)] = cases.map { c =>
+  private lazy val observations: Vector[(String, Verdict, Verdict)] = earlier.map { c =>
     (str(c.hcursor.downField("name")), scarab(c), reference(c))
   }
 
   test("the fixture holds the oracle's cases") {
-    assertEquals(cases.size, 70)
+    assertEquals(cases.size, 117)
   }
 
   test("every completed case agrees with the unchanged reference verdict") {
@@ -584,8 +591,14 @@ class DijkstraRulesOracleSuite extends FunSuite:
   private lazy val utxowCases: Vector[Json] =
     cases.filter(c => str(c.hcursor.downField("kind")) == "utxow")
 
+  /** The cases of a kind recorded before the era encoder, which the flat rules are compared on. */
+  private def earlierOf(kind: String): Vector[Json] =
+    earlier.filter(c => str(c.hcursor.downField("kind")) == kind)
+
+  private lazy val earlierUtxow: Vector[Json] = earlierOf("utxow")
+
   test("the era-typed UTXOW gives the reference's verdict on every utxow case, byte for byte") {
-    assertEquals(utxowCases.size, 17)
+    assertEquals(utxowCases.size, 18)
     val differing = utxowCases.flatMap { c =>
       val name = str(c.hcursor.downField("name"))
       val ours = eraUtxow(c)
@@ -596,7 +609,7 @@ class DijkstraRulesOracleSuite extends FunSuite:
   }
 
   test("the era-typed UTXOW gives the flat rule's verdict on every utxow case") {
-    val differing = utxowCases.flatMap { c =>
+    val differing = earlierUtxow.flatMap { c =>
       val name = str(c.hcursor.downField("name"))
       val (ours, flat) = (eraUtxow(c), scarab(c))
       Option.when(ours != flat)(s"$name: $ours, the flat rule $flat")
@@ -606,7 +619,7 @@ class DijkstraRulesOracleSuite extends FunSuite:
 
   test("the era-typed UTXOW leaves the flat rule's state on every utxow case both admit") {
     val all = xyz.kd5ujc.scarab.ledger.TxEnv.Validation.All
-    val admitted = utxowCases.flatMap { c =>
+    val admitted = earlierUtxow.flatMap { c =>
       val name = str(c.hcursor.downField("name"))
       (eraUtxowRun(c, all), flatUtxow(c, all)) match
         case (Right(Right((era, _))), Right(Right(flat))) =>
@@ -622,7 +635,7 @@ class DijkstraRulesOracleSuite extends FunSuite:
     "under the policy that skips the signal's checks, the era-typed UTXOW gives the flat rule's"
   ) {
     val nonStatic = xyz.kd5ujc.scarab.ledger.TxEnv.Validation.NonStatic
-    val differing = utxowCases.flatMap { c =>
+    val differing = earlierUtxow.flatMap { c =>
       val name = str(c.hcursor.downField("name"))
       val era = eraUtxowRun(c, nonStatic) match
         case Left(defect)    => fail(s"$name: $defect")
@@ -687,8 +700,10 @@ class DijkstraRulesOracleSuite extends FunSuite:
   private lazy val certsCases: Vector[Json] =
     cases.filter(c => str(c.hcursor.downField("kind")) == "certs")
 
+  private lazy val earlierCerts: Vector[Json] = earlierOf("certs")
+
   test("the era-typed CERTS gives the reference's verdict on every certs case, byte for byte") {
-    assertEquals(certsCases.size, 20)
+    assertEquals(certsCases.size, 27)
     val differing = certsCases.flatMap { c =>
       val name = str(c.hcursor.downField("name"))
       val (ours, expected) = (eraCerts(c), reference(c))
@@ -698,7 +713,7 @@ class DijkstraRulesOracleSuite extends FunSuite:
   }
 
   test("the era-typed CERTS gives the flat rule's verdict on every certs case, and its state") {
-    val admitted = certsCases.flatMap { c =>
+    val admitted = earlierCerts.flatMap { c =>
       val name = str(c.hcursor.downField("name"))
       assertEquals(eraCerts(c), scarab(c), name)
       (
@@ -714,7 +729,7 @@ class DijkstraRulesOracleSuite extends FunSuite:
           Some(name)
         case _ => None
     }
-    assertEquals(admitted.size, certsCases.count(c => reference(c) == Verdict.Accepted))
+    assertEquals(admitted.size, earlierCerts.count(c => reference(c) == Verdict.Accepted))
   }
 
   test("SUBCERTS gives on every certs case CERTS's refusal through the reference's injection") {
@@ -759,12 +774,12 @@ class DijkstraRulesOracleSuite extends FunSuite:
           true
         case other => fail(s"$name: $other")
     }
-    assertEquals(agreed.size, 20)
+    assertEquals(agreed.size, 27)
     assertEquals(agreed.count(identity), certsCases.count(c => reference(c) == Verdict.Accepted))
   }
 
   test("the era-typed CERTS leaves the flat rule's state after every gov and utxow case's setup") {
-    val withSetup = cases.filter(c => strings(c.hcursor.downField("setup")).nonEmpty)
+    val withSetup = earlier.filter(c => strings(c.hcursor.downField("setup")).nonEmpty)
     assertEquals(withSetup.size, 20)
     withSetup.foreach { c =>
       val name = str(c.hcursor.downField("name"))
@@ -828,10 +843,69 @@ class DijkstraRulesOracleSuite extends FunSuite:
     assertEquals(judged.map(_.map(_._1)), Right(Right(start)))
   }
 
+  private lazy val entitiesCases: Vector[Json] =
+    cases.filter(c => str(c.hcursor.downField("kind")) == "entities")
+
+  /** Dijkstra's ENTITIES on the era types at the root, as the oracle applies it: on the certificate
+    * state the era CERTS leaves after the case's setup, whose accounts are the original ones too,
+    * the transaction annotated as `mkDijkstraStAnnTopTx` does, with no committee.
+    */
+  private def eraEntitiesRun(c: Json) =
+    import xyz.kd5ujc.scarab.ledger.era.dijkstra.{DijkstraCorpus, DijkstraStAnnTx, DijkstraUtxoRun}
+    val era = DijkstraCorpus.era(params(c))
+    val tx = eraTx(c)
+    val start = eraCertsRun(c, "setup") match
+      case Right(Right((s, _))) => s
+      case other                => fail(s"the setup does not pass: $other")
+    xyz.kd5ujc.scarab.ledger.era.EraCertsRun.entities(
+      leiosGlobals,
+      xyz.kd5ujc.scarab.ledger.era.rules.EntitiesEnv[Dijkstra](
+        epochOf(c),
+        era,
+        None,
+        Map.empty,
+        xyz.kd5ujc.scarab.ledger.era.EraCertState.dijkstra.certDStateL.get(start).accounts
+      ),
+      start,
+      DijkstraStAnnTx.mkDijkstraStAnnTopTx(
+        s => fail(s"the clock was read at $s"),
+        era,
+        DijkstraUtxoRun.originalUtxo(utxoOf(c), tx),
+        Map.empty,
+        tx
+      )
+    )
+
+  test(
+    "the era-typed ENTITIES gives the reference's verdict on every entities case, byte for byte"
+  ) {
+    // withdrawals, direct deposits and balance intervals of accounts on another network, missing,
+    // or whose balance does not allow them, and a refund ENTITIES' CERTS refuses
+    assertEquals(entitiesCases.size, 13)
+    val judged = entitiesCases.map { c =>
+      val name = str(c.hcursor.downField("name"))
+      val ours = eraEntitiesRun(c) match
+        case Left(defect)    => fail(s"$name: $defect")
+        case Right(Right(_)) => Verdict.Accepted
+        case Right(Left(fs)) =>
+          Verdict.Refused(fs.toChain.toVector.map(f => written(DijkstraEraFailureCbor.entities(f))))
+      (name, ours, reference(c))
+    }
+    assertEquals(
+      judged.collect {
+        case (name, ours, expected) if ours != expected => s"$name: $ours, the reference $expected"
+      },
+      Vector.empty[String]
+    )
+    assertEquals(judged.count(_._2 == Verdict.Accepted), 2)
+  }
+
   // ---- the era-typed GOV --------------------------------------------------------------------------
 
   private lazy val govCases: Vector[Json] =
     cases.filter(c => str(c.hcursor.downField("kind")) == "gov")
+
+  private lazy val earlierGov: Vector[Json] = earlierOf("gov")
 
   /** The signal of a `gov` case as the era reads it: its votes and proposals, no certificates. */
   private def eraGovSignal(c: Json): xyz.kd5ujc.scarab.ledger.era.rules.GovSignal[Dijkstra] =
@@ -887,7 +961,7 @@ class DijkstraRulesOracleSuite extends FunSuite:
     )
 
   test("the era-typed GOV gives the reference's verdict on every gov case, byte for byte") {
-    assertEquals(govCases.size, 18)
+    assertEquals(govCases.size, 44)
     val differing = govCases.flatMap { c =>
       val name = str(c.hcursor.downField("name"))
       val (ours, expected) = (eraGov(c), reference(c))
@@ -926,7 +1000,7 @@ class DijkstraRulesOracleSuite extends FunSuite:
 
   test("the era-typed GOV gives the flat rule's verdict on every gov case, and its state") {
     import xyz.kd5ujc.scarab.ledger.era.rules.{ConwayGovEvent, drepCredentialOrdering}
-    val judged = govCases.filterNot(c => poolVoteCases(str(c.hcursor.downField("name"))))
+    val judged = earlierGov.filterNot(c => poolVoteCases(str(c.hcursor.downField("name"))))
     val admitted = judged.flatMap { c =>
       val name = str(c.hcursor.downField("name"))
       assertEquals(eraGov(c), scarab(c), name)
@@ -1151,7 +1225,7 @@ class DijkstraRulesOracleSuite extends FunSuite:
         else reference(caseNamed(name))
       Option.when(ours != expected)(s"$name: $ours, the reference $expected")
     }
-    assertEquals(whole.size, 15)
+    assertEquals(whole.size, 16)
     assertEquals(differing, Vector.empty[String])
   }
 
@@ -1353,7 +1427,7 @@ class DijkstraRulesOracleSuite extends FunSuite:
     def failures[F](r: Either[?, Either[cats.data.NonEmptyChain[F], ?]]): Vector[F] = r match
       case Right(Left(fs)) => fs.toChain.toVector
       case _               => Vector.empty
-    def kind(k: String) = earlier.filter(c => str(c.hcursor.downField("kind")) == k)
+    def kind(k: String) = earlierOf(k)
     val all = xyz.kd5ujc.scarab.ledger.TxEnv.Validation.All
     val compared: Vector[(String, Bytes, Bytes)] =
       kind("utxow").flatMap { c =>
