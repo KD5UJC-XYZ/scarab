@@ -187,7 +187,9 @@ class FieldElement {
 
         // Step 1:
         // Calculate q
-        q = (19 * h9 + (1 << 24)) >> 25;
+        // 19 * h9 needs more than 32 bits once |h9| is near the 2^27 assumed above; the
+        // result, at most 76 in absolute value, fits an int.
+        q = (int) ((19L * h9 + (1L << 24)) >> 25);
         q = (h0 + q) >> 26;
         q = (h1 + q) >> 25;
         q = (h2 + q) >> 26;

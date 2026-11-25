@@ -100,6 +100,9 @@ class UnpackedScalar {
 
     /**
      * Compute $a + b \bmod \ell$.
+     * <p>
+     * Precondition: $a + b < 2\ell$, as when both are below $\ell$: the sum is corrected by
+     * $\ell$ at most once.
      *
      * @param b the Scalar to add to this.
      * @return $a + b \bmod \ell$
@@ -119,6 +122,9 @@ class UnpackedScalar {
 
     /**
      * Compute $a - b \bmod \ell$.
+     * <p>
+     * Precondition: $-\ell \le a - b < \ell$, as when both are below $\ell$: $\ell$ is added
+     * at most once, when the difference is negative.
      *
      * @param b the Scalar to subtract from this.
      * @return $a - b \bmod \ell$

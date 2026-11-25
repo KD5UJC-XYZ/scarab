@@ -36,6 +36,54 @@
       "candidateRequired": true
     },
     {
+      "id": "ed25519-wycheproof-current",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "All 210 cases of the Wycheproof Ed25519 vectors at C2SP/wycheproof a3d5d142, including the 29 acceptable keys of small and mixed order, with the verdicts of the pinned libsodium fork built without ED25519_COMPAT.",
+      "assertion": "StrictEd25519 gives the native verdict on every case (12 malformed signatures as their typed length error); the native verdicts agree with every valid and invalid case and reject the 8 small-order keys and accept the 21 mixed-order keys; Bouncy Castle gives the native verdict on every case and the JDK on every case but the 8 small-order keys, which it accepts.",
+      "rationale": "The vectors in fixtures/witness are an earlier revision of 151 cases; the 59 cases added since cover the small- and mixed-order keys where verifiers differ. The native verdicts are a source build of the pinned revision, not the shipped node's binary.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/1418",
+      "resolution": "Retain the upstream file and the native verdicts unchanged; a newer Wycheproof revision is vendored beside them with a fresh native run.",
+      "evidence": [
+        "crypto/src/test/scala/xyz/kd5ujc/scarab/crypto/witness/WycheproofEd25519Suite.scala",
+        "fixtures/wycheproof-ed25519/README.md"
+      ],
+      "candidateRequired": false
+    },
+    {
+      "id": "vrf-draft03-reference-vectors",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "The seven ECVRF draft-03 test vectors of cardano-base 060819b5 (cardano-crypto-praos/test_vectors/vrf_ver03_*).",
+      "assertion": "For each vector, the reference's checkVer03TestVector checks: proving alpha with sk || pk gives pi, the key of sk is pk, the output of pi alone is beta (through ProofToOutput, a test-scope mirror of the reference's proof-to-hash), and StrictDraft03 verifies pi with pk to beta; and the output from the signing key alone is beta.",
+      "rationale": "The prover's suite held two of the three IETF examples and none of cardano-base's generated vectors. The reference takes the output of pi alone with outputFromProof, an unverified proof-to-hash (cardano-base 060819b5 Praos.hs:514-522, cbits/vrf03/verify.c:13-41). The node exposes no such function (StrictDraft03.scala:36); ProofToOutput mirrors it in test scope, built from the verifier's decoder and output function, and is checked against the native function in vrf-proof-to-hash-native.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/1418",
+      "resolution": "Retain the upstream files unchanged.",
+      "evidence": [
+        "crypto/src/test/scala/xyz/kd5ujc/scarab/crypto/vrf/Draft03CardanoBaseVectorSuite.scala",
+        "fixtures/vrf-cardano-base/README.md"
+      ],
+      "candidateRequired": false
+    },
+    {
+      "id": "vrf-proof-to-hash-native",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "105 proofs: the pi of each cardano-base draft-03 vector, unchanged and with fourteen changes of c, s and Gamma, with the result of the pinned libsodium fork's crypto_vrf_ietfdraft03_proof_to_hash.",
+      "assertion": "Each proof is rebuilt from its vector and change; ProofToOutput gives the native output, or refuses where the native function does, with the typed refusal verify.c:13-41 gives the change; on proved proofs it gives the output StrictDraft03.verify gives, and on changed ones the outcome read from verify.c:13-41.",
+      "rationale": "The reference's outputFromProof has no counterpart in the node; the test-scope mirror is what makes the reference vectors' check of the output of pi alone, and it accepts what the verifier does not only through what it does not read (c).",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/1418",
+      "resolution": "Retain the derived proofs and the native results unchanged; a new native run records its own build.",
+      "evidence": [
+        "crypto/src/test/scala/xyz/kd5ujc/scarab/crypto/vrf/ProofToOutputSuite.scala",
+        "fixtures/vrf-proof-to-hash/README.md"
+      ],
+      "candidateRequired": false
+    },
+    {
       "id": "byron-projection",
       "classification": "regression",
       "status": "covered",
