@@ -26,8 +26,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 # the mode of a submodule's entry in the index
 GITLINK = b'160000 '
-# The tracked top-level directories. `flake` and `perSystem` hold the Nix flake's modules of PR #1428, which is
-# expected to land before this guard.
+# The tracked top-level directories. `flake` and `perSystem` hold the Nix flake's modules (PR #1428, docs/nix.md).
 DIRECTORIES = frozenset({
     # the sbt modules of build.sbt, and the build's own definition
     'codec', 'consensus', 'crypto', 'fuzz', 'ledger', 'models', 'models-gen', 'network', 'node', 'plutus',
