@@ -184,13 +184,17 @@ object EraBodies:
                 val by = results.toMap
                 // the results compared on the first round only: a comparison reads the whole state
                 if round == 0 then
-                  val serial = by(Way.EraSerial)._1
+                  // every block of the window is one the node admitted: the serial run admits it,
+                  // so ways that agree on a refusal or a defect do not pass
+                  val serial = by(Way.EraSerial)._1 match
+                    case Right(Right(applied)) => applied
+                    case other => fail(s"serial: slot ${header.slot}: ${described(other)}")
                   // through the workers as the node runs them, and prepared below the floor too
-                  def agrees(way: Way) = (serial, by(way)._1) match
-                    case (Right(Right(s)), Right(Right(p))) =>
-                      cats.Eq[LedgerState[Conway]].eqv(s.state.ls, p.state.ls) &&
-                      s.state.blocksMade == p.state.blocksMade && s.plutus == p.plutus
-                    case (s, p) => s == p
+                  def agrees(way: Way) = by(way)._1 match
+                    case Right(Right(p)) =>
+                      cats.Eq[LedgerState[Conway]].eqv(serial.state.ls, p.state.ls) &&
+                      serial.state.blocksMade == p.state.blocksMade && serial.plutus == p.plutus
+                    case _ => false
                   assert(agrees(Way.EraParallel), s"through the workers: slot ${header.slot}")
                   assert(agrees(Way.EraPrepared), s"prepared: slot ${header.slot}")
                 Json.obj(
