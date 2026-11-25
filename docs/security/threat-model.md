@@ -80,6 +80,10 @@ timing test cannot.
 its mutable key material. The VRF signing key keeps only its seed, which `forget` zeroes; each
 proof or output copies the seed into working storage of its own (`secret.Scratch`), computes the
 scalar, the nonce and their encodings there, and zeroes all of it when it ends, on failure too. The
+node's hot keys own the keys once read, one generation of credentials at a time: an evaluation of
+the VRF key leases the generation in force for its duration, a reload installs the next at once, and
+a superseded, disabled or refused generation's keys are erased when the last evaluation under them
+ends; a start as non-producing erases the start-up keys at once (`HotKeys`, `Generations`). The
 curve arithmetic's own intermediates (immutable field elements and points) are not erased, nor are
 the key file's text and decoded bytes, or copies a garbage collector made before the zeroing. No
 claim of complete JVM erasure or constant-time node execution follows from those operations. The
