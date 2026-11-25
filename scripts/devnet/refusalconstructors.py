@@ -50,10 +50,10 @@ TAGS = {
     "utxo-reference-input-spent": [("BabbageNonDisjointRefInputs", UTXO + (22,))],
     # `Conway/Rules/Mempool.hs:113-118`
     "mempool-inputs-empty": [("ConwayMempoolFailure", MEMPOOL)],
-    # `Shelley/Rules/Pool.hs:160-170` writes POOL's tags
+    # `Shelley/Rules/Pool.hs:153-171` writes POOL's tags
     "pool-reward-account-wrong-network": [("WrongNetworkPOOL", POOL + (4,))],
     "pool-metadata-hash-too-big": [("PoolMedataHashTooBig", POOL + (5,))],
-    # `Conway/Rules/GovCert.hs` (`EncCBOR (ConwayGovCertPredFailure era)`)
+    # `Conway/Rules/GovCert.hs:128-137` writes GOVCERT's tags
     "govcert-committee-member-resigned": [("ConwayCommitteeHasPreviouslyResigned", GOVCERT + (3,))],
     # ---- conway_gov_order, version 10 (`Conway/Rules/Gov.hs:259-298`)
     "gov-votes-on-unknown-actions-out-of-order": [("GovActionsDoNotExist", GOV + (0,))],
@@ -177,7 +177,7 @@ def conway_constructors(name):
 
     The empty input set is MEMPOOL's: it refuses a transaction none of whose inputs the UTxO holds as probably
     included already and skips LEDGER (`Conway/Rules/Mempool.hs:113-122`), so `InputSetEmptyUTxO`
-    (`Shelley/Rules/Utxo.hs` `validateInputSetEmptyUTxO`, run from `Babbage/Rules/Utxo.hs:367`) never reaches a
+    (`Shelley/Rules/Utxo.hs` `validateInputSetEmptyUTxO`, run from `Babbage/Rules/Utxo.hs:368`) never reaches a
     submitter.
     """
     socket = f"{ENV}/socket/node1/sock"
@@ -244,7 +244,7 @@ def conway_constructors(name):
         script_data=eratx.script_data_hash(enc(eratx.redeemers_cbor("conway", redeemers)), b"", {2: v2})))
     # ---- UTXO (`Babbage/Rules/Utxo.hs:342-410`)
     # TooManyCollateralInputs: four collateral inputs, where maxCollateralInputs is 3; checked with or without
-    # redeemers (`Alonzo/Rules/Utxo.hs` `validateTooManyCollateralInputs`, run at 409)
+    # redeemers (`Alonzo/Rules/Utxo.hs` `validateTooManyCollateralInputs`, run at 412)
     if params["maxCollateralInputs"] != 3:
         raise RuntimeError(f"the collateral case is built for maxCollateralInputs 3: {params['maxCollateralInputs']}")
     add("utxo-collateral-inputs-too-many", **spend(collateral=collateral[1:5]))
@@ -265,7 +265,7 @@ def conway_constructors(name):
     add("pool-reward-account-wrong-network", **spend(
         certs=[pool_params(pool_wrong_network, eratx.blake2b(b"constructors vrf network"), network=1)],
         signers=[k1, pool_wrong_network]))
-    # PoolMedataHashTooBig: a new pool's metadata hash is 33 bytes (244-249)
+    # PoolMedataHashTooBig: a new pool's metadata hash is 33 bytes (245-250)
     add("pool-metadata-hash-too-big", **spend(
         certs=[pool_params(pool_big_metadata, eratx.blake2b(b"constructors vrf metadata"),
                            metadata=["https://example.invalid/pool.json", bytes(33)])],

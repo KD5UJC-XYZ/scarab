@@ -9,7 +9,8 @@ import sys
 import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-from devnet import ntcquery, refusalconstructors as rc  # noqa: E402
+from devnet import ntcquery, refusalcorpus, refusalconstructors as rc  # noqa: E402
+from devnet.refusalcases import Case  # noqa: E402
 from test_refusalcoverage import failures, walk  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parents[2] / "fixtures" / "reference" / "refusals"
@@ -134,6 +135,41 @@ class KeyOrder(unittest.TestCase):
         self.assertTrue(text.startswith("Unelected committee members are not allowed to cast votes: "), text)
         listed = re.findall(r'unKeyHash = "([0-9a-f]+)"', text)
         self.assert_out_of_order_then_sorted(arrived, listed, lambda h: h)
+
+
+class CapturePrefix(unittest.TestCase):
+    """`refusalcorpus.capture` with the reference replaced: a case with `before` is a batch of its own, and when its
+    batch must be taken again it is replaced by its `retry` once the mempool is empty."""
+
+    def setUp(self):
+        self.saved = refusalcorpus.judged, refusalcorpus.drained
+        self.batches, self.drains, self.moves = [], [], [1]
+
+        def judged(name, era, batch, build):
+            self.batches.append([c.label for c in batch])
+            if any(c.before for c in batch) and self.moves:
+                self.moves.pop()
+                return None
+            return {"point": [7, b""], "reasons": [b"refused"] * len(batch)}
+        refusalcorpus.judged = judged
+        refusalcorpus.drained = lambda name, era, build: self.drains.append(len(self.batches))
+
+    def tearDown(self):
+        refusalcorpus.judged, refusalcorpus.drained = self.saved
+
+    def test_a_case_with_a_prefix_is_judged_alone_and_retried_from_other_inputs(self):
+        retried = Case("prefix", b"2", (), before=(b"p2",))
+        cases = [Case("a", b"a", ()), Case("b", b"b", ()), Case("prefix", b"1", (), before=(b"p1",),
+                                                               retry=lambda: retried), Case("c", b"c", ())]
+        out = refusalcorpus.capture("devnet", "conway", cases)
+        self.assertEqual(self.batches, [["a", "b"], ["prefix"], ["prefix"], ["c"]])
+        self.assertEqual([c.tx for c, _, _ in out], [b"a", b"b", b"2", b"c"])
+        # drained after the failed attempt, and after the case, before the next batch
+        self.assertEqual(self.drains, [2, 3])
+
+    def test_a_case_with_a_prefix_and_no_retry_is_not_taken_again(self):
+        with self.assertRaises(refusalcorpus.Unexpected):
+            refusalcorpus.capture("devnet", "conway", [Case("prefix", b"1", (), before=(b"p1",))])
 
 
 if __name__ == "__main__":
