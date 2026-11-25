@@ -20,19 +20,24 @@ import xyz.kd5ujc.scarab.crypto.secret.Scratch
   * ([[Blake2b256]]), and the leaf's expanded key, scalar, nonce and their digits and encodings
   * ([[Leaf]]). One operation has one scratch, so what it held is gone when it returns.
   *
-  * Evolution overwrites in place what the new period cannot use: moving into the right half of a
-  * level zeroes the left half, generates the right half over it from `r1`, and zeroes `r1`. So the
-  * array only ever holds the seeds of the current period and the ones after it, and none of a
-  * period the key has left (forward security).
+  * Evolution replaces what the new period cannot use: moving into the right half of a level zeroes
+  * the left half, generates the right half over it from `r1`, and zeroes `r1`. Each step is built
+  * in the scratch and then copied over the key's array with the period, so the array only ever
+  * holds one period's key whole: the seeds of the current period and the ones after it, and none of
+  * a period the key has left (forward security).
   *
-  * Every read and write of the array, the period and the flag holds this key's monitor, so a sign,
-  * an evolution, a copy and [[forget]] each see the key whole, before or after another: a signature
-  * is the key's at its period, or a refusal once it is forgotten, never one from a key part evolved
-  * or part zeroed. [[forget]] zeroes the array, and the key then signs and evolves no more.
+  * Every read and write of the array, the period and the flag holds this key's monitor, and a
+  * signature and an evolution hold it until their scratch is erased, so a sign, an evolution, a
+  * copy and [[forget]] each see the key whole, before or after another, and none returns while
+  * another still holds what it computed: a signature is the key's at its period, or a refusal once
+  * it is forgotten, never one from a key part evolved or part zeroed. [[forget]] zeroes the array,
+  * and the key then signs and evolves no more.
   *
-  * What this does not cover: the curve library's immutable intermediates, values the JIT kept in
-  * registers or spilled to the stack, copies a moving collector made of an array before it was
-  * zeroed, and [[toBytes]], a copy its caller owns.
+  * What this does not cover: the curve library's immutable intermediates (the field elements and
+  * points of the multiplications), values the JIT kept in registers or spilled to the stack, copies
+  * a moving collector made of an array before it was zeroed, a payload copied into a caller's
+  * scratch ([[payloadIn]]), which is the caller's to erase, and [[toBytes]], a copy its caller
+  * owns.
   */
 @SuppressWarnings(Array("org.wartremover.warts.Var"))
 private[kes] final class Sum6Key private (material: Array[Byte], start: Int):
@@ -60,8 +65,16 @@ private[kes] final class Sum6Key private (material: Array[Byte], start: Int):
   /** The signature of `message` for the current period: the leaf's Ed25519 signature followed by
     * the `vk0 || vk1` pair of every level, innermost first; a refusal once the key is forgotten.
     */
-  def sign(message: Bytes): Either[Failure, Bytes] =
-    Scratch.within(s => signedIn(s, message)).toRight(Failure.Forgotten)
+  def sign(message: Bytes): Either[Failure, Bytes] = signing(message)(Scratch.within[Option[Bytes]])
+
+  /** [[sign]] with `scratch` running the computation: the monitor is held until the scratch is
+    * erased, so an evolution or a forget does not return while a signature still holds the leaf's
+    * seed, scalar or nonce. A suite of this package passes an observed scratch.
+    */
+  private[secret] def signing(message: Bytes)(
+      scratch: (Scratch => Option[Bytes]) => Option[Bytes]
+  ): Either[Failure, Bytes] =
+    synchronized(scratch(s => signedIn(s, message))).toRight(Failure.Forgotten)
 
   /** [[sign]] in the scratch `s`; none once the key is forgotten. `signed` runs once the signature
     * is computed, before it is published: a suite of this package sees there what the computation
@@ -92,13 +105,27 @@ private[kes] final class Sum6Key private (material: Array[Byte], start: Int):
       Evolution.Moved
   }
 
-  /** The steps of [[evolveTo]] to `target`, checked, in the scratch `s`; `stepped` runs after each.
+  /** The steps of [[evolveTo]] to `target`, checked, in the scratch `s`. Each step builds the next
+    * period's key in the scratch, from a copy, and only then puts it in the key's array, with the
+    * period, in one copy of fixed length that cannot fail: the key is wholly the old period's or
+    * wholly the new one's, never a mixture, whatever the build throws. The old period's material is
+    * gone from the key's array once the step is committed, and from the scratch when the evolution
+    * returns. `erased` runs inside a build, just after the half it leaves is zeroed; `stepped`
+    * after each step: hooks for the suites of this package.
     */
-  private[secret] def evolvedIn(s: Scratch, target: Int, stepped: () => Unit = () => ()): Unit =
+  private[secret] def evolvedIn(
+      s: Scratch,
+      target: Int,
+      erased: () => Unit = () => (),
+      stepped: () => Unit = () => ()
+  ): Unit =
     synchronized {
       @tailrec def step(): Unit =
         if current < target then
-          update(s)(material, 0, Depth, current)
+          val next = s.buffer(KeyBytes)
+          System.arraycopy(material, 0, s.array(next), 0, KeyBytes)
+          update(s)(s.array(next), 0, Depth, current, erased)
+          System.arraycopy(s.array(next), 0, material, 0, KeyBytes)
           current += 1
           stepped()
           step()
@@ -133,15 +160,34 @@ private[kes] final class Sum6Key private (material: Array[Byte], start: Int):
   /** The 608-byte payload as a value its caller owns, which nothing erases. */
   def toBytes: Bytes = synchronized(Bytes.fromArray(material))
 
-  /** Whether `other` holds the same 608 bytes, compared in constant time; each key's bytes are
-    * copied under its own monitor, one after the other.
+  /** Whether `other` holds the same 608 bytes: their Blake2b-256 digests, each computed under its
+    * key's monitor in a scratch erased before the monitor is released, compared in constant time.
+    * No copy of either key's bytes is outside its monitor, and neither monitor is taken inside the
+    * other.
     */
-  def sameMaterial(other: Sum6Key): Boolean = Scratch.within { s =>
-    MessageDigest.isEqual(s.array(payloadIn(s)), s.array(other.payloadIn(s)))
+  def sameMaterial(other: Sum6Key): Boolean =
+    MessageDigest.isEqual(materialDigest.toArray, other.materialDigest.toArray)
+
+  private def materialDigest: Bytes = synchronized {
+    Scratch.within { s =>
+      val digest = s.buffer(Blake2b256.DigestBytes)
+      Blake2b256.hash(s)(material, 0, KeyBytes, s.array(digest), 0)
+      s.publish(digest)
+    }
   }
 
-  /** The key's own array, for the suites of this package to see what it holds. */
-  private[secret] def storage: Array[Byte] = material
+  // what the suites of this package may ask of the key's array, under its monitor, without
+  // holding it: whether it is all zero, starts with `prefix`, or holds `window` anywhere
+
+  private[secret] def storedIsZero: Boolean = synchronized(isZero(material, 0, KeyBytes))
+
+  private[secret] def storedStartsWith(prefix: Array[Byte]): Boolean = synchronized {
+    prefix.length <= KeyBytes && differs(material, 0, prefix) == 0
+  }
+
+  private[secret] def storedHolds(window: Array[Byte]): Boolean = synchronized {
+    (0 to KeyBytes - window.length).map(at => differs(material, at, window)).contains(0)
+  }
 
 private[kes] object Sum6Key:
   val Depth: Int = 6
@@ -236,6 +282,10 @@ private[kes] object Sum6Key:
   private def isZero(m: Array[Byte], at: Int, n: Int): Boolean =
     (0 until n).foldLeft(0)((acc, i) => acc | m(at + i)) == 0
 
+  /** Zero exactly when the bytes of `m` from `at` are `expected`, every one of them read. */
+  private def differs(m: Array[Byte], at: Int, expected: Array[Byte]): Int =
+    expected.indices.foldLeft(0)((acc, i) => acc | (m(at + i) ^ expected(i)))
+
   /** The verification key of the (sub-)key at `m(offset)` of depth `depth`, into `out` at `outAt`:
     * the leaf's public key, or Blake2b-256 of the level's `vk0 || vk1`.
     */
@@ -306,17 +356,26 @@ private[kes] object Sum6Key:
         64
       )
 
-  /** Move the key at `m(offset)` from `period` to `period + 1`, which exists for this depth. */
-  private def update(s: Scratch)(m: Array[Byte], offset: Int, depth: Int, period: Int): Unit =
+  /** Move the key at `m(offset)` from `period` to `period + 1`, which exists for this depth;
+    * `erased` runs once the half it leaves is zeroed.
+    */
+  private def update(s: Scratch)(
+      m: Array[Byte],
+      offset: Int,
+      depth: Int,
+      period: Int,
+      erased: () => Unit
+  ): Unit =
     val half = 1 << (depth - 1)
-    if period + 1 < half then update(s)(m, offset, depth - 1, period)
+    if period + 1 < half then update(s)(m, offset, depth - 1, period, erased)
     else if period + 1 == half then
       // the left half is finished: erase it, and generate the right half over it from its seed,
       // which lies after it and is read before anything is written there
       Arrays.fill(m, offset, r1At(offset, depth), 0.toByte)
+      erased()
       gen(s)(m, r1At(offset, depth), m, offset, depth - 1)
       Arrays.fill(m, r1At(offset, depth), r1At(offset, depth) + SeedBytes, 0.toByte)
-    else update(s)(m, offset, depth - 1, period - half)
+    else update(s)(m, offset, depth - 1, period - half, erased)
 
   /** Does the key at `m(offset)` agree with its stored verification keys at `period`: the right
     * half's seed present exactly while the key is in the left half, the verification key of the

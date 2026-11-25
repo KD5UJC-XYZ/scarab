@@ -174,7 +174,7 @@ class Sum6KeySuite extends munit.FunSuite:
       assert(holds(before, seeds(node)), s"the seed of $node was not held by the scratch")
     }
     allZero(after, "the evolution")
-    assert(java.util.Arrays.equals(key.storage, 0, 512, rightHalf, 0, 512), "the right half's tree")
+    assert(key.storedStartsWith(rightHalf), "the right half's tree")
     assertEquals(key.period, 32)
   }
 
@@ -182,14 +182,13 @@ class Sum6KeySuite extends munit.FunSuite:
     val key = generated()
     (1 until Sum6Key.Periods).foreach { p =>
       assertEquals(key.evolveTo(p), Sum6Key.Evolution.Moved)
-      val array = key.storage
       past(p).foreach((node, seed) =>
         assert(
-          !holdsWindow(array, seed),
+          !key.storedHolds(seed),
           s"period $p: the seed of $node, which generates an earlier period, is in the key"
         )
       )
-      assert(java.util.Arrays.equals(array, 0, 32, seeds((0, p)), 0, 32), s"period $p: the leaf")
+      assert(key.storedStartsWith(seeds((0, p))), s"period $p: the leaf")
     }
     // at the last period no seed is left but the last leaf's
     assertEquals(past(Sum6Key.Periods - 1).size, seeds.size - 1)
@@ -221,9 +220,9 @@ class Sum6KeySuite extends munit.FunSuite:
   test("forget zeroes the array, and the key then signs and evolves no more") {
     val key = generated()
     key.evolveTo(9)
-    assert(!key.storage.forall(_ == 0))
+    assert(!key.storedIsZero)
     key.forget()
-    assert(key.storage.forall(_ == 0), "forget left key material")
+    assert(key.storedIsZero, "forget left key material")
     assert(key.isForgotten)
     assertEquals(key.sign(Bytes.empty), Left(Failure.Forgotten))
     assertEquals(key.evolveTo(10), Sum6Key.Evolution.Forgotten)
@@ -231,7 +230,7 @@ class Sum6KeySuite extends munit.FunSuite:
     assertEquals(key.evolveTo(8), Sum6Key.Evolution.OutOfRange(8))
     assertEquals(key.period, 9)
     val copied = key.copy
-    assert(copied.isForgotten && copied.storage.forall(_ == 0), "the copy of a forgotten key")
+    assert(copied.isForgotten && copied.storedIsZero, "the copy of a forgotten key")
   }
 
   test("sameMaterial is the equality of the 608 bytes") {
@@ -243,6 +242,59 @@ class Sum6KeySuite extends munit.FunSuite:
     a.evolve()
     assert(a.sameMaterial(b))
     assert(a.copy.sameMaterial(a))
+  }
+
+  private def keyAt(p: Int): Sum6Key =
+    val k = generated()
+    assertEquals(k.evolveTo(p), Sum6Key.Evolution.Moved)
+    k
+
+  private final class Injected extends RuntimeException("a failure injected into the build")
+
+  test("an evolution that fails in its build leaves the key wholly at the period before it") {
+    val message = Bytes.fromArray(Array.fill(40)(9.toByte))
+    // from period 31 into the right half of the top level: the whole left half is erased and
+    // generated again, and the build fails just after the erase
+    val key = keyAt(31)
+    intercept[Injected](
+      Scratch.within(s => key.evolvedIn(s, 32, erased = () => throw new Injected))
+    )
+    assertEquals(key.period, 31)
+    assertEquals(key.toBytes, keyAt(31).toBytes, "the key's bytes are not those of period 31")
+    assertEquals(key.sign(message), keyAt(31).sign(message), "the signature is not period 31's")
+    // a longer evolution that fails at its second step keeps what the first committed
+    val longer = keyAt(30)
+    var builds = 0
+    intercept[Injected](
+      Scratch.within(s =>
+        longer.evolvedIn(
+          s,
+          33,
+          erased = () =>
+            builds += 1
+            if builds == 2 then throw new Injected
+        )
+      )
+    )
+    assertEquals(longer.period, 31)
+    assertEquals(longer.toBytes, keyAt(31).toBytes)
+    assertEquals(longer.evolveTo(33), Sum6Key.Evolution.Moved)
+    assertEquals(longer.sign(message), keyAt(33).sign(message), "the key does not go on from 31")
+  }
+
+  test("a signature's scratch is erased while the signer still holds the key's monitor") {
+    val key = generated()
+    var heldAtRelease: Option[Boolean] = None
+    var secretsAtRelease = false
+    val signed = key.signing(Bytes.empty) { body =>
+      Scratch.observed[Option[Bytes]] { arrays =>
+        heldAtRelease = Some(Thread.holdsLock(key))
+        secretsAtRelease = arrays.exists(_.exists(_ != 0))
+      }(body)
+    }
+    assertEquals(signed, generated().sign(Bytes.empty))
+    assert(secretsAtRelease, "the scratch held nothing when it was released")
+    assertEquals(heldAtRelease, Some(true), "the scratch was erased after the monitor was released")
   }
 
   // A forget, an evolution, a copy and a read of the key all take its monitor: one that holds it
