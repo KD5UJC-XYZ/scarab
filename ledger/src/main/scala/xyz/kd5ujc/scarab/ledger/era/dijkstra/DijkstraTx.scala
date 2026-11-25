@@ -3,11 +3,12 @@ package xyz.kd5ujc.scarab.ledger.era.dijkstra
 
 import cats.syntax.all.*
 import scala.annotation.unused
-import xyz.kd5ujc.scarab.codec.{Bytes, Node}
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
 import xyz.kd5ujc.scarab.ledger.{DecodeField, LedgerDecodeError}
 import xyz.kd5ujc.scarab.ledger.dijkstra.{
   DijkstraSubTx as FlatDijkstraSubTx,
-  DijkstraTx as FlatDijkstraTx
+  DijkstraTx as FlatDijkstraTx,
+  V12
 }
 import xyz.kd5ujc.scarab.ledger.era.{
   AlonzoEraTx,
@@ -58,15 +59,23 @@ object DijkstraTx:
 
   private given FromBytes = FromBytes()
 
-  /** A witness set read from bytes by the block decoder, in the era's types. */
+  /** A witness set read from its item in the era's types ([[DijkstraTxWits.read]]). */
   private[dijkstra] def witsOf(n: Node): Either[EraTxError, DijkstraTxWits] =
+    DijkstraTxWits.read(n)
+
+  /** Auxiliary data read from its item in the era's types ([[DijkstraTxAuxData.read]]). */
+  private[dijkstra] def auxDataOf(n: Node): Either[EraTxError, DijkstraTxAuxData] =
+    DijkstraTxAuxData.read(n)
+
+  /** [[witsOf]] in two passes: the flat block decoder's witness set, then its projection. */
+  private[dijkstra] def witsByFlat(n: Node): Either[EraTxError, DijkstraTxWits] =
     xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraWitnesses
       .decode(n)
       .leftMap(EraTxError.Decode(_))
       .flatMap(DijkstraTxWits.fromFlat)
 
-  /** Auxiliary data read from bytes by the block decoder, in the era's types. */
-  private[dijkstra] def auxDataOf(n: Node): Either[EraTxError, DijkstraTxAuxData] =
+  /** [[auxDataOf]] in two passes, as [[witsByFlat]]. */
+  private[dijkstra] def auxDataByFlat(n: Node): Either[EraTxError, DijkstraTxAuxData] =
     xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraAuxData
       .decode(n)
       .leftMap(EraTxError.Decode(_))
@@ -158,7 +167,17 @@ object DijkstraTx:
     * (`Node.apply`) can hold a value its bytes are not (#85).
     */
   def inBlock(n: Node): Either[EraTxError, DijkstraTx[TxLevel.Top]] =
-    FlatDijkstraTx.inBlock(n).leftMap(EraTxError.Decode(_)).flatMap(decode)
+    V12
+      .record(n, 4, DecodeField.Transaction)
+      .leftMap(EraTxError.Decode(_))
+      .flatMap(xs =>
+        (
+          DijkstraTxBody.readTop(xs(0), subTx),
+          DijkstraTxWits.read(xs(1)),
+          nullable(xs(2)),
+          V12.bool(xs(3), DecodeField.IsValid).leftMap(EraTxError.Decode(_))
+        ).mapN((body, wits, aux, valid) => TopTx(body, wits, IsPhase2Valid.of(valid), aux))
+      )
 
   /** A transaction of a block the flat block decoder read (`LeiosBlock.decode`, which reads each
     * transaction with `decodeDijkstraTopTxInBlock` as [[inBlock]] does): what [[inBlock]] reads,
@@ -175,6 +194,68 @@ object DijkstraTx:
     * a peer submits it, valid.
     */
   def fromSubmission(raw: Bytes): Either[EraTxError, DijkstraTx[TxLevel.Top]] =
+    Cbor
+      .decode(raw, Cbor.Limits.Unbounded)
+      .leftMap(e => EraTxError.Decode(LedgerDecodeError.Syntax(e)))
+      .flatMap(submitted)
+
+  /** The mempool form read from its item, as the flat decoder's `submitted` reads it: three items,
+    * or four with a boolean third, which must be `true`, before the auxiliary data
+    * (`decodeDijkstraTopTx`, `Tx.hs:152-169`, cardano-ledger 9df9f98c).
+    */
+  private def submitted(n: Node): Either[EraTxError, DijkstraTx[TxLevel.Top]] =
+    V12.list(n, DecodeField.Transaction).leftMap(EraTxError.Decode(_)).flatMap { xs =>
+      val flagged = xs
+        .lift(2)
+        .exists(_.value match
+          case Value.Bool(_) => true
+          case _             => false)
+      val size = if flagged then 4 else 3
+      for
+        _ <- Either.cond(
+          xs.sizeIs == size,
+          (),
+          EraTxError.Decode(LedgerDecodeError.ArrayLength(DecodeField.Transaction, size, xs.size))
+        )
+        _ <- Either.cond(
+          !flagged || xs(2).value == Value.Bool(true),
+          (),
+          EraTxError.Decode(LedgerDecodeError.InvalidFlagSubmitted)
+        )
+        tx <- (
+          DijkstraTxBody.readTop(xs(0), subTx),
+          DijkstraTxWits.read(xs(1)),
+          nullable(xs(size - 1))
+        ).mapN((body, wits, aux) => TopTx(body, wits, IsPhase2Valid.Phase2Valid, aux))
+      yield tx
+    }
+
+  // `decodeNullStrictMaybe` of auxiliary data.
+  private def nullable(n: Node): Either[EraTxError, Option[DijkstraTxAuxData]] = n.value match
+    case Value.Null => Right(None)
+    case _          => DijkstraTxAuxData.read(n).map(Some(_))
+
+  /** `DecCBOR (Annotator (DijkstraTx SubTx era))` (`Tx.hs:184-192`, cardano-ledger 9df9f98c):
+    * `decodeRecordNamed "DijkstraSubTx" (const 3)` of a body of the sub-transaction level, a
+    * witness set and auxiliary data or null, read from the item into Dijkstra's types.
+    */
+  private def subTx(n: Node): Either[EraTxError, DijkstraTx[TxLevel.Sub]] =
+    V12
+      .record(n, 3, DecodeField.SubTransaction)
+      .leftMap(EraTxError.Decode(_))
+      .flatMap(xs =>
+        (DijkstraTxBody.readSub(xs(0)), DijkstraTxWits.read(xs(1)), nullable(xs(2)))
+          .mapN(SubTx(_, _, _))
+      )
+
+  /** [[inBlock]] in two passes: the flat block decoder's transaction, then its projection. */
+  private[dijkstra] def inBlockByFlat(n: Node): Either[EraTxError, DijkstraTx[TxLevel.Top]] =
+    FlatDijkstraTx.inBlock(n).leftMap(EraTxError.Decode(_)).flatMap(decode)
+
+  /** [[fromSubmission]] in two passes, as [[inBlockByFlat]]. */
+  private[dijkstra] def fromSubmissionByFlat(
+      raw: Bytes
+  ): Either[EraTxError, DijkstraTx[TxLevel.Top]] =
     FlatDijkstraTx.fromSubmission(raw).leftMap(EraTxError.Decode(_)).flatMap(decode)
 
   /** The setter of `isPhase2ValidTxL` (`isPhase2ValidDijkstraTxL`, `Tx.hs:279-283`, cardano-ledger

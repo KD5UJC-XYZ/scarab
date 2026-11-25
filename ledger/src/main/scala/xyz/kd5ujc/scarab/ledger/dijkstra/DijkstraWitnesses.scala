@@ -79,7 +79,7 @@ object DijkstraWitnesses:
   /** `WitVKey` (`Keys/WitVKey.hs:106-109`, cardano-ledger 9df9f98c): `decodeRecordNamed` of a
     * 32-byte Ed25519 key and a 64-byte signature, each `decodeFixedSized`.
     */
-  private def vkeyWitnesses(n: Node): Result[Vector[(Bytes, Bytes)]] =
+  private[ledger] def vkeyWitnesses(n: Node): Result[Vector[(Bytes, Bytes)]] =
     V12.nonEmptySet(n, DecodeField.VkeyWitnesses)(w =>
       V12
         .record(w, 2, DecodeField.VkeyWitness)
@@ -95,7 +95,7 @@ object DijkstraWitnesses:
     * of the key, the signature, a chain code of exactly 32 bytes from version 12, and the
     * attributes.
     */
-  private def bootstrapWitnesses(n: Node): Result[Vector[DijkstraBootstrap]] =
+  private[ledger] def bootstrapWitnesses(n: Node): Result[Vector[DijkstraBootstrap]] =
     V12.nonEmptySet(n, DecodeField.BootstrapWitnesses)(w =>
       V12
         .record(w, 4, DecodeField.BootstrapWitness)
