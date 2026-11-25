@@ -260,8 +260,10 @@ class DijkstraOnePassSuite extends ScalaCheckSuite:
       case Value.Map(kvs) if kvs.nonEmpty =>
         val entries = kvs.map((k, v) => k.original ++ v.original)
         kind % 6 match
-          case 0 => // a key given twice
-            val e = pick(entries)
+          case 0 => // a key given twice, with its own value or another entry's
+            val e =
+              if rnd.nextBoolean() then pick(entries)
+              else kvs(rnd.nextInt(kvs.size))._1.original ++ kvs(rnd.nextInt(kvs.size))._2.original
             Some(head(5, entries.size + 1L) ++ concat(entries) ++ e)
           case 1 => // an entry dropped
             val i = rnd.nextInt(entries.size)
@@ -310,6 +312,21 @@ class DijkstraOnePassSuite extends ScalaCheckSuite:
               Bytes.wrap(0x1b.toByte +: Array.tabulate(8)(i => (v.toLong >>> (8 * (7 - i))).toByte))
             )
           case _ => Some(head(1, 0)) // negative
+      case Value.Text(t) =>
+        val utf8 = Bytes.wrap(t.getBytes(StandardCharsets.UTF_8))
+        kind % 3 match
+          case 0 => // chunked, in two chunks
+            val cut = utf8.size / 2
+            Some(
+              Bytes.wrap(Array(0x7f.toByte)) ++ head(3, cut.toLong) ++ utf8.take(cut) ++
+                head(3, (utf8.size - cut).toLong) ++ utf8.drop(cut) ++ Bytes.wrap(
+                  Array(0xff.toByte)
+                )
+            )
+          case 1 => // past 128 bytes
+            val long = Bytes.wrap(Array.fill(129)(0x61.toByte))
+            Some(head(3, long.size.toLong) ++ long)
+          case _ => Some(head(3, 0)) // empty
       case Value.ByteString(b) =>
         kind % 4 match
           case 0 => Some(head(2, b.size + 1L) ++ b ++ Bytes.wrap(Array(0.toByte))) // one byte more
@@ -360,11 +377,13 @@ class DijkstraOnePassSuite extends ScalaCheckSuite:
     yield mutant(seeds(i % seeds.size), seed)
 
   property("a mutated transaction reads the same in one pass as in two, or is refused the same") {
+    // and the projection never refuses what the flat decoder accepts, on which the order of the
+    // one pass's refusals rests: the two passes found every refusal of the flat decoder first
     Prop.forAll(mutants) { (raw, what) =>
-      node(raw).foreach(n => sameInBlock(n, what))
-      sameSubmitted(raw, s"$what, submitted")
-      mempoolForm(raw).foreach(m => sameSubmitted(m, s"$what, mempool form"))
-      true
+      val outcomes = node(raw).map(sameInBlock(_, what)).toVector ++
+        Vector(sameSubmitted(raw, s"$what, submitted")) ++
+        mempoolForm(raw).map(sameSubmitted(_, s"$what, mempool form")).toVector
+      Prop(!outcomes.contains(Outcome.ProjectionRefused)) :| s"$what: the projection refused"
     }
   }
 
@@ -378,6 +397,7 @@ class DijkstraOnePassSuite extends ScalaCheckSuite:
     val parts = read.map(_._1).toSet
     assert(outcomes.getOrElse(Outcome.Accepted, 0) > 100, outcomes.toString)
     assert(outcomes.getOrElse(Outcome.Refused, 0) > 1000, outcomes.toString)
+    assert(!outcomes.contains(Outcome.ProjectionRefused), outcomes.toString)
     Vector("part0", "part1", "part2", "part3").foreach(p =>
       assert(parts.exists(_.startsWith(p)), s"no mutant of $p: $parts")
     )
@@ -385,4 +405,41 @@ class DijkstraOnePassSuite extends ScalaCheckSuite:
     Vector("part0:0", "part0:1", "part0:2", "part1:0", "part2:0").foreach(k =>
       assert(parts.contains(k), s"no mutant under $k: $parts")
     )
+  }
+
+  test(
+    "every text written in chunks and every redeemer purpose given twice reads the same both ways"
+  ) {
+    // the two kinds of mutant the projection's own readers could refuse otherwise: a text read
+    // again by another reader (a pool's metadata URL, `PoolMetadata.read`), and redeemers of one
+    // purpose with other data and units, of which the last read is kept
+    def chunked(t: String): Bytes =
+      val utf8 = Bytes.wrap(t.getBytes(StandardCharsets.UTF_8))
+      val cut = utf8.size / 2
+      Bytes.wrap(Array(0x7f.toByte)) ++ head(3, cut.toLong) ++ utf8.take(cut) ++
+        head(3, (utf8.size - cut).toLong) ++ utf8.drop(cut) ++ Bytes.wrap(Array(0xff.toByte))
+    def twice(kvs: Vector[(Node, Node)]): Bytes =
+      val (k, _) = kvs.head
+      val other = Bytes.wrap(Array(0x82.toByte, 0x00.toByte, 0x82.toByte, 0x00.toByte, 0x00.toByte))
+      head(5, kvs.size + 1L) ++ concat(kvs.map((a, b) => a.original ++ b.original)) ++
+        k.original ++ other
+    val mutants = seeds.flatMap(raw =>
+      node(raw).toVector.flatMap(root =>
+        items(root).flatMap { (n, at, part) =>
+          val item = n.value match
+            case Value.Text(t) => Some("text" -> chunked(t))
+            case Value.Map(kvs) if part == "part1:5" && kvs.nonEmpty && n.original.size > 2 =>
+              Some("redeemers" -> twice(kvs))
+            case _ => None
+          item.map((kind, b) => kind -> (raw.take(at) ++ b ++ raw.drop(at + n.original.size)))
+        }
+      )
+    )
+    val read = mutants.zipWithIndex.map { case ((kind, raw), i) =>
+      kind -> node(raw).fold(Outcome.NotCbor)(n => sameInBlock(n, s"$kind mutant $i"))
+    }
+    val byKind = read.groupBy(_._1).view.mapValues(rs => tally(rs.map(_._2))).toMap
+    assert(byKind.get("text").exists(_.getOrElse(Outcome.Accepted, 0) > 0), byKind.toString)
+    assert(byKind.get("redeemers").exists(_.values.sum > 0), byKind.toString)
+    assert(!read.exists(_._2 == Outcome.ProjectionRefused), byKind.toString)
   }
