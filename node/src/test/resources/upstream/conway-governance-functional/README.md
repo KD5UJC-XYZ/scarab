@@ -13,25 +13,21 @@ Fifteen `GOV-sized5` invocations retain the original constrained generator's law
 nonempty votes, proposals and certificates, full six-field environment,
 EnactState context, complete input proposal state and native output. Only the
 explicit generator size changes. Each ordinary native/formal comparison passes. Scarab executes all fifteen original
-inputs through the shared production `GovKernel`, comparing the complete `Proposals`
-output: roots, ordered actions, votes and expiration data. The kernel requires only
-account, DRep and pool membership and committee authorisations; full ledger execution
-supplies these through `GovCertificateView.from` over validated certificate state,
-without copying registration maps. The fixture adapter decodes exactly those typed
-keys and authorisations from the original environment, without altering inputs or
+inputs through Conway's era-typed GOV (`ConwayGov.conwayGovTransition`), comparing the
+complete `Proposals` output: roots, ordered actions, votes and expiration data. The
+fixture adapter reads the original environment and signal, without altering inputs or
 expected outputs.
 
 Five environments (seeds 510102, 510103, 510109, 510113 and 510114) encode a zero
 VRF registration count in `PState.vrfKeyHashes`, whose declared native type is
 `NonZero Word64` (`Cardano/Ledger/State/CertState.hs:233`). The native CBOR reader
 also refuses zero (`BaseTypes/NonZero.hs:102–107, 129–131`). GOV never reads these
-counts, so this unrelated certificate transport constraint no longer excludes
-its original judgments. Separate regressions retain the full typed certificate
+counts, so for these five the era GOV's certificate state is read without them; this
+unrelated certificate transport constraint no longer excludes its original judgments. Separate regressions retain the full typed certificate
 decoder's `NonZero` refusal and exact path. No invalid native certificate state is
-constructed, and the kernel's entire proposal output is compared, not projected.
-The ten environments representable as full certificate state additionally compare
-the strict production facade against the kernel. Missing DRep/committee registrations
-and the native deposit mismatch remain negative controls.
+constructed, and the rule's entire proposal output is compared, not projected.
+Missing DRep/committee registrations remain negative controls, and the native deposit
+mismatch's refusal is compared byte for byte with the era failure's encoding.
 
 The generated signals test nonempty voter/proposal handling and voter existence,
 including empty inner vote maps. The separately named lawful cast-vote integration
