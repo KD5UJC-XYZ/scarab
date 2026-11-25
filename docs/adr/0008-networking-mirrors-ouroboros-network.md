@@ -343,7 +343,7 @@ Bugs of the linked packages, not reproduced:
     publishing them, so the new topology's IP roots wait for the next DNS answer, and a topology with no
     DNS names is not applied: read from the source, not observed.
   - **What Scarab does.** A reload publishes the configured IP roots and the kept DNS answers before it
-    starts new lookups (`PeerNetwork.retainedPublicRoots` and the reload in `PeerNetwork`).
+    starts new lookups (`reloadRoots` in `PeerNetwork`).
   - **Decision.** Not reproduced: fixed upstream by ouroboros-network pull request
     [#5455](https://github.com/IntersectMBO/ouroboros-network/pull/5455), the change D7 follows. Found
     after the decision and recorded in #956 under the rule above.
@@ -383,15 +383,3 @@ a differential test against the reference covers that behaviour. A difference fr
 layer is classified as [REF-4](../design-rules.md#ref-4) says and recorded in the map; a structural difference
 without such a test, and a behavioural one that is not an Improvement or an approved Deviation, is a defect to
 align, tracked in #474 and #477. Owner's decision, 2026-11-14 ([decisions register](../decisions.md#reference-fidelity)).
-
-<a id="amendment-2026-11-25-the-reload-of-d10"></a>
-## Amendment (2026-11-25): the reload of D10
-
-D10's "What Scarab does" names `PeerNetwork.retainedPublicRoots`, which no longer exists (#810). A reload still
-publishes the configured IP local roots and the kept DNS answers before it starts new lookups (`PeerNetwork`'s
-`reloadRoots`), as D10 decided. The public and bootstrap roots the governor knows are no longer recomputed on a
-reload: they are kept, as the reference's governor keeps its `publicRootPeers` across a reconfiguration and reads
-the configured public roots only in its next request, once the ledger has no peers to give
-(`cardano-diffusion/lib/Cardano/Network/PeerSelection/Governor/Monitor.hs` 276-282,
-`ouroboros-network/lib/Ouroboros/Network/PeerSelection/PeerSelectionActions.hs` 155-184 and
-`ouroboros-network/lib/Ouroboros/Network/PeerSelection/RootPeersDNS/PublicRootPeers.hs` 82 at `c45735a5`).
