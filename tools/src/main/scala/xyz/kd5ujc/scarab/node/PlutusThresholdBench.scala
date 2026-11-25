@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.node
 
 import cats.Id
-import cats.effect.{IO, IOApp}
+import cats.effect.{ExitCode, IO, IOApp}
 import cats.effect.syntax.all.*
 import cats.syntax.all.*
 import io.circe.Json
@@ -30,10 +30,11 @@ import xyz.kd5ujc.scarab.plutus.{EvalRequest, EvalResult, ExUnits, ScarabEvaluat
   * and resolution. Every prepared result is checked against the serial one.
   *
   * Run by hand in the Docker JDK image: `java -cp <tools' runtime classpath>
-  * xyz.kd5ujc.scarab.node.PlutusThresholdBench <output.jsonl> [rounds] [warm-up rounds]` from the
-  * checkout's root. Not a gate.
+  * xyz.kd5ujc.scarab.node.PlutusThresholdBench <output.jsonl> [rounds] [warm-up rounds] [input name
+  * prefix]` from the checkout's root (15 rounds and 3 warm-up rounds when not given, every input
+  * when no prefix is). Not a gate.
   */
-object PlutusThresholdBench extends IOApp.Simple with Assertions:
+object PlutusThresholdBench extends IOApp with Assertions:
   enum Era:
     case Dijkstra, Conway
 
@@ -73,14 +74,16 @@ object PlutusThresholdBench extends IOApp.Simple with Assertions:
     val used = asked.map(_._2 match
       case EvalResult.Success(u, _)    => u
       case EvalResult.Failure(_, u, _) => u)
+    // what the redeemers declare, as the scheduler sums it, every redeemer's whether or not the
+    // serial run reaches its script; what the scripts spend, from those it reaches
     Json.obj(
       "scripts" -> asked.size.asJson,
       "batchWidths" -> plan.batches.map(_.size).asJson,
       "jobs" -> plan.batches.map(_.size).sum.asJson,
       "preparable" -> in.make(ScarabEvaluator.default).preparable.asJson,
       "worthwhile" -> in.make(ScarabEvaluator.default).worthwhile.asJson,
-      "declaredSteps" -> asked.map(_._1.budget.steps).sum.asJson,
-      "declaredMem" -> asked.map(_._1.budget.mem).sum.asJson,
+      "declaredSteps" -> in.make(ScarabEvaluator.default).declared.steps.asJson,
+      "declaredMem" -> in.make(ScarabEvaluator.default).declared.mem.asJson,
       "spentSteps" -> used.map(_.steps).sum.asJson,
       "spentMem" -> used.map(_.mem).sum.asJson,
       "scriptBytes" -> asked.map(_._1.script.size).sum.asJson
@@ -198,9 +201,9 @@ object PlutusThresholdBench extends IOApp.Simple with Assertions:
       )
     }
 
-  def run: IO[Unit] =
+  def run(arguments: List[String]): IO[ExitCode] =
     IO.defer {
-      val args = sys.env.get("SCARAB_BENCH_ARGS").map(_.split(' ').toVector).getOrElse(Vector.empty)
+      val args = arguments.toVector
       val out = Path.of(args.headOption.getOrElse("plutus-threshold.jsonl"))
       val rounds = args.lift(1).flatMap(_.toIntOption).getOrElse(15)
       val warmup = args.lift(2).flatMap(_.toIntOption).getOrElse(3)
@@ -267,5 +270,5 @@ object PlutusThresholdBench extends IOApp.Simple with Assertions:
             f"ROW ${in.name}%-28s serial ${summary(s).hcursor.get[Long]("median").getOrElse(0L) / 1e6}%9.3f ms prepared ${summary(p).hcursor.get[Long]("median").getOrElse(0L) / 1e6}%9.3f ms ratio ${ratios.sorted.apply(ratios.size / 2)}%.3f"
           )
         }
-      yield ()
+      yield ExitCode.Success
     }
