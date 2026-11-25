@@ -125,7 +125,13 @@ object NodeRootProvider:
       }
 
   /** Read one complete topology/worker snapshot for each request. Reload swaps this pair only after
-    * the replacement topology, peer snapshot and worker have all been constructed.
+    * the replacement topology, peer snapshot and worker have all been constructed. The configured
+    * public roots are read again once the worker falls back to them, as the reference reads them
+    * only after the ledger has answered that it has no peers to give (`requestPublicRootPeersImpl`,
+    * ouroboros-network c45735a5,
+    * `ouroboros-network/lib/Ouroboros/Network/PeerSelection/PeerSelectionActions.hs` 155-184, and
+    * `RootPeersDNS/PublicRootPeers.hs` 82): an answer completes into the governor's state whatever
+    * reload came while it was asked for (issue 810).
     */
   def dynamic[F[_]: Async](
       current: Ref[F, PeerNetwork.Runtime[F]],
@@ -148,15 +154,17 @@ object NodeRootProvider:
         else
           runtime.worker.request[LedgerKind.All](max).flatMap {
             case LedgerAnswer.FallBackToPublicRoots() =>
-              resolveRoots(roots.public, roots.publicSrv, dns, rng).map {
-                case (addresses, ttl, source) =>
-                  Some(
-                    PublicRoots(
-                      addresses,
-                      Set.empty,
-                      advertise = advertiseFromSources(source, roots.advertise)
-                    ) -> ttl
-                  )
+              current.get.map(_.roots).flatMap { latest =>
+                resolveRoots(latest.public, latest.publicSrv, dns, rng).map {
+                  case (addresses, ttl, source) =>
+                    Some(
+                      PublicRoots(
+                        addresses,
+                        Set.empty,
+                        advertise = advertiseFromSources(source, latest.advertise)
+                      ) -> ttl
+                    )
+                }
               }
             case LedgerAnswer.Picked(relays, _) =>
               resolveLedger(relays, dns, rng).map(addresses =>
@@ -171,19 +179,21 @@ object NodeRootProvider:
       current.get.flatMap { runtime =>
         runtime.worker.request[LedgerKind.Big](max).flatMap {
           case LedgerAnswer.FallBackToPublicRoots() =>
-            resolveRoots(runtime.roots.public, runtime.roots.publicSrv, dns, rng)
-              .map { case (addresses, ttl, source) =>
-                Some(
-                  BigLedgerRoots.fromLedger(
-                    None,
-                    PublicRoots(
-                      addresses,
-                      Set.empty[Addr],
-                      advertise = advertiseFromSources(source, runtime.roots.advertise)
-                    )
-                  ) -> ttl
-                )
-              }
+            current.get.map(_.roots).flatMap { latest =>
+              resolveRoots(latest.public, latest.publicSrv, dns, rng)
+                .map { case (addresses, ttl, source) =>
+                  Some(
+                    BigLedgerRoots.fromLedger(
+                      None,
+                      PublicRoots(
+                        addresses,
+                        Set.empty[Addr],
+                        advertise = advertiseFromSources(source, latest.advertise)
+                      )
+                    ) -> ttl
+                  )
+                }
+            }
           case LedgerAnswer.Picked(relays, _) =>
             resolveLedger(relays, dns, rng).map(addresses =>
               Some(
