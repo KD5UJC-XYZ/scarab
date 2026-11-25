@@ -224,12 +224,16 @@ def conway_constructors(name):
     token = {eratx.script_hash(policy): {b"absent": 1}}
     add("utxow-native-script-fails", **spend(outputs=[eratx.tx_out("conway", here, w["lovelace"] - FEE, token)],
                                              mint=token, native_scripts=[policy]))
-    # The metadata checks (`validateMetadata`): auxiliary data with no hash in the body; a hash in the body with no
-    # auxiliary data; a hash that is not the auxiliary data's; a text over 64 bytes (`validMetadatum`)
+    # The metadata checks (`validateMetadata`, `Shelley/Rules/Utxow.hs:430-443`): auxiliary data with no hash in the
+    # body; a hash in the body with no auxiliary data; a hash that is not the auxiliary data's; and auxiliary data
+    # holding a Plutus V3 script that does not deserialise (`validateAlonzoTxAuxData`, `Alonzo/TxAuxData.hs:363-373`).
+    # A metadatum over 64 bytes, the other invalid metadata, is refused by the decoder before any rule
+    # (`decodeMetadatum`, `libs/cardano-ledger-core/src/Cardano/Ledger/Metadata.hs:153-179`): the node closes the
+    # connection.
     add("utxow-metadata-hash-missing", **spend(metadata=metadata, aux_hash=None))
     add("utxow-metadata-missing", **spend(aux_hash=eratx.blake2b(enc(metadata))))
     add("utxow-metadata-hash-conflicting", **spend(metadata=metadata, aux_hash=eratx.blake2b(b"other metadata")))
-    add("utxow-metadata-invalid", **spend(metadata={674: "x" * 65}))
+    add("utxow-metadata-invalid", **spend(metadata=metadata, aux_plutus={3: [enc(b"\x00")]}))
     # UnspendableUTxONoDatumHash: the Plutus V2 script's output has no datum (`Alonzo/Rules/Utxow.hs`
     # `missingRequiredDatums`, run from `Babbage/Rules/Utxow.hs`); V3 would not need one
     inputs = sorted([txin(w), (locked, 0)])
