@@ -5,10 +5,17 @@ import cats.Id
 import cats.effect.IO
 import cats.syntax.all.*
 import java.util.concurrent.atomic.{AtomicInteger, AtomicReference}
-import xyz.kd5ujc.scarab.ledger.{Phase2, PreparedBlockFixture, TestLedger}
+import xyz.kd5ujc.scarab.ledger.{
+  LedgerFailure,
+  Phase2,
+  PreparedBlockFixture,
+  ScriptLocation,
+  TestLedger
+}
 import xyz.kd5ujc.scarab.ledger.era.PlutusLoop
 import xyz.kd5ujc.scarab.ledger.era.conway.ConwayScriptedBlocks
 import xyz.kd5ujc.scarab.ledger.era.dijkstra.{DijkstraRecordedBlocks, DijkstraScriptedBlocks}
+import xyz.kd5ujc.scarab.ledger.era.rules.{ConwayRuleDefect, DijkstraRuleDefect}
 import xyz.kd5ujc.scarab.network.FailsOnUncaught
 import xyz.kd5ujc.scarab.plutus.{
   BackendFailure,
@@ -69,6 +76,15 @@ class PlutusThresholdSuite extends FailsOnUncaught:
       }
     })
 
+  /** Why the evaluator [[unjudgedAt]] gives no verdict. */
+  private val reason: EvalFailure.Unsupported =
+    EvalFailure.Unsupported(BackendFailure.BudgetOutOfRange(ExUnits(0, 0)))
+
+  /** The redeemer of a script that names it is the one mint of its transaction's. */
+  private def minting(location: ScriptLocation): Boolean = location match
+    case ScriptLocation.Phase2(r)                               => r.tag == 1 && r.index == 0
+    case _: ScriptLocation.Phase1 | _: ScriptLocation.SubPhase2 => false
+
   /** An evaluator giving no verdict for the `k` th request the serial run of `programOf` asks. */
   private def unjudgedAt[A](
       programOf: ScriptEvaluator[Id] => Phase2.Program[A],
@@ -81,12 +97,7 @@ class PlutusThresholdSuite extends FailsOnUncaught:
     val _ = programOf(recording).serial
     val request = asked.get.lift(k).getOrElse(fail(s"no request $k"))
     r =>
-      if r == request then
-        EvalResult.Failure(
-          EvalFailure.Unsupported(BackendFailure.BudgetOutOfRange(ExUnits(0, 0))),
-          ExUnits(0, 0),
-          Vector.empty
-        )
+      if r == request then EvalResult.Failure(reason, ExUnits(0, 0), Vector.empty)
       else ScarabEvaluator.default.evaluate(r)
 
   test("the threshold: a body pays from the steps it names, not one step below") {
@@ -127,6 +138,8 @@ class PlutusThresholdSuite extends FailsOnUncaught:
     "Dijkstra: a block of heavy scripts is prepared, to the serial run's result, also with no verdict at each script"
   ) {
     val sample = DijkstraScriptedBlocks.honest(4, 300)
+    val script = PlutusLoop.script(300)
+    val ids = DijkstraScriptedBlocks.ids(4, script, DijkstraScriptedBlocks.spent(script))
     val programOf = (e: ScriptEvaluator[Id]) => DijkstraRecordedBlocks.program(sample, e)
     val body = programOf(ScarabEvaluator.default)
     assert(body.worthwhile, s"${body.declared}")
@@ -135,7 +148,14 @@ class PlutusThresholdSuite extends FailsOnUncaught:
     scheduled("four heavy batches", () => programOf(ScarabEvaluator.default)) *>
       (0 until 4).toVector.traverse_ { k =>
         val unjudged = unjudgedAt(programOf, k)
-        assert(programOf(unjudged).serial.isLeft, s"script $k: named")
+        // named by the k th batch and its mint's redeemer
+        programOf(unjudged).serial match
+          case Left(
+                DijkstraRuleDefect.Ledger(LedgerFailure.Unavailable(id, location, `reason`))
+              ) =>
+            assertEquals(id, ids(k), s"script $k")
+            assert(minting(location), s"script $k: $location")
+          case other => fail(s"script $k: not named: $other")
         scheduled(s"four heavy batches, no verdict at script $k", () => programOf(unjudged))
       }
   }
@@ -168,6 +188,16 @@ class PlutusThresholdSuite extends FailsOnUncaught:
       scheduled("four heavy transactions", () => heavy.program(ScarabEvaluator.default)) *>
       (0 until 4).toVector.traverse_ { k =>
         val unjudged = unjudgedAt(heavy.program, k)
+        // named by the k th transaction and its mint's redeemer
+        heavy.program(unjudged).serial match
+          case Left(
+                ConwayRuleDefect.ScriptUnavailable(
+                  LedgerFailure.Unavailable(id, location, `reason`)
+                )
+              ) =>
+            assertEquals(id, heavy.ids(k), s"script $k")
+            assert(minting(location), s"script $k: $location")
+          case other => fail(s"script $k: not named: $other")
         scheduled(
           s"four heavy transactions, no verdict at script $k",
           () => heavy.program(unjudged)

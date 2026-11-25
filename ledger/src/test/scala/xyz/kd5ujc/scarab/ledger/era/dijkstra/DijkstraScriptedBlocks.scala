@@ -36,7 +36,7 @@ object DijkstraScriptedBlocks extends Assertions:
   private def collateral(i: Int): B.In = funding(i).copy(ix = 1)
 
   /** The `i` th batch, minting one token of `script` 's policy, its redeemer declaring `units`. */
-  private def batch(i: Int, script: Bytes, units: ExUnits): Bytes =
+  private def batch(i: Int, script: Bytes, units: ExUnits): (Bytes, Bytes) =
     val policy = B.scriptHash(3, script)
     val token = B.cmap(B.bytes(policy) -> B.cmap(B.bytes(name) -> B.uint(1)))
     def body(integrity: Option[Bytes]): Node =
@@ -69,7 +69,7 @@ object DijkstraScriptedBlocks extends Assertions:
       .map(ScriptIntegrity.hashScriptIntegrity(_))
       .getOrElse(fail("no script integrity"))
     val signed = body(Some(integrity))
-    B.encode(B.arr(signed, wits(signed), B.nil, B.leaf(Value.Bool(true))))
+    B.id(signed) -> B.encode(B.arr(signed, wits(signed), B.nil, B.leaf(Value.Bool(true))))
 
   /** The block of `n` batches whose redeemers each declare `units`, on the state of their inputs.
     */
@@ -84,9 +84,13 @@ object DijkstraScriptedBlocks extends Assertions:
       BigInt(n),
       slot,
       n,
-      DijkstraRecordedBlocks.blockOf((0 until n).toVector.map(batch(_, script, units)), slot),
+      DijkstraRecordedBlocks.blockOf((0 until n).toVector.map(batch(_, script, units)._2), slot),
       DijkstraRecordedBlocks.stateOf(utxo)
     )
+
+  /** The ids of the `n` batches of [[declaring]], in the block's order. */
+  def ids(n: Int, script: Bytes, units: ExUnits): Vector[Bytes] =
+    (0 until n).toVector.map(batch(_, script, units)._1)
 
   /** The units [[PlutusLoop]]'s script of `iterations` spends, as its one batch's run reports. */
   def spent(script: Bytes): ExUnits =

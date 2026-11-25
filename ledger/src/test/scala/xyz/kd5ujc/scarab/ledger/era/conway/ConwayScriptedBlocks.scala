@@ -37,8 +37,10 @@ object ConwayScriptedBlocks extends Assertions:
 
   val params: PParams[Conway] = pp(major)
 
-  /** A block, its state, and the era run of it with an evaluator. */
-  final case class Scripted(raw: Bytes, state: LedgerState[Conway]):
+  /** A block, its state, its transactions' ids in its order, and the era run of it with an
+    * evaluator.
+    */
+  final case class Scripted(raw: Bytes, state: LedgerState[Conway], ids: Vector[Bytes]):
     def program(evaluator: ScriptEvaluator[Id]): ConwayBlockRun.Body =
       ConwayImp.program(raw, state, params)(evaluator, None)
 
@@ -84,7 +86,8 @@ object ConwayScriptedBlocks extends Assertions:
       )
     }*)
     val ls = Build.funded[Conway](Build.nes[Conway](0L, stored(major)), funds).es.ls
-    Scripted(blockOf(major, (0 until n).toVector.map(transaction(_, script, units))), ls)
+    val txs = (0 until n).toVector.map(transaction(_, script, units))
+    Scripted(blockOf(major, txs), ls, txs.map(_.id))
 
   /** The units `script` spends, as its one transaction's run reports. */
   def spent(script: Bytes): ExUnits =
