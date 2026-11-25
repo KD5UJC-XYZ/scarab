@@ -172,5 +172,72 @@ class CapturePrefix(unittest.TestCase):
             refusalcorpus.capture("devnet", "conway", [Case("prefix", b"1", (), before=(b"p1",))])
 
 
+class FakeSession:
+    """The reference's connection as `refusalcorpus.judged` uses it: an empty mempool at the tip's successor, every
+    item admitted (`admits`) or refused, and a tip that moves while the batch is judged when `moves`."""
+    admits, moves = True, True
+
+    def __init__(self, *args, **kwargs):
+        self.points = iter([[[7, b"tip"]], [[8 if FakeSession.moves else 7, b"tip"]]])
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def acquire(self):
+        pass
+
+    def release(self):
+        pass
+
+    def point(self, era):
+        return next(self.points)
+
+    def tip(self, era):
+        return self.point(era)
+
+    def cbor(self, era, query):
+        return b""
+
+    def mempool(self):
+        return 8, 0
+
+    def submit_item(self, payload):
+        return None if FakeSession.admits else b"refused"
+
+
+class JudgedAcceptance(unittest.TestCase):
+    """`refusalcorpus.judged` against a fake reference: an admitted case fails the capture, also when the tip moved,
+    which would otherwise have the batch taken again with the case's retry under the same label."""
+
+    def setUp(self):
+        self.saved = refusalcorpus.Session, refusalcorpus.drained
+        refusalcorpus.Session = FakeSession
+        refusalcorpus.drained = lambda name, era, build: None
+
+    def tearDown(self):
+        refusalcorpus.Session, refusalcorpus.drained = self.saved
+        FakeSession.admits, FakeSession.moves = True, True
+
+    def test_a_case_admitted_with_its_prefix_while_the_tip_moved_fails_the_capture(self):
+        retried = []
+        case = Case("prefix", b"1", (), before=(b"p1",), retry=lambda: retried.append(1) or case)
+        with self.assertRaisesRegex(refusalcorpus.Unexpected, "accepted"):
+            refusalcorpus.capture("devnet", "conway", [case])
+        self.assertEqual(retried, [], "the case was taken again")
+
+    def test_an_admitted_case_of_a_batch_fails_the_capture(self):
+        FakeSession.moves = False
+        with self.assertRaisesRegex(refusalcorpus.Unexpected, "accepted"):
+            refusalcorpus.capture("devnet", "conway", [Case("a", b"a", ())])
+
+    def test_a_refused_prefix_item_fails_the_capture(self):
+        FakeSession.admits = False
+        with self.assertRaisesRegex(refusalcorpus.Unexpected, "must admit"):
+            refusalcorpus.capture("devnet", "conway", [Case("prefix", b"1", (), before=(b"p1",))])
+
+
 if __name__ == "__main__":
     unittest.main()

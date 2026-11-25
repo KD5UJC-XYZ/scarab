@@ -216,7 +216,8 @@ class Session(ntclocal.Session):
 
 
 def judged(name, era, batch, build=DEFAULT_BUILD):
-    """The refusals of `batch` and the state they were judged against, or None when the tip moved."""
+    """The refusals of `batch` and the state they were judged against, or None when the tip moved. Raises Unexpected
+    when the reference admits a case, or refuses an item it must admit first."""
     with Session(ref(name), f"{ENV}/socket/node1/sock", MAGIC, relay=BUILDS[build]["relay"]) as s:
         s.acquire()
         point = s.point(era)
@@ -232,6 +233,11 @@ def judged(name, era, batch, build=DEFAULT_BUILD):
                 if s.submit_item(item(era, tx)) is not None:
                     raise Unexpected(f"the reference refused a transaction it must admit before {case.label}")
             reasons.append(s.submit_item(item(era, case.tx)))
+        # an admitted case is wrong whether or not the tip held still: taking the batch again (with a case's retry,
+        # under the same label) must not hide it
+        accepted = [case.label for case, reason in zip(batch, reasons) if reason is None]
+        if accepted:
+            raise Unexpected(f"the reference accepted {accepted}: the cases are wrong")
         if s.tip(era) != point or s.mempool() != (slot, sum(len(case.before) for case in batch)):
             return None
     return {"point": point[0], "mempoolSlot": slot, "state": state, "utxo": utxo, "reasons": reasons}
