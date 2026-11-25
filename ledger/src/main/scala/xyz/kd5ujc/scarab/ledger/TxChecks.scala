@@ -636,8 +636,8 @@ object TxChecks:
     *   f649f975), so a bootstrap witness's address root is no signer of a script.
     * @return
     *   the test, or [[LedgerFailure.NativeScriptUnread]] for a native script among them that has no
-    *   time-lock tree (a Dijkstra script with a guard, which only Dijkstra's rule evaluates,
-    *   [[failedDijkstraNativeScripts]]): it is never taken as holding
+    *   time-lock tree (a Dijkstra script with a guard, which only Dijkstra's era UTXOW evaluates):
+    *   it is never taken as holding
     */
   private[ledger] def failedNativeScripts(
       tx: Tx,
@@ -660,34 +660,6 @@ object TxChecks:
           utxow(UtxowFailure.ScriptWitnessNotValidating(failing))
         )
       }
-
-  /** The native scripts that do not hold, of Dijkstra (`validateFailedBabbageScripts`,
-    * `Babbage/Rules/Utxow.hs:225-244`, which Dijkstra's UTXOW runs, `Dijkstra/Rules/Utxow.hs:260`,
-    * cardano-ledger 9df9f98c): the needed ones among the native scripts the transaction can use, in
-    * Dijkstra's form, that do not hold by `evalDijkstraNativeScript`
-    * ([[era.dijkstra.DijkstraNativeScript.eval]]) for the transaction's key witnesses, validity
-    * interval and guards (`validateDijkstraNativeScript`, `Dijkstra/Tx.hs:434-437`).
-    *
-    * @param scripts
-    *   the native scripts the transaction can use (`scriptsProvided`), by hash, in Dijkstra's form
-    * @param signers
-    *   the key hashes of the vkey witnesses only (`addrTxWitsL`)
-    */
-  private[ledger] def failedDijkstraNativeScripts(
-      tx: Tx,
-      scripts: Map[Bytes, era.dijkstra.DijkstraNativeScript],
-      guards: Set[Credential],
-      needed: Option[Set[Bytes]],
-      signers: Set[Bytes]
-  ): Test[PredicateFailure] =
-    val body = tx.body
-    val failing = scripts.collect {
-      case (h, script)
-          if needed.forall(_.contains(h)) &&
-            !script.eval(signers, body.validityStart, body.ttl, guards) =>
-        h
-    }.toSet
-    Test.failureUnless(failing.isEmpty, utxow(UtxowFailure.ScriptWitnessNotValidating(failing)))
 
 /** Reference scripts: the limits and the fee of Conway's reference-script pricing. */
 object RefScripts:

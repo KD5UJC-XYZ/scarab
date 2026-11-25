@@ -30,13 +30,13 @@ the reference-only devnet evidence below does not satisfy that condition.
 
 ## Evidence
 
-- **Unit tests:** `DijkstraNotYetSuite`, `DijkstraCodecsSuite`, `DijkstraGenesisSuite`, `DijkstraTranslationSuite`, `DijkstraTxTranslationSuite`, `DijkstraRematchSuite`, `DijkstraCrossingSuite`, `DijkstraStoredOutputsSuite`, `DijkstraStateTranslationSuite`, `DijkstraRulesSuite`, `DijkstraRulesOracleSuite`, `DijkstraNativeScriptEvalSuite`, `DijkstraHeaderRulesSuite` and `DijkstraHeaderGateSuite`.
+- **Unit tests:** `DijkstraNotYetSuite`, `DijkstraCodecsSuite`, `DijkstraGenesisSuite`, `DijkstraTranslationSuite`, `DijkstraTxTranslationSuite`, `DijkstraRematchSuite`, `DijkstraCrossingSuite`, `DijkstraStoredOutputsSuite`, `DijkstraStateTranslationSuite`, `DijkstraRulesOracleSuite`, `DijkstraNativeScriptEvalSuite`, `DijkstraHeaderRulesSuite` and `DijkstraHeaderGateSuite`.
 - **Reference oracles** on the Leios build, each with its recorded cases:
   - `scripts/oracle/dijkstra-genesis` (`fixtures/reference/dijkstra-genesis`);
   - `scripts/oracle/dijkstra-translation` (`fixtures/reference/dijkstra-translation`);
   - `scripts/oracle/dijkstra-state-translation` (`fixtures/reference/dijkstra-state-translation`): the ledger's translation of the captured Conway state `fixtures/leios/state/conway-195`, equal byte for byte to `Translate.conwayToDijkstra`'s (`DijkstraStateTranslationSuite`); the consensus parts of the crossing are not compared;
   - `scripts/oracle/dijkstra-crossing` (`fixtures/reference/dijkstra-crossing`);
-  - `scripts/oracle/dijkstra-rules` (`fixtures/reference/dijkstra-rules`): individual rules agree on the cases they complete. The era rules, ENTITIES among them, give every case the reference's verdict and bytes; the flat rules are compared on the cases recorded before the era failure encoder, and those reaching ENTITIES are incomplete gates, not agreement.
+  - `scripts/oracle/dijkstra-rules` (`fixtures/reference/dijkstra-rules`): individual rules agree on the cases they complete. The era rules, ENTITIES among them, give every case the reference's verdict and bytes.
 - **Stored-output translation:** `DijkstraStoredOutputsSuite` checks the reference translation cases against both memory and RocksDB stores, including bytes, hashes, sizes, totals and spent outputs. The node crossing suite checks entry from earlier eras and that an invalid block never triggers the store pass.
 - **The Leios devnet chain `fixtures/dijkstra-devnet`** (Conway to Dijkstra, from the reference-only cluster of #791):
   - its blocks and headers decode;
@@ -48,9 +48,6 @@ the reference-only devnet evidence below does not satisfy that condition.
 ## Explicitly unchecked or unconfirmed
 
 - **Not implemented:**
-  - on the flat rules' test entry points only (the node runs the era types' rules, which have them): SUB rules and ENTITIES, LEDGER completing only for phase-2-invalid transactions without sub-transactions whose UTXOW checks are implemented (#54, T7);
-  - guards, direct deposits, balance intervals, Plutus scripts, redeemers, datums and forms the Conway decoder refuses: they halt with `DijkstraNotYet.Rules` (#54);
-  - the pool-registration transition and its VRF-key occurrence accounting (#826);
   - parameter-change proposals, whose store still holds Conway updates (#826);
   - A Dijkstra block's scripts run serially, a script the evaluator cannot judge is withheld without the transaction the other eras name, and its evaluations are not counted ([#85](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7067709618)); the epoch boundary is implemented: Dijkstra's EPOCH, SNAP (the Leios committee of `ppLeiosCommitteeSize`, the key age the KES constants give) and POOLREAP (one VRF-key reference released per pool, and the voting key of the future parameters adopted, keeping its registration epoch when the pool already holds it), checked byte for byte by `DijkstraEpochReferenceSuite` against the build's own TICK on both captured Dijkstra states across two boundaries, with and without the reward update, and on states derived from them with retirements and re-registrations (`fixtures/reference/dijkstra-epoch`), the states that hold future parameters with a voting key included (#826); the node's tick of a Dijkstra state runs that EPOCH on the era types, with the ratification and enactment the DRep pulser reaches, its governance state read from the stored record before each tick and written back after it, and the same cases give the build's states byte for byte through the node's tick, the cases with a proposed update of keys 47 and 48, which the stored record cannot hold yet, through the same tick on the era's record (#85);
   - the node-to-client queries and failure encoders;

@@ -3,15 +3,7 @@ package xyz.kd5ujc.scarab.ledger.era.rules
 
 import cats.data.{NonEmptyMap, NonEmptySet}
 import xyz.kd5ujc.scarab.crypto.bls.BlsError
-import xyz.kd5ujc.scarab.ledger.GovCertFailure as FlatGovCertFailure
-import xyz.kd5ujc.scarab.ledger.dijkstra.{
-  DijkstraBlsKey,
-  DijkstraCertFailure,
-  DijkstraCertsFailure,
-  DijkstraPoolFailure
-}
 import xyz.kd5ujc.scarab.ledger.era.dijkstra.AccountBalanceInterval
-import xyz.kd5ujc.scarab.ledger.rules.Convert
 import xyz.kd5ujc.scarab.ledger.state.{
   AccountAddress,
   BlsKey,
@@ -98,26 +90,6 @@ object DijkstraPoolPredFailure:
     case ShelleyPoolPredFailure.VRFKeyHashAlreadyRegistered(p, v) =>
       VRFKeyHashAlreadyRegistered(p, v)
 
-  /** POOL's failure in the flat Dijkstra form (`DijkstraPoolFailure`), glue the comparisons with
-    * the flat rules and the oracle read ([[DijkstraCertsStored]]). It is one-way.
-    */
-  def toStored(failure: DijkstraPoolPredFailure[Dijkstra]): DijkstraPoolFailure = failure match
-    case StakePoolNotRegisteredOnKeyPOOL(p) =>
-      DijkstraPoolFailure.StakePoolNotRegisteredOnKey(p.bytes)
-    case StakePoolRetirementWrongEpochPOOL(current, latest) =>
-      DijkstraPoolFailure.StakePoolRetirementWrongEpoch(epochs(current), epochs(latest))
-    case StakePoolCostTooLowPOOL(m) => DijkstraPoolFailure.StakePoolCostTooLow(coins(m))
-    case WrongNetworkPOOL(m, p) =>
-      DijkstraPoolFailure.WrongNetworkPool(m.storedBy(_.wire), p.bytes)
-    case PoolMedataHashTooBig(p, size) => DijkstraPoolFailure.PoolMedataHashTooBig(p.bytes, size)
-    case VRFKeyHashAlreadyRegistered(p, v) =>
-      DijkstraPoolFailure.VRFKeyHashAlreadyRegistered(p.bytes, v.bytes)
-    case BlsKeyInvalidProofOfPossession(p, key) =>
-      DijkstraPoolFailure.BlsKeyInvalidProofOfPossession(
-        p.bytes,
-        DijkstraBlsKey(key.key, key.proofOfPossession)
-      )
-
 /** `data DijkstraGovCertPredFailure era` (`Dijkstra/Rules/GovCert.hs:53-63`, cardano-ledger
   * 9df9f98c), its constructors in the order of their tags (0 to 5, `:76-84`): Conway's, renamed,
   * which Dijkstra's encoder writes with a `Mismatch` as one item (`To mm`).
@@ -152,19 +124,6 @@ object DijkstraGovCertPredFailure:
     case ConwayGovCertPredFailure.ConwayDRepIncorrectRefund(m) => DijkstraDRepIncorrectRefund(m)
     case ConwayGovCertPredFailure.ConwayCommitteeIsUnknown(c)  => DijkstraCommitteeIsUnknown(c)
 
-  /** GOVCERT's failure in the flat form the flat Dijkstra rules give, Conway's
-    * ([[DijkstraCertsStored]]).
-    */
-  def toStored(failure: DijkstraGovCertPredFailure[Dijkstra]): FlatGovCertFailure = failure match
-    case DijkstraDRepAlreadyRegistered(c) =>
-      FlatGovCertFailure.DRepAlreadyRegistered(Convert.back(c))
-    case DijkstraDRepNotRegistered(c)    => FlatGovCertFailure.DRepNotRegistered(Convert.back(c))
-    case DijkstraDRepIncorrectDeposit(m) => FlatGovCertFailure.DRepIncorrectDeposit(coins(m))
-    case DijkstraCommitteeHasPreviouslyResigned(c) =>
-      FlatGovCertFailure.CommitteeHasPreviouslyResigned(Convert.back(c))
-    case DijkstraDRepIncorrectRefund(m) => FlatGovCertFailure.DRepIncorrectRefund(coins(m))
-    case DijkstraCommitteeIsUnknown(c)  => FlatGovCertFailure.CommitteeIsUnknown(Convert.back(c))
-
 /** `InjectRuleFailure "POOL" DijkstraPoolPredFailure era` and `InjectRuleEvent "POOL" PoolEvent
   * era` (`Dijkstra/Rules/Pool.hs:142-144`, cardano-ledger 9df9f98c): how era `E` 's POOL reports
   * the failures and events of Dijkstra's transition. Only this package makes one.
@@ -179,28 +138,6 @@ object InjectDijkstraPool:
     def injectFailure(failure: DijkstraPoolPredFailure[Dijkstra]): PoolPredFailure[Dijkstra] =
       failure
     def injectEvent(event: PoolEvent[Dijkstra]): PoolRuleEvent[Dijkstra] = event
-
-/** CERTS's failures of Dijkstra in the flat Dijkstra form (`DijkstraCertsFailure`), which the flat
-  * rules give and the oracle suite writes: one-way glue for the comparisons, until the failures of
-  * the era types have their own encoders (#796).
-  */
-object DijkstraCertsStored:
-  /** The flat form of a failure of Dijkstra's CERTS. Its one constructor at 9df9f98c is
-    * `CertFailure`: the 11.1 build's withdrawals' case has no value at Dijkstra
-    * ([[CertsWithdrawals]]).
-    */
-  def toStored(failure: ConwayCertsPredFailure[Dijkstra]): DijkstraCertsFailure = failure match
-    case ConwayCertsPredFailure.WithdrawalsNotInRewardsCERTS(ws) => ws
-    case ConwayCertsPredFailure.CertFailure(f)                   => DijkstraCertsFailure(cert(f))
-
-  /** CERT's failure in the flat Dijkstra form. */
-  def cert(failure: ConwayCertPredFailure[Dijkstra]): DijkstraCertFailure = failure match
-    case ConwayCertPredFailure.DelegFailure(f) =>
-      DijkstraCertFailure.Deleg(ConwayDelegPredFailure.toStored(f))
-    case ConwayCertPredFailure.PoolFailure(f) =>
-      DijkstraCertFailure.Pool(DijkstraPoolPredFailure.toStored(f))
-    case ConwayCertPredFailure.GovCertFailure(f) =>
-      DijkstraCertFailure.GovCert(DijkstraGovCertPredFailure.toStored(f))
 
 /** `data EntitiesPredFailure era` (`Dijkstra/Rules/Entities.hs:107-133`, cardano-ledger 9df9f98c),
   * its constructors in the order of their tags (0 to 13, `:154-169`). The withdrawals and the

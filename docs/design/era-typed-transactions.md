@@ -1918,7 +1918,7 @@ Conway's rules on the classes follow as the rest of stage 2.
     `plutusScriptsProvided`; and the supplemental datums at each level equal the datum hashes the flat decoder read in
     the outputs and the reference inputs' outputs, also where a sub-transaction's reference input names one (crafted)
     and with the sub-transactions taken out of the body, as UTXOW reads it in the legacy mode.
-  - The flat path has a minimum fee (`DijkstraUtxo.minFee`), the keys needed (`TxChecks.neededWitnesses`) and the
+  - The flat path had a minimum fee (the flat Dijkstra UTXO's, deleted with the flat rules), the keys needed (`TxChecks.neededWitnesses`) and the
     supplemental datums (`TxChecks.supplementalDatumHashes`) for a transaction without Dijkstra's own fields, and the
     value consumed and produced only inline: no complete Dijkstra batch comparison. What the reference records stands in
     for it, as component checks under CNF-2, not the I1 verdict or the resulting state. On the 200 transactions recorded
@@ -2047,7 +2047,7 @@ Conway's rules on the classes follow as the rest of stage 2.
     leaves the state as it is (`Empty -> pure certState`, `Conway/Rules/Certs.hs:220`), by its type and not by
     its protocol version. At 9df9f98c CERTS's failure has `CertFailure` alone (`Conway/Rules/Certs.hs:111-114`).
     So the 11.1 build's `WithdrawalsNotInRewardsCERTS` has no value at Dijkstra (`CertsWithdrawals`, as
-    `MirSigners` has none at Conway), and `DijkstraCertsStored.toStored` is total. The environment's
+    `MirSigners` has none at Conway), and the flat form of CERTS's failure (since deleted with the flat rules) was total. The environment's
     transaction, which only the 11.1 build's case reads, stays Conway's field.
   - CERT and POOL are Dijkstra's own. CERT makes a delegation certificate Conway's (`dijkstraToConwayDelegCert`)
     for Conway's DELEG and runs Dijkstra's POOL on the pool state. POOL (`DijkstraPoolPredFailure`, tags 0, 1 and
@@ -2092,7 +2092,7 @@ Conway's rules on the classes follow as the rest of stage 2.
   - Evidence:
     - `DijkstraRulesOracleSuite`: on the reference's 20 `certs` cases (`fixtures/reference/dijkstra-rules`), CERTS
       on the era types, from the same parameters and state, gives the reference's refusal byte for byte, through
-      `DijkstraCertsStored.toStored` and the suite's encoder, the failures of `mixed-failures` across the
+      the flat form (since deleted) and the suite's encoder, the failures of `mixed-failures` across the
       recursion's depths among them. It gives the flat rule's verdicts on all 20 and the flat rule's certificate
       state on each case both admit. It leaves the flat rule's state after the setup of each of the 16 `gov` and 2
       `utxow` cases that have one. ENTITIES admits the transaction of the devnet block the reference accepted
@@ -2147,7 +2147,7 @@ Conway's rules on the classes follow as the rest of stage 2.
     - the certificates of the 2 chain transactions that hold them in a sub-transaction: SUBCERTS's (D7c); and
       ENTITIES on the chain's 28 batches as the reference judged them, which reads the state after SUBLEDGERS;
     - the `gov` cases' own verdicts, which are GOV's (the next bullet); only their setups are compared here;
-    - a pool registration against the flat rules, which halt on one (`DijkstraPending.PoolRegistration`): POOL's
+    - a pool registration against the flat rules, which halted on one (since deleted): POOL's
       registrations are compared with the reference's invariant and recorded parameters, not with a flat rule;
     - refusals that no recording holds: any of ENTITIES' own failures, and a pool registration with a voting key,
       which the oracle's cases do not reach (its scope excludes ENTITIES and pool registrations);

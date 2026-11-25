@@ -9451,26 +9451,6 @@
    ],
    "digest": "775daadb09dab1ce"
   },
-  "def ledger.TxChecks.failedDijkstraNativeScripts": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Utxow.hs",
-     "symbol": "validateFailedBabbageScripts",
-     "lines": [
-      225,
-      244
-     ]
-    }
-   ],
-   "class": "Mirror",
-   "structure": "same",
-   "evidence": [
-    "DijkstraRulesSuite"
-   ],
-   "digest": "2a2ac0cabbe66b28"
-  },
   "enum ledger.era.dijkstra.DijkstraDelegCert": {
    "upstream": [
     {
@@ -49745,7 +49725,6 @@
     "object ledger.era.rules.ShelleyUtxo",
     "trait ledger.era.StoredTxOut",
     "def ledger.era.rules.ConwayUtxoPredFailure.storedUtxos",
-    "def ledger.era.rules.DijkstraUtxoPredFailure.toStored",
     "given ledger.era.StoredTxOut.dijkstra"
    ]
   },
@@ -49768,9 +49747,7 @@
     "object ledger.era.rules.AlonzoUtxow",
     "object ledger.era.rules.BabbageUtxow",
     "object ledger.era.rules.ConwayUtxow",
-    "object ledger.era.rules.ShelleyUtxow",
-    "enum ledger.era.rules.DijkstraUtxowUnprojected",
-    "def ledger.era.rules.DijkstraUtxowPredFailure.toStored"
+    "object ledger.era.rules.ShelleyUtxow"
    ]
   },
   {
@@ -49888,11 +49865,9 @@
    ]
   },
   {
-   "reason": "which native scripts UTXOW evaluates: the flat scripts' time-lock trees, or Dijkstra's scripts read again in Dijkstra's form from the bytes a witness arrived in and the output the store keeps, with the body's guards; a flat native script with no tree to evaluate is a defect, never a pass (#1126). The reference holds every script in its era's own form and has no counterpart",
+   "reason": "a flat native script with no time-lock tree to evaluate (a Dijkstra script with a guard, which only Dijkstra's era UTXOW evaluates) is a defect of the flat UTXOW, never a pass (#1126). The reference holds every script in its era's own form and has no counterpart",
    "definitions": [
-    "class ledger.LedgerFailure.NativeScriptUnread",
-    "def ledger.rules.DijkstraStAnnTx.nativeScripts",
-    "enum ledger.rules.Utxow.NativeScripts"
+    "class ledger.LedgerFailure.NativeScriptUnread"
    ]
   },
   {
@@ -50219,10 +50194,8 @@
    ]
   },
   {
-   "reason": "the flat form of a Dijkstra GOV failure, the flat Dijkstra GOV's (Conway's), one-way glue the comparisons with the flat rule read, an action read as the flat rule reads it and none for a parameter change, which the flat action cannot hold; the failure type's companion with its equality with itself only",
+   "reason": "the companion of Dijkstra's GOV failure type, with its equality with itself only",
    "definitions": [
-    "def ledger.era.rules.DijkstraGovPredFailure.readOf",
-    "def ledger.era.rules.DijkstraGovPredFailure.toStored",
     "given ledger.era.rules.DijkstraGovPredFailure.given_CanEqual_DijkstraGovPredFailure_E_DijkstraGovPredFailure_E",
     "object ledger.era.rules.DijkstraGovPredFailure"
    ]
@@ -50272,11 +50245,6 @@
     "object ledger.era.rules.InjectPool",
     "object ledger.era.rules.ShelleyPoolPredFailure",
     "object ledger.era.rules.WithdrawalsRule",
-    "object ledger.era.rules.DijkstraCertsStored",
-    "def ledger.era.rules.DijkstraCertsStored.toStored",
-    "def ledger.era.rules.DijkstraCertsStored.cert",
-    "def ledger.era.rules.DijkstraPoolPredFailure.toStored",
-    "def ledger.era.rules.DijkstraGovCertPredFailure.toStored",
     "object ledger.era.rules.DijkstraPoolPredFailure",
     "object ledger.era.rules.DijkstraGovCertPredFailure",
     "object ledger.era.rules.EntitiesPredFailure",
@@ -50405,7 +50373,7 @@
    ]
   },
   {
-   "reason": "Dijkstra's LEDGER failures' adapter to the node's flat Dijkstra failure (DijkstraLedgerPredFailure.toStored, with what it cannot give, DijkstraLedgerUnprojected: UTXOW's, an action GOV's failure names that no proposal was read as, and ENTITIES' and SUBLEDGERS' failures, which the flat rules halt before), which the comparisons with the flat rules and the oracle suite's encoder read until the era's failures have their encoders (#796); and the companions of LEDGER's and MEMPOOL's failures, events, injections and embeddings, and the module objects of LEDGER, LEDGERS and MEMPOOL at Dijkstra, with each type's equality with itself only: Scala containers with no counterpart (#85)",
+   "reason": "the companions of LEDGER's and MEMPOOL's failures, events, injections and embeddings, and the module objects of LEDGER, LEDGERS and MEMPOOL at Dijkstra, with each type's equality with itself only: Scala containers with no counterpart (#85)",
    "definitions": [
     "object ledger.era.rules.DijkstraLedger",
     "object ledger.era.rules.DijkstraLedgerEvent",
@@ -50420,9 +50388,7 @@
     "given ledger.era.rules.DijkstraLedgerEvent.given_CanEqual_DijkstraLedgerEvent_E_DijkstraLedgerEvent_E",
     "given ledger.era.rules.DijkstraLedgerPredFailure.given_CanEqual_DijkstraLedgerPredFailure_E_DijkstraLedgerPredFailure_E",
     "given ledger.era.rules.DijkstraMempoolEvent.given_CanEqual_DijkstraMempoolEvent_E_DijkstraMempoolEvent_E",
-    "given ledger.era.rules.DijkstraMempoolPredFailure.given_CanEqual_DijkstraMempoolPredFailure_E_DijkstraMempoolPredFailure_E",
-    "def ledger.era.rules.DijkstraLedgerPredFailure.toStored",
-    "enum ledger.era.rules.DijkstraLedgerUnprojected"
+    "given ledger.era.rules.DijkstraMempoolPredFailure.given_CanEqual_DijkstraMempoolPredFailure_E_DijkstraMempoolPredFailure_E"
    ]
   },
   {
@@ -50470,7 +50436,7 @@
    ]
   },
   {
-   "reason": "the node's flat governance record read into the era's governance state, its parameters, proposals and action states, until the ledger state holds the era's record (#85): Dijkstra's ledger state holds the era's record, read from Conway's flat one where the chain enters Dijkstra; nothing writes the era's governance state back whole",
+   "reason": "the node's flat governance record read into the era's governance state, its parameters, proposals and action states, until the ledger state holds the era's record (#85): Dijkstra's ledger state holds the era's record, read from Conway's flat one where the chain enters Dijkstra; nothing writes the era's governance state back whole; and Dijkstra's proposals as the flat decoder reads them in the flat record's form, every action but a parameter change, which is given back (DijkstraConway), for SUBLEDGER's committee proposals beside ConwayProposals.storedWith (the Gap of #85's item 6923349468)",
    "definitions": [
     "enum ledger.era.GovStateParams",
     "enum ledger.era.GovStateReadError",
@@ -50494,7 +50460,12 @@
     "def ledger.era.dijkstra.DijkstraProposals.fromStored",
     "def ledger.era.Voter.fromFlat",
     "def ledger.era.Voter.toFlat",
-    "def ledger.era.GovStateRecord.ratifyStateFromStored"
+    "def ledger.era.GovStateRecord.ratifyStateFromStored",
+    "object ledger.era.dijkstra.DijkstraConway",
+    "def ledger.era.dijkstra.DijkstraConway.action",
+    "def ledger.era.dijkstra.DijkstraConway.actionId",
+    "def ledger.era.dijkstra.DijkstraConway.anchor",
+    "def ledger.era.dijkstra.DijkstraConway.proposal"
    ]
   },
   {
@@ -50544,7 +50515,7 @@
    ]
   },
   {
-   "reason": "the companions of BBODY's era types and failures (their CanEqual givens), the header's fields read once in the classes' types (DijkstraBlockHeader, a plain class so that no derived Mirror builds one whose fields are not its header's, and its rendering), the evidence that a flat block or transaction is one the block decoder read (DijkstraBlock.Decoded, which only DijkstraBlock.decode makes), why a block's bytes are not a block in the era's types, by whose the failure is (DijkstraBlockError and its total classification DijkstraBlockError.of: the block decoder's refusal, the era types' refusal of what it read, or the node's own readings that disagree), a body's rendering, the BBODY state's lens, and the adapter of Dijkstra's BBODY failures to the node's flat Dijkstra failure (DijkstraBbody.toStored), one-way glue the comparisons read until the era failures have their own encoders (#796)",
+   "reason": "the companions of BBODY's era types and failures (their CanEqual givens), the header's fields read once in the classes' types (DijkstraBlockHeader, a plain class so that no derived Mirror builds one whose fields are not its header's, and its rendering), the evidence that a flat block or transaction is one the block decoder read (DijkstraBlock.Decoded, which only DijkstraBlock.decode makes), why a block's bytes are not a block in the era's types, by whose the failure is (DijkstraBlockError and its total classification DijkstraBlockError.of: the block decoder's refusal, the era types' refusal of what it read, or the node's own readings that disagree), a body's rendering, and the BBODY state's lens",
    "definitions": [
     "class ledger.era.dijkstra.DijkstraBlock.Decoded",
     "class ledger.era.dijkstra.DijkstraBlockHeader",
@@ -50552,7 +50523,6 @@
     "def ledger.era.dijkstra.DijkstraBlockError.of",
     "def ledger.era.dijkstra.DijkstraBlockHeader#toString",
     "def ledger.era.dijkstra.DijkstraBlockHeader.fromHeader",
-    "def ledger.era.rules.DijkstraBbody.toStored",
     "def ledger.era.rules.ShelleyBbodyState.ls",
     "enum ledger.era.dijkstra.DijkstraBlockError",
     "given ledger.era.BlockHeaderVersionInfo.given_CanEqual_BlockHeaderVersionInfo_BlockHeaderVersionInfo",
