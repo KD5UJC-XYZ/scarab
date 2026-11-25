@@ -33,26 +33,39 @@ object FlatRecordings:
   private def field(name: String, j: io.circe.Json, key: String): String =
     j.hcursor.get[String](key).fold(e => Assertions.fail(s"$name: $key, $e"), identity)
 
+  /** The records of `name` by their field `key`, failing the test where a key occurs twice. */
+  private def keyed(name: String, key: String)(
+      value: io.circe.Json => String
+  ): Map[String, String] =
+    val rows = lines(name).map(j => field(name, j, key) -> value(j))
+    val ids = rows.map(_._1)
+    val twice = ids.diff(ids.distinct).distinct
+    if twice.nonEmpty then Assertions.fail(s"$name: $key more than once: $twice")
+    rows.toMap
+
   /** `ConwayLedgerChecksSuite` 's judgments of each case: the digest of each refusal's bytes, `-`
     * for an admission, in the recording's order.
     */
   lazy val ledgerChecks: Map[String, Vector[String]] =
-    lines("ledger-checks.jsonl").map { j =>
-      field("ledger-checks", j, "case") ->
-        field("ledger-checks", j, "r").split(' ').toVector
-    }.toMap
+    keyed("ledger-checks.jsonl", "case")(field("ledger-checks.jsonl", _, "r"))
+      .map((k, v) => k -> v.split(' ').toVector)
 
-  /** `ConwayFailureCborSuite` 's failure lists: the digest of a list's `toString` to that of its
+  /** `ConwayMempoolRunSuite` 's root judgments of each corpus case: `R:` and the digest of a
+    * refusal's bytes, or `A:` and that of the ledger state an admission leaves, in the recording's
+    * order.
+    */
+  lazy val mempoolRun: Map[String, Vector[String]] =
+    keyed("mempool-run.jsonl", "case")(field("mempool-run.jsonl", _, "r"))
+      .map((k, v) => k -> v.split(' ').toVector)
+
+  /** `ConwayFailureCborSuite` 's cases the flat encoder wrote: each case's id to the digest of its
     * bytes.
     */
   lazy val failureConstructors: Map[String, String] =
-    lines("failure-constructors.jsonl").map { j =>
-      field("failure-constructors", j, "failure") -> field("failure-constructors", j, "bytes")
-    }.toMap
+    keyed("failure-constructors.jsonl", "id")(field("failure-constructors.jsonl", _, "bytes"))
 
-  /** The digest of the bytes the flat encoder wrote for `failures`, failing the test where none was
-    * recorded.
+  /** The digest of the bytes the flat encoder wrote for the case `id`, failing the test where none
+    * was recorded.
     */
-  def wrote(failures: List[Any]): String =
-    val key = digest(failures.toString.getBytes("UTF-8"))
-    failureConstructors.getOrElse(key, Assertions.fail(s"no recording of $failures"))
+  def wrote(id: String): String =
+    failureConstructors.getOrElse(id, Assertions.fail(s"no recording of $id"))

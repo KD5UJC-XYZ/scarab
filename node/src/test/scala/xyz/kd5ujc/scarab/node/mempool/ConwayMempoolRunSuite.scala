@@ -38,9 +38,9 @@ import xyz.kd5ujc.scarab.ledger.state.{
   UtxoTables
 }
 import xyz.kd5ujc.scarab.node.NodeSetup
-import xyz.kd5ujc.scarab.node.ntc.{ConwayFailureCborCheck, ReferenceRefusalSuite}
+import xyz.kd5ujc.scarab.node.ntc.{ConwayFailureCborCheck, FlatRecordings, ReferenceRefusalSuite}
 import xyz.kd5ujc.scarab.protocol.{Era, ReferenceBuild, StateLayout}
-import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellState, UtxoCodecs}
+import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellState, LedgerFileCodecs, UtxoCodecs}
 import xyz.kd5ujc.scarab.storage.haskell.state.NodeOrders.given_Order_Bytes
 
 /** Conway's MEMPOOL on the era types and its run (`ConwayMempoolRun`), the rule the node's pool
@@ -106,6 +106,16 @@ class ConwayMempoolRunSuite extends FunSuite:
     Horizon
       .History(Vector.empty, Horizon.Edge(0, 0, 0), params, Some(params))
       .at(Horizon.Transition.Unknown(Some(tip)))
+
+  /** The codecs of each corpus case's state, in the layout of the build that recorded it. */
+  private lazy val corpusCodecs: Map[String, LedgerFileCodecs] =
+    right("the refusal corpus")(load(Path.of("fixtures/reference/refusals"))).corpora
+      .filter(_.era == RefusalEra.Conway)
+      .flatMap { c =>
+        val codecs = right(s"${c.path} layout")(stateCodecs(c.build))
+        c.cases.map(rc => s"${c.path}/${rc.label}" -> codecs)
+      }
+      .toMap
 
   private val corpus: Vector[Seen] =
     val loaded = right("the refusal corpus")(load(Path.of("fixtures/reference/refusals")))
@@ -233,6 +243,59 @@ class ConwayMempoolRunSuite extends FunSuite:
         s.label
       )
     }
+
+  /** What the era MEMPOOL made of a corpus case, as the recording of the flat MEMPOOL's holds it
+    * (`fixtures/conway-flat-refusals/mempool-run.jsonl`): `R:` and the digest of a refusal's bytes
+    * (every failure, in its order), or `A:` and that of the ledger state an admission leaves, in
+    * the Haskell state's encoding of the case's layout at protocol version 9.
+    */
+  private def recordedForm(what: String, codecs: LedgerFileCodecs)(
+      outcome: ConwayMempoolRun.Outcome[LedgerState[Conway]]
+  ): String = outcome match
+    case Left(defect) => fail(s"$what: era defect $defect")
+    case Right(Left(ConwayApplyTxError(fs))) =>
+      "R:" + FlatRecordings.digest(ConwayFailureCborCheck.direct(fs.toChain.toVector))
+    case Right(Right(state)) =>
+      given xyz.kd5ujc.scarab.ledger.state.ProtVer = xyz.kd5ujc.scarab.ledger.state.ProtVer(
+        xyz.kd5ujc.scarab.ledger.state.Word64.fromUnsigned(9),
+        xyz.kd5ujc.scarab.ledger.state.Word64.zero
+      )
+      "A:" + FlatRecordings.digest(
+        right(s"$what: the state's bytes")(
+          codecs.ledgerState[Conway].write(state)
+        )
+      )
+
+  test(
+    "applyTx and reapply give the flat MEMPOOL's recorded verdicts on every Conway case, version and build"
+  ):
+    // the flat MEMPOOL, before it was deleted, judged each case at its recorded protocol version
+    // and at 9, 10 and 11, under each build, applied and applied again, and the era MEMPOOL gave
+    // the same failures in the same order, or the same ledger state (the moved withdrawals as
+    // `MovedWithdrawals.expected` has them); the era MEMPOOL's results were recorded
+    val recorded = FlatRecordings.mempoolRun
+    assertEquals(recorded.keySet, corpus.map(_.label).toSet, "the cases recorded")
+    val codecsOf = corpusCodecs
+    val cells = corpus.flatMap { s0 =>
+      val judged = for
+        v <- versions(s0)
+        build <- ReferenceBuild.values.toVector
+        s = v.under(build)
+        cell <- Vector(
+          recordedForm(s"${s.label} under ${build.name}, applyTx", codecsOf(s0.label))(
+            ConwayMempoolRun.applyTx(s.judging, s.env, s.ledger.ls, s.typed).map(_.map(_._1))
+          ),
+          recordedForm(s"${s.label} under ${build.name}, reapply", codecsOf(s0.label))(
+            ConwayMempoolRun.reapply(s.judging, s.env, s.ledger.ls, held(s))
+          )
+        )
+      yield cell
+      assertEquals(judged, recorded(s0.label), s0.label)
+      judged
+    }
+    assertEquals(cells.size, corpus.size * 4 * ReferenceBuild.values.size * 2, "the judgments")
+    assert(cells.exists(_.startsWith("A:")), "no admission")
+    assert(cells.exists(_.startsWith("R:")), "no refusal")
 
   // ---- the pool suites' transactions
 
@@ -429,63 +492,65 @@ class ConwayMempoolRunSuite extends FunSuite:
     utxow(ConwayUtxowPredFailure.InvalidWitnessesUTXOW(NonEmptyList.one(alice.vkey)))
 
   /** The ledger state an admitted transaction of `s` leaves, derived from the transaction and the
-    * state before it. `updateUTxOState` (`Shelley/Rules/Utxo.hs:597-626` (f649f975), through
-    * Babbage's and Conway's UTXO) takes the inputs out of the UTxO and adds each output at its
-    * index under the transaction's id, as the body holds it (`txouts`, `:614-618`), adds the fee to
-    * the fee pot, and adds the deposits less the refunds to the deposit pot
-    * (`updateUTxOStateDeposits`, `:641-647`). A stake registration (`ConwayRegCert`, a body's
-    * `[0, credential]` among them) registers its credential with the key deposit in force and no
-    * delegation (`registerConwayAccount`, `Conway/Rules/Deleg.hs:233-239` (f649f975)); no case
-    * withdraws.
+    * state before it, and compared whole. `updateUTxOState` (`Shelley/Rules/Utxo.hs:597-626`
+    * (f649f975), through Babbage's and Conway's UTXO) takes the inputs out of the UTxO and adds
+    * each output at its index under the transaction's id, as the body holds it (`txouts`,
+    * `:614-618`), leaving every other output as it was; adds the fee to the fee pot; and adds the
+    * deposits less the refunds to the deposit pot (`updateUTxOStateDeposits`, `:641-647`). The
+    * instant stake does not change: every address of the cases is an enterprise address, with no
+    * stake reference. A stake registration (`ConwayRegCert`, a body's `[0, credential]` among them)
+    * registers its credential with the key deposit in force, no balance and no delegation
+    * (`registerConwayAccount`, `Conway/Rules/Deleg.hs:233-239` (f649f975)). No case withdraws,
+    * votes or proposes, so nothing else changes.
     */
   private def adopted(s: Seen, what: String)(after: LedgerState[Conway]): Unit =
     val body = s.flat.body
     val before = s.ledger.ls
-    val outputs = after.utxo.utxo.utxo.toMap
-    val created = body.outputs.indices.map(i => TxIn(body.id, i)).toSet
-    assertEquals(
-      outputs.keySet,
-      s.ledger.utxo.toMap.keySet -- body.inputs ++ created,
-      s"$what: the UTxO"
+    assert(
+      body.withdrawals.isEmpty && body.votes.isEmpty && body.proposals.isEmpty,
+      s"$what: a case that withdraws, votes or proposes"
     )
-    body.outputs.zipWithIndex.foreach { (out, i) =>
-      assertEquals(outputs.get(TxIn(body.id, i)), Some(out), s"$what: output $i")
-    }
-    assertEquals(after.utxo.fees, Coin(before.utxo.fees.value + body.fee), s"$what: the fees")
-    assert(body.withdrawals.isEmpty, s"$what: no case withdraws")
-    val registered = body.certificates.collect {
-      case xyz.kd5ujc.scarab.ledger.Certificate.Register(credential, None) => credential
-    }
-    assertEquals(registered.size, body.certificates.size, s"$what: only registrations")
-    val keyDeposit = s.ledger.params.keyDeposit
-    assertEquals(
-      after.utxo.deposited,
-      Coin(before.utxo.deposited.value + keyDeposit * registered.size),
-      s"$what: the deposits"
-    )
-    val accounts = after.cert.dState.accounts.states
-    assertEquals(
-      accounts.keySet.map(xyz.kd5ujc.scarab.ledger.rules.Convert.back(_)),
-      before.cert.dState.accounts.states.keySet
-        .map(xyz.kd5ujc.scarab.ledger.rules.Convert.back(_)) ++
-        registered,
-      s"$what: the registered credentials"
-    )
-    accounts.foreach { (credential, account) =>
-      if registered.contains(xyz.kd5ujc.scarab.ledger.rules.Convert.back(credential)) then
-        assertEquals(
-          (account.balance, account.deposit, account.pool, account.drep),
-          (
-            xyz.kd5ujc.scarab.ledger.state.CompactCoin.zero,
-            xyz.kd5ujc.scarab.ledger.state.CompactCoin
-              .fromBigInt(keyDeposit)
-              .fold(e => fail(s"$e"), identity),
-            None,
-            None
-          ),
-          s"$what: the registration"
+    val registered = body.certificates.map {
+      case xyz.kd5ujc.scarab.ledger.Certificate.Register(credential, None) =>
+        right(s"$what: credential")(
+          xyz.kd5ujc.scarab.ledger.rules.Convert.credential[xyz.kd5ujc.scarab.ledger.state.Staking](
+            credential
+          )
         )
+      case other => fail(s"$what: a certificate the suite does not derive: $other")
     }
+    val keyDeposit = s.ledger.params.keyDeposit
+    val account = xyz.kd5ujc.scarab.ledger.state.ConwayAccountState(
+      xyz.kd5ujc.scarab.ledger.state.CompactCoin.zero,
+      right(s"$what: deposit")(xyz.kd5ujc.scarab.ledger.state.CompactCoin.fromBigInt(keyDeposit)),
+      None,
+      None
+    )
+    val utxo =
+      s.ledger.utxo.toMap -- body.inputs ++
+        body.outputs.zipWithIndex.map((out, i) => TxIn(body.id, i) -> out)
+    val accounts = before.cert.dState.accounts
+    val expected = before.copy[Conway](
+      cert = before.cert.copy(dState =
+        before.cert.dState
+          .copy(accounts = accounts.copy(states = accounts.states ++ registered.map(_ -> account)))
+      ),
+      utxo = before.utxo.copy(
+        utxo = UtxoTables(Utxo.fromMap(utxo)),
+        fees = Coin(before.utxo.fees.value + body.fee),
+        deposited = Coin(before.utxo.deposited.value + keyDeposit * registered.size)
+      )
+    )
+    // the UTxO by its entries (its handle also keeps the changes it was made by), every entry, the
+    // inputs left alone among them; then the rest of the state whole
+    assertEquals(after.utxo.utxo.utxo.toMap, utxo, s"$what: the UTxO")
+    assertEquals(
+      xyz.kd5ujc.scarab.ledger.state
+        .Diff[LedgerState[Conway]]
+        .diff(after.copy[Conway](utxo = after.utxo.copy(utxo = expected.utxo.utxo)), expected),
+      None,
+      s"$what: the ledger state"
+    )
 
   /** What the reference's rules give of the pool suites' transaction of `s`, applied with every
     * check (`applyTx`) or again (`reapply`), at every version and under every build: a refusal's
@@ -584,11 +649,25 @@ class ConwayMempoolRunSuite extends FunSuite:
     "an unelected committee voter: MEMPOOL's failure below protocol version 11, GOV's from it"
   ):
     val s0 = kitCases.find(_.label == "unelected-vote").getOrElse(fail("no vote"))
-    def refusal(major: Int) =
-      val s = s0.atVersion(major)
-      ConwayMempoolRun.applyTx(s.judging, s.env, s.ledger.ls, s.typed) match
+    // under every build, applied (`applyTx`) and applied again (`reapply`, held as validated in the
+    // same state, so without the static checks, which none of these failures is)
+    def refusals(major: Int): Vector[(String, List[ConwayLedgerPredFailure[Conway]])] =
+      for
+        build <- ReferenceBuild.values.toVector
+        s = s0.atVersion(major).under(build)
+        (how, outcome) <- Vector(
+          "applyTx" -> ConwayMempoolRun
+            .applyTx(s.judging, s.env, s.ledger.ls, s.typed)
+            .map(_.map(_._1)),
+          "reapply" -> ConwayMempoolRun.reapply(s.judging, s.env, s.ledger.ls, held(s))
+        )
+      yield s"${s.label} under ${build.name}, $how" -> (outcome match
         case Right(Left(ConwayApplyTxError(fs))) => fs.toChain.toList
-        case other                               => fail(s"${s.label}: $other")
+        case other => fail(s"${s.label} under ${build.name}, $how: $other"))
+    def refusedAs(major: Int)(expected: List[ConwayLedgerPredFailure[Conway]]): Unit =
+      val all = refusals(major)
+      assertEquals(all.size, ReferenceBuild.values.size * 2)
+      all.foreach((what, fs) => assertEquals(fs, expected, what))
     val unknown = ConwayLedgerPredFailure.ConwayGovFailure[Conway](
       ConwayGovPredFailure.VotersDoNotExist(
         NonEmptyList.one(xyz.kd5ujc.scarab.ledger.Voter.CommitteeHot(hot.credential))
@@ -601,12 +680,13 @@ class ConwayMempoolRunSuite extends FunSuite:
     // (f649f975)) and each failure of a sub-rule, in that rule's list, before those already there
     // (`:721`), and is not reversed after (`:598-608`): GOV's one failure, through LEDGER's list,
     // comes before MEMPOOL's own
-    assertEquals(
-      refusal(10),
-      List(
-        unknown,
-        ConwayLedgerPredFailure.ConwayMempoolFailure[Conway](
-          MempoolProblem.UnelectedCommittee(Vector(hot.credential))
+    Vector(9, 10).foreach(major =>
+      refusedAs(major)(
+        List(
+          unknown,
+          ConwayLedgerPredFailure.ConwayMempoolFailure[Conway](
+            MempoolProblem.UnelectedCommittee(Vector(hot.credential))
+          )
         )
       )
     )
@@ -614,8 +694,7 @@ class ConwayMempoolRunSuite extends FunSuite:
     // the unknown one (`:604`), so GOV's list holds the unknown voter first; LEDGER's, which takes
     // GOV's failures one by one before its own, the unelected voter first; and MEMPOOL's, which
     // takes LEDGER's so, the unknown voter first
-    assertEquals(
-      refusal(11),
+    refusedAs(11)(
       List(
         unknown,
         ConwayLedgerPredFailure.ConwayGovFailure[Conway](
