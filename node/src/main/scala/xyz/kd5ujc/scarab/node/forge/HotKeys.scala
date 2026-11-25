@@ -359,19 +359,31 @@ final class HotKeys[F[_]: Async] private (
   private def guarded[A](use: Option[PoolCredentials] => Raise[F, Fatal] ?=> F[A])(using
       Raise[F, Fatal]
   ): F[A] =
+    guardedThen(use)(F.pure)
+
+  /** [[guarded]], then `after` of its value under the lock once the lease has ended: what may wait
+    * on something outside, a line written to a log, is done holding no lease, so that it keeps no
+    * credentials a reload superseded from being erased.
+    */
+  private def guardedThen[A, B](use: Option[PoolCredentials] => Raise[F, Fatal] ?=> F[A])(
+      after: A => F[B]
+  )(using Raise[F, Fatal]): F[B] =
     def run(credentials: Option[PoolCredentials]): F[Either[Fatal, A]] =
       Fibers
         .scoped[F, Fatal, A](Fatal.Defect(_))(use(credentials))
-        .onCancel(remember(Fatal.Internal(ForgeError.KesUpdateInterrupted)).void)
+        .onCancel(interrupted)
     lock.lock.surround {
       healthy *> generations
         .leased(c => run(Some(c)))
         .flatMap(_.fold(run(None))(F.pure))
         .flatMap {
-          case Right(value) => F.pure(value)
-          case Left(fatal)  => remember(fatal).flatMap(_.raise[F, A])
+          case Right(value) => after(value).onCancel(interrupted)
+          case Left(fatal)  => remember(fatal).flatMap(_.raise[F, B])
         }
     }
+
+  private def interrupted: F[Unit] =
+    remember(Fatal.Internal(ForgeError.KesUpdateInterrupted)).void
 
   private def usingKey[A](use: PoolCredentials => Raise[F, Fatal] ?=> F[A])(using
       Raise[F, Fatal]
@@ -442,20 +454,26 @@ final class HotKeys[F[_]: Async] private (
   private def evolved(c: HotKeys.Signer, kesPeriod: BigInt)(using
       Raise[F, Fatal]
   ): F[Either[ForgeError, Unit]] =
+    evolving(c, kesPeriod).flatMap((result, said) => said.traverse_(events.emit).as(result))
+
+  /** [[evolved]], with the line that says the key moved, if it did, given back to be said rather
+    * than said.
+    */
+  private def evolving(c: HotKeys.Signer, kesPeriod: BigInt)(using
+      Raise[F, Fatal]
+  ): F[(Either[ForgeError, Unit], Option[ForgeEvent])] =
     val relative = kesPeriod - c.opCert.kesPeriod
     healthy *> F.delay(c.kes.period).flatMap { before =>
       F.blocking(c.kes.evolveTo(relative).leftMap(ForgeError.KesEvolution(_)))
         .flatMap {
           case Left(error) if relative >= Sum6KesSigning.Periods =>
-            Fatal.Internal(error).raise[F, Either[ForgeError, Unit]]
+            Fatal.Internal(error).raise[F, (Either[ForgeError, Unit], Option[ForgeEvent])]
           case result =>
-            result
-              .traverse_ { _ =>
-                events
-                  .emit(ForgeEvent.KesEvolved(kesPeriod, c.kes.period))
-                  .whenA(before != relative)
-              }
-              .as(result)
+            F.delay(
+              result.toOption
+                .filter(_ => before != relative)
+                .map(_ => ForgeEvent.KesEvolved(kesPeriod, c.kes.period))
+            ).tupleLeft(result)
         }
     }
 
@@ -557,13 +575,16 @@ final class HotKeys[F[_]: Async] private (
     * ([[HotKeys.kept]]).
     */
   def reload(kesPeriod: BigInt, counter: Option[BigInt])(using Raise[F, Fatal]): F[Unit] =
-    guarded { inUse =>
-      source.traverse_ { s =>
+    // the lines the reload says are written once its lease has ended, in the order it made them
+    guardedThen { inUse =>
+      source.fold(F.pure(Vector.empty[ForgeEvent])) { s =>
         // the keys read are the read's until they are installed: what is not, the end of its
         // scope erases, a refusal, a failure and a cancellation alike
         s.read.use {
           case Left(e) =>
-            HotKeys.reloadFailure(e).fold(refuse(ReloadRefusal.Unreadable(e)))(_.raise[F, Unit])
+            HotKeys
+              .reloadFailure(e)
+              .fold(refuse(ReloadRefusal.Unreadable(e)))(_.raise[F, Vector[ForgeEvent]])
           case Right(HotKeySource.Reading.Absent(_)) => disable
           case Right(HotKeySource.Reading.Found(candidate)) =>
             poisoned.get.flatMap { erased =>
@@ -583,24 +604,25 @@ final class HotKeys[F[_]: Async] private (
             }
         }
       }
-    }
+    }(_.traverse_(events.emit))
 
   /** Forging off: no credentials in force, and the poisoning forgotten, as the reference drops its
     * block forging; the keys that were in force are erased once the evaluations in flight under
     * them end. The trace follows the switch, so a reader of the log that sees it knows that nothing
     * signs any more.
     */
-  private def disable: F[Unit] =
+  private def disable: F[Vector[ForgeEvent]] =
     generations.install(None)(HotKeys.erased) *> poisoned.set(None) *>
-      installed.update(i => HotKeys.Installed(i.generation + 1, None)) *>
-      events.emit(ForgeEvent.BlockForgingUpdate(BlockForgingState.DisabledBlockForging))
+      installed
+        .update(i => HotKeys.Installed(i.generation + 1, None))
+        .as(Vector(ForgeEvent.BlockForgingUpdate(BlockForgingState.DisabledBlockForging)))
 
-  private def refuse(why: ReloadRefusal)(using Raise[F, Fatal]): F[Unit] =
+  private def refuse(why: ReloadRefusal)(using Raise[F, Fatal]): F[Vector[ForgeEvent]] =
     val fatal = why match
       case ReloadRefusal.CertificateFailure(cause) =>
         HotKeys.infrastructureFailure(ForgeError.CertificateFailure(cause))
       case _ => None
-    fatal.fold(events.emit(ForgeEvent.KesReloadRefused(why)))(_.raise[F, Unit])
+    fatal.fold(F.pure(Vector(ForgeEvent.KesReloadRefused(why))))(_.raise[F, Vector[ForgeEvent]])
 
   /** The switch to `found` at `kesPeriod`, of its keys or of its VRF key and the KES key in use
     * (`succession`, [[HotKeys.kept]]). The keys move from the read to the new credentials in one
@@ -615,7 +637,7 @@ final class HotKeys[F[_]: Async] private (
       succession: HotKeys.Succession,
       found: HotKeySource.Candidate[F],
       kesPeriod: BigInt
-  )(using Raise[F, Fatal]): F[Unit] =
+  )(using Raise[F, Fatal]): F[Vector[ForgeEvent]] =
     val candidate = found.credentials
     val kes = succession match
       case HotKeys.Succession.FromFiles      => candidate.kes
@@ -638,19 +660,22 @@ final class HotKeys[F[_]: Async] private (
       // the key in use, further on than the file it was read again from, it is written there only
       // once a slot that passed the forecast check confirms its period (#1101, the KES row of
       // 2026-11-18): a reload on a wrong reading of the clock writes nothing
-      _ <- evolved(HotKeys.Signer.of(next), kesPeriod)
-        .flatMap(_.fold(error => Fatal.Internal(error).raise[F, Unit], _ => F.unit))
-        .whenA(relative > kes.period)
-      _ <- events.emit(
-        ForgeEvent.KesReloaded(
-          candidate.opCert.sequence,
-          candidate.opCert.kesPeriod,
-          config.maxKesEvolutions,
-          kesPeriod
-        )
-      )
-      _ <- events.emit(ForgeEvent.BlockForgingUpdate(BlockForgingState.EnabledBlockForging))
-    yield ()
+      moved <-
+        if relative > kes.period then
+          evolving(HotKeys.Signer.of(next), kesPeriod).flatMap((result, said) =>
+            result
+              .fold(error => Fatal.Internal(error).raise[F, Option[ForgeEvent]], _ => F.pure(said))
+          )
+        else F.pure(None)
+    yield moved.toVector ++ Vector(
+      ForgeEvent.KesReloaded(
+        candidate.opCert.sequence,
+        candidate.opCert.kesPeriod,
+        config.maxKesEvolutions,
+        kesPeriod
+      ),
+      ForgeEvent.BlockForgingUpdate(BlockForgingState.EnabledBlockForging)
+    )
 
 object HotKeys:
   /** The update of the KES key to a period: the key's state, its failure, or a failure of the
