@@ -33,7 +33,7 @@ class MithrilClientSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   private def quoted(text: String): String = "'" + text.replace("'", "'\"'\"'") + "'"
   private def sleepingChild(pidFile: Path, beforeWrite: String = ":"): String =
     val pending = quoted(pidFile.toString + ".pending")
-    s"{\n$beforeWrite\nprintf '%s' \"$$$$\"\n} > $pending\n/bin/mv $pending ${quoted(pidFile.toString)}\nexec /bin/sleep 30"
+    s"{\n$beforeWrite\nprintf '%s' \"$$$$\"\n} > $pending\nmv $pending ${quoted(pidFile.toString)}\nexec sleep 30"
 
   private def success(path: Path): String =
     Json
@@ -57,7 +57,9 @@ class MithrilClientSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     val original = root / "original-client"
     val work = root / "work"
     val database = root / "cached"
-    val raw = s"#!/bin/sh\n$script\n".getBytes(java.nio.charset.StandardCharsets.UTF_8)
+    val path = sys.env.getOrElse("PATH", fail("PATH is required to locate test utilities"))
+    val raw = s"#!/bin/sh\nexport PATH=${quoted(path)}\n$script\n"
+      .getBytes(java.nio.charset.StandardCharsets.UTF_8)
     for
       _ <- IO.blocking {
         Files.createDirectories(work.toNioPath)
@@ -166,7 +168,7 @@ class MithrilClientSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       val marker = root / "executed"
       execute(
         root,
-        s"/usr/bin/touch ${quoted(marker.toString)}",
+        s"touch ${quoted(marker.toString)}",
         digest = Some(Bytes.wrap(Array.fill(32)(0.toByte)))
       ).map { result =>
         assert(result.left.exists(_.isInstanceOf[Error.ExecutableDigest]))
@@ -184,7 +186,7 @@ class MithrilClientSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
 
   test("bounded capture drains both pipes without mistaking excess output for success") {
     StorageTestKit.tempDir.use(root =>
-      execute(root, "/usr/bin/head -c 5000000 /dev/zero")
+      execute(root, "head -c 5000000 /dev/zero")
         .map(result => assertEquals(result, Left(Error.OutputLimit)))
     )
   }
@@ -193,7 +195,7 @@ class MithrilClientSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     StorageTestKit.tempDir.use(root =>
       execute(
         root,
-        s"/usr/bin/head -c 5000000 /dev/zero >&2\nprintf '%s\\n' ${quoted(success(root / "cached"))}"
+        s"head -c 5000000 /dev/zero >&2\nprintf '%s\\n' ${quoted(success(root / "cached"))}"
       )
         .map(result => assert(result.isRight))
     )
@@ -222,7 +224,7 @@ class MithrilClientSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       val started = root / "writer-started"
       val gate = root / "allow-write"
       val beforeWrite =
-        s"/usr/bin/touch ${quoted(started.toString)}\nwhile [ ! -f ${quoted(gate.toString)} ]; do /bin/sleep 0.01; done"
+        s"touch ${quoted(started.toString)}\nwhile [ ! -f ${quoted(gate.toString)} ]; do sleep 0.01; done"
       Resource
         .make(execute(root, sleepingChild(pidFile, beforeWrite), 30.seconds).start)(_.cancel)
         .use { fiber =>

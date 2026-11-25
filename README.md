@@ -110,6 +110,9 @@ The design is described in [docs/architecture.md](docs/architecture.md), the rul
 
 ## Quick start
 
+For a Docker-free Scala environment, use [Nix development](docs/nix.md):
+`nix develop`, then `bash scripts/sbtw check`.
+
 Docker and Python 3 are all the host needs; there is no host JDK or sbt.
 
 ```sh
