@@ -69,10 +69,10 @@ object HeaderGate:
     /** The history now starts at our new anchor. */
     case Trimmed
 
-    /** The history does not pass through our anchor (the reference's `NoLongerIntersects`): the
-      * session's next header finds a new intersection.
+    /** The history, up to `tip`, does not pass through our anchor (the reference's
+      * `NoLongerIntersects`): the session drains and finds a new intersection.
       */
-    case NoLongerIntersects
+    case NoLongerIntersects(tip: ChainSync.Point)
 
   /** A gate that can take the validated headers of a Genesis jump as its own (`graft`): a gate of
     * the node's own header check ([[HeaderCheck.forNodeChain]]), which is what a Genesis node is
@@ -716,31 +716,28 @@ object HeaderCheck:
         override def intersectionSelection(using Applicative[F]): F[Option[ChainSelection.Local]] =
           knownSelection.get
 
+        // a gate built without a change source waits as its forecast waits do, by its poll
         override def ourChainChanged(using Applicative[F]): F[Option[F[Unit]]] =
-          canonical
-            .flatMap(_.changes)
-            .traverse(changes => changes.revision.map(seen => changes.changed(seen).void))
+          canonical.traverse(_ => revision.map(waitForChange))
 
         // History and selection change as one checkpoint, as `record` keeps them, and no header is
         // prepared against the selection they replace. The session calls this only between headers
         // (Peer's capacity wait), so no `record` runs meanwhile.
         override def followOurChain(using Applicative[F]): F[HeaderGate.Following] =
-          canonical.fold(F.pure(HeaderGate.Following.Unchanged)) { _ =>
-            coherentCurrent.flatMap { (current, selected) =>
-              selected.fold(F.pure(HeaderGate.Following.Unchanged)) { ours =>
-                state.get.flatMap { hc =>
-                  if !hc.withinFragmentBounds(current.anchor.point) then
-                    F.pure(HeaderGate.Following.NoLongerIntersects)
-                  else
-                    val trimmed = hc.trimmedTo(ours.anchor)
-                    if trimmed eq hc then
-                      knownSelection.set(Some(ours)).as(HeaderGate.Following.Unchanged)
-                    else
-                      F.uncancelable(_ =>
-                        state.set(trimmed) *> knownSelection.set(Some(ours)) *> prepared.set(None)
-                      ).as(HeaderGate.Following.Trimmed)
-                }
-              }
+          // the committed selection alone, read once: its anchor is both where the history must
+          // pass and where it is trimmed to
+          canonical.fold(F.pure(HeaderGate.Following.Unchanged)) { context =>
+            (context.selection, state.get).tupled.flatMap { (ours, hc) =>
+              if !hc.withinFragmentBounds(ours.anchor) then
+                F.pure(HeaderGate.Following.NoLongerIntersects(hc.tipPoint))
+              else
+                val trimmed = hc.trimmedTo(ours.anchor)
+                if trimmed eq hc then
+                  knownSelection.set(Some(ours)).as(HeaderGate.Following.Unchanged)
+                else
+                  F.uncancelable(_ =>
+                    state.set(trimmed) *> knownSelection.set(Some(ours)) *> prepared.set(None)
+                  ).as(HeaderGate.Following.Trimmed)
             }
           }
 

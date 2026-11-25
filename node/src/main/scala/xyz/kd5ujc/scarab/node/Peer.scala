@@ -1449,14 +1449,17 @@ object Peer:
                           // `readLedgerStateHelper`, ouroboros-consensus 82ecba329
                           // MiniProtocol/ChainSync/Client.hs 942-992, 1786-1815). The change is
                           // awaited from before the gate follows our chain and the room is weighed,
-                          // so none falls between them; a history that no longer passes through our
-                          // anchor lets the header through, for the gate to find a new
-                          // intersection.
+                          // so none falls between them. A history that no longer passes through our
+                          // anchor ends the wait with a restart, which drains the pipeline before
+                          // any header is taken.
                           F.tailRecM(()) { _ =>
                             gate.get.flatMap { current =>
                               current.ourChainChanged.flatMap { ourChain =>
                                 current.followOurChain.flatMap {
-                                  case HeaderGate.Following.NoLongerIntersects => F.pure(Right(()))
+                                  case HeaderGate.Following.NoLongerIntersects(tip) =>
+                                    // as the reference drains and finds a new intersection: the
+                                    // header is not taken
+                                    pendingRestart.set(Some(tip)).as(Right(()))
                                   case following =>
                                     (following match
                                       case HeaderGate.Following.Trimmed => nudge
