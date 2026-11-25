@@ -395,14 +395,16 @@ class PeerCandidateTrimSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
 
   /** A gate that accepts the headers up to the position `allowed` holds, waiting for it otherwise,
     * and whose history starts at our chain's anchor. Armed, `hold` keeps the next read of that
-    * history waiting until it is completed, and says so in `holding`.
+    * history waiting until it is completed, and says so in `holding`; the read gives our anchor as
+    * it is when the wait ends, or, `early`, as it was when the read began.
     */
   private def holding(
       chain: ForgedChain,
       allowed: SignallingRef[IO, Int],
       anchor: Ref[IO, ChainSync.Point],
       hold: Ref[IO, Option[Deferred[IO, Unit]]],
-      holding: Ref[IO, Boolean]
+      holding: Ref[IO, Boolean],
+      early: Boolean
   ): HeaderCheck[IO] = new HeaderCheck[IO]:
     def withLeios(leios: LeiosChainSync[IO]): HeaderCheck[IO] = this
     def start(point: ChainSync.Point) = IO.pure(new HeaderGate[IO]:
@@ -415,22 +417,38 @@ class PeerCandidateTrimSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           case SyncEvent.RollBackward(_, _) => IO.unit
         }
       override def snapshot(using cats.Applicative[IO]) =
-        hold.getAndSet(None).flatMap(_.traverse_(release => holding.set(true) *> release.get)) *>
-          anchor.get.map(point => Some(HeaderChain.at[NodeHeaderState](point, None))))
+        val waited =
+          hold.getAndSet(None).flatMap(_.traverse_(release => holding.set(true) *> release.get))
+        (if early then anchor.get <* waited else waited *> anchor.get)
+          .map(point => Some(HeaderChain.at[NodeHeaderState](point, None))))
 
-  /** What [[trimmedAtRest]] saw once every fiber came to rest after the publisher's trim: the
-    * session's candidate, as the position of its base in the chain and its size, and the size of
-    * the candidate the coordinator was last announced.
+  /** How [[trimmedAtRest]] moves the session while the publisher's step waits in its read of our
+    * anchor, the third header for the first two:
+    *   - `Resting`: nothing moves;
+    *   - `Replaced`: ChainSync takes one more header, replacing the candidate;
+    *   - `Overtaken`: our anchor moves to the fifth header, past the publisher's cursor, and
+    *     ChainSync takes one more header, after the step read our old anchor, the origin.
     */
-  private final case class Trimmed(base: Int, size: Int, announced: Vector[Option[Int]])
+  private enum Meanwhile:
+    case Resting, Replaced, Overtaken
+
+  /** What [[trimmedAtRest]] saw once every fiber came to rest after the publisher's step: the
+    * session's candidate, as the position of its base in the chain and its size, the size of the
+    * candidate the coordinator was last announced, and whether the schedule went as planned.
+    */
+  private final case class Trimmed(
+      base: Int,
+      size: Int,
+      announced: Vector[Option[Int]],
+      scheduled: Vector[Boolean]
+  )
 
   /** ChainSync takes the headers up to `first`, the consumer takes one and holds the rest, and the
-    * publisher's next step reads our anchor, the third header, while its cursor is at the fifth.
-    * With `replaced`, ChainSync takes one more header, replacing the candidate, while that step is
-    * under way. Every fiber is then at rest: ChainSync waits for the gate, the publisher for the
-    * consumer and the consumer for the case.
+    * publisher's next step, which publishes the fifth header, waits in its read of our anchor while
+    * the session moves as `meanwhile` says. Every fiber is then at rest: ChainSync waits for the
+    * gate, the publisher for the consumer and the consumer for the case.
     */
-  private def trimmedAtRest(chain: ForgedChain, replaced: Boolean): IO[Trimmed] =
+  private def trimmedAtRest(chain: ForgedChain, meanwhile: Meanwhile): IO[Trimmed] =
     val first = 5
     def position(point: ChainSync.Point) = chain.headers.indexWhere(_.point == point)
     FetchCoordinator
@@ -448,9 +466,10 @@ class PeerCandidateTrimSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
             Deferred[IO, Unit],
             Ref.of[IO, Int](0)
           ).flatMapN { (allowed, anchor, hold, held, trim, resume, finish, parked) =>
+            val early = meanwhile == Meanwhile.Overtaken
             val program = connected(
               chain,
-              holding(chain, allowed, anchor, hold, held),
+              holding(chain, allowed, anchor, hold, held, early),
               session,
               readAhead = 1
             ) { peer =>
@@ -465,13 +484,17 @@ class PeerCandidateTrimSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                 // ChainSync waits at header `first + 1`; the publisher has published three headers
                 // past the one the consumer took and waits for the consumer
                 _ <- control.tick
-                _ <- parked.get.map(n => assertEquals(n, 1, "the consumer did not take a header"))
+                one <- parked.get.map(_ == 1)
                 _ <- resume.complete(())
                 _ <- control.tick
-                _ <- held.get.map(assert(_, "the publisher did not read our anchor"))
-                _ <- parked.get.map(n => assertEquals(n, 2, "the consumer did not take a header"))
-                _ <- (allowed.set(first + 1) *> control.tick).whenA(replaced)
-                _ <- anchor.set(chain.headers(2).point)
+                waiting <- held.get
+                two <- parked.get.map(_ == 2)
+                _ <- meanwhile match
+                  case Meanwhile.Resting => anchor.set(chain.headers(2).point)
+                  case Meanwhile.Replaced =>
+                    allowed.set(first + 1) *> control.tick *> anchor.set(chain.headers(2).point)
+                  case Meanwhile.Overtaken =>
+                    anchor.set(chain.headers(4).point) *> allowed.set(first + 1) *> control.tick
                 _ <- trim.complete(())
                 _ <- control.tick
                 sessions <- coordinator.diagnostics
@@ -480,15 +503,27 @@ class PeerCandidateTrimSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                 result <- control.results
               yield result match
                 case Some(cats.effect.kernel.Outcome.Succeeded(seen)) =>
-                  Trimmed(position(seen.base), seen.headers.size, sessions.map(_.candidateHeaders))
+                  Trimmed(
+                    position(seen.base),
+                    seen.headers.size,
+                    sessions.map(_.candidateHeaders),
+                    Vector(one, waiting, two)
+                  )
                 case other => fail(s"the session did not end with its candidate: $other")
             }
           }
         }
       }
 
+  /** The schedule went as [[trimmedAtRest]] plans it: the consumer took a header, the publisher's
+    * step waited in its read of our anchor, and the consumer took another.
+    */
+  private def scheduled(seen: Trimmed): Unit =
+    assertEquals(seen.scheduled, Vector(true, true, true), "the schedule did not go as planned")
+
   test("a candidate ChainSync replaces while the publisher trims is trimmed all the same") {
-    forged.flatMap(trimmedAtRest(_, replaced = true)).map { seen =>
+    forged.flatMap(trimmedAtRest(_, Meanwhile.Replaced)).map { seen =>
+      scheduled(seen)
       // the trim goes to our anchor, the third header, and keeps the four after it, the newest of
       // them the one ChainSync took while the publisher's step was under way
       assertEquals((seen.base, seen.size), (2, 4), "the trim was lost")
@@ -497,10 +532,21 @@ class PeerCandidateTrimSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   }
 
   test("a trimmed candidate is announced to the coordinator while its peer sends nothing") {
-    forged.flatMap(trimmedAtRest(_, replaced = false)).map { seen =>
+    forged.flatMap(trimmedAtRest(_, Meanwhile.Resting)).map { seen =>
+      scheduled(seen)
       assertEquals((seen.base, seen.size), (2, 3), "the candidate was not trimmed")
       // no batch follows the trim: the coordinator has it only from the trim's own announcement
       assertEquals(seen.announced, Vector(Some(3)), "the coordinator holds the untrimmed candidate")
+    }
+  }
+
+  test("a trim our anchor asks for past the cursor is taken by the step that moves the cursor") {
+    forged.flatMap(trimmedAtRest(_, Meanwhile.Overtaken)).map { seen =>
+      scheduled(seen)
+      // ChainSync's batch trimmed only to the cursor, the fourth header; the step that publishes
+      // the fifth, our anchor, trims to it, though it read our old anchor
+      assertEquals((seen.base, seen.size), (4, 2), "the trim waits for another step")
+      assertEquals(seen.announced, Vector(Some(2)))
     }
   }
 

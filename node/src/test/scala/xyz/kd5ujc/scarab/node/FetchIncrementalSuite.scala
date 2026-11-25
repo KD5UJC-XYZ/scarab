@@ -677,33 +677,41 @@ class FetchIncrementalSuite extends ScalaCheckSuite:
   }
 
   /** One round on a streaming session's [[CandidateState]]: a ChainSync reply, our chain's anchor
-    * moving on, the capacity wait's trim, a publisher's step of at most `limit` headers, or a new
-    * intersection. Each is one transition, as the session makes it.
+    * moving on, the capacity wait's trim, a publisher's step of at most `limit` headers, which may
+    * have read our anchor before it last moved on (`stale`), or a new intersection. Each is one
+    * transition, as the session makes it.
     */
   private enum Streaming:
     case Reply(op: Op)
     case Anchor(seed: Int)
     case Trim
-    case Publish(limit: Int)
+    case Publish(limit: Int, stale: Boolean)
     case Restart(seed: Int)
 
   private val streamings: Gen[Streaming] = Gen.frequency(
     8 -> ops.map(Streaming.Reply(_)),
     2 -> Gen.choose(0, 1 << 20).map(Streaming.Anchor(_)),
     1 -> Gen.const(Streaming.Trim),
-    4 -> Gen.choose(1, 4).map(Streaming.Publish(_)),
+    4 -> Gen.zip(Gen.choose(1, 4), Gen.oneOf(false, true)).map(Streaming.Publish(_, _)),
     1 -> Gen.choose(0, 1 << 20).map(Streaming.Restart(_))
   )
 
-  /** What [[Streaming]] rounds leave: the session's state, our chain's anchor, and the chain the
-    * consumer built from every event published to it, from the origin.
+  /** What [[Streaming]] rounds leave: the session's state, our chain's anchor and the one before
+    * it, and the chain the consumer built from every event published to it, from the origin.
     */
   private final case class Streamed(
       state: CandidateState,
       anchor: Point,
+      earlier: Point,
       consumer: Vector[Header],
       prop: Prop
   )
+
+  /** The newer of two anchors of our chain, the main chain. */
+  private def newest(known: Option[Point], read: Point): Point =
+    known
+      .filter(k => main.indexWhere(_.point == k) > main.indexWhere(_.point == read))
+      .getOrElse(read)
 
   /** The points of `candidate`, its base first. */
   private def pointsOf(candidate: ChainSelection.Candidate): Vector[Point] =
@@ -732,11 +740,18 @@ class FetchIncrementalSuite extends ScalaCheckSuite:
     forAll(Gen.listOfN(60, streamings), Gen.choose(1, 7)) { (script, retained) =>
       val tip = ChainSync.Tip.Origin
       val start =
-        Streamed(CandidateState.initial.streaming, Point.Origin, Vector.empty, Prop.passed)
+        Streamed(
+          CandidateState.initial.streaming,
+          Point.Origin,
+          Point.Origin,
+          Vector.empty,
+          Prop.passed
+        )
       def cursorOf(state: CandidateState) =
         state.publication.fold(state.candidate)(_.cursor)
-      def publish(seen: Streamed, limit: Int): Streamed =
-        seen.state.published(limit, Some(seen.anchor)) match
+      // a step whose read of our anchor gave `ours`: it trims to the newest anchor it was given
+      def publish(seen: Streamed, limit: Int, ours: Point): Streamed =
+        seen.state.published(limit, Some(ours)) match
           case Left(divergence) => seen.copy(prop = seen.prop && (false :| s"$divergence"))
           case Right((next, events)) =>
             followed(seen.consumer, events) match
@@ -747,15 +762,16 @@ class FetchIncrementalSuite extends ScalaCheckSuite:
                 Streamed(
                   next,
                   seen.anchor,
+                  seen.earlier,
                   consumer,
                   seen.prop &&
                     (consumer.lastOption.fold[Point](Point.Origin)(_.point) == cursor.tip) :|
                     "the consumer is at the cursor's tip" &&
                     (next.candidate == FetchDecisionModel.trimmedTo(
                       seen.state.candidate,
-                      seen.anchor,
+                      newest(seen.state.anchor, ours),
                       cursor.tip
-                    )) :| "a step trims to our anchor, never past its cursor"
+                    )) :| "a step trims to our newest anchor, never past its cursor"
                 )
       val end = script.foldLeft(start) { (seen, round) =>
         val state = seen.state
@@ -821,9 +837,10 @@ class FetchIncrementalSuite extends ScalaCheckSuite:
             val ours = main.indexWhere(_.point == seen.anchor)
             val held =
               main.indices.filter(i => i > ours && pointsOf(candidate).contains(main(i).point))
-            if held.isEmpty then seen else seen.copy(anchor = main(held(seed % held.size)).point)
+            if held.isEmpty then seen
+            else seen.copy(anchor = main(held(seed % held.size)).point, earlier = seen.anchor)
           case Streaming.Trim =>
-            val next = state.trimmed(seen.anchor)
+            val next = state.anchoredAt(Some(seen.anchor)).trimmed
             seen.copy(
               state = next,
               prop = seen.prop && (next.candidate == FetchDecisionModel.trimmedTo(
@@ -832,8 +849,9 @@ class FetchIncrementalSuite extends ScalaCheckSuite:
                 cursorOf(state).tip
               )) :| "the capacity wait's trim"
             )
-          case Streaming.Publish(limit) => publish(seen, limit)
-          case Streaming.Restart(seed)  =>
+          case Streaming.Publish(limit, stale) =>
+            publish(seen, limit, if stale then seen.earlier else seen.anchor)
+          case Streaming.Restart(seed) =>
             // a new intersection at a point of our chain the consumer has, at or after our anchor
             val known = Point.Origin +: seen.consumer.map(_.point)
             val from = known.indexOf(seen.anchor).max(0)
@@ -846,7 +864,7 @@ class FetchIncrementalSuite extends ScalaCheckSuite:
             )
       }
       // the publisher publishes all there is: the consumer ends at the candidate
-      val drained = (0 until 100).foldLeft(end)((seen, _) => publish(seen, 4))
+      val drained = (0 until 100).foldLeft(end)((seen, _) => publish(seen, 4, seen.anchor))
       drained.prop && (drained.consumer
         .map(_.point)
         .takeRight(drained.state.candidate.headers.size) ==

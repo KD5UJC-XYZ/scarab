@@ -607,11 +607,13 @@ object Peer:
       _ <- connection.chainSync.observe(observer(chainSyncObserver, owned))
     yield (claims, fetcher, (supervisor, held, owned))).evalMap { (claims, fetcher, lifecycle) =>
       val (supervisor, held, owned) = lifecycle
-      // the session's candidate, as its state holds it; only that state's transitions change it
+      // the session's candidate, as its state holds it, for those that read it; the session's own
+      // changes are transitions of that state. A write through it replaces the candidate alone, as
+      // a write of the candidate's own `Ref` did, and signals nothing.
       val candidateHeaders: Ref[F, ChainSelection.Candidate] =
         Ref.lens[F, Held[F], ChainSelection.Candidate](held)(
           _.state.candidate,
-          h => next => h.copy(state = h.state.reset(next))
+          h => next => h.copy(state = h.state.copy(candidate = next))
         )
 
       /** One transition of the session's candidate state, and the signal of the change after it: a
@@ -663,7 +665,9 @@ object Peer:
         Ref.of[F, Option[PeerError.RolledBackPastIntersection]](None),
         Ref.of[F, Boolean](false),
         Ref.of[F, Option[ChainSyncJumping.Instruction[GenesisPeer.Checkpoint]]](None),
-        Ref.of[F, Peer.Replies](Peer.Replies())
+        Ref.of[F, Peer.Replies](Peer.Replies()),
+        // the session's ChainSync as the writer of its candidate's announcements
+        F.unique
       ).mapN {
         (
             queue,
@@ -680,7 +684,8 @@ object Peer:
             pendingEnd,
             chainSyncFinished,
             pendingJump,
-            replies
+            replies,
+            writer
         ) =>
           def finishChainSync(using Raise[F, PeerError]): F[Unit] =
             connection.chainSync.done *> chainSyncFinished.set(true)
@@ -1244,8 +1249,7 @@ object Peer:
             for
               // the candidate's index is carried through the batch's headers alone, and its
               // retained points filter the heights without a set of them built per batch
-              recorded <- change(_.recorded(batch, retainedHeaders, received, anchor)._1)
-              _ <- recorded.traverse_(announce)
+              recorded <- commit(_.recorded(batch, retainedHeaders, received, anchor)._1)
               candidate <- recorded.fold(candidateHeaders.get)(state => F.pure(state.candidate))
               _ <- batch.lastOption.traverse_ { event =>
                 val tip = event match
@@ -1257,8 +1261,20 @@ object Peer:
               }
             yield batch
 
+          /** `f` applied to the session's candidate state, and the state it left, if it changed it,
+            * announced ([[announce]]): a state once made is announced, whatever cancels the fiber
+            * that made it.
+            */
+          def commit(f: CandidateState => CandidateState): F[Option[CandidateState]] =
+            F.uncancelable(_ => change(f).flatTap(_.traverse_(announce)))
+
           /** Tell the fetch decisions of the candidate `state` holds, with its index and revision:
-            * an announcement of an older state never replaces a newer one.
+            * an announcement of an older state never replaces a newer one. The reference's
+            * BlockFetch reads the candidate its client writes as it rolls forward and back
+            * (ouroboros-consensus 82ecba329 MiniProtocol/ChainSync/Client.hs 1518, 1615), so a trim
+            * made while the client waits reaches it with the next of those; here each change is
+            * announced as it is made. The headers a trim drops are on our chain, behind its anchor,
+            * so no decision differs.
             */
           def announce(state: CandidateState): F[Unit] =
             state.track.announced.filter(_.candidate eq state.candidate).traverse_ { index =>
@@ -1269,7 +1285,7 @@ object Peer:
                     index.candidate.headers.lastOption,
                     performance,
                     index,
-                    state.revision
+                    FetchCoordinator.Revision(writer, state.revision)
                   )
                 )
             }
@@ -1375,8 +1391,8 @@ object Peer:
               candidate.headers.headOption
                 .filter(_ => candidate.headers.sizeIs >= retainedHeaders.max(1))
                 .traverse(oldest => fetcher.hasBody(oldest.hash))
-                .map(fetched =>
-                  publicationRoom(published, candidate, retainedHeaders) && fetched.forall(identity)
+                .map(got =>
+                  publicationRoom(published, candidate, retainedHeaders) && got.forall(identity)
                 )
             // the newest candidate published to the consumer, the candidate itself before the session
             // streams
@@ -1385,10 +1401,10 @@ object Peer:
             // the candidate's index is scanned once, kept for the batches after it and announced; the
             // publisher takes the candidate in a new epoch
             def remember(candidate: ChainSelection.Candidate, tip: ChainSync.Tip): F[Unit] =
-              change(_.replaced(FetchCandidates.Announced.of(candidate), tip))
-                .flatMap(_.traverse_(announce))
+              commit(_.replaced(FetchCandidates.Announced.of(candidate), tip)).void
             // our chain's anchor, as the header gate's history has it
-            val anchor: F[Option[ChainSync.Point]] = gate.get.flatMap(_.snapshot).map(_.map(_.base))
+            val anchor: F[Option[ChainSync.Point]] =
+              gate.get.flatMap(_.snapshot).map(_.map(_.base))
             for
               _ <- change(_.streaming)
               _ <- fetcher.observed(
@@ -1429,9 +1445,7 @@ object Peer:
               // MiniProtocol/ChainSync/Client.hs 942-992): as a batch is recorded, as the capacity
               // wait follows our chain, and after each step of the publisher, which takes a trim its
               // old cursor held back ([[CandidateState.trimmed]]).
-              trim = anchor.flatMap(
-                _.traverse_(at => change(_.trimmed(at)).flatMap(_.traverse_(announce)))
-              )
+              trim = anchor.flatMap(at => commit(_.anchoredAt(at).trimmed).void)
               capacity = (update: ChainSyncClient.Update[NtNHeader]) =>
                 update match
                   case ChainSyncClient.Update.RollBackward(_, _) => F.unit
@@ -1630,17 +1644,23 @@ object Peer:
               _ <- F.tailRecM(()) { _ =>
                 permits.acquire *> anchor
                   .flatMap(at =>
-                    transition { state =>
-                      state.published(settings.readAhead, at) match
-                        case Left(divergence) => (state, Left(divergence))
-                        case Right((next, events)) =>
-                          (next, Right((next, events, next.revision != state.revision)))
-                    }
+                    // a trim the step made is announced, as [[commit]] announces
+                    F.uncancelable(_ =>
+                      transition { state =>
+                        state.published(settings.readAhead, at) match
+                          case Left(divergence) => (state, Left(divergence))
+                          case Right((next, events)) =>
+                            (next, Right((next, events, next.revision != state.revision)))
+                      }.flatTap {
+                        case (Right((state, _, true)), _) => announce(state)
+                        case _                            => F.unit
+                      }
+                    )
                   )
                   .flatMap {
                     case (Left(divergence), _) =>
                       PeerError.Diverged(divergence).raise[F, Either[Unit, Unit]]
-                    case (Right((state, events, trimmed)), changed) =>
+                    case (Right((state, events, _)), changed) =>
                       val step =
                         if events.nonEmpty then
                           events.zipWithIndex
@@ -1653,7 +1673,7 @@ object Peer:
                         else if state.publication.exists(_.done) then
                           permits.release *> finish.as(Right(()))
                         else permits.release *> changed.get.as(Left(()))
-                      announce(state).whenA(trimmed) *> step
+                      step
                   }
               }
             yield ()
