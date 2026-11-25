@@ -26,7 +26,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
   *
   * A scratch belongs to the thread that runs its computation and is not shared.
   */
-private[crypto] final class Scratch private (observe: List[Array[Byte]] => Unit):
+private[scarab] final class Scratch private (observe: List[Array[Byte]] => Unit):
   /** A buffer of this scratch, which only this scratch reads and writes. */
   opaque type Buffer = Array[Byte]
 
@@ -85,7 +85,7 @@ private[crypto] final class Scratch private (observe: List[Array[Byte]] => Unit)
     held = None
     Using.resource(arrays)(observe)(using Scratch.wiped)
 
-private[crypto] object Scratch:
+private[scarab] object Scratch:
   private given Releasable[Scratch] = _.release()
 
   /** Zeroing the arrays a scratch held is their release. */
@@ -100,6 +100,6 @@ private[crypto] object Scratch:
     * failure, so that a suite can see what a computation held and that it is gone. Main code calls
     * it only through [[within]].
     */
-  private[crypto] def observed[A: Public](before: List[Array[Byte]] => Unit)(
+  private[scarab] def observed[A: Public](before: List[Array[Byte]] => Unit)(
       body: Scratch => A
   ): A = Using.resource(new Scratch(before))(body)

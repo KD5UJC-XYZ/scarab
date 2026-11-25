@@ -3,6 +3,7 @@ package xyz.kd5ujc.scarab.crypto.kes
 
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.kes.secret.Sum6Key
+import xyz.kd5ujc.scarab.crypto.secret.Scratch
 
 /** Sum6 KES signing keys in the binary layout of cardano-base (`SumKES` over `Ed25519`,
   * Blake2b-256): the `kes.skey` payload of `cardano-cli node key-gen-KES`.
@@ -71,9 +72,14 @@ object Sum6KesSigning:
     def period: Int = key.period
 
     /** The 608-byte `kes.skey` payload for the current period: a copy its caller owns, which
-      * nothing erases. The node does not write the key from it.
+      * nothing erases. The node writes the key through [[payloadIn]] instead.
       */
     def toBytes: Bytes = key.toBytes
+
+    /** The 608-byte payload copied into a buffer of `s` (zero once the key is forgotten), which `s`
+      * zeroes when it ends: what the node writes the key file from.
+      */
+    private[scarab] def payloadIn(s: Scratch): s.Buffer = key.payloadIn(s)
 
     def verificationKey: Bytes = key.verificationKey
 
