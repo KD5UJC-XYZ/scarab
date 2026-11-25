@@ -147,6 +147,7 @@ class ChainSyncJumpingRuntimeSuite extends FailsOnUncaught:
           }
         }
         all <- traced.get
+      // when the sessions end, the newer first, each dynamo in turn names its successor
       yield assertEquals(
         all,
         Vector(
@@ -154,7 +155,6 @@ class ChainSyncJumpingRuntimeSuite extends FailsOnUncaught:
           Left(2 -> Event.BlockedOnJump),
           Left(1 -> Event.SentJumpInstruction(info(4).tip)),
           Right(RotatedDynamo(1, 2)),
-          // the sessions end, the newer first: each dynamo in turn names its successor
           Left(2 -> Event.NoLongerDynamo(Some(1), Reason.Disconnect)),
           Left(1 -> Event.NoLongerDynamo(None, Reason.Disconnect))
         )

@@ -439,12 +439,12 @@ class GenesisGovernorSuite extends FailsOnUncaught:
             _ <- governor.setPhase(Gsm.Phase.Syncing)
             _ <- governor.run.background.use(_ => disconnected.get)
             sequence <- happened.get
+          // Governor.hs:269-283 (consensus 82ecba329): the losers in the order densityDisconnect
+          // gives them, the shared prefix's tip (none: the candidates part at Origin) and the
+          // window; then each kill; then the losers again
           yield assertEquals(
             sequence,
             Vector(
-              // Governor.hs:269-283 (consensus 82ecba329): the losers in the order densityDisconnect
-              // gives them, the shared prefix's tip (none: the candidates part at Origin) and the
-              // window; then each kill; then the losers again
               Left(GenesisTrace.GddDebug(Vector(PeerOrder(10), PeerOrder(20)), Point.Origin, 8)),
               Right(10),
               Right(20),
