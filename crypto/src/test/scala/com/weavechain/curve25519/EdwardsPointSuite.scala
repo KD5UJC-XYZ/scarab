@@ -2,7 +2,7 @@
 package com.weavechain.curve25519
 
 import org.scalacheck.Gen
-import org.scalacheck.Prop.forAll
+import org.scalacheck.Prop.forAllNoShrink
 import scala.util.Try
 import xyz.kd5ujc.scarab.crypto.witness.Ed25519Model as M
 
@@ -72,7 +72,7 @@ class EdwardsPointSuite extends munit.ScalaCheckSuite:
   ) {
     // Lenient as libsodium's ge25519_frombytes is: a non-canonical y and x = 0 with the sign bit set
     // decode. StrictEd25519 refuses both itself (canonicalY and the small-order test).
-    forAll(edgeEncoding) { e =>
+    forAllNoShrink(edgeEncoding) { e =>
       val expected = M.decode(e, M.Reading.Lenient)
       val got = decompressed(e)
       assertEquals(got.isDefined, expected.isDefined, s"decodes ${fromLe(e).toString(16)}")
@@ -86,7 +86,7 @@ class EdwardsPointSuite extends munit.ScalaCheckSuite:
   }
 
   property("add, subtract, negate and dbl are the group law") {
-    forAll(modelPoint, modelPoint) { (m, n) =>
+    forAllNoShrink(modelPoint, modelPoint) { (m, n) =>
       val (a, b) = (point(m), point(n))
       val results = Vector(
         "add" -> (a.add(b), m + n),
@@ -106,14 +106,14 @@ class EdwardsPointSuite extends munit.ScalaCheckSuite:
   }
 
   property("addition is associative") {
-    forAll(modelPoint, modelPoint, modelPoint) { (l, m, n) =>
+    forAllNoShrink(modelPoint, modelPoint, modelPoint) { (l, m, n) =>
       val (a, b, c) = (point(l), point(m), point(n))
       assertEquals(encoding(a.add(b).add(c)), encoding(a.add(b.add(c))))
     }
   }
 
   property("multiply is [s]P for every s below 2^255, on points of every order") {
-    forAll(modelPoint, scalar255) { (m, s) =>
+    forAllNoShrink(modelPoint, scalar255) { (m, s) =>
       val got = point(m).multiply(Scalar.fromBits(le(s, 32)))
       assertEquals(encoding(got), encoding(m * s), s"[${s.toString(16)}]P")
       extended(got, "multiply")
@@ -121,7 +121,7 @@ class EdwardsPointSuite extends munit.ScalaCheckSuite:
   }
 
   property("the basepoint table gives [s]B for every s below 2^255") {
-    forAll(scalar255) { s =>
+    forAllNoShrink(scalar255) { s =>
       val got = Constants.ED25519_BASEPOINT_TABLE.multiply(Scalar.fromBits(le(s, 32)))
       assertEquals(encoding(got), encoding(M.basepoint * s), s"[${s.toString(16)}]B")
       extended(got, "basepoint table")
@@ -129,7 +129,7 @@ class EdwardsPointSuite extends munit.ScalaCheckSuite:
   }
 
   property("vartimeDoubleScalarMultiplyBasepoint is [a]A + [b]B, on points of every order") {
-    forAll(modelPoint, scalar255, scalar255) { (m, a, b) =>
+    forAllNoShrink(modelPoint, scalar255, scalar255) { (m, a, b) =>
       val got = EdwardsPoint.vartimeDoubleScalarMultiplyBasepoint(
         Scalar.fromBits(le(a, 32)),
         point(m),
@@ -145,7 +145,7 @@ class EdwardsPointSuite extends munit.ScalaCheckSuite:
   }
 
   property("multiplyByCofactor, isSmallOrder, isTorsionFree and isIdentity are the model's") {
-    forAll(modelPoint) { m =>
+    forAllNoShrink(modelPoint) { m =>
       val a = point(m)
       assertEquals(encoding(a.multiplyByCofactor()), encoding(m * 8), "multiplyByCofactor")
       assertEquals(a.isSmallOrder(), m.isSmallOrder, "isSmallOrder")
@@ -155,7 +155,7 @@ class EdwardsPointSuite extends munit.ScalaCheckSuite:
   }
 
   property("equality, hashing and ctSelect are by the point, not its coordinates") {
-    forAll(modelPoint, modelPoint) { (m, n) =>
+    forAllNoShrink(modelPoint, modelPoint) { (m, n) =>
       val (a, b) = (point(m), point(n))
       // the same point with Z = 2: (2X : 2Y : 2 : 2T)
       val two = FieldElement.ONE.add(FieldElement.ONE)

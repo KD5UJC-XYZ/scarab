@@ -2,19 +2,19 @@
 package com.weavechain.curve25519
 
 import org.scalacheck.Gen
-import org.scalacheck.Prop.forAll
+import org.scalacheck.Prop.forAllNoShrink
 
 import Curve25519Gen.*
 
 /** The vendored `FieldElement` against exact arithmetic modulo p = 2^255 - 19 on `BigInt`.
   *
   * Each operation is checked on the inputs its documentation admits, the limbs within its
-  * precondition (`reducedBound`, `looseBound`, and for `toByteArray` the widest limbs any operation
-  * gives, `sumBound`), not only on canonical values, and its result is checked against its
-  * postcondition (`sumBound`, `productBound`): a later rewrite that keeps the values but lets a
-  * limb grow past its bound would overflow only in a later operation. The limb-level properties
-  * read the private limbs by reflection and are tied to the radix-2^25.5 representation; the
-  * value-level properties are not.
+  * precondition (`reducedBound`, `looseBound`, `documentedEncodableBound`), to the edges of that
+  * range (every sign pattern with each limb at its bound), not only on canonical values, and its
+  * result is checked against its postcondition (`sumBound`, `productBound`): a later rewrite that
+  * keeps the values but lets a limb grow past its bound would overflow only in a later operation.
+  * The limb-level properties read the private limbs by reflection and are tied to the radix-2^25.5
+  * representation; the value-level properties are not.
   */
 class FieldElementSuite extends munit.ScalaCheckSuite:
   override def scalaCheckTestParameters =
@@ -57,7 +57,7 @@ class FieldElementSuite extends munit.ScalaCheckSuite:
     root.map(r => if r.testBit(0) then p - r else r)
 
   property("fromByteArray reads the low 255 bits modulo p within the reduced bounds") {
-    forAll(fieldInput) { v =>
+    forAllNoShrink(fieldInput) { v =>
       val fe = element(v)
       val expected = (v & ((BigInt(1) << 255) - 1)).mod(p)
       assertEquals(
@@ -69,22 +69,45 @@ class FieldElementSuite extends munit.ScalaCheckSuite:
     }
   }
 
-  property("toByteArray writes the canonical encoding of the widest limbs an operation gives") {
-    forAll(limbs(sumBound)) { t =>
-      val bytes = new FieldElement(t).toByteArray
-      assertEquals(fromLe(bytes), limbValue(t).mod(p), s"limbs ${t.mkString(",")}")
-      assertEquals(bytes(31) & 0x80, 0, "bit 255 of a canonical encoding")
-    }
+  /** What `toByteArray`, `isZero`, `isNegative` and `ctEquals` must give for limbs `t`. */
+  private def encodes(t: Array[Int], what: String): Unit =
+    val fe = new FieldElement(t)
+    val v = limbValue(t).mod(p)
+    val bytes = fe.toByteArray
+    val clue = s"$what: limbs ${t.mkString(",")}"
+    assertEquals(fromLe(bytes), v, s"toByteArray, $clue")
+    assertEquals(bytes(31) & 0x80, 0, s"bit 255 of a canonical encoding, $clue")
+    assertEquals(fe.isZero(), if v == 0 then 1 else 0, s"isZero, $clue")
+    assertEquals(fe.isNegative(), if v.testBit(0) then 1 else 0, s"isNegative, $clue")
+    assertEquals(fe.ctEquals(element(v)), 1, s"ctEquals the canonical element, $clue")
+
+  property(
+    "toByteArray, isZero, isNegative and ctEquals reduce any limbs below 2^27, as documented"
+  ) {
+    forAllNoShrink(limbs(documentedEncodableBound))(encodes(_, "documented range"))
   }
 
-  // FieldElement.java:124-125 states that toByteArray reduces any limbs below 2^27 in absolute
-  // value. It computes `19 * h9` (line 190) in 32 bits, which overflows once h9 is above
-  // (2^31 - 1 - 2^24) / 19 = 112142443, and the estimate of the quotient is then wrong. These limbs,
-  // 2^26 - 76 and then each limb at its maximum digit with 2^27 - 1 in limb 9, are 2^257 - 76, a
-  // multiple of p, and toByteArray writes the non-canonical encoding of p instead of zero (so isZero
-  // says no). No caller passes limbs that wide: the widest any operation gives is add's and
-  // subtract's (sumBound), which the other properties use. Left failing until the documented bound
-  // or the code is corrected (#1418).
+  test("toByteArray reduces every sign pattern of limbs at +-(2^27 - 1), and of the sum bounds") {
+    signPatterns(documentedEncodableBound).foreach(encodes(_, "limbs at 2^27 - 1"))
+    signPatterns(sumBound).foreach(encodes(_, "limbs at the sum bounds"))
+  }
+
+  test("toByteArray reduces k p + delta, |k| up to 4, written with limbs as large as they go") {
+    val patterns = Vector(-2, -1, 1, 2).flatMap(c =>
+      Vector(Vector.fill(9)(c), Vector.tabulate(9)(i => if i % 2 == 0 then c else -c))
+    )
+    for
+      k <- -4 to 4
+      delta <- -2 to 2
+      moves <- patterns
+      t <- limbsFor(k * p + delta, documentedEncodableBound, moves)
+    do encodes(t, s"$k p + $delta")
+  }
+
+  // The edge of toByteArray's documented range at the top limb: 19 * h9 there needs more than 32
+  // bits (it does from h9 = 112142444 on). These limbs, 2^26 - 76 and then each limb at its maximum
+  // digit with 2^27 - 1 in limb 9, are 2^257 - 76, a multiple of p, whose encoding is zero; reduced
+  // with a quotient one too small they would be written as the non-canonical encoding of p.
   test("toByteArray reduces limbs below 2^27, as documented: 2^257 - 76 is zero modulo p") {
     val t =
       Array((1 << 26) - 76) ++ (1 until 9).map(i => (1 << (if i % 2 == 0 then 26 else 25)) - 1) ++
@@ -99,13 +122,13 @@ class FieldElementSuite extends munit.ScalaCheckSuite:
   }
 
   property("a canonical encoding is read and written back unchanged") {
-    forAll(weighted(255, fieldEdges).map(_.mod(p))) { v =>
+    forAllNoShrink(weighted(255, fieldEdges).map(_.mod(p))) { v =>
       assertEquals(fromLe(element(v).toByteArray), v)
     }
   }
 
   property("add and subtract are the sum and the difference modulo p, within the sum bounds") {
-    forAll(reduced, reduced) { (a, b) =>
+    forAllNoShrink(reduced, reduced) { (a, b) =>
       val (x, y) = (limbValue(limbsOf(a)), limbValue(limbsOf(b)))
       assertEquals(value(a.add(b)), (x + y).mod(p), "add")
       assertEquals(value(a.subtract(b)), (x - y).mod(p), "subtract")
@@ -115,14 +138,14 @@ class FieldElementSuite extends munit.ScalaCheckSuite:
   }
 
   property("negate is the additive inverse, within the reduced bounds") {
-    forAll(reduced) { a =>
+    forAllNoShrink(reduced) { a =>
       assertEquals(value(a.negate()), (-limbValue(limbsOf(a))).mod(p))
       withinBounds(a.negate(), reducedBound, "negate")
     }
   }
 
   property("multiply, square and squareAndDouble are exact modulo p, within the product bounds") {
-    forAll(loose, loose) { (a, b) =>
+    forAllNoShrink(loose, loose) { (a, b) =>
       val (x, y) = (limbValue(limbsOf(a)), limbValue(limbsOf(b)))
       assertEquals(value(a.multiply(b)), (x * y).mod(p), "multiply")
       assertEquals(value(a.square()), (x * x).mod(p), "square")
@@ -131,6 +154,42 @@ class FieldElementSuite extends munit.ScalaCheckSuite:
       withinBounds(a.square(), productBound, "square")
       withinBounds(a.squareAndDouble(), productBound, "squareAndDouble")
     }
+  }
+
+  test("add, subtract and negate at every sign pattern of their bounds") {
+    val patterns = signPatterns(reducedBound)
+    val others = Vector(patterns.head, patterns.last)
+    for
+      s <- patterns
+      t <- others :+ s :+ s.map(-_)
+    do
+      val (a, b) = (new FieldElement(s), new FieldElement(t))
+      val (x, y) = (limbValue(s), limbValue(t))
+      val clue = s"limbs ${s.mkString(",")} and ${t.mkString(",")}"
+      assertEquals(value(a.add(b)), (x + y).mod(p), s"add, $clue")
+      assertEquals(value(a.subtract(b)), (x - y).mod(p), s"subtract, $clue")
+      assertEquals(value(a.negate()), (-x).mod(p), s"negate, $clue")
+      withinBounds(a.add(b), sumBound, s"add, $clue")
+      withinBounds(a.subtract(b), sumBound, s"subtract, $clue")
+      withinBounds(a.negate(), reducedBound, s"negate, $clue")
+  }
+
+  test("multiply, square and squareAndDouble at every sign pattern of their bounds") {
+    val patterns = signPatterns(looseBound)
+    val others = Vector(patterns.head, patterns.last)
+    for
+      s <- patterns
+      t <- others :+ s :+ s.map(-_)
+    do
+      val (a, b) = (new FieldElement(s), new FieldElement(t))
+      val (x, y) = (limbValue(s), limbValue(t))
+      val clue = s"limbs ${s.mkString(",")} and ${t.mkString(",")}"
+      assertEquals(value(a.multiply(b)), (x * y).mod(p), s"multiply, $clue")
+      assertEquals(value(a.square()), (x * x).mod(p), s"square, $clue")
+      assertEquals(value(a.squareAndDouble()), (2 * x * x).mod(p), s"squareAndDouble, $clue")
+      withinBounds(a.multiply(b), productBound, s"multiply, $clue")
+      withinBounds(a.square(), productBound, s"square, $clue")
+      withinBounds(a.squareAndDouble(), productBound, s"squareAndDouble, $clue")
   }
 
   property("multiply is exact when the product is at the edges: 0, 1, p - 1 and their neighbours") {
@@ -146,14 +205,15 @@ class FieldElementSuite extends munit.ScalaCheckSuite:
       b <- Gen.const(limbsFor((e * x.modPow(p - 2, p)).mod(p) + ky * p, looseBound, my))
       if a.isDefined && b.isDefined
     yield (new FieldElement(a.get), new FieldElement(b.get), e)
-    forAll(operands) { (a, b, e) =>
+    forAllNoShrink(operands) { (a, b, e) =>
       assertEquals(value(a.multiply(b)), e, s"x * (e / x) for e = ${e.toString(16)}")
       withinBounds(a.multiply(b), productBound, "multiply")
     }
   }
 
   property("invert is the power p - 2 and powP58 the power (p - 5)/8") {
-    forAll(made) { a =>
+    // their first operations are square and multiply, so they take what those take
+    forAllNoShrink(Gen.oneOf(made, loose)) { a =>
       val x = value(a)
       assertEquals(value(a.invert()), x.modPow(p - 2, p), "invert")
       assertEquals(value(a.powP58()), x.modPow((p - 5) / 8, p), "powP58")
@@ -165,14 +225,17 @@ class FieldElementSuite extends munit.ScalaCheckSuite:
   property(
     "sqrtRatioM1 gives the non-negative root of u/v, or of i*u/v, and whether u/v is square"
   ) {
+    // decompress passes u = y^2 - 1 and v = d y^2 + 1, sums; the arithmetic takes them as products
+    val sums = limbs(sumBound).map(new FieldElement(_))
     val operands = Gen.frequency(
       4 -> Gen.zip(made, made),
+      2 -> Gen.zip(sums, sums),
       1 -> made.map(u => (u, FieldElement.ZERO)),
       1 -> made.map(v => (FieldElement.ZERO, v)),
       1 -> made.map(u => (u.square(), FieldElement.ONE)),
       1 -> Gen.zip(made, made).map((r, v) => (r.square().multiply(v), v))
     )
-    forAll(operands) { (u, v) =>
+    forAllNoShrink(operands) { (u, v) =>
       val (x, y) = (value(u), value(v))
       val (square, root) =
         if x == 0 then (1, BigInt(0))
@@ -193,7 +256,7 @@ class FieldElementSuite extends munit.ScalaCheckSuite:
   }
 
   property("isNegative, isZero, ctEquals, ctSelect and ctAbs read the canonical value") {
-    forAll(limbs(sumBound), limbs(sumBound), reduced) { (s, t, r) =>
+    forAllNoShrink(limbs(sumBound), limbs(sumBound), reduced) { (s, t, r) =>
       val (a, b) = (new FieldElement(s), new FieldElement(t))
       val (x, y) = (limbValue(s).mod(p), limbValue(t).mod(p))
       assertEquals(a.isNegative(), if x.testBit(0) then 1 else 0, "isNegative")
@@ -209,7 +272,7 @@ class FieldElementSuite extends munit.ScalaCheckSuite:
   }
 
   property("elements equal modulo p but with other limbs are equal") {
-    forAll(reduced) { a =>
+    forAllNoShrink(reduced) { a =>
       val shifted = limbsOf(a).clone()
       // add p = 2^255 - 19 to the value: 2^255 is 2^25 in limb 9 (offset 230), less 19 in limb 0
       shifted(9) = shifted(9) + (1 << 25)
@@ -291,7 +354,7 @@ class FieldElementSuite extends munit.ScalaCheckSuite:
     )
 
   property("chains of operations keep their value modulo p") {
-    forAll(Gen.choose(1, 4).flatMap(reducedExpr)) { e =>
+    forAllNoShrink(Gen.choose(1, 4).flatMap(reducedExpr)) { e =>
       val (fe, expected) = evaluate(e)
       assertEquals(value(fe), expected, e.toString)
     }

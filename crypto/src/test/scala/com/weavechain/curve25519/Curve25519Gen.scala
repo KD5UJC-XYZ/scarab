@@ -7,7 +7,9 @@ import xyz.kd5ujc.scarab.crypto.witness.Ed25519Model as M
 /** Generators for the suites of the vendored arithmetic, weighted toward the values where limb and
   * reduction code goes wrong: 0, 1, the moduli and their neighbours, the boundaries of the limbs,
   * and runs of ones and zeros. Each generator also draws uniformly, so the rest of the range is
-  * reached too.
+  * reached too. The suites use `forAllNoShrink`: a shrunk value would leave the range a generator
+  * keeps to (a negative integer, a shorter limb array), and the failure reported would not be the
+  * one found.
   */
 object Curve25519Gen:
   val p: BigInt = M.p
@@ -22,7 +24,7 @@ object Curve25519Gen:
     t.indices.map(i => BigInt(t(i)) << fieldLimbOffsets(i)).sum
 
   /** A bound on limb `i` given as a factor in hundredths of 2^25 (even limbs) or 2^24 (odd), the
-    * form of the bounds in `FieldElement` 's documentation: `bound(110, 0)` is 1.1 * 2^25.
+    * form of the bounds in the documentation of `FieldElement`: `bound(110, 25)` is 1.1 * 2^25.
     */
   def bound(hundredths: Long, shiftEven: Int)(i: Int): Int =
     ((hundredths << (if i % 2 == 0 then shiftEven else shiftEven - 1)) / 100).toInt
@@ -39,8 +41,9 @@ object Curve25519Gen:
   /** What `add` and `subtract` give: limbs bounded by 1.1 * 2^26, 1.1 * 2^25, ... */
   val sumBound: Int => Int = bound(110, 26)
 
-  /** What `toByteArray` 's documentation states it reduces: limbs below 2^27 in absolute value
-    * (`FieldElement.java:124-125`). It does not reduce all of them (`FieldElementSuite`).
+  /** What `toByteArray` reduces, as its documentation states: any limbs below 2^27 in absolute
+    * value (`FieldElement.java:124-125`); also what `isZero`, `isNegative` and `ctEquals` read
+    * through it.
     */
   val documentedEncodableBound: Int => Int = _ => (1 << 27) - 1
 
@@ -53,17 +56,35 @@ object Curve25519Gen:
       4 -> Gen.choose(-max, max)
     )
 
-  /** Ten limbs, each within its bound: drawn limb by limb, or of a value near a multiple of p. */
+  /** Ten limbs, each within its bound: drawn limb by limb, at the corners of the bounds, or of a
+    * value near a multiple of p.
+    */
   def limbs(bounds: Int => Int): Gen[Array[Int]] =
     Gen.frequency(
       3 -> Gen.sequence[Vector[Int], Int]((0 until 10).map(i => limb(bounds(i)))).map(_.toArray),
+      1 -> corners(bounds),
       1 -> nearMultiplesOfP(bounds)
+    )
+
+  /** Ten limbs, each at or next to its bound, either sign, or zero. */
+  def corners(bounds: Int => Int): Gen[Array[Int]] =
+    Gen
+      .sequence[Vector[Int], Int]((0 until 10).map { i =>
+        val max = bounds(i)
+        Gen.frequency(4 -> Gen.oneOf(max, -max), 1 -> Gen.oneOf(max - 1, -(max - 1), 0, 1, -1))
+      })
+      .map(_.toArray)
+
+  /** The limbs of every sign pattern with each limb at its bound: 2^10 of them. */
+  def signPatterns(bounds: Int => Int): Vector[Array[Int]] =
+    (0 until 1024).toVector.map(m =>
+      Array.tabulate(10)(i => if (m >> i & 1) == 1 then -bounds(i) else bounds(i))
     )
 
   private val fieldLimbWidths = Vector(26, 25, 26, 25, 26, 25, 26, 25, 26, 25)
 
   /** Limbs within `bounds` of the value `v`, if it has such: its balanced radix-2^25.5 digits, then
-    * the carries `moves` (one of -1, 0, 1 per limb) moved between neighbouring limbs wherever both
+    * the carries `moves` (a small integer per limb) moved between neighbouring limbs wherever both
     * stay within their bounds, which keeps the value and makes the limbs large.
     */
   def limbsFor(v: BigInt, bounds: Int => Int, moves: Seq[Int]): Option[Array[Int]] =
@@ -91,7 +112,7 @@ object Curve25519Gen:
       .zip(
         Gen.choose(-largest.toInt, largest.toInt),
         Gen.choose(-3, 3),
-        Gen.listOfN(9, Gen.oneOf(-1, 0, 0, 1))
+        Gen.listOfN(9, Gen.oneOf(-2, -1, 0, 0, 1, 2))
       )
       .map((k, delta, moves) => limbsFor(k * p + delta, bounds, moves))
       .suchThat(_.isDefined)

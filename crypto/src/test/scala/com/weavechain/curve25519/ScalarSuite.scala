@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.weavechain.curve25519
 
-import org.scalacheck.Prop.forAll
+import org.scalacheck.Prop.forAllNoShrink
 import scala.util.Try
 
 import Curve25519Gen.*
@@ -24,19 +24,19 @@ class ScalarSuite extends munit.ScalaCheckSuite:
   private def unreduced(v: BigInt): Scalar = Scalar.fromBits(le(v, 32))
 
   property("fromBytesModOrder reduces any 256-bit input modulo L") {
-    forAll(scalar256) { v =>
+    forAllNoShrink(scalar256) { v =>
       assertEquals(value(Scalar.fromBytesModOrder(le(v, 32))), v.mod(L), v.toString(16))
     }
   }
 
   property("fromBytesModOrderWide reduces any 512-bit input modulo L") {
-    forAll(wide) { v =>
+    forAllNoShrink(wide) { v =>
       assertEquals(value(Scalar.fromBytesModOrderWide(le(v, 64))), v.mod(L), v.toString(16))
     }
   }
 
   property("fromCanonicalBytes accepts exactly the values below L") {
-    forAll(scalar256) { v =>
+    forAllNoShrink(scalar256) { v =>
       val parsed = Try(Scalar.fromCanonicalBytes(le(v, 32))).toEither
       if v < L then assertEquals(parsed.map(value), Right(v), v.toString(16))
       else
@@ -47,7 +47,7 @@ class ScalarSuite extends munit.ScalaCheckSuite:
   }
 
   property("fromBits keeps the low 255 bits, and reduce and isCanonical read them modulo L") {
-    forAll(scalar256) { v =>
+    forAllNoShrink(scalar256) { v =>
       val low = v & ((BigInt(1) << 255) - 1)
       val s = Scalar.fromBits(le(v, 32))
       assertEquals(value(s), low, "fromBits")
@@ -57,14 +57,14 @@ class ScalarSuite extends munit.ScalaCheckSuite:
   }
 
   property("add and subtract of canonical scalars are canonical, modulo L") {
-    forAll(canonicalScalar, canonicalScalar) { (a, b) =>
+    forAllNoShrink(canonicalScalar, canonicalScalar) { (a, b) =>
       assertEquals(value(canonical(a).add(canonical(b))), (a + b).mod(L), "add")
       assertEquals(value(canonical(a).subtract(canonical(b))), (a - b).mod(L), "subtract")
     }
   }
 
   property("multiply, square and multiplyAndAdd of canonical scalars are exact modulo L") {
-    forAll(canonicalScalar, canonicalScalar, canonicalScalar) { (a, b, c) =>
+    forAllNoShrink(canonicalScalar, canonicalScalar, canonicalScalar) { (a, b, c) =>
       val (x, y, z) = (canonical(a), canonical(b), canonical(c))
       assertEquals(value(x.multiply(y)), (a * b).mod(L), "multiply")
       assertEquals(value(x.square()), (a * a).mod(L), "square")
@@ -74,7 +74,7 @@ class ScalarSuite extends munit.ScalaCheckSuite:
 
   property("multiplyAndAdd reduces unreduced operands below 2^255 too") {
     // The VRF prover's response c x + k (Draft03Prover) takes c from fromBits.
-    forAll(scalar255, scalar255, scalar255) { (a, b, c) =>
+    forAllNoShrink(scalar255, scalar255, scalar255) { (a, b, c) =>
       assertEquals(
         value(unreduced(a).multiplyAndAdd(unreduced(b), unreduced(c))),
         (a * b + c).mod(L),
@@ -83,8 +83,78 @@ class ScalarSuite extends munit.ScalaCheckSuite:
     }
   }
 
+  property("square, invert and divide reduce unreduced operands below 2^255 too") {
+    forAllNoShrink(scalar255, scalar255) { (a, b) =>
+      assertEquals(value(unreduced(a).square()), (a * a).mod(L), s"square of ${a.toString(16)}")
+      assertEquals(value(unreduced(a).invert()), a.modPow(L - 2, L), s"invert of ${a.toString(16)}")
+      assertEquals(
+        value(unreduced(b).divide(unreduced(a))),
+        (b * a.modPow(L - 2, L)).mod(L),
+        s"${b.toString(16)} / ${a.toString(16)}"
+      )
+    }
+  }
+
+  test("the reductions and digits at the largest inputs they take") {
+    val ones32 = (BigInt(1) << 256) - 1
+    val ones64 = (BigInt(1) << 512) - 1
+    val top = (BigInt(1) << 255) - 1
+    assertEquals(
+      value(Scalar.fromBytesModOrder(le(ones32, 32))),
+      ones32.mod(L),
+      "fromBytesModOrder"
+    )
+    assertEquals(
+      value(Scalar.fromBytesModOrderWide(le(ones64, 64))),
+      ones64.mod(L),
+      "fromBytesModOrderWide"
+    )
+    assertEquals(value(unreduced(top).reduce()), top.mod(L), "reduce")
+    assertEquals(
+      value(unreduced(top).multiplyAndAdd(unreduced(top), unreduced(top))),
+      (top * top + top).mod(L),
+      "multiplyAndAdd"
+    )
+    assertEquals(value(unreduced(top).square()), (top * top).mod(L), "square")
+    val radix = unreduced(top).toRadix16()
+    assertEquals(radix.indices.map(i => BigInt(radix(i).toInt) << (4 * i)).sum, top, "toRadix16")
+    val naf = unreduced(top).nonAdjacentForm()
+    assertEquals(naf.indices.map(i => BigInt(naf(i).toInt) << i).sum, top, "nonAdjacentForm")
+  }
+
+  // Scalar.add and subtract (Scalar.java:457-484) document a + b and a - b modulo L for any two
+  // scalars, the result canonical when both are and "outside the range [0, L)" possibly otherwise.
+  // They subtract or add L once (UnpackedScalar.java:107-144), so for unreduced operands the result
+  // can leave [0, 2^255), and the Scalar constructor refuses it. No caller in Scarab passes them
+  // unreduced scalars, or calls them at all.
+  property(
+    "add and subtract of any two scalars below 2^255 are a + b and a - b modulo L, as documented"
+  ) {
+    forAllNoShrink(scalar255, scalar255) { (a, b) =>
+      val clue = s"${a.toString(16)} and ${b.toString(16)}"
+      val sum = Try(value(unreduced(a).add(unreduced(b)))).toEither
+      val difference = Try(value(unreduced(a).subtract(unreduced(b)))).toEither
+      assert(sum.exists(r => (r - a - b).mod(L) == 0), s"add of $clue gave $sum")
+      assert(difference.exists(r => (r - a + b).mod(L) == 0), s"subtract of $clue gave $difference")
+    }
+  }
+
+  test("add and subtract at the edge: (2^255 - 1) + (L + 1), and 0 - (L + 1)") {
+    val top = (BigInt(1) << 255) - 1
+    assertEquals(
+      Try(value(unreduced(top).add(unreduced(L + 1)))).toOption.map(r => (r - top - L - 1).mod(L)),
+      Some(BigInt(0)),
+      "(2^255 - 1) + (L + 1)"
+    )
+    assertEquals(
+      Try(value(Scalar.ZERO.subtract(unreduced(L + 1)))).toOption.map(r => (r + L + 1).mod(L)),
+      Some(BigInt(0)),
+      "0 - (L + 1)"
+    )
+  }
+
   property("invert and divide are the inverse modulo L") {
-    forAll(canonicalScalar.filter(_ != 0), canonicalScalar) { (a, b) =>
+    forAllNoShrink(canonicalScalar.filter(_ != 0), canonicalScalar) { (a, b) =>
       assertEquals(value(canonical(a).invert()), a.modPow(L - 2, L), "invert")
       assertEquals(value(canonical(a).multiply(canonical(a).invert())), BigInt(1), "a * a^-1")
       assertEquals(
@@ -96,7 +166,7 @@ class ScalarSuite extends munit.ScalaCheckSuite:
   }
 
   property("toRadix16 writes digits in [-8, 8) that sum to the scalar") {
-    forAll(scalar255) { v =>
+    forAllNoShrink(scalar255) { v =>
       val digits = unreduced(v).toRadix16()
       assertEquals(digits.length, 64)
       digits.indices.foreach { i =>
@@ -112,7 +182,7 @@ class ScalarSuite extends munit.ScalaCheckSuite:
   }
 
   property("nonAdjacentForm writes zero or odd digits below 16 that sum to the scalar") {
-    forAll(scalar255) { v =>
+    forAllNoShrink(scalar255) { v =>
       val naf = unreduced(v).nonAdjacentForm()
       assertEquals(naf.length, 256)
       naf.indices.foreach { i =>
@@ -125,7 +195,7 @@ class ScalarSuite extends munit.ScalaCheckSuite:
   }
 
   property("equality and hashing are by the encoding") {
-    forAll(canonicalScalar, canonicalScalar) { (a, b) =>
+    forAllNoShrink(canonicalScalar, canonicalScalar) { (a, b) =>
       assertEquals(canonical(a).equals(canonical(b)), a == b, "equals")
       assertEquals(canonical(a).ctEquals(canonical(b)), if a == b then 1 else 0, "ctEquals")
       assertEquals(canonical(a).hashCode(), canonical(a).hashCode(), "hashCode")

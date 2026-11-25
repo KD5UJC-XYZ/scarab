@@ -5,7 +5,7 @@ import java.security.{KeyFactory, Signature}
 import java.security.spec.{EdECPrivateKeySpec, NamedParameterSpec}
 import org.bouncycastle.math.ec.rfc8032.Ed25519
 import org.scalacheck.Gen
-import org.scalacheck.Prop.forAll
+import org.scalacheck.Prop.forAllNoShrink
 import xyz.kd5ujc.scarab.crypto.witness.Ed25519Model as M
 
 import Ed25519Verifiers.*
@@ -22,7 +22,8 @@ import VerificationResult.*
   * order of a torsion point, or not). Each family states the outcome of each verifier: Scarab's is
   * the reference's rule, and where the JDK or Bouncy Castle differs from it, the difference is that
   * verifier's own rule, cited in `Ed25519Verifiers`. Nothing is skipped: a family runs whole on
-  * every verifier.
+  * every verifier. Properties do not shrink (`forAllNoShrink`): a shrunk key or seed would not be
+  * 32 bytes.
   */
 class Ed25519CrossCheckSuite extends munit.ScalaCheckSuite:
   override def scalaCheckTestParameters =
@@ -76,7 +77,7 @@ class Ed25519CrossCheckSuite extends munit.ScalaCheckSuite:
   private def family(name: String, expected: Expected)(cases: Gen[Case]): Unit =
     val bcVerdict = if expected.bc then "accepts" else "rejects"
     property(s"$name: Scarab ${expected.scarab}, JDK ${expected.jdk}, Bouncy Castle $bcVerdict") {
-      forAll(cases)(c => check(c, expected, name))
+      forAllNoShrink(cases)(c => check(c, expected, name))
     }
 
   private def defined[A](gen: Gen[Option[A]]): Gen[A] = gen.suchThat(_.isDefined).map(_.get)
@@ -94,14 +95,14 @@ class Ed25519CrossCheckSuite extends munit.ScalaCheckSuite:
   family("signatures of BC's signer", Expected(SignatureVerified, Jdk.Verified, true))(signed)
 
   property("ByronEd25519 accepts the same valid signatures") {
-    forAll(signed) { c =>
+    forAllNoShrink(signed) { c =>
       assertEquals(byron(c.key, c.signature, c.message), Right(SignatureVerified))
     }
   }
 
   property("the JDK's signer, BC's and the model's give the same key and signature") {
     val jdkKeys = KeyFactory.getInstance("Ed25519", "SunEC")
-    forAll(bytesOf(32), message) { (seed, m) =>
+    forAllNoShrink(bytesOf(32), message) { (seed, m) =>
       val pk = new Array[Byte](32)
       Ed25519.generatePublicKey(seed, 0, pk, 0)
       val bcSig = new Array[Byte](64)
@@ -144,7 +145,7 @@ class Ed25519CrossCheckSuite extends munit.ScalaCheckSuite:
       Gen.choose(0, 255).map(Mutation.S(_)),
       Gen.choose(0, 7).map(Mutation.Message(_))
     )
-    forAll(signed.suchThat(_.message.nonEmpty), mutation) { (c, flip) =>
+    forAllNoShrink(signed.suchThat(_.message.nonEmpty), mutation) { (c, flip) =>
       val mutated = flip match
         case Mutation.Key(b)     => c.copy(key = flipped(c.key, b))
         case Mutation.R(b)       => c.copy(signature = flipped(c.signature, b))
@@ -358,13 +359,13 @@ class Ed25519CrossCheckSuite extends munit.ScalaCheckSuite:
     )
 
   property("a key decodes for Scarab exactly when BC's validatePublicKeyPartial accepts it") {
-    forAll(encoding) { e =>
+    forAllNoShrink(encoding) { e =>
       assertEquals(StrictEd25519.point(e).isDefined, bcAcceptsKey(e), hex(e))
     }
   }
 
   property("the JDK decodes as RFC 8032, and Scarab the same points less those of small order") {
-    forAll(encoding) { e =>
+    forAllNoShrink(encoding) { e =>
       val strict = M.decode(e, M.Reading.Strict)
       assertEquals(jdkAcceptsKey(e), strict.isDefined, s"JDK, ${hex(e)}")
       assertEquals(
