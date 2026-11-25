@@ -7,7 +7,6 @@ import cats.effect.testkit.TestControl
 import cats.mtl.Handle
 import cats.syntax.all.*
 import com.comcast.ip4s.{Host, SocketAddress, host, ipv4, port}
-import scala.collection.immutable.SortedMap
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.ledger.NodeError
 import xyz.kd5ujc.scarab.network.*
@@ -20,7 +19,6 @@ import xyz.kd5ujc.scarab.protocol.ConnectionState.Provenance
   */
 class PeerRootReloadSuite extends FailsOnUncaught:
   private given Assertions[IO] = Assertions.noop[IO]
-  import PeerNetwork.given
 
   private val oldConfig = RootConfig(false, DiffusionMode.InitiatorOnly, Provenance.Outbound, false)
   private val nextConfig =
@@ -343,54 +341,103 @@ class PeerRootReloadSuite extends FailsOnUncaught:
     }
   }
 
-  test("public root attribution survives unchanged DNS sources and is pruned when sources change") {
+  /** Issue 810: the reference keeps its public roots across a reconfiguration; the configured
+    * public roots are read again only by the next request (`jobReqPublicRootPeers`,
+    * ouroboros-network c45735a5,
+    * `ouroboros-network/lib/Ouroboros/Network/PeerSelection/Governor/RootPeers.hs` 160), and only
+    * the new local roots are taken out of them (`localRoots`,
+    * `cardano-diffusion/lib/Cardano/Network/PeerSelection/Governor/Monitor.hs` 276-282).
+    */
+  test(
+    "a topology reload that names other public roots keeps the public roots the governor knows"
+  ) {
     val public = SocketAddress[Host](ipv4"192.0.2.31", port"3001")
-    val bootstrap = SocketAddress[Host](ipv4"192.0.2.32", port"3001")
-    val configured = roots(List(fixed -> oldConfig)).copy(
-      public = Set(cachedHost),
-      bootstrap = Some(Vector(pendingHost))
-    )
-    val known = GovernorState
-      .initial[PeerNetwork.Addr](1L, LocalRoots.empty, Targets.relay, Sensitivity.initial(false))
-      .copy(peers =
-        SortedMap(
-          public -> PeerRecord.cold(Origin.Public),
-          bootstrap -> PeerRecord.cold(Origin.Bootstrap)
-        )
-      )
-    assertEquals(
-      PeerNetwork.retainedPublicRoots(configured, configured, known),
-      Set(public, bootstrap)
-    )
-    val changedNames =
-      configured.copy(public = Set(pendingHost), bootstrap = Some(Vector(cachedHost)))
-    assertEquals(PeerNetwork.retainedPublicRoots(configured, changedNames, known), Set.empty)
-    val replaced = configured.copy(public = Set(moved), bootstrap = None)
-    assertEquals(PeerNetwork.retainedPublicRoots(configured, replaced, known), Set(moved))
-    val applied = PeerSelection
-      .apply(
-        known,
-        Event.RootsConfigured(
-          LocalRoots.empty,
-          false,
-          PeerNetwork.retainedPublicRoots(configured, replaced, known),
-          Some(BigInt(1))
-        ),
-        Duration.Zero
-      )
-      .state
-    assertEquals(applied.peers(public).origin, Origin.Other)
-    assertEquals(applied.peers(bootstrap).origin, Origin.Other)
+    val dns = new PeerDns[IO]:
+      def addresses(name: DnsName) = IO.pure(DnsAddressAnswer(Vector.empty, Vector.empty))
+      def services(name: DnsName) = IO.pure(Left(PeerDnsError.Lookup(Vector.empty)))
+    given Resource[IO, PeerDns[IO]] = Resource.pure[IO, PeerDns[IO]](dns)
+    val configured = roots(List(fixed -> oldConfig)).copy(public = Set(cachedHost))
+    Settled { settle =>
+      running(configured).use { network =>
+        network.run.background.use { _ =>
+          for
+            _ <- settle
+            _ <- network.state.update(st =>
+              st.copy(peers = st.peers + (public -> PeerRecord.cold(Origin.Public)))
+            )
+            before <- network.state.get
+            _ <- network.reloadRoots(configured.copy(public = Set(moved))).timeout(1.second)
+            _ <- settle
+            after <- network.state.get
+          yield
+            assert(after.rootsGeneration > before.rootsGeneration)
+            assertEquals(after.peers.get(public).map(_.origin), Some(Origin.Public))
+            assertEquals(GovernorState.invariant(after), Nil)
+        }
+      }
+    }
   }
 
-  /** Issue 810: a local root's DNS name answered the same addresses in another order, which
-    * publishes a new roots generation; that generation took every big ledger peer away. The
-    * addresses of the big ledger peers wait a day before they are dialled, so only the reload can
-    * change them.
+  /** Issue 810: a local root's DNS name answered the same addresses in another order. The
+    * reference's provider writes its groups, whose members are a map, only when they changed
+    * (`monitorDomain`, ouroboros-network c45735a5,
+    * `ouroboros-network/lib/Ouroboros/Network/PeerSelection/RootPeersDNS/LocalRootPeers.hs`
+    * 236-245), and its governor acts only on local roots that differ (`localRoots`,
+    * `cardano-diffusion/lib/Cardano/Network/PeerSelection/Governor/Monitor.hs` 255): no new roots
+    * generation. The third lookup starts only once the second answer is dealt with.
     */
-  test("a local DNS answer in another order keeps the big ledger peers") {
+  test("a local DNS answer in another order publishes no roots generation") {
+    def answer(addresses: com.comcast.ip4s.IpAddress*) =
+      DnsAddressAnswer(addresses.toVector.map(DnsAddressRecord(_, 60.seconds)), Vector.empty)
+    Settled.timed { settle =>
+      for
+        lookups <- Ref.of[IO, Int](0)
+        resolvedFirst <- Deferred[IO, Unit]
+        resolvedAgain <- Deferred[IO, Unit]
+        askedThird <- Deferred[IO, Unit]
+        dns = new PeerDns[IO]:
+          def addresses(_query: DnsName) =
+            lookups.getAndUpdate(_ + 1).flatMap {
+              case 0 => resolvedFirst.complete(()).as(answer(ipv4"192.0.2.31", ipv4"192.0.2.32"))
+              case 1 => resolvedAgain.complete(()).as(answer(ipv4"192.0.2.32", ipv4"192.0.2.31"))
+              case _ => askedThird.complete(()) *> IO.never[DnsAddressAnswer]
+            }
+          def services(_query: DnsName) = IO.pure(Left(PeerDnsError.Lookup(Vector.empty)))
+        given Resource[IO, PeerDns[IO]] = Resource.pure[IO, PeerDns[IO]](dns)
+        _ <- running(roots(List(cachedHost -> nextConfig), hot = 1, warm = 2)).use { network =>
+          network.run.background.use { _ =>
+            for
+              _ <- resolvedFirst.get
+              _ <- settle
+              installed <- network.state.get
+              _ = assertEquals(
+                installed.localRoots.keys.toSet,
+                Set(
+                  SocketAddress[Host](ipv4"192.0.2.31", port"3001"),
+                  SocketAddress[Host](ipv4"192.0.2.32", port"3001")
+                )
+              )
+              _ <- resolvedAgain.get
+              _ <- askedThird.get
+              _ <- settle
+              after <- network.state.get
+            yield
+              assertEquals(after.rootsGeneration, installed.rootsGeneration)
+              assertEquals(after.localRoots, installed.localRoots)
+          }
+        }
+      yield ()
+    }
+  }
+
+  /** Issue 810: a local root's DNS name answered other addresses, which publishes a new roots
+    * generation; that generation took every big ledger peer away. The addresses of the big ledger
+    * peers wait a day before they are dialled, so only the reload can change them.
+    */
+  test("a local DNS answer that changes keeps the big ledger peers") {
     val first = SocketAddress[Host](ipv4"192.0.2.31", port"3001")
     val second = SocketAddress[Host](ipv4"192.0.2.32", port"3001")
+    val third = SocketAddress[Host](ipv4"192.0.2.33", port"3001")
     val bigLedger =
       List(ipv4"198.51.100.1", ipv4"198.51.100.2", ipv4"198.51.100.3")
         .map(ip => SocketAddress[Host](ip, port"3001"))
@@ -420,7 +467,7 @@ class PeerRootReloadSuite extends FailsOnUncaught:
                   .as(
                     DnsAddressAnswer(
                       Vector(
-                        DnsAddressRecord(ipv4"192.0.2.32", 60.seconds),
+                        DnsAddressRecord(ipv4"192.0.2.33", 60.seconds),
                         DnsAddressRecord(ipv4"192.0.2.31", 60.seconds)
                       ),
                       Vector.empty
@@ -451,7 +498,7 @@ class PeerRootReloadSuite extends FailsOnUncaught:
               _ <- settle
               after <- network.state.get
               _ = assert(after.rootsGeneration > installed.rootsGeneration)
-              _ = assertEquals(after.localRoots, installed.localRoots)
+              _ = assertEquals(after.localRoots.keys.toSet, Set(first, third))
               _ = assertEquals(after.view(now).big.known.toSet, bigLedger.toSet)
               _ = assertEquals(GovernorState.invariant(after), Nil)
             yield ()

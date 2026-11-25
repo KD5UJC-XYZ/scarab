@@ -781,29 +781,108 @@ class PeerSelectionSuite extends FunSuite:
     )
   }
 
-  test("reloading roots demotes the removed topology roots and keeps the ledger peers") {
+  /** Issue 810: the reference keeps its public roots across a reconfiguration of the roots. Only
+    * the new local roots are taken out of them (`localRoots`, ouroboros-network c45735a5,
+    * `cardano-diffusion/lib/Cardano/Network/PeerSelection/Governor/Monitor.hs` 276-282); the
+    * configured public roots are read again only by the next request (`jobReqPublicRootPeers`,
+    * `ouroboros-network/lib/Ouroboros/Network/PeerSelection/Governor/RootPeers.hs` 160).
+    */
+  test("a roots reload keeps the public, bootstrap and ledger roots, and makes a new local root") {
     val initial = start(Nil)
-    val withRoots = initial.copy(peers =
-      initial.peers ++ Map(
+    val withRoots = initial.copy(
+      targets = Targets.relay,
+      peers = initial.peers ++ Map(
         1 -> PeerRecord.cold(Origin.Public),
         2 -> PeerRecord.cold(Origin.Bootstrap),
         3 -> PeerRecord.cold(Origin.Ledger),
-        4 -> PeerRecord.cold(Origin.BigLedger)
+        4 -> PeerRecord.cold(Origin.BigLedger),
+        5 -> PeerRecord.cold(Origin.Public)
       )
     )
     val reloaded = PeerSelection
-      .apply(withRoots, Event.RootsConfigured(LocalRoots.empty, false, Set.empty), t0)
+      .apply(
+        withRoots,
+        Event.RootsConfigured(LocalRoots.fromGroups(List(group(1, 1, 5))), false, Set.empty),
+        t0
+      )
       .state
 
     assertEquals(
       reloaded.peers.view.mapValues(_.origin).toMap,
       Map(
-        1 -> Origin.Other,
-        2 -> Origin.Other,
+        1 -> Origin.Public,
+        2 -> Origin.Bootstrap,
         3 -> Origin.Ledger,
-        4 -> Origin.BigLedger
+        4 -> Origin.BigLedger,
+        5 -> Origin.Local
       )
     )
+    assertEquals(GovernorState.invariant(reloaded), Nil)
+  }
+
+  /** Issue 810: a reload that changes the bootstrap flag does what the reference's
+    * `monitorBootstrapPeersFlag` does when it reads a new flag (ouroboros-network c45735a5,
+    * `cardano-diffusion/lib/Cardano/Network/PeerSelection/Governor/Monitor.hs` 413-455): the
+    * bootstrap peers that are neither established nor being connected are forgotten, the judgement
+    * becomes `YoungEnough` and the clean state starts again; in Genesis mode it does nothing.
+    */
+  test("a reload that changes the bootstrap flag does what the flag's monitor does") {
+    val sensitive = Sensitivity
+      .initial(useBootstrapPeers = true)
+      .copy(
+        judgement = LedgerStateJudgement.TooOld,
+        hasOnlyBootstrapPeers = true,
+        timeout = Some(15.minutes)
+      )
+    val initial = start(Nil, bootstrap = true)
+    val withBootstrap = initial.copy(
+      sensitivity = sensitive,
+      reported = LedgerStateJudgement.TooOld,
+      peers = initial.peers ++ Map(
+        1 -> PeerRecord.cold(Origin.Bootstrap),
+        2 -> PeerRecord.cold(Origin.Bootstrap).copy(status = Status.Warm(t0)),
+        3 -> PeerRecord.cold(Origin.Bootstrap).copy(status = Status.Connecting),
+        4 -> PeerRecord.cold(Origin.Public)
+      )
+    )
+    val off = PeerSelection
+      .apply(withBootstrap, Event.RootsConfigured(LocalRoots.empty, false, Set.empty), t0)
+      .state
+    assertEquals(off.peers.keySet, Set(2, 3, 4))
+    assertEquals(off.peers(2).origin, Origin.Bootstrap)
+    assertEquals(off.peers(3).origin, Origin.Bootstrap)
+    assertEquals(
+      off.sensitivity,
+      sensitive.copy(
+        useBootstrapPeers = false,
+        judgement = LedgerStateJudgement.YoungEnough,
+        hasOnlyBootstrapPeers = false,
+        timeout = None
+      )
+    )
+    assertEquals(GovernorState.invariant(off), Nil)
+
+    // turned on again while the ledger is too old: the judgement's monitor reads `TooOld` as a
+    // change and starts the clean state with its deadline (`Monitor.hs` 541-563)
+    val on = PeerSelection
+      .apply(
+        off.copy(sensitivity = off.sensitivity.copy(judgement = LedgerStateJudgement.TooOld)),
+        Event.RootsConfigured(LocalRoots.empty, true, Set.empty),
+        t0
+      )
+      .state
+    assertEquals(on.sensitivity.judgement, LedgerStateJudgement.YoungEnough)
+    val (settled, _, traces) = settle(on, t0)
+    assert(traces.contains(Trace.JudgementChanged(LedgerStateJudgement.TooOld)), traces.toString)
+    assertEquals(settled.sensitivity.timeout, Some(t0 + Sensitivity.CleanStateTimeout))
+
+    val genesis =
+      withBootstrap.copy(sensitivity = sensitive.copy(consensusMode = ConsensusMode.GenesisMode))
+    val unchanged = PeerSelection
+      .apply(genesis, Event.RootsConfigured(LocalRoots.empty, false, Set.empty), t0)
+      .state
+    assertEquals(unchanged.sensitivity, genesis.sensitivity)
+    assertEquals(unchanged.peers.keySet, Set(1, 2, 3, 4))
   }
 
   test("a local DNS root rotation installs origins and demotions atomically") {
@@ -1055,39 +1134,70 @@ class PeerSelectionSuite extends FunSuite:
       case other          => fail(s"not cold: $other")
   }
 
-  test("a root request completing after reload cannot restore the previous roots") {
-    val initial = start(Nil).copy(publicRootsInFlight = true, bigLedgerInFlight = true)
+  /** Issue 810: the reference's reconfiguration of the local roots writes none of the root
+    * requests' bookkeeping (`localRoots`, ouroboros-network c45735a5,
+    * `cardano-diffusion/lib/Cardano/Network/PeerSelection/Governor/Monitor.hs` 341-353), so a
+    * reload asks for roots again only at the retry time, and not while a request is in flight.
+    */
+  test("a roots reload keeps the root requests' backoffs, retry times and requests in flight") {
+    val initial = start(Nil).copy(
+      publicRootBackoffs = 3,
+      publicRootRetryAt = 5.minutes,
+      publicRootsInFlight = true,
+      bigLedgerBackoffs = -2,
+      bigLedgerRetryAt = 7.minutes,
+      bigLedgerInFlight = true
+    )
     val reloaded = PeerSelection
       .apply(initial, Event.RootsConfigured(LocalRoots.empty, false, Set.empty), t0)
       .state
-    val staleRoots = PeerSelection
-      .apply(
-        reloaded,
-        Event.Completed(
-          Outcome.RootsFound(
-            PublicRoots(Set(8), Set.empty),
-            5.seconds,
-            initial.rootsGeneration
-          )
-        ),
-        t0
-      )
-      .state
-    val staleBigLedger = PeerSelection
-      .apply(
-        staleRoots,
-        Event.Completed(
-          Outcome.BigLedgerFound(BigLedgerRoots.Ledger(Set(9)), 5.seconds, initial.rootsGeneration)
-        ),
-        t0
-      )
-      .state
-
     assertEquals(reloaded.rootsGeneration, initial.rootsGeneration + 1)
-    assert(!reloaded.publicRootsInFlight && !reloaded.bigLedgerInFlight)
-    assertEquals(staleBigLedger.peers.get(8), None)
-    assertEquals(staleBigLedger.peers.get(9), None)
-    assertEquals(staleBigLedger.rootsGeneration, reloaded.rootsGeneration)
+    assertEquals(
+      (reloaded.publicRootBackoffs, reloaded.publicRootRetryAt, reloaded.publicRootsInFlight),
+      (3, 5.minutes, true)
+    )
+    assertEquals(
+      (reloaded.bigLedgerBackoffs, reloaded.bigLedgerRetryAt, reloaded.bigLedgerInFlight),
+      (-2, 7.minutes, true)
+    )
+  }
+
+  /** Issue 810: a request in flight completes into the state as it is then, whatever was
+    * reconfigured meanwhile, leaving out the local roots of that state (`jobReqPublicRootPeers`,
+    * ouroboros-network c45735a5,
+    * `ouroboros-network/lib/Ouroboros/Network/PeerSelection/Governor/RootPeers.hs` 157-231, and
+    * `jobReqBigLedgerPeers`, `Governor/BigLedgerPeers.hs` 164-225).
+    */
+  test("a root request completing after a reload is applied to the state as it is then") {
+    val initial = start(Nil).copy(
+      targets = Targets.relay,
+      publicRootsInFlight = true,
+      bigLedgerInFlight = true
+    )
+    val reloaded = PeerSelection
+      .apply(
+        initial,
+        Event.RootsConfigured(LocalRoots.fromGroups(List(group(1, 1, 7))), false, Set.empty),
+        t0
+      )
+      .state
+    val roots = complete(
+      reloaded,
+      Outcome.RootsFound(PublicRoots(Set(7, 8), Set.empty), 5.seconds),
+      t0
+    )
+    val bigLedger = complete(
+      roots,
+      Outcome.BigLedgerFound(BigLedgerRoots.Ledger(Set(9)), 5.seconds),
+      t0
+    )
+
+    assertEquals(bigLedger.peers(7).origin, Origin.Local)
+    assertEquals(bigLedger.peers.get(8).map(_.origin), Some(Origin.Public))
+    assertEquals(bigLedger.peers.get(9).map(_.origin), Some(Origin.BigLedger))
+    assert(!bigLedger.publicRootsInFlight && !bigLedger.bigLedgerInFlight)
+    assertEquals((bigLedger.publicRootRetryAt, bigLedger.bigLedgerRetryAt), (5.seconds, 5.seconds))
+    assertEquals(GovernorState.invariant(bigLedger), Nil)
   }
 
   test("churn targets computed under an old roots generation are ignored") {
