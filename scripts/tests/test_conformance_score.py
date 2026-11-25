@@ -195,6 +195,10 @@ class TurboTest(unittest.TestCase):
         nothing = miss(cpu_us=1.0, mem_bytes=1.0)
         self.assertEqual((nothing.shortfall, nothing.cpu_ratio, nothing.memory_ratio),
                          (score.Shortfall.NOTHING_COMPARABLE, None, None))
+        self.assertEqual((both.failing_ratio, cpu.failing_ratio, nothing.failing_ratio), (400.0, 10.0, None),
+                         "the larger ratio of the failing dimensions alone")
+        memory_alone = miss(budget_cpu=1_000_000, cpu_us=150.0, budget_mem=1000, mem_bytes=400_000.0)
+        self.assertEqual((memory_alone.cpu, memory_alone.cpu_ratio, memory_alone.failing_ratio), (True, 150.0, 400.0))
         absent = score.Miss.of("a.flat", None)
         self.assertEqual((absent.shortfall, absent.cpu, absent.cpu_ratio), (score.Shortfall.NOT_REPORTED, None, None))
 

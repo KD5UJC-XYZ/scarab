@@ -428,6 +428,13 @@ class Miss:
     def memory_ratio(self) -> float | None:
         return None if self.item is None else _ratio(*_memory(self.item))
 
+    @property
+    def failing_ratio(self) -> float | None:
+        """How far over its budget the benchmark is, in the dimensions that fail it alone; None when none does."""
+        ratios = [ratio for within, ratio in ((self.cpu, self.cpu_ratio), (self.memory, self.memory_ratio))
+                  if within is False and ratio is not None]
+        return max(ratios) if ratios else None
+
 
 @dataclass(frozen=True)
 class Turbo:
@@ -466,15 +473,30 @@ def turbo(report: dict, benchmarks: tuple[str, ...]) -> Score:
     return turbo_breakdown(report, benchmarks).score
 
 
-def read(path: Path, scenario: str, era: str | None, site: Site) -> Score:
-    """The score of the report at `path`, or `Unreadable` (62800627 scripts/build_common.py:179-180 and
-    325-346)."""
+def parse(data: bytes) -> dict:
+    """A report file's bytes as the site reads them: gzipped JSON holding an object, or `Unreadable` (62800627
+    scripts/build_common.py:179-180)."""
     try:
-        report = json.loads(gzip.decompress(path.read_bytes()))
+        report = json.loads(gzip.decompress(data))
     except (OSError, EOFError, zlib.error, ValueError) as error:
         raise Unreadable(str(error)) from error
     if not isinstance(report, dict):
         raise Unreadable("not a JSON object")
+    return report
+
+
+def read(path: Path, scenario: str, era: str | None, site: Site) -> Score:
+    """The score of the report at `path`, or `Unreadable`."""
+    try:
+        data = path.read_bytes()
+    except OSError as error:
+        raise Unreadable(str(error)) from error
+    return score_report(parse(data), scenario, era, site)
+
+
+def score_report(report: dict, scenario: str, era: str | None, site: Site) -> Score:
+    """The score of a parsed report of `scenario` and `era`, or `Unreadable` (62800627 scripts/build_common.py:325-346).
+    """
     if scenario == "cbor-decoding":
         return cbor(report, era)
     if report.get("version") != "1":
