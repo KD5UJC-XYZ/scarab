@@ -168,7 +168,7 @@ class MithrilClientSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       val marker = root / "executed"
       execute(
         root,
-        s"touch ${quoted(marker.toString)}",
+        s": > ${quoted(marker.toString)}",
         digest = Some(Bytes.wrap(Array.fill(32)(0.toByte)))
       ).map { result =>
         assert(result.left.exists(_.isInstanceOf[Error.ExecutableDigest]))
@@ -195,7 +195,7 @@ class MithrilClientSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     StorageTestKit.tempDir.use(root =>
       execute(
         root,
-        s"head -c 5000000 /dev/zero >&2\nprintf '%s\\n' ${quoted(success(root / "cached"))}"
+        s"head -c 5000000 /dev/zero >&2 && printf '%s\\n' ${quoted(success(root / "cached"))}"
       )
         .map(result => assert(result.isRight))
     )
