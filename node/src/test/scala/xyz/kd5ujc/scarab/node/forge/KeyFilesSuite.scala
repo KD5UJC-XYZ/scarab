@@ -199,3 +199,20 @@ class KeyFilesSuite extends munit.FunSuite:
       }
     )
   }
+
+  test("a VRF key read for credentials that are not taken is erased; one that is taken is kept") {
+    def key() = Draft03Prover.SigningKey.fromSeed(hex("07" * 32)).toOption.get
+    val alpha = hex("01")
+    val failure: Either[ForgeError, Int] =
+      Left(ForgeError.KeyFile("kes.skey", ForgeKeyProblem.OtherPermissions(0x1ff)))
+    val refused = key()
+    assertEquals(KeyFiles.erasedUnless(refused, failure)(_ => true), failure)
+    assertEquals(refused.prove(alpha), Left(Draft03Prover.Failure.MissingSigningKey))
+    assertEquals(refused.toBytes.take(32), hex("00" * 32), "the seed after a failure")
+    val notKept = key()
+    assertEquals(KeyFiles.erasedUnless(notKept, Right(2))(_ == 1), Right(2))
+    assertEquals(notKept.output(alpha), Left(Draft03Prover.Failure.MissingSigningKey))
+    val kept = key()
+    assertEquals(KeyFiles.erasedUnless(kept, Right(1))(_ == 1), Right(1))
+    assert(kept.prove(alpha).isRight, "the key the credentials keep was erased")
+  }

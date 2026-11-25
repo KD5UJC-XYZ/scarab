@@ -720,7 +720,7 @@ object KesFiles:
       }
     present(vrfFile) {
       KeyFiles.read(vrfFile).flatMap(KeyFiles.vrfSigningKey(vrfFile.toString, _)).flatMap { vrf =>
-        voting { keys =>
+        val reread = voting { keys =>
           present(opCertFile) {
             KeyFiles.read(opCertFile).flatMap(KeyFiles.opCert(opCertFile.toString, _)).flatMap {
               (opCert, cold) =>
@@ -732,6 +732,11 @@ object KesFiles:
                 }
             }
           }
+        }
+        // a read that finds no credentials erases the VRF key it read
+        KeyFiles.erasedUnless(vrf, reread) {
+          case Reread.Found(_, _, _) => true
+          case Reread.Absent(_)      => false
         }
       }
     }

@@ -257,14 +257,26 @@ object KeyFiles:
       opCertFile: Path,
       blsFile: Option[Path] = None
   ): Either[ForgeError, PoolCredentials] =
-    for
-      vrfText <- read(vrfFile)
-      vrf <- vrfSigningKey(vrfFile.toString, vrfText)
-      // the voting keys after the VRF key and before the KES key and the certificate, as
-      // `readLeaderCredentialsSingleton` reads them (`Cardano/Node/Protocol/Shelley.hs:187-201`,
-      // cardano-node b004fe0c)
-      keys <- blsFile.traverse(loadBlsSigningKeys).map(_.getOrElse(Vector.empty))
-      hot <- KesFiles.readHot(kesFile, opCertFile)
-      credentials = PoolCredentials(vrf, hot.kes, hot.opCert, hot.coldVkey, keys)
-      _ <- PoolCredentials.check(credentials)
-    yield credentials
+    read(vrfFile).flatMap(vrfSigningKey(vrfFile.toString, _)).flatMap { vrf =>
+      val loaded =
+        for
+          // the voting keys after the VRF key and before the KES key and the certificate, as
+          // `readLeaderCredentialsSingleton` reads them (`Cardano/Node/Protocol/Shelley.hs:187-201`,
+          // cardano-node b004fe0c)
+          keys <- blsFile.traverse(loadBlsSigningKeys).map(_.getOrElse(Vector.empty))
+          hot <- KesFiles.readHot(kesFile, opCertFile)
+          credentials = PoolCredentials(vrf, hot.kes, hot.opCert, hot.coldVkey, keys)
+          _ <- PoolCredentials.check(credentials)
+        yield credentials
+      erasedUnless(vrf, loaded)(_ => true)
+    }
+
+  /** `result`, made with the VRF key `vrf` read for it, which nothing else holds: the key is erased
+    * unless `result` is a value that `keeps` it, so that credentials that are not taken leave no
+    * copy of its seed.
+    */
+  private[forge] def erasedUnless[A](vrf: Draft03Prover.SigningKey, result: Either[ForgeError, A])(
+      keeps: A => Boolean
+  ): Either[ForgeError, A] =
+    if !result.exists(keeps) then vrf.forget()
+    result
