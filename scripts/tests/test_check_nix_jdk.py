@@ -60,6 +60,15 @@ class NixJdkTest(unittest.TestCase):
                 self.assertEqual(len(found), 1, found)
                 self.assertIn("JDK 21", found[0])
 
+    def test_a_longer_name_ending_in_jdk_is_not_the_binding(self):
+        toolchain = (TOOLCHAIN % "21").replace("jdk = pkgs.jdk21;",
+                                                "jdk = (pkgs.jdk21.override { });\n      test-jdk = pkgs.jdk25;")
+        found = check_nix_jdk.problems(toolchain, DOCKERFILE % "25.0.4.1")
+        self.assertEqual(len(found), 1, found)
+        self.assertIn("not once", found[0])
+        both = (TOOLCHAIN % "25").replace("sbt =", "test-jdk = pkgs.jdk21;\n      other.jdk = pkgs.jdk21;\n      sbt =")
+        self.assertEqual(check_nix_jdk.problems(both, DOCKERFILE % "25.0.4.1"), [])
+
     def test_a_parenthesised_binding_is_read(self):
         toolchain = (TOOLCHAIN % "21").replace("pkgs.jdk21", "(pkgs.jdk21)")
         self.assertEqual(len(check_nix_jdk.problems(toolchain, DOCKERFILE % "25.0.4.1")), 1)

@@ -20,7 +20,8 @@ from preflight_doctor import DOCKERFILE, TEMURIN_TAG
 ROOT = Path(__file__).resolve().parents[1]
 TOOLCHAIN = "flake/toolchain.nix"
 NIX_COMMENT = re.compile(r"/\*.*?\*/|#[^\n]*", re.DOTALL)
-NIX_JDK = re.compile(r"\bjdk\s*=\s*\(?\s*pkgs\.jdk(\d+)\s*\)?\s*;")
+# `jdk` as a whole Nix name: not the end of another (`test-jdk`) nor the last part of an attribute path.
+NIX_JDK = re.compile(r"(?<![\w'.-])jdk\s*=\s*\(?\s*pkgs\.jdk(\d+)\s*\)?\s*;")
 
 
 def problems(toolchain: str, dockerfile: str) -> list[str]:
