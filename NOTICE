@@ -78,6 +78,11 @@ attribution files in fixtures/witness/licenses. The curve25519-elisabeth arithme
 is vendored source (named above); the fixtures hold no signing implementation or
 private-key corpus.
 
+ECVRF draft-03 vectors (fixtures/vrf-cardano-base): the seven vrf_ver03 test vectors of
+IntersectMBO/cardano-base revision 060819b59c184b951a54e3c563304983c53a3eac, Apache-2.0
+(fixtures/licenses/cardano-base-LICENSE and cardano-base-NOTICE). Their seeds are
+published test keys.
+
 Leios (fixtures/leios): serialisation test vectors from IntersectMBO/cardano-base
 (Apache-2.0; fixtures/licenses/cardano-base-LICENSE and -NOTICE), the golden LeiosVote of
 IntersectMBO/ouroboros-consensus branch leios-prototype (Apache-2.0), and the throwaway

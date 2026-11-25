@@ -12,6 +12,8 @@ Upstream licenses and notices for the test vectors under `fixtures/`:
 - `opcert/`, `praos/`, `sum6/`, `vrf/`: header, VRF, KES and operational-certificate
   vectors from public Cardano chain data and IntersectMBO cardano-base and
   cardano-ledger (`cardano-ledger-LICENSE`, `cardano-ledger-NOTICE`).
+- `vrf-cardano-base/`: the ECVRF draft-03 test vectors of IntersectMBO cardano-base
+  (`cardano-base-LICENSE`, `cardano-base-NOTICE`).
 - `witness/`: the strict Ed25519 corpus. It keeps its own license and provenance
   files under `fixtures/witness/licenses` and `fixtures/witness/provenance`
   (sodium ISC, speccheck/Wycheproof, Cardano Apache-2.0 and the Weavechain

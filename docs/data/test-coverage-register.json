@@ -36,6 +36,22 @@
       "candidateRequired": true
     },
     {
+      "id": "vrf-draft03-reference-vectors",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "The seven ECVRF draft-03 test vectors of cardano-base 060819b5 (cardano-crypto-praos/test_vectors/vrf_ver03_*).",
+      "assertion": "For each vector, as the reference's checkVer03TestVector: the key of sk is pk, proving alpha with sk || pk gives pi and beta, the output alone is beta, and StrictDraft03 verifies pi with pk to beta.",
+      "rationale": "The prover's suite held two of the three IETF examples and none of cardano-base's generated vectors.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/1418",
+      "resolution": "Retain the upstream files unchanged.",
+      "evidence": [
+        "crypto/src/test/scala/xyz/kd5ujc/scarab/crypto/vrf/Draft03CardanoBaseVectorSuite.scala",
+        "fixtures/vrf-cardano-base/README.md"
+      ],
+      "candidateRequired": false
+    },
+    {
       "id": "byron-projection",
       "classification": "regression",
       "status": "covered",
