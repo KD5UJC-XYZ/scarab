@@ -464,10 +464,20 @@ class GenesisGovernorSuite extends FailsOnUncaught:
     TestControl.executeEmbed {
       for
         traced <- Ref.of[IO, Vector[GenesisTrace]](Vector.empty)
-        evaluated <- Deferred[IO, Unit]
+        // what the first evaluation traced, read when the second begins: it has passed every point
+        // it could trace at by then
+        evaluations <- Ref.of[IO, Int](0)
+        first <- Deferred[IO, Unit]
+        tracedByFirst <- Deferred[IO, Vector[GenesisTrace]]
         governor <- GenesisGovernor.create[IO](
           GenesisGovernor.View(empty, 2, _ => Some(8)),
-          events = Some(event => traced.update(_ :+ event) *> evaluated.complete(()).void)
+          observe = Some(_ =>
+            evaluations.updateAndGet(_ + 1).flatMap {
+              case 1 => first.complete(()).void
+              case _ => traced.get.flatMap(tracedByFirst.complete).void
+            }
+          ),
+          events = Some(event => traced.update(_ :+ event))
         )
         _ <- (
           governor.session(_ => IO.unit, IO.unit, Some(PeerOrder(1))),
@@ -481,8 +491,9 @@ class GenesisGovernorSuite extends FailsOnUncaught:
               false
             )
             _ <- governor.setPhase(Gsm.Phase.Syncing)
-            _ <- governor.run.background.use(_ => evaluated.get)
-            all <- traced.get
+            all <- governor.run.background.use(_ =>
+              first.get *> a.publish(Some(dense), LatestSlot.At(4), false) *> tracedByFirst.get
+            )
           yield assertEquals(all, Vector(GenesisTrace.GddDebug(Vector.empty, point(2), 8)))
         }
       yield ()
