@@ -38,9 +38,9 @@ class ProducerSignalSuite extends FunSuite:
     assertEquals(ProducerSignal.Payload.from(-1), None)
   }
 
-  test("the node signals 42 with no payload by default, 255 when the operator opts out") {
+  test("the node signals 73 with no payload by default, 255 when the operator opts out") {
     assertEquals(ProducerSignal.Default, ProducerSignal.Identified)
-    assertEquals(ProducerSignal.Identified.minor, BigInt(42))
+    assertEquals(ProducerSignal.Identified.minor, BigInt(73))
     assertEquals(ProducerSignal.OptedOut.minor, BigInt(255))
     assertEquals(
       ProducerSignal.byName,

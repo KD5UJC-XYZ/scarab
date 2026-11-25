@@ -494,7 +494,7 @@ object Main extends IOApp:
     * @param producerSignal
     *   `--producer-id scarab|opt-out`: with `--forge`, what the minor protocol version of the
     *   forged headers says of the software (CIP-0203,
-    *   [[xyz.kd5ujc.scarab.node.forge.ProducerSignal]]): Scarab's identifier 42 by default, or the
+    *   [[xyz.kd5ujc.scarab.node.forge.ProducerSignal]]): Scarab's identifier 73 by default, or the
     *   opt-out 255.
     * @param startAsNonProducingNode
     *   `--start-as-non-producing-node`, or its hidden, deprecated alias `--non-producing-node`

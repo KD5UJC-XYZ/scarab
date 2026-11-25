@@ -5,8 +5,12 @@ import cats.data.NonEmptyVector
 import cats.syntax.all.*
 import java.time.Instant
 import xyz.kd5ujc.scarab.codec.{Bytes, Node, Rational}
+import xyz.kd5ujc.scarab.ledger.era.PParams
+import xyz.kd5ujc.scarab.ledger.era.conway.ConwayPParams
+import xyz.kd5ujc.scarab.ledger.era.rules.{ConwayMempoolRun, LedgerEnv}
 import xyz.kd5ujc.scarab.ledger.rules.{Convert, Globals}
 import xyz.kd5ujc.scarab.ledger.state.{
+  ChainAccountState,
   Coin,
   CommitteeAuthorization,
   CommitteeState,
@@ -33,6 +37,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
   StakePool,
   StakePoolState,
   Staking,
+  TxIx,
   UtxoTables,
   VRFVerKeyHash,
   VState,
@@ -40,14 +45,29 @@ import xyz.kd5ujc.scarab.ledger.state.{
   Word64
 }
 import xyz.kd5ujc.scarab.ledger.state.Credential as StateCredential
-import xyz.kd5ujc.scarab.node.mempool.MempoolLedger
 import xyz.kd5ujc.scarab.plutus.PlutusBackend
 import xyz.kd5ujc.scarab.protocol.Era
 
-/** What a fixture's transaction is judged with: the ledger at the fixture's point, the context of
-  * the transaction, and the network's constants.
+/** What a fixture's transaction is judged with by Conway's era rules: the ledger state at the
+  * fixture's point, what LEDGER's environment holds ([[env]]: the slot, the point's epoch, the
+  * transaction's index, the parameters in force read into Conway's and the chain account with the
+  * fixture's treasury), what the judgment takes besides ([[ConwayMempoolRun.Judging]]: the
+  * network's constants, its clock and the Plutus backend), and the clock of the fixture's era.
   */
-final case class LedgerRulesContext(ledger: MempoolLedger, env: TxEnv, globals: Globals)
+final case class LedgerRulesContext(
+    ledger: LedgerState[Conway],
+    slot: BigInt,
+    epoch: EpochNo,
+    index: TxIx,
+    pp: PParams[Conway],
+    account: ChainAccountState,
+    judging: ConwayMempoolRun.Judging,
+    clock: PosixClock.Forecast
+):
+  /** LEDGER's environment (`LedgerEnv`, `Shelley/Rules/Ledger.hs:97-104`, cardano-ledger f649f975),
+    * with the point's epoch.
+    */
+  def env: LedgerEnv[Conway] = LedgerEnv[Conway](slot, Some(epoch), index, pp, account)
 
 /** The ledger state a fixture declares, built as the reference harness of the corpus builds its
   * `NewEpochState` (Amaru `crates/amaru/tests/conformance/validation-rules`,
@@ -94,25 +114,38 @@ object LedgerRulesState:
       epoch = era.start.epoch + (f.slot - era.start.slot) / era.epochSize
       globals <- globals(f)
       ls <- ledger(f.params, f.state, epoch)
+      pp <- ConwayPParams.fromStored(f.params).leftMap(FixtureError.Params(_))
+      epochNo <- epochNo("slot", epoch)
+      index <- TxIx
+        .txIxFromIntegral(f.txIndex)
+        .toRight(FixtureError.TxIndex(f.txIndex))
     yield
-      val firstSlotNextEpoch = era.start.slot + (epoch + 1 - era.start.epoch) * era.epochSize
-      val env = TxEnv(
-        slot = f.slot,
-        epoch = epoch,
-        network = f.network,
-        firstSlotNextEpoch = firstSlotNextEpoch,
-        stabilityWindow = f.eraHistory.stabilityWindow,
-        txIndex = f.txIndex,
-        clock = Some(clock(era, epoch)),
-        evaluator = backend.evaluator,
-        decoder = backend.decoder
+      val forecast = clock(era, epoch)
+      val judging = ConwayMempoolRun.Judging(
+        globals,
+        globals.ledger.network,
+        forecast.systemStart,
+        forecast.horizon,
+        forecast.posix,
+        backend.evaluator,
+        Verdicts.Direct,
+        backend.decoder
       )
-      LedgerRulesContext(MempoolLedger(ls, Coin(f.state.treasury), epoch), env, globals)
+      LedgerRulesContext(
+        ls,
+        f.slot,
+        epochNo,
+        index,
+        PParams[Conway](pp),
+        ChainAccountState(Coin(f.state.treasury), Coin.zero),
+        judging,
+        forecast
+      )
 
   /** `buildEpochInfo`: the era from its start to its end, or, open-ended in the fixture, to the
     * start of the epoch after the point's (`mkUpperBound`), so a slot past that has no time.
     */
-  private def clock(era: FixtureEra, epoch: BigInt): PosixClock =
+  private def clock(era: FixtureEra, epoch: BigInt): PosixClock.Forecast =
     val params = Horizon.Params(era.epochSize, era.slotLengthMillis, BigInt(0), BigInt(0))
     def edge(b: FixtureBound) = Horizon.Edge(b.time * PsPerSecond, b.slot, b.epoch)
     val start = edge(era.start)

@@ -1,16 +1,40 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
-import cats.data.NonEmptyVector
+import cats.Order
+import cats.data.{NonEmptyList, NonEmptySet}
 import io.circe.Json
 import io.circe.syntax.*
 import java.nio.file.Path
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.ledger.era.{CollectError, ConwayDelegCert, Delegatee, Mismatch}
+import xyz.kd5ujc.scarab.ledger.era.Relation.{RelEQ, RelGTEQ}
+import xyz.kd5ujc.scarab.ledger.era.conway.ConwayTxCert
+import xyz.kd5ujc.scarab.ledger.era.rules.{
+  ConwayCertPredFailure,
+  ConwayCertsPredFailure,
+  ConwayDelegPredFailure,
+  ConwayGovCertPredFailure,
+  ConwayGovPredFailure,
+  ConwayLedgerPredFailure,
+  ConwayUtxoPredFailure,
+  ConwayUtxosPredFailure,
+  ConwayUtxowPredFailure
+}
+import xyz.kd5ujc.scarab.ledger.state.{
+  Coin,
+  Conway,
+  Credential as StateCredential,
+  DRep,
+  KeyHash,
+  StakePool,
+  Staking
+}
 import xyz.kd5ujc.scarab.plutus.{PlutusBackend, PlutusLanguage}
 
 class LedgerRulesSuite extends FunSuite:
-  import LedgerRulesSuite.*
+  import LedgerRulesSuite.{*, given}
 
   private val backend = PlutusBackend.default
 
@@ -42,7 +66,7 @@ class LedgerRulesSuite extends FunSuite:
     val failures = verdict match
       case LedgerRulesVerdict.Refused(fs, _, FailureContext(true, _)) => fs
       case other => fail(s"not refused: $other")
-    assertEquals(failures, Vector(PredicateFailure.Mempool(MempoolProblem.AllInputsSpent)))
+    assertEquals(failures, Vector(mempool(MempoolProblem.AllInputsSpent)))
     assertEquals(result(verdict), Some("BadInputsUTxO"))
   }
 
@@ -72,9 +96,9 @@ class LedgerRulesSuite extends FunSuite:
       fixture <- LedgerRulesFixture.read("fixture.json", SimpleTransfer.noSpaces, Documents.get)
       built <- LedgerRulesState.build(fixture, backend)
     yield built
-    val clock = context.map(_.env.clock) match
-      case Right(Some(c)) => c
-      case other          => fail(s"no clock: $other")
+    val clock = context.map(_.clock) match
+      case Right(c) => c
+      case other    => fail(s"no clock: $other")
     assertEquals(clock.posix(431999), Right(BigInt(431999000)))
     assert(
       clock.posix(432000) match {
@@ -111,31 +135,35 @@ class LedgerRulesSuite extends FunSuite:
   }
 
   test("a certificate's kind: unregistrations and delegations, not their registering forms") {
-    val c = Credential.Key(Hash28)
-    val pool = Some(Hash28)
-    val drep = Some(DRep.AlwaysAbstain)
+    val c = Staked
+    val pool = poolKey
+    val drep = DRep.DRepAlwaysAbstain
+    def deleg(d: ConwayDelegCert) = CertificateKind.of(ConwayTxCert.ConwayTxCertDeleg(d))
     assertEquals(
-      CertificateKind.of(Certificate.Unregister(c, None)),
+      deleg(ConwayDelegCert.ConwayUnRegCert(c, None)),
       Some(CertificateKind.Unregistration)
     )
     assertEquals(
-      CertificateKind.of(Certificate.Unregister(c, Some(BigInt(2)))),
+      deleg(ConwayDelegCert.ConwayUnRegCert(c, Some(Coin(2)))),
       Some(CertificateKind.Unregistration)
     )
     assertEquals(
-      CertificateKind.of(Certificate.Delegate(c, pool, None, None)),
+      deleg(ConwayDelegCert.ConwayDelegCert(c, Delegatee.DelegStake(pool))),
       Some(CertificateKind.PoolDelegation)
     )
     assertEquals(
-      CertificateKind.of(Certificate.Delegate(c, None, drep, None)),
+      deleg(ConwayDelegCert.ConwayDelegCert(c, Delegatee.DelegVote(drep))),
       Some(CertificateKind.VoteDelegation)
     )
     assertEquals(
-      CertificateKind.of(Certificate.Delegate(c, pool, drep, None)),
+      deleg(ConwayDelegCert.ConwayDelegCert(c, Delegatee.DelegStakeVote(pool, drep))),
       Some(CertificateKind.PoolAndVoteDelegation)
     )
-    assertEquals(CertificateKind.of(Certificate.Delegate(c, pool, drep, Some(BigInt(2)))), None)
-    assertEquals(CertificateKind.of(Certificate.Register(c, None)), None)
+    assertEquals(
+      deleg(ConwayDelegCert.ConwayRegDelegCert(c, Delegatee.DelegStakeVote(pool, drep), Coin(2))),
+      None
+    )
+    assertEquals(deleg(ConwayDelegCert.ConwayRegCert(c, None)), None)
     assertEquals(
       CertificateKind.PoolAndVoteDelegation.name,
       ReportName.StakeCredentialInvalidVoteDelegation
@@ -143,12 +171,18 @@ class LedgerRulesSuite extends FunSuite:
   }
 
   test("an unregistered credential's refusal with no attributed certificate has no name") {
-    val failure = PredicateFailure.deleg(DelegFailure.StakeKeyNotRegistered(Credential.Key(Hash28)))
+    val failure = ConwayLedgerPredFailure.ConwayCertsFailure[Conway](
+      ConwayCertsPredFailure.CertFailure(
+        ConwayCertPredFailure.DelegFailure(
+          ConwayDelegPredFailure.StakeKeyNotRegisteredDELEG[Conway](Staked)
+        )
+      )
+    )
     assertEquals(LedgerRulesNames.of(failure, NoContext), Vector.empty)
     assertEquals(
       LedgerRulesNames.of(
         failure,
-        FailureContext(true, Map(Credential.Key(Hash28) -> CertificateKind.VoteDelegation))
+        FailureContext(true, Map(Staked -> CertificateKind.VoteDelegation))
       ),
       Vector(ReportName.StakeCredentialInvalidVoteDelegation)
     )
@@ -169,14 +203,16 @@ class LedgerRulesSuite extends FunSuite:
   }
 
   test("the harness's renamings: inputs, collect errors, refunds and unelected voters") {
-    val spent = PredicateFailure.Mempool(MempoolProblem.AllInputsSpent)
+    val spent = mempool(MempoolProblem.AllInputsSpent)
     assertEquals(
       LedgerRulesNames.of(spent, NoContext.copy(hasInputs = false)),
       Vector(ReportName.InputSetEmptyUTxO)
     )
-    val noModel = PredicateFailure.utxo(
-      UtxoFailure.Utxos(
-        UtxosFailure.CollectErrors(NonEmptyVector.one(CollectError.NoCostModel(PlutusLanguage.V3)))
+    val noModel = utxo(
+      ConwayUtxoPredFailure.UtxosFailure(
+        ConwayUtxosPredFailure.CollectErrors(
+          NonEmptyList.one(CollectError.NoCostModel[Conway](PlutusLanguage.V3))
+        )
       )
     )
     assertEquals(
@@ -184,17 +220,26 @@ class LedgerRulesSuite extends FunSuite:
       Vector(ReportName.MissingCostModel)
     )
     val refund =
-      PredicateFailure.govCert(GovCertFailure.DRepIncorrectRefund(Mismatch(BigInt(1), BigInt(2))))
+      ConwayLedgerPredFailure.ConwayCertsFailure[Conway](
+        ConwayCertsPredFailure.CertFailure(
+          ConwayCertPredFailure.GovCertFailure(
+            ConwayGovCertPredFailure
+              .ConwayDRepIncorrectRefund[Conway](Mismatch[RelEQ, Coin](Coin(1), Coin(2)))
+          )
+        )
+      )
     assertEquals(
       LedgerRulesNames.of(refund, NoContext),
       Vector(ReportName.IncorrectDepositDRep)
     )
-    val unelected = PredicateFailure.gov(GovFailure.UnelectedCommitteeVoters(Vector.empty))
+    val unelected = ConwayLedgerPredFailure.ConwayGovFailure[Conway](
+      ConwayGovPredFailure.UnelectedCommitteeVoters(NonEmptyList.one(Credential.Key(Hash28)))
+    )
     assertEquals(
       LedgerRulesNames.of(unelected, NoContext),
       Vector(ReportName.VotersDoNotExist)
     )
-    val witnesses = PredicateFailure.utxow(UtxowFailure.MissingVKeyWitnesses(Set(Hash28)))
+    val witnesses = utxow(ConwayUtxowPredFailure.MissingVKeyWitnessesUTXOW(NonEmptySet.one(Hash28)))
     assertEquals(
       LedgerRulesNames.of(witnesses, NoContext),
       Vector(ReportName.MissingVerificationKeyWitnessesUTXOW)
@@ -204,14 +249,13 @@ class LedgerRulesSuite extends FunSuite:
   test(
     "the result is the first failure the schema names, and LEDGER's acceptance after a refusal only the mempool makes is a pass"
   ) {
-    val unnamed = PredicateFailure.utxow(UtxowFailure.InvalidMetadata)
-    val fee = PredicateFailure.utxo(UtxoFailure.FeeTooSmall(Mismatch(BigInt(1), BigInt(2))))
-    val value = PredicateFailure.utxo(UtxoFailure.InputSetEmpty)
-    def refused(fs: PredicateFailure*) =
+    val unnamed = utxow(ConwayUtxowPredFailure.InvalidMetadata())
+    val value = utxo(ConwayUtxoPredFailure.InputSetEmptyUTxO())
+    def refused(fs: LedgerRulesNames.Failure*) =
       result(LedgerRulesVerdict.Refused(fs.toVector, Vector.empty, NoContext))
     assertEquals(refused(unnamed, fee, value), Some("FeeTooSmallUTxO"))
     assertEquals(refused(unnamed), None)
-    val unelected = PredicateFailure.Mempool(MempoolProblem.UnelectedCommittee(Vector.empty))
+    val unelected = mempool(MempoolProblem.UnelectedCommittee(Vector.empty))
     assert(LedgerRulesNames.mempoolOnly(unelected))
     assertEquals(
       result(LedgerRulesVerdict.Refused(Vector.empty, Vector(unelected), NoContext)),
@@ -219,8 +263,9 @@ class LedgerRulesSuite extends FunSuite:
     )
   }
 
-  private val fee = PredicateFailure.utxo(UtxoFailure.FeeTooSmall(Mismatch(BigInt(1), BigInt(2))))
-  private val noInputs = PredicateFailure.utxo(UtxoFailure.InputSetEmpty)
+  private val fee =
+    utxo(ConwayUtxoPredFailure.FeeTooSmallUTxO(Mismatch[RelGTEQ, Coin](Coin(1), Coin(2))))
+  private val noInputs = utxo(ConwayUtxoPredFailure.InputSetEmptyUTxO())
 
   private def selected(
       verdict: LedgerRulesVerdict,
@@ -256,7 +301,7 @@ class LedgerRulesSuite extends FunSuite:
       selected(LedgerRulesVerdict.Accepted, ReportName.FeeTooSmallUTxO).result,
       Some("pass")
     )
-    val unelected = PredicateFailure.Mempool(MempoolProblem.UnelectedCommittee(Vector.empty))
+    val unelected = mempool(MempoolProblem.UnelectedCommittee(Vector.empty))
     val admitted = LedgerRulesVerdict.Refused(Vector.empty, Vector(unelected), NoContext)
     assertEquals(selected(admitted, ReportName.VotersDoNotExist).result, Some("pass"))
     assertEquals(selected(admitted, ReportName.VotersDoNotExist).chosen, None)
@@ -528,6 +573,25 @@ class LedgerRulesSuite extends FunSuite:
 
 object LedgerRulesSuite:
   private val Hash28 = Bytes(Vector.fill(28)(7.toByte))
+
+  private given Order[Bytes] = Order.fromOrdering
+
+  private def vocab[A](r: Either[state.VocabError, A]): A =
+    r.fold(e => munit.Assertions.fail(s"vocabulary: $e"), identity)
+
+  /** A staking credential and a pool of the bytes [[Hash28]]. */
+  private val Staked: StateCredential[Staking] =
+    StateCredential.KeyHashObj(vocab(KeyHash.fromBytes[Staking](Hash28)))
+  private val poolKey: KeyHash[StakePool] = vocab(KeyHash.fromBytes[StakePool](Hash28))
+
+  private def mempool(problem: MempoolProblem): LedgerRulesNames.Failure =
+    ConwayLedgerPredFailure.ConwayMempoolFailure[Conway](problem)
+
+  private def utxow(f: ConwayUtxowPredFailure[Conway]): LedgerRulesNames.Failure =
+    ConwayLedgerPredFailure.ConwayUtxowFailure[Conway](f)
+
+  private def utxo(f: ConwayUtxoPredFailure[Conway]): LedgerRulesNames.Failure =
+    utxow(ConwayUtxowPredFailure.UtxoFailure(f))
   private val NoContext = FailureContext(hasInputs = true, unregistered = Map.empty)
 
   /** The key hash of Amaru's public test key `dev-42`, and of the cold credential of the committee
