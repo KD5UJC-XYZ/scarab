@@ -265,19 +265,25 @@ preparing saved, over two rounds; negative is a loss):
 Preparing costs about 0.2 ms a block more than the serial run (the ordered preparation, the recorder,
 the footprints and the scheduling), plus about 20 µs a job, and saves about three quarters of the
 scripts' evaluation at four workers. All eight recorded testnet blocks that declare less than the floor
-lost 0.1 to 0.3 ms prepared (5 to 30%) in every run; above it the recorded blocks were within about
-0.4 ms either way up to 0.7 billion declared steps, the synthetic blocks crossed near 0.35 billion, and
-from about a billion preparing saved a quarter to a half of the block's time. On the preprod window
-the flat rules' body lost about 0.3 ms a block prepared below the floor and was even above it, and
-Conway's era run, whose jobs also translate each script's context into its arguments, was even below
-the floor and gained 0.1 to 0.3 ms in the median above it, its quartiles on both sides of zero; a
-first run of the window gave the same picture. Summed over those blocks the floor took the era run
-from 17.92 s, every preparable block prepared, to 17.77 s and the flat rules' from 16.38 s to 16.11 s.
-Within a block a way timed straight after another way of the same code and block ran up to 10% faster:
-a run that also reversed the order on odd rounds put each serial way there, and its reversed rounds
-are not used; in the tables of 2026-11-22 and 2026-11-23 the parallel ways followed their serial ones
-so. A block whose scripts declare more than they spend is prepared at a
-loss of at most the overhead above. These are body timings on one machine, not a gate; the raw run output is not published.
+lost 0.1 to 0.3 ms prepared (5 to 30%) in every run; above it the recorded blocks were within about 0.4
+ms either way up to 0.7 billion declared steps, the synthetic blocks crossed near 0.35 billion, and from
+about a billion preparing saved a quarter to a half of the block's time. On the preprod window the flat
+rules' body lost about 0.3 ms a block prepared below the floor and was even above it, and Conway's era
+run, whose jobs also translate each script's context into its arguments, was even below the floor and
+gained 0.1 to 0.3 ms in the median above it, its quartiles on both sides of zero; a first run of the
+window gave the same picture. Summed over those blocks the floor took the era run from 17.92 s, every
+preparable block prepared, to 17.77 s and the flat rules' from 16.38 s to 16.11 s. These figures were
+taken with the serial ways also charged for building the body, which the prepared ways built before
+their timer, so they are biased toward preparing: the losses below the floor are, if anything, larger
+(`EraBodies` now builds every way's body before its timer). Within a block a way timed straight after
+another way of the same code and block ran up to 10% faster: a run that also reversed the order on odd
+rounds put each serial way there, and its reversed rounds are not used; in the tables of 2026-11-22 and
+2026-11-23 the parallel ways followed their serial ones so. A block whose scripts declare more than they
+spend is prepared though preparing may not pay. The overhead above is what the sampled blocks showed,
+not a bound: where an early script's verdict is not its flag's, the workers may already have evaluated
+later jobs the serial run never reaches, and the plan then runs the rules again; what they evaluate
+ahead is bounded by the block's limit of execution units, which no prepared body exceeds. These are body
+timings on one machine, not a gate; the raw run output is not published.
 
 `ConwayBbodySuite` prepares every era run it makes and resolves the plan, its jobs run last batch
 first, with the serial run's results: the same state, blocks made, counters, failures, naming and

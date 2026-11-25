@@ -106,9 +106,12 @@ object Phase2:
     * us a job and saved about three quarters of the scripts' evaluation, crossing near 0.35 billion
     * steps; on the recorded preprod window (`ConwayBodiesReplaySuite`) neither the era run nor the
     * flat rules' body gained below this floor, where the flat rules' lost. Declared, not spent,
-    * steps decide, as only they are known before the scripts run, and a script spends at most what
-    * it declares: a block declaring more than its scripts spend is prepared at a loss of at most
-    * that overhead.
+    * steps decide, as only they are known before the scripts run: a block whose scripts declare
+    * more than they spend is prepared though preparing may not pay. The overhead above is what the
+    * sampled blocks showed, not a bound: where an early script's verdict is not its flag's, the
+    * workers may already have evaluated later jobs the serial run never reaches, and the plan then
+    * runs the rules again (ADR 0018); what they evaluate ahead is bounded by the block's limit of
+    * execution units ([[Program.preparable]]).
     */
   val payingSteps: BigInt = BigInt(200000000)
 
