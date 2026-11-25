@@ -54,16 +54,17 @@ fi
 
 # The app reads its configuration back from these directories, so another account must not control them.
 own_directory() {
-  mkdir -p -- "$1"
-  if [[ ! -O $1 ]] || (( 8#$(stat -L -c %a -- "$1") & 8#002 )); then
-    printf '%s belongs to another user or is writable by every user; set SCARAB_DATA_DIR to a directory of your own.\n' "$1" >&2
+  mkdir -p -- "$2"
+  if [[ ! -O $2 ]]; then
+    printf '%s belongs to another user; set SCARAB_DATA_DIR to a directory of your own.\n' "$2" >&2
     exit 2
   fi
+  chmod "$1" -- "$2"
 }
 data_root=$(realpath -m -- "${SCARAB_DATA_DIR:-/tmp/scarab}")
 state_dir=$data_root/$network
-own_directory "$data_root"
-own_directory "$state_dir"
+own_directory go-w "$data_root"
+own_directory 700 "$state_dir"
 if [[ -n ${SCARAB_CONFIG_DIR:-} ]]; then
   config_dir=$(realpath -e -- "$SCARAB_CONFIG_DIR")
 else
@@ -71,7 +72,7 @@ else
   if ! has_option --config || ! has_option --topology; then
     (
       flock 9
-      if [[ -d $config_dir && ! -f $config_dir/.complete ]]; then
+      if [[ -d $config_dir && ( ! -O $config_dir || ! -f $config_dir/.complete ) ]]; then
         printf '%s is incomplete or was not written by this app; remove it to download the configuration again, or set SCARAB_CONFIG_DIR to use it as it is.\n' "$config_dir" >&2
         exit 2
       fi
@@ -83,11 +84,10 @@ else
           curl --fail --silent --show-error --location --retry 3 \
             --proto '=https' --proto-redir '=https' \
             "$base_url/$1" --output "$staging/$1"
-          if [[ ! -s $staging/$1 ]]; then
-            printf 'The downloaded %s is empty.\n' "$1" >&2
+          if ! jq -e 'type == "object"' "$staging/$1" > /dev/null; then
+            printf 'The downloaded %s is empty or not a JSON object.\n' "$1" >&2
             exit 2
           fi
-          jq empty "$staging/$1"
         }
         printf 'Fetching official %s configuration...\n' "$network" >&2
         fetch config.json
@@ -107,7 +107,7 @@ else
           fetch "$asset"
         done <<< "$assets"
         : > "$staging/.complete"
-        mv -- "$staging" "$config_dir"
+        mv -T -- "$staging" "$config_dir"
         trap - EXIT
       fi
     ) 9>"$state_dir/config.lock"
