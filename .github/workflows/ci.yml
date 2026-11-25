@@ -26,6 +26,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       run: ${{ steps.classify.outputs.run }}
+      nix: ${{ steps.classify.outputs.nix }}
     steps:
       - name: Check out source and comparison history
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -370,6 +371,50 @@ jobs:
           missing=$(find scripts .github/workflows \( -name '*.py' -o -name '*.yml' -o -name sbtw \) \
             -exec grep -L 'SPDX-License-Identifier: Apache-2.0' {} +)
           if [ -n "$missing" ]; then echo "missing SPDX header:"; echo "$missing"; exit 1; fi
+
+  # The Nix flake (docs/nix.md), when a Nix file, the flake's lock, the launcher its apps run or this workflow changes,
+  # or the change cannot be known (scripts/ci_changes.py); a stale lock fails rather than being rewritten:
+  # evaluated, its formatting checked, and the three network apps built, which runs ShellCheck on the launcher, and
+  # asked for their help, which stops before any build or download. The `nix-jdk` guard of the scripts job keeps the
+  # flake's JDK at the JDK image's major version without Nix.
+  nix:
+    name: Nix flake, formatting and network apps
+    needs: [changes]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Require successful change classification
+        env:
+          CLASSIFY_RESULT: ${{ needs.changes.result }}
+          RUN_NIX: ${{ needs.changes.outputs.nix }}
+        run: |
+          test "$CLASSIFY_RESULT" = success
+          case "$RUN_NIX" in true) ;; false) echo 'The Nix flake is unchanged: its checks are not required' ;; *) exit 1 ;; esac
+      - name: Check out source
+        if: needs.changes.outputs.nix == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Nix
+        if: needs.changes.outputs.nix == 'true'
+        uses: cachix/install-nix-action@3dc140bfc76c49fbd4dd958429132e3746bcb086 # v31.11.5
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+      - name: Evaluate the flake and check its formatting
+        if: needs.changes.outputs.nix == 'true'
+        run: |
+          nix flake check -L --no-update-lock-file
+          nix fmt --no-update-lock-file -- --fail-on-change
+      - name: Build the network apps and ask for their help
+        if: needs.changes.outputs.nix == 'true'
+        run: |
+          for network in preview preprod mainnet; do
+            nix run --no-update-lock-file ".#$network" -- --help > /dev/null
+          done
 
   workflows:
     name: workflow lint
