@@ -508,6 +508,56 @@ class PeerRootReloadSuite extends FailsOnUncaught:
     }
   }
 
+  /** Issue 810: the reference compares the whole `UseBootstrapPeers` value, its list of relays
+    * included (ouroboros-network c45735a5,
+    * `cardano-diffusion/api/lib/Cardano/Network/PeerSelection/Bootstrap.hs` 20-22), so a reload
+    * that names other bootstrap peers runs `monitorBootstrapPeersFlag`, which forgets the bootstrap
+    * peers neither established nor being connected
+    * (`cardano-diffusion/lib/Cardano/Network/PeerSelection/Governor/Monitor.hs` 429-453); a reload
+    * that names the same ones does nothing. The known bootstrap peer waits a day before it is
+    * dialled, so only the reload can change it.
+    */
+  test(
+    "a reload that names other bootstrap peers forgets those not established; the same keeps them"
+  ) {
+    val known = SocketAddress[Host](ipv4"192.0.2.41", port"3001")
+    val other = SocketAddress[Host](ipv4"192.0.2.42", port"3001")
+    val dns = new PeerDns[IO]:
+      def addresses(name: DnsName) = IO.pure(DnsAddressAnswer(Vector.empty, Vector.empty))
+      def services(name: DnsName) = IO.pure(Left(PeerDnsError.Lookup(Vector.empty)))
+    given Resource[IO, PeerDns[IO]] = Resource.pure[IO, PeerDns[IO]](dns)
+    val configured = roots(Nil, hot = 0, warm = 0).copy(bootstrap = Some(Vector(known)))
+    Settled { settle =>
+      running(configured).use { network =>
+        network.run.background.use { _ =>
+          for
+            _ <- settle
+            now <- IO.monotonic
+            _ <- network.state.update(st =>
+              st.copy(peers =
+                st.peers + (known -> PeerRecord
+                  .cold(Origin.Bootstrap)
+                  .copy(status = Status.Cold(Some(now + 1.day))))
+              )
+            )
+            _ <- network.reloadRoots(configured).timeout(1.second)
+            _ <- settle
+            same <- network.state.get
+            _ <- network
+              .reloadRoots(configured.copy(bootstrap = Some(Vector(other))))
+              .timeout(1.second)
+            _ <- settle
+            changed <- network.state.get
+          yield
+            assertEquals(same.peers.get(known).map(_.origin), Some(Origin.Bootstrap))
+            assertEquals(changed.peers.get(known), None)
+            assert(changed.sensitivity.useBootstrapPeers)
+            assertEquals(GovernorState.invariant(changed), Nil)
+        }
+      }
+    }
+  }
+
   test("startup bootstrap policy includes SRV-only and explicitly empty configurations") {
     val absent = roots(Nil, hot = 0, warm = 0)
     val domain = DnsName.from("bootstrap.example").fold(e => fail(e.toString), identity)
