@@ -15,10 +15,11 @@ import xyz.kd5ujc.scarab.crypto.secret.Scratch
   * has moved into it. The depth-6 key is 608 bytes.
   *
   * Between operations the key holds that array, its period and whether it is forgotten, and nothing
-  * else. Every value an operation computes from it lives in a [[Scratch]] and is zeroed when the
+  * else. What an operation computes from it in arrays lives in a [[Scratch]] and is zeroed when the
   * operation ends, on failure too: the seeds a generation expands and the subtrees it builds
   * ([[Blake2b256]]), and the leaf's expanded key, scalar, nonce and their digits and encodings
-  * ([[Leaf]]). One operation has one scratch, so what it held is gone when it returns.
+  * ([[Leaf]]). One operation has one scratch, so what it held is gone when it returns. The curve
+  * library's own intermediates are not among them (see below).
   *
   * Evolution replaces what the new period cannot use: moving into the right half of a level zeroes
   * the left half, generates the right half over it from `r1`, and zeroes `r1`. Each step is built

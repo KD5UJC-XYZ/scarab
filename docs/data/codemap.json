@@ -122,7 +122,7 @@
     {
       "module": "crypto",
       "path": "crypto/kes/secret",
-      "responsibility": "The secret steps of KES signing: the key's 608 bytes, its period and its evolution, and every value computed from its seeds (the hashes of the seed halves, the leaves' Ed25519 keys), in working storage",
+      "responsibility": "The secret steps of KES signing: the key's 608 bytes, its period and its evolution, and what is computed from its seeds (the hashes of the seed halves, the leaves' Ed25519 keys, scalars and nonces), in working storage",
       "entryPoints": [
         "Sum6Key",
         "Blake2b256",

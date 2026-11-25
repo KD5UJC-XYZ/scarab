@@ -81,20 +81,22 @@ into working storage of its own (`secret.Scratch`), computes the scalar, the non
 encodings there, and zeroes all of it when it ends, on failure too. The KES signing key
 ([Sum6KesSigning][kes], its secret steps in `kes.secret.Sum6Key`) keeps its 608-byte array, which
 each evolution overwrites where the new period cannot use it and `forget` zeroes; its generation,
-load, evolution and signing compute the hashes of the seed halves (a Blake2b-256 of its own) and the
+load, evolution and signing keep the hashes of the seed halves (a Blake2b-256 of its own) and the
 leaves' Ed25519 keys, scalars and nonces (the vendored constant-time arithmetic) in such storage,
-and its signing, evolving and forgetting hold the key's monitor. The VRF and KES key files are read
-and written as bytes (`secret.KeyText`), through native memory zeroed before it is freed and a
-scratch, with no `String` of the key, except an envelope that is not flat, which is read as text as
-before. `scripts/check_crypto_guard.py` holds these packages to the secret path's rules. The node's
-hot keys own the keys once read, one generation of credentials at a time: an evaluation of the VRF
-key leases the generation in force for its duration, a reload installs the next at once, and a
-superseded, disabled or refused generation's keys are erased when the last evaluation under them
-ends; a start as non-producing erases the start-up keys at once (`HotKeys`, `Generations`). The
-curve arithmetic's own intermediates (immutable field elements and points) are not erased, nor are
-copies a garbage collector made before the zeroing, values the JIT kept in registers, or what the
-kernel's page cache and the file system keep of a key file. No claim of complete JVM erasure or
-constant-time node execution follows from those operations. The
+an evolution builds each period's key there and puts it in place whole, and its signing, evolving
+and forgetting hold the key's monitor until their storage is zeroed. The VRF and KES key files are
+read and written as bytes (`secret.KeyText`), through native memory zeroed before it is freed and a
+scratch, with no `String` of the key, except an envelope that is not flat, or whose hex or CBOR the
+text reader refuses, which is read as text as before. `scripts/check_crypto_guard.py` holds these
+packages to the secret path's rules. The node's hot keys own the keys once read, one generation of
+credentials at a time: an evaluation of the VRF key leases the generation in force for its duration,
+a reload installs the next at once, and a superseded, disabled or refused generation's keys are
+erased when the last evaluation under them ends; a start as non-producing erases the start-up keys
+at once (`HotKeys`, `Generations`). The curve arithmetic's own intermediates (immutable field
+elements and points, of VRF proving and of the KES leaves alike) are not erased, nor are copies a
+garbage collector made before the zeroing, values the JIT kept in registers, or what the kernel's
+page cache and the file system keep of a key file. No claim of complete JVM erasure or constant-time
+node execution follows from those operations. The
 [file-backed KES policy](../adr/0015-kes-key-written-back-and-checked-reload.md) likewise qualifies
 what predecessor overwrite and crash tests establish.
 
