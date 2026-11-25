@@ -280,6 +280,59 @@ object DijkstraTx:
       flat.auxiliary.traverse(DijkstraTxAuxData.fromFlat)
     ).mapN(SubTx(_, _, _))
 
+  /** `TranslateEra DijkstraEra (Tx TopTx)` (`eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/
+    * Translation.hs:53-68`, cardano-ledger 9df9f98c): the body, the witness set and the auxiliary
+    * data of a Conway transaction, in that order, each written as Conway memoized it (`toCBOR` of a
+    * memoized part is the bytes it was read from) and read whole at Dijkstra's lowest version
+    * (`translateEraThroughCBOR`,
+    * `libs/cardano-ledger-core/src/Cardano/Ledger/Core/Translation.hs:115-123`, the same at
+    * cardano-ledger f649f975 and 9df9f98c), the phase-two flag kept. The first part refused is
+    * named, as the label each read is given names it. Each part keeps its bytes, so the id is
+    * Conway's.
+    *
+    * Nothing calls it. cardano-node 11.1 injects a Conway transaction into Dijkstra with it
+    * (`hardForkInjectTxs`, `Cardano/CanHardFork.hs:182, 221-222`, through
+    * `translateTxConwayToDijkstraWrapper`, `:851-858`, and
+    * `translateValidatedTxConwayToDijkstraWrapper`, `:860-868`, ouroboros-consensus 82ecba329), but
+    * Scarab's 11.1 build never enters Dijkstra; 11.2 and the Leios build decode the transaction
+    * again instead (`rematchValidatedTxs` and `matchTx`, `InjectTxs.hs:75, 164, 177, 215`,
+    * ouroboros-consensus 808e4005 and d91b3557), the node's `EraInjection.Redecode`.
+    */
+  def translate(conway: ConwayTx): Either[DijkstraTxTranslationError, DijkstraTx[TxLevel.Top]] =
+    for
+      body <- throughCbor(DijkstraTxPart.TxBody, conway.body.raw)(topBody)
+      wits <- throughCbor(DijkstraTxPart.TxWits, conway.wits.raw)(DijkstraTxWits.decode)
+      aux <- conway.auxData.traverse(a =>
+        throughCbor(DijkstraTxPart.TxAuxData, a.raw)(DijkstraTxAuxData.decode)
+      )
+    yield TopTx(body, wits, conway.isValid, aux)
+
+  // A part's bytes read whole as one item, with no budget of items, string bytes or nesting
+  // (`translateViaCBORAnnotator`, `libs/cardano-ledger-binary/src/Cardano/Ledger/Binary.hs:60-70`,
+  // cardano-ledger 9df9f98c), then by `read`; a refusal names the part.
+  private def throughCbor[A](part: DijkstraTxPart, raw: Bytes)(
+      read: Node => Either[EraTxError, A]
+  ): Either[DijkstraTxTranslationError, A] =
+    xyz.kd5ujc.scarab.codec.Cbor
+      .decode(raw, xyz.kd5ujc.scarab.codec.Cbor.Limits.Unbounded)
+      .leftMap(e => EraTxError.Decode(LedgerDecodeError.Syntax(e)))
+      .flatMap(read)
+      .leftMap(DijkstraTxTranslationError.Undecodable(part, _))
+
+  // A top-level body read by the block decoder's body decoder, its sub-transactions in order and
+  // without a repeated id, as [[decode]] reads a transaction's.
+  private def topBody(n: Node): Either[EraTxError, DijkstraTxBody[TxLevel.Top]] =
+    for
+      flat <- FlatDijkstraTx
+        .body(n, xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraLevel.Top)
+        .leftMap(EraTxError.Decode(_))
+      subs <- flat.subTransactions.traverse(sub)
+      ordered <- OMap
+        .decoded(subs.map(s => s.id -> s))
+        .toRight(EraTxError.Decode(LedgerDecodeError.DuplicateElement(DecodeField.SubTransactions)))
+      body <- DijkstraTxBody.topOf(flat, ordered)
+    yield body
+
   /** `instance EraTx DijkstraEra` (`Tx.hs:216-253`, cardano-ledger 9df9f98c) and `instance
     * AlonzoEraTx DijkstraEra` (`Tx.hs:413-422`), of both levels. The size for the fee is the
     * class's default (`Core.hs`), the bytes of the parts and the list's, which is

@@ -30,7 +30,7 @@ the reference-only devnet evidence below does not satisfy that condition.
 
 ## Evidence
 
-- **Unit tests:** `DijkstraNotYetSuite`, `DijkstraCodecsSuite`, `DijkstraGenesisSuite`, `DijkstraTranslationSuite`, `DijkstraTxTranslationSuite`, `DijkstraCrossingSuite`, `DijkstraStoredOutputsSuite`, `DijkstraStateTranslationSuite`, `DijkstraRulesSuite`, `DijkstraRulesOracleSuite`, `DijkstraNativeScriptEvalSuite`, `DijkstraHeaderRulesSuite` and `DijkstraHeaderGateSuite`.
+- **Unit tests:** `DijkstraNotYetSuite`, `DijkstraCodecsSuite`, `DijkstraGenesisSuite`, `DijkstraTranslationSuite`, `DijkstraTxTranslationSuite`, `DijkstraRematchSuite`, `DijkstraCrossingSuite`, `DijkstraStoredOutputsSuite`, `DijkstraStateTranslationSuite`, `DijkstraRulesSuite`, `DijkstraRulesOracleSuite`, `DijkstraNativeScriptEvalSuite`, `DijkstraHeaderRulesSuite` and `DijkstraHeaderGateSuite`.
 - **Reference oracles** on the Leios build, each with its recorded cases:
   - `scripts/oracle/dijkstra-genesis` (`fixtures/reference/dijkstra-genesis`);
   - `scripts/oracle/dijkstra-translation` (`fixtures/reference/dijkstra-translation`);

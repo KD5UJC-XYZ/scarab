@@ -24360,6 +24360,66 @@
    "note": "the lens's setter on a top-level transaction; the era's transaction keeps no bytes of the whole, so its parts' memoised bytes, its size and its id are unchanged",
    "digest": "3009519f1be255e1"
   },
+  "def ledger.era.dijkstra.DijkstraTx.translate": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Translation.hs",
+     "symbol": "TranslateEra DijkstraEra (Tx TopTx)",
+     "lines": [
+      53,
+      68
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraTxTranslationSuite"
+   ],
+   "note": "each part's memoised bytes read whole at Dijkstra's version (translateEraThroughCBOR), in the reference's order, the flag kept; the body is read by the block decoder's body decoder and projected, as DijkstraTx's decoders read one. Unwired: Scarab's 11.1 build, whose injection uses it (hardForkInjectTxs, ouroboros-consensus 82ecba329), never enters Dijkstra",
+   "digest": "f830e75436dc1764"
+  },
+  "enum ledger.era.dijkstra.DijkstraTxPart": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Translation.hs",
+     "symbol": "translateEraThroughCBOR \"TxBody\"",
+     "lines": [
+      60,
+      62
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the labels the translation gives each part's read",
+   "digest": "ca0e6950437742ba"
+  },
+  "enum ledger.era.dijkstra.DijkstraTxTranslationError": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Translation.hs",
+     "symbol": "DecoderError",
+     "lines": [
+      54,
+      54
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraTxTranslationSuite"
+   ],
+   "note": "the DecoderError labelled with its part; the cause is the era decoder's typed refusal, not the reference's text",
+   "digest": "7219268031a1bd9a"
+  },
   "def ledger.era.rules.DijkstraMempoolRun.annotate": {
    "upstream": [
     {
