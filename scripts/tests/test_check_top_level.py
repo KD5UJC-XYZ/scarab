@@ -3,6 +3,7 @@
 from contextlib import redirect_stdout
 from pathlib import Path
 import io
+import os
 import subprocess
 import sys
 import tempfile
@@ -27,11 +28,28 @@ class UnlistedTest(unittest.TestCase):
                                                                         'docs-old': ['docs-old/y.md']})
 
     def test_a_list_is_honoured(self):
-        self.assertEqual(top.unlisted(['specs/a.md'], frozenset({'specs'})), {})
+        self.assertEqual(top.unlisted(['specs/a.md'], listed=frozenset({'specs'})), {})
+
+    def test_a_top_level_submodule_is_a_directory_and_a_path_counts_once(self):
+        self.assertEqual(top.unlisted(['vendor', 'notes.md', 'docs/sub'], frozenset({'vendor', 'docs/sub'})),
+                         {'vendor': ['vendor']})
+        self.assertEqual(top.unlisted(['specs/a.md'] * 3), {'specs': ['specs/a.md']})
+
+    def test_the_index_listing_gives_every_path_and_marks_submodules(self):
+        listing = (b'100644 aa 1\tspecs/a.md\x00100644 bb 2\tspecs/a.md\x00100644 cc 3\tspecs/a.md\x00'
+                   b'160000 dd 0\tvendor\x00120000 ee 0\tlink\x00100644 ff 0\tsp\xffecs/b.md\x00')
+        paths, submodules = top.index(listing)
+        self.assertEqual(paths, ['specs/a.md'] * 3 + ['vendor', 'link', 'sp\udcffecs/b.md'])
+        self.assertEqual(submodules, frozenset({'vendor'}))
+
+    def test_a_path_that_is_not_printable_is_shown_escaped(self):
+        self.assertEqual(top.shown('specs/plan.md'), 'specs/plan.md')
+        self.assertEqual(top.shown('a\nb'), "'a\\nb'")
+        self.assertEqual(top.shown('sp\udcffecs'), "'sp\\udcffecs'")
 
     def test_the_list_holds_single_names_and_today_s_tree_passes(self):
         self.assertEqual([d for d in top.DIRECTORIES if not d or '/' in d], [])
-        self.assertEqual(top.unlisted(top.tracked(ROOT)), {})
+        self.assertEqual(top.unlisted(*top.tracked(ROOT)), {})
 
 
 class RepositoryTest(unittest.TestCase):
@@ -69,7 +87,7 @@ class RepositoryTest(unittest.TestCase):
         self.write('specs/1381-scala-nix/tasks.md')
         code, out = self.run_check()
         self.assertEqual(code, 1)
-        self.assertIn('  specs/: 2 tracked files, such as specs/1381-scala-nix/spec.md', out)
+        self.assertIn('  specs/: 2 tracked paths, such as specs/1381-scala-nix/spec.md', out)
         self.assertIn('working note', out)
         self.assertIn('docs/process.md', out)
         self.assertIn('design document', out)
@@ -81,7 +99,29 @@ class RepositoryTest(unittest.TestCase):
         subprocess.run(['git', '-C', str(self.root), 'add', '-f', '.workspace/notes/plan.md'], check=True)
         code, out = self.run_check()
         self.assertEqual(code, 1)
-        self.assertIn('  .workspace/: 1 tracked file, such as .workspace/notes/plan.md', out)
+        self.assertIn('  .workspace/: 1 tracked path, such as .workspace/notes/plan.md', out)
+
+    def test_a_top_level_submodule_fails_and_a_top_level_file_does_not(self):
+        self.write('notes.md')
+        self.assertEqual(self.run_check()[0], 0)
+        subprocess.run(['git', '-C', str(self.root), 'update-index', '--add', '--cacheinfo',
+                        '160000,' + '1' * 40 + ',vendor'], check=True)
+        code, out = self.run_check()
+        self.assertEqual(code, 1)
+        self.assertIn('  vendor/: 1 tracked path, such as vendor\n', out)
+
+    def test_a_name_with_a_newline_or_bytes_that_are_not_utf_8_is_reported_on_one_line(self):
+        # in the index only, so that a file system that refuses such names does not matter
+        blob = subprocess.run(['git', '-C', str(self.root), 'hash-object', '-w', '--stdin'], input=b'x\n',
+                              check=True, capture_output=True).stdout.strip()
+        for name in (b'new\nline', b'sp\xffecs'):
+            subprocess.run([b'git', b'-C', os.fsencode(self.root), b'update-index', b'--add', b'--cacheinfo',
+                            b'100644,' + blob + b',' + name + b'/a.md'], check=True)
+        code, out = self.run_check()
+        self.assertEqual(code, 1)
+        self.assertIn("  'new\\nline'/: 1 tracked path, such as 'new\\nline/a.md'\n", out)
+        self.assertIn("  'sp\\udcffecs'/: 1 tracked path, such as 'sp\\udcffecs/a.md'\n", out)
+        out.encode('ascii')
 
 
 if __name__ == '__main__':

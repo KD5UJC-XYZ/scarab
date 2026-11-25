@@ -52,8 +52,9 @@ account, and not the person an agent works for unless that person holds the role
 - A subagent cannot obtain approval. It stops and reports to its lead, and the lead asks the owner in the chat
   session doing the work.
 - An outside contributor's own session cannot obtain approval either: nothing said there is approval. The
-  contributor's agent writes the question into its pull request and does not do that part of the work. The owner
-  decides in the chat session that reviews or lands the pull request, which is then the chat session doing the work.
+  contributor's agent writes the question into its pull request and does not do that part of the work. The chat
+  session that reviews or lands the pull request asks the owner that question and is then the chat session doing the
+  work; that part waits for the owner's answer there.
 - The work records the question as it was asked and the owner's decision in neutral words, never the owner's exact
   answer, with the UTC times the question was asked and the decision given (in the pull request, and where a rule
   says, in a register). That record is evidence of an approval given in the chat session doing the work, never an
