@@ -14,7 +14,7 @@ import xyz.kd5ujc.scarab.ledger.{
 }
 import xyz.kd5ujc.scarab.ledger.dijkstra.{
   DijkstraLanguage as FlatLanguage,
-  DijkstraWitnesses,
+  DijkstraWitnessReaders,
   Sparse,
   V12
 }
@@ -63,9 +63,9 @@ object DijkstraTxWits
   ): Either[EraTxError, DijkstraTxWits] =
     (for
       fields <- Sparse.read(n, DecodeField.WitnessSet, required = Set.empty)(keys)
-      vkeys <- fields.get(0).traverse(DijkstraWitnesses.vkeyWitnesses)
+      vkeys <- fields.get(0).traverse(DijkstraWitnessReaders.vkeyWitnesses)
       native <- fields.get(1).traverse(nativeScripts)
-      bootstraps <- fields.get(2).traverse(DijkstraWitnesses.bootstrapWitnesses)
+      bootstraps <- fields.get(2).traverse(DijkstraWitnessReaders.bootstrapWitnesses)
       v1 <- fields.get(3).traverse(plutusScripts(_, FlatLanguage.PlutusV1))
       datums <- fields.get(4).traverse(datumSet)
       redeemers <- fields.get(5).traverse(redeemerMap)
@@ -126,7 +126,7 @@ object DijkstraTxWits
     )(_._1)
 
   // Key 5: `RedeemersRaw` from version 12 (`TxWits.hs:566-614`, cardano-ledger 9df9f98c), a map only,
-  // not empty, as [[DijkstraWitnesses.decode]] reads it.
+  // not empty (the list form and a map whose length is written in eight bytes refused).
   private def redeemerMap(
       n: Node
   ): Either[LedgerDecodeError, Vector[(DijkstraPlutusPurpose[AsIx], (Data, ExUnits))]] =

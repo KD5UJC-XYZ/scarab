@@ -26,6 +26,9 @@ enum Refusal:
   case Form(expected: Shape)
   case Defect(cause: Throwable)
 
+  /** A value the era decoder's own bounds rule out ([[EraTxError]] other than `Decode`). */
+  case Era(cause: xyz.kd5ujc.scarab.ledger.era.EraTxError)
+
   def message: String = this match
     case Ledger(cause)   => cause.message
     case Chain(cause)    => cause.message
@@ -35,6 +38,7 @@ enum Refusal:
     case Relay(cause)    => cause.toString
     case Form(expected)  => s"the rule's type is ${expected.render} only"
     case Defect(failure) => s"the decoder raised ${failure.getClass.getName}: ${failure.getMessage}"
+    case Era(cause)      => s"a value the decoder's bounds rule out: $cause"
 
 /** A form that a rule's type takes, where Scarab reads the rule with a decoder of a wider type. */
 enum Shape:

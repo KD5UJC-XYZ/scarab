@@ -16,8 +16,8 @@ import xyz.kd5ujc.scarab.ledger.{
   PreprodDeepTx,
   TxOut
 }
-import xyz.kd5ujc.scarab.ledger.dijkstra.{DijkstraScript as FlatDijkstraScript, DijkstraTx, V12}
-import xyz.kd5ujc.scarab.ledger.era.EraTxError
+import xyz.kd5ujc.scarab.ledger.dijkstra.{DijkstraScript as FlatDijkstraScript, V12}
+import xyz.kd5ujc.scarab.ledger.era.{BothLevels, EraTxBody, EraTxError, TxLevel}
 import xyz.kd5ujc.scarab.ledger.era.conway.ConwayTxOut
 import xyz.kd5ujc.scarab.protocol.Era
 
@@ -64,26 +64,38 @@ class DijkstraNativeScriptSuite extends FunSuite:
   /** The native scripts of a transaction the build read: its witness set's, its auxiliary data's,
     * its outputs' reference scripts, and those of each sub-transaction.
     */
-  private def natives(tx: DijkstraTx): Vector[Bytes] =
-    def ofScripts(ss: Vector[FlatDijkstraScript]) = ss.collect {
-      case FlatDijkstraScript.Native(raw) =>
-        raw
-    }
-    def ofBody(outputs: Vector[xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraTxOut]) =
-      ofScripts(outputs.flatMap(_.referenceScript))
-    val top =
-      ofScripts(tx.witnesses.scripts) ++ ofScripts(tx.auxiliary.toVector.flatMap(_.scripts)) ++
-        ofBody(tx.body.outputs ++ tx.body.collateralReturn)
-    top ++ tx.body.subTransactions.flatMap(s =>
-      ofScripts(s.witnesses.scripts) ++ ofScripts(s.auxiliary.toVector.flatMap(_.scripts)) ++
-        ofBody(s.body.outputs)
-    )
+  private def natives(tx: DijkstraTx[TxLevel.Top]): Vector[Bytes] =
+    val b = EraTxBody.dijkstra
+    def ofWits(w: DijkstraTxWits, aux: Option[DijkstraTxAuxData]) =
+      w.scriptArrival
+        .flatMap(h => w.scripts.get(h))
+        .flatMap(DijkstraScript.instance.getNativeScript)
+        .map(_.raw) ++
+        aux.toVector.flatMap(_.nativeScripts).map(_.raw)
+    // the outputs' reference scripts, each output read again by the output decoder
+    def ofOutputs(outputs: Vector[DijkstraTxOut]) = outputs
+      .map(o =>
+        xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraTxOut
+          .decode(DijkstraCorpus.node(o.rep.raw))
+          .fold(e => fail(e.toString), identity)
+      )
+      .flatMap(_.referenceScript)
+      .collect { case FlatDijkstraScript.Native(raw) => raw }
+    val top = ofWits(tx.wits, tx.auxData) ++
+      ofOutputs(b.allSizedOutputs[TxLevel.Top](tx.body)(using BothLevels.Top).map(_.value))
+    top ++ b
+      .subTransactions(tx.body)
+      .toVector
+      .flatMap(s =>
+        ofWits(s.wits, s.auxData) ++
+          ofOutputs(b.outputs[TxLevel.Sub](s.body)(using BothLevels.Sub))
+      )
 
   private val readScripts: Vector[(String, Bytes)] = txs.filter(accepted).flatMap { r =>
     val raw = hex(string(r, "bytes"))
     CborRead
       .decode(raw, V12.nestedLimits)
-      .flatMap(DijkstraTx.inBlock)
+      .fold(e => fail(s"${string(r, "name")}: not CBOR: $e"), DijkstraTx.inBlock)
       .fold(e => fail(s"${string(r, "name")}: the build accepted it: $e"), natives)
       .map(string(r, "name") -> _)
   }

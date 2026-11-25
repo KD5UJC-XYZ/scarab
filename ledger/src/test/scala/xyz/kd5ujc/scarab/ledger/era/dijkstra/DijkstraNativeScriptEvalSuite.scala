@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.era.dijkstra
 
-import cats.syntax.all.*
 import munit.ScalaCheckSuite
 import org.scalacheck.{Gen, Prop}
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -122,9 +121,16 @@ class DijkstraNativeScriptEvalSuite extends ScalaCheckSuite:
   // its body's validity interval and its body's guards (`guardsTxBodyL`)
   test("validateNativeScript reads the witnesses, the interval and the guards of the transaction") {
     import xyz.kd5ujc.scarab.ledger.Verdicts
-    import xyz.kd5ujc.scarab.ledger.dijkstra.{DijkstraTx as FlatTx, V12}
-    import xyz.kd5ujc.scarab.ledger.era.{EraTx, TxLevel}
+    import xyz.kd5ujc.scarab.ledger.dijkstra.V12
+    import xyz.kd5ujc.scarab.ledger.state.FlatView
+    import xyz.kd5ujc.scarab.ledger.era.{EraTx, EraTxBody, TxLevel}
     def bytesHex(b: Bytes): String = b.hex
+    // the body's guards, as the node's credentials, in their order
+    def guardsOf(e: DijkstraTx[TxLevel.Top]): Vector[Credential] =
+      EraTxBody.dijkstra
+        .guards[TxLevel.Top](e.body)(using xyz.kd5ujc.scarab.ledger.era.BothLevels.Top)
+        .toVector
+        .map(FlatView.credBack(_))
     def uint(n: BigInt): String =
       if n < 24 then f"${n.toInt}%02x"
       else if n < 256 then f"18${n.toInt}%02x"
@@ -134,7 +140,7 @@ class DijkstraNativeScriptEvalSuite extends ScalaCheckSuite:
     def credential(c: Credential): String = c match
       case Credential.Key(h)    => "8200581c" + bytesHex(h)
       case Credential.Script(h) => "8201581c" + bytesHex(h)
-    // every transaction of the Leios corpus both decoders read, with guards and key witnesses, and
+    // every transaction of the Leios corpus the decoder reads, with guards and key witnesses, and
     // each again with a key guard added to its body (the corpus's guards are scripts')
     import xyz.kd5ujc.scarab.codec.{Cbor, Node, Value}
     val keyGuard = Credential.Key(Bytes(Vector.fill(28)(0x5e.toByte)))
@@ -166,28 +172,29 @@ class DijkstraNativeScriptEvalSuite extends ScalaCheckSuite:
       .filter(j => DijkstraCorpus.str(j, "kind") == "tx")
       .flatMap(j => CborRead.decode(hex(DijkstraCorpus.str(j, "bytes")), V12.nestedLimits).toOption)
     val txs = (read ++ read.flatMap(withKeyGuard))
-      .flatMap(n => (FlatTx.inBlock(n).toOption, DijkstraTx.inBlock(n).toOption).tupled)
-      .filter((flat, _) => flat.body.guards.nonEmpty && flat.witnesses.vkeys.nonEmpty)
+      .flatMap(n => DijkstraTx.inBlock(n).toOption)
+      .filter(e => guardsOf(e).nonEmpty && e.wits.vkeys.nonEmpty)
     assert(txs.nonEmpty, "no transaction with guards and key witnesses")
     val t = EraTx.dijkstra
-    val kinds = txs.flatMap { (flat, era) =>
-      val signers = flat.witnesses.vkeys.map(w => Verdicts.Direct.keyHash(w._1)).toSet
-      val guards = flat.body.guards.toSet
+    val kinds = txs.flatMap { era =>
+      val signers = era.wits.vkeys.toVector.map(w => Verdicts.Direct.keyHash(w.vkey)).toSet
+      val guards = guardsOf(era).toSet
+      val vi = EraTxBody.dijkstra.vldt[TxLevel.Top](era.body)(using t.bodyOf.top)
       val signer = signers.head
       val absent = Credential.Key(Bytes(Vector.fill(28)(0x7f.toByte)))
-      val bound = flat.body.validityStart.orElse(flat.body.ttl).getOrElse(BigInt(100))
+      val bound = vi.invalidBefore.orElse(vi.invalidHereafter).getOrElse(BigInt(100))
       // the interval's end, and the slot before it: an expiry at the end holds, one before does not
-      val end = flat.body.ttl.getOrElse(bound)
-      val scripts = flat.body.guards.map(g => "8206" + credential(g)) ++ Vector(
+      val end = vi.invalidHereafter.getOrElse(bound)
+      val scripts = guardsOf(era).map(g => "8206" + credential(g)) ++ Vector(
         "8206" + credential(absent),
         "8200581c" + bytesHex(signer),
         "8204" + uint(bound),
         "8205" + uint(bound),
         "8205" + uint(end),
         "8205" + uint((end - 1).max(BigInt(0))),
-        "8303" + "02" + "83" + ("8206" + credential(flat.body.guards.head)) +
+        "8303" + "02" + "83" + ("8206" + credential(guardsOf(era).head)) +
           ("8200581c" + bytesHex(signer)) + ("8206" + credential(absent)),
-        "8303" + "03" + "83" + ("8206" + credential(flat.body.guards.head)) +
+        "8303" + "03" + "83" + ("8206" + credential(guardsOf(era).head)) +
           ("8200581c" + bytesHex(signer)) + ("8206" + credential(absent))
       )
       scripts.map { raw =>
@@ -195,11 +202,11 @@ class DijkstraNativeScriptEvalSuite extends ScalaCheckSuite:
         val ours = t.validateNativeScript[TxLevel.Top](era, native)(using t.bodyOf.top)
         assertEquals(
           ours,
-          native.eval(signers, flat.body.validityStart, flat.body.ttl, guards),
-          s"${flat.id.hex}: $raw"
+          native.eval(signers, vi.invalidBefore, vi.invalidHereafter, guards),
+          s"${era.id.hex}: $raw"
         )
         (
-          flat.body.guards.exists {
+          guardsOf(era).exists {
             case Credential.Script(_) => true
             case Credential.Key(_)    => false
           },
@@ -211,8 +218,8 @@ class DijkstraNativeScriptEvalSuite extends ScalaCheckSuite:
     // the body's guards of both kinds: a key's and a script's credential, each read as its own
     assert(kinds.exists(_._1), "no transaction with a script guard")
     assert(
-      txs.exists((flat, _) =>
-        flat.body.guards.exists {
+      txs.exists(e =>
+        guardsOf(e).exists {
           case Credential.Key(_)    => true
           case Credential.Script(_) => false
         }

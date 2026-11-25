@@ -6,7 +6,6 @@ import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value as CborValue}
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.ledger.{
   Anchor,
-  BootstrapWitness,
   GovAction,
   Block,
   ByteStrings,
@@ -27,25 +26,29 @@ import xyz.kd5ujc.scarab.ledger.{
 }
 import xyz.kd5ujc.scarab.ledger.dijkstra.{
   DijkstraAnchor,
-  DijkstraAuxData,
+  DijkstraBodyReaders,
   DijkstraCert,
   DijkstraDelegatee,
   DijkstraDatum,
   DijkstraGovActionId,
-  DijkstraLevel,
   DijkstraParamUpdate,
   DijkstraProposal,
   DijkstraRelay,
   DijkstraScript,
-  DijkstraTx,
   DijkstraTxIn,
   DijkstraTxOut,
   DijkstraValue,
   DijkstraVoting,
   DijkstraVoter,
   DijkstraVotingProcedure,
-  DijkstraWitnesses,
   V12
+}
+import xyz.kd5ujc.scarab.ledger.era.{BothLevels, EraTxBody, EraTxError, TxLevel}
+import xyz.kd5ujc.scarab.ledger.era.dijkstra.{
+  DijkstraTx,
+  DijkstraTxAuxData,
+  DijkstraTxBody,
+  DijkstraTxWits
 }
 import xyz.kd5ujc.scarab.ledger.state.{ProtVer, Word64}
 import xyz.kd5ujc.scarab.models.runtime.Codec
@@ -60,11 +63,12 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{
 }
 
 /** The rules of the Dijkstra corpus, each mapped to the decoder of the Leios testnet's Dijkstra
-  * that Scarab reads a Leios block with ([[DijkstraTx]], [[DijkstraWitnesses]] and the readers of
-  * [[V12]], at decoder version 12). A type that shares its encoding with Conway is written from its
-  * decoded fields by the shared production encoder. Other samples are written from the bytes their
-  * decoded value keeps, by a production codec of a scalar, or by a Haskell-format codec of the
-  * ledger state where its value is a type that codec writes. Missing writers remain failures.
+  * that Scarab reads a Leios block with (Dijkstra's era decoder, [[DijkstraTx]], [[DijkstraTxWits]]
+  * and [[DijkstraTxAuxData]], and the readers of [[V12]], at decoder version 12). A type that
+  * shares its encoding with Conway is written from its decoded fields by the shared production
+  * encoder. Other samples are written from the bytes their decoded value keeps, by a production
+  * codec of a scalar, or by a Haskell-format codec of the ledger state where its value is a type
+  * that codec writes. Missing writers remain failures.
   */
 object DijkstraRules:
   private val era = Era.Dijkstra
@@ -95,14 +99,55 @@ object DijkstraRules:
   private def read[A](f: Node => Either[LedgerDecodeError, A])(b: Bytes) =
     node(b).flatMap(n => ledger(f(n)))
 
+  // the era decoder's reading: its refusal the decoder's error, a value its bounds rule out its own
+  private def eraRead[A](f: Node => Either[EraTxError, A])(b: Bytes): Either[Refusal, A] =
+    node(b).flatMap(n =>
+      f(n).leftMap {
+        case EraTxError.Decode(e) => Refusal.Ledger(e)
+        case other                => Refusal.Era(other)
+      }
+    )
+
+  private val bodies = EraTxBody.dijkstra
+
+  /** A body read by the era decoder at each level, the sample read as one item first: at the top as
+    * a transaction's with an empty witness set, at the sub-transaction level as the one
+    * sub-transaction of a minimal top-level body (keys 0, 1, 2 and 23), whose fields before it
+    * refuse nothing.
+    */
+  private def topBody(b: Bytes): Either[Refusal, DijkstraTxBody[TxLevel.Top]] =
+    node(b).flatMap(n =>
+      eraRead(DijkstraTx.inBlock)(hex("84") ++ n.original ++ hex("a0f6f5")).map(_.body)
+    )
+
+  private def subBody(b: Bytes): Either[Refusal, DijkstraTxBody[TxLevel.Sub]] =
+    node(b).flatMap(n =>
+      eraRead(DijkstraTx.inBlock)(hex("84a4008001800200178183") ++ n.original ++ hex("a0f6a0f6f5"))
+        .map(t => bodies.subTransactions(t.body).toVector.head.body)
+    )
+
+  /** The item at `key` of a body the era decoder read, as its field's reader reads it again. */
+  private def field[A](body: DijkstraTxBody[TxLevel.Top], key: Int)(
+      f: Node => Either[LedgerDecodeError, A]
+  ): Either[Refusal, A] =
+    node(body.raw).flatMap(n =>
+      ledger(V12.entries(n, DecodeField.TransactionBody)).flatMap(entries =>
+        entries
+          .collectFirst {
+            case (k, v) if (k.value match
+                  case CborValue.UInt(u) => u == key
+                  case _                 => false
+                ) =>
+              v
+          }
+          .toRight(Refusal.Form(Shape.Present))
+          .flatMap(v => ledger(f(v)))
+      )
+    )
+
   private def written[A](codec: Codec[A])(a: A) = ConwayRules.written(codec)(a)
   private val unsigned: Codec[BigInt] = Codec.uintBig((BigInt(1) << 64) - 1)
   private def leafBytes(b: Bytes) = written(Codec.bytes)(b)
-
-  private def kept[A](decoder: String, keeps: String)(f: Node => Either[LedgerDecodeError, A])(
-      raw: A => Bytes
-  ) =
-    DatasetRule(decoder, Reach.Direct, Writing.Kept(keeps))(read(f))(a => Right(raw(a)))
 
   private def shaped(shape: Shape)(b: Bytes): Either[Refusal, Node] =
     node(b).flatMap { n =>
@@ -116,10 +161,12 @@ object DijkstraRules:
 
   private def auxiliaryRule(shape: Shape) =
     DatasetRule(
-      s"DijkstraAuxData.decode (${shape.render} only)",
+      s"DijkstraTxAuxData.decode (${shape.render} only)",
       Reach.Direct,
-      Writing.Kept("DijkstraAuxData.raw")
-    )(b => shaped(shape)(b).flatMap(n => ledger(DijkstraAuxData.decode(n))))(a => Right(a.raw))
+      Writing.Kept("DijkstraTxAuxData.raw")
+    )(b => shaped(shape)(b).flatMap(n => eraRead(DijkstraTxAuxData.decode)(n.original)))(a =>
+      Right(a.raw)
+    )
 
   private def leafHash(size: Int, site: DecodeField) =
     DatasetRule(s"V12.bytesN($size)", Reach.Direct, Writing.Leaf(s"Wire.hash($size)"))(
@@ -143,17 +190,21 @@ object DijkstraRules:
     )(written(HaskellStateCodecs.nodeCredential))
 
   /** Plutus data of `shape`, read as a datum of a witness set and written again as the bytes the
-    * witness set keeps of it ([[DijkstraWitnesses.datums]]), as the reference keeps those of
+    * witness set keeps of it ([[DijkstraTxWits.datums]]), as the reference keeps those of
     * `Data era`.
     */
   private def dataRule(shape: Option[Shape]) =
     DatasetRule(
-      "DijkstraWitnesses.decode",
+      "DijkstraTxWits.decode",
       Reach.Embedded("a witness set's datums"),
-      Writing.Kept("DijkstraWitnesses.datums")
+      Writing.Kept("DijkstraTxWits.datums")
     )(b =>
-      read(DijkstraWitnesses.decode)(hex("a10481") ++ b)
-        .flatMap(w => w.datums.headOption.toRight(Refusal.Form(Shape.Present)))
+      eraRead(DijkstraTxWits.decode)(hex("a10481") ++ b)
+        .flatMap(w =>
+          w.datums.datums.values.headOption
+            .map(_.originalBytes)
+            .toRight(Refusal.Form(Shape.Present))
+        )
         .flatMap { kept =>
           PlutusData.decode(kept).leftMap(Refusal.Data(_)).flatMap { d =>
             (shape, d) match
@@ -182,7 +233,7 @@ object DijkstraRules:
   /** A top-level Dijkstra body of no inputs, no outputs and no fee, with `key` holding the sample.
     */
   private def body(key: String)(sample: Bytes) =
-    read(DijkstraTx.body(_, DijkstraLevel.Top))(hex("a4008001800200" + key) ++ sample)
+    topBody(hex("a4008001800200" + key) ++ sample)
 
   private def relay(prefix: String, suffix: String = "")(sample: Bytes) =
     read(DijkstraRelay.decode)(hex(prefix) ++ sample ++ hex(suffix))
@@ -229,18 +280,20 @@ object DijkstraRules:
   })
 
   /** The rules, by the name of their directory in the corpus. */
-  /** `certificates`, the set at a body's key 4, which refuses it empty (`DijkstraTx.body`), as the
-    * reference's body does where the set's own decoder takes an empty one.
+  /** `certificates`, the set at a body's key 4, which refuses it empty (`DijkstraTxBody.readTop`),
+    * as the reference's body does where the set's own decoder takes an empty one.
     */
   private def certificates: DatasetRule = DatasetRule
     .apply(
-      "DijkstraTx.body (Top)",
+      "DijkstraTxBody.readTop",
       Reach.Embedded("a body's key 4"),
       Writing.Encoder("DijkstraCodecs.certificates")
-    )(body("04"))(t => written(DijkstraCodecs.certificates)(t.certificates))
+    )(b => body("04")(b).flatMap(field(_, 4)(DijkstraCert.set)))(
+      written(DijkstraCodecs.certificates)
+    )
 
-  /** `voting_procedures`, non-empty, as the body that holds them requires (`DijkstraTx.body`'s key
-    * 19).
+  /** `voting_procedures`, non-empty, as the body that holds them requires
+    * (`DijkstraTxBody.readTop`'s key 19).
     */
   private def votingProcedures: DatasetRule =
     DatasetRule("DijkstraVoting.procedures, non-empty", Reach.Direct, votingCodec)(
@@ -252,10 +305,12 @@ object DijkstraRules:
     */
   private def proposalProcedures: DatasetRule = DatasetRule
     .apply(
-      "DijkstraTx.body (Top)",
+      "DijkstraTxBody.readTop",
       Reach.Embedded("a body's key 20"),
       Writing.Encoder("DijkstraCodecs.proposals")
-    )(body("14"))(t => written(DijkstraCodecs.proposals)(t.proposals))
+    )(b => body("14")(b).flatMap(field(_, 20)(DijkstraProposal.set)))(
+      written(DijkstraCodecs.proposals)
+    )
 
   val rules: Map[String, DatasetRule] = Map(
     "block" -> DatasetRule.unwritten(
@@ -295,76 +350,88 @@ object DijkstraRules:
     "transaction" -> DatasetRule(
       "DijkstraTx.fromSubmission",
       Reach.Direct,
-      Writing.Kept("DijkstraTx.raw")
-    )(b => ledger(DijkstraTx.fromSubmission(b)))(t => Right(t.raw)),
-    "transaction_body" -> kept("DijkstraTx.body (Top)", "DijkstraTxBody.raw")(
-      DijkstraTx.body(_, DijkstraLevel.Top)
-    )(
-      _.raw
-    ),
-    "sub_transaction_body" -> kept("DijkstraTx.body (Sub)", "DijkstraTxBody.raw")(
-      DijkstraTx.body(_, DijkstraLevel.Sub)
-    )(_.raw),
-    "transaction_witness_set" -> kept("DijkstraWitnesses.decode", "DijkstraWitnesses.raw")(
-      DijkstraWitnesses.decode
-    )(
-      _.raw
-    ),
+      Writing.Kept("the transaction's bytes as read")
+    )(b =>
+      node(b).flatMap(n =>
+        DijkstraTx
+          .fromSubmission(n.original)
+          .bimap(
+            {
+              case EraTxError.Decode(e) => Refusal.Ledger(e)
+              case other                => Refusal.Era(other)
+            },
+            _ => n.original
+          )
+      )
+    )(Right(_)),
+    "transaction_body" -> DatasetRule(
+      "DijkstraTxBody.readTop",
+      Reach.Direct,
+      Writing.Kept("DijkstraTxBody.raw")
+    )(topBody)(t => Right(t.raw)),
+    "sub_transaction_body" -> DatasetRule(
+      "DijkstraTxBody.readSub",
+      Reach.Direct,
+      Writing.Kept("DijkstraTxBody.raw")
+    )(subBody)(t => Right(t.raw)),
+    "transaction_witness_set" -> DatasetRule(
+      "DijkstraTxWits.decode",
+      Reach.Direct,
+      Writing.Kept("DijkstraTxWits.raw")
+    )(eraRead(DijkstraTxWits.decode))(w => Right(w.raw)),
     "redeemers" -> DatasetRule(
-      "DijkstraWitnesses.decode",
+      "DijkstraTxWits.decode",
       Reach.Embedded("a witness set's key 5"),
-      Writing.Kept("DijkstraWitnesses.raw, key 5")
-    )(b => read(DijkstraWitnesses.decode)(hex("a105") ++ b))(w => Step.at(w.raw, List(Key(5)))),
+      Writing.Kept("DijkstraTxWits.raw, key 5")
+    )(b => eraRead(DijkstraTxWits.decode)(hex("a105") ++ b))(w => Step.at(w.raw, List(Key(5)))),
     "vkeywitness" -> DatasetRule(
-      "DijkstraWitnesses.decode",
+      "DijkstraTxWits.decode",
       Reach.Embedded("{0: [vkeywitness]}"),
       Writing.Encoder("ConwayCodecs.vkeyWitness")
     )(b =>
-      read(DijkstraWitnesses.decode)(hex("a10081") ++ b).flatMap(w =>
-        w.vkeys.headOption.toRight(Refusal.Form(Shape.Present))
+      eraRead(DijkstraTxWits.decode)(hex("a10081") ++ b).flatMap(w =>
+        w.vkeys.headOption.map(v => (v.vkey, v.signature)).toRight(Refusal.Form(Shape.Present))
       )
     )(written(ConwayCodecs.vkeyWitness)),
     "bootstrap_witness" -> DatasetRule(
-      "DijkstraWitnesses.decode",
+      "DijkstraTxWits.decode",
       Reach.Embedded("{2: [bootstrap_witness]}"),
       Writing.Encoder("ConwayCodecs.bootstrapWitness")
     )(b =>
-      read(DijkstraWitnesses.decode)(hex("a10281") ++ b).flatMap(w =>
-        w.bootstraps.headOption.toRight(Refusal.Form(Shape.Present))
+      eraRead(DijkstraTxWits.decode)(hex("a10281") ++ b).flatMap(w =>
+        w.bootstrap.headOption.toRight(Refusal.Form(Shape.Present))
       )
-    )(w =>
-      written(ConwayCodecs.bootstrapWitness)(
-        BootstrapWitness(w.key, w.signature, w.chainCode, w.attributes)
-      )
-    ),
+    )(written(ConwayCodecs.bootstrapWitness)),
     "vkey" -> DatasetRule(
-      "DijkstraWitnesses.decode",
+      "DijkstraTxWits.decode",
       Reach.Embedded("a vkey witness"),
       Writing.Leaf("Codec.bytes")
-    )(b => read(DijkstraWitnesses.decode)(hex("a1008182") ++ b ++ hex("5840" + zeros(64))))(w =>
-      w.vkeys.headOption.toRight(Unwritten.NotKept).flatMap(v => leafBytes(v._1))
+    )(b => eraRead(DijkstraTxWits.decode)(hex("a1008182") ++ b ++ hex("5840" + zeros(64))))(w =>
+      w.vkeys.headOption.toRight(Unwritten.NotKept).flatMap(v => leafBytes(v.vkey))
     ),
     "signature" -> DatasetRule(
-      "DijkstraWitnesses.decode",
+      "DijkstraTxWits.decode",
       Reach.Embedded("a vkey witness"),
       Writing.Leaf("Codec.bytes")
-    )(b => read(DijkstraWitnesses.decode)(hex("a10081825820" + zeros(32)) ++ b))(w =>
-      w.vkeys.headOption.toRight(Unwritten.NotKept).flatMap(v => leafBytes(v._2))
+    )(b => eraRead(DijkstraTxWits.decode)(hex("a10081825820" + zeros(32)) ++ b))(w =>
+      w.vkeys.headOption.toRight(Unwritten.NotKept).flatMap(v => leafBytes(v.signature))
     ),
-    "auxiliary_data" -> kept("DijkstraAuxData.decode", "DijkstraAuxData.raw")(
-      DijkstraAuxData.decode
-    )(_.raw),
+    "auxiliary_data" -> DatasetRule(
+      "DijkstraTxAuxData.decode",
+      Reach.Direct,
+      Writing.Kept("DijkstraTxAuxData.raw")
+    )(eraRead(DijkstraTxAuxData.decode))(a => Right(a.raw)),
     "metadata" -> auxiliaryRule(Shape.Map),
     "auxiliary_data_map" -> auxiliaryRule(Shape.Tag259),
     "auxiliary_data_array" -> auxiliaryRule(Shape.Array),
     "auxiliary_scripts" -> DatasetRule(
-      "DijkstraAuxData.decode and NativeScript.decode (Timelock)",
+      "DijkstraTxAuxData.decode and NativeScript.decode (Timelock)",
       Reach.Embedded("[{}, scripts]"),
-      Writing.Kept("DijkstraAuxData.raw")
+      Writing.Kept("DijkstraTxAuxData.raw")
     )(b =>
       // EraSpec.hs:280 (dataset ed6c49a4) declares StrictSeq (Timelock DijkstraEra). The full
       // auxiliary-data decoder also reads Dijkstra's guard constructor; this rule's type does not.
-      read(DijkstraAuxData.decode)(hex("82a0") ++ b).flatMap { auxiliary =>
+      eraRead(DijkstraTxAuxData.decode)(hex("82a0") ++ b).flatMap { auxiliary =>
         node(b)
           .flatMap(n => ledger(V12.list(n, DecodeField.AuxiliaryNativeScripts)))
           .flatMap(
@@ -376,13 +443,12 @@ object DijkstraRules:
       }
     )(a => Step.at(a.raw, List(Index(1)))),
     "metadatum" -> DatasetRule(
-      "DijkstraAuxData.decode",
+      "DijkstraTxAuxData.decode",
       Reach.Embedded("{0: metadatum}"),
       Writing.Encoder("ConwayCodecs.metadatum")
     )(b =>
-      read(DijkstraAuxData.decode)(hex("a100") ++ b)
-        .flatMap(a => a.metadata.headOption.toRight(Refusal.Form(Shape.Present)))
-        .flatMap((_, raw) => node(raw))
+      eraRead(DijkstraTxAuxData.decode)(hex("a100") ++ b)
+        .flatMap(_ => node(b))
         .flatMap(n => ledger(Metadatum.decode(n, version)))
     )(
       written(ConwayCodecs.metadatum)
@@ -465,59 +531,67 @@ object DijkstraRules:
       multiassetCodec
     )(b => read(DijkstraValue.decode)(hex("8200") ++ b))(v => writeMultiasset(v.assets)),
     "mint" -> DatasetRule(
-      "DijkstraTx.body (Top)",
+      "DijkstraTxBody.readTop",
       Reach.Embedded("a body's key 9"),
       multiassetCodec
     )(
       body("09")
-    )(t => writeMultiasset(t.mint)),
+    )(t => writeMultiasset(bodies.mint[TxLevel.Top](t)(using BothLevels.Top))),
     "nonzero_int64" -> DatasetRule(
-      "DijkstraTx.body (Top)",
+      "DijkstraTxBody.readTop",
       Reach.Embedded("a mint quantity of a body"),
       multiassetCodec
     )(b => body("09")(hex("a1581c" + zeros(28) + "a140") ++ b))(t =>
-      writeMultiasset(t.mint).flatMap(Step.at(_, List(FirstValue, FirstValue)))
+      writeMultiasset(bodies.mint[TxLevel.Top](t)(using BothLevels.Top))
+        .flatMap(Step.at(_, List(FirstValue, FirstValue)))
     ),
     "asset_name" -> DatasetRule(
-      "DijkstraTx.body (Top)",
+      "DijkstraTxBody.readTop",
       Reach.Embedded("an asset name of a body's mint"),
       valueCodec
     )(b => body("09")(hex("a1581c" + zeros(28) + "a1") ++ b ++ hex("01")))(t =>
-      writeMultiasset(t.mint).flatMap(Step.at(_, List(FirstValue, FirstKey)))
+      writeMultiasset(bodies.mint[TxLevel.Top](t)(using BothLevels.Top))
+        .flatMap(Step.at(_, List(FirstValue, FirstKey)))
     ),
     "withdrawals" -> DatasetRule(
-      "DijkstraTx.body (Top)",
+      "DijkstraTxBody.readTop",
       Reach.Embedded("a body's key 5"),
       govActionCodec
-    )(
-      body("05")
-    )(t =>
-      written(HaskellStateCodecs.govAction)(GovAction.TreasuryWithdrawals(t.withdrawals, None))
+    )(b =>
+      body("05")(b).flatMap(
+        field(_, 5)(
+          DijkstraBodyReaders.accountMap(_, DecodeField.Withdrawals)(
+            V12.word64(_, DecodeField.WithdrawalAmount)
+          )
+        )
+      )
+    )(w =>
+      written(HaskellStateCodecs.govAction)(GovAction.TreasuryWithdrawals(w, None))
         .flatMap(Step.at(_, List(Index(1))))
     ),
     "network_id" -> DatasetRule(
-      "DijkstraTx.body (Top)",
+      "DijkstraTxBody.readTop",
       Reach.Embedded("a body's key 15"),
       Writing.Leaf("Codec.uintBig")
-    )(b => body("0f")(b).flatMap(t => t.networkId.toRight(Refusal.Form(Shape.Present))))(n =>
+    )(b => body("0f")(b).flatMap(t => field(t, 15)(DijkstraBodyReaders.networkId)))(n =>
       written(unsigned)(BigInt(n))
     ),
     "positive_coin" -> DatasetRule(
-      "DijkstraTx.body (Top)",
+      "DijkstraTxBody.readTop",
       Reach.Embedded("a body's donation"),
       Writing.Leaf("Codec.uintBig")
     )(
       body("16")
-    )(t => written(unsigned)(t.donation)),
+    )(t => written(unsigned)(bodies.treasuryDonation[TxLevel.Top](t)(using BothLevels.Top).value)),
     "account_balance_intervals" -> DatasetRule
-      .unwritten("DijkstraTx.body (Top)", Reach.Embedded("a body's key 26"))(
+      .unwritten("DijkstraTxBody.readTop", Reach.Embedded("a body's key 26"))(
         body("181a")
       ),
     "account_balance_interval" -> DatasetRule(
-      "DijkstraTx.balanceInterval",
+      "DijkstraBodyReaders.balanceInterval",
       Reach.Direct,
       Writing.Encoder("DijkstraCodecs.balanceInterval")
-    )(read(DijkstraTx.balanceInterval))(written(DijkstraCodecs.balanceInterval)),
+    )(read(DijkstraBodyReaders.balanceInterval))(written(DijkstraCodecs.balanceInterval)),
     "certificate" -> DatasetRule(
       "DijkstraCert.decode",
       Reach.Direct,

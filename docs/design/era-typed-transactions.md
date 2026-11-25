@@ -1911,13 +1911,12 @@ Conway's rules on the classes follow as the rest of stage 2.
     Dijkstra's the reference's `validateDijkstraNativeScript`.
   - `DijkstraUTxOSuite` reads every Dijkstra transaction the repository holds (`DijkstraCorpus`, which
     `DijkstraTxSuite` reads too), at both levels, with the recorded UTxO set where the corpus has one and stand-in
-    outputs elsewhere. Against the flat rules: the scripts needed equal `DijkstraPurposes.scriptsNeeded` in order,
-    purpose, index, item (a certificate by its key and script) and script hash, guards among them; the execution units
-    of the batch and of each sub-transaction, and the batch's reference scripts' size, equal `DijkstraTxMeasures`' and
-    the redeemers the flat decoder read; the top level's Plutus scripts provided, by hash and language, equal
-    `plutusScriptsProvided`; and the supplemental datums at each level equal the datum hashes the flat decoder read in
-    the outputs and the reference inputs' outputs, also where a sub-transaction's reference input names one (crafted)
-    and with the sub-transactions taken out of the body, as UTXOW reads it in the legacy mode.
+    outputs elsewhere. The scripts needed, by purpose, are those the flat rules needed when the two were compared, recorded when the flat decoder went (#85), guards among them; the execution
+    units of the batch and of each sub-transaction are their redeemers' sums; the batch's reference scripts' size is
+    the reference scripts of the outputs each level spends or reads; and the supplemental datums at each level are the
+    datum hashes of its outputs and its reference inputs' outputs, each output read again by the output decoder, also
+    where a sub-transaction's reference input names one (crafted) and with the sub-transactions taken out of the
+    body, as UTXOW reads it in the legacy mode.
   - The flat path had a minimum fee (the flat Dijkstra UTXO's, deleted with the flat rules), the keys needed (`TxChecks.neededWitnesses`) and the
     supplemental datums (`TxChecks.supplementalDatumHashes`) for a transaction without Dijkstra's own fields, and the
     value consumed and produced only inline: no complete Dijkstra batch comparison. What the reference records stands in

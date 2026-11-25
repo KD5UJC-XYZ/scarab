@@ -6,16 +6,13 @@ import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{Block, LeiosBlock, TxIn}
 import xyz.kd5ujc.scarab.ledger.dijkstra.{
-  DijkstraPurpose,
   DijkstraDatum,
-  DijkstraPurposes,
-  DijkstraTx as FlatTx,
-  DijkstraTxBody as FlatBody,
+  DijkstraScript as FlatScript,
   DijkstraTxIn,
   DijkstraTxOut as FlatTxOut
 }
 import xyz.kd5ujc.scarab.ledger.era.{
-  AlonzoScriptsNeeded,
+  EraTxError,
   CollectError,
   PlutusWithContext,
   SubOnly,
@@ -32,7 +29,6 @@ import xyz.kd5ujc.scarab.ledger.era.{
   TxLevel,
   UTxO
 }
-import xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraTxMeasures
 import xyz.kd5ujc.scarab.ledger.state.{Dijkstra, LedgerStateGen}
 import xyz.kd5ujc.scarab.plutus.{ExUnits, PlutusLanguage}
 
@@ -42,11 +38,12 @@ import DijkstraCorpus.*
   * the era types (`eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/{Tx,UTxO}.hs`, cardano-ledger
   * 9df9f98c).
   *
-  * Against the flat Dijkstra rules, on every Dijkstra transaction the repository holds
-  * ([[DijkstraCorpus]]) at both levels: the scripts needed, in order, with each purpose, its index
-  * and item, and the script's hash; the execution units of the batch and of each sub-transaction;
-  * the reference scripts' size; and the supplemental datums, exactly. A transaction whose corpus
-  * records no UTxO set is given stand-in outputs, a key's and a script's in turn.
+  * On every Dijkstra transaction the repository holds ([[DijkstraCorpus]]) at both levels: the
+  * scripts needed, by purpose, as the flat Dijkstra rules counted them when they were compared
+  * (#85); and, from what the transaction's own parts and its outputs hold, the execution units of
+  * the batch and of each sub-transaction, the reference scripts' size and the supplemental datums,
+  * exactly. A transaction whose corpus records no UTxO set is given stand-in outputs, a key's and a
+  * script's in turn.
   *
   * Against the reference, as component checks (CNF-2), not its verdict or the resulting state: on
   * the 200 transactions recorded on the public Leios testnet's chain, which its ledger accepted,
@@ -61,22 +58,20 @@ class DijkstraUTxOSuite extends FunSuite:
   private val utxos = EraUTxO.dijkstra
   private given BothLevels[TxLevel.Top] = BothLevels.Top
 
-  /** A transaction of the corpus: both decoders' readings and, where the corpus records them, the
+  /** A transaction of the corpus: the era decoder's reading and, where the corpus records them, the
     * outputs its inputs spend, as input and output bytes.
     */
   private final case class Case(
       name: String,
       era: DijkstraTx[TxLevel.Top],
-      flat: FlatTx,
       recorded: Option[Vector[(Bytes, Bytes)]]
   )
 
   private def read(name: String, raw: Bytes, recorded: Option[Vector[(Bytes, Bytes)]]) =
-    val n = node(raw)
-    (FlatTx.inBlock(n), DijkstraTx.inBlock(n)) match
-      case (Right(f), Right(e)) => Vector(Case(name, e, f, recorded))
-      case (Left(_), Left(_))   => Vector.empty
-      case other                => fail(s"$name: $other")
+    DijkstraTx.inBlock(node(raw)) match
+      case Right(e)                   => Vector(Case(name, e, recorded))
+      case Left(EraTxError.Decode(_)) => Vector.empty
+      case Left(other)                => fail(s"$name: $other")
 
   private def utxoOf(j: io.circe.Json): Vector[(Bytes, Bytes)] =
     j.hcursor
@@ -116,17 +111,31 @@ class DijkstraUTxOSuite extends FunSuite:
       )
     val utxow = utxowCases.flatMap(c => read(str(c, "name"), hex(str(c, "tx")), Some(utxoOf(c))))
     val mempool = (devnetSubmitted +: crossingForms).zipWithIndex.flatMap { (raw, i) =>
-      (FlatTx.fromSubmission(raw), DijkstraTx.fromSubmission(raw)) match
-        case (Right(f), Right(e)) => Vector(Case(s"mempool form $i", e, f, None))
-        case other                => fail(s"mempool form $i: $other")
+      DijkstraTx.fromSubmission(raw) match
+        case Right(e) => Vector(Case(s"mempool form $i", e, None))
+        case other    => fail(s"mempool form $i: $other")
     }
     corpusTxs ++ corpusBlocks ++ blocks ++ contexts ++ utxow ++ mempool
 
-  // ---- the UTxO set, in both forms
+  // ---- the UTxO set, with each output's own reading by the output decoder
 
-  private final case class Utxos(flat: Map[DijkstraTxIn, FlatTxOut], era: UTxO[Dijkstra])
+  private final case class Utxos(outputs: Map[TxIn, FlatTxOut], era: UTxO[Dijkstra])
 
   private def txIn(i: DijkstraTxIn): TxIn = TxIn(i.id, BigInt(i.index))
+
+  // the bodies of a transaction: its own and its sub-transactions'
+  private def levels(
+      c: Case
+  ): Vector[Either[DijkstraTxBody[TxLevel.Top], DijkstraTxBody[TxLevel.Sub]]] =
+    Left(c.era.body) +: bodies.subTransactions(c.era.body).toVector.map(s => Right(s.body))
+
+  private def spentAndRead(
+      b: Either[DijkstraTxBody[TxLevel.Top], DijkstraTxBody[TxLevel.Sub]]
+  ): Set[TxIn] = b match
+    case Left(t) => (bodies.inputs[TxLevel.Top](t) ++ bodies.referenceInputs[TxLevel.Top](t)).toSet
+    case Right(s) =>
+      given BothLevels[TxLevel.Sub] = BothLevels.Sub
+      (bodies.inputs[TxLevel.Sub](s) ++ bodies.referenceInputs[TxLevel.Sub](s)).toSet
 
   /** An output at an enterprise address of the testnet holding one ada: a key's or a script's. */
   private def standIn(script: Boolean, hash: Bytes): Bytes =
@@ -139,12 +148,16 @@ class DijkstraUTxOSuite extends FunSuite:
     */
   private def utxosOf(c: Case, crafted: Map[Bytes, Bytes]): Utxos =
     val pairs = c.recorded.getOrElse {
-      val inputs = (c.flat.body +: c.flat.body.subTransactions.map(_.body))
-        .flatMap(b => b.inputs ++ b.referenceInputs)
-        .distinct
+      val inputs = levels(c).flatMap {
+        case Left(t) =>
+          bodies.inputs[TxLevel.Top](t).toVector ++ bodies.referenceInputs[TxLevel.Top](t).toVector
+        case Right(s) =>
+          given BothLevels[TxLevel.Sub] = BothLevels.Sub
+          bodies.inputs[TxLevel.Sub](s).toVector ++ bodies.referenceInputs[TxLevel.Sub](s).toVector
+      }.distinct
       inputs.zipWithIndex.map { (in, k) =>
         val hash = Bytes(Vector.fill(28)((k % 251).toByte))
-        (DijkstraCorpus.encodeTxIn(in), standIn(k % 2 == 1, hash))
+        (DijkstraCorpus.encodeTxIn(DijkstraTxIn(in.id, in.index.toInt)), standIn(k % 2 == 1, hash))
       }
     }
     val read = pairs.map { (i, o0) =>
@@ -155,21 +168,9 @@ class DijkstraUTxOSuite extends FunSuite:
       (in, flatOut, eraOut)
     }
     Utxos(
-      read.map((i, f, _) => i -> f).toMap,
+      read.map((i, f, _) => txIn(i) -> f).toMap,
       UTxO[Dijkstra](read.map((i, _, e) => txIn(i) -> e).toMap)
     )
-
-  // ---- the projections compared: a purpose by its tag, index and item, with the script's hash
-  // (`DijkstraCorpus.Item`: a certificate by its key and script, a proposal as the flat decoder read
-  // it)
-
-  private def eraNeeded(n: AlonzoScriptsNeeded[Dijkstra]): Vector[((Int, BigInt, Item), Bytes)] =
-    n.unAlonzoScriptsNeeded.map((p, h) => (eraItem(p), h))
-
-  private def flatNeeded(
-      n: Vector[(DijkstraPurpose, Bytes)]
-  ): Vector[((Int, BigInt, Item), Bytes)] =
-    n.map((p, h) => (flatItem(p), h))
 
   // ---- the corpus
 
@@ -182,66 +183,68 @@ class DijkstraUTxOSuite extends FunSuite:
     assertEquals(cases.size, 273 + 63 + 40 + 1 + 11 + 200 + (17 + 1) + 1 + 149)
   }
 
-  test("the scripts needed at each level equal the flat rules' in order, purpose, index and item") {
-    val compared = cases.flatMap { c =>
+  test("the scripts needed at each level are those the flat rules needed, by purpose") {
+    val needed = cases.flatMap { c =>
       val u = utxosOf(c)
-      val top = utxos.getScriptsNeeded[TxLevel.Top](u.era, c.era.body)
-      assertEquals(
-        eraNeeded(top),
-        flatNeeded(DijkstraPurposes.scriptsNeeded(u.flat, c.flat.body)),
-        c.name
-      )
-      val subs = bodies.subTransactions(c.era.body).toVector.zip(c.flat.body.subTransactions).map {
-        (sub, flatSub) =>
-          val needed = utxos.getScriptsNeeded[TxLevel.Sub](u.era, sub.body)(using BothLevels.Sub)
-          assertEquals(
-            eraNeeded(needed),
-            flatNeeded(DijkstraPurposes.scriptsNeeded(u.flat, flatSub.body)),
-            s"${c.name}: sub-transaction ${sub.id.hex}"
-          )
-          needed
-      }
-      top +: subs
+      utxos.getScriptsNeeded[TxLevel.Top](u.era, c.era.body) +:
+        bodies
+          .subTransactions(c.era.body)
+          .toVector
+          .map(sub => utxos.getScriptsNeeded[TxLevel.Sub](u.era, sub.body)(using BothLevels.Sub))
     }
-    val needs = compared.flatMap(_.unAlonzoScriptsNeeded)
-    // every purpose is reached, the guarding one among them, at both levels
-    assertEquals(needs.map(_._1.tag).distinct.sorted, Vector(0, 1, 2, 3, 4, 5, 6))
-    assert(compared.size > cases.size, "no sub-transaction")
+    val needs = needed.flatMap(_.unAlonzoScriptsNeeded)
+    // every purpose is reached, the guarding one among them, at both levels; the count of each, as
+    // the flat rules needed them on these transactions when the two were compared (#85)
+    assertEquals(
+      needs.groupBy(_._1.tag).view.mapValues(_.size).toMap,
+      Map(0 -> 160, 1 -> 130, 2 -> 19, 3 -> 60, 4 -> 6, 5 -> 10, 6 -> 13)
+    )
+    assert(needed.size > cases.size, "no sub-transaction")
   }
 
-  test("the execution units add the sub-transactions', as the flat rules do") {
-    cases.foreach { c =>
-      val units = txs.getTotalExUnits[TxLevel.Top](c.era)
-      val flat = DijkstraTxMeasures.totalExUnits(c.flat)
-      assertEquals((units.mem, units.steps), (flat.mem, flat.steps), c.name)
-    }
-    // and each sub-transaction's own, some of which have units
-    val subUnits = cases.flatMap(c =>
-      bodies.subTransactions(c.era.body).toVector.zip(c.flat.body.subTransactions).map {
-        (sub, flatSub) =>
-          val units = txs.getTotalExUnits[TxLevel.Sub](sub)(using BothLevels.Sub)
-          val flat = flatSub.witnesses.redeemers
-            .foldLeft((BigInt(0), BigInt(0)))((acc, r) => (acc._1 + r.memory, acc._2 + r.steps))
-          assertEquals((units.mem, units.steps), flat, s"${c.name}: sub-transaction ${sub.id.hex}")
-          units
+  // the units of a witness set's redeemers
+  private def units(w: DijkstraTxWits): ExUnits =
+    w.redeemers.entries.values.foldLeft(ExUnits.zero)((acc, r) => acc + r._2)
+
+  test("the execution units add the sub-transactions' to the transaction's redeemers'") {
+    // `getTotalExUnits` (`Dijkstra/Tx.hs:417-422`, cardano-ledger 9df9f98c): each
+    // sub-transaction's its own redeemers', the top level's its own and every sub-transaction's
+    val subUnits = cases.flatMap { c =>
+      val subs = bodies.subTransactions(c.era.body).toVector
+      val own = subs.map { sub =>
+        val got = txs.getTotalExUnits[TxLevel.Sub](sub)(using BothLevels.Sub)
+        assertEquals(got, units(sub.wits), s"${c.name}: sub-transaction ${sub.id.hex}")
+        got
       }
-    )
+      assertEquals(
+        txs.getTotalExUnits[TxLevel.Top](c.era),
+        own.foldLeft(units(c.era.wits))(_ + _),
+        c.name
+      )
+      own
+    }
     assert(subUnits.exists(_ != ExUnits.zero), "no sub-transaction has execution units")
   }
 
-  test("the reference scripts' size of the batch equals the flat rules'") {
+  // `originalBytesSize` of a reference script: a Plutus script's program, a native script's bytes
+  private def scriptSize(script: FlatScript): Long = script match
+    case FlatScript.Native(raw)        => raw.size.toLong
+    case FlatScript.Plutus(_, program) => program.size.toLong
+
+  test("the reference scripts' size of the batch adds each level's spent and read outputs'") {
+    // `batchNonDistinctRefScriptsSize` (`Dijkstra/UTxO.hs:301-314`, cardano-ledger 9df9f98c): at
+    // each level, the reference script of each output its inputs and reference inputs name
     cases.foreach { c =>
       val u = utxosOf(c)
-      val size: TxIn => Option[Long] =
-        in =>
-          u.flat
-            .collectFirst { case (i, o) if txIn(i) == in => o }
-            .map(_.referenceScript.fold(0L)(DijkstraTxMeasures.scriptSize))
-      assertEquals(
-        DijkstraUTxO.batchNonDistinctRefScriptsSize(u.era, c.era),
-        DijkstraTxMeasures.batchRefScriptsSize(size, c.flat),
-        c.name
-      )
+      val expected = levels(c)
+        .map(b =>
+          spentAndRead(b).toVector
+            .flatMap(u.outputs.get)
+            .map(_.referenceScript.fold(0L)(scriptSize))
+            .sum
+        )
+        .sum
+      assertEquals(DijkstraUTxO.batchNonDistinctRefScriptsSize(u.era, c.era), expected, c.name)
     }
   }
 
@@ -349,11 +352,27 @@ class DijkstraUTxOSuite extends FunSuite:
   // ---- the supplemental datums, exactly
 
   /** The datum hashes a body's outputs, its collateral return and the outputs of its reference
-    * inputs name, read from the flat decoder's outputs (`getBabbageSupplementalDataHashes`,
-    * `Babbage/UTxO.hs:74-83`, cardano-ledger 9df9f98c).
+    * inputs name, each output read again by the output decoder from its bytes
+    * (`getBabbageSupplementalDataHashes`, `Babbage/UTxO.hs:74-83`, cardano-ledger 9df9f98c).
     */
-  private def flatSupplemental(u: Utxos, b: FlatBody): Set[Bytes] =
-    (b.outputs ++ b.collateralReturn ++ b.referenceInputs.flatMap(u.flat.get))
+  private def outputSupplemental(
+      u: Utxos,
+      b: Either[DijkstraTxBody[TxLevel.Top], DijkstraTxBody[TxLevel.Sub]]
+  ): Set[Bytes] =
+    val (outs, refs) = b match
+      case Left(t) =>
+        (
+          bodies.allSizedOutputs[TxLevel.Top](t).map(_.value),
+          bodies.referenceInputs[TxLevel.Top](t)
+        )
+      case Right(s) =>
+        given BothLevels[TxLevel.Sub] = BothLevels.Sub
+        (
+          bodies.allSizedOutputs[TxLevel.Sub](s).map(_.value),
+          bodies.referenceInputs[TxLevel.Sub](s)
+        )
+    (outs.map(o => FlatTxOut.decode(node(o.rep.raw)).fold(e => fail(e.toString), identity)) ++
+      refs.toVector.flatMap(u.outputs.get))
       .flatMap(_.datum match
         case DijkstraDatum.Hash(h)                           => Some(h)
         case DijkstraDatum.NoDatum | DijkstraDatum.Inline(_) => None)
@@ -365,15 +384,14 @@ class DijkstraUTxOSuite extends FunSuite:
     * sub-transaction's.
     */
   private def supplemental(c: Case, u: Utxos): (Set[Bytes], Vector[Set[Bytes]]) =
-    val subs = bodies.subTransactions(c.era.body).toVector.zip(c.flat.body.subTransactions).map {
-      (sub, flatSub) =>
-        val got =
-          utxos.getSupplementalDataHashes[TxLevel.Sub](u.era, sub.body)(using BothLevels.Sub)
-        assertEquals(got, flatSupplemental(u, flatSub.body), s"${c.name}: sub-transaction")
-        got
+    val subs = bodies.subTransactions(c.era.body).toVector.map { sub =>
+      val got =
+        utxos.getSupplementalDataHashes[TxLevel.Sub](u.era, sub.body)(using BothLevels.Sub)
+      assertEquals(got, outputSupplemental(u, Right(sub.body)), s"${c.name}: sub-transaction")
+      got
     }
     val top = utxos.getSupplementalDataHashes[TxLevel.Top](u.era, c.era.body)
-    assertEquals(top, flatSupplemental(u, c.flat.body) ++ subs.flatten, c.name)
+    assertEquals(top, outputSupplemental(u, Left(c.era.body)) ++ subs.flatten, c.name)
     (top, subs)
 
   /** The transaction with its sub-transactions taken out of its body (key 23), its other fields as
@@ -410,7 +428,12 @@ class DijkstraUTxOSuite extends FunSuite:
           .exists(s => bodies.referenceInputs[TxLevel.Sub](s.body)(using BothLevels.Sub).nonEmpty)
       )
       .getOrElse(fail("no sub-transaction with a reference input"))
-    val ref = c.flat.body.subTransactions.flatMap(_.body.referenceInputs).head
+    val ref = bodies
+      .subTransactions(c.era.body)
+      .toVector
+      .flatMap(s => bodies.referenceInputs[TxLevel.Sub](s.body)(using BothLevels.Sub))
+      .map(in => DijkstraTxIn(in.id, in.index.toInt))
+      .head
     val hash = hex("ab" * 32)
     val withDatum = hex(s"a300581d60${"cd" * 28}011a000f42400282005820${hash.hex}")
     val crafted = Map(DijkstraCorpus.encodeTxIn(ref) -> withDatum)

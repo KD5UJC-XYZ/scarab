@@ -8,7 +8,7 @@ import xyz.kd5ujc.scarab.ledger as flat
 import xyz.kd5ujc.scarab.ledger.Unsigned
 import xyz.kd5ujc.scarab.ledger.Unsigned.Width.W32
 import xyz.kd5ujc.scarab.ledger.{Block as FlatBlock, LeiosBlock, Nonce}
-import xyz.kd5ujc.scarab.ledger.dijkstra.{DijkstraTx as FlatDijkstraTx, DijkstraTxIn}
+import xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraTxIn
 import xyz.kd5ujc.scarab.ledger.era.*
 import xyz.kd5ujc.scarab.ledger.era.Relation.*
 import xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraCorpus.*
@@ -319,12 +319,12 @@ class DijkstraBbodySuite extends FunSuite:
 
   // ---- the block's units and reference scripts ------------------------------------------------------
 
-  /** A chain transaction in the era's and the flat types, with the outputs it spends. */
+  /** A chain transaction as recorded and in the era's types, with the outputs it spends. */
   private final case class Recorded(
       block: BigInt,
       index: Int,
+      raw: Bytes,
       era: DijkstraTx[TxLevel.Top],
-      flat: FlatDijkstraTx,
       utxo: UTxO[Dijkstra]
   )
 
@@ -339,8 +339,8 @@ class DijkstraBbodySuite extends FunSuite:
     Recorded(
       c.hcursor.get[BigInt]("block").fold(e => fail(e.message), identity),
       c.hcursor.get[Int]("index").fold(e => fail(e.message), identity),
+      raw,
       ok(DijkstraTx.inBlock(node(raw))),
-      ok(FlatDijkstraTx.inBlock(node(raw))),
       UTxO[Dijkstra](utxo.toMap)
     )
   }
@@ -349,13 +349,19 @@ class DijkstraBbodySuite extends FunSuite:
   private lazy val byBlock: Vector[Vector[Recorded]] =
     recorded.groupBy(_.block).toVector.sortBy(_._1).map(_._2.sortBy(_.index))
 
-  test("the block's units are the flat rules' sum, and the limit is point-wise") {
+  test("the block's units are the sum of every redeemer's, and the limit is point-wise") {
     val txs = recorded.map(_.era)
     val units = txs.foldLeft(ExUnits.zero)((a, t) => a + tx.getTotalExUnits[TxLevel.Top](t))
+    // every redeemer's units of each transaction and of its sub-transactions
+    def own(w: DijkstraTxWits) =
+      w.redeemers.entries.values.foldLeft(ExUnits.zero)((a, r) => a + r._2)
     assertEquals(
       units,
-      recorded.foldLeft(ExUnits.zero)((a, r) =>
-        a + flat.dijkstra.DijkstraTxMeasures.totalExUnits(r.flat)
+      txs.foldLeft(ExUnits.zero)((a, t) =>
+        EraTxBody.dijkstra
+          .subTransactions(t.body)
+          .toVector
+          .foldLeft(a + own(t.wits))((b, s) => b + own(s.wits))
       )
     )
     assert(units.mem > 0 && units.steps > 0, s"$units")
@@ -375,8 +381,6 @@ class DijkstraBbodySuite extends FunSuite:
   test(
     "the block's reference scripts are the flat rules' at versions 10 and 12, and the limit inclusive"
   ) {
-    def flatUtxo(utxo: UTxO[Dijkstra]): flat.Utxo =
-      flat.Utxo(utxo.unUTxO.view.mapValues(StoredTxOut.dijkstra.toStored).toMap)
     // the block's UTxO set as recorded, and without the outputs its own transactions create, which
     // only from version 11 a later transaction of the block reads (`txouts`, `collOuts`)
     def recordedUtxo(rs: Vector[Recorded]) = UTxO[Dijkstra](rs.flatMap(_.utxo.unUTxO).toMap)
@@ -390,19 +394,45 @@ class DijkstraBbodySuite extends FunSuite:
         rs.map(_.era),
         utxo
       )
-      val stored = flat.dijkstra.DijkstraFixture.genesis.upgrade(flat.TestLedger.params(major))
-      assertEquals(
-        era,
-        flat.dijkstra.DijkstraTxMeasures
-          .blockRefScriptsSize(stored, flatUtxo(utxo), rs.map(_.flat)),
-        s"$major"
-      )
       era
     val sizes = for
       major <- Vector(10, 12)
       rs <- byBlock
       utxo <- Vector(recordedUtxo(rs), withoutOwn(rs))
     yield sized(major, rs, utxo)
+    // as the flat rules sized them when the two were compared (#85): at version 10, then 12, each
+    // block with its UTxO set as recorded and without its own outputs
+    assertEquals(
+      sizes,
+      Vector[Long](15668, 15668, 2122, 2122, 8905, 8905, 25567, 25567, 0, 0, 0, 0, 0, 0, 2122, 2122,
+        8905, 8905, 25567, 25567, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 3786, 3786, 6, 6, 2177, 2177, 2196, 2196, 0, 0, 1893, 1893, 6, 6, 2198, 2198, 0, 0,
+        0, 0, 0, 0, 0, 0, 119, 119, 119, 119, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 4087, 4087, 4087, 4087, 0, 0, 0, 0, 0, 0, 14, 14, 0, 0, 0, 0, 0, 0, 6, 6,
+        0, 0, 0, 0, 6, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1893, 1893, 2196,
+        2196, 2135, 2135, 0, 0, 0, 0, 1899, 1899, 2198, 2198, 0, 0, 119, 119, 119, 119, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1893, 1893, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 12, 12, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 1893, 1893, 0, 0, 1899, 1899, 0, 0, 119, 119, 119, 119, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 14, 14, 0, 0, 0, 0, 57, 57,
+        0, 0, 26734, 26734, 26734, 26734) ++
+        Vector[Long](15668, 15668, 2122, 2122, 8905, 8905, 25567, 25567, 0, 0, 0, 0, 0, 0, 2122,
+          2122, 8905, 8905, 25567, 25567, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+          0, 0, 0, 0, 0, 0, 0, 3786, 3786, 6, 6, 2177, 2177, 2196, 2196, 0, 0, 1893, 1893, 6, 6,
+          2198, 2198, 0, 0, 0, 0, 0, 0, 0, 0, 119, 119, 119, 119, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4087, 4087, 4087, 4087, 0, 0, 0, 0, 0, 0, 14, 14,
+          0, 0, 0, 0, 0, 0, 6, 6, 0, 0, 0, 0, 6, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+          0, 0, 0, 0, 1893, 1893, 2196, 2196, 2135, 2135, 0, 0, 0, 0, 1899, 1899, 2198, 2198, 0, 0,
+          119, 119, 119, 119, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1893, 1893, 0, 0, 0,
+          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 12, 12, 0, 0, 0, 0, 0, 0, 0, 0,
+          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1893, 1893, 0, 0, 1899,
+          1899, 0, 0, 119, 119, 119, 119, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+          0, 0, 0, 0, 0, 14, 14, 0, 0, 0, 0, 57, 57, 0, 0, 26734, 26734, 26734, 26734)
+    )
     assert(sizes.exists(_ > 0), "no reference script in the sample")
     // two sampled transactions spend an output an earlier sampled one of their block creates (in
     // block 59,559 and in block 59,563), but neither output has a reference script: so the two
@@ -493,7 +523,7 @@ class DijkstraBbodySuite extends FunSuite:
         flat.TxEnv.Validation.NonStatic
       )
     // the sampled transactions in the devnet block's body, its header committing to that body
-    val withTxs = crafted(plain)(_.updated(0, array(rs.map(_.flat.raw))), committing)
+    val withTxs = crafted(plain)(_.updated(0, array(rs.map(_.raw))), committing)
     val fs = run(withTxs, limited, seeded, nonStatic) match
       case Right(Left(fs)) => fs.toChain.toVector
       case other           => fail(s"not refused: $other")
@@ -532,7 +562,7 @@ class DijkstraBbodySuite extends FunSuite:
         )
       )
     )
-    (crafted(plain)(_.updated(0, array(rs.map(_.flat.raw))), committing), seeded)
+    (crafted(plain)(_.updated(0, array(rs.map(_.raw))), committing), seeded)
 
   /** The globals with the network `n`. */
   private def onNetwork(n: Network): Globals =

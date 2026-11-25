@@ -412,7 +412,12 @@ class DijkstraRulesOracleSuite extends FunSuite:
     // the block's one transaction is the devnet case's
     assertEquals(
       txs.map(_.id),
-      Vector(ok(DijkstraTx.inBlock(node(hex(str(devnetCase.hcursor.downField("tx")))))).id)
+      Vector(
+        ok(
+          xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraTx
+            .inBlock(node(hex(str(devnetCase.hcursor.downField("tx")))))
+        ).id
+      )
     )
     val pp = params(block)
     val start = ledger(pp, num(block.hcursor.downField("epoch")), utxoOf(block)).cert

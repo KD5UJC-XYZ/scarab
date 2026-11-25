@@ -7,7 +7,8 @@ import java.nio.file.{Files, Path}
 import munit.FunSuite
 import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor}
-import xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraWitnesses
+import xyz.kd5ujc.scarab.ledger.era.EraTxError
+import xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraTxWits
 import xyz.kd5ujc.scarab.protocol.Era
 
 /** A bootstrap witness's chain code of any length. The reference reads the chain code as a byte
@@ -164,10 +165,13 @@ object BootstrapChainCodesReferenceSuite:
           Cbor
             .decode(holding(row.raw), Cbor.Limits.Unbounded)
             .leftMap(Refused.Syntax(_))
-            .flatMap(DijkstraWitnesses.decode(_).leftMap(Refused.Decode(_)))
-            .map(
-              _.bootstraps.map(b => BootstrapWitness(b.key, b.signature, b.chainCode, b.attributes))
+            .flatMap(n =>
+              DijkstraTxWits.decode(n).leftMap {
+                case EraTxError.Decode(e) => Refused.Decode(e)
+                case other => munit.Assertions.fail(s"not the decoder's refusal: $other")
+              }
             )
+            .map(_.bootstrap)
         case (Kind.Alone, _) =>
           DecoderVersion
             .at(era, row.version)

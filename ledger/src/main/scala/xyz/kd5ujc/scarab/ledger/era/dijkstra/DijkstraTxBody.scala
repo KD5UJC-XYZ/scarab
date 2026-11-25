@@ -17,7 +17,7 @@ import xyz.kd5ujc.scarab.ledger.dijkstra.{
   DijkstraCert,
   DijkstraLevel,
   DijkstraProposal,
-  DijkstraTx as FlatDijkstraTx,
+  DijkstraBodyReaders,
   DijkstraTxIn as FlatTxIn,
   DijkstraVoting as FlatVoting,
   MultiAsset,
@@ -265,7 +265,7 @@ object DijkstraTxBody:
       withdrawals <- d(
         f.get(5)
           .traverse(
-            FlatDijkstraTx.accountMap(_, DecodeField.Withdrawals)(
+            DijkstraBodyReaders.accountMap(_, DecodeField.Withdrawals)(
               coin(DecodeField.WithdrawalAmount)
             )
           )
@@ -280,10 +280,10 @@ object DijkstraTxBody:
       mint <- d(f.get(9).traverse(MultiAsset.decode(_, DecodeField.Mint)(MultiAsset.minted)))
       integrity <- d(f.get(11).traverse(hash32(DecodeField.ScriptDataHash)))
       collateral <- d(f.get(13).traverse(FlatTxIn.nonEmptySet(_, DecodeField.Collateral)))
-      guardSet <- d(f.get(14).traverse(FlatDijkstraTx.guards)).flatMap(gs =>
+      guardSet <- d(f.get(14).traverse(DijkstraBodyReaders.guards)).flatMap(gs =>
         gs.orEmpty.traverse(guard)
       )
-      network <- d(f.get(15).traverse(FlatDijkstraTx.networkId)).flatMap(
+      network <- d(f.get(15).traverse(DijkstraBodyReaders.networkId)).flatMap(
         _.traverse(v =>
           // a `Word8` of 0 or 1, as read above
           Network
@@ -307,13 +307,13 @@ object DijkstraTxBody:
           .traverse(p => nonEmpty(DecodeField.ProposalProcedures)(DijkstraProposal.set(p)))
       ).flatMap(ps => ps.orEmpty.traverse(DijkstraProcedures.proposal))
       treasury <- d(f.get(21).traverse(coin(DecodeField.CurrentTreasuryValue)))
-      donation <- d(f.get(22).traverse(FlatDijkstraTx.positive))
+      donation <- d(f.get(22).traverse(DijkstraBodyReaders.positive))
       subs <- f.get(23).traverse(subTransactions(_, subTx))
       requiredGuards <- f.get(24).traverse(requiredTopLevelGuards)
       deposits <- d(
         f.get(25)
           .traverse(
-            FlatDijkstraTx.accountMap(_, DecodeField.DirectDeposits)(
+            DijkstraBodyReaders.accountMap(_, DecodeField.DirectDeposits)(
               coin(DecodeField.DirectDeposits)
             )
           )
@@ -321,16 +321,16 @@ object DijkstraTxBody:
       balances <- d(
         f.get(26)
           .traverse(
-            FlatDijkstraTx.accountMap(_, DecodeField.AccountBalanceIntervals)(
-              FlatDijkstraTx.balanceInterval
+            DijkstraBodyReaders.accountMap(_, DecodeField.AccountBalanceIntervals)(
+              DijkstraBodyReaders.balanceInterval
             )
           )
       )
       starting <- d(
         f.get(27)
           .traverse(
-            FlatDijkstraTx.accountMap(_, DecodeField.AccountBalanceIntervals)(
-              FlatDijkstraTx.balanceInterval
+            DijkstraBodyReaders.accountMap(_, DecodeField.AccountBalanceIntervals)(
+              DijkstraBodyReaders.balanceInterval
             )
           )
       )

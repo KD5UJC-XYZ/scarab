@@ -231,46 +231,6 @@
    ],
    "digest": "3899eaf44f37ca7d"
   },
-  "def ledger.dijkstra.DijkstraTx#forBlockInclusion": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Tx.hs",
-     "symbol": "toCBORForBlockInclusion",
-     "lines": [
-      527,
-      533
-     ]
-    }
-   ],
-   "class": "Mirror",
-   "structure": "same",
-   "evidence": [
-    "DijkstraTxSuite"
-   ],
-   "digest": "8251fb7cc8eb9943"
-  },
-  "def ledger.dijkstra.DijkstraTx#size": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Tx.hs",
-     "symbol": "sizeDijkstraTxF",
-     "lines": [
-      297,
-      320
-     ]
-    }
-   ],
-   "class": "Mirror",
-   "structure": "same",
-   "evidence": [
-    "DijkstraSelectionSuite"
-   ],
-   "digest": "4d321466838ee53f"
-  },
   "class ledger.LeiosBlockBody": {
    "upstream": [
     {
@@ -647,27 +607,6 @@
     "CompactCoinRulesSuite"
    ],
    "digest": "a464216b351e9c26"
-  },
-  "def ledger.dijkstra.DijkstraTx.balanceInterval": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Scripts.hs",
-     "symbol": "DecCBOR (AccountBalanceInterval era)",
-     "lines": [
-      684,
-      696
-     ]
-    }
-   ],
-   "class": "Mirror",
-   "structure": "same",
-   "evidence": [
-    "DijkstraCodecsSuite",
-    "CborDatasetSuite"
-   ],
-   "digest": "b43979b3ae22c3a1"
   },
   "def ledger.CborRead.language": {
    "upstream": [
@@ -48472,7 +48411,7 @@
     "DijkstraTxSuite"
    ],
    "note": "the witness set read from its item straight into the era's types in one pass: the Leios build's keys, fields and refusals in its order, each script once by Dijkstra's readers (whose hashes the set's uniqueness and the map are by, the first of one hash kept), each datum and redeemer's data decoded once from its item (Data.read), the bytes of keys 4 and 5 kept; a purpose given twice the last read (Map.fromList). Its verdicts those the two passes it replaced gave, recorded (DijkstraOnePassExpected): on the recorded transactions, mutants and written cases (a fault at each key, competing refusals, every form of data)",
-   "digest": "14647b6938046ef1"
+   "digest": "8cdf50c8b77b01cf"
   },
   "def ledger.era.dijkstra.DijkstraTxAuxData.read": {
    "upstream": [
@@ -48516,132 +48455,6 @@
    ],
    "note": "the data of an item its decoder has already read, with the item's bytes (Mem: the bytes the annotator saw, the value Cborg.decode read): what Data.decode reads from those bytes, without decoding them again; every form of data (constructor tags 102, 121 to 127 and 1280 to 1400, big numbers at and past 64 bits, byte strings chunked at 64 bytes, nested lists and maps) and the refused ones read the same as through the bytes",
    "digest": "a99b39ccbcf96bbe"
-  },
-  "def ledger.dijkstra.DijkstraTx.guards": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
-     "symbol": "decodeGuards",
-     "lines": [
-      1662,
-      1678
-     ]
-    }
-   ],
-   "class": "Mirror",
-   "structure": "same",
-   "evidence": [
-    "DijkstraTxSuite"
-   ],
-   "note": "the first element decides the form of all: a list makes every element a credential, anything else every element a key hash; no guard twice (decodeOSet)",
-   "digest": "f6a29c633d3db178"
-  },
-  "def ledger.dijkstra.DijkstraTx.positive": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Coin.hs",
-     "symbol": "decodePositiveCoin",
-     "lines": [
-      226,
-      231
-     ]
-    }
-   ],
-   "class": "Mirror",
-   "structure": "same",
-   "evidence": [
-    "DijkstraTxSuite"
-   ],
-   "note": "a Word64 other than zero",
-   "digest": "29df2e537a93d1fd"
-  },
-  "def ledger.dijkstra.DijkstraTx.networkId": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
-     "symbol": "FromCBOR Network",
-     "lines": [
-      899,
-      914
-     ]
-    }
-   ],
-   "class": "Mirror",
-   "structure": "same",
-   "evidence": [
-    "DijkstraTxSuite"
-   ],
-   "note": "a Word8 that is 0 or 1 (word8ToNetwork)",
-   "digest": "011731243d5e98cc"
-  },
-  "def ledger.dijkstra.DijkstraTx.accountMap": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/Decoder.hs",
-     "symbol": "decodeMap",
-     "lines": [
-      792,
-      800
-     ]
-    }
-   ],
-   "class": "Mirror",
-   "structure": "differs",
-   "evidence": [
-    "DijkstraTxSuite"
-   ],
-   "note": "a map of account addresses, none twice, not empty (decodeMap, then failOnNull at the body's key)",
-   "digest": "dc62291b5bbbc5cd"
-  },
-  "def ledger.dijkstra.DijkstraWitnesses.vkeyWitnesses": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Keys/WitVKey.hs",
-     "symbol": "DecCBOR (WitVKey kr)",
-     "lines": [
-      106,
-      110
-     ]
-    }
-   ],
-   "class": "Mirror",
-   "structure": "differs",
-   "evidence": [
-    "DijkstraTxSuite"
-   ],
-   "note": "key 0 of the witness set: a non-empty set, the tag 258 allowed, of decodeRecordNamed of a 32-byte key and a 64-byte signature, no witness twice",
-   "digest": "1f847cf732537417"
-  },
-  "def ledger.dijkstra.DijkstraWitnesses.bootstrapWitnesses": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Keys/Bootstrap.hs",
-     "symbol": "DecCBOR BootstrapWitness",
-     "lines": [
-      109,
-      113
-     ]
-    }
-   ],
-   "class": "Mirror",
-   "structure": "differs",
-   "evidence": [
-    "DijkstraTxSuite"
-   ],
-   "note": "key 2 of the witness set: a non-empty set, the tag 258 allowed, of decodeRecordNamed of the key, the signature, a 32-byte chain code and the attributes, no witness twice under its Ord",
-   "digest": "875396eb173ff25b"
   },
   "class ledger.era.AlonzoTxWitsRep": {
    "upstream": [
@@ -49320,6 +49133,153 @@
    ],
    "note": "the mempool form read from an item the caller already read as CBOR within its own bounds (the node-to-node transaction submission's, RelayedTransactions), as fromSubmission reads it: three items, or four with a boolean third that must be true, each part in one pass",
    "digest": "b098d3c092337d79"
+  },
+  "def ledger.dijkstra.DijkstraBodyReaders.balanceInterval": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Scripts.hs",
+     "symbol": "DecCBOR (AccountBalanceInterval era)",
+     "lines": [
+      684,
+      696
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraCodecsSuite",
+    "CborDatasetSuite"
+   ],
+   "digest": "b43979b3ae22c3a1"
+  },
+  "def ledger.dijkstra.DijkstraBodyReaders.networkId": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "symbol": "FromCBOR Network",
+     "lines": [
+      899,
+      914
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "note": "a Word8 that is 0 or 1 (word8ToNetwork)",
+   "digest": "011731243d5e98cc"
+  },
+  "def ledger.dijkstra.DijkstraBodyReaders.positive": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Coin.hs",
+     "symbol": "decodePositiveCoin",
+     "lines": [
+      226,
+      231
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "note": "a Word64 other than zero",
+   "digest": "29df2e537a93d1fd"
+  },
+  "def ledger.dijkstra.DijkstraWitnessReaders.bootstrapWitnesses": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Keys/Bootstrap.hs",
+     "symbol": "DecCBOR BootstrapWitness",
+     "lines": [
+      109,
+      113
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "note": "key 2 of the witness set: a non-empty set, the tag 258 allowed, of decodeRecordNamed of the key, the signature, a 32-byte chain code and the attributes, no witness twice under its Ord",
+   "digest": "875396eb173ff25b"
+  },
+  "def ledger.dijkstra.DijkstraWitnessReaders.vkeyWitnesses": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Keys/WitVKey.hs",
+     "symbol": "DecCBOR (WitVKey kr)",
+     "lines": [
+      106,
+      110
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "note": "key 0 of the witness set: a non-empty set, the tag 258 allowed, of decodeRecordNamed of a 32-byte key and a 64-byte signature, no witness twice",
+   "digest": "1f847cf732537417"
+  },
+  "def ledger.dijkstra.DijkstraBodyReaders.accountMap": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/Decoder.hs",
+     "symbol": "decodeMap",
+     "lines": [
+      792,
+      800
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "note": "a map of account addresses, none twice, not empty (decodeMap, then failOnNull at the body's key)",
+   "digest": "dc62291b5bbbc5cd"
+  },
+  "def ledger.dijkstra.DijkstraBodyReaders.guards": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "symbol": "decodeGuards",
+     "lines": [
+      1662,
+      1678
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "note": "the first element decides the form of all: a list makes every element a credential, anything else every element a key hash; no guard twice (decodeOSet)",
+   "digest": "f6a29c633d3db178"
   }
  },
  "glue": [
@@ -50812,6 +50772,13 @@
     "def ledger.LeiosBlock#transactionCount",
     "def ledger.LeiosBlock.decodeWith",
     "def ledger.era.dijkstra.DijkstraBlock.decodeWith"
+   ]
+  },
+  {
+   "reason": "the objects that hold the readers of a Dijkstra body's fields and of a witness set's key witnesses, which Dijkstra's era decoder and the stored state's codecs share, kept when the flat Dijkstra decoder that held them went (#85); the reference's readers are the instances of the types they read, mapped by each reader's own entry",
+   "definitions": [
+    "object ledger.dijkstra.DijkstraBodyReaders",
+    "object ledger.dijkstra.DijkstraWitnessReaders"
    ]
   }
  ]

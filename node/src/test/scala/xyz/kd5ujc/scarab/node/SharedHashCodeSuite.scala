@@ -6,7 +6,7 @@ import munit.CatsEffectSuite
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, CollidingBytes, Node, Value as CborValue}
 import xyz.kd5ujc.scarab.ledger.*
-import xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraWitnesses
+import xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraTxWits
 import xyz.kd5ujc.scarab.ledger.era.rules.{
   ConwayLedgerPredFailure,
   ConwayUtxoPredFailure,
@@ -138,7 +138,7 @@ class SharedHashCodeSuite extends CatsEffectSuite:
     val node = Cbor
       .decode(dijkstraWitnesses(colliding, n), Cbor.Limits.Unbounded)
       .fold(e => fail(e.message), identity)
-    within(DijkstraWitnesses.decode(node)).map(w => assertEquals(w.map(_.vkeys.size), Right(n)))
+    within(DijkstraTxWits.decode(node)).map(w => assertEquals(w.map(_.vkeys.size), Right(n)))
   }
 
   test("a query for pools by key hashes of one hash code decodes") {

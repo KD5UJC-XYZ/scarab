@@ -695,7 +695,6 @@
    "class ledger.byron.UpdatePayload": null,
    "class ledger.byron.UpdateState": null,
    "class ledger.dijkstra.DijkstraAnchor": null,
-   "class ledger.dijkstra.DijkstraAuxData": null,
    "class ledger.dijkstra.DijkstraBlsKey": null,
    "class ledger.dijkstra.DijkstraBootstrap": null,
    "class ledger.dijkstra.DijkstraGenesis": [
@@ -715,15 +714,10 @@
    "class ledger.dijkstra.DijkstraPoolMetadata": null,
    "class ledger.dijkstra.DijkstraPoolParams": null,
    "class ledger.dijkstra.DijkstraProposal": null,
-   "class ledger.dijkstra.DijkstraRedeemer": null,
-   "class ledger.dijkstra.DijkstraSubTx": null,
-   "class ledger.dijkstra.DijkstraTx": null,
-   "class ledger.dijkstra.DijkstraTxBody": null,
    "class ledger.dijkstra.DijkstraTxIn": null,
    "class ledger.dijkstra.DijkstraTxOut": null,
    "class ledger.dijkstra.DijkstraValue": null,
    "class ledger.dijkstra.DijkstraVotingProcedure": null,
-   "class ledger.dijkstra.DijkstraWitnesses": null,
    "class ledger.era.AlonzoTxOutRep": null,
    "class ledger.era.AsItem": null,
    "class ledger.era.AsIx": null,
@@ -1770,7 +1764,6 @@
    "def ledger.dijkstra.Account.decode": null,
    "def ledger.dijkstra.DijkstraAnchor.decode": null,
    "def ledger.dijkstra.DijkstraAnchor.optional": null,
-   "def ledger.dijkstra.DijkstraAuxData.decode": null,
    "def ledger.dijkstra.DijkstraBlsKey.decode": null,
    "def ledger.dijkstra.DijkstraCert.decode": [
     {
@@ -1817,16 +1810,6 @@
    "def ledger.dijkstra.DijkstraPoolParams.flat": null,
    "def ledger.dijkstra.DijkstraProposal.decode": null,
    "def ledger.dijkstra.DijkstraProposal.set": null,
-   "def ledger.dijkstra.DijkstraPurpose#index": null,
-   "def ledger.dijkstra.DijkstraPurpose#key": null,
-   "def ledger.dijkstra.DijkstraPurposes.certificateScript": null,
-   "def ledger.dijkstra.DijkstraPurposes.inverse": null,
-   "def ledger.dijkstra.DijkstraPurposes.paymentScript": null,
-   "def ledger.dijkstra.DijkstraPurposes.scriptsNeeded": null,
-   "def ledger.dijkstra.DijkstraPurposes.sortedInputs": null,
-   "def ledger.dijkstra.DijkstraPurposes.sortedPolicies": null,
-   "def ledger.dijkstra.DijkstraPurposes.sortedVoters": null,
-   "def ledger.dijkstra.DijkstraPurposes.sortedWithdrawals": null,
    "def ledger.dijkstra.DijkstraRelay.decode": null,
    "def ledger.dijkstra.DijkstraScript#hash": null,
    "def ledger.dijkstra.DijkstraScript.native": null,
@@ -1844,23 +1827,6 @@
      ]
     }
    ],
-   "def ledger.dijkstra.DijkstraSubTx#id": null,
-   "def ledger.dijkstra.DijkstraTx#id": null,
-   "def ledger.dijkstra.DijkstraTx.body": null,
-   "def ledger.dijkstra.DijkstraTx.fromSubmission": null,
-   "def ledger.dijkstra.DijkstraTx.inBlock": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Tx.hs",
-     "symbol": "decodeDijkstraTopTxInBlock",
-     "lines": [
-      175,
-      182
-     ]
-    }
-   ],
-   "def ledger.dijkstra.DijkstraTx.submitted": null,
    "def ledger.dijkstra.DijkstraTxIn.decode": null,
    "def ledger.dijkstra.DijkstraTxIn.nonEmptySet": null,
    "def ledger.dijkstra.DijkstraTxIn.set": null,
@@ -1880,9 +1846,6 @@
    "def ledger.dijkstra.DijkstraValue.decode": null,
    "def ledger.dijkstra.DijkstraVoting.procedures": null,
    "def ledger.dijkstra.DijkstraVoting.voter": null,
-   "def ledger.dijkstra.DijkstraWitnesses#datumHashes": null,
-   "def ledger.dijkstra.DijkstraWitnesses#scriptHashes": null,
-   "def ledger.dijkstra.DijkstraWitnesses.decode": null,
    "def ledger.dijkstra.MultiAsset.decode": [
     {
      "repository": "IntersectMBO/cardano-ledger",
@@ -2921,7 +2884,6 @@
    "enum ledger.dijkstra.DijkstraLanguage": null,
    "enum ledger.dijkstra.DijkstraLevel": null,
    "enum ledger.dijkstra.DijkstraParamValue": null,
-   "enum ledger.dijkstra.DijkstraPurpose": null,
    "enum ledger.dijkstra.DijkstraRelay": null,
    "enum ledger.dijkstra.DijkstraScript": null,
    "enum ledger.dijkstra.DijkstraVoter": null,
@@ -3443,7 +3405,6 @@
    "object ledger.byron.UpdatePayload": null,
    "object ledger.dijkstra.Account": null,
    "object ledger.dijkstra.DijkstraAnchor": null,
-   "object ledger.dijkstra.DijkstraAuxData": null,
    "object ledger.dijkstra.DijkstraBlsKey": null,
    "object ledger.dijkstra.DijkstraCert": null,
    "object ledger.dijkstra.DijkstraDatum": null,
@@ -3453,15 +3414,12 @@
    "object ledger.dijkstra.DijkstraParams": null,
    "object ledger.dijkstra.DijkstraPoolParams": null,
    "object ledger.dijkstra.DijkstraProposal": null,
-   "object ledger.dijkstra.DijkstraPurposes": null,
    "object ledger.dijkstra.DijkstraRelay": null,
    "object ledger.dijkstra.DijkstraScript": null,
-   "object ledger.dijkstra.DijkstraTx": null,
    "object ledger.dijkstra.DijkstraTxIn": null,
    "object ledger.dijkstra.DijkstraTxOut": null,
    "object ledger.dijkstra.DijkstraValue": null,
    "object ledger.dijkstra.DijkstraVoting": null,
-   "object ledger.dijkstra.DijkstraWitnesses": null,
    "object ledger.dijkstra.MultiAsset": null,
    "object ledger.dijkstra.Sparse": null,
    "object ledger.dijkstra.V12": null,
@@ -4053,23 +4011,6 @@
    "val ledger.byron.UpdatePayload.empty": null,
    "val ledger.dijkstra.DijkstraParams.FirstKey": null,
    "val ledger.dijkstra.DijkstraParams.LastKey": null,
-   "val ledger.dijkstra.DijkstraPurposes.accountOrder": null,
-   "val ledger.dijkstra.DijkstraPurposes.credentialOrder": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Credential.hs",
-     "symbol": "Credential",
-     "lines": [
-      98,
-      101
-     ]
-    }
-   ],
-   "val ledger.dijkstra.DijkstraPurposes.govActionOrder": null,
-   "val ledger.dijkstra.DijkstraPurposes.inputOrder": null,
-   "val ledger.dijkstra.DijkstraPurposes.voterOrder": null,
-   "val ledger.dijkstra.DijkstraTxBody#id": null,
    "val ledger.dijkstra.V12.Int64Max": null,
    "val ledger.dijkstra.V12.Int64Min": null,
    "val ledger.dijkstra.V12.Word16Max": null,

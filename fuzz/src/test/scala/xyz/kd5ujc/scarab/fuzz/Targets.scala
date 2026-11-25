@@ -925,9 +925,20 @@ object Targets:
     * the Leios testnet's blocks and sampled from the pinned `dijkstra.cddl`.
     */
   private val dijkstra: Vector[Target] =
-    import xyz.kd5ujc.scarab.ledger.dijkstra.{DijkstraLevel, DijkstraTx, DijkstraWitnesses}
+    import xyz.kd5ujc.scarab.ledger.era.IsPhase2Valid
+    import xyz.kd5ujc.scarab.ledger.era.dijkstra.{DijkstraTx, DijkstraTxWits}
     def tree(name: String)(read: xyz.kd5ujc.scarab.codec.Node => Boolean): Input => Unit =
       probe(name)(b => Cbor.decode(b).foreach(n => seen(name, read(n))))
+    def hexBytes(h: String): Bytes = Bytes.fromHex(h).fold(e => sys.error(e.toString), identity)
+    // a body read by the era decoder at each level: at the top as a transaction's with an empty
+    // witness set, at the sub-transaction level as the one sub-transaction of a minimal top body
+    def topBody(body: Bytes) =
+      Cbor.decode(hexBytes("84") ++ body ++ hexBytes("a0f6f5")).toOption.map(DijkstraTx.inBlock)
+    def subBody(body: Bytes) =
+      Cbor
+        .decode(hexBytes("84a4008001800200178183") ++ body ++ hexBytes("a0f6a0f6f5"))
+        .toOption
+        .map(DijkstraTx.inBlock)
     Vector(
       Target(
         "dijkstra-block",
@@ -970,7 +981,12 @@ object Targets:
         probe("dijkstra-tx-submitted") { b =>
           val decoded = DijkstraTx.fromSubmission(b)
           seen("dijkstra-tx-submitted", decoded.isRight)
-          decoded.foreach(t => req(t.isValid, "a submitted transaction is not valid"))
+          decoded.foreach(t =>
+            req(
+              DijkstraTx.isValid(t) == IsPhase2Valid.Phase2Valid,
+              "a submitted transaction is not valid"
+            )
+          )
         }
       ),
       Target(
@@ -1039,10 +1055,11 @@ object Targets:
           Corpus.dijkstraParts(0) ++ Corpus.sampled("dijkstra:transaction_body", 60) ++
             Corpus.tricky,
         tree("dijkstra-tx-body") { n =>
-          val top = DijkstraTx.body(n, DijkstraLevel.Top)
-          val sub = DijkstraTx.body(n, DijkstraLevel.Sub)
-          top.foreach(t => req(t.fee.isDefined, "a top-level body has no fee"))
-          sub.foreach(t => req(t.fee.isEmpty, "a sub-transaction's body has a fee"))
+          val top = topBody(n.original).getOrElse(Left(()))
+          val sub = subBody(n.original).getOrElse(Left(()))
+          // a top-level body requires the fee (key 2), which a sub-transaction's body may not hold,
+          // so no body reads at both levels
+          req(!(top.isRight && sub.isRight), "a body is read at both levels")
           top.isRight || sub.isRight
         }
       ),
@@ -1051,7 +1068,7 @@ object Targets:
         () =>
           Corpus.dijkstraParts(1) ++ Corpus.sampled("dijkstra:transaction_witness_set", 60) ++
             Corpus.tricky,
-        tree("dijkstra-tx-witnesses")(DijkstraWitnesses.decode(_).isRight)
+        tree("dijkstra-tx-witnesses")(DijkstraTxWits.decode(_).isRight)
       )
     )
 

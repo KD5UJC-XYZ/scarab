@@ -71,9 +71,6 @@ ALLOWED: Mapping[str, str] = {
     "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/dijkstra/V12.scala":
         "owns the version-12 text rule: definite or chunked, with each chunk checked by the "
         "item decoder (cardano-ledger 9df9f98c Decoding/Decoder.hs:1564-1569,1582-1598)",
-    "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/dijkstra/DijkstraWitnesses.scala":
-        "`DijkstraAuxData.metadatum` measures the joined text of metadata, including chunked "
-        "text (cardano-ledger 9df9f98c Metadata.hs:154-185), as the older metadata reader does",
 }
 
 SITE = re.compile(r"(?<!\w)Value\.Text\b")

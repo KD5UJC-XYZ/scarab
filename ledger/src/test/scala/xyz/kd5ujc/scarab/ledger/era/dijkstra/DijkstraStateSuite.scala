@@ -34,7 +34,6 @@ import xyz.kd5ujc.scarab.ledger.state.{
   Staking
 }
 import xyz.kd5ujc.scarab.ledger.ProtocolParams
-import xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraTx as FlatDijkstraTx
 
 import DijkstraCorpus.*
 
@@ -185,13 +184,18 @@ class DijkstraStateSuite extends FunSuite:
 
   test("the proposals' deposits are the parameters' deposit for each, at both levels") {
     // `conwayProposalsDeposits` of each level (`State/CertState.hs:53-54`, cardano-ledger
-    // 9df9f98c): on every case without certificates, the deposit times the proposals the flat
-    // decoder read at the top level and in each sub-transaction
+    // 9df9f98c): on every case without certificates, the deposit times the proposals its body and
+    // each sub-transaction's hold
     val compared = cases.flatMap { c =>
-      val flat = FlatDijkstraTx.inBlock(node(c.raw)).fold(e => fail(s"${c.name}: $e"), identity)
-      val bodies0 = flat.body +: flat.body.subTransactions.map(_.body)
-      Option.when(bodies0.forall(_.certificates.isEmpty)) {
-        val proposals = bodies0.map(_.proposals.size).sum
+      val subs = bodies.subTransactions(c.tx.body).toVector.map(_.body)
+      val certs = bodies.certs[TxLevel.Top](c.tx.body)(using BothLevels.Top).size +
+        subs.map(bodies.certs[TxLevel.Sub](_)(using BothLevels.Sub).size).sum
+      Option.when(certs == 0) {
+        val proposals =
+          bodies.proposalProcedures[TxLevel.Top](c.tx.body)(using BothLevels.Top).toVector.size +
+            subs
+              .map(bodies.proposalProcedures[TxLevel.Sub](_)(using BothLevels.Sub).toVector.size)
+              .sum
         assertEquals(
           certStates
             .certsTotalDepositsTxBody(c.pp, LedgerStateGen.conwayCert, c.tx.body)(using bodies)

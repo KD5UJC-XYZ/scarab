@@ -174,7 +174,7 @@ object DijkstraCodecs:
     * 9df9f98c.
     */
   val balanceInterval: Codec[DijkstraBalanceInterval] =
-    codec("AccountBalanceInterval")(DijkstraTx.balanceInterval) { (interval, out) =>
+    codec("AccountBalanceInterval")(DijkstraBodyReaders.balanceInterval) { (interval, out) =>
       interval match
         case DijkstraBalanceInterval.Exact(coin) => out.uint(coin)
         case DijkstraBalanceInterval.Lower(lower) =>
