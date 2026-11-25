@@ -13,7 +13,9 @@ import textwrap
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from conformance import outcomes, summarize  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from conformance import inputs, outcomes, summarize  # noqa: E402
+from conformance_site import ABSENT, benchmark, turbo_report, write_site  # noqa: E402
 
 
 def report(**changes):
@@ -165,6 +167,108 @@ class CborOutcomesTest(unittest.TestCase):
         self.assertIn('if: ${{ inputs.publish }}', workflow)
         self.assertIn('--event schedule --status success', workflow)
         self.assertIn('--previous "$RUNNER_TEMP/conformance-previous"', workflow)
+
+
+TURBO = "scarab-20261125-uplc-turbo.json.gz"
+CPU = {"model": "Some CPU @ 2.00GHz", "logical_cpus": 4}
+
+
+def turbo_run(directory, items, benches, requested=("uplc-turbo",), status="report"):
+    """A run directory holding a uplc-turbo report of `items`, and its inputs with a site whose corpus is
+    `benches`; the inputs directory."""
+    raw = gzip.compress(json.dumps(turbo_report(items)).encode())
+    Path(directory, TURBO).write_bytes(raw)
+    Path(directory, TURBO.removesuffix(".json.gz") + ".provenance.json").write_text(json.dumps({
+        "report": TURBO, "sha256": hashlib.sha256(raw).hexdigest(), "validation": {"valid": True},
+        "scarab": {"commit": "e" * 40, "dirty": False},
+        "environment": {"runner": "github-actions", "cpu": CPU, "limits": {"cpus": "3", "memory": "8g"}}}))
+    outcome = {"scenario": "uplc-turbo", "era": None, "status": status}
+    if status == "report":
+        outcome["report"] = TURBO
+    Path(directory, "summary.json").write_text(json.dumps({"requested": list(requested), "outcomes": [outcome]}))
+    site = Path(directory, "inputs", inputs.load_pins()["site"].directory)
+    write_site(site, {"00001-a": ABSENT}, [], benches)
+    return Path(directory, "inputs")
+
+
+def bench(i):
+    return f"{i:04d}" + "AB" * 30 + ".flat"
+
+
+class TurboScoreTest(unittest.TestCase):
+    """The uplc-turbo section of the job summary: the score by the site's rule (`score.py`) and the misses by why."""
+
+    def items(self):
+        """Of a corpus of 25: one met at 2.1 times its CPU budget, within 200 µs of it; one missed on CPU alone at
+        2.05 times; one on memory and CPU; 21 met; the last not reported."""
+        return [benchmark(bench(0), 100_000_000, 1000, 210.0, 900.0),
+                benchmark(bench(1), 1_000_000_000, 1000, 2_050.0, 900.0),
+                benchmark(bench(2), 1_000_000_000, 1_000_000, 2_100.0, 2_500_000.0)] \
+            + [benchmark(bench(i), 100_000_000, 1000, 100.0, 1000.0 + i) for i in range(3, 24)]
+
+    def test_the_score_and_the_misses_are_written_for_the_job_summary(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            given = turbo_run(tmp, self.items(), [bench(i) for i in range(25)])
+            self.assertEqual(summarize.main(["--out", tmp, "--inputs", str(given)]), 0)
+            scored = json.loads(Path(tmp, "turbo-score.json").read_text())
+            page = Path(tmp, "turbo-score.md").read_text()
+        self.assertEqual((scored["verdict"], scored["met"], scored["total"]), ("scored", 22, 25))
+        self.assertEqual(scored["missed"], {"memory": 1, "CPU alone": 1, "not reported": 1,
+                                            "nothing comparable": 0})
+        self.assertEqual(scored["missed_on_memory_also_on_cpu"], 1)
+        self.assertEqual(scored["within_memory_limit"], 23)
+        self.assertEqual((scored["cpu"], scored["runner"]), (CPU, "github-actions"))
+        self.assertEqual([(miss["bench"], miss["shortfall"], miss["cpu_ratio"], miss["memory_ratio"])
+                          for miss in scored["misses"]],
+                         [(bench(1), "CPU alone", 2.05, 0.9), (bench(2), "memory", 2.1, 2.5),
+                          (bench(24), "not reported", None, None)])
+        self.assertIn("**22 of 25 programs met**", page)
+        self.assertIn("| on memory | 1 (1 also on CPU) |", page)
+        self.assertIn("| on CPU alone | 1 |", page)
+        self.assertIn("Some CPU @ 2.00GHz, 4 logical CPUs; container limits 3 CPUs and 8g", page)
+        rows = [line for line in page.splitlines() if line.startswith("| `")]
+        self.assertEqual(rows, [f"| `{bench(2)}` | memory | 2.10 | 2.50 |",
+                                f"| `{bench(1)}` | CPU alone | 2.05 | 0.90 |",
+                                f"| `{bench(24)}` | not reported | – | – |"], "the worst first")
+        self.assertEqual((scored["bytes_per_memory_unit_median"], scored["bytes_per_memory_unit_p95"]), (1.012, 1.023),
+                         "24 ratios: 0.9 twice, 1.003 to 1.023, and 2.5; the 95th percentile is the 23rd")
+        self.assertIn("median 1.012, 95th percentile 1.023", page)
+
+    def test_the_page_lists_the_worst_misses_and_the_json_all(self):
+        items = [benchmark(bench(i), 100_000_000, None, 1000.0 + i) for i in range(summarize.TURBO_ROWS + 5)]
+        with tempfile.TemporaryDirectory() as tmp:
+            given = turbo_run(tmp, items, [bench(i) for i in range(len(items))])
+            self.assertEqual(summarize.main(["--out", tmp, "--inputs", str(given)]), 0)
+            scored = json.loads(Path(tmp, "turbo-score.json").read_text())
+            page = Path(tmp, "turbo-score.md").read_text()
+        self.assertEqual(len(scored["misses"]), summarize.TURBO_ROWS + 5)
+        rows = [line for line in page.splitlines() if line.startswith("| `")]
+        self.assertEqual(len(rows), summarize.TURBO_ROWS)
+        self.assertTrue(rows[0].startswith(f"| `{bench(summarize.TURBO_ROWS + 4)}`"), "the worst first")
+        self.assertIn("And 5 more, in `turbo-score.json`.", page)
+        self.assertIsNone(scored["bytes_per_memory_unit_median"], "no memory budget, no ratio")
+
+    def test_a_requested_turbo_report_that_is_missing_or_altered_is_incomplete(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            given = turbo_run(tmp, self.items(), [bench(i) for i in range(25)], status="failed")
+            self.assertEqual(summarize.main(["--out", tmp, "--inputs", str(given)]), 1)
+            self.assertIn("INCOMPLETE", Path(tmp, "turbo-score.md").read_text())
+        with tempfile.TemporaryDirectory() as tmp:
+            given = turbo_run(tmp, self.items(), [bench(i) for i in range(25)])
+            Path(tmp, TURBO).write_bytes(Path(tmp, TURBO).read_bytes() + b"x")
+            self.assertEqual(summarize.main(["--out", tmp, "--inputs", str(given)]), 1)
+            self.assertEqual(json.loads(Path(tmp, "turbo-score.json").read_text())["verdict"], "incomplete")
+        with tempfile.TemporaryDirectory() as tmp:
+            turbo_run(tmp, self.items(), [bench(i) for i in range(25)])
+            self.assertEqual(summarize.main(["--out", tmp, "--inputs", str(Path(tmp, "elsewhere"))]), 1,
+                             "without the site's corpus there is no score")
+
+    def test_a_run_without_turbo_writes_no_turbo_page(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            write(tmp, report())
+            self.assertEqual(summarize.main(["--out", tmp]), 0)
+            self.assertFalse(Path(tmp, "turbo-score.md").exists())
+            self.assertIsNone(summarize.turbo(Path(tmp), Path(tmp, "inputs")))
 
 
 if __name__ == "__main__":
