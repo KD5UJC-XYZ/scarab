@@ -49280,6 +49280,28 @@
    ],
    "note": "the first element decides the form of all: a list makes every element a credential, anything else every element a key hash; no guard twice (decodeOSet)",
    "digest": "f6a29c633d3db178"
+  },
+  "def ledger.rules.ShelleyBbody.exUnitsExceeded": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Bbody.hs",
+     "symbol": "validateExUnits",
+     "lines": [
+      147,
+      167
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "ShelleyBbodySuite",
+    "PreparedBlockSuite"
+   ],
+   "note": "the whole block's foldMap totExUnits compared point-wise with maxBlockExUnits, as validateExUnits; the units past the limit or none in place of a predicate failure, which the flat BBODY raises as BlockExUnitsTooBig; the era chosen by the PreConway evidence (the eras before Conway, which the flat BBODY keeps): from Alonzo, where the reference's BBODY instances call validateExUnits (Alonzo/Rules/Bbody.hs:212), and none in Shelley, Allegra and Mary, whose BBODY has no such check; the flat body's preparation reads it too (EraBlock.Body, #85)",
+   "digest": "452a612c2ef1a0a9"
   }
  },
  "glue": [
@@ -50671,12 +50693,6 @@
     "def ledger.era.rules.DijkstraPhase2.told",
     "def ledger.era.rules.DijkstraPhase2.txId",
     "object ledger.era.rules.DijkstraPhase2"
-   ]
-  },
-  {
-   "reason": "the flat rules' choice of BBODY's check of the block's execution units by era before Conway, the eras the flat BBODY keeps: Alonzo's validateExUnits (foldMap totExUnits, compared point-wise) from Alonzo on, none in Shelley's BBODY, which the reference makes by each era's BBODY instance; shared by the flat BBODY and the flat body's preparation, which never prepares a body past the units (EraBlock.Body, #85)",
-   "definitions": [
-    "def ledger.rules.ShelleyBbody.exUnitsExceeded"
    ]
   },
   {
