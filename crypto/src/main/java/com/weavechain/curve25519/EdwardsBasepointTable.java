@@ -34,9 +34,21 @@ public class EdwardsBasepointTable {
      * @return $[s]B$
      */
     public EdwardsPoint multiply(final Scalar s) {
-        int i;
+        return multiplyRadix16(s.toRadix16());
+    }
 
-        final byte[] e = s.toRadix16();
+    /**
+     * Constant-time fixed-base scalar multiplication by a scalar given as its 64 radix-16 digits
+     * ({@link Scalar#toRadix16(byte[], byte[])}), which the caller owns and may erase.
+     *
+     * @param e the digits, each in $[-8, 8]$.
+     * @return $[s]B$
+     */
+    public EdwardsPoint multiplyRadix16(final byte[] e) {
+        if (e.length != 64) {
+            throw new IllegalArgumentException("Digits must be 64 bytes");
+        }
+        int i;
 
         EdwardsPoint h = EdwardsPoint.IDENTITY;
         for (i = 1; i < 64; i += 2) {

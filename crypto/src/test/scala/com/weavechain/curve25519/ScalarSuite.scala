@@ -244,3 +244,61 @@ class ScalarSuite extends munit.ScalaCheckSuite:
     assertEquals(value(Scalar.ZERO), BigInt(0), "ZERO")
     assertEquals(value(Scalar.ONE), BigInt(1), "ONE")
   }
+
+  // the forms the VRF prover's secret path calls on storage it erases (secret.Draft03Key): each
+  // writes every byte of the caller's array, from a fill that is none of the results, and leaves its
+  // inputs as they were
+  property(
+    "reduceWide, multiplyAndAdd and toRadix16 into an array write what the Scalar forms return"
+  ) {
+    forAllNoShrink(wide, scalar255, scalar255, scalar255) { (w, a, b, c) =>
+      val input = le(w, 64)
+      val reduced = Array.fill[Byte](32)(0x5a)
+      Scalar.reduceWide(input, reduced)
+      assertEquals(
+        reduced.toVector,
+        Scalar.fromBytesModOrderWide(input).toByteArray.toVector,
+        "reduceWide"
+      )
+      assertEquals(input.toVector, le(w, 64).toVector, "reduceWide left its input")
+      val (ab, bb, cb) = (le(a, 32), le(b, 32), le(c, 32))
+      val product = Array.fill[Byte](32)(0x5a)
+      Scalar.multiplyAndAdd(ab, bb, cb, product)
+      assertEquals(
+        product.toVector,
+        unreduced(a).multiplyAndAdd(unreduced(b), unreduced(c)).toByteArray.toVector,
+        "multiplyAndAdd"
+      )
+      assertEquals(
+        Vector(ab, bb, cb).map(_.toVector),
+        Vector(a, b, c).map(le(_, 32).toVector),
+        "operands"
+      )
+      val digits = Array.fill[Byte](64)(0x5a)
+      Scalar.toRadix16(ab, digits)
+      assertEquals(digits.toVector, unreduced(a).toRadix16().toVector, "toRadix16")
+    }
+  }
+
+  test("reduceWide, multiplyAndAdd and toRadix16 refuse arrays of another size") {
+    intercept[IllegalArgumentException](Scalar.reduceWide(new Array[Byte](63), new Array[Byte](32)))
+    intercept[IllegalArgumentException](Scalar.reduceWide(new Array[Byte](64), new Array[Byte](31)))
+    intercept[IllegalArgumentException](
+      Scalar.multiplyAndAdd(
+        new Array[Byte](32),
+        new Array[Byte](31),
+        new Array[Byte](32),
+        new Array[Byte](32)
+      )
+    )
+    intercept[IllegalArgumentException](
+      Scalar.multiplyAndAdd(
+        new Array[Byte](32),
+        new Array[Byte](32),
+        new Array[Byte](32),
+        new Array[Byte](33)
+      )
+    )
+    intercept[IllegalArgumentException](Scalar.toRadix16(new Array[Byte](32), new Array[Byte](63)))
+    intercept[IllegalArgumentException](Scalar.toRadix16(new Array[Byte](31), new Array[Byte](64)))
+  }
