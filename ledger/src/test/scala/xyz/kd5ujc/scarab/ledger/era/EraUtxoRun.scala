@@ -71,7 +71,8 @@ object EraUtxoRun:
     * A submitted transaction's refusal is MEMPOOL's, which runs LEDGER, UTXOW and UTXO each as a
     * sub-rule (`ruleApplyTxValidation`, `Shelley/API/Mempool.hs:245-254`; `Conway/Rules/Mempool.hs:
     * 138`, cardano-ledger f649f975), so UTXO is three levels down, an odd depth, which reports them
-    * in their order as one level down does: `asSubRule` runs it one level down.
+    * in their order as one level down does: `asSubRule` runs it one level down. The rule reads
+    * `globals`.
     */
   def run(
       env: UtxoEnv[Conway],
@@ -79,7 +80,8 @@ object EraUtxoRun:
       context: UtxoContext[Conway],
       state: UTxOState[Conway],
       evaluator: ScriptEvaluator[Id],
-      asSubRule: Boolean = false
+      asSubRule: Boolean = false,
+      globals: xyz.kd5ujc.scarab.ledger.rules.Globals = TestLedger.globals
   ): Either[Defect, Either[NonEmptyChain[Rec], S]] =
     given ScriptEvaluator[F] = lifted(evaluator)
     given Phase2Deferral[F, Conway] = Phase2Deferral.now
@@ -88,7 +90,7 @@ object EraUtxoRun:
       .judge(
         if asSubRule then summon[Judge[F, Rec]].nest(transition) else transition,
         RuleT.Policy.Accumulate
-      )(TestLedger.globals, (state, Chain.empty))
+      )(globals, (state, Chain.empty))
       .map(_.map(_._1))
 
   /** Conway's UTXOW (`BabbageUtxow.babbageUtxowTransition`) run in one judgment, as [[run]] runs
@@ -120,7 +122,8 @@ object EraUtxoRun:
 
     /** The transition from `state`, every failure accumulated, `depth` levels below the root: the
       * reference reports a submitted transaction's UTXOW failures two levels below MEMPOOL's
-      * (LEDGER's sub-rule), the parity at which they are reversed ([[run]]).
+      * (LEDGER's sub-rule), the parity at which they are reversed ([[run]]). The rule reads
+      * `globals`.
       */
     def run(
         env: UtxoEnv[Conway],
@@ -130,7 +133,8 @@ object EraUtxoRun:
         evaluator: ScriptEvaluator[Id],
         verdicts: xyz.kd5ujc.scarab.ledger.Verdicts,
         decoder: xyz.kd5ujc.scarab.plutus.ScriptDecoder[Id],
-        depth: Int = 0
+        depth: Int = 0,
+        globals: xyz.kd5ujc.scarab.ledger.rules.Globals = TestLedger.globals
     ): Either[WDefect, Either[NonEmptyChain[WRec], WS]] =
       given ScriptEvaluator[W] = request => Monad[W].unit.map(_ => evaluator.evaluate(request))
       given Phase2Deferral[W, Conway] = Phase2Deferral.now
@@ -141,7 +145,7 @@ object EraUtxoRun:
         .judge(
           (0 until depth).foldLeft(transition)((fa, _) => judge.nest(fa)),
           RuleT.Policy.Accumulate
-        )(TestLedger.globals, (state, Chain.empty))
+        )(globals, (state, Chain.empty))
         .map(_.map(_._1))
 
     /** An era failure in the comparison's form, a missing redeemer's purpose by `purpose`; none

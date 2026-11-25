@@ -12,11 +12,10 @@ import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Rational, Value}
 import xyz.kd5ujc.scarab.ledger.*
 import xyz.kd5ujc.scarab.ledger.mempack.TxOutMemPack
-import xyz.kd5ujc.scarab.ledger.rules.{Counted, Globals, LedgersEnv}
+import xyz.kd5ujc.scarab.ledger.era.{EraTx, EraTxBody, TxLevel}
+import xyz.kd5ujc.scarab.ledger.rules.Globals
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.models.runtime.{Codec, Node}
-import xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor
-import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.storage.haskell.state.Params
 
 /** Independent native LEDGERS observations of original signed, dependent transactions. Refusals
@@ -59,25 +58,6 @@ class UpstreamMultiLedgerConformanceSuite extends FunSuite:
   private def decode[A](n: Node, codec: Codec[A]): A =
     codec.decode(n).fold(e => fail(e.render), identity)
 
-  private def transaction(n: Node): Tx =
-    val fields = array(n)
-    assertEquals(fields.size, 4)
-    val valid = fields(2).value match
-      case Value.Bool(v) => v
-      case other         => fail(s"expected validity flag, got $other")
-    val auxiliary = fields(3).value match
-      case Value.Null => None
-      case _          => Some(fields(3).original)
-    val tx = Tx
-      .fromBlock(
-        Block.Transaction(fields(0).original, fields(1).original, auxiliary, valid),
-        Era.Conway
-      )
-      .fold(e => fail(e.message), identity)
-    assertEquals(tx.body.raw, fields(0).original, "retain signed body bytes")
-    assertEquals(tx.witnesses.raw, Some(fields(1).original), "retain original signed witnesses")
-    tx
-
   private def assertLedger(actual: LedgerState[Conway], expected: LedgerState[Conway]): Unit =
     def parts(state: LedgerState[Conway]) = state.utxo.utxo.utxo.toMap.toVector
       .traverse { (input, output) => TxOutMemPack.parts(output).map(input -> _) }
@@ -101,89 +81,6 @@ class UpstreamMultiLedgerConformanceSuite extends FunSuite:
 
   private val cases =
     Vector("ordered-three", "dependent-two", "reversed-dependency", "double-spend")
-  cases.foreach { id =>
-    test(s"native multi-transaction LEDGERS state / complete ordered refusal: $id") {
-      val before = decode(item(id, "state"), UpstreamNativeStates.nativeLedgerState)
-      val env = array(item(id, "environment"))
-      assertEquals(env.size, 4)
-      val slot = decode(env(0), summon[Codec[SlotNo]]).toBigInt
-      val epoch = decode(env(1), summon[Codec[EpochNo]]).toBigInt
-      assertEquals(decode(env(2), Params.conwayCodec), before.utxo.gov.curPParams)
-      val account = decode(env(3), summon[Codec[ChainAccountState]])
-      val signals = array(item(id, "signal"))
-      val txs = signals.map(transaction)
-      val originalIndices = id match
-        case "ordered-three"       => Vector(1, 2, 3)
-        case "dependent-two"       => Vector(2, 3)
-        case "reversed-dependency" => Vector(3, 2)
-        case "double-spend"        => Vector(2, 2)
-      signals.zip(originalIndices).foreach { (signal, ordinal) =>
-        assertEquals(
-          signal.original,
-          node(originals.resolve(s"LEDGER-$ordinal/signal.cbor")).original
-        )
-      }
-      assert(txs.size > 1)
-      if id != "double-spend" then assertEquals(txs.map(_.body.id).distinct.size, txs.size)
-      val actual = UpstreamLedgerJudgments.run(UpstreamLedgerJudgments.ledgers)(
-        globals,
-        LedgersEnv(
-          TxEnv(
-            slot,
-            epoch,
-            0,
-            geometry.firstSlot(epoch + 1),
-            geometry.stabilityWindow.toBigInt,
-            clock = Some(
-              xyz.kd5ujc.scarab.ledger.PosixClock.Total(s =>
-                BigInt(geometry.systemStart.toEpochMilli) + geometry.slotOffsetMillis(s)
-              )
-            ),
-            evaluator = xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default,
-            decoder = xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder
-          ),
-          account.treasury
-        ),
-        Counted(before, PlutusStats.zero),
-        txs
-      )
-      id match
-        case "ordered-three" | "dependent-two" =>
-          assertEquals(
-            Files.readString(base.resolve(s"cases/$id/result.txt")),
-            "implementation-accepted\nformal-not-invoked\n"
-          )
-          assert(
-            txs.sliding(2).exists { pair =>
-              pair(1).body.inputs.exists(_.id == pair(0).body.id)
-            },
-            "a later transaction actually spends an earlier transaction's output"
-          )
-          val expected =
-            decode(item(id, "implementation-state"), UpstreamNativeStates.nativeLedgerState)
-          assertLedger(actual.fold(e => fail(e.message), _.state), expected)
-        case _ =>
-          assertEquals(
-            Files.readString(base.resolve(s"cases/$id/result.txt")),
-            "implementation-rejected\nformal-not-invoked\n"
-          )
-          val failure = actual.swap.toOption.getOrElse(fail("native-rejected batch accepted"))
-          val predicates = failure match
-            case LedgerFailure.Rejected(_, causes) => causes.toChain.toVector
-            case other                             => fail(s"expected a ledger refusal, got $other")
-          val wire = Cbor
-            .decode(
-              PredicateFailureCbor
-                .applyTxError(predicates)
-                .fold(error => fail(error.message), identity)
-            )
-            .fold(e => fail(e.message), identity)
-          val encoded = array(array(wire).head)(1).original
-          assertEquals(encoded.hex, item(id, "implementation-failure").original.hex)
-
-    }
-  }
-
   test("all independent native batch artifacts and their original inputs are pinned") {
     val manifest = parse(Files.readString(base.resolve("manifest.json")))
       .fold(e => fail(e.message), identity)
@@ -224,7 +121,7 @@ class UpstreamMultiLedgerConformanceSuite extends FunSuite:
     }
   }
 
-  // the era-typed LEDGERS on the same inputs, each transaction read by Conway's decoder from its
+  // the era-typed LEDGERS on each batch, each transaction read by Conway's decoder from its
   // original parts: an accepted batch leaves the reference's post-state, a refused one's failures,
   // in their order, encode to the reference's bytes
   cases.foreach { id =>
@@ -232,9 +129,59 @@ class UpstreamMultiLedgerConformanceSuite extends FunSuite:
       val before = decode(item(id, "state"), UpstreamNativeStates.nativeLedgerState)
       val env = array(item(id, "environment"))
       assertEquals(env.size, 4)
-      val txs = array(item(id, "signal")).map(
+      assertEquals(decode(env(2), Params.conwayCodec), before.utxo.gov.curPParams)
+      val signals = array(item(id, "signal"))
+      val originalIndices = id match
+        case "ordered-three"       => Vector(1, 2, 3)
+        case "dependent-two"       => Vector(2, 3)
+        case "reversed-dependency" => Vector(3, 2)
+        case "double-spend"        => Vector(2, 2)
+      signals.zip(originalIndices).foreach { (signal, ordinal) =>
+        assertEquals(
+          signal.original,
+          node(originals.resolve(s"LEDGER-$ordinal/signal.cbor")).original
+        )
+      }
+      // the original parts as signed, retained whole by the decoder
+      signals.foreach { signal =>
+        val fields = array(signal)
+        assertEquals(fields.size, 4)
+        val valid = fields(2).value match
+          case Value.Bool(v) => v
+          case other         => fail(s"expected validity flag, got $other")
+        val auxiliary = fields(3).value match
+          case Value.Null => None
+          case _          => Some(fields(3).original)
+        val flat = Tx
+          .fromBlock(
+            Block.Transaction(fields(0).original, fields(1).original, auxiliary, valid),
+            xyz.kd5ujc.scarab.protocol.Era.Conway
+          )
+          .fold(e => fail(e.message), identity)
+        assertEquals(flat.body.raw, fields(0).original, "retain signed body bytes")
+        assertEquals(
+          flat.witnesses.raw,
+          Some(fields(1).original),
+          "retain original signed witnesses"
+        )
+      }
+      val txs = signals.map(
         UpstreamEraLedger.transaction(_).fold(e => fail(s"$id transaction: $e"), identity)
       )
+      assert(txs.size > 1)
+      val t = EraTx.conway
+      val b = EraTxBody.conway
+      val bodies = txs.map(tx => t.body[TxLevel.Top](tx)(using t.bodyOf.top))
+      val ids = bodies.map(body => b.id[TxLevel.Top](body)(using b.top))
+      // each body read from its signed bytes
+      assertEquals(
+        ids,
+        signals.map(signal =>
+          xyz.kd5ujc.scarab.crypto.Blake2b.hash256.hash(array(signal)(0).original)
+        ),
+        "retain signed body bytes"
+      )
+      if id != "double-spend" then assertEquals(ids.distinct.size, txs.size)
       val outcome = UpstreamEraLedger
         .ledgers(
           globals,
@@ -252,6 +199,12 @@ class UpstreamMultiLedgerConformanceSuite extends FunSuite:
             Files.readString(base.resolve(s"cases/$id/result.txt")),
             "implementation-accepted\nformal-not-invoked\n"
           )
+          assert(
+            bodies.zip(ids).sliding(2).exists { pair =>
+              b.inputs[TxLevel.Top](pair(1)._1)(using b.top).exists(_.id == pair(0)._2)
+            },
+            "a later transaction actually spends an earlier transaction's output"
+          )
           assertLedger(
             state,
             decode(item(id, "implementation-state"), UpstreamNativeStates.nativeLedgerState)
@@ -261,19 +214,9 @@ class UpstreamMultiLedgerConformanceSuite extends FunSuite:
             Files.readString(base.resolve(s"cases/$id/result.txt")),
             "implementation-rejected\nformal-not-invoked\n"
           )
-          val predicates = UpstreamEraLedger
-            .stored(txs, before, failures)
-            .fold(e => fail(s"$id flat form: $e"), identity)
-          val flat = PredicateFailureCbor
-            .applyTxError(predicates)
-            .fold(error => fail(error.message), identity)
-          // the era failures written by their own encoder, without the flat form
-          assertEquals(
-            xyz.kd5ujc.scarab.node.ntc.ConwayFailureCborCheck.direct(failures).hex,
-            flat.hex,
-            s"$id: direct"
-          )
-          val wire = Cbor.decode(flat).fold(e => fail(e.message), identity)
+          // the era failures written by their own encoder
+          val wire =
+            Cbor.decode(UpstreamEraLedger.refusal(failures)).fold(e => fail(e.message), identity)
           assertEquals(
             array(array(wire).head)(1).original.hex,
             item(id, "implementation-failure").original.hex

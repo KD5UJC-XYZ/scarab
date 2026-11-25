@@ -1,54 +1,56 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import cats.data.NonEmptyVector
+import cats.data.{NonEmptyChain, NonEmptyVector}
 import cats.syntax.all.*
-import xyz.kd5ujc.scarab.codec.Value
-import xyz.kd5ujc.scarab.ledger.{
-  Block,
-  EpochGeometry,
-  Horizon,
-  PosixClock,
-  PredicateFailure,
-  TxEnv,
-  Verdicts
-}
+import munit.Location
+import xyz.kd5ujc.scarab.codec.{Bytes, Value}
+import xyz.kd5ujc.scarab.ledger.{Block, EpochGeometry, Horizon, PosixClock, TxEnv, Verdicts}
 import xyz.kd5ujc.scarab.ledger.era.{
   AlonzoStAnnTx,
   EraLedgerRun,
-  EraTx,
-  EraTxBody,
   EraTxError,
-  EraUTxO,
+  EraUtxoRun,
   PParams,
   PParamsError,
-  TxLevel,
   UTxO
 }
 import xyz.kd5ujc.scarab.ledger.era.conway.{ConwayPParams, ConwayTx, ConwayUTxO}
 import xyz.kd5ujc.scarab.ledger.era.rules.{
-  ConwayGovPredFailure,
+  ConwayLedgerPredFailure,
   ConwayUtxo,
   ConwayUtxowPredFailure,
   LedgerEnv,
   LedgerEvent,
   LedgerPredFailure,
-  LedgerUnprojected,
   LedgersEnv,
   LedgersEvent,
   LedgersPredFailure,
   ShelleyLedgersEvent,
   ShelleyLedgersPredFailure,
-  UtxoContext
+  UtxoContext,
+  UtxoEnv,
+  UtxoPredFailure,
+  UtxowPredFailure
 }
 import xyz.kd5ujc.scarab.ledger.rules.Globals
-import xyz.kd5ujc.scarab.ledger.state.{ChainAccountState, Conway, EpochNo, LedgerState, TxIx}
+import xyz.kd5ujc.scarab.ledger.state.{
+  ChainAccountState,
+  Conway,
+  ConwayCertState,
+  EpochNo,
+  LedgerState,
+  TxIx,
+  UTxOState
+}
 import xyz.kd5ujc.scarab.models.runtime.Node
+import xyz.kd5ujc.scarab.node.ntc.ConwayFailureCborCheck
 import xyz.kd5ujc.scarab.plutus.ScarabEvaluator
 import xyz.kd5ujc.scarab.protocol.StateLayout
 
-/** Conway's LEDGER and LEDGERS on the era types (`EraLedgerRun`) on the inputs of the upstream
-  * native judgments (`UpstreamNativeLedgerConformanceSuite`, `UpstreamMultiLedgerConformanceSuite`,
+/** Conway's LEDGER and LEDGERS on the era types (`EraLedgerRun`), and its UTXOW and UTXO
+  * (`EraUtxoRun`), on the inputs of the upstream native judgments
+  * (`UpstreamNativeLedgerConformanceSuite`, `UpstreamMultiLedgerConformanceSuite`,
   * `UpstreamFreshLedgerConformanceSuite`), each as the root of its judgment, as the reference's
   * hook runs it: the transaction read by Conway's decoder from its original parts, the parameters
   * read into the era's, and, as the fixtures record no era history, an epoch information of one era
@@ -112,8 +114,8 @@ private[node] object UpstreamEraLedger:
   private def params(flat: xyz.kd5ujc.scarab.ledger.ProtocolParams) =
     ConwayPParams.fromStored(flat).map(PParams[Conway](_)).leftMap(Unread.Parameters(_))
 
-  private def utxoOf(state: LedgerState[Conway]): Either[Unread, UTxO[Conway]] =
-    ConwayUTxO.fromStored(state.utxo.utxo.utxo.toMap).leftMap(Unread.Outputs(_))
+  private def utxoOf(state: UTxOState[Conway]): Either[Unread, UTxO[Conway]] =
+    ConwayUTxO.fromStored(state.utxo.utxo.toMap).leftMap(Unread.Outputs(_))
 
   /** LEDGER on `tx` from `before` at the root: its environment the fixture's five fields. */
   def ledger(
@@ -130,7 +132,7 @@ private[node] object UpstreamEraLedger:
       pp <- params(flatPp)
       ix <- TxIx.txIxFromIntegral(index).toRight(Unread.Index(index))
       ctx <- context(globals)
-      utxo <- utxoOf(before)
+      utxo <- utxoOf(before.utxo)
     yield EraLedgerRun.ledger(
       globals,
       LedgerEnv[Conway](slot, epoch, ix, pp, account),
@@ -167,34 +169,81 @@ private[node] object UpstreamEraLedger:
       clock(globals).posix
     )
 
-  /** LEDGER's failures in the node's flat form (`EraLedgerRun.flat`), which the node encodes as the
-    * reference does: a missing redeemer's purpose and a proposal's action read from whichever of
-    * `txs` gives them (LEDGERS's failure does not say which transaction it is of), the outputs
-    * `before` holds.
+  /** UTXO on `tx` from `before` at the root: its environment the fixture's three fields. */
+  def utxo(
+      globals: Globals,
+      slot: BigInt,
+      flatPp: xyz.kd5ujc.scarab.ledger.ProtocolParams,
+      cert: ConwayCertState,
+      before: UTxOState[Conway],
+      tx: ConwayTx
+  ): Either[
+    Unread,
+    Either[EraUtxoRun.Defect, Either[NonEmptyChain[UtxoPredFailure[Conway]], UTxOState[Conway]]]
+  ] =
+    for
+      pp <- params(flatPp)
+      ctx <- context(globals)
+      utxo <- utxoOf(before)
+    yield EraUtxoRun
+      .run(
+        UtxoEnv[Conway](slot, pp, cert),
+        AlonzoStAnnTx.mkAlonzoStAnnTx[Conway](clock(globals).posix, pp, utxo, Map.empty, tx),
+        ctx,
+        before,
+        ScarabEvaluator.default,
+        globals = globals
+      )
+      .map(_.map(_._1))
+
+  /** UTXOW on `tx` from `before` at the root: its environment the fixture's three fields. */
+  def utxow(
+      globals: Globals,
+      slot: BigInt,
+      flatPp: xyz.kd5ujc.scarab.ledger.ProtocolParams,
+      cert: ConwayCertState,
+      before: UTxOState[Conway],
+      tx: ConwayTx
+  ): Either[
+    Unread,
+    Either[
+      EraUtxoRun.Utxow.WDefect,
+      Either[NonEmptyChain[UtxowPredFailure[Conway]], UTxOState[Conway]]
+    ]
+  ] =
+    for
+      pp <- params(flatPp)
+      ctx <- context(globals)
+      utxo <- utxoOf(before)
+    yield EraUtxoRun.Utxow
+      .run(
+        UtxoEnv[Conway](slot, pp, cert),
+        AlonzoStAnnTx.mkAlonzoStAnnTx[Conway](clock(globals).posix, pp, utxo, Map.empty, tx),
+        ctx,
+        before,
+        ScarabEvaluator.default,
+        Verdicts.Direct,
+        ScarabEvaluator.defaultDecoder,
+        globals = globals
+      )
+      .map(_.map(_._1))
+
+  /** UTXOW's failures as LEDGER's, which LEDGER embeds as they are (`ConwayUtxowFailure`,
+    * `Conway/Rules/Ledger.hs:118,139`, cardano-ledger f649f975).
     */
-  def stored(
-      txs: Vector[ConwayTx],
-      before: LedgerState[Conway],
-      failures: Vector[LedgerPredFailure[Conway]]
-  ): Either[Either[Unread, LedgerUnprojected], Vector[PredicateFailure]] =
-    val t = EraTx.conway
-    val b = EraTxBody.conway
-    val u = EraUTxO.conway
-    utxoOf(before).leftMap(Left(_)).flatMap { utxo =>
-      val bodies = txs.map(tx => t.body[TxLevel.Top](tx)(using t.bodyOf.top))
-      val purposes = bodies.map(body =>
-        ConwayUtxowPredFailure.storedPurposes(
-          u.getScriptsNeeded[TxLevel.Top](utxo, body)(using u.txOf.bodyOf.top),
-          utxo
-        )
-      )
-      val read = ConwayGovPredFailure.readOf(
-        bodies.flatMap(body => b.proposalProcedures[TxLevel.Top](body)(using b.top).toVector)
-      )
-      failures.traverse(f =>
-        EraLedgerRun.flat(f, p => purposes.collectFirstSome(_(p)), read).leftMap(Right(_))
-      )
-    }
+  def ofUtxow(failures: Vector[UtxowPredFailure[Conway]]): Vector[LedgerPredFailure[Conway]] =
+    failures.map(ConwayLedgerPredFailure.ConwayUtxowFailure(_))
+
+  /** UTXO's failures as LEDGER's, through UTXOW's embedding and LEDGER's. */
+  def ofUtxo(failures: Vector[UtxoPredFailure[Conway]]): Vector[LedgerPredFailure[Conway]] =
+    ofUtxow(failures.map(ConwayUtxowPredFailure.UtxoFailure(_)))
+
+  /** LEDGER's failures as the node writes a refusal of them, the era's own encoder
+    * (`ConwayFailureCbor`): the hard-fork combinator's `ApplyTxErr`, which holds each failure as
+    * the reference encodes it.
+    */
+  def refusal(failures: Vector[LedgerPredFailure[Conway]])(using Location): Bytes =
+    ConwayFailureCborCheck.direct(failures)
 
   /** LEDGERS's failures as LEDGER's, which the reference encodes as they are. */
   def unwrapped(failures: Vector[LedgersPredFailure[Conway]]): Vector[LedgerPredFailure[Conway]] =
