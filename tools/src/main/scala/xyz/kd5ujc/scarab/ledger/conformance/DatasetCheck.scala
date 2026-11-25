@@ -77,6 +77,10 @@ object DatasetCheck:
               Category.Decode,
               s"refused by an exception: ${Refusal.Defect(failure).message}"
             )
+          // a value the era decoder's own bounds rule out is the node's defect, not a detected
+          // invalid sample (CNF-2), as an exception is
+          case (Kind.Invalid, Left(era @ Refusal.Era(_))) =>
+            Outcome.Failed(Category.Decode, s"refused by a defect: ${era.message}")
           case (Kind.Invalid, Left(_)) => Outcome.Met
           case (Kind.Invalid, Right(_)) =>
             Outcome.Failed(Category.Decode, "succeeded when expected to fail")
