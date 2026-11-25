@@ -144,3 +144,11 @@ class PreparedBlockSuite extends FunSuite:
     })
     check(failure, PreparedBlockFixture.collectionFailure)
   }
+
+  test("the flat body takes no Conway or Dijkstra state: they have no PreConway evidence (#85)") {
+    // a Conway block's body is the era run's (`ConwayBlockRun`); the flat body cannot be given one
+    assertEquals(compileErrors("EraBlock.program[state.Babbage](???)(???, ???, ???, ???, ???)"), "")
+    assert(compileErrors("EraBlock.program[state.Conway](???)(???, ???, ???, ???, ???)").nonEmpty)
+    assert(compileErrors("EraBlock.program[state.Dijkstra](???)(???, ???, ???, ???, ???)").nonEmpty)
+    assert(compileErrors("EraBlock.body[state.Conway](???)(???, ???, ???, ???, ???)").nonEmpty)
+  }
