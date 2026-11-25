@@ -13,7 +13,7 @@ class PeerShareGovernorSuite extends FunSuite:
     val targets =
       Targets.validated(0, known, count, count, 0, 0, 0).toOption.getOrElse(fail("targets"))
     GovernorState
-      .initial[Int](1L, LocalRoots.empty, targets, Sensitivity.initial(false))
+      .initial[Int](1L, LocalRoots.empty, targets, Sensitivity.initial(BootstrapPeers.DontUse))
       .copy(
         targets = targets,
         peers = SortedMap.from(
@@ -71,7 +71,14 @@ class PeerShareGovernorSuite extends FunSuite:
     val variants = List(
       st.copy(targets = st.targets.revised(known = 3).toOption.getOrElse(fail("target"))),
       st.copy(sharing = st.sharing.copy(enabled = false)),
-      st.copy(sensitivity = Sensitivity(LedgerStateJudgement.TooOld, true, true, None))
+      st.copy(sensitivity =
+        Sensitivity(
+          LedgerStateJudgement.TooOld,
+          BootstrapPeers.Use(BootstrapSources(BigInt(0))),
+          true,
+          None
+        )
+      )
     )
     variants.foreach(s =>
       assertEquals(

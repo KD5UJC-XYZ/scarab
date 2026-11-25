@@ -23,7 +23,7 @@ class NativeChurnPolicySuite extends FunSuite:
     proposal(values).validated.fold(e => fail(e.toString), identity)
 
   private val emptyCounters = GovernorState
-    .initial[Int](0L, LocalRoots.empty, Targets.zero, Sensitivity.initial(false))
+    .initial[Int](0L, LocalRoots.empty, Targets.zero, Sensitivity.initial(BootstrapPeers.DontUse))
     .view(Duration.Zero)
     .counters
 

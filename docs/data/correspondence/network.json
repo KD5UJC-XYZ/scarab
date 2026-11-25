@@ -2414,6 +2414,24 @@
    "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1439#issuecomment-7161652843",
    "note": "the registration of a fresh controller for the client, which the warm connection holds for the life of the client (NodeToNode.warm)",
    "digest": "55ccc820c14653f1"
+  },
+  "enum network.selection.BootstrapPeers": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "cardano-diffusion/api/lib/Cardano/Network/PeerSelection/Bootstrap.hs",
+     "symbol": "UseBootstrapPeers",
+     "lines": [
+      20,
+      22
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "DontUseBootstrapPeers and UseBootstrapPeers; Use holds the node's identity of the configured relay list (BootstrapSources, one per list, in its order) where the reference holds the list, so the two values compare equal exactly when the reference's do (monitorBootstrapPeersFlag, cardano-diffusion Governor/Monitor.hs 429; issue 810)",
+   "digest": "4fefaa688dfd5a49"
   }
  },
  "glue": [
@@ -2791,6 +2809,15 @@
    "reason": "the companion of PeerSharingController, holding its result type and constructor",
    "definitions": [
     "object network.PeerSharingController"
+   ]
+  },
+  {
+   "reason": "the node's identity of a configured list of bootstrap relays, which BootstrapPeers.Use holds in place of the reference's [RelayAccessPoint], and the flag the decisions read from the value (issue 810)",
+   "definitions": [
+    "type network.selection.BootstrapSources",
+    "object network.selection.BootstrapSources",
+    "def network.selection.BootstrapSources.apply",
+    "def network.selection.Sensitivity#useBootstrapPeers"
    ]
   }
  ]

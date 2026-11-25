@@ -7,7 +7,8 @@
   flight, and an answer that arrives after a reload is applied to the state as it is then, as the
   reference's governor does; a reload no longer asks for roots again at once.
 - A roots reload keeps the public and bootstrap roots the governor knows, but for the new local roots,
-  and reads the configured ones at the next request. A reload that changes the bootstrap flag in Praos
-  mode does what the reference's `monitorBootstrapPeersFlag` does: it forgets the bootstrap peers that are
-  neither established nor being connected and sets the judgement to `YoungEnough`, so the clean state
-  starts again when the ledger is too old.
+  and reads the configured ones at the next request, once the ledger has no peers to give. A reload that
+  configures other bootstrap peers (turns them on or off, or names other relays) in Praos mode does what
+  the reference's `monitorBootstrapPeersFlag` does: it forgets the bootstrap peers that are neither
+  established nor being connected and sets the judgement to `YoungEnough`, so the clean state starts
+  again when the ledger is too old, and the new local roots wait for the judgement.

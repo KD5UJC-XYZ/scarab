@@ -35,7 +35,12 @@ class ConnectionMonitorSuite extends FailsOnUncaught:
     given Assertions[IO] = assertions
     TestControl.executeEmbed(Supervisor[IO](await = false).use { supervisor =>
       val initial = GovernorState
-        .initial[Int](1L, LocalRoots.empty, Targets.zero, Sensitivity.initial(false))
+        .initial[Int](
+          1L,
+          LocalRoots.empty,
+          Targets.zero,
+          Sensitivity.initial(BootstrapPeers.DontUse)
+        )
         .copy(peers =
           SortedMap(
             1 -> PeerRecord.cold(Origin.Other).copy(status = initialStatus, everConnected = true)
@@ -322,7 +327,7 @@ class ConnectionMonitorSuite extends FailsOnUncaught:
       // a known target, so that the reload's local root is not clamped away
       val targets = Targets.validated(0, 10, 1, 0, 0, 0, 0).toOption.get
       val initial = GovernorState
-        .initial[Int](1L, LocalRoots.empty, targets, Sensitivity.initial(false))
+        .initial[Int](1L, LocalRoots.empty, targets, Sensitivity.initial(BootstrapPeers.DontUse))
         .copy(
           targets = targets,
           peers =
@@ -410,7 +415,7 @@ class ConnectionMonitorSuite extends FailsOnUncaught:
           events.offer(
             Event.RootsConfigured(
               LocalRoots.fromGroups(List(RootGroupSpec(1, 1, List(1 -> config)))),
-              false,
+              BootstrapPeers.DontUse,
               Some(BigInt(1))
             )
           ) *> decided.get *> late.complete(()) *> done.get *> exempted.get

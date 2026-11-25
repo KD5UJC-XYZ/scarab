@@ -31,7 +31,9 @@ import scala.collection.immutable.{SortedMap, SortedSet}
   *   The same three as the public roots' (`bigLedgerPeerBackoffs`, `bigLedgerPeerRetryTime`,
   *   `inProgressBigLedgerPeersReq`), for the request for big ledger peers.
   * @param rootsGeneration
-  *   Reload generation for root-provider jobs; old completions cannot repopulate replaced roots.
+  *   The generation of the roots installed last: a connect, a churn target or a snapshot check of
+  *   an older one is fenced; a request for roots is not, and completes into the state as it is
+  *   then, as the reference's does (issue 810).
   */
 final case class GovernorState[A](
     targets: Targets,

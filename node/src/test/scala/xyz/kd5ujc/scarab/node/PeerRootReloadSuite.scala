@@ -342,11 +342,12 @@ class PeerRootReloadSuite extends FailsOnUncaught:
   }
 
   /** Issue 810: the reference keeps its public roots across a reconfiguration; the configured
-    * public roots are read again only by the next request (`jobReqPublicRootPeers`,
-    * ouroboros-network c45735a5,
-    * `ouroboros-network/lib/Ouroboros/Network/PeerSelection/Governor/RootPeers.hs` 160), and only
-    * the new local roots are taken out of them (`localRoots`,
-    * `cardano-diffusion/lib/Cardano/Network/PeerSelection/Governor/Monitor.hs` 276-282).
+    * public roots are read again only by the next request, once the ledger has no peers to give
+    * (`requestPublicRootPeersImpl`, ouroboros-network c45735a5,
+    * `ouroboros-network/lib/Ouroboros/Network/PeerSelection/PeerSelectionActions.hs` 155-184, and
+    * `RootPeersDNS/PublicRootPeers.hs` 82), and only the new local roots are taken out of them
+    * (`localRoots`, `cardano-diffusion/lib/Cardano/Network/PeerSelection/Governor/Monitor.hs`
+    * 276-282).
     */
   test(
     "a topology reload that names other public roots keeps the public roots the governor knows"
@@ -382,9 +383,9 @@ class PeerRootReloadSuite extends FailsOnUncaught:
     * reference's provider writes its groups, whose members are a map, only when they changed
     * (`monitorDomain`, ouroboros-network c45735a5,
     * `ouroboros-network/lib/Ouroboros/Network/PeerSelection/RootPeersDNS/LocalRootPeers.hs`
-    * 236-245), and its governor acts only on local roots that differ (`localRoots`,
-    * `cardano-diffusion/lib/Cardano/Network/PeerSelection/Governor/Monitor.hs` 255): no new roots
-    * generation. The third lookup starts only once the second answer is dealt with.
+    * 236-246, the groups' type 261-267), and its governor acts only on local roots that differ
+    * (`localRoots`, `cardano-diffusion/lib/Cardano/Network/PeerSelection/Governor/Monitor.hs` 255):
+    * no new roots generation. The third lookup starts only once the second answer is dealt with.
     */
   test("a local DNS answer in another order publishes no roots generation") {
     def answer(addresses: com.comcast.ip4s.IpAddress*) =

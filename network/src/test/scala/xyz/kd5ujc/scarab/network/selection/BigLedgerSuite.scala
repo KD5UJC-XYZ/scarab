@@ -30,7 +30,15 @@ class BigLedgerSuite extends FunSuite:
 
   private def start(ts: Targets, bootstrap: Boolean = false): S =
     GovernorState
-      .initial[Int](3L, LocalRoots.empty[Int], ts, Sensitivity.initial(bootstrap))
+      .initial[Int](
+        3L,
+        LocalRoots.empty[Int],
+        ts,
+        Sensitivity.initial(
+          if bootstrap then BootstrapPeers.Use(BootstrapSources(BigInt(0)))
+          else BootstrapPeers.DontUse
+        )
+      )
       .copy(targets = ts)
 
   private def big(status: Status = Status.Cold(None)): PeerRecord =
@@ -119,7 +127,12 @@ class BigLedgerSuite extends FunSuite:
       )
     )
     val base = GovernorState
-      .initial[Int](3L, roots, targets(known = 10, knownBig = 6), Sensitivity.initial(false))
+      .initial[Int](
+        3L,
+        roots,
+        targets(known = 10, knownBig = 6),
+        Sensitivity.initial(BootstrapPeers.DontUse)
+      )
     val st = withPeers(
       base.copy(
         targets = targets(known = 10, knownBig = 6),
@@ -388,7 +401,7 @@ class BigLedgerSuite extends FunSuite:
       activeBig = 6
     )
     val sensitivity = Sensitivity
-      .initial(useBootstrapPeers = false, consensusMode = ConsensusMode.GenesisMode)
+      .initial(bootstrapPeers = BootstrapPeers.DontUse, consensusMode = ConsensusMode.GenesisMode)
       .copy(judgement = LedgerStateJudgement.TooOld)
     val st = start(ts).copy(sensitivity = sensitivity, reported = LedgerStateJudgement.TooOld)
     withPeers(
@@ -414,7 +427,7 @@ class BigLedgerSuite extends FunSuite:
     val reloaded = PeerSelection
       .apply(
         st,
-        Event.RootsConfigured(LocalRoots.empty[Int], false, Some(BigInt(1))),
+        Event.RootsConfigured(LocalRoots.empty[Int], BootstrapPeers.DontUse, Some(BigInt(1))),
         t0
       )
       .state
@@ -449,7 +462,7 @@ class BigLedgerSuite extends FunSuite:
       )
     )
     val reloaded = PeerSelection
-      .apply(st, Event.RootsConfigured(roots, false, Some(BigInt(1))), t0)
+      .apply(st, Event.RootsConfigured(roots, BootstrapPeers.DontUse, Some(BigInt(1))), t0)
       .state
     assertEquals(reloaded.peers(9).origin, Origin.Local)
     assertEquals(reloaded.view(t0).big.known.toSet, (1 to 10).toSet - 9)

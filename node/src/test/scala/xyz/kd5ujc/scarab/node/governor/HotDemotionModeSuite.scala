@@ -54,7 +54,7 @@ class HotDemotionModeSuite extends FailsOnUncaught:
   ): IO[R] =
     TestControl.executeEmbed(Supervisor[IO](await = false).use { supervisor =>
       val initial = GovernorState
-        .initial[Int](1L, LocalRoots.empty, requested, Sensitivity.initial(false))
+        .initial[Int](1L, LocalRoots.empty, requested, Sensitivity.initial(BootstrapPeers.DontUse))
         .copy(
           targets = requested,
           peers = SortedMap.from(
@@ -192,7 +192,7 @@ class HotDemotionModeSuite extends FailsOnUncaught:
     ): Event[Int] => IO[Unit] = {
       case Event.TargetsRequested(`lower`, _) =>
         cell.set(late) *> events.offer(
-          Event.RootsConfigured(LocalRoots.empty[Int], false, Some(BigInt(1)))
+          Event.RootsConfigured(LocalRoots.empty[Int], BootstrapPeers.DontUse, Some(BigInt(1)))
         )
       case _ => IO.unit
     }

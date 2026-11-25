@@ -275,7 +275,12 @@ object LogSamples:
       )
     )
     val state = GovernorState
-      .initial[SocketAddress[Host]](1L, roots, Targets.relay, Sensitivity.initial(true))
+      .initial[SocketAddress[Host]](
+        1L,
+        roots,
+        Targets.relay,
+        Sensitivity.initial(BootstrapPeers.Use(BootstrapSources(BigInt(0))))
+      )
       .copy(
         peers = scala.collection.immutable.SortedMap(
           peerA -> PeerRecord.cold(Origin.Local).copy(status = Status.Hot),

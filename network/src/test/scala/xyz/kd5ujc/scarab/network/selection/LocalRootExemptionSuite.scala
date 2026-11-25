@@ -44,7 +44,7 @@ class LocalRootExemptionSuite extends FailsOnUncaught:
 
   private def initial(peers: (Int, Origin)*): S =
     val st = GovernorState
-      .initial[Int](3L, LocalRoots.empty[Int], targets, Sensitivity.initial(false))
+      .initial[Int](3L, LocalRoots.empty[Int], targets, Sensitivity.initial(BootstrapPeers.DontUse))
       .copy(targets = targets)
     st.copy(peers = st.peers ++ peers.map((p, origin) => p -> PeerRecord.cold(origin)))
 
@@ -188,7 +188,7 @@ class LocalRootExemptionSuite extends FailsOnUncaught:
     )
 
   private def reload(members: Int*): Event[Int] =
-    Event.RootsConfigured(roots(members*), false, Some(BigInt(1)))
+    Event.RootsConfigured(roots(members*), BootstrapPeers.DontUse, Some(BigInt(1)))
 
   /** Two big ledger peers dialled and counted, then made the local roots of a reload, whose big
     * ledger replacements are dialled: the places held at the end, the peers refused, and the

@@ -73,7 +73,7 @@ class JobHandlersSuite extends FailsOnUncaught:
 
   private def state(targets: Targets, peers: (Int, PeerRecord)*): GovernorState[Int] =
     GovernorState
-      .initial[Int](1L, LocalRoots.empty, targets, Sensitivity.initial(false))
+      .initial[Int](1L, LocalRoots.empty, targets, Sensitivity.initial(BootstrapPeers.DontUse))
       .copy(targets = targets, peers = SortedMap.from(peers))
 
   private val warm =

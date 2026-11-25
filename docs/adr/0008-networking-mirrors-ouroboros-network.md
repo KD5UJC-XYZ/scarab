@@ -391,5 +391,7 @@ D10's "What Scarab does" names `PeerNetwork.retainedPublicRoots`, which no longe
 publishes the configured IP local roots and the kept DNS answers before it starts new lookups (`PeerNetwork`'s
 `reloadRoots`), as D10 decided. The public and bootstrap roots the governor knows are no longer recomputed on a
 reload: they are kept, as the reference's governor keeps its `publicRootPeers` across a reconfiguration and reads
-the configured public roots only in its next request (`cardano-diffusion/lib/Cardano/Network/PeerSelection/Governor/Monitor.hs`
-276-282 and `ouroboros-network/lib/Ouroboros/Network/PeerSelection/Governor/RootPeers.hs` 160 at `c45735a5`).
+the configured public roots only in its next request, once the ledger has no peers to give
+(`cardano-diffusion/lib/Cardano/Network/PeerSelection/Governor/Monitor.hs` 276-282,
+`ouroboros-network/lib/Ouroboros/Network/PeerSelection/PeerSelectionActions.hs` 155-184 and
+`ouroboros-network/lib/Ouroboros/Network/PeerSelection/RootPeersDNS/PublicRootPeers.hs` 82 at `c45735a5`).

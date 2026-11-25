@@ -472,6 +472,21 @@ object PeerNetwork:
         Ref.of[F, Map[BigInt, (Runtime[F], Deferred[F, Unit])]](Map.empty)
       )
       nextRootGeneration <- Resource.eval(Ref.of[F, BigInt](BigInt(0)))
+      bootstrapIds <- Resource.eval(
+        Ref.of[F, Map[(Option[Vector[Addr]], Vector[DnsName]), BootstrapSources]](Map.empty)
+      )
+      // the governor's value of the configured bootstrap peers: one identity per configuration,
+      // the relays in their order, so that it compares them whole as the reference compares its
+      // `UseBootstrapPeers` (`monitorBootstrapPeersFlag`, issue 810)
+      bootstrapPeersOf = (configured: Roots) =>
+        if !configured.bootstrapConfigured then F.pure(BootstrapPeers.DontUse)
+        else
+          bootstrapIds.modify { ids =>
+            val key = (configured.bootstrap, configured.bootstrapSrv)
+            val id = ids.getOrElse(key, BootstrapSources(BigInt(ids.size)))
+            (ids.updated(key, id), BootstrapPeers.Use(id))
+          }
+      initialBootstrap <- Resource.eval(bootstrapPeersOf(settings.roots))
       rootRefreshWake <- Resource.eval(Queue.bounded[F, Unit](1))
       _ <- sharing.traverse_(runtime =>
         Resource
@@ -499,7 +514,7 @@ object PeerNetwork:
               roots,
               Regime.initial(settings.consensusMode, initialKind, initialBase, localHot),
               Sensitivity.initial(
-                bootstrapOn,
+                initialBootstrap,
                 settings.consensusMode,
                 settings.syncTargets,
                 base,
@@ -607,14 +622,14 @@ object PeerNetwork:
       val rootProvider: RootProvider[F, Addr] = NodeRootProvider.dynamic(runtime, dns, dnsRng)
 
       def publishRootUpdate(staged: Runtime[F], local: List[RootGroupSpec[Addr]]): F[Unit] =
-        Deferred[F, Unit].flatMap { installed =>
+        (bootstrapPeersOf(staged.roots), Deferred[F, Unit]).flatMapN { (bootstrap, installed) =>
           F.uncancelable { _ =>
             for
               _ <- rootInstallAcks.update(_ + (staged.generation -> (staged, installed)))
               _ <- events.offer(
                 Event.RootsConfigured(
                   LocalRoots.fromGroups(local),
-                  staged.roots.bootstrapConfigured,
+                  bootstrap,
                   Some(staged.generation)
                 )
               )
@@ -839,7 +854,8 @@ object PeerNetwork:
                 )
                 // The groups are compared as local roots, whose members are sets: the reference's
                 // provider writes its groups, whose members are a map, only when they changed
-                // (`monitorDomain`, LocalRootPeers.hs 236-245 of ouroboros-network c45735a5), and
+                // (`monitorDomain`, LocalRootPeers.hs 236-246, the groups' type 261-267, of
+                // ouroboros-network c45735a5), and
                 // its governor acts only on local roots that differ (`localRoots`,
                 // `cardano-diffusion/lib/Cardano/Network/PeerSelection/Governor/Monitor.hs` 255),
                 // so an answer of the same addresses in another order is no new generation.
