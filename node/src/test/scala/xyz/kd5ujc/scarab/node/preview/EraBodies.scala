@@ -13,9 +13,9 @@ import xyz.kd5ujc.scarab.ledger.{Block, PlutusStats, Prepared, StorageError}
 import xyz.kd5ujc.scarab.ledger.era.rules.ConwayBlockRun
 import xyz.kd5ujc.scarab.ledger.rules.{EraBlock, EraNes, Globals}
 import xyz.kd5ujc.scarab.ledger.state.{Conway, LedgerState, NewEpochState, ShelleyBasedEra}
-import xyz.kd5ujc.scarab.node.{MirrorRules, NodeRules, NodeSetup, ParallelPlutus}
+import xyz.kd5ujc.scarab.node.{AlwaysPrepared, MirrorRules, NodeRules, NodeSetup, ParallelPlutus}
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
-import xyz.kd5ujc.scarab.plutus.PlutusBackend
+import xyz.kd5ujc.scarab.plutus.{EvalRequest, EvalResult, PlutusBackend, ScriptEvaluator}
 import xyz.kd5ujc.scarab.protocol.{Era, StateLayout}
 import xyz.kd5ujc.scarab.storage.UtxoStore
 
@@ -23,13 +23,14 @@ import xyz.kd5ujc.scarab.storage.UtxoStore
   * it to (`MirrorRules`): the flat rules' body (`EraBlock.Body`) and the era run's
   * (`ConwayBlockRun.Body`), each serial and through the node's bounded workers (ADR 0018), in an
   * order rotated by the block and the round. Each is timed alone; the block's transactions and the
-  * era block are decoded, and the inputs read from the store, outside the timings. The era run's
-  * result through the workers is checked against its serial result, the flat rules' through the
-  * workers against theirs, and the era run's against the flat rules' (the same ledger state and
-  * counters), on the first round, as reading the whole state costs; the last is reported, and the
-  * caller asserts it over the window (`ConwayBodiesReplaySuite`, #85). The era run is the one the
-  * node builds ([[xyz.kd5ujc.scarab.node.MirrorRules.conwayBody]]), from the block and the read set
-  * the node reads ([[NodeRules.prepare]]).
+  * era block are decoded, the inputs read from the store and each way's body built, outside the
+  * timings. The era run's results through the workers, as the node runs it and prepared below the
+  * floor too, are checked against its serial result, the flat rules' through the workers against
+  * theirs, and the era run's against the flat rules' (the same ledger state and counters), on the
+  * first round, as reading the whole state costs; the last is reported, and the caller asserts it
+  * over the window (`ConwayBodiesReplaySuite`, #85). The era run is the one the node builds
+  * ([[xyz.kd5ujc.scarab.node.MirrorRules.conwayBody]]), from the block and the read set the node
+  * reads ([[NodeRules.prepare]]).
   */
 object EraBodies:
   /** The bound of the node's workers the two parallel ways run at, and the rounds of each block. */
@@ -38,6 +39,10 @@ object EraBodies:
   /** The four ways, as the timings name them. */
   enum Way:
     case FlatSerial, FlatParallel, EraSerial, EraParallel
+
+    // prepared wherever the body may be, below the node's threshold too ([[AlwaysPrepared]]):
+    // where preparing starts to pay (#85)
+    case FlatPrepared, EraPrepared
 
   /** What a body came to, as a reader of the timings sees it: its counters, or its refusal. */
   private def described(result: Either[EraBlock.Outcome, ConwayBlockRun.Result]): String =
@@ -136,14 +141,63 @@ object EraBodies:
                 None
               )
               .fold(e => fail(s"era run: $e"), identity)
+          // every way's body is built before its timer starts, and each way's timer covers only
+          // the scheduler's run of it, serial or prepared alike (#85)
           def run(way: Way): IO[(Either[EraBlock.Outcome, ConwayBlockRun.Result], Long)] =
             way match
-              case Way.FlatSerial   => timed(IO.blocking(flat.serial)).map(_.leftMap(Left(_)))
-              case Way.FlatParallel => timed(parallel(flat)).map(_.leftMap(Left(_)))
-              case Way.EraSerial    => timed(IO.blocking(era.serial)).map(_.leftMap(Right(_)))
-              case Way.EraParallel  => timed(parallel(era)).map(_.leftMap(Right(_)))
+              case Way.FlatSerial =>
+                IO(flat).flatMap(b => timed(IO.blocking(b.serial))).map(_.leftMap(Left(_)))
+              case Way.FlatParallel =>
+                IO(flat).flatMap(b => timed(parallel(b))).map(_.leftMap(Left(_)))
+              case Way.EraSerial =>
+                IO(era).flatMap(b => timed(IO.blocking(b.serial))).map(_.leftMap(Right(_)))
+              case Way.EraParallel =>
+                IO(era).flatMap(b => timed(parallel(b))).map(_.leftMap(Right(_)))
+              case Way.FlatPrepared =>
+                IO(AlwaysPrepared(flat)).flatMap(b => timed(parallel(b))).map(_.leftMap(Left(_)))
+              case Way.EraPrepared =>
+                IO(AlwaysPrepared(era)).flatMap(b => timed(parallel(b))).map(_.leftMap(Right(_)))
           val ways = Way.values.toVector
           val redeeming = txs.count(_.exists(_.witnesses.redeemers.nonEmpty))
+          // what the era run's scripts ask and spend, from one serial run recording each request,
+          // and its dependency batches, outside the timings (#85)
+          def measures: Json =
+            val seen = java.util.concurrent.atomic.AtomicReference(
+              Vector.empty[(EvalRequest, EvalResult)]
+            )
+            val recording: ScriptEvaluator[cats.Id] = request =>
+              val result = backend.evaluator.evaluate(request)
+              val _ = seen.updateAndGet(_ :+ (request -> result))
+              result
+            val body = MirrorRules
+              .conwayBody(
+                globals,
+                ticked,
+                header.blockNo,
+                eraBlock,
+                clock,
+                backend.copy(evaluator = recording),
+                config.verdicts,
+                None
+              )
+              .fold(e => fail(s"era run: $e"), identity)
+            val _ = body.serial
+            val asked = seen.get
+            val spent = asked.map(_._2 match
+              case EvalResult.Success(u, _)    => u
+              case EvalResult.Failure(_, u, _) => u)
+            // what the redeemers declare, as the scheduler sums it, every redeemer's whether or not
+            // the serial run reaches its script; what the scripts spend, from those it reaches
+            Json.obj(
+              "scripts" -> asked.size.asJson,
+              "preparable" -> body.preparable.asJson,
+              "worthwhile" -> body.worthwhile.asJson,
+              "batchWidths" -> AlwaysPrepared(body).prepare.batches.map(_.size).asJson,
+              "declaredSteps" -> body.declared.steps.asJson,
+              "declaredMem" -> body.declared.mem.asJson,
+              "spentSteps" -> spent.map(_.steps).sum.asJson,
+              "scriptBytes" -> asked.map(_._1.script.size).sum.asJson
+            )
           (0 until rounds).toVector.traverse { round =>
             val rotation = (index + round) % ways.size
             (ways.drop(rotation) ++ ways.take(rotation))
@@ -154,13 +208,20 @@ object EraBodies:
                 val sameAsFlat = Option.when(round == 0) {
                   val flatSerial = by(Way.FlatSerial)._1
                   val eraSerial = by(Way.EraSerial)._1
+                  // through the workers as the node runs them, and prepared below the floor too
                   assertEquals(by(Way.FlatParallel)._1, flatSerial, s"flat: slot ${header.slot}")
-                  val agrees = (eraSerial, by(Way.EraParallel)._1) match
+                  assertEquals(
+                    by(Way.FlatPrepared)._1,
+                    flatSerial,
+                    s"flat, prepared: slot ${header.slot}"
+                  )
+                  def agrees(way: Way) = (eraSerial, by(way)._1) match
                     case (Right(Right(Right(s))), Right(Right(Right(p)))) =>
                       cats.Eq[LedgerState[Conway]].eqv(s.state.ls, p.state.ls) &&
                       s.state.blocksMade == p.state.blocksMade && s.plutus == p.plutus
                     case (s, p) => s == p
-                  assert(agrees, s"era: slot ${header.slot}")
+                  assert(agrees(Way.EraParallel), s"era: slot ${header.slot}")
+                  assert(agrees(Way.EraPrepared), s"era, prepared: slot ${header.slot}")
                   (flatSerial, eraSerial) match
                     case (Left(EraBlock.Outcome.Applied(after, plutus)), Right(Right(Right(e)))) =>
                       after match
@@ -179,6 +240,7 @@ object EraBodies:
                   "round" -> round.asJson,
                   "transactions" -> txs.size.asJson,
                   "redeeming" -> redeeming.asJson,
+                  "measures" -> Option.when(round == 0 && redeeming > 0)(measures).asJson,
                   "eraAgreesWithFlat" -> sameAsFlat.asJson,
                   "differs" -> Option
                     .when(sameAsFlat.contains(false))(

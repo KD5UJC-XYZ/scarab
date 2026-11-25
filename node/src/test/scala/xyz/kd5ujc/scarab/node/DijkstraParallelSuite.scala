@@ -5,9 +5,9 @@ import cats.Id
 import cats.effect.IO
 import cats.syntax.all.*
 import java.util.concurrent.atomic.AtomicReference
-import xyz.kd5ujc.scarab.ledger.{LedgerFailure, ScriptLocation}
+import xyz.kd5ujc.scarab.ledger.{LedgerFailure, Phase2, ScriptLocation}
 import xyz.kd5ujc.scarab.ledger.era.dijkstra.{DijkstraPlanned, DijkstraRecordedBlocks}
-import xyz.kd5ujc.scarab.ledger.era.rules.{DijkstraPhase2, DijkstraRuleDefect}
+import xyz.kd5ujc.scarab.ledger.era.rules.{DijkstraBlockRun, DijkstraPhase2, DijkstraRuleDefect}
 import xyz.kd5ujc.scarab.network.FailsOnUncaught
 import xyz.kd5ujc.scarab.plutus.{
   BackendFailure,
@@ -22,14 +22,16 @@ import xyz.kd5ujc.scarab.plutus.{
 /** Dijkstra's era run on a block through the node's bounded workers (`ParallelPlutus`, ADR 0018),
   * against its serial run (`DijkstraBlockRun.program`, #85): on every recorded block of the public
   * Leios testnet's script transactions (`DijkstraRecordedBlocks`), at one, two, four and eight
-  * workers, the same state, proposals and counters, or the same refusal, and the same observations
-  * told the node's phase-2 observer (`--plutus-cases`); and with the evaluator giving no verdict at
-  * each script of every such block of two or more scripted batches, in turn, the same naming, a
-  * sub-transaction's script's among them, and the same observations, the script with no verdict the
-  * last. The era run's prepared plan on the reference's BBODY cases, the sub-transaction's and
-  * Alonzo's `:49` among them, and on the crafted blocks whose scripts read what another batch
-  * changes, is `DijkstraBbodyImpSuite` 's (ledger), on as many threads; the devnet chain through
-  * the node's rules is `MirrorDijkstraSuite` 's.
+  * workers, as the node runs them (serially where they declare less work than it prepares above,
+  * #85) and prepared wherever they may be ([[AlwaysPrepared]]), the same state, proposals and
+  * counters, or the same refusal, and the same observations told the node's phase-2 observer
+  * (`--plutus-cases`); and with the evaluator giving no verdict at each script of every such block
+  * of two or more scripted batches, in turn, the same naming, a sub-transaction's script's among
+  * them, and the same observations, the script with no verdict the last. The era run's prepared
+  * plan on the reference's BBODY cases, the sub-transaction's and Alonzo's `:49` among them, and on
+  * the crafted blocks whose scripts read what another batch changes, is `DijkstraBbodyImpSuite` 's
+  * (ledger), on as many threads; the devnet chain through the node's rules is `MirrorDijkstraSuite`
+  * 's.
   */
 class DijkstraParallelSuite extends FailsOnUncaught:
   /** The node's bounded workers, one, two, four and eight, each with its count. */
@@ -52,12 +54,25 @@ class DijkstraParallelSuite extends FailsOnUncaught:
           val shared = DijkstraPlanned.Shared(ScarabEvaluator.default)
           val told = DijkstraPlanned.Observations()
           val serial = DijkstraRecordedBlocks.program(sample, shared, Some(told.observer)).serial
-          services.traverse_ { (n, service) =>
+          // as the node runs it, serially below the declared work it prepares above, and prepared
+          // wherever it may be
+          val ways =
+            Vector[(String, DijkstraBlockRun.Body => Phase2.Program[DijkstraBlockRun.Result])](
+              "as the node runs it" -> identity,
+              "prepared" -> (AlwaysPrepared(_))
+            )
+          (services, ways).tupled.traverse_ { case ((n, service), (way, of)) =>
             val again = DijkstraPlanned.Observations()
-            service(DijkstraRecordedBlocks.program(sample, shared.replaying, Some(again.observer)))
+            service(
+              of(DijkstraRecordedBlocks.program(sample, shared.replaying, Some(again.observer)))
+            )
               .map { result =>
-                assertEquals(result, serial, s"block ${sample.block}, $n workers")
-                assertEquals(again.all, told.all, s"block ${sample.block}, $n workers: observed")
+                assertEquals(result, serial, s"block ${sample.block}, $n workers, $way")
+                assertEquals(
+                  again.all,
+                  told.all,
+                  s"block ${sample.block}, $n workers, $way: observed"
+                )
               }
           }
         }
@@ -83,10 +98,13 @@ class DijkstraParallelSuite extends FailsOnUncaught:
                 unobserved,
                 s"block ${sample.block}, serially"
               )
+              // prepared wherever it may be, below the declared work the node prepares above too
               services.traverse_ { (n, service) =>
                 service(
-                  DijkstraRecordedBlocks
-                    .program(sample, shared.replaying, Some(cases.observeDijkstra))
+                  AlwaysPrepared(
+                    DijkstraRecordedBlocks
+                      .program(sample, shared.replaying, Some(cases.observeDijkstra))
+                  )
                 ).map(result =>
                   assertEquals(result, unobserved, s"block ${sample.block}, $n workers")
                 )
@@ -114,7 +132,7 @@ class DijkstraParallelSuite extends FailsOnUncaught:
     val admitted = DijkstraRecordedBlocks.samples.flatMap { sample =>
       val body = DijkstraRecordedBlocks.program(sample, ScarabEvaluator.default)
       body.serial match
-        case Right(Right(applied)) if body.worthwhile   => Vector(sample -> applied)
+        case Right(Right(applied)) if body.preparable   => Vector(sample -> applied)
         case Right(Right(_)) | Right(Left(_)) | Left(_) => Vector.empty
     }
     services.flatMap { services =>
@@ -122,9 +140,10 @@ class DijkstraParallelSuite extends FailsOnUncaught:
         .traverse_ { (sample, applied) =>
           // a fresh evaluator, no result given again: the workers' evaluations overlap for real
           services.traverse_ { (n, service) =>
-            service(DijkstraRecordedBlocks.program(sample, ScarabEvaluator.default)).map(result =>
-              assertEquals(result, Right(Right(applied)), s"block ${sample.block}, $n workers")
-            )
+            service(AlwaysPrepared(DijkstraRecordedBlocks.program(sample, ScarabEvaluator.default)))
+              .map(result =>
+                assertEquals(result, Right(Right(applied)), s"block ${sample.block}, $n workers")
+              )
           }
         }
         .map(_ => assertEquals(admitted.size, 17))
@@ -137,7 +156,7 @@ class DijkstraParallelSuite extends FailsOnUncaught:
     val reason: EvalFailure.Unsupported =
       EvalFailure.Unsupported(BackendFailure.BudgetOutOfRange(ExUnits(0, 0)))
     val prepared = DijkstraRecordedBlocks.samples.filter(sample =>
-      DijkstraRecordedBlocks.program(sample, ScarabEvaluator.default).worthwhile
+      DijkstraRecordedBlocks.program(sample, ScarabEvaluator.default).preparable
     )
     services.flatMap { services =>
       prepared
@@ -159,7 +178,9 @@ class DijkstraParallelSuite extends FailsOnUncaught:
               .traverse_ { (n, service) =>
                 val again = DijkstraPlanned.Observations()
                 service(
-                  DijkstraRecordedBlocks.program(sample, shared.replaying, Some(again.observer))
+                  AlwaysPrepared(
+                    DijkstraRecordedBlocks.program(sample, shared.replaying, Some(again.observer))
+                  )
                 ).map { result =>
                   assertEquals(result, serial, s"block ${sample.block}, $n workers")
                   assertEquals(again.all, told.all, s"block ${sample.block}, $n workers: observed")

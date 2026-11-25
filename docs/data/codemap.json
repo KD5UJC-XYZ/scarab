@@ -1580,6 +1580,7 @@
         "HaskellScalaCompareMain",
         "Memory94Main",
         "PeerMetricsBench",
+        "PlutusThresholdBench",
         "PreviewRuleBench",
         "SelectionReviewBenchmark"
       ],

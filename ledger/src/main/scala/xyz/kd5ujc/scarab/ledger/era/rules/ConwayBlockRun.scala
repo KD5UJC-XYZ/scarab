@@ -23,6 +23,7 @@ import xyz.kd5ujc.scarab.ledger.{
 }
 import xyz.kd5ujc.scarab.ledger.era.{
   AlonzoEraPParams,
+  AlonzoTx,
   Block,
   CollectError,
   EraBlockBody,
@@ -51,6 +52,7 @@ import xyz.kd5ujc.scarab.plutus.{
   EvalFailure,
   EvalRequest,
   EvalResult,
+  ExUnits,
   ScriptDecoder,
   ScriptEvaluator
 }
@@ -748,15 +750,16 @@ object ConwayBlockRun:
         case RuleT.Outcome.Passed(after, _)  => Right(Right(written(after) -> after.told))
     // BBODY's own check of the block's units (`validateExUnits`, after LEDGERS): a body past
     // them is never prepared
-    val withinUnits =
-      given EraTx.conway.bodyOf.Level[TxLevel.Top] = EraTx.conway.bodyOf.top
-      AlonzoBbody
-        .validateExUnits[Conway](
-          txs,
-          AlonzoEraPParams.ppMaxBlockExUnitsL[Conway].get(env.bbodyPp).units
-        )
-        .isValid
-    Body(txs, evaluator, observing, withinUnits, run)
+    given EraTx.conway.bodyOf.Level[TxLevel.Top] = EraTx.conway.bodyOf.top
+    val withinUnits = AlonzoBbody
+      .validateExUnits[Conway](
+        txs,
+        AlonzoEraPParams.ppMaxBlockExUnitsL[Conway].get(env.bbodyPp).units
+      )
+      .isValid
+    // the units the redeemers declare, which decide whether preparing the body pays (#85)
+    val declared = txs.foldLeft(ExUnits.zero)(_ + AlonzoTx.totExUnits[Conway, TxLevel.Top](_))
+    Body(txs, evaluator, observing, withinUnits, declared, run)
 
   /** Conway's run on a block as a body program (`Phase2.Program`): [[serial]] is the run with every
     * script evaluated where UTXOS collects it; [[prepare]] runs the same rules once, in order, with
@@ -768,17 +771,22 @@ object ConwayBlockRun:
     * run's. A prepared body evaluates its recorded scripts before the first verdict lands, some of
     * which the serial run may never reach (`whenFailureFree` after a verdict that is not its
     * flag's), so what it can evaluate ahead stays within the units an admissible block declares.
+    *
+    * Nor is a body whose redeemers declare fewer CPU steps, summed ([[declared]]), than preparing
+    * needs to pay (`Phase2.pays`, #85): it is not [[worthwhile]] and runs serially, though it may
+    * be prepared ([[preparable]]), to the same result.
     */
   final class Body private[ConwayBlockRun] (
       txs: Vector[Tx[TxLevel.Top, Conway]],
       evaluator: ScriptEvaluator[Id],
       observing: Option[Observing],
       withinUnits: Boolean,
+      val declared: ExUnits,
       run: Mode => Ran
   ) extends Phase2.Program[Result]:
     def serial: Result = settled(txs, run(Mode.Evaluating(Nil)), Map.empty)
     def hasScripts: Boolean = txs.exists(ConwayPhase2.redeeming)
-    def worthwhile: Boolean = withinUnits && txs.count(ConwayPhase2.redeeming) > 1
+    def preparable: Boolean = withinUnits && txs.count(ConwayPhase2.redeeming) > 1
     def prepare: Plan =
       val replay: List[(EvalRequest, EvalResult)] => Result =
         answers => settled(txs, run(Mode.Evaluating(answers)), Map.empty)

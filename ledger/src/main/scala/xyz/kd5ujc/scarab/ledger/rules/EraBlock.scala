@@ -15,7 +15,7 @@ import xyz.kd5ujc.scarab.ledger.{
   Verdicts
 }
 import xyz.kd5ujc.scarab.ledger.state.*
-import xyz.kd5ujc.scarab.plutus.{ScriptDecoder, ScriptEvaluator}
+import xyz.kd5ujc.scarab.plutus.{ExUnits, ScriptDecoder, ScriptEvaluator}
 import xyz.kd5ujc.scarab.protocol.Era
 
 /** A block of any Shelley-based era applied to the ledger state, on the era-indexed rules: the
@@ -74,6 +74,10 @@ object EraBlock:
     * evaluates its recorded scripts before the first verdict lands, some of which the serial run
     * never reaches (LEDGERS stops at the first refused transaction), so what it can evaluate ahead
     * stays within the units an admissible block declares.
+    *
+    * Nor is a body whose redeemers declare fewer CPU steps, summed ([[declared]]), than preparing
+    * needs to pay (`Phase2.pays`, #85): it is not [[worthwhile]] and runs serially, though it may
+    * be prepared ([[preparable]]), to the same result.
     */
   final class Body private[EraBlock] (
       ctx: Context,
@@ -87,7 +91,11 @@ object EraBlock:
     private val within = txs.sequence.forall(withinUnits(ticked, _))
     def serial: Outcome = body(ctx)(ticked, header, block, txs, before)
     def hasScripts: Boolean = txs.exists(_.exists(_.witnesses.redeemers.nonEmpty))
-    def worthwhile: Boolean = within && txs.count(_.exists(_.witnesses.redeemers.nonEmpty)) > 1
+    def preparable: Boolean = within && txs.count(_.exists(_.witnesses.redeemers.nonEmpty)) > 1
+    def declared: ExUnits =
+      txs.foldLeft(ExUnits.zero)((total, tx) =>
+        tx.fold(_ => total, total + _.witnesses.totalExUnits)
+      )
     def prepare: Plan =
       val prepared =
         if within then

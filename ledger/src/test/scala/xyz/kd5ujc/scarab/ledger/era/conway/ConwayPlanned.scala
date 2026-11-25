@@ -162,13 +162,15 @@ object ConwayPlanned extends Assertions:
   /** The node's worker counts checked. */
   val workers: Vector[Int] = Vector(1, 2, 4, 8)
 
-  /** `body` run as the node's scheduler runs a body program with `n` workers: serially for one
-    * worker or a block where preparing cannot pay ([[ConwayBlockRun.Body.worthwhile]]), else
-    * prepared, each dependency batch's jobs run on `n` threads at once, the batches in order, and
-    * the plan resolved with every value.
+  /** `body` run as the node's scheduler runs a body program with `n` workers, prepared wherever it
+    * may be: serially for one worker or a block that may not be prepared
+    * ([[ConwayBlockRun.Body.preparable]]), else prepared, below the declared work the node prepares
+    * above ([[ConwayBlockRun.Body.worthwhile]], #85) too, so that the prepared path is checked on
+    * every block of cheap scripts; each dependency batch's jobs run on `n` threads at once, the
+    * batches in order, and the plan resolved with every value.
     */
   val threaded: Runner[Id] = (body, n) =>
-    if n == 1 || !body.worthwhile then Either.catchNonFatal(body.serial).leftMap(Phase2.Defect(_))
+    if n == 1 || !body.preparable then Either.catchNonFatal(body.serial).leftMap(Phase2.Defect(_))
     else
       val plan = body.prepare
       val pool = Executors.newFixedThreadPool(n)

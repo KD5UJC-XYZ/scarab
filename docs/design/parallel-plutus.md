@@ -18,8 +18,9 @@ flowchart LR
 
 `MirrorRules.applyBlock` and `EraBlock.body` remain pure serial references. The effectful mirror
 uses the same header validation and HFC tick, then hands an immutable `EraBlock.Body` to
-`ParallelPlutus`. With one worker, fewer than two redeemer-bearing transactions, or transactions
-that declare more execution units than the block may hold, it calls the serial body directly.
+`ParallelPlutus`. With one worker, fewer than two redeemer-bearing transactions, transactions
+that declare more execution units than the block may hold, or redeemers that declare fewer CPU steps
+than preparing needs to pay ([below](#where-preparing-pays)), it calls the serial body directly.
 Otherwise `Body.prepare` runs the same BBODY/LEDGERS rules once, suppressing only VM execution and
 observers at UTXOS after the existing phase-1 and script-integrity checks. A transaction's
 execution-unit cap still precedes its machines. Context collection still precedes all scripts
@@ -194,6 +195,95 @@ comparison of the second hop took 65 s serially and 71 s at four workers, with a
 machine, and the 21 recorded blocks whose preparation can pay ran in a median of 54 ms serially and 65 ms
 at four workers. That is an observation, not a gate: preparing a block of two or three cheap scripts costs
 more than it saves.
+
+### Where preparing pays
+
+A body is prepared only when its redeemers declare, summed, at least 200,000,000 CPU steps
+(`Phase2.payingSteps`, #85); below that every body runs serially, in all three bodies (the era runs'
+and the flat rules'). The declared steps are the sum BBODY's `validateExUnits` takes
+(`getTotalExUnits`), known before any script runs; spent steps are not. Verdicts, state, naming and
+counters do not depend on the choice: a prepared body's result is the serial run's.
+`PlutusThresholdSuite` (node) checks the node's own choice at one, two, four and eight workers: the
+recorded testnet blocks on both sides of the floor, cheap and heavy script blocks of both eras, no
+verdict at each heavy script, cheap scripts declaring heavy units and the flat body, each prepared
+exactly where it is `worthwhile` and to the serial run's result. The suites above that check the
+prepared path on blocks of cheap scripts keep preparing them wherever they may be (`preparable`,
+`AlwaysPrepared` in the node's tests), below the floor too.
+
+The floor was measured on 2026-11-24, each body serially (`ParallelPlutus` at one worker) and prepared
+(at four, whatever the floor) in the same JVM, the two ways alternated and the inputs interleaved:
+
+- `PlutusThresholdBench` (tools), three fresh JVMs pinned to six cores of a shared host, 31 rounds each
+  after 10 not kept: the recorded Leios testnet blocks the node may prepare and that defer two or more
+  jobs (17), and blocks of 2 to 32 independent transactions each minting with a Plutus V3 loop of 0 to
+  3,000 iterations (`DijkstraScriptedBlocks`, `ConwayScriptedBlocks`: 0.5 million to 1.8 billion steps a
+  script), each redeemer declaring what its script spends, and cheap scripts declaring more;
+- `ConwayBodiesReplaySuite` on the recorded preprod window (`EraBodies`, the sbt JVM of
+  `scripts/sbtw`, four processors), its 3,005 Conway blocks that defer two or more jobs, in the
+  rotated order of the tables of 2026-11-22 and 2026-11-23 below, where each serial way and its
+  prepared way follow the same kind of way (an era way after a flat one, a flat way after an era one).
+
+Each time is the median of a run's rounds, the range that of the three runs' medians (G is a billion
+steps, M a million).
+
+| Input | Declared steps | Serial | Prepared | Prepared / serial |
+|---|---:|---:|---:|---:|
+| 17 recorded testnet blocks, the 8 below the floor (summed) | 0.1 M – 0.13 G | 11.94 ms (10.40–12.79) | 13.58 ms (11.96–14.19) | 1.14 (1.11–1.15) |
+| the 9 at or above it (summed) | 0.25 G – 0.71 G | 16.37 ms (14.07–17.10) | 15.48 ms (13.95–16.06) | 0.95 (0.94–0.99) |
+| Dijkstra, 8 scripts, loop of 0 | 4.3 M | 2.92 ms (2.54–2.98) | 3.03 ms (2.84–3.35) | 1.08 (1.00–1.16) |
+| Dijkstra, 4 scripts, loop of 30 | 72.8 M | 1.80 ms (1.62–2.05) | 2.09 ms (1.84–2.35) | 1.11 (1.11–1.14) |
+| Dijkstra, 16 scripts, loop of 30 | 0.29 G | 5.67 ms (5.27–6.00) | 5.98 ms (5.23–6.16) | 1.01 (0.99–1.05) |
+| Dijkstra, 2 scripts, loop of 300 | 0.35 G | 1.74 ms (1.48–1.82) | 1.72 ms (1.42–1.75) | 1.00 (0.94–1.02) |
+| Dijkstra, 8 scripts, loop of 300 | 1.42 G | 4.84 ms (4.80–5.27) | 4.04 ms (3.58–4.18) | 0.78 (0.72–0.82) |
+| Dijkstra, 32 scripts, loop of 300 | 5.67 G | 18.30 ms (17.03–18.50) | 15.05 ms (11.26–15.50) | 0.75 (0.67–0.80) |
+| Dijkstra, 2 scripts, loop of 3000 | 3.54 G | 6.74 ms (6.08–6.97) | 4.68 ms (3.80–4.68) | 0.67 (0.63–0.68) |
+| Dijkstra, 8 scripts, loop of 3000 | 14.14 G | 24.06 ms (22.75–25.38) | 13.22 ms (9.92–13.35) | 0.53 (0.43–0.54) |
+| Dijkstra, 8 cheap scripts declaring 1 G each | 8.00 G | 2.81 ms (2.39–2.87) | 3.23 ms (3.07–3.31) | 1.18 (1.17–1.19) |
+| Conway, 8 scripts, loop of 0 | 4.3 M | 2.30 ms (2.07–2.74) | 2.66 ms (2.33–3.11) | 1.15 (1.10–1.16) |
+| Conway, 4 scripts, loop of 30 | 72.8 M | 1.57 ms (1.22–1.67) | 1.60 ms (1.42–1.86) | 1.14 (1.07–1.18) |
+| Conway, 16 scripts, loop of 30 | 0.29 G | 5.31 ms (4.52–5.96) | 5.42 ms (4.59–7.76) | 1.05 (1.01–1.08) |
+| Conway, 2 scripts, loop of 300 | 0.35 G | 1.74 ms (1.41–1.86) | 1.56 ms (1.38–1.74) | 0.91 (0.87–1.03) |
+| Conway, 8 scripts, loop of 300 | 1.42 G | 5.09 ms (4.51–5.15) | 3.78 ms (3.28–3.80) | 0.73 (0.72–0.77) |
+| Conway, 32 scripts, loop of 300 | 5.67 G | 17.89 ms (15.69–18.91) | 14.45 ms (12.39–15.07) | 0.76 (0.68–0.78) |
+| Conway, 2 scripts, loop of 3000 | 3.54 G | 6.76 ms (6.19–7.07) | 4.52 ms (3.91–4.90) | 0.64 (0.61–0.66) |
+| Conway, 8 scripts, loop of 3000 | 14.14 G | 24.74 ms (23.31–26.41) | 12.99 ms (10.84–13.06) | 0.49 (0.44–0.50) |
+| Conway, 8 cheap scripts declaring 1 G each | 8.00 G | 2.43 ms (2.00–2.78) | 2.97 ms (2.47–3.11) | 1.17 (1.14–1.23) |
+
+On the recorded preprod window, per block, by the steps it declares (median and quartiles of the time
+preparing saved, over two rounds; negative is a loss):
+
+| Declared steps | Blocks | Era run: saved, median (quartiles) | Flat rules: saved, median (quartiles) |
+|---|---:|---:|---:|
+| below 0.1 G | 359 | -0.10 ms (-0.23 to -0.01) | -0.29 ms (-0.45 to -0.16) |
+| 0.1 – 0.2 G | 278 | -0.00 ms (-0.19 to +0.13) | -0.30 ms (-0.48 to -0.14) |
+| 0.2 – 0.3 G | 273 | +0.13 ms (-0.17 to +0.38) | -0.01 ms (-0.29 to +0.19) |
+| 0.3 – 0.5 G | 416 | +0.27 ms (-0.09 to +0.54) | +0.07 ms (-0.35 to +0.31) |
+| 0.5 – 1 G | 914 | +0.22 ms (-0.31 to +0.69) | +0.02 ms (-0.58 to +0.45) |
+| 1 – 2 G | 490 | +0.21 ms (-1.30 to +1.18) | +0.02 ms (-1.30 to +0.87) |
+| 2 G and more | 275 | +0.19 ms (-0.43 to +1.31) | +0.09 ms (-0.56 to +1.02) |
+
+Preparing costs about 0.2 ms a block more than the serial run (the ordered preparation, the recorder,
+the footprints and the scheduling), plus about 20 µs a job, and saves about three quarters of the
+scripts' evaluation at four workers. All eight recorded testnet blocks that declare less than the floor
+lost 0.1 to 0.3 ms prepared (5 to 30%) in every run; above it the recorded blocks were within about 0.4
+ms either way up to 0.7 billion declared steps, the synthetic blocks crossed near 0.35 billion, and from
+about a billion preparing saved a quarter to a half of the block's time. On the preprod window the flat
+rules' body lost about 0.3 ms a block prepared below the floor and was even above it, and Conway's era
+run, whose jobs also translate each script's context into its arguments, was even below the floor and
+gained 0.1 to 0.3 ms in the median above it, its quartiles on both sides of zero; a first run of the
+window gave the same picture. Summed over those blocks the floor took the era run from 17.92 s, every
+preparable block prepared, to 17.77 s and the flat rules' from 16.38 s to 16.11 s. These figures were
+taken with the serial ways also charged for building the body, which the prepared ways built before
+their timer, so they are biased toward preparing: the losses below the floor are, if anything, larger
+(`EraBodies` now builds every way's body before its timer). Within a block a way timed straight after
+another way of the same code and block ran up to 10% faster: a run that also reversed the order on odd
+rounds put each serial way there, and its reversed rounds are not used; in the tables of 2026-11-22 and
+2026-11-23 the parallel ways followed their serial ones so. A block whose scripts declare more than they
+spend is prepared though preparing may not pay. The overhead above is what the sampled blocks showed,
+not a bound: where an early script's verdict is not its flag's, the workers may already have evaluated
+later jobs the serial run never reaches, and the plan then runs the rules again; what they evaluate
+ahead is bounded by the block's limit of execution units, which no prepared body exceeds. These are body
+timings on one machine, not a gate; the raw run output is not published.
 
 `ConwayBbodySuite` prepares every era run it makes and resolves the plan, its jobs run last batch
 first, with the serial run's results: the same state, blocks made, counters, failures, naming and

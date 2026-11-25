@@ -20,6 +20,7 @@ import xyz.kd5ujc.scarab.ledger.{
 }
 import xyz.kd5ujc.scarab.ledger.era.{
   AlonzoEraPParams,
+  AlonzoTx,
   Block,
   BothLevels,
   CollectError,
@@ -49,7 +50,7 @@ import xyz.kd5ujc.scarab.ledger.rules.{
   focus
 }
 import xyz.kd5ujc.scarab.ledger.state.{BlocksMade, Dijkstra, LedgerState}
-import xyz.kd5ujc.scarab.plutus.{EvalRequest, EvalResult, ScriptDecoder, ScriptEvaluator}
+import xyz.kd5ujc.scarab.plutus.{EvalRequest, EvalResult, ExUnits, ScriptDecoder, ScriptEvaluator}
 
 /** What ends a run of Dijkstra's rules on a block without a verdict: the defects the rules raise,
   * each typed as its rule raises it.
@@ -588,12 +589,13 @@ object DijkstraBlockRun:
         .map(_.map { case (after, _) => (after.bbody, after.proposals, after.told) })
     // BBODY's own check of the block's units (`validateExUnits`, after LEDGERS): a body past
     // them is never prepared
-    val withinUnits =
-      given BothLevels[TxLevel.Top] = BothLevels.Top
-      AlonzoBbody
-        .validateExUnits[Dijkstra](txs, AlonzoEraPParams.ppMaxBlockExUnitsL.get(env.bbodyPp).units)
-        .isValid
-    Body(txs, evaluator, withinUnits, observer, run)
+    given BothLevels[TxLevel.Top] = BothLevels.Top
+    val withinUnits = AlonzoBbody
+      .validateExUnits[Dijkstra](txs, AlonzoEraPParams.ppMaxBlockExUnitsL.get(env.bbodyPp).units)
+      .isValid
+    // the units the redeemers declare, which decide whether preparing the body pays (#85)
+    val declared = txs.foldLeft(ExUnits.zero)(_ + AlonzoTx.totExUnits[Dijkstra, TxLevel.Top](_))
+    Body(txs, evaluator, withinUnits, declared, observer, run)
 
   /** Dijkstra's run on a block as a body program (`Phase2.Program`): [[serial]] is the run with
     * every script evaluated where UTXOS collects it; [[prepare]] runs the same rules once, in
@@ -607,17 +609,22 @@ object DijkstraBlockRun:
     * run's. A prepared body evaluates its recorded scripts before the first verdict lands, some of
     * which the serial run may never reach (`whenFailureFree` after a verdict that is not its
     * flag's), so what it can evaluate ahead stays within the units an admissible block declares.
+    *
+    * Nor is a body whose redeemers declare fewer CPU steps, summed ([[declared]]), than preparing
+    * needs to pay (`Phase2.pays`, #85): it is not [[worthwhile]] and runs serially, though it may
+    * be prepared ([[preparable]]), to the same result.
     */
   final class Body private[DijkstraBlockRun] (
       txs: Vector[Tx[TxLevel.Top, Dijkstra]],
       evaluator: ScriptEvaluator[Id],
       withinUnits: Boolean,
+      val declared: ExUnits,
       observer: Option[DijkstraPhase2.Observation => Unit],
       run: Mode => Ran
   ) extends Phase2.Program[Result]:
     def serial: Result = settled(txs, run(Mode.Evaluating(Nil)), Map.empty)
     def hasScripts: Boolean = txs.exists(DijkstraPhase2.redeeming)
-    def worthwhile: Boolean = withinUnits && txs.count(DijkstraPhase2.redeeming) > 1
+    def preparable: Boolean = withinUnits && txs.count(DijkstraPhase2.redeeming) > 1
     def prepare: Plan =
       val replay: List[(EvalRequest, EvalResult)] => Result =
         answers => settled(txs, run(Mode.Evaluating(answers)), Map.empty)
