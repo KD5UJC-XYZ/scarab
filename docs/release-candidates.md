@@ -61,11 +61,15 @@ incomplete name, never as a verified candidate.
    as another tested platform.
 5. The image is built once from the verified JAR and the digest-pinned Temurin 25.0.4.1+1 JRE.
    It runs as numeric user `10001:10001`, with entrypoint
-   `java --sun-misc-unsafe-memory-access=allow -XX:-CreateCoredumpOnCrash -XX:ErrorFile=/dev/null
-   -XX:-HeapDumpOnOutOfMemoryError -XX:+DisableAttachMechanism -jar /opt/scarab/scarab.jar` (the first flag allows Scala
-   3's lazy vals, still in 3.9, their `sun.misc.Unsafe` calls without Java 25's warning; the other four keep the JVM's
-   memory, and a forging node's keys, off disk, as [the forging guide](running/forging.md#keys-in-memory) explains).
-   OCI export validation refuses any other entrypoint (`candidate_oci.ENTRYPOINT`). Read-only runtime smoke checks
+   `/opt/scarab/scarab-jvm --sun-misc-unsafe-memory-access=allow -jar /opt/scarab/scarab.jar`: the launcher
+   `scripts/scarab-jvm`, which keeps the JVM's memory, and a forging node's keys, off disk
+   ([the forging guide](running/forging.md#keys-in-memory)), then the flag that allows Scala 3's lazy vals, still in 3.9,
+   their `sun.misc.Unsafe` calls without Java 25's warning. Its last two layers are the JAR and the launcher, read-only
+   and executable. OCI export validation refuses any other entrypoint (`candidate_oci.ENTRYPOINT`) and a launcher
+   other than the verifying checkout's `scripts/scarab-jvm`, byte for byte. It accepts no image of the earlier
+   entrypoint, which started `java` directly: on 2026-11-25 no such image was published (no release had image assets
+   and the release-publication workflow had never run) or retained (the one candidate run's artifacts had expired), so
+   nothing needs it. Read-only runtime smoke checks
    need executable JNI scratch: `--tmpfs /tmp:rw,exec,nosuid,size=256m`; Docker's default `--tmpfs /tmp` is `noexec`.
    CLI and portable native/Plutus smoke checks run in the actual image. The existing resource,
    service, multi-release, BuildInfo, BouncyCastle and RocksDB verifier is compiled once in the
