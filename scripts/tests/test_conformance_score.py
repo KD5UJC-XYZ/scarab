@@ -115,6 +115,25 @@ class PublishedCountsTest(unittest.TestCase):
         self.assertIn(f"tree/{score.SITE_COMMIT}", text)
         self.assertIn("mean of the ratios of the site's 4 scenarios", text)
 
+    def test_the_published_turbo_report_s_misses_by_why(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            latest, site = published(Path(tmp))
+            report = json.loads(gzip.decompress((latest / "uplc-turbo.json.gz").read_bytes()))
+        breakdown = score.turbo_breakdown(report, site.turbo)
+        self.assertEqual(breakdown.score, score.Score(3_660, 3_997), "the score the README gives")
+        counts = {shortfall: len(breakdown.missed(shortfall)) for shortfall in score.Shortfall}
+        self.assertEqual(counts, {score.Shortfall.NOT_REPORTED: 5, score.Shortfall.CPU_ALONE: 111,
+                                  score.Shortfall.MEMORY: 110, score.Shortfall.NOTHING_COMPARABLE: 111},
+                         "benchmarks 0 to 4 unreported, then CPU, memory and nothing comparable in turn")
+        self.assertEqual(len(breakdown.misses), 3_997 - 3_660, "every miss has its reason")
+        self.assertEqual([miss.bench for miss in breakdown.misses[:6]],
+                         ["0000.flat", "0001.flat", "0002.flat", "0003.flat", "0004.flat", "0005.flat"],
+                         "in the corpus's order")
+        self.assertEqual(len(breakdown.memory_ratios), 111 + 110 + 3_660 - 732,
+                         "every reported corpus benchmark with a memory budget, absent.flat not among them")
+        self.assertEqual(breakdown.within_memory_limit, 111 + 3_660 - 732)
+        self.assertEqual(list(breakdown.memory_ratios), sorted(breakdown.memory_ratios))
+
 
 def item(bench="a.flat", **fields):
     return benchmark(bench, **fields)
@@ -150,6 +169,48 @@ class TurboTest(unittest.TestCase):
     def test_a_boolean_or_non_finite_value_is_not_a_number(self):
         self.assertFalse(score.benchmark_met({"bench": "a.flat", "budget_cpu": 100_000_000, "cpu_us": True}))
         self.assertFalse(score.benchmark_met({"bench": "a.flat", "budget_mem": 1000, "mem_bytes": float("inf")}))
+
+    def test_each_dimension_alone(self):
+        self.assertTrue(score.cpu_within(item(budget_cpu=100_000_000, cpu_us=200.0)))
+        self.assertFalse(score.cpu_within(item(budget_cpu=100_000_000, cpu_us=300.5)))
+        self.assertIsNone(score.cpu_within(item(cpu_us=300.5)), "no CPU budget, nothing to compare")
+        self.assertIsNone(score.cpu_within(item(budget_cpu=100_000_000)), "no CPU time, nothing to compare")
+        self.assertTrue(score.memory_within(item(budget_mem=1000, mem_bytes=1000 + 320 * 1024)))
+        self.assertIsNone(score.memory_within(item(budget_mem=0, mem_bytes=1.0)), "a zero budget is none")
+
+    def test_a_miss_says_why_memory_first(self):
+        def miss(**fields):
+            return score.Miss.of("a.flat", item(**fields))
+
+        both = miss(budget_cpu=100_000_000, cpu_us=1000.0, budget_mem=1000, mem_bytes=400_000.0)
+        self.assertEqual((both.shortfall, both.cpu, both.memory), (score.Shortfall.MEMORY, False, False),
+                         "memory over its limit counts as memory, whatever the CPU time")
+        self.assertEqual(both.cpu_ratio, 10.0)
+        self.assertEqual(both.memory_ratio, 400.0)
+        cpu = miss(budget_cpu=100_000_000, cpu_us=1000.0, budget_mem=1000, mem_bytes=1500.0)
+        self.assertEqual((cpu.shortfall, cpu.memory_ratio), (score.Shortfall.CPU_ALONE, 1.5))
+        self.assertEqual(miss(budget_cpu=100_000_000, cpu_us=1000.0, mem_bytes=1.0).shortfall,
+                         score.Shortfall.CPU_ALONE, "memory that cannot be compared leaves the CPU")
+        self.assertEqual(miss(budget_mem=1000, mem_bytes=400_000.0).shortfall, score.Shortfall.MEMORY)
+        nothing = miss(cpu_us=1.0, mem_bytes=1.0)
+        self.assertEqual((nothing.shortfall, nothing.cpu_ratio, nothing.memory_ratio),
+                         (score.Shortfall.NOTHING_COMPARABLE, None, None))
+        absent = score.Miss.of("a.flat", None)
+        self.assertEqual((absent.shortfall, absent.cpu, absent.cpu_ratio), (score.Shortfall.NOT_REPORTED, None, None))
+
+    def test_the_breakdown_and_the_score_agree(self):
+        report = turbo_report([item("a.flat", budget_cpu=100_000_000, cpu_us=150.0, budget_mem=1000, mem_bytes=900.0),
+                               item("b.flat", budget_cpu=100_000_000, cpu_us=5000.0, budget_mem=1000, mem_bytes=900.0),
+                               item("c.flat", budget_cpu=100_000_000, cpu_us=150.0, budget_mem=1000,
+                                    mem_bytes=500_000.0)])
+        breakdown = score.turbo_breakdown(report, ("a.flat", "b.flat", "c.flat", "d.flat"))
+        self.assertEqual(breakdown.score, score.turbo(report, ("a.flat", "b.flat", "c.flat", "d.flat")))
+        self.assertEqual(breakdown.score, score.Score(1, 4))
+        self.assertEqual([(miss.bench, miss.shortfall) for miss in breakdown.misses],
+                         [("b.flat", score.Shortfall.CPU_ALONE), ("c.flat", score.Shortfall.MEMORY),
+                          ("d.flat", score.Shortfall.NOT_REPORTED)])
+        self.assertEqual(breakdown.memory_ratios, (0.9, 0.9, 500.0))
+        self.assertEqual(breakdown.within_memory_limit, 2)
 
     def test_the_corpus_sets_the_total_and_the_last_item_of_a_name_counts(self):
         report = turbo_report([item("a.flat", budget_cpu=100_000_000, cpu_us=150.0),

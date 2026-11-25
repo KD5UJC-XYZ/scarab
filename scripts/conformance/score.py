@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 """Score the reports of `latest/` as pragma-org's node-diversity-conformance site does, for the README that
-`publish.py` writes in the reports repository.
+`publish.py` writes in the reports repository, and a run's uplc-turbo report for its job summary (`summarize.py`).
 
 Every rule is the site's own at `SITE_COMMIT`, the commit `pins.json` pins as `site`, and the comment beside it
 cites the site's file and line at that commit. What the site's scoring reads from its own repository (the
@@ -19,6 +19,7 @@ import re
 import zlib
 from collections import defaultdict
 from dataclasses import dataclass
+from enum import Enum
 from functools import reduce
 from pathlib import Path
 from typing import Any
@@ -342,11 +343,34 @@ def _within(measured: Any, budget: Any, tolerance: float) -> bool | None:
     return (measured - budget) / budget <= DEVIATION_LIMIT or abs(measured - budget) <= tolerance
 
 
-def memory_within(item: dict) -> bool | None:
-    """The memory dimension of a benchmark alone, as `benchmark_met` reads it; None when it cannot be compared."""
+def _cpu(item: dict) -> tuple[float | None, float | None]:
+    """A benchmark's CPU time and CPU budget, both in µs, each None when absent; the report gives the budget in
+    picoseconds (62800627 scenarios/uplc-turbo/build.py:59-61 and 80-83)."""
+    cpu_us = item.get("cpu_us") if _number(item.get("cpu_us")) else None
+    cpu_budget = item["budget_cpu"] / 1_000_000 if _number(item.get("budget_cpu")) and item["budget_cpu"] > 0 \
+        else None
+    return cpu_us, cpu_budget
+
+
+def _memory(item: dict) -> tuple[float | None, float | None]:
+    """A benchmark's allocated bytes and memory budget, each None when absent."""
     mem_bytes = item.get("mem_bytes") if _number(item.get("mem_bytes")) else None
     mem_budget = item["budget_mem"] if _number(item.get("budget_mem")) and item["budget_mem"] > 0 else None
-    return _within(mem_bytes, mem_budget, MEMORY_TOLERANCE_BYTES)
+    return mem_bytes, mem_budget
+
+
+def _ratio(measured: float | None, budget: float | None) -> float | None:
+    return None if measured is None or budget is None else measured / budget
+
+
+def cpu_within(item: dict) -> bool | None:
+    """The CPU dimension of a benchmark alone, as `benchmark_met` reads it; None when it cannot be compared."""
+    return _within(*_cpu(item), CPU_TOLERANCE_US)
+
+
+def memory_within(item: dict) -> bool | None:
+    """The memory dimension of a benchmark alone, as `benchmark_met` reads it; None when it cannot be compared."""
+    return _within(*_memory(item), MEMORY_TOLERANCE_BYTES)
 
 
 def turbo_benchmarks(schema: Path) -> tuple[str, ...]:
@@ -356,20 +380,73 @@ def turbo_benchmarks(schema: Path) -> tuple[str, ...]:
 
 def benchmark_met(item: dict | None) -> bool:
     """A benchmark is met when every dimension that can be compared passes and one can; a benchmark not reported
-    fails (62800627 scenarios/uplc-turbo/build.py:59-61, 80-83 and 139-147). The CPU budget is in picoseconds."""
+    fails (62800627 scenarios/uplc-turbo/build.py:59-61, 80-83 and 139-147)."""
     if item is None:
         return False
-    cpu_us = item.get("cpu_us") if _number(item.get("cpu_us")) else None
-    cpu_budget = item["budget_cpu"] / 1_000_000 if _number(item.get("budget_cpu")) and item["budget_cpu"] > 0 \
-        else None
-    mem_bytes = item.get("mem_bytes") if _number(item.get("mem_bytes")) else None
-    mem_budget = item["budget_mem"] if _number(item.get("budget_mem")) and item["budget_mem"] > 0 else None
-    checks = [check for check in (_within(cpu_us, cpu_budget, CPU_TOLERANCE_US),
-                                  _within(mem_bytes, mem_budget, MEMORY_TOLERANCE_BYTES)) if check is not None]
+    checks = [check for check in (cpu_within(item), memory_within(item)) if check is not None]
     return bool(checks) and all(checks)
 
 
-def turbo(report: dict, benchmarks: tuple[str, ...]) -> Score:
+class Shortfall(Enum):
+    """Why a benchmark of the corpus is not met, as `benchmark_met` reads it."""
+    MEMORY = "memory"
+    CPU_ALONE = "CPU alone"
+    NOT_REPORTED = "not reported"
+    NOTHING_COMPARABLE = "nothing comparable"
+
+
+@dataclass(frozen=True)
+class Miss:
+    """A benchmark of the corpus that is not met: each dimension's verdict, None when it cannot be compared, and
+    the ratio of the measurement to the budget. `item` is None for a benchmark that is not reported."""
+    bench: str
+    item: dict | None
+    cpu: bool | None
+    memory: bool | None
+
+    @staticmethod
+    def of(bench: str, item: dict | None) -> Miss:
+        known = item is not None
+        return Miss(bench, item, cpu_within(item) if known else None, memory_within(item) if known else None)
+
+    @property
+    def shortfall(self) -> Shortfall:
+        """Memory over its limit, whatever the CPU time; else the CPU time over its limit; else why neither."""
+        if self.item is None:
+            return Shortfall.NOT_REPORTED
+        if self.memory is False:
+            return Shortfall.MEMORY
+        if self.cpu is False:
+            return Shortfall.CPU_ALONE
+        return Shortfall.NOTHING_COMPARABLE
+
+    @property
+    def cpu_ratio(self) -> float | None:
+        return None if self.item is None else _ratio(*_cpu(self.item))
+
+    @property
+    def memory_ratio(self) -> float | None:
+        return None if self.item is None else _ratio(*_memory(self.item))
+
+
+@dataclass(frozen=True)
+class Turbo:
+    """A uplc-turbo report scored over the corpus: the score, each benchmark it misses in the corpus's order, and,
+    sorted, the bytes per memory unit of every reported benchmark whose memory can be compared."""
+    score: Score
+    misses: tuple[Miss, ...]
+    memory_ratios: tuple[float, ...]
+
+    def missed(self, shortfall: Shortfall) -> tuple[Miss, ...]:
+        return tuple(miss for miss in self.misses if miss.shortfall is shortfall)
+
+    @property
+    def within_memory_limit(self) -> int:
+        """The benchmarks whose memory is within its limit: those that can be compared, less those over it."""
+        return len(self.memory_ratios) - len(self.missed(Shortfall.MEMORY))
+
+
+def turbo_breakdown(report: dict, benchmarks: tuple[str, ...]) -> Turbo:
     """Each benchmark of the corpus, from the last reported item of its name (62800627
     scenarios/uplc-turbo/build.py:26-34 and 410-423, without the other nodes' budgets)."""
     corpus = set(benchmarks)
@@ -378,7 +455,15 @@ def turbo(report: dict, benchmarks: tuple[str, ...]) -> Score:
         raise ScoreError("the report's benchmarks cannot be iterated, on which the site's build fails")
     reported = {item["bench"]: item for item in items
                 if isinstance(item, dict) and isinstance(item.get("bench"), str) and item["bench"] in corpus}
-    return Score(sum(benchmark_met(reported.get(bench)) for bench in benchmarks), len(benchmarks))
+    misses = tuple(Miss.of(bench, reported.get(bench)) for bench in benchmarks
+                   if not benchmark_met(reported.get(bench)))
+    ratios = sorted(ratio for item in reported.values() if (ratio := _ratio(*_memory(item))) is not None)
+    return Turbo(Score(len(benchmarks) - len(misses), len(benchmarks)), misses, tuple(ratios))
+
+
+def turbo(report: dict, benchmarks: tuple[str, ...]) -> Score:
+    """The score of a uplc-turbo report over the corpus (`turbo_breakdown`)."""
+    return turbo_breakdown(report, benchmarks).score
 
 
 def read(path: Path, scenario: str, era: str | None, site: Site) -> Score:
