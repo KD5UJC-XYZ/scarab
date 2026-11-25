@@ -7,14 +7,22 @@ import xyz.kd5ujc.scarab.ledger.{TestLedger, TxIn, TxOut, Unsigned, testByteStri
 import xyz.kd5ujc.scarab.ledger as flat
 import xyz.kd5ujc.scarab.ledger.era.{
   EraBlockHeader,
+  EraPParams,
   EraTx,
   EraTxBody,
+  Mismatch,
   ProtVer,
   StoredTxOut,
   UTxO,
   Version
 }
-import xyz.kd5ujc.scarab.ledger.era.rules.{BbodyEnv, ConwayBbody, ConwayBlockRun, ShelleyBbodyState}
+import xyz.kd5ujc.scarab.ledger.era.rules.{
+  BbodyEnv,
+  ConwayBbody,
+  ConwayBbodyPredFailure,
+  ConwayBlockRun,
+  ShelleyBbodyState
+}
 import xyz.kd5ujc.scarab.ledger.state.{
   BlocksMade,
   Build,
@@ -118,6 +126,25 @@ class ConwayBlockRunSuite extends FunSuite:
           EraTxBody.conway.top
         ),
         1L << 31,
+        s"$m"
+      )
+      // and BBODY's check compares that sum with the limit in 64 bits too
+      // (`validateBodyRefScriptsSizeTooBig`, `Conway/Rules/Bbody.hs:330-355`, cardano-ledger f649f975)
+      assertEquals(
+        ConwayBbody
+          .validateBodyRefScriptsSizeTooBig[Conway](ConwayImp.pp(m), Vector(tx), utxo)(using
+            t,
+            EraTxBody.conway,
+            EraPParams.conway,
+            t.bodyOf.top,
+            EraTxBody.conway.top
+          )
+          .fold(_.toChain.toVector, _ => Vector.empty),
+        Vector(
+          new ConwayBbodyPredFailure.BodyRefScriptsSizeTooBig[Conway](
+            Mismatch(1L << 31, 1024L * 1024)
+          )
+        ),
         s"$m"
       )
     }
