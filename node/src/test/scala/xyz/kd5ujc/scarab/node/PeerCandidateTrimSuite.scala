@@ -151,39 +151,6 @@ class PeerCandidateTrimSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     }
   }
 
-  test("a full window whose publication is done is trimmed once our anchor moves on") {
-    forged.flatMap { chain =>
-      FetchCoordinator
-        .create[IO]()
-        .flatMap { coordinator =>
-          coordinator.session(13L).use { session =>
-            TestControl.executeEmbed {
-              for
-                anchor <- Ref.of[IO, ChainSync.Point](ChainSync.Point.Origin)
-                full <- Deferred[IO, Unit]
-                _ <- connected(chain, gate(None, anchor), session, Some(capacityWatch(full))) {
-                  peer =>
-                    // up to the window's last header: everything the session published
-                    val last = chain.headers(retained - 1).point
-                    def drain: IO[Unit] = peer.next.flatMap {
-                      case SyncEvent.RollForward(header, _) if header.point == last => IO.unit
-                      case _                                                        => drain
-                    }
-                    // the session's pipeline starts with its first pull
-                    peer.intersect(Vector(ChainSync.Point.Origin)) *> peer.next *> full.get *>
-                      drain *>
-                      // our chain moves on through another peer, and a block arrives
-                      anchor.set(chain.headers(retained - 3).point) *> coordinator.refreshGenesis *>
-                      // the window ended at its eighth header: the next three come only once it was trimmed
-                      (1 to 3).toList.traverse_(_ => peer.next)
-                }
-              yield ()
-            }
-          }
-        }
-    }
-  }
-
   private def connected[A](
       forged: ForgedChain,
       check: HeaderCheck[IO],

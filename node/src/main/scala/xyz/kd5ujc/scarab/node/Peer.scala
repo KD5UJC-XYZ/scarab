@@ -1392,7 +1392,8 @@ object Peer:
               // newest point published to the session's consumer, and applies only to `published`,
               // the journal's candidate the cursor was found from, while it is still the session's
               // candidate: the next publication then finds the cursor's tip, or the point of a later
-              // rollback, which the gate keeps at or after its base.
+              // rollback, which the gate keeps at or after its base. Only the publisher trims, after
+              // each of its steps, since only it knows the cursor it is about to publish from.
               trimToAnchor = (
                   cursor: ChainSelection.Candidate,
                   published: ChainSelection.Candidate
@@ -1422,17 +1423,13 @@ object Peer:
               capacity = (update: ChainSyncClient.Update[NtNHeader]) =>
                 update match
                   case ChainSyncClient.Update.RollBackward(_, _) => F.unit
-                  case ChainSyncClient.Update.RollForward(_, _)  =>
-                    // a trim the publication held back is taken as soon as it may, before the room
-                    // is weighed: no batch comes to trim while the window is full
+                  case ChainSyncClient.Update.RollForward(_, _) =>
                     def room: F[(Boolean, F[Unit])] =
-                      (publishedCursor.get, journal.get).tupled.flatMap((cursor, latest) =>
-                        trimToAnchor(cursor._1, latest.candidate)
-                      ) *> (publishedCursor.get, candidateHeaders.get, fetcher.changed).tupled
-                        .flatMap { (published, candidate, bodyArrived) =>
+                      (publishedCursor.get, candidateHeaders.get, fetcher.changed).tupled.flatMap {
+                        (published, candidate, bodyArrived) =>
                           windowRoom(published._1, candidate)
                             .map(_ -> F.race(published._2.get, bodyArrived).void)
-                        }
+                      }
                     room.flatMap {
                       case (true, _) => F.unit
                       case (false, _) =>

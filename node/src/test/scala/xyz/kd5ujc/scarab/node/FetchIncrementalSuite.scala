@@ -637,12 +637,14 @@ class FetchIncrementalSuite extends ScalaCheckSuite:
                 val published = pointFor(other, before, seen)
                 val step = announced.trimmedTo(anchor, published)
                 val next = step.announced
-                val was = before.headers.map(_.point).toSet + before.base
-                val is = next.candidate.headers.map(_.point).toSet + next.candidate.base
+                // exactly the old base and the dropped headers before the new base, in order
+                val dropped = before.headers.size - next.candidate.headers.size
+                val expectedLeft =
+                  if dropped == 0 then Vector.empty
+                  else before.base +: before.headers.take(dropped - 1).map(_.point)
                 val left = step match
-                  case FetchCandidates.Announced.Step.Moved(_, l) =>
-                    (was -- is).subsetOf(l.toSet) && l.forall(was)
-                  case FetchCandidates.Announced.Step.Reset(_) => false
+                  case FetchCandidates.Announced.Step.Moved(_, l) => l == expectedLeft
+                  case FetchCandidates.Announced.Step.Reset(_)    => false
                 (
                   next,
                   seen,
@@ -805,4 +807,42 @@ class FetchIncrementalSuite extends ScalaCheckSuite:
       val expected = FetchDecisionModel.publication(previous, latest, ChainSync.Tip.Origin, limit)
       (got == expected) :| s"$previous -> $latest"
     }
+  }
+
+  test("an older graft after a trim is published as a deeper rollback and a replay to its tip") {
+    // published to D, then trimmed to C: the cursor no longer holds A or B
+    val chain = main.take(4)
+    val (a, b, c, d) = (chain(0), chain(1), chain(2), chain(3))
+    val untrimmed = ChainSelection.Candidate(Point.Origin, Vector(a, b, c, d))
+    val trimmed = FetchDecisionModel.trimmedTo(untrimmed, c.point, d.point)
+    assertEquals(trimmed, ChainSelection.Candidate(c.point, Vector(d)))
+    // an accepted, older checkpoint is grafted: Origin, A, B
+    val graft = ChainSelection.Candidate(Point.Origin, Vector(a, b))
+    val tip = ChainSync.Tip.Origin
+    // from the untrimmed cursor the publication rolls back to B
+    assertEquals(
+      Peer.publication(untrimmed, graft, tip, 8).map(_._2),
+      Right(Vector(SyncEvent.RollBackward(b.point, tip)))
+    )
+    // from the trimmed one it finds no common point; the new epoch's fallback publishes from the
+    // graft's base: a rollback to Origin and A, B again, to the same tip
+    assertEquals(
+      Peer.publication(trimmed, graft, tip, 8).left.map(_ => ()),
+      Left(())
+    )
+    assertEquals(
+      Peer
+        .publication(ChainSelection.Candidate(graft.base, Vector.empty), graft, tip, 8)
+        .map((after, events) => (after.tip, SyncEvent.RollBackward(graft.base, tip) +: events)),
+      Right(
+        (
+          b.point,
+          Vector(
+            SyncEvent.RollBackward(Point.Origin, tip),
+            SyncEvent.RollForward(a, tip),
+            SyncEvent.RollForward(b, tip)
+          )
+        )
+      )
+    )
   }
