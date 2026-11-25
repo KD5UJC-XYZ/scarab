@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.uplc.builtin
 
+import cats.Eval
 import xyz.kd5ujc.scarab.uplc.{Constant, DefaultFun, DefaultUni, SemanticsVariant, Signature}
 import xyz.kd5ujc.scarab.uplc.cost.{CostStream, ExBudget, Spender}
 
@@ -349,15 +350,19 @@ final case class Builtins(
     * one of them has none, the machine takes the application by [[prepare]], so that the costing
     * and the denotation read what the unlifting made.
     */
-  def held(function: DefaultFun): Option[HeldApplication] = heldForms(function.ordinal)
+  def held(function: DefaultFun): Option[HeldApplication] = heldForms(function.ordinal).value
 
-  private lazy val heldForms: Vector[Option[HeldApplication]] =
+  // each builtin's forms are looked up when it is first applied, so that the costing and the
+  // denotations are asked only for the builtins a script applies, as [[prepare]] asks them
+  private val heldForms: Vector[Eval[Option[HeldApplication]]] =
     DefaultFun.values.toVector.map(function =>
-      for
-        u <- unlifting.held
-        c <- costing(function).held
-        d <- denotations(function).held
-      yield HeldApplication(u, c, d)
+      Eval.later(
+        for
+          u <- unlifting.held
+          c <- costing(function).held
+          d <- denotations(function).held
+        yield HeldApplication(u, c, d)
+      )
     )
 
 object Builtins:

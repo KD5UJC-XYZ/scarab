@@ -54,3 +54,23 @@ final class CekRouteSuite extends munit.FunSuite:
     )
     assertEquals(now.budget, before.budget, "the cost is that of the unlifted integers")
   }
+
+  test("the denotations are asked only for the builtin that is applied") {
+    val costs = DefaultCostModels.costs(variant)
+    val meanings = CekConformance.denotations(variant)
+    val asked = new java.util.concurrent.atomic.AtomicReference(Set.empty[DefaultFun])
+    val recording: Denotations = function =>
+      asked.updateAndGet(_ + function)
+      meanings(function)
+    val only = MachineParameters(
+      costs.machineCosts,
+      Builtins(variant, CoreUnlifting.of(variant), recording, costs.costing),
+      CaserBuiltin.WithData
+    )
+    val term = app(builtin(DefaultFun.AddInteger), int(1), int(2))
+    assertEquals(
+      CekMachine.run(only, BudgetMode.Counting, term).result,
+      CekResult.SuccessConstant(Constant.Integer(BigInt(3)))
+    )
+    assertEquals(asked.get, Set[DefaultFun](DefaultFun.AddInteger))
+  }
