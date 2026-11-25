@@ -142,10 +142,10 @@ object DijkstraTx:
 
   /** A top-level transaction the Leios build's block decoder read
     * ([[xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraTx]], which decides what is refused), in
-    * Dijkstra's types, its sub-transactions at the sub-transaction level. Only [[inBlock]] and
-    * [[fromSubmission]] (and [[ofBlock]], on a transaction the block decoder read) call it, each on
-    * what the flat decoder read from bytes, so each body is of the level read at and its bytes are
-    * the ones read.
+    * Dijkstra's types, its sub-transactions at the sub-transaction level. Only [[ofBlock]], on a
+    * transaction the block decoder read, and the two passes [[inBlockByFlat]] and
+    * [[fromSubmissionByFlat]] call it, each on what the flat decoder read from bytes, so each body
+    * is of the level read at and its bytes are the ones read.
     */
   private def decode(flat: FlatDijkstraTx): Either[EraTxError, DijkstraTx[TxLevel.Top]] =
     for
@@ -162,9 +162,10 @@ object DijkstraTx:
     yield TopTx(body, wits, IsPhase2Valid.of(flat.isValid), aux)
 
   /** `decodeDijkstraTopTxInBlock` (`Tx.hs:175-182`, cardano-ledger 9df9f98c): a transaction of a
-    * block body, its validity flag last. The node is trusted to be the CBOR parser's, its value the
-    * reading of its bytes, as every decoder of the node assumes: a node built by hand
-    * (`Node.apply`) can hold a value its bytes are not (#85).
+    * block body, its validity flag last, read from its item straight into Dijkstra's types in one
+    * pass, with the flat block decoder's refusals in its order. The node is trusted to be the CBOR
+    * parser's, its value the reading of its bytes, as every decoder of the node assumes: a node
+    * built by hand (`Node.apply`) can hold a value its bytes are not (#85).
     */
   def inBlock(n: Node): Either[EraTxError, DijkstraTx[TxLevel.Top]] =
     V12
