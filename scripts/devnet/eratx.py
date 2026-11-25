@@ -358,12 +358,18 @@ def redeemers_cbor(era, redeemers):
     return [[t, i, d, list(u)] for t, i, d, u in redeemers]
 
 
+# `build_tx`'s default auxiliary data hash: the auxiliary data's own
+AUX_HASH = object()
+
+
 def build_tx(era, inputs, outputs, fee, signers, ttl=None, valid_from=None, certs=None, withdrawals=None,
              update=None, mint=None, native_scripts=(), collateral=None, required_signers=None,
              collateral_return=None, total_collateral=None, reference_inputs=None, metadata=None, network_id=None,
              is_valid=True, aux_scripts=(), votes=None, proposals=None, treasury=None, donation=None,
-             plutus=None, redeemers=None, datums=None, script_data=None, aux_plutus=None):
-    """Signed transaction CBOR of any Shelley-based era. `inputs` are (txid_hex, ix); `signers` are Keys."""
+             plutus=None, redeemers=None, datums=None, script_data=None, aux_plutus=None, aux_hash=AUX_HASH):
+    """Signed transaction CBOR of any Shelley-based era. `inputs` are (txid_hex, ix); `signers` are Keys.
+    `aux_hash` is the body's auxiliary data hash: by default the auxiliary data's, if there are any; None leaves it
+    out, and given bytes are written as they are, with or without auxiliary data (the metadata refusal cases)."""
     index = ERA_INDEX[era]
     body = {0: [[bytes.fromhex(t), i] for t, i in inputs], 1: outputs, 2: fee}
     if ttl is not None:
@@ -391,6 +397,10 @@ def build_tx(era, inputs, outputs, fee, signers, ttl=None, valid_from=None, cert
         else:
             aux = metadata or {}
         body[7] = blake2b(enc(aux))
+    if aux_hash is not AUX_HASH:
+        body.pop(7, None)
+        if aux_hash is not None:
+            body[7] = aux_hash
     if valid_from is not None:
         body[8] = valid_from
     if mint:

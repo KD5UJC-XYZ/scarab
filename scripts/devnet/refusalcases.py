@@ -29,6 +29,12 @@ class Case:
     label: str
     tx: bytes
     expect: tuple
+    # transactions the reference must admit first, on the same connection and against the same state: the case is
+    # judged against the mempool they leave (`refusalcorpus.judged`), and the corpus keeps them as `before`
+    before: tuple = ()
+    # a copy of the case built from other inputs, called when its batch must be taken again: `before` is admitted
+    # then, so the same transactions cannot be submitted twice
+    retry: object = None
 
 
 def bootstrap_outputs(era, address, lovelace):
