@@ -5,9 +5,11 @@ Part of the [compatibility matrix](../compatibility.md); the register entry is `
 
 ## Status as recorded
 
-implemented: Praos (Conway) only; forging from a per-epoch leader schedule (#1101, an approved Deviation,
+implemented: Praos (Conway) only in a release build, and in the Leios build also Praos2 on a Dijkstra ledger
+(#1291); forging from a per-epoch leader schedule (#1101, an approved Deviation,
 [design](../design/leader-schedule.md)): the schedule of the current epoch, and of the next once its nonce is
-known, is computed from the committed chain and the credentials in force, ahead of the slots and spread over the
+known, is computed from the committed chain and the credentials in force (in the Leios build on a Dijkstra ledger
+too, #54), ahead of the slots and spread over the
 time left; a clock fiber keeps the reference's blockchain time (`checkValidClockChange` with its trace and its
 stop beyond 20 s, `startTimeInTheFuture`, `currentSlotUnknown`); a slot driver takes the slots as
 `knownSlotWatcher` does and publishes every slot's outcome, a slot not led with only its ending line (the

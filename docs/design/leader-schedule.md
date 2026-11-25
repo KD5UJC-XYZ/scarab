@@ -911,6 +911,15 @@ left open, or differs from it, §8 lists the point under S2; it is not repeated 
   its slots, the epoch nonce, the pool's stake and the total, the active slot coefficient, and the VRF key by its
   public key. `Forger.inputsAt` derives it from a tip through `Forger.ledgerAt` and `Forger.leaderView`, the functions
   the slot driver's own check of an uncovered slot calls (Q3), so the two paths cannot be given different inputs.
+- **Dijkstra (2026-11-25, #54).** When the Leios build began to forge Dijkstra ranking blocks (#1291), the slot's
+  check read a Dijkstra tip through `Forger.ledgerAt`, but the scheduler still found the tip's epoch through
+  `ConwayView`. On a Dijkstra ledger it therefore computed no schedule: every slot was decided at the slot, and the
+  gauges and the `leaderSchedule` line stayed empty on the public Leios testnet. The scheduler's derivation is now
+  `Forger.scheduleInputs`, given its cached ledger view: its epochs come from `Forger.scheduledEpochs`, which reads the
+  tip through `Forger.tipLedger`, the function `Forger.ledgerAt` reads it through, so the schedule covers every era the
+  slot's check forges in. `DijkstraForgeSuite` runs that derivation on the testnet's state with the slot's own view:
+  the tip's epoch is scheduled, its inputs are those the slot's check derives, its led slots are `Leadership.check`'s,
+  and a release build schedules nothing.
 - **The schedule (§5.2).** `LeaderSchedule` walks an epoch in chunks of `LeaderSchedule.ChunkSlots` (100) slots with
   `Leadership.decide`: the output for every slot, a proof for a led slot only. `LeaderSchedule.Pacing` sets the pause
   after each chunk. The stream switches to each new value of the inputs' signal and drops the work under way; the state

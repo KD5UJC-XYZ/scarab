@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.node.forge
 
 import xyz.kd5ujc.scarab.plutus.PlutusBackend
 import xyz.kd5ujc.scarab.ledger.{ForgeDefect, ForgeLedgerProblem, ForgeProtocolProblem}
-import cats.Eq
+import cats.{Applicative, Eq}
 import cats.data.EitherT
 import cats.effect.{Async, Clock, Deferred, Ref}
 import cats.effect.std.Mutex
@@ -560,37 +560,28 @@ final class Forger[F[_]: Async, S](
       F.both(pumped, computed).void
     }
 
-  /** The first slot from which no block can change the nonce of `epoch`: the randomness
-    * stabilisation window (4k/f) before its first slot.
-    */
-  private def freeze(epoch: BigInt): BigInt =
-    geometry.firstSlot(epoch) - geometry.randomnessStabilisationWindow.toBigInt
+  /** The first slot from which no block can change the nonce of `epoch` ([[Forger.freeze]]). */
+  private def freeze(epoch: BigInt): BigInt = Forger.freeze(geometry, epoch)
 
-  /** The inputs known on `current` with the VRF key of `installed`: those of the epoch of its tip's
-    * ledger, and those of the next once the tip is at or past that epoch's freeze slot (§2.3).
-    * Inputs that cannot be derived are left out: their slots are decided at the slot.
+  /** The inputs known on `current` with the VRF key of `installed`: those of the epochs
+    * [[Forger.scheduledEpochs]] gives, read through the slot's own ledger view ([[viewOf]]), so the
+    * schedule covers every era the slot's check forges in (§2.3). Inputs that cannot be derived are
+    * left out: their slots are decided at the slot.
     */
   private def known(
       current: VolatileChain[S],
       installed: HotKeys.Installed
   ): F[LeaderSchedule.InForce] =
     installed.vrf.fold(F.pure(LeaderSchedule.InForce.none)) { vrf =>
-      ConwayView(current.state, current.tipRef).toOption.fold(
-        F.pure(LeaderSchedule.InForce.none)
-      ) { nes =>
-        val epoch = nes.epoch.toBigInt
-        val tip = current.tipRef.fold(BigInt(-1))(_.slot)
-        val epochs = epoch +: Vector(epoch + 1).filter(e => tip >= freeze(e))
-        epochs
-          .traverse(e =>
-            viewOf(current, e, geometry.firstSlot(e)).map(
-              _.toOption.map(v =>
-                Forger.inputsOf(geometry, e, v, credentials.poolId, config.activeSlotsCoeff, vrf)
-              )
-            )
-          )
-          .map(found => LeaderSchedule.InForce.of(found.flatten*))
-      }
+      Forger.scheduleInputs(
+        current.state,
+        current.tipRef,
+        globals.referenceBuild,
+        geometry,
+        credentials.poolId,
+        config.activeSlotsCoeff,
+        vrf
+      )(e => viewOf(current, e, geometry.firstSlot(e)))
     }
 
   private def announce(
@@ -2765,14 +2756,68 @@ object Forger:
       slot: BigInt,
       build: ReferenceBuild
   )(using ChainRead[S]): Either[NodeError, TipLedger] =
-    for
-      ledger <- ConwayView(state, tip) match
-        case Right(nes) => Right(TipLedger.InConway(nes))
-        case Left(ConwayView.Unavailable.InEarlier(Era.Dijkstra)) if forgesDijkstra(build) =>
-          dijkstraAt(state, tip).map(TipLedger.InDijkstra(_))
-        case Left(why) => Left(unsupported(why))
-      _ <- inEpoch(ledger.epoch, epoch, slot)
-    yield ledger
+    tipLedger(state, tip, build).flatTap(ledger => inEpoch(ledger.epoch, epoch, slot))
+
+  /** The ledger state at the tip `tip` of the chain whose state is `state`, in an era the build
+    * forges ([[ledgerAt]] 's, before its epoch is checked): Conway's, and in the Leios build
+    * ([[forgesDijkstra]]) also Dijkstra's. The leader check at the slot and the schedule
+    * ([[scheduledEpochs]]) both read the tip through it, so they cover the same eras.
+    */
+  private[forge] def tipLedger[S](
+      state: S,
+      tip: Option[BlockRef],
+      build: ReferenceBuild
+  )(using ChainRead[S]): Either[NodeError, TipLedger] =
+    ConwayView(state, tip) match
+      case Right(nes) => Right(TipLedger.InConway(nes))
+      case Left(ConwayView.Unavailable.InEarlier(Era.Dijkstra)) if forgesDijkstra(build) =>
+        dijkstraAt(state, tip).map(TipLedger.InDijkstra(_))
+      case Left(why) => Left(unsupported(why))
+
+  /** The epochs whose leader schedule can be computed on the chain whose state is `state` and tip
+    * `tip` (§2.3 of the leader-schedule design, #1101): that of the tip's ledger ([[tipLedger]]),
+    * and the next once the tip is at or past that epoch's freeze slot ([[freeze]]). None where the
+    * build forges no block on that ledger: those slots are decided at the slot, which refuses them.
+    */
+  private[forge] def scheduledEpochs[S](
+      state: S,
+      tip: Option[BlockRef],
+      build: ReferenceBuild,
+      geometry: EpochGeometry
+  )(using ChainRead[S]): Vector[BigInt] =
+    tipLedger(state, tip, build).toOption.fold(Vector.empty[BigInt]) { ledger =>
+      val at = tip.fold(BigInt(-1))(_.slot)
+      ledger.epoch +: Vector(ledger.epoch + 1).filter(next => at >= freeze(geometry, next))
+    }
+
+  /** The inputs of the leader schedule on the chain whose state is `state` and tip `tip`: those of
+    * each epoch [[scheduledEpochs]] gives, from the ledger view `view` of its first slot, as the
+    * slot's check derives them ([[inputsOf]]). The scheduler passes its cached view of the tip,
+    * [[ledgerAt]] 's and [[leaderView]] 's; an epoch whose view cannot be derived is left out, and
+    * its slots are decided at the slot.
+    */
+  private[forge] def scheduleInputs[F[_]: Applicative, S](
+      state: S,
+      tip: Option[BlockRef],
+      build: ReferenceBuild,
+      geometry: EpochGeometry,
+      poolId: Bytes,
+      activeSlotsCoeff: Leader.Fraction,
+      vrf: Draft03Prover.SigningKey
+  )(view: BigInt => F[Either[NodeError, LeaderView]])(using
+      ChainRead[S]
+  ): F[LeaderSchedule.InForce] =
+    scheduledEpochs(state, tip, build, geometry)
+      .traverse(e =>
+        view(e).map(_.toOption.map(v => inputsOf(geometry, e, v, poolId, activeSlotsCoeff, vrf)))
+      )
+      .map(found => LeaderSchedule.InForce.of(found.flatten*))
+
+  /** The first slot from which no block can change the nonce of `epoch`: the randomness
+    * stabilisation window (4k/f) before its first slot.
+    */
+  private[forge] def freeze(geometry: EpochGeometry, epoch: BigInt): BigInt =
+    geometry.firstSlot(epoch) - geometry.randomnessStabilisationWindow.toBigInt
 
   /** The Dijkstra state of the chain at `tip`, which [[ConwayView]] found to be in Dijkstra. */
   private def dijkstraAt[S](state: S, tip: Option[BlockRef])(using
