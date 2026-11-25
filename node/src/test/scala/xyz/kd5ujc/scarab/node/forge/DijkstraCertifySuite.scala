@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.forge
 
+import xyz.kd5ujc.scarab.consensus.leios.ProtVerParity
 import cats.data.NonEmptyVector
 import cats.effect.{Deferred, IO, Ref}
 import cats.mtl.{Handle, Raise}
@@ -289,7 +290,7 @@ class DijkstraCertifySuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   private lazy val announcing: IO[(Forged, BlockBuilder.Endorsing, MirrorState)] =
     (injected, slots).tupled.map { (s, picked) =>
       val (a, cert, _) = picked
-      val endorsing = BlockBuilder.Endorsing(a, NonEmptyVector.one(tx))
+      val endorsing = BlockBuilder.Endorsing(a, ProtVerParity.Even, NonEmptyVector.one(tx))
       val forged =
         forge(tip36, a, cert, BlockBuilder.Assembly.dijkstra(Vector.empty, None, Some(endorsing)))
       MirrorRules.applyBlock(

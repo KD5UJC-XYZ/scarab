@@ -223,13 +223,19 @@ final class LeiosFetchArrival[F[_], P](
 
   /** `processLeiosBlockTxs` of the closure the node forged (`ForgedTxs`, `LeiosDemoLogic.hs`
     * 1412-1426 and 1530-1546): every transaction written at its offset in the body, on one slot of
-    * the writer's queue and awaited; no job is retired, as the forge holds none.
+    * the writer's queue and awaited; no job is retired, as the forge holds none. Once the write has
+    * landed, every transaction is recorded in the transaction cache as applied under `parity`, the
+    * forge's (`insertApplied` of `ForgedTxs`, 1565-1566 and 1570-1573), so that the closure check
+    * of the node's own endorser block reapplies them.
     */
-  def forgedTxs(point: EbPoint, closure: NonEmptyVector[(LeiosTxHash, Bytes)])(using
-      Raise[F, LeiosStoreError]
-  ): F[Unit] =
+  def forgedTxs(
+      point: EbPoint,
+      closure: NonEmptyVector[(LeiosTxHash, Bytes)],
+      parity: ProtVerParity
+  )(using Raise[F, LeiosStoreError]): F[Unit] =
     val txs = closure.toVector.zipWithIndex.map { case ((_, bytes), offset) => offset -> bytes }
-    awaited(1)(landed => store.writeTxs(point, txs) *> landed) *> shared.wake
+    awaited(1)(landed => store.writeTxs(point, txs) *> landed) *>
+      shared.txCache.insertApplied(closure.toVector.map(_._1), parity) *> shared.wake
 
   /** `jobs` writes on slots of the writer's queue, waiting while it is full, then run here: each
     * slot is given back as its write lands. A store's failure stops the node, so the slots of a

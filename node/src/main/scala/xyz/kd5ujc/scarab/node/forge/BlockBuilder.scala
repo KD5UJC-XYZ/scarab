@@ -3,6 +3,7 @@ package xyz.kd5ujc.scarab.node.forge
 
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.consensus.leios.ProtVerParity
 import xyz.kd5ujc.scarab.ledger.{Header, VrfCert}
 import xyz.kd5ujc.scarab.ledger.{HeaderBodyEncoding, HeaderVersionInfo, HeaderVrf}
 import xyz.kd5ujc.scarab.ledger.{LeiosBlock, LeiosBlockBody, LeiosHeader}
@@ -424,9 +425,15 @@ object BlockBuilder:
   )
 
   object Endorsing:
-    /** The endorser block of `transactions`, forged in `slot`. */
-    def apply(slot: BigInt, transactions: NonEmptyVector[Tx[TxLevel.Top, Dijkstra]]): Endorsing =
-      new Endorsing(transactions, ForgedLeiosEb.forge(slot, transactions))
+    /** The endorser block of `transactions`, forged in `slot` and revalidated under a protocol
+      * version of parity `parity`.
+      */
+    def apply(
+        slot: BigInt,
+        parity: ProtVerParity,
+        transactions: NonEmptyVector[Tx[TxLevel.Top, Dijkstra]]
+    ): Endorsing =
+      new Endorsing(transactions, ForgedLeiosEb.forge(slot, parity, transactions))
 
   /** What a Dijkstra snapshot is partitioned into: the ranking block's transactions, and the run
     * after them an endorser block takes, oldest first, with what it counts for.
@@ -440,10 +447,11 @@ object BlockBuilder:
 
     /** `mkEb` 's endorser block of the run, forged in `slot` (`Shelley/Ledger/Forge.hs:172-212` of
       * ouroboros-consensus-cardano at 2416493b): none when the run is empty, so that a block with
-      * nothing left for an endorser block announces none.
+      * nothing left for an endorser block announces none. `parity` is that of the protocol version
+      * of the ticked state the pool revalidated the run on (`protVerParity`, `:182-185`).
       */
-    def endorsing(slot: BigInt): Option[Endorsing] =
-      NonEmptyVector.fromVector(endorsedTransactions).map(Endorsing(slot, _))
+    def endorsing(slot: BigInt, parity: ProtVerParity): Option[Endorsing] =
+      NonEmptyVector.fromVector(endorsedTransactions).map(Endorsing(slot, parity, _))
 
   /** `snapshotPartition` (`implSnapshotPartition`, ouroboros-consensus 2416493b
     * `ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Mempool/Impl/Common.hs:760-773`):

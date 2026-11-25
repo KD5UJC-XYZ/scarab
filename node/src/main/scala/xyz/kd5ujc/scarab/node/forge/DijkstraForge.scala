@@ -6,7 +6,12 @@ import cats.mtl.Raise
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.BlockRef
-import xyz.kd5ujc.scarab.consensus.leios.{CertifyDecision, CertifyDefect, LeiosVoting}
+import xyz.kd5ujc.scarab.consensus.leios.{
+  CertifyDecision,
+  CertifyDefect,
+  LeiosVoting,
+  ProtVerParity
+}
 import xyz.kd5ujc.scarab.crypto.bls.RbHash
 import xyz.kd5ujc.scarab.ledger.{ForgeCertifyProblem, ForgeError, NodeError, PosixClock}
 import xyz.kd5ujc.scarab.ledger.StorageError
@@ -29,7 +34,17 @@ final case class DijkstraParent[S](
     unticked: NewEpochState[Dijkstra],
     ticked: NewEpochState[Dijkstra],
     announced: Option[EbPoint]
-)
+):
+  /** `protVerParity` of the protocol version of the parameters of `ticked` (`mkEb`,
+    * ouroboros-consensus 2416493b
+    * `ouroboros-consensus-cardano/src/shelley/Ouroboros/Consensus/Shelley/Ledger/Forge.hs:182-185`,
+    * of `fbCurrentTickedLedgerState`, the parent ticked to the slot whether the block certifies or
+    * not,
+    * `ouroboros-consensus-diffusion/src/ouroboros-consensus-diffusion/Ouroboros/Consensus/NodeKernel/Forge.hs:202-239`):
+    * the parity the transaction cache records the endorser block's transactions as validated under.
+    */
+  def parity: ProtVerParity =
+    ProtVerParity.of(EraLedger.curPParams(ticked.es.ls.utxo.gov).protocolMajor)
 
 /** What the forge loop's partition of a slot comes to (`partitionMempool`): the ranking block's
   * body and the endorser block it announces, the pool's held transactions the rules had no verdict
@@ -143,7 +158,8 @@ object DijkstraForge:
         yield
           val split = BlockBuilder.partition(snapshot, TxMeasure.zero, ebLimit)
           DijkstraPartition(
-            BlockBuilder.Assembly.dijkstra(Vector.empty, Some(certificate), split.endorsing(slot)),
+            BlockBuilder.Assembly
+              .dijkstra(Vector.empty, Some(certificate), split.endorsing(slot, parent.parity)),
             snapshot.withheld,
             decision
           )
@@ -155,7 +171,7 @@ object DijkstraForge:
             val split = BlockBuilder.partition(snapshot, blockLimit, ebLimit)
             DijkstraPartition(
               BlockBuilder.Assembly
-                .dijkstra(split.ranking.transactions, None, split.endorsing(slot)),
+                .dijkstra(split.ranking.transactions, None, split.endorsing(slot, parent.parity)),
               snapshot.withheld,
               decision
             )

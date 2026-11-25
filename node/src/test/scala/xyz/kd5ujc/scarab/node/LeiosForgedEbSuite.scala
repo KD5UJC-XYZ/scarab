@@ -15,6 +15,7 @@ import xyz.kd5ujc.scarab.consensus.leios.{
   EbFetchState,
   LeiosFetchStaticEnv,
   LeiosJobPool,
+  ProtVerParity,
   StdGen
 }
 import scala.collection.immutable.SortedMap
@@ -57,6 +58,7 @@ class LeiosForgedEbSuite extends FailsOnUncaught:
   private lazy val forged: ForgedLeiosEb =
     ForgedLeiosEb.forge(
       block.header.slot,
+      ProtVerParity.Even,
       NonEmptyVector
         .fromVector(block.transactions.map(xyz.kd5ujc.scarab.node.forge.DijkstraEraTxs.of))
         .getOrElse(fail("no transactions"))
@@ -167,6 +169,23 @@ class LeiosForgedEbSuite extends FailsOnUncaught:
           assertEquals(some, Right(Vector(0, 7, 39).map(txs(_)._2)))
           assertEquals(all, Right(txs.map(_._2)))
       }
+  }
+
+  dirs.test(
+    "the forged closure's transactions are recorded in the transaction cache as applied under the forge's parity"
+  ) { dir =>
+    rig(dir / "leios").use { (node, _, _) =>
+      val hashes = forged.closure.toVector.map(_._1)
+      for
+        before <- node.shared.txCache.lookup
+        _ <- ok(node.onForged.forged(announcing, forged))
+        after <- node.shared.txCache.lookup
+      yield
+        assertEquals(hashes.map(before), hashes.map(_ => None))
+        // `insertApplied` of `ForgedTxs` (`LeiosDemoLogic.hs` 1565-1566 at 2416493b): the closure
+        // check of the node's own endorser block then reapplies every one of them
+        assertEquals(hashes.map(after), hashes.map(_ => Some(Right(forged.txsProtVerParity))))
+    }
   }
 
   dirs.test("the announcement's point is recorded at the size of the forged body") { dir =>

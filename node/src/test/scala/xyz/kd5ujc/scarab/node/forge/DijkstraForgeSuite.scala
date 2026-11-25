@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.forge
 
+import xyz.kd5ujc.scarab.consensus.leios.ProtVerParity
 import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Rational, Value}
@@ -500,7 +501,11 @@ class DijkstraForgeSuite extends munit.FunSuite:
 
   test("a ranking block announcing an endorser block passes Praos2's header rules and the checks") {
     val endorsing =
-      BlockBuilder.Endorsing(led._1, NonEmptyVector.fromVectorUnsafe(recordedTxs))
+      BlockBuilder.Endorsing(
+        led._1,
+        ProtVerParity.Even,
+        NonEmptyVector.fromVectorUnsafe(recordedTxs)
+      )
     val body = BlockBuilder.Assembly.dijkstra(Vector.empty, None, Some(endorsing))
     val announcing = forge(body)
     assertEquals(announcing.header.leios.announcement, Some(endorsing.forged.announcement))
