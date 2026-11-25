@@ -170,7 +170,7 @@ class CborOutcomesTest(unittest.TestCase):
 
 
 TURBO = "scarab-20261125-uplc-turbo.json.gz"
-CPU = {"model": "Some CPU @ 2.00GHz", "logical_cpus": 4}
+CPU = {"model": "Some CPU @ 2.00GHz", "logical_cpus": 4, "available_cpus": 3}
 
 
 def turbo_run(directory, items, benches, requested=("uplc-turbo",), status="report"):
@@ -225,7 +225,8 @@ class TurboScoreTest(unittest.TestCase):
         self.assertIn("**22 of 25 programs met**", page)
         self.assertIn("| on memory | 1 (1 also on CPU) |", page)
         self.assertIn("| on CPU alone | 1 |", page)
-        self.assertIn("Some CPU @ 2.00GHz, 4 logical CPUs; container limits 3 CPUs and 8g", page)
+        self.assertIn("Some CPU @ 2.00GHz, 4 logical CPUs, 3 available to the container; container limits 3 CPUs "
+                      "and 8g", page)
         rows = [line for line in page.splitlines() if line.startswith("| `")]
         self.assertEqual(rows, [f"| `{bench(2)}` | memory | 2.10 | 2.50 |",
                                 f"| `{bench(1)}` | CPU alone | 2.05 | 0.90 |",

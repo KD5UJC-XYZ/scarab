@@ -36,8 +36,8 @@ python3 -I -B scripts/conformance/run.py ledger-rules uplc-conformance cbor-deco
    `cbor-decoding` exactly the samples of the era. `uplc-turbo` has no such check, since its tool leaves out a
    program that does not evaluate and the site counts it as failed; the provenance records how many it reports.
 5. It writes the report, compressed, beside a `.provenance.json` (commit, inputs and pins, tool and arguments,
-   image, the runner, the CPU model and logical CPU count a tool container sees and the container's limits,
-   checks, timings; no host name or path) and `summary.json`.
+   image, the runner, the CPU a tool container sees and the container's limits, checks, timings; no host name or
+   path) and `summary.json`.
 
 The workflow also runs `scripts/conformance/summarize.py --out <dir> --inputs <inputs>`. Its `cbor-outcomes.md`
 and, when the run wrote `uplc-turbo`, `turbo-score.md` are the job summary; `cbor-outcomes.json` retains matched
@@ -114,8 +114,9 @@ These are Plutus execution units. The runner measures JVM allocation separately 
 
 Timings vary from run to run, on a shared runner as on any machine, and with them the score the site gives a
 program near its CPU limit. The provenance says where a report was written (`environment.runner`), which CPU a tool
-container saw (`environment.cpu`: its model, when the kernel names one, and its logical CPUs, which `--cpus` does
-not lower) and the container's limits (`environment.limits`), so a change of hardware between two reports shows.
+container saw (`environment.cpu`: its model, when the kernel names one, the machine's logical CPUs and those
+`nproc` says the container may use, which `--cpus` lowers) and the container's limits (`environment.limits`), so a
+change of hardware between two reports shows.
 `publish.py` refuses a `uplc-turbo` report whose provenance names no CPU. On 2026-11-25, at `ae5ed2c2c` and the
 runner's settings, three runs on GitHub-hosted runners, all on an Intel Xeon 6975P-C, met 3,995, 3,994 and 3,995
 of the 3,997 programs, and three on a development laptop 3,981, 3,986 and 3,992. One program missed on memory and

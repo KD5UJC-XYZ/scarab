@@ -149,7 +149,7 @@ class CollectTest(unittest.TestCase):
 
 
 TURBO = "scarab-20261114-uplc-turbo.json.gz"
-CPU = {"model": "Some CPU @ 2.00GHz", "logical_cpus": 4}
+CPU = {"model": "Some CPU @ 2.00GHz", "logical_cpus": 4, "available_cpus": 3}
 
 
 def environment(runner, cpu=CPU):

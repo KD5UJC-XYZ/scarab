@@ -461,12 +461,15 @@ class RunTest(unittest.TestCase):
             run.arguments(["uplc-turbo", "--out", "/x", "--allocation-only"])
 
     def test_the_cpu_is_read_as_the_probe_prints_it(self):
-        x86 = "4\nmodel name\t: Intel(R) Xeon(R) 6975P-C\n"
-        self.assertEqual(run.parse_cpu(x86), {"model": "Intel(R) Xeon(R) 6975P-C", "logical_cpus": 4})
-        self.assertEqual(run.parse_cpu("8\n"), {"model": None, "logical_cpus": 8}, "a kernel that names no model")
-        self.assertEqual(run.parse_cpu("16\nmodel name\t:\n"), {"model": None, "logical_cpus": 16},
-                         "an empty name is none")
-        for output in ("", "0\n", "-2\n", "four\nmodel name : x\n", "4.5\n"):
+        x86 = "logical 4\navailable 3\nmodel name\t: Intel(R) Xeon(R) 6975P-C\n"
+        self.assertEqual(run.parse_cpu(x86), {"model": "Intel(R) Xeon(R) 6975P-C", "logical_cpus": 4,
+                                              "available_cpus": 3})
+        self.assertEqual(run.parse_cpu("logical 8\navailable 8\n"),
+                         {"model": None, "logical_cpus": 8, "available_cpus": 8}, "a kernel that names no model")
+        self.assertEqual(run.parse_cpu("logical 16\navailable \nmodel name\t:\n"),
+                         {"model": None, "logical_cpus": 16, "available_cpus": None},
+                         "an empty name is none, and nproc's absence leaves the machine's count")
+        for output in ("", "logical 0\n", "logical -2\n", "logical four\n", "logical 4.5\n", "4\n"):
             self.assertIsNone(run.parse_cpu(output)["logical_cpus"], repr(output))
 
     def test_the_environment_records_the_cpu_and_limits_the_tool_container_sees(self):
@@ -474,13 +477,14 @@ class RunTest(unittest.TestCase):
 
         def docker(argv, **kwargs):
             seen.append(argv)
-            output = "4\nmodel name\t: Some CPU @ 2.00GHz\n" if argv[-3:-1] == ["sh", "-c"] else "x\n"
+            output = "logical 4\navailable 3\nmodel name\t: Some CPU @ 2.00GHz\n" \
+                if argv[-3:-1] == ["sh", "-c"] else "x\n"
             return subprocess.CompletedProcess(argv, 0, output, "")
 
         with mock.patch.object(run.subprocess, "run", side_effect=docker), \
                 mock.patch.dict(os.environ, {"GITHUB_ACTIONS": "true"}):
             recorded = run.environment("img", "owner-1", "3", "8g")
-        self.assertEqual(recorded["cpu"], {"model": "Some CPU @ 2.00GHz", "logical_cpus": 4})
+        self.assertEqual(recorded["cpu"], {"model": "Some CPU @ 2.00GHz", "logical_cpus": 4, "available_cpus": 3})
         self.assertEqual(recorded["limits"], {"cpus": "3", "memory": "8g"})
         self.assertEqual(recorded["runner"], "github-actions")
         probe = next(argv for argv in seen if argv[-3:-1] == ["sh", "-c"])
@@ -490,7 +494,8 @@ class RunTest(unittest.TestCase):
             self.assertIn(flags, text, "the probe runs as the tool's containers do")
         with mock.patch.object(run.subprocess, "run",
                                side_effect=lambda argv, **kwargs: subprocess.CompletedProcess(argv, 125, "", "no")):
-            self.assertEqual(run.environment("img", "o", "3", "8g")["cpu"], {"model": None, "logical_cpus": None},
+            self.assertEqual(run.environment("img", "o", "3", "8g")["cpu"],
+                             {"model": None, "logical_cpus": None, "available_cpus": None},
                              "a failed probe records no CPU")
 
     def test_an_out_directory_with_reports_is_refused(self):

@@ -16,8 +16,9 @@ For the scenarios given (ledger-rules, uplc-conformance, uplc-turbo, cbor-decodi
      checkout's commit;
   5. writes `scarab-YYYYMMDD-<scenario>[-<era>].json.gz`, dated by the report's `generated_at` in UTC, and beside it
      `...provenance.json`: the Scarab commit, the inputs and their pins, the tool and its arguments, the image, the
-     CPU model and logical CPU count a tool container sees and its limits (`--cpus`, `--memory`), the checks and
-     the time each phase took. No host name, user or host path is recorded.
+     CPU a tool container sees (its model, the machine's logical CPUs and those the container may use) and its
+     limits (`--cpus`, `--memory`), the checks and the time each phase took. No host name, user or host path is
+     recorded.
 
 `summary.json` in `--out` lists what each scenario gave: a report, a skip and why, or a failure and why. The exit
 status is 1 if a scenario failed, 2 for a usage error. Nothing is published: that is `publish.py`'s, on demand.
@@ -164,23 +165,33 @@ def tool_command(scenario: Scenario, era: str | None, checkout: Checkout, contex
             "java", *scenario.jvm, "-cp", classpath, scenario.main, *scenario.arguments(context, era, "/out")]
 
 
-# Printed in a tool container: the logical CPUs it may run on, then the CPU's model as the kernel names it (x86).
-CPU_PROBE = "nproc && grep -m 1 '^model name' /proc/cpuinfo || true"
+# Printed in a tool container: the machine's logical CPUs, the CPUs `nproc` says the container may use, and the CPU's
+# model as the kernel names it (x86).
+CPU_PROBE = ('printf "logical %s\\n" "$(grep -c "^processor" /proc/cpuinfo)"; '
+             'printf "available %s\\n" "$(nproc)"; grep -m 1 "^model name" /proc/cpuinfo; true')
+
+
+def _count(text: str) -> int | None:
+    text = text.strip()
+    return int(text) if text.isdecimal() and int(text) > 0 else None
 
 
 def parse_cpu(output: str) -> dict:
-    """The CPU from `CPU_PROBE`'s output: its model, None when the kernel names none (as on most ARM CPUs), and
-    its logical CPUs, None when the count is not a positive number."""
+    """The CPU from `CPU_PROBE`'s output: its model, None when the kernel names none (as on most ARM CPUs), the
+    machine's logical CPUs and those the container may use, each None when it is not a positive number."""
     lines = output.splitlines()
-    count = lines[0].strip() if lines else ""
-    names = [line.partition(":")[2].strip() for line in lines[1:] if line.startswith("model name")]
-    return {"model": names[0] if names and names[0] else None,
-            "logical_cpus": int(count) if count.isdecimal() and int(count) > 0 else None}
+
+    def field(prefix: str) -> str:
+        return next((line.removeprefix(prefix) for line in lines if line.startswith(prefix)), "")
+
+    return {"model": field("model name").partition(":")[2].strip() or None,
+            "logical_cpus": _count(field("logical ")), "available_cpus": _count(field("available "))}
 
 
 def environment(image: str, owner: str, cpus: str, memory: str) -> dict:
-    """What the tools ran on. The CPU is what a tool container sees: `--cpus` caps its CPU time, not the CPUs it may
-    run on, so the count is the machine's, and the container's limits are recorded beside it."""
+    """What the tools ran on. The CPU is what a tool container sees: the machine's logical CPUs (`/proc/cpuinfo`), so
+    that a change of hardware shows, and those it may use (`nproc`, which in the image counts the `--cpus` quota),
+    with the container's limits beside them."""
     def ask(argv: list[str]) -> str | None:
         done = subprocess.run(argv, text=True, capture_output=True)
         text = (done.stdout or done.stderr).strip()

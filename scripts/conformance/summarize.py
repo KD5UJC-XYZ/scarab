@@ -205,8 +205,9 @@ def turbo_markdown(summary: dict) -> str:
               f"{score.CPU_TOLERANCE_US} µs or {score.MEMORY_TOLERANCE_BYTES // 1024} KiB of it. The site also fails "
               "a program whose budget disagrees with the other nodes' reports, which this count leaves out.", "",
               f"Scarab `{summary['scarab_commit'][:9]}`, written on `{_cell(summary.get('runner'))}`: CPU "
-              f"{_cell(cpu.get('model') or 'model unknown')}, {_cell(cpu.get('logical_cpus') or '?')} logical CPUs; "
-              f"container limits {_cell(limits.get('cpus', '?'))} CPUs and {_cell(limits.get('memory', '?'))}. "
+              f"{_cell(cpu.get('model') or 'model unknown')}, {_cell(cpu.get('logical_cpus') or '?')} logical CPUs, "
+              f"{_cell(cpu.get('available_cpus') or '?')} available to the container; container limits "
+              f"{_cell(limits.get('cpus', '?'))} CPUs and {_cell(limits.get('memory', '?'))}. "
               "Timings vary from run to run on any machine.", "",
               "| Missed | Programs |", "|---|---:|",
               f"| on memory | {missed['memory']} ({summary['missed_on_memory_also_on_cpu']} also on CPU) |",
