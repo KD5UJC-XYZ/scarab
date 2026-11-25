@@ -59,7 +59,7 @@ class DecodeCauseSuite extends FunSuite:
     assertEquals(parsed.parts.auxiliaryData.map(_.hex), Some(aux))
     assertEquals(parsed.id, xyz.kd5ujc.scarab.crypto.Blake2b.hash256.hash(bodyBytes))
     // and the forger takes the parts the mempool read, held in Conway's types, as they are
-    val ledger = TxKit.ledger(1).toPool
+    val ledger = TxKit.ledger(1)
     val held = ledger.heldAsValidated(ledger.readOf(raw), ConwayPoolEnv.of(TxKit.env, 1001))
     assertEquals(
       Entry(Held.InConway(held), 0L, 0L, scala.concurrent.duration.Duration.Zero).raw,

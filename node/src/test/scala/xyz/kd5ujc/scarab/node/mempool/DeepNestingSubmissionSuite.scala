@@ -59,7 +59,7 @@ class DeepNestingSubmissionSuite extends CatsEffectSuite:
 
   private def pool: IO[Mempool[IO]] =
     Mempool.create[IO](
-      Right(TxKit.conway(PreprodDeepTx.ledger).toPool),
+      Right(TxKit.conway(PreprodDeepTx.ledger)),
       tipSlot,
       env,
       None,
@@ -73,7 +73,7 @@ class DeepNestingSubmissionSuite extends CatsEffectSuite:
     val admitted =
       onSmallStack(
         MempoolState
-          .empty(Right(TxKit.conway(PreprodDeepTx.ledger).toPool), tipSlot, None)
+          .empty(Right(TxKit.conway(PreprodDeepTx.ledger)), tipSlot, None)
           .add(tx, env, Source.Local)
       )
     assertEquals(admitted.map(_._2.id.hex), Right(PreprodDeepTx.Id))
@@ -84,7 +84,7 @@ class DeepNestingSubmissionSuite extends CatsEffectSuite:
     val cut = tx.slice(0, tx.size - 40)
     assert(
       MempoolState
-        .empty(Right(TxKit.conway(PreprodDeepTx.ledger).toPool), tipSlot, None)
+        .empty(Right(TxKit.conway(PreprodDeepTx.ledger)), tipSlot, None)
         .add(cut, env, Source.Local)
         .left
         .exists(_.isInstanceOf[Rejection.Malformed])
@@ -192,7 +192,6 @@ class DeepNestingSubmissionSuite extends CatsEffectSuite:
     val selected = onSmallStack(
       TxKit
         .conway(PreprodDeepTx.ledger)
-        .toPool
         .selected(Vector(entry), PreprodDeepTx.Slot, env, limit)
     ) match
       case (picked, Vector()) => picked

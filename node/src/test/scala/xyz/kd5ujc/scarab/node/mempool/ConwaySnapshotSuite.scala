@@ -5,7 +5,6 @@ import java.nio.file.Path
 import java.util.concurrent.atomic.AtomicInteger
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.Tx as FlatTx
 import xyz.kd5ujc.scarab.ledger.era.EraTxError
 import xyz.kd5ujc.scarab.ledger.era.rules.{ConwayMempoolRun, UtxoStateDefect}
 import xyz.kd5ujc.scarab.protocol.{Era, ReferenceBuild}
@@ -38,7 +37,7 @@ class ConwaySnapshotSuite extends FunSuite:
   private def ids(kept: Vector[(Entry, ConwayAdmitted)]): Vector[Bytes] = kept.map(_._1.id)
 
   test("the transactions that still apply, in order; the refused left out, none withheld") {
-    val l3 = TxKit.ledger(3).toPool
+    val l3 = TxKit.ledger(3)
     val first = held(l3, pay(1)._1)
     // its only input is not in the state: refused (`AllInputsSpent`)
     val missing = held(l3, pay(9)._1)
@@ -57,7 +56,7 @@ class ConwaySnapshotSuite extends FunSuite:
   }
 
   test("a transaction of another era is not a Conway block's") {
-    val l3 = TxKit.ledger(3).toPool
+    val l3 = TxKit.ledger(3)
     val conway = held(l3, pay(1)._1)
     val (raw, _) = pay(2)
     val parsed = MempoolState.parseParts(raw).fold(r => fail(r.message), identity)
@@ -76,7 +75,7 @@ class ConwaySnapshotSuite extends FunSuite:
     val at = raw.value.indexOfSlice(signature)
     val forged = Bytes(raw.value.updated(at, (raw.value(at) ^ 0x01).toByte))
     def atVersion(major: Int) =
-      TxKit.ledger(3).withParams(_.copy(protocolMajor = BigInt(major))).toPool
+      TxKit.ledger(3).withParams(_.copy(protocolMajor = BigInt(major)))
     ReferenceBuild.values.foreach { build =>
       val e = under(build)
       val snapshot = (from: Int, on: Int) =>
@@ -101,7 +100,7 @@ class ConwaySnapshotSuite extends FunSuite:
   }
 
   test("no verdict on a transaction, an exception of the rules: it is withheld, the rest kept") {
-    val l3 = TxKit.ledger(3).toPool
+    val l3 = TxKit.ledger(3)
     val first = held(l3, pay(1)._1)
     val second = held(l3, pay(2)._1)
     // the first annotation made throws: 11.1's `reapplyTx` annotates each transaction again, and
@@ -148,8 +147,7 @@ class ConwaySnapshotSuite extends FunSuite:
         Vector(alice),
         referenceScript = Some(plutus)
       )
-    val withScript =
-      l3.applied(FlatTx.fromEnvelope(created, Era.Conway).getOrElse(fail("created")), slot)
+    val withScript = l3.applied(created, slot)
     val (scripted, out) = withScript.utxo.toMap
       .collectFirst { case (in, o) if o.scriptRef.nonEmpty => in -> o }
       .getOrElse(fail("no output with a reference script"))
@@ -167,12 +165,12 @@ class ConwaySnapshotSuite extends FunSuite:
       Vector(alice),
       referenceInputs = Vector(scripted)
     )._1
-    val reading = held(withScript.toPool, referencing)
-    val paying = held(withScript.toPool, pay(3)._1)
+    val reading = held(withScript, referencing)
+    val paying = held(withScript, pay(3)._1)
     // 11.1's `reapplyTx` annotates it again, which reads the damaged output: the node's defect
     val (kept, withheld) = MempoolState.conwaySnapshot(
       Vector(reading, paying),
-      damaged.toPool,
+      damaged,
       ConwayPoolEnv.of(under(ReferenceBuild.Release11_1), slot)
     )
     assertEquals(ids(kept), Vector(paying.id))

@@ -25,7 +25,7 @@ class DelegationHashesSubmissionSuite extends FunSuite:
       val parsed = MempoolState.parseParts(row.raw)
       val admitted = Source.values.toVector.map(source =>
         source -> MempoolState
-          .empty(Right(TxKit.ledger(1).toPool), 1000, None)
+          .empty(Right(TxKit.ledger(1)), 1000, None)
           .add(row.raw, TxKit.env, source)
           .map((pool, entry) => (pool.entries.size, entry.id))
       )

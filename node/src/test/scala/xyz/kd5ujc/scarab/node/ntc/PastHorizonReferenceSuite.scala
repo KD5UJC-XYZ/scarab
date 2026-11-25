@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.ntc
 
-import xyz.kd5ujc.scarab.node.mempool.{heldAsValidated, readOf, toPool}
+import xyz.kd5ujc.scarab.node.mempool.{heldAsValidated, readOf}
 import xyz.kd5ujc.scarab.protocol.StateLayout
 import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import cats.syntax.all.*
@@ -67,11 +67,11 @@ import xyz.kd5ujc.scarab.ledger.state.{
 import xyz.kd5ujc.scarab.node.NodeSetup
 import xyz.kd5ujc.scarab.node.mempool.{
   ConwayPoolEnv,
+  ConwayPools,
   Entry,
   Held,
   LocalSubmission,
   MempoolEnv,
-  MempoolLedger,
   MempoolState,
   Source
 }
@@ -265,8 +265,8 @@ class PastHorizonReferenceSuite extends FunSuite:
       clock = Some(_ => clockAt(setup, Era.Conway, nes.epoch.toBigInt, r.tip))
     )
     val ledger =
-      MempoolLedger.tick(nes, Some(r.tip), env).fold(e => fail(e.show), identity)
-    val pool = MempoolState.empty(Right(ledger.toPool), r.tip, None)
+      ConwayPools.ticked(nes, Some(r.tip), env).fold(e => fail(e.toString), identity)
+    val pool = MempoolState.empty(Right(ledger), r.tip, None)
     LocalSubmission
       .unwrap(r.item)
       .flatMap(tx => pool.add(tx, env, Source.Local).map(_ => ()))
@@ -308,9 +308,8 @@ class PastHorizonReferenceSuite extends FunSuite:
         xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder,
         clock = Some(_ => bounded)
       )
-      val ledger = MempoolLedger.tick(nes, Some(r.tip), env).fold(e => fail(e.show), identity)
+      val pool = ConwayPools.ticked(nes, Some(r.tip), env).fold(e => fail(e.toString), identity)
       val raw = LocalSubmission.unwrap(r.item).fold(e => fail(s"$e"), identity).raw
-      val pool = ledger.toPool
       val entry = Entry(
         Held.InConway(pool.heldAsValidated(pool.readOf(raw), ConwayPoolEnv.of(env, r.tip + 1))),
         0,
@@ -477,7 +476,7 @@ class PastHorizonReferenceSuite extends FunSuite:
         xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder,
         clock = Some(_ => clock)
       )
-      val ledger = MempoolLedger.tick(nes, Some(r.tip), env).fold(e => fail(e.show), identity)
+      val ledger = ConwayPools.ticked(nes, Some(r.tip), env).fold(e => fail(e.toString), identity)
       val pp = PParams[Conway](
         ConwayPParams.fromStored(ledger.params).fold(e => fail(s"${r.label}: $e"), identity)
       )
@@ -496,7 +495,7 @@ class PastHorizonReferenceSuite extends FunSuite:
           Some(EpochNo.fromBigInt(ledger.epoch).fold(e => fail(s"$e"), identity)),
           TxIx.txIxFromIntegral(0).getOrElse(fail("index 0")),
           pp,
-          ChainAccountState(ledger.treasury, Coin.zero)
+          ChainAccountState(ledger.account.treasury, Coin.zero)
         ),
         AlonzoStAnnTx.mkAlonzoStAnnTx[Conway](clock.posix, pp, utxo, Map.empty, tx),
         UtxoContext(

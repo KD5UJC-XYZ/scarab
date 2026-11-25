@@ -39,7 +39,7 @@ class GenTxSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaChe
   private def admitted(item: Bytes): Either[Rejection, Bytes] =
     LocalSubmission
       .unwrap(item)
-      .flatMap(MempoolState.empty(Right(ledger(4).toPool), 1000, None).add(_, env, Source.Local))
+      .flatMap(MempoolState.empty(Right(ledger(4)), 1000, None).add(_, env, Source.Local))
       .map(_._2.id)
 
   private val (tx, txId) = pay(1)
@@ -310,7 +310,7 @@ class GenTxSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaChe
     val magic = 42L
     val connection = for
       mempool <- Resource.eval(
-        Mempool.create[IO](Right(ledger(4).toPool), 1000, env, None, MempoolEvents.none[IO])
+        Mempool.create[IO](Right(ledger(4)), 1000, env, None, MempoolEvents.none[IO])
       )
       ends <- Resource.eval(Bearer.inMemory[IO]())
       (clientEnd, serverEnd) = ends

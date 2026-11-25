@@ -32,9 +32,9 @@ class MempoolInterventionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught
 
   /** A recorded case, its parts as received and the ledger that holds what it reads. */
   private final case class Case(plutus: PlutusCase, parts: Block.Transaction):
-    val ledger: MempoolLedger =
+    val ledger: ConwayPoolLedger =
       val funds = plutus.spent ++ plutus.references ++ plutus.collateral
-      MempoolLedger.of(Build.funded(Build.nes[Conway](5, plutus.params), funds))
+      ConwayPools.of(Build.funded(Build.nes[Conway](5, plutus.params), funds))
     val tipSlot: BigInt = plutus.slot - 1
     def raw(flag: Boolean): Bytes = Tx.envelope(parts.copy(isValid = flag))
 
@@ -45,7 +45,7 @@ class MempoolInterventionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught
       if indefinite then
         Bytes.fromArray(Array(0x9f.toByte)) ++ items ++ Bytes.fromArray(Array(0xff.toByte))
       else Bytes.fromArray(Array(0x83.toByte)) ++ items
-    def pool: MempoolState = MempoolState.empty(Right(ledger.toPool), tipSlot, None)
+    def pool: MempoolState = MempoolState.empty(Right(ledger), tipSlot, None)
 
   private def hex(j: io.circe.Json, field: String): Option[Bytes] =
     j.hcursor
@@ -200,7 +200,7 @@ class MempoolInterventionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught
       .add(failing.raw(true), mempoolEnv, Source.Remote)
       .fold(r => fail(r.message), _._1)
     val (synced, dropped) = held
-      .sync(Right(failing.ledger.toPool), failing.tipSlot, mempoolEnv)
+      .sync(Right(failing.ledger), failing.tipSlot, mempoolEnv)
     assertEquals(dropped, Vector.empty)
     assertEquals(synced.entries.map(_.raw), held.entries.map(_.raw))
     assertEquals(synced.entries.map(_.tx.isValid), Vector(false))
@@ -215,7 +215,7 @@ class MempoolInterventionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught
       BlockBuilder.body(Vector(piece)).invalid,
       Bytes.fromArray(Array(0x81, 0x00).map(_.toByte))
     )
-    val (chosen, withheld) = failing.ledger.toPool.selected(
+    val (chosen, withheld) = failing.ledger.selected(
       synced.entries,
       failing.tipSlot + 1,
       mempoolEnv,
@@ -232,7 +232,7 @@ class MempoolInterventionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught
   ) {
     for
       pool <- Mempool.create[IO](
-        Right(failing.ledger.toPool),
+        Right(failing.ledger),
         failing.tipSlot,
         mempoolEnv,
         None,
@@ -279,13 +279,13 @@ class MempoolInterventionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught
     val admitted = counts
     assert(admitted._1 > 0 && admitted._2 > 0 && admitted._3 > 0, admitted.toString)
     val (synced, dropped) = held
-      .sync(Right(ok.ledger.toPool), ok.tipSlot, counted)
+      .sync(Right(ok.ledger), ok.tipSlot, counted)
     assertEquals(dropped, Vector.empty)
     assertEquals(synced.entries.map(_.id), held.entries.map(_.id))
     val (kept, _) = synced
       .remove(Set.empty, counted)
     assertEquals(kept.entries.map(_.id), held.entries.map(_.id))
-    val (chosen, withheld) = ok.ledger.toPool.selected(
+    val (chosen, withheld) = ok.ledger.selected(
       synced.entries,
       ok.tipSlot + 1,
       counted,

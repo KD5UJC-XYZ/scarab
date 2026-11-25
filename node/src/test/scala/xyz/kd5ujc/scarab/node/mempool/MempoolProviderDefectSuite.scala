@@ -38,7 +38,7 @@ class MempoolProviderDefectSuite extends CatsEffectSuite:
     val (t1, id) = pay(1)
     for
       mempool <- Mempool
-        .create[IO](Right(ledger(2).toPool), 1000, defective, None, MempoolEvents.none[IO])
+        .create[IO](Right(ledger(2)), 1000, defective, None, MempoolEvents.none[IO])
       submit = LocalSubmission.handler[IO](mempool, ReferenceBuild.Release11_2)(f =>
         IO(fail(s"fatal: $f"))
       )
@@ -60,7 +60,7 @@ class MempoolProviderDefectSuite extends CatsEffectSuite:
     val (t2, id2) = pay(2)
     for
       mempool <- Mempool
-        .create[IO](Right(ledger(3).toPool), 1000, defective, None, MempoolEvents.none[IO])
+        .create[IO](Right(ledger(3)), 1000, defective, None, MempoolEvents.none[IO])
       sink = mempool.sink(f => IO(fail(s"fatal: $f")))
       ended <- Handle
         .allow[NetworkError](
@@ -93,11 +93,11 @@ class MempoolProviderDefectSuite extends CatsEffectSuite:
   test("a revalidation does not ask a provider that now fails: it verifies no witness again") {
     val (t1, id) = pay(1)
     val held = MempoolState
-      .empty(Right(ledger(2).toPool), 1000, None)
+      .empty(Right(ledger(2)), 1000, None)
       .add(t1, env, Source.Local)
       .fold(r => fail(r.toString), _._1)
     assertEquals(
-      held.sync(Right(ledger(2).toPool), 1001, defective)._1.entries.map(_.id),
+      held.sync(Right(ledger(2)), 1001, defective)._1.entries.map(_.id),
       Vector(id)
     )
     assertEquals(held.remove(Set.empty, defective)._1.entries.map(_.id), Vector(id))
@@ -122,7 +122,7 @@ class MempoolProviderDefectSuite extends CatsEffectSuite:
         def applicative = cats.effect.IO.asyncForIO
         def ask[E2 >: MempoolEnv] = current.get
       mempool <- Mempool.create[IO](
-        Right(ledger(3).toPool),
+        Right(ledger(3)),
         1000,
         env,
         None,
@@ -146,7 +146,7 @@ class MempoolProviderDefectSuite extends CatsEffectSuite:
   test("a sync under a provider that now fails asks it nothing: the pool keeps its transactions") {
     val (_, id1) = pay(1)
     val (_, id2) = pay(2)
-    revalidated(m => m.sync(Right(ledger(3).toPool), 1001).void).map { (before, after, events) =>
+    revalidated(m => m.sync(Right(ledger(3)), 1001).void).map { (before, after, events) =>
       assertEquals(before.entries.map(_.id), Vector(id1, id2))
       assertEquals(after.entries.map(_.id), Vector(id1, id2))
       assertEquals(dropped(events), Vector.empty)
