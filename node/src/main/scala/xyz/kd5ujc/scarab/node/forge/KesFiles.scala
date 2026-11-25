@@ -107,6 +107,11 @@ object KesFiles:
 
     /** The bytes of the stage, read into a buffer of `s` (see [[KeyText.file]]). */
     def readStage(s: Scratch, file: Path): s.Buffer = KeyText.file(file)(s)
+
+    /** The envelope of `key`, in native memory zeroed when `use` ends ([[KeyFiles.kesEnvelope]]).
+      */
+    def envelope[A](key: Sum6KesSigning.SigningKey)(use: ByteBuffer => A): A =
+      KeyFiles.kesEnvelope(key)(use)
     def rename(next: Path, file: Path): Unit =
       Files.move(next, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
     def exchange(next: Path, file: Path): Exchange = AtomicExchange(next, file)
@@ -350,6 +355,15 @@ object KesFiles:
       key: Sum6KesSigning.SigningKey,
       ops: FileOps
   ): Either[ForgeError, Unit] =
+    // the envelope is made first, in native memory, and the stage opened, written from it, forced
+    // and closed while it is there; it is zeroed once that ends. A failure to make the envelope, or
+    // of its cleanup, is the stage write's typed failure, and on every path the channel is closed
+    at(file, KesFileOperation.StageWrite)(
+      ops.envelope(key)(staged(file, _, ops))
+    ).flatten.flatMap(_ => validateStage(file, key, ops))
+
+  /** Write `envelope` to a new stage of `file`, forced and closed. */
+  private def staged(file: Path, envelope: ByteBuffer, ops: FileOps): Either[ForgeError, Unit] =
     val next = nextOf(file)
     at(file, KesFileOperation.StageWrite) {
       // owner-only where the file system has POSIX permissions
@@ -363,10 +377,7 @@ object KesFiles:
         )
         .getOrElse(FileChannel.open(next, Open.CREATE_NEW, Open.WRITE))
     }.flatMap { channel =>
-      // the envelope is written from native memory that is zeroed once it is written
-      val written = KeyFiles.kesEnvelope(key)(
-        writeAll(channel, _, 0L, file, KesFileOperation.StageWrite, ops)
-      )
+      val written = writeAll(channel, envelope, 0L, file, KesFileOperation.StageWrite, ops)
       val complete = written.flatMap(_ =>
         at(file, KesFileOperation.StageWrite)(
           ops.checkpoint(KesFileBoundary.StagedWriteCompleted)
@@ -379,7 +390,6 @@ object KesFiles:
         }
       )
       closeAfter(file, KesFileOperation.StageSync, channel, forced)
-        .flatMap(_ => validateStage(file, key, ops))
     }
 
   /** The stage read back is `expected`: the same period, verification key and 608 bytes, the bytes
@@ -666,11 +676,22 @@ object KesFiles:
     * them.
     */
   def readHot(kesFile: Path, opCertFile: Path): Either[ForgeError, HotCredentials] =
+    readHotWith(kesFile, opCertFile, recover)
+
+  /** [[readHot]] with the KES key read by `read`, a seam for the suites. */
+  private[forge] def readHotWith(
+      kesFile: Path,
+      opCertFile: Path,
+      read: Path => Either[ForgeError, Sum6KesSigning.SigningKey]
+  ): Either[ForgeError, HotCredentials] =
     for
       real <- resolved(kesFile)
-      kes <- recover(real)
-      ocText <- KeyFiles.read(opCertFile)
-      oc <- KeyFiles.opCert(opCertFile.toString, ocText)
+      kes <- read(real)
+      // a certificate that cannot be read leaves no KES key behind it
+      oc <- KeyFiles.erasedUnless(
+        kes,
+        KeyFiles.read(opCertFile).flatMap(KeyFiles.opCert(opCertFile.toString, _))
+      )(_ => true)
     yield HotCredentials(kes, oc._1, oc._2)
 
   /** What a reload found in the credential files. */

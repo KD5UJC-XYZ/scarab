@@ -321,6 +321,16 @@ object KeyFiles:
       opCertFile: Path,
       blsFile: Option[Path] = None
   ): Either[ForgeError, PoolCredentials] =
+    loadWith(vrfFile, kesFile, opCertFile, blsFile, KesFiles.readHot)
+
+  /** [[load]] with the KES key and certificate read by `readHot`, a seam for the suites. */
+  private[forge] def loadWith(
+      vrfFile: Path,
+      kesFile: Path,
+      opCertFile: Path,
+      blsFile: Option[Path],
+      readHot: (Path, Path) => Either[ForgeError, HotCredentials]
+  ): Either[ForgeError, PoolCredentials] =
     vrfSigningKey(vrfFile).flatMap { vrf =>
       erasedUnless(
         vrf,
@@ -329,9 +339,10 @@ object KeyFiles:
           // `readLeaderCredentialsSingleton` reads them (`Cardano/Node/Protocol/Shelley.hs:187-201`,
           // cardano-node b004fe0c)
           keys <- blsFile.traverse(loadBlsSigningKeys).map(_.getOrElse(Vector.empty))
-          hot <- KesFiles.readHot(kesFile, opCertFile)
+          hot <- readHot(kesFile, opCertFile)
           credentials = PoolCredentials(vrf, hot.kes, hot.opCert, hot.coldVkey, keys)
-          _ <- PoolCredentials.check(credentials)
+          // credentials that do not belong together are not taken: their KES key is erased too
+          _ <- erasedUnless(hot.kes, PoolCredentials.check(credentials))(_ => true)
         yield credentials
       )(_ => true)
     }
@@ -341,17 +352,31 @@ object KeyFiles:
     * leave no copy of its seed. A computation that throws, whatever it throws, erases the key too,
     * and its `Throwable` is passed on as it came (ERR-4); that is the reason for the suppression.
     */
-  @SuppressWarnings(Array("org.wartremover.warts.Throw"))
   private[forge] def erasedUnless[A](
       vrf: Draft03Prover.SigningKey,
       result: => Either[ForgeError, A]
   )(
       keeps: A => Boolean
   ): Either[ForgeError, A] =
+    erasing(() => vrf.forget(), result)(keeps)
+
+  /** [[erasedUnless]] for a KES key read for `result`: erased unless `result` keeps it. */
+  private[forge] def erasedUnless[A](
+      kes: Sum6KesSigning.SigningKey,
+      result: => Either[ForgeError, A]
+  )(
+      keeps: A => Boolean
+  ): Either[ForgeError, A] =
+    erasing(() => kes.forget(), result)(keeps)
+
+  @SuppressWarnings(Array("org.wartremover.warts.Throw"))
+  private def erasing[A](forget: () => Unit, result: => Either[ForgeError, A])(
+      keeps: A => Boolean
+  ): Either[ForgeError, A] =
     allCatch.either(result) match
       case Right(computed) =>
-        if !computed.exists(keeps) then vrf.forget()
+        if !computed.exists(keeps) then forget()
         computed
       case Left(thrown) =>
-        vrf.forget()
+        forget()
         throw thrown

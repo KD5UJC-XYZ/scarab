@@ -6,10 +6,12 @@ import java.nio.file.{Files, Path}
 import org.scalacheck.Gen
 import org.scalacheck.Prop.forAllNoShrink
 import xyz.kd5ujc.scarab.codec.Bytes
+import java.nio.ByteBuffer
+import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.crypto.kes.Sum6KesSigning
 import xyz.kd5ujc.scarab.crypto.secret.KeyText
 import xyz.kd5ujc.scarab.crypto.vrf.Draft03Prover
-import xyz.kd5ujc.scarab.ledger.ForgeError
+import xyz.kd5ujc.scarab.ledger.{ForgeError, Header, KesFileFailureCause, KesFileOperation}
 
 /** The key files read and written as bytes against the readers and the writer they replaced. A VRF
   * or KES key file read by its bytes gives what the text readers give on the file's text, read with
@@ -317,4 +319,121 @@ class KeyFilesBytesSuite extends munit.ScalaCheckSuite:
       KeyFiles.kesSigningKeyRead("k", source).map(kesSeen),
       Right(kesSeen(KeyFiles.kesSigningKey("k", text)))
     )
+  }
+
+  private final class Injected extends RuntimeException("a failure injected for the suite")
+
+  /** Whether this process holds a descriptor open on `path`. */
+  private def openOn(path: Path): Boolean =
+    val fds = Files.list(Path.of("/proc/self/fd"))
+    try
+      fds.iterator.asScala.exists(fd =>
+        scala.util.Try(Files.readSymbolicLink(fd)).toOption.contains(path.toAbsolutePath)
+      )
+    finally fds.close()
+
+  private def withKeyDir[A](body: (Path, Sum6KesSigning.SigningKey) => A): A =
+    val dir = Files.createTempDirectory("kes-stage")
+    try
+      val file = dir.resolve("kes.skey")
+      val key = Sum6KesSigning.generate(hex("7a" * 32)).toOption.get
+      Files.writeString(file, LegacyKeyFiles.kesEnvelope(file.toString, key).toOption.get)
+      key.evolveTo(5)
+      body(file, key)
+    finally
+      Files.list(dir).forEach(Files.delete(_))
+      Files.delete(dir)
+
+  test(
+    "a stage whose envelope cannot be made fails typed, makes no stage and holds no descriptor"
+  ) {
+    withKeyDir { (file, key) =>
+      val before = Files.readAllBytes(file).toVector
+      val failing = new KesFiles.FileOps:
+        override def envelope[A](key: Sum6KesSigning.SigningKey)(use: ByteBuffer => A): A =
+          throw new Injected
+      val next = file.resolveSibling("kes.skey.next")
+      KesFiles.persistWith(file, key, failing) match
+        case Persisted.Failed(
+              ForgeError.KesFileFailure(
+                _,
+                KesFileOperation.StageWrite,
+                KesFileFailureCause.FileSystem(_: Injected)
+              )
+            ) =>
+          ()
+        case other => fail(s"expected the stage write's typed failure, found $other")
+      assert(!Files.exists(next), "a stage was made for an envelope that was never made")
+      assert(!openOn(next), "a descriptor on the stage is left open")
+      assertEquals(Files.readAllBytes(file).toVector, before, "the key file changed")
+    }
+  }
+
+  test("a stage whose envelope fails after it is written fails typed, with its channel closed") {
+    withKeyDir { (file, key) =>
+      val failing = new KesFiles.FileOps:
+        override def envelope[A](key: Sum6KesSigning.SigningKey)(use: ByteBuffer => A): A =
+          KeyFiles.kesEnvelope(key)(use)
+          throw new Injected
+      val next = file.resolveSibling("kes.skey.next")
+      KesFiles.persistWith(file, key, failing) match
+        case Persisted.Failed(
+              ForgeError.KesFileFailure(
+                _,
+                KesFileOperation.StageWrite,
+                KesFileFailureCause.FileSystem(_: Injected)
+              )
+            ) =>
+          ()
+        case other => fail(s"expected the stage write's typed failure, found $other")
+      assert(!openOn(next), "a descriptor on the stage is left open")
+    }
+  }
+
+  test("a KES key read for credentials that are not taken is erased") {
+    val dir = Files.createTempDirectory("kes-erased")
+    try
+      val kesFile = dir.resolve("kes.skey")
+      val certificate = dir.resolve("node.cert")
+      Files.writeString(certificate, "not a certificate")
+      // the certificate cannot be read: the KES key read before it is erased
+      val read = Sum6KesSigning.generate(hex("7b" * 32)).toOption.get
+      val unread = KesFiles.readHotWith(kesFile, certificate, _ => Right(read))
+      assert(unread.isLeft, s"$unread")
+      assert(read.isForgotten, "the KES key read before an unreadable certificate was kept")
+      // the credentials do not belong together: the KES key is erased with the VRF key
+      val vrf = dir.resolve("vrf.skey")
+      val vrfKey = Draft03Prover.SigningKey.fromSeed(hex("7c" * 32)).toOption.get
+      Files.writeString(
+        vrf,
+        s"""{"type": "${KeyFiles.VrfSigningKeyType}", "description": "", "cborHex": "${head(
+            64
+          )}${vrfKey.toBytes.hex}"}"""
+      )
+      val held = Sum6KesSigning.generate(hex("7d" * 32)).toOption.get
+      val other = Sum6KesSigning.generate(hex("7e" * 32)).toOption.get
+      val mismatched = KeyFiles.loadWith(
+        vrf,
+        kesFile,
+        certificate,
+        None,
+        (_, _) =>
+          Right(
+            HotCredentials(
+              held,
+              Header.OpCert(other.verificationKey, 0, 0, Bytes.empty),
+              hex("03" * 32)
+            )
+          )
+      )
+      assert(
+        mismatched.left.exists(_.isInstanceOf[ForgeError.KesKeyNotCertified]),
+        s"$mismatched"
+      )
+      assert(held.isForgotten, "the KES key of credentials that were refused was kept")
+      // credentials that are taken keep their KES key
+      assert(!other.isForgotten)
+    finally
+      Files.list(dir).forEach(Files.delete(_))
+      Files.delete(dir)
   }
