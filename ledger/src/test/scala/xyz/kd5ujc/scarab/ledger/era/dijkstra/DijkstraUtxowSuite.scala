@@ -6,7 +6,7 @@ import java.time.Instant
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Value as CborValue}
 import xyz.kd5ujc.scarab.crypto.Blake2b
-import xyz.kd5ujc.scarab.ledger.dijkstra.{DijkstraTxIn, DijkstraUtxowFailure}
+import xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraTxIn
 import xyz.kd5ujc.scarab.ledger.{Horizon, TxEnv, TxIn, Unsigned, Utxo, Verdicts}
 import xyz.kd5ujc.scarab.ledger.era.*
 import xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraCorpus.*
@@ -245,36 +245,6 @@ class DijkstraUtxowSuite extends FunSuite:
     }
     // 110 contexts over the 78, of which 17 have several, nine at most
     assertEquals((evaluated.sum, evaluated.count(_ > 1), evaluated.max), (110, 17, 9))
-  }
-
-  test("an extra redeemer's index the flat failure's Int cannot hold is not narrowed") {
-    // the index is a `Word32` (`Dijkstra/Scripts.hs:122-129`, cardano-ledger 9df9f98c), which the
-    // witnesses' decoder admits whole: past `Int`'s range the failure is left unprojected (ARI-2)
-    def minting(ix: BigInt): DijkstraPlutusPurpose[AsIx] =
-      DijkstraPlutusPurpose.DijkstraMinting(
-        AsIx(Unsigned.from[Unsigned.Width.W32](ix).getOrElse(fail(s"$ix")))
-      )
-    def stored(ixs: NonEmptyList[BigInt]) =
-      DijkstraUtxowPredFailure.toStored(
-        DijkstraUtxowPredFailure.ExtraRedeemers[Dijkstra](ixs.map(minting)),
-        _ => None
-      )
-    val intMax = BigInt(Int.MaxValue)
-    val word32Max = (BigInt(1) << 32) - 1
-    stored(NonEmptyList.of(BigInt(0), intMax)) match
-      case Right(DijkstraUtxowFailure.ExtraRedeemers(purposes)) =>
-        assertEquals(purposes, Vector(1 -> 0, 1 -> Int.MaxValue))
-      case other => fail(s"$other")
-    Vector(
-      NonEmptyList.one(intMax + 1),
-      NonEmptyList.one(word32Max),
-      NonEmptyList.of(intMax, word32Max)
-    ).foreach { ixs =>
-      stored(ixs) match
-        case Left(DijkstraUtxowUnprojected.ExtraRedeemers(purposes)) =>
-          assertEquals(purposes.toList.map(_.ix.value), ixs.toList)
-        case other => fail(s"$ixs: $other")
-    }
   }
 
   // ---- the injections, on built values of every constructor Dijkstra's UTXO reports
@@ -533,4 +503,140 @@ class DijkstraUtxowSuite extends FunSuite:
     // the 11 refused at the top level, and the one collected there whose sub-transaction is
     // refused: the collection UTXOS reads is the batch's (`plutusScriptsWithContextStAnnTx`)
     assertEquals(refused, 12)
+  }
+
+  // ---- a needed native script in Dijkstra's form, with a guard (#1126)
+
+  /** The devnet's transaction of block 37 (`fixtures/dijkstra-devnet`, provenance in its README),
+    * which the reference accepted, in the flat and the era types.
+    */
+  private lazy val devnetTx
+      : (xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraTx, DijkstraTx[TxLevel.Top]) =
+    val raw = java.nio.file.Files
+      .readAllLines(java.nio.file.Path.of("fixtures", "dijkstra-devnet", "blocks.tsv"))
+      .toArray(Array.empty[String])
+      .toVector
+      .drop(1)
+      .map(_.split('\t'))
+      .filter(p => p(0) == "8" && p(1) == "37")
+      .map(p => hex(p(4)))
+      .headOption
+      .getOrElse(fail("no block 37"))
+    val flatTx = xyz.kd5ujc.scarab.ledger.Block.decodeShelley(raw) match
+      case Right(xyz.kd5ujc.scarab.ledger.Block.Dijkstra(b)) =>
+        b.transactions.headOption.getOrElse(fail("no transaction"))
+      case other => fail(s"not a Dijkstra block: $other")
+    flatTx -> DijkstraTx.inBlock(node(flatTx.raw)).fold(e => fail(e.toString), identity)
+
+  /** The devnet transaction's input: the initial funds of the genesis address `607be6…`, whose
+    * input is the Blake2b-256 of the address, index 0.
+    */
+  private val genesisAddress =
+    hex("607be6f4db9b5c16681157f9c2e15e57e341e21ecf94e553896f897a44")
+
+  private val genesisInput = TxIn(Blake2b.hash256.hash(genesisAddress), 0)
+
+  /** The parameters of the devnet's first Dijkstra epoch: protocol 12 with the Dijkstra genesis. */
+  private lazy val devnetStored: xyz.kd5ujc.scarab.ledger.ProtocolParams =
+    xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraFixture.genesis
+      .upgrade(xyz.kd5ujc.scarab.ledger.TestLedger.params(12))
+
+  /** The genesis input at a script address of the native script `native`, which the output holds as
+    * its reference script, as the store keeps a Dijkstra output: a script with a guard has no
+    * time-lock tree there. With the script's hash.
+    */
+  private def lockedBy(native: String): (Bytes, Utxo) =
+    val hash = Blake2b.hash224.hash(hex("00" + native))
+    val script = "8200" + native
+    val wrapped = "d818" + f"58${script.length / 2}%02x" + script
+    // `{0: script address, 1: the genesis funds, 3: the script}`
+    val out = hex("a3" + "00" + "581d70" + hash.hex + "01" + "1b0003328b944c4000" + "03" + wrapped)
+    val stored = DijkstraTxOut
+      .decode(node(out))
+      .map(StoredTxOut.dijkstra.toStored)
+      .fold(e => fail(e.toString), identity)
+    hash -> Utxo(Map(genesisInput -> stored))
+
+  /** UTXOW of Dijkstra on the era types on the devnet transaction from `utxo`, at slot 225. */
+  private def devnetUtxow(utxo: Utxo) =
+    val (_, tx) = devnetTx
+    val ls = xyz.kd5ujc.scarab.ledger.state.Build
+      .dijkstra(EpochNo.fromBigInt(1).fold(e => fail(e.toString), identity), devnetStored)
+      .es
+      .ls
+    val env = DijkstraUtxoEnv[Dijkstra](
+      225,
+      era(devnetStored),
+      ls.cert.pState,
+      ls.cert,
+      DijkstraUtxoRun.originalUtxo(utxo, tx)
+    )
+    val params = Horizon.Params(100, 1000, 30, 30)
+    DijkstraUtxoRun.run(
+      env,
+      DijkstraUtxoRun.annotate(s => fail(s"the clock was read at $s"), env, tx),
+      DijkstraUtxoContext(
+        Network.Testnet,
+        xyz.kd5ujc.scarab.ledger.SystemStart(Instant.EPOCH),
+        Horizon
+          .History(Vector.empty, Horizon.Edge(0, 0, 0), params, Some(params))
+          .at(Horizon.Transition.Unknown(Some(BigInt(1000)))),
+        TxEnv.Validation.All
+      ),
+      ls.utxo.copy[Dijkstra](utxo = UtxoTables(utxo)),
+      ScarabEvaluator.default,
+      Verdicts.Direct,
+      ScarabEvaluator.defaultDecoder
+    )
+
+  private val guardKey = "55" * 28
+  // `[6, [0, keyhash]]`: a guard by a key credential
+  private val guard = "8206" + "8200581c" + guardKey
+  // the devnet transaction's signer: the payment key of the genesis address
+  private val genesisSigner =
+    "8200581c" + "7be6f4db9b5c16681157f9c2e15e57e341e21ecf94e553896f897a44"
+
+  test("UTXOW applies the devnet transaction: its input spent, its outputs created, its fee kept") {
+    val (flatTx, tx) = devnetTx
+    val address = xyz.kd5ujc.scarab.ledger.Address.decode(genesisAddress).getOrElse(fail("address"))
+    val funds = xyz.kd5ujc.scarab.ledger.TxOut(
+      address,
+      xyz.kd5ujc.scarab.ledger.Value.coin(BigInt("900000000000000"))
+    )
+    devnetUtxow(Utxo(Map(genesisInput -> funds))) match
+      case Right(Right((after, _))) =>
+        assertEquals(
+          after.utxo.utxo.keys.toSet,
+          flatTx.body.outputs.indices.map(i => TxIn(bodies.id(tx.body), i)).toSet
+        )
+        assertEquals(Some(after.fees.value), flatTx.body.fee)
+      case other => fail(s"not admitted: $other")
+  }
+
+  test("UTXOW refuses a needed reference script with a guard the body does not have") {
+    // `evalDijkstraNativeScript` (`Dijkstra/Scripts.hs`, cardano-ledger 9df9f98c) holds a guard
+    // only for a credential the body's guards hold (`validateDijkstraNativeScript`,
+    // `Dijkstra/Tx.hs:434-437`); the devnet transaction has none
+    val (hash, utxo) = lockedBy(guard)
+    assertEquals(utxo.toMap.values.flatMap(_.scriptRef).map(_.native).toVector, Vector(None))
+    devnetUtxow(utxo) match
+      case Right(Left(fs)) =>
+        assertEquals(
+          fs.toChain.toVector,
+          Vector[UtxowPredFailure[Dijkstra]](
+            DijkstraUtxowPredFailure.ScriptWitnessNotValidatingUTXOW[Dijkstra](
+              NonEmptySet.one(hash)(using cats.Order.fromOrdering)
+            )
+          )
+        )
+      case other => fail(s"not refused: $other")
+  }
+
+  test("UTXOW applies a transaction whose needed script holds by a signature beside its guard") {
+    // `RequireAnyOf` of the guard and the transaction's signer
+    val (_, utxo) = lockedBy("8202" + "82" + guard + genesisSigner)
+    devnetUtxow(utxo) match
+      case Right(Right((after, _))) =>
+        assertEquals(after.utxo.utxo.keys.size, devnetTx._1.body.outputs.size)
+      case other => fail(s"not admitted: $other")
   }

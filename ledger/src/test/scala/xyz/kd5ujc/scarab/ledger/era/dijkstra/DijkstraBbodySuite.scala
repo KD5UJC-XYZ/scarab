@@ -358,7 +358,7 @@ class DijkstraBbodySuite extends FunSuite:
     assertEquals(
       units,
       recorded.foldLeft(ExUnits.zero)((a, r) =>
-        a + flat.rules.DijkstraTxMeasures.totalExUnits(r.flat)
+        a + flat.dijkstra.DijkstraTxMeasures.totalExUnits(r.flat)
       )
     )
     assert(units.mem > 0 && units.steps > 0, s"$units")
@@ -396,7 +396,8 @@ class DijkstraBbodySuite extends FunSuite:
       val stored = flat.dijkstra.DijkstraFixture.genesis.upgrade(flat.TestLedger.params(major))
       assertEquals(
         era,
-        flat.rules.DijkstraBbody.refScriptsSize(stored, flatUtxo(utxo), rs.map(_.flat)),
+        flat.dijkstra.DijkstraTxMeasures
+          .blockRefScriptsSize(stored, flatUtxo(utxo), rs.map(_.flat)),
         s"$major"
       )
       era

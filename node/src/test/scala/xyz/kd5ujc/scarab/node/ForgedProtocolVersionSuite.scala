@@ -4,27 +4,35 @@ package xyz.kd5ujc.scarab.node
 import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*
 import munit.FunSuite
-import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
 import xyz.kd5ujc.scarab.ledger.{
   Block,
   HeaderVersionInfo,
-  LeiosBlock,
+  Horizon,
   LeiosHeader,
-  Mismatch,
-  PlutusStats,
-  TestLedger
+  TxEnv,
+  Unsigned,
+  Verdicts
 }
-import xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraBbodyFailure
-import xyz.kd5ujc.scarab.ledger.rules.{
+import xyz.kd5ujc.scarab.ledger.Unsigned.Width.W32
+import xyz.kd5ujc.scarab.ledger.era.{EraGovRun, Mismatch}
+import xyz.kd5ujc.scarab.ledger.era.dijkstra.{DijkstraBbodyRun, DijkstraBlock}
+import xyz.kd5ujc.scarab.ledger.era.rules.{
   BbodyEnv,
-  Counted,
-  DijkstraBbody,
-  DijkstraBbodyState,
-  DijkstraSts,
-  Globals,
-  Judgment
+  DijkstraBbodyPredFailure,
+  DijkstraUtxoContext,
+  ShelleyBbodyState
 }
-import xyz.kd5ujc.scarab.ledger.state.{BlocksMade, Coin, Dijkstra, NewEpochState, ShelleyBasedEra}
+import xyz.kd5ujc.scarab.ledger.rules.Globals
+import xyz.kd5ujc.scarab.ledger.state.{
+  BlocksMade,
+  ChainAccountState,
+  Coin,
+  Dijkstra,
+  NewEpochState,
+  ShelleyBasedEra
+}
+import xyz.kd5ujc.scarab.plutus.ScarabEvaluator
 import xyz.kd5ujc.scarab.node.forge.ProducerSignal
 import xyz.kd5ujc.scarab.node.read.InEra
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
@@ -37,13 +45,15 @@ import xyz.kd5ujc.scarab.storage.haskell.state.HaskellLedgerFile
   * (#54): its configuration sets `ExperimentalHardForksEnabled`, so the node writes the major 12 of
   * the headers the reference's forgers wrote there after slot 2,168,639 (`fixtures/leios/testnet`;
   * `docs/leios.md` section 11.3 counts the testnet's other version info, `[12, 67]`, another
-  * implementation's identifier, in older headers), and Dijkstra's BBODY accepts it with either
-  * signal against the testnet's parameters, where the major without the flag is refused
-  * (`HeaderProtVerTooLow`, cardano-ledger 9df9f98c `Dijkstra/Rules/Bbody.hs:366-376`).
+  * implementation's identifier, in older headers), and Dijkstra's BBODY on the era types
+  * (`era.rules.DijkstraBbody`) accepts it with either signal against the testnet's parameters,
+  * where the major without the flag is refused (`HeaderProtVerTooLow`, cardano-ledger 9df9f98c
+  * `Dijkstra/Rules/Bbody.hs:366-376`).
   *
-  * The node does not forge a Dijkstra block yet (its forger forges Conway blocks only), so the
-  * block BBODY reads here is one the reference forged on the devnet of `fixtures/dijkstra-devnet`,
-  * with its version info replaced by the node's.
+  * The block BBODY reads here is one the reference forged on the devnet of
+  * `fixtures/dijkstra-devnet`, with its header's version info (the header body's field 9) replaced
+  * by the node's; the node's own Dijkstra forging under the Leios build (`Forger.forgesDijkstra`)
+  * is checked by `DijkstraForgeSuite`.
   */
 class ForgedProtocolVersionSuite extends FunSuite:
   private def hex(s: String): Bytes = Bytes.fromHex(s).fold(e => fail(e.message), identity)
@@ -119,35 +129,74 @@ class ForgedProtocolVersionSuite extends FunSuite:
           case other                     => fail(s"not in Dijkstra: $other")
       case other => fail(s"no Shelley-based ledger: $other")
 
-  /** An empty Dijkstra block the reference forged on the devnet. */
-  private lazy val devnetBlock: LeiosBlock =
+  /** An empty Dijkstra block the reference forged on the devnet: its bytes. */
+  private lazy val devnetBlock: Bytes =
     rows(Path.of("fixtures", "dijkstra-devnet", "blocks.tsv"))
       .drop(1)
       .filter(_(0) == "8")
-      .map(p => Block.decodeShelley(hex(p(4))).fold(e => fail(e.message), identity))
-      .collectFirst { case Block.Dijkstra(b) if b.transactions.isEmpty => b }
+      .map(p => hex(p(4)))
+      .find(raw =>
+        Block.decodeShelley(raw).fold(e => fail(e.message), identity) match
+          case Block.Dijkstra(b) => b.transactions.isEmpty
+          case _                 => false
+      )
       .getOrElse(fail("no empty Dijkstra block"))
 
-  private def bbody(version: (BigInt, BigInt)) =
-    val header = devnetBlock.header
-    val block = devnetBlock.copy(header =
-      header.copy(leios =
-        header.leios.copy(versionInfo = HeaderVersionInfo(version._1, version._2))
+  private def items(n: Node): Vector[Node] = n.value match
+    case Value.Arr(xs) => xs
+    case other         => fail(s"not an array: $other")
+
+  /** A definite array of fewer than 24 items, each encoded as `parts`. */
+  private def array(parts: Vector[Bytes]): Bytes =
+    parts.foldLeft(Bytes.fromArray(Array((0x80 + parts.size).toByte)))(_ ++ _)
+
+  /** The devnet block, `[8, [[header body, signature], body]]`, with the header body's version info
+    * (field 9, `[major, minor]`) as `version`, every other item the bytes it was read as: the body,
+    * which its size and hash in the header commit to, is unchanged.
+    */
+  private def withVersion(version: (BigInt, BigInt)): Bytes =
+    def uint(n: BigInt) = Cbor.encode(Value.UInt(n)).fold(e => fail(e.toString), identity)
+    val outer = items(Cbor.decode(devnetBlock).fold(e => fail(e.toString), identity))
+    val inner = items(outer(1))
+    val signed = items(inner(0))
+    val fields = items(signed(0)).map(_.original)
+    val header =
+      array(
+        Vector(
+          array(fields.updated(9, array(Vector(uint(version._1), uint(version._2))))),
+          signed(1).original
+        )
       )
-    )
-    val pp =
-      xyz.kd5ujc.scarab.ledger.era.GovStateRecord.view(testnetState.es.ls.utxo.gov.cgsCurPParams)
-    val issuer = DijkstraBbody.issuer(block).getOrElse(fail("issuer"))
-    DijkstraSts
-      .judge(DijkstraBbody, Judgment.Policy.Accumulate)(
+    array(Vector(outer(0).original, array(Vector(header, inner(1).original))))
+
+  /** An era of history far past the block's slot: an empty block reads no forecast. */
+  private val history: Horizon =
+    val params = Horizon.Params(100, 1000, 30, 30)
+    Horizon
+      .History(Vector.empty, Horizon.Edge(0, 0, 0), params, Some(params))
+      .at(Horizon.Transition.Unknown(Some(BigInt(0))))
+
+  private def bbody(version: (BigInt, BigInt)) =
+    DijkstraBbodyRun
+      .bbody(
         Globals(testnetSetup.globals, testnetSetup.praos.geometry),
-        BbodyEnv(
-          TestLedger.env.copy(slot = header.slot, epoch = testnetState.epoch.toBigInt),
-          pp,
-          Coin(0)
+        BbodyEnv[Dijkstra](
+          testnetState.es.ls.utxo.gov.cgsCurPParams,
+          ChainAccountState(Coin(0), Coin(0))
         ),
-        DijkstraBbodyState(Counted(testnetState.es.ls, PlutusStats.zero), BlocksMade.empty),
-        DijkstraBbody.Signal(block, issuer)
+        DijkstraBlock.decode(withVersion(version)).fold(e => fail(e.toString), identity),
+        DijkstraUtxoContext(
+          testnetSetup.globals.network,
+          testnetSetup.globals.systemStart,
+          history,
+          TxEnv.Validation.All
+        ),
+        ShelleyBbodyState[Dijkstra](testnetState.es.ls, BlocksMade.empty),
+        EraGovRun.dijkstraEmpty,
+        ScarabEvaluator.default,
+        Verdicts.Direct,
+        ScarabEvaluator.defaultDecoder,
+        slot => Right(slot * 1000)
       )
       .map(_.left.map(_.toChain.toVector))
 
@@ -166,7 +215,13 @@ class ForgedProtocolVersionSuite extends FunSuite:
     assertEquals(
       bbody(forged(ReferenceBuild.Leios, experimental = false)),
       Right(
-        Left(Vector(DijkstraBbodyFailure.HeaderProtVerTooLow(Mismatch(BigInt(11), BigInt(12)))))
+        Left(
+          Vector[DijkstraBbodyPredFailure[Dijkstra]](
+            DijkstraBbodyPredFailure.HeaderProtVerTooLow[Dijkstra](
+              Mismatch(Unsigned.wrapping[W32](11), Unsigned.wrapping[W32](12))
+            )
+          )
+        )
       )
     )
   }

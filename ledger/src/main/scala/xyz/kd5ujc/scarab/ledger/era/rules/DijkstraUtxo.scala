@@ -7,7 +7,6 @@ import cats.mtl.{Raise, Stateful, Tell}
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.ledger.{Address, Horizon, SystemStart, TxEnv, TxIn, Unsigned}
 import xyz.kd5ujc.scarab.ledger.Unsigned.Width.W16
-import xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraUtxoFailure
 import xyz.kd5ujc.scarab.ledger.era.*
 import xyz.kd5ujc.scarab.ledger.era.Relation.*
 import xyz.kd5ujc.scarab.ledger.era.dijkstra.{DijkstraUTxO, PlutusLegacyMode}
@@ -67,76 +66,6 @@ enum DijkstraUtxoPredFailure[E <: EraTag]:
 object DijkstraUtxoPredFailure:
   given [E <: EraTag]: CanEqual[DijkstraUtxoPredFailure[E], DijkstraUtxoPredFailure[E]] =
     CanEqual.derived
-
-  /** The failure in the node's flat form (`DijkstraUtxoFailure`), which the flat Dijkstra rules
-    * report: glue until the era failures have their own encoders (#85), one-way, as
-    * [[ConwayUtxoPredFailure.toStored]] is. UTXOS's `CollectErrors` are returned as they are.
-    */
-  def toStored(
-      failure: DijkstraUtxoPredFailure[Dijkstra]
-  ): Either[NonEmptyList[CollectError[Dijkstra]], DijkstraUtxoFailure] =
-    val s = StoredTxOut.dijkstra
-    def outs(os: NonEmptyList[TxOut[Dijkstra]]) = os.toList.toVector.map(s.toStored)
-    def ok(f: DijkstraUtxoFailure) = Right(f)
-    failure match
-      case UtxosFailure(f) =>
-        ConwayUtxoPredFailure.storedUtxos(f).map(DijkstraUtxoFailure.UtxosFailure(_))
-      case BadInputsUTxO(ins) => ok(DijkstraUtxoFailure.BadInputs(ins.toSortedSet))
-      case OutsideValidityIntervalUTxO(vi, slot) =>
-        ok(DijkstraUtxoFailure.OutsideValidityInterval(vi.invalidBefore, vi.invalidHereafter, slot))
-      case MaxTxSizeUTxO(m)    => ok(DijkstraUtxoFailure.MaxTxSize(m.stored))
-      case InputSetEmptyUTxO() => ok(DijkstraUtxoFailure.InputSetEmpty)
-      case FeeTooSmallUTxO(m) =>
-        ok(DijkstraUtxoFailure.FeeTooSmall(m.storedBy(_.value)))
-      case ValueNotConservedUTxO(m) =>
-        ok(
-          DijkstraUtxoFailure.ValueNotConserved(
-            m.storedBy(s.storedValue)
-          )
-        )
-      case WrongNetwork(n, addrs) =>
-        ok(DijkstraUtxoFailure.WrongNetwork(n.ordinal, addrs.toSortedSet.map(_.raw)))
-      case OutputBootAddrAttrsTooBig(os) =>
-        ok(DijkstraUtxoFailure.OutputBootAddrAttrsTooBig(outs(os)))
-      case OutputTooBigUTxO(os) =>
-        ok(
-          DijkstraUtxoFailure.OutputTooBig(
-            os.toList.toVector.map((a, b, o) => (a, b, s.toStored(o)))
-          )
-        )
-      case InsufficientCollateral(bal, required) =>
-        ok(DijkstraUtxoFailure.InsufficientCollateral(bal.value, required.value))
-      case ScriptsNotPaidUTxO(os) =>
-        ok(DijkstraUtxoFailure.ScriptsNotPaid(os.toSortedMap.view.mapValues(s.toStored).toMap))
-      case ExUnitsTooBigUTxO(m) => ok(DijkstraUtxoFailure.ExUnitsTooBig(m.stored))
-      case CollateralContainsNonADA(v) =>
-        ok(DijkstraUtxoFailure.CollateralContainsNonAda(s.storedValue(v)))
-      case WrongNetworkInTxBody(m) =>
-        ok(
-          DijkstraUtxoFailure.WrongNetworkInTxBody(m.storedBy(_.ordinal))
-        )
-      case OutsideForecast(slot) => ok(DijkstraUtxoFailure.OutsideForecast(slot))
-      case TooManyCollateralInputs(m) =>
-        ok(DijkstraUtxoFailure.TooManyCollateralInputs(m.storedBy(_.value.toInt)))
-      case NoCollateralInputs() => ok(DijkstraUtxoFailure.NoCollateralInputs)
-      case IncorrectTotalCollateralField(provided, declared) =>
-        ok(DijkstraUtxoFailure.IncorrectTotalCollateralField(provided.value, declared.value))
-      case BabbageOutputTooSmallUTxO(os) =>
-        ok(
-          DijkstraUtxoFailure.BabbageOutputTooSmall(
-            os.toList.toVector.map((o, c) => (s.toStored(o), c.value))
-          )
-        )
-      case BabbageNonDisjointRefInputs(ins) =>
-        ok(DijkstraUtxoFailure.BabbageNonDisjointRefInputs(ins.toList.toVector))
-      case PtrPresentInCollateralReturn(o) =>
-        ok(DijkstraUtxoFailure.PtrPresentInCollateralReturn(s.toStored(o)))
-      case ValueNotConservedInLegacyMode(m) =>
-        ok(
-          DijkstraUtxoFailure.ValueNotConservedInLegacyMode(
-            m.storedBy(s.storedValue)
-          )
-        )
 
 /** `UtxoEnv` of Dijkstra (`Dijkstra/Rules/Utxo.hs:101-107`, cardano-ledger 9df9f98c): the slot, the
   * parameters, the pool state after the sub-transactions, and the certificate state and the UTxO

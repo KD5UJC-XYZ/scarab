@@ -2,23 +2,14 @@
 package xyz.kd5ujc.scarab.ledger.era.rules
 
 import cats.data.{NonEmptyList, NonEmptyMap, NonEmptySet}
-import xyz.kd5ujc.scarab.ledger.{
-  Credential as FlatCredential,
-  GovAction as FlatGovAction,
-  GovActionId,
-  GovFailure,
-  Proposal,
-  Voter
-}
+import xyz.kd5ujc.scarab.ledger.{Credential as FlatCredential, GovActionId, Voter}
 import xyz.kd5ujc.scarab.ledger.era.*
 import xyz.kd5ujc.scarab.ledger.era.Relation.*
-import xyz.kd5ujc.scarab.ledger.rules.{Convert, DijkstraConway}
 import xyz.kd5ujc.scarab.ledger.state.{
   AccountAddress,
   ColdCommittee,
   Coin,
   Credential,
-  Dijkstra,
   EpochNo,
   EraTag,
   ScriptHash
@@ -111,87 +102,3 @@ object DijkstraGovPredFailure:
     case ConwayGovPredFailure.TreasuryWithdrawalReturnAccountsDoNotExist(as) =>
       TreasuryWithdrawalReturnAccountsDoNotExist(as)
     case ConwayGovPredFailure.UnelectedCommitteeVoters(vs) => UnelectedCommitteeVoters(vs)
-
-  /** The flat Conway action of each of `proposals` ' actions, as the flat Dijkstra rule reads it
-    * (`DijkstraConway.action`): none for a parameter change, which the flat action cannot hold.
-    */
-  def readOf(
-      proposals: Iterable[ProposalProcedure[Dijkstra]]
-  ): GovAction[Dijkstra] => Option[FlatGovAction] =
-    action =>
-      proposals
-        .find(_.pProcGovAction == action)
-        .flatMap(p => DijkstraConway.action(p.read.action).toOption)
-
-  /** A failure in the flat form the flat Dijkstra GOV gives, Conway's ([[GovFailure]]), glue the
-    * comparisons read, one-way. An action is put in its flat form as `read` gives it ([[readOf]]
-    * the transaction's proposals), and a proposal as the flat rule reads the one it was read as; an
-    * action neither reaches, a parameter change among them, is [[GovActionNotRead]].
-    */
-  def toStored(
-      failure: DijkstraGovPredFailure[Dijkstra],
-      read: GovAction[Dijkstra] => Option[FlatGovAction]
-  ): Either[GovActionNotRead[Dijkstra], GovFailure] =
-    def action(a: GovAction[Dijkstra]): Either[GovActionNotRead[Dijkstra], FlatGovAction] =
-      read(a).toRight(GovActionNotRead(a))
-    def proposal(p: ProposalProcedure[Dijkstra]): Either[GovActionNotRead[Dijkstra], Proposal] =
-      DijkstraConway.proposal(p.read).left.map(_ => GovActionNotRead(p.pProcGovAction))
-    def version(v: ProtVer): (BigInt, BigInt) = (BigInt(v.pvMajor.value), v.pvMinor.value)
-    failure match
-      case GovActionsDoNotExist(ids) => Right(GovFailure.GovActionsDoNotExist(ids.toList.toVector))
-      case MalformedProposal(a)      => action(a).map(GovFailure.MalformedProposal(_))
-      case ProposalProcedureNetworkIdMismatch(account, network) =>
-        Right(
-          GovFailure.ProposalProcedureNetworkIdMismatch(
-            Convert.rewardAccountBack(account),
-            network.wire
-          )
-        )
-      case TreasuryWithdrawalsNetworkIdMismatch(accounts, network) =>
-        Right(
-          GovFailure.TreasuryWithdrawalsNetworkIdMismatch(
-            accounts.toSortedSet.map(Convert.rewardAccountBack),
-            network.wire
-          )
-        )
-      case ProposalDepositIncorrect(m) =>
-        Right(GovFailure.ProposalDepositIncorrect(m.storedBy(_.value)))
-      case DisallowedVoters(votes) => Right(GovFailure.DisallowedVoters(votes.toList.toVector))
-      case ConflictingCommitteeUpdate(members) =>
-        Right(GovFailure.ConflictingCommitteeUpdate(members.toSortedSet.map(Convert.back(_))))
-      case ExpirationEpochTooSmall(members) =>
-        Right(
-          GovFailure.ExpirationEpochTooSmall(
-            members.toSortedMap.map((c, e) => Convert.back(c) -> e.toBigInt).toMap
-          )
-        )
-      case InvalidPrevGovActionId(p) => proposal(p).map(GovFailure.InvalidPrevGovActionId(_))
-      case VotingOnExpiredGovAction(votes) =>
-        Right(GovFailure.VotingOnExpiredGovAction(votes.toList.toVector))
-      case ProposalCantFollow(parent, m) =>
-        Right(
-          GovFailure.ProposalCantFollow(
-            parent.map(_.unGovPurposeId),
-            m.storedBy(version(_))
-          )
-        )
-      case InvalidGuardrailsScriptHash(proposed, constitution) =>
-        Right(
-          GovFailure.InvalidGuardrailsScriptHash(proposed.map(_.bytes), constitution.map(_.bytes))
-        )
-      case DisallowedProposalDuringBootstrap(p) =>
-        proposal(p).map(GovFailure.DisallowedProposalDuringBootstrap(_))
-      case DisallowedVotesDuringBootstrap(votes) =>
-        Right(GovFailure.DisallowedVotesDuringBootstrap(votes.toList.toVector))
-      case VotersDoNotExist(voters)   => Right(GovFailure.VotersDoNotExist(voters.toList.toVector))
-      case ZeroTreasuryWithdrawals(a) => action(a).map(GovFailure.ZeroTreasuryWithdrawals(_))
-      case ProposalReturnAccountDoesNotExist(account) =>
-        Right(GovFailure.ProposalReturnAccountDoesNotExist(Convert.rewardAccountBack(account)))
-      case TreasuryWithdrawalReturnAccountsDoNotExist(accounts) =>
-        Right(
-          GovFailure.TreasuryWithdrawalReturnAccountsDoNotExist(
-            accounts.toList.toVector.map(Convert.rewardAccountBack)
-          )
-        )
-      case UnelectedCommitteeVoters(credentials) =>
-        Right(GovFailure.UnelectedCommitteeVoters(credentials.toList.toVector))

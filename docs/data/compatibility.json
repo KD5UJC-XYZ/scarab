@@ -1958,7 +1958,6 @@
           "DijkstraCrossingSuite",
           "DijkstraStoredOutputsSuite",
           "DijkstraStateTranslationSuite",
-          "DijkstraRulesSuite",
           "DijkstraRulesOracleSuite",
           "DijkstraNativeScriptEvalSuite",
           "DijkstraTxSuite",

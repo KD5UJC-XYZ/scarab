@@ -638,11 +638,10 @@
     {
       "module": "ledger",
       "path": "ledger/dijkstra",
-      "responsibility": "Decoding of Dijkstra transactions at decoder version 12, in the block and the mempool form, as the Leios testnet's build reads them, and the predicate failures of the Dijkstra rules",
+      "responsibility": "Decoding of Dijkstra transactions at decoder version 12, in the block and the mempool form, as the Leios testnet's build reads them",
       "entryPoints": [
         "DijkstraTx",
-        "V12",
-        "DijkstraLedgerFailure"
+        "V12"
       ],
       "suites": [
         "LeiosTestnetBlockReferenceSuite",
@@ -891,9 +890,8 @@
         "Rewards",
         "MuslMath",
         "GenesisStart",
-        "DijkstraBbody",
-        "DijkstraLedgerRule",
-        "DijkstraUtxow"
+        "DijkstraPoolReap",
+        "DijkstraSnap"
       ],
       "suites": [
         "BbodySuite",
@@ -904,7 +902,6 @@
         "MuslMathSuite",
         "TxDependenciesSuite",
         "DuplicateWithdrawalsLedgerSuite",
-        "DijkstraRulesSuite",
         "DijkstraRulesOracleSuite"
       ],
       "docs": [

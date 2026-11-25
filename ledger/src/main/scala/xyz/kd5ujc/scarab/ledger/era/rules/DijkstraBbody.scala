@@ -14,9 +14,7 @@ import xyz.kd5ujc.scarab.ledger.{
   TxIn,
   Verdicts
 }
-import xyz.kd5ujc.scarab.ledger.dijkstra.{DijkstraBbodyFailure, DijkstraPurpose}
 import xyz.kd5ujc.scarab.ledger.era.*
-import xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraPlutusPurpose
 import xyz.kd5ujc.scarab.ledger.rules.{Globals, Judge, Sts, Test, focus}
 import xyz.kd5ujc.scarab.ledger.state.{Dijkstra, EpochNo}
 import xyz.kd5ujc.scarab.plutus.{ScriptDecoder, ScriptEvaluator}
@@ -167,34 +165,3 @@ object DijkstraBbody:
         s.copy(blocksMade = ShelleyBbody.incrBlocks(block, firstSlot, p.ppDG.get(pp), s.blocksMade))
       )
     yield ()
-
-  /** The failure in the node's flat form (`DijkstraBbodyFailure`), which the flat Dijkstra BBODY
-    * reports: glue the comparisons read until the era failures have their own encoders (#796),
-    * one-way. LEDGERS's through [[DijkstraLedgerPredFailure.toStored]] with `purpose` and `read`;
-    * what that form cannot hold is LEDGER's ([[DijkstraLedgerUnprojected]]).
-    */
-  def toStored(
-      failure: DijkstraBbodyPredFailure[Dijkstra],
-      purpose: DijkstraPlutusPurpose[AsItem] => Option[DijkstraPurpose],
-      read: GovAction[Dijkstra] => Option[xyz.kd5ujc.scarab.ledger.GovAction]
-  ): Either[DijkstraLedgerUnprojected, DijkstraBbodyFailure] = failure match
-    case DijkstraBbodyPredFailure.WrongBlockBodySizeBBODY(m) =>
-      Right(
-        DijkstraBbodyFailure.WrongBlockBodySize(m.storedBy(BigInt(_)))
-      )
-    case DijkstraBbodyPredFailure.InvalidBodyHashBBODY(m) =>
-      Right(DijkstraBbodyFailure.InvalidBodyHash(m.storedBy(_.bytes)))
-    case DijkstraBbodyPredFailure.LedgersFailure(ShelleyLedgersPredFailure.LedgerFailure(f)) =>
-      DijkstraLedgerPredFailure
-        .toStored(f, purpose, read)
-        .map(DijkstraBbodyFailure.LedgersFailure(_))
-    case DijkstraBbodyPredFailure.TooManyExUnits(m) =>
-      Right(DijkstraBbodyFailure.TooManyExUnits(m.stored))
-    case DijkstraBbodyPredFailure.BodyRefScriptsSizeTooBig(m) =>
-      Right(DijkstraBbodyFailure.BodyRefScriptsSizeTooBig(m.stored))
-    case DijkstraBbodyPredFailure.PerasCertValidationFailed(cert, nonce) =>
-      Right(DijkstraBbodyFailure.PerasCertValidationFailed(cert.bytes, nonce))
-    case DijkstraBbodyPredFailure.HeaderProtVerTooLow(m) =>
-      Right(
-        DijkstraBbodyFailure.HeaderProtVerTooLow(m.storedBy(_.value))
-      )

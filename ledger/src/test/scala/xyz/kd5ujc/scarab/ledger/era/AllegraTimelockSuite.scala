@@ -227,3 +227,28 @@ class AllegraTimelockSuite extends munit.FunSuite:
       "only a needed failing script fails"
     )
   }
+
+  test("the flat check takes no needed native script without a time-lock tree as holding") {
+    // a flat native script with no tree (a Dijkstra script with a guard, which only Dijkstra's
+    // era UTXOW evaluates) is the defect `NativeScriptUnread` when it is needed, never a pass;
+    // provided but not needed, it is not looked at
+    val flatTx = PreprodDeepTx.parsed
+    val hash = Bytes.fromArray(Array.fill(28)(0x55.toByte))
+    val treeless = Map(
+      hash -> xyz.kd5ujc.scarab.ledger
+        .Script(xyz.kd5ujc.scarab.ledger.ScriptKind.Native, hash, None)
+    )
+    val check =
+      xyz.kd5ujc.scarab.ledger.TxChecks.failedNativeScripts(flatTx, treeless, _, Set.empty)
+    assertEquals(
+      check(Some(Set(hash))),
+      Left(xyz.kd5ujc.scarab.ledger.LedgerFailure.NativeScriptUnread(flatTx.body.id, hash))
+    )
+    assertEquals(
+      check(None).left.toOption,
+      Some(
+        xyz.kd5ujc.scarab.ledger.LedgerFailure.NativeScriptUnread(flatTx.body.id, hash)
+      )
+    )
+    assertEquals(check(Some(Set.empty)).map(_.isValid), Right(true))
+  }

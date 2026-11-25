@@ -26,13 +26,11 @@ reference's verdict: `accepted`, or each predicate failure of the refusal as its
 The parameters are the devnet's (its genesis files), those the rules read. The block of the devnet with a
 transaction is refused by the oracle on the default ledger state (`bbody/devnet-37`: the set holds no
 output to spend), and accepted on the genesis output it spends (`bbody/devnet-37-genesis-utxo`), as the
-reference cluster accepted it; the node's rules halt on both at ENTITIES. Flagged phase-2-invalid
-(`bbody/devnet-37-invalid-flag`), it is refused through LEDGERS, LEDGER, UTXOW, UTXO and UTXOS, which the
-node's rules judge in full.
+reference cluster accepted it; the node's era rules give the same verdict on both. Flagged phase-2-invalid
+(`bbody/devnet-37-invalid-flag`), it is refused through LEDGERS, LEDGER, UTXOW, UTXO and UTXOS.
 
 `DijkstraRulesOracleSuite` (node) compares the node's era rules with every case, their failures written by
-the test-side encoder of Dijkstra's era failures, and the flat rules with the 70 cases recorded before it,
-which halt on a pool's registration. Scope: each rule on its own. Not LEDGER on its own or the SUB
+the test-side encoder of Dijkstra's era failures. Scope: each rule on its own. Not LEDGER on its own or the SUB
 rules; not ENTITIES of sub-transactions or in Plutus legacy mode; not UTXOW of a transaction with Plutus
 scripts, redeemers, datums, guards, sub-transactions, direct deposits or balance intervals; not a vote on
 an expired action, or by a committee member.
