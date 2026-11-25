@@ -96,4 +96,5 @@ One row per measurement section, in the order the sections were written; the sec
 | 65 | 2026-11-25 | The Genesis fetch decision's trimming to the dynamo's candidate (#810) | #810 | [Peers, connections and the network path](performance/peers-and-network.md#65-the-genesis-fetch-decisions-trimming-to-the-dynamos-candidate-810) |
 | 66 | 2026-11-25 | One Ed25519 verification in working storage of its own (#1418) | #1418 | [The mainnet follower and signature checks](performance/mainnet-follower.md#66-one-ed25519-verification-in-working-storage-of-its-own-1418) |
 | 67 | 2026-11-25 | Timing of the VRF secret path, fixed against random secrets (#1418) | #1418 | [The mainnet follower and signature checks](performance/mainnet-follower.md#67-timing-of-the-vrf-secret-path-fixed-against-random-secrets-1418) |
+| 68 | 2026-11-25 | uplc-turbo on GitHub-hosted runners: the score by CPU (#1411) | #1411 | [Rewards, parallel Plutus and script decoding](performance/rewards-and-evaluation.md#68-uplc-turbo-on-github-hosted-runners-the-score-by-cpu-1411) |
 <!-- /register -->

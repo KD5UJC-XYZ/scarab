@@ -641,3 +641,27 @@ its speed.
 Of the 27 programs still over the memory limit, an allocation profile of 26 attributes 25 to the field arithmetic
 of the Ed25519 verification (`verifyEd25519Signature`), which makes an object for each operation, and one to
 `BigInteger` arithmetic; the other program is at 2.002 times its budget and was not profiled.
+
+## 68. uplc-turbo on GitHub-hosted runners: the score by CPU (#1411)
+
+Each row is a run of `scripts/conformance/run.py uplc-turbo` at its own settings (3 CPUs, 8 GB, a 4 GB heap),
+scored by the scenario's rules at the site's pin `62800627`, with one evaluator: `ae5ed2c2c`, and `1477fe052` and
+`8e2701101` of the change that runs the scenario on GitHub-hosted runners, which change no Scala. A runner
+(`ubuntu-24.04`) cannot be chosen by its CPU: each run is given one, and the CPU named is the one the tool's
+container saw (`/proc/cpuinfo`). The runs are the **Conformance reports** workflow's; their artifacts expire with the
+workflow's retention, and the laptop's are not published.
+
+<!-- register:table perf-74.t1 -->
+| Where | CPU | Scarab | Runs | Programs met, of 3,997 |
+|---|---|---|---|---:|
+| GitHub-hosted runner | Intel Xeon 6975P-C | `ae5ed2c2c` | 45682241083, 45684247173, 45685651691 | 3,995, 3,994, 3,995 |
+| GitHub-hosted runner | Intel Xeon 6975P-C | `1477fe052` | 45690908941 | 3,992 |
+| GitHub-hosted runner | Intel Xeon Platinum 8370C | `8e2701101` | 45692610105 | 3,857 |
+| a development laptop |  | `ae5ed2c2c` | three | 3,981, 3,986, 3,992 |
+<!-- /register -->
+
+One program (`8100C5F1…`) missed on memory and on CPU in every run. On the 6975P-C the other misses were one to four
+programs on CPU alone, at 2.0 to 2.9 times their budget; on the 8370C, 139 programs on CPU alone, at 2.0 to 3.9
+times, and its tool ran for 127 s against 87 s in run 45690908941. So the score depends on the runner's CPU more than on the run: uplc-turbo
+is measured and published on one reference CPU, the 6975P-C (`TURBO_REFERENCE_CPU` in
+`scripts/conformance/scenarios.py`).
