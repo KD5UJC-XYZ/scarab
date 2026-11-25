@@ -688,3 +688,33 @@ lookups also appear in the profiles, but they are mostly the BlockFetch decision
 as before under another name. A first admission walks the blocks between the selected chain and the admitted block.
 When the LoE holds the selection back, that path is long (the linear forests above); the candidate it returns is as
 long. A full pass still walks every visible block after the selected chain.
+
+## 65. The Genesis fetch decision's trimming to the dynamo's candidate (#810)
+
+A mainnet Genesis sync in the Shelley era slowed from about 70 to about 38 blocks/s over its first fifteen Shelley
+epochs, with about 3.5 of 8 cores busy. A 60-second JFR profile (10,760 execution samples) put 20% of the samples
+in the Genesis fetch decision's trimming to the serving peer's candidate (`trimFragmentsToCandidate`,
+ouroboros-network c45735a5 `BlockFetch/Decision/Genesis.hs:588-597`), almost all of it comparing hashes. Scarab
+found each header's place on the candidate by a scan of the candidate. When the dynamo is behind the best candidate,
+every header it lacks cost a scan of its whole candidate. The candidate's anchors and header hashes now go into
+one set per decision. The decision is unchanged (`GenesisBlockFetchTrimSuite` compares it with the scanning
+version).
+
+**Harness and environment.**
+- `tools/runMain xyz.kd5ujc.scarab.network.GenesisFetchBench`, which calls only `GenesisBlockFetch.decide`, so the
+  same file ran against both builds. Two peers: the dynamo, first in the order, and a peer serving the best
+  candidate, each with its own instances of 32-byte hashes. The sbt server ran in a `scarab-jdk:local` container
+  with `--cpus 6`.
+- Thread CPU milliseconds per decision, as medians. "Fresh": 20 calls, each on a new fixture whose hashes nothing
+  has hashed yet, after 20 warm-up calls. "Repeated": 50 calls on one fixture, after 20 warm-up calls on it.
+- When the dynamo is at the tip, the scan found every header's place at once. The set now costs about 0.4 ms
+  there.
+
+<!-- register:table perf-71.t1 -->
+| `GenesisFetchBench`, best candidate | Fresh, before (`d4ae5ce0b`) | Repeated, before | Fresh, after (`6d995bd89`) | Repeated, after |
+|---|---:|---:|---:|---:|
+| 8,000, dynamo 2,000 behind, nothing fetched | 37.28 | 36.32 | 1.39 | 1.04 |
+| 8,000, dynamo 2,000 behind, first 2,000 fetched | 44.24 | 38.87 | 2.20 | 1.05 |
+| 8,000, dynamo at the tip | 1.39 | 0.73 | 1.59 | 1.13 |
+| 2,000, dynamo 500 behind | 2.75 | 2.43 | 0.32 | 0.27 |
+<!-- /register -->
