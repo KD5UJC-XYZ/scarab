@@ -60,7 +60,7 @@ class MempoolMeasureSuite extends munit.FunSuite with ScalaCheckSuite:
       rest: ConwayRefusals.Failure*
   ): Unit =
     assert(r.left.exists(_.isInstanceOf[Rejection.ConwayRefused]), s"$r")
-    assertEquals(answered(r), answered(Left(ConwayRefusals.refused(id, first, rest*))))
+    assertEquals(answered(r), Left(ConwayRefusals.sent(ConwayRefusals.refused(id, first, rest*))))
 
   private def maxTxSize(supplied: BigInt, limit: BigInt): ConwayRefusals.Failure =
     ConwayRefusals.utxo(
@@ -83,10 +83,10 @@ class MempoolMeasureSuite extends munit.FunSuite with ScalaCheckSuite:
       id,
       ConwayLedgerPredFailure.ConwayMempoolFailure[Conway](MempoolProblem.AllInputsSpent)
     )
-    assertEquals(answered(add(pool(ledger(1)), raw)), answered(Left(spent)))
+    assertEquals(answered(add(pool(ledger(1)), raw)), Left(ConwayRefusals.sent(spent)))
     assertEquals(
       refused(result.left.getOrElse(fail("accepted"))),
-      refused(ConwayRefusals.refused(id, expected))
+      ConwayRefusals.sent(ConwayRefusals.refused(id, expected))
     )
   }
 
@@ -98,7 +98,7 @@ class MempoolMeasureSuite extends munit.FunSuite with ScalaCheckSuite:
     measuredAs(result, id, expected)
     assertEquals(
       refused(result.left.getOrElse(fail("accepted"))),
-      refused(ConwayRefusals.refused(id, expected))
+      ConwayRefusals.sent(ConwayRefusals.refused(id, expected))
     )
   }
 
@@ -146,8 +146,8 @@ class MempoolMeasureSuite extends munit.FunSuite with ScalaCheckSuite:
     )
     val result = add(pool(l), raw)
     assert(result.left.exists(_.isInstanceOf[Rejection.ConwayRefused]), s"$result")
-    assertEquals(answered(result), answered(Left(expected)))
-    assertEquals(refused(result.left.getOrElse(fail("accepted"))), refused(expected))
+    assertEquals(answered(result), Left(ConwayRefusals.sent(expected)))
+    assertEquals(refused(result.left.getOrElse(fail("accepted"))), ConwayRefusals.sent(expected))
   }
 
   test("the reference scripts of a transaction are measured in 64 bits, as the reference's Int") {

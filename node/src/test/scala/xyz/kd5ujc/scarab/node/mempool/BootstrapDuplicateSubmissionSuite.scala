@@ -45,13 +45,15 @@ class BootstrapDuplicateSubmissionSuite extends FunSuite:
       invalidBootstraps = invalid
     )
 
-  private def invalidWitnesses(id: Bytes, keys: Key*): Either[Rejection, (Int, Bytes)] =
+  private def invalidWitnesses(id: Bytes, keys: Key*): Either[Bytes, (Int, Bytes)] =
     Left(
-      ConwayRefusals.refused(
-        id,
-        ConwayRefusals.utxow(
-          ConwayUtxowPredFailure.InvalidWitnessesUTXOW[Conway](
-            NonEmptyList.fromListUnsafe(keys.toList.map(_.vkey))
+      ConwayRefusals.sent(
+        ConwayRefusals.refused(
+          id,
+          ConwayRefusals.utxow(
+            ConwayUtxowPredFailure.InvalidWitnessesUTXOW[Conway](
+              NonEmptyList.fromListUnsafe(keys.toList.map(_.vkey))
+            )
           )
         )
       )
@@ -67,7 +69,7 @@ class BootstrapDuplicateSubmissionSuite extends FunSuite:
   test("a valid bootstrap witness followed by an invalid one of its root is refused") {
     val (raw, id) = payment(Vector(carol, carol), Set(1))
     for (source, answer) <- judged(raw) do
-      assertEquals(answered(answer), answered(invalidWitnesses(id, carol)), s"$source")
+      assertEquals(answered(answer), invalidWitnesses(id, carol), s"$source")
   }
 
   test("the last of three witnesses of one root decides, a repeated copy of the first included") {
@@ -75,7 +77,7 @@ class BootstrapDuplicateSubmissionSuite extends FunSuite:
     for (source, answer) <- judged(refused) do
       assertEquals(
         answered(answer),
-        answered(invalidWitnesses(refusedId, carol)),
+        invalidWitnesses(refusedId, carol),
         s"$source, invalid last"
       )
     val (admitted, admittedId) = payment(Vector(carol, carol, carol), Set(1))
@@ -90,7 +92,7 @@ class BootstrapDuplicateSubmissionSuite extends FunSuite:
       for (source, answer) <- judged(raw) do
         assertEquals(
           answered(answer),
-          answered(invalidWitnesses(id, dave)),
+          invalidWitnesses(id, dave),
           s"$source, the invalid one at $invalid"
         )
   }

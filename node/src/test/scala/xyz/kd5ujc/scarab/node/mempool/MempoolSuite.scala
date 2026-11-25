@@ -248,7 +248,7 @@ class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaC
             )
           )
         )
-        assertEquals(answered(refused), answered(Left(expected)))
+        assertEquals(answered(refused), Left(ConwayRefusals.sent(expected)))
       case other => fail(s"expected the adopted maximum-size rejection, received $other")
     val held = MempoolState
       .empty(Right(old), 5999, None)
@@ -472,16 +472,16 @@ class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaC
         MempoolProblem.UnelectedCommittee(Vector(hot.credential))
       )
     )
-    assertEquals(answered(attempt(10)), answered(Left(beforeEleven)))
+    assertEquals(answered(attempt(10)), Left(ConwayRefusals.sent(beforeEleven)))
     // from 11 GOV refuses the unelected voter, and goes on to find it is not known either
     val fromEleven = ConwayRefusals.refused(id, unknown, unelected)
-    assertEquals(answered(attempt(11)), answered(Left(fromEleven)))
+    assertEquals(answered(attempt(11)), Left(ConwayRefusals.sent(fromEleven)))
     // applied again (`reapplyTx`, by revalidation and block production), the refusal holds every
     // failure as well, in the same order (`applySTSNonStatic`; issue 412)
     val l = ledger(1).withProtocol(11)
     val at = ConwayPoolEnv.of(env, 1)
     val reapplied = l.reapply(l.heldAsValidated(l.readOf(raw), at), at).map(_ => ())
-    assertEquals(answered(reapplied), answered(Left(fromEleven)))
+    assertEquals(reapplied, Left(fromEleven))
   }
 
   test("capacity is counted in the measure of a transaction and refuses what does not fit") {

@@ -123,8 +123,21 @@ object ConwayRefusals:
   type Failure = ConwayLedgerPredFailure[Conway]
 
   /** The refusal of the transaction `id` with `first` and `rest`, in that order. */
-  def refused(id: xyz.kd5ujc.scarab.codec.Bytes, first: Failure, rest: Failure*): Rejection =
+  def refused(
+      id: xyz.kd5ujc.scarab.codec.Bytes,
+      first: Failure,
+      rest: Failure*
+  ): Rejection.ConwayRefused =
     Rejection.ConwayRefused(id, cats.data.NonEmptyChain(first, rest*))
+
+  /** The bytes a local client is sent for `r`, written by Conway's encoder of `ApplyTxError`
+    * ([[xyz.kd5ujc.scarab.node.ntc.ConwayFailureCbor.applyTxError]]) from its failures, every one
+    * in its order, apart from the pool's answer ([[LocalSubmission.reasonItem]]).
+    */
+  def sent(r: Rejection.ConwayRefused): xyz.kd5ujc.scarab.codec.Bytes =
+    xyz.kd5ujc.scarab.node.ntc.ConwayFailureCbor
+      .applyTxError(r.failures.toNonEmptyList)
+      .fold(e => munit.Assertions.fail(s"no encoding of $r: $e"), identity)
 
   /** A failure of UTXOW, under LEDGER. */
   def utxow(f: ConwayUtxowPredFailure[Conway]): Failure =
