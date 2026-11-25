@@ -14,10 +14,10 @@ import BlockFetchPolicy.*
   * dynamo does not have cost a scan of the whole of it.
   *
   * The bound is elapsed time read from `Clock[IO]`, as in the node's `SharedHashCodeSuite`. With
-  * 240,000 blocks in the best candidate and 120,000 in the dynamo's, each test took under 0.3 s in
-  * a JDK container of 6 CPUs. Where the decision was quadratic, the first had not ended when
-  * munit's 30-second timeout failed it, and at half these lengths it took 12 s. A 5-second bound
-  * leaves a margin of over 15 times for the decision as it is.
+  * 240,000 blocks in the best candidate and 120,000 in the dynamo's, each test took under 0.4 s in
+  * a JDK container of 6 CPUs. Where the decision was quadratic, neither had ended when munit's
+  * 30-second timeout failed it, and at half these lengths the first took 12 s. A 5-second bound
+  * leaves a margin of over 12 times for the decision as it is.
   */
 class GenesisBlockFetchScaleSuite extends CatsEffectSuite:
   private val bound = 5.seconds
