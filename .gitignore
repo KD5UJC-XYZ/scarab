@@ -5,6 +5,7 @@ target/
 *.class
 
 .cache/
+.direnv/
 
 __pycache__/
 *.pyc

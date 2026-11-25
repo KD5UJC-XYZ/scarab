@@ -9,7 +9,8 @@ in [docs/process.md](docs/process.md); design decisions are recorded as [ADRs](d
 rules the code follows are in [docs/design-rules.md](docs/design-rules.md). Automated agent sessions also
 follow [AGENTS.md](AGENTS.md).
 
-## Build: Docker only
+<a id="build-docker-only"></a>
+## Build: Docker, or the Nix shell
 
 No host JDK or sbt is needed. `scripts/sbtw` runs a sha256-pinned sbt launcher and needs a JDK, so
 run it in the JDK image:
@@ -25,6 +26,10 @@ docker run --rm -v "$PWD":/work -v "$scarab_cache":/work/.cache \
   -w /work --user "$(id -u):$(id -g)" -e HOME=/work/.cache/home \
   scarab-jdk:local bash scripts/sbtw check
 ```
+
+On x86_64 Linux the Nix shell ([docs/nix.md](docs/nix.md)) can stand in for the JDK image to build and
+test: `nix develop`, then `bash scripts/sbtw check`. `scripts/preflight --check` and the reference scenarios
+still need Docker; for a change built without it, a maintainer runs them before it is marked ready.
 
 `check` (an alias in `build.sbt`, built from its `modules` list; CI runs the same commands, built once by `checkBuild`, which is `check` without its tests, and the tests fanned out over parallel shards by `scripts/ci_test_shards.py`) runs `scalafmtCheckAll`, compiles all test sources, runs the
 tests of all modules (`crypto`'s `BlstSuite` among them: the pinned jblst library, start-up checks, the export list of the JNI glue), the fuzz suite among them, and ends with `scalafixAll --check`; the compiler runs with `-Werror` and the warnings that [the design rules](docs/design-rules.md#what-enforces-the-rules-today) list, and WartRemover refuses the disallowed patterns in the main sources of every module except `tools` (`build.sbt`, issue 650; [FUN-1](docs/design-rules.md#fun-1)); a module may only depend on the modules before it in the graph of [docs/architecture.md](docs/architecture/modules.md#modules), and sbt refuses a cycle. Dependencies and the sbt launcher are

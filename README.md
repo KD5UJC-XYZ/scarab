@@ -110,7 +110,9 @@ The design is described in [docs/architecture.md](docs/architecture.md), the rul
 
 ## Quick start
 
-Docker and Python 3 are all the host needs; there is no host JDK or sbt.
+Docker and Python 3 are all the host needs; there is no host JDK or sbt. On x86_64 Linux,
+[the Nix shell](docs/nix.md) can build and test instead (`nix develop`, then `bash scripts/sbtw check`);
+preflight and the scenarios still use Docker.
 
 ```sh
 # 1. The JDK image used to build and run
@@ -199,7 +201,7 @@ Alongside: `fixtures/` (test vectors and captured chain data, each with its prov
 
 ## Contributing, security, licence
 
-Contributions are welcome: read [CONTRIBUTING.md](CONTRIBUTING.md) (Docker-only build, style rules, the
+Contributions are welcome: read [CONTRIBUTING.md](CONTRIBUTING.md) (the build in Docker or the Nix shell, style rules, the
 gates each kind of change must pass), [docs/process.md](docs/process.md) and the [Code of Conduct](CODE_OF_CONDUCT.md). Agent
 sessions follow [AGENTS.md](AGENTS.md). Report
 security problems as [SECURITY.md](SECURITY.md#reporting) describes. Never commit signing keys.
