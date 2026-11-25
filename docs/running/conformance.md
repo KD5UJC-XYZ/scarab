@@ -7,8 +7,8 @@ pragma-org's [node-diversity-conformance](https://pragma-org.github.io/node-dive
 the reports that independent Cardano nodes publish for four scenarios: `ledger-rules`, `uplc-conformance`,
 `uplc-turbo` and `cbor-decoding` (one report per era, `conway` and `dijkstra`). The site runs nothing itself: it
 downloads each node's newest report when it is built. Scarab writes its reports with the `tools` entry points
-named in [the code map](../codemap.md). The CBOR detector runs nightly; publication stays on demand. The Plutus scenarios
-report Scarab's Plutus evaluator, its own (`uplc`).
+named in [the code map](../codemap.md). The CBOR detector and `uplc-turbo` run nightly; publication stays on demand.
+The Plutus scenarios report Scarab's Plutus evaluator, its own (`uplc`).
 
 ## Running a scenario locally
 
@@ -36,11 +36,13 @@ python3 -I -B scripts/conformance/run.py ledger-rules uplc-conformance cbor-deco
    `cbor-decoding` exactly the samples of the era. `uplc-turbo` has no such check, since its tool leaves out a
    program that does not evaluate and the site counts it as failed; the provenance records how many it reports.
 5. It writes the report, compressed, beside a `.provenance.json` (commit, inputs and pins, tool and arguments,
-   image, checks, timings; no host name or path) and `summary.json`.
+   image, the runner, the CPU model and logical CPU count a tool container sees and the container's limits,
+   checks, timings; no host name or path) and `summary.json`.
 
-The workflow also runs `scripts/conformance/summarize.py --out <dir>`. Its `cbor-outcomes.md` is the job summary;
-`cbor-outcomes.json` retains matched and mismatched counts by era and rule, source identities and every mismatched
-sample's name. A successfully generated report may contain disagreements: the summary says **MISMATCHES**, emits
+The workflow also runs `scripts/conformance/summarize.py --out <dir> --inputs <inputs>`. Its `cbor-outcomes.md`
+and, when the run wrote `uplc-turbo`, `turbo-score.md` are the job summary; `cbor-outcomes.json` retains matched
+and mismatched counts by era and rule, source identities and every mismatched sample's name, and
+`turbo-score.json` every missed uplc-turbo program (below). A successfully generated report may contain disagreements: the summary says **MISMATCHES**, emits
 a workflow warning and keeps those results visible. It does not add a merge gate or prevent publishing an honest
 report. Missing or invalid report evidence is **INCOMPLETE**, never a conformance pass.
 With `--previous <earlier-run-dir>`, the summarizer identifies new and resolved disagreements only when dataset,
@@ -68,7 +70,7 @@ not change persisted-state codecs or the reference profile selected by the node.
 ## Nightly CBOR detector
 
 The existing workflow runs `cbor-decoding` nightly, with both complete pinned era corpora and all normalisation
-vectors. It does not publish reports automatically or add a required PR check. The job's summary gives the
+vectors, and `uplc-turbo` beside it. It does not publish reports automatically or add a required PR check. The job's summary gives the
 conformance verdict; a successful report-generation job alone is not a conformance pass. Reports, provenance,
 outcome summaries and diagnostic logs have bounded workflow-artifact retention. The workflow reads the most recent
 successful nightly run's artifact for comparison. A first run, expired/missing artifact or incompatible corpus
@@ -97,26 +99,35 @@ anyway, and `publish.py` then refuses the report). Each run takes a fresh `--out
 already holds reports, so that `publish.py` takes only that run's. The exit status is 1 if a scenario failed. `--dry-run` prints
 the plan without building, fetching or running anything.
 
-`uplc-turbo` measures time, so its report is written ad hoc on a quiet local machine with a fast core, one run at
-a time:
+`uplc-turbo` measures each program's CPU time and the bytes it allocates. The runner's own settings (3 CPUs, 8 GB,
+a 4 GB heap) are its reference budget, which a GitHub-hosted runner supplies: the **Conformance reports** workflow
+writes the report there, nightly and on demand, and publishes it with the others. A report written locally at the
+same settings is published with `publish.py` directly:
 
 ```sh
-python3 -I -B scripts/conformance/run.py uplc-turbo --out <dir> [--cpus 3] [--memory 8g]
+python3 -I -B scripts/conformance/run.py uplc-turbo --out <dir>
 ```
 
 The restricting budget is 10 billion CPU units and 14 million memory units through protocol 10,
 then 16.5 million memory units from protocol 11, per the [clarified scenario](https://github.com/pragma-org/node-diversity-conformance/blob/628006278309c02a1c3e49dce00e43595d925c2e/scenarios/uplc-turbo/README.md).
 These are Plutus execution units. The runner measures JVM allocation separately in bytes.
-A busy or shared machine moves its `cpu_us` measurements and the score the site gives them.
+
+Timings vary from run to run, on a shared runner as on any machine, and with them the score the site gives a
+program near its CPU limit. The provenance says where a report was written (`environment.runner`), which CPU a tool
+container saw (`environment.cpu`: its model, when the kernel names one, and its logical CPUs, which `--cpus` does
+not lower) and the container's limits (`environment.limits`), so a change of hardware between two reports shows.
+`publish.py` refuses a `uplc-turbo` report whose provenance names no CPU. On 2026-11-25, at `ae5ed2c2c` and the
+runner's settings, three runs on GitHub-hosted runners, all on an Intel Xeon 6975P-C, met 3,995, 3,994 and 3,995
+of the 3,997 programs, and three on a development laptop 3,981, 3,986 and 3,992. One program missed on memory and
+CPU in every run; the others missed on CPU alone, at 2.0 to 2.1 times their budget on the runners.
 
 The bytes a program allocates depend mostly on the JVM's settings and CPU count, which the runner fixes, and little
 on the machine's speed or load: a program's figure moves by a fraction of a per cent from run to run, since the
-tool averages the thirty fastest of fifty evaluations. So the count of programs within the memory limit can be
-compared between runs on a GitHub-hosted runner, at the runner's own settings (3 CPUs, 8 GB, a 4 GB heap): on CI the runner refuses `uplc-turbo` unless it is given `--allocation-only`,
-and `scripts/conformance/turbo_memory.py --out <dir>` then writes `turbo-memory.md` and `turbo-memory.json`: the
-programs within the site's memory limit, and the median and 95th percentile of bytes per memory unit. The
-**Conformance reports** workflow does both when `uplc-turbo-memory` is ticked, and keeps the counts as an artifact
-of their own. `publish.py` refuses a `uplc-turbo` report that was not written on a local machine.
+tool averages the thirty fastest of fifty evaluations. `summarize.py` writes `turbo-score.md` and
+`turbo-score.json` for a run that wrote `uplc-turbo`: the programs met by the site's rule (`score.py`), those
+missed on memory (whatever their CPU time), on CPU alone, not reported or with nothing to compare, each missed
+program with its CPU time and memory as multiples of its budget, the programs within the memory limit, and the
+median and 95th percentile of bytes per memory unit.
 
 ## Names and the reports repository
 
@@ -166,14 +177,17 @@ the cause is fixed. It refuses a file whose provenance does
 not match it or records a failed check or uncommitted changes, a report whose commit is not on GitHub, and a dated
 report that is already published, unless `--replace` (a second run on the same day replaces the first).
 
-On GitHub, the **Conformance reports** workflow (`.github/workflows/conformance.yml`, run by hand, and nightly for the CBOR detector) runs the
-runner for the scenarios ticked (`ledger-rules`, `uplc-conformance` and `cbor-decoding`; turbo only for its memory
-counts, above) and
-keeps the files as a workflow artifact. When `publish` is ticked and the run is on `main`, a job of its own runs
+On GitHub, the **Conformance reports** workflow (`.github/workflows/conformance.yml`, run by hand, and nightly for
+the CBOR detector and `uplc-turbo`) runs the runner for the scenarios ticked (`ledger-rules`, `uplc-conformance`,
+`uplc-turbo` and `cbor-decoding`) and keeps the files as a workflow artifact. Dispatched runs share one concurrency
+group and run one at a time: while one runs, the next dispatch waits, and a later one replaces it (GitHub cancels
+the waiting run), so dispatch another only once the one before it has started; the nightly run has a group of its
+own.
+When `publish` is ticked and the run is on `main`, a job of its own runs
 `publish.py --apply`, with Git reaching the reports repository over SSH through the deploy key in the secret
 `CONFORMANCE_REPO_DEPLOY_KEY` (`GIT_SSH_COMMAND`, checking GitHub's published host keys); this repository's token
 stays read-only. The job fails at once if the secret is not
-set. A turbo report from a local machine is published with `publish.py` directly.
+set. A report written locally is published with `publish.py` directly.
 
 ### Setting up the reports repository and its key
 
