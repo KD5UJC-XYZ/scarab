@@ -8,10 +8,16 @@ import org.scalacheck.Prop.forAllNoShrink
 import xyz.kd5ujc.scarab.codec.Bytes
 import java.nio.ByteBuffer
 import scala.jdk.CollectionConverters.*
-import xyz.kd5ujc.scarab.crypto.kes.Sum6KesSigning
+import xyz.kd5ujc.scarab.crypto.kes.{LegacySum6KesSigning, Sum6KesSigning}
 import xyz.kd5ujc.scarab.crypto.secret.KeyText
 import xyz.kd5ujc.scarab.crypto.vrf.Draft03Prover
-import xyz.kd5ujc.scarab.ledger.{ForgeError, Header, KesFileFailureCause, KesFileOperation}
+import xyz.kd5ujc.scarab.ledger.{
+  ForgeError,
+  ForgeKeyProblem,
+  Header,
+  KesFileFailureCause,
+  KesFileOperation
+}
 
 /** The key files read and written as bytes against the readers and the writer they replaced. A VRF
   * or KES key file read by its bytes gives what the text readers give on the file's text, read with
@@ -120,6 +126,13 @@ class KeyFilesBytesSuite extends munit.ScalaCheckSuite:
         6 -> Gen.const(Nil),
         1 -> Gen.const(List("type" -> quoted(typ, escape = false))),
         1 -> Gen.const(List("cborHex" -> cborValue)),
+        // duplicates that conflict: another type, another key's bytes
+        1 -> Gen
+          .oneOf(KeyFiles.OpCertType, KeyFiles.VrfSigningKeyType, KeyFiles.KesSigningKeyType)
+          .map(other => List("type" -> quoted(other, escape = false))),
+        1 -> Gen.const(
+          List("cborHex" -> quoted(head(payload.size) + payload.hex.reverse, escape = false))
+        ),
         1 -> Gen.const(List("x" -> "\"y\"")),
         1 -> Gen.const(List("x" -> "true"))
       )
@@ -134,17 +147,31 @@ class KeyFilesBytesSuite extends munit.ScalaCheckSuite:
       val body = kept.map((name, value) => s"$ws\"$name\"$ws:$ws$value").mkString(",")
       around._1 + "{" + body + ws + "}" + around._2
 
+  /** A failure as it can be compared across two reads: the typed error, its circe and I/O causes by
+    * their own fields (an exception is a new object each time), and as it is rendered.
+    */
+  private def typed(e: ForgeError): (Any, String) =
+    val cause: Any = e match
+      case ForgeError.KeyFile(f, ForgeKeyProblem.Json(pf)) => ("json", f, pf.message)
+      case ForgeError.KeyFile(f, ForgeKeyProblem.Field(n, df)) =>
+        ("field", f, n, df.message, df.history)
+      case ForgeError.KeyFile(f, ForgeKeyProblem.Io(t)) => ("io", f, t.getClass, t.getMessage)
+      case ForgeError.KeyFile(f, ForgeKeyProblem.Vrf(Draft03Prover.Failure.InternalFailure(t))) =>
+        ("vrf", f, t.getClass)
+      case other => other
+    (cause, e.toString)
+
   /** What a read gave, as it can be compared: the key's period, verification key and bytes, or the
-    * failure as it is rendered.
+    * failure, typed and rendered.
     */
   private def kesSeen(
       r: Either[ForgeError, Sum6KesSigning.SigningKey]
-  ): Either[String, (Int, Bytes, Bytes)] =
-    r.left.map(_.toString).map(k => (k.period, k.verificationKey, k.toBytes))
+  ): Either[(Any, String), (Int, Bytes, Bytes)] =
+    r.left.map(typed).map(k => (k.period, k.verificationKey, k.toBytes))
   private def vrfSeen(
       r: Either[ForgeError, Draft03Prover.SigningKey]
-  ): Either[String, (Bytes, Bytes)] =
-    r.left.map(_.toString).map(k => (k.publicKey, k.toBytes))
+  ): Either[(Any, String), (Bytes, Bytes)] =
+    r.left.map(typed).map(k => (k.publicKey, k.toBytes))
 
   private def temp[A](body: Path => A): A =
     val file = Files.createTempFile("key-bytes", ".skey")
@@ -249,16 +276,23 @@ class KeyFilesBytesSuite extends munit.ScalaCheckSuite:
   test(
     "the KES key file the node writes is the previous writer's, byte for byte, at every period"
   ) {
+    // the expected bytes are the previous writer's, of the payload of the key implementation it
+    // wrote for, evolved alongside the node's key from the same seed
     val key = Sum6KesSigning.generate(hex("5e" * 32)).toOption.get
+    val legacy = LegacySum6KesSigning.generate(hex("5e" * 32)).toOption.get
     (0 until Sum6KesSigning.Periods).foreach { p =>
       key.evolveTo(p)
+      legacy.evolveTo(p)
       val written = KeyFiles.kesEnvelope(key) { buffer =>
         val out = new Array[Byte](buffer.remaining())
         buffer.duplicate().get(out)
         out
       }
-      val expected =
-        LegacyKeyFiles.kesEnvelope("kes.skey", key).toOption.get.getBytes(StandardCharsets.UTF_8)
+      val expected = LegacyKeyFiles
+        .kesEnvelope("kes.skey", legacy.toBytes)
+        .toOption
+        .get
+        .getBytes(StandardCharsets.UTF_8)
       assertEquals(Bytes.fromArray(written), Bytes.fromArray(expected), s"period $p")
     }
     key.forget()
