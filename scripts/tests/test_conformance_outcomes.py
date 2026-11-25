@@ -164,7 +164,8 @@ class CborOutcomesTest(unittest.TestCase):
         workflow = (Path(__file__).resolve().parents[2] / '.github/workflows/conformance.yml').read_text()
         self.assertIn("- cron: '17 8 * * *'", workflow)
         self.assertIn("CBOR_DECODING: ${{ github.event_name == 'schedule' || inputs.cbor-decoding }}", workflow)
-        self.assertIn('if: ${{ inputs.publish }}', workflow)
+        # A scheduled run has no inputs, so `inputs.publish` is empty and the publish job never runs for it.
+        self.assertIn("if: ${{ always() && inputs.publish && ", workflow)
         self.assertIn('--event schedule --status success', workflow)
         self.assertIn('--previous "$RUNNER_TEMP/conformance-previous"', workflow)
 
@@ -337,24 +338,42 @@ class TurboScoreTest(unittest.TestCase):
             self.assertIsNone(summarize.turbo(Path(tmp), Path(tmp, "inputs")))
 
 
-class WorkflowTest(unittest.TestCase):
-    def workflow(self):
-        return (Path(__file__).resolve().parents[2] / '.github/workflows/conformance.yml').read_text()
+def workflow():
+    return (Path(__file__).resolve().parents[2] / '.github/workflows/conformance.yml').read_text()
 
-    def test_turbo_is_an_ordinary_scenario_of_the_workflow_and_its_nightly_run(self):
-        workflow = self.workflow()
-        self.assertIn("UPLC_TURBO: ${{ github.event_name == 'schedule' || inputs.uplc-turbo }}", workflow)
-        self.assertIn('if [ "$UPLC_TURBO" = true ]; then scenarios+=(uplc-turbo); fi', workflow)
-        self.assertEqual(workflow.count("python3 -I -B scripts/conformance/run.py"), 1,
-                         "one run, one --out, one artifact")
-        self.assertNotIn("--allocation-only", workflow)
-        self.assertNotIn("uplc-turbo-memory", workflow)
-        inputs = workflow.split("    inputs:\n", 1)[1].split("\npermissions:", 1)[0]
-        self.assertIn("      uplc-turbo:\n", inputs)
-        self.assertIn("${{ runner.temp }}/conformance/turbo-score.md", workflow)
-        self.assertIn('cat "$RUNNER_TEMP/conformance/turbo-score.md" >> "$GITHUB_STEP_SUMMARY"', workflow)
-        self.assertIn('--inputs "$RUNNER_TEMP/conformance-inputs" --previous "$RUNNER_TEMP/conformance-previous"',
-                      workflow)
+
+def job(name):
+    """The text of one job of the workflow."""
+    jobs = workflow().split("\njobs:\n", 1)[1]
+    return jobs.split(f"\n  {name}:\n", 1)[1].split("\n  publish:\n" if name != "publish" else "\0", 1)[0] \
+        if name != "reports" else jobs.split("  reports:\n", 1)[1].split("\n  turbo:\n", 1)[0]
+
+
+class WorkflowTest(unittest.TestCase):
+    def test_turbo_has_a_job_of_its_own_whose_failure_leaves_the_run_green(self):
+        turbo, reports = job("turbo"), job("reports")
+        self.assertIn("    continue-on-error: true\n", turbo)
+        self.assertIn("if: ${{ github.event_name == 'schedule' || inputs.uplc-turbo }}", turbo)
+        self.assertIn("ANY_CPU: ${{ github.event_name == 'schedule' || inputs.uplc-turbo-any-cpu }}", turbo,
+                      "the nightly run measures on any CPU")
+        self.assertIn('python3 -I -B scripts/conformance/run.py uplc-turbo "${any[@]}"', turbo)
+        self.assertIn("name: conformance-turbo-${{ github.run_id }}", turbo)
+        self.assertNotIn("uplc-turbo", reports.replace("uplc-conformance", ""),
+                         "the CBOR baseline's job and artifact hold nothing of uplc-turbo")
+        self.assertIn("name: conformance-reports-${{ github.run_id }}", reports)
+        self.assertNotIn("--allocation-only", workflow())
+        self.assertNotIn("uplc-turbo-memory", workflow())
+        inputs_block = workflow().split("    inputs:\n", 1)[1].split("\npermissions:", 1)[0]
+        self.assertIn("      uplc-turbo:\n", inputs_block)
+        self.assertIn("      uplc-turbo-any-cpu:\n", inputs_block)
+
+    def test_publication_takes_what_each_job_gave_and_never_an_any_cpu_run(self):
+        publish_job = workflow().split("\n  publish:\n", 1)[1]
+        self.assertIn("needs: [reports, turbo]", publish_job)
+        self.assertIn("if: ${{ always() && inputs.publish && needs.reports.result != 'failure'", publish_job)
+        self.assertIn("if: ${{ needs.turbo.result == 'success' }}", publish_job)
+        self.assertIn('if [ "$ANY_CPU" = true ]; then', publish_job)
+        self.assertIn('"${runs[@]}" | tee -a "$GITHUB_STEP_SUMMARY"', publish_job)
 
 
 if __name__ == "__main__":
