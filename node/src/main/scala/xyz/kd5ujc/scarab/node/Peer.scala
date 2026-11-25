@@ -1420,6 +1420,13 @@ object Peer:
                 Deferred[F, Unit].flatMap { fresh =>
                   publishedCursor.getAndSet(candidate -> fresh).flatMap(_._2.complete(()).void)
                 }
+              // the publisher takes another step from the journal as it is, which trims the candidate
+              // to the gate's history if it moved on ([[trimToAnchor]])
+              nudge = Deferred[F, Unit].flatMap(fresh =>
+                journal
+                  .modify(before => (before.copy(changed = fresh), before.changed))
+                  .flatMap(_.complete(()).void)
+              )
               capacity = (update: ChainSyncClient.Update[NtNHeader]) =>
                 update match
                   case ChainSyncClient.Update.RollBackward(_, _) => F.unit
@@ -1436,14 +1443,40 @@ object Peer:
                         patience.traverse_(
                           _.setPaused(LimitOnPatience.PauseReason.LocalCapacity, true)
                         ) *>
+                          // While the window is full no header comes to move the gate's history:
+                          // our chain's changes are followed here, as the reference's client
+                          // follows them in its waits (`intersectsWithCurrentChain` in
+                          // `readLedgerStateHelper`, ouroboros-consensus 82ecba329
+                          // MiniProtocol/ChainSync/Client.hs 942-992, 1786-1815). The change is
+                          // awaited from before the gate follows our chain and the room is weighed,
+                          // so none falls between them. A history that no longer passes through our
+                          // anchor ends the wait with a restart, which drains the pipeline before
+                          // any header is taken.
                           F.tailRecM(()) { _ =>
-                            room.flatMap {
-                              case (true, _) => F.pure(Right(()))
-                              case (false, wake) =>
-                                F.race(drainRequested.get.flatMap(_.get), wake).map {
-                                  case Left(_)  => Right(())
-                                  case Right(_) => Left(())
+                            gate.get.flatMap { current =>
+                              current.ourChainChanged.flatMap { ourChain =>
+                                current.followOurChain.flatMap {
+                                  case HeaderGate.Following.NoLongerIntersects(tip) =>
+                                    // as the reference drains and finds a new intersection: the
+                                    // header is not taken
+                                    pendingRestart.set(Some(tip)).as(Right(()))
+                                  case following =>
+                                    (following match
+                                      case HeaderGate.Following.Trimmed => nudge
+                                      case _                            => F.unit
+                                    ) *> room.flatMap {
+                                      case (true, _) => F.pure(Right(()))
+                                      case (false, wake) =>
+                                        F.race(
+                                          drainRequested.get.flatMap(_.get),
+                                          F.race(wake, ourChain.getOrElse(F.never[Unit]))
+                                        ).map {
+                                          case Left(_)  => Right(())
+                                          case Right(_) => Left(())
+                                        }
+                                    }
                                 }
+                              }
                             }
                           }.guarantee(
                             patience.traverse_(
@@ -1648,17 +1681,22 @@ object Peer:
                   }
                   delta.flatMap { (after, events) =>
                     if events.isEmpty then
-                      permits.release *> (if latest.done then
-                                            intersectionEnded.get
-                                              .flatMap {
-                                                case Some(error) =>
-                                                  val fault = Fault.Failed(error)
-                                                  pipelineFailure.set(Some(fault)) *>
-                                                    queue.offer(PipelineEvent.Failed(fault))
-                                                case None => queue.offer(PipelineEvent.Drained)
-                                              }
-                                              .as(Right(()))
-                                          else latest.changed.get.as(Left((after, latest.epoch))))
+                      // nothing to publish: the candidate may still be trimmed, and a capacity wait
+                      // weighs the room again
+                      trimToAnchor(after, latest.candidate) *> advance(
+                        after
+                      ) *> permits.release *> (if latest.done then
+                                                 intersectionEnded.get
+                                                   .flatMap {
+                                                     case Some(error) =>
+                                                       val fault = Fault.Failed(error)
+                                                       pipelineFailure.set(Some(fault)) *>
+                                                         queue.offer(PipelineEvent.Failed(fault))
+                                                     case None => queue.offer(PipelineEvent.Drained)
+                                                   }
+                                                   .as(Right(()))
+                                               else
+                                                 latest.changed.get.as(Left((after, latest.epoch))))
                     else
                       // The candidate is published as ChainSync accepts it; nothing here waits
                       // for a body (BlockFetch is independent of ChainSync, State.hs:317–335).
