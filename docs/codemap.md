@@ -200,7 +200,7 @@ Programs run by hand, never as tests and never shipped: benchmarks, probes again
 | ledger/rules | Hand-run comparison and benchmark of `MuslMath` against the release node's own functions and JVM `Math` (its package, for its package-private access) | `MuslMathMain` |  | [ledger-pool-ranking-libm](compatibility/ledger-pool-ranking-libm.md) |
 | models | Hand-run benchmarks, checks and comparisons for the `models` package (its package, for its package-private access) | `CuddleCrossCheck`, `DecodeBench` |  |  |
 | network | Hand-run benchmarks, probes for the `network` package (its package, for its package-private access) | `LeiosChainProbe`, `LeiosProbe`, `MuxThroughputBench`, `PeerSharingProbe`, `TcpThreadCostMain` |  |  |
-| node | Hand-run benchmarks, checks and comparisons for the `node` package (its package, for its package-private access) | `FiberBoundaryBench`, `HaskellScalaCompareMain`, `Memory94Main`, `PeerMetricsBench`, `PreviewRuleBench`, `SelectionReviewBenchmark` |  |  |
+| node | Hand-run benchmarks, checks and comparisons for the `node` package (its package, for its package-private access) | `FiberBoundaryBench`, `HaskellScalaCompareMain`, `Memory94Main`, `PeerMetricsBench`, `PlutusThresholdBench`, `PreviewRuleBench`, `SelectionReviewBenchmark` |  |  |
 | node/differential | Hand-run checks and comparisons for the `node.differential` package (its package, for its package-private access) | `BoundaryTickMain` |  |  |
 | node/governor | Hand-run checks and comparisons for the `node.governor` package (its package, for its package-private access) | `DebugMain` |  |  |
 | node/log | Hand-run benchmarks for the `node.log` package (its package, for its package-private access) | `LogRouterBenchMain` |  |  |

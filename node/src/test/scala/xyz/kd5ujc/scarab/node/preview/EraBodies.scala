@@ -13,9 +13,9 @@ import xyz.kd5ujc.scarab.ledger.{Block, PlutusStats, Prepared, StorageError}
 import xyz.kd5ujc.scarab.ledger.era.rules.ConwayBlockRun
 import xyz.kd5ujc.scarab.ledger.rules.{EraBlock, EraNes, Globals}
 import xyz.kd5ujc.scarab.ledger.state.{Conway, LedgerState, NewEpochState, ShelleyBasedEra}
-import xyz.kd5ujc.scarab.node.{MirrorRules, NodeRules, NodeSetup, ParallelPlutus}
+import xyz.kd5ujc.scarab.node.{AlwaysPrepared, MirrorRules, NodeRules, NodeSetup, ParallelPlutus}
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
-import xyz.kd5ujc.scarab.plutus.PlutusBackend
+import xyz.kd5ujc.scarab.plutus.{EvalRequest, EvalResult, PlutusBackend, ScriptEvaluator}
 import xyz.kd5ujc.scarab.protocol.{Era, StateLayout}
 import xyz.kd5ujc.scarab.storage.UtxoStore
 
@@ -38,6 +38,10 @@ object EraBodies:
   /** The four ways, as the timings name them. */
   enum Way:
     case FlatSerial, FlatParallel, EraSerial, EraParallel
+
+    // prepared wherever the body may be, below the node's threshold too ([[AlwaysPrepared]]):
+    // where preparing starts to pay (#85)
+    case FlatPrepared, EraPrepared
 
   /** What a body came to, as a reader of the timings sees it: its counters, or its refusal. */
   private def described(result: Either[EraBlock.Outcome, ConwayBlockRun.Result]): String =
@@ -142,8 +146,49 @@ object EraBodies:
               case Way.FlatParallel => timed(parallel(flat)).map(_.leftMap(Left(_)))
               case Way.EraSerial    => timed(IO.blocking(era.serial)).map(_.leftMap(Right(_)))
               case Way.EraParallel  => timed(parallel(era)).map(_.leftMap(Right(_)))
+              case Way.FlatPrepared =>
+                timed(parallel(AlwaysPrepared(flat))).map(_.leftMap(Left(_)))
+              case Way.EraPrepared =>
+                timed(parallel(AlwaysPrepared(era))).map(_.leftMap(Right(_)))
           val ways = Way.values.toVector
           val redeeming = txs.count(_.exists(_.witnesses.redeemers.nonEmpty))
+          // what the era run's scripts ask and spend, from one serial run recording each request,
+          // and its dependency batches, outside the timings (#85)
+          def measures: Json =
+            val seen = java.util.concurrent.atomic.AtomicReference(
+              Vector.empty[(EvalRequest, EvalResult)]
+            )
+            val recording: ScriptEvaluator[cats.Id] = request =>
+              val result = backend.evaluator.evaluate(request)
+              val _ = seen.updateAndGet(_ :+ (request -> result))
+              result
+            val body = MirrorRules
+              .conwayBody(
+                globals,
+                ticked,
+                header.blockNo,
+                eraBlock,
+                clock,
+                backend.copy(evaluator = recording),
+                config.verdicts,
+                None
+              )
+              .fold(e => fail(s"era run: $e"), identity)
+            val _ = body.serial
+            val asked = seen.get
+            val spent = asked.map(_._2 match
+              case EvalResult.Success(u, _)    => u
+              case EvalResult.Failure(_, u, _) => u)
+            Json.obj(
+              "scripts" -> asked.size.asJson,
+              "preparable" -> era.preparable.asJson,
+              "worthwhile" -> era.worthwhile.asJson,
+              "batchWidths" -> AlwaysPrepared(era).prepare.batches.map(_.size).asJson,
+              "declaredSteps" -> asked.map(_._1.budget.steps).sum.asJson,
+              "declaredMem" -> asked.map(_._1.budget.mem).sum.asJson,
+              "spentSteps" -> spent.map(_.steps).sum.asJson,
+              "scriptBytes" -> asked.map(_._1.script.size).sum.asJson
+            )
           (0 until rounds).toVector.traverse { round =>
             val rotation = (index + round) % ways.size
             (ways.drop(rotation) ++ ways.take(rotation))
@@ -179,6 +224,7 @@ object EraBodies:
                   "round" -> round.asJson,
                   "transactions" -> txs.size.asJson,
                   "redeeming" -> redeeming.asJson,
+                  "measures" -> Option.when(round == 0 && redeeming > 0)(measures).asJson,
                   "eraAgreesWithFlat" -> sameAsFlat.asJson,
                   "differs" -> Option
                     .when(sameAsFlat.contains(false))(
