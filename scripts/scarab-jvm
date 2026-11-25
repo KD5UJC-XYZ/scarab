@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
+# Starts the node's JVM so that its memory, and a forging node's keys in it, stay off disk (docs/running/forging.md,
+# "Keys in memory"). The release image's entry point and the Nix network apps (scripts/nix-network) run it as
+# `scarab-jvm <java arguments>`, and it ends in `exec java <its options> <java arguments>`, so the JVM keeps this
+# process and its signals.
+set -euo pipefail
+
+say() {
+  printf 'scarab-jvm: %s\n' "$*" >&2
+}
+refuse() {
+  say "$*"
+  exit 2
+}
+
+sizing=()
+if [[ -v SCARAB_HEAP_SIZE ]]; then
+  [[ $SCARAB_HEAP_SIZE =~ ^[1-9][0-9]*[kKmMgG]?$ ]] ||
+    refuse "SCARAB_HEAP_SIZE must be a heap size such as 3g or 3072m"
+  sizing+=("-Xmx$SCARAB_HEAP_SIZE")
+fi
+if [[ -v SCARAB_RUN_PROCESSORS ]]; then
+  [[ $SCARAB_RUN_PROCESSORS =~ ^[1-9][0-9]*$ ]] || refuse "SCARAB_RUN_PROCESSORS must be a whole number of processors"
+  sizing+=("-XX:ActiveProcessorCount=$SCARAB_RUN_PROCESSORS")
+fi
+
+case ${SCARAB_JVM_DIAGNOSTICS-} in
+  '' | 0)
+    # The JVM reads these before and after its command line; options in them (OnError, HeapDumpPath, a recording at
+    # start, ...) would write memory however the options below are set.
+    dropped=()
+    for name in JAVA_TOOL_OPTIONS JDK_JAVA_OPTIONS _JAVA_OPTIONS; do
+      if [[ -v $name ]]; then
+        dropped+=("$name")
+        unset "$name"
+      fi
+    done
+    if ((${#dropped[@]})); then
+      say "dropped ${dropped[*]} from the JVM's environment; SCARAB_JVM_DIAGNOSTICS=1 keeps them (never on a forging node)"
+    fi
+    # Soft and hard: a core file from any signal, also SIGABRT, which the JVM does not catch.
+    ulimit -c 0
+    memory=(-XX:-CreateCoredumpOnCrash -XX:ErrorFile=/dev/null -XX:-ErrorFileToStdout -XX:-ErrorFileToStderr
+      -XX:-DumpReplayDataOnError -XX:-HeapDumpOnOutOfMemoryError -XX:+DisableAttachMechanism -XX:+PerfDisableSharedMem)
+    ;;
+  1)
+    say "memory diagnostics enabled: do not use on a forging node (core files, crash reports, heap dumps and attach" \
+      "are the JVM's defaults, with JAVA_TOOL_OPTIONS, JDK_JAVA_OPTIONS and _JAVA_OPTIONS as given)"
+    memory=()
+    ;;
+  *)
+    refuse "SCARAB_JVM_DIAGNOSTICS must be 1, 0 or unset"
+    ;;
+esac
+
+exec java "${sizing[@]}" "${memory[@]}" "$@"

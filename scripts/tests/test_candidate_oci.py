@@ -27,21 +27,29 @@ class CandidateOciTest(unittest.TestCase):
         output = io.BytesIO()
         with tarfile.open(fileobj=output, mode='w') as archive:
             for name, raw in files.items():
+                raw, mode = raw if isinstance(raw, tuple) else (raw, 0o644)
                 member = tarfile.TarInfo(name)
                 member.size = len(raw)
+                member.mode = mode
                 archive.addfile(member, io.BytesIO(raw))
         return output.getvalue()
 
-    def image(self, jar=None, version='1.2.3-beta.1', compressed=False, entrypoint=candidate_oci.ENTRYPOINT):
-        layer = self.tar({'opt/scarab/scarab.jar': self.jar.read_bytes() if jar is None else jar})
+    def image(self, jar=None, version='1.2.3-beta.1', compressed=False, entrypoint=candidate_oci.ENTRYPOINT,
+              launcher_layer=None):
+        layers = [self.tar({'opt/scarab/scarab.jar': self.jar.read_bytes() if jar is None else jar}),
+                  self.tar({'opt/scarab/scarab-jvm': (candidate_oci.LAUNCHER.read_bytes(), 0o555)})
+                  if launcher_layer is None else launcher_layer]
+        layers = [layer for layer in layers if layer]
+        names = [f'layer{index}.tar' for index in range(len(layers))]
         config = json.dumps(dict(architecture='amd64', os='linux',
-            rootfs=dict(type='layers', diff_ids=['sha256:' + hashlib.sha256(layer).hexdigest()]),
+            rootfs=dict(type='layers', diff_ids=['sha256:' + hashlib.sha256(layer).hexdigest() for layer in layers]),
             config=dict(Entrypoint=entrypoint, User='10001:10001',
                         Labels={'org.opencontainers.image.revision': 'a' * 40,
                                 'org.opencontainers.image.version': version}))).encode()
         archive = self.root / 'docker.tar'
-        archive.write_bytes(self.tar({'manifest.json': json.dumps([dict(Config='config.json', Layers=['layer.tar'])]).encode(),
-                                     'config.json': config, 'layer.tar': gzip.compress(layer) if compressed else layer}))
+        archive.write_bytes(self.tar({'manifest.json': json.dumps([dict(Config='config.json', Layers=names)]).encode(),
+                                     'config.json': config,
+                                     **{name: gzip.compress(layer) if compressed else layer for name, layer in zip(names, layers)}}))
         output = self.root / 'image.oci.tar'
         candidate_oci.convert(archive, output)
         return output
@@ -49,7 +57,7 @@ class CandidateOciTest(unittest.TestCase):
     def test_actual_oci_descriptor_layers_config_and_jar_are_bound(self):
         result = candidate_oci.verify(self.image(), self.jar, self.identity)
         self.assertEqual(result['manifest']['mediaType'], candidate_manifest.MEDIA_TYPE)
-        self.assertEqual(len(result['layers']), 1)
+        self.assertEqual(len(result['layers']), 2)
         self.assertRegex(result['configDigest'], '^sha256:[a-f0-9]{64}$')
 
     def test_gzip_transport_digest_and_uncompressed_filesystem_identity_are_distinct(self):
@@ -66,17 +74,31 @@ class CandidateOciTest(unittest.TestCase):
                     candidate_oci.verify(image, self.jar, self.identity,
                                          expected_manifest='sha256:' + 'b' * 64 if change == 'digest' else None)
 
-    def test_an_entry_point_that_lets_the_jvm_write_its_memory_fails(self):
-        before = ['java', '--sun-misc-unsafe-memory-access=allow', '-jar', '/opt/scarab/scarab.jar']
-        entrypoints = dict(before=before)
-        for option in candidate_oci.MEMORY_OPTIONS:
-            entrypoints['without ' + option] = [o for o in candidate_oci.ENTRYPOINT if o != option]
-        jar = candidate_oci.ENTRYPOINT.index('-jar')
-        entrypoints['core dump turned back on'] = (candidate_oci.ENTRYPOINT[:jar] + ['-XX:+CreateCoredumpOnCrash']
-                                                   + candidate_oci.ENTRYPOINT[jar:])
+    def test_an_entry_point_that_bypasses_the_launcher_fails(self):
+        jar = ['-jar', '/opt/scarab/scarab.jar']
+        entrypoints = {
+            'java, as before the launcher': ['java', '--sun-misc-unsafe-memory-access=allow', *jar],
+            'java with JVM options only': ['java', '--sun-misc-unsafe-memory-access=allow', '-XX:-CreateCoredumpOnCrash',
+                                           '-XX:ErrorFile=/dev/null', '-XX:-HeapDumpOnOutOfMemoryError',
+                                           '-XX:+DisableAttachMechanism', *jar],
+            'the launcher through a shell': ['/bin/sh', '-c', 'exec /opt/scarab/scarab-jvm "$@"', 'scarab',
+                                             '--sun-misc-unsafe-memory-access=allow', *jar],
+        }
         for name, entrypoint in entrypoints.items():
             with self.subTest(entrypoint=name), self.assertRaisesRegex(ValueError, 'runtime contract'):
                 candidate_oci.verify(self.image(entrypoint=entrypoint), self.jar, self.identity)
+
+    def test_a_launcher_other_than_scripts_scarab_jvm_fails(self):
+        launcher = candidate_oci.LAUNCHER.read_bytes()
+        layers = {
+            'missing': b'',
+            'changed': self.tar({'opt/scarab/scarab-jvm': (launcher.replace(b'ulimit -c 0', b'ulimit -c 1'), 0o555)}),
+            'writable': self.tar({'opt/scarab/scarab-jvm': (launcher, 0o755)}),
+            'with another file': self.tar({'opt/scarab/scarab-jvm': (launcher, 0o555), 'opt/scarab/extra': b'x'}),
+        }
+        for name, layer in layers.items():
+            with self.subTest(launcher=name), self.assertRaises(ValueError):
+                candidate_oci.verify(self.image(launcher_layer=layer), self.jar, self.identity)
 
     def test_mutated_blob_and_duplicate_layout_member_fail(self):
         for duplicate in [False, True]:

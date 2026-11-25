@@ -22,8 +22,10 @@ def tar_bytes(files):
     output = io.BytesIO()
     with tarfile.open(fileobj=output, mode='w') as archive:
         for name, raw in files.items():
+            raw, mode = raw if isinstance(raw, tuple) else (raw, 0o644)
             item = tarfile.TarInfo(name)
             item.size = len(raw)
+            item.mode = mode
             archive.addfile(item, io.BytesIO(raw))
     return output.getvalue()
 
@@ -73,11 +75,13 @@ def make_candidate(root: Path, release=True) -> dict:
     native_library = {k: receipt[k] for k in ('library', 'version', 'blstCommit')}
     write('evidence/native/receipt.json', receipt)
     layer = tar_bytes({'opt/scarab/scarab.jar': jar.read_bytes()})
-    config = dict(architecture='amd64', os='linux', rootfs=dict(type='layers', diff_ids=['sha256:' + hashlib.sha256(layer).hexdigest()]),
+    launcher = tar_bytes({candidate_oci.LAUNCHER_PATH: (candidate_oci.LAUNCHER.read_bytes(), 0o555)})
+    config = dict(architecture='amd64', os='linux',
+                  rootfs=dict(type='layers', diff_ids=['sha256:' + hashlib.sha256(raw).hexdigest() for raw in (layer, launcher)]),
                   config=dict(User='10001:10001', Entrypoint=candidate_oci.ENTRYPOINT,
                               Labels={'org.opencontainers.image.revision': identity['gitCommit'], 'org.opencontainers.image.version': identity['version']}))
-    docker_archive = put('docker.tar', tar_bytes({'manifest.json': json.dumps([dict(Config='config.json', Layers=['layer.tar'])]).encode(),
-                                                'config.json': json.dumps(config).encode(), 'layer.tar': layer}))
+    docker_archive = put('docker.tar', tar_bytes({'manifest.json': json.dumps([dict(Config='config.json', Layers=['layer.tar', 'launcher.tar'])]).encode(),
+                                                'config.json': json.dumps(config).encode(), 'layer.tar': layer, 'launcher.tar': launcher}))
     oci = root / 'artifacts/image.oci.tar'
     candidate_oci.convert(docker_archive, oci)
     inspected = candidate_oci.verify(oci, jar, identity)

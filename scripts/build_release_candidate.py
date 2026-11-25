@@ -90,6 +90,7 @@ def build(args):
             context = Path(temporary)
             shutil.copyfile(artifact, context / 'app.jar')
             shutil.copyfile(repo / 'docker/candidate.Dockerfile', context / 'Dockerfile')
+            shutil.copyfile(repo / 'scripts/scarab-jvm', context / 'scarab-jvm')
             from_lines = [line for line in (context / 'Dockerfile').read_text().splitlines() if line.startswith('FROM ')]
             if from_lines != ['FROM ' + BASE]:
                 raise ValueError('candidate recipe and approved runtime base differ')

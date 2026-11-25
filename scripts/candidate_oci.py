@@ -13,12 +13,11 @@ import tempfile
 
 from candidate_manifest import MEDIA_TYPE, sha256
 
-# The JVM options that keep a forging node's memory, and the keys in it, off disk (docs/running/forging.md,
-# "Keys in memory"). The image's entry point carries them before `-jar`, where JAVA_TOOL_OPTIONS and
-# JDK_JAVA_OPTIONS cannot override them.
-MEMORY_OPTIONS = ('-XX:-CreateCoredumpOnCrash', '-XX:ErrorFile=/dev/null', '-XX:-HeapDumpOnOutOfMemoryError',
-                  '-XX:+DisableAttachMechanism')
-ENTRYPOINT = ['java', '--sun-misc-unsafe-memory-access=allow', *MEMORY_OPTIONS, '-jar', '/opt/scarab/scarab.jar']
+# The image starts the node through scripts/scarab-jvm, which keeps the JVM's memory, and a forging node's keys,
+# off disk (docs/running/forging.md, "Keys in memory"); its last two layers are the JAR and that launcher.
+LAUNCHER = Path(__file__).resolve().with_name('scarab-jvm')
+LAUNCHER_PATH = 'opt/scarab/scarab-jvm'
+ENTRYPOINT = ['/' + LAUNCHER_PATH, '--sun-misc-unsafe-memory-access=allow', '-jar', '/opt/scarab/scarab.jar']
 
 
 def encoded(value):
@@ -121,23 +120,34 @@ def verify(archive_path, artifact, identity, expected_manifest=None):
                     raise ValueError('unsupported OCI layer encoding')
         if config.get('rootfs', {}).get('diff_ids') != diff_ids:
             raise ValueError('OCI uncompressed layer identities differ from runtime configuration')
-        with tarfile.open(fileobj=blob(layers[-1]), mode='r|*') as layer:
-            found = []
-            for member in layer:
-                path = member.name.removeprefix('./').rstrip('/')
-                if path.startswith('/') or '..' in PurePosixPath(path).parts:
-                    raise ValueError('unsafe application layer path')
-                if member.isfile():
-                    if path != 'opt/scarab/scarab.jar':
-                        raise ValueError('unexpected candidate application layer file')
-                    with layer.extractfile(member) as stream:
-                        found.append((member.size, hashlib.file_digest(stream, 'sha256').hexdigest()))
-                elif not member.isdir() or path not in {'opt', 'opt/scarab'}:
-                    raise ValueError('unexpected application layer link or directory')
-            if found != [(artifact.stat().st_size, sha256(artifact))]:
-                raise ValueError('image does not embed exactly the verified JAR')
+        if len(layers) < 2:
+            raise ValueError('candidate image lacks its application layers')
+        launcher = LAUNCHER.read_bytes()
+        if application_files(blob(layers[-2])) != {'opt/scarab/scarab.jar': (artifact.stat().st_size, sha256(artifact), None)}:
+            raise ValueError('image does not embed exactly the verified JAR')
+        if application_files(blob(layers[-1])) != {LAUNCHER_PATH: (len(launcher), hashlib.sha256(launcher).hexdigest(), 0o555)}:
+            raise ValueError('image does not embed exactly the launcher scripts/scarab-jvm, read-only and executable')
     return dict(manifest=manifest_descriptor, configDigest=manifest['config']['digest'],
                 layers=layers, diffIds=diff_ids, labels=labels)
+
+
+def application_files(stream):
+    """The regular files of an application layer: path to size, SHA-256 and, for the launcher, permission bits."""
+    found = {}
+    with tarfile.open(fileobj=stream, mode='r|*') as layer:
+        for member in layer:
+            path = member.name.removeprefix('./').rstrip('/')
+            if path.startswith('/') or '..' in PurePosixPath(path).parts:
+                raise ValueError('unsafe application layer path')
+            if member.isfile():
+                if path in found or path not in {'opt/scarab/scarab.jar', LAUNCHER_PATH}:
+                    raise ValueError('unexpected candidate application layer file')
+                with layer.extractfile(member) as content:
+                    found[path] = (member.size, hashlib.file_digest(content, 'sha256').hexdigest(),
+                                   member.mode & 0o7777 if path == LAUNCHER_PATH else None)
+            elif not member.isdir() or path not in {'opt', 'opt/scarab'}:
+                raise ValueError('unexpected application layer link or directory')
+    return found
 
 
 INDEX_TYPES = {'application/vnd.oci.image.index.v1+json', 'application/vnd.docker.distribution.manifest.list.v2+json'}
