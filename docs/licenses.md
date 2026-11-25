@@ -60,8 +60,10 @@ SLF4J (`node/log/LibraryLogs.scala`).
   (`crypto/src/main/java/xyz/kd5ujc/scarab/crypto/vrf`, from Bloxbean CCL; notice in
   `fixtures/vrf/licenses/CCL-LICENSE`); `MuslMath` and `MuslData` (`ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules`),
   a port of musl 1.2.5's `log`, `pow` and `exp` (Arm's optimized-routines); and the Edwards-curve arithmetic of
-  curve25519-elisabeth (`crypto/src/main/java/com/weavechain`), vendored from its source: MIT, with a BSD-3-Clause
-  part and CC0 portions (see [curve25519-elisabeth provenance](#curve25519-elisabeth-provenance)). The musl notice is
+  curve25519-elisabeth (`crypto/src/main/java/com/weavechain`), vendored from its source, with `VartimeEd25519`
+  (`crypto/src/main/java/xyz/kd5ujc/scarab/crypto/witness`), the same arithmetic written over arrays its caller
+  passes: MIT, with a BSD-3-Clause part and CC0 portions (see
+  [curve25519-elisabeth provenance](#curve25519-elisabeth-provenance)). The musl notice is
   `ledger/licenses/LICENSE-musl`, which the assembly carries as `META-INF/scarab/licenses/ledger/LICENSE-musl`, and
   curve25519-elisabeth's is `crypto/licenses/LICENSE-curve25519-elisabeth`, carried as
   `META-INF/scarab/licenses/crypto/LICENSE-curve25519-elisabeth`.
@@ -148,7 +150,11 @@ is not vendored. Each file starts with the SPDX line of a source adapted from co
 the upstream notice it carries: `Apache-2.0 AND MIT`, and `Apache-2.0 AND MIT AND BSD-3-Clause` for
 `UnpackedScalar.java`, the arithmetic ported from curve25519-dalek (below). The portions from eddsa-java add no
 identifier: they are CC0, which asks for no notice, and elisabeth's `LICENSE` states them. The `package-info.java`
-of each package is Scarab's own (`Apache-2.0`). From then on they are Scarab's sources.
+of each package is Scarab's own (`Apache-2.0`). From then on they are Scarab's sources. `VartimeEd25519.java`, in
+`xyz.kd5ujc.scarab.crypto.witness`, writes the field arithmetic, point formulas, decoding and double-scalar
+multiplication of `FieldElement`, `CompletedPoint`, `ProjectivePoint`, `EdwardsPoint`, the Niels points,
+`CompressedEdwardsY` and `Scalar.nonAdjacentForm` again over arrays its caller passes (#1418); it carries the same
+SPDX line, `Apache-2.0 AND MIT`, and names its source and the notice.
 
 | Item | Identity |
 |---|---|

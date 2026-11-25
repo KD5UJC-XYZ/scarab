@@ -494,3 +494,70 @@ witness verdicts that the rules then looked up.
 
 **Result.** The warming with the functional guards is not slower: 222 blocks a second at the median against 210. One
 JVM of the new side (160) ran while the node's tests ran on other CPUs.
+
+## 66. One Ed25519 verification in working storage of its own (#1418)
+
+**Why.** `StrictEd25519`, the verifier of transaction witnesses, operational certificates, the KES leaf and the
+Plutus builtin `verifyEd25519Signature`, computed with the vendored curve25519-elisabeth objects (#1418, step 1),
+which make a new limb array and object for every field operation and several for every point operation: about
+481 KB for one verification. #1418 counts that builtin's field arithmetic as the reason for 25 of the `uplc-turbo`
+programs still over the memory limit after section 63, which compares a program's allocated bytes with its memory
+budget.
+
+**What changed.** `VartimeEd25519` (`crypto/src/main/java/xyz/kd5ujc/scarab/crypto/witness`) is the same arithmetic
+written over arrays its caller passes, a kept site under FUN-2 (a) for this measurement: `FieldElement`'s operations
+as static methods that read all of their operands before they write the result, the point formulas over the points of
+one instance that each verification makes and drops, the odd multiples of the key built in that instance and the
+basepoint's built once. Every operation gives the vendored operation's limbs (`VartimeEd25519Suite`), and every
+result, refusals and failures included, is the vendored verifier's (`VartimeEd25519DifferentialSuite`, the
+Wycheproof, golden and cross-check suites). The checks are made in the vendored path's order, the key, then R, then
+S, and the hash only after them, so a refused signature is refused without hashing. Around the arithmetic: the key,
+the signature and the message are hashed where they are instead of copied; the canonical tests of y and of S are byte
+comparisons; and the small-order test reads X = 0 and Y = Z after three doublings instead of compressing (one
+inversion each). The class is package-private in the verifiers' package, so the VRF prover cannot reach it, and the
+crypto guard lets only the two verifiers and their package's tests name it (CRY-1); the vendored classes, which the
+prover uses, are unchanged.
+
+**Measured offline** (`VerifyAllocationBench`: 64 valid signatures over 32-byte messages and 64 over 1 KiB, and for
+the strict verifier 64 refused at each of four steps, each verified by the new path and by `VendoredVerifiers`, the
+verifiers as they were, `verify` copied whole;
+bytes from `ThreadMXBean.getCurrentThreadAllocatedBytes`; JDK 25 in the `scarab-jdk` container, four CPUs; three JVMs,
+each 10 rounds of about 250 ms a path after 8 warm-up rounds, the paths alternated ABBA; a laptop, so the times are
+indicative only):
+
+<!-- register:table perf-72.t1 -->
+| `VerifyAllocationBench`, 64 signatures a workload | Verifier | Time a verification, median of the JVM medians | Range of the JVM medians | Allocated a verification, range of the JVM medians |
+|---|---|---:|---:|---:|
+| valid, message 32 B | `StrictEd25519`, `VartimeEd25519` | 170.8 µs | 170.6 to 171.0 µs | 6,112 to 6,136 B |
+| valid, message 32 B | `StrictEd25519` as it was, the vendored objects | 235.8 µs | 234.2 to 237.1 µs | 479,982 to 480,628 B |
+| valid, message 1 KiB | `StrictEd25519`, `VartimeEd25519` | 172.1 µs | 172.1 to 172.1 µs | 6,112 to 6,136 B |
+| valid, message 1 KiB | `StrictEd25519` as it was, the vendored objects | 236.3 µs | 236.1 to 237.2 µs | 481,884 to 482,519 B |
+| refused: non-canonical key | `StrictEd25519`, `VartimeEd25519` | 23 ns | 20 to 23 ns | 0 to 56 B |
+| refused: non-canonical key | `StrictEd25519` as it was, the vendored objects | 80 ns | 79 to 81 ns | 312 B |
+| refused: non-canonical R | `StrictEd25519`, `VartimeEd25519` | 12.7 µs | 12.7 to 12.8 µs | 5,544 B |
+| refused: non-canonical R | `StrictEd25519` as it was, the vendored objects | 35.0 µs | 35.0 to 35.1 µs | 62,824 to 62,840 B |
+| refused: S + L | `StrictEd25519`, `VartimeEd25519` | 24.9 µs | 24.9 to 25.1 µs | 5,544 B |
+| refused: S + L | `StrictEd25519` as it was, the vendored objects | 72.7 µs | 72.7 to 73.7 µs | 127,216 to 127,280 B |
+| refused by the equation: another message | `StrictEd25519`, `VartimeEd25519` | 169.8 µs | 169.8 to 170.2 µs | 6,168 to 6,192 B |
+| refused by the equation: another message | `StrictEd25519` as it was, the vendored objects | 233.3 µs | 232.3 to 235.1 µs | 480,481 to 481,126 B |
+| valid, message 32 B | `ByronEd25519`, `VartimeEd25519` | 157.0 µs | 156.9 to 157.0 µs | 6,368 to 6,392 B |
+| valid, message 32 B | `ByronEd25519` as it was, the vendored objects | 175.9 µs | 175.1 to 176.5 µs | 375,526 to 376,204 B |
+| valid, message 1 KiB | `ByronEd25519`, `VartimeEd25519` | 158.8 µs | 158.7 to 158.8 µs | 6,368 to 6,392 B |
+| valid, message 1 KiB | `ByronEd25519` as it was, the vendored objects | 178.6 µs | 178.1 to 179.9 µs | 377,474 to 378,141 B |
+<!-- /register -->
+
+On a valid signature `StrictEd25519` allocates a seventy-eighth of what it did and takes 0.72 of the time, and so on
+one the equation refuses; one refused by its key, its R or its S takes about a third of the time it did, and a fifth
+to a twenty-third of the allocation. `ByronEd25519` allocates a fifty-ninth and takes 0.89 of the time. The
+message's length no longer changes the allocation.
+
+**Not done, and why.** Of the 6.1 KB left, about 4.7 KB is the working storage (76 limb arrays, the points among
+them, and their objects; each method has scratch of its own, so no caller can pass it an array in use), 0.5 KB the
+two non-adjacent forms, and the rest the SHA-512 digest, the reduction of its output with the vendored `Scalar`, and
+the supplier of the hash. A digest kept per thread, or one flat limb array, would take another kilobyte or two; not done
+until a run of `uplc-turbo` shows whether the rest still matters. A wider window for the
+basepoint (curve25519-dalek's width 8) would save time and change the vendored algorithm's structure; not done.
+`uplc-turbo` was not run again here.
+
+**Repeat.** `tools/runMain xyz.kd5ujc.scarab.crypto.witness.VerifyAllocationBench 10` from the checkout's root, or
+the class on the tools module's exported runtime classpath in a JVM of its own, as here.
