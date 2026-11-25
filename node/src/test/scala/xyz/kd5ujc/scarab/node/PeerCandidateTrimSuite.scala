@@ -151,6 +151,79 @@ class PeerCandidateTrimSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     }
   }
 
+  /** A gate that, like the node's, moves its history's base to our chain's anchor only when it
+    * records a header or follows our chain, and tells of our chain's changes.
+    */
+  private def following(
+      ours: SignallingRef[IO, ChainSync.Point],
+      base: Ref[IO, ChainSync.Point]
+  ): HeaderCheck[IO] = new HeaderCheck[IO]:
+    def withLeios(leios: LeiosChainSync[IO]): HeaderCheck[IO] = this
+    def start(point: ChainSync.Point) = IO.pure(new HeaderGate[IO]:
+      def counts = IO.pure(HeaderGate.Counts(0, 0, 0))
+      def accept(batch: Vector[SyncEvent])(using Raise[IO, PeerError]) =
+        ours.get.flatMap(base.set)
+      override def snapshot(using cats.Applicative[IO]) =
+        base.get.map(point => Some(HeaderChain.at[NodeHeaderState](point, None)))
+      override def ourChainChanged(using cats.Applicative[IO]) =
+        ours.get.map(seen => Some(ours.discrete.dropWhile(_ == seen).head.compile.drain))
+      override def followOurChain(using cats.Applicative[IO]) =
+        (base.get, ours.get).flatMapN((from, anchor) =>
+          if from == anchor then IO.pure(HeaderGate.Following.Unchanged)
+          else base.set(anchor).as(HeaderGate.Following.Trimmed)
+        ))
+
+  test("a full window is trimmed when our chain moves on while ChainSync waits for capacity") {
+    forged.flatMap { chain =>
+      FetchCoordinator
+        .create[IO]()
+        .flatMap { coordinator =>
+          // nothing is ever fetched: only a trim makes room in a full window
+          coordinator.session(13L).use { session =>
+            (Deferred[IO, Unit], Ref.of[IO, Boolean](false)).flatMapN { (release, parked) =>
+              val program =
+                for
+                  ours <- SignallingRef.of[IO, ChainSync.Point](ChainSync.Point.Origin)
+                  base <- Ref.of[IO, ChainSync.Point](ChainSync.Point.Origin)
+                  full <- Deferred[IO, Unit]
+                  _ <- connected(chain, following(ours, base), session, Some(capacityWatch(full))) {
+                    peer =>
+                      // up to the window's last header: everything the session published
+                      val last = chain.headers(retained - 1).point
+                      def drain: IO[Unit] = peer.next.flatMap {
+                        case SyncEvent.RollForward(header, _) if header.point == last => IO.unit
+                        case _                                                        => drain
+                      }
+                      // the session's pipeline starts with its first pull
+                      peer.intersect(Vector(ChainSync.Point.Origin)) *> peer.next *> full.get *>
+                        drain *> parked.set(true) *> release.get *>
+                        // our chain moves on only now, with ChainSync waiting for capacity and
+                        // every other fiber idle: no header is recorded to move the gate's
+                        // history, no block arrives and nothing is published
+                        ours.set(chain.headers(retained - 3).point) *>
+                        // the window ended at its eighth header: the next three come only once
+                        // the wait followed our chain and the candidate was trimmed
+                        (1 to 3).toList.traverse_(_ => peer.next)
+                  }
+                yield ()
+              TestControl.execute(program).flatMap { control =>
+                for
+                  // every runnable fiber runs to its wait, at the same instant: the publication is
+                  // done and the capacity wait is parked on its signals
+                  _ <- control.tick
+                  waiting <- parked.get
+                  _ <- IO(assert(waiting, "the session did not reach its full window"))
+                  _ <- release.complete(())
+                  _ <- control.tick
+                  result <- control.results
+                yield assertEquals(result, Some(cats.effect.kernel.Outcome.succeeded(cats.Id(()))))
+              }
+            }
+          }
+        }
+    }
+  }
+
   private def connected[A](
       forged: ForgedChain,
       check: HeaderCheck[IO],
