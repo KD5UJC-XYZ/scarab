@@ -1,9 +1,11 @@
 # Licence of curve25519-elisabeth
 
-The constant-time Edwards arithmetic behind `StrictEd25519`, `ByronEd25519` and `Draft03Prover` is the source
-of curve25519-elisabeth, vendored in `crypto/src/main/java/com/weavechain` from weavechain/curve25519-elisabeth
-at `81bd79dbd0b323e5fc5729bca883d124b95b4e54`, the revision published as `com.weavechain:curve25519-elisabeth:0.1.3`
-(#1418). This text is its licence, copied unchanged from that source:
+The Edwards-curve arithmetic behind `StrictEd25519`, `ByronEd25519` and `Draft03Prover` is the source of
+curve25519-elisabeth, vendored in `crypto/src/main/java/com/weavechain` from weavechain/curve25519-elisabeth at
+`81bd79dbd0b323e5fc5729bca883d124b95b4e54`, the revision published as `com.weavechain:curve25519-elisabeth:0.1.3`
+(#1418). `Draft03Prover` multiplies points by its secret scalars with the scalar multiplications the library
+documents as constant-time (`EdwardsBasepointTable.multiply`, `EdwardsPoint.multiply`); the two verifiers use its
+variable-time double-scalar multiplication (`vartimeDoubleScalarMultiplyBasepoint`), whose inputs are public. This text is its licence, copied unchanged from that source:
 
 | File | Source |
 |---|---|

@@ -52,16 +52,16 @@ SLF4J (`node/log/LibraryLogs.scala`).
   these are compatible with distributing this project under Apache-2.0.
 - RocksDB (`rocksdbjni`) is `Apache-2.0 OR GPL-2.0-only`. The project uses it under Apache-2.0. The GPL
   option is not elected and no GPL-2.0-only obligations arise.
-- Nothing is redistributed in this repository: dependencies are retrieved from Maven Central at build
-  time. The node's assembly JAR (and the candidate OCI image, which adds only that JAR to its base)
-  redistributes all of the below, so it carries their licence texts: see
-  [Licence texts in binaries](#licence-texts-in-binaries).
+- No dependency is redistributed in this repository: dependencies are retrieved from Maven Central at build
+  time (the third-party code the repository does hold is the next item's). The node's assembly JAR (and the
+  candidate OCI image, which adds only that JAR to its base) redistributes all of the below, so it carries their
+  licence texts: see [Licence texts in binaries](#licence-texts-in-binaries).
 - Three sources come from MIT-licensed code rather than from dependencies: the draft03 VRF arithmetic
   (`crypto/src/main/java/xyz/kd5ujc/scarab/crypto/vrf`, from Bloxbean CCL; notice in
   `fixtures/vrf/licenses/CCL-LICENSE`); `MuslMath` and `MuslData` (`ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules`),
   a port of musl 1.2.5's `log`, `pow` and `exp` (Arm's optimized-routines); and the Edwards-curve arithmetic of
-  curve25519-elisabeth (`crypto/src/main/java/com/weavechain`), vendored from its source
-  (see [curve25519-elisabeth provenance](#curve25519-elisabeth-provenance)). The musl notice is
+  curve25519-elisabeth (`crypto/src/main/java/com/weavechain`), vendored from its source: MIT, with a BSD-3-Clause
+  part and CC0 portions (see [curve25519-elisabeth provenance](#curve25519-elisabeth-provenance)). The musl notice is
   `ledger/licenses/LICENSE-musl`, which the assembly carries as `META-INF/scarab/licenses/ledger/LICENSE-musl`, and
   curve25519-elisabeth's is `crypto/licenses/LICENSE-curve25519-elisabeth`, carried as
   `META-INF/scarab/licenses/crypto/LICENSE-curve25519-elisabeth`.
@@ -144,8 +144,11 @@ and to the components its `LICENSE` and README name.
 Since #1418 it is no longer a dependency. Its source is vendored in `crypto/src/main/java/com/weavechain`: the
 17 Java files of `src/main/java` of weavechain/curve25519-elisabeth at `81bd79d`, the revision published as
 0.1.3 (below), in their packages `com.weavechain.curve25519` and `com.weavechain.subtle`. `module-info.java`
-is not vendored. Each file starts with the SPDX line of a source adapted from MIT code
-(`Apache-2.0 AND MIT`), above the upstream notice it carries; from then on they are Scarab's sources.
+is not vendored. Each file starts with the SPDX line of a source adapted from code under other licences, above
+the upstream notice it carries: `Apache-2.0 AND MIT`, and `Apache-2.0 AND MIT AND BSD-3-Clause` for
+`UnpackedScalar.java`, the arithmetic ported from curve25519-dalek (below). The portions from eddsa-java add no
+identifier: they are CC0, which asks for no notice, and elisabeth's `LICENSE` states them. The `package-info.java`
+of each package is Scarab's own (`Apache-2.0`). From then on they are Scarab's sources.
 
 | Item | Identity |
 |---|---|
@@ -173,7 +176,7 @@ Licence notices, each checked at its source:
 | curve25519-elisabeth | the library | MIT, Copyright (c) 2019 Jack Grigg | `LICENSE` at `81bd79d` (blob `685a9b1291cddff06d38ab3d8520633822acb3fd`, unchanged since cryptography-cafe `77969505e166e1d6d06ec80f8d47df6caa845937`, 2019-03-16); every source file except `StrUtils.java` (no header) carries "Copyright (c) 2019 Jack Grigg, See LICENSE". Weavechain's changes in `81bd79d` (namespace; `Scalar.square`, `invert` and `divide`) add no notice of their own. |
 | eddsa-java (str4d/ed25519-java) | field and scalar arithmetic, point decompression and `Scalar` radix/NAF code ("Extracted from ed25519-java, License: CC0" in the cafe commits of 2019-02-03 to 2019-02-05) | CC0 1.0 | `LICENSE.txt` at `901aec0383938a0d9992649231af7dd7ccd2b387`, the last commit before 2019-02-03 (blob `bb127922f0790edfc6f0269d191a082478571be0`, unchanged since 2016). CC0 asks for no notice. |
 | ref10 (SUPERCOP Ed25519) | the origin of eddsa-java's arithmetic | public domain | eddsa-java's README; ed25519.cr.yp.to/software.html: "The Ed25519 software is in the public domain." |
-| curve25519-dalek | `UnpackedScalar` (radix-2^29 Montgomery scalar arithmetic, cafe commit `e4e2354`, 2019-02-13), and test vectors that are neither in the jar nor vendored | BSD-3-Clause, Copyright (c) 2016-2018 Isis Agora Lovecruft, Henry de Valence | elisabeth's `LICENSE` reproduces lines 1 to 28 of dalek's `LICENSE` at tag `1.0.3` (`9cd4551b40a7328eed18717b527bc8ba9331fa27`, blob `d94fdb512eaab593968ff565e62f20b2c8787975`) word for word. That file goes on with a notice for parts derived from Adam Langley's Go ed25519 (agl/ed25519). That notice does not apply here: the ported code is dalek's `src/backend/u32/scalar.rs`, and agl/ed25519 at `5312a61534124124185d41f09206b9fef1d88403` has only ref10's radix-2^21 `ScMulAdd`/`ScReduce`, no Montgomery scalar code. |
+| curve25519-dalek | `UnpackedScalar` (`UnpackedScalar.java`, whose SPDX line adds BSD-3-Clause; radix-2^29 Montgomery scalar arithmetic, cafe commit `e4e2354`, 2019-02-13), and test vectors that are neither in the jar nor vendored | BSD-3-Clause, Copyright (c) 2016-2018 Isis Agora Lovecruft, Henry de Valence | elisabeth's `LICENSE` reproduces lines 1 to 28 of dalek's `LICENSE` at tag `1.0.3` (`9cd4551b40a7328eed18717b527bc8ba9331fa27`, blob `d94fdb512eaab593968ff565e62f20b2c8787975`) word for word. That file goes on with a notice for parts derived from Adam Langley's Go ed25519 (agl/ed25519). That notice does not apply here: the ported code is dalek's `src/backend/u32/scalar.rs`, and agl/ed25519 at `5312a61534124124185d41f09206b9fef1d88403` has only ref10's radix-2^21 `ScMulAdd`/`ScReduce`, no Montgomery scalar code. |
 
 The full text, with all three notices, is `crypto/licenses/LICENSE-curve25519-elisabeth`. `NOTICE`
 names it. The assembly JAR carries it as `META-INF/scarab/licenses/crypto/LICENSE-curve25519-elisabeth`
@@ -182,18 +185,22 @@ names it. The assembly JAR carries it as `META-INF/scarab/licenses/crypto/LICENS
 Maintenance, as of 2026-10-25: neither repository is archived. Central has 0.1.2 to 0.1.5, the last
 published on 2023-08-06. weavechain's last commit (2025-03-07) sets version 0.1.7, which was never
 published. The 0.1.4 and 0.1.5 releases add Straus and Pippenger multiscalar multiplication, which
-Scarab does not use. The source vendored is that of 0.1.3: it is traced to source, reproduces from it, and
-is the version the Ed25519 and VRF differential corpora were recorded against (`StrictEd25519Suite`,
-`StrictEd25519DifferentialSuite`, the VRF suites of `crypto`). Any change to the vendored arithmetic has to
-keep those corpora unchanged.
+Scarab does not use. The source vendored is that of 0.1.3: it is traced to source and reproduces from it, and
+the strict prototype of the Ed25519 witness corpus ran on that release (`strict_prototype` in
+`fixtures/witness/manifest.json`). The expected verdicts of the Ed25519 and VRF corpora are not this library's:
+they come from the libsodium builds their fixtures name (`fixtures/witness/README.md`, `fixtures/vrf/README.md`).
+Any change to the vendored arithmetic has to keep the suites that run it on those corpora and vectors passing
+unchanged (`StrictEd25519Suite`, `StrictEd25519DifferentialSuite`, `ByronEd25519ReferenceSuite`,
+`Draft03ProverSuite`).
 
 ## Licence texts in binaries
 
 The assembly JAR (`node/assembly`, the artifact of `scripts/build_release_candidate.py`) carries, besides
 this repository's `LICENSE` and `NOTICE` in `META-INF/scarab/`, the licence texts of everything bundled in
 it under `META-INF/scarab/licenses/`, with `licenses/index.json` beside them (#75). The index names, for
-each of the 49 resolved runtime artifacts (`group:artifact:version`) and each of the 18 native libraries
-in the JAR, the texts its licence asks a binary to carry, and where each text comes from:
+each resolved runtime artifact (`group:artifact:version`) and each native library in the JAR (every `.so`,
+`.dll`, `.dylib` and `.jnilib` entry, as `scripts/assembly_inventory.py` finds them), the texts its licence asks
+a binary to carry, and where each text comes from:
 
 - a file of an upstream Git revision (repository, tag and the commit the tag named when it was fetched);
 - the component's own jar, where the jar ships its text (slf4j-api, dnsjava, ip4s-core,

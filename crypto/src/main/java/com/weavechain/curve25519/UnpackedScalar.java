@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0 AND MIT
+// SPDX-License-Identifier: Apache-2.0 AND MIT AND BSD-3-Clause
 /*
  * This file is part of curve25519-elisabeth.
  * Copyright (c) 2019 Jack Grigg

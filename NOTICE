@@ -23,7 +23,8 @@ MIT code too: the source of curve25519-elisabeth, vendored from https://github.c
 81bd79dbd0b323e5fc5729bca883d124b95b4e54, the revision published as com.weavechain:curve25519-elisabeth:0.1.3
 (a fork of cryptography-cafe/curve25519-elisabeth): MIT, Copyright (c) 2019 Jack Grigg. Portions derive from
 eddsa-java (str4d/ed25519-java, CC0 1.0, itself a port of the public-domain ref10 Ed25519), and its
-UnpackedScalar arithmetic was ported from curve25519-dalek (BSD-3-Clause, Copyright (c) 2016-2018
+UnpackedScalar arithmetic (crypto/src/main/java/com/weavechain/curve25519/UnpackedScalar.java, whose SPDX
+line adds BSD-3-Clause) was ported from curve25519-dalek (BSD-3-Clause, Copyright (c) 2016-2018
 Isis Agora Lovecruft, Henry de Valence). Its source notices are retained, and the upstream LICENSE with
 all three notices is retained unchanged in crypto/licenses/LICENSE-curve25519-elisabeth; docs/licenses.md
 records its provenance.
