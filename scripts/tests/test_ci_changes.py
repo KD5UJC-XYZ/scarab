@@ -76,7 +76,40 @@ class ChangesTest(unittest.TestCase):
             event.write_text('invalid')
             with patch.dict(os.environ, GITHUB_EVENT_PATH=str(event), GITHUB_OUTPUT=str(output)):
                 ci_changes.main()
-            self.assertEqual(output.read_text(), 'run=true\n')
+            self.assertEqual(output.read_text(), 'run=true\nnix=true\n')
+
+    def test_nix_paths(self):
+        for path in ('flake.nix', 'flake.lock', '.envrc', 'flake/toolchain.nix', 'perSystem/apps.nix',
+                     'scripts/nix-network', '.github/workflows/ci.yml'):
+            with self.subTest(path=path):
+                self.assertTrue(ci_changes.nix_affected(['README.md', path]))
+        for path in ('README.md', 'docs/nix.md', 'flake', 'perSystem', 'flakes/a.nix', 'docs/flake/a.md',
+                     'scripts/ci_changes.py', 'scripts/check_nix_jdk.py', '.github/workflows/fuzz.yml'):
+            with self.subTest(path=path):
+                self.assertFalse(ci_changes.nix_affected([path]))
+        self.assertFalse(ci_changes.nix_affected([]))
+
+    def test_outputs_of_a_known_change(self):
+        for paths, expected in [(['docs/nix.md'], 'run=false\nnix=false\n'),
+                                (['docs/nix.md', 'perSystem/apps.nix'], 'run=true\nnix=true\n'),
+                                (['build.sbt'], 'run=true\nnix=false\n'),
+                                (None, 'run=true\nnix=true\n')]:
+            with self.subTest(paths=paths), tempfile.TemporaryDirectory() as tmp:
+                event, output = Path(tmp)/'event', Path(tmp)/'output'
+                event.write_text('{}')
+                with patch.dict(os.environ, GITHUB_EVENT_PATH=str(event), GITHUB_OUTPUT=str(output),
+                                GITHUB_EVENT_NAME='pull_request'), \
+                        patch.object(ci_changes, 'changed', lambda name, event, known=paths: known):
+                    ci_changes.main()
+                self.assertEqual(output.read_text(), expected)
+
+    def test_changed_reads_the_listing_or_knows_nothing(self):
+        def diff(listing):
+            return lambda *a, **k: subprocess.CompletedProcess(a, 0, listing, b'')
+        self.assertEqual(ci_changes.changed('pull_request', {}, diff(b'flake.nix\0docs/a.md\0')),
+                         ['flake.nix', 'docs/a.md'])
+        self.assertIsNone(ci_changes.changed('pull_request', {}, diff(b'flake.nix')))
+        self.assertIsNone(ci_changes.changed('workflow_dispatch', {}))
 
     def test_workflows_keep_named_jobs_and_gate_expensive_steps(self):
         for filename, ids in [('ci.yml', ('scala-build', 'scala-shards', 'scala-tests')),
@@ -92,6 +125,13 @@ class ChangesTest(unittest.TestCase):
                 self.assertTrue(all("needs.changes.outputs.run == 'true'" in s['if'] for s in steps))
         ci = check_ci_parity.read_yaml((ROOT/'.github/workflows/ci.yml').read_text())
         self.assertEqual(ci['jobs']['scala']['name'], 'scalafmt, compile and test')
+        self.assertEqual(ci['jobs']['changes']['outputs']['nix'], '${{ steps.classify.outputs.nix }}')
+        nix = ci['jobs']['nix']
+        self.assertEqual(nix['needs'], ['changes'])
+        first, *steps = nix['steps']
+        self.assertNotIn('if', first)
+        self.assertIn('test "$CLASSIFY_RESULT" = success', first['run'])
+        self.assertTrue(steps and all(s['if'] == "needs.changes.outputs.nix == 'true'" for s in steps))
         for key in ('scripts', 'workflows', 'secrets'):
             self.assertNotIn('needs', ci['jobs'][key])
 
