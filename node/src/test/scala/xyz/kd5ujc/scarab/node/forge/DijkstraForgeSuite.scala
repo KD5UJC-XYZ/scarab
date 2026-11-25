@@ -284,7 +284,8 @@ class DijkstraForgeSuite extends munit.FunSuite:
       geometry,
       poolId,
       setup.praos.activeSlotsCoeff,
-      vrf.publicKey
+      vrf.publicKey,
+      0
     )(e =>
       Forger
         .ledgerAt(injected, Some(tip), e, geometry.firstSlot(e), build)

@@ -130,7 +130,7 @@ class LeaderScheduleStreamSuite extends FailsOnUncaught:
     // chunk, whose slots begin at 20 s, is decided by 17.5 s, not from 18 s to 20.5 s
     val g = geometry(100, 300, 0.seconds)
     val current = inputs(g, 0)
-    recorded(g, InForce.of(current), complete(current), perEvaluation = 25.millis).map {
+    recorded(g, InForce.of(0, current), complete(current), perEvaluation = 25.millis).map {
       (log, state) =>
         assertEquals(log.map(_._2.until), Vector(BigInt(100), BigInt(200), BigInt(300)))
         assertEquals(log.map(_._1), Vector(at(2.5), at(5), at(17.5)))
@@ -151,7 +151,8 @@ class LeaderScheduleStreamSuite extends FailsOnUncaught:
       case other                                    => fail(s"not begun: $other")
     List(0, 10, 25, 50, 80)
       .traverse(ms =>
-        recorded(g, InForce.of(current), complete(current), perEvaluation = ms.millis).map(ms -> _)
+        recorded(g, InForce.of(0, current), complete(current), perEvaluation = ms.millis)
+          .map(ms -> _)
       )
       .map(_.foreach { (ms, run) =>
         val (log, _) = run
@@ -174,7 +175,7 @@ class LeaderScheduleStreamSuite extends FailsOnUncaught:
     val next = inputs(g, 1)
     List(0, 100, 500, 630, 800)
       .traverse(ms =>
-        recorded(g, InForce.of(next), complete(next), perEvaluation = ms.millis).map(ms -> _)
+        recorded(g, InForce.of(0, next), complete(next), perEvaluation = ms.millis).map(ms -> _)
       )
       .map(_.foreach { (ms, run) =>
         val (log, state) = run
@@ -191,7 +192,7 @@ class LeaderScheduleStreamSuite extends FailsOnUncaught:
     // tenth of that, 70 s, is kept, so ten chunks share the 630 s before
     val g = geometry(1000, 1000, 300.seconds)
     val next = inputs(g, 1)
-    recorded(g, InForce.of(next), complete(next)).map { (log, state) =>
+    recorded(g, InForce.of(0, next), complete(next)).map { (log, state) =>
       assertEquals(log.map(_._2.until), (1 to 10).map(i => next.first + 100 * i).toVector)
       assertEquals(log.map(_._1), (0 until 10).map(i => at(70.0 * i)).toVector)
       assert(log.last._1.isBefore(g.slotStart(next.first)), log.last._1.toString)
@@ -207,7 +208,7 @@ class LeaderScheduleStreamSuite extends FailsOnUncaught:
     // way through epoch 1
     val g = geometry(100, 500, 75037.millis)
     val current = inputs(g, 1)
-    recorded(g, InForce.of(current), complete(current)).map { (log, state) =>
+    recorded(g, InForce.of(0, current), complete(current)).map { (log, state) =>
       assertEquals(log.map(_._2.from).distinct, Vector(BigInt(750)))
       assertEquals(log.map(_._2.until), Vector(BigInt(850), BigInt(950), BigInt(1000)))
       // caught up with the first chunk, then each slot covered before the clock reaches it
@@ -225,9 +226,9 @@ class LeaderScheduleStreamSuite extends FailsOnUncaught:
     val now = inputs(g, 1, Nonce.Neutral)
     recorded(
       g,
-      InForce.of(replaced),
+      InForce.of(0, replaced),
       complete(now),
-      (signal, s) => signal.set(InForce.of(now)).whenA(s.inputs == replaced)
+      (signal, s) => signal.set(InForce.of(0, now)).whenA(s.inputs == replaced)
     ).map { (log, state) =>
       // the replaced inputs' first chunk, then the new ones' ten from the epoch's first slot
       assertEquals(log.map(_._2.inputs == replaced), true +: Vector.fill(10)(false))
@@ -247,14 +248,58 @@ class LeaderScheduleStreamSuite extends FailsOnUncaught:
     assertEquals(first, again)
     recorded(
       g,
-      InForce.of(first),
+      InForce.of(0, first),
       complete(first),
-      (signal, _) => signal.set(InForce.of(again))
+      (signal, _) => signal.set(InForce.of(0, again))
     ).map { (log, _) =>
       // a restart would decide the next chunk at once, not 70 s on
       assertEquals(log.map(_._1), (0 until 10).map(i => at(70.0 * i)).toVector)
       assertEquals(log.map(_._2.until), (1 to 10).map(i => first.first + 100 * i).toVector)
     }
+  }
+
+  test(
+    "a walk a reload ended, its key replaced and put back before the stream read the change, is " +
+      "taken up again by the next credentials' value, its inputs equal, from where it got"
+  ) {
+    // the VRF key in force: A, then B, a reload, as the walk's second chunk is about to begin, so
+    // that the chunk finds A no longer in force and the walk ends; then A again, a reload under
+    // the next credentials, the stream having read none of B's. The inputs are equal throughout
+    val g = geometry(1000, 1000, 300.seconds)
+    val i = inputs(g, 1)
+    val a = key(9)
+    val b = key(10)
+    TestControl.executeEmbed(
+      for
+        inForce <- Ref.of[IO, Draft03Prover.SigningKey](a)
+        refused <- Deferred[IO, Unit]
+        keys = new Leadership.Keys[IO]:
+          def lent[A](f: (Bytes, Leadership.Evaluator) => A) =
+            inForce.get.flatMap(k => IO.blocking(Some(f(k.publicKey, Leadership.Evaluator.of(k)))))
+          def evaluating[A](vrf: Bytes)(f: Leadership.Evaluator => A) =
+            inForce.get.flatMap(k =>
+              if k.publicKey == vrf then IO.blocking(Some(f(Leadership.Evaluator.of(k))))
+              else refused.complete(()).as(None)
+            )
+        schedule <- LeaderSchedule.create[IO](g, keys, None, None)
+        signal <- SignallingRef.of[IO, InForce](InForce.of(1, i))
+        restored = refused.get *> inForce.set(a) *> signal.set(InForce.of(3, i))
+        log <- schedule
+          .computed(signal)
+          .evalTap(added =>
+            (inForce.set(b) *> restored.start.void).whenA(added.schedule.until == i.first + 100)
+          )
+          .map(_.schedule)
+          .takeThrough(!_.complete)
+          .compile
+          .toVector
+        state <- schedule.schedules.get
+      yield
+        assert(log.lastOption.exists(_.complete), s"the walk was never taken up again: $log")
+        // taken up from where it got: no chunk decided twice
+        assertEquals(log.map(_.until), (1 to 10).map(n => i.first + 100 * n).toVector)
+        assertEquals(mismatches(state, i), Vector.empty)
+    )
   }
 
   test(
@@ -265,10 +310,10 @@ class LeaderScheduleStreamSuite extends FailsOnUncaught:
     val next = inputs(g, 1)
     recorded(
       g,
-      InForce.of(current),
+      InForce.of(0, current),
       log => complete(current)(log) && complete(next)(log),
       (signal, s) =>
-        signal.set(InForce.of(current, next)).whenA(s.inputs == current && s.until == 400)
+        signal.set(InForce.of(0, current, next)).whenA(s.inputs == current && s.until == 400)
     ).map { (log, state) =>
       // each chunk of the epoch under way decided once, from the clock's slot
       val ours = log.map(_._2).filter(_.inputs == current)
@@ -289,7 +334,7 @@ class LeaderScheduleStreamSuite extends FailsOnUncaught:
     val g = geometry(1000, 1000, 1300.seconds)
     val passed = inputs(g, 0)
     val current = inputs(g, 1)
-    recorded(g, InForce.of(passed, current), complete(current)).map { (log, state) =>
+    recorded(g, InForce.of(0, passed, current), complete(current)).map { (log, state) =>
       assertEquals(log.filter(_._2.inputs == passed), Vector.empty)
       assertEquals(state.of(passed), None)
       assertEquals(mismatches(state, current, from = 1300), Vector.empty)
@@ -335,9 +380,9 @@ class LeaderScheduleStreamSuite extends FailsOnUncaught:
     val g = geometry(100, 300, 0.seconds)
     val i = inputs(g, 1)
     val replaced = new Signal[IO, InForce]:
-      def discrete = Stream(InForce.none, InForce.of(i)) ++ Stream.never[IO]
+      def discrete = Stream(InForce.none, InForce.of(0, i)) ++ Stream.never[IO]
       def continuous = Stream.repeatEval(get)
-      def get = IO.pure(InForce.of(i))
+      def get = IO.pure(InForce.of(0, i))
     seeds
       .traverse((n, seed) =>
         LeaderSchedule
@@ -356,7 +401,7 @@ class LeaderScheduleStreamSuite extends FailsOnUncaught:
     // became B, whichever comes first
     val g = geometry(100, 300, 0.seconds)
     val i = inputs(g, 1)
-    val a = InForce.of(i)
+    val a = InForce.of(0, i)
     seeds
       .traverse((n, seed) =>
         for

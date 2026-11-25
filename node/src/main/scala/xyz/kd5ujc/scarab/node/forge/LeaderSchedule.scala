@@ -165,14 +165,23 @@ object LeaderSchedule:
 
   /** The inputs of the epochs the pool can still lead in, by epoch: the epoch the clock is in and,
     * once its inputs are known, the next. None while forging is disabled.
+    *
+    * `credentials` is the generation of the credentials in force they were derived under
+    * ([[HotKeys.Installed]]), and part of the value: every reload makes a new value, even where it
+    * leaves each epoch's inputs as they were. So a walk that a reload ended, the VRF key its inputs
+    * name no longer in force when its next chunk began, is always taken up again by a later value,
+    * which keeps the schedule it had computed and goes on from where it got; the reload may have
+    * been undone before the stream read the value it made, and the inputs be equal again (#1418).
+    * The inputs themselves, and so the schedules computed from them, do not name the generation.
     */
-  final case class InForce private (byEpoch: SortedMap[BigInt, EpochInputs]):
+  final case class InForce private (byEpoch: SortedMap[BigInt, EpochInputs], credentials: Long):
     def epochs: Vector[EpochInputs] = byEpoch.values.toVector
 
   object InForce:
-    val none: InForce = InForce(SortedMap.empty)
+    val none: InForce = InForce(SortedMap.empty, 0)
 
-    def of(inputs: EpochInputs*): InForce = InForce(SortedMap.from(inputs.map(i => i.epoch -> i)))
+    def of(credentials: Long, inputs: EpochInputs*): InForce =
+      InForce(SortedMap.from(inputs.map(i => i.epoch -> i)), credentials)
 
     given Eq[InForce] = Eq.fromUniversalEquals
 

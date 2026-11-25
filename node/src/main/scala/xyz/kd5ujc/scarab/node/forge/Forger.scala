@@ -580,7 +580,8 @@ final class Forger[F[_]: Async, S](
         geometry,
         pool.id,
         config.activeSlotsCoeff,
-        vrf
+        vrf,
+        installed.generation
       )(e => viewOf(current, e, geometry.firstSlot(e)))
     }
 
@@ -2815,7 +2816,8 @@ object Forger:
     * each epoch [[scheduledEpochs]] gives, from the ledger view `view` of its first slot, as the
     * slot's check derives them ([[inputsOf]]). The scheduler passes its cached view of the tip,
     * [[ledgerAt]] 's and [[leaderView]] 's; an epoch whose view cannot be derived is left out, and
-    * its slots are decided at the slot.
+    * its slots are decided at the slot. `credentials` is the generation of the credentials in force
+    * whose VRF key is `vrf` ([[LeaderSchedule.InForce]]).
     */
   private[forge] def scheduleInputs[F[_]: Applicative, S](
       state: S,
@@ -2824,7 +2826,8 @@ object Forger:
       geometry: EpochGeometry,
       poolId: Bytes,
       activeSlotsCoeff: Leader.Fraction,
-      vrf: Bytes
+      vrf: Bytes,
+      credentials: Long
   )(view: BigInt => F[Either[NodeError, LeaderView]])(using
       ChainRead[S]
   ): F[LeaderSchedule.InForce] =
@@ -2832,7 +2835,7 @@ object Forger:
       .traverse(e =>
         view(e).map(_.toOption.map(v => inputsOf(geometry, e, v, poolId, activeSlotsCoeff, vrf)))
       )
-      .map(found => LeaderSchedule.InForce.of(found.flatten*))
+      .map(found => LeaderSchedule.InForce.of(credentials, found.flatten*))
 
   /** The first slot from which no block can change the nonce of `epoch`: the randomness
     * stabilisation window (4k/f) before its first slot.
