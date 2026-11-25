@@ -52,20 +52,24 @@ before the node starts. The three networks can run at the same time.
 | `.#mainnet` | 7073 | `mainnet` |
 
 `SCARAB_DATA_DIR` defaults to `/tmp/scarab`. Each network directory contains
-`config/`, `db/` and `node.socket`. The data directory and the network
-directory must belong to you and not be writable by every user, since the app
-reads its configuration back from them; otherwise it stops and asks for a
-`SCARAB_DATA_DIR` of your own. Node-to-node and separate metrics listeners
-are off unless explicitly enabled. Configurations are downloaded over HTTPS
-from the official Cardano environment endpoint documented in
-[network configuration](running/configuration.md); referenced checkpoints and
+`config/`, `db/` and `node.socket`. The data directory and the network directory
+must belong to you, since the app reads its configuration back from them;
+otherwise it stops and asks for a `SCARAB_DATA_DIR` of your own. It removes
+other users' write access to the data directory and makes the network directory
+private. While a node runs, a second start on the same network directory is
+refused, since the node would remove the first one's socket: use another
+`SCARAB_DATA_DIR`, or pass both `--db` and `--local-socket`. Node-to-node and
+separate metrics listeners are off unless explicitly enabled. Configurations are
+downloaded over HTTPS from the official Cardano environment endpoint documented
+in [network configuration](running/configuration.md); referenced checkpoints and
 peer snapshots are included. Scarab performs its existing genesis hash checks.
 Downloads publish a complete configuration directory atomically, marked with a
-`.complete` file, and reuse it on later starts. An empty download is refused,
-and so is an existing `config/` without the marker (for example one fetched by
-hand at the same path): remove it, or name it with `SCARAB_CONFIG_DIR` to use it
-as it is. To refresh a default configuration, stop the corresponding node
-and remove only its `config/` directory; the next start downloads it again.
+`.complete` file, and reuse it on later starts. A download that is not a JSON
+object is refused, and so is an existing `config/` without the marker (for
+example one fetched by hand at the same path): remove it, or name it with
+`SCARAB_CONFIG_DIR` to use it as it is. To refresh a default configuration, stop
+the corresponding node and remove only its `config/` directory; the next start
+downloads it again.
 
 Additional arguments are passed to `follow` with their argument boundaries
 preserved. Explicit `--config`, `--topology`, `--db`, `--local-socket` and

@@ -121,16 +121,24 @@ has_option --db || defaults+=(--db "$state_dir/db")
 has_option --local-socket || defaults+=(--local-socket "$state_dir/node.socket")
 has_option --query-listen --query-port || defaults+=(--query-listen "${SCARAB_QUERY_PORT:-$SCARAB_WRAPPER_QUERY_PORT}")
 
-# Serialize sbt launches within this checkout, then release the lock before running the node.
-mkdir -p -- "$source_dir/.cache"
-(
-  flock 9
-  cd "$source_dir"
-  # The interpreter running this script, since the caller's PATH need not have a bash.
-  "$BASH" scripts/sbtw node/compile node/runtimeClasspathFile >&2
-) 9>"$source_dir/.cache/nix-network-build.lock"
+# The node removes a socket at its path before it locks its database, so a second node on the same state would
+# cut the first one off; the lock is held by the node itself, which inherits it.
+if ! has_option --db || ! has_option --local-socket; then
+  exec 8> "$state_dir/node.lock"
+  if ! flock --nonblock 8; then
+    printf 'A %s node using %s is already running; stop it, or set SCARAB_DATA_DIR for a second one.\n' "$network" "$state_dir" >&2
+    exit 2
+  fi
+fi
 
-classpath=$(cat "$source_dir/node/target/runtime-classpath.txt")
+# Serialize sbt launches within this checkout, and read the classpath they write before releasing the lock.
+# $BASH is the interpreter running this script, since the caller's PATH need not have a bash.
+mkdir -p -- "$source_dir/.cache"
+classpath=$(
+  exec 9> "$source_dir/.cache/nix-network-build.lock"
+  flock 9 && cd "$source_dir" && "$BASH" scripts/sbtw node/compile node/runtimeClasspathFile >&2 &&
+    cat node/target/runtime-classpath.txt
+)
 export MALLOC_ARENA_MAX=${MALLOC_ARENA_MAX:-2}
 exec java "-Xmx${SCARAB_HEAP_SIZE:-3g}" "-XX:ActiveProcessorCount=${SCARAB_RUN_PROCESSORS:-4}" \
   --sun-misc-unsafe-memory-access=allow --enable-native-access=ALL-UNNAMED \
