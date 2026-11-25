@@ -1,0 +1,8 @@
+**
+!scripts/
+!scripts/oracle/
+!scripts/oracle/leios-testnet/
+!scripts/oracle/leios-testnet/bench/
+!scripts/oracle/leios-testnet/bench/cabal.project
+!scripts/oracle/leios-testnet/bench/scarab-leios-closure-bench.cabal
+!scripts/oracle/leios-testnet/bench/Main.hs

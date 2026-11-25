@@ -58,8 +58,9 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellLedgerFile, SnapshotTable
   * implementations can be compared on the same input.
   *
   * Run, inside the build container: `tools/runMain xyz.kd5ujc.scarab.node.tools.ClosureBench
-  * <config.json> <snapshot dir> <address hex> <cached> <runs> <tx file or directory>...`. Hand-run,
-  * not part of the node, not run by `check`.
+  * [--export <dir>] <config.json> <snapshot dir> <address hex> <cached> <runs> <tx file or
+  * directory>...`; `--export` also writes the input as files ([[exported]]). Hand-run, not part of
+  * the node, not run by `check`.
   */
 object ClosureBench extends IOApp:
   /** The build whose snapshots and transactions the bench reads. */
@@ -91,10 +92,12 @@ object ClosureBench extends IOApp:
       address: Option[Bytes],
       cached: BigDecimal,
       runs: Int,
-      txs: List[Path]
+      txs: List[Path],
+      exportTo: Option[Path] = None
   )
 
   def parse(args: List[String]): Either[Problem, Options] = args match
+    case "--export" :: dir :: rest => parse(rest).map(_.copy(exportTo = Some(Path.of(dir))))
     case config :: snapshot :: address :: cached :: runs :: txs if txs.nonEmpty =>
       (
         (if address == "all" then Some(None) else Bytes.fromHex(address).toOption.map(Some(_))),
@@ -214,6 +217,63 @@ object ClosureBench extends IOApp:
         .setScale(0, java.math.RoundingMode.FLOOR)
     (0 until n).filter(i => floored(i + 1).compareTo(floored(i)) > 0).toVector
 
+  /** The bench's input as files another implementation reads (#1380): `nes.cbor`, the new-epoch
+    * state as the Haskell node writes it (`DebugNewEpochState`'s codec, whose UTxO is `map(0)`);
+    * `utxo.cbor`, the outputs the closure spends from before it, a map of each input (`[transaction
+    * id, index]`) to the output's bytes as the ledger holds them; `closure.cbor`, an array of the
+    * closure's transactions in block form; `cached.json`, the positions the cache holds; and
+    * `slot.txt`, the slot the closure is checked at.
+    */
+  private def exported(
+      dir: Path,
+      nes: NewEpochState[Dijkstra],
+      outputs: Map[TxIn, TxOut],
+      closure: NonEmptyVector[Bytes],
+      positions: Vector[Int],
+      slot: BigInt
+  )(using Raise[IO, Problem]): IO[Unit] =
+    def head(major: Int, n: Long): Array[Byte] =
+      val m = major << 5
+      if n < 24 then Array((m | n).toByte)
+      else if n < 0x100 then Array((m | 24).toByte, n.toByte)
+      else if n < 0x10000 then Array((m | 25).toByte, (n >> 8).toByte, n.toByte)
+      else if n < 0x100000000L then
+        Array((m | 26).toByte) ++ (0 to 3).reverse.map(i => (n >> (8 * i)).toByte)
+      else Array((m | 27).toByte) ++ (0 to 7).reverse.map(i => (n >> (8 * i)).toByte)
+    val utxo = Array.concat(
+      head(5, outputs.size.toLong) +: outputs.toVector.flatMap((in, out) =>
+        Vector(
+          head(4, 2),
+          head(2, in.id.size.toLong),
+          in.id.toArray,
+          head(0, in.index.toLong),
+          out.raw.toArray
+        )
+      )*
+    )
+    val txs = Array.concat(head(4, closure.length.toLong) +: closure.toVector.map(_.toArray)*)
+    for
+      state <- HaskellLedgerFile
+        .codecs(StateLayout.Leios)
+        .newEpochState[Dijkstra](using ShelleyBasedEra.SDijkstra)
+        .write(nes)
+        .leftMap(e => Problem.State(e.toString))
+        .liftTo[IO]
+      _ <- IO.blocking {
+        JFiles.createDirectories(dir)
+        JFiles.write(dir.resolve("nes.cbor"), state.toArray)
+        JFiles.write(dir.resolve("utxo.cbor"), utxo)
+        JFiles.write(dir.resolve("closure.cbor"), txs)
+        JFiles.writeString(dir.resolve("cached.json"), positions.mkString("[", ",", "]"))
+        JFiles.writeString(dir.resolve("slot.txt"), slot.toString)
+      }
+      _ <- log(
+        "exported",
+        "dir" -> Json.fromString(dir.toString),
+        "outputs" -> Json.fromInt(outputs.size)
+      )
+    yield ()
+
   final case class Run(
       run: Int,
       verdict: String,
@@ -281,7 +341,20 @@ object ClosureBench extends IOApp:
       eb = EbHash.fromBytes(xyz.kd5ujc.scarab.crypto.Blake2b.hash256.hash(body.encoded))
       point = EbPoint(xyz.kd5ujc.scarab.protocol.LeiosWord.Word64.fromUnsigned(slot.toLong), eb)
       entries = hashes.zip(closure.toVector)
-      cachedSet = seeded(hashes.length, options.cached).map(hashes)
+      positions = seeded(hashes.length, options.cached)
+      cachedSet = positions.map(hashes)
+      // every position whose transaction the cache holds, as the check finds them by hash
+      held = cachedSet.toSet
+      _ <- options.exportTo.traverse_(
+        exported(
+          _,
+          nes,
+          outputs,
+          closure,
+          hashes.indices.filter(i => held(hashes(i))).toVector,
+          slot
+        )
+      )
       parity = LeiosClosureCheck.parityOf(parityState)
       // the announcing block's hash stands for no real block: any 32 bytes key the announcement
       announcing <- RbHash
