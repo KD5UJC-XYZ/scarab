@@ -82,6 +82,9 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellState, UtxoCodecs}
 /** Conway's UTXO predicates on the era types against the flat ones, on every transaction of the
   * recorded Conway refusal corpora: the same verdict, failures included, from each. A predicate the
   * corpus never fails is named, since only a failing case tells the two apart.
+  * The corpora recorded for the era rules alone
+  * ([[xyz.kd5ujc.scarab.node.ntc.ReferenceRefusalSuite.EraOnly]]) are left out: stage 3 retires
+  * the flat comparison, and `ReferenceRefusalSuite` binds the era rules to them.
   */
 class ConwayUtxoChecksSuite extends FunSuite:
   import ReferenceRefusalSuite.*
@@ -116,7 +119,7 @@ class ConwayUtxoChecksSuite extends FunSuite:
 
   private val seen: Vector[Seen] =
     val loaded = right("the refusal corpus")(load(Path.of("fixtures/reference/refusals")))
-    loaded.corpora.filter(_.era == RefusalEra.Conway).flatMap { c =>
+    loaded.corpora.filter(c => c.era == RefusalEra.Conway && !EraOnly(c.path)).flatMap { c =>
       val setup = right(s"${c.path} genesis")(
         NodeSetup.fromFiles(c.build)(name => c.genesis.get(name).map(_.toArray))
       )

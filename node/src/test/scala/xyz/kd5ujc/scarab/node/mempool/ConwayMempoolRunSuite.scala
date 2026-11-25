@@ -119,7 +119,7 @@ class ConwayMempoolRunSuite extends FunSuite:
 
   private val corpus: Vector[Seen] =
     val loaded = right("the refusal corpus")(load(Path.of("fixtures/reference/refusals")))
-    loaded.corpora.filter(_.era == RefusalEra.Conway).flatMap { c =>
+    loaded.corpora.filter(c => c.era == RefusalEra.Conway && !EraOnly(c.path)).flatMap { c =>
       val setup = right(s"${c.path} genesis")(
         NodeSetup.fromFiles(c.build)(name => c.genesis.get(name).map(_.toArray))
       )

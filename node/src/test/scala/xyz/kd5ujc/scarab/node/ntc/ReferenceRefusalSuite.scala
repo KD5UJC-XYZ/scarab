@@ -71,8 +71,9 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{
   * equal the reference's. An earlier-era case goes the same path, its pool's ledger the era's
   * ([[replayPreConway]], #934). A case the reference judged after admitting other transactions on
   * the same connection (`before`) is judged after Scarab's mempool admits them too, each of which
-  * it must admit ([[admitted]]). Every difference fails its case. A family the manifest requires for
-  * an era and no case covers fails that era's coverage test (an incomplete gate is never a pass).
+  * it must admit ([[admitted]]). Every difference fails its case. A family the manifest requires
+  * for an era and no case covers fails that era's coverage test (an incomplete gate is never a
+  * pass).
   *
   * Each corpus is replayed under the rules of the reference build that recorded it
   * ([[recordedBuild]]): `NodeSetup.fromFiles` with that build, which sets the ledger's build
@@ -132,6 +133,7 @@ class ReferenceRefusalSuite extends FunSuite:
     case Right(corpus) =>
       test("the refusal corpus reads, every file matching its recorded hash") {
         assert(corpus.corpora.nonEmpty, "the manifest lists no corpus")
+        assertEquals(EraOnly -- corpus.corpora.map(_.path), Set.empty[String], "EraOnly names")
         buildSensitive.foreach { b =>
           val named =
             corpus.corpora.filter(_.path == b.corpus).flatMap(_.cases).count(_.label == b.label)
@@ -329,6 +331,18 @@ class ReferenceRefusalSuite extends FunSuite:
       .fold(Judgement.Unavailable(_), Judgement.Refused(_))
 
 object ReferenceRefusalSuite:
+  /** The corpora recorded for the era rules alone (#85 stage 3, slice C2c): this suite binds the
+    * era rules to them, and the suites that compare the era rules with the flat ones, whose flat
+    * comparison stage 3 retires, leave them out. On these corpora the flat rules differ from the
+    * reference where the era rules do not: the flat GOV lists a refusal's votes, voters and
+    * accounts in the order the body's maps arrived in
+    * (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7054122427), and a case judged
+    * after items the reference admitted first (`before`) is not one a single rule can judge from the
+    * recorded state.
+    */
+  val EraOnly: Set[String] =
+    Set("conway-constructors", "conway-gov-order", "conway-mempool", "conway-constructors-v11")
+
   /** A case whose refusal the rules of `other`, a build other than its corpus's, would not send:
     * replayed under them, Scarab's refusal must differ from the recorded one. Each shows that the
     * replay follows the corpus's build.

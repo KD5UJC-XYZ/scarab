@@ -168,8 +168,9 @@ Pool 2 of that cluster ran cardano-node 11.2.1 (`up --node-image 2=cardano-refer
 which recorded every corpus, ran 11.1.3. Each case's item was then submitted to node 1 and node 2 at one tip:
 11.2.1's refusal was byte for byte 11.1.3's for every case without `before` but one, and the same failures for
 those with it, from new transactions. The one is `ledger-withdrawal-amounts-wrong-v11`, whose refusal holds each
-account's balance: at protocol version 11, node 2's reward balances and treasury differed from those of nodes 1
-and 3 at the same tip, so 11.2.1 expected other amounts, for the same accounts and the same failure. No 11.2
+account's balance: node 2's reward balances and treasury differed from those of nodes 1 and 3 at the same tip,
+so 11.2.1 expected other amounts, for the same accounts and the same failure. On a second such cluster the
+balances already differed from epoch 2, at protocol version 10; why is not established here. No 11.2
 corpus is kept, since Scarab does not read the 11.2 build's state layout yet (`ReferenceBuildNotYet.Layout`).
 The Leios build's cluster runs Conway at protocol version 12 and was not recorded.
 

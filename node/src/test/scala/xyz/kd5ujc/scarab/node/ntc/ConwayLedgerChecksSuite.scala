@@ -61,6 +61,9 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellState, UtxoCodecs}
   * in the same order, or the same ledger state. Where the reference refused a transaction for
   * LEDGER, the era rule's failures, one level below MEMPOOL, encode to the reference's refusal byte
   * for byte.
+  * The corpora recorded for the era rules alone
+  * ([[xyz.kd5ujc.scarab.node.ntc.ReferenceRefusalSuite.EraOnly]]) are left out: stage 3 retires
+  * the flat comparison, and `ReferenceRefusalSuite` binds the era rules to them.
   */
 class ConwayLedgerChecksSuite extends FunSuite:
   import ReferenceRefusalSuite.*
@@ -92,7 +95,7 @@ class ConwayLedgerChecksSuite extends FunSuite:
 
   private val seen: Vector[Seen] =
     val loaded = right("the refusal corpus")(load(Path.of("fixtures/reference/refusals")))
-    loaded.corpora.filter(_.era == RefusalEra.Conway).flatMap { c =>
+    loaded.corpora.filter(c => c.era == RefusalEra.Conway && !EraOnly(c.path)).flatMap { c =>
       val setup = right(s"${c.path} genesis")(
         NodeSetup.fromFiles(c.build)(name => c.genesis.get(name).map(_.toArray))
       )
