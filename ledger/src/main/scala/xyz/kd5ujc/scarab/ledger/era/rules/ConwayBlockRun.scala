@@ -152,14 +152,18 @@ object ConwayBlockRun:
     */
   private[ConwayBlockRun] enum Recorded:
     case Scripts(job: Deferred)
-    case Uncollected(observation: Phase2.Observation)
+    case Uncollected(observation: ConwayPhase2.Observation)
 
-  /** The node's phase-2 observer (`--plutus-cases`) of a run, as the flat rules call it
-    * (`EraBlock.Context.observer`, `Phase2.Observation`), with the clock its observations hold:
-    * told of each transaction whose scripts the run evaluates ([[observed]]) and of one whose
-    * scripts UTXOS could not collect ([[uncollecting]]), as the flat rules tell it of each.
+  /** The node's phase-2 observer (`--plutus-cases`) of a run, told of the era's observations
+    * ([[ConwayPhase2.Observation]]), with the clock its observations hold: told of each transaction
+    * whose scripts the run evaluates ([[observed]]) and of one whose scripts UTXOS could not
+    * collect ([[uncollecting]]), as the flat rules tell theirs of each
+    * (`EraBlock.Context.observer`).
     */
-  final case class Observing(observer: Phase2.Observation => Unit, clock: Option[PosixClock])
+  final case class Observing(
+      observer: ConwayPhase2.Observation => Unit,
+      clock: Option[PosixClock]
+  )
 
   private type F[A] = RuleT[BbodyPredFailure[Conway], ConwayRuleDefect, S, A]
   import RuleT.given
@@ -265,20 +269,16 @@ object ConwayBlockRun:
       ls: LedgerState[Conway],
       slot: BigInt,
       outcome: Phase2.Outcome
-  ): Option[Phase2.Observation] =
-    ConwayPhase2
-      .flatTx(located.tx)
-      .map(tx =>
-        Phase2.Observation(
-          tx,
-          ls.utxo.gov.curPParams,
-          slot,
-          located.spent,
-          located.references,
-          observing.clock,
-          Right(outcome)
-        )
-      )
+  ): ConwayPhase2.Observation =
+    ConwayPhase2.Observation(
+      located.tx,
+      ls.utxo.gov.curPParams,
+      slot,
+      located.spent,
+      located.references,
+      observing.clock,
+      Right(outcome)
+    )
 
   /** `evaluator` with each script it runs of the block of transactions `txs` observed by
     * `observing`, as the flat rules observe a transaction's (`TxChecks.phase2`): the script's
@@ -299,7 +299,7 @@ object ConwayBlockRun:
     val state = summon[Stateful[F, S]]
     def told(located: ConwayPhase2.Located, s: S, outcome: Phase2.Outcome): F[Unit] =
       Monad[F].unit.map(_ =>
-        observation(observing, located, s.bbody.ls, slot, outcome).foreach(observing.observer)
+        observing.observer(observation(observing, located, s.bbody.ls, slot, outcome))
       )
     request =>
       (state.get <* oneRan).flatMap { s =>
@@ -333,21 +333,20 @@ object ConwayBlockRun:
         }
       }
 
-  /** UTXOS's notice of a transaction `tx` whose scripts it could not collect
-    * ([[Phase2Deferral.uncollected]]), observed by `observing` as the flat rules observe it
-    * (`TxChecks.phase2`, [[ConwayPhase2.uncollected]]), in the ledger state the rules judge it in,
-    * and told by `tell`: once, where the run observes no transaction's scripts ([[Observed]]), and
-    * only if nothing failed so far in the judgment, which the flat rules evaluate a transaction's
-    * scripts under (`whenFailureFree`) and observe it only then. Its failures recorded after it,
-    * the judgment is failing, so no script runs after it, and the run observes nothing more
-    * ([[Observed.Ended]]).
+  /** UTXOS's notice of a transaction `tx` whose scripts it could not collect, with the failures
+    * `errors` of the era's collection ([[Phase2Deferral.uncollected]]), observed by `observing` as
+    * the flat rules observe it (`TxChecks.phase2`), in the ledger state the rules judge it in
+    * ([[ConwayPhase2.observation]]), and told by `tell`: once, where the run observes no
+    * transaction's scripts ([[Observed]]), and only if nothing failed so far in the judgment, which
+    * the flat rules evaluate a transaction's scripts under (`whenFailureFree`) and observe it only
+    * then. Its failures recorded after it, the judgment is failing, so no script runs after it, and
+    * the run observes nothing more ([[Observed.Ended]]).
     */
   private def uncollecting(
       observing: Option[Observing],
       slot: BigInt,
-      slotToPOSIXTime: BigInt => Either[TranslationError, BigInt],
-      tell: Phase2.Observation => Unit
-  )(tx: Tx[TxLevel.Top, Conway]): F[Unit] =
+      tell: ConwayPhase2.Observation => Unit
+  )(tx: Tx[TxLevel.Top, Conway], errors: NonEmptyList[CollectError[Conway]]): F[Unit] =
     val state = summon[Stateful[F, S]]
     observing.fold(Monad[F].unit) { o =>
       (summon[Judge[F, BbodyPredFailure[Conway]]].failing, state.get).tupled.flatMap {
@@ -355,9 +354,7 @@ object ConwayBlockRun:
           s.observed match
             case Observed.Between if !failing =>
               Monad[F].unit.map(_ =>
-                ConwayPhase2
-                  .uncollected(tx, s.bbody.ls, slot, slotToPOSIXTime, o.clock)
-                  .foreach(tell)
+                tell(ConwayPhase2.observation(tx, s.bbody.ls, slot, o.clock, Left(errors)))
               ) *> state.set(s.copy(observed = Observed.Ended))
             case Observed.Between | Observed.In(_, _) | Observed.Ended => Monad[F].unit
       }
@@ -373,7 +370,7 @@ object ConwayBlockRun:
       val index: Int,
       private[ConwayBlockRun] val flag: IsPhase2Valid,
       private[ConwayBlockRun] val scripts: NonEmptyList[PlutusWithContext],
-      private[ConwayBlockRun] val observation: Option[Evaluated => Option[Phase2.Observation]]
+      private[ConwayBlockRun] val observation: Option[Evaluated => Option[ConwayPhase2.Observation]]
   ):
     private[ConwayBlockRun] def requests: List[EvalRequest] =
       scripts.toList.map(PlutusWithContext.evalRequest)
@@ -493,14 +490,7 @@ object ConwayBlockRun:
           tx: Tx[TxLevel.Top, Conway],
           errors: NonEmptyList[CollectError[Conway]]
       ): F[Unit] =
-        uncollecting(
-          observing,
-          slot,
-          slotToPOSIXTime,
-          o => recorder.append(Recorded.Uncollected(o))
-        )(
-          tx
-        )
+        uncollecting(observing, slot, o => recorder.append(Recorded.Uncollected(o)))(tx, errors)
 
   /** How the observation of deferred scripts is made once they ran, as [[observed]] makes it: the
     * transaction located in `ls` by its first script, each result named by its script's place.
@@ -513,7 +503,7 @@ object ConwayBlockRun:
       slot: BigInt,
       slotToPOSIXTime: BigInt => Either[TranslationError, BigInt],
       scripts: NonEmptyList[PlutusWithContext]
-  ): Evaluated => Option[Phase2.Observation] = evaluated =>
+  ): Evaluated => Option[ConwayPhase2.Observation] = evaluated =>
     val first = PlutusWithContext.evalRequest(scripts.head)
     ConwayPhase2
       .locate(txs, ls, pp, slotToPOSIXTime)(pwc => PlutusWithContext.evalRequest(pwc) == first)
@@ -539,7 +529,7 @@ object ConwayBlockRun:
               .orElse(
                 Option.when(all.sizeIs == located.scripts.size)(ConwayPhase2.outcome(all, None))
               )
-              .flatMap(observation(observing, located, ls, slot, _))
+              .map(observation(observing, located, ls, slot, _))
           }
       }
 
@@ -698,9 +688,7 @@ object ConwayBlockRun:
                 tx: Tx[TxLevel.Top, Conway],
                 errors: NonEmptyList[CollectError[Conway]]
             ): F[Unit] =
-              uncollecting(observing, slot, slotToPOSIXTime, o => observing.foreach(_.observer(o)))(
-                tx
-              )
+              uncollecting(observing, slot, o => observing.foreach(_.observer(o)))(tx, errors)
         case Mode.Preparing(recorder) =>
           deferring(recorder, txs, observing, env.bbodyPp, slot, slotToPOSIXTime)
       // a script with no verdict, named by its transaction and redeemer in the ledger state the

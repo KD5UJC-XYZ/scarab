@@ -2677,12 +2677,15 @@ Conway's rules on the classes follow as the rest of stage 2.
     collects, in its order, with the flat rules' redeemers and requests, on the 40 recorded Plutus cases Conway's
     decoder reads (Plutus V1, V2 and V3, every purpose).
   - The phase-2 observer (`--plutus-cases`): given one (`ConwayBlockRun.Observing`), the run locates each script the
-    evaluator runs the same way, by its transaction and its place, and tells the flat rules' `Phase2.Observation` of a transaction once its last script
-    ran or one had no verdict. A transaction whose scripts UTXOS cannot collect with their contexts is told to the
-    run by UTXOS before it records `CollectErrors` (`Phase2Deferral.uncollected`, Scarab's own; the mempool and
-    Dijkstra's run tell no one), and the run observes it as `TxChecks.phase2` does: only where nothing failed before
-    in the judgment, with the flat rules' collection's failures (`ConwayPhase2.uncollected`, since a context's
-    failure to translate has no projection from the era's into the observation's vocabulary). The judgment is
+    evaluator runs the same way, by its transaction and its place, and tells its own observation
+    (`ConwayPhase2.Observation`, made from the era's transaction and state, with no flat transaction) once its last
+    script ran or one had no verdict. A transaction whose scripts UTXOS cannot collect with their contexts is told to
+    the run by UTXOS before it records `CollectErrors`, with the era's collection's failures
+    (`Phase2Deferral.uncollected`, Scarab's own; the mempool tells no one), and the run observes it as
+    `TxChecks.phase2` does: only where nothing failed before in the judgment, with those failures. The case files name
+    them as they named the flat collection's, through a projection into the flat vocabulary
+    (`ConwayPhase2.storedErrors`, glue for the case files' text, which keeps their bytes), so a Conway case is the one
+    the flat observation of the same transaction writes. The judgment is
     failing after it, so no script runs and the run observes nothing more (`Observed.Ended`); a prepared block
     records the observation in order beside its deferred scripts and tells it at its place
     ([parallel Plutus](parallel-plutus.md#era-block-runs)). Observing changes no rule's result.

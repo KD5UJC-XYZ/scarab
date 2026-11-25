@@ -1,29 +1,27 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.era.rules
 
-import cats.data.{Chain, NonEmptyVector}
+import cats.data.{Chain, NonEmptyList, NonEmptyVector}
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{
-  Block,
+  CollectError as FlatCollectError,
   LedgerFailure,
   Phase2,
   PlutusStats,
   PosixClock,
+  ProtocolParams,
   Redeemer,
   ScriptLocation,
   TranslationError,
-  TxChecks,
   TxIn,
-  Tx as FlatTx,
   TxOut as FlatTxOut
 }
 import xyz.kd5ujc.scarab.ledger.era.*
-import xyz.kd5ujc.scarab.ledger.era.conway.ConwayPlutusPurpose
+import xyz.kd5ujc.scarab.ledger.era.conway.{ConwayContextError, ConwayPlutusPurpose, ConwayTxCert}
 import xyz.kd5ujc.scarab.ledger.rules.TxDependencies
-import xyz.kd5ujc.scarab.ledger.state.{Conway, LedgerState, ShelleyBasedEra}
+import xyz.kd5ujc.scarab.ledger.state.{Conway, LedgerState}
 import xyz.kd5ujc.scarab.plutus.{EvalFailure, EvalResult}
-import xyz.kd5ujc.scarab.protocol.Era
 
 /** What of Conway's BBODY events the node's phase-2 counters read ([[ConwayPhase2.counted]]):
   * UTXOS's scripts that passed and those that failed, and UTXO's change of the deposits, which it
@@ -228,61 +226,136 @@ object ConwayPhase2:
       }
     )
 
-  /** The transaction `tx` as the flat rules read it, from its bytes (`Tx.fromBlock`), which the
-    * node's phase-2 observation holds; none for bytes the flat decoder refuses, which a transaction
-    * the era decoder read never has.
+  /** The node's phase-2 observation of a transaction of a Conway block (`--plutus-cases`), Scarab's
+    * own, made from the era's transaction and state, as Dijkstra's is ([[DijkstraPhase2]]): the
+    * transaction `tx`, the parameters `params` as the node records them, the block's `slot`, the
+    * outputs its inputs and reference inputs spend and read (`spent`, `references`) as the node
+    * records them, the `clock` the node evaluates its scripts with, and what its scripts came to
+    * (`outcome`, as `Phase2.run` makes it), or the failures UTXOS records where it could not
+    * collect them with their contexts: the era's own collection's
+    * (`collectPlutusScriptsWithContext`,
+    * `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Evaluate.hs:83-118`, cardano-ledger
+    * f649f975), which Conway's UTXOS records as `CollectErrors` (`conwayEvalScriptsTxValid`,
+    * `eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Utxos.hs:237-241`, through
+    * `expectScriptsToPass`, `eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Utxos.hs:139-143`).
     */
-  def flatTx(tx: Tx[TxLevel.Top, Conway]): Option[FlatTx] =
-    FlatTx
-      .fromBlock(
-        Block.Transaction(
-          tx.body.raw,
-          tx.wits.raw,
-          tx.auxData.map(_.raw),
-          tx.isValid == IsPhase2Valid.Phase2Valid
-        ),
-        Era.Conway
-      )
-      .toOption
+  final case class Observation(
+      tx: Tx[TxLevel.Top, Conway],
+      params: ProtocolParams,
+      slot: BigInt,
+      spent: Map[TxIn, FlatTxOut],
+      references: Map[TxIn, FlatTxOut],
+      clock: Option[PosixClock],
+      outcome: Either[NonEmptyList[CollectError[Conway]], Phase2.Outcome]
+  )
 
-  /** The node's phase-2 observation of the transaction `tx` of a block at `slot`, whose scripts
-    * UTXOS could not collect with their contexts in the ledger state `ls`, as the flat rules make
-    * it where they refuse it (`TxChecks.phase2`): the transaction as they read it ([[flatTx]]), the
-    * parameters as the node records them, the outputs its inputs and reference inputs spend and
-    * read, the `clock` it holds, and the flat rules' collection's failures (`Phase2.collect`, with
-    * the scripts the transaction provides and the clock `slotToPOSIXTime` the rules collected
-    * with), in the vocabulary the observation holds, which a context's failure to translate has no
-    * projection into from the era's. None where the flat rules collect every script: a difference
-    * of the two collections, which no observation shows.
+  /** The node's phase-2 observation of the transaction `tx` of a block at `slot`, in the ledger
+    * state `ls` the rules judge it in, with the `clock` it holds, whose scripts came to `outcome`:
+    * with the parameters as the node records them and the outputs its inputs and reference inputs
+    * spend and read, from the ledger state's UTxO set.
     */
-  def uncollected(
+  def observation(
       tx: Tx[TxLevel.Top, Conway],
       ls: LedgerState[Conway],
       slot: BigInt,
-      slotToPOSIXTime: BigInt => Either[TranslationError, BigInt],
-      clock: Option[PosixClock]
-  ): Option[Phase2.Observation] =
+      clock: Option[PosixClock],
+      outcome: Either[NonEmptyList[CollectError[Conway]], Phase2.Outcome]
+  ): Observation =
     val t = EraTx.conway
     val b = EraTxBody.conway
     given t.bodyOf.Level[TxLevel.Top] = t.bodyOf.top
     val body = t.body[TxLevel.Top](tx)
     val stored = ls.utxo.utxo.utxo
-    val spent = ShelleyUtxo.restrictKeys(stored, b.inputs[TxLevel.Top](body))
-    val references = ShelleyUtxo.restrictKeys(stored, b.referenceInputs[TxLevel.Top](body))
-    val pp = ls.utxo.gov.curPParams
-    flatTx(tx).flatMap { flat =>
-      Phase2
-        .collect[Conway](
-          flat,
-          pp,
-          TxChecks.providedScripts(flat.witnesses, (spent.values ++ references.values).toVector),
-          spent,
-          references,
-          slotToPOSIXTime
-        )(using ShelleyBasedEra.SConway)
-        .left
-        .toOption
-        .map(errors => Phase2.Observation(flat, pp, slot, spent, references, clock, Left(errors)))
+    Observation(
+      tx,
+      ls.utxo.gov.curPParams,
+      slot,
+      ShelleyUtxo.restrictKeys(stored, b.inputs[TxLevel.Top](body)),
+      ShelleyUtxo.restrictKeys(stored, b.referenceInputs[TxLevel.Top](body)),
+      clock,
+      outcome
+    )
+
+  /** The failures `errors` of the collection of the observed transaction's scripts
+    * ([[Observation]]) in the node's flat vocabulary (`ledger.CollectError`), which the node's case
+    * files (`--plutus-cases`) name them in, as they named the flat rules' collection's: glue until
+    * the case files name the era's failures, not a function of the reference. A missing redeemer's
+    * purpose, and one a context has no form for, are given their flat form by the purposes the
+    * transaction needs in the outputs it spends and reads
+    * (`ConwayUtxowPredFailure.storedPurposes`), a certificate by [[ConwayTxCert.toStored]], the
+    * votes and proposals by their own. A purpose not among them, which a failure of the collection
+    * names never, and an impossible context (`ImpossibleContextError`), which the flat vocabulary
+    * has no form of, are left as they are (`Left`).
+    */
+  def storedErrors(
+      observation: Observation,
+      errors: NonEmptyList[CollectError[Conway]]
+  ): NonEmptyList[Either[CollectError[Conway], FlatCollectError]] =
+    val t = EraTx.conway
+    val u = summon[AlonzoEraUTxO[Conway]]
+    given t.bodyOf.Level[TxLevel.Top] = t.bodyOf.top
+    val utxo = UTxO[Conway](
+      (observation.spent ++ observation.references).flatMap((in, out) =>
+        StoredTxOut.conway.fromStored(out).toOption.map(in -> _)
+      )
+    )
+    val purpose = ConwayUtxowPredFailure.storedPurposes(
+      u.getScriptsNeeded[TxLevel.Top](utxo, t.body[TxLevel.Top](observation.tx))(using
+        u.txOf.bodyOf.top
+      ),
+      utxo
+    )
+    def context(error: ConwayContextError[Conway]): Option[TranslationError] = error match
+      case ConwayContextError.BabbageContextError(babbage) =>
+        babbage match
+          case BabbageContextError.AlonzoContextError(alonzo) =>
+            alonzo match
+              case AlonzoContextError.TranslationLogicMissingInput(in) =>
+                Some(TranslationError.UnresolvedInput(in))
+              case AlonzoContextError.TimeTranslationPastHorizon(cause) => Some(cause)
+              case AlonzoContextError.CertificateNotSupported(cert) =>
+                Some(TranslationError.CertificateNotSupported(ConwayTxCert.toStored(cert)))
+              case AlonzoContextError.PlutusPurposeNotSupported(p) =>
+                purpose(p).map(TranslationError.PlutusPurposeNotSupported(_))
+              case AlonzoContextError.Undecodable(site, _) =>
+                Some(TranslationError.Undecodable(site))
+              case AlonzoContextError.ImpossibleContextError(_) => None
+          case BabbageContextError.ByronTxOutInContext(source) =>
+            Some(TranslationError.ByronTxOutInContext(source))
+          case BabbageContextError.RedeemerPointerPointsToNothing(ptr) =>
+            Some(TranslationError.RedeemerPointerPointsToNothing(ptr.tag, ptr.ix.value))
+          case BabbageContextError.InlineDatumsNotSupported(source) =>
+            Some(TranslationError.InlineDatumsNotSupported(source))
+          case BabbageContextError.ReferenceScriptsNotSupported(source) =>
+            Some(TranslationError.ReferenceScriptsNotSupported(source))
+          case BabbageContextError.ReferenceInputsNotSupported(ins) =>
+            Some(TranslationError.ReferenceInputsNotSupported(ins))
+      case ConwayContextError.CertificateNotSupported(cert) =>
+        Some(TranslationError.CertificateNotSupported(ConwayTxCert.toStored(cert)))
+      case ConwayContextError.PlutusPurposeNotSupported(p) =>
+        purpose(p).map(TranslationError.PlutusPurposeNotSupported(_))
+      case ConwayContextError.CurrentTreasuryFieldNotSupported(coin) =>
+        Some(TranslationError.CurrentTreasuryFieldNotSupported(coin.value))
+      case ConwayContextError.VotingProceduresFieldNotSupported(votes) =>
+        Some(
+          TranslationError.VotingProceduresFieldNotSupported(
+            votes.unVotingProcedures.toVector.map((voter, on) => voter -> on.toVector)
+          )
+        )
+      case ConwayContextError.ProposalProceduresFieldNotSupported(proposals) =>
+        Some(TranslationError.ProposalProceduresFieldNotSupported(proposals.toVector.map(_.read)))
+      case ConwayContextError.TreasuryDonationFieldNotSupported(coin) =>
+        Some(TranslationError.TreasuryDonationFieldNotSupported(coin.value))
+      case ConwayContextError.ReferenceInputsNotDisjointFromInputs(common) =>
+        Some(TranslationError.ReferenceInputsNotDisjointFromInputs(common))
+    errors.map { error =>
+      val flat = error match
+        case CollectError.NoRedeemer(p)         => purpose(p).map(FlatCollectError.NoRedeemer(_))
+        case CollectError.NoWitness(hash)       => Some(FlatCollectError.NoWitness(hash))
+        case CollectError.NoCostModel(language) => Some(FlatCollectError.NoCostModel(language))
+        case CollectError.BadTranslation(failed) =>
+          context(failed).map(FlatCollectError.BadTranslation(_))
+      flat.toRight(error)
     }
 
   /** What the node's phase-2 observation of a transaction holds of its scripts' evaluations
