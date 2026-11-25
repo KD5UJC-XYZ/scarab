@@ -1444,8 +1444,9 @@ object Peer:
               // (`intersectsWithCurrentChain`, ouroboros-consensus 82ecba329
               // MiniProtocol/ChainSync/Client.hs 942-992): as a batch is recorded, as the capacity
               // wait follows our chain, and after each step of the publisher, which takes a trim its
-              // old cursor held back ([[CandidateState.trimmed]]).
-              trim = anchor.flatMap(at => commit(_.anchoredAt(at).trimmed).void)
+              // old cursor held back ([[CandidateState.trimmed]]). Each trim reads our anchor itself,
+              // after the cursor it is bounded by moved.
+              trim = anchor.flatMap(_.traverse_(at => commit(_.trimmed(at)).void))
               capacity = (update: ChainSyncClient.Update[NtNHeader]) =>
                 update match
                   case ChainSyncClient.Update.RollBackward(_, _) => F.unit
@@ -1636,45 +1637,34 @@ object Peer:
                   pipelineFailure.set(Some(fault)) *> queue.offer(PipelineEvent.Failed(fault))
                 case None => queue.offer(PipelineEvent.Drained)
               }
-              // The publisher's step: the events since the cursor, the cursor moved to them and the
-              // candidate trimmed, in one transition ([[CandidateState.published]]), then the events
-              // offered to the consumer in order. The candidate is published as ChainSync accepts it;
-              // nothing here waits for a body (BlockFetch is independent of ChainSync,
-              // State.hs:317–335).
+              // The publisher's step: the events since the cursor and the cursor moved to them, in one
+              // transition ([[CandidateState.published]]); then the candidate trimmed to our anchor as
+              // read after that, which takes a trim the old cursor held back; then the events offered
+              // to the consumer in order. The candidate is published as ChainSync accepts it; nothing
+              // here waits for a body (BlockFetch is independent of ChainSync, State.hs:317–335).
               _ <- F.tailRecM(()) { _ =>
-                permits.acquire *> anchor
-                  .flatMap(at =>
-                    // a trim the step made is announced, as [[commit]] announces
-                    F.uncancelable(_ =>
-                      transition { state =>
-                        state.published(settings.readAhead, at) match
-                          case Left(divergence) => (state, Left(divergence))
-                          case Right((next, events)) =>
-                            (next, Right((next, events, next.revision != state.revision)))
-                      }.flatTap {
-                        case (Right((state, _, true)), _) => announce(state)
-                        case _                            => F.unit
-                      }
+                permits.acquire *> transition { state =>
+                  state.published(settings.readAhead) match
+                    case Left(divergence)      => (state, Left(divergence))
+                    case Right((next, events)) => (next, Right((next, events)))
+                }.flatMap {
+                  case (Left(divergence), _) =>
+                    PeerError.Diverged(divergence).raise[F, Either[Unit, Unit]]
+                  case (Right((state, events)), changed) =>
+                    trim *> (
+                      if events.nonEmpty then
+                        events.zipWithIndex
+                          .traverse_ { (event, index) =>
+                            permits.acquire.whenA(index > 0) *>
+                              queue.offer(PipelineEvent.Batch(Vector(event)))
+                          }
+                          .as(Left(()))
+                      // nothing to publish: the end, or a wait for the state's next change
+                      else if state.publication.exists(_.done) then
+                        permits.release *> finish.as(Right(()))
+                      else permits.release *> changed.get.as(Left(()))
                     )
-                  )
-                  .flatMap {
-                    case (Left(divergence), _) =>
-                      PeerError.Diverged(divergence).raise[F, Either[Unit, Unit]]
-                    case (Right((state, events, _)), changed) =>
-                      val step =
-                        if events.nonEmpty then
-                          events.zipWithIndex
-                            .traverse_ { (event, index) =>
-                              permits.acquire.whenA(index > 0) *>
-                                queue.offer(PipelineEvent.Batch(Vector(event)))
-                            }
-                            .as(Left(()))
-                        // nothing to publish: the end, or a wait for the state's next change
-                        else if state.publication.exists(_.done) then
-                          permits.release *> finish.as(Right(()))
-                        else permits.release *> changed.get.as(Left(()))
-                      step
-                  }
+                }
               }
             yield ()
 

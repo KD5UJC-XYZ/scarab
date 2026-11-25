@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import cats.syntax.all.*
 import xyz.kd5ujc.scarab.consensus.ChainSelection
 import xyz.kd5ujc.scarab.ledger.PeerError
 import xyz.kd5ujc.scarab.protocol.ChainSync
@@ -120,26 +119,24 @@ private[node] object CandidateTrack:
     }
 
 /** A session's candidate as one state (issue 810): the candidate, its track, the revision its
-  * announcements to the fetch decisions are ordered by, the newest anchor of our chain it was
-  * given, and, while the session streams, what it publishes to its consumer. The reference's client
-  * trims its candidate, `theirFrag`, in its own state whenever our chain changes
-  * (`intersectsWithCurrentChain`, ouroboros-consensus 82ecba329 MiniProtocol/ChainSync/Client.hs
-  * 942-992, called as it rolls forward and in its waits, 1798), and writes it for the other
-  * components as it rolls forward and back (1518, 1615). Here the candidate is shared state, and
-  * each change of it is one transition of this state, so a batch, a trim, the publisher's step and
-  * a restart never see the candidate apart from its index, the anchor, the journal the publisher
-  * reads or the cursor it published.
+  * announcements to the fetch decisions are ordered by, and, while the session streams, what it
+  * publishes to its consumer. The reference's client trims its candidate, `theirFrag`, in its own
+  * state whenever our chain changes (`intersectsWithCurrentChain`, ouroboros-consensus 82ecba329
+  * MiniProtocol/ChainSync/Client.hs 942-992, called as it rolls forward and in its waits, 1798),
+  * and writes it for the other components as it rolls forward and back (1518, 1615). Here the
+  * candidate is shared state, and each change of it is one transition of this state, so a batch, a
+  * trim, the publisher's step and a restart never see the candidate apart from its index, the
+  * journal the publisher reads or the cursor it published.
   */
 private[node] final case class CandidateState(
     candidate: ChainSelection.Candidate,
     track: CandidateTrack,
     revision: Long,
-    anchor: Option[Point],
     publication: Option[CandidateState.Publication]
 ):
   /** The state after `batch`, as [[CandidateTrack.move]] moves the candidate and
     * [[CandidateTrack.recorded]] its heights, with the batch's tip for the publisher, then trimmed
-    * to our chain's anchor, the newer of the one it has and `ours` ([[trimmed]]); and how the
+    * to `anchor`, our chain's anchor as the header gate's history has it ([[trimmed]]); and how the
     * candidate moved. A rollback to a point the candidate does not hold, one the header gate holds
     * before the candidate's base, starts the candidate again there and the publisher in a new
     * epoch: it then publishes the rollback to that point when what it published has no point in
@@ -149,7 +146,7 @@ private[node] final case class CandidateState(
       batch: Vector[SyncEvent],
       retained: Int,
       received: Map[Point, Option[BigInt]],
-      ours: Option[Point]
+      anchor: Option[Point]
   ): (CandidateState, CandidateTrack.Moved) =
     val moved = CandidateTrack.move(track.announced, candidate, batch, retained)
     val tip = batch.lastOption.map {
@@ -160,36 +157,23 @@ private[node] final case class CandidateState(
       moved.announced.candidate,
       track.recorded(moved, received),
       revision + 1,
-      anchor,
       publication.map { p =>
         val restarted = if moved.left.isEmpty then p.copy(epoch = p.epoch + 1) else p
         tip.fold(restarted)(at => restarted.copy(tip = Some(at)))
       }
     )
-    (next.anchoredAt(ours).trimmed, moved)
+    (anchor.fold(next)(next.trimmed), moved)
 
-  /** The state with our chain's anchor `ours`, when it is newer than the one it has. Our anchor
-    * only moves on, so the later of the two is ours: a reader that read it before another reader
-    * read a newer one never puts it back.
+  /** The candidate trimmed to `anchor`, our chain's anchor as the header gate's history has it, as
+    * the reference trims its candidate whenever our chain changes, but never past the tip of the
+    * cursor, the newest point published to the session's consumer ([[CandidateTrack.trimmed]]): the
+    * next publication then finds that tip, or the point of a later rollback, which the header gate
+    * keeps at or after its base. Only a streaming session is trimmed, as only it has a cursor; this
+    * same state when nothing is dropped.
     */
-  def anchoredAt(ours: Option[Point]): CandidateState =
-    def slot(point: Option[Point]): Option[BigInt] = point.flatMap {
-      case Point.Block(slot, _) => Some(slot.value)
-      case Point.Origin         => None
-    }
-    if ours.isEmpty || Ordering[Option[BigInt]].lteq(slot(ours), slot(anchor)) then this
-    else copy(anchor = ours)
-
-  /** The candidate trimmed to our chain's anchor, as the reference trims its candidate whenever our
-    * chain changes, but never past the tip of the cursor, the newest point published to the
-    * session's consumer ([[CandidateTrack.trimmed]]): the next publication then finds that tip, or
-    * the point of a later rollback, which the header gate keeps at or after its base. A trim the
-    * cursor held back is taken by the transition that moves the cursor on. Only a streaming session
-    * is trimmed, as only it has a cursor; this same state when nothing is dropped.
-    */
-  def trimmed: CandidateState =
-    (anchor, publication)
-      .flatMapN((ours, p) => track.trimmed(candidate, ours, p.cursor.tip))
+  def trimmed(anchor: Point): CandidateState =
+    publication
+      .flatMap(p => track.trimmed(candidate, anchor, p.cursor.tip))
       .fold(this)(t => copy(candidate = t.candidate, track = t.track, revision = revision + 1))
 
   /** A candidate put in place from outside the batches, a new intersection or a Genesis graft, with
@@ -200,7 +184,6 @@ private[node] final case class CandidateState(
       index.candidate,
       track.replaced(index),
       revision + 1,
-      anchor,
       publication.map(p => p.copy(tip = Some(tip), done = false, epoch = p.epoch + 1))
     )
 
@@ -208,7 +191,7 @@ private[node] final case class CandidateState(
     * session streams again.
     */
   def reset(next: ChainSelection.Candidate): CandidateState =
-    CandidateState(next, track, revision + 1, anchor, None)
+    CandidateState(next, track, revision + 1, None)
 
   /** The heights of the points a FindIntersect offered ([[CandidateTrack.offered]]). */
   def offered(heights: Map[Point, Option[BigInt]]): CandidateState =
@@ -228,15 +211,11 @@ private[node] final case class CandidateState(
 
   /** The publisher's step: what changed of the candidate since the cursor, at most `limit` headers
     * ([[Peer.publication]]); in a new epoch with no point in common, a rollback to the candidate's
-    * base and its headers again. The cursor moves to what the events publish, in this same
-    * transition, and the candidate is then trimmed to our chain's anchor, the newer of the one it
-    * has and `ours` ([[trimmed]]), which takes a trim the old cursor held back. No events while the
-    * publisher has no tip.
+    * base and its headers again. The cursor moves to what the events publish in this same
+    * transition, so that no trim after it passes what they publish. No events while the publisher
+    * has no tip.
     */
-  def published(
-      limit: Int,
-      ours: Option[Point]
-  ): Either[PeerError.Divergence, (CandidateState, Vector[SyncEvent])] =
+  def published(limit: Int): Either[PeerError.Divergence, (CandidateState, Vector[SyncEvent])] =
     publication.fold(Right(this -> Vector.empty[SyncEvent])) { p =>
       p.tip
         .fold(Right(p.cursor -> Vector.empty[SyncEvent])) { tip =>
@@ -256,10 +235,9 @@ private[node] final case class CandidateState(
                 )
           }
         }
-        .map { (after, events) =>
-          val moved = copy(publication = Some(p.copy(cursor = after, found = p.epoch)))
-          (moved.anchoredAt(ours).trimmed, events)
-        }
+        .map((after, events) =>
+          copy(publication = Some(p.copy(cursor = after, found = p.epoch))) -> events
+        )
     }
 
 private[node] object CandidateState:
@@ -268,7 +246,6 @@ private[node] object CandidateState:
       ChainSelection.Candidate(Point.Origin, Vector.empty),
       CandidateTrack.initial,
       0L,
-      None,
       None
     )
 
