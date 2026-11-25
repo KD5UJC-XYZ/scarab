@@ -7,7 +7,9 @@ The seven `vrf_ver03_*` test vectors of IntersectMBO/cardano-base at
 `checkVer03TestVector` (`cardano-crypto-praos/testlib/Test/Crypto/VRF.hs:112-136`), reads each one and checks
 that proving `alpha` with `sk || pk` gives `pi`, that the key of `sk` is `pk`, that the output of `pi` is `beta`,
 and that verifying `pi` with `pk` gives `beta`. `Draft03CardanoBaseVectorSuite` (crypto tests) makes the same
-checks of `Draft03Prover` and `StrictDraft03`.
+checks of `Draft03Prover` and `StrictDraft03`, except that of the output of `pi` alone: the reference takes it from an
+unverified proof (`outputFromProof`), and Scarab exposes no such operation, so the suite checks it through the
+verifier's own steps (Gamma decoded from `pi`, then hashed), on these valid proofs only.
 
 | File | SHA-256 | Key | alpha |
 |---|---|---|---|
