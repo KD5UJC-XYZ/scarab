@@ -38,49 +38,49 @@ import xyz.kd5ujc.scarab.protocol.{DijkstraNotYet, Era}
 /** The Dijkstra BBODY, CERTS and GOV rules of the node against the reference's verdicts on the same
   * cases (`fixtures/reference/dijkstra-rules`, cardano-ledger 9df9f98c, recipe in
   * `scripts/oracle/dijkstra-rules`): the same acceptance, and for a refusal the same predicate
-  * failures in the same order, each the same bytes as the reference's `EncCBOR`. A failure whose
-  * Dijkstra type is a copy of Conway's (GOV, GOVCERT, DELEG; POOL but its BLS case; CERT and CERTS,
-  * which are Conway's) is written by the Conway encoder ([[PredicateFailureCbor]]) without the
-  * LEDGER constructor around it, whose tag the two eras share (`ConwayCertsFailure` 2 with
-  * `CertFailure` 1, `ConwayGovFailure` 3).
+  * failures in the same order, each the same bytes as the reference's `EncCBOR`. The era rules'
+  * failures are written by the test-side encoder of Dijkstra's era failures
+  * ([[DijkstraEraFailureCbor]]); for the flat rules, a failure whose Dijkstra type is a copy of
+  * Conway's (GOV, GOVCERT, DELEG; POOL but its BLS case; CERT and CERTS, which are Conway's) is
+  * written by the Conway encoder ([[PredicateFailureCbor]]) without the LEDGER constructor around
+  * it, whose tag the two eras share (`ConwayCertsFailure` 2 with `CertFailure` 1,
+  * `ConwayGovFailure` 3).
   *
   * A case that reaches a rule this build does not have halts (`DijkstraNotYet.Rules`), and is an
   * incomplete gate, not agreement: the devnet's block with a transaction reaches ENTITIES.
   *
   * The era-typed UTXOW (`era.rules.DijkstraUtxow`, with its UTXO and Conway's UTXOS, #85) is run on
   * every `utxow` case too, from the same parameters, certificate state, UTxO set and slot, the
-  * transaction read by the era decoder and annotated as `mkDijkstraStAnnTopTx` does: its failures,
-  * in their flat form (`DijkstraUtxowPredFailure.toStored`) and written by this suite's encoder,
+  * transaction read by the era decoder and annotated as `mkDijkstraStAnnTopTx` does: its failures
   * are the reference's bytes in its order, and the flat rule's.
   *
   * The era-typed CERTS (Conway's transition with Dijkstra's CERT, `CertRule.dijkstra`, #85) is run
-  * on every `certs` case and on every case's setup: its failures, in the flat Dijkstra form
-  * (`DijkstraCertsStored.toStored`) and written by this suite's encoder, are the reference's bytes
-  * in its order, and its verdicts and states the flat rule's. ENTITIES is run on the transaction of
-  * the devnet block the reference accepted, where the flat rules halt.
+  * on every `certs` case and on every case's setup: its failures are the reference's bytes in its
+  * order, and its verdicts and states the flat rule's. ENTITIES is run on the transaction of the
+  * devnet block the reference accepted, where the flat rules halt.
   *
   * The era-typed GOV (Conway's transition at Dijkstra, `EraGovRun.dijkstra`, #85) is run on every
   * `gov` case at the root, from the certificate state the era-typed CERTS leaves after its setup:
-  * its failures, in the flat Dijkstra form (`DijkstraGovPredFailure.toStored`) and written by this
-  * suite's encoder, are the reference's bytes in its order, on all 18; its verdicts are the flat
-  * rule's on the 16 the flat rules judge, and on the 6 both admit its proposals after are the flat
-  * rule's and its events the sequence Conway's transition tells (`GovNewProposals`, then
+  * its failures are the reference's bytes in its order, on all 18; its verdicts are the flat rule's
+  * on the 16 the flat rules judge, and on the 6 both admit its proposals after are the flat rule's
+  * and its events the sequence Conway's transition tells (`GovNewProposals`, then
   * `GovRemovedVotes`), which the oracle does not record. The other two are a pool's vote on a
   * parameter change of key 38, which the pools may not vote on (`DisallowedVoters`), and of key 47,
   * which they may, each after a pool's registration, which the flat rules halt on (an incomplete
-  * flat comparison, CNF-2). The flat form restores an action from the proposal it was read as, so
-  * `gov/treasury-zero` 's failure is checked on the era type too.
+  * flat comparison, CNF-2). `gov/treasury-zero` 's failure is checked on the era type too.
   *
   * The era-typed LEDGER (`era.rules.DijkstraLedger`, #85) is run on every `utxow` case at the root,
   * from the certificate state the era CERTS leaves after its setup: where the refusal is LEDGER's
-  * whole, its failures, in the flat Dijkstra form (`DijkstraLedgerPredFailure.toStored`) and
-  * written by this suite's encoder, are the reference's bytes in its order, `utxow/no-utxo` 's
-  * order against BBODY's recording of the same refusal one level down; the two whose deregistration
-  * ENTITIES refuses are compared on their UTXOW part. The era-typed LEDGERS is run on every `bbody`
-  * case one level below the root: its refusals are the reference's LEDGERS refusals byte for byte,
-  * and it admits every other block, the one the flat rules halt on among them. On the two cases
-  * flagged invalid, which the flat LEDGER judges, the era LEDGER and LEDGERS give the flat
-  * failures.
+  * whole, its failures are the reference's bytes in its order, `utxow/no-utxo` 's order against
+  * BBODY's recording of the same refusal one level down; the two whose deregistration ENTITIES
+  * refuses are compared on their UTXOW part. The era-typed LEDGERS is run on every `bbody` case one
+  * level below the root: its refusals are the reference's LEDGERS refusals byte for byte, and it
+  * admits every other block, the one the flat rules halt on among them. On the two cases flagged
+  * invalid, which the flat LEDGER judges, the era LEDGER and LEDGERS give the flat failures.
+  *
+  * On every case recorded before the era encoder, each era failure it writes is the bytes its flat
+  * form (`toStored`) and this suite's encoder of the flat form write, so the change of encoder is
+  * itself checked.
   */
 class DijkstraRulesOracleSuite extends FunSuite:
   private val fixture = Path.of("fixtures", "reference", "dijkstra-rules", "cases.jsonl")
@@ -108,6 +108,12 @@ class DijkstraRulesOracleSuite extends FunSuite:
 
   private lazy val cases: Vector[Json] =
     Files.readAllLines(fixture).asScala.toVector.filter(_.nonEmpty).map(l => ok(parser.parse(l)))
+
+  /** The cases recorded before the era failure encoder (2026-11-08 and 2026-11-21), the fixture's
+    * first 70 lines: the flat rules and the flat forms of the era failures are compared on these
+    * alone, the later cases by the era rules against the reference.
+    */
+  private lazy val earlier: Vector[Json] = cases.take(70)
 
   /** The parameters of a case, on those of protocol 12 with the Dijkstra genesis. */
   private def params(c: Json): ProtocolParams =
@@ -525,7 +531,17 @@ class DijkstraRulesOracleSuite extends FunSuite:
       case Right(Right(_)) => Verdict.Accepted
       case Right(Left(fs)) => Verdict.Refused(fs.toChain.toVector.map(eraBytes))
 
+  /** An era failure as the reference writes it ([[DijkstraEraFailureCbor]]). */
+  private def written(r: DijkstraEraFailureCbor.Result[Bytes]): Bytes =
+    r.fold(u => fail(s"no encoding: $u"), identity)
+
   private def eraBytes(f: xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraUtxoRun.Rec): Bytes =
+    written(DijkstraEraFailureCbor.utxow(f))
+
+  /** The same failure through its flat form and this suite's encoder of it, the path the era
+    * encoder replaced, for the cases recorded before it.
+    */
+  private def eraBytesFlat(f: xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraUtxoRun.Rec): Bytes =
     utxow(
       xyz.kd5ujc.scarab.ledger.era.rules.DijkstraUtxowPredFailure
         .toStored(f, _ => None)
@@ -661,11 +677,12 @@ class DijkstraRulesOracleSuite extends FunSuite:
     case Left(defect)    => fail(s"${str(c.hcursor.downField("name"))}: $defect")
     case Right(Right(_)) => Verdict.Accepted
     case Right(Left(fs)) =>
-      Verdict.Refused(
-        fs.toChain.toVector.map(f =>
-          dijkstra(certs(xyz.kd5ujc.scarab.ledger.era.rules.DijkstraCertsStored.toStored(f)))
-        )
-      )
+      Verdict.Refused(fs.toChain.toVector.map(f => written(DijkstraEraFailureCbor.certs(f))))
+
+  private def eraCertsFlat(
+      f: xyz.kd5ujc.scarab.ledger.era.rules.CertsPredFailure[Dijkstra]
+  ): Bytes =
+    dijkstra(certs(xyz.kd5ujc.scarab.ledger.era.rules.DijkstraCertsStored.toStored(f)))
 
   private lazy val certsCases: Vector[Json] =
     cases.filter(c => str(c.hcursor.downField("kind")) == "certs")
@@ -857,15 +874,17 @@ class DijkstraRulesOracleSuite extends FunSuite:
     case Left(defect)    => fail(s"${str(c.hcursor.downField("name"))}: $defect")
     case Right(Right(_)) => Verdict.Accepted
     case Right(Left(fs)) =>
-      Verdict.Refused(
-        fs.toChain.toVector.map(f =>
-          gov(
-            xyz.kd5ujc.scarab.ledger.era.EraGovRun
-              .dijkstraStored(eraGovSignal(c), f)
-              .fold(n => fail(s"no flat form of $n"), identity)
-          )
-        )
-      )
+      Verdict.Refused(fs.toChain.toVector.map(f => written(DijkstraEraFailureCbor.gov(f))))
+
+  private def eraGovFlat(
+      c: Json,
+      f: xyz.kd5ujc.scarab.ledger.era.rules.GovPredFailure[Dijkstra]
+  ): Bytes =
+    gov(
+      xyz.kd5ujc.scarab.ledger.era.EraGovRun
+        .dijkstraStored(eraGovSignal(c), f)
+        .fold(n => fail(s"no flat form of $n"), identity)
+    )
 
   test("the era-typed GOV gives the reference's verdict on every gov case, byte for byte") {
     assertEquals(govCases.size, 18)
@@ -1107,7 +1126,9 @@ class DijkstraRulesOracleSuite extends FunSuite:
       val expected = reference(caseNamed(name))
       assertEquals(
         if utxowPart.isEmpty then Verdict.Accepted
-        else Verdict.Refused(utxowPart.map(f => ledgerBytes(eraLedgerStored(f))).map(payload)),
+        else
+          Verdict.Refused(utxowPart.map(f => payload(written(DijkstraEraFailureCbor.ledger(f)))))
+        ,
         expected,
         name
       )
@@ -1120,7 +1141,7 @@ class DijkstraRulesOracleSuite extends FunSuite:
     val differing = whole.flatMap { (name, fs) =>
       val ours: Verdict =
         if fs.isEmpty then Verdict.Accepted
-        else Verdict.Refused(fs.map(f => payload(ledgerBytes(eraLedgerStored(f)))))
+        else Verdict.Refused(fs.map(f => payload(written(DijkstraEraFailureCbor.ledger(f)))))
       val expected =
         if name == severalAtRoot then
           reference(caseNamed("bbody/devnet-37")) match
@@ -1186,10 +1207,7 @@ class DijkstraRulesOracleSuite extends FunSuite:
         case Left(defect)    => fail(s"$name: $defect")
         case Right(Right(_)) => Vector.empty
         case Right(Left(fs)) =>
-          fs.toChain.toVector.map {
-            case xyz.kd5ujc.scarab.ledger.era.rules.ShelleyLedgersPredFailure.LedgerFailure(l) =>
-              ledgerBytes(eraLedgerStored(l))
-          }
+          fs.toChain.toVector.map(l => written(DijkstraEraFailureCbor.ledgers(l)))
       val recorded = reference(c) match
         case Verdict.Accepted    => Vector.empty
         case Verdict.Refused(bs) => bs.flatMap(inLedgers)
@@ -1309,13 +1327,7 @@ class DijkstraRulesOracleSuite extends FunSuite:
           )
           name -> false
         case Right(Left(fs)) =>
-          val ours = fs.toChain.toVector.map(f =>
-            bbody(
-              xyz.kd5ujc.scarab.ledger.era.rules.DijkstraBbody
-                .toStored(f, _ => None, _ => None)
-                .fold(u => fail(s"$name: no flat form of $u"), identity)
-            )
-          )
+          val ours = fs.toChain.toVector.map(f => written(DijkstraEraFailureCbor.bbody(f)))
           assertEquals(Verdict.Refused(ours), reference(c), name)
           name -> true
     }
@@ -1329,4 +1341,53 @@ class DijkstraRulesOracleSuite extends FunSuite:
         "bbody/devnet-37-invalid-flag"
       )
     )
+  }
+
+  // ---- the era failure encoder against the flat-form path -----------------------------------------
+
+  test("the era failure encoder writes each failure as its flat form did, on the earlier cases") {
+    // the switch of encoder checked: on every case recorded before the era encoder, each era rule's
+    // failure written by `DijkstraEraFailureCbor` is the bytes its flat form (`toStored`) and this
+    // suite's encoder of it wrote; the flat forms have no arm for what no earlier case reaches
+    import xyz.kd5ujc.scarab.ledger.era.rules.DijkstraLedgerPredFailure as L
+    def failures[F](r: Either[?, Either[cats.data.NonEmptyChain[F], ?]]): Vector[F] = r match
+      case Right(Left(fs)) => fs.toChain.toVector
+      case _               => Vector.empty
+    def kind(k: String) = earlier.filter(c => str(c.hcursor.downField("kind")) == k)
+    val all = xyz.kd5ujc.scarab.ledger.TxEnv.Validation.All
+    val compared: Vector[(String, Bytes, Bytes)] =
+      kind("utxow").flatMap { c =>
+        val name = str(c.hcursor.downField("name"))
+        failures(eraUtxowRun(c, all)).map(f => (name, eraBytes(f), eraBytesFlat(f))) ++
+          eraLedgerFailures(c).collect { case f @ L.DijkstraUtxowFailure(_) =>
+            (name, written(DijkstraEraFailureCbor.ledger(f)), ledgerBytes(eraLedgerStored(f)))
+          }
+      } ++ kind("certs").flatMap { c =>
+        val name = str(c.hcursor.downField("name"))
+        failures(eraCertsRun(c, "certs"))
+          .map(f => (name, written(DijkstraEraFailureCbor.certs(f)), eraCertsFlat(f)))
+      } ++ kind("gov").flatMap { c =>
+        val name = str(c.hcursor.downField("name"))
+        failures(eraGovRun(c)).map(f =>
+          (name, written(DijkstraEraFailureCbor.gov(f)), eraGovFlat(c, f))
+        )
+      } ++ kind("bbody").flatMap { c =>
+        val name = str(c.hcursor.downField("name"))
+        val bbodies = failures(eraBbodyRun(c)).map { f =>
+          val flat = xyz.kd5ujc.scarab.ledger.era.rules.DijkstraBbody
+            .toStored(f, _ => None, _ => None)
+            .fold(u => fail(s"$name: no flat form of $u"), identity)
+          (name, written(DijkstraEraFailureCbor.bbody(f)), bbody(flat))
+        }
+        val ledgers = failures(eraLedgersRun(c)).map {
+          case l @ xyz.kd5ujc.scarab.ledger.era.rules.ShelleyLedgersPredFailure.LedgerFailure(f) =>
+            (name, written(DijkstraEraFailureCbor.ledgers(l)), ledgerBytes(eraLedgerStored(f)))
+        }
+        bbodies ++ ledgers
+      }
+    val differing = compared.collect {
+      case (name, ours, flat) if ours != flat => s"$name: ${ours.hex}, the flat path ${flat.hex}"
+    }
+    assertEquals(differing, Vector.empty[String])
+    assertEquals(compared.size, 71, "failures compared")
   }
