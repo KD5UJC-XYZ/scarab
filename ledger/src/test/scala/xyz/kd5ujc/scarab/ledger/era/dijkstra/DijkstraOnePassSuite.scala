@@ -25,7 +25,10 @@ import DijkstraCorpus.{hex, str}
   * closure, the Leios build's verdicts, the script-context fixtures and the reference's rule and
   * crossing cases), each also in its mempool form, and mutants of them: bytes cut, flipped or
   * spliced, and items of the tree duplicated, dropped, emptied, retagged, widened, given an unknown
-  * key or written with an indefinite length.
+  * key or written with an indefinite length. Written cases fix what random mutants reach by chance:
+  * of competing refusals across the parts and within one, the one reported, which both ways must
+  * name; every form of Plutus data a datum or a redeemer can hold, and those refused; and a fault
+  * at each key of a body, a sub-transaction's body, a witness set and auxiliary data.
   */
 class DijkstraOnePassSuite extends ScalaCheckSuite:
   override def scalaCheckTestParameters =
@@ -442,4 +445,245 @@ class DijkstraOnePassSuite extends ScalaCheckSuite:
     assert(byKind.get("text").exists(_.getOrElse(Outcome.Accepted, 0) > 0), byKind.toString)
     assert(byKind.get("redeemers").exists(_.values.sum > 0), byKind.toString)
     assert(!read.exists(_._2 == Outcome.ProjectionRefused), byKind.toString)
+  }
+
+  // ---- deterministic cases, written by hand
+
+  private def u(n: Long): Bytes = head(0, n)
+  private def arr(xs: Bytes*): Bytes = head(4, xs.size.toLong) ++ concat(xs.toVector)
+  private def mp(kvs: (Bytes, Bytes)*): Bytes =
+    head(5, kvs.size.toLong) ++ concat(kvs.toVector.flatMap((k, v) => Vector(k, v)))
+  private def tag(t: Long, x: Bytes): Bytes = head(6, t) ++ x
+  private val nul = hex("f6")
+  private val yes = hex("f5")
+
+  /** A body with the keys a top-level body requires, its inputs and outputs empty, and `extra`. */
+  private def body(extra: (Int, Bytes)*): Bytes =
+    val fields = (Map(0 -> arr(), 1 -> arr(), 2 -> u(0)) ++ extra).toVector.sortBy(_._1)
+    mp(fields.map((k, v) => u(k.toLong) -> v)*)
+
+  /** A sub-transaction whose body has the keys a sub-transaction's body requires and `extra`. */
+  private def subTx(extra: (Int, Bytes)*): Bytes =
+    val fields = (Map(0 -> arr(), 1 -> arr()) ++ extra).toVector.sortBy(_._1)
+    arr(mp(fields.map((k, v) => u(k.toLong) -> v)*), mp(), nul)
+
+  /** Both forms of a transaction, the block's and the mempool's, read both ways: the same result
+    * each way in each form, the two forms' the same; that result.
+    */
+  private def bothForms(
+      b: Bytes,
+      w: Bytes,
+      aux: Bytes,
+      what: String
+  ): Either[EraTxError, DijkstraTx[TxLevel.Top]] =
+    val block = arr(b, w, aux, yes)
+    val n = node(block).getOrElse(fail(s"$what: not CBOR"))
+    sameInBlock(n, what)
+    sameSubmitted(arr(b, w, aux), s"$what, mempool form")
+    val read = DijkstraTx.inBlock(n)
+    assertEquals(DijkstraTx.fromSubmission(arr(b, w, aux)).map(_.id), read.map(_.id), what)
+    read
+
+  test(
+    "of competing refusals in a transaction, the first is reported, as the two passes report it"
+  ) {
+    import xyz.kd5ujc.scarab.ledger.{DecodeField, LedgerDecodeError}
+    import LedgerDecodeError.{Expected, Shape, UnknownKey}
+    val zero = Value.UInt(BigInt(0))
+    def refused(e: LedgerDecodeError) = Left(EraTxError.Decode(e))
+    val inputs = Expected(DecodeField.Inputs, Shape.Array, zero)
+    val vkeys = Expected(DecodeField.VkeyWitnesses, Shape.Array, zero)
+    // the first case is `84 a3 00 00 01 80 02 01 a1 00 00 f6 f5`; a key a level does not have is
+    // refused before any field, wherever it is written; the keys are read in the decoder's order,
+    // not as written
+    val cases = Vector(
+      ("body key 0 and witness key 0", hex("a3000001800201"), hex("a10000"), nul, inputs),
+      ("a body and auxiliary data", body(0 -> u(0)), mp(), u(0), inputs),
+      (
+        "a witness set and auxiliary data",
+        body(),
+        mp(u(0) -> u(0)),
+        u(0),
+        vkeys
+      ),
+      (
+        "a sub-transaction's body (key 23) and the top body's key 24",
+        body(23 -> arr(subTx(0 -> u(0))), 24 -> u(0)),
+        mp(),
+        nul,
+        inputs
+      ),
+      (
+        "the top body's key 5 and a sub-transaction's body (key 23)",
+        body(5 -> u(0), 23 -> arr(subTx(0 -> u(0)))),
+        mp(),
+        nul,
+        Expected(DecodeField.Withdrawals, Shape.Map, zero)
+      ),
+      ("a body's keys 0 and 5", body(0 -> u(0), 5 -> u(0)), mp(), nul, inputs),
+      (
+        "a body's key 0 and an unknown key 6",
+        body(0 -> u(0), 6 -> u(0)),
+        mp(),
+        nul,
+        UnknownKey(DecodeField.TransactionBody, BigInt(6))
+      ),
+      (
+        "a sub-transaction's body with a key of the top level only (2)",
+        body(23 -> arr(subTx(2 -> u(0), 0 -> u(0)))),
+        mp(),
+        nul,
+        UnknownKey(DecodeField.TransactionBody, BigInt(2))
+      ),
+      ("a witness set's keys 0 and 4", body(), mp(u(0) -> u(0), u(4) -> u(0)), nul, vkeys),
+      (
+        "a witness set's keys 5 and 1, written in that order",
+        body(),
+        mp(u(5) -> u(0), u(1) -> u(0)),
+        nul,
+        Expected(DecodeField.NativeScripts, Shape.Array, zero)
+      ),
+      (
+        "auxiliary data's keys 1 and 0, written in that order",
+        body(),
+        mp(),
+        tag(259, mp(u(1) -> u(0), u(0) -> u(0))),
+        Expected(DecodeField.Metadata, Shape.Map, zero)
+      )
+    )
+    cases.foreach((what, b, w, aux, expected) =>
+      assertEquals(bothForms(b, w, aux, what), refused(expected), what)
+    )
+  }
+
+  test("Plutus data of every form, in datums and redeemers, reads the same both ways") {
+    import xyz.kd5ujc.scarab.plutus.PlutusData
+    import PlutusData.{B, Constr, I, List as L, Map as M}
+    val two64 = BigInt(1) << 64
+    val sixtyFour = Bytes.wrap(Array.tabulate(64)(i => i.toByte))
+    val accepted: Vector[(String, PlutusData)] = Vector(
+      "d86682188080" -> Constr(128, Vector.empty),
+      "d866821903e880" -> Constr(1000, Vector.empty),
+      "1bffffffffffffffff" -> I(two64 - 1),
+      "3bffffffffffffffff" -> I(-two64),
+      "c248ffffffffffffffff" -> I(two64 - 1),
+      "c249010000000000000000" -> I(two64),
+      "c348ffffffffffffffff" -> I(-two64),
+      "c349010000000000000000" -> I(-1 - two64),
+      s"5840${sixtyFour.hex}" -> B(sixtyFour),
+      s"5f5840${sixtyFour.hex}4101ff" -> B(sixtyFour ++ hex("01")),
+      "5fff" -> B(Bytes.empty),
+      "8201820203" -> L(Vector(I(1), L(Vector(I(2), I(3))))),
+      "a1a1010281a0" -> M(Vector(M(Vector(I(1) -> I(2))) -> L(Vector(M(Vector.empty))))),
+      "9f01a0ff" -> L(Vector(I(1), M(Vector.empty))),
+      "d87982a1010280" -> Constr(0, Vector(M(Vector(I(1) -> I(2))), L(Vector.empty)))
+    ) ++ (121 to 127).map(t =>
+      tag(t.toLong, arr(u(t.toLong))).hex -> Constr(t - 121, Vector(I(t)))
+    ) ++
+      Vector(1280, 1281, 1350, 1400).map(t =>
+        tag(t.toLong, arr(u(t.toLong))).hex -> Constr(t - 1280 + 7, Vector(I(t)))
+      )
+    val data = accepted.map((h, d) => hex(h) -> d)
+    val wits = mp(
+      u(4) -> arr(data.map(_._1)*),
+      u(5) -> mp(
+        data.zipWithIndex.map((d, i) => arr(u(0), u(i.toLong)) -> arr(d._1, arr(u(1), u(2))))*
+      )
+    )
+    val tx = bothForms(body(), wits, nul, "every form of data").getOrElse(fail("refused"))
+    val datums = tx.wits.datums.datums.values.toVector
+    val redeemers = tx.wits.redeemers.entries.values.toVector
+    assertEquals(datums.size, data.size)
+    assertEquals(redeemers.size, data.size)
+    data.foreach { (raw, expected) =>
+      val held = datums.filter(_.originalBytes == raw)
+      assertEquals(held.map(_.getPlutusData), Vector(expected), raw.hex)
+      assertEquals(
+        redeemers.filter(_._1.originalBytes == raw).map(_._1.getPlutusData),
+        Vector(expected),
+        raw.hex
+      )
+    }
+    // and the forms the decoder refuses: a chunk of more than 64 bytes, a big number's wide head,
+    // a constructor tag out of the two ranges, each as a datum and as a redeemer's data
+    import xyz.kd5ujc.scarab.ledger.{DecodeField, LedgerDecodeError}
+    val sixtyFive = sixtyFour ++ hex("01")
+    val refused = Vector(
+      s"5841${sixtyFive.hex}" -> PlutusData.DecodeError.ByteStringChunkLimit,
+      s"5f5841${sixtyFive.hex}ff" -> PlutusData.DecodeError.ByteStringChunkLimit,
+      "d80248ffffffffffffffff" -> PlutusData.DecodeError.BigNumberWideHead(BigInt(2)),
+      "d87880" -> PlutusData.DecodeError.UnexpectedTag(BigInt(120)),
+      "d88080" -> PlutusData.DecodeError.UnexpectedTag(BigInt(128)),
+      "d904ff80" -> PlutusData.DecodeError.UnexpectedTag(BigInt(1279)),
+      "d9057980" -> PlutusData.DecodeError.UnexpectedTag(BigInt(1401))
+    )
+    refused.foreach { (h, e) =>
+      assertEquals(
+        bothForms(body(), mp(u(4) -> arr(hex(h))), nul, s"datum $h"),
+        Left(EraTxError.Decode(LedgerDecodeError.PlutusData(DecodeField.Datums, e))),
+        h
+      )
+      assertEquals(
+        bothForms(
+          body(),
+          mp(u(5) -> mp(arr(u(0), u(0)) -> arr(hex(h), arr(u(1), u(2))))),
+          nul,
+          s"redeemer $h"
+        ),
+        Left(EraTxError.Decode(LedgerDecodeError.PlutusData(DecodeField.Redeemer, e))),
+        h
+      )
+    }
+  }
+
+  test(
+    "a fault in each key of a body, a sub-transaction's body, a witness set and auxiliary data"
+  ) {
+    // each key given each of these values in turn, alone: one is no field's form (a text), the
+    // others some fields' forms and not others'
+    val values =
+      Vector("60", "00", "80", "a0", "f6", "1bffffffffffffffff", "d9010280", "4100", "8100", "8140")
+        .map(hex)
+    def table(
+        what: String,
+        keys: Range,
+        make: (Int, Bytes) => (Bytes, Bytes, Bytes)
+    ): Vector[(Int, Bytes, Either[EraTxError, DijkstraTx[TxLevel.Top]])] =
+      for
+        k <- keys.toVector
+        v <- values
+      yield
+        val (b, w, aux) = make(k, v)
+        (k, v, bothForms(b, w, aux, s"$what key $k = ${v.hex}"))
+    val tables = Vector(
+      "body" -> table("body", 0 to 28, (k, v) => (body(k -> v), mp(), nul)),
+      "sub-transaction's body" ->
+        table(
+          "sub-transaction's body",
+          0 to 28,
+          (k, v) => (body(23 -> arr(subTx(k -> v))), mp(), nul)
+        ),
+      "witness set" -> table("witness set", 0 to 9, (k, v) => (body(), mp(u(k.toLong) -> v), nul)),
+      "auxiliary data" ->
+        table("auxiliary data", 0 to 6, (k, v) => (body(), mp(), tag(259, mp(u(k.toLong) -> v))))
+    )
+    // a text is no field's form: refused at every key, each key with its field's own refusal but
+    // where the decoder reads two keys at one site: a top-level body's balance intervals (26 and
+    // 27), the witness set's Plutus scripts (3, 6, 7 and 8) and the auxiliary data's (2 to 5)
+    val sites = Map(
+      "body" -> 28,
+      "sub-transaction's body" -> 29,
+      "witness set" -> 7,
+      "auxiliary data" -> 4
+    )
+    tables.foreach { (what, rows) =>
+      val texts = rows.filter(_._2 == hex("60"))
+      assert(texts.forall(_._3.isLeft), s"$what: a text accepted")
+      assertEquals(texts.map(_._3).distinct.size, sites(what), s"$what: the refusals of a text")
+    }
+    val counts = tables.map((what, rows) =>
+      what -> tally(rows.map(r => if r._3.isRight then Outcome.Accepted else Outcome.Refused))
+    )
+    // both outcomes in every part
+    counts.foreach((what, c) => assert(c.size == 2, s"$what: $c"))
   }
