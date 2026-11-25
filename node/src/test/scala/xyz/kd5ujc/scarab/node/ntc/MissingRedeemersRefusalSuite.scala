@@ -20,10 +20,11 @@ import xyz.kd5ujc.scarab.protocol.Era
   * Conway's MEMPOOL and Babbage's LEDGER report first, are those of the refusals the reference node
   * answered in [[PlutusFailureReferenceSuite]]. The reference node's refusal of such a transaction
   * on the devnet, in each era, is checked byte for byte in [[RedeemerIndexReferenceSuite]],
-  * Conway's on its era rules (`conway-missing-redeemers-every-purpose`). Conway's failures here are
-  * built in its era's types, the purposes of the transaction's, and written by
-  * [[ConwayFailureCbor]]: the crafted transaction holds no witness bytes Conway's decoder could
-  * read.
+  * Conway's on its era rules (`conway-missing-redeemers-every-purpose`). Conway's case here is
+  * encoder coverage only: no rule runs, the failures and their order are built by hand in its era's
+  * types and written by [[ConwayFailureCbor]]. The crafted transaction has neither a body nor
+  * witnesses in bytes Conway's decoder could read, so its era rules cannot judge it; the order the
+  * rules give is the recorded case's.
   */
 class MissingRedeemersRefusalSuite extends FunSuite:
   private val h = script.hash.hex
@@ -44,6 +45,7 @@ class MissingRedeemersRefusalSuite extends FunSuite:
   private val noRedeemers = "84" + inOrder.reverse.map("8200" + _).mkString
 
   test("Conway: UTXOS's CollectErrors, then UTXOW's MissingRedeemers spending to minting") {
+    // encoder coverage only: the failures are built by hand, not given by a rule (see above)
     import cats.data.NonEmptyList
     import xyz.kd5ujc.scarab.codec.{Bytes, Cbor}
     import xyz.kd5ujc.scarab.ledger.era.{AsItem, CollectError}
