@@ -112,10 +112,28 @@
       ],
       "suites": [
         "Sum6KesSuite",
-        "Sum6KesSigningSuite"
+        "Sum6KesSigningSuite",
+        "Sum6KesSigningDifferentialSuite"
       ],
       "docs": [
         "docs/adr/0015-kes-key-written-back-and-checked-reload.md"
+      ]
+    },
+    {
+      "module": "crypto",
+      "path": "crypto/kes/secret",
+      "responsibility": "The secret steps of KES signing: the key's 608 bytes, its period and its evolution, and every value computed from its seeds (the hashes of the seed halves, the leaves' Ed25519 keys), in working storage",
+      "entryPoints": [
+        "Sum6Key",
+        "Blake2b256",
+        "Leaf"
+      ],
+      "suites": [
+        "Sum6KeySuite",
+        "Sum6KesSigningDifferentialSuite"
+      ],
+      "docs": [
+        "docs/security/threat-model.md"
       ]
     },
     {
@@ -156,13 +174,15 @@
     {
       "module": "crypto",
       "path": "crypto/secret",
-      "responsibility": "Working storage for one computation on secret material, zeroed when it ends, whose buffers cannot be its result",
+      "responsibility": "Working storage for one computation on secret material, zeroed when it ends, whose buffers cannot be its result; the signing-key text envelope read and written as bytes in it and in native memory zeroed before it is freed",
       "entryPoints": [
         "Scratch",
-        "Public"
+        "Public",
+        "KeyText"
       ],
       "suites": [
-        "ScratchSuite"
+        "ScratchSuite",
+        "KeyTextSuite"
       ],
       "docs": [
         "docs/security/threat-model.md"
@@ -1310,6 +1330,7 @@
         "ForgeSuite",
         "KesRotationSuite",
         "KeyFilesSuite",
+        "KeyFilesBytesSuite",
         "ForgerFailureSuite",
         "PlutusBackendBlockProbeSuite",
         "LeaderScheduleSuite",

@@ -1021,12 +1021,13 @@ only from package `xyz.kd5ujc.scarab.crypto.vrf`. Crypto code follows the rules 
 - **Exceptions:** none.
 - **Enforcement:** `scripts/check_crypto_guard.py` and semgrep, failing on a `WARNING` finding, both in
   `.github/workflows/security.yml`. The guard checks containment, and reads the names in the main sources of
-  the packages `xyz.kd5ujc.scarab.crypto.vrf.secret` (VRF proving's secret steps) and
-  `xyz.kd5ujc.scarab.crypto.secret` (their working storage) and in `Draft03Prover`, outside comments and string
-  literals: the packages name none of its list of variable-time routines, early-exit comparisons and
-  array-sharing calls, and rename nothing on import; `Draft03Prover` calls `Draft03Math.h2c` alone. It reads
-  names, not calls: that secret scalars never reach the variable-time math through another package, by
-  reflection or under an unlisted name is review only (the guard's docstring).
+  the packages `xyz.kd5ujc.scarab.crypto.vrf.secret` (VRF proving's secret steps),
+  `xyz.kd5ujc.scarab.crypto.kes.secret` (KES signing's) and `xyz.kd5ujc.scarab.crypto.secret` (their working
+  storage) and in `Draft03Prover`, outside comments and string literals: the packages name none of its list of
+  variable-time routines, early-exit comparisons and array-sharing calls, nothing of Bouncy Castle, and rename
+  nothing on import; `Draft03Prover` calls `Draft03Math.h2c` alone. It reads names, not calls: that secret
+  scalars never reach the variable-time math through another package, by reflection or under an unlisted name
+  is review only (the guard's docstring).
 - **Why:** [#219](https://github.com/KD5UJC-XYZ/scarab/issues/219).
 
 <a id="cmt"></a>
