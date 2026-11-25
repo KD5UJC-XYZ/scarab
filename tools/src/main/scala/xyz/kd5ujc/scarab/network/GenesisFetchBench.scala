@@ -13,9 +13,9 @@ import BlockFetchPolicy.*
   * first peer of the order, serves a candidate shorter than the best one, as in a Genesis sync
   * whose dynamo is behind (issue 810). Not part of `check`: run it with
   * `sbt "tools/runMain xyz.kd5ujc.scarab.network.GenesisFetchBench"`. It uses only `decide`, so the
-  * same file runs against both builds. "Fresh" calls take new fixtures each time, whose hashes no
-  * one has hashed yet; "repeated" calls reuse one fixture. It prints thread CPU milliseconds per
-  * call.
+  * same file runs against both builds. "Fresh" calls take new fixtures each time, whose candidates'
+  * hashes no one has hashed yet (the fetched set hashes its own); "repeated" calls reuse one
+  * fixture. It prints thread CPU milliseconds per call.
   */
 object GenesisFetchBench extends IOApp.Simple:
   /** A 32-byte hash of block `n`, a new instance each call, as each peer's headers are. */
@@ -51,8 +51,10 @@ object GenesisFetchBench extends IOApp.Simple:
       .collect { case Decision.Request(_, fragments) => fragments.map(_.headers.size).sum }
       .sum
 
+  private val bean = ManagementFactory.getThreadMXBean
+
+  /** The timed region: thread CPU time, which a reading through `Clock[IO]` would not give. */
   private def cpuMillis(body: => Int): (Double, Int) =
-    val bean = ManagementFactory.getThreadMXBean
     val start = bean.getCurrentThreadCpuTime
     val result = body
     ((bean.getCurrentThreadCpuTime - start) / 1e6, result)
@@ -75,5 +77,7 @@ object GenesisFetchBench extends IOApp.Simple:
   }
 
   def run: IO[Unit] =
-    Vector((8000, 2000, 0), (8000, 2000, 2000), (8000, 0, 0), (2000, 500, 0))
+    IO.raiseUnless(bean.isCurrentThreadCpuTimeSupported && bean.isThreadCpuTimeEnabled)(
+      new UnsupportedOperationException("this JVM does not measure a thread's CPU time")
+    ) *> Vector((8000, 2000, 0), (8000, 2000, 2000), (8000, 0, 0), (2000, 500, 0))
       .traverse_((best, behind, fetched) => measure(best, behind, fetched))

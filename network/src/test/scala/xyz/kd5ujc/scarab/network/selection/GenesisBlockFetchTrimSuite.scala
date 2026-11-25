@@ -3,7 +3,6 @@ package xyz.kd5ujc.scarab.network.selection
 
 import munit.ScalaCheckSuite
 import org.scalacheck.{Gen, Prop}
-import org.scalacheck.rng.Seed
 import xyz.kd5ujc.scarab.codec.Bytes
 
 import BlockFetchPolicy.*
@@ -137,98 +136,97 @@ class GenesisBlockFetchTrimSuite extends ScalaCheckSuite:
       s.fetchedBlocks
     )
 
-  /** What to trim and to what: the base chain without some blocks, as fetched or in-flight blocks
-    * leave it, against a peer's candidate.
-    */
-  private val trimming: Gen[(Vector[Fragment], Vector[Fragment])] =
-    for
-      chain <- base
-      fragments <- candidate(chain)
-      held <- subset(chain)
-      peerCandidate <- candidate(chain)
-    yield (filterFragments(fragments, h => !held.map(hash)(h.hash)), peerCandidate)
-
   property("the decision is the model's") {
     Prop.forAll(scenario)(s => assertEquals(decided(s), modelled(s)))
   }
 
-  property("the trimming is the model's") {
-    Prop.forAll(trimming) { (fragments, peerCandidate) =>
-      assertEquals(
-        GenesisBlockFetch.trim(fragments, peerCandidate),
-        GenesisBlockFetchModel.trim(fragments, peerCandidate)
+  /** A peer with the blocks `ids` (block `n` at `slot(n)`) after the anchor `anchor`. */
+  private def serving(
+      id: Int,
+      preference: Int,
+      anchor: Int,
+      ids: Vector[Int],
+      slot: Int => Int = identity
+  ): Candidate[Int] =
+    Candidate(id, preference, hash(ids.last), Vector(fragment(anchor, ids, slot)))
+
+  private def fragment(anchor: Int, ids: Vector[Int], slot: Int => Int = identity): Fragment =
+    Fragment(Some(hash(anchor)), ids.map(n => header(n, slot(n))))
+
+  private def witness(candidates: Vector[Candidate[Int]], fetched: Set[Int] = Set.empty) =
+    Scenario(
+      GenesisBlockFetch.State(Vector(1, 2)),
+      0,
+      GenesisBlockFetch.Starvation.EndedAt(-1),
+      candidates,
+      fetched
+    )
+
+  /** Each witness is decided as the model decides it, and as stated. */
+  private def check(s: Scenario, expected: Vector[Decision[Int]]): Unit =
+    val result = decided(s)
+    assertEquals(result, modelled(s))
+    assertEquals(result.decisions, expected)
+
+  /** The slots of a fork's blocks 101 and 102 after block 3; other blocks at their own number. */
+  private val forked: Int => Int = Map(101 -> 4, 102 -> 5).withDefault(identity)
+
+  private val best = serving(2, 2, 0, Vector(1, 2, 3, 4, 5, 6))
+
+  test("a peer without the oldest block is passed over before the trimming") {
+    check(
+      witness(Vector(serving(1, 1, 2, Vector(3, 4)), best)),
+      Vector(
+        Decision.Request(2, Vector(fragment(0, Vector(1, 2, 3, 4, 5, 6)))),
+        Decision.Declined(1, Refusal.AlreadyFetched)
       )
-    }
+    )
   }
 
-  /** The kinds of trimming the inputs reach, each of which the properties above must have seen. */
-  private enum Trimmed:
-    case Shortened, Whole, Dropped, AtCandidateAnchor, AtFragmentAnchorOnly, Forked, SameSlot
-
-  private def kinds(fragments: Vector[Fragment], peerCandidate: Vector[Fragment]): Set[Trimmed] =
-    val anchors = peerCandidate.flatMap(_.anchor).toSet
-    val headers = peerCandidate.flatMap(_.headers.map(_.hash)).toSet
-    val trimmed = GenesisBlockFetchModel.trim(fragments, peerCandidate)
-    val perFragment = fragments.flatMap { fragment =>
-      val last = fragment.headers.lastIndexWhere(h => anchors(h.hash) || headers(h.hash))
-      val atAnchor = Option.when(
-        last >= 0 && anchors(fragment.headers(last).hash) && !headers(fragment.headers(last).hash)
-      )(Trimmed.AtCandidateAnchor)
-      val outcome =
-        if last < 0 then
-          if fragment.anchor.exists(a => anchors(a) || headers(a)) then
-            Vector(Trimmed.Dropped, Trimmed.AtFragmentAnchorOnly)
-          else Vector(Trimmed.Dropped)
-        else if last == fragment.headers.size - 1 then Vector(Trimmed.Whole)
-        else Vector(Trimmed.Shortened)
-      outcome ++ atAnchor
-    }
-    val forked = Option.when(
-      peerCandidate.exists(
-        _.headers.exists(h => !fragments.exists(_.headers.exists(_.hash == h.hash)))
+  test("the chosen peer whose blocks are all in flight with it trims to nothing") {
+    val dynamo = serving(1, 1, 0, Vector(1)).copy(inFlight = InFlight(1, 0, Set(hash(1))))
+    check(
+      witness(Vector(dynamo, best)),
+      Vector(
+        Decision.Declined(2, Refusal.GenesisConcurrency(1)),
+        Decision.Declined(1, Refusal.AlreadyFetched)
       )
-        && trimmed.nonEmpty
-    )(Trimmed.Forked)
-    val sameSlot = Option.when(
-      fragments.exists(f => f.headers.map(_.slot).distinct.size < f.headers.size)
-    )(Trimmed.SameSlot)
-    (perFragment ++ forked ++ sameSlot).toSet
-
-  private enum Outcome:
-    case Requested, InFlightThisPeer, TrimmedAway, Unavailable, Concurrency, Demoted, AllRefused
-
-  private def outcomes(s: Scenario): Set[Outcome] =
-    val result = modelled(s)
-    val reasons = result.decisions.collect { case Decision.Declined(_, reason) => reason }
-    Set(
-      Option.when(result.decisions.exists {
-        case _: Decision.Request[Int] => true
-        case _                        => false
-      })(Outcome.Requested),
-      Option.when(reasons.contains(Refusal.InFlightThisPeer))(Outcome.InFlightThisPeer),
-      Option.when(reasons.contains(Refusal.AlreadyFetched))(Outcome.TrimmedAway),
-      Option.when(
-        s.candidates.count(_.refusal.isEmpty) > 1 && reasons.count(_ == Refusal.AlreadyFetched) > 0
-      )(Outcome.Unavailable),
-      Option.when(reasons.exists {
-        case Refusal.GenesisConcurrency(_) => true
-        case _                             => false
-      })(Outcome.Concurrency),
-      result.demoteDynamo.map(_ => Outcome.Demoted),
-      Option.when(reasons.nonEmpty && reasons.forall(_ == Refusal.InvalidCandidate))(
-        Outcome.AllRefused
-      )
-    ).flatten
-
-  private def sampled[A](gen: Gen[A], count: Int): Vector[A] =
-    (0 until count).toVector.flatMap(i => gen(Gen.Parameters.default, Seed(810L + i)))
-
-  test("the inputs reach every kind of trimming") {
-    val seen = sampled(trimming, 2000).flatMap(kinds(_, _)).toSet
-    assertEquals(Trimmed.values.toSet -- seen, Set.empty[Trimmed])
+    )
   }
 
-  test("the scenarios reach every outcome of the decision") {
-    val seen = sampled(scenario, 2000).flatMap(outcomes).toSet
-    assertEquals(Outcome.values.toSet -- seen, Set.empty[Outcome])
+  test("a dynamo that forks after a shared block serves the blocks up to it") {
+    check(
+      witness(Vector(serving(1, 1, 0, Vector(1, 2, 3, 101, 102), forked), best)),
+      Vector(
+        Decision.Request(1, Vector(fragment(0, Vector(1, 2, 3)))),
+        Decision.Declined(2, Refusal.GenesisConcurrency(1))
+      )
+    )
+  }
+
+  test("a dynamo whose candidate is anchored at the oldest block serves that block alone") {
+    check(
+      witness(Vector(serving(1, 1, 3, Vector(101, 102), forked), best), Set(1, 2)),
+      Vector(
+        Decision.Request(1, Vector(fragment(2, Vector(3)))),
+        Decision.Declined(2, Refusal.GenesisConcurrency(1))
+      )
+    )
+  }
+
+  test("two blocks of one slot stay apart: the dynamo serves the first and not the second") {
+    // block 2 is an epoch boundary block, and block 3 the block of the same slot after it
+    val slot: Int => Int = Map(2 -> 2, 3 -> 2, 4 -> 3).withDefault(identity)
+    check(
+      witness(
+        Vector(
+          serving(1, 1, 0, Vector(1, 2), slot),
+          serving(2, 2, 0, Vector(1, 2, 3, 4), slot)
+        )
+      ),
+      Vector(
+        Decision.Request(1, Vector(fragment(0, Vector(1, 2), slot))),
+        Decision.Declined(2, Refusal.GenesisConcurrency(1))
+      )
+    )
   }

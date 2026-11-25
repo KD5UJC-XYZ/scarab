@@ -705,10 +705,11 @@ version).
   same file ran against both builds. Two peers: the dynamo, first in the order, and a peer serving the best
   candidate, each with its own instances of 32-byte hashes. The sbt server ran in a `scarab-jdk:local` container
   with `--cpus 6`.
-- Thread CPU milliseconds per decision, as medians. "Fresh": 20 calls, each on a new fixture whose hashes nothing
-  has hashed yet, after 20 warm-up calls. "Repeated": 50 calls on one fixture, after 20 warm-up calls on it.
-- When the dynamo is at the tip, the scan found every header's place at once. The set now costs about 0.4 ms
-  there.
+- Thread CPU milliseconds per decision, as medians. "Fresh": 20 calls, each on a new fixture whose candidates'
+  hashes nothing has hashed yet (the fetched set hashes its own), after 20 warm-up calls. "Repeated": 50 calls on
+  one fixture, after 20 warm-up calls on it.
+- When the dynamo is at the tip, the newest block to fetch is on its candidate, so the old trimming made a single
+  scan of the candidate. Building the set costs more there: about 0.2 ms fresh and 0.4 ms repeated.
 
 <!-- register:table perf-71.t1 -->
 | `GenesisFetchBench`, best candidate | Fresh, before (`d4ae5ce0b`) | Repeated, before | Fresh, after (`6d995bd89`) | Repeated, after |

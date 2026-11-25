@@ -119,10 +119,7 @@ object GenesisBlockFetch:
     * and headers are its points; they are put in one set per decision, so that each header costs
     * one lookup rather than a scan of the candidate (issue 810).
     */
-  private[selection] def trim(
-      fragments: Vector[Fragment],
-      candidate: Vector[Fragment]
-  ): Vector[Fragment] =
+  private def trim(fragments: Vector[Fragment], candidate: Vector[Fragment]): Vector[Fragment] =
     if fragments.isEmpty then Vector.empty
     else
       val points =
