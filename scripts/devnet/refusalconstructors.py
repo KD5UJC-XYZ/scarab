@@ -306,8 +306,9 @@ def conway_gov_order(name):
     unknown_accounts = [seeded_key(f"gov order account {n}") for n in (1, 2)]
     voting_script, account_script = eratx.sig_script(k1.hash), eratx.all_script(eratx.sig_script(k1.hash))
 
-    info = propose(b, b.wallet(3), k3, [eratx.proposal(gov_deposit, d1_account, eratx.info_action())] * 2,
-                   2 * gov_deposit)
+    # two proposals of one transaction differ (its proposals are a set): by their anchors
+    info = propose(b, b.wallet(3), k3, [eratx.proposal(gov_deposit, d1_account, eratx.info_action(), eratx.anchor(
+        f"https://example.invalid/info-{n}")) for n in (1, 2)], 2 * gov_deposit)
     proposed, expires = gov_actions(b)[(info, 0)]
     await_epoch(b, proposed + 1)
     withdrawals = propose(b, b.wallet(3), k3, [eratx.proposal(gov_deposit, d1_account, eratx.treasury_withdrawal_action(
