@@ -23,7 +23,11 @@ class EdwardsPointSuite extends munit.ScalaCheckSuite:
   private def value(fe: FieldElement): BigInt = fromLe(fe.toByteArray)
 
   private def decompressed(encoding: Array[Byte]): Option[EdwardsPoint] =
-    Try(new CompressedEdwardsY(encoding.clone()).decompress()).toOption
+    // an invalid encoding is an InvalidEncodingException; any other exception fails the test
+    Try(new CompressedEdwardsY(encoding.clone()).decompress()).toEither match
+      case Right(point)                      => Some(point)
+      case Left(_: InvalidEncodingException) => None
+      case Left(other)                       => throw other
 
   private def point(m: M.Point): EdwardsPoint = decompressed(m.encode).get
 

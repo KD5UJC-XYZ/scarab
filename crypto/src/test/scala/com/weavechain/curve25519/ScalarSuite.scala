@@ -131,23 +131,21 @@ class ScalarSuite extends munit.ScalaCheckSuite:
   ) {
     forAllNoShrink(scalar255, scalar255) { (a, b) =>
       val clue = s"${a.toString(16)} and ${b.toString(16)}"
-      val sum = Try(value(unreduced(a).add(unreduced(b)))).toEither
-      val difference = Try(value(unreduced(a).subtract(unreduced(b)))).toEither
-      assertEquals(sum.toOption, Some((a + b).mod(L)), s"add of $clue gave $sum")
-      assertEquals(difference.toOption, Some((a - b).mod(L)), s"subtract of $clue gave $difference")
+      assertEquals(value(unreduced(a).add(unreduced(b))), (a + b).mod(L), s"add of $clue")
+      assertEquals(value(unreduced(a).subtract(unreduced(b))), (a - b).mod(L), s"subtract of $clue")
     }
   }
 
   test("add and subtract at the edge: (2^255 - 1) + (L + 1), and 0 - (L + 1)") {
     val top = (BigInt(1) << 255) - 1
     assertEquals(
-      Try(value(unreduced(top).add(unreduced(L + 1)))).toOption,
-      Some((top + L + 1).mod(L)),
+      value(unreduced(top).add(unreduced(L + 1))),
+      (top + L + 1).mod(L),
       "(2^255 - 1) + (L + 1)"
     )
     assertEquals(
-      Try(value(Scalar.ZERO.subtract(unreduced(L + 1)))).toOption,
-      Some((-L - 1).mod(L)),
+      value(Scalar.ZERO.subtract(unreduced(L + 1))),
+      (-L - 1).mod(L),
       "0 - (L + 1)"
     )
   }

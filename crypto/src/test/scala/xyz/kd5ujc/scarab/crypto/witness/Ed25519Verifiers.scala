@@ -80,9 +80,14 @@ private[witness] object Ed25519Verifiers:
     val point = new EdECPoint((key(31) & 0x80) != 0, new java.math.BigInteger(1, y))
     keys.generatePublic(new EdECPublicKeySpec(NamedParameterSpec.ED25519, point))
 
-  /** Whether the JDK accepts the encoding as a key: `initVerify` does not refuse it. */
+  /** Whether the JDK accepts the encoding as a key: `initVerify` does not refuse it with an
+    * `InvalidKeyException`. Any other exception fails the caller.
+    */
   def jdkAcceptsKey(key: Array[Byte]): Boolean =
-    Try(Signature.getInstance("Ed25519", "SunEC").initVerify(jdkKey(key))).isSuccess
+    Try(Signature.getInstance("Ed25519", "SunEC").initVerify(jdkKey(key))).toEither match
+      case Right(_)                     => true
+      case Left(_: InvalidKeyException) => false
+      case Left(other)                  => throw other
 
   def jdk(key: Array[Byte], signature: Array[Byte], message: Array[Byte]): Jdk =
     val verifier = Signature.getInstance("Ed25519", "SunEC")
