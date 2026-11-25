@@ -18,6 +18,9 @@ Environment:
   SCARAB_QUERY_PORT     HTTP query port (default: $SCARAB_WRAPPER_QUERY_PORT)
   SCARAB_HEAP_SIZE      Java maximum heap (default: 3g)
   SCARAB_RUN_PROCESSORS Java active processor count (default: 4)
+  SCARAB_JVM_DIAGNOSTICS 1: the JVM's own core files, crash reports, heap dumps and
+                        attach, never on a forging node (default: off; see
+                        docs/running/forging.md, "Keys in memory")
 
 Extra arguments are passed to follow. Explicit --config, --topology, --db,
 --local-socket and --query-listen/--query-port replace the corresponding defaults.
@@ -49,6 +52,10 @@ else
 fi
 if [[ ! -f $source_dir/scripts/sbtw || ! -f $source_dir/build.sbt || ! -d $source_dir/node ]]; then
   printf 'SCARAB_SOURCE_DIR must name a Scarab checkout.\n' >&2
+  exit 2
+fi
+if [[ ! -f $source_dir/scripts/scarab-jvm ]]; then
+  printf '%s has no scripts/scarab-jvm, which starts the node; use a checkout that has it.\n' "$source_dir" >&2
   exit 2
 fi
 
@@ -142,6 +149,10 @@ classpath=$(
     "$BASH" scripts/sbtw node/compile node/runtimeClasspathFile >&2 && cat node/target/runtime-classpath.txt
 )
 export MALLOC_ARENA_MAX=${MALLOC_ARENA_MAX:-2}
-exec java "-Xmx${SCARAB_HEAP_SIZE:-3g}" "-XX:ActiveProcessorCount=${SCARAB_RUN_PROCESSORS:-4}" \
+export SCARAB_HEAP_SIZE=${SCARAB_HEAP_SIZE:-3g} SCARAB_RUN_PROCESSORS=${SCARAB_RUN_PROCESSORS:-4}
+# The release image's launcher keeps a forging node's keys off disk; -p as its first line has it (no BASH_ENV, no
+# functions from the environment), and the java of the app's JDK by its path. The build above ran with the caller's
+# environment, JAVA_TOOL_OPTIONS and the like included: it holds no keys.
+exec "$BASH" -p "$source_dir/scripts/scarab-jvm" "$JAVA_HOME/bin/java" \
   --sun-misc-unsafe-memory-access=allow --enable-native-access=ALL-UNNAMED \
   -cp "$classpath" xyz.kd5ujc.scarab.node.Main follow "${defaults[@]}" "${node_args[@]}"

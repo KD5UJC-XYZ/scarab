@@ -234,7 +234,7 @@ def verify(args):
                     args.jdk_image, "python3", "verify_published_release.py", "--jar-smoke",
                     "/candidate/" + jar["file"]["path"], "--source", args.source], check=True)
     from publication_image import expected_image
-    docker_image_smoke(reference, expected_image(candidate_root, manifest), jar["file"]["sha256"], args.tools, root, public, args.jdk_image, args.source)
+    docker_image_smoke(reference, expected_image(candidate_root, manifest, args.source), jar["file"]["sha256"], args.tools, root, public, args.jdk_image, args.source)
     result = {"schemaVersion": 1, "status": "verified", "phase": args.phase, "repository": args.repository,
               "tag": args.tag, "sourceCommit": args.source, "version": identity["version"], "channel": args.channel,
               "candidateSha256": args.candidate_sha256,

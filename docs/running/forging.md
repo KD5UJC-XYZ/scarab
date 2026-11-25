@@ -279,3 +279,110 @@ certificate. The devnet scenario `dynamic-forging` runs the off-and-on cycle bes
 
 The devnet scenario `kes-rotate` (below) runs all of this unattended: a short KES period, a small
 `maxKESEvolutions`, the driver on a loop, several rotations while the node forges beside two Haskell pools.
+
+### Keys in memory
+
+A forging node holds its VRF signing key and its current KES key in the JVM heap for as long as it runs; so does a
+node started with `--start-as-non-producing-node`, which reads its key files at start. Whatever writes the process's
+memory to disk can write the keys with it: a core file or a heap dump holds the whole heap, and a crash report, a
+swapped-out page or a hibernation image holds whatever was in the memory it covers. (The KES key file is on disk by
+design, see "Rotating the KES key" above; this section is about the copies in memory.) The node does not lock the heap
+in memory, and cannot erase every copy of a key in it: the collector moves objects and leaves the earlier copies in
+memory it has not reused yet, which no program can address, and locking the whole process would pin a heap of
+gigabytes and the stores' native memory. [ADR 0024](../adr/0024-adopt-the-upstream-kes-agent.md) accepts that copy;
+what follows keeps it off disk.
+
+**The launcher.** The release image starts the node through `scripts/scarab-jvm` (`docker/candidate.Dockerfile`), and
+the Nix network apps ([nix.md](../nix.md)) end in it: `scarab-jvm <absolute path of java> <java arguments>`. It runs in
+bash's privileged mode (`bash -p`), which reads no `BASH_ENV` or `ENV` file and takes no function from the environment,
+and it ends in `exec <java>`, so the JVM is the process the container or the shell started, with its signals and its
+exit status. Unless diagnostics are asked for (below), it
+
+- sets the core file limit to 0, soft and hard, whatever Docker, systemd or the shell gave it;
+- removes `JAVA_TOOL_OPTIONS`, `JDK_JAVA_OPTIONS`, `_JAVA_OPTIONS` and `JDK_ALTERNATE_VM` from the JVM's environment
+  and names on standard error those it removed: the JVM reads the first three before and after its command line, and
+  options there (`OnError`, `HeapDumpPath`, a recording started at launch) could write memory whatever the options
+  below say; the last names the `libjvm.so` that `java` loads;
+- starts the JVM with these options, before the arguments it was given:
+
+| Option | What it stops |
+|---|---|
+| `-XX:-CreateCoredumpOnCrash` | a core file when the JVM crashes on a fault it catches (`SIGSEGV` in a native library, for example). The JVM does not catch `SIGABRT`, from a native library's `abort()` or from another process: the core file limit of 0 stops that core, except that a `kernel.core_pattern` that pipes cores to a program gets the dump whatever the limit (see the host's part below) |
+| `-XX:ErrorFile=/dev/null`, `-XX:-ErrorFileToStdout`, `-XX:-ErrorFileToStderr` | the crash report `hs_err_pid<pid>.log`: it holds the registers, the top of the stack and the contents of an array or object a register points at, so a crash while signing can write a key into it. The summary on standard output, with the signal and the frame that failed, remains. A JVM that cannot open its error file writes the report to its working directory, else to the temporary directory, else to standard output; `/dev/null` exists in every OCI container and on a Linux host |
+| `-XX:-DumpReplayDataOnError` | the replay file `replay_pid<pid>.log` that a crash of a JIT compiler thread writes, with values of static fields |
+| `-XX:-HeapDumpOnOutOfMemoryError` | a heap dump when the heap runs out. It is off by default too |
+| `-XX:+DisableAttachMechanism` | HotSpot's attach mechanism, which its tools use: `jcmd`, `jmap` and `jstack` from another process, so a heap dump on request, a JFR recording started from outside and heap dump options set in the running JVM. It does not stop a debugger or a reader of `/proc/<pid>/mem` (below) |
+| `-XX:+PerfDisableSharedMem` | the performance data file `/tmp/hsperfdata_<user>/<pid>`, which `jps` and `jstat` read; the counters stay in the JVM's memory |
+
+`SCARAB_HEAP_SIZE` (a size such as `3g`, for `-Xmx`) and `SCARAB_RUN_PROCESSORS` (a whole number, for
+`-XX:ActiveProcessorCount`) size the JVM in either mode; the Nix apps set them to `3g` and 4 unless they are given. A
+value the launcher cannot read stops it with exit status 2 before the JVM starts. The node writes no heap dump or JFR
+recording of its own: `--stall-dump` writes the runtime's fiber snapshot to a file and `kill -QUIT` prints a thread
+dump on standard output, both stack traces rather than the contents of the heap. Those two,
+`--memory-report-seconds` and the metrics need no attach.
+
+The arguments of `scarab-jvm` are trusted: they follow its options and can override them, add an agent, a recording
+or an options file. The image's fixed entry point ends with `-jar /opt/scarab/scarab.jar`, so what `docker run` adds
+after the image reaches the node, not the JVM. A command that calls the launcher itself chooses the JVM's arguments,
+for example the small-host collector settings of [configuration.md](configuration.md):
+
+```sh
+docker run --entrypoint /opt/scarab/scarab-jvm <image> /opt/java/openjdk/bin/java -Xms3g -Xmx3g -XX:+UseG1GC \
+  -XX:MaxGCPauseMillis=20 --sun-misc-unsafe-memory-access=allow -jar /opt/scarab/scarab.jar follow ...
+```
+
+A JVM started some other way, with a command of your own or an entry point that does not go through
+`scripts/scarab-jvm`, gets none of this; the [tester runbook](tester-runbook.md)'s node commands go through it. The
+environment is trusted too: `PATH` and the native loader's inputs (`LD_PRELOAD`, `LD_LIBRARY_PATH`, `LD_AUDIT`) are
+read before the launcher runs or by the programs it starts, and it cannot defend against them. Whoever sets the
+container's environment controls the process.
+
+**Upgrading** from an image that started `java` directly: the launcher drops `JAVA_TOOL_OPTIONS` and the like, with
+the one line on standard error, so a node that set its heap there runs with the JVM's default heap. Replace
+`JAVA_TOOL_OPTIONS=-Xmx3g` with `SCARAB_HEAP_SIZE=3g`, `-XX:ActiveProcessorCount=N` with `SCARAB_RUN_PROCESSORS=N`, and
+other JVM options with the launcher's arguments, as above.
+
+**Diagnostics** are a deliberate step. With `SCARAB_JVM_DIAGNOSTICS=1` the launcher starts the JVM as the JVM itself
+would: it keeps the four variables, passes none of the options above, leaves the core file limit as it found it, and
+says so on standard error (`memory diagnostics enabled: do not use on a forging node`). `0` or no value is the
+default; any other value stops it. The release image's base is a JRE, with no `jcmd` in it: run `jcmd` from a JDK
+image in the node's process namespace, or on the host as the node's user.
+
+```sh
+docker run --name node -e SCARAB_JVM_DIAGNOSTICS=1 -e JAVA_TOOL_OPTIONS=-XX:NativeMemoryTracking=summary <image> follow ...
+docker run --rm --pid container:node --user 10001:10001 --entrypoint jcmd scarab-jdk:local 1 VM.native_memory summary
+```
+
+With diagnostics on, any process of the node's user, and root, can make the JVM write a heap dump, and a crash writes
+a report and, with a core file limit above 0, a core file. Such a file of a node that holds keys can hold the keys:
+keep it as you keep the key files, never attach it to a bug report, and delete it. Profile a node that was given no
+key files, such as a relay. A KES key that may have leaked is replaced by a new KES key and certificate ("Rotating the
+KES key" above); a VRF key only by a new pool registration.
+
+**What stays with the operator.** The launcher cannot set the rest: where the host puts core files, swap and
+hibernation, who can read the process, and the account it runs as.
+
+- **Core files.** `kernel.core_pattern` is the host's, for containers too. When it pipes cores to a program
+  (`|/usr/lib/systemd/systemd-coredump ...`), the kernel hands the program the dump whatever the core file limit, and
+  the program decides: systemd-coredump stores no core for a limit of 0, and with `Storage=none` and
+  `ProcessSizeMax=0` in `coredump.conf` it stores none at all. A JVM started without the launcher, or in diagnostics,
+  needs the limit where it starts: `docker run --ulimit core=0`, `ulimits: {core: 0}` in a compose file,
+  `LimitCORE=0` in a systemd unit, `ulimit -c 0` in a shell.
+- **Swap and hibernation.** A page of the heap can be swapped out, and stays on the swap device until it is
+  overwritten; hibernation writes all of memory to disk. Run the producer with no swap, or with swap encrypted under a
+  key made at each boot, and with hibernation off. `--memory-swap` equal to `--memory` keeps a container out of swap
+  where the kernel accounts for swap; `MemorySwapMax=0` does it in a systemd unit, with cgroup v2's memory controller.
+- **Reading the process.** A process of the node's user, or root, can read the node's whole memory through
+  `/proc/<pid>/mem` or `ptrace`, attach or no attach, unless `kernel.yama.ptrace_scope` limits it: 1 allows it only
+  to the node's ancestors, to a tracer the node declares (it declares none) and to root, 2 only to root
+  (`CAP_SYS_PTRACE`), 3 to nobody until the next boot. The setting is the host's, and holds in containers: a
+  `docker exec` into the node's container runs as its user, so at 0 it can read the node's memory, and whoever can
+  use a rootful Docker daemon's socket is root on the host. Do not checkpoint a producing container
+  (`docker checkpoint`): that writes its memory to disk.
+- **A user of its own.** Run the node as a dedicated user that runs nothing else, and owns the key directory. The
+  image runs as `10001:10001`; on a host, make an account for the node rather than sharing one.
+- **Where files land.** When a crash report or a heap dump is turned on, point `-XX:ErrorFile` or
+  `-XX:HeapDumpPath` at a directory only the node's user can read, on an encrypted file system, and delete the files
+  once they have been read.
+
+The [threat model](../security/threat-model.md) reviews key material in the running node under boundary B7.

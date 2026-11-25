@@ -8,10 +8,38 @@ import gzip
 import json
 from pathlib import Path, PurePosixPath
 import shutil
+import subprocess
 import tarfile
 import tempfile
 
 from candidate_manifest import MEDIA_TYPE, sha256
+
+# The image starts the node through scripts/scarab-jvm, which keeps the JVM's memory, and a forging node's keys,
+# off disk (docs/running/forging.md, "Keys in memory"); its last two layers are the JAR and that launcher, owned by
+# root and writable by nobody else. The launcher expected is the one at the candidate's source commit (launcher_at).
+REPOSITORY = Path(__file__).resolve().parents[1]
+LAUNCHER_SOURCE = 'scripts/scarab-jvm'
+LAUNCHER = REPOSITORY / LAUNCHER_SOURCE
+LAUNCHER_PATH = 'opt/scarab/scarab-jvm'
+APPLICATION_MODES = {'opt/scarab/scarab.jar': 0o444, LAUNCHER_PATH: 0o555}
+ENTRYPOINT = ['/' + LAUNCHER_PATH, '/opt/java/openjdk/bin/java', '--sun-misc-unsafe-memory-access=allow', '-jar',
+              '/opt/scarab/scarab.jar']
+
+
+def launcher_at(commit, repository=REPOSITORY):
+    """The launcher's bytes at `commit`, read from git's object store as data, never from the image or the candidate.
+
+    `commit` is the source revision the caller has authenticated: the release commit the publication flow checked
+    against the server's tag, or the commit a build ran from. A verifier on another revision still compares the image
+    with the launcher of the release it verifies.
+    """
+    if not isinstance(commit, str) or re.fullmatch('[0-9a-f]{40}', commit) is None:
+        raise ValueError('source commit must be a full commit id')
+    result = subprocess.run(['git', '-C', str(repository), 'cat-file', 'blob', f'{commit}^{{commit}}:{LAUNCHER_SOURCE}'],
+                            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    if result.returncode != 0:
+        raise ValueError(f'{LAUNCHER_SOURCE} of commit {commit} is not in this checkout: fetch the release commit')
+    return result.stdout
 
 
 def encoded(value):
@@ -62,7 +90,8 @@ def convert(docker_archive, output):
     return manifest_descriptor, config_descriptor
 
 
-def verify(archive_path, artifact, identity, expected_manifest=None):
+def verify(archive_path, artifact, identity, expected_manifest=None, *, launcher):
+    """`launcher` is the expected bytes of scripts/scarab-jvm: launcher_at(the authenticated source commit)."""
     with tarfile.open(archive_path) as archive:
         members = archive.getmembers()
         names = [m.name for m in members]
@@ -99,7 +128,7 @@ def verify(archive_path, artifact, identity, expected_manifest=None):
         labels = runtime['Labels']
         if labels.get('org.opencontainers.image.revision') != identity['gitCommit'] or labels.get('org.opencontainers.image.version') != identity['version']:
             raise ValueError('image labels differ from frozen source identity')
-        if runtime.get('Entrypoint') != ['java', '--sun-misc-unsafe-memory-access=allow', '-jar', '/opt/scarab/scarab.jar'] or runtime.get('User') != '10001:10001':
+        if runtime.get('Entrypoint') != ENTRYPOINT or runtime.get('User') != '10001:10001':
             raise ValueError('candidate image runtime contract changed')
         layers = manifest['layers']
         diff_ids = []
@@ -114,23 +143,43 @@ def verify(archive_path, artifact, identity, expected_manifest=None):
                     raise ValueError('unsupported OCI layer encoding')
         if config.get('rootfs', {}).get('diff_ids') != diff_ids:
             raise ValueError('OCI uncompressed layer identities differ from runtime configuration')
-        with tarfile.open(fileobj=blob(layers[-1]), mode='r|*') as layer:
-            found = []
-            for member in layer:
-                path = member.name.removeprefix('./').rstrip('/')
-                if path.startswith('/') or '..' in PurePosixPath(path).parts:
-                    raise ValueError('unsafe application layer path')
-                if member.isfile():
-                    if path != 'opt/scarab/scarab.jar':
-                        raise ValueError('unexpected candidate application layer file')
-                    with layer.extractfile(member) as stream:
-                        found.append((member.size, hashlib.file_digest(stream, 'sha256').hexdigest()))
-                elif not member.isdir() or path not in {'opt', 'opt/scarab'}:
-                    raise ValueError('unexpected application layer link or directory')
-            if found != [(artifact.stat().st_size, sha256(artifact))]:
-                raise ValueError('image does not embed exactly the verified JAR')
+        if len(layers) < 2:
+            raise ValueError('candidate image lacks its application layers')
+        if application_files(blob(layers[-2])) != {'opt/scarab/scarab.jar': (artifact.stat().st_size, sha256(artifact))}:
+            raise ValueError('image does not embed exactly the verified JAR')
+        if application_files(blob(layers[-1])) != {LAUNCHER_PATH: (len(launcher), hashlib.sha256(launcher).hexdigest())}:
+            raise ValueError('image does not embed exactly the launcher of its source commit')
     return dict(manifest=manifest_descriptor, configDigest=manifest['config']['digest'],
                 layers=layers, diffIds=diff_ids, labels=labels)
+
+
+def application_files(stream):
+    """The regular files of an application layer, path to size and SHA-256.
+
+    Every entry is root's (uid and gid 0) with its exact mode: the JAR 0444, the launcher 0555, and `opt` and
+    `opt/scarab`, which the layer must set, 0755, so that the node's user can change neither the launcher nor the
+    directory that holds it.
+    """
+    found, directories = {}, set()
+    with tarfile.open(fileobj=stream, mode='r|*') as layer:
+        for member in layer:
+            path = member.name.removeprefix('./').rstrip('/')
+            if path.startswith('/') or '..' in PurePosixPath(path).parts:
+                raise ValueError('unsafe application layer path')
+            if (member.uid, member.gid) != (0, 0):
+                raise ValueError('application layer entry is not owned by root: ' + path)
+            if member.isfile():
+                if path in found or APPLICATION_MODES.get(path) != member.mode & 0o7777:
+                    raise ValueError('unexpected candidate application layer file or mode: ' + path)
+                with layer.extractfile(member) as content:
+                    found[path] = (member.size, hashlib.file_digest(content, 'sha256').hexdigest())
+            elif member.isdir() and path in {'opt', 'opt/scarab'} and member.mode & 0o7777 == 0o755:
+                directories.add(path)
+            else:
+                raise ValueError('unexpected application layer link, directory or mode: ' + path)
+    if directories != {'opt', 'opt/scarab'}:
+        raise ValueError('application layer does not set opt/scarab, root-owned and 0755')
+    return found
 
 
 INDEX_TYPES = {'application/vnd.oci.image.index.v1+json', 'application/vnd.docker.distribution.manifest.list.v2+json'}

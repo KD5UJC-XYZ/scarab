@@ -54,7 +54,8 @@ def checked_file(root, record):
     return path
 
 
-def validate(directory: Path, require_release: bool = False) -> dict:
+def validate(directory: Path, require_release: bool = False, *, launcher: bytes) -> dict:
+    """`launcher` is scripts/scarab-jvm as the caller's authenticated source commit has it (candidate_oci.launcher_at)."""
     """Validate frozen transport and subject bindings, never treat a self-authored manifest as trust."""
     root = directory.resolve()
     manifest = read_json(root / 'candidate.json')
@@ -168,7 +169,8 @@ def validate(directory: Path, require_release: bool = False) -> dict:
         raise ValueError('licence review report is missing or contradicts manifest')
     import candidate_oci
     oci_subject = next(s for s in subjects if s['kind'] == 'oci-archive')
-    inspected = candidate_oci.verify(checked_file(root, oci_subject['file']), jar, identity, image['manifest']['digest'])
+    inspected = candidate_oci.verify(checked_file(root, oci_subject['file']), jar, identity, image['manifest']['digest'],
+                                     launcher=launcher)
     if inspected['configDigest'] != image['configDigest']:
         raise ValueError('OCI configuration digest differs from manifest')
     image_inventory = read_json(records['image-inventory'])
@@ -206,8 +208,8 @@ def validate(directory: Path, require_release: bool = False) -> dict:
     return manifest
 
 
-def signing_subjects(directory: Path) -> list:
-    manifest = validate(directory, require_release=True)
+def signing_subjects(directory: Path, *, launcher: bytes) -> list:
+    manifest = validate(directory, require_release=True, launcher=launcher)
     records = [dict(name='candidate.json', digest={'sha256': sha256(directory / 'candidate.json')})]
     for subject in manifest['subjects']:
         for record in [subject['file'], subject['bom']['file']]:

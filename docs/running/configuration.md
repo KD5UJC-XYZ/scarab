@@ -310,7 +310,8 @@ longest 396 ms) and the node's timers fired late (cats-effect starvation warning
 the flags above a 31 min sync had none, at the same blocks per second as the base build
 ([performance.md](../performance.md) section 6). A fixed heap avoids the full collections that come from
 growing it. The node keeps its follower on its own pool (`--cpu-threads`, default one worker per CPU)
-and reports the worst timer lateness and the longest CPU-bound step of every epoch in the log.
+and reports the worst timer lateness and the longest CPU-bound step of every epoch in the log. The release image takes
+JVM options as arguments of its launcher ([forging.md](forging.md#keys-in-memory)).
 
 Stopping: SIGTERM or SIGINT (`docker stop`, Ctrl-C) cancels the node, which closes its servers and
 writes a snapshot at the immutable tip before it exits (a second or two on Preview; allow
