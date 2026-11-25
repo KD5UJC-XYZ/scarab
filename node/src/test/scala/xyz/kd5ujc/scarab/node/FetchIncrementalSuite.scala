@@ -676,6 +676,245 @@ class FetchIncrementalSuite extends ScalaCheckSuite:
     }
   }
 
+  /** One round on a streaming session's [[CandidateState]]: a ChainSync reply, our chain's anchor
+    * moving on, the header gate's base moving back (a rollback into the local chain it captured),
+    * the capacity wait's trim, a publisher's step of at most `limit` headers and the trim after it,
+    * or a new intersection. Each trim reads the gate's base as it is.
+    */
+  private enum Streaming:
+    case Reply(op: Op)
+    case Anchor(seed: Int)
+    case Back(seed: Int)
+    case Trim
+    case Publish(limit: Int)
+    case Restart(seed: Int)
+
+  private val streamings: Gen[Streaming] = Gen.frequency(
+    8 -> ops.map(Streaming.Reply(_)),
+    2 -> Gen.choose(0, 1 << 20).map(Streaming.Anchor(_)),
+    1 -> Gen.choose(0, 1 << 20).map(Streaming.Back(_)),
+    1 -> Gen.const(Streaming.Trim),
+    4 -> Gen.choose(1, 4).map(Streaming.Publish(_)),
+    1 -> Gen.choose(0, 1 << 20).map(Streaming.Restart(_))
+  )
+
+  /** What [[Streaming]] rounds leave: the session's state, the header gate's base, and the chain
+    * the consumer built from every event published to it, from the origin.
+    */
+  private final case class Streamed(
+      state: CandidateState,
+      anchor: Point,
+      consumer: Vector[Header],
+      prop: Prop
+  )
+
+  /** The points of `candidate`, its base first. */
+  private def pointsOf(candidate: ChainSelection.Candidate): Vector[Point] =
+    candidate.base +: candidate.headers.map(_.point)
+
+  /** The consumer's chain after `events`, or the point of a rollback it cannot follow. */
+  private def followed(
+      consumer: Vector[Header],
+      events: Vector[SyncEvent]
+  ): Either[Point, Vector[Header]] =
+    events.foldLeft[Either[Point, Vector[Header]]](Right(consumer)) {
+      case (chain, SyncEvent.RollForward(h, _)) => chain.map(_ :+ h)
+      case (chain, SyncEvent.RollBackward(point, _)) =>
+        chain.flatMap { headers =>
+          if point == Point.Origin then Right(Vector.empty)
+          else
+            headers.lastIndexWhere(_.point == point) match
+              case -1 => Left(point)
+              case at => Right(headers.take(at + 1))
+        }
+    }
+
+  property(
+    "batches, trims and publisher steps on one candidate state carry its index and publish it whole"
+  ) {
+    forAll(Gen.listOfN(60, streamings), Gen.choose(1, 7)) { (script, retained) =>
+      val tip = ChainSync.Tip.Origin
+      val start =
+        Streamed(
+          CandidateState.initial.streaming,
+          Point.Origin,
+          Vector.empty,
+          Prop.passed
+        )
+      def cursorOf(state: CandidateState) =
+        state.publication.fold(state.candidate)(_.cursor)
+      // a step, then the trim after it
+      def publish(seen: Streamed, limit: Int): Streamed =
+        seen.state.published(limit).map((next, events) => (next.trimmed(seen.anchor), events)) match
+          case Left(divergence) => seen.copy(prop = seen.prop && (false :| s"$divergence"))
+          case Right((next, events)) =>
+            followed(seen.consumer, events) match
+              case Left(point) =>
+                seen.copy(prop = seen.prop && (false :| s"the consumer cannot roll back to $point"))
+              case Right(consumer) =>
+                val cursor = cursorOf(next)
+                Streamed(
+                  next,
+                  seen.anchor,
+                  consumer,
+                  seen.prop &&
+                    (consumer.lastOption.fold[Point](Point.Origin)(_.point) == cursor.tip) :|
+                    "the consumer is at the cursor's tip" &&
+                    (next.candidate == FetchDecisionModel.trimmedTo(
+                      seen.state.candidate,
+                      seen.anchor,
+                      cursor.tip
+                    )) :| "a step trims to our anchor, never past its cursor"
+                )
+      val end = script.foldLeft(start) { (seen, round) =>
+        val state = seen.state
+        val candidate = state.candidate
+        round match
+          case Streaming.Reply(op) if op.forward =>
+            // the peer's next header: the main chain's while the candidate follows it, a fork's
+            // otherwise, taken only while the window has room for it (the capacity wait)
+            val last = candidate.headers.lastOption
+            // the position on the main chain of the candidate's tip, -1 for the origin
+            val onMain = last.fold(
+              if candidate.base == Point.Origin then Some(-1)
+              else Some(main.indexWhere(_.point == candidate.base)).filter(_ >= 0)
+            )(h => Some(main.indexWhere(_.hash == h.hash)).filter(_ >= 0))
+            val header = onMain
+              .filter(i => op.kind % 4 != 0 && i + 1 < main.size)
+              .fold(
+                Fixtures.header(
+                  last.fold(BigInt(1))(_.blockNo + 1),
+                  last.fold(BigInt(1))(_.slot + 1),
+                  last.map(_.hash).orElse(pointHash(candidate.base)),
+                  op.seed
+                )
+              )(i => main(i + 1))
+            if !Peer.publicationRoom(cursorOf(state), candidate, retained) then seen
+            else
+              val batch = Vector(SyncEvent.RollForward(header, tip))
+              val (next, moved) =
+                state.recorded(
+                  batch,
+                  retained,
+                  Map(header.point -> Some(header.blockNo)),
+                  Some(seen.anchor)
+                )
+              val expected = FetchDecisionModel.trimmedTo(
+                FetchDecisionModel.candidateAfter(candidate, batch, retained),
+                seen.anchor,
+                cursorOf(state).tip
+              )
+              seen.copy(
+                state = next,
+                prop = seen.prop && (next.candidate == expected) :| "a batch, then a trim" &&
+                  (moved.start == FetchCandidates.Derivation.Carried ||
+                    state.track.announced.isEmpty) :| "the batch carried its index" &&
+                  next.track.announced.exists(_.candidate eq next.candidate) :|
+                  "the index is the candidate's" &&
+                  next.track.announced.fold(Prop.falsified)(agrees(_, op.seed.toLong, 0L))
+              )
+          case Streaming.Reply(op) =>
+            // a rollback the header gate takes: to a point at or after our anchor
+            val points = pointsOf(candidate)
+            val from = points.indexOf(seen.anchor).max(0)
+            val point = points(from + op.seed % (points.size - from))
+            val batch = Vector(SyncEvent.RollBackward(point, tip))
+            val (next, moved) = state.recorded(batch, retained, Map.empty, Some(seen.anchor))
+            seen.copy(
+              state = next,
+              prop = seen.prop && (moved.start == FetchCandidates.Derivation.Carried ||
+                state.track.announced.isEmpty) :| "the rollback carried its index"
+            )
+          case Streaming.Anchor(seed) =>
+            // our chain adopts a header of the main chain the candidate holds, past our anchor
+            val ours = main.indexWhere(_.point == seen.anchor)
+            val held =
+              main.indices.filter(i => i > ours && pointsOf(candidate).contains(main(i).point))
+            if held.isEmpty then seen else seen.copy(anchor = main(held(seed % held.size)).point)
+          case Streaming.Back(seed) =>
+            // the gate's base moves back along our chain, to the origin or a header before it
+            val ours = main.indexWhere(_.point == seen.anchor)
+            if ours < 0 then seen
+            else
+              seen.copy(anchor =
+                main.lift(seed % (ours + 1) - 1).fold[Point](Point.Origin)(_.point)
+              )
+          case Streaming.Trim =>
+            val next = state.trimmed(seen.anchor)
+            seen.copy(
+              state = next,
+              prop = seen.prop && (next.candidate == FetchDecisionModel.trimmedTo(
+                candidate,
+                seen.anchor,
+                cursorOf(state).tip
+              )) :| "the capacity wait's trim"
+            )
+          case Streaming.Publish(limit) => publish(seen, limit)
+          case Streaming.Restart(seed)  =>
+            // a new intersection at a point of our chain the consumer has, at or after our anchor
+            val known = Point.Origin +: seen.consumer.map(_.point)
+            val from = known.indexOf(seen.anchor).max(0)
+            val point = known(from + seed % (known.size - from))
+            seen.copy(state =
+              state.replaced(
+                FetchCandidates.Announced.of(ChainSelection.Candidate(point, Vector.empty)),
+                tip
+              )
+            )
+      }
+      // the publisher publishes all there is: the consumer ends at the candidate
+      val drained = (0 until 100).foldLeft(end)((seen, _) => publish(seen, 4))
+      drained.prop && (drained.consumer
+        .map(_.point)
+        .takeRight(drained.state.candidate.headers.size) ==
+        drained.state.candidate.headers.map(_.point)) :| "the consumer holds the candidate" &&
+      (drained.consumer.lastOption.fold[Point](Point.Origin)(_.point) ==
+        drained.state.candidate.tip) :| "the consumer is at the candidate's tip"
+    }
+  }
+
+  test("a rollback before the candidate's base is published as one, not a detached candidate") {
+    val tip = ChainSync.Tip.Origin
+    def forward(state: CandidateState, i: Int) =
+      state
+        .recorded(
+          Vector(SyncEvent.RollForward(main(i), tip)),
+          8,
+          Map(main(i).point -> Some(main(i).blockNo)),
+          None
+        )
+        ._1
+    def published(state: CandidateState) =
+      state.published(4).fold(e => fail(s"publication failed: $e"), identity)
+    // the session intersected at the fifth header and published two more
+    val intersected = CandidateState.initial.streaming.replaced(
+      FetchCandidates.Announced.of(ChainSelection.Candidate(main(4).point, Vector.empty)),
+      tip
+    )
+    val (sent, first) = published(forward(forward(intersected, 5), 6))
+    // the first publication of the new epoch rolls back to the intersection
+    assertEquals(
+      first,
+      SyncEvent.RollBackward(main(4).point, tip) +:
+        Vector(main(5), main(6)).map(SyncEvent.RollForward(_, tip))
+    )
+    // the header gate holds the third header, of the local chain it captured before the
+    // intersection, and takes the peer's rollback to it
+    val (rolled, moved) = sent.recorded(
+      Vector(SyncEvent.RollBackward(main(2).point, tip)),
+      8,
+      Map.empty,
+      None
+    )
+    assertEquals(moved.left, None)
+    val (again, back) = published(forward(rolled, 3))
+    assertEquals(
+      back,
+      Vector(SyncEvent.RollBackward(main(2).point, tip), SyncEvent.RollForward(main(3), tip))
+    )
+    assertEquals(again.publication.map(_.cursor), Some(again.candidate))
+  }
+
   /** One round of a session whose candidate is trimmed between batches. */
   private enum Trimming:
     case Batch(ops: List[Op])
