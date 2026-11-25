@@ -1,0 +1,3 @@
+### Fixed (forging from a leader schedule, #54)
+
+- In the Leios build the leader schedule is computed on a Dijkstra ledger too. The scheduler found the tip's epoch through a Conway-only view, so on the public Leios testnet it computed no schedule. Every slot was decided at the slot by the same check with the same inputs, so no slot was decided differently. But the `leaderSchedule` line and the `scarab_forge_scheduled_leader_slots`, `scarab_forge_expected_leader_slots`, `scarab_forge_next_leader_slot` and `scarab_forge_schedule_complete` gauges stayed empty. The scheduler now reads the tip through the function the slot's check reads it through.
