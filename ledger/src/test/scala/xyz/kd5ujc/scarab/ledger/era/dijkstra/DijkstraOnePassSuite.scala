@@ -160,6 +160,12 @@ class DijkstraOnePassSuite extends ScalaCheckSuite:
         )
       case _ => fail(s"$what: read from no list")
 
+  // an outcome as the recorded outcomes write it
+  private def letter(o: Outcome): Char = o match
+    case Outcome.Accepted => 'A'
+    case Outcome.Refused  => 'R'
+    case Outcome.NotCbor  => 'N'
+
   private def tally(outcomes: Vector[Outcome]): Map[Outcome, Int] =
     outcomes.groupBy(identity).view.mapValues(_.size).toMap
 
@@ -431,7 +437,12 @@ class DijkstraOnePassSuite extends ScalaCheckSuite:
     }
     val outcomes = tally(read.map(_._2).toVector)
     val parts = read.map(_._1).toSet
-    // as recorded: the outcomes, and the distinct refusals among them
+    // as recorded: each mutant's outcome, their tally, and the distinct refusals among them
+    val recorded = DijkstraOnePassExpected.fixedMutants
+    assertEquals(recorded.length, read.size)
+    read.zipWithIndex.foreach { case ((part, o), i) =>
+      assertEquals(letter(o), recorded(i), s"mutant $i ($part)")
+    }
     assertEquals(
       outcomes,
       Map(Outcome.Accepted -> 1589, Outcome.Refused -> 3185, Outcome.NotCbor -> 1226)
@@ -489,7 +500,8 @@ class DijkstraOnePassSuite extends ScalaCheckSuite:
       kind -> node(raw).fold(Outcome.NotCbor)(n => readInBlock(n, s"$kind mutant $i"))
     }
     val byKind = read.groupBy(_._1).view.mapValues(rs => tally(rs.map(_._2))).toMap
-    // as recorded
+    // as recorded: each mutant's outcome, in order, and their tally
+    assertEquals(read.map((_, o) => letter(o)).mkString, DijkstraOnePassExpected.textMutants)
     assertEquals(
       byKind,
       Map(
