@@ -1056,7 +1056,10 @@ class ConwayBbodySuite extends FailsOnUncaught:
     }
     val total = count * perTx * scriptSize
     assert(total > limit && (count - 1) * perTx * scriptSize <= limit, s"$total")
-    Vector(9, 10, 11).foreach { major =>
+    // Conway's BBODY limits them at every version, 7 and 8 too, which a chain that starts Conway by
+    // epoch keeps from Babbage (`conwayBbodyTransition` runs `validateBodyRefScriptsSizeTooBig`
+    // whatever the version, `Conway/Rules/Bbody.hs:285-316`, cardano-ledger f649f975)
+    Vector(7, 8, 9, 10, 11).foreach { major =>
       // the body is past the cluster's 65,536 bytes, which the flat side's envelope checks before
       // its BBODY (BBODY reads no such limit): a limit that holds it
       val world =
@@ -1073,6 +1076,23 @@ class ConwayBbodySuite extends FailsOnUncaught:
         s"$major"
       )
       same(s"$major refused", refused.era, refused.flat)
+      // with another declared body size too, both recorded: the reference scripts' check
+      // (`conwayBbodyTransition`) before the body's (`alonzoBbodyTransition`'s, `:268`), the root's
+      // list the reverse of the order its predicates recorded (`Extended.hs:708`)
+      val size = sizeOf(blockOf(txs))
+      val both = judge(
+        third,
+        blockOf(txs, _.updated(6, encoded(Value.UInt(BigInt(size + 1))))),
+        change = world
+      )
+      assertEquals(
+        both.eraFailures,
+        Vector[BbodyPredFailure[Conway]](
+          new ConwayBbodyPredFailure.WrongBlockBodySizeBBODY[Conway](EraMismatch(size, size + 1)),
+          new ConwayBbodyPredFailure.BodyRefScriptsSizeTooBig[Conway](EraMismatch(total, limit))
+        ),
+        s"$major"
+      )
       val admitted = judge(third, blockOf(txs.init), change = world)
       assert(admitted.era.isRight, s"$major: ${admitted.era}")
       same(s"$major admitted", admitted.era, admitted.flat)
@@ -1738,13 +1758,37 @@ class ConwayBbodySuite extends FailsOnUncaught:
         val within = judge(third, raw, change = holding(utxo))
         assert(within.program(within.replaying(), None, Verdicts.Direct).worthwhile, s"$invalid")
         val j = judge(third, raw, change = over)
-        assert(
-          j.eraFailures.exists {
-            case ConwayBbodyPredFailure.TooManyExUnits(_) => true
-            case _                                        => false
-          },
-          s"$invalid: ${j.eraFailures}"
+        // the units after LEDGERS (`alonzoBbodyTransition`, `Alonzo/Rules/Bbody.hs:186-214`,
+        // cardano-ledger f649f975), every failure recorded: as flagged, the units alone; with a
+        // verdict that is not its flag's, the units and then LEDGERS's failures, the transaction's
+        // validation tag mismatch the first of them (#85's over-budget item: the mismatch survives)
+        val units = new ConwayBbodyPredFailure.TooManyExUnits[Conway](
+          EraMismatch(
+            txs.foldLeft(ExUnits.zero)((sum, _) => sum + redeemerUnits),
+            redeemerUnits
+          )
         )
+        val mismatch: BbodyPredFailure[Conway] => Boolean =
+          case ConwayBbodyPredFailure.LedgersFailure(
+                ShelleyLedgersPredFailure.LedgerFailure(
+                  xyz.kd5ujc.scarab.ledger.era.rules.ConwayLedgerPredFailure.ConwayUtxowFailure(
+                    xyz.kd5ujc.scarab.ledger.era.rules.ConwayUtxowPredFailure.UtxoFailure(
+                      xyz.kd5ujc.scarab.ledger.era.rules.ConwayUtxoPredFailure.UtxosFailure(
+                        xyz.kd5ujc.scarab.ledger.era.rules.ConwayUtxosPredFailure
+                          .ValidationTagMismatch(_, _)
+                      )
+                    )
+                  )
+                )
+              ) =>
+            true
+          case _ => false
+        j.eraFailures match
+          case Vector(first) if invalid == Vector(2) => assertEquals(first, units, s"$invalid")
+          case first +: second +: _ if invalid != Vector(2) =>
+            assertEquals(first, units, s"$invalid")
+            assert(mismatch(second), s"$invalid: $second")
+          case other => fail(s"$invalid: $other")
         val body = j.program(j.replaying(), None, Verdicts.Direct)
         assert(!body.worthwhile, s"$invalid")
         assertEquals(body.prepare.jobs, Vector.empty, s"$invalid")
