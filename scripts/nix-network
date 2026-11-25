@@ -126,7 +126,8 @@ mkdir -p -- "$source_dir/.cache"
 (
   flock 9
   cd "$source_dir"
-  bash scripts/sbtw node/compile node/runtimeClasspathFile >&2
+  # The interpreter running this script, since the caller's PATH need not have a bash.
+  "$BASH" scripts/sbtw node/compile node/runtimeClasspathFile >&2
 ) 9>"$source_dir/.cache/nix-network-build.lock"
 
 classpath=$(cat "$source_dir/node/target/runtime-classpath.txt")
