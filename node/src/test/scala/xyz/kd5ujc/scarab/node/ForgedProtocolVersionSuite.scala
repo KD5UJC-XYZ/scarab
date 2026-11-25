@@ -50,9 +50,10 @@ import xyz.kd5ujc.scarab.storage.haskell.state.HaskellLedgerFile
   * where the major without the flag is refused (`HeaderProtVerTooLow`, cardano-ledger 9df9f98c
   * `Dijkstra/Rules/Bbody.hs:366-376`).
   *
-  * The node does not forge a Dijkstra block yet (its forger forges Conway blocks only), so the
-  * block BBODY reads here is one the reference forged on the devnet of `fixtures/dijkstra-devnet`,
-  * with its header's version info (the header body's field 9) replaced by the node's.
+  * The block BBODY reads here is one the reference forged on the devnet of
+  * `fixtures/dijkstra-devnet`, with its header's version info (the header body's field 9) replaced
+  * by the node's; the node's own Dijkstra forging under the Leios build (`Forger.forgesDijkstra`)
+  * is checked by `DijkstraForgeSuite`.
   */
 class ForgedProtocolVersionSuite extends FunSuite:
   private def hex(s: String): Bytes = Bytes.fromHex(s).fold(e => fail(e.message), identity)

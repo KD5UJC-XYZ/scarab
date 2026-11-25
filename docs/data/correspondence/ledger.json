@@ -27144,7 +27144,7 @@
    "evidence": [
     "DijkstraUTxOSuite"
    ],
-   "note": "written for Dijkstra, whose levels are both, as `conwayProducedValue` is for Conway; the reference's is generic in an era whose levels are both; equal to the flat rules' (`DijkstraPurposes.scriptsNeeded`) in order, purpose, index, item and script hash on every body of every Dijkstra transaction the repository holds, at both levels, a certificate's item by its key and script; the UTxO set is the recorded one where the corpus has it and stand-in outputs elsewhere",
+   "note": "written for Dijkstra, whose levels are both, as `conwayProducedValue` is for Conway; the reference's is generic in an era whose levels are both; equal to the flat decoder's (`DijkstraPurposes.scriptsNeeded`) in order, purpose, index, item and script hash on every body of every Dijkstra transaction the repository holds, at both levels, a certificate's item by its key and script; the UTxO set is the recorded one where the corpus has it and stand-in outputs elsewhere",
    "digest": "be9d228c98e07984"
   },
   "def ledger.era.dijkstra.DijkstraUTxO.getDijkstraSupplementalDataHashes": {
@@ -27186,7 +27186,7 @@
    "evidence": [
     "DijkstraUTxOSuite"
    ],
-   "note": "written for Dijkstra, whose levels are both, as `conwayProducedValue` is for Conway; the reference's is generic in an era whose levels are both; equal to the flat rules' (`DijkstraTxMeasures.batchRefScriptsSize`) on every Dijkstra transaction the repository holds",
+   "note": "written for Dijkstra, whose levels are both, as `conwayProducedValue` is for Conway; the reference's is generic in an era whose levels are both; equal to the flat measure's (`DijkstraTxMeasures.batchRefScriptsSize`, a test helper since the flat rules went) on every Dijkstra transaction the repository holds",
    "digest": "e6fc40d40b696b29"
   },
   "val ledger.era.dijkstra.DijkstraUTxO.instance": {
@@ -27259,7 +27259,7 @@
     "DijkstraUTxOSuite",
     "DijkstraNativeScriptEvalSuite"
    ],
-   "note": "every member the class has here: `mkBasicTx` is no member of it for any era, `validateNativeScript` is `validateDijkstraNativeScript` (Tx.hs:427-438), and `allInputsTxBodyF` is `EraTxBody.allInputs`; `getTotalExUnits` adds each sub-transaction's units to the top level's, equal to the flat rules' (`DijkstraTxMeasures.totalExUnits`) on every Dijkstra transaction the repository holds, and each sub-transaction's to its redeemers' units as the flat decoder read them. `DijkstraEraTx`'s `hashTx` (`Tx.hs:445-472`) is not here (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7024127184); the annotated transaction's members read from their deferred values (`Eval`)",
+   "note": "every member the class has here: `mkBasicTx` is no member of it for any era, `validateNativeScript` is `validateDijkstraNativeScript` (Tx.hs:427-438), and `allInputsTxBodyF` is `EraTxBody.allInputs`; `getTotalExUnits` adds each sub-transaction's units to the top level's, equal to the flat measure's (`DijkstraTxMeasures.totalExUnits`, a test helper since the flat rules went) on every Dijkstra transaction the repository holds, and each sub-transaction's to its redeemers' units as the flat decoder read them. `DijkstraEraTx`'s `hashTx` (`Tx.hs:445-472`) is not here (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7024127184); the annotated transaction's members read from their deferred values (`Eval`)",
    "digest": "55ee9de189d44b22"
   },
   "val ledger.era.dijkstra.DijkstraState.accounts": {
@@ -27363,7 +27363,7 @@
    "evidence": [
     "DijkstraStateSuite"
    ],
-   "note": "written for Dijkstra; the refunds the batch's certificates declare, no deposit looked up. Equal to the flat rules' (`DijkstraUtxo.declaredRefunds`) on a set of transactions: Of the 217 transactions recorded on the Leios testnet's chain and of the reference's UTXOW cases, the 176 without sub-transactions that the Conway decoder reads; the 13 it refuses, for a field Dijkstra adds or changes, and the 28 batches are not compared with the flat path, which has no computation of a batch's. A crafted batch's refunds are each level's declared stake and DRep refunds, the top level's adding up both levels'",
+   "note": "written for Dijkstra; the refunds the batch's certificates declare, no deposit looked up. Equal to the refunds declared in the Conway form of the body, as the flat Dijkstra UTXO read them (a test-side function of `DijkstraStateSuite` since the flat rules went) on a set of transactions: Of the 217 transactions recorded on the Leios testnet's chain and of the reference's UTXOW cases, the 176 without sub-transactions that the Conway decoder reads; the 13 it refuses, for a field Dijkstra adds or changes, and the 28 batches are not compared with the flat path, which has no computation of a batch's. A crafted batch's refunds are each level's declared stake and DRep refunds, the top level's adding up both levels'",
    "digest": "b25e69c25d8a6cb8"
   },
   "def ledger.era.dijkstra.DijkstraTxBody.toSTxLevel": {
@@ -30833,7 +30833,7 @@
     "DijkstraRulesOracleSuite",
     "DijkstraGovSuite"
    ],
-   "note": "a type of its own with Conway's constructors under their names, in tag order (0 to 18, :135-155), with ConwayGovPredFailure's fields: a voter and a voter's hot credential are the flat voter's until the votes carry the reference's typed voter; an account is AccountAddress; a mismatch carries the reference's relation (Mismatch r a); compared with the reference's bytes through DijkstraGovPredFailure.toStored and the oracle suite's encoder, which writes a Mismatch as one item (To mm)",
+   "note": "a type of its own with Conway's constructors under their names, in tag order (0 to 18, :135-155), with ConwayGovPredFailure's fields: a voter and a voter's hot credential are the flat voter's until the votes carry the reference's typed voter; an account is AccountAddress; a mismatch carries the reference's relation (Mismatch r a); compared with the reference's bytes through the oracle suite's test-side encoder of Dijkstra's era failures (DijkstraEraFailureCbor), which writes a Mismatch as one item (To mm)",
    "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923023870",
    "digest": "35aca8d2555a8a65"
   },
@@ -33826,7 +33826,7 @@
    ],
    "class": "Mirror",
    "structure": "same",
-   "note": "its constructors in the reference's order, its fields at the node's types, as ConwayUtxoPredFailure's. No encoder of its own yet: its refusals are compared with the reference's bytes through DijkstraUtxoPredFailure.toStored and the oracle suite's encoder",
+   "note": "its constructors in the reference's order, its fields at the node's types, as ConwayUtxoPredFailure's. No encoder of its own in the node yet: its refusals are compared with the reference's bytes through the oracle suite's test-side encoder of Dijkstra's era failures (DijkstraEraFailureCbor)",
    "digest": "0c834a7d479cc680"
   },
   "def ledger.era.rules.DijkstraUtxo.conwayToDijkstraUtxoPredFailure": {
@@ -34752,7 +34752,7 @@
     "DijkstraRulesOracleSuite",
     "DijkstraCertsSuite"
    ],
-   "note": "its constructors in the order of their tags (0, 1, then 3 to 7, :87-105); the network mismatch is the state's Network, the voting key the state's BlsKey. No encoder of its own yet: its refusals are compared with the reference's bytes through DijkstraCertsStored and the oracle suite's encoder",
+   "note": "its constructors in the order of their tags (0, 1, then 3 to 7, :87-105); the network mismatch is the state's Network, the voting key the state's BlsKey. No encoder of its own in the node yet: its refusals are compared with the reference's bytes through the oracle suite's test-side encoder of Dijkstra's era failures (DijkstraEraFailureCbor)",
    "digest": "2cc2ea551a3f7ef3"
   },
   "def ledger.era.rules.DijkstraPoolPredFailure.shelleyToDijkstraPoolPredFailure": {
@@ -34958,7 +34958,7 @@
     "DijkstraRulesOracleSuite",
     "DijkstraCertsSuite"
    ],
-   "note": "its constructors in the order of their tags (0 to 5, :76-84); compared with the reference's bytes through DijkstraCertsStored and the oracle suite's encoder, which writes a Mismatch as one item (To mm)",
+   "note": "its constructors in the order of their tags (0 to 5, :76-84); compared with the reference's bytes through the oracle suite's test-side encoder of Dijkstra's era failures (DijkstraEraFailureCbor), which writes a Mismatch as one item (To mm)",
    "digest": "25f07955313de414"
   },
   "def ledger.era.rules.DijkstraGovCertPredFailure.conwayToDijkstraGovCertPredFailure": {
@@ -39655,7 +39655,7 @@
     "DijkstraLedgerSuite",
     "DijkstraRulesOracleSuite"
    ],
-   "note": "its constructors in the order of their tags (1 to 6, :252-259); no encoder of its own yet: its refusals are compared with the reference's bytes through DijkstraLedgerPredFailure.toStored and the oracle suite's encoder (#796)",
+   "note": "its constructors in the order of their tags (1 to 6, :252-259); no encoder of its own in the node yet: its refusals are compared with the reference's bytes through the oracle suite's test-side encoder of Dijkstra's era failures (DijkstraEraFailureCbor) (#796)",
    "digest": "3c5f43ac87581b68"
   },
   "enum ledger.era.rules.DijkstraLedgerEvent": {
@@ -42019,7 +42019,7 @@
     "DijkstraBbodySuite",
     "DijkstraRulesOracleSuite"
    ],
-   "note": "its constructors in the order of their tags (0 to 6, :119-128); the sizes Longs, the header's major version its Word32 (Unsigned[W32]), the units the node's; no encoder of its own yet: its refusals are compared with the reference's bytes through DijkstraBbody.toStored and the oracle suite's encoder (#796)",
+   "note": "its constructors in the order of their tags (0 to 6, :119-128); the sizes Longs, the header's major version its Word32 (Unsigned[W32]), the units the node's; no encoder of its own in the node yet: its refusals are compared with the reference's bytes through the oracle suite's test-side encoder of Dijkstra's era failures (DijkstraEraFailureCbor) (#796)",
    "digest": "25d4b311c2e78a06"
   },
   "type ledger.era.rules.BbodyPredFailure": {
@@ -50076,7 +50076,7 @@
    ]
   },
   {
-   "reason": "Dijkstra's governance procedures read from what the flat decoder read (the flat proposal a proposal keeps, which the flat rules and their failures carry, and the votes), as Conway's are, and the era-indexed type of the flat proposal, a step toward #85 item 25 (the proposals of the era types)",
+   "reason": "Dijkstra's governance procedures read from what the flat decoder read (the flat proposal a proposal keeps, which the node's flat governance record holds, and the votes), as Conway's are, and the era-indexed type of the flat proposal, a step toward #85 item 25 (the proposals of the era types)",
    "definitions": [
     "def ledger.era.dijkstra.DijkstraProcedures.proposal",
     "def ledger.era.dijkstra.DijkstraProcedures.votes",
