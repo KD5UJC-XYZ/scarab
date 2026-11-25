@@ -11,8 +11,16 @@
   of the pinned libsodium fork, which decide the 29 cases Wycheproof leaves acceptable; and the reference's seven
   ECVRF draft-03 vectors from cardano-base (`fixtures/vrf-cardano-base`), checked as cardano-base checks them.
 
+### Fixed (crypto, #1418)
+
+- `FieldElement.toByteArray`, the reduction of a field element to its canonical encoding, was wrong for some inputs
+  inside its documented range (limbs below 2^27 in absolute value) but outside what any caller produces: an
+  intermediate product overflowed 32 bits, and a multiple of p could be written as the non-canonical encoding of p.
+  It is now exact over the whole documented range. No point encoding and no accepted or rejected signature
+  changes.
+
 #### Known gaps
 
-- `FieldElement.toByteArray` does not reduce every input its documentation admits (limbs below 2^27): `19 * h9`
-  overflows 32 bits when limb 9 is above 112142443, and limbs worth 2^257 - 76 are written as the non-canonical
-  encoding of p. No caller passes limbs that wide; a test pins the case.
+- `Scalar.add` and `Scalar.subtract` document a result congruent modulo L for any two scalars, but for unreduced
+  operands they can fail instead (`0 - (L + 1)`, `(2^255 - 1) + (L + 1)`). Nothing in Scarab calls them; two tests
+  pin the cases.
