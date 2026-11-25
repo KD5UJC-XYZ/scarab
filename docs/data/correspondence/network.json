@@ -2314,14 +2314,10 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
-   "evidence": [
-    "BigLedgerSuite",
-    "PeerSelectionSuite",
-    "PeerRootReloadSuite"
-   ],
-   "note": "the reference keeps its roots in sets (localRootPeers, and publicRootPeers with its ledger and big ledger peers) where Scarab gives each known peer one Origin; a reconfiguration of the local roots takes only the new local roots out of publicRootPeers (localRoots, Monitor.hs 276-282) and leaves its ledger and big ledger peers, which only their own requests add (BigLedgerPeers.hs 164-225) and forgetting removes. This predicate names the origins a reload may take away (local, public, bootstrap) and leaves the ledger and big ledger ones as they are (issue 810)",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/810#issuecomment-7164317688",
+   "note": "the reference keeps its roots in sets (localRootPeers, and publicRootPeers with its ledger and big ledger peers) where Scarab gives each known peer one Origin; a reconfiguration of the local roots takes only the new local roots out of publicRootPeers (localRoots, Monitor.hs 276-282) and otherwise leaves its ledger and big ledger peers, which only their own requests add (BigLedgerPeers.hs 164-225) and forgetting removes. This predicate names the origins a reload may take away (local, public, bootstrap); a ledger or big ledger peer the reload makes an effective local root becomes a local root (configureLocalRoots). BigLedgerSuite, PeerSelectionSuite and PeerRootReloadSuite check Scarab alone, so the entry is a Gap until a differential test compares a reload with the reference (issue 810)",
    "digest": "aa50e1a3980faa56"
   },
   "trait network.PeerSharingController": {
