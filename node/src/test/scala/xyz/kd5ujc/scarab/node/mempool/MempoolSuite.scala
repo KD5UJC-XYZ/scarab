@@ -20,6 +20,7 @@ import xyz.kd5ujc.scarab.ledger.rules.NativeRules
 import xyz.kd5ujc.scarab.ledger.state.{Conway, NewEpochState}
 import org.scalacheck.Gen
 import org.scalacheck.Prop.*
+import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.TxMeasure
 
 import TestLedger.*
 import Capacity.fits
@@ -653,6 +654,9 @@ class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaC
       assertEquals(replay(s).map(_.utxo), Right(s.current.toOption.get.utxo))
       assertEquals(s.entries.map(_.id).distinct.size, s.entries.size)
       assertEquals(s.bytes, s.entries.map(_.size.toLong).sum)
+      // the kept sum of measures and the kept ids are the entries' own, after every operation
+      assertEquals(s.used, s.entries.foldLeft(TxMeasure.zero)(_ + Capacity.measure(_)))
+      assert(candidates.forall((_, id) => s.contains(id) == s.entries.exists(_.id == id)))
       assert(s.used.fits(s.capacity), s"${s.used} over ${s.capacity}")
       assert(s.entries.map(_.ticket) == s.entries.map(_.ticket).sorted)
     }

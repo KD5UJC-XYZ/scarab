@@ -60,7 +60,7 @@ object LocalMonitor:
     val held = state.entries.toSet.map((e: Entry) => e.id)
     Snapshot(
       state.tipSlot + 1,
-      state.entries.map(e => Held(wrapTx(e.era, e.raw), Capacity.measure(e))),
+      state.entries.map(e => Held(wrapTx(e.era, e.raw), e.measure)),
       has(held),
       state.capacity,
       (state.tipSlot + 1, ids)
