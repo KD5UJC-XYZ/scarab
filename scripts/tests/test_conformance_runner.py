@@ -453,6 +453,15 @@ class RunTest(unittest.TestCase):
                 mock.patch("sys.stderr", new=io.StringIO()):
             self.assertEqual(run.main(["uplc-turbo", "--out", "/nonexistent"]), 2)
 
+    def test_turbo_runs_on_ci_for_its_allocation_alone(self):
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch.dict(os.environ, {"GITHUB_ACTIONS": "true"}), \
+                mock.patch.object(run, "checkout_facts", return_value=checkout(tmp)), \
+                mock.patch.object(run, "run_scenarios", return_value=[]) as ran, \
+                mock.patch("sys.stdout", new=io.StringIO()), mock.patch("sys.stderr", new=io.StringIO()):
+            self.assertEqual(run.main(["uplc-turbo", "--allocation-only", "--out", str(Path(tmp, "out"))]), 0)
+            self.assertEqual([scenario.id for scenario in ran.call_args.args[2]], ["uplc-turbo"])
+
     def test_an_out_directory_with_reports_is_refused(self):
         with tempfile.TemporaryDirectory() as tmp, \
                 mock.patch.object(run, "checkout_facts", return_value=checkout(tmp)), \

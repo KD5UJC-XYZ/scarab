@@ -102,6 +102,12 @@ def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def runner_of(record: dict) -> object:
+    """Where the provenance says the report was written, None when it does not say."""
+    environment = record.get("environment")
+    return environment.get("runner") if isinstance(environment, dict) else None
+
+
 def collect(paths: Sequence[Path]) -> list[Report]:
     """The reports among `paths` (directories are searched one level deep), each checked with its provenance."""
     files = sorted({candidate for path in paths
@@ -121,6 +127,8 @@ def collect(paths: Sequence[Path]) -> list[Report]:
             problems.append("its sha256 is not the one its provenance records")
         if record.get("validation", {}).get("valid") is not True:
             problems.append("its provenance records no passed validation")
+        if not SCENARIOS[LABELS[NAME.match(path.name)["label"]]].in_ci and runner_of(record) != "local":
+            problems.append("it is a timing report that was not written on a local machine")
         scarab = record.get("scarab", {})
         if scarab.get("dirty") is not False:
             problems.append("it was written from a checkout with uncommitted changes")

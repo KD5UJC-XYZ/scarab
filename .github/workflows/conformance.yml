@@ -6,7 +6,8 @@ name: Conformance reports
 # chosen scenario on its pinned inputs and checks the report; the files are kept as a workflow artifact.
 # With `publish`, from main only, scripts/conformance/publish.py commits them to the public reports repository
 # KD5UJC-XYZ/scarab-conformance, pushing with the deploy key in the CONFORMANCE_REPO_DEPLOY_KEY secret.
-# uplc-turbo is a timing benchmark and is not offered: it runs ad hoc on a quiet machine.
+# uplc-turbo is a timing benchmark, whose report is written ad hoc on a quiet machine. `uplc-turbo-memory` runs it
+# here for its memory counts alone, which a shared runner reproduces: an artifact of its own, never published.
 on:
   schedule:
     - cron: '17 8 * * *'
@@ -24,6 +25,10 @@ on:
         description: 'cbor-decoding, both eras (skipped while its tool is absent)'
         type: boolean
         default: true
+      uplc-turbo-memory:
+        description: 'uplc-turbo, memory counts only (never published)'
+        type: boolean
+        default: false
       publish:
         description: 'Publish the reports to KD5UJC-XYZ/scarab-conformance (main only)'
         type: boolean
@@ -47,6 +52,9 @@ jobs:
         shell: bash
     env:
       PYTHONDONTWRITEBYTECODE: '1'
+      # Whether a scenario other than the uplc-turbo memory counts was chosen: only then is there a report to
+      # summarise, keep and publish.
+      STANDARD: ${{ github.event_name == 'schedule' || inputs.ledger-rules || inputs.uplc-conformance || inputs.cbor-decoding }}
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -67,19 +75,48 @@ jobs:
           LEDGER_RULES: ${{ inputs.ledger-rules }}
           UPLC_CONFORMANCE: ${{ inputs.uplc-conformance }}
           CBOR_DECODING: ${{ github.event_name == 'schedule' || inputs.cbor-decoding }}
+          UPLC_TURBO_MEMORY: ${{ inputs.uplc-turbo-memory }}
         run: |
           scenarios=()
           if [ "$LEDGER_RULES" = true ]; then scenarios+=(ledger-rules); fi
           if [ "$UPLC_CONFORMANCE" = true ]; then scenarios+=(uplc-conformance); fi
           if [ "$CBOR_DECODING" = true ]; then scenarios+=(cbor-decoding); fi
-          if [ "${#scenarios[@]}" -eq 0 ]; then echo "no scenario chosen"; exit 1; fi
+          if [ "${#scenarios[@]}" -eq 0 ] && [ "$UPLC_TURBO_MEMORY" != true ]; then echo "no scenario chosen"; exit 1; fi
           mkdir -p .cache
-          python3 -I -B scripts/conformance/run.py "${scenarios[@]}" \
-            --out "$RUNNER_TEMP/conformance" --inputs "$RUNNER_TEMP/conformance-inputs" \
-            --image scarab-jdk:local --build-image --owner "conformance-$GITHUB_RUN_ID"
+          if [ "${#scenarios[@]}" -gt 0 ]; then
+            python3 -I -B scripts/conformance/run.py "${scenarios[@]}" \
+              --out "$RUNNER_TEMP/conformance" --inputs "$RUNNER_TEMP/conformance-inputs" \
+              --image scarab-jdk:local --build-image --owner "conformance-$GITHUB_RUN_ID"
+          fi
+
+      # The runner's own settings (3 CPUs, 8 GB, a 4 GB heap) fit this runner. The report's timings are not
+      # measurements: it goes to an artifact of its own, which the publish job never reads, and publish.py refuses it.
+      - name: uplc-turbo, memory counts only
+        if: ${{ inputs.uplc-turbo-memory }}
+        run: |
+          mkdir -p .cache
+          python3 -I -B scripts/conformance/run.py uplc-turbo --allocation-only \
+            --out "$RUNNER_TEMP/conformance-turbo" --inputs "$RUNNER_TEMP/conformance-inputs" \
+            --image scarab-jdk:local --owner "conformance-$GITHUB_RUN_ID"
+          python3 -I -B scripts/conformance/turbo_memory.py --out "$RUNNER_TEMP/conformance-turbo" \
+            --inputs "$RUNNER_TEMP/conformance-inputs"
+          cat "$RUNNER_TEMP/conformance-turbo/turbo-memory.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Keep the uplc-turbo memory counts
+        if: ${{ always() && inputs.uplc-turbo-memory }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: conformance-turbo-memory-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/conformance-turbo/turbo-memory.json
+            ${{ runner.temp }}/conformance-turbo/turbo-memory.md
+            ${{ runner.temp }}/conformance-turbo/*.provenance.json
+            ${{ runner.temp }}/conformance-turbo/work/**/*.log
+          retention-days: 30
+          if-no-files-found: error
 
       - name: Read the previous nightly CBOR report when available
-        if: ${{ always() }}
+        if: ${{ always() && env.STANDARD == 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -91,7 +128,7 @@ jobs:
           fi
 
       - name: Summary
-        if: ${{ always() }}
+        if: ${{ always() && env.STANDARD == 'true' }}
         run: |
           # This informational summary must not turn a skipped CBOR tool into a new publication blocker.
           if ! python3 -I -B scripts/conformance/summarize.py --out "$RUNNER_TEMP/conformance" \
@@ -108,7 +145,7 @@ jobs:
           fi
 
       - name: Keep the reports, their provenance and the logs
-        if: ${{ always() }}
+        if: ${{ always() && env.STANDARD == 'true' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: conformance-reports-${{ github.run_id }}
@@ -140,7 +177,12 @@ jobs:
       - name: Publish from main only, with the deploy key
         env:
           HAS_DEPLOY_KEY: ${{ secrets.CONFORMANCE_REPO_DEPLOY_KEY != '' }}
+          STANDARD: ${{ inputs.ledger-rules || inputs.uplc-conformance || inputs.cbor-decoding }}
         run: |
+          if [ "$STANDARD" != true ]; then
+            echo "::error::nothing to publish: the uplc-turbo memory counts are never published, and no other scenario was chosen"
+            exit 1
+          fi
           if [ "$GITHUB_REF" != refs/heads/main ]; then
             echo "::error::reports are published from main only, not $GITHUB_REF"
             exit 1

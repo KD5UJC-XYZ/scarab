@@ -97,8 +97,8 @@ anyway, and `publish.py` then refuses the report). Each run takes a fresh `--out
 already holds reports, so that `publish.py` takes only that run's. The exit status is 1 if a scenario failed. `--dry-run` prints
 the plan without building, fetching or running anything.
 
-`uplc-turbo` measures time, so it runs ad hoc on a quiet local machine with a fast core, one run at a time, and
-never on CI (the runner refuses it there):
+`uplc-turbo` measures time, so its report is written ad hoc on a quiet local machine with a fast core, one run at
+a time:
 
 ```sh
 python3 -I -B scripts/conformance/run.py uplc-turbo --out <dir> [--cpus 3] [--memory 8g]
@@ -108,6 +108,15 @@ The restricting budget is 10 billion CPU units and 14 million memory units throu
 then 16.5 million memory units from protocol 11, per the [clarified scenario](https://github.com/pragma-org/node-diversity-conformance/blob/628006278309c02a1c3e49dce00e43595d925c2e/scenarios/uplc-turbo/README.md).
 These are Plutus execution units. The runner measures JVM allocation separately in bytes.
 A busy or shared machine moves its `cpu_us` measurements and the score the site gives them.
+
+The bytes a program allocates depend mostly on the JVM's settings and CPU count, which the runner fixes, and little
+on the machine's speed or load: a program's figure moves by a fraction of a per cent from run to run, since the
+tool averages the thirty fastest of fifty evaluations. So the count of programs within the memory limit can be
+compared between runs on a GitHub-hosted runner, at the runner's own settings (3 CPUs, 8 GB, a 4 GB heap): on CI the runner refuses `uplc-turbo` unless it is given `--allocation-only`,
+and `scripts/conformance/turbo_memory.py --out <dir>` then writes `turbo-memory.md` and `turbo-memory.json`: the
+programs within the site's memory limit, and the median and 95th percentile of bytes per memory unit. The
+**Conformance reports** workflow does both when `uplc-turbo-memory` is ticked, and keeps the counts as an artifact
+of their own. `publish.py` refuses a `uplc-turbo` report that was not written on a local machine.
 
 ## Names and the reports repository
 
@@ -157,8 +166,9 @@ the cause is fixed. It refuses a file whose provenance does
 not match it or records a failed check or uncommitted changes, a report whose commit is not on GitHub, and a dated
 report that is already published, unless `--replace` (a second run on the same day replaces the first).
 
-On GitHub, the **Conformance reports** workflow (`.github/workflows/conformance.yml`, run by hand only) runs the
-runner for the scenarios ticked (`ledger-rules`, `uplc-conformance` and `cbor-decoding`; turbo is not offered) and
+On GitHub, the **Conformance reports** workflow (`.github/workflows/conformance.yml`, run by hand, and nightly for the CBOR detector) runs the
+runner for the scenarios ticked (`ledger-rules`, `uplc-conformance` and `cbor-decoding`; turbo only for its memory
+counts, above) and
 keeps the files as a workflow artifact. When `publish` is ticked and the run is on `main`, a job of its own runs
 `publish.py --apply`, with Git reaching the reports repository over SSH through the deploy key in the secret
 `CONFORMANCE_REPO_DEPLOY_KEY` (`GIT_SSH_COMMAND`, checking GitHub's published host keys); this repository's token
