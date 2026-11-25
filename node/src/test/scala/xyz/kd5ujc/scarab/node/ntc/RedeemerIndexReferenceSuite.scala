@@ -27,7 +27,6 @@ import xyz.kd5ujc.scarab.ledger.era.{
   EraLedgerRun,
   EraTx,
   EraTxBody,
-  EraUTxO,
   EraUtxoRun,
   IsPhase2Valid,
   Network,
@@ -36,8 +35,8 @@ import xyz.kd5ujc.scarab.ledger.era.{
 }
 import xyz.kd5ujc.scarab.ledger.era.conway.{ConwayPParams, ConwayTx, ConwayUTxO}
 import xyz.kd5ujc.scarab.ledger.era.rules.{
+  ConwayLedgerPredFailure,
   ConwayUtxo,
-  ConwayUtxowPredFailure,
   UtxoContext,
   UtxoEnv as EraUtxoEnv
 }
@@ -60,7 +59,8 @@ import xyz.kd5ujc.scarab.protocol.Era
   * evaluator) in a chain that holds the outputs it spends, the script's stake credential registered
   * and the pools it delegates to, at the recorded protocol version and cost model. One the
   * reference accepted must be accepted; one it refused must be refused with the failures that
-  * [[PredicateFailureCbor]] writes as exactly the recorded bytes.
+  * [[PreConwayFailureCbor]] writes as exactly the recorded bytes. Conway's cases run its era UTXOW
+  * and LEDGER, whose failures [[ConwayFailureCbor]] writes as exactly the recorded bytes.
   */
 class RedeemerIndexReferenceSuite extends FunSuite:
   private final case class Record(
@@ -157,7 +157,6 @@ class RedeemerIndexReferenceSuite extends FunSuite:
   private def verdict(r: Record): Either[Vector[PredicateFailure], Long] = r.era match
     case Era.Alonzo  => judge[Alonzo](r)
     case Era.Babbage => judge[Babbage](r)
-    case Era.Conway  => judge[Conway](r)
     case other       => fail(s"${r.label}: era $other")
 
   /** Every case of a complete recording (`erarefusal.redeemer_index_labels`), with the reference's
@@ -190,7 +189,8 @@ class RedeemerIndexReferenceSuite extends FunSuite:
     )
   }
 
-  records.foreach { r =>
+  // the eras before Conway on their rules; Conway's cases run its era rules below
+  records.filterNot(_.era == Era.Conway).foreach { r =>
     test(s"${r.era} ${r.kind}: the node's verdict is the reference's") {
       (verdict(r), r.reason) match
         case (Right(_), None) => assert(r.accepted, s"${r.label}: no reason, yet refused")
@@ -240,14 +240,6 @@ class RedeemerIndexReferenceSuite extends FunSuite:
       val history = Horizon
         .History(Vector.empty, Horizon.Edge(0, 0, 0), params, Some(params))
         .at(Horizon.Transition.Unknown(Some(env.slot)))
-      val u = EraUTxO.conway
-      val t = EraTx.conway
-      val purposes = ConwayUtxowPredFailure.storedPurposes(
-        u.getScriptsNeeded[TxLevel.Top](utxo, t.body[TxLevel.Top](tx)(using t.bodyOf.top))(using
-          u.txOf.bodyOf.top
-        ),
-        utxo
-      )
       val result = EraUtxoRun.Utxow.run(
         EraUtxoEnv(env.slot, pp, ConwayLedgerState.cert.get(ls)),
         AlonzoStAnnTx.mkAlonzoStAnnTx[Conway](clock.posix, pp, utxo, Map.empty, tx),
@@ -265,19 +257,14 @@ class RedeemerIndexReferenceSuite extends FunSuite:
         depth = 2
       )
       (result, r.reason) match
-        case (Right(Right(_)), None) => assert(r.accepted, r.label)
+        case (Right(Right(_)), None)               => assert(r.accepted, r.label)
         case (Right(Left(failures)), Some(reason)) =>
-          val flat = failures.toChain.toVector.map(f =>
-            ConwayUtxowPredFailure
-              .toStored(f, purposes)
-              .fold(e => fail(s"${r.label}: $e"), identity)
-          )
+          // UTXOW's failures as LEDGER embeds them, written by the era's encoder
           assertEquals(
-            FlatRefusal
-              .applyTxError(r.era, flat)
-              .fold(error => fail(error.message), identity)
-              .map(_.hex),
-            Some(reason.hex),
+            ConwayFailureCborCheck
+              .direct(failures.toChain.toVector.map(ConwayLedgerPredFailure.ConwayUtxowFailure(_)))
+              .hex,
+            reason.hex,
             s"${r.label}: $failures"
           )
         case other => fail(s"${r.label}: $other, the reference's ${r.reason.map(_.hex)}")
@@ -285,8 +272,9 @@ class RedeemerIndexReferenceSuite extends FunSuite:
   }
 
   // the era-typed LEDGER whole on the Conway cases, from the same chain: the case the reference
-  // accepted is admitted and leaves the flat LEDGER's state and counters, and a refused one's failures, one level
-  // below the root as under MEMPOOL, encode to the reference's refusal byte for byte
+  // accepted is admitted, spends its inputs and runs each of its scripts once, and a refused one's
+  // failures, one level below the root as under MEMPOOL, encode to the reference's refusal byte
+  // for byte
   records.filter(_.era == Era.Conway).foreach { r =>
     test(s"${r.era} ${r.kind}: the era-typed LEDGER's verdict is the reference's") {
       val flatTx = r.tx
@@ -315,16 +303,8 @@ class RedeemerIndexReferenceSuite extends FunSuite:
       val history = Horizon
         .History(Vector.empty, Horizon.Edge(0, 0, 0), params, Some(params))
         .at(Horizon.Transition.Unknown(Some(env.slot)))
-      val u = EraUTxO.conway
       val t = EraTx.conway
       val body = t.body[TxLevel.Top](tx)(using t.bodyOf.top)
-      val purposes = ConwayUtxowPredFailure.storedPurposes(
-        u.getScriptsNeeded[TxLevel.Top](utxo, body)(using u.txOf.bodyOf.top),
-        utxo
-      )
-      val read = xyz.kd5ujc.scarab.ledger.era.rules.ConwayGovPredFailure.readOf(
-        EraTxBody.conway.proposalProcedures[TxLevel.Top](body)(using EraTxBody.conway.top).toVector
-      )
       def judged(depth: Int) = EraLedgerRun.ledger(
         globals,
         xyz.kd5ujc.scarab.ledger.era.rules.LedgerEnv[Conway](
@@ -351,43 +331,33 @@ class RedeemerIndexReferenceSuite extends FunSuite:
       (judged(0), r.reason) match
         case (Right(Right((state, events))), None) =>
           assert(r.accepted, r.label)
-          val flat = xyz.kd5ujc.scarab.ledger.rules.Judgment
-            .run(
-              xyz.kd5ujc.scarab.ledger.rules.Ledger,
-              xyz.kd5ujc.scarab.ledger.rules.Judgment.Policy.Accumulate
-            )(
-              globals,
-              xyz.kd5ujc.scarab.ledger.rules.LedgerEnv(env, nes.es.chainAccount.treasury),
-              xyz.kd5ujc.scarab.ledger.rules.Counted(ls, PlutusStats.zero),
-              flatTx
-            )
-            .fold(e => fail(s"${r.label}: flat defect $e"), identity)
-            .fold(fs => fail(s"${r.label}: the flat LEDGER refused $fs"), identity)
-          assert(cats.Eq[LedgerState[Conway]].eqv(state, flat.state), r.label)
-          // the counters the scripts' events give through LEDGER's embedding are the flat rule's
+          // UTXO's `updateUTxOState`: the inputs spent and the outputs added
+          // (`Shelley/Rules/Utxo.hs:584-600`, cardano-ledger f649f975)
+          val after = state.utxo.utxo.utxo
+          val b = EraTxBody.conway
+          b.inputs[TxLevel.Top](body)(using b.top).foreach { in =>
+            assert(!after.contains(in), s"${r.label}: $in is spent")
+          }
+          val id = b.id[TxLevel.Top](body)(using b.top)
+          b.outputs[TxLevel.Top](body)(using b.top).indices.foreach { ix =>
+            assert(after.contains(TxIn(id, BigInt(ix))), s"${r.label}: output $ix is added")
+          }
+          // one passing transaction, each redeemer's script run once: UTXOS's one
+          // `SuccessfulPlutusScriptsEvent` with every script (`Babbage/Rules/Utxos.hs:155`,
+          // cardano-ledger f649f975), through LEDGER's embedding
+          val redeemers = flatTx.witnesses.redeemers.size.toLong
+          assert(redeemers > 0, r.label)
           assertEquals(
             EraLedgerRun.counters(t.isValid(tx) == IsPhase2Valid.Phase2Valid, events),
-            Some((flat.plutus.succeeded, flat.plutus.failed, flat.plutus.scripts)),
+            Some((1L, 0L, redeemers)),
             r.label
           )
-          assert(flat.plutus.scripts > 0, r.label)
         case (Right(Left(_)), Some(reason)) =>
           val era = judged(1) match
             case Right(Left(fs)) => fs.toChain.toVector
             case other           => fail(s"${r.label}: one level down, $other")
-          // the era failures written by their own encoder, without the flat form
+          // the era failures written by their own encoder
           assertEquals(ConwayFailureCborCheck.direct(era).hex, reason.hex, s"${r.label}: direct")
-          val failures = era.map(f =>
-            EraLedgerRun.flat(f, purposes, read).fold(e => fail(s"${r.label}: $e"), identity)
-          )
-          assertEquals(
-            FlatRefusal
-              .applyTxError(r.era, failures)
-              .fold(error => fail(error.message), identity)
-              .map(_.hex),
-            Some(reason.hex),
-            s"${r.label}: $failures"
-          )
         case other => fail(s"${r.label}: $other, the reference's ${r.reason.map(_.hex)}")
     }
   }

@@ -76,51 +76,103 @@ class RemainingPredicateReferenceSuite extends FunSuite:
           minPoolCost = field[BigInt](row, "minCost"),
           poolDeposit = 0
         )
-      val env = CertEnv(id, pp, 5, None, Map.empty)
-      def apply(state: PState, p: PoolParams) = JudgedSts(Pool)(LedgerFailure.Rejected(id, _))(
-        TestLedger.globals,
-        env,
-        state,
-        PoolCert.RegPool(p)
-      )
-      val empty = Empty.ledgerState[Conway](pp).cert.pState
-      val before = field[Option[String]](row, "previous").fold(empty)(old =>
-        apply(empty, params(old)).fold(e => fail(s"$name prior registration: $e"), identity)
-      )
       val result = field[Json](row, "result")
-      // POOL applied as the root of the judgment, as the native harness applies it (`applySTS`):
-      // every failure it records, in the order the reference reports them
-      Judgment.run(Pool, Judgment.Policy.Accumulate)(
-        TestLedger.globals,
-        env,
-        before,
-        PoolCert.RegPool(params(field[String](row, "params")))
-      ) match
-        case Right(Right(state)) =>
-          assert(field[Boolean](result, "accepted"), name)
-          assertEquals(state, poolState(field[String](result, "stateCbor")), name)
-        case Right(Left(failures)) =>
-          assert(!field[Boolean](result, "accepted"), name)
-          val pool = failures.toChain.toVector.map {
-            case PredicateFailure.Certs(CertsFailure.Cert(CertFailure.Pool(f))) => f
-            case other => fail(s"$name: not a POOL failure: $other")
-          }
-          val actual = pool.map(f => CborOut.build(w => FailureCbor.pool(w, f)))
-          val expected = field[Vector[String]](result, "failureCbor").map(hex)
-          assertEquals(actual, expected, name)
-          // The shared POOL encoding must reach clients in every Shelley-based era.
-          for
-            (f, bytes) <- pool.zip(actual)
-            era <- Vector(Era.Shelley, Era.Allegra, Era.Mary, Era.Alonzo, Era.Babbage, Era.Conway)
-          do
-            val reason = FlatRefusal
-              .applyTxError(era, Vector(PredicateFailure.pool(f)))
-              .fold(error => fail(error.message), identity)
-              .getOrElse(fail(s"$name $era encoding"))
-            assert(reason.hex.endsWith(bytes.hex), s"$name $era")
-        case Left(defect) => fail(s"$name defect: $defect")
+      val empty = Empty.ledgerState[Conway](pp).cert.pState
+      if field[Int](row, "major") >= 9 then conwayPool(name, pp, empty, row, result)
+      else
+        val env = CertEnv(id, pp, 5, None, Map.empty)
+        def apply(state: PState, p: PoolParams) = JudgedSts(Pool)(LedgerFailure.Rejected(id, _))(
+          TestLedger.globals,
+          env,
+          state,
+          PoolCert.RegPool(p)
+        )
+        val before = field[Option[String]](row, "previous").fold(empty)(old =>
+          apply(empty, params(old)).fold(e => fail(s"$name prior registration: $e"), identity)
+        )
+        // POOL applied as the root of the judgment, as the native harness applies it (`applySTS`):
+        // every failure it records, in the order the reference reports them
+        Judgment.run(Pool, Judgment.Policy.Accumulate)(
+          TestLedger.globals,
+          env,
+          before,
+          PoolCert.RegPool(params(field[String](row, "params")))
+        ) match
+          case Right(Right(state)) =>
+            assert(field[Boolean](result, "accepted"), name)
+            assertEquals(state, poolState(field[String](result, "stateCbor")), name)
+          case Right(Left(failures)) =>
+            assert(!field[Boolean](result, "accepted"), name)
+            val pool = failures.toChain.toVector.map {
+              case PredicateFailure.Certs(CertsFailure.Cert(CertFailure.Pool(f))) => f
+              case other => fail(s"$name: not a POOL failure: $other")
+            }
+            val actual = pool.map(f => CborOut.build(w => FailureCbor.pool(w, f)))
+            val expected = field[Vector[String]](result, "failureCbor").map(hex)
+            assertEquals(actual, expected, name)
+            // The shared POOL encoding must reach clients in every Shelley-based era before
+            // Conway; Conway's is its era encoder's ([[conwayPool]]).
+            for
+              (f, bytes) <- pool.zip(actual)
+              era <- Vector(Era.Shelley, Era.Allegra, Era.Mary, Era.Alonzo, Era.Babbage)
+            do
+              val reason = FlatRefusal
+                .applyTxError(era, Vector(PredicateFailure.pool(f)))
+                .fold(error => fail(error.message), identity)
+                .getOrElse(fail(s"$name $era encoding"))
+              assert(reason.hex.endsWith(bytes.hex), s"$name $era")
+          case Left(defect) => fail(s"$name defect: $defect")
     }
   }
+
+  /** A row of Conway's protocol versions on Conway's era POOL (`EraCertsRun.pool`), at the root as
+    * the native harness applies it, every failure accumulated: the reference's state, or each of
+    * its failures as [[ConwayFailureCbor]] writes it under CERTS's `CertFailure` (1) and CERT's
+    * `PoolFailure` (2) (`Conway/Rules/Certs.hs:167` and `Conway/Rules/Cert.hs:268`, cardano-ledger
+    * f649f975), the POOL failure's bytes the reference's.
+    */
+  private def conwayPool(
+      name: String,
+      pp: ProtocolParams,
+      empty: PState,
+      row: Json,
+      result: Json
+  ): Unit =
+    import xyz.kd5ujc.scarab.ledger.era.{EraCertsRun, PParams, PoolCert as EraPoolCert}
+    import xyz.kd5ujc.scarab.ledger.era.conway.ConwayPParams
+    import xyz.kd5ujc.scarab.ledger.era.rules.{
+      ConwayCertPredFailure,
+      ConwayCertsPredFailure,
+      PoolEnv
+    }
+    val env = PoolEnv[Conway](
+      EpochNo.fromBigInt(5).fold(e => fail(s"$e"), identity),
+      PParams[Conway](ConwayPParams.fromStored(pp).fold(e => fail(s"$name: $e"), identity))
+    )
+    def judge(state: PState, p: PoolParams) =
+      EraCertsRun
+        .pool(TestLedger.globals, env, state, EraPoolCert.RegPool(Build.stakePoolParams(p)))
+        .fold(e => fail(s"$name defect: $e"), identity)
+    val before = field[Option[String]](row, "previous").fold(empty)(old =>
+      judge(empty, params(old)).fold(e => fail(s"$name prior registration: $e"), _._1)
+    )
+    judge(before, params(field[String](row, "params"))) match
+      case Right((state, _)) =>
+        assert(field[Boolean](result, "accepted"), name)
+        assertEquals(state, poolState(field[String](result, "stateCbor")), name)
+      case Left(failures) =>
+        assert(!field[Boolean](result, "accepted"), name)
+        val actual = failures.toChain.toVector.map(f =>
+          ConwayFailureCbor
+            .certs(
+              ConwayCertsPredFailure
+                .CertFailure[Conway](ConwayCertPredFailure.PoolFailure[Conway](f))
+            )
+            .fold(e => fail(s"$name: $e"), identity)
+        )
+        val expected =
+          field[Vector[String]](result, "failureCbor").map(b => hex("8201" + "8202" + b))
+        assertEquals(actual, expected, name)
 
   /** The failure the era's UTXO reports for a failure of Shelley's predicate, as captured. The
     * capture calls `Shelley.validateOutputBootAddrAttrsTooBig` itself, before the era's UTXO
