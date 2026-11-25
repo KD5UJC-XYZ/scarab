@@ -5309,6 +5309,103 @@
     }
    ],
    "listings": []
+  },
+  {
+   "id": "perf-69",
+   "section": "63",
+   "heading": "63. The evaluator's allocation per builtin application and per operand (#1411)",
+   "subject": "The evaluator's allocation per builtin application and per operand (#1411)",
+   "date": "2026-11-24",
+   "dateSource": "text",
+   "issues": [
+    "#1411"
+   ],
+   "commits": [
+    "929f794a6"
+   ],
+   "links": [],
+   "page": "rewards-and-evaluation",
+   "results": [
+    {
+     "id": "perf-69.t1",
+     "header": [
+      "Share of allocated bytes, before (`929f794a6`)",
+      "Source"
+     ],
+     "separator": "|---:|---|",
+     "rows": [
+      [
+       "about 50%",
+       "objects made for each saturated builtin application: argument `Vector`s and their builders, list cells, `Right` and `Some`, `ExBudget` and `Costs$Last`, closures, `Prepared`, `Outcome.Success`, `Step.Next`"
+      ],
+      [
+       "about 26%",
+       "`java.math.BigInteger` arithmetic of one program"
+      ],
+      [
+       "about 17%",
+       "continuation frames, environment cells and closures of the machine"
+      ]
+     ]
+    },
+    {
+     "id": "perf-69.t2",
+     "header": [
+      "`uplc-turbo`, 3,997 programs",
+      "Programs met",
+      "Over the memory limit",
+      "Over the CPU limit",
+      "Bytes per memory unit, median",
+      "95th percentile",
+      "Bytes allocated",
+      "Median `cpu_us`"
+     ],
+     "separator": "|---|---:|---:|---:|---:|---:|---:|---:|",
+     "rows": [
+      [
+       "before (`929f794a6`)",
+       "3,625",
+       "366",
+       "11",
+       "1.685",
+       "2.296",
+       "6.20 GB",
+       "108.4"
+      ],
+      [
+       "after, run 1",
+       "3,958",
+       "27",
+       "15",
+       "0.621",
+       "0.818",
+       "3.46 GB",
+       "105.9"
+      ],
+      [
+       "after, run 2",
+       "3,966",
+       "27",
+       "6",
+       "0.621",
+       "0.818",
+       "3.46 GB",
+       "106.2"
+      ],
+      [
+       "after, run 3",
+       "3,959",
+       "27",
+       "13",
+       "0.622",
+       "0.820",
+       "3.47 GB",
+       "111.6"
+      ]
+     ]
+    }
+   ],
+   "listings": []
   }
  ]
 }
