@@ -938,35 +938,35 @@ final class Forger[F[_]: Async, S](
                             Vector(Held.Kes(slot, generation, Left(failure), at))
                           ).map(Forger.Decision.Ends(_))
                         case Right(Right(_)) =>
-                          hot.inForce.get.flatMap(_.vrf.fold(F.pure(Forger.Decision.Disabled())) {
-                            vrf =>
-                              val inputs = Forger.inputsOf(
-                                geometry,
-                                epoch,
-                                view,
-                                pool.id,
-                                config.activeSlotsCoeff,
-                                vrf
-                              )
-                              schedule.answer(slot, inputs).flatMap {
-                                case LeaderSchedule.Answer.Led(_) => F.pure(Forger.Decision.Led())
-                                case LeaderSchedule.Answer.NotLed =>
-                                  ends(ForgeTrace.NodeNotLeader(slot), reached = true)
-                                case LeaderSchedule.Answer.Uncovered =>
-                                  hot.keys
-                                    .evaluating(vrf)(Leadership.check(slot, inputs, _))
-                                    .flatMap {
-                                      case Some(Left(_: ForgeError.NotLeader)) =>
-                                        ends(ForgeTrace.NodeNotLeader(slot), reached = true)
-                                      // led, a check that fails otherwise, or one the credentials in
-                                      // force no longer make (a reload replaced the VRF key since):
-                                      // the forging fiber's attempt ends the slot as the reference
-                                      // would
-                                      case Some(Left(_) | Right(_)) | None =>
-                                        F.pure(Forger.Decision.Led())
-                                    }
+                          // the schedule's answer, or the check, under a lease on the credentials
+                          // in force, with the inputs made from their VRF key under that lease
+                          schedule.schedules.get.flatMap(schedules =>
+                            hot.keys
+                              .lent { (vrf, evaluations) =>
+                                val inputs = Forger.inputsOf(
+                                  geometry,
+                                  epoch,
+                                  view,
+                                  pool.id,
+                                  config.activeSlotsCoeff,
+                                  vrf
+                                )
+                                schedules.answer(slot, inputs) match
+                                  case LeaderSchedule.Answer.Led(cert) => Right(cert)
+                                  case LeaderSchedule.Answer.NotLed =>
+                                    Left(ForgeError.NotLeader(slot))
+                                  case LeaderSchedule.Answer.Uncovered =>
+                                    Leadership.check(slot, inputs, evaluations)
                               }
-                          }))
+                              .flatMap {
+                                case None => F.pure(Forger.Decision.Disabled())
+                                case Some(Left(_: ForgeError.NotLeader)) =>
+                                  ends(ForgeTrace.NodeNotLeader(slot), reached = true)
+                                // led, or a check that fails otherwise: the forging fiber's attempt
+                                // ends the slot as the reference would
+                                case Some(Left(_) | Right(_)) => F.pure(Forger.Decision.Led())
+                              }
+                          ))
                   }
         }
 
@@ -1243,34 +1243,39 @@ final class Forger[F[_]: Async, S](
         }
     }
 
-  /** The leader check of a slot the forging fiber forges (decision 5): under inputs equal to the
-    * schedule's, the slot's output evaluated again and the schedule's certificate; otherwise
-    * [[Leadership.check]] afresh. Each evaluation borrows the VRF key the inputs name from the
-    * credentials in force (none: they no longer hold it, [[Leadership.Keys]]).
+  /** The leader check of a slot the forging fiber forges (decision 5), with the evaluations `key`
+    * of the key `inputs` name: under inputs equal to those of the schedules `schedules`, the slot's
+    * output evaluated again and the schedule's certificate; otherwise [[Leadership.check]] afresh.
     */
   private def scheduled(
       slot: BigInt,
-      inputs: EpochInputs
-  ): F[Option[Either[ForgeError, VrfCert]]] =
-    schedule.answer(slot, inputs).flatMap {
+      inputs: EpochInputs,
+      key: Leadership.Evaluator,
+      schedules: LeaderSchedule.Schedules
+  ): Either[ForgeError, VrfCert] =
+    schedules.answer(slot, inputs) match
       case LeaderSchedule.Answer.Led(cert) =>
-        hot.keys.evaluating(inputs.vrf)(key =>
-          Leadership.decide(
-            slot,
-            inputs.nonce,
-            Leadership.Evaluator.again(key, cert),
-            inputs.stake,
-            inputs.total,
-            inputs.activeSlotsCoeff
-          )
+        Leadership.decide(
+          slot,
+          inputs.nonce,
+          Leadership.Evaluator.again(key, cert),
+          inputs.stake,
+          inputs.total,
+          inputs.activeSlotsCoeff
         )
-      case LeaderSchedule.Answer.NotLed    => F.pure(Some(Left(ForgeError.NotLeader(slot))))
-      case LeaderSchedule.Answer.Uncovered => checked(slot, inputs)
-    }
+      case LeaderSchedule.Answer.NotLed    => Left(ForgeError.NotLeader(slot))
+      case LeaderSchedule.Answer.Uncovered => Leadership.check(slot, inputs, key)
 
-  /** The leader check of the reference's per-slot loop: [[Leadership.check]] of the slot. */
-  private def checked(slot: BigInt, inputs: EpochInputs): F[Option[Either[ForgeError, VrfCert]]] =
-    hot.keys.evaluating(inputs.vrf)(Leadership.check(slot, inputs, _))
+  /** The leader check of the reference's per-slot loop: [[Leadership.check]] of the slot, which
+    * reads no schedule.
+    */
+  private def checked(
+      slot: BigInt,
+      inputs: EpochInputs,
+      key: Leadership.Evaluator,
+      @unused schedules: LeaderSchedule.Schedules
+  ): Either[ForgeError, VrfCert] =
+    Leadership.check(slot, inputs, key)
 
   /** The per-slot decision of one slot, as the reference's forging thread makes it at the slot: the
     * attempt with [[Leadership.check]], its block handed over at once, and its lines published as
@@ -1432,7 +1437,7 @@ final class Forger[F[_]: Async, S](
     */
   private def attempt(
       slot: BigInt,
-      decide: (BigInt, EpochInputs) => F[Option[Either[ForgeError, VrfCert]]],
+      decide: Forger.Decide,
       admitted: Option[Admitted]
   )(using handle: Handle[F, NodeError], terminal: Raise[F, Fatal]): F[Attempted[F, S]] =
     (Ref.of[F, Vector[Held[F]]](Vector.empty), hot.inForce.get.map(_.generation)).flatMapN {
@@ -1454,7 +1459,7 @@ final class Forger[F[_]: Async, S](
 
   private def steps(
       slot: BigInt,
-      decide: (BigInt, EpochInputs) => F[Option[Either[ForgeError, VrfCert]]],
+      decide: Forger.Decide,
       hold: Holding,
       admitted: Option[Admitted]
   )(using Handle[F, NodeError], Raise[F, Fatal]): Step[Prepared[S]] =
@@ -1487,7 +1492,7 @@ final class Forger[F[_]: Async, S](
       period: BigInt,
       context: Forger.Context[S],
       crossed: Forger.Crossed,
-      decide: (BigInt, EpochInputs) => F[Option[Either[ForgeError, VrfCert]]],
+      decide: Forger.Decide,
       hold: Holding,
       admitted: Option[Admitted]
   )(using Handle[F, NodeError], Raise[F, Fatal]): Step[Prepared[S]] =
@@ -1503,30 +1508,35 @@ final class Forger[F[_]: Async, S](
         case Right(Left(failure)) =>
           EitherT.left[KesInfo](hold.kes(slot, generation, Left(failure)).as(Why.Refused))
         case Right(Right(info)) => perform(hold.kes(slot, generation, Right(info)).as(info))
-      // the VRF verification key of the credentials in force: a reload replaces it with the key
-      // it read
-      vrf <- perform(hot.locked(c => F.pure(c.vrf))).flatMap(_.fold(disabled)(proceed))
-      inputs = Forger.inputsOf(
-        geometry,
-        epoch,
-        crossed.view,
-        pool.id,
-        config.activeSlotsCoeff,
-        vrf
-      )
-      // none: a reload replaced the VRF key or disabled forging since, and the slot ends as it
-      // does when that happens before the block is signed ([[assemble]])
-      cert <- perform(decide(slot, inputs)).flatMap {
-        case None              => disabled
-        case Some(Right(cert)) => proceed(cert)
-        case Some(Left(_: ForgeError.NotLeader)) =>
+      _ <- perform(pause(Forger.Point.Checking(slot)))
+      schedules <- perform(schedule.schedules.get)
+      // the leader check under a lease on the credentials in force, with their VRF key: the inputs
+      // are made from that key's verification key under the same lease, so that no reload comes
+      // between the key the inputs name and the key checked (a reload replaces it with the key it
+      // read); none while forging is disabled
+      leased <- perform(
+        hot.keys.lent { (vrf, evaluations) =>
+          val inputs = Forger.inputsOf(
+            geometry,
+            epoch,
+            crossed.view,
+            pool.id,
+            config.activeSlotsCoeff,
+            vrf
+          )
+          (vrf, inputs, decide(slot, inputs, evaluations, schedules))
+        }
+      ).flatMap(_.fold(disabled)(proceed))
+      (vrf, inputs, decision) = leased
+      cert <- decision match
+        case Right(cert) => proceed(cert)
+        case Left(_: ForgeError.NotLeader) =>
           EitherT.left[VrfCert](
             hold
               .line(ForgeEvent.Loop(ForgeTrace.NodeNotLeader(slot)))
               .as(Why.NotLed(generation, key))
           )
-        case Some(Left(e)) => perform(e.raise[F, VrfCert])
-      }
+        case Left(e) => perform(e.raise[F, VrfCert])
       _ <- perform(pause(Forger.Point.Rechecked(slot)))
       // `praosCheckCanForge` (`Protocol/Praos.hs` 691-711)
       _ <-
@@ -2186,6 +2196,11 @@ object Forger:
     /** A forge has made the leader check again and is about to build its block. */
     case Rechecked(slot: BigInt)
 
+    /** A forge has updated the KES key and is about to lease the credentials in force for the
+      * leader check.
+      */
+    case Checking(slot: BigInt)
+
     /** A forge has reserved the KES key and is about to update it to the slot's period. */
     case Reserved(slot: BigInt)
 
@@ -2623,6 +2638,15 @@ object Forger:
   private[forge] def keyAhead(c: Pool, kesPeriod: BigInt): Option[ForgeEvent.KesKeyAhead] =
     val at = c.kesStart + c.kesPeriod
     Option.when(c.kesPeriod > 0 && at > kesPeriod)(ForgeEvent.KesKeyAhead(at, kesPeriod))
+
+  /** A leader check of a slot under its inputs, with the evaluations of the key they name and the
+    * schedules as they are: the schedule's, with its re-check, or the per-slot one.
+    */
+  private[forge] type Decide =
+    (BigInt, EpochInputs, Leadership.Evaluator, LeaderSchedule.Schedules) => Either[
+      ForgeError,
+      VrfCert
+    ]
 
   /** What the forger keeps of the credentials it starts with, none of it secret (#1418): the pool's
     * id, the hash of the VRF verification key a registration of it carries, and where the KES key

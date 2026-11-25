@@ -68,7 +68,7 @@ class EpochInputsSuite extends FailsOnUncaught with ForgeFixture:
         slots.foreach(s =>
           assertEquals(
             decided.get(s),
-            Some(LentKeys.check(s, derived(s), p.creds.vrf).isRight),
+            Some(LentKeys.check(s, derived(s), p.vrfRead).isRight),
             s"slot $s"
           )
         )

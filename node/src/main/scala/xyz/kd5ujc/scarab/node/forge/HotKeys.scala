@@ -335,13 +335,11 @@ final class HotKeys[F[_]: Async] private (
     * has, and with the key it began with, whatever a reload does meanwhile.
     */
   private[forge] val keys: Leadership.Keys[F] = new Leadership.Keys[F]:
+    def lent[A](f: (Bytes, Leadership.Evaluator) => A): F[Option[A]] =
+      generations.leased(c => F.blocking(f(c.vrf.publicKey, Leadership.Evaluator.of(c.vrf))))
+
     def evaluating[A](vrf: Bytes)(f: Leadership.Evaluator => A): F[Option[A]] =
-      generations
-        .leased(c =>
-          if c.vrf.publicKey == vrf then F.blocking(f(Leadership.Evaluator.of(c.vrf))).map(Some(_))
-          else F.pure(None)
-        )
-        .map(_.flatten)
+      lent((key, evaluations) => Option.when(key == vrf)(f(evaluations))).map(_.flatten)
 
   /** Nothing, or the first failure raised. */
   private def healthy(using Raise[F, Fatal]): F[Unit] =

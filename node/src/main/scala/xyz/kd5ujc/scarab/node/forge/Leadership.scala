@@ -44,9 +44,14 @@ object Leadership:
     * evaluated, and the key is erased once the evaluations in flight under it end.
     */
   private[forge] trait Keys[F[_]]:
-    /** `f` with the evaluations of the VRF key in force, if its verification key is `vrf`; none
-      * while another key or none is in force. `f` is a computation, not an effect: the lease lasts
-      * as long as it runs, and so never across a wait.
+    /** `f` with the VRF key in force, its verification key and its evaluations, both of the one
+      * generation of credentials leased for it; none while none is in force. `f` is a computation,
+      * not an effect: the lease lasts as long as it runs, and so never across a wait.
+      */
+    def lent[A](f: (Bytes, Evaluator) => A): F[Option[A]]
+
+    /** [[lent]], if the key in force is the key whose verification key is `vrf`; none while another
+      * key or none is in force.
       */
     def evaluating[A](vrf: Bytes)(f: Evaluator => A): F[Option[A]]
 
