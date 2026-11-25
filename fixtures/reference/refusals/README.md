@@ -24,7 +24,8 @@ A case holds `item` (the exact LocalTxSubmission payload `[era index, #6.24(tx)]
 and UTxO files it names, `reason` (the reference's reason item) with its sha256, `families` (the rule of
 each failure, read from the reference's constructor tags), `expect` (the constructor names the case was
 built to provoke) and `rendered` (what `cardano-cli transaction submit` printed for a second submission
-of the same transaction; a diagnostic only, never compared).
+of the same transaction; a diagnostic only, never compared). A case the reference judged after admitting
+other transactions on the same connection also holds `before`, their items in the order sent.
 
 The families are UTXO, UTXOW, UTXOS, PPUP, LEDGER (the ledger rule's own failures), CERTS, DELEGS, DELEG, POOL,
 GOVCERT, GOV and MEMPOOL. `scripts/tests/test_refusalcorpus.py` checks that each recorded family is the
@@ -58,7 +59,8 @@ former name is read as that build, which has the same cardano-ledger, so the rec
 For a **Conway** case the suite decodes the state and UTxO with Scarab's Haskell-state codecs (a state
 that does not read and write back byte for byte fails its own test), ticks it to the slot after the tip
 (`Tick`, then `ConwayPoolLedger.of`, the pool's Conway ledger), and puts `item` through Scarab's own node-to-client path:
-`LocalSubmission.unwrap`, `MempoolState.add` on an empty mempool, `LocalSubmission.reasonItem`. The
+`LocalSubmission.unwrap`, `MempoolState.add` on an empty mempool (after admitting the case's `before`
+items, if it has any), `LocalSubmission.reasonItem`. The
 result must equal `reason` byte for byte: every failure, their number and their order.
 
 For a **Shelley, Allegra, Mary, Alonzo or Babbage** case the same state is ticked and the transaction
@@ -135,6 +137,56 @@ fails exactly the cases that break them. All five corpora were recorded from a c
 commit its `corpus.json` names. The Alonzo corpus's setup sent its change to the funder key's enterprise
 address, the committed builder to the funder's base address.
 
+The `refusalconstructors` corpora (2026-11-25, #85) hold the constructors of Conway's era failure encoder
+(`ConwayFailureCbor`) that no earlier corpus reached, the order in which the reference lists a failure's
+items, and Conway's MEMPOOL rule. They come from one cluster, recorded in this order, since the protocol
+version only goes up. `scripts/tests/test_refusalconstructors.py` requires each refusal to be exactly the
+failures `refusalconstructors.TAGS` names, in that order, and each order case's map to have arrived out of
+the reference's key order while the refusal lists its items in key order.
+`scripts/devnet/refusalconstructors.py` cites the reference's check for each case at cardano-ledger f649f975.
+
+| corpus | protocol | cases |
+|---|---|---|
+| `conway-constructors` | 10.0 | UTXOW `InvalidWitnessesUTXOW`, `ScriptWitnessNotValidatingUTXOW`, `MissingTxBodyMetadataHash`, `MissingTxMetadata`, `ConflictingMetadataHash`, `InvalidMetadata` (a malformed auxiliary Plutus script), `UnspendableUTxONoDatumHash`; UTXO `TooManyCollateralInputs`, `IncorrectTotalCollateralField`, `BabbageNonDisjointRefInputs`; POOL `WrongNetworkPOOL`, `PoolMedataHashTooBig`; GOVCERT `ConwayCommitteeHasPreviouslyResigned`; and an empty input set, which MEMPOOL refuses |
+| `conway-gov-order` | 10.0 | GOV `VotingOnExpiredGovAction`, `GovActionsDoNotExist`, `VotersDoNotExist`, `DisallowedVoters`, `TreasuryWithdrawalReturnAccountsDoNotExist`, each with several items written in descending key order |
+| `conway-mempool` | 10.0 | MEMPOOL's refusal of an unelected committee member's vote, alone and with LEDGER's failures; refusals judged after the reference admitted a proposal (and a vote on it) |
+| `conway-constructors-v11` | 11.0 | LEDGER `ConwayIncompleteWithdrawals`, `ConwayWithdrawalsMissingAccounts` (their maps out of key order); POOL `VRFKeyHashAlreadyRegistered`, `StakePoolCostTooLowPOOL`; UTXOW `ScriptIntegrityHashMismatch` |
+
+The reference lists a failure's items in the order of its keys, as Haskell orders them, not as the
+transaction's maps arrived and not in canonical CBOR order: a script credential sorts before a key
+credential, where its CBOR tag or address header sorts after. MEMPOOL's unelected-voter text comes after
+LEDGER's failures in the refusal, though its check runs first. The two `conway-mempool` cases whose records
+hold `before` were judged on the connection that had just submitted those items, which the reference
+admitted: a stake pool's vote on a treasury withdrawal the mempool holds is `DisallowedVoters`, not
+`GovActionsDoNotExist`, and a hot key authorised for a member that a held proposal names is not
+`ConwayCommitteeIsUnknown`. The suite replays them the same way: Scarab's mempool must admit each `before`
+item, then the case is judged against the mempool they leave. Minimum pool cost is 0 in this cluster's genesis,
+so the version 11 builder first enacts a parameter change of `minPoolCost` that the committee and the three
+DReps vote for.
+
+Pool 2 of that cluster ran cardano-node 11.2.1 (`up --node-image 2=cardano-reference-11.2.1:local`); node 1,
+which recorded every corpus, ran 11.1.3. Each case's item was then submitted to node 1 and node 2 at one tip:
+11.2.1's refusal was byte for byte 11.1.3's for every case without `before` but one, and the same failures for
+those with it, from new transactions. The one is `ledger-withdrawal-amounts-wrong-v11`, whose refusal holds each
+account's balance: at protocol version 11, node 2's reward balances and treasury differed from those of nodes 1
+and 3 at the same tip, so 11.2.1 expected other amounts, for the same accounts and the same failure. No 11.2
+corpus is kept, since Scarab does not read the 11.2 build's state layout yet (`ReferenceBuildNotYet.Layout`).
+The Leios build's cluster runs Conway at protocol version 12 and was not recorded.
+
+Some constructors cannot be reached by a transaction submitted to the reference:
+- `InputSetEmptyUTxO`: MEMPOOL refuses a transaction none of whose inputs the UTxO holds and skips LEDGER
+  (`Conway/Rules/Mempool.hs:113-122`); `mempool-inputs-empty` records that refusal.
+- `OutputTooSmallUTxO` (UTXO tag 9): Conway's UTXO checks outputs with Babbage's check, which reports
+  `BabbageOutputTooSmallUTxO` (`Babbage/Rules/Utxo.hs:384-385`).
+- `OutsideForecast`: as above, the slot after a mempool's tip is never past the history it extends.
+- `NoWitness`: no rule constructs it at f649f975 (only its codec does).
+- `NoCostModel`: every language has a cost model in the cluster's genesis, and a parameter change merges
+  cost models and never removes one (`Conway/PParams.hs:1205-1209`; `updateCostModels`, `libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/CostModels.hs:404-415`).
+- A metadatum over 64 bytes: the decoder refuses it before any rule (`decodeMetadatum`,
+  `libs/cardano-ledger-core/src/Cardano/Ledger/Metadata.hs:153-179`), and the node closes the connection.
+- `DisallowedProposalDuringBootstrap` and `DisallowedVotesDuringBootstrap`: protocol version 9 only
+  (`Conway/Era.hs:257-258`); the cluster starts at 10.
+
 These expectations come from the released node's submission path. Separately, the offline
 `UpstreamFreshLedgerConformanceSuite` and `UpstreamMultiLedgerConformanceSuite` use the same production
 transaction rules under accumulation, with a native-shaped LEDGERS adapter, and compare all original
@@ -175,6 +227,16 @@ python3 scripts/devnet.py --name <yours> down
 python3 scripts/devnet.py --name <yours> up-eras --final-era babbage
 python3 scripts/devnet.py --name <yours> refusal-corpus --era babbage --corpus babbage-collateral \
     --cases refusalcoverage:babbage_collateral
+python3 scripts/devnet.py --name <yours> down
+python3 scripts/devnet.py --name <yours> up --node-image 2=cardano-reference-11.2.1:local
+python3 scripts/devnet.py --name <yours> refusal-corpus --corpus conway-constructors \
+    --cases refusalconstructors:conway_constructors
+python3 scripts/devnet.py --name <yours> refusal-corpus --corpus conway-gov-order \
+    --cases refusalconstructors:conway_gov_order   # waits about two epochs for its vote cases
+python3 scripts/devnet.py --name <yours> refusal-corpus --corpus conway-mempool \
+    --cases refusalconstructors:conway_mempool
+python3 scripts/devnet.py --name <yours> refusal-corpus --corpus conway-constructors-v11 \
+    --cases refusalconstructors:conway_constructors_v11   # protocol version 11, then a parameter change
 python3 scripts/devnet.py --name <yours> down
 python3 scripts/check_test_coverage.py --refresh-fixtures
 ```
