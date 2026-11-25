@@ -9,7 +9,7 @@ import org.scalacheck.Prop.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.*
 import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.TxMeasure
-import xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor
+import xyz.kd5ujc.scarab.node.ntc.{ConwayFailureCbor, ConwayFailureCborCheck}
 import xyz.kd5ujc.scarab.ledger.era
 import xyz.kd5ujc.scarab.ledger.era.rules.{ConwayLedgerPredFailure, ConwayUtxoPredFailure}
 import xyz.kd5ujc.scarab.ledger.state.Conway
@@ -387,12 +387,17 @@ class MempoolMeasureSuite extends munit.FunSuite with ScalaCheckSuite:
           full.message,
           s"mempool full: ${sizeOf(t2) + 4L} bytes needed, ${s1.free.bytes} free"
         )
+        // Conway's free-text `ConwayMempoolFailure` of the problem, by the era's encoder
         assertEquals(
           refused(full),
-          PredicateFailureCbor
-            .applyTxError(Vector(PredicateFailure.Mempool(full.problem)))
+          ConwayFailureCbor
+            .applyTxError(
+              cats.data.NonEmptyList
+                .one(ConwayLedgerPredFailure.ConwayMempoolFailure[Conway](full.problem))
+            )
             .fold(error => fail(error.message), identity)
         )
+        assertEquals(ConwayFailureCborCheck.freeText(refused(full)), full.problem.message)
       case other => fail(s"expected a full pool, received $other")
   }
 

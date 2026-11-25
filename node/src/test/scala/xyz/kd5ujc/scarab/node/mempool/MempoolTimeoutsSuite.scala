@@ -16,7 +16,7 @@ import xyz.kd5ujc.scarab.ledger.rules.{NativeRules, PreConway}
 import xyz.kd5ujc.scarab.ledger.state.{Babbage, Build, Conway, ShelleyBasedEra}
 import xyz.kd5ujc.scarab.network.{DiffTime, LocalTxSubmissionServer, NetworkError}
 import xyz.kd5ujc.scarab.node.assertions.Assertions
-import xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor
+import xyz.kd5ujc.scarab.node.ntc.ConwayFailureCbor
 import xyz.kd5ujc.scarab.plutus.{
   BackendFailure,
   EvalFailure,
@@ -172,10 +172,14 @@ class MempoolTimeoutsSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
               case other => fail(s"$other")
           case other => fail(s"$other")
       case other => fail(s"$other")
+    // and it is Conway's era encoder's `ConwayMempoolFailure` of the problem
     assertEquals(
       Right(reply),
-      PredicateFailureCbor.applyTxError(
-        Vector(PredicateFailure.Mempool(MempoolProblem.TooSlow(took, Era.Conway, id)))
+      ConwayFailureCbor.applyTxError(
+        cats.data.NonEmptyList.one(
+          xyz.kd5ujc.scarab.ledger.era.rules.ConwayLedgerPredFailure
+            .ConwayMempoolFailure[Conway](MempoolProblem.TooSlow(took, Era.Conway, id))
+        )
       )
     )
   }

@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.node.ntc
 
 import cats.data.NonEmptyList
 import munit.{Assertions, Location}
-import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value as CborValue}
 import xyz.kd5ujc.scarab.ledger.era.rules.ConwayLedgerPredFailure
 import xyz.kd5ujc.scarab.ledger.state.Conway
 
@@ -20,6 +20,29 @@ object ConwayFailureCborCheck:
           .applyTxError(fs)
           .fold(e => Assertions.fail(s"no Conway encoding: $e"), identity)
       }
+
+  /** The text of `reply`, read as Conway's `ApplyTxErr` of one `ConwayMempoolFailure`,
+    * `[[6, [[7, text]]]]` (the era's index in the hard-fork combinator, then LEDGER's tag 7,
+    * `Conway/Rules/Ledger.hs:238` (f649f975)), failing the test where it is anything else.
+    */
+  def freeText(reply: Bytes)(using Location): String =
+    def arr(v: CborValue): Vector[CborValue] = v match
+      case CborValue.Arr(xs) => xs.map(_.value)
+      case other             => Assertions.fail(s"not an array: $other")
+    val top = Cbor.decode(reply).fold(e => Assertions.fail(e.message), _.value)
+    arr(top) match
+      case Vector(wrapper) =>
+        arr(wrapper) match
+          case Vector(CborValue.UInt(era), failures) if era == BigInt(6) =>
+            arr(failures) match
+              case Vector(one) =>
+                arr(one) match
+                  case Vector(CborValue.UInt(tag), CborValue.Text(text)) if tag == BigInt(7) =>
+                    text
+                  case other => Assertions.fail(s"not ConwayMempoolFailure: $other")
+              case other => Assertions.fail(s"not one failure: $other")
+          case other => Assertions.fail(s"not Conway's ApplyTxErr: $other")
+      case other => Assertions.fail(s"not one reason: $other")
 
   /** The constructors of `f`, from LEDGER's down to the leaf failure's, joined by `/`: which of the
     * encoder's arms a corpus reaches.
