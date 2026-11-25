@@ -188,9 +188,8 @@ class KeyFilesBytesSuite extends munit.ScalaCheckSuite:
         .map { text =>
           KeyText.read(
             s => s.adopt(text.getBytes(StandardCharsets.UTF_8)),
-            KeyFiles.KesSigningKeyType,
-            Sum6KesSigning.KeyBytes
-          )(p => Sum6KesSigning.fromEvolved(Bytes.fromArray(p))) match
+            KeyFiles.KesSigningKeyType
+          )(Sum6KesSigning.fromEvolvedPayload) match
             case KeyText.Read.Payload(_)    => "in place"
             case KeyText.Read.WrongType(_)  => "by type"
             case KeyText.Read.Other(_)      => "as text"

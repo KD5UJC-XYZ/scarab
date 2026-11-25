@@ -75,3 +75,8 @@ object Draft03Prover:
     /** The 64-byte `vrf.skey` payload; the stored public key must be the seed's. */
     def fromBytes(bytes: Bytes): Either[Failure, SigningKey] =
       Draft03Key.fromBytes(bytes).map(new SigningKey(_))
+
+    /** [[fromBytes]] of an array its caller owns and erases, of which the key copies only the seed.
+      */
+    def fromPayload(payload: Array[Byte]): Either[Failure, SigningKey] =
+      Draft03Key.fromArray(payload).map(new SigningKey(_))

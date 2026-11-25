@@ -127,8 +127,8 @@ object KeyFiles:
       file: String,
       source: KeyText.Source
   ): Either[Throwable, Either[ForgeError, Draft03Prover.SigningKey]] =
-    keyRead(file, source, VrfSigningKeyType, 64)(
-      payload => Draft03Prover.SigningKey.fromBytes(viewed(payload)),
+    keyRead(file, source, VrfSigningKeyType)(
+      Draft03Prover.SigningKey.fromPayload,
       e => ForgeError.KeyFile(file, ForgeKeyProblem.Vrf(e)),
       vrfSigningKey(file, _)
     )
@@ -219,8 +219,8 @@ object KeyFiles:
       file: String,
       source: KeyText.Source
   ): Either[Throwable, Either[ForgeError, Sum6KesSigning.SigningKey]] =
-    keyRead(file, source, KesSigningKeyType, Sum6KesSigning.KeyBytes)(
-      payload => Sum6KesSigning.fromEvolved(viewed(payload)),
+    keyRead(file, source, KesSigningKeyType)(
+      Sum6KesSigning.fromEvolvedPayload,
       ForgeError.KesKey(file, _),
       kesSigningKey(file, _)
     )
@@ -249,30 +249,26 @@ object KeyFiles:
 
   private val KesDescription = "KES Signing Key"
 
-  /** What [[KeyText.read]] found in the envelope of a key: the key, or the failure the readers of
-    * an envelope's text give, through `text` when it is not flat; outside, a failure to read it.
+  /** What [[KeyText.read]] found in the envelope of a key: the key, made by `make` from the read's
+    * buffer, which it copies what it keeps from and the read then zeroes; or the failure the
+    * readers of an envelope's text give, through `text` when the byte reader does not take it;
+    * outside, a failure to read it.
     */
   private def keyRead[F: Public, K: Public](
       file: String,
       source: KeyText.Source,
-      typ: String,
-      size: Int
+      typ: String
   )(
       make: Array[Byte] => Either[F, K],
       failure: F => ForgeError,
       text: String => Either[ForgeError, K]
   ): Either[Throwable, Either[ForgeError, K]] =
-    KeyText.read(source, typ, size)(make) match
+    KeyText.read(source, typ)(make) match
       case KeyText.Read.Unreadable(cause) => Left(cause)
       case KeyText.Read.Payload(made)     => Right(made.leftMap(failure))
       case KeyText.Read.WrongType(found) =>
         Right(Left(ForgeError.KeyFile(file, ForgeKeyProblem.EnvelopeType(typ, found))))
       case KeyText.Read.Other(envelope) => Right(text(envelope))
-
-  /** The decoded key's bytes as a value for its constructor, which copies what it keeps: a view of
-    * the read's buffer, valid during the call only, after which the read zeroes it.
-    */
-  private def viewed(payload: Array[Byte]): Bytes = Bytes.wrap(payload)
 
   private def unreadable(file: String)(cause: Throwable): ForgeError =
     ForgeError.KeyFile(file, ForgeKeyProblem.Io(cause))

@@ -168,7 +168,7 @@ private[vrf] object Draft03Key:
   def fromSeed(seed: Bytes): Either[Failure, Draft03Key] =
     if seed == null then Left(Failure.MissingSeed)
     else if seed.size != SeedBytes then Left(Failure.SeedLength(seed.size))
-    else made(seed)
+    else made(seed.copyTo)
 
   /** The 64-byte `vrf.skey` payload `seed || publicKey`; the stored public key must be the seed's.
     */
@@ -176,8 +176,24 @@ private[vrf] object Draft03Key:
     if bytes == null then Left(Failure.MissingSigningKey)
     else if bytes.size != SeedBytes + 32 then Left(Failure.SigningKeyLength(bytes.size))
     else
-      made(bytes.take(SeedBytes)).flatMap { key =>
+      made(bytes.take(SeedBytes).copyTo).flatMap { key =>
         if key.publicKey == bytes.drop(SeedBytes) then Right(key)
+        else
+          key.forget()
+          Left(Failure.PublicKeyMismatch)
+      }
+
+  /** [[fromBytes]] of the 64 bytes of `payload`, an array its caller owns and erases: the seed is
+    * copied from it into the key's array and a scratch only, and the public key compared.
+    */
+  def fromArray(payload: Array[Byte]): Either[Failure, Draft03Key] =
+    if payload == null then Left(Failure.MissingSigningKey)
+    else if payload.length != SeedBytes + 32 then Left(Failure.SigningKeyLength(payload.length))
+    else
+      made((into, at) => System.arraycopy(payload, 0, into, at, SeedBytes)).flatMap { key =>
+        val stored = new Array[Byte](32)
+        System.arraycopy(payload, SeedBytes, stored, 0, 32)
+        if key.publicKey == Bytes.fromArray(stored) then Right(key)
         else
           key.forget()
           Left(Failure.PublicKeyMismatch)
@@ -188,11 +204,11 @@ private[vrf] object Draft03Key:
     * the seed copied into that array, which nothing between the copy and the key that owns it can
     * fail.
     */
-  private def made(seed: Bytes): Either[Failure, Draft03Key] =
+  private def made(copySeed: (Array[Byte], Int) => Unit): Either[Failure, Draft03Key] =
     Either
       .catchNonFatal(Scratch.within { s =>
         val copy = s.buffer(SeedBytes)
-        seed.copyTo(s.array(copy), 0)
+        copySeed(s.array(copy), 0)
         val (x, _) = expanded(s)(copy)
         s.publish(
           encoded(s)(Constants.ED25519_BASEPOINT_TABLE.multiplyRadix16(s.array(digits(s)(x))))
@@ -202,7 +218,7 @@ private[vrf] object Draft03Key:
         Failure.InternalFailure(_),
         { publicKey =>
           val key = new Draft03Key(new Array[Byte](SeedBytes), publicKey)
-          seed.copyTo(key.material, 0)
+          copySeed(key.material, 0)
           key
         }
       )

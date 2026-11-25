@@ -19,11 +19,12 @@ import xyz.kd5ujc.scarab.crypto.secret.Scratch
   * and sub-keys of periods that can no longer be signed), so a stolen key cannot sign the past.
   * [[SigningKey.forget]] erases everything. What reads the seeds is [[secret.Sum6Key]], in a
   * package of its own that may name no variable-time routine (`scripts/check_crypto_guard.py`): it
-  * computes every value it derives from them (the hashes of the seed halves, the leaves' expanded
-  * keys, scalars and nonces, the subtrees it builds) in storage that is zeroed when the operation
-  * ends, and serializes signing, evolving and forgetting on the key. See it for what is erased and
-  * what is not. The reference keeps the key in locked memory outside the heap; a JVM may copy an
-  * array before it is zeroed, so the erasure is of the arrays this code owns.
+  * keeps what it derives from them (the hashes of the seed halves, the leaves' expanded keys,
+  * scalars and nonces, the subtrees it builds) in storage that is zeroed when the operation ends,
+  * and serializes signing, evolving and forgetting on the key. The curve arithmetic's own
+  * intermediates are immutable objects that are not erased. See it for what is erased and what is
+  * not. The reference keeps the key in locked memory outside the heap; a JVM may copy an array
+  * before it is zeroed, so the erasure is of the arrays this code owns.
   */
 object Sum6KesSigning:
   val Depth: Int = Sum6Key.Depth
@@ -147,3 +148,11 @@ object Sum6KesSigning:
     else if bytes.size != KeyBytes then Left(Failure.InvalidKeyLength(bytes.size))
     else
       bytes.withRange((array, from, _) => Sum6Key.loaded(array, from, None)).map(new SigningKey(_))
+
+  /** [[fromEvolved]] of an array its caller owns and erases: the key checks the bytes in working
+    * storage of its own and copies them only once they pass.
+    */
+  def fromEvolvedPayload(payload: Array[Byte]): Either[Failure, SigningKey] =
+    if payload == null then Left(Failure.MissingKey)
+    else if payload.length != KeyBytes then Left(Failure.InvalidKeyLength(payload.length))
+    else Sum6Key.loaded(payload, 0, None).map(new SigningKey(_))

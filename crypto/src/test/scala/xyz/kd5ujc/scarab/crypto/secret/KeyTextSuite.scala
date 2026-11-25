@@ -28,9 +28,7 @@ class KeyTextSuite extends munit.FunSuite:
   private def source(bytes: Array[Byte]): KeyText.Source = s => s.adopt(bytes.clone())
 
   private def readKes(bytes: Array[Byte]) =
-    KeyText.read(source(bytes), Type, Sum6KesSigning.KeyBytes)(p =>
-      Sum6KesSigning.fromBytes(Bytes.fromArray(p))
-    )
+    KeyText.read(source(bytes), Type)(p => Sum6KesSigning.fromBytes(Bytes.fromArray(p)))
 
   /** The JDK's verdict on `bytes` as a file's text: its decoding, or the length its
     * `MalformedInputException` reports.
@@ -43,7 +41,7 @@ class KeyTextSuite extends munit.FunSuite:
     }
 
   private def ours(bytes: Array[Byte]): Either[Int, String] =
-    KeyText.read(source(bytes), "none", 1)(_ => Right[Boolean, Boolean](true)) match
+    KeyText.read(source(bytes), "none")(_ => Right[Boolean, Boolean](true)) match
       case KeyText.Read.Unreadable(e: MalformedInputException) => Left(e.getInputLength)
       case KeyText.Read.Other(text)                            => Right(text)
       case other                                               => fail(s"not read as text: $other")
@@ -84,9 +82,16 @@ class KeyTextSuite extends munit.FunSuite:
     assert(readKes(ascii(envelope(hex))) match
       case KeyText.Read.Payload(Right(k)) => k.verificationKey == key.verificationKey
       case _                              => false)
-    // upper-case hex, other layouts and other members are flat too
+    // upper-case hex, other layouts and other members are flat too, and a head of the byte string
+    // wider than it needs, or a byte string in chunks, is read in place as the CBOR decoder reads it
     List(
       envelope(hex.toUpperCase),
+      envelope("5a00000260" + payload.hex),
+      envelope("5b0000000000000260" + payload.hex),
+      envelope(
+        "5f590130" + payload.hex.take(608) + "58" + "40" + payload.hex
+          .slice(608, 736) + "5900f0" + payload.hex.drop(736) + "40ff"
+      ),
       s"""{"cborHex":"$hex","type":"$Type"}""",
       s"""\t{ "x" : "é" , "type" : "$Type" ,\r\n "description":"", "cborHex" : "$hex" }  \n"""
     ).foreach(text => assert(readKes(ascii(text)).isInstanceOf[KeyText.Read.Payload[?, ?]], text))
@@ -97,9 +102,12 @@ class KeyTextSuite extends munit.FunSuite:
     List(
       envelope(hex.drop(1)),
       envelope(hex + "00"),
-      envelope("5a00000260" + payload.hex),
-      envelope("590261" + payload.hex + "00"),
       envelope(hex.updated(10, 'g')),
+      envelope("5f" + hex + "5f40ffff"),
+      envelope("5f" + hex),
+      envelope("5c" + payload.hex),
+      envelope("5a00000261" + payload.hex),
+      envelope("81" + hex),
       envelope(hex).replace("\"type\"", "\"t\\u0079pe\""),
       envelope(hex).replace("\"description\": \"\"", "\"description\": 1"),
       envelope(hex).replace("{", "{\"type\": \"x\", "),
@@ -110,7 +118,49 @@ class KeyTextSuite extends munit.FunSuite:
     ).foreach { text =>
       assertEquals(readKes(ascii(text)), KeyText.Read.Other(text), text)
     }
+    // a byte string of another size reaches the key's constructor, which refuses it, as before
+    assertEquals(
+      readKes(ascii(envelope("590261" + payload.hex + "00"))),
+      KeyText.Read.Payload(Left(Sum6KesSigning.Failure.InvalidKeyLength(609)))
+    )
   }
+
+  /** The bytes `writer` writes into a new named pipe, read by `read` while it writes them. */
+  private def throughPipe[A](bytes: Array[Byte])(read: Path => A): A =
+    val dir = Files.createTempDirectory("key-pipe")
+    val pipe = dir.resolve("kes.skey")
+    try
+      val made = new ProcessBuilder("mkfifo", pipe.toString).start().waitFor()
+      assertEquals(made, 0, "mkfifo")
+      // the writer blocks in its open until the reader opens the pipe
+      val writer = new Thread(() => Files.write(pipe, bytes): Unit)
+      writer.start()
+      val result = read(pipe)
+      writer.join(30000)
+      assert(!writer.isAlive, "the writer did not finish")
+      result
+    finally
+      Files.deleteIfExists(pipe)
+      Files.delete(dir)
+
+  test(
+    "a key file that is a pipe, whose size is 0, is read forward to its end as Files.readString reads it"
+  ) {
+    // longer than the first native buffer many times over, so that the read grows it
+    val text = ascii(envelope(hex) + " " * 5000)
+    val read = throughPipe(text)(pipe => readKes2(KeyText.file(pipe)))
+    val loaded = read match
+      case KeyText.Read.Payload(Right(k)) => k.verificationKey == key.verificationKey
+      case _                              => false
+    assert(loaded, s"$read")
+    assertEquals(
+      throughPipe(text)(Files.readString(_)),
+      new String(text, java.nio.charset.StandardCharsets.UTF_8)
+    )
+  }
+
+  private def readKes2(source: KeyText.Source) =
+    KeyText.read(source, Type)(p => Sum6KesSigning.fromBytes(Bytes.fromArray(p)))
 
   test("a read's every buffer is zero once it ends, and those buffers held the text and the key") {
     val text = ascii(envelope(hex))
@@ -120,11 +170,7 @@ class KeyTextSuite extends munit.FunSuite:
       arrays =>
         before = arrays.map(_.clone())
         after = arrays
-    }(s =>
-      KeyText.readIn(s, source(text), Type, Sum6KesSigning.KeyBytes)(p =>
-        Sum6KesSigning.fromBytes(Bytes.fromArray(p))
-      )
-    )
+    }(s => KeyText.readIn(s, source(text), Type)(p => Sum6KesSigning.fromBytes(Bytes.fromArray(p))))
     assert(read.isInstanceOf[KeyText.Read.Payload[?, ?]], s"$read")
     assert(before.exists(java.util.Arrays.equals(_, text)), "the text was not held by the scratch")
     assert(

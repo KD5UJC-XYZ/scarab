@@ -9,6 +9,7 @@ import java.nio.file.{Path, StandardOpenOption}
 import scala.annotation.tailrec
 import scala.util.Using
 import scala.util.Using.Releasable
+import xyz.kd5ujc.scarab.codec.Cbor
 
 /** The cardano-cli text envelope of a signing key, `{"type": ..., "description": ..., "cborHex":
   * ...}` whose `cborHex` is the hex of the CBOR byte string of the key, read and written as bytes
@@ -20,10 +21,11 @@ import scala.util.Using.Releasable
   *
   * A read takes the envelope in place when it is flat (an object of string members without escapes
   * or control characters, `type` and `cborHex` once each, the form cardano-cli and this node write)
-  * and its `cborHex` is the canonical CBOR byte string of a key of the expected size: no `String`
-  * holds the hex, and no array but the scratch's holds the key. Anything else is handed back as
-  * text ([[Read.Other]]), for the text reader to say what it is, as it said before: the envelope's
-  * text is then a `String` that nothing erases.
+  * and its `cborHex` is hex of a CBOR byte string the text reader's decoder takes (a definite one,
+  * its head of any width, or an indefinite one of definite chunks): no `String` holds the hex, and
+  * no array but the scratch's holds the key. Anything else, an envelope that is not flat or whose
+  * hex or CBOR that reader refuses, is handed back as text ([[Read.Other]]), for the text reader to
+  * say what it is, as it said before: the envelope's text is then a `String` that nothing erases.
   */
 private[scarab] object KeyText:
   /** Where the bytes of an envelope come from: they are put in a buffer of the scratch given. */
@@ -50,24 +52,24 @@ private[scarab] object KeyText:
     */
   def file(path: Path): Source = s => readInto(s, path)
 
-  /** Read the envelope of `source`: when it is flat, of type `expected`, and its CBOR the byte
-    * string of `payloadBytes` bytes, `make` is given an array of those bytes, valid for the call
-    * only, which the scratch zeroes once the read ends; `make` copies what it keeps.
+  /** Read the envelope of `source`: when it is flat, of type `expected`, and its CBOR a byte
+    * string, `make` is given an array of its bytes, valid for the call only, which the scratch
+    * zeroes once the read ends; `make` copies what it keeps.
     */
-  def read[F: Public, K: Public](source: Source, expected: String, payloadBytes: Int)(
+  def read[F: Public, K: Public](source: Source, expected: String)(
       make: Array[Byte] => Either[F, K]
   ): Read[F, K] =
-    Scratch.within(s => readIn(s, source, expected, payloadBytes)(make))
+    Scratch.within(s => readIn(s, source, expected)(make))
 
   /** [[read]] in the scratch `s`. */
-  private[scarab] def readIn[F, K](s: Scratch, source: Source, expected: String, payloadBytes: Int)(
+  private[scarab] def readIn[F, K](s: Scratch, source: Source, expected: String)(
       make: Array[Byte] => Either[F, K]
   ): Read[F, K] =
     scala.util
       .Try(source(s))
       .toEither
       .flatMap(utf8(s))
-      .fold(Read.Unreadable(_), parsed(s, expected, payloadBytes, make))
+      .fold(Read.Unreadable(_), parsed(s, expected, make))
 
   /** The text of an envelope of type `typ` and description `description` around the CBOR byte
     * string of the `payloadBytes` bytes `payload` puts in a scratch, laid out as circe's `spaces2`
@@ -127,7 +129,6 @@ private[scarab] object KeyText:
   private def parsed[F, K](
       s: Scratch,
       expected: String,
-      payloadBytes: Int,
       make: Array[Byte] => Either[F, K]
   )(
       text: s.Buffer
@@ -135,22 +136,67 @@ private[scarab] object KeyText:
     val t = s.array(text)
     flat(t).fold(Read.Other(new String(t, StandardCharsets.UTF_8))) { fields =>
       val hexLength = fields.hexEnd - fields.hexAt
-      val header = headerOf(payloadBytes)
       if !(fields.hexAt until fields.hexEnd).forall(i => isHex(t(i))) || hexLength % 2 != 0 then
         Read.Other(new String(t, StandardCharsets.UTF_8))
       else if !sameBytes(t, fields.typeAt, fields.typeEnd, ascii(expected)) then
         Read.WrongType(
           new String(t, fields.typeAt, fields.typeEnd - fields.typeAt, StandardCharsets.UTF_8)
         )
-      else if hexLength != 2 * (header.length + payloadBytes) ||
-        !header.indices.forall(i => decoded(t, fields.hexAt + 2 * i) == header(i))
-      then Read.Other(new String(t, StandardCharsets.UTF_8))
       else
-        val key = s.buffer(payloadBytes)
-        val from = fields.hexAt + 2 * header.length
-        (0 until payloadBytes).foreach(i => s.array(key)(i) = decoded(t, from + 2 * i))
-        Read.Payload(make(s.array(key)))
+        val cbor = s.buffer(hexLength / 2)
+        (0 until hexLength / 2).foreach(i => s.array(cbor)(i) = decoded(t, fields.hexAt + 2 * i))
+        chunksOf(s.array(cbor)).fold(Read.Other(new String(t, StandardCharsets.UTF_8))) { chunks =>
+          val key = s.buffer(chunks.map(_._2).sum)
+          chunks.foldLeft(0) { case (at, (from, length)) =>
+            System.arraycopy(s.array(cbor), from, s.array(key), at, length)
+            at + length
+          }
+          Read.Payload(make(s.array(key)))
+        }
     }
+
+  /** The parts `(start, length)` of the byte string the CBOR item `c` is, as the text reader's
+    * decoder (`Cbor.decode` with its default limits) reads one: a definite string, its head of any
+    * width, or an indefinite one of definite chunks, filling `c` exactly and within the limits.
+    * None for any other item, and for anything that decoder refuses, which the text reader then
+    * says.
+    */
+  private def chunksOf(c: Array[Byte]): Option[List[(Int, Int)]] =
+    val limits = Cbor.Limits()
+    @tailrec def chunks(at: Int, found: List[(Int, Int)], total: Long): Option[List[(Int, Int)]] =
+      if at >= c.length then None
+      else if (c(at) & 0xff) == 0xff then Option.when(at + 1 == c.length)(found.reverse)
+      else if (c(at) & 0xff) >> 5 != 2 || (c(at) & 31) == 31 then None
+      else
+        definite(c, at) match
+          case Some((from, length)) if total + length <= limits.maxStringBytes =>
+            chunks(from + length, (from, length) :: found, total + length)
+          case _ => None
+    if c.isEmpty || c.length > limits.maxInputBytes || (c(0) & 0xff) >> 5 != 2 then None
+    else if (c(0) & 31) == 31 then chunks(1, Nil, 0L)
+    else
+      definite(c, 0)
+        .filter((from, length) => from + length == c.length && length <= limits.maxStringBytes)
+        .map(List(_))
+
+  /** The start and length of the definite string whose head is at `c(at)`, if its argument (of one
+    * to eight bytes after the head, or in it) and its bytes are within `c`.
+    */
+  private def definite(c: Array[Byte], at: Int): Option[(Int, Int)] =
+    val ai = c(at) & 31
+    val width = ai match
+      case 24 => 1
+      case 25 => 2
+      case 26 => 4
+      case 27 => 8
+      case _  => 0
+    Option
+      .when(ai < 28 && at + 1 + width <= c.length) {
+        if ai < 24 then ai.toLong
+        else (1 to width).foldLeft(0L)((n, i) => (n << 8) | (c(at + i) & 0xff).toLong)
+      }
+      .filter(n => n >= 0 && n <= c.length - (at + 1 + width))
+      .map(n => (at + 1 + width, n.toInt))
 
   /** Where the `type` and `cborHex` strings of a flat envelope lie in `t`, the index of each first
     * character and of each closing quote: a JSON object, between JSON whitespace, whose every
@@ -311,24 +357,32 @@ private[scarab] object KeyText:
 
   private def readInto(s: Scratch, path: Path): s.Buffer =
     Using.resource(FileChannel.open(path, StandardOpenOption.READ))(channel =>
-      filled(s, channel, Math.toIntExact(channel.size()))
+      filled(s, channel, None, channel.size() + 1)
     )
 
-  /** The rest of `channel`, read into native memory of one byte more than `capacity` and copied
-    * into a buffer of `s`; a file that grew past it is read again from its start with twice the
-    * room.
+  /** The rest of `channel`, read forward to its end, as `Files.readAllBytes` reads it (a pipe,
+    * whose size is 0, and a file that grows meanwhile included), into native memory of `capacity`
+    * bytes, after the `have` bytes `before` holds; when that is full, into memory of twice the
+    * room, the smaller one zeroed and freed when the read ends. Then copied into a buffer of `s`.
     */
-  private def filled(s: Scratch, channel: FileChannel, capacity: Int): s.Buffer =
-    native(capacity.toLong + 1) { segment =>
-      val into = segment.asByteBuffer()
-      @tailrec def fill(): Unit = if into.hasRemaining && channel.read(into) >= 0 then fill()
-      fill()
-      val n = into.position()
-      if n > capacity then
-        channel.position(0L)
-        filled(s, channel, Math.multiplyExact(capacity + 1, 2))
-      else
-        val bytes = s.buffer(n)
-        MemorySegment.copy(segment, ValueLayout.JAVA_BYTE, 0L, s.array(bytes), 0, n)
+  private def filled(
+      s: Scratch,
+      channel: FileChannel,
+      before: Option[(MemorySegment, Int)],
+      capacity: Long
+  ): s.Buffer =
+    native(capacity) { segment =>
+      val have = before.fold(0)(_._2)
+      before.foreach((b, n) => MemorySegment.copy(b, 0L, segment, 0L, n.toLong))
+      val into = segment.asByteBuffer().position(have)
+      // true at the end of the input, false when the memory is full
+      @tailrec def fill(): Boolean =
+        if !into.hasRemaining then false
+        else if channel.read(into) < 0 then true
+        else fill()
+      if fill() then
+        val bytes = s.buffer(into.position())
+        MemorySegment.copy(segment, ValueLayout.JAVA_BYTE, 0L, s.array(bytes), 0, into.position())
         bytes
+      else filled(s, channel, Some((segment, into.position())), Math.multiplyExact(capacity, 2))
     }
