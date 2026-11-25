@@ -109,9 +109,10 @@ then 16.5 million memory units from protocol 11, per the [clarified scenario](ht
 These are Plutus execution units. The runner measures JVM allocation separately in bytes.
 A busy or shared machine moves its `cpu_us` measurements and the score the site gives them.
 
-The bytes a program allocates depend on the JVM's settings and CPU count, which the runner fixes, and not on the
-machine's speed or load. So the memory dimension is reproducible on a GitHub-hosted runner, at the runner's own
-settings (3 CPUs, 8 GB, a 4 GB heap): on CI the runner refuses `uplc-turbo` unless it is given `--allocation-only`,
+The bytes a program allocates depend mostly on the JVM's settings and CPU count, which the runner fixes, and little
+on the machine's speed or load: a program's figure moves by a fraction of a per cent from run to run, since the
+tool averages the thirty fastest of fifty evaluations. So the count of programs within the memory limit can be
+compared between runs on a GitHub-hosted runner, at the runner's own settings (3 CPUs, 8 GB, a 4 GB heap): on CI the runner refuses `uplc-turbo` unless it is given `--allocation-only`,
 and `scripts/conformance/turbo_memory.py --out <dir>` then writes `turbo-memory.md` and `turbo-memory.json`: the
 programs within the site's memory limit, and the median and 95th percentile of bytes per memory unit. The
 **Conformance reports** workflow does both when `uplc-turbo-memory` is ticked, and keeps the counts as an artifact
@@ -165,7 +166,7 @@ the cause is fixed. It refuses a file whose provenance does
 not match it or records a failed check or uncommitted changes, a report whose commit is not on GitHub, and a dated
 report that is already published, unless `--replace` (a second run on the same day replaces the first).
 
-On GitHub, the **Conformance reports** workflow (`.github/workflows/conformance.yml`, run by hand only) runs the
+On GitHub, the **Conformance reports** workflow (`.github/workflows/conformance.yml`, run by hand, and nightly for the CBOR detector) runs the
 runner for the scenarios ticked (`ledger-rules`, `uplc-conformance` and `cbor-decoding`; turbo only for its memory
 counts, above) and
 keeps the files as a workflow artifact. When `publish` is ticked and the run is on `main`, a job of its own runs

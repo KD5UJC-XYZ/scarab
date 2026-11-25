@@ -30,6 +30,22 @@ class SummarizeTest(unittest.TestCase):
         self.assertIsNone(summary["bytes_per_memory_unit_p95"])
         self.assertEqual(summary["allocated_bytes"], 4_700_000)
 
+    def test_the_percentile_is_the_nearest_rank(self):
+        self.assertEqual([turbo_memory.percentile_index(n, 95) for n in (20, 21, 40, 100)], [18, 19, 37, 94])
+        report = {"benchmarks": [item(str(n), n * 1000, 1000) for n in range(1, 22)]}
+        summary = turbo_memory.summarize(report, tuple(str(n) for n in range(1, 22)))
+        self.assertEqual(summary["bytes_per_memory_unit_p95"], 20.0)
+
+    def test_a_report_of_another_shape_is_refused(self):
+        good = {"scenario": "uplc-turbo", "benchmarks": [item("a", 1)]}
+        record = {"scarab": {"commit": "c" * 40}}
+        self.assertEqual(turbo_memory.checked(good, record), (good, "c" * 40))
+        for report, provenance in ((None, record), ({"scenario": "ledger-rules", "benchmarks": [1]}, record),
+                                   ({"scenario": "uplc-turbo", "benchmarks": []}, record), (good, None),
+                                   (good, {"scarab": None})):
+            with self.assertRaises(turbo_memory.SummaryError, msg=str((report, provenance))):
+                turbo_memory.checked(report, provenance)
+
     def test_an_empty_report_has_no_ratios(self):
         summary = turbo_memory.summarize({"benchmarks": []}, ("a",))
         self.assertEqual((summary["measured"], summary["within_memory_limit"]), (0, 0))

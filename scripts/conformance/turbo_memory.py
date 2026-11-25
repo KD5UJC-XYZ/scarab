@@ -5,10 +5,12 @@
     python3 -I -B scripts/conformance/turbo_memory.py --out <the runner's --out> [--inputs <its --inputs>]
 
 For the uplc-turbo report in `--out` it counts, by the site's rule (`score.py`), the corpus's programs whose
-allocated bytes are within the memory limit, and gives the median and 95th percentile of bytes per memory unit.
-The bytes a program allocates depend on the JVM's settings and CPU count, which the runner fixes, not on the
-machine's speed or load, so a shared runner reproduces these figures; it does not reproduce `cpu_us`, which this
-summary leaves out. The exit status is 1 when `--out` holds no readable uplc-turbo report.
+allocated bytes are within the memory limit, and gives the median and 95th percentile (nearest rank) of bytes per
+memory unit. The bytes a program allocates depend mostly on the JVM's settings and CPU count, which the runner
+fixes, and little on the machine's speed or load: the tool averages the thirty fastest of fifty evaluations, so
+which ones enter the average, and the JIT compiler's state, move a program's figure by a fraction of a per cent
+from run to run. The count is the figure to compare between runs; `cpu_us` on a shared runner is not a
+measurement, and this summary leaves it out. The exit status is 1 when `--out` holds no readable uplc-turbo report.
 """
 from __future__ import annotations
 
@@ -26,24 +28,45 @@ from conformance import inputs as fetching, score  # noqa: E402
 from conformance.scenarios import SCENARIOS  # noqa: E402
 
 
+class SummaryError(ValueError):
+    """A report or provenance that is not a uplc-turbo report's."""
+
+
+def percentile_index(count: int, percent: int) -> int:
+    """The index, in `count` sorted values, of the nearest-rank percentile: the smallest value with at least
+    `percent` per cent of the values at or below it."""
+    return -(-count * percent // 100) - 1
+
+
+def checked(report: object, record: object) -> tuple[dict, str]:
+    """The report and its Scarab commit, once the report is a uplc-turbo report with benchmarks and the
+    provenance is a record."""
+    if not isinstance(report, dict) or report.get("scenario") != "uplc-turbo":
+        raise SummaryError("it is not a uplc-turbo report")
+    if not isinstance(report.get("benchmarks"), list) or not report["benchmarks"]:
+        raise SummaryError("it reports no benchmarks")
+    scarab = record.get("scarab") if isinstance(record, dict) else None
+    if not isinstance(scarab, dict):
+        raise SummaryError("its provenance names no Scarab checkout")
+    return report, str(scarab.get("commit", ""))
+
+
 def summarize(report: dict, benchmarks: tuple[str, ...]) -> dict:
     """The memory dimension of `report` over the corpus `benchmarks`: a program not reported, or reported without
     both numbers, is not within the limit."""
     corpus = set(benchmarks)
     items = {item["bench"]: item for item in report.get("benchmarks", [])
-             if isinstance(item, dict) and item.get("bench") in corpus}
-    measured = [item for item in items.values()
-                if score._number(item.get("mem_bytes")) and score._number(item.get("budget_mem"))
-                and item["budget_mem"] > 0]
-    within = sum(1 for item in measured
-                 if score._within(item["mem_bytes"], item["budget_mem"], score.MEMORY_TOLERANCE_BYTES))
+             if isinstance(item, dict) and isinstance(item.get("bench"), str) and item["bench"] in corpus}
+    verdicts = [(item, score.memory_within(item)) for item in items.values()]
+    measured = [item for item, verdict in verdicts if verdict is not None]
+    within = sum(1 for _, verdict in verdicts if verdict)
     ratios = sorted(item["mem_bytes"] / item["budget_mem"] for item in measured)
     return {
         "programs": len(benchmarks),
         "measured": len(measured),
         "within_memory_limit": within,
         "bytes_per_memory_unit_median": round(statistics.median(ratios), 3) if ratios else None,
-        "bytes_per_memory_unit_p95": round(ratios[(len(ratios) * 95) // 100 - 1], 3) if len(ratios) >= 20 else None,
+        "bytes_per_memory_unit_p95": round(ratios[percentile_index(len(ratios), 95)], 3) if len(ratios) >= 20 else None,
         "allocated_bytes": round(sum(item["mem_bytes"] for item in measured)),
     }
 
@@ -75,15 +98,15 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     site = (args.inputs or args.out / "inputs") / fetching.load_pins()["site"].directory
     try:
-        report = json.loads(gzip.decompress(reports[0].read_bytes()))
-        benchmarks = score.Site._turbo(site / SCENARIOS["uplc-turbo"].schema)
-        record = json.loads(reports[0].with_name(
-            reports[0].name.removesuffix(".json.gz") + ".provenance.json").read_text(encoding="utf-8"))
+        benchmarks = score.turbo_benchmarks(site / SCENARIOS["uplc-turbo"].schema)
+        report, commit = checked(
+            json.loads(gzip.decompress(reports[0].read_bytes())),
+            json.loads(reports[0].with_name(
+                reports[0].name.removesuffix(".json.gz") + ".provenance.json").read_text(encoding="utf-8")))
     except (OSError, EOFError, zlib.error, ValueError, score.ScoreError) as error:
         print(f"the uplc-turbo report cannot be summarised: {error}", file=sys.stderr)
         return 1
     summary = summarize(report, benchmarks)
-    commit = str(record.get("scarab", {}).get("commit", ""))
     (args.out / "turbo-memory.json").write_text(
         json.dumps({"scarab_commit": commit, **summary}, indent=2) + "\n", encoding="utf-8")
     (args.out / "turbo-memory.md").write_text(markdown(summary, commit), encoding="utf-8")

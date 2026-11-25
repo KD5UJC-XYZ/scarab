@@ -52,6 +52,9 @@ jobs:
         shell: bash
     env:
       PYTHONDONTWRITEBYTECODE: '1'
+      # Whether a scenario other than the uplc-turbo memory counts was chosen: only then is there a report to
+      # summarise, keep and publish.
+      STANDARD: ${{ github.event_name == 'schedule' || inputs.ledger-rules || inputs.uplc-conformance || inputs.cbor-decoding }}
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -113,7 +116,7 @@ jobs:
           if-no-files-found: error
 
       - name: Read the previous nightly CBOR report when available
-        if: ${{ always() }}
+        if: ${{ always() && env.STANDARD == 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -125,7 +128,7 @@ jobs:
           fi
 
       - name: Summary
-        if: ${{ always() }}
+        if: ${{ always() && env.STANDARD == 'true' }}
         run: |
           # This informational summary must not turn a skipped CBOR tool into a new publication blocker.
           if ! python3 -I -B scripts/conformance/summarize.py --out "$RUNNER_TEMP/conformance" \
@@ -142,7 +145,7 @@ jobs:
           fi
 
       - name: Keep the reports, their provenance and the logs
-        if: ${{ always() }}
+        if: ${{ always() && env.STANDARD == 'true' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: conformance-reports-${{ github.run_id }}
@@ -174,7 +177,12 @@ jobs:
       - name: Publish from main only, with the deploy key
         env:
           HAS_DEPLOY_KEY: ${{ secrets.CONFORMANCE_REPO_DEPLOY_KEY != '' }}
+          STANDARD: ${{ inputs.ledger-rules || inputs.uplc-conformance || inputs.cbor-decoding }}
         run: |
+          if [ "$STANDARD" != true ]; then
+            echo "::error::nothing to publish: the uplc-turbo memory counts are never published, and no other scenario was chosen"
+            exit 1
+          fi
           if [ "$GITHUB_REF" != refs/heads/main ]; then
             echo "::error::reports are published from main only, not $GITHUB_REF"
             exit 1

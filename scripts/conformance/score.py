@@ -342,6 +342,18 @@ def _within(measured: Any, budget: Any, tolerance: float) -> bool | None:
     return (measured - budget) / budget <= DEVIATION_LIMIT or abs(measured - budget) <= tolerance
 
 
+def memory_within(item: dict) -> bool | None:
+    """The memory dimension of a benchmark alone, as `benchmark_met` reads it; None when it cannot be compared."""
+    mem_bytes = item.get("mem_bytes") if _number(item.get("mem_bytes")) else None
+    mem_budget = item["budget_mem"] if _number(item.get("budget_mem")) and item["budget_mem"] > 0 else None
+    return _within(mem_bytes, mem_budget, MEMORY_TOLERANCE_BYTES)
+
+
+def turbo_benchmarks(schema: Path) -> tuple[str, ...]:
+    """The uplc-turbo corpus's benchmarks, from the scenario's schema at `schema`."""
+    return Site._turbo(schema)
+
+
 def benchmark_met(item: dict | None) -> bool:
     """A benchmark is met when every dimension that can be compared passes and one can; a benchmark not reported
     fails (62800627 scenarios/uplc-turbo/build.py:59-61, 80-83 and 139-147). The CPU budget is in picoseconds."""

@@ -137,7 +137,7 @@ class CollectTest(unittest.TestCase):
                 write_report(tmp, **changes)
                 publish.collect([Path(tmp)])
         turbo = "scarab-20261114-uplc-turbo.json.gz"
-        for runner in ({"environment": {"runner": "github-actions"}}, {}):
+        for runner in ({"environment": {"runner": "github-actions"}}, {}, {"environment": None}):
             with tempfile.TemporaryDirectory() as tmp, self.assertRaises(publish.PublishError, msg=str(runner)):
                 write_report(tmp, turbo, **runner)
                 publish.collect([Path(tmp)])
