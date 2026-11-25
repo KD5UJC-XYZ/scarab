@@ -50,7 +50,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
 }
 import xyz.kd5ujc.scarab.ledger.Utxo
 import xyz.kd5ujc.scarab.node.NodeSetup
-import xyz.kd5ujc.scarab.node.mempool.{LocalSubmission, MempoolEnv, MempoolLedger}
+import xyz.kd5ujc.scarab.node.mempool.{ConwayTicked, LocalSubmission, MempoolEnv}
 import xyz.kd5ujc.scarab.protocol.{Era, ReferenceBuild, StateLayout}
 import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellState, UtxoCodecs}
 
@@ -80,7 +80,7 @@ class ConwayLedgerChecksSuite extends FunSuite:
       stored: Map[TxIn, TxOut],
       utxo: UTxO[Conway],
       pp: PParams[Conway],
-      ledger: MempoolLedger,
+      ledger: ConwayTicked,
       slot: BigInt,
       build: ReferenceBuild,
       families: Vector[Family],
@@ -118,7 +118,7 @@ class ConwayLedgerChecksSuite extends FunSuite:
           .modify(ls =>
             ls.copy[Conway](utxo = ls.utxo.copy(utxo = UtxoTables(Utxo.fromMap(stored))))
           )(nes)
-        val ledger = right(s"$what tick")(MempoolLedger.tick(withUtxo, Some(rc.tipSlot), env))
+        val ledger = right(s"$what tick")(ConwayTicked.ticked(withUtxo, Some(rc.tipSlot), env))
         Seen(
           what,
           bytes,
@@ -404,14 +404,8 @@ class ConwayLedgerChecksSuite extends FunSuite:
       val era = eraLedger(s, s.build, TxEnv.Validation.All, depth = 1) match
         case Right(Left(fs)) => fs.toChain.toVector
         case other           => fail(s"${s.label}: $other")
-      val failures = era.map(stored(s))
-      assertEquals(
-        PredicateFailureCbor.applyTxError(failures).fold(e => fail(s"${s.label}: $e"), _.hex),
-        s.reason.hex,
-        s.label
-      )
-      // the era failures written by their own encoder, without the flat form
-      assertEquals(ConwayFailureCborCheck.direct(era).hex, s.reason.hex, s"${s.label}: direct")
+      // the era failures written by their own encoder
+      assertEquals(ConwayFailureCborCheck.direct(era).hex, s.reason.hex, s.label)
     }
 
   test(

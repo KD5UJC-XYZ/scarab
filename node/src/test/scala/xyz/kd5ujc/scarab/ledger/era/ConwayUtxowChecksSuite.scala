@@ -192,6 +192,22 @@ class ConwayUtxowChecksSuite extends FunSuite:
         .getOrElse(fail(s"${s.label}: no flat form of $test"))
     )
 
+  /** A typed predicate's failures injected into Conway's UTXOW (`inject`), under LEDGER, as LEDGER
+    * reports them.
+    */
+  private def typedEra[A](inject: A => ConwayUtxowPredFailure[Conway])(
+      test: Verdict[A]
+  ): Vector[xyz.kd5ujc.scarab.ledger.era.rules.ConwayLedgerPredFailure[Conway]] =
+    Verdict
+      .failures(test)
+      .toVector
+      .flatMap(_.toNonEmptyVector.toVector)
+      .map(a =>
+        xyz.kd5ujc.scarab.ledger.era.rules.ConwayLedgerPredFailure.ConwayUtxowFailure[Conway](
+          inject(a)
+        )
+      )
+
   /** `getReferenceScripts` (`Babbage/UTxO.hs:148-155`, cardano-ledger f649f975) of the inputs and
     * the reference inputs, by hash: what `babbageUtxowTransition` reads (`Babbage/Rules/Utxow.hs`).
     */
@@ -349,7 +365,7 @@ class ConwayUtxowChecksSuite extends FunSuite:
     // the era-typed failure, encoded as the node sends it, is the reference's refusal
     val compared = seen.filter(_.families == Vector(Family.UTXOW)).flatMap { s =>
       val wits = tx.wits[TxLevel.Top](s.typed)(using top)
-      val failures = typedFailures(s, EraUtxoRun.shelleyW)(
+      val failures = typedEra(EraUtxoRun.shelleyW)(
         ShelleyUtxow.validateNeededWitnesses[Conway, TxLevel.Top](
           EraTxWits.keyHashWitnessesTxWits[Conway](wits)(using tx.witsOf),
           s.cert,
@@ -359,9 +375,7 @@ class ConwayUtxowChecksSuite extends FunSuite:
       )
       Option.when(failures.nonEmpty) {
         assertEquals(
-          xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor
-            .applyTxError(failures)
-            .fold(e => fail(s"${s.label}: $e"), _.hex),
+          xyz.kd5ujc.scarab.node.ntc.ConwayFailureCborCheck.direct(failures).hex,
           s.reason.hex,
           s.label
         )
@@ -377,12 +391,18 @@ class ConwayUtxowChecksSuite extends FunSuite:
     // supplemental datum): the era-typed failure, encoded as the node sends it, is the reference's
     // refusal
     val compared = seen.filter(_.families == Vector(Family.UTXOW)).flatMap { s =>
-      val failures = typedDatums(s)
+      val failures = typedEra(EraUtxoRun.alonzoW)(
+        AlonzoUtxow.missingRequiredDatums[Conway, TxLevel.Top](scriptsProvided(s), s.utxo, s.typed)(
+          using
+          tx,
+          top,
+          EraUTxO.conway,
+          EraUTxO.conway.txOf.bodyOf.top
+        )
+      )
       Option.when(failures.nonEmpty) {
         assertEquals(
-          xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor
-            .applyTxError(failures)
-            .fold(e => fail(s"${s.label}: $e"), _.hex),
+          xyz.kd5ujc.scarab.node.ntc.ConwayFailureCborCheck.direct(failures).hex,
           s.reason.hex,
           s.label
         )

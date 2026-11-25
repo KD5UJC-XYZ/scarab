@@ -2,8 +2,16 @@
 package xyz.kd5ujc.scarab.node.mempool
 
 import cats.syntax.all.*
+import xyz.kd5ujc.scarab.ledger.{ProtocolParams, Utxo}
 import xyz.kd5ujc.scarab.ledger.rules.EraNes
-import xyz.kd5ujc.scarab.ledger.state.{Conway, NewEpochState, ShelleyBasedEra}
+import xyz.kd5ujc.scarab.ledger.state.{
+  Coin,
+  Conway,
+  LedgerState,
+  NewEpochState,
+  ShelleyBasedEra,
+  UtxoTables
+}
 
 /** The pool's Conway ledger of a Conway state, for the suites that build their pool from one, as
   * the node makes it ([[ConwayPoolLedger.of]], [[PoolLedger.ticked]]).
@@ -32,6 +40,42 @@ object ConwayPools:
         case Right(c: ConwayPoolLedger) => c
         case other => munit.Assertions.fail(s"not the pool's Conway ledger: $other")
       }
+
+/** A Conway state as the pool judges a transaction in it, for the suites that edit what it holds
+  * (its parameters, its outputs) before Conway's rules judge in it: the ledger state, the chain's
+  * treasury and the epoch of the pool's ledger ([[ConwayPoolLedger]]), whose parameters are read
+  * into Conway's once, when it is made.
+  */
+final case class ConwayTicked(ls: LedgerState[Conway], treasury: Coin, epoch: BigInt):
+  /** The parameters in force, in the node's record. */
+  def params: ProtocolParams = ls.utxo.gov.curPParams
+
+  def utxo: Utxo = ls.utxo.utxo.utxo
+
+  def withUtxo(u: Utxo): ConwayTicked =
+    copy(ls = ls.copy[Conway](utxo = ls.utxo.copy(utxo = UtxoTables(u))))
+
+  /** The state with the parameters `pp` in force. */
+  def withParams(pp: ProtocolParams): ConwayTicked =
+    copy(ls = ls.copy[Conway](utxo = ls.utxo.copy(gov = ls.utxo.gov.copy(curPParams = pp))))
+
+object ConwayTicked:
+  /** The state of the pool's ledger `l`. */
+  def of(l: ConwayPoolLedger): ConwayTicked = ConwayTicked(l.ls, l.account.treasury, l.epoch)
+
+  /** The new-epoch state `nes` as it stands, not ticked. */
+  def of(nes: NewEpochState[Conway]): ConwayTicked =
+    ConwayTicked(nes.es.ls, nes.es.chainAccount.treasury, nes.epoch.toBigInt)
+
+  /** The Conway state `nes` of a chain whose tip is at `tipSlot`, ticked to the slot after the tip
+    * as the node ticks it ([[ConwayPools.ticked]]).
+    */
+  def ticked(
+      nes: NewEpochState[Conway],
+      tipSlot: Option[BigInt],
+      env: MempoolEnv
+  ): Either[PoolLedger.Failure, ConwayTicked] =
+    ConwayPools.ticked(nes, tipSlot, env).map(of)
 
 extension (l: ConwayPoolLedger)
   /** The ledger after the held transaction `e`, which the suite knows to apply, judged with every
