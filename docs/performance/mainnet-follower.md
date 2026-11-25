@@ -568,8 +568,10 @@ the class on the tools module's exported runtime classpath in a JVM of its own, 
 VRF proving (`secret.Draft03Key`) and of the two constant-time multiplications they make. For each operation two
 classes of secret input, one fixed and one random, are measured interleaved in a random order, and Welch's t of the
 two classes' times is computed on all measurements and on each of dudect's 100 crops (the measurements below the
-percentile 1 − 0.5^(10(i + 1)/100)); the largest |t| is reported. The secret of `prove` and `output` is the key (a
-fixed seed against random seeds, with the same hash-to-curve point H for both classes at each measurement); that of
+percentile 1 − 0.5^(10(i + 1)/100)); both are printed, the largest over the crops in the table below, and the
+verdict is on the larger of |t| on all measurements and that largest (in every run here the crops' was the larger).
+The secret of `prove` and `output` is the key (a fixed seed against random seeds, with the same hash-to-curve point H
+for both classes at each measurement); that of
 `[k]H` and `[k]B` is the scalar, against two fixed classes: zero, whose digits select the identity from every
 table, and a scalar drawn at random once. Three controls frame the targets: `[k]H` with both classes random, for
 what the machine reports when there is nothing to find; Bouncy Castle's straight-line field arithmetic in place (no

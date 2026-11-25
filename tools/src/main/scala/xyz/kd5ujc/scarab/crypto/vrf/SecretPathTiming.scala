@@ -33,11 +33,12 @@ import xyz.kd5ujc.scarab.crypto.vrf.secret.Draft03Key
   * fixed scalar of one bit against random scalars, which leaks by construction and shows the test
   * can see a leak here.
   *
-  * How to read it: |t| above 10 is dudect's "probably not constant time", above 500 "definitely
-  * not"; below 10 it is "no leak found with this many measurements on this machine", which is a
-  * bounded negative observation. It cannot show constant time: the JIT compiles what it measures
-  * and may compile it differently on another JVM, flags or input history; the timer resolves tens
-  * of nanoseconds; collections and other threads add noise that cropping only partly removes; and a
+  * How to read it: the verdict is on the larger of |t| on all measurements and the largest |t| over
+  * the crops. Above 10 is dudect's "probably not constant time", above 500 "definitely not"; below
+  * 10 it is "no leak found with this many measurements on this machine", which is a bounded
+  * negative observation. It cannot show constant time: the JIT compiles what it measures and may
+  * compile it differently on another JVM, flags or input history; the timer resolves tens of
+  * nanoseconds; collections and other threads add noise that cropping only partly removes; and a
   * leak smaller than the noise at this sample size, or one through the cache that this machine's
   * timing does not expose, is not seen. Compare each t with the `random/random` control's.
   *
@@ -292,7 +293,7 @@ object SecretPathTiming:
       System.gc()
       val r = measure(target, random)
       println(
-        f"${target.name}%-52s ${r.fixed.n}%8d ${r.random.n}%8d ${r.fixed.mean}%10.0f ${r.random.mean}%10.0f ${r.t}%8.2f ${r.maxT}%8.2f ${r.atCrop}%5d  ${verdict(r.maxT)}"
+        f"${target.name}%-52s ${r.fixed.n}%8d ${r.random.n}%8d ${r.fixed.mean}%10.0f ${r.random.mean}%10.0f ${r.t}%8.2f ${r.maxT}%8.2f ${r.atCrop}%5d  ${verdict(math.max(math.abs(r.t), r.maxT))}"
       )
       r.sink
     }

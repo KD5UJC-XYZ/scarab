@@ -8,10 +8,25 @@ import xyz.kd5ujc.scarab.codec.Bytes
 /** The prover against the prover it replaced ([[LegacyDraft03Prover]], kept unchanged): proofs and
   * outputs are deterministic functions of the key and alpha, so the two must agree byte for byte on
   * every generated key and input, and so must the public key, the `vrf.skey` layout and the
-  * refusals of a malformed key. The vectors of `Draft03ProverSuite` and
-  * `Draft03CardanoBaseVectorSuite` pin both to libsodium; this suite pins the steps that changed
-  * (the unreduced scalar, the output from the constant-time point, the challenge over the encodings
-  * as computed, the multiplications by digits the prover holds) on inputs no vector covers.
+  * refusals of a malformed key.
+  *
+  * What it can catch: a difference in the steps that changed, which the two provers take
+  * differently over the same arithmetic. The new one multiplies by the clamped scalar unreduced,
+  * the old one by the scalar reduced modulo L; the new one takes the output from the constant-time
+  * point, the old one from Gamma decoded by `Ed25519Point`; the new one hashes the challenge over
+  * the encodings as computed, the old one over U and V decoded and encoded again; the new one keeps
+  * the seed, the nonce and the digits in a scratch, the old one in library scalars. A slip in any
+  * of these, on a key or input no vector covers, shows here.
+  *
+  * What it cannot catch: a fault in the vendored arithmetic itself. The legacy prover is the old
+  * Scala, but the vendored `Scalar` and point code it calls is today's: its
+  * `fromBytesModOrderWide`, `multiplyAndAdd(Scalar, Scalar)`, `toRadix16()` and `multiply(Scalar)`
+  * now compute through the array forms the new prover calls (`reduceWide`,
+  * `multiplyAndAdd(byte[]…)`, `toRadix16(byte[], byte[])`, `multiplyRadix16`), so a fault there is
+  * in both and they agree on it. That arithmetic is checked by suites that do not share it:
+  * `ScalarSuite` and `EdwardsPointSuite` against exact integers and an independent model of the
+  * curve (both forms of each operation), and `Draft03ProverSuite` and
+  * `Draft03CardanoBaseVectorSuite` against the outputs of the reference's libsodium.
   */
 class Draft03ProverDifferentialSuite extends munit.ScalaCheckSuite:
   override def scalaCheckTestParameters =
