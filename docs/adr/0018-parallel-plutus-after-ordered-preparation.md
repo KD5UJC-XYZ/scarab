@@ -117,3 +117,16 @@ rules; the flat rules stop at the first refused transaction), so a prepared body
 the serial run never does; the rule bounds that work by the units an admissible block declares. Verdicts,
 state and counters are unchanged: an over-budget body's result is the serial run's at every worker
 count. The [as-built design](../design/parallel-plutus.md#era-block-runs) has the detail.
+
+**Amendment (2026-11-24): a floor of declared work.** A body is prepared for the workers only when its
+redeemers declare, summed, at least 200,000,000 CPU steps (`Phase2.payingSteps`), in the era block runs
+and in the flat rules' body alike ([#85](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7132910115));
+below it the serial run is the faster path. The earlier conditions stand: more than one transaction with
+redeemers, and the block's execution units within its limit. The declared steps are the sum BBODY's
+`validateExUnits` takes (`getTotalExUnits`), the only measure of a block's scripts known before they run.
+Measured serial against four workers in one JVM, preparing cost about 0.2 ms a block plus about 20 µs a
+job and saved about three quarters of the scripts' evaluation; every recorded Leios testnet block
+declaring less lost 5 to 30% prepared, and on the recorded preprod window neither the era run nor the flat
+rules' body gained below the floor, where the flat rules' lost. This is a performance choice: verdicts, state, naming and
+counters are the serial run's either way, and nothing differs from the reference. The
+[as-built design](../design/parallel-plutus.md#where-preparing-pays) has the measurements.

@@ -100,16 +100,15 @@ object Phase2:
   /** The CPU steps a body's redeemers must declare, summed, for the node to prepare it for its
     * workers (#85, ADR 0018's amendment of 2026-11-24): below them preparing costs more than it
     * saves. Measured on 2026-11-24, each body serially and prepared at four workers in one JVM,
-    * alternated: on the recorded Leios testnet blocks (`PlutusThresholdBench`, tools) all eight
-    * that declare less lost 0.1 to 0.3 ms (10 to 30%) prepared in each of three runs, and those
-    * above were within about 0.3 ms either way up to 0.5 billion steps; on Dijkstra's and Conway's
-    * blocks of 2 to 32 synthetic scripts, preparing cost about 0.2 ms a block plus about 20 us a
-    * job and saved about three quarters of the scripts' evaluation, crossing near 0.35 billion
-    * steps; on the recorded preprod window (`ConwayBodiesReplaySuite`), the flat rules' body did
-    * best with this floor, and Conway's era run, whose jobs also translate their contexts, lost
-    * about 0.2% by it. Declared, not spent, steps decide, as only they are known before the scripts
-    * run, and a script spends at most what it declares: a block declaring more than its scripts
-    * spend is prepared at a loss of at most that overhead.
+    * alternated: all eight recorded Leios testnet blocks that declare less lost 0.1 to 0.3 ms (5 to
+    * 30%) prepared in each of three runs (`PlutusThresholdBench`, tools); on Dijkstra's and
+    * Conway's blocks of 2 to 32 synthetic scripts preparing cost about 0.2 ms a block plus about 20
+    * us a job and saved about three quarters of the scripts' evaluation, crossing near 0.35 billion
+    * steps; on the recorded preprod window (`ConwayBodiesReplaySuite`) neither the era run nor the
+    * flat rules' body gained below this floor, where the flat rules' lost. Declared, not spent,
+    * steps decide, as only they are known before the scripts run, and a script spends at most what
+    * it declares: a block declaring more than its scripts spend is prepared at a loss of at most
+    * that overhead.
     */
   val payingSteps: BigInt = BigInt(200000000)
 
