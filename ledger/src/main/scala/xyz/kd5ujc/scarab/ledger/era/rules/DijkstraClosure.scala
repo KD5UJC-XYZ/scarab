@@ -138,11 +138,11 @@ object DijkstraClosure:
     *
     * The reference's checks are lazy and a skipped one is never evaluated, as the Dijkstra rules'
     * predicates are here; the node still computes some values before the judgment drops what reads
-    * them, the outputs of every input read from the store into the era among them, so a defect
-    * raised while computing one is raised here where the reference meets none. A closure the
-    * committee certified passes them, and the difference is a Gap (#54). The defects are the rules'
-    * ([[UtxoStateDefect]], [[LedgerDefect]], [[PoolDefect]], [[GovDefect]],
-    * [[ScriptVerdictUnavailable]]).
+    * them, the outputs of every input read from the store into the era among them (once, for the
+    * annotation and LEDGER both), so a defect raised while computing one is raised here where the
+    * reference meets none. A closure the committee certified passes them, and the difference is a
+    * Gap (#54). The defects are the rules' ([[UtxoStateDefect]], [[LedgerDefect]], [[PoolDefect]],
+    * [[GovDefect]], [[ScriptVerdictUnavailable]]).
     */
   def applyLeiosClosure[F[_]: Monad](
       env: LedgerEnv[Dijkstra],
@@ -162,39 +162,32 @@ object DijkstraClosure:
       poolDefect: Raise[F, PoolDefect],
       govDefect: Raise[F, GovDefect]
   ): F[Unit] =
-    val bodies = EraTx.dijkstra.bodyOf
-    txs.traverse_ { tx =>
-      for
-        current <- state.get
-        utxo <- ShelleyUtxo.readStored[F, Dijkstra](
-          ShelleyUtxo
-            .restrictKeys(
-              current.utxo.utxo.utxo,
-              bodies.allInputs(EraTx.dijkstra.body[TxLevel.Top](tx)(using BothLevels.Top))
-            )
-        )
-        // the script-decoding cache only saves work, and no script is evaluated: empty
-        // (`Leios.hs:249-251`, ouroboros-consensus 2416493b)
-        _ <- applyUnchecked[F](
-          env,
-          DijkstraLedgers.mkStAnnTx(slotToPOSIXTime, env.ledgerPp)(utxo, Map.empty, tx),
-          context,
-          verdicts,
-          decoder
-        )
-      yield ()
-    }
+    // the script-decoding cache only saves work, and no script is evaluated: empty
+    // (`Leios.hs:249-251`, ouroboros-consensus 2416493b)
+    txs.traverse_(tx =>
+      applyUnchecked[F](
+        env,
+        tx,
+        DijkstraLedgers.mkStAnnTx(slotToPOSIXTime, env.ledgerPp)(_, Map.empty, _),
+        context,
+        verdicts,
+        decoder
+      )
+    )
 
-  /** One annotated transaction of a closure by Dijkstra's LEDGER with `ValidateNone`
-    * (`ruleApplyTxValidation @"LEDGER" ValidateNone`, `Leios.hs:240-252`, ouroboros-consensus
-    * 2416493b), as [[applyLeiosClosure]] applies each: no predicate checked
-    * ([[Judge.validateNone]]), so none of the annotation's members is read but its
-    * sub-transactions, the labelled parts skipped ([[TxEnv.Validation.NonStatic]]), the events
-    * discarded.
+  /** One transaction of a closure by Dijkstra's LEDGER with `ValidateNone` (`ruleApplyTxValidation @"LEDGER"
+    * ValidateNone`, `Leios.hs:240-252`, ouroboros-consensus 2416493b), as [[applyLeiosClosure]]
+    * applies each: the stored outputs of its every level's inputs, reference inputs and collateral
+    * read from the state it is applied to into the era once, the transaction annotated against that
+    * UTxO set (`annotate`, `mkStAnnTx`) and LEDGER judging it on the same set, as the reference
+    * annotates and judges against `ms ^. utxoG`; no predicate checked ([[Judge.validateNone]]), so
+    * none of the annotation's members is read but its sub-transactions, the labelled parts skipped
+    * ([[TxEnv.Validation.NonStatic]]), the events discarded.
     */
   def applyUnchecked[F[_]: Monad](
       env: LedgerEnv[Dijkstra],
-      stAnnTx: StAnnTx[TxLevel.Top, Dijkstra],
+      tx: Tx[TxLevel.Top, Dijkstra],
+      annotate: (UTxO[Dijkstra], Tx[TxLevel.Top, Dijkstra]) => StAnnTx[TxLevel.Top, Dijkstra],
       context: DijkstraUtxoContext,
       verdicts: Verdicts,
       decoder: ScriptDecoder[Id]
@@ -213,10 +206,21 @@ object DijkstraClosure:
     given Tell[F, Chain[LedgerEvent[Dijkstra]]] = discarded
     // no script is evaluated (`ValidateNone`), so there is none to tell the run of
     given Phase2Deferral[F, Dijkstra] = Phase2Deferral.now
-    DijkstraLedger.dijkstraLedgerTransition[F](
-      env,
-      stAnnTx,
-      context.copy(validation = TxEnv.Validation.NonStatic),
-      verdicts,
-      decoder
-    )
+    for
+      current <- state.get
+      utxo <- ShelleyUtxo.readStored[F, Dijkstra](
+        ShelleyUtxo.restrictKeys(
+          current.utxo.utxo.utxo,
+          EraTx.dijkstra.bodyOf.allInputs(
+            EraTx.dijkstra.body[TxLevel.Top](tx)(using BothLevels.Top)
+          )
+        )
+      )
+      _ <- DijkstraLedger.dijkstraLedgerTransitionOn[F](utxo)(
+        env,
+        annotate(utxo, tx),
+        context.copy(validation = TxEnv.Validation.NonStatic),
+        verdicts,
+        decoder
+      )
+    yield ()

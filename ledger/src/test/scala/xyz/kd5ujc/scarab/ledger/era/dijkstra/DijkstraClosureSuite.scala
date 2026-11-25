@@ -326,19 +326,23 @@ class DijkstraClosureSuite extends FunSuite:
     // cardano-ledger 9df9f98c), so no member a predicate reads is made: here each is one that
     // fails the test when read, and the state after is the one the made annotation leaves
     def unreadTop(top: DijkstraStAnnTx.TopTx) = DijkstraBbodyRun.unreadMembers(top, fail(_))
-    def made(r: Recorded) =
+    def made(u: UTxO[Dijkstra], t: DijkstraTx[TxLevel.Top]) =
       DijkstraStAnnTx.mkDijkstraStAnnTopTx(
         slot => Right(slot * 1000),
         testnetPParams,
-        r.utxo,
+        u,
         Map.empty,
-        r.tx
+        t
       )
-    def run(r: Recorded, stAnnTx: DijkstraStAnnTx.TopTx) =
+    def run(
+        r: Recorded,
+        annotate: (UTxO[Dijkstra], DijkstraTx[TxLevel.Top]) => DijkstraStAnnTx.TopTx
+    ) =
       DijkstraBbodyRun.unchecked(
         globals,
         DijkstraClosure.mkMempoolEnv(r.ebSlot, testnetPParams, account),
-        stAnnTx,
+        r.tx,
+        annotate,
         context(flat.TxEnv.Validation.All),
         holding(r.utxo),
         noProposals,
@@ -347,9 +351,9 @@ class DijkstraClosureSuite extends FunSuite:
         ScarabEvaluator.defaultDecoder
       )
     endorsed.foreach { r =>
-      val expected = run(r, made(r))
+      val expected = run(r, made)
       assert(expected.exists(_.isRight), s"${r.name}: $expected")
-      assertEquals(run(r, unreadTop(made(r))), expected, r.name)
+      assertEquals(run(r, (u, t) => unreadTop(made(u, t))), expected, r.name)
     }
     // the control: LEDGER with every predicate checked reads them
     val r = endorsed.head
@@ -357,7 +361,7 @@ class DijkstraClosureSuite extends FunSuite:
       DijkstraLedgerRun.ledger(
         globals,
         DijkstraClosure.mkMempoolEnv(r.ebSlot, testnetPParams, account),
-        unreadTop(made(r)),
+        unreadTop(made(r.utxo, r.tx)),
         context(flat.TxEnv.Validation.NonStatic),
         holding(r.utxo),
         noProposals,

@@ -177,14 +177,18 @@ object DijkstraBbodyRun:
       stAnnTx.dsattSubTransactions.map(_.map(unreadSub))
     )
 
-  /** One annotated transaction of a closure applied as the closure applies each
-    * (`DijkstraClosure.applyUnchecked`), with `env` to `state` and `proposals`: the state after,
-    * the proposals after, or a defect.
+  /** One transaction of a closure, annotated by `annotate` against the UTxO set it reads, applied
+    * as the closure applies each (`DijkstraClosure.applyUnchecked`), with `env` to `state` and
+    * `proposals`: the state after, the proposals after, or a defect.
     */
   def unchecked(
       globals: Globals,
       env: LedgerEnv[Dijkstra],
-      stAnnTx: DijkstraStAnnTx.TopTx,
+      tx: Tx[TxLevel.Top, Dijkstra],
+      annotate: (
+          xyz.kd5ujc.scarab.ledger.era.UTxO[Dijkstra],
+          Tx[TxLevel.Top, Dijkstra]
+      ) => DijkstraStAnnTx.TopTx,
       context: DijkstraUtxoContext,
       state: LedgerState[Dijkstra],
       proposals: Proposals[Dijkstra],
@@ -197,7 +201,7 @@ object DijkstraBbodyRun:
       summon[Stateful[F, ShelleyBbodyState[Dijkstra]]].focus(ShelleyBbodyState.ls[Dijkstra])
     Judgment
       .judge(
-        DijkstraClosure.applyUnchecked[F](env, stAnnTx, context, verdicts, decoder),
+        DijkstraClosure.applyUnchecked[F](env, tx, annotate, context, verdicts, decoder),
         RuleT.Policy.Accumulate
       )(
         globals,

@@ -22230,8 +22230,8 @@
    "evidence": [
     "EraPlutusContextSuite"
    ],
-   "note": "with its `merge`, the successes and the failures each in reverse order",
-   "digest": "2e0a259f4ce7d2b6"
+   "note": "with its `merge`, the successes and the failures each in reverse order; the redeemers and the cost models read only for a script the information uses, as the reference's lazy `redeemers` and its lookup of each script's model (`Map.lookup lang (costModelsValid costModels)`, `Evaluate.hs:145, 155`), so a transaction that uses none reads neither",
+   "digest": "6279709bb51042ae"
   },
   "def ledger.era.AlonzoPlutusEvaluate.collectPlutusScriptsWithContext": {
    "upstream": [
@@ -40885,8 +40885,8 @@
     "DijkstraLedgerSuite",
     "DijkstraRulesOracleSuite"
    ],
-   "note": "the proposals the era's, in their own capability beside the ledger state, as SUBLEDGER's are; the committee and the constitution the governance state's, the committee's proposals put in the node's record EntitiesEnv holds; the UTxO set before the transaction the stored outputs of every level's inputs, reference inputs and collateral; the epoch the environment's or the slot's by the geometry of Globals; the reference's assertions (shelleyLedgerAssertions) not run, as at Conway; where UTXOS evaluates the scripts a capability (Phase2Deferral), passed down to UTXO; a predicate's condition evaluated only when the judgment checks predicates (`Sts.validating`), as under ValidateNone the reference evaluates none (`Extended.hs:715-720`)",
-   "digest": "64f05ed112e16144"
+   "note": "the proposals the era's, in their own capability beside the ledger state, as SUBLEDGER's are; the committee and the constitution the governance state's, the committee's proposals put in the node's record EntitiesEnv holds; the UTxO set before the transaction the stored outputs of every level's inputs, reference inputs and collateral; the epoch the environment's or the slot's by the geometry of Globals; the reference's assertions (shelleyLedgerAssertions) not run, as at Conway; where UTXOS evaluates the scripts a capability (Phase2Deferral), passed down to UTXO; a predicate's condition evaluated only when the judgment checks predicates (`Sts.validating`), as under ValidateNone the reference evaluates none (`Extended.hs:715-720`); the UTxO set read, then dijkstraLedgerTransitionOn",
+   "digest": "6b666ecd30bb9cdc"
   },
   "def ledger.era.rules.DijkstraLedgers.mkStAnnTx": {
    "upstream": [
@@ -43131,8 +43131,8 @@
    "evidence": [
     "DijkstraClosureSuite"
    ],
-   "note": "each transaction annotated by Dijkstra's mkStAnnTx (DijkstraLedgers.mkStAnnTx) with an empty cache; each applied by applyUnchecked: ValidateNone as the judgment Judge.validateNone, which evaluates no predicate's condition (`Sts.validating`), so no annotated member is read but the sub-transactions, records nothing and never fails, and as the policy that skips the static checks (every labelled step carries lblStatic), the events discarded; the node still computes some values before the judgment drops what reads them, every input's stored output read into the era among them, so a defect raised while computing one is raised where the reference, lazy, meets none (a Gap); the state the closure is applied to and the cumulative bytes are the caller's, as stowing the tables and the consensus state's counter are the node's; its scripts, which ValidateNone evaluates none of, where UTXOS collects them (Phase2Deferral.now)",
-   "digest": "01efe6ac969bbc35"
+   "note": "each transaction annotated by Dijkstra's mkStAnnTx (DijkstraLedgers.mkStAnnTx) with an empty cache; each applied by applyUnchecked: ValidateNone as the judgment Judge.validateNone, which evaluates no predicate's condition (`Sts.validating`), so no annotated member is read but the sub-transactions, records nothing and never fails, and as the policy that skips the static checks (every labelled step carries lblStatic), the events discarded; the node still computes some values before the judgment drops what reads them, every input's stored output read into the era among them (once, for the annotation and LEDGER both), so a defect raised while computing one is raised where the reference, lazy, meets none (a Gap); the state the closure is applied to and the cumulative bytes are the caller's, as stowing the tables and the consensus state's counter are the node's; its scripts, which ValidateNone evaluates none of, where UTXOS collects them (Phase2Deferral.now)",
+   "digest": "4d730c6312e3a6a2"
   },
   "def ledger.era.dijkstra.DijkstraBlockBody.ofDecoded": {
    "upstream": [
@@ -48584,8 +48584,8 @@
     "DijkstraClosureSuite",
     "DijkstraLedgerSuite"
    ],
-   "note": "one transaction's step of applyLeiosClosure, a function of its own here: Dijkstra's LEDGER under ValidateNone (Judge.validateNone), the labelled steps skipped (TxEnv.Validation.NonStatic), the events discarded, the scripts evaluated where collected (Phase2Deferral.now), of which ValidateNone collects none",
-   "digest": "d91f4778bf6cb7d2"
+   "note": "one transaction's step of applyLeiosClosure, a function of its own here: Dijkstra's LEDGER under ValidateNone (Judge.validateNone), the labelled steps skipped (TxEnv.Validation.NonStatic), the events discarded, the scripts evaluated where collected (Phase2Deferral.now), of which ValidateNone collects none; the stored outputs of its inputs read from the state it is applied to once, the annotation (mkStAnnTx, given) and LEDGER (dijkstraLedgerTransitionOn) both on that UTxO set",
+   "digest": "78a58c1c8edb2548"
   },
   "enum ledger.rules.ValidationPolicy": {
    "upstream": [
@@ -48691,6 +48691,29 @@
    "structure": "same",
    "note": "the header's point typed as a block point; computed once with point",
    "digest": "42a2f8de72ad1bfc"
+  },
+  "def ledger.era.rules.DijkstraLedger.dijkstraLedgerTransitionOn": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Ledger.hs",
+     "symbol": "dijkstraLedgerTransition",
+     "lines": [
+      364,
+      487
+     ]
+    }
+   ],
+   "class": "Gap",
+   "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923488137",
+   "evidence": [
+    "DijkstraLedgerSuite",
+    "DijkstraRulesOracleSuite"
+   ],
+   "note": "the transition of dijkstraLedgerTransition given the UTxO set before the transaction (the reference's utxosUtxo, `:400`), which applyLeiosClosure read for the annotation from the same state, as the reference annotates and judges against the one set; the proposals the era's, in their own capability beside the ledger state, as SUBLEDGER's are; the committee and the constitution the governance state's, the committee's proposals put in the node's record EntitiesEnv holds; the UTxO set before the transaction the stored outputs of every level's inputs, reference inputs and collateral; the epoch the environment's or the slot's by the geometry of Globals; the reference's assertions (shelleyLedgerAssertions) not run, as at Conway; where UTXOS evaluates the scripts a capability (Phase2Deferral), passed down to UTXO; a predicate's condition evaluated only when the judgment checks predicates (`Sts.validating`), as under ValidateNone the reference evaluates none (`Extended.hs:715-720`)",
+   "digest": "61f756449b6ce2f1"
   }
  },
  "glue": [
