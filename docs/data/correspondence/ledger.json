@@ -27122,9 +27122,10 @@
    "structure": "same",
    "evidence": [
     "DijkstraUTxOSuite",
-    "DijkstraPlutusContextSuite"
+    "DijkstraPlutusContextSuite",
+    "DijkstraScriptsProvidedSuite"
    ],
-   "note": "written for Dijkstra, whose levels are both, as `conwayProducedValue` is for Conway; the reference's is generic in an era whose levels are both; on the testnet's transactions and the reference's UTXOW cases its hashes are exactly the batch's witnesses' and its inputs' reference scripts', and the script of every context the reference recorded, at the top level and in a sub-transaction, is the one it provides, with its language and bytes (`DijkstraPlutusContextSuite`). A sub-transaction's own is not compared",
+   "note": "written for Dijkstra, whose levels are both, as `conwayProducedValue` is for Conway; the reference's is generic in an era whose levels are both; on every Dijkstra transaction the repository records that the reference reads, its Plutus scripts by hash and language, at the top level and at each sub-transaction, are exactly the witness sets' and the recorded outputs' reference scripts the recorded bytes hold (`DijkstraScriptsProvidedSuite`); on the testnet's transactions and the reference's UTXOW cases its hashes are exactly the batch's witnesses' and its inputs' reference scripts', and the script of every context the reference recorded is the one it provides, with its language and bytes (`DijkstraPlutusContextSuite`)",
    "digest": "3946655273d678dd"
   },
   "def ledger.era.dijkstra.DijkstraUTxO.getDijkstraScriptsNeeded": {
