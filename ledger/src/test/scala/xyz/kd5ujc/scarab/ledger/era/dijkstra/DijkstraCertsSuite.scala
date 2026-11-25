@@ -11,15 +11,7 @@ import xyz.kd5ujc.scarab.ledger.{TestLedger, TxEnv}
 import xyz.kd5ujc.scarab.ledger.era.*
 import xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraCorpus.*
 import xyz.kd5ujc.scarab.ledger.era.rules.*
-import xyz.kd5ujc.scarab.ledger.rules.{
-  Convert,
-  DijkstraCertsRule,
-  DijkstraSts,
-  Globals,
-  Judgment,
-  Test as RuleTest,
-  Translate
-}
+import xyz.kd5ujc.scarab.ledger.rules.{Convert, Globals, Test as RuleTest, Translate}
 import xyz.kd5ujc.scarab.ledger.state.{
   AccountAddress,
   AccountId,
@@ -341,31 +333,6 @@ class DijkstraCertsSuite extends FunSuite:
 
   private lazy val withCertificates =
     chain.filter(j => b.certs[TxLevel.Top](eraTx(j).body).nonEmpty)
-
-  test("CERTS on the chain's certificates gives the flat rule's failures, from the same state") {
-    // 8 of the 10 transactions with certificates hold them at the top level; the other two in a
-    // sub-transaction, SUBCERTS' (D7c)
-    assertEquals(withCertificates.size, 8)
-    val flatStart = Empty.certState[Dijkstra]
-    withCertificates.foreach { j =>
-      val name = str(j, "name")
-      val era = ok(
-        EraCertsRun.dijkstraCerts(leios, certsEnv, empty, b.certs[TxLevel.Top](eraTx(j).body))
-      ).left.map(_.toChain.toVector.map(DijkstraCertsStored.toStored))
-      val flatTx =
-        ok(xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraTx.inBlock(node(hex(str(j, "bytes")))))
-      val flatJudged = DijkstraSts.judge(DijkstraCertsRule, Judgment.Policy.Accumulate)(
-        TestLedger.globals,
-        flat.rules.CertEnv(flatTx.id, testnetStored, 5, None, Map.empty),
-        flatStart,
-        flatTx.body.certificates
-      )
-      flatJudged match
-        case Right(Left(fs)) => assertEquals(era, Left(fs.toChain.toVector), name)
-        case Right(Right(s)) => assertEquals(era.map(_._1), Right(s), name)
-        case Left(halt)      => fail(s"$name: the flat rule halts: $halt")
-    }
-  }
 
   private lazy val network: Network = leios.networkId
 

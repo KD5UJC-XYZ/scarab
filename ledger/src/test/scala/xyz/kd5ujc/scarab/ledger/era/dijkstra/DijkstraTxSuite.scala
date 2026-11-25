@@ -60,7 +60,8 @@ import xyz.kd5ujc.scarab.ledger.era.{
   TxLevel,
   ValidityInterval
 }
-import xyz.kd5ujc.scarab.ledger.rules.{Convert, DijkstraTxMeasures}
+import xyz.kd5ujc.scarab.ledger.rules.Convert
+import xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraTxMeasures
 import xyz.kd5ujc.scarab.ledger.state.{
   Coin,
   Credential,

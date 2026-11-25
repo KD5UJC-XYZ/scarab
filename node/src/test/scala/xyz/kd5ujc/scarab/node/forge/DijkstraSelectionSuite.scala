@@ -8,7 +8,7 @@ import xyz.kd5ujc.scarab.crypto.bls.Certificate
 import xyz.kd5ujc.scarab.ledger.{LeiosBlock, LeiosHeader, TestLedger}
 import xyz.kd5ujc.scarab.ledger.era.{BothLevels, EraTx, Tx, TxLevel}
 import xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraTx
-import xyz.kd5ujc.scarab.ledger.rules.DijkstraTxMeasures
+import xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraTxMeasures
 import xyz.kd5ujc.scarab.ledger.state.Dijkstra
 import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.TxMeasure
 import xyz.kd5ujc.scarab.node.mempool.Capacity
