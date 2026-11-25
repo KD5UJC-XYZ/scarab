@@ -135,4 +135,8 @@ object HeaderBodyEncoding:
   private[ledger] val Null: Array[Byte] = Array(0xf6.toByte)
   private[ledger] val True: Array[Byte] = Array(0xf5.toByte)
   private[ledger] val False: Array[Byte] = Array(0xf4.toByte)
-  private[ledger] def join(parts: Vector[Array[Byte]]): Bytes = Bytes.wrap(parts.flatten.toArray)
+
+  /** The parts, one after another, copied once into one array (`Array.concat`, not a generic
+    * `flatten`, which would box every byte).
+    */
+  private[ledger] def join(parts: Vector[Array[Byte]]): Bytes = Bytes.wrap(Array.concat(parts*))

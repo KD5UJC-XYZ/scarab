@@ -112,14 +112,14 @@ object BlockBuilder:
 
   def body(pieces: Vector[Piece]): Body =
     def seq(items: Vector[Array[Byte]]): Bytes =
-      Bytes.fromArray(container(4, items.size, items.flatten.toArray))
+      Bytes.fromArray(container(4, items.size, Array.concat(items*)))
     val auxEntries = pieces.zipWithIndex.collect { case (Piece(_, _, _, Some(a), _), i) =>
       uint(i) ++ a.toArray
     }
     Body(
       seq(pieces.map(_.body.toArray)),
       seq(pieces.map(_.witnesses.toArray)),
-      Bytes.fromArray(container(5, auxEntries.size, auxEntries.flatten.toArray)),
+      Bytes.fromArray(container(5, auxEntries.size, Array.concat(auxEntries*))),
       seq(pieces.zipWithIndex.collect { case (p, i) if !p.valid => uint(i) }),
       pieces.map(_.id)
     )

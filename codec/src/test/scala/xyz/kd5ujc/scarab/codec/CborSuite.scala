@@ -262,6 +262,16 @@ class CborSuite extends munit.FunSuite:
       Cbor.encode(Value.UInt(0), Cbor.Limits(maxInputBytes = 0)),
       Left(Cbor.Error.OutputLimitExceeded)
     )
+    // a string's bytes are written at once: its head and three bytes fit a limit of four, not three
+    val three = Value.ByteString(Bytes.fromArray(Array[Byte](1, 2, 3)))
+    assertEquals(
+      Cbor.encode(three, Cbor.Limits(maxInputBytes = 4)),
+      Right(Bytes.fromArray(Array[Byte](0x43, 1, 2, 3)))
+    )
+    assertEquals(
+      Cbor.encode(three, Cbor.Limits(maxInputBytes = 3)),
+      Left(Cbor.Error.OutputLimitExceeded)
+    )
     assertEquals(
       Cbor.encode(text, Cbor.Limits(maxStringBytes = 1)),
       Left(Cbor.Error.StringLimitExceeded)
