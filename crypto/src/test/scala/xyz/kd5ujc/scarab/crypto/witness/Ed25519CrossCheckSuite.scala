@@ -54,11 +54,28 @@ class Ed25519CrossCheckSuite extends munit.ScalaCheckSuite:
   ): Option[Array[Byte]] =
     (0 until 256).iterator.map(i => base :+ i.toByte).find(m => want(M.challenge(r, key, m)))
 
-  /** y from p to 2^255 - 1 (y >= p), with each sign. */
-  private val nonCanonical: Vector[Array[Byte]] =
-    (M.p until (BigInt(1) << 255)).toVector.flatMap(y =>
+  /** The encodings with y = p + delta, each with sign 0 and 1. */
+  private def nonCanonicalOf(deltas: Seq[Int]): Vector[Array[Byte]] =
+    deltas.toVector.flatMap { delta =>
+      val y = M.p + delta
       Vector(M.le(y, 32), M.le(y.setBit(255), 32))
-    )
+    }
+
+  /** Every non-canonical encoding: y from p to 2^255 - 1, that is y = p + delta, delta 0 to 18. */
+  private val nonCanonical: Vector[Array[Byte]] = nonCanonicalOf(0 to 18)
+
+  // Of the y values 0 to 18 these have a point (checked by "the non-canonical encodings" below). y = 0
+  // (the two points of order 4) and y = 1 (the identity) are of small order; the others are not.
+  private val onCurveDeltas = Vector(0, 1, 3, 4, 5, 6, 9, 10, 14, 15, 16, 18)
+
+  /** y = p and p + 1: aliases of the points of order 4 and of the identity. */
+  private val smallOrderAliases = nonCanonicalOf(Vector(0, 1))
+
+  /** y = p + delta for the ten other delta with a point: aliases of points not of small order. */
+  private val largeOrderAliases = nonCanonicalOf(onCurveDeltas.filterNot(Set(0, 1)))
+
+  /** y = p + delta for the seven delta with no point. */
+  private val offCurveAliases = nonCanonicalOf((0 to 18).filterNot(onCurveDeltas.contains))
 
   /** The canonical encodings of the eight points of order dividing 8. */
   private val torsionEncodings: Vector[Array[Byte]] = M.torsion.map(_.encode)
@@ -142,10 +159,16 @@ class Ed25519CrossCheckSuite extends munit.ScalaCheckSuite:
     val mutation = Gen.oneOf(
       Gen.choose(0, 255).map(Mutation.Key(_)),
       Gen.choose(0, 255).map(Mutation.R(_)),
-      Gen.choose(0, 255).map(Mutation.S(_)),
-      Gen.choose(0, 7).map(Mutation.Message(_))
+      Gen.choose(0, 255).map(Mutation.S(_))
     )
-    forAllNoShrink(signed.suchThat(_.message.nonEmpty), mutation) { (c, flip) =>
+    val cases = for
+      c <- signed.suchThat(_.message.nonEmpty)
+      flip <- Gen.frequency(
+        3 -> mutation,
+        1 -> Gen.choose(0, 8 * c.message.length - 1).map(Mutation.Message(_))
+      )
+    yield (c, flip)
+    forAllNoShrink(cases) { (c, flip) =>
       val mutated = flip match
         case Mutation.Key(b)     => c.copy(key = flipped(c.key, b))
         case Mutation.R(b)       => c.copy(signature = flipped(c.signature, b))
@@ -191,21 +214,86 @@ class Ed25519CrossCheckSuite extends munit.ScalaCheckSuite:
     }
   }
 
-  // A non-canonical R (y >= p). S = k a makes [S]B - [k]A the identity, so a verifier that read
-  // y = p + 1 modulo p would accept that R. The reference refuses each (y = p and p + 1 are on its
-  // blacklist; no other can equal the canonical encoding it compares with).
-  family("non-canonical R", Expected(SignatureRejected, Jdk.SignatureRefused, false)) {
-    Gen.zip(secret, message, Gen.oneOf(nonCanonical)).map { (a, m, r) =>
+  // Non-canonical encodings (y >= p). Rejecting one for its encoding alone cannot be isolated in a
+  // signature: an alias of a point not of small order (y = p + delta, delta in largeOrderAliases)
+  // has no known discrete logarithm, so no signature satisfies its equation, and the equation
+  // fails whatever the encoding; and the aliases whose equation can hold, y = p and p + 1, are of
+  // small order, which the reference refuses as well. The families below state which reasons apply;
+  // the test "non-canonical encodings of points not of small order are refused for the encoding
+  // alone" isolates the encoding check where it can be isolated, in the decoding of a key.
+
+  // R = p + 1 or p (the identity, or a point of order 4, both signs), S = k a: [S]B - [k]A is the
+  // identity, so for y = p + 1 a verifier that read y modulo p and had no small-order test would
+  // accept. The reference refuses R for its encoding and for its order (y = p and p + 1 are on its
+  // blacklist); the JDK and BC refuse the encoding.
+  family(
+    "non-canonical R aliasing a point of small order (refused for its encoding and its order)",
+    Expected(SignatureRejected, Jdk.SignatureRefused, false)
+  ) {
+    Gen.zip(secret, message, Gen.oneOf(smallOrderAliases)).map { (a, m, r) =>
       val key = (M.basepoint * a).encode
       Case(key, r ++ le(M.challenge(r, key, m) * a), m)
     }
   }
 
-  // A non-canonical A. R = [r]B and S = r: a verifier that read y = p + 1 as the identity would
-  // accept. The reference refuses it (ge25519_is_canonical), the JDK refuses the key.
-  family("non-canonical A", Expected(SignatureRejected, Jdk.KeyRefused, false)) {
-    Gen.zip(secret, message, Gen.oneOf(nonCanonical)).map { (r, m, key) =>
+  family(
+    "non-canonical R of a point not of small order, or of no point (its equation fails too)",
+    Expected(SignatureRejected, Jdk.SignatureRefused, false)
+  ) {
+    Gen.zip(secret, message, Gen.oneOf(largeOrderAliases ++ offCurveAliases)).map { (a, m, r) =>
+      val key = (M.basepoint * a).encode
+      Case(key, r ++ le(M.challenge(r, key, m) * a), m)
+    }
+  }
+
+  // A = p + 1 or p, R = [r]B and S = r: for y = p + 1 a verifier that read y modulo p and had no
+  // small-order test would accept. The reference refuses A for its encoding (ge25519_is_canonical)
+  // and its order; the JDK refuses the key, BC the encoding (checkPointFullVar).
+  family(
+    "non-canonical A aliasing a point of small order (refused for its encoding and its order)",
+    Expected(SignatureRejected, Jdk.KeyRefused, false)
+  ) {
+    Gen.zip(secret, message, Gen.oneOf(smallOrderAliases)).map { (r, m, key) =>
       Case(key, (M.basepoint * r).encode ++ le(r), m)
+    }
+  }
+
+  family(
+    "non-canonical A of a point not of small order, or of no point (its equation fails too)",
+    Expected(SignatureRejected, Jdk.KeyRefused, false)
+  ) {
+    Gen.zip(secret, message, Gen.oneOf(largeOrderAliases ++ offCurveAliases)).map { (r, m, key) =>
+      Case(key, (M.basepoint * r).encode ++ le(r), m)
+    }
+  }
+
+  test("the non-canonical encodings: which have a point, and which of those are of small order") {
+    (0 to 18).foreach { delta =>
+      val alias = M.decode(M.le(M.p + delta, 32), M.Reading.Lenient)
+      assertEquals(alias.isDefined, onCurveDeltas.contains(delta), s"y = p + $delta has a point")
+      alias.foreach(point =>
+        assertEquals(point.isSmallOrder, delta <= 1, s"y = p + $delta is of small order")
+      )
+    }
+    assertEquals(nonCanonical.size, 38)
+    assertEquals(smallOrderAliases.size + largeOrderAliases.size + offCurveAliases.size, 38)
+  }
+
+  // Each of these decodes, read modulo p as libsodium's ge25519_frombytes and the vendored
+  // decompress read it, to a point not of small order: the encoding is the only reason to refuse it.
+  test("non-canonical encodings of points not of small order are refused for the encoding alone") {
+    largeOrderAliases.foreach { e =>
+      val point = M.decode(e, M.Reading.Lenient).get
+      assert(!point.isSmallOrder, s"${hex(e)} is not of small order")
+      val decompressed = new com.weavechain.curve25519.CompressedEdwardsY(e.clone()).decompress()
+      assertEquals(
+        hex(decompressed.compress().toByteArray),
+        hex(point.encode),
+        s"decompress ${hex(e)}"
+      )
+      assert(StrictEd25519.point(e).isEmpty, s"Scarab refuses ${hex(e)}")
+      assert(!bcAcceptsKey(e), s"BC refuses ${hex(e)}")
+      assert(!jdkAcceptsKey(e), s"the JDK refuses ${hex(e)}")
     }
   }
 
