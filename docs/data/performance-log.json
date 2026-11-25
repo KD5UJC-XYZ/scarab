@@ -5468,7 +5468,7 @@
    ],
    "commits": [
     "d4ae5ce0b",
-    "6d995bd89"
+    "65571d01b"
    ],
    "links": [],
    "page": "peers-and-network",
@@ -5479,7 +5479,7 @@
       "`GenesisFetchBench`, best candidate",
       "Fresh, before (`d4ae5ce0b`)",
       "Repeated, before",
-      "Fresh, after (`6d995bd89`)",
+      "Fresh, after (`65571d01b`)",
       "Repeated, after"
      ],
      "separator": "|---|---:|---:|---:|---:|",

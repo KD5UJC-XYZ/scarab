@@ -712,7 +712,7 @@ version).
   scan of the candidate. Building the set costs more there: about 0.2 ms fresh and 0.4 ms repeated.
 
 <!-- register:table perf-71.t1 -->
-| `GenesisFetchBench`, best candidate | Fresh, before (`d4ae5ce0b`) | Repeated, before | Fresh, after (`6d995bd89`) | Repeated, after |
+| `GenesisFetchBench`, best candidate | Fresh, before (`d4ae5ce0b`) | Repeated, before | Fresh, after (`65571d01b`) | Repeated, after |
 |---|---:|---:|---:|---:|
 | 8,000, dynamo 2,000 behind, nothing fetched | 37.28 | 36.32 | 1.39 | 1.04 |
 | 8,000, dynamo 2,000 behind, first 2,000 fetched | 44.24 | 38.87 | 2.20 | 1.05 |
