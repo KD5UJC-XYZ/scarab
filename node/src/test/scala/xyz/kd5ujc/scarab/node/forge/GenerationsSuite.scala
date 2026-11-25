@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.node.forge
 
 import cats.effect.{Deferred, IO, Ref, Resource}
+import cats.effect.kernel.Outcome
 import cats.effect.testkit.TestControl
 import cats.effect.unsafe.IORuntimeConfig
 import cats.syntax.all.*
@@ -22,15 +23,25 @@ class GenerationsSuite extends FailsOnUncaught:
 
   /** A holder of a lease on the generation in force (one must be): it holds the lease once the
     * scope is open, and ends with the generation it leased when `release` is run. The holder is
-    * released, and cancelled if it has not ended, when the scope ends.
+    * released, and cancelled if it has not ended, when the scope ends; the scope fails to open if
+    * the holder ends without holding a lease.
     */
   private def holder(g: Generations[IO, Int]): Resource[IO, (IO[Unit], IO[Option[Int]])] =
     for
       held <- Resource.eval(Deferred[IO, Unit])
       release <- Resource.make(Deferred[IO, Unit])(_.complete(()).void)
       ended <- g.leased(n => held.complete(()) *> release.get.as(n)).background
-      _ <- Resource.eval(held.get)
+      _ <- Resource.eval(holding(held, ended))
     yield (release.complete(()).void, ended.flatMap(_.embedNever))
+
+  /** Until `held` is completed, or a failure if the worker whose outcome `ended` gives ends first:
+    * a wait that ends whatever the code under test does.
+    */
+  private def holding[A](held: Deferred[IO, Unit], ended: IO[Outcome[IO, Throwable, A]]) =
+    IO.race(held.get, ended).flatMap {
+      case Left(_)        => IO.unit
+      case Right(outcome) => IO.raiseError(new AssertionError(s"ended without a lease: $outcome"))
+    }
 
   test("a superseded generation is erased once its last lease ends, and not before") {
     numbered(1).flatMap { (g, erased) =>
@@ -98,35 +109,35 @@ class GenerationsSuite extends FailsOnUncaught:
     }
   }
 
+  /** `worker` started, cancelled and joined when the scope ends, however it ends. */
+  private def started[A](worker: IO[A]) = Resource.make(worker.start)(_.cancel)
+
   test("a lease ends with its holder when the holder is cancelled or fails") {
     for
       made <- numbered(1)
       (g, erased) = made
       held <- Deferred[IO, Unit]
-      waiting <- g.leased(_ => held.complete(()) *> IO.never[Unit]).start
-      _ <- held.get
-      _ <- g.install(Some(2))(recorded(erased))
-      whileHeld <- erased.get
-      _ <- waiting.cancel
-      cancelled <- waiting.join
-      afterCancel <- erased.get
+      cancelled <- started(g.leased(_ => held.complete(()) *> IO.never[Unit])).use { waiting =>
+        holding(held, waiting.join) *> g.install(Some(2))(recorded(erased)) *>
+          (erased.get, waiting.cancel *> waiting.join, erased.get).tupled
+      }
+      (whileHeld, cancel, afterCancel) = cancelled
       failing <- Deferred[IO, Unit]
       go <- Deferred[IO, Unit]
-      raising <- g
-        .leased(_ =>
+      failed <- started(
+        g.leased(_ =>
           failing.complete(()) *> go.get *> IO.raiseError[Unit](new IllegalStateException)
         )
-        .start
-      _ <- failing.get
-      _ <- g.install(Some(3))(recorded(erased))
-      _ <- go.complete(())
-      failed <- raising.join
-      afterFailure <- erased.get
+      ).use { raising =>
+        holding(failing, raising.join) *> g.install(Some(3))(recorded(erased)) *>
+          go.complete(()) *> (raising.join, erased.get).tupled
+      }
+      (failure, afterFailure) = failed
     yield
       assertEquals(whileHeld, Vector.empty)
-      assert(cancelled.isCanceled, cancelled.toString)
+      assert(cancel.isCanceled, cancel.toString)
       assertEquals(afterCancel, Vector(1), "the cancelled holder's lease kept it")
-      assert(failed.isError, failed.toString)
+      assert(failure.isError, failure.toString)
       assertEquals(afterFailure, Vector(1, 2), "the failed holder's lease kept it")
   }
 
@@ -137,37 +148,49 @@ class GenerationsSuite extends FailsOnUncaught:
       "lease, and no lease sees its generation erased"
   ) {
     val everyStep = IORuntimeConfig(1, 2)
-    (1 to 48).toList.traverse_ { seed =>
-      val program =
-        for
-          erased <- Ref.of[IO, Vector[Int]](Vector.empty)
-          // the generations a lease saw erased while it held them: none may be
-          seen <- Ref.of[IO, Vector[Int]](Vector.empty)
-          g <- Generations.of[IO, Int](0)
-          look = (n: Int) =>
-            erased.get.flatMap(e => seen.update(_ ++ Option.when(e.contains(n))(n)))
-          leases = (1 to 24).toList.parTraverse(i =>
-            val lease = g.leased(n => look(n) *> look(n).as(n))
-            // every third holder is cancelled wherever it is
-            if i % 3 == 0 then lease.start.flatMap(f => f.cancel *> f.join).as(Option.empty[Int])
-            else lease
-          )
-          installs = (1 to 6).toList.traverse_(n => g.install(Some(n))(recorded(erased)))
-          ran <- (leases, installs).parTupled
-          last <- g.leased(IO.pure)
-          // the generation in force retired at the end, with no lease left on it
-          _ <- g.install(None)(recorded(erased))
-          all <- erased.get
-          violations <- seen.get
-        yield
-          assertEquals(last, Some(6), s"seed $seed")
-          assertEquals(all.sorted, (0 to 6).toVector, s"seed $seed: each erased once, $all")
-          assertEquals(all.lastOption, Some(6), s"seed $seed: the one in force last")
-          assertEquals(violations, Vector.empty, s"seed $seed: leases that saw theirs erased")
-          assert(ran._1.flatten.forall(n => n >= 0 && n <= 6), s"seed $seed")
-      val seeded = java.util.Base64.getEncoder.encodeToString(seed.toString.getBytes)
-      TestControl.executeEmbed(program, everyStep, Some(seeded))
-    }
+    (1 to 48).toList
+      .traverse { seed =>
+        val program =
+          for
+            erased <- Ref.of[IO, Vector[Int]](Vector.empty)
+            // the generations a lease saw erased while it held them: none may be
+            seen <- Ref.of[IO, Vector[Int]](Vector.empty)
+            // the cancelled holders that held their lease when the cancel came
+            leasedThenCancelled <- Ref.of[IO, Int](0)
+            g <- Generations.of[IO, Int](0)
+            look = (n: Int) =>
+              erased.get.flatMap(e => seen.update(_ ++ Option.when(e.contains(n))(n)))
+            leases = (1 to 24).toList.parTraverse(i =>
+              // every third holder is cancelled wherever it is
+              if i % 3 == 0 then
+                g.leased(n => leasedThenCancelled.update(_ + 1) *> look(n) *> look(n).as(n))
+                  .start
+                  .flatMap(f => f.cancel *> f.join)
+                  .as(Option.empty[Int])
+              else g.leased(n => look(n) *> look(n).as(n))
+            )
+            installs = (1 to 6).toList.traverse_(n => g.install(Some(n))(recorded(erased)))
+            ran <- (leases, installs).parTupled
+            last <- g.leased(IO.pure)
+            // the generation in force retired at the end, with no lease left on it
+            _ <- g.install(None)(recorded(erased))
+            all <- erased.get
+            violations <- seen.get
+            cancelledHolding <- leasedThenCancelled.get
+          yield
+            assertEquals(last, Some(6), s"seed $seed")
+            assertEquals(all.sorted, (0 to 6).toVector, s"seed $seed: each erased once, $all")
+            assertEquals(all.lastOption, Some(6), s"seed $seed: the one in force last")
+            assertEquals(violations, Vector.empty, s"seed $seed: leases that saw theirs erased")
+            assert(ran._1.flatten.forall(n => n >= 0 && n <= 6), s"seed $seed")
+            cancelledHolding
+        val seeded = java.util.Base64.getEncoder.encodeToString(seed.toString.getBytes)
+        TestControl.executeEmbed(program, everyStep, Some(seeded))
+      }
+      .map(holding =>
+        // the cancellations land while a lease is held too, not only before one is taken
+        assert(holding.sum > 0, s"no cancelled holder held its lease: $holding")
+      )
   }
 
   test("an install does not wait for the leases on the generation it supersedes") {
