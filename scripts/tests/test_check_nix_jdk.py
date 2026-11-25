@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[2]
 TOOLCHAIN = """{
   perSystem = {pkgs, ...}: {
     _module.args.scalaToolchain = rec {
-      jdk = pkgs.jdk%s;
+      jdk = %s;
       sbt = pkgs.sbt.override {jre = jdk;};
     };
   };
@@ -21,72 +21,66 @@ DOCKERFILE = "# Temurin: tag eclipse-temurin:%s_1-jdk-resolute, index\nFROM ecli
 
 
 class NixJdkTest(unittest.TestCase):
+    def check(self, jdk, release, expected=None):
+        found = check_nix_jdk.problems(TOOLCHAIN % jdk, DOCKERFILE % release)
+        if expected is None:
+            self.assertEqual(found, [])
+        else:
+            self.assertEqual(len(found), 1, found)
+            self.assertIn(expected, found[0])
+
     def test_the_repository_passes(self):
         self.assertEqual(check_nix_jdk.problems((ROOT / check_nix_jdk.TOOLCHAIN).read_text(),
                                                 (ROOT / check_nix_jdk.DOCKERFILE).read_text()), [])
 
-    def test_another_update_of_the_same_major_passes(self):
-        self.assertEqual(check_nix_jdk.problems(TOOLCHAIN % "25", DOCKERFILE % "25.0.9.1"), [])
+    def test_the_same_major_passes_whatever_its_update(self):
+        self.check("pkgs.jdk25", "25.0.9.1")
+        self.check("pkgs.jdk25", "25")
+        self.check("(pkgs.jdk25.override { })", "25.0.4.1")
 
     def test_another_major_fails_naming_both(self):
-        found = check_nix_jdk.problems(TOOLCHAIN % "26", DOCKERFILE % "25.0.4.1")
-        self.assertEqual(len(found), 1, found)
-        self.assertIn("JDK 26", found[0])
-        self.assertIn("Temurin 25.0.4.1+1", found[0])
+        self.check("pkgs.jdk26", "25.0.4.1", "names JDK 26, the JDK image Temurin 25.0.4.1+1")
+        self.check("pkgs.jdk2", "25.0.4.1", "names JDK 2,")
+        self.check("pkgs.jdk21", "25", "Temurin 25+1")
 
-    def test_a_major_that_only_shares_a_prefix_fails(self):
-        self.assertEqual(len(check_nix_jdk.problems(TOOLCHAIN % "2", DOCKERFILE % "25.0.4.1")), 1)
+    def test_every_spelling_of_a_jdk_counts(self):
+        for jdk in ("pkgs.openjdk21", "pkgs.jdk21_headless", "pkgs.temurin-bin-21", "pkgs.temurin-jre-bin-21",
+                    "pkgs.zulu21", "pkgs.jre21"):
+            with self.subTest(jdk=jdk):
+                self.check(jdk, "25.0.4.1", "names JDK 21")
 
-    def test_a_flake_naming_no_jdk_or_two_fails(self):
-        for toolchain in ("{ }\n", TOOLCHAIN % "25" + "jdk = pkgs.jdk21;\n"):
-            with self.subTest(toolchain=toolchain):
-                found = check_nix_jdk.problems(toolchain, DOCKERFILE % "25.0.4.1")
-                self.assertEqual(len(found), 1, found)
-                self.assertIn("not once", found[0])
+    def test_any_other_jdk_the_file_names_fails_however_it_is_bound(self):
+        for extra in ("test-jdk = pkgs.jdk21;", "other. jdk = pkgs.jdk21;", "other.\n jdk = pkgs.jdk21;"):
+            with self.subTest(extra=extra):
+                self.check("pkgs.jdk25;\n      " + extra[:-1], "25.0.4.1", "names JDK 21")
+        self.check("(pkgs.jdk21.override { });\n      test-jdk = pkgs.jdk25", "25.0.4.1", "names JDK 21")
+
+    def test_comments_are_not_read(self):
+        for comment in ("/* jdk = pkgs.jdk21; */", "# jdk = pkgs.jdk21;", "/* a\n jdk21\n */"):
+            with self.subTest(comment=comment):
+                self.check(f"pkgs.jdk25 {comment}\n", "25.0.4.1")
+        self.check("pkgs.jdk21 # was pkgs.jdk25", "25.0.4.1", "names JDK 21")
+
+    def test_a_flake_naming_no_jdk_fails(self):
+        self.check("pkgs.temurin", "25.0.4.1", "names no JDK")
 
     def test_a_dockerfile_naming_no_tag_or_two_fails(self):
         for dockerfile in ("FROM eclipse-temurin@sha256:00\n",
-                           "# was eclipse-temurin:25.0.1_1-jdk-noble\n" + DOCKERFILE % "21.0.9"):
+                           "# was eclipse-temurin:21.0.1_1-jdk-noble\n" + DOCKERFILE % "25.0.4.1"):
             with self.subTest(dockerfile=dockerfile):
-                found = check_nix_jdk.problems(TOOLCHAIN % "21", dockerfile)
+                found = check_nix_jdk.problems(TOOLCHAIN % "pkgs.jdk25", dockerfile)
                 self.assertEqual(len(found), 1, found)
                 self.assertIn("eclipse-temurin tags, not one", found[0])
-
-    def test_commented_bindings_are_not_read(self):
-        for comment in ("/* jdk = pkgs.jdk25; */", "# jdk = pkgs.jdk25;"):
-            with self.subTest(comment=comment):
-                toolchain = (TOOLCHAIN % "21").replace("sbt =", comment + "\n      sbt =")
-                found = check_nix_jdk.problems(toolchain, DOCKERFILE % "25.0.4.1")
-                self.assertEqual(len(found), 1, found)
-                self.assertIn("JDK 21", found[0])
-
-    def test_a_longer_name_ending_in_jdk_is_not_the_binding(self):
-        toolchain = (TOOLCHAIN % "21").replace("jdk = pkgs.jdk21;",
-                                                "jdk = (pkgs.jdk21.override { });\n      test-jdk = pkgs.jdk25;")
-        found = check_nix_jdk.problems(toolchain, DOCKERFILE % "25.0.4.1")
-        self.assertEqual(len(found), 1, found)
-        self.assertIn("not once", found[0])
-        both = (TOOLCHAIN % "25").replace("sbt =", "test-jdk = pkgs.jdk21;\n      other.jdk = pkgs.jdk21;\n      sbt =")
-        self.assertEqual(check_nix_jdk.problems(both, DOCKERFILE % "25.0.4.1"), [])
-
-    def test_a_parenthesised_binding_is_read(self):
-        toolchain = (TOOLCHAIN % "21").replace("pkgs.jdk21", "(pkgs.jdk21)")
-        self.assertEqual(len(check_nix_jdk.problems(toolchain, DOCKERFILE % "25.0.4.1")), 1)
-        self.assertEqual(check_nix_jdk.problems(toolchain, DOCKERFILE % "21.0.9"), [])
-
-    def test_a_release_naming_only_its_major(self):
-        self.assertEqual(check_nix_jdk.problems(TOOLCHAIN % "25", DOCKERFILE % "25"), [])
-        self.assertEqual(len(check_nix_jdk.problems(TOOLCHAIN % "21", DOCKERFILE % "25")), 1)
 
     def test_main_exits_one_on_a_mismatch(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root / "flake").mkdir()
             (root / "docker").mkdir()
-            (root / check_nix_jdk.TOOLCHAIN).write_text(TOOLCHAIN % "21")
+            (root / check_nix_jdk.TOOLCHAIN).write_text(TOOLCHAIN % "pkgs.jdk21")
             (root / check_nix_jdk.DOCKERFILE).write_text(DOCKERFILE % "25.0.4.1")
             self.assertEqual(check_nix_jdk.main(["--root", str(root)]), 1)
-            (root / check_nix_jdk.TOOLCHAIN).write_text(TOOLCHAIN % "25")
+            (root / check_nix_jdk.TOOLCHAIN).write_text(TOOLCHAIN % "pkgs.jdk25")
             self.assertEqual(check_nix_jdk.main(["--root", str(root)]), 0)
 
 
