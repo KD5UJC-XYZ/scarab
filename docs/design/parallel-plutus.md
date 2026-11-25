@@ -31,7 +31,7 @@ BBODY checks the block's execution units only after LEDGERS (`validateExUnits`,
 `Alonzo/Rules/Bbody.hs:212`, cardano-ledger f649f975), and the workers run every recorded job before
 the first verdict lands, while the serial rules reach no script after the first refused transaction.
 So the body runs BBODY's own check of the units first, the one its era's BBODY runs
-(`ShelleyBbody.exUnitsExceeded` before Conway, `Bbody.exUnitsExceeded` in Conway), and a body past
+(`ShelleyBbody.exUnitsExceeded` before Conway, `AlonzoBbody.validateExUnits` in Conway's era run), and a body past
 them is not `worthwhile`, and its plan, prepared directly, has no job and the serial run's result
 (#85). What the workers can evaluate ahead stays within the units an admissible block declares.
 

@@ -23,10 +23,9 @@ import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.plutus.ExUnits
 
 /** BBODY of the eras before Conway on its own (the transactions themselves are `ShelleyLedgerSuite`
-  * 's): what the rule says of a block before and after its transactions, as [[BbodySuite]] does for
-  * Conway: the commitment of the body, the limit of the execution units of the block (Alonzo on),
-  * and the block counted for its issuer unless its slot is one of the overlay schedule
-  * (`incrBlocks`, `isOverlaySlot`).
+  * 's): what the rule says of a block before and after its transactions: the commitment of the
+  * body, the limit of the execution units of the block (Alonzo on), and the block counted for its
+  * issuer unless its slot is one of the overlay schedule (`incrBlocks`, `isOverlaySlot`).
   */
 class ShelleyBbodySuite extends FunSuite:
   private val geometry =

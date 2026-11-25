@@ -22,9 +22,11 @@ import xyz.kd5ujc.scarab.protocol.Era
   * hard-fork combinator's tick of the state to the block's slot ([[Hfc]], every era's), then BBODY
   * on the ticked state of an era before Conway ([[ShelleyBbody]], one instance over the witness).
   * The body takes only a state of such an era `E`, with its evidence (`PreConway[E]`, which Conway
-  * and Dijkstra have none of): a Conway block's body is Conway's era run's
-  * (`era.rules.ConwayBlockRun`), and cannot reach these rules. The node's `MirrorRules` performs
-  * the header checks (the envelope, TPraos, Praos) around these ledger transitions.
+  * and Dijkstra have none of), so a Conway or Dijkstra state cannot reach these rules; a Conway
+  * block's body is Conway's era run's (`era.rules.ConwayBlockRun`). The block's own era is not in
+  * the type: that it is its state's is checked before ([[ticked]], `Outcome.NotInEra`). The node's
+  * `MirrorRules` performs the header checks (the envelope, TPraos, Praos) around these ledger
+  * transitions.
   *
   * The block is applied as a pure function of the state before it, the decoded block and what the
   * rules read of the network, so serial and prepared execution can be compared directly.
