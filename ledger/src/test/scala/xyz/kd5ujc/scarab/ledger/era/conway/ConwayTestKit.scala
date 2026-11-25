@@ -418,6 +418,38 @@ object ConwayTestKit extends munit.Assertions:
       ctx.decoder
     )
 
+  /** The transaction `tx` the flat decoder read, read by Conway's decoder from the same original
+    * parts (its body, witnesses, auxiliary data and validity flag).
+    */
+  def typed(tx: Tx): ConwayTx =
+    ConwayTx
+      .decode(
+        Block.Transaction(
+          tx.body.raw,
+          tx.witnesses.raw.getOrElse(fail("the transaction holds no original witness bytes")),
+          tx.auxiliary,
+          tx.isValid
+        ),
+        StateLayout.Node11_1
+      )
+      .fold(e => fail(s"Conway's decoder: $e"), identity)
+
+  /** Conway's LEDGER on the era types ([[eraLedger]]) on `tx` from `nes` under `ctx`, at the root,
+    * every failure accumulated: its failures in the reference's order, or the ledger state after
+    * it. A defect fails the test.
+    */
+  def eraVerdict(
+      nes: NewEpochState[Conway],
+      tx: ConwayTx,
+      ctx: TxEnv
+  ): Either[Vector[xyz.kd5ujc.scarab.ledger.era.rules.LedgerPredFailure[Conway]], LedgerState[
+    Conway
+  ]] =
+    eraLedger(nes, tx, ctx) match
+      case Left(defect)             => fail(s"the era LEDGER: $defect")
+      case Right(Left(failures))    => Left(failures.toChain.toVector)
+      case Right(Right((after, _))) => Right(after)
+
   /** Conway's LEDGER on the era types on `built` from `nes` under `ctx`, at the root, every failure
     * accumulated: the state after it, or its refusal with its failures in the node's flat form
     * ([[EraLedgerRun.flat]]). The flat LEDGER, on the same bytes from the same state, accumulating

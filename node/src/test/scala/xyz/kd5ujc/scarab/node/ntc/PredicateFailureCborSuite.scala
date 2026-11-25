@@ -16,6 +16,16 @@ import munit.FunSuite
   * from its payload.
   */
 class PredicateFailureCborSuite extends FunSuite:
+  /** The flat rules' refusal in the encoding of `era`: this flat Conway encoder in Conway, the
+    * era's own before it ([[FlatRefusal]]).
+    */
+  private def flatRefusal(
+      era: Era,
+      failures: Vector[PredicateFailure]
+  ): Either[RefusalPresentationError, Option[Bytes]] = era match
+    case Era.Conway => PredicateFailureCbor.applyTxError(failures).map(Some(_))
+    case other      => FlatRefusal.applyTxError(other, failures)
+
   private def hex(h: String): Bytes = Bytes.fromHex(h).fold(e => fail(e.message), identity)
   private def reason(failures: PredicateFailure*): String =
     PredicateFailureCbor
@@ -43,8 +53,7 @@ class PredicateFailureCborSuite extends FunSuite:
       "8300f582018183017820496e76616c696452657475726e56616c75653b2074726163653a207472616365420102"
     assertEquals(reason(failure), "81820681820182008200" + utxos)
     for era <- Vector(Era.Alonzo, Era.Babbage, Era.Conway) do
-      val encoded = FlatRefusal
-        .applyTxError(era, Vector(failure))
+      val encoded = flatRefusal(era, Vector(failure))
         .fold(error => fail(error.message), identity)
         .getOrElse(fail(s"missing $era validity-tag encoding"))
       assert(encoded.hex.endsWith(utxos), s"$era: ${encoded.hex}")
@@ -76,7 +85,7 @@ class PredicateFailureCborSuite extends FunSuite:
       UtxoFailure.Utxos(UtxosFailure.ValidationTagMismatch(true, Some(Vector(failure))))
     )
     for era <- Vector(Era.Alonzo, Era.Babbage, Era.Conway) do
-      FlatRefusal.applyTxError(era, Vector(predicate)) match
+      flatRefusal(era, Vector(predicate)) match
         case Left(RefusalPresentationError.InvalidPlutusContext(retained, cause)) =>
           assertEquals(cause, PlutusContextText.Error.Arguments(request.language, 0))
           assert(retained eq failure)
@@ -86,7 +95,7 @@ class PredicateFailureCborSuite extends FunSuite:
               assertEquals(logs, Vector("trace"))
             case other => fail(s"changed evaluator cause: $other")
         case other => fail(s"$era silently encoded malformed context: $other")
-    assertEquals(FlatRefusal.applyTxError(Era.Shelley, Vector(predicate)), Right(None))
+    assertEquals(flatRefusal(Era.Shelley, Vector(predicate)), Right(None))
   }
 
   // A malformed context makes the explicit-error description observable: it is a presentation
@@ -328,18 +337,17 @@ class PredicateFailureCborSuite extends FunSuite:
     // as an empty or one-element list (Conway/Rules/Utxow.hs, the Sum encoder).
     val h = keyHash.hex
     assertEquals(
-      FlatRefusal
-        .applyTxError(
-          Era.Conway,
-          Vector(
-            PredicateFailure.utxow(
-              UtxowFailure.ScriptIntegrityHashMismatch(
-                Mismatch(None, Some(keyHash)),
-                Some(Bytes(Vector(0xa0.toByte)))
-              )
+      flatRefusal(
+        Era.Conway,
+        Vector(
+          PredicateFailure.utxow(
+            UtxowFailure.ScriptIntegrityHashMismatch(
+              Mismatch(None, Some(keyHash)),
+              Some(Bytes(Vector(0xa0.toByte)))
             )
           )
         )
+      )
         .fold(error => fail(error.message), identity)
         .map(_.hex),
       Some(
@@ -376,18 +384,17 @@ class PredicateFailureCborSuite extends FunSuite:
     val expected = hex(recorded.slice(24 + 64 + 6, 24 + 64 + 6 + 64))
     val preimage = hex(recorded.drop(24 + 64 + 6 + 64 + 8))
     assertEquals(
-      FlatRefusal
-        .applyTxError(
-          Era.Conway,
-          Vector(
-            PredicateFailure.utxow(
-              UtxowFailure.ScriptIntegrityHashMismatch(
-                Mismatch(Some(supplied), Some(expected)),
-                Some(preimage)
-              )
+      flatRefusal(
+        Era.Conway,
+        Vector(
+          PredicateFailure.utxow(
+            UtxowFailure.ScriptIntegrityHashMismatch(
+              Mismatch(Some(supplied), Some(expected)),
+              Some(preimage)
             )
           )
         )
+      )
         .fold(error => fail(error.message), identity)
         .map(_.hex),
       Some(recorded)
@@ -413,8 +420,7 @@ class PredicateFailureCborSuite extends FunSuite:
       )
     )
     assertEquals(
-      FlatRefusal
-        .applyTxError(Era.Conway, Vector(failure))
+      flatRefusal(Era.Conway, Vector(failure))
         .fold(error => fail(error.message), identity)
         .map(_.hex),
       Some(

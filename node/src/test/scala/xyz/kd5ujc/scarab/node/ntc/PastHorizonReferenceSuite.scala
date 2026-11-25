@@ -20,8 +20,6 @@ import xyz.kd5ujc.scarab.ledger.era.{
   CollectError,
   EraLedgerRun,
   EraTx,
-  EraTxBody,
-  EraUTxO,
   EraUtxoRun,
   PParams,
   TxLevel
@@ -29,11 +27,9 @@ import xyz.kd5ujc.scarab.ledger.era.{
 import xyz.kd5ujc.scarab.ledger.era.conway.{ConwayContextError, ConwayPParams, ConwayTx, ConwayUTxO}
 import xyz.kd5ujc.scarab.ledger.era.rules.{
   AlonzoUtxo,
-  ConwayGovPredFailure,
   ConwayUtxo,
   ConwayUtxoPredFailure,
   ConwayUtxosPredFailure,
-  ConwayUtxowPredFailure,
   LedgerEnv,
   UtxoContext,
   UtxoEnv
@@ -511,34 +507,9 @@ class PastHorizonReferenceSuite extends FunSuite:
         xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder,
         depth = 1
       )
-      val t = EraTx.conway
-      val body = t.body[TxLevel.Top](tx)(using t.bodyOf.top)
-      val purposes = ConwayUtxowPredFailure.storedPurposes(
-        EraUTxO.conway.getScriptsNeeded[TxLevel.Top](utxo, body)(using
-          EraUTxO.conway.txOf.bodyOf.top
-        ),
-        utxo
-      )
-      val read = ConwayGovPredFailure.readOf(
-        EraTxBody.conway.proposalProcedures[TxLevel.Top](body)(using EraTxBody.conway.top).toVector
-      )
       val ours = judged match
-        case Right(Left(fs)) =>
-          // the era failures written by their own encoder, without the flat form
-          assertEquals(
-            Some(ConwayFailureCborCheck.direct(fs.toChain.toVector).hex),
-            r.reason.map(_.hex),
-            s"${r.label}: direct"
-          )
-          Some(
-            PredicateFailureCbor
-              .applyTxError(
-                fs.toChain.toVector.map(f =>
-                  EraLedgerRun.flat(f, purposes, read).fold(e => fail(s"${r.label}: $e"), identity)
-                )
-              )
-              .fold(error => fail(error.message), identity)
-          )
+        // the era failures written by their own encoder
+        case Right(Left(fs)) => Some(ConwayFailureCborCheck.direct(fs.toChain.toVector))
         case Right(Right(_)) => None
         case Left(defect)    => fail(s"${r.label}: defect $defect")
       assertEquals(ours.map(_.hex), r.reason.map(_.hex))

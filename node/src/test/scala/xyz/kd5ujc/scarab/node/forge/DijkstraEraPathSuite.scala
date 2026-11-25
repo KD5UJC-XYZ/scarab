@@ -22,7 +22,7 @@ import xyz.kd5ujc.scarab.ledger.{
 import xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraTx as FlatTx
 import xyz.kd5ujc.scarab.ledger.era.{Tx, TxLevel}
 import xyz.kd5ujc.scarab.ledger.era.dijkstra.{DijkstraCorpus, DijkstraTx}
-import xyz.kd5ujc.scarab.ledger.rules.DijkstraTxMeasures
+import xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraTxMeasures
 import xyz.kd5ujc.scarab.ledger.state.Dijkstra
 import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.TxMeasure
 import xyz.kd5ujc.scarab.node.mempool.{Capacity, DijkstraRead, EbCapacityScale, EbMeasure}

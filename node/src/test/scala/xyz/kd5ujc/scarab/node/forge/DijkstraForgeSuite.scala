@@ -273,6 +273,48 @@ class DijkstraForgeSuite extends munit.FunSuite:
     assertEquals(forged.slot, tip.slot + 1 + led.indexWhere(identity))
   }
 
+  /** The scheduler's inputs on the injected chain under `build`: [[Forger.scheduleInputs]], all of
+    * the scheduler's derivation but its cache, given the slot's own ledger view of the tip.
+    */
+  private def scheduled(build: ReferenceBuild): LeaderSchedule.InForce =
+    Forger.scheduleInputs[cats.Id, MirrorState](
+      injected,
+      Some(tip),
+      build,
+      geometry,
+      poolId,
+      setup.praos.activeSlotsCoeff,
+      vrf
+    )(e =>
+      Forger
+        .ledgerAt(injected, Some(tip), e, geometry.firstSlot(e), build)
+        .map(Forger.leaderView(_, injected.protocol, e))
+    )
+
+  test(
+    "the leader schedule covers the Dijkstra tip's epoch, its led slots the slot check's (#54)"
+  ) {
+    assertEquals(ledger.epoch, epoch)
+    // the tip's epoch is scheduled, and the next once the tip is past that epoch's freeze slot
+    val inForce = scheduled(build)
+    assertEquals(
+      inForce.epochs.map(_.epoch),
+      epoch +: Vector(epoch + 1).filter(next => tip.slot >= Forger.freeze(geometry, next))
+    )
+    // the scheduler's inputs are those the slot's check derives, and so are its led slots
+    val ofEpoch = inForce.byEpoch.getOrElse(epoch, fail(s"epoch $epoch not scheduled"))
+    assertEquals(ofEpoch, inputs)
+    val from = tip.slot + 1
+    val until = from + 400
+    val chunk = LeaderSchedule.decided(ofEpoch, from, until, Leadership.Evaluator.of(ofEpoch.key))
+    assertEquals(chunk.failure, None)
+    assertEquals(
+      chunk.led.map(_._1),
+      (from until until).filter(s => Leadership.check(s, inputs).isRight).toVector
+    )
+    assert(chunk.led.nonEmpty, "the test pool leads some of these slots")
+  }
+
   test("the forger reads the same share of every pool as Praos2's ledger view") {
     // the forger's stake over the distribution's total, and the rational share Praos2 reads
     // (`IndividualPoolStake`'s stake, `DijkstraCrossing`), for every pool of the unchanged state
@@ -360,6 +402,8 @@ class DijkstraForgeSuite extends munit.FunSuite:
         Left(ForgeError.UnsupportedProtocol(ForgeProtocolProblem.Earlier(Era.Dijkstra))),
         release.toString
       )
+      // nor is a schedule computed for it: the slot's check refuses it
+      assertEquals(scheduled(release), LeaderSchedule.InForce.none)
     }
   }
 

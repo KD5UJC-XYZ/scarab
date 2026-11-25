@@ -5,16 +5,15 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.PredicateFailure
 import xyz.kd5ujc.scarab.protocol.Era
 
-/** The flat rules' refusal in the encoding of the ledger's era `era`: the flat rules' Conway
-  * encoder in Conway ([[PredicateFailureCbor]]), the era's own before it
-  * ([[PreConwayFailureCbor]]), none where the era has no encoding of a failure. The node's
-  * submission no longer writes flat failures under Conway, whose pool refuses in the era's types
-  * (#85); the suites that hold the flat rules' answers to the reference's write them so.
+/** The flat rules' refusal in the encoding of the ledger's era `era`, for the eras before Conway:
+  * the era's own ([[PreConwayFailureCbor]]), none where the era has no encoding of a failure, and
+  * none in Conway and after, whose refusals are their era rules' in their era's types
+  * ([[ConwayFailureCbor]], #85). The suites that hold the flat rules' answers to the reference's
+  * write them so.
   */
 object FlatRefusal:
   def applyTxError(
       era: Era,
       failures: Vector[PredicateFailure]
-  ): Either[RefusalPresentationError, Option[Bytes]] = era match
-    case Era.Conway => PredicateFailureCbor.applyTxError(failures).map(Some(_))
-    case other      => PreConwayFailureCbor.applyTxError(other, failures)
+  ): Either[RefusalPresentationError, Option[Bytes]] =
+    PreConwayFailureCbor.applyTxError(era, failures)

@@ -9,7 +9,7 @@
   "asked_at": "2026-11-25T15:38:31Z",
   "decision": "Approved, as its own storage-format pull request: an in-place change of V10, with no new version and no migration, the stash written and read as the reference writes it, and the approval recorded here. The owner agreed to the update and asked whether it changes V10 and breaks the stores written so far (2026-11-25T16:51:05Z); after the confirmation of what changes, the owner approved committing it.",
   "decided_at": "2026-11-25T16:53:09Z",
-  "surface_sha256": "f70bb149365f33d472a2f161d31994d2de17c1633de64d5ea4fb4403b5ffadb2"
+  "surface_sha256": "f48c466b8de9b1830047d274ca24bdf581c01e1dd5545594c9c77a82837734f3"
  },
  "surface": {
   "fixtures": {
@@ -226,7 +226,7 @@
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/ConsensusCodecs.scala": "ef22fd1b2d75680ec5e0071b8cff73a116a1e837a539a6845ebd63cd45a1e6d8",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/ConwayCodecs.scala": "050040f1e442e00fb448ef2a7c8296ff229413a41f46e7c79ad91e5d516aaa0e",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/Envelope.scala": "e538ab5c49e0ee9f41cadff7029cdc514a790a753a8b7e547fe32654d6ca2f92",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/EpochStateCodecs.scala": "e2684bf0c52e1fc1f089735b425de3af907f6fd5217476144fcc9f357fc3202d",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/EpochStateCodecs.scala": "e8d32d21f6e61ab00c27c7ab4667f6b722b6ecd721ca0fa21c805b68526c02d7",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/GovStateCodecs.scala": "b5786dd7c6a4097a345fb1bc7371d06fcd9d8d4c6344ef0734291ab1af36b9d7",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/HaskellLedgerFile.scala": "44ce725f39bc7e9060334fc98614c7ac435c25ce9a66c16629e0b50e2c8c4562",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/HaskellState.scala": "f45c212166c972c81d61da11bbaa5ee4da3250c67411e886ba3c401640c76772",

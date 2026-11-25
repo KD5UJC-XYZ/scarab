@@ -1,28 +1,77 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.ntc
 
-import cats.data.NonEmptyVector
+import cats.data.NonEmptyList
 import io.circe.Json
 import io.circe.parser.parse
 import java.nio.file.{Files, Path}
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.*
+import xyz.kd5ujc.scarab.ledger.era.{
+  AlonzoContextError,
+  AsItem,
+  BabbageContextError,
+  CollectError as EraCollect,
+  EraTxBody,
+  TxLevel
+}
+import xyz.kd5ujc.scarab.ledger.era.conway.{ConwayContextError, ConwayPlutusPurpose}
+import xyz.kd5ujc.scarab.ledger.era.rules.{
+  ConwayLedgerPredFailure,
+  ConwayUtxoPredFailure,
+  ConwayUtxosPredFailure,
+  ConwayUtxowPredFailure
+}
+import xyz.kd5ujc.scarab.ledger.state.Conway
 
+/** The reference's collection API results (`fixtures/reference/context-errors`) against Conway's
+  * era collection (`collectPlutusScriptsWithContext`) and its era failure encoder
+  * ([[ConwayFailureCbor]]): each recorded UTXOS failure, each certificate as a missing redeemer's
+  * purpose, and each submission's whole LocalTxSubmission refusal, byte for byte.
+  */
 class ContextFailureCborSuite extends FunSuite:
-  import ContextFailureCbor.ContextEra.Conway
   import ContextReferenceCases.{all, field, hex}
+
+  /** UTXOS's `CollectErrors` of `errors`. */
+  private def collectErrors(
+      errors: NonEmptyList[EraCollect[Conway]]
+  ): ConwayUtxosPredFailure[Conway] =
+    ConwayUtxosPredFailure.CollectErrors[Conway](errors)
+
+  /** UTXOS's failure as LEDGER embeds it, through UTXO's and UTXOW's embeddings. */
+  private def ledger(f: ConwayUtxosPredFailure[Conway]): ConwayLedgerPredFailure[Conway] =
+    ConwayLedgerPredFailure.ConwayUtxowFailure[Conway](
+      ConwayUtxowPredFailure.UtxoFailure[Conway](ConwayUtxoPredFailure.UtxosFailure[Conway](f))
+    )
+
+  private def utxos(f: ConwayUtxosPredFailure[Conway]): Bytes =
+    ConwayFailureCbor.utxos(f).fold(e => fail(s"no Conway encoding: $e"), identity)
+
+  /** The body's bytes of the recorded transaction, as it was signed. */
+  private def signedBody(recorded: ContextReferenceCases.Recorded): Bytes =
+    xyz.kd5ujc.scarab.codec.Cbor
+      .decode(recorded.original)
+      .fold(e => fail(s"${recorded.name}: $e"), identity)
+      .value match
+      case xyz.kd5ujc.scarab.codec.Value.Arr(parts) if parts.size == 4 => parts(0).original
+      case other => fail(s"${recorded.name}: not a complete transaction: $other")
+
+  /** The body id of the transaction as Conway's decoder read it. */
+  private def eraId(recorded: ContextReferenceCases.Recorded): Bytes =
+    val t = xyz.kd5ujc.scarab.ledger.era.EraTx.conway
+    val b = EraTxBody.conway
+    b.id[TxLevel.Top](t.body[TxLevel.Top](recorded.eraTx)(using t.bodyOf.top))(using b.top)
+
+  private def refused(recorded: ContextReferenceCases.Recorded): NonEmptyList[EraCollect[Conway]] =
+    recorded.eraCollect.swap.fold(_ => fail("collection unexpectedly succeeded"), identity)
 
   all.filterNot(_.collected).foreach { recorded =>
     test(s"${recorded.name}: byte-equal unchanged reference ConwayUtxosPredFailure") {
-      val errors =
-        recorded.collect.swap.fold(_ => fail("collection unexpectedly succeeded"), identity)
       assertEquals(
-        ContextFailureCbor.utxos(Conway, errors),
-        Some(hex(field[String](recorded.oracle, "utxosFailureCbor")))
+        utxos(collectErrors(refused(recorded))),
+        hex(field[String](recorded.oracle, "utxosFailureCbor"))
       )
-      val failure = PredicateFailure.utxo(UtxoFailure.Utxos(UtxosFailure.CollectErrors(errors)))
-      assert(PredicateFailureCbor.inConway(failure))
     }
   }
 
@@ -30,13 +79,17 @@ class ContextFailureCborSuite extends FunSuite:
     val certificates = field[Vector[Json]](recorded.oracle, "certificateEncodings")
     certificates.zipWithIndex.foreach { case (oracle, index) =>
       test(s"${recorded.name}: direct unchanged certificate-purpose serialization $index") {
-        assertEquals(certificates.size, recorded.tx.body.certificates.size)
-        val certificate = recorded.tx.body.certificates(index)
-        val errors =
-          NonEmptyVector.one(CollectError.NoRedeemer(Purpose.Certifying(index, certificate)))
+        val b = EraTxBody.conway
+        val body = xyz.kd5ujc.scarab.ledger.era.EraTx.conway
+          .body[TxLevel.Top](recorded.eraTx)(using
+            xyz.kd5ujc.scarab.ledger.era.EraTx.conway.bodyOf.top
+          )
+        val certs = b.certs[TxLevel.Top](body)(using b.top)
+        assertEquals(certificates.size, certs.size)
+        val purpose = ConwayPlutusPurpose.ConwayCertifying[AsItem](AsItem(certs(index)))
         assertEquals(
-          ContextFailureCbor.utxos(Conway, errors),
-          Some(hex(field[String](oracle, "noRedeemerUtxosCbor")))
+          utxos(collectErrors(NonEmptyList.one(EraCollect.NoRedeemer[Conway](purpose)))),
+          hex(field[String](oracle, "noRedeemerUtxosCbor"))
         )
       }
     }
@@ -56,13 +109,8 @@ class ContextFailureCborSuite extends FunSuite:
       test(s"$name: exact actual reference LocalTxSubmission refusal bytes") {
         val reference = field[Json](json, "reference")
         assert(!field[Boolean](reference, "accepted"))
-        val errors =
-          recorded.collect.swap.fold(_ => fail("collection unexpectedly succeeded"), identity)
-        val failure = PredicateFailure.utxo(UtxoFailure.Utxos(UtxosFailure.CollectErrors(errors)))
         assertEquals(
-          PredicateFailureCbor
-            .applyTxError(Vector(failure))
-            .fold(error => fail(error.message), identity),
+          ConwayFailureCborCheck.direct(Vector(ledger(collectErrors(refused(recorded))))),
           hex(field[String](reference, "reasonCbor"))
         )
         assertEquals(
@@ -73,20 +121,20 @@ class ContextFailureCborSuite extends FunSuite:
   }
 
   test("implementation-specific setup errors retain their explicit text fallback") {
-    val failure = PredicateFailure.utxo(
-      UtxoFailure.Utxos(
-        UtxosFailure.CollectErrors(
-          NonEmptyVector.one(CollectError.BadTranslation(TranslationError.NoEraHistory))
+    // the clock's own failure has no constructor of the reference's: no bytes, the cause kept
+    val cause = AlonzoContextError.TimeTranslationPastHorizon[Conway](TranslationError.NoEraHistory)
+    val failure = collectErrors(
+      NonEmptyList.one(
+        EraCollect.BadTranslation[Conway](
+          ConwayContextError.BabbageContextError[Conway](
+            BabbageContextError.AlonzoContextError[Conway](cause)
+          )
         )
       )
     )
-    assert(!PredicateFailureCbor.inConway(failure))
     assertEquals(
-      ContextFailureCbor.utxos(
-        Conway,
-        NonEmptyVector.one(CollectError.BadTranslation(TranslationError.NoEraHistory))
-      ),
-      None
+      ConwayFailureCbor.applyTxError(NonEmptyList.one(ledger(failure))),
+      Left(ConwayFailureCbor.NoReferenceEncoding.ContextError(cause))
     )
   }
 
@@ -99,18 +147,31 @@ class ContextFailureCborSuite extends FunSuite:
         assert(p.metadata.exists(_.hex.startsWith("9802")))
         (p.relays, p.metadata)
       case _ => fail("not pool parameters")
-    val poolBody = pool.tx.body.raw
-    val poolId = pool.tx.body.id
+    // the era transaction the encoding is made from keeps the body as signed
+    val poolBody = pool.eraTx.body.raw
+    assertEquals(poolBody, signedBody(pool))
+    val poolId = eraId(pool)
+    val b = EraTxBody.conway
+    val t = xyz.kd5ujc.scarab.ledger.era.EraTx.conway
+    val eraCertificate = b
+      .certs[TxLevel.Top](t.body[TxLevel.Top](pool.eraTx)(using t.bodyOf.top))(using b.top)
+      .headOption
+      .getOrElse(fail("no era pool certificate"))
     assert(
-      ContextFailureCbor
+      ConwayFailureCbor
         .utxos(
-          Conway,
-          NonEmptyVector.one(CollectError.NoRedeemer(Purpose.Certifying(0, certificate)))
+          collectErrors(
+            NonEmptyList.one(
+              EraCollect.NoRedeemer[Conway](
+                ConwayPlutusPurpose.ConwayCertifying[AsItem](AsItem(eraCertificate))
+              )
+            )
+          )
         )
-        .isDefined
+        .isRight
     )
-    assertEquals(pool.tx.body.raw, poolBody)
-    assertEquals(pool.tx.body.id, poolId)
+    assertEquals(pool.eraTx.body.raw, poolBody)
+    assertEquals(eraId(pool), poolId)
     certificate match
       case Certificate.RegisterPool(p) => assertEquals((p.relays, p.metadata), originalPool)
       case _                           => fail("not pool parameters")
@@ -123,22 +184,22 @@ class ContextFailureCborSuite extends FunSuite:
       case _                                             => fail("not a parameter change")
     assertEquals(update.encodings.toMap.apply(0).hex, "1801")
     assertEquals(update.encodings.toMap.apply(9).hex, "d81e820204")
-    val body = proposal.tx.body.raw
-    val id = proposal.tx.body.id
-    val errors = proposal.collect.swap.fold(_ => fail("no context refusal"), identity)
-    assert(ContextFailureCbor.utxos(Conway, errors).isDefined)
-    assertEquals(proposal.tx.body.raw, body)
-    assertEquals(proposal.tx.body.id, id)
+    val body = proposal.eraTx.body.raw
+    assertEquals(body, signedBody(proposal))
+    val id = eraId(proposal)
+    assert(ConwayFailureCbor.utxos(collectErrors(refused(proposal))).isRight)
+    assertEquals(proposal.eraTx.body.raw, body)
+    assertEquals(eraId(proposal), id)
     assertEquals(update.encodings.toMap.apply(0).hex, "1801")
     assertEquals(update.encodings.toMap.apply(9).hex, "d81e820204")
   }
 
   test("twenty thousand collection errors encode on a small stack with reference list framing") {
-    val error = CollectError.NoWitness(Bytes(Vector.fill(28)(1.toByte)))
-    val errors = NonEmptyVector(error, Vector.fill(19999)(error))
+    val error = EraCollect.NoWitness[Conway](Bytes(Vector.fill(28)(1.toByte)))
+    val errors = NonEmptyList(error, List.fill(19999)(error))
     val encoded = PreprodDeepTx
-      .onSmallStack(ContextFailureCbor.utxos(Conway, errors))
-      .getOrElse(fail("no reference encoding"))
+      .onSmallStack(ConwayFailureCbor.utxos(collectErrors(errors)))
+      .fold(e => fail(s"no reference encoding: $e"), identity)
     // encodeList uses indefinite framing beyond23 items, including NonEmpty CollectError lists.
     assert(encoded.hex.startsWith("82019f"))
     assert(encoded.hex.endsWith("ff"))

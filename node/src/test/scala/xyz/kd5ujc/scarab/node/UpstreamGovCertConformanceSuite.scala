@@ -13,11 +13,9 @@ import xyz.kd5ujc.scarab.ledger.{
   EpochGeometry,
   GovActionId,
   GovActionState,
-  LedgerGlobals,
-  Certificate
+  LedgerGlobals
 }
-import xyz.kd5ujc.scarab.protocol.Era
-import xyz.kd5ujc.scarab.ledger.rules.{ConwayCert, ConwayGovCert, Globals, GovCert, JudgedSts}
+import xyz.kd5ujc.scarab.ledger.rules.Globals
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.models.runtime.Codec
 import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellStateCodecs, Params, Wire}
@@ -90,10 +88,13 @@ class UpstreamGovCertConformanceSuite extends FunSuite:
     assertEquals(families.count(_ == 15), 7)
   }
 
-  test("all generated GOVCERT families consume full upstream traces and match full Haskell state") {
+  test(
+    "the era-typed GOVCERT gives the full Haskell certificate state on every upstream judgment"
+  ) {
+    // the fixture's inputs, judged by the era GOVCERT and compared with the reference's
+    // post-states
     given ProtVer = protVer
-    var matched = 0
-    seeds.foreach { seed =>
+    val matched = seeds.count { seed =>
       val dir = base.resolve(s"cases/$seed")
       val rawEnvironment = bytes(dir.resolve("environment.cbor"))
       val environment = Cbor.decode(rawEnvironment).fold(e => fail(s"seed $seed env: $e"), identity)
@@ -103,173 +104,14 @@ class UpstreamGovCertConformanceSuite extends FunSuite:
       val envItems = environment.value match
         case Value.Arr(xs) if xs.size == 4 => xs
         case other => fail(s"seed $seed has unexpected full GOVCERT environment $other")
-      val pp = Params.conwayCodec.decode(envItems(0)).fold(e => fail(e.render), identity)
-      val epoch = summon[Codec[EpochNo]].decode(envItems(1)).fold(e => fail(e.render), identity)
-      val committee = Wire
-        .strictMaybe(summon[Codec[Committee]])
-        .decode(envItems(2))
-        .fold(e => fail(e.render), identity)
-      val proposalEntries = envItems(3).value match
-        case Value.Map(entries) =>
-          entries
-            .traverse { (key, proposal) =>
-              (
-                summon[Codec[GovActionId]].decode(key),
-                summon[Codec[GovActionState]].decode(proposal)
-              ).mapN((id, state) => id -> state)
-            }
-            .fold(e => fail(s"seed $seed committee proposal map: ${e.render}"), identity)
-        case other => fail(s"seed $seed has malformed committee proposal map $other")
       assertEquals(environment.original, rawEnvironment)
-      val contextBytes = bytes(dir.resolve("context.cbor"))
-      val contextNode =
-        Cbor.decode(contextBytes).fold(e => fail(s"seed $seed context: $e"), identity)
+      val contextNode = Cbor
+        .decode(bytes(dir.resolve("context.cbor")))
+        .fold(e => fail(s"seed $seed context: $e"), identity)
       assert(
         contextNode.value.isInstanceOf[Value.Arr],
         s"seed $seed context is retained as its original TRC"
       )
-
-      val certificate = Certificate
-        .decode(node(dir.resolve("signal.cbor")), Era.Conway)
-        .fold(e => fail(s"seed $seed certificate: $e"), identity)
-      ConwayCert
-        .of(Bytes.empty, certificate)
-        .fold(e => fail(s"seed $seed typed certificate: $e"), identity) match
-        case ConwayCert.OfGov(ConwayGovCert.RegDRep(credential, deposit, anchor)) =>
-          val before = state(dir.resolve("state.cbor"))
-          val expected = state(dir.resolve("implementation-state.cbor"))
-          val actual = JudgedSts
-            .apply(GovCert.DRepAdapter)(
-              xyz.kd5ujc.scarab.ledger.LedgerFailure.Rejected(Bytes.empty, _)
-            )(
-              globals,
-              GovCert.DRepRuleEnv(Bytes.empty, pp, epoch.toBigInt),
-              before,
-              GovCert.DRepRuleSignal.Register(credential, deposit, anchor)
-            )
-            .fold(
-              e => fail(s"seed $seed Scarab refused upstream-accepted registration: $e"),
-              identity
-            )
-          assertEquals(actual, expected, s"seed $seed full ConwayCertState")
-          assertEquals(actual.pState, before.pState, s"seed $seed pool state")
-          assertEquals(actual.dState, before.dState, s"seed $seed delegation state")
-          assertEquals(
-            actual.vState.committeeState,
-            before.vState.committeeState,
-            s"seed $seed committee state"
-          )
-          assertEquals(
-            actual.vState.numDormantEpochs,
-            before.vState.numDormantEpochs,
-            s"seed $seed dormant epochs"
-          )
-          assert(
-            !before.vState.dreps.contains(credential),
-            s"seed $seed generated registration was already present"
-          )
-          matched += 1
-        case ConwayCert.OfGov(ConwayGovCert.UpdateDRep(credential, anchor)) =>
-          val before = state(dir.resolve("state.cbor"))
-          val expected = state(dir.resolve("implementation-state.cbor"))
-          assert(
-            before.vState.dreps.contains(credential),
-            s"seed $seed generated update lacks registered DRep"
-          )
-          val actual = JudgedSts
-            .apply(GovCert.DRepAdapter)(
-              xyz.kd5ujc.scarab.ledger.LedgerFailure.Rejected(Bytes.empty, _)
-            )(
-              globals,
-              GovCert.DRepRuleEnv(Bytes.empty, pp, epoch.toBigInt),
-              before,
-              GovCert.DRepRuleSignal.Update(credential, anchor)
-            )
-            .fold(e => fail(s"seed $seed Scarab refused upstream-accepted update: $e"), identity)
-          assertEquals(actual, expected, s"seed $seed full ConwayCertState")
-          assertEquals(actual.pState, before.pState, s"seed $seed pool state")
-          assertEquals(actual.dState, before.dState, s"seed $seed delegation state")
-          assertEquals(
-            actual.vState.committeeState,
-            before.vState.committeeState,
-            s"seed $seed committee state"
-          )
-          assertEquals(
-            actual.vState.numDormantEpochs,
-            before.vState.numDormantEpochs,
-            s"seed $seed dormant epochs"
-          )
-          matched += 1
-        case ConwayCert.OfGov(ConwayGovCert.AuthCommitteeHotKey(cold, hot)) =>
-          val before = state(dir.resolve("state.cbor"))
-          val expected = state(dir.resolve("implementation-state.cbor"))
-          val actual = JudgedSts
-            .apply(GovCert.CommitteeAdapter)(
-              xyz.kd5ujc.scarab.ledger.LedgerFailure.Rejected(Bytes.empty, _)
-            )(
-              globals,
-              GovCert.CommitteeRuleEnv(Bytes.empty, committee, proposalEntries),
-              before,
-              GovCert.CommitteeRuleSignal.Authorize(cold, hot)
-            )
-            .fold(
-              e => fail(s"seed $seed Scarab refused upstream-accepted committee authorization: $e"),
-              identity
-            )
-          assertEquals(actual, expected, s"seed $seed full ConwayCertState")
-          assertEquals(actual.pState, before.pState, s"seed $seed pool state")
-          assertEquals(actual.dState, before.dState, s"seed $seed delegation state")
-          assertEquals(actual.vState.dreps, before.vState.dreps, s"seed $seed DRep state")
-          assertEquals(
-            actual.vState.numDormantEpochs,
-            before.vState.numDormantEpochs,
-            s"seed $seed dormant epochs"
-          )
-          matched += 1
-        case ConwayCert.OfGov(ConwayGovCert.ResignCommitteeColdKey(cold, anchor)) =>
-          val before = state(dir.resolve("state.cbor"))
-          val expected = state(dir.resolve("implementation-state.cbor"))
-          val actual = JudgedSts
-            .apply(GovCert.CommitteeAdapter)(
-              xyz.kd5ujc.scarab.ledger.LedgerFailure.Rejected(Bytes.empty, _)
-            )(
-              globals,
-              GovCert.CommitteeRuleEnv(Bytes.empty, committee, proposalEntries),
-              before,
-              GovCert.CommitteeRuleSignal.Resign(cold, anchor)
-            )
-            .fold(
-              e => fail(s"seed $seed Scarab refused upstream-accepted committee resignation: $e"),
-              identity
-            )
-          assertEquals(actual, expected, s"seed $seed full ConwayCertState")
-          assertEquals(actual.pState, before.pState, s"seed $seed pool state")
-          assertEquals(actual.dState, before.dState, s"seed $seed delegation state")
-          assertEquals(actual.vState.dreps, before.vState.dreps, s"seed $seed DRep state")
-          assertEquals(
-            actual.vState.numDormantEpochs,
-            before.vState.numDormantEpochs,
-            s"seed $seed dormant epochs"
-          )
-          matched += 1
-        case ConwayCert.OfGov(other) =>
-          fail(s"seed $seed DRep adapter received unadapted GOVCERT $other")
-        case other => fail(s"seed $seed DRep adapter received non-GOVCERT certificate $other")
-    }
-    assertEquals(matched, 21)
-  }
-
-  test(
-    "the era-typed GOVCERT gives the full Haskell certificate state on every upstream judgment"
-  ) {
-    // the same fixture inputs, judged by the era GOVCERT and compared with the reference's
-    // post-states, not with the flat rule
-    given ProtVer = protVer
-    seeds.foreach { seed =>
-      val dir = base.resolve(s"cases/$seed")
-      val envItems = node(dir.resolve("environment.cbor")).value match
-        case Value.Arr(xs) if xs.size == 4 => xs
-        case other => fail(s"seed $seed has unexpected full GOVCERT environment $other")
       val flatPp = Params.conwayCodec.decode(envItems(0)).fold(e => fail(e.render), identity)
       val pp = xyz.kd5ujc.scarab.ledger.era.PParams[Conway](
         xyz.kd5ujc.scarab.ledger.era.conway.ConwayPParams
@@ -298,16 +140,53 @@ class UpstreamGovCertConformanceSuite extends FunSuite:
       val govCert = cert match
         case xyz.kd5ujc.scarab.ledger.era.conway.ConwayTxCert.ConwayTxCertGov(g) => g
         case other => fail(s"seed $seed is not an upstream GOVCERT signal: $other")
+      val before = state(dir.resolve("state.cbor"))
+      val expected = state(dir.resolve("implementation-state.cbor"))
       val actual = xyz.kd5ujc.scarab.ledger.era.EraCertsRun
         .govCert(
           globals,
           xyz.kd5ujc.scarab.ledger.era.rules
             .ConwayGovCertEnv[Conway](pp, epoch, committee, proposals),
-          state(dir.resolve("state.cbor")),
+          before,
           govCert
         )
         .fold(e => fail(s"seed $seed defect: $e"), identity)
         .fold(fs => fail(s"seed $seed refused upstream-accepted GOVCERT: $fs"), _._1)
-      assertEquals(actual, state(dir.resolve("implementation-state.cbor")), s"seed $seed")
+      assertEquals(actual, expected, s"seed $seed full ConwayCertState")
+      // what each family leaves as it was, in the generated judgment
+      assertEquals(actual.pState, before.pState, s"seed $seed pool state")
+      assertEquals(actual.dState, before.dState, s"seed $seed delegation state")
+      assertEquals(
+        actual.vState.numDormantEpochs,
+        before.vState.numDormantEpochs,
+        s"seed $seed dormant epochs"
+      )
+      import xyz.kd5ujc.scarab.ledger.era.ConwayGovCert as G
+      govCert match
+        case G.ConwayRegDRep(credential, _, _) =>
+          assert(
+            !before.vState.dreps.contains(credential),
+            s"seed $seed generated registration was already present"
+          )
+          assertEquals(
+            actual.vState.committeeState,
+            before.vState.committeeState,
+            s"seed $seed committee state"
+          )
+        case G.ConwayUpdateDRep(credential, _) =>
+          assert(
+            before.vState.dreps.contains(credential),
+            s"seed $seed generated update lacks registered DRep"
+          )
+          assertEquals(
+            actual.vState.committeeState,
+            before.vState.committeeState,
+            s"seed $seed committee state"
+          )
+        case G.ConwayAuthCommitteeHotKey(_, _) | G.ConwayResignCommitteeColdKey(_, _) =>
+          assertEquals(actual.vState.dreps, before.vState.dreps, s"seed $seed DRep state")
+        case other => fail(s"seed $seed generated an unexpected GOVCERT family: $other")
+      true
     }
+    assertEquals(matched, 21)
   }

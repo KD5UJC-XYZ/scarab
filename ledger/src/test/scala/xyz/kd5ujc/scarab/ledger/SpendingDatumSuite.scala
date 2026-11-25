@@ -102,6 +102,46 @@ class SpendingDatumSuite extends FunSuite:
           ()
         case other => fail(s"not the reference validity-tag refusal: $other")
 
+  /** The refusal [[refusal]] reads, as Conway's era LEDGER gives it: its failures in the
+    * reference's order.
+    */
+  private def eraRefusal(r: Recorded, failures: Vector[era.rules.LedgerPredFailure[Conway]]): Unit =
+    import era.rules.{
+      ConwayLedgerPredFailure as L,
+      ConwayUtxoPredFailure as U,
+      ConwayUtxosPredFailure as S,
+      ConwayUtxowPredFailure as W,
+      TagMismatchDescription
+    }
+    (r.phase1, failures) match
+      case (
+            Some(UtxowFailure.MissingRequiredDatums(hashes, received)),
+            Vector(L.ConwayUtxowFailure(W.MissingRequiredDatums(missing, supplied)))
+          ) =>
+        assertEquals((missing.toSortedSet.toSet, supplied), (hashes, received))
+      case (
+            Some(UtxowFailure.UnspendableUTxONoDatumHash(inputs)),
+            Vector(L.ConwayUtxowFailure(W.UnspendableUTxONoDatumHash(unspendable)))
+          ) =>
+        assertEquals(unspendable.toSortedSet.toSet, inputs)
+      case (
+            None,
+            Vector(
+              L.ConwayUtxowFailure(
+                W.UtxoFailure(
+                  U.UtxosFailure(
+                    S.ValidationTagMismatch(
+                      era.IsPhase2Valid.Phase2Invalid,
+                      TagMismatchDescription.PassedUnexpectedly
+                    )
+                  )
+                )
+              )
+            )
+          ) =>
+        ()
+      case (expected, other) => fail(s"not the reference's refusal ($expected): $other")
+
   private def disposition(r: Recorded, after: Utxo): Unit =
     r.c.spent.keys.foreach(in => assertEquals(!after.contains(in), r.accepted))
     r.c.collateral.keys.foreach(in => assert(after.contains(in)))
@@ -200,9 +240,13 @@ class SpendingDatumSuite extends FunSuite:
 
     test(s"${c.name}: complete LEDGER and BBODY verdicts preserve funding and collateral") {
       def nes = Build.funded(Build.nes[Conway](5, c.params), r.allInputs)
-      TestLedger.conwayLedger(nes, c.tx, TestLedger.env) match
-        case Right(after) => assert(r.accepted); disposition(r, after.state.utxo.utxo.utxo)
-        case Left(error)  => assert(!r.accepted); refusal(r, error)
+      era.conway.ConwayTestKit.eraVerdict(
+        nes,
+        era.conway.ConwayTestKit.typed(c.tx),
+        TestLedger.env
+      ) match
+        case Right(after)   => assert(r.accepted); disposition(r, after.utxo.utxo.utxo)
+        case Left(failures) => assert(!r.accepted); eraRefusal(r, failures)
       Sts(Bbody)(
         TestLedger.globals,
         BbodyEnv(TestLedger.env, c.params, Coin.zero),

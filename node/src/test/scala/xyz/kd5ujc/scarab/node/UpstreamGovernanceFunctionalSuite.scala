@@ -1,30 +1,23 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import xyz.kd5ujc.scarab.ledger.state.Network
-import xyz.kd5ujc.scarab.ledger.TestGeometry
 import xyz.kd5ujc.scarab.ledger.testByteStrings
 import java.nio.file.{Files, Path}
 import java.security.MessageDigest
-import java.time.Instant
+import cats.data.NonEmptyList
 import io.circe.Json
 import io.circe.parser.parse
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node as CborNode, Rational, Value}
-import xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor
+import xyz.kd5ujc.scarab.node.ntc.ConwayFailureCbor
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.ledger.{
   Committee,
   CommitteeAuth,
   Certificate,
-  GovFailure,
-  LedgerFailure,
-  Mismatch,
-  PredicateFailure,
-  EpochGeometry,
-  LedgerGlobals,
   Proposal,
   Proposals,
+  VotingProcedure,
   VotingProcedures,
   Voter,
   Vote,
@@ -40,24 +33,16 @@ import xyz.kd5ujc.scarab.models.runtime.{Codec, DecodeError, Node}
 import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellStateCodecs, Wire}
 import xyz.kd5ujc.scarab.storage.haskell.state.NodeOrders.given
 import xyz.kd5ujc.scarab.storage.haskell.state.Params
-import xyz.kd5ujc.scarab.ledger.rules.{
-  Globals,
-  Gov,
-  GovCertificateView,
-  GovEnv,
-  GovKernel,
-  GovSignal,
-  GovViewEnv,
-  JudgedSts
-}
-import xyz.kd5ujc.scarab.ledger.era.{EraGovRun, PParams}
+import xyz.kd5ujc.scarab.ledger.era.{EraGovRun, Mismatch as EraMismatch, PParams}
+import xyz.kd5ujc.scarab.ledger.era.Relation.RelEQ
 import xyz.kd5ujc.scarab.ledger.era.conway.ConwayPParams
 import xyz.kd5ujc.scarab.ledger.era.rules.{
   ConwayGovEvent,
+  ConwayGovPredFailure,
   GovEnv as EraGovEnv,
   GovSignal as EraGovSignal
 }
-import xyz.kd5ujc.scarab.ledger.state.{Conway, EpochNo, ScriptHash}
+import xyz.kd5ujc.scarab.ledger.state.{Conway, ScriptHash}
 
 import HaskellStateCodecs.given
 
@@ -119,131 +104,12 @@ class UpstreamGovernanceFunctionalSuite extends FunSuite:
   private def state(id: String, name: String): RatifyState =
     read(node(id, name), summon[Codec[RatifyState]])
 
-  private val globals = Globals(
-    LedgerGlobals(
-      BigInt(0),
-      BigInt(1),
-      Rational.zero,
-      network = Network.Testnet,
-      systemStart = xyz.kd5ujc.scarab.ledger.SystemStart(java.time.Instant.EPOCH),
-      kes = xyz.kd5ujc.scarab.ledger.KesParameters.Mainnet
-    ),
-    EpochGeometry(Instant.EPOCH, 1000L, 1L, TestGeometry.k(1), TestGeometry.f("0.1"))
-  )
-
-  /** GOV to its first failure, a refusal of the environment's transaction. */
-  private def govRule(globals: Globals, env: GovEnv, state: Proposals, signal: GovSignal) =
-    JudgedSts(Gov)(LedgerFailure.Rejected(env.id, _))(globals, env, state, signal)
-
-  /** The GOV kernel to its first failure, a refusal of the environment's transaction. */
-  private def kernelRule(globals: Globals, env: GovViewEnv, state: Proposals, signal: GovSignal) =
-    JudgedSts(GovKernel)(LedgerFailure.Rejected(env.id, _))(globals, env, state, signal)
-
-  private def govEnvironment(id: String): GovEnv =
-    val fields = node(id, "environment").value match
-      case Value.Arr(xs) if xs.size == 6 => xs
-      case other => fail(s"expected all six GOV environment fields, got $other")
-    GovEnv(
-      read(fields(0), Codec.bytesSized(32, 32)),
-      read(fields(1), summon[Codec[S.EpochNo]]).toBigInt,
-      read(fields(2), Params.conwayCodec),
-      read(fields(3), Wire.strictMaybe(Codec.bytesSized(28, 28))),
-      read(fields(4), summon[Codec[S.ConwayCertState]]),
-      read(fields(5), Wire.strictMaybe(summon[Codec[Committee]]))
-    )
-
-  private def govViewEnvironment(id: String): GovViewEnv =
-    def fields(n: Node, size: Int): Vector[Node] = n.value match
-      case Value.Arr(xs) if xs.size == size => xs
-      case other => fail(s"expected $size original environment fields, got $other")
-    val env = fields(node(id, "environment"), 6)
-    val cert = fields(env(4), 3)
-    val voting = fields(cert(0), 3)
-    val pools = fields(cert(1), 4)
-    val delegation = fields(cert(2), 4)
-    // GOV observes only these memberships and authorisations, not registration counts,
-    // account balances or delegation state. Original environment bytes remain immutable.
-    val accounts = read(
-      delegation(0),
-      Wire.mapOf(summon[Codec[S.Credential[S.Staking]]], HaskellStateCodecs.rawItem)
-    )
-    val dreps = read(
-      voting(0),
-      Wire.mapOf(summon[Codec[S.Credential[S.DRepRole]]], HaskellStateCodecs.rawItem)
-    )
-    val registeredPools =
-      read(pools(1), Wire.mapOf(summon[Codec[S.KeyHash[S.StakePool]]], HaskellStateCodecs.rawItem))
-    val committee = read(voting(1), summon[Codec[S.CommitteeState]])
-    GovViewEnv(
-      read(env(0), Codec.bytesSized(32, 32)),
-      read(env(1), summon[Codec[S.EpochNo]]).toBigInt,
-      read(env(2), Params.conwayCodec),
-      read(env(3), Wire.strictMaybe(Codec.bytesSized(28, 28))),
-      GovCertificateView(
-        accounts.contains,
-        dreps.contains,
-        registeredPools.contains,
-        committee.creds
-      ),
-      read(env(5), Wire.strictMaybe(summon[Codec[Committee]]))
-    )
-
-  private def govSignal(id: String): GovSignal = node(id, "signal").value match
-    case Value.Arr(Vector(votes, proposals, certificates)) =>
-      val voting = VotingProcedures
-        .decode(
-          votes,
-          xyz.kd5ujc.scarab.ledger.DecoderVersion.of(xyz.kd5ujc.scarab.protocol.Era.Conway)
-        )
-        .fold(e => fail(e.message), identity)
-      val proposalNodes = proposals.value match
-        case Value.Tag(258, inner) => inner
-        case _                     => proposals
-      val props = read(proposalNodes, Wire.seqOf(summon[Codec[Proposal]]))
-      val certs = certificates.value match
-        case Value.Arr(xs) =>
-          xs.map(n =>
-            Certificate
-              .decode(n, Era.Conway)
-              .fold(e => fail(e.message), identity)
-          )
-        case other => fail(s"expected original GOV certificates, got $other")
-      GovSignal(
-        voting.map((voter, entries) => voter -> entries.map((id, p) => id -> p.vote)),
-        props,
-        certs
-      )
-    case other => fail(s"expected complete three-field GOV signal, got $other")
-
   private val strictCertificateRefusals = Set(510102, 510103, 510109, 510113, 510114)
 
-  (510101 to 510115).foreach { seed =>
-    test(s"lawful nonempty GOV full outcome at seed $seed") {
-      val id = s"gov-sized5-$seed"
-      val inputs = govSignal(id)
-      assert(inputs.votes.nonEmpty || inputs.proposals.nonEmpty || inputs.certificates.nonEmpty)
-      val before = read(node(id, "state"), summon[Codec[Proposals]])
-      val expected = read(node(id, "implementation-state"), summon[Codec[Proposals]])
-      assertEquals(
-        Files.readString(base.resolve(s"cases/$id/result.txt")),
-        "implementation-accepted\nagda-accepted\n"
-      )
-      val actual = kernelRule(globals, govViewEnvironment(id), before, inputs)
-        .fold(e => fail(s"Scarab refused upstream-accepted nonempty GOV: $e"), identity)
-      if !strictCertificateRefusals(seed) then
-        assertEquals(
-          govRule(globals, govEnvironment(id), before, inputs),
-          Right(actual),
-          "full validated certificate facade and minimal production kernel agree"
-        )
-      assertEquals(
-        actual,
-        expected,
-        "complete proposal roots, ordered actions, votes and expirations"
-      )
-
-    }
-  }
+  /** The parameters of a case's GOV environment, as the node stores them. */
+  private def environmentParams(id: String) = node(id, "environment").value match
+    case Value.Arr(xs) if xs.size == 6 => read(xs(2), Params.conwayCodec)
+    case other => fail(s"expected all six GOV environment fields, got $other")
 
   /** The certificate state of an original environment with its pools' VRF key hashes left out
     * (`pState.vrfKeyHashes`): five seeds hold a zero registration count there, which the node's
@@ -313,56 +179,84 @@ class UpstreamGovernanceFunctionalSuite extends FunSuite:
         .fold(e => fail(s"$id era signal: $e"), identity)
     case other => fail(s"expected complete three-field GOV signal, got $other")
 
-  /** The era-typed GOV, every failure accumulated: its failures in the node's flat form, or the
+  /** The era-typed GOV, every failure accumulated: its failures in the reference's order, or the
     * proposals after as the node records them.
     */
   private def eraRule(
       env: EraGovEnv[Conway],
       state: Proposals,
       signal: EraGovSignal[Conway]
-  ): Either[Vector[PredicateFailure], Proposals] =
+  ): Either[Vector[ConwayGovPredFailure[Conway]], Proposals] =
     val before = EraGovRun.proposals(state).fold(e => fail(s"stored proposals: $e"), identity)
     EraGovRun.run(env, signal, S.Network.Testnet, before) match
-      case Left(defect) => fail(s"era GOV defect: $defect")
-      case Right(Left(fs)) =>
-        Left(
-          fs.toChain.toVector.map(f => EraGovRun.stored(signal, f).fold(e => fail(s"$e"), identity))
-        )
+      case Left(defect)             => fail(s"era GOV defect: $defect")
+      case Right(Left(fs))          => Left(fs.toChain.toVector)
       case Right(Right((after, _))) => Right(EraGovRun.toStored(after))
+
+  /** A GOV failure as the reference writes it (`ConwayGovPredFailure`'s `EncCBOR`,
+    * `Conway/Rules/Gov.hs:258-299`, cardano-ledger f649f975).
+    */
+  private def encoded(f: ConwayGovPredFailure[Conway]): Bytes =
+    ConwayFailureCbor.gov(f).fold(e => fail(s"no Conway encoding of $f: $e"), identity)
 
   (510101 to 510115).foreach { seed =>
     test(s"the era-typed GOV gives the reference's proposals at seed $seed") {
       val id = s"gov-sized5-$seed"
+      val signal = eraSignal(id)
+      assert(
+        signal.gsVotingProcedures.unVotingProcedures.nonEmpty ||
+          signal.gsProposalProcedures.toVector.nonEmpty || signal.gsCertificates.nonEmpty
+      )
       val before = read(node(id, "state"), summon[Codec[Proposals]])
       val expected = read(node(id, "implementation-state"), summon[Codec[Proposals]])
+      assertEquals(
+        Files.readString(base.resolve(s"cases/$id/result.txt")),
+        "implementation-accepted\nagda-accepted\n"
+      )
       val strict = strictCertificateRefusals(seed)
       assertEquals(
-        eraRule(eraEnvironment(id, withoutVrfs = strict), before, eraSignal(id)),
-        Right(expected)
+        eraRule(eraEnvironment(id, withoutVrfs = strict), before, signal),
+        Right(expected),
+        "complete proposal roots, ordered actions, votes and expirations"
       )
-      // the flat rule's, through its full environment or, where the node refuses that, its view
-      val flat =
-        if strict then kernelRule(globals, govViewEnvironment(id), before, govSignal(id))
-        else govRule(globals, govEnvironment(id), before, govSignal(id))
-      assertEquals(flat.left.map(_ => ()), Right(expected), "the flat rule's")
     }
   }
 
   test("the era-typed GOV refuses the changed required deposit with the reference's failure") {
     val id = "gov-invalid-deposit"
-    val env = govEnvironment(id)
-    val inputs = govSignal(id)
-    val proposal = inputs.proposals.headOption.getOrElse(fail("the case requires a proposal"))
+    val env = eraEnvironment(id)
+    val signal = eraSignal(id)
+    val proposal =
+      signal.gsProposalProcedures.toVector.headOption
+        .getOrElse(fail("the case requires a proposal"))
     val before = read(node(id, "state"), summon[Codec[Proposals]])
-    val failure = PredicateFailure.Gov(
-      GovFailure.ProposalDepositIncorrect(Mismatch(proposal.deposit, env.pp.govActionDeposit))
+    val required = environmentParams(id).govActionDeposit
+    // the deposit supplied and the parameters' (`Conway/Rules/Gov.hs:520-530`, cardano-ledger
+    // f649f975)
+    val failure = ConwayGovPredFailure.ProposalDepositIncorrect[Conway](
+      EraMismatch[RelEQ, S.Coin](proposal.pProcDeposit, S.Coin(required))
     )
-    assertEquals(eraRule(eraEnvironment(id), before, eraSignal(id)), Left(Vector(failure)))
+    assertEquals(eraRule(env, before, signal), Left(Vector(failure)))
     assertEquals(
-      govRule(globals, env, before, inputs),
-      Left(LedgerFailure.Rejected(env.id, failure)),
-      "the flat rule's"
+      Files.readString(base.resolve(s"cases/$id/result.txt")),
+      "implementation-rejected\nagda-rejected\n"
     )
+    def coin(n: Node): BigInt = n.value match
+      case Value.UInt(value) => value
+      case other             => fail(s"expected native failure coin, got $other")
+    node(id, "native-failures").value match
+      case Value.Arr(Vector(nativeFailure)) =>
+        nativeFailure.value match
+          case Value.Arr(Vector(tag, supplied, expected)) =>
+            assertEquals(tag.value, Value.UInt(4), "native GOV.hs:241 ProposalDepositIncorrect tag")
+            assertEquals(
+              (coin(supplied), coin(expected)),
+              (proposal.pProcDeposit.value, required),
+              "the native failure's deposits"
+            )
+          case other => fail(s"expected native GOV deposit mismatch, got $other")
+        assertEquals(encoded(failure).hex, nativeFailure.original.hex, "the reference's bytes")
+      case other => fail(s"expected exactly one native predicate failure, got $other")
   }
 
   test("the era-typed GOV keeps named committee voters with empty vote maps known") {
@@ -370,7 +264,13 @@ class UpstreamGovernanceFunctionalSuite extends FunSuite:
     val before = read(node(id, "state"), summon[Codec[Proposals]])
     val env = eraEnvironment(id)
     val signal = eraSignal(id)
-    assert(signal.gsVotingProcedures.unVotingProcedures.values.forall(_.isEmpty))
+    val votes = signal.gsVotingProcedures.unVotingProcedures
+    assert(votes.nonEmpty)
+    assert(votes.values.forall(_.isEmpty))
+    assert(votes.keys.exists {
+      case Voter.CommitteeHot(_) => true
+      case _                     => false
+    })
     assertEquals(
       eraRule(env, before, signal),
       Right(read(node(id, "implementation-state"), summon[Codec[Proposals]]))
@@ -378,16 +278,22 @@ class UpstreamGovernanceFunctionalSuite extends FunSuite:
     val authorisations = S.ConwayCertState.vState
       .andThen(S.VState.committeeState)
       .andThen(S.CommitteeState.creds)
-    val unknown = signal.gsVotingProcedures.unVotingProcedures.keys.collect {
-      case voter @ Voter.CommitteeHot(_) => voter
-    }.toVector
+    val unknown = NonEmptyList
+      .fromList(
+        votes.keys.toList
+          .collect { case voter @ Voter.CommitteeHot(_) => voter }
+          .sorted(using Voter.order.toOrdering)
+      )
+      .getOrElse(fail("the case has a committee voter"))
+    // the voters GOV does not know, in `Ord Voter` order (`Conway/Rules/Gov.hs:597-604`,
+    // cardano-ledger f649f975)
     assertEquals(
       eraRule(
         env.copy(geCertState = authorisations.modify(_.empty)(env.geCertState)),
         before,
         signal
       ),
-      Left(Vector(PredicateFailure.Gov(GovFailure.VotersDoNotExist(unknown))))
+      Left(Vector(ConwayGovPredFailure.VotersDoNotExist[Conway](unknown)))
     )
   }
 
@@ -397,6 +303,22 @@ class UpstreamGovernanceFunctionalSuite extends FunSuite:
     val expected = read(node(id, "implementation-state"), summon[Codec[Proposals]])
     val env = eraEnvironment(id)
     val signal = eraSignal(id)
+    assert(signal.gsProposalProcedures.toVector.isEmpty)
+    assert(signal.gsCertificates.isEmpty)
+    signal.gsVotingProcedures.unVotingProcedures.toVector.map((v, ps) => v -> ps.toVector) match
+      case Vector((Voter.DRepVoter(credential), Vector((actionId, procedure))))
+          if procedure.vote == Vote.Yes =>
+        assertEquals(before.byId.get(actionId).flatMap(_.drepVotes.get(credential)), None)
+        assertEquals(
+          expected.byId.get(actionId).flatMap(_.drepVotes.get(credential)),
+          Some(Vote.Yes)
+        )
+      case other => fail(s"expected the original actual DRep yes vote, got $other")
+    assertEquals(read(node(id, "observed-ledger-proposals"), summon[Codec[Proposals]]), expected)
+    assertEquals(
+      Files.readString(base.resolve(s"cases/$id/result.txt")),
+      "implementation-accepted\nagda-accepted\noutputs-equal\nledger-proposals-equal\n"
+    )
     assertEquals(eraRule(env, before, signal), Right(expected))
     // the same vote again, on the proposals after: it replaces the one cast, which the event names
     val after = EraGovRun.proposals(expected).fold(e => fail(s"stored proposals: $e"), identity)
@@ -415,90 +337,34 @@ class UpstreamGovernanceFunctionalSuite extends FunSuite:
       case other => fail(s"the vote cast again: $other")
   }
 
-  test("named authorised committee voters remain known with empty inner vote maps") {
-    val id = "gov-sized5-510104"
-    val inputs = govSignal(id)
-    assert(inputs.votes.nonEmpty)
-    assert(inputs.votes.forall(_._2.isEmpty))
-    assert(inputs.votes.exists {
-      case (Voter.CommitteeHot(_), _) => true
-      case _                          => false
-    })
-    assertEquals(
-      govRule(
-        globals,
-        govEnvironment(id),
-        read(node(id, "state"), summon[Codec[Proposals]]),
-        inputs
-      ),
-      Right(read(node(id, "implementation-state"), summon[Codec[Proposals]]))
-    )
-    val env = govEnvironment(id)
-    val authorisations = S.ConwayCertState.vState
-      .andThen(S.VState.committeeState)
-      .andThen(S.CommitteeState.creds)
-    val unregistered = env.copy(cert = authorisations.modify(_.empty)(env.cert))
-    val unknown = inputs.votes.collect { case (voter @ Voter.CommitteeHot(_), _) => voter }
-    assertEquals(
-      govRule(
-        globals,
-        unregistered,
-        read(node(id, "state"), summon[Codec[Proposals]]),
-        inputs
-      ),
-      Left(
-        LedgerFailure.Rejected(env.id, PredicateFailure.Gov(GovFailure.VotersDoNotExist(unknown)))
-      )
-    )
-  }
-
-  test("lawful GOV applies the actual registered DRep yes vote") {
-    val id = "gov-drep-cast-vote"
-    val before = read(node(id, "state"), summon[Codec[Proposals]])
-    val expected = read(node(id, "implementation-state"), summon[Codec[Proposals]])
-    val inputs = govSignal(id)
-    assert(inputs.proposals.isEmpty)
-    assert(inputs.certificates.isEmpty)
-    inputs.votes match
-      case Vector((Voter.DRepVoter(credential), Vector((actionId, Vote.Yes)))) =>
-        assertEquals(before.byId.get(actionId).flatMap(_.drepVotes.get(credential)), None)
-        assertEquals(
-          expected.byId.get(actionId).flatMap(_.drepVotes.get(credential)),
-          Some(Vote.Yes)
-        )
-      case other => fail(s"expected the original actual DRep yes vote, got $other")
-    assertEquals(read(node(id, "observed-ledger-proposals"), summon[Codec[Proposals]]), expected)
-    assertEquals(
-      kernelRule(globals, govViewEnvironment(id), before, inputs),
-      Right(expected)
-    )
-    assertEquals(
-      Files.readString(base.resolve(s"cases/$id/result.txt")),
-      "implementation-accepted\nagda-accepted\noutputs-equal\nledger-proposals-equal\n"
-    )
-  }
-
-  test("minimal GOV view retains registered DRep and committee voter refusals") {
+  test("the era-typed GOV refuses registered DRep and committee voters once they are not") {
     Vector("gov-drep-cast-vote", "gov-sized5-510104").foreach { id =>
-      val env = govViewEnvironment(id)
-      val inputs = govSignal(id)
+      val env = eraEnvironment(id)
+      val signal = eraSignal(id)
       val before = read(node(id, "state"), summon[Codec[Proposals]])
-      val absent = env.copy(cert =
-        env.cert.copy(
-          drepRegistered = _ => false,
-          committee = env.cert.committee.empty
-        )
+      val dreps = S.ConwayCertState.vState.andThen(S.VState.dreps)
+      val authorisations = S.ConwayCertState.vState
+        .andThen(S.VState.committeeState)
+        .andThen(S.CommitteeState.creds)
+      val absent = env.copy(geCertState =
+        dreps.modify(_.empty).andThen(authorisations.modify(_.empty))(env.geCertState)
       )
-      val unknown = inputs.votes.collect {
-        case (voter @ Voter.DRepVoter(_), _)    => voter
-        case (voter @ Voter.CommitteeHot(_), _) => voter
-      }
-      assert(unknown.nonEmpty, "negative control must name a removed registration")
-      assertEquals(
-        kernelRule(globals, absent, before, inputs),
-        Left(
-          LedgerFailure.Rejected(env.id, PredicateFailure.Gov(GovFailure.VotersDoNotExist(unknown)))
+      val unknown = NonEmptyList
+        .fromList(
+          signal.gsVotingProcedures.unVotingProcedures.keys.toList
+            .collect {
+              case voter @ Voter.DRepVoter(_)    => voter
+              case voter @ Voter.CommitteeHot(_) => voter
+            }
+            // the reference's `Ord Voter`, whatever order the signal's map keeps
+            .sorted(using Voter.order.toOrdering)
         )
+        .getOrElse(fail("negative control must name a removed registration"))
+      // `Conway/Rules/Gov.hs:597-604` (cardano-ledger f649f975)
+      assertEquals(
+        eraRule(absent, before, signal),
+        Left(Vector(ConwayGovPredFailure.VotersDoNotExist[Conway](unknown))),
+        id
       )
     }
   }
@@ -507,38 +373,29 @@ class UpstreamGovernanceFunctionalSuite extends FunSuite:
     // Conway/Rules/Gov.hs:597-604 (f649f975) builds the failure from Set.fromList, so a
     // transaction's map order and a repeated voter do not reach the failure.
     val id = "gov-drep-cast-vote"
-    val env = govViewEnvironment(id)
+    val env = eraEnvironment(id)
     val before = read(node(id, "state"), summon[Codec[Proposals]])
-    val actionId = govSignal(id).votes.flatMap(_._2).map(_._1).head
+    val actionId = eraSignal(id).gsVotingProcedures.unVotingProcedures.values
+      .flatMap(_.keys)
+      .headOption
+      .getOrElse(fail("the case votes on an action"))
     def pool(byte: Int): Voter = Voter.Pool(Bytes.fromArray(Array.fill(28)(byte.toByte)))
     // 0x80 is a high byte: a signed comparison would put it first.
     val (low, middle, high) = (pool(0x01), pool(0x7f), pool(0x80))
-    val ballot = Vector((actionId, Vote.Yes))
-    val inputs = GovSignal(
-      Vector(high, middle, low, high).map(_ -> ballot),
-      Vector.empty,
-      Vector.empty
-    )
-    val absent = env.copy(cert = env.cert.copy(poolRegistered = _ => false))
-    val expected = Vector(low, middle, high)
-    val failure = PredicateFailure.Gov(GovFailure.VotersDoNotExist(expected))
-    assertEquals(
-      kernelRule(globals, absent, before, inputs),
-      Left(LedgerFailure.Rejected(env.id, failure))
-    )
+    val ballot = Vector((actionId, VotingProcedure(Vote.Yes, None)))
+    val signal = EraGovRun
+      .signalFromFlat(Vector(high, middle, low, high).map(_ -> ballot), Vector.empty, Vector.empty)
+      .fold(e => fail(s"era signal: $e"), identity)
+    val pools = S.ConwayCertState.pState.andThen(S.PState.stakePools)
+    val absent = env.copy(geCertState = pools.modify(_.empty)(env.geCertState))
+    val failure = ConwayGovPredFailure.VotersDoNotExist[Conway](NonEmptyList.of(low, middle, high))
+    assertEquals(eraRule(absent, before, signal), Left(Vector(failure)))
     // [14 VotersDoNotExist, [voters]] as the plain list of [4 Pool, hash] the encoder writes,
     // in the order of the failure.
     def entry(v: Voter): String = v match
       case Voter.Pool(h) => "82" + "04" + "581c" + h.hex
       case other         => fail(s"expected a pool voter, got $other")
-    assertEquals(
-      PredicateFailureCbor
-        .applyTxError(Vector(failure))
-        .fold(error => fail(error.message), identity)
-        .hex
-        .takeRight(6 + 3 * 64),
-      "820e83" + expected.map(entry).mkString
-    )
+    assertEquals(encoded(failure).hex, "820e83" + Vector(low, middle, high).map(entry).mkString)
   }
 
   strictCertificateRefusals.toVector.sorted.foreach { seed =>
@@ -602,51 +459,6 @@ class UpstreamGovernanceFunctionalSuite extends FunSuite:
         assertEquals(expected.enacted.size, before.enacted.size + 1)
         assertEquals(expected.enacted.lastOption, actions.headOption)
     }
-  }
-
-  test("native and formal refuse the changed required deposit, retaining the typed Scarab cause") {
-    val id = "gov-invalid-deposit"
-    val env = govEnvironment(id)
-    val inputs = govSignal(id)
-    val proposal =
-      inputs.proposals.headOption.getOrElse(fail("refusal control requires a proposal"))
-    def coin(n: Node): BigInt = n.value match
-      case Value.UInt(value) => value
-      case other             => fail(s"expected native failure coin, got $other")
-    val nativeFailure = node(id, "native-failures").value match
-      case Value.Arr(Vector(failure)) =>
-        failure.value match
-          case Value.Arr(Vector(tag, supplied, required)) =>
-            assertEquals(tag.value, Value.UInt(4), "native GOV.hs:241 ProposalDepositIncorrect tag")
-            GovFailure.ProposalDepositIncorrect(Mismatch(coin(supplied), coin(required)))
-          case other => fail(s"expected native GOV deposit mismatch, got $other")
-      case other => fail(s"expected exactly one native predicate failure, got $other")
-    assertEquals(
-      nativeFailure,
-      GovFailure.ProposalDepositIncorrect(Mismatch(proposal.deposit, env.pp.govActionDeposit))
-    )
-    assertEquals(
-      Files.readString(base.resolve(s"cases/$id/result.txt")),
-      "implementation-rejected\nagda-rejected\n"
-    )
-    assertEquals(
-      kernelRule(
-        globals,
-        govViewEnvironment(id),
-        read(node(id, "state"), summon[Codec[Proposals]]),
-        inputs
-      ),
-      govRule(globals, env, read(node(id, "state"), summon[Codec[Proposals]]), inputs)
-    )
-    assertEquals(
-      govRule(globals, env, read(node(id, "state"), summon[Codec[Proposals]]), inputs),
-      Left(
-        LedgerFailure.Rejected(
-          env.id,
-          PredicateFailure.Gov(nativeFailure)
-        )
-      )
-    )
   }
 
   test("competing actions expose native supplied-order behavior") {

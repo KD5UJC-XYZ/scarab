@@ -24,8 +24,8 @@ union of every era's certificates. Which fields an era may carry is decided at r
   (`PreConway[E]`).
 
 The consequences:
-- **Dijkstra's rules decode a Dijkstra transaction a second time, as a Conway one**, and check that
-  (`rules/DijkstraUtxo.scala`, `DijkstraStAnnTx.of`).
+- **Dijkstra's rules decoded a Dijkstra transaction a second time, as a Conway one**, and checked that (the
+  flat Dijkstra rules, which stage 3 deleted once the era rules judged every case).
 - **A field's era is checked only at run time.** A Shelley-only certificate in a Conway transaction is
   refused by the decoder and again by the CERTS rule (`rules/Certs.scala`, `TxDefect.PreConwayCertificate`),
   but nothing in the types prevents it. Nothing stops a rule from reading a field its era does not have.
@@ -1918,7 +1918,7 @@ Conway's rules on the classes follow as the rest of stage 2.
     `plutusScriptsProvided`; and the supplemental datums at each level equal the datum hashes the flat decoder read in
     the outputs and the reference inputs' outputs, also where a sub-transaction's reference input names one (crafted)
     and with the sub-transactions taken out of the body, as UTXOW reads it in the legacy mode.
-  - The flat path has a minimum fee (`DijkstraUtxo.minFee`), the keys needed (`TxChecks.neededWitnesses`) and the
+  - The flat path had a minimum fee (the flat Dijkstra UTXO's, deleted with the flat rules), the keys needed (`TxChecks.neededWitnesses`) and the
     supplemental datums (`TxChecks.supplementalDatumHashes`) for a transaction without Dijkstra's own fields, and the
     value consumed and produced only inline: no complete Dijkstra batch comparison. What the reference records stands in
     for it, as component checks under CNF-2, not the I1 verdict or the resulting state. On the 200 transactions recorded
@@ -2011,8 +2011,10 @@ Conway's rules on the classes follow as the rest of stage 2.
       `NonStatic`.
     - `DijkstraRulesOracleSuite` and `DijkstraRulesSuite`: on the oracle's four admitted cases and the flat
       suite's devnet transaction, with its guarded reference script refused and then holding by a signature,
-      the era rule leaves the flat rule's state or gives its failures; under `NonStatic` it gives the flat
-      rule's verdict on all 17 oracle cases.
+      the era rule left the flat rule's state or gave its failures; under `NonStatic` it gave the flat
+      rule's verdict on all 17 oracle cases. Stage 3 deleted the flat rules with these comparisons: the oracle
+      suite keeps the era rule against the reference, and `DijkstraUtxowSuite` runs the devnet transaction and
+      its guarded reference script on the era UTXOW alone.
     - `DijkstraUTxOSuite`: on every batch whose body the suite can write again, the values and datums without the
       sub-transactions equal the batch's functions applied to the body rewritten without key 23.
     - Conway's era suites (`EraUtxosSuite`, `EraUtxoSuite`, `EraUtxowSuite`, `ConwayUtxoChecksSuite`,
@@ -2047,7 +2049,7 @@ Conway's rules on the classes follow as the rest of stage 2.
     leaves the state as it is (`Empty -> pure certState`, `Conway/Rules/Certs.hs:220`), by its type and not by
     its protocol version. At 9df9f98c CERTS's failure has `CertFailure` alone (`Conway/Rules/Certs.hs:111-114`).
     So the 11.1 build's `WithdrawalsNotInRewardsCERTS` has no value at Dijkstra (`CertsWithdrawals`, as
-    `MirSigners` has none at Conway), and `DijkstraCertsStored.toStored` is total. The environment's
+    `MirSigners` has none at Conway), and the flat form of CERTS's failure (since deleted with the flat rules) was total. The environment's
     transaction, which only the 11.1 build's case reads, stays Conway's field.
   - CERT and POOL are Dijkstra's own. CERT makes a delegation certificate Conway's (`dijkstraToConwayDelegCert`)
     for Conway's DELEG and runs Dijkstra's POOL on the pool state. POOL (`DijkstraPoolPredFailure`, tags 0, 1 and
@@ -2092,7 +2094,7 @@ Conway's rules on the classes follow as the rest of stage 2.
   - Evidence:
     - `DijkstraRulesOracleSuite`: on the reference's 20 `certs` cases (`fixtures/reference/dijkstra-rules`), CERTS
       on the era types, from the same parameters and state, gives the reference's refusal byte for byte, through
-      `DijkstraCertsStored.toStored` and the suite's encoder, the failures of `mixed-failures` across the
+      the flat form (since deleted) and the suite's encoder, the failures of `mixed-failures` across the
       recursion's depths among them. It gives the flat rule's verdicts on all 20 and the flat rule's certificate
       state on each case both admit. It leaves the flat rule's state after the setup of each of the 16 `gov` and 2
       `utxow` cases that have one. ENTITIES admits the transaction of the devnet block the reference accepted
@@ -2147,12 +2149,13 @@ Conway's rules on the classes follow as the rest of stage 2.
     - the certificates of the 2 chain transactions that hold them in a sub-transaction: SUBCERTS's (D7c); and
       ENTITIES on the chain's 28 batches as the reference judged them, which reads the state after SUBLEDGERS;
     - the `gov` cases' own verdicts, which are GOV's (the next bullet); only their setups are compared here;
-    - a pool registration against the flat rules, which halt on one (`DijkstraPending.PoolRegistration`): POOL's
+    - a pool registration against the flat rules, which halted on one (since deleted): POOL's
       registrations are compared with the reference's invariant and recorded parameters, not with a flat rule;
     - refusals that no recording holds: any of ENTITIES' own failures, and a pool registration with a voting key,
       which the oracle's cases do not reach (its scope excludes ENTITIES and pool registrations);
-    - the refusals are compared through the flat Dijkstra form and the suite's encoder: the era failures have no
-      encoder yet (#796).
+    - the refusals were compared through the flat Dijkstra form and the suite's encoder, the era failures having
+      no encoder then (#796); stage 3 writes them with a test-side era encoder (`DijkstraEraFailureCbor`) and
+      deleted the flat form.
   - Not yet (#85): the committee and its proposals in `EntitiesEnv` are the node's records, as in `CertsEnv` (the
     Gap of [#85's item](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923349468)); the era bodies'
     direct deposits and balance intervals keyed by `AccountAddress`, as their withdrawals now are
@@ -2171,9 +2174,8 @@ Conway's rules on the classes follow as the rest of stage 2.
     constructors under their names, in tag order (`:135-155`), with `ConwayGovPredFailure`'s fields. `conwayToDijkstraGovPredFailure` (`:222-243`) is total, so
     D7a's decision on partial injections has nothing to narrow. `EraRuleFailure "GOV"` and `EraRuleEvent "GOV"`
     have Dijkstra's cases, the event Conway's (`:121-123`), and `InjectGov.dijkstra` is the reference's two
-    instances (`:127-130`). `DijkstraGovPredFailure.toStored` gives a failure's flat form, Conway's, one-way glue the
-    comparisons read; a parameter change, which the flat Conway action cannot hold, has none
-    (`GovActionNotRead`).
+    instances (`:127-130`). A one-way flat form of the failure (Conway's) served the comparisons
+    with the flat rule until stage 3 deleted both.
   - The transition is generic in its era, where the reference's is generic in its rule too, for SUBGOV (D7c). The
     LEDGER constructor and injections (`DijkstraGovFailure`, `Ledger.hs:101, 189-196`) are Dijkstra's LEDGER's
     (D7e).
@@ -2452,8 +2454,7 @@ Conway's rules on the classes follow as the rest of stage 2.
     reference's injections (`:113-205`) are each an instance, UTXOW's and the rules below it one instance over UTXOW's
     injection, ENTITIES' and the rules below it one over ENTITIES', as Conway's are; Shelley's `AccountAlreadyRegistered`
     goes through DELEG's (`InjectDelegFailure.dijkstra`), then CERT's, CERTS's and ENTITIES' constructors.
-    `DijkstraLedgerPredFailure.toStored` gives the flat form, one-way glue the comparisons read; the flat type has no
-    form for ENTITIES' and SUBLEDGERS' failures (`DijkstraLedgerUnprojected`).
+    A one-way flat form of the failure served the comparisons with the flat rules until stage 3 deleted both.
   - **The injections the reference leaves partial**, by D7a's decision. `conwayToDijkstraLedgerPredFailure` calls
     `error "Impossible"` on `ConwayWdrlNotDelegatedToDRep` and `ConwayMempoolFailure` (`:538, 541`): its instance is over
     the seven constructors it maps (`DijkstraLedger.ConwayFailure`), each payload taken whole, so the two have no
@@ -2907,8 +2908,8 @@ Conway's rules on the classes follow as the rest of stage 2.
     calls `HeaderProtVerTooHigh` impossible (`:413`), so by D7a's decision on the reference's partial injections its
     instance is over the five constructors it maps (`ConwayBbodyFailureInDijkstra`), and that constructor has no
     injection. A size is the reference's `Int` as a `Long`, a header's `Word32` and `HeaderProtVerTooLow`'s the
-    reference's `Word32` (`Unsigned[W32]`), and the units the node's, as UTXO's failures hold them. `DijkstraBbody.toStored` gives the flat form (`DijkstraBbodyFailure`),
-    one-way glue the comparisons read.
+    reference's `Word32` (`Unsigned[W32]`), and the units the node's, as UTXO's failures hold them. A one-way flat form of the failure
+    served the comparisons with the flat BBODY until stage 3 deleted both.
   - `dijkstraBbodyTransition` (`:333-402`) runs, every failure recorded, in the reference's order: the body's size and
     hash against its header's (`validateBlockBodySize`, `validateBlockBodyHash`); the header's highest supported major
     version at least the parameters' (`HeaderProtVerTooLow`); LEDGERS at the header's slot and its epoch

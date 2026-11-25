@@ -22,10 +22,10 @@ import xyz.kd5ujc.scarab.ledger.{
   Vote
 }
 import xyz.kd5ujc.scarab.ledger.era.conway.{ConwayProcedures, ConwayProposals}
-import xyz.kd5ujc.scarab.ledger.era.dijkstra.{DijkstraProposals, DijkstraTx}
+import xyz.kd5ujc.scarab.ledger.era.dijkstra.{DijkstraConway, DijkstraProposals, DijkstraTx}
 import xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraCorpus.*
 import xyz.kd5ujc.scarab.ledger.era.rules.ConwayGov
-import xyz.kd5ujc.scarab.ledger.rules.{Convert, DijkstraConway}
+import xyz.kd5ujc.scarab.ledger.rules.Convert
 import xyz.kd5ujc.scarab.ledger.state.{
   Conway,
   Credential,
@@ -40,7 +40,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
   StakePool,
   Staking
 }
-import xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraPending
+import xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraGovAction
 
 /** The governance state of the era types (`ConwayGovState era`, `EraGov`, `ConwayEraGov`;
   * cardano-ledger f649f975, Dijkstra's at 9df9f98c):
@@ -256,7 +256,7 @@ class EraGovStateSuite extends DisciplineSuite:
         }
     }
     // every kind of action but a parameter change goes through, by its case; no parameter change
-    // has a flat form (`DijkstraConway.action` halts on it, `DijkstraPending.ParameterChangeProposal`).
+    // has a flat form (`DijkstraConway.action` gives it back).
     // The cases of 2026-11-24 (#85) add the bootstrap phase's treasury withdrawals to the first, and
     // 23 parameter changes to the second: one of each other key Dijkstra adds, 34 to 56, the empty
     // update, a zero `maxBBSize` (key 2), and the change of key 47 the bootstrap phase's DRep votes on
@@ -334,8 +334,8 @@ class EraGovStateSuite extends DisciplineSuite:
         p.pProcGovAction match
           case GovAction.ParameterChange(_, u, _) =>
             assert(DijkstraConway.proposal(p.read) match {
-              case Left(DijkstraPending.ParameterChangeProposal) => true
-              case _                                             => false
+              case Left(_: DijkstraGovAction.ParameterChange) => true
+              case _                                          => false
             })
             DijkstraProposals.updateKeys(u)
           case other => fail(s"$other")

@@ -9,9 +9,7 @@ import cats.syntax.all.*
 import xyz.kd5ujc.scarab.ledger.{
   Certificate,
   GovActionId,
-  GovFailure,
   PredicateFailure,
-  PrevIds,
   Proposal,
   Proposals as StoredProposals,
   TestLedger,
@@ -28,7 +26,6 @@ import xyz.kd5ujc.scarab.protocol.StateLayout
 import xyz.kd5ujc.scarab.ledger.era.rules.{
   ConwayGov,
   ConwayGovPredFailure,
-  DijkstraGovPredFailure,
   DijkstraSUBGOV,
   GovActionNotRead,
   GovEnv,
@@ -40,15 +37,14 @@ import xyz.kd5ujc.scarab.ledger.era.rules.{
   SubGovEvent,
   SubGovPredFailure
 }
-import xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraPending
-import xyz.kd5ujc.scarab.ledger.rules.{DijkstraConway, Judge, Judgment, RuleT, focus}
+import xyz.kd5ujc.scarab.ledger.rules.{Judge, Judgment, RuleT, focus}
 import xyz.kd5ujc.scarab.ledger.state.{Conway, Dijkstra, EraTag, Network}
 
 /** Conway's GOV on the era types (`ConwayGov.conwayGovTransition`) run in one judgment, and the
   * forms its failures and state are compared in with the flat GOV's, for the suites that compare
-  * the two (`ConwayGovChecksSuite` and `UpstreamGovernanceFunctionalSuite` in the node); and
-  * Dijkstra's, the same transition (`DijkstraGovSuite`, and `DijkstraRulesOracleSuite` in the
-  * node).
+  * the two (`ConwayGovChecksSuite` in the node), and for those that hold it to the reference's
+  * judgments (`UpstreamGovernanceFunctionalSuite` in the node); and Dijkstra's, the same transition
+  * (`DijkstraGovSuite`, and `DijkstraRulesOracleSuite` in the node).
   */
 object EraGovRun:
   type Rec = GovPredFailure[Conway]
@@ -204,43 +200,6 @@ object EraGovRun:
       )
       .map(_.map(_._1))
 
-  /** A Dijkstra failure in the flat form the flat Dijkstra GOV gives, its action read from the
-    * signal's proposals.
-    */
-  def dijkstraStored(
-      signal: GovSignal[Dijkstra],
-      failure: DijkstraGovPredFailure[Dijkstra]
-  ): Either[GovActionNotRead[Dijkstra], GovFailure] =
-    DijkstraGovPredFailure.toStored(
-      failure,
-      DijkstraGovPredFailure.readOf(signal.gsProposalProcedures.toVector)
-    )
-
   /** No proposals, with no root of any purpose: the reference's default store (`def`). */
   def dijkstraEmpty: Proposals[Dijkstra] =
     Proposals.empty[Dijkstra](GovRelation[Option](None, None, None, None))
-
-  /** Dijkstra's proposals in the form the flat Dijkstra GOV keeps them, the node's record of
-    * Conway's: each proposal as the flat rule reads the one it was read as
-    * (`DijkstraConway.proposal`), one way. A parameter change has no such form: the flat rule halts
-    * on it.
-    */
-  def dijkstraToStored(ps: Proposals[Dijkstra]): Either[DijkstraPending, StoredProposals] =
-    val r = Proposals.toPrevGovActionIds(ps.pRoots)
-    ps.pProps.toVector
-      .traverse(gas =>
-        DijkstraConway
-          .proposal(gas.gasProposalProcedure.read)
-          .map(xyz.kd5ujc.scarab.ledger.era.conway.ConwayProposals.storedWith(gas, _))
-      )
-      .map(actions =>
-        StoredProposals(
-          actions,
-          PrevIds(
-            r.grPParamUpdate.map(_.unGovPurposeId),
-            r.grHardFork.map(_.unGovPurposeId),
-            r.grCommittee.map(_.unGovPurposeId),
-            r.grConstitution.map(_.unGovPurposeId)
-          )
-        )
-      )

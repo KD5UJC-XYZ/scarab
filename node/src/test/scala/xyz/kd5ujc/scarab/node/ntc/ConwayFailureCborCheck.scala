@@ -8,8 +8,7 @@ import xyz.kd5ujc.scarab.ledger.era.rules.ConwayLedgerPredFailure
 import xyz.kd5ujc.scarab.ledger.state.Conway
 
 /** The era failures' refusal as [[ConwayFailureCbor]] writes it, for the suites that bind the era
-  * rules' failures to the reference's bytes: next to each comparison of the flat form's encoding,
-  * the era's own encoder is held to the same bytes.
+  * rules' failures to the reference's bytes.
   */
 object ConwayFailureCborCheck:
   /** `failures`' `ApplyTxErr`, failing the test where there is none or no bytes. */

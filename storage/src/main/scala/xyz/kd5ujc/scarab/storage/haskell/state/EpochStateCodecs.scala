@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage.haskell.state
 
-import xyz.kd5ujc.scarab.codec.Value
-import xyz.kd5ujc.scarab.ledger.{Address, ByteStrings, ScriptKind, TxOut, Utxo}
+import xyz.kd5ujc.scarab.codec.{Bytes, Value}
+import xyz.kd5ujc.scarab.ledger.{Address, ByteStrings, Datum, ScriptKind, TxIn, TxOut, Utxo}
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.models.runtime.{
   Codec,
@@ -101,32 +101,60 @@ trait EpochStateCodecs extends RewardCodecs:
   /** The Byron redeem (AVVM) outputs the Shelley state stashes for the translation into Allegra, as
     * `EncCBOR (NewEpochState era)` writes its last field (`Types.hs:388-405`, cardano-ledger
     * f649f975): `EncCBOR (UTxO era)`, derived from the map's (`State/UTxO.hs:112`), of
-    * `[transaction id, index]` (`TxIn.hs:97-101`) to `ShelleyTxOut` 's `[address, coin]`
-    * (`Shelley/TxOut.hs:150-154`), at Shelley's version. Consensus moves only the ledger state's
-    * own UTxO into the tables (`stowLedgerTables` over `slUtxoL`,
-    * `Shelley/Ledger/Ledger.hs:458-494`, ouroboros-consensus 2416493b) and reads the stash from the
-    * state at the translation (`translateLedgerStateShelleyToAllegraWrapper`,
-    * `Cardano/CanHardFork.hs:493-530`), so it is in the state file. Written as the empty map `a0`,
-    * a node restored from a Shelley-era state returned nothing to the reserves on entering Allegra
-    * (#1448). An output reads as `DecCBOR (ShelleyTxOut era)` reads it
-    * (`Shelley/TxOut.hs:156-160`): a coin-only pair.
+    * `[transaction id, index]` (`TxIn.hs:97-101`) to `ShelleyTxOut` 's `[address, coin]`, the coin
+    * a `Word64` (`Shelley/TxOut.hs:150-154`), at Shelley's version. Consensus moves only the ledger
+    * state's own UTxO into the tables (`stowLedgerTables` and `unstowLedgerTables` over `slUtxoL`,
+    * `Shelley/Ledger/Ledger.hs:431-462` at ouroboros-consensus 82ecba32, the 11.1 build's, and
+    * `:458-494` at 2416493b) and reads the stash from the state at the translation
+    * (`translateLedgerStateShelleyToAllegraWrapper`, `Cardano/CanHardFork.hs:479-519` at 82ecba32,
+    * `:493-530` at 2416493b), so it is in the state file. Written as the empty map `a0`, a node
+    * restored from a Shelley-era state returned nothing to the reserves on entering Allegra
+    * (#1448). An entry reads as `DecCBOR` reads it at version 2: definite byte strings
+    * (`ByteStrings.Definite`), and an output as `DecCBOR (ShelleyTxOut era)` reads it
+    * (`Shelley/TxOut.hs:156-160`), a coin-only pair. The output is written here, not by the
+    * node-to-client codec of [[UtxoCodecs]], so that the bytes are this file's.
     */
   private val stashedUtxo: Codec[UtxoTables] =
     given ProtVer = Versions.eraLow(ShelleyBasedEra.SShelley)
-    val shelleyOut = UtxoCodecs.txOutIn(ShelleyBasedEra.SShelley)
+    val maxCoin = (BigInt(1) << 64) - 1
+    val definiteHash: Codec[Bytes] = new Codec[Bytes]:
+      private val under = hash(32)
+      def decode(n: Node): Decoded[Bytes] =
+        if n.isIndefinite then Left(Codec.mismatch("definite byte string", n)) else under.decode(n)
+      def encode(a: Bytes, out: Writer): Unit = under.encode(a, out)
+      override def check(a: Bytes): Option[ConstraintViolation] = under.check(a)
+    val in: Codec[TxIn] = Record.of[TxIn]((definiteHash, word16))
     val out: Codec[TxOut] = new Codec[TxOut]:
       def decode(n: Node): Decoded[TxOut] =
         TxOut
           .decode(n, Address.Mode.CoinOnly, TxOut.Forms.Pair, ScriptKind.newestKnown)(using
-            ByteStrings.Chunked
+            ByteStrings.Definite
           )
           .left
           .map(why => DecodeError.at(n, DecodeError.Kind.Domain(why)))
-      def encode(o: TxOut, w: Writer): Unit = shelleyOut.encode(o, w)
-      override def check(o: TxOut): Option[ConstraintViolation] = shelleyOut.check(o)
-    sortedMapOf(UtxoCodecs.txIn, out).imap(entries => UtxoTables(Utxo.fromMap(entries)))(
-      _.utxo.toMap
-    )
+      def encode(o: TxOut, w: Writer): Unit =
+        w.arrayHead(2)
+        w.bytes(o.address.raw)
+        w.uint(o.value.coin)
+      override def check(o: TxOut): Option[ConstraintViolation] =
+        Codec
+          .refuse(
+            o.value.assets.nonEmpty || o.scriptRef.isDefined || (o.datum match
+              case Datum.NoDatum => false
+              case _             => true),
+            "TxOut",
+            "a Shelley output: an address and a coin",
+            o.raw.hex
+          )
+          .orElse(
+            Codec.refuse(
+              o.value.coin.signum < 0 || o.value.coin > maxCoin,
+              "TxOut",
+              "a coin of a Word64",
+              o.value.coin
+            )
+          )
+    sortedMapOf(in, out).imap(entries => UtxoTables(Utxo.fromMap(entries)))(_.utxo.toMap)
 
   private val unit: Codec[Unit] = new Codec[Unit]:
     def decode(n: Node): Decoded[Unit] = n.value match

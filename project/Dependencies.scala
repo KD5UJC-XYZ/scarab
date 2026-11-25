@@ -21,7 +21,6 @@ object Dependencies {
     val dnsjava = "3.6.5"
 
     val bouncyCastle = "1.86"
-    val curve25519 = "0.1.3"
     // Consensys jblst: blst v0.3.17 with its portable native libraries (ADR 0025)
     val jblst = "0.3.18"
     val rocksdb = "10.2.1"
@@ -56,7 +55,6 @@ object Dependencies {
     val scodecCore = "org.scodec" %% "scodec-core" % V.scodec
 
     val bouncyCastle = "org.bouncycastle" % "bcprov-jdk18on" % V.bouncyCastle
-    val curve25519 = "com.weavechain" % "curve25519-elisabeth" % V.curve25519
     // BLS12-381 (MinSig voting keys of Leios); Apache-2.0, bundles libblst.
     // Guava is a runtime dependency of the POM that no jblst class uses (issue 651)
     val jblst = ("tech.pegasys" % "jblst" % V.jblst).exclude("com.google.guava", "guava")

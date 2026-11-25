@@ -10,7 +10,8 @@ import io.circe.parser.parse
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Rational, Value}
 import xyz.kd5ujc.scarab.ledger.{Block, Certificate, EpochGeometry, LedgerGlobals, PoolParams, Tx}
-import xyz.kd5ujc.scarab.ledger.rules.{Globals, JudgedSts, Pool, PoolCert}
+import xyz.kd5ujc.scarab.ledger.era.PoolCert
+import xyz.kd5ujc.scarab.ledger.rules.Globals
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.models.runtime.Codec
 import xyz.kd5ujc.scarab.protocol.Era
@@ -45,6 +46,7 @@ class UpstreamPoolConformanceSuite extends FunSuite:
       .map(b => f"${b & 0xff}%02x")
       .mkString
 
+  /** The signal's `PoolCert`, Conway's: a registration's parameters or a retirement. */
   private def poolCertificate(n: xyz.kd5ujc.scarab.models.runtime.Node)(using
       ProtVer
   ): PoolCert =
@@ -53,7 +55,10 @@ class UpstreamPoolConformanceSuite extends FunSuite:
       case Value.Arr(Vector(tag, params)) if tag.value == Value.UInt(0) =>
         codec
           .decode(params)
-          .fold(e => fail(s"POOL registration parameters: ${e.render}"), PoolCert.RegPool(_))
+          .fold(
+            e => fail(s"POOL registration parameters: ${e.render}"),
+            p => PoolCert.RegPool(Build.stakePoolParams(p))
+          )
       case Value.Arr(Vector(tag, pool, epoch)) if tag.value == Value.UInt(1) =>
         val key = summon[Codec[KeyHash[StakePool]]]
           .decode(pool)
@@ -61,7 +66,7 @@ class UpstreamPoolConformanceSuite extends FunSuite:
         val when = summon[Codec[EpochNo]]
           .decode(epoch)
           .fold(e => fail(s"POOL retirement epoch: ${e.render}"), identity)
-        PoolCert.RetirePool(key, when.toBigInt)
+        PoolCert.RetirePool(key, when)
       case other => fail(s"unknown upstream PoolCert wire constructor: $other")
 
   private val globals = Globals(
@@ -157,41 +162,13 @@ class UpstreamPoolConformanceSuite extends FunSuite:
     }
   }
 
-  test("Scarab POOL adapter consumes the upstream env and tagged signal, matching full PState") {
+  test("the era-typed POOL gives the full Haskell PState on every upstream judgment") {
+    // the fixture's inputs judged by the era rule; the expectation is the reference's post-state
     given ProtVer = protVer
     seeds.foreach { seed =>
       val dir = base.resolve(s"cases/$seed")
       val context = node(dir.resolve("context.cbor"))
       assertEquals(context.value, Value.Null, s"seed $seed upstream POOL context")
-      val env = items(node(dir.resolve("environment.cbor")), 2)
-      val epoch = summon[Codec[EpochNo]].decode(env(0)).fold(e => fail(e.render), identity)
-      val pp = Params.conwayCodec.decode(env(1)).fold(e => fail(e.render), identity)
-      val before = state(dir.resolve("state.cbor"))
-      val expected = state(dir.resolve("implementation-state.cbor"))
-      val actual = JudgedSts
-        .apply(Pool.Adapter)(xyz.kd5ujc.scarab.ledger.LedgerFailure.Rejected(Bytes.empty, _))(
-          globals,
-          Pool.RuleEnv(
-            Bytes.fromArray(
-              s"cardano-ledger-POOL-$seed".getBytes(java.nio.charset.StandardCharsets.UTF_8)
-            ),
-            pp,
-            epoch.toBigInt
-          ),
-          before,
-          poolCertificate(node(dir.resolve("signal.cbor")))
-        )
-        .fold(e => fail(s"seed $seed Scarab refused upstream-accepted POOL: $e"), identity)
-      assertEquals(actual, expected, s"seed $seed full PState")
-    }
-  }
-
-  test("the era-typed POOL gives the full Haskell PState on every upstream judgment") {
-    // the same fixture inputs as the flat adapter's, judged by the era rule; the expectation is
-    // the reference's post-state, not the flat rule's
-    given ProtVer = protVer
-    seeds.foreach { seed =>
-      val dir = base.resolve(s"cases/$seed")
       val env = items(node(dir.resolve("environment.cbor")), 2)
       val epoch = summon[Codec[EpochNo]].decode(env(0)).fold(e => fail(e.render), identity)
       val flatPp = Params.conwayCodec.decode(env(1)).fold(e => fail(e.render), identity)
@@ -200,14 +177,7 @@ class UpstreamPoolConformanceSuite extends FunSuite:
           .fromStored(flatPp)
           .fold(e => fail(s"seed $seed parameters: $e"), identity)
       )
-      val cert = poolCertificate(node(dir.resolve("signal.cbor"))) match
-        case PoolCert.RegPool(params) =>
-          xyz.kd5ujc.scarab.ledger.era.PoolCert.RegPool(Build.stakePoolParams(params))
-        case PoolCert.RetirePool(pool, when) =>
-          xyz.kd5ujc.scarab.ledger.era.PoolCert.RetirePool(
-            pool,
-            EpochNo.fromBigInt(when).fold(e => fail(e.toString), identity)
-          )
+      val cert = poolCertificate(node(dir.resolve("signal.cbor")))
       val actual = xyz.kd5ujc.scarab.ledger.era.EraCertsRun
         .pool(
           globals,

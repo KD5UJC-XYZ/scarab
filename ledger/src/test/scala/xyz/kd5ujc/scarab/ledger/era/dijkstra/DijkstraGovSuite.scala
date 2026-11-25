@@ -504,7 +504,7 @@ class DijkstraGovSuite extends FunSuite:
     )
   }
 
-  test("an empty parameter change is malformed, and its failure has no flat form") {
+  test("an empty parameter change is malformed, after its return account's network") {
     val tx = leiosCorpus
       .find(j => str(j, "kind") == "tx" && str(j, "name") == "tx parameter change empty")
       .flatMap(j => cbor(hex(str(j, "bytes"))))
@@ -533,21 +533,4 @@ class DijkstraGovSuite extends FunSuite:
     )
     assertEquals(returnAccount(p).networkId, Network.Mainnet)
     assertEquals(fs, Vector(network, DijkstraGovPredFailure.MalformedProposal(p.pProcGovAction)))
-    // the flat Conway action cannot hold Dijkstra's update
-    assertEquals(
-      fs.map(EraGovRun.dijkstraStored(signal, _)),
-      Vector(
-        Right(
-          flat.GovFailure.ProposalProcedureNetworkIdMismatch(
-            Convert.rewardAccountBack(returnAccount(p)),
-            Network.Testnet.wire
-          )
-        ),
-        Left(GovActionNotRead(p.pProcGovAction))
-      )
-    )
-    assertEquals(
-      EraGovRun.dijkstraStored(signal, DijkstraGovPredFailure.InvalidPrevGovActionId(p)),
-      Left(GovActionNotRead(p.pProcGovAction))
-    )
   }

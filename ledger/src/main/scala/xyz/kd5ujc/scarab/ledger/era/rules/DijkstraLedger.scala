@@ -6,10 +6,9 @@ import cats.data.Chain
 import cats.mtl.{Ask, Raise, Stateful, Tell}
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.ledger.{LedgerDefect, TranslationError, Verdicts}
-import xyz.kd5ujc.scarab.ledger.dijkstra.{DijkstraLedgerFailure, DijkstraPurpose}
 import xyz.kd5ujc.scarab.ledger.era.*
 import xyz.kd5ujc.scarab.ledger.era.Relation.*
-import xyz.kd5ujc.scarab.ledger.era.dijkstra.{DijkstraPlutusPurpose, DijkstraStAnnTx, DijkstraUTxO}
+import xyz.kd5ujc.scarab.ledger.era.dijkstra.{DijkstraStAnnTx, DijkstraUTxO}
 import xyz.kd5ujc.scarab.ledger.rules.{Globals, Judge, Sts, Test, focus}
 import xyz.kd5ujc.scarab.ledger.state.{
   Coin,
@@ -59,48 +58,9 @@ enum DijkstraLedgerEvent[E <: EraTag]:
 object DijkstraLedgerEvent:
   given [E <: EraTag]: CanEqual[DijkstraLedgerEvent[E], DijkstraLedgerEvent[E]] = CanEqual.derived
 
-/** What a Dijkstra LEDGER failure's flat form (`DijkstraLedgerFailure`) cannot hold: UTXOW's
-  * ([[DijkstraUtxowUnprojected]]), an action of GOV's failure that none of the transaction's
-  * proposals was read as ([[GovActionNotRead]]), and the failures of ENTITIES and SUBLEDGERS, which
-  * the flat rules halt before (`DijkstraPending`) and so have no flat form of.
-  */
-enum DijkstraLedgerUnprojected:
-  case Utxow(cause: DijkstraUtxowUnprojected)
-  case Gov(cause: GovActionNotRead[Dijkstra])
-  case Entities(failure: EntitiesPredFailure[Dijkstra])
-  case SubLedgers(failure: DijkstraSubLedgersPredFailure[Dijkstra])
-
 object DijkstraLedgerPredFailure:
   given [E <: EraTag]: CanEqual[DijkstraLedgerPredFailure[E], DijkstraLedgerPredFailure[E]] =
     CanEqual.derived
-
-  /** The failure in the node's flat form (`DijkstraLedgerFailure`), which the flat Dijkstra rules
-    * report: glue the comparisons read until the era failures have their own encoders (#796),
-    * one-way. UTXOW's through [[DijkstraUtxowPredFailure.toStored]], a missing redeemer's purpose
-    * by `purpose`, and GOV's through [[DijkstraGovPredFailure.toStored]], an action by `read`.
-    */
-  def toStored(
-      failure: DijkstraLedgerPredFailure[Dijkstra],
-      purpose: DijkstraPlutusPurpose[AsItem] => Option[DijkstraPurpose],
-      read: GovAction[Dijkstra] => Option[xyz.kd5ujc.scarab.ledger.GovAction]
-  ): Either[DijkstraLedgerUnprojected, DijkstraLedgerFailure] =
-    failure match
-      case DijkstraUtxowFailure(f) =>
-        DijkstraUtxowPredFailure
-          .toStored(f, purpose)
-          .bimap(DijkstraLedgerUnprojected.Utxow(_), DijkstraLedgerFailure.UtxowFailure(_))
-      case DijkstraEntitiesFailure(f) => Left(DijkstraLedgerUnprojected.Entities(f))
-      case DijkstraGovFailure(f) =>
-        DijkstraGovPredFailure
-          .toStored(f, read)
-          .bimap(DijkstraLedgerUnprojected.Gov(_), DijkstraLedgerFailure.GovFailure(_))
-      case DijkstraTreasuryValueMismatch(m) =>
-        Right(
-          DijkstraLedgerFailure.TreasuryValueMismatch(m.storedBy(_.value))
-        )
-      case DijkstraTxRefScriptsSizeTooBig(m) =>
-        Right(DijkstraLedgerFailure.TxRefScriptsSizeTooBig(m.stored))
-      case DijkstraSubLedgersFailure(f) => Left(DijkstraLedgerUnprojected.SubLedgers(f))
 
 /** The `Embed` instances of Dijkstra's LEDGER's sub-rules (`Dijkstra/Rules/Ledger.hs:489-508,
   * 520-528, 555-573`, cardano-ledger 9df9f98c): how the failures and events of UTXOW, ENTITIES, GOV

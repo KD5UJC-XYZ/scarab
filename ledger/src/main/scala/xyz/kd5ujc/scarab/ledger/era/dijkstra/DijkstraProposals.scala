@@ -172,3 +172,37 @@ object DijkstraProposals:
     stored.actions
       .traverse(action)
       .flatMap(Proposals.mkProposals[Dijkstra](ConwayProposals.roots(stored.roots), _))
+
+/** Dijkstra's proposals read by the flat decoder, as the node's flat record of Conway's holds them
+  * ([[Proposal]]), for SUBLEDGER's committee proposals (`DijkstraSubLedger.committeeProposals`,
+  * beside [[ConwayProposals.storedWith]]): every action but a parameter change, which is given
+  * back, since the flat record's update holds Conway's keys only. This stays the Gap of [#85's
+  * item](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923349468). At cardano-ledger
+  * 9df9f98c.
+  */
+object DijkstraConway:
+  def anchor(a: DijkstraAnchor): Anchor = Anchor(a.url, a.hash)
+
+  def actionId(id: DijkstraGovActionId): GovActionId = GovActionId(id.txId, BigInt(id.index))
+
+  /** The Conway governance action a Dijkstra one is, or a parameter change, which the store of
+    * proposals cannot hold yet. The withdrawals of a treasury withdrawal are the reference's `Map`,
+    * in its order.
+    */
+  def action(a: DijkstraGovAction): Either[DijkstraGovAction.ParameterChange, FlatGovAction] =
+    a match
+      case change: DijkstraGovAction.ParameterChange => Left(change)
+      case DijkstraGovAction.HardForkInitiation(prev, major, minor) =>
+        Right(FlatGovAction.HardFork(prev.map(actionId), BigInt(major), BigInt(minor)))
+      case DijkstraGovAction.TreasuryWithdrawals(ws, policy) =>
+        Right(FlatGovAction.TreasuryWithdrawals(ws.toVector.sortBy(_._1), policy))
+      case DijkstraGovAction.NoConfidence(prev) =>
+        Right(FlatGovAction.NoConfidence(prev.map(actionId)))
+      case DijkstraGovAction.UpdateCommittee(prev, removed, added, threshold) =>
+        Right(FlatGovAction.UpdateCommittee(prev.map(actionId), removed, added, threshold))
+      case DijkstraGovAction.NewConstitution(prev, a, policy) =>
+        Right(FlatGovAction.NewConstitution(prev.map(actionId), policy, anchor(a)))
+      case DijkstraGovAction.InfoAction => Right(FlatGovAction.Info)
+
+  def proposal(p: DijkstraProposal): Either[DijkstraGovAction.ParameterChange, Proposal] =
+    action(p.action).map(Proposal(p.deposit, p.returnAccount, _, anchor(p.anchor)))
