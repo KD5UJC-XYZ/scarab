@@ -32,11 +32,11 @@ class CandidateOciTest(unittest.TestCase):
                 archive.addfile(member, io.BytesIO(raw))
         return output.getvalue()
 
-    def image(self, jar=None, version='1.2.3-beta.1', compressed=False):
+    def image(self, jar=None, version='1.2.3-beta.1', compressed=False, entrypoint=candidate_oci.ENTRYPOINT):
         layer = self.tar({'opt/scarab/scarab.jar': self.jar.read_bytes() if jar is None else jar})
         config = json.dumps(dict(architecture='amd64', os='linux',
             rootfs=dict(type='layers', diff_ids=['sha256:' + hashlib.sha256(layer).hexdigest()]),
-            config=dict(Entrypoint=['java', '--sun-misc-unsafe-memory-access=allow', '-jar', '/opt/scarab/scarab.jar'], User='10001:10001',
+            config=dict(Entrypoint=entrypoint, User='10001:10001',
                         Labels={'org.opencontainers.image.revision': 'a' * 40,
                                 'org.opencontainers.image.version': version}))).encode()
         archive = self.root / 'docker.tar'
@@ -65,6 +65,18 @@ class CandidateOciTest(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     candidate_oci.verify(image, self.jar, self.identity,
                                          expected_manifest='sha256:' + 'b' * 64 if change == 'digest' else None)
+
+    def test_an_entry_point_that_lets_the_jvm_write_its_memory_fails(self):
+        before = ['java', '--sun-misc-unsafe-memory-access=allow', '-jar', '/opt/scarab/scarab.jar']
+        entrypoints = dict(before=before)
+        for option in candidate_oci.MEMORY_OPTIONS:
+            entrypoints['without ' + option] = [o for o in candidate_oci.ENTRYPOINT if o != option]
+        jar = candidate_oci.ENTRYPOINT.index('-jar')
+        entrypoints['core dump turned back on'] = (candidate_oci.ENTRYPOINT[:jar] + ['-XX:+CreateCoredumpOnCrash']
+                                                   + candidate_oci.ENTRYPOINT[jar:])
+        for name, entrypoint in entrypoints.items():
+            with self.subTest(entrypoint=name), self.assertRaisesRegex(ValueError, 'runtime contract'):
+                candidate_oci.verify(self.image(entrypoint=entrypoint), self.jar, self.identity)
 
     def test_mutated_blob_and_duplicate_layout_member_fail(self):
         for duplicate in [False, True]:

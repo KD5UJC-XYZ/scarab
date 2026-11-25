@@ -13,6 +13,13 @@ import tempfile
 
 from candidate_manifest import MEDIA_TYPE, sha256
 
+# The JVM options that keep a forging node's memory, and the keys in it, off disk (docs/running/forging.md,
+# "Keys in memory"). The image's entry point carries them before `-jar`, where JAVA_TOOL_OPTIONS and
+# JDK_JAVA_OPTIONS cannot override them.
+MEMORY_OPTIONS = ('-XX:-CreateCoredumpOnCrash', '-XX:ErrorFile=/dev/null', '-XX:-HeapDumpOnOutOfMemoryError',
+                  '-XX:+DisableAttachMechanism')
+ENTRYPOINT = ['java', '--sun-misc-unsafe-memory-access=allow', *MEMORY_OPTIONS, '-jar', '/opt/scarab/scarab.jar']
+
 
 def encoded(value):
     return json.dumps(value, sort_keys=True, separators=(',', ':')).encode()
@@ -99,7 +106,7 @@ def verify(archive_path, artifact, identity, expected_manifest=None):
         labels = runtime['Labels']
         if labels.get('org.opencontainers.image.revision') != identity['gitCommit'] or labels.get('org.opencontainers.image.version') != identity['version']:
             raise ValueError('image labels differ from frozen source identity')
-        if runtime.get('Entrypoint') != ['java', '--sun-misc-unsafe-memory-access=allow', '-jar', '/opt/scarab/scarab.jar'] or runtime.get('User') != '10001:10001':
+        if runtime.get('Entrypoint') != ENTRYPOINT or runtime.get('User') != '10001:10001':
             raise ValueError('candidate image runtime contract changed')
         layers = manifest['layers']
         diff_ids = []

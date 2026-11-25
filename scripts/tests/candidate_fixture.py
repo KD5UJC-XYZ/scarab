@@ -74,7 +74,7 @@ def make_candidate(root: Path, release=True) -> dict:
     write('evidence/native/receipt.json', receipt)
     layer = tar_bytes({'opt/scarab/scarab.jar': jar.read_bytes()})
     config = dict(architecture='amd64', os='linux', rootfs=dict(type='layers', diff_ids=['sha256:' + hashlib.sha256(layer).hexdigest()]),
-                  config=dict(User='10001:10001', Entrypoint=['java', '--sun-misc-unsafe-memory-access=allow', '-jar', '/opt/scarab/scarab.jar'],
+                  config=dict(User='10001:10001', Entrypoint=candidate_oci.ENTRYPOINT,
                               Labels={'org.opencontainers.image.revision': identity['gitCommit'], 'org.opencontainers.image.version': identity['version']}))
     docker_archive = put('docker.tar', tar_bytes({'manifest.json': json.dumps([dict(Config='config.json', Layers=['layer.tar'])]).encode(),
                                                 'config.json': json.dumps(config).encode(), 'layer.tar': layer}))

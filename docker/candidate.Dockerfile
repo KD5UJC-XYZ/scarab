@@ -15,4 +15,8 @@ COPY --chmod=0444 app.jar /opt/scarab/scarab.jar
 USER 10001:10001
 # Scala 3's lazy vals (scala.runtime.LazyVals, still in 3.9) use sun.misc.Unsafe, on which Java 25 warns once
 # per process (JEP 498); the flag allows it without the warning.
-ENTRYPOINT ["java", "--sun-misc-unsafe-memory-access=allow", "-jar", "/opt/scarab/scarab.jar"]
+# A forging node holds its VRF and KES keys in the heap, so the JVM writes none of its memory to disk: no core file
+# and no error report on a crash (the report prints the arrays the registers point at), no heap dump on running out
+# of memory, and no attach (jcmd, jmap). On the command line they win over JAVA_TOOL_OPTIONS and JDK_JAVA_OPTIONS;
+# _JAVA_OPTIONS, read after it, turns them back on (docs/running/forging.md, "Keys in memory").
+ENTRYPOINT ["java", "--sun-misc-unsafe-memory-access=allow", "-XX:-CreateCoredumpOnCrash", "-XX:ErrorFile=/dev/null", "-XX:-HeapDumpOnOutOfMemoryError", "-XX:+DisableAttachMechanism", "-jar", "/opt/scarab/scarab.jar"]
