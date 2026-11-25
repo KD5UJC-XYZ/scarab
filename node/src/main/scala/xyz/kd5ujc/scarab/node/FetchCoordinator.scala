@@ -406,17 +406,29 @@ final class FetchCoordinator[F[_]: Async] private (
         .map(_.toMap)
     )
 
+  /** Session `id` 's tip and candidate, and its GSV `sample` ([[newer]]). A candidate announced
+    * with the `revision` of its session's state replaces only one of an older revision, so that of
+    * two announcements that race, the later state's stays, whichever lands last.
+    */
   private def announce(
       id: Long,
       tip: Option[Header],
       performance: FetchGsv.PeerGsv,
-      announced: Option[FetchCandidates.Announced]
+      announced: Option[FetchCandidates.Announced],
+      revision: Option[Long]
   ): F[Unit] =
     change { s =>
       s.copy(
-        peers = s.peers.updatedWith(id)(
-          _.map(peer => newer(peer, performance).copy(tip = tip, announced = announced))
-        )
+        peers = s.peers.updatedWith(id)(_.map { peer =>
+          val sampled = newer(peer, performance)
+          if revision.exists(r => peer.revision.exists(_ >= r)) then sampled
+          else
+            sampled.copy(
+              tip = tip,
+              announced = announced,
+              revision = revision.orElse(peer.revision)
+            )
+        })
       )
     }
 
@@ -691,6 +703,7 @@ object FetchCoordinator:
       order: PeerOrder,
       tip: Option[Header] = None,
       announced: Option[FetchCandidates.Announced] = None,
+      revision: Option[Long] = None,
       weighing: Option[Weighing] = None,
       performance: FetchGsv.PeerGsv = FetchGsv.default,
       control: Control = Control.Continue,
@@ -736,17 +749,19 @@ object FetchCoordinator:
         performance: FetchGsv.PeerGsv,
         candidate: Option[ChainSelection.Candidate] = None
     ): F[Unit] =
-      owner.announce(id, tip, performance, candidate.map(FetchCandidates.Announced.of))
+      owner.announce(id, tip, performance, candidate.map(FetchCandidates.Announced.of), None)
 
     /** Report the session's candidate with the index its session carried to it, so that nothing of
-      * it is scanned again.
+      * it is scanned again, as of `revision` of the session's candidate state: it replaces only the
+      * candidate of an older revision.
       */
     private[node] def announce(
         tip: Option[Header],
         performance: FetchGsv.PeerGsv,
-        announced: FetchCandidates.Announced
+        announced: FetchCandidates.Announced,
+        revision: Long
     ): F[Unit] =
-      owner.announce(id, tip, performance, Some(announced))
+      owner.announce(id, tip, performance, Some(announced), Some(revision))
     def identity: Long = id
 
     /** Let [[diagnostics]] read this session's pipeline through `probe`, which must not block. */

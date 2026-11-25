@@ -106,13 +106,8 @@ object Peer:
               case BlockPool.Rejection.NotImplicated(_) => Rejection.NotImplicated
             })
 
-  private final case class HeaderJournal[F[_]](
-      candidate: ChainSelection.Candidate,
-      tip: Option[ChainSync.Tip],
-      done: Boolean,
-      changed: Deferred[F, Unit],
-      epoch: Long = 0L
-  )
+  /** A session's candidate state and the signal of its next change. */
+  private final case class Held[F[_]](state: CandidateState, changed: Deferred[F, Unit])
 
   private[node] def publicationRoom(
       published: ChainSelection.Candidate,
@@ -288,7 +283,7 @@ object Peer:
     *   Headers of the validated candidate.
     * @param unpublishedHeaders
     *   Headers of the candidate beyond the newest point it shares with the published cursor
-    *   ([[unpublished]]): what an `advance` is still to publish, and what the ChainSync capacity
+    *   ([[unpublished]]): what the publisher is still to publish, and what the ChainSync capacity
     *   wait is held by. None when the two share no point: a candidate that diverged from what was
     *   published, which the base and tip points tell from lag.
     * @param capacityRoom
@@ -603,11 +598,47 @@ object Peer:
         )
       )(Resource.pure[F, FetchCoordinator.Session[F]])
       supervisor <- OrderedSupervisor[F]
-      tracked <- Resource.eval(Ref.of[F, CandidateTrack](CandidateTrack.initial))
+      held <- Resource.eval(
+        Deferred[F, Unit].flatMap(signal =>
+          Ref.of[F, Held[F]](Held(CandidateState.initial, signal))
+        )
+      )
       owned <- Resource.eval(Deferred[F, Ref[F, HeaderGate.Grafting[F]]])
       _ <- connection.chainSync.observe(observer(chainSyncObserver, owned))
-    yield (claims, fetcher, (supervisor, tracked, owned))).evalMap { (claims, fetcher, lifecycle) =>
-      val (supervisor, tracked, owned) = lifecycle
+    yield (claims, fetcher, (supervisor, held, owned))).evalMap { (claims, fetcher, lifecycle) =>
+      val (supervisor, held, owned) = lifecycle
+      // the session's candidate, as its state holds it; only that state's transitions change it
+      val candidateHeaders: Ref[F, ChainSelection.Candidate] =
+        Ref.lens[F, Held[F], ChainSelection.Candidate](held)(
+          _.state.candidate,
+          h => next => h.copy(state = h.state.reset(next))
+        )
+
+      /** One transition of the session's candidate state, and the signal of the change after it: a
+        * transition that changes the state completes the signal of the one before, so a fiber that
+        * read the state and its signal together never misses a change.
+        */
+      def transition[A](f: CandidateState => (CandidateState, A)): F[(A, Deferred[F, Unit])] =
+        F.uncancelable { _ =>
+          Deferred[F, Unit].flatMap { fresh =>
+            held
+              .modify { h =>
+                val (next, out) = f(h.state)
+                if next eq h.state then (h, (None, out, h.changed))
+                else (Held(next, fresh), (Some(h.changed), out, fresh))
+              }
+              .flatMap((before, out, signal) =>
+                before.traverse_(_.complete(()).void).as(out -> signal)
+              )
+          }
+        }
+
+      /** `f` applied to the session's candidate state: the state it left, if it changed it. */
+      def change(f: CandidateState => CandidateState): F[Option[CandidateState]] =
+        transition { state =>
+          val next = f(state)
+          (next, Option.when(next ne state)(next))
+        }.map(_._1)
       // Read-ahead: while the peer is far ahead, ChainSync requests are pipelined, and the
       // accepted headers are published to `queue` in order, up to `Depth` batches ahead of the
       // consumer. Their blocks are fetched independently: the session's fetch client takes the
@@ -625,9 +656,6 @@ object Peer:
         Semaphore[F](Depth.toLong),
         Ref.of[F, HeaderGate[F]](HeaderGate.none[F]),
         Ref.of[F, Option[Deferred[F, DrainOutcome]]](None),
-        Ref.of[F, ChainSelection.Candidate](
-          ChainSelection.Candidate(ChainSync.Point.Origin, Vector.empty)
-        ),
         Ref.of[F, Option[Fault]](None),
         Ref.of[F, Boolean](false),
         Deferred[F, Unit].flatMap(signal => Ref.of[F, Deferred[F, Unit]](signal)),
@@ -645,7 +673,6 @@ object Peer:
             permits,
             gate,
             drainCompletion,
-            candidateHeaders,
             pipelineFailure,
             observersStarted,
             drainRequested,
@@ -898,8 +925,8 @@ object Peer:
                       )
                 }
                 canonical.fold(
-                  tracked.get.flatMap(
-                    _.heights
+                  held.get.flatMap(
+                    _.state.track.heights
                       .get(point)
                       .fold(
                         heightSnapshot.unavailable[Option[BigInt]](
@@ -1159,7 +1186,7 @@ object Peer:
               result <- accepted match
                 case HeaderGate.Acceptance.Accepted =>
                   gate.get.flatMap(_.snapshot).flatMap {
-                    case Some(_) => recordUpdates(batch)
+                    case Some(history) => recordUpdates(batch, Some(history.base))
                     case None =>
                       candidateHeaders.get.flatMap { initial =>
                         val checked =
@@ -1176,7 +1203,7 @@ object Peer:
                             pendingEnd
                               .set(Some(PeerError.RolledBackPastIntersection(point)))
                               .as(Vector.empty[SyncEvent]),
-                          _ => recordUpdates(batch)
+                          _ => recordUpdates(batch, None)
                         )
                       }
                   }
@@ -1202,28 +1229,24 @@ object Peer:
               _ <- replies.update(_.copy(handled = Some(handled)))
             yield result
 
+          /** The session's candidate after `batch`, trimmed to `anchor`, our chain's anchor as the
+            * header gate's history has it, as the reference's client trims its candidate as it
+            * rolls forward (`intersectsWithCurrentChain`, ouroboros-consensus 82ecba329
+            * MiniProtocol/ChainSync/Client.hs 942-992) ([[CandidateState.recorded]]).
+            */
           def recordUpdates(
-              batch: Vector[SyncEvent]
+              batch: Vector[SyncEvent],
+              anchor: Option[ChainSync.Point]
           ): F[Vector[SyncEvent]] =
+            val received = batch.collect { case SyncEvent.RollForward(h, _) =>
+              h.point -> Some(h.blockNo)
+            }.toMap
             for
-              performance <- connection.fetchPerformance.getOrElse(F.pure(FetchGsv.default))
-              known <- tracked.get.map(_.announced)
               // the candidate's index is carried through the batch's headers alone, and its
               // retained points filter the heights without a set of them built per batch
-              moved <- candidateHeaders.modify { before =>
-                val moved = CandidateTrack.move(known, before, batch, retainedHeaders)
-                (moved.announced.candidate, moved)
-              }
-              candidate = moved.announced.candidate
-              _ <- fetcher.announce(candidate.headers.lastOption, performance, moved.announced)
-              _ <- tracked.update(
-                _.recorded(
-                  moved,
-                  batch.collect { case SyncEvent.RollForward(h, _) =>
-                    h.point -> Some(h.blockNo)
-                  }.toMap
-                )
-              )
+              recorded <- change(_.recorded(batch, retainedHeaders, received, anchor)._1)
+              _ <- recorded.traverse_(announce)
+              candidate <- recorded.fold(candidateHeaders.get)(state => F.pure(state.candidate))
               _ <- batch.lastOption.traverse_ { event =>
                 val tip = event match
                   case SyncEvent.RollForward(_, value)  => value
@@ -1233,6 +1256,23 @@ object Peer:
                 )
               }
             yield batch
+
+          /** Tell the fetch decisions of the candidate `state` holds, with its index and revision:
+            * an announcement of an older state never replaces a newer one.
+            */
+          def announce(state: CandidateState): F[Unit] =
+            state.track.announced.filter(_.candidate eq state.candidate).traverse_ { index =>
+              connection.fetchPerformance
+                .getOrElse(F.pure(FetchGsv.default))
+                .flatMap(performance =>
+                  fetcher.announce(
+                    index.candidate.headers.lastOption,
+                    performance,
+                    index,
+                    state.revision
+                  )
+                )
+            }
 
           def fail(fault: Fault): F[Unit] = F.uncancelable { _ =>
             pipelineFailure
@@ -1319,8 +1359,9 @@ object Peer:
                   }
             yield ()
 
-          /** The journal stores one validated candidate, rather than every transient wire fork.
-            * HeaderGate's forecast bounds its slot span; the body dispatcher alone owns permits.
+          /** The session's candidate state stores one validated candidate, rather than every
+            * transient wire fork, and the cursor published from it. HeaderGate's forecast bounds
+            * its slot span; the body dispatcher alone owns permits.
             */
           def streaming(using Raise[F, PeerError]): F[Unit] =
             /** Room for one more header in the retained window: [[publicationRoom]], and the window
@@ -1334,50 +1375,47 @@ object Peer:
               candidate.headers.headOption
                 .filter(_ => candidate.headers.sizeIs >= retainedHeaders.max(1))
                 .traverse(oldest => fetcher.hasBody(oldest.hash))
-                .map(held =>
-                  publicationRoom(published, candidate, retainedHeaders) && held.forall(identity)
+                .map(fetched =>
+                  publicationRoom(published, candidate, retainedHeaders) && fetched.forall(identity)
                 )
-            // the candidate's index is scanned once, kept for the batches after it and announced
-            def remember(candidate: ChainSelection.Candidate): F[Unit] =
-              val announced = FetchCandidates.Announced.of(candidate)
-              candidateHeaders.set(candidate) *> tracked.update(_.replaced(announced)) *>
-                connection.fetchPerformance
-                  .getOrElse(F.pure(FetchGsv.default))
-                  .flatMap(performance =>
-                    fetcher.announce(candidate.headers.lastOption, performance, announced)
-                  )
+            // the newest candidate published to the consumer, the candidate itself before the session
+            // streams
+            def cursorOf(state: CandidateState): ChainSelection.Candidate =
+              state.publication.fold(state.candidate)(_.cursor)
+            // the candidate's index is scanned once, kept for the batches after it and announced; the
+            // publisher takes the candidate in a new epoch
+            def remember(candidate: ChainSelection.Candidate, tip: ChainSync.Tip): F[Unit] =
+              change(_.replaced(FetchCandidates.Announced.of(candidate), tip))
+                .flatMap(_.traverse_(announce))
+            // our chain's anchor, as the header gate's history has it
+            val anchor: F[Option[ChainSync.Point]] = gate.get.flatMap(_.snapshot).map(_.map(_.base))
             for
-              initial <- candidateHeaders.get
-              changed <- Deferred[F, Unit]
-              journal <- Ref.of[F, HeaderJournal[F]](HeaderJournal(initial, None, false, changed))
-              publicationChanged <- Deferred[F, Unit]
-              publishedCursor <- Ref.of[F, (ChainSelection.Candidate, Deferred[F, Unit])](
-                (initial, publicationChanged)
-              )
+              _ <- change(_.streaming)
               _ <- fetcher.observed(
                 (
                   F.monotonic,
                   replies.get,
                   permits.available,
                   queue.size,
-                  candidateHeaders.get,
-                  publishedCursor.get
-                ).tupled.flatMap { (now, seen, free, queued, candidate, published) =>
-                  windowRoom(published._1, candidate).map(room =>
+                  held.get
+                ).tupled.flatMap { (now, seen, free, queued, current) =>
+                  val candidate = current.state.candidate
+                  val published = cursorOf(current.state)
+                  windowRoom(published, candidate).map(room =>
                     Peer.PipelineState(
                       peer = settings.address,
                       permitsFree = free,
                       permits = Depth,
                       queued = queued,
                       candidateHeaders = candidate.headers.size,
-                      unpublishedHeaders = unpublished(published._1, candidate),
+                      unpublishedHeaders = unpublished(published, candidate),
                       capacityRoom = room,
                       candidateBase = candidate.base,
                       candidateTip = candidate.tip,
-                      publishedBase = published._1.base,
-                      publishedTip = published._1.tip,
+                      publishedBase = published.base,
+                      publishedTip = published.tip,
                       candidateTipSlot = candidate.headers.lastOption.map(_.slot.toLong),
-                      publishedTipSlot = published._1.headers.lastOption.map(_.slot.toLong),
+                      publishedTipSlot = published.headers.lastOption.map(_.slot.toLong),
                       lastReplyCollectedAgo = seen.collected.map(now - _),
                       lastReplyAcceptedAgo = seen.accepted.map(now - _),
                       lastReplyHandledAgo = seen.handled.map(now - _)
@@ -1388,54 +1426,22 @@ object Peer:
               // The candidate follows the header gate's history as the gate trims it to our chain's
               // anchor, as the reference trims its candidate whenever our chain changes
               // (`intersectsWithCurrentChain`, ouroboros-consensus 82ecba329
-              // MiniProtocol/ChainSync/Client.hs 942-992). The trim never passes `cursor`'s tip, the
-              // newest point published to the session's consumer, and applies only to `published`,
-              // the journal's candidate the cursor was found from, while it is still the session's
-              // candidate: the next publication then finds the cursor's tip, or the point of a later
-              // rollback, which the gate keeps at or after its base. Only the publisher trims, after
-              // each of its steps, since only it knows the cursor it is about to publish from.
-              trimToAnchor = (
-                  cursor: ChainSelection.Candidate,
-                  published: ChainSelection.Candidate
-              ) =>
-                gate.get
-                  .flatMap(_.snapshot)
-                  .flatMap(_.traverse_ { history =>
-                    tracked.get.flatMap { track =>
-                      track.trimmed(published, history.base, cursor.tip).traverse_ { next =>
-                        candidateHeaders
-                          .modify(current =>
-                            if current eq published then (next.candidate, true)
-                            else (current, false)
-                          )
-                          .flatMap(done =>
-                            tracked
-                              .update(now => if now eq track then next.track else now)
-                              .whenA(done)
-                          )
-                      }
-                    }
-                  })
-              advance = (candidate: ChainSelection.Candidate) =>
-                Deferred[F, Unit].flatMap { fresh =>
-                  publishedCursor.getAndSet(candidate -> fresh).flatMap(_._2.complete(()).void)
-                }
-              // the publisher takes another step from the journal as it is, which trims the candidate
-              // to the gate's history if it moved on ([[trimToAnchor]])
-              nudge = Deferred[F, Unit].flatMap(fresh =>
-                journal
-                  .modify(before => (before.copy(changed = fresh), before.changed))
-                  .flatMap(_.complete(()).void)
+              // MiniProtocol/ChainSync/Client.hs 942-992): as a batch is recorded, as the capacity
+              // wait follows our chain, and after each step of the publisher, which takes a trim its
+              // old cursor held back ([[CandidateState.trimmed]]).
+              trim = anchor.flatMap(
+                _.traverse_(at => change(_.trimmed(at)).flatMap(_.traverse_(announce)))
               )
               capacity = (update: ChainSyncClient.Update[NtNHeader]) =>
                 update match
                   case ChainSyncClient.Update.RollBackward(_, _) => F.unit
-                  case ChainSyncClient.Update.RollForward(_, _) =>
+                  case ChainSyncClient.Update.RollForward(_, _)  =>
+                    // the room as the state stands, and what wakes the wait: the state's next change or
+                    // a block's arrival
                     def room: F[(Boolean, F[Unit])] =
-                      (publishedCursor.get, candidateHeaders.get, fetcher.changed).tupled.flatMap {
-                        (published, candidate, bodyArrived) =>
-                          windowRoom(published._1, candidate)
-                            .map(_ -> F.race(published._2.get, bodyArrived).void)
+                      (held.get, fetcher.changed).tupled.flatMap { (current, bodyArrived) =>
+                        windowRoom(cursorOf(current.state), current.state.candidate)
+                          .map(_ -> F.race(current.changed.get, bodyArrived).void)
                       }
                     room.flatMap {
                       case (true, _) => F.unit
@@ -1462,7 +1468,7 @@ object Peer:
                                     pendingRestart.set(Some(tip)).as(Right(()))
                                   case following =>
                                     (following match
-                                      case HeaderGate.Following.Trimmed => nudge
+                                      case HeaderGate.Following.Trimmed => trim
                                       case _                            => F.unit
                                     ) *> room.flatMap {
                                       case (true, _) => F.pure(Right(()))
@@ -1485,38 +1491,9 @@ object Peer:
                           )
                     }
               intersectionEnded <- Ref.of[F, Option[PeerError]](None)
-              updateJournal = (
-                  candidate: ChainSelection.Candidate,
-                  tip: Option[ChainSync.Tip],
-                  done: Boolean,
-                  reset: Boolean
-              ) =>
-                F.uncancelable { _ =>
-                  Deferred[F, Unit].flatMap { fresh =>
-                    journal
-                      .modify { before =>
-                        (
-                          HeaderJournal(
-                            candidate,
-                            tip,
-                            done,
-                            fresh,
-                            before.epoch + (if reset then 1 else 0)
-                          ),
-                          before.changed
-                        )
-                      }
-                      .flatMap(_.complete(()).void)
-                  }
-                }
-              publish = (batch: Vector[SyncEvent]) =>
-                candidateHeaders.get.flatMap { candidate =>
-                  val tip = batch.lastOption.map {
-                    case SyncEvent.RollForward(_, tip)  => tip
-                    case SyncEvent.RollBackward(_, tip) => tip
-                  }
-                  updateJournal(candidate, tip, false, false)
-                }
+              // a batch is in the candidate state once it is recorded; one that ended or restarted
+              // the session pauses publication until a restart gives a tip again
+              publish = (batch: Vector[SyncEvent]) => change(_.paused).void.whenA(batch.isEmpty)
               _ <- supervised {
 
                 /** Find a new intersection with our current chain. `candidates` offers points when
@@ -1535,20 +1512,17 @@ object Peer:
                       else candidates
                     )(c => F.pure(c._1))
                     offeredHeights = captured.fold(metadata.heights)(_._2)
-                    _ <- tracked.update(
-                      _.offered(offeredHeights.updated(ChainSync.Point.Origin, None))
-                    )
+                    _ <- change(_.offered(offeredHeights.updated(ChainSync.Point.Origin, None)))
                     found <- connection.chainSync.findIntersect(intersectionPoints(points))
                     _ <- found match
                       case None =>
                         finishChainSync *> PeerError.NoIntersection.raise[F, Unit]
                       case Some((point, tip)) =>
                         val candidate = ChainSelection.Candidate(point, Vector.empty)
-                        startAt(point) *> remember(candidate) *>
+                        startAt(point) *> remember(candidate, tip) *>
                           capturedHeight(point).flatMap(height =>
                             progress.set(Some(tip -> height.fold(BigInt(0))(_.value)))
                           ) *>
-                          updateJournal(candidate, Some(tip), false, true) *>
                           observe.traverse_(_(Observation.Intersected(point)))
                   yield ()
                 def restartWith(control: GenesisPeer[F])(using Raise[F, PeerError]): F[Unit] =
@@ -1609,19 +1583,13 @@ object Peer:
                                           case GenesisPeer.Applied.Retained => F.unit
                                           case GenesisPeer.Applied.Restart  => restartWith(control)
                                           case GenesisPeer.Applied.Grafted(candidate) =>
-                                            remember(candidate) *>
+                                            remember(candidate, result.tip) *>
                                               capturedHeight(candidate.tip).flatMap(height =>
                                                 progress.set(
                                                   Some(
                                                     result.tip -> height.fold(BigInt(0))(_.value)
                                                   )
                                                 )
-                                              ) *>
-                                              updateJournal(
-                                                candidate,
-                                                Some(result.tip),
-                                                false,
-                                                true
                                               )
                                         }
                                 }
@@ -1639,75 +1607,54 @@ object Peer:
                                 _: PeerError.RolledBackPastIntersection)
                               )
                             ) =>
-                          intersectionEnded.set(Some(error)) *> journal.get
-                            .flatMap(s => updateJournal(s.candidate, s.tip, true, false))
-                            .as(Right(()))
+                          intersectionEnded.set(Some(error)) *> change(_.ended).as(Right(()))
                         case other => Fault.land(other).as(Left(()))
                       }
-                    case Some(_) =>
-                      journal.get
-                        .flatMap(s => updateJournal(s.candidate, s.tip, true, false))
-                        .as(Right(()))
+                    case Some(_) => change(_.ended).as(Right(()))
                   }
                 }
               }
-              _ <- F.tailRecM((initial, 0L)) { (published, epoch) =>
-                permits.acquire *> journal.get.flatMap { latest =>
-                  val delta = latest.tip.fold(F.pure(published -> Vector.empty[SyncEvent])) { tip =>
-                    val normal =
-                      publication(published, latest.candidate, tip, settings.readAhead)
-                    val rebased = normal.orElse {
-                      if latest.epoch == epoch then normal
-                      else
-                        publication(
-                          ChainSelection.Candidate(latest.candidate.base, Vector.empty),
-                          latest.candidate,
-                          tip,
-                          settings.readAhead
-                        )
-                          .map((after, events) =>
-                            after -> (Vector(
-                              SyncEvent.RollBackward(latest.candidate.base, tip)
-                            ) ++ events)
-                          )
+              // ChainSync is done and everything is published: the session ends, with the error of
+              // the intersection that ended it, if one did
+              finish = intersectionEnded.get.flatMap {
+                case Some(error) =>
+                  val fault = Fault.Failed(error)
+                  pipelineFailure.set(Some(fault)) *> queue.offer(PipelineEvent.Failed(fault))
+                case None => queue.offer(PipelineEvent.Drained)
+              }
+              // The publisher's step: the events since the cursor, the cursor moved to them and the
+              // candidate trimmed, in one transition ([[CandidateState.published]]), then the events
+              // offered to the consumer in order. The candidate is published as ChainSync accepts it;
+              // nothing here waits for a body (BlockFetch is independent of ChainSync,
+              // State.hs:317–335).
+              _ <- F.tailRecM(()) { _ =>
+                permits.acquire *> anchor
+                  .flatMap(at =>
+                    transition { state =>
+                      state.published(settings.readAhead, at) match
+                        case Left(divergence) => (state, Left(divergence))
+                        case Right((next, events)) =>
+                          (next, Right((next, events, next.revision != state.revision)))
                     }
-                    rebased.fold(
-                      e =>
-                        PeerError
-                          .Diverged(e)
-                          .raise[F, (ChainSelection.Candidate, Vector[SyncEvent])],
-                      F.pure
-                    )
+                  )
+                  .flatMap {
+                    case (Left(divergence), _) =>
+                      PeerError.Diverged(divergence).raise[F, Either[Unit, Unit]]
+                    case (Right((state, events, trimmed)), changed) =>
+                      val step =
+                        if events.nonEmpty then
+                          events.zipWithIndex
+                            .traverse_ { (event, index) =>
+                              permits.acquire.whenA(index > 0) *>
+                                queue.offer(PipelineEvent.Batch(Vector(event)))
+                            }
+                            .as(Left(()))
+                        // nothing to publish: the end, or a wait for the state's next change
+                        else if state.publication.exists(_.done) then
+                          permits.release *> finish.as(Right(()))
+                        else permits.release *> changed.get.as(Left(()))
+                      announce(state).whenA(trimmed) *> step
                   }
-                  delta.flatMap { (after, events) =>
-                    if events.isEmpty then
-                      // nothing to publish: the candidate may still be trimmed, and a capacity wait
-                      // weighs the room again
-                      trimToAnchor(after, latest.candidate) *> advance(
-                        after
-                      ) *> permits.release *> (if latest.done then
-                                                 intersectionEnded.get
-                                                   .flatMap {
-                                                     case Some(error) =>
-                                                       val fault = Fault.Failed(error)
-                                                       pipelineFailure.set(Some(fault)) *>
-                                                         queue.offer(PipelineEvent.Failed(fault))
-                                                     case None => queue.offer(PipelineEvent.Drained)
-                                                   }
-                                                   .as(Right(()))
-                                               else
-                                                 latest.changed.get.as(Left((after, latest.epoch))))
-                    else
-                      // The candidate is published as ChainSync accepts it; nothing here waits
-                      // for a body (BlockFetch is independent of ChainSync, State.hs:317–335).
-                      events.zipWithIndex.traverse_ { (event, index) =>
-                        permits.acquire.whenA(index > 0) *>
-                          queue.offer(PipelineEvent.Batch(Vector(event)))
-                      } *> trimToAnchor(after, latest.candidate) *>
-                        advance(after).as(Left((after, latest.epoch)))
-
-                  }
-                }
               }
             yield ()
 
@@ -1838,9 +1785,7 @@ object Peer:
                 ) *> progress.set(
                   None
                 ) *>
-                  candidateHeaders.set(
-                    ChainSelection.Candidate(ChainSync.Point.Origin, Vector.empty)
-                  )
+                  change(_.reset(ChainSelection.Candidate(ChainSync.Point.Origin, Vector.empty)))
                 offered <- offer
                 (captured, startAt) = offered
                 metadata <- heightSnapshot.capture
@@ -1848,13 +1793,13 @@ object Peer:
                 offeredPoints = captured.fold(
                   if connection.chainSyncPipeline.nonEmpty then metadata.points else candidates
                 )(_._1)
-                _ <- tracked.update(_.offered(offeredHeights.updated(ChainSync.Point.Origin, None)))
+                _ <- change(_.offered(offeredHeights.updated(ChainSync.Point.Origin, None)))
                 found <- connection.chainSync.findIntersect(
                   intersectionPoints(offeredPoints)
                 )
                 _ <- finishChainSync.whenA(found.isEmpty)
                 _ <- found.traverse_ { (point, tip) =>
-                  candidateHeaders.set(ChainSelection.Candidate(point, Vector.empty)) *>
+                  change(_.reset(ChainSelection.Candidate(point, Vector.empty))) *>
                     startAt(point) *>
                     capturedHeight(point).flatMap(height =>
                       progress.set(Some(tip -> height.fold(BigInt(0))(_.value)))

@@ -612,6 +612,27 @@ class FetchCoordinatorSuite extends FailsOnUncaught:
     }
   }
 
+  test("an announcement of an older candidate state never replaces a newer one") {
+    // a trimmed candidate's announcement (revision 2) lands before the batch's it trimmed (1)
+    val headers = Vector(FetchTesting.header(1), FetchTesting.header(2), FetchTesting.header(3))
+    val whole = ChainSelection.Candidate(Point.Origin, headers)
+    val trimmed = ChainSelection.Candidate(headers(0).point, headers.drop(1))
+    def index(candidate: ChainSelection.Candidate) = FetchCandidates.Announced.of(candidate)
+    FetchCoordinator.create[IO]().flatMap { coordinator =>
+      coordinator.session(0).use { session =>
+        for
+          _ <- session.announce(headers.lastOption, FetchGsv.default, index(trimmed), 2L)
+          _ <- session.announce(headers.lastOption, FetchGsv.default, index(whole), 1L)
+          late <- coordinator.diagnostics
+          _ <- session.announce(headers.lastOption, FetchGsv.default, index(whole), 3L)
+          newer <- coordinator.diagnostics
+        yield
+          assertEquals(late.map(_.candidateHeaders), Vector(Some(2)), "the late batch replaced it")
+          assertEquals(newer.map(_.candidateHeaders), Vector(Some(3)))
+      }
+    }
+  }
+
   test("receipts use acknowledged limits and recompute Ready or Busy independently") {
     val first = FetchTesting.header(1).copy(blockSizeHint = FetchTesting.sizeHint(1000))
     val second = FetchTesting.header(2).copy(blockSizeHint = FetchTesting.sizeHint(299000))
