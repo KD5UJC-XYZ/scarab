@@ -68,11 +68,29 @@ in-process copy accepted and documented.
 
 ## Amendment (2026-11-17): the shipped image sets neither JVM flag
 
-The image of a release candidate (`docker/candidate.Dockerfile`) sets neither `-XX:-CreateCoredumpOnCrash` nor
+The image of a release candidate (`docker/candidate.Dockerfile`) ~~sets neither `-XX:-CreateCoredumpOnCrash` nor
 `-XX:+DisableAttachMechanism`: its entry point is `java --sun-misc-unsafe-memory-access=allow -jar
-/opt/scarab/scarab.jar`. No image recipe in the repository's history has set them. The [design](../design/kes-agent.md) lists them among what
+/opt/scarab/scarab.jar`. No image recipe in the repository's history has set them~~ sets both since
+[the amendment of 2026-11-25](#amendment-2026-11-25-the-shipped-launchers-set-the-jvm-flags). The [design](../design/kes-agent.md) lists them among what
 lands with agent mode, which it records as not implemented. The decision is unchanged; this corrects the amendment
 of 2026-11-07, which said the image sets them.
 
 Setting `-XX:+DisableAttachMechanism` in the image would also stop `jcmd`, which the operator documentation suggests
 for native memory diagnostics with `--memory-report-seconds` ([flags](../running/flags.md)).
+
+## Amendment (2026-11-25): the shipped launchers set the JVM flags
+
+The release image's entry point and the Nix network apps (`scripts/nix-network`) now start the JVM with
+`-XX:-CreateCoredumpOnCrash` and `-XX:+DisableAttachMechanism`, as the decision says, and with two more options of the
+same purpose ([#1418](https://github.com/KD5UJC-XYZ/scarab/issues/1418)):
+
+- `-XX:ErrorFile=/dev/null`: the JVM's crash report prints the contents of the arrays and objects its registers point
+  at, so a crash during signing could write a key into it.
+- `-XX:-HeapDumpOnOutOfMemoryError`: off by default, as the amendment of 2026-11-07 says, but on the command line it
+  also wins over a `JAVA_TOOL_OPTIONS` or `JDK_JAVA_OPTIONS` that turns it on.
+
+The Nix apps also set the core file limit to 0; for the image that is the host's setting. Diagnostics stay available
+as a deliberate opt-in: `_JAVA_OPTIONS`, which the JVM reads after its command line, turns any of the four back on,
+so the native memory diagnostics with `jcmd` that the amendment of 2026-11-17 names remain possible. The
+[forging guide](../running/forging.md#keys-in-memory) is the operator's documentation of the flags, the opt-in and
+the host settings. The rest of the decision stands.

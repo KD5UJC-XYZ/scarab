@@ -469,11 +469,13 @@ What lands with the implementation, in place of a guarantee:
 
 - the node holds the current evolution only, replaces it on every push, and forgets it on a drop;
 - the JVMs run with `-XX:+DisableAttachMechanism` (no `jmap`/`jcmd` heap dump from another process) and
-  `-XX:-CreateCoredumpOnCrash`; `-XX:+HeapDumpOnOutOfMemoryError` is already off by default, so there is
-  nothing to disable there;
+  `-XX:-CreateCoredumpOnCrash`; `-XX:+HeapDumpOnOutOfMemoryError` is already off by default. These landed ahead of
+  agent mode, in the release image and the Nix apps, with `-XX:ErrorFile=/dev/null` and an explicit
+  `-XX:-HeapDumpOnOutOfMemoryError` ([#1418](https://github.com/KD5UJC-XYZ/scarab/issues/1418),
+  [forging](../running/forging.md#keys-in-memory));
 - swap, hibernation and core dumps are **host** settings, not image settings: the operator documentation
   ships a compose/run example with `ulimit -c 0`, no swap and no hibernation, repeating the upstream guide's
-  own list;
+  own list (the forging guide states the host settings for the file path already);
 - in agent mode no KES material is on disk at all, which removes the at-rest exposure the file path has by
   design;
 - the operator documentation states the limitation in one sentence rather than implying the key is protected

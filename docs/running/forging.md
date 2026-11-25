@@ -279,3 +279,75 @@ certificate. The devnet scenario `dynamic-forging` runs the off-and-on cycle bes
 
 The devnet scenario `kes-rotate` (below) runs all of this unattended: a short KES period, a small
 `maxKESEvolutions`, the driver on a loop, several rotations while the node forges beside two Haskell pools.
+
+### Keys in memory
+
+A forging node holds its VRF signing key and its current KES key in the JVM heap for as long as it runs; so does a
+node started with `--start-as-non-producing-node`, which reads its key files at start. Anything that writes the
+process's memory to disk writes the keys with it: a core file, a JVM error report, a heap dump, swap, hibernation.
+The node does not lock the heap in memory, and cannot erase every copy of a key in it: the collector moves objects
+and leaves the earlier copies in memory it has not reused yet, which no program can address, and locking the whole
+process would pin a heap of gigabytes and the stores' native memory. [ADR
+0024](../adr/0024-adopt-the-upstream-kes-agent.md) accepts that copy; what follows keeps it off disk.
+
+**What the launchers set.** The release image's entry point (`docker/candidate.Dockerfile`) and the Nix network apps
+([nix.md](../nix.md)) start the JVM with these options. A command that replaces the image's entry point
+(`--entrypoint`), or starts the node's `Main` from a class path as [running.md](../running.md#follow-the-node) shows,
+has to give them itself.
+
+| Option | What it stops |
+|---|---|
+| `-XX:-CreateCoredumpOnCrash` | a core file, the whole memory of the process, when the JVM crashes on a fault it catches (`SIGSEGV` in a native library, for example) |
+| `-XX:ErrorFile=/dev/null` | the crash report `hs_err_pid<pid>.log`: it holds the registers, the top of the stack and the contents of an array or object a register points at, so a crash while signing can write a key into it. The summary on standard output, with the signal and the frame that failed, remains |
+| `-XX:-HeapDumpOnOutOfMemoryError` | a heap dump when the heap runs out. It is off by default; on the command line it also wins over a `JAVA_TOOL_OPTIONS` or `JDK_JAVA_OPTIONS` that asks for one |
+| `-XX:+DisableAttachMechanism` | `jcmd`, `jmap` and `jstack` from another process: a heap dump on request, a JFR recording started from outside, and turning heap dumps on in the running JVM |
+
+The Nix apps also give the JVM a core file limit of 0 (`SCARAB_CORE_LIMIT`), which covers what the JVM does not
+catch: `SIGABRT` from a native library's `abort()` or from another process. The node writes no heap dump or JFR
+recording of its own: `--stall-dump` writes the runtime's fiber snapshot to a file and `kill -QUIT` prints a thread
+dump on standard output, both stack traces rather than the contents of the heap. `--memory-report-seconds`, the
+metrics and a JFR recording started at launch (`JAVA_TOOL_OPTIONS=-XX:StartFlightRecording=...`) need no attach.
+
+**Turning diagnostics back on** is a deliberate step. The JVM reads `_JAVA_OPTIONS` after its command line, so its
+options win over the launcher's, and names them on standard error at start (`Picked up _JAVA_OPTIONS: ...`), which
+leaves the choice in the log. `JAVA_TOOL_OPTIONS` and `JDK_JAVA_OPTIONS` come before the command line and do not
+override it.
+
+```sh
+docker run -e _JAVA_OPTIONS=-XX:-DisableAttachMechanism ...      # jcmd, for JFR.start, VM.native_memory, Thread.print
+docker run --ulimit core=-1 -e _JAVA_OPTIONS='-XX:+CreateCoredumpOnCrash -XX:ErrorFile=/data/hs_err_pid%p.log' ...
+SCARAB_CORE_LIMIT=unlimited _JAVA_OPTIONS=-XX:+CreateCoredumpOnCrash nix run .#preprod -- ...
+```
+
+With attach on, any process of the node's user, and root, can make the JVM write a heap dump. A core file, a crash
+report or a heap dump of a node that holds keys holds the keys: keep it as you keep the key files, never attach it to
+a bug report, and delete it. Profile a node that was given no key files, such as a relay. A KES key that may have
+leaked is replaced by a new KES key and certificate ("Rotating the KES key" above); a VRF key only by a new pool
+registration.
+
+**What stays with the operator.** The launchers cannot set the rest: the image's core file limit, which Docker sets,
+swap and hibernation, who can read the process, and the account it runs as.
+
+- **Core files.** Give the node a core file limit of 0: `docker run --ulimit core=0`, `ulimits: {core: 0}` in a compose
+  file, `LimitCORE=0` in a systemd unit, `ulimit -c 0` in a shell. A container otherwise inherits the Docker
+  daemon's limit (`docker run --rm --entrypoint sh <image> -c 'ulimit -c'` prints it). `kernel.core_pattern` is the
+  host's, for containers too. When it pipes the dump to a program (`|/usr/lib/systemd/systemd-coredump ...`), the
+  kernel hands the program the dump whatever the limit, and the program decides: systemd-coredump stores no core for a
+  limit of 0, and with `Storage=none` and `ProcessSizeMax=0` in `coredump.conf` it stores none at all.
+- **Swap and hibernation.** A page of the heap can be swapped out, and stays on the swap device until it is
+  overwritten; hibernation writes all of memory to disk. Run the producer with no swap, or with swap encrypted under a
+  key made at each boot, and with hibernation off. `--memory-swap` equal to `--memory` keeps a container out of swap
+  (`MemorySwapMax=0` in a systemd unit).
+- **Reading the process.** A process of the node's user, or root, can read the node's whole memory through
+  `/proc/<pid>/mem` or `ptrace`, whatever the attach option, unless `kernel.yama.ptrace_scope` limits it: 1 allows it
+  only to the node's ancestors and to root, 2 only to root (`CAP_SYS_PTRACE`), 3 to nobody until the next boot. The
+  setting is the host's, and holds in containers: a `docker exec` into the node's container runs as its user, so at 0
+  it can read the node's memory, and whoever can use the Docker socket is root on the host. Do not checkpoint a
+  producing container (`docker checkpoint`): that writes its memory to disk.
+- **A user of its own.** Run the node as a dedicated user that runs nothing else, and owns the key directory. The
+  image runs as `10001:10001`; on a host, make an account for the node rather than sharing one.
+- **Where files land.** When a crash report or a heap dump is turned on, point `-XX:ErrorFile` or
+  `-XX:HeapDumpPath` at a directory only the node's user can read, on an encrypted file system, and delete the files
+  once they have been read.
+
+The [threat model](../security/threat-model.md) reviews key material in the running node under boundary B7.

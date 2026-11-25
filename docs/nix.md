@@ -91,5 +91,9 @@ nix run .#mainnet -- --help
 apps use a 3 GiB heap, four active processors and `MALLOC_ARENA_MAX=2` by default;
 set `SCARAB_HEAP_SIZE`, `SCARAB_RUN_PROCESSORS` or `MALLOC_ARENA_MAX` to override
 these. `SCARAB_QUERY_PORT` overrides the selected network's default query port.
+The JVM writes no core file (the apps set a core file limit of 0, which
+`SCARAB_CORE_LIMIT` changes), no crash report and no heap dump, and accepts no
+attach, so a forging node's keys stay off disk; [the forging
+guide](running/forging.md#keys-in-memory) says how to turn these back on.
 Ctrl-C reaches the node directly. Help creates no run data and performs no
 Scala build or configuration download.

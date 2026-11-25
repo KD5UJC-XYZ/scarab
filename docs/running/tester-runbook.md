@@ -65,8 +65,9 @@ docker image inspect --format '{{.Id}}' "$REF"
 script exits 0 after it prints the new image's ID, and `docker image inspect` prints the same ID.
 
 Every node command below runs the node's `Main` in the JDK image through the function `scarab`: the checkout
-(`$REPO`) read-only at `/work` with the dependency cache at `/work/.cache`, `$D` at `/data`, and the JVM flags the
-devnet passes. `HEAP` is the JVM's heap option
+(`$REPO`) read-only at `/work` with the dependency cache at `/work/.cache`, `$D` at `/data`, the JVM flags the
+devnet passes, and the release image's options and a core file limit of 0, which keep step 6's keys off disk
+([forging.md](forging.md#keys-in-memory)). `HEAP` is the JVM's heap option
 (`-Xmx...`): preprod's as [configuration.md](configuration.md#preprod) runs it, mainnet's as
 [the mainnet follower's measurements](../performance/mainnet-follower.md#flags-for-the-fastest-follow) record it.
 
@@ -76,8 +77,10 @@ scarab() {   # scarab <docker run options> -- <arguments of the node's Main>
   local opts=()
   while [ "$#" -gt 0 ] && [ "$1" != -- ]; do opts+=("$1"); shift; done
   shift
-  docker run --user "$(id -u):$(id -g)" -v "$REPO":/work:ro -v "$CACHE":/work/.cache:ro -w /work -v "$D":/data "${opts[@]}" \
-    --entrypoint java scarab-jdk:local $HEAP --sun-misc-unsafe-memory-access=allow --enable-native-access=ALL-UNNAMED \
+  docker run --user "$(id -u):$(id -g)" --ulimit core=0 -v "$REPO":/work:ro -v "$CACHE":/work/.cache:ro -w /work \
+    -v "$D":/data "${opts[@]}" --entrypoint java scarab-jdk:local $HEAP \
+    --sun-misc-unsafe-memory-access=allow --enable-native-access=ALL-UNNAMED \
+    -XX:-CreateCoredumpOnCrash -XX:ErrorFile=/dev/null -XX:-HeapDumpOnOutOfMemoryError -XX:+DisableAttachMechanism \
     -cp "$(cat "$REPO/node/target/runtime-classpath.txt")" xyz.kd5ujc.scarab.node.Main "$@"
 }
 ```
