@@ -87,7 +87,6 @@ import xyz.kd5ujc.scarab.uplc.cek.{CekError, CekFailure}
 import xyz.kd5ujc.scarab.uplc.ledger.EvaluationError
 import xyz.kd5ujc.scarab.network.FailsOnUncaught
 import xyz.kd5ujc.scarab.node.{MirrorSteps, NodeSetup, ParallelPlutus}
-import xyz.kd5ujc.scarab.node.tools.PlutusCases
 import xyz.kd5ujc.scarab.protocol.{Era, ReferenceBuild, StateLayout}
 
 /** Conway's BBODY on the era types (`ConwayBbody.conwayBbody`, run by `ConwayBlockRun`;
@@ -317,37 +316,14 @@ class ConwayBbodySuite extends FailsOnUncaught:
     def observe(o: O): Unit = { val _ = told.updateAndGet(_ :+ o); () }
     def all: Vector[O] = told.get
 
-  /** The case files the node's `--plutus-cases` recorder writes of `observations`, by name, each
-    * kind kept, through `record` (`PlutusCases.observe` for the flat rules' observations,
-    * `observeConway` for the era run's), in a directory of their own, removed after.
-    */
-  private def cases[O](observations: Vector[O])(
-      record: PlutusCases => O => Unit
-  ): Map[String, String] =
-    val dir = Files.createTempDirectory("conway-plutus-cases")
-    try
-      val recorder = PlutusCases(dir, perKind = Int.MaxValue, max = Int.MaxValue)
-      observations.foreach(record(recorder))
-      assertEquals(recorder.failed(), Vector.empty)
-      Files
-        .list(dir)
-        .iterator()
-        .asScala
-        .map(f => f.getFileName.toString -> Files.readString(f))
-        .toMap
-    finally
-      Files.list(dir).iterator().asScala.foreach(Files.delete)
-      Files.delete(dir)
-
   /** The era run observes a block as the flat rules do: its observations compare with the flat
-    * rules' ([[comparable]]), and the case files `--plutus-cases` writes of them are the flat
-    * rules', byte for byte (#85).
+    * rules' ([[comparable]]). The case files written of them are not compared with the flat rules'
+    * here: the flat rules list a transaction's outputs in their own order, and the node's case
+    * files, since it applies Conway blocks with the era run, in the era run's; their bytes are
+    * checked against the recorded cases in `ConwayPlutusCasesSuite` (#85).
     */
   private def sameObserved(j: Judged, what: String): Unit =
     assertEquals(j.eraObserved.map(comparable), j.flatObserved.map(comparable), what)
-    val written = cases(j.eraObserved)(_.observeConway)
-    assertEquals(written.isEmpty, j.flatObserved.isEmpty, what)
-    assertEquals(written, cases(j.flatObserved)(_.observe), what)
 
   /** The node's evaluator, counting the scripts it is asked to run, and giving no verdict on the
     * `unsupportedAt` th, as an evaluator's limit does (`EvalFailure.Unsupported`).
