@@ -5,16 +5,14 @@ import xyz.kd5ujc.scarab.ledger.TestGeometry
 import java.nio.file.{Files, Path}
 import java.security.MessageDigest
 import java.time.Instant
-import cats.syntax.all.*
 import io.circe.Json
 import io.circe.parser.parse
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Rational, Value}
 import xyz.kd5ujc.scarab.ledger.*
-import xyz.kd5ujc.scarab.ledger.rules.{CertEnv, Certs, CertsEnv, Globals, JudgedSts}
+import xyz.kd5ujc.scarab.ledger.rules.Globals
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.models.runtime.Codec
-import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellStateCodecs, Params, Wire}
 import xyz.kd5ujc.scarab.storage.haskell.state.NodeOrders.given
 
@@ -90,7 +88,9 @@ class UpstreamCertsCoverageSuite extends FunSuite:
     )
   }
 
-  test("the complete generated CERTS judgment matches the full Haskell state") {
+  test("the era-typed CERTS gives the full Haskell certificate state on the upstream judgment") {
+    // the fixture's inputs, the transaction read by Conway's decoder from its original bytes,
+    // judged by the era CERTS and compared with the reference's post-state
     given ProtVer = protVer
     val dir = base.resolve(s"cases/$seed")
     val env = node(dir.resolve("environment.cbor")).value match
@@ -103,28 +103,12 @@ class UpstreamCertsCoverageSuite extends FunSuite:
     val txItems = env(0).value match
       case Value.Arr(xs) if xs.size == 4 => xs
       case other => fail(s"expected the full serialized Conway Tx, got $other")
-    val isValid = txItems(2).value match
-      case Value.Bool(value) => value
-      case other             => fail(s"expected actual Tx validity boolean, got $other")
-    val auxiliary = txItems(3).value match
-      case Value.Null => None
-      case _          => Some(txItems(3).original)
-    val tx = Tx
-      .fromBlock(
-        Block.Transaction(txItems(0).original, txItems(1).original, auxiliary, isValid),
-        Era.Conway
-      )
-      .fold(e => fail(s"decode complete generated Conway Tx: $e"), identity)
-    val pp = Params.conwayCodec.decode(env(1)).fold(e => fail(e.render), identity)
-    val epoch = summon[Codec[EpochNo]].decode(env(2)).fold(e => fail(e.render), identity)
-    val committee = Wire
-      .strictMaybe(summon[Codec[Committee]])
-      .decode(env(3))
-      .fold(e => fail(e.render), identity)
-    val committeeProposals = Wire
-      .mapOf(summon[Codec[GovActionId]], summon[Codec[GovActionState]])
-      .decode(env(4))
-      .fold(e => fail(s"full committee proposal map: ${e.render}"), identity)
+    txItems(2).value match
+      case Value.Bool(_) => ()
+      case other         => fail(s"expected actual Tx validity boolean, got $other")
+    val tx = xyz.kd5ujc.scarab.ledger.era.conway.ConwayTx
+      .fromEnvelope(env(0).original, xyz.kd5ujc.scarab.protocol.StateLayout.Node11_1)
+      .fold(e => fail(s"the era transaction: $e"), identity)
 
     // Verify the related Agda context is exactly the projection of withdrawals and votes from
     // the actual transaction whose untouched original encoding is retained above.
@@ -133,51 +117,24 @@ class UpstreamCertsCoverageSuite extends FunSuite:
       case other => fail(s"expected translated CERTS context [withdrawals,votes], got $other")
     assertEquals(context._1.value, Value.Map(Vector.empty))
     assertEquals(context._2.value, Value.Map(Vector.empty))
-    assertEquals(tx.body.withdrawals, Map.empty)
-    assertEquals(tx.body.votes, Vector.empty)
-    assert(tx.body.raw == txItems(0).original)
-
-    val before = state(dir.resolve("state.cbor"))
-    val expected = state(dir.resolve("implementation-state.cbor"))
-    val signalNode = node(dir.resolve("signal.cbor"))
-    val signal = signalNode.value match
-      case Value.Arr(xs) =>
-        xs.traverse(Certificate.decode(_, Era.Conway))
-          .fold(e => fail(s"full CERTS signal: $e"), identity)
-      case other => fail(s"expected CERTS certificate sequence, got $other")
-    assertEquals(signal, Vector.empty)
-
-    val actual = JudgedSts
-      .apply(Certs)(LedgerFailure.Rejected(tx.body.id, _))(
-        globals,
-        CertsEnv(
-          tx,
-          CertEnv(
-            tx.body.id,
-            pp,
-            epoch.toBigInt,
-            committee,
-            committeeProposals
-          )
-        ),
-        before,
-        signal
-      )
-      .fold(e => fail(s"Scarab CERTS rejected upstream-accepted trace: $e"), identity)
-    assertEquals(actual, expected, "full ConwayCertState")
-  }
-
-  test("the era-typed CERTS gives the full Haskell certificate state on the upstream judgment") {
-    // the same fixture inputs, the transaction read by Conway's decoder from its original bytes,
-    // judged by the era CERTS and compared with the reference's post-state, not the flat rule
-    given ProtVer = protVer
-    val dir = base.resolve(s"cases/$seed")
-    val env = node(dir.resolve("environment.cbor")).value match
-      case Value.Arr(xs) if xs.size == 5 => xs
-      case other => fail(s"expected all five actual CERTS environment fields, got $other")
-    val tx = xyz.kd5ujc.scarab.ledger.era.conway.ConwayTx
-      .fromEnvelope(env(0).original, xyz.kd5ujc.scarab.protocol.StateLayout.Node11_1)
-      .fold(e => fail(s"the era transaction: $e"), identity)
+    val t = xyz.kd5ujc.scarab.ledger.era.EraTx.conway
+    val b = xyz.kd5ujc.scarab.ledger.era.EraTxBody.conway
+    val body = t.body[xyz.kd5ujc.scarab.ledger.era.TxLevel.Top](tx)(using t.bodyOf.top)
+    assert(
+      b.withdrawals[xyz.kd5ujc.scarab.ledger.era.TxLevel.Top](body)(using b.top)
+        .unWithdrawals
+        .isEmpty
+    )
+    assert(
+      b.votingProcedures[xyz.kd5ujc.scarab.ledger.era.TxLevel.Top](body)(using b.top)
+        .unVotingProcedures
+        .isEmpty
+    )
+    assertEquals(
+      b.id[xyz.kd5ujc.scarab.ledger.era.TxLevel.Top](body)(using b.top),
+      xyz.kd5ujc.scarab.crypto.Blake2b.hash256.hash(txItems(0).original),
+      "the body's id is that of its original bytes"
+    )
     val flatPp = Params.conwayCodec.decode(env(1)).fold(e => fail(e.render), identity)
     val pp = xyz.kd5ujc.scarab.ledger.era.PParams[Conway](
       xyz.kd5ujc.scarab.ledger.era.conway.ConwayPParams
@@ -201,6 +158,7 @@ class UpstreamCertsCoverageSuite extends FunSuite:
             .fold(e => fail(s"era certificate: $e"), identity)
         )
       case other => fail(s"expected CERTS certificate sequence, got $other")
+    assertEquals(certs, Vector.empty)
     val actual = xyz.kd5ujc.scarab.ledger.era.EraCertsRun
       .certs(
         globals,
