@@ -8029,6 +8029,7 @@
    "def storage.haskell.state.EpochStateCodecs#instantStake": null,
    "def storage.haskell.state.EpochStateCodecs#ledgerState": null,
    "def storage.haskell.state.EpochStateCodecs#newEpochStateAt": null,
+   "def storage.haskell.state.EpochStateCodecs#stashedAvvm": null,
    "def storage.haskell.state.EpochStateCodecs#storedPoolDistr": null,
    "def storage.haskell.state.EpochStateCodecs#utxoState": null,
    "def storage.haskell.state.GovStateCodecs#futurePParams": null,

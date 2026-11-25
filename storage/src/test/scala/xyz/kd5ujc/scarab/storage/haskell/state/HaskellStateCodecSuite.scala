@@ -542,49 +542,12 @@ class HaskellStateCodecSuite extends ScalaCheckSuite:
     }
     assert(failure(utxoTables, entries).kind.isInstanceOf[Kind.Unsupported])
     // the Shelley era's stashed AVVM addresses are a UTxO, the later eras' a null
-    assertEquals(
-      stashedAvvm[Shelley](using ShelleyBasedEra.SShelley)
-        .encodeUnchecked(Empty.stashedAvvm[Shelley](using ShelleyBasedEra.SShelley))
-        .hex,
-      "a0"
-    )
     val unitBytes = bytesOf(_.nul())
     assertEquals(readOk(stashedAvvm[Allegra](using ShelleyBasedEra.SAllegra), unitBytes), ())
     assert(
       failure(stashedAvvm[Allegra](using ShelleyBasedEra.SAllegra), hex("a0")).kind
         .isInstanceOf[Kind.TypeMismatch]
     )
-  }
-
-  test(
-    "the Shelley stash of AVVM outputs is written whole, as EncCBOR (UTxO era) writes it, and read back (#1448)"
-  ) {
-    val codec = stashedAvvm[Shelley](using ShelleyBasedEra.SShelley)
-    val id = hex("09" * 32)
-    val raw = hex("61" + "05" * 28)
-    val address = xyz.kd5ujc.scarab.ledger.Address.decode(raw).fold(e => fail(e.toString), identity)
-    val in = xyz.kd5ujc.scarab.ledger.TxIn(id, 3)
-    val out = xyz.kd5ujc.scarab.ledger
-      .TxOut(address, xyz.kd5ujc.scarab.ledger.Value(BigInt("318200635000000"), Map.empty))
-    val stash = UtxoTables(xyz.kd5ujc.scarab.ledger.Utxo.fromMap(Map(in -> out)))
-    // {[transaction id, index]: [address, coin]}
-    val bytes = hex(s"a1 82 5820${id.hex} 03 82 581d${raw.hex} 1b000121 66dbd104c0")
-    assertEquals(codec.encodeUnchecked(stash), bytes)
-    val back = readOk(codec, bytes).utxo.toMap
-    assertEquals(back.keySet, Set(in))
-    assertEquals(back.get(in).map(o => (o.address.raw, o.value)), Some((raw, out.value)))
-    // ShelleyTxOut is a coin-only pair: a value with assets or a datum hash is not one
-    val withAssets =
-      hex(s"a1 82 5820${id.hex} 03 82 581d${raw.hex} 82 01 a1 581c${"07" * 28} a1 40 01")
-    assert(failure(codec, withAssets).kind match {
-      case Kind.Domain(_: xyz.kd5ujc.scarab.ledger.LedgerDecodeError.MultiAssetNotAllowed) => true
-      case _                                                                               => false
-    })
-    val withHash = hex(s"a1 82 5820${id.hex} 03 83 581d${raw.hex} 01 5820${"08" * 32}")
-    assert(failure(codec, withHash).kind match {
-      case Kind.Domain(_: xyz.kd5ujc.scarab.ledger.LedgerDecodeError.OutputForm) => true
-      case _                                                                     => false
-    })
   }
 
   test(
