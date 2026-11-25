@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.storage.haskell.state
 
 import xyz.kd5ujc.scarab.codec.Value
+import xyz.kd5ujc.scarab.ledger.{Address, ByteStrings, ScriptKind, TxOut, Utxo}
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.models.runtime.{
   Codec,
@@ -14,6 +15,7 @@ import xyz.kd5ujc.scarab.models.runtime.{
 }
 import xyz.kd5ujc.scarab.protocol.{DijkstraNotYet, Era, StateLayout}
 
+import NodeOrders.given
 import Wire.*
 
 /** `NewEpochState` of the Leios layout: the six fields it writes, in their order. */
@@ -90,10 +92,41 @@ trait EpochStateCodecs extends RewardCodecs:
     era.instantStake.instance(shelleyInstantStake, conwayInstantStake)
 
   /** `StashedAVVMAddresses` (`Types.hs:357-359`, cardano-ledger f649f975): the UTxO in Shelley,
-    * `()` (a `null`) after.
+    * `()` (a `null`) after. Shelley's is written whole ([[stashedUtxo]]), not as the ledger state's
+    * own UTxO ([[utxoTables]]), whose entries are in the `tables` file.
     */
   def stashedAvvm[E <: EraTag](using era: ShelleyBasedEra[E]): Codec[StashedAVVM[E]] =
-    era.stashedAvvm.instance(utxoTables, unit)
+    era.stashedAvvm.instance(stashedUtxo, unit)
+
+  /** The Byron redeem (AVVM) outputs the Shelley state stashes for the translation into Allegra, as
+    * `EncCBOR (NewEpochState era)` writes its last field (`Types.hs:388-405`, cardano-ledger
+    * f649f975): `EncCBOR (UTxO era)`, derived from the map's (`State/UTxO.hs:112`), of
+    * `[transaction id, index]` (`TxIn.hs:97-101`) to `ShelleyTxOut` 's `[address, coin]`
+    * (`Shelley/TxOut.hs:150-154`), at Shelley's version. Consensus moves only the ledger state's
+    * own UTxO into the tables (`stowLedgerTables` over `slUtxoL`,
+    * `Shelley/Ledger/Ledger.hs:458-494`, ouroboros-consensus 2416493b) and reads the stash from the
+    * state at the translation (`translateLedgerStateShelleyToAllegraWrapper`,
+    * `Cardano/CanHardFork.hs:493-530`), so it is in the state file. Written as the empty map `a0`,
+    * a node restored from a Shelley-era state returned nothing to the reserves on entering Allegra
+    * (#1448). An output reads as `DecCBOR (ShelleyTxOut era)` reads it
+    * (`Shelley/TxOut.hs:156-160`): a coin-only pair.
+    */
+  private val stashedUtxo: Codec[UtxoTables] =
+    given ProtVer = Versions.eraLow(ShelleyBasedEra.SShelley)
+    val shelleyOut = UtxoCodecs.txOutIn(ShelleyBasedEra.SShelley)
+    val out: Codec[TxOut] = new Codec[TxOut]:
+      def decode(n: Node): Decoded[TxOut] =
+        TxOut
+          .decode(n, Address.Mode.CoinOnly, TxOut.Forms.Pair, ScriptKind.newestKnown)(using
+            ByteStrings.Chunked
+          )
+          .left
+          .map(why => DecodeError.at(n, DecodeError.Kind.Domain(why)))
+      def encode(o: TxOut, w: Writer): Unit = shelleyOut.encode(o, w)
+      override def check(o: TxOut): Option[ConstraintViolation] = shelleyOut.check(o)
+    sortedMapOf(UtxoCodecs.txIn, out).imap(entries => UtxoTables(Utxo.fromMap(entries)))(
+      _.utxo.toMap
+    )
 
   private val unit: Codec[Unit] = new Codec[Unit]:
     def decode(n: Node): Decoded[Unit] = n.value match

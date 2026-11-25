@@ -5,11 +5,11 @@
   "`approval` records that question and the owner's decision, in neutral words and never as a quotation, with their UTC times and the digest of the surface they admit. It is evidence of the approval, never an approval itself. `approval` is null only for the baseline: the surface of main (bc0e4995a, after #994 merged) on 2026-11-14, when the freeze began, which approves nothing."
  ],
  "approval": {
-  "question": "Asked 2026-11-23T20:36:49Z: storage format change (FMT-1): may the Leios reference build's value be renamed, as its own storage-format pull request? V10 snapshots record the build's name as text; renaming leios-b004fe0c changes the name new snapshots record, the build-to-layout table (StateLayout.of) and the goldens that pin the header, and, without more, makes snapshots recorded under the old name unknown, which a restore deletes. Proposed: the new value, with the old name read from snapshots and captures only (never accepted as --reference-build); or keep the old name with new pins.",
-  "asked_at": "2026-11-23T20:36:49Z",
-  "decision": "Approved, as its own storage-format pull request: the Leios value is named by the release it is pinned at (leios-rc-2026w47), and each former name of a build whose layout is the same is read from files as that build (ReferenceBuild.renamed), so that weekly re-pins keep snapshots readable; a layout change leaves the former name out. No new version and no migration. The owner first chose a single generic name (21:00:12Z) and then release-tagged names with this upgrade path.",
-  "decided_at": "2026-11-23T21:21:49Z",
-  "surface_sha256": "85c6f9823562f1df46ac6a1d8826fccdf38983b110df8c20c5fecd56cbc5ea09"
+  "question": "Asked 2026-11-25T15:38:31Z: storage format change (FMT-1): may the fix of #1448 write the Shelley state's stashed AVVM UTxO (nesStashedAVVMAddresses) into the state file, as its own pull request? The Haskell state codec wrote the stash as an empty map, so a node restored from a Shelley-era snapshot lost it and returned nothing to the reserves on entering Allegra; writing it changes the bytes the V10 state codec writes and reads for Shelley states. Confirmation asked 2026-11-25T16:52:03Z: V10's bytes change only for Shelley-era states with AVVM entries; an empty stash still writes a0; existing non-Shelley snapshots stay byte-identical and readable; Shelley snapshots written before read as before, with the empty stash they hold; only an older build reading a new Shelley snapshot refuses it. May the codec change be committed as its own pull request?",
+  "asked_at": "2026-11-25T15:38:31Z",
+  "decision": "Approved, as its own storage-format pull request: an in-place change of V10, with no new version and no migration, the stash written and read as the reference writes it, and the approval recorded here. The owner agreed to the update and asked whether it changes V10 and breaks the stores written so far (2026-11-25T16:51:05Z); after the confirmation of what changes, the owner approved committing it.",
+  "decided_at": "2026-11-25T16:53:09Z",
+  "surface_sha256": "f70bb149365f33d472a2f161d31994d2de17c1633de64d5ea4fb4403b5ffadb2"
  },
  "surface": {
   "fixtures": {
@@ -226,7 +226,7 @@
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/ConsensusCodecs.scala": "ef22fd1b2d75680ec5e0071b8cff73a116a1e837a539a6845ebd63cd45a1e6d8",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/ConwayCodecs.scala": "050040f1e442e00fb448ef2a7c8296ff229413a41f46e7c79ad91e5d516aaa0e",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/Envelope.scala": "e538ab5c49e0ee9f41cadff7029cdc514a790a753a8b7e547fe32654d6ca2f92",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/EpochStateCodecs.scala": "628e831761db792170015f18d6d33cfdf829a1d625c6133da613379a088dd1b8",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/EpochStateCodecs.scala": "e2684bf0c52e1fc1f089735b425de3af907f6fd5217476144fcc9f357fc3202d",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/GovStateCodecs.scala": "b5786dd7c6a4097a345fb1bc7371d06fcd9d8d4c6344ef0734291ab1af36b9d7",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/HaskellLedgerFile.scala": "44ce725f39bc7e9060334fc98614c7ac435c25ce9a66c16629e0b50e2c8c4562",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/HaskellState.scala": "f45c212166c972c81d61da11bbaa5ee4da3250c67411e886ba3c401640c76772",
