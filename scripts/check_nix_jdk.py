@@ -2,12 +2,13 @@
 # SPDX-License-Identifier: Apache-2.0
 """Fail when the Nix shell's JDK is not the JDK image's major version.
 
-Every JDK `flake/toolchain.nix` names (`jdk<major>`, also as `openjdk`, `jre`, `zulu` or `temurin-bin-` and their
-variants, its comments left out) must be the major version of the Temurin release `docker/jdk.Dockerfile` pins, read
-from the tag its header names with the pattern `scripts/preflight_doctor.py` reads it by; the file must name at least
-one, and the Dockerfile exactly one tag. The shell may carry another update of that release, since the gates build in
-the image (docs/nix.md), but not another major version. The check reads text, to catch one pin moved without the
-other; it does not parse Nix, so it asks nothing of how the flake binds its JDK, and needs no Nix.
+Every JDK `flake/toolchain.nix` names (`jdk<major>`, also as `jdk-`, `openjdk`, `jre`, `zulu`, `corretto`, or
+`temurin-bin-` and `semeru-bin-` and their JRE variants, its comments left out) must be the major version of the
+Temurin release `docker/jdk.Dockerfile` pins, read from the tag its header names with the pattern
+`scripts/preflight_doctor.py` reads it by; the file must name at least one, and the Dockerfile exactly one tag. The
+shell may carry another update of that release, since the gates build in the image (docs/nix.md), but not another
+major version. The check reads text, to catch one pin moved without the other; it does not parse Nix, so it asks
+nothing of how the flake binds its JDK, and needs no Nix.
 """
 from __future__ import annotations
 
@@ -21,7 +22,7 @@ from preflight_doctor import DOCKERFILE, TEMURIN_TAG
 ROOT = Path(__file__).resolve().parents[1]
 TOOLCHAIN = "flake/toolchain.nix"
 NIX_COMMENT = re.compile(r"/\*.*?\*/|#[^\n]*", re.DOTALL)
-NIX_JDK = re.compile(r"(?:jdk|jre|zulu|temurin-(?:jre-)?bin-)(\d+)")
+NIX_JDK = re.compile(r"(?:jdk-?|jre|zulu|corretto|(?:temurin|semeru)-(?:jre-)?bin-)(\d+)")
 
 
 def problems(toolchain: str, dockerfile: str) -> list[str]:

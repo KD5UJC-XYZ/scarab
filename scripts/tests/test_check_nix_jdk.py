@@ -37,6 +37,7 @@ class NixJdkTest(unittest.TestCase):
         self.check("pkgs.jdk25", "25.0.9.1")
         self.check("pkgs.jdk25", "25")
         self.check("(pkgs.jdk25.override { })", "25.0.4.1")
+        self.check("pkgs.javaPackages.compiler.temurin-bin.jdk-25", "25.0.4.1")
 
     def test_another_major_fails_naming_both(self):
         self.check("pkgs.jdk26", "25.0.4.1", "names JDK 26, the JDK image Temurin 25.0.4.1+1")
@@ -45,7 +46,8 @@ class NixJdkTest(unittest.TestCase):
 
     def test_every_spelling_of_a_jdk_counts(self):
         for jdk in ("pkgs.openjdk21", "pkgs.jdk21_headless", "pkgs.temurin-bin-21", "pkgs.temurin-jre-bin-21",
-                    "pkgs.zulu21", "pkgs.jre21"):
+                    "pkgs.zulu21", "pkgs.jre21", "pkgs.semeru-bin-21", "pkgs.semeru-jre-bin-21", "pkgs.corretto21",
+                    "pkgs.javaPackages.compiler.temurin-bin.jdk-21"):
             with self.subTest(jdk=jdk):
                 self.check(jdk, "25.0.4.1", "names JDK 21")
 
