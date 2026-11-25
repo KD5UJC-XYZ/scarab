@@ -192,7 +192,7 @@ class HotDemotionModeSuite extends FailsOnUncaught:
     ): Event[Int] => IO[Unit] = {
       case Event.TargetsRequested(`lower`, _) =>
         cell.set(late) *> events.offer(
-          Event.RootsConfigured(LocalRoots.empty[Int], false, Set.empty[Int], Some(BigInt(1)))
+          Event.RootsConfigured(LocalRoots.empty[Int], false, Some(BigInt(1)))
         )
       case _ => IO.unit
     }

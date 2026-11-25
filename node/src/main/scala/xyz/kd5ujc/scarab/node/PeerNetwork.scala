@@ -606,11 +606,7 @@ object PeerNetwork:
 
       val rootProvider: RootProvider[F, Addr] = NodeRootProvider.dynamic(runtime, dns, dnsRng)
 
-      def publishRootUpdate(
-          staged: Runtime[F],
-          local: List[RootGroupSpec[Addr]],
-          public: Set[Addr]
-      ): F[Unit] =
+      def publishRootUpdate(staged: Runtime[F], local: List[RootGroupSpec[Addr]]): F[Unit] =
         Deferred[F, Unit].flatMap { installed =>
           F.uncancelable { _ =>
             for
@@ -619,7 +615,6 @@ object PeerNetwork:
                 Event.RootsConfigured(
                   LocalRoots.fromGroups(local),
                   staged.roots.bootstrapConfigured,
-                  public,
                   Some(staged.generation)
                 )
               )
@@ -735,7 +730,7 @@ object PeerNetwork:
           actions,
           connections = Some(outbound),
           beforeEventApplied = Some {
-            case Event.RootsConfigured(_, _, _, Some(generation)) =>
+            case Event.RootsConfigured(_, _, Some(generation)) =>
               rootInstallAcks.get.flatMap(_.get(generation).traverse_ { (staged, _) =>
                 installRuntimeGeneration(runtime, staged).void
               }) *> judgement.get.flatMap(verifySnapshot)
@@ -748,7 +743,7 @@ object PeerNetwork:
                 runtime.get.map(_.generation),
                 matches => emit(Output.LedgerPeers(LedgerPeersTrace.SnapshotVerified(matches)))
               )
-            case Event.RootsConfigured(_, _, _, Some(generation)) =>
+            case Event.RootsConfigured(_, _, Some(generation)) =>
               state.get.flatMap { current =>
                 if current.rootsGeneration < generation then F.unit
                 else
@@ -774,6 +769,14 @@ object PeerNetwork:
             .modify(_.take(next))
             .flatMap(judgement.get.flatMap(verifySnapshot).whenA(_))
 
+      /** Reload must publish configured IP roots and kept DNS answers before new lookups, as in
+        * ouroboros-network 6a49b6f6, RootPeersDNS/LocalRootPeers.hs. At c45735a5, which
+        * cardano-node 11.1.3 links, a reconfiguration publishes nothing until a domain's lookup
+        * answers (`LocalRootPeers.hs` 98, 153-168, 234-246), so its IP roots wait and a topology
+        * without DNS names is not applied: a bug of the linked packages, not reproduced (issue 956,
+        * D10; decisions.md 2026-11-14). The public and bootstrap roots the governor knows are kept:
+        * the configured ones are read by the next request for roots (issue 810).
+        */
       val reloadRoots: Roots => F[Unit] = next =>
         for
           previous <- runtime.get
@@ -790,8 +793,6 @@ object PeerNetwork:
             next.localSrv,
             nextLocalDnsCache
           )
-          known <- state.get
-          resolvedPublic = retainedPublicRoots(previous.roots, next, known)
           nextAssociation = AssociationMode.of(
             useLedgerPeers = next.ledgerPeers,
             peerSharing = settings.peerSharing,
@@ -813,7 +814,7 @@ object PeerNetwork:
             ),
             snapshotCheckCanceled = snapshotCheckCanceled
           )
-          _ <- publishRootUpdate(staged, resolvedLocal, resolvedPublic)
+          _ <- publishRootUpdate(staged, resolvedLocal)
         yield ()
 
       val refreshLocalRoots: F[Nothing] =
@@ -851,8 +852,6 @@ object PeerNetwork:
                     if latest.generation != captured.generation then F.pure(latest)
                     else if changed then
                       for
-                        known <- state.get
-                        public = retainedPublicRoots(captured.roots, captured.roots, known)
                         generation <- nextRootGeneration.modify { value =>
                           if value == captured.generation then (value + 1, Some(value + 1))
                           else (value, None)
@@ -866,7 +865,7 @@ object PeerNetwork:
                               localDnsCache = cache,
                               snapshotCheckCanceled = snapshotCheckCanceled
                             )
-                            _ <- publishRootUpdate(staged, resolved, public)
+                            _ <- publishRootUpdate(staged, resolved)
                           yield ()
                         }
                         installed <- runtime.get
@@ -918,34 +917,6 @@ object PeerNetwork:
           .void *> loops,
         fatal
       )
-
-  /** Reload must publish configured IP roots and kept DNS answers before new lookups, as in
-    * ouroboros-network 6a49b6f6, RootPeersDNS/LocalRootPeers.hs. At c45735a5, which cardano-node
-    * 11.1.3 links, a reconfiguration publishes nothing until a domain's lookup answers
-    * (`LocalRootPeers.hs` 98, 153-168, 234-246), so its IP roots wait and a topology without DNS
-    * names is not applied: a bug of the linked packages, not reproduced (issue 956, D10;
-    * decisions.md 2026-11-14). Public DNS answers are requested separately by the governor. Keep
-    * their existing attribution only while their configured source set is unchanged; a removed name
-    * must not leave its old answer configured forever.
-    */
-  private[node] def retainedPublicRoots(
-      previous: Roots,
-      next: Roots,
-      known: GovernorState[Addr]
-  ): Set[Addr] =
-    val publicUnchanged = previous.public == next.public && previous.publicSrv == next.publicSrv
-    val bootstrapUnchanged =
-      previous.bootstrap == next.bootstrap && previous.bootstrapSrv == next.bootstrapSrv
-    val retained = known.peers.collect {
-      case (peer, record)
-          if (record.origin == Origin.Public && publicUnchanged) ||
-            (record.origin == Origin.Bootstrap && bootstrapUnchanged) =>
-        peer
-    }.toSet
-    retained ++ (next.public ++ next.bootstrap.toVector.flatten)
-      .filter(_.host match
-        case _: IpAddress => true
-        case _            => false)
 
   private[node] def installRuntimeGeneration[F[_]: Async](
       runtime: Ref[F, Runtime[F]],

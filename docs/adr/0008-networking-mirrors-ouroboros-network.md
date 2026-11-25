@@ -383,3 +383,13 @@ a differential test against the reference covers that behaviour. A difference fr
 layer is classified as [REF-4](../design-rules.md#ref-4) says and recorded in the map; a structural difference
 without such a test, and a behavioural one that is not an Improvement or an approved Deviation, is a defect to
 align, tracked in #474 and #477. Owner's decision, 2026-11-14 ([decisions register](../decisions.md#reference-fidelity)).
+
+<a id="amendment-2026-11-25-the-reload-of-d10"></a>
+## Amendment (2026-11-25): the reload of D10
+
+D10's "What Scarab does" names `PeerNetwork.retainedPublicRoots`, which no longer exists (#810). A reload still
+publishes the configured IP local roots and the kept DNS answers before it starts new lookups (`PeerNetwork`'s
+`reloadRoots`), as D10 decided. The public and bootstrap roots the governor knows are no longer recomputed on a
+reload: they are kept, as the reference's governor keeps its `publicRootPeers` across a reconfiguration and reads
+the configured public roots only in its next request (`cardano-diffusion/lib/Cardano/Network/PeerSelection/Governor/Monitor.hs`
+276-282 and `ouroboros-network/lib/Ouroboros/Network/PeerSelection/Governor/RootPeers.hs` 160 at `c45735a5`).

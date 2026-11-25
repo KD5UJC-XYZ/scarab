@@ -398,7 +398,7 @@ class ConnectionMonitorSuite extends FailsOnUncaught:
                 onEventApplied = Some {
                   // the decision is made: the peer's connection is replaced before the exemption
                   // runs
-                  case Event.RootsConfigured(_, _, _, _) =>
+                  case Event.RootsConfigured(_, _, _) =>
                     current.set(BigInt(2)) *> decided.complete(()).void
                   case _ => IO.unit
                 }
@@ -411,7 +411,6 @@ class ConnectionMonitorSuite extends FailsOnUncaught:
             Event.RootsConfigured(
               LocalRoots.fromGroups(List(RootGroupSpec(1, 1, List(1 -> config)))),
               false,
-              Set.empty,
               Some(BigInt(1))
             )
           ) *> decided.get *> late.complete(()) *> done.get *> exempted.get

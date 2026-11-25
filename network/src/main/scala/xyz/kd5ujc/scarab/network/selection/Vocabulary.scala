@@ -337,11 +337,10 @@ enum Event[A]:
   /** A supervised immutable peer-snapshot check completed for one roots generation. */
   case SnapshotVerificationCompleted(generation: BigInt, matches: Boolean)
 
-  /** The configured local roots changed (a reload). */
+  /** The configured local roots or the bootstrap flag changed (a reload). */
   case RootsConfigured(
       roots: LocalRoots[A],
       useBootstrapPeers: Boolean,
-      configuredPublicPeers: Set[A],
       generation: Option[BigInt] = None
   )
 

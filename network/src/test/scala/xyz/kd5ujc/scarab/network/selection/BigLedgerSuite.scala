@@ -414,7 +414,7 @@ class BigLedgerSuite extends FunSuite:
     val reloaded = PeerSelection
       .apply(
         st,
-        Event.RootsConfigured(LocalRoots.empty[Int], false, Set.empty, Some(BigInt(1))),
+        Event.RootsConfigured(LocalRoots.empty[Int], false, Some(BigInt(1))),
         t0
       )
       .state
@@ -449,7 +449,7 @@ class BigLedgerSuite extends FunSuite:
       )
     )
     val reloaded = PeerSelection
-      .apply(st, Event.RootsConfigured(roots, false, Set.empty, Some(BigInt(1))), t0)
+      .apply(st, Event.RootsConfigured(roots, false, Some(BigInt(1))), t0)
       .state
     assertEquals(reloaded.peers(9).origin, Origin.Local)
     assertEquals(reloaded.view(t0).big.known.toSet, (1 to 10).toSet - 9)

@@ -186,6 +186,33 @@ object PeerSelection:
       List(Trace.LocalRootsChanged(st.localRoots.size, wanted.size))
     )
 
+  /** `monitorBootstrapPeersFlag` (ouroboros-network c45735a5,
+    * `cardano-diffusion/lib/Cardano/Network/PeerSelection/Governor/Monitor.hs` 390-455): a new
+    * value of the bootstrap flag forgets the bootstrap peers that are neither established nor being
+    * connected, and sets the judgement to `YoungEnough`, so that the judgement's monitor reads the
+    * real one as a change, with no clean state and no deadline. Nothing in Genesis mode.
+    */
+  private def bootstrapFlag[A](
+      st: GovernorState[A],
+      useBootstrapPeers: Boolean,
+      now: Time
+  ): GovernorState[A] =
+    val s = st.sensitivity
+    if s.consensusMode == ConsensusMode.GenesisMode || useBootstrapPeers == s.useBootstrapPeers
+    then st
+    else
+      val view = st.view(now)
+      val forgotten = view.bootstrap -- view.established -- view.connecting
+      st.copy(
+        peers = st.peers -- forgotten,
+        sensitivity = s.copy(
+          useBootstrapPeers = useBootstrapPeers,
+          judgement = LedgerStateJudgement.YoungEnough,
+          hasOnlyBootstrapPeers = false,
+          timeout = None
+        )
+      )
+
   private[selection] enum Guard[A]:
     case Go(decision: Decision[A])
     case Skip(wakeAt: Option[Time])
@@ -691,7 +718,6 @@ object PeerSelection:
       now: Time,
       policy: Policy = Policy()
   ): Decision[A] =
-    given Ordering[A] = st0.peers.ordering
     val st = tick(st0, now)
     event match
       case Event.ChurnTargetsChanged(_) => Decision(st, Nil, Nil)
@@ -700,37 +726,25 @@ object PeerSelection:
         else Decision(st.copy(requested = t), Nil, Nil)
       case Event.JudgementReported(j)                => Decision(st.copy(reported = j), Nil, Nil)
       case Event.SnapshotVerificationCompleted(_, _) => Decision(st, Nil, Nil)
-      case Event.RootsConfigured(roots, bootstrap, configuredPublic, configuredGeneration) =>
+      case Event.RootsConfigured(roots, bootstrap, configuredGeneration) =>
         val generation = configuredGeneration.getOrElse(st.rootsGeneration + 1)
         if generation <= st.rootsGeneration then Decision(st, Nil, Nil)
         else
-          val stillConfigured = roots.keys ++ configuredPublic
-          // a connect in progress and a root request in flight are left to complete: the
-          // reference's reconfiguration of the roots writes neither `inProgressPromoteCold` nor
-          // the root requests' backoffs, retry times and requests in flight (`localRoots`,
-          // ouroboros-network c45735a5,
-          // `cardano-diffusion/lib/Cardano/Network/PeerSelection/Governor/Monitor.hs` 197-353),
-          // and their completions are applied whatever changed meanwhile (`Events.completed`,
-          // issue 810). Only a root the topology
-          // names is taken away; a ledger or big ledger peer keeps its population
-          // ([[Origin.configured]], issue 810)
-          val peers = st.peers.map { (peer, record) =>
-            val current =
-              if record.origin.configured && !stillConfigured(peer) then
-                record.copy(origin = Origin.Other)
-              else record
-            peer -> current
-          }
-          val sensitivity = st.sensitivity.copy(useBootstrapPeers = bootstrap)
+          // The reference's reconfiguration writes its variables and leaves the governor's state
+          // to its monitors (ouroboros-network c45735a5,
+          // `cardano-diffusion/lib/Cardano/Network/PeerSelection/Governor/Monitor.hs` 197-353 and
+          // 390-455): the public, bootstrap, ledger and big ledger roots are kept but for the new
+          // local roots, which `configureLocalRoots` takes out of them (276-282); a connect in
+          // progress and a root request in flight are left to complete, with the requests'
+          // backoffs and retry times, and their completions are applied whatever changed
+          // meanwhile (`Events.completed`, issue 810). The bootstrap flag's monitor runs before
+          // the local roots' one (`preBlocking`, `Governor/Types.hs` 162-169 of
+          // cardano-diffusion, and `Governor.hs` 673-691 of ouroboros-network, at c45735a5).
+          val flagged = bootstrapFlag(st, bootstrap, now)
           val effective =
-            (if sensitivity.sensitive then roots.clampToTrustable else roots)
+            (if flagged.sensitivity.sensitive then roots.clampToTrustable else roots)
               .clampToLimit(st.targets.known)
-          val base = st.copy(
-            peers = peers,
-            configuredRoots = roots,
-            rootsGeneration = generation,
-            sensitivity = sensitivity
-          )
+          val base = flagged.copy(configuredRoots = roots, rootsGeneration = generation)
           if effective == st.localRoots then Decision(base, Nil, Nil)
           else configureLocalRoots(base, effective, now)
       // only the connection the governor keeps reports it, whatever roots generation its connect

@@ -84,8 +84,7 @@ class ActivationTrustSuite extends FailsOnUncaught:
                 events,
                 supervisor,
                 onEventApplied = Some {
-                  case Event.RootsConfigured(_, _, _, Some(generation))
-                      if generation == BigInt(1) =>
+                  case Event.RootsConfigured(_, _, Some(generation)) if generation == BigInt(1) =>
                     reloaded.complete(()).void
                   case _ => IO.unit
                 }
@@ -102,7 +101,6 @@ class ActivationTrustSuite extends FailsOnUncaught:
                   List(RootGroupSpec(1, 1, List(1 -> config.copy(trustable = false))))
                 ),
                 false,
-                Set.empty,
                 Some(BigInt(1))
               )
             )

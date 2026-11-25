@@ -117,7 +117,6 @@ class PeerSelectionSuite extends FunSuite:
         Event.RootsConfigured(
           LocalRoots.fromGroups(List(group(1, 3, 1, 2, 11))),
           false,
-          Set.empty,
           Some(BigInt(1))
         ),
         t0
@@ -802,7 +801,7 @@ class PeerSelectionSuite extends FunSuite:
     val reloaded = PeerSelection
       .apply(
         withRoots,
-        Event.RootsConfigured(LocalRoots.fromGroups(List(group(1, 1, 5))), false, Set.empty),
+        Event.RootsConfigured(LocalRoots.fromGroups(List(group(1, 1, 5))), false),
         t0
       )
       .state
@@ -846,7 +845,7 @@ class PeerSelectionSuite extends FunSuite:
       )
     )
     val off = PeerSelection
-      .apply(withBootstrap, Event.RootsConfigured(LocalRoots.empty, false, Set.empty), t0)
+      .apply(withBootstrap, Event.RootsConfigured(LocalRoots.empty, false), t0)
       .state
     assertEquals(off.peers.keySet, Set(2, 3, 4))
     assertEquals(off.peers(2).origin, Origin.Bootstrap)
@@ -867,7 +866,7 @@ class PeerSelectionSuite extends FunSuite:
     val on = PeerSelection
       .apply(
         off.copy(sensitivity = off.sensitivity.copy(judgement = LedgerStateJudgement.TooOld)),
-        Event.RootsConfigured(LocalRoots.empty, true, Set.empty),
+        Event.RootsConfigured(LocalRoots.empty, true),
         t0
       )
       .state
@@ -879,7 +878,7 @@ class PeerSelectionSuite extends FunSuite:
     val genesis =
       withBootstrap.copy(sensitivity = sensitive.copy(consensusMode = ConsensusMode.GenesisMode))
     val unchanged = PeerSelection
-      .apply(genesis, Event.RootsConfigured(LocalRoots.empty, false, Set.empty), t0)
+      .apply(genesis, Event.RootsConfigured(LocalRoots.empty, false), t0)
       .state
     assertEquals(unchanged.sensitivity, genesis.sensitivity)
     assertEquals(unchanged.peers.keySet, Set(1, 2, 3, 4))
@@ -901,7 +900,7 @@ class PeerSelectionSuite extends FunSuite:
 
     val rotated = PeerSelection.apply(
       initial,
-      Event.RootsConfigured(newRoots, false, Set.empty, Some(BigInt(1))),
+      Event.RootsConfigured(newRoots, false, Some(BigInt(1))),
       t0
     )
 
@@ -923,7 +922,7 @@ class PeerSelectionSuite extends FunSuite:
     )
     val rotated = PeerSelection.apply(
       initial,
-      Event.RootsConfigured(newRoots, false, Set.empty, Some(BigInt(1))),
+      Event.RootsConfigured(newRoots, false, Some(BigInt(1))),
       t0
     )
     assertEquals(rotated.state.localRoots, LocalRoots.empty[Int])
@@ -956,7 +955,7 @@ class PeerSelectionSuite extends FunSuite:
 
     val rotated = PeerSelection.apply(
       initial,
-      Event.RootsConfigured(roots, true, Set.empty, Some(BigInt(1))),
+      Event.RootsConfigured(roots, true, Some(BigInt(1))),
       t0
     )
 
@@ -982,7 +981,7 @@ class PeerSelectionSuite extends FunSuite:
 
     val rotated = PeerSelection.apply(
       initial,
-      Event.RootsConfigured(rootsAB, false, Set.empty, Some(BigInt(1))),
+      Event.RootsConfigured(rootsAB, false, Some(BigInt(1))),
       t0
     )
 
@@ -999,14 +998,14 @@ class PeerSelectionSuite extends FunSuite:
     val installed = PeerSelection
       .apply(
         initial,
-        Event.RootsConfigured(newerRoots, false, Set(22), Some(BigInt(2))),
+        Event.RootsConfigured(newerRoots, false, Some(BigInt(2))),
         t0
       )
       .state
     val delayed = PeerSelection
       .apply(
         installed,
-        Event.RootsConfigured(LocalRoots.empty, false, Set.empty, Some(BigInt(1))),
+        Event.RootsConfigured(LocalRoots.empty, false, Some(BigInt(1))),
         t0
       )
       .state
@@ -1030,7 +1029,7 @@ class PeerSelectionSuite extends FunSuite:
     val reloaded = PeerSelection
       .apply(
         connecting,
-        Event.RootsConfigured(LocalRoots.empty, false, Set.empty, Some(BigInt(1))),
+        Event.RootsConfigured(LocalRoots.empty, false, Some(BigInt(1))),
         t0
       )
       .state
@@ -1070,7 +1069,7 @@ class PeerSelectionSuite extends FunSuite:
     val reloaded = PeerSelection
       .apply(
         connecting,
-        Event.RootsConfigured(LocalRoots.empty, false, Set.empty, Some(BigInt(1))),
+        Event.RootsConfigured(LocalRoots.empty, false, Some(BigInt(1))),
         t0
       )
       .state
@@ -1103,7 +1102,7 @@ class PeerSelectionSuite extends FunSuite:
     val hot = List(7, 8).foldLeft(st3)((s, p) => complete(s, Outcome.Activated(p), t0))
     val before = hot.rootsGeneration
     val reloaded = PeerSelection
-      .apply(hot, Event.RootsConfigured(hot.configuredRoots, false, Set.empty), t0)
+      .apply(hot, Event.RootsConfigured(hot.configuredRoots, false), t0)
       .state
     assert(reloaded.rootsGeneration > before)
     assertEquals(statusOf(reloaded, 7), Status.Hot)
@@ -1149,7 +1148,7 @@ class PeerSelectionSuite extends FunSuite:
       bigLedgerInFlight = true
     )
     val reloaded = PeerSelection
-      .apply(initial, Event.RootsConfigured(LocalRoots.empty, false, Set.empty), t0)
+      .apply(initial, Event.RootsConfigured(LocalRoots.empty, false), t0)
       .state
     assertEquals(reloaded.rootsGeneration, initial.rootsGeneration + 1)
     assertEquals(
@@ -1177,7 +1176,7 @@ class PeerSelectionSuite extends FunSuite:
     val reloaded = PeerSelection
       .apply(
         initial,
-        Event.RootsConfigured(LocalRoots.fromGroups(List(group(1, 1, 7))), false, Set.empty),
+        Event.RootsConfigured(LocalRoots.fromGroups(List(group(1, 1, 7))), false),
         t0
       )
       .state
