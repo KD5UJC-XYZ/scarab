@@ -10,18 +10,12 @@ import xyz.kd5ujc.scarab.codec.Bytes
 
 /** The reference's seven ECVRF draft-03 test vectors (`fixtures/vrf-cardano-base`, cardano-base
   * `060819b5` `cardano-crypto-praos/test_vectors/vrf_ver03_*`), each read whole and checked as the
-  * reference's `checkVer03TestVector` checks it (`Test/Crypto/VRF.hs:112-136`) where Scarab has the
-  * operation: proving alpha with `sk || pk` gives pi, the key of sk is pk, and verifying pi with pk
-  * gives beta. Proving runs on the vendored curve25519 arithmetic; verifying on the separate
-  * arithmetic of `StrictDraft03`.
-  *
-  * The reference also takes beta from pi alone, unverified (`outputFromProof`, cardano-base
-  * `cardano-crypto-praos/src/Cardano/Crypto/VRF/Praos.hs:514-522`, the proof-to-hash of
-  * `cbits/vrf03/verify.c:13-41`, which also checks the encodings of Gamma and s). Scarab exposes no
-  * unchecked proof-to-output (`StrictDraft03.scala:36`), so that check is made of its parts: Gamma
-  * decoded from pi with the verifier's decoder (`Ed25519Point.decode`) and hashed with the
-  * verifier's output function (`Draft03Math.output`). The output from the signing key alone
-  * ([[Draft03Prover.SigningKey.output]]), which recomputes Gamma, is checked too.
+  * reference's `checkVer03TestVector` checks it (`Test/Crypto/VRF.hs:112-136`): proving alpha with
+  * `sk || pk` gives pi, the key of sk is pk, the output of pi alone is beta (`outputFromProof`,
+  * here the test-scope [[ProofToOutput]], step for step the reference's proof-to-hash), and
+  * verifying pi with pk gives beta. Proving runs on the vendored curve25519 arithmetic; verifying,
+  * and the output of pi, on the separate arithmetic of `StrictDraft03`. The output from the signing
+  * key alone ([[Draft03Prover.SigningKey.output]]), which recomputes Gamma, is checked too.
   */
 class Draft03CardanoBaseVectorSuite extends munit.FunSuite:
   private val root = Path.of("fixtures/vrf-cardano-base")
@@ -83,8 +77,7 @@ class Draft03CardanoBaseVectorSuite extends munit.FunSuite:
       assertEquals(proved.proof.hex, v.pi.hex, "pi")
       assertEquals(proved.output.hex, v.beta.hex, "beta from proving")
       assertEquals(key.output(v.alpha).map(_.hex), Right(v.beta.hex), "beta from the key alone")
-      val gamma = Option(Ed25519Point.decode(v.pi.take(32).toArray)).getOrElse(fail("Gamma of pi"))
-      assertEquals(Bytes.fromArray(Draft03Math.output(gamma)).hex, v.beta.hex, "beta of pi's Gamma")
+      assertEquals(ProofToOutput(v.pi).map(_.hex), Right(v.beta.hex), "beta of pi alone")
       assertEquals(
         StrictDraft03.verify(v.pk, v.pi, v.alpha),
         StrictDraft03.Result.Verified(v.beta),

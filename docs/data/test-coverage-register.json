@@ -54,13 +54,13 @@
     {
       "id": "vrf-draft03-reference-vectors",
       "classification": "native-parity",
-      "status": "bounded",
+      "status": "covered",
       "scope": "The seven ECVRF draft-03 test vectors of cardano-base 060819b5 (cardano-crypto-praos/test_vectors/vrf_ver03_*).",
-      "assertion": "For each vector: the key of sk is pk, proving alpha with sk || pk gives pi and beta, SigningKey.output gives beta, Gamma decoded from the fixture's pi with the verifier's decoder and hashed with Draft03Math.output gives beta, and StrictDraft03 verifies pi with pk to beta.",
-      "rationale": "The prover's suite held two of the three IETF examples and none of cardano-base's generated vectors. The reference's checkVer03TestVector also takes beta from pi alone with outputFromProof, the proof-to-hash of an unverified proof with its own encoding checks of Gamma and s (cardano-base 060819b5 Praos.hs:514-522, cbits/vrf03/verify.c:13-41); Scarab exposes no unchecked proof-to-output (StrictDraft03.scala:36), so that check is compared through its parts only, on valid proofs.",
+      "assertion": "For each vector, the reference's checkVer03TestVector checks: proving alpha with sk || pk gives pi, the key of sk is pk, the output of pi alone is beta (through ProofToOutput, a test-scope mirror of the reference's proof-to-hash), and StrictDraft03 verifies pi with pk to beta; and the output from the signing key alone is beta.",
+      "rationale": "The prover's suite held two of the three IETF examples and none of cardano-base's generated vectors. The reference takes the output of pi alone with outputFromProof, an unverified proof-to-hash (cardano-base 060819b5 Praos.hs:514-522, cbits/vrf03/verify.c:13-41). The node exposes no such function (StrictDraft03.scala:36); ProofToOutput mirrors it in test scope, built from the verifier's decoder and output function, and is checked against the native function in vrf-proof-to-hash-native.",
       "owner": "Scarab maintainers",
       "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/1418",
-      "resolution": "Retain the upstream files unchanged; compare a proof-to-output whole, encoding checks included, if Scarab ever exposes one.",
+      "resolution": "Retain the upstream files unchanged.",
       "evidence": [
         "crypto/src/test/scala/xyz/kd5ujc/scarab/crypto/vrf/Draft03CardanoBaseVectorSuite.scala",
         "fixtures/vrf-cardano-base/README.md"
