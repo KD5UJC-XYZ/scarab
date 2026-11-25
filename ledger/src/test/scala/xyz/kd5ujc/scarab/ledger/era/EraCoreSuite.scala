@@ -225,6 +225,79 @@ class EraCoreSuite extends munit.FunSuite:
     assertEquals(within, "")
   }
 
+  test("witness sets share one representation; the compiler refuses them across eras") {
+    val across = compileErrors(
+      "import scala.language.strictEquality; def f(c: conway.ConwayTxWits, d: dijkstra.DijkstraTxWits) = c == d"
+    )
+    assert(across.contains("cannot be compared"), across)
+    Vector(
+      compileErrors(
+        "import scala.language.strictEquality; def f(a: conway.ConwayTxWits, b: conway.ConwayTxWits) = a == b"
+      ),
+      compileErrors(
+        "import scala.language.strictEquality; def f(a: dijkstra.DijkstraTxWits, b: dijkstra.DijkstraTxWits) = a == b"
+      )
+    ).foreach(within => assertEquals(within, ""))
+    // nor is one era's witness set the other's, or the representation outside its file
+    val other = compileErrors("def f(c: conway.ConwayTxWits): dijkstra.DijkstraTxWits = c")
+    assert(other.contains("Found:"), other)
+    val rep = compileErrors(
+      "def f(c: conway.ConwayTxWits): AlonzoTxWitsRep[conway.ConwayScript, conway.ConwayPlutusPurpose[AsIx]] = c"
+    )
+    assert(rep.contains("Found:"), rep)
+    // and a representation made here, where its constructor is visible, is no era's witness set:
+    // only each era's decoder, in the era's own file, makes one
+    Vector(
+      compileErrors(
+        "def f(r: AlonzoTxWitsRep[conway.ConwayScript, conway.ConwayPlutusPurpose[AsIx]]): conway.ConwayTxWits = r"
+      ),
+      compileErrors(
+        "def f(r: AlonzoTxWitsRep[dijkstra.DijkstraScript, dijkstra.DijkstraPlutusPurpose[AsIx]]): dijkstra.DijkstraTxWits = r"
+      )
+    ).foreach(e => assert(e.contains("Found:"), e))
+    // a plain class, not a case class: no `Mirror` builds one from any fields, whatever its bytes
+    val mirror = compileErrors(
+      "summon[scala.deriving.Mirror.ProductOf[AlonzoTxWitsRep[conway.ConwayScript, conway.ConwayPlutusPurpose[AsIx]]]]"
+    )
+    assert(mirror.nonEmpty, mirror)
+  }
+
+  test("auxiliary data share one representation; the compiler refuses them across eras") {
+    val across = compileErrors(
+      "import scala.language.strictEquality; def f(c: conway.ConwayTxAuxData, d: dijkstra.DijkstraTxAuxData) = c == d"
+    )
+    assert(across.contains("cannot be compared"), across)
+    Vector(
+      compileErrors(
+        "import scala.language.strictEquality; def f(a: conway.ConwayTxAuxData, b: conway.ConwayTxAuxData) = a == b"
+      ),
+      compileErrors(
+        "import scala.language.strictEquality; def f(a: dijkstra.DijkstraTxAuxData, b: dijkstra.DijkstraTxAuxData) = a == b"
+      )
+    ).foreach(within => assertEquals(within, ""))
+    // nor is one era's auxiliary data the other's, or the representation outside its file
+    val other = compileErrors("def f(c: conway.ConwayTxAuxData): dijkstra.DijkstraTxAuxData = c")
+    assert(other.contains("Found:"), other)
+    val rep = compileErrors(
+      "def f(c: conway.ConwayTxAuxData): AlonzoTxAuxDataRep[conway.ConwayTimelock] = c"
+    )
+    assert(rep.contains("Found:"), rep)
+    // and a representation made here, where its constructor is visible, is no era's auxiliary data
+    Vector(
+      compileErrors(
+        "def f(r: AlonzoTxAuxDataRep[conway.ConwayTimelock]): conway.ConwayTxAuxData = r"
+      ),
+      compileErrors(
+        "def f(r: AlonzoTxAuxDataRep[dijkstra.DijkstraNativeScript]): dijkstra.DijkstraTxAuxData = r"
+      )
+    ).foreach(e => assert(e.contains("Found:"), e))
+    // a plain class, not a case class: no `Mirror` builds one from any fields, whatever its bytes
+    val mirror = compileErrors(
+      "summon[scala.deriving.Mirror.ProductOf[AlonzoTxAuxDataRep[conway.ConwayTimelock]]]"
+    )
+    assert(mirror.nonEmpty, mirror)
+  }
+
   test("the compiler refuses another era's value; the era's own compiles") {
     val other = compileErrors("def f(a: allegra.AllegraTxOut) = EraTxOut.mary.value(a)")
     assert(other.contains("AllegraTxOut"), other)

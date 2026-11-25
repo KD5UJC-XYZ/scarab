@@ -109,9 +109,9 @@ representation parameterised by what differs, not by the era, and each era's typ
 | `AlonzoTxOutRep` | `AlonzoTxOut` |
 | `BabbageTxOutRep[S]` | `BabbageTxOut`, `ConwayTxOut`, `DijkstraTxOut`, `S` the era's script (`BabbageScript`, `ConwayScript`, Dijkstra's), so carrying an output into the next era carries its reference script (`upgradeScript`) |
 | `ShelleyTxWitsRep[S]` | the witness sets of Shelley (`S = MultiSig`), Allegra and Mary (`S = Timelock`) |
-| `AlonzoTxWitsRep[S]` | the witness sets of Alonzo to Conway (`S = Timelock`), Dijkstra (`S = DijkstraNativeScript`) |
+| `AlonzoTxWitsRep[S, P]` | the witness sets of Alonzo to Conway and of Dijkstra, `S` the era's script and `P` the purpose its redeemers are keyed by (`ConwayScript` and `ConwayPlutusPurpose[AsIx]` for Conway, `DijkstraScript` and `DijkstraPlutusPurpose[AsIx]` for Dijkstra) |
 | `AllegraTxAuxDataRep` | the auxiliary data of Allegra and Mary |
-| `AlonzoTxAuxDataRep[S]` | the auxiliary data of Alonzo to Conway (`S = Timelock`), Dijkstra (`S = DijkstraNativeScript`) |
+| `AlonzoTxAuxDataRep[S]` | the auxiliary data of Alonzo to Conway and of Dijkstra, `S` the era's native script (`ConwayTimelock` for Conway, `DijkstraNativeScript` for Dijkstra) |
 | `ShelleyTxCertRep` | the certificates of Shelley to Babbage |
 | `NativeScriptRep[F]` | `MultiSig` (`F = NativeForm.MultiSig`), behind Shelley's native script; `Timelock` (`F = NativeForm.Timelock`), behind each era's native script from Allegra to Conway (`AllegraTimelock` to `ConwayTimelock`) |
 | `AlonzoScriptRep[N, P]` | the scripts of Alonzo to Conway: the era's native script `N` or its Plutus script `P` (`BabbageScript`, `ConwayScript`) |
