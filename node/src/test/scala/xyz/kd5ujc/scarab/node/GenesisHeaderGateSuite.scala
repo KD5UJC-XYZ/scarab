@@ -513,3 +513,28 @@ class GenesisHeaderGateSuite extends FailsOnUncaught:
       }
     }
   }
+
+  test("a gate's wait counts our chain's changes from when it was taken, not from when it runs") {
+    val headers = Fixtures.chain(3)
+    TestControl.executeEmbed {
+      for
+        applied <- chain(headers, 50)
+        state <- Ref.of[IO, VolatileChain[BigInt]](applied)
+        given Stateful[IO, VolatileChain[BigInt]] = RefStateful(state)
+        given Ask[IO, ChainSelection.Local] = selected(state, headers)
+        revisions <- SignallingRef.of[IO, Long](0L)
+        changes = new HeaderCheck.Changes[IO]:
+          def revision: IO[Long] = revisions.get
+          def changed(after: Long): IO[Long] =
+            revisions.discrete.dropWhile(_ <= after).head.compile.lastOrError
+        gate <- HeaderCheck
+          .forNodeChain[IO, BigInt](model(100), Compute.inline[IO], 100, changes = Some(changes))
+          .start(applied.tip)
+        // taken, then our chain changes, and only then is the wait run: it has already seen the
+        // change (a wait that read the revision when run would never end here)
+        waiting <- gate.ourChainChanged.flatMap(IO.fromOption(_)(new AssertionError("no wait")))
+        _ <- revisions.update(_ + 1)
+        _ <- waiting
+      yield ()
+    }
+  }
