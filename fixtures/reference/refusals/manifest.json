@@ -118,12 +118,20 @@
       "sha256": "286a678fea0f7086d17a169d27d756077ddc2135d54ea02661e39c920f6a66d4"
     },
     {
+      "path": "conway-gov-order",
+      "sha256": "8fee54f050f3f08e7f64672f9c944b7dbd1c5b7355f9050056848f9c48cfe549"
+    },
+    {
       "path": "conway-gov-proposals",
       "sha256": "300d99e9e051df979093bde537c8ec39c7fc1a69a822f978d2b7c052d462128e"
     },
     {
       "path": "conway-governance",
       "sha256": "422923f74f9f138f8293844aed93577f8b6b2b7e87d11eef6d63f6679c108d8a"
+    },
+    {
+      "path": "conway-mempool",
+      "sha256": "59f8dd8e40829ffb784247303c837fd5a72c9fb2190e15f7214b58f51d982333"
     },
     {
       "path": "conway-three-certificates",

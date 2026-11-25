@@ -7,7 +7,7 @@ Four corpora, recorded in this order on one `up` cluster, since the protocol ver
 - `conway_constructors` (protocol version 10): one failure each, the constructors of Conway's UTXOW, UTXO, POOL and
   GOVCERT that no corpus reached, and the empty input set, which MEMPOOL refuses before LEDGER runs;
 - `conway_gov_order` (10): votes, voters and withdrawals that arrive out of the reference's key order;
-- `conway_mempool` (10): MEMPOOL's unelected-committee-voter refusal, alone and before LEDGER's failures, and
+- `conway_mempool` (10): MEMPOOL's unelected-committee-voter refusal, alone and with LEDGER's failures, and
   refusals judged against proposals and votes the reference's mempool admitted first (`Case.before`);
 - `conway_constructors_v11` (11): the withdrawal, VRF-key, pool-cost and integrity-hash failures of version 11.
 
@@ -63,9 +63,9 @@ TAGS = {
     "gov-treasury-withdrawal-accounts-out-of-order": [("TreasuryWithdrawalReturnAccountsDoNotExist", GOV + (17,))],
     # ---- conway_mempool, version 10
     "mempool-unelected-committee-voter": [("ConwayMempoolFailure", MEMPOOL)],
-    "mempool-unelected-voters-before-ledger-failures": [("ConwayMempoolFailure", MEMPOOL),
-                                                        ("GovActionsDoNotExist", GOV + (0,)),
-                                                        ("FeeTooSmallUTxO", UTXO + (5,))],
+    "mempool-unelected-voters-with-ledger-failures": [("GovActionsDoNotExist", GOV + (0,)),
+                                                      ("FeeTooSmallUTxO", UTXO + (5,)),
+                                                      ("ConwayMempoolFailure", MEMPOOL)],
     "mempool-vote-on-admitted-proposal": [("DisallowedVoters", GOV + (5,))],
     "mempool-authorization-after-admitted-proposal": [("FeeTooSmallUTxO", UTXO + (5,))],
     # ---- conway_constructors_v11, version 11
@@ -372,8 +372,9 @@ def conway_gov_order(name):
 
 def conway_mempool(name):
     """Conway's MEMPOOL rule at protocol version 10 (#85): its refusal of a vote by an unelected committee member
-    (`Conway/Rules/Mempool.hs:123-135`, the text of the hot credentials' `show`), alone and before LEDGER's failures,
-    which LEDGER still reports (124-138); and refusals judged against proposals and votes the reference's mempool
+    (`Conway/Rules/Mempool.hs:123-135`, the text of the hot credentials' `show`), alone and with the failures LEDGER
+    still reports after it (138): the reference lists LEDGER's first and MEMPOOL's text last, though MEMPOOL's check
+    runs first; and refusals judged against proposals and votes the reference's mempool
     admitted first (`Case.before`), so that the proposals the mempool writes back are what GOV and GOVCERT read.
 
     An unelected member is one an UpdateCommittee proposal names, so its hot key may be authorised
@@ -422,9 +423,9 @@ def conway_mempool(name):
     tx, _ = build([txin(w)], w["lovelace"], signers=[hot[0]],
                   votes=eratx.voting_procedures([(eratx.voter("committee", hot[0].hash), [(info, "yes")])]))
     cases.append(Case("mempool-unelected-committee-voter", tx, expected("mempool-unelected-committee-voter")))
-    # The same refusal first, then LEDGER's: both unelected members vote on the info action, one also on an action
+    # The same refusal with LEDGER's: both unelected members vote on the info action, one also on an action
     # that does not exist (GOV), and the fee is 0 (UTXO); the value is conserved
-    label = "mempool-unelected-voters-before-ledger-failures"
+    label = "mempool-unelected-voters-with-ledger-failures"
     tx, _ = build([txin(w)], w["lovelace"], fee=0, signers=hot, votes=votes_out_of_order(
         [(eratx.voter("committee", hot[0].hash), [(info, "yes"), (eratx.gov_id("11" * 32, 0), "yes")]),
          (eratx.voter("committee", hot[1].hash), [(info, "yes")])]))
