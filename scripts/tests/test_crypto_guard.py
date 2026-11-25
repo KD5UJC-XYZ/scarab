@@ -186,6 +186,8 @@ Secret = "crypto/src/main/scala/xyz/kd5ujc/scarab/crypto/vrf/secret"
 SECRET = "package xyz.kd5ujc.scarab.crypto.vrf.secret\n"
 Shared = "crypto/src/main/scala/xyz/kd5ujc/scarab/crypto/secret"
 SHARED = "package xyz.kd5ujc.scarab.crypto.secret\n"
+Kes = "crypto/src/main/scala/xyz/kd5ujc/scarab/crypto/kes/secret"
+KES = "package xyz.kd5ujc.scarab.crypto.kes.secret\n"
 Facade = f"{Vrf}/Draft03Prover.scala"
 
 
@@ -245,6 +247,51 @@ class SecretPathGuardTests(unittest.TestCase):
                 self.assertGreaterEqual(len(by_declaration), 1, call)
         self.assertEqual(
             self.found({f"{Shared}/Scratch.scala": SHARED + "object S { java.util.Arrays.fill(a, 0.toByte) }"}),
+            [],
+        )
+
+    def test_the_kes_secret_package_is_held_to_the_same_rules(self):
+        for call in (
+            "Arrays.equals(vk, stored)",
+            "a.sameElements(b)",
+            "BigInt(target)",
+            "Bytes.wrap(material)",
+            "StrictEd25519.verify(pk, m, s)",
+            "new org.bouncycastle.crypto.digests.Blake2bDigest(256)",
+            "org.bouncycastle.math.ec.rfc8032.Ed25519.sign(sk, 0, m, 0, n, sig, 0)",
+            "new Blake2bDigest(256)",
+        ):
+            with self.subTest(call=call):
+                found = self.found({f"{Kes}/Sum6Key.scala": KES + f"object K {{ {call} }}"})
+                self.assertEqual([path for path, _ in found][:1], [f"{Kes}/Sum6Key.scala"], call)
+        self.assertEqual(
+            self.found(
+                {
+                    f"{Kes}/Sum6Key.scala": KES
+                    + "import org.bouncycastle.crypto.digests.Blake2bDigest\nobject K { }"
+                }
+            )[:1],
+            [(f"{Kes}/Sum6Key.scala", "Bouncy Castle, whose working arrays are not erased")],
+        )
+        self.assertEqual(
+            self.found(
+                {
+                    f"{Kes}/Sum6Key.scala": KES
+                    + "object K { Scalar.multiplyAndAdd(k, x, r, s); MessageDigest.isEqual(a, b); Arrays.fill(m, 0.toByte) }"
+                }
+            ),
+            [],
+        )
+
+    def test_the_kes_verifier_and_signing_facade_are_not_covered(self):
+        call = "object K { BigInt(1); StrictEd25519.verify(pk, m, s) }"
+        self.assertEqual(
+            self.found(
+                {
+                    "crypto/src/main/scala/xyz/kd5ujc/scarab/crypto/kes/Sum6Kes.scala": "package xyz.kd5ujc.scarab.crypto.kes\n" + call,
+                    "crypto/src/main/scala/xyz/kd5ujc/scarab/crypto/kes/Sum6KesSigning.scala": "package xyz.kd5ujc.scarab.crypto.kes\n" + call,
+                }
+            ),
             [],
         )
 

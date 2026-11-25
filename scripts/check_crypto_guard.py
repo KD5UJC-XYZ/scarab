@@ -25,13 +25,16 @@ main sources or in `tools`, is refused until it is added to `VERIFY_CALLERS` her
 
 The secret path (#1418) is held tighter too. The main sources of the secret packages
 (`SECRET_PACKAGES`): `xyz.kd5ujc.scarab.crypto.vrf.secret`, which holds the VRF signing key's seed
-and every value computed from it, and `xyz.kd5ujc.scarab.crypto.secret`, the working storage
-(`Scratch`) those values live in, may name no variable-time routine (`VARIABLE_TIME`: the
-`vartime*` operations and `VartimeEd25519`, the NAF recoding, Bouncy Castle's `*Var` routines,
-`Ed25519Point`, `Draft03Math`, the verifiers, big-integer arithmetic), no comparison that stops at
-the first difference (and no member of `java.util.Arrays` but `fill`), and no call that would share
-an array the package erases; and an import there may rename nothing and bring in no member of
-`java.util.Arrays`, so that a listed name cannot be called under another (`IMPORT_RULES`).
+and every value computed from it, `xyz.kd5ujc.scarab.crypto.kes.secret`, which holds the KES
+signing key's seeds and every value computed from them, and `xyz.kd5ujc.scarab.crypto.secret`, the
+working storage (`Scratch`) those values live in, may name no variable-time routine
+(`VARIABLE_TIME`: the `vartime*` operations and `VartimeEd25519`, the NAF recoding, Bouncy Castle's
+`*Var` routines, `Ed25519Point`, `Draft03Math`, the verifiers, big-integer arithmetic), no
+comparison that stops at the first difference (and no member of `java.util.Arrays` but `fill`), no
+call that would share an array the package erases, and nothing of Bouncy Castle, whose digests and
+Ed25519 keep what they compute in working arrays of their own that they do not clear; and an
+import there may rename nothing and bring in no member of `java.util.Arrays`, so that a listed name
+cannot be called under another (`IMPORT_RULES`).
 `Draft03Prover.scala`, which hands the VRF package the hash-to-curve point, may call
 `Draft03Math.h2c` (its inputs are the public key and alpha) and nothing else of the variable-time
 math. A source is of a secret package when it sits in its directory or when any of its package
@@ -165,6 +168,7 @@ def main(argv):
 # The secret packages, each with its path relative to the language directory.
 SECRET_PACKAGES = (
     ("xyz.kd5ujc.scarab.crypto.vrf.secret", PACKAGE_PARTS + ("secret",)),
+    ("xyz.kd5ujc.scarab.crypto.kes.secret", ("xyz", "kd5ujc", "scarab", "crypto", "kes", "secret")),
     ("xyz.kd5ujc.scarab.crypto.secret", ("xyz", "kd5ujc", "scarab", "crypto", "secret")),
 )
 # The prover file in package vrf that hands the secret path its public input: (module, language
@@ -181,6 +185,7 @@ VARIABLE_TIME = (
     (re.compile(r"\b(sameElements|corresponds|contentEquals|deepEquals)\b"), "a comparison that stops at a difference"),
     (re.compile(r"\bArrays\s*\.\s*(?!fill\b)\w+"), "a member of java.util.Arrays other than fill (equals, mismatch, compare, ...)"),
     (re.compile(r"\bBytes\s*\.\s*wrap\b|\bunsafeArray\b"), "a value sharing an array that is erased"),
+    (re.compile(r"\bbouncycastle\b|\bBlake2bDigest\b"), "Bouncy Castle, whose working arrays are not erased"),
 )
 DRAFT03_MATH = re.compile(r"\bDraft03Math\b(?:\s*\.\s*(\w+))?")
 FACADE_MATH = {"h2c"}
@@ -313,15 +318,15 @@ def guarded(argv):
     """The containment check, and then the secret path's: 1 if either refuses."""
     secret = sorted(set(secret_path_violations(Path(argv[1] if len(argv) > 1 else "."))))
     for path, what in secret:
-        print(f"variable-time name on the secret path: {path}: {what}")
+        print(f"refused on the secret path: {path}: {what}")
     contained = main(argv)
     if secret:
         print(
             "The secret path (the packages of SECRET_PACKAGES, and Draft03Prover's call into "
-            "Draft03Math) names no variable-time routine (VARIABLE_TIME)."
+            "Draft03Math) names no variable-time routine and nothing of Bouncy Castle (VARIABLE_TIME)."
         )
         return 1
-    print("crypto guard: the secret path names no variable-time routine")
+    print("crypto guard: the secret path names no variable-time routine and nothing of Bouncy Castle")
     return contained
 
 
