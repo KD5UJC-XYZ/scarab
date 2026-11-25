@@ -4,6 +4,7 @@ package xyz.kd5ujc.scarab.network.selection
 import munit.FunSuite
 import xyz.kd5ujc.scarab.network.OutboundLimit
 import scala.concurrent.duration.*
+import xyz.kd5ujc.scarab.protocol.ConnectionState.Provenance
 
 /** The big ledger peers in the decision function, by example: the six families of the reference
   * (`BigLedgerPeers.belowTarget` and `aboveTarget`, `EstablishedPeers` and `ActivePeers`
@@ -370,6 +371,89 @@ class BigLedgerSuite extends FunSuite:
     assert(v.big.established.subsetOf(v.big.known))
     assert(v.big.known.intersect(v.known).isEmpty)
     assertEquals(GovernorState.invariant(after), Nil)
+  }
+
+  // ------------------------------------------------------------------ a reload of the roots
+
+  /** A Genesis node syncing, with its big ledger peers at their targets and the Honest Availability
+    * Assumption satisfied.
+    */
+  private def genesisSyncing: S =
+    val ts = targets(
+      known = 4,
+      established = 2,
+      active = 1,
+      knownBig = 10,
+      establishedBig = 8,
+      activeBig = 6
+    )
+    val sensitivity = Sensitivity
+      .initial(useBootstrapPeers = false, consensusMode = ConsensusMode.GenesisMode)
+      .copy(judgement = LedgerStateJudgement.TooOld)
+    val st = start(ts).copy(sensitivity = sensitivity, reported = LedgerStateJudgement.TooOld)
+    withPeers(
+      st,
+      (1 to 6).map(_ -> big(Status.Hot)) ++ (7 to 8).map(_ -> big(Status.Warm(t0))) ++
+        (9 to 10).map(_ -> big()) ++ (11 to 12).map(_ -> PeerRecord.cold(Origin.Other))*
+    )
+
+  private def haa(st: S): OutboundConnectionsState =
+    GovernorState.outboundConnectionsState(AssociationMode.Unrestricted, st.view(t0))
+
+  /** Issue 810: a new roots generation (a refresh of the local roots' DNS names, or a SIGHUP) left
+    * no big ledger peer: every one became an ordinary peer, so the Genesis HAA lapsed and the
+    * ordinary families demoted and forgot them. The reference's reconfiguration of the local roots
+    * takes only the new local roots out of the public roots (`localRoots`, ouroboros-network
+    * c45735a5, `cardano-diffusion/lib/Cardano/Network/PeerSelection/Governor/Monitor.hs` 276-282),
+    * and its big ledger peers change only by their own request and forgetting
+    * (`Governor/BigLedgerPeers.hs` 164-225 and 253-305).
+    */
+  test("a reload of the roots keeps the big ledger peers, their sessions and the Genesis HAA") {
+    val st = genesisSyncing
+    assertEquals(haa(st), OutboundConnectionsState.TrustedStateWithExternalPeers)
+    val reloaded = PeerSelection
+      .apply(
+        st,
+        Event.RootsConfigured(LocalRoots.empty[Int], false, Set.empty, Some(BigInt(1))),
+        t0
+      )
+      .state
+    val view = reloaded.view(t0)
+    assertEquals(view.big.known.toSet, (1 to 10).toSet)
+    assertEquals(view.big.active.toSet, (1 to 6).toSet)
+    assertEquals(haa(reloaded), OutboundConnectionsState.TrustedStateWithExternalPeers)
+    val (after, jobs, traces) = settle(reloaded, t0)
+    val bigPeers = (1 to 10).toSet
+    val demoted = jobs.collect {
+      case j @ Job.Deactivate(p) if bigPeers(p) => j
+      case j @ Job.Close(p, _) if bigPeers(p)   => j
+    }
+    assertEquals(demoted, Nil)
+    val forgotten = traces.collect { case Trace.ForgetCold(_, _, ps) =>
+      ps.filter(bigPeers)
+    }.flatten
+    assertEquals(forgotten, Nil)
+    assertEquals(haa(after), OutboundConnectionsState.TrustedStateWithExternalPeers)
+    assertEquals(GovernorState.invariant(after), Nil)
+  }
+
+  test("a big ledger peer that a reload makes a local root becomes a local root") {
+    val st = genesisSyncing
+    val roots = LocalRoots.fromGroups(
+      List(
+        RootGroupSpec(
+          1,
+          1,
+          List(9 -> RootConfig(false, DiffusionMode.InitiatorOnly, Provenance.Outbound, false))
+        )
+      )
+    )
+    val reloaded = PeerSelection
+      .apply(st, Event.RootsConfigured(roots, false, Set.empty, Some(BigInt(1))), t0)
+      .state
+    assertEquals(reloaded.peers(9).origin, Origin.Local)
+    assertEquals(reloaded.view(t0).big.known.toSet, (1 to 10).toSet - 9)
+    assertEquals(GovernorState.invariant(reloaded), Nil)
   }
 
   // ------------------------------------------------------------------ the sensitive state

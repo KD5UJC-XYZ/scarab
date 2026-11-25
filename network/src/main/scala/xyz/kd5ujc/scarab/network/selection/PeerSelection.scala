@@ -708,10 +708,12 @@ object PeerSelection:
           // a connect in progress is left to complete: the reference's reconfiguration of the
           // roots does not touch `inProgressPromoteCold` (cardano-diffusion `c5117705`,
           // `Cardano/Network/PeerSelection/Governor/Monitor.hs` 197-353), and its completion is
-          // applied whatever changed meanwhile (`Events.completed`)
+          // applied whatever changed meanwhile (`Events.completed`). Only a root the topology
+          // names is taken away; a ledger or big ledger peer keeps its population
+          // ([[Origin.configured]], issue 810)
           val peers = st.peers.map { (peer, record) =>
             val current =
-              if record.origin.root && !stillConfigured(peer) then
+              if record.origin.configured && !stillConfigured(peer) then
                 record.copy(origin = Origin.Other)
               else record
             peer -> current

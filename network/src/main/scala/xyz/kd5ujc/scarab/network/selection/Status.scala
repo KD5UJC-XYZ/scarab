@@ -95,6 +95,22 @@ enum Origin:
 
   def root: Boolean = this != Other
 
+  /** A root the topology names, which a reload of the roots can take away: a local, public or
+    * bootstrap root. The ledger and big ledger peers come from the ledger or the peer snapshot, and
+    * a reload leaves them as they are unless it makes one an effective local root: the reference's
+    * reconfiguration of the local roots takes only the new local roots out of its public roots
+    * (`localRoots`, ouroboros-network c45735a5,
+    * `cardano-diffusion/lib/Cardano/Network/PeerSelection/Governor/Monitor.hs` 276-282), and
+    * otherwise its big ledger peers change only by their own request and forgetting
+    * (`ouroboros-network/lib/Ouroboros/Network/PeerSelection/Governor/BigLedgerPeers.hs` 164-225
+    * and 253-305). A ledger or big ledger peer the configuration also names as a public root keeps
+    * its origin, as the reference's public-root answer leaves out the roots it already has
+    * (`ouroboros-network/lib/Ouroboros/Network/PeerSelection/Governor/RootPeers.hs` 159-167).
+    */
+  def configured: Boolean = this match
+    case Local | Public | Bootstrap => true
+    case Ledger | BigLedger | Other => false
+
   /** The big ledger peers, which the ordinary views and families leave out. */
   def big: Boolean = this == BigLedger
 

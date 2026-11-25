@@ -383,6 +383,84 @@ class PeerRootReloadSuite extends FailsOnUncaught:
     assertEquals(applied.peers(bootstrap).origin, Origin.Other)
   }
 
+  /** Issue 810: a local root's DNS name answered the same addresses in another order, which
+    * publishes a new roots generation; that generation took every big ledger peer away. The
+    * addresses of the big ledger peers wait a day before they are dialled, so only the reload can
+    * change them.
+    */
+  test("a local DNS answer in another order keeps the big ledger peers") {
+    val first = SocketAddress[Host](ipv4"192.0.2.31", port"3001")
+    val second = SocketAddress[Host](ipv4"192.0.2.32", port"3001")
+    val bigLedger =
+      List(ipv4"198.51.100.1", ipv4"198.51.100.2", ipv4"198.51.100.3")
+        .map(ip => SocketAddress[Host](ip, port"3001"))
+    Settled.timed { settle =>
+      for
+        lookups <- Ref.of[IO, Int](0)
+        resolvedFirst <- Deferred[IO, Unit]
+        resolvedAgain <- Deferred[IO, Unit]
+        dns = new PeerDns[IO]:
+          def addresses(_query: DnsName) =
+            lookups.getAndUpdate(_ + 1).flatMap {
+              case 0 =>
+                resolvedFirst
+                  .complete(())
+                  .as(
+                    DnsAddressAnswer(
+                      Vector(
+                        DnsAddressRecord(ipv4"192.0.2.31", 60.seconds),
+                        DnsAddressRecord(ipv4"192.0.2.32", 60.seconds)
+                      ),
+                      Vector.empty
+                    )
+                  )
+              case 1 =>
+                resolvedAgain
+                  .complete(())
+                  .as(
+                    DnsAddressAnswer(
+                      Vector(
+                        DnsAddressRecord(ipv4"192.0.2.32", 60.seconds),
+                        DnsAddressRecord(ipv4"192.0.2.31", 60.seconds)
+                      ),
+                      Vector.empty
+                    )
+                  )
+              case _ => IO.never[DnsAddressAnswer]
+            }
+          def services(_query: DnsName) = IO.pure(Left(PeerDnsError.Lookup(Vector.empty)))
+        given Resource[IO, PeerDns[IO]] = Resource.pure[IO, PeerDns[IO]](dns)
+        _ <- running(roots(List(cachedHost -> nextConfig), hot = 1, warm = 2)).use { network =>
+          network.run.background.use { _ =>
+            for
+              _ <- resolvedFirst.get
+              _ <- settle
+              now <- IO.monotonic
+              _ <- network.state.update(st =>
+                st.copy(peers =
+                  st.peers ++ bigLedger.map(
+                    _ -> PeerRecord
+                      .cold(Origin.BigLedger)
+                      .copy(status = Status.Cold(Some(now + 1.day)))
+                  )
+                )
+              )
+              installed <- network.state.get
+              _ = assertEquals(installed.localRoots.keys.toSet, Set(first, second))
+              _ <- resolvedAgain.get
+              _ <- settle
+              after <- network.state.get
+              _ = assert(after.rootsGeneration > installed.rootsGeneration)
+              _ = assertEquals(after.localRoots, installed.localRoots)
+              _ = assertEquals(after.view(now).big.known.toSet, bigLedger.toSet)
+              _ = assertEquals(GovernorState.invariant(after), Nil)
+            yield ()
+          }
+        }
+      yield ()
+    }
+  }
+
   test("startup bootstrap policy includes SRV-only and explicitly empty configurations") {
     val absent = roots(Nil, hot = 0, warm = 0)
     val domain = DnsName.from("bootstrap.example").fold(e => fail(e.toString), identity)
