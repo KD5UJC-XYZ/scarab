@@ -308,11 +308,11 @@ def conway_gov_order(name):
 
     # two proposals of one transaction differ (its proposals are a set): by their anchors
     info = propose(b, b.wallet(3), k3, [eratx.proposal(gov_deposit, d1_account, eratx.info_action(), eratx.anchor(
-        f"https://example.invalid/info-{n}")) for n in (1, 2)], 2 * gov_deposit)
+        f"https://example.invalid/info-{n}")) for n in (1, 2)], gov_deposit)
     proposed, expires = gov_actions(b)[(info, 0)]
     await_epoch(b, proposed + 1)
     withdrawals = propose(b, b.wallet(3), k3, [eratx.proposal(gov_deposit, d1_account, eratx.treasury_withdrawal_action(
-        {d1_account: amount})) for amount in (1_000_000, 2_000_000)], 2 * gov_deposit)
+        {d1_account: amount})) for amount in (1_000_000, 2_000_000)], gov_deposit)
     window = expires + 1
     now = await_epoch(b, window)
     actions = gov_actions(b)
@@ -401,7 +401,7 @@ def conway_mempool(name):
     epoch = early_in_epoch(b)["epoch"]
     setup = propose(b, b.wallet(3), k3, [eratx.proposal(gov_deposit, d1_account, eratx.info_action()),
                                          eratx.proposal(gov_deposit, d1_account, eratx.update_committee_action(
-                                             {c.hash: epoch + 100 for c in cold}))], 2 * gov_deposit)
+                                             {c.hash: epoch + 100 for c in cold}))], gov_deposit)
     f = b.wallet(3)
     tx, txid = eratx.build_tx("conway", [txin(f)], [eratx.tx_out("conway", eratx.enterprise_address(k3.hash),
                                                                  f["lovelace"] - FEE)], FEE, [k3, *cold],

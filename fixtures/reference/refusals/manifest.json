@@ -106,6 +106,10 @@
       "sha256": "c79dde9b4151e26688f65fd03879fcf06fa712854733d9fa6fd0bc774a455c86"
     },
     {
+      "path": "conway-constructors",
+      "sha256": "d2898e38cf11bfd93b85aedafa68a8324d22f8f75fa1e2d9f35e183aaf5b1613"
+    },
+    {
       "path": "conway-deleg-collateral",
       "sha256": "5917fba5f6fa1ecb2d83f073ede39f6e549327809d0447192a4867191a6946d5"
     },
