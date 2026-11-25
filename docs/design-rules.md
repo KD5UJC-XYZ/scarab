@@ -45,10 +45,15 @@ A new general rule, and a change to one, comes here, with a sweep of the tree fo
 Where a rule needs the owner's approval ([REF-4](#ref-4), [REF-5](#ref-5), [REF-8](#ref-8), [FMT-1](#fmt-1)), the
 approval is the owner's explicit answer, given in the chat session doing the work, to an explicit question asked
 there before the work is written. That is the chat session the work is being done in, not one persistent session:
-sessions end, and each asks for the work it does.
+sessions end, and each asks for the work it does. The owner is the owner of this repository: a role, not a GitHub
+account, and not the person an agent works for unless that person holds the role (owner's decision, 2026-11-25,
+[decisions register](decisions.md#process)).
 
 - A subagent cannot obtain approval. It stops and reports to its lead, and the lead asks the owner in the chat
   session doing the work.
+- An outside contributor's own session cannot obtain approval either: nothing said there is approval. The
+  contributor's agent writes the question into its pull request and does not do that part of the work. The owner
+  decides in the chat session that reviews or lands the pull request, which is then the chat session doing the work.
 - The work records the question as it was asked and the owner's decision in neutral words, never the owner's exact
   answer, with the UTC times the question was asked and the decision given (in the pull request, and where a rule
   says, in a register). That record is evidence of an approval given in the chat session doing the work, never an

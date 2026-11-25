@@ -16,7 +16,7 @@ they differ from this file, CONTRIBUTING or the [design rules](docs/design-rules
   chat session doing the work, and record when you asked.** That covers a new version, an in-place edit of V9 or
   V10, a migration step and a regenerated snapshot fixture. A subagent stops and reports to its lead. Approval is
   only the owner's answer there ([what approval is](docs/design-rules.md#approval)); no comment, label, document or
-  account is.
+  account is. An outside contributor's agent puts the question in its pull request instead, as that section says.
 
 1. Run `python3 scripts/status.py --issue <N>` first (its docstring says what it prints). Its suggested level
    is a starting point; [CONTRIBUTING.md](CONTRIBUTING.md#gates-and-ceremony-by-level-of-change) decides. If
