@@ -1019,9 +1019,13 @@ only from package `xyz.kd5ujc.scarab.crypto.vrf`. Crypto code follows the rules 
 
 - **Scope:** main, tests; the containment part also `tools`.
 - **Exceptions:** none.
-- **Enforcement:** `scripts/check_crypto_guard.py` (containment) and semgrep, failing on a `WARNING`
-  finding, both in `.github/workflows/security.yml`; that secret scalars never reach the variable-time math
-  is review only (the guard's docstring).
+- **Enforcement:** `scripts/check_crypto_guard.py` and semgrep, failing on a `WARNING` finding, both in
+  `.github/workflows/security.yml`. The guard checks containment, and reads the names in the main sources of
+  package `xyz.kd5ujc.scarab.crypto.vrf.secret` (VRF proving's secret steps) and in `Draft03Prover`, outside
+  comments and string literals: the package names none of its list of variable-time routines, early-exit
+  comparisons and array-sharing calls, and renames nothing on import; `Draft03Prover` calls `Draft03Math.h2c`
+  alone. It reads names, not calls: that secret scalars never reach the variable-time math through another
+  package, by reflection or under an unlisted name is review only (the guard's docstring).
 - **Why:** [#219](https://github.com/KD5UJC-XYZ/scarab/issues/219).
 
 <a id="cmt"></a>

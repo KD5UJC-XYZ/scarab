@@ -101,6 +101,17 @@ paths = ['''^fixtures/reference/refusals/conway-three-certificates/genesis/shell
          '''^fixtures/reference/refusals/genesis/41a5c6f0e32ada7b1da933d3603bdebb76adf616b0b32aac15fb5848262859f5-shelley-genesis\.json$''']
 regexes = ['''^(?:0f46326caf6fcd16ddd1efe09f604eb65ac69c613ffb2aafae06589c|541188416c999cf1199ec997f6abde82c2b2823583d99e73587e9387|eb28d57e2df235e8d85ce2498522f3b3a63741a6d525d87109fca0cf)$''']
 
+# The package name of the VRF prover's secret steps (#1418), the value of SECRET_PACKAGE in the crypto guard: a public
+# name that the entropy check reads as a key beside "SECRET". The finding is in the guard's history (commit 012ac482a,
+# line 158) as well as its tree, so it is allowed here rather than by changing the line. Only that exact value in that
+# one file is allowed; any other token there still scans.
+[[rules.allowlists]]
+description = "crypto guard: the VRF secret-path package name"
+condition = "AND"
+regexTarget = "secret"
+paths = ['''^scripts/check_crypto_guard\.py$''']
+regexes = ['''^xyz\.kd5ujc\.scarab\.crypto\.vrf\.secret$''']
+
 [[rules]]
 id = "cardano-text-envelope-signing-key"
 description = "Cardano TextEnvelope signing key"

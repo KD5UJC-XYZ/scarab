@@ -271,15 +271,27 @@ public class EdwardsPoint implements Serializable {
      * @return $[s]P$
      */
     public EdwardsPoint multiply(final Scalar s) {
-        // Construct a lookup table of [P,2P,3P,4P,5P,6P,7P,8P]
-        final ProjectiveNielsPoint.LookupTable lookupTable = ProjectiveNielsPoint.buildLookupTable(this);
-
         // Compute
         //
         // s = s_0 + s_1*16^1 + ... + s_63*16^63,
         //
         // with -8 ≤ s_i < 8 for 0 ≤ i < 63 and -8 ≤ s_63 ≤ 8.
-        final byte[] e = s.toRadix16();
+        return multiplyRadix16(s.toRadix16());
+    }
+
+    /**
+     * Constant-time variable-base scalar multiplication by a scalar given as its 64 radix-16 digits
+     * ({@link Scalar#toRadix16(byte[], byte[])}), which the caller owns and may erase.
+     *
+     * @param e the digits, each in $[-8, 8]$.
+     * @return $[s]P$
+     */
+    public EdwardsPoint multiplyRadix16(final byte[] e) {
+        if (e.length != 64) {
+            throw new IllegalArgumentException("Digits must be 64 bytes");
+        }
+        // Construct a lookup table of [P,2P,3P,4P,5P,6P,7P,8P]
+        final ProjectiveNielsPoint.LookupTable lookupTable = ProjectiveNielsPoint.buildLookupTable(this);
 
         // Compute s*P as
         //
