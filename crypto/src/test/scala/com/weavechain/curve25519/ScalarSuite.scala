@@ -1,0 +1,140 @@
+// SPDX-License-Identifier: Apache-2.0
+package com.weavechain.curve25519
+
+import org.scalacheck.Prop.forAll
+import scala.util.Try
+
+import Curve25519Gen.*
+
+/** The vendored `Scalar` against exact arithmetic modulo L = 2^252 +
+  * 27742317777372353535851937790883648493 on `BigInt`: reduction of 256- and 512-bit inputs, the
+  * canonical check, the ring operations, and the radix-16 and NAF digits the point multiplications
+  * read. Inputs are weighted toward 0, L and its multiples, 2^252 to 2^256 and the boundaries of
+  * the 21-bit limbs of `Scalar` and the 29-bit limbs of `UnpackedScalar`.
+  */
+class ScalarSuite extends munit.ScalaCheckSuite:
+  override def scalaCheckTestParameters =
+    super.scalaCheckTestParameters.withMinSuccessfulTests(1000)
+
+  private def value(s: Scalar): BigInt = fromLe(s.toByteArray)
+
+  private def canonical(v: BigInt): Scalar = Scalar.fromCanonicalBytes(le(v, 32))
+
+  /** Any value below 2^255, the domain of `Scalar`'s representation, reduced or not. */
+  private def unreduced(v: BigInt): Scalar = Scalar.fromBits(le(v, 32))
+
+  property("fromBytesModOrder reduces any 256-bit input modulo L") {
+    forAll(scalar256) { v =>
+      assertEquals(value(Scalar.fromBytesModOrder(le(v, 32))), v.mod(L), v.toString(16))
+    }
+  }
+
+  property("fromBytesModOrderWide reduces any 512-bit input modulo L") {
+    forAll(wide) { v =>
+      assertEquals(value(Scalar.fromBytesModOrderWide(le(v, 64))), v.mod(L), v.toString(16))
+    }
+  }
+
+  property("fromCanonicalBytes accepts exactly the values below L") {
+    forAll(scalar256) { v =>
+      val parsed = Try(Scalar.fromCanonicalBytes(le(v, 32))).toEither
+      if v < L then assertEquals(parsed.map(value), Right(v), v.toString(16))
+      else
+        parsed match
+          case Left(_: IllegalArgumentException) => ()
+          case other => fail(s"${v.toString(16)} is at least L and was read as $other")
+    }
+  }
+
+  property("fromBits keeps the low 255 bits, and reduce and isCanonical read them modulo L") {
+    forAll(scalar256) { v =>
+      val low = v & ((BigInt(1) << 255) - 1)
+      val s = Scalar.fromBits(le(v, 32))
+      assertEquals(value(s), low, "fromBits")
+      assertEquals(value(s.reduce()), low.mod(L), "reduce")
+      assertEquals(s.isCanonical(), low < L, "isCanonical")
+    }
+  }
+
+  property("add and subtract of canonical scalars are canonical, modulo L") {
+    forAll(canonicalScalar, canonicalScalar) { (a, b) =>
+      assertEquals(value(canonical(a).add(canonical(b))), (a + b).mod(L), "add")
+      assertEquals(value(canonical(a).subtract(canonical(b))), (a - b).mod(L), "subtract")
+    }
+  }
+
+  property("multiply, square and multiplyAndAdd of canonical scalars are exact modulo L") {
+    forAll(canonicalScalar, canonicalScalar, canonicalScalar) { (a, b, c) =>
+      val (x, y, z) = (canonical(a), canonical(b), canonical(c))
+      assertEquals(value(x.multiply(y)), (a * b).mod(L), "multiply")
+      assertEquals(value(x.square()), (a * a).mod(L), "square")
+      assertEquals(value(x.multiplyAndAdd(y, z)), (a * b + c).mod(L), "multiplyAndAdd")
+    }
+  }
+
+  property("multiplyAndAdd reduces unreduced operands below 2^255 too") {
+    // The VRF prover's response c x + k (Draft03Prover) takes c from fromBits.
+    forAll(scalar255, scalar255, scalar255) { (a, b, c) =>
+      assertEquals(
+        value(unreduced(a).multiplyAndAdd(unreduced(b), unreduced(c))),
+        (a * b + c).mod(L),
+        s"${a.toString(16)} * ${b.toString(16)} + ${c.toString(16)}"
+      )
+    }
+  }
+
+  property("invert and divide are the inverse modulo L") {
+    forAll(canonicalScalar.filter(_ != 0), canonicalScalar) { (a, b) =>
+      assertEquals(value(canonical(a).invert()), a.modPow(L - 2, L), "invert")
+      assertEquals(value(canonical(a).multiply(canonical(a).invert())), BigInt(1), "a * a^-1")
+      assertEquals(
+        value(canonical(b).divide(canonical(a))),
+        (b * a.modPow(L - 2, L)).mod(L),
+        "divide"
+      )
+    }
+  }
+
+  property("toRadix16 writes digits in [-8, 8) that sum to the scalar") {
+    forAll(scalar255) { v =>
+      val digits = unreduced(v).toRadix16()
+      assertEquals(digits.length, 64)
+      digits.indices.foreach { i =>
+        val upper = if i == 63 then 8 else 7
+        assert(
+          digits(i) >= -8 && digits(i) <= upper,
+          s"digit $i is ${digits(i)} for ${v.toString(16)}"
+        )
+      }
+      val sum = digits.indices.map(i => BigInt(digits(i).toInt) << (4 * i)).sum
+      assertEquals(sum, v, v.toString(16))
+    }
+  }
+
+  property("nonAdjacentForm writes zero or odd digits below 16 that sum to the scalar") {
+    forAll(scalar255) { v =>
+      val naf = unreduced(v).nonAdjacentForm()
+      assertEquals(naf.length, 256)
+      naf.indices.foreach { i =>
+        val d = naf(i).toInt
+        assert(d == 0 || (math.abs(d) <= 15 && d % 2 != 0), s"digit $i is $d for ${v.toString(16)}")
+      }
+      val sum = naf.indices.map(i => BigInt(naf(i).toInt) << i).sum
+      assertEquals(sum, v, v.toString(16))
+    }
+  }
+
+  property("equality and hashing are by the encoding") {
+    forAll(canonicalScalar, canonicalScalar) { (a, b) =>
+      assertEquals(canonical(a).equals(canonical(b)), a == b, "equals")
+      assertEquals(canonical(a).ctEquals(canonical(b)), if a == b then 1 else 0, "ctEquals")
+      assertEquals(canonical(a).hashCode(), canonical(a).hashCode(), "hashCode")
+    }
+  }
+
+  test("the scalar constants are those of edwards25519") {
+    assertEquals(value(Constants.BASEPOINT_ORDER), L, "L")
+    assertEquals(BigInt(Constants.ModMinus2), L - 2, "L - 2")
+    assertEquals(value(Scalar.ZERO), BigInt(0), "ZERO")
+    assertEquals(value(Scalar.ONE), BigInt(1), "ONE")
+  }
