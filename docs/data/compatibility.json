@@ -1266,9 +1266,8 @@
           "ConformanceCosting171Suite",
           "GeneratedOracle171Suite",
           "LedgerEvalSuite",
-          "DijkstraScriptContextsSuite",
+          "DijkstraPlutusContextSuite",
           "DijkstraContextWireSuite",
-          "LeiosChainContextsSuite",
           "LeiosChainScriptsSuite",
           "CostModelNameTablesSuite"
         ],

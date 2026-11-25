@@ -37,8 +37,7 @@ spend, written by `scripts/oracle/leios-testnet/leios_context_cases.py`:
 before it evaluates the scripts (`mkDijkstraStAnnTopTx`) at protocol version 12.0, slots of one
 second from the POSIX epoch, each the `ToCBOR PlutusWithContext` encoding, or the collection's
 failure. The scripts are placeholders that are never deserialised or evaluated.
-`DijkstraScriptContextsSuite` requires the same arguments, in the same order, and the same refusals;
-`DijkstraContextWireSuite` requires each PlutusV4 context's `PlutusWithContext` bytes
-(`PlutusFailureCbor`) to equal the reference's. `DijkstraPlutusContextSuite` builds the same contexts on the era
-types, through `mkDijkstraStAnnTopTx` and `mkDijkstraStAnnSubTx`, their serialized arguments compared byte for byte and
-the rest of each `PlutusWithContext` record field by field, and each refusal as its typed error.
+`DijkstraPlutusContextSuite` builds the same contexts on the era types, through `mkDijkstraStAnnTopTx` and
+`mkDijkstraStAnnSubTx`, in the same order, their serialized arguments compared byte for byte and the rest of each
+`PlutusWithContext` record field by field, and each refusal as its typed error; `DijkstraContextWireSuite` requires the
+`PlutusWithContext` bytes (`PlutusFailureCbor`) of each of those contexts to equal the reference's.

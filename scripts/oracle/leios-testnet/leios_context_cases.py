@@ -3,8 +3,8 @@
 
 Each case is a Dijkstra top-level transaction with PlutusV4 scripts and the outputs it spends and
 references. The oracle's "context" kind builds its script contexts as cardano-ledger 9df9f98c does
-before evaluating them (`mkDijkstraStAnnTopTx`); `DijkstraScriptContextsSuite` requires
-`DijkstraScriptContexts.transaction` to build the same arguments. The scripts are never evaluated,
+before evaluating them (`mkDijkstraStAnnTopTx`); `DijkstraPlutusContextSuite` requires the era
+types' makers to build the same arguments. The scripts are never evaluated,
 so their bytes are placeholders that differ only to give distinct hashes.
 
     python3 scripts/oracle/leios-testnet/leios_context_cases.py > cases.json

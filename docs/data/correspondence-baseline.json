@@ -716,9 +716,6 @@
    "class ledger.dijkstra.DijkstraPoolParams": null,
    "class ledger.dijkstra.DijkstraProposal": null,
    "class ledger.dijkstra.DijkstraRedeemer": null,
-   "class ledger.dijkstra.DijkstraScriptContexts.Context": null,
-   "class ledger.dijkstra.DijkstraScriptContexts.Environment": null,
-   "class ledger.dijkstra.DijkstraScriptContexts.Transaction": null,
    "class ledger.dijkstra.DijkstraSubTx": null,
    "class ledger.dijkstra.DijkstraTx": null,
    "class ledger.dijkstra.DijkstraTxBody": null,
@@ -1847,11 +1844,6 @@
      ]
     }
    ],
-   "def ledger.dijkstra.DijkstraScriptContexts.Transaction.of": null,
-   "def ledger.dijkstra.DijkstraScriptContexts.changedParameters": null,
-   "def ledger.dijkstra.DijkstraScriptContexts.contexts": null,
-   "def ledger.dijkstra.DijkstraScriptContexts.plutusScriptsProvided": null,
-   "def ledger.dijkstra.DijkstraScriptContexts.transaction": null,
    "def ledger.dijkstra.DijkstraSubTx#id": null,
    "def ledger.dijkstra.DijkstraTx#id": null,
    "def ledger.dijkstra.DijkstraTx.body": null,
@@ -2923,19 +2915,6 @@
    "enum ledger.byron.UpdateError": null,
    "enum ledger.dijkstra.DijkstraBalanceInterval": null,
    "enum ledger.dijkstra.DijkstraCert": null,
-   "enum ledger.dijkstra.DijkstraCollectError": null,
-   "enum ledger.dijkstra.DijkstraContextError": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxInfo.hs",
-     "symbol": "DijkstraContextError",
-     "lines": [
-      155,
-      197
-     ]
-    }
-   ],
    "enum ledger.dijkstra.DijkstraDatum": null,
    "enum ledger.dijkstra.DijkstraDelegatee": null,
    "enum ledger.dijkstra.DijkstraGovAction": null,
@@ -2945,9 +2924,6 @@
    "enum ledger.dijkstra.DijkstraPurpose": null,
    "enum ledger.dijkstra.DijkstraRelay": null,
    "enum ledger.dijkstra.DijkstraScript": null,
-   "enum ledger.dijkstra.DijkstraScriptContexts.Collected": null,
-   "enum ledger.dijkstra.DijkstraScriptContexts.Level": null,
-   "enum ledger.dijkstra.DijkstraTxOutSource": null,
    "enum ledger.dijkstra.DijkstraVoter": null,
    "enum ledger.dijkstra.V12.Interval": null,
    "enum ledger.era.AlonzoScriptRep": null,
@@ -3480,8 +3456,6 @@
    "object ledger.dijkstra.DijkstraPurposes": null,
    "object ledger.dijkstra.DijkstraRelay": null,
    "object ledger.dijkstra.DijkstraScript": null,
-   "object ledger.dijkstra.DijkstraScriptContexts": null,
-   "object ledger.dijkstra.DijkstraScriptContexts.Transaction": null,
    "object ledger.dijkstra.DijkstraTx": null,
    "object ledger.dijkstra.DijkstraTxIn": null,
    "object ledger.dijkstra.DijkstraTxOut": null,
@@ -3876,8 +3850,6 @@
    "type ledger.Unsigned": null,
    "type ledger.byron.ByronSig.Verifier": null,
    "type ledger.byron.ByronVersion": null,
-   "type ledger.dijkstra.DijkstraScriptContexts.Collection": null,
-   "type ledger.dijkstra.DijkstraScriptContexts.Result": null,
    "type ledger.dijkstra.MultiAsset": null,
    "type ledger.dijkstra.V12.Result": null,
    "type ledger.era.AdaValue": null,

@@ -289,7 +289,7 @@ class DijkstraTxSuite extends FunSuite:
         // the update as Plutus data, against the flat path's reading of the decoder's update
         assertEquals(
           ToPlutusData[PParamsUpdate[Dijkstra]].toPlutusData(u),
-          xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraScriptContexts.changedParameters(fu),
+          xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraChangedParameters.of(fu),
           what
         )
       case (

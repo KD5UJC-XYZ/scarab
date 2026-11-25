@@ -11403,7 +11403,7 @@
     "ConwayUpdatePlutusDataSuite",
     "RecordedScriptContextsSuite",
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "note": "`toPlutusData` alone: the reference's `fromPlutusData`, which only its tests call, is not here yet",
    "digest": "78690b9f4dc799f8"
@@ -11429,7 +11429,7 @@
     "ConwayUpdatePlutusDataSuite",
     "RecordedScriptContextsSuite",
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "846e1a739e8e9683"
   },
@@ -11488,7 +11488,7 @@
     "ConwayUpdatePlutusDataSuite",
     "RecordedScriptContextsSuite",
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "1d5f1017787da901"
   },
@@ -11513,7 +11513,7 @@
     "ConwayUpdatePlutusDataSuite",
     "RecordedScriptContextsSuite",
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "91849ea97e996efa"
   },
@@ -11538,7 +11538,7 @@
     "ConwayUpdatePlutusDataSuite",
     "RecordedScriptContextsSuite",
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "81aa1c53e029b75c"
   },
@@ -11563,7 +11563,7 @@
     "ConwayUpdatePlutusDataSuite",
     "RecordedScriptContextsSuite",
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "55d09dea8d4a3375"
   },
@@ -11588,7 +11588,7 @@
     "ConwayUpdatePlutusDataSuite",
     "RecordedScriptContextsSuite",
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "99862c4c593cd9c3"
   },
@@ -11613,7 +11613,7 @@
     "ConwayUpdatePlutusDataSuite",
     "RecordedScriptContextsSuite",
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "0257ddb82de3b4e8"
   },
@@ -11638,7 +11638,7 @@
     "ConwayUpdatePlutusDataSuite",
     "RecordedScriptContextsSuite",
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "f142c6420b4ce584"
   },
@@ -11663,7 +11663,7 @@
     "ConwayUpdatePlutusDataSuite",
     "RecordedScriptContextsSuite",
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "6b27bca71606e766"
   },
@@ -11688,7 +11688,7 @@
     "ConwayUpdatePlutusDataSuite",
     "RecordedScriptContextsSuite",
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "8302eacf2c0fc671"
   },
@@ -11713,7 +11713,7 @@
     "ConwayUpdatePlutusDataSuite",
     "RecordedScriptContextsSuite",
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "e2fa2c18a862f270"
   },
@@ -11738,7 +11738,7 @@
     "ConwayUpdatePlutusDataSuite",
     "RecordedScriptContextsSuite",
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "18f2b7ce95a0494c"
   },
@@ -11763,7 +11763,7 @@
     "ConwayUpdatePlutusDataSuite",
     "RecordedScriptContextsSuite",
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "note": "the flattened models through the reference's instances of `Map` and of lists (`:52-62`), written out: the languages ascending, each language's parameters in their order",
    "digest": "1643244d93db3bfa"
@@ -11785,7 +11785,7 @@
    "structure": "same",
    "evidence": [
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "note": "the Leios build's alone",
    "digest": "5033081df707d48c"
@@ -11807,7 +11807,7 @@
    "structure": "same",
    "evidence": [
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "note": "the Leios build's alone",
    "digest": "5f0654c6e47ea3ba"
@@ -11829,7 +11829,7 @@
    "structure": "same",
    "evidence": [
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "note": "the Leios build's alone",
    "digest": "7967dd480bc9e9fb"
@@ -11851,7 +11851,7 @@
    "structure": "same",
    "evidence": [
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "note": "the Leios build's alone",
    "digest": "edfb915c5811c52a"
@@ -11873,7 +11873,7 @@
    "structure": "same",
    "evidence": [
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "note": "the Leios build's alone",
    "digest": "16cdf36254c61526"
@@ -11899,7 +11899,7 @@
     "ConwayUpdatePlutusDataSuite",
     "RecordedScriptContextsSuite",
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "note": "`toPlutusData` over the era's descriptions; the Leios build's instance is the same (cardano-ledger 9df9f98c `Conway/PParams.hs:200-206`)",
    "digest": "2080a047dd2b0100"
@@ -11925,7 +11925,7 @@
     "ConwayUpdatePlutusDataSuite",
     "RecordedScriptContextsSuite",
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "d3c74a067764ea69"
   },
@@ -11950,7 +11950,7 @@
     "ConwayUpdatePlutusDataSuite",
     "RecordedScriptContextsSuite",
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "f7bdb12636399ec6"
   },
@@ -11986,7 +11986,7 @@
     "ConwayUpdatePlutusDataSuite",
     "RecordedScriptContextsSuite",
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite",
+    "DijkstraPlutusContextSuite",
     "EraPParamsCborSuite",
     "EraPParamsStoredSuite"
    ],
@@ -12032,7 +12032,7 @@
     "ConwayUpdatePlutusDataSuite",
     "RecordedScriptContextsSuite",
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "819f990a37558aaf"
   },
@@ -12057,7 +12057,7 @@
     "ConwayUpdatePlutusDataSuite",
     "RecordedScriptContextsSuite",
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "ae30e132f94d7edb"
   },
@@ -12082,7 +12082,7 @@
     "ConwayUpdatePlutusDataSuite",
     "RecordedScriptContextsSuite",
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "c4ee00355bb66dab"
   },
@@ -12107,7 +12107,7 @@
     "ConwayUpdatePlutusDataSuite",
     "RecordedScriptContextsSuite",
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "note": "the `ToPlutusData t` dictionary the reference's constructor packs",
    "digest": "63a830084b4505b3"
@@ -12143,7 +12143,7 @@
     "ConwayUpdatePlutusDataSuite",
     "RecordedScriptContextsSuite",
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite",
+    "DijkstraPlutusContextSuite",
     "EraPParamsCborSuite",
     "EraPParamsStoredSuite"
    ],
@@ -12180,7 +12180,7 @@
     "ConwayUpdatePlutusDataSuite",
     "RecordedScriptContextsSuite",
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite",
+    "DijkstraPlutusContextSuite",
     "EraPParamsCborSuite",
     "EraPParamsStoredSuite"
    ],
@@ -12218,7 +12218,7 @@
     "ConwayUpdatePlutusDataSuite",
     "RecordedScriptContextsSuite",
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite",
+    "DijkstraPlutusContextSuite",
     "EraPParamsCborSuite",
     "EraPParamsStoredSuite"
    ],
@@ -12246,7 +12246,7 @@
     "ConwayUpdatePlutusDataSuite",
     "RecordedScriptContextsSuite",
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "6f1a4c1073baa76c"
   },
@@ -12290,7 +12290,7 @@
    "structure": "same",
    "evidence": [
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "df7680642687bf48"
   },
@@ -12315,7 +12315,7 @@
     "ConwayUpdatePlutusDataSuite",
     "RecordedScriptContextsSuite",
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "989a7fe9161d040d"
   },
@@ -12340,7 +12340,7 @@
     "ConwayUpdatePlutusDataSuite",
     "RecordedScriptContextsSuite",
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "59658fa138aaa6d6"
   },
@@ -12365,7 +12365,7 @@
     "ConwayUpdatePlutusDataSuite",
     "RecordedScriptContextsSuite",
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "bf6889f15ec1ffe4"
   },
@@ -12390,7 +12390,7 @@
     "ConwayUpdatePlutusDataSuite",
     "RecordedScriptContextsSuite",
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "bc6fe815f3bf7942"
   },
@@ -12415,7 +12415,7 @@
     "ConwayUpdatePlutusDataSuite",
     "RecordedScriptContextsSuite",
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "e98f585ac0a1c8a3"
   },
@@ -12440,7 +12440,7 @@
     "ConwayUpdatePlutusDataSuite",
     "RecordedScriptContextsSuite",
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "8c3f729adc6ee4fd"
   },
@@ -12465,7 +12465,7 @@
     "ConwayUpdatePlutusDataSuite",
     "RecordedScriptContextsSuite",
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "61d4969d1030d0ad"
   },
@@ -12490,7 +12490,7 @@
     "ConwayUpdatePlutusDataSuite",
     "RecordedScriptContextsSuite",
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "55a2a8dc12cec937"
   },
@@ -12515,7 +12515,7 @@
     "ConwayUpdatePlutusDataSuite",
     "RecordedScriptContextsSuite",
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "c15d2c80060d7256"
   },
@@ -12540,7 +12540,7 @@
     "ConwayUpdatePlutusDataSuite",
     "RecordedScriptContextsSuite",
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "c8409683584bc4d7"
   },
@@ -12565,7 +12565,7 @@
     "ConwayUpdatePlutusDataSuite",
     "RecordedScriptContextsSuite",
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "80db4ccbf6e04766"
   },
@@ -12590,7 +12590,7 @@
     "ConwayUpdatePlutusDataSuite",
     "RecordedScriptContextsSuite",
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "2482c4d06af80c14"
   },
@@ -12615,7 +12615,7 @@
     "ConwayUpdatePlutusDataSuite",
     "RecordedScriptContextsSuite",
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "71d577e21c345a2a"
   },
@@ -12640,7 +12640,7 @@
     "ConwayUpdatePlutusDataSuite",
     "RecordedScriptContextsSuite",
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "2ed8189d2b564823"
   },
@@ -12665,7 +12665,7 @@
     "ConwayUpdatePlutusDataSuite",
     "RecordedScriptContextsSuite",
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "3285f0b53e8b80ea"
   },
@@ -12690,7 +12690,7 @@
     "ConwayUpdatePlutusDataSuite",
     "RecordedScriptContextsSuite",
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "a84bc0fc0b15f46c"
   },
@@ -12715,7 +12715,7 @@
     "ConwayUpdatePlutusDataSuite",
     "RecordedScriptContextsSuite",
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "8e32a2201684114b"
   },
@@ -12740,7 +12740,7 @@
     "ConwayUpdatePlutusDataSuite",
     "RecordedScriptContextsSuite",
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "80c3c0a3fdfce583"
   },
@@ -12765,7 +12765,7 @@
     "ConwayUpdatePlutusDataSuite",
     "RecordedScriptContextsSuite",
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "a88a9046b016e250"
   },
@@ -12790,7 +12790,7 @@
     "ConwayUpdatePlutusDataSuite",
     "RecordedScriptContextsSuite",
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "6db8c13b8c979bd7"
   },
@@ -12815,7 +12815,7 @@
     "ConwayUpdatePlutusDataSuite",
     "RecordedScriptContextsSuite",
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "7bd9a73692debf88"
   },
@@ -12840,7 +12840,7 @@
     "ConwayUpdatePlutusDataSuite",
     "RecordedScriptContextsSuite",
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "6d100825890843e8"
   },
@@ -12865,7 +12865,7 @@
     "ConwayUpdatePlutusDataSuite",
     "RecordedScriptContextsSuite",
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "6b7694931f42774c"
   },
@@ -12890,7 +12890,7 @@
     "ConwayUpdatePlutusDataSuite",
     "RecordedScriptContextsSuite",
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "b1f43c2a892db691"
   },
@@ -12915,7 +12915,7 @@
     "ConwayUpdatePlutusDataSuite",
     "RecordedScriptContextsSuite",
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "546839bbc7a79678"
   },
@@ -12940,7 +12940,7 @@
     "ConwayUpdatePlutusDataSuite",
     "RecordedScriptContextsSuite",
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "c044794790c8d452"
   },
@@ -12965,7 +12965,7 @@
     "ConwayUpdatePlutusDataSuite",
     "RecordedScriptContextsSuite",
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "2f96e18f29f74e61"
   },
@@ -12990,7 +12990,7 @@
     "ConwayUpdatePlutusDataSuite",
     "RecordedScriptContextsSuite",
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "41a9fefb1e26b680"
   },
@@ -13015,7 +13015,7 @@
     "ConwayUpdatePlutusDataSuite",
     "RecordedScriptContextsSuite",
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "3ebac06f7f420ae2"
   },
@@ -13040,7 +13040,7 @@
     "ConwayUpdatePlutusDataSuite",
     "RecordedScriptContextsSuite",
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "67dc250cc48251b6"
   },
@@ -13065,7 +13065,7 @@
     "ConwayUpdatePlutusDataSuite",
     "RecordedScriptContextsSuite",
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "a8108de271194b30"
   },
@@ -13086,7 +13086,7 @@
    "structure": "same",
    "evidence": [
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "879e6bf33477e4a5"
   },
@@ -13107,7 +13107,7 @@
    "structure": "same",
    "evidence": [
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "b387f05743b090dd"
   },
@@ -13128,7 +13128,7 @@
    "structure": "same",
    "evidence": [
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "5dd0e57e22f3cbae"
   },
@@ -13149,7 +13149,7 @@
    "structure": "same",
    "evidence": [
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "0cd422f731a973c4"
   },
@@ -13170,7 +13170,7 @@
    "structure": "same",
    "evidence": [
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "f6fcbac646a3ba45"
   },
@@ -13191,7 +13191,7 @@
    "structure": "same",
    "evidence": [
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "64617ec03c6a58af"
   },
@@ -13212,7 +13212,7 @@
    "structure": "same",
    "evidence": [
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "61f11a231b10ba5f"
   },
@@ -13233,7 +13233,7 @@
    "structure": "same",
    "evidence": [
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "40e5ba6622cfbff0"
   },
@@ -13254,7 +13254,7 @@
    "structure": "same",
    "evidence": [
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "9ad02b5104f2d987"
   },
@@ -13275,7 +13275,7 @@
    "structure": "same",
    "evidence": [
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "88fba6fb59e947c7"
   },
@@ -13296,7 +13296,7 @@
    "structure": "same",
    "evidence": [
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "c78b5b62d35b6def"
   },
@@ -13317,7 +13317,7 @@
    "structure": "same",
    "evidence": [
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "7700d04af9f5759c"
   },
@@ -13338,7 +13338,7 @@
    "structure": "same",
    "evidence": [
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "66b3d24255030bfc"
   },
@@ -13359,7 +13359,7 @@
    "structure": "same",
    "evidence": [
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "e63041df76f4c124"
   },
@@ -13380,7 +13380,7 @@
    "structure": "same",
    "evidence": [
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "f06929a893e422dc"
   },
@@ -13401,7 +13401,7 @@
    "structure": "same",
    "evidence": [
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "2f38cbb1798a5268"
   },
@@ -13422,7 +13422,7 @@
    "structure": "same",
    "evidence": [
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "23e5ce219e3ecd85"
   },
@@ -13443,7 +13443,7 @@
    "structure": "same",
    "evidence": [
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "6c3b59ddfb21a5cb"
   },
@@ -13464,7 +13464,7 @@
    "structure": "same",
    "evidence": [
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "d58b835b780c5082"
   },
@@ -13485,7 +13485,7 @@
    "structure": "same",
    "evidence": [
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite",
+    "DijkstraPlutusContextSuite",
     "EraPParamsCborSuite",
     "EraPParamsStoredSuite"
    ],
@@ -13508,7 +13508,7 @@
    "structure": "same",
    "evidence": [
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "ec4caad94f3b4852"
   },
@@ -13529,7 +13529,7 @@
    "structure": "same",
    "evidence": [
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "3172bddbec4b3297"
   },
@@ -13550,7 +13550,7 @@
    "structure": "same",
    "evidence": [
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "34861d267c52535c"
   },
@@ -13575,7 +13575,7 @@
     "ConwayUpdatePlutusDataSuite",
     "RecordedScriptContextsSuite",
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "47669c68e66600e4"
   },
@@ -13600,7 +13600,7 @@
     "ConwayUpdatePlutusDataSuite",
     "RecordedScriptContextsSuite",
     "DijkstraPParamsSuite",
-    "DijkstraScriptContextsSuite"
+    "DijkstraPlutusContextSuite"
    ],
    "digest": "74c9a8e0d0974f0d"
   },
@@ -27121,9 +27121,10 @@
    "class": "Mirror",
    "structure": "same",
    "evidence": [
-    "DijkstraUTxOSuite"
+    "DijkstraUTxOSuite",
+    "DijkstraPlutusContextSuite"
    ],
-   "note": "written for Dijkstra, whose levels are both, as `conwayProducedValue` is for Conway; the reference's is generic in an era whose levels are both; its Plutus scripts by hash and language, at the top level, equal the flat contexts' (`DijkstraScriptContexts.plutusScriptsProvided`) on every Dijkstra transaction the repository holds; on the testnet's transactions and the reference's UTXOW cases its hashes are exactly the batch's witnesses' and its inputs' reference scripts'. A sub-transaction's own and a script's bytes are not compared",
+   "note": "written for Dijkstra, whose levels are both, as `conwayProducedValue` is for Conway; the reference's is generic in an era whose levels are both; on the testnet's transactions and the reference's UTXOW cases its hashes are exactly the batch's witnesses' and its inputs' reference scripts', and the script of every context the reference recorded, at the top level and in a sub-transaction, is the one it provides, with its language and bytes (`DijkstraPlutusContextSuite`). A sub-transaction's own is not compared",
    "digest": "3946655273d678dd"
   },
   "def ledger.era.dijkstra.DijkstraUTxO.getDijkstraScriptsNeeded": {

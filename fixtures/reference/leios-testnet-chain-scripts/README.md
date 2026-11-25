@@ -63,7 +63,7 @@ sub-transactions), whose 5,113 scripts (165 PlutusV1, 219 PlutusV2, 4,681 Plutus
 proposing) went through the same oracles. Plutus 1.71.0.0 found every one admitted and succeeding
 within its redeemer's budget, up to 9,999,627,550 CPU steps. `GeneratedOracleReplayMain` (the same
 entry point as the suite's replay) found no disagreement in stage, error, budget or logs, and
-`LeiosChainContextsSuite` run on those cases found the node's collection of the 5,113 scripts the
+`LeiosChainContextsSuite` (the flat collection's suite, since retired, #85) run on those cases found the node's collection of the 5,113 scripts the
 reference's and the 48 PlutusV4 arguments equal to the reference's. Its cases, contexts and verdicts
 are not published; `leios_chain_scan.py sample --size 5000` on the same chain writes the sample
 again.
@@ -72,7 +72,7 @@ again.
 
 The requests are a sample of the chain's scripts (the [sampling](../leios-testnet-chain-contexts/README.md#where-the-transactions-come-from)),
 and their arguments are the reference's: the node's own collection of those arguments is checked by
-`LeiosChainContextsSuite`, for PlutusV4 only. The node does not reach protocol 12
+`DijkstraPlutusContextSuite`, for every language. The node does not reach protocol 12
 (`MaxMajorProtVer` 11).
 
 ## Licence
